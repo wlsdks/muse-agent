@@ -35,7 +35,14 @@ import {
 } from "@muse/resilience";
 import type { AgentRunHistoryStore, AgentRunMode, HookLifecycle, HookTraceStore } from "@muse/runtime-state";
 import { trimConversationMessages, type ConversationTrimOptions } from "@muse/memory";
-import { detectSystemPromptLeakage, findInjectionPatterns, maskPii, sanitizeSourceBlocks } from "@muse/policy";
+import {
+  detectSystemPromptLeakage,
+  findInjectionPatterns,
+  maskPii,
+  normalizeStructuredOutput,
+  sanitizeSourceBlocks,
+  type StructuredOutputFormat
+} from "@muse/policy";
 import { createRunId, type JsonObject } from "@muse/shared";
 import { ToolExecutor, ToolRegistry, type ToolExecutionResult } from "@muse/tools";
 
@@ -1520,6 +1527,42 @@ export function createSourceBlockResponseFilter(): ResponseFilterStage {
   };
 }
 
+export function createStructuredOutputResponseFilter(options: {
+  readonly format?: StructuredOutputFormat;
+  readonly metadataKey?: string;
+} = {}): ResponseFilterStage {
+  const metadataKey = options.metadataKey ?? "responseFormat";
+
+  return {
+    apply: (response, context) => {
+      const format = options.format ?? readStructuredOutputFormat(context.input.metadata?.[metadataKey]);
+
+      if (!format) {
+        return response;
+      }
+
+      const result = normalizeStructuredOutput(response.output, format);
+
+      if (!result.normalized) {
+        return response;
+      }
+
+      return {
+        ...response,
+        output: result.content,
+        raw: {
+          ...(isRecord(response.raw) ? response.raw : {}),
+          museResponseFilter: {
+            format,
+            id: "structured-output-response-filter"
+          }
+        }
+      };
+    },
+    id: "structured-output-response-filter"
+  };
+}
+
 function joinMessages(messages: readonly ModelMessage[]): string {
   return messages
     .filter((message) => message.role === "user" || message.role === "system")
@@ -1571,6 +1614,10 @@ function toAgentSpecRunReport(resolution: AgentSpecResolution): AgentSpecRunRepo
 function metadataString(metadata: JsonObject | undefined, key: string): string | undefined {
   const value = metadata?.[key];
   return typeof value === "string" ? value : undefined;
+}
+
+function readStructuredOutputFormat(value: unknown): StructuredOutputFormat | undefined {
+  return value === "json" || value === "yaml" ? value : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

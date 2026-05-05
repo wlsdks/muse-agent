@@ -1,4 +1,9 @@
-import { createAgentRuntime, createSourceBlockResponseFilter, type AgentRuntime } from "@muse/agent-core";
+import {
+  createAgentRuntime,
+  createSourceBlockResponseFilter,
+  createStructuredOutputResponseFilter,
+  type AgentRuntime
+} from "@muse/agent-core";
 import { InMemoryAgentSpecRegistry, RuleBasedAgentSpecResolver } from "@muse/agent-specs";
 import {
   AuthService,
@@ -147,9 +152,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       metrics: agentMetrics,
       modelProvider,
       requestTimeoutMs: parseInteger(env.MUSE_MODEL_REQUEST_TIMEOUT_MS, 45_000),
-      responseFilters: parseBoolean(env.MUSE_RESPONSE_SOURCE_FILTER_ENABLED, true)
-        ? [createSourceBlockResponseFilter()]
-        : [],
+      responseFilters: createResponseFilters(env),
       responseCache: parseBoolean(env.MUSE_CACHE_ENABLED, true) ? responseCache : undefined,
       retry: {
         initialDelayMs: parseInteger(env.MUSE_RETRY_INITIAL_DELAY_MS, 100),
@@ -319,6 +322,17 @@ function createScheduledAgentExecutor(
       return result.response.output;
     }
   };
+}
+
+function createResponseFilters(env: MuseEnvironment) {
+  return [
+    ...(parseBoolean(env.MUSE_RESPONSE_SOURCE_FILTER_ENABLED, true)
+      ? [createSourceBlockResponseFilter()]
+      : []),
+    ...(parseBoolean(env.MUSE_RESPONSE_STRUCTURED_OUTPUT_FILTER_ENABLED, true)
+      ? [createStructuredOutputResponseFilter()]
+      : [])
+  ];
 }
 
 function parseCsv(value: string | undefined): readonly string[] | undefined {

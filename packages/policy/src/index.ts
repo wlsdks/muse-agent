@@ -4,4 +4,5 @@ export * from "./migration-redaction.js";
 export * from "./pii-patterns.js";
 export * from "./prompt-leakage.js";
 export * from "./source-block-sanitizer.js";
+export * from "./structured-output.js";
 export * from "./tool-output-sanitizer.js";

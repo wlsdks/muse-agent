@@ -13,8 +13,8 @@ Current Muse baseline:
 | Bucket | Count | Meaning |
 | --- | ---: | --- |
 | Reactor modules with Muse landing zones | 31 | Every source module has a package or API target |
-| Functionally exercised migration areas | 29 | Core behavior exists and is covered by package/API tests |
-| Deep-hardening areas still open | 5 | Behavior exists, but production depth is not complete |
+| Functionally exercised migration areas | 30 | Core behavior exists and is covered by package/API tests |
+| Deep-hardening areas still open | 4 | Behavior exists, but production depth is not complete |
 | Remaining unmapped modules | 0 | No source module is without a target |
 
 ## Completed Migration Areas
@@ -43,7 +43,7 @@ Current Muse baseline:
 | `prompts` | `packages/prompts` | Prompt assembly, response format instructions, and cache boundary helpers exist |
 | `rag` | `packages/rag` | Chunking, BM25/RRF retrieval, reranking, context building, and in-memory corpus exist |
 | `resilience` | `packages/resilience` | Circuit breaker registry, retry, timeout, and model fallback primitives exist |
-| `response` | `packages/policy`, `packages/agent-core` | Output guards and source filtering exist |
+| `response` | `packages/policy`, `packages/agent-core` | Output guards, source filters, and structured filters exist |
 | `runtime-settings` | `packages/runtime-settings`, `apps/api` | Runtime settings service/store and API surface exist |
 | `scheduler` | `packages/scheduler`, `apps/api` | CRUD API, trigger/dry-run, execution records, and Node cron exist |
 | `slack` | `packages/integrations`, `apps/api` | Signed Events API, slash command, and response_url integration exist |
@@ -58,7 +58,6 @@ Current Muse baseline:
 | `core` | Boundary stability needs continued review | Keep shared contracts minimal and versionable |
 | `mcp` | Reconnect and health policy are shallow | Add health checks, backoff, and reconnect state |
 | `scheduler` | No distributed lock for multi-instance deployment | Add lock abstraction before horizontal scale |
-| `response` | Structured output normalization is still basic | Add JSON/YAML validation pipeline |
 
 ## Recent Completion Notes
 
@@ -71,14 +70,14 @@ Current Muse baseline:
 - API chat parsing now preserves assistant `toolCalls`, keeping message pairs intact.
 - Response filtering strips copied trailing source blocks and buffers text when filters or output guards are active.
 - Hook registry execution now records completed/failed hook traces in runtime state.
+- Structured output filtering normalizes JSON/YAML responses when requested by run metadata.
 
 ## Execution Plan
 
 1. Add MCP reconnect and health policy with backoff state.
-2. Add structured output normalization for JSON/YAML responses.
-3. Expand admin into tenant, alert, cost, and SLO operations.
-4. Add scheduler distributed lock abstraction before multi-instance deployment.
-5. Replace in-memory default stores with production persistence wiring where needed.
+2. Expand admin into tenant, alert, cost, and SLO operations.
+3. Add scheduler distributed lock abstraction before multi-instance deployment.
+4. Replace in-memory default stores with production persistence wiring where needed.
 
 ## Migration Rules
 

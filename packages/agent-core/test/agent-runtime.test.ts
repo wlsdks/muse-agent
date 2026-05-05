@@ -12,6 +12,7 @@ import {
   createPiiInputGuard,
   createPiiMaskingOutputGuard,
   createSourceBlockResponseFilter,
+  createStructuredOutputResponseFilter,
   createSystemPromptLeakageOutputGuard,
   GuardBlockedError,
   HookRegistry,
@@ -559,6 +560,23 @@ describe("AgentRuntime", () => {
       { response: { output: "The answer is 42." }, type: "done" }
     ]);
     expect(JSON.stringify(events)).not.toContain("https://example.test/invoice");
+  });
+
+  it("normalizes structured output based on run metadata", async () => {
+    const runtime = createAgentRuntime({
+      modelProvider: createProvider({
+        output: "```json\n{\"ok\":true}\n```"
+      }),
+      responseFilters: [createStructuredOutputResponseFilter()]
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "Return JSON", role: "user" }],
+      metadata: { responseFormat: "json" },
+      model: "provider/model"
+    });
+
+    expect(result.response.output).toBe("{\n  \"ok\": true\n}");
   });
 
   it("records spans and metrics around a successful run", async () => {
