@@ -117,6 +117,15 @@ importers:
         specifier: ^0.28.17
         version: 0.28.17
 
+  packages/eval:
+    dependencies:
+      '@muse/model':
+        specifier: workspace:*
+        version: link:../model
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
+
   packages/integrations:
     dependencies:
       '@muse/shared':
@@ -161,6 +170,18 @@ importers:
 
   packages/policy:
     dependencies:
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/promptlab:
+    dependencies:
+      '@muse/eval':
+        specifier: workspace:*
+        version: link:../eval
+      '@muse/model':
+        specifier: workspace:*
+        version: link:../model
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared
