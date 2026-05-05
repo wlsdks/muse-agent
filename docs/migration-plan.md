@@ -6,75 +6,83 @@ Current Muse baseline:
 - Packages: 23
 - Apps: 2
 - Verified gate: `pnpm check`
-- Local branch state at latest update: `main` ahead of `origin/main` by 8 commits
+- Branch state: verify with `git status -sb` before pushing or merging
 
 ## Current Count
 
 | Bucket | Count | Meaning |
 | --- | ---: | --- |
-| Migrated foundation modules | 22 | Dedicated Muse package/API foundation exists and is tested |
-| Partially migrated modules | 9 | Surface exists but behavior is not complete |
-| Remaining unmigrated modules | 0 | Every Reactor module now has a Muse landing zone |
-| Remaining work items | 9 | Partial completions only |
+| Reactor modules with Muse landing zones | 31 | Every source module has a package or API target |
+| Functionally exercised migration areas | 28 | Core behavior exists and is covered by package/API tests |
+| Deep-hardening areas still open | 6 | Behavior exists, but production depth is not complete |
+| Remaining unmapped modules | 0 | No source module is without a target |
 
-## Migrated Foundation Modules
+## Completed Migration Areas
 
 | Reactor module | Muse target | Current status |
 | --- | --- | --- |
-| `approval` | `packages/policy`, `packages/runtime-state` | Approval policy and pending approval stores exist |
-| `auth` | `packages/auth`, `apps/api` | JWT auth, password hashing, user store, token revocation, auth guard, and rate limiting exist |
+| `agent` | `packages/agent-core` | ReAct loop, tool execution, streaming, guards, hooks, cache, RAG, history |
+| `api` | `apps/api` | Chat, SSE chat, auth, settings, agent specs, history, MCP, scheduler, quality routes |
+| `approval` | `packages/policy`, `packages/runtime-state` | Approval policies and pending approval stores exist |
+| `auth` | `packages/auth`, `apps/api` | JWT auth, password hashing, user store, revocation, guard, rate limiting |
+| `autoconfigure` | `packages/autoconfigure` | Environment-driven runtime assembly for API defaults exists |
+| `cache` | `packages/cache` | Response cache, scope fingerprint, TTL invalidation, prompt-cache metadata, stats |
 | `common` | `packages/shared` | Shared IDs, JSON, and common value types exist |
 | `context` | `packages/memory` | Context trimming and message-pair handling exist |
+| `eval` | `packages/eval`, `apps/api` | Eval case model, judges, runner, summaries, and admin API exist |
 | `guard` | `packages/policy`, `packages/agent-core` | Input/output guards and fail-close runtime integration exist |
-| `intent` | `packages/agent-specs` | Agent specs, rule resolver, registry, Kysely mapping exist |
-| `cache` | `packages/cache` | Response cache, scope fingerprint, TTL invalidation, prompt-cache metadata, stats exist |
-| `memory` | `packages/memory`, `packages/runtime-state` | Context primitives and checkpoint stores exist |
-| `model-routing` | `packages/model` | Model provider registry and provider prefix routing exist |
-| `observability` | `packages/observability`, `packages/runtime-state` | In-memory tracing/metrics and run history stores exist |
+| `hook-integrations` | `packages/integrations` | Lifecycle webhook dispatch and HMAC signing primitives exist |
+| `intent` | `packages/agent-specs` | Agent specs, resolver, registry, and Kysely mapping exist |
+| `memory` | `packages/memory`, `packages/runtime-state` | Context, checkpoints, run history, and stores exist |
+| `model-routing` | `packages/model` | Provider registry, prefix routing, and OpenAI-compatible provider exist |
+| `multi-agent` | `packages/multi-agent` | Supervisor, worker selection, fallback, and handoff trace primitives exist |
+| `observability` | `packages/observability`, `packages/runtime-state` | Tracing, metrics, and history stores exist |
 | `persistence-schema` | `packages/db` | Kysely schema and migrations exist |
-| `prompts` | `packages/prompts` | Prompt assembly primitives exist |
+| `promptlab` | `packages/promptlab`, `apps/api` | Prompt variants, experiments, runner, ranking, and admin API exist |
+| `prompts` | `packages/prompts` | Prompt assembly, response format instructions, and cache boundary helpers exist |
 | `rag` | `packages/rag` | Chunking, BM25/RRF retrieval, reranking, context building, and in-memory corpus exist |
 | `resilience` | `packages/resilience` | Circuit breaker registry, retry, timeout, and model fallback primitives exist |
+| `response` | `packages/policy`, `packages/agent-core` | Output guards and source filtering exist |
 | `runtime-settings` | `packages/runtime-settings`, `apps/api` | Runtime settings service/store and API surface exist |
-| `slack` | `packages/integrations` | Slack-compatible slash command envelope and router exist |
-| `tool` | `packages/tools` | Tool registry/executor/sanitizer/approval path exists |
-| `hook-integrations` | `packages/integrations` | Lifecycle webhook dispatch and HMAC signing primitives exist |
-| `eval` | `packages/eval` | Eval case model, judge abstractions, runner, and summaries exist |
-| `promptlab` | `packages/promptlab` | Prompt variants, experiments, runner, and ranking exist |
-| `multi-agent` | `packages/multi-agent` | Supervisor, worker selection, fallback, and handoff trace primitives exist |
-| `autoconfigure` | `packages/autoconfigure` | Environment-driven runtime assembly for API defaults exists |
+| `scheduler` | `packages/scheduler`, `apps/api` | CRUD API, trigger/dry-run, execution records, and Node cron exist |
+| `slack` | `packages/integrations`, `apps/api` | Signed Events API, slash command, and response_url integration exist |
+| `tool` | `packages/tools` | Tool registry, executor, sanitizer, and approval path exist |
+| `web` | `apps/api` | HTTP/SSE run endpoints and typed error surfaces exist |
 
-## Partially Migrated Modules
+## Remaining Deep-Hardening Areas
 
-| Reactor module | Muse target | Remaining work |
+| Area | Current gap | Target |
 | --- | --- | --- |
-| `agent` | `packages/agent-core` | ReAct loop, tool-call execution, streaming, cancellation/timeout boundaries |
-| `admin` | `apps/api` | Full dashboard, alerts, tenant, cost, and SLO control surfaces beyond summary/run/scheduler operations |
-| `api` | `apps/api` | Full run lifecycle routes, persisted history routes, request validation |
-| `core` | `packages/shared`, `packages/agent-core` | Stable public contracts and package boundaries |
-| `hook` | `packages/agent-core` | Hook registry, typed lifecycle payloads, persisted hook traces |
-| `mcp` | `packages/mcp`, `apps/api` | API routes, real transport SDK integration, reconnect/health policy |
-| `response` | `packages/policy`, `packages/agent-core` | Response filters, structured output normalization, source/safety post-processing |
-| `scheduler` | `packages/scheduler`, `apps/api` | API routes and production cron scheduler wiring |
-| `web` | `apps/api` | HTTP/SSE run endpoints and OpenAPI-ready route structure |
+| `admin` | Tenant, alert, cost, and SLO operations are shallow | Add operational stores and routes |
+| `core` | Boundary stability needs continued review | Keep shared contracts minimal and versionable |
+| `hook` | No registry or persisted hook trace model yet | Add typed registry and trace persistence |
+| `mcp` | Reconnect and health policy are shallow | Add health checks, backoff, and reconnect state |
+| `scheduler` | No distributed lock for multi-instance deployment | Add lock abstraction before horizontal scale |
+| `response` | Structured output normalization is still basic | Add JSON/YAML validation pipeline |
 
-## Remaining Unmigrated Modules
+## Recent Completion Notes
 
-No dedicated module remains unmigrated. The remaining work is completion depth inside partially migrated modules.
+- MCP now uses real SDK transports for stdio, SSE, and streamable HTTP.
+- Slack signed slash commands and URL verification are wired through API routes.
+- Admin APIs cover metrics, cache invalidation, and circuit breaker reset operations.
+- Scheduler has management routes plus a Node cron runtime.
+- OpenAI-compatible streaming now preserves streamed tool-call deltas.
+- `AgentRuntime.stream()` now executes streamed tool calls through the ReAct loop.
+- API chat parsing now preserves assistant `toolCalls`, keeping message pairs intact.
+- Response filtering strips copied trailing source blocks and buffers text when filters or output guards are active.
 
 ## Execution Plan
 
-1. Complete `agent` ReAct/tool-call execution, streaming, cancellation, and timeout boundaries.
-2. Complete `api`/`web` run lifecycle routes, persisted history routes, SSE, validation, and OpenAPI-ready structure.
-3. Complete `mcp` real SDK transports, reconnect/health policy, and management API routes.
-4. Complete `scheduler` management API routes and production cron/distributed lock wiring.
-5. Expand `admin` into tenant, alert, cost, SLO, metrics, settings, and run-history operations.
-6. Harden `core`, `hook`, and `response` contracts, including typed hook traces and safety/source post-processing.
-7. Replace in-memory default assembly where needed with production persistence wiring through `autoconfigure`.
+1. Add hook registry and persisted hook trace records.
+2. Add MCP reconnect and health policy with backoff state.
+3. Add structured output normalization for JSON/YAML responses.
+4. Expand admin into tenant, alert, cost, and SLO operations.
+5. Add scheduler distributed lock abstraction before multi-instance deployment.
+6. Replace in-memory default stores with production persistence wiring where needed.
 
 ## Migration Rules
 
 - Keep private names, organizations, real traces, credentials, and absolute source paths out of Muse.
 - Prefer generic examples such as `user-1`, `workspace-1`, `read_file`, and `provider/model`.
 - Each migration unit gets its own conventional commit.
-- Run the narrow package tests first, then `pnpm check` before committing.
+- Run narrow package tests first, then `pnpm check` before committing.
