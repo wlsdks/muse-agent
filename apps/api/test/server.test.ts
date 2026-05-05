@@ -2906,6 +2906,15 @@ describe("api server", () => {
       },
       url: "/api/feedback"
     });
+    const invalidLongComment = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        comment: "x".repeat(5001),
+        rating: "thumbs_down"
+      },
+      url: "/api/feedback"
+    });
     const feedbackId = submitted.json().feedbackId as string;
     const listed = await server.inject({
       headers,
@@ -2933,6 +2942,12 @@ describe("api server", () => {
       headers: { ...headers, "if-match": "1" },
       method: "PATCH",
       payload: { status: "closed" },
+      url: `/api/feedback/${feedbackId}`
+    });
+    const invalidLongNote = await server.inject({
+      headers: { ...headers, "if-match": "1" },
+      method: "PATCH",
+      payload: { note: "x".repeat(2001) },
       url: `/api/feedback/${feedbackId}`
     });
     const reviewed = await server.inject({
@@ -2977,6 +2992,13 @@ describe("api server", () => {
       timestamp: expect.any(String)
     });
     expect(invalidRating.json()).not.toHaveProperty("code");
+    expect(invalidLongComment.statusCode).toBe(400);
+    expect(invalidLongComment.json()).toMatchObject({
+      details: { comment: "size must be between 0 and 5000" },
+      error: "요청 형식이 올바르지 않습니다",
+      timestamp: expect.any(String)
+    });
+    expect(invalidLongComment.json()).not.toHaveProperty("code");
     expect(submitted.json()).toMatchObject({
       feedbackId,
       rating: "thumbs_down",
@@ -3008,6 +3030,13 @@ describe("api server", () => {
       timestamp: expect.any(String)
     });
     expect(invalidStatus.json()).not.toHaveProperty("code");
+    expect(invalidLongNote.statusCode).toBe(400);
+    expect(invalidLongNote.json()).toMatchObject({
+      details: { note: "size must be between 0 and 2000" },
+      error: "요청 형식이 올바르지 않습니다",
+      timestamp: expect.any(String)
+    });
+    expect(invalidLongNote.json()).not.toHaveProperty("code");
     expect(reviewed.json()).toMatchObject({
       feedbackId,
       reviewNote: "Added to prompt backlog",

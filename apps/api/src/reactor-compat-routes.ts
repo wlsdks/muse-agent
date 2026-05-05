@@ -1186,6 +1186,12 @@ function registerFeedbackRoutes(server: FastifyInstance, options: ReactorCompati
       return reply.status(400).send(errorResponse("잘못된 요청입니다"));
     }
 
+    const validationError = validateFeedbackSubmitBody(body);
+
+    if (validationError) {
+      return reply.status(400).send(validationErrorResponse(validationError));
+    }
+
     return reply.status(201).send(toFeedbackResponse(createFeedback(request)));
   });
   server.get("/api/feedback", async (request, reply) => {
@@ -1274,6 +1280,12 @@ function registerFeedbackRoutes(server: FastifyInstance, options: ReactorCompati
       return reply.status(400).send(errorResponse("잘못된 요청입니다"));
     }
 
+    const validationError = validateFeedbackReviewBody(body);
+
+    if (validationError) {
+      return reply.status(400).send(validationErrorResponse(validationError));
+    }
+
     for (const id of ids) {
       const existing = findCompatRecord(state.feedback, id);
 
@@ -1327,6 +1339,12 @@ function registerFeedbackRoutes(server: FastifyInstance, options: ReactorCompati
 
     if (typeof body.status === "string" && !parseFeedbackReviewStatus(body.status)) {
       return reply.status(400).send(errorResponse("잘못된 요청입니다"));
+    }
+
+    const validationError = validateFeedbackReviewBody(body);
+
+    if (validationError) {
+      return reply.status(400).send(validationErrorResponse(validationError));
     }
 
     return toFeedbackResponse(updateFeedbackReview(feedback, body, readAuthUserId(request) ?? "admin"));
@@ -5393,6 +5411,50 @@ function createFeedback(request: FastifyRequest): CompatRecord {
     userId: readAuthUserId(request) ?? null,
     version: 1
   }, "feedback");
+}
+
+function validateFeedbackSubmitBody(body: CompatBody): JsonObject | undefined {
+  const stringChecks: Array<readonly [keyof CompatBody, number]> = [
+    ["query", 10_000],
+    ["response", 50_000],
+    ["comment", 5_000],
+    ["sessionId", 120],
+    ["runId", 120],
+    ["intent", 120],
+    ["domain", 120],
+    ["model", 120],
+    ["templateId", 120]
+  ];
+
+  for (const [key, max] of stringChecks) {
+    const value = body[key];
+
+    if (typeof value === "string" && value.length > max) {
+      return { [key]: `size must be between 0 and ${max}` };
+    }
+  }
+
+  if (Array.isArray(body.toolsUsed) && body.toolsUsed.length > 50) {
+    return { toolsUsed: "size must be between 0 and 50" };
+  }
+
+  if (Array.isArray(body.tags) && body.tags.length > 20) {
+    return { tags: "size must be between 0 and 20" };
+  }
+
+  return undefined;
+}
+
+function validateFeedbackReviewBody(body: CompatBody): JsonObject | undefined {
+  if (Array.isArray(body.tags) && body.tags.length > 16) {
+    return { tags: "size must be between 0 and 16" };
+  }
+
+  if (typeof body.note === "string" && body.note.length > 2000) {
+    return { note: "size must be between 0 and 2000" };
+  }
+
+  return undefined;
 }
 
 function toFeedbackResponse(record: JsonObject) {
