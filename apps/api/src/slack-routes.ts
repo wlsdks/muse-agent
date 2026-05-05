@@ -1,5 +1,6 @@
 import type { AgentRuntime } from "@muse/agent-core";
 import {
+  FetchSlackWebApiMessageTransport,
   FetchSlackResponseUrlTransport,
   SlackSignatureVerifier,
   parseSlackSlashCommand,
@@ -8,6 +9,7 @@ import {
   type CommandEnvelope,
   type CommandHandler,
   type CommandResponse,
+  type SlackMessageTransport,
   type SlackResponseUrlTransport,
   type SlackSlashCommandPayload
 } from "@muse/integrations";
@@ -18,6 +20,8 @@ export interface SlackRouteOptions {
   readonly enabled?: boolean;
   readonly signingSecret?: string;
   readonly commandHandler?: CommandHandler;
+  readonly botToken?: string;
+  readonly messageTransport?: SlackMessageTransport;
   readonly responseTransport?: SlackResponseUrlTransport;
   readonly now?: () => Date;
 }
@@ -143,7 +147,7 @@ async function handleEventCallback(
   const envelope = parseSlackEventEnvelope(request.body, state);
 
   if (envelope) {
-    void executeSlackCommand(envelope, options).catch(() => undefined);
+    void dispatchSlackEventResponse(envelope, options).catch(() => undefined);
   }
 
   return {
@@ -232,6 +236,35 @@ function parseSlackEventEnvelope(body: Record<string, unknown>, state: SlackEven
   };
 }
 
+async function dispatchSlackEventResponse(
+  envelope: CommandEnvelope,
+  options: RegisterSlackRoutesOptions
+): Promise<void> {
+  const response = await executeSlackCommand(envelope, options).catch((error) => ({
+    text: error instanceof Error ? `Agent run failed: ${error.message}` : "Agent run failed",
+    visibility: "ephemeral" as const
+  }));
+  const channelId = envelope.channelId;
+  const threadTs = slackThreadTs(envelope);
+
+  if (!channelId || !threadTs || response.text.trim().length === 0) {
+    return;
+  }
+
+  const transport = options.slack?.messageTransport
+    ?? (options.slack?.botToken ? new FetchSlackWebApiMessageTransport(options.slack.botToken) : undefined);
+
+  if (!transport) {
+    return;
+  }
+
+  await transport.postMessage({
+    channelId,
+    text: prependSlackUserMention(toSlackCommandAck(response).text, envelope.userId),
+    threadTs
+  });
+}
+
 async function dispatchResponseUrl(envelope: CommandEnvelope, options: RegisterSlackRoutesOptions): Promise<void> {
   const transport = options.slack?.responseTransport ?? new FetchSlackResponseUrlTransport();
   const response = await executeSlackCommand(envelope, options).catch((error) => ({
@@ -244,6 +277,26 @@ async function dispatchResponseUrl(envelope: CommandEnvelope, options: RegisterS
     response_type: ack.response_type,
     text: ack.text
   });
+}
+
+function slackThreadTs(envelope: CommandEnvelope): string | undefined {
+  const threadTs = envelope.metadata.threadTs;
+  const eventTs = envelope.metadata.eventTs;
+
+  if (typeof threadTs === "string" && threadTs.trim().length > 0) {
+    return threadTs.trim();
+  }
+
+  return typeof eventTs === "string" && eventTs.trim().length > 0 ? eventTs.trim() : undefined;
+}
+
+function prependSlackUserMention(text: string, userId: string | undefined): string {
+  if (!userId) {
+    return text;
+  }
+
+  const mention = `<@${userId}>`;
+  return text.includes(mention) ? text : `${mention} ${text.trimStart()}`;
 }
 
 async function executeSlackCommand(

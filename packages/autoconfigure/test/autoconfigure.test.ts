@@ -111,12 +111,14 @@ describe("autoconfigure", () => {
   it("maps Slack API options from environment", () => {
     const options = createApiServerOptions({
       env: {
+        MUSE_SLACK_BOT_TOKEN: "xoxb-token",
         MUSE_SLACK_ENABLED: "true",
         MUSE_SLACK_SIGNING_SECRET: "signing-secret"
       }
     });
 
     expect(options.slack).toEqual({
+      botToken: "xoxb-token",
       enabled: true,
       signingSecret: "signing-secret"
     });

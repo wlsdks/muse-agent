@@ -8,7 +8,11 @@ import {
   InMemoryUserStore,
   JwtTokenProvider
 } from "@muse/auth";
-import { signSlackRequestBody, type SlackResponseUrlTransport } from "@muse/integrations";
+import {
+  signSlackRequestBody,
+  type SlackMessageTransport,
+  type SlackResponseUrlTransport
+} from "@muse/integrations";
 import {
   InMemoryMcpSecurityPolicyStore,
   InMemoryMcpServerStore,
@@ -5259,9 +5263,19 @@ describe("api server", () => {
 
   it("dispatches signed Slack app mention events through the command handler", async () => {
     let resolveHandled!: (value: unknown) => void;
+    let resolvePosted!: (value: unknown) => void;
     const handled = new Promise((resolve) => {
       resolveHandled = resolve;
     });
+    const posted = new Promise((resolve) => {
+      resolvePosted = resolve;
+    });
+    const messageTransport: SlackMessageTransport = {
+      postMessage: (input) => {
+        resolvePosted(input);
+        return { ok: true, statusCode: 200, ts: "1770000000.000300" };
+      }
+    };
     const server = buildServer({
       logger: false,
       slack: {
@@ -5272,6 +5286,7 @@ describe("api server", () => {
           }
         },
         enabled: true,
+        messageTransport,
         now: () => new Date(1_770_000_000_000),
         signingSecret: "signing-secret"
       }
@@ -5315,6 +5330,11 @@ describe("api server", () => {
       text: "summarize this",
       userId: "user-1",
       workspaceId: "workspace-1"
+    });
+    await expect(posted).resolves.toEqual({
+      channelId: "channel-1",
+      text: "<@user-1> handled",
+      threadTs: "1770000000.000100"
     });
   });
 

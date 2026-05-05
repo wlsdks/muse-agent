@@ -385,6 +385,7 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     scheduler: assembly.scheduler,
     taskMemoryMaintenance: assembly.taskMemoryStore,
     slack: {
+      botToken: parseOptionalString(env.MUSE_SLACK_BOT_TOKEN),
       enabled: parseBoolean(env.MUSE_SLACK_ENABLED, false),
       signingSecret: parseOptionalString(env.MUSE_SLACK_SIGNING_SECRET)
     }

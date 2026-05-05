@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CommandRouter,
   FetchSlackResponseUrlTransport,
+  FetchSlackWebApiMessageTransport,
   SlackSignatureVerifier,
   WebhookDispatcher,
   formatSlackMrkdwn,
@@ -198,6 +199,41 @@ describe("WebhookDispatcher", () => {
         body: "{\"response_type\":\"in_channel\",\"text\":\"*ok*\\n\\n*done*\"}",
         headers: { "content-type": "application/json" },
         url: "https://example.invalid/respond"
+      }
+    ]);
+  });
+
+  it("posts Slack Web API thread replies as formatted chat.postMessage payloads", async () => {
+    const posts: Array<{ body: string | undefined; headers: HeadersInit | undefined; url: string }> = [];
+    const transport = new FetchSlackWebApiMessageTransport("xoxb-token", async (url, init) => {
+      posts.push({
+        body: typeof init?.body === "string" ? init.body : undefined,
+        headers: init?.headers,
+        url: String(url)
+      });
+
+      return Response.json({ ok: true, ts: "1770000000.000300" }, { status: 200 });
+    });
+
+    await expect(
+      transport.postMessage({
+        channelId: "channel-1",
+        text: "### ok\n**done**",
+        threadTs: "1770000000.000100"
+      })
+    ).resolves.toEqual({
+      ok: true,
+      statusCode: 200,
+      ts: "1770000000.000300"
+    });
+    expect(posts).toEqual([
+      {
+        body: "{\"channel\":\"channel-1\",\"text\":\"*ok*\\n\\n*done*\",\"thread_ts\":\"1770000000.000100\"}",
+        headers: {
+          authorization: "Bearer xoxb-token",
+          "content-type": "application/json; charset=utf-8"
+        },
+        url: "https://slack.com/api/chat.postMessage"
       }
     ]);
   });

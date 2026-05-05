@@ -80,6 +80,21 @@ export interface SlackResponseUrlTransport {
   post(url: string, body: JsonObject): Awaitable<{ readonly statusCode: number }>;
 }
 
+export interface SlackMessagePostInput {
+  readonly channelId: string;
+  readonly text: string;
+  readonly threadTs?: string;
+}
+
+export interface SlackMessageTransport {
+  postMessage(input: SlackMessagePostInput): Awaitable<{
+    readonly ok: boolean;
+    readonly statusCode: number;
+    readonly error?: string;
+    readonly ts?: string;
+  }>;
+}
+
 export interface SlackSignatureVerifierOptions {
   readonly signingSecret: string;
   readonly timestampToleranceSeconds?: number;
@@ -305,6 +320,47 @@ export class FetchSlackResponseUrlTransport implements SlackResponseUrlTransport
   }
 }
 
+export class FetchSlackWebApiMessageTransport implements SlackMessageTransport {
+  constructor(
+    private readonly botToken: string,
+    private readonly fetchImpl: typeof fetch = fetch,
+    private readonly apiBaseUrl = "https://slack.com/api"
+  ) {}
+
+  async postMessage(input: SlackMessagePostInput): Promise<{
+    readonly ok: boolean;
+    readonly statusCode: number;
+    readonly error?: string;
+    readonly ts?: string;
+  }> {
+    if (this.botToken.trim().length === 0) {
+      return { error: "slack_bot_token_missing", ok: false, statusCode: 0 };
+    }
+
+    const body = formatSlackPayload({
+      channel: input.channelId,
+      text: input.text,
+      ...(input.threadTs ? { thread_ts: input.threadTs } : {})
+    });
+    const response = await this.fetchImpl(`${this.apiBaseUrl}/chat.postMessage`, {
+      body: JSON.stringify(body),
+      headers: {
+        authorization: `Bearer ${this.botToken}`,
+        "content-type": "application/json; charset=utf-8"
+      },
+      method: "POST"
+    });
+    const parsed = await readSlackApiResponse(response);
+
+    return {
+      error: parsed.error,
+      ok: response.ok && parsed.ok !== false,
+      statusCode: response.status,
+      ts: parsed.ts
+    };
+  }
+}
+
 export function createWebhookHeaders(body: JsonObject, secret: string | undefined): Record<string, string> {
   const serialized = JSON.stringify(body);
   const headers: Record<string, string> = {
@@ -386,6 +442,32 @@ function formatSlackPayload(body: JsonObject): JsonObject {
   return {
     ...body,
     text: formatSlackMrkdwn(text)
+  };
+}
+
+async function readSlackApiResponse(response: Response): Promise<{
+  readonly ok?: boolean;
+  readonly error?: string;
+  readonly ts?: string;
+}> {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (!contentType.includes("application/json")) {
+    return {};
+  }
+
+  const value = await response.json().catch(() => undefined);
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const record = value as Record<string, unknown>;
+
+  return {
+    error: typeof record.error === "string" ? record.error : undefined,
+    ok: typeof record.ok === "boolean" ? record.ok : undefined,
+    ts: typeof record.ts === "string" ? record.ts : undefined
   };
 }
 
