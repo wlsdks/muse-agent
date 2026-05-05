@@ -93,6 +93,10 @@ Continued work should be treated as new hardening or product expansion, not migr
 - Input Guard audit compatibility now returns the Reactor `{ audits, total }` envelope.
 - Agent eval LLM judge compatibility now calls the configured Muse model provider when `llmJudge=true` instead of
   always storing an unavailable judge result.
+- Slack webhook compatibility now keeps `/api/slack/events` and `/api/slack/commands` registered when Slack is not
+  enabled, returning 503 for socket-mode-style disabled POSTs and 405 for probe GETs.
+- Scheduler compatibility now matches Reactor's disabled-service stub: empty list/read-history responses stay 200,
+  while write and execution operations return 503.
 
 ## Execution Plan
 

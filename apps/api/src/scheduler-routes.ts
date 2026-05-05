@@ -24,8 +24,9 @@ export interface SchedulerRouteOptions {
 }
 
 interface ApiError {
-  readonly code: string;
-  readonly message: string;
+  readonly code?: string;
+  readonly error?: string;
+  readonly message?: string;
 }
 
 type ParseResult<T> = { readonly ok: true; readonly value: T } | { readonly error: ApiError; readonly ok: false };
@@ -38,7 +39,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
       }
 
       if (!options.scheduler) {
-        return sendSchedulerUnavailable(reply);
+        return [];
       }
 
       return options.scheduler.service?.list() ?? options.scheduler.store.list();
@@ -142,10 +143,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
       }
 
       if (!options.scheduler?.executionStore && !options.scheduler?.service) {
-        return reply.status(404).send({
-          code: "SCHEDULER_EXECUTIONS_UNAVAILABLE",
-          message: "Scheduler execution store is not configured"
-        });
+        return [];
       }
 
       const { jobId } = request.params as { readonly jobId: string };
@@ -214,15 +212,13 @@ async function runScheduledJob(
 
 function sendSchedulerUnavailable(reply: { status(statusCode: number): { send(payload: ApiError): void } }) {
   return reply.status(404).send({
-    code: "SCHEDULER_UNAVAILABLE",
-    message: "Scheduler store is not configured"
+    error: "Scheduler not configured"
   });
 }
 
 function sendSchedulerServiceUnavailable(reply: { status(statusCode: number): { send(payload: ApiError): void } }) {
-  return reply.status(404).send({
-    code: "SCHEDULER_SERVICE_UNAVAILABLE",
-    message: "Scheduler service is not configured"
+  return reply.status(503).send({
+    error: "DynamicSchedulerService not configured"
   });
 }
 

@@ -734,6 +734,37 @@ describe("api server", () => {
     expect(afterDelete.statusCode).toBe(404);
   });
 
+  it("matches Reactor scheduler stub responses when no scheduler is configured", async () => {
+    const server = buildServer({ logger: false });
+
+    const jobs = await server.inject({ method: "GET", url: "/api/scheduler/jobs" });
+    const detail = await server.inject({ method: "GET", url: "/api/scheduler/jobs/job-1" });
+    const executions = await server.inject({
+      method: "GET",
+      url: "/api/scheduler/jobs/job-1/executions"
+    });
+    const create = await server.inject({
+      method: "POST",
+      payload: { cronExpression: "0 * * * * *", jobType: "agent", name: "Agent job" },
+      url: "/api/scheduler/jobs"
+    });
+    const trigger = await server.inject({
+      method: "POST",
+      url: "/api/scheduler/jobs/job-1/trigger"
+    });
+
+    expect(jobs.statusCode).toBe(200);
+    expect(jobs.json()).toEqual([]);
+    expect(detail.statusCode).toBe(404);
+    expect(detail.json()).toEqual({ error: "Scheduler not configured" });
+    expect(executions.statusCode).toBe(200);
+    expect(executions.json()).toEqual([]);
+    expect(create.statusCode).toBe(503);
+    expect(create.json()).toEqual({ error: "DynamicSchedulerService not configured" });
+    expect(trigger.statusCode).toBe(503);
+    expect(trigger.json()).toEqual({ error: "DynamicSchedulerService not configured" });
+  });
+
   it("manages MCP servers, policies, connections, and tool calls through admin API", async () => {
     const authService = createAuthService();
     const registered = authService.register({
@@ -1557,6 +1588,33 @@ describe("api server", () => {
     expect(deletedSession.statusCode).toBe(204);
     expect(deletedSessionDetail.statusCode).toBe(404);
     expect(unmappedAdminRoute.statusCode).toBe(404);
+  });
+
+  it("keeps Slack webhook probe routes available when Slack is not enabled", async () => {
+    const server = buildServer({ logger: false });
+
+    const eventProbe = await server.inject({
+      method: "GET",
+      url: "/api/slack/events"
+    });
+    const eventPost = await server.inject({
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      payload: "{}",
+      url: "/api/slack/events"
+    });
+    const commandPost = await server.inject({
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      method: "POST",
+      payload: "command=%2Fmuse&text=hello",
+      url: "/api/slack/commands"
+    });
+
+    expect(eventProbe.statusCode).toBe(405);
+    expect(eventPost.statusCode).toBe(503);
+    expect(eventPost.json()).toMatchObject({ error: "slack_transport_socket_mode" });
+    expect(commandPost.statusCode).toBe(503);
+    expect(commandPost.json()).toMatchObject({ error: "slack_transport_socket_mode" });
   });
 
   it("handles signed Slack slash commands and posts response_url results", async () => {

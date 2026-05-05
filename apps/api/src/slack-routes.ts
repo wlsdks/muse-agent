@@ -33,16 +33,42 @@ const processingText = "Processing your request...";
 const blankPromptText = "Please enter a question. Example: /muse What should I do next?";
 
 export function registerSlackRoutes(server: FastifyInstance, options: RegisterSlackRoutesOptions): void {
+  installSlackBodyParsers(server);
+  registerSlackMethodProbeRoutes(server);
+
   if (!options.slack?.enabled) {
+    server.post("/api/slack/commands", async (_request, reply) => slackWebhookDisabled(reply));
+    server.post("/slack/commands", async (_request, reply) => slackWebhookDisabled(reply));
+    server.post("/api/slack/events", async (_request, reply) => slackWebhookDisabled(reply));
+    server.post("/slack/events", async (_request, reply) => slackWebhookDisabled(reply));
     return;
   }
-
-  installSlackBodyParsers(server);
 
   server.post("/api/slack/commands", async (request, reply) => handleSlashCommand(request, reply, options));
   server.post("/slack/commands", async (request, reply) => handleSlashCommand(request, reply, options));
   server.post("/api/slack/events", async (request, reply) => handleEventCallback(request, reply, options));
   server.post("/slack/events", async (request, reply) => handleEventCallback(request, reply, options));
+}
+
+function registerSlackMethodProbeRoutes(server: FastifyInstance): void {
+  server.get("/api/slack/commands", async (_request, reply) => slackWebhookPostOnly(reply));
+  server.get("/slack/commands", async (_request, reply) => slackWebhookPostOnly(reply));
+  server.get("/api/slack/events", async (_request, reply) => slackWebhookPostOnly(reply));
+  server.get("/slack/events", async (_request, reply) => slackWebhookPostOnly(reply));
+}
+
+function slackWebhookPostOnly(reply: FastifyReply): FastifyReply {
+  return reply.status(405).send({
+    code: "METHOD_NOT_ALLOWED",
+    message: "Slack webhook accepts POST only"
+  });
+}
+
+function slackWebhookDisabled(reply: FastifyReply): FastifyReply {
+  return reply.status(503).send({
+    error: "slack_transport_socket_mode",
+    message: "Slack HTTP webhook is disabled; transport-mode=socket_mode"
+  });
 }
 
 async function handleSlashCommand(
