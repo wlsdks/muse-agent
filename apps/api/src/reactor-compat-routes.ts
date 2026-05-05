@@ -2068,71 +2068,6 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
 
 }
 
-function registerCollectionRoutes(
-  server: FastifyInstance,
-  prefix: string,
-  collection: CompatCollection,
-  options: {
-    readonly authorize?: ReactorCompatibilityRouteOptions["authorizeAdmin"];
-    readonly idParamName?: string;
-    readonly inputIdKey?: string;
-    readonly onCreate?: (record: CompatRecord) => CompatRecord;
-  } = {}
-): void {
-  const idParamName = options.idParamName ?? "id";
-
-  server.get(prefix, async (request, reply) => {
-    if (options.authorize && !options.authorize(request, reply)) {
-      return reply;
-    }
-
-    return [...collection.values()];
-  });
-  server.post(prefix, async (request, reply) => {
-    if (options.authorize && !options.authorize(request, reply)) {
-      return reply;
-    }
-
-    const body = toJsonObject(request.body);
-    const idFromBody = options.inputIdKey ? body[options.inputIdKey] : body.id;
-    const record = createRecord(collection, {
-      ...body,
-      ...(typeof idFromBody === "string" ? { id: idFromBody } : {})
-    }, collectionPrefix(prefix));
-    const saved = options.onCreate ? options.onCreate(record) : record;
-    collection.set(saved.id, saved);
-    return reply.status(201).send(saved);
-  });
-  server.get(`${prefix}/:${idParamName}`, async (request, reply) => {
-    if (options.authorize && !options.authorize(request, reply)) {
-      return reply;
-    }
-
-    return findRecordByParam(collection, request, reply, idParamName);
-  });
-  server.put(`${prefix}/:${idParamName}`, async (request, reply) => {
-    if (options.authorize && !options.authorize(request, reply)) {
-      return reply;
-    }
-
-    return upsertByParam(collection, request, idParamName, collectionPrefix(prefix));
-  });
-  server.patch(`${prefix}/:${idParamName}`, async (request, reply) => {
-    if (options.authorize && !options.authorize(request, reply)) {
-      return reply;
-    }
-
-    return upsertByParam(collection, request, idParamName, collectionPrefix(prefix));
-  });
-  server.delete(`${prefix}/:${idParamName}`, async (request, reply) => {
-    if (options.authorize && !options.authorize(request, reply)) {
-      return reply;
-    }
-
-    return deleteByParam(collection, request, idParamName);
-  });
-}
-
 function registerAdminAnalyticsCompatibilityRoutes(
   server: FastifyInstance,
   options: ReactorCompatibilityRouteOptions
@@ -4320,11 +4255,6 @@ function upsertByParam(
   }, prefix);
 }
 
-function deleteByParam(collection: CompatCollection, request: FastifyRequest, paramName = "id") {
-  const id = (request.params as Record<string, string>)[paramName];
-  return { deleted: id ? collection.delete(id) : false, id };
-}
-
 function updateCandidate(request: FastifyRequest, status: string) {
   const { id } = request.params as { readonly id: string };
   return createRecord(state.ragCandidates, { id, status }, "rag_candidate");
@@ -4720,10 +4650,6 @@ function authRateLimitKey(
   const forwarded = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
   const ip = forwarded?.split(",")[0]?.trim() || fallbackIp || "unknown";
   return `${ip}:${path}`;
-}
-
-function collectionPrefix(prefix: string): string {
-  return prefix.split("/").filter(Boolean).at(-1)?.replace(/-/g, "_") ?? "compat";
 }
 
 function nowIso(): string {
