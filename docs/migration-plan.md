@@ -50,7 +50,7 @@ Current Muse baseline:
 | `resilience` | `packages/resilience` | Circuit breaker registry, retry, timeout, and model fallback primitives exist |
 | `runtime-settings` | `packages/runtime-settings`, `apps/api` | Runtime settings service/store and API surface exist |
 | `scheduler` | `packages/scheduler`, `apps/api` | CRUD, execution records, cron, and scheduler locks exist |
-| `slack` | `packages/integrations`, `apps/api` | Signed Events API, slash command, response_url integration, and Slack mrkdwn response formatting exist |
+| `slack` | `packages/integrations`, `apps/api` | Signed Events API dispatch, slash command, response_url integration, and Slack mrkdwn response formatting exist |
 | `tool` | `packages/tools` | Tool registry, executor, sanitizer, and approval path exist |
 | `web` | `apps/api` | HTTP/SSE run endpoints and typed error surfaces exist |
 
@@ -74,7 +74,7 @@ fully done:
 
 1. Response filters: compare Reactor's verified-source extractor edge cases against Muse extraction
    (nested URL fields, synthesized source directories, and source relevance filtering still need broader parity tests).
-2. Slack behavior: verify Events API callbacks, slash-command fallback behavior, and response URL delivery together.
+2. Slack behavior: verify message-thread replies and Slack delivery transports beyond callback dispatch.
 3. Hook/context behavior: verify message-pair integrity under broader runtime smoke tests.
 
 Latest route parity check: `REACTOR_SOURCE_DIR=<local-reactor-path> pnpm verify:reactor-routes` reports 255 Reactor
@@ -198,6 +198,8 @@ routes, 365 Muse routes, and 0 missing Reactor routes.
   preserving issue keys and quoted terms for pronoun resolution across later turns.
 - Multi-agent compatibility now includes package-level sequential and parallel delegation modes in addition to
   supervisor worker selection and failure fallback.
+- Slack Events API compatibility now dispatches signed `app_mention` and DM/thread `message` callbacks into the same
+  command execution path, ignores bot/subtype events, deduplicates retry `event_id`s, and strips bot mention prefixes.
 
 ## Execution Plan
 

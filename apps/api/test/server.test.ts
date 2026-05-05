@@ -5256,6 +5256,113 @@ describe("api server", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ challenge: "challenge-1" });
   });
+
+  it("dispatches signed Slack app mention events through the command handler", async () => {
+    let resolveHandled!: (value: unknown) => void;
+    const handled = new Promise((resolve) => {
+      resolveHandled = resolve;
+    });
+    const server = buildServer({
+      logger: false,
+      slack: {
+        commandHandler: {
+          handle: (command) => {
+            resolveHandled(command);
+            return { text: "handled", visibility: "public" };
+          }
+        },
+        enabled: true,
+        now: () => new Date(1_770_000_000_000),
+        signingSecret: "signing-secret"
+      }
+    });
+    const raw = JSON.stringify({
+      event: {
+        channel: "channel-1",
+        channel_type: "channel",
+        text: "<@BOT12345> summarize this",
+        ts: "1770000000.000100",
+        type: "app_mention",
+        user: "user-1"
+      },
+      event_id: "event-1",
+      team_id: "workspace-1",
+      type: "event_callback"
+    });
+    const timestamp = "1770000000";
+    const response = await server.inject({
+      headers: {
+        "content-type": "application/json",
+        "x-slack-request-timestamp": timestamp,
+        "x-slack-signature": signSlackRequestBody(raw, timestamp, "signing-secret")
+      },
+      method: "POST",
+      payload: raw,
+      url: "/api/slack/events"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ ok: true });
+    await expect(handled).resolves.toMatchObject({
+      channelId: "channel-1",
+      command: "app_mention",
+      metadata: expect.objectContaining({
+        eventId: "event-1",
+        eventType: "app_mention",
+        source: "slack_event"
+      }),
+      source: "slack_event",
+      text: "summarize this",
+      userId: "user-1",
+      workspaceId: "workspace-1"
+    });
+  });
+
+  it("deduplicates retried Slack event callbacks by event id", async () => {
+    const handled: string[] = [];
+    const server = buildServer({
+      logger: false,
+      slack: {
+        commandHandler: {
+          handle: (command) => {
+            handled.push(command.id);
+            return { text: "handled", visibility: "public" };
+          }
+        },
+        enabled: true,
+        now: () => new Date(1_770_000_000_000),
+        signingSecret: "signing-secret"
+      }
+    });
+    const raw = JSON.stringify({
+      event: {
+        channel: "channel-1",
+        channel_type: "im",
+        text: "hello",
+        ts: "1770000000.000200",
+        type: "message",
+        user: "user-1"
+      },
+      event_id: "event-duplicate",
+      team_id: "workspace-1",
+      type: "event_callback"
+    });
+    const timestamp = "1770000000";
+    const signedRequest = {
+      headers: {
+        "content-type": "application/json",
+        "x-slack-request-timestamp": timestamp,
+        "x-slack-signature": signSlackRequestBody(raw, timestamp, "signing-secret")
+      },
+      method: "POST" as const,
+      payload: raw,
+      url: "/api/slack/events"
+    };
+
+    expect((await server.inject(signedRequest)).statusCode).toBe(200);
+    expect((await server.inject(signedRequest)).statusCode).toBe(200);
+    expect(handled).toEqual(["event-duplicate"]);
+  });
 });
 
 interface FakeMcpAdminServer {
