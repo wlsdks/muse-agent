@@ -62,7 +62,7 @@ multiple source modules.
 | Area | Muse target | Current status |
 | --- | --- | --- |
 | Context handling | `packages/memory`, `packages/agent-core` | Context trimming and assistant/tool message-pair handling exist |
-| Response filtering | `packages/policy`, `packages/agent-core` | Output guards, source filters, structured filters, max-length truncation, Slack ID masking, and internal brand masking exist |
+| Response filtering | `packages/policy`, `packages/agent-core` | Output guards, source/structured filters, markdown/sanitized-text cleanup, greeting stripping, fabrication refusal, max-length truncation, Slack ID masking, internal brand masking, zero-result overclaim cleanup, and release-risk data-gap cleanup exist |
 | Hook lifecycle | `packages/agent-core`, `packages/runtime-state`, `packages/integrations` | Hook callbacks, trace persistence, and webhook signing exist |
 | Multi-agent orchestration | `packages/multi-agent` | Supervisor, worker selection, fallback, and handoff trace primitives exist |
 
@@ -72,7 +72,9 @@ No known source module remains unmapped.
 The remaining checks are cross-module behavior parity checks that should be closed before calling the migration
 fully done:
 
-1. Response filters: compare Reactor's full response filter list against Muse filters one by one.
+1. Response filters: compare the remaining Reactor full response filter list against Muse filters one by one
+   (`CasualLureStrip`, response-count filters, policy-prior warning, tool-result quality audit, and verified-source
+   renderer/extractor behavior still need explicit parity checks).
 2. Slack behavior: verify Slack-only formatting, event handling, response URL, and API fallback behavior together.
 3. Hook/context behavior: verify fail-open hook execution, trace persistence, context trimming, and message-pair
    integrity together under runtime smoke tests.
@@ -179,6 +181,8 @@ routes, 365 Muse routes, and 0 missing Reactor routes.
   unauthorized/session-forbidden messages.
 - Response filter compatibility now includes Reactor-style max-length truncation, raw Slack user ID conversion to
   mention form, and internal implementation brand masking in the default runtime assembly.
+- Response filter compatibility now also includes sanitized marker cleanup, markdown normalization, repeated greeting
+  removal, explicit fabrication-request refusal, zero-result overclaim cleanup, and release-risk data-gap cleanup.
 
 ## Execution Plan
 

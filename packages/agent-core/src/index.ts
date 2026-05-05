@@ -105,6 +105,7 @@ export interface ResponseFilterContext {
   readonly runId: string;
   readonly input: AgentRunInput;
   readonly response: ModelResponse;
+  readonly toolsUsed?: readonly string[];
 }
 
 export interface ResponseFilterStage {
@@ -330,7 +331,7 @@ export class AgentRuntime {
           model: cached.model ?? selected.model,
           output: cached.content
         };
-        const filteredCachedResponse = await this.applyResponseFilters(context, cachedResponse);
+        const filteredCachedResponse = await this.applyResponseFilters(context, cachedResponse, cached.toolsUsed);
         const guardedCachedResponse = await this.applyOutputGuards(context, filteredCachedResponse);
 
         await this.recordRunComplete(context, {
@@ -356,7 +357,7 @@ export class AgentRuntime {
         temperature: this.defaults?.temperature,
         tools
       });
-      const filteredResponse = await this.applyResponseFilters(context, execution.finalResponse);
+      const filteredResponse = await this.applyResponseFilters(context, execution.finalResponse, execution.toolsUsed);
       const guardedResponse = await this.applyOutputGuards(context, filteredResponse);
 
       await this.recordRunComplete(context, { ...execution, finalResponse: guardedResponse });
@@ -416,7 +417,7 @@ export class AgentRuntime {
           model: cached.model ?? selected.model,
           output: cached.content
         };
-        const filteredCachedResponse = await this.applyResponseFilters(context, cachedResponse);
+        const filteredCachedResponse = await this.applyResponseFilters(context, cachedResponse, cached.toolsUsed);
         const guardedCachedResponse = await this.applyOutputGuards(context, filteredCachedResponse);
 
         await this.recordRunComplete(context, {
@@ -448,7 +449,7 @@ export class AgentRuntime {
       }
 
       const execution = next.value;
-      const filteredResponse = await this.applyResponseFilters(context, execution.finalResponse);
+      const filteredResponse = await this.applyResponseFilters(context, execution.finalResponse, execution.toolsUsed);
       const response = await this.applyOutputGuards(context, filteredResponse);
       await this.recordRunComplete(context, {
         ...execution,
@@ -992,7 +993,11 @@ export class AgentRuntime {
     return retry(operation, this.retry);
   }
 
-  private async applyResponseFilters(context: AgentRunContext, response: ModelResponse): Promise<ModelResponse> {
+  private async applyResponseFilters(
+    context: AgentRunContext,
+    response: ModelResponse,
+    toolsUsed: readonly string[] = []
+  ): Promise<ModelResponse> {
     let filtered = response;
 
     for (const stage of this.responseFilters) {
@@ -1005,7 +1010,8 @@ export class AgentRuntime {
         filtered = await stage.apply(filtered, {
           input: context.input,
           response: filtered,
-          runId: context.runId
+          runId: context.runId,
+          toolsUsed
         });
         span.setAttribute("response_filter.applied", true);
       } catch (error) {
@@ -1569,6 +1575,54 @@ export function createMaxLengthResponseFilter(options: { readonly maxLength?: nu
   };
 }
 
+export function createSanitizedTextResponseFilter(): ResponseFilterStage {
+  return {
+    apply: (response) => {
+      if (!response.output.includes("[SANITIZED]")) {
+        return response;
+      }
+
+      const output = response.output
+        .replace(/^\s*\[SANITIZED]\s*$\n?/gm, "")
+        .replaceAll("[SANITIZED]", "(보안 처리됨)")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+
+      return {
+        ...response,
+        output,
+        raw: withResponseFilterRaw(response, "sanitized-text-response-filter")
+      };
+    },
+    id: "sanitized-text-response-filter"
+  };
+}
+
+export function createMarkdownStripResponseFilter(): ResponseFilterStage {
+  return {
+    apply: (response) => {
+      if (response.output.trim().length === 0) {
+        return response;
+      }
+
+      const output = splitOnCodeFences(response.output)
+        .map((segment) => (segment.isCode ? segment.text : transformMarkdownText(segment.text)))
+        .join("");
+
+      if (output === response.output) {
+        return response;
+      }
+
+      return {
+        ...response,
+        output,
+        raw: withResponseFilterRaw(response, "markdown-strip-response-filter")
+      };
+    },
+    id: "markdown-strip-response-filter"
+  };
+}
+
 export function createSlackUserIdMaskResponseFilter(): ResponseFilterStage {
   const rawSlackUserIdPattern = /(?<![@\w])`?(U[A-Z0-9]{8,})`?(?![A-Za-z0-9])/g;
 
@@ -1596,6 +1650,37 @@ export function createSlackUserIdMaskResponseFilter(): ResponseFilterStage {
       };
     },
     id: "slack-user-id-mask-response-filter"
+  };
+}
+
+export function createGreetingStripResponseFilter(): ResponseFilterStage {
+  const leadingGreetingPattern =
+    /^(안녕하세요|안녕|반가워요|반갑습니다|반갑네요|하이)(?:[,，]?\s*[^\n!?.]{0,25}[님씨])?[!?.]\s*/;
+  const followupGreetingPattern =
+    /^(반갑습니다|반가워요|반갑네요|만나서\s*반가워요|만나서\s*반갑습니다|만나서\s*정말\s*반가워요|만나서\s*정말\s*기쁩니다|좋은\s*아침이에요|좋은\s*저녁이에요)[!?.]\s*/;
+
+  return {
+    apply: (response) => {
+      if (response.output.trim().length === 0) {
+        return response;
+      }
+
+      const output = response.output
+        .replace(leadingGreetingPattern, "")
+        .replace(followupGreetingPattern, "")
+        .trimStart();
+
+      if (output === response.output) {
+        return response;
+      }
+
+      return {
+        ...response,
+        output,
+        raw: withResponseFilterRaw(response, "greeting-strip-response-filter")
+      };
+    },
+    id: "greeting-strip-response-filter"
   };
 }
 
@@ -1644,6 +1729,117 @@ export function createInternalBrandMaskResponseFilter(): ResponseFilterStage {
   };
 }
 
+export function createFabricationRequestRefusalFilter(): ResponseFilterStage {
+  return {
+    apply: (response, context) => {
+      const prompt = joinUserMessages(context.input.messages).toLowerCase();
+      const asksToInvent = ["지어서", "지어내", "임의로", "만들어서", "make up", "fabricate"].some((term) =>
+        prompt.includes(term)
+      );
+      const admitsMissing = ["없는", "문서에 없는", "근거 없이", "without source", "not in docs"].some((term) =>
+        prompt.includes(term)
+      );
+      const asksSecret = ["비밀 문서", "비공개 문서", "secret document"].some((term) => prompt.includes(term));
+      const missingOrDiscovery = ["없는", "찾아", "검색", "요약"].some((term) => prompt.includes(term));
+
+      if (!(asksToInvent && admitsMissing) && !(asksSecret && missingOrDiscovery)) {
+        return response;
+      }
+
+      return {
+        ...response,
+        output: [
+          "요청하신 내용은 확인된 공식 문서나 접근 권한이 있는 출처가 없으면 제공할 수 없습니다.",
+          "존재하지 않거나 비공개일 수 있는 문서는 찾아내거나 지어내서 요약하지 않습니다."
+        ].join(" "),
+        raw: withResponseFilterRaw(response, "fabrication-request-refusal-filter")
+      };
+    },
+    id: "fabrication-request-refusal-filter"
+  };
+}
+
+export function createZeroResultOverclaimResponseFilter(): ResponseFilterStage {
+  const zeroResultPattern = /(0\s*건|검색 결과 0건|조회된 이슈가 없어|이슈는 없습니다|이슈가 없습니다)/i;
+  const overclaimPattern =
+    /(순조|원활|잘\s*(?:관리|되고)|모든\s*(?:작업|이슈)[^.\n]*(?:완료|정리)|활발한\s*작업이\s*진행되고\s*있지|활동\s*중인\s*이슈가\s*없는)/i;
+
+  return {
+    apply: (response, context) => {
+      const toolsUsed = context.toolsUsed ?? [];
+      const hasWorkspaceTool = toolsUsed.some((tool) =>
+        ["jira_", "work_", "bitbucket_", "confluence_"].some((prefix) => tool.startsWith(prefix))
+      );
+
+      if (!hasWorkspaceTool || !zeroResultPattern.test(response.output) || !overclaimPattern.test(response.output)) {
+        return response;
+      }
+
+      const output = response.output
+        .split("\n")
+        .filter((line) => {
+          const trimmed = line.trim();
+          return trimmed.length === 0 || !overclaimPattern.test(trimmed);
+        })
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trimEnd();
+
+      if (output.length === 0 || output === response.output) {
+        return response;
+      }
+
+      return {
+        ...response,
+        output,
+        raw: withResponseFilterRaw(response, "zero-result-overclaim-response-filter")
+      };
+    },
+    id: "zero-result-overclaim-response-filter"
+  };
+}
+
+export function createReleaseRiskDataGapResponseFilter(): ResponseFilterStage {
+  const cautionMessage = "Bitbucket 데이터 집계 경고가 있어 전체 릴리스 위험도는 확정하지 않습니다.";
+  const dataGapPattern =
+    /(Bitbucket|비트버킷)[^\n.]*(집계|데이터|조회)[^\n.]*(실패|경고|문제|오류)|(실패|경고|문제|오류)[^\n.]*(Bitbucket|비트버킷)[^\n.]*(집계|데이터|조회)/i;
+  const overconfidentRiskPattern =
+    /(위험(?:도|도가| 점수)?[^\n.]*(?:낮|0\s*점)|위험\s*수준[^\n.]*(?:낮|low)|특별한\s*위험\s*신호[^\n.]*(?:없|감지되지)|심각한\s*위험\s*신호[^\n.]*(?:없|감지되지)|Jira\s*이슈와\s*Bitbucket\s*PR\s*활동[^\n.]*(?:없|없는)|특이사항[^\n.]*(?:없|발견되지)[^\n.]*(?:큰\s*문제|문제\s*없)|경고[^\n.]*(?:전체\s*)?위험도[^\n.]*(?:영향을?\s*미치지\s*않|영향\s*없)|릴리스\s*준비[^\n.]*(?:완료|끝)|(?:계획된\s*)?릴리스\s*체크리스트[^\n.]*(?:진행|계속)|전반적인\s*위험도[^\n.]*(?:낮음|low))/i;
+  const cautionPattern = /전체\s*릴리스\s*위험도는\s*확정하지\s*않|release\s*risk[^\n.]*not\s*conclusive/i;
+
+  return {
+    apply: (response, context) => {
+      if (!(context.toolsUsed ?? []).includes("work_release_risk_digest")) {
+        return response;
+      }
+      if (!dataGapPattern.test(response.output) || !overconfidentRiskPattern.test(response.output)) {
+        return response;
+      }
+
+      const output = response.output
+        .split("\n")
+        .map((line) => removeOverconfidentReleaseFragments(line, overconfidentRiskPattern))
+        .filter((line) => line.trim().length > 0)
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+
+      if (output.length === 0) {
+        return response;
+      }
+
+      const finalOutput = cautionPattern.test(output) ? output : `${cautionMessage}\n\n${output}`;
+
+      return {
+        ...response,
+        output: finalOutput,
+        raw: withResponseFilterRaw(response, "release-risk-data-gap-response-filter")
+      };
+    },
+    id: "release-risk-data-gap-response-filter"
+  };
+}
+
 export function createStructuredOutputResponseFilter(options: {
   readonly format?: StructuredOutputFormat;
   readonly metadataKey?: string;
@@ -1678,6 +1874,109 @@ export function createStructuredOutputResponseFilter(options: {
     },
     id: "structured-output-response-filter"
   };
+}
+
+function withResponseFilterRaw(response: ModelResponse, id: string): JsonObject {
+  return {
+    ...(isRecord(response.raw) ? response.raw : {}),
+    museResponseFilter: { id }
+  };
+}
+
+function splitOnCodeFences(text: string): readonly { readonly isCode: boolean; readonly text: string }[] {
+  const segments: { isCode: boolean; text: string }[] = [];
+  let cursor = 0;
+  let inCode = false;
+  let buffer = "";
+
+  while (cursor < text.length) {
+    if (text.startsWith("```", cursor)) {
+      if (buffer.length > 0) {
+        segments.push({ isCode: inCode, text: buffer });
+        buffer = "";
+      }
+      buffer += "```";
+      cursor += 3;
+      inCode = !inCode;
+      continue;
+    }
+
+    buffer += text[cursor];
+    cursor++;
+  }
+
+  if (buffer.length > 0) {
+    segments.push({ isCode: inCode, text: buffer });
+  }
+
+  return segments;
+}
+
+function transformMarkdownText(text: string): string {
+  let result = text
+    .replace(/\*\*([^*\n]*[a-zA-Z0-9가-힣ㄱ-ㅎㅏ-ㅣ][^*\n]*)\*\*/g, "*$1*")
+    .replace(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/gm, (_, heading: string) => `*${heading.replaceAll("*", "").trim()}*`)
+    .replace(/\[([^\]\n]+)]\((https?:\/\/[^\s)]+)\)/g, "<$2|$1>")
+    .replace(/^\s*([-*_])\1{2,}\s*$/gm, "");
+
+  result = markdownTablesToBullets(result);
+  return result;
+}
+
+function markdownTablesToBullets(text: string): string {
+  const lines = text.split("\n");
+  const output: string[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index] ?? "";
+    const separator = lines[index + 1] ?? "";
+
+    if (!isMarkdownTableRow(line) || !isMarkdownTableSeparator(separator)) {
+      output.push(line);
+      index++;
+      continue;
+    }
+
+    const headers = parseMarkdownTableRow(line);
+    index += 2;
+
+    while (index < lines.length && isMarkdownTableRow(lines[index] ?? "")) {
+      const cells = parseMarkdownTableRow(lines[index] ?? "");
+      const parts = headers.map((header, cellIndex) => {
+        const cell = cells[cellIndex] ?? "";
+        return header.length > 0 ? `*${header}*: ${cell}` : cell;
+      });
+      output.push(`• ${parts.join(", ")}`);
+      index++;
+    }
+  }
+
+  return output.join("\n");
+}
+
+function isMarkdownTableRow(line: string): boolean {
+  const trimmed = line.trimStart();
+  return trimmed.startsWith("|") && trimmed.indexOf("|", 1) > 0;
+}
+
+function isMarkdownTableSeparator(line: string): boolean {
+  return line.trimStart().startsWith("|") && /:?-{3,}:?/.test(line);
+}
+
+function parseMarkdownTableRow(line: string): readonly string[] {
+  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim());
+}
+
+function removeOverconfidentReleaseFragments(line: string, pattern: RegExp): string {
+  if (!pattern.test(line)) {
+    return line;
+  }
+
+  const indent = line.match(/^\s*/)?.[0] ?? "";
+  const fragments = line.trim().split(/(?<=[.!?])\s+/).filter((fragment) => fragment.trim().length > 0);
+  const kept = fragments.filter((fragment) => !pattern.test(fragment));
+  return kept.length === 0 ? "" : `${indent}${kept.join(" ")}`;
 }
 
 function joinMessages(messages: readonly ModelMessage[]): string {

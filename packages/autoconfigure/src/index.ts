@@ -1,10 +1,16 @@
 import {
   createAgentRuntime,
+  createFabricationRequestRefusalFilter,
+  createGreetingStripResponseFilter,
   createInternalBrandMaskResponseFilter,
+  createMarkdownStripResponseFilter,
   createMaxLengthResponseFilter,
+  createReleaseRiskDataGapResponseFilter,
+  createSanitizedTextResponseFilter,
   createSourceBlockResponseFilter,
   createSlackUserIdMaskResponseFilter,
   createStructuredOutputResponseFilter,
+  createZeroResultOverclaimResponseFilter,
   type AgentRuntime
 } from "@muse/agent-core";
 import {
@@ -457,14 +463,32 @@ function createResponseFilters(env: MuseEnvironment) {
 
   return [
     ...(maxLength > 0 ? [createMaxLengthResponseFilter({ maxLength })] : []),
+    ...(parseBoolean(env.MUSE_RESPONSE_SANITIZED_TEXT_FILTER_ENABLED, true)
+      ? [createSanitizedTextResponseFilter()]
+      : []),
+    ...(parseBoolean(env.MUSE_RESPONSE_MARKDOWN_STRIP_FILTER_ENABLED, true)
+      ? [createMarkdownStripResponseFilter()]
+      : []),
     ...(parseBoolean(env.MUSE_RESPONSE_SLACK_USER_ID_MASK_ENABLED, true)
       ? [createSlackUserIdMaskResponseFilter()]
       : []),
     ...(parseBoolean(env.MUSE_RESPONSE_INTERNAL_BRAND_MASK_ENABLED, true)
       ? [createInternalBrandMaskResponseFilter()]
       : []),
+    ...(parseBoolean(env.MUSE_RESPONSE_GREETING_STRIP_ENABLED, true)
+      ? [createGreetingStripResponseFilter()]
+      : []),
+    ...(parseBoolean(env.MUSE_RESPONSE_FABRICATION_REFUSAL_ENABLED, true)
+      ? [createFabricationRequestRefusalFilter()]
+      : []),
     ...(parseBoolean(env.MUSE_RESPONSE_SOURCE_FILTER_ENABLED, true)
       ? [createSourceBlockResponseFilter()]
+      : []),
+    ...(parseBoolean(env.MUSE_RESPONSE_ZERO_RESULT_OVERCLAIM_FILTER_ENABLED, true)
+      ? [createZeroResultOverclaimResponseFilter()]
+      : []),
+    ...(parseBoolean(env.MUSE_RESPONSE_RELEASE_RISK_DATA_GAP_FILTER_ENABLED, true)
+      ? [createReleaseRiskDataGapResponseFilter()]
       : []),
     ...(parseBoolean(env.MUSE_RESPONSE_STRUCTURED_OUTPUT_FILTER_ENABLED, true)
       ? [createStructuredOutputResponseFilter()]

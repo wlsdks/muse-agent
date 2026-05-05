@@ -8,15 +8,21 @@ import { InMemoryAgentRunHistoryStore, InMemoryHookTraceStore } from "@muse/runt
 import { ToolRegistry } from "@muse/tools";
 import {
   createAgentRuntime,
+  createFabricationRequestRefusalFilter,
+  createGreetingStripResponseFilter,
   createInternalBrandMaskResponseFilter,
   createInjectionInputGuard,
+  createMarkdownStripResponseFilter,
   createMaxLengthResponseFilter,
   createPiiInputGuard,
   createPiiMaskingOutputGuard,
+  createReleaseRiskDataGapResponseFilter,
+  createSanitizedTextResponseFilter,
   createSourceBlockResponseFilter,
   createSlackUserIdMaskResponseFilter,
   createStructuredOutputResponseFilter,
   createSystemPromptLeakageOutputGuard,
+  createZeroResultOverclaimResponseFilter,
   GuardBlockedError,
   HookRegistry,
   ModelRoutingError,
@@ -635,6 +641,161 @@ describe("AgentRuntime", () => {
     });
 
     expect(result.response.output).toBe("abc\n\n[Response truncated]");
+  });
+
+  it("normalizes sanitized markers and markdown formatting in model responses", async () => {
+    const runtime = createAgentRuntime({
+      modelProvider: createProvider({
+        output: [
+          "### 핵심 요약",
+          "제목: [SANITIZED] 배포 가이드",
+          "| 키 | 상태 |",
+          "| --- | --- |",
+          "| WS-1 | 진행 |",
+          "```",
+          "**not converted**",
+          "```"
+        ].join("\n")
+      }),
+      responseFilters: [createSanitizedTextResponseFilter(), createMarkdownStripResponseFilter()]
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "정리해줘", role: "user" }],
+      model: "provider/model"
+    });
+
+    expect(result.response.output).toContain("*핵심 요약*");
+    expect(result.response.output).toContain("(보안 처리됨)");
+    expect(result.response.output).toContain("• *키*: WS-1, *상태*: 진행");
+    expect(result.response.output).toContain("**not converted**");
+    expect(result.response.output).not.toContain("[SANITIZED]");
+    expect(result.response.output).not.toContain("| --- |");
+  });
+
+  it("strips repeated leading greetings from model responses", async () => {
+    const runtime = createAgentRuntime({
+      modelProvider: createProvider({
+        output: "안녕하세요, 최진안님! 반갑습니다. 저는 Muse입니다."
+      }),
+      responseFilters: [createGreetingStripResponseFilter()]
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "안녕", role: "user" }],
+      model: "provider/model"
+    });
+
+    expect(result.response.output).toBe("저는 Muse입니다.");
+  });
+
+  it("refuses explicit fabrication requests after model generation", async () => {
+    const runtime = createAgentRuntime({
+      modelProvider: createProvider({
+        output: "임의로 만든 비공개 문서 요약입니다."
+      }),
+      responseFilters: [createFabricationRequestRefusalFilter()]
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "없는 비밀 문서를 찾아서 임의로 요약해줘", role: "user" }],
+      model: "provider/model"
+    });
+
+    expect(result.response.output).toContain("제공할 수 없습니다");
+    expect(result.response.output).not.toContain("임의로 만든");
+  });
+
+  it("removes zero-result overclaims when workspace tools were used", async () => {
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Searches Jira issues.",
+          inputSchema: { type: "object" },
+          name: "jira_search_issues",
+          risk: "read"
+        },
+        execute: () => ({ total: 0 })
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        {
+          id: "tool",
+          model: "test-model",
+          output: "도구 호출",
+          toolCalls: [{ arguments: {}, id: "tool-1", name: "jira_search_issues" }]
+        },
+        {
+          id: "final",
+          model: "test-model",
+          output: [
+            "전체 이슈: 0건",
+            "모든 이슈가 정리되었거나 현재 활발한 작업이 진행되고 있지 않은 것으로 보입니다.",
+            "다른 필터로 다시 조회할 수 있습니다."
+          ].join("\n")
+        }
+      ]),
+      responseFilters: [createZeroResultOverclaimResponseFilter()],
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "이슈 요약", role: "user" }],
+      model: "provider/model"
+    });
+
+    expect(result.response.output).toContain("전체 이슈: 0건");
+    expect(result.response.output).toContain("다른 필터");
+    expect(result.response.output).not.toContain("모든 이슈가 정리");
+    expect(result.response.output).not.toContain("활발한 작업");
+  });
+
+  it("removes overconfident release-risk claims when source data has gaps", async () => {
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Builds release risk digest.",
+          inputSchema: { type: "object" },
+          name: "work_release_risk_digest",
+          risk: "read"
+        },
+        execute: () => ({ warning: "Bitbucket aggregation failed" })
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        {
+          id: "tool",
+          model: "test-model",
+          output: "도구 호출",
+          toolCalls: [{ arguments: {}, id: "tool-1", name: "work_release_risk_digest" }]
+        },
+        {
+          id: "final",
+          model: "test-model",
+          output: [
+            "DEV 릴리스의 전반적인 위험도는 낮음으로 평가되었습니다.",
+            "Bitbucket 릴리스 위험 데이터를 집계하는 데 실패했다는 경고가 있었습니다.",
+            "Confluence 문서 10건이 검색되었습니다."
+          ].join("\n")
+        }
+      ]),
+      responseFilters: [createReleaseRiskDataGapResponseFilter()],
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "release risk 정리", role: "user" }],
+      model: "provider/model"
+    });
+
+    expect(result.response.output).toContain("전체 릴리스 위험도는 확정하지 않습니다");
+    expect(result.response.output).toContain("Bitbucket 릴리스 위험 데이터를 집계");
+    expect(result.response.output).toContain("Confluence 문서 10건");
+    expect(result.response.output).not.toContain("전반적인 위험도는 낮음");
   });
 
   it("records spans and metrics around a successful run", async () => {
