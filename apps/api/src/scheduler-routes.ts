@@ -28,6 +28,7 @@ interface ApiError {
   readonly code?: string;
   readonly error?: string;
   readonly message?: string;
+  readonly timestamp?: string;
 }
 
 type ParseResult<T> = { readonly ok: true; readonly value: T } | { readonly error: ApiError; readonly ok: false };
@@ -238,25 +239,18 @@ async function runScheduledJob(
 }
 
 function sendSchedulerUnavailable(reply: { status(statusCode: number): { send(payload: ApiError): void } }) {
-  return reply.status(404).send({
-    error: "Scheduler not configured"
-  });
+  return reply.status(404).send(errorResponse("Scheduler not configured"));
 }
 
 function sendSchedulerServiceUnavailable(reply: { status(statusCode: number): { send(payload: ApiError): void } }) {
-  return reply.status(503).send({
-    error: "DynamicSchedulerService not configured"
-  });
+  return reply.status(503).send(errorResponse("DynamicSchedulerService not configured"));
 }
 
 function sendSchedulerJobNotFound(
   reply: { status(statusCode: number): { send(payload: ApiError): void } },
   jobId: string
 ) {
-  return reply.status(404).send({
-    code: "SCHEDULED_JOB_NOT_FOUND",
-    message: `Scheduled job not found: ${jobId}`
-  });
+  return reply.status(404).send(errorResponse(`Scheduled job not found: ${jobId}`));
 }
 
 function sendSchedulerError(
@@ -264,16 +258,10 @@ function sendSchedulerError(
   error: unknown
 ) {
   if (error instanceof SchedulerValidationError) {
-    return reply.status(400).send({
-      code: "INVALID_SCHEDULED_JOB",
-      message: error.message
-    });
+    return reply.status(400).send(errorResponse("Invalid request"));
   }
 
-  return reply.status(500).send({
-    code: "SCHEDULER_OPERATION_FAILED",
-    message: error instanceof Error ? error.message : "Scheduler operation failed"
-  });
+  return reply.status(500).send(errorResponse("서버 오류가 발생했습니다"));
 }
 
 function toScheduledJobResponse(job: ScheduledJob) {
@@ -411,10 +399,17 @@ function parseScheduledJobInput(value: unknown, existing?: ScheduledJob): ParseR
   };
 }
 
-function invalid(code: string, message: string): ParseResult<never> {
+function invalid(_code: string, _message: string): ParseResult<never> {
   return {
-    error: { code, message },
+    error: errorResponse("Invalid request"),
     ok: false
+  };
+}
+
+function errorResponse(error: string): ApiError {
+  return {
+    error,
+    timestamp: new Date().toISOString()
   };
 }
 

@@ -1146,7 +1146,11 @@ describe("api server", () => {
     });
 
     expect(invalid.statusCode).toBe(400);
-    expect(invalid.json()).toMatchObject({ code: "INVALID_SCHEDULED_JOB" });
+    expect(invalid.json()).toMatchObject({
+      error: "Invalid request",
+      timestamp: expect.any(String)
+    });
+    expect(invalid.json()).not.toHaveProperty("code");
     expect(created.statusCode).toBe(201);
     expect(created.json()).toMatchObject({ id: "job-1", jobType: "AGENT", name: "Agent job" });
     expect(typeof created.json().createdAt).toBe("number");
@@ -1163,6 +1167,11 @@ describe("api server", () => {
     expect(listed.json()).toMatchObject({ items: [{ id: "job-1" }], total: 1 });
     expect(deleted.statusCode).toBe(204);
     expect(afterDelete.statusCode).toBe(404);
+    expect(afterDelete.json()).toMatchObject({
+      error: "Scheduled job not found: job-1",
+      timestamp: expect.any(String)
+    });
+    expect(afterDelete.json()).not.toHaveProperty("code");
   });
 
   it("matches Reactor scheduler stub responses when no scheduler is configured", async () => {
@@ -1187,13 +1196,22 @@ describe("api server", () => {
     expect(jobs.statusCode).toBe(200);
     expect(jobs.json()).toEqual([]);
     expect(detail.statusCode).toBe(404);
-    expect(detail.json()).toEqual({ error: "Scheduler not configured" });
+    expect(detail.json()).toMatchObject({
+      error: "Scheduler not configured",
+      timestamp: expect.any(String)
+    });
     expect(executions.statusCode).toBe(200);
     expect(executions.json()).toEqual([]);
     expect(create.statusCode).toBe(503);
-    expect(create.json()).toEqual({ error: "DynamicSchedulerService not configured" });
+    expect(create.json()).toMatchObject({
+      error: "DynamicSchedulerService not configured",
+      timestamp: expect.any(String)
+    });
     expect(trigger.statusCode).toBe(503);
-    expect(trigger.json()).toEqual({ error: "DynamicSchedulerService not configured" });
+    expect(trigger.json()).toMatchObject({
+      error: "DynamicSchedulerService not configured",
+      timestamp: expect.any(String)
+    });
   });
 
   it("manages MCP servers, policies, connections, and tool calls through admin API", async () => {
