@@ -3582,6 +3582,40 @@ describe("api server", () => {
       method: "GET",
       url: "/api/admin/platform/health"
     });
+    const platformCacheStats = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/platform/cache/stats"
+    });
+    const platformCacheInvalidate = await server.inject({
+      headers,
+      method: "POST",
+      url: "/api/admin/platform/cache/invalidate"
+    });
+    const platformCacheInvalidateKeyMissing = await server.inject({
+      headers,
+      method: "POST",
+      payload: {},
+      url: "/api/admin/platform/cache/invalidate-key"
+    });
+    const platformCacheInvalidateKey = await server.inject({
+      headers,
+      method: "POST",
+      payload: { key: "cache-key" },
+      url: "/api/admin/platform/cache/invalidate-key"
+    });
+    const platformCacheInvalidatePatternMissing = await server.inject({
+      headers,
+      method: "POST",
+      payload: {},
+      url: "/api/admin/platform/cache/invalidate-by-pattern"
+    });
+    const platformCacheInvalidatePattern = await server.inject({
+      headers,
+      method: "POST",
+      payload: { pattern: "prefix*" },
+      url: "/api/admin/platform/cache/invalidate-by-pattern"
+    });
     const doctor = await server.inject({
       headers,
       method: "GET",
@@ -4119,6 +4153,38 @@ describe("api server", () => {
       pipelineWriteLatencyMs: 0,
       services: []
     });
+    expect(platformCacheStats.json()).toMatchObject({
+      config: {
+        cacheableTemperature: 1,
+        maxCandidates: 50,
+        maxSize: 1000,
+        similarityThreshold: 0.92,
+        ttlMinutes: 60
+      },
+      enabled: false,
+      hitRate: 0,
+      semanticEnabled: false,
+      totalExactHits: 0,
+      totalMisses: 0,
+      totalSemanticHits: 0
+    });
+    expect(platformCacheInvalidate.json()).toEqual({
+      cacheEnabled: false,
+      invalidated: false,
+      message: "Response cache is disabled"
+    });
+    expect(platformCacheInvalidateKeyMissing.statusCode).toBe(400);
+    expect(platformCacheInvalidateKeyMissing.json()).toMatchObject({
+      error: "key is required",
+      timestamp: expect.any(String)
+    });
+    expect(platformCacheInvalidateKey.json()).toEqual({ cacheEnabled: false, invalidated: false });
+    expect(platformCacheInvalidatePatternMissing.statusCode).toBe(400);
+    expect(platformCacheInvalidatePatternMissing.json()).toMatchObject({
+      error: "pattern is required",
+      timestamp: expect.any(String)
+    });
+    expect(platformCacheInvalidatePattern.json()).toEqual({ cacheEnabled: false, invalidatedCount: 0 });
     expect(doctor.headers["x-doctor-status"]).toBe("OK");
     expect(doctor.json()).toMatchObject({
       sections: expect.arrayContaining([

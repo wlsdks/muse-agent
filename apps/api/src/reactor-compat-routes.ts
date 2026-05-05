@@ -2519,7 +2519,27 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
       return reply;
     }
 
-    return options.admin?.cache?.metrics?.snapshot() ?? {};
+    const snapshot = toJsonObject(options.admin?.cache?.metrics?.snapshot());
+    const exact = readNumber(snapshot.exactHits, 0);
+    const semantic = readNumber(snapshot.semanticHits, 0);
+    const misses = readNumber(snapshot.misses, 0);
+    const total = exact + semantic + misses;
+
+    return {
+      config: {
+        cacheableTemperature: 1,
+        maxCandidates: 50,
+        maxSize: 1000,
+        similarityThreshold: 0.92,
+        ttlMinutes: 60
+      },
+      enabled: Boolean(options.admin?.cache?.responseCache),
+      hitRate: total > 0 ? (exact + semantic) / total : 0,
+      semanticEnabled: false,
+      totalExactHits: exact,
+      totalMisses: misses,
+      totalSemanticHits: semantic
+    };
   });
   server.get("/api/admin/platform/pricing", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -2577,8 +2597,22 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
       return reply;
     }
 
-    options.admin?.cache?.responseCache?.invalidateAll();
-    return { invalidated: true };
+    const cache = options.admin?.cache?.responseCache;
+
+    if (!cache) {
+      return {
+        cacheEnabled: false,
+        invalidated: false,
+        message: "Response cache is disabled"
+      };
+    }
+
+    cache.invalidateAll();
+    return {
+      cacheEnabled: true,
+      invalidated: true,
+      message: "Response cache invalidated"
+    };
   });
   server.post("/api/admin/platform/cache/invalidate-key", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -2586,7 +2620,16 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
     }
 
     const key = readBodyString(request.body, "key") ?? "";
-    return { invalidated: options.admin?.cache?.responseCache?.invalidate?.(key) ?? false, key };
+
+    if (key.trim().length === 0) {
+      return reply.status(400).send(errorResponse("key is required"));
+    }
+
+    const cache = options.admin?.cache?.responseCache;
+    return {
+      cacheEnabled: Boolean(cache),
+      invalidated: cache?.invalidate?.(key) ?? false
+    };
   });
   server.post("/api/admin/platform/cache/invalidate-by-pattern", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -2594,7 +2637,16 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
     }
 
     const pattern = readBodyString(request.body, "pattern") ?? "";
-    return { invalidated: options.admin?.cache?.responseCache?.invalidateByPattern?.(pattern) ?? 0, pattern };
+
+    if (pattern.trim().length === 0) {
+      return reply.status(400).send(errorResponse("pattern is required"));
+    }
+
+    const cache = options.admin?.cache?.responseCache;
+    return {
+      cacheEnabled: Boolean(cache),
+      invalidatedCount: cache?.invalidateByPattern?.(pattern) ?? 0
+    };
   });
 
   server.get("/api/admin/platform/tenants", async (request, reply) => {
