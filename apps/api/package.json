@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@muse/agent-core": "workspace:*",
+    "@muse/agent-specs": "workspace:*",
+    "@muse/runtime-settings": "workspace:*",
     "fastify": "^5.8.5"
   }
 }

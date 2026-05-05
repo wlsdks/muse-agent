@@ -26,6 +26,12 @@ importers:
       '@muse/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@muse/agent-specs':
+        specifier: workspace:*
+        version: link:../../packages/agent-specs
+      '@muse/runtime-settings':
+        specifier: workspace:*
+        version: link:../../packages/runtime-settings
       fastify:
         specifier: ^5.8.5
         version: 5.8.5
