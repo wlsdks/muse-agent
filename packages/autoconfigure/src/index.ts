@@ -8,10 +8,13 @@ import {
   createMaxLengthResponseFilter,
   createPolicyStrongPriorWarningFilter,
   createReleaseRiskDataGapResponseFilter,
+  createResponseCountConsistencyFilter,
+  createResponseCountInjectionFilter,
   createSanitizedTextResponseFilter,
   createSourceBlockResponseFilter,
   createSlackUserIdMaskResponseFilter,
   createStructuredOutputResponseFilter,
+  createToolResultQualityAuditFilter,
   createZeroResultOverclaimResponseFilter,
   type AgentRuntime
 } from "@muse/agent-core";
@@ -491,6 +494,15 @@ function createResponseFilters(env: MuseEnvironment) {
       : []),
     ...(parseBoolean(env.MUSE_RESPONSE_SOURCE_FILTER_ENABLED, true)
       ? [createSourceBlockResponseFilter()]
+      : []),
+    ...(parseBoolean(env.MUSE_RESPONSE_TOOL_RESULT_QUALITY_AUDIT_ENABLED, true)
+      ? [createToolResultQualityAuditFilter()]
+      : []),
+    ...(parseBoolean(env.MUSE_RESPONSE_COUNT_INJECTION_ENABLED, true)
+      ? [createResponseCountInjectionFilter()]
+      : []),
+    ...(parseBoolean(env.MUSE_RESPONSE_COUNT_CONSISTENCY_ENABLED, true)
+      ? [createResponseCountConsistencyFilter()]
       : []),
     ...(parseBoolean(env.MUSE_RESPONSE_ZERO_RESULT_OVERCLAIM_FILTER_ENABLED, true)
       ? [createZeroResultOverclaimResponseFilter()]

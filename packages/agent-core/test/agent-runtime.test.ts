@@ -19,11 +19,14 @@ import {
   createPiiMaskingOutputGuard,
   createPolicyStrongPriorWarningFilter,
   createReleaseRiskDataGapResponseFilter,
+  createResponseCountConsistencyFilter,
+  createResponseCountInjectionFilter,
   createSanitizedTextResponseFilter,
   createSourceBlockResponseFilter,
   createSlackUserIdMaskResponseFilter,
   createStructuredOutputResponseFilter,
   createSystemPromptLeakageOutputGuard,
+  createToolResultQualityAuditFilter,
   createZeroResultOverclaimResponseFilter,
   GuardBlockedError,
   HookRegistry,
@@ -891,6 +894,137 @@ describe("AgentRuntime", () => {
     expect(result.response.output).toContain("다른 필터");
     expect(result.response.output).not.toContain("모든 이슈가 정리");
     expect(result.response.output).not.toContain("활발한 작업");
+  });
+
+  it("injects missing count insights from tool results", async () => {
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Searches users.",
+          inputSchema: { type: "object" },
+          name: "jira_search_users",
+          risk: "read"
+        },
+        execute: () => ({ count: 0, users: [] })
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        {
+          id: "tool",
+          model: "test-model",
+          output: "도구 호출",
+          toolCalls: [{ arguments: {}, id: "tool-1", name: "jira_search_users" }]
+        },
+        {
+          id: "final",
+          model: "test-model",
+          output: "조건에 맞는 사용자를 찾지 않았습니다."
+        }
+      ]),
+      responseFilters: [createResponseCountInjectionFilter()],
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "사용자 검색", role: "user" }],
+      model: "provider/model"
+    });
+
+    expect(result.response.output.startsWith("검색 결과 0건입니다.")).toBe(true);
+  });
+
+  it("corrects count assertions using verified sources extracted from tool results", async () => {
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Searches documents.",
+          inputSchema: { type: "object" },
+          name: "confluence_search",
+          risk: "read"
+        },
+        execute: () => ({
+          results: [
+            { title: "문서1", url: "https://example.test/doc/1" },
+            { title: "문서2", url: "https://example.test/doc/2" }
+          ]
+        })
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        {
+          id: "tool",
+          model: "test-model",
+          output: "도구 호출",
+          toolCalls: [{ arguments: {}, id: "tool-1", name: "confluence_search" }]
+        },
+        {
+          id: "final",
+          model: "test-model",
+          output: "OAuth Confluence 문서 2건을 찾았어요.\n💡 인사이트: 총 11건 있습니다."
+        }
+      ]),
+      responseFilters: [createResponseCountConsistencyFilter()],
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "문서 검색", role: "user" }],
+      model: "provider/model"
+    });
+
+    expect(result.response.output).toContain("총 2건");
+    expect(result.response.output).not.toContain("총 11건");
+  });
+
+  it("removes apology leads when tool results contain verified sources", async () => {
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Reads assigned issues.",
+          inputSchema: { type: "object" },
+          name: "jira_my_open_issues",
+          risk: "read"
+        },
+        execute: () => ({
+          issues: [
+            {
+              key: "WS-1",
+              url: "https://example.atlassian.net/browse/WS-1"
+            }
+          ]
+        })
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        {
+          id: "tool",
+          model: "test-model",
+          output: "도구 호출",
+          toolCalls: [{ arguments: {}, id: "tool-1", name: "jira_my_open_issues" }]
+        },
+        {
+          id: "final",
+          model: "test-model",
+          output: "죄송합니다. Jira에서 사용자님의 계정을 확인할 수 없습니다.\n\n💡 인사이트\n- WS-1 진행 중"
+        }
+      ]),
+      responseFilters: [createToolResultQualityAuditFilter()],
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "내 이슈", role: "user" }],
+      model: "provider/model"
+    });
+
+    expect(result.response.output.startsWith("💡 인사이트")).toBe(true);
+    expect(result.response.output).not.toContain("죄송합니다");
   });
 
   it("removes overconfident release-risk claims when source data has gaps", async () => {

@@ -62,7 +62,7 @@ multiple source modules.
 | Area | Muse target | Current status |
 | --- | --- | --- |
 | Context handling | `packages/memory`, `packages/agent-core` | Context trimming and assistant/tool message-pair handling exist |
-| Response filtering | `packages/policy`, `packages/agent-core` | Output guards, source/structured filters, markdown/sanitized-text cleanup, greeting/lure stripping, fabrication refusal, policy-prior warning, max-length truncation, Slack ID masking, internal brand masking, zero-result overclaim cleanup, and release-risk data-gap cleanup exist |
+| Response filtering | `packages/policy`, `packages/agent-core` | Output guards, source/structured filters, markdown/sanitized-text cleanup, greeting/lure stripping, fabrication refusal, policy-prior warning, max-length truncation, Slack ID masking, internal brand masking, tool-result quality audit, response-count injection/consistency, zero-result overclaim cleanup, and release-risk data-gap cleanup exist |
 | Hook lifecycle | `packages/agent-core`, `packages/runtime-state`, `packages/integrations` | Hook callbacks, trace persistence, and webhook signing exist |
 | Multi-agent orchestration | `packages/multi-agent` | Supervisor, worker selection, fallback, and handoff trace primitives exist |
 
@@ -73,8 +73,7 @@ The remaining checks are cross-module behavior parity checks that should be clos
 fully done:
 
 1. Response filters: compare the remaining Reactor full response filter list against Muse filters one by one
-   (response-count filters, tool-result quality audit, and verified-source renderer/extractor behavior still need
-   explicit parity checks).
+   (verified-source renderer/extractor behavior still needs explicit parity checks).
 2. Slack behavior: verify Slack-only formatting, event handling, response URL, and API fallback behavior together.
 3. Hook/context behavior: verify fail-open hook execution, trace persistence, context trimming, and message-pair
    integrity together under runtime smoke tests.
@@ -187,6 +186,8 @@ routes, 365 Muse routes, and 0 missing Reactor routes.
   generic legal/company-practice priors without a Confluence tool call.
 - Casual lure stripping now removes generic follow-up/work-suggestion endings from short no-tool responses while
   preserving work-tool responses.
+- Response filter context now carries verified sources and tool insights derived from tool results, enabling
+  Reactor-style tool-result quality audit and response-count injection/consistency filters.
 
 ## Execution Plan
 
