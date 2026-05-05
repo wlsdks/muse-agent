@@ -63,6 +63,12 @@ importers:
         specifier: ^0.28.17
         version: 0.28.17
 
+  packages/memory:
+    dependencies:
+      '@muse/model':
+        specifier: workspace:*
+        version: link:../model
+
   packages/model:
     dependencies:
       '@muse/shared':

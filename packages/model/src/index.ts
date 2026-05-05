@@ -7,6 +7,7 @@ export interface ModelMessage {
   readonly content: string;
   readonly name?: string;
   readonly toolCallId?: string;
+  readonly toolCalls?: readonly ModelToolCall[];
 }
 
 export interface ModelCapabilities {
