@@ -1096,6 +1096,13 @@ describe("api server", () => {
   it("matches Reactor prompt template DTO and version lifecycle contracts", async () => {
     const server = buildServer({ logger: false });
 
+    const invalidTemplate = await server.inject({
+      method: "POST",
+      payload: {
+        name: " "
+      },
+      url: "/api/prompt-templates"
+    });
     const created = await server.inject({
       method: "POST",
       payload: {
@@ -1105,6 +1112,13 @@ describe("api server", () => {
       url: "/api/prompt-templates"
     });
     const templateId = created.json().id as string;
+    const invalidVersion = await server.inject({
+      method: "POST",
+      payload: {
+        content: ""
+      },
+      url: `/api/prompt-templates/${templateId}/versions`
+    });
     const version = await server.inject({
       method: "POST",
       payload: {
@@ -1131,6 +1145,7 @@ describe("api server", () => {
       url: `/api/prompt-templates/${templateId}`
     });
 
+    expect(invalidTemplate.statusCode).toBe(400);
     expect(created.statusCode).toBe(201);
     expect(created.json()).toMatchObject({
       description: "Reusable answer format",
@@ -1139,6 +1154,7 @@ describe("api server", () => {
     });
     expect(typeof created.json().createdAt).toBe("number");
     expect(typeof created.json().updatedAt).toBe("number");
+    expect(invalidVersion.statusCode).toBe(400);
     expect(version.statusCode).toBe(201);
     expect(version.json()).toMatchObject({
       changeLog: "Initial draft",

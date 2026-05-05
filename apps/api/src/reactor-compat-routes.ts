@@ -1343,6 +1343,12 @@ function registerPromptTemplateRoutes(server: FastifyInstance, options: ReactorC
       return reply;
     }
 
+    const validationError = validatePromptTemplateBody(toBody(request.body), "create");
+
+    if (validationError) {
+      return badRequest(reply, "INVALID_PROMPT_TEMPLATE", validationError);
+    }
+
     return reply.status(201).send(toTemplateResponse(createPromptTemplate(request.body)));
   });
   server.put("/api/prompt-templates/:templateId", async (request, reply) => {
@@ -1358,6 +1364,12 @@ function registerPromptTemplateRoutes(server: FastifyInstance, options: ReactorC
     }
 
     const body = toBody(request.body);
+    const validationError = validatePromptTemplateBody(body, "update");
+
+    if (validationError) {
+      return badRequest(reply, "INVALID_PROMPT_TEMPLATE", validationError);
+    }
+
     const description = readBodyString(body, "description")
       ?? (typeof existing.description === "string" ? existing.description : "");
     const name = readBodyString(body, "name") ?? (typeof existing.name === "string" ? existing.name : "");
@@ -1383,6 +1395,12 @@ function registerPromptTemplateRoutes(server: FastifyInstance, options: ReactorC
     }
 
     const { templateId } = request.params as { readonly templateId: string };
+    const validationError = validatePromptVersionBody(toBody(request.body));
+
+    if (validationError) {
+      return badRequest(reply, "INVALID_PROMPT_TEMPLATE_VERSION", validationError);
+    }
+
     const version = appendPromptVersion(templateId, request.body);
     return "error" in version ? notFound(reply, "PROMPT_TEMPLATE_NOT_FOUND") : reply.status(201).send(version);
   });
@@ -4900,6 +4918,44 @@ function createPromptTemplate(bodyValue: unknown): CompatRecord {
     name: readBodyString(body, "name") ?? "",
     versions: []
   }, "prompt_template");
+}
+
+function validatePromptTemplateBody(body: CompatBody, mode: "create" | "update"): string | undefined {
+  const name = body.name;
+  const description = body.description;
+
+  if (mode === "create" && !readBodyString(body, "name")) {
+    return "name must not be blank";
+  }
+
+  if (typeof name === "string" && name.length > 200) {
+    return "name must not exceed 200 characters";
+  }
+
+  if (typeof description === "string" && description.length > 2000) {
+    return "description must not exceed 2000 characters";
+  }
+
+  return undefined;
+}
+
+function validatePromptVersionBody(body: CompatBody): string | undefined {
+  const content = body.content;
+  const changeLog = body.changeLog;
+
+  if (!readBodyString(body, "content")) {
+    return "content must not be blank";
+  }
+
+  if (typeof content === "string" && content.length > 100_000) {
+    return "content must not exceed 100000 characters";
+  }
+
+  if (typeof changeLog === "string" && changeLog.length > 2000) {
+    return "changeLog must not exceed 2000 characters";
+  }
+
+  return undefined;
 }
 
 function toTemplateResponse(record: JsonObject) {
