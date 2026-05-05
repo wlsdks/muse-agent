@@ -297,3 +297,4 @@ function compareCheckpoints(left: ExecutionCheckpoint, right: ExecutionCheckpoin
 
 export { KyselyCheckpointStore, KyselyPendingApprovalStore } from "./kysely-stores.js";
 export type { KyselyCheckpointStoreOptions, KyselyPendingApprovalStoreOptions } from "./kysely-stores.js";
+export * from "./run-history.js";
