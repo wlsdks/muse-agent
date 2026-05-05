@@ -2117,7 +2117,7 @@ function registerSlackBotRoutes(server: FastifyInstance, options: ReactorCompati
 
     const { id } = request.params as { readonly id: string };
     const bot = findCompatRecord(state.slackBots, id);
-    return bot ? toSlackBotResponse(bot) : notFound(reply, "SLACK_BOT_NOT_FOUND");
+    return bot ? toSlackBotResponse(bot) : slackBotNotFound(reply, id);
   });
   server.post("/api/admin/slack-bots", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -2125,9 +2125,14 @@ function registerSlackBotRoutes(server: FastifyInstance, options: ReactorCompati
     }
 
     const name = readBodyString(request.body, "name") ?? "";
+    const validationError = validateSlackBotCreate(toBody(request.body));
+
+    if (validationError) {
+      return reply.status(400).send(validationErrorResponse(validationError));
+    }
 
     if ([...state.slackBots.values()].some((bot) => bot.name === name)) {
-      return reply.status(409).send({ error: `name '${name}' is already used`, timestamp: nowIso() });
+      return reply.status(409).send(errorResponse(`이름 '${name}'은 이미 사용 중입니다`));
     }
 
     return reply.status(201).send(toSlackBotResponse(createSlackBot(request.body)));
@@ -2141,7 +2146,7 @@ function registerSlackBotRoutes(server: FastifyInstance, options: ReactorCompati
     const existing = findCompatRecord(state.slackBots, id);
 
     if (!existing) {
-      return notFound(reply, "SLACK_BOT_NOT_FOUND");
+      return slackBotNotFound(reply, id);
     }
 
     return toSlackBotResponse(updateSlackBot(existing, request.body));
@@ -2155,7 +2160,7 @@ function registerSlackBotRoutes(server: FastifyInstance, options: ReactorCompati
     const existing = findCompatRecord(state.slackBots, id);
 
     if (!existing) {
-      return notFound(reply, "SLACK_BOT_NOT_FOUND");
+      return slackBotNotFound(reply, id);
     }
 
     state.slackBots.delete(existing.id);
@@ -2181,7 +2186,7 @@ function registerSlackCompatibilityRoutes(server: FastifyInstance, options: Reac
     const channelId = readBodyString(body, "channelId")?.trim();
 
     if (!channelId) {
-      return badRequest(reply, "INVALID_PROACTIVE_CHANNEL", "Body must include channelId");
+      return reply.status(400).send(validationErrorResponse({ channelId: "channelId must not be blank" }));
     }
 
     if (state.proactiveChannels.has(channelId)) {
@@ -5824,6 +5829,26 @@ function createSlackBot(bodyValue: unknown): CompatRecord {
   }, "slack_bot");
 }
 
+function validateSlackBotCreate(body: CompatBody): JsonObject | undefined {
+  if (!readBodyString(body, "name")) {
+    return { name: "name은 필수입니다" };
+  }
+
+  if (!readBodyString(body, "botToken")) {
+    return { botToken: "botToken은 필수입니다" };
+  }
+
+  if (!readBodyString(body, "appToken")) {
+    return { appToken: "appToken은 필수입니다" };
+  }
+
+  if (!readBodyString(body, "personaId")) {
+    return { personaId: "personaId는 필수입니다" };
+  }
+
+  return undefined;
+}
+
 function updateSlackBot(existing: CompatRecord, bodyValue: unknown): CompatRecord {
   const body = toBody(bodyValue);
   return createRecord(state.slackBots, {
@@ -5849,6 +5874,10 @@ function toSlackBotResponse(record: JsonObject) {
     personaId: stringField(record.personaId, ""),
     updatedAt: stringField(record.updatedAt, nowIso())
   };
+}
+
+function slackBotNotFound(reply: FastifyReply, id: string) {
+  return reply.status(404).send(errorResponse(`봇 인스턴스를 찾을 수 없습니다: ${id}`));
 }
 
 function toProactiveChannelResponse(record: JsonObject) {

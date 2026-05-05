@@ -2813,6 +2813,16 @@ describe("api server", () => {
       url: "/api/admin/slack-bots"
     });
     const botId = created.json().id as string;
+    const invalid = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        appToken: "xapp-token-value",
+        botToken: "xoxb-token-value",
+        name: "invalid-bot"
+      },
+      url: "/api/admin/slack-bots"
+    });
     const duplicate = await server.inject({
       headers,
       method: "POST",
@@ -2833,10 +2843,26 @@ describe("api server", () => {
       },
       url: `/api/admin/slack-bots/${botId}`
     });
+    const missingUpdate = await server.inject({
+      headers,
+      method: "PUT",
+      payload: { enabled: false },
+      url: "/api/admin/slack-bots/missing"
+    });
     const listed = await server.inject({
       headers,
       method: "GET",
       url: "/api/admin/slack-bots"
+    });
+    const missingGet = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/slack-bots/missing"
+    });
+    const missingDelete = await server.inject({
+      headers,
+      method: "DELETE",
+      url: "/api/admin/slack-bots/missing"
     });
     const deleted = await server.inject({
       headers,
@@ -2854,8 +2880,38 @@ describe("api server", () => {
       personaId: "persona-1"
     });
     expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json()).toMatchObject({
+      error: "이름 'support-bot'은 이미 사용 중입니다",
+      timestamp: expect.any(String)
+    });
+    expect(duplicate.json()).not.toHaveProperty("code");
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({
+      details: { personaId: "personaId는 필수입니다" },
+      error: "요청 형식이 올바르지 않습니다",
+      timestamp: expect.any(String)
+    });
+    expect(invalid.json()).not.toHaveProperty("code");
     expect(updated.json()).toMatchObject({ enabled: false, id: botId, name: "renamed-bot" });
+    expect(missingUpdate.statusCode).toBe(404);
+    expect(missingUpdate.json()).toMatchObject({
+      error: "봇 인스턴스를 찾을 수 없습니다: missing",
+      timestamp: expect.any(String)
+    });
+    expect(missingUpdate.json()).not.toHaveProperty("code");
     expect(listed.json()).toMatchObject([{ id: botId, name: "renamed-bot" }]);
+    expect(missingGet.statusCode).toBe(404);
+    expect(missingGet.json()).toMatchObject({
+      error: "봇 인스턴스를 찾을 수 없습니다: missing",
+      timestamp: expect.any(String)
+    });
+    expect(missingGet.json()).not.toHaveProperty("code");
+    expect(missingDelete.statusCode).toBe(404);
+    expect(missingDelete.json()).toMatchObject({
+      error: "봇 인스턴스를 찾을 수 없습니다: missing",
+      timestamp: expect.any(String)
+    });
+    expect(missingDelete.json()).not.toHaveProperty("code");
     expect(deleted.statusCode).toBe(204);
   });
 
@@ -4090,6 +4146,12 @@ describe("api server", () => {
       payload: { channelId: "channel-ops", channelName: "ops" },
       url: "/api/proactive-channels"
     });
+    const invalidProactive = await server.inject({
+      headers: ownerHeaders,
+      method: "POST",
+      payload: { channelName: "ops" },
+      url: "/api/proactive-channels"
+    });
     const duplicate = await server.inject({
       headers: ownerHeaders,
       method: "POST",
@@ -4111,6 +4173,11 @@ describe("api server", () => {
       method: "DELETE",
       url: "/api/proactive-channels/channel-ops"
     });
+    const missingDelete = await server.inject({
+      headers: ownerHeaders,
+      method: "DELETE",
+      url: "/api/proactive-channels/channel-ops"
+    });
 
     expect(update.json()).toEqual({ updated: true });
     expect(memory.json()).toMatchObject({
@@ -4122,6 +4189,13 @@ describe("api server", () => {
     expect(proactive.statusCode).toBe(201);
     expect(proactive.json()).toMatchObject({ channelId: "channel-ops", channelName: "ops" });
     expect(typeof proactive.json().addedAt).toBe("number");
+    expect(invalidProactive.statusCode).toBe(400);
+    expect(invalidProactive.json()).toMatchObject({
+      details: { channelId: "channelId must not be blank" },
+      error: "요청 형식이 올바르지 않습니다",
+      timestamp: expect.any(String)
+    });
+    expect(invalidProactive.json()).not.toHaveProperty("code");
     expect(duplicate.statusCode).toBe(409);
     expect(channels.json()).toMatchObject([{ channelId: "channel-ops" }]);
     expect(adminModels.json()).toEqual(expect.arrayContaining([
@@ -4133,6 +4207,12 @@ describe("api server", () => {
       }
     ]));
     expect(deleted.statusCode).toBe(204);
+    expect(missingDelete.statusCode).toBe(404);
+    expect(missingDelete.json()).toMatchObject({
+      error: "Channel not found in proactive list",
+      timestamp: expect.any(String)
+    });
+    expect(missingDelete.json()).not.toHaveProperty("code");
   });
 
   it("keeps Reactor agent eval disabled-case replay semantics", async () => {
