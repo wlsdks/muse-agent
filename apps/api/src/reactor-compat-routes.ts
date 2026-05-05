@@ -651,9 +651,82 @@ function registerMemoryAndFeedbackRoutes(server: FastifyInstance, options: React
   }));
 }
 
+function registerPromptTemplateRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
+  server.get("/api/prompt-templates", async () => [...state.promptTemplates.values()].map(toTemplateResponse));
+  server.get("/api/prompt-templates/:templateId", async (request, reply) => {
+    const { templateId } = request.params as { readonly templateId: string };
+    const template = findCompatRecord(state.promptTemplates, templateId);
+    return template ? toTemplateDetailResponse(template) : notFound(reply, "PROMPT_TEMPLATE_NOT_FOUND");
+  });
+  server.post("/api/prompt-templates", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return reply.status(201).send(toTemplateResponse(createPromptTemplate(request.body)));
+  });
+  server.put("/api/prompt-templates/:templateId", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const { templateId } = request.params as { readonly templateId: string };
+    const existing = findCompatRecord(state.promptTemplates, templateId);
+
+    if (!existing) {
+      return notFound(reply, "PROMPT_TEMPLATE_NOT_FOUND");
+    }
+
+    const body = toBody(request.body);
+    const description = readBodyString(body, "description")
+      ?? (typeof existing.description === "string" ? existing.description : "");
+    const name = readBodyString(body, "name") ?? (typeof existing.name === "string" ? existing.name : "");
+    const updated = createRecord(state.promptTemplates, {
+      ...existing,
+      description,
+      name
+    }, "prompt_template");
+    return toTemplateResponse(updated);
+  });
+  server.delete("/api/prompt-templates/:templateId", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const { templateId } = request.params as { readonly templateId: string };
+    state.promptTemplates.delete(templateId);
+    return reply.status(204).send();
+  });
+  server.post("/api/prompt-templates/:templateId/versions", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const { templateId } = request.params as { readonly templateId: string };
+    const version = appendPromptVersion(templateId, request.body);
+    return "error" in version ? notFound(reply, "PROMPT_TEMPLATE_NOT_FOUND") : reply.status(201).send(version);
+  });
+  server.put("/api/prompt-templates/:templateId/versions/:versionId/activate", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const version = setPromptVersionStatus(request, "ACTIVE");
+    return "error" in version ? notFound(reply, "PROMPT_TEMPLATE_VERSION_NOT_FOUND") : version;
+  });
+  server.put("/api/prompt-templates/:templateId/versions/:versionId/archive", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const version = setPromptVersionStatus(request, "ARCHIVED");
+    return "error" in version ? notFound(reply, "PROMPT_TEMPLATE_VERSION_NOT_FOUND") : version;
+  });
+}
+
 function registerPromptAndRagRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   registerCollectionRoutes(server, "/api/personas", state.personas, { idParamName: "personaId" });
-  registerCollectionRoutes(server, "/api/prompt-templates", state.promptTemplates, { idParamName: "templateId" });
+  registerPromptTemplateRoutes(server, options);
   registerCollectionRoutes(server, "/api/documents", state.documents, {
     authorize: options.authorizeAdmin,
     onCreate: (record) => ({ ...record, indexed: true })
@@ -662,18 +735,6 @@ function registerPromptAndRagRoutes(server: FastifyInstance, options: ReactorCom
     idParamName: "intentName",
     inputIdKey: "name"
   });
-
-  server.post("/api/prompt-templates/:templateId/versions", async (request) => {
-    const { templateId } = request.params as { readonly templateId: string };
-    return appendNestedVersion(state.promptTemplates, templateId, request.body);
-  });
-  server.put("/api/prompt-templates/:templateId/versions/:versionId/activate", async (request) =>
-    setNestedVersionState(state.promptTemplates, request, "active")
-  );
-  server.put("/api/prompt-templates/:templateId/versions/:versionId/archive", async (request) =>
-    setNestedVersionState(state.promptTemplates, request, "archived")
-  );
-
   server.post("/api/documents/batch", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;
@@ -3038,6 +3099,110 @@ function respondPromptExperiment(request: FastifyRequest, reply: FastifyReply) {
   return record ? toPromptExperimentResponse(record) : notFound(reply, "PROMPT_EXPERIMENT_NOT_FOUND");
 }
 
+function createPromptTemplate(bodyValue: unknown): CompatRecord {
+  const body = toBody(bodyValue);
+  return createRecord(state.promptTemplates, {
+    description: readBodyString(body, "description") ?? "",
+    name: readBodyString(body, "name") ?? "",
+    versions: []
+  }, "prompt_template");
+}
+
+function toTemplateResponse(record: JsonObject) {
+  return {
+    createdAt: epochMillisOrNull(record.createdAt) ?? Date.now(),
+    description: typeof record.description === "string" ? record.description : "",
+    id: typeof record.id === "string" ? record.id : "",
+    name: typeof record.name === "string" ? record.name : "",
+    updatedAt: epochMillisOrNull(record.updatedAt) ?? Date.now()
+  };
+}
+
+function toTemplateDetailResponse(record: JsonObject) {
+  const versions = promptVersions(record);
+  const activeVersion = versions.find((version) => version.status === "ACTIVE") ?? null;
+  return {
+    ...toTemplateResponse(record),
+    activeVersion,
+    versions
+  };
+}
+
+function appendPromptVersion(templateId: string, bodyValue: unknown): JsonObject | { error: string } {
+  const template = findCompatRecord(state.promptTemplates, templateId);
+
+  if (!template) {
+    return { error: "not_found" };
+  }
+
+  const body = toBody(bodyValue);
+  const existing = promptVersions(template);
+  const version = {
+    changeLog: readBodyString(body, "changeLog") ?? "",
+    content: readBodyString(body, "content") ?? "",
+    createdAt: nowIso(),
+    id: createRunId("prompt_version"),
+    status: "DRAFT",
+    templateId,
+    version: existing.length + 1
+  };
+
+  createRecord(state.promptTemplates, {
+    ...template,
+    versions: [...existing, version]
+  }, "prompt_template");
+  return toVersionResponse(version);
+}
+
+function setPromptVersionStatus(request: FastifyRequest, status: "ACTIVE" | "ARCHIVED"): JsonObject | { error: string } {
+  const { templateId, versionId } = request.params as { readonly templateId: string; readonly versionId: string };
+  const template = findCompatRecord(state.promptTemplates, templateId);
+
+  if (!template) {
+    return { error: "not_found" };
+  }
+
+  let selected: JsonObject | undefined;
+  const versions = promptVersions(template).map((version) => {
+    if (version.id === versionId) {
+      selected = { ...version, status };
+      return selected;
+    }
+
+    return status === "ACTIVE" && version.status === "ACTIVE"
+      ? { ...version, status: "ARCHIVED" }
+      : version;
+  });
+
+  if (!selected) {
+    return { error: "not_found" };
+  }
+
+  createRecord(state.promptTemplates, {
+    ...template,
+    versions
+  }, "prompt_template");
+  return toVersionResponse(selected);
+}
+
+function promptVersions(record: JsonObject): JsonObject[] {
+  return Array.isArray(record.versions)
+    ? record.versions.filter(isRecord).map(toJsonObject)
+    : [];
+}
+
+function toVersionResponse(record: JsonObject) {
+  return {
+    changeLog: typeof record.changeLog === "string" ? record.changeLog : "",
+    content: typeof record.content === "string" ? record.content : "",
+    createdAt: epochMillisOrNull(record.createdAt) ?? Date.now(),
+    id: typeof record.id === "string" ? record.id : "",
+    status: reactorEnumString(record.status, "DRAFT"),
+    templateId: typeof record.templateId === "string" ? record.templateId : "",
+    version: typeof record.version === "number" ? record.version : readNumber(record.version, 1)
+  };
+}
+
 function createPromptExperiment(request: FastifyRequest): CompatRecord {
   const body = toBody(request.body);
   return createRecord(state.promptExperiments, {
@@ -3100,33 +3265,6 @@ function upsertByParam(
 function deleteByParam(collection: CompatCollection, request: FastifyRequest, paramName = "id") {
   const id = (request.params as Record<string, string>)[paramName];
   return { deleted: id ? collection.delete(id) : false, id };
-}
-
-function appendNestedVersion(collection: CompatCollection, id: string, body: unknown): CompatRecord | { error: string } {
-  const existing = findCompatRecord(collection, id);
-
-  if (!existing) {
-    return { error: "not_found" };
-  }
-
-  const versions = Array.isArray(existing.versions) ? existing.versions : [];
-  const version = createRecord(new Map(), toJsonObject(body), "prompt_version");
-  const updated = createRecord(collection, {
-    ...existing,
-    versions: [...versions, version]
-  }, "prompt_template");
-  return updated;
-}
-
-function setNestedVersionState(collection: CompatCollection, request: FastifyRequest, status: string) {
-  const { templateId, versionId } = request.params as { readonly templateId: string; readonly versionId: string };
-  const existing = findCompatRecord(collection, templateId);
-
-  if (!existing) {
-    return { error: "not_found", templateId, versionId };
-  }
-
-  return { status, templateId, versionId };
 }
 
 function updateCandidate(request: FastifyRequest, status: string) {

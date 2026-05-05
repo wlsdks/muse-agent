@@ -978,6 +978,71 @@ describe("api server", () => {
     expect(promptlabRun.json().ranking[0]).toMatchObject({ variantId: "variant-a" });
   });
 
+  it("matches Reactor prompt template DTO and version lifecycle contracts", async () => {
+    const server = buildServer({ logger: false });
+
+    const created = await server.inject({
+      method: "POST",
+      payload: {
+        description: "Reusable answer format",
+        name: "Answer template"
+      },
+      url: "/api/prompt-templates"
+    });
+    const templateId = created.json().id as string;
+    const version = await server.inject({
+      method: "POST",
+      payload: {
+        changeLog: "Initial draft",
+        content: "Answer with concise bullets."
+      },
+      url: `/api/prompt-templates/${templateId}/versions`
+    });
+    const versionId = version.json().id as string;
+    const activated = await server.inject({
+      method: "PUT",
+      url: `/api/prompt-templates/${templateId}/versions/${versionId}/activate`
+    });
+    const detail = await server.inject({
+      method: "GET",
+      url: `/api/prompt-templates/${templateId}`
+    });
+    const archived = await server.inject({
+      method: "PUT",
+      url: `/api/prompt-templates/${templateId}/versions/${versionId}/archive`
+    });
+    const deleted = await server.inject({
+      method: "DELETE",
+      url: `/api/prompt-templates/${templateId}`
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      description: "Reusable answer format",
+      id: templateId,
+      name: "Answer template"
+    });
+    expect(typeof created.json().createdAt).toBe("number");
+    expect(typeof created.json().updatedAt).toBe("number");
+    expect(version.statusCode).toBe(201);
+    expect(version.json()).toMatchObject({
+      changeLog: "Initial draft",
+      content: "Answer with concise bullets.",
+      status: "DRAFT",
+      templateId,
+      version: 1
+    });
+    expect(typeof version.json().createdAt).toBe("number");
+    expect(activated.json()).toMatchObject({ id: versionId, status: "ACTIVE", templateId });
+    expect(detail.json()).toMatchObject({
+      activeVersion: { id: versionId, status: "ACTIVE" },
+      id: templateId,
+      versions: [{ id: versionId, status: "ACTIVE", version: 1 }]
+    });
+    expect(archived.json()).toMatchObject({ id: versionId, status: "ARCHIVED", templateId });
+    expect(deleted.statusCode).toBe(204);
+  });
+
   it("serves Reactor-compatible aliases with stateful management behavior", async () => {
     const authService = createAuthService();
     const registered = authService.register({

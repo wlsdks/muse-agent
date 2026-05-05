@@ -103,6 +103,8 @@ Continued work should be treated as new hardening or product expansion, not migr
   result previews/failure reasons, and `204 No Content` deletes.
 - Prompt Lab experiment compatibility now returns Reactor-style `201` creates, uppercase statuses, epoch-millis
   timestamps, status envelopes, `202` run acknowledgements, and `204` deletes.
+- Prompt Template compatibility now returns Reactor-style template/version DTOs, uppercase version statuses,
+  epoch-millis timestamps, `201` version creates, active-version detail payloads, and `204` deletes.
 
 ## Execution Plan
 
