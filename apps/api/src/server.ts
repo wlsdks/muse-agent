@@ -68,6 +68,14 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   const server = Fastify({
     logger: options.logger ?? true
   });
+  const apiPaths = new Set<string>();
+  server.addHook("onRoute", (routeOptions) => {
+    const path = routeOptions.url;
+
+    if (typeof path === "string" && path.startsWith("/api/")) {
+      apiPaths.add(toSpringPathTemplate(path));
+    }
+  });
   server.addContentTypeParser(/^multipart\/form-data/u, { parseAs: "buffer" }, (request, body, done) => {
     try {
       done(null, parseMultipartBody(request.headers["content-type"], body as Buffer));
@@ -211,6 +219,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authRateLimiter,
     authService,
     authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
+    apiPathRegistry: () => [...apiPaths].sort(),
     defaultModel: options.defaultModel,
     followupSuggestionStore: options.followupSuggestionStore,
     historyStore: options.historyStore,
@@ -384,6 +393,10 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   });
 
   return server;
+}
+
+function toSpringPathTemplate(path: string): string {
+  return path.replace(/:([A-Za-z0-9_]+)/gu, "{$1}");
 }
 
 type ParseResult<T> = { readonly ok: true; readonly value: T } | { readonly error: ApiError; readonly ok: false };

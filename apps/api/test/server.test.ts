@@ -2459,8 +2459,24 @@ describe("api server", () => {
     expect(runtimeSet.json()).toEqual({ key: "model.default", status: "updated", value: "provider/model" });
     expect(runtimeGet.json()).toMatchObject({ key: "model.default", type: "STRING", value: "provider/model" });
     expect(runtimeRefresh.json()).toEqual({ status: "cache_refreshed" });
-    expect(capabilities.json()).toMatchObject({ source: "request-mappings" });
-    expect(capabilities.json().paths).toContain("/api/admin/settings");
+    const capabilitiesBody = capabilities.json();
+    expect(capabilitiesBody).toMatchObject({ source: "request-mappings" });
+    expect(typeof capabilitiesBody.generatedAt).toBe("number");
+    expect(capabilitiesBody.paths).toEqual([...capabilitiesBody.paths].sort());
+    expect(capabilitiesBody.paths).toEqual(expect.arrayContaining([
+      "/api/admin/capabilities",
+      "/api/admin/doctor",
+      "/api/admin/platform/health",
+      "/api/admin/settings",
+      "/api/admin/slack/channels/faq/{channelId}/dry-run",
+      "/api/chat",
+      "/api/mcp/servers/{name}/tools",
+      "/api/prompt-lab/auto-optimize",
+      "/api/scheduler/jobs",
+      "/api/slack/commands"
+    ]));
+    expect(capabilitiesBody.paths).not.toContain("/health");
+    expect(capabilitiesBody.paths).not.toContain("/admin/summary");
     expect(dashboard.json()).toMatchObject({
       approvals: { pendingCount: 0 },
       mcp: { total: 0 },
