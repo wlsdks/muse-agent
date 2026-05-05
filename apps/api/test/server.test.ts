@@ -985,6 +985,7 @@ describe("api server", () => {
       defaultModel: "provider/model",
       historyStore,
       logger: false,
+      modelProvider: createProvider("{\"pass\":true,\"score\":0.92,\"reason\":\"acceptable run\"}"),
       pendingApprovalStore,
       requireAuth: true
     });
@@ -1194,7 +1195,7 @@ describe("api server", () => {
     const agentEvalReplay = await server.inject({
       headers,
       method: "POST",
-      url: `/api/admin/agent-eval/cases/${agentEvalCaseId}/replay`
+      url: `/api/admin/agent-eval/cases/${agentEvalCaseId}/replay?llmJudge=true`
     });
     const agentEvalResults = await server.inject({
       headers,
@@ -1501,11 +1502,20 @@ describe("api server", () => {
     expect(agentEvalReplay.json()).toMatchObject({
       caseId: agentEvalCaseId,
       deterministic: { passed: true, runId: "run-compat" },
-      storedResults: [{ caseId: agentEvalCaseId, tier: "deterministic" }]
+      storedResults: [
+        { caseId: agentEvalCaseId, tier: "deterministic" },
+        { caseId: agentEvalCaseId, passed: true, score: 0.92, tier: "llm_judge" }
+      ]
     });
-    expect(agentEvalResults.json()).toMatchObject([{ caseId: agentEvalCaseId, passed: true }]);
-    expect(evalDashboardRuns.json()).toMatchObject([{ caseId: agentEvalCaseId, passed: true }]);
-    expect(evalPassRate.json()).toMatchObject([{ passed: 1, total: 1 }]);
+    expect(agentEvalResults.json()).toMatchObject([
+      { caseId: agentEvalCaseId, passed: true, tier: "deterministic" },
+      { caseId: agentEvalCaseId, passed: true, tier: "llm_judge" }
+    ]);
+    expect(evalDashboardRuns.json()).toMatchObject([
+      { caseId: agentEvalCaseId, passed: true, tier: "deterministic" },
+      { caseId: agentEvalCaseId, passed: true, tier: "llm_judge" }
+    ]);
+    expect(evalPassRate.json()).toMatchObject([{ passed: 2, total: 2 }]);
     expect(alertRule.json()).toMatchObject({ metric: "token_cost", name: "Cost threshold" });
     expect(alertRules.json()).toMatchObject([{ id: alertRule.json().id }]);
     expect(pricing.json()).toMatchObject({ model: "provider/model", provider: "provider" });

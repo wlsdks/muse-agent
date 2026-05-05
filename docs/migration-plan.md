@@ -91,6 +91,8 @@ Continued work should be treated as new hardening or product expansion, not migr
 - Slack FAQ admin compatibility now matches Reactor response envelopes for registration lists, stats, events,
   feedback snapshots, and channel deletion.
 - Input Guard audit compatibility now returns the Reactor `{ audits, total }` envelope.
+- Agent eval LLM judge compatibility now calls the configured Muse model provider when `llmJudge=true` instead of
+  always storing an unavailable judge result.
 
 ## Execution Plan
 
