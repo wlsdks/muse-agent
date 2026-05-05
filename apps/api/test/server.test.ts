@@ -319,6 +319,11 @@ describe("api server", () => {
       method: "GET",
       url: `/api/sessions?userId=${owner.user.id}`
     });
+    const clampedSessions = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/sessions?limit=500"
+    });
     const forbiddenDelete = await server.inject({
       headers,
       method: "DELETE",
@@ -353,6 +358,10 @@ describe("api server", () => {
     expect(unauthenticatedSessions.json()).not.toHaveProperty("code");
     expect(spoofedList.json()).toMatchObject({
       items: [{ preview: "member prompt", sessionId: "member-run" }],
+      total: 1
+    });
+    expect(clampedSessions.json()).toMatchObject({
+      limit: 200,
       total: 1
     });
     expect(forbiddenDelete.statusCode).toBe(403);
@@ -4054,6 +4063,11 @@ describe("api server", () => {
       method: "GET",
       url: "/api/admin/audits"
     });
+    const auditsClamped = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/audits?pageLimit=500"
+    });
     const auditsExport = await server.inject({
       headers,
       method: "GET",
@@ -4431,6 +4445,7 @@ describe("api server", () => {
       ]),
       total: 5
     });
+    expect(auditsClamped.json()).toMatchObject({ limit: 200, total: 5 });
     expect(auditsExport.body).toContain("metric_event");
     expect(errorReport.statusCode).toBe(204);
     expect(errorReport.body).toBe("");

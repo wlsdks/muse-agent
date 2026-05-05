@@ -7810,7 +7810,7 @@ function errorResponse(error: string): JsonObject {
 }
 
 function clampLimit(limit: number): number {
-  return Math.min(500, Math.max(1, limit));
+  return Math.min(200, Math.max(1, limit));
 }
 
 function userRoleResponse(role: UserRole): string {
