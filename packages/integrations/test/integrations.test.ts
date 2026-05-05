@@ -3,9 +3,11 @@ import {
   CommandRouter,
   FetchSlackResponseUrlTransport,
   FetchSlackWebApiMessageTransport,
+  SlackInteractionDispatcher,
   SlackSignatureVerifier,
   WebhookDispatcher,
   formatSlackMrkdwn,
+  parseSlackInteractionPayload,
   parseSlackSlashCommand,
   parseSlackUrlEncodedBody,
   signSlackRequestBody,
@@ -124,6 +126,105 @@ describe("CommandRouter", () => {
 
     await expect(router.handle(parseSlackSlashCommand({ text: "hello" }))).resolves.toMatchObject({
       text: "handled:hello"
+    });
+  });
+});
+
+describe("SlackInteractionDispatcher", () => {
+  it("parses block actions and dispatches by action id prefix", async () => {
+    const handled: unknown[] = [];
+    const dispatcher = new SlackInteractionDispatcher([
+      {
+        actionIdPrefix: "feedback",
+        handle: (payload) => {
+          handled.push(payload);
+          return true;
+        }
+      }
+    ]);
+    const payload = {
+      actions: [{ action_id: "feedback.up", value: "positive" }],
+      channel: { id: "channel-1" },
+      message: { ts: "1770000000.000100" },
+      response_url: "https://example.invalid/respond",
+      trigger_id: "trigger-1",
+      type: "block_actions",
+      user: { id: "user-1" }
+    };
+
+    await expect(dispatcher.dispatch({ payload: JSON.stringify(payload) })).resolves.toMatchObject({
+      dispatched: true,
+      payload: {
+        actionId: "feedback.up",
+        channelId: "channel-1",
+        messageTs: "1770000000.000100",
+        responseUrl: "https://example.invalid/respond",
+        triggerId: "trigger-1",
+        type: "block_actions",
+        userId: "user-1",
+        value: "positive"
+      }
+    });
+    expect(handled).toHaveLength(1);
+  });
+
+  it("parses view submissions by callback id and continues after handler errors", async () => {
+    const handled: unknown[] = [];
+    const dispatcher = new SlackInteractionDispatcher([
+      {
+        actionIdPrefix: "marketing",
+        handle: () => {
+          throw new Error("boom");
+        }
+      },
+      {
+        actionIdPrefix: "marketing",
+        handle: (payload) => {
+          handled.push(payload);
+          return true;
+        }
+      }
+    ]);
+
+    await expect(
+      dispatcher.dispatch({
+        type: "view_submission",
+        user: { id: "user-1" },
+        view: {
+          callback_id: "marketing_submit",
+          private_metadata: "{\"channel\":\"channel-1\"}",
+          state: { values: { title: { value: "hello" } } }
+        }
+      })
+    ).resolves.toMatchObject({
+      dispatched: true,
+      payload: {
+        actionId: "marketing_submit",
+        privateMetadata: "{\"channel\":\"channel-1\"}",
+        type: "view_submission",
+        userId: "user-1"
+      }
+    });
+    expect(handled).toHaveLength(1);
+  });
+
+  it("returns parse and handler miss reasons without throwing", async () => {
+    const dispatcher = new SlackInteractionDispatcher([]);
+
+    expect(parseSlackInteractionPayload("{bad")).toBeUndefined();
+    await expect(dispatcher.dispatch("{bad")).resolves.toEqual({
+      dispatched: false,
+      reason: "parse_failed"
+    });
+    await expect(
+      dispatcher.dispatch({
+        actions: [{ action_id: "feedback.up" }],
+        type: "block_actions",
+        user: { id: "user-1" }
+      })
+    ).resolves.toMatchObject({
+      dispatched: false,
+      reason: "no_handler"
     });
   });
 });

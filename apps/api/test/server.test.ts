@@ -10,6 +10,7 @@ import {
 } from "@muse/auth";
 import {
   signSlackRequestBody,
+  type SlackInteractionHandler,
   type SlackMessageTransport,
   type SlackResponseUrlTransport
 } from "@muse/integrations";
@@ -5167,12 +5168,20 @@ describe("api server", () => {
       payload: "command=%2Fmuse&text=hello",
       url: "/api/slack/commands"
     });
+    const interactionPost = await server.inject({
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      method: "POST",
+      payload: "payload=%7B%7D",
+      url: "/api/slack/interactions"
+    });
 
     expect(eventProbe.statusCode).toBe(405);
     expect(eventPost.statusCode).toBe(503);
     expect(eventPost.json()).toMatchObject({ error: "slack_transport_socket_mode" });
     expect(commandPost.statusCode).toBe(503);
     expect(commandPost.json()).toMatchObject({ error: "slack_transport_socket_mode" });
+    expect(interactionPost.statusCode).toBe(503);
+    expect(interactionPost.json()).toMatchObject({ error: "slack_transport_socket_mode" });
   });
 
   it("handles signed Slack slash commands and posts response_url results", async () => {
@@ -5333,6 +5342,66 @@ describe("api server", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ challenge: "challenge-1" });
+  });
+
+  it("dispatches signed Slack interaction callbacks by action prefix", async () => {
+    let resolveHandled!: (value: unknown) => void;
+    const handled = new Promise((resolve) => {
+      resolveHandled = resolve;
+    });
+    const interactionHandlers: SlackInteractionHandler[] = [
+      {
+        actionIdPrefix: "feedback",
+        handle: (payload) => {
+          resolveHandled(payload);
+          return true;
+        }
+      }
+    ];
+    const server = buildServer({
+      logger: false,
+      slack: {
+        enabled: true,
+        interactionHandlers,
+        now: () => new Date(1_770_000_000_000),
+        signingSecret: "signing-secret"
+      }
+    });
+    const raw = new URLSearchParams({
+      payload: JSON.stringify({
+        actions: [{ action_id: "feedback.down", value: "negative" }],
+        channel: { id: "channel-1" },
+        message: { ts: "1770000000.000100" },
+        response_url: "https://example.invalid/respond",
+        trigger_id: "trigger-1",
+        type: "block_actions",
+        user: { id: "user-1" }
+      })
+    }).toString();
+    const timestamp = "1770000000";
+    const response = await server.inject({
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "x-slack-request-timestamp": timestamp,
+        "x-slack-signature": signSlackRequestBody(raw, timestamp, "signing-secret")
+      },
+      method: "POST",
+      payload: raw,
+      url: "/api/slack/interactions"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ ok: true });
+    await expect(handled).resolves.toMatchObject({
+      actionId: "feedback.down",
+      channelId: "channel-1",
+      messageTs: "1770000000.000100",
+      responseUrl: "https://example.invalid/respond",
+      triggerId: "trigger-1",
+      type: "block_actions",
+      userId: "user-1",
+      value: "negative"
+    });
   });
 
   it("dispatches signed Slack app mention events through the command handler", async () => {

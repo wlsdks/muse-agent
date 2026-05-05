@@ -95,6 +95,32 @@ export interface SlackMessageTransport {
   }>;
 }
 
+export type SlackInteractionType = "block_actions" | "view_submission";
+
+export interface SlackInteractionPayload {
+  readonly type: SlackInteractionType;
+  readonly actionId: string;
+  readonly value?: string;
+  readonly userId: string;
+  readonly channelId?: string;
+  readonly messageTs?: string;
+  readonly triggerId?: string;
+  readonly responseUrl?: string;
+  readonly privateMetadata?: string;
+  readonly viewValues?: JsonObject;
+}
+
+export interface SlackInteractionHandler {
+  readonly actionIdPrefix: string;
+  handle(payload: SlackInteractionPayload): Awaitable<boolean>;
+}
+
+export interface SlackInteractionDispatchResult {
+  readonly dispatched: boolean;
+  readonly reason?: "parse_failed" | "no_handler" | "handler_rejected";
+  readonly payload?: SlackInteractionPayload;
+}
+
 export interface SlackSignatureVerifierOptions {
   readonly signingSecret: string;
   readonly timestampToleranceSeconds?: number;
@@ -186,6 +212,41 @@ export class CommandRouter implements CommandHandler {
     }
 
     return handler.handle(envelope);
+  }
+}
+
+export class SlackInteractionDispatcher {
+  constructor(private readonly handlers: readonly SlackInteractionHandler[]) {}
+
+  async dispatch(input: unknown): Promise<SlackInteractionDispatchResult> {
+    const payload = parseSlackInteractionPayload(input);
+
+    if (!payload) {
+      return { dispatched: false, reason: "parse_failed" };
+    }
+
+    const prefix = payload.actionId.includes(".")
+      ? payload.actionId.slice(0, payload.actionId.indexOf("."))
+      : payload.actionId;
+    const matched = this.handlers.filter((handler) =>
+      handler.actionIdPrefix === prefix || payload.actionId.startsWith(`${handler.actionIdPrefix}_`)
+    );
+
+    if (matched.length === 0) {
+      return { dispatched: false, payload, reason: "no_handler" };
+    }
+
+    for (const handler of matched) {
+      try {
+        if (await handler.handle(payload)) {
+          return { dispatched: true, payload };
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return { dispatched: false, payload, reason: "handler_rejected" };
   }
 }
 
@@ -320,6 +381,51 @@ export class FetchSlackResponseUrlTransport implements SlackResponseUrlTransport
   }
 }
 
+export function parseSlackInteractionPayload(input: unknown): SlackInteractionPayload | undefined {
+  const json = parseSlackInteractionJson(input);
+
+  if (!json) {
+    return undefined;
+  }
+
+  const type = readString(json, "type");
+
+  if (type !== "block_actions" && type !== "view_submission") {
+    return undefined;
+  }
+
+  const action = type === "block_actions"
+    ? readRecordArray(json, "actions")[0]
+    : readRecord(json, "view");
+
+  if (!action) {
+    return undefined;
+  }
+
+  const actionId = type === "view_submission"
+    ? readString(action, "callback_id")
+    : readString(action, "action_id");
+
+  if (!actionId) {
+    return undefined;
+  }
+
+  const viewState = type === "view_submission" ? readRecord(readRecord(action, "state") ?? {}, "values") : undefined;
+
+  return {
+    actionId,
+    channelId: readString(readRecord(json, "channel") ?? {}, "id"),
+    messageTs: readString(readRecord(json, "message") ?? {}, "ts"),
+    privateMetadata: type === "view_submission" ? readString(action, "private_metadata") : undefined,
+    responseUrl: readString(json, "response_url"),
+    triggerId: readString(json, "trigger_id"),
+    type,
+    userId: readString(readRecord(json, "user") ?? {}, "id") ?? "",
+    value: readString(action, "value"),
+    viewValues: viewState as JsonObject | undefined
+  };
+}
+
 export class FetchSlackWebApiMessageTransport implements SlackMessageTransport {
   constructor(
     private readonly botToken: string,
@@ -430,6 +536,64 @@ function eventToPayload(event: WebhookEvent): JsonObject {
 function blankToUndefined(value: string | undefined): string | undefined {
   const normalized = value?.trim();
   return normalized && normalized.length > 0 ? normalized : undefined;
+}
+
+function parseSlackInteractionJson(input: unknown): Record<string, unknown> | undefined {
+  if (typeof input === "string") {
+    return parseJsonObject(input);
+  }
+
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return undefined;
+  }
+
+  const record = input as Record<string, unknown>;
+  const payload = record.payload;
+
+  if (typeof payload === "string") {
+    return parseJsonObject(payload);
+  }
+
+  return record;
+}
+
+function parseJsonObject(value: string): Record<string, unknown> | undefined {
+  const parsed = safeJsonParse(value);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : undefined;
+}
+
+function safeJsonParse(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function readRecord(value: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
+  const candidate = value[key];
+  return candidate && typeof candidate === "object" && !Array.isArray(candidate)
+    ? candidate as Record<string, unknown>
+    : undefined;
+}
+
+function readRecordArray(value: Record<string, unknown>, key: string): Array<Record<string, unknown>> {
+  const candidate = value[key];
+
+  if (!Array.isArray(candidate)) {
+    return [];
+  }
+
+  return candidate.filter((item): item is Record<string, unknown> =>
+    Boolean(item) && typeof item === "object" && !Array.isArray(item)
+  );
+}
+
+function readString(value: Record<string, unknown>, key: string): string | undefined {
+  const candidate = value[key];
+  return typeof candidate === "string" && candidate.trim().length > 0 ? candidate.trim() : undefined;
 }
 
 function formatSlackPayload(body: JsonObject): JsonObject {

@@ -50,7 +50,7 @@ Current Muse baseline:
 | `resilience` | `packages/resilience` | Circuit breaker registry, retry, timeout, and model fallback primitives exist |
 | `runtime-settings` | `packages/runtime-settings`, `apps/api` | Runtime settings service/store and API surface exist |
 | `scheduler` | `packages/scheduler`, `apps/api` | CRUD, execution records, cron, and scheduler locks exist |
-| `slack` | `packages/integrations`, `apps/api` | Signed Events API dispatch plus thread replies, slash-command channel/thread posting, response_url fallback, and Slack mrkdwn response formatting exist |
+| `slack` | `packages/integrations`, `apps/api` | Signed Events API dispatch plus thread replies, slash-command channel/thread posting, interaction dispatch, response_url fallback, and Slack mrkdwn response formatting exist |
 | `tool` | `packages/tools` | Tool registry, executor, sanitizer, and approval path exist |
 | `web` | `apps/api` | HTTP/SSE run endpoints and typed error surfaces exist |
 
@@ -74,7 +74,7 @@ fully done:
 
 1. Response filters: compare Reactor's verified-source extractor edge cases against Muse extraction
    (nested URL fields, synthesized source directories, and source relevance filtering still need broader parity tests).
-2. Slack behavior: verify Socket Mode and interaction/feedback callbacks beyond HTTP Events and slash-command delivery.
+2. Slack behavior: verify Socket Mode and concrete feedback button persistence/ack callbacks beyond HTTP interaction dispatch.
 3. Hook/context behavior: verify message-pair integrity under broader runtime smoke tests.
 
 Latest route parity check: `REACTOR_SOURCE_DIR=<local-reactor-path> pnpm verify:reactor-routes` reports 255 Reactor
@@ -204,6 +204,8 @@ routes, 365 Muse routes, and 0 missing Reactor routes.
   token or injected message transport is configured.
 - Slack slash-command delivery now prefers Reactor-style channel question posting plus threaded answer posting when a
   Slack bot token or injected message transport is configured, and falls back to `response_url` if posting is unavailable.
+- Slack interaction compatibility now includes Reactor-style `block_actions`/`view_submission` parsing and action-id
+  prefix dispatch, with signed HTTP interaction callbacks wired into the Slack route layer.
 
 ## Execution Plan
 

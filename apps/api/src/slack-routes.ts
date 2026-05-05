@@ -2,6 +2,7 @@ import type { AgentRuntime } from "@muse/agent-core";
 import {
   FetchSlackWebApiMessageTransport,
   FetchSlackResponseUrlTransport,
+  SlackInteractionDispatcher,
   SlackSignatureVerifier,
   parseSlackSlashCommand,
   parseSlackUrlEncodedBody,
@@ -9,6 +10,7 @@ import {
   type CommandEnvelope,
   type CommandHandler,
   type CommandResponse,
+  type SlackInteractionHandler,
   type SlackMessageTransport,
   type SlackResponseUrlTransport,
   type SlackSlashCommandPayload
@@ -21,6 +23,7 @@ export interface SlackRouteOptions {
   readonly signingSecret?: string;
   readonly commandHandler?: CommandHandler;
   readonly botToken?: string;
+  readonly interactionHandlers?: readonly SlackInteractionHandler[];
   readonly messageTransport?: SlackMessageTransport;
   readonly responseTransport?: SlackResponseUrlTransport;
   readonly now?: () => Date;
@@ -55,6 +58,8 @@ export function registerSlackRoutes(server: FastifyInstance, options: RegisterSl
     server.post("/slack/commands", async (_request, reply) => slackWebhookDisabled(reply));
     server.post("/api/slack/events", async (_request, reply) => slackWebhookDisabled(reply));
     server.post("/slack/events", async (_request, reply) => slackWebhookDisabled(reply));
+    server.post("/api/slack/interactions", async (_request, reply) => slackWebhookDisabled(reply));
+    server.post("/slack/interactions", async (_request, reply) => slackWebhookDisabled(reply));
     return;
   }
 
@@ -62,6 +67,8 @@ export function registerSlackRoutes(server: FastifyInstance, options: RegisterSl
   server.post("/slack/commands", async (request, reply) => handleSlashCommand(request, reply, options));
   server.post("/api/slack/events", async (request, reply) => handleEventCallback(request, reply, options, eventState));
   server.post("/slack/events", async (request, reply) => handleEventCallback(request, reply, options, eventState));
+  server.post("/api/slack/interactions", async (request, reply) => handleInteractionCallback(request, reply, options));
+  server.post("/slack/interactions", async (request, reply) => handleInteractionCallback(request, reply, options));
 }
 
 function registerSlackMethodProbeRoutes(server: FastifyInstance): void {
@@ -69,6 +76,8 @@ function registerSlackMethodProbeRoutes(server: FastifyInstance): void {
   server.get("/slack/commands", async (_request, reply) => slackWebhookPostOnly(reply));
   server.get("/api/slack/events", async (_request, reply) => slackWebhookPostOnly(reply));
   server.get("/slack/events", async (_request, reply) => slackWebhookPostOnly(reply));
+  server.get("/api/slack/interactions", async (_request, reply) => slackWebhookPostOnly(reply));
+  server.get("/slack/interactions", async (_request, reply) => slackWebhookPostOnly(reply));
 }
 
 function slackWebhookPostOnly(reply: FastifyReply): FastifyReply {
@@ -121,6 +130,20 @@ async function handleSlashCommand(
   }
 
   return reply.send(toSlackCommandAck(await executeSlackCommand(envelope, options)));
+}
+
+async function handleInteractionCallback(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  options: RegisterSlackRoutesOptions
+) {
+  if (!verifySlackRequest(request, reply, options.slack)) {
+    return reply;
+  }
+
+  const dispatcher = new SlackInteractionDispatcher(options.slack?.interactionHandlers ?? []);
+  void dispatcher.dispatch(request.body).catch(() => undefined);
+  return reply.send({ ok: true });
 }
 
 async function dispatchSlashCommandResponse(
