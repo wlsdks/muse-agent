@@ -651,7 +651,7 @@ function registerApprovalCompatibilityRoutes(server: FastifyInstance, options: R
     const offset = readQueryInteger(request, "offset", 0);
     const limit = readQueryInteger(request, "limit", 50);
     const userId = readAuthUserId(request);
-    const isAdmin = isAuthenticatedAdminLikeRequest(request);
+    const isAdmin = isAuthenticatedDeveloperAdminLikeRequest(request);
 
     if (!isAdmin && !userId) {
       return reply.status(403).send(errorResponse("관리자 권한이 필요합니다"));
@@ -8720,12 +8720,12 @@ function readAuthUserId(request: FastifyRequest): string | undefined {
 
 function isAdminLikeRequest(request: FastifyRequest): boolean {
   const role = (request as { auth?: { role?: string } }).auth?.role;
-  return role === undefined || role === "admin" || role === "admin_manager" || role === "admin_developer";
+  return role === undefined || role === "admin" || role === "admin_developer";
 }
 
-function isAuthenticatedAdminLikeRequest(request: FastifyRequest): boolean {
+function isAuthenticatedDeveloperAdminLikeRequest(request: FastifyRequest): boolean {
   const role = (request as { auth?: { role?: string } }).auth?.role;
-  return role === "admin" || role === "admin_manager" || role === "admin_developer";
+  return role === "admin" || role === "admin_developer";
 }
 
 function readBodyString(value: unknown, key: string): string | undefined {

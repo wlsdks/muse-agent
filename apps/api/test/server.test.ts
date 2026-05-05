@@ -283,9 +283,13 @@ describe("api server", () => {
     const authService = createAuthService();
     const ownerEmail = ["owner", "example.invalid"].join("@");
     const memberEmail = ["member", "example.invalid"].join("@");
+    const managerEmail = ["manager", "example.invalid"].join("@");
     const owner = authService.register({ email: ownerEmail, name: "Owner", password: "password-1" });
     const member = authService.register({ email: memberEmail, name: "Member", password: "password-1" });
+    const manager = authService.register({ email: managerEmail, name: "Manager", password: "password-1" });
+    authService.updateUserRole(manager.user.id, "admin_manager");
     const memberLogin = authService.login(memberEmail, "password-1");
+    const managerLogin = authService.login(managerEmail, "password-1");
     const historyStore = new InMemoryAgentRunHistoryStore();
     historyStore.createRun({
       id: "owner-run",
@@ -309,6 +313,7 @@ describe("api server", () => {
     });
     const server = buildServer({ authService, historyStore, logger: false, requireAuth: true });
     const headers = { authorization: `Bearer ${memberLogin?.token ?? ""}` };
+    const managerHeaders = { authorization: `Bearer ${managerLogin?.token ?? ""}` };
 
     const unauthenticatedSessions = await server.inject({
       method: "GET",
@@ -328,6 +333,16 @@ describe("api server", () => {
       headers,
       method: "DELETE",
       url: "/api/sessions/owner-run"
+    });
+    const managerForbiddenDetail = await server.inject({
+      headers: managerHeaders,
+      method: "GET",
+      url: "/api/sessions/owner-run"
+    });
+    const managerForbiddenExport = await server.inject({
+      headers: managerHeaders,
+      method: "GET",
+      url: "/api/sessions/owner-run/export"
     });
     const orphanDetail = await server.inject({
       headers,
@@ -370,6 +385,9 @@ describe("api server", () => {
       timestamp: expect.any(String)
     });
     expect(forbiddenDelete.json()).not.toHaveProperty("code");
+    expect(managerLogin).toBeDefined();
+    expect(managerForbiddenDetail.statusCode).toBe(403);
+    expect(managerForbiddenExport.statusCode).toBe(403);
     expect(orphanDetail.statusCode).toBe(403);
     expect(orphanDetail.json()).toMatchObject({
       error: "세션 접근이 거부되었습니다",
@@ -400,6 +418,13 @@ describe("api server", () => {
       name: "Approval Member",
       password: "password-1"
     });
+    const manager = authService.register({
+      email: "approval_manager",
+      name: "Approval Manager",
+      password: "password-1"
+    });
+    authService.updateUserRole(manager.user.id, "admin_manager");
+    const managerLogin = authService.login("approval_manager", "password-1");
     let approvalIndex = 0;
     const pendingApprovalStore = new InMemoryPendingApprovalStore({
       idFactory: () => `approval-${++approvalIndex}`
@@ -418,6 +443,13 @@ describe("api server", () => {
       toolName: "write_file",
       userId: member.user.id
     });
+    const managerApproval = pendingApprovalStore.requestApproval({
+      arguments: { path: "manager.md" },
+      runId: "run-manager",
+      timeoutMs: 10_000,
+      toolName: "write_file",
+      userId: manager.user.id
+    });
     const server = buildServer({
       authService,
       logger: false,
@@ -426,6 +458,7 @@ describe("api server", () => {
     });
     const adminHeaders = { authorization: `Bearer ${admin.token}` };
     const memberHeaders = { authorization: `Bearer ${member.token}` };
+    const managerHeaders = { authorization: `Bearer ${managerLogin?.token ?? ""}` };
 
     const spoofedMemberList = await server.inject({
       headers: memberHeaders,
@@ -434,6 +467,11 @@ describe("api server", () => {
     });
     const adminList = await server.inject({
       headers: adminHeaders,
+      method: "GET",
+      url: "/api/approvals?limit=500"
+    });
+    const managerList = await server.inject({
+      headers: managerHeaders,
       method: "GET",
       url: "/api/approvals?limit=500"
     });
@@ -449,7 +487,14 @@ describe("api server", () => {
       payload: { reason: "cleanup" },
       url: "/api/approvals/approval-2/reject"
     });
+    await server.inject({
+      headers: adminHeaders,
+      method: "POST",
+      payload: { reason: "cleanup" },
+      url: "/api/approvals/approval-3/reject"
+    });
 
+    expect(managerLogin).toBeDefined();
     expect(spoofedMemberList.json()).toMatchObject({
       items: [{ id: "approval-2", runId: "run-member" }],
       limit: 200,
@@ -457,10 +502,16 @@ describe("api server", () => {
     });
     expect(adminList.json()).toMatchObject({
       limit: 200,
-      total: 2
+      total: 3
+    });
+    expect(managerList.json()).toMatchObject({
+      items: [{ id: "approval-3", runId: "run-manager" }],
+      limit: 200,
+      total: 1
     });
     await expect(adminApproval).resolves.toMatchObject({ approved: false, reason: "cleanup" });
     await expect(memberApproval).resolves.toMatchObject({ approved: false, reason: "cleanup" });
+    await expect(managerApproval).resolves.toMatchObject({ approved: false, reason: "cleanup" });
   });
 
   it("rate limits failed auth attempts", async () => {
