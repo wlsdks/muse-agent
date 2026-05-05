@@ -1305,6 +1305,151 @@ describe("api server", () => {
     expect(promptlabRun.json().ranking[0]).toMatchObject({ variantId: "variant-a" });
   });
 
+  it("persists Reactor prompt lab trials and reports after experiment runs", async () => {
+    const authService = createAuthService();
+    const registered = authService.register({
+      email: "prompt_lab_admin",
+      name: "Prompt Lab Admin",
+      password: "password-1"
+    });
+    const modelProvider = createProviderFrom(async (request) => ({
+      id: "response-1",
+      model: request.model,
+      output: `Answer: ${request.messages.at(-1)?.content ?? ""}`
+    }));
+    const server = buildServer({
+      agentRuntime: createAgentRuntime({ modelProvider }),
+      authService,
+      defaultModel: "provider/model",
+      logger: false,
+      requireAuth: true
+    });
+    const headers = { authorization: `Bearer ${registered.token}` };
+    const template = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        name: "Prompt Lab Template"
+      },
+      url: "/api/prompt-templates"
+    });
+    const templateId = template.json().id as string;
+    const baseline = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        content: "Baseline prompt"
+      },
+      url: `/api/prompt-templates/${templateId}/versions`
+    });
+    const candidate = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        content: "Candidate prompt"
+      },
+      url: `/api/prompt-templates/${templateId}/versions`
+    });
+    const experiment = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        baselineVersionId: baseline.json().id,
+        candidateVersionIds: [candidate.json().id],
+        name: "Prompt report",
+        repetitions: 2,
+        templateId,
+        testQueries: [{ query: "Explain migration" }]
+      },
+      url: "/api/prompt-lab/experiments"
+    });
+    const experimentId = experiment.json().id as string;
+
+    const run = await server.inject({
+      headers,
+      method: "POST",
+      url: `/api/prompt-lab/experiments/${experimentId}/run`
+    });
+    const status = await server.inject({
+      headers,
+      method: "GET",
+      url: `/api/prompt-lab/experiments/${experimentId}/status`
+    });
+    const trials = await server.inject({
+      headers,
+      method: "GET",
+      url: `/api/prompt-lab/experiments/${experimentId}/trials`
+    });
+    const report = await server.inject({
+      headers,
+      method: "GET",
+      url: `/api/prompt-lab/experiments/${experimentId}/report`
+    });
+    const deleted = await server.inject({
+      headers,
+      method: "DELETE",
+      url: `/api/prompt-lab/experiments/${experimentId}`
+    });
+    const trialsAfterDelete = await server.inject({
+      headers,
+      method: "GET",
+      url: `/api/prompt-lab/experiments/${experimentId}/trials`
+    });
+    const reportAfterDelete = await server.inject({
+      headers,
+      method: "GET",
+      url: `/api/prompt-lab/experiments/${experimentId}/report`
+    });
+
+    expect(run.statusCode).toBe(202);
+    expect(run.json()).toEqual({ experimentId, status: "RUNNING" });
+    expect(status.json()).toMatchObject({ experimentId, status: "COMPLETED" });
+    expect(trials.json()).toHaveLength(4);
+    expect(trials.json()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        passed: true,
+        promptVersionId: baseline.json().id,
+        query: "Explain migration",
+        response: "Answer: Explain migration",
+        score: 1,
+        success: true
+      }),
+      expect.objectContaining({
+        passed: true,
+        promptVersionId: candidate.json().id,
+        query: "Explain migration",
+        success: true
+      })
+    ]));
+    expect(report.json()).toMatchObject({
+      experimentId,
+      experimentName: "Prompt report",
+      recommendation: { confidence: "LOW" },
+      totalTrials: 4,
+      versionSummaries: expect.arrayContaining([
+        expect.objectContaining({
+          isBaseline: true,
+          passCount: 2,
+          tierBreakdown: expect.objectContaining({
+            STRUCTURAL: expect.objectContaining({ passCount: 2 }),
+            RULES: expect.objectContaining({ passCount: 0 })
+          }),
+          totalTrials: 2,
+          versionId: baseline.json().id
+        }),
+        expect.objectContaining({
+          isBaseline: false,
+          passCount: 2,
+          totalTrials: 2,
+          versionId: candidate.json().id
+        })
+      ])
+    });
+    expect(deleted.statusCode).toBe(204);
+    expect(trialsAfterDelete.json()).toEqual([]);
+    expect(reportAfterDelete.statusCode).toBe(404);
+  });
+
   it("matches Reactor prompt template DTO and version lifecycle contracts", async () => {
     const server = buildServer({ logger: false });
 

@@ -150,6 +150,8 @@ routes, 365 Muse routes, and 0 missing Reactor routes.
   trust event, and employee-value summaries from Muse runtime state instead of fixed empty snapshots.
 - Platform Alert compatibility now lists only active/open alerts, records Reactor-style admin audits, returns
   `status: "evaluation complete"` for evaluation, and resolves alerts idempotently with an empty `200` response.
+- Prompt Lab experiment run compatibility now persists trial responses and reports, completes run state, and cascades
+  trial/report cleanup on experiment delete instead of returning static empty trial/report data.
 
 ## Execution Plan
 

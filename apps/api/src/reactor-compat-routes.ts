@@ -71,6 +71,8 @@ interface CompatState {
   readonly platformPricing: CompatCollection;
   readonly metricEvents: CompatCollection;
   readonly promptExperiments: CompatCollection;
+  readonly promptExperimentReports: CompatCollection;
+  readonly promptExperimentTrials: Map<string, JsonObject[]>;
   readonly proactiveChannels: CompatCollection;
   readonly promptTemplates: CompatCollection;
   readonly ragCandidates: CompatCollection;
@@ -238,6 +240,8 @@ function createCompatState(): CompatState {
     platformPricing: new Map(),
     metricEvents: new Map(),
     promptExperiments: new Map(),
+    promptExperimentReports: new Map(),
+    promptExperimentTrials: new Map(),
     proactiveChannels: new Map(),
     promptTemplates: new Map(),
     ragCandidates: new Map(),
@@ -1838,6 +1842,8 @@ function registerPromptAndRagRoutes(server: FastifyInstance, options: ReactorCom
 
     const { id } = request.params as { readonly id: string };
     state.promptExperiments.delete(id);
+    state.promptExperimentReports.delete(id);
+    state.promptExperimentTrials.delete(id);
     return reply.status(204).send();
   });
   server.post("/api/prompt-lab/experiments/:id/run", async (request, reply) => {
@@ -1845,7 +1851,7 @@ function registerPromptAndRagRoutes(server: FastifyInstance, options: ReactorCom
       return reply;
     }
 
-    return runPromptExperiment(request, reply);
+    return runPromptExperiment(request, reply, options);
   });
   server.post("/api/prompt-lab/experiments/:id/cancel", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -1874,14 +1880,16 @@ function registerPromptAndRagRoutes(server: FastifyInstance, options: ReactorCom
       return reply;
     }
 
-    return [];
+    const { id } = request.params as { readonly id: string };
+    return (state.promptExperimentTrials.get(id) ?? []).map(toPromptTrialResponse);
   });
   server.get("/api/prompt-lab/experiments/:id/report", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
-    return notFound(reply, "PROMPT_EXPERIMENT_REPORT_NOT_FOUND");
+    const report = findCompatRecord(state.promptExperimentReports, (request.params as { readonly id: string }).id);
+    return report ? toPromptReportResponse(report) : notFound(reply, "PROMPT_EXPERIMENT_REPORT_NOT_FOUND");
   });
   server.post("/api/prompt-lab/auto-optimize", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -5774,6 +5782,44 @@ function toPromptExperimentStatusResponse(record: JsonObject) {
   };
 }
 
+function toPromptTrialResponse(record: JsonObject) {
+  const evaluations = Array.isArray(record.evaluations)
+    ? record.evaluations.filter(isRecord).map(toJsonObject)
+    : [];
+  const scores = evaluations
+    .map((evaluation) => readNumber(evaluation.score, Number.NaN))
+    .filter((score) => Number.isFinite(score));
+
+  return {
+    durationMs: readNumber(record.durationMs, 0),
+    executedAt: epochMillisOrNull(record.executedAt) ?? Date.now(),
+    id: stringField(record.id, ""),
+    passed: evaluations.every((evaluation) => readBoolean(evaluation.passed, false)),
+    promptVersionId: stringField(record.promptVersionId, ""),
+    promptVersionNumber: readNumber(record.promptVersionNumber, 1),
+    query: stringField(record.query, ""),
+    response: nullableStringResponse(record.response),
+    score: scores.length > 0 ? scores.reduce((total, score) => total + score, 0) / scores.length : 0,
+    success: readBoolean(record.success, false),
+    toolsUsed: stringArrayField(record.toolsUsed, [])
+  };
+}
+
+function toPromptReportResponse(record: JsonObject) {
+  const versionSummaries = Array.isArray(record.versionSummaries)
+    ? record.versionSummaries.filter(isRecord).map(toJsonObject)
+    : [];
+
+  return {
+    experimentId: stringField(record.experimentId, ""),
+    experimentName: stringField(record.experimentName, ""),
+    generatedAt: epochMillisOrNull(record.generatedAt) ?? Date.now(),
+    recommendation: jsonObjectField(record.recommendation),
+    totalTrials: readNumber(record.totalTrials, 0),
+    versionSummaries
+  };
+}
+
 function upsertByParam(
   collection: CompatCollection,
   request: FastifyRequest,
@@ -5789,7 +5835,11 @@ function upsertByParam(
   }, prefix);
 }
 
-function runPromptExperiment(request: FastifyRequest, reply: FastifyReply) {
+async function runPromptExperiment(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  options: ReactorCompatibilityRouteOptions
+) {
   const { id } = request.params as { readonly id: string };
   const existing = findCompatRecord(state.promptExperiments, id);
 
@@ -5806,7 +5856,7 @@ function runPromptExperiment(request: FastifyRequest, reply: FastifyReply) {
   }
 
   const now = nowIso();
-  const updated = createRecord(state.promptExperiments, {
+  const running = createRecord(state.promptExperiments, {
     ...existing,
     completedAt: existing.completedAt ?? null,
     startedAt: now,
@@ -5814,7 +5864,336 @@ function runPromptExperiment(request: FastifyRequest, reply: FastifyReply) {
     updatedAt: now
   }, "prompt_experiment");
 
-  return reply.status(202).send({ experimentId: updated.id, status: "RUNNING" });
+  const trials = await buildPromptExperimentTrials(running, options);
+  state.promptExperimentTrials.set(id, trials);
+  createPromptExperimentReport(running, trials);
+  createRecord(state.promptExperiments, {
+    ...running,
+    completedAt: nowIso(),
+    status: "COMPLETED"
+  }, "prompt_experiment");
+
+  return reply.status(202).send({ experimentId: running.id, status: "RUNNING" });
+}
+
+async function buildPromptExperimentTrials(
+  experiment: JsonObject,
+  options: ReactorCompatibilityRouteOptions
+): Promise<JsonObject[]> {
+  const versionIds = [
+    stringField(experiment.baselineVersionId, ""),
+    ...stringArrayField(experiment.candidateVersionIds, [])
+  ].filter((versionId) => versionId.length > 0);
+  const testQueries = Array.isArray(experiment.testQueries)
+    ? experiment.testQueries.filter(isRecord).map(toJsonObject)
+    : [];
+  const repetitions = Math.max(1, Math.trunc(readNumber(experiment.repetitions, 1)));
+  const trials: JsonObject[] = [];
+
+  for (const [versionIndex, versionId] of versionIds.entries()) {
+    const version = findPromptVersionById(versionId);
+    const versionNumber = version ? readNumber(version.version, versionIndex + 1) : versionIndex + 1;
+    const systemPrompt = version ? stringField(version.content, "") : "";
+
+    for (const testQuery of testQueries) {
+      for (let repetitionIndex = 0; repetitionIndex < repetitions; repetitionIndex += 1) {
+        trials.push(await executePromptTrial({
+          experiment,
+          options,
+          repetitionIndex,
+          systemPrompt,
+          testQuery,
+          versionId,
+          versionNumber
+        }));
+      }
+    }
+  }
+
+  return trials;
+}
+
+interface PromptTrialExecutionInput {
+  readonly experiment: JsonObject;
+  readonly options: ReactorCompatibilityRouteOptions;
+  readonly repetitionIndex: number;
+  readonly systemPrompt: string;
+  readonly testQuery: JsonObject;
+  readonly versionId: string;
+  readonly versionNumber: number;
+}
+
+async function executePromptTrial(input: PromptTrialExecutionInput): Promise<JsonObject> {
+  const query = stringField(input.testQuery.query, "");
+  const startedAt = Date.now();
+  const model = stringField(input.experiment.model, input.options.defaultModel ?? "compat/default");
+
+  try {
+    const result = input.options.agentRuntime
+      ? await input.options.agentRuntime.run({
+          messages: [
+            ...(input.systemPrompt ? [{ content: input.systemPrompt, role: "system" as const }] : []),
+            { content: query, role: "user" as const }
+          ],
+          metadata: {
+            promptExperimentId: stringField(input.experiment.id, ""),
+            promptVersionId: input.versionId,
+            repetitionIndex: input.repetitionIndex
+          },
+          model
+        })
+      : undefined;
+    const response = result?.response.output ?? null;
+    const success = typeof response === "string" && response.trim().length > 0;
+
+    return createPromptTrialRecord({
+      durationMs: Date.now() - startedAt,
+      evaluations: [promptTrialEvaluation(success, success ? "Response completed" : "No response was produced")],
+      query,
+      repetitionIndex: input.repetitionIndex,
+      response,
+      success,
+      toolsUsed: result?.toolsUsed ?? [],
+      versionId: input.versionId,
+      versionNumber: input.versionNumber
+    });
+  } catch (error) {
+    return createPromptTrialRecord({
+      durationMs: Date.now() - startedAt,
+      errorMessage: error instanceof Error ? error.name : "Error",
+      evaluations: [promptTrialEvaluation(false, "Trial execution failed")],
+      query,
+      repetitionIndex: input.repetitionIndex,
+      response: null,
+      success: false,
+      toolsUsed: [],
+      versionId: input.versionId,
+      versionNumber: input.versionNumber
+    });
+  }
+}
+
+interface PromptTrialRecordInput {
+  readonly durationMs: number;
+  readonly errorMessage?: string;
+  readonly evaluations: readonly JsonObject[];
+  readonly query: string;
+  readonly repetitionIndex: number;
+  readonly response: string | null;
+  readonly success: boolean;
+  readonly toolsUsed: readonly string[];
+  readonly versionId: string;
+  readonly versionNumber: number;
+}
+
+function createPromptTrialRecord(input: PromptTrialRecordInput): JsonObject {
+  return {
+    durationMs: input.durationMs,
+    errorMessage: input.errorMessage ?? null,
+    evaluations: [...input.evaluations],
+    executedAt: nowIso(),
+    id: createRunId("prompt_trial"),
+    promptVersionId: input.versionId,
+    promptVersionNumber: input.versionNumber,
+    query: input.query,
+    repetitionIndex: input.repetitionIndex,
+    response: input.response,
+    success: input.success,
+    toolsUsed: [...input.toolsUsed]
+  };
+}
+
+function promptTrialEvaluation(passed: boolean, reason: string): JsonObject {
+  return {
+    evaluatorName: "compatibility",
+    passed,
+    reason,
+    score: passed ? 1 : 0,
+    tier: "STRUCTURAL"
+  };
+}
+
+function findPromptVersionById(versionId: string): JsonObject | undefined {
+  for (const template of state.promptTemplates.values()) {
+    const version = promptVersions(template).find((item) => item.id === versionId);
+
+    if (version) {
+      return version;
+    }
+  }
+
+  return undefined;
+}
+
+function createPromptExperimentReport(experiment: JsonObject, trials: readonly JsonObject[]): CompatRecord {
+  const versionSummaries = promptVersionSummaries(experiment, trials);
+  return createRecord(state.promptExperimentReports, {
+    experimentId: stringField(experiment.id, ""),
+    experimentName: stringField(experiment.name, ""),
+    generatedAt: nowIso(),
+    id: stringField(experiment.id, ""),
+    recommendation: promptRecommendation(versionSummaries),
+    totalTrials: trials.length,
+    versionSummaries
+  }, "prompt_experiment_report");
+}
+
+function promptVersionSummaries(experiment: JsonObject, trials: readonly JsonObject[]): JsonObject[] {
+  const byVersion = new Map<string, JsonObject[]>();
+
+  for (const trial of trials) {
+    const versionId = stringField(trial.promptVersionId, "");
+    byVersion.set(versionId, [...(byVersion.get(versionId) ?? []), trial]);
+  }
+
+  return [...byVersion.entries()].map(([versionId, versionTrials]) =>
+    promptVersionSummary(versionId, versionTrials, versionId === stringField(experiment.baselineVersionId, ""))
+  );
+}
+
+function promptVersionSummary(versionId: string, trials: readonly JsonObject[], isBaseline: boolean): JsonObject {
+  const passCount = trials.filter(promptTrialPassed).length;
+  const scores = trials.flatMap((trial) => promptTrialScores(trial));
+  const durations = trials.map((trial) => readNumber(trial.durationMs, 0));
+
+  return {
+    avgDurationMs: average(durations),
+    avgScore: average(scores),
+    errorRate: trials.length > 0 ? trials.filter((trial) => !readBoolean(trial.success, false)).length / trials.length : 0,
+    isBaseline,
+    passCount,
+    passRate: trials.length > 0 ? passCount / trials.length : 0,
+    tierBreakdown: promptTierBreakdown(trials),
+    toolUsageFrequency: promptToolUsageFrequency(trials),
+    totalTokens: 0,
+    totalTrials: trials.length,
+    versionId,
+    versionNumber: readNumber(trials[0]?.promptVersionNumber, 0)
+  };
+}
+
+function promptRecommendation(summaries: readonly JsonObject[]): JsonObject {
+  const ranked = [...summaries].sort((left, right) =>
+    promptRecommendationScore(right) - promptRecommendationScore(left)
+  );
+  const best = ranked[0];
+  const baseline = summaries.find((summary) => readBoolean(summary.isBaseline, false));
+
+  if (!best) {
+    return {
+      bestVersionId: "",
+      bestVersionNumber: 0,
+      confidence: "LOW",
+      improvements: [],
+      reasoning: "Insufficient data for recommendation",
+      warnings: ["No trial data available"]
+    };
+  }
+
+  return {
+    bestVersionId: stringField(best.versionId, ""),
+    bestVersionNumber: readNumber(best.versionNumber, 0),
+    confidence: promptRecommendationConfidence(best, baseline),
+    improvements: promptRecommendationImprovements(best, baseline),
+    reasoning: promptRecommendationReasoning(best, baseline),
+    warnings: promptRecommendationWarnings(best, baseline)
+  };
+}
+
+function promptRecommendationScore(summary: JsonObject): number {
+  return readNumber(summary.passRate, 0) * 0.6 + readNumber(summary.avgScore, 0) * 0.4;
+}
+
+function promptRecommendationConfidence(best: JsonObject, baseline: JsonObject | undefined): string {
+  if (!baseline) {
+    return "LOW";
+  }
+
+  const delta = readNumber(best.passRate, 0) - readNumber(baseline.passRate, 0);
+  return delta > 0.1 ? "HIGH" : delta > 0.05 ? "MEDIUM" : "LOW";
+}
+
+function promptRecommendationReasoning(best: JsonObject, baseline: JsonObject | undefined): string {
+  if (!baseline) {
+    return `Selected version ${readNumber(best.versionNumber, 0)} (no baseline comparison)`;
+  }
+
+  if (readBoolean(best.isBaseline, false)) {
+    return `Baseline version ${readNumber(best.versionNumber, 0)} remains the best option`;
+  }
+
+  return `Version ${readNumber(best.versionNumber, 0)} outperforms baseline`;
+}
+
+function promptRecommendationImprovements(best: JsonObject, baseline: JsonObject | undefined): string[] {
+  if (!baseline || readBoolean(best.isBaseline, false)) {
+    return [];
+  }
+
+  return readNumber(best.passRate, 0) > readNumber(baseline.passRate, 0)
+    ? ["Pass rate improved"]
+    : [];
+}
+
+function promptRecommendationWarnings(best: JsonObject, baseline: JsonObject | undefined): string[] {
+  if (!baseline) {
+    return ["No baseline for comparison"];
+  }
+
+  return readNumber(best.errorRate, 0) > readNumber(baseline.errorRate, 0)
+    ? ["Error rate increased"]
+    : [];
+}
+
+function promptTierBreakdown(trials: readonly JsonObject[]): JsonObject {
+  const tiers = ["STRUCTURAL", "RULES", "LLM_JUDGE"];
+  const output: Record<string, JsonObject> = {};
+
+  for (const tier of tiers) {
+    const evaluations = trials.flatMap((trial) => promptTrialEvaluations(trial))
+      .filter((evaluation) => stringField(evaluation.tier, "") === tier);
+    const passCount = evaluations.filter((evaluation) => readBoolean(evaluation.passed, false)).length;
+    const scores = evaluations.map((evaluation) => readNumber(evaluation.score, 0));
+    output[tier] = {
+      avgScore: average(scores),
+      failCount: evaluations.length - passCount,
+      passCount,
+      passRate: evaluations.length > 0 ? passCount / evaluations.length : 0
+    };
+  }
+
+  return output;
+}
+
+function promptToolUsageFrequency(trials: readonly JsonObject[]): JsonObject {
+  const output: Record<string, number> = {};
+
+  for (const trial of trials) {
+    for (const tool of stringArrayField(trial.toolsUsed, [])) {
+      output[tool] = (output[tool] ?? 0) + 1;
+    }
+  }
+
+  return output;
+}
+
+function promptTrialPassed(trial: JsonObject): boolean {
+  return promptTrialEvaluations(trial).every((evaluation) => readBoolean(evaluation.passed, false));
+}
+
+function promptTrialScores(trial: JsonObject): number[] {
+  return promptTrialEvaluations(trial).map((evaluation) => readNumber(evaluation.score, 0));
+}
+
+function promptTrialEvaluations(trial: JsonObject): JsonObject[] {
+  return Array.isArray(trial.evaluations)
+    ? trial.evaluations.filter(isRecord).map(toJsonObject)
+    : [];
+}
+
+function average(values: readonly number[]): number {
+  const finite = values.filter((value) => Number.isFinite(value));
+  return finite.length > 0 ? finite.reduce((total, value) => total + value, 0) / finite.length : 0;
 }
 
 function cancelPromptExperiment(request: FastifyRequest, reply: FastifyReply) {
