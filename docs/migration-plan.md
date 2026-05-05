@@ -101,6 +101,8 @@ Continued work should be treated as new hardening or product expansion, not migr
   tool-name lists, and `{ effective, stored, configDefault }` policy envelopes.
 - Scheduler job and execution responses now use Reactor-compatible enum casing, epoch-millis timestamps,
   result previews/failure reasons, and `204 No Content` deletes.
+- Prompt Lab experiment compatibility now returns Reactor-style `201` creates, uppercase statuses, epoch-millis
+  timestamps, status envelopes, `202` run acknowledgements, and `204` deletes.
 
 ## Execution Plan
 

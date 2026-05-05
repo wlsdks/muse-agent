@@ -1509,8 +1509,15 @@ describe("api server", () => {
     expect(outputGuard.json()).toMatchObject({ allowed: false });
     expect(document.statusCode).toBe(201);
     expect(documentSearch.json()).toMatchObject([{ title: "Migration" }]);
-    expect(experiment.statusCode).toBe(200);
-    expect(experimentStatus.json()).toMatchObject({ id: experiment.json().id, status: "draft" });
+    expect(experiment.statusCode).toBe(201);
+    expect(experiment.json()).toMatchObject({ name: "Prompt trial", status: "PENDING" });
+    expect(typeof experiment.json().createdAt).toBe("number");
+    expect(experimentStatus.json()).toMatchObject({
+      completedAt: null,
+      experimentId: experiment.json().id,
+      startedAt: null,
+      status: "PENDING"
+    });
     expect(platformHealth.json()).toMatchObject({ status: "ok" });
     expect(adminSessions.json()).toMatchObject({ items: [{ id: "run-compat" }], total: 1 });
     expect(adminSessionDetail.json()).toMatchObject({
