@@ -84,6 +84,15 @@ importers:
         specifier: ^0.28.17
         version: 0.28.17
 
+  packages/cache:
+    dependencies:
+      '@muse/model':
+        specifier: workspace:*
+        version: link:../model
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
+
   packages/db:
     dependencies:
       '@muse/shared':
