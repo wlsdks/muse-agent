@@ -105,7 +105,8 @@ routes, 365 Muse routes, and 0 missing Reactor routes.
   pretending to be migrated.
 - Slack FAQ admin compatibility now matches Reactor response envelopes for registration lists, stats, events,
   feedback snapshots, and channel deletion.
-- Input Guard audit compatibility now returns the Reactor `{ audits, total }` envelope.
+- Input Guard audit compatibility now records settings/simulate operations and returns the Reactor `{ audits, total }`
+  envelope instead of a static empty response.
 - Agent eval LLM judge compatibility now calls the configured Muse model provider when `llmJudge=true` instead of
   always storing an unavailable judge result.
 - Agent eval replay compatibility now invokes the configured Muse agent runtime for a fresh replay run instead of

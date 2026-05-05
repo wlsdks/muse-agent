@@ -2581,7 +2581,10 @@ describe("api server", () => {
     expect(toolAccuracy.json()).toMatchObject({ accuracy: 1, ok: 1, total: 1 });
     expect(followupStats.json()).toMatchObject({ totalClicks: 0, totalImpressions: 0, windowHours: 24 });
     expect(inputGuardStats.json()).toMatchObject({ blockRate: 0, total: 0 });
-    expect(inputGuardAudits.json()).toEqual({ audits: [], total: 0 });
+    expect(inputGuardAudits.json()).toMatchObject({
+      audits: [{ action: "SIMULATE", category: "input_guard" }],
+      total: 1
+    });
     expect(latencySummary.json()).toMatchObject({ count: 1, p50Ms: 2000, p95Ms: 2000, p99Ms: 2000 });
     expect(latencyTimeseries.json()).toMatchObject([{ avgLatencyMs: 2000, count: 1 }]);
     expect(ragStatus.json()).toMatchObject({ byStatus: { indexed: 2 }, total: 2 });
@@ -2608,8 +2611,11 @@ describe("api server", () => {
     expect(metricIngest.statusCode).toBe(202);
     expect(metricIngest.json()).toMatchObject({ accepted: true, kind: "tool-call" });
     expect(auditsList.json()).toMatchObject({
-      items: [{ action: "TOOL_CALL", category: "metric_event", resourceType: "metric_event" }],
-      total: 1
+      items: expect.arrayContaining([
+        expect.objectContaining({ action: "SIMULATE", category: "input_guard" }),
+        expect.objectContaining({ action: "TOOL_CALL", category: "metric_event", resourceType: "metric_event" })
+      ]),
+      total: 2
     });
     expect(auditsExport.body).toContain("metric_event");
     expect(errorReport.statusCode).toBe(204);

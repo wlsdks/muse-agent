@@ -56,6 +56,7 @@ interface CompatState {
   readonly agentEvalCases: CompatCollection;
   readonly agentEvalResults: CompatCollection;
   readonly agentEvalRunLogs: CompatCollection;
+  readonly adminAudits: CompatCollection;
   readonly documents: CompatCollection;
   readonly feedback: CompatCollection;
   readonly inputGuardRules: CompatCollection;
@@ -222,6 +223,7 @@ function createCompatState(): CompatState {
     agentEvalCases: new Map(),
     agentEvalResults: new Map(),
     agentEvalRunLogs: new Map(),
+    adminAudits: new Map(),
     documents: new Map(),
     feedback: new Map(),
     inputGuardRules: new Map(),
@@ -820,6 +822,12 @@ function registerGuardCompatibilityRoutes(server: FastifyInstance, options: Reac
       updated += 1;
     }
 
+    recordAdminAudit(request, {
+      action: "UPDATE_SETTINGS",
+      category: "input_guard",
+      detail: `keys=${Object.keys(settings).join(",")}`
+    });
+
     return {
       note: "Some changes require a server restart",
       updated
@@ -852,6 +860,12 @@ function registerGuardCompatibilityRoutes(server: FastifyInstance, options: Reac
         value: String(index)
       })
     ));
+
+    recordAdminAudit(request, {
+      action: "PIPELINE_REORDER",
+      category: "input_guard",
+      detail: `order=${order.join(",")}`
+    });
 
     return {
       note: "Changed order applies after server restart",
@@ -912,6 +926,14 @@ function registerGuardCompatibilityRoutes(server: FastifyInstance, options: Reac
       .filter((item) => item.restartRequired && Object.prototype.hasOwnProperty.call(config, item.key))
       .map((item) => item.key);
 
+    recordAdminAudit(request, {
+      action: "STAGE_CONFIG_UPDATE",
+      category: "input_guard",
+      detail: `keys=${Object.keys(config).join(",")} restartRequired=${restartRequired.join(",")}`,
+      resourceId: stageName,
+      resourceType: "guard_stage"
+    });
+
     return {
       note: restartRequired.length === 0
         ? "Changes apply immediately"
@@ -927,7 +949,16 @@ function registerGuardCompatibilityRoutes(server: FastifyInstance, options: Reac
       return reply;
     }
 
-    return { audits: [], total: 0 };
+    const limit = Math.max(1, readQueryInteger(request, "limit", 200));
+    const action = readQueryString(request, "action")?.toUpperCase();
+    const audits = [...state.adminAudits.values()]
+      .filter((row) => stringField(row.category, "") === "input_guard")
+      .filter((row) => !action || stringField(row.action, "").toUpperCase() === action)
+      .sort(compareCreatedAtDesc)
+      .slice(0, Math.min(500, limit))
+      .map(toInputGuardAuditResponse);
+
+    return { audits, total: audits.length };
   });
 
   server.post("/api/admin/input-guard/simulate", async (request, reply) => {
@@ -935,7 +966,19 @@ function registerGuardCompatibilityRoutes(server: FastifyInstance, options: Reac
       return reply;
     }
 
-    return simulateGuard(request.body);
+    const result = simulateGuard(request.body);
+    const input = readBodyString(request.body, "input")
+      ?? readBodyString(request.body, "text")
+      ?? readBodyString(request.body, "message")
+      ?? "";
+
+    recordAdminAudit(request, {
+      action: "SIMULATE",
+      category: "input_guard",
+      detail: `input=${input.slice(0, 100)} passed=${result.passed === true}`
+    });
+
+    return result;
   });
 }
 
@@ -4108,17 +4151,20 @@ function latencyDistribution(runs: readonly AgentRunRecord[]) {
 }
 
 function adminAuditRows(request: FastifyRequest, maxRows = 1000): readonly JsonObject[] {
-  const category = readQueryString(request, "category");
+  const category = readQueryString(request, "category")?.toLowerCase();
   const action = readQueryString(request, "action")?.toUpperCase();
 
-  return [...state.metricEvents.values()]
-    .map(toAdminAuditResponse)
-    .filter((row) => !category || row.category === category)
-    .filter((row) => !action || row.action === action)
+  return [
+    ...[...state.adminAudits.values()].map(toAdminAuditResponse),
+    ...[...state.metricEvents.values()].map(toMetricEventAdminAuditResponse)
+  ]
+    .filter((row) => !category || stringField(row.category, "").toLowerCase() === category)
+    .filter((row) => !action || stringField(row.action, "").toUpperCase() === action)
+    .sort((left, right) => readNumber(right.createdAt, 0) - readNumber(left.createdAt, 0))
     .slice(0, Math.max(1, maxRows));
 }
 
-function toAdminAuditResponse(record: JsonObject): JsonObject {
+function toMetricEventAdminAuditResponse(record: JsonObject): JsonObject {
   const kind = stringField(record.kind, "ingest");
   return {
     action: kind.toUpperCase().replace(/-/gu, "_"),
@@ -4130,6 +4176,47 @@ function toAdminAuditResponse(record: JsonObject): JsonObject {
     resourceId: stringField(record.id, ""),
     resourceType: "metric_event"
   };
+}
+
+function recordAdminAudit(request: FastifyRequest, input: JsonObject): CompatRecord {
+  return createRecord(state.adminAudits, {
+    action: stringField(input.action, "UPDATE").toUpperCase(),
+    actor: readAuthUserId(request) ?? "anonymous",
+    category: stringField(input.category, "admin"),
+    detail: nullableStringResponse(input.detail),
+    resourceId: nullableStringResponse(input.resourceId),
+    resourceType: nullableStringResponse(input.resourceType)
+  }, "admin_audit");
+}
+
+function toAdminAuditResponse(record: JsonObject): JsonObject {
+  return {
+    action: stringField(record.action, "UPDATE").toUpperCase(),
+    actor: stringField(record.actor, "anonymous"),
+    category: stringField(record.category, "admin"),
+    createdAt: epochMillisOrNull(record.createdAt) ?? Date.now(),
+    detail: nullableStringResponse(record.detail),
+    id: stringField(record.id, ""),
+    resourceId: nullableStringResponse(record.resourceId),
+    resourceType: nullableStringResponse(record.resourceType)
+  };
+}
+
+function toInputGuardAuditResponse(record: JsonObject): JsonObject {
+  return {
+    action: stringField(record.action, "UPDATE").toUpperCase(),
+    actor: stringField(record.actor, "anonymous"),
+    category: "input_guard",
+    detail: nullableStringResponse(record.detail),
+    id: stringField(record.id, ""),
+    resourceId: nullableStringResponse(record.resourceId),
+    resourceType: nullableStringResponse(record.resourceType),
+    timestamp: stringField(record.createdAt, nowIso())
+  };
+}
+
+function compareCreatedAtDesc(left: JsonObject, right: JsonObject): number {
+  return (epochMillisOrNull(right.createdAt) ?? 0) - (epochMillisOrNull(left.createdAt) ?? 0);
 }
 
 function latencySummary(runs: readonly AgentRunRecord[], days: number): JsonObject {
