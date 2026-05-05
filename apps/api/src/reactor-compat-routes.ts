@@ -5339,23 +5339,38 @@ function validateRegexPattern(pattern: string): string | undefined {
 
 function updateToolPolicy(bodyValue: unknown): JsonObject {
   const body = toBody(bodyValue);
-  const existing = state.toolPolicy;
+  const timestamp = nowIso();
   return {
-    allowWriteToolNamesByChannel: stringArrayMapField(
-      body.allowWriteToolNamesByChannel,
-      stringArrayMapField(existing.allowWriteToolNamesByChannel, {})
-    ),
-    allowWriteToolNamesInDenyChannels: stringArrayField(
-      body.allowWriteToolNamesInDenyChannels,
-      stringArrayField(existing.allowWriteToolNamesInDenyChannels, [])
-    ),
-    createdAt: stringField(existing.createdAt, nowIso()),
-    denyWriteChannels: stringArrayField(body.denyWriteChannels, stringArrayField(existing.denyWriteChannels, [])),
-    denyWriteMessage: stringField(body.denyWriteMessage, stringField(existing.denyWriteMessage, "")),
-    enabled: readBoolean(body.enabled, readBoolean(existing.enabled, true)),
-    updatedAt: nowIso(),
-    writeToolNames: stringArrayField(body.writeToolNames, stringArrayField(existing.writeToolNames, []))
+    allowWriteToolNamesByChannel: toolPolicyChannelMap(body.allowWriteToolNamesByChannel),
+    allowWriteToolNamesInDenyChannels: toolPolicyStringSet(body.allowWriteToolNamesInDenyChannels),
+    createdAt: timestamp,
+    denyWriteChannels: toolPolicyStringSet(body.denyWriteChannels, true),
+    denyWriteMessage: stringField(
+      body.denyWriteMessage,
+      "Error: This tool is not allowed in this channel"
+    ).trim(),
+    enabled: readBoolean(body.enabled, false),
+    updatedAt: timestamp,
+    writeToolNames: toolPolicyStringSet(body.writeToolNames)
   };
+}
+
+function toolPolicyStringSet(value: unknown, lowercase = false): string[] {
+  return readStringSet(value)
+    .map((item) => lowercase ? item.trim().toLowerCase() : item.trim())
+    .filter((item, index, items) => item.length > 0 && items.indexOf(item) === index);
+}
+
+function toolPolicyChannelMap(value: unknown): Record<string, string[]> {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, item]) => [key.trim().toLowerCase(), toolPolicyStringSet(item)] as const)
+      .filter(([key, item]) => key.length > 0 && item.length > 0)
+  );
 }
 
 function defaultToolPolicy(): JsonObject {

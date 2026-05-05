@@ -3281,6 +3281,12 @@ describe("api server", () => {
       method: "GET",
       url: "/api/tool-policy"
     });
+    const resetByOmission = await server.inject({
+      headers,
+      method: "PUT",
+      payload: { enabled: true },
+      url: "/api/tool-policy"
+    });
     const deleted = await server.inject({
       headers,
       method: "DELETE",
@@ -3307,6 +3313,14 @@ describe("api server", () => {
     expect(afterUpdate.json()).toMatchObject({
       effective: { writeToolNames: ["write_file"] },
       stored: { writeToolNames: ["write_file"] }
+    });
+    expect(resetByOmission.json()).toMatchObject({
+      allowWriteToolNamesByChannel: {},
+      allowWriteToolNamesInDenyChannels: [],
+      denyWriteChannels: [],
+      denyWriteMessage: "Error: This tool is not allowed in this channel",
+      enabled: true,
+      writeToolNames: []
     });
     expect(deleted.statusCode).toBe(204);
     expect(afterDelete.json()).toMatchObject({
