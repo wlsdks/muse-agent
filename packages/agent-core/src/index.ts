@@ -81,6 +81,8 @@ export interface GuardStage {
 export interface HookStage {
   readonly id: string;
   beforeStart?(context: AgentRunContext): Awaitable<void>;
+  beforeTool?(context: AgentRunContext, toolCall: ModelToolCall): Awaitable<void>;
+  afterTool?(context: AgentRunContext, toolCall: ModelToolCall, result: ToolExecutionResult): Awaitable<void>;
   afterComplete?(context: AgentRunContext, response: ModelResponse): Awaitable<void>;
   onError?(context: AgentRunContext, error: unknown): Awaitable<void>;
 }
@@ -905,8 +907,12 @@ export class AgentRuntime {
     context: AgentRunContext,
     toolCall: ModelToolCall
   ): Promise<ExecutedToolResult> {
+    await this.invokeHooks("beforeTool", context, toolCall);
+
     if (!this.toolExecutor) {
-      return blockedToolResult(toolCall, "Error: tool executor is not configured");
+      const executed = blockedToolResult(toolCall, "Error: tool executor is not configured");
+      await this.invokeHooks("afterTool", context, executed);
+      return executed;
     }
 
     const result = await this.toolExecutor.execute({
@@ -920,6 +926,7 @@ export class AgentRuntime {
       name: toolCall.name
     });
 
+    await this.invokeHooks("afterTool", context, { result, toolCall });
     return { result, toolCall };
   }
 
@@ -1113,6 +1120,12 @@ export class AgentRuntime {
   }
 
   private async invokeHooks(name: "beforeStart", context: AgentRunContext): Promise<void>;
+  private async invokeHooks(name: "beforeTool", context: AgentRunContext, toolCall: ModelToolCall): Promise<void>;
+  private async invokeHooks(
+    name: "afterTool",
+    context: AgentRunContext,
+    value: { readonly result: ToolExecutionResult; readonly toolCall: ModelToolCall }
+  ): Promise<void>;
   private async invokeHooks(
     name: "afterComplete",
     context: AgentRunContext,
@@ -1365,11 +1378,22 @@ function hookInvocation(
   value: unknown
 ): (() => Awaitable<void>) | undefined {
   const beforeStart = hook.beforeStart;
+  const beforeTool = hook.beforeTool;
+  const afterTool = hook.afterTool;
   const afterComplete = hook.afterComplete;
   const onError = hook.onError;
 
   if (name === "beforeStart" && beforeStart) {
     return () => beforeStart(context);
+  }
+
+  if (name === "beforeTool" && beforeTool) {
+    return () => beforeTool(context, value as ModelToolCall);
+  }
+
+  if (name === "afterTool" && afterTool) {
+    const toolValue = value as { readonly result: ToolExecutionResult; readonly toolCall: ModelToolCall };
+    return () => afterTool(context, toolValue.toolCall, toolValue.result);
   }
 
   if (name === "afterComplete" && afterComplete) {

@@ -86,7 +86,7 @@ export interface InMemoryCheckpointStoreOptions {
   readonly idFactory?: () => string;
 }
 
-export type HookLifecycle = "beforeStart" | "afterComplete" | "onError";
+export type HookLifecycle = "beforeStart" | "beforeTool" | "afterTool" | "afterComplete" | "onError";
 export type HookTraceStatus = "completed" | "failed";
 
 export interface HookTrace {

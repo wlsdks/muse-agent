@@ -425,6 +425,92 @@ describe("AgentRuntime", () => {
     ]);
   });
 
+  it("invokes tool lifecycle hooks without blocking tool execution", async () => {
+    const beforeTool = vi.fn(() => {
+      throw new Error("before tool observer failed");
+    });
+    const afterTool = vi.fn(() => {
+      throw new Error("after tool observer failed");
+    });
+    const executeTool = vi.fn(() => ({ ok: true }));
+    const hookTraceStore = new InMemoryHookTraceStore({
+      idFactory: sequentialIds("hook-trace"),
+      now: () => new Date("2026-01-01T00:00:00.000Z")
+    });
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Reads a workspace status.",
+          inputSchema: { type: "object" },
+          name: "read_status",
+          risk: "read"
+        },
+        execute: executeTool
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      hooks: [
+        {
+          afterTool,
+          beforeTool,
+          id: "tool-observer"
+        }
+      ],
+      hookTraceStore,
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        {
+          id: "tool",
+          model: "test-model",
+          output: "Checking status.",
+          toolCalls: [{ arguments: { key: "status" }, id: "tool-1", name: "read_status" }]
+        },
+        {
+          id: "final",
+          model: "test-model",
+          output: "Status is healthy."
+        }
+      ]),
+      toolRegistry
+    });
+
+    await expect(
+      runtime.run({
+        messages: [{ content: "Check status", role: "user" }],
+        model: "provider/model",
+        runId: "run-tool-hooks"
+      })
+    ).resolves.toMatchObject({
+      response: { output: "Status is healthy." },
+      toolsUsed: ["read_status"]
+    });
+
+    expect(executeTool).toHaveBeenCalledOnce();
+    expect(beforeTool).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "run-tool-hooks" }),
+      expect.objectContaining({ id: "tool-1", name: "read_status" })
+    );
+    expect(afterTool).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "run-tool-hooks" }),
+      expect.objectContaining({ id: "tool-1", name: "read_status" }),
+      expect.objectContaining({ name: "read_status", status: "completed" })
+    );
+    expect(hookTraceStore.listByRunId("run-tool-hooks")).toEqual([
+      expect.objectContaining({
+        error: "before tool observer failed",
+        hookId: "tool-observer",
+        lifecycle: "beforeTool",
+        status: "failed"
+      }),
+      expect.objectContaining({
+        error: "after tool observer failed",
+        hookId: "tool-observer",
+        lifecycle: "afterTool",
+        status: "failed"
+      })
+    ]);
+  });
+
   it("blocks prompt injection through a default input guard", async () => {
     const runtime = createAgentRuntime({
       guards: [createInjectionInputGuard()],

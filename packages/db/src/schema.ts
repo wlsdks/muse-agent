@@ -148,7 +148,7 @@ export interface HookTraceTable {
   readonly id: string;
   readonly run_id: string;
   readonly hook_id: string;
-  readonly lifecycle: "beforeStart" | "afterComplete" | "onError";
+  readonly lifecycle: "beforeStart" | "beforeTool" | "afterTool" | "afterComplete" | "onError";
   readonly status: "completed" | "failed";
   readonly duration_ms: number;
   readonly error: string | null;

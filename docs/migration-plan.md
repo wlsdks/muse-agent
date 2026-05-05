@@ -36,7 +36,7 @@ Current Muse baseline:
 | `core` | `apps/api`, `packages/autoconfigure` | Fastify bootstrap and runtime assembly replace Spring Boot core |
 | `eval` | `packages/eval`, `apps/api` | Eval case model, judges, runner, summaries, and admin API exist |
 | `guard` | `packages/policy`, `packages/agent-core` | Input/output guards and fail-close runtime integration exist |
-| `hook` | `packages/agent-core`, `packages/runtime-state` | Registry callbacks and hook trace stores exist |
+| `hook` | `packages/agent-core`, `packages/runtime-state` | Registry callbacks, tool lifecycle hooks, and hook trace stores exist |
 | `hook-integrations` | `packages/integrations` | Lifecycle webhook dispatch and HMAC signing primitives exist |
 | `intent` | `packages/agent-specs` | Agent specs, resolver, registry, and Kysely mapping exist |
 | `memory` | `packages/memory`, `packages/runtime-state` | Context, checkpoints, run history, and stores exist |
@@ -63,7 +63,7 @@ multiple source modules.
 | --- | --- | --- |
 | Context handling | `packages/memory`, `packages/agent-core` | Context trimming and assistant/tool message-pair handling exist |
 | Response filtering | `packages/policy`, `packages/agent-core` | Output guards, verified-source rendering, source/structured filters, markdown/sanitized-text cleanup, greeting/lure stripping, fabrication refusal, policy-prior warning, max-length truncation, Slack ID masking, internal brand masking, tool-result quality audit, response-count injection/consistency, zero-result overclaim cleanup, and release-risk data-gap cleanup exist |
-| Hook lifecycle | `packages/agent-core`, `packages/runtime-state`, `packages/integrations` | Hook callbacks, trace persistence, and webhook signing exist |
+| Hook lifecycle | `packages/agent-core`, `packages/runtime-state`, `packages/integrations` | Agent/tool hook callbacks, trace persistence, and webhook signing exist |
 | Multi-agent orchestration | `packages/multi-agent` | Supervisor, worker selection, fallback, and handoff trace primitives exist |
 
 ## Remaining Deep-Hardening Areas
@@ -75,8 +75,7 @@ fully done:
 1. Response filters: compare Reactor's verified-source extractor edge cases against Muse extraction
    (nested URL fields, synthesized source directories, and source relevance filtering still need broader parity tests).
 2. Slack behavior: verify Events API callbacks, slash-command fallback behavior, and response URL delivery together.
-3. Hook/context behavior: verify fail-open hook execution, trace persistence, context trimming, and message-pair
-   integrity together under runtime smoke tests.
+3. Hook/context behavior: verify context trimming and message-pair integrity together under runtime smoke tests.
 
 Latest route parity check: `REACTOR_SOURCE_DIR=<local-reactor-path> pnpm verify:reactor-routes` reports 255 Reactor
 routes, 365 Muse routes, and 0 missing Reactor routes.
@@ -193,6 +192,8 @@ routes, 365 Muse routes, and 0 missing Reactor routes.
 - Slack response formatting now converts LLM Markdown to Slack mrkdwn for both immediate slash-command acknowledgements
   and delayed response_url payloads, including headings, bold, links, pipe tables, raw Slack user IDs, decorative emoji,
   duplicated paragraphs, and fenced-code preservation.
+- Hook lifecycle compatibility now invokes Reactor-style tool lifecycle extension points around tool execution
+  (`beforeTool` and `afterTool`) and records completed/failed traces without blocking the ReAct loop.
 
 ## Execution Plan
 
