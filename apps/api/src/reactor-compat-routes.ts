@@ -1829,10 +1829,11 @@ function registerPromptAndRagRoutes(server: FastifyInstance, options: ReactorCom
       return reply.status(400).send(parsed.error);
     }
 
+    const timestamp = nowIso();
     state.ragIngestionPolicy = {
-      ...state.ragIngestionPolicy,
       ...parsed.value,
-      updatedAt: nowIso()
+      createdAt: timestamp,
+      updatedAt: timestamp
     };
     state.ragIngestionPolicyStored = true;
     return toRagIngestionPolicyResponse(state.ragIngestionPolicy);

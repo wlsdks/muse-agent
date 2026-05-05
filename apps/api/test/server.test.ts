@@ -3500,6 +3500,12 @@ describe("api server", () => {
       url: "/api/rag-ingestion/policy"
     });
     const ragAfterUpdate = await server.inject({ headers, method: "GET", url: "/api/rag-ingestion/policy" });
+    const ragResetByOmission = await server.inject({
+      headers,
+      method: "PUT",
+      payload: { enabled: true },
+      url: "/api/rag-ingestion/policy"
+    });
     const runtimeDelete = await server.inject({
       headers,
       method: "DELETE",
@@ -3612,6 +3618,14 @@ describe("api server", () => {
     expect(ragUpdate.json()).toMatchObject({ allowedChannels: ["slack"], blockedPatterns: ["secret"], enabled: true });
     expect(typeof ragUpdate.json().createdAt).toBe("number");
     expect(ragAfterUpdate.json()).toMatchObject({ stored: { enabled: true } });
+    expect(ragResetByOmission.json()).toMatchObject({
+      allowedChannels: [],
+      blockedPatterns: [],
+      enabled: true,
+      minQueryChars: 10,
+      minResponseChars: 20,
+      requireReview: true
+    });
     expect(runtimeDelete.statusCode).toBe(204);
     expect(ragDelete.statusCode).toBe(204);
     expect(ragAfterDelete.json()).toMatchObject({
