@@ -60,6 +60,18 @@ importers:
         specifier: workspace:*
         version: link:../shared
 
+  packages/agent-specs:
+    dependencies:
+      '@muse/db':
+        specifier: workspace:*
+        version: link:../db
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
+      kysely:
+        specifier: ^0.28.17
+        version: 0.28.17
+
   packages/db:
     dependencies:
       '@muse/shared':
