@@ -1544,6 +1544,106 @@ export function createSourceBlockResponseFilter(): ResponseFilterStage {
   };
 }
 
+export function createMaxLengthResponseFilter(options: { readonly maxLength?: number } = {}): ResponseFilterStage {
+  const maxLength = Math.max(0, Math.floor(options.maxLength ?? 0));
+
+  return {
+    apply: (response) => {
+      if (maxLength <= 0 || response.output.length <= maxLength) {
+        return response;
+      }
+
+      return {
+        ...response,
+        output: `${response.output.slice(0, maxLength)}\n\n[Response truncated]`,
+        raw: {
+          ...(isRecord(response.raw) ? response.raw : {}),
+          museResponseFilter: {
+            id: "max-length-response-filter",
+            maxLength
+          }
+        }
+      };
+    },
+    id: "max-length-response-filter"
+  };
+}
+
+export function createSlackUserIdMaskResponseFilter(): ResponseFilterStage {
+  const rawSlackUserIdPattern = /(?<![@\w])`?(U[A-Z0-9]{8,})`?(?![A-Za-z0-9])/g;
+
+  return {
+    apply: (response) => {
+      if (response.output.trim().length === 0) {
+        return response;
+      }
+
+      const output = response.output.replace(rawSlackUserIdPattern, "<@$1>");
+
+      if (output === response.output) {
+        return response;
+      }
+
+      return {
+        ...response,
+        output,
+        raw: {
+          ...(isRecord(response.raw) ? response.raw : {}),
+          museResponseFilter: {
+            id: "slack-user-id-mask-response-filter"
+          }
+        }
+      };
+    },
+    id: "slack-user-id-mask-response-filter"
+  };
+}
+
+export function createInternalBrandMaskResponseFilter(): ResponseFilterStage {
+  const patterns: readonly (readonly [RegExp, string])[] = [
+    [/\*\*?Reactor\s*\(\s*Reactor\s*\)\*\*?/g, "*Reactor*"],
+    [/Reactor\s*\(\s*Reactor\s*\)/g, "Reactor"],
+    [/^\s*[*\-•]\s*\*{0,2}(?:언어|프레임워크|Language|Framework)[\s:]*\*{0,2}[^\n]*Kotlin[^\n]*$/gm, ""],
+    [/^\s*[*\-•]\s*\*{0,2}(?:언어|프레임워크|Language|Framework)[\s:]*\*{0,2}[^\n]*(?:Spring)[^\n]*$/gm, ""],
+    [/\*{0,2}(?:Kotlin\s*\/\s*Spring\s*Boot|Kotlin과\s*Spring\s*Boot)(?:\s*기반(?:의|으로)?)?\*{0,2}/g, ""],
+    [/\*{0,2}(?:Spring\s*AI|Spring\s*Boot)(?:\s*기반(?:의|으로)?)?\*{0,2}\s*/g, ""],
+    [/,\s*,/g, ","],
+    [/\s+\./g, "."]
+  ];
+
+  return {
+    apply: (response) => {
+      if (response.output.trim().length === 0) {
+        return response;
+      }
+
+      let output = response.output;
+
+      for (const [pattern, replacement] of patterns) {
+        output = output.replace(pattern, replacement);
+      }
+
+      output = output.replace(/ {2,}/g, " ").replace(/\n{3,}/g, "\n\n").trimEnd();
+
+      if (output === response.output) {
+        return response;
+      }
+
+      return {
+        ...response,
+        output,
+        raw: {
+          ...(isRecord(response.raw) ? response.raw : {}),
+          museResponseFilter: {
+            id: "internal-brand-mask-response-filter"
+          }
+        }
+      };
+    },
+    id: "internal-brand-mask-response-filter"
+  };
+}
+
 export function createStructuredOutputResponseFilter(options: {
   readonly format?: StructuredOutputFormat;
   readonly metadataKey?: string;

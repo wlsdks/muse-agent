@@ -1,6 +1,6 @@
 # Muse Migration Plan
 
-Source baseline: Reactor has 28 Gradle modules under `/modules` plus the root `app` bootstrap project.
+Source baseline: Reactor has 31 Gradle modules under `/modules` plus the root `app` bootstrap project.
 
 Current Muse baseline:
 - Packages: 23
@@ -12,12 +12,12 @@ Current Muse baseline:
 
 | Bucket | Count | Meaning |
 | --- | ---: | --- |
-| Reactor source modules with Muse landing zones | 28 | Every `modules/*` source module has a package or API target |
-| Reactor included projects with Muse landing zones | 29 | `app` plus all 28 source modules are mapped |
-| Cross-cutting compatibility areas | 3 | Context, response filtering, and multi-agent behavior are tracked as capabilities, not Reactor source modules |
+| Reactor source modules with Muse landing zones | 31 | Every `modules/*` source module has a package or API target |
+| Reactor included projects with Muse landing zones | 32 | `app` plus all 31 source modules are mapped |
+| Cross-cutting compatibility areas | 4 | Context, response filtering, hooks, and multi-agent behavior are tracked as capabilities, not Reactor source modules |
 | HTTP route parity | 255 / 255 | Every Reactor controller route under `app` and `modules` is registered in Muse |
-| Functionally exercised source modules | 28 | Core behavior exists and is covered by package/API tests |
-| Deep-hardening areas still open | 0 | No known source module remains without functional and tested coverage |
+| Functionally exercised source modules | 31 | Core behavior exists and is covered by package/API tests |
+| Deep-hardening areas still open | 3 | Remaining work is capability-level parity, not missing module landing zones |
 | Remaining unmapped modules | 0 | No source module is without a target |
 
 ## Completed Migration Areas
@@ -62,13 +62,20 @@ multiple source modules.
 | Area | Muse target | Current status |
 | --- | --- | --- |
 | Context handling | `packages/memory`, `packages/agent-core` | Context trimming and assistant/tool message-pair handling exist |
-| Response filtering | `packages/policy`, `packages/agent-core` | Output guards, source filters, and structured filters exist |
+| Response filtering | `packages/policy`, `packages/agent-core` | Output guards, source filters, structured filters, max-length truncation, Slack ID masking, and internal brand masking exist |
+| Hook lifecycle | `packages/agent-core`, `packages/runtime-state`, `packages/integrations` | Hook callbacks, trace persistence, and webhook signing exist |
 | Multi-agent orchestration | `packages/multi-agent` | Supervisor, worker selection, fallback, and handoff trace primitives exist |
 
 ## Remaining Deep-Hardening Areas
 
 No known source module remains unmapped.
-Continued work should be treated as new hardening or product expansion, not migration catch-up.
+The remaining checks are cross-module behavior parity checks that should be closed before calling the migration
+fully done:
+
+1. Response filters: compare Reactor's full response filter list against Muse filters one by one.
+2. Slack behavior: verify Slack-only formatting, event handling, response URL, and API fallback behavior together.
+3. Hook/context behavior: verify fail-open hook execution, trace persistence, context trimming, and message-pair
+   integrity together under runtime smoke tests.
 
 Latest route parity check: `REACTOR_SOURCE_DIR=<local-reactor-path> pnpm verify:reactor-routes` reports 255 Reactor
 routes, 365 Muse routes, and 0 missing Reactor routes.
@@ -170,6 +177,8 @@ routes, 365 Muse routes, and 0 missing Reactor routes.
   response shape instead of Muse-specific `{ code, message }` envelopes where Reactor uses `ErrorResponse`.
 - `/api/sessions` now denies ownerless sessions by default, supports `format=md` exports, and emits Reactor-style
   unauthorized/session-forbidden messages.
+- Response filter compatibility now includes Reactor-style max-length truncation, raw Slack user ID conversion to
+  mention form, and internal implementation brand masking in the default runtime assembly.
 
 ## Execution Plan
 

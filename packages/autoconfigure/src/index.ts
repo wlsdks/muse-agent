@@ -1,6 +1,9 @@
 import {
   createAgentRuntime,
+  createInternalBrandMaskResponseFilter,
+  createMaxLengthResponseFilter,
   createSourceBlockResponseFilter,
+  createSlackUserIdMaskResponseFilter,
   createStructuredOutputResponseFilter,
   type AgentRuntime
 } from "@muse/agent-core";
@@ -450,7 +453,16 @@ function createScheduledAgentExecutor(
 }
 
 function createResponseFilters(env: MuseEnvironment) {
+  const maxLength = parseInteger(env.MUSE_RESPONSE_MAX_LENGTH, 0);
+
   return [
+    ...(maxLength > 0 ? [createMaxLengthResponseFilter({ maxLength })] : []),
+    ...(parseBoolean(env.MUSE_RESPONSE_SLACK_USER_ID_MASK_ENABLED, true)
+      ? [createSlackUserIdMaskResponseFilter()]
+      : []),
+    ...(parseBoolean(env.MUSE_RESPONSE_INTERNAL_BRAND_MASK_ENABLED, true)
+      ? [createInternalBrandMaskResponseFilter()]
+      : []),
     ...(parseBoolean(env.MUSE_RESPONSE_SOURCE_FILTER_ENABLED, true)
       ? [createSourceBlockResponseFilter()]
       : []),

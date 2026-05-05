@@ -8,10 +8,13 @@ import { InMemoryAgentRunHistoryStore, InMemoryHookTraceStore } from "@muse/runt
 import { ToolRegistry } from "@muse/tools";
 import {
   createAgentRuntime,
+  createInternalBrandMaskResponseFilter,
   createInjectionInputGuard,
+  createMaxLengthResponseFilter,
   createPiiInputGuard,
   createPiiMaskingOutputGuard,
   createSourceBlockResponseFilter,
+  createSlackUserIdMaskResponseFilter,
   createStructuredOutputResponseFilter,
   createSystemPromptLeakageOutputGuard,
   GuardBlockedError,
@@ -577,6 +580,61 @@ describe("AgentRuntime", () => {
     });
 
     expect(result.response.output).toBe("{\n  \"ok\": true\n}");
+  });
+
+  it("masks raw Slack user IDs in model responses", async () => {
+    const runtime = createAgentRuntime({
+      modelProvider: createProvider({
+        output: "담당자는 `U0891A8UWAV`이고 이미 멘션된 <@U012345678> 값은 유지합니다."
+      }),
+      responseFilters: [createSlackUserIdMaskResponseFilter()]
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "담당자 알려줘", role: "user" }],
+      model: "provider/model"
+    });
+
+    expect(result.response.output).toBe("담당자는 <@U0891A8UWAV>이고 이미 멘션된 <@U012345678> 값은 유지합니다.");
+  });
+
+  it("masks internal implementation brands in model responses", async () => {
+    const runtime = createAgentRuntime({
+      modelProvider: createProvider({
+        output: [
+          "저는 **Reactor(Reactor)** 프레임워크입니다.",
+          "- 언어: Kotlin",
+          "- 프레임워크: Spring Boot",
+          "Spring AI 기반으로 동작합니다."
+        ].join("\n")
+      }),
+      responseFilters: [createInternalBrandMaskResponseFilter()]
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "기술 스택 알려줘", role: "user" }],
+      model: "provider/model"
+    });
+
+    expect(result.response.output).toBe("저는 *Reactor* 프레임워크입니다.\n\n동작합니다.");
+    expect(result.response.output).not.toContain("Kotlin");
+    expect(result.response.output).not.toContain("Spring");
+  });
+
+  it("truncates long model responses when a max length is configured", async () => {
+    const runtime = createAgentRuntime({
+      modelProvider: createProvider({
+        output: "abcdef"
+      }),
+      responseFilters: [createMaxLengthResponseFilter({ maxLength: 3 })]
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "짧게", role: "user" }],
+      model: "provider/model"
+    });
+
+    expect(result.response.output).toBe("abc\n\n[Response truncated]");
   });
 
   it("records spans and metrics around a successful run", async () => {
