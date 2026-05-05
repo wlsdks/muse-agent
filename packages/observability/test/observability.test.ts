@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   InMemoryAgentMetrics,
+  InMemoryFollowupSuggestionStore,
   InMemoryMuseTracer,
   createNoOpAgentMetrics,
   createNoOpMuseTracer
@@ -35,6 +36,46 @@ describe("Muse tracer", () => {
       name: "muse.agent.run"
     });
     expect(tracer.recordedSpans()[0]?.endedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe("follow-up suggestion stats", () => {
+  it("aggregates impressions and clicks by category inside the requested window", () => {
+    const now = new Date("2026-05-06T00:00:00.000Z");
+    const store = new InMemoryFollowupSuggestionStore({ now: () => now });
+
+    store.recordImpression({
+      category: "operations",
+      channelId: "channel-1",
+      suggestionId: "suggestion-1",
+      userId: "user-1"
+    });
+    store.recordImpression({
+      category: "operations",
+      channelId: "channel-1",
+      suggestionId: "suggestion-2",
+      userId: "user-1"
+    });
+    store.recordClick({
+      category: "operations",
+      channelId: "channel-1",
+      suggestionId: "suggestion-1",
+      userId: "user-1"
+    });
+    store.recordImpression({
+      category: "stale",
+      channelId: "channel-1",
+      occurredAt: new Date("2026-05-04T23:59:59.000Z"),
+      suggestionId: "suggestion-old",
+      userId: "user-1"
+    });
+
+    expect(store.aggregateStats(24 * 60 * 60 * 1000)).toEqual({
+      byCategory: [{ category: "operations", clicks: 1, ctr: 0.5, impressions: 2 }],
+      ctr: 0.5,
+      totalClicks: 1,
+      totalImpressions: 2
+    });
   });
 });
 

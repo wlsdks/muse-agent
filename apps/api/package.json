@@ -21,6 +21,7 @@
     "@muse/memory": "workspace:*",
     "@muse/mcp": "workspace:*",
     "@muse/model": "workspace:*",
+    "@muse/observability": "workspace:*",
     "@muse/promptlab": "workspace:*",
     "@muse/runtime-settings": "workspace:*",
     "@muse/runtime-state": "workspace:*",

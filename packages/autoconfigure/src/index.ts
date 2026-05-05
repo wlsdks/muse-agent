@@ -36,7 +36,7 @@ import {
 } from "@muse/mcp";
 import { InMemoryTaskMemoryStore } from "@muse/memory";
 import { OpenAICompatibleProvider, type ModelProvider } from "@muse/model";
-import { InMemoryAgentMetrics, InMemoryMuseTracer } from "@muse/observability";
+import { InMemoryAgentMetrics, InMemoryFollowupSuggestionStore, InMemoryMuseTracer } from "@muse/observability";
 import { CircuitBreakerRegistry } from "@muse/resilience";
 import {
   InMemoryRuntimeSettingsStore,
@@ -105,6 +105,7 @@ export interface MuseRuntimeAssembly {
   readonly modelProvider?: ModelProvider;
   readonly taskMemoryStore: InMemoryTaskMemoryStore;
   readonly observability: {
+    readonly followupSuggestionStore: InMemoryFollowupSuggestionStore;
     readonly metrics: InMemoryAgentMetrics;
     readonly tracer: InMemoryMuseTracer;
   };
@@ -151,6 +152,10 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     ttlMs: parseInteger(env.MUSE_CACHE_TTL_MS, 3_600_000)
   });
   const agentMetrics = new InMemoryAgentMetrics();
+  const followupSuggestionStore = new InMemoryFollowupSuggestionStore({
+    maxEvents: parseInteger(env.MUSE_FOLLOWUP_SUGGESTION_MAX_EVENTS, 50_000),
+    retentionMs: parseInteger(env.MUSE_FOLLOWUP_SUGGESTION_RETENTION_MS, 72 * 60 * 60 * 1000)
+  });
   const tracer = new InMemoryMuseTracer();
   const circuitBreakerRegistry = new CircuitBreakerRegistry({
     failureThreshold: parseInteger(env.MUSE_CIRCUIT_BREAKER_FAILURE_THRESHOLD, 5),
@@ -253,6 +258,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     modelProvider,
     taskMemoryStore,
     observability: {
+      followupSuggestionStore,
       metrics: agentMetrics,
       tracer
     },
@@ -351,6 +357,7 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     authService: assembly.authService,
     pendingApprovalStore: assembly.approvalStore,
     defaultModel: assembly.defaultModel,
+    followupSuggestionStore: assembly.observability.followupSuggestionStore,
     historyStore: assembly.historyStore,
     mcp: {
       manager: assembly.mcp.manager,

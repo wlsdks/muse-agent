@@ -11,6 +11,7 @@ import {
 import type { McpServer } from "@muse/mcp";
 import type { TaskMemoryMaintenance } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
+import type { FollowupSuggestionStore } from "@muse/observability";
 import type { RuntimeSetting, RuntimeSettingsService, RuntimeSettingType } from "@muse/runtime-settings";
 import type {
   AgentRunHistoryStore,
@@ -34,6 +35,7 @@ export interface ReactorCompatibilityRouteOptions {
   readonly authService?: AuthService;
   readonly authorizeAdmin: (request: FastifyRequest, reply: FastifyReply) => boolean;
   readonly defaultModel?: string;
+  readonly followupSuggestionStore?: FollowupSuggestionStore;
   readonly historyStore?: AgentRunHistoryStore;
   readonly mcp?: McpRouteMcp;
   readonly modelProvider?: ModelProvider;
@@ -2932,11 +2934,14 @@ function registerAdminAnalyticsCompatibilityRoutes(
     }
 
     const hours = Math.min(168, Math.max(1, readQueryInteger(request, "hours", 24)));
+    const stats = options.followupSuggestionStore?.aggregateStats(hours * 60 * 60 * 1000)
+      ?? { byCategory: [], ctr: 0, totalClicks: 0, totalImpressions: 0 };
+
     return {
-      byCategory: {},
-      ctr: 0,
-      totalClicks: 0,
-      totalImpressions: 0,
+      byCategory: stats.byCategory,
+      ctr: stats.ctr,
+      totalClicks: stats.totalClicks,
+      totalImpressions: stats.totalImpressions,
       windowHours: hours
     };
   });

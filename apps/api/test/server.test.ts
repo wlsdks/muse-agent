@@ -18,6 +18,7 @@ import {
 } from "@muse/mcp";
 import { InMemoryTaskMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
+import { InMemoryFollowupSuggestionStore } from "@muse/observability";
 import {
   InMemoryAdminOperationsStore,
   InMemoryAgentRunHistoryStore,
@@ -2880,6 +2881,50 @@ describe("api server", () => {
     expect(unavailable.json()).toMatchObject({ code: "TASK_MEMORY_MAINTENANCE_UNAVAILABLE" });
     expect(purgeTerminal.statusCode).toBe(200);
     expect(purgeTerminal.json()).toMatchObject({ deleted: 1 });
+  });
+
+  it("backs Reactor follow-up suggestion stats with the configured store", async () => {
+    const authService = createAuthService();
+    const registered = authService.register({
+      email: "followup_admin",
+      name: "Followup Admin",
+      password: "password-1"
+    });
+    const followupSuggestionStore = new InMemoryFollowupSuggestionStore();
+
+    followupSuggestionStore.recordImpression({
+      category: "operations",
+      channelId: "channel-1",
+      suggestionId: "suggestion-1",
+      userId: registered.user.id
+    });
+    followupSuggestionStore.recordClick({
+      category: "operations",
+      channelId: "channel-1",
+      suggestionId: "suggestion-1",
+      userId: registered.user.id
+    });
+
+    const server = buildServer({
+      authService,
+      followupSuggestionStore,
+      logger: false,
+      requireAuth: true
+    });
+    const response = await server.inject({
+      headers: { authorization: `Bearer ${registered.token}` },
+      method: "GET",
+      url: "/api/admin/followup-suggestions/stats?hours=24"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      byCategory: [{ category: "operations", clicks: 1, ctr: 1, impressions: 1 }],
+      ctr: 1,
+      totalClicks: 1,
+      totalImpressions: 1,
+      windowHours: 24
+    });
   });
 
   it("keeps Slack webhook probe routes available when Slack is not enabled", async () => {

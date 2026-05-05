@@ -50,6 +50,9 @@ importers:
       '@muse/model':
         specifier: workspace:*
         version: link:../../packages/model
+      '@muse/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@muse/promptlab':
         specifier: workspace:*
         version: link:../../packages/promptlab

@@ -22,6 +22,7 @@ import {
 } from "@muse/auth";
 import type { TaskMemoryMaintenance } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
+import type { FollowupSuggestionStore } from "@muse/observability";
 import {
   InMemoryRuntimeSettingsStore,
   RuntimeSettingsService,
@@ -44,6 +45,7 @@ export interface ServerOptions {
   readonly agentSpecRegistry?: AgentSpecRegistry;
   readonly authService?: AuthService;
   readonly authRateLimiter?: AuthRateLimiter;
+  readonly followupSuggestionStore?: FollowupSuggestionStore;
   readonly historyStore?: AgentRunHistoryStore;
   readonly pendingApprovalStore?: PendingApprovalStore;
   readonly mcp?: McpRouteMcp;
@@ -210,6 +212,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authService,
     authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
     defaultModel: options.defaultModel,
+    followupSuggestionStore: options.followupSuggestionStore,
     historyStore: options.historyStore,
     mcp: options.mcp,
     modelProvider: options.modelProvider,

@@ -41,6 +41,7 @@ describe("autoconfigure", () => {
     expect(assembly.mcp.manager.getToolCatalog()).toEqual([]);
     expect(assembly.cache.responseCache.size()).toBe(0);
     expect(assembly.observability.metrics.recordedEvents()).toEqual([]);
+    expect(assembly.observability.followupSuggestionStore.aggregateStats().totalImpressions).toBe(0);
     expect(assembly.resilience.circuitBreakerRegistry.names()).toEqual([]);
     expect(await assembly.adminOperationsStore.listTenants()).toEqual([]);
     expect(assembly.scheduler.store.list()).toEqual([]);
@@ -72,6 +73,7 @@ describe("autoconfigure", () => {
     expect(options.requireAuth).toBe(true);
     expect(options.mcp.manager).toBeTruthy();
     expect(options.scheduler.store.list()).toEqual([]);
+    expect(options.followupSuggestionStore.aggregateStats().totalClicks).toBe(0);
     expect(options.taskMemoryMaintenance.purgeExpired(new Date())).toBe(0);
   });
 
