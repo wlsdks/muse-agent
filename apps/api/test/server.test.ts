@@ -1188,6 +1188,14 @@ describe("api server", () => {
       method: "GET",
       url: "/api/personas"
     });
+    const invalidPersona = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        name: "Assistant"
+      },
+      url: "/api/personas"
+    });
     const persona = await server.inject({
       headers,
       method: "POST",
@@ -1216,6 +1224,14 @@ describe("api server", () => {
       headers,
       method: "GET",
       url: `/api/personas/${personaId}`
+    });
+    const invalidIntent = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        description: " "
+      },
+      url: "/api/intents"
     });
     const intent = await server.inject({
       headers,
@@ -1259,6 +1275,7 @@ describe("api server", () => {
     });
 
     expect(blockedPersonaList.statusCode).toBe(401);
+    expect(invalidPersona.statusCode).toBe(400);
     expect(persona.statusCode).toBe(201);
     expect(persona.json()).toMatchObject({
       description: null,
@@ -1275,6 +1292,7 @@ describe("api server", () => {
     });
     expect(activePersonas.json()).toEqual([]);
     expect(personaDetail.json()).toMatchObject({ id: personaId, isActive: false });
+    expect(invalidIntent.statusCode).toBe(400);
     expect(intent.statusCode).toBe(201);
     expect(intent.json()).toMatchObject({
       description: "Research requests",

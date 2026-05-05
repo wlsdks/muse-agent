@@ -1299,6 +1299,12 @@ function registerPersonaRoutes(server: FastifyInstance, options: ReactorCompatib
       return reply;
     }
 
+    const validationError = validatePersonaBody(toBody(request.body), "create");
+
+    if (validationError) {
+      return badRequest(reply, "INVALID_PERSONA", validationError);
+    }
+
     return reply.status(201).send(toPersonaResponse(createPersona(request.body)));
   });
   server.put("/api/personas/:personaId", async (request, reply) => {
@@ -1311,6 +1317,12 @@ function registerPersonaRoutes(server: FastifyInstance, options: ReactorCompatib
 
     if (!existing) {
       return notFound(reply, "PERSONA_NOT_FOUND");
+    }
+
+    const validationError = validatePersonaBody(toBody(request.body), "update");
+
+    if (validationError) {
+      return badRequest(reply, "INVALID_PERSONA", validationError);
     }
 
     return toPersonaResponse(updatePersona(existing, request.body));
@@ -1444,6 +1456,12 @@ function registerIntentRoutes(server: FastifyInstance, options: ReactorCompatibi
       return reply;
     }
 
+    const validationError = validateIntentBody(toBody(request.body), "create");
+
+    if (validationError) {
+      return badRequest(reply, "INVALID_INTENT", validationError);
+    }
+
     const name = readBodyString(request.body, "name") ?? "";
 
     if (findCompatRecord(state.intents, name)) {
@@ -1465,6 +1483,12 @@ function registerIntentRoutes(server: FastifyInstance, options: ReactorCompatibi
 
     if (!existing) {
       return notFound(reply, "INTENT_NOT_FOUND");
+    }
+
+    const validationError = validateIntentBody(toBody(request.body), "update");
+
+    if (validationError) {
+      return badRequest(reply, "INVALID_INTENT", validationError);
     }
 
     return toIntentResponse(updateIntent(existing, request.body));
@@ -4878,6 +4902,36 @@ function createPersona(bodyValue: unknown): CompatRecord {
   }, "persona");
 }
 
+function validatePersonaBody(body: CompatBody, mode: "create" | "update"): string | undefined {
+  const checks: Array<readonly [keyof CompatBody, number, string]> = [
+    ["name", 200, "name must not exceed 200 characters"],
+    ["systemPrompt", 50_000, "systemPrompt must not exceed 50000 characters"],
+    ["description", 2_000, "description must not exceed 2000 characters"],
+    ["responseGuideline", 10_000, "responseGuideline must not exceed 10000 characters"],
+    ["welcomeMessage", 2_000, "welcomeMessage must not exceed 2000 characters"],
+    ["promptTemplateId", 200, "promptTemplateId must not exceed 200 characters"],
+    ["icon", 20, "icon must be 20 characters or fewer"]
+  ];
+
+  if (mode === "create" && !readBodyString(body, "name")) {
+    return "name must not be blank";
+  }
+
+  if (mode === "create" && !readBodyString(body, "systemPrompt")) {
+    return "systemPrompt must not be blank";
+  }
+
+  for (const [key, max, message] of checks) {
+    const value = body[key];
+
+    if (typeof value === "string" && value.length > max) {
+      return message;
+    }
+  }
+
+  return undefined;
+}
+
 function updatePersona(existing: CompatRecord, bodyValue: unknown): CompatRecord {
   const body = toBody(bodyValue);
   return createRecord(state.personas, {
@@ -5065,6 +5119,18 @@ function createIntent(bodyValue: unknown): CompatRecord {
     name,
     profile: jsonObjectField(body.profile)
   }, "intent");
+}
+
+function validateIntentBody(body: CompatBody, mode: "create" | "update"): string | undefined {
+  if (mode === "create" && !readBodyString(body, "name")) {
+    return "name must not be blank";
+  }
+
+  if (mode === "create" && !readBodyString(body, "description")) {
+    return "description must not be blank";
+  }
+
+  return undefined;
 }
 
 function updateIntent(existing: CompatRecord, bodyValue: unknown): CompatRecord {
