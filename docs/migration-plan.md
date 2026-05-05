@@ -146,6 +146,8 @@ routes, 365 Muse routes, and 0 missing Reactor routes.
   instead of Muse-specific convenience envelopes.
 - MCP preflight and access-policy compatibility now requires registered MCP servers and proxies the Reactor-style
   admin API endpoints (`/admin/preflight`, `/admin/access-policy`) instead of returning static OK stubs.
+- Ops Dashboard compatibility now enforces admin authorization and derives MCP, scheduler, response-trust, recent
+  trust event, and employee-value summaries from Muse runtime state instead of fixed empty snapshots.
 
 ## Execution Plan
 

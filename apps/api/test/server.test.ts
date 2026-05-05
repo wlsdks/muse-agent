@@ -282,6 +282,118 @@ describe("api server", () => {
     expect(executions.json()).toMatchObject({ items: [{ jobId: "job-1" }], total: 1 });
   });
 
+  it("matches Reactor ops dashboard authorization and stateful summary behavior", async () => {
+    const authService = createAuthService();
+    const admin = authService.register({
+      email: "ops_admin",
+      name: "Ops Admin",
+      password: "password-1"
+    });
+    const user = authService.register({
+      email: "ops_user",
+      name: "Ops User",
+      password: "password-1"
+    });
+    const metrics = new InMemoryAgentMetrics();
+    const schedulerStore = new InMemoryScheduledJobStore({ idFactory: () => "ops-job-1" });
+    const schedulerExecutionStore = new InMemoryScheduledJobExecutionStore({ idFactory: () => "ops-exec-1" });
+
+    const job = schedulerStore.save({
+      agentPrompt: "Summarize incidents",
+      cronExpression: "0 * * * * *",
+      jobType: "agent",
+      lastStatus: "failed",
+      name: "Ops agent job"
+    });
+    schedulerExecutionStore.save({
+      completedAt: new Date("2026-05-06T00:00:01.000Z"),
+      durationMs: 1000,
+      jobId: job.id,
+      jobName: job.name,
+      result: "failed: timeout",
+      startedAt: new Date("2026-05-06T00:00:00.000Z"),
+      status: "failed"
+    });
+    metrics.recordAgentRun({
+      durationMs: 1200,
+      metadata: {
+        answerMode: "operational",
+        channel: "slack",
+        grounded: true,
+        scheduled: true,
+        toolFamily: "mcp"
+      },
+      model: "provider/model",
+      runId: "run-ops",
+      status: "completed"
+    });
+    metrics.recordOutputGuardAction("OutputGuard", "modified", "masked", { channel: "slack" });
+    metrics.recordGuardRejection("InjectionDetection", "prompt_injection", {
+      channel: "api",
+      queryCluster: "security",
+      queryLabel: "Prompt injection"
+    });
+
+    const server = buildServer({
+      admin: { observability: { metrics } },
+      authService,
+      logger: false,
+      requireAuth: true,
+      scheduler: {
+        executionStore: schedulerExecutionStore,
+        store: schedulerStore
+      }
+    });
+    const forbidden = await server.inject({
+      headers: { authorization: `Bearer ${user.token}` },
+      method: "GET",
+      url: "/api/ops/dashboard"
+    });
+    const dashboard = await server.inject({
+      headers: { authorization: `Bearer ${admin.token}` },
+      method: "GET",
+      url: "/api/ops/dashboard"
+    });
+
+    expect(forbidden.statusCode).toBe(403);
+    expect(dashboard.statusCode).toBe(200);
+    expect(dashboard.json()).toMatchObject({
+      employeeValue: {
+        answerModes: { operational: 1 },
+        channels: [{ count: 1, key: "slack" }],
+        groundedRatePercent: 100,
+        groundedResponses: 1,
+        observedResponses: 1,
+        scheduledResponses: 1,
+        toolFamilies: [{ count: 1, key: "mcp" }]
+      },
+      recentSchedulerExecutions: [{
+        failureReason: "timeout",
+        jobId: "ops-job-1",
+        resultPreview: "failed: timeout",
+        status: "FAILED"
+      }],
+      recentTrustEvents: [
+        { queryCluster: "security", reason: "prompt_injection", type: "guard_rejection" },
+        { action: "modified", type: "output_guard_action" }
+      ],
+      responseTrust: {
+        boundaryFailures: 1,
+        outputGuardModified: 1,
+        outputGuardRejected: 0,
+        unverifiedResponses: 0
+      },
+      scheduler: {
+        agentJobs: 1,
+        attentionBacklog: 1,
+        enabledJobs: 1,
+        failedJobs: 1,
+        runningJobs: 0,
+        totalJobs: 1
+      }
+    });
+  });
+
   it("exposes admin metrics, cache, and circuit breaker operations", async () => {
     const authService = createAuthService();
     const registered = authService.register({
