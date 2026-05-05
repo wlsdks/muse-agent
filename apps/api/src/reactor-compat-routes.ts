@@ -1603,7 +1603,7 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
     const validationError = validateAddDocumentBody(body);
 
     if (validationError) {
-      return badRequest(reply, "INVALID_DOCUMENT", validationError);
+      return reply.status(400).send(documentValidationError(validationError));
     }
 
     const duplicate = findDocumentByContentHash(computeContentHash(readBodyString(body, "content") ?? ""));
@@ -1623,19 +1623,19 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
     const items: readonly unknown[] = Array.isArray(documents) ? documents : [];
 
     if (items.length === 0) {
-      return badRequest(reply, "INVALID_DOCUMENT_BATCH", "Documents list must not be empty");
+      return reply.status(400).send(documentValidationError({ documents: "Documents list must not be empty" }));
     }
 
     if (items.length > 100) {
-      return badRequest(reply, "INVALID_DOCUMENT_BATCH", "Batch must not exceed 100 documents");
+      return reply.status(400).send(documentValidationError({ documents: "Batch must not exceed 100 documents" }));
     }
 
-    for (const item of items) {
+    for (const [index, item] of items.entries()) {
       const body = toBody(item);
       const validationError = validateAddDocumentBody(body);
 
       if (validationError) {
-        return badRequest(reply, "INVALID_DOCUMENT_BATCH", validationError);
+        return reply.status(400).send(documentValidationError(prefixValidationDetails(`documents[${index}]`, validationError)));
       }
 
       const duplicate = findDocumentByContentHash(computeContentHash(readBodyString(body, "content") ?? ""));
@@ -1661,15 +1661,21 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
     const topK = readNumber(toBody(request.body).topK, 5);
 
     if (query.trim().length === 0) {
-      return badRequest(reply, "INVALID_DOCUMENT_SEARCH", "Search query is required");
+      return reply.status(400).send(documentValidationError({ query: "Search query is required" }));
     }
 
     if (query.length > 10_000) {
-      return badRequest(reply, "INVALID_DOCUMENT_SEARCH", "Search query must not exceed 10000 characters");
+      return reply.status(400).send(documentValidationError({
+        query: "Search query must not exceed 10000 characters"
+      }));
     }
 
-    if (topK < 1 || topK > 100) {
-      return badRequest(reply, "INVALID_DOCUMENT_SEARCH", "topK must be between 1 and 100");
+    if (topK < 1) {
+      return reply.status(400).send(documentValidationError({ topK: "topK must be at least 1" }));
+    }
+
+    if (topK > 100) {
+      return reply.status(400).send(documentValidationError({ topK: "topK must not exceed 100" }));
     }
 
     return [...state.documents.values()]
@@ -1685,11 +1691,13 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
     const ids = stringArrayField(toBody(request.body).ids, []);
 
     if (ids.length === 0) {
-      return badRequest(reply, "INVALID_DOCUMENT_DELETE", "IDs list must not be empty");
+      return reply.status(400).send(documentValidationError({ ids: "IDs list must not be empty" }));
     }
 
     if (ids.length > 100) {
-      return badRequest(reply, "INVALID_DOCUMENT_DELETE", "Cannot delete more than 100 documents at once");
+      return reply.status(400).send(documentValidationError({
+        ids: "Cannot delete more than 100 documents at once"
+      }));
     }
 
     for (const id of ids) {
@@ -5699,22 +5707,36 @@ function documentMetadata(body: CompatBody): JsonObject {
     : metadata;
 }
 
-function validateAddDocumentBody(body: CompatBody): string | undefined {
+function validateAddDocumentBody(body: CompatBody): JsonObject | undefined {
   const content = readBodyString(body, "content");
 
   if (!content) {
-    return "Document content is required";
+    return { content: "Document content is required" };
   }
 
   if (content.length > 100_000) {
-    return "Document content must not exceed 100000 characters";
+    return { content: "Document content must not exceed 100000 characters" };
   }
 
   if (Object.keys(jsonObjectField(body.metadata)).length > 50) {
-    return "Metadata must not exceed 50 entries";
+    return { metadata: "Metadata must not exceed 50 entries" };
   }
 
   return undefined;
+}
+
+function documentValidationError(details: JsonObject): JsonObject {
+  return {
+    details,
+    error: "요청 형식이 올바르지 않습니다",
+    timestamp: nowIso()
+  };
+}
+
+function prefixValidationDetails(prefix: string, details: JsonObject): JsonObject {
+  return Object.fromEntries(
+    Object.entries(details).map(([field, message]) => [`${prefix}.${field}`, message])
+  );
 }
 
 function findDocumentByContentHash(contentHash: string): CompatRecord | undefined {

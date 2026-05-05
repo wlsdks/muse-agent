@@ -2327,6 +2327,18 @@ describe("api server", () => {
       },
       url: "/api/documents"
     });
+    const invalidCreate = await server.inject({
+      headers,
+      method: "POST",
+      payload: { content: "" },
+      url: "/api/documents"
+    });
+    const invalidBatch = await server.inject({
+      headers,
+      method: "POST",
+      payload: { documents: [{ metadata: { source: "batch" } }] },
+      url: "/api/documents/batch"
+    });
     const listed = await server.inject({
       headers,
       method: "GET",
@@ -2382,6 +2394,20 @@ describe("api server", () => {
       error: "Document with identical content already exists",
       existingId: created.json().id
     });
+    expect(invalidCreate.statusCode).toBe(400);
+    expect(invalidCreate.json()).toMatchObject({
+      details: { content: "Document content is required" },
+      error: "요청 형식이 올바르지 않습니다",
+      timestamp: expect.any(String)
+    });
+    expect(invalidCreate.json()).not.toHaveProperty("code");
+    expect(invalidBatch.statusCode).toBe(400);
+    expect(invalidBatch.json()).toMatchObject({
+      details: { "documents[0].content": "Document content is required" },
+      error: "요청 형식이 올바르지 않습니다",
+      timestamp: expect.any(String)
+    });
+    expect(invalidBatch.json()).not.toHaveProperty("code");
     expect(listed.json()).toMatchObject([
       { content: "Knowledge base entry", metadata: { source: "manual" } },
       { content: "Batch entry one", metadata: { source: "batch" } },
@@ -2395,7 +2421,19 @@ describe("api server", () => {
       }
     ]);
     expect(invalidSearch.statusCode).toBe(400);
+    expect(invalidSearch.json()).toMatchObject({
+      details: { topK: "topK must not exceed 100" },
+      error: "요청 형식이 올바르지 않습니다",
+      timestamp: expect.any(String)
+    });
+    expect(invalidSearch.json()).not.toHaveProperty("code");
     expect(invalidDelete.statusCode).toBe(400);
+    expect(invalidDelete.json()).toMatchObject({
+      details: { ids: "IDs list must not be empty" },
+      error: "요청 형식이 올바르지 않습니다",
+      timestamp: expect.any(String)
+    });
+    expect(invalidDelete.json()).not.toHaveProperty("code");
     expect(deleted.statusCode).toBe(204);
   });
 
