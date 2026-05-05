@@ -26,6 +26,7 @@ import {
 } from "@muse/runtime-settings";
 import type { AgentRunHistoryStore } from "@muse/runtime-state";
 import Fastify, { type FastifyInstance } from "fastify";
+import { registerMcpRoutes, type McpRouteMcp } from "./mcp-routes.js";
 import { registerSchedulerRoutes, type SchedulerRouteScheduler } from "./scheduler-routes.js";
 
 export interface ServerOptions {
@@ -35,6 +36,7 @@ export interface ServerOptions {
   readonly authService?: AuthService;
   readonly authRateLimiter?: AuthRateLimiter;
   readonly historyStore?: AgentRunHistoryStore;
+  readonly mcp?: McpRouteMcp;
   readonly defaultModel?: string;
   readonly requireAuth?: boolean;
   readonly runtimeSettings?: RuntimeSettingsService;
@@ -160,6 +162,10 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   registerSchedulerRoutes(server, {
     authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
     scheduler: options.scheduler
+  });
+  registerMcpRoutes(server, {
+    authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
+    mcp: options.mcp
   });
 
   if (authService) {
@@ -642,7 +648,11 @@ function toLoginResponse(login: LoginResult) {
   };
 }
 
-function authorizeAdmin(request: unknown, reply: { status(statusCode: number): { send(payload: ApiError): void } }, authEnabled: boolean): boolean {
+function authorizeAdmin(
+  request: unknown,
+  reply: { status(statusCode: number): { send(payload: ApiError): void } },
+  authEnabled: boolean
+): boolean {
   if (!authEnabled) {
     return true;
   }

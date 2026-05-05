@@ -7,6 +7,13 @@ import {
   InMemoryUserStore,
   JwtTokenProvider
 } from "@muse/auth";
+import {
+  InMemoryMcpSecurityPolicyStore,
+  InMemoryMcpServerStore,
+  McpManager,
+  McpSecurityPolicyProvider,
+  type McpConnection
+} from "@muse/mcp";
 import type { ModelProvider } from "@muse/model";
 import { InMemoryAgentRunHistoryStore } from "@muse/runtime-state";
 import {
@@ -437,6 +444,137 @@ describe("api server", () => {
     expect(updated.json()).toMatchObject({ enabled: false, name: "Renamed agent job" });
     expect(listed.json()).toHaveLength(1);
     expect(deleted.json()).toEqual({ deleted: true, jobId: "job-1" });
+    expect(afterDelete.statusCode).toBe(404);
+  });
+
+  it("manages MCP servers, policies, connections, and tool calls through admin API", async () => {
+    const authService = createAuthService();
+    const registered = authService.register({
+      email: "first_account",
+      name: "First",
+      password: "password-1"
+    });
+    const connection: McpConnection = {
+      callTool: async (toolName, args) => ({ args, toolName }),
+      listTools: async () => [
+        {
+          description: "Read a file",
+          inputSchema: { type: "object" },
+          name: "read_file",
+          risk: "read"
+        }
+      ]
+    };
+    const policyStore = new InMemoryMcpSecurityPolicyStore({
+      initial: {
+        allowedServerNames: ["local"],
+        allowedStdioCommands: ["node"]
+      }
+    });
+    const securityPolicyProvider = new McpSecurityPolicyProvider(policyStore);
+    const manager = new McpManager(new InMemoryMcpServerStore({ idFactory: () => "mcp-1" }), {
+      connector: { connect: async () => connection },
+      securityPolicyProvider
+    });
+    const server = buildServer({
+      authService,
+      logger: false,
+      mcp: {
+        manager,
+        securityPolicyProvider,
+        securityPolicyStore: policyStore
+      },
+      requireAuth: true
+    });
+    const headers = { authorization: `Bearer ${registered.token}` };
+
+    const blocked = await server.inject({
+      method: "GET",
+      url: "/api/mcp/servers"
+    });
+    const policy = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/mcp/security"
+    });
+    const created = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        autoConnect: true,
+        config: {
+          command: "node",
+          apiToken: "redacted-test-value"
+        },
+        name: "local",
+        transportType: "stdio"
+      },
+      url: "/api/mcp/servers"
+    });
+    const tools = await server.inject({
+      headers,
+      method: "GET",
+      url: "/mcp/servers/local/tools"
+    });
+    const toolCall = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        args: { path: "docs/input.md" }
+      },
+      url: "/api/mcp/servers/local/tools/read_file/call"
+    });
+    const updated = await server.inject({
+      headers,
+      method: "PATCH",
+      payload: {
+        autoConnect: false,
+        description: "Local tool server"
+      },
+      url: "/api/mcp/servers/local"
+    });
+    const disconnected = await server.inject({
+      headers,
+      method: "POST",
+      url: "/admin/mcp/servers/local/disconnect"
+    });
+    const deleted = await server.inject({
+      headers,
+      method: "DELETE",
+      url: "/api/mcp/servers/local"
+    });
+    const afterDelete = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/mcp/servers/local"
+    });
+
+    expect(blocked.statusCode).toBe(401);
+    expect(policy.json().effective).toMatchObject({ allowedServerNames: ["local"] });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      config: { apiToken: "[redacted]", command: "node" },
+      name: "local",
+      status: "connected",
+      toolCount: 1
+    });
+    expect(tools.json()).toEqual([
+      {
+        description: "Read a file",
+        inputSchema: { type: "object" },
+        name: "read_file",
+        risk: "read"
+      }
+    ]);
+    expect(toolCall.json()).toEqual({
+      output: {
+        args: { path: "docs/input.md" },
+        toolName: "read_file"
+      }
+    });
+    expect(updated.json()).toMatchObject({ autoConnect: false, description: "Local tool server" });
+    expect(disconnected.json()).toEqual({ status: "disconnected" });
+    expect(deleted.statusCode).toBe(204);
     expect(afterDelete.statusCode).toBe(404);
   });
 });

@@ -32,6 +32,9 @@ importers:
       '@muse/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@muse/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
       '@muse/runtime-settings':
         specifier: workspace:*
         version: link:../../packages/runtime-settings
