@@ -1,5 +1,6 @@
 import { createRunId, type JsonObject } from "@muse/shared";
 
+export type Awaitable<T> = T | Promise<T>;
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired" | "cancelled";
 export type Reversibility = "reversible" | "partially_reversible" | "irreversible" | "unknown";
 
@@ -33,12 +34,12 @@ export interface ApprovalSummary extends ToolApprovalRequest {
 
 export interface PendingApprovalStore {
   requestApproval(input: RequestApprovalInput): Promise<ToolApprovalResponse>;
-  listPending(): readonly ApprovalSummary[];
-  listPendingByUser(userId: string): readonly ApprovalSummary[];
-  countPending(): number;
-  countPendingByUser(userId: string): number;
-  approve(approvalId: string, modifiedArguments?: JsonObject): boolean;
-  reject(approvalId: string, reason?: string): boolean;
+  listPending(): Awaitable<readonly ApprovalSummary[]>;
+  listPendingByUser(userId: string): Awaitable<readonly ApprovalSummary[]>;
+  countPending(): Awaitable<number>;
+  countPendingByUser(userId: string): Awaitable<number>;
+  approve(approvalId: string, modifiedArguments?: JsonObject): Awaitable<boolean>;
+  reject(approvalId: string, reason?: string): Awaitable<boolean>;
 }
 
 export interface RequestApprovalInput {
@@ -293,3 +294,6 @@ function toApprovalSummary(request: ToolApprovalRequest): ApprovalSummary {
 function compareCheckpoints(left: ExecutionCheckpoint, right: ExecutionCheckpoint): number {
   return left.step - right.step || left.createdAt.getTime() - right.createdAt.getTime();
 }
+
+export { KyselyCheckpointStore, KyselyPendingApprovalStore } from "./kysely-stores.js";
+export type { KyselyCheckpointStoreOptions, KyselyPendingApprovalStoreOptions } from "./kysely-stores.js";
