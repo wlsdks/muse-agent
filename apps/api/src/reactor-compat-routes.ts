@@ -4718,23 +4718,77 @@ function registerMetricIngestionRoutes(
   server: FastifyInstance,
   options: ReactorCompatibilityRouteOptions
 ): void {
-  for (const route of ["mcp-health", "tool-call", "eval-result", "eval-results", "batch"]) {
+  for (const route of ["mcp-health", "tool-call", "eval-result"]) {
     server.post(`/api/admin/metrics/ingest/${route}`, async (request, reply) => {
       if (!options.authorizeAdmin(request, reply)) {
         return reply;
       }
 
-      const event = createRecord(state.metricEvents, {
+      createRecord(state.metricEvents, {
         kind: route,
         payload: toJsonObject(request.body)
       }, "metric_event");
-      return reply.status(route === "eval-results" || route === "batch" ? 200 : 202).send({
-        accepted: true,
-        id: event.id,
-        kind: route
-      });
+      return reply.status(202).send({ status: "accepted" });
     });
   }
+
+  server.post("/api/admin/metrics/ingest/eval-results", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const body = toJsonObject(request.body);
+    const results = Array.isArray(body.results) ? body.results.filter(isRecord).map(toJsonObject) : [];
+
+    if (results.length > 1000) {
+      return reply.status(400).send(errorResponse("Batch size exceeds limit of 1000"));
+    }
+
+    if (results.length === 0) {
+      return reply.status(400).send(errorResponse("Results list must not be empty"));
+    }
+
+    for (const result of results) {
+      createRecord(state.metricEvents, {
+        kind: "eval-results",
+        payload: {
+          ...result,
+          evalRunId: stringField(body.evalRunId, ""),
+          tenantId: stringField(body.tenantId, "")
+        }
+      }, "metric_event");
+    }
+
+    return {
+      accepted: results.length,
+      dropped: 0,
+      evalRunId: stringField(body.evalRunId, "")
+    };
+  });
+
+  server.post("/api/admin/metrics/ingest/batch", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const requests = Array.isArray(request.body) ? request.body.filter(isRecord).map(toJsonObject) : [];
+
+    if (requests.length > 1000) {
+      return reply.status(400).send(errorResponse("Batch size exceeds limit of 1000"));
+    }
+
+    for (const item of requests) {
+      createRecord(state.metricEvents, {
+        kind: "batch",
+        payload: item
+      }, "metric_event");
+    }
+
+    return {
+      accepted: requests.length,
+      dropped: 0
+    };
+  });
 }
 
 function requireAuthService(options: ReactorCompatibilityRouteOptions, reply: FastifyReply): AuthService | undefined {

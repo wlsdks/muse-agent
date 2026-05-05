@@ -3972,6 +3972,32 @@ describe("api server", () => {
       },
       url: "/api/admin/metrics/ingest/tool-call"
     });
+    const metricEvalResultsEmpty = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        evalRunId: "eval-run-1",
+        results: [],
+        tenantId: "tenant-1"
+      },
+      url: "/api/admin/metrics/ingest/eval-results"
+    });
+    const metricEvalResults = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        evalRunId: "eval-run-1",
+        results: [{ caseId: agentEvalCaseId, passed: true, score: 1, tier: "deterministic" }],
+        tenantId: "tenant-1"
+      },
+      url: "/api/admin/metrics/ingest/eval-results"
+    });
+    const metricBatch = await server.inject({
+      headers,
+      method: "POST",
+      payload: [{ serverName: "local", status: "CONNECTED", tenantId: "tenant-1" }],
+      url: "/api/admin/metrics/ingest/batch"
+    });
     const auditsList = await server.inject({
       headers,
       method: "GET",
@@ -4335,14 +4361,21 @@ describe("api server", () => {
     expect(slackFaqFeedback.json()).toEqual({ feedback: {} });
     expect(slackFaqDelete.json()).toEqual({ deleted: "channel-1" });
     expect(metricIngest.statusCode).toBe(202);
-    expect(metricIngest.json()).toMatchObject({ accepted: true, kind: "tool-call" });
+    expect(metricIngest.json()).toEqual({ status: "accepted" });
+    expect(metricEvalResultsEmpty.statusCode).toBe(400);
+    expect(metricEvalResultsEmpty.json()).toMatchObject({
+      error: "Results list must not be empty",
+      timestamp: expect.any(String)
+    });
+    expect(metricEvalResults.json()).toEqual({ accepted: 1, dropped: 0, evalRunId: "eval-run-1" });
+    expect(metricBatch.json()).toEqual({ accepted: 1, dropped: 0 });
     expect(auditsList.json()).toMatchObject({
       items: expect.arrayContaining([
         expect.objectContaining({ action: "SIMULATE", category: "input_guard" }),
         expect.objectContaining({ action: "RULE_UPSERT", category: "platform_alert" }),
         expect.objectContaining({ action: "TOOL_CALL", category: "metric_event", resourceType: "metric_event" })
       ]),
-      total: 3
+      total: 5
     });
     expect(auditsExport.body).toContain("metric_event");
     expect(errorReport.statusCode).toBe(204);
