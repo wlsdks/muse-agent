@@ -839,6 +839,11 @@ describe("api server", () => {
       },
       url: "/api/mcp/servers"
     });
+    const detail = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/mcp/servers/local"
+    });
     const tools = await server.inject({
       headers,
       method: "GET",
@@ -921,10 +926,17 @@ describe("api server", () => {
     expect(typeof policy.json().effective.createdAt).toBe("number");
     expect(created.statusCode).toBe(201);
     expect(created.json()).toMatchObject({
-      config: { apiToken: "[redacted]", command: "node" },
       name: "local",
       status: "CONNECTED",
       toolCount: 1,
+      transportType: "STDIO"
+    });
+    expect(created.json()).not.toHaveProperty("config");
+    expect(created.json()).not.toHaveProperty("tools");
+    expect(detail.json()).toMatchObject({
+      config: { apiToken: "[redacted]", command: "node" },
+      name: "local",
+      status: "CONNECTED",
       tools: ["read_file"],
       transportType: "STDIO"
     });

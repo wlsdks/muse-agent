@@ -80,7 +80,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
           await mcp.manager.connect(saved.name);
         }
 
-        return reply.status(201).send(toServerDetail(saved, mcp.manager));
+        return reply.status(201).send(toServerSummary(saved, mcp.manager));
       } catch (error) {
         return sendMcpError(reply, error);
       }
@@ -318,7 +318,7 @@ async function updateMcpServer(
       await mcp.manager.connect(name);
     }
 
-    return toServerDetail(updated, mcp.manager);
+    return toServerSummary(updated, mcp.manager);
   } catch (error) {
     return sendMcpError(reply, error);
   }
@@ -510,21 +510,27 @@ function toServerSummary(server: McpServer, manager: McpManager) {
     createdAt: server.createdAt.getTime(),
     description: server.description ?? null,
     id: server.id,
-    health: manager.getHealth(server.name),
     name: server.name,
     status: toReactorEnum(manager.getStatus(server.name) ?? "pending"),
     toolCount: manager.getToolCatalog(server.name).length,
     transportType: toReactorEnum(server.transportType),
-    updatedAt: server.updatedAt.getTime(),
-    version: server.version ?? null
+    updatedAt: server.updatedAt.getTime()
   };
 }
 
 function toServerDetail(server: McpServer, manager: McpManager) {
   return {
-    ...toServerSummary(server, manager),
+    autoConnect: server.autoConnect,
     config: sanitizeConfig(server.config),
-    tools: manager.getToolCatalog(server.name).map((tool) => tool.name)
+    createdAt: server.createdAt.getTime(),
+    description: server.description ?? null,
+    id: server.id,
+    name: server.name,
+    status: toReactorEnum(manager.getStatus(server.name) ?? "pending"),
+    tools: manager.getToolCatalog(server.name).map((tool) => tool.name),
+    transportType: toReactorEnum(server.transportType),
+    updatedAt: server.updatedAt.getTime(),
+    version: server.version ?? null
   };
 }
 
