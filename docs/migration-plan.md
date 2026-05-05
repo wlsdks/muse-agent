@@ -155,6 +155,14 @@ routes, 365 Muse routes, and 0 missing Reactor routes.
   activation now applies the report recommendation to the linked prompt template version, and feedback analysis now
   derives totals, negative samples, and weakness categories from stored feedback. Auto-optimize now creates candidate
   prompt versions plus a completed auto-generated experiment when enough negative feedback exists.
+- Admin capabilities compatibility now derives `/api/` paths from Fastify's registered runtime routes, preserving
+  Spring-style `{param}` path templates and excluding non-API paths.
+- A2A agent-card compatibility now returns Reactor's `AgentCard` contract with version, description, supported
+  input/output formats, and list-based capabilities derived from enabled agent specs and their tools.
+- `/api/auth/*` aliases now return Reactor-style `AuthResponse`/`UserResponse` payloads, preserve disabled IAM
+  exchange semantics, and keep self-registration users at `USER` scope.
+- `/api/sessions` compatibility now ignores spoofed `userId` query parameters and enforces Reactor-style
+  authenticated-owner checks before deleting sessions.
 
 ## Execution Plan
 
