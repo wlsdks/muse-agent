@@ -16,10 +16,14 @@
     "@muse/agent-specs": "workspace:*",
     "@muse/autoconfigure": "workspace:*",
     "@muse/auth": "workspace:*",
+    "@muse/eval": "workspace:*",
     "@muse/mcp": "workspace:*",
+    "@muse/model": "workspace:*",
+    "@muse/promptlab": "workspace:*",
     "@muse/runtime-settings": "workspace:*",
     "@muse/runtime-state": "workspace:*",
     "@muse/scheduler": "workspace:*",
+    "@muse/shared": "workspace:*",
     "fastify": "^5.8.5"
   }
 }

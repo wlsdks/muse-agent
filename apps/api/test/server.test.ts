@@ -577,6 +577,67 @@ describe("api server", () => {
     expect(deleted.statusCode).toBe(204);
     expect(afterDelete.statusCode).toBe(404);
   });
+
+  it("runs eval and promptlab suites behind admin auth", async () => {
+    const authService = createAuthService();
+    const registered = authService.register({
+      email: "first_account",
+      name: "First",
+      password: "password-1"
+    });
+    const server = buildServer({
+      authService,
+      defaultModel: "provider/model",
+      logger: false,
+      modelProvider: createProviderFrom(async (request) => ({
+        id: "response-1",
+        model: request.model,
+        output: responseForQualityTest(request.messages[0]?.content)
+      })),
+      requireAuth: true
+    });
+    const headers = { authorization: `Bearer ${registered.token}` };
+
+    const evalRun = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        cases: [
+          {
+            input: [{ content: "say alpha", role: "user" }],
+            metadata: { keywords: ["alpha"] },
+            name: "Keyword"
+          }
+        ],
+        judge: "keyword"
+      },
+      url: "/api/eval/run"
+    });
+    const promptlabRun = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        cases: [
+          {
+            input: [{ content: "Hello", role: "user" }],
+            metadata: { keywords: ["alpha"] },
+            name: "Case"
+          }
+        ],
+        judge: "keyword",
+        variants: [
+          { id: "variant-a", name: "A", systemPrompt: "Variant A" },
+          { id: "variant-b", name: "B", systemPrompt: "Variant B" }
+        ]
+      },
+      url: "/promptlab/run"
+    });
+
+    expect(evalRun.statusCode).toBe(200);
+    expect(evalRun.json().summary).toMatchObject({ passed: 1, total: 1 });
+    expect(promptlabRun.statusCode).toBe(200);
+    expect(promptlabRun.json().ranking[0]).toMatchObject({ variantId: "variant-a" });
+  });
 });
 
 function createAuthService(): AuthService {
@@ -591,20 +652,34 @@ function createAuthService(): AuthService {
 }
 
 function createProvider(output: string): ModelProvider {
+  return createProviderFrom(async (request) => ({
+    id: "response-1",
+    model: request.model,
+    output
+  }));
+}
+
+function createProviderFrom(generate: ModelProvider["generate"]): ModelProvider {
   return {
     id: "test",
-    async generate(request) {
-      return {
-        id: "response-1",
-        model: request.model,
-        output
-      };
-    },
+    generate,
     async listModels() {
       return [];
     },
     async *stream() {}
   };
+}
+
+function responseForQualityTest(content: string | undefined): string {
+  if (content?.includes("Variant A")) {
+    return "alpha";
+  }
+
+  if (content?.includes("Variant B")) {
+    return "beta";
+  }
+
+  return "alpha beta";
 }
 
 function createUnusedMcpInvoker(): ScheduledMcpToolInvoker {

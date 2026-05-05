@@ -149,6 +149,7 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
       securityPolicyProvider: assembly.mcp.securityPolicyProvider,
       securityPolicyStore: assembly.mcp.securityPolicyStore
     },
+    modelProvider: assembly.modelProvider,
     requireAuth: assembly.requireAuth,
     runtimeSettings: assembly.runtimeSettings,
     scheduler: assembly.scheduler

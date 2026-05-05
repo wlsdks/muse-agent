@@ -35,9 +35,18 @@ importers:
       '@muse/autoconfigure':
         specifier: workspace:*
         version: link:../../packages/autoconfigure
+      '@muse/eval':
+        specifier: workspace:*
+        version: link:../../packages/eval
       '@muse/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
+      '@muse/model':
+        specifier: workspace:*
+        version: link:../../packages/model
+      '@muse/promptlab':
+        specifier: workspace:*
+        version: link:../../packages/promptlab
       '@muse/runtime-settings':
         specifier: workspace:*
         version: link:../../packages/runtime-settings
@@ -47,6 +56,9 @@ importers:
       '@muse/scheduler':
         specifier: workspace:*
         version: link:../../packages/scheduler
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       fastify:
         specifier: ^5.8.5
         version: 5.8.5

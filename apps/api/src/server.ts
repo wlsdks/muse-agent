@@ -19,6 +19,7 @@ import {
   type AuthIdentity,
   type LoginResult
 } from "@muse/auth";
+import type { ModelProvider } from "@muse/model";
 import {
   InMemoryRuntimeSettingsStore,
   RuntimeSettingsService,
@@ -27,6 +28,7 @@ import {
 import type { AgentRunHistoryStore } from "@muse/runtime-state";
 import Fastify, { type FastifyInstance } from "fastify";
 import { registerMcpRoutes, type McpRouteMcp } from "./mcp-routes.js";
+import { registerQualityRoutes } from "./quality-routes.js";
 import { registerSchedulerRoutes, type SchedulerRouteScheduler } from "./scheduler-routes.js";
 
 export interface ServerOptions {
@@ -37,6 +39,7 @@ export interface ServerOptions {
   readonly authRateLimiter?: AuthRateLimiter;
   readonly historyStore?: AgentRunHistoryStore;
   readonly mcp?: McpRouteMcp;
+  readonly modelProvider?: ModelProvider;
   readonly defaultModel?: string;
   readonly requireAuth?: boolean;
   readonly runtimeSettings?: RuntimeSettingsService;
@@ -166,6 +169,11 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   registerMcpRoutes(server, {
     authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
     mcp: options.mcp
+  });
+  registerQualityRoutes(server, {
+    authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
+    defaultModel: options.defaultModel,
+    modelProvider: options.modelProvider
   });
 
   if (authService) {
