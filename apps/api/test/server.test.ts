@@ -2962,6 +2962,39 @@ describe("api server", () => {
       },
       url: "/api/admin/agent-specs"
     });
+    const specId = String(spec.json().id);
+    const duplicateSpec = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        name: "researcher",
+        systemPrompt: "Duplicate"
+      },
+      url: "/api/admin/agent-specs"
+    });
+    const invalidSpecMode = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        mode: "INVALID",
+        name: "planner",
+        systemPrompt: "Plan carefully."
+      },
+      url: "/api/admin/agent-specs"
+    });
+    const partialSpecUpdate = await server.inject({
+      headers,
+      method: "PUT",
+      payload: {
+        enabled: false
+      },
+      url: `/api/admin/agent-specs/${specId}`
+    });
+    const missingSpec = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/agent-specs/missing-spec"
+    });
     const systemPrompt = await server.inject({
       headers,
       method: "GET",
@@ -3505,6 +3538,30 @@ describe("api server", () => {
       mode: "REACT",
       systemPromptPreview: "Use verifiable sources."
     });
+    expect(duplicateSpec.statusCode).toBe(409);
+    expect(duplicateSpec.json()).toMatchObject({
+      error: "이름 'researcher'은 이미 사용 중입니다",
+      timestamp: expect.any(String)
+    });
+    expect(duplicateSpec.json()).not.toHaveProperty("code");
+    expect(invalidSpecMode.statusCode).toBe(400);
+    expect(invalidSpecMode.json()).toMatchObject({
+      error: "유효하지 않은 모드: INVALID",
+      timestamp: expect.any(String)
+    });
+    expect(invalidSpecMode.json()).not.toHaveProperty("code");
+    expect(partialSpecUpdate.json()).toMatchObject({
+      enabled: false,
+      id: specId,
+      name: "researcher",
+      systemPromptPreview: "Use verifiable sources."
+    });
+    expect(missingSpec.statusCode).toBe(404);
+    expect(missingSpec.json()).toMatchObject({
+      error: "에이전트 스펙을 찾을 수 없습니다: missing-spec",
+      timestamp: expect.any(String)
+    });
+    expect(missingSpec.json()).not.toHaveProperty("code");
     expect(systemPrompt.json()).toEqual({ systemPrompt: "Use verifiable sources." });
     expect(setting.json()).toMatchObject({ key: "model.default", value: "provider/model" });
     expect(policy.json()).toMatchObject({

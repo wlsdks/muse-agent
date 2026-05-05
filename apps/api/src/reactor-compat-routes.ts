@@ -578,10 +578,7 @@ function registerAgentCompatibilityRoutes(server: FastifyInstance, options: Reac
     const spec = await findAgentSpec(options.agentSpecRegistry, id);
 
     if (!spec) {
-      return reply.status(404).send({
-        code: "AGENT_SPEC_NOT_FOUND",
-        message: `Agent spec not found: ${id}`
-      });
+      return reply.status(404).send(agentSpecNotFound(id));
     }
 
     return toAgentSpecResponse(spec);
@@ -600,14 +597,11 @@ function registerAgentCompatibilityRoutes(server: FastifyInstance, options: Reac
     const parsed = parseAgentSpecInput(request.body);
 
     if (!parsed.ok) {
-      return reply.status(400).send(parsed.error);
+      return reply.status(400).send(agentSpecInputError(parsed.error));
     }
 
     if (await options.agentSpecRegistry.getByName(parsed.value.name)) {
-      return reply.status(409).send({
-        code: "AGENT_SPEC_NAME_CONFLICT",
-        message: `Agent spec name is already used: ${parsed.value.name}`
-      });
+      return reply.status(409).send(errorResponse(`이름 '${parsed.value.name}'은 이미 사용 중입니다`));
     }
 
     return reply.status(201).send(toAgentSpecResponse(await options.agentSpecRegistry.save(parsed.value)));
@@ -619,22 +613,23 @@ function registerAgentCompatibilityRoutes(server: FastifyInstance, options: Reac
     }
 
     const { id } = request.params as { readonly id: string };
-    const parsed = parseAgentSpecInput(request.body, id);
+    const mode = isRecord(request.body) ? parseAgentMode(request.body.mode) : undefined;
 
-    if (!parsed.ok) {
-      return reply.status(400).send(parsed.error);
+    if (!isRecord(request.body)) {
+      return reply.status(400).send(errorResponse("요청 형식이 올바르지 않습니다"));
+    }
+
+    if (request.body.mode !== undefined && !mode) {
+      return reply.status(400).send(errorResponse(`유효하지 않은 모드: ${String(request.body.mode)}`));
     }
 
     const existing = await options.agentSpecRegistry.getById(id);
 
     if (!existing) {
-      return reply.status(404).send({
-        code: "AGENT_SPEC_NOT_FOUND",
-        message: `Agent spec not found: ${id}`
-      });
+      return reply.status(404).send(agentSpecNotFound(id));
     }
 
-    return toAgentSpecResponse(await options.agentSpecRegistry.save({ ...parsed.value, id }));
+    return toAgentSpecResponse(await options.agentSpecRegistry.save(toAgentSpecUpdateInput(request.body, existing)));
   });
 
   server.delete("/api/admin/agent-specs/:id", async (request, reply) => {
@@ -646,10 +641,7 @@ function registerAgentCompatibilityRoutes(server: FastifyInstance, options: Reac
     const spec = await findAgentSpec(options.agentSpecRegistry, id);
 
     if (!spec) {
-      return reply.status(404).send({
-        code: "AGENT_SPEC_NOT_FOUND",
-        message: `Agent spec not found: ${id}`
-      });
+      return reply.status(404).send(agentSpecNotFound(id));
     }
 
     await options.agentSpecRegistry.deleteById(spec.id);
@@ -4773,15 +4765,38 @@ async function findAgentSpecOrReply(
   const spec = await findAgentSpec(options.agentSpecRegistry, id);
 
   if (!spec) {
-    reply.status(404).send({
-      code: "AGENT_SPEC_NOT_FOUND",
-      message: `Agent spec not found: ${id}`
-    });
+    reply.status(404).send(agentSpecNotFound(id));
     return undefined;
   }
 
   return {
     systemPrompt: spec.systemPrompt ?? null
+  };
+}
+
+function agentSpecNotFound(id: string): JsonObject {
+  return errorResponse(`에이전트 스펙을 찾을 수 없습니다: ${id}`);
+}
+
+function agentSpecInputError(error: ApiError): JsonObject {
+  const invalidMode = error.message.match(/^Invalid mode: (.*)$/u)?.[1];
+
+  return errorResponse(invalidMode ? `유효하지 않은 모드: ${invalidMode}` : "요청 형식이 올바르지 않습니다");
+}
+
+function toAgentSpecUpdateInput(body: Record<string, unknown>, existing: AgentSpec): AgentSpecInput {
+  return {
+    description: typeof body.description === "string" ? body.description : existing.description,
+    enabled: typeof body.enabled === "boolean" ? body.enabled : existing.enabled,
+    id: existing.id,
+    independentExecution: typeof body.independentExecution === "boolean"
+      ? body.independentExecution
+      : existing.independentExecution,
+    keywords: Array.isArray(body.keywords) ? readStringArray(body.keywords) : existing.keywords,
+    mode: body.mode === undefined ? existing.mode : parseAgentMode(body.mode),
+    name: readBodyString(body, "name") ?? existing.name,
+    systemPrompt: body.systemPrompt === null ? null : readBodyString(body, "systemPrompt") ?? existing.systemPrompt,
+    toolNames: Array.isArray(body.toolNames) ? readStringArray(body.toolNames) : existing.toolNames
   };
 }
 
