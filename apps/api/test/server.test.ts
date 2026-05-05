@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createAgentRuntime } from "@muse/agent-core";
 import {
   AuthService,
@@ -773,6 +774,7 @@ describe("api server", () => {
       name: "First",
       password: "password-1"
     });
+    const adminServer = await createFakeMcpAdminServer();
     const connection: McpConnection = {
       callTool: async (toolName, args) => ({ args, toolName }),
       listTools: async () => [
@@ -823,7 +825,7 @@ describe("api server", () => {
         autoConnect: true,
         config: {
           adminToken: "admin-token-value",
-          adminUrl: "https://mcp-admin.example.invalid",
+          adminUrl: adminServer.url,
           command: "node",
           apiToken: "redacted-test-value"
         },
@@ -903,6 +905,7 @@ describe("api server", () => {
       method: "GET",
       url: "/api/mcp/servers/local"
     });
+    await adminServer.close();
 
     expect(blocked.statusCode).toBe(401);
     expect(policy.json()).toMatchObject({
@@ -2512,6 +2515,99 @@ describe("api server", () => {
     expect(response.json()).toEqual({ challenge: "challenge-1" });
   });
 });
+
+interface FakeMcpAdminServer {
+  readonly close: () => Promise<void>;
+  readonly url: string;
+}
+
+async function createFakeMcpAdminServer(): Promise<FakeMcpAdminServer> {
+  let accessPolicy = {
+    allowedBitbucketRepositories: [],
+    allowedConfluenceSpaceKeys: [],
+    allowedJiraProjectKeys: [],
+    allowedSourceNames: [],
+    allowDirectUrlLoads: null,
+    allowPreviewReads: null,
+    allowPreviewWrites: null,
+    publishedOnly: null
+  };
+  const server = createServer(async (request, response) => {
+    if (request.url === "/admin/preflight" && request.method === "GET") {
+      return sendJson(response, {
+        checks: [{ message: null, name: "registered", status: "PASS" }],
+        ok: true,
+        readyForProduction: true,
+        summary: { failCount: 0, passCount: 1, warnCount: 0 }
+      });
+    }
+
+    if (request.url === "/admin/access-policy" && request.method === "GET") {
+      return sendJson(response, accessPolicy);
+    }
+
+    if (request.url === "/admin/access-policy" && request.method === "PUT") {
+      accessPolicy = { ...accessPolicy, ...await readJsonBody(request) };
+      return sendJson(response, accessPolicy);
+    }
+
+    if (request.url === "/admin/access-policy" && request.method === "DELETE") {
+      accessPolicy = {
+        allowedBitbucketRepositories: [],
+        allowedConfluenceSpaceKeys: [],
+        allowedJiraProjectKeys: [],
+        allowedSourceNames: [],
+        allowDirectUrlLoads: null,
+        allowPreviewReads: null,
+        allowPreviewWrites: null,
+        publishedOnly: null
+      };
+      return sendJson(response, accessPolicy);
+    }
+
+    if (request.url === "/admin/access-policy/emergency-deny-all" && request.method === "POST") {
+      accessPolicy = {
+        ...accessPolicy,
+        allowDirectUrlLoads: false,
+        allowPreviewReads: false,
+        allowPreviewWrites: false,
+        publishedOnly: true
+      };
+      return sendJson(response, accessPolicy);
+    }
+
+    response.statusCode = 404;
+    response.end();
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+
+  if (!address || typeof address === "string") {
+    throw new Error("Fake MCP admin server did not bind to a TCP port");
+  }
+
+  return {
+    close: () => new Promise<void>((resolve, reject) =>
+      server.close((error) => error ? reject(error) : resolve())),
+    url: `http://127.0.0.1:${address.port}`
+  };
+}
+
+function sendJson(response: ServerResponse, body: unknown): void {
+  response.setHeader("content-type", "application/json");
+  response.end(JSON.stringify(body));
+}
+
+async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+}
 
 function createAuthService(): AuthService {
   const userStore = new InMemoryUserStore();

@@ -54,7 +54,6 @@ interface CompatState {
   readonly platformAlertRules: CompatCollection;
   readonly platformPricing: CompatCollection;
   readonly metricEvents: CompatCollection;
-  readonly mcpAccessPolicies: Map<string, JsonObject>;
   readonly promptExperiments: CompatCollection;
   readonly promptTemplates: CompatCollection;
   readonly ragCandidates: CompatCollection;
@@ -215,7 +214,6 @@ function createCompatState(): CompatState {
     platformAlertRules: new Map(),
     platformPricing: new Map(),
     metricEvents: new Map(),
-    mcpAccessPolicies: new Map(),
     promptExperiments: new Map(),
     promptTemplates: new Map(),
     ragCandidates: new Map(),
@@ -1636,13 +1634,7 @@ function registerMcpCompatibilityRoutes(server: FastifyInstance, options: Reacto
       return reply.header("X-Preflight-Skipped", "no-admin-token").status(204).send();
     }
 
-    return {
-      checks: [{ message: null, name: "registered", status: "PASS" }],
-      ok: true,
-      policySource: "muse-compat",
-      readyForProduction: true,
-      summary: { failCount: 0, passCount: 1, warnCount: 0 }
-    };
+    return proxyMcpAdminRequest(reply, serverConfig, "GET", "/admin/preflight");
   });
   server.get("/api/mcp/servers/:name/access-policy", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -1655,7 +1647,7 @@ function registerMcpCompatibilityRoutes(server: FastifyInstance, options: Reacto
       return mcpProxyUnavailable(request, reply, options);
     }
 
-    return toMcpAccessPolicyResponse(serverConfig.name);
+    return proxyMcpAdminRequest(reply, serverConfig, "GET", "/admin/access-policy");
   });
   server.put("/api/mcp/servers/:name/access-policy", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -1674,8 +1666,7 @@ function registerMcpCompatibilityRoutes(server: FastifyInstance, options: Reacto
       return reply.status(400).send(parsed.error);
     }
 
-    state.mcpAccessPolicies.set(serverConfig.name, parsed.value);
-    return toMcpAccessPolicyResponse(serverConfig.name);
+    return proxyMcpAdminRequest(reply, serverConfig, "PUT", "/admin/access-policy", parsed.value);
   });
   server.delete("/api/mcp/servers/:name/access-policy", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -1688,8 +1679,7 @@ function registerMcpCompatibilityRoutes(server: FastifyInstance, options: Reacto
       return mcpProxyUnavailable(request, reply, options);
     }
 
-    state.mcpAccessPolicies.delete(serverConfig.name);
-    return toMcpAccessPolicyResponse(serverConfig.name);
+    return proxyMcpAdminRequest(reply, serverConfig, "DELETE", "/admin/access-policy");
   });
   server.post("/api/mcp/servers/:name/access-policy/emergency-deny-all", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -1702,17 +1692,7 @@ function registerMcpCompatibilityRoutes(server: FastifyInstance, options: Reacto
       return mcpProxyUnavailable(request, reply, options);
     }
 
-    state.mcpAccessPolicies.set(serverConfig.name, {
-      allowedBitbucketRepositories: [],
-      allowedConfluenceSpaceKeys: [],
-      allowedJiraProjectKeys: [],
-      allowedSourceNames: [],
-      allowDirectUrlLoads: false,
-      allowPreviewReads: false,
-      allowPreviewWrites: false,
-      publishedOnly: true
-    });
-    return toMcpAccessPolicyResponse(serverConfig.name);
+    return proxyMcpAdminRequest(reply, serverConfig, "POST", "/admin/access-policy/emergency-deny-all");
   });
   server.get("/api/mcp/servers/:name/swagger/sources", async () => [...state.swaggerSources.values()]);
   server.get("/api/mcp/servers/:name/swagger/sources/:sourceName", async (request, reply) =>
@@ -5301,6 +5281,74 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
+async function proxyMcpAdminRequest(
+  reply: FastifyReply,
+  serverConfig: McpServer,
+  method: "DELETE" | "GET" | "POST" | "PUT",
+  path: string,
+  body?: JsonObject
+) {
+  const adminUrl = readAdminUrl(serverConfig.config);
+
+  if (!adminUrl) {
+    return reply.status(400).send({
+      error: `MCP server '${serverConfig.name}' has invalid admin URL`,
+      timestamp: nowIso()
+    });
+  }
+
+  const adminToken = readBodyString(serverConfig.config, "adminToken");
+
+  if (!adminToken) {
+    return reply.status(400).send({
+      error: `MCP server '${serverConfig.name}' has no admin token. Set config.adminToken`,
+      timestamp: nowIso()
+    });
+  }
+
+  const timeoutMs = readNumber(serverConfig.config.adminTimeoutMs, 15_000);
+  const abort = new AbortController();
+  const timeout = setTimeout(() => abort.abort(), timeoutMs);
+
+  try {
+    const upstream = await fetch(new URL(path, adminUrl), {
+      body: body ? JSON.stringify(body) : undefined,
+      headers: {
+        "content-type": "application/json",
+        "x-admin-actor": "muse-admin",
+        "x-admin-token": adminToken,
+        "x-request-id": createRunId("mcp_admin")
+      },
+      method,
+      signal: abort.signal
+    });
+    const text = await upstream.text();
+
+    if (upstream.status === 204 || text.length === 0) {
+      return reply.status(upstream.status).send();
+    }
+
+    return reply.status(upstream.status).send(parseJsonOrText(text));
+  } catch (error) {
+    return reply.status(error instanceof DOMException && error.name === "AbortError" ? 504 : 502).send({
+      error: error instanceof DOMException && error.name === "AbortError"
+        ? `MCP admin API timed out after ${timeoutMs}ms`
+        : "Failed to call MCP admin API",
+      timestamp: nowIso()
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function parseJsonOrText(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
 function parseMcpAccessPolicy(value: unknown): ParseResult<JsonObject> {
   const body = toBody(value);
   const parsed: JsonObject = {
@@ -5321,20 +5369,6 @@ function parseMcpAccessPolicy(value: unknown): ParseResult<JsonObject> {
   }
 
   return { ok: true, value: parsed };
-}
-
-function toMcpAccessPolicyResponse(name: string): JsonObject {
-  const stored = state.mcpAccessPolicies.get(name) ?? {};
-  return {
-    allowedBitbucketRepositories: readStringSet(stored.allowedBitbucketRepositories),
-    allowedConfluenceSpaceKeys: readStringSet(stored.allowedConfluenceSpaceKeys),
-    allowedJiraProjectKeys: readStringSet(stored.allowedJiraProjectKeys),
-    allowedSourceNames: readStringSet(stored.allowedSourceNames),
-    allowDirectUrlLoads: nullableBoolean(stored.allowDirectUrlLoads),
-    allowPreviewReads: nullableBoolean(stored.allowPreviewReads),
-    allowPreviewWrites: nullableBoolean(stored.allowPreviewWrites),
-    publishedOnly: nullableBoolean(stored.publishedOnly)
-  };
 }
 
 function nullableBoolean(value: unknown): boolean | null {

@@ -120,8 +120,8 @@ Continued work should be treated as new hardening or product expansion, not migr
 - Session, Agent Spec, RBAC, Retention, Input Guard pipeline/settings, Runtime Settings, Admin Capabilities,
   Ops Dashboard, and RAG Ingestion Policy compatibility now match Reactor response DTOs and delete/reset semantics
   instead of Muse-specific convenience envelopes.
-- MCP preflight and access-policy compatibility now requires registered MCP servers, returns Reactor-style
-  preflight summaries, and keeps access-policy updates stateful per server instead of returning static OK stubs.
+- MCP preflight and access-policy compatibility now requires registered MCP servers and proxies the Reactor-style
+  admin API endpoints (`/admin/preflight`, `/admin/access-policy`) instead of returning static OK stubs.
 
 ## Execution Plan
 
