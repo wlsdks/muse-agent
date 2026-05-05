@@ -50,6 +50,9 @@ importers:
       '@muse/model':
         specifier: workspace:*
         version: link:../model
+      '@muse/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@muse/policy':
         specifier: workspace:*
         version: link:../policy
@@ -74,6 +77,15 @@ importers:
 
   packages/model:
     dependencies:
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/observability:
+    dependencies:
+      '@muse/model':
+        specifier: workspace:*
+        version: link:../model
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared

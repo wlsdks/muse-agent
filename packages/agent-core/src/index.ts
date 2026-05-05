@@ -6,6 +6,13 @@ import {
   type ModelRequest,
   type ModelResponse
 } from "@muse/model";
+import {
+  createNoOpAgentMetrics,
+  createNoOpMuseTracer,
+  type AgentMetrics,
+  type MuseTracer,
+  type SpanHandle
+} from "@muse/observability";
 import { trimConversationMessages, type ConversationTrimOptions } from "@muse/memory";
 import { detectSystemPromptLeakage, findInjectionPatterns, maskPii } from "@muse/policy";
 import { createRunId, type JsonObject } from "@muse/shared";
@@ -61,6 +68,8 @@ export interface AgentRuntimeOptions {
   readonly modelProvider?: ModelProvider;
   readonly modelRegistry?: ModelProviderRegistry;
   readonly contextWindow?: ConversationTrimOptions;
+  readonly metrics?: AgentMetrics;
+  readonly tracer?: MuseTracer;
   readonly guards?: readonly GuardStage[];
   readonly hooks?: readonly HookStage[];
   readonly outputGuards?: readonly OutputGuardStage[];
@@ -118,6 +127,8 @@ export class AgentRuntime {
   private readonly modelProvider?: ModelProvider;
   private readonly modelRegistry?: ModelProviderRegistry;
   private readonly contextWindow?: ConversationTrimOptions;
+  private readonly metrics: AgentMetrics;
+  private readonly tracer: MuseTracer;
   private readonly guards: readonly GuardStage[];
   private readonly hooks: readonly HookStage[];
   private readonly outputGuards: readonly OutputGuardStage[];
@@ -127,6 +138,8 @@ export class AgentRuntime {
     this.modelProvider = options.modelProvider;
     this.modelRegistry = options.modelRegistry;
     this.contextWindow = options.contextWindow;
+    this.metrics = options.metrics ?? createNoOpAgentMetrics();
+    this.tracer = options.tracer ?? createNoOpMuseTracer();
     this.guards = options.guards ?? [];
     this.hooks = options.hooks ?? [];
     this.outputGuards = options.outputGuards ?? [];
@@ -138,19 +151,28 @@ export class AgentRuntime {
   }
 
   async run(input: AgentRunInput): Promise<AgentRunResult> {
+    const startedAtMs = Date.now();
     const context: AgentRunContext = {
       input,
       runId: input.runId ?? createRunId(),
       startedAt: new Date()
     };
-
-    await this.evaluateGuards(context);
-    await this.invokeHooks("beforeStart", context);
+    const runSpan = this.tracer.startSpan("muse.agent.run", {
+      "model.requested": input.model,
+      "run.id": context.runId
+    });
 
     try {
+      await this.evaluateGuards(context);
+      await this.invokeHooks("beforeStart", context);
+
       const selected = this.resolveProvider(input.model);
+      runSpan.setAttribute("model.selected", selected.model);
+
       const preparedRequest = this.prepareModelRequest(input, selected.model);
-      const response = await selected.provider.generate({
+      recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
+
+      const response = await this.generateWithTracing(context, selected.provider, {
         ...preparedRequest.request,
         maxOutputTokens: this.defaults?.maxOutputTokens,
         temperature: this.defaults?.temperature
@@ -158,10 +180,15 @@ export class AgentRuntime {
       const guardedResponse = await this.applyOutputGuards(context, response);
 
       await this.invokeHooks("afterComplete", context, guardedResponse);
+      this.recordAgentRun(context, guardedResponse.model, "completed", startedAtMs);
       return createRunResult(context.runId, guardedResponse, preparedRequest.contextWindow);
     } catch (error) {
+      runSpan.setError(error);
+      this.recordAgentRun(context, input.model, "failed", startedAtMs);
       await this.invokeHooks("onError", context, error);
       throw error;
+    } finally {
+      runSpan.end();
     }
   }
 
@@ -216,17 +243,61 @@ export class AgentRuntime {
   private async evaluateGuards(context: AgentRunContext): Promise<void> {
     for (const guard of this.guards) {
       let decision: GuardDecision;
+      const span = this.tracer.startSpan("muse.guard.evaluate", {
+        "guard.id": guard.id,
+        "run.id": context.runId
+      });
 
       try {
         decision = await guard.evaluate(context);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Guard failed closed";
+        span.setError(error);
+        span.setAttribute("guard.allowed", false);
+        span.setAttribute("guard.reason", message);
+        span.end();
+        this.metrics.recordGuardRejection(guard.id, message, context.input.metadata);
         throw new GuardBlockedError(guard.id, message, "GUARD_ERROR");
       }
 
       if (!decision.allowed) {
+        span.setAttribute("guard.allowed", false);
+        span.setAttribute("guard.reason", decision.reason);
+        span.end();
+        this.metrics.recordGuardRejection(guard.id, decision.reason, context.input.metadata);
         throw new GuardBlockedError(guard.id, decision.reason, decision.code);
       }
+
+      span.setAttribute("guard.allowed", true);
+      span.end();
+    }
+  }
+
+  private async generateWithTracing(
+    context: AgentRunContext,
+    provider: ModelProvider,
+    request: ModelRequest
+  ): Promise<ModelResponse> {
+    const span = this.tracer.startSpan("muse.model.generate", {
+      "model.id": request.model,
+      "provider.id": provider.id,
+      "run.id": context.runId
+    });
+
+    try {
+      const response = await provider.generate(request);
+      recordUsageSpanAttributes(span, response);
+
+      if (response.usage) {
+        this.metrics.recordTokenUsage(response.usage, context.input.metadata);
+      }
+
+      return response;
+    } catch (error) {
+      span.setError(error);
+      throw error;
+    } finally {
+      span.end();
     }
   }
 
@@ -235,6 +306,10 @@ export class AgentRuntime {
 
     for (const stage of this.outputGuards) {
       let decision: OutputGuardDecision;
+      const span = this.tracer.startSpan("muse.output_guard.check", {
+        "output_guard.id": stage.id,
+        "run.id": context.runId
+      });
 
       try {
         decision = await stage.check(guarded.output, {
@@ -244,16 +319,34 @@ export class AgentRuntime {
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Output guard failed closed";
+        span.setError(error);
+        span.setAttribute("output_guard.action", "rejected");
+        span.setAttribute("output_guard.reason", message);
+        span.end();
+        this.metrics.recordOutputGuardAction(stage.id, "rejected", message, context.input.metadata);
         throw new OutputGuardBlockedError(stage.id, message, "OUTPUT_GUARD_ERROR");
       }
 
       if (decision.action === "reject") {
+        span.setAttribute("output_guard.action", "rejected");
+        span.setAttribute("output_guard.reason", decision.reason);
+        span.end();
+        this.metrics.recordOutputGuardAction(stage.id, "rejected", decision.reason, context.input.metadata);
         throw new OutputGuardBlockedError(stage.id, decision.reason, decision.code);
       }
 
       if (decision.action === "modify") {
+        span.setAttribute("output_guard.action", "modified");
+        span.setAttribute("output_guard.reason", decision.reason);
+        span.end();
+        this.metrics.recordOutputGuardAction(stage.id, "modified", decision.reason, context.input.metadata);
         guarded = { ...guarded, output: decision.content };
+        continue;
       }
+
+      span.setAttribute("output_guard.action", "allowed");
+      span.end();
+      this.metrics.recordOutputGuardAction(stage.id, "allowed", "", context.input.metadata);
     }
 
     return guarded;
@@ -281,6 +374,21 @@ export class AgentRuntime {
       }
     }
   }
+
+  private recordAgentRun(
+    context: AgentRunContext,
+    model: string,
+    status: "completed" | "failed",
+    startedAtMs: number
+  ): void {
+    this.metrics.recordAgentRun({
+      durationMs: Date.now() - startedAtMs,
+      metadata: context.input.metadata,
+      model,
+      runId: context.runId,
+      status
+    });
+  }
 }
 
 export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
@@ -297,6 +405,40 @@ function createRunResult(
   }
 
   return { contextWindow, response, runId };
+}
+
+function recordContextWindowSpanAttributes(
+  span: SpanHandle,
+  contextWindow: AgentContextWindowReport | undefined
+): void {
+  if (!contextWindow) {
+    return;
+  }
+
+  span.setAttribute("context.budget_tokens", contextWindow.budgetTokens);
+  span.setAttribute("context.estimated_tokens", contextWindow.estimatedTokens);
+  span.setAttribute("context.removed_count", contextWindow.removedCount);
+  span.setAttribute("context.summary_inserted", contextWindow.summaryInserted);
+}
+
+function recordUsageSpanAttributes(span: SpanHandle, response: ModelResponse): void {
+  if (!response.usage) {
+    return;
+  }
+
+  const usage = response.usage;
+
+  if (usage.inputTokens !== undefined) {
+    span.setAttribute("usage.input_tokens", usage.inputTokens);
+  }
+
+  if (usage.outputTokens !== undefined) {
+    span.setAttribute("usage.output_tokens", usage.outputTokens);
+  }
+
+  if (usage.reasoningTokens !== undefined) {
+    span.setAttribute("usage.reasoning_tokens", usage.reasoningTokens);
+  }
 }
 
 export function createInjectionInputGuard(): GuardStage {

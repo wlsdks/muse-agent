@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ModelProviderRegistry, type ModelProvider, type ModelRequest, type ModelResponse } from "@muse/model";
+import { InMemoryAgentMetrics, InMemoryMuseTracer } from "@muse/observability";
 import {
   createAgentRuntime,
   createInjectionInputGuard,
@@ -317,6 +318,92 @@ describe("AgentRuntime", () => {
     ).rejects.toMatchObject({
       code: "SYSTEM_PROMPT_LEAKAGE",
       stageId: "system-prompt-leakage-output-guard"
+    });
+  });
+
+  it("records spans and metrics around a successful run", async () => {
+    const metrics = new InMemoryAgentMetrics();
+    const tracer = new InMemoryMuseTracer();
+    const runtime = createAgentRuntime({
+      guards: [
+        {
+          evaluate: () => ({ allowed: true }),
+          id: "input"
+        }
+      ],
+      metrics,
+      modelProvider: createProvider({
+        usage: { inputTokens: 2, outputTokens: 3 }
+      }),
+      outputGuards: [createPiiMaskingOutputGuard()],
+      tracer
+    });
+
+    await runtime.run({
+      messages: [{ content: "Hello", role: "user" }],
+      model: "provider/model",
+      runId: "run-observed"
+    });
+
+    expect(tracer.recordedSpans().map((span) => span.name)).toEqual([
+      "muse.agent.run",
+      "muse.guard.evaluate",
+      "muse.model.generate",
+      "muse.output_guard.check"
+    ]);
+    expect(metrics.recordedEvents().map((event) => event.type)).toEqual([
+      "token_usage",
+      "output_guard_action",
+      "agent_run"
+    ]);
+    expect(metrics.recordedEvents().at(-1)).toMatchObject({
+      payload: {
+        model: "provider/model",
+        runId: "run-observed",
+        status: "completed"
+      },
+      type: "agent_run"
+    });
+  });
+
+  it("records guard rejection metrics and failed run spans", async () => {
+    const metrics = new InMemoryAgentMetrics();
+    const tracer = new InMemoryMuseTracer();
+    const runtime = createAgentRuntime({
+      guards: [
+        {
+          evaluate: () => ({ allowed: false, reason: "blocked" }),
+          id: "input"
+        }
+      ],
+      metrics,
+      modelProvider: createProvider(),
+      tracer
+    });
+
+    await expect(
+      runtime.run({
+        messages: [{ content: "Run blocked action", role: "user" }],
+        model: "provider/model",
+        runId: "run-blocked"
+      })
+    ).rejects.toBeInstanceOf(GuardBlockedError);
+
+    expect(metrics.recordedEvents()).toEqual([
+      {
+        payload: { metadata: {}, reason: "blocked", stage: "input" },
+        type: "guard_rejection"
+      },
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          runId: "run-blocked",
+          status: "failed"
+        }),
+        type: "agent_run"
+      })
+    ]);
+    expect(tracer.recordedSpans().find((span) => span.name === "muse.agent.run")).toMatchObject({
+      error: "blocked"
     });
   });
 });

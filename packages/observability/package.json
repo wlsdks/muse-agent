@@ -1,5 +1,5 @@
 {
-  "name": "@muse/agent-core",
+  "name": "@muse/observability",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -17,10 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@muse/memory": "workspace:*",
     "@muse/model": "workspace:*",
-    "@muse/observability": "workspace:*",
-    "@muse/policy": "workspace:*",
     "@muse/shared": "workspace:*"
   }
 }
