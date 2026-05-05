@@ -98,6 +98,18 @@ importers:
 
   packages/prompts: {}
 
+  packages/runtime-settings:
+    dependencies:
+      '@muse/db':
+        specifier: workspace:*
+        version: link:../db
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
+      kysely:
+        specifier: ^0.28.17
+        version: 0.28.17
+
   packages/runtime-state:
     dependencies:
       '@muse/db':
