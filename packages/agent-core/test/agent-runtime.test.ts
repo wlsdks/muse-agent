@@ -88,6 +88,38 @@ function createSequenceProvider(
   };
 }
 
+function createStreamingSequenceProvider(
+  responses: readonly ModelResponse[],
+  onStream?: (request: ModelRequest) => void
+): ModelProvider {
+  let index = 0;
+
+  return {
+    id: "test",
+    async generate() {
+      throw new Error("generate should not be called");
+    },
+    async listModels() {
+      return [];
+    },
+    async *stream(request) {
+      onStream?.(request);
+      const response = responses[Math.min(index, responses.length - 1)] ?? responses[responses.length - 1];
+      index += 1;
+
+      if (response.output.length > 0) {
+        yield { text: response.output, type: "text-delta" };
+      }
+
+      for (const toolCall of response.toolCalls ?? []) {
+        yield { toolCall, type: "tool-call" };
+      }
+
+      yield { response: { ...response, model: request.model }, type: "done" };
+    }
+  };
+}
+
 describe("AgentRuntime", () => {
   it("calls the provider through the model-agnostic interface", async () => {
     const runtime = createAgentRuntime({ modelProvider: createProvider() });
@@ -601,6 +633,74 @@ describe("AgentRuntime", () => {
       output: "The current invoice total is 42 credits.",
       status: "completed"
     });
+  });
+
+  it("continues streamed tool calls through the ReAct loop", async () => {
+    const streamedRequests: ModelRequest[] = [];
+    const historyStore = new InMemoryAgentRunHistoryStore();
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Reads the current invoice total.",
+          inputSchema: { type: "object" },
+          name: "read_invoice",
+          risk: "read"
+        },
+        execute: () => ({ total: 42 })
+      }
+    ]);
+    const provider = createStreamingSequenceProvider(
+      [
+        {
+          id: "stream-tool",
+          model: "test-model",
+          output: "",
+          toolCalls: [{ arguments: {}, id: "tool-1", name: "read_invoice" }]
+        },
+        {
+          id: "stream-final",
+          model: "test-model",
+          output: "The current invoice total is 42 credits."
+        }
+      ],
+      (request) => streamedRequests.push(request)
+    );
+    const runtime = createAgentRuntime({
+      historyStore,
+      maxToolCalls: 1,
+      modelProvider: provider,
+      toolRegistry
+    });
+    const events = [];
+
+    for await (const event of runtime.stream({
+      messages: [{ content: "What is the current invoice total?", role: "user" }],
+      metadata: { userId: "user-1" },
+      model: "provider/model",
+      runId: "run-stream-react"
+    })) {
+      events.push(event);
+    }
+
+    expect(events).toMatchObject([
+      { toolCall: { id: "tool-1", name: "read_invoice" }, type: "tool-call" },
+      { text: "The current invoice total is 42 credits.", type: "text-delta" },
+      { response: { output: "The current invoice total is 42 credits." }, type: "done" }
+    ]);
+    expect(streamedRequests).toHaveLength(2);
+    expect(streamedRequests[1]?.messages.map((message) => message.role)).toEqual([
+      "system",
+      "user",
+      "assistant",
+      "tool"
+    ]);
+    expect(historyStore.listToolCalls("run-stream-react")).toEqual([
+      expect.objectContaining({
+        id: "tool-1",
+        name: "read_invoice",
+        status: "completed"
+      })
+    ]);
   });
 
   it("continues when run history recording fails", async () => {

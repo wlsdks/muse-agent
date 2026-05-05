@@ -338,54 +338,53 @@ export class AgentRuntime {
 
       const contextualizedInput = await this.applyRetrievedContext(context);
       const preparedRequest = this.prepareModelRequest(contextualizedInput, selected.model);
-      let streamedOutput = "";
+      recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
+      const tools = this.modelTools();
+      const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
+      const cached = await this.readCache(cacheKey, selected.model);
 
-      for await (const event of selected.provider.stream({
-        ...preparedRequest.request,
-        maxOutputTokens: this.defaults?.maxOutputTokens,
-        temperature: this.defaults?.temperature,
-        tools: this.modelTools()
-      })) {
-        if (event.type === "text-delta") {
-          streamedOutput += event.text;
-          yield { ...event, runId: context.runId };
-          continue;
-        }
+      if (cached) {
+        const cachedResponse: ModelResponse = {
+          id: `${context.runId}:cache`,
+          model: cached.model ?? selected.model,
+          output: cached.content
+        };
+        const guardedCachedResponse = await this.applyOutputGuards(context, cachedResponse);
 
-        if (event.type === "tool-call") {
-          yield { ...event, runId: context.runId };
-          continue;
-        }
-
-        if (event.type === "error") {
-          yield { ...event, runId: context.runId };
-          continue;
-        }
-
-        const response = await this.applyOutputGuards(context, event.response);
         await this.recordRunComplete(context, {
-          finalResponse: response,
+          finalResponse: guardedCachedResponse,
           intermediateMessages: [],
           toolResults: [],
-          toolsUsed: []
+          toolsUsed: cached.toolsUsed
         });
-        await this.invokeHooks("afterComplete", context, response);
-        this.recordAgentRun(context, response.model, "completed", startedAtMs);
-        yield { response, runId: context.runId, type: "done" };
+        await this.invokeHooks("afterComplete", context, guardedCachedResponse);
+        this.recordAgentRun(context, guardedCachedResponse.model, "completed", startedAtMs);
+        yield { runId: context.runId, text: guardedCachedResponse.output, type: "text-delta" };
+        yield { response: guardedCachedResponse, runId: context.runId, type: "done" };
         return;
       }
 
-      const response = await this.applyOutputGuards(context, {
-        id: `${context.runId}:stream`,
-        model: selected.model,
-        output: streamedOutput
+      const stream = this.executeStreamingModelLoop(context, selected.provider, {
+        ...preparedRequest.request,
+        maxOutputTokens: this.defaults?.maxOutputTokens,
+        temperature: this.defaults?.temperature,
+        tools
       });
+
+      let next = await stream.next();
+
+      while (!next.done) {
+        yield next.value;
+        next = await stream.next();
+      }
+
+      const execution = next.value;
+      const response = await this.applyOutputGuards(context, execution.finalResponse);
       await this.recordRunComplete(context, {
-        finalResponse: response,
-        intermediateMessages: [],
-        toolResults: [],
-        toolsUsed: []
+        ...execution,
+        finalResponse: response
       });
+      await this.writeCache(cacheKey, response, execution.toolsUsed);
       await this.invokeHooks("afterComplete", context, response);
       this.recordAgentRun(context, response.model, "completed", startedAtMs);
       yield { response, runId: context.runId, type: "done" };
@@ -646,6 +645,150 @@ export class AgentRuntime {
         ? appendSystemSection(nextMessages, toolSummary, "tool-results")
         : nextMessages;
       intermediateMessages.push(...toolMessages);
+    }
+  }
+
+  private async *executeStreamingModelLoop(
+    context: AgentRunContext,
+    provider: ModelProvider,
+    request: ModelRequest
+  ): AsyncGenerator<AgentRuntimeStreamEvent, ModelLoopExecution, void> {
+    const intermediateMessages: ModelMessage[] = [];
+    const toolResults: ExecutedToolResult[] = [];
+    const toolsUsed: string[] = [];
+    let messages: readonly ModelMessage[] = [...request.messages];
+    let toolCallCount = 0;
+
+    while (true) {
+      const activeTools = toolCallCount < this.maxToolCalls ? request.tools : [];
+      const turnStream = this.streamModelTurn(context, provider, {
+        ...request,
+        messages,
+        tools: activeTools
+      });
+      let next = await turnStream.next();
+
+      while (!next.done) {
+        yield next.value;
+        next = await turnStream.next();
+      }
+
+      const response = next.value.response;
+      const calls = response.toolCalls ?? [];
+
+      if (calls.length === 0 || (activeTools?.length ?? 0) === 0) {
+        return {
+          finalResponse: response,
+          intermediateMessages,
+          toolResults,
+          toolsUsed: [...new Set(toolsUsed)]
+        };
+      }
+
+      const assistantMessage: ModelMessage = {
+        content: response.output,
+        role: "assistant",
+        toolCalls: calls
+      };
+      const toolMessages: ModelMessage[] = [];
+
+      intermediateMessages.push(assistantMessage);
+      messages = [...messages, assistantMessage];
+
+      for (const toolCall of calls) {
+        const remaining = this.maxToolCalls - toolCallCount;
+        const executed = remaining > 0
+          ? await this.executeToolCall(context, toolCall)
+          : blockedToolResult(toolCall, "Error: max tool call limit reached");
+
+        toolCallCount += remaining > 0 ? 1 : 0;
+        toolsUsed.push(toolCall.name);
+        toolResults.push(executed);
+        toolMessages.push({
+          content: executed.result.output,
+          name: toolCall.name,
+          role: "tool",
+          toolCallId: toolCall.id
+        });
+      }
+
+      const toolSummary = renderToolResults(
+        toolResults.map((item) => `${item.result.name}: ${item.result.output}`).join("\n\n")
+      );
+      const nextMessages = [...messages, ...toolMessages];
+      messages = toolSummary
+        ? appendSystemSection(nextMessages, toolSummary, "tool-results")
+        : nextMessages;
+      intermediateMessages.push(...toolMessages);
+    }
+  }
+
+  private async *streamModelTurn(
+    context: AgentRunContext,
+    provider: ModelProvider,
+    request: ModelRequest
+  ): AsyncGenerator<AgentRuntimeStreamEvent, StreamedModelTurn, void> {
+    const span = this.tracer.startSpan("muse.model.stream", {
+      "model.id": request.model,
+      "provider.id": provider.id,
+      "run.id": context.runId
+    });
+    const toolCalls = new Map<string, ModelToolCall>();
+    let streamedOutput = "";
+    let response: ModelResponse | undefined;
+
+    try {
+      for await (const event of provider.stream(request)) {
+        if (event.type === "text-delta") {
+          streamedOutput += event.text;
+          yield { ...event, runId: context.runId };
+          continue;
+        }
+
+        if (event.type === "tool-call") {
+          toolCalls.set(event.toolCall.id, event.toolCall);
+          yield { ...event, runId: context.runId };
+          continue;
+        }
+
+        if (event.type === "error") {
+          span.setError(event.error);
+          yield { ...event, runId: context.runId };
+          throw event.error;
+        }
+
+        for (const toolCall of event.response.toolCalls ?? []) {
+          if (!toolCalls.has(toolCall.id)) {
+            toolCalls.set(toolCall.id, toolCall);
+            yield { runId: context.runId, toolCall, type: "tool-call" };
+          }
+        }
+
+        response = {
+          ...event.response,
+          output: event.response.output || streamedOutput,
+          toolCalls: toolCalls.size > 0 ? [...toolCalls.values()] : event.response.toolCalls
+        };
+        recordUsageSpanAttributes(span, response);
+
+        if (response.usage) {
+          this.metrics.recordTokenUsage(response.usage, context.input.metadata);
+        }
+      }
+
+      return {
+        response: response ?? {
+          id: `${context.runId}:stream`,
+          model: request.model,
+          output: streamedOutput,
+          toolCalls: toolCalls.size > 0 ? [...toolCalls.values()] : undefined
+        }
+      };
+    } catch (error) {
+      span.setError(error);
+      throw error;
+    } finally {
+      span.end();
     }
   }
 
@@ -997,6 +1140,10 @@ interface ModelLoopExecution {
 interface ExecutedToolResult {
   readonly toolCall: ModelToolCall;
   readonly result: ToolExecutionResult;
+}
+
+interface StreamedModelTurn {
+  readonly response: ModelResponse;
 }
 
 function blockedToolResult(toolCall: ModelToolCall, output: string): ExecutedToolResult {
