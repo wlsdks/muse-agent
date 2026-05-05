@@ -3088,6 +3088,17 @@ describe("api server", () => {
       },
       url: "/api/admin/slack-bots"
     });
+    const invalidLongName = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        appToken: "xapp-token-value",
+        botToken: "xoxb-token-value",
+        name: "x".repeat(101),
+        personaId: "persona-1"
+      },
+      url: "/api/admin/slack-bots"
+    });
     const duplicate = await server.inject({
       headers,
       method: "POST",
@@ -3157,6 +3168,13 @@ describe("api server", () => {
       timestamp: expect.any(String)
     });
     expect(invalid.json()).not.toHaveProperty("code");
+    expect(invalidLongName.statusCode).toBe(400);
+    expect(invalidLongName.json()).toMatchObject({
+      details: { name: "size must be between 0 and 100" },
+      error: "요청 형식이 올바르지 않습니다",
+      timestamp: expect.any(String)
+    });
+    expect(invalidLongName.json()).not.toHaveProperty("code");
     expect(updated.json()).toMatchObject({ enabled: false, id: botId, name: "renamed-bot" });
     expect(missingUpdate.statusCode).toBe(404);
     expect(missingUpdate.json()).toMatchObject({

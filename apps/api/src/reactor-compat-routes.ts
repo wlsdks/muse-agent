@@ -6013,6 +6013,10 @@ function validateSlackBotCreate(body: CompatBody): JsonObject | undefined {
     return { name: "name은 필수입니다" };
   }
 
+  if (typeof body.name === "string" && body.name.length > 100) {
+    return { name: "size must be between 0 and 100" };
+  }
+
   if (!readBodyString(body, "botToken")) {
     return { botToken: "botToken은 필수입니다" };
   }
