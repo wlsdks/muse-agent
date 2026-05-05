@@ -79,7 +79,8 @@ routes, 365 Muse routes, and 0 missing Reactor routes.
 - Slack signed slash commands and URL verification are wired through API routes.
 - Admin APIs cover metrics, cache invalidation, and circuit breaker reset operations.
 - Scheduler has management routes plus a Node cron runtime.
-- OpenAI-compatible streaming now preserves streamed tool-call deltas.
+- OpenAI-compatible streaming preserves streamed tool-call deltas, while `/api/chat/stream` emits Reactor-style
+  `tool_start`, `tool_end`, and empty `done` SSE events.
 - `AgentRuntime.stream()` now executes streamed tool calls through the ReAct loop.
 - API chat parsing now preserves assistant `toolCalls`, keeping message pairs intact.
 - Response filtering strips copied trailing source blocks and buffers text when filters or output guards are active.
@@ -163,6 +164,12 @@ routes, 365 Muse routes, and 0 missing Reactor routes.
   exchange semantics, and keep self-registration users at `USER` scope.
 - `/api/sessions` compatibility now ignores spoofed `userId` query parameters and enforces Reactor-style
   authenticated-owner checks before deleting sessions.
+- `/api/chat` and `/api/chat/multipart` now return Reactor `ChatResponse` contracts, while `/chat` keeps the
+  extended Muse run metadata envelope.
+- Reactor-compatible auth/admin/session/scheduler/feedback failures now use the standard `{ error, timestamp }`
+  response shape instead of Muse-specific `{ code, message }` envelopes where Reactor uses `ErrorResponse`.
+- `/api/sessions` now denies ownerless sessions by default, supports `format=md` exports, and emits Reactor-style
+  unauthorized/session-forbidden messages.
 
 ## Execution Plan
 
