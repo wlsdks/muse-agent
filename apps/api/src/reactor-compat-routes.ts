@@ -688,6 +688,51 @@ function registerPromptAndRagRoutes(server: FastifyInstance, options: ReactorCom
     const query = readBodyString(request.body, "query")?.toLowerCase() ?? "";
     return [...state.documents.values()].filter((document) => JSON.stringify(document).toLowerCase().includes(query));
   });
+  server.post("/api/admin/rag/seed-policy", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const body = toBody(request.body);
+    const entries = Array.isArray(body.entries) ? body.entries.filter(isRecord).slice(0, 50) : [];
+    const startedAt = Date.now();
+    const keys: string[] = [];
+    let chunkCount = 0;
+
+    for (const entry of entries) {
+      const key = readBodyString(entry, "key");
+      const title = readBodyString(entry, "title");
+      const content = readBodyString(entry, "content");
+
+      if (!key || !title || !content) {
+        continue;
+      }
+
+      keys.push(key);
+      const chunks = chunkText(content);
+      chunkCount += chunks.length;
+
+      for (const [index, chunk] of chunks.entries()) {
+        createRecord(state.documents, {
+          category: readBodyNullableString(entry, "category") ?? null,
+          content: chunk,
+          id: `policy-seed:${key}:${index}`,
+          key,
+          source: "policy-seed",
+          spaceKey: readBodyNullableString(entry, "spaceKey") ?? null,
+          title,
+          url: readBodyNullableString(entry, "url") ?? null
+        }, "document");
+      }
+    }
+
+    return {
+      chunkCount,
+      documentCount: keys.length,
+      durationMs: Date.now() - startedAt,
+      keys
+    };
+  });
   server.delete("/api/documents", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;
@@ -2552,6 +2597,17 @@ function ragStatusSummary(): JsonObject {
     byStatus,
     total: records.length
   };
+}
+
+function chunkText(content: string): readonly string[] {
+  const maxChunkChars = 2_000;
+  const chunks: string[] = [];
+
+  for (let index = 0; index < content.length; index += maxChunkChars) {
+    chunks.push(content.slice(index, index + maxChunkChars));
+  }
+
+  return chunks.length > 0 ? chunks : [content];
 }
 
 function groupRecordsByField(records: readonly JsonObject[], field: string, fallback: string): readonly JsonObject[] {

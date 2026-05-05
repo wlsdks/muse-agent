@@ -85,6 +85,7 @@ Continued work should be treated as new hardening or product expansion, not migr
   vector-store stats, and admin tool stats now use Muse runtime state.
 - Reactor-compatible admin analytics/export/debug routes now cover eval dashboards, latency, RAG,
   Slack activity, tenant quality/tools/quota CSV exports, audit CSV export, and task-memory maintenance.
+- Reactor-compatible policy RAG seed now ingests seed entries into the Muse document state with chunk counts.
 
 ## Execution Plan
 

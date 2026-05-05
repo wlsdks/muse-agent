@@ -1249,6 +1249,20 @@ describe("api server", () => {
       method: "GET",
       url: "/api/admin/platform/vectorstore/stats"
     });
+    const policySeed = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        entries: [
+          {
+            content: "Policy content",
+            key: "policy-1",
+            title: "Policy One"
+          }
+        ]
+      },
+      url: "/api/admin/rag/seed-policy"
+    });
     const toolStats = await server.inject({
       headers,
       method: "GET",
@@ -1449,14 +1463,15 @@ describe("api server", () => {
     expect(pricing.json()).toMatchObject({ model: "provider/model", provider: "provider" });
     expect(pricingList.json()).toMatchObject([{ id: "provider:provider/model" }]);
     expect(vectorStoreStats.json()).toMatchObject({ available: true, documentCount: 1, indexedDocuments: 1 });
+    expect(policySeed.json()).toMatchObject({ chunkCount: 1, documentCount: 1, keys: ["policy-1"] });
     expect(toolStats.json()).toMatchObject({ accuracy: 1, byOutcome: { ok: 1 }, total: 1 });
     expect(toolAccuracy.json()).toMatchObject({ accuracy: 1, ok: 1, total: 1 });
     expect(followupStats.json()).toMatchObject({ totalClicks: 0, totalImpressions: 0, windowHours: 24 });
     expect(inputGuardStats.json()).toMatchObject({ blockRate: 0, total: 0 });
     expect(latencySummary.json()).toMatchObject({ count: 1, p50Ms: 2000, p95Ms: 2000, p99Ms: 2000 });
     expect(latencyTimeseries.json()).toMatchObject([{ avgLatencyMs: 2000, count: 1 }]);
-    expect(ragStatus.json()).toMatchObject({ byStatus: { indexed: 1 }, total: 1 });
-    expect(ragByChannel.json()).toMatchObject([{ count: 1, key: "api" }]);
+    expect(ragStatus.json()).toMatchObject({ byStatus: { indexed: 2 }, total: 2 });
+    expect(ragByChannel.json()).toMatchObject([{ count: 2, key: "api" }]);
     expect(slackActivityChannels.json()).toMatchObject([{ channel: "api", total: 1 }]);
     expect(slackActivityDaily.json()).toMatchObject([{ costUsd: 0.125, runs: 1 }]);
     expect(tenantQuality.json()).toMatchObject({ errors: 0, total: 1 });
