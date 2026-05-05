@@ -2532,6 +2532,60 @@ describe("api server", () => {
     expect(deleted.statusCode).toBe(204);
   });
 
+  it("keeps Reactor agent eval disabled-case replay semantics", async () => {
+    const authService = createAuthService();
+    const registered = authService.register({
+      email: "agent_eval_account",
+      name: "Agent Eval",
+      password: "password-1"
+    });
+    const historyStore = new InMemoryAgentRunHistoryStore();
+    historyStore.createRun({
+      id: "run-disabled-eval",
+      input: "hello",
+      model: "provider/model",
+      provider: "test",
+      userId: registered.user.id
+    });
+    historyStore.updateRun({
+      output: "missing required phrase",
+      runId: "run-disabled-eval",
+      status: "completed"
+    });
+    const server = buildServer({
+      authService,
+      historyStore,
+      logger: false,
+      requireAuth: true
+    });
+    const headers = { authorization: `Bearer ${registered.token}` };
+
+    const agentEvalCase = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        enabled: false,
+        expectedAnswerContains: ["never appears"],
+        runId: "run-disabled-eval"
+      },
+      url: "/api/admin/agent-eval/cases/promote"
+    });
+    const replay = await server.inject({
+      headers,
+      method: "POST",
+      url: `/api/admin/agent-eval/cases/${agentEvalCase.json().id}/replay`
+    });
+
+    expect(agentEvalCase.statusCode).toBe(200);
+    expect(replay.json()).toMatchObject({
+      deterministic: {
+        passed: true,
+        reasons: ["case disabled"],
+        score: 1
+      }
+    });
+  });
+
   it("keeps Slack webhook probe routes available when Slack is not enabled", async () => {
     const server = buildServer({ logger: false });
 

@@ -3379,6 +3379,21 @@ async function evaluateRunAgainstCase(
   run: AgentRunRecord,
   options: ReactorCompatibilityRouteOptions
 ): Promise<JsonObject> {
+  const assertionCount = countEvalAssertions(evalCase);
+  const behaviorAssertionCount = countBehaviorAssertions(evalCase);
+
+  if (evalCase.enabled === false) {
+    return agentEvalResult(evalCase, run, true, 1, ["case disabled"]);
+  }
+
+  if (assertionCount === 0) {
+    return agentEvalResult(evalCase, run, false, 0, ["case has no assertions"]);
+  }
+
+  if (behaviorAssertionCount === 0) {
+    return agentEvalResult(evalCase, run, false, 0, ["case has no behavior assertions"]);
+  }
+
   const toolCalls = await (options.historyStore?.listToolCalls(run.id) ?? []);
   const toolNames = toolCalls.map((toolCall) => toolCall.name);
   const successfulToolNames = toolCalls
@@ -3431,8 +3446,8 @@ async function evaluateRunAgainstCase(
       ? [`model mismatch: expected=${evalCase.model}, actual=${run.model}`]
       : [])
   ];
-  const assertionCount = Math.max(1, readNumber(evalCase.assertionCount, countEvalAssertions(evalCase)));
-  const score = ((assertionCount - reasons.length) / assertionCount).toFixed(6);
+  const effectiveAssertionCount = Math.max(1, readNumber(evalCase.assertionCount, assertionCount));
+  const score = ((effectiveAssertionCount - reasons.length) / effectiveAssertionCount).toFixed(6);
   const numericScore = Math.max(0, Math.min(1, Number(score)));
   return {
     caseId: typeof evalCase.id === "string" ? evalCase.id : "",
@@ -3446,6 +3461,28 @@ async function evaluateRunAgainstCase(
     runId: run.id,
     score: numericScore,
     toolExposureCountExceeded
+  };
+}
+
+function agentEvalResult(
+  evalCase: JsonObject,
+  run: AgentRunRecord,
+  passed: boolean,
+  score: number,
+  reasons: string[]
+): JsonObject {
+  return {
+    caseId: typeof evalCase.id === "string" ? evalCase.id : "",
+    forbiddenToolsExposed: [],
+    forbiddenToolsUsed: [],
+    missingExpectedAnswerContains: [],
+    missingExpectedExposedTools: [],
+    missingExpectedTools: [],
+    passed,
+    reasons,
+    runId: run.id,
+    score,
+    toolExposureCountExceeded: false
   };
 }
 
