@@ -89,6 +89,7 @@ export const DEFAULT_TOKEN_CACHE_TTL_MS = 5 * 60 * 1_000;
 export const DEFAULT_MESSAGE_STRUCTURE_OVERHEAD = 20;
 export const DEFAULT_COMPACTION_THRESHOLD = 3;
 export const COMPACTION_SUMMARY_PREFIX = "[Conversation summary";
+export const COMPACTION_PINNED_ENTITIES_PREFIX = "Pinned entities for pronoun resolution";
 export const DEFAULT_TASK_MEMORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 
 export class InMemoryTaskMemoryStore implements TaskMemoryStore, TaskMemoryMaintenance {
@@ -559,6 +560,7 @@ function buildCompactionSummaryText(
     .filter((message) => message.role === "user")
     .slice(-2)
     .map((message) => compactLine(message.content).slice(0, 80));
+  const pinnedEntities = extractPinnedEntities(originalSnapshot);
   const lines = previousSummary
     ? [previousSummary, `[Additional compaction round: ${droppedCount} messages removed]`]
     : [`${COMPACTION_SUMMARY_PREFIX}: ${droppedCount} messages compacted]`];
@@ -569,6 +571,10 @@ function buildCompactionSummaryText(
 
   if (recentTopics.length > 0) {
     lines.push(`Recent user topics: ${recentTopics.join(" / ")}`);
+  }
+
+  if (pinnedEntities.length > 0) {
+    lines.push(`${COMPACTION_PINNED_ENTITIES_PREFIX}: ${pinnedEntities.join(", ")}`);
   }
 
   return lines.join("\n");
@@ -637,6 +643,57 @@ function unique(values: readonly string[]): readonly string[] {
 
 function compactLine(value: string): string {
   return value.replace(/\s+/gu, " ").trim();
+}
+
+const issueKeyPattern = /\b[A-Z][A-Z0-9]+-\d+\b/gu;
+const entityNounPattern =
+  /(?<noun>[가-힣A-Za-z]{2,}(?:\s+[가-힣A-Za-z0-9]{2,}){0,3})\s*(?<type>버그|이슈|기능|모듈|프로젝트|시스템|서비스|페이지|문서)/gu;
+const quotedEntityPattern = /["'「『](?<term>[^"'」』\n]{2,50})["'」』]/gu;
+const maxPinnedEntities = 5;
+
+function extractPinnedEntities(messages: readonly ConversationMessage[]): readonly string[] {
+  const collected = new Set<string>();
+
+  for (const message of messages) {
+    if (message.role !== "user") {
+      continue;
+    }
+
+    for (const match of message.content.matchAll(issueKeyPattern)) {
+      addPinnedEntity(collected, match[0]);
+    }
+
+    if (collected.size >= maxPinnedEntities) {
+      break;
+    }
+
+    for (const match of message.content.matchAll(entityNounPattern)) {
+      const groups = match.groups ?? {};
+      addPinnedEntity(collected, `${groups.noun?.trim() ?? ""} ${groups.type ?? ""}`);
+    }
+
+    if (collected.size >= maxPinnedEntities) {
+      break;
+    }
+
+    for (const match of message.content.matchAll(quotedEntityPattern)) {
+      addPinnedEntity(collected, match.groups?.term?.trim() ?? "");
+    }
+
+    if (collected.size >= maxPinnedEntities) {
+      break;
+    }
+  }
+
+  return [...collected].slice(0, maxPinnedEntities);
+}
+
+function addPinnedEntity(collected: Set<string>, value: string): void {
+  const normalized = compactLine(value);
+
+  if (normalized.length > 0 && collected.size < maxPinnedEntities) {
+    collected.add(normalized);
+  }
 }
 
 function trimOldestCacheEntries(cache: Map<string, CacheEntry>, maxEntries: number): void {

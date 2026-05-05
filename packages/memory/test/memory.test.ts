@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   COMPACTION_SUMMARY_PREFIX,
+  COMPACTION_PINNED_ENTITIES_PREFIX,
   computeApproximateTokens,
   createApproximateTokenEstimator,
   estimateConversationTokens,
@@ -169,6 +170,64 @@ describe("conversation trimming", () => {
     expect(result.summaryInserted).toBe(true);
     expect(result.messages[0]?.role).toBe("system");
     expect(result.messages[0]?.content.startsWith(COMPACTION_SUMMARY_PREFIX)).toBe(true);
+  });
+
+  it("preserves pinned entities from dropped user messages in the compaction summary", () => {
+    const result = trimConversationMessages(
+      [
+        user("Investigate REACTOR-100 and the \"billing drift\" report"),
+        assistant("old answer"),
+        user("Then compare BB30-2581"),
+        assistant("second answer"),
+        user("current topic")
+      ],
+      {
+        estimator: lengthEstimator,
+        maxContextWindowTokens: 110,
+        outputReserveTokens: 20
+      }
+    );
+
+    expect(result.summaryInserted).toBe(true);
+    expect(result.messages[0]?.content).toContain(COMPACTION_PINNED_ENTITIES_PREFIX);
+    expect(result.messages[0]?.content).toContain("REACTOR-100");
+    expect(result.messages[0]?.content).toContain("billing drift");
+    expect(result.messages[0]?.content).toContain("BB30-2581");
+  });
+
+  it("merges the previous compaction summary on later trim rounds", () => {
+    const first = trimConversationMessages(
+      [
+        user("first topic REACTOR-101"),
+        assistant("first answer"),
+        user("second topic"),
+        assistant("second answer"),
+        user("current topic")
+      ],
+      {
+        estimator: lengthEstimator,
+        maxContextWindowTokens: 100,
+        outputReserveTokens: 20
+      }
+    );
+    const second = trimConversationMessages(
+      [
+        ...first.messages,
+        user("new topic"),
+        assistant("new answer"),
+        user("latest")
+      ],
+      {
+        estimator: lengthEstimator,
+        maxContextWindowTokens: 95,
+        outputReserveTokens: 20
+      }
+    );
+
+    expect(second.summaryInserted).toBe(true);
+    expect(second.messages[0]?.content).toContain(COMPACTION_SUMMARY_PREFIX);
+    expect(second.messages[0]?.content).toContain("Additional compaction round");
+    expect(second.messages[0]?.content).toContain("REACTOR-101");
   });
 });
 
