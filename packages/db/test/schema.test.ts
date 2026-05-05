@@ -14,7 +14,8 @@ describe("MuseDatabase", () => {
       "mcp_servers",
       "mcp_security_policy",
       "scheduled_jobs",
-      "scheduled_job_executions"
+      "scheduled_job_executions",
+      "scheduled_job_locks"
     ] satisfies readonly (keyof MuseDatabase)[];
 
     expect(tableNames).toContain("agent_runs");

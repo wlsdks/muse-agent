@@ -17,6 +17,7 @@ export interface MuseDatabase {
   readonly pending_approvals: PendingApprovalTable;
   readonly runtime_settings: RuntimeSettingTable;
   readonly scheduled_job_executions: ScheduledJobExecutionTable;
+  readonly scheduled_job_locks: ScheduledJobLockTable;
   readonly scheduled_jobs: ScheduledJobTable;
   readonly tool_calls: ToolCallTable;
   readonly trace_events: TraceEventTable;
@@ -200,4 +201,12 @@ export interface ScheduledJobExecutionTable {
   readonly started_at: Timestamp;
   readonly completed_at: NullableTimestamp;
   readonly created_at: Timestamp;
+}
+
+export interface ScheduledJobLockTable {
+  readonly job_id: string;
+  readonly owner_id: string;
+  readonly locked_until: Timestamp;
+  readonly created_at: Timestamp;
+  readonly updated_at: Timestamp;
 }

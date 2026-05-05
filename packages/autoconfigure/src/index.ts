@@ -31,6 +31,7 @@ import { InMemoryRuntimeSettingsStore, RuntimeSettingsService } from "@muse/runt
 import { InMemoryAgentRunHistoryStore, InMemoryHookTraceStore } from "@muse/runtime-state";
 import {
   DynamicSchedulerService,
+  InMemoryDistributedSchedulerLock,
   InMemoryScheduledJobExecutionStore,
   InMemoryScheduledJobStore,
   NodeCronScheduler,
@@ -183,6 +184,9 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       ? new NodeCronScheduler()
       : undefined,
     executionStore: schedulerExecutionStore,
+    distributedLock: new InMemoryDistributedSchedulerLock({
+      ownerId: env.MUSE_SCHEDULER_OWNER_ID
+    }),
     store: schedulerStore
   });
 

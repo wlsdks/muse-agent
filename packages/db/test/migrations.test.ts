@@ -22,7 +22,8 @@ describe("db migrations", () => {
       "mcp_servers",
       "mcp_security_policy",
       "scheduled_jobs",
-      "scheduled_job_executions"
+      "scheduled_job_executions",
+      "scheduled_job_locks"
     ]) {
       expect(sql).toContain(`CREATE TABLE IF NOT EXISTS ${table}`);
     }

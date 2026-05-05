@@ -1,4 +1,4 @@
-import type { ScheduledJobExecutionTable, ScheduledJobTable, MuseDatabase } from "@muse/db";
+import type { ScheduledJobExecutionTable, ScheduledJobLockTable, ScheduledJobTable, MuseDatabase } from "@muse/db";
 import type { McpManager } from "@muse/mcp";
 import { TimeoutError, withTimeout } from "@muse/resilience";
 import { createRunId, type JsonObject, type JsonValue } from "@muse/shared";
@@ -131,6 +131,16 @@ export interface KyselyScheduledJobExecutionStoreOptions {
   readonly now?: () => Date;
 }
 
+export interface KyselyDistributedSchedulerLockOptions {
+  readonly ownerId?: string;
+  readonly now?: () => Date;
+}
+
+export interface InMemoryDistributedSchedulerLockOptions {
+  readonly ownerId?: string;
+  readonly now?: () => Date;
+}
+
 export interface ScheduledAgentExecutor {
   execute(job: ScheduledJob): Awaitable<string>;
 }
@@ -182,6 +192,12 @@ type ScheduledJobRow = Selectable<ScheduledJobTable>;
 type ScheduledJobInsert = Insertable<ScheduledJobTable>;
 type ScheduledJobExecutionRow = Selectable<ScheduledJobExecutionTable>;
 type ScheduledJobExecutionInsert = Insertable<ScheduledJobExecutionTable>;
+type ScheduledJobLockInsert = Insertable<ScheduledJobLockTable>;
+
+interface InMemorySchedulerLockEntry {
+  readonly ownerId: string;
+  readonly lockedUntil: Date;
+}
 
 const resultTruncationLimit = 5_000;
 const defaultMaxJobs = 1_000;
@@ -662,6 +678,90 @@ export class NoOpDistributedSchedulerLock implements DistributedSchedulerLock {
   release(): void {}
 }
 
+export class InMemoryDistributedSchedulerLock implements DistributedSchedulerLock {
+  private static readonly globalLocks = new Map<string, InMemorySchedulerLockEntry>();
+
+  private readonly ownerId: string;
+  private readonly now: () => Date;
+  private readonly locks = InMemoryDistributedSchedulerLock.globalLocks;
+
+  constructor(options: InMemoryDistributedSchedulerLockOptions = {}) {
+    this.ownerId = options.ownerId ?? createRunId("scheduler_owner");
+    this.now = options.now ?? (() => new Date());
+  }
+
+  tryAcquire(jobId: string, ttlMs: number): boolean {
+    const now = this.now();
+    const existing = this.locks.get(jobId);
+
+    if (existing && existing.ownerId !== this.ownerId && existing.lockedUntil.getTime() > now.getTime()) {
+      return false;
+    }
+
+    this.locks.set(jobId, {
+      lockedUntil: new Date(now.getTime() + Math.max(1, ttlMs)),
+      ownerId: this.ownerId
+    });
+    return true;
+  }
+
+  release(jobId: string): void {
+    const existing = this.locks.get(jobId);
+
+    if (!existing || existing.ownerId !== this.ownerId) {
+      return;
+    }
+
+    this.locks.delete(jobId);
+  }
+}
+
+export class KyselyDistributedSchedulerLock implements DistributedSchedulerLock {
+  private readonly ownerId: string;
+  private readonly now: () => Date;
+
+  constructor(
+    private readonly db: Kysely<MuseDatabase>,
+    options: KyselyDistributedSchedulerLockOptions = {}
+  ) {
+    this.ownerId = options.ownerId ?? createRunId("scheduler_owner");
+    this.now = options.now ?? (() => new Date());
+  }
+
+  async tryAcquire(jobId: string, ttlMs: number): Promise<boolean> {
+    const now = this.now();
+    const row = createScheduledJobLockInsert(jobId, this.ownerId, Math.max(1, ttlMs), now);
+    const acquired = await this.db
+      .insertInto("scheduled_job_locks")
+      .values(row)
+      .onConflict((oc) =>
+        oc.column("job_id").doUpdateSet({
+          locked_until: row.locked_until,
+          owner_id: row.owner_id,
+          updated_at: row.updated_at
+        })
+          .where((eb) =>
+            eb.or([
+              eb("scheduled_job_locks.locked_until", "<=", now),
+              eb("scheduled_job_locks.owner_id", "=", this.ownerId)
+            ])
+          )
+      )
+      .returning(["owner_id"])
+      .executeTakeFirst();
+
+    return acquired?.owner_id === this.ownerId;
+  }
+
+  async release(jobId: string): Promise<void> {
+    await this.db
+      .deleteFrom("scheduled_job_locks")
+      .where("job_id", "=", jobId)
+      .where("owner_id", "=", this.ownerId)
+      .execute();
+  }
+}
+
 export class NodeCronScheduler implements CronScheduler {
   private readonly maxDelayMs: number;
   private readonly now: () => Date;
@@ -1046,6 +1146,21 @@ export function createScheduledJobExecutionInsert(
     result: execution.result ?? null,
     started_at: execution.startedAt,
     status: execution.status
+  };
+}
+
+export function createScheduledJobLockInsert(
+  jobId: string,
+  ownerId: string,
+  ttlMs: number,
+  now: Date
+): ScheduledJobLockInsert {
+  return {
+    created_at: now,
+    job_id: jobId,
+    locked_until: new Date(now.getTime() + Math.max(1, ttlMs)),
+    owner_id: ownerId,
+    updated_at: now
   };
 }
 

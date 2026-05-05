@@ -11,6 +11,7 @@ export const migrations: readonly SqlMigration[] = [
       DROP TABLE IF EXISTS hook_traces;
       DROP TABLE IF EXISTS checkpoints;
       DROP TABLE IF EXISTS scheduled_job_executions;
+      DROP TABLE IF EXISTS scheduled_job_locks;
       DROP TABLE IF EXISTS scheduled_jobs;
       DROP TABLE IF EXISTS mcp_security_policy;
       DROP TABLE IF EXISTS mcp_servers;
@@ -251,6 +252,17 @@ export const migrations: readonly SqlMigration[] = [
         ON scheduled_job_executions(job_id, started_at DESC);
       CREATE INDEX IF NOT EXISTS idx_scheduled_job_executions_created_at
         ON scheduled_job_executions(created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS scheduled_job_locks (
+        job_id VARCHAR(128) PRIMARY KEY REFERENCES scheduled_jobs(id) ON DELETE CASCADE,
+        owner_id VARCHAR(128) NOT NULL,
+        locked_until TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_scheduled_job_locks_locked_until
+        ON scheduled_job_locks(locked_until);
     `
   }
 ];

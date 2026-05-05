@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryMcpServerStore, McpManager, type McpConnection } from "@muse/mcp";
 import {
   DynamicSchedulerService,
+  InMemoryDistributedSchedulerLock,
   InMemoryScheduledJobExecutionStore,
   InMemoryScheduledJobStore,
   KyselyScheduledJobExecutionStore,
   KyselyScheduledJobStore,
+  KyselyDistributedSchedulerLock,
   NodeCronScheduler,
   NoOpDistributedSchedulerLock,
   ScheduledJobDispatcher,
@@ -15,6 +17,7 @@ import {
   SchedulerMessagingService,
   SchedulerValidationError,
   computeNextRunAt,
+  createScheduledJobLockInsert,
   createScheduledJobExecutionInsert,
   createScheduledJobInsert,
   mapScheduledJobExecutionRow,
@@ -150,6 +153,26 @@ describe("scheduled job stores", () => {
 
     expect(store.findByJobId("job-1").map((execution) => execution.result)).toEqual(["three"]);
     expect(store.findRecent()).toHaveLength(2);
+  });
+
+  it("enforces in-memory scheduler locks with owner and TTL semantics", async () => {
+    let nowMs = Date.parse("2026-01-01T00:00:00.000Z");
+    const first = new InMemoryDistributedSchedulerLock({
+      now: () => new Date(nowMs),
+      ownerId: "worker-1"
+    });
+    const second = new InMemoryDistributedSchedulerLock({
+      now: () => new Date(nowMs),
+      ownerId: "worker-2"
+    });
+
+    expect(await first.tryAcquire("job-1", 100)).toBe(true);
+    expect(await first.tryAcquire("job-1", 100)).toBe(true);
+    expect(await second.tryAcquire("job-1", 100)).toBe(false);
+
+    nowMs += 101;
+    expect(await second.tryAcquire("job-1", 100)).toBe(true);
+    await second.release("job-1");
   });
 });
 
@@ -359,9 +382,15 @@ describe("Kysely mapping helpers", () => {
       { jobId: "job-1", jobName: "Job", result: "ok", status: "success" },
       { idFactory: () => "exec-1", now: () => now }
     );
+    const lock = createScheduledJobLockInsert("job-1", "worker-1", 1_000, now);
 
     expect(mapScheduledJobRow(insert)).toMatchObject({ id: "job-1", name: "Job", tags: ["ops"] });
     expect(mapScheduledJobExecutionRow(execution)).toMatchObject({ id: "exec-1", jobId: "job-1" });
+    expect(lock).toMatchObject({
+      job_id: "job-1",
+      locked_until: new Date("2026-05-05T00:00:01.000Z"),
+      owner_id: "worker-1"
+    });
   });
 
   it("constructs Kysely stores", () => {
@@ -369,6 +398,7 @@ describe("Kysely mapping helpers", () => {
 
     expect(new KyselyScheduledJobStore(db)).toBeInstanceOf(KyselyScheduledJobStore);
     expect(new KyselyScheduledJobExecutionStore(db)).toBeInstanceOf(KyselyScheduledJobExecutionStore);
+    expect(new KyselyDistributedSchedulerLock(db)).toBeInstanceOf(KyselyDistributedSchedulerLock);
   });
 
   it("constructs no-op distributed lock and execution recorder", async () => {

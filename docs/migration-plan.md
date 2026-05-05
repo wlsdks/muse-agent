@@ -14,7 +14,7 @@ Current Muse baseline:
 | --- | ---: | --- |
 | Reactor modules with Muse landing zones | 31 | Every source module has a package or API target |
 | Functionally exercised migration areas | 31 | Core behavior exists and is covered by package/API tests |
-| Deep-hardening areas still open | 3 | Behavior exists, but production depth is not complete |
+| Deep-hardening areas still open | 2 | Behavior exists, but production depth is not complete |
 | Remaining unmapped modules | 0 | No source module is without a target |
 
 ## Completed Migration Areas
@@ -46,7 +46,7 @@ Current Muse baseline:
 | `resilience` | `packages/resilience` | Circuit breaker registry, retry, timeout, and model fallback primitives exist |
 | `response` | `packages/policy`, `packages/agent-core` | Output guards, source filters, and structured filters exist |
 | `runtime-settings` | `packages/runtime-settings`, `apps/api` | Runtime settings service/store and API surface exist |
-| `scheduler` | `packages/scheduler`, `apps/api` | CRUD API, trigger/dry-run, execution records, and Node cron exist |
+| `scheduler` | `packages/scheduler`, `apps/api` | CRUD, execution records, cron, and scheduler locks exist |
 | `slack` | `packages/integrations`, `apps/api` | Signed Events API, slash command, and response_url integration exist |
 | `tool` | `packages/tools` | Tool registry, executor, sanitizer, and approval path exist |
 | `web` | `apps/api` | HTTP/SSE run endpoints and typed error surfaces exist |
@@ -57,7 +57,6 @@ Current Muse baseline:
 | --- | --- | --- |
 | `admin` | Tenant, alert, cost, and SLO operations are shallow | Add operational stores and routes |
 | `core` | Boundary stability needs continued review | Keep shared contracts minimal and versionable |
-| `scheduler` | No distributed lock for multi-instance deployment | Add lock abstraction before horizontal scale |
 
 ## Recent Completion Notes
 
@@ -72,12 +71,12 @@ Current Muse baseline:
 - Hook registry execution now records completed/failed hook traces in runtime state.
 - Structured output filtering normalizes JSON/YAML responses when requested by run metadata.
 - MCP health checks now mark unhealthy connections and reconnect due servers with backoff.
+- Scheduler now has in-memory and Kysely-backed distributed lock implementations.
 
 ## Execution Plan
 
 1. Expand admin into tenant, alert, cost, and SLO operations.
-2. Add scheduler distributed lock abstraction before multi-instance deployment.
-3. Replace in-memory default stores with production persistence wiring where needed.
+2. Replace in-memory default stores with production persistence wiring where needed.
 
 ## Migration Rules
 
