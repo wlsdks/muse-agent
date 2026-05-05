@@ -7,7 +7,7 @@ import {
   type ModelResponse
 } from "@muse/model";
 import { trimConversationMessages, type ConversationTrimOptions } from "@muse/memory";
-import { findInjectionPatterns, maskPii } from "@muse/policy";
+import { detectSystemPromptLeakage, findInjectionPatterns, maskPii } from "@muse/policy";
 import { createRunId, type JsonObject } from "@muse/shared";
 
 type Awaitable<T> = T | Promise<T>;
@@ -353,6 +353,29 @@ export function createPiiMaskingOutputGuard(): OutputGuardStage {
       };
     },
     id: "pii-output-mask"
+  };
+}
+
+export function createSystemPromptLeakageOutputGuard(options: {
+  readonly canaryTokens?: readonly string[];
+} = {}): OutputGuardStage {
+  return {
+    check: (content) => {
+      const findings = detectSystemPromptLeakage(content, {
+        canaryTokens: options.canaryTokens
+      });
+
+      if (findings.length === 0) {
+        return { action: "allow" };
+      }
+
+      return {
+        action: "reject",
+        code: "SYSTEM_PROMPT_LEAKAGE",
+        reason: `Output guard detected system prompt leakage: ${findings.map((finding) => finding.name).join(", ")}`
+      };
+    },
+    id: "system-prompt-leakage-output-guard"
   };
 }
 
