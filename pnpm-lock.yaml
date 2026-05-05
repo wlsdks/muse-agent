@@ -54,6 +54,15 @@ importers:
         specifier: workspace:*
         version: link:../shared
 
+  packages/db:
+    dependencies:
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
+      kysely:
+        specifier: ^0.28.17
+        version: 0.28.17
+
   packages/model:
     dependencies:
       '@muse/shared':
@@ -538,6 +547,10 @@ packages:
 
   json-schema-traverse@1.0.0:
     resolution: {integrity: sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==}
+
+  kysely@0.28.17:
+    resolution: {integrity: sha512-nbD8lB9EB3wNdMhOCdx5Li8DxnLbvKByylRLcJ1h+4SkrowVeECAyZlyiKMThF7xFdRz0jSQ2MoJr+wXux2y0Q==}
+    engines: {node: '>=20.0.0'}
 
   light-my-request@6.6.0:
     resolution: {integrity: sha512-CHYbu8RtboSIoVsHZ6Ye4cj4Aw/yg2oAFimlF7mNvfDV192LR7nDiKtSIfCuLT7KokPSTn/9kfVLm5OGN0A28A==}
@@ -1259,6 +1272,8 @@ snapshots:
       dequal: 2.0.3
 
   json-schema-traverse@1.0.0: {}
+
+  kysely@0.28.17: {}
 
   light-my-request@6.6.0:
     dependencies:
