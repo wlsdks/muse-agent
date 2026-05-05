@@ -148,6 +148,8 @@ routes, 365 Muse routes, and 0 missing Reactor routes.
   admin API endpoints (`/admin/preflight`, `/admin/access-policy`) instead of returning static OK stubs.
 - Ops Dashboard compatibility now enforces admin authorization and derives MCP, scheduler, response-trust, recent
   trust event, and employee-value summaries from Muse runtime state instead of fixed empty snapshots.
+- Platform Alert compatibility now lists only active/open alerts, records Reactor-style admin audits, returns
+  `status: "evaluation complete"` for evaluation, and resolves alerts idempotently with an empty `200` response.
 
 ## Execution Plan
 

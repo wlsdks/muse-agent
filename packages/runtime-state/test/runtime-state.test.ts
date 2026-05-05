@@ -208,7 +208,14 @@ describe("InMemoryAdminOperationsStore", () => {
       severity: "critical",
       target: "tenant-1"
     });
+    const alertToResolve = await store.createAlert({
+      id: "alert-resolve",
+      message: "Latency threshold crossed",
+      severity: "warning",
+      target: "tenant-1"
+    });
     const acknowledged = await store.acknowledgeAlert(alert.id);
+    const resolved = await store.resolveAlert(alertToResolve.id);
     const slo = await store.upsertSlo({
       actual: 94,
       id: "availability",
@@ -225,7 +232,8 @@ describe("InMemoryAdminOperationsStore", () => {
     expect(tenant).toMatchObject({ id: "tenant-1", status: "active" });
     expect(await store.listTenants()).toHaveLength(1);
     expect(acknowledged).toMatchObject({ id: alert.id, status: "acknowledged" });
-    expect(await store.listAlerts()).toHaveLength(1);
+    expect(resolved).toMatchObject({ id: alertToResolve.id, status: "resolved" });
+    expect(await store.listAlerts()).toHaveLength(2);
     expect(slo).toMatchObject({ id: "availability", status: "violated" });
     expect(costs).toEqual({
       byModel: { "provider/model": "1.25000000" },

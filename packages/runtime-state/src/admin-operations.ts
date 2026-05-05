@@ -62,6 +62,7 @@ export interface AdminOperationsStore {
   listAlerts(): Awaitable<readonly AdminAlert[]>;
   createAlert(input: AdminAlertInput): Awaitable<AdminAlert>;
   acknowledgeAlert(id: string): Awaitable<AdminAlert | undefined>;
+  resolveAlert(id: string): Awaitable<AdminAlert | undefined>;
   listSlos(): Awaitable<readonly AdminSlo[]>;
   upsertSlo(input: AdminSloInput): Awaitable<AdminSlo>;
   recordCost(input: AdminCostUsage): Awaitable<AdminCostSummary>;
@@ -177,6 +178,23 @@ export class InMemoryAdminOperationsStore implements AdminOperationsStore {
     return updated;
   }
 
+  resolveAlert(id: string): AdminAlert | undefined {
+    const existing = this.alerts.get(id);
+
+    if (!existing) {
+      return undefined;
+    }
+
+    const updated: AdminAlert = {
+      ...existing,
+      acknowledgedAt: existing.acknowledgedAt ?? this.now(),
+      status: "resolved"
+    };
+
+    this.alerts.set(id, updated);
+    return updated;
+  }
+
   listSlos(): readonly AdminSlo[] {
     return [...this.slos.values()].sort(compareById);
   }
@@ -277,6 +295,20 @@ export class KyselyAdminOperationsStore implements AdminOperationsStore {
       .set({
         acknowledged_at: this.now(),
         status: "acknowledged"
+      })
+      .where("id", "=", id)
+      .returningAll()
+      .executeTakeFirst();
+
+    return row ? mapAdminAlertRow(row) : undefined;
+  }
+
+  async resolveAlert(id: string): Promise<AdminAlert | undefined> {
+    const row = await this.db
+      .updateTable("admin_alerts")
+      .set({
+        acknowledged_at: this.now(),
+        status: "resolved"
       })
       .where("id", "=", id)
       .returningAll()

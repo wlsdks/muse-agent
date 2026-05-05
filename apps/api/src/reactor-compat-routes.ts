@@ -2527,7 +2527,8 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
       return reply;
     }
 
-    return options.admin?.operations?.listAlerts() ?? [];
+    const alerts = await (options.admin?.operations?.listAlerts() ?? []);
+    return alerts.filter((alert) => alert.status === "open");
   });
   server.get("/api/admin/platform/alerts/rules", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -2552,7 +2553,7 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
       });
     }
 
-    return createRecord(state.platformAlertRules, {
+    const saved = createRecord(state.platformAlertRules, {
       createdAt: readBodyString(body, "createdAt") ?? nowIso(),
       description: readBodyString(body, "description") ?? "",
       enabled: readBoolean(body.enabled, true),
@@ -2566,6 +2567,15 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
       type: readBodyString(body, "type") ?? "STATIC_THRESHOLD",
       windowMinutes: readNumber(body.windowMinutes, 15)
     }, "alert_rule");
+
+    recordAdminAudit(request, {
+      action: "RULE_UPSERT",
+      category: "platform_alert",
+      resourceId: saved.id,
+      resourceType: "alert_rule"
+    });
+
+    return saved;
   });
   server.delete("/api/admin/platform/alerts/rules/:id", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -2573,14 +2583,31 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
     }
 
     const { id } = request.params as { readonly id: string };
-    return state.platformAlertRules.delete(id) ? reply.status(204).send() : notFound(reply, "ALERT_RULE_NOT_FOUND");
+    if (!state.platformAlertRules.delete(id)) {
+      return notFound(reply, "ALERT_RULE_NOT_FOUND");
+    }
+
+    recordAdminAudit(request, {
+      action: "RULE_DELETE",
+      category: "platform_alert",
+      resourceId: id,
+      resourceType: "alert_rule"
+    });
+
+    return reply.status(204).send();
   });
   server.post("/api/admin/platform/alerts/evaluate", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
-    return { evaluated: true, alerts: await (options.admin?.operations?.listAlerts() ?? []) };
+    recordAdminAudit(request, {
+      action: "ALERT_EVALUATE",
+      category: "platform_alert",
+      resourceType: "alert_rule_set"
+    });
+
+    return { status: "evaluation complete" };
   });
   server.post("/api/admin/platform/alerts/:id/resolve", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -2588,7 +2615,14 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
     }
 
     const { id } = request.params as { readonly id: string };
-    return options.admin?.operations?.acknowledgeAlert(id) ?? notFound(reply, "ADMIN_ALERT_NOT_FOUND");
+    await options.admin?.operations?.resolveAlert(id);
+    recordAdminAudit(request, {
+      action: "ALERT_RESOLVE",
+      category: "platform_alert",
+      resourceId: id,
+      resourceType: "alert"
+    });
+    return reply.status(200).send();
   });
 
   server.get("/api/admin/tenant/overview", async (request, reply) => tenantSummary(request, reply, options));

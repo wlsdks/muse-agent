@@ -394,6 +394,104 @@ describe("api server", () => {
     });
   });
 
+  it("matches Reactor platform alert evaluation and resolve semantics", async () => {
+    const authService = createAuthService();
+    const admin = authService.register({
+      email: "platform_admin",
+      name: "Platform Admin",
+      password: "password-1"
+    });
+    const member = authService.register({
+      email: "platform_member",
+      name: "Platform Member",
+      password: "password-1"
+    });
+    const operations = new InMemoryAdminOperationsStore({
+      now: () => new Date("2026-01-01T00:00:00.000Z")
+    });
+    await operations.createAlert({
+      id: "alert-1",
+      message: "Cost threshold crossed",
+      severity: "critical",
+      target: "tenant-1"
+    });
+    const server = buildServer({
+      admin: { operations },
+      authService,
+      logger: false,
+      requireAuth: true
+    });
+    const adminHeaders = { authorization: `Bearer ${admin.token}` };
+    const memberHeaders = { authorization: `Bearer ${member.token}` };
+
+    const denied = await server.inject({
+      headers: memberHeaders,
+      method: "POST",
+      url: "/api/admin/platform/alerts/evaluate"
+    });
+    const activeBefore = await server.inject({
+      headers: adminHeaders,
+      method: "GET",
+      url: "/api/admin/platform/alerts"
+    });
+    const evaluated = await server.inject({
+      headers: adminHeaders,
+      method: "POST",
+      url: "/api/admin/platform/alerts/evaluate"
+    });
+    const resolved = await server.inject({
+      headers: adminHeaders,
+      method: "POST",
+      url: "/api/admin/platform/alerts/alert-1/resolve"
+    });
+    const missingResolved = await server.inject({
+      headers: adminHeaders,
+      method: "POST",
+      url: "/api/admin/platform/alerts/missing-alert/resolve"
+    });
+    const activeAfter = await server.inject({
+      headers: adminHeaders,
+      method: "GET",
+      url: "/api/admin/platform/alerts"
+    });
+    const audits = await server.inject({
+      headers: adminHeaders,
+      method: "GET",
+      url: "/api/admin/audits?category=platform_alert"
+    });
+
+    expect(denied.statusCode).toBe(403);
+    expect(activeBefore.json()).toMatchObject([{ id: "alert-1", status: "open" }]);
+    expect(evaluated.json()).toEqual({ status: "evaluation complete" });
+    expect(resolved.statusCode).toBe(200);
+    expect(resolved.body).toBe("");
+    expect(missingResolved.statusCode).toBe(200);
+    expect(missingResolved.body).toBe("");
+    expect(activeAfter.json()).toEqual([]);
+    expect(await operations.listAlerts()).toMatchObject([{ id: "alert-1", status: "resolved" }]);
+    expect(audits.json()).toMatchObject({
+      items: expect.arrayContaining([
+        expect.objectContaining({
+          action: "ALERT_EVALUATE",
+          category: "platform_alert",
+          resourceType: "alert_rule_set"
+        }),
+        expect.objectContaining({
+          action: "ALERT_RESOLVE",
+          category: "platform_alert",
+          resourceId: "alert-1",
+          resourceType: "alert"
+        }),
+        expect.objectContaining({
+          action: "ALERT_RESOLVE",
+          category: "platform_alert",
+          resourceId: "missing-alert"
+        })
+      ]),
+      total: 3
+    });
+  });
+
   it("exposes admin metrics, cache, and circuit breaker operations", async () => {
     const authService = createAuthService();
     const registered = authService.register({
@@ -2730,9 +2828,10 @@ describe("api server", () => {
     expect(auditsList.json()).toMatchObject({
       items: expect.arrayContaining([
         expect.objectContaining({ action: "SIMULATE", category: "input_guard" }),
+        expect.objectContaining({ action: "RULE_UPSERT", category: "platform_alert" }),
         expect.objectContaining({ action: "TOOL_CALL", category: "metric_event", resourceType: "metric_event" })
       ]),
-      total: 2
+      total: 3
     });
     expect(auditsExport.body).toContain("metric_event");
     expect(errorReport.statusCode).toBe(204);
