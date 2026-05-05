@@ -179,6 +179,27 @@ importers:
         specifier: ^0.28.17
         version: 0.28.17
 
+  packages/scheduler:
+    dependencies:
+      '@muse/db':
+        specifier: workspace:*
+        version: link:../db
+      '@muse/mcp':
+        specifier: workspace:*
+        version: link:../mcp
+      '@muse/resilience':
+        specifier: workspace:*
+        version: link:../resilience
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@muse/tools':
+        specifier: workspace:*
+        version: link:../tools
+      kysely:
+        specifier: ^0.28.17
+        version: 0.28.17
+
   packages/shared: {}
 
   packages/tools:

@@ -15,6 +15,8 @@ export interface MuseDatabase {
   readonly mcp_servers: McpServerTable;
   readonly pending_approvals: PendingApprovalTable;
   readonly runtime_settings: RuntimeSettingTable;
+  readonly scheduled_job_executions: ScheduledJobExecutionTable;
+  readonly scheduled_jobs: ScheduledJobTable;
   readonly tool_calls: ToolCallTable;
   readonly trace_events: TraceEventTable;
 }
@@ -141,4 +143,46 @@ export interface McpSecurityPolicyTable {
   readonly allowed_stdio_commands: JsonColumn;
   readonly created_at: Timestamp;
   readonly updated_at: Timestamp;
+}
+
+export interface ScheduledJobTable {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly cron_expression: string;
+  readonly timezone: string;
+  readonly job_type: "mcp_tool" | "agent";
+  readonly mcp_server_name: string | null;
+  readonly tool_name: string | null;
+  readonly tool_arguments: JsonColumn;
+  readonly agent_prompt: string | null;
+  readonly persona_id: string | null;
+  readonly agent_system_prompt: string | null;
+  readonly agent_model: string | null;
+  readonly agent_max_tool_calls: number | null;
+  readonly tags: JsonColumn;
+  readonly notification_channel_id: string | null;
+  readonly webhook_url: string | null;
+  readonly retry_on_failure: boolean;
+  readonly max_retry_count: number;
+  readonly execution_timeout_ms: number | null;
+  readonly enabled: boolean;
+  readonly last_run_at: NullableTimestamp;
+  readonly last_status: "success" | "failed" | "running" | "skipped" | null;
+  readonly last_result: string | null;
+  readonly created_at: Timestamp;
+  readonly updated_at: Timestamp;
+}
+
+export interface ScheduledJobExecutionTable {
+  readonly id: string;
+  readonly job_id: string;
+  readonly job_name: string;
+  readonly status: "success" | "failed" | "running" | "skipped";
+  readonly result: string | null;
+  readonly duration_ms: number;
+  readonly dry_run: boolean;
+  readonly started_at: Timestamp;
+  readonly completed_at: NullableTimestamp;
+  readonly created_at: Timestamp;
 }

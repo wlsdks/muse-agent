@@ -9,6 +9,8 @@ export const migrations: readonly SqlMigration[] = [
     down: `
       DROP TABLE IF EXISTS trace_events;
       DROP TABLE IF EXISTS checkpoints;
+      DROP TABLE IF EXISTS scheduled_job_executions;
+      DROP TABLE IF EXISTS scheduled_jobs;
       DROP TABLE IF EXISTS mcp_security_policy;
       DROP TABLE IF EXISTS mcp_servers;
       DROP TABLE IF EXISTS pending_approvals;
@@ -177,6 +179,58 @@ export const migrations: readonly SqlMigration[] = [
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS scheduled_jobs (
+        id VARCHAR(128) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        description TEXT,
+        cron_expression VARCHAR(120) NOT NULL,
+        timezone VARCHAR(80) NOT NULL DEFAULT 'UTC',
+        job_type VARCHAR(32) NOT NULL,
+        mcp_server_name VARCHAR(255),
+        tool_name VARCHAR(255),
+        tool_arguments JSONB NOT NULL DEFAULT '{}'::jsonb,
+        agent_prompt TEXT,
+        persona_id VARCHAR(128),
+        agent_system_prompt TEXT,
+        agent_model VARCHAR(255),
+        agent_max_tool_calls INTEGER,
+        tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+        notification_channel_id VARCHAR(255),
+        webhook_url TEXT,
+        retry_on_failure BOOLEAN NOT NULL DEFAULT FALSE,
+        max_retry_count INTEGER NOT NULL DEFAULT 3,
+        execution_timeout_ms BIGINT,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        last_run_at TIMESTAMPTZ,
+        last_status VARCHAR(32),
+        last_result TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_enabled_name
+        ON scheduled_jobs(enabled, name);
+      CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_type_enabled
+        ON scheduled_jobs(job_type, enabled);
+
+      CREATE TABLE IF NOT EXISTS scheduled_job_executions (
+        id VARCHAR(128) PRIMARY KEY,
+        job_id VARCHAR(128) NOT NULL REFERENCES scheduled_jobs(id) ON DELETE CASCADE,
+        job_name VARCHAR(255) NOT NULL,
+        status VARCHAR(32) NOT NULL,
+        result TEXT,
+        duration_ms BIGINT NOT NULL DEFAULT 0,
+        dry_run BOOLEAN NOT NULL DEFAULT FALSE,
+        started_at TIMESTAMPTZ NOT NULL,
+        completed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_scheduled_job_executions_job_started_at
+        ON scheduled_job_executions(job_id, started_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_scheduled_job_executions_created_at
+        ON scheduled_job_executions(created_at DESC);
     `
   }
 ];
