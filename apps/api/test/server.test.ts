@@ -1166,6 +1166,87 @@ describe("api server", () => {
       method: "GET",
       url: "/api/admin/users/usage/by-model"
     });
+    const agentEvalCase = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        expectedAnswerContains: ["ok"],
+        expectedToolNames: ["read_file"],
+        name: "Regression case",
+        runId: "run-compat",
+        tags: ["migration"]
+      },
+      url: "/api/admin/agent-eval/cases/promote"
+    });
+    const agentEvalCaseId = agentEvalCase.json().id as string;
+    const agentEvalCases = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/agent-eval/cases?tags=migration"
+    });
+    const agentEvalRunLogs = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/agent-eval/run-logs"
+    });
+    const agentEvalReplay = await server.inject({
+      headers,
+      method: "POST",
+      url: `/api/admin/agent-eval/cases/${agentEvalCaseId}/replay`
+    });
+    const agentEvalResults = await server.inject({
+      headers,
+      method: "GET",
+      url: `/api/admin/agent-eval/results?caseId=${agentEvalCaseId}`
+    });
+    const alertRule = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        metric: "token_cost",
+        name: "Cost threshold",
+        severity: "WARNING",
+        threshold: 10,
+        type: "STATIC_THRESHOLD"
+      },
+      url: "/api/admin/platform/alerts/rules"
+    });
+    const alertRules = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/platform/alerts/rules"
+    });
+    const pricing = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        completionPricePer1k: 0.02,
+        model: "provider/model",
+        promptPricePer1k: 0.01,
+        provider: "provider"
+      },
+      url: "/api/admin/platform/pricing"
+    });
+    const pricingList = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/platform/pricing"
+    });
+    const vectorStoreStats = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/platform/vectorstore/stats"
+    });
+    const toolStats = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/tools/stats"
+    });
+    const toolAccuracy = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/tools/accuracy"
+    });
     const metricIngest = await server.inject({
       headers,
       method: "POST",
@@ -1233,6 +1314,33 @@ describe("api server", () => {
       model: "provider/model",
       outputTokens: 5
     }]);
+    expect(agentEvalCase.statusCode).toBe(200);
+    expect(agentEvalCase.json()).toMatchObject({
+      assertionCount: 4,
+      model: "provider/model",
+      name: "Regression case",
+      sourceRunId: "run-compat",
+      tags: ["migration"]
+    });
+    expect(agentEvalCases.json()).toMatchObject([{ id: agentEvalCaseId, tags: ["migration"] }]);
+    expect(agentEvalRunLogs.json()).toMatchObject([{
+      finalAnswerPreview: "ok",
+      runId: "run-compat",
+      toolCallCount: 1
+    }]);
+    expect(agentEvalReplay.json()).toMatchObject({
+      caseId: agentEvalCaseId,
+      deterministic: { passed: true, runId: "run-compat" },
+      storedResults: [{ caseId: agentEvalCaseId, tier: "deterministic" }]
+    });
+    expect(agentEvalResults.json()).toMatchObject([{ caseId: agentEvalCaseId, passed: true }]);
+    expect(alertRule.json()).toMatchObject({ metric: "token_cost", name: "Cost threshold" });
+    expect(alertRules.json()).toMatchObject([{ id: alertRule.json().id }]);
+    expect(pricing.json()).toMatchObject({ model: "provider/model", provider: "provider" });
+    expect(pricingList.json()).toMatchObject([{ id: "provider:provider/model" }]);
+    expect(vectorStoreStats.json()).toMatchObject({ available: true, documentCount: 1, indexedDocuments: 1 });
+    expect(toolStats.json()).toMatchObject({ accuracy: 1, byOutcome: { ok: 1 }, total: 1 });
+    expect(toolAccuracy.json()).toMatchObject({ accuracy: 1, ok: 1, total: 1 });
     expect(metricIngest.statusCode).toBe(202);
     expect(metricIngest.json()).toMatchObject({ accepted: true, kind: "tool-call" });
     expect(sessionTag.statusCode).toBe(200);

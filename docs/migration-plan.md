@@ -81,6 +81,8 @@ Continued work should be treated as new hardening or product expansion, not migr
 - `/api/chat/multipart` accepts Reactor-compatible multipart uploads and forwards file metadata to AgentRuntime.
 - Reactor-compatible password change, session deletion, admin session tags, trace/tool-call analytics,
   user/model usage, token-cost summaries, and metric ingestion now use Muse runtime state instead of stubs.
+- Reactor-compatible agent eval promotion/replay/results, platform alert rules, model pricing,
+  vector-store stats, and admin tool stats now use Muse runtime state.
 
 ## Execution Plan
 

@@ -32,12 +32,17 @@ type CompatBody = Record<string, unknown>;
 type CompatCollection = Map<string, CompatRecord>;
 
 interface CompatState {
+  readonly agentEvalCases: CompatCollection;
+  readonly agentEvalResults: CompatCollection;
+  readonly agentEvalRunLogs: CompatCollection;
   readonly documents: CompatCollection;
   readonly feedback: CompatCollection;
   readonly inputGuardRules: CompatCollection;
   readonly intents: CompatCollection;
   readonly outputGuardRules: CompatCollection;
   readonly personas: CompatCollection;
+  readonly platformAlertRules: CompatCollection;
+  readonly platformPricing: CompatCollection;
   readonly metricEvents: CompatCollection;
   readonly promptExperiments: CompatCollection;
   readonly promptTemplates: CompatCollection;
@@ -73,12 +78,17 @@ export function registerReactorCompatibilityRoutes(
 
 function createCompatState(): CompatState {
   return {
+    agentEvalCases: new Map(),
+    agentEvalResults: new Map(),
+    agentEvalRunLogs: new Map(),
     documents: new Map(),
     feedback: new Map(),
     inputGuardRules: new Map(),
     intents: new Map(),
     outputGuardRules: new Map(),
     personas: new Map(),
+    platformAlertRules: new Map(),
+    platformPricing: new Map(),
     metricEvents: new Map(),
     promptExperiments: new Map(),
     promptTemplates: new Map(),
@@ -982,6 +992,58 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
 
     return options.admin?.cache?.metrics?.snapshot() ?? {};
   });
+  server.get("/api/admin/platform/pricing", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return [...state.platformPricing.values()].sort((left, right) =>
+      String(right.effectiveFrom ?? right.createdAt).localeCompare(String(left.effectiveFrom ?? left.createdAt))
+    );
+  });
+  server.post("/api/admin/platform/pricing", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const body = toJsonObject(request.body);
+    const provider = readBodyString(body, "provider");
+    const model = readBodyString(body, "model");
+
+    if (!provider || !model) {
+      return reply.status(400).send({
+        code: "INVALID_MODEL_PRICING",
+        message: "Body must include provider and model"
+      });
+    }
+
+    const id = readBodyString(body, "id") ?? `${provider}:${model}`;
+    const saved = createRecord(state.platformPricing, {
+      batchCompletionPricePer1k: numberOrString(body.batchCompletionPricePer1k, 0),
+      batchPromptPricePer1k: numberOrString(body.batchPromptPricePer1k, 0),
+      cachedInputPricePer1k: numberOrString(body.cachedInputPricePer1k, 0),
+      completionPricePer1k: numberOrString(body.completionPricePer1k, 0),
+      effectiveFrom: readBodyString(body, "effectiveFrom") ?? nowIso(),
+      effectiveTo: readBodyNullableString(body, "effectiveTo") ?? null,
+      id,
+      model,
+      promptPricePer1k: numberOrString(body.promptPricePer1k, 0),
+      provider,
+      reasoningPricePer1k: numberOrString(body.reasoningPricePer1k, 0)
+    }, "model_pricing");
+    return saved;
+  });
+  server.get("/api/admin/platform/vectorstore/stats", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return {
+      available: state.documents.size > 0,
+      documentCount: state.documents.size,
+      indexedDocuments: [...state.documents.values()].filter((document) => document.deleted !== true).length
+    };
+  });
   server.post("/api/admin/platform/cache/invalidate", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;
@@ -1053,6 +1115,52 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
     }
 
     return options.admin?.operations?.listAlerts() ?? [];
+  });
+  server.get("/api/admin/platform/alerts/rules", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return [...state.platformAlertRules.values()];
+  });
+  server.post("/api/admin/platform/alerts/rules", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const body = toJsonObject(request.body);
+    const name = readBodyString(body, "name");
+    const metric = readBodyString(body, "metric");
+
+    if (!name || !metric) {
+      return reply.status(400).send({
+        code: "INVALID_ALERT_RULE",
+        message: "Body must include name and metric"
+      });
+    }
+
+    return createRecord(state.platformAlertRules, {
+      createdAt: readBodyString(body, "createdAt") ?? nowIso(),
+      description: readBodyString(body, "description") ?? "",
+      enabled: readBoolean(body.enabled, true),
+      id: readBodyString(body, "id") ?? createRunId("alert_rule"),
+      metric,
+      name,
+      platformOnly: readBoolean(body.platformOnly, false),
+      severity: readBodyString(body, "severity") ?? "WARNING",
+      tenantId: readBodyNullableString(body, "tenantId") ?? null,
+      threshold: readNumber(body.threshold, 0),
+      type: readBodyString(body, "type") ?? "STATIC_THRESHOLD",
+      windowMinutes: readNumber(body.windowMinutes, 15)
+    }, "alert_rule");
+  });
+  server.delete("/api/admin/platform/alerts/rules/:id", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const { id } = request.params as { readonly id: string };
+    return state.platformAlertRules.delete(id) ? reply.status(204).send() : notFound(reply, "ALERT_RULE_NOT_FOUND");
   });
   server.post("/api/admin/platform/alerts/evaluate", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -1330,6 +1438,7 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
 
     return latencyDistribution(await listAllRuns(options));
   });
+  registerAgentEvalCompatibilityRoutes(server, options);
   registerMetricIngestionRoutes(server, options);
 
   server.all("/api/admin/*", async (request, reply) => {
@@ -1408,6 +1517,198 @@ function registerCollectionRoutes(
     }
 
     return deleteByParam(collection, request, idParamName);
+  });
+}
+
+function registerAgentEvalCompatibilityRoutes(
+  server: FastifyInstance,
+  options: ReactorCompatibilityRouteOptions
+): void {
+  server.get("/api/admin/agent-eval/cases", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const enabledOnly = readQueryBoolean(request, "enabledOnly", true);
+    const tags = readQueryStringSet(request, "tags");
+    const limit = Math.max(0, readQueryInteger(request, "limit", 100));
+    return [...state.agentEvalCases.values()]
+      .filter((item) => !enabledOnly || item.enabled !== false)
+      .filter((item) => tags.size === 0 || readStringSet(item.tags).some((tag) => tags.has(tag)))
+      .slice(0, limit)
+      .map(toEvalCaseResponse);
+  });
+
+  server.get("/api/admin/agent-eval/run-logs", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const limit = Math.max(0, readQueryInteger(request, "limit", 50));
+    const runs = await listAllRuns(options, { limit });
+    const logsByRunId = new Map<string, JsonObject>();
+
+    for (const log of state.agentEvalRunLogs.values()) {
+      const response = toEvalRunLogResponse(log);
+      logsByRunId.set(String(response.runId), response);
+    }
+
+    for (const run of runs) {
+      logsByRunId.set(run.id, await runLogResponse(run, options));
+    }
+
+    return [...logsByRunId.values()].slice(0, limit);
+  });
+
+  server.post("/api/admin/agent-eval/cases/promote", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const body = toJsonObject(request.body);
+    const runId = readBodyString(body, "runId") ?? readBodyString(body, "sourceRunId");
+
+    if (!runId) {
+      return reply.status(400).send({
+        code: "INVALID_AGENT_EVAL_PROMOTION",
+        message: "Body must include runId"
+      });
+    }
+
+    const behaviorAssertionCount = countBehaviorAssertions(body);
+
+    if (behaviorAssertionCount === 0) {
+      return reply.status(400).send({
+        code: "INVALID_AGENT_EVAL_PROMOTION",
+        message: "Promotion requires at least one deterministic assertion"
+      });
+    }
+
+    const run = await options.historyStore?.findRun(runId);
+
+    if (!run) {
+      return notFound(reply, "AGENT_RUN_LOG_NOT_FOUND");
+    }
+
+    const toolCalls = await (options.historyStore?.listToolCalls(runId) ?? []);
+    const toolNames = [...new Set(toolCalls.map((toolCall) => toolCall.name))];
+    const id = readBodyString(body, "id") ?? createRunId("eval_case");
+    const record = createRecord(state.agentEvalCases, {
+      agentType: run.mode,
+      assertionCount: countEvalAssertions({ ...body, agentType: run.mode, model: run.model }),
+      enabled: readBoolean(body.enabled, true),
+      expectedAnswerContains: readStringSet(body.expectedAnswerContains),
+      expectedExposedToolNames: readStringSet(body.expectedExposedToolNames),
+      expectedToolNames: readStringSet(body.expectedToolNames),
+      forbiddenAnswerContains: readStringSet(body.forbiddenAnswerContains),
+      forbiddenExposedToolNames: readStringSet(body.forbiddenExposedToolNames),
+      forbiddenToolNames: readStringSet(body.forbiddenToolNames),
+      id,
+      maxToolExposureCount: readNullableNumber(body.maxToolExposureCount) ?? null,
+      minScore: readNumber(body.minScore, 1),
+      model: run.model,
+      name: readBodyString(body, "name") ?? `Promoted run ${run.id}`,
+      sourceRunId: run.id,
+      tags: readStringSet(body.tags),
+      toolExposureNames: toolNames,
+      userInput: run.input
+    }, "eval_case");
+    state.agentEvalRunLogs.set(run.id, await runLogRecord(run, options));
+    return toEvalCaseResponse(record);
+  });
+
+  server.post("/api/admin/agent-eval/cases/:id/replay", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const { id } = request.params as { readonly id: string };
+    const existing = findCompatRecord(state.agentEvalCases, id);
+
+    if (!existing) {
+      return notFound(reply, "AGENT_EVAL_CASE_NOT_FOUND");
+    }
+
+    const sourceRunId = typeof existing.sourceRunId === "string" ? existing.sourceRunId : undefined;
+    const run = sourceRunId ? await options.historyStore?.findRun(sourceRunId) : undefined;
+
+    if (!run) {
+      return notFound(reply, "AGENT_RUN_LOG_NOT_FOUND");
+    }
+
+    const result = await evaluateRunAgainstCase(existing, run, options);
+    const stored = storeEvalResult(result, readQueryBoolean(request, "llmJudge", false));
+    return {
+      caseId: id,
+      deterministic: result,
+      storedResults: stored
+    };
+  });
+
+  server.post("/api/admin/agent-eval/cases/:caseId/evaluate-run/:runId", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const { caseId, runId } = request.params as { readonly caseId: string; readonly runId: string };
+    const existing = findCompatRecord(state.agentEvalCases, caseId);
+
+    if (!existing) {
+      return notFound(reply, "AGENT_EVAL_CASE_NOT_FOUND");
+    }
+
+    const run = await options.historyStore?.findRun(runId);
+
+    if (!run) {
+      return notFound(reply, "AGENT_RUN_LOG_NOT_FOUND");
+    }
+
+    const result = await evaluateRunAgainstCase(existing, run, options);
+    const stored = storeEvalResult(result, readQueryBoolean(request, "llmJudge", false));
+    return {
+      caseId,
+      deterministic: result,
+      storedResults: stored
+    };
+  });
+
+  server.get("/api/admin/agent-eval/results", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const caseId = readQueryString(request, "caseId");
+    const tier = readQueryString(request, "tier");
+    const limit = Math.max(0, readQueryInteger(request, "limit", 100));
+    return [...state.agentEvalResults.values()]
+      .filter((result) => !caseId || result.caseId === caseId)
+      .filter((result) => !tier || result.tier === tier)
+      .slice(0, limit);
+  });
+
+  server.get("/api/admin/tools/stats", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return toolOutcomeStats(await listAllToolCalls(options), readQueryString(request, "server"));
+  });
+
+  server.get("/api/admin/tools/accuracy", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const stats = toolOutcomeStats(await listAllToolCalls(options));
+    const total = Number(stats.total);
+    return {
+      accuracy: stats.accuracy,
+      invalidCallRate: 0,
+      ok: Number(toJsonObject(stats.byOutcome).ok ?? 0),
+      notFoundRate: 0,
+      timeoutRate: 0,
+      total
+    };
   });
 }
 
@@ -1516,6 +1817,206 @@ async function listAllToolCalls(options: ReactorCompatibilityRouteOptions): Prom
   return toolCalls;
 }
 
+async function runLogRecord(
+  run: AgentRunRecord,
+  options: ReactorCompatibilityRouteOptions
+): Promise<CompatRecord> {
+  const toolCalls = await (options.historyStore?.listToolCalls(run.id) ?? []);
+  const toolExposureNames = [...new Set(toolCalls.map((toolCall) => toolCall.name))];
+  return createRecord(state.agentEvalRunLogs, {
+    agentType: run.mode,
+    costUsd: run.costUsd,
+    endedAt: run.completedAt?.toISOString() ?? run.updatedAt.toISOString(),
+    errorCount: run.error ? 1 : 0,
+    errors: run.error ? [{ message: run.error }] : [],
+    evalCaseId: null,
+    finalAnswer: run.output ?? "",
+    model: run.model,
+    retrievedChunkCount: 0,
+    retrievedChunks: [],
+    id: run.id,
+    runId: run.id,
+    startedAt: run.startedAt?.toISOString() ?? run.createdAt.toISOString(),
+    tokenUsage: run.tokenUsage,
+    toolCallCount: toolCalls.length,
+    toolCalls: toolCalls.map(toEvalToolCall),
+    toolExposure: {
+      count: toolExposureNames.length,
+      names: toolExposureNames
+    },
+    userInput: run.input
+  }, "agent_eval_run_log");
+}
+
+async function runLogResponse(run: AgentRunRecord, options: ReactorCompatibilityRouteOptions): Promise<JsonObject> {
+  return toEvalRunLogResponse(await runLogRecord(run, options));
+}
+
+function toEvalRunLogResponse(log: JsonObject): JsonObject {
+  const toolExposure = isRecord(log.toolExposure) ? log.toolExposure : {};
+  const toolCalls = Array.isArray(log.toolCalls) ? log.toolCalls : [];
+  const retrievedChunks = Array.isArray(log.retrievedChunks) ? log.retrievedChunks : [];
+  const errors = Array.isArray(log.errors) ? log.errors : [];
+  const finalAnswer = typeof log.finalAnswer === "string" ? log.finalAnswer : "";
+  return {
+    agentType: typeof log.agentType === "string" ? log.agentType : "standard",
+    errorCount: typeof log.errorCount === "number" ? log.errorCount : errors.length,
+    evalCaseId: typeof log.evalCaseId === "string" ? log.evalCaseId : null,
+    finalAnswerPreview: finalAnswer.slice(0, 240),
+    model: typeof log.model === "string" ? log.model : "unknown",
+    retrievedChunkCount: typeof log.retrievedChunkCount === "number" ? log.retrievedChunkCount : retrievedChunks.length,
+    runId: typeof log.runId === "string" ? log.runId : String(log.id ?? ""),
+    toolCallCount: typeof log.toolCallCount === "number" ? log.toolCallCount : toolCalls.length,
+    toolExposureCount: typeof toolExposure.count === "number" ? toolExposure.count : 0,
+    toolExposureNames: readStringSet(toolExposure.names)
+  };
+}
+
+function toEvalToolCall(toolCall: ToolCallRecord): JsonObject {
+  return {
+    arguments: toolCall.arguments,
+    errorCode: toolCall.error ?? null,
+    latencyMs: toolCall.startedAt && toolCall.completedAt
+      ? Math.max(0, toolCall.completedAt.getTime() - toolCall.startedAt.getTime())
+      : 0,
+    step: 0,
+    success: toolCall.status === "completed",
+    toolName: toolCall.name
+  };
+}
+
+function toEvalCaseResponse(record: JsonObject): JsonObject {
+  return {
+    agentType: typeof record.agentType === "string" ? record.agentType : null,
+    assertionCount: readNumber(record.assertionCount, countEvalAssertions(record)),
+    enabled: record.enabled !== false,
+    id: typeof record.id === "string" ? record.id : "",
+    minScore: readNumber(record.minScore, 1),
+    model: typeof record.model === "string" ? record.model : null,
+    name: typeof record.name === "string" ? record.name : "",
+    sourceRunId: typeof record.sourceRunId === "string" ? record.sourceRunId : null,
+    tags: readStringSet(record.tags)
+  };
+}
+
+async function evaluateRunAgainstCase(
+  evalCase: JsonObject,
+  run: AgentRunRecord,
+  options: ReactorCompatibilityRouteOptions
+): Promise<JsonObject> {
+  const toolCalls = await (options.historyStore?.listToolCalls(run.id) ?? []);
+  const toolNames = toolCalls.map((toolCall) => toolCall.name);
+  const successfulToolNames = toolCalls
+    .filter((toolCall) => toolCall.status === "completed")
+    .map((toolCall) => toolCall.name);
+  const exposedToolNames = readStringSet(evalCase.toolExposureNames).length > 0
+    ? readStringSet(evalCase.toolExposureNames)
+    : [...new Set(toolNames)];
+  const finalAnswer = run.output ?? "";
+  const expectedAnswerContains = readStringSet(evalCase.expectedAnswerContains);
+  const forbiddenAnswerContains = readStringSet(evalCase.forbiddenAnswerContains);
+  const expectedToolNames = readStringSet(evalCase.expectedToolNames);
+  const forbiddenToolNames = readStringSet(evalCase.forbiddenToolNames);
+  const expectedExposedToolNames = readStringSet(evalCase.expectedExposedToolNames);
+  const forbiddenExposedToolNames = readStringSet(evalCase.forbiddenExposedToolNames);
+  const maxToolExposureCount = readNullableNumber(evalCase.maxToolExposureCount);
+  const missingExpectedAnswerContains = expectedAnswerContains.filter((needle) =>
+    !containsIgnoreCase(finalAnswer, needle)
+  );
+  const matchedForbiddenAnswerContains = forbiddenAnswerContains.filter((needle) =>
+    containsIgnoreCase(finalAnswer, needle)
+  );
+  const missingExpectedTools = expectedToolNames.filter((name) => !toolNames.includes(name));
+  const failedExpectedTools = expectedToolNames.filter((name) =>
+    toolNames.includes(name) && !successfulToolNames.includes(name)
+  );
+  const expectedToolsUsed = expectedToolNames.filter((name) =>
+    !missingExpectedTools.includes(name) && !failedExpectedTools.includes(name)
+  );
+  const forbiddenToolsUsed = forbiddenToolNames.filter((name) => toolNames.includes(name));
+  const missingExpectedExposedTools = expectedExposedToolNames.filter((name) => !exposedToolNames.includes(name));
+  const expectedToolsExposed = expectedExposedToolNames.filter((name) => !missingExpectedExposedTools.includes(name));
+  const forbiddenToolsExposed = forbiddenExposedToolNames.filter((name) => exposedToolNames.includes(name));
+  const toolExposureCountExceeded = maxToolExposureCount === undefined ? false : exposedToolNames.length > maxToolExposureCount;
+  const reasons = [
+    ...missingExpectedAnswerContains.map((item) => `missing expected answer fragment: ${item}`),
+    ...matchedForbiddenAnswerContains.map((item) => `forbidden answer fragment present: ${item}`),
+    ...missingExpectedTools.map((item) => `expected tool not used: ${item}`),
+    ...failedExpectedTools.map((item) => `expected tool failed: ${item}`),
+    ...forbiddenToolsUsed.map((item) => `forbidden tool used: ${item}`),
+    ...missingExpectedExposedTools.map((item) => `expected exposed tool missing: ${item}`),
+    ...forbiddenToolsExposed.map((item) => `forbidden exposed tool present: ${item}`),
+    ...(toolExposureCountExceeded ? [
+      `tool exposure count exceeded: max=${maxToolExposureCount}, actual=${exposedToolNames.length}`
+    ] : []),
+    ...(typeof evalCase.agentType === "string" && evalCase.agentType !== run.mode
+      ? [`agentType mismatch: expected=${evalCase.agentType}, actual=${run.mode}`]
+      : []),
+    ...(typeof evalCase.model === "string" && evalCase.model !== run.model
+      ? [`model mismatch: expected=${evalCase.model}, actual=${run.model}`]
+      : [])
+  ];
+  const assertionCount = Math.max(1, readNumber(evalCase.assertionCount, countEvalAssertions(evalCase)));
+  const score = ((assertionCount - reasons.length) / assertionCount).toFixed(6);
+  const numericScore = Math.max(0, Math.min(1, Number(score)));
+  return {
+    caseId: typeof evalCase.id === "string" ? evalCase.id : "",
+    forbiddenToolsExposed,
+    forbiddenToolsUsed,
+    missingExpectedAnswerContains,
+    missingExpectedExposedTools,
+    missingExpectedTools,
+    passed: numericScore >= readNumber(evalCase.minScore, 1),
+    reasons: reasons.length === 0 ? ["all assertions passed"] : reasons,
+    runId: run.id,
+    score: numericScore,
+    toolExposureCountExceeded
+  };
+}
+
+function storeEvalResult(result: JsonObject, includeLlmJudge: boolean): readonly JsonObject[] {
+  const deterministic = createRecord(state.agentEvalResults, {
+    caseId: typeof result.caseId === "string" ? result.caseId : "",
+    evaluatedAt: nowIso(),
+    passed: result.passed === true,
+    reasons: readStringSet(result.reasons),
+    runId: typeof result.runId === "string" ? result.runId : null,
+    score: readNumber(result.score, 0),
+    tier: "deterministic"
+  }, "agent_eval_result");
+
+  if (!includeLlmJudge) {
+    return [deterministic];
+  }
+
+  const llmJudge = createRecord(state.agentEvalResults, {
+    caseId: typeof deterministic.caseId === "string" ? deterministic.caseId : "",
+    evaluatedAt: nowIso(),
+    passed: false,
+    reasons: ["LLM judge unavailable"],
+    runId: typeof deterministic.runId === "string" ? deterministic.runId : null,
+    score: 0,
+    tier: "llm_judge"
+  }, "agent_eval_result");
+  return [deterministic, llmJudge];
+}
+
+function countEvalAssertions(value: JsonObject): number {
+  return countBehaviorAssertions(value) +
+    (typeof value.agentType === "string" && value.agentType.length > 0 ? 1 : 0) +
+    (typeof value.model === "string" && value.model.length > 0 ? 1 : 0);
+}
+
+function countBehaviorAssertions(value: JsonObject): number {
+  return readStringSet(value.expectedAnswerContains).length +
+    readStringSet(value.forbiddenAnswerContains).length +
+    readStringSet(value.expectedToolNames).length +
+    readStringSet(value.forbiddenToolNames).length +
+    readStringSet(value.expectedExposedToolNames).length +
+    readStringSet(value.forbiddenExposedToolNames).length +
+    (readNullableNumber(value.maxToolExposureCount) === undefined ? 0 : 1);
+}
+
 function toolCallRanking(toolCalls: readonly ToolCallRecord[]) {
   const byName = new Map<string, { failures: number; name: string; total: number }>();
 
@@ -1529,6 +2030,49 @@ function toolCallRanking(toolCalls: readonly ToolCallRecord[]) {
   }
 
   return [...byName.values()].sort((left, right) => right.total - left.total);
+}
+
+function toolOutcomeStats(toolCalls: readonly ToolCallRecord[], server?: string): JsonObject {
+  const rows = toolCalls
+    .filter((call) => !server || call.name.startsWith(`${server}:`) || call.name.startsWith(`${server}.`))
+    .map((call) => ({
+      outcome: toolOutcome(call),
+      server: call.name.includes(":") ? call.name.split(":")[0] ?? "local" : "local",
+      tool: call.name
+    }));
+  const byOutcome: Record<string, number> = {};
+  const byServer: Record<string, number> = {};
+  const byTool = new Map<string, { count: number; outcome: string; server: string; tool: string }>();
+
+  for (const row of rows) {
+    byOutcome[row.outcome] = (byOutcome[row.outcome] ?? 0) + 1;
+    byServer[row.server] = (byServer[row.server] ?? 0) + 1;
+    const key = `${row.server}:${row.tool}:${row.outcome}`;
+    const existing = byTool.get(key) ?? { count: 0, outcome: row.outcome, server: row.server, tool: row.tool };
+    byTool.set(key, { ...existing, count: existing.count + 1 });
+  }
+
+  const total = rows.length;
+  const ok = byOutcome.ok ?? 0;
+  return {
+    accuracy: total > 0 ? ok / total : 0,
+    byOutcome,
+    byServer,
+    byTool: [...byTool.values()].sort((left, right) => right.count - left.count).slice(0, 50),
+    total
+  };
+}
+
+function toolOutcome(toolCall: ToolCallRecord): string {
+  if (toolCall.status === "completed") {
+    return "ok";
+  }
+
+  if (toolCall.status === "blocked") {
+    return "invalid_arg";
+  }
+
+  return toolCall.error?.toLowerCase().includes("timeout") ? "timeout" : "error";
 }
 
 function usageByUser(runs: readonly AgentRunRecord[]) {
@@ -1624,6 +2168,44 @@ function latencyDistribution(runs: readonly AgentRunRecord[]) {
 function numberField(value: JsonObject, key: string): number {
   const item = value[key];
   return typeof item === "number" && Number.isFinite(item) ? item : 0;
+}
+
+function readNumber(value: unknown, fallback: number): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  return fallback;
+}
+
+function readNullableNumber(value: unknown): number | undefined {
+  const parsed = readNumber(value, Number.NaN);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function numberOrString(value: unknown, fallback: number): number | string {
+  return typeof value === "string" && value.trim().length > 0 ? value : readNumber(value, fallback);
+}
+
+function readBoolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return value === "true" || value === "1";
+  }
+
+  return fallback;
+}
+
+function containsIgnoreCase(value: string, needle: string): boolean {
+  return value.toLowerCase().includes(needle.toLowerCase());
 }
 
 function registerMetricIngestionRoutes(
@@ -2033,15 +2615,40 @@ function readStringArray(value: unknown): readonly string[] | undefined {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined;
 }
 
+function readStringSet(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return [...new Set(value.filter((item): item is string => typeof item === "string" && item.trim().length > 0))];
+  }
+
+  return typeof value === "string"
+    ? [...new Set(value.split(",").map((item) => item.trim()).filter((item) => item.length > 0))]
+    : [];
+}
+
 function readQueryString(request: FastifyRequest, key: string): string | undefined {
   const value = (request.query as Record<string, unknown>)[key];
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function readQueryStringSet(request: FastifyRequest, key: string): Set<string> {
+  const query = request.query as Record<string, unknown>;
+  return new Set(readStringSet(query[key]));
 }
 
 function readQueryInteger(request: FastifyRequest, key: string, fallback: number): number {
   const raw = readQueryString(request, key);
   const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function readQueryBoolean(request: FastifyRequest, key: string, fallback: boolean): boolean {
+  const raw = readQueryString(request, key);
+
+  if (raw === undefined) {
+    return fallback;
+  }
+
+  return raw === "true" || raw === "1";
 }
 
 function readAuthUserId(request: FastifyRequest): string | undefined {
