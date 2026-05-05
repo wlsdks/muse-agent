@@ -84,6 +84,8 @@ importers:
         specifier: workspace:*
         version: link:../shared
 
+  packages/prompts: {}
+
   packages/shared: {}
 
   packages/tools:
