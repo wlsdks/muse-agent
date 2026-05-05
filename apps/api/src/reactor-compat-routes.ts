@@ -488,10 +488,7 @@ function registerSessionCompatibilityRoutes(server: FastifyInstance, options: Re
     const limit = clampLimit(readQueryInteger(request, "limit", 50));
 
     if (!userId) {
-      return reply.status(401).send({
-        code: "UNAUTHENTICATED",
-        message: "Missing authenticated user context"
-      });
+      return reply.status(401).send(errorResponse("인증이 필요합니다"));
     }
 
     if (!options.historyStore) {
@@ -531,10 +528,7 @@ function registerSessionCompatibilityRoutes(server: FastifyInstance, options: Re
     }
 
     if (!options.historyStore) {
-      return reply.status(404).send({
-        code: "RUN_HISTORY_UNAVAILABLE",
-        message: "Run history store is not configured"
-      });
+      return reply.status(404).send(errorResponse("Run history store is not configured"));
     }
 
     const run = await options.historyStore.findRun(sessionId);
@@ -3640,7 +3634,9 @@ async function exportSession(
     return detail;
   }
 
-  if (readQueryString(request, "format") === "markdown") {
+  const format = readQueryString(request, "format")?.toLowerCase();
+
+  if (format === "markdown" || format === "md") {
     const sessionId = (request.params as { readonly sessionId: string }).sessionId;
     const messages = Array.isArray(detail.messages) ? detail.messages : [];
     reply.header("content-disposition", `attachment; filename="${sanitizeFilename(sessionId)}.md"`);

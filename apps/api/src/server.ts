@@ -99,8 +99,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
 
       if (!identity) {
         return reply.status(401).send({
-          code: "UNAUTHENTICATED",
-          message: "A valid bearer token is required"
+          error: "인증이 필요합니다",
+          timestamp: new Date().toISOString()
         });
       }
 

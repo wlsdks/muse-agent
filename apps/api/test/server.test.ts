@@ -309,6 +309,10 @@ describe("api server", () => {
     const server = buildServer({ authService, historyStore, logger: false, requireAuth: true });
     const headers = { authorization: `Bearer ${memberLogin?.token ?? ""}` };
 
+    const unauthenticatedSessions = await server.inject({
+      method: "GET",
+      url: "/api/sessions"
+    });
     const spoofedList = await server.inject({
       headers,
       method: "GET",
@@ -329,25 +333,48 @@ describe("api server", () => {
       method: "DELETE",
       url: "/api/sessions/orphan-run"
     });
+    const markdownExport = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/sessions/member-run/export?format=md"
+    });
     const ownDelete = await server.inject({
       headers,
       method: "DELETE",
       url: "/api/sessions/member-run"
     });
 
+    expect(unauthenticatedSessions.statusCode).toBe(401);
+    expect(unauthenticatedSessions.json()).toMatchObject({
+      error: "인증이 필요합니다",
+      timestamp: expect.any(String)
+    });
+    expect(unauthenticatedSessions.json()).not.toHaveProperty("code");
     expect(spoofedList.json()).toMatchObject({
       items: [{ preview: "member prompt", sessionId: "member-run" }],
       total: 1
     });
     expect(forbiddenDelete.statusCode).toBe(403);
-    expect(forbiddenDelete.json()).toMatchObject({ error: "세션 접근이 거부되었습니다", timestamp: expect.any(String) });
+    expect(forbiddenDelete.json()).toMatchObject({
+      error: "세션 접근이 거부되었습니다",
+      timestamp: expect.any(String)
+    });
     expect(forbiddenDelete.json()).not.toHaveProperty("code");
     expect(orphanDetail.statusCode).toBe(403);
-    expect(orphanDetail.json()).toMatchObject({ error: "세션 접근이 거부되었습니다", timestamp: expect.any(String) });
+    expect(orphanDetail.json()).toMatchObject({
+      error: "세션 접근이 거부되었습니다",
+      timestamp: expect.any(String)
+    });
     expect(orphanDetail.json()).not.toHaveProperty("code");
     expect(orphanDelete.statusCode).toBe(403);
-    expect(orphanDelete.json()).toMatchObject({ error: "세션 접근이 거부되었습니다", timestamp: expect.any(String) });
+    expect(orphanDelete.json()).toMatchObject({
+      error: "세션 접근이 거부되었습니다",
+      timestamp: expect.any(String)
+    });
     expect(orphanDelete.json()).not.toHaveProperty("code");
+    expect(markdownExport.statusCode).toBe(200);
+    expect(markdownExport.headers["content-type"]).toContain("text/markdown");
+    expect(markdownExport.body).toContain("# Conversation: member-run");
     expect(ownDelete.statusCode).toBe(204);
   });
 
