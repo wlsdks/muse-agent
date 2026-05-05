@@ -50,6 +50,8 @@ interface CompatState {
   readonly sessionTags: Map<string, CompatRecord[]>;
   readonly slackBots: CompatCollection;
   readonly slackFaq: CompatCollection;
+  readonly slackFaqEvents: Map<string, CompatRecord[]>;
+  readonly slackFaqFeedback: Map<string, Record<string, { thumbsDown: number; thumbsUp: number }>>;
   readonly swaggerSources: CompatCollection;
   readonly userMemory: Map<string, { facts: JsonObject; preferences: JsonObject; updatedAt: string }>;
   retentionPolicy: JsonObject;
@@ -96,6 +98,8 @@ function createCompatState(): CompatState {
     sessionTags: new Map(),
     slackBots: new Map(),
     slackFaq: new Map(),
+    slackFaqEvents: new Map(),
+    slackFaqFeedback: new Map(),
     swaggerSources: new Map(),
     userMemory: new Map(),
     retentionPolicy: {
@@ -589,7 +593,7 @@ function registerGuardCompatibilityRoutes(server: FastifyInstance, options: Reac
       return reply;
     }
 
-    return [];
+    return { audits: [], total: 0 };
   });
 
   server.get("/api/output-guard/rules/audits", async () => []);
@@ -861,21 +865,38 @@ function registerSlackCompatibilityRoutes(server: FastifyInstance, options: Reac
       return reply;
     }
 
-    return createRecord(state.slackFaq, toJsonObject(request.body), "slack_faq");
+    const body = toJsonObject(request.body);
+    const channelId = readBodyString(body, "channelId");
+
+    if (!channelId) {
+      return reply.status(400).send({ code: "INVALID_SLACK_FAQ_CHANNEL", message: "Body must include channelId" });
+    }
+
+    return createRecord(state.slackFaq, {
+      autoReplyMode: readBodyString(body, "autoReplyMode") ?? "MENTION_ONLY",
+      channelId,
+      channelName: readBodyNullableString(body, "channelName") ?? null,
+      confidenceThreshold: readNumber(body.confidenceThreshold, 0.78),
+      daysBack: readNumber(body.daysBack, 30),
+      enabled: readBoolean(body.enabled, true),
+      id: channelId,
+      reIngestIntervalHours: readNumber(body.reIngestIntervalHours, 24),
+      status: "registered"
+    }, "slack_faq");
   });
   server.get("/api/admin/slack/channels/faq", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
-    return [...state.slackFaq.values()];
+    return { registrations: [...state.slackFaq.values()] };
   });
   server.get("/api/admin/slack/channels/faq/stats", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
-    return { channels: state.slackFaq.size, entries: state.slackFaq.size };
+    return slackFaqStats();
   });
   server.get("/api/admin/slack/channels/faq/scheduler/health", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -903,7 +924,11 @@ function registerSlackCompatibilityRoutes(server: FastifyInstance, options: Reac
       return reply;
     }
 
-    return deleteByParam(state.slackFaq, request, "channelId");
+    const { channelId } = request.params as { readonly channelId: string };
+    const deleted = state.slackFaq.delete(channelId);
+    state.slackFaqEvents.delete(channelId);
+    state.slackFaqFeedback.delete(channelId);
+    return deleted ? { deleted: channelId } : notFound(reply, "SLACK_FAQ_CHANNEL_NOT_FOUND");
   });
   server.post("/api/admin/slack/channels/faq/:channelId/ingest", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -931,21 +956,36 @@ function registerSlackCompatibilityRoutes(server: FastifyInstance, options: Reac
       return reply;
     }
 
-    return { events: 0, feedback: 0 };
+    const { channelId } = request.params as { readonly channelId: string };
+    return slackFaqStats(channelId);
   });
   server.get("/api/admin/slack/channels/faq/:channelId/events", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
-    return [];
+    const { channelId } = request.params as { readonly channelId: string };
+    const limit = readQueryInteger(request, "limit", 50);
+    return { events: (state.slackFaqEvents.get(channelId) ?? []).slice(0, Math.max(0, limit)) };
   });
   server.get("/api/admin/slack/channels/faq/:channelId/feedback", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
-    return [];
+    const { channelId } = request.params as { readonly channelId: string };
+    const feedback = state.slackFaqFeedback.get(channelId) ?? {};
+    return {
+      feedback: Object.fromEntries(Object.entries(feedback).map(([docId, item]) => [docId, {
+        docId,
+        negativeRatio: item.thumbsDown + item.thumbsUp === 0
+          ? 0
+          : item.thumbsDown / (item.thumbsDown + item.thumbsUp),
+        thumbsDown: item.thumbsDown,
+        thumbsUp: item.thumbsUp,
+        total: item.thumbsDown + item.thumbsUp
+      }]))
+    };
   });
   server.post("/api/admin/slack/prompts/reload", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -1487,18 +1527,6 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
   registerAgentEvalCompatibilityRoutes(server, options);
   registerMetricIngestionRoutes(server, options);
 
-  server.all("/api/admin/*", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return {
-      compatibility: true,
-      data: [],
-      method: request.method,
-      route: request.url.split("?")[0] ?? request.url
-    };
-  });
 }
 
 function registerCollectionRoutes(
@@ -2963,7 +2991,65 @@ function sourceAction(request: FastifyRequest, status: string) {
 
 function slackFaqAction(request: FastifyRequest, status: string) {
   const { channelId } = request.params as { readonly channelId: string };
-  return createRecord(state.slackFaq, { channelId, id: channelId, status }, "slack_faq");
+  const existing = findCompatRecord(state.slackFaq, channelId);
+  const query = readBodyString(request.body, "query");
+  const outcome = existing ? "HIT" : "SKIP_NOT_REGISTERED";
+  const event = createRecord(new Map(), {
+    matchedDocId: existing ? `slack-faq:${channelId}` : null,
+    outcome,
+    query: query?.slice(0, 200) ?? null,
+    score: existing ? 1 : null,
+    timestamp: Date.now()
+  }, "slack_faq_event");
+  const events = state.slackFaqEvents.get(channelId) ?? [];
+  state.slackFaqEvents.set(channelId, [event, ...events].slice(0, 50));
+
+  if (existing) {
+    state.slackFaqFeedback.set(channelId, state.slackFaqFeedback.get(channelId) ?? {});
+  }
+
+  return createRecord(state.slackFaq, {
+    ...existing,
+    channelId,
+    id: channelId,
+    lastActionAt: nowIso(),
+    status
+  }, "slack_faq");
+}
+
+function slackFaqStats(channelId?: string): JsonObject {
+  const events = channelId
+    ? state.slackFaqEvents.get(channelId) ?? []
+    : [...state.slackFaqEvents.values()].flat();
+  const hits = events.filter((event) => event.outcome === "HIT").length;
+  const errors = events.filter((event) => event.outcome === "ERROR").length;
+  const skipsByReason: Record<string, number> = {};
+  let lastHitAt: number | null = null;
+  let totalHitScore = 0;
+
+  for (const event of events) {
+    if (event.outcome === "HIT") {
+      const timestamp = readNumber(event.timestamp, 0);
+      lastHitAt = lastHitAt === null ? timestamp : Math.max(lastHitAt, timestamp);
+      totalHitScore += readNumber(event.score, 0);
+      continue;
+    }
+
+    if (typeof event.outcome === "string" && event.outcome.startsWith("SKIP_")) {
+      skipsByReason[event.outcome] = (skipsByReason[event.outcome] ?? 0) + 1;
+    }
+  }
+
+  const total = hits + errors + Object.values(skipsByReason).reduce((sum, count) => sum + count, 0);
+  return {
+    avgHitScore: hits > 0 ? totalHitScore / hits : null,
+    errors,
+    hitRatio: total > 0 ? hits / total : 0,
+    hits,
+    lastHitAt,
+    skipsByReason,
+    total
+  };
 }
 
 async function updateTenantStatus(

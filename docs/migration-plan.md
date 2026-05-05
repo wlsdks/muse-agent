@@ -86,6 +86,11 @@ Continued work should be treated as new hardening or product expansion, not migr
 - Reactor-compatible admin analytics/export/debug routes now cover eval dashboards, latency, RAG,
   Slack activity, tenant quality/tools/quota CSV exports, audit CSV export, and task-memory maintenance.
 - Reactor-compatible policy RAG seed now ingests seed entries into the Muse document state with chunk counts.
+- The broad `/api/admin/*` compatibility fallback was removed so unmapped admin routes fail with 404 instead of
+  pretending to be migrated.
+- Slack FAQ admin compatibility now matches Reactor response envelopes for registration lists, stats, events,
+  feedback snapshots, and channel deletion.
+- Input Guard audit compatibility now returns the Reactor `{ audits, total }` envelope.
 
 ## Execution Plan
 

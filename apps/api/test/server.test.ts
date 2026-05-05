@@ -1283,6 +1283,11 @@ describe("api server", () => {
       method: "GET",
       url: "/api/admin/input-guard/stats"
     });
+    const inputGuardAudits = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/input-guard/audits"
+    });
     const latencySummary = await server.inject({
       headers,
       method: "GET",
@@ -1364,6 +1369,49 @@ describe("api server", () => {
       method: "POST",
       url: "/api/admin/task-memory/maintenance/purge-terminal?olderThanDays=30"
     });
+    const slackFaq = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        channelId: "channel-1",
+        channelName: "support",
+        enabled: true
+      },
+      url: "/api/admin/slack/channels/faq"
+    });
+    const slackFaqList = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/slack/channels/faq"
+    });
+    const slackFaqDryRun = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        query: "How do I reset access?"
+      },
+      url: "/api/admin/slack/channels/faq/channel-1/dry-run"
+    });
+    const slackFaqStats = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/slack/channels/faq/channel-1/stats"
+    });
+    const slackFaqEvents = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/slack/channels/faq/channel-1/events"
+    });
+    const slackFaqFeedback = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/slack/channels/faq/channel-1/feedback"
+    });
+    const slackFaqDelete = await server.inject({
+      headers,
+      method: "DELETE",
+      url: "/api/admin/slack/channels/faq/channel-1"
+    });
     const metricIngest = await server.inject({
       headers,
       method: "POST",
@@ -1389,7 +1437,7 @@ describe("api server", () => {
       method: "GET",
       url: "/api/admin/sessions/run-compat"
     });
-    const adminFallback = await server.inject({
+    const unmappedAdminRoute = await server.inject({
       headers,
       method: "GET",
       url: "/api/admin/unmapped-compat-route"
@@ -1468,6 +1516,7 @@ describe("api server", () => {
     expect(toolAccuracy.json()).toMatchObject({ accuracy: 1, ok: 1, total: 1 });
     expect(followupStats.json()).toMatchObject({ totalClicks: 0, totalImpressions: 0, windowHours: 24 });
     expect(inputGuardStats.json()).toMatchObject({ blockRate: 0, total: 0 });
+    expect(inputGuardAudits.json()).toEqual({ audits: [], total: 0 });
     expect(latencySummary.json()).toMatchObject({ count: 1, p50Ms: 2000, p95Ms: 2000, p99Ms: 2000 });
     expect(latencyTimeseries.json()).toMatchObject([{ avgLatencyMs: 2000, count: 1 }]);
     expect(ragStatus.json()).toMatchObject({ byStatus: { indexed: 2 }, total: 2 });
@@ -1484,13 +1533,20 @@ describe("api server", () => {
     expect(platformUserRole.json()).toMatchObject({ id: registered.user.id, role: "admin_developer", updated: true });
     expect(taskPurgeExpired.json()).toMatchObject({ deleted: 0 });
     expect(taskPurgeTerminal.json()).toMatchObject({ deleted: 0 });
+    expect(slackFaq.json()).toMatchObject({ channelId: "channel-1", id: "channel-1", status: "registered" });
+    expect(slackFaqList.json()).toMatchObject({ registrations: [{ channelId: "channel-1" }] });
+    expect(slackFaqDryRun.json()).toMatchObject({ channelId: "channel-1", status: "dry_run" });
+    expect(slackFaqStats.json()).toMatchObject({ hits: 1, total: 1 });
+    expect(slackFaqEvents.json()).toMatchObject({ events: [{ outcome: "HIT" }] });
+    expect(slackFaqFeedback.json()).toEqual({ feedback: {} });
+    expect(slackFaqDelete.json()).toEqual({ deleted: "channel-1" });
     expect(metricIngest.statusCode).toBe(202);
     expect(metricIngest.json()).toMatchObject({ accepted: true, kind: "tool-call" });
     expect(auditsExport.body).toContain("metric_event");
     expect(sessionTag.statusCode).toBe(200);
     expect(deletedSession.statusCode).toBe(204);
     expect(deletedSessionDetail.statusCode).toBe(404);
-    expect(adminFallback.json()).toMatchObject({ compatibility: true, data: [] });
+    expect(unmappedAdminRoute.statusCode).toBe(404);
   });
 
   it("handles signed Slack slash commands and posts response_url results", async () => {
