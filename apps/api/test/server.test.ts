@@ -2139,6 +2139,17 @@ describe("api server", () => {
       },
       url: "/api/intents/research"
     });
+    const missingIntent = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/intents/missing"
+    });
+    const missingIntentUpdate = await server.inject({
+      headers,
+      method: "PUT",
+      payload: { enabled: true },
+      url: "/api/intents/missing"
+    });
     const deletedPersona = await server.inject({
       headers,
       method: "DELETE",
@@ -2169,6 +2180,12 @@ describe("api server", () => {
     expect(activePersonas.json()).toEqual([]);
     expect(personaDetail.json()).toMatchObject({ id: personaId, isActive: false });
     expect(invalidIntent.statusCode).toBe(400);
+    expect(invalidIntent.json()).toMatchObject({
+      details: { name: "name must not be blank" },
+      error: "요청 형식이 올바르지 않습니다",
+      timestamp: expect.any(String)
+    });
+    expect(invalidIntent.json()).not.toHaveProperty("code");
     expect(intent.statusCode).toBe(201);
     expect(intent.json()).toMatchObject({
       description: "Research requests",
@@ -2180,11 +2197,28 @@ describe("api server", () => {
     });
     expect(typeof intent.json().createdAt).toBe("number");
     expect(duplicateIntent.statusCode).toBe(409);
+    expect(duplicateIntent.json()).toMatchObject({
+      error: "Intent 'research' already exists",
+      timestamp: expect.any(String)
+    });
+    expect(duplicateIntent.json()).not.toHaveProperty("code");
     expect(updatedIntent.json()).toMatchObject({
       enabled: false,
       keywords: ["analysis"],
       name: "research"
     });
+    expect(missingIntent.statusCode).toBe(404);
+    expect(missingIntent.json()).toMatchObject({
+      error: "Intent not found: missing",
+      timestamp: expect.any(String)
+    });
+    expect(missingIntent.json()).not.toHaveProperty("code");
+    expect(missingIntentUpdate.statusCode).toBe(404);
+    expect(missingIntentUpdate.json()).toMatchObject({
+      error: "Intent not found: missing",
+      timestamp: expect.any(String)
+    });
+    expect(missingIntentUpdate.json()).not.toHaveProperty("code");
     expect(deletedPersona.statusCode).toBe(204);
     expect(deletedIntent.statusCode).toBe(204);
   });

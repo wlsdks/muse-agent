@@ -1519,7 +1519,7 @@ function registerIntentRoutes(server: FastifyInstance, options: ReactorCompatibi
 
     const { intentName } = request.params as { readonly intentName: string };
     const intent = findCompatRecord(state.intents, intentName);
-    return intent ? toIntentResponse(intent) : notFound(reply, "INTENT_NOT_FOUND");
+    return intent ? toIntentResponse(intent) : reply.status(404).send(errorResponse(`Intent not found: ${intentName}`));
   });
   server.post("/api/intents", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -1529,16 +1529,13 @@ function registerIntentRoutes(server: FastifyInstance, options: ReactorCompatibi
     const validationError = validateIntentBody(toBody(request.body), "create");
 
     if (validationError) {
-      return badRequest(reply, "INVALID_INTENT", validationError);
+      return reply.status(400).send(validationErrorResponse(validationError));
     }
 
     const name = readBodyString(request.body, "name") ?? "";
 
     if (findCompatRecord(state.intents, name)) {
-      return reply.status(409).send({
-        code: "INTENT_ALREADY_EXISTS",
-        message: `Intent '${name}' already exists`
-      });
+      return reply.status(409).send(errorResponse(`Intent '${name}' already exists`));
     }
 
     return reply.status(201).send(toIntentResponse(createIntent(request.body)));
@@ -1552,13 +1549,13 @@ function registerIntentRoutes(server: FastifyInstance, options: ReactorCompatibi
     const existing = findCompatRecord(state.intents, intentName);
 
     if (!existing) {
-      return notFound(reply, "INTENT_NOT_FOUND");
+      return reply.status(404).send(errorResponse(`Intent not found: ${intentName}`));
     }
 
     const validationError = validateIntentBody(toBody(request.body), "update");
 
     if (validationError) {
-      return badRequest(reply, "INVALID_INTENT", validationError);
+      return reply.status(400).send(validationErrorResponse(validationError));
     }
 
     return toIntentResponse(updateIntent(existing, request.body));
@@ -1603,7 +1600,7 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
     const validationError = validateAddDocumentBody(body);
 
     if (validationError) {
-      return reply.status(400).send(documentValidationError(validationError));
+      return reply.status(400).send(validationErrorResponse(validationError));
     }
 
     const duplicate = findDocumentByContentHash(computeContentHash(readBodyString(body, "content") ?? ""));
@@ -1623,11 +1620,11 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
     const items: readonly unknown[] = Array.isArray(documents) ? documents : [];
 
     if (items.length === 0) {
-      return reply.status(400).send(documentValidationError({ documents: "Documents list must not be empty" }));
+      return reply.status(400).send(validationErrorResponse({ documents: "Documents list must not be empty" }));
     }
 
     if (items.length > 100) {
-      return reply.status(400).send(documentValidationError({ documents: "Batch must not exceed 100 documents" }));
+      return reply.status(400).send(validationErrorResponse({ documents: "Batch must not exceed 100 documents" }));
     }
 
     for (const [index, item] of items.entries()) {
@@ -1635,7 +1632,7 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
       const validationError = validateAddDocumentBody(body);
 
       if (validationError) {
-        return reply.status(400).send(documentValidationError(prefixValidationDetails(`documents[${index}]`, validationError)));
+        return reply.status(400).send(validationErrorResponse(prefixValidationDetails(`documents[${index}]`, validationError)));
       }
 
       const duplicate = findDocumentByContentHash(computeContentHash(readBodyString(body, "content") ?? ""));
@@ -1661,21 +1658,21 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
     const topK = readNumber(toBody(request.body).topK, 5);
 
     if (query.trim().length === 0) {
-      return reply.status(400).send(documentValidationError({ query: "Search query is required" }));
+      return reply.status(400).send(validationErrorResponse({ query: "Search query is required" }));
     }
 
     if (query.length > 10_000) {
-      return reply.status(400).send(documentValidationError({
+      return reply.status(400).send(validationErrorResponse({
         query: "Search query must not exceed 10000 characters"
       }));
     }
 
     if (topK < 1) {
-      return reply.status(400).send(documentValidationError({ topK: "topK must be at least 1" }));
+      return reply.status(400).send(validationErrorResponse({ topK: "topK must be at least 1" }));
     }
 
     if (topK > 100) {
-      return reply.status(400).send(documentValidationError({ topK: "topK must not exceed 100" }));
+      return reply.status(400).send(validationErrorResponse({ topK: "topK must not exceed 100" }));
     }
 
     return [...state.documents.values()]
@@ -1691,11 +1688,11 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
     const ids = stringArrayField(toBody(request.body).ids, []);
 
     if (ids.length === 0) {
-      return reply.status(400).send(documentValidationError({ ids: "IDs list must not be empty" }));
+      return reply.status(400).send(validationErrorResponse({ ids: "IDs list must not be empty" }));
     }
 
     if (ids.length > 100) {
-      return reply.status(400).send(documentValidationError({
+      return reply.status(400).send(validationErrorResponse({
         ids: "Cannot delete more than 100 documents at once"
       }));
     }
@@ -5628,13 +5625,13 @@ function createIntent(bodyValue: unknown): CompatRecord {
   }, "intent");
 }
 
-function validateIntentBody(body: CompatBody, mode: "create" | "update"): string | undefined {
+function validateIntentBody(body: CompatBody, mode: "create" | "update"): JsonObject | undefined {
   if (mode === "create" && !readBodyString(body, "name")) {
-    return "name must not be blank";
+    return { name: "name must not be blank" };
   }
 
   if (mode === "create" && !readBodyString(body, "description")) {
-    return "description must not be blank";
+    return { description: "description must not be blank" };
   }
 
   return undefined;
@@ -5725,7 +5722,7 @@ function validateAddDocumentBody(body: CompatBody): JsonObject | undefined {
   return undefined;
 }
 
-function documentValidationError(details: JsonObject): JsonObject {
+function validationErrorResponse(details: JsonObject): JsonObject {
   return {
     details,
     error: "요청 형식이 올바르지 않습니다",
