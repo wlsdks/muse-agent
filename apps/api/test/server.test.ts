@@ -1354,6 +1354,14 @@ describe("api server", () => {
       },
       url: "/api/documents/batch"
     });
+    const duplicate = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        content: "Knowledge base entry"
+      },
+      url: "/api/documents"
+    });
     const listed = await server.inject({
       headers,
       method: "GET",
@@ -1367,6 +1375,23 @@ describe("api server", () => {
         topK: 5
       },
       url: "/api/documents/search"
+    });
+    const invalidSearch = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        query: "knowledge",
+        topK: 101
+      },
+      url: "/api/documents/search"
+    });
+    const invalidDelete = await server.inject({
+      headers,
+      method: "DELETE",
+      payload: {
+        ids: []
+      },
+      url: "/api/documents"
     });
     const deleted = await server.inject({
       headers,
@@ -1382,11 +1407,16 @@ describe("api server", () => {
       chunkCount: 1,
       chunkIds: [],
       content: "Knowledge base entry",
-      metadata: { source: "manual" }
+      metadata: { content_hash: expect.any(String), source: "manual" }
     });
     expect(batch.statusCode).toBe(201);
     expect(batch.json()).toMatchObject({ count: 2, totalChunks: 2 });
     expect(batch.json().ids).toHaveLength(2);
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json()).toMatchObject({
+      error: "Document with identical content already exists",
+      existingId: created.json().id
+    });
     expect(listed.json()).toMatchObject([
       { content: "Knowledge base entry", metadata: { source: "manual" } },
       { content: "Batch entry one", metadata: { source: "batch" } },
@@ -1399,6 +1429,8 @@ describe("api server", () => {
         score: null
       }
     ]);
+    expect(invalidSearch.statusCode).toBe(400);
+    expect(invalidDelete.statusCode).toBe(400);
     expect(deleted.statusCode).toBe(204);
   });
 

@@ -19,6 +19,7 @@ import type {
 } from "@muse/runtime-state";
 import { createRunId, type JsonObject } from "@muse/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { createHash } from "node:crypto";
 import type { AdminRouteState } from "./admin-routes.js";
 import type { McpRouteMcp } from "./mcp-routes.js";
 import type { SchedulerRouteScheduler } from "./scheduler-routes.js";
@@ -1437,7 +1438,20 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
       return reply;
     }
 
-    return reply.status(201).send(toDocumentResponse(createDocument(request.body)));
+    const body = toBody(request.body);
+    const validationError = validateAddDocumentBody(body);
+
+    if (validationError) {
+      return badRequest(reply, "INVALID_DOCUMENT", validationError);
+    }
+
+    const duplicate = findDocumentByContentHash(computeContentHash(readBodyString(body, "content") ?? ""));
+
+    if (duplicate) {
+      return duplicateDocumentConflict(reply, duplicate.id);
+    }
+
+    return reply.status(201).send(toDocumentResponse(createDocument(body)));
   });
   server.post("/api/documents/batch", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -1446,6 +1460,30 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
 
     const documents = toBody(request.body).documents;
     const items: readonly unknown[] = Array.isArray(documents) ? documents : [];
+
+    if (items.length === 0) {
+      return badRequest(reply, "INVALID_DOCUMENT_BATCH", "Documents list must not be empty");
+    }
+
+    if (items.length > 100) {
+      return badRequest(reply, "INVALID_DOCUMENT_BATCH", "Batch must not exceed 100 documents");
+    }
+
+    for (const item of items) {
+      const body = toBody(item);
+      const validationError = validateAddDocumentBody(body);
+
+      if (validationError) {
+        return badRequest(reply, "INVALID_DOCUMENT_BATCH", validationError);
+      }
+
+      const duplicate = findDocumentByContentHash(computeContentHash(readBodyString(body, "content") ?? ""));
+
+      if (duplicate) {
+        return duplicateDocumentConflict(reply, duplicate.id);
+      }
+    }
+
     const saved = items.map((item) => createDocument(item));
     return reply.status(201).send({
       count: saved.length,
@@ -1460,6 +1498,19 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
 
     const query = (readBodyString(request.body, "query") ?? "").toLowerCase();
     const topK = readNumber(toBody(request.body).topK, 5);
+
+    if (query.trim().length === 0) {
+      return badRequest(reply, "INVALID_DOCUMENT_SEARCH", "Search query is required");
+    }
+
+    if (query.length > 10_000) {
+      return badRequest(reply, "INVALID_DOCUMENT_SEARCH", "Search query must not exceed 10000 characters");
+    }
+
+    if (topK < 1 || topK > 100) {
+      return badRequest(reply, "INVALID_DOCUMENT_SEARCH", "topK must be between 1 and 100");
+    }
+
     return [...state.documents.values()]
       .filter((document) => JSON.stringify(document).toLowerCase().includes(query))
       .slice(0, Math.min(Math.max(topK, 1), 100))
@@ -1470,7 +1521,17 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
       return reply;
     }
 
-    for (const id of stringArrayField(toBody(request.body).ids, [])) {
+    const ids = stringArrayField(toBody(request.body).ids, []);
+
+    if (ids.length === 0) {
+      return badRequest(reply, "INVALID_DOCUMENT_DELETE", "IDs list must not be empty");
+    }
+
+    if (ids.length > 100) {
+      return badRequest(reply, "INVALID_DOCUMENT_DELETE", "Cannot delete more than 100 documents at once");
+    }
+
+    for (const id of ids) {
       state.documents.delete(id);
     }
 
@@ -4834,12 +4895,17 @@ function toIntentResponse(record: JsonObject) {
 
 function createDocument(bodyValue: unknown): CompatRecord {
   const body = toBody(bodyValue);
+  const content = readBodyString(body, "content") ?? "";
+  const metadata = documentMetadata(body);
   return createRecord(state.documents, {
     chunkCount: 1,
     chunkIds: [],
-    content: readBodyString(body, "content") ?? "",
+    content,
     indexed: true,
-    metadata: documentMetadata(body)
+    metadata: {
+      ...metadata,
+      [DOCUMENT_CONTENT_HASH_KEY]: computeContentHash(content)
+    }
   }, "document");
 }
 
@@ -4868,6 +4934,44 @@ function documentMetadata(body: CompatBody): JsonObject {
     ? { ...metadata, title: body.title }
     : metadata;
 }
+
+function validateAddDocumentBody(body: CompatBody): string | undefined {
+  const content = readBodyString(body, "content");
+
+  if (!content) {
+    return "Document content is required";
+  }
+
+  if (content.length > 100_000) {
+    return "Document content must not exceed 100000 characters";
+  }
+
+  if (Object.keys(jsonObjectField(body.metadata)).length > 50) {
+    return "Metadata must not exceed 50 entries";
+  }
+
+  return undefined;
+}
+
+function findDocumentByContentHash(contentHash: string): CompatRecord | undefined {
+  return [...state.documents.values()].find((document) => {
+    const metadata = jsonObjectField(document.metadata);
+    return metadata[DOCUMENT_CONTENT_HASH_KEY] === contentHash;
+  });
+}
+
+function duplicateDocumentConflict(reply: FastifyReply, existingId: string) {
+  return reply.status(409).send({
+    error: "Document with identical content already exists",
+    existingId
+  });
+}
+
+function computeContentHash(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
+const DOCUMENT_CONTENT_HASH_KEY = "content_hash";
 
 function createSlackBot(bodyValue: unknown): CompatRecord {
   const body = toBody(bodyValue);
