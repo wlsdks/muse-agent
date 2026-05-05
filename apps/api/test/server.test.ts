@@ -212,6 +212,72 @@ describe("api server", () => {
     expect(afterLogout.statusCode).toBe(401);
   });
 
+  it("serves Reactor-compatible auth DTOs on api auth aliases", async () => {
+    const authService = createAuthService();
+    const server = buildServer({ authService, logger: false, requireAuth: true });
+    const email = ["compat", "example.invalid"].join("@");
+
+    const invalidRegister = await server.inject({
+      method: "POST",
+      payload: { email: "invalid_email", name: "Compat", password: "short" },
+      url: "/api/auth/register"
+    });
+    const registered = await server.inject({
+      method: "POST",
+      payload: { email, name: "Compat", password: "password-1" },
+      url: "/api/auth/register"
+    });
+    const duplicate = await server.inject({
+      method: "POST",
+      payload: { email, name: "Compat", password: "password-1" },
+      url: "/api/auth/register"
+    });
+    const token = registered.json().token as string;
+    const me = await server.inject({
+      headers: { authorization: `Bearer ${token}` },
+      method: "GET",
+      url: "/api/auth/me"
+    });
+    const logout = await server.inject({
+      headers: { authorization: `Bearer ${token}` },
+      method: "POST",
+      url: "/api/auth/logout"
+    });
+    const afterLogout = await server.inject({
+      headers: { authorization: `Bearer ${token}` },
+      method: "GET",
+      url: "/api/auth/me"
+    });
+
+    expect(invalidRegister.statusCode).toBe(400);
+    expect(registered.statusCode).toBe(201);
+    expect(registered.json()).toMatchObject({
+      error: null,
+      user: {
+        adminScope: null,
+        email,
+        name: "Compat",
+        role: "USER"
+      }
+    });
+    expect(registered.json()).not.toHaveProperty("expiresAt");
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json()).toEqual({
+      error: "Email already registered",
+      token: "",
+      user: null
+    });
+    expect(me.json()).toMatchObject({
+      adminScope: null,
+      email,
+      name: "Compat",
+      role: "USER"
+    });
+    expect(me.json()).not.toHaveProperty("identity");
+    expect(logout.json()).toEqual({ message: "Logged out" });
+    expect(afterLogout.statusCode).toBe(401);
+  });
+
   it("rate limits failed auth attempts", async () => {
     const authService = createAuthService();
     authService.register({

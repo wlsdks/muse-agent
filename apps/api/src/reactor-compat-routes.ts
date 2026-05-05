@@ -300,7 +300,16 @@ function registerAuthCompatibilityRoutes(server: FastifyInstance, options: React
     }
 
     try {
-      return reply.status(201).send(toReactorAuthResponse(authService.register(parsed.value)));
+      const login = authService.register(parsed.value);
+      let normalizedLogin: LoginResult = login;
+
+      if (login.user.role === "admin") {
+        const normalizedUser = authService.updateUserRole(login.user.id, "user");
+        const relogin = authService.login(parsed.value.email, parsed.value.password);
+        normalizedLogin = relogin ?? (normalizedUser ? { ...login, user: normalizedUser } : login);
+      }
+
+      return reply.status(201).send(toReactorAuthResponse(normalizedLogin));
     } catch (error) {
       const code = error instanceof Error && "code" in error ? String(error.code) : "REGISTRATION_FAILED";
       return reply.status(code === "USER_EXISTS" ? 409 : 400).send({
@@ -451,6 +460,13 @@ function registerAuthCompatibilityRoutes(server: FastifyInstance, options: React
       return reply.status(400).send({
         code: "INVALID_PASSWORD_CHANGE_REQUEST",
         message: "Body must include currentPassword and newPassword"
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return reply.status(400).send({
+        code: "INVALID_PASSWORD_CHANGE_REQUEST",
+        message: "New password must be at least 8 characters"
       });
     }
 
@@ -4677,6 +4693,14 @@ function parseAuthCredentials(
 
   if (value.email.trim().length === 0 || value.password.length === 0) {
     return invalid("INVALID_AUTH_REQUEST", "Email and password must not be blank");
+  }
+
+  if (mode === "register" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value.email.trim())) {
+    return invalid("INVALID_AUTH_REQUEST", "Invalid email format");
+  }
+
+  if (mode === "register" && value.password.length < 8) {
+    return invalid("INVALID_AUTH_REQUEST", "Password must be at least 8 characters");
   }
 
   if (mode === "register" && (typeof value.name !== "string" || value.name.trim().length === 0)) {
