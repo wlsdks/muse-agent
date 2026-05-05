@@ -2703,6 +2703,18 @@ describe("api server", () => {
       payload: { role: "ADMIN_DEVELOPER" },
       url: `/api/admin/rbac/users/${member.user.id}/role`
     });
+    const invalidRole = await server.inject({
+      headers,
+      method: "PUT",
+      payload: { role: "BAD_ROLE" },
+      url: `/api/admin/rbac/users/${member.user.id}/role`
+    });
+    const missingRoleUser = await server.inject({
+      headers,
+      method: "PUT",
+      payload: { role: "ADMIN_MANAGER" },
+      url: "/api/admin/rbac/users/missing-user/role"
+    });
     const retention = await server.inject({ headers, method: "GET", url: "/api/admin/retention" });
     const retentionUpdate = await server.inject({
       headers,
@@ -2745,6 +2757,17 @@ describe("api server", () => {
       method: "GET",
       url: "/api/admin/settings/model.default"
     });
+    const missingRuntimeSetting = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/settings/missing.setting"
+    });
+    const invalidRuntimeSetting = await server.inject({
+      headers,
+      method: "PUT",
+      payload: {},
+      url: "/api/admin/settings/missing.value"
+    });
     const runtimeRefresh = await server.inject({ headers, method: "POST", url: "/api/admin/settings/refresh" });
     const capabilities = await server.inject({ headers, method: "GET", url: "/api/admin/capabilities" });
     const dashboard = await server.inject({ headers, method: "GET", url: "/api/ops/dashboard" });
@@ -2781,6 +2804,18 @@ describe("api server", () => {
     ]));
     expect(roleUpdate.json()).toEqual({ role: "ADMIN_DEVELOPER", userId: member.user.id });
     expect(authService.getUserById(member.user.id)).toMatchObject({ role: "admin_developer" });
+    expect(invalidRole.statusCode).toBe(400);
+    expect(invalidRole.json()).toMatchObject({
+      error: "유효하지 않은 역할: BAD_ROLE",
+      timestamp: expect.any(String)
+    });
+    expect(invalidRole.json()).not.toHaveProperty("code");
+    expect(missingRoleUser.statusCode).toBe(404);
+    expect(missingRoleUser.json()).toMatchObject({
+      error: "사용자를 찾을 수 없습니다: missing-user",
+      timestamp: expect.any(String)
+    });
+    expect(missingRoleUser.json()).not.toHaveProperty("code");
     expect(retention.json()).toEqual({
       auditRetentionDays: 730,
       conversationRetentionDays: 365,
@@ -2804,6 +2839,18 @@ describe("api server", () => {
     expect(reorder.json()).toMatchObject({ order: ["InputValidation", "RateLimit"] });
     expect(runtimeSet.json()).toEqual({ key: "model.default", status: "updated", value: "provider/model" });
     expect(runtimeGet.json()).toMatchObject({ key: "model.default", type: "STRING", value: "provider/model" });
+    expect(missingRuntimeSetting.statusCode).toBe(404);
+    expect(missingRuntimeSetting.json()).toMatchObject({
+      error: "설정을 찾을 수 없습니다: missing.setting",
+      timestamp: expect.any(String)
+    });
+    expect(missingRuntimeSetting.json()).not.toHaveProperty("code");
+    expect(invalidRuntimeSetting.statusCode).toBe(400);
+    expect(invalidRuntimeSetting.json()).toMatchObject({
+      error: "요청 형식이 올바르지 않습니다",
+      timestamp: expect.any(String)
+    });
+    expect(invalidRuntimeSetting.json()).not.toHaveProperty("code");
     expect(runtimeRefresh.json()).toEqual({ status: "cache_refreshed" });
     const capabilitiesBody = capabilities.json();
     expect(capabilitiesBody).toMatchObject({ source: "request-mappings" });

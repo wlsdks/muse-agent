@@ -772,17 +772,11 @@ function registerPolicyCompatibilityRoutes(server: FastifyInstance, options: Rea
     const role = parseUserRole(readBodyString(request.body, "role"));
 
     if (!role) {
-      return reply.status(400).send({
-        code: "INVALID_ROLE",
-        message: `Invalid role: ${readBodyString(request.body, "role") ?? ""}`
-      });
+      return reply.status(400).send(errorResponse(`유효하지 않은 역할: ${readBodyString(request.body, "role") ?? ""}`));
     }
 
     if (!options.authService?.updateUserRole(userId, role)) {
-      return reply.status(404).send({
-        code: "USER_NOT_FOUND",
-        message: `User not found: ${userId}`
-      });
+      return reply.status(404).send(errorResponse(`사용자를 찾을 수 없습니다: ${userId}`));
     }
 
     return {
@@ -2402,7 +2396,7 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
 
     const { key } = request.params as { readonly key: string };
     const setting = await options.runtimeSettings.find(key);
-    return setting ? toReactorRuntimeSetting(setting) : notFound(reply, "RUNTIME_SETTING_NOT_FOUND");
+    return setting ? toReactorRuntimeSetting(setting) : reply.status(404).send(errorResponse(`설정을 찾을 수 없습니다: ${key}`));
   });
   server.put("/api/admin/settings/:key", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -2414,7 +2408,7 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
     const value = readBodyString(body, "value");
 
     if (value === undefined) {
-      return reply.status(400).send({ code: "INVALID_RUNTIME_SETTING", message: "Body must include value" });
+      return reply.status(400).send(errorResponse("요청 형식이 올바르지 않습니다"));
     }
 
     await options.runtimeSettings.set({
