@@ -3291,7 +3291,7 @@ function registerAdminAnalyticsCompatibilityRoutes(
     const olderThanDays = readQueryInteger(request, "olderThanDays", 30);
 
     if (olderThanDays < 1) {
-      return reply.status(400).send({ code: "INVALID_RETENTION_WINDOW", message: "olderThanDays must be >= 1" });
+      return reply.status(400).send(errorResponse("olderThanDays는 1 이상이어야 합니다"));
     }
 
     if (!options.taskMemoryMaintenance) {
@@ -3305,11 +3305,7 @@ function registerAdminAnalyticsCompatibilityRoutes(
 }
 
 function taskMemoryMaintenanceUnavailable(reply: FastifyReply) {
-  return badRequest(
-    reply,
-    "TASK_MEMORY_MAINTENANCE_UNAVAILABLE",
-    "TaskMemoryMaintenance 미등록 — task memory 유지보수를 사용할 수 없습니다"
-  );
+  return reply.status(400).send(errorResponse("TaskMemoryMaintenance 미등록 — task memory 유지보수를 사용할 수 없습니다"));
 }
 
 function registerAgentEvalCompatibilityRoutes(

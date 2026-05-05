@@ -4297,9 +4297,24 @@ describe("api server", () => {
       method: "POST",
       url: "/api/admin/task-memory/maintenance/purge-terminal?olderThanDays=30"
     });
+    const invalidRetention = await server.inject({
+      headers,
+      method: "POST",
+      url: "/api/admin/task-memory/maintenance/purge-terminal?olderThanDays=0"
+    });
 
     expect(unavailable.statusCode).toBe(400);
-    expect(unavailable.json()).toMatchObject({ code: "TASK_MEMORY_MAINTENANCE_UNAVAILABLE" });
+    expect(unavailable.json()).toMatchObject({
+      error: "TaskMemoryMaintenance 미등록 — task memory 유지보수를 사용할 수 없습니다",
+      timestamp: expect.any(String)
+    });
+    expect(unavailable.json()).not.toHaveProperty("code");
+    expect(invalidRetention.statusCode).toBe(400);
+    expect(invalidRetention.json()).toMatchObject({
+      error: "olderThanDays는 1 이상이어야 합니다",
+      timestamp: expect.any(String)
+    });
+    expect(invalidRetention.json()).not.toHaveProperty("code");
     expect(purgeTerminal.statusCode).toBe(200);
     expect(purgeTerminal.json()).toMatchObject({ deleted: 1 });
   });
