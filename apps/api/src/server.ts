@@ -120,8 +120,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     server: "fastify"
   }));
 
-  server.post("/chat", async (request, reply) => runChat(request.body, reply, options));
-  server.post("/api/chat", async (request, reply) => runChat(request.body, reply, options));
+  server.post("/chat", async (request, reply) => runChat(request.body, reply, options, "extended"));
+  server.post("/api/chat", async (request, reply) => runChat(request.body, reply, options, "reactor"));
   server.post("/chat/stream", async (request, reply) => runChatStream(request.body, reply, options));
   server.post("/api/chat/stream", async (request, reply) => runChatStream(request.body, reply, options));
   server.post("/api/chat/multipart", async (request, reply) => runMultipartChat(request.body, reply, options));
@@ -409,7 +409,8 @@ interface ApiError {
 async function runChat(
   body: unknown,
   reply: { status(statusCode: number): { send(payload: unknown): void } },
-  options: ServerOptions
+  options: ServerOptions,
+  responseMode: "extended" | "reactor"
 ) {
   if (!options.agentRuntime) {
     return reply.status(503).send({
@@ -425,9 +426,10 @@ async function runChat(
   }
 
   try {
-    return toChatResponse(await options.agentRuntime.run(parsed.value));
+    const result = await options.agentRuntime.run(parsed.value);
+    return responseMode === "reactor" ? toReactorChatResponse(result) : toExtendedChatResponse(result);
   } catch (error) {
-    return sendAgentError(reply, error);
+    return sendAgentError(reply, error, responseMode);
   }
 }
 
@@ -469,7 +471,7 @@ async function runMultipartChat(
     return reply.status(400).send(parsed.error);
   }
 
-  return runChat(parsed.value, reply, options);
+  return runChat(parsed.value, reply, options, "reactor");
 }
 
 function parseMultipartChatBody(value: unknown): ParseResult<JsonObject> {
@@ -656,29 +658,35 @@ function parseToolCalls(value: unknown): AgentRunInput["messages"][number]["tool
   return parsed.length === value.length ? parsed : undefined;
 }
 
-function toChatResponse(result: AgentRunResult) {
+function toReactorChatResponse(result: AgentRunResult) {
   const tokenUsage = reactorTokenUsage(result.response.usage);
   const metadata = reactorResponseMetadata(result);
 
   return {
-    agentSpec: result.agentSpec,
     blockReason: typeof metadata.blockReason === "string" ? metadata.blockReason : null,
     content: result.response.output,
-    contextWindow: result.contextWindow,
     durationMs: null,
     errorCode: null,
     errorMessage: null,
-    fromCache: result.fromCache ?? false,
     grounded: typeof metadata.grounded === "boolean" ? metadata.grounded : null,
     metadata,
     model: result.response.model,
-    response: result.response.output,
-    runId: result.runId,
     success: true,
     tokenUsage,
     toolsUsed: result.toolsUsed ?? [],
-    usage: result.response.usage,
     verifiedSourceCount: typeof metadata.verifiedSourceCount === "number" ? metadata.verifiedSourceCount : null
+  };
+}
+
+function toExtendedChatResponse(result: AgentRunResult) {
+  return {
+    ...toReactorChatResponse(result),
+    agentSpec: result.agentSpec,
+    contextWindow: result.contextWindow,
+    fromCache: result.fromCache ?? false,
+    response: result.response.output,
+    runId: result.runId,
+    usage: result.response.usage
   };
 }
 
@@ -729,40 +737,70 @@ function reactorResponseMetadata(result: AgentRunResult): JsonObject {
 
 function sendAgentError(
   reply: { status(statusCode: number): { send(payload: ApiError): void } },
-  error: unknown
+  error: unknown,
+  responseMode: "extended" | "reactor"
 ) {
   if (error instanceof GuardBlockedError) {
-    return reply.status(403).send({
+    return reply.status(403).send(chatErrorResponse({
       blockReason: error.message,
       code: error.code ?? "GUARD_BLOCKED",
-      content: null,
       errorCode: error.code ?? "GUARD_BLOCKED",
       errorMessage: error.message,
-      message: error.message,
-      success: false
-    } as ApiError);
+      message: error.message
+    }, responseMode) as ApiError);
   }
 
   if (error instanceof OutputGuardBlockedError) {
-    return reply.status(422).send({
+    return reply.status(422).send(chatErrorResponse({
       blockReason: error.message,
       code: error.code ?? "OUTPUT_GUARD_BLOCKED",
-      content: null,
       errorCode: error.code ?? "OUTPUT_GUARD_BLOCKED",
       errorMessage: error.message,
-      message: error.message,
-      success: false
-    } as ApiError);
+      message: error.message
+    }, responseMode) as ApiError);
   }
 
-  return reply.status(500).send({
+  const message = error instanceof Error ? error.message : "Agent run failed";
+  return reply.status(500).send(chatErrorResponse({
     code: "AGENT_RUN_FAILED",
-    content: null,
     errorCode: "AGENT_RUN_FAILED",
-    errorMessage: error instanceof Error ? error.message : "Agent run failed",
-    message: error instanceof Error ? error.message : "Agent run failed",
-    success: false
-  } as ApiError);
+    errorMessage: message,
+    message
+  }, responseMode) as ApiError);
+}
+
+function chatErrorResponse(
+  error: {
+    readonly blockReason?: string;
+    readonly code: string;
+    readonly errorCode: string;
+    readonly errorMessage: string;
+    readonly message: string;
+  },
+  responseMode: "extended" | "reactor"
+) {
+  const response = {
+    blockReason: error.blockReason ?? null,
+    content: null,
+    durationMs: null,
+    errorCode: error.errorCode,
+    errorMessage: error.errorMessage,
+    grounded: null,
+    metadata: {},
+    model: null,
+    success: false,
+    tokenUsage: null,
+    toolsUsed: [],
+    verifiedSourceCount: null
+  };
+
+  return responseMode === "reactor"
+    ? response
+    : {
+      ...response,
+      code: error.code,
+      message: error.message
+    };
 }
 
 function parseAgentSpecInput(value: unknown): ParseResult<AgentSpecInput> {

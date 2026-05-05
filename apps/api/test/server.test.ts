@@ -848,6 +848,15 @@ describe("api server", () => {
       },
       url: "/api/chat"
     });
+    const extendedChat = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        message: "Hello",
+        runId: "run-chat-extended"
+      },
+      url: "/chat"
+    });
     const stream = await server.inject({
       headers,
       method: "POST",
@@ -860,9 +869,14 @@ describe("api server", () => {
     expect(chat.json()).toMatchObject({
       content: "Runtime answer",
       model: "provider/model",
-      response: "Runtime answer",
-      runId: "run-chat",
       success: true
+    });
+    expect(chat.json()).not.toHaveProperty("response");
+    expect(chat.json()).not.toHaveProperty("runId");
+    expect(chat.json()).not.toHaveProperty("usage");
+    expect(extendedChat.json()).toMatchObject({
+      response: "Runtime answer",
+      runId: "run-chat-extended"
     });
     expect(historyStore.findRun("run-chat")).toMatchObject({
       input: "Hello",
@@ -917,7 +931,9 @@ describe("api server", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ content: "Multipart answer", response: "Multipart answer", success: true });
+    expect(response.json()).toMatchObject({ content: "Multipart answer", success: true });
+    expect(response.json()).not.toHaveProperty("response");
+    expect(response.json()).not.toHaveProperty("runId");
     expect(capturedMetadata).toMatchObject({
       channel: "web",
       media: [
