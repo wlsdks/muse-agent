@@ -10,6 +10,10 @@ export const migrations: readonly SqlMigration[] = [
       DROP TABLE IF EXISTS trace_events;
       DROP TABLE IF EXISTS hook_traces;
       DROP TABLE IF EXISTS checkpoints;
+      DROP TABLE IF EXISTS admin_cost_usage;
+      DROP TABLE IF EXISTS admin_slos;
+      DROP TABLE IF EXISTS admin_alerts;
+      DROP TABLE IF EXISTS admin_tenants;
       DROP TABLE IF EXISTS scheduled_job_executions;
       DROP TABLE IF EXISTS scheduled_job_locks;
       DROP TABLE IF EXISTS scheduled_jobs;
@@ -149,6 +153,59 @@ export const migrations: readonly SqlMigration[] = [
         ON hook_traces(run_id, started_at);
       CREATE INDEX IF NOT EXISTS idx_hook_traces_hook_status_created_at
         ON hook_traces(hook_id, status, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS admin_tenants (
+        id VARCHAR(128) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        status VARCHAR(32) NOT NULL DEFAULT 'active',
+        monthly_budget_usd NUMERIC(18, 8),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_admin_tenants_status_updated_at
+        ON admin_tenants(status, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS admin_alerts (
+        id VARCHAR(128) PRIMARY KEY,
+        severity VARCHAR(32) NOT NULL,
+        status VARCHAR(32) NOT NULL DEFAULT 'open',
+        message TEXT NOT NULL,
+        target VARCHAR(255),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        acknowledged_at TIMESTAMPTZ
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_admin_alerts_status_created_at
+        ON admin_alerts(status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_admin_alerts_target_created_at
+        ON admin_alerts(target, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS admin_slos (
+        id VARCHAR(128) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        target DOUBLE PRECISION NOT NULL,
+        actual DOUBLE PRECISION,
+        window VARCHAR(80) NOT NULL,
+        status VARCHAR(32) NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_admin_slos_status_updated_at
+        ON admin_slos(status, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS admin_cost_usage (
+        id VARCHAR(128) PRIMARY KEY,
+        tenant_id VARCHAR(128),
+        model VARCHAR(255),
+        cost_usd NUMERIC(18, 8) NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_admin_cost_usage_tenant_created_at
+        ON admin_cost_usage(tenant_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_admin_cost_usage_model_created_at
+        ON admin_cost_usage(model, created_at DESC);
 
       CREATE TABLE IF NOT EXISTS runtime_settings (
         key VARCHAR(200) PRIMARY KEY,

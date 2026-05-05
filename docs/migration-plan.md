@@ -14,7 +14,7 @@ Current Muse baseline:
 | --- | ---: | --- |
 | Reactor modules with Muse landing zones | 31 | Every source module has a package or API target |
 | Functionally exercised migration areas | 31 | Core behavior exists and is covered by package/API tests |
-| Deep-hardening areas still open | 1 | Behavior exists, but production depth is not complete |
+| Deep-hardening areas still open | 0 | No known source module remains without functional and tested coverage |
 | Remaining unmapped modules | 0 | No source module is without a target |
 
 ## Completed Migration Areas
@@ -23,10 +23,10 @@ Current Muse baseline:
 | --- | --- | --- |
 | `agent` | `packages/agent-core` | ReAct loop, tool execution, streaming, guards, hooks, cache, RAG, history |
 | `api` | `apps/api` | Chat, SSE chat, auth, settings, agent specs, history, MCP, scheduler, quality routes |
-| `admin` | `apps/api`, `packages/runtime-state` | Metrics, cache, resilience, tenant, alert, cost, and SLO operations |
+| `admin` | `apps/api`, `packages/runtime-state`, `packages/db` | Metrics, cache, alert, cost, SLO, tenant ops |
 | `approval` | `packages/policy`, `packages/runtime-state` | Approval policies and pending approval stores exist |
 | `auth` | `packages/auth`, `apps/api` | JWT auth, password hashing, user store, revocation, guard, rate limiting |
-| `autoconfigure` | `packages/autoconfigure` | Environment-driven runtime assembly for API defaults exists |
+| `autoconfigure` | `packages/autoconfigure` | Environment-driven runtime assembly and DB-backed store selection exist |
 | `cache` | `packages/cache` | Response cache, scope fingerprint, TTL invalidation, prompt-cache metadata, stats |
 | `common` | `packages/shared` | Shared IDs, JSON, and common value types exist |
 | `context` | `packages/memory` | Context trimming and message-pair handling exist |
@@ -40,7 +40,7 @@ Current Muse baseline:
 | `model-routing` | `packages/model` | Provider registry, prefix routing, and OpenAI-compatible provider exist |
 | `multi-agent` | `packages/multi-agent` | Supervisor, worker selection, fallback, and handoff trace primitives exist |
 | `observability` | `packages/observability`, `packages/runtime-state` | Tracing, metrics, and history stores exist |
-| `persistence-schema` | `packages/db` | Kysely schema and migrations exist |
+| `persistence-schema` | `packages/db` | Kysely schema covers runtime, scheduler, MCP, and admin state |
 | `promptlab` | `packages/promptlab`, `apps/api` | Prompt variants, experiments, runner, ranking, and admin API exist |
 | `prompts` | `packages/prompts` | Prompt assembly, response format instructions, and cache boundary helpers exist |
 | `rag` | `packages/rag` | Chunking, BM25/RRF retrieval, reranking, context building, and in-memory corpus exist |
@@ -54,9 +54,8 @@ Current Muse baseline:
 
 ## Remaining Deep-Hardening Areas
 
-| Area | Current gap | Target |
-| --- | --- | --- |
-| `core` | Boundary stability needs continued review | Keep shared contracts minimal and versionable |
+No known source module remains unmapped.
+Continued work should be treated as new hardening or product expansion, not migration catch-up.
 
 ## Recent Completion Notes
 
@@ -73,10 +72,12 @@ Current Muse baseline:
 - MCP health checks now mark unhealthy connections and reconnect due servers with backoff.
 - Scheduler now has in-memory and Kysely-backed distributed lock implementations.
 - Admin operations now include tenant, alert acknowledgement, cost summary, and SLO state APIs.
+- Runtime assembly now switches to Kysely-backed stores when a database handle is provided.
 
 ## Execution Plan
 
-1. Replace in-memory default stores with production persistence wiring where needed.
+1. Keep `pnpm check` green as the migration acceptance gate.
+2. Add new work as product hardening tickets rather than migration backlog.
 
 ## Migration Rules
 

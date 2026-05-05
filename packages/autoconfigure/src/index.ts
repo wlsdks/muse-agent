@@ -4,7 +4,12 @@ import {
   createStructuredOutputResponseFilter,
   type AgentRuntime
 } from "@muse/agent-core";
-import { InMemoryAgentSpecRegistry, RuleBasedAgentSpecResolver } from "@muse/agent-specs";
+import {
+  InMemoryAgentSpecRegistry,
+  KyselyAgentSpecRegistry,
+  RuleBasedAgentSpecResolver,
+  type AgentSpecRegistry
+} from "@muse/agent-specs";
 import {
   AuthService,
   DefaultAuthProvider,
@@ -21,29 +26,53 @@ import {
   DefaultMcpTransportConnector,
   InMemoryMcpSecurityPolicyStore,
   InMemoryMcpServerStore,
+  KyselyMcpSecurityPolicyStore,
+  KyselyMcpServerStore,
   McpManager,
-  McpSecurityPolicyProvider
+  McpSecurityPolicyProvider,
+  type McpSecurityPolicyInput,
+  type McpSecurityPolicyStore,
+  type McpServerStore
 } from "@muse/mcp";
 import { OpenAICompatibleProvider, type ModelProvider } from "@muse/model";
 import { InMemoryAgentMetrics, InMemoryMuseTracer } from "@muse/observability";
 import { CircuitBreakerRegistry } from "@muse/resilience";
-import { InMemoryRuntimeSettingsStore, RuntimeSettingsService } from "@muse/runtime-settings";
+import {
+  InMemoryRuntimeSettingsStore,
+  KyselyRuntimeSettingsStore,
+  RuntimeSettingsService,
+  type RuntimeSettingsStore
+} from "@muse/runtime-settings";
 import {
   InMemoryAdminOperationsStore,
   InMemoryAgentRunHistoryStore,
-  InMemoryHookTraceStore
+  InMemoryHookTraceStore,
+  KyselyAdminOperationsStore,
+  KyselyAgentRunHistoryStore,
+  KyselyHookTraceStore,
+  type AdminOperationsStore,
+  type AgentRunHistoryStore,
+  type HookTraceStore
 } from "@muse/runtime-state";
 import {
   DynamicSchedulerService,
   InMemoryDistributedSchedulerLock,
   InMemoryScheduledJobExecutionStore,
   InMemoryScheduledJobStore,
+  KyselyDistributedSchedulerLock,
+  KyselyScheduledJobExecutionStore,
+  KyselyScheduledJobStore,
   NodeCronScheduler,
   ScheduledJobDispatcher,
   ScheduledMcpToolInvoker,
-  type ScheduledAgentExecutor
+  type DistributedSchedulerLock,
+  type ScheduledAgentExecutor,
+  type ScheduledJobExecutionStore,
+  type ScheduledJobStore
 } from "@muse/scheduler";
 import { ToolRegistry, type MuseTool } from "@muse/tools";
+import type { MuseDatabase } from "@muse/db";
+import type { Kysely } from "kysely";
 
 export interface MuseEnvironment {
   readonly [key: string]: string | undefined;
@@ -51,7 +80,7 @@ export interface MuseEnvironment {
 
 export interface MuseRuntimeAssembly {
   readonly agentRuntime?: AgentRuntime;
-  readonly agentSpecRegistry: InMemoryAgentSpecRegistry;
+  readonly agentSpecRegistry: AgentSpecRegistry;
   readonly authService?: AuthService;
   readonly cache: {
     readonly metrics: InMemoryCacheMetricsRecorder;
@@ -59,14 +88,14 @@ export interface MuseRuntimeAssembly {
     readonly statsStore: InMemoryCacheStatsStore;
   };
   readonly defaultModel?: string;
-  readonly historyStore: InMemoryAgentRunHistoryStore;
-  readonly hookTraceStore: InMemoryHookTraceStore;
-  readonly adminOperationsStore: InMemoryAdminOperationsStore;
+  readonly historyStore: AgentRunHistoryStore;
+  readonly hookTraceStore: HookTraceStore;
+  readonly adminOperationsStore: AdminOperationsStore;
   readonly mcp: {
     readonly manager: McpManager;
     readonly securityPolicyProvider: McpSecurityPolicyProvider;
-    readonly securityPolicyStore: InMemoryMcpSecurityPolicyStore;
-    readonly serverStore: InMemoryMcpServerStore;
+    readonly securityPolicyStore: McpSecurityPolicyStore;
+    readonly serverStore: McpServerStore;
   };
   readonly modelProvider?: ModelProvider;
   readonly observability: {
@@ -79,14 +108,15 @@ export interface MuseRuntimeAssembly {
   };
   readonly runtimeSettings: RuntimeSettingsService;
   readonly scheduler: {
-    readonly executionStore: InMemoryScheduledJobExecutionStore;
+    readonly executionStore: ScheduledJobExecutionStore;
     readonly service: DynamicSchedulerService;
-    readonly store: InMemoryScheduledJobStore;
+    readonly store: ScheduledJobStore;
   };
   readonly toolRegistry: ToolRegistry;
 }
 
 export interface ApiServerAssemblyOptions {
+  readonly db?: Kysely<MuseDatabase>;
   readonly env?: MuseEnvironment;
 }
 
@@ -99,15 +129,14 @@ export class ConfigurationError extends Error {
 
 export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}): MuseRuntimeAssembly {
   const env = options.env ?? process.env;
+  const db = options.db;
   const userStore = new InMemoryUserStore(parseInteger(env.MUSE_AUTH_MAX_USERS, 10_000));
   const authService = createAuthService(env, userStore);
-  const agentSpecRegistry = new InMemoryAgentSpecRegistry();
+  const agentSpecRegistry = db ? new KyselyAgentSpecRegistry(db) : new InMemoryAgentSpecRegistry();
   const agentSpecResolver = new RuleBasedAgentSpecResolver(agentSpecRegistry);
-  const historyStore = new InMemoryAgentRunHistoryStore();
-  const hookTraceStore = new InMemoryHookTraceStore({
-    maxTraces: parseInteger(env.MUSE_HOOK_TRACE_MAX_ENTRIES, 10_000)
-  });
-  const adminOperationsStore = new InMemoryAdminOperationsStore();
+  const historyStore = createHistoryStore(db);
+  const hookTraceStore = createHookTraceStore(db, env);
+  const adminOperationsStore = createAdminOperationsStore(db);
   const cacheStatsStore = new InMemoryCacheStatsStore();
   const cacheMetrics = new InMemoryCacheMetricsRecorder(cacheStatsStore);
   const responseCache = new InMemoryResponseCache({
@@ -122,17 +151,14 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   });
   const modelProvider = createModelProvider(env);
   const defaultModel = parseOptionalString(env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL);
-  const mcpServerStore = new InMemoryMcpServerStore({
-    maxServers: parseInteger(env.MUSE_MCP_MAX_SERVERS, 1_000)
-  });
-  const mcpSecurityPolicyStore = new InMemoryMcpSecurityPolicyStore({
-    initial: {
-      allowedServerNames: parseCsv(env.MUSE_MCP_ALLOWED_SERVERS),
-      allowedStdioCommands: parseCsv(env.MUSE_MCP_ALLOWED_STDIO_COMMANDS),
-      maxToolOutputLength: parseInteger(env.MUSE_MCP_MAX_TOOL_OUTPUT_LENGTH, 50_000)
-    }
-  });
-  const mcpSecurityPolicyProvider = new McpSecurityPolicyProvider(mcpSecurityPolicyStore);
+  const mcpServerStore = createMcpServerStore(db, env);
+  const initialMcpPolicy = {
+    allowedServerNames: parseCsv(env.MUSE_MCP_ALLOWED_SERVERS),
+    allowedStdioCommands: parseCsv(env.MUSE_MCP_ALLOWED_STDIO_COMMANDS),
+    maxToolOutputLength: parseInteger(env.MUSE_MCP_MAX_TOOL_OUTPUT_LENGTH, 50_000)
+  };
+  const mcpSecurityPolicyStore = createMcpSecurityPolicyStore(db, initialMcpPolicy);
+  const mcpSecurityPolicyProvider = new McpSecurityPolicyProvider(mcpSecurityPolicyStore, initialMcpPolicy);
   const allowPrivateMcpAddresses = parseBoolean(env.MUSE_MCP_ALLOW_PRIVATE_ADDRESSES, false);
   const mcpManager = new McpManager(mcpServerStore, {
     connector: new DefaultMcpTransportConnector({
@@ -175,12 +201,9 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       toolRegistry
     })
     : undefined;
-  const schedulerStore = new InMemoryScheduledJobStore({
-    maxJobs: parseInteger(env.MUSE_SCHEDULER_MAX_JOBS, 1_000)
-  });
-  const schedulerExecutionStore = new InMemoryScheduledJobExecutionStore({
-    maxEntries: parseInteger(env.MUSE_SCHEDULER_MAX_EXECUTIONS, 200)
-  });
+  const schedulerStore = createSchedulerStore(db, env);
+  const schedulerExecutionStore = createSchedulerExecutionStore(db, env);
+  const schedulerLock = createSchedulerLock(db, env);
   const schedulerService = new DynamicSchedulerService({
     dispatcher: new ScheduledJobDispatcher({
       agentExecutor: createScheduledAgentExecutor(() => agentRuntime, defaultModel),
@@ -190,9 +213,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       ? new NodeCronScheduler()
       : undefined,
     executionStore: schedulerExecutionStore,
-    distributedLock: new InMemoryDistributedSchedulerLock({
-      ownerId: env.MUSE_SCHEDULER_OWNER_ID
-    }),
+    distributedLock: schedulerLock,
     store: schedulerStore
   });
 
@@ -224,7 +245,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     resilience: {
       circuitBreakerRegistry
     },
-    runtimeSettings: new RuntimeSettingsService(new InMemoryRuntimeSettingsStore()),
+    runtimeSettings: new RuntimeSettingsService(createRuntimeSettingsStore(db)),
     toolRegistry,
     scheduler: {
       executionStore: schedulerExecutionStore,
@@ -232,6 +253,61 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       store: schedulerStore
     }
   };
+}
+
+function createHistoryStore(db: Kysely<MuseDatabase> | undefined): AgentRunHistoryStore {
+  return db ? new KyselyAgentRunHistoryStore(db) : new InMemoryAgentRunHistoryStore();
+}
+
+function createHookTraceStore(db: Kysely<MuseDatabase> | undefined, env: MuseEnvironment): HookTraceStore {
+  return db
+    ? new KyselyHookTraceStore(db)
+    : new InMemoryHookTraceStore({ maxTraces: parseInteger(env.MUSE_HOOK_TRACE_MAX_ENTRIES, 10_000) });
+}
+
+function createAdminOperationsStore(db: Kysely<MuseDatabase> | undefined): AdminOperationsStore {
+  return db ? new KyselyAdminOperationsStore(db) : new InMemoryAdminOperationsStore();
+}
+
+function createRuntimeSettingsStore(db: Kysely<MuseDatabase> | undefined): RuntimeSettingsStore {
+  return db ? new KyselyRuntimeSettingsStore(db) : new InMemoryRuntimeSettingsStore();
+}
+
+function createMcpServerStore(db: Kysely<MuseDatabase> | undefined, env: MuseEnvironment): McpServerStore {
+  return db
+    ? new KyselyMcpServerStore(db)
+    : new InMemoryMcpServerStore({ maxServers: parseInteger(env.MUSE_MCP_MAX_SERVERS, 1_000) });
+}
+
+function createMcpSecurityPolicyStore(
+  db: Kysely<MuseDatabase> | undefined,
+  initial: McpSecurityPolicyInput
+): McpSecurityPolicyStore {
+  return db ? new KyselyMcpSecurityPolicyStore(db) : new InMemoryMcpSecurityPolicyStore({ initial });
+}
+
+function createSchedulerStore(db: Kysely<MuseDatabase> | undefined, env: MuseEnvironment): ScheduledJobStore {
+  return db
+    ? new KyselyScheduledJobStore(db)
+    : new InMemoryScheduledJobStore({ maxJobs: parseInteger(env.MUSE_SCHEDULER_MAX_JOBS, 1_000) });
+}
+
+function createSchedulerExecutionStore(
+  db: Kysely<MuseDatabase> | undefined,
+  env: MuseEnvironment
+): ScheduledJobExecutionStore {
+  return db
+    ? new KyselyScheduledJobExecutionStore(db)
+    : new InMemoryScheduledJobExecutionStore({
+      maxEntries: parseInteger(env.MUSE_SCHEDULER_MAX_EXECUTIONS, 200)
+    });
+}
+
+function createSchedulerLock(db: Kysely<MuseDatabase> | undefined, env: MuseEnvironment): DistributedSchedulerLock {
+  const ownerId = env.MUSE_SCHEDULER_OWNER_ID;
+  return db
+    ? new KyselyDistributedSchedulerLock(db, { ownerId })
+    : new InMemoryDistributedSchedulerLock({ ownerId });
 }
 
 export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {

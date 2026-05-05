@@ -1,9 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createAdminAlertInsert,
+  createAdminCostUsageInsert,
+  createAdminSloInsert,
+  createAdminTenantInsert,
   InMemoryAdminOperationsStore,
   InMemoryCheckpointStore,
   InMemoryHookTraceStore,
-  InMemoryPendingApprovalStore
+  InMemoryPendingApprovalStore,
+  mapAdminAlertRow,
+  mapAdminCostUsageRow,
+  mapAdminSloRow,
+  mapAdminTenantRow
 } from "../src/index.js";
 
 describe("InMemoryPendingApprovalStore", () => {
@@ -223,6 +231,47 @@ describe("InMemoryAdminOperationsStore", () => {
       byModel: { "provider/model": "1.25000000" },
       byTenant: { "tenant-1": "1.25000000" },
       totalCostUsd: "1.25000000"
+    });
+  });
+});
+
+describe("Kysely admin operation mapping", () => {
+  it("creates and maps admin operation rows without private data", () => {
+    const now = new Date("2026-01-01T00:00:00.000Z");
+    const options = {
+      idFactory: (kind: "tenant" | "alert" | "slo" | "cost_usage") => `${kind}-1`,
+      now: () => now
+    };
+    const tenant = createAdminTenantInsert({
+      id: "tenant-1",
+      monthlyBudgetUsd: "100.00000000",
+      name: "Tenant One"
+    }, options);
+    const alert = createAdminAlertInsert({
+      message: "Budget threshold crossed",
+      severity: "critical",
+      target: "tenant-1"
+    }, options);
+    const slo = createAdminSloInsert({
+      actual: 94,
+      id: "availability",
+      name: "Availability",
+      target: 99.9,
+      window: "30d"
+    }, options);
+    const cost = createAdminCostUsageInsert({
+      costUsd: "1.25000000",
+      model: "provider/model",
+      tenantId: "tenant-1"
+    }, options);
+
+    expect(mapAdminTenantRow(tenant)).toMatchObject({ id: "tenant-1", monthlyBudgetUsd: "100.00000000" });
+    expect(mapAdminAlertRow(alert)).toMatchObject({ id: "alert-1", status: "open", target: "tenant-1" });
+    expect(mapAdminSloRow(slo)).toMatchObject({ id: "availability", status: "violated" });
+    expect(mapAdminCostUsageRow(cost)).toEqual({
+      costUsd: "1.25000000",
+      model: "provider/model",
+      tenantId: "tenant-1"
     });
   });
 });

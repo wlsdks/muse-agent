@@ -21,6 +21,7 @@
     "@muse/agent-specs": "workspace:*",
     "@muse/auth": "workspace:*",
     "@muse/cache": "workspace:*",
+    "@muse/db": "workspace:*",
     "@muse/mcp": "workspace:*",
     "@muse/model": "workspace:*",
     "@muse/observability": "workspace:*",
@@ -28,6 +29,7 @@
     "@muse/runtime-settings": "workspace:*",
     "@muse/runtime-state": "workspace:*",
     "@muse/scheduler": "workspace:*",
-    "@muse/tools": "workspace:*"
+    "@muse/tools": "workspace:*",
+    "kysely": "^0.28.17"
   }
 }

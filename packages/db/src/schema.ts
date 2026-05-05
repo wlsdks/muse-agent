@@ -4,9 +4,14 @@ import type { ColumnType, Generated } from "kysely";
 type Timestamp = ColumnType<Date, Date | string | undefined, Date | string>;
 type NullableTimestamp = ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
 type NumericString = ColumnType<string, string | number | undefined, string | number>;
+type NullableNumericString = ColumnType<string | null, string | number | null | undefined, string | number | null>;
 type JsonColumn<T extends JsonValue = JsonValue> = ColumnType<T, T | string | undefined, T | string>;
 
 export interface MuseDatabase {
+  readonly admin_alerts: AdminAlertTable;
+  readonly admin_cost_usage: AdminCostUsageTable;
+  readonly admin_slos: AdminSloTable;
+  readonly admin_tenants: AdminTenantTable;
   readonly agent_runs: AgentRunTable;
   readonly agent_specs: AgentSpecTable;
   readonly checkpoints: CheckpointTable;
@@ -21,6 +26,43 @@ export interface MuseDatabase {
   readonly scheduled_jobs: ScheduledJobTable;
   readonly tool_calls: ToolCallTable;
   readonly trace_events: TraceEventTable;
+}
+
+export interface AdminTenantTable {
+  readonly id: string;
+  readonly name: string;
+  readonly status: "active" | "suspended" | "disabled";
+  readonly monthly_budget_usd: NullableNumericString;
+  readonly created_at: Timestamp;
+  readonly updated_at: Timestamp;
+}
+
+export interface AdminAlertTable {
+  readonly id: string;
+  readonly severity: "info" | "warning" | "critical";
+  readonly status: "open" | "acknowledged" | "resolved";
+  readonly message: string;
+  readonly target: string | null;
+  readonly created_at: Timestamp;
+  readonly acknowledged_at: NullableTimestamp;
+}
+
+export interface AdminSloTable {
+  readonly id: string;
+  readonly name: string;
+  readonly target: number;
+  readonly actual: number | null;
+  readonly window: string;
+  readonly status: "healthy" | "at_risk" | "violated";
+  readonly updated_at: Timestamp;
+}
+
+export interface AdminCostUsageTable {
+  readonly id: string;
+  readonly tenant_id: string | null;
+  readonly model: string | null;
+  readonly cost_usd: NumericString;
+  readonly created_at: Timestamp;
 }
 
 export interface AgentRunTable {

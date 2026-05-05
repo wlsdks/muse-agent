@@ -1,4 +1,25 @@
 import { describe, expect, it } from "vitest";
+import type { MuseDatabase } from "@muse/db";
+import { KyselyAgentSpecRegistry } from "@muse/agent-specs";
+import { KyselyMcpSecurityPolicyStore, KyselyMcpServerStore } from "@muse/mcp";
+import { KyselyRuntimeSettingsStore } from "@muse/runtime-settings";
+import {
+  KyselyAdminOperationsStore,
+  KyselyAgentRunHistoryStore,
+  KyselyHookTraceStore
+} from "@muse/runtime-state";
+import {
+  KyselyDistributedSchedulerLock,
+  KyselyScheduledJobExecutionStore,
+  KyselyScheduledJobStore
+} from "@muse/scheduler";
+import {
+  DummyDriver,
+  Kysely,
+  PostgresAdapter,
+  PostgresIntrospector,
+  PostgresQueryCompiler
+} from "kysely";
 import {
   ConfigurationError,
   createApiServerOptions,
@@ -40,6 +61,23 @@ describe("autoconfigure", () => {
     expect(options.scheduler.store.list()).toEqual([]);
   });
 
+  it("uses Kysely-backed stores when a database handle is provided", () => {
+    const assembly = createMuseRuntimeAssembly({ db: createPostgresBuilder(), env: {} });
+
+    expect(assembly.agentSpecRegistry).toBeInstanceOf(KyselyAgentSpecRegistry);
+    expect(assembly.historyStore).toBeInstanceOf(KyselyAgentRunHistoryStore);
+    expect(assembly.hookTraceStore).toBeInstanceOf(KyselyHookTraceStore);
+    expect(assembly.adminOperationsStore).toBeInstanceOf(KyselyAdminOperationsStore);
+    expect(assembly.mcp.serverStore).toBeInstanceOf(KyselyMcpServerStore);
+    expect(assembly.mcp.securityPolicyStore).toBeInstanceOf(KyselyMcpSecurityPolicyStore);
+    expect((assembly.runtimeSettings as unknown as { readonly store: unknown }).store)
+      .toBeInstanceOf(KyselyRuntimeSettingsStore);
+    expect(assembly.scheduler.store).toBeInstanceOf(KyselyScheduledJobStore);
+    expect(assembly.scheduler.executionStore).toBeInstanceOf(KyselyScheduledJobExecutionStore);
+    expect((assembly.scheduler.service as unknown as { readonly distributedLock: unknown }).distributedLock)
+      .toBeInstanceOf(KyselyDistributedSchedulerLock);
+  });
+
   it("assembles AgentRuntime when an OpenAI-compatible model endpoint is configured", () => {
     const assembly = createMuseRuntimeAssembly({
       env: {
@@ -79,3 +117,14 @@ describe("autoconfigure", () => {
     expect(() => requireEnv({}, "MUSE_REQUIRED")).toThrow(ConfigurationError);
   });
 });
+
+function createPostgresBuilder(): Kysely<MuseDatabase> {
+  return new Kysely<MuseDatabase>({
+    dialect: {
+      createAdapter: () => new PostgresAdapter(),
+      createDriver: () => new DummyDriver(),
+      createIntrospector: (db) => new PostgresIntrospector(db),
+      createQueryCompiler: () => new PostgresQueryCompiler()
+    }
+  });
+}

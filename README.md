@@ -23,3 +23,10 @@ Useful smoke checks:
 ```bash
 node apps/cli/dist/index.js spec --json
 ```
+
+Production persistence wiring:
+
+- Pass a `Kysely<MuseDatabase>` handle to `createMuseRuntimeAssembly({ db })` or `createApiServerOptions({ db })`.
+- With `db`, agent specs, run history, hook traces, runtime settings, MCP registry, scheduler state,
+  and admin operations use Kysely-backed stores.
+- Without `db`, the same API surface runs on in-memory stores for local development and tests.
