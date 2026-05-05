@@ -3336,6 +3336,7 @@ describe("api server", () => {
       url: "/api/admin/settings/model.default"
     });
     const ragDelete = await server.inject({ headers, method: "DELETE", url: "/api/rag-ingestion/policy" });
+    const ragAfterDelete = await server.inject({ headers, method: "GET", url: "/api/rag-ingestion/policy" });
 
     expect(roles.json()).toEqual(expect.arrayContaining([
       expect.objectContaining({ permissions: expect.arrayContaining(["settings:write"]), role: "ADMIN", scope: "FULL" })
@@ -3439,6 +3440,18 @@ describe("api server", () => {
     expect(ragAfterUpdate.json()).toMatchObject({ stored: { enabled: true } });
     expect(runtimeDelete.statusCode).toBe(204);
     expect(ragDelete.statusCode).toBe(204);
+    expect(ragAfterDelete.json()).toMatchObject({
+      configEnabled: false,
+      effective: {
+        allowedChannels: [],
+        blockedPatterns: [],
+        enabled: false,
+        minQueryChars: 10,
+        minResponseChars: 20,
+        requireReview: true
+      },
+      stored: null
+    });
   });
 
   it("serves Reactor-compatible aliases with stateful management behavior", async () => {

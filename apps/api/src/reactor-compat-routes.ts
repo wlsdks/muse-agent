@@ -247,16 +247,7 @@ function createCompatState(): CompatState {
     proactiveChannels: new Map(),
     promptTemplates: new Map(),
     ragCandidates: new Map(),
-    ragIngestionPolicy: {
-      allowedChannels: [],
-      blockedPatterns: [],
-      createdAt: nowIso(),
-      enabled: false,
-      minQueryChars: 10,
-      minResponseChars: 20,
-      requireReview: true,
-      updatedAt: nowIso()
-    },
+    ragIngestionPolicy: defaultRagIngestionPolicy(),
     ragIngestionPolicyStored: false,
     sessionTags: new Map(),
     slackBots: new Map(),
@@ -1820,6 +1811,7 @@ function registerPromptAndRagRoutes(server: FastifyInstance, options: ReactorCom
       return reply;
     }
 
+    state.ragIngestionPolicy = defaultRagIngestionPolicy();
     state.ragIngestionPolicyStored = false;
     return reply.status(204).send();
   });
@@ -7960,6 +7952,20 @@ function parseRagIngestionPolicy(value: unknown): ParseResult<JsonObject> {
   }
 
   return { ok: true, value: parsed };
+}
+
+function defaultRagIngestionPolicy(): JsonObject {
+  const timestamp = nowIso();
+  return {
+    allowedChannels: [],
+    blockedPatterns: [],
+    createdAt: timestamp,
+    enabled: false,
+    minQueryChars: 10,
+    minResponseChars: 20,
+    requireReview: true,
+    updatedAt: timestamp
+  };
 }
 
 function toRagIngestionPolicyResponse(policy: JsonObject): JsonObject {
