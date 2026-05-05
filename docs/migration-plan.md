@@ -111,6 +111,8 @@ Continued work should be treated as new hardening or product expansion, not migr
   validation failures, output-rule audits/simulation payloads, and delete response semantics.
 - Document compatibility now matches Reactor `DocumentResponse`, `BatchDocumentResponse`, `SearchResultResponse`,
   admin-gated search/list/write operations, and body-based `204` deletes.
+- Feedback compatibility now matches Reactor `FeedbackResponse`, cursor-page list envelopes, review `If-Match`
+  version checks, stats/export envelopes, bulk updates, and `204` deletes.
 
 ## Execution Plan
 

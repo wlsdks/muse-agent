@@ -754,29 +754,7 @@ function registerMemoryAndFeedbackRoutes(server: FastifyInstance, options: React
     return { deleted: state.userMemory.delete(userId), userId };
   });
 
-  registerCollectionRoutes(server, "/api/feedback", state.feedback, {
-    idParamName: "feedbackId",
-    onCreate: (record) => ({ ...record, reviewed: false })
-  });
-  server.get("/api/feedback/stats", async () => feedbackStats());
-  server.get("/api/feedback/unreviewed-count", async () => ({
-    count: [...state.feedback.values()].filter((item) => item.reviewed !== true).length
-  }));
-  server.get("/api/feedback/export", async () => [...state.feedback.values()]);
-  server.post("/api/feedback/bulk-update", async (request) => {
-    const body = toBody(request.body);
-    const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === "string") : [];
-
-    for (const id of ids) {
-      const existing = state.feedback.get(id);
-
-      if (existing) {
-        state.feedback.set(id, { ...existing, ...toJsonObject(body.patch), updatedAt: nowIso() });
-      }
-    }
-
-    return { updated: ids.length };
-  });
+  registerFeedbackRoutes(server, options);
 
   server.post("/api/error-report", async (request) => ({
     accepted: true,
@@ -784,6 +762,125 @@ function registerMemoryAndFeedbackRoutes(server: FastifyInstance, options: React
     receivedAt: nowIso(),
     report: toJsonObject(request.body)
   }));
+}
+
+function registerFeedbackRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
+  server.post("/api/feedback", async (request, reply) => {
+    return reply.status(201).send(toFeedbackResponse(createFeedback(request)));
+  });
+  server.get("/api/feedback", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const items = filterFeedback(request).map(toFeedbackResponse);
+    const limit = readQueryInteger(request, "limit", 50);
+    return {
+      approximateTotal: items.length,
+      items: items.slice(0, Math.max(1, Math.min(limit, 100))),
+      nextCursor: null,
+      prevCursor: null
+    };
+  });
+  server.get("/api/feedback/stats", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return feedbackStats();
+  });
+  server.get("/api/feedback/unreviewed-count", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return { count: [...state.feedback.values()].filter(isUnreviewedNegativeFeedback).length };
+  });
+  server.get("/api/feedback/export", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return {
+      exportedAt: nowIso(),
+      items: [...state.feedback.values()].map(toFeedbackExportItem),
+      source: "reactor",
+      version: 1
+    };
+  });
+  server.post("/api/feedback/bulk-update", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const body = toBody(request.body);
+    const ids = stringArrayField(body.ids, []);
+    const updated: string[] = [];
+    const failed: JsonObject[] = [];
+
+    for (const id of ids.slice(0, 100)) {
+      const existing = findCompatRecord(state.feedback, id);
+
+      if (!existing) {
+        failed.push({ id, reason: "not_found" });
+        continue;
+      }
+
+      updateFeedbackReview(existing, body, readAuthUserId(request) ?? "admin");
+      updated.push(existing.id);
+    }
+
+    return { failed, updated };
+  });
+  server.get("/api/feedback/:feedbackId", async (request, reply) => {
+    const { feedbackId } = request.params as { readonly feedbackId: string };
+    const feedback = findCompatRecord(state.feedback, feedbackId);
+    return feedback ? toFeedbackResponse(feedback) : notFound(reply, "FEEDBACK_NOT_FOUND");
+  });
+  server.patch("/api/feedback/:feedbackId", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const { feedbackId } = request.params as { readonly feedbackId: string };
+    const feedback = findCompatRecord(state.feedback, feedbackId);
+
+    if (!feedback) {
+      return notFound(reply, "FEEDBACK_NOT_FOUND");
+    }
+
+    const expectedVersion = readIfMatchVersion(request);
+
+    if (expectedVersion === undefined) {
+      return badRequest(reply, "MISSING_IF_MATCH", "If-Match header is required");
+    }
+
+    const currentVersion = readNumber(feedback.version, 1);
+
+    if (expectedVersion !== currentVersion) {
+      return reply.status(409).send({
+        current: toFeedbackResponse(feedback),
+        error: "version_conflict",
+        expectedVersion
+      });
+    }
+
+    return toFeedbackResponse(updateFeedbackReview(feedback, toBody(request.body), readAuthUserId(request) ?? "admin"));
+  });
+  server.delete("/api/feedback/:feedbackId", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const { feedbackId } = request.params as { readonly feedbackId: string };
+    const existing = findCompatRecord(state.feedback, feedbackId);
+
+    if (existing) {
+      state.feedback.delete(existing.id);
+    }
+
+    return reply.status(204).send();
+  });
 }
 
 function registerPersonaRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
@@ -3620,6 +3717,143 @@ function validateRegexPattern(pattern: string): string | undefined {
   }
 }
 
+function createFeedback(request: FastifyRequest): CompatRecord {
+  const body = toBody(request.body);
+  return createRecord(state.feedback, {
+    comment: readNullableStringField(body, "comment"),
+    domain: readNullableStringField(body, "domain"),
+    durationMs: readNullableNumber(body.durationMs) ?? null,
+    intent: readNullableStringField(body, "intent"),
+    model: readNullableStringField(body, "model"),
+    promptVersion: readNullableNumber(body.promptVersion) ?? null,
+    query: readBodyString(body, "query") ?? "",
+    rating: feedbackRating(body.rating),
+    response: readBodyString(body, "response") ?? "",
+    reviewNote: null,
+    reviewStatus: "inbox",
+    reviewTags: [],
+    reviewedAt: null,
+    reviewedBy: null,
+    runId: readNullableStringField(body, "runId"),
+    sessionId: readNullableStringField(body, "sessionId"),
+    tags: stringArrayField(body.tags, []),
+    templateId: readNullableStringField(body, "templateId"),
+    timestamp: nowIso(),
+    toolsUsed: stringArrayField(body.toolsUsed, []),
+    updatedAt: nowIso(),
+    userId: readAuthUserId(request) ?? null,
+    version: 1
+  }, "feedback");
+}
+
+function toFeedbackResponse(record: JsonObject) {
+  return {
+    comment: nullableStringResponse(record.comment),
+    domain: nullableStringResponse(record.domain),
+    durationMs: readNullableNumber(record.durationMs) ?? null,
+    feedbackId: stringField(record.id, ""),
+    intent: nullableStringResponse(record.intent),
+    model: nullableStringResponse(record.model),
+    promptVersion: readNullableNumber(record.promptVersion) ?? null,
+    query: stringField(record.query, ""),
+    rating: feedbackRating(record.rating),
+    response: stringField(record.response, ""),
+    reviewNote: nullableStringResponse(record.reviewNote),
+    reviewStatus: feedbackReviewStatus(record.reviewStatus),
+    reviewTags: stringArrayField(record.reviewTags, []),
+    reviewedAt: nullableStringResponse(record.reviewedAt),
+    reviewedBy: nullableStringResponse(record.reviewedBy),
+    runId: nullableStringResponse(record.runId),
+    tags: stringArrayField(record.tags, []),
+    templateId: nullableStringResponse(record.templateId),
+    timestamp: stringField(record.timestamp, stringField(record.createdAt, nowIso())),
+    toolsUsed: stringArrayField(record.toolsUsed, []),
+    updatedAt: stringField(record.updatedAt, stringField(record.createdAt, nowIso())),
+    version: readNumber(record.version, 1)
+  };
+}
+
+function updateFeedbackReview(existing: CompatRecord, body: CompatBody, actor: string): CompatRecord {
+  const status = typeof body.status === "string" ? feedbackReviewStatus(body.status) : feedbackReviewStatus(existing.reviewStatus);
+  const tags = updateTags(stringArrayField(existing.reviewTags, []), stringArrayField(body.tags, []), stringField(body.tagMode, "set"));
+  return createRecord(state.feedback, {
+    ...existing,
+    reviewNote: typeof body.note === "string" ? body.note : existing.reviewNote ?? null,
+    reviewStatus: status,
+    reviewTags: tags,
+    reviewedAt: nowIso(),
+    reviewedBy: actor,
+    version: readNumber(existing.version, 1) + 1
+  }, "feedback");
+}
+
+function updateTags(existing: string[], incoming: string[], mode: string): string[] {
+  if (incoming.length === 0) {
+    return existing;
+  }
+
+  if (mode === "add") {
+    return [...new Set([...existing, ...incoming])];
+  }
+
+  if (mode === "remove") {
+    return existing.filter((tag) => !incoming.includes(tag));
+  }
+
+  return incoming;
+}
+
+function filterFeedback(request: FastifyRequest): CompatRecord[] {
+  const rating = readQueryString(request, "rating");
+  const status = readQueryString(request, "status");
+  const q = readQueryString(request, "q");
+  return [...state.feedback.values()].filter((feedback) => {
+    if (rating && feedbackRating(feedback.rating) !== feedbackRating(rating)) {
+      return false;
+    }
+
+    if (status && feedbackReviewStatus(feedback.reviewStatus) !== feedbackReviewStatus(status)) {
+      return false;
+    }
+
+    return !q || JSON.stringify(feedback).toLowerCase().includes(q.toLowerCase());
+  });
+}
+
+function toFeedbackExportItem(record: JsonObject): JsonObject {
+  return toJsonObject(toFeedbackResponse(record));
+}
+
+function feedbackRating(value: unknown): string {
+  if (typeof value === "number") {
+    return value >= 4 ? "thumbs_up" : "thumbs_down";
+  }
+
+  if (typeof value !== "string") {
+    return "thumbs_down";
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized === "thumbs_up" || normalized === "positive" || normalized === "up" || normalized === "5"
+    ? "thumbs_up"
+    : "thumbs_down";
+}
+
+function feedbackReviewStatus(value: unknown): string {
+  return typeof value === "string" && value.trim().toLowerCase() === "done" ? "done" : "inbox";
+}
+
+function isUnreviewedNegativeFeedback(record: JsonObject): boolean {
+  return feedbackRating(record.rating) === "thumbs_down" && feedbackReviewStatus(record.reviewStatus) === "inbox";
+}
+
+function readIfMatchVersion(request: FastifyRequest): number | undefined {
+  const raw = request.headers["if-match"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const parsed = value ? Number.parseInt(value.trim().replace(/^"|"$/g, ""), 10) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function createPersona(bodyValue: unknown): CompatRecord {
   const body = toBody(bodyValue);
   return createRecord(state.personas, {
@@ -4102,11 +4336,26 @@ function simulateGuard(value: unknown) {
 
 function feedbackStats() {
   const items = [...state.feedback.values()];
-  const reviewed = items.filter((item) => item.reviewed === true).length;
+  const positive = items.filter((item) => feedbackRating(item.rating) === "thumbs_up").length;
+  const negative = items.length - positive;
+  const done = items.filter((item) => feedbackReviewStatus(item.reviewStatus) === "done").length;
   return {
-    reviewed,
-    total: items.length,
-    unreviewed: items.length - reviewed
+    byDay: [],
+    commentRate: items.length > 0 ? items.filter((item) => item.comment !== null).length / items.length : 0,
+    doneCount: done,
+    inboxCount: items.length - done,
+    negative,
+    negativeChange: 0,
+    negativeThisPeriod: negative,
+    period: { from: null, to: null },
+    positive,
+    positiveRate: items.length > 0 ? positive / items.length : 0,
+    previousPeriodNegative: 0,
+    previousPeriodRate: 0,
+    topNegativeDomains: [],
+    topNegativeIntents: [],
+    topNegativeTools: [],
+    total: items.length
   };
 }
 

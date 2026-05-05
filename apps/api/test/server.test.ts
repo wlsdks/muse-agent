@@ -1342,6 +1342,96 @@ describe("api server", () => {
     expect(deleted.statusCode).toBe(204);
   });
 
+  it("matches Reactor feedback review workflow contracts", async () => {
+    const authService = createAuthService();
+    const registered = authService.register({
+      email: "first_account",
+      name: "First",
+      password: "password-1"
+    });
+    const server = buildServer({ authService, logger: false, requireAuth: true });
+    const headers = { authorization: `Bearer ${registered.token}` };
+
+    const submitted = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        comment: "Needs more detail",
+        query: "Explain the policy",
+        rating: "thumbs_down",
+        response: "Short answer",
+        tags: ["quality"]
+      },
+      url: "/api/feedback"
+    });
+    const feedbackId = submitted.json().feedbackId as string;
+    const listed = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/feedback?status=inbox&limit=10"
+    });
+    const conflict = await server.inject({
+      headers: { ...headers, "if-match": "2" },
+      method: "PATCH",
+      payload: { status: "done" },
+      url: `/api/feedback/${feedbackId}`
+    });
+    const reviewed = await server.inject({
+      headers: { ...headers, "if-match": "1" },
+      method: "PATCH",
+      payload: {
+        note: "Added to prompt backlog",
+        status: "done",
+        tags: ["resolved"]
+      },
+      url: `/api/feedback/${feedbackId}`
+    });
+    const stats = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/feedback/stats"
+    });
+    const exported = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/feedback/export"
+    });
+    const deleted = await server.inject({
+      headers,
+      method: "DELETE",
+      url: `/api/feedback/${feedbackId}`
+    });
+
+    expect(submitted.statusCode).toBe(201);
+    expect(submitted.json()).toMatchObject({
+      feedbackId,
+      rating: "thumbs_down",
+      reviewStatus: "inbox",
+      version: 1
+    });
+    expect(listed.json()).toMatchObject({
+      approximateTotal: 1,
+      items: [{ feedbackId, reviewStatus: "inbox" }],
+      nextCursor: null,
+      prevCursor: null
+    });
+    expect(conflict.statusCode).toBe(409);
+    expect(reviewed.json()).toMatchObject({
+      feedbackId,
+      reviewNote: "Added to prompt backlog",
+      reviewStatus: "done",
+      reviewTags: ["resolved"],
+      version: 2
+    });
+    expect(stats.json()).toMatchObject({ doneCount: 1, negative: 1, total: 1 });
+    expect(exported.json()).toMatchObject({
+      items: [{ feedbackId, reviewStatus: "done" }],
+      source: "reactor",
+      version: 1
+    });
+    expect(deleted.statusCode).toBe(204);
+  });
+
   it("serves Reactor-compatible aliases with stateful management behavior", async () => {
     const authService = createAuthService();
     const registered = authService.register({
@@ -1482,16 +1572,16 @@ describe("api server", () => {
       headers,
       method: "POST",
       payload: {
-        rating: 5,
+        rating: "thumbs_up",
         runId: "run-compat"
       },
       url: "/api/feedback"
     });
-    const feedbackId = feedback.json().id as string;
+    const feedbackId = feedback.json().feedbackId as string;
     const reviewed = await server.inject({
-      headers,
+      headers: { ...headers, "if-match": "1" },
       method: "PATCH",
-      payload: { reviewed: true },
+      payload: { status: "done" },
       url: `/api/feedback/${feedbackId}`
     });
     const feedbackStats = await server.inject({ headers, method: "GET", url: "/api/feedback/stats" });
@@ -1877,8 +1967,8 @@ describe("api server", () => {
       modifiedArguments: { path: "docs/approved.md" }
     });
     expect(memory.json()).toMatchObject({ preferences: { prefersConcise: true }, userId: "user-1" });
-    expect(reviewed.json()).toMatchObject({ id: feedbackId, reviewed: true });
-    expect(feedbackStats.json()).toEqual({ reviewed: 1, total: 1, unreviewed: 0 });
+    expect(reviewed.json()).toMatchObject({ feedbackId, reviewStatus: "done", version: 2 });
+    expect(feedbackStats.json()).toMatchObject({ doneCount: 1, positive: 1, total: 1 });
     expect(inputGuard.json()).toMatchObject({ allowed: false });
     expect(outputGuardRule.statusCode).toBe(201);
     expect(outputGuard.json()).toMatchObject({
