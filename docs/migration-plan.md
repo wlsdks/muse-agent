@@ -30,6 +30,7 @@ Current Muse baseline:
 | `cache` | `packages/cache` | Response cache, scope fingerprint, TTL invalidation, prompt-cache metadata, stats |
 | `common` | `packages/shared` | Shared IDs, JSON, and common value types exist |
 | `context` | `packages/memory` | Context trimming and message-pair handling exist |
+| `core` | `apps/api`, `packages/autoconfigure` | Fastify bootstrap and runtime assembly replace Spring Boot core |
 | `eval` | `packages/eval`, `apps/api` | Eval case model, judges, runner, summaries, and admin API exist |
 | `guard` | `packages/policy`, `packages/agent-core` | Input/output guards and fail-close runtime integration exist |
 | `hook` | `packages/agent-core`, `packages/runtime-state` | Registry callbacks and hook trace stores exist |
