@@ -33,7 +33,13 @@ import {
   type FallbackStrategy,
   type RetryOptions
 } from "@muse/resilience";
-import type { AgentRunHistoryStore, AgentRunMode, HookLifecycle, HookTraceStore } from "@muse/runtime-state";
+import type {
+  AgentRunHistoryStore,
+  AgentRunMode,
+  HookLifecycle,
+  HookTraceStore,
+  PendingApprovalStore
+} from "@muse/runtime-state";
 import { trimConversationMessages, type ConversationTrimOptions } from "@muse/memory";
 import {
   detectSystemPromptLeakage,
@@ -41,7 +47,8 @@ import {
   maskPii,
   normalizeStructuredOutput,
   sanitizeSourceBlocks,
-  type StructuredOutputFormat
+  type StructuredOutputFormat,
+  type ToolApprovalPolicy
 } from "@muse/policy";
 import { createRunId, type JsonObject } from "@muse/shared";
 import { ToolExecutor, ToolRegistry, type ToolExecutionResult } from "@muse/tools";
@@ -121,6 +128,8 @@ export interface AgentRuntimeOptions {
   readonly ragPipeline?: RagPipeline;
   readonly toolRegistry?: ToolRegistry;
   readonly toolExecutor?: ToolExecutor;
+  readonly toolApprovalPolicy?: ToolApprovalPolicy;
+  readonly toolApprovalStore?: PendingApprovalStore;
   readonly maxToolCalls?: number;
   readonly circuitBreaker?: CircuitBreaker;
   readonly fallbackStrategy?: FallbackStrategy;
@@ -259,7 +268,13 @@ export class AgentRuntime {
     this.ragPipeline = options.ragPipeline;
     this.toolRegistry = options.toolRegistry;
     this.toolExecutor = options.toolExecutor ??
-      (options.toolRegistry ? new ToolExecutor({ registry: options.toolRegistry }) : undefined);
+      (options.toolRegistry
+        ? new ToolExecutor({
+            approvalPolicy: options.toolApprovalPolicy,
+            approvalStore: options.toolApprovalStore,
+            registry: options.toolRegistry
+          })
+        : undefined);
     this.maxToolCalls = Math.max(0, options.maxToolCalls ?? 10);
     this.circuitBreaker = options.circuitBreaker;
     this.fallbackStrategy = options.fallbackStrategy;

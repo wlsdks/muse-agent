@@ -74,6 +74,11 @@ Continued work should be treated as new hardening or product expansion, not migr
 - Scheduler now has in-memory and Kysely-backed distributed lock implementations.
 - Admin operations now include tenant, alert acknowledgement, cost summary, and SLO state APIs.
 - Runtime assembly now switches to Kysely-backed stores when a database handle is provided.
+- Reactor API compatibility routes now cover legacy auth, sessions, approvals, guard/rule, RAG, prompt-lab,
+  Slack admin, MCP policy/catalog, and admin operations aliases.
+- HITL pending approvals are wired into API runtime assembly and tool execution can wait for human approval
+  when an approval policy is configured.
+- `/api/chat/multipart` accepts Reactor-compatible multipart uploads and forwards file metadata to AgentRuntime.
 
 ## Execution Plan
 

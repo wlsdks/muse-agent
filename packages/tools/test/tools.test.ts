@@ -80,6 +80,45 @@ describe("ToolExecutor", () => {
     });
   });
 
+  it("executes approval-gated tools with approved modified arguments", async () => {
+    let capturedApproval: unknown;
+    const approvedTool: MuseTool = {
+      definition: {
+        description: "Writes approved input.",
+        inputSchema: { type: "object" },
+        name: "write_note",
+        risk: "write"
+      },
+      execute: (args) => `approved:${args.text}`
+    };
+    const executor = new ToolExecutor({
+      approvalPolicy: createToolNameApprovalPolicy(["write_note"]),
+      approvalStore: {
+        requestApproval: async (input) => {
+          capturedApproval = input;
+          return { approved: true, modifiedArguments: { text: "reviewed" } };
+        }
+      },
+      registry: new ToolRegistry([approvedTool])
+    });
+
+    const result = await executor.execute({
+      arguments: { text: "draft" },
+      context: { runId: "run-1", userId: "user-1" },
+      id: "call-1",
+      name: "write_note"
+    });
+
+    expect(capturedApproval).toMatchObject({
+      arguments: { text: "draft" },
+      runId: "run-1",
+      toolName: "write_note",
+      userId: "user-1"
+    });
+    expect(result.status).toBe("completed");
+    expect(result.output).toContain("approved:reviewed");
+  });
+
   it("converts tool failures to error strings", async () => {
     const failingTool: MuseTool = {
       definition: {

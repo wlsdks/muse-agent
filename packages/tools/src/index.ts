@@ -37,6 +37,21 @@ export interface ToolCallRequest {
   readonly context: MuseToolContext;
 }
 
+export interface ToolApprovalStore {
+  requestApproval(input: {
+    readonly runId: string;
+    readonly userId: string;
+    readonly toolName: string;
+    readonly arguments: JsonObject;
+    readonly timeoutMs?: number;
+    readonly context?: JsonObject;
+  }): Promise<{
+    readonly approved: boolean;
+    readonly reason?: string;
+    readonly modifiedArguments?: JsonObject;
+  }>;
+}
+
 export interface ToolExecutionResult {
   readonly id: string;
   readonly name: string;
@@ -78,15 +93,18 @@ export class ToolRegistry {
 
 export class ToolExecutor {
   private readonly approvalPolicy: ToolApprovalPolicy;
+  private readonly approvalStore?: ToolApprovalStore;
   private readonly registry: ToolRegistry;
   private readonly sanitizer: ToolOutputSanitizer;
 
   constructor(options: {
     readonly approvalPolicy?: ToolApprovalPolicy;
+    readonly approvalStore?: ToolApprovalStore;
     readonly registry: ToolRegistry;
     readonly sanitizer?: ToolOutputSanitizer;
   }) {
     this.approvalPolicy = options.approvalPolicy ?? createAlwaysApprovePolicy();
+    this.approvalStore = options.approvalStore;
     this.registry = options.registry;
     this.sanitizer = options.sanitizer ?? new ToolOutputSanitizer();
   }
@@ -99,18 +117,27 @@ export class ToolExecutor {
     }
 
     const argsWithRisk = { ...request.arguments, risk: tool.definition.risk };
+    let executionArguments = request.arguments;
 
     if (this.approvalPolicy.requiresApproval(tool.definition.name, argsWithRisk)) {
-      return {
-        id: request.id,
-        name: request.name,
-        output: "Error: tool execution requires approval",
-        status: "blocked"
-      };
+      const approval = await this.requestApproval(request);
+
+      if (!approval.approved) {
+        return {
+          id: request.id,
+          name: request.name,
+          output: approval.reason
+            ? `Error: tool execution was not approved: ${approval.reason}`
+            : "Error: tool execution requires approval",
+          status: "blocked"
+        };
+      }
+
+      executionArguments = approval.modifiedArguments ?? request.arguments;
     }
 
     try {
-      const raw = await tool.execute(request.arguments, request.context);
+      const raw = await tool.execute(executionArguments, request.context);
       const output = stringifyToolOutput(raw);
       const sanitized = this.sanitizer.sanitize(request.name, output);
 
@@ -125,6 +152,23 @@ export class ToolExecutor {
       const message = error instanceof Error ? error.message : "unknown tool failure";
       return this.failed(request, `Error: ${message}`);
     }
+  }
+
+  private async requestApproval(request: ToolCallRequest) {
+    if (!this.approvalStore) {
+      return { approved: false };
+    }
+
+    return this.approvalStore.requestApproval({
+      arguments: request.arguments,
+      context: {
+        toolCallId: request.id,
+        workspaceId: request.context.workspaceId ?? null
+      },
+      runId: request.context.runId,
+      toolName: request.name,
+      userId: request.context.userId ?? "anonymous"
+    });
   }
 
   private failed(request: ToolCallRequest, error: string): ToolExecutionResult {

@@ -6,7 +6,8 @@ import { KyselyRuntimeSettingsStore } from "@muse/runtime-settings";
 import {
   KyselyAdminOperationsStore,
   KyselyAgentRunHistoryStore,
-  KyselyHookTraceStore
+  KyselyHookTraceStore,
+  KyselyPendingApprovalStore
 } from "@muse/runtime-state";
 import {
   KyselyDistributedSchedulerLock,
@@ -68,6 +69,7 @@ describe("autoconfigure", () => {
     expect(assembly.historyStore).toBeInstanceOf(KyselyAgentRunHistoryStore);
     expect(assembly.hookTraceStore).toBeInstanceOf(KyselyHookTraceStore);
     expect(assembly.adminOperationsStore).toBeInstanceOf(KyselyAdminOperationsStore);
+    expect(assembly.approvalStore).toBeInstanceOf(KyselyPendingApprovalStore);
     expect(assembly.mcp.serverStore).toBeInstanceOf(KyselyMcpServerStore);
     expect(assembly.mcp.securityPolicyStore).toBeInstanceOf(KyselyMcpSecurityPolicyStore);
     expect((assembly.runtimeSettings as unknown as { readonly store: unknown }).store)

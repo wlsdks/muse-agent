@@ -26,11 +26,13 @@ import {
   RuntimeSettingsService,
   type RuntimeSettingType
 } from "@muse/runtime-settings";
-import type { AgentRunHistoryStore } from "@muse/runtime-state";
+import type { AgentRunHistoryStore, PendingApprovalStore } from "@muse/runtime-state";
+import type { JsonObject } from "@muse/shared";
 import Fastify, { type FastifyInstance } from "fastify";
 import { registerAdminRoutes, type AdminRouteState } from "./admin-routes.js";
 import { registerMcpRoutes, type McpRouteMcp } from "./mcp-routes.js";
 import { registerQualityRoutes } from "./quality-routes.js";
+import { registerReactorCompatibilityRoutes } from "./reactor-compat-routes.js";
 import { registerSchedulerRoutes, type SchedulerRouteScheduler } from "./scheduler-routes.js";
 import { registerSlackRoutes, type SlackRouteOptions } from "./slack-routes.js";
 
@@ -42,6 +44,7 @@ export interface ServerOptions {
   readonly authService?: AuthService;
   readonly authRateLimiter?: AuthRateLimiter;
   readonly historyStore?: AgentRunHistoryStore;
+  readonly pendingApprovalStore?: PendingApprovalStore;
   readonly mcp?: McpRouteMcp;
   readonly modelProvider?: ModelProvider;
   readonly defaultModel?: string;
@@ -60,6 +63,13 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   const authRateLimiter = options.authRateLimiter ?? new AuthRateLimiter();
   const server = Fastify({
     logger: options.logger ?? true
+  });
+  server.addContentTypeParser(/^multipart\/form-data/u, { parseAs: "buffer" }, (request, body, done) => {
+    try {
+      done(null, parseMultipartBody(request.headers["content-type"], body as Buffer));
+    } catch (error) {
+      done(error instanceof Error ? error : new Error("Invalid multipart body"));
+    }
   });
 
   if (authService) {
@@ -102,6 +112,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   server.post("/api/chat", async (request, reply) => runChat(request.body, reply, options));
   server.post("/chat/stream", async (request, reply) => runChatStream(request.body, reply, options));
   server.post("/api/chat/stream", async (request, reply) => runChatStream(request.body, reply, options));
+  server.post("/api/chat/multipart", async (request, reply) => runMultipartChat(request.body, reply, options));
 
   server.get("/admin/summary", async (request, reply) => {
     if (!authorizeAdmin(request, reply, Boolean(authService))) {
@@ -188,6 +199,19 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     agentRuntime: options.agentRuntime,
     defaultModel: options.defaultModel,
     slack: options.slack
+  });
+  registerReactorCompatibilityRoutes(server, {
+    admin: options.admin,
+    agentSpecRegistry,
+    authRateLimiter,
+    authService,
+    authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
+    defaultModel: options.defaultModel,
+    historyStore: options.historyStore,
+    modelProvider: options.modelProvider,
+    pendingApprovalStore: options.pendingApprovalStore,
+    runtimeSettings,
+    scheduler: options.scheduler
   });
 
   if (authService) {
@@ -411,6 +435,51 @@ async function runChatStream(
   reply.header("content-type", "text/event-stream; charset=utf-8");
   reply.header("cache-control", "no-cache");
   return reply.send(Readable.from(toSseStream(options.agentRuntime.stream(parsed.value))));
+}
+
+async function runMultipartChat(
+  body: unknown,
+  reply: { status(statusCode: number): { send(payload: unknown): void } },
+  options: ServerOptions
+) {
+  const parsed = parseMultipartChatBody(body);
+
+  if (!parsed.ok) {
+    return reply.status(400).send(parsed.error);
+  }
+
+  return runChat(parsed.value, reply, options);
+}
+
+function parseMultipartChatBody(value: unknown): ParseResult<JsonObject> {
+  if (!isRecord(value) || !isRecord(value.fields) || !Array.isArray(value.files)) {
+    return invalid("INVALID_MULTIPART_CHAT_REQUEST", "Body must be multipart form-data");
+  }
+
+  const message = optionalString(value.fields.message);
+
+  if (!message) {
+    return invalid("INVALID_MULTIPART_CHAT_REQUEST", "Multipart request must include message");
+  }
+
+  return {
+    ok: true,
+    value: {
+      message,
+      metadata: {
+        channel: "web",
+        media: value.files.filter(isJsonObject),
+        ...(optionalString(value.fields.personaId) ? { personaId: optionalString(value.fields.personaId) } : {}),
+        ...(optionalString(value.fields.sessionId) ? { sessionId: optionalString(value.fields.sessionId) } : {}),
+        ...(optionalString(value.fields.userId) ? { userId: optionalString(value.fields.userId) } : {})
+      },
+      ...(optionalString(value.fields.model) ? { model: optionalString(value.fields.model) } : {}),
+      ...(optionalString(value.fields.sessionId) ? { runId: optionalString(value.fields.sessionId) } : {}),
+      ...(optionalString(value.fields.systemPrompt)
+        ? { messages: [{ content: optionalString(value.fields.systemPrompt) ?? "", role: "system" }, { content: message, role: "user" }] }
+        : {})
+    }
+  };
 }
 
 function parseAgentRunInput(value: unknown, defaultModel: string): ParseResult<AgentRunInput> {
@@ -651,6 +720,59 @@ function isJsonValue(value: unknown): boolean {
   return isRecord(value) && Object.values(value).every(isJsonValue);
 }
 
+function parseMultipartBody(contentType: string | string[] | undefined, body: Buffer): JsonObject {
+  const header = Array.isArray(contentType) ? contentType[0] : contentType;
+  const boundary = header?.match(/boundary=(?:"([^"]+)"|([^;]+))/iu)?.slice(1).find(Boolean);
+
+  if (!boundary) {
+    throw new Error("Multipart boundary is required");
+  }
+
+  const fields: Record<string, string> = {};
+  const files: JsonObject[] = [];
+  const raw = body.toString("latin1");
+
+  for (const part of raw.split(`--${boundary}`)) {
+    if (part.trim().length === 0 || part.trim() === "--") {
+      continue;
+    }
+
+    const headerEnd = part.indexOf("\r\n\r\n");
+
+    if (headerEnd < 0) {
+      continue;
+    }
+
+    const headers = part.slice(0, headerEnd).toLowerCase();
+    const disposition = headers.match(/content-disposition:[^\r\n]+/iu)?.[0] ?? "";
+    const name = disposition.match(/name="([^"]+)"/iu)?.[1];
+
+    if (!name) {
+      continue;
+    }
+
+    const filename = disposition.match(/filename="([^"]*)"/iu)?.[1];
+    const contentTypeValue = headers.match(/content-type:\s*([^\r\n]+)/iu)?.[1]?.trim();
+    const rawContent = part.slice(headerEnd + 4).replace(/\r\n--$/u, "").replace(/\r\n$/u, "");
+    const content = Buffer.from(rawContent, "latin1");
+
+    if (filename !== undefined) {
+      files.push({
+        contentBase64: content.toString("base64"),
+        contentType: contentTypeValue ?? "application/octet-stream",
+        fieldName: name,
+        filename,
+        size: content.byteLength
+      });
+      continue;
+    }
+
+    fields[name] = content.toString("utf8");
+  }
+
+  return { fields, files };
+}
+
 function sseData(value: string): string {
   return value.split(/\r?\n/u).map((line) => line.length > 0 ? line : " ").join("\ndata: ");
 }
@@ -712,7 +834,19 @@ function isPublicRequest(method: string, url: string): boolean {
   return (
     path === "/health" ||
     path === "/spec" ||
-    (method === "POST" && (path === "/auth/login" || path === "/auth/register"))
+    path === "/.well-known/agent-card.json" ||
+    (method === "POST" && (
+      path === "/auth/login" ||
+      path === "/auth/register" ||
+      path === "/api/auth/login" ||
+      path === "/api/auth/register" ||
+      path === "/api/auth/demo-login" ||
+      path === "/api/auth/exchange" ||
+      path === "/api/slack/commands" ||
+      path === "/api/slack/events" ||
+      path === "/slack/commands" ||
+      path === "/slack/events"
+    ))
   );
 }
 

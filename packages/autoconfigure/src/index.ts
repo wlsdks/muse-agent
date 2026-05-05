@@ -47,12 +47,15 @@ import {
   InMemoryAdminOperationsStore,
   InMemoryAgentRunHistoryStore,
   InMemoryHookTraceStore,
+  InMemoryPendingApprovalStore,
   KyselyAdminOperationsStore,
   KyselyAgentRunHistoryStore,
   KyselyHookTraceStore,
+  KyselyPendingApprovalStore,
   type AdminOperationsStore,
   type AgentRunHistoryStore,
-  type HookTraceStore
+  type HookTraceStore,
+  type PendingApprovalStore
 } from "@muse/runtime-state";
 import {
   DynamicSchedulerService,
@@ -91,6 +94,7 @@ export interface MuseRuntimeAssembly {
   readonly historyStore: AgentRunHistoryStore;
   readonly hookTraceStore: HookTraceStore;
   readonly adminOperationsStore: AdminOperationsStore;
+  readonly approvalStore: PendingApprovalStore;
   readonly mcp: {
     readonly manager: McpManager;
     readonly securityPolicyProvider: McpSecurityPolicyProvider;
@@ -137,6 +141,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const historyStore = createHistoryStore(db);
   const hookTraceStore = createHookTraceStore(db, env);
   const adminOperationsStore = createAdminOperationsStore(db);
+  const approvalStore = createApprovalStore(db, env);
   const cacheStatsStore = new InMemoryCacheStatsStore();
   const cacheMetrics = new InMemoryCacheMetricsRecorder(cacheStatsStore);
   const responseCache = new InMemoryResponseCache({
@@ -191,6 +196,8 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       metrics: agentMetrics,
       modelProvider,
       requestTimeoutMs: parseInteger(env.MUSE_MODEL_REQUEST_TIMEOUT_MS, 45_000),
+      toolApprovalPolicy: createToolApprovalPolicy(env),
+      toolApprovalStore: approvalStore,
       responseFilters: createResponseFilters(env),
       responseCache: parseBoolean(env.MUSE_CACHE_ENABLED, true) ? responseCache : undefined,
       retry: {
@@ -230,6 +237,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     historyStore,
     hookTraceStore,
     adminOperationsStore,
+    approvalStore,
     mcp: {
       manager: mcpManager,
       securityPolicyProvider: mcpSecurityPolicyProvider,
@@ -257,6 +265,13 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
 
 function createHistoryStore(db: Kysely<MuseDatabase> | undefined): AgentRunHistoryStore {
   return db ? new KyselyAgentRunHistoryStore(db) : new InMemoryAgentRunHistoryStore();
+}
+
+function createApprovalStore(db: Kysely<MuseDatabase> | undefined, env: MuseEnvironment): PendingApprovalStore {
+  const defaultTimeoutMs = parseInteger(env.MUSE_APPROVAL_TIMEOUT_MS, 300_000);
+  return db
+    ? new KyselyPendingApprovalStore(db, { defaultTimeoutMs })
+    : new InMemoryPendingApprovalStore({ defaultTimeoutMs });
 }
 
 function createHookTraceStore(db: Kysely<MuseDatabase> | undefined, env: MuseEnvironment): HookTraceStore {
@@ -327,6 +342,7 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     agentRuntime: assembly.agentRuntime,
     agentSpecRegistry: assembly.agentSpecRegistry,
     authService: assembly.authService,
+    pendingApprovalStore: assembly.approvalStore,
     defaultModel: assembly.defaultModel,
     historyStore: assembly.historyStore,
     mcp: {
@@ -427,6 +443,22 @@ function createResponseFilters(env: MuseEnvironment) {
       ? [createStructuredOutputResponseFilter()]
       : [])
   ];
+}
+
+function createToolApprovalPolicy(env: MuseEnvironment) {
+  const toolNames = new Set(parseCsv(env.MUSE_TOOL_APPROVAL_NAMES) ?? []);
+  const risks = new Set(parseCsv(env.MUSE_TOOL_APPROVAL_RISKS) ?? []);
+
+  if (toolNames.size === 0 && risks.size === 0) {
+    return undefined;
+  }
+
+  return {
+    requiresApproval(toolName: string, args: { readonly [key: string]: unknown }): boolean {
+      const risk = args.risk;
+      return toolNames.has(toolName) || (typeof risk === "string" && risks.has(risk));
+    }
+  };
 }
 
 function parseCsv(value: string | undefined): readonly string[] | undefined {
