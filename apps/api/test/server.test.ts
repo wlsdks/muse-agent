@@ -955,14 +955,16 @@ describe("api server", () => {
       userId: registered.user.id
     });
     historyStore.createRun({
+      createdAt: new Date("2026-05-06T00:00:00.000Z"),
       id: "run-compat",
       input: "hello",
       model: "provider/model",
       provider: "test",
+      startedAt: new Date("2026-05-06T00:00:00.000Z"),
       userId: registered.user.id
     });
     historyStore.updateRun({
-      completedAt: new Date("2026-01-01T00:00:02.000Z"),
+      completedAt: new Date("2026-05-06T00:00:02.000Z"),
       costUsd: "0.12500000",
       output: "ok",
       runId: "run-compat",
@@ -1199,6 +1201,16 @@ describe("api server", () => {
       method: "GET",
       url: `/api/admin/agent-eval/results?caseId=${agentEvalCaseId}`
     });
+    const evalDashboardRuns = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/evals/runs"
+    });
+    const evalPassRate = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/evals/pass-rate"
+    });
     const alertRule = await server.inject({
       headers,
       method: "POST",
@@ -1247,6 +1259,97 @@ describe("api server", () => {
       method: "GET",
       url: "/api/admin/tools/accuracy"
     });
+    const followupStats = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/followup-suggestions/stats"
+    });
+    const inputGuardStats = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/input-guard/stats"
+    });
+    const latencySummary = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/metrics/latency/summary"
+    });
+    const latencyTimeseries = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/metrics/latency/timeseries"
+    });
+    const ragStatus = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/rag-analytics/status"
+    });
+    const ragByChannel = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/rag-analytics/by-channel"
+    });
+    const slackActivityChannels = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/slack-activity/channels"
+    });
+    const slackActivityDaily = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/slack-activity/daily"
+    });
+    const tenantQuality = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/tenant/quality"
+    });
+    const tenantTools = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/tenant/tools"
+    });
+    const tenantQuota = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/tenant/quota"
+    });
+    const tenantExecutionsExport = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/tenant/export/executions"
+    });
+    const tenantToolsExport = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/tenant/export/tools"
+    });
+    const platformTenantAnalytics = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/platform/tenants/analytics"
+    });
+    const platformUserByEmail = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/platform/users/by-email?email=first_account"
+    });
+    const platformUserRole = await server.inject({
+      headers,
+      method: "POST",
+      payload: { role: "admin_developer" },
+      url: `/api/admin/platform/users/${registered.user.id}/role`
+    });
+    const taskPurgeExpired = await server.inject({
+      headers,
+      method: "POST",
+      url: "/api/admin/task-memory/maintenance/purge-expired"
+    });
+    const taskPurgeTerminal = await server.inject({
+      headers,
+      method: "POST",
+      url: "/api/admin/task-memory/maintenance/purge-terminal?olderThanDays=30"
+    });
     const metricIngest = await server.inject({
       headers,
       method: "POST",
@@ -1256,6 +1359,11 @@ describe("api server", () => {
         toolName: "read_file"
       },
       url: "/api/admin/metrics/ingest/tool-call"
+    });
+    const auditsExport = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/audits/export"
     });
     const deletedSession = await server.inject({
       headers,
@@ -1334,6 +1442,8 @@ describe("api server", () => {
       storedResults: [{ caseId: agentEvalCaseId, tier: "deterministic" }]
     });
     expect(agentEvalResults.json()).toMatchObject([{ caseId: agentEvalCaseId, passed: true }]);
+    expect(evalDashboardRuns.json()).toMatchObject([{ caseId: agentEvalCaseId, passed: true }]);
+    expect(evalPassRate.json()).toMatchObject([{ passed: 1, total: 1 }]);
     expect(alertRule.json()).toMatchObject({ metric: "token_cost", name: "Cost threshold" });
     expect(alertRules.json()).toMatchObject([{ id: alertRule.json().id }]);
     expect(pricing.json()).toMatchObject({ model: "provider/model", provider: "provider" });
@@ -1341,8 +1451,27 @@ describe("api server", () => {
     expect(vectorStoreStats.json()).toMatchObject({ available: true, documentCount: 1, indexedDocuments: 1 });
     expect(toolStats.json()).toMatchObject({ accuracy: 1, byOutcome: { ok: 1 }, total: 1 });
     expect(toolAccuracy.json()).toMatchObject({ accuracy: 1, ok: 1, total: 1 });
+    expect(followupStats.json()).toMatchObject({ totalClicks: 0, totalImpressions: 0, windowHours: 24 });
+    expect(inputGuardStats.json()).toMatchObject({ blockRate: 0, total: 0 });
+    expect(latencySummary.json()).toMatchObject({ count: 1, p50Ms: 2000, p95Ms: 2000, p99Ms: 2000 });
+    expect(latencyTimeseries.json()).toMatchObject([{ avgLatencyMs: 2000, count: 1 }]);
+    expect(ragStatus.json()).toMatchObject({ byStatus: { indexed: 1 }, total: 1 });
+    expect(ragByChannel.json()).toMatchObject([{ count: 1, key: "api" }]);
+    expect(slackActivityChannels.json()).toMatchObject([{ channel: "api", total: 1 }]);
+    expect(slackActivityDaily.json()).toMatchObject([{ costUsd: 0.125, runs: 1 }]);
+    expect(tenantQuality.json()).toMatchObject({ errors: 0, total: 1 });
+    expect(tenantTools.json()).toMatchObject({ ranking: [{ name: "read_file", total: 1 }], total: 1 });
+    expect(tenantQuota.json()).toMatchObject({ usage: { requests: 1, tokens: 15 } });
+    expect(tenantExecutionsExport.body).toContain("run-compat");
+    expect(tenantToolsExport.body).toContain("read_file");
+    expect(platformTenantAnalytics.json()).toEqual([]);
+    expect(platformUserByEmail.json()).toMatchObject({ email: "first_account", id: registered.user.id });
+    expect(platformUserRole.json()).toMatchObject({ id: registered.user.id, role: "admin_developer", updated: true });
+    expect(taskPurgeExpired.json()).toMatchObject({ deleted: 0 });
+    expect(taskPurgeTerminal.json()).toMatchObject({ deleted: 0 });
     expect(metricIngest.statusCode).toBe(202);
     expect(metricIngest.json()).toMatchObject({ accepted: true, kind: "tool-call" });
+    expect(auditsExport.body).toContain("metric_event");
     expect(sessionTag.statusCode).toBe(200);
     expect(deletedSession.statusCode).toBe(204);
     expect(deletedSessionDetail.statusCode).toBe(404);

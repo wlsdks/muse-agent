@@ -83,6 +83,8 @@ Continued work should be treated as new hardening or product expansion, not migr
   user/model usage, token-cost summaries, and metric ingestion now use Muse runtime state instead of stubs.
 - Reactor-compatible agent eval promotion/replay/results, platform alert rules, model pricing,
   vector-store stats, and admin tool stats now use Muse runtime state.
+- Reactor-compatible admin analytics/export/debug routes now cover eval dashboards, latency, RAG,
+  Slack activity, tenant quality/tools/quota CSV exports, audit CSV export, and task-memory maintenance.
 
 ## Execution Plan
 

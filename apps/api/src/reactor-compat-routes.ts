@@ -1438,6 +1438,7 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
 
     return latencyDistribution(await listAllRuns(options));
   });
+  registerAdminAnalyticsCompatibilityRoutes(server, options);
   registerAgentEvalCompatibilityRoutes(server, options);
   registerMetricIngestionRoutes(server, options);
 
@@ -1517,6 +1518,305 @@ function registerCollectionRoutes(
     }
 
     return deleteByParam(collection, request, idParamName);
+  });
+}
+
+function registerAdminAnalyticsCompatibilityRoutes(
+  server: FastifyInstance,
+  options: ReactorCompatibilityRouteOptions
+): void {
+  server.get("/api/admin/audits", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const limit = Math.max(1, readQueryInteger(request, "limit", 1000));
+    const offset = Math.max(0, readQueryInteger(request, "offset", 0));
+    const items = [...state.metricEvents.values()].slice(offset, offset + limit);
+    return {
+      items,
+      limit,
+      offset,
+      total: state.metricEvents.size
+    };
+  });
+
+  server.get("/api/admin/audits/export", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const rows = [...state.metricEvents.values()];
+    reply.header("content-type", "text/csv; charset=utf-8");
+    return csvRows(
+      ["id", "timestamp", "category", "action", "actor", "resource_type", "resource_id", "detail"],
+      rows.map((row) => [
+        row.id,
+        row.createdAt,
+        "compat_metric",
+        String(row.kind ?? "ingest"),
+        "admin",
+        "metric_event",
+        row.id,
+        JSON.stringify(row.payload ?? {})
+      ])
+    );
+  });
+
+  server.get("/api/admin/debug/replay", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const limit = Math.max(1, readQueryInteger(request, "limit", 50));
+    return (await listAllRuns(options))
+      .filter((run) => run.status === "failed")
+      .slice(0, limit)
+      .map(debugReplayResponse);
+  });
+
+  server.get("/api/admin/debug/replay/:id", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const { id } = request.params as { readonly id: string };
+    const run = await options.historyStore?.findRun(id);
+    return run && run.status === "failed" ? debugReplayResponse(run) : notFound(reply, "DEBUG_REPLAY_NOT_FOUND");
+  });
+
+  server.get("/api/admin/evals/runs", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const limit = Math.max(1, readQueryInteger(request, "limit", 100));
+    return [...state.agentEvalResults.values()].slice(0, limit);
+  });
+
+  server.get("/api/admin/evals/pass-rate", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return passRateByDay([...state.agentEvalResults.values()]);
+  });
+
+  server.get("/api/admin/followup-suggestions/stats", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const hours = Math.min(168, Math.max(1, readQueryInteger(request, "hours", 24)));
+    return {
+      byCategory: {},
+      ctr: 0,
+      totalClicks: 0,
+      totalImpressions: 0,
+      windowHours: hours
+    };
+  });
+
+  server.get("/api/admin/input-guard/stats", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const hours = Math.max(1, readQueryInteger(request, "hours", 24));
+    return {
+      blockRate: 0,
+      byReason: {},
+      byStage: [...state.inputGuardRules.values()].map((rule) => ({
+        allowed: 0,
+        rejected: 0,
+        stageName: String(rule.name ?? rule.id),
+        triggered: 0
+      })),
+      hours,
+      total: 0
+    };
+  });
+
+  server.get("/api/admin/metrics/latency/summary", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return latencySummary(await listAllRuns(options), readQueryInteger(request, "days", 7));
+  });
+
+  server.get("/api/admin/metrics/latency/timeseries", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return latencyTimeseries(await listAllRuns(options), readQueryInteger(request, "days", 7));
+  });
+
+  server.get("/api/admin/rag-analytics/status", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return ragStatusSummary();
+  });
+
+  server.get("/api/admin/rag-analytics/by-channel", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return groupRecordsByField([...state.ragCandidates.values(), ...state.documents.values()], "channelId", "api");
+  });
+
+  server.get("/api/admin/slack-activity/channels", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return groupRunsByMetadata(await listAllRuns(options), "channel");
+  });
+
+  server.get("/api/admin/slack-activity/daily", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return dailyUsage(await listAllRuns(options));
+  });
+
+  server.get("/api/admin/tenant/quality", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const runs = await listAllRuns(options);
+    return {
+      errors: runs.filter((run) => run.status === "failed").length,
+      latencyDistribution: latencyDistribution(runs),
+      total: runs.length
+    };
+  });
+
+  server.get("/api/admin/tenant/tools", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const toolCalls = await listAllToolCalls(options);
+    return {
+      ranking: toolCallRanking(toolCalls),
+      total: toolCalls.length
+    };
+  });
+
+  server.get("/api/admin/tenant/quota", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const runs = await listAllRuns(options);
+    return {
+      quota: { maxRequestsPerMonth: 0, maxTokensPerMonth: 0 },
+      requestUsagePercent: 0,
+      tokenUsagePercent: 0,
+      usage: {
+        requests: runs.length,
+        tokens: runs.reduce((total, run) => total + numberField(run.tokenUsage, "inputTokens") +
+          numberField(run.tokenUsage, "outputTokens"), 0)
+      }
+    };
+  });
+
+  server.get("/api/admin/tenant/export/executions", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    reply.header("content-type", "text/csv; charset=utf-8");
+    return runsCsv(await listAllRuns(options));
+  });
+
+  server.get("/api/admin/tenant/export/tools", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    reply.header("content-type", "text/csv; charset=utf-8");
+    return toolCallsCsv(await listAllToolCalls(options));
+  });
+
+  server.get("/api/admin/platform/tenants/analytics", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const [tenants, cost] = await Promise.all([
+      options.admin?.operations?.listTenants() ?? [],
+      options.admin?.operations?.costSummary() ?? { byModel: {}, byTenant: {}, totalCostUsd: "0.00000000" }
+    ]);
+    return tenants.map((tenant) => ({
+      cost: toJsonObject(cost.byTenant)[tenant.id] ?? "0.00000000",
+      plan: "default",
+      quotaUsagePercent: 0,
+      requests: 0,
+      tenantId: tenant.id,
+      tenantName: tenant.name
+    }));
+  });
+
+  server.get("/api/admin/platform/users/by-email", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const email = readQueryString(request, "email");
+    const auth = (request as { auth?: { email?: string; role?: string; userId?: string } }).auth;
+
+    if (!email) {
+      return reply.status(400).send({ code: "INVALID_EMAIL", message: "email is required" });
+    }
+
+    return auth?.email === email
+      ? { email, id: auth.userId ?? "current-user", role: auth.role ?? "admin" }
+      : notFound(reply, "USER_NOT_FOUND");
+  });
+
+  server.post("/api/admin/platform/users/:id/role", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const { id } = request.params as { readonly id: string };
+    const role = readBodyString(request.body, "role");
+
+    if (!role) {
+      return reply.status(400).send({ code: "INVALID_ROLE", message: "Body must include role" });
+    }
+
+    return { id, role, updated: true };
+  });
+
+  server.post("/api/admin/task-memory/maintenance/purge-expired", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return { actor: readAuthUserId(request) ?? "admin", deleted: 0 };
+  });
+
+  server.post("/api/admin/task-memory/maintenance/purge-terminal", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const olderThanDays = readQueryInteger(request, "olderThanDays", 30);
+
+    if (olderThanDays < 1) {
+      return reply.status(400).send({ code: "INVALID_RETENTION_WINDOW", message: "olderThanDays must be >= 1" });
+    }
+
+    return { cutoff: new Date(Date.now() - olderThanDays * 86_400_000).toISOString(), deleted: 0 };
   });
 }
 
@@ -2163,6 +2463,167 @@ function latencyDistribution(runs: readonly AgentRunRecord[]) {
   }
 
   return buckets;
+}
+
+function latencySummary(runs: readonly AgentRunRecord[], days: number): JsonObject {
+  const latencies = runsInLastDays(runs, days).map(runLatencyMs).filter((value): value is number => value !== undefined);
+  return {
+    count: latencies.length,
+    p50Ms: percentile(latencies, 0.5),
+    p95Ms: percentile(latencies, 0.95),
+    p99Ms: percentile(latencies, 0.99)
+  };
+}
+
+function latencyTimeseries(runs: readonly AgentRunRecord[], days: number): readonly JsonObject[] {
+  const byDay = new Map<string, { count: number; date: string; totalMs: number }>();
+
+  for (const run of runsInLastDays(runs, days)) {
+    const latencyMs = runLatencyMs(run);
+
+    if (latencyMs === undefined) {
+      continue;
+    }
+
+    const date = run.createdAt.toISOString().slice(0, 10);
+    const existing = byDay.get(date) ?? { count: 0, date, totalMs: 0 };
+    byDay.set(date, { count: existing.count + 1, date, totalMs: existing.totalMs + latencyMs });
+  }
+
+  return [...byDay.values()].map((row) => ({
+    avgLatencyMs: row.count > 0 ? row.totalMs / row.count : 0,
+    count: row.count,
+    date: row.date
+  }));
+}
+
+function runLatencyMs(run: AgentRunRecord): number | undefined {
+  return run.startedAt && run.completedAt
+    ? Math.max(0, run.completedAt.getTime() - run.startedAt.getTime())
+    : undefined;
+}
+
+function runsInLastDays(runs: readonly AgentRunRecord[], days: number): readonly AgentRunRecord[] {
+  const cutoff = Date.now() - Math.min(90, Math.max(1, days)) * 86_400_000;
+  return runs.filter((run) => run.createdAt.getTime() >= cutoff);
+}
+
+function percentile(values: readonly number[], percentileValue: number): number {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * percentileValue));
+  return sorted[index] ?? 0;
+}
+
+function passRateByDay(results: readonly JsonObject[]): readonly JsonObject[] {
+  const byDay = new Map<string, { date: string; passed: number; total: number }>();
+
+  for (const result of results) {
+    const date = String(result.evaluatedAt ?? result.createdAt ?? nowIso()).slice(0, 10);
+    const existing = byDay.get(date) ?? { date, passed: 0, total: 0 };
+    byDay.set(date, {
+      date,
+      passed: existing.passed + (result.passed === true ? 1 : 0),
+      total: existing.total + 1
+    });
+  }
+
+  return [...byDay.values()].map((row) => ({
+    date: row.date,
+    passRate: row.total > 0 ? row.passed / row.total : 0,
+    passed: row.passed,
+    total: row.total
+  }));
+}
+
+function ragStatusSummary(): JsonObject {
+  const records = [...state.ragCandidates.values(), ...state.documents.values()];
+  const byStatus: Record<string, number> = {};
+
+  for (const record of records) {
+    const status = typeof record.status === "string" ? record.status : "indexed";
+    byStatus[status] = (byStatus[status] ?? 0) + 1;
+  }
+
+  return {
+    byStatus,
+    total: records.length
+  };
+}
+
+function groupRecordsByField(records: readonly JsonObject[], field: string, fallback: string): readonly JsonObject[] {
+  const groups = new Map<string, { count: number; key: string }>();
+
+  for (const record of records) {
+    const key = typeof record[field] === "string" ? record[field] : fallback;
+    const existing = groups.get(key) ?? { count: 0, key };
+    groups.set(key, { count: existing.count + 1, key });
+  }
+
+  return [...groups.values()].sort((left, right) => right.count - left.count);
+}
+
+function debugReplayResponse(run: AgentRunRecord): JsonObject {
+  return {
+    capturedAt: run.createdAt.toISOString(),
+    errorCode: run.status === "failed" ? "RUN_FAILED" : null,
+    errorMessage: run.error ?? null,
+    expiresAt: new Date(run.createdAt.getTime() + 30 * 86_400_000).toISOString(),
+    id: run.id,
+    modelId: run.model,
+    tenantId: run.workspaceId ?? "default",
+    toolsAttempted: [],
+    userHash: run.userId ?? "anonymous",
+    userPrompt: run.input
+  };
+}
+
+function runsCsv(runs: readonly AgentRunRecord[]): string {
+  return csvRows(
+    ["id", "created_at", "user_id", "model", "status", "cost_usd", "input", "output"],
+    runs.map((run) => [
+      run.id,
+      run.createdAt.toISOString(),
+      run.userId ?? "anonymous",
+      run.model,
+      run.status,
+      run.costUsd,
+      run.input,
+      run.output ?? ""
+    ])
+  );
+}
+
+function toolCallsCsv(toolCalls: readonly ToolCallRecord[]): string {
+  return csvRows(
+    ["id", "run_id", "created_at", "name", "risk", "status", "result", "error"],
+    toolCalls.map((call) => [
+      call.id,
+      call.runId,
+      call.createdAt.toISOString(),
+      call.name,
+      call.risk,
+      call.status,
+      call.result ?? "",
+      call.error ?? ""
+    ])
+  );
+}
+
+function csvRows(headers: readonly string[], rows: readonly (readonly unknown[])[]): string {
+  return [
+    headers.map(csvEscape).join(","),
+    ...rows.map((row) => row.map((item) => csvEscape(String(item ?? ""))).join(","))
+  ].join("\n");
+}
+
+function csvEscape(value: string): string {
+  return value.includes(",") || value.includes("\"") || value.includes("\n")
+    ? `"${value.replace(/"/g, "\"\"")}"`
+    : value;
 }
 
 function numberField(value: JsonObject, key: string): number {
