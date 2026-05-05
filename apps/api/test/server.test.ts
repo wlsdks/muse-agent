@@ -6,6 +6,8 @@ import {
   InMemoryUserStore,
   JwtTokenProvider
 } from "@muse/auth";
+import { InMemoryAgentRunHistoryStore } from "@muse/runtime-state";
+import { InMemoryScheduledJobExecutionStore, InMemoryScheduledJobStore } from "@muse/scheduler";
 import { buildServer } from "../src/server.js";
 
 describe("api server", () => {
@@ -193,6 +195,68 @@ describe("api server", () => {
 
     expect(blocked.statusCode).toBe(429);
     expect(blocked.json()).toMatchObject({ code: "AUTH_RATE_LIMITED" });
+  });
+
+  it("exposes admin summary, run history, and scheduler state behind admin auth", async () => {
+    const authService = createAuthService();
+    const registered = authService.register({
+      email: "first_account",
+      name: "First",
+      password: "password-1"
+    });
+    const historyStore = new InMemoryAgentRunHistoryStore({ idFactory: () => "message-1" });
+    const run = historyStore.createRun({
+      id: "run-1",
+      input: "hello",
+      model: "gpt-4o",
+      provider: "openai",
+      userId: "user-1"
+    });
+    historyStore.appendMessage({
+      content: "hello",
+      role: "user",
+      runId: run.id
+    });
+    const schedulerStore = new InMemoryScheduledJobStore({ idFactory: () => "job-1" });
+    const schedulerExecutionStore = new InMemoryScheduledJobExecutionStore({ idFactory: () => "exec-1" });
+    const job = schedulerStore.save({
+      agentPrompt: "Run",
+      cronExpression: "0 * * * * *",
+      jobType: "agent",
+      name: "Agent job"
+    });
+    schedulerExecutionStore.save({
+      jobId: job.id,
+      jobName: job.name,
+      result: "ok",
+      status: "success"
+    });
+    const server = buildServer({
+      authService,
+      historyStore,
+      logger: false,
+      requireAuth: true,
+      scheduler: {
+        executionStore: schedulerExecutionStore,
+        store: schedulerStore
+      }
+    });
+    const headers = { authorization: `Bearer ${registered.token}` };
+
+    const summary = await server.inject({ headers, method: "GET", url: "/admin/summary" });
+    const runDetail = await server.inject({ headers, method: "GET", url: "/admin/runs/run-1" });
+    const schedulerJobs = await server.inject({ headers, method: "GET", url: "/admin/scheduler/jobs" });
+    const executions = await server.inject({
+      headers,
+      method: "GET",
+      url: "/admin/scheduler/jobs/job-1/executions"
+    });
+
+    expect(summary.statusCode).toBe(200);
+    expect(summary.json()).toMatchObject({ authEnabled: true, schedulerJobCount: 1 });
+    expect(runDetail.json()).toMatchObject({ run: { id: "run-1" }, messages: [{ content: "hello" }] });
+    expect(schedulerJobs.json()).toHaveLength(1);
+    expect(executions.json()).toHaveLength(1);
   });
 });
 

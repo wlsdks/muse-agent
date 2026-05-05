@@ -16,6 +16,8 @@
     "@muse/agent-specs": "workspace:*",
     "@muse/auth": "workspace:*",
     "@muse/runtime-settings": "workspace:*",
+    "@muse/runtime-state": "workspace:*",
+    "@muse/scheduler": "workspace:*",
     "fastify": "^5.8.5"
   }
 }

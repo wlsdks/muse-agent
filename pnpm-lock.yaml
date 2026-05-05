@@ -35,6 +35,12 @@ importers:
       '@muse/runtime-settings':
         specifier: workspace:*
         version: link:../../packages/runtime-settings
+      '@muse/runtime-state':
+        specifier: workspace:*
+        version: link:../../packages/runtime-state
+      '@muse/scheduler':
+        specifier: workspace:*
+        version: link:../../packages/scheduler
       fastify:
         specifier: ^5.8.5
         version: 5.8.5

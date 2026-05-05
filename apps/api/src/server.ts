@@ -8,6 +8,7 @@ import {
   AuthRateLimiter,
   AuthService,
   extractBearerToken,
+  isAnyAdmin,
   type AuthIdentity,
   type LoginResult
 } from "@muse/auth";
@@ -16,6 +17,8 @@ import {
   RuntimeSettingsService,
   type RuntimeSettingType
 } from "@muse/runtime-settings";
+import type { AgentRunHistoryStore } from "@muse/runtime-state";
+import type { ScheduledJobExecutionStore, ScheduledJobStore } from "@muse/scheduler";
 import Fastify, { type FastifyInstance } from "fastify";
 
 export interface ServerOptions {
@@ -23,8 +26,13 @@ export interface ServerOptions {
   readonly agentSpecRegistry?: AgentSpecRegistry;
   readonly authService?: AuthService;
   readonly authRateLimiter?: AuthRateLimiter;
+  readonly historyStore?: AgentRunHistoryStore;
   readonly requireAuth?: boolean;
   readonly runtimeSettings?: RuntimeSettingsService;
+  readonly scheduler?: {
+    readonly executionStore?: ScheduledJobExecutionStore;
+    readonly store: ScheduledJobStore;
+  };
 }
 
 export function buildServer(options: ServerOptions = {}): FastifyInstance {
@@ -73,6 +81,101 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     runner: "rust",
     server: "fastify"
   }));
+
+  server.get("/admin/summary", async (request, reply) => {
+    if (!authorizeAdmin(request, reply, Boolean(authService))) {
+      return reply;
+    }
+
+    const [agentSpecs, settings, scheduledJobs] = await Promise.all([
+      agentSpecRegistry.list(),
+      runtimeSettings.list(),
+      options.scheduler?.store.list() ?? []
+    ]);
+
+    return {
+      agentSpecCount: agentSpecs.length,
+      authEnabled: Boolean(authService),
+      runtimeSettingCount: settings.length,
+      schedulerJobCount: scheduledJobs.length
+    };
+  });
+
+  server.get("/admin/users/:userId/runs", async (request, reply) => {
+    if (!authorizeAdmin(request, reply, Boolean(authService))) {
+      return reply;
+    }
+
+    if (!options.historyStore) {
+      return reply.status(404).send({
+        code: "RUN_HISTORY_UNAVAILABLE",
+        message: "Run history store is not configured"
+      });
+    }
+
+    const { userId } = request.params as { readonly userId: string };
+    return options.historyStore.listRunsByUser(userId);
+  });
+
+  server.get("/admin/runs/:runId", async (request, reply) => {
+    if (!authorizeAdmin(request, reply, Boolean(authService))) {
+      return reply;
+    }
+
+    if (!options.historyStore) {
+      return reply.status(404).send({
+        code: "RUN_HISTORY_UNAVAILABLE",
+        message: "Run history store is not configured"
+      });
+    }
+
+    const { runId } = request.params as { readonly runId: string };
+    const run = await options.historyStore.findRun(runId);
+
+    if (!run) {
+      return reply.status(404).send({
+        code: "RUN_NOT_FOUND",
+        message: `Run not found: ${runId}`
+      });
+    }
+
+    const [messages, toolCalls] = await Promise.all([
+      options.historyStore.listMessages(runId),
+      options.historyStore.listToolCalls(runId)
+    ]);
+    return { messages, run, toolCalls };
+  });
+
+  server.get("/admin/scheduler/jobs", async (request, reply) => {
+    if (!authorizeAdmin(request, reply, Boolean(authService))) {
+      return reply;
+    }
+
+    if (!options.scheduler) {
+      return reply.status(404).send({
+        code: "SCHEDULER_UNAVAILABLE",
+        message: "Scheduler store is not configured"
+      });
+    }
+
+    return options.scheduler.store.list();
+  });
+
+  server.get("/admin/scheduler/jobs/:jobId/executions", async (request, reply) => {
+    if (!authorizeAdmin(request, reply, Boolean(authService))) {
+      return reply;
+    }
+
+    if (!options.scheduler?.executionStore) {
+      return reply.status(404).send({
+        code: "SCHEDULER_EXECUTIONS_UNAVAILABLE",
+        message: "Scheduler execution store is not configured"
+      });
+    }
+
+    const { jobId } = request.params as { readonly jobId: string };
+    return options.scheduler.executionStore.findByJobId(jobId);
+  });
 
   if (authService) {
     server.post("/auth/register", async (request, reply) => {
@@ -392,4 +495,22 @@ function toLoginResponse(login: LoginResult) {
     token: login.token,
     user: login.user
   };
+}
+
+function authorizeAdmin(request: unknown, reply: { status(statusCode: number): { send(payload: ApiError): void } }, authEnabled: boolean): boolean {
+  if (!authEnabled) {
+    return true;
+  }
+
+  const identity = getAuthIdentity(request);
+
+  if (isAnyAdmin(identity?.role)) {
+    return true;
+  }
+
+  reply.status(403).send({
+    code: "FORBIDDEN",
+    message: "Admin access is required"
+  });
+  return false;
 }
