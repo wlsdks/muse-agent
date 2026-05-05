@@ -2455,7 +2455,7 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
       description: readBodyNullableString(body, "description"),
       key,
       type: parseRuntimeSettingType(body.type),
-      updatedBy: readBodyNullableString(body, "updatedBy"),
+      updatedBy: readAuthUserId(request) ?? null,
       value
     });
 

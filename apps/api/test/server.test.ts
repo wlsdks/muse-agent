@@ -3184,7 +3184,7 @@ describe("api server", () => {
     const runtimeSet = await server.inject({
       headers,
       method: "PUT",
-      payload: { category: "llm", type: "STRING", value: "provider/model" },
+      payload: { category: "llm", type: "STRING", updatedBy: "spoofed-user", value: "provider/model" },
       url: "/api/admin/settings/model.default"
     });
     const runtimeGet = await server.inject({
@@ -3285,7 +3285,12 @@ describe("api server", () => {
     });
     expect(invalidReorder.json()).not.toHaveProperty("code");
     expect(runtimeSet.json()).toEqual({ key: "model.default", status: "updated", value: "provider/model" });
-    expect(runtimeGet.json()).toMatchObject({ key: "model.default", type: "STRING", value: "provider/model" });
+    expect(runtimeGet.json()).toMatchObject({
+      key: "model.default",
+      type: "STRING",
+      updatedBy: admin.user.id,
+      value: "provider/model"
+    });
     expect(missingRuntimeSetting.statusCode).toBe(404);
     expect(missingRuntimeSetting.json()).toMatchObject({
       error: "설정을 찾을 수 없습니다: missing.setting",
