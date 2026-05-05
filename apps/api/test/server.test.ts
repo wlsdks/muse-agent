@@ -1350,6 +1350,50 @@ describe("api server", () => {
       },
       url: `/api/prompt-templates/${templateId}/versions`
     });
+    await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        comment: "Missing sources",
+        query: "Explain migration with references",
+        rating: "thumbs_down",
+        response: "Migration is straightforward.",
+        templateId
+      },
+      url: "/api/feedback"
+    });
+    await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        comment: "Needs more detail",
+        query: "Explain migration risks",
+        rating: "thumbs_down",
+        response: "Short answer",
+        templateId
+      },
+      url: "/api/feedback"
+    });
+    await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        query: "Explain migration result",
+        rating: "thumbs_up",
+        response: "Detailed answer",
+        templateId
+      },
+      url: "/api/feedback"
+    });
+    const analysis = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        maxSamples: 5,
+        templateId
+      },
+      url: "/api/prompt-lab/analyze"
+    });
     const experiment = await server.inject({
       headers,
       method: "POST",
@@ -1430,6 +1474,23 @@ describe("api server", () => {
 
     expect(run.statusCode).toBe(202);
     expect(run.json()).toEqual({ experimentId, status: "RUNNING" });
+    expect(analysis.json()).toMatchObject({
+      negativeCount: 2,
+      sampleQueryCount: 2,
+      totalFeedback: 3,
+      weaknesses: expect.arrayContaining([
+        expect.objectContaining({
+          category: "missing_sources",
+          exampleQueries: ["Explain migration with references"],
+          frequency: 1
+        }),
+        expect.objectContaining({
+          category: "short_answer",
+          exampleQueries: ["Explain migration risks"],
+          frequency: 1
+        })
+      ])
+    });
     expect(status.json()).toMatchObject({ experimentId, status: "COMPLETED" });
     expect(trials.json()).toHaveLength(4);
     expect(trials.json()).toEqual(expect.arrayContaining([

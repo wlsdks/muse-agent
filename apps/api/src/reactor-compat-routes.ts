@@ -1919,13 +1919,7 @@ function registerPromptAndRagRoutes(server: FastifyInstance, options: ReactorCom
       return badRequest(reply, "INVALID_FEEDBACK_ANALYSIS_REQUEST", "Body must include templateId");
     }
 
-    return {
-      analyzedAt: Date.now(),
-      negativeCount: 0,
-      sampleQueryCount: 0,
-      totalFeedback: 0,
-      weaknesses: []
-    };
+    return promptFeedbackAnalysis(templateId, readNullableNumber(toBody(request.body).maxSamples) ?? 50);
   });
 }
 
@@ -5716,6 +5710,107 @@ function createPromptExperiment(
     temperature: input.temperature,
     testQueries: [...input.testQueries]
   }, "prompt_experiment");
+}
+
+function promptFeedbackAnalysis(templateId: string, maxSamples: number): JsonObject {
+  const related = [...state.feedback.values()].filter((feedback) => nullableStringResponse(feedback.templateId) === templateId);
+  const negative = related
+    .filter((feedback) => feedbackRating(feedback.rating) === "thumbs_down")
+    .slice(0, Math.max(0, Math.trunc(maxSamples)));
+
+  if (negative.length === 0) {
+    return {
+      analyzedAt: Date.now(),
+      negativeCount: 0,
+      sampleQueryCount: 0,
+      totalFeedback: 0,
+      weaknesses: []
+    };
+  }
+
+  return {
+    analyzedAt: Date.now(),
+    negativeCount: negative.length,
+    sampleQueryCount: negative.filter((feedback) => stringField(feedback.query, "").length > 0).length,
+    totalFeedback: related.length,
+    weaknesses: promptFeedbackWeaknesses(negative)
+  };
+}
+
+function promptFeedbackWeaknesses(feedback: readonly CompatRecord[]): JsonObject[] {
+  const byCategory = new Map<string, { description: string; examples: string[]; frequency: number }>();
+
+  for (const item of feedback) {
+    const category = promptWeaknessCategory(item);
+    const current = byCategory.get(category) ?? {
+      description: promptWeaknessDescription(category),
+      examples: [],
+      frequency: 0
+    };
+    const query = stringField(item.query, "");
+    byCategory.set(category, {
+      ...current,
+      examples: query && current.examples.length < 5 ? [...current.examples, query] : current.examples,
+      frequency: current.frequency + 1
+    });
+  }
+
+  return [...byCategory.entries()]
+    .sort((left, right) => right[1].frequency - left[1].frequency || left[0].localeCompare(right[0]))
+    .map(([category, item]) => ({
+      category,
+      description: item.description,
+      exampleQueries: item.examples,
+      frequency: item.frequency
+    }));
+}
+
+function promptWeaknessCategory(feedback: JsonObject): string {
+  const text = [
+    feedback.comment,
+    feedback.response,
+    feedback.query,
+    ...stringArrayField(feedback.tags, [])
+  ].map((item) => String(item ?? "").toLowerCase()).join(" ");
+
+  if (text.includes("source") || text.includes("citation") || text.includes("reference")) {
+    return "missing_sources";
+  }
+
+  if (text.includes("short") || text.includes("detail") || text.includes("brief")) {
+    return "short_answer";
+  }
+
+  if (text.includes("wrong") || text.includes("incorrect") || text.includes("inaccurate")) {
+    return "incorrect_info";
+  }
+
+  if (text.includes("tool")) {
+    return "no_tool_usage";
+  }
+
+  if (text.includes("context")) {
+    return "missing_context";
+  }
+
+  if (text.includes("format") || text.includes("structure")) {
+    return "poor_formatting";
+  }
+
+  return "other";
+}
+
+function promptWeaknessDescription(category: string): string {
+  const descriptions: Record<string, string> = {
+    incorrect_info: "Feedback indicates inaccurate or incorrect information.",
+    missing_context: "Feedback indicates missing context for the user's task.",
+    missing_sources: "Feedback indicates missing sources or citations.",
+    no_tool_usage: "Feedback indicates the answer should have used tools.",
+    other: "Feedback indicates a recurring unresolved quality issue.",
+    poor_formatting: "Feedback indicates formatting or structure problems.",
+    short_answer: "Feedback indicates the answer needs more detail."
+  };
+  return descriptions[category] ?? "Feedback indicates a recurring unresolved quality issue.";
 }
 
 function parsePromptTestQueries(value: unknown): JsonObject[] {
