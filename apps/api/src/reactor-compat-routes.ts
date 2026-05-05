@@ -1728,12 +1728,25 @@ function registerPromptAndRagRoutes(server: FastifyInstance, options: ReactorCom
     state.ragIngestionPolicyStored = false;
     return reply.status(204).send();
   });
-  server.get("/api/rag-ingestion/candidates", async () => [...state.ragCandidates.values()]);
-  server.post("/api/rag-ingestion/candidates/:id/approve", async (request) =>
-    updateCandidate(request, "approved")
+  server.get("/api/rag-ingestion/candidates", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const status = readQueryString(request, "status")?.toUpperCase();
+    const channel = readQueryString(request, "channel");
+    const limit = Math.min(Math.max(readQueryInteger(request, "limit", 100), 1), 500);
+    return [...state.ragCandidates.values()]
+      .filter((candidate) => !status || candidateStatus(candidate.status) === status)
+      .filter((candidate) => !channel || nullableStringResponse(candidate.channel) === channel)
+      .slice(0, limit)
+      .map(toRagCandidateResponse);
+  });
+  server.post("/api/rag-ingestion/candidates/:id/approve", async (request, reply) =>
+    reviewRagCandidate(request, reply, "INGESTED")
   );
-  server.post("/api/rag-ingestion/candidates/:id/reject", async (request) =>
-    updateCandidate(request, "rejected")
+  server.post("/api/rag-ingestion/candidates/:id/reject", async (request, reply) =>
+    reviewRagCandidate(request, reply, "REJECTED")
   );
 
   server.post("/api/prompt-lab/experiments", async (request, reply) => {
@@ -5457,11 +5470,6 @@ function upsertByParam(
   }, prefix);
 }
 
-function updateCandidate(request: FastifyRequest, status: string) {
-  const { id } = request.params as { readonly id: string };
-  return createRecord(state.ragCandidates, { id, status }, "rag_candidate");
-}
-
 function runPromptExperiment(request: FastifyRequest, reply: FastifyReply) {
   const { id } = request.params as { readonly id: string };
   const existing = findCompatRecord(state.promptExperiments, id);
@@ -5989,15 +5997,26 @@ function parseRetentionPolicy(value: unknown): ParseResult<JsonObject> {
 
 function parseRagIngestionPolicy(value: unknown): ParseResult<JsonObject> {
   const body = toBody(value);
+  const allowedChannels = readStringSet(body.allowedChannels);
+  const blockedPatterns = readStringSet(body.blockedPatterns);
+
+  if (allowedChannels.length > 300) {
+    return invalid("INVALID_RAG_INGESTION_POLICY", "allowedChannels must not exceed 300 entries");
+  }
+
+  if (blockedPatterns.length > 200) {
+    return invalid("INVALID_RAG_INGESTION_POLICY", "blockedPatterns must not exceed 200 entries");
+  }
+
   const parsed: JsonObject = {
-    allowedChannels: readStringSet(body.allowedChannels).map((channel) => channel.toLowerCase()),
-    blockedPatterns: readStringSet(body.blockedPatterns),
+    allowedChannels: allowedChannels.map((channel) => channel.toLowerCase()),
+    blockedPatterns,
     enabled: typeof body.enabled === "boolean" ? body.enabled : false,
     minQueryChars: Math.max(1, readNumber(body.minQueryChars, 10)),
     minResponseChars: Math.max(1, readNumber(body.minResponseChars, 20)),
     requireReview: typeof body.requireReview === "boolean" ? body.requireReview : true
   };
-  const invalidPattern = readStringSet(body.blockedPatterns).find((pattern) =>
+  const invalidPattern = blockedPatterns.find((pattern) =>
     pattern.length > 500 || !isValidRegex(pattern));
 
   if (invalidPattern) {
@@ -6018,6 +6037,78 @@ function toRagIngestionPolicyResponse(policy: JsonObject): JsonObject {
     requireReview: readBoolean(policy.requireReview, true),
     updatedAt: epochMillisOrNull(policy.updatedAt) ?? Date.now()
   };
+}
+
+function reviewRagCandidate(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  targetStatus: "INGESTED" | "REJECTED"
+) {
+  const { id } = request.params as { readonly id: string };
+  const candidate = findCompatRecord(state.ragCandidates, id);
+
+  if (!candidate) {
+    return notFound(reply, "RAG_INGESTION_CANDIDATE_NOT_FOUND");
+  }
+
+  if (candidateStatus(candidate.status) !== "PENDING") {
+    return reply.status(409).send({
+      error: "Candidate is already reviewed",
+      timestamp: nowIso()
+    });
+  }
+
+  const body = toBody(request.body);
+  const comment = readBodyNullableString(body, "comment");
+
+  if (typeof comment === "string" && comment.length > 500) {
+    return badRequest(reply, "INVALID_RAG_INGESTION_REVIEW", "comment must not exceed 500 characters");
+  }
+
+  const documentId = targetStatus === "INGESTED" ? createRunId("rag_document") : null;
+
+  if (targetStatus === "INGESTED") {
+    createRecord(state.documents, {
+      content: stringField(candidate.response, ""),
+      id: documentId,
+      metadata: {
+        candidateId: id,
+        channel: nullableStringResponse(candidate.channel),
+        runId: stringField(candidate.runId, "")
+      }
+    }, "document");
+  }
+
+  const reviewed = createRecord(state.ragCandidates, {
+    ...candidate,
+    ingestedDocumentId: documentId,
+    reviewComment: typeof comment === "string" ? comment.trim() : null,
+    reviewedAt: nowIso(),
+    reviewedBy: readAuthUserId(request) ?? "admin",
+    status: targetStatus
+  }, "rag_candidate");
+  return toRagCandidateResponse(reviewed);
+}
+
+function toRagCandidateResponse(candidate: JsonObject): JsonObject {
+  return {
+    capturedAt: epochMillisOrNull(candidate.capturedAt) ?? epochMillisOrNull(candidate.createdAt) ?? Date.now(),
+    channel: nullableStringResponse(candidate.channel),
+    id: stringField(candidate.id, ""),
+    ingestedDocumentId: nullableStringResponse(candidate.ingestedDocumentId),
+    query: stringField(candidate.query, ""),
+    response: stringField(candidate.response, ""),
+    reviewComment: nullableStringResponse(candidate.reviewComment),
+    reviewedAt: epochMillisOrNull(candidate.reviewedAt),
+    reviewedBy: nullableStringResponse(candidate.reviewedBy),
+    runId: stringField(candidate.runId, ""),
+    status: candidateStatus(candidate.status)
+  };
+}
+
+function candidateStatus(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toUpperCase() : "";
+  return ["APPROVED", "INGESTED", "PENDING", "REJECTED"].includes(normalized) ? normalized : "PENDING";
 }
 
 function isValidRegex(pattern: string): boolean {

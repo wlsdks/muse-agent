@@ -1846,6 +1846,19 @@ describe("api server", () => {
     const capabilities = await server.inject({ headers, method: "GET", url: "/api/admin/capabilities" });
     const dashboard = await server.inject({ headers, method: "GET", url: "/api/ops/dashboard" });
     const ragInitial = await server.inject({ headers, method: "GET", url: "/api/rag-ingestion/policy" });
+    const blockedRagCandidates = await server.inject({ method: "GET", url: "/api/rag-ingestion/candidates" });
+    const missingCandidateApprove = await server.inject({
+      headers,
+      method: "POST",
+      payload: { comment: "approve" },
+      url: "/api/rag-ingestion/candidates/missing/approve"
+    });
+    const ragInvalidUpdate = await server.inject({
+      headers,
+      method: "PUT",
+      payload: { allowedChannels: Array.from({ length: 301 }, (_, index) => `channel-${index}`) },
+      url: "/api/rag-ingestion/policy"
+    });
     const ragUpdate = await server.inject({
       headers,
       method: "PUT",
@@ -1897,6 +1910,9 @@ describe("api server", () => {
       scheduler: { totalJobs: 0 }
     });
     expect(ragInitial.json()).toMatchObject({ stored: null });
+    expect(blockedRagCandidates.statusCode).toBe(401);
+    expect(missingCandidateApprove.statusCode).toBe(404);
+    expect(ragInvalidUpdate.statusCode).toBe(400);
     expect(ragUpdate.json()).toMatchObject({ allowedChannels: ["slack"], blockedPatterns: ["secret"], enabled: true });
     expect(typeof ragUpdate.json().createdAt).toBe("number");
     expect(ragAfterUpdate.json()).toMatchObject({ stored: { enabled: true } });
