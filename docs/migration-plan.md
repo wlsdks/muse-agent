@@ -113,6 +113,8 @@ Continued work should be treated as new hardening or product expansion, not migr
   admin-gated search/list/write operations, and body-based `204` deletes.
 - Feedback compatibility now matches Reactor `FeedbackResponse`, cursor-page list envelopes, review `If-Match`
   version checks, stats/export envelopes, bulk updates, and `204` deletes.
+- Slack bot compatibility now matches Reactor admin-gated bot CRUD, duplicate-name `409`, masked token response
+  fields, ISO timestamps, partial updates, and `204` deletes.
 
 ## Execution Plan
 

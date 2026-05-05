@@ -1301,8 +1301,69 @@ function registerMcpCompatibilityRoutes(server: FastifyInstance, options: Reacto
   server.get("/api/mcp/servers/:name/swagger/sources/:sourceName/diff", async () => ({ changes: [] }));
 }
 
+function registerSlackBotRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
+  server.get("/api/admin/slack-bots", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return [...state.slackBots.values()].map(toSlackBotResponse);
+  });
+  server.get("/api/admin/slack-bots/:id", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const { id } = request.params as { readonly id: string };
+    const bot = findCompatRecord(state.slackBots, id);
+    return bot ? toSlackBotResponse(bot) : notFound(reply, "SLACK_BOT_NOT_FOUND");
+  });
+  server.post("/api/admin/slack-bots", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const name = readBodyString(request.body, "name") ?? "";
+
+    if ([...state.slackBots.values()].some((bot) => bot.name === name)) {
+      return reply.status(409).send({ error: `name '${name}' is already used`, timestamp: nowIso() });
+    }
+
+    return reply.status(201).send(toSlackBotResponse(createSlackBot(request.body)));
+  });
+  server.put("/api/admin/slack-bots/:id", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const { id } = request.params as { readonly id: string };
+    const existing = findCompatRecord(state.slackBots, id);
+
+    if (!existing) {
+      return notFound(reply, "SLACK_BOT_NOT_FOUND");
+    }
+
+    return toSlackBotResponse(updateSlackBot(existing, request.body));
+  });
+  server.delete("/api/admin/slack-bots/:id", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const { id } = request.params as { readonly id: string };
+    const existing = findCompatRecord(state.slackBots, id);
+
+    if (!existing) {
+      return notFound(reply, "SLACK_BOT_NOT_FOUND");
+    }
+
+    state.slackBots.delete(existing.id);
+    return reply.status(204).send();
+  });
+}
+
 function registerSlackCompatibilityRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  registerCollectionRoutes(server, "/api/admin/slack-bots", state.slackBots, { authorize: options.authorizeAdmin });
+  registerSlackBotRoutes(server, options);
   server.get("/api/proactive-channels", async () => []);
   server.post("/api/proactive-channels", async (request) => ({ created: true, ...toJsonObject(request.body) }));
   server.delete("/api/proactive-channels/:channelId", async (request) => ({
@@ -4080,6 +4141,50 @@ function documentMetadata(body: CompatBody): JsonObject {
   return typeof body.title === "string" && body.title.trim().length > 0
     ? { ...metadata, title: body.title }
     : metadata;
+}
+
+function createSlackBot(bodyValue: unknown): CompatRecord {
+  const body = toBody(bodyValue);
+  return createRecord(state.slackBots, {
+    appToken: readBodyString(body, "appToken") ?? "",
+    botToken: readBodyString(body, "botToken") ?? "",
+    defaultChannel: readNullableStringField(body, "defaultChannel"),
+    enabled: readBoolean(body.enabled, true),
+    name: readBodyString(body, "name") ?? "",
+    personaId: readBodyString(body, "personaId") ?? ""
+  }, "slack_bot");
+}
+
+function updateSlackBot(existing: CompatRecord, bodyValue: unknown): CompatRecord {
+  const body = toBody(bodyValue);
+  return createRecord(state.slackBots, {
+    ...existing,
+    appToken: readBodyString(body, "appToken") ?? stringField(existing.appToken, ""),
+    botToken: readBodyString(body, "botToken") ?? stringField(existing.botToken, ""),
+    defaultChannel: readOptionalStringField(body, "defaultChannel", existing.defaultChannel),
+    enabled: readBoolean(body.enabled, readBoolean(existing.enabled, true)),
+    name: readBodyString(body, "name") ?? stringField(existing.name, ""),
+    personaId: readBodyString(body, "personaId") ?? stringField(existing.personaId, "")
+  }, "slack_bot");
+}
+
+function toSlackBotResponse(record: JsonObject) {
+  return {
+    appTokenMasked: maskSlackToken(record.appToken),
+    botTokenMasked: maskSlackToken(record.botToken),
+    createdAt: stringField(record.createdAt, nowIso()),
+    defaultChannel: nullableStringResponse(record.defaultChannel),
+    enabled: readBoolean(record.enabled, true),
+    id: stringField(record.id, ""),
+    name: stringField(record.name, ""),
+    personaId: stringField(record.personaId, ""),
+    updatedAt: stringField(record.updatedAt, nowIso())
+  };
+}
+
+function maskSlackToken(value: unknown): string {
+  const token = typeof value === "string" ? value : "";
+  return `${token.slice(0, 6)}***`;
 }
 
 function createPromptExperiment(request: FastifyRequest): CompatRecord {

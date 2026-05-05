@@ -1432,6 +1432,75 @@ describe("api server", () => {
     expect(deleted.statusCode).toBe(204);
   });
 
+  it("matches Reactor Slack bot management response contracts", async () => {
+    const authService = createAuthService();
+    const registered = authService.register({
+      email: "first_account",
+      name: "First",
+      password: "password-1"
+    });
+    const server = buildServer({ authService, logger: false, requireAuth: true });
+    const headers = { authorization: `Bearer ${registered.token}` };
+
+    const created = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        appToken: "xapp-token-value",
+        botToken: "xoxb-token-value",
+        defaultChannel: "channel-1",
+        name: "support-bot",
+        personaId: "persona-1"
+      },
+      url: "/api/admin/slack-bots"
+    });
+    const botId = created.json().id as string;
+    const duplicate = await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        appToken: "xapp-other",
+        botToken: "xoxb-other",
+        name: "support-bot",
+        personaId: "persona-2"
+      },
+      url: "/api/admin/slack-bots"
+    });
+    const updated = await server.inject({
+      headers,
+      method: "PUT",
+      payload: {
+        enabled: false,
+        name: "renamed-bot"
+      },
+      url: `/api/admin/slack-bots/${botId}`
+    });
+    const listed = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/admin/slack-bots"
+    });
+    const deleted = await server.inject({
+      headers,
+      method: "DELETE",
+      url: `/api/admin/slack-bots/${botId}`
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      appTokenMasked: "xapp-t***",
+      botTokenMasked: "xoxb-t***",
+      defaultChannel: "channel-1",
+      enabled: true,
+      name: "support-bot",
+      personaId: "persona-1"
+    });
+    expect(duplicate.statusCode).toBe(409);
+    expect(updated.json()).toMatchObject({ enabled: false, id: botId, name: "renamed-bot" });
+    expect(listed.json()).toMatchObject([{ id: botId, name: "renamed-bot" }]);
+    expect(deleted.statusCode).toBe(204);
+  });
+
   it("serves Reactor-compatible aliases with stateful management behavior", async () => {
     const authService = createAuthService();
     const registered = authService.register({
