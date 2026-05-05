@@ -13,7 +13,8 @@
     "check": "pnpm build && pnpm test",
     "lint": "pnpm -r --sort --if-present lint",
     "test": "pnpm -r --sort --if-present test",
-    "typecheck": "pnpm -r --sort --if-present typecheck"
+    "typecheck": "pnpm -r --sort --if-present typecheck",
+    "verify:reactor-routes": "node scripts/verify-reactor-route-parity.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.12.2",

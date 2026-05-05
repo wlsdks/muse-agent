@@ -1,6 +1,6 @@
 # Muse Migration Plan
 
-Source baseline: Reactor has 31 modules under `/modules`.
+Source baseline: Reactor has 28 Gradle modules under `/modules` plus the root `app` bootstrap project.
 
 Current Muse baseline:
 - Packages: 23
@@ -12,8 +12,11 @@ Current Muse baseline:
 
 | Bucket | Count | Meaning |
 | --- | ---: | --- |
-| Reactor modules with Muse landing zones | 31 | Every source module has a package or API target |
-| Functionally exercised migration areas | 31 | Core behavior exists and is covered by package/API tests |
+| Reactor source modules with Muse landing zones | 28 | Every `modules/*` source module has a package or API target |
+| Reactor included projects with Muse landing zones | 29 | `app` plus all 28 source modules are mapped |
+| Cross-cutting compatibility areas | 3 | Context, response filtering, and multi-agent behavior are tracked as capabilities, not Reactor source modules |
+| HTTP route parity | 255 / 255 | Every Reactor controller route under `app` and `modules` is registered in Muse |
+| Functionally exercised source modules | 28 | Core behavior exists and is covered by package/API tests |
 | Deep-hardening areas still open | 0 | No known source module remains without functional and tested coverage |
 | Remaining unmapped modules | 0 | No source module is without a target |
 
@@ -21,6 +24,7 @@ Current Muse baseline:
 
 | Reactor module | Muse target | Current status |
 | --- | --- | --- |
+| `app` | `apps/api` | Runtime bootstrap, environment assembly, Fastify server entrypoint |
 | `agent` | `packages/agent-core` | ReAct loop, tool execution, streaming, guards, hooks, cache, RAG, history |
 | `api` | `apps/api` | Chat, SSE chat, auth, settings, agent specs, history, MCP, scheduler, quality routes |
 | `admin` | `apps/api`, `packages/runtime-state`, `packages/db` | Metrics, cache, alert, cost, SLO, tenant ops |
@@ -29,7 +33,6 @@ Current Muse baseline:
 | `autoconfigure` | `packages/autoconfigure` | Environment-driven runtime assembly and DB-backed store selection exist |
 | `cache` | `packages/cache` | Response cache, scope fingerprint, TTL invalidation, prompt-cache metadata, stats |
 | `common` | `packages/shared` | Shared IDs, JSON, and common value types exist |
-| `context` | `packages/memory` | Context trimming and message-pair handling exist |
 | `core` | `apps/api`, `packages/autoconfigure` | Fastify bootstrap and runtime assembly replace Spring Boot core |
 | `eval` | `packages/eval`, `apps/api` | Eval case model, judges, runner, summaries, and admin API exist |
 | `guard` | `packages/policy`, `packages/agent-core` | Input/output guards and fail-close runtime integration exist |
@@ -39,24 +42,36 @@ Current Muse baseline:
 | `memory` | `packages/memory`, `packages/runtime-state` | Context, checkpoints, run history, and stores exist |
 | `mcp` | `packages/mcp`, `apps/api` | SDK transports, health checks, reconnect, and management APIs exist |
 | `model-routing` | `packages/model` | Provider registry, prefix routing, and OpenAI-compatible provider exist |
-| `multi-agent` | `packages/multi-agent` | Supervisor, worker selection, fallback, and handoff trace primitives exist |
 | `observability` | `packages/observability`, `packages/runtime-state` | Tracing, metrics, and history stores exist |
 | `persistence-schema` | `packages/db` | Kysely schema covers runtime, scheduler, MCP, and admin state |
 | `promptlab` | `packages/promptlab`, `apps/api` | Prompt variants, experiments, runner, ranking, and admin API exist |
 | `prompts` | `packages/prompts` | Prompt assembly, response format instructions, and cache boundary helpers exist |
 | `rag` | `packages/rag` | Chunking, BM25/RRF retrieval, reranking, context building, and in-memory corpus exist |
 | `resilience` | `packages/resilience` | Circuit breaker registry, retry, timeout, and model fallback primitives exist |
-| `response` | `packages/policy`, `packages/agent-core` | Output guards, source filters, and structured filters exist |
 | `runtime-settings` | `packages/runtime-settings`, `apps/api` | Runtime settings service/store and API surface exist |
 | `scheduler` | `packages/scheduler`, `apps/api` | CRUD, execution records, cron, and scheduler locks exist |
 | `slack` | `packages/integrations`, `apps/api` | Signed Events API, slash command, and response_url integration exist |
 | `tool` | `packages/tools` | Tool registry, executor, sanitizer, and approval path exist |
 | `web` | `apps/api` | HTTP/SSE run endpoints and typed error surfaces exist |
 
+## Cross-Cutting Compatibility Areas
+
+These are not Reactor Gradle modules, but they are kept as explicit migration checks because they affect parity across
+multiple source modules.
+
+| Area | Muse target | Current status |
+| --- | --- | --- |
+| Context handling | `packages/memory`, `packages/agent-core` | Context trimming and assistant/tool message-pair handling exist |
+| Response filtering | `packages/policy`, `packages/agent-core` | Output guards, source filters, and structured filters exist |
+| Multi-agent orchestration | `packages/multi-agent` | Supervisor, worker selection, fallback, and handoff trace primitives exist |
+
 ## Remaining Deep-Hardening Areas
 
 No known source module remains unmapped.
 Continued work should be treated as new hardening or product expansion, not migration catch-up.
+
+Latest route parity check: `REACTOR_SOURCE_DIR=<local-reactor-path> pnpm verify:reactor-routes` reports 255 Reactor
+routes, 365 Muse routes, and 0 missing Reactor routes.
 
 ## Recent Completion Notes
 
@@ -126,7 +141,8 @@ Continued work should be treated as new hardening or product expansion, not migr
 ## Execution Plan
 
 1. Keep `pnpm check` green as the migration acceptance gate.
-2. Add new work as product hardening tickets rather than migration backlog.
+2. Run `REACTOR_SOURCE_DIR=<local-reactor-path> pnpm verify:reactor-routes` after any API compatibility change.
+3. Add new work as product hardening tickets rather than migration backlog.
 
 ## Migration Rules
 
@@ -134,3 +150,4 @@ Continued work should be treated as new hardening or product expansion, not migr
 - Prefer generic examples such as `user-1`, `workspace-1`, `read_file`, and `provider/model`.
 - Each migration unit gets its own conventional commit.
 - Run narrow package tests first, then `pnpm check` before committing.
+- Pass local Reactor paths to verification commands through env vars or CLI args; do not commit machine-specific paths.
