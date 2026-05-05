@@ -5235,6 +5235,80 @@ describe("api server", () => {
     });
   });
 
+  it("handles signed Slack slash commands by posting a question and replying in thread", async () => {
+    const posts: Array<{ readonly channelId: string; readonly text: string; readonly threadTs?: string }> = [];
+    let resolveAnswered!: (value: typeof posts) => void;
+    const answered = new Promise<typeof posts>((resolve) => {
+      resolveAnswered = resolve;
+    });
+    const messageTransport: SlackMessageTransport = {
+      postMessage: (input) => {
+        posts.push(input);
+
+        if (input.threadTs) {
+          resolveAnswered(posts);
+        }
+
+        return {
+          ok: true,
+          statusCode: 200,
+          ts: input.threadTs ? "1770000000.000200" : "1770000000.000100"
+        };
+      }
+    };
+    const agentRuntime = createAgentRuntime({
+      modelProvider: createProvider("Threaded Slack answer")
+    });
+    const server = buildServer({
+      agentRuntime,
+      defaultModel: "provider/model",
+      logger: false,
+      slack: {
+        enabled: true,
+        messageTransport,
+        now: () => new Date(1_770_000_000_000),
+        signingSecret: "signing-secret"
+      }
+    });
+    const raw = new URLSearchParams({
+      channel_id: "channel-1",
+      command: "/muse",
+      response_url: "https://example.invalid/respond",
+      team_id: "workspace-1",
+      text: "hello",
+      trigger_id: "trigger-1",
+      user_id: "user-1"
+    }).toString();
+    const timestamp = "1770000000";
+    const response = await server.inject({
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "x-slack-request-timestamp": timestamp,
+        "x-slack-signature": signSlackRequestBody(raw, timestamp, "signing-secret")
+      },
+      method: "POST",
+      payload: raw,
+      url: "/api/slack/commands"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      response_type: "ephemeral",
+      text: "Processing your request..."
+    });
+    await expect(answered).resolves.toEqual([
+      {
+        channelId: "channel-1",
+        text: "*<@user-1> 님의 질문*\nhello"
+      },
+      {
+        channelId: "channel-1",
+        text: "<@user-1> Threaded Slack answer",
+        threadTs: "1770000000.000100"
+      }
+    ]);
+  });
+
   it("handles signed Slack URL verification events", async () => {
     const server = buildServer({
       logger: false,

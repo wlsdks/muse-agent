@@ -113,7 +113,7 @@ async function handleSlashCommand(
   }
 
   if (envelope.responseUrl) {
-    void dispatchResponseUrl(envelope, options).catch(() => undefined);
+    void dispatchSlashCommandResponse(envelope, options).catch(() => undefined);
     return reply.send({
       response_type: "ephemeral",
       text: processingText
@@ -121,6 +121,39 @@ async function handleSlashCommand(
   }
 
   return reply.send(toSlackCommandAck(await executeSlackCommand(envelope, options)));
+}
+
+async function dispatchSlashCommandResponse(
+  envelope: CommandEnvelope,
+  options: RegisterSlackRoutesOptions
+): Promise<void> {
+  const transport = createSlackMessageTransport(options);
+
+  if (!transport) {
+    await dispatchResponseUrl(envelope, options);
+    return;
+  }
+
+  const question = await transport.postMessage({
+    channelId: slashCommandTargetChannelId(envelope),
+    text: `*<@${envelope.userId}> 님의 질문*\n${envelope.text.trim()}`
+  });
+
+  if (!question.ok || !question.ts) {
+    await dispatchResponseUrl(envelope, options);
+    return;
+  }
+
+  const response = await executeSlackCommand(envelope, options).catch((error) => ({
+    text: error instanceof Error ? `Agent run failed: ${error.message}` : "Agent run failed",
+    visibility: "ephemeral" as const
+  }));
+
+  await transport.postMessage({
+    channelId: slashCommandTargetChannelId(envelope),
+    text: prependSlackUserMention(toSlackCommandAck(response).text, envelope.userId),
+    threadTs: question.ts
+  });
 }
 
 async function handleEventCallback(
@@ -251,8 +284,7 @@ async function dispatchSlackEventResponse(
     return;
   }
 
-  const transport = options.slack?.messageTransport
-    ?? (options.slack?.botToken ? new FetchSlackWebApiMessageTransport(options.slack.botToken) : undefined);
+  const transport = createSlackMessageTransport(options);
 
   if (!transport) {
     return;
@@ -263,6 +295,11 @@ async function dispatchSlackEventResponse(
     text: prependSlackUserMention(toSlackCommandAck(response).text, envelope.userId),
     threadTs
   });
+}
+
+function createSlackMessageTransport(options: RegisterSlackRoutesOptions): SlackMessageTransport | undefined {
+  return options.slack?.messageTransport
+    ?? (options.slack?.botToken ? new FetchSlackWebApiMessageTransport(options.slack.botToken) : undefined);
 }
 
 async function dispatchResponseUrl(envelope: CommandEnvelope, options: RegisterSlackRoutesOptions): Promise<void> {
@@ -277,6 +314,11 @@ async function dispatchResponseUrl(envelope: CommandEnvelope, options: RegisterS
     response_type: ack.response_type,
     text: ack.text
   });
+}
+
+function slashCommandTargetChannelId(envelope: CommandEnvelope): string {
+  const channelId = envelope.channelId ?? "";
+  return channelId.startsWith("D") && envelope.userId ? envelope.userId : channelId;
 }
 
 function slackThreadTs(envelope: CommandEnvelope): string | undefined {
