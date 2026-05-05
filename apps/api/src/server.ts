@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import {
   GuardBlockedError,
   OutputGuardBlockedError,
@@ -377,20 +378,26 @@ async function runChatStream(
   reply: {
     header(name: string, value: string): unknown;
     status(statusCode: number): { send(payload: unknown): void };
+    send(payload: unknown): unknown;
   },
   options: ServerOptions
 ) {
-  const response = await runChat(body, reply, options);
+  if (!options.agentRuntime) {
+    return reply.status(503).send({
+      code: "AGENT_RUNTIME_UNAVAILABLE",
+      message: "Agent runtime is not configured"
+    });
+  }
 
-  if (!isRecord(response) || typeof response.response !== "string") {
-    return response;
+  const parsed = parseAgentRunInput(body, options.defaultModel ?? "default");
+
+  if (!parsed.ok) {
+    return reply.status(400).send(parsed.error);
   }
 
   reply.header("content-type", "text/event-stream; charset=utf-8");
-  return [
-    `event: message\ndata: ${sseData(response.response)}\n`,
-    `event: done\ndata: ${sseData(JSON.stringify({ runId: response.runId }))}\n`
-  ].join("\n");
+  reply.header("cache-control", "no-cache");
+  return reply.send(Readable.from(toSseStream(options.agentRuntime.stream(parsed.value))));
 }
 
 function parseAgentRunInput(value: unknown, defaultModel: string): ParseResult<AgentRunInput> {
@@ -593,6 +600,32 @@ function isJsonValue(value: unknown): boolean {
 
 function sseData(value: string): string {
   return value.split(/\r?\n/u).map((line) => line.length > 0 ? line : " ").join("\ndata: ");
+}
+
+async function* toSseStream(events: ReturnType<AgentRuntime["stream"]>): AsyncIterable<string> {
+  for await (const event of events) {
+    if (event.type === "text-delta") {
+      yield `event: message\ndata: ${sseData(event.text)}\n\n`;
+      continue;
+    }
+
+    if (event.type === "tool-call") {
+      yield `event: tool_call\ndata: ${sseData(JSON.stringify(event.toolCall))}\n\n`;
+      continue;
+    }
+
+    if (event.type === "error") {
+      yield `event: error\ndata: ${sseData(event.error.message)}\n\n`;
+      continue;
+    }
+
+    yield `event: done\ndata: ${sseData(JSON.stringify({
+      model: event.response.model,
+      response: event.response.output,
+      runId: event.runId,
+      usage: event.response.usage
+    }))}\n\n`;
+  }
 }
 
 function optionalString(value: unknown): string | undefined {

@@ -666,7 +666,11 @@ function createProviderFrom(generate: ModelProvider["generate"]): ModelProvider 
     async listModels() {
       return [];
     },
-    async *stream() {}
+    async *stream(request) {
+      const response = await generate(request);
+      yield { text: response.output, type: "text-delta" as const };
+      yield { response, type: "done" as const };
+    }
   };
 }
 

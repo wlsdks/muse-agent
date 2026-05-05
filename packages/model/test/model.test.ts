@@ -213,4 +213,35 @@ describe("OpenAICompatibleProvider", () => {
       usage: { inputTokens: 5, outputTokens: 3 }
     });
   });
+
+  it("streams server-sent event text deltas into model events", async () => {
+    const provider = new OpenAICompatibleProvider({
+      baseUrl: "https://llm.example.test/v1",
+      defaultModel: "gpt-test",
+      fetch: async () => new Response(new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder();
+          controller.enqueue(encoder.encode(
+            "data: {\"id\":\"chunk-1\",\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"content\":\"hel\"}}]}\n\n"
+          ));
+          controller.enqueue(encoder.encode(
+            "data: {\"id\":\"chunk-1\",\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"content\":\"lo\"}}]}\n\n"
+          ));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        }
+      }))
+    });
+    const events = [];
+
+    for await (const event of provider.stream({ messages: [], model: "gpt-test" })) {
+      events.push(event);
+    }
+
+    expect(events).toMatchObject([
+      { text: "hel", type: "text-delta" },
+      { text: "lo", type: "text-delta" },
+      { response: { output: "hello" }, type: "done" }
+    ]);
+  });
 });

@@ -154,9 +154,33 @@ export class OpenAICompatibleProvider implements ModelProvider {
   }
 
   async *stream(request: ModelRequest): AsyncIterable<ModelEvent> {
-    const response = await this.generate(request);
-    yield { text: response.output, type: "text-delta" };
-    yield { response, type: "done" };
+    const response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
+      body: JSON.stringify({ ...toOpenAIChatRequest(request, this.defaultModel), stream: true }),
+      headers: this.requestHeaders(),
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      yield {
+        error: new ModelProviderError(
+          this.id,
+          `OpenAI-compatible stream failed with ${response.status}: ${body || response.statusText}`,
+          response.status >= 500
+        ),
+        type: "error"
+      };
+      return;
+    }
+
+    if (!response.body) {
+      const generated = await this.generate(request);
+      yield { text: generated.output, type: "text-delta" };
+      yield { response: generated, type: "done" };
+      return;
+    }
+
+    yield* parseOpenAIStream(this.id, request.model, response.body);
   }
 
   private requestHeaders(): Record<string, string> {
@@ -400,6 +424,87 @@ function fromOpenAIChatResponse(providerId: string, requestedModel: string, payl
     toolCalls: parseOpenAIToolCalls(message?.tool_calls),
     usage: parseOpenAIUsage(payload.usage)
   };
+}
+
+async function* parseOpenAIStream(
+  providerId: string,
+  requestedModel: string,
+  body: ReadableStream<Uint8Array>
+): AsyncIterable<ModelEvent> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let output = "";
+  let responseId = `${providerId}-stream`;
+  let model = requestedModel;
+
+  while (true) {
+    const { done, value } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split(/\n\n/u);
+    buffer = events.pop() ?? "";
+
+    for (const event of events) {
+      const data = readSseData(event);
+
+      if (!data || data === "[DONE]") {
+        continue;
+      }
+
+      const parsed = parseJson(data);
+
+      if (!isRecord(parsed)) {
+        continue;
+      }
+
+      responseId = typeof parsed.id === "string" ? parsed.id : responseId;
+      model = typeof parsed.model === "string" ? parsed.model : model;
+
+      const delta = readOpenAIStreamDelta(parsed);
+
+      if (delta.length > 0) {
+        output += delta;
+        yield { text: delta, type: "text-delta" };
+      }
+    }
+  }
+
+  yield {
+    response: {
+      id: responseId,
+      model,
+      output
+    },
+    type: "done"
+  };
+}
+
+function readSseData(event: string): string | undefined {
+  const lines = event
+    .split(/\r?\n/u)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice("data:".length).trim());
+
+  return lines.length > 0 ? lines.join("\n") : undefined;
+}
+
+function readOpenAIStreamDelta(payload: Record<string, unknown>): string {
+  const choice = Array.isArray(payload.choices) && isRecord(payload.choices[0]) ? payload.choices[0] : undefined;
+  const delta = isRecord(choice?.delta) ? choice.delta : undefined;
+  return readOpenAIContent(delta?.content);
+}
+
+function parseJson(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return undefined;
+  }
 }
 
 function readOpenAIContent(value: unknown): string {

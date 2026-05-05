@@ -9,6 +9,7 @@ import {
 import {
   ModelProviderRegistry,
   parseModelName,
+  type ModelEvent,
   type ModelMessage,
   type ModelProvider,
   type ModelRequest,
@@ -125,6 +126,12 @@ export interface AgentRunResult {
   readonly fromCache?: boolean;
   readonly toolsUsed?: readonly string[];
 }
+
+export type AgentRuntimeStreamEvent =
+  | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "text-delta" }>)
+  | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call" }>)
+  | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "done" }>)
+  | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "error" }>);
 
 export interface AgentSpecRunReport {
   readonly name: string;
@@ -296,6 +303,92 @@ export class AgentRuntime {
         context.agentSpec,
         { toolsUsed: execution.toolsUsed }
       );
+    } catch (error) {
+      runSpan.setError(error);
+      await this.recordRunFailure(context, error);
+      this.recordAgentRun(context, context.input.model, "failed", startedAtMs);
+      await this.invokeHooks("onError", context, error);
+      throw error;
+    } finally {
+      runSpan.end();
+    }
+  }
+
+  async *stream(input: AgentRunInput): AsyncIterable<AgentRuntimeStreamEvent> {
+    const startedAtMs = Date.now();
+    const specApplied = await this.applyAgentSpec(input);
+    const context: AgentRunContext = {
+      agentSpec: specApplied.agentSpec,
+      input: specApplied.input,
+      runId: input.runId ?? createRunId(),
+      startedAt: new Date()
+    };
+    const runSpan = this.tracer.startSpan("muse.agent.stream", {
+      "model.requested": input.model,
+      "run.id": context.runId
+    });
+
+    try {
+      await this.evaluateGuards(context);
+      await this.invokeHooks("beforeStart", context);
+
+      const selected = this.resolveProvider(context.input.model);
+      runSpan.setAttribute("model.selected", selected.model);
+      await this.recordRunStart(context, selected.provider.id, selected.model);
+
+      const contextualizedInput = await this.applyRetrievedContext(context);
+      const preparedRequest = this.prepareModelRequest(contextualizedInput, selected.model);
+      let streamedOutput = "";
+
+      for await (const event of selected.provider.stream({
+        ...preparedRequest.request,
+        maxOutputTokens: this.defaults?.maxOutputTokens,
+        temperature: this.defaults?.temperature,
+        tools: this.modelTools()
+      })) {
+        if (event.type === "text-delta") {
+          streamedOutput += event.text;
+          yield { ...event, runId: context.runId };
+          continue;
+        }
+
+        if (event.type === "tool-call") {
+          yield { ...event, runId: context.runId };
+          continue;
+        }
+
+        if (event.type === "error") {
+          yield { ...event, runId: context.runId };
+          continue;
+        }
+
+        const response = await this.applyOutputGuards(context, event.response);
+        await this.recordRunComplete(context, {
+          finalResponse: response,
+          intermediateMessages: [],
+          toolResults: [],
+          toolsUsed: []
+        });
+        await this.invokeHooks("afterComplete", context, response);
+        this.recordAgentRun(context, response.model, "completed", startedAtMs);
+        yield { response, runId: context.runId, type: "done" };
+        return;
+      }
+
+      const response = await this.applyOutputGuards(context, {
+        id: `${context.runId}:stream`,
+        model: selected.model,
+        output: streamedOutput
+      });
+      await this.recordRunComplete(context, {
+        finalResponse: response,
+        intermediateMessages: [],
+        toolResults: [],
+        toolsUsed: []
+      });
+      await this.invokeHooks("afterComplete", context, response);
+      this.recordAgentRun(context, response.model, "completed", startedAtMs);
+      yield { response, runId: context.runId, type: "done" };
     } catch (error) {
       runSpan.setError(error);
       await this.recordRunFailure(context, error);
