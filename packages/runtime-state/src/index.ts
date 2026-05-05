@@ -86,6 +86,49 @@ export interface InMemoryCheckpointStoreOptions {
   readonly idFactory?: () => string;
 }
 
+export type HookLifecycle = "beforeStart" | "afterComplete" | "onError";
+export type HookTraceStatus = "completed" | "failed";
+
+export interface HookTrace {
+  readonly id: string;
+  readonly runId: string;
+  readonly hookId: string;
+  readonly lifecycle: HookLifecycle;
+  readonly status: HookTraceStatus;
+  readonly durationMs: number;
+  readonly error?: string;
+  readonly metadata: JsonObject;
+  readonly startedAt: Date;
+  readonly completedAt: Date;
+  readonly createdAt: Date;
+}
+
+export interface RecordHookTraceInput {
+  readonly id?: string;
+  readonly runId: string;
+  readonly hookId: string;
+  readonly lifecycle: HookLifecycle;
+  readonly status: HookTraceStatus;
+  readonly durationMs?: number;
+  readonly error?: string;
+  readonly metadata?: JsonObject;
+  readonly startedAt?: Date;
+  readonly completedAt?: Date;
+  readonly createdAt?: Date;
+}
+
+export interface HookTraceStore {
+  record(input: RecordHookTraceInput): Awaitable<HookTrace>;
+  listByRunId(runId: string): Awaitable<readonly HookTrace[]>;
+  listRecent(limit?: number): Awaitable<readonly HookTrace[]>;
+}
+
+export interface InMemoryHookTraceStoreOptions {
+  readonly maxTraces?: number;
+  readonly idFactory?: () => string;
+  readonly now?: () => Date;
+}
+
 export class InMemoryPendingApprovalStore implements PendingApprovalStore {
   static readonly defaultMaxPending = 10_000;
   static readonly defaultTimeoutMs = 300_000;
@@ -278,6 +321,55 @@ export class InMemoryCheckpointStore implements CheckpointStore {
   }
 }
 
+export class InMemoryHookTraceStore implements HookTraceStore {
+  static readonly defaultMaxTraces = 10_000;
+
+  private readonly maxTraces: number;
+  private readonly idFactory: () => string;
+  private readonly now: () => Date;
+  private readonly traces: HookTrace[] = [];
+
+  constructor(options: InMemoryHookTraceStoreOptions = {}) {
+    this.maxTraces = options.maxTraces ?? InMemoryHookTraceStore.defaultMaxTraces;
+    this.idFactory = options.idFactory ?? (() => createRunId("hook_trace"));
+    this.now = options.now ?? (() => new Date());
+  }
+
+  record(input: RecordHookTraceInput): HookTrace {
+    const startedAt = input.startedAt ?? this.now();
+    const completedAt = input.completedAt ?? this.now();
+    const trace: HookTrace = {
+      completedAt,
+      createdAt: input.createdAt ?? this.now(),
+      durationMs: input.durationMs ?? Math.max(0, completedAt.getTime() - startedAt.getTime()),
+      ...(input.error ? { error: input.error } : {}),
+      hookId: input.hookId,
+      id: input.id ?? this.idFactory(),
+      lifecycle: input.lifecycle,
+      metadata: input.metadata ?? {},
+      runId: input.runId,
+      startedAt,
+      status: input.status
+    };
+
+    this.traces.push(trace);
+    this.traces.splice(0, Math.max(0, this.traces.length - this.maxTraces));
+    return trace;
+  }
+
+  listByRunId(runId: string): readonly HookTrace[] {
+    return this.traces
+      .filter((trace) => trace.runId === runId)
+      .sort(compareHookTraces);
+  }
+
+  listRecent(limit = 100): readonly HookTrace[] {
+    return [...this.traces]
+      .sort((left, right) => compareHookTraces(right, left))
+      .slice(0, Math.max(0, limit));
+  }
+}
+
 interface PendingApprovalEntry {
   readonly request: ToolApprovalRequest;
   readonly resolve: (response: ToolApprovalResponse) => void;
@@ -295,6 +387,14 @@ function compareCheckpoints(left: ExecutionCheckpoint, right: ExecutionCheckpoin
   return left.step - right.step || left.createdAt.getTime() - right.createdAt.getTime();
 }
 
-export { KyselyCheckpointStore, KyselyPendingApprovalStore } from "./kysely-stores.js";
-export type { KyselyCheckpointStoreOptions, KyselyPendingApprovalStoreOptions } from "./kysely-stores.js";
+function compareHookTraces(left: HookTrace, right: HookTrace): number {
+  return left.startedAt.getTime() - right.startedAt.getTime() || left.createdAt.getTime() - right.createdAt.getTime();
+}
+
+export { KyselyCheckpointStore, KyselyHookTraceStore, KyselyPendingApprovalStore } from "./kysely-stores.js";
+export type {
+  KyselyCheckpointStoreOptions,
+  KyselyHookTraceStoreOptions,
+  KyselyPendingApprovalStoreOptions
+} from "./kysely-stores.js";
 export * from "./run-history.js";

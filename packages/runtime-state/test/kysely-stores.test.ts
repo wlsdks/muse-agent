@@ -12,9 +12,11 @@ import {
   buildApprovalDecisionQuery,
   buildCheckpointUpsertQuery,
   buildPendingApprovalsQuery,
+  createHookTraceInsert,
   createPendingApprovalInsert,
   mapApprovalResponse,
   mapCheckpointRow,
+  mapHookTraceRow,
   mapPendingApprovalRow
 } from "../src/kysely-stores.js";
 
@@ -155,6 +157,40 @@ describe("Kysely runtime state stores", () => {
     ).toEqual({
       approved: true,
       modifiedArguments: { path: "docs/final.md" }
+    });
+  });
+
+  it("creates and maps hook trace rows for persisted hook observability", () => {
+    const now = new Date("2026-01-01T00:00:00.000Z");
+    const completedAt = new Date("2026-01-01T00:00:00.025Z");
+    const row = createHookTraceInsert(
+      {
+        completedAt,
+        error: "hook failed",
+        hookId: "audit",
+        lifecycle: "afterComplete",
+        metadata: { tenantId: "tenant-1" },
+        runId: "run-1",
+        startedAt: now,
+        status: "failed"
+      },
+      { idFactory: () => "hook-trace-1", now: () => now }
+    );
+
+    expect(row).toMatchObject({
+      duration_ms: 25,
+      error: "hook failed",
+      hook_id: "audit",
+      id: "hook-trace-1",
+      lifecycle: "afterComplete",
+      status: "failed"
+    });
+    expect(mapHookTraceRow(row)).toMatchObject({
+      durationMs: 25,
+      error: "hook failed",
+      hookId: "audit",
+      metadata: { tenantId: "tenant-1" },
+      runId: "run-1"
     });
   });
 });

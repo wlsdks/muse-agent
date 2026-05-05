@@ -8,6 +8,7 @@ export const migrations: readonly SqlMigration[] = [
   {
     down: `
       DROP TABLE IF EXISTS trace_events;
+      DROP TABLE IF EXISTS hook_traces;
       DROP TABLE IF EXISTS checkpoints;
       DROP TABLE IF EXISTS scheduled_job_executions;
       DROP TABLE IF EXISTS scheduled_jobs;
@@ -128,6 +129,25 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE INDEX IF NOT EXISTS idx_trace_events_run_started_at
         ON trace_events(run_id, started_at);
+
+      CREATE TABLE IF NOT EXISTS hook_traces (
+        id VARCHAR(128) PRIMARY KEY,
+        run_id VARCHAR(128) NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+        hook_id VARCHAR(200) NOT NULL,
+        lifecycle VARCHAR(32) NOT NULL,
+        status VARCHAR(32) NOT NULL,
+        duration_ms BIGINT NOT NULL DEFAULT 0,
+        error TEXT,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        started_at TIMESTAMPTZ NOT NULL,
+        completed_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_hook_traces_run_started_at
+        ON hook_traces(run_id, started_at);
+      CREATE INDEX IF NOT EXISTS idx_hook_traces_hook_status_created_at
+        ON hook_traces(hook_id, status, created_at DESC);
 
       CREATE TABLE IF NOT EXISTS runtime_settings (
         key VARCHAR(200) PRIMARY KEY,

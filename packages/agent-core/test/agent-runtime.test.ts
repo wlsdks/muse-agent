@@ -4,7 +4,7 @@ import { InMemoryResponseCache } from "@muse/cache";
 import { ModelProviderRegistry, type ModelProvider, type ModelRequest, type ModelResponse } from "@muse/model";
 import { InMemoryAgentMetrics, InMemoryMuseTracer } from "@muse/observability";
 import { DefaultRagPipeline, InMemoryRagCorpus, SimpleReranker } from "@muse/rag";
-import { InMemoryAgentRunHistoryStore } from "@muse/runtime-state";
+import { InMemoryAgentRunHistoryStore, InMemoryHookTraceStore } from "@muse/runtime-state";
 import { ToolRegistry } from "@muse/tools";
 import {
   createAgentRuntime,
@@ -14,6 +14,7 @@ import {
   createSourceBlockResponseFilter,
   createSystemPromptLeakageOutputGuard,
   GuardBlockedError,
+  HookRegistry,
   ModelRoutingError,
   OutputGuardBlockedError
 } from "../src/index.js";
@@ -354,6 +355,58 @@ describe("AgentRuntime", () => {
     });
 
     expect(afterComplete).toHaveBeenCalledOnce();
+  });
+
+  it("uses registered hooks and records hook traces without blocking the run", async () => {
+    const beforeStart = vi.fn();
+    const hookTraceStore = new InMemoryHookTraceStore({
+      idFactory: sequentialIds("hook-trace"),
+      now: () => new Date("2026-01-01T00:00:00.000Z")
+    });
+    const hookRegistry = new HookRegistry([
+      {
+        beforeStart,
+        id: "registered-before"
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      hookRegistry,
+      hookTraceStore,
+      hooks: [
+        {
+          afterComplete: () => {
+            throw new Error("observer failed");
+          },
+          id: "broken-after"
+        }
+      ],
+      modelProvider: createProvider()
+    });
+
+    await expect(
+      runtime.run({
+        messages: [{ content: "Hello", role: "user" }],
+        model: "provider/model",
+        runId: "run-hooks"
+      })
+    ).resolves.toMatchObject({
+      response: { output: "Muse response" }
+    });
+
+    expect(beforeStart).toHaveBeenCalledOnce();
+    expect(hookTraceStore.listByRunId("run-hooks")).toEqual([
+      expect.objectContaining({
+        hookId: "registered-before",
+        lifecycle: "beforeStart",
+        status: "completed"
+      }),
+      expect.objectContaining({
+        error: "observer failed",
+        hookId: "broken-after",
+        lifecycle: "afterComplete",
+        status: "failed"
+      })
+    ]);
   });
 
   it("blocks prompt injection through a default input guard", async () => {
@@ -837,3 +890,8 @@ describe("AgentRuntime", () => {
     });
   });
 });
+
+function sequentialIds(prefix: string): () => string {
+  let next = 0;
+  return () => `${prefix}-${++next}`;
+}

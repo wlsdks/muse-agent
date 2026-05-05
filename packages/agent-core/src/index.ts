@@ -33,7 +33,7 @@ import {
   type FallbackStrategy,
   type RetryOptions
 } from "@muse/resilience";
-import type { AgentRunHistoryStore, AgentRunMode } from "@muse/runtime-state";
+import type { AgentRunHistoryStore, AgentRunMode, HookLifecycle, HookTraceStore } from "@muse/runtime-state";
 import { trimConversationMessages, type ConversationTrimOptions } from "@muse/memory";
 import { detectSystemPromptLeakage, findInjectionPatterns, maskPii, sanitizeSourceBlocks } from "@muse/policy";
 import { createRunId, type JsonObject } from "@muse/shared";
@@ -107,6 +107,8 @@ export interface AgentRuntimeOptions {
   readonly modelRegistry?: ModelProviderRegistry;
   readonly agentSpecResolver?: AgentSpecResolver;
   readonly historyStore?: AgentRunHistoryStore;
+  readonly hookRegistry?: HookRegistry;
+  readonly hookTraceStore?: HookTraceStore;
   readonly responseCache?: ResponseCache;
   readonly cacheMetrics?: CacheMetricsRecorder;
   readonly ragPipeline?: RagPipeline;
@@ -190,11 +192,35 @@ export class ModelRoutingError extends Error {
   }
 }
 
+export class HookRegistry {
+  private readonly hooks = new Map<string, HookStage>();
+
+  constructor(hooks: Iterable<HookStage> = []) {
+    for (const hook of hooks) {
+      this.register(hook);
+    }
+  }
+
+  register(hook: HookStage): void {
+    this.hooks.set(hook.id, hook);
+  }
+
+  unregister(id: string): boolean {
+    return this.hooks.delete(id);
+  }
+
+  list(): readonly HookStage[] {
+    return [...this.hooks.values()];
+  }
+}
+
 export class AgentRuntime {
   private readonly modelProvider?: ModelProvider;
   private readonly modelRegistry?: ModelProviderRegistry;
   private readonly agentSpecResolver?: AgentSpecResolver;
   private readonly historyStore?: AgentRunHistoryStore;
+  private readonly hookRegistry?: HookRegistry;
+  private readonly hookTraceStore?: HookTraceStore;
   private readonly responseCache?: ResponseCache;
   private readonly cacheMetrics?: CacheMetricsRecorder;
   private readonly ragPipeline?: RagPipeline;
@@ -219,6 +245,8 @@ export class AgentRuntime {
     this.modelRegistry = options.modelRegistry;
     this.agentSpecResolver = options.agentSpecResolver;
     this.historyStore = options.historyStore;
+    this.hookRegistry = options.hookRegistry;
+    this.hookTraceStore = options.hookTraceStore;
     this.responseCache = options.responseCache;
     this.cacheMetrics = options.cacheMetrics;
     this.ragPipeline = options.ragPipeline;
@@ -1030,18 +1058,67 @@ export class AgentRuntime {
   ): Promise<void>;
   private async invokeHooks(name: "onError", context: AgentRunContext, error: unknown): Promise<void>;
   private async invokeHooks(name: keyof HookStage, context: AgentRunContext, value?: unknown): Promise<void> {
-    for (const hook of this.hooks) {
+    for (const hook of this.hooksForInvocation()) {
+      const invoke = hookInvocation(hook, name, context, value);
+
+      if (!invoke) {
+        continue;
+      }
+
+      const startedAt = new Date();
+      const startedAtMs = Date.now();
+
       try {
-        if (name === "beforeStart") {
-          await hook.beforeStart?.(context);
-        } else if (name === "afterComplete") {
-          await hook.afterComplete?.(context, value as ModelResponse);
-        } else if (name === "onError") {
-          await hook.onError?.(context, value);
-        }
-      } catch {
+        await invoke();
+        await this.recordHookTrace(context, hook.id, name as HookLifecycle, "completed", startedAt, startedAtMs);
+      } catch (error) {
+        await this.recordHookTrace(context, hook.id, name as HookLifecycle, "failed", startedAt, startedAtMs, error);
         // Hooks are extension points and must fail open.
       }
+    }
+  }
+
+  private hooksForInvocation(): readonly HookStage[] {
+    const hooksById = new Map<string, HookStage>();
+
+    for (const hook of this.hooks) {
+      hooksById.set(hook.id, hook);
+    }
+
+    for (const hook of this.hookRegistry?.list() ?? []) {
+      hooksById.set(hook.id, hook);
+    }
+
+    return [...hooksById.values()];
+  }
+
+  private async recordHookTrace(
+    context: AgentRunContext,
+    hookId: string,
+    lifecycle: HookLifecycle,
+    status: "completed" | "failed",
+    startedAt: Date,
+    startedAtMs: number,
+    error?: unknown
+  ): Promise<void> {
+    if (!this.hookTraceStore) {
+      return;
+    }
+
+    try {
+      await this.hookTraceStore.record({
+        completedAt: new Date(),
+        durationMs: Math.max(0, Date.now() - startedAtMs),
+        ...(error ? { error: error instanceof Error ? error.message : "unknown hook failure" } : {}),
+        hookId,
+        lifecycle,
+        ...(context.input.metadata ? { metadata: context.input.metadata } : {}),
+        runId: context.runId,
+        startedAt,
+        status
+      });
+    } catch {
+      // Hook trace recording must not block agent execution.
     }
   }
 
@@ -1217,6 +1294,31 @@ function blockedToolResult(toolCall: ModelToolCall, output: string): ExecutedToo
     },
     toolCall
   };
+}
+
+function hookInvocation(
+  hook: HookStage,
+  name: keyof HookStage,
+  context: AgentRunContext,
+  value: unknown
+): (() => Awaitable<void>) | undefined {
+  const beforeStart = hook.beforeStart;
+  const afterComplete = hook.afterComplete;
+  const onError = hook.onError;
+
+  if (name === "beforeStart" && beforeStart) {
+    return () => beforeStart(context);
+  }
+
+  if (name === "afterComplete" && afterComplete) {
+    return () => afterComplete(context, value as ModelResponse);
+  }
+
+  if (name === "onError" && onError) {
+    return () => onError(context, value);
+  }
+
+  return undefined;
 }
 
 function appendSystemSection(

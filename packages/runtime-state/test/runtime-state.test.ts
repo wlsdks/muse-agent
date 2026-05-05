@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryCheckpointStore, InMemoryPendingApprovalStore } from "../src/index.js";
+import { InMemoryCheckpointStore, InMemoryHookTraceStore, InMemoryPendingApprovalStore } from "../src/index.js";
 
 describe("InMemoryPendingApprovalStore", () => {
   it("resolves a pending approval when approved", async () => {
@@ -130,6 +130,51 @@ describe("InMemoryCheckpointStore", () => {
 
     expect(await store.findByRunId("run-1")).toEqual([]);
     expect(await store.findByRunId("run-2")).toHaveLength(1);
+  });
+});
+
+describe("InMemoryHookTraceStore", () => {
+  it("records hook traces by run and keeps recent traces bounded", () => {
+    const store = new InMemoryHookTraceStore({
+      idFactory: sequentialIds("hook-trace"),
+      maxTraces: 2,
+      now: () => new Date("2026-01-01T00:00:00.000Z")
+    });
+
+    store.record({
+      hookId: "first",
+      lifecycle: "beforeStart",
+      runId: "run-1",
+      status: "completed"
+    });
+    store.record({
+      completedAt: new Date("2026-01-01T00:00:01.000Z"),
+      hookId: "second",
+      lifecycle: "afterComplete",
+      runId: "run-1",
+      startedAt: new Date("2026-01-01T00:00:00.000Z"),
+      status: "failed",
+      error: "hook failed"
+    });
+    store.record({
+      completedAt: new Date("2026-01-01T00:00:02.000Z"),
+      createdAt: new Date("2026-01-01T00:00:02.000Z"),
+      hookId: "third",
+      lifecycle: "onError",
+      runId: "run-2",
+      startedAt: new Date("2026-01-01T00:00:02.000Z"),
+      status: "completed"
+    });
+
+    expect(store.listByRunId("run-1")).toEqual([
+      expect.objectContaining({
+        durationMs: 1_000,
+        error: "hook failed",
+        hookId: "second",
+        status: "failed"
+      })
+    ]);
+    expect(store.listRecent().map((trace) => trace.hookId)).toEqual(["third", "second"]);
   });
 });
 

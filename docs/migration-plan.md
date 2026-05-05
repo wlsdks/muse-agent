@@ -13,8 +13,8 @@ Current Muse baseline:
 | Bucket | Count | Meaning |
 | --- | ---: | --- |
 | Reactor modules with Muse landing zones | 31 | Every source module has a package or API target |
-| Functionally exercised migration areas | 28 | Core behavior exists and is covered by package/API tests |
-| Deep-hardening areas still open | 6 | Behavior exists, but production depth is not complete |
+| Functionally exercised migration areas | 29 | Core behavior exists and is covered by package/API tests |
+| Deep-hardening areas still open | 5 | Behavior exists, but production depth is not complete |
 | Remaining unmapped modules | 0 | No source module is without a target |
 
 ## Completed Migration Areas
@@ -31,6 +31,7 @@ Current Muse baseline:
 | `context` | `packages/memory` | Context trimming and message-pair handling exist |
 | `eval` | `packages/eval`, `apps/api` | Eval case model, judges, runner, summaries, and admin API exist |
 | `guard` | `packages/policy`, `packages/agent-core` | Input/output guards and fail-close runtime integration exist |
+| `hook` | `packages/agent-core`, `packages/runtime-state` | Registry callbacks and hook trace stores exist |
 | `hook-integrations` | `packages/integrations` | Lifecycle webhook dispatch and HMAC signing primitives exist |
 | `intent` | `packages/agent-specs` | Agent specs, resolver, registry, and Kysely mapping exist |
 | `memory` | `packages/memory`, `packages/runtime-state` | Context, checkpoints, run history, and stores exist |
@@ -55,7 +56,6 @@ Current Muse baseline:
 | --- | --- | --- |
 | `admin` | Tenant, alert, cost, and SLO operations are shallow | Add operational stores and routes |
 | `core` | Boundary stability needs continued review | Keep shared contracts minimal and versionable |
-| `hook` | No registry or persisted hook trace model yet | Add typed registry and trace persistence |
 | `mcp` | Reconnect and health policy are shallow | Add health checks, backoff, and reconnect state |
 | `scheduler` | No distributed lock for multi-instance deployment | Add lock abstraction before horizontal scale |
 | `response` | Structured output normalization is still basic | Add JSON/YAML validation pipeline |
@@ -70,15 +70,15 @@ Current Muse baseline:
 - `AgentRuntime.stream()` now executes streamed tool calls through the ReAct loop.
 - API chat parsing now preserves assistant `toolCalls`, keeping message pairs intact.
 - Response filtering strips copied trailing source blocks and buffers text when filters or output guards are active.
+- Hook registry execution now records completed/failed hook traces in runtime state.
 
 ## Execution Plan
 
-1. Add hook registry and persisted hook trace records.
-2. Add MCP reconnect and health policy with backoff state.
-3. Add structured output normalization for JSON/YAML responses.
-4. Expand admin into tenant, alert, cost, and SLO operations.
-5. Add scheduler distributed lock abstraction before multi-instance deployment.
-6. Replace in-memory default stores with production persistence wiring where needed.
+1. Add MCP reconnect and health policy with backoff state.
+2. Add structured output normalization for JSON/YAML responses.
+3. Expand admin into tenant, alert, cost, and SLO operations.
+4. Add scheduler distributed lock abstraction before multi-instance deployment.
+5. Replace in-memory default stores with production persistence wiring where needed.
 
 ## Migration Rules
 

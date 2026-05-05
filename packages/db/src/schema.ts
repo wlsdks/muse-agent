@@ -11,6 +11,7 @@ export interface MuseDatabase {
   readonly agent_specs: AgentSpecTable;
   readonly checkpoints: CheckpointTable;
   readonly conversation_messages: ConversationMessageTable;
+  readonly hook_traces: HookTraceTable;
   readonly mcp_security_policy: McpSecurityPolicyTable;
   readonly mcp_servers: McpServerTable;
   readonly pending_approvals: PendingApprovalTable;
@@ -98,6 +99,20 @@ export interface TraceEventTable {
   readonly attributes: JsonColumn;
   readonly started_at: Timestamp;
   readonly ended_at: NullableTimestamp;
+}
+
+export interface HookTraceTable {
+  readonly id: string;
+  readonly run_id: string;
+  readonly hook_id: string;
+  readonly lifecycle: "beforeStart" | "afterComplete" | "onError";
+  readonly status: "completed" | "failed";
+  readonly duration_ms: number;
+  readonly error: string | null;
+  readonly metadata: JsonColumn;
+  readonly started_at: Timestamp;
+  readonly completed_at: Timestamp;
+  readonly created_at: Timestamp;
 }
 
 export interface RuntimeSettingTable {

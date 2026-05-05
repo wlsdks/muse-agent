@@ -16,6 +16,7 @@ describe("db migrations", () => {
       "pending_approvals",
       "checkpoints",
       "trace_events",
+      "hook_traces",
       "runtime_settings",
       "agent_specs",
       "mcp_servers",

@@ -23,7 +23,7 @@ import { OpenAICompatibleProvider, type ModelProvider } from "@muse/model";
 import { InMemoryAgentMetrics, InMemoryMuseTracer } from "@muse/observability";
 import { CircuitBreakerRegistry } from "@muse/resilience";
 import { InMemoryRuntimeSettingsStore, RuntimeSettingsService } from "@muse/runtime-settings";
-import { InMemoryAgentRunHistoryStore } from "@muse/runtime-state";
+import { InMemoryAgentRunHistoryStore, InMemoryHookTraceStore } from "@muse/runtime-state";
 import {
   DynamicSchedulerService,
   InMemoryScheduledJobExecutionStore,
@@ -50,6 +50,7 @@ export interface MuseRuntimeAssembly {
   };
   readonly defaultModel?: string;
   readonly historyStore: InMemoryAgentRunHistoryStore;
+  readonly hookTraceStore: InMemoryHookTraceStore;
   readonly mcp: {
     readonly manager: McpManager;
     readonly securityPolicyProvider: McpSecurityPolicyProvider;
@@ -92,6 +93,9 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const agentSpecRegistry = new InMemoryAgentSpecRegistry();
   const agentSpecResolver = new RuleBasedAgentSpecResolver(agentSpecRegistry);
   const historyStore = new InMemoryAgentRunHistoryStore();
+  const hookTraceStore = new InMemoryHookTraceStore({
+    maxTraces: parseInteger(env.MUSE_HOOK_TRACE_MAX_ENTRIES, 10_000)
+  });
   const cacheStatsStore = new InMemoryCacheStatsStore();
   const cacheMetrics = new InMemoryCacheMetricsRecorder(cacheStatsStore);
   const responseCache = new InMemoryResponseCache({
@@ -139,6 +143,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
         outputReserveTokens: parseInteger(env.MUSE_LLM_MAX_OUTPUT_TOKENS, 4_096)
       },
       historyStore,
+      hookTraceStore,
       metrics: agentMetrics,
       modelProvider,
       requestTimeoutMs: parseInteger(env.MUSE_MODEL_REQUEST_TIMEOUT_MS, 45_000),
@@ -183,6 +188,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     },
     defaultModel,
     historyStore,
+    hookTraceStore,
     mcp: {
       manager: mcpManager,
       securityPolicyProvider: mcpSecurityPolicyProvider,

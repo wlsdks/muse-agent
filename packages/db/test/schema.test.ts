@@ -10,6 +10,7 @@ describe("MuseDatabase", () => {
       "pending_approvals",
       "checkpoints",
       "trace_events",
+      "hook_traces",
       "mcp_servers",
       "mcp_security_policy",
       "scheduled_jobs",
