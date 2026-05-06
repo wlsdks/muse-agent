@@ -30,6 +30,7 @@ import {
   SlackInteractionDispatcher,
   SlackSignatureVerifier,
   WebhookDispatcher,
+  createWebhookNotificationHook,
   formatSlackMrkdwn,
   parseSlackInteractionPayload,
   parseSlackSlashCommand,
@@ -532,6 +533,65 @@ describe("WebhookDispatcher", () => {
 
     expect(verifyWebhookSignature("{\"ok\":true}", signature, "secret-1")).toBe(true);
     expect(verifyWebhookSignature("{\"ok\":false}", signature, "secret-1")).toBe(false);
+  });
+
+  it("creates a lifecycle hook that dispatches webhook notifications", async () => {
+    const dispatches: unknown[] = [];
+    const hook = createWebhookNotificationHook({
+      dispatcher: {
+        dispatch: async (event) => {
+          dispatches.push(event);
+          return [];
+        }
+      }
+    });
+    const context = {
+      input: {
+        messages: [{ content: "hello", role: "user" }],
+        metadata: { tenantId: "example-tenant" },
+        model: "test-model"
+      },
+      runId: "run-1",
+      startedAt: new Date("2026-05-06T00:00:00.000Z")
+    };
+
+    await hook.beforeStart?.(context);
+    await hook.afterComplete?.(context, {
+      id: "response-1",
+      model: "test-model",
+      output: "done"
+    });
+    await hook.onError?.(context, new Error("failed"));
+
+    expect(hook.id).toBe("webhook-notification");
+    expect(dispatches).toEqual([
+      {
+        payload: {
+          metadata: { tenantId: "example-tenant" },
+          model: "test-model",
+          startedAt: "2026-05-06T00:00:00.000Z"
+        },
+        runId: "run-1",
+        type: "before_start"
+      },
+      {
+        payload: {
+          model: "test-model",
+          outputPreview: "done",
+          responseId: "response-1"
+        },
+        runId: "run-1",
+        type: "after_complete"
+      },
+      {
+        payload: {
+          error: "failed",
+          name: "Error"
+        },
+        runId: "run-1",
+        type: "on_error"
+      }
+    ]);
   });
 
   it("posts Slack response_url payloads as formatted JSON", async () => {

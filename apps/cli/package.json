@@ -18,6 +18,11 @@
     "@clack/prompts": "^1.3.0",
     "@muse/agent-core": "workspace:*",
     "@muse/autoconfigure": "workspace:*",
-    "commander": "^14.0.3"
+    "commander": "^14.0.3",
+    "ink": "^7.0.2",
+    "react": "^19.2.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14"
   }
 }

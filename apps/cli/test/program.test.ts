@@ -246,4 +246,34 @@ describe("cli program", () => {
       .resolves
       .toContain("\"source\":\"cli.local\"");
   });
+
+  it("opens the Ink status TUI with the active endpoint and config paths", async () => {
+    const { io } = captureOutput();
+    const rendered: unknown[] = [];
+    const program = createProgram({
+      ...io,
+      configDir: "/tmp/muse-config",
+      renderTui: async (model) => {
+        rendered.push(model);
+      }
+    });
+
+    await program.parseAsync([
+      "node",
+      "muse",
+      "--api-url",
+      "http://api.test",
+      "tui"
+    ], { from: "node" });
+
+    expect(rendered).toEqual([
+      {
+        apiUrl: "http://api.test",
+        configPath: "/tmp/muse-config/config.json",
+        credentialPath: "/tmp/muse-config/credentials.json",
+        mode: "remote",
+        workspaceRunsPath: `${process.cwd()}/.muse/runs`
+      }
+    ]);
+  });
 });

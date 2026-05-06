@@ -17,7 +17,7 @@ but those checks do not prove behavior parity. This document tracks feature-leve
 - `pnpm check`: pass
 - Local caveat: current shell uses Node v22.18.0 while Muse requires Node >=24.
 - Rust caveat: `cargo test` could not run because Cargo is not installed in this shell.
-- Browser caveat: Playwright web smoke tests are not present yet.
+- Browser caveat: Playwright web smoke test files are not present yet.
 
 ## Summary
 
@@ -44,7 +44,7 @@ but those checks do not prove behavior parity. This document tracks feature-leve
 | `eval` | `packages/eval`, `apps/api`, `packages/runtime-state` | Partial | Eval cases, run logs, results, debug replay capture, deterministic/LLM judge paths behind `ModelProvider`, DB-backed store. | Reactor's full regression evaluator semantics, run-log builder enrichment, retention purge, replay lifecycle, and suite-level behavior assertions need deeper parity tests. |
 | `guard` | `packages/policy`, `packages/agent-core` | Partial | Input/output guard rules, tool output sanitizer, PII/injection/prompt-leakage patterns, fail-close integration, audit persistence. | LLM classification stage, simulator breadth, topic drift, canary prompt postprocessor, block-rate monitor/hook, and full dynamic output guard evaluator pipeline are missing or shallow. |
 | `hook` | `packages/agent-core`, `packages/runtime-state` | Partial | Runtime lifecycle hooks, fail-open behavior, hook trace persistence. | No standalone HookExecutor/SafeRun API equivalent and fewer concrete lifecycle extension classes than Reactor. |
-| `hook-integrations` | `packages/integrations`, `packages/rag`, `packages/runtime-state` | Partial | Webhook/Slack primitives, RAG stores, hook trace store, generic hook mechanism. | Concrete Reactor integration hooks are not migrated as hooks: tool response summarizer, webhook notification hook, write-tool blocker hook, RAG ingestion capture hook, feedback metadata capture hook, user memory injection hook. |
+| `hook-integrations` | `packages/integrations`, `packages/rag`, `packages/runtime-state` | Partial | Webhook/Slack primitives, RAG stores, hook trace store, generic hook mechanism. A concrete webhook notification hook now dispatches `before_start`, `before_tool`, `after_tool`, `after_complete`, and `on_error` lifecycle events through `WebhookDispatcher`. | Remaining concrete Reactor integration hooks are not migrated as hooks: tool response summarizer, write-tool blocker hook, RAG ingestion capture hook, feedback metadata capture hook, user memory injection hook. |
 | `intent` | `packages/agent-specs`, `packages/promptlab`, `apps/api` | Partial | Agent spec registry, Kysely agent spec store, promptlab catalog-backed intent definitions and management routes. | Reactor `IntentResolver` style semantic classification, profile merge/apply behavior, and classifier context are not equivalent. |
 | `mcp` | `packages/mcp`, `apps/api` | Partial | MCP server store, SDK stdio/SSE/streamable/http transports, security policy, health, reconnect, admin APIs, tool bridge. | Needs live server smoke; Reactor diagnostic live health/preflight depth and edge-case transport behavior are not fully proven. |
 | `memory` | `packages/memory`, `packages/runtime-state` | Partial | Deterministic trimming, assistant/tool pair integrity, task memory, user memory, conversation summaries, Kysely stores. | LLM summary service, task memory quality gate, session embedding behavior, exact JDBC/JOOQ parity, and broader runtime memory smoke are still gaps. |
@@ -59,15 +59,15 @@ but those checks do not prove behavior parity. This document tracks feature-leve
 | `scheduler` | `packages/scheduler`, `apps/api` | Partial | Job/execution stores, cron runtime, trigger/dry-run, agent/MCP jobs, retry/timeout, distributed lock, management routes. | Reactor scheduler tools as first-class tools, richer notification/Teams formatting, dry-run details, and policy-pipeline breadth are partial. |
 | `slack` | `packages/integrations`, `apps/api` | Partial | Signed HTTP Events API, slash commands, interactions, response URL fallback, thread replies, feedback buttons, Slack admin stores. | Socket Mode gateway is not migrated; thread tracker behavior and live Slack runtime need verification; some Slack-specific session/FAQ/proactive channel behavior remains compatibility-shaped. |
 | `tool` | `packages/tools`, `packages/mcp`, `crates/runner` | Partial | Tool registry, executor, approval before execution, output sanitizer, MCP tool adapter, Rust runner bridge. Workspace mutation intent detection now matches Reactor's conservative detector. | Context-aware/local filtering, tool description enrichment/quality gate, loop/relevance governance, idempotency guards, dependency graph, response summarizers, and dynamic policy engine parity are missing or shallow. |
-| `web` | `apps/api`, `apps/web` | Partial | Fastify API/web surface and initial Vite/React/TanStack Query operator UI. Reactor-compatible security headers, request correlation, sensitive-route cache control, and API version contract are now implemented on the API server. | CORS config, OpenAPI generation, and Playwright smoke tests are still missing. |
+| `web` | `apps/api`, `apps/web` | Partial | Fastify API/web surface and initial Vite/React/TanStack Query operator UI. Reactor-compatible security headers, request correlation, sensitive-route cache control, API version contract, configurable CORS headers/preflight handling, and generated OpenAPI JSON are now implemented on the API server. | Playwright smoke tests are still missing. |
 
 ## Highest-Priority Gaps
 
 1. Add Playwright smoke tests for `apps/web` and API-backed chat/approvals/recent runs.
-2. Add Ink TUI for CLI parity.
+2. Expand the initial Ink TUI beyond status/config display into interactive chat/auth/config workflows.
 3. Install/enable Cargo in the verification environment and run `cargo test`.
 4. Add Node 24 LTS full smoke: API start, DB migration, chat, SSE, CLI local/remote, web.
 5. Audit `reactor-compat-routes.ts` fallback `Map` state route family by route family and eliminate remaining DB-backed gaps.
-6. Implement CORS config and OpenAPI generation parity for the web module.
-7. Implement or explicitly defer OpenTelemetry/pino export, startup doctor, and richer diagnostics.
-8. Close large behavior gaps in `rag`, `tool`, `guard`, `agent`, `hook-integrations`, and `slack` Socket Mode.
+6. Implement or explicitly defer OpenTelemetry/pino export, startup doctor, and richer diagnostics.
+7. Close remaining concrete hooks in `hook-integrations`.
+8. Close large behavior gaps in `rag`, `tool`, `guard`, `agent`, and `slack` Socket Mode.

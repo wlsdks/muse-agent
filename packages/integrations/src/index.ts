@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import type { AgentRunContext, HookStage } from "@muse/agent-core";
 import type {
   ChannelFaqRegistrationTable,
   MuseDatabase,
@@ -72,6 +73,16 @@ export interface WebhookDelivery {
 
 export interface WebhookTransport {
   post(url: string, body: JsonObject, headers: Record<string, string>): Awaitable<{ readonly statusCode: number }>;
+}
+
+export interface WebhookNotificationDispatcher {
+  dispatch(input: Omit<WebhookEvent, "createdAt" | "id"> & { readonly id?: string }): Awaitable<readonly WebhookDelivery[]>;
+}
+
+export interface WebhookNotificationHookOptions {
+  readonly dispatcher: WebhookNotificationDispatcher;
+  readonly id?: string;
+  readonly outputPreviewLength?: number;
 }
 
 export interface SlackCommandAckResponse {
@@ -971,6 +982,62 @@ export class WebhookDispatcher {
   }
 }
 
+export function createWebhookNotificationHook(options: WebhookNotificationHookOptions): HookStage {
+  const previewLength = Math.max(1, options.outputPreviewLength ?? 500);
+
+  return {
+    afterComplete: async (context, response) => {
+      await options.dispatcher.dispatch({
+        payload: {
+          model: response.model,
+          outputPreview: truncatePreview(response.output, previewLength),
+          responseId: response.id
+        },
+        runId: context.runId,
+        type: "after_complete"
+      });
+    },
+    afterTool: async (context, toolCall, result) => {
+      await options.dispatcher.dispatch({
+        payload: {
+          resultPreview: truncatePreview(result.output, previewLength),
+          status: result.status,
+          toolCallId: toolCall.id,
+          toolName: toolCall.name
+        },
+        runId: context.runId,
+        type: "after_tool"
+      });
+    },
+    beforeStart: async (context) => {
+      await options.dispatcher.dispatch({
+        payload: runContextPayload(context),
+        runId: context.runId,
+        type: "before_start"
+      });
+    },
+    beforeTool: async (context, toolCall) => {
+      await options.dispatcher.dispatch({
+        payload: {
+          args: toolCall.arguments,
+          toolCallId: toolCall.id,
+          toolName: toolCall.name
+        },
+        runId: context.runId,
+        type: "before_tool"
+      });
+    },
+    id: options.id ?? "webhook-notification",
+    onError: async (context, error) => {
+      await options.dispatcher.dispatch({
+        payload: errorPayload(error),
+        runId: context.runId,
+        type: "on_error"
+      });
+    }
+  };
+}
+
 export class SlackSignatureVerifier {
   private readonly signingSecret: string;
   private readonly timestampToleranceSeconds: number;
@@ -1472,6 +1539,32 @@ function eventToPayload(event: WebhookEvent): JsonObject {
     runId: event.runId,
     type: event.type
   };
+}
+
+function runContextPayload(context: AgentRunContext): JsonObject {
+  return {
+    metadata: context.input.metadata ?? {},
+    model: context.input.model,
+    startedAt: context.startedAt.toISOString()
+  };
+}
+
+function errorPayload(error: unknown): JsonObject {
+  if (error instanceof Error) {
+    return {
+      error: error.message,
+      name: error.name
+    };
+  }
+
+  return {
+    error: String(error),
+    name: "Error"
+  };
+}
+
+function truncatePreview(value: string, maxLength: number): string {
+  return value.length > maxLength ? value.slice(0, maxLength) : value;
 }
 
 function blankToUndefined(value: string | undefined): string | undefined {

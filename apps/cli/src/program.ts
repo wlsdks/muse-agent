@@ -5,6 +5,7 @@ import path from "node:path";
 import type { AgentRuntime } from "@muse/agent-core";
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import { Command } from "commander";
+import { renderMuseStatusTui, type MuseStatusTuiModel } from "./tui.js";
 
 export interface ProgramIO {
   readonly fetch?: typeof globalThis.fetch;
@@ -13,6 +14,7 @@ export interface ProgramIO {
   readonly workspaceDir?: string;
   readonly configDir?: string;
   readonly credentialKey?: string;
+  readonly renderTui?: (model: MuseStatusTuiModel) => Promise<void> | void;
   readonly createRuntimeAssembly?: () => {
     readonly agentRuntime?: AgentRuntime;
     readonly defaultModel?: string;
@@ -76,6 +78,21 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       }
 
       io.stdout("Muse stack: TypeScript, Node.js, Fastify, PostgreSQL, Kysely, Ink, Rust runner\n");
+    });
+
+  program
+    .command("tui")
+    .description("Open the Muse terminal status UI")
+    .option("--local", "Show local mode instead of remote API mode")
+    .action(async (options: { readonly local?: boolean }, command) => {
+      const { baseUrl } = await readApiOptions(io, command, { includeStoredToken: false });
+      await (io.renderTui ?? renderMuseStatusTui)({
+        apiUrl: baseUrl,
+        configPath: configPath(io),
+        credentialPath: credentialPath(io),
+        mode: options.local ? "local" : "remote",
+        workspaceRunsPath: path.join(io.workspaceDir ?? process.cwd(), ".muse", "runs")
+      });
     });
 
   program
@@ -535,6 +552,10 @@ function localCredentialSecret(): string {
 
 function credentialPath(io: ProgramIO): string {
   return io.configDir ? path.join(io.configDir, "credentials.json") : defaultCredentialPath();
+}
+
+function configPath(io: ProgramIO): string {
+  return io.configDir ? path.join(io.configDir, "config.json") : defaultConfigPath();
 }
 
 function isEncryptedCredentialFile(value: unknown): value is EncryptedCredentialFile {
