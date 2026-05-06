@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createToolNameApprovalPolicy } from "@muse/policy";
 import {
   createRustRunnerTool,
+  createDefaultToolExposurePolicy,
+  filterToolsForContext,
   isWorkspaceMutationPrompt,
   planToolExecutionOrder,
   parseRunnerCommandRequest,
@@ -243,6 +245,75 @@ describe("tool utilities", () => {
     };
 
     expect(planToolExecutionOrder([fetchIssue, authenticate])).toEqual(["authenticate", "fetch_issue"]);
+  });
+
+  it("filters risky and irrelevant tools before model exposure", () => {
+    const executeTool: MuseTool = {
+      definition: {
+        description: "Run an approved local command.",
+        inputSchema: { type: "object" },
+        name: "run_command",
+        risk: "execute"
+      },
+      execute: () => "ok"
+    };
+    const issueWriter: MuseTool = {
+      definition: {
+        description: "Update a synthetic issue.",
+        inputSchema: { type: "object" },
+        keywords: ["jira", "issue"],
+        name: "update_issue",
+        risk: "write"
+      },
+      execute: () => "ok"
+    };
+
+    const selected = filterToolsForContext([readTool, issueWriter, executeTool], {
+      localMode: false,
+      prompt: "Summarize the latest note",
+      recentToolNames: ["read_note", "read_note"]
+    });
+
+    expect(selected.tools.map((tool) => tool.definition.name)).toEqual(["read_note"]);
+    expect(selected.blocked.map((blocked) => blocked.code)).toEqual([
+      "write_without_mutation_intent",
+      "local_execution_unavailable"
+    ]);
+  });
+
+  it("exposes relevant mutation tools and blocks repeated loop tools", () => {
+    const policy = createDefaultToolExposurePolicy({ maxRepeatedToolCalls: 2 });
+    const updateIssue: MuseTool = {
+      definition: {
+        description: "Update a synthetic issue.",
+        inputSchema: { type: "object" },
+        keywords: ["jira", "issue"],
+        name: "update_issue",
+        risk: "write"
+      },
+      execute: () => "ok"
+    };
+    const postSlack: MuseTool = {
+      definition: {
+        description: "Post a synthetic Slack message.",
+        inputSchema: { type: "object" },
+        keywords: ["slack"],
+        name: "post_slack_message",
+        risk: "write"
+      },
+      execute: () => "ok"
+    };
+
+    const selected = policy.select([updateIssue, postSlack], {
+      prompt: "Please update Jira issue MUSE-1",
+      recentToolNames: ["post_slack_message", "post_slack_message"]
+    });
+
+    expect(selected.tools.map((tool) => tool.definition.name)).toEqual(["update_issue"]);
+    expect(selected.blocked).toContainEqual(expect.objectContaining({
+      code: "repeat_limit_exceeded",
+      toolName: "post_slack_message"
+    }));
   });
 });
 

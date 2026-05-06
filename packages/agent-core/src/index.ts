@@ -53,7 +53,7 @@ import {
   type ToolApprovalPolicy
 } from "@muse/policy";
 import { createRunId, type JsonObject } from "@muse/shared";
-import { ToolExecutor, ToolRegistry, type ToolExecutionResult } from "@muse/tools";
+import { ToolExecutor, ToolRegistry, toModelTool, type ToolExecutionResult, type ToolExposurePolicy } from "@muse/tools";
 
 type Awaitable<T> = T | Promise<T>;
 
@@ -148,6 +148,7 @@ export interface AgentRuntimeOptions {
   readonly ragPipeline?: RagPipeline;
   readonly toolRegistry?: ToolRegistry;
   readonly toolExecutor?: ToolExecutor;
+  readonly toolExposurePolicy?: ToolExposurePolicy;
   readonly toolApprovalPolicy?: ToolApprovalPolicy;
   readonly toolApprovalStore?: PendingApprovalStore;
   readonly maxToolCalls?: number;
@@ -272,6 +273,7 @@ export class AgentRuntime {
   private readonly ragPipeline?: RagPipeline;
   private readonly toolRegistry?: ToolRegistry;
   private readonly toolExecutor?: ToolExecutor;
+  private readonly toolExposurePolicy?: ToolExposurePolicy;
   private readonly maxToolCalls: number;
   private readonly circuitBreaker?: CircuitBreaker;
   private readonly fallbackStrategy?: FallbackStrategy;
@@ -298,6 +300,7 @@ export class AgentRuntime {
     this.cacheMetrics = options.cacheMetrics;
     this.ragPipeline = options.ragPipeline;
     this.toolRegistry = options.toolRegistry;
+    this.toolExposurePolicy = options.toolExposurePolicy;
     this.toolExecutor = options.toolExecutor ??
       (options.toolRegistry
         ? new ToolExecutor({
@@ -351,7 +354,7 @@ export class AgentRuntime {
       const contextualizedInput = await this.applyRetrievedContext(context);
       const preparedRequest = this.prepareModelRequest(contextualizedInput, selected.model);
       recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
-      const tools = this.modelTools();
+      const tools = this.modelTools(context);
       const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
       const cached = await this.readCache(cacheKey, selected.model);
 
@@ -449,7 +452,7 @@ export class AgentRuntime {
       const contextualizedInput = await this.applyRetrievedContext(context);
       const preparedRequest = this.prepareModelRequest(contextualizedInput, selected.model);
       recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
-      const tools = this.modelTools();
+      const tools = this.modelTools(context);
       const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
       const cached = await this.readCache(cacheKey, selected.model);
 
@@ -668,8 +671,22 @@ export class AgentRuntime {
     }
   }
 
-  private modelTools(): readonly ModelTool[] {
-    return this.toolRegistry?.toModelTools() ?? [];
+  private modelTools(context: AgentRunContext): readonly ModelTool[] {
+    if (!this.toolRegistry) {
+      return [];
+    }
+
+    return this.toolRegistry
+      .selectForContext({
+        allowedToolNames: stringListMetadata(context.input.metadata?.allowedToolNames),
+        forbiddenToolNames: stringListMetadata(context.input.metadata?.forbiddenToolNames),
+        localMode: context.input.metadata?.localMode === true,
+        maxTools: numberMetadata(context.input.metadata?.maxTools),
+        prompt: latestUserPrompt(context.input.messages),
+        recentToolNames: stringListMetadata(context.input.metadata?.recentToolNames)
+      }, this.toolExposurePolicy)
+      .tools
+      .map((tool) => toModelTool(tool));
   }
 
   private async readCache(key: string, model: string) {
@@ -2861,6 +2878,30 @@ function toAgentSpecRunReport(resolution: AgentSpecResolution): AgentSpecRunRepo
 function metadataString(metadata: JsonObject | undefined, key: string): string | undefined {
   const value = metadata?.[key];
   return typeof value === "string" ? value : undefined;
+}
+
+function latestUserPrompt(messages: readonly ModelMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+
+    if (message?.role === "user") {
+      return message.content;
+    }
+  }
+
+  return "";
+}
+
+function stringListMetadata(value: unknown): readonly string[] | undefined {
+  if (Array.isArray(value)) {
+    return value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+  }
+
+  return undefined;
+}
+
+function numberMetadata(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function readStructuredOutputFormat(value: unknown): StructuredOutputFormat | undefined {

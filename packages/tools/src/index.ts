@@ -17,6 +17,8 @@ export interface MuseToolDefinition {
   readonly inputSchema: JsonObject;
   readonly risk: ToolRisk;
   readonly dependsOn?: readonly string[];
+  readonly keywords?: readonly string[];
+  readonly scopes?: readonly ToolExposureScope[];
 }
 
 export interface MuseToolContext {
@@ -98,6 +100,44 @@ export interface ToolDescriptionIssue {
   readonly toolName: string;
 }
 
+export type ToolExposureScope = "conversation" | "workspace" | "local";
+
+export interface ToolExposureContext {
+  readonly allowedToolNames?: readonly string[];
+  readonly forbiddenToolNames?: readonly string[];
+  readonly localMode?: boolean;
+  readonly maxTools?: number;
+  readonly prompt?: string;
+  readonly recentToolNames?: readonly string[];
+}
+
+export interface ToolExposureBlock {
+  readonly code:
+    | "not_allowed"
+    | "forbidden"
+    | "local_execution_unavailable"
+    | "write_without_mutation_intent"
+    | "irrelevant_to_prompt"
+    | "repeat_limit_exceeded"
+    | "max_tool_count_exceeded";
+  readonly reason: string;
+  readonly toolName: string;
+}
+
+export interface ToolExposureSelection {
+  readonly blocked: readonly ToolExposureBlock[];
+  readonly tools: readonly MuseTool[];
+}
+
+export interface ToolExposurePolicy {
+  select(tools: readonly MuseTool[], context?: ToolExposureContext): ToolExposureSelection;
+}
+
+export interface DefaultToolExposurePolicyOptions {
+  readonly allowWriteWithoutMutationIntent?: boolean;
+  readonly maxRepeatedToolCalls?: number;
+}
+
 export class ToolRegistry {
   private readonly tools = new Map<string, MuseTool>();
 
@@ -126,6 +166,115 @@ export class ToolRegistry {
   toModelTools(): readonly ModelTool[] {
     return this.list().map((tool) => toModelTool(tool));
   }
+
+  selectForContext(context: ToolExposureContext = {}, policy: ToolExposurePolicy = createDefaultToolExposurePolicy()): ToolExposureSelection {
+    return policy.select(this.list(), context);
+  }
+}
+
+export class DefaultToolExposurePolicy implements ToolExposurePolicy {
+  private readonly allowWriteWithoutMutationIntent: boolean;
+  private readonly maxRepeatedToolCalls: number;
+
+  constructor(options: DefaultToolExposurePolicyOptions = {}) {
+    this.allowWriteWithoutMutationIntent = options.allowWriteWithoutMutationIntent ?? false;
+    this.maxRepeatedToolCalls = Math.max(1, options.maxRepeatedToolCalls ?? 3);
+  }
+
+  select(tools: readonly MuseTool[], context: ToolExposureContext = {}): ToolExposureSelection {
+    const allowed = stringSet(context.allowedToolNames);
+    const forbidden = stringSet(context.forbiddenToolNames);
+    const prompt = context.prompt?.trim() ?? "";
+    const recentCounts = countStrings(context.recentToolNames ?? []);
+    const blocked: ToolExposureBlock[] = [];
+    const selected: MuseTool[] = [];
+
+    for (const tool of tools) {
+      const block = this.blockReason(tool, {
+        allowed,
+        context,
+        forbidden,
+        prompt,
+        recentCounts
+      });
+
+      if (block) {
+        blocked.push(block);
+      } else {
+        selected.push(tool);
+      }
+    }
+
+    const sorted = selected.sort(compareToolExposurePriority(prompt));
+    const limit = context.maxTools === undefined ? sorted.length : Math.max(0, Math.trunc(context.maxTools));
+
+    if (sorted.length > limit) {
+      for (const tool of sorted.slice(limit)) {
+        blocked.push({
+          code: "max_tool_count_exceeded",
+          reason: `Tool '${tool.definition.name}' was hidden because the exposure limit was reached`,
+          toolName: tool.definition.name
+        });
+      }
+    }
+
+    return {
+      blocked,
+      tools: sorted.slice(0, limit)
+    };
+  }
+
+  private blockReason(tool: MuseTool, input: {
+    readonly allowed: ReadonlySet<string>;
+    readonly context: ToolExposureContext;
+    readonly forbidden: ReadonlySet<string>;
+    readonly prompt: string;
+    readonly recentCounts: ReadonlyMap<string, number>;
+  }): ToolExposureBlock | undefined {
+    const name = tool.definition.name;
+
+    if (input.allowed.size > 0 && !input.allowed.has(name)) {
+      return blockTool(name, "not_allowed", `Tool '${name}' is outside the allowed tool set`);
+    }
+
+    if (input.forbidden.has(name)) {
+      return blockTool(name, "forbidden", `Tool '${name}' is explicitly forbidden for this turn`);
+    }
+
+    if ((input.recentCounts.get(name) ?? 0) >= this.maxRepeatedToolCalls) {
+      return blockTool(name, "repeat_limit_exceeded", `Tool '${name}' hit the repeated-call exposure limit`);
+    }
+
+    if ((tool.definition.risk === "execute" || tool.definition.scopes?.includes("local")) && input.context.localMode !== true) {
+      return blockTool(name, "local_execution_unavailable", `Tool '${name}' requires local execution mode`);
+    }
+
+    if (
+      tool.definition.risk === "write" &&
+      !this.allowWriteWithoutMutationIntent &&
+      !isWorkspaceMutationPrompt(input.prompt)
+    ) {
+      return blockTool(name, "write_without_mutation_intent", `Tool '${name}' requires a clear workspace mutation intent`);
+    }
+
+    if (!isToolRelevantToPrompt(tool, input.prompt)) {
+      return blockTool(name, "irrelevant_to_prompt", `Tool '${name}' does not match the current prompt`);
+    }
+
+    return undefined;
+  }
+}
+
+export function createDefaultToolExposurePolicy(options: DefaultToolExposurePolicyOptions = {}): ToolExposurePolicy {
+  return new DefaultToolExposurePolicy(options);
+}
+
+export function filterToolsForContext(
+  tools: readonly MuseTool[],
+  context: ToolExposureContext = {},
+  policy: ToolExposurePolicy = createDefaultToolExposurePolicy()
+): ToolExposureSelection {
+  return policy.select(tools, context);
 }
 
 export class ToolExecutor {
@@ -534,6 +683,80 @@ function readIdempotencyKey(request: ToolCallRequest): string | undefined {
   return typeof key === "string" && key.trim().length > 0
     ? `${request.context.runId}:${request.name}:${key.trim()}`
     : undefined;
+}
+
+function blockTool(toolName: string, code: ToolExposureBlock["code"], reason: string): ToolExposureBlock {
+  return {
+    code,
+    reason,
+    toolName
+  };
+}
+
+function stringSet(values: readonly string[] | undefined): ReadonlySet<string> {
+  return new Set((values ?? []).map((value) => value.trim()).filter(Boolean));
+}
+
+function countStrings(values: readonly string[]): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>();
+
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+
+  return counts;
+}
+
+function isToolRelevantToPrompt(tool: MuseTool, prompt: string): boolean {
+  const keywords = tool.definition.keywords ?? [];
+
+  if (keywords.length === 0 || prompt.trim().length === 0) {
+    return true;
+  }
+
+  const normalized = prompt.toLowerCase();
+  return keywords.some((keyword) => normalized.includes(keyword.toLowerCase()));
+}
+
+function compareToolExposurePriority(prompt: string): (left: MuseTool, right: MuseTool) => number {
+  return (left, right) => {
+    const risk = riskPriority(left.definition.risk) - riskPriority(right.definition.risk);
+
+    if (risk !== 0) {
+      return risk;
+    }
+
+    const relevance = relevanceScore(right, prompt) - relevanceScore(left, prompt);
+
+    if (relevance !== 0) {
+      return relevance;
+    }
+
+    return left.definition.name.localeCompare(right.definition.name);
+  };
+}
+
+function riskPriority(risk: ToolRisk): number {
+  if (risk === "read") {
+    return 0;
+  }
+
+  if (risk === "write") {
+    return 1;
+  }
+
+  return 2;
+}
+
+function relevanceScore(tool: MuseTool, prompt: string): number {
+  if (prompt.trim().length === 0) {
+    return 0;
+  }
+
+  const normalized = prompt.toLowerCase();
+  return (tool.definition.keywords ?? [])
+    .filter((keyword) => normalized.includes(keyword.toLowerCase()))
+    .length;
 }
 
 const workspaceHints = [

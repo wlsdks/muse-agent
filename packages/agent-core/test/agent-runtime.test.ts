@@ -554,6 +554,53 @@ describe("AgentRuntime", () => {
     ]);
   });
 
+  it("filters risky tools before exposing them to the model", async () => {
+    const generated: ModelRequest[] = [];
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Reads a synthetic workspace note.",
+          inputSchema: { type: "object" },
+          name: "read_note",
+          risk: "read"
+        },
+        execute: () => "note"
+      },
+      {
+        definition: {
+          description: "Updates a synthetic Jira issue.",
+          inputSchema: { type: "object" },
+          keywords: ["jira", "issue"],
+          name: "update_issue",
+          risk: "write"
+        },
+        execute: () => "updated"
+      },
+      {
+        definition: {
+          description: "Runs an approved local command.",
+          inputSchema: { type: "object" },
+          name: "run_command",
+          risk: "execute"
+        },
+        execute: () => "ran"
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      modelProvider: createProvider({}, "test", (request) => generated.push(request)),
+      toolRegistry
+    });
+
+    await runtime.run({
+      messages: [{ content: "Summarize the latest workspace note", role: "user" }],
+      metadata: { localMode: false },
+      model: "provider/model",
+      runId: "run-tool-exposure"
+    });
+
+    expect(generated[0]?.tools?.map((tool) => tool.name)).toEqual(["read_note"]);
+  });
+
   it("blocks prompt injection through a default input guard", async () => {
     const runtime = createAgentRuntime({
       guards: [createInjectionInputGuard()],
