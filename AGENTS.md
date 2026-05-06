@@ -179,6 +179,7 @@ New behavior should include the narrowest useful test first.
 ## Commit Rules
 
 Use Conventional Commits.
+Write commit subjects and commit descriptions in English.
 
 - `feat:` user-visible feature or new project capability
 - `fix:` bug fix
