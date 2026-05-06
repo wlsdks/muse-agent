@@ -13,6 +13,7 @@ import {
   DefaultAuthProvider,
   InMemoryTokenRevocationStore,
   InMemoryUserStore,
+  IamTokenExchangeService,
   JwtTokenProvider,
   createAuthTokenRevocationInsert,
   createUserInsert,
@@ -154,6 +155,53 @@ describe("AuthService registration and login", () => {
       newPassword: "password-3",
       userId: registered.user.id
     })).toBe("invalid_current_password");
+  });
+});
+
+describe("IamTokenExchangeService", () => {
+  it("exchanges verified IAM claims into Muse JWTs and auto-creates users", async () => {
+    const store = new InMemoryUserStore();
+    const jwt = new JwtTokenProvider({ jwtSecret });
+    const service = new IamTokenExchangeService({
+      idFactory: () => "iam-user-1",
+      jwt,
+      userStore: store,
+      verifier: {
+        verify: (token) => token === "iam-token"
+          ? { email: "IAM_USER@example.com", roles: ["ROLE_MANAGER"], sub: "iam-user" }
+          : undefined
+      }
+    });
+
+    const exchanged = await service.exchange("iam-token");
+    const secondExchange = await service.exchange("iam-token");
+    const identity = jwt.parseToken(exchanged?.token ?? "");
+
+    expect(exchanged?.user).toMatchObject({
+      email: "iam_user@example.com",
+      id: "iam-user-1",
+      name: "IAM_USER",
+      role: "admin_manager"
+    });
+    expect(identity).toMatchObject({ role: "admin_manager", sub: "iam-user-1" });
+    expect(secondExchange?.user.id).toBe("iam-user-1");
+    expect(store.count()).toBe(1);
+  });
+
+  it("rejects invalid IAM tokens and respects disabled auto-create", async () => {
+    const store = new InMemoryUserStore();
+    const service = new IamTokenExchangeService({
+      autoCreateUser: false,
+      jwt: new JwtTokenProvider({ jwtSecret }),
+      userStore: store,
+      verifier: {
+        verify: () => ({ roles: ["ROLE_ADMIN"], sub: "iam-user" })
+      }
+    });
+
+    await expect(service.exchange("iam-token")).resolves.toBeUndefined();
+    await expect(service.exchange("")).resolves.toBeUndefined();
+    expect(store.count()).toBe(0);
   });
 });
 

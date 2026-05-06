@@ -106,6 +106,25 @@ export interface LoginResult {
   readonly expiresAt: Date;
 }
 
+export interface IamTokenClaims {
+  readonly sub: string;
+  readonly email?: string;
+  readonly roles?: readonly string[];
+}
+
+export interface IamTokenVerifier {
+  verify(token: string): Awaitable<IamTokenClaims | undefined>;
+}
+
+export interface IamTokenExchangeServiceOptions {
+  readonly autoCreateUser?: boolean;
+  readonly defaultRole?: UserRole;
+  readonly idFactory?: () => string;
+  readonly jwt: JwtTokenProvider;
+  readonly userStore: UserStore | AsyncUserStore;
+  readonly verifier: IamTokenVerifier;
+}
+
 export type PasswordChangeResult =
   | "changed"
   | "invalid_current_password"
@@ -660,6 +679,62 @@ export class AuthService implements MuseAuthService {
   }
 }
 
+export class IamTokenExchangeService {
+  private readonly autoCreateUser: boolean;
+  private readonly defaultRole: UserRole;
+  private readonly idFactory: () => string;
+
+  constructor(private readonly options: IamTokenExchangeServiceOptions) {
+    this.autoCreateUser = options.autoCreateUser ?? true;
+    this.defaultRole = options.defaultRole ?? "user";
+    this.idFactory = options.idFactory ?? (() => createRunId("user"));
+  }
+
+  async exchange(iamToken: string): Promise<LoginResult | undefined> {
+    const token = iamToken.trim();
+
+    if (!token) {
+      return undefined;
+    }
+
+    const claims = await this.options.verifier.verify(token);
+
+    if (!claims?.sub) {
+      return undefined;
+    }
+
+    const email = normalizeEmail(claims.email ?? `${claims.sub}@iam.local`);
+    const existing = await this.options.userStore.findByEmail(email);
+    const user = existing ?? await this.createUser(claims, email);
+
+    if (!user) {
+      return undefined;
+    }
+
+    const reactorToken = this.options.jwt.createToken(user);
+    const expiresAt = this.options.jwt.extractExpiration(reactorToken) ?? new Date(Date.now() + defaultJwtExpirationMs);
+    return {
+      expiresAt,
+      token: reactorToken,
+      user: publicUser(user)
+    };
+  }
+
+  private async createUser(claims: IamTokenClaims, email: string): Promise<User | undefined> {
+    if (!this.autoCreateUser) {
+      return undefined;
+    }
+
+    return this.options.userStore.save({
+      email,
+      id: this.idFactory(),
+      name: claims.email?.split("@")[0]?.trim() || claims.sub,
+      passwordHash: "",
+      role: resolveIamRole(claims.roles ?? [], this.defaultRole)
+    });
+  }
+}
+
 export class AsyncAuthService implements MuseAuthService {
   private readonly revocationStore?: AsyncTokenRevocationStore;
   private readonly userStore?: AsyncUserStore;
@@ -891,6 +966,22 @@ export function maskedAdminAccountRef(actor: string | undefined | null): string 
   }
 
   return `admin-account:${sha256Hex(normalized).slice(0, 12)}`;
+}
+
+function resolveIamRole(roles: readonly string[], defaultRole: UserRole): UserRole {
+  if (roles.some((role) => role.toUpperCase() === "ROLE_ADMIN")) {
+    return "admin";
+  }
+
+  if (roles.some((role) => role.toUpperCase() === "ROLE_MANAGER")) {
+    return "admin_manager";
+  }
+
+  if (roles.some((role) => role.toUpperCase() === "ROLE_DEVELOPER")) {
+    return "admin_developer";
+  }
+
+  return defaultRole;
 }
 
 export function extractBearerToken(authorization: string | undefined): string | undefined {

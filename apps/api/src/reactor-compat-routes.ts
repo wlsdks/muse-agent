@@ -5,6 +5,7 @@ import {
   adminScope,
   extractBearerToken,
   type AuthIdentity,
+  type IamTokenExchangeService,
   type LoginResult,
   type MuseAuthService,
   type UserRole
@@ -61,6 +62,7 @@ export interface ReactorCompatibilityRouteOptions {
   readonly agentSpecRegistry: AgentSpecRegistry;
   readonly authRateLimiter: AuthRateLimiter;
   readonly authService?: MuseAuthService;
+  readonly iamTokenExchangeService?: IamTokenExchangeService;
   readonly authorizeAdmin: (request: FastifyRequest, reply: FastifyReply) => boolean;
   readonly authorizeAnyAdmin: (request: FastifyRequest, reply: FastifyReply) => boolean;
   readonly apiPathRegistry?: () => readonly string[];
@@ -415,18 +417,36 @@ function registerAuthCompatibilityRoutes(server: FastifyInstance, options: React
     }
   });
 
-  server.post("/api/auth/exchange", async (_request, reply) => {
-    const authService = requireAuthService(options, reply);
-
-    if (!authService) {
-      return reply;
+  server.post("/api/auth/exchange", async (request, reply) => {
+    if (!options.iamTokenExchangeService) {
+      return reply.status(404).send({
+        error: "IAM token exchange is not enabled",
+        token: "",
+        user: null
+      });
     }
 
-    return reply.status(404).send({
-      error: "IAM token exchange is not enabled",
-      token: "",
-      user: null
-    });
+    const token = readBodyString(request.body, "token") ?? "";
+
+    if (!token) {
+      return reply.status(400).send({
+        error: "IAM token must not be blank",
+        token: "",
+        user: null
+      });
+    }
+
+    const login = await options.iamTokenExchangeService.exchange(token);
+
+    if (!login) {
+      return reply.status(401).send({
+        error: "IAM token verification failed",
+        token: "",
+        user: null
+      });
+    }
+
+    return toReactorAuthResponse(login);
   });
 
   server.get("/api/auth/me", async (request, reply) => {

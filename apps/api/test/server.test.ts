@@ -4,6 +4,7 @@ import { createAgentRuntime } from "@muse/agent-core";
 import {
   AuthService,
   DefaultAuthProvider,
+  IamTokenExchangeService,
   InMemoryTokenRevocationStore,
   InMemoryUserStore,
   JwtTokenProvider
@@ -392,6 +393,57 @@ describe("api server", () => {
     expect(me.json()).not.toHaveProperty("identity");
     expect(logout.json()).toEqual({ message: "Logged out" });
     expect(afterLogout.statusCode).toBe(401);
+  });
+
+  it("exchanges verified IAM tokens through the Reactor auth alias when configured", async () => {
+    const userStore = new InMemoryUserStore();
+    const authService = new AuthService({
+      authProvider: new DefaultAuthProvider(userStore),
+      jwt: new JwtTokenProvider({ jwtSecret: "0123456789abcdef0123456789abcdef" }),
+      revocationStore: new InMemoryTokenRevocationStore(),
+      userStore
+    });
+    const iamTokenExchangeService = new IamTokenExchangeService({
+      idFactory: () => "iam-user-1",
+      jwt: new JwtTokenProvider({ jwtSecret: "0123456789abcdef0123456789abcdef" }),
+      userStore,
+      verifier: {
+        verify: (token) => token === "valid-iam-token"
+          ? { email: "IAM_USER@example.invalid", roles: ["ROLE_DEVELOPER"], sub: "iam-user" }
+          : undefined
+      }
+    });
+    const server = buildServer({ authService, iamTokenExchangeService, logger: false, requireAuth: true });
+
+    const missingToken = await server.inject({
+      method: "POST",
+      payload: { token: "" },
+      url: "/api/auth/exchange"
+    });
+    const invalidToken = await server.inject({
+      method: "POST",
+      payload: { token: "invalid" },
+      url: "/api/auth/exchange"
+    });
+    const exchanged = await server.inject({
+      method: "POST",
+      payload: { token: "valid-iam-token" },
+      url: "/api/auth/exchange"
+    });
+
+    expect(missingToken.statusCode).toBe(400);
+    expect(invalidToken.statusCode).toBe(401);
+    expect(exchanged.statusCode).toBe(200);
+    expect(exchanged.json()).toMatchObject({
+      error: null,
+      user: {
+        adminScope: "DEVELOPER",
+        email: "iam_user@example.invalid",
+        id: "iam-user-1",
+        role: "ADMIN_DEVELOPER"
+      }
+    });
+    expect(exchanged.json().token).toBeTruthy();
   });
 
   it("keeps api session ownership scoped to the authenticated user", async () => {

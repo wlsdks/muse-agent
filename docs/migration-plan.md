@@ -261,6 +261,8 @@ route state and runtime services onto Kysely-backed stores.
 - Approval context compatibility now recognizes `jira_`, `confluence_`, and `bitbucket_` read-tool names, extracts
   Reactor-style impact scopes, and redacts PII before rendering approval requests without coupling Muse to a live
   Atlassian tenant.
+- IAM token exchange compatibility now exists as a verifier-injected auth service and `/api/auth/exchange` alias,
+  preserving Reactor response envelopes while keeping live public-key fetching behind an adapter boundary.
 - Context compaction compatibility now carries pinned entities from dropped user messages into generated summaries,
   preserving issue keys and quoted terms for pronoun resolution across later turns.
 - Multi-agent compatibility now includes package-level sequential and parallel delegation modes in addition to

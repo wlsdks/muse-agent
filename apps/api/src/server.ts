@@ -16,6 +16,7 @@ import {
 import {
   AuthRateLimiter,
   extractBearerToken,
+  type IamTokenExchangeService,
   isAnyAdmin,
   isDeveloperAdmin,
   type AuthIdentity,
@@ -58,6 +59,7 @@ export interface ServerOptions {
   readonly admin?: AdminRouteState;
   readonly agentSpecRegistry?: AgentSpecRegistry;
   readonly authService?: MuseAuthService;
+  readonly iamTokenExchangeService?: IamTokenExchangeService;
   readonly authRateLimiter?: AuthRateLimiter;
   readonly followupSuggestionStore?: FollowupSuggestionStore;
   readonly feedbackStore?: FeedbackStore;
@@ -286,6 +288,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     agentSpecRegistry,
     authRateLimiter,
     authService,
+    iamTokenExchangeService: options.iamTokenExchangeService,
     authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
     authorizeAnyAdmin: (request, reply) => authorizeAnyAdmin(request, reply, Boolean(authService)),
     apiPathRegistry: () => [...apiPaths].sort(),
