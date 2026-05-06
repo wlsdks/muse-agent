@@ -41,7 +41,8 @@ import {
   HookRegistry,
   ModelRoutingError,
   OutputGuardBlockedError,
-  StepBudgetTracker
+  StepBudgetTracker,
+  ToolCallDeduplicator
 } from "../src/index.js";
 
 function createProvider(
@@ -191,6 +192,49 @@ describe("StepBudgetTracker", () => {
     expect(() => tracker.trackStep(" ", 1, 0)).toThrow("step");
     expect(() => tracker.trackStep("model", -1, 0)).toThrow("token counts");
     expect(() => tracker.recordToolOutput("tool", Number.POSITIVE_INFINITY)).toThrow("token counts");
+  });
+});
+
+describe("ToolCallDeduplicator", () => {
+  it("reuses completed results for identical tool name and arguments", () => {
+    const deduplicator = new ToolCallDeduplicator();
+    const first = { arguments: { b: 2, a: 1 }, id: "tool-1", name: "read_invoice" };
+    const second = { arguments: { a: 1, b: 2 }, id: "tool-2", name: "read_invoice" };
+
+    expect(deduplicator.check(first)).toMatchObject({ duplicate: false });
+
+    deduplicator.record(first, {
+      id: first.id,
+      name: first.name,
+      output: "{\"total\":42}",
+      status: "completed"
+    });
+
+    expect(deduplicator.check(second)).toEqual({
+      duplicate: true,
+      result: {
+        id: "tool-2",
+        name: "read_invoice",
+        output: "{\"total\":42}",
+        status: "completed"
+      },
+      signature: "read_invoice:{\"a\":1,\"b\":2}"
+    });
+  });
+
+  it("does not cache blocked or failed tool results", () => {
+    const deduplicator = new ToolCallDeduplicator();
+    const toolCall = { arguments: { id: "invoice-1" }, id: "tool-1", name: "read_invoice" };
+
+    deduplicator.record(toolCall, {
+      error: "approval required",
+      id: toolCall.id,
+      name: toolCall.name,
+      output: "blocked",
+      status: "blocked"
+    });
+
+    expect(deduplicator.check({ ...toolCall, id: "tool-2" })).toMatchObject({ duplicate: false });
   });
 });
 
@@ -1955,6 +1999,74 @@ describe("AgentRuntime", () => {
       output: "The current invoice total is 42 credits.",
       status: "completed"
     });
+  });
+
+  it("deduplicates repeated completed tool calls without re-executing the tool", async () => {
+    let executionCount = 0;
+    const historyStore = new InMemoryAgentRunHistoryStore();
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Reads the current invoice total.",
+          inputSchema: { type: "object" },
+          name: "read_invoice",
+          risk: "read"
+        },
+        execute: () => {
+          executionCount += 1;
+          return { total: 42 };
+        }
+      }
+    ]);
+    const provider = createSequenceProvider([
+      {
+        id: "response-tool-1",
+        model: "test-model",
+        output: "Checking the invoice.",
+        toolCalls: [{ arguments: { invoiceId: "invoice-1" }, id: "tool-1", name: "read_invoice" }]
+      },
+      {
+        id: "response-tool-2",
+        model: "test-model",
+        output: "Checking the same invoice again.",
+        toolCalls: [{ arguments: { invoiceId: "invoice-1" }, id: "tool-2", name: "read_invoice" }]
+      },
+      {
+        id: "response-final",
+        model: "test-model",
+        output: "The current invoice total is 42 credits."
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      historyStore,
+      maxToolCalls: 3,
+      modelProvider: provider,
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "What is the current invoice total?", role: "user" }],
+      model: "provider/model",
+      runId: "run-dedup-tools"
+    });
+
+    expect(result.response.output).toBe("The current invoice total is 42 credits.");
+    expect(executionCount).toBe(1);
+    const recordedRoles = historyStore.listMessages("run-dedup-tools").map((message) => message.role);
+    expect(recordedRoles.filter((role) => role === "assistant")).toHaveLength(3);
+    expect(recordedRoles.filter((role) => role === "tool")).toHaveLength(2);
+    expect(historyStore.listToolCalls("run-dedup-tools")).toEqual([
+      expect.objectContaining({
+        id: "tool-1",
+        name: "read_invoice",
+        status: "completed"
+      }),
+      expect.objectContaining({
+        id: "tool-2",
+        name: "read_invoice",
+        status: "completed"
+      })
+    ]);
   });
 
   it("injects retrieved rollback-gate context before model generation", async () => {

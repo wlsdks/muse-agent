@@ -260,6 +260,8 @@ route state and runtime services onto Kysely-backed stores.
   (`beforeTool` and `afterTool`) and records completed/failed traces without blocking the ReAct loop.
 - Agent budget compatibility now includes a provider-neutral step token budget tracker for model steps and tool-output
   steps, with explicit `ok`, `soft_limit`, and `exhausted` states.
+- ReAct loop compatibility now deduplicates repeated completed tool calls by tool name and canonical arguments, reusing
+  the completed output while preserving assistant/tool message-pair integrity.
 - Approval context compatibility now recognizes `jira_`, `confluence_`, and `bitbucket_` read-tool names, extracts
   Reactor-style impact scopes, and redacts PII before rendering approval requests without coupling Muse to a live
   Atlassian tenant.

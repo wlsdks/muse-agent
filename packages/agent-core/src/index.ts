@@ -248,6 +248,70 @@ function isNonNegativeTokenCount(value: number): boolean {
   return Number.isFinite(value) && value >= 0;
 }
 
+export interface ToolCallDuplicate {
+  readonly duplicate: true;
+  readonly signature: string;
+  readonly result: ToolExecutionResult;
+}
+
+export interface ToolCallNotDuplicate {
+  readonly duplicate: false;
+  readonly signature: string;
+}
+
+export type ToolCallDeduplicationDecision = ToolCallDuplicate | ToolCallNotDuplicate;
+
+export class ToolCallDeduplicator {
+  readonly #completedResults = new Map<string, ToolExecutionResult>();
+
+  buildSignature(toolCall: ModelToolCall): string {
+    return `${toolCall.name}:${stableJson(toolCall.arguments)}`;
+  }
+
+  check(toolCall: ModelToolCall): ToolCallDeduplicationDecision {
+    const signature = this.buildSignature(toolCall);
+    const result = this.#completedResults.get(signature);
+
+    if (!result) {
+      return { duplicate: false, signature };
+    }
+
+    return {
+      duplicate: true,
+      result: {
+        ...result,
+        id: toolCall.id,
+        name: toolCall.name
+      },
+      signature
+    };
+  }
+
+  record(toolCall: ModelToolCall, result: ToolExecutionResult): void {
+    if (result.status !== "completed") {
+      return;
+    }
+
+    this.#completedResults.set(this.buildSignature(toolCall), result);
+  }
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(",")}}`;
+  }
+
+  return JSON.stringify(value);
+}
+
 export interface AgentSpecResolver {
   resolve(text: string): Awaitable<AgentSpecResolution | undefined>;
 }
@@ -948,6 +1012,7 @@ export class AgentRuntime {
     const toolsUsed: string[] = [];
     let messages: readonly ModelMessage[] = [...request.messages];
     let toolCallCount = 0;
+    const deduplicator = new ToolCallDeduplicator();
 
     while (true) {
       const activeTools = toolCallCount < this.maxToolCalls ? request.tools : [];
@@ -979,11 +1044,15 @@ export class AgentRuntime {
 
       for (const toolCall of calls) {
         const remaining = this.maxToolCalls - toolCallCount;
-        const executed = remaining > 0
-          ? await this.executeToolCall(context, toolCall, activeTools ?? [])
-          : blockedToolResult(toolCall, "Error: max tool call limit reached");
+        const duplicate = remaining > 0 ? deduplicator.check(toolCall) : undefined;
+        const executed = duplicate?.duplicate
+          ? { result: duplicate.result, toolCall }
+          : remaining > 0
+            ? await this.executeToolCall(context, toolCall, activeTools ?? [])
+            : blockedToolResult(toolCall, "Error: max tool call limit reached");
 
         toolCallCount += remaining > 0 ? 1 : 0;
+        deduplicator.record(toolCall, executed.result);
         toolsUsed.push(toolCall.name);
         toolResults.push(executed);
         toolMessages.push({
@@ -1016,6 +1085,7 @@ export class AgentRuntime {
     const toolsUsed: string[] = [];
     let messages: readonly ModelMessage[] = [...request.messages];
     let toolCallCount = 0;
+    const deduplicator = new ToolCallDeduplicator();
 
     while (true) {
       const activeTools = toolCallCount < this.maxToolCalls ? request.tools : [];
@@ -1055,12 +1125,16 @@ export class AgentRuntime {
 
       for (const toolCall of calls) {
         const remaining = this.maxToolCalls - toolCallCount;
-        const executed = remaining > 0
-          ? await this.executeToolCall(context, toolCall, activeTools ?? [])
-          : blockedToolResult(toolCall, "Error: max tool call limit reached");
+        const duplicate = remaining > 0 ? deduplicator.check(toolCall) : undefined;
+        const executed = duplicate?.duplicate
+          ? { result: duplicate.result, toolCall }
+          : remaining > 0
+            ? await this.executeToolCall(context, toolCall, activeTools ?? [])
+            : blockedToolResult(toolCall, "Error: max tool call limit reached");
 
         yield { runId: context.runId, toolCall, type: "tool-result" };
         toolCallCount += remaining > 0 ? 1 : 0;
+        deduplicator.record(toolCall, executed.result);
         toolsUsed.push(toolCall.name);
         toolResults.push(executed);
         toolMessages.push({
