@@ -188,6 +188,7 @@ export interface SlackSocketModeTransport {
 
 export interface SlackSocketModeGatewayOptions {
   readonly commandHandler: CommandHandler;
+  readonly maxRememberedEnvelopeIds?: number;
   readonly now?: () => Date;
   readonly transport: SlackSocketModeTransport;
 }
@@ -674,15 +675,22 @@ export class SlackInteractionDispatcher {
 }
 
 export class SlackSocketModeGateway {
+  private readonly envelopeIds = new Set<string>();
+  private readonly maxRememberedEnvelopeIds: number;
   private readonly now: () => Date;
 
   constructor(private readonly options: SlackSocketModeGatewayOptions) {
+    this.maxRememberedEnvelopeIds = Math.max(1, options.maxRememberedEnvelopeIds ?? 10_000);
     this.now = options.now ?? (() => new Date());
   }
 
   async handleEnvelope(envelope: SlackSocketModeEnvelope): Promise<void> {
     if (envelope.envelope_id) {
       await this.options.transport.send({ envelope_id: envelope.envelope_id });
+
+      if (this.rememberedEnvelope(envelope.envelope_id)) {
+        return;
+      }
     }
 
     const command = socketEnvelopeToCommand(envelope.payload, this.now);
@@ -690,6 +698,26 @@ export class SlackSocketModeGateway {
     if (command) {
       await this.options.commandHandler.handle(command);
     }
+  }
+
+  private rememberedEnvelope(envelopeId: string): boolean {
+    if (this.envelopeIds.has(envelopeId)) {
+      return true;
+    }
+
+    this.envelopeIds.add(envelopeId);
+
+    while (this.envelopeIds.size > this.maxRememberedEnvelopeIds) {
+      const oldest = this.envelopeIds.values().next().value as string | undefined;
+
+      if (!oldest) {
+        break;
+      }
+
+      this.envelopeIds.delete(oldest);
+    }
+
+    return false;
   }
 }
 

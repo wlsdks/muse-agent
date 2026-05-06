@@ -436,6 +436,45 @@ describe("SlackSocketModeGateway", () => {
       }
     ]);
   });
+
+  it("acks duplicate socket envelopes without routing the same envelope twice", async () => {
+    const sent: unknown[] = [];
+    const handled: unknown[] = [];
+    const gateway = new SlackSocketModeGateway({
+      commandHandler: {
+        handle: async (command) => {
+          handled.push(command.id);
+          return { text: "handled" };
+        }
+      },
+      transport: {
+        send: async (payload) => {
+          sent.push(payload);
+        }
+      }
+    });
+    const envelope = {
+      envelope_id: "envelope-duplicate",
+      payload: {
+        event: {
+          channel: "channel-1",
+          team: "workspace-1",
+          text: "<@BOT> retry safe",
+          ts: "1770000000.000200",
+          type: "app_mention",
+          user: "user-1"
+        },
+        type: "event_callback"
+      },
+      type: "events_api"
+    };
+
+    await gateway.handleEnvelope(envelope);
+    await gateway.handleEnvelope(envelope);
+
+    expect(sent).toEqual([{ envelope_id: "envelope-duplicate" }, { envelope_id: "envelope-duplicate" }]);
+    expect(handled).toEqual(["1770000000.000200"]);
+  });
 });
 
 describe("Slack persistence stores", () => {
