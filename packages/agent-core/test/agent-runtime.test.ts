@@ -5,6 +5,7 @@ import { ModelProviderRegistry, type ModelProvider, type ModelRequest, type Mode
 import { InMemoryAgentMetrics, InMemoryMuseTracer } from "@muse/observability";
 import { DefaultRagPipeline, InMemoryRagCorpus, SimpleReranker } from "@muse/rag";
 import { InMemoryAgentRunHistoryStore, InMemoryCheckpointStore, InMemoryHookTraceStore } from "@muse/runtime-state";
+import { GuardBlockRateMonitor } from "@muse/policy";
 import { ToolRegistry } from "@muse/tools";
 import {
   createAgentRuntime,
@@ -1704,6 +1705,41 @@ describe("AgentRuntime", () => {
     ]);
     expect(tracer.recordedSpans().find((span) => span.name === "muse.agent.run")).toMatchObject({
       error: "blocked"
+    });
+  });
+
+  it("records guard decisions in the block-rate monitor", async () => {
+    const guardBlockRateMonitor = new GuardBlockRateMonitor({ minSamples: 2, windowSize: 10 });
+    const runtime = createAgentRuntime({
+      guardBlockRateMonitor,
+      guards: [
+        {
+          evaluate: (context) => context.runId === "blocked-run"
+            ? { allowed: false, reason: "blocked by policy" }
+            : { allowed: true },
+          id: "input"
+        }
+      ],
+      modelProvider: createProvider()
+    });
+
+    await runtime.run({
+      messages: [{ content: "Allow this", role: "user" }],
+      model: "provider/model",
+      runId: "allowed-run"
+    });
+    await expect(
+      runtime.run({
+        messages: [{ content: "Block this", role: "user" }],
+        model: "provider/model",
+        runId: "blocked-run"
+      })
+    ).rejects.toBeInstanceOf(GuardBlockedError);
+
+    expect(guardBlockRateMonitor.snapshot()).toMatchObject({
+      blockRate: 0.5,
+      blocked: 1,
+      total: 2
     });
   });
 });

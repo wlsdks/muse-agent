@@ -1,5 +1,6 @@
 export * from "./approval-policy.js";
 export * from "./guard-rule-store.js";
+export * from "./guard-monitor.js";
 export * from "./injection-patterns.js";
 export * from "./migration-redaction.js";
 export * from "./pii-patterns.js";

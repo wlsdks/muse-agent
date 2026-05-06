@@ -49,6 +49,7 @@ import {
   maskPii,
   normalizeStructuredOutput,
   sanitizeSourceBlocks,
+  type GuardBlockRateMonitor,
   type StructuredOutputFormat,
   type ToolApprovalPolicy
 } from "@muse/policy";
@@ -146,6 +147,7 @@ export interface AgentRuntimeOptions {
   readonly responseCache?: ResponseCache;
   readonly cacheMetrics?: CacheMetricsRecorder;
   readonly ragPipeline?: RagPipeline;
+  readonly guardBlockRateMonitor?: GuardBlockRateMonitor;
   readonly toolRegistry?: ToolRegistry;
   readonly toolExecutor?: ToolExecutor;
   readonly toolExposurePolicy?: ToolExposurePolicy;
@@ -271,6 +273,7 @@ export class AgentRuntime {
   private readonly responseCache?: ResponseCache;
   private readonly cacheMetrics?: CacheMetricsRecorder;
   private readonly ragPipeline?: RagPipeline;
+  private readonly guardBlockRateMonitor?: GuardBlockRateMonitor;
   private readonly toolRegistry?: ToolRegistry;
   private readonly toolExecutor?: ToolExecutor;
   private readonly toolExposurePolicy?: ToolExposurePolicy;
@@ -299,6 +302,7 @@ export class AgentRuntime {
     this.responseCache = options.responseCache;
     this.cacheMetrics = options.cacheMetrics;
     this.ragPipeline = options.ragPipeline;
+    this.guardBlockRateMonitor = options.guardBlockRateMonitor;
     this.toolRegistry = options.toolRegistry;
     this.toolExposurePolicy = options.toolExposurePolicy;
     this.toolExecutor = options.toolExecutor ??
@@ -984,6 +988,12 @@ export class AgentRuntime {
         span.setAttribute("guard.allowed", false);
         span.setAttribute("guard.reason", message);
         span.end();
+        this.guardBlockRateMonitor?.record({
+          allowed: false,
+          guardId: guard.id,
+          reason: message,
+          runId: context.runId
+        });
         this.metrics.recordGuardRejection(guard.id, message, context.input.metadata);
         throw new GuardBlockedError(guard.id, message, "GUARD_ERROR");
       }
@@ -992,12 +1002,24 @@ export class AgentRuntime {
         span.setAttribute("guard.allowed", false);
         span.setAttribute("guard.reason", decision.reason);
         span.end();
+        this.guardBlockRateMonitor?.record({
+          allowed: false,
+          guardId: guard.id,
+          reason: decision.reason,
+          runId: context.runId
+        });
         this.metrics.recordGuardRejection(guard.id, decision.reason, context.input.metadata);
         throw new GuardBlockedError(guard.id, decision.reason, decision.code);
       }
 
       span.setAttribute("guard.allowed", true);
       span.end();
+      this.guardBlockRateMonitor?.record({
+        allowed: true,
+        guardId: guard.id,
+        reason: null,
+        runId: context.runId
+      });
     }
   }
 
