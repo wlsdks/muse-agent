@@ -517,7 +517,7 @@ Expected: all pass.
 - Modify: `packages/model/test/model.test.ts`
 - Possibly create: `packages/model/test/provider-contract.test.ts`
 
-- [ ] **Step 1: Add contract cases for each adapter**
+- [x] **Step 1: Add contract cases for each adapter**
 
 For OpenAI-compatible, OpenAI, OpenRouter, Ollama, Anthropic, and Gemini, assert:
 
@@ -529,7 +529,7 @@ errors become ModelProviderError with provider ID
 tool calls map into provider-neutral ModelToolCall where supported
 ```
 
-- [ ] **Step 2: Add optional live smoke gates**
+- [x] **Step 2: Add optional live smoke gates**
 
 Live tests must be skipped unless credentials are present:
 
@@ -541,7 +541,7 @@ OPENROUTER_API_KEY
 OLLAMA_BASE_URL or local Ollama server
 ```
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run:
 

@@ -13,6 +13,7 @@ import {
   OpenRouterProvider,
   parseModelName,
   type ModelInfo,
+  type ModelRequest,
   type ModelProvider
 } from "../src/index.js";
 
@@ -468,3 +469,402 @@ describe("provider adapters", () => {
     });
   });
 });
+
+describe("provider adapter contracts", () => {
+  const contractRequest: ModelRequest = {
+    messages: [{ content: "hello", role: "user" }],
+    model: "provider/model-test",
+    tools: [{
+      description: "Search synthetic data",
+      inputSchema: { type: "object" },
+      name: "search",
+      risk: "read"
+    }]
+  };
+
+  const openAIProviderFactories = [
+    {
+      expectedLocal: false,
+      id: "openai-compatible",
+      model: "model-test",
+      errorProvider: () => new OpenAICompatibleProvider({
+        baseUrl: "https://llm.example.test/v1",
+        defaultModel: "model-test",
+        fetch: fakeOpenAIChatFetch({ forceError: true }),
+        models: ["model-test"]
+      }),
+      provider: () => new OpenAICompatibleProvider({
+        baseUrl: "https://llm.example.test/v1",
+        defaultModel: "model-test",
+        fetch: fakeOpenAIChatFetch(),
+        models: ["model-test"]
+      })
+    },
+    {
+      expectedLocal: false,
+      id: "openai",
+      model: "model-test",
+      errorProvider: () => new OpenAIProvider({
+        baseUrl: "https://openai.example.test/v1",
+        defaultModel: "model-test",
+        fetch: fakeOpenAIChatFetch({ forceError: true }),
+        models: ["model-test"]
+      }),
+      provider: () => new OpenAIProvider({
+        baseUrl: "https://openai.example.test/v1",
+        defaultModel: "model-test",
+        fetch: fakeOpenAIChatFetch(),
+        models: ["model-test"]
+      })
+    },
+    {
+      expectedLocal: false,
+      id: "openrouter",
+      model: "provider/model-test",
+      errorProvider: () => new OpenRouterProvider({
+        baseUrl: "https://openrouter.example.test/api/v1",
+        defaultModel: "provider/model-test",
+        fetch: fakeOpenAIChatFetch({ forceError: true }),
+        models: ["provider/model-test"]
+      }),
+      provider: () => new OpenRouterProvider({
+        baseUrl: "https://openrouter.example.test/api/v1",
+        defaultModel: "provider/model-test",
+        fetch: fakeOpenAIChatFetch(),
+        models: ["provider/model-test"]
+      })
+    },
+    {
+      expectedLocal: true,
+      id: "ollama",
+      model: "model-test",
+      errorProvider: () => new OllamaProvider({
+        baseUrl: "http://ollama.example.test/v1",
+        defaultModel: "model-test",
+        fetch: fakeOpenAIChatFetch({ forceError: true }),
+        models: ["model-test"]
+      }),
+      provider: () => new OllamaProvider({
+        baseUrl: "http://ollama.example.test/v1",
+        defaultModel: "model-test",
+        fetch: fakeOpenAIChatFetch(),
+        models: ["model-test"]
+      })
+    }
+  ];
+
+  for (const entry of openAIProviderFactories) {
+    it(`${entry.id} maps model metadata, generate, stream, tool calls, and errors`, async () => {
+      const provider = entry.provider();
+      const models = await provider.listModels();
+      const response = await provider.generate({ ...contractRequest, model: `${entry.id}/${entry.model}` });
+      const events = [];
+      const failingProvider = entry.errorProvider();
+
+      for await (const event of provider.stream({ ...contractRequest, model: `${entry.id}/${entry.model}` })) {
+        events.push(event);
+      }
+
+      expect(models).toEqual([
+        expect.objectContaining({
+          capabilities: expect.objectContaining({
+            local: entry.expectedLocal,
+            streaming: true,
+            toolCalling: true
+          }),
+          modelId: entry.model,
+          providerId: entry.id
+        })
+      ]);
+      expect(response).toMatchObject({
+        output: "contract response",
+        toolCalls: [{ arguments: { query: "muse" }, id: "call-1", name: "search" }],
+        usage: { inputTokens: 11, outputTokens: 5 }
+      });
+      expect(events).toEqual([
+        { text: "contract ", type: "text-delta" },
+        { text: "response", type: "text-delta" },
+        {
+          toolCall: { arguments: { query: "muse" }, id: "call-1", name: "search" },
+          type: "tool-call"
+        },
+        expect.objectContaining({
+          response: expect.objectContaining({
+            output: "contract response",
+            toolCalls: [{ arguments: { query: "muse" }, id: "call-1", name: "search" }]
+          }),
+          type: "done"
+        })
+      ]);
+      await expect(failingProvider.generate(contractRequest))
+        .rejects
+        .toMatchObject({ providerId: entry.id, retryable: true });
+    });
+  }
+
+  it("anthropic maps model metadata, generate, stream, tool calls, and errors", async () => {
+    const provider = new AnthropicProvider({
+      defaultModel: "claude-test",
+      fetch: fakeAnthropicFetch(),
+      models: ["claude-test"]
+    });
+    const failingProvider = new AnthropicProvider({
+      defaultModel: "claude-test",
+      fetch: fakeAnthropicFetch({ forceError: true }),
+      models: ["claude-test"]
+    });
+    const models = await provider.listModels();
+    const response = await provider.generate({ ...contractRequest, model: "anthropic/claude-test" });
+    const events = [];
+
+    for await (const event of provider.stream({ ...contractRequest, model: "anthropic/claude-test" })) {
+      events.push(event);
+    }
+
+    expect(models).toEqual([
+      expect.objectContaining({
+        capabilities: expect.objectContaining({
+          streaming: true,
+          toolCalling: true
+        }),
+        modelId: "claude-test",
+        providerId: "anthropic"
+      })
+    ]);
+    expect(response).toMatchObject({
+      output: "contract response",
+      toolCalls: [{ arguments: { query: "muse" }, id: "tool-1", name: "search" }],
+      usage: { inputTokens: 11, outputTokens: 5 }
+    });
+    expect(events).toEqual([
+      { text: "contract response", type: "text-delta" },
+      { toolCall: { arguments: { query: "muse" }, id: "tool-1", name: "search" }, type: "tool-call" },
+      expect.objectContaining({ response: expect.objectContaining({ output: "contract response" }), type: "done" })
+    ]);
+    await expect(failingProvider.generate(contractRequest))
+      .rejects
+      .toMatchObject({ providerId: "anthropic", retryable: true });
+  });
+
+  it("gemini maps model metadata, generate, stream, tool calls, and errors", async () => {
+    const provider = new GeminiProvider({
+      defaultModel: "gemini-test",
+      fetch: fakeGeminiFetch(),
+      models: ["gemini-test"]
+    });
+    const failingProvider = new GeminiProvider({
+      defaultModel: "gemini-test",
+      fetch: fakeGeminiFetch({ forceError: true }),
+      models: ["gemini-test"]
+    });
+    const models = await provider.listModels();
+    const response = await provider.generate({ ...contractRequest, model: "gemini/gemini-test" });
+    const events = [];
+
+    for await (const event of provider.stream({ ...contractRequest, model: "gemini/gemini-test" })) {
+      events.push(event);
+    }
+
+    expect(models).toEqual([
+      expect.objectContaining({
+        capabilities: expect.objectContaining({
+          streaming: true,
+          toolCalling: true
+        }),
+        modelId: "gemini-test",
+        providerId: "gemini"
+      })
+    ]);
+    expect(response).toMatchObject({
+      output: "contract response",
+      toolCalls: [{ arguments: { query: "muse" }, id: "gemini_tool_call_1", name: "search" }],
+      usage: { inputTokens: 11, outputTokens: 5 }
+    });
+    expect(events).toEqual([
+      { text: "contract response", type: "text-delta" },
+      { toolCall: { arguments: { query: "muse" }, id: "gemini_tool_call_1", name: "search" }, type: "tool-call" },
+      expect.objectContaining({ response: expect.objectContaining({ output: "contract response" }), type: "done" })
+    ]);
+    await expect(failingProvider.generate(contractRequest))
+      .rejects
+      .toMatchObject({ providerId: "gemini", retryable: true });
+  });
+});
+
+describe("live provider smoke gates", () => {
+  const liveEnabled = process.env.MUSE_RUN_LIVE_MODEL_TESTS === "1";
+
+  it.skipIf(!liveEnabled || !process.env.OPENAI_API_KEY)("runs an optional OpenAI live smoke", async () => {
+    const provider = new OpenAIProvider({
+      apiKey: process.env.OPENAI_API_KEY,
+      defaultModel: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+      models: [process.env.OPENAI_MODEL ?? "gpt-4o-mini"]
+    });
+
+    await expect(provider.generate({
+      messages: [{ content: "Reply with ok.", role: "user" }],
+      model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+      maxOutputTokens: 8
+    })).resolves.toMatchObject({ model: expect.any(String) });
+  });
+
+  it.skipIf(!liveEnabled || !process.env.ANTHROPIC_API_KEY)("runs an optional Anthropic live smoke", async () => {
+    const model = process.env.ANTHROPIC_MODEL ?? "claude-3-5-haiku-latest";
+    const provider = new AnthropicProvider({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      defaultModel: model,
+      models: [model]
+    });
+
+    await expect(provider.generate({
+      messages: [{ content: "Reply with ok.", role: "user" }],
+      model,
+      maxOutputTokens: 8
+    })).resolves.toMatchObject({ model: expect.any(String) });
+  });
+
+  it.skipIf(!liveEnabled || (!process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY))(
+    "runs an optional Gemini live smoke",
+    async () => {
+      const model = process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
+      const provider = new GeminiProvider({
+        apiKey: process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY,
+        defaultModel: model,
+        models: [model]
+      });
+
+      await expect(provider.generate({
+        messages: [{ content: "Reply with ok.", role: "user" }],
+        model,
+        maxOutputTokens: 8
+      })).resolves.toMatchObject({ model });
+    }
+  );
+
+  it.skipIf(!liveEnabled || !process.env.OPENROUTER_API_KEY)("runs an optional OpenRouter live smoke", async () => {
+    const model = process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini";
+    const provider = new OpenRouterProvider({
+      apiKey: process.env.OPENROUTER_API_KEY,
+      defaultModel: model,
+      models: [model]
+    });
+
+    await expect(provider.generate({
+      messages: [{ content: "Reply with ok.", role: "user" }],
+      model,
+      maxOutputTokens: 8
+    })).resolves.toMatchObject({ model: expect.any(String) });
+  });
+
+  it.skipIf(!liveEnabled || !process.env.OLLAMA_BASE_URL)("runs an optional Ollama live smoke", async () => {
+    const model = process.env.OLLAMA_MODEL ?? "llama3.2";
+    const provider = new OllamaProvider({
+      baseUrl: process.env.OLLAMA_BASE_URL,
+      defaultModel: model,
+      models: [model]
+    });
+
+    await expect(provider.generate({
+      messages: [{ content: "Reply with ok.", role: "user" }],
+      model,
+      maxOutputTokens: 8
+    })).resolves.toMatchObject({ model: expect.any(String) });
+  });
+});
+
+function fakeOpenAIChatFetch(options: { readonly forceError?: boolean } = {}): typeof globalThis.fetch {
+  return async (_url, init) => {
+    const body = JSON.parse(String(init?.body)) as { readonly stream?: boolean };
+
+    if (options.forceError) {
+      return new Response("temporary provider failure", { status: 503, statusText: "Unavailable" });
+    }
+
+    if (body.stream) {
+      return new Response(new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder();
+          controller.enqueue(encoder.encode(
+            "data: {\"id\":\"stream-1\",\"model\":\"model-test\",\"choices\":[{\"delta\":{\"content\":\"contract \"}}]}\n\n"
+          ));
+          controller.enqueue(encoder.encode(
+            "data: {\"id\":\"stream-1\",\"model\":\"model-test\",\"choices\":[{\"delta\":{\"content\":\"response\"}}]}\n\n"
+          ));
+          controller.enqueue(encoder.encode(
+            "data: {\"id\":\"stream-1\",\"model\":\"model-test\",\"choices\":[{\"delta\":{\"tool_calls\":[{" +
+            "\"index\":0,\"id\":\"call-1\",\"type\":\"function\",\"function\":{\"name\":\"search\"," +
+            "\"arguments\":\"{\\\"query\\\":\\\"muse\\\"}\"}}]}}]}\n\n"
+          ));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        }
+      }));
+    }
+
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: "contract response",
+          tool_calls: [{
+            function: {
+              arguments: "{\"query\":\"muse\"}",
+              name: "search"
+            },
+            id: "call-1"
+          }]
+        }
+      }],
+      id: "chatcmpl-contract",
+      model: "model-test",
+      usage: {
+        completion_tokens: 5,
+        prompt_tokens: 11
+      }
+    }));
+  };
+}
+
+function fakeAnthropicFetch(options: { readonly forceError?: boolean } = {}): typeof globalThis.fetch {
+  return async () => {
+    if (options.forceError) {
+      return new Response("temporary provider failure", { status: 503, statusText: "Unavailable" });
+    }
+
+    return new Response(JSON.stringify({
+      content: [
+        { text: "contract response", type: "text" },
+        { id: "tool-1", input: { query: "muse" }, name: "search", type: "tool_use" }
+      ],
+      id: "msg-contract",
+      model: "claude-test",
+      usage: {
+        input_tokens: 11,
+        output_tokens: 5
+      }
+    }));
+  };
+}
+
+function fakeGeminiFetch(options: { readonly forceError?: boolean } = {}): typeof globalThis.fetch {
+  return async () => {
+    if (options.forceError) {
+      return new Response("temporary provider failure", { status: 503, statusText: "Unavailable" });
+    }
+
+    return new Response(JSON.stringify({
+      candidates: [{
+        content: {
+          parts: [
+            { text: "contract response" },
+            { functionCall: { args: { query: "muse" }, name: "search" } }
+          ]
+        }
+      }],
+      responseId: "gemini-contract",
+      usageMetadata: {
+        candidatesTokenCount: 5,
+        promptTokenCount: 11
+      }
+    }));
+  };
+}
