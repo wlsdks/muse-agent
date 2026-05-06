@@ -45,12 +45,14 @@ import type {
 import { trimConversationMessages, type ConversationTrimOptions } from "@muse/memory";
 import {
   detectSystemPromptLeakage,
+  detectTopicDrift,
   findInjectionPatterns,
   maskPii,
   normalizeStructuredOutput,
   sanitizeSourceBlocks,
   type GuardBlockRateMonitor,
   type StructuredOutputFormat,
+  type TopicDriftOptions,
   type ToolApprovalPolicy
 } from "@muse/policy";
 import { createRunId, type JsonObject } from "@muse/shared";
@@ -1665,6 +1667,25 @@ export function createPiiInputGuard(): GuardStage {
       };
     },
     id: "pii-input-guard"
+  };
+}
+
+export function createTopicDriftInputGuard(options: TopicDriftOptions): GuardStage {
+  return {
+    evaluate: (context) => {
+      const decision = detectTopicDrift(joinUserMessages(context.input.messages), options);
+
+      if (decision.allowed) {
+        return { allowed: true };
+      }
+
+      return {
+        allowed: false,
+        code: "TOPIC_DRIFT",
+        reason: decision.reason
+      };
+    },
+    id: "topic-drift-input-guard"
   };
 }
 

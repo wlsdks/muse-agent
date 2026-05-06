@@ -29,6 +29,7 @@ import {
   createStructuredOutputResponseFilter,
   createSystemPromptLeakageOutputGuard,
   createToolResultQualityAuditFilter,
+  createTopicDriftInputGuard,
   createVerifiedSourcesResponseFilter,
   createZeroResultOverclaimResponseFilter,
   decodeCheckpointMessages,
@@ -633,6 +634,29 @@ describe("AgentRuntime", () => {
     ).rejects.toMatchObject({
       code: "PII_DETECTED",
       guardId: "pii-input-guard"
+    });
+  });
+
+  it("blocks topic drift through a default input guard", async () => {
+    const runtime = createAgentRuntime({
+      guards: [
+        createTopicDriftInputGuard({
+          allowedTopics: [
+            { id: "muse-runtime", keywords: ["muse", "agent", "rag", "migration"] }
+          ]
+        })
+      ],
+      modelProvider: createProvider()
+    });
+
+    await expect(
+      runtime.run({
+        messages: [{ content: "Book flights to Paris and find hotel discounts", role: "user" }],
+        model: "provider/model"
+      })
+    ).rejects.toMatchObject({
+      code: "TOPIC_DRIFT",
+      guardId: "topic-drift-input-guard"
     });
   });
 
