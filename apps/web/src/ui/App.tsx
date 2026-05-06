@@ -16,6 +16,7 @@ interface HealthResponse {
 }
 
 interface ChatResponse {
+  readonly content?: string;
   readonly response?: string;
   readonly runId?: string;
   readonly metadata?: Record<string, unknown>;
@@ -164,7 +165,9 @@ function ChatPanel({ client }: { readonly client: ApiClient }) {
         </button>
       </form>
       <output className="chat-output">
-        {chat.error ? `Error: ${chat.error instanceof Error ? chat.error.message : "request failed"}` : latest?.response ?? ""}
+        {chat.error
+          ? `Error: ${chat.error instanceof Error ? chat.error.message : "request failed"}`
+          : latest?.response ?? latest?.content ?? ""}
       </output>
     </section>
   );

@@ -603,6 +603,9 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     agentSpecRegistry: assembly.agentSpecRegistry,
     agentEvalStore: assembly.agentEvalStore,
     authService: assembly.authService,
+    cors: {
+      allowCredentials: true
+    },
     pendingApprovalStore: assembly.approvalStore,
     defaultModel: assembly.defaultModel,
     feedbackStore: assembly.feedbackStore,

@@ -436,7 +436,7 @@ Expected: all pass.
 - Modify: `apps/web/playwright.config.ts` or add a separate Playwright config
 - Modify: `package.json`
 
-- [ ] **Step 1: Add a live API Playwright test**
+- [x] **Step 1: Add a live API Playwright test**
 
 The test must:
 
@@ -449,7 +449,7 @@ The test must:
 6. Assert runtime status is ok.
 ```
 
-- [ ] **Step 2: Wire script**
+- [x] **Step 2: Wire script**
 
 Modify root `package.json`:
 
@@ -457,7 +457,7 @@ Modify root `package.json`:
 "test:e2e:live": "pnpm --filter @muse/web test:e2e -- live-api.spec.ts"
 ```
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run:
 

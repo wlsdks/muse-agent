@@ -99,6 +99,7 @@ describe("autoconfigure", () => {
     expect(options.authService).toBeTruthy();
     expect(options.admin.cache.responseCache.size()).toBe(0);
     expect(options.admin.operations.listAlerts()).toEqual([]);
+    expect(options.cors).toEqual({ allowCredentials: true });
     expect(options.requireAuth).toBe(true);
     expect(options.mcp.manager).toBeTruthy();
     expect(options.scheduler.store.list()).toEqual([]);

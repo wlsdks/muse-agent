@@ -20,7 +20,7 @@ but those checks do not prove behavior parity. This document tracks feature-leve
 - Node 24 diagnostic smoke: pass via `pnpm smoke:diagnostic`
 - Rust runner smoke: pass via `cargo test -p muse-runner` and `MUSE_RUNNER_PATH=... pnpm --filter @muse/tools test`
 - PostgreSQL/Testcontainers migration smoke: pass via `pnpm --filter @muse/db test:postgres`
-- Browser caveat: Playwright web smoke now covers the operator console against mocked API-backed chat, approvals, and recent runs; full live API/browser smoke still needs Node 24 environment coverage.
+- Browser verification: Playwright web smoke covers mocked API-backed chat, approvals, and recent runs, and live diagnostic API chat now passes under Node 24.
 
 ## Summary
 
