@@ -1,17 +1,17 @@
 # Reactor Module Parity Audit - 2026-05-06
 
-This audit compares each Reactor source module under `/Users/stark/ai/reactor/modules`
+This audit compares each Reactor source module under `<reactor-source>/modules`
 against the current Muse implementation. Route parity and DB table-name parity are green,
 but those checks do not prove behavior parity. This document tracks feature-level parity.
 
 ## Verification Snapshot
 
 - `node -v`: `v24.15.0`
-- `REACTOR_SOURCE_DIR=/Users/stark/ai/reactor pnpm verify:reactor-routes`: pass
+- `REACTOR_SOURCE_DIR=<reactor-source> pnpm verify:reactor-routes`: pass
   - Reactor routes: 255
   - Muse routes: 371
   - Missing Reactor routes: 0
-- `REACTOR_SOURCE_DIR=/Users/stark/ai/reactor pnpm verify:reactor-db`: pass
+- `REACTOR_SOURCE_DIR=<reactor-source> pnpm verify:reactor-db`: pass
   - Reactor DB migration files: 76
   - Muse DB migration files: 1
   - Reactor tables: 52
@@ -20,7 +20,8 @@ but those checks do not prove behavior parity. This document tracks feature-leve
 - `pnpm check`: pass
 - `pnpm test:e2e`: pass, 2 Chromium Playwright tests
 - `pnpm smoke:diagnostic`: pass
-- `cargo test -p muse-runner`: pass, 4 Rust runner tests
+- `cargo test -p muse-runner`: not rerun in the current shell because `cargo` is unavailable; the TypeScript
+  runner bridge remains covered by `packages/tools` tests.
 - PostgreSQL/Testcontainers migration smoke: pass via `pnpm --filter @muse/db test:postgres`
 - Browser verification: Playwright web smoke covers mocked API-backed chat, approvals, and recent runs, and live diagnostic API chat now passes under Node 24.
 
@@ -30,10 +31,11 @@ Status is measured against Reactor-to-Muse operating-discipline parity: route/ta
 
 | Status | Count | Modules |
 | --- | ---: | --- |
-| Complete | 28 | `admin`, `agent`, `api`, `approval`, `auth`, `autoconfigure`, `cache`, `common`, `core`, `eval`, `guard`, `hook`, `hook-integrations`, `intent`, `mcp`, `memory`, `model-routing`, `observability`, `persistence-schema`, `promptlab`, `prompts`, `rag`, `resilience`, `runtime-settings`, `scheduler`, `slack`, `tool`, `web` |
-| Complete | 0 | None |
-| Complete | 0 | None |
+| Complete | 31 | `admin`, `agent`, `api`, `approval`, `auth`, `autoconfigure`, `cache`, `common`, `context`, `core`, `eval`, `guard`, `hook`, `hook-integrations`, `intent`, `mcp`, `memory`, `model-routing`, `multi-agent`, `observability`, `persistence-schema`, `promptlab`, `prompts`, `rag`, `resilience`, `response`, `runtime-settings`, `scheduler`, `slack`, `tool`, `web` |
 | Missing | 0 | None at module landing-zone level |
+
+Note: Reactor `context`, `multi-agent`, and `response` have build artifacts in the current Reactor checkout but no
+`src/main/kotlin` files. Their closure is judged from available class names plus the Muse implementation and tests.
 
 ## Module-by-Module Findings
 
@@ -47,6 +49,7 @@ Status is measured against Reactor-to-Muse operating-discipline parity: route/ta
 | `autoconfigure` | `packages/autoconfigure` | Complete | Environment-driven Kysely assembly, provider selection, runtime wiring, Node 24 diagnostic smoke. | None. |
 | `cache` | `packages/cache` | Complete | In-memory/no-op response cache, deterministic key builder, stats, invalidation, prompt-cache metadata helpers. | None; Redis/semantic cache adapters are not required for the current Muse runtime baseline. |
 | `common` | `packages/shared`, `packages/policy`, `packages/memory`, `packages/observability`, `packages/tools` | Complete | Shared IDs/JSON types, redaction/sanitizer patterns, boundary violation formatting, cancellation token, SHA-256/HMAC helpers. | None. |
+| `context` | `packages/memory`, `packages/agent-core` | Complete | Deterministic conversation trimming, compaction summaries, pinned-entity preservation, assistant/tool pair integrity, runtime context-window reports and tracing. | None. |
 | `core` | `apps/api`, `packages/autoconfigure` | Complete | Fastify bootstrap, server injection tests, Node 24 API/CLI/web diagnostic runtime. | None; Spring configuration is intentionally not copied. |
 | `eval` | `packages/eval`, `apps/api`, `packages/runtime-state` | Complete | Eval cases, run logs, results, debug replay capture, deterministic/LLM judge paths, DB-backed store, retention purge, metadata-only failure, successful-tool-only grading. | None. |
 | `guard` | `packages/policy`, `packages/agent-core` | Complete | Input/output guard rules, tool output sanitizer, PII/injection/prompt-leakage patterns, dynamic guard rules, fail-close integration, audit persistence, guard metrics. | None; live classifier calibration is provider certification work. |
@@ -56,12 +59,14 @@ Status is measured against Reactor-to-Muse operating-discipline parity: route/ta
 | `mcp` | `packages/mcp`, `apps/api` | Complete | MCP store, SDK transports, security policy, health, reconnect, admin APIs, preflight diagnostics, tool bridge, stdio live fixture smoke. | None. |
 | `memory` | `packages/memory`, `packages/runtime-state` | Complete | Deterministic trimming, assistant/tool pair integrity, task memory, user memory, conversation summaries, Kysely stores, RAG runtime context smoke. | None. |
 | `model-routing` | `packages/model`, `packages/autoconfigure`, `packages/resilience` | Complete | Muse-owned provider abstraction, registry, prefix routing, cost/latency-aware selection, OpenAI-compatible/OpenAI/OpenRouter/Ollama/Anthropic/Gemini adapters, fallback policy, contract tests. | None; paid live-provider smoke is external certification. |
+| `multi-agent` | `packages/multi-agent`, `packages/agent-specs`, `packages/db` | Complete | Supervisor agent, sequential/parallel delegation, worker selection by capability, fallback on worker failure, agent spec registry/store support. | None. |
 | `observability` | `packages/observability`, `packages/runtime-state`, `packages/db`, `apps/api` | Complete | Persisted tracer, `trace_events` sink, metrics, doctor checks, pino-compatible logging, OpenTelemetry-compatible sink/exporter, tenant span processor, queryable run traces. | None. |
 | `persistence-schema` | `packages/db` | Complete | Kysely schema and consolidated SQL migration include all Reactor table names; parity and Testcontainers smoke pass. | None. |
 | `promptlab` | `packages/promptlab`, `apps/api` | Complete | Feedback, experiments/trials/reports, personas/templates/intents, auto-optimize/report persistence, runner tests. | None. |
 | `prompts` | `packages/prompts`, `packages/promptlab`, `packages/agent-core` | Complete | Prompt builder, response format instructions, context/tool result blocks, cache boundary helpers, scoped prompt layer registry, exemplar parsing/retrieval, runtime injection. | None. |
 | `rag` | `packages/rag`, `apps/api` | Complete | Chunking, BM25, RRF, local vector store, hybrid/adaptive/parent/conversation-aware retrieval, compression, retrieval eval, pipeline, ingestion stores, runtime context smoke. | None; managed vector DB adapters are product evolution. |
 | `resilience` | `packages/resilience`, `packages/agent-core` | Complete | Circuit breaker, registry, retry, timeout, no-op/model fallback, tests, agent-core wiring. | No major gap found for the Reactor module's core scope. |
+| `response` | `packages/agent-core`, `packages/policy` | Complete | Response filter chain, verified source extraction/rendering, source block sanitization, Slack/user-id formatting, max-length/markdown/text cleanup, lure/greeting stripping, tool-result quality audit, count consistency, policy warnings. | None. |
 | `runtime-settings` | `packages/runtime-settings`, `apps/api` | Complete | Typed settings, cache refresh/invalidation, in-memory/Kysely stores, admin compatibility routes and tests. | No major gap found for core scope. |
 | `scheduler` | `packages/scheduler`, `apps/api` | Complete | Job/execution stores, cron runtime, trigger/dry-run, agent/MCP jobs, retry/timeout, distributed lock, management routes, scheduler tools. | None; Teams-specific formatting needs a Teams surface first. |
 | `slack` | `packages/integrations`, `apps/api` | Complete | Signed HTTP Events API, slash commands, interactions, response URL fallback, thread replies, feedback buttons, Slack stores, Socket Mode envelope ack, duplicate suppression, app mention routing. | None; real workspace WebSocket verification is external certification. |
@@ -77,6 +82,7 @@ Status is measured against Reactor-to-Muse operating-discipline parity: route/ta
 | `auth` | Explicit bootstrap admin, bearer identity resolution, revoked token rejection, aliases preserving auth, and optional IAM exchange. | `@muse/auth` first-user admin bootstrap, JWT/revocation store, API auth aliases, deterministic rate limiter, and verifier-injected IAM exchange. | Live IAM public-key fetching is product-gated behind a verifier adapter. | `packages/auth/test/auth.test.ts`, auth alias and scoped approval API tests in `apps/api/test/server.test.ts`. |
 | `cache` | Deterministic cache keys, queryable stats, invalidation; semantic cache is distinct from response cache. | `@muse/cache` in-memory/no-op response cache, prompt-cache metadata, deterministic key builder. | Redis cache is not required for local scaffold; semantic retrieval belongs to `@muse/rag`, not response cache. | `packages/cache/test/cache.test.ts`, RAG runtime context smoke from Task 10. |
 | `common` | Shared hash/HMAC helpers, boundary violation formatting, deterministic cancellation helpers. | `@muse/shared` now exposes `sha256Hex`, `hmacSha256Hex`, `verifyHmacSha256Hex`, `formatBoundaryViolation`, `createCancellationToken`. | No remaining common utility blocker found in the Reactor discipline list. | `packages/shared/test/shared.test.ts`. |
+| `context` | Conversation history trimming is deterministic and never leaves orphan assistant/tool pairs. | `trimConversationMessages` in `@muse/memory` plus `agent-core` context-window reporting. | No source files are present in the current Reactor checkout, so closure uses available class names and Muse tests. | `packages/memory/test/memory.test.ts`, `packages/agent-core/test/agent-runtime.test.ts`. |
 | `eval` | Metadata-only cases fail; expected tools count only successful calls; replay run stays distinct from source. | Agent eval store/routes, deterministic replay through `AgentRuntime`, successful-tool-only grading. | Full historical Reactor report shape is not copied; Muse keeps provider-neutral eval contracts. | New API eval behavior test in `apps/api/test/server.test.ts`; `packages/eval/test/eval.test.ts`. |
 | `agent` | Step budgets classify model and tool-output token consumption before the loop drifts past limits. | `StepBudgetTracker` in `@muse/agent-core` tracks cumulative model/tool-output tokens with explicit `ok`, `soft_limit`, and `exhausted` states. | Runtime auto-abort policies around this tracker can deepen product behavior later; the deterministic budget primitive is migrated. | `packages/agent-core/test/agent-runtime.test.ts`. |
 | `agent` | Repeated successful tool calls are not re-executed when the model asks for the same tool and arguments again. | `ToolCallDeduplicator` in `@muse/agent-core` canonicalizes arguments, reuses completed results, and keeps assistant/tool pair records for each model-emitted call. | Broader recovery hints for unknown textual tool intent remain product-depth work. | `packages/agent-core/test/agent-runtime.test.ts`. |
@@ -84,8 +90,10 @@ Status is measured against Reactor-to-Muse operating-discipline parity: route/ta
 | `hook` | Hooks fail open and persist traces without blocking runs. | `agent-core` lifecycle hooks plus `HookTraceStore`. | Standalone Reactor HookExecutor API is not copied because Muse exposes hooks through provider-neutral runtime contracts. | `packages/agent-core/test/agent-runtime.test.ts`, `packages/runtime-state/test/runtime-state.test.ts`. |
 | `hook-integrations` | Concrete hooks capture webhook, feedback, RAG ingestion, tool summaries, and user memory without moving security into hooks. | `@muse/integrations` synthetic webhook/Slack/RAG/feedback/user-memory hooks. | Write-tool blocking remains intentionally in guard/policy. | `packages/integrations/test/integrations.test.ts`, `packages/tools/test/tools.test.ts`. |
 | `intent` | Intent definitions resolve deterministically into agent specs and promptlab catalog state. | `@muse/agent-specs` rule resolver and Kysely store; promptlab intent catalog. | Semantic classifier/profile merge is not a core blocker; deterministic resolver is the current Muse contract. | `packages/agent-specs/test/agent-specs.test.ts`, `packages/promptlab/test/promptlab.test.ts`. |
+| `multi-agent` | Agents can be registered, selected by capability, and delegated sequentially or in parallel. | `@muse/multi-agent` supervisor and worker abstractions plus `@muse/agent-specs` stores. | No source files are present in the current Reactor checkout, so closure uses available class names and Muse tests. | `packages/multi-agent/test/multi-agent.test.ts`, `packages/agent-specs/test/agent-specs.test.ts`. |
 | `promptlab` | Experiments run variants against cases and persist trials/reports/catalog entries. | `PromptExperimentRunner`, in-memory/Kysely-shaped stores, feedback/persona/template/intent mappers. | Live scheduled experiment orchestration remains scheduler/product work. | `packages/promptlab/test/promptlab.test.ts`. |
 | `prompts` | Layered prompts resolve deterministically; exemplars retrieve and inject without breaking runtime discipline. | Prompt layer registry, cache boundary helpers, exemplar parser/retriever, agent-core fail-open exemplar injection. | Prompt layer persistence UI is not required for runtime discipline parity. | `packages/prompts/test/prompts.test.ts`, agent-core exemplar tests. |
+| `response` | Response filters sanitize source blocks, render verified sources, mask identifiers, and clean low-quality final answers. | `agent-core` response filter stages plus `@muse/policy` source-block sanitizer and structured-output normalization. | No source files are present in the current Reactor checkout, so closure uses available class names and Muse tests. | `packages/agent-core/test/agent-runtime.test.ts`, `packages/policy/test/*.test.ts`. |
 | `scheduler` | Dry-run details, agent/MCP jobs, retry/timeout, distributed lock, queryable executions. | `@muse/scheduler` stores/runtime/dispatcher/tool invokers and API routes. | Teams-specific formatting is intentionally not migrated without a Teams integration surface. | `packages/scheduler/test/scheduler.test.ts`, scheduler API tests in `apps/api/test/server.test.ts`. |
 
 ## Remaining Product Decisions
