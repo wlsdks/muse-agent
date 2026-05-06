@@ -85,6 +85,51 @@ export interface WebhookNotificationHookOptions {
   readonly outputPreviewLength?: number;
 }
 
+export interface ToolResponseSummary {
+  readonly itemCount?: number;
+  readonly outputPreview: string;
+  readonly runId: string;
+  readonly status: string;
+  readonly toolCallId: string;
+  readonly toolName: string;
+}
+
+export interface ToolResponseSummaryHookOptions {
+  readonly id?: string;
+  readonly onSummary: (summary: ToolResponseSummary) => Awaitable<void>;
+  readonly previewLength?: number;
+}
+
+export interface RagIngestionCapturePolicy {
+  readonly allowedChannels: readonly string[];
+  readonly blockedPatterns: readonly string[];
+  readonly enabled: boolean;
+  readonly minQueryChars: number;
+  readonly minResponseChars: number;
+  readonly requireReview: boolean;
+}
+
+export interface RagIngestionCaptureCandidate {
+  readonly channel?: string | null;
+  readonly query: string;
+  readonly response: string;
+  readonly runId: string;
+  readonly sessionId?: string | null;
+  readonly status?: "PENDING" | "REJECTED" | "INGESTED";
+  readonly userId: string;
+}
+
+export interface RagIngestionCaptureHookOptions {
+  readonly candidateStore: {
+    save(candidate: RagIngestionCaptureCandidate): Awaitable<unknown>;
+  };
+  readonly id?: string;
+  readonly policyStore: {
+    getOrNull(): Awaitable<RagIngestionCapturePolicy | undefined>;
+  };
+  readonly userIdFallback?: string;
+}
+
 export interface SlackCommandAckResponse {
   readonly response_type: "ephemeral" | "in_channel";
   readonly text: string;
@@ -1038,6 +1083,60 @@ export function createWebhookNotificationHook(options: WebhookNotificationHookOp
   };
 }
 
+export function createToolResponseSummaryHook(options: ToolResponseSummaryHookOptions): HookStage {
+  const previewLength = Math.max(1, options.previewLength ?? 500);
+
+  return {
+    afterTool: async (context, toolCall, result) => {
+      if (result.status !== "completed") {
+        return;
+      }
+
+      await options.onSummary({
+        ...(countJsonItems(result.output) !== undefined ? { itemCount: countJsonItems(result.output) } : {}),
+        outputPreview: truncatePreview(result.output, previewLength),
+        runId: context.runId,
+        status: result.status,
+        toolCallId: toolCall.id,
+        toolName: toolCall.name
+      });
+    },
+    id: options.id ?? "tool-response-summary"
+  };
+}
+
+export function createRagIngestionCaptureHook(options: RagIngestionCaptureHookOptions): HookStage {
+  return {
+    afterComplete: async (context, response) => {
+      const policy = await options.policyStore.getOrNull();
+
+      if (!policy?.enabled) {
+        return;
+      }
+
+      const query = firstUserMessage(context.input.messages);
+      const channel = metadataString(context.input.metadata, "channel");
+      const sessionId = metadataString(context.input.metadata, "sessionId");
+      const userId = metadataString(context.input.metadata, "userId") ?? options.userIdFallback;
+
+      if (!userId || !isEligibleRagCandidate(query, response.output, channel, policy)) {
+        return;
+      }
+
+      await options.candidateStore.save({
+        ...(channel ? { channel } : {}),
+        query,
+        response: response.output,
+        runId: context.runId,
+        ...(sessionId ? { sessionId } : {}),
+        status: policy.requireReview ? "PENDING" : "INGESTED",
+        userId
+      });
+    },
+    id: options.id ?? "rag-ingestion-capture"
+  };
+}
+
 export class SlackSignatureVerifier {
   private readonly signingSecret: string;
   private readonly timestampToleranceSeconds: number;
@@ -1565,6 +1664,56 @@ function errorPayload(error: unknown): JsonObject {
 
 function truncatePreview(value: string, maxLength: number): string {
   return value.length > maxLength ? value.slice(0, maxLength) : value;
+}
+
+function countJsonItems(value: string): number | undefined {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+
+    if (Array.isArray(parsed)) {
+      return parsed.length;
+    }
+
+    if (isJsonRecord(parsed)) {
+      const firstArray = Object.values(parsed).find(Array.isArray);
+      return firstArray?.length;
+    }
+
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function firstUserMessage(messages: readonly { readonly content: string; readonly role: string }[]): string {
+  return messages.find((message) => message.role === "user")?.content.trim() ?? "";
+}
+
+function isEligibleRagCandidate(
+  query: string,
+  response: string,
+  channel: string | undefined,
+  policy: RagIngestionCapturePolicy
+): boolean {
+  if (query.trim().length < policy.minQueryChars || response.trim().length < policy.minResponseChars) {
+    return false;
+  }
+
+  if (policy.allowedChannels.length > 0 && (!channel || !policy.allowedChannels.includes(channel))) {
+    return false;
+  }
+
+  const combined = `${query}\n${response}`;
+  return !policy.blockedPatterns.some((pattern) => pattern.length > 0 && new RegExp(pattern, "iu").test(combined));
+}
+
+function metadataString(metadata: JsonObject | undefined, key: string): string | undefined {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function blankToUndefined(value: string | undefined): string | undefined {

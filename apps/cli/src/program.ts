@@ -56,7 +56,37 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     .command("config-path")
     .description("Print the active Muse config path")
     .action(() => {
-      io.stdout(`${defaultConfigPath()}\n`);
+      io.stdout(`${configPath(io)}\n`);
+    });
+
+  const config = program.command("config").description("Manage CLI config");
+
+  config
+    .command("show")
+    .description("Show CLI config")
+    .option("--json", "Print machine-readable JSON")
+    .action(async (options: { readonly json?: boolean }) => {
+      const store = await readConfigStore(io);
+
+      if (options.json) {
+        writeOutput(io, store);
+        return;
+      }
+
+      io.stdout(`apiUrl=${store.apiUrl ?? ""}\n`);
+      io.stdout(`defaultModel=${store.defaultModel ?? ""}\n`);
+    });
+
+  config
+    .command("set")
+    .description("Set a CLI config value")
+    .argument("<key>", "Config key: apiUrl or defaultModel")
+    .argument("<value>", "Config value")
+    .action(async (key: string, value: string) => {
+      const current = await readConfigStore(io);
+      const next = setConfigValue(current, key, value);
+      await writeConfigStore(io, next);
+      io.stdout(`Set ${key}\n`);
     });
 
   program
@@ -116,17 +146,19 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       command
     ) => {
       const message = messageParts.join(" ");
+      const cliConfig = await readConfigStore(io);
+      const model = options.model ?? cliConfig.defaultModel;
       if (options.local && options.stream) {
         throw new Error("--stream requires remote API chat; omit --local");
       }
 
       const body = options.local
-        ? await runLocalChat(io, message, options.model)
+        ? await runLocalChat(io, message, model)
         : options.stream
-          ? await streamRemoteChat(io, command, message, options.model, options.json === true)
+          ? await streamRemoteChat(io, command, message, model, options.json === true)
         : await apiRequest(io, command, "/api/chat", {
           message,
-          model: options.model
+          model
         });
 
       if (options.log !== false) {
@@ -134,7 +166,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
         await writeRunLog(io.workspaceDir ?? process.cwd(), {
           apiUrl: apiOptions.baseUrl,
           message,
-          model: options.model,
+          model,
           response: body,
           source: options.local ? "cli.local" : options.stream ? "cli.remote.stream" : "cli.remote"
         });
@@ -416,6 +448,11 @@ interface ApiOptions {
   readonly token?: string;
 }
 
+interface MuseCliConfig {
+  readonly apiUrl?: string;
+  readonly defaultModel?: string;
+}
+
 interface ReadApiOptionsOptions {
   readonly includeStoredToken?: boolean;
 }
@@ -426,13 +463,63 @@ async function readApiOptions(
   readOptions: ReadApiOptionsOptions = {}
 ): Promise<ApiOptions> {
   const globalOptions = command.optsWithGlobals() as { readonly apiUrl?: string; readonly token?: string };
-  const baseUrl = globalOptions.apiUrl ?? process.env.MUSE_API_URL ?? "http://127.0.0.1:3000";
+  const config = await readConfigStore(io);
+  const baseUrl = globalOptions.apiUrl ?? process.env.MUSE_API_URL ?? config.apiUrl ?? "http://127.0.0.1:3000";
   const explicitToken = globalOptions.token ?? process.env.MUSE_API_TOKEN;
 
   return {
     baseUrl,
     token: explicitToken ?? (readOptions.includeStoredToken === false ? undefined : await readStoredToken(io, baseUrl))
   };
+}
+
+async function readConfigStore(io: ProgramIO): Promise<MuseCliConfig> {
+  try {
+    const raw = await readFile(configPath(io), "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (!isRecord(parsed)) {
+      throw new Error("Invalid Muse config format");
+    }
+
+    return {
+      ...(typeof parsed.apiUrl === "string" && parsed.apiUrl.trim().length > 0 ? { apiUrl: parsed.apiUrl } : {}),
+      ...(typeof parsed.defaultModel === "string" && parsed.defaultModel.trim().length > 0
+        ? { defaultModel: parsed.defaultModel }
+        : {})
+    };
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      return {};
+    }
+
+    throw error;
+  }
+}
+
+async function writeConfigStore(io: ProgramIO, config: MuseCliConfig): Promise<void> {
+  const filePath = configPath(io);
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+  await chmod(filePath, 0o600);
+}
+
+function setConfigValue(config: MuseCliConfig, key: string, value: string): MuseCliConfig {
+  const trimmed = value.trim();
+
+  if (trimmed.length === 0) {
+    throw new Error("Config value must not be empty");
+  }
+
+  if (key === "apiUrl") {
+    return { ...config, apiUrl: trimmed };
+  }
+
+  if (key === "defaultModel") {
+    return { ...config, defaultModel: trimmed };
+  }
+
+  throw new Error(`Unsupported config key: ${key}`);
 }
 
 interface CredentialStore {

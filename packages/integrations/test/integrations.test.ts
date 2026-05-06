@@ -30,6 +30,8 @@ import {
   SlackInteractionDispatcher,
   SlackSignatureVerifier,
   WebhookDispatcher,
+  createRagIngestionCaptureHook,
+  createToolResponseSummaryHook,
   createWebhookNotificationHook,
   formatSlackMrkdwn,
   parseSlackInteractionPayload,
@@ -590,6 +592,115 @@ describe("WebhookDispatcher", () => {
         },
         runId: "run-1",
         type: "on_error"
+      }
+    ]);
+  });
+
+  it("creates a tool response summary hook for completed tool results", async () => {
+    const summaries: unknown[] = [];
+    const hook = createToolResponseSummaryHook({
+      onSummary: (summary) => {
+        summaries.push(summary);
+      },
+      previewLength: 20
+    });
+
+    await hook.afterTool?.(
+      {
+        input: {
+          messages: [{ content: "find issues", role: "user" }],
+          model: "test-model"
+        },
+        runId: "run-1",
+        startedAt: new Date("2026-05-06T00:00:00.000Z")
+      },
+      {
+        arguments: { jql: "project = MUSE" },
+        id: "tool-call-1",
+        name: "jira.search"
+      },
+      {
+        id: "tool-call-1",
+        name: "jira.search",
+        output: "{\"issues\":[{\"key\":\"MUSE-1\"},{\"key\":\"MUSE-2\"}]}",
+        status: "completed"
+      }
+    );
+
+    expect(hook.id).toBe("tool-response-summary");
+    expect(summaries).toEqual([
+      {
+        itemCount: 2,
+        outputPreview: "{\"issues\":[{\"key\":\"M",
+        runId: "run-1",
+        status: "completed",
+        toolCallId: "tool-call-1",
+        toolName: "jira.search"
+      }
+    ]);
+  });
+
+  it("captures eligible completed runs as RAG ingestion candidates", async () => {
+    const saved: unknown[] = [];
+    const hook = createRagIngestionCaptureHook({
+      candidateStore: {
+        save: async (candidate) => {
+          saved.push(candidate);
+          return {
+            ...candidate,
+            capturedAt: new Date("2026-05-06T00:00:00.000Z"),
+            id: "rag-candidate-1",
+            ingestedDocumentId: null,
+            reviewedAt: null,
+            reviewedBy: null,
+            reviewComment: null,
+            status: "PENDING"
+          };
+        }
+      },
+      policyStore: {
+        getOrNull: async () => ({
+          allowedChannels: ["slack"],
+          blockedPatterns: ["secret"],
+          enabled: true,
+          minQueryChars: 5,
+          minResponseChars: 5,
+          requireReview: true
+        })
+      }
+    });
+
+    await hook.afterComplete?.(
+      {
+        input: {
+          messages: [{ content: "How should the release checklist work?", role: "user" }],
+          metadata: {
+            channel: "slack",
+            sessionId: "session-1",
+            userId: "example-user"
+          },
+          model: "test-model"
+        },
+        runId: "run-1",
+        startedAt: new Date("2026-05-06T00:00:00.000Z")
+      },
+      {
+        id: "response-1",
+        model: "test-model",
+        output: "Use a deterministic checklist with explicit owner and rollback fields."
+      }
+    );
+
+    expect(hook.id).toBe("rag-ingestion-capture");
+    expect(saved).toEqual([
+      {
+        channel: "slack",
+        query: "How should the release checklist work?",
+        response: "Use a deterministic checklist with explicit owner and rollback fields.",
+        runId: "run-1",
+        sessionId: "session-1",
+        status: "PENDING",
+        userId: "example-user"
       }
     ]);
   });

@@ -78,6 +78,47 @@ describe("cli program", () => {
       .toContain("\"type\":\"chat.completed\"");
   });
 
+  it("persists CLI config and uses it as chat defaults", async () => {
+    const { io, output } = captureOutput();
+    const configDir = await mkdtemp(path.join(tmpdir(), "muse-cli-config-defaults-"));
+    const requests: Array<{ readonly body?: string; readonly url: string }> = [];
+    const program = createProgram({
+      ...io,
+      configDir,
+      fetch: async (url, init) => {
+        requests.push({
+          body: String(init?.body),
+          url: String(url)
+        });
+        return new Response(JSON.stringify({ response: "configured answer", runId: "run-configured" }));
+      }
+    });
+
+    await program.parseAsync(["node", "muse", "config", "set", "apiUrl", "http://api.config"], { from: "node" });
+    await program.parseAsync(["node", "muse", "config", "set", "defaultModel", "openai:gpt-test"], { from: "node" });
+
+    output.length = 0;
+    await program.parseAsync(["node", "muse", "config", "show", "--json"], { from: "node" });
+
+    expect(JSON.parse(output.join(""))).toEqual({
+      apiUrl: "http://api.config",
+      defaultModel: "openai:gpt-test"
+    });
+
+    output.length = 0;
+    await program.parseAsync(["node", "muse", "chat", "--no-log", "hello"], { from: "node" });
+
+    expect(output.join("")).toBe("configured answer\n");
+    expect(requests[0]).toMatchObject({ url: "http://api.config/api/chat" });
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toEqual({
+      message: "hello",
+      model: "openai:gpt-test"
+    });
+    await expect(readFile(path.join(configDir, "config.json"), "utf8"))
+      .resolves
+      .toContain("\"apiUrl\": \"http://api.config\"");
+  });
+
   it("streams remote chat over SSE and writes workspace run state", async () => {
     const { io, output } = captureOutput();
     const workspaceDir = await mkdtemp(path.join(tmpdir(), "muse-cli-stream-"));
