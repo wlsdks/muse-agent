@@ -25,7 +25,12 @@ import {
   type MuseTracer,
   type SpanHandle
 } from "@muse/observability";
-import { renderRetrievedContext, renderToolResults } from "@muse/prompts";
+import {
+  buildLayeredSystemPrompt,
+  renderRetrievedContext,
+  renderToolResults,
+  type PromptLayerRegistry
+} from "@muse/prompts";
 import type { RagPipeline } from "@muse/rag";
 import {
   retry,
@@ -184,6 +189,7 @@ export interface AgentRuntimeOptions {
   readonly hooks?: readonly HookStage[];
   readonly outputGuards?: readonly OutputGuardStage[];
   readonly responseFilters?: readonly ResponseFilterStage[];
+  readonly promptLayerRegistry?: PromptLayerRegistry;
   readonly defaults?: {
     readonly maxOutputTokens?: number;
     readonly temperature?: number;
@@ -308,6 +314,7 @@ export class AgentRuntime {
   private readonly hooks: readonly HookStage[];
   private readonly outputGuards: readonly OutputGuardStage[];
   private readonly responseFilters: readonly ResponseFilterStage[];
+  private readonly promptLayerRegistry?: PromptLayerRegistry;
   private readonly defaults: AgentRuntimeOptions["defaults"];
 
   constructor(options: AgentRuntimeOptions) {
@@ -345,6 +352,7 @@ export class AgentRuntime {
     this.hooks = options.hooks ?? [];
     this.outputGuards = options.outputGuards ?? [];
     this.responseFilters = options.responseFilters ?? [];
+    this.promptLayerRegistry = options.promptLayerRegistry;
     this.defaults = options.defaults;
 
     if (!this.modelProvider && !this.modelRegistry) {
@@ -373,12 +381,13 @@ export class AgentRuntime {
 
       const selected = this.resolveProvider(context.input.model);
       runSpan.setAttribute("model.selected", selected.model);
-      await this.recordRunStart(context, selected.provider.id, selected.model);
+      const layeredContext = this.applyPromptLayers(context, selected.provider.id, selected.model);
+      await this.recordRunStart(layeredContext, selected.provider.id, selected.model);
 
-      const contextualizedInput = await this.applyRetrievedContext(context);
+      const contextualizedInput = await this.applyRetrievedContext(layeredContext);
       const preparedRequest = this.prepareModelRequest(contextualizedInput, selected.model);
       recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
-      const tools = this.modelTools(context);
+      const tools = this.modelTools(layeredContext);
       const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
       const cached = await this.readCache(cacheKey, selected.model);
 
@@ -388,54 +397,54 @@ export class AgentRuntime {
           model: cached.model ?? selected.model,
           output: cached.content
         };
-        const filteredCachedResponse = await this.applyResponseFilters(context, cachedResponse, {
+        const filteredCachedResponse = await this.applyResponseFilters(layeredContext, cachedResponse, {
           toolInsights: [],
           toolsUsed: cached.toolsUsed,
           verifiedSources: []
         });
-        const guardedCachedResponse = await this.applyOutputGuards(context, filteredCachedResponse);
+        const guardedCachedResponse = await this.applyOutputGuards(layeredContext, filteredCachedResponse);
 
-        await this.recordRunComplete(context, {
+        await this.recordRunComplete(layeredContext, {
           finalResponse: guardedCachedResponse,
           intermediateMessages: [],
           toolResults: [],
           toolsUsed: cached.toolsUsed
         });
-        await this.recordCheckpoint(context, 100, "complete", context.input.messages, guardedCachedResponse.output);
-        await this.invokeHooks("afterComplete", context, guardedCachedResponse);
-        this.recordAgentRun(context, guardedCachedResponse.model, "completed", startedAtMs);
+        await this.recordCheckpoint(layeredContext, 100, "complete", layeredContext.input.messages, guardedCachedResponse.output);
+        await this.invokeHooks("afterComplete", layeredContext, guardedCachedResponse);
+        this.recordAgentRun(layeredContext, guardedCachedResponse.model, "completed", startedAtMs);
         return createRunResult(
           context.runId,
           guardedCachedResponse,
           preparedRequest.contextWindow,
-          context.agentSpec,
+          layeredContext.agentSpec,
           { fromCache: true, toolsUsed: cached.toolsUsed }
         );
       }
 
-      const execution = await this.executeModelLoop(context, selected.provider, {
+      const execution = await this.executeModelLoop(layeredContext, selected.provider, {
         ...preparedRequest.request,
         maxOutputTokens: this.defaults?.maxOutputTokens,
         temperature: this.defaults?.temperature,
         tools
       });
       const filteredResponse = await this.applyResponseFilters(
-        context,
+        layeredContext,
         execution.finalResponse,
         responseFilterEvidenceFromExecution(execution)
       );
-      const guardedResponse = await this.applyOutputGuards(context, filteredResponse);
+      const guardedResponse = await this.applyOutputGuards(layeredContext, filteredResponse);
 
-      await this.recordRunComplete(context, { ...execution, finalResponse: guardedResponse });
-      await this.recordCheckpoint(context, 100, "complete", context.input.messages, guardedResponse.output);
+      await this.recordRunComplete(layeredContext, { ...execution, finalResponse: guardedResponse });
+      await this.recordCheckpoint(layeredContext, 100, "complete", layeredContext.input.messages, guardedResponse.output);
       await this.writeCache(cacheKey, guardedResponse, execution.toolsUsed);
-      await this.invokeHooks("afterComplete", context, guardedResponse);
-      this.recordAgentRun(context, guardedResponse.model, "completed", startedAtMs);
+      await this.invokeHooks("afterComplete", layeredContext, guardedResponse);
+      this.recordAgentRun(layeredContext, guardedResponse.model, "completed", startedAtMs);
       return createRunResult(
         context.runId,
         guardedResponse,
         preparedRequest.contextWindow,
-        context.agentSpec,
+        layeredContext.agentSpec,
         { toolsUsed: execution.toolsUsed }
       );
     } catch (error) {
@@ -471,12 +480,13 @@ export class AgentRuntime {
 
       const selected = this.resolveProvider(context.input.model);
       runSpan.setAttribute("model.selected", selected.model);
-      await this.recordRunStart(context, selected.provider.id, selected.model);
+      const layeredContext = this.applyPromptLayers(context, selected.provider.id, selected.model);
+      await this.recordRunStart(layeredContext, selected.provider.id, selected.model);
 
-      const contextualizedInput = await this.applyRetrievedContext(context);
+      const contextualizedInput = await this.applyRetrievedContext(layeredContext);
       const preparedRequest = this.prepareModelRequest(contextualizedInput, selected.model);
       recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
-      const tools = this.modelTools(context);
+      const tools = this.modelTools(layeredContext);
       const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
       const cached = await this.readCache(cacheKey, selected.model);
 
@@ -486,29 +496,29 @@ export class AgentRuntime {
           model: cached.model ?? selected.model,
           output: cached.content
         };
-        const filteredCachedResponse = await this.applyResponseFilters(context, cachedResponse, {
+        const filteredCachedResponse = await this.applyResponseFilters(layeredContext, cachedResponse, {
           toolInsights: [],
           toolsUsed: cached.toolsUsed,
           verifiedSources: []
         });
-        const guardedCachedResponse = await this.applyOutputGuards(context, filteredCachedResponse);
+        const guardedCachedResponse = await this.applyOutputGuards(layeredContext, filteredCachedResponse);
 
-        await this.recordRunComplete(context, {
+        await this.recordRunComplete(layeredContext, {
           finalResponse: guardedCachedResponse,
           intermediateMessages: [],
           toolResults: [],
           toolsUsed: cached.toolsUsed
         });
-        await this.recordCheckpoint(context, 100, "complete", context.input.messages, guardedCachedResponse.output);
-        await this.invokeHooks("afterComplete", context, guardedCachedResponse);
-        this.recordAgentRun(context, guardedCachedResponse.model, "completed", startedAtMs);
-        yield { runId: context.runId, text: guardedCachedResponse.output, type: "text-delta" };
-        yield { response: guardedCachedResponse, runId: context.runId, type: "done" };
+        await this.recordCheckpoint(layeredContext, 100, "complete", layeredContext.input.messages, guardedCachedResponse.output);
+        await this.invokeHooks("afterComplete", layeredContext, guardedCachedResponse);
+        this.recordAgentRun(layeredContext, guardedCachedResponse.model, "completed", startedAtMs);
+        yield { runId: layeredContext.runId, text: guardedCachedResponse.output, type: "text-delta" };
+        yield { response: guardedCachedResponse, runId: layeredContext.runId, type: "done" };
         return;
       }
 
       const forwardTextDeltas = this.canForwardRawStreamText();
-      const stream = this.executeStreamingModelLoop(context, selected.provider, {
+      const stream = this.executeStreamingModelLoop(layeredContext, selected.provider, {
         ...preparedRequest.request,
         maxOutputTokens: this.defaults?.maxOutputTokens,
         temperature: this.defaults?.temperature,
@@ -524,23 +534,23 @@ export class AgentRuntime {
 
       const execution = next.value;
       const filteredResponse = await this.applyResponseFilters(
-        context,
+        layeredContext,
         execution.finalResponse,
         responseFilterEvidenceFromExecution(execution)
       );
-      const response = await this.applyOutputGuards(context, filteredResponse);
-      await this.recordRunComplete(context, {
+      const response = await this.applyOutputGuards(layeredContext, filteredResponse);
+      await this.recordRunComplete(layeredContext, {
         ...execution,
         finalResponse: response
       });
-      await this.recordCheckpoint(context, 100, "complete", context.input.messages, response.output);
+      await this.recordCheckpoint(layeredContext, 100, "complete", layeredContext.input.messages, response.output);
       await this.writeCache(cacheKey, response, execution.toolsUsed);
-      await this.invokeHooks("afterComplete", context, response);
-      this.recordAgentRun(context, response.model, "completed", startedAtMs);
+      await this.invokeHooks("afterComplete", layeredContext, response);
+      this.recordAgentRun(layeredContext, response.model, "completed", startedAtMs);
       if (!forwardTextDeltas && response.output.length > 0) {
-        yield { runId: context.runId, text: response.output, type: "text-delta" };
+        yield { runId: layeredContext.runId, text: response.output, type: "text-delta" };
       }
-      yield { response, runId: context.runId, type: "done" };
+      yield { response, runId: layeredContext.runId, type: "done" };
     } catch (error) {
       runSpan.setError(error);
       await this.recordCheckpoint(context, 900, "failed", context.input.messages, error instanceof Error ? error.message : String(error));
@@ -693,6 +703,37 @@ export class AgentRuntime {
         }
       };
     }
+  }
+
+  private applyPromptLayers(context: AgentRunContext, providerId: string, model: string): AgentRunContext {
+    if (!this.promptLayerRegistry) {
+      return context;
+    }
+
+    const layers = this.promptLayerRegistry.resolve({
+      model,
+      personaId: metadataString(context.input.metadata, "personaId"),
+      promptTemplateId: metadataString(context.input.metadata, "promptTemplateId"),
+      providerId
+    });
+
+    if (layers.length === 0) {
+      return context;
+    }
+
+    const systemPrompt = buildLayeredSystemPrompt({}, layers);
+
+    return {
+      ...context,
+      input: {
+        ...context.input,
+        messages: appendSystemSection(context.input.messages, systemPrompt, "prompt-layers"),
+        metadata: {
+          ...context.input.metadata,
+          promptLayerIds: layers.map((layer) => layer.id)
+        }
+      }
+    };
   }
 
   private modelTools(context: AgentRunContext): readonly ModelTool[] {

@@ -31,9 +31,59 @@ export interface CacheBoundarySplit {
   readonly dynamicSuffix: string;
 }
 
+export type PromptLayerSection = "stable" | "dynamic";
+
+export interface PromptLayer {
+  readonly id: string;
+  readonly content: string;
+  readonly section?: PromptLayerSection;
+  readonly priority?: number;
+  readonly personaIds?: readonly string[];
+  readonly promptTemplateIds?: readonly string[];
+  readonly providerIds?: readonly string[];
+  readonly modelPrefixes?: readonly string[];
+}
+
+export interface PromptLayerContext {
+  readonly personaId?: string;
+  readonly promptTemplateId?: string;
+  readonly providerId?: string;
+  readonly model?: string;
+}
+
+export interface PromptLayerRegistry {
+  resolve(context: PromptLayerContext): readonly PromptLayer[];
+}
+
 export const MUSE_CACHE_BOUNDARY_MARKER = "<!-- MUSE_CACHE_BOUNDARY -->";
 export const DEFAULT_BASE_PROMPT =
   "You are Muse, a model-agnostic agent runtime. Be accurate, concise, and explicit about uncertainty.";
+
+export class InMemoryPromptLayerRegistry implements PromptLayerRegistry {
+  private readonly layers = new Map<string, PromptLayer>();
+
+  constructor(layers: Iterable<PromptLayer> = []) {
+    for (const layer of layers) {
+      this.register(layer);
+    }
+  }
+
+  register(layer: PromptLayer): void {
+    this.layers.set(layer.id, layer);
+  }
+
+  unregister(id: string): boolean {
+    return this.layers.delete(id);
+  }
+
+  list(): readonly PromptLayer[] {
+    return [...this.layers.values()].sort(comparePromptLayers);
+  }
+
+  resolve(context: PromptLayerContext): readonly PromptLayer[] {
+    return this.list().filter((layer) => promptLayerApplies(layer, context));
+  }
+}
 
 export function buildSystemPrompt(input: PromptBuildInput = {}): string {
   const stableSections = compactSections([
@@ -61,6 +111,20 @@ export function buildSystemPrompt(input: PromptBuildInput = {}): string {
   }
 
   return compactSections([...stableSections, ...dynamicSections]).join("\n\n");
+}
+
+export function buildLayeredSystemPrompt(
+  input: PromptBuildInput = {},
+  layers: readonly PromptLayer[] = []
+): string {
+  const stableLayerText = renderPromptLayerSection(layers, "stable");
+  const dynamicLayerText = renderPromptLayerSection(layers, "dynamic");
+
+  return buildSystemPrompt({
+    ...input,
+    providerDynamicSuffix: mergePromptContext(dynamicLayerText, input.providerDynamicSuffix),
+    providerStablePrefix: mergePromptContext(input.providerStablePrefix, stableLayerText)
+  });
 }
 
 export function renderResponseFormatInstruction(
@@ -174,6 +238,36 @@ export function buildPromptContextPacket(input: PromptBuildInput): PromptContext
 function renderDelegatedAgent(delegatedAgent?: string): string | undefined {
   const value = cleanBlock(delegatedAgent);
   return value ? `[Delegated Agent]\n${value}` : undefined;
+}
+
+function renderPromptLayerSection(layers: readonly PromptLayer[], section: PromptLayerSection): string | undefined {
+  const content = layers
+    .filter((layer) => (layer.section ?? "stable") === section)
+    .sort(comparePromptLayers)
+    .map((layer) => cleanBlock(layer.content))
+    .filter((value): value is string => value !== undefined);
+
+  return content.length > 0 ? content.join("\n\n") : undefined;
+}
+
+function comparePromptLayers(left: PromptLayer, right: PromptLayer): number {
+  const priority = (left.priority ?? 100) - (right.priority ?? 100);
+  return priority !== 0 ? priority : left.id.localeCompare(right.id);
+}
+
+function promptLayerApplies(layer: PromptLayer, context: PromptLayerContext): boolean {
+  return matchesOptionalScope(layer.personaIds, context.personaId) &&
+    matchesOptionalScope(layer.promptTemplateIds, context.promptTemplateId) &&
+    matchesOptionalScope(layer.providerIds, context.providerId) &&
+    matchesModelPrefix(layer.modelPrefixes, context.model);
+}
+
+function matchesOptionalScope(scope: readonly string[] | undefined, value: string | undefined): boolean {
+  return !scope || scope.length === 0 || (value !== undefined && scope.includes(value));
+}
+
+function matchesModelPrefix(prefixes: readonly string[] | undefined, model: string | undefined): boolean {
+  return !prefixes || prefixes.length === 0 || (model !== undefined && prefixes.some((prefix) => model.startsWith(prefix)));
 }
 
 function renderMemoryContext(title: string, context?: string): string | undefined {

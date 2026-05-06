@@ -3,6 +3,7 @@ import { InMemoryAgentSpecRegistry, RuleBasedAgentSpecResolver } from "@muse/age
 import { InMemoryResponseCache } from "@muse/cache";
 import { ModelProviderRegistry, type ModelProvider, type ModelRequest, type ModelResponse } from "@muse/model";
 import { InMemoryAgentMetrics, InMemoryMuseTracer } from "@muse/observability";
+import { InMemoryPromptLayerRegistry } from "@muse/prompts";
 import { DefaultRagPipeline, InMemoryRagCorpus, SimpleReranker } from "@muse/rag";
 import { InMemoryAgentRunHistoryStore, InMemoryCheckpointStore, InMemoryHookTraceStore } from "@muse/runtime-state";
 import { createToolPolicyConfig, GuardBlockRateMonitor, InMemoryGuardRuleStore } from "@muse/policy";
@@ -345,6 +346,59 @@ describe("AgentRuntime", () => {
         })
       })
     );
+  });
+
+  it("applies scoped prompt layers before the provider call", async () => {
+    const onGenerate = vi.fn();
+    const runtime = createAgentRuntime({
+      modelProvider: createProvider({}, "test", onGenerate),
+      promptLayerRegistry: new InMemoryPromptLayerRegistry([
+        {
+          content: "Persona layer: compare tradeoffs.",
+          id: "persona-decision",
+          personaIds: ["decision-maker"],
+          priority: 20
+        },
+        {
+          content: "Template layer: end with a recommendation.",
+          id: "template-recommendation",
+          priority: 10,
+          promptTemplateIds: ["recommendation-template"]
+        },
+        {
+          content: "Provider layer: keep provider-neutral tool assumptions.",
+          id: "provider-compatible",
+          providerIds: ["test"],
+          section: "dynamic"
+        }
+      ])
+    });
+
+    await runtime.run({
+      messages: [{ content: "Help me choose an option", role: "user" }],
+      metadata: {
+        personaId: "decision-maker",
+        promptTemplateId: "recommendation-template"
+      },
+      model: "provider/model"
+    });
+
+    expect(onGenerate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [
+          expect.objectContaining({
+            content: expect.stringContaining("Template layer: end with a recommendation."),
+            role: "system"
+          }),
+          { content: "Help me choose an option", role: "user" }
+        ]
+      })
+    );
+
+    const system = (onGenerate.mock.calls[0]?.[0] as ModelRequest).messages[0]?.content ?? "";
+    expect(system).toContain("Persona layer: compare tradeoffs.");
+    expect(system).toContain("Provider layer: keep provider-neutral tool assumptions.");
+    expect(system.indexOf("Template layer")).toBeLessThan(system.indexOf("Persona layer"));
   });
 
   it("requires either a provider or a provider registry", () => {

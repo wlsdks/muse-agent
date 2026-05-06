@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   MUSE_CACHE_BOUNDARY_MARKER,
+  InMemoryPromptLayerRegistry,
   buildPromptContextPacket,
+  buildLayeredSystemPrompt,
   buildSystemPrompt,
   mergePromptContext,
   renderJsonInstruction,
@@ -43,6 +45,55 @@ describe("prompt instruction rendering", () => {
 });
 
 describe("system prompt building", () => {
+  it("resolves scoped prompt layers deterministically into stable and dynamic sections", () => {
+    const registry = new InMemoryPromptLayerRegistry([
+      {
+        content: "Persona: compare options before choosing.",
+        id: "persona-decision",
+        personaIds: ["decision-maker"],
+        priority: 20,
+        section: "stable"
+      },
+      {
+        content: "Template: include tradeoffs and recommendation.",
+        id: "template-tradeoffs",
+        priority: 10,
+        promptTemplateIds: ["tradeoff-template"],
+        section: "stable"
+      },
+      {
+        content: "Provider: avoid provider-specific tool assumptions.",
+        id: "provider-openai-compatible",
+        priority: 5,
+        providerIds: ["openai-compatible"],
+        section: "dynamic"
+      },
+      {
+        content: "Unrelated",
+        id: "persona-unrelated",
+        personaIds: ["other"],
+        section: "stable"
+      }
+    ]);
+    const layers = registry.resolve({
+      personaId: "decision-maker",
+      promptTemplateId: "tradeoff-template",
+      providerId: "openai-compatible"
+    });
+    const prompt = buildLayeredSystemPrompt({ includeCacheBoundary: true }, layers);
+    const split = splitPromptCacheBoundary(prompt);
+
+    expect(layers.map((layer) => layer.id)).toEqual([
+      "provider-openai-compatible",
+      "template-tradeoffs",
+      "persona-decision"
+    ]);
+    expect(split?.stablePrefix).toContain("Template: include tradeoffs");
+    expect(split?.stablePrefix).toContain("Persona: compare options");
+    expect(split?.dynamicSuffix).toContain("Provider: avoid provider-specific");
+    expect(prompt).not.toContain("Unrelated");
+  });
+
   it("places stable sections above the cache boundary and dynamic sections below it", () => {
     const prompt = buildSystemPrompt({
       includeCacheBoundary: true,
