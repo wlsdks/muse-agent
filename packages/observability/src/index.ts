@@ -45,6 +45,11 @@ export interface TraceEventSink {
   record(event: TraceEventInput): Promise<void>;
 }
 
+export interface QueryableTraceEventSink extends TraceEventSink {
+  list(): readonly TraceEventInput[];
+  listByRunId(runId: string): readonly TraceEventInput[];
+}
+
 export interface FollowupSuggestionEvent {
   readonly suggestionId: string;
   readonly category: string;
@@ -211,6 +216,24 @@ export class KyselyTraceEventSink implements TraceEventSink {
 
   async record(event: TraceEventInput): Promise<void> {
     await this.db.insertInto("trace_events").values(createTraceEventInsert(event)).execute();
+  }
+}
+
+export class InMemoryTraceEventSink implements QueryableTraceEventSink {
+  private readonly events: TraceEventInput[] = [];
+
+  async record(event: TraceEventInput): Promise<void> {
+    this.events.push(cloneTraceEvent(event));
+  }
+
+  list(): readonly TraceEventInput[] {
+    return this.events.map(cloneTraceEvent);
+  }
+
+  listByRunId(runId: string): readonly TraceEventInput[] {
+    return this.events
+      .filter((event) => event.runId === runId)
+      .map(cloneTraceEvent);
   }
 }
 
@@ -630,10 +653,19 @@ function spanToTraceEvent(span: MutableRecordedSpan): TraceEventInput {
     endedAt: span.endedAt,
     name: span.name,
     parentSpanId: readStringAttribute(span.attributes, "parentSpanId"),
-    runId: readStringAttribute(span.attributes, "runId") ?? "unknown",
+    runId: readStringAttribute(span.attributes, "runId") ?? readStringAttribute(span.attributes, "run.id") ?? "unknown",
     spanId: span.id,
     stage: readStringAttribute(span.attributes, "stage") ?? span.name,
     startedAt: span.startedAt
+  };
+}
+
+function cloneTraceEvent(event: TraceEventInput): TraceEventInput {
+  return {
+    ...event,
+    attributes: { ...event.attributes },
+    endedAt: event.endedAt ? new Date(event.endedAt) : undefined,
+    startedAt: new Date(event.startedAt)
   };
 }
 

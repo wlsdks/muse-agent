@@ -27,7 +27,12 @@ import {
 } from "@muse/mcp";
 import { InMemoryTaskMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
-import { InMemoryAgentMetrics, InMemoryFollowupSuggestionStore } from "@muse/observability";
+import {
+  InMemoryAgentMetrics,
+  InMemoryFollowupSuggestionStore,
+  InMemoryTraceEventSink,
+  PersistedMuseTracer
+} from "@muse/observability";
 import { InMemoryRagDocumentStore, InMemoryRagIngestionCandidateStore, InMemoryRagIngestionPolicyStore } from "@muse/rag";
 import {
   InMemoryAdminOperationsStore,
@@ -1132,6 +1137,9 @@ describe("api server", () => {
           metrics: {
             recordedEvents: () => [{ type: "agent_run" }]
           },
+          traceSink: {
+            list: () => [{ name: "muse.model.generate", runId: "run-1" }]
+          },
           tracer: {
             recordedSpans: () => [{ name: "muse.agent.run" }]
           }
@@ -1183,7 +1191,8 @@ describe("api server", () => {
 
     expect(metrics.json()).toMatchObject({
       events: [{ type: "agent_run" }],
-      spans: [{ name: "muse.agent.run" }]
+      spans: [{ name: "muse.agent.run" }],
+      traceEvents: [{ name: "muse.model.generate", runId: "run-1" }]
     });
     expect(cache.json()).toEqual({ metrics: { exactHits: 1, misses: 2 }, size: 3 });
     expect(cacheKey.json()).toEqual({ invalidated: true, key: "cache-key" });
@@ -1192,6 +1201,62 @@ describe("api server", () => {
     expect(allInvalidated).toBe(true);
     expect(breakers.json()).toMatchObject([{ name: "model.generate", state: "open" }]);
     expect(reset.json()).toEqual({ name: "model.generate", state: "closed" });
+  });
+
+  it("records diagnostic chat trace events in a queryable persisted sink", async () => {
+    const traceSink = new InMemoryTraceEventSink();
+    const tracer = new PersistedMuseTracer(traceSink);
+    const agentRuntime = createAgentRuntime({
+      modelProvider: createProvider("Diagnostic response"),
+      tracer
+    });
+    const server = buildServer({
+      admin: {
+        observability: {
+          traceSink
+        }
+      },
+      agentRuntime,
+      defaultModel: "provider/model",
+      logger: false
+    });
+
+    const chat = await server.inject({
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      payload: {
+        message: "diagnostic trace",
+        runId: "diagnostic-trace-run"
+      },
+      url: "/api/chat"
+    });
+    await tracer.flush();
+    const traces = await server.inject({
+      method: "GET",
+      url: "/api/admin/traces/diagnostic-trace-run/spans"
+    });
+
+    expect(chat.statusCode).toBe(200);
+    expect(traceSink.listByRunId("diagnostic-trace-run").map((event) => event.name)).toEqual([
+      "muse.model.generate",
+      "muse.agent.run"
+    ]);
+    expect(traceSink.listByRunId("diagnostic-trace-run")).toEqual([
+      expect.objectContaining({
+        endedAt: expect.any(Date),
+        name: "muse.model.generate",
+        startedAt: expect.any(Date)
+      }),
+      expect.objectContaining({
+        endedAt: expect.any(Date),
+        name: "muse.agent.run",
+        startedAt: expect.any(Date)
+      })
+    ]);
+    expect(traces.json()).toMatchObject([
+      { name: "muse.model.generate", runId: "diagnostic-trace-run" },
+      { name: "muse.agent.run", runId: "diagnostic-trace-run" }
+    ]);
   });
 
   it("exposes tenant, alert, cost, and SLO admin operations", async () => {
@@ -4216,6 +4281,11 @@ describe("api server", () => {
       status: "completed"
     });
     const server = buildServer({
+      admin: {
+        observability: {
+          traceSink: new InMemoryTraceEventSink()
+        }
+      },
       agentRuntime: createAgentRuntime({
         modelProvider: createProvider("ok")
       }),
@@ -5102,6 +5172,36 @@ describe("api server", () => {
           ]),
           name: "Runtime Settings",
           status: "OK"
+        }),
+        expect.objectContaining({
+          checks: expect.arrayContaining([
+            expect.objectContaining({ name: "model provider configured", status: "OK" })
+          ]),
+          name: "Model Provider"
+        }),
+        expect.objectContaining({
+          checks: expect.arrayContaining([
+            expect.objectContaining({ detail: "configured", name: "database configured or in-memory", status: "OK" })
+          ]),
+          name: "Database"
+        }),
+        expect.objectContaining({
+          checks: expect.arrayContaining([
+            expect.objectContaining({ detail: "disabled", name: "runner configured or disabled", status: "OK" })
+          ]),
+          name: "Runner"
+        }),
+        expect.objectContaining({
+          checks: expect.arrayContaining([
+            expect.objectContaining({ detail: "empty", name: "MCP configured or empty", status: "OK" })
+          ]),
+          name: "MCP Live Health"
+        }),
+        expect.objectContaining({
+          checks: expect.arrayContaining([
+            expect.objectContaining({ name: "trace sink configured", status: "OK" })
+          ]),
+          name: "Observability Assets"
         })
       ])
     });

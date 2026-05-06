@@ -7,6 +7,7 @@ import {
   InMemoryAgentMetrics,
   InMemoryFollowupSuggestionStore,
   InMemoryMuseTracer,
+  InMemoryTraceEventSink,
   OpenTelemetryTraceEventSink,
   PersistedMuseTracer,
   PinoTraceEventLogger,
@@ -70,6 +71,35 @@ describe("Muse tracer", () => {
       runId: "run-1",
       stage: "agent"
     });
+  });
+
+  it("keeps persisted trace events queryable by run id with completed span boundaries", async () => {
+    const sink = new InMemoryTraceEventSink();
+    const tracer = new PersistedMuseTracer(sink);
+    const run = tracer.startSpan("muse.agent.run", { "run.id": "diagnostic-run", stage: "run" });
+    const model = tracer.startSpan("muse.model.generate", { "run.id": "diagnostic-run", stage: "model" });
+
+    model.end();
+    run.end();
+    await tracer.flush();
+
+    expect(sink.listByRunId("diagnostic-run")).toEqual([
+      expect.objectContaining({
+        endedAt: expect.any(Date),
+        name: "muse.model.generate",
+        runId: "diagnostic-run",
+        stage: "model",
+        startedAt: expect.any(Date)
+      }),
+      expect.objectContaining({
+        endedAt: expect.any(Date),
+        name: "muse.agent.run",
+        runId: "diagnostic-run",
+        stage: "run",
+        startedAt: expect.any(Date)
+      })
+    ]);
+    expect(sink.listByRunId("other-run")).toEqual([]);
   });
 
   it("builds trace event inserts for the persisted database table", () => {

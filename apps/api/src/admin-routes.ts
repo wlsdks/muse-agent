@@ -12,6 +12,7 @@ import type {
   AdminTenantInput,
   AdminTenantStatus
 } from "@muse/runtime-state";
+import type { TraceEventInput } from "@muse/observability";
 
 export interface AdminRouteOptions {
   readonly authorizeAdmin: (request: FastifyRequest, reply: FastifyReply) => boolean;
@@ -30,6 +31,10 @@ export interface AdminRouteState {
   };
   readonly observability?: {
     readonly metrics?: { recordedEvents(): readonly unknown[] };
+    readonly traceSink?: {
+      list(): readonly TraceEventInput[];
+      listByRunId?(runId: string): readonly TraceEventInput[];
+    };
     readonly tracer?: unknown;
   };
   readonly auditStore?: AdminAuditStore;
@@ -60,7 +65,8 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
 
     return {
       events: options.admin?.observability?.metrics?.recordedEvents() ?? [],
-      spans: recordedSpans(options.admin?.observability?.tracer)
+      spans: recordedSpans(options.admin?.observability?.tracer),
+      traceEvents: recordedTraceEvents(options.admin?.observability?.traceSink)
     };
   });
 
@@ -314,6 +320,24 @@ export function recordedSpans(tracer: unknown): readonly unknown[] {
     "recordedSpans" in tracer &&
     typeof tracer.recordedSpans === "function"
     ? tracer.recordedSpans() as readonly unknown[]
+    : [];
+}
+
+export function recordedTraceEvents(traceSink: unknown, runId?: string): readonly unknown[] {
+  if (!traceSink || typeof traceSink !== "object") {
+    return [];
+  }
+
+  if (
+    runId &&
+    "listByRunId" in traceSink &&
+    typeof traceSink.listByRunId === "function"
+  ) {
+    return traceSink.listByRunId(runId) as readonly unknown[];
+  }
+
+  return "list" in traceSink && typeof traceSink.list === "function"
+    ? traceSink.list() as readonly unknown[]
     : [];
 }
 

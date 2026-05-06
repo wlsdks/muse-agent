@@ -50,7 +50,7 @@ import type { ScheduledJobExecution } from "@muse/scheduler";
 import { createRunId, type JsonObject } from "@muse/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHash } from "node:crypto";
-import { recordedSpans, type AdminRouteState } from "./admin-routes.js";
+import { recordedSpans, recordedTraceEvents, type AdminRouteState } from "./admin-routes.js";
 import type { McpRouteMcp } from "./mcp-routes.js";
 import type { SchedulerRouteScheduler } from "./scheduler-routes.js";
 
@@ -2976,7 +2976,9 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
       return reply;
     }
 
-    return recordedSpans(options.admin?.observability?.tracer);
+    const traceEvents = recordedTraceEvents(options.admin?.observability?.traceSink);
+
+    return traceEvents.length > 0 ? traceEvents : recordedSpans(options.admin?.observability?.tracer);
   });
   server.get("/api/admin/traces/:traceId/spans", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -2984,6 +2986,12 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
     }
 
     const { traceId } = request.params as { readonly traceId: string };
+    const traceEvents = recordedTraceEvents(options.admin?.observability?.traceSink, traceId);
+
+    if (traceEvents.length > 0) {
+      return traceEvents;
+    }
+
     return recordedSpans(options.admin?.observability?.tracer)
       .filter((span) =>
         isRecord(span) &&
@@ -8835,6 +8843,8 @@ async function adminDiagnostic(
 }
 
 function doctorReport(options: ReactorCompatibilityRouteOptions): JsonObject {
+  const traceSinkConfigured = Boolean(options.admin?.observability?.traceSink ?? options.admin?.observability?.tracer);
+
   return {
     generatedAt: nowIso(),
     sections: [
@@ -8851,13 +8861,41 @@ function doctorReport(options: ReactorCompatibilityRouteOptions): JsonObject {
         "Model Provider",
         options.modelProvider ? "OK" : "SKIPPED",
         options.modelProvider ? "활성" : "비활성",
-        [doctorCheck("model provider", options.modelProvider ? "OK" : "SKIPPED", options.modelProvider ? "등록됨" : "등록 안 됨")]
+        [
+          doctorCheck("model provider", options.modelProvider ? "OK" : "SKIPPED", options.modelProvider ? "등록됨" : "등록 안 됨"),
+          doctorCheck(
+            "model provider configured",
+            options.modelProvider ? "OK" : "SKIPPED",
+            options.modelProvider ? "configured" : "not configured"
+          )
+        ]
+      ),
+      doctorSection(
+        "Database",
+        "OK",
+        options.historyStore ? "configured" : "in-memory",
+        [
+          doctorCheck(
+            "database configured or in-memory",
+            "OK",
+            options.historyStore ? "configured" : "in-memory"
+          )
+        ]
+      ),
+      doctorSection(
+        "Runner",
+        "OK",
+        "disabled",
+        [doctorCheck("runner configured or disabled", "OK", "disabled")]
       ),
       doctorSection(
         "MCP Live Health",
-        options.mcp?.manager ? "OK" : "SKIPPED",
-        options.mcp?.manager ? "활성" : "비활성",
-        [doctorCheck("mcp manager", options.mcp?.manager ? "OK" : "SKIPPED", options.mcp?.manager ? "등록됨" : "등록 안 됨")]
+        "OK",
+        options.mcp?.manager ? "configured" : "empty",
+        [
+          doctorCheck("mcp manager", options.mcp?.manager ? "OK" : "SKIPPED", options.mcp?.manager ? "등록됨" : "등록 안 됨"),
+          doctorCheck("MCP configured or empty", "OK", options.mcp?.manager ? "configured" : "empty")
+        ]
       ),
       doctorSection(
         "Response Cache",
@@ -8867,9 +8905,12 @@ function doctorReport(options: ReactorCompatibilityRouteOptions): JsonObject {
       ),
       doctorSection(
         "Observability Assets",
-        options.admin?.observability ? "OK" : "SKIPPED",
-        options.admin?.observability ? "활성" : "비활성",
-        [doctorCheck("observability state", options.admin?.observability ? "OK" : "SKIPPED", options.admin?.observability ? "등록됨" : "등록 안 됨")]
+        traceSinkConfigured ? "OK" : "SKIPPED",
+        traceSinkConfigured ? "활성" : "비활성",
+        [
+          doctorCheck("observability state", options.admin?.observability ? "OK" : "SKIPPED", options.admin?.observability ? "등록됨" : "등록 안 됨"),
+          doctorCheck("trace sink configured", traceSinkConfigured ? "OK" : "SKIPPED", traceSinkConfigured ? "configured" : "not configured")
+        ]
       )
     ]
   };

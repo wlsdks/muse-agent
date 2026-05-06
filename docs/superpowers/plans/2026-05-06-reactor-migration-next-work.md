@@ -689,7 +689,7 @@ Expected: all pass.
 - Modify: `apps/api/src/admin-routes.ts`
 - Modify: `apps/api/test/server.test.ts`
 
-- [ ] **Step 1: Add a failing persisted trace test**
+- [x] **Step 1: Add a failing persisted trace test**
 
 Assert a diagnostic chat run records:
 
@@ -702,7 +702,7 @@ run completed
 
 and that records are queryable by `runId`.
 
-- [ ] **Step 2: Add doctor detail assertions**
+- [x] **Step 2: Add doctor detail assertions**
 
 Assert admin doctor output includes:
 
@@ -714,7 +714,7 @@ MCP configured or empty
 trace sink configured
 ```
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run:
 
