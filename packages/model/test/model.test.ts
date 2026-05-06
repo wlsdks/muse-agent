@@ -135,6 +135,34 @@ describe("ModelProviderRegistry", () => {
     });
   });
 
+  it("selects the cheapest compatible model across providers when no provider is pinned", async () => {
+    const expensive = createProvider("expensive", [
+      {
+        ...baseModel,
+        capabilities: { ...baseModel.capabilities, cost: "high", latencyProfile: "balanced" },
+        modelId: "expensive-model",
+        providerId: "expensive"
+      }
+    ]);
+    const cheap = createProvider("cheap", [
+      {
+        ...baseModel,
+        capabilities: { ...baseModel.capabilities, cost: "low", latencyProfile: "interactive" },
+        modelId: "cheap-model",
+        providerId: "cheap"
+      }
+    ]);
+    const registry = new ModelProviderRegistry([expensive, cheap], "expensive");
+
+    await expect(registry.selectModel({
+      prefer: { cost: "lowest", latencyProfile: "interactive" },
+      requires: { toolCalling: true }
+    })).resolves.toMatchObject({
+      model: { modelId: "cheap-model" },
+      provider: { id: "cheap" }
+    });
+  });
+
   it("rejects incompatible capability requirements", async () => {
     const registry = new ModelProviderRegistry([anthropic], "anthropic");
 

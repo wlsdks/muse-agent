@@ -20,6 +20,10 @@ export interface GuardRuleStore {
   saveOutputRule(record: JsonObject): Promise<JsonObject>;
 }
 
+export type InputGuardRuleDecision =
+  | { readonly allowed: true; readonly ruleId?: string }
+  | { readonly allowed: false; readonly reason: string; readonly ruleId: string };
+
 type InputGuardRuleRow = Selectable<InputGuardRuleTable>;
 type InputGuardRuleInsert = Insertable<InputGuardRuleTable>;
 type OutputGuardRuleRow = Selectable<OutputGuardRuleTable>;
@@ -236,6 +240,34 @@ export function mapInputGuardRuleRow(row: InputGuardRuleRow | InputGuardRuleInse
   };
 }
 
+export async function evaluateInputGuardRules(
+  store: Pick<GuardRuleStore, "listInputRules">,
+  input: string
+): Promise<InputGuardRuleDecision> {
+  const rules = await store.listInputRules();
+
+  for (const rule of rules) {
+    if (!booleanValue(rule.enabled, true) || !matchesInputGuardRule(rule, input)) {
+      continue;
+    }
+
+    if (stringValue(rule.action).toLowerCase() === "allow") {
+      return {
+        allowed: true,
+        ruleId: stringValue(rule.id)
+      };
+    }
+
+    return {
+      allowed: false,
+      reason: `Blocked by input guard rule: ${stringValue(rule.name) || stringValue(rule.id)}`,
+      ruleId: stringValue(rule.id)
+    };
+  }
+
+  return { allowed: true };
+}
+
 export function createOutputGuardRuleInsert(record: JsonObject): OutputGuardRuleInsert {
   const prepared = withIdentity(record, "output_guard_rule");
   return {
@@ -301,6 +333,25 @@ function withIdentity(record: JsonObject, prefix: string): JsonObject & { readon
 function compareRulePriority(left: JsonObject, right: JsonObject): number {
   return numberValue(left.priority, 100) - numberValue(right.priority, 100)
     || dateValue(left.createdAt).getTime() - dateValue(right.createdAt).getTime();
+}
+
+function matchesInputGuardRule(rule: JsonObject, input: string): boolean {
+  const pattern = stringValue(rule.pattern);
+  const patternType = stringValue(rule.patternType).toLowerCase();
+
+  if (pattern.length === 0) {
+    return false;
+  }
+
+  if (patternType === "keyword") {
+    return input.toLowerCase().includes(pattern.toLowerCase());
+  }
+
+  try {
+    return new RegExp(pattern, "iu").test(input);
+  } catch {
+    return false;
+  }
 }
 
 function stringValue(value: unknown): string {

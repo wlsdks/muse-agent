@@ -430,6 +430,10 @@ export interface ModelSelectionCriteria {
   readonly requires?: Partial<Record<keyof ModelCapabilities, boolean>>;
   readonly minInputTokens?: number;
   readonly minOutputTokens?: number;
+  readonly prefer?: {
+    readonly cost?: "lowest";
+    readonly latencyProfile?: ModelCapabilities["latencyProfile"];
+  };
 }
 
 export interface SelectedModel {
@@ -477,22 +481,44 @@ export class ModelProviderRegistry {
 
   async selectModel(criteria: ModelSelectionCriteria = {}): Promise<SelectedModel> {
     const requestedModel = criteria.model?.trim();
-    const provider = this.getProvider(criteria.provider ?? requestedModel);
-    const models = await provider.listModels();
     const exactModel = requestedModel ? parseModelName(requestedModel).modelId : undefined;
-    const selected = models.find((model) => {
-      if (exactModel && model.modelId !== exactModel) {
-        return false;
+    const pinnedProvider = criteria.provider ?? requestedModel;
+
+    if (pinnedProvider || exactModel) {
+      const provider = this.getProvider(pinnedProvider);
+      const models = await provider.listModels();
+      const selected = models.find((model) => {
+        if (exactModel && model.modelId !== exactModel) {
+          return false;
+        }
+
+        return modelMatchesCapabilities(model, criteria);
+      });
+
+      if (!selected) {
+        throw new ModelProviderError(provider.id, `No compatible model found for provider '${provider.id}'`);
       }
 
-      return modelMatchesCapabilities(model, criteria);
-    });
-
-    if (!selected) {
-      throw new ModelProviderError(provider.id, `No compatible model found for provider '${provider.id}'`);
+      return { model: selected, provider };
     }
 
-    return { model: selected, provider };
+    const candidates: SelectedModel[] = [];
+
+    for (const provider of this.providers.values()) {
+      for (const model of await provider.listModels()) {
+        if (modelMatchesCapabilities(model, criteria)) {
+          candidates.push({ model, provider });
+        }
+      }
+    }
+
+    const selected = candidates.sort(compareSelectedModels(criteria))[0];
+
+    if (!selected) {
+      throw new ModelProviderError("registry", "No compatible model found");
+    }
+
+    return selected;
   }
 
   private resolveKnownProvider(nameOrModel: string): string | undefined {
@@ -585,6 +611,33 @@ function modelMatchesCapabilities(model: ModelInfo, criteria: ModelSelectionCrit
   }
 
   return true;
+}
+
+function compareSelectedModels(criteria: ModelSelectionCriteria): (left: SelectedModel, right: SelectedModel) => number {
+  return (left, right) => {
+    if (criteria.prefer?.latencyProfile) {
+      const leftLatency = left.model.capabilities.latencyProfile === criteria.prefer.latencyProfile ? 0 : 1;
+      const rightLatency = right.model.capabilities.latencyProfile === criteria.prefer.latencyProfile ? 0 : 1;
+
+      if (leftLatency !== rightLatency) {
+        return leftLatency - rightLatency;
+      }
+    }
+
+    if (criteria.prefer?.cost === "lowest") {
+      const costDelta = costRank(left.model.capabilities.cost) - costRank(right.model.capabilities.cost);
+
+      if (costDelta !== 0) {
+        return costDelta;
+      }
+    }
+
+    return left.provider.id.localeCompare(right.provider.id) || left.model.modelId.localeCompare(right.model.modelId);
+  };
+}
+
+function costRank(cost: ModelCapabilities["cost"]): number {
+  return ({ free: 0, low: 1, medium: 2, high: 3, unknown: 4 })[cost];
 }
 
 function toOpenAIChatRequest(request: ModelRequest, defaultModel: string | undefined) {

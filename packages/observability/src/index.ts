@@ -101,6 +101,16 @@ export interface PinoCompatibleLogger {
   info(payload: JsonObject, message?: string): void;
 }
 
+export interface OpenTelemetrySpanLike {
+  setAttribute(key: string, value: string | number | boolean): void;
+  recordException?(error: unknown): void;
+  end(): void;
+}
+
+export interface OpenTelemetryTracerLike {
+  startSpan(name: string, options?: { readonly attributes?: SpanAttributes; readonly startTime?: Date }): OpenTelemetrySpanLike;
+}
+
 export interface InMemoryFollowupSuggestionStoreOptions {
   readonly maxEvents?: number;
   readonly retentionMs?: number;
@@ -365,6 +375,36 @@ export class PinoTraceEventLogger implements TraceEventSink {
   }
 }
 
+export class OpenTelemetryTraceEventSink implements TraceEventSink {
+  constructor(private readonly tracer: OpenTelemetryTracerLike) {}
+
+  async record(event: TraceEventInput): Promise<void> {
+    const span = this.tracer.startSpan(event.name, {
+      attributes: {
+        ...primitiveSpanAttributes(event.attributes),
+        "run.id": event.runId,
+        "span.id": event.spanId,
+        "span.stage": event.stage
+      },
+      startTime: event.startedAt
+    });
+
+    for (const [key, value] of Object.entries(primitiveSpanAttributes(event.attributes))) {
+      span.setAttribute(key, value);
+    }
+
+    span.setAttribute("run.id", event.runId);
+    span.setAttribute("span.id", event.spanId);
+    span.setAttribute("span.stage", event.stage);
+
+    if (typeof event.attributes.error === "string") {
+      span.recordException?.(event.attributes.error);
+    }
+
+    span.end();
+  }
+}
+
 export function createNoOpMuseTracer(): MuseTracer {
   return new NoOpMuseTracer();
 }
@@ -504,6 +544,15 @@ function traceEventLogPayload(event: TraceEventInput): JsonObject {
     spanId: event.spanId,
     stage: event.stage
   });
+}
+
+function primitiveSpanAttributes(attributes: JsonObject): SpanAttributes {
+  return Object.fromEntries(
+    Object.entries(attributes).filter((entry): entry is [string, string | number | boolean] => {
+      const value = entry[1];
+      return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+    })
+  );
 }
 
 function readStringAttribute(attributes: SpanAttributes, key: string): string | undefined {

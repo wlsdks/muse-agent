@@ -291,12 +291,21 @@ describe("cli program", () => {
   it("opens the Ink status TUI with the active endpoint and config paths", async () => {
     const { io } = captureOutput();
     const rendered: unknown[] = [];
+    const configDir = await mkdtemp(path.join(tmpdir(), "muse-cli-tui-config-"));
     const program = createProgram({
       ...io,
-      configDir: "/tmp/muse-config",
+      configDir,
+      credentialKey: "test-credential-key",
       renderTui: async (model) => {
         rendered.push(model);
       }
+    });
+
+    await program.parseAsync(["node", "muse", "--api-url", "http://api.test", "auth", "login", "stored-token"], {
+      from: "node"
+    });
+    await program.parseAsync(["node", "muse", "config", "set", "defaultModel", "openai:gpt-test"], {
+      from: "node"
     });
 
     await program.parseAsync([
@@ -310,8 +319,10 @@ describe("cli program", () => {
     expect(rendered).toEqual([
       {
         apiUrl: "http://api.test",
-        configPath: "/tmp/muse-config/config.json",
-        credentialPath: "/tmp/muse-config/credentials.json",
+        auth: { hasToken: true },
+        chat: { defaultModel: "openai:gpt-test" },
+        configPath: path.join(configDir, "config.json"),
+        credentialPath: path.join(configDir, "credentials.json"),
         mode: "remote",
         workspaceRunsPath: `${process.cwd()}/.muse/runs`
       }

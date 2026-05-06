@@ -121,6 +121,41 @@ describe("ToolExecutor", () => {
     expect(result.output).toContain("approved:reviewed");
   });
 
+  it("returns the prior result for duplicate idempotency keys", async () => {
+    let executions = 0;
+    const tool: MuseTool = {
+      definition: {
+        description: "Create a record.",
+        inputSchema: { type: "object" },
+        name: "create_record",
+        risk: "write"
+      },
+      execute: () => `created:${++executions}`
+    };
+    const executor = new ToolExecutor({
+      idempotencyStore: new Map(),
+      registry: new ToolRegistry([tool])
+    });
+
+    const first = await executor.execute({
+      arguments: { idempotencyKey: "key-1" },
+      context: { runId: "run-1" },
+      id: "call-1",
+      name: "create_record"
+    });
+    const second = await executor.execute({
+      arguments: { idempotencyKey: "key-1" },
+      context: { runId: "run-1" },
+      id: "call-2",
+      name: "create_record"
+    });
+
+    expect(first.output).toContain("created:1");
+    expect(second.output).toBe(first.output);
+    expect(second.status).toBe("completed");
+    expect(executions).toBe(1);
+  });
+
   it("converts tool failures to error strings", async () => {
     const failingTool: MuseTool = {
       definition: {

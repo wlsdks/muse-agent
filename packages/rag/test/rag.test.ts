@@ -19,6 +19,7 @@ import {
   mapRagIngestionCandidateRow,
   mapRagIngestionPolicyRow,
   PassthroughQueryTransformer,
+  HypotheticalDocumentQueryTransformer,
   SimpleContextBuilder,
   SimpleReranker,
   StructuredContextBuilder,
@@ -235,5 +236,18 @@ describe("DefaultRagPipeline", () => {
     const pipeline = new DefaultRagPipeline({ retriever: new InMemoryRagCorpus() });
 
     await expect(pipeline.retrieve({ query: "missing" })).resolves.toEqual(emptyRagContext);
+  });
+});
+
+describe("HypotheticalDocumentQueryTransformer", () => {
+  it("adds a generated hypothetical document query while preserving the original query first", async () => {
+    const transformer = new HypotheticalDocumentQueryTransformer({
+      generate: async (query) => `Hypothetical answer for ${query}`
+    });
+
+    await expect(transformer.transform("release checklist")).resolves.toEqual([
+      "release checklist",
+      "Hypothetical answer for release checklist"
+    ]);
   });
 });

@@ -29,6 +29,7 @@ import {
   SlackFeedbackButtonHandler,
   SlackInteractionDispatcher,
   SlackSignatureVerifier,
+  SlackSocketModeGateway,
   WebhookDispatcher,
   createFeedbackMetadataCaptureHook,
   createRagIngestionCaptureHook,
@@ -377,6 +378,61 @@ describe("SlackInteractionDispatcher", () => {
           text: "This message is expired or no longer tracked."
         },
         url: "https://example.invalid/respond"
+      }
+    ]);
+  });
+});
+
+describe("SlackSocketModeGateway", () => {
+  it("acks socket envelopes and routes app mention events through the command handler", async () => {
+    const sent: unknown[] = [];
+    const handled: unknown[] = [];
+    const gateway = new SlackSocketModeGateway({
+      commandHandler: {
+        handle: async (command) => {
+          handled.push(command);
+          return { text: `handled:${command.text}` };
+        }
+      },
+      transport: {
+        send: async (payload) => {
+          sent.push(payload);
+        }
+      }
+    });
+
+    await gateway.handleEnvelope({
+      envelope_id: "envelope-1",
+      payload: {
+        event: {
+          channel: "channel-1",
+          team: "workspace-1",
+          text: "<@BOT> decide release plan",
+          ts: "1770000000.000100",
+          type: "app_mention",
+          user: "user-1"
+        },
+        type: "event_callback"
+      },
+      type: "events_api"
+    });
+
+    expect(sent).toEqual([{ envelope_id: "envelope-1" }]);
+    expect(handled).toEqual([
+      {
+        channelId: "channel-1",
+        command: "app_mention",
+        id: "1770000000.000100",
+        metadata: {
+          eventTs: "1770000000.000100",
+          socketMode: true,
+          type: "app_mention"
+        },
+        receivedAt: expect.any(Date),
+        source: "slack_socket_mode",
+        text: "decide release plan",
+        userId: "user-1",
+        workspaceId: "workspace-1"
       }
     ]);
   });

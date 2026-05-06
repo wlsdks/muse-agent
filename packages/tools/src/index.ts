@@ -86,6 +86,11 @@ export interface ToolExecutionResult {
   readonly error?: string;
 }
 
+export interface ToolIdempotencyStore {
+  get(key: string): ToolExecutionResult | undefined;
+  set(key: string, result: ToolExecutionResult): unknown;
+}
+
 export class ToolRegistry {
   private readonly tools = new Map<string, MuseTool>();
 
@@ -119,17 +124,20 @@ export class ToolRegistry {
 export class ToolExecutor {
   private readonly approvalPolicy: ToolApprovalPolicy;
   private readonly approvalStore?: ToolApprovalStore;
+  private readonly idempotencyStore?: ToolIdempotencyStore;
   private readonly registry: ToolRegistry;
   private readonly sanitizer: ToolOutputSanitizer;
 
   constructor(options: {
     readonly approvalPolicy?: ToolApprovalPolicy;
     readonly approvalStore?: ToolApprovalStore;
+    readonly idempotencyStore?: ToolIdempotencyStore;
     readonly registry: ToolRegistry;
     readonly sanitizer?: ToolOutputSanitizer;
   }) {
     this.approvalPolicy = options.approvalPolicy ?? createAlwaysApprovePolicy();
     this.approvalStore = options.approvalStore;
+    this.idempotencyStore = options.idempotencyStore;
     this.registry = options.registry;
     this.sanitizer = options.sanitizer ?? new ToolOutputSanitizer();
   }
@@ -143,6 +151,12 @@ export class ToolExecutor {
 
     const argsWithRisk = { ...request.arguments, risk: tool.definition.risk };
     let executionArguments = request.arguments;
+    const idempotencyKey = readIdempotencyKey(request);
+    const existing = idempotencyKey ? this.idempotencyStore?.get(idempotencyKey) : undefined;
+
+    if (existing) {
+      return { ...existing, id: request.id };
+    }
 
     if (this.approvalPolicy.requiresApproval(tool.definition.name, argsWithRisk)) {
       const approval = await this.requestApproval(request);
@@ -165,14 +179,19 @@ export class ToolExecutor {
       const raw = await tool.execute(executionArguments, request.context);
       const output = stringifyToolOutput(raw);
       const sanitized = this.sanitizer.sanitize(request.name, output);
-
-      return {
+      const result = {
         id: request.id,
         name: request.name,
         output: sanitized.content,
         sanitized,
         status: "completed"
-      };
+      } satisfies ToolExecutionResult;
+
+      if (idempotencyKey) {
+        this.idempotencyStore?.set(idempotencyKey, result);
+      }
+
+      return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown tool failure";
       return this.failed(request, `Error: ${message}`);
@@ -401,6 +420,13 @@ function hasMutationHint(normalized: string): boolean {
 function hasMutationTargetHint(normalized: string): boolean {
   return mutationTargetHints.some((hint) => normalized.includes(hint))
     || mutationTargetPatterns.some((pattern) => pattern.test(normalized));
+}
+
+function readIdempotencyKey(request: ToolCallRequest): string | undefined {
+  const key = request.arguments.idempotencyKey ?? request.arguments.idempotency_key;
+  return typeof key === "string" && key.trim().length > 0
+    ? `${request.context.runId}:${request.name}:${key.trim()}`
+    : undefined;
 }
 
 const workspaceHints = [

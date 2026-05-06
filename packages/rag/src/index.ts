@@ -46,6 +46,11 @@ export interface QueryTransformer {
   transform(query: string): Awaitable<readonly string[]>;
 }
 
+export interface HypotheticalDocumentQueryTransformerOptions {
+  readonly generate: (query: string) => Awaitable<string>;
+  readonly includeOriginal?: boolean;
+}
+
 export interface ContextCompressor {
   compress(query: string, documents: readonly RetrievedDocument[]): Awaitable<readonly RetrievedDocument[]>;
 }
@@ -948,6 +953,33 @@ export class StructuredContextBuilder implements ContextBuilder {
 export class PassthroughQueryTransformer implements QueryTransformer {
   transform(query: string): readonly string[] {
     return [query];
+  }
+}
+
+export class HypotheticalDocumentQueryTransformer implements QueryTransformer {
+  private readonly includeOriginal: boolean;
+  private readonly generate: (query: string) => Awaitable<string>;
+
+  constructor(options: HypotheticalDocumentQueryTransformerOptions) {
+    this.generate = options.generate;
+    this.includeOriginal = options.includeOriginal ?? true;
+  }
+
+  async transform(query: string): Promise<readonly string[]> {
+    const trimmed = query.trim();
+
+    if (trimmed.length === 0) {
+      return [];
+    }
+
+    const hypothetical = (await this.generate(trimmed)).trim();
+    const queries = this.includeOriginal ? [trimmed] : [];
+
+    if (hypothetical.length > 0 && hypothetical !== trimmed) {
+      queries.push(hypothetical);
+    }
+
+    return queries;
   }
 }
 

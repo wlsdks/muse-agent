@@ -182,6 +182,22 @@ export interface SlackMessageTransport {
   }>;
 }
 
+export interface SlackSocketModeTransport {
+  send(payload: JsonObject): Awaitable<void>;
+}
+
+export interface SlackSocketModeGatewayOptions {
+  readonly commandHandler: CommandHandler;
+  readonly now?: () => Date;
+  readonly transport: SlackSocketModeTransport;
+}
+
+export interface SlackSocketModeEnvelope {
+  readonly envelope_id?: string;
+  readonly payload?: unknown;
+  readonly type?: string;
+}
+
 export type SlackInteractionType = "block_actions" | "view_submission";
 
 export interface SlackInteractionPayload {
@@ -654,6 +670,26 @@ export class SlackInteractionDispatcher {
     }
 
     return { dispatched: false, payload, reason: "handler_rejected" };
+  }
+}
+
+export class SlackSocketModeGateway {
+  private readonly now: () => Date;
+
+  constructor(private readonly options: SlackSocketModeGatewayOptions) {
+    this.now = options.now ?? (() => new Date());
+  }
+
+  async handleEnvelope(envelope: SlackSocketModeEnvelope): Promise<void> {
+    if (envelope.envelope_id) {
+      await this.options.transport.send({ envelope_id: envelope.envelope_id });
+    }
+
+    const command = socketEnvelopeToCommand(envelope.payload, this.now);
+
+    if (command) {
+      await this.options.commandHandler.handle(command);
+    }
   }
 }
 
@@ -1610,6 +1646,42 @@ export function parseSlackInteractionPayload(input: unknown): SlackInteractionPa
     value: readString(action, "value"),
     viewValues: viewState as JsonObject | undefined
   };
+}
+
+function socketEnvelopeToCommand(payload: unknown, now: () => Date): CommandEnvelope | undefined {
+  if (!isJsonRecord(payload) || payload.type !== "event_callback" || !isJsonRecord(payload.event)) {
+    return undefined;
+  }
+
+  const event = payload.event;
+  const type = readString(event, "type");
+
+  if (type !== "app_mention" && type !== "message") {
+    return undefined;
+  }
+
+  const text = stripBotMention(readString(event, "text") ?? "");
+  const ts = readString(event, "ts") ?? createRunId("socket_event");
+
+  return {
+    channelId: blankToUndefined(readString(event, "channel")),
+    command: type,
+    id: ts,
+    metadata: {
+      eventTs: ts,
+      socketMode: true,
+      type
+    },
+    receivedAt: now(),
+    source: "slack_socket_mode",
+    text,
+    userId: blankToUndefined(readString(event, "user")),
+    workspaceId: blankToUndefined(readString(event, "team") ?? readString(payload, "team_id"))
+  };
+}
+
+function stripBotMention(value: string): string {
+  return value.replace(/^<@[^>]+>\s*/u, "").trim();
 }
 
 export class FetchSlackWebApiMessageTransport implements SlackMessageTransport {

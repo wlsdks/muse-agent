@@ -116,8 +116,14 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     .option("--local", "Show local mode instead of remote API mode")
     .action(async (options: { readonly local?: boolean }, command) => {
       const { baseUrl } = await readApiOptions(io, command, { includeStoredToken: false });
+      const [cliConfig, token] = await Promise.all([
+        readConfigStore(io),
+        readStoredToken(io, baseUrl)
+      ]);
       await (io.renderTui ?? renderMuseStatusTui)({
         apiUrl: baseUrl,
+        auth: { hasToken: Boolean(token) },
+        chat: { defaultModel: cliConfig.defaultModel },
         configPath: configPath(io),
         credentialPath: credentialPath(io),
         mode: options.local ? "local" : "remote",

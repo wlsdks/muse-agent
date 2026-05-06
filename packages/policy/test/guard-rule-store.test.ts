@@ -12,6 +12,7 @@ import {
   createInputGuardRuleInsert,
   createOutputGuardRuleAuditInsert,
   createOutputGuardRuleInsert,
+  evaluateInputGuardRules,
   mapInputGuardRuleRow,
   mapOutputGuardRuleAuditRow,
   mapOutputGuardRuleRow
@@ -62,6 +63,38 @@ describe("guard rule store mapping", () => {
     });
     expect(mapOutputGuardRuleAuditRow(createOutputGuardRuleAuditInsert(audit))).toMatchObject({
       ruleId: "output-rule-1"
+    });
+  });
+
+  it("evaluates dynamic input guard rules in priority order", async () => {
+    const store = new InMemoryGuardRuleStore();
+    await store.saveInputRule({
+      action: "allow",
+      enabled: true,
+      id: "allow-rule",
+      name: "Allow release",
+      pattern: "release",
+      patternType: "keyword",
+      priority: 10
+    });
+    await store.saveInputRule({
+      action: "block",
+      enabled: true,
+      id: "block-rule",
+      name: "Block secret",
+      pattern: "secret",
+      patternType: "keyword",
+      priority: 20
+    });
+
+    await expect(evaluateInputGuardRules(store, "contains secret")).resolves.toEqual({
+      allowed: false,
+      reason: "Blocked by input guard rule: Block secret",
+      ruleId: "block-rule"
+    });
+    await expect(evaluateInputGuardRules(store, "release plan")).resolves.toEqual({
+      allowed: true,
+      ruleId: "allow-rule"
     });
   });
 });

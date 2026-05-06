@@ -4,6 +4,7 @@ import {
   InMemoryAgentMetrics,
   InMemoryFollowupSuggestionStore,
   InMemoryMuseTracer,
+  OpenTelemetryTraceEventSink,
   PersistedMuseTracer,
   PinoTraceEventLogger,
   StartupDoctor,
@@ -229,5 +230,40 @@ describe("startup doctor and log export", () => {
         }
       }
     ]);
+  });
+
+  it("exports trace events through an OpenTelemetry-compatible tracer", async () => {
+    const spans: unknown[] = [];
+    const sink = new OpenTelemetryTraceEventSink({
+      startSpan: (name, options) => {
+        const span = {
+          end: () => {
+            spans.push({ ended: true, name, options });
+          },
+          recordException: (error: unknown) => {
+            spans.push({ error });
+          },
+          setAttribute: (key: string, value: unknown) => {
+            spans.push({ key, value });
+          }
+        };
+        return span;
+      }
+    });
+
+    await sink.record({
+      attributes: { error: "failed", model: "test-model" },
+      endedAt: new Date("2026-05-06T00:00:01.000Z"),
+      name: "muse.agent.run",
+      runId: "run-1",
+      spanId: "span-1",
+      stage: "agent",
+      startedAt: new Date("2026-05-06T00:00:00.000Z")
+    });
+
+    expect(spans).toContainEqual({ key: "model", value: "test-model" });
+    expect(spans).toContainEqual({ key: "run.id", value: "run-1" });
+    expect(spans).toContainEqual({ error: "failed" });
+    expect(spans).toContainEqual(expect.objectContaining({ ended: true, name: "muse.agent.run" }));
   });
 });
