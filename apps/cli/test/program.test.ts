@@ -218,6 +218,60 @@ describe("cli program", () => {
     expect(requests[0]?.headers).toMatchObject({ authorization: "Bearer stored-token" });
   });
 
+  it("prompts for chat text when no message argument is provided", async () => {
+    const { io, output } = captureOutput();
+    const requests: Array<{ readonly body?: string; readonly url: string }> = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url, init) => {
+        requests.push({
+          body: String(init?.body),
+          url: String(url)
+        });
+        return new Response(JSON.stringify({ response: "interactive answer", runId: "run-interactive" }));
+      },
+      prompts: {
+        password: async () => "unused",
+        text: async () => "interactive hello"
+      }
+    });
+
+    await program.parseAsync(["node", "muse", "chat", "--no-log"], { from: "node" });
+
+    expect(output.join("")).toBe("interactive answer\n");
+    expect(requests[0]).toMatchObject({ url: "http://127.0.0.1:3000/api/chat" });
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toEqual({ message: "interactive hello" });
+  });
+
+  it("prompts for auth login token when no token argument is provided", async () => {
+    const { io, output } = captureOutput();
+    const configDir = await mkdtemp(path.join(tmpdir(), "muse-cli-auth-interactive-"));
+    const program = createProgram({
+      ...io,
+      configDir,
+      credentialKey: "test-credential-key",
+      prompts: {
+        password: async () => "interactive-token",
+        text: async () => "unused"
+      }
+    });
+
+    await program.parseAsync(["node", "muse", "--api-url", "http://api.test", "auth", "login"], { from: "node" });
+    await program.parseAsync(["node", "muse", "--api-url", "http://api.test", "auth", "status", "--json"], {
+      from: "node"
+    });
+
+    expect(output.join("")).toContain("Stored Muse API token for http://api.test");
+    expect(JSON.parse(output.at(-1) ?? "{}")).toMatchObject({
+      apiUrl: "http://api.test",
+      hasToken: true
+    });
+    await expect(readFile(path.join(configDir, "credentials.json"), "utf8"))
+      .resolves
+      .not
+      .toContain("interactive-token");
+  });
+
   it("supports MCP and scheduler operations through API commands", async () => {
     const { io, output } = captureOutput();
     const requests: Array<{ readonly body?: string; readonly method?: string; readonly url: string }> = [];

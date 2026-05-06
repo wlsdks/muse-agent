@@ -4,13 +4,20 @@ import { hostname, homedir, userInfo } from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@muse/agent-core";
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
+import { isCancel, password, text } from "@clack/prompts";
 import { Command } from "commander";
 import { renderMuseStatusTui, type MuseStatusTuiModel } from "./tui.js";
+
+export interface CliPromptAdapter {
+  text(options: { readonly message: string; readonly placeholder?: string }): Promise<string>;
+  password(options: { readonly message: string }): Promise<string>;
+}
 
 export interface ProgramIO {
   readonly fetch?: typeof globalThis.fetch;
   readonly stdout: (message: string) => void;
   readonly stderr: (message: string) => void;
+  readonly prompts?: CliPromptAdapter;
   readonly workspaceDir?: string;
   readonly configDir?: string;
   readonly credentialKey?: string;
@@ -134,7 +141,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   program
     .command("chat")
     .description("Run a chat request through the Muse API")
-    .argument("<message...>", "User message")
+    .argument("[message...]", "User message")
     .option("--local", "Run through the local shared agent runtime instead of the API")
     .option("--model <model>", "Model name")
     .option("--stream", "Stream remote chat over SSE")
@@ -151,7 +158,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       },
       command
     ) => {
-      const message = messageParts.join(" ");
+      const message = await resolveChatMessage(io, messageParts);
       const cliConfig = await readConfigStore(io);
       const model = options.model ?? cliConfig.defaultModel;
       if (options.local && options.stream) {
@@ -188,10 +195,10 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   auth
     .command("login")
     .description("Store a bearer token in the encrypted CLI credential store")
-    .argument("<token>", "Bearer token to store")
-    .action(async (token: string, _options, command) => {
+    .argument("[token]", "Bearer token to store")
+    .action(async (token: string | undefined, _options, command) => {
       const { baseUrl } = await readApiOptions(io, command, { includeStoredToken: false });
-      await writeStoredToken(io, baseUrl, token);
+      await writeStoredToken(io, baseUrl, await resolveAuthToken(io, token));
       io.stdout(`Stored Muse API token for ${baseUrl}\n`);
     });
 
@@ -351,6 +358,60 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     });
 
   return program;
+}
+
+async function resolveChatMessage(io: ProgramIO, messageParts: readonly string[]): Promise<string> {
+  const message = messageParts.join(" ").trim();
+
+  if (message.length > 0) {
+    return message;
+  }
+
+  return promptText(io, {
+    message: "What would you like to ask Muse?",
+    placeholder: "Compare these options..."
+  });
+}
+
+async function resolveAuthToken(io: ProgramIO, token: string | undefined): Promise<string> {
+  const trimmed = token?.trim();
+
+  if (trimmed) {
+    return trimmed;
+  }
+
+  return promptPassword(io, { message: "Muse API token" });
+}
+
+async function promptText(
+  io: ProgramIO,
+  options: { readonly message: string; readonly placeholder?: string }
+): Promise<string> {
+  const value = io.prompts
+    ? await io.prompts.text(options)
+    : await text(options);
+
+  return readPromptValue(value, "Prompt was cancelled");
+}
+
+async function promptPassword(io: ProgramIO, options: { readonly message: string }): Promise<string> {
+  const value = io.prompts
+    ? await io.prompts.password(options)
+    : await password(options);
+
+  return readPromptValue(value, "Authentication was cancelled");
+}
+
+function readPromptValue(value: unknown, cancelMessage: string): string {
+  if (isCancel(value)) {
+    throw new Error(cancelMessage);
+  }
+
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error("Interactive input must not be empty");
+  }
+
+  return value.trim();
 }
 
 async function apiRequest(
