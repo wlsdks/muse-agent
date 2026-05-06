@@ -58,7 +58,14 @@ import {
   type ToolApprovalPolicy
 } from "@muse/policy";
 import { createRunId, type JsonObject } from "@muse/shared";
-import { ToolExecutor, ToolRegistry, toModelTool, type ToolExecutionResult, type ToolExposurePolicy } from "@muse/tools";
+import {
+  ToolExecutor,
+  ToolRegistry,
+  toModelTool,
+  type ToolExecutionResult,
+  type ToolExposurePolicy,
+  type ToolPolicyProvider
+} from "@muse/tools";
 
 type Awaitable<T> = T | Promise<T>;
 
@@ -164,6 +171,7 @@ export interface AgentRuntimeOptions {
   readonly toolExposurePolicy?: ToolExposurePolicy;
   readonly toolApprovalPolicy?: ToolApprovalPolicy;
   readonly toolApprovalStore?: PendingApprovalStore;
+  readonly toolPolicyProvider?: ToolPolicyProvider;
   readonly maxToolCalls?: number;
   readonly circuitBreaker?: CircuitBreaker;
   readonly fallbackStrategy?: FallbackStrategy;
@@ -321,6 +329,7 @@ export class AgentRuntime {
         ? new ToolExecutor({
             approvalPolicy: options.toolApprovalPolicy,
             approvalStore: options.toolApprovalStore,
+            toolPolicyProvider: options.toolPolicyProvider,
             registry: options.toolRegistry
           })
         : undefined);
@@ -971,6 +980,7 @@ export class AgentRuntime {
     const result = await this.toolExecutor.execute({
       arguments: toolCall.arguments,
       context: {
+        channel: metadataString(context.input.metadata, "channel"),
         runId: context.runId,
         userId: metadataString(context.input.metadata, "userId"),
         workspaceId: metadataString(context.input.metadata, "workspaceId")

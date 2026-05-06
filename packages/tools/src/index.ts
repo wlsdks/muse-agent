@@ -4,7 +4,8 @@ import {
   createAlwaysApprovePolicy,
   ToolOutputSanitizer,
   type SanitizedToolOutput,
-  type ToolApprovalPolicy
+  type ToolApprovalPolicy,
+  type ToolPolicyConfig
 } from "@muse/policy";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
@@ -25,6 +26,7 @@ export interface MuseToolContext {
   readonly runId: string;
   readonly userId?: string;
   readonly workspaceId?: string;
+  readonly channel?: string;
 }
 
 export type ToolExecutionValue = string | JsonValue;
@@ -93,6 +95,8 @@ export interface ToolIdempotencyStore {
   get(key: string): ToolExecutionResult | undefined;
   set(key: string, result: ToolExecutionResult): unknown;
 }
+
+export type ToolPolicyProvider = () => Promise<ToolPolicyConfig | undefined> | ToolPolicyConfig | undefined;
 
 export interface ToolDescriptionIssue {
   readonly code: "missing_description" | "missing_input_schema" | "ambiguous_risk" | "duplicate_name" | "unknown_dependency";
@@ -283,6 +287,7 @@ export class ToolExecutor {
   private readonly idempotencyStore?: ToolIdempotencyStore;
   private readonly registry: ToolRegistry;
   private readonly sanitizer: ToolOutputSanitizer;
+  private readonly toolPolicyProvider?: ToolPolicyProvider;
 
   constructor(options: {
     readonly approvalPolicy?: ToolApprovalPolicy;
@@ -290,12 +295,14 @@ export class ToolExecutor {
     readonly idempotencyStore?: ToolIdempotencyStore;
     readonly registry: ToolRegistry;
     readonly sanitizer?: ToolOutputSanitizer;
+    readonly toolPolicyProvider?: ToolPolicyProvider;
   }) {
     this.approvalPolicy = options.approvalPolicy ?? createAlwaysApprovePolicy();
     this.approvalStore = options.approvalStore;
     this.idempotencyStore = options.idempotencyStore;
     this.registry = options.registry;
     this.sanitizer = options.sanitizer ?? new ToolOutputSanitizer();
+    this.toolPolicyProvider = options.toolPolicyProvider;
   }
 
   async execute(request: ToolCallRequest): Promise<ToolExecutionResult> {
@@ -308,8 +315,13 @@ export class ToolExecutor {
     const argsWithRisk = { ...request.arguments, risk: tool.definition.risk };
     let executionArguments = request.arguments;
     const idempotencyKey = readIdempotencyKey(request);
-    const existing = idempotencyKey ? this.idempotencyStore?.get(idempotencyKey) : undefined;
+    const policyBlock = await this.evaluateToolPolicy(request, tool);
 
+    if (policyBlock) {
+      return policyBlock;
+    }
+
+    const existing = idempotencyKey ? this.idempotencyStore?.get(idempotencyKey) : undefined;
     if (existing) {
       return { ...existing, id: request.id };
     }
@@ -369,6 +381,39 @@ export class ToolExecutor {
       toolName: request.name,
       userId: request.context.userId ?? "anonymous"
     });
+  }
+
+  private async evaluateToolPolicy(request: ToolCallRequest, tool: MuseTool): Promise<ToolExecutionResult | undefined> {
+    const policy = await this.toolPolicyProvider?.();
+
+    if (!policy?.enabled || tool.definition.risk !== "write") {
+      return undefined;
+    }
+
+    if (policy.writeToolNames.length > 0 && !policy.writeToolNames.includes(tool.definition.name)) {
+      return undefined;
+    }
+
+    const channel = request.context.channel?.trim().toLowerCase();
+
+    if (!channel || !policy.denyWriteChannels.includes(channel)) {
+      return undefined;
+    }
+
+    const channelAllowList = policy.allowWriteToolNamesByChannel[channel] ?? [];
+    const allowedByChannel = channelAllowList.includes(tool.definition.name);
+    const allowedGlobally = policy.allowWriteToolNamesInDenyChannels.includes(tool.definition.name);
+
+    if (allowedByChannel || allowedGlobally) {
+      return undefined;
+    }
+
+    return {
+      id: request.id,
+      name: request.name,
+      output: policy.denyWriteMessage,
+      status: "blocked"
+    };
   }
 
   private failed(request: ToolCallRequest, error: string): ToolExecutionResult {

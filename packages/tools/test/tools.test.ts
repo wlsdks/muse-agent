@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createToolNameApprovalPolicy } from "@muse/policy";
+import { createToolNameApprovalPolicy, createToolPolicyConfig } from "@muse/policy";
 import {
   createRustRunnerTool,
   createDefaultToolExposurePolicy,
@@ -123,6 +123,76 @@ describe("ToolExecutor", () => {
     });
     expect(result.status).toBe("completed");
     expect(result.output).toContain("approved:reviewed");
+  });
+
+  it("blocks write tools before approval or execution when dynamic tool policy denies the channel", async () => {
+    let approvals = 0;
+    let executions = 0;
+    const executor = new ToolExecutor({
+      approvalPolicy: createToolNameApprovalPolicy(["write_note"]),
+      approvalStore: {
+        requestApproval: async () => {
+          approvals += 1;
+          return { approved: true };
+        }
+      },
+      registry: new ToolRegistry([{
+        ...writeTool,
+        execute: () => {
+          executions += 1;
+          return "written";
+        }
+      }]),
+      toolPolicyProvider: async () => createToolPolicyConfig({
+        denyWriteChannels: ["slack"],
+        denyWriteMessage: "Error: Slack write tools are disabled",
+        enabled: true,
+        writeToolNames: ["write_note"]
+      })
+    });
+
+    const result = await executor.execute({
+      arguments: {},
+      context: { runId: "run-1", workspaceId: "workspace-1", channel: "slack" },
+      id: "call-1",
+      name: "write_note"
+    });
+
+    expect(result).toMatchObject({
+      output: "Error: Slack write tools are disabled",
+      status: "blocked"
+    });
+    expect(approvals).toBe(0);
+    expect(executions).toBe(0);
+  });
+
+  it("allows deny-channel write tools when the dynamic policy grants a channel override", async () => {
+    let executions = 0;
+    const executor = new ToolExecutor({
+      registry: new ToolRegistry([{
+        ...writeTool,
+        execute: () => {
+          executions += 1;
+          return "written";
+        }
+      }]),
+      toolPolicyProvider: async () => createToolPolicyConfig({
+        allowWriteToolNamesByChannel: { slack: ["write_note"] },
+        denyWriteChannels: ["slack"],
+        enabled: true,
+        writeToolNames: ["write_note"]
+      })
+    });
+
+    const result = await executor.execute({
+      arguments: {},
+      context: { runId: "run-1", channel: "slack" },
+      id: "call-1",
+      name: "write_note"
+    });
+
+    expect(result.status).toBe("completed");
+    expect(executions).toBe(1);
   });
 
   it("returns the prior result for duplicate idempotency keys", async () => {

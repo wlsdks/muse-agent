@@ -5,7 +5,7 @@ import { ModelProviderRegistry, type ModelProvider, type ModelRequest, type Mode
 import { InMemoryAgentMetrics, InMemoryMuseTracer } from "@muse/observability";
 import { DefaultRagPipeline, InMemoryRagCorpus, SimpleReranker } from "@muse/rag";
 import { InMemoryAgentRunHistoryStore, InMemoryCheckpointStore, InMemoryHookTraceStore } from "@muse/runtime-state";
-import { GuardBlockRateMonitor, InMemoryGuardRuleStore } from "@muse/policy";
+import { createToolPolicyConfig, GuardBlockRateMonitor, InMemoryGuardRuleStore } from "@muse/policy";
 import { ToolRegistry } from "@muse/tools";
 import {
   createAgentRuntime,
@@ -603,6 +603,64 @@ describe("AgentRuntime", () => {
     });
 
     expect(generated[0]?.tools?.map((tool) => tool.name)).toEqual(["read_note"]);
+  });
+
+  it("applies dynamic tool policy before executing runtime tool calls", async () => {
+    const executeTool = vi.fn(() => "written");
+    const generated: ModelRequest[] = [];
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Writes a synthetic note.",
+          inputSchema: { type: "object" },
+          name: "write_note",
+          risk: "write"
+        },
+        execute: executeTool
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        {
+          id: "tool",
+          model: "test-model",
+          output: "Writing note.",
+          toolCalls: [{ arguments: {}, id: "tool-1", name: "write_note" }]
+        },
+        {
+          id: "final",
+          model: "test-model",
+          output: "Write blocked."
+        }
+      ], (request) => generated.push(request)),
+      toolPolicyProvider: () => createToolPolicyConfig({
+        denyWriteChannels: ["slack"],
+        denyWriteMessage: "Error: Slack write tools are disabled",
+        enabled: true,
+        writeToolNames: ["write_note"]
+      }),
+      toolExposurePolicy: {
+        select: (tools) => ({ blocked: [], tools })
+      },
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "Post an update", role: "user" }],
+      metadata: { channel: "slack" },
+      model: "provider/model",
+      runId: "run-dynamic-tool-policy"
+    });
+
+    expect(result.response.output).toBe("Write blocked.");
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(generated[1]?.messages).toContainEqual(expect.objectContaining({
+      content: "Error: Slack write tools are disabled",
+      name: "write_note",
+      role: "tool",
+      toolCallId: "tool-1"
+    }));
   });
 
   it("blocks prompt injection through a default input guard", async () => {

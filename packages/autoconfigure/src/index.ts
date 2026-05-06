@@ -357,6 +357,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       requestTimeoutMs: parseInteger(env.MUSE_MODEL_REQUEST_TIMEOUT_MS, 45_000),
       toolApprovalPolicy: createToolApprovalPolicy(env),
       toolApprovalStore: approvalStore,
+      toolPolicyProvider: () => toolPolicyStore.getStored(),
       responseFilters: createResponseFilters(env),
       responseCache: parseBoolean(env.MUSE_CACHE_ENABLED, true) ? responseCache : undefined,
       retry: {
