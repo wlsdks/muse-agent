@@ -64,6 +64,19 @@ export interface QueryTransformer {
   transform(query: string): Awaitable<readonly string[]>;
 }
 
+export interface ConversationAwareQueryTurn {
+  readonly role: "system" | "user" | "assistant";
+  readonly content: string;
+}
+
+export interface ConversationAwareQueryTransformerOptions {
+  readonly history?: readonly ConversationAwareQueryTurn[];
+  readonly includeOriginal?: boolean;
+  readonly maxHistoryTurns?: number;
+  readonly maxQueries?: number;
+  readonly maxContextChars?: number;
+}
+
 export interface HypotheticalDocumentQueryTransformerOptions {
   readonly generate: (query: string) => Awaitable<string>;
   readonly includeOriginal?: boolean;
@@ -1204,6 +1217,57 @@ export class PassthroughQueryTransformer implements QueryTransformer {
   }
 }
 
+export class ConversationAwareQueryTransformer implements QueryTransformer {
+  private readonly history: readonly ConversationAwareQueryTurn[];
+  private readonly includeOriginal: boolean;
+  private readonly maxHistoryTurns: number;
+  private readonly maxQueries: number;
+  private readonly maxContextChars: number;
+
+  constructor(options: ConversationAwareQueryTransformerOptions = {}) {
+    this.history = options.history ?? [];
+    this.includeOriginal = options.includeOriginal ?? true;
+    this.maxHistoryTurns = Math.max(1, options.maxHistoryTurns ?? 3);
+    this.maxQueries = Math.max(1, options.maxQueries ?? 3);
+    this.maxContextChars = Math.max(80, options.maxContextChars ?? 800);
+  }
+
+  transform(query: string): readonly string[] {
+    const trimmed = query.trim();
+
+    if (trimmed.length === 0) {
+      return [];
+    }
+
+    const queries = this.includeOriginal ? [trimmed] : [];
+    const recentContext = this.recentUserContext(trimmed);
+
+    if (recentContext && shouldExpandWithConversationContext(trimmed)) {
+      queries.push(`${recentContext} ${trimmed}`);
+    }
+
+    if (queries.length === 0) {
+      queries.push(trimmed);
+    }
+
+    return uniqueStrings(queries).slice(0, this.maxQueries);
+  }
+
+  private recentUserContext(query: string): string | undefined {
+    const turns = this.history
+      .filter((turn) => turn.role === "user")
+      .map((turn) => normalizeWhitespace(turn.content))
+      .filter((content) => content.length > 0 && content !== query)
+      .slice(-this.maxHistoryTurns);
+
+    if (turns.length === 0) {
+      return undefined;
+    }
+
+    return truncateText(turns.join(" "), this.maxContextChars);
+  }
+}
+
 export class HypotheticalDocumentQueryTransformer implements QueryTransformer {
   private readonly includeOriginal: boolean;
   private readonly generate: (query: string) => Awaitable<string>;
@@ -1433,6 +1497,46 @@ function splitSentences(text: string): readonly string[] {
     .split(/(?<=[.!?。！？])\s+|\n+/u)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
+}
+
+function shouldExpandWithConversationContext(query: string): boolean {
+  const normalized = query.toLowerCase();
+
+  if (/\b(it|that|this|those|them|they|he|she|what about|how about|follow up|same|previous|above)\b/u.test(normalized)) {
+    return true;
+  }
+
+  if (/(그것|그건|이건|저건|이전|위의|같은|그러면|그럼|어떻게|뭐가|어떤가)/u.test(query)) {
+    return true;
+  }
+
+  return tokenize(query).length <= 6;
+}
+
+function normalizeWhitespace(text: string): string {
+  return text.replace(/\s+/gu, " ").trim();
+}
+
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) {
+    return text;
+  }
+
+  return text.slice(0, Math.max(0, maxChars - 1)).trimEnd();
+}
+
+function uniqueStrings(values: readonly string[]): readonly string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const value of values) {
+    if (!seen.has(value)) {
+      seen.add(value);
+      unique.push(value);
+    }
+  }
+
+  return unique;
 }
 
 function sum(values: readonly number[]): number {

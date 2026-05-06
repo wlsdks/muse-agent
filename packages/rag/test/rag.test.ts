@@ -14,6 +14,7 @@ import {
   buildRagIngestionPolicyUpsertQuery,
   createRagIngestionCandidateInsert,
   createRagIngestionPolicyInsert,
+  ConversationAwareQueryTransformer,
   DecomposingQueryTransformer,
   ExtractiveContextCompressor,
   HybridDocumentRetriever,
@@ -353,6 +354,31 @@ describe("DefaultRagPipeline", () => {
 
     await expect(pipeline.retrieve({ query: "missing" })).resolves.toEqual(emptyRagContext);
   });
+
+  it("uses conversation-aware query expansion during retrieval", async () => {
+    const corpus = new InMemoryRagCorpus();
+    corpus.add({
+      content: "Slack Socket Mode must acknowledge envelopes before routing app mentions.",
+      id: "slack-socket-mode",
+      metadata: { workspaceId: "workspace-1" },
+      source: "slack"
+    });
+    const pipeline = new DefaultRagPipeline({
+      queryTransformer: new ConversationAwareQueryTransformer({
+        history: [{ content: "Review Slack Socket Mode migration risk.", role: "user" }],
+        maxHistoryTurns: 1
+      }),
+      retriever: corpus
+    });
+
+    const context = await pipeline.retrieve({
+      filters: { workspaceId: "workspace-1" },
+      query: "What about acknowledgements?",
+      topK: 3
+    });
+
+    expect(context.documents.map((document) => document.id)).toEqual(["slack-socket-mode"]);
+  });
 });
 
 describe("HypotheticalDocumentQueryTransformer", () => {
@@ -369,6 +395,27 @@ describe("HypotheticalDocumentQueryTransformer", () => {
 });
 
 describe("decomposition and compression", () => {
+  it("expands follow-up retrieval queries with recent conversation context", () => {
+    const transformer = new ConversationAwareQueryTransformer({
+      history: [
+        { content: "Compare Slack Socket Mode and MCP runner migration risks.", role: "user" },
+        { content: "Socket Mode has live transport risk; MCP runner has policy risk.", role: "assistant" }
+      ],
+      maxHistoryTurns: 1
+    });
+
+    expect(transformer.transform("What about approval UX?")).toEqual([
+      "What about approval UX?",
+      "Compare Slack Socket Mode and MCP runner migration risks. What about approval UX?"
+    ]);
+  });
+
+  it("keeps the original query when conversation expansion has no usable history", () => {
+    const transformer = new ConversationAwareQueryTransformer({ includeOriginal: false });
+
+    expect(transformer.transform("standalone retrieval query")).toEqual(["standalone retrieval query"]);
+  });
+
   it("decomposes comparison queries into bounded subqueries", () => {
     const transformer = new DecomposingQueryTransformer({ maxQueries: 3 });
 
