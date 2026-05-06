@@ -2032,7 +2032,7 @@ function registerMcpCompatibilityRoutes(server: FastifyInstance, options: Reacto
     const adminUrl = readAdminUrl(serverConfig.config);
 
     if (!adminUrl) {
-      return reply.status(400).send({
+      return options.mcp?.manager.preflight(serverConfig.name) ?? reply.status(400).send({
         error: `MCP server '${serverConfig.name}' has invalid admin URL`,
         timestamp: nowIso()
       });

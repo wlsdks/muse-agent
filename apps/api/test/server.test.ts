@@ -2027,6 +2027,61 @@ describe("api server", () => {
     expect(afterDelete.statusCode).toBe(404);
   });
 
+  it("returns local MCP preflight diagnostics when no remote admin endpoint is configured", async () => {
+    const authService = createAuthService();
+    const registered = authService.register({
+      email: "first_account",
+      name: "First",
+      password: "password-1"
+    });
+    const policyStore = new InMemoryMcpSecurityPolicyStore({
+      initial: {
+        allowedServerNames: ["local"],
+        allowedStdioCommands: ["node"]
+      }
+    });
+    const securityPolicyProvider = new McpSecurityPolicyProvider(policyStore);
+    const manager = new McpManager(new InMemoryMcpServerStore({ idFactory: () => "mcp-1" }), {
+      securityPolicyProvider
+    });
+    const server = buildServer({
+      authService,
+      logger: false,
+      mcp: {
+        manager,
+        securityPolicyProvider,
+        securityPolicyStore: policyStore
+      },
+      requireAuth: true
+    });
+    const headers = { authorization: `Bearer ${registered.token}` };
+
+    await server.inject({
+      headers,
+      method: "POST",
+      payload: {
+        autoConnect: false,
+        config: { command: "node" },
+        name: "local",
+        transportType: "stdio"
+      },
+      url: "/api/mcp/servers"
+    });
+    const preflight = await server.inject({
+      headers,
+      method: "GET",
+      url: "/api/mcp/servers/local/preflight"
+    });
+
+    expect(preflight.statusCode).toBe(200);
+    expect(preflight.json()).toMatchObject({
+      ok: true,
+      readyForProduction: false,
+      serverName: "local",
+      summary: { failCount: 0, warnCount: 2 }
+    });
+  });
+
   it("runs eval and promptlab suites behind admin auth", async () => {
     const authService = createAuthService();
     const registered = authService.register({

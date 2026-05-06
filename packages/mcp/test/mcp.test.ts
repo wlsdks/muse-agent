@@ -322,6 +322,46 @@ describe("McpManager", () => {
     expect(connector.connect).toHaveBeenCalledTimes(2);
     expect(manager.getStatus("local")).toBe("connected");
   });
+
+  it("reports local preflight diagnostics before live MCP execution", async () => {
+    const policyStore = new InMemoryMcpSecurityPolicyStore({
+      initial: {
+        allowedServerNames: ["local"],
+        allowedStdioCommands: ["node"]
+      }
+    });
+    const manager = new McpManager(new InMemoryMcpServerStore(), {
+      securityPolicyProvider: new McpSecurityPolicyProvider(policyStore)
+    });
+
+    await manager.register({
+      config: { command: "node" },
+      name: "local",
+      transportType: "stdio"
+    });
+    await manager.register({
+      config: { command: "node" },
+      name: "blocked",
+      transportType: "stdio"
+    });
+
+    await expect(manager.preflight("local")).resolves.toMatchObject({
+      ok: true,
+      readyForProduction: false,
+      serverName: "local",
+      summary: { failCount: 0, warnCount: 2 }
+    });
+    await expect(manager.preflight("blocked")).resolves.toMatchObject({
+      ok: false,
+      serverName: "blocked",
+      summary: { failCount: 1 }
+    });
+    await expect(manager.preflight("missing")).resolves.toMatchObject({
+      ok: false,
+      serverName: "missing",
+      summary: { failCount: 1 }
+    });
+  });
 });
 
 describe("Kysely MCP stores", () => {

@@ -126,6 +126,28 @@ export interface McpHealthSnapshot {
   readonly toolCount: number;
 }
 
+export type McpPreflightCheckStatus = "pass" | "warn" | "fail";
+
+export interface McpPreflightCheck {
+  readonly code: string;
+  readonly message: string;
+  readonly status: McpPreflightCheckStatus;
+}
+
+export interface McpPreflightReport {
+  readonly checks: readonly McpPreflightCheck[];
+  readonly health: McpHealthSnapshot;
+  readonly ok: boolean;
+  readonly readyForProduction: boolean;
+  readonly serverName: string;
+  readonly status: McpServerStatus;
+  readonly summary: {
+    readonly failCount: number;
+    readonly passCount: number;
+    readonly warnCount: number;
+  };
+}
+
 export interface InMemoryMcpServerStoreOptions {
   readonly idFactory?: () => string;
   readonly maxServers?: number;
@@ -456,6 +478,60 @@ export class McpManager {
     return Promise.all((await this.store.list()).map((server) => this.healthCheck(server.name)));
   }
 
+  async preflight(name: string): Promise<McpPreflightReport> {
+    const server = await this.store.findByName(name);
+    const checks: McpPreflightCheck[] = [];
+    const status = this.statuses.get(name) ?? (server ? "pending" : "failed");
+
+    if (!server) {
+      checks.push({
+        code: "server_registered",
+        message: `MCP server '${name}' is not registered`,
+        status: "fail"
+      });
+      return this.createPreflightReport(name, status, checks);
+    }
+
+    checks.push({
+      code: "server_registered",
+      message: `MCP server '${name}' is registered`,
+      status: "pass"
+    });
+
+    const policy = await this.securityPolicyProvider.currentPolicy();
+    const allowed = policy.allowedServerNames.length === 0 || policy.allowedServerNames.includes(name);
+    checks.push({
+      code: "security_policy",
+      message: allowed
+        ? `MCP server '${name}' is allowed by security policy`
+        : `MCP server '${name}' is denied by security policy`,
+      status: allowed ? "pass" : "fail"
+    });
+
+    const validation = validateMcpServer(server, policy, this.validation);
+    checks.push({
+      code: "server_config",
+      message: validation.valid ? "MCP server configuration is valid" : validation.reason ?? "MCP server configuration is invalid",
+      status: validation.valid ? "pass" : "fail"
+    });
+
+    checks.push({
+      code: "transport_connector",
+      message: this.connector ? "MCP transport connector is configured" : "MCP transport connector is not configured",
+      status: this.connector ? "pass" : "warn"
+    });
+
+    checks.push({
+      code: "runtime_connection",
+      message: status === "connected"
+        ? `MCP server '${name}' is connected with ${this.tools.get(name)?.length ?? 0} tools`
+        : `MCP server '${name}' is not connected`,
+      status: status === "connected" ? "pass" : "warn"
+    });
+
+    return this.createPreflightReport(name, status, checks);
+  }
+
   async reconnect(name: string): Promise<boolean> {
     if (this.connections.has(name)) {
       await this.disconnect(name);
@@ -532,6 +608,28 @@ export class McpManager {
       serverName,
       status,
       toolCount: this.tools.get(serverName)?.length ?? 0
+    };
+  }
+
+  private createPreflightReport(
+    serverName: string,
+    status: McpServerStatus,
+    checks: readonly McpPreflightCheck[]
+  ): McpPreflightReport {
+    const summary = {
+      failCount: checks.filter((check) => check.status === "fail").length,
+      passCount: checks.filter((check) => check.status === "pass").length,
+      warnCount: checks.filter((check) => check.status === "warn").length
+    };
+
+    return {
+      checks,
+      health: this.getHealth(serverName),
+      ok: summary.failCount === 0,
+      readyForProduction: summary.failCount === 0 && summary.warnCount === 0,
+      serverName,
+      status,
+      summary
     };
   }
 }
