@@ -180,14 +180,69 @@ async function runPnpm(args, env = {}) {
 }
 
 function parseJsonFromStdout(stdout) {
-  const start = stdout.indexOf("{");
-  const end = stdout.lastIndexOf("}");
+  const candidates = findJsonObjectCandidates(stdout);
 
-  if (start === -1 || end === -1 || end < start) {
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object" && ("response" in parsed || "content" in parsed)) {
+        return parsed;
+      }
+    } catch {
+      // Keep scanning; pnpm or server logs can include unrelated JSON lines.
+    }
+  }
+
+  if (candidates.length === 0) {
     throw new Error(`Could not find JSON object in stdout:\n${stdout}`);
   }
 
-  return JSON.parse(stdout.slice(start, end + 1));
+  throw new Error(`Could not parse JSON object from stdout:\n${stdout}`);
+}
+
+function findJsonObjectCandidates(text) {
+  const candidates = [];
+
+  for (let start = text.indexOf("{"); start !== -1; start = text.indexOf("{", start + 1)) {
+    let depth = 0;
+    let escaped = false;
+    let inString = false;
+
+    for (let index = start; index < text.length; index += 1) {
+      const char = text[index];
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (char === "\\") {
+        escaped = inString;
+        continue;
+      }
+
+      if (char === "\"") {
+        inString = !inString;
+        continue;
+      }
+
+      if (inString) {
+        continue;
+      }
+
+      if (char === "{") {
+        depth += 1;
+      } else if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          candidates.push(text.slice(start, index + 1));
+          break;
+        }
+      }
+    }
+  }
+
+  return candidates;
 }
 
 function assert(condition, message) {
