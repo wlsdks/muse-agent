@@ -138,7 +138,7 @@ This is the source-of-truth view for what is still not 100% migrated. Route pari
 - Verify: `packages/autoconfigure/src/index.ts`
 - Verify: `packages/autoconfigure/test/autoconfigure.test.ts`
 
-- [ ] **Step 1: Review the current diff**
+- [x] **Step 1: Review the current diff**
 
 Run:
 
@@ -148,7 +148,7 @@ git diff -- packages/model/src/index.ts packages/model/test/model.test.ts packag
 
 Expected: only diagnostic provider code, autoconfigure wiring, and tests are present.
 
-- [ ] **Step 2: Re-run narrow verification under Node 24**
+- [x] **Step 2: Re-run narrow verification under Node 24**
 
 Run:
 
@@ -163,7 +163,7 @@ pnpm --filter @muse/autoconfigure build
 
 Expected: all commands pass.
 
-- [ ] **Step 3: Re-run live diagnostic smoke**
+- [x] **Step 3: Re-run live diagnostic smoke**
 
 Run:
 
@@ -187,7 +187,7 @@ MUSE_MODEL=diagnostic/smoke MUSE_MODEL_PROVIDER_ID=diagnostic pnpm --filter @mus
 
 Expected: all three return `Diagnostic response`.
 
-- [ ] **Step 4: Commit the milestone**
+- [x] **Step 4: Commit the milestone**
 
 Run:
 
@@ -208,7 +208,7 @@ Expected: commit succeeds. If the user does not want commits yet, record the rea
 - Verify: `packages/tools/src/index.ts`
 - Verify: `packages/tools/test/tools.test.ts`
 
-- [ ] **Step 1: Check Rust toolchain availability**
+- [x] **Step 1: Check Rust toolchain availability**
 
 Run:
 
@@ -225,7 +225,7 @@ source "$HOME/.cargo/env"
 cargo --version
 ```
 
-- [ ] **Step 2: Run Rust tests**
+- [x] **Step 2: Run Rust tests**
 
 Run:
 
@@ -235,7 +235,7 @@ cargo test -p muse-runner
 
 Expected: runner crate tests pass. If there are no tests, add tests before changing runner behavior.
 
-- [ ] **Step 3: Build the runner binary**
+- [x] **Step 3: Build the runner binary**
 
 Run:
 
@@ -245,7 +245,7 @@ cargo build -p muse-runner
 
 Expected: binary builds under `target/debug/muse-runner`.
 
-- [ ] **Step 4: Verify TypeScript bridge against the real binary**
+- [x] **Step 4: Verify TypeScript bridge against the real binary**
 
 Run:
 
