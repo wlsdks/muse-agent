@@ -5,6 +5,8 @@ import {
   InMemoryFollowupSuggestionStore,
   InMemoryMuseTracer,
   PersistedMuseTracer,
+  PinoTraceEventLogger,
+  StartupDoctor,
   createNoOpAgentMetrics,
   createNoOpMuseTracer
 } from "../src/index.js";
@@ -158,6 +160,74 @@ describe("agent metrics", () => {
       "guard_rejection",
       "output_guard_action",
       "token_usage"
+    ]);
+  });
+});
+
+describe("startup doctor and log export", () => {
+  it("reports unhealthy required startup checks with diagnostic details", async () => {
+    const doctor = new StartupDoctor([
+      {
+        id: "database",
+        required: true,
+        run: async () => ({ details: { message: "connection refused" }, ok: false })
+      },
+      {
+        id: "mcp",
+        required: false,
+        run: async () => ({ details: { connected: false }, ok: false })
+      }
+    ]);
+
+    await expect(doctor.run()).resolves.toEqual({
+      checks: [
+        {
+          details: { message: "connection refused" },
+          id: "database",
+          ok: false,
+          required: true
+        },
+        {
+          details: { connected: false },
+          id: "mcp",
+          ok: false,
+          required: false
+        }
+      ],
+      ok: false
+    });
+  });
+
+  it("exports trace events through a pino-compatible logger", async () => {
+    const logs: unknown[] = [];
+    const logger = new PinoTraceEventLogger({
+      info: (payload, message) => {
+        logs.push({ message, payload });
+      }
+    });
+
+    await logger.record({
+      attributes: { model: "test-model" },
+      endedAt: new Date("2026-05-06T00:00:01.000Z"),
+      name: "muse.agent.run",
+      runId: "run-1",
+      spanId: "span-1",
+      stage: "agent",
+      startedAt: new Date("2026-05-06T00:00:00.000Z")
+    });
+
+    expect(logs).toEqual([
+      {
+        message: "muse trace event",
+        payload: {
+          attributes: { model: "test-model" },
+          durationMs: 1000,
+          name: "muse.agent.run",
+          runId: "run-1",
+          spanId: "span-1",
+          stage: "agent"
+        }
+      }
     ]);
   });
 });

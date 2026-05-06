@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { AgentRunContext, HookStage } from "@muse/agent-core";
+import type { ModelMessage } from "@muse/model";
 import type {
   ChannelFaqRegistrationTable,
   MuseDatabase,
@@ -128,6 +129,28 @@ export interface RagIngestionCaptureHookOptions {
     getOrNull(): Awaitable<RagIngestionCapturePolicy | undefined>;
   };
   readonly userIdFallback?: string;
+}
+
+export interface FeedbackMetadataCaptureHookOptions {
+  readonly feedbackStore: {
+    save(record: JsonObject): Awaitable<unknown>;
+  };
+  readonly id?: string;
+}
+
+export interface UserMemoryInjectionMemory {
+  readonly facts: Readonly<Record<string, string>>;
+  readonly preferences: Readonly<Record<string, string>>;
+  readonly recentTopics?: readonly string[];
+  readonly userId: string;
+}
+
+export interface UserMemoryInjectionHookOptions {
+  readonly id?: string;
+  readonly maxEntries?: number;
+  readonly memoryStore: {
+    findByUserId(userId: string): Awaitable<UserMemoryInjectionMemory | undefined>;
+  };
 }
 
 export interface SlackCommandAckResponse {
@@ -1137,6 +1160,62 @@ export function createRagIngestionCaptureHook(options: RagIngestionCaptureHookOp
   };
 }
 
+export function createFeedbackMetadataCaptureHook(options: FeedbackMetadataCaptureHookOptions): HookStage {
+  return {
+    afterComplete: async (context, response) => {
+      const query = firstUserMessage(context.input.messages);
+
+      if (query.length === 0 || response.output.trim().length === 0) {
+        return;
+      }
+
+      await options.feedbackStore.save({
+        ...selectMetadata(context.input.metadata, [
+          "channel",
+          "domain",
+          "intent",
+          "sessionId",
+          "templateId",
+          "userId"
+        ]),
+        model: response.model,
+        query,
+        response: response.output,
+        runId: context.runId,
+        timestamp: context.startedAt.toISOString()
+      });
+    },
+    id: options.id ?? "feedback-metadata-capture"
+  };
+}
+
+export function createUserMemoryInjectionHook(options: UserMemoryInjectionHookOptions): HookStage {
+  const maxEntries = Math.max(1, options.maxEntries ?? 12);
+
+  return {
+    beforeStart: async (context) => {
+      const userId = metadataString(context.input.metadata, "userId");
+
+      if (!userId) {
+        return;
+      }
+
+      const memory = await options.memoryStore.findByUserId(userId);
+      const memoryMessage = memory ? renderUserMemoryMessage(memory, maxEntries) : undefined;
+
+      if (!memoryMessage) {
+        return;
+      }
+
+      const input = context.input as {
+        messages: readonly ModelMessage[];
+      };
+      input.messages = [memoryMessage, ...context.input.messages];
+    },
+    id: options.id ?? "user-memory-injection"
+  };
+}
+
 export class SlackSignatureVerifier {
   private readonly signingSecret: string;
   private readonly timestampToleranceSeconds: number;
@@ -1705,6 +1784,51 @@ function isEligibleRagCandidate(
 
   const combined = `${query}\n${response}`;
   return !policy.blockedPatterns.some((pattern) => pattern.length > 0 && new RegExp(pattern, "iu").test(combined));
+}
+
+function selectMetadata(metadata: JsonObject | undefined, keys: readonly string[]): JsonObject {
+  const selected: Record<string, JsonValue> = {};
+
+  for (const key of keys) {
+    const value = metadata?.[key];
+
+    if (typeof value === "string" && value.trim().length > 0) {
+      selected[key] = value;
+    }
+  }
+
+  return selected as JsonObject;
+}
+
+function renderUserMemoryMessage(memory: UserMemoryInjectionMemory, maxEntries: number): ModelMessage | undefined {
+  const lines: string[] = [];
+
+  for (const [key, value] of Object.entries(memory.facts)) {
+    if (value.trim().length > 0) {
+      lines.push(`- Fact ${key}: ${value}`);
+    }
+  }
+
+  for (const [key, value] of Object.entries(memory.preferences)) {
+    if (value.trim().length > 0) {
+      lines.push(`- Preference ${key}: ${value}`);
+    }
+  }
+
+  for (const topic of memory.recentTopics ?? []) {
+    if (topic.trim().length > 0) {
+      lines.push(`- Recent topic: ${topic}`);
+    }
+  }
+
+  if (lines.length === 0) {
+    return undefined;
+  }
+
+  return {
+    content: ["Relevant user memory:", ...lines.slice(0, maxEntries)].join("\n"),
+    role: "system"
+  };
 }
 
 function metadataString(metadata: JsonObject | undefined, key: string): string | undefined {

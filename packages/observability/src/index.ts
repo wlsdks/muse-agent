@@ -74,6 +74,33 @@ export interface FollowupSuggestionStore {
   aggregateStats(windowMs?: number): FollowupStats;
 }
 
+export interface StartupCheck {
+  readonly id: string;
+  readonly required?: boolean;
+  run(): Promise<StartupCheckResult> | StartupCheckResult;
+}
+
+export interface StartupCheckResult {
+  readonly details?: JsonObject;
+  readonly ok: boolean;
+}
+
+export interface StartupDoctorCheckReport {
+  readonly details?: JsonObject;
+  readonly id: string;
+  readonly ok: boolean;
+  readonly required: boolean;
+}
+
+export interface StartupDoctorReport {
+  readonly checks: readonly StartupDoctorCheckReport[];
+  readonly ok: boolean;
+}
+
+export interface PinoCompatibleLogger {
+  info(payload: JsonObject, message?: string): void;
+}
+
 export interface InMemoryFollowupSuggestionStoreOptions {
   readonly maxEvents?: number;
   readonly retentionMs?: number;
@@ -294,6 +321,50 @@ export class InMemoryFollowupSuggestionStore implements FollowupSuggestionStore 
   }
 }
 
+export class StartupDoctor {
+  constructor(private readonly checks: readonly StartupCheck[]) {}
+
+  async run(): Promise<StartupDoctorReport> {
+    const reports: StartupDoctorCheckReport[] = [];
+
+    for (const check of this.checks) {
+      const required = check.required !== false;
+
+      try {
+        const result = await check.run();
+        reports.push({
+          ...(result.details ? { details: result.details } : {}),
+          id: check.id,
+          ok: result.ok,
+          required
+        });
+      } catch (error) {
+        reports.push({
+          details: {
+            message: error instanceof Error ? error.message : String(error)
+          },
+          id: check.id,
+          ok: false,
+          required
+        });
+      }
+    }
+
+    return {
+      checks: reports,
+      ok: reports.every((report) => report.ok || !report.required)
+    };
+  }
+}
+
+export class PinoTraceEventLogger implements TraceEventSink {
+  constructor(private readonly logger: PinoCompatibleLogger) {}
+
+  async record(event: TraceEventInput): Promise<void> {
+    this.logger.info(traceEventLogPayload(event), "muse trace event");
+  }
+}
+
 export function createNoOpMuseTracer(): MuseTracer {
   return new NoOpMuseTracer();
 }
@@ -421,6 +492,18 @@ function spanToTraceEvent(span: MutableRecordedSpan): TraceEventInput {
     stage: readStringAttribute(span.attributes, "stage") ?? span.name,
     startedAt: span.startedAt
   };
+}
+
+function traceEventLogPayload(event: TraceEventInput): JsonObject {
+  return toJsonObject({
+    attributes: event.attributes,
+    durationMs: event.endedAt ? Math.max(0, event.endedAt.getTime() - event.startedAt.getTime()) : undefined,
+    name: event.name,
+    parentSpanId: event.parentSpanId,
+    runId: event.runId,
+    spanId: event.spanId,
+    stage: event.stage
+  });
 }
 
 function readStringAttribute(attributes: SpanAttributes, key: string): string | undefined {

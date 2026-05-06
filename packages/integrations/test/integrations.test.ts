@@ -30,8 +30,10 @@ import {
   SlackInteractionDispatcher,
   SlackSignatureVerifier,
   WebhookDispatcher,
+  createFeedbackMetadataCaptureHook,
   createRagIngestionCaptureHook,
   createToolResponseSummaryHook,
+  createUserMemoryInjectionHook,
   createWebhookNotificationHook,
   formatSlackMrkdwn,
   parseSlackInteractionPayload,
@@ -702,6 +704,96 @@ describe("WebhookDispatcher", () => {
         status: "PENDING",
         userId: "example-user"
       }
+    ]);
+  });
+
+  it("captures feedback metadata from completed runs", async () => {
+    const saved: unknown[] = [];
+    const hook = createFeedbackMetadataCaptureHook({
+      feedbackStore: {
+        save: async (record) => {
+          saved.push(record);
+          return record;
+        }
+      }
+    });
+
+    await hook.afterComplete?.(
+      {
+        input: {
+          messages: [{ content: "Which option should I choose?", role: "user" }],
+          metadata: {
+            channel: "slack",
+            intent: "decision",
+            sessionId: "session-1",
+            templateId: "template-1",
+            userId: "example-user"
+          },
+          model: "test-model"
+        },
+        runId: "run-1",
+        startedAt: new Date("2026-05-06T00:00:00.000Z")
+      },
+      {
+        id: "response-1",
+        model: "test-model",
+        output: "Choose the lower-risk option."
+      }
+    );
+
+    expect(hook.id).toBe("feedback-metadata-capture");
+    expect(saved).toEqual([
+      {
+        channel: "slack",
+        intent: "decision",
+        model: "test-model",
+        query: "Which option should I choose?",
+        response: "Choose the lower-risk option.",
+        runId: "run-1",
+        sessionId: "session-1",
+        templateId: "template-1",
+        timestamp: "2026-05-06T00:00:00.000Z",
+        userId: "example-user"
+      }
+    ]);
+  });
+
+  it("injects user memory as a bounded system message before model invocation", async () => {
+    const hook = createUserMemoryInjectionHook({
+      memoryStore: {
+        findByUserId: async () => ({
+          facts: { role: "planner" },
+          preferences: { tone: "concise" },
+          recentTopics: ["migration"],
+          updatedAt: new Date("2026-05-06T00:00:00.000Z"),
+          userId: "example-user"
+        })
+      },
+      maxEntries: 2
+    });
+    const context = {
+      input: {
+        messages: [{ content: "Help me decide", role: "user" }],
+        metadata: { userId: "example-user" },
+        model: "test-model"
+      },
+      runId: "run-1",
+      startedAt: new Date("2026-05-06T00:00:00.000Z")
+    };
+
+    await hook.beforeStart?.(context);
+
+    expect(hook.id).toBe("user-memory-injection");
+    expect(context.input.messages).toEqual([
+      {
+        content: [
+          "Relevant user memory:",
+          "- Fact role: planner",
+          "- Preference tone: concise"
+        ].join("\n"),
+        role: "system"
+      },
+      { content: "Help me decide", role: "user" }
     ]);
   });
 
