@@ -14,6 +14,7 @@
     "lint": "pnpm -r --sort --if-present lint",
     "test": "pnpm -r --sort --if-present test",
     "typecheck": "pnpm -r --sort --if-present typecheck",
+    "verify:reactor-db": "node scripts/verify-reactor-db-parity.mjs",
     "verify:reactor-routes": "node scripts/verify-reactor-route-parity.mjs"
   },
   "devDependencies": {

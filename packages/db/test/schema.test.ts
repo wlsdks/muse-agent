@@ -9,6 +9,11 @@ describe("MuseDatabase", () => {
       "admin_slos",
       "admin_cost_usage",
       "agent_runs",
+      "users",
+      "user_identities",
+      "auth_token_revocations",
+      "channel_faq_registrations",
+      "conversation_summaries",
       "conversation_messages",
       "tool_calls",
       "pending_approvals",
@@ -19,7 +24,8 @@ describe("MuseDatabase", () => {
       "mcp_security_policy",
       "scheduled_jobs",
       "scheduled_job_executions",
-      "scheduled_job_locks"
+      "scheduled_job_locks",
+      "slack_bot_instances"
     ] satisfies readonly (keyof MuseDatabase)[];
 
     expect(tableNames).toContain("agent_runs");
