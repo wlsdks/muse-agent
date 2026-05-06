@@ -17,6 +17,7 @@ import {
   type SlackMessageTransport,
   type SlackResponseUrlTransport
 } from "@muse/integrations";
+import { InMemoryAgentEvalStore } from "@muse/eval";
 import {
   DefaultMcpTransportConnector,
   InMemoryMcpSecurityPolicyStore,
@@ -5628,6 +5629,87 @@ describe("api server", () => {
       }
     });
     expect(replay.json().deterministic.runId).not.toBe("run-source-eval");
+  });
+
+  it("keeps Reactor agent eval behavior assertions stricter than metadata and failed tools", async () => {
+    const authService = createAuthService();
+    const registered = authService.register({
+      email: "agent_eval_behavior_account",
+      name: "Agent Eval Behavior",
+      password: "password-1"
+    });
+    const agentEvalStore = new InMemoryAgentEvalStore();
+    const historyStore = new InMemoryAgentRunHistoryStore();
+    historyStore.createRun({
+      id: "run-behavior-eval",
+      input: "use the policy",
+      model: "provider/model",
+      provider: "test",
+      userId: registered.user.id
+    });
+    historyStore.updateRun({
+      output: "approved",
+      runId: "run-behavior-eval",
+      status: "completed"
+    });
+    historyStore.recordToolCall({
+      error: "policy service failed",
+      id: "tool-failed",
+      name: "read_policy",
+      risk: "read",
+      runId: "run-behavior-eval",
+      status: "failed"
+    });
+    await agentEvalStore.saveCase({
+      agentType: "standard",
+      id: "case-metadata-only",
+      metadata: { owner: "example-user" },
+      model: "provider/model",
+      name: "Metadata-only case",
+      sourceRunId: "run-behavior-eval"
+    });
+    await agentEvalStore.saveCase({
+      expectedToolNames: ["read_policy"],
+      id: "case-failed-tool",
+      name: "Expected successful tool case",
+      sourceRunId: "run-behavior-eval"
+    });
+    const server = buildServer({
+      agentEvalStore,
+      authService,
+      historyStore,
+      logger: false,
+      requireAuth: true
+    });
+    const headers = { authorization: `Bearer ${registered.token}` };
+
+    const metadataOnly = await server.inject({
+      headers,
+      method: "POST",
+      url: "/api/admin/agent-eval/cases/case-metadata-only/evaluate-run/run-behavior-eval"
+    });
+    const failedTool = await server.inject({
+      headers,
+      method: "POST",
+      url: "/api/admin/agent-eval/cases/case-failed-tool/evaluate-run/run-behavior-eval"
+    });
+
+    expect(metadataOnly.statusCode).toBe(200);
+    expect(metadataOnly.json()).toMatchObject({
+      deterministic: {
+        passed: false,
+        reasons: ["case has no behavior assertions"],
+        score: 0
+      }
+    });
+    expect(failedTool.statusCode).toBe(200);
+    expect(failedTool.json()).toMatchObject({
+      deterministic: {
+        passed: false,
+        reasons: ["expected tool failed: read_policy"],
+        score: 0
+      }
+    });
   });
 
   it("matches Reactor task memory maintenance availability and purge semantics", async () => {

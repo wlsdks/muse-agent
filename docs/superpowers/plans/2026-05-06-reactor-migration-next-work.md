@@ -740,7 +740,7 @@ Expected: all pass.
 - Modify as needed: `packages/*/src/index.ts`
 - Modify as needed: `packages/*/test/*.test.ts`
 
-- [ ] **Step 1: Create a module gap checklist from Reactor source**
+- [x] **Step 1: Create a module gap checklist from Reactor source**
 
 For each module in this exact list, inspect Reactor source and Muse target code:
 
@@ -766,7 +766,7 @@ Write findings into `docs/audits/reactor-module-parity-audit-2026-05-06.md` usin
 Reactor module | Reactor behavior | Muse equivalent | Missing behavior | Test proving closure
 ```
 
-- [ ] **Step 2: Close `eval` semantic parity first**
+- [x] **Step 2: Close `eval` semantic parity first**
 
 Reactor's important eval semantics are:
 
@@ -780,7 +780,7 @@ run-log enrichment survives persistence
 
 Add or verify tests under `packages/eval/test/eval.test.ts` and `apps/api/test/server.test.ts`.
 
-- [ ] **Step 3: Close `guard` and `approval` policy parity**
+- [x] **Step 3: Close `guard` and `approval` policy parity**
 
 Required behavior:
 
@@ -795,7 +795,7 @@ approval context is redacted and specific enough for user review
 
 Add or verify tests under `packages/policy/test/*.test.ts`, `packages/agent-core/test/agent-runtime.test.ts`, and `apps/api/test/server.test.ts`.
 
-- [ ] **Step 4: Close `auth` parity gaps**
+- [x] **Step 4: Close `auth` parity gaps**
 
 Required behavior:
 
@@ -808,7 +808,7 @@ rate limits behave deterministically
 
 Add or verify tests under `packages/auth/test/auth.test.ts` and `apps/api/test/server.test.ts`.
 
-- [ ] **Step 5: Close `promptlab`, `prompts`, and `intent` parity gaps**
+- [x] **Step 5: Close `promptlab`, `prompts`, and `intent` parity gaps**
 
 Required behavior:
 
@@ -821,7 +821,7 @@ experiment reports include winner/confidence metrics or explicitly documented eq
 
 Add or verify tests under `packages/promptlab/test/promptlab.test.ts`, `packages/prompts/test/prompts.test.ts`, `packages/agent-specs/test/agent-specs.test.ts`, and `apps/api/test/server.test.ts`.
 
-- [ ] **Step 6: Close `scheduler` parity gaps**
+- [x] **Step 6: Close `scheduler` parity gaps**
 
 Required behavior:
 
@@ -834,7 +834,7 @@ notification formatting is either migrated or explicitly documented as intention
 
 Add or verify tests under `packages/scheduler/test/scheduler.test.ts` and `apps/api/test/server.test.ts`.
 
-- [ ] **Step 7: Close `cache` and `common` parity gaps**
+- [x] **Step 7: Close `cache` and `common` parity gaps**
 
 Required behavior:
 
@@ -849,7 +849,7 @@ hash/HMAC helpers needed by migrated behavior are present
 
 Add or verify tests under `packages/cache/test/cache.test.ts`, `packages/shared/test/shared.test.ts`, and any package that owns the equivalent helper.
 
-- [ ] **Step 8: Close `hook` and `hook-integrations` parity gaps**
+- [x] **Step 8: Close `hook` and `hook-integrations` parity gaps**
 
 Required behavior:
 
@@ -862,7 +862,7 @@ webhook, feedback, RAG ingestion, and user memory hooks use synthetic fixtures o
 
 Add or verify tests under `packages/agent-core/test/agent-runtime.test.ts`, `packages/integrations/test/integrations.test.ts`, and `packages/runtime-state/test/*.test.ts`.
 
-- [ ] **Step 9: Verify the sweep**
+- [x] **Step 9: Verify the sweep**
 
 Run:
 
