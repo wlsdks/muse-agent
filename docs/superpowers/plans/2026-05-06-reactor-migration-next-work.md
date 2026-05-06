@@ -642,7 +642,7 @@ Expected: all pass.
 - Modify: `apps/api/test/server.test.ts`
 - Possibly create: `scripts/smoke-slack-fixture.mjs`
 
-- [ ] **Step 1: Add signed event fixture**
+- [x] **Step 1: Add signed event fixture**
 
 Use synthetic IDs only:
 
@@ -653,7 +653,7 @@ user: U123EXAMPLE
 text: "muse compare rollout options"
 ```
 
-- [ ] **Step 2: Assert Events API behavior**
+- [x] **Step 2: Assert Events API behavior**
 
 Assert:
 
@@ -665,7 +665,7 @@ app mention routes to the agent gateway when configured
 response tracking and feedback metadata persist
 ```
 
-- [ ] **Step 3: Verify**
+- [x] **Step 3: Verify**
 
 Run:
 

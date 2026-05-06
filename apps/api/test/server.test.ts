@@ -6059,6 +6059,123 @@ describe("api server", () => {
     expect((await server.inject(signedRequest)).statusCode).toBe(200);
     expect(handled).toEqual(["event-duplicate"]);
   });
+
+  it("verifies signed Slack app mention lifecycle with synthetic ids, retry dedupe, and tracking", async () => {
+    const posts: Array<{ readonly channelId: string; readonly text: string; readonly threadTs?: string }> = [];
+    const generated: ModelRequest[] = [];
+    let resolvePosted!: (value: typeof posts) => void;
+    const posted = new Promise<typeof posts>((resolve) => {
+      resolvePosted = resolve;
+    });
+    const messageTransport: SlackMessageTransport = {
+      postMessage: (input) => {
+        posts.push(input);
+        resolvePosted(posts);
+        return { ok: true, statusCode: 200, ts: "1770000000.000300" };
+      }
+    };
+    const responseTracker = new SlackBotResponseTracker();
+    const agentRuntime = createAgentRuntime({
+      modelProvider: createProviderFrom((request) => {
+        generated.push(request);
+        return Promise.resolve({
+          id: "response-1",
+          model: request.model,
+          output: "Compare phased rollout against big-bang migration."
+        });
+      })
+    });
+    const server = buildServer({
+      agentRuntime,
+      defaultModel: "provider/model",
+      logger: false,
+      slack: {
+        enabled: true,
+        messageTransport,
+        now: () => new Date(1_770_000_000_000),
+        responseTracker,
+        signingSecret: "signing-secret"
+      }
+    });
+    const raw = JSON.stringify({
+      event: {
+        channel: "C123EXAMPLE",
+        channel_type: "channel",
+        text: "<@BOT12345> muse compare rollout options",
+        ts: "1770000000.000100",
+        type: "app_mention",
+        user: "U123EXAMPLE"
+      },
+      event_id: "E123EXAMPLE",
+      team_id: "T123EXAMPLE",
+      type: "event_callback"
+    });
+    const timestamp = "1770000000";
+    const signedRequest = {
+      headers: {
+        "content-type": "application/json",
+        "x-slack-request-timestamp": timestamp,
+        "x-slack-signature": signSlackRequestBody(raw, timestamp, "signing-secret")
+      },
+      method: "POST" as const,
+      payload: raw,
+      url: "/api/slack/events"
+    };
+
+    const invalidSignature = await server.inject({
+      ...signedRequest,
+      headers: {
+        ...signedRequest.headers,
+        "x-slack-signature": "v0=invalid"
+      }
+    });
+    const valid = await server.inject(signedRequest);
+    const retryDuplicate = await server.inject({
+      ...signedRequest,
+      headers: {
+        ...signedRequest.headers,
+        "x-slack-retry-num": "1",
+        "x-slack-retry-reason": "http_timeout"
+      }
+    });
+
+    expect(invalidSignature.statusCode).toBe(401);
+    expect(invalidSignature.json()).toMatchObject({ code: "SLACK_SIGNATURE_INVALID" });
+    expect(valid.statusCode).toBe(200);
+    expect(valid.json()).toEqual({ ok: true });
+    expect(retryDuplicate.statusCode).toBe(200);
+    expect(retryDuplicate.json()).toMatchObject({
+      ok: true,
+      retryNum: "1",
+      retryReason: "http_timeout"
+    });
+    await expect(posted).resolves.toEqual([
+      {
+        channelId: "C123EXAMPLE",
+        text: "<@U123EXAMPLE> Compare phased rollout against big-bang migration.",
+        threadTs: "1770000000.000100"
+      }
+    ]);
+    expect(posts).toHaveLength(1);
+    expect(generated).toHaveLength(1);
+    expect(generated[0]).toMatchObject({
+      messages: [{ content: "muse compare rollout options", role: "user" }],
+      metadata: expect.objectContaining({
+        channelId: "C123EXAMPLE",
+        eventId: "E123EXAMPLE",
+        eventType: "app_mention",
+        source: "slack_event",
+        userId: "U123EXAMPLE",
+        workspaceId: "T123EXAMPLE"
+      }),
+      model: "provider/model"
+    });
+    expect(await responseTracker.lookup("C123EXAMPLE", "1770000000.000300")).toMatchObject({
+      response: "Compare phased rollout against big-bang migration.",
+      sessionId: "slack-C123EXAMPLE-1770000000.000100",
+      userPrompt: "muse compare rollout options"
+    });
+  });
 });
 
 interface FakeMcpAdminServer {
