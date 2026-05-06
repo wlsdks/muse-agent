@@ -663,6 +663,66 @@ describe("AgentRuntime", () => {
     }));
   });
 
+  it("blocks model-forced tool calls that were not exposed for the turn", async () => {
+    const executeHiddenTool = vi.fn(() => "updated");
+    const generated: ModelRequest[] = [];
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Reads a synthetic workspace note.",
+          inputSchema: { type: "object" },
+          name: "read_note",
+          risk: "read"
+        },
+        execute: () => "note"
+      },
+      {
+        definition: {
+          description: "Updates a synthetic Jira issue.",
+          inputSchema: { type: "object" },
+          keywords: ["jira", "issue"],
+          name: "update_issue",
+          risk: "write"
+        },
+        execute: executeHiddenTool
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        {
+          id: "tool",
+          model: "test-model",
+          output: "Updating issue.",
+          toolCalls: [{ arguments: {}, id: "tool-1", name: "update_issue" }]
+        },
+        {
+          id: "final",
+          model: "test-model",
+          output: "Forced tool blocked."
+        }
+      ], (request) => generated.push(request)),
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "Summarize the latest workspace note", role: "user" }],
+      metadata: { localMode: false },
+      model: "provider/model",
+      runId: "run-forced-tool-block"
+    });
+
+    expect(generated[0]?.tools?.map((tool) => tool.name)).toEqual(["read_note"]);
+    expect(result.response.output).toBe("Forced tool blocked.");
+    expect(executeHiddenTool).not.toHaveBeenCalled();
+    expect(generated[1]?.messages).toContainEqual(expect.objectContaining({
+      content: "Error: tool was not exposed to the model: update_issue",
+      name: "update_issue",
+      role: "tool",
+      toolCallId: "tool-1"
+    }));
+  });
+
   it("blocks prompt injection through a default input guard", async () => {
     const runtime = createAgentRuntime({
       guards: [createInjectionInputGuard()],

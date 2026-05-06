@@ -791,7 +791,7 @@ export class AgentRuntime {
       for (const toolCall of calls) {
         const remaining = this.maxToolCalls - toolCallCount;
         const executed = remaining > 0
-          ? await this.executeToolCall(context, toolCall)
+          ? await this.executeToolCall(context, toolCall, activeTools ?? [])
           : blockedToolResult(toolCall, "Error: max tool call limit reached");
 
         toolCallCount += remaining > 0 ? 1 : 0;
@@ -867,7 +867,7 @@ export class AgentRuntime {
       for (const toolCall of calls) {
         const remaining = this.maxToolCalls - toolCallCount;
         const executed = remaining > 0
-          ? await this.executeToolCall(context, toolCall)
+          ? await this.executeToolCall(context, toolCall, activeTools ?? [])
           : blockedToolResult(toolCall, "Error: max tool call limit reached");
 
         yield { runId: context.runId, toolCall, type: "tool-result" };
@@ -967,8 +967,15 @@ export class AgentRuntime {
 
   private async executeToolCall(
     context: AgentRunContext,
-    toolCall: ModelToolCall
+    toolCall: ModelToolCall,
+    activeTools: readonly ModelTool[]
   ): Promise<ExecutedToolResult> {
+    if (!activeTools.some((tool) => tool.name === toolCall.name)) {
+      const executed = blockedToolResult(toolCall, `Error: tool was not exposed to the model: ${toolCall.name}`);
+      await this.invokeHooks("afterTool", context, executed);
+      return executed;
+    }
+
     await this.invokeHooks("beforeTool", context, toolCall);
 
     if (!this.toolExecutor) {
