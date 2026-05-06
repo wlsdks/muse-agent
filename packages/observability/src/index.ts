@@ -121,6 +121,20 @@ export interface OpenTelemetryTracerLike {
   startSpan(name: string, options?: { readonly attributes?: SpanAttributes; readonly startTime?: Date }): OpenTelemetrySpanLike;
 }
 
+export interface TimescaleTraceEventRow {
+  readonly time: Date;
+  readonly runId: string;
+  readonly spanId: string;
+  readonly name: string;
+  readonly stage: string;
+  readonly durationMs: number | null;
+  readonly attributes: JsonObject;
+}
+
+export interface TimescaleTraceEventWriter {
+  insertTraceEvent(row: TimescaleTraceEventRow): Promise<void>;
+}
+
 export interface InMemoryFollowupSuggestionStoreOptions {
   readonly maxEvents?: number;
   readonly retentionMs?: number;
@@ -464,6 +478,36 @@ export class OpenTelemetryTraceEventSink implements TraceEventSink {
   }
 }
 
+export class TimescaleTraceEventExporter implements TraceEventSink {
+  constructor(private readonly writer: TimescaleTraceEventWriter) {}
+
+  async record(event: TraceEventInput): Promise<void> {
+    await this.writer.insertTraceEvent({
+      attributes: event.attributes,
+      durationMs: event.endedAt ? Math.max(0, event.endedAt.getTime() - event.startedAt.getTime()) : null,
+      name: event.name,
+      runId: event.runId,
+      spanId: event.spanId,
+      stage: event.stage,
+      time: event.startedAt
+    });
+  }
+}
+
+export function createTenantSpanProcessor(sink: TraceEventSink): TraceEventSink {
+  return {
+    async record(event) {
+      await sink.record({
+        ...event,
+        attributes: {
+          "tenant.id": readTenantId(event.attributes),
+          ...event.attributes
+        }
+      });
+    }
+  };
+}
+
 export function createNoOpMuseTracer(): MuseTracer {
   return new NoOpMuseTracer();
 }
@@ -617,4 +661,9 @@ function primitiveSpanAttributes(attributes: JsonObject): SpanAttributes {
 function readStringAttribute(attributes: SpanAttributes, key: string): string | undefined {
   const value = attributes[key];
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function readTenantId(attributes: JsonObject): string {
+  const direct = attributes.tenantId ?? attributes["tenant.id"];
+  return typeof direct === "string" && direct.trim().length > 0 ? direct : "tenant-unknown";
 }

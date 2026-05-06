@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createCacheStartupCheck,
   createMcpStartupCheck,
+  createTenantSpanProcessor,
   createTraceEventInsert,
   InMemoryAgentMetrics,
   InMemoryFollowupSuggestionStore,
@@ -9,6 +10,7 @@ import {
   OpenTelemetryTraceEventSink,
   PersistedMuseTracer,
   PinoTraceEventLogger,
+  TimescaleTraceEventExporter,
   StartupDoctor,
   createNoOpAgentMetrics,
   createNoOpMuseTracer
@@ -289,5 +291,63 @@ describe("startup doctor and log export", () => {
     expect(spans).toContainEqual({ key: "run.id", value: "run-1" });
     expect(spans).toContainEqual({ error: "failed" });
     expect(spans).toContainEqual(expect.objectContaining({ ended: true, name: "muse.agent.run" }));
+  });
+
+  it("exports trace events to a Timescale-compatible writer", async () => {
+    const rows: unknown[] = [];
+    const exporter = new TimescaleTraceEventExporter({
+      insertTraceEvent: async (row) => {
+        rows.push(row);
+      }
+    });
+
+    await exporter.record({
+      attributes: { tenantId: "tenant-1" },
+      endedAt: new Date("2026-05-06T00:00:01.000Z"),
+      name: "muse.agent.run",
+      runId: "run-1",
+      spanId: "span-1",
+      stage: "agent",
+      startedAt: new Date("2026-05-06T00:00:00.000Z")
+    });
+
+    expect(rows).toEqual([
+      {
+        attributes: { tenantId: "tenant-1" },
+        durationMs: 1000,
+        name: "muse.agent.run",
+        runId: "run-1",
+        spanId: "span-1",
+        stage: "agent",
+        time: new Date("2026-05-06T00:00:00.000Z")
+      }
+    ]);
+  });
+
+  it("adds tenant span attributes from trace event metadata", async () => {
+    const sinkEvents: unknown[] = [];
+    const processor = createTenantSpanProcessor({
+      async record(event) {
+        sinkEvents.push(event);
+      }
+    });
+
+    await processor.record({
+      attributes: { workspaceId: "workspace-1" },
+      name: "muse.agent.run",
+      runId: "run-1",
+      spanId: "span-1",
+      stage: "agent",
+      startedAt: new Date("2026-05-06T00:00:00.000Z")
+    });
+
+    expect(sinkEvents).toEqual([
+      expect.objectContaining({
+        attributes: {
+          "tenant.id": "tenant-unknown",
+          workspaceId: "workspace-1"
+        }
+      })
+    ]);
   });
 });

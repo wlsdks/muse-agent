@@ -19,6 +19,7 @@ import {
   createAgentRunLogInsert,
   createDebugReplayCaptureInsert,
   createEvalCase,
+  summarizeAgentEvalSuite,
   mapAgentEvalCaseRow,
   mapAgentEvalResultRow,
   mapAgentRunLogRow,
@@ -139,6 +140,61 @@ describe("AgentEvalStore", () => {
     expect(mapAgentRunLogRow(createAgentRunLogInsert(runLog))).toMatchObject({ runId: "run-1" });
     expect(mapAgentEvalResultRow(createAgentEvalResultInsert(result))).toMatchObject({ id: "result-1" });
     expect(mapDebugReplayCaptureRow(createDebugReplayCaptureInsert(capture))).toMatchObject({ id: "capture-1" });
+  });
+
+  it("purges expired run logs and debug replay captures by retention window", async () => {
+    const store = new InMemoryAgentEvalStore();
+    await store.saveRunLog({
+      expiresAt: "2026-05-05T00:00:00.000Z",
+      runId: "old-run",
+      userInput: "old"
+    });
+    await store.saveRunLog({
+      expiresAt: "2026-05-07T00:00:00.000Z",
+      runId: "fresh-run",
+      userInput: "fresh"
+    });
+    await store.saveDebugReplayCapture({
+      expiresAt: "2026-05-05T00:00:00.000Z",
+      id: "old-capture",
+      tenantId: "example-tenant",
+      userPrompt: "old"
+    });
+    await store.saveDebugReplayCapture({
+      expiresAt: "2026-05-07T00:00:00.000Z",
+      id: "fresh-capture",
+      tenantId: "example-tenant",
+      userPrompt: "fresh"
+    });
+
+    await expect(store.purgeExpired(new Date("2026-05-06T00:00:00.000Z"))).resolves.toEqual({
+      debugReplayCaptures: 1,
+      runLogs: 1
+    });
+    await expect(store.listRunLogs(10)).resolves.toMatchObject([{ runId: "fresh-run" }]);
+    await expect(store.listDebugReplayCaptures(10)).resolves.toMatchObject([{ id: "fresh-capture" }]);
+  });
+
+  it("summarizes suite-level behavior assertion coverage", () => {
+    const summary = summarizeAgentEvalSuite([
+      {
+        expectedAnswerContains: ["approved"],
+        expectedToolNames: ["read_policy"],
+        id: "case-1",
+        name: "Behavior case"
+      },
+      {
+        id: "case-2",
+        metadata: { owner: "example-user" },
+        name: "Metadata only"
+      }
+    ]);
+
+    expect(summary).toEqual({
+      behaviorAssertionCount: 2,
+      casesWithoutBehaviorAssertions: ["case-2"],
+      totalCases: 2
+    });
   });
 });
 

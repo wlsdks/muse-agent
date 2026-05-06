@@ -69,10 +69,22 @@ export interface AgentEvalStore {
   listDebugReplayCaptures(limit?: number): Promise<readonly JsonObject[]>;
   listResults(options?: { readonly caseId?: string; readonly limit?: number; readonly tier?: string }): Promise<readonly JsonObject[]>;
   listRunLogs(limit?: number): Promise<readonly JsonObject[]>;
+  purgeExpired(referenceTime?: Date): Promise<AgentEvalRetentionPurgeResult>;
   saveCase(record: JsonObject): Promise<JsonObject>;
   saveDebugReplayCapture(record: JsonObject): Promise<JsonObject>;
   saveResult(record: JsonObject): Promise<JsonObject>;
   saveRunLog(record: JsonObject): Promise<JsonObject>;
+}
+
+export interface AgentEvalRetentionPurgeResult extends JsonObject {
+  readonly debugReplayCaptures: number;
+  readonly runLogs: number;
+}
+
+export interface AgentEvalSuiteSummary extends JsonObject {
+  readonly behaviorAssertionCount: number;
+  readonly casesWithoutBehaviorAssertions: string[];
+  readonly totalCases: number;
 }
 
 type AgentRunLogRow = Selectable<AgentRunLogTable>;
@@ -117,6 +129,31 @@ export class InMemoryAgentEvalStore implements AgentEvalStore {
 
   async listRunLogs(limit = 50): Promise<readonly JsonObject[]> {
     return [...this.runLogs.values()].slice(0, Math.max(0, limit));
+  }
+
+  async purgeExpired(referenceTime = new Date()): Promise<AgentEvalRetentionPurgeResult> {
+    let runLogs = 0;
+    let debugReplayCaptures = 0;
+
+    for (const [id, record] of this.runLogs) {
+      const expiresAt = nullableDate(record.expiresAt);
+
+      if (expiresAt && expiresAt.getTime() <= referenceTime.getTime()) {
+        this.runLogs.delete(id);
+        runLogs += 1;
+      }
+    }
+
+    for (const [id, record] of this.debugReplayCaptures) {
+      const expiresAt = nullableDate(record.expiresAt);
+
+      if (expiresAt && expiresAt.getTime() <= referenceTime.getTime()) {
+        this.debugReplayCaptures.delete(id);
+        debugReplayCaptures += 1;
+      }
+    }
+
+    return { debugReplayCaptures, runLogs };
   }
 
   async saveResult(record: JsonObject): Promise<JsonObject> {
@@ -221,6 +258,23 @@ export class KyselyAgentEvalStore implements AgentEvalStore {
   async listRunLogs(limit = 50): Promise<readonly JsonObject[]> {
     const rows = await this.db.selectFrom("agent_run_logs").selectAll().orderBy("started_at", "desc").limit(limit).execute();
     return rows.map(mapAgentRunLogRow);
+  }
+
+  async purgeExpired(referenceTime = new Date()): Promise<AgentEvalRetentionPurgeResult> {
+    const runLogDelete = await this.db
+      .deleteFrom("agent_run_logs")
+      .where("expires_at", "is not", null)
+      .where("expires_at", "<=", referenceTime)
+      .executeTakeFirst();
+    const debugReplayDelete = await this.db
+      .deleteFrom("debug_replay_captures")
+      .where("expires_at", "<=", referenceTime)
+      .executeTakeFirst();
+
+    return {
+      debugReplayCaptures: Number(debugReplayDelete.numDeletedRows ?? 0),
+      runLogs: Number(runLogDelete.numDeletedRows ?? 0)
+    };
   }
 
   async saveResult(record: JsonObject): Promise<JsonObject> {
@@ -394,6 +448,27 @@ export function summarizeEvalResults(results: readonly EvalResult[]) {
     failed,
     passed,
     total: results.length
+  };
+}
+
+export function summarizeAgentEvalSuite(cases: readonly JsonObject[]): AgentEvalSuiteSummary {
+  let behaviorAssertionCount = 0;
+  const casesWithoutBehaviorAssertions: string[] = [];
+
+  for (const testCase of cases) {
+    const count = countBehaviorAssertions(testCase);
+
+    behaviorAssertionCount += count;
+
+    if (count === 0) {
+      casesWithoutBehaviorAssertions.push(stringValue(testCase.id) || stringValue(testCase.name) || "unknown");
+    }
+  }
+
+  return {
+    behaviorAssertionCount,
+    casesWithoutBehaviorAssertions,
+    totalCases: cases.length
   };
 }
 
@@ -581,6 +656,15 @@ function countPersistedAssertions(row: AgentEvalCaseRow | AgentEvalCaseInsert, s
     jsonArray(source.forbiddenExposedToolNames).length +
     (row.agent_type ? 1 : 0) +
     (row.model ? 1 : 0);
+}
+
+function countBehaviorAssertions(record: JsonObject): number {
+  return jsonArray(record.expectedAnswerContains).length +
+    jsonArray(record.forbiddenAnswerContains).length +
+    jsonArray(record.expectedToolNames).length +
+    jsonArray(record.forbiddenToolNames).length +
+    jsonArray(record.expectedExposedToolNames).length +
+    jsonArray(record.forbiddenExposedToolNames).length;
 }
 
 function stringValue(value: unknown): string {
