@@ -133,6 +133,12 @@ export interface ToolExposureSelection {
   readonly tools: readonly MuseTool[];
 }
 
+export interface WorkspaceToolRoutingPlan extends ToolExposureSelection {
+  readonly exposedToolNames: readonly string[];
+  readonly mutationIntent: boolean;
+  readonly plannedToolNames: readonly string[];
+}
+
 export interface ToolExposurePolicy {
   select(tools: readonly MuseTool[], context?: ToolExposureContext): ToolExposureSelection;
 }
@@ -173,6 +179,10 @@ export class ToolRegistry {
 
   selectForContext(context: ToolExposureContext = {}, policy: ToolExposurePolicy = createDefaultToolExposurePolicy()): ToolExposureSelection {
     return policy.select(this.list(), context);
+  }
+
+  planForContext(context: ToolExposureContext = {}, policy: ToolExposurePolicy = createDefaultToolExposurePolicy()): WorkspaceToolRoutingPlan {
+    return createWorkspaceToolRoutingPlan(this.list(), context, policy);
   }
 }
 
@@ -279,6 +289,21 @@ export function filterToolsForContext(
   policy: ToolExposurePolicy = createDefaultToolExposurePolicy()
 ): ToolExposureSelection {
   return policy.select(tools, context);
+}
+
+export function createWorkspaceToolRoutingPlan(
+  tools: readonly MuseTool[],
+  context: ToolExposureContext = {},
+  policy: ToolExposurePolicy = createDefaultToolExposurePolicy()
+): WorkspaceToolRoutingPlan {
+  const selection = filterToolsForContext(tools, context, policy);
+
+  return {
+    ...selection,
+    exposedToolNames: selection.tools.map((tool) => tool.definition.name),
+    mutationIntent: isWorkspaceMutationPrompt(context.prompt),
+    plannedToolNames: planToolExecutionOrder(selection.tools)
+  };
 }
 
 export class ToolExecutor {

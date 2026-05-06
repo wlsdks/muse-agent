@@ -701,7 +701,7 @@ export class AgentRuntime {
     }
 
     return this.toolRegistry
-      .selectForContext({
+      .planForContext({
         allowedToolNames: stringListMetadata(context.input.metadata?.allowedToolNames),
         forbiddenToolNames: stringListMetadata(context.input.metadata?.forbiddenToolNames),
         localMode: context.input.metadata?.localMode === true,

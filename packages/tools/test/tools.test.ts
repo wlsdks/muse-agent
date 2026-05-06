@@ -3,6 +3,7 @@ import { createToolNameApprovalPolicy, createToolPolicyConfig } from "@muse/poli
 import {
   createRustRunnerTool,
   createDefaultToolExposurePolicy,
+  createWorkspaceToolRoutingPlan,
   filterToolsForContext,
   isWorkspaceMutationPrompt,
   planToolExecutionOrder,
@@ -315,6 +316,52 @@ describe("tool utilities", () => {
     };
 
     expect(planToolExecutionOrder([fetchIssue, authenticate])).toEqual(["authenticate", "fetch_issue"]);
+  });
+
+  it("creates workspace routing plans from exposure and dependency rules", () => {
+    const authenticate: MuseTool = {
+      definition: {
+        description: "Authenticate before using downstream APIs.",
+        inputSchema: { type: "object" },
+        name: "authenticate",
+        risk: "read"
+      },
+      execute: () => "ok"
+    };
+    const updateIssue: MuseTool = {
+      definition: {
+        dependsOn: ["authenticate"],
+        description: "Update a synthetic issue after auth is ready.",
+        inputSchema: { type: "object" },
+        keywords: ["jira", "issue"],
+        name: "update_issue",
+        risk: "write"
+      },
+      execute: () => "ok"
+    };
+    const postSlack: MuseTool = {
+      definition: {
+        description: "Post a synthetic Slack message.",
+        inputSchema: { type: "object" },
+        keywords: ["slack"],
+        name: "post_slack_message",
+        risk: "write"
+      },
+      execute: () => "ok"
+    };
+
+    const plan = createWorkspaceToolRoutingPlan([updateIssue, postSlack, authenticate], {
+      prompt: "Please update Jira issue MUSE-1"
+    });
+
+    expect(plan.mutationIntent).toBe(true);
+    expect(plan.exposedToolNames).toEqual(["authenticate", "update_issue"]);
+    expect(plan.plannedToolNames).toEqual(["authenticate", "update_issue"]);
+    expect(plan.tools.map((tool) => tool.definition.name)).toEqual(["authenticate", "update_issue"]);
+    expect(plan.blocked).toContainEqual(expect.objectContaining({
+      code: "irrelevant_to_prompt",
+      toolName: "post_slack_message"
+    }));
   });
 
   it("filters risky and irrelevant tools before model exposure", () => {
