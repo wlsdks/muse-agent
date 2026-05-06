@@ -1,0 +1,217 @@
+#!/usr/bin/env node
+import { spawn } from "node:child_process";
+import net from "node:net";
+
+const rootDir = process.cwd();
+const port = await findFreePort();
+const baseUrl = `http://127.0.0.1:${port}`;
+const api = spawn("pnpm", ["--filter", "@muse/api", "dev"], {
+  cwd: rootDir,
+  env: {
+    ...process.env,
+    MUSE_MODEL: "diagnostic/smoke",
+    MUSE_MODEL_PROVIDER_ID: "diagnostic",
+    PORT: String(port)
+  },
+  stdio: ["ignore", "pipe", "pipe"]
+});
+
+let apiOutput = "";
+api.stdout.on("data", (chunk) => {
+  apiOutput += chunk.toString();
+});
+api.stderr.on("data", (chunk) => {
+  apiOutput += chunk.toString();
+});
+
+try {
+  await waitForHealth(`${baseUrl}/health`, 20_000);
+  await assertApiChat(baseUrl);
+  await assertApiStream(baseUrl);
+  await assertCliLocal();
+  await assertCliRemote(baseUrl);
+  console.log("diagnostic runtime smoke passed");
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  if (apiOutput.trim().length > 0) {
+    console.error("--- api output ---");
+    console.error(apiOutput.trim());
+  }
+  process.exitCode = 1;
+} finally {
+  api.kill("SIGTERM");
+  await waitForExit(api, 5_000);
+}
+
+async function findFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      server.close(() => {
+        if (typeof address === "object" && address?.port) {
+          resolve(address.port);
+          return;
+        }
+
+        reject(new Error("Could not allocate a local smoke-test port"));
+      });
+    });
+  });
+}
+
+async function waitForHealth(url, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      const body = await response.json();
+
+      if (response.ok && body.status === "ok") {
+        return;
+      }
+    } catch {
+      // API is still starting.
+    }
+
+    await delay(250);
+  }
+
+  throw new Error(`Timed out waiting for ${url}`);
+}
+
+async function assertApiChat(baseUrl) {
+  const response = await fetch(`${baseUrl}/api/chat`, {
+    body: JSON.stringify({
+      message: "diagnostic api smoke",
+      runId: "smoke-diagnostic-api"
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST"
+  });
+  const body = await response.json();
+
+  assert(response.status === 200, `/api/chat expected 200, got ${response.status}`);
+  assert(body.success === true, "/api/chat expected success true");
+  assert(String(body.content ?? "").includes("Diagnostic response"), "/api/chat expected Diagnostic response");
+}
+
+async function assertApiStream(baseUrl) {
+  const response = await fetch(`${baseUrl}/api/chat/stream`, {
+    body: JSON.stringify({
+      message: "diagnostic stream smoke",
+      runId: "smoke-diagnostic-stream"
+    }),
+    headers: { "content-type": "application/json" },
+    method: "POST"
+  });
+  const body = await response.text();
+
+  assert(response.status === 200, `/api/chat/stream expected 200, got ${response.status}`);
+  assert(body.includes("event: message"), "/api/chat/stream expected event: message");
+  assert(body.includes("event: done"), "/api/chat/stream expected event: done");
+  assert(body.includes("Diagnostic response"), "/api/chat/stream expected Diagnostic response");
+}
+
+async function assertCliLocal() {
+  const result = await runPnpm([
+    "--filter",
+    "@muse/cli",
+    "dev",
+    "chat",
+    "--local",
+    "diagnostic-cli-local",
+    "--json",
+    "--no-log"
+  ], {
+    MUSE_MODEL: "diagnostic/smoke",
+    MUSE_MODEL_PROVIDER_ID: "diagnostic"
+  });
+  const body = parseJsonFromStdout(result.stdout);
+
+  assert(String(body.response ?? "").includes("Diagnostic response"), "CLI local expected Diagnostic response");
+}
+
+async function assertCliRemote(baseUrl) {
+  const result = await runPnpm([
+    "--filter",
+    "@muse/cli",
+    "dev",
+    "chat",
+    "diagnostic-cli-remote",
+    "--json",
+    "--no-log",
+    "--api-url",
+    baseUrl
+  ]);
+  const body = parseJsonFromStdout(result.stdout);
+
+  assert(String(body.content ?? "").includes("Diagnostic response"), "CLI remote expected Diagnostic response");
+}
+
+async function runPnpm(args, env = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("pnpm", args, {
+      cwd: rootDir,
+      env: { ...process.env, ...env },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (status) => {
+      if (status === 0) {
+        resolve({ stderr, stdout });
+        return;
+      }
+
+      reject(new Error(`pnpm ${args.join(" ")} failed with ${status}\n${stderr}\n${stdout}`));
+    });
+  });
+}
+
+function parseJsonFromStdout(stdout) {
+  const start = stdout.indexOf("{");
+  const end = stdout.lastIndexOf("}");
+
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error(`Could not find JSON object in stdout:\n${stdout}`);
+  }
+
+  return JSON.parse(stdout.slice(start, end + 1));
+}
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function waitForExit(child, timeoutMs) {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      child.kill("SIGKILL");
+      resolve();
+    }, timeoutMs);
+
+    child.once("exit", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+  });
+}

@@ -266,7 +266,7 @@ Expected: tools tests pass. If existing tests only inject a fake runner, add a n
 - Modify: `package.json`
 - Test: use the script itself as an integration smoke
 
-- [ ] **Step 1: Create the smoke script**
+- [x] **Step 1: Create the smoke script**
 
 Create `scripts/smoke-diagnostic-runtime.mjs` with a Node 24 script that:
 
@@ -282,7 +282,7 @@ Create `scripts/smoke-diagnostic-runtime.mjs` with a Node 24 script that:
 9. Exits 1 if any assertion fails.
 ```
 
-- [ ] **Step 2: Add assertions**
+- [x] **Step 2: Add assertions**
 
 The script must assert:
 
@@ -297,7 +297,7 @@ CLI local JSON response includes Diagnostic response
 CLI remote JSON content includes Diagnostic response
 ```
 
-- [ ] **Step 3: Wire npm script**
+- [x] **Step 3: Wire npm script**
 
 Modify root `package.json`:
 
@@ -305,7 +305,7 @@ Modify root `package.json`:
 "smoke:diagnostic": "node scripts/smoke-diagnostic-runtime.mjs"
 ```
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
