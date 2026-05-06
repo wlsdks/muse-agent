@@ -79,6 +79,7 @@ describe("db migrations", () => {
       "personas",
       "prompt_templates",
       "prompt_versions",
+      "rag_documents",
       "rag_ingestion_candidates",
       "rag_ingestion_policy",
       "session_tags",

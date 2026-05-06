@@ -12,16 +12,20 @@ import {
   AdaptiveRagRetriever,
   DefaultRagPipeline,
   buildRagIngestionPolicyUpsertQuery,
+  createRagDocumentInsert,
   createRagIngestionCandidateInsert,
   createRagIngestionPolicyInsert,
   ConversationAwareQueryTransformer,
   DecomposingQueryTransformer,
   ExtractiveContextCompressor,
   HybridDocumentRetriever,
+  InMemoryRagDocumentStore,
   InMemoryVectorStore,
+  KyselyRagDocumentStore,
   InMemoryRagIngestionCandidateStore,
   InMemoryRagIngestionPolicyStore,
   InMemoryRagCorpus,
+  mapRagDocumentRow,
   mapRagIngestionCandidateRow,
   mapRagIngestionPolicyRow,
   PassthroughQueryTransformer,
@@ -63,6 +67,31 @@ describe("TokenBasedDocumentChunker", () => {
 });
 
 describe("RAG ingestion stores", () => {
+  it("persists document records in memory with content-hash lookup", async () => {
+    const now = new Date("2026-05-06T00:00:00.000Z");
+    const store = new InMemoryRagDocumentStore({
+      idFactory: () => "document-1",
+      now: () => now
+    });
+
+    const document = await store.save({
+      content: "Synthetic Reactor migration note",
+      metadata: { source: "manual" }
+    });
+
+    expect(document).toMatchObject({
+      chunkCount: 1,
+      content: "Synthetic Reactor migration note",
+      id: "document-1",
+      indexed: true,
+      metadata: { content_hash: expect.any(String), source: "manual" }
+    });
+    expect(await store.findByContentHash(document.contentHash)).toMatchObject({ id: "document-1" });
+    expect(await store.search("reactor")).toHaveLength(1);
+    expect(await store.count()).toBe(1);
+    expect(await store.deleteMany(["document-1"])).toBe(1);
+  });
+
   it("persists policy and candidate review state in memory", async () => {
     const now = new Date("2026-05-06T00:00:00.000Z");
     const policyStore = new InMemoryRagIngestionPolicyStore({ now: () => now });
@@ -138,6 +167,29 @@ describe("RAG ingestion stores", () => {
       id: "candidate-1",
       runId: "run-1",
       status: "PENDING"
+    });
+  });
+
+  it("builds PostgreSQL RAG document queries and maps rows", () => {
+    const db = createPostgresBuilder();
+    const now = new Date("2026-05-06T00:00:00.000Z");
+    const insert = createRagDocumentInsert({
+      content: "Stored synthetic document",
+      contentHash: "hash-1",
+      id: "document-1",
+      metadata: { source: "manual" }
+    }, {
+      idFactory: () => "unused",
+      now: () => now
+    });
+    const compiled = db.insertInto("rag_documents").values(insert).compile();
+
+    expect(new KyselyRagDocumentStore(db)).toBeInstanceOf(KyselyRagDocumentStore);
+    expect(compiled.sql).toContain('insert into "rag_documents"');
+    expect(mapRagDocumentRow(insert)).toMatchObject({
+      contentHash: "hash-1",
+      id: "document-1",
+      metadata: { content_hash: "hash-1", source: "manual" }
     });
   });
 });

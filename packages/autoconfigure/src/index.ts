@@ -99,9 +99,12 @@ import {
 } from "@muse/model";
 import {
   InMemoryRagIngestionCandidateStore,
+  InMemoryRagDocumentStore,
   InMemoryRagIngestionPolicyStore,
+  KyselyRagDocumentStore,
   KyselyRagIngestionCandidateStore,
   KyselyRagIngestionPolicyStore,
+  type RagDocumentStore,
   type RagIngestionCandidateStore,
   type RagIngestionPolicyStore
 } from "@muse/rag";
@@ -235,6 +238,7 @@ export interface MuseRuntimeAssembly {
   };
   readonly ragIngestion: {
     readonly candidateStore: RagIngestionCandidateStore;
+    readonly documentStore: RagDocumentStore;
     readonly policyStore: RagIngestionPolicyStore;
   };
   readonly requireAuth: boolean;
@@ -311,6 +315,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const toolPolicyStore = createToolPolicyStore(db);
   const ragIngestionPolicyStore = createRagIngestionPolicyStore(db);
   const ragIngestionCandidateStore = createRagIngestionCandidateStore(db);
+  const ragDocumentStore = createRagDocumentStore(db);
   const slackBotStore = createSlackBotInstanceStore(db);
   const channelFaqRegistrationStore = createChannelFaqRegistrationStore(db);
   const slackFeedbackStore = createSlackFeedbackEventStore(db);
@@ -433,6 +438,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     },
     ragIngestion: {
       candidateStore: ragIngestionCandidateStore,
+      documentStore: ragDocumentStore,
       policyStore: ragIngestionPolicyStore
     },
     requireAuth: parseBoolean(env.MUSE_REQUIRE_AUTH, Boolean(authService)),
@@ -644,6 +650,10 @@ function createRagIngestionPolicyStore(db: Kysely<MuseDatabase> | undefined): Ra
 
 function createRagIngestionCandidateStore(db: Kysely<MuseDatabase> | undefined): RagIngestionCandidateStore {
   return db ? new KyselyRagIngestionCandidateStore(db) : new InMemoryRagIngestionCandidateStore();
+}
+
+function createRagDocumentStore(db: Kysely<MuseDatabase> | undefined): RagDocumentStore {
+  return db ? new KyselyRagDocumentStore(db) : new InMemoryRagDocumentStore();
 }
 
 function createSlackBotInstanceStore(db: Kysely<MuseDatabase> | undefined): SlackBotInstanceStore {

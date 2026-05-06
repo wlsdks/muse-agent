@@ -1,7 +1,8 @@
 import { createApproximateTokenEstimator, type TokenEstimator } from "@muse/memory";
-import type { MuseDatabase, RagIngestionCandidateTable, RagIngestionPolicyTable } from "@muse/db";
+import type { MuseDatabase, RagDocumentTable, RagIngestionCandidateTable, RagIngestionPolicyTable } from "@muse/db";
 import { createRunId, type JsonObject, type JsonValue } from "@muse/shared";
-import type { Insertable, Kysely, Selectable } from "kysely";
+import { sql, type Insertable, type Kysely, type Selectable } from "kysely";
+import { createHash } from "node:crypto";
 
 export type Awaitable<T> = T | Promise<T>;
 
@@ -10,6 +11,15 @@ export interface RagDocument {
   readonly content: string;
   readonly metadata: JsonObject;
   readonly source?: string;
+}
+
+export interface StoredRagDocument extends RagDocument {
+  readonly chunkCount: number;
+  readonly chunkIds: readonly string[];
+  readonly contentHash: string;
+  readonly createdAt: Date;
+  readonly indexed: boolean;
+  readonly updatedAt: Date;
 }
 
 export interface RetrievedDocument extends RagDocument {
@@ -194,6 +204,28 @@ export interface RagIngestionCandidateStore {
   }): Awaitable<StoredRagIngestionCandidate | undefined>;
 }
 
+export interface RagDocumentInput {
+  readonly id?: string;
+  readonly content: string;
+  readonly metadata?: JsonObject;
+  readonly source?: string | null;
+  readonly contentHash?: string;
+  readonly chunkCount?: number;
+  readonly chunkIds?: readonly string[];
+  readonly indexed?: boolean;
+}
+
+export interface RagDocumentStore {
+  save(document: RagDocumentInput): Awaitable<StoredRagDocument>;
+  findById(id: string): Awaitable<StoredRagDocument | undefined>;
+  findByContentHash(contentHash: string): Awaitable<StoredRagDocument | undefined>;
+  list(options?: { readonly limit?: number }): Awaitable<readonly StoredRagDocument[]>;
+  search(query: string, options?: { readonly limit?: number }): Awaitable<readonly StoredRagDocument[]>;
+  delete(id: string): Awaitable<boolean>;
+  deleteMany(ids: readonly string[]): Awaitable<number>;
+  count(): Awaitable<number>;
+}
+
 export interface TokenBasedDocumentChunkerOptions {
   readonly chunkSize?: number;
   readonly minChunkSizeChars?: number;
@@ -262,6 +294,240 @@ type RagIngestionPolicyRow = Selectable<RagIngestionPolicyTable>;
 type RagIngestionPolicyInsert = Insertable<RagIngestionPolicyTable>;
 type RagIngestionCandidateRow = Selectable<RagIngestionCandidateTable>;
 type RagIngestionCandidateInsert = Insertable<RagIngestionCandidateTable>;
+type RagDocumentRow = Selectable<RagDocumentTable>;
+type RagDocumentInsert = Insertable<RagDocumentTable>;
+
+export class InMemoryRagDocumentStore implements RagDocumentStore {
+  private readonly byId = new Map<string, StoredRagDocument>();
+  private readonly orderedIds: string[] = [];
+  private readonly idFactory: () => string;
+  private readonly now: () => Date;
+
+  constructor(options: { readonly idFactory?: () => string; readonly now?: () => Date } = {}) {
+    this.idFactory = options.idFactory ?? (() => createRunId("document"));
+    this.now = options.now ?? (() => new Date());
+  }
+
+  save(document: RagDocumentInput): StoredRagDocument {
+    const existing = document.id ? this.byId.get(document.id) : undefined;
+    const now = this.now();
+    const saved = normalizeRagDocument(document, {
+      createdAt: existing?.createdAt,
+      idFactory: this.idFactory,
+      now: () => now
+    });
+
+    this.byId.set(saved.id, saved);
+
+    if (!existing) {
+      this.orderedIds.unshift(saved.id);
+    }
+
+    return saved;
+  }
+
+  findById(id: string): StoredRagDocument | undefined {
+    return this.byId.get(id);
+  }
+
+  findByContentHash(contentHash: string): StoredRagDocument | undefined {
+    return [...this.byId.values()].find((document) => document.contentHash === contentHash);
+  }
+
+  list(options: { readonly limit?: number } = {}): readonly StoredRagDocument[] {
+    return this.orderedIds
+      .map((id) => this.byId.get(id))
+      .filter((document): document is StoredRagDocument => Boolean(document))
+      .slice(0, clampDocumentLimit(options.limit ?? 100));
+  }
+
+  search(query: string, options: { readonly limit?: number } = {}): readonly StoredRagDocument[] {
+    const normalized = query.toLowerCase();
+    return this.list({ limit: Number.MAX_SAFE_INTEGER })
+      .filter((document) => JSON.stringify(toRagDocumentJson(document)).toLowerCase().includes(normalized))
+      .slice(0, clampDocumentLimit(options.limit ?? 5));
+  }
+
+  delete(id: string): boolean {
+    const existed = this.byId.delete(id);
+
+    if (existed) {
+      const index = this.orderedIds.indexOf(id);
+
+      if (index >= 0) {
+        this.orderedIds.splice(index, 1);
+      }
+    }
+
+    return existed;
+  }
+
+  deleteMany(ids: readonly string[]): number {
+    let deleted = 0;
+
+    for (const id of ids) {
+      deleted += this.delete(id) ? 1 : 0;
+    }
+
+    return deleted;
+  }
+
+  count(): number {
+    return this.byId.size;
+  }
+}
+
+export class KyselyRagDocumentStore implements RagDocumentStore {
+  private readonly idFactory: () => string;
+  private readonly now: () => Date;
+
+  constructor(
+    private readonly db: Kysely<MuseDatabase>,
+    options: { readonly idFactory?: () => string; readonly now?: () => Date } = {}
+  ) {
+    this.idFactory = options.idFactory ?? (() => createRunId("document"));
+    this.now = options.now ?? (() => new Date());
+  }
+
+  async save(document: RagDocumentInput): Promise<StoredRagDocument> {
+    const existing = document.id ? await this.findById(document.id) : undefined;
+    const insert = createRagDocumentInsert(document, {
+      createdAt: existing?.createdAt,
+      idFactory: this.idFactory,
+      now: this.now
+    });
+    const row = await this.db
+      .insertInto("rag_documents")
+      .values(insert)
+      .onConflict((oc) => oc.column("id").doUpdateSet({
+        chunk_count: insert.chunk_count,
+        chunk_ids: insert.chunk_ids,
+        content: insert.content,
+        content_hash: insert.content_hash,
+        indexed: insert.indexed,
+        metadata: insert.metadata,
+        source: insert.source,
+        updated_at: insert.updated_at
+      }))
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    return mapRagDocumentRow(row);
+  }
+
+  async findById(id: string): Promise<StoredRagDocument | undefined> {
+    const row = await this.db
+      .selectFrom("rag_documents")
+      .selectAll()
+      .where("id", "=", id)
+      .executeTakeFirst();
+
+    return row ? mapRagDocumentRow(row) : undefined;
+  }
+
+  async findByContentHash(contentHash: string): Promise<StoredRagDocument | undefined> {
+    const row = await this.db
+      .selectFrom("rag_documents")
+      .selectAll()
+      .where("content_hash", "=", contentHash)
+      .executeTakeFirst();
+
+    return row ? mapRagDocumentRow(row) : undefined;
+  }
+
+  async list(options: { readonly limit?: number } = {}): Promise<readonly StoredRagDocument[]> {
+    const rows = await this.db
+      .selectFrom("rag_documents")
+      .selectAll()
+      .orderBy("created_at", "desc")
+      .limit(clampDocumentLimit(options.limit ?? 100))
+      .execute();
+
+    return rows.map(mapRagDocumentRow);
+  }
+
+  async search(query: string, options: { readonly limit?: number } = {}): Promise<readonly StoredRagDocument[]> {
+    const needle = `%${query.toLowerCase()}%`;
+    const rows = await this.db
+      .selectFrom("rag_documents")
+      .selectAll()
+      .where((expression) => expression.or([
+        expression("content", "ilike", needle),
+        expression(sql<string>`metadata::text`, "ilike", needle)
+      ]))
+      .orderBy("created_at", "desc")
+      .limit(clampDocumentLimit(options.limit ?? 5))
+      .execute();
+
+    return rows.map(mapRagDocumentRow);
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const result = await this.db
+      .deleteFrom("rag_documents")
+      .where("id", "=", id)
+      .executeTakeFirst();
+
+    return Number(result.numDeletedRows ?? 0) > 0;
+  }
+
+  async deleteMany(ids: readonly string[]): Promise<number> {
+    if (ids.length === 0) {
+      return 0;
+    }
+
+    const result = await this.db
+      .deleteFrom("rag_documents")
+      .where("id", "in", [...ids])
+      .executeTakeFirst();
+
+    return Number(result.numDeletedRows ?? 0);
+  }
+
+  async count(): Promise<number> {
+    const row = await this.db
+      .selectFrom("rag_documents")
+      .select(({ fn }) => fn.countAll<string>().as("count"))
+      .executeTakeFirst();
+
+    return Number(row?.count ?? 0);
+  }
+}
+
+export function createRagDocumentInsert(
+  document: RagDocumentInput,
+  options: { readonly createdAt?: Date; readonly idFactory: () => string; readonly now: () => Date }
+): RagDocumentInsert {
+  const normalized = normalizeRagDocument(document, options);
+
+  return {
+    chunk_count: normalized.chunkCount,
+    chunk_ids: [...normalized.chunkIds],
+    content: normalized.content,
+    content_hash: normalized.contentHash,
+    created_at: normalized.createdAt,
+    id: normalized.id,
+    indexed: normalized.indexed,
+    metadata: normalized.metadata,
+    source: normalized.source ?? null,
+    updated_at: normalized.updatedAt
+  };
+}
+
+export function mapRagDocumentRow(row: RagDocumentRow | RagDocumentInsert): StoredRagDocument {
+  return {
+    chunkCount: Number(row.chunk_count ?? 1),
+    chunkIds: jsonStringArray(row.chunk_ids ?? []),
+    content: row.content ?? "",
+    contentHash: row.content_hash ?? "",
+    createdAt: dateValue(row.created_at ?? null),
+    id: row.id ?? "",
+    indexed: row.indexed ?? true,
+    metadata: jsonObjectValue(row.metadata ?? {}),
+    source: row.source ?? undefined,
+    updatedAt: dateValue(row.updated_at ?? null)
+  };
+}
 
 export class InMemoryRagIngestionPolicyStore implements RagIngestionPolicyStore {
   private policy?: RagIngestionPolicy;
@@ -1720,6 +1986,31 @@ function normalizeRagIngestionCandidate(
   };
 }
 
+function normalizeRagDocument(
+  document: RagDocumentInput,
+  options: { readonly createdAt?: Date; readonly idFactory: () => string; readonly now: () => Date }
+): StoredRagDocument {
+  const now = options.now();
+  const metadata = jsonObjectValue(document.metadata ?? {});
+  const contentHash = document.contentHash ?? computeDocumentContentHash(document.content);
+
+  return {
+    chunkCount: Math.max(1, Math.trunc(document.chunkCount ?? 1)),
+    chunkIds: normalizeStringList(document.chunkIds ?? []),
+    content: document.content,
+    contentHash,
+    createdAt: options.createdAt ?? now,
+    id: document.id ?? options.idFactory(),
+    indexed: document.indexed ?? true,
+    metadata: {
+      ...metadata,
+      content_hash: metadata.content_hash ?? contentHash
+    },
+    source: nullableString(document.source) ?? undefined,
+    updatedAt: now
+  };
+}
+
 function normalizeStringList(values: readonly string[]): readonly string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
@@ -1741,6 +2032,26 @@ function clampRagCandidateLimit(value: number): number {
   return Math.min(Math.max(Math.trunc(value), 1), 500);
 }
 
+function clampDocumentLimit(value: number): number {
+  return Math.min(Math.max(Math.trunc(value), 1), 1000);
+}
+
+function computeDocumentContentHash(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
+function toRagDocumentJson(document: StoredRagDocument): JsonObject {
+  return {
+    chunkCount: document.chunkCount,
+    chunkIds: [...document.chunkIds],
+    content: document.content,
+    id: document.id,
+    indexed: document.indexed,
+    metadata: document.metadata,
+    source: document.source ?? null
+  };
+}
+
 function jsonStringArray(value: JsonValue): readonly string[] {
   if (Array.isArray(value)) {
     return normalizeStringList(value.filter((entry): entry is string => typeof entry === "string"));
@@ -1756,6 +2067,22 @@ function jsonStringArray(value: JsonValue): readonly string[] {
   }
 
   return [];
+}
+
+function jsonObjectValue(value: JsonValue): JsonObject {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as JsonObject;
+  }
+
+  if (typeof value === "string") {
+    try {
+      return jsonObjectValue(JSON.parse(value) as JsonValue);
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
 }
 
 function dateValue(value: Date | string | null): Date {

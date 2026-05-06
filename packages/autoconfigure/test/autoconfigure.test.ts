@@ -12,7 +12,7 @@ import {
 import { KyselyMcpSecurityPolicyStore, KyselyMcpServerStore } from "@muse/mcp";
 import { PersistedMuseTracer } from "@muse/observability";
 import { KyselyGuardRuleStore, KyselyToolPolicyStore } from "@muse/policy";
-import { KyselyRagIngestionCandidateStore, KyselyRagIngestionPolicyStore } from "@muse/rag";
+import { KyselyRagDocumentStore, KyselyRagIngestionCandidateStore, KyselyRagIngestionPolicyStore } from "@muse/rag";
 import { KyselyFeedbackStore, KyselyPromptLabCatalogStore, KyselyPromptLabExperimentStore } from "@muse/promptlab";
 import { KyselyRuntimeSettingsStore } from "@muse/runtime-settings";
 import {
@@ -145,6 +145,7 @@ describe("autoconfigure", () => {
     expect(assembly.toolPolicyStore).toBeInstanceOf(KyselyToolPolicyStore);
     expect(assembly.ragIngestion.policyStore).toBeInstanceOf(KyselyRagIngestionPolicyStore);
     expect(assembly.ragIngestion.candidateStore).toBeInstanceOf(KyselyRagIngestionCandidateStore);
+    expect(assembly.ragIngestion.documentStore).toBeInstanceOf(KyselyRagDocumentStore);
     expect(assembly.slackPersistence.botStore).toBeInstanceOf(KyselySlackBotInstanceStore);
     expect(assembly.slackPersistence.faqStore).toBeInstanceOf(KyselyChannelFaqRegistrationStore);
     expect(assembly.slackPersistence.feedbackStore).toBeInstanceOf(KyselySlackFeedbackEventStore);

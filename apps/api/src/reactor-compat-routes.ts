@@ -26,10 +26,12 @@ import type { GuardRuleStore, ToolPolicyInput, ToolPolicyStore } from "@muse/pol
 import { inputGuardSimulationToJson, simulateInputGuardPipeline, toolPolicyToJson } from "@muse/policy";
 import type { FeedbackStore, PromptLabCatalogStore, PromptLabExperimentStore } from "@muse/promptlab";
 import type {
+  RagDocumentStore,
   RagIngestionCandidateStatus,
   RagIngestionCandidateStore,
   RagIngestionPolicy,
   RagIngestionPolicyStore,
+  StoredRagDocument,
   StoredRagIngestionCandidate
 } from "@muse/rag";
 import type { RuntimeSetting, RuntimeSettingsService, RuntimeSettingType } from "@muse/runtime-settings";
@@ -73,6 +75,7 @@ export interface ReactorCompatibilityRouteOptions {
   readonly pendingApprovalStore?: PendingApprovalStore;
   readonly ragIngestion?: {
     readonly candidateStore: RagIngestionCandidateStore;
+    readonly documentStore?: RagDocumentStore;
     readonly policyStore: RagIngestionPolicyStore;
   };
   readonly runtimeSettings: RuntimeSettingsService;
@@ -1655,7 +1658,7 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
     }
 
     const limit = readQueryInteger(request, "limit", 100);
-    return [...state.documents.values()]
+    return (await listDocuments(options, { limit: Math.min(Math.max(limit, 1), 1000) }))
       .slice(0, Math.min(Math.max(limit, 1), 1000))
       .map((document) => ({
         content: stringField(document.content, ""),
@@ -1675,13 +1678,13 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
       return reply.status(400).send(validationErrorResponse(validationError));
     }
 
-    const duplicate = findDocumentByContentHash(computeContentHash(readBodyString(body, "content") ?? ""));
+    const duplicate = await findDocumentByContentHash(options, computeContentHash(readBodyString(body, "content") ?? ""));
 
     if (duplicate) {
       return duplicateDocumentConflict(reply, duplicate.id);
     }
 
-    return reply.status(201).send(toDocumentResponse(createDocument(body)));
+    return reply.status(201).send(toDocumentResponse(await createDocument(options, body)));
   });
   server.post("/api/documents/batch", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -1707,14 +1710,14 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
         return reply.status(400).send(validationErrorResponse(prefixValidationDetails(`documents[${index}]`, validationError)));
       }
 
-      const duplicate = findDocumentByContentHash(computeContentHash(readBodyString(body, "content") ?? ""));
+      const duplicate = await findDocumentByContentHash(options, computeContentHash(readBodyString(body, "content") ?? ""));
 
       if (duplicate) {
         return duplicateDocumentConflict(reply, duplicate.id);
       }
     }
 
-    const saved = items.map((item) => createDocument(item));
+    const saved = await Promise.all(items.map((item) => createDocument(options, item)));
     return reply.status(201).send({
       count: saved.length,
       ids: saved.map((document) => document.id),
@@ -1747,9 +1750,7 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
       return reply.status(400).send(validationErrorResponse({ topK: "topK must not exceed 100" }));
     }
 
-    return [...state.documents.values()]
-      .filter((document) => JSON.stringify(document).toLowerCase().includes(query))
-      .slice(0, Math.min(Math.max(topK, 1), 100))
+    return (await searchDocuments(options, query, { limit: Math.min(Math.max(topK, 1), 100) }))
       .map(toSearchResultResponse);
   });
   server.delete("/api/documents", async (request, reply) => {
@@ -1769,9 +1770,7 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
       }));
     }
 
-    for (const id of ids) {
-      state.documents.delete(id);
-    }
+    await deleteDocuments(options, ids);
 
     return reply.status(204).send();
   });
@@ -1781,7 +1780,7 @@ function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompati
     }
 
     const { documentId } = request.params as { readonly documentId: string };
-    state.documents.delete(documentId);
+    await deleteDocument(options, documentId);
     return reply.status(204).send();
   });
 }
@@ -1816,7 +1815,7 @@ function registerPromptAndRagRoutes(server: FastifyInstance, options: ReactorCom
       chunkCount += chunks.length;
 
       for (const [index, chunk] of chunks.entries()) {
-        createRecord(state.documents, {
+        await saveDocumentRecord(options, {
           category: readBodyNullableString(entry, "category") ?? null,
           content: chunk,
           id: `policy-seed:${key}:${index}`,
@@ -1825,7 +1824,7 @@ function registerPromptAndRagRoutes(server: FastifyInstance, options: ReactorCom
           spaceKey: readBodyNullableString(entry, "spaceKey") ?? null,
           title,
           url: readBodyNullableString(entry, "url") ?? null
-        }, "document");
+        });
       }
     }
 
@@ -2412,14 +2411,14 @@ function registerSlackCompatibilityRoutes(server: FastifyInstance, options: Reac
       return reply;
     }
 
-    return slackFaqProbe(request, reply);
+    return slackFaqProbe(request, reply, options);
   });
   server.post("/api/admin/slack/channels/faq/:channelId/dry-run", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
-    return slackFaqDryRun(request, reply);
+    return slackFaqDryRun(request, reply, options);
   });
   server.get("/api/admin/slack/channels/faq/:channelId/stats", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
@@ -2636,7 +2635,7 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
 
     return {
       available: true,
-      documentCount: state.documents.size
+      documentCount: await countDocuments(options)
     };
   });
   server.post("/api/admin/platform/cache/invalidate", async (request, reply) => {
@@ -3240,7 +3239,7 @@ function registerAdminAnalyticsCompatibilityRoutes(
       return reply;
     }
 
-    return ragStatusSummary();
+    return ragStatusSummary(await listDocuments(options, { limit: 1000 }));
   });
 
   server.get("/api/admin/rag-analytics/by-channel", async (request, reply) => {
@@ -3248,7 +3247,7 @@ function registerAdminAnalyticsCompatibilityRoutes(
       return reply;
     }
 
-    return groupRecordsByField([...state.ragCandidates.values(), ...state.documents.values()], "channelId", "api");
+    return groupRecordsByField([...state.ragCandidates.values(), ...await listDocuments(options, { limit: 1000 })], "channelId", "api");
   });
 
   server.get("/api/admin/slack-activity/channels", async (request, reply) => {
@@ -4915,8 +4914,8 @@ function passRateByDay(results: readonly JsonObject[]): readonly JsonObject[] {
   }));
 }
 
-function ragStatusSummary(): JsonObject {
-  const records = [...state.ragCandidates.values(), ...state.documents.values()];
+function ragStatusSummary(documents: readonly CompatRecord[] = [...state.documents.values()]): JsonObject {
+  const records = [...state.ragCandidates.values(), ...documents];
   const byStatus: Record<string, number> = {};
 
   for (const record of records) {
@@ -6722,11 +6721,11 @@ function toIntentResponse(record: JsonObject) {
   };
 }
 
-function createDocument(bodyValue: unknown): CompatRecord {
+async function createDocument(options: ReactorCompatibilityRouteOptions, bodyValue: unknown): Promise<CompatRecord> {
   const body = toBody(bodyValue);
   const content = readBodyString(body, "content") ?? "";
   const metadata = documentMetadata(body);
-  return createRecord(state.documents, {
+  return saveDocumentRecord(options, {
     chunkCount: 1,
     chunkIds: [],
     content,
@@ -6735,7 +6734,7 @@ function createDocument(bodyValue: unknown): CompatRecord {
       ...metadata,
       [DOCUMENT_CONTENT_HASH_KEY]: computeContentHash(content)
     }
-  }, "document");
+  });
 }
 
 function toDocumentResponse(record: JsonObject) {
@@ -6754,6 +6753,116 @@ function toSearchResultResponse(record: JsonObject) {
     id: stringField(record.id, ""),
     metadata: jsonObjectField(record.metadata),
     score: null
+  };
+}
+
+async function saveDocumentRecord(
+  options: ReactorCompatibilityRouteOptions,
+  record: JsonObject
+): Promise<CompatRecord> {
+  const content = stringField(record.content, "");
+  const metadata = jsonObjectField(record.metadata);
+  const contentHash = stringField(metadata[DOCUMENT_CONTENT_HASH_KEY], computeContentHash(content));
+  const id = typeof record.id === "string" && record.id.length > 0 ? record.id : undefined;
+
+  if (options.ragIngestion?.documentStore) {
+    const recordMetadata = documentRecordMetadata(record, metadata);
+    return storedRagDocumentToCompat(await options.ragIngestion.documentStore.save({
+      chunkCount: readNumber(record.chunkCount, 1),
+      chunkIds: stringArrayField(record.chunkIds, []),
+      content,
+      contentHash,
+      id,
+      indexed: readBoolean(record.indexed, true),
+      metadata: {
+        ...recordMetadata,
+        [DOCUMENT_CONTENT_HASH_KEY]: contentHash
+      },
+      source: readBodyNullableString(record, "source")
+    }));
+  }
+
+  return createRecord(state.documents, {
+    ...record,
+    metadata: {
+      ...metadata,
+      [DOCUMENT_CONTENT_HASH_KEY]: contentHash
+    }
+  }, "document");
+}
+
+function documentRecordMetadata(record: JsonObject, metadata: JsonObject): JsonObject {
+  const ignored = new Set(["chunkCount", "chunkIds", "content", "createdAt", "id", "indexed", "metadata", "updatedAt"]);
+  const extra = Object.fromEntries(Object.entries(record).filter(([key]) => !ignored.has(key)));
+  return {
+    ...extra,
+    ...metadata
+  };
+}
+
+async function listDocuments(
+  options: ReactorCompatibilityRouteOptions,
+  listOptions: { readonly limit?: number } = {}
+): Promise<readonly CompatRecord[]> {
+  const stored = await options.ragIngestion?.documentStore?.list(listOptions);
+  return stored ? stored.map(storedRagDocumentToCompat) : [...state.documents.values()].slice(0, listOptions.limit ?? 100);
+}
+
+async function searchDocuments(
+  options: ReactorCompatibilityRouteOptions,
+  query: string,
+  searchOptions: { readonly limit?: number } = {}
+): Promise<readonly CompatRecord[]> {
+  const stored = await options.ragIngestion?.documentStore?.search(query, searchOptions);
+
+  if (stored) {
+    return stored.map(storedRagDocumentToCompat);
+  }
+
+  return [...state.documents.values()]
+    .filter((document) => JSON.stringify(document).toLowerCase().includes(query))
+    .slice(0, searchOptions.limit ?? 5);
+}
+
+async function deleteDocument(options: ReactorCompatibilityRouteOptions, id: string): Promise<boolean> {
+  if (options.ragIngestion?.documentStore) {
+    return options.ragIngestion.documentStore.delete(id);
+  }
+
+  return state.documents.delete(id);
+}
+
+async function deleteDocuments(options: ReactorCompatibilityRouteOptions, ids: readonly string[]): Promise<number> {
+  if (options.ragIngestion?.documentStore) {
+    return options.ragIngestion.documentStore.deleteMany(ids);
+  }
+
+  let deleted = 0;
+
+  for (const id of ids) {
+    deleted += state.documents.delete(id) ? 1 : 0;
+  }
+
+  return deleted;
+}
+
+async function countDocuments(options: ReactorCompatibilityRouteOptions): Promise<number> {
+  return options.ragIngestion?.documentStore
+    ? options.ragIngestion.documentStore.count()
+    : state.documents.size;
+}
+
+function storedRagDocumentToCompat(document: StoredRagDocument): CompatRecord {
+  return {
+    chunkCount: document.chunkCount,
+    chunkIds: [...document.chunkIds],
+    content: document.content,
+    createdAt: document.createdAt.toISOString(),
+    id: document.id,
+    indexed: document.indexed,
+    metadata: document.metadata,
+    source: document.source ?? null,
+    updatedAt: document.updatedAt.toISOString()
   };
 }
 
@@ -6796,7 +6905,16 @@ function prefixValidationDetails(prefix: string, details: JsonObject): JsonObjec
   );
 }
 
-function findDocumentByContentHash(contentHash: string): CompatRecord | undefined {
+async function findDocumentByContentHash(
+  options: ReactorCompatibilityRouteOptions,
+  contentHash: string
+): Promise<CompatRecord | undefined> {
+  const stored = await options.ragIngestion?.documentStore?.findByContentHash(contentHash);
+
+  if (stored) {
+    return storedRagDocumentToCompat(stored);
+  }
+
   return [...state.documents.values()].find((document) => {
     const metadata = jsonObjectField(document.metadata);
     return metadata[DOCUMENT_CONTENT_HASH_KEY] === contentHash;
@@ -8143,7 +8261,7 @@ async function slackFaqIngest(
     return slackFaqNotFound(reply, channelId);
   }
 
-  const documentCount = slackFaqDocuments(channelId).length;
+  const documentCount = (await slackFaqDocuments(options, channelId)).length;
   const result = {
     apiCalls: 0,
     channelId,
@@ -8155,7 +8273,11 @@ async function slackFaqIngest(
   return result;
 }
 
-function slackFaqProbe(request: FastifyRequest, reply: FastifyReply) {
+async function slackFaqProbe(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  options: ReactorCompatibilityRouteOptions
+) {
   const { channelId } = request.params as { readonly channelId: string };
   const validation = validateSlackFaqChannelId(channelId, reply);
   if (validation) {
@@ -8168,13 +8290,17 @@ function slackFaqProbe(request: FastifyRequest, reply: FastifyReply) {
   }
 
   return {
-    candidates: slackFaqCandidates(channelId, query, readNumber(toBody(request.body).topK, 5)),
+    candidates: await slackFaqCandidates(options, channelId, query, readNumber(toBody(request.body).topK, 5)),
     channelId,
     query
   };
 }
 
-function slackFaqDryRun(request: FastifyRequest, reply: FastifyReply) {
+async function slackFaqDryRun(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  options: ReactorCompatibilityRouteOptions
+) {
   const { channelId } = request.params as { readonly channelId: string };
   const validation = validateSlackFaqChannelId(channelId, reply);
   if (validation) {
@@ -8188,9 +8314,10 @@ function slackFaqDryRun(request: FastifyRequest, reply: FastifyReply) {
 
   const registration = findCompatRecord(state.slackFaq, channelId);
   const threshold = readNumber(registration?.confidenceThreshold, 0.8);
+  const candidates = await slackFaqCandidates(options, channelId, query, 3);
   const matched = registration && readBoolean(registration.enabled, true)
     && slackFaqShouldTrigger(stringField(registration.autoReplyMode, "MENTION"), readBoolean(toBody(request.body).asMention, true))
-    ? slackFaqCandidates(channelId, query, 3)
+    ? candidates
       .find((candidate) => readNumber(candidate.score, 0) >= threshold)
     : undefined;
 
@@ -8203,13 +8330,12 @@ function slackFaqDryRun(request: FastifyRequest, reply: FastifyReply) {
     };
   }
 
-  const docs = slackFaqCandidates(channelId, query, 3);
   return {
     channelId,
     matched: true,
     query,
     reply: {
-      matchedDocIds: docs.map((candidate) => stringField(candidate.id, "")),
+      matchedDocIds: candidates.map((candidate) => stringField(candidate.id, "")),
       score: readNumber(matched.score, 0),
       text: slackFaqReplyText(matched, threshold)
     }
@@ -8237,9 +8363,14 @@ function slackFaqReplyText(candidate: JsonObject, threshold: number): string {
   return `*FAQ 매칭*\n${preview}${source}\n_신뢰도 ${readNumber(candidate.score, 0).toFixed(2)} (임계값 ${threshold.toFixed(2)})_`;
 }
 
-function slackFaqCandidates(channelId: string, query: string, topK: number): JsonObject[] {
+async function slackFaqCandidates(
+  options: ReactorCompatibilityRouteOptions,
+  channelId: string,
+  query: string,
+  topK: number
+): Promise<JsonObject[]> {
   const clamped = Math.min(20, Math.max(1, Math.trunc(topK)));
-  return slackFaqDocuments(channelId)
+  return (await slackFaqDocuments(options, channelId))
     .map((document) => {
       const metadata = jsonObjectField(document.metadata);
       return {
@@ -8254,8 +8385,11 @@ function slackFaqCandidates(channelId: string, query: string, topK: number): Jso
     .slice(0, clamped);
 }
 
-function slackFaqDocuments(channelId: string): CompatRecord[] {
-  return [...state.documents.values()].filter((document) => {
+async function slackFaqDocuments(
+  options: ReactorCompatibilityRouteOptions,
+  channelId: string
+): Promise<CompatRecord[]> {
+  return (await listDocuments(options, { limit: 1000 })).filter((document) => {
     const metadata = jsonObjectField(document.metadata);
     const source = stringField(metadata.source, stringField(metadata.type, ""));
     const channel = stringField(metadata.channel_id, stringField(metadata.channelId, ""));
@@ -8417,6 +8551,7 @@ async function dashboardSummary(options: ReactorCompatibilityRouteOptions) {
     options.scheduler?.executionStore?.findRecent(6) ?? []
   ]);
   const metricEvents = recordedMetricEvents(options);
+  const documentCount = await countDocuments(options);
   const enabledJobs = scheduledJobs.filter((job) => job.enabled !== false).length;
   const runningJobs = scheduledJobs.filter((job) => job.lastStatus === "running").length;
   const failedJobs = scheduledJobs.filter((job) => job.enabled !== false && job.lastStatus === "failed").length;
@@ -8429,7 +8564,7 @@ async function dashboardSummary(options: ReactorCompatibilityRouteOptions) {
     generatedAt: Date.now(),
     mcp: mcpStatusSummary(options, mcpServers),
     metrics: opsMetricSnapshots(options),
-    ragEnabled: state.documents.size > 0 || state.ragCandidates.size > 0,
+    ragEnabled: documentCount > 0 || state.ragCandidates.size > 0,
     recentSchedulerExecutions: recentExecutions.map(toOpsSchedulerExecutionSummary),
     recentTrustEvents: recentTrustEvents(metricEvents),
     responseTrust: responseTrustSummary(metricEvents),
@@ -9405,7 +9540,7 @@ async function reviewRagCandidate(
   const documentId = targetStatus === "INGESTED" ? createRunId("rag_document") : null;
 
   if (targetStatus === "INGESTED") {
-    createRecord(state.documents, {
+    await saveDocumentRecord(options, {
       content: stringField(candidate.response, ""),
       id: documentId,
       metadata: {
@@ -9413,7 +9548,7 @@ async function reviewRagCandidate(
         channel: nullableStringResponse(candidate.channel),
         runId: stringField(candidate.runId, "")
       }
-    }, "document");
+    });
   }
 
   const reviewed = await updateRagCandidateReview(options, {

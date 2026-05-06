@@ -30,6 +30,7 @@ export const migrations: readonly SqlMigration[] = [
       DROP TABLE IF EXISTS slack_response_tracking;
       DROP TABLE IF EXISTS channel_faq_registrations;
       DROP TABLE IF EXISTS slack_bot_instances;
+      DROP TABLE IF EXISTS rag_documents;
       DROP TABLE IF EXISTS rag_ingestion_candidates;
       DROP TABLE IF EXISTS rag_ingestion_policy;
       DROP TABLE IF EXISTS experiment_reports;
@@ -456,6 +457,28 @@ export const migrations: readonly SqlMigration[] = [
         ON rag_ingestion_candidates(status, captured_at DESC);
       CREATE INDEX IF NOT EXISTS idx_rag_ingestion_candidates_channel
         ON rag_ingestion_candidates(channel);
+
+      CREATE TABLE IF NOT EXISTS rag_documents (
+        id VARCHAR(128) PRIMARY KEY,
+        content TEXT NOT NULL,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        content_hash VARCHAR(64) NOT NULL,
+        chunk_count INTEGER NOT NULL DEFAULT 1,
+        chunk_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+        indexed BOOLEAN NOT NULL DEFAULT TRUE,
+        source VARCHAR(255),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_rag_documents_created_at
+        ON rag_documents(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_rag_documents_content_hash
+        ON rag_documents(content_hash);
+      CREATE INDEX IF NOT EXISTS idx_rag_documents_source
+        ON rag_documents(source);
+      CREATE INDEX IF NOT EXISTS idx_rag_documents_metadata
+        ON rag_documents USING GIN (metadata);
 
       CREATE TABLE IF NOT EXISTS conversation_summaries (
         session_id VARCHAR(255) PRIMARY KEY,

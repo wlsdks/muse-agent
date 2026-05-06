@@ -51,6 +51,7 @@ describe.skipIf(!runPostgresSmoke)("PostgreSQL runtime migrations", () => {
     await expect(tableExists("agent_runs")).resolves.toBe(true);
     await expect(tableExists("conversation_messages")).resolves.toBe(true);
     await expect(tableExists("pending_approvals")).resolves.toBe(true);
+    await expect(tableExists("rag_documents")).resolves.toBe(true);
     await expect(tableExists("trace_events")).resolves.toBe(true);
     await expect(tableExists("runtime_settings")).resolves.toBe(true);
     await expect(tableExists("users")).resolves.toBe(true);
@@ -73,6 +74,13 @@ describe.skipIf(!runPostgresSmoke)("PostgreSQL runtime migrations", () => {
       status: "completed"
     }).execute();
 
+    await db.insertInto("rag_documents").values({
+      content: "PostgreSQL persisted document smoke",
+      content_hash: "postgres-smoke-hash",
+      id: "doc-postgres-smoke",
+      metadata: { source: "postgres-smoke" }
+    }).execute();
+
     const setting = await db.selectFrom("runtime_settings")
       .select(["key", "value"])
       .where("key", "=", "postgres_smoke")
@@ -80,6 +88,10 @@ describe.skipIf(!runPostgresSmoke)("PostgreSQL runtime migrations", () => {
     const run = await db.selectFrom("agent_runs")
       .select(["id", "status"])
       .where("id", "=", "run-postgres-smoke")
+      .executeTakeFirstOrThrow();
+    const document = await db.selectFrom("rag_documents")
+      .select(["id", "content_hash"])
+      .where("id", "=", "doc-postgres-smoke")
       .executeTakeFirstOrThrow();
 
     expect(setting).toEqual({
@@ -89,6 +101,10 @@ describe.skipIf(!runPostgresSmoke)("PostgreSQL runtime migrations", () => {
     expect(run).toEqual({
       id: "run-postgres-smoke",
       status: "completed"
+    });
+    expect(document).toEqual({
+      content_hash: "postgres-smoke-hash",
+      id: "doc-postgres-smoke"
     });
   }, 120_000);
 

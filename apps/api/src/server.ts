@@ -34,7 +34,7 @@ import type { ModelProvider } from "@muse/model";
 import type { FollowupSuggestionStore } from "@muse/observability";
 import type { GuardRuleStore, ToolPolicyStore } from "@muse/policy";
 import type { FeedbackStore, PromptLabCatalogStore, PromptLabExperimentStore } from "@muse/promptlab";
-import type { RagIngestionCandidateStore, RagIngestionPolicyStore } from "@muse/rag";
+import type { RagDocumentStore, RagIngestionCandidateStore, RagIngestionPolicyStore } from "@muse/rag";
 import {
   InMemoryRuntimeSettingsStore,
   RuntimeSettingsService,
@@ -71,6 +71,7 @@ export interface ServerOptions {
   readonly requireAuth?: boolean;
   readonly ragIngestion?: {
     readonly candidateStore: RagIngestionCandidateStore;
+    readonly documentStore?: RagDocumentStore;
     readonly policyStore: RagIngestionPolicyStore;
   };
   readonly runtimeSettings?: RuntimeSettingsService;

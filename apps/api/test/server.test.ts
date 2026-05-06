@@ -27,7 +27,7 @@ import {
 import { InMemoryTaskMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
 import { InMemoryAgentMetrics, InMemoryFollowupSuggestionStore } from "@muse/observability";
-import { InMemoryRagIngestionCandidateStore, InMemoryRagIngestionPolicyStore } from "@muse/rag";
+import { InMemoryRagDocumentStore, InMemoryRagIngestionCandidateStore, InMemoryRagIngestionPolicyStore } from "@muse/rag";
 import {
   InMemoryAdminOperationsStore,
   InMemoryAgentRunHistoryStore,
@@ -3273,6 +3273,70 @@ describe("api server", () => {
     });
     expect(invalidDelete.json()).not.toHaveProperty("code");
     expect(deleted.statusCode).toBe(204);
+  });
+
+  it("keeps Reactor document state in the configured RAG document store across API instances", async () => {
+    const authService = createAuthService();
+    const registered = authService.register({
+      email: "document_persistence_account",
+      name: "Document Persistence",
+      password: "password-1"
+    });
+    const ragIngestion = {
+      candidateStore: new InMemoryRagIngestionCandidateStore(),
+      documentStore: new InMemoryRagDocumentStore(),
+      policyStore: new InMemoryRagIngestionPolicyStore()
+    };
+    const firstServer = buildServer({ authService, logger: false, ragIngestion, requireAuth: true });
+    const secondServer = buildServer({ authService, logger: false, ragIngestion, requireAuth: true });
+    const headers = { authorization: `Bearer ${registered.token}` };
+
+    const created = await firstServer.inject({
+      headers,
+      method: "POST",
+      payload: {
+        content: "Persisted migration document",
+        metadata: { source: "persistence-test" }
+      },
+      url: "/api/documents"
+    });
+    const listed = await secondServer.inject({
+      headers,
+      method: "GET",
+      url: "/api/documents"
+    });
+    const duplicate = await secondServer.inject({
+      headers,
+      method: "POST",
+      payload: { content: "Persisted migration document" },
+      url: "/api/documents"
+    });
+    const search = await secondServer.inject({
+      headers,
+      method: "POST",
+      payload: {
+        query: "migration",
+        topK: 5
+      },
+      url: "/api/documents/search"
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(listed.json()).toEqual([
+      expect.objectContaining({
+        content: "Persisted migration document",
+        id: created.json().id,
+        metadata: expect.objectContaining({ source: "persistence-test" })
+      })
+    ]);
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json()).toMatchObject({ existingId: created.json().id });
+    expect(search.json()).toEqual([
+      expect.objectContaining({
+        id: created.json().id,
+        score: null
+      })
+    ]);
   });
 
   it("matches Reactor feedback review workflow contracts", async () => {

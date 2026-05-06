@@ -53,6 +53,7 @@ export interface MuseDatabase {
   readonly personas: PersonaTable;
   readonly prompt_templates: PromptTemplateTable;
   readonly prompt_versions: PromptVersionTable;
+  readonly rag_documents: RagDocumentTable;
   readonly rag_ingestion_candidates: RagIngestionCandidateTable;
   readonly rag_ingestion_policy: RagIngestionPolicyTable;
   readonly runtime_settings: RuntimeSettingTable;
@@ -333,6 +334,19 @@ export interface PromptVersionTable {
   readonly status: string;
   readonly change_log: string;
   readonly created_at: Timestamp;
+}
+
+export interface RagDocumentTable {
+  readonly id: string;
+  readonly content: string;
+  readonly metadata: JsonColumn;
+  readonly content_hash: string;
+  readonly chunk_count: number;
+  readonly chunk_ids: JsonColumn;
+  readonly indexed: boolean;
+  readonly source: string | null;
+  readonly created_at: Timestamp;
+  readonly updated_at: Timestamp;
 }
 
 export interface UserTable {

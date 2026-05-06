@@ -381,7 +381,7 @@ Expected: both pass. If Docker/Postgres is unavailable, final summary must say `
 - Modify as needed: `packages/policy/src/index.ts`
 - Modify as needed: `apps/api/test/server.test.ts`
 
-- [ ] **Step 1: Inventory remaining local Maps**
+- [x] **Step 1: Inventory remaining local Maps**
 
 Run:
 
@@ -391,7 +391,7 @@ rg -n "new Map|const .*Map|= new Map" apps/api/src/reactor-compat-routes.ts
 
 Expected: list every local map-like state holder.
 
-- [ ] **Step 2: Classify by risk**
+- [x] **Step 2: Classify by risk**
 
 Create a short table in `docs/audits/reactor-module-parity-audit-2026-05-06.md`:
 
@@ -399,7 +399,7 @@ Create a short table in `docs/audits/reactor-module-parity-audit-2026-05-06.md`:
 route family | current state holder | user impact if process restarts | target store | status
 ```
 
-- [ ] **Step 3: Move one high-risk family**
+- [x] **Step 3: Move one high-risk family**
 
 Pick the highest-risk family that affects approvals, audits, run history, guard policy, promptlab, or runtime settings. Add a failing API test that:
 
@@ -410,11 +410,11 @@ Pick the highest-risk family that affects approvals, audits, run history, guard 
 4. Expects the state to survive.
 ```
 
-- [ ] **Step 4: Implement the store wiring**
+- [x] **Step 4: Implement the store wiring**
 
 Move route reads/writes from local process state into the existing package store or add a narrow store method in the package that owns the data.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 

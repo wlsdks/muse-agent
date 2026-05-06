@@ -14,11 +14,12 @@ but those checks do not prove behavior parity. This document tracks feature-leve
   - Reactor DB migration files: 76
   - Muse DB migration files: 1
   - Reactor tables: 52
-  - Muse tables: 64
+  - Muse tables: 65
   - Missing Reactor tables: 0
 - `pnpm check`: pass
-- Local caveat: current shell uses Node v22.18.0 while Muse requires Node >=24.
-- Rust caveat: `cargo test` could not run because Cargo is not installed in this shell.
+- Node 24 diagnostic smoke: pass via `pnpm smoke:diagnostic`
+- Rust runner smoke: pass via `cargo test -p muse-runner` and `MUSE_RUNNER_PATH=... pnpm --filter @muse/tools test`
+- PostgreSQL/Testcontainers migration smoke: pass via `pnpm --filter @muse/db test:postgres`
 - Browser caveat: Playwright web smoke now covers the operator console against mocked API-backed chat, approvals, and recent runs; full live API/browser smoke still needs Node 24 environment coverage.
 
 ## Summary
@@ -72,3 +73,13 @@ but those checks do not prove behavior parity. This document tracks feature-leve
 5. Implement richer diagnostics and production exporter wiring.
 6. Keep write-tool blocking in guards/policy rather than fail-open hooks.
 7. Continue closing large behavior gaps in `agent` and `slack` Socket Mode; RAG now has local vector/hybrid/adaptive/parent/conversation-aware retrieval plus retrieval eval assertions but still needs live vector DB verification, tool governance still needs deeper runner parity, and guard still needs live classifier calibration/provider contract coverage.
+
+## Process-Local Compat State Risk Ledger
+
+| Route family | Current state holder | User impact if process restarts | Target store | Status |
+| --- | --- | --- | --- | --- |
+| `/api/documents`, Slack FAQ document search, RAG analytics status | `state.documents` fallback, now `RagDocumentStore` when configured | Uploaded knowledge documents, duplicate checks, search results, and Slack FAQ dry-run/probe candidates disappear after restart | `packages/rag` `RagDocumentStore`, `rag_documents` table, autoconfigure Kysely wiring | Migrated for configured runtime; in-memory fallback remains only for tests/scaffold |
+| `/api/admin/slack/proactive-channels` | `state.proactiveChannels` | Proactive channel configuration is lost after restart | Slack/admin persistence store | Open |
+| Slack FAQ event stats and feedback summaries | `state.slackFaqEvents`, `state.slackFaqFeedback` | FAQ usage/feedback analytics reset after restart | `SlackFeedbackEventStore` plus stats query helpers | Open |
+| Swagger/OpenAPI MCP source compatibility | `state.swaggerSources` | Imported Swagger sources are lost after restart | MCP server/source store | Open |
+| Legacy prompt experiment trial arrays | `state.promptExperimentTrials` fallback | Trial detail can diverge from persisted experiment results if route uses fallback | PromptLab experiment store | Needs audit |
