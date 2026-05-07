@@ -296,6 +296,17 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- seventh loopback MCP server `muse.diff` ships by default (iteration 36).
+  Two new tools: `lines` (line-level diff via deterministic
+  Longest-Common-Subsequence backtrack, returns ordered `{kind, line,
+  leftLine?, rightLine?}` entries plus equals/inserts/deletes counts;
+  bounded at 2,000 lines per side to keep the O(M*N) DP under ~4MB) and
+  `equal` (byte-equality plus per-side SHA-256 digests for quick
+  verification). Default loopback roster: 6 → 7. Smoke check renamed
+  and broadened to exercise both diff tools end-to-end (3-line vs
+  4-line fixture asserts equals=2/inserts=2/deletes=1, equal-input
+  asserts matching digests). mcp tests 34 → 38, broad smoke 45/45,
+  route parity 0 missing.
 - agent-core split + dead-code cleanup (iteration 35). Two tracing-span
   helpers (`recordContextWindowSpanAttributes`, `recordUsageSpanAttributes`)
   moved to `runtime-helpers.ts` with a new `SpanAttributableContextWindow`

@@ -13,6 +13,7 @@ import {
   createLoopbackMcpConnection,
   createLoopbackMcpMuseTools,
   createCryptoMcpServer,
+  createDiffMcpServer,
   createJsonMcpServer,
   createMathMcpServer,
   createUrlMcpServer,
@@ -464,10 +465,11 @@ function createPostgresBuilder(): Kysely<MuseDatabase> {
 }
 
 describe("loopback MCP servers", () => {
-  it("createDefaultLoopbackMcpServers ships six reference servers (time/text/math/json/url/crypto) by default", () => {
+  it("createDefaultLoopbackMcpServers ships seven reference servers (time/text/math/json/url/crypto/diff) by default", () => {
     const servers = createDefaultLoopbackMcpServers({ now: () => new Date("2026-05-15T00:00:00.000Z") });
     expect(servers.map((server) => server.name).sort()).toEqual([
       "muse.crypto",
+      "muse.diff",
       "muse.json",
       "muse.math",
       "muse.text",
@@ -690,5 +692,55 @@ describe("loopback MCP servers", () => {
     );
     expect(await connection.callTool!("uuid", {})).toEqual({ uuid: "00000000-0000-0000-0000-000000000001" });
     expect(await connection.callTool!("uuid", {})).toEqual({ uuid: "00000000-0000-0000-0000-000000000002" });
+  });
+
+  it("muse.diff#lines computes deletes / inserts / equals against a known fixture", async () => {
+    const connection = createLoopbackMcpConnection(createDiffMcpServer());
+    const result = await connection.callTool!("lines", {
+      left: "alpha\nbeta\ngamma",
+      right: "alpha\nBETA\ngamma\ndelta"
+    });
+    expect(result.equals).toBe(2);
+    expect(result.inserts).toBe(2);
+    expect(result.deletes).toBe(1);
+    const kinds = result.diff.map((entry) => entry.kind);
+    // The exact ordering of the BETA / beta block is governed by the LCS
+    // backtrack, which can place delete-before-insert or vice versa depending
+    // on dp ties. Both orderings are valid; assert the multiset.
+    expect(kinds.filter((k) => k === "equal")).toHaveLength(2);
+    expect(kinds.filter((k) => k === "insert")).toHaveLength(2);
+    expect(kinds.filter((k) => k === "delete")).toHaveLength(1);
+    const lines = result.diff.map((entry) => entry.line);
+    expect(lines).toContain("BETA");
+    expect(lines).toContain("delta");
+  });
+
+  it("muse.diff#lines treats identical inputs as all equals", async () => {
+    const connection = createLoopbackMcpConnection(createDiffMcpServer());
+    const result = await connection.callTool!("lines", { left: "x\ny", right: "x\ny" });
+    expect(result.equals).toBe(2);
+    expect(result.inserts).toBe(0);
+    expect(result.deletes).toBe(0);
+    expect(result.diff.every((entry) => entry.kind === "equal")).toBe(true);
+  });
+
+  it("muse.diff#lines rejects oversized input", async () => {
+    const connection = createLoopbackMcpConnection(createDiffMcpServer());
+    const oversized = Array.from({ length: 2_001 }, (_, index) => `line-${index}`).join("\n");
+    expect(await connection.callTool!("lines", { left: oversized, right: "tiny" })).toEqual({
+      error: "each side must be at most 2000 lines"
+    });
+  });
+
+  it("muse.diff#equal reports byte-equal status and per-side digests", async () => {
+    const connection = createLoopbackMcpConnection(createDiffMcpServer());
+    const equalResult = await connection.callTool!("equal", { left: "muse", right: "muse" });
+    expect(equalResult).toMatchObject({
+      equal: true,
+      leftDigest: "4016c3db3bc3c731a4148022f43ebd6d4422b77976763135b9d9afcb9b71b2c1"
+    });
+    const diffResult = await connection.callTool!("equal", { left: "muse", right: "Muse" });
+    expect(diffResult.equal).toBe(false);
+    expect(diffResult.leftDigest).not.toBe(diffResult.rightDigest);
   });
 });

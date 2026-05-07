@@ -317,16 +317,16 @@ try {
     assert(timeNow.inputSchema && typeof timeNow.inputSchema === "object", "expected real inputSchema for time_now");
   });
 
-  await record("Six loopback MCP servers (time/text/math/json/url/crypto) expose tools end-to-end", async () => {
+  await record("Seven loopback MCP servers (time/text/math/json/url/crypto/diff) expose tools end-to-end", async () => {
     const {
       createDefaultLoopbackMcpServers,
       createLoopbackMcpConnection
     } = await import(`${rootDir}/packages/mcp/dist/index.js`);
     const servers = createDefaultLoopbackMcpServers();
-    assert(servers.length === 6, `expected 6 default loopback servers, got ${servers.length}`);
+    assert(servers.length === 7, `expected 7 default loopback servers, got ${servers.length}`);
     const names = servers.map((s) => s.name).sort();
     assert(
-      JSON.stringify(names) === JSON.stringify(["muse.crypto", "muse.json", "muse.math", "muse.text", "muse.time", "muse.url"]),
+      JSON.stringify(names) === JSON.stringify(["muse.crypto", "muse.diff", "muse.json", "muse.math", "muse.text", "muse.time", "muse.url"]),
       `expected default names, got ${JSON.stringify(names)}`
     );
 
@@ -375,6 +375,17 @@ try {
     const id = await crypto.callTool("uuid", {});
     assert(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id.uuid),
       `expected uuid v4 format, got ${id.uuid}`);
+
+    const diff = createLoopbackMcpConnection(servers.find((s) => s.name === "muse.diff"));
+    const lineDiff = await diff.callTool("lines", {
+      left: "alpha\nbeta\ngamma",
+      right: "alpha\nBETA\ngamma\ndelta"
+    });
+    assert(lineDiff.equals === 2 && lineDiff.inserts === 2 && lineDiff.deletes === 1,
+      `expected equals=2 inserts=2 deletes=1, got ${JSON.stringify(lineDiff)}`);
+    const equalCheck = await diff.callTool("equal", { left: "muse", right: "muse" });
+    assert(equalCheck.equal === true && equalCheck.leftDigest === equalCheck.rightDigest,
+      `expected equal+matching digests, got ${JSON.stringify(equalCheck)}`);
   });
 
   await record("Chunk-merging retriever joins chunks of the same parent and dedupes by id", async () => {
