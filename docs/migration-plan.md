@@ -296,6 +296,13 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- Slack reminder compatibility now exists in `@muse/integrations`. `parseReminderTime` recognizes the
+  Reactor English (`at HH:mm`) and Korean (`N시 M분에`) suffixes, rolling past times to the next day in the
+  configured timezone (default `Asia/Seoul`). `InMemoryReminderStore` provides per-user FIFO storage with
+  the Reactor 50-per-user cap and a `collectDue` API. `createSlackReminderPoller` dispatches due reminders as
+  bell-prefixed DMs through the existing `SlackMessageTransport` on a configurable interval.
+  `handleSlackReminderCommand` parses `add`/`list`/`done <id>`/`clear` subcommands so the `/muse remind` slash
+  surface can be wired in without leaking store details into the route layer.
 - Token cost analytics compatibility now uses a real `TokenCostQuery` service. `KyselyTokenCostQuery`
   reads `metric_token_usage` (now a typed table in `@muse/db`) for per-session, daily, and top-expensive
   aggregations, while `InMemoryTokenCostQuery` performs the same grouping over an `InMemoryTokenUsageSink`.

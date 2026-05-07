@@ -19,6 +19,10 @@ import {
   CommandRouter,
   createFollowupSuggestionInteractionHandler,
   createSlackProgressHook,
+  createSlackReminderPoller,
+  handleSlackReminderCommand,
+  InMemoryReminderStore,
+  parseReminderTime,
   extractFollowupCategory,
   FetchSlackResponseUrlTransport,
   FetchSlackWebApiMessageTransport,
@@ -1487,6 +1491,172 @@ describe("Slack followup suggestions", () => {
     it("registers the FOLLOWUP_ACTION_PREFIX as the dispatcher actionIdPrefix", () => {
       const handler = createFollowupSuggestionInteractionHandler({ runAgent: async () => null });
       expect(handler.actionIdPrefix).toBe(FOLLOWUP_ACTION_PREFIX);
+    });
+  });
+});
+
+describe("Slack reminders", () => {
+  describe("parseReminderTime", () => {
+    const baseNow = new Date("2026-05-07T01:00:00.000Z");
+
+    it("parses an English 'at HH:mm' suffix and removes it from the text", () => {
+      const result = parseReminderTime("Coffee with team at 18:30", { now: () => baseNow, timezone: "UTC" });
+      expect(result.cleanText).toBe("Coffee with team");
+      expect(result.dueAt?.toISOString()).toBe("2026-05-07T18:30:00.000Z");
+    });
+
+    it("parses a Korean 'N시 M분에' suffix and removes it from the text", () => {
+      const result = parseReminderTime("회의 준비 9시 30분에", { now: () => baseNow, timezone: "UTC" });
+      expect(result.cleanText).toBe("회의 준비");
+      expect(result.dueAt?.toISOString()).toBe("2026-05-07T09:30:00.000Z");
+    });
+
+    it("rolls past times to the next day", () => {
+      const result = parseReminderTime("Standup at 0:30", {
+        now: () => new Date("2026-05-07T01:00:00.000Z"),
+        timezone: "UTC"
+      });
+      expect(result.dueAt?.toISOString()).toBe("2026-05-08T00:30:00.000Z");
+    });
+
+    it("returns the original text without dueAt when no time expression is present", () => {
+      const result = parseReminderTime("just a note", { now: () => baseNow, timezone: "UTC" });
+      expect(result).toEqual({ cleanText: "just a note" });
+    });
+
+    it("rejects malformed time values (hour out of range)", () => {
+      const result = parseReminderTime("bad at 99:00", { now: () => baseNow, timezone: "UTC" });
+      expect(result.dueAt).toBeUndefined();
+    });
+  });
+
+  describe("InMemoryReminderStore", () => {
+    it("assigns sequential per-user ids and returns them sorted", () => {
+      const store = new InMemoryReminderStore({ now: () => new Date("2026-05-07T00:00:00.000Z"), timezone: "UTC" });
+      store.add("U1", "first");
+      store.add("U1", "second");
+      store.add("U2", "other");
+      expect(store.list("U1").map((r) => `${r.id}:${r.text}`)).toEqual(["1:first", "2:second"]);
+      expect(store.list("U2").map((r) => `${r.id}:${r.text}`)).toEqual(["1:other"]);
+    });
+
+    it("trims overflow once max-per-user is exceeded", () => {
+      const store = new InMemoryReminderStore({
+        maxPerUser: 2,
+        now: () => new Date("2026-05-07T00:00:00.000Z"),
+        timezone: "UTC"
+      });
+      store.add("U1", "a");
+      store.add("U1", "b");
+      store.add("U1", "c");
+      expect(store.list("U1").map((r) => r.text)).toEqual(["b", "c"]);
+    });
+
+    it("removes a reminder by id with done() and reports null when missing", () => {
+      const store = new InMemoryReminderStore({ now: () => new Date(), timezone: "UTC" });
+      const created = store.add("U1", "do");
+      expect(store.done("U1", created.id)?.text).toBe("do");
+      expect(store.done("U1", created.id)).toBeUndefined();
+    });
+
+    it("clears all reminders for a user and returns the prior count", () => {
+      const store = new InMemoryReminderStore({ now: () => new Date(), timezone: "UTC" });
+      store.add("U1", "a");
+      store.add("U1", "b");
+      expect(store.clear("U1")).toBe(2);
+      expect(store.list("U1")).toEqual([]);
+    });
+
+    it("collectDue returns and removes reminders whose dueAt has passed", () => {
+      let now = new Date("2026-05-07T00:00:00.000Z");
+      const store = new InMemoryReminderStore({ now: () => now, timezone: "UTC" });
+      store.add("U1", "early at 0:30");
+      store.add("U1", "later at 23:30");
+      now = new Date("2026-05-07T01:00:00.000Z");
+      const due = store.collectDue(now);
+      expect(due.map((entry) => `${entry.userId}:${entry.reminder.text}`)).toEqual(["U1:early"]);
+      expect(store.list("U1").map((r) => r.text)).toEqual(["later"]);
+    });
+  });
+
+  describe("createSlackReminderPoller", () => {
+    it("dispatches due reminders as bell DMs via the message transport", async () => {
+      const posted: { channelId: string; text: string }[] = [];
+      const transport = {
+        postMessage: async (input: { channelId: string; text: string }) => {
+          posted.push({ channelId: input.channelId, text: input.text });
+          return { ok: true, statusCode: 200 };
+        }
+      };
+      let now = new Date("2026-05-07T00:00:00.000Z");
+      const store = new InMemoryReminderStore({ now: () => now, timezone: "UTC" });
+      store.add("U1", "review at 0:30");
+      now = new Date("2026-05-07T01:00:00.000Z");
+
+      const poller = createSlackReminderPoller({ messageTransport: transport, now: () => now, store });
+      await poller.tick();
+
+      expect(posted).toEqual([
+        {
+          channelId: "U1",
+          text: ":bell: *Reminder #1*\nreview"
+        }
+      ]);
+    });
+
+    it("does not throw when the transport rejects (logger receives the error)", async () => {
+      const errors: unknown[] = [];
+      let now = new Date("2026-05-07T00:00:00.000Z");
+      const store = new InMemoryReminderStore({ now: () => now, timezone: "UTC" });
+      store.add("U1", "review at 0:30");
+      now = new Date("2026-05-07T01:00:00.000Z");
+      const poller = createSlackReminderPoller({
+        logger: (_message, error) => errors.push(error),
+        messageTransport: {
+          postMessage: async () => {
+            throw new Error("slack down");
+          }
+        },
+        now: () => now,
+        store
+      });
+
+      await expect(poller.tick()).resolves.toBeUndefined();
+      expect(errors).toHaveLength(1);
+    });
+  });
+
+  describe("handleSlackReminderCommand", () => {
+    it("registers a reminder with `add` and echoes the assigned id", () => {
+      const store = new InMemoryReminderStore({ now: () => new Date("2026-05-07T00:00:00.000Z"), timezone: "UTC" });
+      const result = handleSlackReminderCommand(store, "U1", "add 회의 9시 30분에");
+      expect(result.text).toContain("리마인더 #1 등록");
+      expect(result.text).toContain("회의");
+    });
+
+    it("returns 'no reminders' when the user has none and `list` is requested", () => {
+      const store = new InMemoryReminderStore({ now: () => new Date(), timezone: "UTC" });
+      expect(handleSlackReminderCommand(store, "U1", "list").text).toBe("리마인더가 없어요.");
+    });
+
+    it("removes a reminder via `done <id>` and reports missing ids gracefully", () => {
+      const store = new InMemoryReminderStore({ now: () => new Date(), timezone: "UTC" });
+      store.add("U1", "task");
+      expect(handleSlackReminderCommand(store, "U1", "done 1").text).toContain("완료 처리");
+      expect(handleSlackReminderCommand(store, "U1", "done 1").text).toContain("찾을 수 없어요");
+    });
+
+    it("clears all reminders via `clear`", () => {
+      const store = new InMemoryReminderStore({ now: () => new Date(), timezone: "UTC" });
+      store.add("U1", "a");
+      store.add("U1", "b");
+      expect(handleSlackReminderCommand(store, "U1", "clear").text).toContain("2건 삭제");
+      expect(store.list("U1")).toEqual([]);
+    });
+
+    it("returns help text for unknown subcommands", () => {
+      const store = new InMemoryReminderStore({ now: () => new Date(), timezone: "UTC" });
+      expect(handleSlackReminderCommand(store, "U1", "explode").text).toContain("지원하는 명령");
     });
   });
 });
