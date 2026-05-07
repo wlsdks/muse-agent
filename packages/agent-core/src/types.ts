@@ -68,3 +68,23 @@ export interface OutputGuardStage {
   readonly id: string;
   check(content: string, context: OutputGuardContext): Awaitable<OutputGuardDecision>;
 }
+
+export interface VerifiedSource {
+  readonly title: string;
+  readonly url: string;
+  readonly toolName?: string;
+}
+
+export interface ResponseFilterContext {
+  readonly runId: string;
+  readonly input: AgentRunInput;
+  readonly response: ModelResponse;
+  readonly toolInsights?: readonly string[];
+  readonly toolsUsed?: readonly string[];
+  readonly verifiedSources?: readonly VerifiedSource[];
+}
+
+export interface ResponseFilterStage {
+  readonly id: string;
+  apply(response: ModelResponse, context: ResponseFilterContext): Awaitable<ModelResponse>;
+}

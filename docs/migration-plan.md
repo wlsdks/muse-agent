@@ -296,6 +296,14 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- agent-core monolith split continued (iteration 19). Response-filter types
+  (`ResponseFilterContext`, `ResponseFilterStage`, `VerifiedSource`) extracted to `types.ts`. Five
+  self-contained filter factories extracted to `response-filters.ts`
+  (`createMaxLengthResponseFilter`, `createSanitizedTextResponseFilter`,
+  `createSlackUserIdMaskResponseFilter`, `createInternalBrandMaskResponseFilter`,
+  `createFabricationRequestRefusalFilter`). `withResponseFilterRaw` and `isRecord` helpers moved to
+  `internals.ts`. Public API unchanged. Index file: 3,393 → 3,226 lines (cumulative 3,983 → 3,226,
+  -19%, 8 submodules).
 - JARVIS observability snapshot endpoint now exists. `@muse/observability` adds
   `createJarvisObservabilitySnapshotProvider` that aggregates latency summary, token-cost daily +
   topExpensive, SLO snapshot + violations, drift stats, cost-anomaly baseline, monthly budget
