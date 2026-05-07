@@ -1320,6 +1320,7 @@ export {
   createDiffMcpServer,
   createFetchMcpServer,
   createFilesystemMcpServer,
+  describeBuiltinLoopbackMcpServers,
   createJsonMcpServer,
   createLoopbackMcpConnection,
   createLoopbackMcpMuseTools,
@@ -1331,6 +1332,7 @@ export {
   type BuiltinLoopbackOptions,
   type FetchMcpServerOptions,
   type FilesystemMcpServerOptions,
+  type LoopbackMcpCatalogEntry,
   type LoopbackMcpServer,
   type LoopbackMcpToolDefinition
 } from "./loopback.js";

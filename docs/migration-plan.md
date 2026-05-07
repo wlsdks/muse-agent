@@ -90,6 +90,7 @@ route state and runtime services onto Kysely-backed stores.
 
 ## Recent Completion Notes
 
+- `GET /api/jarvis/loopback` exposes the built-in MCP loopback catalog (8 default servers + 2 opt-in) with tool names, risk, opt-in flag, and env-hint requirements so any operator or chat surface can discover what JARVIS-style ambient tools are pluggable without reading source.
 - `createFilesystemMcpServer` adds an opt-in, allowlist-rooted, read-only filesystem loopback MCP server (read/list/stat) for JARVIS-style workspace inspection without giving the agent free disk access. Path resolution rejects sibling-prefix collisions (`/etc` ≠ `/etc-passwd`) and `..` traversal.
 - Plan-execute now streams `plan-generated`, `plan-step-executing`, `plan-step-result`, and `synthesis-started` events so SSE consumers can render reasoning progress; `executePlanExecuteLoop` drains a single `streamPlanExecute` generator (one source of truth for streaming and non-streaming paths).
 - `GET /api/jarvis/runtime` exposes a public manifest (capabilities, locales, tool risk counts, agent-spec/setting totals) so any chat surface or automation can introspect the conductor without admin auth or secrets.

@@ -6512,6 +6512,40 @@ describe("api server", () => {
     }
   });
 
+  it("exposes the loopback MCP catalog at /api/jarvis/loopback", async () => {
+    const server = buildServer({ logger: false });
+    const response = await server.inject({ method: "GET", url: "/api/jarvis/loopback" });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      readonly total: number;
+      readonly servers: readonly { readonly name: string; readonly optIn: boolean; readonly tools: readonly { readonly name: string }[]; readonly toolCount: number; readonly requires?: readonly string[] }[];
+    };
+    expect(body.total).toBe(10);
+    const names = body.servers.map((entry) => entry.name).sort();
+    expect(names).toEqual(["muse.crypto", "muse.diff", "muse.fetch", "muse.fs", "muse.json", "muse.math", "muse.regex", "muse.text", "muse.time", "muse.url"]);
+    const fs = body.servers.find((entry) => entry.name === "muse.fs")!;
+    expect(fs.optIn).toBe(true);
+    expect(fs.requires).toEqual(["allowedRoots (FilesystemMcpServerOptions.allowedRoots)"]);
+    expect(fs.toolCount).toBe(3);
+    expect(fs.tools.map((tool) => tool.name).sort()).toEqual(["list", "read", "stat"]);
+    const time = body.servers.find((entry) => entry.name === "muse.time")!;
+    expect(time.optIn).toBe(false);
+    expect(time.requires).toBeUndefined();
+  });
+
+  it("/api/jarvis/loopback is reachable without auth even when requireAuth is on", async () => {
+    const userStore = new InMemoryUserStore();
+    const authService = new Auth({
+      authProvider: new DefaultAuthProvider(userStore),
+      jwt: new JwtTokenProvider({ jwtSecret: "0123456789abcdef0123456789abcdef" }),
+      revocationStore: new InMemoryTokenRevocationStore(),
+      userStore
+    });
+    const server = buildServer({ authService, logger: false, requireAuth: true });
+    const response = await server.inject({ method: "GET", url: "/api/jarvis/loopback" });
+    expect(response.statusCode).toBe(200);
+  });
+
   it("ignores unknown locale codes in MUSE_RESPONSE_LOCALES", async () => {
     const previousLocales = process.env.MUSE_RESPONSE_LOCALES;
     process.env.MUSE_RESPONSE_LOCALES = "ko,fr,de,en,en";

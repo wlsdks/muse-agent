@@ -1159,6 +1159,64 @@ export function createFilesystemMcpServer(options: FilesystemMcpServerOptions): 
   };
 }
 
+export interface LoopbackMcpCatalogEntry {
+  readonly name: string;
+  readonly description: string;
+  readonly optIn: boolean;
+  /** Env hints that operators must set when `optIn` is true. */
+  readonly requires?: readonly string[];
+  readonly tools: readonly { readonly name: string; readonly description: string; readonly risk: ToolRisk | undefined }[];
+}
+
+/**
+ * Describes every loopback MCP server Muse ships out of the box — the eight
+ * default servers plus the two opt-in ones (`muse.fetch`, `muse.fs`). The
+ * catalog is metadata-only (no IO, no construction of opt-in servers), so it
+ * is safe to expose via a public discovery endpoint without leaking secrets.
+ */
+export function describeBuiltinLoopbackMcpServers(): readonly LoopbackMcpCatalogEntry[] {
+  const defaults = createDefaultLoopbackMcpServers().map((server): LoopbackMcpCatalogEntry => ({
+    description: server.description ?? "",
+    name: server.name,
+    optIn: false,
+    tools: server.tools.map((tool) => ({
+      description: tool.description ?? "",
+      name: tool.name,
+      risk: tool.risk
+    }))
+  }));
+
+  const fetchServer = createFetchMcpServer({ allowedHosts: [] });
+  const fsServer = createFilesystemMcpServer({ allowedRoots: [] });
+
+  const optIn: readonly LoopbackMcpCatalogEntry[] = [
+    {
+      description: fetchServer.description ?? "",
+      name: fetchServer.name,
+      optIn: true,
+      requires: ["allowedHosts (FetchMcpServerOptions.allowedHosts)"],
+      tools: fetchServer.tools.map((tool) => ({
+        description: tool.description ?? "",
+        name: tool.name,
+        risk: tool.risk
+      }))
+    },
+    {
+      description: fsServer.description ?? "",
+      name: fsServer.name,
+      optIn: true,
+      requires: ["allowedRoots (FilesystemMcpServerOptions.allowedRoots)"],
+      tools: fsServer.tools.map((tool) => ({
+        description: tool.description ?? "",
+        name: tool.name,
+        risk: tool.risk
+      }))
+    }
+  ];
+
+  return [...defaults, ...optIn];
+}
+
 /** All eight default loopback servers (time / text / math / json / url / crypto / diff / regex). `muse.fetch` is opt-in via `createFetchMcpServer`. */
 export function createDefaultLoopbackMcpServers(options: BuiltinLoopbackOptions = {}): readonly LoopbackMcpServer[] {
   return [

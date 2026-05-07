@@ -32,6 +32,7 @@ import type {
   SlackResponseTrackerStore
 } from "@muse/integrations";
 import type { AgentEvalStore } from "@muse/eval";
+import { describeBuiltinLoopbackMcpServers } from "@muse/mcp";
 import type { TaskMemoryMaintenance, UserMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
 import type { FollowupSuggestionStore, JarvisObservabilitySnapshot, LatencyQuery, TokenCostQuery } from "@muse/observability";
@@ -549,6 +550,25 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         ...(tool.dependsOn && tool.dependsOn.length > 0 ? { dependsOn: [...tool.dependsOn] } : {})
       })),
       total: filtered.length
+    };
+  });
+
+  server.get("/api/jarvis/loopback", async () => {
+    const catalog = describeBuiltinLoopbackMcpServers();
+    return {
+      servers: catalog.map((entry) => ({
+        description: entry.description,
+        name: entry.name,
+        optIn: entry.optIn,
+        ...(entry.requires ? { requires: [...entry.requires] } : {}),
+        tools: entry.tools.map((tool) => ({
+          description: tool.description,
+          name: tool.name,
+          risk: tool.risk
+        })),
+        toolCount: entry.tools.length
+      })),
+      total: catalog.length
     };
   });
 
@@ -1520,6 +1540,7 @@ function isPublicRequest(method: string, url: string): boolean {
     path === "/api/openapi.json" ||
     path === "/.well-known/agent-card.json" ||
     path === "/api/jarvis/runtime" ||
+    path === "/api/jarvis/loopback" ||
     (method === "POST" && (
       path === "/auth/login" ||
       path === "/auth/register" ||
