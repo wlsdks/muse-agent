@@ -12,7 +12,9 @@ import {
   createDefaultLoopbackMcpServers,
   createLoopbackMcpConnection,
   createLoopbackMcpMuseTools,
+  createJsonMcpServer,
   createMathMcpServer,
+  createUrlMcpServer,
   createMcpSecurityPolicyInsert,
   createMcpServerInsert,
   createMcpServerUpdate,
@@ -461,9 +463,15 @@ function createPostgresBuilder(): Kysely<MuseDatabase> {
 }
 
 describe("loopback MCP servers", () => {
-  it("createDefaultLoopbackMcpServers ships time, text, and math servers by default", () => {
+  it("createDefaultLoopbackMcpServers ships five reference servers (time/text/math/json/url) by default", () => {
     const servers = createDefaultLoopbackMcpServers({ now: () => new Date("2026-05-15T00:00:00.000Z") });
-    expect(servers.map((server) => server.name).sort()).toEqual(["muse.math", "muse.text", "muse.time"]);
+    expect(servers.map((server) => server.name).sort()).toEqual([
+      "muse.json",
+      "muse.math",
+      "muse.text",
+      "muse.time",
+      "muse.url"
+    ]);
     for (const server of servers) {
       expect(server.tools.length).toBeGreaterThan(0);
     }
@@ -551,6 +559,85 @@ describe("loopback MCP servers", () => {
     const connection = createLoopbackMcpConnection(server);
     expect(await connection.callTool!("now", { timezone: "Mars/Olympus" })).toEqual({
       error: expect.stringContaining("unsupported timezone")
+    });
+  });
+
+  it("muse.json#format pretty-prints with the requested indent and minifies on demand", async () => {
+    const connection = createLoopbackMcpConnection(createJsonMcpServer());
+    expect(
+      await connection.callTool!("format", { json: '{"a":1}', mode: "pretty", indent: 4 })
+    ).toEqual({ formatted: '{\n    "a": 1\n}', mode: "pretty" });
+    expect(await connection.callTool!("format", { json: '{ "a": 1 }', mode: "minify" })).toEqual({
+      formatted: '{"a":1}',
+      mode: "minify"
+    });
+    expect(await connection.callTool!("format", { json: "{not json", mode: "pretty" })).toEqual({
+      error: expect.stringContaining("invalid JSON")
+    });
+  });
+
+  it("muse.json#query resolves dot/bracket paths and returns found=false on misses", async () => {
+    const connection = createLoopbackMcpConnection(createJsonMcpServer());
+    expect(
+      await connection.callTool!("query", { value: { foo: { bar: [10, 20, 30] } }, path: "foo.bar[1]" })
+    ).toEqual({ found: true, value: 20 });
+    expect(
+      await connection.callTool!("query", { json: '{"foo":{"bar":"hello"}}', path: "$.foo.bar" })
+    ).toEqual({ found: true, value: "hello" });
+    expect(
+      await connection.callTool!("query", { value: { foo: 1 }, path: "missing.key" })
+    ).toEqual({ found: false, value: null });
+    expect(await connection.callTool!("query", { value: {}, path: "foo[notnum]" })).toEqual({
+      error: "path is malformed"
+    });
+  });
+
+  it("muse.json#merge deep-merges objects with override-wins semantics", async () => {
+    const connection = createLoopbackMcpConnection(createJsonMcpServer());
+    expect(
+      await connection.callTool!("merge", {
+        base: { a: 1, nested: { keep: true, value: "old" } },
+        overrides: { b: 2, nested: { value: "new" } }
+      })
+    ).toEqual({
+      merged: { a: 1, b: 2, nested: { keep: true, value: "new" } }
+    });
+    expect(
+      await connection.callTool!("merge", {
+        base: { items: [1, 2, 3] },
+        overrides: { items: [9] }
+      })
+    ).toEqual({ merged: { items: [9] } });
+    expect(await connection.callTool!("merge", { base: { a: 1 } })).toEqual({
+      error: "overrides is required"
+    });
+  });
+
+  it("muse.url#parse splits a URL into components and surfaces its query map", async () => {
+    const connection = createLoopbackMcpConnection(createUrlMcpServer());
+    expect(
+      await connection.callTool!("parse", { url: "https://example.com:8443/api/v1?x=1&x=2&y=hello#frag" })
+    ).toMatchObject({
+      hostname: "example.com",
+      pathname: "/api/v1",
+      port: "8443",
+      protocol: "https:",
+      query: { x: ["1", "2"], y: "hello" },
+      hash: "#frag"
+    });
+    expect(await connection.callTool!("parse", { url: "::not::a::url" })).toEqual({
+      error: expect.stringContaining("invalid URL")
+    });
+  });
+
+  it("muse.url#encode_query joins string and array values into urlencoded form", async () => {
+    const connection = createLoopbackMcpConnection(createUrlMcpServer());
+    const result = await connection.callTool!("encode_query", {
+      params: { name: "muse jarvis", tags: ["a", "b"], hidden: null }
+    });
+    expect(result).toEqual({ query: "name=muse+jarvis&tags=a&tags=b" });
+    expect(await connection.callTool!("encode_query", { params: "nope" })).toEqual({
+      error: "params must be a JSON object"
     });
   });
 });

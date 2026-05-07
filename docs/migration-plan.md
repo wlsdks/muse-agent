@@ -296,6 +296,18 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- two more loopback MCP servers ship by default (iteration 29).
+  `muse.json` exposes `format` (pretty/minify with indent control),
+  `query` (dot/bracket JSONPath, e.g., `foo.bar[0]`, with explicit
+  found/value contract), and `merge` (override-wins deep merge with
+  array replacement). `muse.url` exposes `parse` (host/port/pathname/
+  query-map/hash decomposition) and `encode_query` (urlencoded form
+  of a key/value object, multi-value via arrays). The smoke harness
+  now asserts five default loopback servers (time/text/math/json/url)
+  and exercises every new tool end-to-end. mcp tests 25 → 30,
+  smoke 43/43, route parity 0 missing. JARVIS-style external-system
+  count is now 5 generic loopback MCP servers, exceeding the 3-server
+  identity criterion.
 - multi-agent orchestration gains streaming + parallel HTTP coverage
   (iteration 28). New `POST /api/multi-agent/orchestrate/stream` opens an
   SSE channel: `start` → `agent_message` (one per worker

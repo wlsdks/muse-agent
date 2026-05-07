@@ -1316,11 +1316,13 @@ function toErrorMessage(error: unknown): string {
 
 export {
   createDefaultLoopbackMcpServers,
+  createJsonMcpServer,
   createLoopbackMcpConnection,
   createLoopbackMcpMuseTools,
   createMathMcpServer,
   createTextUtilsMcpServer,
   createTimeMcpServer,
+  createUrlMcpServer,
   type BuiltinLoopbackOptions,
   type LoopbackMcpServer,
   type LoopbackMcpToolDefinition

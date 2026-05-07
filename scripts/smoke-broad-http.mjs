@@ -317,16 +317,18 @@ try {
     assert(timeNow.inputSchema && typeof timeNow.inputSchema === "object", "expected real inputSchema for time_now");
   });
 
-  await record("Three loopback MCP servers (time/text/math) expose tools end-to-end", async () => {
+  await record("Five loopback MCP servers (time/text/math/json/url) expose tools end-to-end", async () => {
     const {
       createDefaultLoopbackMcpServers,
       createLoopbackMcpConnection
     } = await import(`${rootDir}/packages/mcp/dist/index.js`);
     const servers = createDefaultLoopbackMcpServers();
-    assert(servers.length === 3, `expected 3 default loopback servers, got ${servers.length}`);
+    assert(servers.length === 5, `expected 5 default loopback servers, got ${servers.length}`);
     const names = servers.map((s) => s.name).sort();
-    assert(JSON.stringify(names) === JSON.stringify(["muse.math", "muse.text", "muse.time"]),
-      `expected default names, got ${JSON.stringify(names)}`);
+    assert(
+      JSON.stringify(names) === JSON.stringify(["muse.json", "muse.math", "muse.text", "muse.time", "muse.url"]),
+      `expected default names, got ${JSON.stringify(names)}`
+    );
 
     const time = createLoopbackMcpConnection(servers.find((s) => s.name === "muse.time"));
     const timeTools = await time.listTools();
@@ -341,6 +343,26 @@ try {
     const math = createLoopbackMcpConnection(servers.find((s) => s.name === "muse.math"));
     const calc = await math.callTool("evaluate", { expression: "(2 + 3) * 4" });
     assert(calc.result === 20, `expected 20, got ${calc.result}`);
+
+    const json = createLoopbackMcpConnection(servers.find((s) => s.name === "muse.json"));
+    const formatted = await json.callTool("format", { json: '{"a":1,"b":2}', mode: "pretty", indent: 2 });
+    assert(formatted.formatted.includes('"a": 1'), "expected pretty-printed key");
+    const queried = await json.callTool("query", { value: { x: { y: [10, 20] } }, path: "x.y[1]" });
+    assert(queried.found === true && queried.value === 20, "expected query to resolve nested array");
+    const merged = await json.callTool("merge", {
+      base: { a: 1, nested: { keep: true, x: "old" } },
+      overrides: { b: 2, nested: { x: "new" } }
+    });
+    assert(merged.merged.nested.x === "new" && merged.merged.nested.keep === true,
+      `expected deep merge override, got ${JSON.stringify(merged.merged)}`);
+
+    const url = createLoopbackMcpConnection(servers.find((s) => s.name === "muse.url"));
+    const parsed = await url.callTool("parse", { url: "https://example.com:8443/api/v1?x=1&x=2&y=hello#frag" });
+    assert(parsed.hostname === "example.com" && parsed.port === "8443" && Array.isArray(parsed.query.x),
+      `expected parsed URL components, got ${JSON.stringify(parsed)}`);
+    const encoded = await url.callTool("encode_query", { params: { name: "jarvis", tags: ["a", "b"] } });
+    assert(encoded.query === "name=jarvis&tags=a&tags=b",
+      `expected encoded query, got ${encoded.query}`);
   });
 
   await record("Chunk-merging retriever joins chunks of the same parent and dedupes by id", async () => {
