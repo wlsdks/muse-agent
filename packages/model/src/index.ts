@@ -1301,19 +1301,25 @@ function estimateDiagnosticTokens(content: string): number {
 
 /**
  * Shapes the diagnostic provider's deterministic output. The default behavior
- * is "Diagnostic response: <user prompt>", but two structural mode hints in
- * the system messages let smoke tests exercise plan-execute without a real
- * LLM:
- *   - planning prompts (built by `buildPlanningSystemPrompt`) → emit `[]`
- *     so the runtime falls back to the direct-answer synthesis path.
- *   - synthesis prompts (the `수집된 정보` / `Collected information` shape
- *     produced by AgentRuntime.synthesizePlanResults) → echo the user prompt
- *     unchanged so the synthesis stream stays non-empty.
+ * is "Diagnostic response: <user prompt>", but a structural mode hint in the
+ * system messages lets smoke tests exercise plan-execute without a real LLM:
+ *
+ *   - planning prompts (built by `buildPlanningSystemPrompt`) → emit a JSON
+ *     plan. If `time_now` is listed in `[Available Tools]` the diagnostic
+ *     emits a one-step plan calling it (so the smoke can assert the
+ *     plan_step_executing + plan_step_result events); otherwise it emits an
+ *     empty plan that falls through to the direct-answer synthesis path.
+ *
  * Anything else falls through to the legacy "Diagnostic response: …" shape.
  */
 function renderDiagnosticOutput(messages: readonly { readonly role: string; readonly content: string }[], userPrompt: string): string {
   const systemPrompt = messages.find((message) => message.role === "system")?.content ?? "";
   if (isDiagnosticPlanningPrompt(systemPrompt)) {
+    if (planningPromptListsTool(systemPrompt, "time_now")) {
+      return JSON.stringify([
+        { args: {}, description: "Diagnostic plan-execute step (time_now)", tool: "time_now" }
+      ]);
+    }
     return "[]";
   }
   return `Diagnostic response: ${userPrompt}`.trimEnd();
@@ -1323,6 +1329,15 @@ function isDiagnosticPlanningPrompt(systemPrompt: string): boolean {
   return systemPrompt.includes("[Role]")
     && systemPrompt.includes("[Output Format]")
     && systemPrompt.includes("[Available Tools]");
+}
+
+function planningPromptListsTool(systemPrompt: string, toolName: string): boolean {
+  // Tools are rendered by renderToolDescriptionsForPlanning as `- <name>: <description>`.
+  return new RegExp(`(^|\\n)\\s*-\\s*${escapeRegex(toolName)}\\s*:`, "u").test(systemPrompt);
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 function anthropicModelCapabilities(modelId: string): ModelCapabilities {

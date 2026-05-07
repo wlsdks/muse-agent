@@ -957,10 +957,13 @@ try {
     }
   });
 
-  await record("POST /chat/stream emits plan-generated + synthesis-started for plan_execute", async () => {
+  await record("POST /chat/stream emits the full plan-execute event sequence", async () => {
+    // The 'time' keyword keeps the time_now tool above the
+    // DefaultToolExposurePolicy relevance threshold, which lets the
+    // diagnostic provider emit a one-step plan calling it.
     const response = await fetch(`${baseUrl}/chat/stream`, {
       body: JSON.stringify({
-        message: "smoke plan execute streaming",
+        message: "What time is it now?",
         metadata: { agentMode: "plan_execute" },
         runId: "smoke-broad-plan-execute-stream"
       }),
@@ -969,11 +972,20 @@ try {
     });
     assert(response.status === 200, `expected 200, got ${response.status}`);
     const sse = await response.text();
-    assert(sse.includes("event: plan_generated"), `expected plan_generated event, got: ${sse.slice(0, 200)}`);
-    assert(sse.includes("event: synthesis_started"), `expected synthesis_started event, got: ${sse.slice(0, 200)}`);
-    assert(sse.includes("event: done"), `expected done event, got: ${sse.slice(0, 200)}`);
-    // Empty plan (diagnostic provider returns "[]") → no per-step events
-    assert(!sse.includes("event: plan_step_executing"), `expected no plan_step_executing for empty plan`);
+    // The diagnostic provider emits a one-step plan calling time_now (a
+    // default JARVIS ambient tool registered by autoconfigure), so all four
+    // plan-execute streaming events from iteration #64 must fire end-to-end.
+    for (const eventName of ["plan_generated", "plan_step_executing", "plan_step_result", "synthesis_started", "done"]) {
+      assert(sse.includes(`event: ${eventName}`), `expected event: ${eventName}, got: ${sse.slice(0, 400)}`);
+    }
+    assert(
+      sse.indexOf("event: plan_generated") < sse.indexOf("event: plan_step_executing"),
+      "plan_generated must precede plan_step_executing"
+    );
+    assert(
+      sse.indexOf("event: plan_step_result") < sse.indexOf("event: synthesis_started"),
+      "plan_step_result must precede synthesis_started"
+    );
   });
 } catch (error) {
   failures += 1;

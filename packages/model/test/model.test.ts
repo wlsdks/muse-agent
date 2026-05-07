@@ -100,6 +100,56 @@ describe("DiagnosticModelProvider", () => {
     });
   });
 
+  it("emits a single-step plan calling time_now when it appears in [Available Tools]", async () => {
+    const provider = new DiagnosticModelProvider({ defaultModel: "diagnostic/smoke" });
+    const planningSystemPrompt = [
+      "[Role]",
+      "Planner.",
+      "",
+      "[Available Tools]",
+      "- time_now: Returns the current time.",
+      "- math_eval: Evaluates an arithmetic expression.",
+      "",
+      "[Output Format]",
+      "JSON array of plan steps."
+    ].join("\n");
+
+    const response = await provider.generate({
+      messages: [
+        { content: planningSystemPrompt, role: "system" },
+        { content: "What time is it?", role: "user" }
+      ],
+      model: "diagnostic/smoke"
+    });
+    const plan = JSON.parse(response.output) as readonly { readonly tool: string; readonly args: object }[];
+    expect(plan).toEqual([
+      expect.objectContaining({ args: {}, tool: "time_now" })
+    ]);
+  });
+
+  it("does not emit a step plan when time_now is absent from [Available Tools]", async () => {
+    const provider = new DiagnosticModelProvider({ defaultModel: "diagnostic/smoke" });
+    const planningSystemPrompt = [
+      "[Role]",
+      "Planner.",
+      "",
+      "[Available Tools]",
+      "- math_eval: Evaluates an arithmetic expression.",
+      "",
+      "[Output Format]",
+      "JSON array of plan steps."
+    ].join("\n");
+
+    const response = await provider.generate({
+      messages: [
+        { content: planningSystemPrompt, role: "system" },
+        { content: "Compute things", role: "user" }
+      ],
+      model: "diagnostic/smoke"
+    });
+    expect(response.output).toBe("[]");
+  });
+
   it("falls through to the legacy diagnostic shape when only one of the planning markers is present", async () => {
     const provider = new DiagnosticModelProvider({ defaultModel: "diagnostic/smoke" });
 

@@ -90,6 +90,7 @@ route state and runtime services onto Kysely-backed stores.
 
 ## Recent Completion Notes
 
+- DiagnosticModelProvider now also emits a single-step plan calling `time_now` when that tool appears in `[Available Tools]`, so `pnpm smoke:broad` exercises the full plan-execute streaming sequence end-to-end (`plan_generated` → `plan_step_executing` → `plan_step_result` → `synthesis_started` → `done`) without a real LLM.
 - DiagnosticModelProvider now recognizes the planning prompt shape and returns `[]`, which makes plan-execute fall back to the direct-answer synthesis path. `pnpm smoke:broad` gained a /chat/stream check that asserts `plan_generated` + `synthesis_started` SSE events fire end-to-end without needing a real LLM, closing the verification gap from iteration #64.
 - `createLoopbackMcpToolsFromEnv` lets operators plug the JARVIS ambient toolset purely via env: `MUSE_LOOPBACK_MCP_ENABLED=true` registers the eight default loopback servers as namespaced Muse tools (`muse.time.now`, `muse.fs.read`, …); `MUSE_LOOPBACK_FETCH_HOSTS` and `MUSE_LOOPBACK_FS_ROOTS` add the opt-in fetch and fs servers when their allowlists are supplied. HTTP-verified: tool count jumps from 10 → 32 with the env flags set.
 - `GET /api/jarvis/loopback` exposes the built-in MCP loopback catalog (8 default servers + 2 opt-in) with tool names, risk, opt-in flag, and env-hint requirements so any operator or chat surface can discover what JARVIS-style ambient tools are pluggable without reading source.
