@@ -261,6 +261,42 @@ try {
     assert(String(queries[1] ?? "").includes("30 days"), "second query should be the hypothetical doc");
   });
 
+  await record("Cost anomaly hook + monthly budget tracker react to a 5× spike", async () => {
+    const { CostAnomalyDetector, MonthlyBudgetTracker } = await import(`${rootDir}/packages/observability/dist/index.js`);
+    const { createCostAnomalyHook } = await import(`${rootDir}/packages/integrations/dist/index.js`);
+    const detector = new CostAnomalyDetector({ minSamples: 4, thresholdMultiplier: 3, windowSize: 50 });
+    const tracker = new MonthlyBudgetTracker({
+      monthlyLimitUsd: 1,
+      now: () => new Date("2026-05-15T00:00:00Z"),
+      warningPercent: 50
+    });
+    const events = [];
+    let nextCost = 0.001;
+    const hook = createCostAnomalyHook({
+      budgetTracker: tracker,
+      costFromResponse: () => nextCost,
+      detector,
+      notify: async (event) => {
+        events.push(event);
+      },
+      tenantIdFromContext: () => "tenant-smoke"
+    });
+    const ctx = {
+      input: { messages: [], metadata: {}, model: "smoke" },
+      runId: "cost-smoke",
+      startedAt: new Date()
+    };
+    for (let i = 0; i < 4; i += 1) {
+      await hook.afterComplete(ctx, { id: "r", model: "smoke", output: "" });
+    }
+    nextCost = 0.6;
+    await hook.afterComplete(ctx, { id: "r", model: "smoke", output: "" });
+    assert(events.length >= 1, `expected at least one cost notification, got ${events.length}`);
+    const last = events[events.length - 1];
+    assert(last.anomaly?.multiplier > 3 || last.budgetStatus === "warning" || last.budgetStatus === "exceeded",
+      `expected anomaly or budget breach, got ${JSON.stringify(last)}`);
+  });
+
   await record("Prompt drift detector flags an output-length distribution shift", async () => {
     const { PromptDriftDetector } = await import(`${rootDir}/packages/observability/dist/index.js`);
     const { createPromptDriftHook } = await import(`${rootDir}/packages/integrations/dist/index.js`);

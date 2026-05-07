@@ -17,6 +17,7 @@ import {
   createSlackBotInstanceInsert,
   createSlackResponseTrackingInsert,
   CommandRouter,
+  createCostAnomalyHook,
   createFollowupSuggestionInteractionHandler,
   createPromptDriftHook,
   createSlackProgressHook,
@@ -1903,5 +1904,113 @@ describe("createPromptDriftHook", () => {
       { id: "r", model: "m", output: "y" }
     );
     expect(notified).toHaveLength(0);
+  });
+});
+
+describe("createCostAnomalyHook", () => {
+  function makeDetector(): {
+    detector: { recordCost: (cost: number) => void; evaluate: () => undefined | { multiplier: number } };
+    costs: number[];
+    queue: Array<undefined | { multiplier: number }>;
+  } {
+    const costs: number[] = [];
+    const queue: Array<undefined | { multiplier: number }> = [];
+    return {
+      costs,
+      detector: {
+        evaluate: () => queue.shift(),
+        recordCost: (cost) => {
+          costs.push(cost);
+        }
+      },
+      queue
+    };
+  }
+
+  function makeContext(metadata: Record<string, unknown> = {}, runId = "run-cost"): AgentRunContext {
+    return {
+      input: { messages: [], metadata: metadata as never, model: "test-model" },
+      runId,
+      startedAt: new Date()
+    };
+  }
+
+  it("records the per-run cost via costFromResponse", async () => {
+    const { detector, costs } = makeDetector();
+    const hook = createCostAnomalyHook({
+      costFromResponse: () => 0.025,
+      detector: detector as never
+    });
+    await hook.afterComplete?.(makeContext(), { id: "r", model: "m", output: "" });
+    expect(costs).toEqual([0.025]);
+  });
+
+  it("notifies when the detector returns an anomaly", async () => {
+    const { detector, queue } = makeDetector();
+    queue.push({ multiplier: 4.5 });
+    const notified: unknown[] = [];
+    const hook = createCostAnomalyHook({
+      costFromResponse: () => 0.05,
+      detector: detector as never,
+      notify: async (event) => {
+        notified.push(event);
+      }
+    });
+    await hook.afterComplete?.(makeContext(), { id: "r", model: "m", output: "" });
+    expect(notified).toHaveLength(1);
+    expect((notified[0] as { anomaly: { multiplier: number } }).anomaly.multiplier).toBe(4.5);
+  });
+
+  it("forwards monthly budget transitions through notify", async () => {
+    const { detector, queue } = makeDetector();
+    queue.push(undefined);
+    const tracker = {
+      recordCost: () => "warning" as const
+    };
+    const notified: unknown[] = [];
+    const hook = createCostAnomalyHook({
+      budgetTracker: tracker as never,
+      costFromResponse: () => 0.01,
+      detector: detector as never,
+      notify: async (event) => {
+        notified.push(event);
+      },
+      tenantIdFromContext: () => "tenant-x"
+    });
+    await hook.afterComplete?.(makeContext({ tenantId: "tenant-x" }), { id: "r", model: "m", output: "" });
+    expect(notified).toEqual([{ budgetStatus: "warning", tenantId: "tenant-x" }]);
+  });
+
+  it("skips recording and notify when costFromResponse returns undefined", async () => {
+    const { detector, costs } = makeDetector();
+    const notified: unknown[] = [];
+    const hook = createCostAnomalyHook({
+      costFromResponse: () => undefined,
+      detector: detector as never,
+      notify: async (event) => {
+        notified.push(event);
+      }
+    });
+    await hook.afterComplete?.(makeContext(), { id: "r", model: "m", output: "" });
+    expect(costs).toEqual([]);
+    expect(notified).toEqual([]);
+  });
+
+  it("swallows notify errors via the optional logger", async () => {
+    const { detector, queue } = makeDetector();
+    queue.push({ multiplier: 5 });
+    const errors: unknown[] = [];
+    const hook = createCostAnomalyHook({
+      costFromResponse: () => 0.1,
+      detector: detector as never,
+      logger: (_message, error) => errors.push(error),
+      notify: async () => {
+        throw new Error("notify down");
+      }
+    });
+    await expect(
+      hook.afterComplete?.(makeContext(), { id: "r", model: "m", output: "" })
+    ).resolves.toBeUndefined();
+    expect(errors).toHaveLength(1);
   });
 });

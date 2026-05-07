@@ -5,8 +5,10 @@ import {
   createTenantSpanProcessor,
   createTraceEventInsert,
   InMemoryAgentMetrics,
+  CostAnomalyDetector,
   InMemoryFollowupSuggestionStore,
   InMemoryLatencyQuery,
+  MonthlyBudgetTracker,
   PromptDriftDetector,
   SloAlertEvaluator,
   InMemoryMuseTracer,
@@ -877,5 +879,98 @@ describe("PromptDriftDetector", () => {
     expect(stats.inputMean).toBe(25);
     expect(stats.sampleCount).toBe(4);
     expect(stats.inputStdDev).toBeGreaterThan(0);
+  });
+});
+
+describe("CostAnomalyDetector", () => {
+  it("returns no anomaly until min samples are recorded", () => {
+    const detector = new CostAnomalyDetector({ minSamples: 5, thresholdMultiplier: 3 });
+    [0.001, 0.001, 0.001].forEach((cost) => detector.recordCost(cost));
+    expect(detector.evaluate()).toBeUndefined();
+  });
+
+  it("flags an anomaly when latest cost exceeds baseline × threshold", () => {
+    const detector = new CostAnomalyDetector({ minSamples: 4, thresholdMultiplier: 3 });
+    [0.001, 0.001, 0.001, 0.001].forEach((cost) => detector.recordCost(cost));
+    detector.recordCost(0.05);
+    const anomaly = detector.evaluate();
+    expect(anomaly?.multiplier).toBeGreaterThan(3);
+    expect(anomaly?.currentCost).toBeCloseTo(0.05, 6);
+  });
+
+  it("ignores negative or non-finite cost samples", () => {
+    const detector = new CostAnomalyDetector({ minSamples: 3 });
+    detector.recordCost(-1);
+    detector.recordCost(Number.NaN);
+    detector.recordCost(Number.POSITIVE_INFINITY);
+    expect(detector.baseline()).toBe(0);
+  });
+
+  it("evicts oldest samples when the window is full", () => {
+    const detector = new CostAnomalyDetector({ minSamples: 3, windowSize: 3 });
+    [0.01, 0.02, 0.03, 0.04, 0.05].forEach((cost) => detector.recordCost(cost));
+    expect(detector.baseline()).toBeCloseTo((0.03 + 0.04 + 0.05) / 3, 6);
+  });
+
+  it("returns no anomaly when the baseline is zero", () => {
+    const detector = new CostAnomalyDetector({ minSamples: 3 });
+    [0, 0, 0].forEach((cost) => detector.recordCost(cost));
+    expect(detector.evaluate()).toBeUndefined();
+  });
+
+  it("rejects invalid configuration", () => {
+    expect(() => new CostAnomalyDetector({ windowSize: 0 })).toThrow(/windowSize/u);
+    expect(() => new CostAnomalyDetector({ thresholdMultiplier: 0 })).toThrow(/thresholdMultiplier/u);
+    expect(() => new CostAnomalyDetector({ minSamples: 0 })).toThrow(/minSamples/u);
+  });
+});
+
+describe("MonthlyBudgetTracker", () => {
+  it("returns 'ok' when no monthly limit is configured", () => {
+    const tracker = new MonthlyBudgetTracker({ now: () => new Date("2026-05-15T00:00:00Z") });
+    expect(tracker.recordCost("tenant-1", 5)).toBe("ok");
+    expect(tracker.snapshot("tenant-1").totalCostUsd).toBe(5);
+  });
+
+  it("transitions ok → warning → exceeded as cumulative cost crosses thresholds", () => {
+    const tracker = new MonthlyBudgetTracker({
+      monthlyLimitUsd: 10,
+      now: () => new Date("2026-05-15T00:00:00Z"),
+      warningPercent: 80
+    });
+    expect(tracker.recordCost("t", 5)).toBe("ok");
+    expect(tracker.recordCost("t", 3.1)).toBe("warning");
+    expect(tracker.recordCost("t", 2.5)).toBe("exceeded");
+  });
+
+  it("resets the per-tenant counter on month rollover", () => {
+    let nowDate = new Date("2026-05-31T23:00:00Z");
+    const tracker = new MonthlyBudgetTracker({ monthlyLimitUsd: 10, now: () => nowDate, warningPercent: 50 });
+    tracker.recordCost("t", 6);
+    expect(tracker.snapshot("t").totalCostUsd).toBe(6);
+    nowDate = new Date("2026-06-01T00:30:00Z");
+    expect(tracker.recordCost("t", 1)).toBe("ok");
+    expect(tracker.snapshot("t").totalCostUsd).toBe(1);
+    expect(tracker.snapshot("t").month).toBe("2026-06");
+  });
+
+  it("evicts oldest tenants when the cap is reached", () => {
+    const tracker = new MonthlyBudgetTracker({
+      maxTenants: 2,
+      now: () => new Date("2026-05-15T00:00:00Z")
+    });
+    tracker.recordCost("a", 1);
+    tracker.recordCost("b", 1);
+    tracker.recordCost("c", 1);
+    expect(tracker.currentCost("a")).toBe(0);
+    expect(tracker.currentCost("b")).toBe(1);
+    expect(tracker.currentCost("c")).toBe(1);
+  });
+
+  it("rejects invalid configuration", () => {
+    expect(() => new MonthlyBudgetTracker({ monthlyLimitUsd: -1 })).toThrow(/monthlyLimitUsd/u);
+    expect(() => new MonthlyBudgetTracker({ warningPercent: 0 })).toThrow(/warningPercent/u);
+    expect(() => new MonthlyBudgetTracker({ warningPercent: 110 })).toThrow(/warningPercent/u);
+    expect(() => new MonthlyBudgetTracker({ maxTenants: 0 })).toThrow(/maxTenants/u);
   });
 });

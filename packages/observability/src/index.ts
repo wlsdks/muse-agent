@@ -800,6 +800,224 @@ function toNumberOrZero(value: string | number | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+export interface CostAnomaly {
+  readonly currentCost: number;
+  readonly baselineCost: number;
+  readonly multiplier: number;
+  readonly threshold: number;
+  readonly message: string;
+  readonly at: Date;
+}
+
+export interface CostAnomalyDetectorOptions {
+  readonly windowSize?: number;
+  readonly thresholdMultiplier?: number;
+  readonly minSamples?: number;
+  readonly now?: () => number;
+}
+
+/**
+ * Sliding-window cost anomaly detector.
+ *
+ * Tracks per-request USD cost over a rolling window, computes the moving
+ * average as the baseline, and surfaces a `CostAnomaly` whenever the latest
+ * recorded cost exceeds `baseline × thresholdMultiplier`. Mirrors Reactor's
+ * `CostAnomalyDetector` semantics.
+ */
+export class CostAnomalyDetector {
+  readonly #windowSize: number;
+  readonly #thresholdMultiplier: number;
+  readonly #minSamples: number;
+  readonly #now: () => number;
+  readonly #costs: number[] = [];
+
+  constructor(options: CostAnomalyDetectorOptions = {}) {
+    const windowSize = options.windowSize ?? 100;
+    const thresholdMultiplier = options.thresholdMultiplier ?? 3;
+    const minSamples = options.minSamples ?? 10;
+    if (!Number.isFinite(windowSize) || windowSize <= 0) {
+      throw new Error("CostAnomalyDetector windowSize must be positive");
+    }
+    if (!Number.isFinite(thresholdMultiplier) || thresholdMultiplier <= 0) {
+      throw new Error("CostAnomalyDetector thresholdMultiplier must be positive");
+    }
+    if (!Number.isFinite(minSamples) || minSamples <= 0) {
+      throw new Error("CostAnomalyDetector minSamples must be positive");
+    }
+    this.#windowSize = windowSize;
+    this.#thresholdMultiplier = thresholdMultiplier;
+    this.#minSamples = minSamples;
+    this.#now = options.now ?? (() => Date.now());
+  }
+
+  recordCost(costUsd: number): void {
+    if (!Number.isFinite(costUsd) || costUsd < 0) {
+      return;
+    }
+    this.#costs.push(costUsd);
+    while (this.#costs.length > this.#windowSize) {
+      this.#costs.shift();
+    }
+  }
+
+  evaluate(): CostAnomaly | undefined {
+    if (this.#costs.length < this.#minSamples) {
+      return undefined;
+    }
+    const latest = this.#costs[this.#costs.length - 1] ?? 0;
+    const baseline = meanOfNumbers(this.#costs);
+    if (baseline <= 0) {
+      return undefined;
+    }
+    const multiplier = latest / baseline;
+    if (multiplier <= this.#thresholdMultiplier) {
+      return undefined;
+    }
+    return {
+      at: new Date(this.#now()),
+      baselineCost: baseline,
+      currentCost: latest,
+      message:
+        `Request cost $${latest.toFixed(6)} is ${multiplier.toFixed(1)}× the baseline ` +
+        `$${baseline.toFixed(6)} (threshold ${this.#thresholdMultiplier.toFixed(1)}×)`,
+      multiplier,
+      threshold: this.#thresholdMultiplier
+    };
+  }
+
+  baseline(): number {
+    if (this.#costs.length === 0) {
+      return 0;
+    }
+    return meanOfNumbers(this.#costs);
+  }
+}
+
+export type MonthlyBudgetStatus = "ok" | "warning" | "exceeded";
+
+export interface MonthlyBudgetSnapshot {
+  readonly tenantId: string;
+  readonly month: string;
+  readonly totalCostUsd: number;
+  readonly limitUsd: number;
+  readonly status: MonthlyBudgetStatus;
+}
+
+export interface MonthlyBudgetTrackerOptions {
+  readonly monthlyLimitUsd?: number;
+  readonly warningPercent?: number;
+  readonly maxTenants?: number;
+  readonly now?: () => Date;
+}
+
+/**
+ * Per-tenant monthly cost tracker.
+ *
+ * Aggregates per-request USD cost into the current calendar month and reports
+ * `ok` / `warning` / `exceeded` based on the configured limit. Auto-resets on
+ * month rollover. Bounded by `maxTenants` to keep the in-memory footprint
+ * predictable; the oldest-inserted tenant is evicted when the cap is reached.
+ *
+ * Mirrors Reactor's `MonthlyBudgetTracker` while staying single-instance — for
+ * accurate multi-pod accounting an external Redis or DB-backed counter is the
+ * correct surface (this class is intended for dev/local/single-instance).
+ */
+export class MonthlyBudgetTracker {
+  readonly #monthlyLimitUsd: number;
+  readonly #warningPercent: number;
+  readonly #maxTenants: number;
+  readonly #now: () => Date;
+  readonly #costs = new Map<string, number>();
+  #currentMonth: string;
+
+  constructor(options: MonthlyBudgetTrackerOptions = {}) {
+    const monthlyLimitUsd = options.monthlyLimitUsd ?? 0;
+    const warningPercent = options.warningPercent ?? 80;
+    const maxTenants = options.maxTenants ?? 10_000;
+    if (!Number.isFinite(monthlyLimitUsd) || monthlyLimitUsd < 0) {
+      throw new Error("MonthlyBudgetTracker monthlyLimitUsd must be non-negative");
+    }
+    if (!Number.isFinite(warningPercent) || warningPercent <= 0 || warningPercent > 100) {
+      throw new Error("MonthlyBudgetTracker warningPercent must be between 1 and 100");
+    }
+    if (!Number.isFinite(maxTenants) || maxTenants <= 0) {
+      throw new Error("MonthlyBudgetTracker maxTenants must be positive");
+    }
+    this.#monthlyLimitUsd = monthlyLimitUsd;
+    this.#warningPercent = warningPercent;
+    this.#maxTenants = maxTenants;
+    this.#now = options.now ?? (() => new Date());
+    this.#currentMonth = formatYearMonth(this.#now());
+  }
+
+  recordCost(tenantId: string, costUsd: number): MonthlyBudgetStatus {
+    if (typeof tenantId !== "string" || tenantId.length === 0) {
+      return "ok";
+    }
+    if (!Number.isFinite(costUsd) || costUsd < 0) {
+      return this.statusFor(tenantId, this.#costs.get(tenantId) ?? 0);
+    }
+    this.#resetIfNewMonth();
+    const previous = this.#costs.get(tenantId) ?? 0;
+    const next = previous + costUsd;
+    this.#costs.delete(tenantId);
+    this.#costs.set(tenantId, next);
+    while (this.#costs.size > this.#maxTenants) {
+      const oldest = this.#costs.keys().next().value;
+      if (typeof oldest === "string") {
+        this.#costs.delete(oldest);
+      } else {
+        break;
+      }
+    }
+    return this.statusFor(tenantId, next);
+  }
+
+  currentCost(tenantId: string): number {
+    this.#resetIfNewMonth();
+    return this.#costs.get(tenantId) ?? 0;
+  }
+
+  snapshot(tenantId: string): MonthlyBudgetSnapshot {
+    const total = this.currentCost(tenantId);
+    return {
+      limitUsd: this.#monthlyLimitUsd,
+      month: this.#currentMonth,
+      status: this.statusFor(tenantId, total),
+      tenantId,
+      totalCostUsd: total
+    };
+  }
+
+  statusFor(_tenantId: string, total: number): MonthlyBudgetStatus {
+    if (this.#monthlyLimitUsd <= 0) {
+      return "ok";
+    }
+    const ratio = total / this.#monthlyLimitUsd;
+    if (ratio >= 1) {
+      return "exceeded";
+    }
+    if (ratio >= this.#warningPercent / 100) {
+      return "warning";
+    }
+    return "ok";
+  }
+
+  #resetIfNewMonth(): void {
+    const month = formatYearMonth(this.#now());
+    if (month !== this.#currentMonth) {
+      this.#currentMonth = month;
+      this.#costs.clear();
+    }
+  }
+}
+
+function formatYearMonth(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
 export type DriftType = "input_length" | "output_length";
 
 export interface DriftAnomaly {

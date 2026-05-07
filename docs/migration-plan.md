@@ -296,6 +296,13 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- Cost anomaly + monthly budget tracking now exist in `@muse/observability`. `CostAnomalyDetector`
+  flags requests whose USD cost exceeds the rolling-window baseline by `thresholdMultiplier` (default 3×).
+  `MonthlyBudgetTracker` aggregates per-tenant USD cost into the current calendar month, transitions
+  `ok` → `warning` (default 80%) → `exceeded`, auto-resets on month rollover, and bounds in-memory tenants
+  via `maxTenants` cap (FIFO eviction). `@muse/integrations` adds `createCostAnomalyHook` that records
+  cost on `afterComplete` and forwards anomalies + budget transitions through an optional `notify`
+  callback. Closes Reactor `agent.budget` `CostAnomalyDetector` + `MonthlyBudgetTracker` parity.
 - Prompt drift detector now exists in `@muse/observability` as `PromptDriftDetector`. Tracks input/output
   length samples in a sliding window and emits a `DriftAnomaly` (`input_length` | `output_length`) when
   the second-half mean drifts past `deviationThreshold` baseline standard deviations from the first-half

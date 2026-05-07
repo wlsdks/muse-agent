@@ -1,9 +1,13 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { AgentRunContext, HookStage } from "@muse/agent-core";
-import type { ModelMessage } from "@muse/model";
+import type { ModelMessage, ModelResponse } from "@muse/model";
 import type {
+  CostAnomaly,
+  CostAnomalyDetector,
   DriftAnomaly,
   FollowupSuggestionStore,
+  MonthlyBudgetStatus,
+  MonthlyBudgetTracker,
   PromptDriftDetector,
   SloAlertEvaluator,
   SloViolation
@@ -1699,6 +1703,60 @@ export const SLACK_PROGRESS_DEFAULT_FRIENDLY_NAMES: Readonly<Record<string, stri
 
 export const SLACK_PROGRESS_DEFAULT_MIN_UPDATE_MS = 1500;
 export const SLACK_PROGRESS_MAX_STATUS_LENGTH = 100;
+
+export interface CostAnomalyHookOptions {
+  readonly detector: CostAnomalyDetector;
+  readonly id?: string;
+  readonly budgetTracker?: MonthlyBudgetTracker;
+  readonly tenantIdFromContext?: (context: AgentRunContext) => string | undefined;
+  readonly costFromResponse: (context: AgentRunContext, response: ModelResponse) => number | undefined;
+  readonly notify?: (event: { readonly anomaly?: CostAnomaly; readonly budgetStatus?: MonthlyBudgetStatus; readonly tenantId?: string }) => Awaitable<void>;
+  readonly logger?: (message: string, error?: unknown) => void;
+}
+
+/**
+ * Hook that records per-request cost into a `CostAnomalyDetector` (and an
+ * optional per-tenant `MonthlyBudgetTracker`) and forwards anomalies / budget
+ * transitions to the optional `notify` callback. Notify failures are swallowed
+ * via the optional `logger` so the agent run never breaks on cost signaling.
+ *
+ * `costFromResponse` is the operator's adapter: derive the USD cost for the
+ * completed run from the response (e.g. through token usage × model pricing).
+ * Returning `undefined` skips recording for that run.
+ */
+export function createCostAnomalyHook(options: CostAnomalyHookOptions): HookStage {
+  return {
+    afterComplete: async (context, response) => {
+      const cost = options.costFromResponse(context, response);
+      if (cost === undefined) {
+        return;
+      }
+      options.detector.recordCost(cost);
+      const anomaly = options.detector.evaluate();
+      const tenantId = options.tenantIdFromContext?.(context);
+      let budgetStatus: MonthlyBudgetStatus | undefined;
+      if (tenantId && options.budgetTracker) {
+        budgetStatus = options.budgetTracker.recordCost(tenantId, cost);
+      }
+      if (!options.notify) {
+        return;
+      }
+      if (anomaly === undefined && (budgetStatus === undefined || budgetStatus === "ok")) {
+        return;
+      }
+      try {
+        await options.notify({
+          ...(anomaly ? { anomaly } : {}),
+          ...(budgetStatus ? { budgetStatus } : {}),
+          ...(tenantId ? { tenantId } : {})
+        });
+      } catch (error) {
+        options.logger?.("CostAnomalyHook notify failed", error);
+      }
+    },
+    id: options.id ?? "cost-anomaly"
+  };
+}
 
 export interface PromptDriftHookOptions {
   readonly detector: PromptDriftDetector;
