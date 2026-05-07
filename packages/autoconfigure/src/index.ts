@@ -789,6 +789,7 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     guardRuleStore: assembly.guardRuleStore,
     toolPolicyStore: assembly.toolPolicyStore,
     userMemoryStore: assembly.userMemoryStore,
+    conversationSummaryStore: assembly.conversationSummaryStore,
     slack: {
       botToken: parseOptionalString(env.MUSE_SLACK_BOT_TOKEN),
       enabled: parseBoolean(env.MUSE_SLACK_ENABLED, false),

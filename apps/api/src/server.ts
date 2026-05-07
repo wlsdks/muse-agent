@@ -33,7 +33,7 @@ import type {
 } from "@muse/integrations";
 import type { AgentEvalStore } from "@muse/eval";
 import { describeBuiltinLoopbackMcpServers } from "@muse/mcp";
-import type { TaskMemoryMaintenance, UserMemoryStore } from "@muse/memory";
+import type { ConversationSummaryStore, TaskMemoryMaintenance, UserMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
 import type { FollowupSuggestionStore, JarvisObservabilitySnapshot, LatencyQuery, TokenCostQuery } from "@muse/observability";
 import type { GuardRuleStore, ToolPolicyStore } from "@muse/policy";
@@ -96,6 +96,7 @@ export interface ServerOptions {
   readonly guardRuleStore?: GuardRuleStore;
   readonly toolPolicyStore?: ToolPolicyStore;
   readonly userMemoryStore?: UserMemoryStore;
+  readonly conversationSummaryStore?: ConversationSummaryStore;
   readonly agentCardIdentity?: {
     readonly name?: string;
     readonly version?: string;
@@ -604,6 +605,77 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       settings: { total: settings.length },
       tools: { byRisk: toolsByRisk, total: tools.length }
     };
+  });
+
+  server.get("/api/admin/sessions/:sessionId/summary", async (request, reply) => {
+    if (!authorizeAdmin(request, reply, Boolean(authService))) {
+      return reply;
+    }
+    if (!options.conversationSummaryStore) {
+      return reply.status(404).send({
+        code: "CONVERSATION_SUMMARY_STORE_UNAVAILABLE",
+        message: "Conversation summary store is not configured"
+      });
+    }
+    const { sessionId } = request.params as { readonly sessionId: string };
+    const summary = await options.conversationSummaryStore.get(sessionId);
+    if (!summary) {
+      return reply.status(404).send({
+        code: "CONVERSATION_SUMMARY_NOT_FOUND",
+        message: `No conversation summary stored for session ${sessionId}`
+      });
+    }
+    return summary;
+  });
+
+  server.put("/api/admin/sessions/:sessionId/summary", async (request, reply) => {
+    if (!authorizeAdmin(request, reply, Boolean(authService))) {
+      return reply;
+    }
+    if (!options.conversationSummaryStore) {
+      return reply.status(404).send({
+        code: "CONVERSATION_SUMMARY_STORE_UNAVAILABLE",
+        message: "Conversation summary store is not configured"
+      });
+    }
+    const { sessionId } = request.params as { readonly sessionId: string };
+    const body = request.body as { readonly narrative?: unknown; readonly summarizedUpToIndex?: unknown } | null | undefined;
+    const narrative = typeof body?.narrative === "string" ? body.narrative.trim() : "";
+    if (narrative.length === 0) {
+      return reply.status(400).send({
+        code: "INVALID_CONVERSATION_SUMMARY",
+        message: "narrative must be a non-empty string"
+      });
+    }
+    const summarizedUpToIndex = Number.isInteger(body?.summarizedUpToIndex)
+      ? (body!.summarizedUpToIndex as number)
+      : 0;
+    if (summarizedUpToIndex < 0) {
+      return reply.status(400).send({
+        code: "INVALID_CONVERSATION_SUMMARY",
+        message: "summarizedUpToIndex must be a non-negative integer"
+      });
+    }
+    return options.conversationSummaryStore.save({
+      narrative,
+      sessionId,
+      summarizedUpToIndex
+    });
+  });
+
+  server.delete("/api/admin/sessions/:sessionId/summary", async (request, reply) => {
+    if (!authorizeAdmin(request, reply, Boolean(authService))) {
+      return reply;
+    }
+    if (!options.conversationSummaryStore) {
+      return reply.status(404).send({
+        code: "CONVERSATION_SUMMARY_STORE_UNAVAILABLE",
+        message: "Conversation summary store is not configured"
+      });
+    }
+    const { sessionId } = request.params as { readonly sessionId: string };
+    const deleted = await options.conversationSummaryStore.delete(sessionId);
+    return reply.status(deleted ? 204 : 404).send();
   });
 
   server.get("/settings", async () => runtimeSettings.list());
