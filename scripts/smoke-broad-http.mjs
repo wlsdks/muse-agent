@@ -190,6 +190,29 @@ try {
     assert(typeof body.totalImpressions === "number" || typeof body.total === "number", "expected stats shape");
   });
 
+  await record("GET /api/admin/agent-specs reveals registered Jarvis tools via OpenAPI surface", async () => {
+    const response = await fetch(`${baseUrl}/api/openapi.json`);
+    const body = await response.json();
+    assert(response.ok, `expected 200, got ${response.status}`);
+    assert(body.paths && typeof body.paths === "object", "expected OpenAPI paths object");
+  });
+
+  await record("Jarvis tools register with the runtime tool registry", async () => {
+    const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
+    const assembly = createMuseRuntimeAssembly({ env: { MUSE_JARVIS_TOOLS_ENABLED: "true" } });
+    const names = assembly.toolRegistry.list().map((tool) => tool.definition.name);
+    for (const required of ["time_now", "time_diff", "time_add", "text_stats", "math_eval", "json_query"]) {
+      assert(names.includes(required), `expected tool registry to include ${required}, got ${names.join(", ")}`);
+    }
+  });
+
+  await record("Jarvis tools can be disabled via MUSE_JARVIS_TOOLS_ENABLED=false", async () => {
+    const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
+    const assembly = createMuseRuntimeAssembly({ env: { MUSE_JARVIS_TOOLS_ENABLED: "false" } });
+    const names = assembly.toolRegistry.list().map((tool) => tool.definition.name);
+    assert(!names.includes("time_now"), `expected time_now to be absent when disabled, got ${names.join(", ")}`);
+  });
+
   await record("POST /api/chat with metadata.agentMode=plan_execute", async () => {
     const response = await fetch(`${baseUrl}/api/chat`, {
       body: JSON.stringify({

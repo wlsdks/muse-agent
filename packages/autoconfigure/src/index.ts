@@ -199,7 +199,7 @@ import {
   type ScheduledJobExecutionStore,
   type ScheduledJobStore
 } from "@muse/scheduler";
-import { createRustRunnerTool, ToolRegistry, type MuseTool } from "@muse/tools";
+import { createJarvisTools, createRustRunnerTool, ToolRegistry, type MuseTool } from "@muse/tools";
 import type { MuseDatabase } from "@muse/db";
 import type { Kysely } from "kysely";
 
@@ -361,8 +361,10 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     securityPolicyProvider: mcpSecurityPolicyProvider
   });
   const runnerTools = createRunnerTools(env);
+  const jarvisTools = parseBoolean(env.MUSE_JARVIS_TOOLS_ENABLED, true) ? createJarvisTools() : [];
   let schedulerService: DynamicSchedulerService | undefined;
   const toolRegistry = new DynamicToolRegistry([
+    () => jarvisTools,
     () => runnerTools,
     () => mcpManager.toMuseTools(),
     () => schedulerService ? createSchedulerTools(schedulerService) : []

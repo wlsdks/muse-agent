@@ -296,6 +296,13 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- JARVIS-style ambient tools now ship with every Muse runtime via `createJarvisTools()` in `@muse/tools`
+  (`time_now`, `time_diff`, `time_add`, `text_stats`, `math_eval`, `json_query`). All tools are zero-IO,
+  read-risk, deterministic given identical inputs (or injected clock for time tools), and registered into
+  the autoconfigure tool registry by default. `math_eval` parses a constrained arithmetic grammar via a
+  recursive-descent evaluator instead of `eval`/`Function`. `json_query` resolves dotted paths through
+  objects + arrays. Disable with `MUSE_JARVIS_TOOLS_ENABLED=false`. Smoke broad now asserts the registry
+  exposes all six names and that the toggle is honored.
 - HTTP smoke harness now exists as `pnpm smoke:broad` (`scripts/smoke-broad-http.mjs`). It boots `apps/api`
   on a free port and exercises 20 representative endpoints with shape-level assertions: chat, streaming
   chat, plan_execute mode, OpenAPI, runtime settings, agent specs, audits with `{items,total}`, latency

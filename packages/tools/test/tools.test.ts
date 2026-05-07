@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createToolNameApprovalPolicy, createToolPolicyConfig } from "@muse/policy";
 import {
+  createJarvisTools,
   createRustRunnerTool,
   createDefaultToolExposurePolicy,
   createWorkspaceToolRoutingPlan,
@@ -503,4 +504,153 @@ describe("Rust runner tool", () => {
       });
     }
   );
+});
+
+describe("createJarvisTools", () => {
+  function getTool(name: string) {
+    const fixed = new Date("2026-05-07T01:23:45.000Z");
+    const tool = createJarvisTools({ now: () => fixed }).find((entry) => entry.definition.name === name);
+    if (!tool) {
+      throw new Error(`tool ${name} not registered`);
+    }
+    return tool;
+  }
+
+  it("registers six zero-IO ambient utility tools", () => {
+    const tools = createJarvisTools();
+    expect(tools.map((tool) => tool.definition.name).sort()).toEqual([
+      "json_query",
+      "math_eval",
+      "text_stats",
+      "time_add",
+      "time_diff",
+      "time_now"
+    ]);
+    for (const tool of tools) {
+      expect(tool.definition.risk).toBe("read");
+    }
+  });
+
+  it("time_now returns ISO + epoch + day-of-week using the injected clock", async () => {
+    const tool = getTool("time_now");
+    const result = await tool.execute({}, { runId: "run-1" });
+    expect(result).toMatchObject({
+      dayOfWeek: "Thursday",
+      epochMs: new Date("2026-05-07T01:23:45.000Z").getTime(),
+      iso: "2026-05-07T01:23:45.000Z",
+      timezone: "UTC"
+    });
+  });
+
+  it("time_now rejects an unsupported timezone with an error payload", async () => {
+    const tool = getTool("time_now");
+    const result = await tool.execute({ timezone: "Mars/Olympus" }, { runId: "run-1" });
+    expect(result).toEqual({ error: expect.stringContaining("unsupported timezone") });
+  });
+
+  it("time_diff returns signed milliseconds and a humanized duration", async () => {
+    const tool = getTool("time_diff");
+    const positive = await tool.execute(
+      { from: "2026-05-07T00:00:00.000Z", to: "2026-05-07T01:30:45.000Z" },
+      { runId: "run-1" }
+    );
+    expect(positive).toEqual({ humanized: "1h 30m", milliseconds: 5_445_000 });
+
+    const negative = await tool.execute(
+      { from: "2026-05-07T02:00:00.000Z", to: "2026-05-07T01:00:00.000Z" },
+      { runId: "run-1" }
+    );
+    expect(negative).toEqual({ humanized: "-1h", milliseconds: -3_600_000 });
+  });
+
+  it("time_diff returns an error when arguments are not parseable timestamps", async () => {
+    const tool = getTool("time_diff");
+    const result = await tool.execute({ from: "not-a-date", to: "2026-05-07T00:00:00.000Z" }, { runId: "run-1" });
+    expect(result).toEqual({ error: expect.stringContaining("ISO-8601") });
+  });
+
+  it("time_add sums all duration fields onto the base timestamp", async () => {
+    const tool = getTool("time_add");
+    const result = await tool.execute(
+      { base: "2026-05-07T00:00:00.000Z", days: 1, hours: 2, minutes: 30 },
+      { runId: "run-1" }
+    );
+    expect(result).toEqual({
+      iso: "2026-05-08T02:30:00.000Z",
+      offsetMs: 86_400_000 + 7_200_000 + 1_800_000
+    });
+  });
+
+  it("text_stats counts words, characters, and lines (treating whitespace-only as zero)", async () => {
+    const tool = getTool("text_stats");
+    const stats = await tool.execute({ text: "hello world\nthis has three lines\nand more words" }, { runId: "run-1" });
+    expect(stats).toEqual({ characters: 47, lines: 3, words: 9 });
+    expect(await tool.execute({ text: "   \n  \n" }, { runId: "run-1" })).toEqual({
+      characters: 0,
+      lines: 0,
+      words: 0
+    });
+  });
+
+  it("math_eval evaluates arithmetic with operator precedence and parentheses", async () => {
+    const tool = getTool("math_eval");
+    expect(await tool.execute({ expression: "2 + 3 * 4" }, { runId: "run-1" })).toEqual({
+      expression: "2 + 3 * 4",
+      result: 14
+    });
+    expect(await tool.execute({ expression: "(10 - 4) / 2" }, { runId: "run-1" })).toEqual({
+      expression: "(10 - 4) / 2",
+      result: 3
+    });
+    expect(await tool.execute({ expression: "10 % 3" }, { runId: "run-1" })).toEqual({
+      expression: "10 % 3",
+      result: 1
+    });
+    expect(await tool.execute({ expression: "1,000 + 2,500" }, { runId: "run-1" })).toEqual({
+      expression: "1,000 + 2,500",
+      result: 3_500
+    });
+  });
+
+  it("math_eval rejects characters outside the safe set without invoking eval", async () => {
+    const tool = getTool("math_eval");
+    expect(await tool.execute({ expression: "1 + globalThis" }, { runId: "run-1" })).toEqual({
+      error: expect.stringContaining("digits, parentheses")
+    });
+    expect(await tool.execute({ expression: "1 / 0" }, { runId: "run-1" })).toEqual({
+      error: expect.stringContaining("division by zero")
+    });
+  });
+
+  it("json_query resolves dotted paths through objects and arrays", async () => {
+    const tool = getTool("json_query");
+    const document = {
+      project: "muse",
+      tags: ["jarvis", "open-router"],
+      users: [
+        { name: "alice", role: "admin" },
+        { name: "bob", role: "user" }
+      ]
+    };
+    expect(await tool.execute({ document, path: "users.0.name" }, { runId: "run-1" })).toEqual({
+      found: true,
+      path: "users.0.name",
+      value: "alice"
+    });
+    expect(await tool.execute({ document, path: "users.5.name" }, { runId: "run-1" })).toEqual({
+      found: false,
+      path: "users.5.name",
+      value: null
+    });
+    expect(await tool.execute({ document, path: "tags.1" }, { runId: "run-1" })).toEqual({
+      found: true,
+      path: "tags.1",
+      value: "open-router"
+    });
+    expect(await tool.execute({ document, path: "missing" }, { runId: "run-1" })).toEqual({
+      found: false,
+      path: "missing",
+      value: null
+    });
+  });
 });
