@@ -470,6 +470,47 @@ describe("cli program", () => {
       .toContain("\"source\":\"cli.remote\"");
   });
 
+  it("jarvis runtime / loopback / snapshot hit the JARVIS endpoints and print JSON", async () => {
+    const { io, output } = captureOutput();
+    const requests: Array<{ readonly method?: string; readonly url: string }> = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url, init) => {
+        requests.push({ method: init?.method, url: String(url) });
+        if (String(url).endsWith("/api/jarvis/runtime")) {
+          return new Response(JSON.stringify({
+            agentCore: { modelAgnostic: true, runner: "rust" },
+            service: "muse-api",
+            tools: { byRisk: { execute: 0, read: 6, write: 0 }, total: 6 }
+          }));
+        }
+        if (String(url).endsWith("/api/jarvis/loopback")) {
+          return new Response(JSON.stringify({ servers: [{ name: "muse.time", optIn: false, toolCount: 2 }], total: 1 }));
+        }
+        if (String(url).endsWith("/api/admin/jarvis/snapshot")) {
+          return new Response(JSON.stringify({
+            generatedAt: "2026-05-07T00:00:00.000Z",
+            latency: { count: 1, avgMs: 5, p95Ms: 5 },
+            slo: { errorRate: 0, latencySamples: 1, resultSamples: 1, violations: [] }
+          }));
+        }
+        return new Response("{}");
+      }
+    });
+
+    await program.parseAsync(["node", "muse", "--api-url", "http://api.test", "jarvis", "runtime"], { from: "node" });
+    await program.parseAsync(["node", "muse", "--api-url", "http://api.test", "jarvis", "loopback"], { from: "node" });
+    await program.parseAsync(["node", "muse", "--api-url", "http://api.test", "jarvis", "snapshot"], { from: "node" });
+
+    expect(requests[0]).toMatchObject({ url: "http://api.test/api/jarvis/runtime", method: "GET" });
+    expect(requests[1]).toMatchObject({ url: "http://api.test/api/jarvis/loopback", method: "GET" });
+    expect(requests[2]).toMatchObject({ url: "http://api.test/api/admin/jarvis/snapshot", method: "GET" });
+    const combined = output.join("");
+    expect(combined).toContain("muse-api");
+    expect(combined).toContain("muse.time");
+    expect(combined).toContain("latencySamples");
+  });
+
   it("specs list / get / resolve hit the public agent-spec endpoints", async () => {
     const { io, output } = captureOutput();
     const requests: Array<{ readonly body?: string; readonly method?: string; readonly url: string }> = [];

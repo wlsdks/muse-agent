@@ -346,6 +346,29 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       writeOutput(io, await apiRequest(io, command, "/agent-specs/resolve", { text }));
     });
 
+  const jarvis = program.command("jarvis").description("Introspect the JARVIS runtime manifest, loopback catalog, and observability snapshot");
+
+  jarvis
+    .command("runtime")
+    .description("GET /api/jarvis/runtime — capabilities, locales, tool risk counts, default model")
+    .action(async (_options, command) => {
+      writeOutput(io, await apiRequest(io, command, "/api/jarvis/runtime"));
+    });
+
+  jarvis
+    .command("loopback")
+    .description("GET /api/jarvis/loopback — catalog of all loopback MCP servers Muse can plug in")
+    .action(async (_options, command) => {
+      writeOutput(io, await apiRequest(io, command, "/api/jarvis/loopback"));
+    });
+
+  jarvis
+    .command("snapshot")
+    .description("GET /api/admin/jarvis/snapshot — latency, token cost, SLO, drift, cost, budgets, follow-ups (admin)")
+    .action(async (_options, command) => {
+      writeOutput(io, await apiRequest(io, command, "/api/admin/jarvis/snapshot"));
+    });
+
   const scheduler = program.command("scheduler").description("Manage scheduled jobs");
 
   scheduler
