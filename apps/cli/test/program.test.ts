@@ -470,6 +470,96 @@ describe("cli program", () => {
       .toContain("\"source\":\"cli.remote\"");
   });
 
+  it("orchestrate run posts the multi-agent request body with mode + workerIds", async () => {
+    const { io, output } = captureOutput();
+    const requests: Array<{ readonly body?: string; readonly method?: string; readonly url: string }> = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url, init) => {
+        requests.push({
+          body: init?.body !== undefined && init?.body !== null ? String(init.body) : undefined,
+          method: init?.method,
+          url: String(url)
+        });
+        return new Response(JSON.stringify({
+          mode: "race",
+          response: { output: "winner" },
+          results: [{ status: "completed", workerId: "fast" }],
+          runId: "orch-1"
+        }));
+      }
+    });
+
+    await program.parseAsync([
+      "node",
+      "muse",
+      "--api-url",
+      "http://api.test",
+      "orchestrate",
+      "run",
+      "--mode",
+      "race",
+      "--workers",
+      "fast,slow",
+      "--max-workers",
+      "2",
+      "compare",
+      "rollout",
+      "options"
+    ], { from: "node" });
+
+    expect(requests[0]).toMatchObject({ url: "http://api.test/api/multi-agent/orchestrate", method: "POST" });
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toEqual({
+      message: "compare rollout options",
+      mode: "race",
+      workerIds: ["fast", "slow"],
+      maxWorkers: 2
+    });
+    expect(output.join("")).toContain("orch-1");
+  });
+
+  it("orchestrate run rejects unknown mode and empty message", async () => {
+    const { io } = captureOutput();
+    const program = createProgram({ ...io, fetch: async () => new Response("{}") });
+    await expect(program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "orchestrate", "run", "--mode", "bogus", "hi"],
+      { from: "node" }
+    )).rejects.toThrow(/--mode must be 'sequential', 'parallel', or 'race'/u);
+    await expect(program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "orchestrate", "run", "  "],
+      { from: "node" }
+    )).rejects.toThrow(/orchestrate run requires a non-empty message/u);
+  });
+
+  it("orchestrate list / get / stats hit the orchestration history endpoints", async () => {
+    const { io } = captureOutput();
+    const requests: Array<{ readonly url: string }> = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url) => {
+        requests.push({ url: String(url) });
+        return new Response("[]");
+      }
+    });
+
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "orchestrate", "list", "--limit", "5"],
+      { from: "node" }
+    );
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "orchestrate", "get", "orch-42"],
+      { from: "node" }
+    );
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "orchestrate", "stats"],
+      { from: "node" }
+    );
+
+    expect(requests[0]?.url).toBe("http://api.test/api/multi-agent/orchestrations?limit=5");
+    expect(requests[1]?.url).toBe("http://api.test/api/multi-agent/orchestrations/orch-42");
+    expect(requests[2]?.url).toBe("http://api.test/api/multi-agent/orchestrations/stats");
+  });
+
   it("jarvis runtime / loopback / snapshot hit the JARVIS endpoints and print JSON", async () => {
     const { io, output } = captureOutput();
     const requests: Array<{ readonly method?: string; readonly url: string }> = [];
