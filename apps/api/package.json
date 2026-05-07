@@ -21,6 +21,7 @@
     "@muse/memory": "workspace:*",
     "@muse/mcp": "workspace:*",
     "@muse/model": "workspace:*",
+    "@muse/multi-agent": "workspace:*",
     "@muse/observability": "workspace:*",
     "@muse/policy": "workspace:*",
     "@muse/rag": "workspace:*",

@@ -48,6 +48,7 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 import Fastify, { type FastifyInstance } from "fastify";
 import { registerAdminRoutes, type AdminRouteState } from "./admin-routes.js";
 import { registerMcpRoutes, type McpRouteMcp } from "./mcp-routes.js";
+import { registerMultiAgentRoutes } from "./multi-agent-routes.js";
 import { registerQualityRoutes } from "./quality-routes.js";
 import { registerReactorCompatibilityRoutes } from "./reactor-compat-routes.js";
 import { registerSchedulerRoutes, type SchedulerRouteScheduler } from "./scheduler-routes.js";
@@ -293,6 +294,11 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     agentRuntime: options.agentRuntime,
     defaultModel: options.defaultModel,
     slack: options.slack
+  });
+  registerMultiAgentRoutes(server, {
+    agentRuntime: options.agentRuntime,
+    agentSpecRegistry,
+    defaultModel: options.defaultModel
   });
   registerReactorCompatibilityRoutes(server, {
     admin: options.admin,

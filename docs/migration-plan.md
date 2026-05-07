@@ -296,6 +296,17 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- multi-agent message bus is now exposed over HTTP (iteration 27). New
+  `POST /api/multi-agent/orchestrate` accepts `{ message, model?, mode?,
+  workerIds?, maxWorkers? }` and runs every enabled `AgentSpec` (or the
+  requested subset) as an `AgentSpecWorker` that wraps the shared
+  `AgentRuntime`, prepending the spec's systemPrompt and tagging
+  `metadata.selectedAgentId`/`agentSpecId`. The route returns
+  `{ runId, response, results, conversation }` where `conversation` is
+  the `InMemoryAgentMessageBus.getConversation()` snapshot. Three new
+  HTTP smoke checks: empty-body 400, no-specs 409, two-spec sequential
+  run with conversation assertions on `sourceAgentId`. Smoke 38 → 41,
+  Muse routes 373 → 374, route parity stays 0 missing.
 - multi-agent gains an `AgentMessageBus` primitive (iteration 26). New
   `packages/multi-agent/src/agent-message-bus.ts` exports `AgentMessage`,
   `AgentMessageBus`, `AgentMessageHandler`, `InMemoryAgentMessageBus`. The

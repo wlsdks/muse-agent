@@ -626,6 +626,71 @@ try {
       "expected disabled memory injection to leave secret out of response");
   });
 
+  await record("POST /api/multi-agent/orchestrate rejects empty body", async () => {
+    const response = await fetch(`${baseUrl}/api/multi-agent/orchestrate`, {
+      body: JSON.stringify({}),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    assert(response.status === 400, `expected 400, got ${response.status}`);
+    const body = await response.json();
+    assert(body.code === "INVALID_ORCHESTRATE_REQUEST", `expected INVALID_ORCHESTRATE_REQUEST, got ${body.code}`);
+  });
+
+  await record("POST /api/multi-agent/orchestrate returns 409 when no specs are enabled", async () => {
+    const list = await fetch(`${baseUrl}/api/admin/agent-specs`).then((response) => response.json());
+    if (Array.isArray(list) && list.length > 0) {
+      return; // skipped — specs already exist for this run
+    }
+    const response = await fetch(`${baseUrl}/api/multi-agent/orchestrate`, {
+      body: JSON.stringify({ message: "smoke broad multi-agent" }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    assert(response.status === 409, `expected 409, got ${response.status}`);
+    const body = await response.json();
+    assert(body.code === "NO_AGENT_WORKERS", `expected NO_AGENT_WORKERS, got ${body.code}`);
+  });
+
+  await record("POST /api/multi-agent/orchestrate runs registered specs and emits conversation", async () => {
+    for (const name of ["smoke-research", "smoke-coder"]) {
+      const seed = await fetch(`${baseUrl}/api/admin/agent-specs`, {
+        body: JSON.stringify({
+          description: `${name} (smoke)`,
+          enabled: true,
+          keywords: ["smoke"],
+          mode: "react",
+          name,
+          systemPrompt: `You are ${name}.`,
+          toolNames: []
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST"
+      });
+      assert(seed.status === 201 || seed.status === 200, `expected 200/201 when seeding ${name}, got ${seed.status}`);
+    }
+
+    const response = await fetch(`${baseUrl}/api/multi-agent/orchestrate`, {
+      body: JSON.stringify({
+        message: "smoke broad orchestrate",
+        mode: "sequential",
+        workerIds: ["smoke-research", "smoke-coder"]
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    assert(response.status === 200, `expected 200, got ${response.status}`);
+    const body = await response.json();
+    assert(body.mode === "sequential", `expected sequential mode, got ${body.mode}`);
+    assert(typeof body.runId === "string" && body.runId.length > 0, "expected runId string");
+    assert(Array.isArray(body.results) && body.results.length === 2, "expected 2 results");
+    assert(body.results.every((step) => step.status === "completed"), "expected all results completed");
+    assert(Array.isArray(body.conversation) && body.conversation.length === 2, "expected 2 conversation entries");
+    const sources = body.conversation.map((entry) => entry.sourceAgentId);
+    assert(sources.includes("smoke-research") && sources.includes("smoke-coder"),
+      `expected both worker ids in conversation, got ${sources.join(",")}`);
+  });
+
   await record("POST /api/chat with metadata.agentMode=plan_execute", async () => {
     const response = await fetch(`${baseUrl}/api/chat`, {
       body: JSON.stringify({

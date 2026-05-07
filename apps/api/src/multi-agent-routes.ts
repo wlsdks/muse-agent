@@ -1,0 +1,225 @@
+import type { AgentRunInput, AgentRuntime } from "@muse/agent-core";
+import type { AgentSpec, AgentSpecRegistry } from "@muse/agent-specs";
+import {
+  InMemoryAgentMessageBus,
+  MultiAgentOrchestrator,
+  type AgentMessage,
+  type AgentWorker,
+  type OrchestrationMode
+} from "@muse/multi-agent";
+import type { ModelMessage } from "@muse/model";
+import type { JsonObject } from "@muse/shared";
+import type { FastifyInstance } from "fastify";
+
+export interface MultiAgentRouteOptions {
+  readonly agentRuntime?: AgentRuntime;
+  readonly agentSpecRegistry: AgentSpecRegistry;
+  readonly defaultModel?: string;
+}
+
+interface ApiError {
+  readonly code: string;
+  readonly message: string;
+}
+
+interface OrchestrateBody {
+  readonly message: string;
+  readonly model?: string;
+  readonly mode?: OrchestrationMode;
+  readonly workerIds?: readonly string[];
+  readonly maxWorkers?: number;
+}
+
+type ParseResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: ApiError };
+
+export function registerMultiAgentRoutes(server: FastifyInstance, options: MultiAgentRouteOptions): void {
+  server.post("/api/multi-agent/orchestrate", async (request, reply) => {
+    if (!options.agentRuntime) {
+      return reply.status(503).send({
+        code: "AGENT_RUNTIME_UNAVAILABLE",
+        message: "Agent runtime is not configured"
+      } satisfies ApiError);
+    }
+
+    const parsed = parseOrchestrateBody(request.body);
+
+    if (!parsed.ok) {
+      return reply.status(400).send(parsed.error);
+    }
+
+    const allSpecs = await options.agentSpecRegistry.listEnabled();
+    const requestedIds = parsed.value.workerIds;
+    const selected = requestedIds
+      ? allSpecs.filter((spec) => requestedIds.includes(spec.name))
+      : allSpecs;
+
+    if (selected.length === 0) {
+      return reply.status(409).send({
+        code: "NO_AGENT_WORKERS",
+        message: requestedIds
+          ? "No enabled agent specs match the requested workerIds"
+          : "No enabled agent specs are available to orchestrate"
+      } satisfies ApiError);
+    }
+
+    const messageBus = new InMemoryAgentMessageBus();
+    const workers: AgentWorker[] = selected.map((spec) => createSpecWorker(spec, options.agentRuntime!));
+    const orchestrator = new MultiAgentOrchestrator({ messageBus, workers });
+    const input: AgentRunInput = {
+      messages: [{ content: parsed.value.message, role: "user" }],
+      model: parsed.value.model ?? options.defaultModel ?? "default"
+    };
+
+    try {
+      const orchestration = await orchestrator.run(input, {
+        ...(parsed.value.mode ? { mode: parsed.value.mode } : {}),
+        ...(parsed.value.maxWorkers !== undefined ? { maxWorkers: parsed.value.maxWorkers } : {})
+      });
+
+      return {
+        conversation: messageBus.getConversation().map(toConversationEntry),
+        mode: orchestration.mode,
+        response: {
+          id: orchestration.response.id,
+          model: orchestration.response.model,
+          output: orchestration.response.output
+        },
+        results: orchestration.results.map((step) => ({
+          status: step.status,
+          workerId: step.workerId,
+          ...(step.result ? { output: step.result.response.output } : {}),
+          ...(step.error ? { error: step.error } : {})
+        })),
+        runId: orchestration.runId
+      };
+    } catch (error) {
+      return reply.status(500).send({
+        code: "MULTI_AGENT_ORCHESTRATION_FAILED",
+        message: error instanceof Error ? error.message : "Multi-agent orchestration failed"
+      } satisfies ApiError);
+    }
+  });
+}
+
+function createSpecWorker(spec: AgentSpec, runtime: AgentRuntime): AgentWorker {
+  return {
+    canHandle: () => 1,
+    description: spec.description,
+    id: spec.name,
+    async run(input) {
+      const messages = spec.systemPrompt ? prependSystem(input.messages, spec.systemPrompt) : input.messages;
+
+      return runtime.run({
+        ...input,
+        messages,
+        metadata: {
+          ...(input.metadata ?? {}),
+          agentSpecId: spec.id,
+          selectedAgentId: spec.name
+        }
+      });
+    }
+  };
+}
+
+function prependSystem(messages: readonly ModelMessage[], systemPrompt: string): readonly ModelMessage[] {
+  const [first, ...rest] = messages;
+
+  if (first?.role === "system") {
+    return [{ content: `${systemPrompt}\n\n${first.content}`, role: "system" }, ...rest];
+  }
+
+  return [{ content: systemPrompt, role: "system" }, ...messages];
+}
+
+function parseOrchestrateBody(value: unknown): ParseResult<OrchestrateBody> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return invalid("INVALID_ORCHESTRATE_REQUEST", "Body must be a JSON object");
+  }
+
+  const body = value as Record<string, unknown>;
+
+  if (typeof body.message !== "string" || body.message.trim().length === 0) {
+    return invalid("INVALID_ORCHESTRATE_REQUEST", "message is required");
+  }
+
+  let mode: OrchestrationMode | undefined;
+
+  if (body.mode === "sequential" || body.mode === "parallel") {
+    mode = body.mode;
+  } else if (body.mode !== undefined) {
+    return invalid("INVALID_ORCHESTRATE_REQUEST", "mode must be 'sequential' or 'parallel'");
+  }
+
+  let workerIds: readonly string[] | undefined;
+
+  if (Array.isArray(body.workerIds)) {
+    if (!body.workerIds.every((id) => typeof id === "string")) {
+      return invalid("INVALID_ORCHESTRATE_REQUEST", "workerIds must be string[]");
+    }
+
+    workerIds = body.workerIds as readonly string[];
+  } else if (body.workerIds !== undefined) {
+    return invalid("INVALID_ORCHESTRATE_REQUEST", "workerIds must be string[]");
+  }
+
+  let maxWorkers: number | undefined;
+
+  if (typeof body.maxWorkers === "number" && Number.isFinite(body.maxWorkers) && body.maxWorkers > 0) {
+    maxWorkers = body.maxWorkers;
+  } else if (body.maxWorkers !== undefined) {
+    return invalid("INVALID_ORCHESTRATE_REQUEST", "maxWorkers must be a positive number");
+  }
+
+  return {
+    ok: true,
+    value: {
+      message: body.message,
+      ...(typeof body.model === "string" && body.model.trim().length > 0 ? { model: body.model } : {}),
+      ...(mode ? { mode } : {}),
+      ...(workerIds ? { workerIds } : {}),
+      ...(maxWorkers !== undefined ? { maxWorkers } : {})
+    }
+  };
+}
+
+function invalid(code: string, message: string): ParseResult<never> {
+  return { error: { code, message }, ok: false };
+}
+
+interface ConversationEntry {
+  readonly content: string;
+  readonly sourceAgentId: string;
+  readonly targetAgentId?: string;
+  readonly metadata?: JsonObject;
+  readonly timestamp: string;
+}
+
+function toConversationEntry(message: AgentMessage): ConversationEntry {
+  const metadata = message.metadata
+    ? (Object.fromEntries(
+        Object.entries(message.metadata).filter(([, value]) => value !== undefined)
+      ) as JsonObject)
+    : undefined;
+
+  return {
+    content: message.content,
+    sourceAgentId: message.sourceAgentId,
+    timestamp: message.timestamp.toISOString(),
+    ...(metadata && Object.keys(metadata).length > 0 ? { metadata } : {}),
+    ...(message.targetAgentId !== undefined ? { targetAgentId: message.targetAgentId } : {})
+  };
+}
+
+export type MultiAgentOrchestrateResponseBody = {
+  readonly conversation: readonly ConversationEntry[];
+  readonly mode: OrchestrationMode;
+  readonly response: { readonly id: string; readonly model: string; readonly output: string };
+  readonly results: ReadonlyArray<{
+    readonly status: "completed" | "failed";
+    readonly workerId: string;
+    readonly output?: string;
+    readonly error?: string;
+  }>;
+  readonly runId: string;
+};
