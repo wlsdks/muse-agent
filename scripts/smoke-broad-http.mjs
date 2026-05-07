@@ -261,6 +261,39 @@ try {
     assert(String(queries[1] ?? "").includes("30 days"), "second query should be the hypothetical doc");
   });
 
+  await record("Prompt drift detector flags an output-length distribution shift", async () => {
+    const { PromptDriftDetector } = await import(`${rootDir}/packages/observability/dist/index.js`);
+    const { createPromptDriftHook } = await import(`${rootDir}/packages/integrations/dist/index.js`);
+    const detector = new PromptDriftDetector({
+      deviationThreshold: 1,
+      minSamples: 10,
+      windowSize: 100
+    });
+    const notified = [];
+    const hook = createPromptDriftHook({
+      detector,
+      notify: async (anomalies) => {
+        notified.push(...anomalies);
+      }
+    });
+
+    const ctx = {
+      input: { messages: [{ content: "hello", role: "user" }], model: "smoke" },
+      runId: "drift-smoke",
+      startedAt: new Date()
+    };
+    for (let i = 0; i < 10; i += 1) {
+      await hook.beforeStart(ctx);
+      await hook.afterComplete(ctx, { id: "r", model: "smoke", output: "x" });
+    }
+    for (let i = 0; i < 10; i += 1) {
+      await hook.beforeStart(ctx);
+      await hook.afterComplete(ctx, { id: "r", model: "smoke", output: "x".repeat(8_000) });
+    }
+    assert(notified.length >= 1, `expected drift anomaly, got ${notified.length}`);
+    assert(notified.some((a) => a.type === "output_length"), "expected output_length anomaly");
+  });
+
   await record("SLO alert hook records latency and surfaces threshold violations", async () => {
     const { SloAlertEvaluator } = await import(`${rootDir}/packages/observability/dist/index.js`);
     const { createSloAlertHook } = await import(`${rootDir}/packages/integrations/dist/index.js`);

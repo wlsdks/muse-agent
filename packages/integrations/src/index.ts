@@ -1,7 +1,13 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { AgentRunContext, HookStage } from "@muse/agent-core";
 import type { ModelMessage } from "@muse/model";
-import type { FollowupSuggestionStore, SloAlertEvaluator, SloViolation } from "@muse/observability";
+import type {
+  DriftAnomaly,
+  FollowupSuggestionStore,
+  PromptDriftDetector,
+  SloAlertEvaluator,
+  SloViolation
+} from "@muse/observability";
 import type {
   ChannelFaqRegistrationTable,
   MuseDatabase,
@@ -1693,6 +1699,44 @@ export const SLACK_PROGRESS_DEFAULT_FRIENDLY_NAMES: Readonly<Record<string, stri
 
 export const SLACK_PROGRESS_DEFAULT_MIN_UPDATE_MS = 1500;
 export const SLACK_PROGRESS_MAX_STATUS_LENGTH = 100;
+
+export interface PromptDriftHookOptions {
+  readonly detector: PromptDriftDetector;
+  readonly id?: string;
+  readonly notify?: (anomalies: readonly DriftAnomaly[]) => Awaitable<void>;
+  readonly logger?: (message: string, error?: unknown) => void;
+}
+
+/**
+ * Hook that records the input prompt length on `beforeStart` and the output
+ * response length on `afterComplete`, then forwards any new drift anomalies to
+ * the optional `notify` callback. Notify failures are swallowed via the
+ * optional `logger` so the agent run never breaks on drift signaling.
+ */
+export function createPromptDriftHook(options: PromptDriftHookOptions): HookStage {
+  return {
+    afterComplete: async (_context, response) => {
+      options.detector.recordOutput(response.output?.length ?? 0);
+      const anomalies = options.detector.evaluate();
+      if (anomalies.length === 0 || !options.notify) {
+        return;
+      }
+      try {
+        await options.notify(anomalies);
+      } catch (error) {
+        options.logger?.("PromptDriftHook notify failed", error);
+      }
+    },
+    beforeStart: async (context) => {
+      const totalLength = context.input.messages.reduce(
+        (sum, message) => sum + (message.content?.length ?? 0),
+        0
+      );
+      options.detector.recordInput(totalLength);
+    },
+    id: options.id ?? "prompt-drift"
+  };
+}
 
 export interface SloAlertHookOptions {
   readonly evaluator: SloAlertEvaluator;

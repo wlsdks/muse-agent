@@ -18,6 +18,7 @@ import {
   createSlackResponseTrackingInsert,
   CommandRouter,
   createFollowupSuggestionInteractionHandler,
+  createPromptDriftHook,
   createSlackProgressHook,
   createSlackReminderPoller,
   createSloAlertHook,
@@ -1792,5 +1793,115 @@ describe("createSloAlertHook", () => {
     const { evaluator } = makeEvaluator();
     const hook = createSloAlertHook({ evaluator: evaluator as never, id: "custom-slo" });
     expect(hook.id).toBe("custom-slo");
+  });
+});
+
+describe("createPromptDriftHook", () => {
+  function makeDetector(): {
+    detector: {
+      recordInput: (length: number) => void;
+      recordOutput: (length: number) => void;
+      evaluate: () => Array<{ type: string }>;
+    };
+    inputs: number[];
+    outputs: number[];
+    queue: Array<Array<{ type: string }>>;
+  } {
+    const inputs: number[] = [];
+    const outputs: number[] = [];
+    const queue: Array<Array<{ type: string }>> = [];
+    return {
+      detector: {
+        evaluate: () => queue.shift() ?? [],
+        recordInput: (length) => {
+          inputs.push(length);
+        },
+        recordOutput: (length) => {
+          outputs.push(length);
+        }
+      },
+      inputs,
+      outputs,
+      queue
+    };
+  }
+
+  function makeContext(messages: Array<{ role: "user" | "system"; content: string }>): AgentRunContext {
+    return {
+      input: { messages, model: "test-model" },
+      runId: "drift-run",
+      startedAt: new Date()
+    };
+  }
+
+  it("records the total input length on beforeStart and the output length on afterComplete", async () => {
+    const { detector, inputs, outputs } = makeDetector();
+    const hook = createPromptDriftHook({ detector: detector as never });
+    const context = makeContext([
+      { content: "hello", role: "user" },
+      { content: "world!", role: "user" }
+    ]);
+
+    await hook.beforeStart?.(context);
+    await hook.afterComplete?.(context, { id: "r", model: "m", output: "response text" });
+
+    expect(inputs).toEqual([11]); // "hello" + "world!"
+    expect(outputs).toEqual(["response text".length]);
+  });
+
+  it("forwards drift anomalies through the notify callback", async () => {
+    const { detector, queue } = makeDetector();
+    queue.push([{ type: "input_length" }]);
+    const notified: unknown[] = [];
+    const hook = createPromptDriftHook({
+      detector: detector as never,
+      notify: async (anomalies) => {
+        notified.push(anomalies);
+      }
+    });
+    await hook.beforeStart?.(makeContext([{ content: "x", role: "user" }]));
+    await hook.afterComplete?.(
+      makeContext([{ content: "x", role: "user" }]),
+      { id: "r", model: "m", output: "y" }
+    );
+    expect(notified).toHaveLength(1);
+  });
+
+  it("swallows notify failures via the optional logger", async () => {
+    const { detector, queue } = makeDetector();
+    queue.push([{ type: "output_length" }]);
+    const errors: unknown[] = [];
+    const hook = createPromptDriftHook({
+      detector: detector as never,
+      logger: (_message, error) => errors.push(error),
+      notify: async () => {
+        throw new Error("notify down");
+      }
+    });
+    await hook.beforeStart?.(makeContext([{ content: "x", role: "user" }]));
+    await expect(
+      hook.afterComplete?.(
+        makeContext([{ content: "x", role: "user" }]),
+        { id: "r", model: "m", output: "y" }
+      )
+    ).resolves.toBeUndefined();
+    expect(errors).toHaveLength(1);
+  });
+
+  it("does not call notify when no anomalies are returned", async () => {
+    const { detector } = makeDetector();
+    const notified: unknown[] = [];
+    const hook = createPromptDriftHook({
+      detector: detector as never,
+      notify: async (anomalies) => {
+        notified.push(anomalies);
+      }
+    });
+    await hook.beforeStart?.(makeContext([{ content: "x", role: "user" }]));
+    await hook.afterComplete?.(
+      makeContext([{ content: "x", role: "user" }]),
+      { id: "r", model: "m", output: "y" }
+    );
+    expect(notified).toHaveLength(0);
   });
 });

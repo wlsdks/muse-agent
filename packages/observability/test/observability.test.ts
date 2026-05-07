@@ -7,6 +7,7 @@ import {
   InMemoryAgentMetrics,
   InMemoryFollowupSuggestionStore,
   InMemoryLatencyQuery,
+  PromptDriftDetector,
   SloAlertEvaluator,
   InMemoryMuseTracer,
   InMemoryTokenCostQuery,
@@ -800,5 +801,81 @@ describe("SloAlertEvaluator", () => {
     expect(() =>
       new SloAlertEvaluator({ cooldownSeconds: 0, errorRateThreshold: 0.1, latencyThresholdMs: 1_000, windowSeconds: 0 })
     ).toThrow(/windowSeconds/u);
+  });
+});
+
+describe("PromptDriftDetector", () => {
+  it("returns no anomalies until min samples are collected", () => {
+    const detector = new PromptDriftDetector({ deviationThreshold: 1, minSamples: 10, windowSize: 50 });
+    for (let i = 0; i < 6; i += 1) {
+      detector.recordInput(100);
+    }
+    expect(detector.evaluate()).toEqual([]);
+  });
+
+  it("detects a sudden upward shift in input length", () => {
+    const detector = new PromptDriftDetector({ deviationThreshold: 1, minSamples: 10, windowSize: 100 });
+    for (let i = 0; i < 10; i += 1) {
+      detector.recordInput(100 + i);
+    }
+    for (let i = 0; i < 10; i += 1) {
+      detector.recordInput(2_000 + i);
+    }
+    const anomalies = detector.evaluate();
+    expect(anomalies.find((a) => a.type === "input_length")).toBeDefined();
+    expect(anomalies.find((a) => a.type === "input_length")?.deviationFactor).toBeGreaterThan(1);
+  });
+
+  it("detects output drift independently of input", () => {
+    const detector = new PromptDriftDetector({ deviationThreshold: 1, minSamples: 10, windowSize: 100 });
+    for (let i = 0; i < 10; i += 1) {
+      detector.recordOutput(50);
+    }
+    for (let i = 0; i < 10; i += 1) {
+      detector.recordOutput(5_000);
+    }
+    expect(detector.evaluate().some((a) => a.type === "output_length")).toBe(true);
+  });
+
+  it("uses a stddev floor when the baseline distribution is uniform", () => {
+    const detector = new PromptDriftDetector({ deviationThreshold: 0.5, minSamples: 6, windowSize: 50 });
+    for (let i = 0; i < 6; i += 1) {
+      detector.recordInput(100);
+    }
+    for (let i = 0; i < 6; i += 1) {
+      detector.recordInput(800);
+    }
+    expect(detector.evaluate().length).toBeGreaterThan(0);
+  });
+
+  it("evicts oldest samples when the window is full", () => {
+    const detector = new PromptDriftDetector({ minSamples: 5, windowSize: 5 });
+    for (let i = 0; i < 20; i += 1) {
+      detector.recordInput(i);
+    }
+    expect(detector.stats().sampleCount).toBe(5);
+  });
+
+  it("ignores negative or non-finite samples", () => {
+    const detector = new PromptDriftDetector({ minSamples: 5, windowSize: 50 });
+    detector.recordInput(-1);
+    detector.recordInput(Number.NaN);
+    detector.recordInput(Number.POSITIVE_INFINITY);
+    expect(detector.stats().sampleCount).toBe(0);
+  });
+
+  it("rejects invalid configuration", () => {
+    expect(() => new PromptDriftDetector({ windowSize: 0 })).toThrow(/windowSize/u);
+    expect(() => new PromptDriftDetector({ deviationThreshold: -1 })).toThrow(/deviationThreshold/u);
+    expect(() => new PromptDriftDetector({ minSamples: 0 })).toThrow(/minSamples/u);
+  });
+
+  it("returns a stats snapshot suitable for telemetry", () => {
+    const detector = new PromptDriftDetector({ minSamples: 4, windowSize: 50 });
+    [10, 20, 30, 40].forEach((value) => detector.recordInput(value));
+    const stats = detector.stats();
+    expect(stats.inputMean).toBe(25);
+    expect(stats.sampleCount).toBe(4);
+    expect(stats.inputStdDev).toBeGreaterThan(0);
   });
 });

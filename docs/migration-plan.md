@@ -296,6 +296,13 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- Prompt drift detector now exists in `@muse/observability` as `PromptDriftDetector`. Tracks input/output
+  length samples in a sliding window and emits a `DriftAnomaly` (`input_length` | `output_length`) when
+  the second-half mean drifts past `deviationThreshold` baseline standard deviations from the first-half
+  mean. Uses a 1% baseline-mean stddev floor when the baseline is uniform so deterministic shifts still
+  alert. `@muse/integrations` adds `createPromptDriftHook` that records input length on `beforeStart` and
+  output length on `afterComplete`, forwarding anomalies through an optional `notify` callback. Closes
+  the Reactor `PromptDriftDetector` + `PromptDriftHook` parity gap.
 - SLO alert evaluator now exists in `@muse/observability` as `SloAlertEvaluator`. Tracks latency samples
   and result outcomes over a configurable rolling window, raises `SloViolation` (type: `latency` |
   `error_rate`) when P95 latency or error rate exceeds threshold, and gates duplicate alerts per type via
