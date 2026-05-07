@@ -675,6 +675,22 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
         inputSchema: tool.definition.inputSchema as Record<string, unknown> | null,
         name: tool.definition.name
       })),
+    toolCatalogProvider: () =>
+      assembly.toolRegistry.list().map((tool) => ({
+        description: tool.definition.description,
+        inputSchema: tool.definition.inputSchema as Record<string, unknown> | null,
+        name: tool.definition.name,
+        risk: tool.definition.risk,
+        ...(tool.definition.keywords && tool.definition.keywords.length > 0
+          ? { keywords: [...tool.definition.keywords] }
+          : {}),
+        ...(tool.definition.scopes && tool.definition.scopes.length > 0
+          ? { scopes: [...tool.definition.scopes] }
+          : {}),
+        ...(tool.definition.dependsOn && tool.definition.dependsOn.length > 0
+          ? { dependsOn: [...tool.definition.dependsOn] }
+          : {})
+      })),
     jarvisObservabilitySnapshot: () =>
       createJarvisObservabilitySnapshotProvider({
         followupSuggestionStore: assembly.observability.followupSuggestionStore,

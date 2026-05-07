@@ -101,7 +101,18 @@ export interface ServerOptions {
     readonly description?: string;
   };
   readonly agentCardToolProvider?: () => Promise<readonly { readonly name: string; readonly description: string; readonly inputSchema?: Record<string, unknown> | null }[]> | readonly { readonly name: string; readonly description: string; readonly inputSchema?: Record<string, unknown> | null }[];
+  readonly toolCatalogProvider?: () => Promise<readonly ToolCatalogEntry[]> | readonly ToolCatalogEntry[];
   readonly jarvisObservabilitySnapshot?: () => Promise<JarvisObservabilitySnapshot>;
+}
+
+export interface ToolCatalogEntry {
+  readonly name: string;
+  readonly description: string;
+  readonly risk: "read" | "write" | "execute";
+  readonly inputSchema?: Record<string, unknown> | null;
+  readonly keywords?: readonly string[];
+  readonly scopes?: readonly string[];
+  readonly dependsOn?: readonly string[];
 }
 
 export interface CorsOptions {
@@ -500,6 +511,44 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         name: resolution.spec.name,
         toolNames: resolution.spec.toolNames
       }
+    };
+  });
+
+  server.get("/api/tools", async (request, reply) => {
+    if (!options.toolCatalogProvider) {
+      return reply.status(404).send({
+        code: "TOOL_CATALOG_UNAVAILABLE",
+        message: "Tool catalog provider is not configured"
+      });
+    }
+
+    const filterRiskRaw = (request.query as { readonly risk?: string } | undefined)?.risk;
+    const filterRisk =
+      filterRiskRaw === "read" || filterRiskRaw === "write" || filterRiskRaw === "execute"
+        ? filterRiskRaw
+        : undefined;
+
+    if (filterRiskRaw !== undefined && filterRisk === undefined) {
+      return reply.status(400).send({
+        code: "INVALID_RISK_FILTER",
+        message: "risk must be one of read | write | execute"
+      });
+    }
+
+    const tools = await options.toolCatalogProvider();
+    const filtered = filterRisk ? tools.filter((tool) => tool.risk === filterRisk) : tools;
+
+    return {
+      tools: filtered.map((tool) => ({
+        description: tool.description,
+        name: tool.name,
+        risk: tool.risk,
+        ...(tool.inputSchema ? { inputSchema: tool.inputSchema } : {}),
+        ...(tool.keywords && tool.keywords.length > 0 ? { keywords: [...tool.keywords] } : {}),
+        ...(tool.scopes && tool.scopes.length > 0 ? { scopes: [...tool.scopes] } : {}),
+        ...(tool.dependsOn && tool.dependsOn.length > 0 ? { dependsOn: [...tool.dependsOn] } : {})
+      })),
+      total: filtered.length
     };
   });
 

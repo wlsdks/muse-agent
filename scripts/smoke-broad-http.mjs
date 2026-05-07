@@ -902,6 +902,32 @@ try {
     assert(missingBody.code === "RUN_NOT_FOUND", `expected RUN_NOT_FOUND, got ${missingBody.code}`);
   });
 
+  await record("GET /api/tools exposes the tool catalog with risk + optional risk filter", async () => {
+    const response = await fetch(`${baseUrl}/api/tools`);
+    assert(response.status === 200, `expected 200, got ${response.status}`);
+    const body = await response.json();
+    assert(Array.isArray(body.tools), "expected tools array");
+    assert(typeof body.total === "number" && body.total >= 1, "expected at least one registered tool");
+    for (const tool of body.tools.slice(0, 5)) {
+      assert(typeof tool.name === "string" && tool.name.length > 0, "expected name string");
+      assert(typeof tool.description === "string", "expected description string");
+      assert(tool.risk === "read" || tool.risk === "write" || tool.risk === "execute",
+        `expected risk read|write|execute, got ${tool.risk}`);
+    }
+
+    const reads = await fetch(`${baseUrl}/api/tools?risk=read`).then((response) => response.json());
+    assert(reads.tools.every((tool) => tool.risk === "read"),
+      "expected all read-filtered tools to have risk=read");
+    assert(reads.tools.length <= body.tools.length,
+      "expected risk-filter to narrow the catalog");
+
+    const bad = await fetch(`${baseUrl}/api/tools?risk=delete`);
+    assert(bad.status === 400, `expected 400 on bad risk filter, got ${bad.status}`);
+    const badBody = await bad.json();
+    assert(badBody.code === "INVALID_RISK_FILTER",
+      `expected INVALID_RISK_FILTER, got ${badBody.code}`);
+  });
+
   await record("POST /api/chat with metadata.agentMode=plan_execute", async () => {
     const response = await fetch(`${baseUrl}/api/chat`, {
       body: JSON.stringify({

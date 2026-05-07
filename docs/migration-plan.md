@@ -296,6 +296,17 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- tool catalog discovery surfaced over HTTP (iteration 42). New
+  `GET /api/tools` returns `{ tools: [{ name, description, risk,
+  inputSchema?, keywords?, scopes?, dependsOn? }], total }` for every
+  registered runtime tool. Optional `?risk=read|write|execute` filter
+  narrows the listing; an unknown risk value returns a structured 400
+  INVALID_RISK_FILTER. The route is wired through a new
+  `ServerOptions.toolCatalogProvider` callback that autoconfigure
+  populates from `assembly.toolRegistry.list()` so no additional
+  state is duplicated. One new HTTP smoke check validates the shape,
+  all-read filtering, and bad-filter 400. Smoke 48 → 49, Muse routes
+  380 → 381, route parity 0 missing.
 - agent-run history surfaced over HTTP (iteration 41). The historyStore
   was previously only reachable through the prefix-less `/admin/runs/:runId`
   endpoint. New `GET /api/admin/runs` lists recent runs with optional
