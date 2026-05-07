@@ -1427,6 +1427,38 @@ async function* toSseStream(
       continue;
     }
 
+    if (event.type === "plan-generated") {
+      if (responseMode !== "reactor") {
+        yield `event: plan_generated\ndata: ${sseData(JSON.stringify({ plan: event.plan, runId: event.runId }))}\n\n`;
+      }
+      continue;
+    }
+
+    if (event.type === "plan-step-executing") {
+      if (responseMode !== "reactor") {
+        yield `event: plan_step_executing\ndata: ${sseData(
+          JSON.stringify({ description: event.description, runId: event.runId, stepIndex: event.stepIndex, tool: event.tool })
+        )}\n\n`;
+      }
+      continue;
+    }
+
+    if (event.type === "plan-step-result") {
+      if (responseMode !== "reactor") {
+        yield `event: plan_step_result\ndata: ${sseData(
+          JSON.stringify({ runId: event.runId, stepIndex: event.stepIndex, success: event.success })
+        )}\n\n`;
+      }
+      continue;
+    }
+
+    if (event.type === "synthesis-started") {
+      if (responseMode !== "reactor") {
+        yield `event: synthesis_started\ndata: ${sseData(JSON.stringify({ runId: event.runId }))}\n\n`;
+      }
+      continue;
+    }
+
     if (responseMode === "reactor") {
       yield "event: done\ndata:\n\n";
       continue;

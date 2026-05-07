@@ -90,6 +90,7 @@ route state and runtime services onto Kysely-backed stores.
 
 ## Recent Completion Notes
 
+- Plan-execute now streams `plan-generated`, `plan-step-executing`, `plan-step-result`, and `synthesis-started` events so SSE consumers can render reasoning progress; `executePlanExecuteLoop` drains a single `streamPlanExecute` generator (one source of truth for streaming and non-streaming paths).
 - `GET /api/jarvis/runtime` exposes a public manifest (capabilities, locales, tool risk counts, agent-spec/setting totals) so any chat surface or automation can introspect the conductor without admin auth or secrets.
 - MCP now uses real SDK transports for stdio, SSE, and streamable HTTP.
 - Slack signed slash commands and URL verification are wired through API routes.

@@ -2718,6 +2718,156 @@ describe("AgentRuntime PlanExecute mode", () => {
 
     expect(result.response.output).toBe("ok");
   });
+
+  it("streams plan-generated, plan-step-executing, plan-step-result, synthesis-started, done in order", async () => {
+    const runtime = planExecuteRuntimeWith({
+      responses: [
+        planResponse([
+          { args: { keyword: "alpha" }, description: "search alpha", tool: "tool_a" },
+          { args: { keyword: "beta" }, description: "search beta", tool: "tool_b" }
+        ]),
+        answerResponse("Stitched answer.")
+      ],
+      tools: [
+        { name: "tool_a", output: { hits: 1 } },
+        { name: "tool_b", output: { hits: 2 } }
+      ]
+    });
+
+    const events: { readonly type: string; readonly [key: string]: unknown }[] = [];
+    for await (const event of runtime.stream({
+      messages: [{ content: "Investigate alpha and beta", role: "user" }],
+      metadata: { agentMode: "plan_execute" },
+      model: "provider/model",
+      runId: "run-plan-stream"
+    })) {
+      events.push(event as never);
+    }
+
+    const types = events.map((event) => event.type);
+    expect(types).toEqual([
+      "plan-generated",
+      "plan-step-executing",
+      "plan-step-result",
+      "plan-step-executing",
+      "plan-step-result",
+      "synthesis-started",
+      "text-delta",
+      "done"
+    ]);
+
+    const planGenerated = events[0] as { readonly plan: readonly { readonly tool: string }[] };
+    expect(planGenerated.plan.map((step) => step.tool)).toEqual(["tool_a", "tool_b"]);
+
+    const firstExec = events[1] as { readonly stepIndex: number; readonly tool: string; readonly description: string };
+    expect(firstExec).toMatchObject({ description: "search alpha", stepIndex: 0, tool: "tool_a" });
+
+    const firstResult = events[2] as { readonly stepIndex: number; readonly success: boolean };
+    expect(firstResult).toMatchObject({ stepIndex: 0, success: true });
+
+    const secondResult = events[4] as { readonly stepIndex: number; readonly success: boolean };
+    expect(secondResult).toMatchObject({ stepIndex: 1, success: true });
+
+    const done = events[7] as { readonly response: { readonly output: string } };
+    expect(done.response.output).toBe("Stitched answer.");
+  });
+
+  it("streams plan-generated and synthesis-started but no step events when plan is empty", async () => {
+    const runtime = planExecuteRuntimeWith({
+      responses: [planResponse([]), answerResponse("Direct stream answer.")]
+    });
+
+    const events: { readonly type: string }[] = [];
+    for await (const event of runtime.stream({
+      messages: [{ content: "Tell a fact", role: "user" }],
+      metadata: { agentMode: "plan_execute" },
+      model: "provider/model",
+      runId: "run-plan-empty-stream"
+    })) {
+      events.push(event as never);
+    }
+
+    expect(events.map((event) => event.type)).toEqual([
+      "plan-generated",
+      "synthesis-started",
+      "text-delta",
+      "done"
+    ]);
+    expect((events[0] as { readonly plan: readonly unknown[] }).plan).toEqual([]);
+  });
+
+  it("emits success=false in plan-step-result when a step fails (and still synthesizes for partial success)", async () => {
+    const runtime = planExecuteRuntimeWith({
+      responses: [
+        planResponse([
+          { args: {}, description: "fetch a", tool: "tool_a" },
+          { args: {}, description: "fetch b", tool: "tool_b" }
+        ]),
+        answerResponse("Partial-success answer.")
+      ],
+      tools: [
+        { name: "tool_a", output: { ok: 1 } },
+        { name: "tool_b", output: { ok: 2 } }
+      ]
+    });
+
+    const failingTool = (
+      runtime as unknown as {
+        readonly toolExecutor?: {
+          execute: (input: unknown) => Promise<{ readonly status: string; readonly output: string; readonly id: string; readonly name: string }>;
+        };
+      }
+    ).toolExecutor;
+    const original = failingTool!.execute.bind(failingTool!);
+    failingTool!.execute = async (input) => {
+      const result = await original(input);
+      if (result.name === "tool_b") {
+        return { ...result, output: "Error: TOOL_ERROR", status: "failed" };
+      }
+      return result;
+    };
+
+    const events: { readonly type: string; readonly success?: boolean; readonly stepIndex?: number }[] = [];
+    for await (const event of runtime.stream({
+      messages: [{ content: "mix", role: "user" }],
+      metadata: { agentMode: "plan_execute" },
+      model: "provider/model",
+      runId: "run-plan-partial"
+    })) {
+      events.push(event as never);
+    }
+
+    const stepResults = events.filter((event) => event.type === "plan-step-result");
+    expect(stepResults).toEqual([
+      expect.objectContaining({ stepIndex: 0, success: true }),
+      expect.objectContaining({ stepIndex: 1, success: false })
+    ]);
+    const synthesisIndex = events.findIndex((event) => event.type === "synthesis-started");
+    const lastResultIndex = events.lastIndexOf(stepResults[stepResults.length - 1]!);
+    expect(synthesisIndex).toBeGreaterThan(lastResultIndex);
+  });
+
+  it("does not yield any plan event when PLAN_GENERATION_FAILED is thrown", async () => {
+    const runtime = planExecuteRuntimeWith({
+      responses: [{ id: "plan", model: "test-model", output: "I will help you out." }]
+    });
+
+    const events: { readonly type: string }[] = [];
+    await expect(
+      (async () => {
+        for await (const event of runtime.stream({
+          messages: [{ content: "do", role: "user" }],
+          metadata: { agentMode: "plan_execute" },
+          model: "provider/model",
+          runId: "run-plan-genfail"
+        })) {
+          events.push(event as never);
+        }
+      })()
+    ).rejects.toMatchObject({ code: "PLAN_GENERATION_FAILED", name: "PlanExecutionError" });
+
+    expect(events.filter((event) => event.type.startsWith("plan-"))).toHaveLength(0);
+  });
 });
 
 function sequentialIds(prefix: string): () => string {

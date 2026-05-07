@@ -240,6 +240,16 @@ export type AgentRuntimeStreamEvent =
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "text-delta" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call" }>)
   | { readonly runId: string; readonly toolCall: ModelToolCall; readonly type: "tool-result" }
+  | { readonly plan: readonly PlanStep[]; readonly runId: string; readonly type: "plan-generated" }
+  | {
+      readonly description: string;
+      readonly runId: string;
+      readonly stepIndex: number;
+      readonly tool: string;
+      readonly type: "plan-step-executing";
+    }
+  | { readonly runId: string; readonly stepIndex: number; readonly success: boolean; readonly type: "plan-step-result" }
+  | { readonly runId: string; readonly type: "synthesis-started" }
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "done" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "error" }>);
 
@@ -547,8 +557,15 @@ export class AgentRuntime {
         tools
       };
       let execution: ModelLoopExecution;
-      if (isPlanExecuteMode(layeredContext.input.metadata)) {
-        execution = await this.executePlanExecuteLoop(layeredContext, selected.provider, streamLoopRequest);
+      const isPlanExecuteRun = isPlanExecuteMode(layeredContext.input.metadata);
+      if (isPlanExecuteRun) {
+        const planStream = this.streamPlanExecute(layeredContext, selected.provider, streamLoopRequest);
+        let next = await planStream.next();
+        while (!next.done) {
+          yield next.value;
+          next = await planStream.next();
+        }
+        execution = next.value;
       } else {
         const stream = this.executeStreamingModelLoop(
           layeredContext,
@@ -577,7 +594,7 @@ export class AgentRuntime {
       await this.writeCache(cacheKey, response, execution.toolsUsed);
       await this.invokeHooks("afterComplete", layeredContext, response);
       this.recordAgentRun(layeredContext, response.model, "completed", startedAtMs);
-      if (!forwardTextDeltas && response.output.length > 0) {
+      if ((!forwardTextDeltas || isPlanExecuteRun) && response.output.length > 0) {
         yield { runId: layeredContext.runId, text: response.output, type: "text-delta" };
       }
       yield { response, runId: layeredContext.runId, type: "done" };
@@ -1129,6 +1146,19 @@ export class AgentRuntime {
     provider: ModelProvider,
     request: ModelRequest
   ): Promise<ModelLoopExecution> {
+    const stream = this.streamPlanExecute(context, provider, request);
+    let next = await stream.next();
+    while (!next.done) {
+      next = await stream.next();
+    }
+    return next.value;
+  }
+
+  private async *streamPlanExecute(
+    context: AgentRunContext,
+    provider: ModelProvider,
+    request: ModelRequest
+  ): AsyncGenerator<AgentRuntimeStreamEvent, ModelLoopExecution> {
     const userPrompt = latestUserPrompt(request.messages);
     const tools = request.tools ?? [];
     const toolDescriptions = renderToolDescriptionsForPlanning(tools);
@@ -1138,7 +1168,10 @@ export class AgentRuntime {
       throw new PlanExecutionError("PLAN_GENERATION_FAILED", "Plan generation parsing failed");
     }
 
+    yield { plan, runId: context.runId, type: "plan-generated" };
+
     if (plan.length === 0) {
+      yield { runId: context.runId, type: "synthesis-started" };
       const directResponse = await this.directAnswerForPlanExecute(context, provider, request);
       return {
         finalResponse: directResponse,
@@ -1156,7 +1189,64 @@ export class AgentRuntime {
       throw new PlanValidationFailedError(validation.errors, plan);
     }
 
-    const executed = await this.executePlanSteps(context, plan, tools);
+    const executed: PlanExecuteStepRecord[] = [];
+    let toolCallCount = 0;
+    for (let index = 0; index < plan.length; index += 1) {
+      const step = plan[index];
+      if (!step) {
+        continue;
+      }
+
+      yield {
+        description: step.description,
+        runId: context.runId,
+        stepIndex: index,
+        tool: step.tool,
+        type: "plan-step-executing"
+      };
+
+      if (toolCallCount >= this.maxToolCalls) {
+        const blocked = blockedToolResult(
+          { arguments: step.args, id: `plan-step-${index}`, name: step.tool },
+          "Error: max tool call limit reached"
+        );
+        executed.push({
+          executed: blocked,
+          step,
+          stepResult: {
+            description: step.description,
+            error: "max tool call limit reached",
+            output: null,
+            success: false,
+            tool: step.tool
+          }
+        });
+        yield { runId: context.runId, stepIndex: index, success: false, type: "plan-step-result" };
+        continue;
+      }
+
+      const synthesizedCall: ModelToolCall = {
+        arguments: step.args,
+        id: `plan-step-${index}`,
+        name: step.tool
+      };
+      const toolResult = await this.executeToolCall(context, synthesizedCall, tools);
+      toolCallCount += 1;
+
+      const success = toolResult.result.status === "completed";
+      executed.push({
+        executed: toolResult,
+        step,
+        stepResult: {
+          description: step.description,
+          error: success ? undefined : toolResult.result.error ?? "TOOL_ERROR",
+          output: success ? toolResult.result.output : null,
+          success,
+          tool: step.tool
+        }
+      });
+      yield { runId: context.runId, stepIndex: index, success, type: "plan-step-result" };
+    }
 
     if (executed.length > 0 && executed.every((entry) => !entry.stepResult.success)) {
       throw new PlanExecutionError(
@@ -1165,6 +1255,7 @@ export class AgentRuntime {
       );
     }
 
+    yield { runId: context.runId, type: "synthesis-started" };
     const finalResponse = await this.synthesizePlanResults(
       context,
       provider,
@@ -1206,63 +1297,6 @@ export class AgentRuntime {
     return parsePlan(response.output ?? "");
   }
 
-  private async executePlanSteps(
-    context: AgentRunContext,
-    plan: readonly PlanStep[],
-    tools: readonly ModelTool[]
-  ): Promise<readonly PlanExecuteStepRecord[]> {
-    const records: PlanExecuteStepRecord[] = [];
-    let toolCallCount = 0;
-
-    for (let index = 0; index < plan.length; index += 1) {
-      const step = plan[index];
-      if (!step) {
-        continue;
-      }
-
-      if (toolCallCount >= this.maxToolCalls) {
-        const blocked = blockedToolResult(
-          { arguments: step.args, id: `plan-step-${index}`, name: step.tool },
-          "Error: max tool call limit reached"
-        );
-        records.push({
-          executed: blocked,
-          step,
-          stepResult: {
-            description: step.description,
-            error: "max tool call limit reached",
-            output: null,
-            success: false,
-            tool: step.tool
-          }
-        });
-        continue;
-      }
-
-      const synthesizedCall: ModelToolCall = {
-        arguments: step.args,
-        id: `plan-step-${index}`,
-        name: step.tool
-      };
-      const executed = await this.executeToolCall(context, synthesizedCall, tools);
-      toolCallCount += 1;
-
-      const success = executed.result.status === "completed";
-      records.push({
-        executed,
-        step,
-        stepResult: {
-          description: step.description,
-          error: success ? undefined : executed.result.error ?? "TOOL_ERROR",
-          output: success ? executed.result.output : null,
-          success,
-          tool: step.tool
-        }
-      });
-    }
-
-    return records;
-  }
 
   private async synthesizePlanResults(
     context: AgentRunContext,
