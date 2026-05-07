@@ -691,6 +691,49 @@ try {
       `expected both worker ids in conversation, got ${sources.join(",")}`);
   });
 
+  await record("POST /api/multi-agent/orchestrate parallel mode runs all workers concurrently", async () => {
+    const response = await fetch(`${baseUrl}/api/multi-agent/orchestrate`, {
+      body: JSON.stringify({
+        message: "smoke broad parallel orchestrate",
+        mode: "parallel",
+        workerIds: ["smoke-research", "smoke-coder"]
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    assert(response.status === 200, `expected 200, got ${response.status}`);
+    const body = await response.json();
+    assert(body.mode === "parallel", `expected parallel mode, got ${body.mode}`);
+    assert(Array.isArray(body.results) && body.results.length === 2, "expected 2 results");
+    assert(body.results.every((step) => step.status === "completed"), "expected all results completed");
+    assert(Array.isArray(body.conversation) && body.conversation.length === 2, "expected 2 conversation entries");
+  });
+
+  await record("POST /api/multi-agent/orchestrate/stream emits SSE agent_message + done events", async () => {
+    const response = await fetch(`${baseUrl}/api/multi-agent/orchestrate/stream`, {
+      body: JSON.stringify({
+        message: "smoke broad orchestrate stream",
+        mode: "sequential",
+        workerIds: ["smoke-research", "smoke-coder"]
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    assert(response.status === 200, `expected 200, got ${response.status}`);
+    assert(
+      (response.headers.get("content-type") ?? "").includes("text/event-stream"),
+      `expected SSE content-type, got ${response.headers.get("content-type")}`
+    );
+    const text = await response.text();
+    assert(text.includes("event: start"), "expected start event");
+    assert(text.includes("event: agent_message"), "expected agent_message event");
+    assert(text.includes("event: done"), "expected done event");
+    const messageEvents = text.split("\n\n").filter((chunk) => chunk.startsWith("event: agent_message"));
+    assert(messageEvents.length >= 2, `expected at least 2 agent_message events, got ${messageEvents.length}`);
+    assert(text.includes("smoke-research") && text.includes("smoke-coder"),
+      "expected both worker ids in stream payload");
+  });
+
   await record("POST /api/chat with metadata.agentMode=plan_execute", async () => {
     const response = await fetch(`${baseUrl}/api/chat`, {
       body: JSON.stringify({

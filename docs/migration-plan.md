@@ -296,6 +296,15 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- multi-agent orchestration gains streaming + parallel HTTP coverage
+  (iteration 28). New `POST /api/multi-agent/orchestrate/stream` opens an
+  SSE channel: `start` → `agent_message` (one per worker
+  completion/failure, broadcast through an `InMemoryAgentMessageBus`
+  subscriber) → `done` carrying the final response, results, and runId.
+  The broad smoke now also exercises parallel-mode HTTP orchestration,
+  asserting both workers complete and both messages land in the
+  conversation snapshot. Smoke 41 → 43, Muse routes 374 → 375, route
+  parity stays 0 missing.
 - multi-agent message bus is now exposed over HTTP (iteration 27). New
   `POST /api/multi-agent/orchestrate` accepts `{ message, model?, mode?,
   workerIds?, maxWorkers? }` and runs every enabled `AgentSpec` (or the

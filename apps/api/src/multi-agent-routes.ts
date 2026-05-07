@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import type { AgentRunInput, AgentRuntime } from "@muse/agent-core";
 import type { AgentSpec, AgentSpecRegistry } from "@muse/agent-specs";
 import {
@@ -5,6 +6,7 @@ import {
   MultiAgentOrchestrator,
   type AgentMessage,
   type AgentWorker,
+  type MultiAgentOrchestrationResult,
   type OrchestrationMode
 } from "@muse/multi-agent";
 import type { ModelMessage } from "@muse/model";
@@ -99,6 +101,153 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
       } satisfies ApiError);
     }
   });
+
+  server.post("/api/multi-agent/orchestrate/stream", async (request, reply) => {
+    if (!options.agentRuntime) {
+      return reply.status(503).send({
+        code: "AGENT_RUNTIME_UNAVAILABLE",
+        message: "Agent runtime is not configured"
+      } satisfies ApiError);
+    }
+
+    const parsed = parseOrchestrateBody(request.body);
+
+    if (!parsed.ok) {
+      return reply.status(400).send(parsed.error);
+    }
+
+    const allSpecs = await options.agentSpecRegistry.listEnabled();
+    const requestedIds = parsed.value.workerIds;
+    const selected = requestedIds
+      ? allSpecs.filter((spec) => requestedIds.includes(spec.name))
+      : allSpecs;
+
+    if (selected.length === 0) {
+      return reply.status(409).send({
+        code: "NO_AGENT_WORKERS",
+        message: requestedIds
+          ? "No enabled agent specs match the requested workerIds"
+          : "No enabled agent specs are available to orchestrate"
+      } satisfies ApiError);
+    }
+
+    const messageBus = new InMemoryAgentMessageBus();
+    const workers: AgentWorker[] = selected.map((spec) => createSpecWorker(spec, options.agentRuntime!));
+    const orchestrator = new MultiAgentOrchestrator({ messageBus, workers });
+    const input: AgentRunInput = {
+      messages: [{ content: parsed.value.message, role: "user" }],
+      model: parsed.value.model ?? options.defaultModel ?? "default"
+    };
+    const orchestrationOptions = {
+      ...(parsed.value.mode ? { mode: parsed.value.mode } : {}),
+      ...(parsed.value.maxWorkers !== undefined ? { maxWorkers: parsed.value.maxWorkers } : {})
+    };
+
+    reply.header("content-type", "text/event-stream; charset=utf-8");
+    reply.header("cache-control", "no-cache");
+    reply.header("x-accel-buffering", "no");
+
+    return reply.send(
+      Readable.from(toMultiAgentSseStream({ messageBus, orchestrator, input, options: orchestrationOptions, mode: parsed.value.mode ?? "sequential" }))
+    );
+  });
+}
+
+interface SseStreamArgs {
+  readonly messageBus: InMemoryAgentMessageBus;
+  readonly orchestrator: MultiAgentOrchestrator;
+  readonly input: AgentRunInput;
+  readonly options: { readonly mode?: OrchestrationMode; readonly maxWorkers?: number };
+  readonly mode: OrchestrationMode;
+}
+
+async function* toMultiAgentSseStream(args: SseStreamArgs): AsyncIterable<string> {
+  const queue: AgentMessage[] = [];
+  let resolveNext: (() => void) | undefined;
+
+  args.messageBus.subscribe("__sse__", (message) => {
+    queue.push(message);
+    const resume = resolveNext;
+    resolveNext = undefined;
+    resume?.();
+  });
+
+  yield `event: start\ndata: ${sseData(JSON.stringify({ mode: args.mode }))}\n\n`;
+
+  let result: MultiAgentOrchestrationResult | undefined;
+  let runtimeError: unknown;
+  let finished = false;
+
+  const runPromise = args.orchestrator.run(args.input, args.options).then(
+    (value) => {
+      result = value;
+      finished = true;
+      resolveNext?.();
+      resolveNext = undefined;
+    },
+    (error) => {
+      runtimeError = error;
+      finished = true;
+      resolveNext?.();
+      resolveNext = undefined;
+    }
+  );
+
+  try {
+    while (!finished || queue.length > 0) {
+      if (queue.length === 0 && !finished) {
+        await new Promise<void>((resolve) => {
+          resolveNext = resolve;
+        });
+        continue;
+      }
+
+      const message = queue.shift();
+
+      if (message) {
+        yield `event: agent_message\ndata: ${sseData(
+          JSON.stringify({
+            content: message.content,
+            sourceAgentId: message.sourceAgentId,
+            timestamp: message.timestamp.toISOString(),
+            ...(message.metadata ? { metadata: message.metadata } : {}),
+            ...(message.targetAgentId ? { targetAgentId: message.targetAgentId } : {})
+          })
+        )}\n\n`;
+      }
+    }
+
+    await runPromise;
+
+    if (runtimeError) {
+      yield `event: error\ndata: ${sseData(
+        runtimeError instanceof Error ? runtimeError.message : String(runtimeError)
+      )}\n\n`;
+      return;
+    }
+
+    if (result) {
+      yield `event: done\ndata: ${sseData(
+        JSON.stringify({
+          mode: result.mode,
+          response: { id: result.response.id, model: result.response.model, output: result.response.output },
+          results: result.results.map((step) => ({
+            status: step.status,
+            workerId: step.workerId,
+            ...(step.result ? { output: step.result.response.output } : {}),
+            ...(step.error ? { error: step.error } : {})
+          })),
+          runId: result.runId
+        })
+      )}\n\n`;
+    }
+  } finally {
+    args.messageBus.clear();
+  }
+}
+
+function sseData(value: string): string {
+  return value.split(/\r?\n/u).map((line) => (line.length > 0 ? line : " ")).join("\ndata: ");
 }
 
 function createSpecWorker(spec: AgentSpec, runtime: AgentRuntime): AgentWorker {
