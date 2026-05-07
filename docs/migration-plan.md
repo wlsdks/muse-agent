@@ -296,6 +296,27 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- new opt-in `muse.fetch` loopback MCP server (iteration 54). The other
+  eight loopback servers are pure-compute (time/text/math/json/url/
+  crypto/diff/regex) so default-on is safe. `muse.fetch` adds bounded
+  HTTP GET / HEAD with three layers of safety:
+  * **Allowlist required.** Empty by default — the operator passes
+    `allowedHosts: ["api.example.com", ...]`. Hostname matched
+    case-insensitively against `URL.hostname` (no wildcards).
+  * **Body cap.** `maxBodyBytes` (default 64KB) truncates large
+    responses and returns `truncated: true` so the agent knows.
+  * **Timeout.** `timeoutMs` (default 5s) backs an `AbortController`
+    so the loop can never hang the agent.
+  Plus protocol whitelist (only http/https) and structured-error
+  payloads on bad URL / blocked host / fetch failure. NOT included
+  in `createDefaultLoopbackMcpServers` — has to be explicitly
+  constructed by the operator with their trusted hosts. 9 unit
+  tests with mocked fetch cover allowlist block, non-http rejection,
+  malformed URL, GET round-trip with status/headers/body,
+  truncation, header forwarding (string-only), HEAD without body,
+  case-insensitive host match, network-error surfacing. mcp tests
+  42 → 51. pnpm check green; broad smoke 49/49; route parity 0
+  missing.
 - TypeScript-idiomatic name cleanup (iteration 53). The audit flagged 8
   `*Service`-suffixed classes and 2 `*Builder` classes as Java-flavoured
   carryovers. All renamed via word-bounded perl-pi across every .ts/.tsx/

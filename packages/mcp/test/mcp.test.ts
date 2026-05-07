@@ -14,6 +14,7 @@ import {
   createLoopbackMcpMuseTools,
   createCryptoMcpServer,
   createDiffMcpServer,
+  createFetchMcpServer,
   createJsonMcpServer,
   createMathMcpServer,
   createRegexMcpServer,
@@ -806,5 +807,129 @@ describe("loopback MCP servers", () => {
     expect(await connection.callTool!("test", { text: "a", pattern: longPattern })).toEqual({
       error: expect.stringContaining("pattern must be at most")
     });
+  });
+});
+
+describe("muse.fetch loopback server", () => {
+  it("rejects URLs whose host is not in the allowlist", async () => {
+    const fakeFetch = (() => {
+      throw new Error("fetch should not be called for blocked hosts");
+    }) as unknown as typeof globalThis.fetch;
+    const server = createFetchMcpServer({ allowedHosts: ["api.example.test"], fetch: fakeFetch });
+    const connection = createLoopbackMcpConnection(server);
+    const result = await connection.callTool!("get", { url: "https://evil.test/data" });
+    expect(result).toEqual({
+      error: "host 'evil.test' is not in the configured allowlist"
+    });
+  });
+
+  it("rejects non-http(s) protocols", async () => {
+    const server = createFetchMcpServer({ allowedHosts: ["api.example.test"] });
+    const connection = createLoopbackMcpConnection(server);
+    expect(await connection.callTool!("get", { url: "file:///etc/passwd" })).toEqual({
+      error: "unsupported protocol: file:"
+    });
+  });
+
+  it("rejects malformed URLs", async () => {
+    const server = createFetchMcpServer({ allowedHosts: ["api.example.test"] });
+    const connection = createLoopbackMcpConnection(server);
+    expect(await connection.callTool!("get", { url: "::not::a::url" })).toEqual({
+      error: expect.stringContaining("invalid URL")
+    });
+  });
+
+  it("returns body, status, and headers for an allowlisted GET", async () => {
+    let capturedUrl = "";
+    const fakeFetch = (async (url: string) => {
+      capturedUrl = url;
+      return new Response("hello world", {
+        headers: { "content-type": "text/plain", "x-custom": "1" },
+        status: 200
+      });
+    }) as unknown as typeof globalThis.fetch;
+    const server = createFetchMcpServer({ allowedHosts: ["api.example.test"], fetch: fakeFetch });
+    const connection = createLoopbackMcpConnection(server);
+    const result = await connection.callTool!("get", { url: "https://api.example.test/path" });
+    expect(capturedUrl).toBe("https://api.example.test/path");
+    expect(result).toMatchObject({
+      body: "hello world",
+      status: 200,
+      truncated: false
+    });
+    expect(result.headers["content-type"]).toBe("text/plain");
+    expect(result.headers["x-custom"]).toBe("1");
+  });
+
+  it("truncates the body at maxBodyBytes and surfaces truncated=true", async () => {
+    const longBody = "x".repeat(200);
+    const fakeFetch = (async () =>
+      new Response(longBody, { headers: {}, status: 200 })) as unknown as typeof globalThis.fetch;
+    const server = createFetchMcpServer({
+      allowedHosts: ["api.example.test"],
+      fetch: fakeFetch,
+      maxBodyBytes: 50
+    });
+    const connection = createLoopbackMcpConnection(server);
+    const result = await connection.callTool!("get", { url: "https://api.example.test/" });
+    expect(result.body).toHaveLength(50);
+    expect(result.truncated).toBe(true);
+  });
+
+  it("forwards caller-supplied headers (string values only)", async () => {
+    let capturedInit: RequestInit | undefined;
+    const fakeFetch = (async (_url: string, init: RequestInit) => {
+      capturedInit = init;
+      return new Response("ok", { headers: {}, status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+    const server = createFetchMcpServer({ allowedHosts: ["api.example.test"], fetch: fakeFetch });
+    const connection = createLoopbackMcpConnection(server);
+    await connection.callTool!("get", {
+      headers: { authorization: "Bearer x", "x-trace": "abc", num: 42 },
+      url: "https://api.example.test/"
+    });
+    expect(capturedInit?.headers).toMatchObject({
+      authorization: "Bearer x",
+      "x-trace": "abc"
+    });
+    expect((capturedInit?.headers as Record<string, string>).num).toBeUndefined();
+  });
+
+  it("muse.fetch#head returns status + headers without a body", async () => {
+    const fakeFetch = (async () =>
+      new Response("body should not be returned for HEAD", {
+        headers: { "content-length": "9" },
+        status: 200
+      })) as unknown as typeof globalThis.fetch;
+    const server = createFetchMcpServer({ allowedHosts: ["api.example.test"], fetch: fakeFetch });
+    const connection = createLoopbackMcpConnection(server);
+    const result = await connection.callTool!("head", { url: "https://api.example.test/" });
+    expect(result).toMatchObject({
+      status: 200,
+      headers: { "content-length": "9" }
+    });
+    expect(result.body).toBeUndefined();
+  });
+
+  it("matches allowlist hosts case-insensitively", async () => {
+    const fakeFetch = (async () =>
+      new Response("ok", { status: 200 })) as unknown as typeof globalThis.fetch;
+    const server = createFetchMcpServer({
+      allowedHosts: ["API.example.test"],
+      fetch: fakeFetch
+    });
+    const connection = createLoopbackMcpConnection(server);
+    const result = await connection.callTool!("get", { url: "https://api.example.TEST/" });
+    expect(result.status).toBe(200);
+  });
+
+  it("surfaces fetch errors as a structured error payload", async () => {
+    const fakeFetch = (async () => {
+      throw new Error("network down");
+    }) as unknown as typeof globalThis.fetch;
+    const server = createFetchMcpServer({ allowedHosts: ["api.example.test"], fetch: fakeFetch });
+    const connection = createLoopbackMcpConnection(server);
+    const result = await connection.callTool!("get", { url: "https://api.example.test/" });
+    expect(result).toEqual({ error: "fetch failed: network down" });
   });
 });

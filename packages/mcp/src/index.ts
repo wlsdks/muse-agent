@@ -1318,6 +1318,7 @@ export {
   createCryptoMcpServer,
   createDefaultLoopbackMcpServers,
   createDiffMcpServer,
+  createFetchMcpServer,
   createJsonMcpServer,
   createLoopbackMcpConnection,
   createLoopbackMcpMuseTools,
@@ -1327,6 +1328,7 @@ export {
   createTimeMcpServer,
   createUrlMcpServer,
   type BuiltinLoopbackOptions,
+  type FetchMcpServerOptions,
   type LoopbackMcpServer,
   type LoopbackMcpToolDefinition
 } from "./loopback.js";
