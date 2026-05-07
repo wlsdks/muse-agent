@@ -1645,10 +1645,29 @@ export function createNoOpAgentMetrics(): AgentMetrics {
  * replacement for the inner metrics in the runtime.
  */
 export function createSloFeedingAgentMetrics(slo: SloAlertEvaluator, inner: AgentMetrics): AgentMetrics {
+  return createDerivedAgentMetrics({ inner, slo });
+}
+
+export interface DerivedAgentMetricsOptions {
+  readonly inner: AgentMetrics;
+  readonly slo?: SloAlertEvaluator;
+  readonly drift?: PromptDriftDetector;
+}
+
+/**
+ * Generalised fan-out: every method on the inner AgentMetrics still gets
+ * called, AND each optional derived sink receives the slice of data it cares
+ * about. `slo` consumes `recordAgentRun` (latency + result), `drift` consumes
+ * `recordTokenUsage` (input + output token lengths). Cost-anomaly is fed via
+ * `createCostAnomalyFeedingTokenUsageSink` because cost lives on
+ * `TokenUsageRecord`, not on `AgentMetrics`.
+ */
+export function createDerivedAgentMetrics(options: DerivedAgentMetricsOptions): AgentMetrics {
+  const { inner, slo, drift } = options;
   return {
     recordAgentRun(event) {
-      slo.recordLatency(event.durationMs);
-      slo.recordResult(event.status === "completed");
+      slo?.recordLatency(event.durationMs);
+      slo?.recordResult(event.status === "completed");
       inner.recordAgentRun(event);
     },
     recordGuardRejection(stage, reason, metadata) {
@@ -1658,9 +1677,44 @@ export function createSloFeedingAgentMetrics(slo: SloAlertEvaluator, inner: Agen
       inner.recordOutputGuardAction(stage, action, reason, metadata);
     },
     recordTokenUsage(usage, metadata) {
+      if (drift) {
+        if (typeof usage.inputTokens === "number") {
+          drift.recordInput(usage.inputTokens);
+        }
+        if (typeof usage.outputTokens === "number") {
+          drift.recordOutput(usage.outputTokens);
+        }
+      }
       inner.recordTokenUsage(usage, metadata);
     }
   };
+}
+
+/**
+ * Wraps a TokenUsageSink so each recorded usage event also feeds a
+ * `CostAnomalyDetector`. The detector sees `estimatedCostUsd` (defaulting to
+ * 0 when pricing isn't wired); when pricing arrives, anomalies surface
+ * automatically via `/api/admin/jarvis/snapshot`. When the inner is a
+ * `QueryableTokenUsageSink`, the wrapper preserves `list()` so admin queries
+ * keep working.
+ */
+export function createCostAnomalyFeedingTokenUsageSink(
+  detector: CostAnomalyDetector,
+  inner: TokenUsageSink
+): TokenUsageSink {
+  const queryable = (inner as Partial<QueryableTokenUsageSink>).list;
+  const base: TokenUsageSink = {
+    async record(event) {
+      detector.recordCost(event.estimatedCostUsd ?? 0);
+      await inner.record(event);
+    }
+  };
+  if (typeof queryable === "function") {
+    return Object.assign(base, {
+      list: () => (inner as QueryableTokenUsageSink).list()
+    }) as QueryableTokenUsageSink;
+  }
+  return base;
 }
 
 class InMemorySpanHandle implements SpanHandle {

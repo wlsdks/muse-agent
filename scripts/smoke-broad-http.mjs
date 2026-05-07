@@ -316,6 +316,14 @@ try {
       "expected slo to have at least one latency + result sample after the earlier /api/chat call (proves SLO evaluator is fed by recordAgentRun)"
     );
     assert(Array.isArray(snapshot.slo.violations), "expected slo.violations array");
+    assert(snapshot.drift && typeof snapshot.drift.sampleCount === "number",
+      `expected drift block with sampleCount, got ${JSON.stringify(snapshot.drift)}`);
+    assert(
+      snapshot.drift.sampleCount > 0,
+      "expected drift detector to have at least one sample after the earlier /api/chat call (proves drift detector is fed by recordTokenUsage)"
+    );
+    assert(snapshot.cost && typeof snapshot.cost.baselineUsd === "number",
+      `expected cost block with baselineUsd, got ${JSON.stringify(snapshot.cost)}`);
   });
 
   await record("Response completeness evaluator scores sampled responses 0..100", async () => {

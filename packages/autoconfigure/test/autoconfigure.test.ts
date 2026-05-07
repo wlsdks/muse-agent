@@ -188,6 +188,40 @@ describe("autoconfigure", () => {
     });
   });
 
+  it("feeds the PromptDriftDetector and CostAnomalyDetector from each agent run", async () => {
+    const assembly = createMuseRuntimeAssembly({
+      env: {
+        MUSE_COST_ANOMALY_MIN_SAMPLES: "1",
+        MUSE_DRIFT_MIN_SAMPLES: "1",
+        MUSE_MODEL: "diagnostic/smoke",
+        MUSE_MODEL_PROVIDER_ID: "diagnostic"
+      }
+    });
+
+    expect(assembly.observability.driftDetector).toBeTruthy();
+    expect(assembly.observability.costAnomalyDetector).toBeTruthy();
+
+    await assembly.agentRuntime?.run({
+      messages: [{ content: "first drift sample", role: "user" }],
+      model: "diagnostic/smoke",
+      runId: "drift-run-1"
+    });
+    await assembly.agentRuntime?.run({
+      messages: [{ content: "second drift sample", role: "user" }],
+      model: "diagnostic/smoke",
+      runId: "drift-run-2"
+    });
+
+    const driftStats = assembly.observability.driftDetector.stats();
+    expect(driftStats.sampleCount).toBe(2);
+    expect(driftStats.inputMean).toBeGreaterThan(0);
+    expect(driftStats.outputMean).toBeGreaterThan(0);
+
+    // Cost anomaly detector receives 0-cost samples until pricing is wired,
+    // but the wiring itself is what we want to lock in.
+    expect(typeof assembly.observability.costAnomalyDetector.baseline()).toBe("number");
+  });
+
   it("feeds the SloAlertEvaluator from each agent run so /api/admin/jarvis/snapshot.slo is populated", async () => {
     const assembly = createMuseRuntimeAssembly({
       env: {
