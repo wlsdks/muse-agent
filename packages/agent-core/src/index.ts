@@ -1907,6 +1907,8 @@ export {
 
 export {
   createCasualLureStripResponseFilter,
+  createEnglishCasualLureStripResponseFilter,
+  createEnglishGreetingStripResponseFilter,
   createFabricationRequestRefusalFilter,
   createGreetingStripResponseFilter,
   createInternalBrandMaskResponseFilter,

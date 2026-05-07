@@ -257,6 +257,44 @@ export function createGreetingStripResponseFilter(): ResponseFilterStage {
   };
 }
 
+/**
+ * English counterpart to `createGreetingStripResponseFilter` (which is
+ * Korean-pattern-only). Strips a single leading greeting like "Hi there!",
+ * "Hello!", "Good morning!", "Greetings,". Both filters can run in the same
+ * chain — they target disjoint patterns, so neither cancels the other.
+ */
+export function createEnglishGreetingStripResponseFilter(): ResponseFilterStage {
+  const leadingGreetingPattern =
+    /^\s*(?:Hi|Hello|Hey|Howdy|Greetings|Hiya)(?:\s+(?:there|all|everyone|team|folks|y'all))?(?:,\s*\w{1,20})?[!?.]\s+/iu;
+  const goodTimeOfDayPattern = /^\s*Good\s+(?:morning|afternoon|evening|day|night)(?:\s+\w{1,20})?[!?.]\s+/iu;
+  const niceToMeetPattern = /^\s*(?:Nice|Pleased|Good|Glad)\s+to\s+(?:meet|see)\s+you[!?.]\s+/iu;
+
+  return {
+    apply: (response: ModelResponse) => {
+      if (response.output.trim().length === 0) {
+        return response;
+      }
+
+      const output = response.output
+        .replace(leadingGreetingPattern, "")
+        .replace(goodTimeOfDayPattern, "")
+        .replace(niceToMeetPattern, "")
+        .trimStart();
+
+      if (output === response.output) {
+        return response;
+      }
+
+      return {
+        ...response,
+        output,
+        raw: withResponseFilterRaw(response, "english-greeting-strip-response-filter")
+      };
+    },
+    id: "english-greeting-strip-response-filter"
+  };
+}
+
 export function createMaxLengthResponseFilter(options: { readonly maxLength?: number } = {}): ResponseFilterStage {
   const maxLength = Math.max(0, Math.floor(options.maxLength ?? 0));
 
@@ -506,6 +544,87 @@ export function createCasualLureStripResponseFilter(): ResponseFilterStage {
       };
     },
     id: "casual-lure-strip-response-filter"
+  };
+}
+
+/**
+ * English counterpart to `createCasualLureStripResponseFilter` (which is
+ * Korean-pattern-only). Strips trailing closing pleasantries on a short
+ * no-tools-used response: "Let me know if you need anything else.",
+ * "Hope that helps!", "Anything else I can help with?", suggestion-block
+ * tails, and bullet-list lure followups. Both filters can run together —
+ * they target disjoint patterns.
+ */
+export function createEnglishCasualLureStripResponseFilter(): ResponseFilterStage {
+  const casualMaxChars = 500;
+  const reactionOnlyTools = new Set(["add_reaction"]);
+  const trailingSymbolPattern = /[\p{So}\p{Sk}\p{Sc}\s~*_:)(-]+$/u;
+  const lurePatterns: readonly RegExp[] = [
+    /(?:I(?:'m| am)?\s+(?:happy|glad)|I'?d\s+be\s+(?:happy|glad))\s+to\s+(?:help|assist).{0,120}[?!.]\s*$/iu,
+    /(?:Let\s+me\s+know|Just\s+let\s+me\s+know|Feel\s+free\s+to|Don't\s+hesitate\s+to|Please\s+(?:let\s+me\s+know|reach\s+out)).{0,120}[?!.]\s*$/iu,
+    /(?:Hope\s+(?:this|that)\s+(?:helps|works)|Hope\s+it\s+helps)[!.]?\s*$/iu,
+    /(?:Anything\s+else|Is\s+there\s+anything\s+else|Any(?:thing)?\s+(?:more|other)).{0,80}[?!.]\s*$/iu,
+    /(?:What\s+(?:would\s+you\s+like|else\s+would\s+you|can\s+I\s+help)).{0,80}[?!.]\s*$/iu,
+    /^\s*Cheers[!.]?\s*$/iu,
+    /^\s*Best(?:\s+regards)?[!.]?\s*$/iu,
+    /(?:Reach\s+out|Get\s+in\s+touch|Drop\s+me\s+a\s+(?:line|message)).{0,80}[?!.]\s*$/iu
+  ];
+
+  return {
+    apply: (response, context) => {
+      if (response.output.trim().length === 0 || response.output.length > casualMaxChars) {
+        return response;
+      }
+
+      const toolsUsed = context.toolsUsed ?? [];
+      const hasWorkTool = toolsUsed.some((tool) => !reactionOnlyTools.has(tool));
+
+      if (hasWorkTool) {
+        return response;
+      }
+
+      const sentences = splitPreservingSentencePunctuation(response.output);
+
+      if (sentences.length === 0) {
+        return response;
+      }
+
+      const remaining = [...sentences];
+      let dropCount = 0;
+
+      while (remaining.length > 0 && dropCount < 3) {
+        const last = remaining.at(-1) ?? "";
+        const normalized = last.trimEnd().replace(trailingSymbolPattern, "").trimEnd();
+
+        if (!lurePatterns.some((pattern) => pattern.test(normalized))) {
+          break;
+        }
+
+        remaining.pop();
+        dropCount += 1;
+      }
+
+      if (dropCount === 0) {
+        return response;
+      }
+
+      if (remaining.length === 0) {
+        return {
+          ...response,
+          output: response.output.trimEnd(),
+          raw: withResponseFilterRaw(response, "english-casual-lure-strip-response-filter")
+        };
+      }
+
+      const output = remaining.join(" ").trimEnd();
+
+      return {
+        ...response,
+        output,
+        raw: withResponseFilterRaw(response, "english-casual-lure-strip-response-filter")
+      };
+    },
+    id: "english-casual-lure-strip-response-filter"
   };
 }
 

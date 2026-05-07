@@ -296,6 +296,28 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- response filters become locale-aware (iteration 56). The Korean
+  `casual-lure-strip` and `greeting-strip` filters were the most operator-
+  facing leak from the original closed-source product into Muse open-source —
+  they removed Korean closing pleasantries and Korean greetings but did
+  nothing for English-speaking users. Two new English-locale filter
+  factories ship alongside the Korean ones (no removal — Korean users
+  keep their UX). `createEnglishGreetingStripResponseFilter` strips
+  "Hi there!", "Hello, friend!", "Good morning!", "Nice to meet you."
+  with strict pattern bounds (must end in punctuation + whitespace, so
+  `Hi-resolution mode` is safe). `createEnglishCasualLureStripResponseFilter`
+  strips eight English closing pleasantries (Let me know if…, Hope that
+  helps!, I'd be happy to help…, Anything else…, Cheers!, Best, Hope it
+  helps, Reach out…) on short no-tools-used responses, with the same
+  500-char bound and tool-used short-circuit as the Korean version. New
+  `MUSE_RESPONSE_LOCALES` env (CSV, default `ko,en`) controls which
+  locale filter chain runs — operators can pin to a single locale if
+  preferred. autoconfigure refactored to drive both filters via two
+  small helpers (`buildCasualLureFilters`, `buildGreetingStripFilters`).
+  14 new unit tests cover greeting strip (5 patterns + 1 negative),
+  casual-lure strip (5 patterns + tool-used short-circuit + length cap +
+  no-lure pass-through). agent-core tests 204 → 218; pnpm check green;
+  broad smoke 49/49; live smoke 8/8; route parity 0 missing.
 - web UI gains tool catalog + orchestration history panels (iteration 55,
   weakness #4 from final audit). `apps/web` was previously a 264-line
   shell with chat + approvals + recent runs only. Two new

@@ -1,6 +1,8 @@
 import {
   createAgentRuntime,
   createCasualLureStripResponseFilter,
+  createEnglishCasualLureStripResponseFilter,
+  createEnglishGreetingStripResponseFilter,
   createFabricationRequestRefusalFilter,
   createGreetingStripResponseFilter,
   createInjectionInputGuard,
@@ -934,6 +936,47 @@ function createOutputGuards(env: MuseEnvironment): readonly OutputGuardStage[] {
   return guards;
 }
 
+/**
+ * Parses MUSE_RESPONSE_LOCALES (CSV, default "ko,en") into the set of
+ * locale codes whose response filters should be active. Keeping Korean as
+ * a default preserves UX for the original Korean operator base; adding
+ * English by default unlocks the same casual-lure / greeting cleanup for
+ * English-speaking users.
+ */
+function responseLocales(env: MuseEnvironment): ReadonlySet<"ko" | "en"> {
+  const raw = parseCsv(env.MUSE_RESPONSE_LOCALES) ?? ["ko", "en"];
+  const result = new Set<"ko" | "en">();
+  for (const entry of raw) {
+    const lower = entry.trim().toLowerCase();
+    if (lower === "ko" || lower === "en") {
+      result.add(lower);
+    }
+  }
+  return result;
+}
+
+function buildCasualLureFilters(env: MuseEnvironment) {
+  if (!parseBoolean(env.MUSE_RESPONSE_CASUAL_LURE_STRIP_ENABLED, true)) {
+    return [];
+  }
+  const locales = responseLocales(env);
+  return [
+    ...(locales.has("ko") ? [createCasualLureStripResponseFilter()] : []),
+    ...(locales.has("en") ? [createEnglishCasualLureStripResponseFilter()] : [])
+  ];
+}
+
+function buildGreetingStripFilters(env: MuseEnvironment) {
+  if (!parseBoolean(env.MUSE_RESPONSE_GREETING_STRIP_ENABLED, true)) {
+    return [];
+  }
+  const locales = responseLocales(env);
+  return [
+    ...(locales.has("ko") ? [createGreetingStripResponseFilter()] : []),
+    ...(locales.has("en") ? [createEnglishGreetingStripResponseFilter()] : [])
+  ];
+}
+
 function createResponseFilters(env: MuseEnvironment) {
   const maxLength = parseInteger(env.MUSE_RESPONSE_MAX_LENGTH, 0);
 
@@ -951,12 +994,8 @@ function createResponseFilters(env: MuseEnvironment) {
     ...(parseBoolean(env.MUSE_RESPONSE_INTERNAL_BRAND_MASK_ENABLED, true)
       ? [createInternalBrandMaskResponseFilter()]
       : []),
-    ...(parseBoolean(env.MUSE_RESPONSE_CASUAL_LURE_STRIP_ENABLED, true)
-      ? [createCasualLureStripResponseFilter()]
-      : []),
-    ...(parseBoolean(env.MUSE_RESPONSE_GREETING_STRIP_ENABLED, true)
-      ? [createGreetingStripResponseFilter()]
-      : []),
+    ...buildCasualLureFilters(env),
+    ...buildGreetingStripFilters(env),
     ...(parseBoolean(env.MUSE_RESPONSE_FABRICATION_REFUSAL_ENABLED, true)
       ? [createFabricationRequestRefusalFilter()]
       : []),
