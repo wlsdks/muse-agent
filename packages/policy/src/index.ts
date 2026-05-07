@@ -1,3 +1,4 @@
+export * from "./adversarial-red-team.js";
 export * from "./approval-policy.js";
 export * from "./guard-rule-store.js";
 export * from "./guard-monitor.js";

@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@muse/db": "workspace:*",
+    "@muse/model": "workspace:*",
     "@muse/shared": "workspace:*",
     "kysely": "^0.28.17"
   }

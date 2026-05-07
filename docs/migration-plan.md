@@ -296,6 +296,13 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- Adversarial red-team harness now exists in `@muse/policy` as `AdversarialRedTeam`. Asks an injectable
+  attacker `ModelProvider` to generate prompt-injection attempts in N rounds (with previous-round
+  blocked examples fed back as evolution hints), runs each attempt through an injectable `guard`
+  adapter, and returns a `RedTeamReport` with totals + bypass rate. Ships a default `createPatternGuard`
+  that uses `sharedInjectionPatterns` so the harness can be exercised without wiring a full pipeline.
+  Provider failures yield empty rounds (logged via `logger`); guard failures fail closed. Closes the
+  Reactor `AdversarialRedTeam` parity gap without Spring AI / Atlassian coupling.
 - Cost anomaly + monthly budget tracking now exist in `@muse/observability`. `CostAnomalyDetector`
   flags requests whose USD cost exceeds the rolling-window baseline by `thresholdMultiplier` (default 3×).
   `MonthlyBudgetTracker` aggregates per-tenant USD cost into the current calendar month, transitions
