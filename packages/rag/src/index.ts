@@ -1757,6 +1757,99 @@ export function createLlmDecomposingQueryTransformer(
   };
 }
 
+export type QueryComplexity = "no_retrieval" | "simple" | "complex";
+
+export interface QueryRouter {
+  route(query: string): Awaitable<QueryComplexity>;
+}
+
+export const ADAPTIVE_QUERY_ROUTER_DEFAULT_SYSTEM_PROMPT =
+  "You classify user queries to decide whether document retrieval is needed.\n\n" +
+  "Categories:\n" +
+  "- NO_RETRIEVAL: Only for greetings (hello, hi), chitchat (how are you), or simple arithmetic. " +
+  "Never for questions about products, features, how-to, configuration, registration, setup, " +
+  "troubleshooting, or any domain topic.\n" +
+  "- SIMPLE: Single fact lookup, how-to questions, feature questions, configuration or setup questions.\n" +
+  "- COMPLEX: Multi-hop reasoning, comparison across entities, trend analysis, or questions requiring " +
+  "multiple documents.\n\n" +
+  "When in doubt, choose SIMPLE over NO_RETRIEVAL.\n" +
+  "Respond with exactly one word: NO_RETRIEVAL, SIMPLE, or COMPLEX.";
+
+export interface LlmAdaptiveQueryRouterOptions {
+  readonly provider: ModelProvider;
+  readonly model: string;
+  readonly systemPrompt?: string;
+  readonly timeoutMs?: number;
+  readonly maxOutputTokens?: number;
+  readonly temperature?: number;
+  readonly metadata?: JsonObject;
+  readonly logger?: (message: string, error?: unknown) => void;
+}
+
+/**
+ * LLM-backed adaptive query router (Adaptive-RAG style).
+ *
+ * Classifies the user query into NO_RETRIEVAL / SIMPLE / COMPLEX and lets the
+ * caller pick a downstream pipeline strategy. Falls back to SIMPLE on any
+ * provider error or timeout (graceful degradation): skipping retrieval is more
+ * dangerous than running a small unnecessary search, so SIMPLE is the safe
+ * default.
+ *
+ * Mirrors Reactor's `AdaptiveQueryRouter` (timeout, safe-fallback semantics)
+ * without Spring AI coupling.
+ */
+export function createLlmAdaptiveQueryRouter(options: LlmAdaptiveQueryRouterOptions): QueryRouter {
+  const timeoutMs = Math.max(0, options.timeoutMs ?? 3_000);
+  return {
+    route: async (query: string): Promise<QueryComplexity> => {
+      try {
+        const generate = async (): Promise<QueryComplexity> => {
+          const messages: ModelMessage[] = [
+            { content: options.systemPrompt ?? ADAPTIVE_QUERY_ROUTER_DEFAULT_SYSTEM_PROMPT, role: "system" },
+            { content: query, role: "user" }
+          ];
+          const request: ModelRequest = {
+            messages,
+            model: options.model,
+            ...(options.maxOutputTokens !== undefined ? { maxOutputTokens: options.maxOutputTokens } : {}),
+            ...(options.metadata ? { metadata: options.metadata } : {}),
+            ...(options.temperature !== undefined ? { temperature: options.temperature } : {})
+          };
+          const response = await options.provider.generate(request);
+          return parseQueryComplexity(response.output ?? "");
+        };
+        if (timeoutMs > 0) {
+          return await Promise.race([
+            generate(),
+            new Promise<QueryComplexity>((_, reject) => {
+              setTimeout(() => reject(new Error("AdaptiveQueryRouter timeout")), timeoutMs).unref?.();
+            })
+          ]);
+        }
+        return await generate();
+      } catch (error) {
+        options.logger?.("AdaptiveQueryRouter fell back to SIMPLE", error);
+        return "simple";
+      }
+    }
+  };
+}
+
+/** Visible for testing — parses an LLM verdict into a `QueryComplexity` with safe SIMPLE fallback. */
+export function parseQueryComplexity(raw: string): QueryComplexity {
+  const upper = raw.trim().toUpperCase();
+  if (upper.includes("COMPLEX")) {
+    return "complex";
+  }
+  if (upper.includes("NO_RETRIEVAL")) {
+    return "no_retrieval";
+  }
+  if (upper.includes("SIMPLE")) {
+    return "simple";
+  }
+  return "simple";
+}
+
 export const LLM_CONTEXTUAL_COMPRESSOR_DEFAULT_SYSTEM_PROMPT =
   "You are a document compression assistant. " +
   "Extract only the information relevant to the user's query. " +

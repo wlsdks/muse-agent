@@ -261,6 +261,40 @@ try {
     assert(String(queries[1] ?? "").includes("30 days"), "second query should be the hypothetical doc");
   });
 
+  await record("Adaptive query router classifies queries and falls back to SIMPLE on errors", async () => {
+    const { createLlmAdaptiveQueryRouter } = await import(`${rootDir}/packages/rag/dist/index.js`);
+    const okRouter = createLlmAdaptiveQueryRouter({
+      model: "fake/route",
+      provider: {
+        generate: async (request) => ({
+          id: "r",
+          model: request.model,
+          output: request.messages.find((m) => m.role === "user")?.content?.includes("compare") ? "COMPLEX" : "SIMPLE"
+        }),
+        listModels: async () => [],
+        stream: async function* () {
+          yield { response: { id: "r", model: "fake/route", output: "" }, type: "done" };
+        }
+      }
+    });
+    assert((await okRouter.route("compare A vs B")) === "complex", "expected complex routing");
+    assert((await okRouter.route("how do I install muse?")) === "simple", "expected simple routing");
+
+    const failingRouter = createLlmAdaptiveQueryRouter({
+      model: "fake/route",
+      provider: {
+        generate: async () => {
+          throw new Error("router boom");
+        },
+        listModels: async () => [],
+        stream: async function* () {
+          yield { response: { id: "r", model: "fake/route", output: "" }, type: "done" };
+        }
+      }
+    });
+    assert((await failingRouter.route("anything")) === "simple", "expected simple fallback");
+  });
+
   await record("Adversarial red team harness blocks pattern-matching attacks via the default guard", async () => {
     const { AdversarialRedTeam, createPatternGuard } = await import(`${rootDir}/packages/policy/dist/index.js`);
     const provider = {

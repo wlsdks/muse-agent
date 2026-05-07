@@ -296,6 +296,12 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- Adaptive query router now exists in `@muse/rag`. `createLlmAdaptiveQueryRouter({ provider, model,
+  timeoutMs })` classifies a user query as `no_retrieval` | `simple` | `complex` via an LLM and lets
+  callers pick a downstream pipeline strategy. Falls back to `simple` on provider errors AND timeouts
+  (default 3 s) — skipping retrieval is more dangerous than running an unnecessary search. Exports
+  `parseQueryComplexity` (visible for testing) and `ADAPTIVE_QUERY_ROUTER_DEFAULT_SYSTEM_PROMPT` for
+  override. Closes the Reactor `AdaptiveQueryRouter` parity gap without Spring AI coupling.
 - Adversarial red-team harness now exists in `@muse/policy` as `AdversarialRedTeam`. Asks an injectable
   attacker `ModelProvider` to generate prompt-injection attempts in N rounds (with previous-round
   blocked examples fed back as evolution hints), runs each attempt through an injectable `guard`

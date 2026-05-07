@@ -34,7 +34,10 @@ import {
   createLlmHypotheticalDocumentTransformer,
   createLlmDecomposingQueryTransformer,
   createLlmContextualCompressor,
+  createLlmAdaptiveQueryRouter,
   parseDecompositionLines,
+  parseQueryComplexity,
+  ADAPTIVE_QUERY_ROUTER_DEFAULT_SYSTEM_PROMPT,
   HYDE_DEFAULT_SYSTEM_PROMPT,
   DECOMPOSE_DEFAULT_SYSTEM_PROMPT,
   LLM_CONTEXTUAL_COMPRESSOR_DEFAULT_SYSTEM_PROMPT,
@@ -911,5 +914,106 @@ describe("LLM-driven query transformers", () => {
       await compressor.compress("q", [makeDocument("a", "payload")]);
       expect(captured).toBe(LLM_CONTEXTUAL_COMPRESSOR_DEFAULT_SYSTEM_PROMPT);
     });
+  });
+});
+
+describe("parseQueryComplexity", () => {
+  it("returns 'complex' for any response containing COMPLEX (case-insensitive)", () => {
+    expect(parseQueryComplexity("complex")).toBe("complex");
+    expect(parseQueryComplexity("This is a COMPLEX query")).toBe("complex");
+  });
+
+  it("returns 'no_retrieval' for greetings response", () => {
+    expect(parseQueryComplexity("NO_RETRIEVAL")).toBe("no_retrieval");
+    expect(parseQueryComplexity("verdict: no_retrieval please")).toBe("no_retrieval");
+  });
+
+  it("prefers COMPLEX when both NO_RETRIEVAL and COMPLEX appear (safer side)", () => {
+    expect(parseQueryComplexity("NO_RETRIEVAL probably COMPLEX")).toBe("complex");
+  });
+
+  it("returns 'simple' for SIMPLE response", () => {
+    expect(parseQueryComplexity("simple")).toBe("simple");
+  });
+
+  it("falls back to 'simple' for unrecognized responses", () => {
+    expect(parseQueryComplexity("???")).toBe("simple");
+    expect(parseQueryComplexity("")).toBe("simple");
+  });
+});
+
+describe("createLlmAdaptiveQueryRouter", () => {
+  function makeProvider(output: string): { id: string; generate: (request: { model: string }) => Promise<{ id: string; model: string; output: string }>; listModels: () => Promise<never[]>; stream: () => AsyncGenerator<never, void, void> } {
+    return {
+      generate: async (request) => ({ id: "r", model: request.model, output }),
+      id: "router-fake",
+      listModels: async () => [],
+      stream: async function* (): AsyncGenerator<never, void, void> {
+        // unused
+      }
+    };
+  }
+
+  it("routes a complex query to 'complex'", async () => {
+    const router = createLlmAdaptiveQueryRouter({
+      model: "fake/route",
+      provider: makeProvider("COMPLEX")
+    });
+    expect(await router.route("compare A vs B vs C across markets")).toBe("complex");
+  });
+
+  it("falls back to 'simple' on provider error", async () => {
+    const router = createLlmAdaptiveQueryRouter({
+      model: "fake/route",
+      provider: {
+        generate: async () => {
+          throw new Error("router down");
+        },
+        id: "router-fake",
+        listModels: async () => [],
+        stream: async function* (): AsyncGenerator<never, void, void> {
+          // unused
+        }
+      }
+    });
+    expect(await router.route("anything")).toBe("simple");
+  });
+
+  it("falls back to 'simple' on timeout", async () => {
+    const router = createLlmAdaptiveQueryRouter({
+      model: "fake/route",
+      provider: {
+        generate: () => new Promise((resolve) => {
+          setTimeout(() => resolve({ id: "r", model: "fake/route", output: "COMPLEX" }), 200);
+        }),
+        id: "router-fake",
+        listModels: async () => [],
+        stream: async function* (): AsyncGenerator<never, void, void> {
+          // unused
+        }
+      },
+      timeoutMs: 25
+    });
+    expect(await router.route("late response")).toBe("simple");
+  });
+
+  it("uses the default Adaptive-RAG system prompt by default", async () => {
+    let captured = "";
+    const router = createLlmAdaptiveQueryRouter({
+      model: "fake/route",
+      provider: {
+        generate: async (request) => {
+          captured = request.messages.find((message) => message.role === "system")?.content ?? "";
+          return { id: "r", model: request.model, output: "SIMPLE" };
+        },
+        id: "router-capture",
+        listModels: async () => [],
+        stream: async function* (): AsyncGenerator<never, void, void> {
+          // unused
+        }
+      }
+    });
+    await router.route("what is the weather?");
+    expect(captured).toBe(ADAPTIVE_QUERY_ROUTER_DEFAULT_SYSTEM_PROMPT);
   });
 });
