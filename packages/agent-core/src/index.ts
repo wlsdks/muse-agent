@@ -36,13 +36,7 @@ import {
   type PromptLayerRegistry
 } from "@muse/prompts";
 import type { RagPipeline } from "@muse/rag";
-import {
-  retry,
-  withTimeout,
-  type CircuitBreaker,
-  type FallbackStrategy,
-  type RetryOptions
-} from "@muse/resilience";
+import type { CircuitBreaker, FallbackStrategy, RetryOptions } from "@muse/resilience";
 import type {
   AgentRunHistoryStore,
   AgentRunMode,
@@ -81,12 +75,12 @@ import {
   recordRunFailure,
   recordRunStart
 } from "./lifecycle.js";
+import { invokeModel, recordTokenUsageEvent } from "./model-invocation.js";
 import {
   appendSystemSection,
   applyAgentSpecSystemPrompt,
   failMissingProvider,
   isModelMessage,
-  isRetryableProviderError,
   latestUserPrompt,
   metadataString,
   numberMetadata,
@@ -94,9 +88,7 @@ import {
   recordContextWindowSpanAttributes,
   recordUsageSpanAttributes,
   renderUserMemorySection,
-  stringListMetadata,
-  toAgentRunMode,
-  toolCallsMetadata
+  stringListMetadata
 } from "./runtime-helpers.js";
 import {
   blockedToolResult,
@@ -1230,7 +1222,15 @@ export class AgentRuntime {
 
         if (response.usage) {
           this.metrics.recordTokenUsage(response.usage, context.input.metadata);
-          await this.recordTokenUsageEvent(context, provider, response, "act");
+          await recordTokenUsageEvent({
+            metadata: context.input.metadata,
+            provider,
+            response,
+            runId: context.runId,
+            stepType: "act",
+            ...(this.tokenUsageSink ? { tokenUsageSink: this.tokenUsageSink } : {}),
+            tracer: this.tracer
+          });
         }
       }
 
@@ -1555,110 +1555,19 @@ export class AgentRuntime {
     provider: ModelProvider,
     request: ModelRequest
   ): Promise<ModelResponse> {
-    const span = this.tracer.startSpan("muse.model.generate", {
-      "model.id": request.model,
-      "provider.id": provider.id,
-      "run.id": context.runId
-    });
-
-    try {
-      const generate = () => this.generateWithFallback(provider, request);
-      const response = await (this.circuitBreaker ? this.circuitBreaker.execute(generate) : generate());
-      recordUsageSpanAttributes(span, response);
-
-      if (response.usage) {
-        this.metrics.recordTokenUsage(response.usage, context.input.metadata);
-        await this.recordTokenUsageEvent(context, provider, response, "act");
-      }
-
-      return response;
-    } catch (error) {
-      span.setError(error);
-      throw error;
-    } finally {
-      span.end();
-    }
-  }
-
-  private async recordTokenUsageEvent(
-    context: AgentRunContext,
-    provider: ModelProvider,
-    response: ModelResponse,
-    stepType: string
-  ): Promise<void> {
-    if (!this.tokenUsageSink) {
-      return;
-    }
-    const usage = response.usage;
-    if (!usage) {
-      return;
-    }
-    const promptTokens = usage.inputTokens ?? 0;
-    const completionTokens = usage.outputTokens ?? 0;
-    const reasoningTokens = usage.reasoningTokens ?? 0;
-    try {
-      await this.tokenUsageSink.record({
-        completionTokens,
-        model: response.model,
-        promptTokens,
-        provider: provider.id,
-        reasoningTokens,
-        recordedAt: new Date(),
-        runId: context.runId,
-        stepType,
-        ...(metadataString(context.input.metadata, "tenantId")
-          ? { tenantId: metadataString(context.input.metadata, "tenantId") as string }
-          : {}),
-        totalTokens: promptTokens + completionTokens + reasoningTokens
-      });
-    } catch (error) {
-      this.tracer
-        .startSpan("muse.token_usage.record_failed", {
-          error: error instanceof Error ? error.message : String(error),
-          "run.id": context.runId
-        })
-        .end();
-    }
-  }
-
-  private async generateWithFallback(provider: ModelProvider, request: ModelRequest): Promise<ModelResponse> {
-    try {
-      return await this.generateWithResilience(provider, request);
-    } catch (error) {
-      const fallback = await this.fallbackStrategy?.execute(
-        {
-          maxOutputTokens: request.maxOutputTokens,
-          messages: request.messages,
-          metadata: request.metadata,
-          temperature: request.temperature
-        },
-        error
-      );
-
-      if (fallback) {
-        return fallback;
-      }
-
-      throw error;
-    }
-  }
-
-  private async generateWithResilience(provider: ModelProvider, request: ModelRequest): Promise<ModelResponse> {
-    const operation = () => {
-      if (this.requestTimeoutMs === undefined) {
-        return provider.generate(request);
-      }
-
-      return withTimeout(() => provider.generate(request), this.requestTimeoutMs);
-    };
-
-    if (!this.retry) {
-      return operation();
-    }
-
-    return retry(operation, {
-      ...this.retry,
-      retryable: isRetryableProviderError
+    return invokeModel({
+      ...(this.circuitBreaker ? { circuitBreaker: this.circuitBreaker } : {}),
+      ...(this.fallbackStrategy ? { fallbackStrategy: this.fallbackStrategy } : {}),
+      metadata: context.input.metadata,
+      metrics: this.metrics,
+      provider,
+      request,
+      ...(this.requestTimeoutMs !== undefined ? { requestTimeoutMs: this.requestTimeoutMs } : {}),
+      ...(this.retry ? { retry: this.retry } : {}),
+      runId: context.runId,
+      stepType: "act",
+      ...(this.tokenUsageSink ? { tokenUsageSink: this.tokenUsageSink } : {}),
+      tracer: this.tracer
     });
   }
 

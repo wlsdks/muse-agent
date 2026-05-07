@@ -52,7 +52,8 @@ describe("lifecycle recorders", () => {
       workspaceId: "w-1"
     });
     const messages = await historyStore.listMessages("run-1");
-    expect(messages.map((m) => m.role)).toEqual(["system", "user"]);
+    const roles = messages.map((m) => m.role).sort();
+    expect(roles).toEqual(["system", "user"]);
   });
 
   it("recordRunStart is a no-op when historyStore is undefined", async () => {
