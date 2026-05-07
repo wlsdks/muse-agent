@@ -1,133 +1,58 @@
-# Muse - Claude Code Instructions
+# Muse
 
-Claude Code should use this file as the local working guide for Muse. `AGENTS.md` is the shared
-cross-agent source of truth. Keep this file aligned with `AGENTS.md` when architecture or workflow rules
-change.
+Muse is a provider-neutral, JARVIS-style AI conductor. The runtime
+orchestrates any LLM, any tool, any MCP server — without hard-wiring
+a vendor SDK into core code.
 
-## Current Mission
+This file is the **contract** every Claude Code agent reads first.
+Keep it under 100 lines. Anything longer goes in `.claude/rules/*.md`
+(loaded alongside this file).
 
-Muse is being created as the migration target for Reactor. The goal is not to recreate Reactor's
-Kotlin/Spring Boot module structure. The goal is to carry over Reactor's agent runtime discipline into a
-new TypeScript-first product with server, CLI, web UI, and a Rust execution runner.
+## Quick commands
 
-## Fixed Technical Direction
-
-```text
-Language: TypeScript
-Runtime: Node.js 24 LTS
-Package manager: pnpm workspace
-Server: Fastify
-Database: PostgreSQL
-DB access: Kysely
-Web UI: React + Vite + TanStack Query
-CLI: TypeScript CLI + Ink TUI
-Runner: Rust separate process
-Model core: Muse-owned ModelProvider interface
-Workflow framework: no default LangGraph.js dependency
+```bash
+pnpm check                                      # lint + typecheck + tests for every workspace
+pnpm smoke:broad                                # 49 HTTP endpoints against the diagnostic provider
+pnpm smoke:live                                 # 6 HTTP endpoints against a real LLM (auto-skips without *_API_KEY)
+REACTOR_SOURCE_DIR=<reactor-path> pnpm verify:reactor-routes
+REACTOR_SOURCE_DIR=<reactor-path> pnpm verify:reactor-db
 ```
 
-## Non-Negotiable Architecture Rules
+These commands are the ground truth. If any fails, stop and triage.
 
-- `agent-core` must be model-agnostic.
-- Provider SDKs belong behind adapters in `packages/model`.
-- Do not make OpenAI, Anthropic, Vercel AI SDK, or LangGraph the runtime owner.
-- Server and CLI must share the same agent runtime packages.
-- Rust owns risky local execution: shell, process, filesystem, and sandbox boundaries.
-- Guard logic is fail-close.
-- Hook logic is fail-open.
-- Security must be deterministic code, not prompt instruction.
-- Tool output is untrusted.
-- Tool loops need explicit limits and timeouts.
-- Message pair integrity must be preserved.
-- Prompt and protocol changes need tests or snapshots once the scaffold exists.
+## Non-negotiables
 
-## Migration Redaction Rules
+- `agent-core` is model-agnostic. Provider SDKs live behind `packages/model` adapters only.
+- Guards are fail-close. Hooks are fail-open. Security is deterministic code, never prompt instruction.
+- Tool output is untrusted. Tool loops have explicit limits and timeouts.
+- Risky local execution flows through `crates/runner`.
+- Server, CLI, and any future surface share the same `agent-core` runtime.
+- Tests are the only form of verification. Every claim must be testable.
 
-Before moving Reactor content into Muse, remove or generalize private identifiers.
+## Don't
 
-Redact personal names, usernames, emails, phone numbers, account IDs, company/customer/vendor/team names,
-workspace or tenant names, private domains, internal URLs, repository paths, secrets, API keys, tokens,
-connection strings, and business-specific examples.
+- Don't make OpenAI / Anthropic / Vercel-AI-SDK / LangGraph the runtime owner.
+- Don't push, force-push, or `--no-verify` without explicit user approval.
+- Don't commit live Jira / Confluence / Bitbucket / Slack-workspace credentials.
+- Don't bloat this file past 100 lines — add to `.claude/rules/<topic>.md` instead.
+- Don't migrate Reactor's Spring module boundaries — only its runtime discipline.
 
-Use synthetic replacements such as `example-user`, `example-tenant`, `sample-workspace`, and
-`example.com`. Public model provider names are allowed when documenting supported adapters. If a migrated
-fixture needs private-looking data to test behavior, rewrite it with synthetic values before committing.
+## Domain rules
 
-## Planned Layout
+For depth, read the matching file under `.claude/rules/`:
 
-```text
-apps/
-  api/
-  web/
-  cli/
+- [`architecture.md`](.claude/rules/architecture.md) — package layout, ModelProvider contract, fallback policy
+- [`cli-product.md`](.claude/rules/cli-product.md) — CLI surface (commander, Ink, config paths)
+- [`testing.md`](.claude/rules/testing.md) — verification gates and the narrowest-useful-test rule
+- [`commits.md`](.claude/rules/commits.md) — Conventional Commits + push policy
+- [`redaction.md`](.claude/rules/redaction.md) — synthetic identifiers when migrating Reactor content
+- [`migration-loop.md`](.claude/rules/migration-loop.md) — per-iteration discipline for the recurring migration loop
 
-packages/
-  agent-core/
-  model/
-  tools/
-  policy/
-  memory/
-  db/
-  tracing/
-  shared/
+## Working agreement
 
-crates/
-  runner/
-```
+When the user corrects Claude on a recurring mistake, end the
+iteration by adding the rule to the matching `.claude/rules/*.md`
+(or open a new one). This file should shrink, not grow.
 
-## CLI Product Rules
-
-The CLI is not a wrapper afterthought.
-
-- Use `commander` for commands.
-- Use `@clack/prompts` for setup and small interactions.
-- Use Ink for full TUI flows.
-- Store user config at `~/.config/muse/config.json`.
-- Store workspace run state under `.muse/runs/*.jsonl`.
-- Support both local mode and remote API mode.
-- Keep credentials in OS keychain or an encrypted auth store.
-- Execute risky local operations through the Rust runner.
-
-## Model Provider Rules
-
-Model support should be OpenCode-like: users can connect multiple providers and choose models without
-changing agent code.
-
-Required provider families:
-
-- OpenAI
-- Anthropic
-- Google Gemini
-- OpenRouter
-- Ollama
-- LM Studio or another OpenAI-compatible local endpoint
-- Custom OpenAI-compatible endpoint
-
-Every model entry must expose capabilities such as streaming, tool calling, structured output, vision,
-reasoning, prompt caching, context window, output limit, local/remote, cost, and latency profile.
-
-## Working Rules for Claude Code
-
-- Read `AGENTS.md` before making architecture decisions.
-- Check `git status --short --branch` before editing.
-- Keep changes scoped to the current migration milestone.
-- Do not rewrite unrelated files.
-- Prefer `rg` for code search.
-- Use small, conventional commits after coherent units of work.
-- Use `git diff --check` for documentation/config-only changes.
-- When the TypeScript scaffold exists, run the relevant package tests before committing.
-- When the Rust runner exists, run crate-level `cargo test` for runner changes.
-
-## Commit Style
-
-Use Conventional Commits:
-
-- `feat:`
-- `fix:`
-- `refactor:`
-- `test:`
-- `docs:`
-- `chore:`
-
-For this repository, migration setup commits should usually be `docs:` or `chore:` until executable
-scaffolding exists.
+For broader product context, see [`AGENTS.md`](AGENTS.md) and
+[`docs/migration-plan.md`](docs/migration-plan.md).

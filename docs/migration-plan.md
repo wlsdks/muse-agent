@@ -296,6 +296,20 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- CLAUDE.md / AGENTS.md restructured to Boris Cherny's lean-contract style
+  (out-of-loop refactor). `CLAUDE.md` shrinks 133 → 58 lines, `AGENTS.md`
+  shrinks 203 → 78. Domain rules now live in `.claude/rules/`
+  (architecture, cli-product, testing, commits, redaction,
+  migration-loop). Reusable prompts split into `.claude/commands/`
+  (audit-parity, migrate-iteration) and `.claude/agents/`
+  (parity-auditor, test-hardener, live-llm-prober). `.claude/README.md`
+  documents the pattern. The session-state file
+  `.claude/scheduled_tasks.lock` is now `.gitignore`d. The recurring
+  loop's "forbidden" list updated: bloating CLAUDE.md past 100 lines
+  is now banned, but adding new `.claude/rules/<topic>.md` files
+  during iterations is welcome (so the rule set absorbs every
+  correction). All gates remain green: pnpm check, smoke 49/49,
+  route parity 0 missing.
 - live-LLM tool-call loop tightened (iteration 47). The previous smoke
   accepted a "weekday-name in content" fall-back so a model that
   answered from internal knowledge instead of calling the tool would

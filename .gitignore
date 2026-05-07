@@ -62,3 +62,6 @@ Thumbs.db
 !.vscode/settings.json
 *.swp
 *.swo
+
+# Claude Code session state (rules / commands / agents are checked in)
+.claude/scheduled_tasks.lock
