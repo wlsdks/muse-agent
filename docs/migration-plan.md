@@ -296,6 +296,22 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- agent-core monolith split crosses the 50% threshold (iteration 40).
+  Four public types (`UserMemorySnapshot`, `UserMemoryProvider`,
+  `UserMemoryInjectionOptions`, `AgentContextWindowReport`) moved to
+  `types.ts` and re-exported from the package surface (zero-API-change).
+  Two system-prompt helpers (`renderUserMemorySection` —
+  facts/preferences/recent-topics → `[User Memory]` block with per-section
+  `maxEntries` cap; `appendSystemSection` — injects a `<!-- muse:{id} -->`
+  marked block into the first system message, replacing any earlier copy
+  to avoid duplication across multi-turn runs) extracted to
+  `runtime-helpers.ts`. 7 new unit tests cover empty-snapshot omission,
+  facts+preferences bounded rendering, missing-preferences branch,
+  prepend-when-no-system, append-on-existing-system, marker-replacement
+  on re-injection, and default sectionId. Index file: 2,054 → 1,984 (-70).
+  Cumulative 3,983 → 1,984 lines (-1,999, **-50.2%** — past the halfway
+  mark) across 13 submodules. agent-core tests 127 → 134; broad smoke
+  46/46; route parity 0 missing.
 - eighth loopback MCP server `muse.regex` ships by default (iteration 39).
   Three new tools — `test` (boolean match), `match` (enumerate matches with
   index + capture groups, force global, default 1000-cap with explicit

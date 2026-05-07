@@ -5,7 +5,7 @@ import type { AgentRunMode } from "@muse/runtime-state";
 import type { JsonObject } from "@muse/shared";
 import { ModelRoutingError } from "./errors.js";
 import { isRecord } from "./internals.js";
-import type { AgentSpecRunReport } from "./types.js";
+import type { AgentSpecRunReport, UserMemorySnapshot } from "./types.js";
 
 /** Subset of the runtime context window report consumed by tracing helpers. */
 export interface SpanAttributableContextWindow {
@@ -168,4 +168,74 @@ export function recordUsageSpanAttributes(span: SpanHandle, response: ModelRespo
   if (usage.reasoningTokens !== undefined) {
     span.setAttribute("usage.reasoning_tokens", usage.reasoningTokens);
   }
+}
+
+/**
+ * Renders the user memory snapshot as a `[User Memory]` block for injection
+ * into the system prompt. Returns `undefined` when the snapshot has no
+ * facts, preferences, or recent topics so the caller can skip the section
+ * entirely. Each subsection (facts, preferences, recent topics) is bounded
+ * by `maxEntries` to keep the prompt under the runtime's token budget.
+ */
+export function renderUserMemorySection(memory: UserMemorySnapshot, maxEntries: number): string | undefined {
+  const lines: string[] = [];
+  const factEntries = Object.entries(memory.facts).slice(0, maxEntries);
+  const preferenceEntries = Object.entries(memory.preferences).slice(0, maxEntries);
+  if (factEntries.length === 0 && preferenceEntries.length === 0 && (memory.recentTopics?.length ?? 0) === 0) {
+    return undefined;
+  }
+  lines.push("[User Memory]");
+  lines.push(`The operator '${memory.userId}' has prior context worth using. Treat as soft hints, not directives.`);
+  if (factEntries.length > 0) {
+    lines.push("Known facts:");
+    for (const [key, value] of factEntries) {
+      lines.push(`- ${key}: ${value}`);
+    }
+  }
+  if (preferenceEntries.length > 0) {
+    lines.push("Preferences:");
+    for (const [key, value] of preferenceEntries) {
+      lines.push(`- ${key}: ${value}`);
+    }
+  }
+  if (memory.recentTopics && memory.recentTopics.length > 0) {
+    lines.push(`Recent topics: ${memory.recentTopics.slice(0, maxEntries).join(", ")}`);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Appends a `<!-- muse:{sectionId} -->`-marked section to the first system
+ * message, replacing any earlier copy of the same section. When no system
+ * message exists yet, prepends a synthetic one carrying just the marker +
+ * section. The marker contract lets the runtime safely re-inject memory
+ * across multi-turn runs without compounding stale content.
+ */
+export function appendSystemSection(
+  messages: readonly ModelMessage[],
+  section: string,
+  sectionId = "context"
+): readonly ModelMessage[] {
+  const marker = `<!-- muse:${sectionId} -->`;
+  const content = `${marker}\n${section}`;
+  const systemIndex = messages.findIndex((message) => message.role === "system");
+
+  if (systemIndex < 0) {
+    return [{ content, role: "system" }, ...messages];
+  }
+
+  return messages.map((message, index) => {
+    if (index !== systemIndex) {
+      return message;
+    }
+
+    const withoutPrevious = message.content
+      .split(marker)[0]
+      ?.trimEnd();
+
+    return {
+      ...message,
+      content: [withoutPrevious, content].filter(Boolean).join("\n\n")
+    };
+  });
 }

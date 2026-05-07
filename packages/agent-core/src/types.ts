@@ -95,3 +95,25 @@ export interface AgentSpecRunReport {
   readonly matchedKeywords: readonly string[];
   readonly toolNames: readonly string[];
 }
+
+export interface UserMemorySnapshot {
+  readonly userId: string;
+  readonly facts: Readonly<Record<string, string>>;
+  readonly preferences: Readonly<Record<string, string>>;
+  readonly recentTopics?: readonly string[];
+}
+
+export interface UserMemoryProvider {
+  findByUserId(userId: string): Awaitable<UserMemorySnapshot | undefined>;
+}
+
+export interface UserMemoryInjectionOptions {
+  readonly maxEntries?: number;
+}
+
+export interface AgentContextWindowReport {
+  readonly budgetTokens: number;
+  readonly estimatedTokens: number;
+  readonly removedCount: number;
+  readonly summaryInserted: boolean;
+}

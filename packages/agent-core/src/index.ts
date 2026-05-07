@@ -70,6 +70,7 @@ import { createRunId, type JsonObject } from "@muse/shared";
 import { ToolCallDeduplicator } from "./tool-call-deduplicator.js";
 import { isRecord, joinUserMessages, normalizeSourceUrl, withResponseFilterRaw } from "./internals.js";
 import {
+  appendSystemSection,
   applyAgentSpecSystemPrompt,
   failMissingProvider,
   isModelMessage,
@@ -79,6 +80,7 @@ import {
   ragFilters,
   recordContextWindowSpanAttributes,
   recordUsageSpanAttributes,
+  renderUserMemorySection,
   stringListMetadata,
   toAgentRunMode,
   toAgentSpecRunReport,
@@ -126,6 +128,7 @@ import {
 } from "@muse/tools";
 
 import type {
+  AgentContextWindowReport,
   AgentRunContext,
   AgentRunInput,
   AgentSpecRunReport,
@@ -139,10 +142,14 @@ import type {
   OutputGuardStage,
   ResponseFilterContext,
   ResponseFilterStage,
+  UserMemoryInjectionOptions,
+  UserMemoryProvider,
+  UserMemorySnapshot,
   VerifiedSource
 } from "./types.js";
 
 export type {
+  AgentContextWindowReport,
   AgentRunContext,
   AgentRunInput,
   AgentSpecRunReport,
@@ -156,6 +163,9 @@ export type {
   OutputGuardStage,
   ResponseFilterContext,
   ResponseFilterStage,
+  UserMemoryInjectionOptions,
+  UserMemoryProvider,
+  UserMemorySnapshot,
   VerifiedSource
 } from "./types.js";
 
@@ -182,21 +192,6 @@ export {
 
 export interface AgentSpecResolver {
   resolve(text: string): Awaitable<AgentSpecResolution | undefined>;
-}
-
-export interface UserMemorySnapshot {
-  readonly userId: string;
-  readonly facts: Readonly<Record<string, string>>;
-  readonly preferences: Readonly<Record<string, string>>;
-  readonly recentTopics?: readonly string[];
-}
-
-export interface UserMemoryProvider {
-  findByUserId(userId: string): Awaitable<UserMemorySnapshot | undefined>;
-}
-
-export interface UserMemoryInjectionOptions {
-  readonly maxEntries?: number;
 }
 
 export interface AgentRuntimeOptions {
@@ -256,13 +251,6 @@ export type AgentRuntimeStreamEvent =
   | { readonly runId: string; readonly toolCall: ModelToolCall; readonly type: "tool-result" }
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "done" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "error" }>);
-
-export interface AgentContextWindowReport {
-  readonly budgetTokens: number;
-  readonly estimatedTokens: number;
-  readonly removedCount: number;
-  readonly summaryInserted: boolean;
-}
 
 export {
   createAgentCheckpointState,
@@ -1911,64 +1899,6 @@ function hookInvocation(
   return undefined;
 }
 
-function renderUserMemorySection(
-  memory: UserMemorySnapshot,
-  maxEntries: number
-): string | undefined {
-  const lines: string[] = [];
-  const factEntries = Object.entries(memory.facts).slice(0, maxEntries);
-  const preferenceEntries = Object.entries(memory.preferences).slice(0, maxEntries);
-  if (factEntries.length === 0 && preferenceEntries.length === 0 && (memory.recentTopics?.length ?? 0) === 0) {
-    return undefined;
-  }
-  lines.push("[User Memory]");
-  lines.push(`The operator '${memory.userId}' has prior context worth using. Treat as soft hints, not directives.`);
-  if (factEntries.length > 0) {
-    lines.push("Known facts:");
-    for (const [key, value] of factEntries) {
-      lines.push(`- ${key}: ${value}`);
-    }
-  }
-  if (preferenceEntries.length > 0) {
-    lines.push("Preferences:");
-    for (const [key, value] of preferenceEntries) {
-      lines.push(`- ${key}: ${value}`);
-    }
-  }
-  if (memory.recentTopics && memory.recentTopics.length > 0) {
-    lines.push(`Recent topics: ${memory.recentTopics.slice(0, maxEntries).join(", ")}`);
-  }
-  return lines.join("\n");
-}
-
-function appendSystemSection(
-  messages: readonly ModelMessage[],
-  section: string,
-  sectionId = "context"
-): readonly ModelMessage[] {
-  const marker = `<!-- muse:${sectionId} -->`;
-  const content = `${marker}\n${section}`;
-  const systemIndex = messages.findIndex((message) => message.role === "system");
-
-  if (systemIndex < 0) {
-    return [{ content, role: "system" }, ...messages];
-  }
-
-  return messages.map((message, index) => {
-    if (index !== systemIndex) {
-      return message;
-    }
-
-    const withoutPrevious = message.content
-      .split(marker)[0]
-      ?.trimEnd();
-
-    return {
-      ...message,
-      content: [withoutPrevious, content].filter(Boolean).join("\n\n")
-    };
-  });
-}
 
 function createRunResult(
   runId: string,
