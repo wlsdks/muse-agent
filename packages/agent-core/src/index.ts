@@ -27,6 +27,7 @@ import {
 } from "@muse/observability";
 import {
   buildLayeredSystemPrompt,
+  buildPlanningSystemPrompt,
   renderExemplarContext,
   renderRetrievedContext,
   renderToolResults,
@@ -462,6 +463,21 @@ export class PlanValidationFailedError extends Error {
   }
 }
 
+export type PlanExecutionErrorCode =
+  | "PLAN_GENERATION_FAILED"
+  | "PLAN_ALL_STEPS_FAILED"
+  | "RESPONSE_SYNTHESIS_FAILED";
+
+export class PlanExecutionError extends Error {
+  readonly code: PlanExecutionErrorCode;
+
+  constructor(code: PlanExecutionErrorCode, message: string) {
+    super(message);
+    this.name = "PlanExecutionError";
+    this.code = code;
+  }
+}
+
 export function extractJsonArray(text: string): string | null {
   const start = text.indexOf("[");
   if (start < 0) {
@@ -714,12 +730,15 @@ export class AgentRuntime {
         );
       }
 
-      const execution = await this.executeModelLoop(layeredContext, selected.provider, {
+      const loopRequest: ModelRequest = {
         ...preparedRequest.request,
         maxOutputTokens: this.defaults?.maxOutputTokens,
         temperature: this.defaults?.temperature,
         tools
-      });
+      };
+      const execution = isPlanExecuteMode(layeredContext.input.metadata)
+        ? await this.executePlanExecuteLoop(layeredContext, selected.provider, loopRequest)
+        : await this.executeModelLoop(layeredContext, selected.provider, loopRequest);
       const filteredResponse = await this.applyResponseFilters(
         layeredContext,
         execution.finalResponse,
@@ -812,21 +831,29 @@ export class AgentRuntime {
       }
 
       const forwardTextDeltas = this.canForwardRawStreamText();
-      const stream = this.executeStreamingModelLoop(layeredContext, selected.provider, {
+      const streamLoopRequest: ModelRequest = {
         ...preparedRequest.request,
         maxOutputTokens: this.defaults?.maxOutputTokens,
         temperature: this.defaults?.temperature,
         tools
-      }, { forwardTextDeltas });
-
-      let next = await stream.next();
-
-      while (!next.done) {
-        yield next.value;
-        next = await stream.next();
+      };
+      let execution: ModelLoopExecution;
+      if (isPlanExecuteMode(layeredContext.input.metadata)) {
+        execution = await this.executePlanExecuteLoop(layeredContext, selected.provider, streamLoopRequest);
+      } else {
+        const stream = this.executeStreamingModelLoop(
+          layeredContext,
+          selected.provider,
+          streamLoopRequest,
+          { forwardTextDeltas }
+        );
+        let next = await stream.next();
+        while (!next.done) {
+          yield next.value;
+          next = await stream.next();
+        }
+        execution = next.value;
       }
-
-      const execution = next.value;
       const filteredResponse = await this.applyResponseFilters(
         layeredContext,
         execution.finalResponse,
@@ -1353,6 +1380,203 @@ export class AgentRuntime {
     } finally {
       span.end();
     }
+  }
+
+  private async executePlanExecuteLoop(
+    context: AgentRunContext,
+    provider: ModelProvider,
+    request: ModelRequest
+  ): Promise<ModelLoopExecution> {
+    const userPrompt = lastUserMessageContent(request.messages);
+    const tools = request.tools ?? [];
+    const toolDescriptions = renderToolDescriptionsForPlanning(tools);
+
+    const plan = await this.generatePlan(context, provider, request, userPrompt, toolDescriptions);
+    if (plan === null) {
+      throw new PlanExecutionError("PLAN_GENERATION_FAILED", "Plan generation parsing failed");
+    }
+
+    if (plan.length === 0) {
+      const directResponse = await this.directAnswerForPlanExecute(context, provider, request);
+      return {
+        finalResponse: directResponse,
+        intermediateMessages: [],
+        toolResults: [],
+        toolsUsed: []
+      };
+    }
+
+    const validation = validatePlan({
+      availableToolNames: new Set(tools.map((tool) => tool.name)),
+      steps: plan
+    });
+    if (!validation.valid) {
+      throw new PlanValidationFailedError(validation.errors, plan);
+    }
+
+    const executed = await this.executePlanSteps(context, plan, tools);
+
+    if (executed.length > 0 && executed.every((entry) => !entry.stepResult.success)) {
+      throw new PlanExecutionError(
+        "PLAN_ALL_STEPS_FAILED",
+        "Every plan step failed; refusing synthesis to avoid hallucinated answers"
+      );
+    }
+
+    const finalResponse = await this.synthesizePlanResults(
+      context,
+      provider,
+      request,
+      userPrompt,
+      executed
+    );
+
+    return {
+      finalResponse,
+      intermediateMessages: planExecuteIntermediateMessages(plan, executed),
+      toolResults: executed.map((entry) => entry.executed),
+      toolsUsed: [...new Set(executed.map((entry) => entry.executed.toolCall.name))]
+    };
+  }
+
+  private async generatePlan(
+    context: AgentRunContext,
+    provider: ModelProvider,
+    request: ModelRequest,
+    userPrompt: string,
+    toolDescriptions: string
+  ): Promise<readonly PlanStep[] | null> {
+    const planningPrompt = buildPlanningSystemPrompt({
+      toolDescriptions,
+      userPrompt
+    });
+
+    const planRequest: ModelRequest = {
+      ...request,
+      messages: [
+        { content: planningPrompt, role: "system" },
+        { content: userPrompt, role: "user" }
+      ],
+      tools: []
+    };
+
+    const response = await this.generateWithTracing(context, provider, planRequest);
+    return parsePlan(response.output ?? "");
+  }
+
+  private async executePlanSteps(
+    context: AgentRunContext,
+    plan: readonly PlanStep[],
+    tools: readonly ModelTool[]
+  ): Promise<readonly PlanExecuteStepRecord[]> {
+    const records: PlanExecuteStepRecord[] = [];
+    let toolCallCount = 0;
+
+    for (let index = 0; index < plan.length; index += 1) {
+      const step = plan[index];
+      if (!step) {
+        continue;
+      }
+
+      if (toolCallCount >= this.maxToolCalls) {
+        const blocked = blockedToolResult(
+          { arguments: step.args, id: `plan-step-${index}`, name: step.tool },
+          "Error: max tool call limit reached"
+        );
+        records.push({
+          executed: blocked,
+          step,
+          stepResult: {
+            description: step.description,
+            error: "max tool call limit reached",
+            output: null,
+            success: false,
+            tool: step.tool
+          }
+        });
+        continue;
+      }
+
+      const synthesizedCall: ModelToolCall = {
+        arguments: step.args,
+        id: `plan-step-${index}`,
+        name: step.tool
+      };
+      const executed = await this.executeToolCall(context, synthesizedCall, tools);
+      toolCallCount += 1;
+
+      const success = executed.result.status === "completed";
+      records.push({
+        executed,
+        step,
+        stepResult: {
+          description: step.description,
+          error: success ? undefined : executed.result.error ?? "TOOL_ERROR",
+          output: success ? executed.result.output : null,
+          success,
+          tool: step.tool
+        }
+      });
+    }
+
+    return records;
+  }
+
+  private async synthesizePlanResults(
+    context: AgentRunContext,
+    provider: ModelProvider,
+    request: ModelRequest,
+    userPrompt: string,
+    executed: readonly PlanExecuteStepRecord[]
+  ): Promise<ModelResponse> {
+    const summary = renderPlanResultSummary(executed.map((entry) => entry.stepResult));
+    const synthesisPrompt = [
+      `사용자 요청: ${userPrompt}`,
+      "",
+      "수집된 정보:",
+      summary,
+      "",
+      "위 정보를 바탕으로 사용자 요청에 답하세요."
+    ].join("\n");
+
+    const baseSystem = systemMessageContent(request.messages);
+    const synthesisRequest: ModelRequest = {
+      ...request,
+      messages: [
+        ...(baseSystem ? [{ content: baseSystem, role: "system" as const }] : []),
+        { content: synthesisPrompt, role: "user" as const }
+      ],
+      tools: []
+    };
+
+    const response = await this.generateWithTracing(context, provider, synthesisRequest);
+    if (!response.output || response.output.trim().length === 0) {
+      throw new PlanExecutionError(
+        "RESPONSE_SYNTHESIS_FAILED",
+        "Plan synthesis LLM returned an empty response"
+      );
+    }
+
+    return response;
+  }
+
+  private async directAnswerForPlanExecute(
+    context: AgentRunContext,
+    provider: ModelProvider,
+    request: ModelRequest
+  ): Promise<ModelResponse> {
+    const directRequest: ModelRequest = {
+      ...request,
+      tools: []
+    };
+    const response = await this.generateWithTracing(context, provider, directRequest);
+    if (!response.output || response.output.trim().length === 0) {
+      throw new PlanExecutionError(
+        "RESPONSE_SYNTHESIS_FAILED",
+        "Plan direct-answer fallback returned an empty response"
+      );
+    }
+    return response;
   }
 
   private async executeToolCall(
@@ -1916,6 +2140,78 @@ function blockedToolResult(toolCall: ModelToolCall, output: string): ExecutedToo
     },
     toolCall
   };
+}
+
+interface PlanExecuteStepRecord {
+  readonly step: PlanStep;
+  readonly executed: ExecutedToolResult;
+  readonly stepResult: StepExecutionResult;
+}
+
+function isPlanExecuteMode(metadata: JsonObject | undefined): boolean {
+  if (!metadata) {
+    return false;
+  }
+  const value = metadata["agentMode"];
+  return typeof value === "string" && value.toLowerCase() === "plan_execute";
+}
+
+function lastUserMessageContent(messages: readonly ModelMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role === "user") {
+      return message.content;
+    }
+  }
+  return "";
+}
+
+function systemMessageContent(messages: readonly ModelMessage[]): string | undefined {
+  for (const message of messages) {
+    if (message.role === "system") {
+      return message.content;
+    }
+  }
+  return undefined;
+}
+
+function renderToolDescriptionsForPlanning(tools: readonly ModelTool[]): string {
+  return tools.map((tool) => `- ${tool.name}: ${tool.description}`).join("\n");
+}
+
+function renderPlanResultSummary(results: readonly StepExecutionResult[]): string {
+  return results
+    .map((result) => {
+      const header = `[${result.tool}] ${result.description}`;
+      let body: string;
+      if (!result.success) {
+        body = "[실패] 이 단계는 실행에 실패했습니다. 답변 근거로 사용하지 마세요.";
+      } else if (!result.output || result.output.trim().length === 0) {
+        body = "[데이터 없음] 이 단계는 결과를 반환하지 않았습니다.";
+      } else {
+        body = result.output;
+      }
+      return `${header}\n${body}`;
+    })
+    .join("\n\n");
+}
+
+function planExecuteIntermediateMessages(
+  plan: readonly PlanStep[],
+  executed: readonly PlanExecuteStepRecord[]
+): readonly ModelMessage[] {
+  const planSummary: ModelMessage = {
+    content: JSON.stringify(plan),
+    role: "assistant",
+    toolCalls: executed.map((entry) => entry.executed.toolCall)
+  };
+  const toolMessages: ModelMessage[] = executed.map((entry) => ({
+    content: entry.executed.result.output,
+    name: entry.executed.toolCall.name,
+    role: "tool",
+    toolCallId: entry.executed.toolCall.id
+  }));
+  return [planSummary, ...toolMessages];
 }
 
 function hookInvocation(

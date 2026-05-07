@@ -2425,6 +2425,280 @@ describe("AgentRuntime", () => {
   });
 });
 
+describe("AgentRuntime PlanExecute mode", () => {
+  function planResponse(plan: unknown): ModelResponse {
+    return { id: "plan", model: "test-model", output: JSON.stringify(plan) };
+  }
+
+  function answerResponse(text: string): ModelResponse {
+    return { id: "synthesis", model: "test-model", output: text };
+  }
+
+  function planExecuteRuntimeWith(options: {
+    readonly responses: readonly ModelResponse[];
+    readonly tools?: readonly { name: string; output: unknown }[];
+    readonly maxToolCalls?: number;
+    readonly onGenerate?: (request: ModelRequest) => void;
+  }) {
+    const toolRegistry = new ToolRegistry(
+      (options.tools ?? []).map((tool) => ({
+        definition: {
+          description: `Synthetic ${tool.name} tool`,
+          inputSchema: { type: "object" },
+          name: tool.name,
+          risk: "read" as const
+        },
+        execute: async () => tool.output
+      }))
+    );
+    return createAgentRuntime({
+      ...(options.maxToolCalls !== undefined ? { maxToolCalls: options.maxToolCalls } : {}),
+      modelProvider: createSequenceProvider(options.responses, options.onGenerate),
+      toolRegistry
+    });
+  }
+
+  it("runs the 4-stage plan→validate→execute→synthesize loop on a happy path", async () => {
+    const requests: ModelRequest[] = [];
+    const runtime = planExecuteRuntimeWith({
+      onGenerate: (request) => requests.push(request),
+      responses: [
+        planResponse([
+          { args: { issueKey: "X-1" }, description: "fetch issue", tool: "jira_get_issue" },
+          { args: { keyword: "onboarding" }, description: "search docs", tool: "confluence_search" }
+        ]),
+        answerResponse("Issue X-1 is open; onboarding doc is up to date.")
+      ],
+      tools: [
+        { name: "jira_get_issue", output: { key: "X-1", status: "open" } },
+        { name: "confluence_search", output: { results: ["onboarding"] } }
+      ]
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "What is the onboarding status?", role: "user" }],
+      metadata: { agentMode: "plan_execute" },
+      model: "provider/model",
+      runId: "run-plan-happy"
+    });
+
+    expect(result.response.output).toBe("Issue X-1 is open; onboarding doc is up to date.");
+    expect(result.toolsUsed).toEqual(["jira_get_issue", "confluence_search"]);
+    expect(requests).toHaveLength(2);
+    const planningRequest = requests[0];
+    expect(planningRequest?.tools).toEqual([]);
+    expect(planningRequest?.messages.some((message) => message.role === "system" && message.content.includes("[Role]"))).toBe(true);
+    const synthesisRequest = requests[1];
+    expect(synthesisRequest?.tools).toEqual([]);
+    expect(synthesisRequest?.messages.some((message) => message.role === "user" && message.content.includes("수집된 정보:"))).toBe(true);
+  });
+
+  it("falls back to direct answer when the plan is empty", async () => {
+    const runtime = planExecuteRuntimeWith({
+      responses: [planResponse([]), answerResponse("Direct answer.")]
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "Tell me a joke", role: "user" }],
+      metadata: { agentMode: "plan_execute" },
+      model: "provider/model"
+    });
+
+    expect(result.response.output).toBe("Direct answer.");
+    expect(result.toolsUsed).toBeUndefined();
+  });
+
+  it("throws PlanExecutionError(PLAN_GENERATION_FAILED) when the model emits non-JSON", async () => {
+    const runtime = planExecuteRuntimeWith({
+      responses: [
+        { id: "plan", model: "test-model", output: "I will help with that." }
+      ]
+    });
+
+    await expect(
+      runtime.run({
+        messages: [{ content: "Plan something", role: "user" }],
+        metadata: { agentMode: "plan_execute" },
+        model: "provider/model"
+      })
+    ).rejects.toMatchObject({ code: "PLAN_GENERATION_FAILED", name: "PlanExecutionError" });
+  });
+
+  it("throws PlanValidationFailedError when the plan references an unregistered tool", async () => {
+    const runtime = planExecuteRuntimeWith({
+      responses: [
+        planResponse([
+          { args: {}, description: "do thing", tool: "missing_tool" }
+        ])
+      ],
+      tools: [{ name: "registered_tool", output: { ok: true } }]
+    });
+
+    await expect(
+      runtime.run({
+        messages: [{ content: "Plan something", role: "user" }],
+        metadata: { agentMode: "plan_execute" },
+        model: "provider/model"
+      })
+    ).rejects.toMatchObject({ name: "PlanValidationFailedError" });
+  });
+
+  it("aborts synthesis when every plan step failed", async () => {
+    const runtime = planExecuteRuntimeWith({
+      responses: [
+        planResponse([
+          { args: {}, description: "step 1", tool: "always_fails" }
+        ])
+      ],
+      tools: [
+        {
+          name: "always_fails",
+          output: undefined
+        }
+      ]
+    });
+
+    const failingTool = (
+      runtime as unknown as { readonly toolExecutor?: { execute: (input: unknown) => Promise<{ status: string; output: string; id: string; name: string }> } }
+    ).toolExecutor;
+    expect(failingTool).toBeDefined();
+    const original = failingTool!.execute.bind(failingTool!);
+    failingTool!.execute = async (input) => {
+      const result = await original(input);
+      return { ...result, status: "failed", output: "Error: TOOL_ERROR" };
+    };
+
+    await expect(
+      runtime.run({
+        messages: [{ content: "Plan something", role: "user" }],
+        metadata: { agentMode: "plan_execute" },
+        model: "provider/model"
+      })
+    ).rejects.toMatchObject({ code: "PLAN_ALL_STEPS_FAILED", name: "PlanExecutionError" });
+  });
+
+  it("blocks remaining steps once maxToolCalls is reached and still synthesizes", async () => {
+    const runtime = planExecuteRuntimeWith({
+      maxToolCalls: 1,
+      responses: [
+        planResponse([
+          { args: {}, description: "step 1", tool: "tool_a" },
+          { args: {}, description: "step 2", tool: "tool_b" }
+        ]),
+        answerResponse("partial answer")
+      ],
+      tools: [
+        { name: "tool_a", output: { ok: 1 } },
+        { name: "tool_b", output: { ok: 2 } }
+      ]
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "do it", role: "user" }],
+      metadata: { agentMode: "plan_execute" },
+      model: "provider/model"
+    });
+
+    expect(result.response.output).toBe("partial answer");
+    expect(result.toolsUsed).toEqual(["tool_a", "tool_b"]);
+  });
+
+  it("includes [실패] markers in the synthesis prompt for partial-failure plans", async () => {
+    const requests: ModelRequest[] = [];
+    const runtime = planExecuteRuntimeWith({
+      onGenerate: (request) => requests.push(request),
+      responses: [
+        planResponse([
+          { args: {}, description: "fetch a", tool: "tool_a" },
+          { args: {}, description: "fetch b", tool: "tool_b" }
+        ]),
+        answerResponse("mixed answer")
+      ],
+      tools: [
+        { name: "tool_a", output: { ok: 1 } },
+        { name: "tool_b", output: { ok: 2 } }
+      ]
+    });
+
+    const failingTool = (
+      runtime as unknown as { readonly toolExecutor?: { execute: (input: unknown) => Promise<{ status: string; name: string; id: string; output: string }> } }
+    ).toolExecutor;
+    const original = failingTool!.execute.bind(failingTool!);
+    failingTool!.execute = async (input) => {
+      const result = await original(input);
+      if (result.name === "tool_b") {
+        return { ...result, output: "Error: TOOL_ERROR", status: "failed" };
+      }
+      return result;
+    };
+
+    await runtime.run({
+      messages: [{ content: "mix it", role: "user" }],
+      metadata: { agentMode: "plan_execute" },
+      model: "provider/model"
+    });
+
+    const synthesisRequest = requests[1];
+    const userMessage = synthesisRequest?.messages.find((message) => message.role === "user");
+    expect(userMessage?.content).toContain("[tool_b] fetch b");
+    expect(userMessage?.content).toContain("[실패]");
+  });
+
+  it("throws PlanExecutionError(RESPONSE_SYNTHESIS_FAILED) on empty synthesis output", async () => {
+    const runtime = planExecuteRuntimeWith({
+      responses: [
+        planResponse([{ args: {}, description: "do", tool: "tool_a" }]),
+        { id: "synthesis", model: "test-model", output: "   " }
+      ],
+      tools: [{ name: "tool_a", output: { ok: 1 } }]
+    });
+
+    await expect(
+      runtime.run({
+        messages: [{ content: "do thing", role: "user" }],
+        metadata: { agentMode: "plan_execute" },
+        model: "provider/model"
+      })
+    ).rejects.toMatchObject({ code: "RESPONSE_SYNTHESIS_FAILED", name: "PlanExecutionError" });
+  });
+
+  it("ignores the agentMode metadata when it is not 'plan_execute'", async () => {
+    const requests: ModelRequest[] = [];
+    const runtime = planExecuteRuntimeWith({
+      onGenerate: (request) => requests.push(request),
+      responses: [{ id: "react", model: "test-model", output: "ReAct response" }]
+    });
+
+    await runtime.run({
+      messages: [{ content: "react please", role: "user" }],
+      metadata: { agentMode: "react" },
+      model: "provider/model"
+    });
+
+    expect(requests).toHaveLength(1);
+    const onlyRequest = requests[0];
+    expect(onlyRequest?.messages.some((message) => message.content.includes("[Role]"))).toBe(false);
+  });
+
+  it("treats the agentMode value case-insensitively (PLAN_EXECUTE works)", async () => {
+    const runtime = planExecuteRuntimeWith({
+      responses: [
+        planResponse([{ args: {}, description: "do", tool: "tool_a" }]),
+        answerResponse("ok")
+      ],
+      tools: [{ name: "tool_a", output: { ok: 1 } }]
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "do thing", role: "user" }],
+      metadata: { agentMode: "PLAN_EXECUTE" },
+      model: "provider/model"
+    });
+
+    expect(result.response.output).toBe("ok");
+  });
+});
+
 function sequentialIds(prefix: string): () => string {
   let next = 0;
   return () => `${prefix}-${++next}`;

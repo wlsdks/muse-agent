@@ -296,6 +296,13 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- AgentRuntime now honors `metadata.agentMode === "plan_execute"` for both `run()` and `stream()`,
+  dispatching to a 4-stage `executePlanExecuteLoop` (generate → validate → execute → synthesize). Empty plans
+  fall back to a direct-answer LLM call; JSON parse failures surface a `PlanExecutionError(PLAN_GENERATION_FAILED)`;
+  unregistered tools surface `PlanValidationFailedError`; all-failed step sets surface
+  `PlanExecutionError(PLAN_ALL_STEPS_FAILED)` to avoid hallucinated synthesis; mixed success/failure runs include
+  `[실패]`/`[데이터 없음]` markers in the synthesis prompt. The mode dispatch is case-insensitive and ignores any
+  non-plan_execute value, preserving the existing ReAct path as the default.
 
 ## Execution Plan
 
