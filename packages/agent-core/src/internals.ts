@@ -237,6 +237,10 @@ export function isSignificantCountMismatch(asserted: number, actual: number): bo
   return (actual === 0 && asserted > 0) || Math.abs(asserted - actual) >= 2;
 }
 
+export function normalizeSourceUrl(url: string): string {
+  return url.replace(/#.*$/u, "").replace(/\/+$/u, "");
+}
+
 export function splitPreservingSentencePunctuation(text: string): readonly string[] {
   const sentences: string[] = [];
   let start = 0;
