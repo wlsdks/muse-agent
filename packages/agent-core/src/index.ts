@@ -84,6 +84,15 @@ import {
   toAgentSpecRunReport,
   toolCallsMetadata
 } from "./runtime-helpers.js";
+import {
+  blockedToolResult,
+  planExecuteIntermediateMessages,
+  type ExecutedToolResult,
+  type ModelLoopExecution,
+  type PlanExecuteStepRecord,
+  type StreamExecutionOptions,
+  type StreamedModelTurn
+} from "./runtime-internals.js";
 import { extractToolInsights, extractVerifiedSources } from "./tool-output-evidence.js";
 import {
   PlanExecutionError,
@@ -1865,61 +1874,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   return new AgentRuntime(options);
 }
 
-interface ModelLoopExecution {
-  readonly finalResponse: ModelResponse;
-  readonly intermediateMessages: readonly ModelMessage[];
-  readonly toolResults: readonly ExecutedToolResult[];
-  readonly toolsUsed: readonly string[];
-}
-
-interface ExecutedToolResult {
-  readonly toolCall: ModelToolCall;
-  readonly result: ToolExecutionResult;
-}
-
-interface StreamedModelTurn {
-  readonly response: ModelResponse;
-}
-
-interface StreamExecutionOptions {
-  readonly forwardTextDeltas: boolean;
-}
-
-function blockedToolResult(toolCall: ModelToolCall, output: string): ExecutedToolResult {
-  return {
-    result: {
-      id: toolCall.id,
-      name: toolCall.name,
-      output,
-      status: "blocked"
-    },
-    toolCall
-  };
-}
-
-interface PlanExecuteStepRecord {
-  readonly step: PlanStep;
-  readonly executed: ExecutedToolResult;
-  readonly stepResult: StepExecutionResult;
-}
-
-function planExecuteIntermediateMessages(
-  plan: readonly PlanStep[],
-  executed: readonly PlanExecuteStepRecord[]
-): readonly ModelMessage[] {
-  const planSummary: ModelMessage = {
-    content: JSON.stringify(plan),
-    role: "assistant",
-    toolCalls: executed.map((entry) => entry.executed.toolCall)
-  };
-  const toolMessages: ModelMessage[] = executed.map((entry) => ({
-    content: entry.executed.result.output,
-    name: entry.executed.toolCall.name,
-    role: "tool",
-    toolCallId: entry.executed.toolCall.id
-  }));
-  return [planSummary, ...toolMessages];
-}
 
 function hookInvocation(
   hook: HookStage,

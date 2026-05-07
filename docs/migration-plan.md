@@ -296,6 +296,18 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- agent-core monolith split continued (iteration 38). Five runtime-
+  internal types (`ModelLoopExecution`, `ExecutedToolResult`,
+  `StreamedModelTurn`, `StreamExecutionOptions`, `PlanExecuteStepRecord`)
+  and two helpers (`blockedToolResult`, `planExecuteIntermediateMessages`)
+  extracted to a new `runtime-internals.ts` module (81 lines) with
+  docstrings explaining the message-pair contract and the synthesised
+  blocked-result shape. These are package-private — never re-exported.
+  Index file: 2,100 → 2,054 (-46). Cumulative 3,983 → 2,054 lines
+  (-1,929, **-48.4%**) across 13 submodules. 3 new unit tests cover the
+  blocked-tool-result shape, the multi-step assistant + tool message-pair
+  rendering, and the empty-plan branch. agent-core tests 124 → 127;
+  broad smoke 46/46; route parity 0 missing.
 - multi-agent orchestration stats endpoint (iteration 37). New
   `OrchestrationHistorySummary` type + `OrchestrationHistoryStore.summary()`
   method aggregate the in-memory ring buffer into totals (totalRuns,
