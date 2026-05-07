@@ -296,6 +296,13 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- agent-core monolith split begun. `StepBudgetTracker` + types extracted to
+  `packages/agent-core/src/step-budget.ts`; `ToolCallDeduplicator` + `stableJson` to
+  `tool-call-deduplicator.ts`; PlanExecute primitives (`PlanStep`, `PlanValidationError`,
+  `PlanValidationResult`, `StepExecutionResult`, `PlanValidationFailedError`, `PlanExecutionError`,
+  `extractJsonArray`, `parsePlan`, `validatePlan`) to `plan-execute.ts`. Public API unchanged
+  (re-exported from `index.ts`); index dropped from 3,983 → 3,724 lines without behavior change.
+  All 97 agent-core tests still pass.
 - Response completeness evaluator now exists in `@muse/eval` as
   `createResponseCompletenessEvaluator`. LLM-as-judge that scores how well a response addresses the
   original prompt on a 0–100 integer scale, with probabilistic sampling (default 10%), short judge

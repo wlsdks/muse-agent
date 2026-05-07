@@ -67,6 +67,15 @@ import {
   type ToolApprovalPolicy
 } from "@muse/policy";
 import { createRunId, type JsonObject } from "@muse/shared";
+import { ToolCallDeduplicator } from "./tool-call-deduplicator.js";
+import {
+  PlanExecutionError,
+  PlanValidationFailedError,
+  parsePlan,
+  validatePlan,
+  type PlanStep,
+  type StepExecutionResult
+} from "./plan-execute.js";
 import {
   ToolExecutor,
   ToolRegistry,
@@ -159,160 +168,20 @@ interface ResponseFilterEvidence {
   readonly verifiedSources: readonly VerifiedSource[];
 }
 
-export type BudgetStatus = "ok" | "soft_limit" | "exhausted";
+export {
+  StepBudgetTracker,
+  type BudgetStatus,
+  type StepBudgetRecord,
+  type StepBudgetTrackerOptions
+} from "./step-budget.js";
 
-export interface StepBudgetRecord {
-  readonly step: string;
-  readonly inputTokens: number;
-  readonly outputTokens: number;
-  readonly cumulativeTokens: number;
-  readonly status: BudgetStatus;
-}
-
-export interface StepBudgetTrackerOptions {
-  readonly maxTokens: number;
-  readonly softLimitPercent?: number;
-}
-
-export class StepBudgetTracker {
-  readonly #maxTokens: number;
-  readonly #softLimitPercent: number;
-  #consumedTokens = 0;
-  readonly #history: StepBudgetRecord[] = [];
-
-  constructor(options: StepBudgetTrackerOptions) {
-    if (!Number.isFinite(options.maxTokens) || options.maxTokens <= 0) {
-      throw new Error("StepBudgetTracker maxTokens must be greater than 0");
-    }
-
-    const softLimitPercent = options.softLimitPercent ?? 80;
-    if (!Number.isFinite(softLimitPercent) || softLimitPercent <= 0 || softLimitPercent >= 100) {
-      throw new Error("StepBudgetTracker softLimitPercent must be between 1 and 99");
-    }
-
-    this.#maxTokens = options.maxTokens;
-    this.#softLimitPercent = softLimitPercent;
-  }
-
-  trackStep(step: string, inputTokens: number, outputTokens: number): BudgetStatus {
-    if (step.trim().length === 0) {
-      throw new Error("StepBudgetTracker step must not be blank");
-    }
-
-    if (!isNonNegativeTokenCount(inputTokens) || !isNonNegativeTokenCount(outputTokens)) {
-      throw new Error("StepBudgetTracker token counts must be non-negative finite numbers");
-    }
-
-    this.#consumedTokens += inputTokens + outputTokens;
-    const status = this.status();
-    this.#history.push({
-      cumulativeTokens: this.#consumedTokens,
-      inputTokens,
-      outputTokens,
-      status,
-      step
-    });
-
-    return status;
-  }
-
-  recordToolOutput(step: string, toolOutputTokens: number): BudgetStatus {
-    return this.trackStep(step, toolOutputTokens, 0);
-  }
-
-  status(): BudgetStatus {
-    if (this.#consumedTokens >= this.#maxTokens) {
-      return "exhausted";
-    }
-
-    const softLimitTokens = Math.floor((this.#maxTokens * this.#softLimitPercent) / 100);
-    return this.#consumedTokens >= softLimitTokens ? "soft_limit" : "ok";
-  }
-
-  totalConsumed(): number {
-    return this.#consumedTokens;
-  }
-
-  remaining(): number {
-    return Math.max(0, this.#maxTokens - this.#consumedTokens);
-  }
-
-  isExhausted(): boolean {
-    return this.status() === "exhausted";
-  }
-
-  history(): readonly StepBudgetRecord[] {
-    return [...this.#history];
-  }
-}
-
-function isNonNegativeTokenCount(value: number): boolean {
-  return Number.isFinite(value) && value >= 0;
-}
-
-export interface ToolCallDuplicate {
-  readonly duplicate: true;
-  readonly signature: string;
-  readonly result: ToolExecutionResult;
-}
-
-export interface ToolCallNotDuplicate {
-  readonly duplicate: false;
-  readonly signature: string;
-}
-
-export type ToolCallDeduplicationDecision = ToolCallDuplicate | ToolCallNotDuplicate;
-
-export class ToolCallDeduplicator {
-  readonly #completedResults = new Map<string, ToolExecutionResult>();
-
-  buildSignature(toolCall: ModelToolCall): string {
-    return `${toolCall.name}:${stableJson(toolCall.arguments)}`;
-  }
-
-  check(toolCall: ModelToolCall): ToolCallDeduplicationDecision {
-    const signature = this.buildSignature(toolCall);
-    const result = this.#completedResults.get(signature);
-
-    if (!result) {
-      return { duplicate: false, signature };
-    }
-
-    return {
-      duplicate: true,
-      result: {
-        ...result,
-        id: toolCall.id,
-        name: toolCall.name
-      },
-      signature
-    };
-  }
-
-  record(toolCall: ModelToolCall, result: ToolExecutionResult): void {
-    if (result.status !== "completed") {
-      return;
-    }
-
-    this.#completedResults.set(this.buildSignature(toolCall), result);
-  }
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableJson(item)).join(",")}]`;
-  }
-
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
-      .join(",")}}`;
-  }
-
-  return JSON.stringify(value);
-}
+export {
+  ToolCallDeduplicator,
+  stableJson,
+  type ToolCallDeduplicationDecision,
+  type ToolCallDuplicate,
+  type ToolCallNotDuplicate
+} from "./tool-call-deduplicator.js";
 
 export interface AgentSpecResolver {
   resolve(text: string): Awaitable<AgentSpecResolution | undefined>;
@@ -444,147 +313,19 @@ export class ModelRoutingError extends Error {
   }
 }
 
-export interface PlanStep {
-  readonly tool: string;
-  readonly args: JsonObject;
-  readonly description: string;
-}
-
-export interface PlanValidationError {
-  readonly stepIndex: number;
-  readonly tool: string;
-  readonly reason: string;
-}
-
-export interface PlanValidationResult {
-  readonly valid: boolean;
-  readonly steps: readonly PlanStep[];
-  readonly errors: readonly PlanValidationError[];
-}
-
-export interface StepExecutionResult {
-  readonly tool: string;
-  readonly description: string;
-  readonly output: string | null;
-  readonly success: boolean;
-  readonly error?: string;
-}
-
-export class PlanValidationFailedError extends Error {
-  readonly errors: readonly PlanValidationError[];
-  readonly steps: readonly PlanStep[];
-
-  constructor(errors: readonly PlanValidationError[], steps: readonly PlanStep[] = []) {
-    super(errors.map((entry) => `step ${entry.stepIndex + 1}: ${entry.reason}`).join("; "));
-    this.name = "PlanValidationFailedError";
-    this.errors = errors;
-    this.steps = steps;
-  }
-}
-
-export type PlanExecutionErrorCode =
-  | "PLAN_GENERATION_FAILED"
-  | "PLAN_ALL_STEPS_FAILED"
-  | "RESPONSE_SYNTHESIS_FAILED";
-
-export class PlanExecutionError extends Error {
-  readonly code: PlanExecutionErrorCode;
-
-  constructor(code: PlanExecutionErrorCode, message: string) {
-    super(message);
-    this.name = "PlanExecutionError";
-    this.code = code;
-  }
-}
-
-export function extractJsonArray(text: string): string | null {
-  const start = text.indexOf("[");
-  if (start < 0) {
-    return null;
-  }
-  let depth = 0;
-  for (let index = start; index < text.length; index += 1) {
-    const character = text[index];
-    if (character === "[") {
-      depth += 1;
-    } else if (character === "]") {
-      depth -= 1;
-      if (depth === 0) {
-        return text.slice(start, index + 1);
-      }
-    }
-  }
-  return null;
-}
-
-export function parsePlan(text: string): readonly PlanStep[] | null {
-  const jsonText = extractJsonArray(text);
-  if (jsonText === null || jsonText.trim().length === 0) {
-    return null;
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    return null;
-  }
-  if (!Array.isArray(parsed)) {
-    return null;
-  }
-  const steps: PlanStep[] = [];
-  for (const entry of parsed) {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      return null;
-    }
-    const record = entry as Record<string, unknown>;
-    const toolValue = record["tool"];
-    const argsValue = record["args"];
-    const descriptionValue = record["description"];
-    if (typeof toolValue !== "string") {
-      return null;
-    }
-    if (argsValue !== undefined && (argsValue === null || typeof argsValue !== "object" || Array.isArray(argsValue))) {
-      return null;
-    }
-    steps.push({
-      args: (argsValue as JsonObject | undefined) ?? {},
-      description: typeof descriptionValue === "string" ? descriptionValue : "",
-      tool: toolValue
-    });
-  }
-  return steps;
-}
-
-export interface PlanValidationInput {
-  readonly steps: readonly PlanStep[];
-  readonly availableToolNames: ReadonlySet<string>;
-}
-
-export function validatePlan(input: PlanValidationInput): PlanValidationResult {
-  const errors: PlanValidationError[] = [];
-  for (let index = 0; index < input.steps.length; index += 1) {
-    const step = input.steps[index];
-    if (!step) {
-      continue;
-    }
-    if (step.tool.trim().length === 0) {
-      errors.push({ reason: "tool name is blank", stepIndex: index, tool: step.tool });
-      continue;
-    }
-    if (!input.availableToolNames.has(step.tool)) {
-      errors.push({
-        reason: `tool '${step.tool}' is not registered`,
-        stepIndex: index,
-        tool: step.tool
-      });
-    }
-  }
-  return {
-    errors,
-    steps: input.steps,
-    valid: errors.length === 0
-  };
-}
+export {
+  PlanExecutionError,
+  PlanValidationFailedError,
+  extractJsonArray,
+  parsePlan,
+  validatePlan,
+  type PlanExecutionErrorCode,
+  type PlanStep,
+  type PlanValidationError,
+  type PlanValidationInput,
+  type PlanValidationResult,
+  type StepExecutionResult
+} from "./plan-execute.js";
 
 export class HookRegistry {
   private readonly hooks = new Map<string, HookStage>();
