@@ -978,6 +978,15 @@ export class MonthlyBudgetTracker {
     return this.#costs.get(tenantId) ?? 0;
   }
 
+  /**
+   * Returns the tenant IDs the tracker has seen at least once during the
+   * current month. Useful for `JarvisObservabilitySnapshotProviderOptions.budgetTenantIds`.
+   */
+  tenantIds(): readonly string[] {
+    this.#resetIfNewMonth();
+    return [...this.#costs.keys()];
+  }
+
   snapshot(tenantId: string): MonthlyBudgetSnapshot {
     const total = this.currentCost(tenantId);
     return {
@@ -1702,10 +1711,34 @@ export function createCostAnomalyFeedingTokenUsageSink(
   detector: CostAnomalyDetector,
   inner: TokenUsageSink
 ): TokenUsageSink {
+  return wrapTokenUsageSink(inner, async (event) => {
+    detector.recordCost(event.estimatedCostUsd ?? 0);
+  });
+}
+
+/**
+ * Wraps a TokenUsageSink so each recorded usage event also feeds a
+ * `MonthlyBudgetTracker` (per-tenant monthly accumulation). Tenant IDs default
+ * to "default" when the record carries none; budget snapshots surface
+ * automatically via `/api/admin/jarvis/snapshot.budgets`.
+ */
+export function createBudgetTrackingTokenUsageSink(
+  tracker: MonthlyBudgetTracker,
+  inner: TokenUsageSink
+): TokenUsageSink {
+  return wrapTokenUsageSink(inner, async (event) => {
+    tracker.recordCost(event.tenantId ?? "default", event.estimatedCostUsd ?? 0);
+  });
+}
+
+function wrapTokenUsageSink(
+  inner: TokenUsageSink,
+  onRecord: (event: TokenUsageRecord) => Promise<void> | void
+): TokenUsageSink {
   const queryable = (inner as Partial<QueryableTokenUsageSink>).list;
   const base: TokenUsageSink = {
     async record(event) {
-      detector.recordCost(event.estimatedCostUsd ?? 0);
+      await onRecord(event);
       await inner.record(event);
     }
   };

@@ -131,9 +131,11 @@ import {
   KyselyTokenCostQuery,
   KyselyTokenUsageSink,
   KyselyTraceEventSink,
+  MonthlyBudgetTracker,
   PersistedMuseTracer,
   PromptDriftDetector,
   SloAlertEvaluator,
+  createBudgetTrackingTokenUsageSink,
   createCostAnomalyFeedingTokenUsageSink,
   createDerivedAgentMetrics,
   createJarvisObservabilitySnapshotProvider,
@@ -261,6 +263,7 @@ export interface MuseRuntimeAssembly {
   readonly guardRuleStore: GuardRuleStore;
   readonly toolPolicyStore: ToolPolicyStore;
   readonly observability: {
+    readonly budgetTracker: MonthlyBudgetTracker;
     readonly costAnomalyDetector: CostAnomalyDetector;
     readonly driftDetector: PromptDriftDetector;
     readonly followupSuggestionStore: InMemoryFollowupSuggestionStore;
@@ -350,6 +353,11 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     thresholdMultiplier: parsePositiveFloat(env.MUSE_COST_ANOMALY_THRESHOLD_MULTIPLIER, 3),
     windowSize: parseInteger(env.MUSE_COST_ANOMALY_WINDOW_SIZE, 100)
   });
+  const budgetTracker = new MonthlyBudgetTracker({
+    maxTenants: parseInteger(env.MUSE_BUDGET_MAX_TENANTS, 10_000),
+    monthlyLimitUsd: parseNonNegativeFloat(env.MUSE_BUDGET_MONTHLY_LIMIT_USD, 0),
+    warningPercent: parseInteger(env.MUSE_BUDGET_WARNING_PERCENT, 80)
+  });
   const runtimeAgentMetrics: AgentMetrics = createDerivedAgentMetrics({
     drift: driftDetector,
     inner: agentMetrics,
@@ -361,9 +369,9 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   });
   const tracingPipeline = createTracingPipeline(db);
   const { tracer, latencyQuery, tokenCostQuery, traceSink } = tracingPipeline;
-  const tokenUsageSink: TokenUsageSink = createCostAnomalyFeedingTokenUsageSink(
-    costAnomalyDetector,
-    tracingPipeline.tokenUsageSink
+  const tokenUsageSink: TokenUsageSink = createBudgetTrackingTokenUsageSink(
+    budgetTracker,
+    createCostAnomalyFeedingTokenUsageSink(costAnomalyDetector, tracingPipeline.tokenUsageSink)
   );
   const circuitBreakerRegistry = new CircuitBreakerRegistry({
     failureThreshold: parseInteger(env.MUSE_CIRCUIT_BREAKER_FAILURE_THRESHOLD, 5),
@@ -505,6 +513,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     guardRuleStore,
     toolPolicyStore,
     observability: {
+      budgetTracker,
       costAnomalyDetector,
       driftDetector,
       followupSuggestionStore,
@@ -751,6 +760,8 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
       })),
     jarvisObservabilitySnapshot: () =>
       createJarvisObservabilitySnapshotProvider({
+        budgetTenantIds: () => assembly.observability.budgetTracker.tenantIds(),
+        budgetTracker: assembly.observability.budgetTracker,
         costAnomalyDetector: assembly.observability.costAnomalyDetector,
         driftDetector: assembly.observability.driftDetector,
         followupSuggestionStore: assembly.observability.followupSuggestionStore,
@@ -1151,6 +1162,14 @@ function parseSloErrorRate(value: string | undefined, fallback: number): number 
 function parsePositiveFloat(value: string | undefined, fallback: number): number {
   const parsed = value === undefined ? Number.NaN : Number.parseFloat(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function parseNonNegativeFloat(value: string | undefined, fallback: number): number {
+  const parsed = value === undefined ? Number.NaN : Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
     return fallback;
   }
   return parsed;

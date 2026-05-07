@@ -188,6 +188,37 @@ describe("autoconfigure", () => {
     });
   });
 
+  it("feeds the MonthlyBudgetTracker per tenant from each agent run", async () => {
+    const assembly = createMuseRuntimeAssembly({
+      env: {
+        MUSE_BUDGET_MONTHLY_LIMIT_USD: "100",
+        MUSE_MODEL: "diagnostic/smoke",
+        MUSE_MODEL_PROVIDER_ID: "diagnostic"
+      }
+    });
+
+    expect(assembly.observability.budgetTracker).toBeTruthy();
+
+    await assembly.agentRuntime?.run({
+      messages: [{ content: "tenant-a first call", role: "user" }],
+      metadata: { tenantId: "tenant-a" },
+      model: "diagnostic/smoke",
+      runId: "budget-run-1"
+    });
+    await assembly.agentRuntime?.run({
+      messages: [{ content: "tenant-b first call", role: "user" }],
+      metadata: { tenantId: "tenant-b" },
+      model: "diagnostic/smoke",
+      runId: "budget-run-2"
+    });
+
+    const ids = [...assembly.observability.budgetTracker.tenantIds()].sort();
+    expect(ids).toEqual(["tenant-a", "tenant-b"]);
+    const aSnap = assembly.observability.budgetTracker.snapshot("tenant-a");
+    expect(aSnap).toMatchObject({ limitUsd: 100, status: "ok", tenantId: "tenant-a" });
+    expect(typeof aSnap.totalCostUsd).toBe("number");
+  });
+
   it("feeds the PromptDriftDetector and CostAnomalyDetector from each agent run", async () => {
     const assembly = createMuseRuntimeAssembly({
       env: {

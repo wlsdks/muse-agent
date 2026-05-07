@@ -324,6 +324,8 @@ try {
     );
     assert(snapshot.cost && typeof snapshot.cost.baselineUsd === "number",
       `expected cost block with baselineUsd, got ${JSON.stringify(snapshot.cost)}`);
+    assert(Array.isArray(snapshot.budgets),
+      `expected budgets array, got ${JSON.stringify(snapshot.budgets)}`);
   });
 
   await record("Response completeness evaluator scores sampled responses 0..100", async () => {
