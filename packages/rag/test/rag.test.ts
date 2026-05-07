@@ -33,9 +33,11 @@ import {
   HypotheticalDocumentQueryTransformer,
   createLlmHypotheticalDocumentTransformer,
   createLlmDecomposingQueryTransformer,
+  createLlmContextualCompressor,
   parseDecompositionLines,
   HYDE_DEFAULT_SYSTEM_PROMPT,
   DECOMPOSE_DEFAULT_SYSTEM_PROMPT,
+  LLM_CONTEXTUAL_COMPRESSOR_DEFAULT_SYSTEM_PROMPT,
   RetrievalEvalRunner,
   SimpleContextBuilder,
   SimpleReranker,
@@ -757,6 +759,157 @@ describe("LLM-driven query transformers", () => {
         }
       });
       expect(await transformer.transform("complex?")).toEqual(["complex?"]);
+    });
+  });
+
+  describe("createLlmContextualCompressor", () => {
+    function makeProvider(handler: (query: string, content: string) => string | Error) {
+      return {
+        id: "compress",
+        generate: async (request: { messages: ReadonlyArray<{ role: string; content: string }>; model: string }) => {
+          const userMessage = request.messages.find((message) => message.role === "user")?.content ?? "";
+          const queryMatch = /^Query:\s*(.+?)\n\nDocument:\n([\s\S]+)\n\nRelevant extract:$/u.exec(userMessage);
+          const query = queryMatch?.[1] ?? "";
+          const content = queryMatch?.[2] ?? "";
+          const response = handler(query, content);
+          if (response instanceof Error) {
+            throw response;
+          }
+          return { id: "r", model: request.model, output: response };
+        },
+        listModels: async () => [],
+        stream: async function* () {
+          yield { response: { id: "r", model: "compress", output: "" }, type: "done" } as const;
+        }
+      };
+    }
+
+    function makeDocument(id: string, content: string): RetrievedDocument {
+      return {
+        content,
+        id,
+        metadata: {},
+        score: 1
+      } as RetrievedDocument;
+    }
+
+    it("returns extracted content for relevant documents and drops IRRELEVANT documents", async () => {
+      const compressor = createLlmContextualCompressor({
+        minContentLength: 0,
+        model: "fake/compress",
+        provider: makeProvider((_query, content) =>
+          content.startsWith("relevant") ? content.replace("relevant ", "extracted ") : "IRRELEVANT"
+        )
+      });
+      const result = await compressor.compress("test", [
+        makeDocument("a", "relevant payload one"),
+        makeDocument("b", "noise about something else"),
+        makeDocument("c", "relevant payload two")
+      ]);
+      expect(result.map((document) => document.id)).toEqual(["a", "c"]);
+      expect(result[0]?.content).toBe("extracted payload one");
+    });
+
+    it("skips short documents below minContentLength without calling the provider", async () => {
+      let calls = 0;
+      const compressor = createLlmContextualCompressor({
+        minContentLength: 50,
+        model: "fake/compress",
+        provider: makeProvider(() => {
+          calls += 1;
+          return "extracted";
+        })
+      });
+      const result = await compressor.compress("test", [
+        makeDocument("short", "tiny"),
+        makeDocument("long", "x".repeat(60))
+      ]);
+      expect(calls).toBe(1);
+      expect(result.map((document) => document.id)).toEqual(["short", "long"]);
+    });
+
+    it("preserves the original document when the provider returns blank or throws", async () => {
+      const compressor = createLlmContextualCompressor({
+        minContentLength: 0,
+        model: "fake/compress",
+        provider: makeProvider((_query, content) =>
+          content.startsWith("error") ? new Error("rate limited") : "   "
+        )
+      });
+      const documents = [makeDocument("blank", "blank-payload"), makeDocument("error", "error-payload")];
+      const result = await compressor.compress("test", documents);
+      expect(result.map((document) => document.id)).toEqual(["blank", "error"]);
+      expect(result[0]?.content).toBe("blank-payload");
+      expect(result[1]?.content).toBe("error-payload");
+    });
+
+    it("recognizes IRRELEVANT case-insensitively and with terminal punctuation", async () => {
+      const compressor = createLlmContextualCompressor({
+        minContentLength: 0,
+        model: "fake/compress",
+        provider: makeProvider((_query, content) => {
+          if (content === "drop1") return "irrelevant";
+          if (content === "drop2") return "Irrelevant.";
+          if (content === "drop3") return "IRRELEVANT!";
+          return content;
+        })
+      });
+      const documents = [
+        makeDocument("d1", "drop1"),
+        makeDocument("d2", "drop2"),
+        makeDocument("d3", "drop3"),
+        makeDocument("k", "keep")
+      ];
+      expect((await compressor.compress("q", documents)).map((d) => d.id)).toEqual(["k"]);
+    });
+
+    it("bounds concurrent provider calls by maxConcurrent", async () => {
+      let active = 0;
+      let peak = 0;
+      const compressor = createLlmContextualCompressor({
+        maxConcurrent: 2,
+        minContentLength: 0,
+        model: "fake/compress",
+        provider: {
+          id: "concurrency",
+          generate: async (request) => {
+            active += 1;
+            peak = Math.max(peak, active);
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            active -= 1;
+            return { id: "r", model: request.model, output: "extract" };
+          },
+          listModels: async () => [],
+          stream: async function* () {
+            yield { response: { id: "r", model: "concurrency", output: "" }, type: "done" } as const;
+          }
+        }
+      });
+      const docs = Array.from({ length: 8 }, (_, index) => makeDocument(`d${index}`, `payload-${index}`));
+      const result = await compressor.compress("q", docs);
+      expect(result).toHaveLength(8);
+      expect(peak).toBeLessThanOrEqual(2);
+    });
+
+    it("uses the default system prompt when none is provided", async () => {
+      let captured = "";
+      const compressor = createLlmContextualCompressor({
+        minContentLength: 0,
+        model: "fake/compress",
+        provider: {
+          id: "capture",
+          generate: async (request) => {
+            captured = request.messages.find((m) => m.role === "system")?.content ?? "";
+            return { id: "r", model: request.model, output: "extract" };
+          },
+          listModels: async () => [],
+          stream: async function* () {
+            yield { response: { id: "r", model: "capture", output: "" }, type: "done" } as const;
+          }
+        }
+      });
+      await compressor.compress("q", [makeDocument("a", "payload")]);
+      expect(captured).toBe(LLM_CONTEXTUAL_COMPRESSOR_DEFAULT_SYSTEM_PROMPT);
     });
   });
 });

@@ -261,6 +261,38 @@ try {
     assert(String(queries[1] ?? "").includes("30 days"), "second query should be the hypothetical doc");
   });
 
+  await record("LLM contextual compressor extracts relevant content and drops IRRELEVANT docs", async () => {
+    const { createLlmContextualCompressor } = await import(`${rootDir}/packages/rag/dist/index.js`);
+    const provider = {
+      id: "compress",
+      generate: async (request) => {
+        const userContent = request.messages.find((message) => message.role === "user")?.content ?? "";
+        const includesRefund = userContent.includes("refund payload");
+        return {
+          id: "r",
+          model: request.model,
+          output: includesRefund ? "Refunds processed in 30 days." : "IRRELEVANT"
+        };
+      },
+      listModels: async () => [],
+      stream: async function* () {
+        yield { response: { id: "r", model: "compress", output: "" }, type: "done" };
+      }
+    };
+    const compressor = createLlmContextualCompressor({
+      minContentLength: 0,
+      model: "fake/compress",
+      provider
+    });
+    const result = await compressor.compress("refund policy", [
+      { content: "refund payload long enough to be considered", id: "doc1", metadata: {}, score: 1 },
+      { content: "completely off topic chatter", id: "doc2", metadata: {}, score: 0.5 }
+    ]);
+    assert(result.length === 1, `expected 1 surviving document, got ${result.length}`);
+    assert(result[0].id === "doc1", `expected doc1 to survive, got ${result[0].id}`);
+    assert(String(result[0].content ?? "").includes("30 days"), "expected extracted content");
+  });
+
   await record("LLM Decomposition transformer parses sub-questions and respects the cap", async () => {
     const { createLlmDecomposingQueryTransformer } = await import(`${rootDir}/packages/rag/dist/index.js`);
     const provider = {

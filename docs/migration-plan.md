@@ -296,6 +296,13 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- LLM-backed contextual compressor (RECOMP-style) now exists in `@muse/rag` as
+  `createLlmContextualCompressor({ provider, model, ... })`. Skips documents shorter than
+  `minContentLength` (default 200 chars) without a model call, bounds parallelism via
+  `maxConcurrent` (default 5), drops a document when the model responds `IRRELEVANT` (case-insensitive
+  with optional terminal punctuation), preserves the original on blank/empty output or provider failure
+  (fail-open), and assembles the user prompt with concatenation to avoid Reactor's template-replace
+  double-substitution bug. Closes the Reactor `LlmContextualCompressor` parity gap.
 - LLM-driven RAG query transformers now exist in `@muse/rag`. `createLlmHypotheticalDocumentTransformer`
   generates a HyDE-style hypothetical answer document and returns it alongside the original query;
   `createLlmDecomposingQueryTransformer` splits a complex question into sub-queries via an LLM, enforces a

@@ -1757,6 +1757,108 @@ export function createLlmDecomposingQueryTransformer(
   };
 }
 
+export const LLM_CONTEXTUAL_COMPRESSOR_DEFAULT_SYSTEM_PROMPT =
+  "You are a document compression assistant. " +
+  "Extract only the information relevant to the user's query. " +
+  "Remove all irrelevant content. " +
+  "If nothing is relevant, respond with exactly \"IRRELEVANT\".";
+
+const LLM_CONTEXTUAL_COMPRESSOR_IRRELEVANT_PATTERN = /^irrelevant[.!]?$/iu;
+
+export interface LlmContextualCompressorOptions {
+  readonly provider: ModelProvider;
+  readonly model: string;
+  readonly systemPrompt?: string;
+  readonly minContentLength?: number;
+  readonly maxConcurrent?: number;
+  readonly maxOutputTokens?: number;
+  readonly temperature?: number;
+  readonly metadata?: JsonObject;
+  readonly logger?: (message: string, error?: unknown) => void;
+}
+
+/**
+ * LLM-backed contextual compressor (RECOMP-style extractive compression).
+ *
+ * Mirrors Reactor's `LlmContextualCompressor` while staying provider-neutral:
+ * - Documents shorter than `minContentLength` (default 200) skip the LLM call entirely.
+ * - Concurrent LLM compressions are bounded by `maxConcurrent` (default 5) so a
+ *   reranker that returns a large fan-out cannot saturate the model provider.
+ * - When the model responds with `IRRELEVANT` (case-insensitive, optional terminal
+ *   punctuation), the document is dropped from the output.
+ * - Empty / blank responses preserve the original document. Provider errors also
+ *   preserve the original (fail-open) so retrieval never silently loses content.
+ * - The user prompt is assembled with `String + String` to avoid Reactor's template-
+ *   replace double-substitution bug; the system prompt remains the only LLM directive.
+ */
+export function createLlmContextualCompressor(
+  options: LlmContextualCompressorOptions
+): ContextCompressor {
+  const minContentLength = Math.max(0, options.minContentLength ?? 200);
+  const maxConcurrent = Math.max(1, options.maxConcurrent ?? 5);
+  const systemPrompt = options.systemPrompt ?? LLM_CONTEXTUAL_COMPRESSOR_DEFAULT_SYSTEM_PROMPT;
+
+  async function compressOne(query: string, document: RetrievedDocument): Promise<RetrievedDocument | undefined> {
+    if (document.content.length < minContentLength) {
+      return document;
+    }
+    const userPrompt = `Query: ${query}\n\nDocument:\n${document.content}\n\nRelevant extract:`;
+    let raw: string;
+    try {
+      const request: ModelRequest = {
+        messages: [
+          { content: systemPrompt, role: "system" },
+          { content: userPrompt, role: "user" }
+        ],
+        model: options.model,
+        ...(options.maxOutputTokens !== undefined ? { maxOutputTokens: options.maxOutputTokens } : {}),
+        ...(options.metadata ? { metadata: options.metadata } : {}),
+        ...(options.temperature !== undefined ? { temperature: options.temperature } : {})
+      };
+      const response = await options.provider.generate(request);
+      raw = response.output ?? "";
+    } catch (error) {
+      options.logger?.(`contextual compressor preserved document ${document.id} after provider error`, error);
+      return document;
+    }
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) {
+      return document;
+    }
+    if (LLM_CONTEXTUAL_COMPRESSOR_IRRELEVANT_PATTERN.test(trimmed)) {
+      return undefined;
+    }
+    return { ...document, content: trimmed };
+  }
+
+  return {
+    compress: async (query: string, documents: readonly RetrievedDocument[]): Promise<readonly RetrievedDocument[]> => {
+      if (documents.length === 0) {
+        return [];
+      }
+      const results: (RetrievedDocument | undefined)[] = new Array(documents.length);
+      let cursor = 0;
+      async function worker(): Promise<void> {
+        while (true) {
+          const index = cursor;
+          cursor += 1;
+          if (index >= documents.length) {
+            return;
+          }
+          const document = documents[index];
+          if (!document) {
+            continue;
+          }
+          results[index] = await compressOne(query, document);
+        }
+      }
+      const lanes = Math.min(maxConcurrent, documents.length);
+      await Promise.all(Array.from({ length: lanes }, () => worker()));
+      return results.filter((document): document is RetrievedDocument => document !== undefined);
+    }
+  };
+}
+
 /** Visible for testing — splits an LLM response into trimmed, non-empty lines. */
 export function parseDecompositionLines(raw: string): readonly string[] {
   return raw
