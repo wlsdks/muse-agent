@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AgentRunContext } from "@muse/agent-core";
 import type { MuseDatabase } from "@muse/db";
 import type { ModelToolCall } from "@muse/model";
@@ -17,9 +17,19 @@ import {
   createSlackBotInstanceInsert,
   createSlackResponseTrackingInsert,
   CommandRouter,
+  createFollowupSuggestionInteractionHandler,
   createSlackProgressHook,
+  extractFollowupCategory,
   FetchSlackResponseUrlTransport,
   FetchSlackWebApiMessageTransport,
+  FOLLOWUP_ACTION_PREFIX,
+  FOLLOWUP_MAX_LABEL_LENGTH,
+  FOLLOWUP_MAX_PER_MESSAGE,
+  followupActionId,
+  parseFollowupSuggestions,
+  renderFollowupSuggestionBlocks,
+  stripFollowupMarker,
+  truncateFollowupLabel,
   InMemoryChannelFaqRegistrationStore,
   InMemorySlackFeedbackEventStore,
   InMemorySlackBotInstanceStore,
@@ -1221,5 +1231,262 @@ describe("createSlackProgressHook", () => {
     const { transport } = makeStatusTransport();
     const hook = createSlackProgressHook({ transport });
     expect(hook.id).toBe("slack-progress");
+  });
+});
+
+describe("Slack followup suggestions", () => {
+  describe("parseFollowupSuggestions", () => {
+    it("extracts well-formed suggestions from the FOLLOWUPS HTML comment marker", () => {
+      const text = [
+        "Here is the answer.",
+        '<!--FOLLOWUPS:[{"id":"jira_detail_X-1","label":"🔍 X-1 상세","prompt":"X-1 이슈 상세","category":"jira_detail"}]-->'
+      ].join("\n");
+      expect(parseFollowupSuggestions(text)).toEqual([
+        {
+          category: "jira_detail",
+          id: "jira_detail_X-1",
+          label: "🔍 X-1 상세",
+          prompt: "X-1 이슈 상세"
+        }
+      ]);
+    });
+
+    it("returns an empty array when no marker is present", () => {
+      expect(parseFollowupSuggestions("plain text only")).toEqual([]);
+    });
+
+    it("tolerates whitespace and multi-line JSON inside the marker", () => {
+      const text = [
+        "<!--FOLLOWUPS: [",
+        '  { "id": "a_b", "label": "L", "prompt": "P", "category": "a" },',
+        '  { "id": "c_d", "label": "L2", "prompt": "P2", "category": "c" }',
+        "] -->"
+      ].join("\n");
+      expect(parseFollowupSuggestions(text)).toHaveLength(2);
+    });
+
+    it("filters out entries with missing or blank required fields", () => {
+      const text =
+        '<!--FOLLOWUPS:[{"id":"","label":"l","prompt":"p","category":"c"},{"id":"a_b","label":"","prompt":"p","category":"c"},{"id":"x_y","label":"L","prompt":"P","category":"x"}]-->';
+      expect(parseFollowupSuggestions(text)).toEqual([
+        { category: "x", id: "x_y", label: "L", prompt: "P" }
+      ]);
+    });
+
+    it("caps the result at FOLLOWUP_MAX_PER_MESSAGE", () => {
+      const entries = Array.from({ length: 8 }, (_, index) => ({
+        category: "c",
+        id: `tag_${index}`,
+        label: `L${index}`,
+        prompt: `P${index}`
+      }));
+      const text = `<!--FOLLOWUPS:${JSON.stringify(entries)}-->`;
+      expect(parseFollowupSuggestions(text)).toHaveLength(FOLLOWUP_MAX_PER_MESSAGE);
+    });
+
+    it("returns an empty array when the JSON inside the marker is malformed", () => {
+      expect(parseFollowupSuggestions("<!--FOLLOWUPS:[invalid json]-->")).toEqual([]);
+    });
+  });
+
+  describe("stripFollowupMarker", () => {
+    it("removes the marker and trims trailing whitespace", () => {
+      const text = "Body text\n<!--FOLLOWUPS:[{\"id\":\"a_b\",\"label\":\"L\",\"prompt\":\"P\",\"category\":\"a\"}]-->\n\n";
+      expect(stripFollowupMarker(text)).toBe("Body text");
+    });
+
+    it("returns the original text untouched when no marker is present", () => {
+      expect(stripFollowupMarker("clean body")).toBe("clean body");
+    });
+  });
+
+  describe("followupActionId / truncateFollowupLabel / extractFollowupCategory", () => {
+    it("prefixes the action_id with FOLLOWUP_ACTION_PREFIX and a dot", () => {
+      expect(followupActionId({ category: "c", id: "tag_x", label: "L", prompt: "P" })).toBe("followup.tag_x");
+      expect(FOLLOWUP_ACTION_PREFIX).toBe("followup");
+    });
+
+    it("preserves labels at or below the 75-character Slack limit", () => {
+      const exact = "X".repeat(FOLLOWUP_MAX_LABEL_LENGTH);
+      expect(truncateFollowupLabel(exact)).toBe(exact);
+      expect(truncateFollowupLabel("short")).toBe("short");
+    });
+
+    it("truncates and appends a single-character ellipsis when label exceeds the limit", () => {
+      const long = "X".repeat(FOLLOWUP_MAX_LABEL_LENGTH + 50);
+      const result = truncateFollowupLabel(long);
+      expect(result.length).toBe(FOLLOWUP_MAX_LABEL_LENGTH);
+      expect(result.endsWith("…")).toBe(true);
+    });
+
+    it("derives the category from the prefix before the first underscore", () => {
+      expect(extractFollowupCategory("jira_detail_X-1")).toBe("jira");
+      expect(extractFollowupCategory("noprefix")).toBe("other");
+      expect(extractFollowupCategory("_leading")).toBe("other");
+    });
+  });
+
+  describe("renderFollowupSuggestionBlocks", () => {
+    it("returns an empty array when no suggestions are provided", () => {
+      expect(renderFollowupSuggestionBlocks([])).toEqual([]);
+    });
+
+    it("emits a single Block Kit actions block with one button per suggestion", () => {
+      const blocks = renderFollowupSuggestionBlocks([
+        { category: "a", id: "a_x", label: "Label A", prompt: "Prompt A" },
+        { category: "b", id: "b_y", label: "Label B", prompt: "Prompt B" }
+      ]);
+      expect(blocks).toEqual([
+        {
+          elements: [
+            {
+              action_id: "followup.a_x",
+              text: { emoji: true, text: "Label A", type: "plain_text" },
+              type: "button",
+              value: "Prompt A"
+            },
+            {
+              action_id: "followup.b_y",
+              text: { emoji: true, text: "Label B", type: "plain_text" },
+              type: "button",
+              value: "Prompt B"
+            }
+          ],
+          type: "actions"
+        }
+      ]);
+    });
+
+    it("caps rendered buttons at FOLLOWUP_MAX_PER_MESSAGE", () => {
+      const suggestions = Array.from({ length: 8 }, (_, index) => ({
+        category: "c",
+        id: `tag_${index}`,
+        label: `L${index}`,
+        prompt: `P${index}`
+      }));
+      const blocks = renderFollowupSuggestionBlocks(suggestions);
+      const block = blocks[0] as { elements: unknown[] };
+      expect(block.elements).toHaveLength(FOLLOWUP_MAX_PER_MESSAGE);
+    });
+  });
+
+  describe("createFollowupSuggestionInteractionHandler", () => {
+    function makePayload(overrides: Partial<{
+      actionId: string;
+      channelId: string;
+      messageTs: string;
+      userId: string;
+      value: string;
+    }> = {}): {
+      actionId: string;
+      channelId: string;
+      messageTs: string;
+      type: "block_actions";
+      userId: string;
+      value: string;
+    } {
+      return {
+        actionId: overrides.actionId ?? "followup.jira_detail_X-1",
+        channelId: overrides.channelId ?? "C1",
+        messageTs: overrides.messageTs ?? "1.000",
+        type: "block_actions" as const,
+        userId: overrides.userId ?? "U1",
+        value: overrides.value ?? "Show me X-1 details"
+      };
+    }
+
+    it("records a click event with the extracted suggestion id and category, then runs the agent and posts the reply", async () => {
+      const clicks: unknown[] = [];
+      const ranWith: unknown[] = [];
+      const posts: unknown[] = [];
+      const store = {
+        aggregateStats: () => ({ byCategory: [], ctr: 0, totalClicks: 0, totalImpressions: 0 }),
+        recordClick: (event: unknown) => clicks.push(event),
+        recordImpression: () => undefined
+      };
+      const handler = createFollowupSuggestionInteractionHandler({
+        messageTransport: {
+          postMessage: async (input) => {
+            posts.push(input);
+            return { ok: true, statusCode: 200, ts: "2.000" };
+          }
+        },
+        runAgent: async (input) => {
+          ranWith.push(input);
+          return { text: "Detailed answer." };
+        },
+        store
+      });
+
+      const handled = await handler.handle(makePayload());
+      expect(handled).toBe(true);
+      expect(clicks).toEqual([
+        {
+          category: "jira",
+          channelId: "C1",
+          messageTs: "1.000",
+          suggestionId: "jira_detail_X-1",
+          userId: "U1"
+        }
+      ]);
+      expect(ranWith).toEqual([
+        expect.objectContaining({
+          category: "jira",
+          prompt: "Show me X-1 details",
+          suggestionId: "jira_detail_X-1"
+        })
+      ]);
+      expect(posts).toEqual([
+        { channelId: "C1", text: "Detailed answer.", threadTs: "1.000" }
+      ]);
+    });
+
+    it("is a no-op when the payload value (prompt) is missing", async () => {
+      const ran = vi.fn(async () => ({ text: "won't run" }));
+      const handler = createFollowupSuggestionInteractionHandler({ runAgent: ran });
+      await handler.handle(makePayload({ value: "" }));
+      expect(ran).not.toHaveBeenCalled();
+    });
+
+    it("does not post when the agent returns an empty response", async () => {
+      const posts: unknown[] = [];
+      const handler = createFollowupSuggestionInteractionHandler({
+        messageTransport: {
+          postMessage: async (input) => {
+            posts.push(input);
+            return { ok: true, statusCode: 200 };
+          }
+        },
+        runAgent: async () => ({ text: "   " })
+      });
+      await handler.handle(makePayload());
+      expect(posts).toHaveLength(0);
+    });
+
+    it("swallows agent execution errors via the logger callback", async () => {
+      const errors: unknown[] = [];
+      const handler = createFollowupSuggestionInteractionHandler({
+        logger: (_message, error) => errors.push(error),
+        runAgent: async () => {
+          throw new Error("agent down");
+        }
+      });
+      await expect(handler.handle(makePayload())).resolves.toBe(true);
+      expect(errors).toHaveLength(1);
+    });
+
+    it("strips the followup. prefix from the action_id when computing the suggestion id", async () => {
+      const ran = vi.fn(async () => ({ text: "ok" }));
+      const handler = createFollowupSuggestionInteractionHandler({ runAgent: ran });
+      await handler.handle(makePayload({ actionId: "followup.confluence_search_quick" }));
+      expect(ran).toHaveBeenCalledWith(
+        expect.objectContaining({ category: "confluence", suggestionId: "confluence_search_quick" })
+      );
+    });
+
+    it("registers the FOLLOWUP_ACTION_PREFIX as the dispatcher actionIdPrefix", () => {
+      const handler = createFollowupSuggestionInteractionHandler({ runAgent: async () => null });
+      expect(handler.actionIdPrefix).toBe(FOLLOWUP_ACTION_PREFIX);
+    });
   });
 });

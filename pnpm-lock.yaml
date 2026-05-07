@@ -314,6 +314,9 @@ importers:
       '@muse/model':
         specifier: workspace:*
         version: link:../model
+      '@muse/observability':
+        specifier: workspace:*
+        version: link:../observability
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared

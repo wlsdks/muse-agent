@@ -296,6 +296,13 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- Slack followup suggestions compatibility now exists in `@muse/integrations`. `parseFollowupSuggestions`
+  extracts well-formed entries from the `<!--FOLLOWUPS:[...]-->` HTML-comment marker (caps at 5),
+  `stripFollowupMarker` removes the marker before display, `truncateFollowupLabel` enforces Slack's 75-char
+  button limit, and `renderFollowupSuggestionBlocks` emits a Block Kit `actions` block with `followup.<id>`
+  action_ids. `createFollowupSuggestionInteractionHandler` records click events through the existing
+  `FollowupSuggestionStore` for CTR analytics, re-runs the agent against the suggestion's prompt via an
+  injected `runAgent` callback, and posts the reply as a thread reply when a message transport is configured.
 - AgentRuntime now honors `metadata.agentMode === "plan_execute"` for both `run()` and `stream()`,
   dispatching to a 4-stage `executePlanExecuteLoop` (generate → validate → execute → synthesize). Empty plans
   fall back to a direct-answer LLM call; JSON parse failures surface a `PlanExecutionError(PLAN_GENERATION_FAILED)`;
