@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { AgentRunContext } from "@muse/agent-core";
 import type { MuseDatabase } from "@muse/db";
+import type { ModelToolCall } from "@muse/model";
 import {
   DummyDriver,
   Kysely,
@@ -15,6 +17,7 @@ import {
   createSlackBotInstanceInsert,
   createSlackResponseTrackingInsert,
   CommandRouter,
+  createSlackProgressHook,
   FetchSlackResponseUrlTransport,
   FetchSlackWebApiMessageTransport,
   InMemoryChannelFaqRegistrationStore,
@@ -951,5 +954,272 @@ describe("WebhookDispatcher", () => {
         url: "https://slack.com/api/chat.postMessage"
       }
     ]);
+  });
+
+  it("posts assistant.threads.setStatus with channel_id, thread_ts, and status", async () => {
+    const calls: Array<{ body: string | undefined; headers: HeadersInit | undefined; url: string }> = [];
+    const transport = new FetchSlackWebApiMessageTransport("xoxb-token", async (url, init) => {
+      calls.push({
+        body: typeof init?.body === "string" ? init.body : undefined,
+        headers: init?.headers,
+        url: String(url)
+      });
+      return Response.json({ ok: true }, { status: 200 });
+    });
+
+    await expect(
+      transport.setStatus({ channelId: "C1", status: "thinking", threadTs: "1.23" })
+    ).resolves.toEqual({ ok: true, statusCode: 200 });
+
+    expect(calls).toEqual([
+      {
+        body: "{\"channel_id\":\"C1\",\"thread_ts\":\"1.23\",\"status\":\"thinking\"}",
+        headers: {
+          authorization: "Bearer xoxb-token",
+          "content-type": "application/json; charset=utf-8"
+        },
+        url: "https://slack.com/api/assistant.threads.setStatus"
+      }
+    ]);
+  });
+
+  it("returns slack_bot_token_missing for setStatus when bot token is empty", async () => {
+    const transport = new FetchSlackWebApiMessageTransport("");
+    await expect(
+      transport.setStatus({ channelId: "C1", status: "x", threadTs: "1.23" })
+    ).resolves.toEqual({ error: "slack_bot_token_missing", ok: false, statusCode: 0 });
+  });
+});
+
+describe("createSlackProgressHook", () => {
+  type StatusCall = { channelId: string; status: string; threadTs: string };
+
+  function makeStatusTransport(behavior: "ok" | "throw" = "ok"): {
+    transport: {
+      setStatus: (input: { channelId: string; status: string; threadTs: string }) => Promise<{
+        ok: boolean;
+        statusCode: number;
+      }>;
+    };
+    calls: StatusCall[];
+  } {
+    const calls: StatusCall[] = [];
+    const transport = {
+      setStatus: async (input: { channelId: string; status: string; threadTs: string }) => {
+        calls.push({ channelId: input.channelId, status: input.status, threadTs: input.threadTs });
+        if (behavior === "throw") {
+          throw new Error("slack down");
+        }
+        return { ok: true, statusCode: 200 };
+      }
+    };
+    return { calls, transport };
+  }
+
+  function makeContext(metadata: Record<string, unknown> = {}, runId = "run-1"): AgentRunContext {
+    return {
+      input: {
+        messages: [],
+        metadata: metadata as Record<string, unknown> as AgentRunContext["input"]["metadata"],
+        model: "test-model"
+      },
+      runId,
+      startedAt: new Date("2026-05-07T00:00:00.000Z")
+    };
+  }
+
+  function makeToolCall(name: string): ModelToolCall {
+    return { arguments: {}, id: `call-${name}`, name };
+  }
+
+  function makeResult(status: "completed" | "failed" | "blocked"): {
+    error?: string;
+    id: string;
+    name: string;
+    output: string;
+    status: "completed" | "failed" | "blocked";
+  } {
+    return { id: "tool-result-1", name: "tool", output: "", status };
+  }
+
+  it("calls setStatus on beforeTool with friendly Korean label when slack metadata is present", async () => {
+    const { calls, transport } = makeStatusTransport();
+    const hook = createSlackProgressHook({ minUpdateIntervalMs: 0, transport });
+    const context = makeContext({ slackChannelId: "C1", slackThreadTs: "1.23" });
+
+    await hook.beforeTool?.(context, makeToolCall("jira_search"));
+
+    expect(calls).toEqual([{ channelId: "C1", status: "🔍 Jira 검색 중…", threadTs: "1.23" }]);
+  });
+
+  it("calls setStatus on afterTool with success message when status is completed", async () => {
+    const { calls, transport } = makeStatusTransport();
+    const hook = createSlackProgressHook({ minUpdateIntervalMs: 0, transport });
+    const context = makeContext({ slackChannelId: "C1", slackThreadTs: "1.23" });
+
+    await hook.afterTool?.(context, makeToolCall("jira_search"), makeResult("completed"));
+
+    expect(calls).toEqual([
+      { channelId: "C1", status: "✓ Jira 검색 완료 — 다음 단계 진행 중…", threadTs: "1.23" }
+    ]);
+  });
+
+  it("calls setStatus on afterTool with failure message when status is failed", async () => {
+    const { calls, transport } = makeStatusTransport();
+    const hook = createSlackProgressHook({ minUpdateIntervalMs: 0, transport });
+    const context = makeContext({ slackChannelId: "C1", slackThreadTs: "1.23" });
+
+    await hook.afterTool?.(context, makeToolCall("jira_search"), makeResult("failed"));
+
+    expect(calls).toEqual([
+      { channelId: "C1", status: "⚠️ Jira 검색 실패 — 복구 중…", threadTs: "1.23" }
+    ]);
+  });
+
+  it("is a no-op when slackChannelId is missing", async () => {
+    const { calls, transport } = makeStatusTransport();
+    const hook = createSlackProgressHook({ minUpdateIntervalMs: 0, transport });
+
+    await hook.beforeTool?.(makeContext({ slackThreadTs: "1.23" }), makeToolCall("rag_search"));
+    await hook.afterTool?.(
+      makeContext({ slackThreadTs: "1.23" }),
+      makeToolCall("rag_search"),
+      makeResult("completed")
+    );
+
+    expect(calls).toHaveLength(0);
+  });
+
+  it("is a no-op when slackThreadTs is missing", async () => {
+    const { calls, transport } = makeStatusTransport();
+    const hook = createSlackProgressHook({ minUpdateIntervalMs: 0, transport });
+
+    await hook.beforeTool?.(makeContext({ slackChannelId: "C1" }), makeToolCall("rag_search"));
+
+    expect(calls).toHaveLength(0);
+  });
+
+  it("throttles repeated calls within minUpdateIntervalMs for the same runId", async () => {
+    let now = 1_000_000;
+    const { calls, transport } = makeStatusTransport();
+    const hook = createSlackProgressHook({
+      minUpdateIntervalMs: 1500,
+      now: () => now,
+      transport
+    });
+    const context = makeContext({ slackChannelId: "C1", slackThreadTs: "1.23" });
+
+    await hook.beforeTool?.(context, makeToolCall("rag_search"));
+    now += 500;
+    await hook.afterTool?.(context, makeToolCall("rag_search"), makeResult("completed"));
+    expect(calls).toHaveLength(1);
+
+    now += 1500;
+    await hook.beforeTool?.(context, makeToolCall("rag_search"));
+    expect(calls).toHaveLength(2);
+  });
+
+  it("isolates throttle state per runId", async () => {
+    const { calls, transport } = makeStatusTransport();
+    const hook = createSlackProgressHook({
+      minUpdateIntervalMs: 1500,
+      now: () => 100,
+      transport
+    });
+
+    await hook.beforeTool?.(
+      makeContext({ slackChannelId: "C1", slackThreadTs: "1.23" }, "run-a"),
+      makeToolCall("rag_search")
+    );
+    await hook.beforeTool?.(
+      makeContext({ slackChannelId: "C1", slackThreadTs: "1.23" }, "run-b"),
+      makeToolCall("rag_search")
+    );
+
+    expect(calls).toHaveLength(2);
+  });
+
+  it("swallows transport errors and reports them via the onError callback", async () => {
+    const errors: unknown[] = [];
+    const { transport } = makeStatusTransport("throw");
+    const hook = createSlackProgressHook({
+      minUpdateIntervalMs: 0,
+      onError: (err) => errors.push(err),
+      transport
+    });
+    const context = makeContext({ slackChannelId: "C1", slackThreadTs: "1.23" });
+
+    await expect(hook.beforeTool?.(context, makeToolCall("rag_search"))).resolves.toBeUndefined();
+    expect(errors).toHaveLength(1);
+  });
+
+  it("humanizes unknown snake_case tool names via Title Case fallback", async () => {
+    const { calls, transport } = makeStatusTransport();
+    const hook = createSlackProgressHook({ minUpdateIntervalMs: 0, transport });
+    const context = makeContext({ slackChannelId: "C1", slackThreadTs: "1.23" });
+
+    await hook.beforeTool?.(context, makeToolCall("custom_widget_check"));
+
+    expect(calls[0]?.status).toBe("🔍 Custom Widget Check 중…");
+  });
+
+  it("respects custom friendlyNames overrides", async () => {
+    const { calls, transport } = makeStatusTransport();
+    const hook = createSlackProgressHook({
+      friendlyNames: { custom_check: "맞춤 점검" },
+      minUpdateIntervalMs: 0,
+      transport
+    });
+    const context = makeContext({ slackChannelId: "C1", slackThreadTs: "1.23" });
+
+    await hook.beforeTool?.(context, makeToolCall("custom_check"));
+
+    expect(calls[0]?.status).toBe("🔍 맞춤 점검 중…");
+  });
+
+  it("truncates status text to 100 characters", async () => {
+    const longLabel = "X".repeat(120);
+    const { calls, transport } = makeStatusTransport();
+    const hook = createSlackProgressHook({
+      friendlyNames: { huge_tool: longLabel },
+      minUpdateIntervalMs: 0,
+      transport
+    });
+    const context = makeContext({ slackChannelId: "C1", slackThreadTs: "1.23" });
+
+    await hook.beforeTool?.(context, makeToolCall("huge_tool"));
+
+    expect(calls[0]?.status.length).toBeLessThanOrEqual(100);
+  });
+
+  it("clears throttle state on afterComplete so the next run can update immediately", async () => {
+    let now = 1_000_000;
+    const { calls, transport } = makeStatusTransport();
+    const hook = createSlackProgressHook({
+      minUpdateIntervalMs: 1500,
+      now: () => now,
+      transport
+    });
+    const context = makeContext({ slackChannelId: "C1", slackThreadTs: "1.23" });
+
+    await hook.beforeTool?.(context, makeToolCall("rag_search"));
+    expect(calls).toHaveLength(1);
+
+    now += 100;
+    await hook.afterTool?.(context, makeToolCall("rag_search"), makeResult("completed"));
+    expect(calls).toHaveLength(1);
+
+    now += 100;
+    await hook.afterComplete?.(context, { id: "r", model: "m", output: "" });
+
+    now += 100;
+    await hook.beforeTool?.(context, makeToolCall("rag_search"));
+    expect(calls).toHaveLength(2);
+  });
+
+  it("exposes a stable hook id", () => {
+    const { transport } = makeStatusTransport();
+    const hook = createSlackProgressHook({ transport });
+    expect(hook.id).toBe("slack-progress");
   });
 });

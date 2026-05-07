@@ -282,6 +282,10 @@ route state and runtime services onto Kysely-backed stores.
 - Slack feedback button compatibility now includes a bounded/injectable bot-response tracker plus `feedback.up/down`
   handler that restores the original session prompt, persists feedback metadata when a store is configured, calls a
   feedback sink, and posts thread/ephemeral acknowledgements.
+- Slack progress hook compatibility now exists as `createSlackProgressHook`, calling
+  `assistant.threads.setStatus` from `beforeTool`/`afterTool` lifecycle events with throttled, friendly-named
+  Korean status updates. Activates only when `slackChannelId` + `slackThreadTs` metadata are present, swallows
+  transport errors, and resets the 2-minute Slack thinking-indicator TTL on each tool boundary.
 
 ## Execution Plan
 
