@@ -386,18 +386,50 @@ export function createSlackUserIdMaskResponseFilter(): ResponseFilterStage {
   };
 }
 
-export function createFabricationRequestRefusalFilter(): ResponseFilterStage {
+export interface FabricationRequestRefusalFilterOptions {
+  /**
+   * Lowercase substring terms that mean the user is asking the model to
+   * invent / make up content. Detection requires both an `invent` term AND
+   * a `missing` term to appear in the prompt (or the secret-doc combo).
+   */
+  readonly inventTerms?: readonly string[];
+  /** Lowercase substring terms that mean the user admits the source is missing. */
+  readonly missingTerms?: readonly string[];
+  /** Lowercase substring terms that name a secret / private document. */
+  readonly secretTerms?: readonly string[];
+  /** Lowercase substring terms that pair with `secretTerms` to trigger the refusal. */
+  readonly missingOrDiscoveryTerms?: readonly string[];
+  /** Refusal text to emit instead of the model's output. */
+  readonly refusalText?: string;
+}
+
+const fabricationDefaults = {
+  inventTerms: ["지어서", "지어내", "임의로", "만들어서", "make up", "fabricate"],
+  missingOrDiscoveryTerms: ["없는", "찾아", "검색", "요약"],
+  missingTerms: ["없는", "문서에 없는", "근거 없이", "without source", "not in docs"],
+  refusalText: [
+    "요청하신 내용은 확인된 공식 문서나 접근 권한이 있는 출처가 없으면 제공할 수 없습니다.",
+    "존재하지 않거나 비공개일 수 있는 문서는 찾아내거나 지어내서 요약하지 않습니다."
+  ].join(" "),
+  secretTerms: ["비밀 문서", "비공개 문서", "secret document"]
+} as const;
+
+export function createFabricationRequestRefusalFilter(
+  options: FabricationRequestRefusalFilterOptions = {}
+): ResponseFilterStage {
+  const inventTerms = options.inventTerms ?? fabricationDefaults.inventTerms;
+  const missingTerms = options.missingTerms ?? fabricationDefaults.missingTerms;
+  const secretTerms = options.secretTerms ?? fabricationDefaults.secretTerms;
+  const missingOrDiscoveryTerms = options.missingOrDiscoveryTerms ?? fabricationDefaults.missingOrDiscoveryTerms;
+  const refusalText = options.refusalText ?? fabricationDefaults.refusalText;
+
   return {
     apply: (response, context) => {
       const prompt = joinUserMessages(context.input.messages).toLowerCase();
-      const asksToInvent = ["지어서", "지어내", "임의로", "만들어서", "make up", "fabricate"].some((term) =>
-        prompt.includes(term)
-      );
-      const admitsMissing = ["없는", "문서에 없는", "근거 없이", "without source", "not in docs"].some((term) =>
-        prompt.includes(term)
-      );
-      const asksSecret = ["비밀 문서", "비공개 문서", "secret document"].some((term) => prompt.includes(term));
-      const missingOrDiscovery = ["없는", "찾아", "검색", "요약"].some((term) => prompt.includes(term));
+      const asksToInvent = inventTerms.some((term) => prompt.includes(term));
+      const admitsMissing = missingTerms.some((term) => prompt.includes(term));
+      const asksSecret = secretTerms.some((term) => prompt.includes(term));
+      const missingOrDiscovery = missingOrDiscoveryTerms.some((term) => prompt.includes(term));
 
       if (!(asksToInvent && admitsMissing) && !(asksSecret && missingOrDiscovery)) {
         return response;
@@ -405,10 +437,7 @@ export function createFabricationRequestRefusalFilter(): ResponseFilterStage {
 
       return {
         ...response,
-        output: [
-          "요청하신 내용은 확인된 공식 문서나 접근 권한이 있는 출처가 없으면 제공할 수 없습니다.",
-          "존재하지 않거나 비공개일 수 있는 문서는 찾아내거나 지어내서 요약하지 않습니다."
-        ].join(" "),
+        output: refusalText,
         raw: withResponseFilterRaw(response, "fabrication-request-refusal-filter")
       };
     },
@@ -584,19 +613,56 @@ export function createEnglishCasualLureStripResponseFilter(): ResponseFilterStag
   };
 }
 
-export function createZeroResultOverclaimResponseFilter(): ResponseFilterStage {
-  const zeroResultPattern = /(0\s*건|검색 결과 0건|조회된 이슈가 없어|이슈는 없습니다|이슈가 없습니다)/i;
-  const overclaimPattern =
-    /(순조|원활|잘\s*(?:관리|되고)|모든\s*(?:작업|이슈)[^.\n]*(?:완료|정리)|활발한\s*작업이\s*진행되고\s*있지|활동\s*중인\s*이슈가\s*없는)/i;
+export interface ZeroResultOverclaimResponseFilterOptions {
+  /**
+   * Optional gate on tool name prefixes — when non-empty, the filter
+   * only fires if at least one tool used in the run had a matching
+   * prefix. Default `[]` means no gate (the filter looks at every
+   * response). Previous Atlassian prefix list (`jira_`, `confluence_`,
+   * `bitbucket_`, `work_`) is no longer the default — operators who
+   * want it can pass it explicitly.
+   */
+  readonly workspaceToolPrefixes?: readonly string[];
+  /**
+   * Pattern that must match somewhere in the response to indicate a
+   * zero-result outcome. Default is the Korean pattern set; English
+   * deployments typically pass an English-pattern variant.
+   */
+  readonly zeroResultPattern?: RegExp;
+  /**
+   * Pattern matched against each line — lines matching this pattern
+   * are stripped from the response when the zero-result + tool-prefix
+   * gates also pass.
+   */
+  readonly overclaimPattern?: RegExp;
+}
+
+const zeroResultDefaults = {
+  overclaimPattern:
+    /(순조|원활|잘\s*(?:관리|되고)|모든\s*(?:작업|이슈)[^.\n]*(?:완료|정리)|활발한\s*작업이\s*진행되고\s*있지|활동\s*중인\s*이슈가\s*없는)/i,
+  zeroResultPattern: /(0\s*건|검색 결과 0건|조회된 이슈가 없어|이슈는 없습니다|이슈가 없습니다)/i
+} as const;
+
+export function createZeroResultOverclaimResponseFilter(
+  options: ZeroResultOverclaimResponseFilterOptions = {}
+): ResponseFilterStage {
+  const prefixes = options.workspaceToolPrefixes ?? [];
+  const zeroResultPattern = options.zeroResultPattern ?? zeroResultDefaults.zeroResultPattern;
+  const overclaimPattern = options.overclaimPattern ?? zeroResultDefaults.overclaimPattern;
 
   return {
     apply: (response, context) => {
-      const toolsUsed = context.toolsUsed ?? [];
-      const hasWorkspaceTool = toolsUsed.some((tool) =>
-        ["jira_", "work_", "bitbucket_", "confluence_"].some((prefix) => tool.startsWith(prefix))
-      );
+      if (prefixes.length > 0) {
+        const toolsUsed = context.toolsUsed ?? [];
+        const hasWorkspaceTool = toolsUsed.some((tool) =>
+          prefixes.some((prefix) => tool.startsWith(prefix))
+        );
+        if (!hasWorkspaceTool) {
+          return response;
+        }
+      }
 
-      if (!hasWorkspaceTool || !zeroResultPattern.test(response.output) || !overclaimPattern.test(response.output)) {
+      if (!zeroResultPattern.test(response.output) || !overclaimPattern.test(response.output)) {
         return response;
       }
 

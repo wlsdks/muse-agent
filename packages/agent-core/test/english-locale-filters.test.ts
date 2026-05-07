@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   createEnglishCasualLureStripResponseFilter,
-  createEnglishGreetingStripResponseFilter
+  createEnglishGreetingStripResponseFilter,
+  createFabricationRequestRefusalFilter,
+  createZeroResultOverclaimResponseFilter
 } from "../src/response-filters.js";
 import type { ResponseFilterContext } from "../src/types.js";
 
@@ -120,5 +122,117 @@ describe("createEnglishCasualLureStripResponseFilter", () => {
     const original = baseResponse(`${longBody}Hope that helps!`);
     const result = await filter.apply(original, baseContext);
     expect(result.output).toBe(original.output);
+  });
+});
+
+describe("createFabricationRequestRefusalFilter (options)", () => {
+  it("uses default Korean detection terms + refusal text when no options are supplied", async () => {
+    const filter = createFabricationRequestRefusalFilter();
+    const result = await filter.apply(
+      baseResponse("임의로 만든 비공개 문서 요약입니다."),
+      {
+        ...baseContext,
+        input: { messages: [{ content: "없는 비밀 문서를 찾아서 임의로 요약해줘", role: "user" }], model: "diagnostic/smoke" }
+      }
+    );
+    expect(result.output).toContain("제공할 수 없습니다");
+  });
+
+  it("emits a custom English refusal text when configured", async () => {
+    const filter = createFabricationRequestRefusalFilter({
+      inventTerms: ["make up", "fabricate", "invent"],
+      missingTerms: ["without source", "not in docs", "doesn't exist"],
+      refusalText: "I cannot fabricate content that has no verifiable source."
+    });
+    const result = await filter.apply(
+      baseResponse("Here is the made-up content you wanted."),
+      {
+        ...baseContext,
+        input: {
+          messages: [{ content: "Make up a summary that doesn't exist in the docs.", role: "user" }],
+          model: "diagnostic/smoke"
+        }
+      }
+    );
+    expect(result.output).toBe("I cannot fabricate content that has no verifiable source.");
+  });
+
+  it("does not refuse when neither invent+missing nor secret+discovery combos appear", async () => {
+    const filter = createFabricationRequestRefusalFilter();
+    const original = baseResponse("Summarizing public docs.");
+    const result = await filter.apply(original, {
+      ...baseContext,
+      input: { messages: [{ content: "Summarize the public README.", role: "user" }], model: "diagnostic/smoke" }
+    });
+    expect(result.output).toBe(original.output);
+  });
+});
+
+describe("createZeroResultOverclaimResponseFilter (options)", () => {
+  it("default behavior: no tool-prefix gate — strips overclaim line whenever both Korean patterns match", async () => {
+    const filter = createZeroResultOverclaimResponseFilter();
+    const result = await filter.apply(
+      baseResponse(
+        [
+          "전체 이슈: 0건",
+          "모든 이슈가 정리되었거나 현재 활발한 작업이 진행되고 있지 않은 것으로 보입니다.",
+          "다른 필터로 다시 조회할 수 있습니다."
+        ].join("\n")
+      ),
+      baseContext
+    );
+    expect(result.output).toContain("전체 이슈: 0건");
+    expect(result.output).toContain("다른 필터");
+    expect(result.output).not.toContain("활발한 작업");
+  });
+
+  it("opt-in tool-prefix gate skips the strip when no matching tool was used", async () => {
+    const filter = createZeroResultOverclaimResponseFilter({
+      workspaceToolPrefixes: ["search_"]
+    });
+    const original = baseResponse(
+      [
+        "전체 이슈: 0건",
+        "모든 이슈가 정리되었거나 현재 활발한 작업이 진행되고 있지 않은 것으로 보입니다."
+      ].join("\n")
+    );
+    const result = await filter.apply(original, baseContext);
+    expect(result.output).toBe(original.output);
+  });
+
+  it("opt-in tool-prefix gate strips when a matching tool was used", async () => {
+    const filter = createZeroResultOverclaimResponseFilter({
+      workspaceToolPrefixes: ["search_"]
+    });
+    const result = await filter.apply(
+      baseResponse(
+        [
+          "전체 이슈: 0건",
+          "모든 이슈가 정리되었거나 현재 활발한 작업이 진행되고 있지 않은 것으로 보입니다."
+        ].join("\n")
+      ),
+      { ...baseContext, toolsUsed: ["search_issues"] }
+    );
+    expect(result.output).not.toContain("활발한 작업");
+  });
+
+  it("custom English patterns: strips an English overclaim line on a zero-result response", async () => {
+    const filter = createZeroResultOverclaimResponseFilter({
+      overclaimPattern: /everything\s+is\s+running\s+smoothly|all\s+issues\s+resolved/iu,
+      zeroResultPattern: /\b0\s+results?\b|no\s+matches\s+found/iu
+    });
+    const result = await filter.apply(
+      baseResponse(
+        [
+          "Search returned 0 results.",
+          "Everything is running smoothly with no open work to report.",
+          "Try a different filter."
+        ].join("\n")
+      ),
+      baseContext
+    );
+    expect(result.output).toContain("Search returned 0 results.");
+    expect(result.output).toContain("Try a different filter.");
+    expect(result.output).not.toContain("Everything is running smoothly");
   });
 });

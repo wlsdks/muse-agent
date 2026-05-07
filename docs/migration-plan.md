@@ -296,6 +296,26 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- fabrication-refusal + zero-result-overclaim made options-driven (iteration 60).
+  Two more filters that had Korean+Atlassian carryover now accept config:
+  * `createFabricationRequestRefusalFilter({ inventTerms?, missingTerms?,
+    secretTerms?, missingOrDiscoveryTerms?, refusalText? })`. Defaults
+    preserve current Korean+English mixed detection + Korean refusal text
+    (operator UX unchanged when no opts are supplied). English deployments
+    pass English-only term arrays + an English refusal sentence.
+  * `createZeroResultOverclaimResponseFilter({ workspaceToolPrefixes?,
+    zeroResultPattern?, overclaimPattern? })`. The hardcoded Atlassian
+    prefix gate (`["jira_", "work_", "bitbucket_", "confluence_"]`) is
+    GONE — default is now `[]` (no tool-prefix gate). Filter applies
+    whenever zero-result + overclaim patterns both match. Operators who
+    want the gate back can pass their own prefixes; operators with
+    English workspace tools can pass English regex patterns.
+  7 new unit tests in english-locale-filters.test.ts cover the new
+  options paths: Korean-default refusal, English-custom refusal,
+  no-trigger pass-through, default no-gate behavior, opt-in gate skip /
+  apply, English-pattern overclaim strip. agent-core tests 216 → 223;
+  pnpm check green; broad smoke 49/49; live smoke 8/8; route parity 0
+  missing.
 - internal-brand-mask filter removed + sanitized-text i18n (iteration 59).
   Two more carryover surfaces cleaned:
   * `createInternalBrandMaskResponseFilter` REMOVED. The filter stripped
