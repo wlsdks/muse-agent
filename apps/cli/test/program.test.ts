@@ -469,4 +469,109 @@ describe("cli program", () => {
       .resolves
       .toContain("\"source\":\"cli.remote\"");
   });
+
+  it("threads --mode plan_execute into the /api/chat request body as metadata.agentMode", async () => {
+    const { io } = captureOutput();
+    const requests: Array<{ readonly body?: string; readonly url: string }> = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url, init) => {
+        requests.push({ body: String(init?.body), url: String(url) });
+        return new Response(JSON.stringify({ response: "plan answer", runId: "plan-r1" }));
+      }
+    });
+
+    await program.parseAsync([
+      "node",
+      "muse",
+      "--api-url",
+      "http://api.test",
+      "chat",
+      "--mode",
+      "plan_execute",
+      "--no-log",
+      "Plan something"
+    ], { from: "node" });
+
+    expect(requests).toHaveLength(1);
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toMatchObject({
+      message: "Plan something",
+      metadata: { agentMode: "plan_execute" }
+    });
+  });
+
+  it("rejects an unknown --mode value with a clear error", async () => {
+    const { io } = captureOutput();
+    const program = createProgram({
+      ...io,
+      fetch: async () => new Response("{}")
+    });
+    await expect(program.parseAsync([
+      "node",
+      "muse",
+      "--api-url",
+      "http://api.test",
+      "chat",
+      "--mode",
+      "fancy",
+      "--no-log",
+      "x"
+    ], { from: "node" })).rejects.toThrow(/--mode must be 'react' or 'plan_execute'/u);
+  });
+
+  it("threads --mode plan_execute into /api/chat/stream metadata.agentMode", async () => {
+    const { io } = captureOutput();
+    const requests: Array<{ readonly body?: string; readonly url: string }> = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url, init) => {
+        requests.push({ body: String(init?.body), url: String(url) });
+        const sse = "event: message\ndata: streamed plan answer\n\nevent: done\ndata: {}\n\n";
+        return new Response(sse, { headers: { "content-type": "text/event-stream" } });
+      }
+    });
+
+    await program.parseAsync([
+      "node",
+      "muse",
+      "--api-url",
+      "http://api.test",
+      "chat",
+      "--stream",
+      "--mode",
+      "plan_execute",
+      "--no-log",
+      "stream this plan"
+    ], { from: "node" });
+
+    expect(requests[0]?.url).toBe("http://api.test/api/chat/stream");
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toMatchObject({
+      message: "stream this plan",
+      metadata: { agentMode: "plan_execute" }
+    });
+  });
+
+  it("omits metadata.agentMode when --mode is not provided", async () => {
+    const { io } = captureOutput();
+    const requests: Array<{ readonly body?: string }> = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (_url, init) => {
+        requests.push({ body: String(init?.body) });
+        return new Response(JSON.stringify({ response: "default answer", runId: "default-r1" }));
+      }
+    });
+
+    await program.parseAsync([
+      "node",
+      "muse",
+      "--api-url",
+      "http://api.test",
+      "chat",
+      "--no-log",
+      "no mode"
+    ], { from: "node" });
+
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toEqual({ message: "no mode" });
+  });
 });

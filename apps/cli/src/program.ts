@@ -150,6 +150,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     .argument("[message...]", "User message")
     .option("--local", "Run through the local shared agent runtime instead of the API")
     .option("--model <model>", "Model name")
+    .option("--mode <mode>", "Agent mode: 'react' (default) or 'plan_execute'")
     .option("--stream", "Stream remote chat over SSE")
     .option("--json", "Print machine-readable JSON")
     .option("--no-log", "Do not write .muse/runs JSONL state")
@@ -159,6 +160,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
         readonly json?: boolean;
         readonly local?: boolean;
         readonly log?: boolean;
+        readonly mode?: string;
         readonly model?: string;
         readonly stream?: boolean;
       },
@@ -167,17 +169,19 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       const message = await resolveChatMessage(io, messageParts);
       const cliConfig = await readConfigStore(io);
       const model = options.model ?? cliConfig.defaultModel;
+      const agentMode = parseAgentMode(options.mode);
       if (options.local && options.stream) {
         throw new Error("--stream requires remote API chat; omit --local");
       }
 
       const body = options.local
-        ? await runLocalChat(io, message, model)
+        ? await runLocalChat(io, message, model, agentMode)
         : options.stream
-          ? await streamRemoteChat(io, command, message, model, options.json === true)
+          ? await streamRemoteChat(io, command, message, model, options.json === true, agentMode)
         : await apiRequest(io, command, "/api/chat", {
           message,
-          model
+          model,
+          ...(agentMode ? { metadata: { agentMode } } : {})
         });
 
       if (options.log !== false) {
@@ -450,11 +454,16 @@ async function streamRemoteChat(
   command: Command,
   message: string,
   model: string | undefined,
-  jsonMode: boolean
+  jsonMode: boolean,
+  agentMode: AgentMode | undefined
 ) {
   const { baseUrl, token } = await readApiOptions(io, command);
   const response = await (io.fetch ?? globalThis.fetch)(new URL("/api/chat/stream", baseUrl).toString(), {
-    body: JSON.stringify(dropUndefined({ message, model })),
+    body: JSON.stringify(dropUndefined({
+      message,
+      model,
+      ...(agentMode ? { metadata: { agentMode } } : {})
+    })),
     headers: {
       "content-type": "application/json",
       ...(token ? { authorization: `Bearer ${token}` } : {})
@@ -523,7 +532,7 @@ function createTuiChatSubmitter(
   };
 }
 
-async function runLocalChat(io: ProgramIO, message: string, model: string | undefined) {
+async function runLocalChat(io: ProgramIO, message: string, model: string | undefined, agentMode?: AgentMode) {
   const assembly = io.createRuntimeAssembly?.() ?? createMuseRuntimeAssembly();
 
   if (!assembly.agentRuntime || !(model ?? assembly.defaultModel)) {
@@ -532,6 +541,7 @@ async function runLocalChat(io: ProgramIO, message: string, model: string | unde
 
   const result = await assembly.agentRuntime.run({
     messages: [{ content: message, role: "user" }],
+    ...(agentMode ? { metadata: { agentMode } } : {}),
     model: model ?? assembly.defaultModel ?? "default"
   });
 
@@ -540,6 +550,19 @@ async function runLocalChat(io: ProgramIO, message: string, model: string | unde
     runId: result.runId,
     toolsUsed: result.toolsUsed ?? []
   };
+}
+
+type AgentMode = "react" | "plan_execute";
+
+function parseAgentMode(value: string | undefined): AgentMode | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "react" || normalized === "plan_execute") {
+    return normalized;
+  }
+  throw new Error(`--mode must be 'react' or 'plan_execute' (got '${value}')`);
 }
 
 function readChatResponseText(value: unknown): string {
