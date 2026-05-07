@@ -1315,6 +1315,7 @@ function toErrorMessage(error: unknown): string {
 }
 
 export {
+  createCryptoMcpServer,
   createDefaultLoopbackMcpServers,
   createJsonMcpServer,
   createLoopbackMcpConnection,

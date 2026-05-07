@@ -296,6 +296,16 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- sixth loopback MCP server `muse.crypto` ships by default (iteration
+  30). Four new tools: `hash` (md5/sha1/sha256/sha512 with hex or base64
+  encoding, default sha256/hex), `base64` (encode/decode UTF-8 ↔ base64),
+  `hex` (encode/decode UTF-8 ↔ lowercase hex with malformed-input
+  rejection), and `uuid` (RFC 4122 v4 with injectable factory for
+  deterministic tests). Built on Node's built-in `node:crypto`, no extra
+  deps. The smoke harness now validates all six default loopback servers
+  and exercises every crypto tool with known fixtures (sha256("muse"),
+  base64("hello jarvis"), hex("abc"), and uuid v4 format match). mcp
+  tests 30 → 34, smoke 43/43, route parity 0 missing.
 - two more loopback MCP servers ship by default (iteration 29).
   `muse.json` exposes `format` (pretty/minify with indent control),
   `query` (dot/bracket JSONPath, e.g., `foo.bar[0]`, with explicit

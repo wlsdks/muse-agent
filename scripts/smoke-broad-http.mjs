@@ -317,16 +317,16 @@ try {
     assert(timeNow.inputSchema && typeof timeNow.inputSchema === "object", "expected real inputSchema for time_now");
   });
 
-  await record("Five loopback MCP servers (time/text/math/json/url) expose tools end-to-end", async () => {
+  await record("Six loopback MCP servers (time/text/math/json/url/crypto) expose tools end-to-end", async () => {
     const {
       createDefaultLoopbackMcpServers,
       createLoopbackMcpConnection
     } = await import(`${rootDir}/packages/mcp/dist/index.js`);
     const servers = createDefaultLoopbackMcpServers();
-    assert(servers.length === 5, `expected 5 default loopback servers, got ${servers.length}`);
+    assert(servers.length === 6, `expected 6 default loopback servers, got ${servers.length}`);
     const names = servers.map((s) => s.name).sort();
     assert(
-      JSON.stringify(names) === JSON.stringify(["muse.json", "muse.math", "muse.text", "muse.time", "muse.url"]),
+      JSON.stringify(names) === JSON.stringify(["muse.crypto", "muse.json", "muse.math", "muse.text", "muse.time", "muse.url"]),
       `expected default names, got ${JSON.stringify(names)}`
     );
 
@@ -363,6 +363,18 @@ try {
     const encoded = await url.callTool("encode_query", { params: { name: "jarvis", tags: ["a", "b"] } });
     assert(encoded.query === "name=jarvis&tags=a&tags=b",
       `expected encoded query, got ${encoded.query}`);
+
+    const crypto = createLoopbackMcpConnection(servers.find((s) => s.name === "muse.crypto"));
+    const hashed = await crypto.callTool("hash", { text: "muse", algorithm: "sha256" });
+    assert(hashed.digest === "4016c3db3bc3c731a4148022f43ebd6d4422b77976763135b9d9afcb9b71b2c1",
+      `expected sha256(muse), got ${hashed.digest}`);
+    const b64 = await crypto.callTool("base64", { text: "hello jarvis" });
+    assert(b64.output === "aGVsbG8gamFydmlz", `expected base64 round-trip, got ${b64.output}`);
+    const hex = await crypto.callTool("hex", { text: "abc" });
+    assert(hex.output === "616263", `expected hex 'abc'->616263, got ${hex.output}`);
+    const id = await crypto.callTool("uuid", {});
+    assert(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id.uuid),
+      `expected uuid v4 format, got ${id.uuid}`);
   });
 
   await record("Chunk-merging retriever joins chunks of the same parent and dedupes by id", async () => {

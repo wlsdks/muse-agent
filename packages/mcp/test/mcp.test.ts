@@ -12,6 +12,7 @@ import {
   createDefaultLoopbackMcpServers,
   createLoopbackMcpConnection,
   createLoopbackMcpMuseTools,
+  createCryptoMcpServer,
   createJsonMcpServer,
   createMathMcpServer,
   createUrlMcpServer,
@@ -463,9 +464,10 @@ function createPostgresBuilder(): Kysely<MuseDatabase> {
 }
 
 describe("loopback MCP servers", () => {
-  it("createDefaultLoopbackMcpServers ships five reference servers (time/text/math/json/url) by default", () => {
+  it("createDefaultLoopbackMcpServers ships six reference servers (time/text/math/json/url/crypto) by default", () => {
     const servers = createDefaultLoopbackMcpServers({ now: () => new Date("2026-05-15T00:00:00.000Z") });
     expect(servers.map((server) => server.name).sort()).toEqual([
+      "muse.crypto",
       "muse.json",
       "muse.math",
       "muse.text",
@@ -639,5 +641,54 @@ describe("loopback MCP servers", () => {
     expect(await connection.callTool!("encode_query", { params: "nope" })).toEqual({
       error: "params must be a JSON object"
     });
+  });
+
+  it("muse.crypto#hash returns deterministic digests for known inputs", async () => {
+    const connection = createLoopbackMcpConnection(createCryptoMcpServer());
+    expect(await connection.callTool!("hash", { text: "muse", algorithm: "sha256" })).toEqual({
+      algorithm: "sha256",
+      digest: "4016c3db3bc3c731a4148022f43ebd6d4422b77976763135b9d9afcb9b71b2c1",
+      encoding: "hex"
+    });
+    expect(await connection.callTool!("hash", { text: "muse", algorithm: "sha256", encoding: "base64" })).toEqual({
+      algorithm: "sha256",
+      digest: "QBbD2zvDxzGkFIAi9D69bUQit3l2djE1udmvy5txssE=",
+      encoding: "base64"
+    });
+    expect(await connection.callTool!("hash", { text: "muse", algorithm: "rot13" })).toEqual({
+      error: expect.stringContaining("algorithm must be")
+    });
+  });
+
+  it("muse.crypto#base64 round-trips encode/decode and rejects bad mode", async () => {
+    const connection = createLoopbackMcpConnection(createCryptoMcpServer());
+    const encoded = await connection.callTool!("base64", { text: "hello jarvis" });
+    expect(encoded).toEqual({ mode: "encode", output: "aGVsbG8gamFydmlz" });
+    const decoded = await connection.callTool!("base64", { text: "aGVsbG8gamFydmlz", mode: "decode" });
+    expect(decoded).toEqual({ mode: "decode", output: "hello jarvis" });
+    expect(await connection.callTool!("base64", { text: "x", mode: "shuffle" })).toEqual({
+      error: "mode must be 'encode' or 'decode'"
+    });
+  });
+
+  it("muse.crypto#hex encodes and decodes UTF-8 and rejects malformed input", async () => {
+    const connection = createLoopbackMcpConnection(createCryptoMcpServer());
+    expect(await connection.callTool!("hex", { text: "abc" })).toEqual({ mode: "encode", output: "616263" });
+    expect(await connection.callTool!("hex", { text: "616263", mode: "decode" })).toEqual({
+      mode: "decode",
+      output: "abc"
+    });
+    expect(await connection.callTool!("hex", { text: "xyz", mode: "decode" })).toEqual({
+      error: "input is not a valid hex string"
+    });
+  });
+
+  it("muse.crypto#uuid uses the injected factory for deterministic tests", async () => {
+    let counter = 0;
+    const connection = createLoopbackMcpConnection(
+      createCryptoMcpServer({ uuid: () => `00000000-0000-0000-0000-${String(++counter).padStart(12, "0")}` })
+    );
+    expect(await connection.callTool!("uuid", {})).toEqual({ uuid: "00000000-0000-0000-0000-000000000001" });
+    expect(await connection.callTool!("uuid", {})).toEqual({ uuid: "00000000-0000-0000-0000-000000000002" });
   });
 });
