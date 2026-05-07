@@ -296,6 +296,23 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- promptlab test coverage hardened (iteration 50). The package was the
+  lowest-density store in the monorepo (~22%, 5 tests). New
+  `promptlab-helpers.test.ts` adds 22 direct unit tests across every
+  factory and in-memory store: createPromptVariant id auto-generation
+  + caller-supplied id/metadata, createPromptExperiment id/metadata
+  defaults + custom-id passthrough, rankPromptVariants score average
+  + descending sort + missing-judge fallback + empty-input,
+  applySystemPrompt prepend/merge/empty-input branches,
+  InMemoryFeedbackStore auto-id + delete idempotence,
+  InMemoryPromptLabExperimentStore experiment id auto-gen, trial
+  replacement-on-resave, report id default to experimentId,
+  delete-experiment cascade to reports + trials, listTrials for
+  unknown experiment, and InMemoryPromptLabCatalogStore persona/
+  template/intent save / get-by-name-fallback / delete-by-name with
+  intent name-as-id contract. Promptlab tests 5 → 27. pnpm check
+  green; broad smoke 49/49; route parity 0 missing. No source
+  changes — pure verification hardening.
 - agent-core monolith split continued (iteration 49). Two
   runtime-internal helpers (`createRunResult`,
   `responseFilterEvidenceFromExecution`) + the `ResponseFilterEvidence`
