@@ -90,6 +90,7 @@ route state and runtime services onto Kysely-backed stores.
 
 ## Recent Completion Notes
 
+- `createLoopbackMcpToolsFromEnv` lets operators plug the JARVIS ambient toolset purely via env: `MUSE_LOOPBACK_MCP_ENABLED=true` registers the eight default loopback servers as namespaced Muse tools (`muse.time.now`, `muse.fs.read`, …); `MUSE_LOOPBACK_FETCH_HOSTS` and `MUSE_LOOPBACK_FS_ROOTS` add the opt-in fetch and fs servers when their allowlists are supplied. HTTP-verified: tool count jumps from 10 → 32 with the env flags set.
 - `GET /api/jarvis/loopback` exposes the built-in MCP loopback catalog (8 default servers + 2 opt-in) with tool names, risk, opt-in flag, and env-hint requirements so any operator or chat surface can discover what JARVIS-style ambient tools are pluggable without reading source.
 - `createFilesystemMcpServer` adds an opt-in, allowlist-rooted, read-only filesystem loopback MCP server (read/list/stat) for JARVIS-style workspace inspection without giving the agent free disk access. Path resolution rejects sibling-prefix collisions (`/etc` ≠ `/etc-passwd`) and `..` traversal.
 - Plan-execute now streams `plan-generated`, `plan-step-executing`, `plan-step-result`, and `synthesis-started` events so SSE consumers can render reasoning progress; `executePlanExecuteLoop` drains a single `streamPlanExecute` generator (one source of truth for streaming and non-streaming paths).

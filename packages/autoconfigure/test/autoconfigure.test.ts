@@ -48,6 +48,7 @@ import {
 import {
   ConfigurationError,
   createApiServerOptions,
+  createLoopbackMcpToolsFromEnv,
   createMuseRuntimeAssembly,
   parseBoolean,
   parseInteger,
@@ -251,6 +252,56 @@ describe("autoconfigure", () => {
 
   it("fails clearly for required missing variables", () => {
     expect(() => requireEnv({}, "MUSE_REQUIRED")).toThrow(ConfigurationError);
+  });
+
+  it("createLoopbackMcpToolsFromEnv ships nothing by default", () => {
+    expect(createLoopbackMcpToolsFromEnv({})).toEqual([]);
+  });
+
+  it("createLoopbackMcpToolsFromEnv wires the eight default loopback servers when MUSE_LOOPBACK_MCP_ENABLED=true", () => {
+    const tools = createLoopbackMcpToolsFromEnv({ MUSE_LOOPBACK_MCP_ENABLED: "true" });
+    const names = tools.map((tool) => tool.definition.name).sort();
+    // Spot-check three different servers: time, math, regex
+    expect(names).toEqual(expect.arrayContaining(["muse.time.now", "muse.math.evaluate", "muse.regex.match"]));
+    // muse.fetch and muse.fs must NOT appear without their own opt-ins
+    expect(names.some((name) => name.startsWith("muse.fetch."))).toBe(false);
+    expect(names.some((name) => name.startsWith("muse.fs."))).toBe(false);
+  });
+
+  it("createLoopbackMcpToolsFromEnv adds muse.fetch tools when MUSE_LOOPBACK_FETCH_HOSTS is set", () => {
+    const tools = createLoopbackMcpToolsFromEnv({ MUSE_LOOPBACK_FETCH_HOSTS: "api.example.test,backup.example.test" });
+    const names = tools.map((tool) => tool.definition.name).sort();
+    expect(names).toEqual(["muse.fetch.get", "muse.fetch.head"]);
+  });
+
+  it("createLoopbackMcpToolsFromEnv adds muse.fs tools when MUSE_LOOPBACK_FS_ROOTS is set", () => {
+    const tools = createLoopbackMcpToolsFromEnv({ MUSE_LOOPBACK_FS_ROOTS: "/tmp/workspace,/tmp/project" });
+    const names = tools.map((tool) => tool.definition.name).sort();
+    expect(names).toEqual(["muse.fs.list", "muse.fs.read", "muse.fs.stat"]);
+  });
+
+  it("createLoopbackMcpToolsFromEnv composes default + opt-in servers when all three flags are set", () => {
+    const tools = createLoopbackMcpToolsFromEnv({
+      MUSE_LOOPBACK_FETCH_HOSTS: "api.example.test",
+      MUSE_LOOPBACK_FS_ROOTS: "/tmp/workspace",
+      MUSE_LOOPBACK_MCP_ENABLED: "true"
+    });
+    const names = tools.map((tool) => tool.definition.name);
+    expect(names.length).toBeGreaterThan(15);
+    expect(names.some((name) => name === "muse.time.now")).toBe(true);
+    expect(names.some((name) => name === "muse.fetch.get")).toBe(true);
+    expect(names.some((name) => name === "muse.fs.read")).toBe(true);
+  });
+
+  it("createMuseRuntimeAssembly registers env-driven loopback MCP tools in the toolRegistry", () => {
+    const assembly = createMuseRuntimeAssembly({
+      env: {
+        MUSE_LOOPBACK_FS_ROOTS: "/tmp/workspace",
+        MUSE_LOOPBACK_MCP_ENABLED: "true"
+      }
+    });
+    const names = assembly.toolRegistry.list().map((tool) => tool.definition.name);
+    expect(names).toEqual(expect.arrayContaining(["muse.time.now", "muse.fs.read"]));
   });
 });
 

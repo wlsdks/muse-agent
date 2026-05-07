@@ -75,6 +75,11 @@ import {
   KyselyMcpServerStore,
   McpManager,
   McpSecurityPolicyProvider,
+  createDefaultLoopbackMcpServers,
+  createFetchMcpServer,
+  createFilesystemMcpServer,
+  createLoopbackMcpMuseTools,
+  type LoopbackMcpServer,
   type McpSecurityPolicyInput,
   type McpSecurityPolicyStore,
   type McpServerStore
@@ -369,9 +374,11 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   });
   const runnerTools = createRunnerTools(env);
   const jarvisTools = parseBoolean(env.MUSE_JARVIS_TOOLS_ENABLED, true) ? createJarvisTools() : [];
+  const loopbackMcpTools = createLoopbackMcpToolsFromEnv(env);
   let schedulerService: DynamicScheduler | undefined;
   const toolRegistry = new DynamicToolRegistry([
     () => jarvisTools,
+    () => loopbackMcpTools,
     () => runnerTools,
     () => mcpManager.toMuseTools(),
     () => schedulerService ? createSchedulerTools(schedulerService) : []
@@ -1048,6 +1055,42 @@ function createRunnerTools(env: MuseEnvironment): readonly MuseTool[] {
       runnerPath: parseOptionalString(env.MUSE_RUNNER_PATH) ?? "muse-runner"
     })
   ];
+}
+
+/**
+ * Builds the env-driven set of MCP loopback servers operators can plug in
+ * without writing code:
+ *
+ *   - `MUSE_LOOPBACK_MCP_ENABLED=true` registers the eight default ambient
+ *     servers (time/text/math/json/url/crypto/diff/regex) as Muse tools using
+ *     the `<server>.<tool>` namespace.
+ *   - `MUSE_LOOPBACK_FETCH_HOSTS=foo.com,bar.com` adds the opt-in `muse.fetch`
+ *     server bound to that allowlist.
+ *   - `MUSE_LOOPBACK_FS_ROOTS=/abs/path1,/abs/path2` adds the opt-in `muse.fs`
+ *     server bound to those roots (read-only).
+ *
+ * All three are independent: operators can enable any subset. The catalog at
+ * `GET /api/jarvis/loopback` lists what is available regardless of which are
+ * actually wired here.
+ */
+export function createLoopbackMcpToolsFromEnv(env: MuseEnvironment): readonly MuseTool[] {
+  const servers: LoopbackMcpServer[] = [];
+
+  if (parseBoolean(env.MUSE_LOOPBACK_MCP_ENABLED, false)) {
+    servers.push(...createDefaultLoopbackMcpServers());
+  }
+
+  const fetchHosts = parseCsv(env.MUSE_LOOPBACK_FETCH_HOSTS);
+  if (fetchHosts) {
+    servers.push(createFetchMcpServer({ allowedHosts: fetchHosts }));
+  }
+
+  const fsRoots = parseCsv(env.MUSE_LOOPBACK_FS_ROOTS);
+  if (fsRoots) {
+    servers.push(createFilesystemMcpServer({ allowedRoots: fsRoots }));
+  }
+
+  return servers.flatMap((server) => createLoopbackMcpMuseTools(server));
 }
 
 function parseCsv(value: string | undefined): readonly string[] | undefined {
