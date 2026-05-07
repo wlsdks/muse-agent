@@ -829,6 +829,26 @@ try {
       `expected ORCHESTRATION_NOT_FOUND, got ${missingBody.code}`);
   });
 
+  await record("GET /api/multi-agent/orchestrations/stats summarises totals, status split, and per-mode runs", async () => {
+    const list = await fetch(`${baseUrl}/api/multi-agent/orchestrations`).then((response) => response.json());
+    const stats = await fetch(`${baseUrl}/api/multi-agent/orchestrations/stats`).then((response) => response.json());
+    assert(stats.totalRuns === list.total, `expected totalRuns ${list.total}, got ${stats.totalRuns}`);
+    assert(typeof stats.completedRuns === "number" && stats.completedRuns >= 1, "expected at least one completed run");
+    assert(typeof stats.failedRuns === "number" && stats.failedRuns >= 0, "expected non-negative failedRuns");
+    assert(stats.completedRuns + stats.failedRuns === stats.totalRuns, "expected completed + failed to equal totalRuns");
+    assert(stats.byMode && typeof stats.byMode.sequential.runs === "number"
+      && typeof stats.byMode.parallel.runs === "number",
+      `expected byMode { sequential, parallel }, got ${JSON.stringify(stats.byMode)}`);
+    assert(stats.byMode.sequential.runs + stats.byMode.parallel.runs === stats.totalRuns,
+      "expected mode runs to add up to totalRuns");
+    assert(typeof stats.avgDurationMs === "number" && stats.avgDurationMs >= 0, "expected non-negative avgDurationMs");
+    assert(typeof stats.p95DurationMs === "number" && stats.p95DurationMs >= 0, "expected non-negative p95DurationMs");
+    assert(stats.minDurationMs <= stats.avgDurationMs && stats.avgDurationMs <= stats.maxDurationMs,
+      `expected min<=avg<=max, got ${stats.minDurationMs}/${stats.avgDurationMs}/${stats.maxDurationMs}`);
+    assert(stats.lastRunAt && typeof stats.lastRunAt === "string" && stats.lastRunAt.endsWith("Z"),
+      `expected ISO lastRunAt, got ${stats.lastRunAt}`);
+  });
+
   await record("POST /api/chat with metadata.agentMode=plan_execute", async () => {
     const response = await fetch(`${baseUrl}/api/chat`, {
       body: JSON.stringify({

@@ -74,6 +74,10 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
     };
   });
 
+  server.get("/api/multi-agent/orchestrations/stats", async () => {
+    return historyStore.summary();
+  });
+
   server.get("/api/multi-agent/orchestrations/:runId", async (request, reply) => {
     const { runId } = request.params as { readonly runId: string };
 

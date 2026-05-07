@@ -71,6 +71,59 @@ describe("InMemoryOrchestrationHistoryStore", () => {
     expect(store.getByRunId("alpha")?.runId).toBe("alpha");
     expect(store.getByRunId("missing")).toBeUndefined();
   });
+
+  it("summary() returns zeros when the buffer is empty", () => {
+    const store = new InMemoryOrchestrationHistoryStore();
+    expect(store.summary()).toEqual({
+      avgDurationMs: 0,
+      byMode: {
+        parallel: { avgDurationMs: 0, runs: 0 },
+        sequential: { avgDurationMs: 0, runs: 0 }
+      },
+      completedRuns: 0,
+      failedRuns: 0,
+      lastRunAt: null,
+      maxDurationMs: 0,
+      minDurationMs: 0,
+      p95DurationMs: 0,
+      totalRuns: 0
+    });
+  });
+
+  it("summary() aggregates totals, status split, durations, and per-mode runs", () => {
+    const store = new InMemoryOrchestrationHistoryStore();
+    function record(runId: string, durationMs: number, status: "completed" | "failed", mode: "sequential" | "parallel", finishedMs: number): void {
+      const startedAt = new Date(finishedMs - durationMs);
+      const finishedAt = new Date(finishedMs);
+      store.record({
+        completedCount: status === "completed" ? 1 : 0,
+        durationMs,
+        failedCount: status === "completed" ? 0 : 1,
+        finishedAt,
+        mode,
+        runId,
+        startedAt,
+        status,
+        workerCount: 1
+      });
+    }
+    record("a", 100, "completed", "sequential", 1_000);
+    record("b", 200, "completed", "parallel", 2_000);
+    record("c", 300, "failed", "sequential", 3_000);
+    record("d", 400, "completed", "parallel", 4_000);
+
+    const summary = store.summary();
+    expect(summary.totalRuns).toBe(4);
+    expect(summary.completedRuns).toBe(3);
+    expect(summary.failedRuns).toBe(1);
+    expect(summary.minDurationMs).toBe(100);
+    expect(summary.maxDurationMs).toBe(400);
+    expect(summary.avgDurationMs).toBe(250);
+    expect(summary.byMode.sequential).toEqual({ avgDurationMs: 200, runs: 2 });
+    expect(summary.byMode.parallel).toEqual({ avgDurationMs: 300, runs: 2 });
+    expect(summary.lastRunAt).toBe(new Date(4_000).toISOString());
+    expect(summary.p95DurationMs).toBe(400);
+  });
 });
 
 describe("MultiAgentOrchestrator history recording", () => {

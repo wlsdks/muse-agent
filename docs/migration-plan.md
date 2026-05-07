@@ -296,6 +296,18 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- multi-agent orchestration stats endpoint (iteration 37). New
+  `OrchestrationHistorySummary` type + `OrchestrationHistoryStore.summary()`
+  method aggregate the in-memory ring buffer into totals (totalRuns,
+  completedRuns, failedRuns), duration stats (min/avg/p95/max), per-mode
+  runs (sequential / parallel) with per-mode avg duration, and
+  `lastRunAt` ISO timestamp. Empty store returns the zero summary; non-
+  empty store rounds duration averages and uses ceil(0.95*N)-1 indexing
+  for p95. New `GET /api/multi-agent/orchestrations/stats` route — registered
+  before the `:runId` parameter route so static segment precedence wins.
+  Multi-agent suite 27 → 29 (+2 unit tests covering empty + multi-entry
+  aggregation), broad smoke 45 → 46 with totals/min<=avg<=max/per-mode
+  invariants, Muse routes 377 → 378, route parity 0 missing.
 - seventh loopback MCP server `muse.diff` ships by default (iteration 36).
   Two new tools: `lines` (line-level diff via deterministic
   Longest-Common-Subsequence backtrack, returns ordered `{kind, line,

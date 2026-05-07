@@ -9,7 +9,8 @@ export { InMemoryAgentMessageBus } from "./agent-message-bus.js";
 export type {
   InMemoryOrchestrationHistoryStoreOptions,
   OrchestrationHistoryEntry,
-  OrchestrationHistoryStore
+  OrchestrationHistoryStore,
+  OrchestrationHistorySummary
 } from "./orchestration-history.js";
 export { InMemoryOrchestrationHistoryStore } from "./orchestration-history.js";
 

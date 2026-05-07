@@ -26,10 +26,26 @@ export interface OrchestrationHistoryEntry {
   readonly conversation?: readonly AgentMessage[];
 }
 
+export interface OrchestrationHistorySummary {
+  readonly totalRuns: number;
+  readonly completedRuns: number;
+  readonly failedRuns: number;
+  readonly avgDurationMs: number;
+  readonly p95DurationMs: number;
+  readonly minDurationMs: number;
+  readonly maxDurationMs: number;
+  readonly lastRunAt: string | null;
+  readonly byMode: {
+    readonly sequential: { readonly runs: number; readonly avgDurationMs: number };
+    readonly parallel: { readonly runs: number; readonly avgDurationMs: number };
+  };
+}
+
 export interface OrchestrationHistoryStore {
   record(entry: OrchestrationHistoryEntry): void;
   list(limit?: number): readonly OrchestrationHistoryEntry[];
   getByRunId(runId: string): OrchestrationHistoryEntry | undefined;
+  summary(): OrchestrationHistorySummary;
   clear(): void;
 }
 
@@ -80,6 +96,62 @@ export class InMemoryOrchestrationHistoryStore implements OrchestrationHistorySt
 
   getByRunId(runId: string): OrchestrationHistoryEntry | undefined {
     return this.entries.find((entry) => entry.runId === runId);
+  }
+
+  summary(): OrchestrationHistorySummary {
+    if (this.entries.length === 0) {
+      return {
+        avgDurationMs: 0,
+        byMode: {
+          parallel: { avgDurationMs: 0, runs: 0 },
+          sequential: { avgDurationMs: 0, runs: 0 }
+        },
+        completedRuns: 0,
+        failedRuns: 0,
+        lastRunAt: null,
+        maxDurationMs: 0,
+        minDurationMs: 0,
+        p95DurationMs: 0,
+        totalRuns: 0
+      };
+    }
+
+    const completed = this.entries.filter((entry) => entry.status === "completed").length;
+    const sequential = this.entries.filter((entry) => entry.mode === "sequential");
+    const parallel = this.entries.filter((entry) => entry.mode === "parallel");
+    const sortedDurations = [...this.entries.map((entry) => entry.durationMs)].sort((a, b) => a - b);
+    const p95Index = Math.min(sortedDurations.length - 1, Math.ceil(0.95 * sortedDurations.length) - 1);
+    const totalDuration = sortedDurations.reduce((sum, value) => sum + value, 0);
+    const lastRunAt = this.entries
+      .map((entry) => entry.finishedAt.getTime())
+      .reduce((max, current) => (current > max ? current : max), 0);
+
+    return {
+      avgDurationMs: Math.round(totalDuration / sortedDurations.length),
+      byMode: {
+        parallel: {
+          avgDurationMs:
+            parallel.length === 0
+              ? 0
+              : Math.round(parallel.reduce((sum, entry) => sum + entry.durationMs, 0) / parallel.length),
+          runs: parallel.length
+        },
+        sequential: {
+          avgDurationMs:
+            sequential.length === 0
+              ? 0
+              : Math.round(sequential.reduce((sum, entry) => sum + entry.durationMs, 0) / sequential.length),
+          runs: sequential.length
+        }
+      },
+      completedRuns: completed,
+      failedRuns: this.entries.length - completed,
+      lastRunAt: new Date(lastRunAt).toISOString(),
+      maxDurationMs: sortedDurations[sortedDurations.length - 1] ?? 0,
+      minDurationMs: sortedDurations[0] ?? 0,
+      p95DurationMs: sortedDurations[p95Index] ?? 0,
+      totalRuns: this.entries.length
+    };
   }
 
   clear(): void {
