@@ -296,6 +296,31 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- product-specific Korean enterprise filters removed (iteration 58). Three
+  surfaces in response-filters.ts had hardcoded Atlassian/Korean enterprise
+  carryover that delivered no value to an open-source operator base:
+  * **`createPolicyStrongPriorWarningFilter` deleted entirely.** Hardcoded
+    Korean disclaimer: ":warning: 위 내용은 사내 Confluence 문서에서 확인된
+    정보가 아닙니다. 실제 사내 규정은 Confluence 또는 인사팀에 직접 확인해
+    주세요." Triggered on Korean HR policy keywords (휴가, 연차, 출산휴가, …)
+    when the response cited generic priors and no `confluence_*` tool was
+    used. The disclaimer + the `https://*.atlassian.net/wiki/` URL detection
+    were both Korean-HR + Atlassian-coupled. Anyone needing similar guidance
+    can register their own response filter.
+  * **`createReleaseRiskDataGapResponseFilter` deleted entirely.** Hardcoded
+    Korean caution: "Bitbucket 데이터 집계 경고가 있어 전체 릴리스 위험도는
+    확정하지 않습니다." Gated on `work_release_risk_digest` tool name —
+    a Reactor-specific composite tool. Zero value to a generic Muse user.
+  * **Atlassian work-lure patterns removed from `createCasualLureStripResponseFilter`.**
+    Nine `workLurePatterns` referencing 지라/jira, 컨플루언스/confluence,
+    비트버킷/bitbucket, 이슈, 문서, PR, 티켓 dropped. The filter now only
+    strips the trailing-pleasantry `lurePatterns` (generic Korean closing
+    phrases like 도와드릴까요, 궁금하시면 등) — those are useful for any
+    Korean operator, not Atlassian-specific.
+  autoconfigure wiring + 3 obsolete unit tests removed (1 PolicyStrong
+  prior-warning, 1 PolicyStrong-with-Confluence-tool, 1 release-risk
+  digest). agent-core tests 219 → 216; pnpm check green; broad smoke
+  49/49; live smoke 8/8; route parity 0 missing.
 - tool-output evidence i18n + Atlassian carryover removed (iteration 57).
   Two product-specific carryovers cleaned up:
   * `synthesizeLinklessSource` previously emitted hardcoded

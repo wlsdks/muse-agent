@@ -455,17 +455,6 @@ export function createCasualLureStripResponseFilter(): ResponseFilterStage {
     /(\n+|(?<=[.!?])\s+)(예를\s*들어\s+)?(\*\*)?\s*(?:[\p{So}\p{Sk}]{0,3}\s*)?(함께|이렇게|이런\s*건|이런\s*걸|이런\s*것들?|이런\s*질문|아래처럼|궁금하신|궁금한|다음에\s*\S{1,6}|추가로|도움이\s*필요|어떤|오늘의)[^\n]{0,40}(볼까요|어떠세요|해\s*보세요|활용해\s*보세요|있나요|있으신가요|물어보세요|물어보셔도|물어보실\s*수\s*있어요|도와드릴까요|좋아요|하신가요|하실까요|수\s*있어요|보세요|드릴까요|골라주세요)[?!.:]\s*(\*\*)?\s+((\s*[*\-0-9.][^\n]*|\s*["'][^\n]*)\n?){2,}$/su;
   const quotedBulletTailPattern = /\n\n+([^\n]{0,80}\n)?(\s*[*\-]\s*[*`]*["'][^\n]*\n?){2,}$/su;
   const trailingSymbolPattern = /[\p{So}\p{Sk}\p{Sc}\s~*_:)(-]+$/u;
-  const workLurePatterns = [
-    /(지라|jira|컨플루언스|confluence|비트버킷|bitbucket)[^\n]*?(확인|조회|검색|요약|정리|찾|알려)/i,
-    /업무[^\n]*?(이슈|문서|PR|티켓)[^\n]*?(확인|검색|조회)/,
-    /(이슈|문서|티켓|PR)\s*(확인|검색|조회)[^\n]{0,20}(나|이나)[^\n]{0,30}(문서|이슈|PR)\s*(검색|확인|조회)/,
-    /(도와드릴|해드릴|챙겨드릴|추가로\s*도와드릴|살펴\s*드릴|필요하신|필요한|알려드릴|궁금하신)[^\n]{0,30}(지라|jira|컨플루언스|confluence|비트버킷|bitbucket|이슈|문서|PR|티켓)/i,
-    /업무\s*(조회|정리|확인|검색|요약|지원|관리|처리)/i,
-    /도움이\s*필요(하신|하실|한|하시?면)?[^\n]{0,30}(업무|이슈|문서|PR|티켓|있으신가요|있으시면|하시면|말씀해|말해|언제든|물어봐|문의)/i,
-    /(이슈|문서|PR|티켓|프로젝트)[^\n]{0,20}(궁금하신가요|궁금하시면|필요하신가요|필요하시면|있으신가요|있으시면|있나요|없나요|챙겨야)/i,
-    /(혹시|만약)[^\n]{0,40}(있다면|있으시면|필요하시면|있으면)[^\n]{0,40}(말씀해|알려|얘기해|들려|문의)/i,
-    /(무엇을|어떤\s*걸|뭘|어떤\s*업무를)\s*도와드릴까요/i
-  ];
   const lurePatterns = [
     /(도와드릴|찾아드릴|정리해\s*드릴|보여드릴|확인해\s*드릴|알려\s*드릴|봐드릴|체크해\s*드릴|브리핑해\s*드릴|요약해\s*드릴).{0,120}[?!.]\s*\$?\s*$/s,
     /혹시.{0,60}(필요하시?면|있으시?면|있을까요).{0,80}[?!.]\s*\$?\s*$/s,
@@ -505,8 +494,7 @@ export function createCasualLureStripResponseFilter(): ResponseFilterStage {
         return response;
       }
 
-      const withoutWorkLure = sentences.filter((sentence) => !workLurePatterns.some((pattern) => pattern.test(sentence)));
-      const remaining = [...withoutWorkLure];
+      const remaining = [...sentences];
       let dropCount = 0;
 
       while (remaining.length > 0 && dropCount < 3) {
@@ -628,57 +616,6 @@ export function createEnglishCasualLureStripResponseFilter(): ResponseFilterStag
   };
 }
 
-export function createPolicyStrongPriorWarningFilter(): ResponseFilterStage {
-  const disclaimer =
-    ":warning: *참고*: 위 내용은 사내 Confluence 문서에서 확인된 정보가 아닙니다. " +
-    "실제 사내 규정은 Confluence 또는 인사팀에 직접 확인해 주세요.";
-  const policyQueryPattern =
-    /휴가|연차|반차|병가|경조사|출산휴가|육아휴직|재택근무|야근|수당|급여|상여금|명절|떡값|출장비|경비|정산|근태|복리후생|복지|사내\s*정책|회사\s*정책|규정|가이드라인|인사\s*규정|취업\s*규칙|윤리|컴플라이언스/i;
-  const genericFallbackPatterns = [
-    /회사마다\s*다를?/,
-    /회사마다\s*달라/,
-    /근로기준법(에|상|\s*에\s*따르면|\s*에\s*따라)/,
-    /고용보험법(에|상|\s*에\s*따르면|\s*에\s*따라)/,
-    /법적으로|법에\s*따라|법\s*상/,
-    /보통\s*회사들은/,
-    /일반적으로\s*(회사|기업|정책|\d|수당|휴가)/,
-    /기본적으로\s*\d+\s*일/,
-    /\d+\s*일까지\s*(사용|쓸\s*수)/,
-    /\d+\s*일\s*이상은?\s*출산\s*후에/
-  ];
-  const confluenceUrlPattern = /https?:\/\/[^\s]*\.atlassian\.net\/wiki\//i;
-
-  return {
-    apply: (response, context) => {
-      if (response.output.trim().length < 20) {
-        return response;
-      }
-
-      const userPrompt = joinUserMessages(context.input.messages);
-
-      if (!policyQueryPattern.test(userPrompt)) {
-        return response;
-      }
-      if (!genericFallbackPatterns.some((pattern) => pattern.test(response.output))) {
-        return response;
-      }
-      if ((context.toolsUsed ?? []).some((tool) => tool.startsWith("confluence_"))) {
-        return response;
-      }
-      if (confluenceUrlPattern.test(response.output)) {
-        return response;
-      }
-
-      return {
-        ...response,
-        output: `${response.output.trimEnd()}\n\n${disclaimer}`,
-        raw: withResponseFilterRaw(response, "policy-strong-prior-warning-filter")
-      };
-    },
-    id: "policy-strong-prior-warning-filter"
-  };
-}
-
 export function createZeroResultOverclaimResponseFilter(): ResponseFilterStage {
   const zeroResultPattern = /(0\s*건|검색 결과 0건|조회된 이슈가 없어|이슈는 없습니다|이슈가 없습니다)/i;
   const overclaimPattern =
@@ -755,60 +692,8 @@ export function createStructuredOutputResponseFilter(options: {
   };
 }
 
-export function createReleaseRiskDataGapResponseFilter(): ResponseFilterStage {
-  const cautionMessage = "Bitbucket 데이터 집계 경고가 있어 전체 릴리스 위험도는 확정하지 않습니다.";
-  const dataGapPattern =
-    /(Bitbucket|비트버킷)[^\n.]*(집계|데이터|조회)[^\n.]*(실패|경고|문제|오류)|(실패|경고|문제|오류)[^\n.]*(Bitbucket|비트버킷)[^\n.]*(집계|데이터|조회)/i;
-  const overconfidentRiskPattern =
-    /(위험(?:도|도가| 점수)?[^\n.]*(?:낮|0\s*점)|위험\s*수준[^\n.]*(?:낮|low)|특별한\s*위험\s*신호[^\n.]*(?:없|감지되지)|심각한\s*위험\s*신호[^\n.]*(?:없|감지되지)|Jira\s*이슈와\s*Bitbucket\s*PR\s*활동[^\n.]*(?:없|없는)|특이사항[^\n.]*(?:없|발견되지)[^\n.]*(?:큰\s*문제|문제\s*없)|경고[^\n.]*(?:전체\s*)?위험도[^\n.]*(?:영향을?\s*미치지\s*않|영향\s*없)|릴리스\s*준비[^\n.]*(?:완료|끝)|(?:계획된\s*)?릴리스\s*체크리스트[^\n.]*(?:진행|계속)|전반적인\s*위험도[^\n.]*(?:낮음|low))/i;
-  const cautionPattern = /전체\s*릴리스\s*위험도는\s*확정하지\s*않|release\s*risk[^\n.]*not\s*conclusive/i;
-
-  return {
-    apply: (response, context) => {
-      if (!(context.toolsUsed ?? []).includes("work_release_risk_digest")) {
-        return response;
-      }
-      if (!dataGapPattern.test(response.output) || !overconfidentRiskPattern.test(response.output)) {
-        return response;
-      }
-
-      const output = response.output
-        .split("\n")
-        .map((line) => removeOverconfidentReleaseFragments(line, overconfidentRiskPattern))
-        .filter((line) => line.trim().length > 0)
-        .join("\n")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-
-      if (output.length === 0) {
-        return response;
-      }
-
-      const finalOutput = cautionPattern.test(output) ? output : `${cautionMessage}\n\n${output}`;
-
-      return {
-        ...response,
-        output: finalOutput,
-        raw: withResponseFilterRaw(response, "release-risk-data-gap-response-filter")
-      };
-    },
-    id: "release-risk-data-gap-response-filter"
-  };
-}
-
 function readStructuredOutputFormat(value: unknown): StructuredOutputFormat | undefined {
   return value === "json" || value === "yaml" ? value : undefined;
-}
-
-function removeOverconfidentReleaseFragments(line: string, pattern: RegExp): string {
-  if (!pattern.test(line)) {
-    return line;
-  }
-
-  const indent = line.match(/^\s*/)?.[0] ?? "";
-  const fragments = line.trim().split(/(?<=[.!?])\s+/).filter((fragment) => fragment.trim().length > 0);
-  const kept = fragments.filter((fragment) => !pattern.test(fragment));
-  return kept.length === 0 ? "" : `${indent}${kept.join(" ")}`;
 }
 
 export function createToolResultQualityAuditFilter(): ResponseFilterStage {

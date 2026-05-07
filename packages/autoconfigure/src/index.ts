@@ -11,8 +11,6 @@ import {
   createMaxLengthResponseFilter,
   createPiiInputGuard,
   createPiiMaskingOutputGuard,
-  createPolicyStrongPriorWarningFilter,
-  createReleaseRiskDataGapResponseFilter,
   createResponseCountConsistencyFilter,
   createResponseCountInjectionFilter,
   createSanitizedTextResponseFilter,
@@ -999,9 +997,6 @@ function createResponseFilters(env: MuseEnvironment) {
     ...(parseBoolean(env.MUSE_RESPONSE_FABRICATION_REFUSAL_ENABLED, true)
       ? [createFabricationRequestRefusalFilter()]
       : []),
-    ...(parseBoolean(env.MUSE_RESPONSE_POLICY_STRONG_PRIOR_WARNING_ENABLED, true)
-      ? [createPolicyStrongPriorWarningFilter()]
-      : []),
     ...(parseBoolean(env.MUSE_RESPONSE_SOURCE_FILTER_ENABLED, true)
       ? [createSourceBlockResponseFilter()]
       : []),
@@ -1019,9 +1014,6 @@ function createResponseFilters(env: MuseEnvironment) {
       : []),
     ...(parseBoolean(env.MUSE_RESPONSE_ZERO_RESULT_OVERCLAIM_FILTER_ENABLED, true)
       ? [createZeroResultOverclaimResponseFilter()]
-      : []),
-    ...(parseBoolean(env.MUSE_RESPONSE_RELEASE_RISK_DATA_GAP_FILTER_ENABLED, true)
-      ? [createReleaseRiskDataGapResponseFilter()]
       : []),
     ...(parseBoolean(env.MUSE_RESPONSE_STRUCTURED_OUTPUT_FILTER_ENABLED, true)
       ? [createStructuredOutputResponseFilter()]

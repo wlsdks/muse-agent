@@ -22,8 +22,6 @@ import {
   createPiiInputGuard,
   createPiiMaskingOutputGuard,
   createDynamicOutputGuardRuleStage,
-  createPolicyStrongPriorWarningFilter,
-  createReleaseRiskDataGapResponseFilter,
   createResponseCountConsistencyFilter,
   createResponseCountInjectionFilter,
   createSanitizedTextResponseFilter,
@@ -1544,62 +1542,6 @@ describe("AgentRuntime", () => {
     expect(result.response.output).not.toContain("임의로 만든");
   });
 
-  it("adds a warning when policy answers rely on generic prior without Confluence tools", async () => {
-    const runtime = createAgentRuntime({
-      modelProvider: createProvider({
-        output: "출산휴가는 근로기준법에 따르면 기본적으로 90일까지 사용할 수 있어요."
-      }),
-      responseFilters: [createPolicyStrongPriorWarningFilter()]
-    });
-
-    const result = await runtime.run({
-      messages: [{ content: "출산휴가 며칠까지 가능해?", role: "user" }],
-      model: "provider/model"
-    });
-
-    expect(result.response.output).toContain(":warning:");
-    expect(result.response.output).toContain("Confluence");
-  });
-
-  it("does not add policy prior warnings when Confluence tools were used", async () => {
-    const toolRegistry = new ToolRegistry([
-      {
-        definition: {
-          description: "Answers from Confluence.",
-          inputSchema: { type: "object" },
-          name: "confluence_answer_question",
-          risk: "read"
-        },
-        execute: () => ({ answer: "policy" })
-      }
-    ]);
-    const runtime = createAgentRuntime({
-      maxToolCalls: 1,
-      modelProvider: createSequenceProvider([
-        {
-          id: "tool",
-          model: "test-model",
-          output: "도구 호출",
-          toolCalls: [{ arguments: {}, id: "tool-1", name: "confluence_answer_question" }]
-        },
-        {
-          id: "final",
-          model: "test-model",
-          output: "경조사 휴가는 회사마다 다를 수 있어요. 확인 부탁드려요."
-        }
-      ]),
-      responseFilters: [createPolicyStrongPriorWarningFilter()],
-      toolRegistry
-    });
-
-    const result = await runtime.run({
-      messages: [{ content: "경조사 휴가 며칠?", role: "user" }],
-      model: "provider/model"
-    });
-
-    expect(result.response.output).toBe("경조사 휴가는 회사마다 다를 수 있어요. 확인 부탁드려요.");
-  });
-
   it("removes zero-result overclaims when workspace tools were used", async () => {
     const toolRegistry = new ToolRegistry([
       {
@@ -1900,52 +1842,6 @@ describe("AgentRuntime", () => {
     });
 
     expect(result.response.output).toBe("감사하다고 전할게요.");
-  });
-
-  it("removes overconfident release-risk claims when source data has gaps", async () => {
-    const toolRegistry = new ToolRegistry([
-      {
-        definition: {
-          description: "Builds release risk digest.",
-          inputSchema: { type: "object" },
-          name: "work_release_risk_digest",
-          risk: "read"
-        },
-        execute: () => ({ warning: "Bitbucket aggregation failed" })
-      }
-    ]);
-    const runtime = createAgentRuntime({
-      maxToolCalls: 1,
-      modelProvider: createSequenceProvider([
-        {
-          id: "tool",
-          model: "test-model",
-          output: "도구 호출",
-          toolCalls: [{ arguments: {}, id: "tool-1", name: "work_release_risk_digest" }]
-        },
-        {
-          id: "final",
-          model: "test-model",
-          output: [
-            "DEV 릴리스의 전반적인 위험도는 낮음으로 평가되었습니다.",
-            "Bitbucket 릴리스 위험 데이터를 집계하는 데 실패했다는 경고가 있었습니다.",
-            "Confluence 문서 10건이 검색되었습니다."
-          ].join("\n")
-        }
-      ]),
-      responseFilters: [createReleaseRiskDataGapResponseFilter()],
-      toolRegistry
-    });
-
-    const result = await runtime.run({
-      messages: [{ content: "release risk 정리", role: "user" }],
-      model: "provider/model"
-    });
-
-    expect(result.response.output).toContain("전체 릴리스 위험도는 확정하지 않습니다");
-    expect(result.response.output).toContain("Bitbucket 릴리스 위험 데이터를 집계");
-    expect(result.response.output).toContain("Confluence 문서 10건");
-    expect(result.response.output).not.toContain("전반적인 위험도는 낮음");
   });
 
   it("records spans and metrics around a successful run", async () => {
