@@ -244,7 +244,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     return options.historyStore.listRunsByUser(userId);
   });
 
-  server.get("/admin/runs/:runId", async (request, reply) => {
+  const findRunDetail = async (request: unknown, reply: { status(statusCode: number): { send(payload: unknown): void } }, runId: string) => {
     if (!authorizeAdmin(request, reply, Boolean(authService))) {
       return reply;
     }
@@ -256,7 +256,6 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       });
     }
 
-    const { runId } = request.params as { readonly runId: string };
     const run = await options.historyStore.findRun(runId);
 
     if (!run) {
@@ -271,6 +270,47 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       options.historyStore.listToolCalls(runId)
     ]);
     return { messages, run, toolCalls };
+  };
+
+  server.get("/admin/runs/:runId", async (request, reply) => {
+    return findRunDetail(request, reply, (request.params as { readonly runId: string }).runId);
+  });
+
+  server.get("/api/admin/runs/:runId", async (request, reply) => {
+    return findRunDetail(request, reply, (request.params as { readonly runId: string }).runId);
+  });
+
+  server.get("/api/admin/runs", async (request, reply) => {
+    if (!authorizeAdmin(request, reply, Boolean(authService))) {
+      return reply;
+    }
+
+    if (!options.historyStore) {
+      return reply.status(404).send({
+        code: "RUN_HISTORY_UNAVAILABLE",
+        message: "Run history store is not configured"
+      });
+    }
+
+    const limitRaw = (request.query as { readonly limit?: string } | undefined)?.limit;
+    let limit: number | undefined;
+
+    if (limitRaw !== undefined) {
+      const parsed = Number.parseInt(limitRaw, 10);
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 1_000) {
+        return reply.status(400).send({
+          code: "INVALID_LIMIT",
+          message: "limit must be an integer between 0 and 1000"
+        });
+      }
+      limit = parsed;
+    }
+
+    const runs = await options.historyStore.listRuns(limit !== undefined ? { limit } : {});
+    return {
+      entries: runs.map(toAdminRunSummary),
+      total: runs.length
+    };
   });
 
   registerSchedulerRoutes(server, {

@@ -296,6 +296,18 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- agent-run history surfaced over HTTP (iteration 41). The historyStore
+  was previously only reachable through the prefix-less `/admin/runs/:runId`
+  endpoint. New `GET /api/admin/runs` lists recent runs with optional
+  `?limit=N` (1..1000, structured 400 INVALID_LIMIT on bad input),
+  returning `{ entries: [{ id, inputPreview, model, provider, status }],
+  total }`. New `GET /api/admin/runs/:runId` aliases the legacy detail
+  route under the standard `/api/admin/...` prefix and returns
+  `{ run, messages, toolCalls }` with 404 RUN_NOT_FOUND on miss. Both
+  enforce admin authorization. Two new HTTP smoke checks validate the
+  list shape, ?limit= and bad-limit branches, drill-down round-trip,
+  and the missing-runId 404. Smoke 46 → 48, Muse routes 378 → 380,
+  route parity 0 missing.
 - agent-core monolith split crosses the 50% threshold (iteration 40).
   Four public types (`UserMemorySnapshot`, `UserMemoryProvider`,
   `UserMemoryInjectionOptions`, `AgentContextWindowReport`) moved to

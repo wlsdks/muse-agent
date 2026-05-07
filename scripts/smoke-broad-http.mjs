@@ -866,6 +866,42 @@ try {
       `expected ISO lastRunAt, got ${stats.lastRunAt}`);
   });
 
+  await record("GET /api/admin/runs lists recent agent runs", async () => {
+    const response = await fetch(`${baseUrl}/api/admin/runs`);
+    assert(response.status === 200, `expected 200, got ${response.status}`);
+    const body = await response.json();
+    assert(Array.isArray(body.entries), "expected entries array");
+    assert(typeof body.total === "number", "expected total number");
+    assert(body.total >= 1, `expected at least one run from prior smoke chat, got ${body.total}`);
+    for (const entry of body.entries.slice(0, 3)) {
+      assert(typeof entry.id === "string" && entry.id.length > 0, "expected id string");
+      assert(typeof entry.inputPreview === "string", "expected inputPreview string");
+      assert(typeof entry.model === "string", "expected model string");
+    }
+
+    const limited = await fetch(`${baseUrl}/api/admin/runs?limit=2`).then((response) => response.json());
+    assert(limited.entries.length <= 2, `expected at most 2 entries, got ${limited.entries.length}`);
+
+    const bad = await fetch(`${baseUrl}/api/admin/runs?limit=abc`);
+    assert(bad.status === 400, `expected 400 on bad limit, got ${bad.status}`);
+  });
+
+  await record("GET /api/admin/runs/:runId returns the run detail with messages + toolCalls", async () => {
+    const list = await fetch(`${baseUrl}/api/admin/runs?limit=1`).then((response) => response.json());
+    const target = list.entries[0];
+    assert(target && typeof target.id === "string", "expected at least one run to drill into");
+
+    const detail = await fetch(`${baseUrl}/api/admin/runs/${encodeURIComponent(target.id)}`).then((response) => response.json());
+    assert(detail.run && detail.run.id === target.id, `expected run.id ${target.id}`);
+    assert(Array.isArray(detail.messages), "expected messages array");
+    assert(Array.isArray(detail.toolCalls), "expected toolCalls array");
+
+    const missing = await fetch(`${baseUrl}/api/admin/runs/run-not-real-1234`);
+    assert(missing.status === 404, `expected 404 for missing runId, got ${missing.status}`);
+    const missingBody = await missing.json();
+    assert(missingBody.code === "RUN_NOT_FOUND", `expected RUN_NOT_FOUND, got ${missingBody.code}`);
+  });
+
   await record("POST /api/chat with metadata.agentMode=plan_execute", async () => {
     const response = await fetch(`${baseUrl}/api/chat`, {
       body: JSON.stringify({
