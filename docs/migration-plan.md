@@ -296,6 +296,20 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- multi-provider live-smoke harness (iteration 61, weakness #3 from final
+  audit). The existing `smoke:live` picks the first available provider key
+  and runs the full 8-check suite. The new `pnpm smoke:live:all` does the
+  complementary pass: detects every available key (`GEMINI_API_KEY`,
+  `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) and runs a focused 4-check core
+  suite against each in turn — so an operator with all three keys can
+  confirm Muse works end-to-end against Gemini, Anthropic, and OpenAI in
+  one command. Per-provider checks: chat direct answer, chat stream SSE,
+  strict tool-call loop (toolsUsed=time_now + weekday content), and the
+  input-guard injection block (no model call cost, just confirms the
+  guard wiring fires before the LLM). Skips gracefully with exit 0 when
+  no keys are present. Verified live: 4/4 against gemini-2.0-flash.
+  pnpm check green; broad smoke 49/49; smoke:live 8/8; route parity 0
+  missing.
 - fabrication-refusal + zero-result-overclaim made options-driven (iteration 60).
   Two more filters that had Korean+Atlassian carryover now accept config:
   * `createFabricationRequestRefusalFilter({ inventTerms?, missingTerms?,
