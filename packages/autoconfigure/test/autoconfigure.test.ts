@@ -188,6 +188,28 @@ describe("autoconfigure", () => {
     });
   });
 
+  it("threads token usage from agent runs into the assembled tokenUsageSink", async () => {
+    const assembly = createMuseRuntimeAssembly({
+      env: {
+        MUSE_MODEL: "diagnostic/smoke",
+        MUSE_MODEL_PROVIDER_ID: "diagnostic"
+      }
+    });
+
+    await assembly.agentRuntime?.run({
+      messages: [{ content: "first run", role: "user" }],
+      model: "diagnostic/smoke",
+      runId: "run-token-usage-1"
+    });
+
+    const sink = assembly.observability.tokenUsageSink as { list?(): readonly { readonly runId: string; readonly totalTokens: number }[] };
+    expect(typeof sink.list).toBe("function");
+    const events = sink.list!();
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0]).toMatchObject({ runId: "run-token-usage-1" });
+    expect(events[0]?.totalTokens).toBeGreaterThan(0);
+  });
+
   it("adds the Rust runner tool only when explicitly enabled", () => {
     const disabled = createMuseRuntimeAssembly({ env: {} });
     const enabled = createMuseRuntimeAssembly({

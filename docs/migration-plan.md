@@ -90,6 +90,7 @@ route state and runtime services onto Kysely-backed stores.
 
 ## Recent Completion Notes
 
+- Token usage is now actually recorded: `createAgentRuntime` in autoconfigure was missing the `tokenUsageSink` wire-through, so every `/api/admin/token-cost/*` endpoint and the `tokenCost` slot of `/api/admin/jarvis/snapshot` had been silently empty. Fixed via one-line plumbing plus a `pnpm smoke:broad` upgrade that now asserts `daily`, `top-expensive`, and `by-session?runId=smoke-broad-chat` actually return populated rows after the earlier chat call.
 - Multi-agent orchestrator gained a `race` mode that resolves with the first successfully-completing worker (other workers continue in the background but their outcomes are dropped). The HTTP route, history stats `byMode`, and `pnpm smoke:broad` all extend cleanly; `NoAgentWorkerError` still fires when every worker fails.
 - DiagnosticModelProvider now also emits a single-step plan calling `time_now` when that tool appears in `[Available Tools]`, so `pnpm smoke:broad` exercises the full plan-execute streaming sequence end-to-end (`plan_generated` → `plan_step_executing` → `plan_step_result` → `synthesis_started` → `done`) without a real LLM.
 - DiagnosticModelProvider now recognizes the planning prompt shape and returns `[]`, which makes plan-execute fall back to the direct-answer synthesis path. `pnpm smoke:broad` gained a /chat/stream check that asserts `plan_generated` + `synthesis_started` SSE events fire end-to-end without needing a real LLM, closing the verification gap from iteration #64.

@@ -408,6 +408,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
         initialDelayMs: parseInteger(env.MUSE_RETRY_INITIAL_DELAY_MS, 100),
         maxAttempts: parseInteger(env.MUSE_RETRY_MAX_ATTEMPTS, 3)
       },
+      tokenUsageSink,
       tracer,
       toolRegistry,
       userMemoryProvider: parseBoolean(env.MUSE_USER_MEMORY_INJECTION, true)

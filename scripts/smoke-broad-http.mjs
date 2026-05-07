@@ -119,18 +119,41 @@ try {
     assert(Array.isArray(body), "expected array");
   });
 
-  await record("GET /api/admin/token-cost/daily", async () => {
+  await record("GET /api/admin/token-cost/daily reflects the smoke chat usage", async () => {
     const response = await fetch(`${baseUrl}/api/admin/token-cost/daily`);
     assert(response.status === 200, `expected 200, got ${response.status}`);
     const body = await response.json();
     assert(Array.isArray(body), "expected array");
+    assert(
+      body.length > 0,
+      "expected at least one daily entry after the earlier /api/chat call (token-usage sink must be wired into the agent runtime)"
+    );
+    const entry = body[0];
+    assert(typeof entry.totalTokens === "number" && entry.totalTokens > 0, "expected positive totalTokens in daily aggregate");
+    assert(typeof entry.day === "string", "expected day string");
   });
 
-  await record("GET /api/admin/token-cost/top-expensive", async () => {
+  await record("GET /api/admin/token-cost/top-expensive reflects the smoke chat usage", async () => {
     const response = await fetch(`${baseUrl}/api/admin/token-cost/top-expensive`);
     assert(response.status === 200, `expected 200, got ${response.status}`);
     const body = await response.json();
     assert(Array.isArray(body), "expected array");
+    assert(body.length > 0, "expected at least one top-expensive entry after the earlier /api/chat call");
+    const entry = body[0];
+    assert(typeof entry.runId === "string" && entry.runId.length > 0, "expected runId string");
+    assert(typeof entry.totalTokens === "number" && entry.totalTokens > 0, "expected positive totalTokens");
+  });
+
+  await record("GET /api/admin/token-cost/by-session?runId=smoke-broad-chat returns the chat's usage", async () => {
+    const response = await fetch(`${baseUrl}/api/admin/token-cost/by-session?runId=smoke-broad-chat`);
+    assert(response.status === 200, `expected 200, got ${response.status}`);
+    const body = await response.json();
+    assert(Array.isArray(body), "expected array");
+    assert(
+      body.length > 0,
+      "expected at least one usage row for runId=smoke-broad-chat (proves agent runtime threads runId into the token-usage sink)"
+    );
+    assert(body.every((row) => row.runId === "smoke-broad-chat"), "expected all rows to match the requested runId");
   });
 
   await record("GET /api/admin/conversation-analytics/failure-patterns", async () => {
