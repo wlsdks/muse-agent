@@ -117,3 +117,12 @@ export interface AgentContextWindowReport {
   readonly removedCount: number;
   readonly summaryInserted: boolean;
 }
+
+export interface AgentRunResult {
+  readonly runId: string;
+  readonly response: ModelResponse;
+  readonly agentSpec?: AgentSpecRunReport;
+  readonly contextWindow?: AgentContextWindowReport;
+  readonly fromCache?: boolean;
+  readonly toolsUsed?: readonly string[];
+}

@@ -68,7 +68,7 @@ import {
 } from "@muse/policy";
 import { createRunId, type JsonObject } from "@muse/shared";
 import { ToolCallDeduplicator } from "./tool-call-deduplicator.js";
-import { isRecord, joinUserMessages, normalizeSourceUrl, withResponseFilterRaw } from "./internals.js";
+import { isRecord, joinUserMessages, withResponseFilterRaw } from "./internals.js";
 import {
   appendSystemSection,
   applyAgentSpecSystemPrompt,
@@ -84,19 +84,20 @@ import {
   renderUserMemorySection,
   stringListMetadata,
   toAgentRunMode,
-  toAgentSpecRunReport,
   toolCallsMetadata
 } from "./runtime-helpers.js";
 import {
   blockedToolResult,
+  createRunResult,
   planExecuteIntermediateMessages,
+  responseFilterEvidenceFromExecution,
   type ExecutedToolResult,
   type ModelLoopExecution,
   type PlanExecuteStepRecord,
+  type ResponseFilterEvidence,
   type StreamExecutionOptions,
   type StreamedModelTurn
 } from "./runtime-internals.js";
-import { extractToolInsights, extractVerifiedSources } from "./tool-output-evidence.js";
 import {
   PlanExecutionError,
   PlanValidationFailedError,
@@ -132,6 +133,7 @@ import type {
   AgentContextWindowReport,
   AgentRunContext,
   AgentRunInput,
+  AgentRunResult,
   AgentSpecRunReport,
   Awaitable,
   GuardDecision,
@@ -153,6 +155,7 @@ export type {
   AgentContextWindowReport,
   AgentRunContext,
   AgentRunInput,
+  AgentRunResult,
   AgentSpecRunReport,
   Awaitable,
   GuardDecision,
@@ -170,11 +173,6 @@ export type {
   VerifiedSource
 } from "./types.js";
 
-interface ResponseFilterEvidence {
-  readonly toolInsights: readonly string[];
-  readonly toolsUsed: readonly string[];
-  readonly verifiedSources: readonly VerifiedSource[];
-}
 
 export {
   StepBudgetTracker,
@@ -237,14 +235,6 @@ export interface AgentRuntimeOptions {
   };
 }
 
-export interface AgentRunResult {
-  readonly runId: string;
-  readonly response: ModelResponse;
-  readonly agentSpec?: AgentSpecRunReport;
-  readonly contextWindow?: AgentContextWindowReport;
-  readonly fromCache?: boolean;
-  readonly toolsUsed?: readonly string[];
-}
 
 export type AgentRuntimeStreamEvent =
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "text-delta" }>)
@@ -1904,32 +1894,6 @@ function hookInvocation(
 }
 
 
-function createRunResult(
-  runId: string,
-  response: ModelResponse,
-  contextWindow: AgentContextWindowReport | undefined,
-  agentSpec: AgentSpecResolution | undefined,
-  execution: {
-    readonly fromCache?: boolean;
-    readonly toolsUsed?: readonly string[];
-  } = {}
-): AgentRunResult {
-  const agentSpecReport = agentSpec ? toAgentSpecRunReport(agentSpec) : undefined;
-  const base = {
-    ...(execution.fromCache ? { fromCache: true } : {}),
-    ...(execution.toolsUsed && execution.toolsUsed.length > 0 ? { toolsUsed: execution.toolsUsed } : {}),
-    response,
-    runId
-  };
-
-  if (!contextWindow) {
-    return agentSpecReport ? { ...base, agentSpec: agentSpecReport } : base;
-  }
-
-  return agentSpecReport
-    ? { ...base, agentSpec: agentSpecReport, contextWindow }
-    : { ...base, contextWindow };
-}
 
 export {
   createDynamicOutputGuardRuleStage,
@@ -1961,28 +1925,4 @@ export {
   createZeroResultOverclaimResponseFilter
 } from "./response-filters.js";
 
-function responseFilterEvidenceFromExecution(execution: ModelLoopExecution): ResponseFilterEvidence {
-  const sourceMap = new Map<string, VerifiedSource>();
-  const insightSet = new Set<string>();
-
-  for (const executed of execution.toolResults) {
-    for (const source of extractVerifiedSources(executed.result.name, executed.result.output)) {
-      const key = normalizeSourceUrl(source.url);
-
-      if (!sourceMap.has(key)) {
-        sourceMap.set(key, source);
-      }
-    }
-
-    for (const insight of extractToolInsights(executed.result.output)) {
-      insightSet.add(insight);
-    }
-  }
-
-  return {
-    toolInsights: [...insightSet],
-    toolsUsed: execution.toolsUsed,
-    verifiedSources: [...sourceMap.values()]
-  };
-}
 

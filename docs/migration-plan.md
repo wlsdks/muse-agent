@@ -296,6 +296,22 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- agent-core monolith split continued (iteration 49). Two
+  runtime-internal helpers (`createRunResult`,
+  `responseFilterEvidenceFromExecution`) + the `ResponseFilterEvidence`
+  interface moved into `runtime-internals.ts`. The public
+  `AgentRunResult` type promoted to `types.ts` (re-exported through the
+  package surface — zero-API change). Removed two now-unused imports
+  from `index.ts` (`normalizeSourceUrl`, `toAgentSpecRunReport`). 9
+  new unit tests cover createRunResult's six conditional output
+  shapes (minimum / contextWindow / agentSpec / both / fromCache=true
+  vs false / non-empty toolsUsed vs empty) and
+  responseFilterEvidenceFromExecution's three core paths (no tool
+  results / verified-source dedup by canonical URL / insight
+  flattening + dedup). Index file: 1,984 → 1,928 (-56). Cumulative
+  3,983 → 1,928 lines (-2,055, **-51.6%**) across 13 submodules.
+  agent-core tests 195 → 204; pnpm check green; broad smoke 49/49;
+  route parity 0 missing.
 - README.md / README.ko.md restructured as Muse-first product surfaces
   (out-of-loop refactor). The English README and a new Korean README
   describe Muse as a provider-neutral JARVIS-style AI conductor —

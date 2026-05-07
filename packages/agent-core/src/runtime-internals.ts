@@ -1,6 +1,11 @@
+import type { AgentSpecResolution } from "@muse/agent-specs";
 import type { ModelMessage, ModelResponse, ModelToolCall } from "@muse/model";
 import type { ToolExecutionResult } from "@muse/tools";
+import { normalizeSourceUrl } from "./internals.js";
 import type { PlanStep, StepExecutionResult } from "./plan-execute.js";
+import { toAgentSpecRunReport } from "./runtime-helpers.js";
+import { extractToolInsights, extractVerifiedSources } from "./tool-output-evidence.js";
+import type { AgentContextWindowReport, AgentRunResult, VerifiedSource } from "./types.js";
 
 /**
  * Internal AgentRuntime types and helpers.
@@ -78,4 +83,76 @@ export function planExecuteIntermediateMessages(
     toolCallId: entry.executed.toolCall.id
   }));
   return [planSummary, ...toolMessages];
+}
+
+/** Internal evidence shape passed into the response-filter stage. */
+export interface ResponseFilterEvidence {
+  readonly toolInsights: readonly string[];
+  readonly toolsUsed: readonly string[];
+  readonly verifiedSources: readonly VerifiedSource[];
+}
+
+/**
+ * Walks the runtime's executed tool results and extracts (a) the verified
+ * source URLs (de-duplicated by canonical URL) and (b) the short Korean
+ * insights/count summaries the tool-output-evidence module produces. The
+ * combined block is what response filters consume to render a
+ * `<sources>` block, decide whether the response over-claims results, etc.
+ */
+export function responseFilterEvidenceFromExecution(execution: ModelLoopExecution): ResponseFilterEvidence {
+  const sourceMap = new Map<string, VerifiedSource>();
+  const insightSet = new Set<string>();
+
+  for (const executed of execution.toolResults) {
+    for (const source of extractVerifiedSources(executed.result.name, executed.result.output)) {
+      const key = normalizeSourceUrl(source.url);
+
+      if (!sourceMap.has(key)) {
+        sourceMap.set(key, source);
+      }
+    }
+
+    for (const insight of extractToolInsights(executed.result.output)) {
+      insightSet.add(insight);
+    }
+  }
+
+  return {
+    toolInsights: [...insightSet],
+    toolsUsed: execution.toolsUsed,
+    verifiedSources: [...sourceMap.values()]
+  };
+}
+
+/**
+ * Builds the public AgentRunResult from the runtime's internal state. The
+ * shape is conditional: cache flag, tools-used array, agentSpec report, and
+ * contextWindow are all optional so a small no-tools no-cache no-spec run
+ * doesn't carry empty fields.
+ */
+export function createRunResult(
+  runId: string,
+  response: ModelResponse,
+  contextWindow: AgentContextWindowReport | undefined,
+  agentSpec: AgentSpecResolution | undefined,
+  execution: {
+    readonly fromCache?: boolean;
+    readonly toolsUsed?: readonly string[];
+  } = {}
+): AgentRunResult {
+  const agentSpecReport = agentSpec ? toAgentSpecRunReport(agentSpec) : undefined;
+  const base = {
+    ...(execution.fromCache ? { fromCache: true } : {}),
+    ...(execution.toolsUsed && execution.toolsUsed.length > 0 ? { toolsUsed: execution.toolsUsed } : {}),
+    response,
+    runId
+  };
+
+  if (!contextWindow) {
+    return agentSpecReport ? { ...base, agentSpec: agentSpecReport } : base;
+  }
+
+  return agentSpecReport
+    ? { ...base, agentSpec: agentSpecReport, contextWindow }
+    : { ...base, contextWindow };
 }
