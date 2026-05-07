@@ -77,6 +77,8 @@ import {
   metadataString,
   numberMetadata,
   ragFilters,
+  recordContextWindowSpanAttributes,
+  recordUsageSpanAttributes,
   stringListMetadata,
   toAgentRunMode,
   toAgentSpecRunReport,
@@ -1776,7 +1778,7 @@ export class AgentRuntime {
           name: executed.toolCall.name,
           risk: this.resolveToolRisk(executed.toolCall.name),
           runId: context.runId,
-          status: toHistoryToolStatus(executed.result.status)
+          status: executed.result.status
         });
       }
 
@@ -2014,10 +2016,6 @@ function appendSystemSection(
   });
 }
 
-function toHistoryToolStatus(status: ToolExecutionResult["status"]): "blocked" | "completed" | "failed" {
-  return status;
-}
-
 function createRunResult(
   runId: string,
   response: ModelResponse,
@@ -2043,40 +2041,6 @@ function createRunResult(
   return agentSpecReport
     ? { ...base, agentSpec: agentSpecReport, contextWindow }
     : { ...base, contextWindow };
-}
-
-function recordContextWindowSpanAttributes(
-  span: SpanHandle,
-  contextWindow: AgentContextWindowReport | undefined
-): void {
-  if (!contextWindow) {
-    return;
-  }
-
-  span.setAttribute("context.budget_tokens", contextWindow.budgetTokens);
-  span.setAttribute("context.estimated_tokens", contextWindow.estimatedTokens);
-  span.setAttribute("context.removed_count", contextWindow.removedCount);
-  span.setAttribute("context.summary_inserted", contextWindow.summaryInserted);
-}
-
-function recordUsageSpanAttributes(span: SpanHandle, response: ModelResponse): void {
-  if (!response.usage) {
-    return;
-  }
-
-  const usage = response.usage;
-
-  if (usage.inputTokens !== undefined) {
-    span.setAttribute("usage.input_tokens", usage.inputTokens);
-  }
-
-  if (usage.outputTokens !== undefined) {
-    span.setAttribute("usage.output_tokens", usage.outputTokens);
-  }
-
-  if (usage.reasoningTokens !== undefined) {
-    span.setAttribute("usage.reasoning_tokens", usage.reasoningTokens);
-  }
 }
 
 export {

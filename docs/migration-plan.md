@@ -296,6 +296,20 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- agent-core split + dead-code cleanup (iteration 35). Two tracing-span
+  helpers (`recordContextWindowSpanAttributes`, `recordUsageSpanAttributes`)
+  moved to `runtime-helpers.ts` with a new `SpanAttributableContextWindow`
+  interface so the helpers do not depend on the runtime's
+  `AgentContextWindowReport` type. Each helper now has a
+  multi-paragraph docstring documenting the no-op contract for missing
+  reports / partial usage. The dead `toHistoryToolStatus(status)`
+  identity wrapper was inlined at its single call site (just returns
+  the same status string). 5 new unit tests cover full + missing
+  context-window report and partial / full / missing usage attribute
+  paths. agent-core/src/index.ts: 2,136 → 2,100 (-36). Cumulative
+  3,983 → 2,100 lines (-1,883, **-47.3%**) across 12 submodules.
+  agent-core tests 119 → 124; broad smoke 45/45; route parity 0
+  missing.
 - multi-agent orchestration detail endpoint (iteration 34). The history
   buffer now snapshots the full bus conversation (when a messageBus is
   wired) onto each terminal entry. New
