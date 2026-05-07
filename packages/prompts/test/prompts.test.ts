@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MUSE_CACHE_BOUNDARY_MARKER,
   InMemoryPromptLayerRegistry,
+  buildPlanningSystemPrompt,
   buildPromptContextPacket,
   FullExemplarRetriever,
   InMemoryExemplarRetriever,
@@ -137,6 +138,65 @@ describe("system prompt building", () => {
       toolResults: "tool",
       userMemoryContext: undefined
     });
+  });
+});
+
+describe("buildPlanningSystemPrompt", () => {
+  it("includes role, available tools, output format, constraints, and user request sections", () => {
+    const result = buildPlanningSystemPrompt({
+      toolDescriptions: "- jira_get_issue: Fetch issue\n- confluence_search_by_text: Search docs",
+      userPrompt: "Fix the onboarding bug"
+    });
+
+    expect(result).toContain("[Role]");
+    expect(result).toContain("도구 호출 계획을 세우는 플래너");
+    expect(result).toContain("[Available Tools]");
+    expect(result).toContain("- jira_get_issue: Fetch issue");
+    expect(result).toContain("[Output Format]");
+    expect(result).toContain("반드시 JSON 배열만 출력하세요");
+    expect(result).toContain("[Constraints]");
+    expect(result).toContain("도구가 필요 없으면 빈 배열 []");
+    expect(result).toContain("[User Request]");
+    expect(result).toContain("Fix the onboarding bug");
+  });
+
+  it("orders sections deterministically: Role → Available Tools → Output Format → Constraints → User Request", () => {
+    const result = buildPlanningSystemPrompt({
+      toolDescriptions: "- a",
+      userPrompt: "do thing"
+    });
+    const expectedOrder = [
+      "[Role]",
+      "[Available Tools]",
+      "[Output Format]",
+      "[Constraints]",
+      "[User Request]"
+    ];
+    const positions = expectedOrder.map((section) => result.indexOf(section));
+    for (let index = 1; index < positions.length; index += 1) {
+      expect(positions[index]).toBeGreaterThan(positions[index - 1] ?? -1);
+    }
+  });
+
+  it("prepends an optional base prompt before the planning sections", () => {
+    const result = buildPlanningSystemPrompt({
+      basePrompt: "You are a careful assistant.",
+      toolDescriptions: "- a",
+      userPrompt: "do thing"
+    });
+    const baseIndex = result.indexOf("You are a careful assistant.");
+    const roleIndex = result.indexOf("[Role]");
+    expect(baseIndex).toBeGreaterThanOrEqual(0);
+    expect(baseIndex).toBeLessThan(roleIndex);
+  });
+
+  it("omits the base prompt section when an empty string is supplied", () => {
+    const result = buildPlanningSystemPrompt({
+      basePrompt: "   ",
+      toolDescriptions: "- a",
+      userPrompt: "do thing"
+    });
+    expect(result.startsWith("[Role]")).toBe(true);
   });
 });
 

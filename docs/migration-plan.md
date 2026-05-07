@@ -291,6 +291,11 @@ route state and runtime services onto Kysely-backed stores.
   `InMemoryLatencyQuery` performs the same bucketing/percentile math against an `InMemoryTraceEventSink` for the
   no-DB scaffold. `/api/admin/metrics/latency/{summary,timeseries}` now consume the query when autoconfigure wires it
   in, falling back to the previous in-memory run-history aggregation only when no query is configured.
+- PlanExecute scaffolding now exists in `@muse/agent-core` (`PlanStep`, `StepExecutionResult`,
+  `PlanValidationError`, `PlanValidationResult`, `PlanValidationFailedError`, plus `extractJsonArray`,
+  `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
+  `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
+  primitives the upcoming PlanExecute loop will compose.
 
 ## Execution Plan
 

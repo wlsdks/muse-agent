@@ -37,12 +37,16 @@ import {
   createZeroResultOverclaimResponseFilter,
   decodeCheckpointMessages,
   encodeCheckpointMessages,
+  extractJsonArray,
   GuardBlockedError,
   HookRegistry,
   ModelRoutingError,
   OutputGuardBlockedError,
+  parsePlan,
+  PlanValidationFailedError,
   StepBudgetTracker,
-  ToolCallDeduplicator
+  ToolCallDeduplicator,
+  validatePlan
 } from "../src/index.js";
 
 function createProvider(
@@ -192,6 +196,137 @@ describe("StepBudgetTracker", () => {
     expect(() => tracker.trackStep(" ", 1, 0)).toThrow("step");
     expect(() => tracker.trackStep("model", -1, 0)).toThrow("token counts");
     expect(() => tracker.recordToolOutput("tool", Number.POSITIVE_INFINITY)).toThrow("token counts");
+  });
+});
+
+describe("PlanExecute helpers", () => {
+  describe("extractJsonArray", () => {
+    it("extracts the first balanced array even when prose surrounds it", () => {
+      expect(
+        extractJsonArray('Sure, here is the plan: [{"tool":"a","args":{},"description":"x"}] thanks!')
+      ).toBe('[{"tool":"a","args":{},"description":"x"}]');
+    });
+
+    it("returns null when no array marker is present", () => {
+      expect(extractJsonArray("no plan here")).toBeNull();
+    });
+
+    it("returns null when the array is unbalanced", () => {
+      expect(extractJsonArray("[ { unbalanced ")).toBeNull();
+    });
+
+    it("handles nested arrays inside step args", () => {
+      expect(extractJsonArray('[{"tool":"a","args":{"items":[1,2,3]},"description":"x"}]')).toBe(
+        '[{"tool":"a","args":{"items":[1,2,3]},"description":"x"}]'
+      );
+    });
+  });
+
+  describe("parsePlan", () => {
+    it("parses a JSON array of well-formed steps", () => {
+      const steps = parsePlan(
+        '[{"tool":"jira_get_issue","args":{"issueKey":"X-1"},"description":"detail"}]'
+      );
+      expect(steps).toEqual([
+        { args: { issueKey: "X-1" }, description: "detail", tool: "jira_get_issue" }
+      ]);
+    });
+
+    it("returns an empty array when the model emits an empty plan", () => {
+      expect(parsePlan("[]")).toEqual([]);
+    });
+
+    it("returns null for non-JSON content", () => {
+      expect(parsePlan("not a plan")).toBeNull();
+    });
+
+    it("returns null when JSON parses but is not an array", () => {
+      expect(parsePlan("[{}, 42]")).toBeNull();
+    });
+
+    it("returns null when a step is missing the tool field", () => {
+      expect(parsePlan('[{"args":{},"description":"x"}]')).toBeNull();
+    });
+
+    it("returns null when args is not an object", () => {
+      expect(parsePlan('[{"tool":"a","args":[],"description":"x"}]')).toBeNull();
+    });
+
+    it("defaults description to empty string when omitted", () => {
+      expect(parsePlan('[{"tool":"a","args":{}}]')).toEqual([{ args: {}, description: "", tool: "a" }]);
+    });
+
+    it("ignores prose surrounding the JSON array", () => {
+      expect(parsePlan('Sure: [{"tool":"a","args":{},"description":"x"}] done.')).toEqual([
+        { args: {}, description: "x", tool: "a" }
+      ]);
+    });
+  });
+
+  describe("validatePlan", () => {
+    it("returns valid when every step references a registered tool", () => {
+      const result = validatePlan({
+        availableToolNames: new Set(["a", "b"]),
+        steps: [
+          { args: {}, description: "1", tool: "a" },
+          { args: {}, description: "2", tool: "b" }
+        ]
+      });
+      expect(result.valid).toBe(true);
+      expect(result.errors).toEqual([]);
+    });
+
+    it("rejects steps with blank tool names", () => {
+      const result = validatePlan({
+        availableToolNames: new Set(["a"]),
+        steps: [
+          { args: {}, description: "1", tool: "" },
+          { args: {}, description: "2", tool: "a" }
+        ]
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors).toEqual([{ reason: "tool name is blank", stepIndex: 0, tool: "" }]);
+    });
+
+    it("rejects steps that reference unregistered tools", () => {
+      const result = validatePlan({
+        availableToolNames: new Set(["a"]),
+        steps: [{ args: {}, description: "1", tool: "missing_tool" }]
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0]?.reason).toContain("missing_tool");
+    });
+
+    it("collects every error across the plan instead of stopping at the first", () => {
+      const result = validatePlan({
+        availableToolNames: new Set(["a"]),
+        steps: [
+          { args: {}, description: "1", tool: "missing-1" },
+          { args: {}, description: "2", tool: "missing-2" }
+        ]
+      });
+      expect(result.errors).toHaveLength(2);
+    });
+
+    it("treats an empty plan as valid (no errors collected)", () => {
+      expect(
+        validatePlan({ availableToolNames: new Set(["a"]), steps: [] })
+      ).toEqual({ errors: [], steps: [], valid: true });
+    });
+  });
+
+  describe("PlanValidationFailedError", () => {
+    it("joins per-step error reasons with semicolons", () => {
+      const error = new PlanValidationFailedError(
+        [
+          { reason: "tool name is blank", stepIndex: 0, tool: "" },
+          { reason: "tool 'x' is not registered", stepIndex: 1, tool: "x" }
+        ],
+        []
+      );
+      expect(error.message).toBe("step 1: tool name is blank; step 2: tool 'x' is not registered");
+      expect(error.errors).toHaveLength(2);
+    });
   });
 });
 

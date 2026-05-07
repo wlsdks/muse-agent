@@ -136,6 +136,59 @@ export function buildSystemPrompt(input: PromptBuildInput = {}): string {
   return compactSections([...stableSections, ...dynamicSections]).join("\n\n");
 }
 
+export interface PlanningPromptInput {
+  readonly userPrompt: string;
+  readonly toolDescriptions: string;
+  readonly basePrompt?: string;
+}
+
+export function buildPlanningSystemPrompt(input: PlanningPromptInput): string {
+  const segments: string[] = [];
+
+  if (input.basePrompt && input.basePrompt.trim().length > 0) {
+    segments.push(input.basePrompt.trim());
+    segments.push("");
+  }
+
+  segments.push("[Role]");
+  segments.push("당신은 도구 호출 계획을 세우는 플래너입니다.");
+  segments.push("사용자의 요청을 분석하고, 필요한 도구 호출 순서를 JSON으로 출력하세요.");
+  segments.push("절대 도구를 직접 실행하지 마세요. 계획만 출력합니다.");
+  segments.push("");
+  segments.push("[Available Tools]");
+  segments.push("아래 도구만 계획에 포함할 수 있습니다.");
+  segments.push("목록에 없는 도구는 사용할 수 없습니다.");
+  segments.push("");
+  segments.push(input.toolDescriptions);
+  segments.push("");
+  segments.push("[Output Format]");
+  segments.push("반드시 JSON 배열만 출력하세요. 다른 텍스트, 설명, 마크다운은 금지합니다.");
+  segments.push("각 단계는 다음 필드를 포함합니다:");
+  segments.push("- tool: 도구 이름 (Available Tools에 있는 것만)");
+  segments.push("- args: 도구에 전달할 인자 (객체)");
+  segments.push("- description: 이 단계의 목적 (간단한 한국어 설명)");
+  segments.push("");
+  segments.push("예시:");
+  segments.push(
+    '[{"tool":"jira_get_issue","args":{"issueKey":"EXAMPLE-1"},"description":"이슈 상세 조회"},'
+  );
+  segments.push(
+    ' {"tool":"confluence_search_by_text","args":{"keyword":"온보딩 가이드"},"description":"관련 문서 검색"}]'
+  );
+  segments.push("");
+  segments.push("[Constraints]");
+  segments.push("1. 도구가 필요 없으면 빈 배열 []을 반환하세요.");
+  segments.push("2. 단계 순서는 실행 순서입니다. 의존 관계를 고려하세요.");
+  segments.push("3. 동일 도구를 다른 인자로 여러 번 호출할 수 있습니다.");
+  segments.push("4. 각 단계의 args는 해당 도구의 입력 스키마에 맞춰야 합니다.");
+  segments.push("5. 응답은 [ 로 시작하고 ] 로 끝나야 합니다.");
+  segments.push("");
+  segments.push("[User Request]");
+  segments.push(input.userPrompt);
+
+  return segments.join("\n");
+}
+
 export function buildLayeredSystemPrompt(
   input: PromptBuildInput = {},
   layers: readonly PromptLayer[] = []
