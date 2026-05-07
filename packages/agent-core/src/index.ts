@@ -51,7 +51,13 @@ import type {
   HookTraceStore,
   PendingApprovalStore
 } from "@muse/runtime-state";
-import { trimConversationMessages, type ConversationTrimOptions } from "@muse/memory";
+import {
+  COMPACTION_SUMMARY_PREFIX,
+  trimConversationMessages,
+  type ConversationSummary,
+  type ConversationSummaryStore,
+  type ConversationTrimOptions
+} from "@muse/memory";
 import {
   detectSystemPromptLeakage,
   detectTopicDrift,
@@ -222,6 +228,7 @@ export interface AgentRuntimeOptions {
   readonly tokenUsageSink?: TokenUsageSink;
   readonly userMemoryProvider?: UserMemoryProvider;
   readonly userMemoryInjection?: UserMemoryInjectionOptions;
+  readonly conversationSummaryStore?: ConversationSummaryStore;
   readonly guards?: readonly GuardStage[];
   readonly hooks?: readonly HookStage[];
   readonly outputGuards?: readonly OutputGuardStage[];
@@ -324,6 +331,7 @@ export class AgentRuntime {
   private readonly tokenUsageSink?: TokenUsageSink;
   private readonly userMemoryProvider?: UserMemoryProvider;
   private readonly userMemoryMaxEntries: number;
+  private readonly conversationSummaryStore?: ConversationSummaryStore;
   private readonly guards: readonly GuardStage[];
   private readonly hooks: readonly HookStage[];
   private readonly outputGuards: readonly OutputGuardStage[];
@@ -367,6 +375,7 @@ export class AgentRuntime {
     this.tokenUsageSink = options.tokenUsageSink;
     this.userMemoryProvider = options.userMemoryProvider;
     this.userMemoryMaxEntries = Math.max(1, options.userMemoryInjection?.maxEntries ?? 12);
+    this.conversationSummaryStore = options.conversationSummaryStore;
     this.guards = options.guards ?? [];
     this.hooks = options.hooks ?? [];
     this.outputGuards = options.outputGuards ?? [];
@@ -409,7 +418,9 @@ export class AgentRuntime {
 
       const memoryAppliedInput = await this.applyUserMemory(layeredContext);
       const memoryAppliedContext: AgentRunContext = { ...layeredContext, input: memoryAppliedInput };
-      const contextualizedInput = await this.applyRetrievedContext(memoryAppliedContext);
+      const summaryAppliedInput = await this.applyStoredConversationSummary(memoryAppliedContext);
+      const summaryAppliedContext: AgentRunContext = { ...memoryAppliedContext, input: summaryAppliedInput };
+      const contextualizedInput = await this.applyRetrievedContext(summaryAppliedContext);
       const preparedRequest = this.prepareModelRequest(contextualizedInput, selected.model);
       recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
       const tools = this.modelTools(layeredContext);
@@ -466,6 +477,13 @@ export class AgentRuntime {
       await this.recordRunComplete(layeredContext, { ...execution, finalResponse: guardedResponse });
       await this.recordCheckpoint(layeredContext, 100, "complete", layeredContext.input.messages, guardedResponse.output);
       await this.writeCache(cacheKey, guardedResponse, execution.toolsUsed);
+      if (preparedRequest.contextWindow?.summaryInserted) {
+        await this.persistConversationSummaryFromRequest(
+          layeredContext,
+          preparedRequest.request,
+          contextualizedInput.messages.length
+        );
+      }
       await this.invokeHooks("afterComplete", layeredContext, guardedResponse);
       this.recordAgentRun(layeredContext, guardedResponse.model, "completed", startedAtMs);
       return createRunResult(
@@ -515,7 +533,9 @@ export class AgentRuntime {
 
       const memoryAppliedInput = await this.applyUserMemory(layeredContext);
       const memoryAppliedContext: AgentRunContext = { ...layeredContext, input: memoryAppliedInput };
-      const contextualizedInput = await this.applyRetrievedContext(memoryAppliedContext);
+      const summaryAppliedInput = await this.applyStoredConversationSummary(memoryAppliedContext);
+      const summaryAppliedContext: AgentRunContext = { ...memoryAppliedContext, input: summaryAppliedInput };
+      const contextualizedInput = await this.applyRetrievedContext(summaryAppliedContext);
       const preparedRequest = this.prepareModelRequest(contextualizedInput, selected.model);
       recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
       const tools = this.modelTools(layeredContext);
@@ -592,6 +612,13 @@ export class AgentRuntime {
       });
       await this.recordCheckpoint(layeredContext, 100, "complete", layeredContext.input.messages, response.output);
       await this.writeCache(cacheKey, response, execution.toolsUsed);
+      if (preparedRequest.contextWindow?.summaryInserted) {
+        await this.persistConversationSummaryFromRequest(
+          layeredContext,
+          preparedRequest.request,
+          contextualizedInput.messages.length
+        );
+      }
       await this.invokeHooks("afterComplete", layeredContext, response);
       this.recordAgentRun(layeredContext, response.model, "completed", startedAtMs);
       if ((!forwardTextDeltas || isPlanExecuteRun) && response.output.length > 0) {
@@ -740,6 +767,82 @@ export class AgentRuntime {
         userMemoryPreferenceCount: Object.keys(memory.preferences).length
       }
     };
+  }
+
+  /**
+   * If a conversation summary is persisted for the current `metadata.sessionId`,
+   * prepend it as a system message carrying the COMPACTION_SUMMARY_PREFIX so
+   * `trimConversationMessages` recognises it on the next compaction round and
+   * extends rather than duplicates it. Skips silently when no store, no
+   * sessionId, no stored summary, or the inbound messages already carry a
+   * compaction-summary system message at index 0.
+   */
+  private async applyStoredConversationSummary(context: AgentRunContext): Promise<AgentRunInput> {
+    if (!this.conversationSummaryStore) {
+      return context.input;
+    }
+    const sessionId = metadataString(context.input.metadata, "sessionId");
+    if (!sessionId) {
+      return context.input;
+    }
+    const messages = context.input.messages;
+    const firstSystem = messages.find((message) => message.role === "system");
+    if (firstSystem && firstSystem.content.startsWith(COMPACTION_SUMMARY_PREFIX)) {
+      return context.input;
+    }
+    let stored: ConversationSummary | undefined;
+    try {
+      stored = await this.conversationSummaryStore.get(sessionId);
+    } catch {
+      return context.input;
+    }
+    if (!stored || stored.narrative.trim().length === 0) {
+      return context.input;
+    }
+    const summaryMessage: ModelMessage = {
+      content: stored.narrative.startsWith(COMPACTION_SUMMARY_PREFIX)
+        ? stored.narrative
+        : `${COMPACTION_SUMMARY_PREFIX}: ${stored.narrative}]`,
+      role: "system"
+    };
+    return {
+      ...context.input,
+      messages: [summaryMessage, ...messages]
+    };
+  }
+
+  /**
+   * Persists the trimmed compaction summary back to the store keyed by
+   * `metadata.sessionId`. Looks at the system message at index 0 of the
+   * already-trimmed `request.messages`; only writes when it carries the
+   * COMPACTION_SUMMARY_PREFIX. Errors are swallowed so observability writes
+   * never block run completion.
+   */
+  private async persistConversationSummaryFromRequest(
+    context: AgentRunContext,
+    request: { readonly messages: readonly ModelMessage[] },
+    summarizedUpToIndex: number
+  ): Promise<void> {
+    if (!this.conversationSummaryStore) {
+      return;
+    }
+    const sessionId = metadataString(context.input.metadata, "sessionId");
+    if (!sessionId) {
+      return;
+    }
+    const head = request.messages[0];
+    if (!head || head.role !== "system" || !head.content.startsWith(COMPACTION_SUMMARY_PREFIX)) {
+      return;
+    }
+    try {
+      await this.conversationSummaryStore.save({
+        narrative: head.content,
+        sessionId,
+        summarizedUpToIndex
+      });
+    } catch {
+      // observability writes are fail-open
+    }
   }
 
   private async applyRetrievedContext(context: AgentRunContext): Promise<AgentRunInput> {

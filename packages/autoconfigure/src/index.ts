@@ -458,6 +458,9 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       toolRegistry,
       userMemoryProvider: parseBoolean(env.MUSE_USER_MEMORY_INJECTION, true)
         ? userMemoryStore
+        : undefined,
+      conversationSummaryStore: parseBoolean(env.MUSE_CONVERSATION_SUMMARY_PERSIST, true)
+        ? conversationSummaryStore
         : undefined
     })
     : undefined;

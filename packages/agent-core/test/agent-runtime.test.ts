@@ -5,6 +5,7 @@ import { ModelProviderRegistry, type ModelProvider, type ModelRequest, type Mode
 import { InMemoryAgentMetrics, InMemoryMuseTracer } from "@muse/observability";
 import { InMemoryExemplarRetriever, InMemoryPromptLayerRegistry } from "@muse/prompts";
 import { DefaultRagPipeline, InMemoryRagCorpus, SimpleReranker } from "@muse/rag";
+import { COMPACTION_SUMMARY_PREFIX, InMemoryConversationSummaryStore } from "@muse/memory";
 import { InMemoryAgentRunHistoryStore, InMemoryCheckpointStore, InMemoryHookTraceStore } from "@muse/runtime-state";
 import { createToolPolicyConfig, GuardBlockRateMonitor, InMemoryGuardRuleStore } from "@muse/policy";
 import { ToolRegistry } from "@muse/tools";
@@ -2312,6 +2313,125 @@ describe("AgentRuntime", () => {
       blocked: 1,
       total: 2
     });
+  });
+});
+
+describe("AgentRuntime conversation summary persistence", () => {
+  function buildLongConversation(turns: number): readonly { readonly content: string; readonly role: "user" | "assistant" }[] {
+    const messages: { readonly content: string; readonly role: "user" | "assistant" }[] = [];
+    for (let i = 0; i < turns; i += 1) {
+      messages.push({ content: `User question number ${i} with long preamble `.repeat(40), role: "user" });
+      messages.push({ content: `Assistant reply number ${i} with detailed answer `.repeat(40), role: "assistant" });
+    }
+    return messages;
+  }
+
+  it("persists the compaction summary back to the store keyed by sessionId when trim inserts a summary", async () => {
+    const store = new InMemoryConversationSummaryStore();
+    const runtime = createAgentRuntime({
+      contextWindow: { maxContextWindowTokens: 1_500, outputReserveTokens: 100 },
+      conversationSummaryStore: store,
+      modelProvider: createSequenceProvider([
+        { id: "r1", model: "provider/model", output: "summarised reply" }
+      ])
+    });
+
+    await runtime.run({
+      messages: [...buildLongConversation(20), { content: "Final ask", role: "user" }],
+      metadata: { sessionId: "session-summary-1" },
+      model: "provider/model",
+      runId: "run-summary-1"
+    });
+
+    const stored = await store.get("session-summary-1");
+    expect(stored).toBeTruthy();
+    expect(stored?.narrative.startsWith(COMPACTION_SUMMARY_PREFIX)).toBe(true);
+    expect(stored?.summarizedUpToIndex).toBeGreaterThan(0);
+  });
+
+  it("re-injects the persisted summary as a system message on the next run with the same sessionId", async () => {
+    const store = new InMemoryConversationSummaryStore();
+    await store.save({
+      narrative: "[Conversation summary: prior turns about onboarding]",
+      sessionId: "session-summary-2",
+      summarizedUpToIndex: 12
+    });
+    const requests: ModelRequest[] = [];
+    const runtime = createAgentRuntime({
+      conversationSummaryStore: store,
+      modelProvider: createSequenceProvider(
+        [{ id: "r2", model: "provider/model", output: "answered" }],
+        (request) => requests.push(request)
+      )
+    });
+
+    await runtime.run({
+      messages: [{ content: "Continue our work", role: "user" }],
+      metadata: { sessionId: "session-summary-2" },
+      model: "provider/model",
+      runId: "run-summary-2"
+    });
+
+    const sentMessages = requests[0]?.messages ?? [];
+    const summarySystem = sentMessages.find(
+      (message) => message.role === "system" && message.content.startsWith(COMPACTION_SUMMARY_PREFIX)
+    );
+    expect(summarySystem?.content).toContain("prior turns about onboarding");
+  });
+
+  it("does not touch the store when sessionId is missing", async () => {
+    const store = new InMemoryConversationSummaryStore();
+    const getSpy = vi.spyOn(store, "get");
+    const saveSpy = vi.spyOn(store, "save");
+    const runtime = createAgentRuntime({
+      conversationSummaryStore: store,
+      modelProvider: createSequenceProvider([
+        { id: "r3", model: "provider/model", output: "ok" }
+      ])
+    });
+
+    await runtime.run({
+      messages: [{ content: "no session", role: "user" }],
+      model: "provider/model",
+      runId: "run-summary-3"
+    });
+
+    expect(getSpy).not.toHaveBeenCalled();
+    expect(saveSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not double-prepend the summary when the inbound messages already carry a compaction-summary head", async () => {
+    const store = new InMemoryConversationSummaryStore();
+    await store.save({
+      narrative: "[Conversation summary: stored narrative]",
+      sessionId: "session-summary-4",
+      summarizedUpToIndex: 4
+    });
+    const requests: ModelRequest[] = [];
+    const runtime = createAgentRuntime({
+      conversationSummaryStore: store,
+      modelProvider: createSequenceProvider(
+        [{ id: "r4", model: "provider/model", output: "ok" }],
+        (request) => requests.push(request)
+      )
+    });
+
+    await runtime.run({
+      messages: [
+        { content: "[Conversation summary: inbound narrative]", role: "system" },
+        { content: "next question", role: "user" }
+      ],
+      metadata: { sessionId: "session-summary-4" },
+      model: "provider/model",
+      runId: "run-summary-4"
+    });
+
+    const sentMessages = requests[0]?.messages ?? [];
+    const compactionHeads = sentMessages.filter(
+      (message) => message.role === "system" && message.content.startsWith(COMPACTION_SUMMARY_PREFIX)
+    );
+    expect(compactionHeads).toHaveLength(1);
+    expect(compactionHeads[0]?.content).toContain("inbound narrative");
   });
 });
 
