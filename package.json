@@ -13,6 +13,7 @@
     "check": "pnpm build && pnpm test",
     "lint": "pnpm -r --sort --if-present lint",
     "smoke:broad": "node scripts/smoke-broad-http.mjs",
+    "smoke:cli": "pnpm --filter @muse/cli build && node scripts/smoke-cli.mjs",
     "smoke:diagnostic": "node scripts/smoke-diagnostic-runtime.mjs",
     "smoke:live": "node scripts/smoke-live-llm.mjs",
     "test:e2e": "pnpm build && pnpm --filter @muse/web test:e2e",

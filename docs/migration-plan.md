@@ -296,6 +296,21 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- CLI live smoke harness institutionalised (iteration 52, weakness #5
+  from final audit). The CLI's program.test.ts has 13 tests but every
+  IO point (fetch, file system, prompts, SSE parser) is mocked — a
+  regression in the compiled binary's argument parsing, real Fastify
+  HTTP calls, or shell-context behavior would ship silently. New
+  `pnpm smoke:cli` runs the built `node apps/cli/dist/index.js` against
+  a real apps/api child process (diagnostic provider, no API key) and
+  asserts: muse --version, muse --help lists every top-level command,
+  config-path resolves, spec --json round-trips the migration stack,
+  chat hits /api/chat with the diagnostic echo content, chat --stream
+  parses SSE frames, mcp list and scheduler list call their HTTP
+  routes, and a guard-blocked prompt produces non-zero exit + the
+  INJECTION_DETECTED / GUARD_BLOCKED code surfaces. All 9 checks pass
+  end-to-end. pnpm check green; broad smoke 49/49; route parity 0
+  missing.
 - input + output guards now wired by default + live-verified against real
   LLM (iteration 51, weakness #6 from final audit). Previously the runtime
   shipped `createInjectionInputGuard` / `createPiiInputGuard` /
