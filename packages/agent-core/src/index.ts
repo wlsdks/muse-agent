@@ -77,6 +77,16 @@ import {
   type StepExecutionResult
 } from "./plan-execute.js";
 import {
+  createAgentCheckpointState,
+  encodeCheckpointMessages,
+  type AgentCheckpointState
+} from "./checkpoint.js";
+import {
+  GuardBlockedError,
+  ModelRoutingError,
+  OutputGuardBlockedError
+} from "./errors.js";
+import {
   ToolExecutor,
   ToolRegistry,
   toModelTool,
@@ -274,44 +284,14 @@ export interface AgentContextWindowReport {
   readonly summaryInserted: boolean;
 }
 
-export interface AgentCheckpointState extends JsonObject {
-  readonly phase: string;
-  readonly model: string;
-  readonly encodedMessages: string[];
-  readonly metadata: JsonObject | null;
-  readonly output: string | null;
-}
+export {
+  createAgentCheckpointState,
+  decodeCheckpointMessages,
+  encodeCheckpointMessages
+} from "./checkpoint.js";
+export type { AgentCheckpointState } from "./checkpoint.js";
 
-export class GuardBlockedError extends Error {
-  readonly guardId: string;
-  readonly code?: string;
-
-  constructor(guardId: string, reason: string, code?: string) {
-    super(reason);
-    this.name = "GuardBlockedError";
-    this.guardId = guardId;
-    this.code = code;
-  }
-}
-
-export class OutputGuardBlockedError extends Error {
-  readonly stageId: string;
-  readonly code?: string;
-
-  constructor(stageId: string, reason: string, code?: string) {
-    super(reason);
-    this.name = "OutputGuardBlockedError";
-    this.stageId = stageId;
-    this.code = code;
-  }
-}
-
-export class ModelRoutingError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ModelRoutingError";
-  }
-}
+export { GuardBlockedError, ModelRoutingError, OutputGuardBlockedError } from "./errors.js";
 
 export {
   PlanExecutionError,
@@ -1912,47 +1892,6 @@ export class AgentRuntime {
 
 export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   return new AgentRuntime(options);
-}
-
-export function createAgentCheckpointState(input: {
-  readonly phase: string;
-  readonly model: string;
-  readonly messages: readonly ModelMessage[];
-  readonly metadata?: JsonObject;
-  readonly output?: string;
-}): AgentCheckpointState {
-  return {
-    encodedMessages: [...encodeCheckpointMessages(input.messages)],
-    metadata: input.metadata ?? null,
-    model: input.model,
-    output: input.output ?? null,
-    phase: input.phase
-  };
-}
-
-export function encodeCheckpointMessages(messages: readonly ModelMessage[]): readonly string[] {
-  return messages.map((message) => {
-    const payload = Buffer.from(JSON.stringify(message), "utf8").toString("base64");
-    return `v1|${message.role}|${payload}`;
-  });
-}
-
-export function decodeCheckpointMessages(encoded: readonly string[]): readonly ModelMessage[] {
-  return encoded.map((entry) => {
-    const [version, role, payload] = entry.split("|");
-
-    if (version !== "v1" || !role || !payload) {
-      throw new ModelRoutingError("Unsupported checkpoint message encoding");
-    }
-
-    const parsed = JSON.parse(Buffer.from(payload, "base64").toString("utf8")) as unknown;
-
-    if (!isModelMessage(parsed) || parsed.role !== role) {
-      throw new ModelRoutingError("Invalid checkpoint message payload");
-    }
-
-    return parsed;
-  });
 }
 
 interface ModelLoopExecution {
