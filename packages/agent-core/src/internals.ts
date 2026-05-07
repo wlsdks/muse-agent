@@ -194,3 +194,25 @@ function isMarkdownTableSeparator(line: string): boolean {
 function parseMarkdownTableRow(line: string): readonly string[] {
   return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim());
 }
+
+export function splitPreservingSentencePunctuation(text: string): readonly string[] {
+  const sentences: string[] = [];
+  let start = 0;
+  const boundaryPattern = /[.!?]+/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = boundaryPattern.exec(text)) !== null) {
+    sentences.push(text.slice(start, match.index + match[0].length).trim());
+    start = match.index + match[0].length;
+  }
+
+  if (start < text.length) {
+    const tail = text.slice(start).trim();
+
+    if (tail.length > 0) {
+      sentences.push(tail);
+    }
+  }
+
+  return sentences.filter((sentence) => /\p{L}/u.test(sentence));
+}
