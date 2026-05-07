@@ -188,6 +188,28 @@ describe("autoconfigure", () => {
     });
   });
 
+  it("exposes a queryable in-memory traceSink that captures spans from agent runs", async () => {
+    const assembly = createMuseRuntimeAssembly({
+      env: {
+        MUSE_MODEL: "diagnostic/smoke",
+        MUSE_MODEL_PROVIDER_ID: "diagnostic"
+      }
+    });
+
+    expect(assembly.observability.traceSink).toBeTruthy();
+    await assembly.agentRuntime?.run({
+      messages: [{ content: "trace probe", role: "user" }],
+      model: "diagnostic/smoke",
+      runId: "run-trace-1"
+    });
+
+    const sink = assembly.observability.traceSink as { list(): readonly { readonly name: string; readonly attributes?: Record<string, unknown> }[] };
+    const events = sink.list();
+    expect(events.length).toBeGreaterThan(0);
+    const seen = new Set(events.map((event) => event.name));
+    expect(seen.has("muse.model.generate")).toBe(true);
+  });
+
   it("threads token usage from agent runs into the assembled tokenUsageSink", async () => {
     const assembly = createMuseRuntimeAssembly({
       env: {

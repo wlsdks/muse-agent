@@ -260,6 +260,7 @@ export interface MuseRuntimeAssembly {
     readonly metrics: InMemoryAgentMetrics;
     readonly tokenCostQuery: TokenCostQuery;
     readonly tokenUsageSink: TokenUsageSink;
+    readonly traceSink?: QueryableTraceEventSink;
     readonly tracer: MuseTracer;
   };
   readonly ragIngestion: {
@@ -327,7 +328,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     maxEvents: parseInteger(env.MUSE_FOLLOWUP_SUGGESTION_MAX_EVENTS, 50_000),
     retentionMs: parseInteger(env.MUSE_FOLLOWUP_SUGGESTION_RETENTION_MS, 72 * 60 * 60 * 1000)
   });
-  const { tracer, latencyQuery, tokenUsageSink, tokenCostQuery } = createTracingPipeline(db);
+  const { tracer, latencyQuery, tokenUsageSink, tokenCostQuery, traceSink } = createTracingPipeline(db);
   const circuitBreakerRegistry = new CircuitBreakerRegistry({
     failureThreshold: parseInteger(env.MUSE_CIRCUIT_BREAKER_FAILURE_THRESHOLD, 5),
     resetTimeoutMs: parseInteger(env.MUSE_CIRCUIT_BREAKER_RESET_TIMEOUT_MS, 30_000)
@@ -473,6 +474,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       metrics: agentMetrics,
       tokenCostQuery,
       tokenUsageSink,
+      ...(traceSink ? { traceSink } : {}),
       tracer
     },
     ragIngestion: {
@@ -513,6 +515,7 @@ function createTracingPipeline(db: Kysely<MuseDatabase> | undefined): {
   readonly latencyQuery: LatencyQuery;
   readonly tokenUsageSink: TokenUsageSink;
   readonly tokenCostQuery: TokenCostQuery;
+  readonly traceSink?: QueryableTraceEventSink;
 } {
   if (db) {
     const tokenUsageSink = new KyselyTokenUsageSink(db);
@@ -530,6 +533,7 @@ function createTracingPipeline(db: Kysely<MuseDatabase> | undefined): {
     latencyQuery: new InMemoryLatencyQuery(traceSink),
     tokenCostQuery: new InMemoryTokenCostQuery(tokenSink),
     tokenUsageSink: tokenSink,
+    traceSink,
     tracer: new PersistedMuseTracer(traceSink)
   };
 }

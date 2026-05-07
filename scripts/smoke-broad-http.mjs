@@ -144,6 +144,22 @@ try {
     assert(typeof entry.totalTokens === "number" && entry.totalTokens > 0, "expected positive totalTokens");
   });
 
+  await record("GET /api/admin/traces returns the spans recorded by the earlier /api/chat", async () => {
+    const response = await fetch(`${baseUrl}/api/admin/traces`);
+    assert(response.status === 200, `expected 200, got ${response.status}`);
+    const body = await response.json();
+    assert(Array.isArray(body), "expected array");
+    assert(
+      body.length > 0,
+      "expected at least one trace event after the earlier /api/chat call (proves traceSink reaches the admin route)"
+    );
+    const seenNames = new Set(body.map((event) => event?.name).filter((name) => typeof name === "string"));
+    assert(
+      seenNames.has("muse.model.generate"),
+      `expected a muse.model.generate span, got: ${[...seenNames].slice(0, 10).join(", ")}`
+    );
+  });
+
   await record("GET /api/admin/token-cost/by-session?runId=smoke-broad-chat returns the chat's usage", async () => {
     const response = await fetch(`${baseUrl}/api/admin/token-cost/by-session?runId=smoke-broad-chat`);
     assert(response.status === 200, `expected 200, got ${response.status}`);
