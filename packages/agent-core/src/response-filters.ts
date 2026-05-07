@@ -5,8 +5,11 @@ import {
   type StructuredOutputFormat
 } from "@muse/policy";
 import {
+  extractApologyLead,
   isRecord,
+  isSignificantCountMismatch,
   joinUserMessages,
+  resolveActualResponseCount,
   splitOnCodeFences,
   splitPreservingSentencePunctuation,
   transformMarkdownText,
@@ -539,3 +542,131 @@ function removeOverconfidentReleaseFragments(line: string, pattern: RegExp): str
   const kept = fragments.filter((fragment) => !pattern.test(fragment));
   return kept.length === 0 ? "" : `${indent}${kept.join(" ")}`;
 }
+
+export function createToolResultQualityAuditFilter(): ResponseFilterStage {
+  const apologyLeadPatterns = [
+    "죄송합니다",
+    "jira 계정",
+    "jira에서",
+    "계정을 확인할 수 없",
+    "연동이 필요",
+    "확인할 수 없어",
+    "정보가 변경되었",
+    "가져올 수 없",
+    "확인할 수 없습니다",
+    "연동 상태를 확인",
+    "bitbucket 계정"
+  ];
+
+  return {
+    apply: (response, context) => {
+      if ((context.toolsUsed ?? []).length === 0 || (context.verifiedSources ?? []).length === 0) {
+        return response;
+      }
+      if (response.output.trim().length === 0) {
+        return response;
+      }
+
+      const leadingApology = extractApologyLead(response.output, apologyLeadPatterns);
+
+      if (!leadingApology) {
+        return response;
+      }
+
+      const rest = response.output.slice(response.output.indexOf(leadingApology) + leadingApology.length).trimStart();
+
+      if (rest.length === 0) {
+        return response;
+      }
+
+      const output = rest.trimStart().startsWith("💡") ? rest : `조회한 결과를 정리해드릴게요.\n\n${rest}`;
+
+      return {
+        ...response,
+        output,
+        raw: withResponseFilterRaw(response, "tool-result-quality-audit-filter")
+      };
+    },
+    id: "tool-result-quality-audit-filter"
+  };
+}
+
+export function createResponseCountInjectionFilter(): ResponseFilterStage {
+  const countInsightPattern = /(검색 결과 0건|총 \d{1,4}건)/;
+  const contentHasCountPattern = /(\d{1,4}\s*건|0건|결과 없|찾지 못|확인되지 않|등록되지 않|발견되지 않)/;
+
+  return {
+    apply: (response, context) => {
+      if (response.output.trim().length === 0 || (context.toolsUsed ?? []).length === 0) {
+        return response;
+      }
+
+      const countInsight = (context.toolInsights ?? []).find((insight) => countInsightPattern.test(insight));
+
+      if (!countInsight || contentHasCountPattern.test(response.output)) {
+        return response;
+      }
+
+      return {
+        ...response,
+        output: `${countInsight}\n\n${response.output}`,
+        raw: withResponseFilterRaw(response, "response-count-injection-filter")
+      };
+    },
+    id: "response-count-injection-filter"
+  };
+}
+
+export function createResponseCountConsistencyFilter(): ResponseFilterStage {
+  const assertionPatterns = [
+    /총\s*(\d{1,4})\s*건/g,
+    /(\d{1,4})\s*건\s*(?:있|확인|찾|검색|매칭|발견)/g,
+    /(\d{1,4})\s*건\s*입니다/g,
+    /총\s*(\d{1,4})\s*개(?!월|국|년|주|일|시간|분|초|명|장|회|차|배|면|층|점|대)/g,
+    /found\s+(\d{1,4})\s+(?:results?|items?|matches?|issues?|docs?)/gi,
+    /(\d{1,4})\s+(?:results?|items?|matches?|issues?|docs?)\s+found/gi
+  ];
+
+  return {
+    apply: (response, context) => {
+      if (response.output.trim().length === 0 || (context.toolsUsed ?? []).length === 0) {
+        return response;
+      }
+      if ((context.toolsUsed ?? []).includes("work_release_risk_digest")) {
+        return response;
+      }
+
+      const actualCount = resolveActualResponseCount(response.output, context.verifiedSources ?? []);
+
+      if (actualCount < 0) {
+        return response;
+      }
+
+      let output = response.output;
+
+      for (const pattern of assertionPatterns) {
+        output = output.replace(pattern, (match, assertedText: string) => {
+          const asserted = Number.parseInt(assertedText, 10);
+
+          if (!Number.isFinite(asserted) || !isSignificantCountMismatch(asserted, actualCount)) {
+            return match;
+          }
+
+          return match.replace(assertedText, String(actualCount));
+        });
+      }
+
+      if (output === response.output) {
+        return response;
+      }
+
+      return {
+        ...response,
+        output,
+        raw: withResponseFilterRaw(response, "response-count-consistency-filter")
+      };
+    },
+    id: "response-count-consistency-filter"
+  };
+}
+

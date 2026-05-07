@@ -1,5 +1,6 @@
 import type { ModelMessage, ModelResponse } from "@muse/model";
 import type { JsonObject } from "@muse/shared";
+import type { VerifiedSource } from "./types.js";
 
 /**
  * Shared internal helpers for `@muse/agent-core` submodules.
@@ -193,6 +194,47 @@ function isMarkdownTableSeparator(line: string): boolean {
 
 function parseMarkdownTableRow(line: string): readonly string[] {
   return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim());
+}
+
+export function extractApologyLead(content: string, patterns: readonly string[]): string | undefined {
+  const trimmed = content.trimStart();
+  const firstBreak = trimmed.indexOf("\n\n");
+  const candidate = firstBreak > 0 ? trimmed.slice(0, firstBreak) : trimmed;
+
+  if (candidate.length > 300) {
+    return undefined;
+  }
+
+  const lower = candidate.toLowerCase();
+  return patterns.some((pattern) => lower.includes(pattern)) ? candidate : undefined;
+}
+
+export function resolveActualResponseCount(body: string, sources: readonly VerifiedSource[]): number {
+  if (sources.length > 0) {
+    return sources.length;
+  }
+
+  const bullets = body.match(/^\s*(?:[-•*]|\d+\.)\s+\S/gm)?.length ?? 0;
+
+  if (bullets > 0) {
+    return bullets;
+  }
+
+  const urls = new Set(body.match(/https?:\/\/[^\s)>"']+/g) ?? []);
+
+  if (urls.size > 0) {
+    return urls.size;
+  }
+
+  if (/찾지\s*못했|찾을\s*수\s*없|없습니다|없어요|0\s*(?:건|개)|not\s+found|no\s+(?:results?|items?|matches?)/i.test(body)) {
+    return 0;
+  }
+
+  return -1;
+}
+
+export function isSignificantCountMismatch(asserted: number, actual: number): boolean {
+  return (actual === 0 && asserted > 0) || Math.abs(asserted - actual) >= 2;
 }
 
 export function splitPreservingSentencePunctuation(text: string): readonly string[] {
