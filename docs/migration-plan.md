@@ -296,6 +296,12 @@ route state and runtime services onto Kysely-backed stores.
   `parsePlan`, `validatePlan` helpers) and `@muse/prompts` (`buildPlanningSystemPrompt`). These mirror Reactor's
   `agent.plan.PlanStep` / `agent.plan.PlanValidator` / `agent.impl.prompt.PlanningPromptBuilder` and are the
   primitives the upcoming PlanExecute loop will compose.
+- agent-core monolith split continued (iteration 21). Two more response-filter factories
+  (`createStructuredOutputResponseFilter`, `createReleaseRiskDataGapResponseFilter`) extracted to
+  `response-filters.ts` along with their dedicated helpers (`readStructuredOutputFormat`,
+  `removeOverconfidentReleaseFragments`). Public API unchanged. Index file: 3,062 → 2,972 lines —
+  first time below the 3,000-line mark since the migration began (cumulative 3,983 → 2,972,
+  -25.4%).
 - agent-core monolith split continued (iteration 20). Three more response-filter factories
   (`createSourceBlockResponseFilter`, `createMarkdownStripResponseFilter`,
   `createGreetingStripResponseFilter`) extracted to `response-filters.ts`. Markdown helper

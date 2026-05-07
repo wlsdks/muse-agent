@@ -2170,9 +2170,11 @@ export {
   createInternalBrandMaskResponseFilter,
   createMarkdownStripResponseFilter,
   createMaxLengthResponseFilter,
+  createReleaseRiskDataGapResponseFilter,
   createSanitizedTextResponseFilter,
   createSlackUserIdMaskResponseFilter,
-  createSourceBlockResponseFilter
+  createSourceBlockResponseFilter,
+  createStructuredOutputResponseFilter
 } from "./response-filters.js";
 
 export function createCasualLureStripResponseFilter(): ResponseFilterStage {
@@ -2492,93 +2494,6 @@ export function createResponseCountConsistencyFilter(): ResponseFilterStage {
   };
 }
 
-export function createReleaseRiskDataGapResponseFilter(): ResponseFilterStage {
-  const cautionMessage = "Bitbucket 데이터 집계 경고가 있어 전체 릴리스 위험도는 확정하지 않습니다.";
-  const dataGapPattern =
-    /(Bitbucket|비트버킷)[^\n.]*(집계|데이터|조회)[^\n.]*(실패|경고|문제|오류)|(실패|경고|문제|오류)[^\n.]*(Bitbucket|비트버킷)[^\n.]*(집계|데이터|조회)/i;
-  const overconfidentRiskPattern =
-    /(위험(?:도|도가| 점수)?[^\n.]*(?:낮|0\s*점)|위험\s*수준[^\n.]*(?:낮|low)|특별한\s*위험\s*신호[^\n.]*(?:없|감지되지)|심각한\s*위험\s*신호[^\n.]*(?:없|감지되지)|Jira\s*이슈와\s*Bitbucket\s*PR\s*활동[^\n.]*(?:없|없는)|특이사항[^\n.]*(?:없|발견되지)[^\n.]*(?:큰\s*문제|문제\s*없)|경고[^\n.]*(?:전체\s*)?위험도[^\n.]*(?:영향을?\s*미치지\s*않|영향\s*없)|릴리스\s*준비[^\n.]*(?:완료|끝)|(?:계획된\s*)?릴리스\s*체크리스트[^\n.]*(?:진행|계속)|전반적인\s*위험도[^\n.]*(?:낮음|low))/i;
-  const cautionPattern = /전체\s*릴리스\s*위험도는\s*확정하지\s*않|release\s*risk[^\n.]*not\s*conclusive/i;
-
-  return {
-    apply: (response, context) => {
-      if (!(context.toolsUsed ?? []).includes("work_release_risk_digest")) {
-        return response;
-      }
-      if (!dataGapPattern.test(response.output) || !overconfidentRiskPattern.test(response.output)) {
-        return response;
-      }
-
-      const output = response.output
-        .split("\n")
-        .map((line) => removeOverconfidentReleaseFragments(line, overconfidentRiskPattern))
-        .filter((line) => line.trim().length > 0)
-        .join("\n")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-
-      if (output.length === 0) {
-        return response;
-      }
-
-      const finalOutput = cautionPattern.test(output) ? output : `${cautionMessage}\n\n${output}`;
-
-      return {
-        ...response,
-        output: finalOutput,
-        raw: withResponseFilterRaw(response, "release-risk-data-gap-response-filter")
-      };
-    },
-    id: "release-risk-data-gap-response-filter"
-  };
-}
-
-export function createStructuredOutputResponseFilter(options: {
-  readonly format?: StructuredOutputFormat;
-  readonly metadataKey?: string;
-} = {}): ResponseFilterStage {
-  const metadataKey = options.metadataKey ?? "responseFormat";
-
-  return {
-    apply: (response, context) => {
-      const format = options.format ?? readStructuredOutputFormat(context.input.metadata?.[metadataKey]);
-
-      if (!format) {
-        return response;
-      }
-
-      const result = normalizeStructuredOutput(response.output, format);
-
-      if (!result.normalized) {
-        return response;
-      }
-
-      return {
-        ...response,
-        output: result.content,
-        raw: {
-          ...(isRecord(response.raw) ? response.raw : {}),
-          museResponseFilter: {
-            format,
-            id: "structured-output-response-filter"
-          }
-        }
-      };
-    },
-    id: "structured-output-response-filter"
-  };
-}
-
-function removeOverconfidentReleaseFragments(line: string, pattern: RegExp): string {
-  if (!pattern.test(line)) {
-    return line;
-  }
-
-  const indent = line.match(/^\s*/)?.[0] ?? "";
-  const fragments = line.trim().split(/(?<=[.!?])\s+/).filter((fragment) => fragment.trim().length > 0);
-  const kept = fragments.filter((fragment) => !pattern.test(fragment));
-  return kept.length === 0 ? "" : `${indent}${kept.join(" ")}`;
-}
 
 function extractApologyLead(content: string, patterns: readonly string[]): string | undefined {
   const trimmed = content.trimStart();
@@ -3017,11 +2932,6 @@ function stringListMetadata(value: unknown): readonly string[] | undefined {
 function numberMetadata(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
-
-function readStructuredOutputFormat(value: unknown): StructuredOutputFormat | undefined {
-  return value === "json" || value === "yaml" ? value : undefined;
-}
-
 
 function isModelMessage(value: unknown): value is ModelMessage {
   if (!isRecord(value) || typeof value.content !== "string") {
