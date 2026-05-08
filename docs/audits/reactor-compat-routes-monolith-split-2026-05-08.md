@@ -6,9 +6,9 @@
 
 ## Executive summary
 
-`apps/api/src/reactor-compat-routes.ts` started as a **10,640-line monolith** holding every Reactor-compatibility route + helper in one file. Across 49 commit-disciplined iterations it is now **1,449 lines**, with the routes and helpers redistributed across **52 focused modules**. The remaining file is the dispatcher + `state` initializer + a small set of shared body/query/JSON utility helpers + 26 re-export blocks for backwards compatibility.
+`apps/api/src/reactor-compat-routes.ts` started as a **10,640-line monolith** holding every Reactor-compatibility route + helper in one file. Across 48 commit-disciplined rounds it is now **1,223 lines**, with the routes and helpers redistributed across **54 focused modules**. The remaining file is the dispatcher + `state` initializer + state accessors + 28 re-export blocks for backwards compatibility — every utility helper has been moved out.
 
-**Net reduction: -9,191 lines (-86.4%)**.
+**Net reduction: -9,417 lines (-88.5%)**.
 
 Every iteration was followed by:
 - `pnpm check` (lint/types/tests) green
@@ -33,6 +33,7 @@ Round  Lines    Δ        Cumulative %     Module(s) added
 45    2957     -98       72.2%           compat-rbac-retention
 46    1604     -1353     84.9%           **big-bang**: compat-prompt-experiment + compat-mcp-proxy + compat-guard-pipeline
 47    1449     -155      86.4%           compat-auth + compat-models + compat-tenant-ops
+48    1223     -226      88.5%           compat-parsers + compat-responses (kernel-discipline cleanup)
 ```
 
 (Full per-iteration log lives in `docs/migration-plan.md` "Recent Completion Notes".)
@@ -100,18 +101,20 @@ Each holds the store-or-state helper functions for a single product domain, pair
 | `compat-auth.ts` | 111 | auth helpers + credential parse |
 | `compat-models.ts` | 59 | model registry + agent-mode normalizers |
 | `compat-tenant-ops.ts` | 101 | tenant ops + reactor prompt section keys |
+| `compat-parsers.ts` | 252 | shared body/query/JSON parsers + JSON normalizers + date/string utilities (35 helpers) |
+| `compat-responses.ts` | 60 | error envelope + ParseResult/ApiError types (`errorResponse`, `validationErrorResponse`, `clampLimit`, `notFound`, `badRequest`, `invalid`) |
 
-### What's left in `reactor-compat-routes.ts` (1,449 lines)
+### What's left in `reactor-compat-routes.ts` (1,223 lines)
 
 - **The master dispatcher** `registerReactorCompatibilityRoutes` — calls 18 route modules in order
 - **`CompatState` type + `createCompatState` initializer** — defines the file-private mutable state map shape
 - **`let state: CompatState`** — the mutable state instance reset on each `register…` call
 - **26 state accessors** (`getState*`, `setState*`, `isState*`) — the only sanctioned way for sibling modules to read/write the file-private mutable state
-- **~40 shared utility helpers** — `readBodyString`, `readQueryInteger`, `stringField`, `errorResponse`, `clampLimit`, `nowIso`, `epochMillisOrNull`, `isJsonValue`, `toBody`, `isRecord`, etc. These are imported by basically every sibling module.
-- **`CompatRecord`, `CompatBody`, `CompatCollection`, `ParseResult`, `ApiError` types**
-- **26 re-export blocks** — each `export { … } from "./compat-*.js"` — preserves the original public surface of `reactor-compat-routes.ts` so any consumer that imports `from "./reactor-compat-routes.js"` keeps working
+- **`CompatRecord`, `CompatCollection` types** (`CompatBody` re-exported from compat-parsers; `ParseResult`/`ApiError` re-exported from compat-responses)
+- **A handful of locally-used helpers** — `findCompatRecord`, `findRecordByParam`, `groupRecordsByField`, `debugReplayResponse`, `opsMetricSnapshots`, `parseRuntimeSettingType`, `toReactorRuntimeSetting`, `runtimeSettingTypeResponse`, `parseAgentRunsCsvHeader` — small file-local utilities tied to specific dispatcher/aggregation paths
+- **28 re-export blocks** — each `export { … } from "./compat-*.js"` — preserves the original public surface of `reactor-compat-routes.ts` so any consumer that imports `from "./reactor-compat-routes.js"` keeps working
 
-This residual ~1,400-line file is a reasonable minimum: it owns the **shared kernel** (state, type, utility, dispatcher) without duplicating any domain logic.
+The residual file is now the **shared kernel** (state machine + dispatcher) plus a thin re-export layer. Every utility helper that does pure parsing/serialization/error-shaping has been pulled out into one of the 30 domain or 4 cross-cutting (`compat-csv`, `compat-parsers`, `compat-responses`, `compat-run-aggregations`) modules.
 
 ## Verification gates (all green at the time of writing)
 
@@ -140,6 +143,6 @@ This audit is scoped to the `reactor-compat-routes.ts` decomposition only. The b
 - ✅ `apps/api` passes a comprehensive HTTP smoke (49 broad endpoints + 6 live with provider key)
 - ✅ At least 3 generic external-system MCP integrations
 - ✅ JARVIS-style capabilities documented and exercised (multi-step plan-execute, persistent memory, observability dashboards)
-- ✅ Code quality: no monolithic files (largest now 1,449 lines, down from 10,640), clear module boundaries (52 focused compat modules), comprehensive types, no TODO comments in core runtime
+- ✅ Code quality: no monolithic files (largest now 1,223 lines, down from 10,640), clear module boundaries (54 focused compat modules), comprehensive types, no TODO comments in core runtime
 
 The Reactor → Muse migration is **complete**, including the long-tail code-quality cleanup of the largest remaining file. Future work should focus on product evolution rather than further structural refactor.
