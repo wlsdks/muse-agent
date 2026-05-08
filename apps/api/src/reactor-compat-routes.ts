@@ -71,6 +71,7 @@ import { registerIntentRoutes } from "./intent-compat-routes.js";
 import { registerPersonaRoutes } from "./persona-compat-routes.js";
 import { registerPromptTemplateRoutes } from "./prompt-template-compat-routes.js";
 import { registerSessionCompatibilityRoutes } from "./session-compat-routes.js";
+import { registerSlackCompatibilityRoutes } from "./slack-compat-routes.js";
 import { registerUserMemoryCompatRoutes } from "./user-memory-compat-routes.js";
 import { recordedSpans, recordedTraceEvents, type AdminRouteState } from "./admin-routes.js";
 import type { McpRouteMcp } from "./mcp-routes.js";
@@ -609,332 +610,7 @@ function registerPromptAndRagRoutes(server: FastifyInstance, options: ReactorCom
 
 // registerMcpCompatibilityRoutes lives in apps/api/src/mcp-compat-routes.ts.
 
-function registerSlackBotRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/admin/slack-bots", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return (await listSlackBots(options)).map(toSlackBotResponse);
-  });
-  server.get("/api/admin/slack-bots/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    const bot = await getSlackBot(options, id);
-    return bot ? toSlackBotResponse(bot) : slackBotNotFound(reply, id);
-  });
-  server.post("/api/admin/slack-bots", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const name = readBodyString(request.body, "name") ?? "";
-    const validationError = validateSlackBotCreate(toBody(request.body));
-
-    if (validationError) {
-      return reply.status(400).send(validationErrorResponse(validationError));
-    }
-
-    if ((await listSlackBots(options)).some((bot) => bot.name === name)) {
-      return reply.status(409).send(errorResponse(`이름 '${name}'은 이미 사용 중입니다`));
-    }
-
-    return reply.status(201).send(toSlackBotResponse(await createSlackBot(options, request.body)));
-  });
-  server.put("/api/admin/slack-bots/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    const existing = await getSlackBot(options, id);
-
-    if (!existing) {
-      return slackBotNotFound(reply, id);
-    }
-
-    return toSlackBotResponse(await updateSlackBot(options, existing, request.body));
-  });
-  server.delete("/api/admin/slack-bots/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    const existing = await getSlackBot(options, id);
-
-    if (!existing) {
-      return slackBotNotFound(reply, id);
-    }
-
-    await deleteSlackBot(options, stringField(existing.id, id));
-    return reply.status(204).send();
-  });
-}
-
-function registerSlackCompatibilityRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  registerSlackBotRoutes(server, options);
-  server.get("/api/proactive-channels", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return (await listProactiveChannels(options)).map(toProactiveChannelResponse);
-  });
-  server.post("/api/proactive-channels", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const body = toBody(request.body);
-    const channelId = readBodyString(body, "channelId")?.trim();
-
-    if (!channelId) {
-      return reply.status(400).send(validationErrorResponse({ channelId: "channelId must not be blank" }));
-    }
-
-    if (channelId.length > 50) {
-      return reply.status(400).send(validationErrorResponse({
-        channelId: "channelId must not exceed 50 characters"
-      }));
-    }
-
-    if (typeof body.channelName === "string" && body.channelName.length > 200) {
-      return reply.status(400).send(validationErrorResponse({
-        channelName: "channelName must not exceed 200 characters"
-      }));
-    }
-
-    const existing = await listProactiveChannels(options);
-
-    if (existing.some((channel) => stringField(channel.channelId, "") === channelId)) {
-      return reply.status(409).send({
-        error: "Channel already in proactive list",
-        timestamp: nowIso()
-      });
-    }
-
-    const record = compatRecord({
-      addedAt: Date.now(),
-      channelId,
-      channelName: readNullableStringField(body, "channelName"),
-      id: channelId
-    }, "proactive_channel");
-    await saveProactiveChannels(options, [...existing, record]);
-    return reply.status(201).send(toProactiveChannelResponse(record));
-  });
-  server.delete("/api/proactive-channels/:channelId", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { channelId } = request.params as { readonly channelId: string };
-
-    const existing = await listProactiveChannels(options);
-    const remaining = existing.filter((channel) => stringField(channel.channelId, "") !== channelId);
-
-    if (remaining.length === existing.length) {
-      return reply.status(404).send({
-        error: "Channel not found in proactive list",
-        timestamp: nowIso()
-      });
-    }
-
-    await saveProactiveChannels(options, remaining);
-    return reply.status(204).send();
-  });
-
-  server.post("/api/admin/slack/channels/faq", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const body = toJsonObject(request.body);
-    const channelId = readBodyString(body, "channelId");
-
-    const validation = validateSlackFaqChannelId(channelId, reply);
-    if (validation) {
-      return validation;
-    }
-
-    const channelKey = channelId ?? "";
-    const saved = await saveSlackFaqRegistration(options, {
-      autoReplyMode: slackFaqAutoReplyMode(readBodyString(body, "autoReplyMode")),
-      channelId: channelKey,
-      channelName: readBodyNullableString(body, "channelName") ?? null,
-      confidenceThreshold: readNumber(body.confidenceThreshold, 0.8),
-      daysBack: readNumber(body.daysBack, 30),
-      enabled: readBoolean(body.enabled, true),
-      id: channelKey,
-      lastChunkCount: null,
-      lastError: null,
-      lastIngestedAt: null,
-      lastMessageCount: null,
-      lastStatus: null,
-      reIngestIntervalHours: readNumber(body.reIngestIntervalHours, 24),
-      registeredBy: readAuthUserId(request) ?? null,
-    });
-    return toSlackFaqRegistration(saved);
-  });
-  server.get("/api/admin/slack/channels/faq", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return { registrations: (await listSlackFaqRegistrations(options)).map(toSlackFaqRegistration) };
-  });
-  server.get("/api/admin/slack/channels/faq/stats", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return slackFaqStats();
-  });
-  server.get("/api/admin/slack/channels/faq/scheduler/health", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return { enabled: false };
-  });
-  server.get("/api/admin/slack/channels/faq/:channelId", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { channelId } = request.params as { readonly channelId: string };
-    const validation = validateSlackFaqChannelId(channelId, reply);
-    if (validation) {
-      return validation;
-    }
-
-    const record = await getSlackFaqRegistration(options, channelId);
-    return record ? toSlackFaqRegistration(record) : slackFaqNotFound(reply, channelId);
-  });
-  server.patch("/api/admin/slack/channels/faq/:channelId", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { channelId } = request.params as { readonly channelId: string };
-    const validation = validateSlackFaqChannelId(channelId, reply);
-    if (validation) {
-      return validation;
-    }
-
-    const existing = await getSlackFaqRegistration(options, channelId);
-    if (!existing) {
-      return slackFaqNotFound(reply, channelId);
-    }
-
-    const body = toBody(request.body);
-    const saved = await saveSlackFaqRegistration(options, {
-      ...existing,
-      autoReplyMode: body.autoReplyMode === undefined
-        ? stringField(existing.autoReplyMode, "MENTION")
-        : slackFaqAutoReplyMode(readBodyString(body, "autoReplyMode")),
-      channelId,
-      channelName: readBodyNullableString(body, "channelName") ?? nullableStringResponse(existing.channelName),
-      confidenceThreshold: body.confidenceThreshold === undefined
-        ? readNumber(existing.confidenceThreshold, 0.8)
-        : readNumber(body.confidenceThreshold, 0.8),
-      daysBack: body.daysBack === undefined ? readNumber(existing.daysBack, 30) : readNumber(body.daysBack, 30),
-      enabled: body.enabled === undefined ? readBoolean(existing.enabled, true) : readBoolean(body.enabled, true),
-      id: channelId,
-      reIngestIntervalHours: body.reIngestIntervalHours === undefined
-        ? readNumber(existing.reIngestIntervalHours, 24)
-        : readNumber(body.reIngestIntervalHours, 24),
-    });
-    return toSlackFaqRegistration(saved);
-  });
-  server.delete("/api/admin/slack/channels/faq/:channelId", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { channelId } = request.params as { readonly channelId: string };
-    const validation = validateSlackFaqChannelId(channelId, reply);
-    if (validation) {
-      return validation;
-    }
-
-    const deleted = await deleteSlackFaqRegistration(options, channelId);
-    state.slackFaqEvents.delete(channelId);
-    state.slackFaqFeedback.delete(channelId);
-    return deleted ? { deleted: channelId } : slackFaqNotFound(reply, channelId);
-  });
-  server.post("/api/admin/slack/channels/faq/:channelId/ingest", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return slackFaqIngest(request, reply, options);
-  });
-  server.post("/api/admin/slack/channels/faq/:channelId/probe", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return slackFaqProbe(request, reply, options);
-  });
-  server.post("/api/admin/slack/channels/faq/:channelId/dry-run", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return slackFaqDryRun(request, reply, options);
-  });
-  server.get("/api/admin/slack/channels/faq/:channelId/stats", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { channelId } = request.params as { readonly channelId: string };
-    return slackFaqStats(channelId);
-  });
-  server.get("/api/admin/slack/channels/faq/:channelId/events", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { channelId } = request.params as { readonly channelId: string };
-    return { events: (state.slackFaqEvents.get(channelId) ?? []).slice(0, 50).map(toSlackFaqEvent) };
-  });
-  server.get("/api/admin/slack/channels/faq/:channelId/feedback", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { channelId } = request.params as { readonly channelId: string };
-    const feedback = state.slackFaqFeedback.get(channelId) ?? {};
-    return {
-      feedback: Object.fromEntries(Object.entries(feedback).map(([docId, item]) => [docId, {
-        docId,
-        negativeRatio: item.thumbsDown + item.thumbsUp === 0
-          ? 0
-          : item.thumbsDown / (item.thumbsDown + item.thumbsUp),
-        thumbsDown: item.thumbsDown,
-        thumbsUp: item.thumbsUp,
-        total: item.thumbsDown + item.thumbsUp
-      }]))
-    };
-  });
-  server.post("/api/admin/slack/prompts/reload", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const sections = reactorPromptSectionKeys();
-    return {
-      reloaded: true,
-      sectionCount: sections.length,
-      sections
-    };
-  });
-}
+// registerSlackCompatibilityRoutes lives in apps/api/src/slack-compat-routes.ts.
 
 function registerAdminCompatibilityRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   server.get("/api/admin/settings", async (request, reply) => {
@@ -4015,7 +3691,7 @@ function createRecord(collection: CompatCollection, input: JsonObject, prefix: s
   return record;
 }
 
-function compatRecord(input: JsonObject, prefix: string, existing?: JsonObject): CompatRecord {
+export function compatRecord(input: JsonObject, prefix: string, existing?: JsonObject): CompatRecord {
   const id = typeof input.id === "string" && input.id.length > 0 ? input.id : createRunId(prefix);
   return {
     ...input,
@@ -4552,6 +4228,19 @@ export function getStateRetentionPolicy(): JsonObject {
 export function updateStateRetentionPolicy(patch: JsonObject): JsonObject {
   state.retentionPolicy = { ...state.retentionPolicy, ...patch };
   return state.retentionPolicy;
+}
+
+export function getStateSlackFaqEvents(channelId: string): readonly CompatRecord[] {
+  return state.slackFaqEvents.get(channelId) ?? [];
+}
+
+export function getStateSlackFaqFeedback(channelId: string): Record<string, { thumbsDown: number; thumbsUp: number }> {
+  return state.slackFaqFeedback.get(channelId) ?? {};
+}
+
+export function deleteStateSlackFaqChannel(channelId: string): void {
+  state.slackFaqEvents.delete(channelId);
+  state.slackFaqFeedback.delete(channelId);
 }
 
 export async function readStoredToolPolicy(options: ReactorCompatibilityRouteOptions): Promise<JsonObject | undefined> {
@@ -5621,7 +5310,7 @@ export function computeContentHash(content: string): string {
 const DOCUMENT_CONTENT_HASH_KEY = "content_hash";
 const PROACTIVE_CHANNELS_SETTING_KEY = "compat.slack.proactiveChannels";
 
-async function listProactiveChannels(options: ReactorCompatibilityRouteOptions): Promise<readonly CompatRecord[]> {
+export async function listProactiveChannels(options: ReactorCompatibilityRouteOptions): Promise<readonly CompatRecord[]> {
   const records = await options.runtimeSettings.getJson(PROACTIVE_CHANNELS_SETTING_KEY, []);
   return records
     .map(toJsonObject)
@@ -5629,7 +5318,7 @@ async function listProactiveChannels(options: ReactorCompatibilityRouteOptions):
     .filter((record) => stringField(record.channelId, "").length > 0);
 }
 
-async function saveProactiveChannels(
+export async function saveProactiveChannels(
   options: ReactorCompatibilityRouteOptions,
   records: readonly JsonObject[]
 ): Promise<void> {
@@ -5642,7 +5331,7 @@ async function saveProactiveChannels(
   });
 }
 
-async function createSlackBot(
+export async function createSlackBot(
   options: ReactorCompatibilityRouteOptions,
   bodyValue: unknown
 ): Promise<CompatRecord> {
@@ -5664,7 +5353,7 @@ async function createSlackBot(
   return createRecord(state.slackBots, record, "slack_bot");
 }
 
-function validateSlackBotCreate(body: CompatBody): JsonObject | undefined {
+export function validateSlackBotCreate(body: CompatBody): JsonObject | undefined {
   if (!readBodyString(body, "name")) {
     return { name: "name은 필수입니다" };
   }
@@ -5688,7 +5377,7 @@ function validateSlackBotCreate(body: CompatBody): JsonObject | undefined {
   return undefined;
 }
 
-async function listSlackBots(options: ReactorCompatibilityRouteOptions): Promise<readonly JsonObject[]> {
+export async function listSlackBots(options: ReactorCompatibilityRouteOptions): Promise<readonly JsonObject[]> {
   if (options.slackPersistence?.botStore) {
     const bots = await options.slackPersistence.botStore.list();
     return bots.map(slackBotToCompat);
@@ -5697,7 +5386,7 @@ async function listSlackBots(options: ReactorCompatibilityRouteOptions): Promise
   return [...state.slackBots.values()];
 }
 
-async function getSlackBot(options: ReactorCompatibilityRouteOptions, id: string): Promise<JsonObject | undefined> {
+export async function getSlackBot(options: ReactorCompatibilityRouteOptions, id: string): Promise<JsonObject | undefined> {
   if (options.slackPersistence?.botStore) {
     const bot = await options.slackPersistence.botStore.get(id);
     return bot ? slackBotToCompat(bot) : undefined;
@@ -5706,7 +5395,7 @@ async function getSlackBot(options: ReactorCompatibilityRouteOptions, id: string
   return findCompatRecord(state.slackBots, id);
 }
 
-async function deleteSlackBot(options: ReactorCompatibilityRouteOptions, id: string): Promise<boolean> {
+export async function deleteSlackBot(options: ReactorCompatibilityRouteOptions, id: string): Promise<boolean> {
   if (options.slackPersistence?.botStore) {
     return options.slackPersistence.botStore.delete(id);
   }
@@ -5742,7 +5431,7 @@ function slackBotToCompat(bot: SlackBotInstance): CompatRecord {
   };
 }
 
-async function updateSlackBot(
+export async function updateSlackBot(
   options: ReactorCompatibilityRouteOptions,
   existing: JsonObject,
   bodyValue: unknown
@@ -5765,7 +5454,7 @@ async function updateSlackBot(
   return createRecord(state.slackBots, record, "slack_bot");
 }
 
-function toSlackBotResponse(record: JsonObject) {
+export function toSlackBotResponse(record: JsonObject) {
   return {
     appTokenMasked: maskSlackToken(record.appToken),
     botTokenMasked: maskSlackToken(record.botToken),
@@ -5779,11 +5468,11 @@ function toSlackBotResponse(record: JsonObject) {
   };
 }
 
-function slackBotNotFound(reply: FastifyReply, id: string) {
+export function slackBotNotFound(reply: FastifyReply, id: string) {
   return reply.status(404).send(errorResponse(`봇 인스턴스를 찾을 수 없습니다: ${id}`));
 }
 
-function toProactiveChannelResponse(record: JsonObject) {
+export function toProactiveChannelResponse(record: JsonObject) {
   return {
     addedAt: readNumber(record.addedAt, epochMillisOrNull(record.createdAt) ?? Date.now()),
     channelId: stringField(record.channelId, ""),
@@ -6795,7 +6484,7 @@ async function activatePromptVersionById(
   return toVersionResponse(selected);
 }
 
-function validateSlackFaqChannelId(channelId: string | undefined, reply: FastifyReply) {
+export function validateSlackFaqChannelId(channelId: string | undefined, reply: FastifyReply) {
   if (!channelId || channelId.trim().length === 0 || channelId.length > 64) {
     return reply.status(400).send({ error: "channelId 가 유효하지 않습니다" });
   }
@@ -6803,16 +6492,16 @@ function validateSlackFaqChannelId(channelId: string | undefined, reply: Fastify
   return undefined;
 }
 
-function slackFaqNotFound(reply: FastifyReply, channelId: string) {
+export function slackFaqNotFound(reply: FastifyReply, channelId: string) {
   return reply.status(404).send({ error: `등록되지 않은 채널: ${channelId}` });
 }
 
-function slackFaqAutoReplyMode(value: string | undefined): string {
+export function slackFaqAutoReplyMode(value: string | undefined): string {
   const normalized = value?.trim().toUpperCase();
   return normalized === "ALWAYS" || normalized === "OFF" ? normalized : "MENTION";
 }
 
-async function saveSlackFaqRegistration(
+export async function saveSlackFaqRegistration(
   options: ReactorCompatibilityRouteOptions,
   record: JsonObject
 ): Promise<JsonObject> {
@@ -6824,7 +6513,7 @@ async function saveSlackFaqRegistration(
   return createRecord(state.slackFaq, record, "slack_faq");
 }
 
-async function listSlackFaqRegistrations(options: ReactorCompatibilityRouteOptions): Promise<readonly JsonObject[]> {
+export async function listSlackFaqRegistrations(options: ReactorCompatibilityRouteOptions): Promise<readonly JsonObject[]> {
   if (options.slackPersistence?.faqStore) {
     const registrations = await options.slackPersistence.faqStore.list();
     return registrations.map(slackFaqRegistrationToCompat);
@@ -6833,7 +6522,7 @@ async function listSlackFaqRegistrations(options: ReactorCompatibilityRouteOptio
   return [...state.slackFaq.values()];
 }
 
-async function getSlackFaqRegistration(
+export async function getSlackFaqRegistration(
   options: ReactorCompatibilityRouteOptions,
   channelId: string
 ): Promise<JsonObject | undefined> {
@@ -6845,7 +6534,7 @@ async function getSlackFaqRegistration(
   return findCompatRecord(state.slackFaq, channelId);
 }
 
-async function deleteSlackFaqRegistration(options: ReactorCompatibilityRouteOptions, channelId: string): Promise<boolean> {
+export async function deleteSlackFaqRegistration(options: ReactorCompatibilityRouteOptions, channelId: string): Promise<boolean> {
   if (options.slackPersistence?.faqStore) {
     return options.slackPersistence.faqStore.delete(channelId);
   }
@@ -6934,7 +6623,7 @@ function slackFaqIngestStatusValue(value: unknown): "OK" | "FAILED" | "RUNNING" 
   return normalized === "OK" || normalized === "FAILED" || normalized === "RUNNING" ? normalized : null;
 }
 
-function toSlackFaqRegistration(record: JsonObject): JsonObject {
+export function toSlackFaqRegistration(record: JsonObject): JsonObject {
   return {
     autoReplyMode: slackFaqAutoReplyMode(stringField(record.autoReplyMode, "MENTION")),
     channelId: stringField(record.channelId, stringField(record.id, "")),
@@ -6953,7 +6642,7 @@ function toSlackFaqRegistration(record: JsonObject): JsonObject {
   };
 }
 
-async function slackFaqIngest(
+export async function slackFaqIngest(
   request: FastifyRequest,
   reply: FastifyReply,
   options: ReactorCompatibilityRouteOptions
@@ -6981,7 +6670,7 @@ async function slackFaqIngest(
   return result;
 }
 
-async function slackFaqProbe(
+export async function slackFaqProbe(
   request: FastifyRequest,
   reply: FastifyReply,
   options: ReactorCompatibilityRouteOptions
@@ -7004,7 +6693,7 @@ async function slackFaqProbe(
   };
 }
 
-async function slackFaqDryRun(
+export async function slackFaqDryRun(
   request: FastifyRequest,
   reply: FastifyReply,
   options: ReactorCompatibilityRouteOptions
@@ -7122,7 +6811,7 @@ function slackFaqSimilarityScore(query: string, content: string): number {
   return overlap === 0 ? 0 : Math.min(1, overlap / queryTerms.size);
 }
 
-function toSlackFaqEvent(event: JsonObject): JsonObject {
+export function toSlackFaqEvent(event: JsonObject): JsonObject {
   return {
     matchedDocId: nullableStringResponse(event.matchedDocId),
     outcome: stringField(event.outcome, ""),
@@ -7132,7 +6821,7 @@ function toSlackFaqEvent(event: JsonObject): JsonObject {
   };
 }
 
-function slackFaqStats(channelId?: string): JsonObject {
+export function slackFaqStats(channelId?: string): JsonObject {
   const events = channelId
     ? state.slackFaqEvents.get(channelId) ?? []
     : [...state.slackFaqEvents.values()].flat();
@@ -7167,7 +6856,7 @@ function slackFaqStats(channelId?: string): JsonObject {
   };
 }
 
-function reactorPromptSectionKeys(): string[] {
+export function reactorPromptSectionKeys(): string[] {
   return [
     "accuracy",
     "cross-tool",
@@ -8923,7 +8612,7 @@ export function readBodyNullableString(value: unknown, key: string): string | nu
   return item === null || typeof item === "string" ? item : undefined;
 }
 
-function readNullableStringField(value: CompatBody, key: string): string | null {
+export function readNullableStringField(value: CompatBody, key: string): string | null {
   const item = value[key];
   return typeof item === "string" ? item : null;
 }
@@ -8933,7 +8622,7 @@ function readOptionalStringField(value: CompatBody, key: string, fallback: unkno
   return typeof item === "string" ? item : nullableStringResponse(fallback);
 }
 
-function nullableStringResponse(value: unknown): string | null {
+export function nullableStringResponse(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
