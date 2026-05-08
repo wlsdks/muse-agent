@@ -4,7 +4,7 @@
  * rate-limit key construction, and the generic Error → message helper.
  */
 
-import { adminScope, type LoginResult, type MuseAuth } from "@muse/auth";
+import type { LoginResult, MuseAuth } from "@muse/auth";
 import type { PendingApprovalStore } from "@muse/runtime-state";
 import type { JsonObject } from "@muse/shared";
 import type { FastifyReply } from "fastify";
@@ -85,10 +85,8 @@ export function toReactorAuthResponse(login: LoginResult): JsonObject {
 }
 
 export function toReactorUserResponse(user: LoginResult["user"]): JsonObject {
-  const scope = adminScope(user.role);
-
   return {
-    adminScope: scope ? scope.toUpperCase() : null,
+    adminScope: user.role === "admin" ? "FULL" : null,
     email: user.email,
     id: user.id,
     name: user.name,

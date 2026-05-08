@@ -3,8 +3,7 @@ import type { AuthTokenRevocationTable, MuseDatabase, UserTable } from "@muse/db
 import { createRunId } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
-export type UserRole = "user" | "admin" | "admin_manager" | "admin_developer";
-export type AdminScope = "full" | "manager" | "developer";
+export type UserRole = "user" | "admin";
 export type TokenRevocationStoreType = "memory" | "jdbc" | "redis";
 export type Awaitable<T> = T | Promise<T>;
 
@@ -927,27 +926,7 @@ export class AuthRateLimiter {
 }
 
 export function isAnyAdmin(role: UserRole | undefined | null): boolean {
-  return role === "admin" || role === "admin_manager" || role === "admin_developer";
-}
-
-export function isDeveloperAdmin(role: UserRole | undefined | null): boolean {
-  return role === "admin" || role === "admin_developer";
-}
-
-export function adminScope(role: UserRole | undefined | null): AdminScope | undefined {
-  if (role === "admin") {
-    return "full";
-  }
-
-  if (role === "admin_manager") {
-    return "manager";
-  }
-
-  if (role === "admin_developer") {
-    return "developer";
-  }
-
-  return undefined;
+  return role === "admin";
 }
 
 export function currentActor(identity: AuthIdentity | undefined): string {
@@ -971,14 +950,6 @@ export function maskedAdminAccountRef(actor: string | undefined | null): string 
 function resolveIamRole(roles: readonly string[], defaultRole: UserRole): UserRole {
   if (roles.some((role) => role.toUpperCase() === "ROLE_ADMIN")) {
     return "admin";
-  }
-
-  if (roles.some((role) => role.toUpperCase() === "ROLE_MANAGER")) {
-    return "admin_manager";
-  }
-
-  if (roles.some((role) => role.toUpperCase() === "ROLE_DEVELOPER")) {
-    return "admin_developer";
   }
 
   return defaultRole;
@@ -1132,7 +1103,7 @@ function isJwtClaims(value: unknown): value is JwtClaims {
 }
 
 function isUserRole(value: unknown): value is UserRole {
-  return value === "user" || value === "admin" || value === "admin_manager" || value === "admin_developer";
+  return value === "user" || value === "admin";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

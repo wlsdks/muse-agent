@@ -354,7 +354,7 @@ export interface UserTable {
   readonly email: string;
   readonly name: string;
   readonly password_hash: string;
-  readonly role: "user" | "admin" | "admin_manager" | "admin_developer";
+  readonly role: "user" | "admin";
   readonly tenant_id: string | null;
   readonly created_at: Timestamp;
   readonly updated_at: Timestamp;

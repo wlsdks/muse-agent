@@ -3,7 +3,6 @@ import { buildAgentCard } from "@muse/agent-specs";
 import type { AgentRunResult, AgentRuntime } from "@muse/agent-core";
 import {
   AuthRateLimiter,
-  adminScope,
   extractBearerToken,
   type AuthIdentity,
   type IamTokenExchange,
@@ -1136,11 +1135,6 @@ export function parseRuntimeSettingType(value: unknown): RuntimeSettingType | un
     : undefined;
 }
 
-
-function isAuthenticatedDeveloperAdminLikeRequest(request: FastifyRequest): boolean {
-  const role = (request as { auth?: { role?: string } }).auth?.role;
-  return role === "admin" || role === "admin_developer";
-}
 
 // Body/query parsers + JSON normalizers live in apps/api/src/compat-parsers.ts.
 export {

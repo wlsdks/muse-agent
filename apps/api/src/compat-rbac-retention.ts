@@ -2,9 +2,9 @@
  * Reactor-compat RBAC role + retention policy helpers extracted from
  * reactor-compat-routes.ts.
  *
- * - role helpers normalize the four-role taxonomy
- *   (user / admin / admin_manager / admin_developer) into the response
- *   shape used by /api/admin/rbac/roles + /api/admin/platform/users/:id/role
+ * - role helpers normalize the two-role taxonomy (user / admin) into
+ *   the response shape used by /api/admin/rbac/roles +
+ *   /api/admin/platform/users/:id/role.
  * - parseRetentionPolicy validates the four day-count knobs the
  *   /api/admin/retention surface accepts.
  */
@@ -22,42 +22,21 @@ export function userRoleResponse(role: UserRole): string {
   return role.toUpperCase();
 }
 
-function userRoleScope(role: UserRole): string | null {
-  if (role === "admin") {
-    return "FULL";
-  }
-
-  if (role === "admin_manager") {
-    return "MANAGER";
-  }
-
-  if (role === "admin_developer") {
-    return "DEVELOPER";
-  }
-
-  return null;
-}
-
 export function parseUserRole(value: unknown): UserRole | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
 
   const normalized = value.trim().toLowerCase() as UserRole;
-  return normalized === "user"
-    || normalized === "admin"
-    || normalized === "admin_manager"
-    || normalized === "admin_developer"
-    ? normalized
-    : undefined;
+  return normalized === "user" || normalized === "admin" ? normalized : undefined;
 }
 
 export function roleDefinitions(): readonly JsonObject[] {
-  const roles: readonly UserRole[] = ["user", "admin", "admin_manager", "admin_developer"];
+  const roles: readonly UserRole[] = ["user", "admin"];
   return roles.map((role) => ({
     permissions: [...permissionsForRole(role)],
     role: userRoleResponse(role),
-    scope: userRoleScope(role)
+    scope: role === "admin" ? "FULL" : null
   }));
 }
 
@@ -76,24 +55,6 @@ function permissionsForRole(role: UserRole): readonly string[] {
       "settings:read", "settings:write",
       "agent-spec:read", "agent-spec:write"
     ];
-  }
-
-  if (role === "admin_developer") {
-    return [
-      "persona:read", "persona:write",
-      "prompt:read", "prompt:write",
-      "session:read",
-      "feedback:read",
-      "guard:read", "guard:write",
-      "mcp:read", "mcp:write",
-      "scheduler:read", "scheduler:write",
-      "audit:read",
-      "agent-spec:read", "agent-spec:write"
-    ];
-  }
-
-  if (role === "admin_manager") {
-    return ["session:read", "session:export", "feedback:read", "audit:read", "persona:read"];
   }
 
   return ["chat:use", "persona:select"];

@@ -438,7 +438,7 @@ describe("api server", () => {
       userStore,
       verifier: {
         verify: (token) => token === "valid-iam-token"
-          ? { email: "IAM_USER@example.invalid", roles: ["ROLE_DEVELOPER"], sub: "iam-user" }
+          ? { email: "IAM_USER@example.invalid", roles: ["ROLE_ADMIN"], sub: "iam-user" }
           : undefined
       }
     });
@@ -466,10 +466,10 @@ describe("api server", () => {
     expect(exchanged.json()).toMatchObject({
       error: null,
       user: {
-        adminScope: "DEVELOPER",
+        adminScope: "FULL",
         email: "iam_user@example.invalid",
         id: "iam-user-1",
-        role: "ADMIN_DEVELOPER"
+        role: "ADMIN"
       }
     });
     expect(exchanged.json().token).toBeTruthy();
@@ -482,10 +482,9 @@ describe("api server", () => {
     const managerEmail = ["manager", "example.invalid"].join("@");
     const owner = authService.register({ email: ownerEmail, name: "Owner", password: "password-1" });
     const member = authService.register({ email: memberEmail, name: "Member", password: "password-1" });
-    const manager = authService.register({ email: managerEmail, name: "Manager", password: "password-1" });
-    authService.updateUserRole(manager.user.id, "admin_manager");
+    authService.register({ email: managerEmail, name: "Other", password: "password-1" });
     const memberLogin = authService.login(memberEmail, "password-1");
-    const managerLogin = authService.login(managerEmail, "password-1");
+    const otherLogin = authService.login(managerEmail, "password-1");
     const historyStore = new InMemoryAgentRunHistoryStore();
     historyStore.createRun({
       id: "owner-run",
@@ -509,7 +508,7 @@ describe("api server", () => {
     });
     const server = buildServer({ authService, historyStore, logger: false, requireAuth: true });
     const headers = { authorization: `Bearer ${memberLogin?.token ?? ""}` };
-    const managerHeaders = { authorization: `Bearer ${managerLogin?.token ?? ""}` };
+    const otherHeaders = { authorization: `Bearer ${otherLogin?.token ?? ""}` };
 
     const unauthenticatedSessions = await server.inject({
       method: "GET",
@@ -530,13 +529,13 @@ describe("api server", () => {
       method: "DELETE",
       url: "/api/sessions/owner-run"
     });
-    const managerForbiddenDetail = await server.inject({
-      headers: managerHeaders,
+    const otherForbiddenDetail = await server.inject({
+      headers: otherHeaders,
       method: "GET",
       url: "/api/sessions/owner-run"
     });
-    const managerForbiddenExport = await server.inject({
-      headers: managerHeaders,
+    const otherForbiddenExport = await server.inject({
+      headers: otherHeaders,
       method: "GET",
       url: "/api/sessions/owner-run/export"
     });
@@ -581,9 +580,9 @@ describe("api server", () => {
       timestamp: expect.any(String)
     });
     expect(forbiddenDelete.json()).not.toHaveProperty("code");
-    expect(managerLogin).toBeDefined();
-    expect(managerForbiddenDetail.statusCode).toBe(403);
-    expect(managerForbiddenExport.statusCode).toBe(403);
+    expect(otherLogin).toBeDefined();
+    expect(otherForbiddenDetail.statusCode).toBe(403);
+    expect(otherForbiddenExport.statusCode).toBe(403);
     expect(orphanDetail.statusCode).toBe(403);
     expect(orphanDetail.json()).toMatchObject({
       error: "세션 접근이 거부되었습니다",
@@ -778,7 +777,6 @@ describe("api server", () => {
       name: "Approval Manager",
       password: "password-1"
     });
-    authService.updateUserRole(manager.user.id, "admin_manager");
     const managerLogin = authService.login("approval_manager", "password-1");
     let approvalIndex = 0;
     const pendingApprovalStore = new InMemoryPendingApprovalStore({
@@ -4042,12 +4040,11 @@ describe("api server", () => {
       name: "Member",
       password: "password-1"
     });
-    const manager = authService.register({
+    authService.register({
       email: "manager_account",
       name: "Manager",
       password: "password-1"
     });
-    authService.updateUserRole(manager.user.id, "admin_manager");
     const managerLogin = authService.login("manager_account", "password-1");
     const server = buildServer({ authService, logger: false, requireAuth: true });
     const headers = { authorization: `Bearer ${admin.token}` };
@@ -4058,7 +4055,7 @@ describe("api server", () => {
     const roleUpdate = await server.inject({
       headers,
       method: "PUT",
-      payload: { role: "ADMIN_DEVELOPER" },
+      payload: { role: "ADMIN" },
       url: `/api/admin/rbac/users/${member.user.id}/role`
     });
     const invalidRole = await server.inject({
@@ -4070,7 +4067,7 @@ describe("api server", () => {
     const missingRoleUser = await server.inject({
       headers,
       method: "PUT",
-      payload: { role: "ADMIN_MANAGER" },
+      payload: { role: "ADMIN" },
       url: "/api/admin/rbac/users/missing-user/role"
     });
     const retention = await server.inject({ headers, method: "GET", url: "/api/admin/retention" });
@@ -4141,17 +4138,6 @@ describe("api server", () => {
     const runtimeRefresh = await server.inject({ headers, method: "POST", url: "/api/admin/settings/refresh" });
     const capabilities = await server.inject({ headers, method: "GET", url: "/api/admin/capabilities" });
     const dashboard = await server.inject({ headers, method: "GET", url: "/api/ops/dashboard" });
-    const managerDashboard = await server.inject({
-      headers: managerHeaders,
-      method: "GET",
-      url: "/api/ops/dashboard"
-    });
-    const managerToolPolicy = await server.inject({
-      headers: managerHeaders,
-      method: "PUT",
-      payload: { enabled: true },
-      url: "/api/tool-policy"
-    });
     const ragInitial = await server.inject({ headers, method: "GET", url: "/api/rag-ingestion/policy" });
     const blockedRagCandidates = await server.inject({ method: "GET", url: "/api/rag-ingestion/candidates" });
     const missingCandidateApprove = await server.inject({
@@ -4192,8 +4178,8 @@ describe("api server", () => {
     ]));
     expect(managerLogin).toBeDefined();
     expect(managerRoles.statusCode).toBe(403);
-    expect(roleUpdate.json()).toEqual({ role: "ADMIN_DEVELOPER", userId: member.user.id });
-    expect(authService.getUserById(member.user.id)).toMatchObject({ role: "admin_developer" });
+    expect(roleUpdate.json()).toEqual({ role: "ADMIN", userId: member.user.id });
+    expect(authService.getUserById(member.user.id)).toMatchObject({ role: "admin" });
     expect(invalidRole.statusCode).toBe(400);
     expect(invalidRole.json()).toMatchObject({
       error: "유효하지 않은 역할: BAD_ROLE",
@@ -4282,8 +4268,6 @@ describe("api server", () => {
       mcp: { total: 0 },
       scheduler: { totalJobs: 0 }
     });
-    expect(managerDashboard.statusCode).toBe(200);
-    expect(managerToolPolicy.statusCode).toBe(403);
     expect(ragInitial.json()).toMatchObject({ stored: null });
     expect(blockedRagCandidates.statusCode).toBe(401);
     expect(missingCandidateApprove.statusCode).toBe(404);
@@ -4840,7 +4824,7 @@ describe("api server", () => {
     const platformUserRole = await server.inject({
       headers,
       method: "POST",
-      payload: { role: "admin_developer" },
+      payload: { role: "admin" },
       url: `/api/admin/platform/users/${registered.user.id}/role`
     });
     const taskPurgeExpired = await server.inject({
@@ -5317,7 +5301,7 @@ describe("api server", () => {
       timestamp: expect.any(String)
     });
     expect(invalidPlatformUserRole.json()).not.toHaveProperty("code");
-    expect(platformUserRole.json()).toMatchObject({ id: registered.user.id, role: "ADMIN_DEVELOPER" });
+    expect(platformUserRole.json()).toMatchObject({ id: registered.user.id, role: "ADMIN" });
     expect(taskPurgeExpired.json()).toMatchObject({ deleted: 0 });
     expect(taskPurgeTerminal.json()).toMatchObject({ deleted: 0 });
     expect(slackFaq.json()).toMatchObject({

@@ -9,12 +9,10 @@ import {
   InMemoryUserStore,
   JwtTokenProvider,
   PasswordHasher,
-  adminScope,
   anonymousActor,
   currentActor,
   extractBearerToken,
   isAnyAdmin,
-  isDeveloperAdmin,
   maskedAdminAccountRef,
   normalizeEmail,
   type User
@@ -162,8 +160,8 @@ describe("Auth.updateUserRole", () => {
   it("promotes a user to admin and returns the public projection", () => {
     const { service } = makeService();
     const registration = service.register({ email: "e@example.com", name: "E", password: "pw" });
-    const promoted = service.updateUserRole(registration.user.id, "admin_manager");
-    expect(promoted?.role).toBe("admin_manager");
+    const promoted = service.updateUserRole(registration.user.id, "admin");
+    expect(promoted?.role).toBe("admin");
   });
 
   it("returns undefined when the user does not exist", () => {
@@ -226,28 +224,12 @@ describe("AuthRateLimiter", () => {
   });
 });
 
-describe("authorization helpers — full role matrix", () => {
-  it("isAnyAdmin and isDeveloperAdmin recognise every admin role variant", () => {
+describe("authorization helpers", () => {
+  it("isAnyAdmin recognises only the admin role", () => {
     expect(isAnyAdmin("admin")).toBe(true);
-    expect(isAnyAdmin("admin_manager")).toBe(true);
-    expect(isAnyAdmin("admin_developer")).toBe(true);
     expect(isAnyAdmin("user")).toBe(false);
     expect(isAnyAdmin(null)).toBe(false);
     expect(isAnyAdmin(undefined)).toBe(false);
-
-    expect(isDeveloperAdmin("admin")).toBe(true);
-    expect(isDeveloperAdmin("admin_developer")).toBe(true);
-    expect(isDeveloperAdmin("admin_manager")).toBe(false);
-    expect(isDeveloperAdmin("user")).toBe(false);
-  });
-
-  it("adminScope projects roles to scopes, undefined for non-admins", () => {
-    expect(adminScope("admin")).toBe("full");
-    expect(adminScope("admin_manager")).toBe("manager");
-    expect(adminScope("admin_developer")).toBe("developer");
-    expect(adminScope("user")).toBeUndefined();
-    expect(adminScope(undefined)).toBeUndefined();
-    expect(adminScope(null)).toBeUndefined();
   });
 });
 

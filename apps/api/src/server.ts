@@ -20,7 +20,6 @@ import {
   extractBearerToken,
   type IamTokenExchange,
   isAnyAdmin,
-  isDeveloperAdmin,
   type AuthIdentity,
   type LoginResult,
   type MuseAuth
@@ -1652,7 +1651,7 @@ function authorizeAdmin(
   reply: { status(statusCode: number): { send(payload: unknown): void } },
   authEnabled: boolean
 ): boolean {
-  return authorizeAdminRole(request, reply, authEnabled, isDeveloperAdmin);
+  return authorizeAdminRole(request, reply, authEnabled, isAnyAdmin);
 }
 
 function authorizeAnyAdmin(

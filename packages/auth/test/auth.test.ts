@@ -19,12 +19,10 @@ import {
   createUserInsert,
   mapUserRow,
   PasswordHasher,
-  adminScope,
   anonymousActor,
   currentActor,
   extractBearerToken,
   isAnyAdmin,
-  isDeveloperAdmin,
   maskedAdminAccountRef,
   normalizeEmail
 } from "../src/index.js";
@@ -62,7 +60,7 @@ describe("Kysely auth mapping", () => {
       id: "user-1",
       name: "User",
       passwordHash: "hash",
-      role: "admin_developer",
+      role: "admin",
       tenantId: "tenant-1"
     });
     const revocation = createAuthTokenRevocationInsert("token-1", expiresAt, createdAt);
@@ -74,13 +72,13 @@ describe("Kysely auth mapping", () => {
     expect(user).toMatchObject({
       email: "user_account",
       id: "user-1",
-      role: "admin_developer",
+      role: "admin",
       tenant_id: "tenant-1"
     });
     expect(mapUserRow(user)).toMatchObject({
       email: "user_account",
       id: "user-1",
-      role: "admin_developer",
+      role: "admin",
       tenantId: "tenant-1"
     });
   });
@@ -99,7 +97,7 @@ describe("jwt tokens and revocation", () => {
       id: "user-1",
       name: "User",
       passwordHash: "hash",
-      role: "admin_developer" as const
+      role: "admin" as const
     };
     const now = new Date();
     const token = jwt.createToken(user, now);
@@ -111,7 +109,7 @@ describe("jwt tokens and revocation", () => {
     });
 
     expect(jwt.validateToken(token, new Date(now.getTime() + 1_000))).toBe("user-1");
-    expect(jwt.extractRole(token)).toBe("admin_developer");
+    expect(jwt.extractRole(token)).toBe("admin");
     expect(service.authenticateBearer(token)?.tenantId).toBe("tenant-1");
     expect(service.logout(token)).toBe(true);
     expect(service.authenticateBearer(token)).toBeUndefined();
@@ -168,7 +166,7 @@ describe("IamTokenExchange", () => {
       userStore: store,
       verifier: {
         verify: (token) => token === "iam-token"
-          ? { email: "IAM_USER@example.com", roles: ["ROLE_MANAGER"], sub: "iam-user" }
+          ? { email: "IAM_USER@example.com", roles: ["ROLE_ADMIN"], sub: "iam-user" }
           : undefined
       }
     });
@@ -181,9 +179,9 @@ describe("IamTokenExchange", () => {
       email: "iam_user@example.com",
       id: "iam-user-1",
       name: "IAM_USER",
-      role: "admin_manager"
+      role: "admin"
     });
-    expect(identity).toMatchObject({ role: "admin_manager", sub: "iam-user-1" });
+    expect(identity).toMatchObject({ role: "admin", sub: "iam-user-1" });
     expect(secondExchange?.user.id).toBe("iam-user-1");
     expect(store.count()).toBe(1);
   });
@@ -206,10 +204,9 @@ describe("IamTokenExchange", () => {
 });
 
 describe("authorization helpers", () => {
-  it("handles admin scopes and actor masking", () => {
-    expect(isAnyAdmin("admin_manager")).toBe(true);
-    expect(isDeveloperAdmin("admin_manager")).toBe(false);
-    expect(adminScope("admin_developer")).toBe("developer");
+  it("recognises admin role and masks actors", () => {
+    expect(isAnyAdmin("admin")).toBe(true);
+    expect(isAnyAdmin("user")).toBe(false);
     expect(currentActor(undefined)).toBe(anonymousActor);
     expect(maskedAdminAccountRef("admin-1")).toMatch(/^admin-account:[a-f0-9]{12}$/u);
     expect(maskedAdminAccountRef(anonymousActor)).toBe("admin-account:anonymous");
