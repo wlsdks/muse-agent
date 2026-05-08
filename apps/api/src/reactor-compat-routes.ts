@@ -64,14 +64,16 @@ import {
   agentEvalResult,
   countBehaviorAssertions,
   countEvalAssertions,
-  evalStoreRecordToCompat,
-  prepareEvalRecord,
   replayRunId,
   replayToolCalls,
   syntheticReplayRun,
   toEvalRunLogResponse,
   toEvalToolCall
 } from "./compat-agent-eval-shape.js";
+import {
+  saveAgentEvalRunLog,
+  saveAgentEvalResult
+} from "./compat-agent-eval-store.js";
 import { judgeEvalWithModel } from "./compat-eval-judge.js";
 import { registerAdminObservabilityCompatRoutes } from "./admin-observability-compat-routes.js";
 import { registerAdminPlatformCompatRoutes } from "./admin-platform-compat-routes.js";
@@ -152,7 +154,7 @@ export type CompatRecord = JsonObject & {
 };
 
 export type CompatBody = Record<string, unknown>;
-type CompatCollection = Map<string, CompatRecord>;
+export type CompatCollection = Map<string, CompatRecord>;
 
 interface CompatState {
   readonly agentEvalCases: CompatCollection;
@@ -649,107 +651,17 @@ export async function runLogRecord(
   });
 }
 
-export async function saveAgentEvalCase(options: ReactorCompatibilityRouteOptions, record: JsonObject): Promise<CompatRecord> {
-  if (options.agentEvalStore) {
-    const saved = await options.agentEvalStore.saveCase(prepareEvalRecord(record, "eval_case"));
-    return evalStoreRecordToCompat(saved, "eval_case");
-  }
-
-  return createRecord(state.agentEvalCases, record, "eval_case");
-}
-
-export async function listAgentEvalCases(
-  options: ReactorCompatibilityRouteOptions,
-  filters: { readonly enabledOnly?: boolean; readonly limit?: number; readonly tags?: readonly string[] } = {}
-): Promise<readonly CompatRecord[]> {
-  if (options.agentEvalStore) {
-    const rows = await options.agentEvalStore.listCases(filters);
-    return rows.map((row) => evalStoreRecordToCompat(row, "eval_case"));
-  }
-
-  return [...state.agentEvalCases.values()]
-    .filter((item) => !filters.enabledOnly || item.enabled !== false)
-    .filter((item) => !filters.tags || filters.tags.length === 0 || readStringSet(item.tags).some((tag) => filters.tags?.includes(tag)))
-    .slice(0, filters.limit ?? 100);
-}
-
-export async function getAgentEvalCase(options: ReactorCompatibilityRouteOptions, id: string): Promise<CompatRecord | undefined> {
-  if (options.agentEvalStore) {
-    const row = await options.agentEvalStore.getCase(id);
-    return row ? evalStoreRecordToCompat(row, "eval_case") : undefined;
-  }
-
-  return findCompatRecord(state.agentEvalCases, id);
-}
-
-async function saveAgentEvalRunLog(options: ReactorCompatibilityRouteOptions, record: JsonObject): Promise<CompatRecord> {
-  if (options.agentEvalStore) {
-    const saved = await options.agentEvalStore.saveRunLog(prepareEvalRecord(record, "agent_eval_run_log"));
-    return evalStoreRecordToCompat(saved, "agent_eval_run_log");
-  }
-
-  return createRecord(state.agentEvalRunLogs, record, "agent_eval_run_log");
-}
-
-export async function listAgentEvalRunLogs(options: ReactorCompatibilityRouteOptions, limit: number): Promise<readonly CompatRecord[]> {
-  if (options.agentEvalStore) {
-    const rows = await options.agentEvalStore.listRunLogs(limit);
-    return rows.map((row) => evalStoreRecordToCompat(row, "agent_eval_run_log"));
-  }
-
-  return [...state.agentEvalRunLogs.values()].slice(0, limit);
-}
-
-async function saveAgentEvalResult(options: ReactorCompatibilityRouteOptions, record: JsonObject): Promise<CompatRecord> {
-  if (options.agentEvalStore) {
-    const saved = await options.agentEvalStore.saveResult(prepareEvalRecord(record, "agent_eval_result"));
-    return evalStoreRecordToCompat(saved, "agent_eval_result");
-  }
-
-  return createRecord(state.agentEvalResults, record, "agent_eval_result");
-}
-
-export async function listAgentEvalResults(
-  options: ReactorCompatibilityRouteOptions,
-  filters: { readonly caseId?: string; readonly limit?: number; readonly tier?: string } = {}
-): Promise<readonly CompatRecord[]> {
-  if (options.agentEvalStore) {
-    const rows = await options.agentEvalStore.listResults(filters);
-    return rows.map((row) => evalStoreRecordToCompat(row, "agent_eval_result"));
-  }
-
-  return [...state.agentEvalResults.values()]
-    .filter((result) => !filters.caseId || result.caseId === filters.caseId)
-    .filter((result) => !filters.tier || result.tier === filters.tier)
-    .slice(0, filters.limit ?? 100);
-}
-
-export async function saveDebugReplayCapture(options: ReactorCompatibilityRouteOptions, record: JsonObject): Promise<CompatRecord> {
-  if (options.agentEvalStore) {
-    const saved = await options.agentEvalStore.saveDebugReplayCapture(prepareEvalRecord(record, "debug_replay"));
-    return evalStoreRecordToCompat(saved, "debug_replay");
-  }
-
-  return evalStoreRecordToCompat(record, "debug_replay");
-}
-
-export async function listDebugReplayCaptures(options: ReactorCompatibilityRouteOptions, limit: number): Promise<readonly CompatRecord[]> {
-  if (options.agentEvalStore) {
-    const rows = await options.agentEvalStore.listDebugReplayCaptures(limit);
-    return rows.map((row) => evalStoreRecordToCompat(row, "debug_replay"));
-  }
-
-  return [];
-}
-
-export async function getDebugReplayCapture(options: ReactorCompatibilityRouteOptions, id: string): Promise<CompatRecord | undefined> {
-  if (options.agentEvalStore) {
-    const row = await options.agentEvalStore.getDebugReplayCapture(id);
-    return row ? evalStoreRecordToCompat(row, "debug_replay") : undefined;
-  }
-
-  return undefined;
-}
+// Agent-eval store CRUD helpers live in apps/api/src/compat-agent-eval-store.ts.
+export {
+  getAgentEvalCase,
+  getDebugReplayCapture,
+  listAgentEvalCases,
+  listAgentEvalResults,
+  listAgentEvalRunLogs,
+  listDebugReplayCaptures,
+  saveAgentEvalCase,
+  saveDebugReplayCapture
+} from "./compat-agent-eval-store.js";
 
 // Eval response shape helpers live in apps/api/src/compat-agent-eval-shape.ts.
 
@@ -1831,7 +1743,7 @@ function agentCardCapabilitiesFromSpecs(specs: readonly AgentSpec[]): readonly A
   return [...tools.values()];
 }
 
-function createRecord(collection: CompatCollection, input: JsonObject, prefix: string): CompatRecord {
+export function createRecord(collection: CompatCollection, input: JsonObject, prefix: string): CompatRecord {
   const id = typeof input.id === "string" && input.id.length > 0 ? input.id : createRunId(prefix);
   const existing = collection.get(id);
   const record: CompatRecord = {
@@ -1932,7 +1844,7 @@ function toSessionTagCompatRecord(tag: SessionTag): CompatRecord {
   };
 }
 
-function findCompatRecord(collection: CompatCollection, id: string): CompatRecord | undefined {
+export function findCompatRecord(collection: CompatCollection, id: string): CompatRecord | undefined {
   return collection.get(id) ?? [...collection.values()].find((record) => record.name === id || record.channelId === id);
 }
 
@@ -2403,6 +2315,18 @@ export function getStateRagIngestionPolicy(): JsonObject {
 
 export function getStateRagCandidates(): readonly CompatRecord[] {
   return [...state.ragCandidates.values()];
+}
+
+export function getStateAgentEvalCases(): CompatCollection {
+  return state.agentEvalCases;
+}
+
+export function getStateAgentEvalRunLogs(): CompatCollection {
+  return state.agentEvalRunLogs;
+}
+
+export function getStateAgentEvalResults(): CompatCollection {
+  return state.agentEvalResults;
 }
 
 export async function readStoredToolPolicy(options: ReactorCompatibilityRouteOptions): Promise<JsonObject | undefined> {
