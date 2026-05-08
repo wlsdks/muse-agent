@@ -65,11 +65,8 @@ import { registerAuthCompatibilityRoutes } from "./auth-compat-routes.js";
 import { registerGuardCompatibilityRoutes } from "./guard-compat-routes.js";
 import { registerMcpCompatibilityRoutes } from "./mcp-compat-routes.js";
 import { registerPolicyCompatibilityRoutes } from "./policy-compat-routes.js";
-import { registerDocumentRoutes } from "./document-compat-routes.js";
 import { registerFeedbackCompatRoutes } from "./feedback-compat-routes.js";
-import { registerIntentRoutes } from "./intent-compat-routes.js";
-import { registerPersonaRoutes } from "./persona-compat-routes.js";
-import { registerPromptTemplateRoutes } from "./prompt-template-compat-routes.js";
+import { registerPromptAndRagRoutes } from "./prompt-rag-compat-routes.js";
 import { registerSessionCompatibilityRoutes } from "./session-compat-routes.js";
 import { registerSlackCompatibilityRoutes } from "./slack-compat-routes.js";
 import { registerUserMemoryCompatRoutes } from "./user-memory-compat-routes.js";
@@ -377,236 +374,7 @@ function registerFeedbackRoutes(server: FastifyInstance, options: ReactorCompati
 
 // registerDocumentRoutes lives in apps/api/src/document-compat-routes.ts.
 
-function registerPromptAndRagRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  registerPersonaRoutes(server, options);
-  registerPromptTemplateRoutes(server, options);
-  registerDocumentRoutes(server, options);
-  registerIntentRoutes(server, options);
-  server.post("/api/admin/rag/seed-policy", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const body = toBody(request.body);
-    const entries = Array.isArray(body.entries) ? body.entries.filter(isRecord).slice(0, 50) : [];
-    const startedAt = Date.now();
-    const keys: string[] = [];
-    let chunkCount = 0;
-
-    for (const entry of entries) {
-      const key = readBodyString(entry, "key");
-      const title = readBodyString(entry, "title");
-      const content = readBodyString(entry, "content");
-
-      if (!key || !title || !content) {
-        continue;
-      }
-
-      keys.push(key);
-      const chunks = chunkText(content);
-      chunkCount += chunks.length;
-
-      for (const [index, chunk] of chunks.entries()) {
-        await saveDocumentRecord(options, {
-          category: readBodyNullableString(entry, "category") ?? null,
-          content: chunk,
-          id: `policy-seed:${key}:${index}`,
-          key,
-          source: "policy-seed",
-          spaceKey: readBodyNullableString(entry, "spaceKey") ?? null,
-          title,
-          url: readBodyNullableString(entry, "url") ?? null
-        });
-      }
-    }
-
-    return {
-      chunkCount,
-      documentCount: keys.length,
-      durationMs: Date.now() - startedAt,
-      keys
-    };
-  });
-  server.get("/api/rag-ingestion/policy", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const stored = await readStoredRagIngestionPolicy(options);
-    const effective = stored ?? state.ragIngestionPolicy;
-
-    return {
-      configEnabled: Boolean(state.ragIngestionPolicy.enabled),
-      dynamicEnabled: true,
-      effective: toRagIngestionPolicyResponse(effective),
-      stored: stored ? toRagIngestionPolicyResponse(stored) : null
-    };
-  });
-  server.put("/api/rag-ingestion/policy", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const parsed = parseRagIngestionPolicy(request.body);
-
-    if (!parsed.ok) {
-      return reply.status(400).send(parsed.error);
-    }
-
-    const saved = await saveRagIngestionPolicy(options, parsed.value);
-    return toRagIngestionPolicyResponse(saved);
-  });
-  server.delete("/api/rag-ingestion/policy", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    await clearRagIngestionPolicy(options);
-    return reply.status(204).send();
-  });
-  server.get("/api/rag-ingestion/candidates", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const status = readQueryString(request, "status")?.toUpperCase();
-    const channel = readQueryString(request, "channel");
-    const limit = Math.min(Math.max(readQueryInteger(request, "limit", 100), 1), 500);
-    const candidates = await listRagCandidates(options, { channel, limit, status });
-    return candidates.map(toRagCandidateResponse);
-  });
-  server.post("/api/rag-ingestion/candidates/:id/approve", async (request, reply) =>
-    reviewRagCandidate(request, reply, options, "INGESTED")
-  );
-  server.post("/api/rag-ingestion/candidates/:id/reject", async (request, reply) =>
-    reviewRagCandidate(request, reply, options, "REJECTED")
-  );
-
-  server.post("/api/prompt-lab/experiments", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const parsed = parsePromptExperimentRequest(request);
-
-    if (!parsed.ok) {
-      return reply.status(400).send(parsed.error);
-    }
-
-    return reply.status(201).send(toPromptExperimentResponse(await createPromptExperiment(request, options, parsed.value)));
-  });
-  server.get("/api/prompt-lab/experiments", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const status = readQueryString(request, "status")?.toUpperCase();
-    const templateId = readQueryString(request, "templateId");
-    return (await listPromptExperiments(options))
-      .filter((experiment) => !status || reactorEnumString(experiment.status, "PENDING") === status)
-      .filter((experiment) => !templateId || experiment.templateId === templateId)
-      .map(toPromptExperimentResponse);
-  });
-  server.get("/api/prompt-lab/experiments/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return respondPromptExperiment(request, reply, options);
-  });
-  server.delete("/api/prompt-lab/experiments/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    await deletePromptExperiment(options, id);
-    return reply.status(204).send();
-  });
-  server.post("/api/prompt-lab/experiments/:id/run", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return runPromptExperiment(request, reply, options);
-  });
-  server.post("/api/prompt-lab/experiments/:id/cancel", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return cancelPromptExperiment(request, reply, options);
-  });
-  server.post("/api/prompt-lab/experiments/:id/activate", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return activatePromptExperiment(request, reply, options);
-  });
-  server.get("/api/prompt-lab/experiments/:id/status", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const id = (request.params as { readonly id: string }).id;
-    const record = await getPromptExperiment(options, id);
-    return record
-      ? toPromptExperimentStatusResponse(record)
-      : reply.status(404).send(errorResponse(`Experiment not found: ${id}`));
-  });
-  server.get("/api/prompt-lab/experiments/:id/trials", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    return (await listPromptExperimentTrials(options, id)).map(toPromptTrialResponse);
-  });
-  server.get("/api/prompt-lab/experiments/:id/report", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const id = (request.params as { readonly id: string }).id;
-    const report = await getPromptExperimentReport(options, id);
-    return report
-      ? toPromptReportResponse(report)
-      : reply.status(404).send(errorResponse(`Experiment report not found: ${id}`));
-  });
-  server.post("/api/prompt-lab/auto-optimize", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const templateId = readBodyString(request.body, "templateId")?.trim();
-
-    if (!templateId) {
-      return reply.status(400).send(errorResponse("Body must include templateId"));
-    }
-
-    await runPromptAutoOptimize(templateId, options, toBody(request.body));
-
-    return reply.status(202).send({
-      jobId: createRunId("prompt_auto"),
-      status: "STARTED",
-      templateId
-    });
-  });
-  server.post("/api/prompt-lab/analyze", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const templateId = readBodyString(request.body, "templateId")?.trim();
-
-    if (!templateId) {
-      return reply.status(400).send(errorResponse("Body must include templateId"));
-    }
-
-    return promptFeedbackAnalysis(templateId, readNullableNumber(toBody(request.body).maxSamples) ?? 50, options);
-  });
-}
+// registerPromptAndRagRoutes lives in apps/api/src/prompt-rag-compat-routes.ts.
 
 // registerMcpCompatibilityRoutes lives in apps/api/src/mcp-compat-routes.ts.
 
@@ -3274,7 +3042,7 @@ function ragStatusSummary(documents: readonly CompatRecord[] = [...state.documen
   };
 }
 
-function chunkText(content: string): readonly string[] {
+export function chunkText(content: string): readonly string[] {
   const maxChunkChars = 2_000;
   const chunks: string[] = [];
 
@@ -3375,7 +3143,7 @@ export function readNumber(value: unknown, fallback: number): number {
   return fallback;
 }
 
-function readNullableNumber(value: unknown): number | undefined {
+export function readNullableNumber(value: unknown): number | undefined {
   const parsed = readNumber(value, Number.NaN);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
@@ -3793,7 +3561,7 @@ function findRecordByParam(
   return record ?? notFound(reply, "COMPAT_RECORD_NOT_FOUND");
 }
 
-async function respondPromptExperiment(
+export async function respondPromptExperiment(
   request: FastifyRequest,
   reply: FastifyReply,
   options: ReactorCompatibilityRouteOptions
@@ -4241,6 +4009,10 @@ export function getStateSlackFaqFeedback(channelId: string): Record<string, { th
 export function deleteStateSlackFaqChannel(channelId: string): void {
   state.slackFaqEvents.delete(channelId);
   state.slackFaqFeedback.delete(channelId);
+}
+
+export function getStateRagIngestionPolicy(): JsonObject {
+  return state.ragIngestionPolicy;
 }
 
 export async function readStoredToolPolicy(options: ReactorCompatibilityRouteOptions): Promise<JsonObject | undefined> {
@@ -5131,7 +4903,7 @@ export function toSearchResultResponse(record: JsonObject) {
   };
 }
 
-async function saveDocumentRecord(
+export async function saveDocumentRecord(
   options: ReactorCompatibilityRouteOptions,
   record: JsonObject
 ): Promise<CompatRecord> {
@@ -5500,7 +5272,7 @@ interface PromptExperimentInput {
   readonly testQueries: readonly JsonObject[];
 }
 
-function parsePromptExperimentRequest(request: FastifyRequest): ParseResult<PromptExperimentInput> {
+export function parsePromptExperimentRequest(request: FastifyRequest): ParseResult<PromptExperimentInput> {
   const body = toBody(request.body);
   const name = readBodyString(body, "name")?.trim();
   const templateId = readBodyString(body, "templateId")?.trim();
@@ -5547,7 +5319,7 @@ function parsePromptExperimentRequest(request: FastifyRequest): ParseResult<Prom
   };
 }
 
-async function createPromptExperiment(
+export async function createPromptExperiment(
   request: FastifyRequest,
   options: ReactorCompatibilityRouteOptions,
   input: PromptExperimentInput
@@ -5596,7 +5368,7 @@ async function savePromptExperiment(
   return createRecord(state.promptExperiments, prepared, "prompt_experiment");
 }
 
-async function listPromptExperiments(options: ReactorCompatibilityRouteOptions): Promise<readonly CompatRecord[]> {
+export async function listPromptExperiments(options: ReactorCompatibilityRouteOptions): Promise<readonly CompatRecord[]> {
   if (options.promptLabExperimentStore) {
     const rows = await options.promptLabExperimentStore.listExperiments();
     return rows.map((row) => promptLabRecordToCompat(row, "prompt_experiment"));
@@ -5605,7 +5377,7 @@ async function listPromptExperiments(options: ReactorCompatibilityRouteOptions):
   return [...state.promptExperiments.values()];
 }
 
-async function getPromptExperiment(
+export async function getPromptExperiment(
   options: ReactorCompatibilityRouteOptions,
   id: string
 ): Promise<CompatRecord | undefined> {
@@ -5617,7 +5389,7 @@ async function getPromptExperiment(
   return findCompatRecord(state.promptExperiments, id);
 }
 
-async function deletePromptExperiment(options: ReactorCompatibilityRouteOptions, id: string): Promise<boolean> {
+export async function deletePromptExperiment(options: ReactorCompatibilityRouteOptions, id: string): Promise<boolean> {
   if (options.promptLabExperimentStore) {
     return options.promptLabExperimentStore.deleteExperiment(id);
   }
@@ -5641,7 +5413,7 @@ async function savePromptExperimentTrials(
   state.promptExperimentTrials.set(experimentId, [...trials]);
 }
 
-async function listPromptExperimentTrials(
+export async function listPromptExperimentTrials(
   options: ReactorCompatibilityRouteOptions,
   experimentId: string
 ): Promise<readonly CompatRecord[]> {
@@ -5666,7 +5438,7 @@ async function savePromptExperimentReport(
   return createRecord(state.promptExperimentReports, report, "prompt_experiment_report");
 }
 
-async function getPromptExperimentReport(
+export async function getPromptExperimentReport(
   options: ReactorCompatibilityRouteOptions,
   experimentId: string
 ): Promise<CompatRecord | undefined> {
@@ -5703,7 +5475,7 @@ function prepareCatalogRecord(record: JsonObject, prefix: string): JsonObject {
   };
 }
 
-async function promptFeedbackAnalysis(
+export async function promptFeedbackAnalysis(
   templateId: string,
   maxSamples: number,
   options: ReactorCompatibilityRouteOptions
@@ -5732,7 +5504,7 @@ async function promptFeedbackAnalysis(
   };
 }
 
-async function runPromptAutoOptimize(
+export async function runPromptAutoOptimize(
   templateId: string,
   options: ReactorCompatibilityRouteOptions,
   body: CompatBody
@@ -5942,7 +5714,7 @@ function promptEvaluationConfig(value: unknown): JsonObject {
   };
 }
 
-function toPromptExperimentResponse(record: JsonObject) {
+export function toPromptExperimentResponse(record: JsonObject) {
   return {
     autoGenerated: readBoolean(record.autoGenerated, false),
     baselineVersionId: typeof record.baselineVersionId === "string" ? record.baselineVersionId : "",
@@ -5959,7 +5731,7 @@ function toPromptExperimentResponse(record: JsonObject) {
   };
 }
 
-function toPromptExperimentStatusResponse(record: JsonObject) {
+export function toPromptExperimentStatusResponse(record: JsonObject) {
   return {
     completedAt: epochMillisOrNull(record.completedAt),
     errorMessage: typeof record.errorMessage === "string" ? record.errorMessage : null,
@@ -5969,7 +5741,7 @@ function toPromptExperimentStatusResponse(record: JsonObject) {
   };
 }
 
-function toPromptTrialResponse(record: JsonObject) {
+export function toPromptTrialResponse(record: JsonObject) {
   const evaluations = Array.isArray(record.evaluations)
     ? record.evaluations.filter(isRecord).map(toJsonObject)
     : [];
@@ -5992,7 +5764,7 @@ function toPromptTrialResponse(record: JsonObject) {
   };
 }
 
-function toPromptReportResponse(record: JsonObject) {
+export function toPromptReportResponse(record: JsonObject) {
   const versionSummaries = Array.isArray(record.versionSummaries)
     ? record.versionSummaries.filter(isRecord).map(toJsonObject)
     : [];
@@ -6022,7 +5794,7 @@ function upsertByParam(
   }, prefix);
 }
 
-async function runPromptExperiment(
+export async function runPromptExperiment(
   request: FastifyRequest,
   reply: FastifyReply,
   options: ReactorCompatibilityRouteOptions
@@ -6394,7 +6166,7 @@ function average(values: readonly number[]): number {
   return finite.length > 0 ? finite.reduce((total, value) => total + value, 0) / finite.length : 0;
 }
 
-async function cancelPromptExperiment(
+export async function cancelPromptExperiment(
   request: FastifyRequest,
   reply: FastifyReply,
   options: ReactorCompatibilityRouteOptions
@@ -6418,7 +6190,7 @@ async function cancelPromptExperiment(
   return toPromptExperimentResponse(updated);
 }
 
-async function activatePromptExperiment(
+export async function activatePromptExperiment(
   request: FastifyRequest,
   reply: FastifyReply,
   options: ReactorCompatibilityRouteOptions
@@ -7735,7 +7507,7 @@ export function parseRetentionPolicy(value: unknown): ParseResult<JsonObject> {
   return { ok: true, value: parsed };
 }
 
-function parseRagIngestionPolicy(value: unknown): ParseResult<JsonObject> {
+export function parseRagIngestionPolicy(value: unknown): ParseResult<JsonObject> {
   const body = toBody(value);
   const allowedChannels = readStringSet(body.allowedChannels);
   const blockedPatterns = readStringSet(body.blockedPatterns);
@@ -7766,7 +7538,7 @@ function parseRagIngestionPolicy(value: unknown): ParseResult<JsonObject> {
   return { ok: true, value: parsed };
 }
 
-async function readStoredRagIngestionPolicy(options: ReactorCompatibilityRouteOptions): Promise<JsonObject | undefined> {
+export async function readStoredRagIngestionPolicy(options: ReactorCompatibilityRouteOptions): Promise<JsonObject | undefined> {
   const stored = await options.ragIngestion?.policyStore.getOrNull();
 
   if (stored) {
@@ -7776,7 +7548,7 @@ async function readStoredRagIngestionPolicy(options: ReactorCompatibilityRouteOp
   return state.ragIngestionPolicyStored ? state.ragIngestionPolicy : undefined;
 }
 
-async function saveRagIngestionPolicy(
+export async function saveRagIngestionPolicy(
   options: ReactorCompatibilityRouteOptions,
   policy: JsonObject
 ): Promise<JsonObject> {
@@ -7798,13 +7570,13 @@ async function saveRagIngestionPolicy(
   return state.ragIngestionPolicy;
 }
 
-async function clearRagIngestionPolicy(options: ReactorCompatibilityRouteOptions): Promise<void> {
+export async function clearRagIngestionPolicy(options: ReactorCompatibilityRouteOptions): Promise<void> {
   await options.ragIngestion?.policyStore.delete();
   state.ragIngestionPolicy = defaultRagIngestionPolicy();
   state.ragIngestionPolicyStored = false;
 }
 
-async function listRagCandidates(
+export async function listRagCandidates(
   options: ReactorCompatibilityRouteOptions,
   query: { readonly channel?: string; readonly limit: number; readonly status?: string }
 ): Promise<readonly JsonObject[]> {
@@ -7927,7 +7699,7 @@ function defaultRagIngestionPolicy(): JsonObject {
   };
 }
 
-function toRagIngestionPolicyResponse(policy: JsonObject): JsonObject {
+export function toRagIngestionPolicyResponse(policy: JsonObject): JsonObject {
   return {
     allowedChannels: readStringSet(policy.allowedChannels),
     blockedPatterns: readStringSet(policy.blockedPatterns),
@@ -7940,7 +7712,7 @@ function toRagIngestionPolicyResponse(policy: JsonObject): JsonObject {
   };
 }
 
-async function reviewRagCandidate(
+export async function reviewRagCandidate(
   request: FastifyRequest,
   reply: FastifyReply,
   options: ReactorCompatibilityRouteOptions,
@@ -7996,7 +7768,7 @@ async function reviewRagCandidate(
   return toRagCandidateResponse(reviewed);
 }
 
-function toRagCandidateResponse(candidate: JsonObject): JsonObject {
+export function toRagCandidateResponse(candidate: JsonObject): JsonObject {
   return {
     capturedAt: epochMillisOrNull(candidate.capturedAt) ?? epochMillisOrNull(candidate.createdAt) ?? Date.now(),
     channel: nullableStringResponse(candidate.channel),
@@ -8715,7 +8487,7 @@ function dateOrNull(value: unknown): Date | null {
   return dateOrUndefined(value) ?? null;
 }
 
-function reactorEnumString(value: unknown, fallback: string): string {
+export function reactorEnumString(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim().toUpperCase()
     : fallback;
