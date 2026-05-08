@@ -1,0 +1,94 @@
+/**
+ * Reactor-compat session routes extracted from reactor-compat-routes.ts.
+ *
+ * Wires `/api/sessions*` and `/api/models` so call sites in
+ * registerReactorCompatibilityRoutes don't change.
+ */
+
+import type { FastifyInstance } from "fastify";
+import {
+  clampLimit,
+  errorResponse,
+  exportSession,
+  isAdminLikeRequest,
+  listSessionModels,
+  nowIso,
+  reactorSessionDetail,
+  readAuthUserId,
+  readQueryInteger,
+  toSessionResponse,
+  type ReactorCompatibilityRouteOptions
+} from "./reactor-compat-routes.js";
+
+export function registerSessionCompatibilityRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
+  server.get("/api/sessions", async (request, reply) => {
+    const userId = readAuthUserId(request);
+    const offset = Math.max(0, readQueryInteger(request, "offset", 0));
+    const limit = clampLimit(readQueryInteger(request, "limit", 50));
+
+    if (!userId) {
+      return reply.status(401).send(errorResponse("인증이 필요합니다"));
+    }
+
+    if (!options.historyStore) {
+      return {
+        items: [],
+        limit,
+        offset,
+        total: 0
+      };
+    }
+
+    const runs = await options.historyStore.listRunsByUser(userId);
+    const paged = runs.slice(offset, offset + limit);
+    const items = await Promise.all(paged.map((run) => toSessionResponse(run, options)));
+
+    return {
+      items,
+      limit,
+      offset,
+      total: runs.length
+    };
+  });
+
+  server.get("/api/sessions/:sessionId", async (request, reply) => reactorSessionDetail(request, reply, options));
+  server.get("/api/sessions/:sessionId/export", async (request, reply) =>
+    exportSession(request, reply, options, "reactor")
+  );
+  server.delete("/api/sessions/:sessionId", async (request, reply) => {
+    const { sessionId } = request.params as { readonly sessionId: string };
+    const userId = readAuthUserId(request);
+
+    if (!userId) {
+      return reply.status(401).send({
+        error: "인증이 필요합니다",
+        timestamp: nowIso()
+      });
+    }
+
+    if (!options.historyStore) {
+      return reply.status(404).send(errorResponse("Run history store is not configured"));
+    }
+
+    const run = await options.historyStore.findRun(sessionId);
+
+    if (!run) {
+      return reply.status(404).send({
+        error: `Session not found: ${sessionId}`,
+        timestamp: nowIso()
+      });
+    }
+
+    if ((!run.userId || run.userId !== userId) && !isAdminLikeRequest(request)) {
+      return reply.status(403).send({
+        error: "세션 접근이 거부되었습니다",
+        timestamp: nowIso()
+      });
+    }
+
+    await options.historyStore.deleteRun(sessionId);
+    return reply.status(204).send();
+  });
+
+  server.get("/api/models", async () => listSessionModels(options));
+}

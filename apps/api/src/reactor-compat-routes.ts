@@ -60,6 +60,7 @@ import { createRunId, type JsonObject } from "@muse/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHash } from "node:crypto";
 import { registerAuthCompatibilityRoutes } from "./auth-compat-routes.js";
+import { registerSessionCompatibilityRoutes } from "./session-compat-routes.js";
 import { recordedSpans, recordedTraceEvents, type AdminRouteState } from "./admin-routes.js";
 import type { McpRouteMcp } from "./mcp-routes.js";
 import type { SchedulerRouteScheduler } from "./scheduler-routes.js";
@@ -337,78 +338,7 @@ function createCompatState(): CompatState {
 // registerAuthCompatibilityRoutes lives in apps/api/src/auth-compat-routes.ts.
 // Re-imported into the registerReactorCompatibilityRoutes call site below.
 
-function registerSessionCompatibilityRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/sessions", async (request, reply) => {
-    const userId = readAuthUserId(request);
-    const offset = Math.max(0, readQueryInteger(request, "offset", 0));
-    const limit = clampLimit(readQueryInteger(request, "limit", 50));
-
-    if (!userId) {
-      return reply.status(401).send(errorResponse("인증이 필요합니다"));
-    }
-
-    if (!options.historyStore) {
-      return {
-        items: [],
-        limit,
-        offset,
-        total: 0
-      };
-    }
-
-    const runs = await options.historyStore.listRunsByUser(userId);
-    const paged = runs.slice(offset, offset + limit);
-    const items = await Promise.all(paged.map((run) => toSessionResponse(run, options)));
-
-    return {
-      items,
-      limit,
-      offset,
-      total: runs.length
-    };
-  });
-
-  server.get("/api/sessions/:sessionId", async (request, reply) => reactorSessionDetail(request, reply, options));
-  server.get("/api/sessions/:sessionId/export", async (request, reply) =>
-    exportSession(request, reply, options, "reactor")
-  );
-  server.delete("/api/sessions/:sessionId", async (request, reply) => {
-    const { sessionId } = request.params as { readonly sessionId: string };
-    const userId = readAuthUserId(request);
-
-    if (!userId) {
-      return reply.status(401).send({
-        error: "인증이 필요합니다",
-        timestamp: nowIso()
-      });
-    }
-
-    if (!options.historyStore) {
-      return reply.status(404).send(errorResponse("Run history store is not configured"));
-    }
-
-    const run = await options.historyStore.findRun(sessionId);
-
-    if (!run) {
-      return reply.status(404).send({
-        error: `Session not found: ${sessionId}`,
-        timestamp: nowIso()
-      });
-    }
-
-    if ((!run.userId || run.userId !== userId) && !isAdminLikeRequest(request)) {
-      return reply.status(403).send({
-        error: "세션 접근이 거부되었습니다",
-        timestamp: nowIso()
-      });
-    }
-
-    await options.historyStore.deleteRun(sessionId);
-    return reply.status(204).send();
-  });
-
-  server.get("/api/models", async () => listSessionModels(options));
-}
+// registerSessionCompatibilityRoutes lives in apps/api/src/session-compat-routes.ts.
 
 function registerAgentCompatibilityRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   server.get("/.well-known/agent-card.json", async () => agentCardResponse(options));
@@ -3631,7 +3561,7 @@ async function sessionDetail(
   return { messages, run, session: run, toolCalls };
 }
 
-async function reactorSessionDetail(
+export async function reactorSessionDetail(
   request: FastifyRequest,
   reply: FastifyReply,
   options: ReactorCompatibilityRouteOptions
@@ -3664,7 +3594,7 @@ async function reactorSessionDetail(
   };
 }
 
-async function toSessionResponse(
+export async function toSessionResponse(
   run: AgentRunRecord,
   options: ReactorCompatibilityRouteOptions
 ): Promise<JsonObject> {
@@ -3713,7 +3643,7 @@ function toSessionMessages(
   ];
 }
 
-async function exportSession(
+export async function exportSession(
   request: FastifyRequest,
   reply: FastifyReply,
   options: ReactorCompatibilityRouteOptions,
@@ -9260,7 +9190,7 @@ function userMemoryNotFound(reply: FastifyReply, userId: string) {
   });
 }
 
-async function listSessionModels(options: ReactorCompatibilityRouteOptions) {
+export async function listSessionModels(options: ReactorCompatibilityRouteOptions) {
   const models = await options.modelProvider?.listModels();
   const names = models && models.length > 0
     ? models.map((model) => `${model.providerId}/${model.modelId}`)
@@ -9314,7 +9244,7 @@ export function errorResponse(error: string): JsonObject {
   };
 }
 
-function clampLimit(limit: number): number {
+export function clampLimit(limit: number): number {
   return Math.min(200, Math.max(1, limit));
 }
 
@@ -10250,7 +10180,7 @@ function readQueryStringSet(request: FastifyRequest, key: string): Set<string> {
   return new Set(readStringSet(query[key]));
 }
 
-function readQueryInteger(request: FastifyRequest, key: string, fallback: number): number {
+export function readQueryInteger(request: FastifyRequest, key: string, fallback: number): number {
   const raw = readQueryString(request, key);
   const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -10277,11 +10207,11 @@ function readQueryBoolean(request: FastifyRequest, key: string, fallback: boolea
   return raw === "true" || raw === "1";
 }
 
-function readAuthUserId(request: FastifyRequest): string | undefined {
+export function readAuthUserId(request: FastifyRequest): string | undefined {
   return (request as { auth?: { userId?: string } }).auth?.userId;
 }
 
-function isAdminLikeRequest(request: FastifyRequest): boolean {
+export function isAdminLikeRequest(request: FastifyRequest): boolean {
   const role = (request as { auth?: { role?: string } }).auth?.role;
   return role === undefined || role === "admin" || role === "admin_developer";
 }
