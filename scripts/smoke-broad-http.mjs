@@ -578,8 +578,7 @@ try {
       detector,
       notify: async (event) => {
         events.push(event);
-      },
-      tenantIdFromContext: () => "tenant-smoke"
+      }
     });
     const ctx = {
       input: { messages: [], metadata: {}, model: "smoke" },
