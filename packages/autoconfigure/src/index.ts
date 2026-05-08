@@ -159,6 +159,7 @@ import {
   type GuardRuleStore,
   type ToolPolicyStore
 } from "@muse/policy";
+import { createDefaultRagPipeline } from "./rag-query.js";
 import {
   InMemoryFeedbackStore,
   InMemoryPromptLabCatalogStore,
@@ -432,6 +433,12 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => schedulerService ? createSchedulerTools(schedulerService) : []
   ]);
   const runtimeHooks = createDefaultRuntimeHooks(env);
+  const ragPipeline = createDefaultRagPipeline({
+    documentStore: ragDocumentStore,
+    env,
+    ...(modelProvider ? { modelProvider } : {}),
+    ...(defaultModel ? { defaultModel } : {})
+  });
   const agentRuntime = modelProvider && defaultModel
     ? createAgentRuntime({
       agentSpecResolver,
@@ -444,6 +451,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       historyStore,
       hooks: runtimeHooks,
       hookTraceStore,
+      ...(ragPipeline ? { ragPipeline } : {}),
       metrics: runtimeAgentMetrics,
       modelProvider,
       guards: createInputGuards(env),
@@ -1164,6 +1172,17 @@ function createRunnerTools(env: MuseEnvironment): readonly MuseTool[] {
  * `GET /api/jarvis/loopback` lists what is available regardless of which are
  * actually wired here.
  */
+export {
+  composeQueryTransformers,
+  createDefaultRagPipeline,
+  createDefaultRagQueryTransformer,
+  createDocumentStoreRetriever,
+  type CreateDefaultRagPipelineArgs,
+  type CreateDefaultRagQueryTransformerArgs,
+  type RagPipelineEnv,
+  type RagQueryTransformerEnv
+} from "./rag-query.js";
+
 export function createLoopbackMcpToolsFromEnv(env: MuseEnvironment): readonly MuseTool[] {
   const servers: LoopbackMcpServer[] = [];
 
