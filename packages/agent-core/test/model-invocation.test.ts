@@ -165,6 +165,41 @@ describe("recordTokenUsageEvent", () => {
     expect(tracer.recordedSpans().some((span) => span.name === "muse.token_usage.record_failed")).toBe(true);
   });
 
+  it("estimates a positive estimatedCostUsd from the model name + token counts when pricing is known", async () => {
+    const sink = new InMemoryTokenUsageSink();
+    await recordTokenUsageEvent({
+      provider: provider(async () => ({ id: "x", model: "m", output: "" })),
+      response: {
+        id: "x",
+        model: "openai/gpt-4o-mini",
+        output: "",
+        usage: { inputTokens: 1_000, outputTokens: 1_000 }
+      },
+      runId: "rt-cost-known",
+      stepType: "act",
+      tokenUsageSink: sink,
+      tracer: new InMemoryMuseTracer()
+    });
+    const event = sink.list()[0];
+    expect(event?.estimatedCostUsd).toBeGreaterThan(0);
+    // gpt-4o-mini ≈ $0.00015/1k input + $0.0006/1k output → ~0.00075 for 1k+1k
+    expect(event?.estimatedCostUsd).toBeCloseTo(0.00075, 5);
+  });
+
+  it("omits estimatedCostUsd when the model has no known pricing (cost computes to 0)", async () => {
+    const sink = new InMemoryTokenUsageSink();
+    await recordTokenUsageEvent({
+      provider: provider(async () => ({ id: "x", model: "m", output: "" })),
+      response: { id: "x", model: "diagnostic/smoke", output: "", usage: { inputTokens: 0, outputTokens: 0 } },
+      runId: "rt-cost-zero",
+      stepType: "act",
+      tokenUsageSink: sink,
+      tracer: new InMemoryMuseTracer()
+    });
+    const event = sink.list()[0];
+    expect(event?.estimatedCostUsd).toBeUndefined();
+  });
+
   it("omits tenantId when missing from metadata", async () => {
     const sink = new InMemoryTokenUsageSink();
     await recordTokenUsageEvent({

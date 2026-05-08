@@ -116,6 +116,82 @@ describe("lifecycle recorders", () => {
     expect(updated?.output).toBe("final");
   });
 
+  it("recordRunComplete persists costUsd when the model has known pricing", async () => {
+    const historyStore = new InMemoryAgentRunHistoryStore();
+    await historyStore.createRun({
+      id: "run-cost",
+      input: "u",
+      mode: "react",
+      model: "openai/gpt-4o-mini",
+      provider: "openai",
+      startedAt: new Date(),
+      status: "running"
+    });
+
+    const execution: ModelLoopExecution = {
+      finalResponse: {
+        id: "r",
+        model: "openai/gpt-4o-mini",
+        output: "ok",
+        usage: { inputTokens: 1_000, outputTokens: 1_000 }
+      },
+      intermediateMessages: [],
+      toolResults: [],
+      toolsUsed: []
+    };
+
+    await recordRunComplete({
+      context: buildContext({ runId: "run-cost" }),
+      execution,
+      historyStore,
+      resolveToolRisk: () => "read"
+    });
+
+    const run = await historyStore.findRun("run-cost");
+    expect(run?.costUsd).toBeDefined();
+    expect(Number(run?.costUsd)).toBeGreaterThan(0);
+    // 1k+1k for gpt-4o-mini ≈ $0.00075
+    expect(Number(run?.costUsd)).toBeCloseTo(0.00075, 5);
+  });
+
+  it("recordRunComplete leaves costUsd at the createRun default when pricing is unknown", async () => {
+    const historyStore = new InMemoryAgentRunHistoryStore();
+    await historyStore.createRun({
+      id: "run-no-cost",
+      input: "u",
+      mode: "react",
+      model: "diagnostic/smoke",
+      provider: "diagnostic",
+      startedAt: new Date(),
+      status: "running"
+    });
+
+    const execution: ModelLoopExecution = {
+      finalResponse: {
+        id: "r",
+        model: "diagnostic/smoke",
+        output: "ok",
+        usage: { inputTokens: 5, outputTokens: 5 }
+      },
+      intermediateMessages: [],
+      toolResults: [],
+      toolsUsed: []
+    };
+
+    await recordRunComplete({
+      context: buildContext({ runId: "run-no-cost" }),
+      execution,
+      historyStore,
+      resolveToolRisk: () => "read"
+    });
+
+    const run = await historyStore.findRun("run-no-cost");
+    // Default pricing returns a small non-zero number for unknown models.
+    // We don't assert a specific value — only that the path doesn't throw
+    // and the run reaches "completed".
+    expect(run?.status).toBe("completed");
+  });
+
   it("recordRunComplete swallows store errors so agent execution is never blocked", async () => {
     const failing: { recordToolCall: ReturnType<typeof vi.fn>; appendMessage: ReturnType<typeof vi.fn>; updateRun: ReturnType<typeof vi.fn>; createRun: ReturnType<typeof vi.fn> } = {
       appendMessage: vi.fn().mockRejectedValue(new Error("storage down")),

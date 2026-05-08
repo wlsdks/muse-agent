@@ -16,6 +16,7 @@
  * raw provider.generate call, preserving the original behaviour.
  */
 
+import { estimateCostUsd } from "@muse/cache";
 import type { CircuitBreaker, FallbackStrategy, RetryOptions } from "@muse/resilience";
 import { retry, withTimeout } from "@muse/resilience";
 import type { ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
@@ -140,8 +141,10 @@ export async function recordTokenUsageEvent(args: RecordTokenUsageEventArgs): Pr
   const reasoningTokens = usage.reasoningTokens ?? 0;
   try {
     const tenantId = metadataString(args.metadata, "tenantId");
+    const estimatedCostUsd = estimateCostUsd(args.response.model, promptTokens, completionTokens + reasoningTokens);
     await args.tokenUsageSink.record({
       completionTokens,
+      ...(estimatedCostUsd > 0 ? { estimatedCostUsd } : {}),
       model: args.response.model,
       promptTokens,
       provider: args.provider.id,

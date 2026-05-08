@@ -6,6 +6,7 @@
  * side-effects only — return values are intentionally void.
  */
 
+import { estimateCostUsd } from "@muse/cache";
 import type { ModelMessage } from "@muse/model";
 import type { AgentRunHistoryStore, CheckpointStore } from "@muse/runtime-state";
 import { createAgentCheckpointState } from "./checkpoint.js";
@@ -114,12 +115,21 @@ export async function recordRunComplete(args: LifecycleRunCompleteArgs): Promise
       });
     }
 
+    const usage = args.execution.finalResponse.usage;
+    const costUsd = usage
+      ? estimateCostUsd(
+          args.execution.finalResponse.model,
+          usage.inputTokens ?? 0,
+          (usage.outputTokens ?? 0) + (usage.reasoningTokens ?? 0)
+        )
+      : 0;
     await args.historyStore.updateRun({
       completedAt: new Date(),
+      ...(costUsd > 0 ? { costUsd: costUsd.toString() } : {}),
       output: args.execution.finalResponse.output,
       runId: args.context.runId,
       status: "completed",
-      tokenUsage: args.execution.finalResponse.usage ? { ...args.execution.finalResponse.usage } : undefined
+      tokenUsage: usage ? { ...usage } : undefined
     });
   } catch {
     // History is observability state and must not block agent execution.
