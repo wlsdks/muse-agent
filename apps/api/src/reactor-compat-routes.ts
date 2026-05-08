@@ -59,6 +59,7 @@ import type { ScheduledJobExecution } from "@muse/scheduler";
 import { createRunId, type JsonObject } from "@muse/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHash } from "node:crypto";
+import { registerAgentCompatibilityRoutes } from "./agent-compat-routes.js";
 import { registerAuthCompatibilityRoutes } from "./auth-compat-routes.js";
 import { registerDocumentRoutes } from "./document-compat-routes.js";
 import { registerFeedbackCompatRoutes } from "./feedback-compat-routes.js";
@@ -346,108 +347,7 @@ function createCompatState(): CompatState {
 
 // registerSessionCompatibilityRoutes lives in apps/api/src/session-compat-routes.ts.
 
-function registerAgentCompatibilityRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/.well-known/agent-card.json", async () => agentCardResponse(options));
-
-  server.get("/api/admin/agent-specs", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const enabled = readQueryBoolean(request, "enabled", false);
-    const specs = enabled
-      ? await options.agentSpecRegistry.listEnabled()
-      : await options.agentSpecRegistry.list();
-    return specs.map(toAgentSpecResponse);
-  });
-
-  server.get("/api/admin/agent-specs/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    const spec = await findAgentSpec(options.agentSpecRegistry, id);
-
-    if (!spec) {
-      return reply.status(404).send(agentSpecNotFound(id));
-    }
-
-    return toAgentSpecResponse(spec);
-  });
-
-  server.get("/api/admin/agent-specs/:id/system-prompt", async (request, reply) => {
-    const spec = await findAgentSpecOrReply(request, reply, options);
-    return spec ?? reply;
-  });
-
-  server.post("/api/admin/agent-specs", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const parsed = parseAgentSpecInput(request.body);
-
-    if (!parsed.ok) {
-      return reply.status(400).send(agentSpecInputError(parsed.error));
-    }
-
-    if (await options.agentSpecRegistry.getByName(parsed.value.name)) {
-      return reply.status(409).send(errorResponse(`이름 '${parsed.value.name}'은 이미 사용 중입니다`));
-    }
-
-    return reply.status(201).send(toAgentSpecResponse(await options.agentSpecRegistry.save(parsed.value)));
-  });
-
-  server.put("/api/admin/agent-specs/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    const mode = isRecord(request.body) ? parseAgentMode(request.body.mode) : undefined;
-
-    if (!isRecord(request.body)) {
-      return reply.status(400).send(errorResponse("요청 형식이 올바르지 않습니다"));
-    }
-
-    if (request.body.mode !== undefined && !mode) {
-      return reply.status(400).send(errorResponse(`유효하지 않은 모드: ${String(request.body.mode)}`));
-    }
-
-    const existing = await options.agentSpecRegistry.getById(id);
-
-    if (!existing) {
-      return reply.status(404).send(agentSpecNotFound(id));
-    }
-
-    return toAgentSpecResponse(await options.agentSpecRegistry.save(toAgentSpecUpdateInput(request.body, existing)));
-  });
-
-  server.delete("/api/admin/agent-specs/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    const spec = await findAgentSpec(options.agentSpecRegistry, id);
-
-    if (!spec) {
-      return reply.status(404).send(agentSpecNotFound(id));
-    }
-
-    await options.agentSpecRegistry.deleteById(spec.id);
-    return reply.status(204).send();
-  });
-
-  server.get("/api/admin/models", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return listAdminModelRegistry(options);
-  });
-}
+// registerAgentCompatibilityRoutes lives in apps/api/src/agent-compat-routes.ts.
 
 function registerApprovalCompatibilityRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   server.get("/api/approvals", async (request, reply) => {
@@ -4618,7 +4518,7 @@ export function parseAuthCredentials(
   };
 }
 
-function parseAgentSpecInput(value: unknown, id?: string): ParseResult<AgentSpecInput> {
+export function parseAgentSpecInput(value: unknown, id?: string): ParseResult<AgentSpecInput> {
   if (!isRecord(value)) {
     return invalid("INVALID_AGENT_SPEC", "Body must be an object");
   }
@@ -4650,11 +4550,11 @@ function parseAgentSpecInput(value: unknown, id?: string): ParseResult<AgentSpec
   };
 }
 
-async function findAgentSpec(registry: AgentSpecRegistry, id: string) {
+export async function findAgentSpec(registry: AgentSpecRegistry, id: string) {
   return (await registry.getById(id)) ?? (await registry.getByName(id));
 }
 
-async function findAgentSpecOrReply(
+export async function findAgentSpecOrReply(
   request: FastifyRequest,
   reply: FastifyReply,
   options: ReactorCompatibilityRouteOptions
@@ -4676,17 +4576,17 @@ async function findAgentSpecOrReply(
   };
 }
 
-function agentSpecNotFound(id: string): JsonObject {
+export function agentSpecNotFound(id: string): JsonObject {
   return errorResponse(`에이전트 스펙을 찾을 수 없습니다: ${id}`);
 }
 
-function agentSpecInputError(error: ApiError): JsonObject {
+export function agentSpecInputError(error: ApiError): JsonObject {
   const invalidMode = error.message.match(/^Invalid mode: (.*)$/u)?.[1];
 
   return errorResponse(invalidMode ? `유효하지 않은 모드: ${invalidMode}` : "요청 형식이 올바르지 않습니다");
 }
 
-function toAgentSpecUpdateInput(body: Record<string, unknown>, existing: AgentSpec): AgentSpecInput {
+export function toAgentSpecUpdateInput(body: Record<string, unknown>, existing: AgentSpec): AgentSpecInput {
   return {
     description: typeof body.description === "string" ? body.description : existing.description,
     enabled: typeof body.enabled === "boolean" ? body.enabled : existing.enabled,
@@ -4702,7 +4602,7 @@ function toAgentSpecUpdateInput(body: Record<string, unknown>, existing: AgentSp
   };
 }
 
-function toAgentSpecResponse(spec: AgentSpec): JsonObject {
+export function toAgentSpecResponse(spec: AgentSpec): JsonObject {
   const prompt = spec.systemPrompt?.trim();
   const preview = prompt
     ? prompt.length <= 120
@@ -4726,7 +4626,7 @@ function toAgentSpecResponse(spec: AgentSpec): JsonObject {
   };
 }
 
-async function agentCardResponse(options: ReactorCompatibilityRouteOptions): Promise<JsonObject> {
+export async function agentCardResponse(options: ReactorCompatibilityRouteOptions): Promise<JsonObject> {
   const specs = await options.agentSpecRegistry.listEnabled();
   const tools = options.agentCardToolProvider
     ? await options.agentCardToolProvider()
@@ -8637,7 +8537,7 @@ export async function listSessionModels(options: ReactorCompatibilityRouteOption
   };
 }
 
-function listAdminModelRegistry(options: ReactorCompatibilityRouteOptions) {
+export function listAdminModelRegistry(options: ReactorCompatibilityRouteOptions) {
   const defaultModel = options.defaultModel ?? "";
   const pricing = [
     { input: 0.15, name: "gemini-3-flash-preview", output: 0.6 },
@@ -9577,7 +9477,7 @@ function parseRuntimeSettingType(value: unknown): RuntimeSettingType | undefined
     : undefined;
 }
 
-function parseAgentMode(value: unknown): AgentSpecInput["mode"] | undefined {
+export function parseAgentMode(value: unknown): AgentSpecInput["mode"] | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
@@ -9775,7 +9675,7 @@ function reactorEnumString(value: unknown, fallback: string): string {
     : fallback;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
@@ -9786,9 +9686,9 @@ function invalid(code: string, message: string): ParseResult<never> {
   };
 }
 
-type ParseResult<T> = { readonly ok: true; readonly value: T } | { readonly error: ApiError; readonly ok: false };
+export type ParseResult<T> = { readonly ok: true; readonly value: T } | { readonly error: ApiError; readonly ok: false };
 
-interface ApiError {
+export interface ApiError {
   readonly code: string;
   readonly message: string;
 }
