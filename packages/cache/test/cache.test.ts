@@ -35,9 +35,9 @@ describe("cache keys", () => {
     expect(normalizeUserId("user-1")).toBe("user-1");
   });
 
-  it("includes identity and tenant scope in the fingerprint", () => {
+  it("includes identity scope in the fingerprint", () => {
     const base = {
-      metadata: { requesterEmail: "USER_ACCOUNT", tenantId: "tenant-1" },
+      metadata: { requesterEmail: "USER_ACCOUNT" },
       userPrompt: "Hello"
     };
     const first = buildScopeFingerprint(base, []);

@@ -25,7 +25,7 @@ export async function adminDiagnostic(
   options: ReactorCompatibilityRouteOptions,
   mode: "report" | "summary"
 ) {
-  if (!options.authorizeAnyAdmin(request, reply)) {
+  if (!options.authorizeAdmin(request, reply)) {
     return reply;
   }
 

@@ -43,21 +43,21 @@ export function registerAdminSessionCompatRoutes(server: FastifyInstance, option
 
 function registerSelfStatsRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   server.get("/api/admin/tenant/cost", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
     return options.admin?.operations?.costSummary() ?? { byModel: {}, totalCostUsd: "0.00000000" };
   });
   server.get("/api/admin/tenant/alerts", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
     return options.admin?.operations?.listAlerts() ?? [];
   });
   server.get("/api/admin/tenant/slo", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
@@ -67,7 +67,7 @@ function registerSelfStatsRoutes(server: FastifyInstance, options: ReactorCompat
 
 function registerSessionRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   server.get("/api/admin/sessions/overview", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
@@ -82,7 +82,7 @@ function registerSessionRoutes(server: FastifyInstance, options: ReactorCompatib
     };
   });
   server.get("/api/admin/sessions", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
@@ -132,7 +132,7 @@ function registerSessionRoutes(server: FastifyInstance, options: ReactorCompatib
     return reply.status(204).send();
   });
   server.get("/api/admin/sessions/:sessionId", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
@@ -165,14 +165,14 @@ function registerSessionRoutes(server: FastifyInstance, options: ReactorCompatib
 
 function registerUserRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   server.get("/api/admin/users", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
     return summarizeUsers(await listAllRuns(options));
   });
   server.get("/api/admin/users/:userId/sessions", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 

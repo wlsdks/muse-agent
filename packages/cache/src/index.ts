@@ -356,7 +356,6 @@ export function buildScopeFingerprint(command: AgentCacheCommand, toolNames: rea
     command.responseSchema ?? "",
     normalizeUserId(command.userId),
     stringMetadata(metadata, "sessionId"),
-    stringMetadata(metadata, "tenantId"),
     resolveIdentityScope(metadata)
   ];
 

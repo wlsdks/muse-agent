@@ -361,7 +361,6 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authService,
     iamTokenExchangeService: options.iamTokenExchangeService,
     authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
-    authorizeAnyAdmin: (request, reply) => authorizeAnyAdmin(request, reply, Boolean(authService)),
     apiPathRegistry: () => [...apiPaths].sort(),
     defaultModel: options.defaultModel,
     feedbackStore: options.feedbackStore,
@@ -1647,14 +1646,6 @@ function toLoginResponse(login: LoginResult) {
 }
 
 function authorizeAdmin(
-  request: unknown,
-  reply: { status(statusCode: number): { send(payload: unknown): void } },
-  authEnabled: boolean
-): boolean {
-  return authorizeAdminRole(request, reply, authEnabled, isAnyAdmin);
-}
-
-function authorizeAnyAdmin(
   request: unknown,
   reply: { status(statusCode: number): { send(payload: unknown): void } },
   authEnabled: boolean

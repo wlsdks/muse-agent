@@ -109,21 +109,21 @@ function registerRuntimeSettingsRoutes(server: FastifyInstance, options: Reactor
 
 function registerOpsAndCapabilitiesRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   server.get("/api/ops/dashboard", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
     return dashboardSummary(options);
   });
   server.get("/api/ops/metrics/names", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
     return ["agent_run", "tool_call", "cache", "scheduler"];
   });
   server.get("/api/admin/capabilities", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
@@ -133,7 +133,7 @@ function registerOpsAndCapabilitiesRoutes(server: FastifyInstance, options: Reac
 
 function registerPlatformHealthRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   server.get("/api/admin/platform/health", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
@@ -142,7 +142,7 @@ function registerPlatformHealthRoutes(server: FastifyInstance, options: ReactorC
   server.get("/api/admin/doctor", async (request, reply) => adminDiagnostic(request, reply, options, "report"));
   server.get("/api/admin/doctor/summary", async (request, reply) => adminDiagnostic(request, reply, options, "summary"));
   server.get("/api/admin/platform/cache/stats", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
@@ -169,7 +169,7 @@ function registerPlatformHealthRoutes(server: FastifyInstance, options: ReactorC
     };
   });
   server.get("/api/admin/platform/vectorstore/stats", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 

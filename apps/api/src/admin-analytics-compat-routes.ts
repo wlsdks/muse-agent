@@ -312,7 +312,7 @@ function registerRagAndSlackRoutes(server: FastifyInstance, options: ReactorComp
 
 function registerTenantQualityRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   server.get("/api/admin/tenant/quality", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
@@ -325,7 +325,7 @@ function registerTenantQualityRoutes(server: FastifyInstance, options: ReactorCo
   });
 
   server.get("/api/admin/tenant/tools", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 
@@ -337,7 +337,7 @@ function registerTenantQualityRoutes(server: FastifyInstance, options: ReactorCo
   });
 
   server.get("/api/admin/tenant/quota", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
+    if (!options.authorizeAdmin(request, reply)) {
       return reply;
     }
 

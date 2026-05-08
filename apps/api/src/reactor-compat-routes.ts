@@ -122,7 +122,6 @@ export interface ReactorCompatibilityRouteOptions {
   readonly authService?: MuseAuth;
   readonly iamTokenExchangeService?: IamTokenExchange;
   readonly authorizeAdmin: (request: FastifyRequest, reply: FastifyReply) => boolean;
-  readonly authorizeAnyAdmin: (request: FastifyRequest, reply: FastifyReply) => boolean;
   readonly apiPathRegistry?: () => readonly string[];
   readonly defaultModel?: string;
   readonly feedbackStore?: FeedbackStore;
