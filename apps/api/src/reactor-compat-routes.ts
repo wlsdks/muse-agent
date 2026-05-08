@@ -59,6 +59,7 @@ import type { ScheduledJobExecution } from "@muse/scheduler";
 import { createRunId, type JsonObject } from "@muse/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHash } from "node:crypto";
+import { registerAdminAnalyticsCompatRoutes } from "./admin-analytics-compat-routes.js";
 import { registerAdminObservabilityCompatRoutes } from "./admin-observability-compat-routes.js";
 import { registerAdminPlatformCompatRoutes } from "./admin-platform-compat-routes.js";
 import { registerAdminSessionCompatRoutes } from "./admin-session-compat-routes.js";
@@ -391,391 +392,13 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
 
   registerAdminSessionCompatRoutes(server, options);
   registerAdminObservabilityCompatRoutes(server, options);
-  registerAdminAnalyticsCompatibilityRoutes(server, options);
+  registerAdminAnalyticsCompatRoutes(server, options);
   registerAgentEvalCompatibilityRoutes(server, options);
   registerMetricIngestionRoutes(server, options);
 
 }
 
-function registerAdminAnalyticsCompatibilityRoutes(
-  server: FastifyInstance,
-  options: ReactorCompatibilityRouteOptions
-): void {
-  server.get("/api/admin/audits", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const offset = Math.max(0, readQueryInteger(request, "offset", 0));
-    const pageLimit = clampLimit(readQueryInteger(request, "pageLimit", 50));
-    const category = readQueryString(request, "category") ?? undefined;
-    const action = readQueryString(request, "action") ?? undefined;
-
-    if (options.admin?.auditStore) {
-      const auditPage = await options.admin.auditStore.query({
-        ...(action ? { action } : {}),
-        ...(category ? { category } : {}),
-        limit: pageLimit,
-        offset
-      });
-      const items = auditPage.items
-        .map((record) => toAdminAuditResponse(adminAuditStoreRecordToCompat(record)));
-      return {
-        items,
-        limit: pageLimit,
-        offset,
-        total: auditPage.total
-      };
-    }
-
-    const limit = Math.max(1, readQueryInteger(request, "limit", 1000));
-    const rows = await adminAuditRows(request, options, limit);
-    return {
-      items: rows.slice(offset, offset + pageLimit),
-      limit: pageLimit,
-      offset,
-      total: Math.min(rows.length, limit)
-    };
-  });
-
-  server.get("/api/admin/audits/export", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const rows = await adminAuditRows(request, options, readQueryInteger(request, "limit", 5000));
-    const stamp = new Date().toISOString().slice(0, 16).replace(/\D/gu, "");
-    reply.header("content-disposition", `attachment; filename="audit-export-${stamp}.csv"`);
-    reply.header("content-type", "text/csv; charset=utf-8");
-    return csvRows(
-      ["id", "timestamp", "category", "action", "actor", "resource_type", "resource_id", "detail"],
-      rows.map((row) => [
-        row.id,
-        new Date(readNumber(row.createdAt, Date.now())).toISOString(),
-        row.category,
-        row.action,
-        row.actor,
-        row.resourceType ?? "",
-        row.resourceId ?? "",
-        row.detail ?? ""
-      ])
-    );
-  });
-
-  server.get("/api/admin/debug/replay", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const limit = Math.max(1, readQueryInteger(request, "limit", 50));
-    const failedRuns = (await listAllRuns(options))
-      .filter((run) => run.status === "failed")
-      .slice(0, limit);
-    const captures = await Promise.all(failedRuns.map((run) => saveDebugReplayCapture(options, debugReplayResponse(run))));
-    const stored = await listDebugReplayCaptures(options, Math.max(0, limit - captures.length));
-    const byId = new Map<string, JsonObject>();
-    for (const capture of [...captures, ...stored]) {
-      byId.set(stringField(capture.id, ""), capture);
-    }
-    return [...byId.values()].slice(0, limit);
-  });
-
-  server.get("/api/admin/debug/replay/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    const stored = await getDebugReplayCapture(options, id);
-    if (stored) {
-      return stored;
-    }
-
-    const run = await options.historyStore?.findRun(id);
-    return run && run.status === "failed"
-      ? saveDebugReplayCapture(options, debugReplayResponse(run))
-      : reply.status(404).send(errorResponse("Replay target not found"));
-  });
-
-  server.get("/api/admin/evals/runs", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const limit = Math.max(1, readQueryInteger(request, "limit", 100));
-    return listAgentEvalResults(options, { limit });
-  });
-
-  server.get("/api/admin/evals/pass-rate", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return passRateByDay(await listAgentEvalResults(options, { limit: 5_000 }));
-  });
-
-  server.get("/api/admin/followup-suggestions/stats", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const hours = Math.min(168, Math.max(1, readQueryInteger(request, "hours", 24)));
-    const stats = options.followupSuggestionStore?.aggregateStats(hours * 60 * 60 * 1000)
-      ?? { byCategory: [], ctr: 0, totalClicks: 0, totalImpressions: 0 };
-
-    return {
-      byCategory: stats.byCategory,
-      ctr: stats.ctr,
-      totalClicks: stats.totalClicks,
-      totalImpressions: stats.totalImpressions,
-      windowHours: hours
-    };
-  });
-
-  server.get("/api/admin/input-guard/stats", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const hours = Math.min(168, Math.max(1, readQueryInteger(request, "hours", 24)));
-    return inputGuardStatsResponse(options, hours);
-  });
-
-  server.get("/api/admin/jarvis/snapshot", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-    if (!options.jarvisObservabilitySnapshot) {
-      return reply.status(503).send({
-        code: "JARVIS_SNAPSHOT_UNAVAILABLE",
-        message: "JARVIS observability snapshot provider is not configured"
-      });
-    }
-    const snapshot = await options.jarvisObservabilitySnapshot();
-    return snapshot as unknown as JsonObject;
-  });
-
-  server.get("/api/admin/metrics/latency/summary", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const days = readQueryInteger(request, "days", 7);
-    if (options.latencyQuery) {
-      const summary = await options.latencyQuery.summary({
-        from: latencyWindowStart(days),
-        to: new Date()
-      });
-      return latencySummaryFromQuery(summary);
-    }
-
-    return latencySummary(await listAllRuns(options), days);
-  });
-
-  server.get("/api/admin/metrics/latency/timeseries", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const days = readQueryInteger(request, "days", 7);
-    if (options.latencyQuery) {
-      const points = await options.latencyQuery.timeSeries({
-        bucketSizeMs: 24 * 60 * 60 * 1000,
-        from: latencyWindowStart(days),
-        to: new Date()
-      });
-      return latencyTimeseriesFromQuery(points);
-    }
-
-    return latencyTimeseries(await listAllRuns(options), days);
-  });
-
-  server.get("/api/admin/rag-analytics/status", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return ragStatusSummary(await listDocuments(options, { limit: 1000 }));
-  });
-
-  server.get("/api/admin/rag-analytics/by-channel", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return groupRecordsByField([...state.ragCandidates.values(), ...await listDocuments(options, { limit: 1000 })], "channelId", "api");
-  });
-
-  server.get("/api/admin/slack-activity/channels", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return groupRunsByMetadata(await listAllRuns(options), "channel");
-  });
-
-  server.get("/api/admin/slack-activity/daily", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return dailyUsage(await listAllRuns(options));
-  });
-
-  server.get("/api/admin/tenant/quality", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
-      return reply;
-    }
-
-    const runs = await listAllRuns(options);
-    return {
-      errors: runs.filter((run) => run.status === "failed").length,
-      latencyDistribution: latencyDistribution(runs),
-      total: runs.length
-    };
-  });
-
-  server.get("/api/admin/tenant/tools", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
-      return reply;
-    }
-
-    const toolCalls = await listAllToolCalls(options);
-    return {
-      ranking: toolCallRanking(toolCalls),
-      total: toolCalls.length
-    };
-  });
-
-  server.get("/api/admin/tenant/quota", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
-      return reply;
-    }
-
-    const runs = await listAllRuns(options);
-    return {
-      quota: { maxRequestsPerMonth: 0, maxTokensPerMonth: 0 },
-      requestUsagePercent: 0,
-      tokenUsagePercent: 0,
-      usage: {
-        requests: runs.length,
-        tokens: runs.reduce((total, run) => total + numberField(run.tokenUsage, "inputTokens") +
-          numberField(run.tokenUsage, "outputTokens"), 0)
-      }
-    };
-  });
-
-  server.get("/api/admin/tenant/export/executions", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    reply.header("content-type", "text/csv; charset=utf-8");
-    return runsCsv(await listAllRuns(options));
-  });
-
-  server.get("/api/admin/tenant/export/tools", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    reply.header("content-type", "text/csv; charset=utf-8");
-    return toolCallsCsv(await listAllToolCalls(options));
-  });
-
-  server.get("/api/admin/platform/tenants/analytics", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
-      return reply;
-    }
-
-    const [tenants, cost] = await Promise.all([
-      options.admin?.operations?.listTenants() ?? [],
-      options.admin?.operations?.costSummary() ?? { byModel: {}, byTenant: {}, totalCostUsd: "0.00000000" }
-    ]);
-    return tenants.map((tenant) => ({
-      cost: toJsonObject(cost.byTenant)[tenant.id] ?? "0.00000000",
-      plan: "default",
-      quotaUsagePercent: 0,
-      requests: 0,
-      tenantId: tenant.id,
-      tenantName: tenant.name
-    }));
-  });
-
-  server.get("/api/admin/platform/users/by-email", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const email = readQueryString(request, "email");
-    const auth = (request as { auth?: { email?: string; role?: string; userId?: string } }).auth;
-
-    if (!email) {
-      return reply.status(400).send(errorResponse("email is required"));
-    }
-
-    return auth?.email === email
-      ? { email, id: auth.userId ?? "current-user", role: auth.role ?? "admin" }
-      : reply.status(404).send(errorResponse(`User not found: ${email}`));
-  });
-
-  server.post("/api/admin/platform/users/:id/role", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    const rawRole = readBodyString(request.body, "role") ?? "";
-    const role = parseUserRole(rawRole);
-
-    if (!role) {
-      return reply.status(400).send(errorResponse(`invalid role: ${rawRole}`));
-    }
-
-    if (!(await options.authService?.updateUserRole(id, role))) {
-      return reply.status(404).send(errorResponse(`User not found: ${id}`));
-    }
-
-    return { id, role: userRoleResponse(role) };
-  });
-
-  server.post("/api/admin/task-memory/maintenance/purge-expired", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    if (!options.taskMemoryMaintenance) {
-      return taskMemoryMaintenanceUnavailable(reply);
-    }
-
-    const deleted = await options.taskMemoryMaintenance.purgeExpired();
-    return { actor: readAuthUserId(request) ?? "admin", deleted };
-  });
-
-  server.post("/api/admin/task-memory/maintenance/purge-terminal", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const olderThanDays = readQueryInteger(request, "olderThanDays", 30);
-
-    if (olderThanDays < 1) {
-      return reply.status(400).send(errorResponse("olderThanDays는 1 이상이어야 합니다"));
-    }
-
-    if (!options.taskMemoryMaintenance) {
-      return taskMemoryMaintenanceUnavailable(reply);
-    }
-
-    const cutoff = new Date(Date.now() - olderThanDays * 86_400_000);
-    const deleted = await options.taskMemoryMaintenance.purgeTerminalOlderThan(cutoff);
-    return { cutoff: cutoff.toISOString(), deleted };
-  });
-}
-
-function taskMemoryMaintenanceUnavailable(reply: FastifyReply) {
-  return reply.status(400).send(errorResponse("TaskMemoryMaintenance 미등록 — task memory 유지보수를 사용할 수 없습니다"));
-}
+// registerAdminAnalyticsCompatibilityRoutes lives in apps/api/src/admin-analytics-compat-routes.ts.
 
 function registerAgentEvalCompatibilityRoutes(
   server: FastifyInstance,
@@ -1295,7 +918,7 @@ async function saveAgentEvalResult(options: ReactorCompatibilityRouteOptions, re
   return createRecord(state.agentEvalResults, record, "agent_eval_result");
 }
 
-async function listAgentEvalResults(
+export async function listAgentEvalResults(
   options: ReactorCompatibilityRouteOptions,
   filters: { readonly caseId?: string; readonly limit?: number; readonly tier?: string } = {}
 ): Promise<readonly CompatRecord[]> {
@@ -1310,7 +933,7 @@ async function listAgentEvalResults(
     .slice(0, filters.limit ?? 100);
 }
 
-async function saveDebugReplayCapture(options: ReactorCompatibilityRouteOptions, record: JsonObject): Promise<CompatRecord> {
+export async function saveDebugReplayCapture(options: ReactorCompatibilityRouteOptions, record: JsonObject): Promise<CompatRecord> {
   if (options.agentEvalStore) {
     const saved = await options.agentEvalStore.saveDebugReplayCapture(prepareEvalRecord(record, "debug_replay"));
     return evalStoreRecordToCompat(saved, "debug_replay");
@@ -1319,7 +942,7 @@ async function saveDebugReplayCapture(options: ReactorCompatibilityRouteOptions,
   return evalStoreRecordToCompat(record, "debug_replay");
 }
 
-async function listDebugReplayCaptures(options: ReactorCompatibilityRouteOptions, limit: number): Promise<readonly CompatRecord[]> {
+export async function listDebugReplayCaptures(options: ReactorCompatibilityRouteOptions, limit: number): Promise<readonly CompatRecord[]> {
   if (options.agentEvalStore) {
     const rows = await options.agentEvalStore.listDebugReplayCaptures(limit);
     return rows.map((row) => evalStoreRecordToCompat(row, "debug_replay"));
@@ -1328,7 +951,7 @@ async function listDebugReplayCaptures(options: ReactorCompatibilityRouteOptions
   return [];
 }
 
-async function getDebugReplayCapture(options: ReactorCompatibilityRouteOptions, id: string): Promise<CompatRecord | undefined> {
+export async function getDebugReplayCapture(options: ReactorCompatibilityRouteOptions, id: string): Promise<CompatRecord | undefined> {
   if (options.agentEvalStore) {
     const row = await options.agentEvalStore.getDebugReplayCapture(id);
     return row ? evalStoreRecordToCompat(row, "debug_replay") : undefined;
@@ -1966,7 +1589,7 @@ export function latencyDistribution(runs: readonly AgentRunRecord[]) {
   return buckets;
 }
 
-async function adminAuditRows(
+export async function adminAuditRows(
   request: FastifyRequest,
   options: ReactorCompatibilityRouteOptions,
   maxRows = 1000
@@ -2148,7 +1771,7 @@ export async function recordAdminAudit(
   return createRecord(state.adminAudits, audit, "admin_audit");
 }
 
-function toAdminAuditResponse(record: JsonObject): JsonObject {
+export function toAdminAuditResponse(record: JsonObject): JsonObject {
   return {
     action: stringField(record.action, "UPDATE").toUpperCase(),
     actor: stringField(record.actor, "anonymous"),
@@ -2173,7 +1796,7 @@ export async function listAdminAuditRecords(
   return [...state.adminAudits.values()].sort(compareCreatedAtDesc).slice(0, Math.max(1, limit));
 }
 
-function adminAuditStoreRecordToCompat(record: {
+export function adminAuditStoreRecordToCompat(record: {
   readonly action: string;
   readonly actor: string;
   readonly category: string;
@@ -2209,7 +1832,7 @@ export function toInputGuardAuditResponse(record: JsonObject): JsonObject {
   };
 }
 
-function inputGuardStatsResponse(options: ReactorCompatibilityRouteOptions, periodHours: number): JsonObject {
+export function inputGuardStatsResponse(options: ReactorCompatibilityRouteOptions, periodHours: number): JsonObject {
   const events = (options.admin?.observability?.metrics?.recordedEvents() ?? [])
     .map(toJsonObject)
     .filter((event) => event.type === "guard_rejection");
@@ -2271,7 +1894,7 @@ export function latencyWindowStart(days: number): Date {
   return start;
 }
 
-function latencySummaryFromQuery(summary: LatencySummary): JsonObject {
+export function latencySummaryFromQuery(summary: LatencySummary): JsonObject {
   return {
     count: summary.count,
     p50Ms: summary.p50Ms,
@@ -2280,7 +1903,7 @@ function latencySummaryFromQuery(summary: LatencySummary): JsonObject {
   };
 }
 
-function latencyTimeseriesFromQuery(points: readonly LatencyPoint[]): readonly JsonObject[] {
+export function latencyTimeseriesFromQuery(points: readonly LatencyPoint[]): readonly JsonObject[] {
   return points.map((point) => ({
     avgLatencyMs: point.avgMs,
     count: point.count,
@@ -2288,7 +1911,7 @@ function latencyTimeseriesFromQuery(points: readonly LatencyPoint[]): readonly J
   }));
 }
 
-function latencySummary(runs: readonly AgentRunRecord[], days: number): JsonObject {
+export function latencySummary(runs: readonly AgentRunRecord[], days: number): JsonObject {
   const latencies = runsInLastDays(runs, days).map(runLatencyMs).filter((value): value is number => value !== undefined);
   return {
     count: latencies.length,
@@ -2298,7 +1921,7 @@ function latencySummary(runs: readonly AgentRunRecord[], days: number): JsonObje
   };
 }
 
-function latencyTimeseries(runs: readonly AgentRunRecord[], days: number): readonly JsonObject[] {
+export function latencyTimeseries(runs: readonly AgentRunRecord[], days: number): readonly JsonObject[] {
   const byDay = new Map<string, { count: number; date: string; totalMs: number }>();
 
   for (const run of runsInLastDays(runs, days)) {
@@ -2341,7 +1964,7 @@ function percentile(values: readonly number[], percentileValue: number): number 
   return sorted[index] ?? 0;
 }
 
-function passRateByDay(results: readonly JsonObject[]): readonly JsonObject[] {
+export function passRateByDay(results: readonly JsonObject[]): readonly JsonObject[] {
   const byDay = new Map<string, { date: string; passed: number; total: number }>();
 
   for (const result of results) {
@@ -2362,7 +1985,7 @@ function passRateByDay(results: readonly JsonObject[]): readonly JsonObject[] {
   }));
 }
 
-function ragStatusSummary(documents: readonly CompatRecord[] = [...state.documents.values()]): JsonObject {
+export function ragStatusSummary(documents: readonly CompatRecord[] = [...state.documents.values()]): JsonObject {
   const records = [...state.ragCandidates.values(), ...documents];
   const byStatus: Record<string, number> = {};
 
@@ -2388,7 +2011,7 @@ export function chunkText(content: string): readonly string[] {
   return chunks.length > 0 ? chunks : [content];
 }
 
-function groupRecordsByField(records: readonly JsonObject[], field: string, fallback: string): readonly JsonObject[] {
+export function groupRecordsByField(records: readonly JsonObject[], field: string, fallback: string): readonly JsonObject[] {
   const groups = new Map<string, { count: number; key: string }>();
 
   for (const record of records) {
@@ -2400,7 +2023,7 @@ function groupRecordsByField(records: readonly JsonObject[], field: string, fall
   return [...groups.values()].sort((left, right) => right.count - left.count);
 }
 
-function debugReplayResponse(run: AgentRunRecord): JsonObject {
+export function debugReplayResponse(run: AgentRunRecord): JsonObject {
   return {
     capturedAt: run.createdAt.toISOString(),
     errorCode: run.status === "failed" ? "RUN_FAILED" : null,
@@ -2415,7 +2038,7 @@ function debugReplayResponse(run: AgentRunRecord): JsonObject {
   };
 }
 
-function runsCsv(runs: readonly AgentRunRecord[]): string {
+export function runsCsv(runs: readonly AgentRunRecord[]): string {
   return csvRows(
     ["id", "created_at", "user_id", "model", "status", "cost_usd", "input", "output"],
     runs.map((run) => [
@@ -2431,7 +2054,7 @@ function runsCsv(runs: readonly AgentRunRecord[]): string {
   );
 }
 
-function toolCallsCsv(toolCalls: readonly ToolCallRecord[]): string {
+export function toolCallsCsv(toolCalls: readonly ToolCallRecord[]): string {
   return csvRows(
     ["id", "run_id", "created_at", "name", "risk", "status", "result", "error"],
     toolCalls.map((call) => [
@@ -2447,7 +2070,7 @@ function toolCallsCsv(toolCalls: readonly ToolCallRecord[]): string {
   );
 }
 
-function csvRows(headers: readonly string[], rows: readonly (readonly unknown[])[]): string {
+export function csvRows(headers: readonly string[], rows: readonly (readonly unknown[])[]): string {
   return [
     headers.map(csvEscape).join(","),
     ...rows.map((row) => row.map((item) => csvEscape(String(item ?? ""))).join(","))
@@ -2460,7 +2083,7 @@ function csvEscape(value: string): string {
     : value;
 }
 
-function numberField(value: JsonObject, key: string): number {
+export function numberField(value: JsonObject, key: string): number {
   const item = value[key];
   return typeof item === "number" && Number.isFinite(item) ? item : 0;
 }
@@ -3348,6 +2971,10 @@ export function deleteStateSlackFaqChannel(channelId: string): void {
 
 export function getStateRagIngestionPolicy(): JsonObject {
   return state.ragIngestionPolicy;
+}
+
+export function getStateRagCandidates(): readonly CompatRecord[] {
+  return [...state.ragCandidates.values()];
 }
 
 export async function readStoredToolPolicy(options: ReactorCompatibilityRouteOptions): Promise<JsonObject | undefined> {
