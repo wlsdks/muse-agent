@@ -165,6 +165,33 @@ async function runProviderSuite(provider) {
         `expected weekday in content, got "${body.content}"`);
     });
 
+    await record("POST /api/chat plan_execute — full plan→tool→synth loop calls time_now", async () => {
+      const response = await fetch(`${baseUrl}/api/chat`, {
+        body: JSON.stringify({
+          message:
+            "Plan and execute: call the time_now tool with timezone=Asia/Seoul, then reply with only the dayOfWeek value the tool returned. No other words.",
+          metadata: { agentMode: "plan_execute" },
+          runId: "all-plan"
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST"
+      });
+      const body = await response.json();
+      assert(
+        response.status === 200 || response.status === 422,
+        `expected 200/422, got ${response.status}: ${JSON.stringify(body)}`
+      );
+      if (response.status === 200) {
+        assert(Array.isArray(body.toolsUsed) && body.toolsUsed.includes("time_now"),
+          `expected plan to call time_now, got toolsUsed=${JSON.stringify(body.toolsUsed)} content="${body.content}"`);
+        assert(/Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday/iu.test(body.content ?? ""),
+          `expected weekday in synth content, got "${body.content}"`);
+      } else {
+        const code = body.errorCode ?? body.code;
+        assert(typeof code === "string" && code.startsWith("PLAN_"), `expected PLAN_* error, got ${code}`);
+      }
+    });
+
     await record("Input guard blocks a prompt-injection attempt before the LLM", async () => {
       const response = await fetch(`${baseUrl}/api/chat`, {
         body: JSON.stringify({

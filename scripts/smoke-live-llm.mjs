@@ -141,10 +141,11 @@ try {
     assert(body.includes("event: done"), "expected event: done frame");
   });
 
-  await record("POST /api/chat with metadata.agentMode=plan_execute (live)", async () => {
+  await record("POST /api/chat plan_execute (live) — full plan→tool→synth loop calls time_now", async () => {
     const response = await fetch(`${baseUrl}/api/chat`, {
       body: JSON.stringify({
-        message: "What time is it right now? Use a tool.",
+        message:
+          "Plan and execute: call the time_now tool with timezone=Asia/Seoul, then reply with only the dayOfWeek value the tool returned. No other words.",
         metadata: { agentMode: "plan_execute" },
         runId: "live-plan"
       }),
@@ -159,10 +160,44 @@ try {
     );
     if (response.status === 200) {
       assert(typeof body.content === "string" && body.content.length > 0, "expected non-empty content");
+      // Strict assertion: a planner that satisfies the prompt MUST call time_now.
+      assert(Array.isArray(body.toolsUsed) && body.toolsUsed.includes("time_now"),
+        `expected plan to call time_now, got toolsUsed=${JSON.stringify(body.toolsUsed)} content="${body.content}"`);
+      assert(/Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday/iu.test(body.content ?? ""),
+        `expected weekday in content (proves the tool result was synthesised), got "${body.content}"`);
     } else {
       const code = body.errorCode ?? body.code;
       assert(typeof code === "string" && code.startsWith("PLAN_"), `expected PLAN_* error code, got ${code}`);
     }
+  });
+
+  await record("POST /api/chat/stream plan_execute (live) — emits plan_generated + synthesis_started + done", async () => {
+    const response = await fetch(`${baseUrl}/api/chat/stream`, {
+      body: JSON.stringify({
+        message:
+          "Plan and execute: call the time_now tool with timezone=Asia/Seoul, then reply with only the dayOfWeek value.",
+        metadata: { agentMode: "plan_execute" },
+        runId: "live-plan-stream"
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    // Plan-execute may throw before any SSE event when the planner fails — accept either 200 stream or 500 error.
+    if (response.status !== 200) {
+      const body = await response.json();
+      const code = body.errorCode ?? body.code;
+      assert(typeof code === "string" && code.startsWith("PLAN_"),
+        `expected 200 SSE or PLAN_* error, got ${response.status} ${JSON.stringify(body)}`);
+      return;
+    }
+    const sse = await response.text();
+    for (const eventName of ["plan_generated", "synthesis_started", "done"]) {
+      assert(sse.includes(`event: ${eventName}`), `expected event: ${eventName}, got: ${sse.slice(0, 600)}`);
+    }
+    assert(
+      sse.indexOf("event: plan_generated") < sse.indexOf("event: synthesis_started"),
+      "plan_generated must precede synthesis_started"
+    );
   });
 
   await record("Input guard blocks a prompt-injection attempt before reaching the LLM", async () => {
