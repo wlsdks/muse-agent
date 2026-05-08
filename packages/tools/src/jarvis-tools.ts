@@ -32,7 +32,8 @@ export function createJarvisTools(options: JarvisToolFactoryOptions = {}): reado
     createSlugifyTool(),
     createUrlPartsTool(),
     createRegexExtractTool(),
-    createKvSummarizeTool()
+    createKvSummarizeTool(),
+    createMarkdownTableTool()
   ];
 }
 
@@ -537,6 +538,96 @@ function flattenIntoKv(value: JsonValue, prefix: string, emit: (line: string) =>
     const nextPrefix = prefix.length > 0 ? `${prefix}.${key}` : key;
     flattenIntoKv((child ?? null) as JsonValue, nextPrefix, emit);
   }
+}
+
+const MARKDOWN_TABLE_MAX_ROWS = 200;
+
+function createMarkdownTableTool(): MuseTool {
+  return {
+    definition: {
+      description:
+        "Renders an array of plain JSON objects as a GitHub-flavored markdown table. " +
+        "Columns default to the union of keys from the first 50 rows in first-appearance order; pass `columns` to constrain or reorder them. " +
+        "Cell values render via String(); pipes and newlines in cells are escaped (`\\|` and `<br/>`). Empty input returns an empty table header. " +
+        "Capped at 200 rows; the rest are dropped with a trailing `_…N more rows omitted_` line.",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          columns: {
+            description: "Optional explicit column order. When omitted, derives from the rows.",
+            items: { type: "string" },
+            type: "array"
+          },
+          rows: {
+            description: "Array of plain objects to render.",
+            items: { type: "object" },
+            type: "array"
+          }
+        },
+        required: ["rows"],
+        type: "object"
+      },
+      keywords: ["markdown", "table", "format"],
+      name: "markdown_table",
+      risk: "read"
+    },
+    execute: (args): JsonObject => {
+      const rawRows = Array.isArray(args["rows"]) ? (args["rows"] as readonly unknown[]) : [];
+      const explicitColumns = Array.isArray(args["columns"])
+        ? (args["columns"] as readonly unknown[]).filter((entry): entry is string => typeof entry === "string")
+        : undefined;
+      const rows: Array<Record<string, unknown>> = [];
+      for (const entry of rawRows) {
+        if (entry !== null && typeof entry === "object" && !Array.isArray(entry)) {
+          rows.push(entry as Record<string, unknown>);
+        }
+      }
+      const columns = explicitColumns && explicitColumns.length > 0
+        ? Array.from(new Set(explicitColumns))
+        : deriveMarkdownTableColumns(rows);
+      if (columns.length === 0) {
+        return { markdown: "" } satisfies JsonObject;
+      }
+      const lines: string[] = [];
+      lines.push(`| ${columns.join(" | ")} |`);
+      lines.push(`| ${columns.map(() => "---").join(" | ")} |`);
+      const truncated = Math.max(0, rows.length - MARKDOWN_TABLE_MAX_ROWS);
+      const visibleRows = truncated > 0 ? rows.slice(0, MARKDOWN_TABLE_MAX_ROWS) : rows;
+      for (const row of visibleRows) {
+        const cells = columns.map((column) => formatMarkdownTableCell(row[column]));
+        lines.push(`| ${cells.join(" | ")} |`);
+      }
+      if (truncated > 0) {
+        lines.push(`_…${truncated} more rows omitted_`);
+      }
+      return { markdown: lines.join("\n") } satisfies JsonObject;
+    }
+  };
+}
+
+function deriveMarkdownTableColumns(rows: readonly Record<string, unknown>[]): string[] {
+  const seen = new Set<string>();
+  const columns: string[] = [];
+  for (let index = 0; index < rows.length && index < 50; index += 1) {
+    const row = rows[index];
+    if (!row) {
+      continue;
+    }
+    for (const key of Object.keys(row)) {
+      if (!seen.has(key)) {
+        seen.add(key);
+        columns.push(key);
+      }
+    }
+  }
+  return columns;
+}
+
+function formatMarkdownTableCell(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value).replace(/\|/gu, "\\|").replace(/\r?\n/gu, "<br/>");
 }
 
 function readOptionalString(args: JsonObject, key: string): string | undefined {

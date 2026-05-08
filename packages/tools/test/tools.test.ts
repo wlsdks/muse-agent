@@ -519,11 +519,12 @@ describe("createJarvisTools", () => {
     return tool;
   }
 
-  it("registers eleven zero-IO ambient utility tools", () => {
+  it("registers twelve zero-IO ambient utility tools", () => {
     const tools = createJarvisTools();
     expect(tools.map((tool) => tool.definition.name).sort()).toEqual([
       "json_query",
       "kv_summarize",
+      "markdown_table",
       "math_eval",
       "regex_extract",
       "slugify",
@@ -537,6 +538,47 @@ describe("createJarvisTools", () => {
     for (const tool of tools) {
       expect(tool.definition.risk).toBe("read");
     }
+  });
+
+  it("markdown_table renders rows with derived columns, escaping, and truncation", async () => {
+    const tool = getTool("markdown_table");
+
+    const basic = (await tool.execute(
+      { rows: [{ name: "Alice", age: 30 }, { name: "Bob", age: 25 }] },
+      { runId: "r" }
+    )) as { markdown: string };
+    expect(basic.markdown).toBe([
+      "| name | age |",
+      "| --- | --- |",
+      "| Alice | 30 |",
+      "| Bob | 25 |"
+    ].join("\n"));
+
+    const explicit = (await tool.execute(
+      { columns: ["age", "name"], rows: [{ age: 30, name: "Alice" }] },
+      { runId: "r" }
+    )) as { markdown: string };
+    expect(explicit.markdown).toBe([
+      "| age | name |",
+      "| --- | --- |",
+      "| 30 | Alice |"
+    ].join("\n"));
+
+    const escaped = (await tool.execute(
+      { rows: [{ note: "a|b", line: "x\ny" }] },
+      { runId: "r" }
+    )) as { markdown: string };
+    expect(escaped.markdown).toContain("a\\|b");
+    expect(escaped.markdown).toContain("x<br/>y");
+
+    const empty = (await tool.execute({ rows: [] }, { runId: "r" })) as { markdown: string };
+    expect(empty.markdown).toBe("");
+
+    const overflow = (await tool.execute(
+      { rows: Array.from({ length: 205 }, (_, i) => ({ idx: i })) },
+      { runId: "r" }
+    )) as { markdown: string };
+    expect(overflow.markdown).toContain("_…5 more rows omitted_");
   });
 
   it("kv_summarize flattens nested objects + arrays into dot-path key:value lines", async () => {
