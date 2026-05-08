@@ -343,9 +343,6 @@ function registerTenantQualityRoutes(server: FastifyInstance, options: ReactorCo
 
     const runs = await listAllRuns(options);
     return {
-      quota: { maxRequestsPerMonth: 0, maxTokensPerMonth: 0 },
-      requestUsagePercent: 0,
-      tokenUsagePercent: 0,
       usage: {
         requests: runs.length,
         tokens: runs.reduce((total, run) => total + numberField(run.tokenUsage, "inputTokens") +

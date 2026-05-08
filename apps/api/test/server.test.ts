@@ -5286,6 +5286,9 @@ describe("api server", () => {
     expect(tenantQuality.json()).toMatchObject({ errors: 0, total: 1 });
     expect(tenantTools.json()).toMatchObject({ ranking: [{ name: "read_file", total: 1 }], total: 1 });
     expect(tenantQuota.json()).toMatchObject({ usage: { requests: 1, tokens: 15 } });
+    expect(tenantQuota.json()).not.toHaveProperty("quota");
+    expect(tenantQuota.json()).not.toHaveProperty("requestUsagePercent");
+    expect(tenantQuota.json()).not.toHaveProperty("tokenUsagePercent");
     expect(tenantExecutionsExport.body).toContain("run-compat");
     expect(tenantToolsExport.body).toContain("read_file");
     expect(platformUserByEmail.json()).toMatchObject({ email: "first_account", id: registered.user.id });
