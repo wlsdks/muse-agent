@@ -8,7 +8,6 @@ import {
   latestUserPrompt,
   metadataString,
   numberMetadata,
-  ragFilters,
   stringListMetadata,
   toAgentRunMode,
   toAgentSpecRunReport,
@@ -161,25 +160,6 @@ describe("isModelMessage", () => {
     expect(isModelMessage({ role: "user" })).toBe(false);
     expect(isModelMessage({ content: "x", role: "robot" })).toBe(false);
     expect(isModelMessage({ content: 42, role: "user" })).toBe(false);
-  });
-});
-
-describe("ragFilters", () => {
-  it("picks tenantId / workspaceId when both are non-empty strings", () => {
-    expect(ragFilters({ tenantId: "T1", workspaceId: "W1", other: "ignore" })).toEqual({
-      tenantId: "T1",
-      workspaceId: "W1"
-    });
-  });
-
-  it("returns undefined when no usable filter is present", () => {
-    expect(ragFilters(undefined)).toBeUndefined();
-    expect(ragFilters({})).toBeUndefined();
-    expect(ragFilters({ tenantId: "  ", workspaceId: 42 })).toBeUndefined();
-  });
-
-  it("emits only the keys that pass the trim+string check", () => {
-    expect(ragFilters({ tenantId: "T1", workspaceId: "" })).toEqual({ tenantId: "T1" });
   });
 });
 

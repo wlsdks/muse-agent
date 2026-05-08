@@ -176,20 +176,6 @@ export class TimescaleTraceEventExporter implements TraceEventSink {
   }
 }
 
-export function createTenantSpanProcessor(sink: TraceEventSink): TraceEventSink {
-  return {
-    async record(event) {
-      await sink.record({
-        ...event,
-        attributes: {
-          "tenant.id": readTenantId(event.attributes),
-          ...event.attributes
-        }
-      });
-    }
-  };
-}
-
 export function createNoOpMuseTracer(): MuseTracer {
   return new NoOpMuseTracer();
 }
@@ -328,11 +314,6 @@ function primitiveSpanAttributes(attributes: JsonObject): SpanAttributes {
 function readStringAttribute(attributes: SpanAttributes, key: string): string | undefined {
   const value = attributes[key];
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
-}
-
-function readTenantId(attributes: JsonObject): string {
-  const direct = attributes.tenantId ?? attributes["tenant.id"];
-  return typeof direct === "string" && direct.trim().length > 0 ? direct : "tenant-unknown";
 }
 
 function toJsonObject(value: object): JsonObject {

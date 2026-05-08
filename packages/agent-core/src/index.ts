@@ -84,7 +84,6 @@ import {
   latestUserPrompt,
   metadataString,
   numberMetadata,
-  ragFilters,
   recordContextWindowSpanAttributes,
   recordUsageSpanAttributes,
   renderUserMemorySection,
@@ -856,7 +855,6 @@ export class AgentRuntime {
       }
 
       const ragContext = await this.ragPipeline.retrieve({
-        filters: ragFilters(context.input.metadata),
         query
       });
       const retrieved = renderRetrievedContext(ragContext.context);

@@ -96,20 +96,6 @@ export function isModelMessage(value: unknown): value is ModelMessage {
   return value.role === "system" || value.role === "user" || value.role === "assistant" || value.role === "tool";
 }
 
-export function ragFilters(metadata: JsonObject | undefined): JsonObject | undefined {
-  const filters: Record<string, string> = {};
-
-  for (const key of ["tenantId", "workspaceId"] as const) {
-    const value = metadata?.[key];
-
-    if (typeof value === "string" && value.trim().length > 0) {
-      filters[key] = value;
-    }
-  }
-
-  return Object.keys(filters).length > 0 ? filters : undefined;
-}
-
 export function toolCallsMetadata(toolCalls: readonly ModelToolCall[]): JsonObject {
   return {
     toolCallCount: toolCalls.length,

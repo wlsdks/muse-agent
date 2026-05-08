@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   createCacheStartupCheck,
   createMcpStartupCheck,
-  createTenantSpanProcessor,
   createTraceEventInsert,
   InMemoryAgentMetrics,
   CostAnomalyDetector,
@@ -363,32 +362,6 @@ describe("startup doctor and log export", () => {
     ]);
   });
 
-  it("adds tenant span attributes from trace event metadata", async () => {
-    const sinkEvents: unknown[] = [];
-    const processor = createTenantSpanProcessor({
-      async record(event) {
-        sinkEvents.push(event);
-      }
-    });
-
-    await processor.record({
-      attributes: { workspaceId: "workspace-1" },
-      name: "muse.agent.run",
-      runId: "run-1",
-      spanId: "span-1",
-      stage: "agent",
-      startedAt: new Date("2026-05-06T00:00:00.000Z")
-    });
-
-    expect(sinkEvents).toEqual([
-      expect.objectContaining({
-        attributes: {
-          "tenant.id": "tenant-unknown",
-          workspaceId: "workspace-1"
-        }
-      })
-    ]);
-  });
 });
 
 describe("InMemoryLatencyQuery", () => {

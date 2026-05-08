@@ -201,12 +201,11 @@ export {
 } from "./observability-jarvis-snapshot.js";
 
 // Tracing kernel (NoOp / InMemory / Persisted MuseTracer + the five
-// TraceEventSink adapters + createTenantSpanProcessor +
-// createNoOpMuseTracer + createTraceEventInsert) lives in
+// TraceEventSink adapters + createNoOpMuseTracer +
+// createTraceEventInsert) lives in
 // packages/observability/src/observability-tracers.ts.
 export {
   createNoOpMuseTracer,
-  createTenantSpanProcessor,
   createTraceEventInsert,
   InMemoryMuseTracer,
   InMemoryTraceEventSink,
