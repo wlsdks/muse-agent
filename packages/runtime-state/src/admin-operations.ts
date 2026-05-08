@@ -1,12 +1,10 @@
 import type {
   AdminAuditTable,
   AdminAlertTable,
-  AlertRuleTable,
   AdminCostUsageTable,
   AdminSloTable,
   AdminTenantTable,
   MetricAuditTrailTable,
-  ModelPricingTable,
   MuseDatabase
 } from "@muse/db";
 import { createRunId, type JsonObject } from "@muse/shared";
@@ -132,48 +130,6 @@ export interface MetricAuditEventStore {
   listRecent(limit?: number): Awaitable<readonly MetricAuditEvent[]>;
 }
 
-export interface PlatformModelPricing {
-  readonly id: string;
-  readonly provider: string;
-  readonly model: string;
-  readonly promptPricePer1k: string | number;
-  readonly completionPricePer1k: string | number;
-  readonly cachedInputPricePer1k: string | number;
-  readonly reasoningPricePer1k: string | number;
-  readonly batchPromptPricePer1k: string | number;
-  readonly batchCompletionPricePer1k: string | number;
-  readonly effectiveFrom: string;
-  readonly effectiveTo?: string | null;
-  readonly createdAt?: string;
-  readonly updatedAt?: string;
-}
-
-export interface PlatformPricingStore {
-  list(): Awaitable<readonly PlatformModelPricing[]>;
-  save(input: PlatformModelPricing): Awaitable<PlatformModelPricing>;
-}
-
-export interface PlatformAlertRule {
-  readonly id: string;
-  readonly name: string;
-  readonly description: string;
-  readonly type: string;
-  readonly severity: string;
-  readonly metric: string;
-  readonly threshold: number;
-  readonly windowMinutes: number;
-  readonly enabled: boolean;
-  readonly platformOnly: boolean;
-  readonly tenantId?: string | null;
-  readonly createdAt: string;
-}
-
-export interface PlatformAlertRuleStore {
-  list(): Awaitable<readonly PlatformAlertRule[]>;
-  save(input: PlatformAlertRule): Awaitable<PlatformAlertRule>;
-  delete(id: string): Awaitable<boolean>;
-}
-
 export interface AdminTenantInput {
   readonly id?: string;
   readonly name: string;
@@ -214,10 +170,6 @@ type AdminAuditRow = Selectable<AdminAuditTable>;
 type AdminAuditInsert = Insertable<AdminAuditTable>;
 type MetricAuditTrailRow = Selectable<MetricAuditTrailTable>;
 type MetricAuditTrailInsert = Insertable<MetricAuditTrailTable>;
-type ModelPricingRow = Selectable<ModelPricingTable>;
-type ModelPricingInsert = Insertable<ModelPricingTable>;
-type AlertRuleRow = Selectable<AlertRuleTable>;
-type AlertRuleInsert = Insertable<AlertRuleTable>;
 type AdminTenantInsert = Insertable<AdminTenantTable>;
 type AdminAlertInsert = Insertable<AdminAlertTable>;
 type AdminSloInsert = Insertable<AdminSloTable>;
@@ -528,107 +480,6 @@ export class KyselyMetricAuditEventStore implements MetricAuditEventStore {
       .limit(Math.max(1, limit))
       .execute();
     return rows.map(mapMetricAuditTrailRow);
-  }
-}
-
-export class InMemoryPlatformPricingStore implements PlatformPricingStore {
-  private readonly pricing = new Map<string, PlatformModelPricing>();
-
-  list(): readonly PlatformModelPricing[] {
-    return [...this.pricing.values()].sort(comparePricingDesc);
-  }
-
-  save(input: PlatformModelPricing): PlatformModelPricing {
-    this.pricing.set(input.id, input);
-    return input;
-  }
-}
-
-export class KyselyPlatformPricingStore implements PlatformPricingStore {
-  constructor(private readonly db: Kysely<MuseDatabase>) {}
-
-  async list(): Promise<readonly PlatformModelPricing[]> {
-    const rows = await this.db
-      .selectFrom("model_pricing")
-      .selectAll()
-      .orderBy("effective_from", "desc")
-      .execute();
-    return rows.map(mapModelPricingRow);
-  }
-
-  async save(input: PlatformModelPricing): Promise<PlatformModelPricing> {
-    const row = createModelPricingInsert(input);
-    const saved = await this.db
-      .insertInto("model_pricing")
-      .values(row)
-      .onConflict((oc) => oc.column("id").doUpdateSet({
-        batch_completion_price_per_1k: row.batch_completion_price_per_1k,
-        batch_prompt_price_per_1k: row.batch_prompt_price_per_1k,
-        cached_input_price_per_1k: row.cached_input_price_per_1k,
-        completion_price_per_1k: row.completion_price_per_1k,
-        effective_from: row.effective_from,
-        effective_to: row.effective_to,
-        model: row.model,
-        prompt_price_per_1k: row.prompt_price_per_1k,
-        provider: row.provider,
-        reasoning_price_per_1k: row.reasoning_price_per_1k
-      }))
-      .returningAll()
-      .executeTakeFirstOrThrow();
-    return mapModelPricingRow(saved);
-  }
-}
-
-export class InMemoryPlatformAlertRuleStore implements PlatformAlertRuleStore {
-  private readonly rules = new Map<string, PlatformAlertRule>();
-
-  list(): readonly PlatformAlertRule[] {
-    return [...this.rules.values()].sort((left, right) => left.name.localeCompare(right.name));
-  }
-
-  save(input: PlatformAlertRule): PlatformAlertRule {
-    this.rules.set(input.id, input);
-    return input;
-  }
-
-  delete(id: string): boolean {
-    return this.rules.delete(id);
-  }
-}
-
-export class KyselyPlatformAlertRuleStore implements PlatformAlertRuleStore {
-  constructor(private readonly db: Kysely<MuseDatabase>) {}
-
-  async list(): Promise<readonly PlatformAlertRule[]> {
-    const rows = await this.db.selectFrom("alert_rules").selectAll().orderBy("name", "asc").execute();
-    return rows.map(mapAlertRuleRow);
-  }
-
-  async save(input: PlatformAlertRule): Promise<PlatformAlertRule> {
-    const row = createAlertRuleInsert(input);
-    const saved = await this.db
-      .insertInto("alert_rules")
-      .values(row)
-      .onConflict((oc) => oc.column("id").doUpdateSet({
-        description: row.description,
-        enabled: row.enabled,
-        metric: row.metric,
-        name: row.name,
-        platform_only: row.platform_only,
-        severity: row.severity,
-        tenant_id: row.tenant_id,
-        threshold: row.threshold,
-        type: row.type,
-        window_minutes: row.window_minutes
-      }))
-      .returningAll()
-      .executeTakeFirstOrThrow();
-    return mapAlertRuleRow(saved);
-  }
-
-  async delete(id: string): Promise<boolean> {
-    const result = await this.db.deleteFrom("alert_rules").where("id", "=", id).executeTakeFirst();
-    return Number(result.numDeletedRows ?? 0) > 0;
   }
 }
 
@@ -952,77 +803,6 @@ export function mapMetricAuditTrailRow(row: MetricAuditTrailRow | MetricAuditTra
   };
 }
 
-export function createModelPricingInsert(input: PlatformModelPricing): ModelPricingInsert {
-  return {
-    batch_completion_price_per_1k: input.batchCompletionPricePer1k,
-    batch_prompt_price_per_1k: input.batchPromptPricePer1k,
-    cached_input_price_per_1k: input.cachedInputPricePer1k,
-    completion_price_per_1k: input.completionPricePer1k,
-    effective_from: input.effectiveFrom,
-    effective_to: input.effectiveTo ?? null,
-    id: input.id,
-    model: input.model,
-    prompt_price_per_1k: input.promptPricePer1k,
-    provider: input.provider,
-    reasoning_price_per_1k: input.reasoningPricePer1k
-  };
-}
-
-export function mapModelPricingRow(row: ModelPricingRow | ModelPricingInsert): PlatformModelPricing {
-  const effectiveFrom = toDate(row.effective_from ?? new Date(0)).toISOString();
-  const effectiveTo = row.effective_to ? toDate(row.effective_to).toISOString() : null;
-
-  return {
-    batchCompletionPricePer1k: row.batch_completion_price_per_1k ?? 0,
-    batchPromptPricePer1k: row.batch_prompt_price_per_1k ?? 0,
-    cachedInputPricePer1k: row.cached_input_price_per_1k ?? 0,
-    completionPricePer1k: row.completion_price_per_1k ?? 0,
-    createdAt: effectiveFrom,
-    effectiveFrom,
-    effectiveTo,
-    id: row.id,
-    model: row.model,
-    promptPricePer1k: row.prompt_price_per_1k ?? 0,
-    provider: row.provider,
-    reasoningPricePer1k: row.reasoning_price_per_1k ?? 0,
-    updatedAt: effectiveFrom
-  };
-}
-
-export function createAlertRuleInsert(input: PlatformAlertRule): AlertRuleInsert {
-  return {
-    created_at: input.createdAt,
-    description: input.description,
-    enabled: input.enabled,
-    id: input.id,
-    metric: input.metric,
-    name: input.name,
-    platform_only: input.platformOnly,
-    severity: input.severity,
-    tenant_id: input.tenantId ?? null,
-    threshold: input.threshold,
-    type: input.type,
-    window_minutes: input.windowMinutes
-  };
-}
-
-export function mapAlertRuleRow(row: AlertRuleRow | AlertRuleInsert): PlatformAlertRule {
-  return {
-    createdAt: toDate(row.created_at ?? new Date(0)).toISOString(),
-    description: row.description,
-    enabled: row.enabled,
-    id: row.id,
-    metric: row.metric,
-    name: row.name,
-    platformOnly: row.platform_only,
-    severity: row.severity,
-    tenantId: row.tenant_id ?? null,
-    threshold: row.threshold,
-    type: row.type,
-    windowMinutes: row.window_minutes
-  };
-}
-
 function calculateSloStatus(target: number, actual: number | undefined): AdminSloStatus {
   if (actual === undefined || actual >= target) {
     return "healthy";
@@ -1048,10 +828,6 @@ function formatCost(value: number): string {
 
 function compareById(left: { readonly id: string }, right: { readonly id: string }): number {
   return left.id.localeCompare(right.id);
-}
-
-function comparePricingDesc(left: PlatformModelPricing, right: PlatformModelPricing): number {
-  return String(right.effectiveFrom ?? right.createdAt).localeCompare(String(left.effectiveFrom ?? left.createdAt));
 }
 
 function toDate(value: Date | string): Date {

@@ -49,8 +49,6 @@ import type {
   AgentRunRecord,
   ConversationMessageRecord,
   PendingApprovalStore,
-  PlatformAlertRule,
-  PlatformModelPricing,
   SessionTag,
   SessionTagStore,
   ToolCallRecord
@@ -188,8 +186,6 @@ interface CompatState {
   readonly outputGuardRuleAudits: CompatCollection;
   readonly outputGuardRules: CompatCollection;
   readonly personas: CompatCollection;
-  readonly platformAlertRules: CompatCollection;
-  readonly platformPricing: CompatCollection;
   readonly metricEvents: CompatCollection;
   readonly promptExperiments: CompatCollection;
   readonly promptExperimentReports: CompatCollection;
@@ -256,8 +252,6 @@ function createCompatState(): CompatState {
     outputGuardRuleAudits: new Map(),
     outputGuardRules: new Map(),
     personas: new Map(),
-    platformAlertRules: new Map(),
-    platformPricing: new Map(),
     metricEvents: new Map(),
     promptExperiments: new Map(),
     promptExperimentReports: new Map(),
@@ -375,16 +369,6 @@ export {
   usageByUser
 } from "./compat-run-aggregations.js";
 
-
-// Platform pricing + alert-rule store helpers live in
-// apps/api/src/compat-platform-store.ts.
-export {
-  deletePlatformAlertRule,
-  listPlatformAlertRules,
-  listPlatformPricing,
-  savePlatformAlertRule,
-  savePlatformPricing
-} from "./compat-platform-store.js";
 
 // Admin-audit + metric-event store helpers live in
 // apps/api/src/compat-audit-store.ts.
@@ -581,14 +565,6 @@ export function getStateAgentEvalRunLogs(): CompatCollection {
 
 export function getStateAgentEvalResults(): CompatCollection {
   return state.agentEvalResults;
-}
-
-export function getStatePlatformPricing(): CompatCollection {
-  return state.platformPricing;
-}
-
-export function getStatePlatformAlertRules(): CompatCollection {
-  return state.platformAlertRules;
 }
 
 export function getStateMetricEvents(): CompatCollection {
@@ -833,7 +809,6 @@ export {
 export {
   reactorPromptSectionKeys,
   tenantSummary,
-  toPlatformAlertRuleResponse,
   updateTenantStatus
 } from "./compat-tenant-ops.js";
 

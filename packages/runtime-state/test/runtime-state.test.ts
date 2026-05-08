@@ -2,9 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createAdminAlertInsert,
   createAdminAuditInsert,
-  createAlertRuleInsert,
   createAdminCostUsageInsert,
-  createModelPricingInsert,
   createMetricAuditTrailInsert,
   createAdminSloInsert,
   createAdminTenantInsert,
@@ -16,9 +14,7 @@ import {
   InMemoryPendingApprovalStore,
   mapAdminAlertRow,
   mapAdminAuditRow,
-  mapAlertRuleRow,
   mapAdminCostUsageRow,
-  mapModelPricingRow,
   mapMetricAuditTrailRow,
   mapAdminSloRow,
   mapAdminTenantRow
@@ -354,33 +350,6 @@ describe("Kysely admin operation mapping", () => {
       payload: { pass: true },
       tenantId: "tenant-1"
     });
-    const pricing = createModelPricingInsert({
-      batchCompletionPricePer1k: 0,
-      batchPromptPricePer1k: 0,
-      cachedInputPricePer1k: 0,
-      completionPricePer1k: 0.2,
-      effectiveFrom: now.toISOString(),
-      effectiveTo: null,
-      id: "provider:model-a",
-      model: "model-a",
-      promptPricePer1k: 0.1,
-      provider: "provider",
-      reasoningPricePer1k: 0
-    });
-    const rule = createAlertRuleInsert({
-      createdAt: now.toISOString(),
-      description: "Latency above target",
-      enabled: true,
-      id: "rule-1",
-      metric: "latency_p95_ms",
-      name: "Latency",
-      platformOnly: true,
-      severity: "WARNING",
-      tenantId: null,
-      threshold: 1000,
-      type: "STATIC_THRESHOLD",
-      windowMinutes: 15
-    });
 
     expect(mapAdminTenantRow(tenant)).toMatchObject({ id: "tenant-1", monthlyBudgetUsd: "100.00000000" });
     expect(mapAdminAlertRow(alert)).toMatchObject({ id: "alert-1", status: "open", target: "tenant-1" });
@@ -401,17 +370,6 @@ describe("Kysely admin operation mapping", () => {
       kind: "eval-result",
       payload: { pass: true },
       tenantId: "tenant-1"
-    });
-    expect(mapModelPricingRow(pricing)).toMatchObject({
-      id: "provider:model-a",
-      model: "model-a",
-      provider: "provider",
-      promptPricePer1k: 0.1
-    });
-    expect(mapAlertRuleRow(rule)).toMatchObject({
-      id: "rule-1",
-      metric: "latency_p95_ms",
-      platformOnly: true
     });
   });
 });

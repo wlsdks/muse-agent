@@ -184,8 +184,6 @@ import {
   InMemoryHookTraceStore,
   InMemoryMetricAuditEventStore,
   InMemoryPendingApprovalStore,
-  InMemoryPlatformAlertRuleStore,
-  InMemoryPlatformPricingStore,
   InMemorySessionTagStore,
   KyselyAdminAuditStore,
   KyselyAdminOperationsStore,
@@ -193,8 +191,6 @@ import {
   KyselyHookTraceStore,
   KyselyMetricAuditEventStore,
   KyselyPendingApprovalStore,
-  KyselyPlatformAlertRuleStore,
-  KyselyPlatformPricingStore,
   KyselySessionTagStore,
   type AdminAuditStore,
   type AdminOperationsStore,
@@ -202,8 +198,6 @@ import {
   type HookTraceStore,
   type MetricAuditEventStore,
   type PendingApprovalStore,
-  type PlatformAlertRuleStore,
-  type PlatformPricingStore,
   type SessionTagStore
 } from "@muse/runtime-state";
 import {
@@ -258,8 +252,6 @@ export interface MuseRuntimeAssembly {
   readonly feedbackStore: FeedbackStore;
   readonly promptLabCatalogStore: PromptLabCatalogStore;
   readonly promptLabExperimentStore: PromptLabExperimentStore;
-  readonly platformAlertRuleStore: PlatformAlertRuleStore;
-  readonly platformPricingStore: PlatformPricingStore;
   readonly conversationSummaryStore: ConversationSummaryStore;
   readonly sessionTagStore: SessionTagStore;
   readonly taskMemoryStore: TaskMemoryStore & TaskMemoryMaintenance;
@@ -330,8 +322,6 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const feedbackStore = createFeedbackStore(db);
   const promptLabCatalogStore = createPromptLabCatalogStore(db);
   const promptLabExperimentStore = createPromptLabExperimentStore(db);
-  const platformAlertRuleStore = createPlatformAlertRuleStore(db);
-  const platformPricingStore = createPlatformPricingStore(db);
   const approvalStore = createApprovalStore(db, env);
   const cacheStatsStore = new InMemoryCacheStatsStore();
   const cacheMetrics = new InMemoryCacheMetricsRecorder(cacheStatsStore);
@@ -520,8 +510,6 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     feedbackStore,
     promptLabCatalogStore,
     promptLabExperimentStore,
-    platformAlertRuleStore,
-    platformPricingStore,
     conversationSummaryStore,
     sessionTagStore,
     taskMemoryStore,
@@ -643,14 +631,6 @@ function createPromptLabCatalogStore(db: Kysely<MuseDatabase> | undefined): Prom
   return db ? new KyselyPromptLabCatalogStore(db) : new InMemoryPromptLabCatalogStore();
 }
 
-function createPlatformPricingStore(db: Kysely<MuseDatabase> | undefined): PlatformPricingStore {
-  return db ? new KyselyPlatformPricingStore(db) : new InMemoryPlatformPricingStore();
-}
-
-function createPlatformAlertRuleStore(db: Kysely<MuseDatabase> | undefined): PlatformAlertRuleStore {
-  return db ? new KyselyPlatformAlertRuleStore(db) : new InMemoryPlatformAlertRuleStore();
-}
-
 function createRuntimeSettingsStore(db: Kysely<MuseDatabase> | undefined): RuntimeSettingsStore {
   return db ? new KyselyRuntimeSettingsStore(db) : new InMemoryRuntimeSettingsStore();
 }
@@ -726,10 +706,8 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
       },
       observability: assembly.observability,
       auditStore: assembly.adminAuditStore,
-      alertRuleStore: assembly.platformAlertRuleStore,
       metricEventStore: assembly.metricAuditEventStore,
       operations: assembly.adminOperationsStore,
-      pricingStore: assembly.platformPricingStore,
       resilience: assembly.resilience
     },
     agentRuntime: assembly.agentRuntime,

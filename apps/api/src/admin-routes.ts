@@ -6,8 +6,6 @@ import type {
   AdminAuditStore,
   MetricAuditEventStore,
   AdminOperationsStore,
-  PlatformAlertRuleStore,
-  PlatformPricingStore,
   AdminSloInput,
   AdminTenantInput,
   AdminTenantStatus
@@ -38,9 +36,7 @@ export interface AdminRouteState {
     readonly tracer?: unknown;
   };
   readonly auditStore?: AdminAuditStore;
-  readonly alertRuleStore?: PlatformAlertRuleStore;
   readonly metricEventStore?: MetricAuditEventStore;
-  readonly pricingStore?: PlatformPricingStore;
   readonly resilience?: {
     readonly circuitBreakerRegistry?: {
       getIfExists(name: string): CircuitBreakerView | undefined;

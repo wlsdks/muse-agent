@@ -2,7 +2,7 @@
  * Reactor-compat admin platform-infrastructure routes extracted from
  * reactor-compat-routes.ts. Covers the slice of /api/admin that deals with
  * runtime-settings, ops dashboard, capabilities, platform health/doctor,
- * cache, pricing, and vector-store stats.
+ * cache, and vector-store stats.
  *
  * Wires:
  *   - GET/PUT/DELETE /api/admin/settings (+ /:key)
@@ -13,7 +13,6 @@
  *   - GET /api/admin/platform/health
  *   - GET /api/admin/doctor (+ /summary)
  *   - GET /api/admin/platform/cache/stats
- *   - GET/POST /api/admin/platform/pricing
  *   - GET /api/admin/platform/vectorstore/stats
  *   - POST /api/admin/platform/cache/{invalidate,invalidate-key,invalidate-by-pattern}
  */
@@ -25,16 +24,12 @@ import {
   countDocuments,
   dashboardSummary,
   errorResponse,
-  listPlatformPricing,
-  nowIso,
-  numberOrString,
   parseRuntimeSettingType,
   platformHealthDashboard,
   readAuthUserId,
   readBodyNullableString,
   readBodyString,
   readNumber,
-  savePlatformPricing,
   toBody,
   toJsonObject,
   toReactorRuntimeSetting,
@@ -45,7 +40,6 @@ export function registerAdminPlatformCompatRoutes(server: FastifyInstance, optio
   registerRuntimeSettingsRoutes(server, options);
   registerOpsAndCapabilitiesRoutes(server, options);
   registerPlatformHealthRoutes(server, options);
-  registerPlatformPricingRoutes(server, options);
   registerPlatformCacheInvalidationRoutes(server, options);
 }
 
@@ -183,47 +177,6 @@ function registerPlatformHealthRoutes(server: FastifyInstance, options: ReactorC
       available: true,
       documentCount: await countDocuments(options)
     };
-  });
-}
-
-function registerPlatformPricingRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/admin/platform/pricing", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return listPlatformPricing(options);
-  });
-  server.post("/api/admin/platform/pricing", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const body = toJsonObject(request.body);
-    const provider = readBodyString(body, "provider");
-    const model = readBodyString(body, "model");
-
-    if (!provider || !model) {
-      return reply.status(400).send({
-        code: "INVALID_MODEL_PRICING",
-        message: "Body must include provider and model"
-      });
-    }
-
-    const id = readBodyString(body, "id") ?? `${provider}:${model}`;
-    return savePlatformPricing(options, {
-      batchCompletionPricePer1k: numberOrString(body.batchCompletionPricePer1k, 0),
-      batchPromptPricePer1k: numberOrString(body.batchPromptPricePer1k, 0),
-      cachedInputPricePer1k: numberOrString(body.cachedInputPricePer1k, 0),
-      completionPricePer1k: numberOrString(body.completionPricePer1k, 0),
-      effectiveFrom: readBodyString(body, "effectiveFrom") ?? nowIso(),
-      effectiveTo: readBodyNullableString(body, "effectiveTo") ?? null,
-      id,
-      model,
-      promptPricePer1k: numberOrString(body.promptPricePer1k, 0),
-      provider,
-      reasoningPricePer1k: numberOrString(body.reasoningPricePer1k, 0)
-    });
   });
 }
 

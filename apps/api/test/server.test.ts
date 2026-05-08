@@ -4739,50 +4739,6 @@ describe("api server", () => {
       method: "GET",
       url: "/api/admin/evals/pass-rate"
     });
-    const alertRule = await server.inject({
-      headers,
-      method: "POST",
-      payload: {
-        metric: "token_cost",
-        name: "Cost threshold",
-        severity: "WARNING",
-        threshold: 10,
-        type: "STATIC_THRESHOLD"
-      },
-      url: "/api/admin/platform/alerts/rules"
-    });
-    const invalidAlertRule = await server.inject({
-      headers,
-      method: "POST",
-      payload: { name: "Broken rule" },
-      url: "/api/admin/platform/alerts/rules"
-    });
-    const alertRules = await server.inject({
-      headers,
-      method: "GET",
-      url: "/api/admin/platform/alerts/rules"
-    });
-    const missingAlertDelete = await server.inject({
-      headers,
-      method: "DELETE",
-      url: "/api/admin/platform/alerts/rules/missing-rule"
-    });
-    const pricing = await server.inject({
-      headers,
-      method: "POST",
-      payload: {
-        completionPricePer1k: 0.02,
-        model: "provider/model",
-        promptPricePer1k: 0.01,
-        provider: "provider"
-      },
-      url: "/api/admin/platform/pricing"
-    });
-    const pricingList = await server.inject({
-      headers,
-      method: "GET",
-      url: "/api/admin/platform/pricing"
-    });
     const vectorStoreStats = await server.inject({
       headers,
       method: "GET",
@@ -5345,23 +5301,6 @@ describe("api server", () => {
       { caseId: agentEvalCaseId, passed: true, tier: "llm_judge" }
     ]);
     expect(evalPassRate.json()).toMatchObject([{ passed: 2, total: 2 }]);
-    expect(alertRule.json()).toMatchObject({ metric: "token_cost", name: "Cost threshold" });
-    expect(alertRule.json()).not.toHaveProperty("updatedAt");
-    expect(invalidAlertRule.statusCode).toBe(400);
-    expect(invalidAlertRule.json()).toMatchObject({
-      error: "Body must include name and metric",
-      timestamp: expect.any(String)
-    });
-    expect(invalidAlertRule.json()).not.toHaveProperty("code");
-    expect(alertRules.json()).toMatchObject([{ id: alertRule.json().id }]);
-    expect(missingAlertDelete.statusCode).toBe(404);
-    expect(missingAlertDelete.json()).toMatchObject({
-      error: "Alert rule not found: missing-rule",
-      timestamp: expect.any(String)
-    });
-    expect(missingAlertDelete.json()).not.toHaveProperty("code");
-    expect(pricing.json()).toMatchObject({ model: "provider/model", provider: "provider" });
-    expect(pricingList.json()).toMatchObject([{ id: "provider:provider/model" }]);
     expect(vectorStoreStats.json()).toEqual({ available: true, documentCount: 1 });
     expect(policySeed.json()).toMatchObject({ chunkCount: 1, documentCount: 1, keys: ["policy-1"] });
     expect(toolStats.json()).toMatchObject({ accuracy: 1, byOutcome: { ok: 1 }, total: 1 });
@@ -5448,12 +5387,11 @@ describe("api server", () => {
     expect(auditsList.json()).toMatchObject({
       items: expect.arrayContaining([
         expect.objectContaining({ action: "SIMULATE", category: "input_guard" }),
-        expect.objectContaining({ action: "RULE_UPSERT", category: "platform_alert" }),
         expect.objectContaining({ action: "TOOL_CALL", category: "metric_event", resourceType: "metric_event" })
       ]),
-      total: 5
+      total: 4
     });
-    expect(auditsClamped.json()).toMatchObject({ limit: 200, total: 5 });
+    expect(auditsClamped.json()).toMatchObject({ limit: 200, total: 4 });
     expect(auditsExport.body).toContain("metric_event");
     expect(errorReport.statusCode).toBe(204);
     expect(errorReport.body).toBe("");

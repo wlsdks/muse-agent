@@ -1,18 +1,11 @@
 /**
- * Reactor-compat tenant operations + platform alert response shape +
- * the static reactor prompt-section keys list, extracted from
- * reactor-compat-routes.ts.
+ * Reactor-compat tenant operations + the static reactor prompt-section keys
+ * list, extracted from reactor-compat-routes.ts.
  */
 
-import type { JsonObject } from "@muse/shared";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import {
   errorResponse,
-  nowIso,
-  nullableStringResponse,
-  readBoolean,
-  readNumber,
-  stringField,
   type ReactorCompatibilityRouteOptions
 } from "./reactor-compat-routes.js";
 
@@ -81,21 +74,4 @@ export async function tenantSummary(
   ]);
 
   return { alerts, cost, slos, tenants };
-}
-
-export function toPlatformAlertRuleResponse(record: JsonObject): JsonObject {
-  return {
-    createdAt: stringField(record.createdAt, nowIso()),
-    description: stringField(record.description, ""),
-    enabled: readBoolean(record.enabled, true),
-    id: stringField(record.id, ""),
-    metric: stringField(record.metric, ""),
-    name: stringField(record.name, ""),
-    platformOnly: readBoolean(record.platformOnly, false),
-    severity: stringField(record.severity, "WARNING"),
-    tenantId: nullableStringResponse(record.tenantId),
-    threshold: readNumber(record.threshold, 0),
-    type: stringField(record.type, "STATIC_THRESHOLD"),
-    windowMinutes: readNumber(record.windowMinutes, 15)
-  };
 }

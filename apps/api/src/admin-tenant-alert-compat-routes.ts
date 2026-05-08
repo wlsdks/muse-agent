@@ -7,28 +7,15 @@
  *   - GET /api/admin/platform/tenants/:id
  *   - POST /api/admin/platform/tenants/:id/{activate,suspend}
  *   - GET /api/admin/platform/alerts (open only)
- *   - GET/POST /api/admin/platform/alerts/rules
- *   - DELETE /api/admin/platform/alerts/rules/:id
  *   - POST /api/admin/platform/alerts/evaluate
  *   - POST /api/admin/platform/alerts/:id/resolve
  */
 
-import { createRunId } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 import {
-  deletePlatformAlertRule,
   errorResponse,
-  listPlatformAlertRules,
-  nowIso,
-  readBodyNullableString,
   readBodyString,
-  readBoolean,
-  readNumber,
   recordAdminAudit,
-  savePlatformAlertRule,
-  stringField,
-  toJsonObject,
-  toPlatformAlertRuleResponse,
   updateTenantStatus,
   type ReactorCompatibilityRouteOptions
 } from "./reactor-compat-routes.js";
@@ -89,69 +76,6 @@ function registerPlatformAlertRoutes(server: FastifyInstance, options: ReactorCo
 
     const alerts = await (options.admin?.operations?.listAlerts() ?? []);
     return alerts.filter((alert) => alert.status === "open");
-  });
-  server.get("/api/admin/platform/alerts/rules", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return (await listPlatformAlertRules(options)).map(toPlatformAlertRuleResponse);
-  });
-  server.post("/api/admin/platform/alerts/rules", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const body = toJsonObject(request.body);
-    const name = readBodyString(body, "name");
-    const metric = readBodyString(body, "metric");
-
-    if (!name || !metric) {
-      return reply.status(400).send(errorResponse("Body must include name and metric"));
-    }
-
-    const saved = await savePlatformAlertRule(options, {
-      createdAt: readBodyString(body, "createdAt") ?? nowIso(),
-      description: readBodyString(body, "description") ?? "",
-      enabled: readBoolean(body.enabled, true),
-      id: readBodyString(body, "id") ?? createRunId("alert_rule"),
-      metric,
-      name,
-      platformOnly: readBoolean(body.platformOnly, false),
-      severity: readBodyString(body, "severity") ?? "WARNING",
-      tenantId: readBodyNullableString(body, "tenantId") ?? null,
-      threshold: readNumber(body.threshold, 0),
-      type: readBodyString(body, "type") ?? "STATIC_THRESHOLD",
-      windowMinutes: readNumber(body.windowMinutes, 15)
-    });
-
-    await recordAdminAudit(request, options, {
-      action: "RULE_UPSERT",
-      category: "platform_alert",
-      resourceId: stringField(saved.id, ""),
-      resourceType: "alert_rule"
-    });
-
-    return toPlatformAlertRuleResponse(saved);
-  });
-  server.delete("/api/admin/platform/alerts/rules/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    if (!(await deletePlatformAlertRule(options, id))) {
-      return reply.status(404).send(errorResponse(`Alert rule not found: ${id}`));
-    }
-
-    await recordAdminAudit(request, options, {
-      action: "RULE_DELETE",
-      category: "platform_alert",
-      resourceId: id,
-      resourceType: "alert_rule"
-    });
-
-    return reply.status(204).send();
   });
   server.post("/api/admin/platform/alerts/evaluate", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {

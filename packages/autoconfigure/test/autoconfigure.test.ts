@@ -22,8 +22,6 @@ import {
   KyselyHookTraceStore,
   KyselyMetricAuditEventStore,
   KyselyPendingApprovalStore,
-  KyselyPlatformAlertRuleStore,
-  KyselyPlatformPricingStore,
   KyselySessionTagStore
 } from "@muse/runtime-state";
 import {
@@ -127,8 +125,6 @@ describe("autoconfigure", () => {
     expect(assembly.promptLabCatalogStore).toBeInstanceOf(KyselyPromptLabCatalogStore);
     expect(assembly.promptLabExperimentStore).toBeInstanceOf(KyselyPromptLabExperimentStore);
     expect(assembly.metricAuditEventStore).toBeInstanceOf(KyselyMetricAuditEventStore);
-    expect(assembly.platformAlertRuleStore).toBeInstanceOf(KyselyPlatformAlertRuleStore);
-    expect(assembly.platformPricingStore).toBeInstanceOf(KyselyPlatformPricingStore);
     expect(assembly.observability.tracer).toBeInstanceOf(PersistedMuseTracer);
     expect(assembly.approvalStore).toBeInstanceOf(KyselyPendingApprovalStore);
     expect(assembly.mcp.serverStore).toBeInstanceOf(KyselyMcpServerStore);
