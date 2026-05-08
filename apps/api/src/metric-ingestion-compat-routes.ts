@@ -54,8 +54,7 @@ export function registerMetricIngestionCompatRoutes(server: FastifyInstance, opt
         kind: "eval-results",
         payload: {
           ...result,
-          evalRunId: stringField(body.evalRunId, ""),
-          tenantId: stringField(body.tenantId, "")
+          evalRunId: stringField(body.evalRunId, "")
         }
       });
     }

@@ -4933,8 +4933,7 @@ describe("api server", () => {
       method: "POST",
       payload: {
         evalRunId: "eval-run-1",
-        results: [],
-        tenantId: "tenant-1"
+        results: []
       },
       url: "/api/admin/metrics/ingest/eval-results"
     });
@@ -4943,15 +4942,14 @@ describe("api server", () => {
       method: "POST",
       payload: {
         evalRunId: "eval-run-1",
-        results: [{ caseId: agentEvalCaseId, passed: true, score: 1, tier: "deterministic" }],
-        tenantId: "tenant-1"
+        results: [{ caseId: agentEvalCaseId, passed: true, score: 1, tier: "deterministic" }]
       },
       url: "/api/admin/metrics/ingest/eval-results"
     });
     const metricBatch = await server.inject({
       headers,
       method: "POST",
-      payload: [{ serverName: "local", status: "CONNECTED", tenantId: "tenant-1" }],
+      payload: [{ serverName: "local", status: "CONNECTED" }],
       url: "/api/admin/metrics/ingest/batch"
     });
     const auditsList = await server.inject({
