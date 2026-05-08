@@ -240,7 +240,7 @@ try {
     const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
     const assembly = createMuseRuntimeAssembly({ env: { MUSE_JARVIS_TOOLS_ENABLED: "true" } });
     const names = assembly.toolRegistry.list().map((tool) => tool.definition.name);
-    for (const required of ["time_now", "time_diff", "time_add", "text_stats", "math_eval", "json_query"]) {
+    for (const required of ["time_now", "time_diff", "time_add", "time_relative", "text_stats", "math_eval", "json_query", "slugify"]) {
       assert(names.includes(required), `expected tool registry to include ${required}, got ${names.join(", ")}`);
     }
   });

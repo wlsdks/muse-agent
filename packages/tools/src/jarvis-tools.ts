@@ -25,9 +25,11 @@ export function createJarvisTools(options: JarvisToolFactoryOptions = {}): reado
     createTimeNowTool(now),
     createTimeDiffTool(),
     createTimeAddTool(),
+    createTimeRelativeTool(now),
     createTextStatsTool(),
     createMathEvalTool(),
-    createJsonQueryTool()
+    createJsonQueryTool(),
+    createSlugifyTool()
   ];
 }
 
@@ -277,6 +279,73 @@ function createJsonQueryTool(): MuseTool {
   };
 }
 
+function createTimeRelativeTool(now: () => Date): MuseTool {
+  return {
+    definition: {
+      description:
+        "Given an ISO-8601 timestamp `at`, returns a humanized relative phrase ('in 2h', '3d ago', 'just now'), the signed millisecond delta, and a direction ('past' | 'future' | 'now'). " +
+        "An optional `reference` ISO timestamp pins the comparison point; otherwise the current clock is used. Useful for surfacing 'when' answers without a follow-up calculation.",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          at: { description: "ISO-8601 timestamp to describe.", type: "string" },
+          reference: {
+            description: "Optional ISO-8601 reference timestamp. Defaults to now.",
+            type: "string"
+          }
+        },
+        required: ["at"],
+        type: "object"
+      },
+      keywords: ["time", "relative", "humanize", "ago"],
+      name: "time_relative",
+      risk: "read"
+    },
+    execute: (args): JsonObject => {
+      const at = readRequiredDate(args, "at");
+      if (!at) {
+        return { error: "at must be a valid ISO-8601 string" };
+      }
+      const reference = readRequiredDate(args, "reference") ?? now();
+      const deltaMs = at.getTime() - reference.getTime();
+      const direction: "past" | "future" | "now" =
+        Math.abs(deltaMs) < 1_000 ? "now" : deltaMs > 0 ? "future" : "past";
+      const humanized = humanizeRelativeMs(deltaMs);
+      return { deltaMs, direction, humanized } satisfies JsonObject;
+    }
+  };
+}
+
+function createSlugifyTool(): MuseTool {
+  return {
+    definition: {
+      description:
+        "Converts free-form `text` into a URL-safe slug: lowercased, with non-alphanumeric runs collapsed to a single '-' and leading/trailing dashes stripped. Optional `maxLength` truncates and re-trims. Empty / whitespace-only inputs return 'untitled'.",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          maxLength: {
+            description: "Optional positive integer cap on the slug length.",
+            type: "number"
+          },
+          text: { description: "Source text to slugify.", type: "string" }
+        },
+        required: ["text"],
+        type: "object"
+      },
+      keywords: ["slug", "url", "filename", "identifier"],
+      name: "slugify",
+      risk: "read"
+    },
+    execute: (args): JsonObject => {
+      const text = typeof args["text"] === "string" ? (args["text"] as string) : "";
+      const cap = readOptionalNumber(args, "maxLength");
+      const maxLength = Number.isInteger(cap) && cap > 0 ? cap : undefined;
+      return { slug: slugify(text, maxLength) } satisfies JsonObject;
+    }
+  };
+}
+
 function readOptionalString(args: JsonObject, key: string): string | undefined {
   const value = args[key];
   return typeof value === "string" && value.length > 0 ? value : undefined;
@@ -294,6 +363,48 @@ function readRequiredDate(args: JsonObject, key: string): Date | undefined {
 function readOptionalNumber(args: JsonObject, key: string): number {
   const value = args[key];
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function humanizeRelativeMs(ms: number): string {
+  const absolute = Math.abs(ms);
+  if (absolute < 1_000) {
+    return "just now";
+  }
+  const days = Math.floor(absolute / 86_400_000);
+  const hours = Math.floor((absolute % 86_400_000) / 3_600_000);
+  const minutes = Math.floor((absolute % 3_600_000) / 60_000);
+  const seconds = Math.floor((absolute % 60_000) / 1_000);
+  const segments: string[] = [];
+  if (days > 0) {
+    segments.push(`${days}d`);
+  }
+  if (hours > 0 && days < 2) {
+    segments.push(`${hours}h`);
+  }
+  if (minutes > 0 && days === 0) {
+    segments.push(`${minutes}m`);
+  }
+  if (segments.length === 0) {
+    segments.push(`${seconds}s`);
+  }
+  const unit = segments.join(" ");
+  return ms >= 0 ? `in ${unit}` : `${unit} ago`;
+}
+
+function slugify(text: string, maxLength?: number): string {
+  const trimmed = text.normalize("NFKD").replace(/[̀-ͯ]/gu, "");
+  const reduced = trimmed
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "");
+  if (reduced.length === 0) {
+    return "untitled";
+  }
+  if (maxLength === undefined || reduced.length <= maxLength) {
+    return reduced;
+  }
+  const truncated = reduced.slice(0, maxLength).replace(/-+$/u, "");
+  return truncated.length > 0 ? truncated : reduced.slice(0, maxLength);
 }
 
 function humanizeDurationMs(ms: number): string {

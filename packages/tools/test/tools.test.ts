@@ -519,19 +519,60 @@ describe("createJarvisTools", () => {
     return tool;
   }
 
-  it("registers six zero-IO ambient utility tools", () => {
+  it("registers eight zero-IO ambient utility tools", () => {
     const tools = createJarvisTools();
     expect(tools.map((tool) => tool.definition.name).sort()).toEqual([
       "json_query",
       "math_eval",
+      "slugify",
       "text_stats",
       "time_add",
       "time_diff",
-      "time_now"
+      "time_now",
+      "time_relative"
     ]);
     for (const tool of tools) {
       expect(tool.definition.risk).toBe("read");
     }
+  });
+
+  it("time_relative humanizes past, future, and near-zero deltas", async () => {
+    const tool = getTool("time_relative");
+    const now = (await tool.execute(
+      { at: "2026-05-07T01:23:45.000Z" },
+      { runId: "r" }
+    )) as { humanized: string; direction: string; deltaMs: number };
+    expect(now).toMatchObject({ humanized: "just now", direction: "now" });
+
+    const future = (await tool.execute(
+      { at: "2026-05-07T03:23:45.000Z", reference: "2026-05-07T01:23:45.000Z" },
+      { runId: "r" }
+    )) as { humanized: string; direction: string };
+    expect(future.humanized).toBe("in 2h");
+    expect(future.direction).toBe("future");
+
+    const past = (await tool.execute(
+      { at: "2026-05-04T01:23:45.000Z", reference: "2026-05-07T01:23:45.000Z" },
+      { runId: "r" }
+    )) as { humanized: string; direction: string };
+    expect(past.humanized).toBe("3d ago");
+    expect(past.direction).toBe("past");
+
+    const invalid = await tool.execute({ at: "not-a-date" }, { runId: "r" });
+    expect(invalid).toMatchObject({ error: expect.stringContaining("ISO-8601") });
+  });
+
+  it("slugify lowercases, dashes runs, drops non-alnum, and obeys maxLength", async () => {
+    const tool = getTool("slugify");
+    expect(await tool.execute({ text: "  Hello, World!  " }, { runId: "r" })).toEqual({ slug: "hello-world" });
+    expect(await tool.execute({ text: "My Note Title" }, { runId: "r" })).toEqual({ slug: "my-note-title" });
+    expect(await tool.execute({ text: "   " }, { runId: "r" })).toEqual({ slug: "untitled" });
+    expect(await tool.execute({ maxLength: 6, text: "hello world very long" }, { runId: "r" })).toEqual({
+      slug: "hello"
+    });
+    expect(await tool.execute({ maxLength: 7, text: "hello world very long" }, { runId: "r" })).toEqual({
+      slug: "hello-w"
+    });
   });
 
   it("time_now returns ISO + epoch + day-of-week using the injected clock", async () => {
