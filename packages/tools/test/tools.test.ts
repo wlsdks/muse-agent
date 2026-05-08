@@ -519,11 +519,12 @@ describe("createJarvisTools", () => {
     return tool;
   }
 
-  it("registers nine zero-IO ambient utility tools", () => {
+  it("registers ten zero-IO ambient utility tools", () => {
     const tools = createJarvisTools();
     expect(tools.map((tool) => tool.definition.name).sort()).toEqual([
       "json_query",
       "math_eval",
+      "regex_extract",
       "slugify",
       "text_stats",
       "time_add",
@@ -535,6 +536,37 @@ describe("createJarvisTools", () => {
     for (const tool of tools) {
       expect(tool.definition.risk).toBe("read");
     }
+  });
+
+  it("regex_extract returns matches, captured-group preference, and validates flags + sizes", async () => {
+    const tool = getTool("regex_extract");
+
+    const emails = (await tool.execute(
+      {
+        pattern: "[\\w.+-]+@[\\w.-]+",
+        text: "ping me at a@b.com or c+d@example.org for details"
+      },
+      { runId: "r" }
+    )) as { matches: string[] };
+    expect(emails.matches).toEqual(["a@b.com", "c+d@example.org"]);
+
+    const captured = (await tool.execute(
+      { pattern: "<(\\w+)>", text: "<one><two><three>" },
+      { runId: "r" }
+    )) as { matches: string[] };
+    expect(captured.matches).toEqual(["one", "two", "three"]);
+
+    const invalidFlags = await tool.execute(
+      { flags: "gx", pattern: "a", text: "aaa" },
+      { runId: "r" }
+    );
+    expect(invalidFlags).toMatchObject({ error: expect.stringContaining("flags") });
+
+    const invalidPattern = await tool.execute({ pattern: "(", text: "aaa" }, { runId: "r" });
+    expect(invalidPattern).toMatchObject({ error: expect.stringContaining("invalid pattern") });
+
+    const empty = await tool.execute({ pattern: "", text: "x" }, { runId: "r" });
+    expect(empty).toEqual({ error: "pattern is required" });
   });
 
   it("url_parts decomposes an absolute URL into protocol/host/port/path/query/hash/origin", async () => {

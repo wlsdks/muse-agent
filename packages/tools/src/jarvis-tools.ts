@@ -30,7 +30,8 @@ export function createJarvisTools(options: JarvisToolFactoryOptions = {}): reado
     createMathEvalTool(),
     createJsonQueryTool(),
     createSlugifyTool(),
-    createUrlPartsTool()
+    createUrlPartsTool(),
+    createRegexExtractTool()
   ];
 }
 
@@ -391,6 +392,74 @@ function createUrlPartsTool(): MuseTool {
         protocol,
         query
       } satisfies JsonObject;
+    }
+  };
+}
+
+const REGEX_EXTRACT_MAX_TEXT_LENGTH = 100_000;
+const REGEX_EXTRACT_MAX_PATTERN_LENGTH = 500;
+const REGEX_EXTRACT_MAX_MATCHES = 1_000;
+const REGEX_EXTRACT_ALLOWED_FLAGS = /^[gimsuy]*$/u;
+
+function createRegexExtractTool(): MuseTool {
+  return {
+    definition: {
+      description:
+        "Extracts substrings from `text` matching a JavaScript regular expression `pattern`. " +
+        "Returns up to 1000 matches: when the pattern has no capturing group, each item is the full match; when the pattern has at least one group, each item is the first captured group. " +
+        "Optional `flags` accepts only g/i/m/s/u/y (rejects others). Bounded inputs: text ≤ 100k characters, pattern ≤ 500 characters. " +
+        "Useful for pulling emails, phone numbers, dates, hashtags, or other repeating structures from free-form text without piping through a string library.",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          flags: {
+            description: "Regex flags subset of g/i/m/s/u/y. Defaults to 'g'.",
+            type: "string"
+          },
+          pattern: { description: "JavaScript regular expression source.", type: "string" },
+          text: { description: "Source text to scan.", type: "string" }
+        },
+        required: ["pattern", "text"],
+        type: "object"
+      },
+      keywords: ["regex", "extract", "match", "find"],
+      name: "regex_extract",
+      risk: "read"
+    },
+    execute: (args): JsonObject => {
+      const pattern = typeof args["pattern"] === "string" ? (args["pattern"] as string) : "";
+      const text = typeof args["text"] === "string" ? (args["text"] as string) : "";
+      const flagsInput = typeof args["flags"] === "string" ? (args["flags"] as string) : "g";
+      if (pattern.length === 0) {
+        return { error: "pattern is required" };
+      }
+      if (pattern.length > REGEX_EXTRACT_MAX_PATTERN_LENGTH) {
+        return { error: `pattern must be ≤ ${REGEX_EXTRACT_MAX_PATTERN_LENGTH} characters` };
+      }
+      if (text.length > REGEX_EXTRACT_MAX_TEXT_LENGTH) {
+        return { error: `text must be ≤ ${REGEX_EXTRACT_MAX_TEXT_LENGTH} characters` };
+      }
+      if (!REGEX_EXTRACT_ALLOWED_FLAGS.test(flagsInput)) {
+        return { error: "flags must be a subset of g/i/m/s/u/y" };
+      }
+      const flags = flagsInput.includes("g") ? flagsInput : `${flagsInput}g`;
+      let regex: RegExp;
+      try {
+        regex = new RegExp(pattern, flags);
+      } catch (error) {
+        return { error: `invalid pattern: ${error instanceof Error ? error.message : String(error)}` };
+      }
+      const matches: string[] = [];
+      for (const match of text.matchAll(regex)) {
+        const value = match[1] ?? match[0];
+        if (typeof value === "string") {
+          matches.push(value);
+        }
+        if (matches.length >= REGEX_EXTRACT_MAX_MATCHES) {
+          break;
+        }
+      }
+      return { matches } satisfies JsonObject;
     }
   };
 }
