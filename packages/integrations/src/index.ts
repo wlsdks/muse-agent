@@ -575,131 +575,12 @@ export {
   SlackFeedbackButtonHandler
 } from "./slack-feedback-store.js";
 
-export class WebhookDispatcher {
-  private readonly endpoints = new Map<string, WebhookEndpoint>();
-  private readonly transport: WebhookTransport;
-  private readonly now: () => Date;
-  private readonly idFactory: () => string;
-
-  constructor(options: WebhookDispatcherOptions) {
-    for (const endpoint of options.endpoints ?? []) {
-      this.endpoints.set(endpoint.id, endpoint);
-    }
-
-    this.transport = options.transport;
-    this.now = options.now ?? (() => new Date());
-    this.idFactory = options.idFactory ?? (() => createRunId("webhook_event"));
-  }
-
-  register(endpoint: WebhookEndpoint): void {
-    this.endpoints.set(endpoint.id, endpoint);
-  }
-
-  unregister(endpointId: string): void {
-    this.endpoints.delete(endpointId);
-  }
-
-  listEndpoints(): readonly WebhookEndpoint[] {
-    return [...this.endpoints.values()].sort((left, right) => left.id.localeCompare(right.id));
-  }
-
-  async dispatch(
-    input: Omit<WebhookEvent, "createdAt" | "id"> & { readonly id?: string }
-  ): Promise<readonly WebhookDelivery[]> {
-    const event: WebhookEvent = {
-      createdAt: this.now(),
-      id: input.id ?? this.idFactory(),
-      payload: input.payload,
-      runId: input.runId,
-      type: input.type
-    };
-    const deliveries: WebhookDelivery[] = [];
-
-    for (const endpoint of this.endpoints.values()) {
-      if (!endpoint.enabled || !endpoint.events.includes(event.type)) {
-        deliveries.push({ endpointId: endpoint.id, eventId: event.id, status: "skipped" });
-        continue;
-      }
-
-      try {
-        const body = eventToPayload(event);
-        const headers = createWebhookHeaders(body, endpoint.secret);
-        const response = await this.transport.post(endpoint.url, body, headers);
-        deliveries.push({
-          endpointId: endpoint.id,
-          eventId: event.id,
-          status: response.statusCode >= 200 && response.statusCode < 300 ? "delivered" : "failed",
-          statusCode: response.statusCode
-        });
-      } catch (error) {
-        deliveries.push({
-          endpointId: endpoint.id,
-          error: error instanceof Error ? error.message : "unknown webhook failure",
-          eventId: event.id,
-          status: "failed"
-        });
-      }
-    }
-
-    return deliveries;
-  }
-}
-
-export function createWebhookNotificationHook(options: WebhookNotificationHookOptions): HookStage {
-  const previewLength = Math.max(1, options.outputPreviewLength ?? 500);
-
-  return {
-    afterComplete: async (context, response) => {
-      await options.dispatcher.dispatch({
-        payload: {
-          model: response.model,
-          outputPreview: truncatePreview(response.output, previewLength),
-          responseId: response.id
-        },
-        runId: context.runId,
-        type: "after_complete"
-      });
-    },
-    afterTool: async (context, toolCall, result) => {
-      await options.dispatcher.dispatch({
-        payload: {
-          resultPreview: truncatePreview(result.output, previewLength),
-          status: result.status,
-          toolCallId: toolCall.id,
-          toolName: toolCall.name
-        },
-        runId: context.runId,
-        type: "after_tool"
-      });
-    },
-    beforeStart: async (context) => {
-      await options.dispatcher.dispatch({
-        payload: runContextPayload(context),
-        runId: context.runId,
-        type: "before_start"
-      });
-    },
-    beforeTool: async (context, toolCall) => {
-      await options.dispatcher.dispatch({
-        payload: {
-          args: toolCall.arguments,
-          toolCallId: toolCall.id,
-          toolName: toolCall.name
-        },
-        runId: context.runId,
-        type: "before_tool"
-      });
-    },
-    id: options.id ?? "webhook-notification",
-    onError: async (context, error) => {
-      await options.dispatcher.dispatch({
-        payload: errorPayload(error),
-        runId: context.runId,
-        type: "on_error"
-      });
-    }
-  };
-}
+// WebhookDispatcher + createWebhookNotificationHook live in
+// packages/integrations/src/webhook-dispatcher.ts.
+export {
+  createWebhookNotificationHook,
+  WebhookDispatcher
+} from "./webhook-dispatcher.js";
 
 // Slack reminder primitives live in packages/integrations/src/slack-reminders.ts.
 export {
@@ -755,115 +636,14 @@ export {
 
 // createSlackProgressHook lives in packages/integrations/src/slack-progress-hook.ts.
 
-export function createToolResponseSummaryHook(options: ToolResponseSummaryHookOptions): HookStage {
-  const previewLength = Math.max(1, options.previewLength ?? 500);
-
-  return {
-    afterTool: async (context, toolCall, result) => {
-      if (result.status !== "completed") {
-        return;
-      }
-
-      await options.onSummary({
-        ...(countJsonItems(result.output) !== undefined ? { itemCount: countJsonItems(result.output) } : {}),
-        outputPreview: truncatePreview(result.output, previewLength),
-        runId: context.runId,
-        status: result.status,
-        toolCallId: toolCall.id,
-        toolName: toolCall.name
-      });
-    },
-    id: options.id ?? "tool-response-summary"
-  };
-}
-
-export function createRagIngestionCaptureHook(options: RagIngestionCaptureHookOptions): HookStage {
-  return {
-    afterComplete: async (context, response) => {
-      const policy = await options.policyStore.getOrNull();
-
-      if (!policy?.enabled) {
-        return;
-      }
-
-      const query = firstUserMessage(context.input.messages);
-      const channel = metadataString(context.input.metadata, "channel");
-      const sessionId = metadataString(context.input.metadata, "sessionId");
-      const userId = metadataString(context.input.metadata, "userId") ?? options.userIdFallback;
-
-      if (!userId || !isEligibleRagCandidate(query, response.output, channel, policy)) {
-        return;
-      }
-
-      await options.candidateStore.save({
-        ...(channel ? { channel } : {}),
-        query,
-        response: response.output,
-        runId: context.runId,
-        ...(sessionId ? { sessionId } : {}),
-        status: policy.requireReview ? "PENDING" : "INGESTED",
-        userId
-      });
-    },
-    id: options.id ?? "rag-ingestion-capture"
-  };
-}
-
-export function createFeedbackMetadataCaptureHook(options: FeedbackMetadataCaptureHookOptions): HookStage {
-  return {
-    afterComplete: async (context, response) => {
-      const query = firstUserMessage(context.input.messages);
-
-      if (query.length === 0 || response.output.trim().length === 0) {
-        return;
-      }
-
-      await options.feedbackStore.save({
-        ...selectMetadata(context.input.metadata, [
-          "channel",
-          "domain",
-          "intent",
-          "sessionId",
-          "templateId",
-          "userId"
-        ]),
-        model: response.model,
-        query,
-        response: response.output,
-        runId: context.runId,
-        timestamp: context.startedAt.toISOString()
-      });
-    },
-    id: options.id ?? "feedback-metadata-capture"
-  };
-}
-
-export function createUserMemoryInjectionHook(options: UserMemoryInjectionHookOptions): HookStage {
-  const maxEntries = Math.max(1, options.maxEntries ?? 12);
-
-  return {
-    beforeStart: async (context) => {
-      const userId = metadataString(context.input.metadata, "userId");
-
-      if (!userId) {
-        return;
-      }
-
-      const memory = await options.memoryStore.findByUserId(userId);
-      const memoryMessage = memory ? renderUserMemoryMessage(memory, maxEntries) : undefined;
-
-      if (!memoryMessage) {
-        return;
-      }
-
-      const input = context.input as {
-        messages: readonly ModelMessage[];
-      };
-      input.messages = [memoryMessage, ...context.input.messages];
-    },
-    id: options.id ?? "user-memory-injection"
-  };
-}
+// Tool-response / RAG-ingestion / feedback-metadata / user-memory
+// hooks live in packages/integrations/src/agent-lifecycle-hooks.ts.
+export {
+  createFeedbackMetadataCaptureHook,
+  createRagIngestionCaptureHook,
+  createToolResponseSummaryHook,
+  createUserMemoryInjectionHook
+} from "./agent-lifecycle-hooks.js";
 
 // SlackSignatureVerifier + signing/verification helpers live in
 // packages/integrations/src/slack-signature.ts.
@@ -1048,140 +828,14 @@ export class FetchSlackWebApiMessageTransport
 // packages/integrations/src/slack-mrkdwn.ts and slack-signature.ts.
 export { formatSlackMrkdwn, formatSlackPayload } from "./slack-mrkdwn.js";
 
-function eventToPayload(event: WebhookEvent): JsonObject {
-  return {
-    createdAt: event.createdAt.toISOString(),
-    id: event.id,
-    payload: event.payload,
-    runId: event.runId,
-    type: event.type
-  };
-}
-
-function runContextPayload(context: AgentRunContext): JsonObject {
-  return {
-    metadata: context.input.metadata ?? {},
-    model: context.input.model,
-    startedAt: context.startedAt.toISOString()
-  };
-}
-
-function errorPayload(error: unknown): JsonObject {
-  if (error instanceof Error) {
-    return {
-      error: error.message,
-      name: error.name
-    };
-  }
-
-  return {
-    error: String(error),
-    name: "Error"
-  };
-}
-
-function truncatePreview(value: string, maxLength: number): string {
-  return value.length > maxLength ? value.slice(0, maxLength) : value;
-}
-
-function countJsonItems(value: string): number | undefined {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-
-    if (Array.isArray(parsed)) {
-      return parsed.length;
-    }
-
-    if (isJsonRecord(parsed)) {
-      const firstArray = Object.values(parsed).find(Array.isArray);
-      return firstArray?.length;
-    }
-
-    return undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function firstUserMessage(messages: readonly { readonly content: string; readonly role: string }[]): string {
-  return messages.find((message) => message.role === "user")?.content.trim() ?? "";
-}
-
-function isEligibleRagCandidate(
-  query: string,
-  response: string,
-  channel: string | undefined,
-  policy: RagIngestionCapturePolicy
-): boolean {
-  if (query.trim().length < policy.minQueryChars || response.trim().length < policy.minResponseChars) {
-    return false;
-  }
-
-  if (policy.allowedChannels.length > 0 && (!channel || !policy.allowedChannels.includes(channel))) {
-    return false;
-  }
-
-  const combined = `${query}\n${response}`;
-  return !policy.blockedPatterns.some((pattern) => pattern.length > 0 && new RegExp(pattern, "iu").test(combined));
-}
-
-function selectMetadata(metadata: JsonObject | undefined, keys: readonly string[]): JsonObject {
-  const selected: Record<string, JsonValue> = {};
-
-  for (const key of keys) {
-    const value = metadata?.[key];
-
-    if (typeof value === "string" && value.trim().length > 0) {
-      selected[key] = value;
-    }
-  }
-
-  return selected as JsonObject;
-}
-
-function renderUserMemoryMessage(memory: UserMemoryInjectionMemory, maxEntries: number): ModelMessage | undefined {
-  const lines: string[] = [];
-
-  for (const [key, value] of Object.entries(memory.facts)) {
-    if (value.trim().length > 0) {
-      lines.push(`- Fact ${key}: ${value}`);
-    }
-  }
-
-  for (const [key, value] of Object.entries(memory.preferences)) {
-    if (value.trim().length > 0) {
-      lines.push(`- Preference ${key}: ${value}`);
-    }
-  }
-
-  for (const topic of memory.recentTopics ?? []) {
-    if (topic.trim().length > 0) {
-      lines.push(`- Recent topic: ${topic}`);
-    }
-  }
-
-  if (lines.length === 0) {
-    return undefined;
-  }
-
-  return {
-    content: ["Relevant user memory:", ...lines.slice(0, maxEntries)].join("\n"),
-    role: "system"
-  };
-}
-
-function metadataString(metadata: JsonObject | undefined, key: string): string | undefined {
-  const value = metadata?.[key];
-  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
-}
-
-function isJsonRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 function blankToUndefined(value: string | undefined): string | undefined {
   const normalized = value?.trim();
   return normalized && normalized.length > 0 ? normalized : undefined;
+}
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function parseSlackInteractionJson(input: unknown): Record<string, unknown> | undefined {
