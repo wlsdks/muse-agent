@@ -687,82 +687,13 @@ export function compatRecord(input: JsonObject, prefix: string, existing?: JsonO
   };
 }
 
-export async function createSessionTag(
-  options: ReactorCompatibilityRouteOptions,
-  request: FastifyRequest,
-  sessionId: string,
-  label: string,
-  comment: string | null
-): Promise<CompatRecord> {
-  if (options.sessionTagStore) {
-    const tag = await options.sessionTagStore.create({
-      comment,
-      createdBy: readAuthUserId(request) ?? "admin",
-      label,
-      sessionId
-    });
-
-    return toSessionTagCompatRecord(tag);
-  }
-
-  const tag = createRecord(new Map(), {
-    comment,
-    label,
-    sessionId
-  }, "session_tag");
-  const tags = state.sessionTags.get(sessionId) ?? [];
-  state.sessionTags.set(sessionId, [...tags, tag]);
-  return tag;
-}
-
-export async function listSessionTags(
-  options: ReactorCompatibilityRouteOptions,
-  sessionId: string
-): Promise<readonly CompatRecord[]> {
-  if (options.sessionTagStore) {
-    const tags = await options.sessionTagStore.listBySession(sessionId);
-    return tags.map(toSessionTagCompatRecord);
-  }
-
-  return state.sessionTags.get(sessionId) ?? [];
-}
-
-export async function deleteSessionTag(
-  options: ReactorCompatibilityRouteOptions,
-  sessionId: string,
-  tagId: string
-): Promise<boolean> {
-  if (options.sessionTagStore) {
-    return options.sessionTagStore.delete(sessionId, tagId);
-  }
-
-  const tags = state.sessionTags.get(sessionId) ?? [];
-  const remaining = tags.filter((tag) => tag.id !== tagId);
-  state.sessionTags.set(sessionId, remaining);
-  return remaining.length !== tags.length;
-}
-
-export async function deleteSessionTags(options: ReactorCompatibilityRouteOptions, sessionId: string): Promise<void> {
-  if (options.sessionTagStore) {
-    await options.sessionTagStore.deleteBySession(sessionId);
-    return;
-  }
-
-  state.sessionTags.delete(sessionId);
-}
-
-function toSessionTagCompatRecord(tag: SessionTag): CompatRecord {
-  const createdAt = new Date(tag.createdAt).toISOString();
-
-  return {
-    comment: tag.comment ?? null,
-    createdAt,
-    id: tag.id,
-    label: tag.label,
-    sessionId: tag.sessionId,
-    updatedAt: createdAt
-  };
-}
+// Session-tag store helpers live in apps/api/src/compat-session-tag-store.ts.
+export {
+  createSessionTag,
+  deleteSessionTag,
+  deleteSessionTags,
+  listSessionTags
+} from "./compat-session-tag-store.js";
 
 export function findCompatRecord(collection: CompatCollection, id: string): CompatRecord | undefined {
   return collection.get(id) ?? [...collection.values()].find((record) => record.name === id || record.channelId === id);
@@ -886,6 +817,10 @@ export function getStateOutputGuardRules(): CompatCollection {
 
 export function getStateOutputGuardRuleAudits(): CompatCollection {
   return state.outputGuardRuleAudits;
+}
+
+export function getStateSessionTags(): Map<string, CompatRecord[]> {
+  return state.sessionTags;
 }
 
 export async function readStoredToolPolicy(options: ReactorCompatibilityRouteOptions): Promise<JsonObject | undefined> {
