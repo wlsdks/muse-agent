@@ -13,6 +13,7 @@
 
 import { createRunId, type JsonObject } from "@muse/shared";
 import type { FastifyRequest } from "fastify";
+import { prepareCatalogRecord, promptLabRecordToCompat } from "./compat-prompt-experiment.js";
 import {
   createRecord,
   epochMillisOrNull,
@@ -24,8 +25,6 @@ import {
   jsonObjectField,
   nowIso,
   nullableStringResponse,
-  prepareCatalogRecord,
-  promptLabRecordToCompat,
   reactorEnumString,
   readBodyString,
   readBoolean,
