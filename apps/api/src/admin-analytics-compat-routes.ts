@@ -14,7 +14,6 @@
  *   - GET /api/admin/rag-analytics/{status,by-channel}
  *   - GET /api/admin/slack-activity/{channels,daily}
  *   - GET /api/admin/tenant/{quality,tools,quota,export/executions,export/tools}
- *   - GET /api/admin/platform/tenants/analytics
  *   - GET /api/admin/platform/users/by-email
  *   - POST /api/admin/platform/users/:id/role
  *   - POST /api/admin/task-memory/maintenance/{purge-expired,purge-terminal}
@@ -375,25 +374,6 @@ function registerTenantQualityRoutes(server: FastifyInstance, options: ReactorCo
 }
 
 function registerPlatformAnalyticsRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/admin/platform/tenants/analytics", async (request, reply) => {
-    if (!options.authorizeAnyAdmin(request, reply)) {
-      return reply;
-    }
-
-    const [tenants, cost] = await Promise.all([
-      options.admin?.operations?.listTenants() ?? [],
-      options.admin?.operations?.costSummary() ?? { byModel: {}, byTenant: {}, totalCostUsd: "0.00000000" }
-    ]);
-    return tenants.map((tenant) => ({
-      cost: toJsonObject(cost.byTenant)[tenant.id] ?? "0.00000000",
-      plan: "default",
-      quotaUsagePercent: 0,
-      requests: 0,
-      tenantId: tenant.id,
-      tenantName: tenant.name
-    }));
-  });
-
   server.get("/api/admin/platform/users/by-email", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;

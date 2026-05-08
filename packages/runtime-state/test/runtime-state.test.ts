@@ -5,7 +5,6 @@ import {
   createAdminCostUsageInsert,
   createMetricAuditTrailInsert,
   createAdminSloInsert,
-  createAdminTenantInsert,
   InMemoryAdminAuditStore,
   InMemoryAdminOperationsStore,
   InMemoryMetricAuditEventStore,
@@ -16,8 +15,7 @@ import {
   mapAdminAuditRow,
   mapAdminCostUsageRow,
   mapMetricAuditTrailRow,
-  mapAdminSloRow,
-  mapAdminTenantRow
+  mapAdminSloRow
 } from "../src/index.js";
 
 describe("InMemoryPendingApprovalStore", () => {
@@ -198,17 +196,12 @@ describe("InMemoryHookTraceStore", () => {
 });
 
 describe("InMemoryAdminOperationsStore", () => {
-  it("tracks tenants, alerts, SLO status, and cost summaries", async () => {
+  it("tracks alerts, SLO status, and cost summaries", async () => {
     const store = new InMemoryAdminOperationsStore({
       idFactory: (kind) => `${kind}-1`,
       now: () => new Date("2026-01-01T00:00:00.000Z")
     });
 
-    const tenant = await store.upsertTenant({
-      id: "tenant-1",
-      monthlyBudgetUsd: "100.00000000",
-      name: "Tenant One"
-    });
     const alert = await store.createAlert({
       message: "Budget threshold crossed",
       severity: "critical",
@@ -231,19 +224,15 @@ describe("InMemoryAdminOperationsStore", () => {
     });
     const costs = await store.recordCost({
       costUsd: "1.25000000",
-      model: "provider/model",
-      tenantId: "tenant-1"
+      model: "provider/model"
     });
 
-    expect(tenant).toMatchObject({ id: "tenant-1", status: "active" });
-    expect(await store.listTenants()).toHaveLength(1);
     expect(acknowledged).toMatchObject({ id: alert.id, status: "acknowledged" });
     expect(resolved).toMatchObject({ id: alertToResolve.id, status: "resolved" });
     expect(await store.listAlerts()).toHaveLength(2);
     expect(slo).toMatchObject({ id: "availability", status: "violated" });
     expect(costs).toEqual({
       byModel: { "provider/model": "1.25000000" },
-      byTenant: { "tenant-1": "1.25000000" },
       totalCostUsd: "1.25000000"
     });
   });
@@ -308,14 +297,9 @@ describe("Kysely admin operation mapping", () => {
   it("creates and maps admin operation rows without private data", () => {
     const now = new Date("2026-01-01T00:00:00.000Z");
     const options = {
-      idFactory: (kind: "tenant" | "alert" | "slo" | "cost_usage") => `${kind}-1`,
+      idFactory: (kind: "alert" | "slo" | "cost_usage") => `${kind}-1`,
       now: () => now
     };
-    const tenant = createAdminTenantInsert({
-      id: "tenant-1",
-      monthlyBudgetUsd: "100.00000000",
-      name: "Tenant One"
-    }, options);
     const alert = createAdminAlertInsert({
       message: "Budget threshold crossed",
       severity: "critical",
@@ -330,8 +314,7 @@ describe("Kysely admin operation mapping", () => {
     }, options);
     const cost = createAdminCostUsageInsert({
       costUsd: "1.25000000",
-      model: "provider/model",
-      tenantId: "tenant-1"
+      model: "provider/model"
     }, options);
     const audit = createAdminAuditInsert({
       action: "update",
@@ -351,13 +334,11 @@ describe("Kysely admin operation mapping", () => {
       tenantId: "tenant-1"
     });
 
-    expect(mapAdminTenantRow(tenant)).toMatchObject({ id: "tenant-1", monthlyBudgetUsd: "100.00000000" });
     expect(mapAdminAlertRow(alert)).toMatchObject({ id: "alert-1", status: "open", target: "tenant-1" });
     expect(mapAdminSloRow(slo)).toMatchObject({ id: "availability", status: "violated" });
     expect(mapAdminCostUsageRow(cost)).toEqual({
       costUsd: "1.25000000",
-      model: "provider/model",
-      tenantId: "tenant-1"
+      model: "provider/model"
     });
     expect(mapAdminAuditRow(audit)).toMatchObject({
       action: "UPDATE",

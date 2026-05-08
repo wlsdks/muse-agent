@@ -6,9 +6,7 @@ import type {
   AdminAuditStore,
   MetricAuditEventStore,
   AdminOperationsStore,
-  AdminSloInput,
-  AdminTenantInput,
-  AdminTenantStatus
+  AdminSloInput
 } from "@muse/runtime-state";
 import type { TraceEventInput } from "@muse/observability";
 
@@ -165,36 +163,6 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
 
     options.admin?.resilience?.circuitBreakerRegistry?.resetAll();
     return { reset: true };
-  });
-
-  server.get("/admin/tenants", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const operations = requireOperations(options, reply);
-    return operations ? operations.listTenants() : reply;
-  });
-
-  server.put("/admin/tenants/:tenantId", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const operations = requireOperations(options, reply);
-
-    if (!operations) {
-      return reply;
-    }
-
-    const { tenantId } = request.params as { readonly tenantId: string };
-    const parsed = parseTenantInput(request.body, tenantId);
-
-    if (!parsed.ok) {
-      return reply.status(400).send(parsed.error);
-    }
-
-    return operations.upsertTenant(parsed.value);
   });
 
   server.get("/admin/alerts", async (request, reply) => {
@@ -358,34 +326,6 @@ function requireOperations(options: AdminRouteOptions, reply: FastifyReply): Adm
   return operations;
 }
 
-function parseTenantInput(value: unknown, tenantId: string): ParseResult<AdminTenantInput> {
-  if (!isRecord(value) || typeof value.name !== "string" || value.name.trim().length === 0) {
-    return invalid("INVALID_ADMIN_TENANT", "Body must include a non-empty name");
-  }
-
-  const status = parseTenantStatus(value.status);
-
-  if (!status.ok) {
-    return status;
-  }
-
-  const monthlyBudgetUsd = parseOptionalCost(value.monthlyBudgetUsd, "INVALID_ADMIN_TENANT");
-
-  if (!monthlyBudgetUsd.ok) {
-    return monthlyBudgetUsd;
-  }
-
-  return {
-    ok: true,
-    value: {
-      id: tenantId,
-      ...(monthlyBudgetUsd.value ? { monthlyBudgetUsd: monthlyBudgetUsd.value } : {}),
-      name: value.name.trim(),
-      ...(status.value ? { status: status.value } : {})
-    }
-  };
-}
-
 function parseAlertInput(value: unknown): ParseResult<AdminAlertInput> {
   if (!isRecord(value) || typeof value.message !== "string" || value.message.trim().length === 0) {
     return invalid("INVALID_ADMIN_ALERT", "Body must include a non-empty message");
@@ -457,27 +397,13 @@ function parseCostUsage(value: unknown): ParseResult<AdminCostUsage> {
   }
 
   const model = optionalString(value.model);
-  const tenantId = optionalString(value.tenantId);
   return {
     ok: true,
     value: {
       costUsd: costUsd.value,
-      ...(model ? { model } : {}),
-      ...(tenantId ? { tenantId } : {})
+      ...(model ? { model } : {})
     }
   };
-}
-
-function parseTenantStatus(value: unknown): ParseResult<AdminTenantStatus | undefined> {
-  if (value === undefined) {
-    return { ok: true, value: undefined };
-  }
-
-  if (value === "active" || value === "suspended" || value === "disabled") {
-    return { ok: true, value };
-  }
-
-  return invalid("INVALID_ADMIN_TENANT", "Tenant status must be active, suspended, or disabled");
 }
 
 function parseAlertSeverity(value: unknown): ParseResult<AdminAlertSeverity | undefined> {
@@ -493,18 +419,6 @@ function parseAlertSeverity(value: unknown): ParseResult<AdminAlertSeverity | un
 }
 
 function parseRequiredCost(value: unknown, code: string): ParseResult<string> {
-  if (typeof value !== "string" && typeof value !== "number") {
-    return invalid(code, "Cost must be a finite numeric value");
-  }
-
-  return parseCost(value, code);
-}
-
-function parseOptionalCost(value: unknown, code: string): ParseResult<string | undefined> {
-  if (value === undefined) {
-    return { ok: true, value: undefined };
-  }
-
   if (typeof value !== "string" && typeof value !== "number") {
     return invalid(code, "Cost must be a finite numeric value");
   }

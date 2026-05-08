@@ -3,7 +3,6 @@ import type {
   AdminAlertTable,
   AdminCostUsageTable,
   AdminSloTable,
-  AdminTenantTable,
   MetricAuditTrailTable,
   MuseDatabase
 } from "@muse/db";
@@ -12,19 +11,9 @@ import type { Insertable, Kysely, Selectable } from "kysely";
 
 type Awaitable<T> = T | Promise<T>;
 
-export type AdminTenantStatus = "active" | "suspended" | "disabled";
 export type AdminAlertSeverity = "info" | "warning" | "critical";
 export type AdminAlertStatus = "open" | "acknowledged" | "resolved";
 export type AdminSloStatus = "healthy" | "at_risk" | "violated";
-
-export interface AdminTenant {
-  readonly id: string;
-  readonly name: string;
-  readonly status: AdminTenantStatus;
-  readonly monthlyBudgetUsd?: string;
-  readonly createdAt: Date;
-  readonly updatedAt: Date;
-}
 
 export interface AdminAlert {
   readonly id: string;
@@ -47,7 +36,6 @@ export interface AdminSlo {
 }
 
 export interface AdminCostUsage {
-  readonly tenantId?: string;
   readonly model?: string;
   readonly costUsd: string;
 }
@@ -55,12 +43,9 @@ export interface AdminCostUsage {
 export interface AdminCostSummary {
   readonly totalCostUsd: string;
   readonly byModel: Readonly<Record<string, string>>;
-  readonly byTenant: Readonly<Record<string, string>>;
 }
 
 export interface AdminOperationsStore {
-  listTenants(): Awaitable<readonly AdminTenant[]>;
-  upsertTenant(input: AdminTenantInput): Awaitable<AdminTenant>;
   listAlerts(): Awaitable<readonly AdminAlert[]>;
   createAlert(input: AdminAlertInput): Awaitable<AdminAlert>;
   acknowledgeAlert(id: string): Awaitable<AdminAlert | undefined>;
@@ -130,13 +115,6 @@ export interface MetricAuditEventStore {
   listRecent(limit?: number): Awaitable<readonly MetricAuditEvent[]>;
 }
 
-export interface AdminTenantInput {
-  readonly id?: string;
-  readonly name: string;
-  readonly status?: AdminTenantStatus;
-  readonly monthlyBudgetUsd?: string;
-}
-
 export interface AdminAlertInput {
   readonly id?: string;
   readonly severity?: AdminAlertSeverity;
@@ -153,16 +131,15 @@ export interface AdminSloInput {
 }
 
 export interface InMemoryAdminOperationsStoreOptions {
-  readonly idFactory?: (kind: "tenant" | "alert" | "slo") => string;
+  readonly idFactory?: (kind: "alert" | "slo") => string;
   readonly now?: () => Date;
 }
 
 export interface KyselyAdminOperationsStoreOptions {
-  readonly idFactory?: (kind: "tenant" | "alert" | "slo" | "cost_usage") => string;
+  readonly idFactory?: (kind: "alert" | "slo" | "cost_usage") => string;
   readonly now?: () => Date;
 }
 
-type AdminTenantRow = Selectable<AdminTenantTable>;
 type AdminAlertRow = Selectable<AdminAlertTable>;
 type AdminSloRow = Selectable<AdminSloTable>;
 type AdminCostUsageRow = Selectable<AdminCostUsageTable>;
@@ -170,15 +147,13 @@ type AdminAuditRow = Selectable<AdminAuditTable>;
 type AdminAuditInsert = Insertable<AdminAuditTable>;
 type MetricAuditTrailRow = Selectable<MetricAuditTrailTable>;
 type MetricAuditTrailInsert = Insertable<MetricAuditTrailTable>;
-type AdminTenantInsert = Insertable<AdminTenantTable>;
 type AdminAlertInsert = Insertable<AdminAlertTable>;
 type AdminSloInsert = Insertable<AdminSloTable>;
 type AdminCostUsageInsert = Insertable<AdminCostUsageTable>;
 
 export class InMemoryAdminOperationsStore implements AdminOperationsStore {
-  private readonly idFactory: (kind: "tenant" | "alert" | "slo") => string;
+  private readonly idFactory: (kind: "alert" | "slo") => string;
   private readonly now: () => Date;
-  private readonly tenants = new Map<string, AdminTenant>();
   private readonly alerts = new Map<string, AdminAlert>();
   private readonly slos = new Map<string, AdminSlo>();
   private readonly costs: AdminCostUsage[] = [];
@@ -186,26 +161,6 @@ export class InMemoryAdminOperationsStore implements AdminOperationsStore {
   constructor(options: InMemoryAdminOperationsStoreOptions = {}) {
     this.idFactory = options.idFactory ?? ((kind) => createRunId(kind));
     this.now = options.now ?? (() => new Date());
-  }
-
-  listTenants(): readonly AdminTenant[] {
-    return [...this.tenants.values()].sort(compareById);
-  }
-
-  upsertTenant(input: AdminTenantInput): AdminTenant {
-    const id = input.id ?? this.idFactory("tenant");
-    const existing = this.tenants.get(id);
-    const tenant: AdminTenant = {
-      createdAt: existing?.createdAt ?? this.now(),
-      id,
-      ...(input.monthlyBudgetUsd ? { monthlyBudgetUsd: input.monthlyBudgetUsd } : {}),
-      name: input.name,
-      status: input.status ?? existing?.status ?? "active",
-      updatedAt: this.now()
-    };
-
-    this.tenants.set(id, tenant);
-    return tenant;
   }
 
   listAlerts(): readonly AdminAlert[] {
@@ -286,8 +241,7 @@ export class InMemoryAdminOperationsStore implements AdminOperationsStore {
 
   costSummary(): AdminCostSummary {
     return {
-      byModel: sumCosts(this.costs, "model"),
-      byTenant: sumCosts(this.costs, "tenantId"),
+      byModel: sumCostsByModel(this.costs),
       totalCostUsd: formatCost(this.costs.reduce((sum, item) => sum + Number(item.costUsd), 0))
     };
   }
@@ -484,7 +438,7 @@ export class KyselyMetricAuditEventStore implements MetricAuditEventStore {
 }
 
 export class KyselyAdminOperationsStore implements AdminOperationsStore {
-  private readonly idFactory: (kind: "tenant" | "alert" | "slo" | "cost_usage") => string;
+  private readonly idFactory: (kind: "alert" | "slo" | "cost_usage") => string;
   private readonly now: () => Date;
 
   constructor(
@@ -493,33 +447,6 @@ export class KyselyAdminOperationsStore implements AdminOperationsStore {
   ) {
     this.idFactory = options.idFactory ?? ((kind) => createRunId(kind));
     this.now = options.now ?? (() => new Date());
-  }
-
-  async listTenants(): Promise<readonly AdminTenant[]> {
-    const rows = await this.db.selectFrom("admin_tenants").selectAll().orderBy("id", "asc").execute();
-    return rows.map(mapAdminTenantRow);
-  }
-
-  async upsertTenant(input: AdminTenantInput): Promise<AdminTenant> {
-    const row = createAdminTenantInsert(input, {
-      idFactory: this.idFactory,
-      now: this.now
-    });
-    const saved = await this.db
-      .insertInto("admin_tenants")
-      .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
-          monthly_budget_usd: row.monthly_budget_usd,
-          name: row.name,
-          status: row.status,
-          updated_at: row.updated_at
-        })
-      )
-      .returningAll()
-      .executeTakeFirstOrThrow();
-
-    return mapAdminTenantRow(saved);
   }
 
   async listAlerts(): Promise<readonly AdminAlert[]> {
@@ -614,15 +541,13 @@ export class KyselyAdminOperationsStore implements AdminOperationsStore {
   }
 
   async costSummary(): Promise<AdminCostSummary> {
-    const [total, byModel, byTenant] = await Promise.all([
+    const [total, byModel] = await Promise.all([
       this.costTotal(),
-      this.costBy("model"),
-      this.costBy("tenant_id")
+      this.costBy("model")
     ]);
 
     return {
       byModel,
-      byTenant,
       totalCostUsd: total
     };
   }
@@ -636,7 +561,7 @@ export class KyselyAdminOperationsStore implements AdminOperationsStore {
     return formatCost(Number(row?.cost ?? 0));
   }
 
-  private async costBy(column: "model" | "tenant_id"): Promise<Readonly<Record<string, string>>> {
+  private async costBy(column: "model"): Promise<Readonly<Record<string, string>>> {
     const rows = await this.db
       .selectFrom("admin_cost_usage")
       .select(column)
@@ -646,22 +571,6 @@ export class KyselyAdminOperationsStore implements AdminOperationsStore {
 
     return Object.fromEntries(rows.map((row) => [String(row[column] ?? "unknown"), formatCost(Number(row.cost ?? 0))]));
   }
-}
-
-export function createAdminTenantInsert(
-  input: AdminTenantInput,
-  options: Required<KyselyAdminOperationsStoreOptions>
-): AdminTenantInsert {
-  const now = options.now();
-
-  return {
-    created_at: now,
-    id: input.id ?? options.idFactory("tenant"),
-    monthly_budget_usd: input.monthlyBudgetUsd ?? null,
-    name: input.name,
-    status: input.status ?? "active",
-    updated_at: now
-  };
 }
 
 export function createAdminAlertInsert(
@@ -703,18 +612,7 @@ export function createAdminCostUsageInsert(
     created_at: options.now(),
     id: options.idFactory("cost_usage"),
     model: input.model ?? null,
-    tenant_id: input.tenantId ?? null
-  };
-}
-
-export function mapAdminTenantRow(row: AdminTenantRow): AdminTenant {
-  return {
-    createdAt: toDate(row.created_at ?? new Date(0)),
-    id: row.id,
-    monthlyBudgetUsd: row.monthly_budget_usd ?? undefined,
-    name: row.name,
-    status: row.status,
-    updatedAt: toDate(row.updated_at)
+    tenant_id: null
   };
 }
 
@@ -745,8 +643,7 @@ export function mapAdminSloRow(row: AdminSloRow): AdminSlo {
 export function mapAdminCostUsageRow(row: AdminCostUsageRow): AdminCostUsage {
   return {
     costUsd: row.cost_usd,
-    model: row.model ?? undefined,
-    tenantId: row.tenant_id ?? undefined
+    model: row.model ?? undefined
   };
 }
 
@@ -811,11 +708,11 @@ function calculateSloStatus(target: number, actual: number | undefined): AdminSl
   return actual >= target * 0.95 ? "at_risk" : "violated";
 }
 
-function sumCosts(items: readonly AdminCostUsage[], key: "model" | "tenantId"): Readonly<Record<string, string>> {
+function sumCostsByModel(items: readonly AdminCostUsage[]): Readonly<Record<string, string>> {
   const sums = new Map<string, number>();
 
   for (const item of items) {
-    const value = item[key] ?? "unknown";
+    const value = item.model ?? "unknown";
     sums.set(value, (sums.get(value) ?? 0) + Number(item.costUsd));
   }
 

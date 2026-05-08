@@ -1372,16 +1372,6 @@ describe("api server", () => {
     });
     const headers = { authorization: `Bearer ${registered.token}` };
 
-    const tenant = await server.inject({
-      headers,
-      method: "PUT",
-      payload: {
-        monthlyBudgetUsd: "100",
-        name: "Tenant One",
-        status: "active"
-      },
-      url: "/admin/tenants/tenant-1"
-    });
     const alert = await server.inject({
       headers,
       method: "POST",
@@ -1414,8 +1404,7 @@ describe("api server", () => {
       method: "POST",
       payload: {
         costUsd: "1.25",
-        model: "provider/model",
-        tenantId: "tenant-1"
+        model: "provider/model"
       },
       url: "/admin/costs/usage"
     });
@@ -1425,17 +1414,11 @@ describe("api server", () => {
       url: "/admin/costs/summary"
     });
 
-    expect(tenant.json()).toMatchObject({
-      id: "tenant-1",
-      monthlyBudgetUsd: "100.00000000",
-      name: "Tenant One"
-    });
     expect(alert.statusCode).toBe(201);
     expect(acknowledged.json()).toMatchObject({ id: alertId, status: "acknowledged" });
     expect(slo.json()).toMatchObject({ id: "availability", status: "violated" });
     expect(cost.json()).toEqual({
       byModel: { "provider/model": "1.25000000" },
-      byTenant: { "tenant-1": "1.25000000" },
       totalCostUsd: "1.25000000"
     });
     expect(summary.json()).toEqual(cost.json());
@@ -4838,11 +4821,6 @@ describe("api server", () => {
       method: "GET",
       url: "/api/admin/tenant/export/tools"
     });
-    const platformTenantAnalytics = await server.inject({
-      headers,
-      method: "GET",
-      url: "/api/admin/platform/tenants/analytics"
-    });
     const platformUserByEmail = await server.inject({
       headers,
       method: "GET",
@@ -5326,7 +5304,6 @@ describe("api server", () => {
     expect(tenantQuota.json()).toMatchObject({ usage: { requests: 1, tokens: 15 } });
     expect(tenantExecutionsExport.body).toContain("run-compat");
     expect(tenantToolsExport.body).toContain("read_file");
-    expect(platformTenantAnalytics.json()).toEqual([]);
     expect(platformUserByEmail.json()).toMatchObject({ email: "first_account", id: registered.user.id });
     expect(missingPlatformUserByEmail.statusCode).toBe(404);
     expect(missingPlatformUserByEmail.json()).toMatchObject({

@@ -96,7 +96,7 @@ import { defaultToolPolicy } from "./compat-tool-policy-store.js";
 import { registerAdminObservabilityCompatRoutes } from "./admin-observability-compat-routes.js";
 import { registerAdminPlatformCompatRoutes } from "./admin-platform-compat-routes.js";
 import { registerAdminSessionCompatRoutes } from "./admin-session-compat-routes.js";
-import { registerAdminTenantAlertCompatRoutes } from "./admin-tenant-alert-compat-routes.js";
+import { registerAdminPlatformAlertCompatRoutes } from "./admin-platform-alert-compat-routes.js";
 import { registerAgentCompatibilityRoutes } from "./agent-compat-routes.js";
 import { registerAgentEvalCompatRoutes } from "./agent-eval-compat-routes.js";
 import { registerApprovalCompatibilityRoutes } from "./approval-compat-routes.js";
@@ -231,7 +231,7 @@ export function registerReactorCompatibilityRoutes(
   registerMcpCompatibilityRoutes(server, options);
   registerSlackCompatibilityRoutes(server, options);
   registerAdminPlatformCompatRoutes(server, options);
-  registerAdminTenantAlertCompatRoutes(server, options);
+  registerAdminPlatformAlertCompatRoutes(server, options);
   registerAdminSessionCompatRoutes(server, options);
   registerAdminObservabilityCompatRoutes(server, options);
   registerAdminAnalyticsCompatRoutes(server, options);
@@ -805,12 +805,10 @@ export {
   parseAgentMode
 } from "./compat-models.js";
 
-// Tenant ops + reactor prompt-section keys live in apps/api/src/compat-tenant-ops.ts.
+// Reactor prompt-section keys live in apps/api/src/compat-prompt-sections.ts.
 export {
-  reactorPromptSectionKeys,
-  tenantSummary,
-  updateTenantStatus
-} from "./compat-tenant-ops.js";
+  reactorPromptSectionKeys
+} from "./compat-prompt-sections.js";
 
 // Prompt-experiment lifecycle helpers live in apps/api/src/compat-prompt-experiment.ts.
 export {

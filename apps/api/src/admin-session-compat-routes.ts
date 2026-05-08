@@ -1,9 +1,9 @@
 /**
- * Reactor-compat admin tenant-summary + sessions + users routes extracted
- * from reactor-compat-routes.ts.
+ * Reactor-compat admin sessions + users routes extracted from
+ * reactor-compat-routes.ts.
  *
  * Wires:
- *   - GET /api/admin/tenant/{overview,usage,cost,alerts,slo}
+ *   - GET /api/admin/tenant/{cost,alerts,slo}
  *   - GET /api/admin/sessions/overview
  *   - GET /api/admin/sessions (paginated)
  *   - GET /api/admin/sessions/:sessionId/export
@@ -30,27 +30,24 @@ import {
   readQueryInteger,
   sessionDetail,
   summarizeUsers,
-  tenantSummary,
   type ReactorCompatibilityRouteOptions
 } from "./reactor-compat-routes.js";
 
 export function registerAdminSessionCompatRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  registerTenantSummaryRoutes(server, options);
+  registerSelfStatsRoutes(server, options);
   registerSessionRoutes(server, options);
   registerUserRoutes(server, options);
 
   server.get("/admin/doctor", async (request, reply) => adminDiagnostic(request, reply, options, "report"));
 }
 
-function registerTenantSummaryRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/admin/tenant/overview", async (request, reply) => tenantSummary(request, reply, options));
-  server.get("/api/admin/tenant/usage", async (request, reply) => tenantSummary(request, reply, options));
+function registerSelfStatsRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   server.get("/api/admin/tenant/cost", async (request, reply) => {
     if (!options.authorizeAnyAdmin(request, reply)) {
       return reply;
     }
 
-    return options.admin?.operations?.costSummary() ?? { byModel: {}, byTenant: {}, totalCostUsd: "0.00000000" };
+    return options.admin?.operations?.costSummary() ?? { byModel: {}, totalCostUsd: "0.00000000" };
   });
   server.get("/api/admin/tenant/alerts", async (request, reply) => {
     if (!options.authorizeAnyAdmin(request, reply)) {
