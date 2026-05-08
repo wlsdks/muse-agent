@@ -65,6 +65,7 @@ import { registerIntentRoutes } from "./intent-compat-routes.js";
 import { registerPersonaRoutes } from "./persona-compat-routes.js";
 import { registerPromptTemplateRoutes } from "./prompt-template-compat-routes.js";
 import { registerSessionCompatibilityRoutes } from "./session-compat-routes.js";
+import { registerUserMemoryCompatRoutes } from "./user-memory-compat-routes.js";
 import { recordedSpans, recordedTraceEvents, type AdminRouteState } from "./admin-routes.js";
 import type { McpRouteMcp } from "./mcp-routes.js";
 import type { SchedulerRouteScheduler } from "./scheduler-routes.js";
@@ -983,42 +984,8 @@ function registerOutputGuardRuleRoutes(server: FastifyInstance, options: Reactor
 }
 
 function registerMemoryAndFeedbackRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/user-memory/:userId", async (request, reply) => {
-    const { userId } = request.params as { readonly userId: string };
-    if (!(await canAccessUserMemory(request, options, userId))) {
-      return userForbidden(reply);
-    }
-
-    const memory = await readUserMemory(options, userId);
-    return memory ? toUserMemoryResponse(memory) : userMemoryNotFound(reply, userId);
-  });
-  server.put("/api/user-memory/:userId/facts", async (request, reply) => {
-    if (!(await canAccessUserMemory(request, options, (request.params as { readonly userId: string }).userId))) {
-      return userForbidden(reply);
-    }
-
-    return updateUserMemory(request, reply, "facts", options);
-  });
-  server.put("/api/user-memory/:userId/preferences", async (request, reply) => {
-    if (!(await canAccessUserMemory(request, options, (request.params as { readonly userId: string }).userId))) {
-      return userForbidden(reply);
-    }
-
-    return updateUserMemory(request, reply, "preferences", options);
-  });
-  server.delete("/api/user-memory/:userId", async (request, reply) => {
-    const { userId } = request.params as { readonly userId: string };
-    if (!(await canAccessUserMemory(request, options, userId))) {
-      return userForbidden(reply);
-    }
-
-    await deleteUserMemory(options, userId);
-    return reply.status(204).send();
-  });
-
+  registerUserMemoryCompatRoutes(server, options);
   registerFeedbackRoutes(server, options);
-
-  server.post("/api/error-report", async (_request, reply) => reply.status(204).send());
 }
 
 function registerFeedbackRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
@@ -8732,7 +8699,7 @@ function feedbackStats(items: readonly CompatRecord[]) {
   };
 }
 
-async function updateUserMemory(
+export async function updateUserMemory(
   request: FastifyRequest,
   reply: FastifyReply,
   key: "facts" | "preferences",
@@ -8770,7 +8737,7 @@ async function updateUserMemory(
   return { updated: true };
 }
 
-async function readUserMemory(
+export async function readUserMemory(
   options: ReactorCompatibilityRouteOptions,
   userId: string
 ): Promise<UserMemory | {
@@ -8782,12 +8749,12 @@ async function readUserMemory(
   return await options.userMemoryStore?.findByUserId(userId) ?? state.userMemory.get(userId);
 }
 
-async function deleteUserMemory(options: ReactorCompatibilityRouteOptions, userId: string): Promise<void> {
+export async function deleteUserMemory(options: ReactorCompatibilityRouteOptions, userId: string): Promise<void> {
   await options.userMemoryStore?.deleteByUserId(userId);
   state.userMemory.delete(userId);
 }
 
-async function canAccessUserMemory(
+export async function canAccessUserMemory(
   request: FastifyRequest,
   options: ReactorCompatibilityRouteOptions,
   userId: string
@@ -8808,7 +8775,7 @@ async function currentAuthIdentity(
     ?? await options.authService?.authenticateBearer(extractBearerToken(request.headers.authorization));
 }
 
-function toUserMemoryResponse(memory: {
+export function toUserMemoryResponse(memory: {
   readonly facts: Record<string, string>;
   readonly preferences: Record<string, string>;
   readonly recentTopics: readonly string[];
@@ -8822,14 +8789,14 @@ function toUserMemoryResponse(memory: {
   };
 }
 
-function userForbidden(reply: FastifyReply) {
+export function userForbidden(reply: FastifyReply) {
   return reply.status(403).send({
     error: "관리자 권한이 필요합니다",
     timestamp: nowIso()
   });
 }
 
-function userMemoryNotFound(reply: FastifyReply, userId: string) {
+export function userMemoryNotFound(reply: FastifyReply, userId: string) {
   return reply.status(404).send({
     error: `User memory not found: ${userId}`,
     timestamp: nowIso()
