@@ -1225,7 +1225,6 @@ function createAuthService(env: MuseEnvironment, db: Kysely<MuseDatabase> | unde
   }
 
   const jwt = new JwtTokenProvider({
-    defaultTenantId: env.MUSE_DEFAULT_TENANT_ID ?? "default",
     jwtExpirationMs: parseInteger(env.MUSE_AUTH_JWT_EXPIRATION_MS, 86_400_000),
     jwtSecret
   });

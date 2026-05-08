@@ -242,7 +242,6 @@ describe("actor helpers", () => {
         email: "a@b.c",
         expiresAt: new Date(),
         role: "user",
-        tenantId: "t",
         tokenId: "t-1",
         userId: "    "
       })
@@ -253,7 +252,6 @@ describe("actor helpers", () => {
         email: "a@b.c",
         expiresAt: new Date(),
         role: "user",
-        tenantId: "t",
         tokenId: "t-1",
         userId: "user-1"
       })

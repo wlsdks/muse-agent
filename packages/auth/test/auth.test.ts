@@ -60,8 +60,7 @@ describe("Kysely auth mapping", () => {
       id: "user-1",
       name: "User",
       passwordHash: "hash",
-      role: "admin",
-      tenantId: "tenant-1"
+      role: "admin"
     });
     const revocation = createAuthTokenRevocationInsert("token-1", expiresAt, createdAt);
     const userSql = db.insertInto("users").values(user).returningAll().compile();
@@ -72,22 +71,20 @@ describe("Kysely auth mapping", () => {
     expect(user).toMatchObject({
       email: "user_account",
       id: "user-1",
-      role: "admin",
-      tenant_id: "tenant-1"
+      role: "admin"
     });
     expect(mapUserRow(user)).toMatchObject({
       email: "user_account",
       id: "user-1",
-      role: "admin",
-      tenantId: "tenant-1"
+      role: "admin"
     });
+    expect(mapUserRow(user)).not.toHaveProperty("tenantId");
   });
 });
 
 describe("jwt tokens and revocation", () => {
   it("creates, validates, extracts, and revokes HS256 tokens", () => {
     const jwt = new JwtTokenProvider({
-      defaultTenantId: "tenant-1",
       jwtExpirationMs: 60_000,
       jwtSecret
     });
@@ -110,7 +107,7 @@ describe("jwt tokens and revocation", () => {
 
     expect(jwt.validateToken(token, new Date(now.getTime() + 1_000))).toBe("user-1");
     expect(jwt.extractRole(token)).toBe("admin");
-    expect(service.authenticateBearer(token)?.tenantId).toBe("tenant-1");
+    expect(service.authenticateBearer(token)?.userId).toBe("user-1");
     expect(service.logout(token)).toBe(true);
     expect(service.authenticateBearer(token)).toBeUndefined();
     expect(revocations.size()).toBe(1);

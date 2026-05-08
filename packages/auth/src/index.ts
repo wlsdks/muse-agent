@@ -13,7 +13,6 @@ export interface User {
   readonly name: string;
   readonly passwordHash: string;
   readonly role: UserRole;
-  readonly tenantId?: string;
   readonly createdAt: Date;
 }
 
@@ -23,7 +22,6 @@ export interface UserInput {
   readonly name: string;
   readonly passwordHash: string;
   readonly role?: UserRole;
-  readonly tenantId?: string;
   readonly createdAt?: Date;
   readonly updatedAt?: Date;
 }
@@ -31,7 +29,6 @@ export interface UserInput {
 export interface AuthProperties {
   readonly jwtSecret: string;
   readonly jwtExpirationMs?: number;
-  readonly defaultTenantId?: string;
   readonly selfRegistrationEnabled?: boolean;
   readonly publicPaths?: readonly string[];
   readonly loginRateLimitPerMinute?: number;
@@ -83,7 +80,6 @@ export interface JwtClaims {
   readonly jti: string;
   readonly email: string;
   readonly role: UserRole;
-  readonly tenantId: string;
   readonly iat: number;
   readonly exp: number;
   readonly accountId?: string;
@@ -93,7 +89,6 @@ export interface AuthIdentity {
   readonly userId: string;
   readonly email: string;
   readonly role: UserRole;
-  readonly tenantId: string;
   readonly tokenId: string;
   readonly expiresAt: Date;
   readonly accountId?: string;
@@ -167,7 +162,6 @@ export interface AuthRateLimiterOptions {
 export const anonymousActor = "anonymous";
 
 const defaultJwtExpirationMs = 86_400_000;
-const defaultTenantId = "default";
 const minimumJwtSecretBytes = 32;
 const passwordHashVersion = "scrypt-v1";
 const passwordKeyLength = 64;
@@ -312,7 +306,7 @@ export class KyselyUserStore implements AsyncUserStore {
           name: normalized.name,
           password_hash: normalized.passwordHash,
           role: normalized.role,
-          tenant_id: normalized.tenantId ?? null,
+          tenant_id: null,
           updated_at: now
         })
       )
@@ -403,12 +397,10 @@ export class KyselyAuthProvider implements AsyncAuthProvider {
 
 export class JwtTokenProvider {
   private readonly jwtExpirationMs: number;
-  private readonly defaultTenantId: string;
   private readonly secret: Buffer;
 
   constructor(private readonly properties: AuthProperties) {
     this.jwtExpirationMs = properties.jwtExpirationMs ?? defaultJwtExpirationMs;
-    this.defaultTenantId = properties.defaultTenantId ?? defaultTenantId;
     this.secret = Buffer.from(properties.jwtSecret);
 
     if (this.secret.byteLength < minimumJwtSecretBytes) {
@@ -428,8 +420,7 @@ export class JwtTokenProvider {
       iat: issuedAt,
       jti: createRunId("token"),
       role: user.role,
-      sub: user.id,
-      tenantId: this.defaultTenantId
+      sub: user.id
     };
 
     return signJwt(claims, this.secret);
@@ -451,10 +442,6 @@ export class JwtTokenProvider {
 
   extractRole(token: string): UserRole | undefined {
     return this.parseToken(token)?.role;
-  }
-
-  extractTenantId(token: string): string | undefined {
-    return this.parseToken(token)?.tenantId;
   }
 
   extractEmail(token: string): string | undefined {
@@ -656,7 +643,6 @@ export class Auth implements MuseAuth {
       email: claims.email,
       expiresAt: new Date(claims.exp * 1_000),
       role: claims.role,
-      tenantId: claims.tenantId,
       tokenId: claims.jti,
       userId: claims.sub
     };
@@ -797,8 +783,7 @@ export class AsyncAuth implements MuseAuth {
       id: user.id,
       name: user.name,
       passwordHash: this.options.authProvider.hashPassword(input.newPassword),
-      role: user.role,
-      tenantId: user.tenantId
+      role: user.role
     });
     return "changed";
   }
@@ -838,7 +823,6 @@ export class AsyncAuth implements MuseAuth {
       email: claims.email,
       expiresAt: new Date(claims.exp * 1_000),
       role: claims.role,
-      tenantId: claims.tenantId,
       tokenId: claims.jti,
       userId: claims.sub
     };
@@ -985,8 +969,7 @@ function normalizeUserInput(input: UserInput): User {
     id: input.id ?? createRunId("user"),
     name: input.name.trim(),
     passwordHash: input.passwordHash,
-    role: input.role ?? "user",
-    tenantId: input.tenantId
+    role: input.role ?? "user"
   };
 }
 
@@ -996,8 +979,7 @@ function publicUser(user: User): Omit<User, "passwordHash"> {
     email: user.email,
     id: user.id,
     name: user.name,
-    role: user.role,
-    tenantId: user.tenantId
+    role: user.role
   };
 }
 
@@ -1012,7 +994,7 @@ export function createUserInsert(input: UserInput): UserInsert {
     name: user.name,
     password_hash: user.passwordHash,
     role: user.role,
-    tenant_id: user.tenantId ?? null,
+    tenant_id: null,
     updated_at: updatedAt
   };
 }
@@ -1024,8 +1006,7 @@ export function mapUserRow(row: UserRow): User {
     id: row.id,
     name: row.name,
     passwordHash: row.password_hash,
-    role: row.role,
-    tenantId: row.tenant_id ?? undefined
+    role: row.role
   };
 }
 
@@ -1096,7 +1077,6 @@ function isJwtClaims(value: unknown): value is JwtClaims {
     typeof value.jti === "string" &&
     typeof value.email === "string" &&
     isUserRole(value.role) &&
-    typeof value.tenantId === "string" &&
     typeof value.iat === "number" &&
     typeof value.exp === "number"
   );
