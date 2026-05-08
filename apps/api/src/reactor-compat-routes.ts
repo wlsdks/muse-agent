@@ -59,6 +59,7 @@ import type { ScheduledJobExecution } from "@muse/scheduler";
 import { createRunId, type JsonObject } from "@muse/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHash } from "node:crypto";
+import { registerAdminObservabilityCompatRoutes } from "./admin-observability-compat-routes.js";
 import { registerAdminPlatformCompatRoutes } from "./admin-platform-compat-routes.js";
 import { registerAdminSessionCompatRoutes } from "./admin-session-compat-routes.js";
 import { registerAdminTenantAlertCompatRoutes } from "./admin-tenant-alert-compat-routes.js";
@@ -389,180 +390,7 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
   registerAdminTenantAlertCompatRoutes(server, options);
 
   registerAdminSessionCompatRoutes(server, options);
-  server.get("/api/admin/traces", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const traceEvents = recordedTraceEvents(options.admin?.observability?.traceSink);
-
-    return traceEvents.length > 0 ? traceEvents : recordedSpans(options.admin?.observability?.tracer);
-  });
-  server.get("/api/admin/traces/:traceId/spans", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { traceId } = request.params as { readonly traceId: string };
-    const traceEvents = recordedTraceEvents(options.admin?.observability?.traceSink, traceId);
-
-    if (traceEvents.length > 0) {
-      return traceEvents;
-    }
-
-    return recordedSpans(options.admin?.observability?.tracer)
-      .filter((span) =>
-        isRecord(span) &&
-        (span.id === traceId || (isRecord(span.attributes) && span.attributes.runId === traceId))
-      );
-  });
-  server.get("/api/admin/tool-calls", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const runId = readQueryString(request, "runId");
-    return runId && options.historyStore
-      ? options.historyStore.listToolCalls(runId)
-      : listAllToolCalls(options);
-  });
-  server.get("/api/admin/tool-calls/ranking", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return toolCallRanking(await listAllToolCalls(options));
-  });
-  server.get("/api/admin/users/usage/top", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return summarizeUsers(await listAllRuns(options));
-  });
-  server.get("/api/admin/users/usage/cost", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return usageByUser(await listAllRuns(options));
-  });
-  server.get("/api/admin/users/usage/daily", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return dailyUsage(await listAllRuns(options));
-  });
-  server.get("/api/admin/users/usage/by-model", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return usageByModel(await listAllRuns(options));
-  });
-  server.get("/api/admin/token-cost/by-session", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    if (options.tokenCostQuery) {
-      const sessionId = readQueryString(request, "sessionId") ?? readQueryString(request, "runId");
-      if (!sessionId) {
-        return [];
-      }
-      const rows = await options.tokenCostQuery.bySession(sessionId);
-      return rows.map((row) => ({
-        completionTokens: row.completionTokens,
-        estimatedCostUsd: row.estimatedCostUsd,
-        model: row.model,
-        promptTokens: row.promptTokens,
-        provider: row.provider,
-        runId: row.runId,
-        stepType: row.stepType,
-        time: row.time.toISOString(),
-        totalTokens: row.totalTokens
-      }));
-    }
-
-    return (await listAllRuns(options)).map((run) => ({
-      costUsd: run.costUsd,
-      model: run.model,
-      runId: run.id,
-      tokenUsage: run.tokenUsage,
-      userId: run.userId ?? "anonymous"
-    }));
-  });
-  server.get("/api/admin/token-cost/daily", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    if (options.tokenCostQuery) {
-      const days = readQueryInteger(request, "days", 7);
-      const window = { from: latencyWindowStart(days), to: new Date() };
-      const rows = await options.tokenCostQuery.daily(window);
-      return rows.map((row) => ({
-        completionTokens: row.completionTokens,
-        day: row.day,
-        model: row.model,
-        promptTokens: row.promptTokens,
-        totalCostUsd: row.totalCostUsd,
-        totalTokens: row.totalTokens
-      }));
-    }
-
-    return dailyUsage(await listAllRuns(options));
-  });
-  server.get("/api/admin/token-cost/top-expensive", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    if (options.tokenCostQuery) {
-      const days = readQueryInteger(request, "days", 7);
-      const limit = Math.min(100, Math.max(1, readQueryInteger(request, "limit", 20)));
-      const rows = await options.tokenCostQuery.topExpensive({
-        from: latencyWindowStart(days),
-        limit,
-        to: new Date()
-      });
-      return rows.map((row) => ({
-        model: row.model,
-        runId: row.runId,
-        time: row.time.toISOString(),
-        totalCostUsd: row.totalCostUsd,
-        totalTokens: row.totalTokens
-      }));
-    }
-
-    const runs = await listAllRuns(options);
-    return [...runs]
-      .sort((left, right) => Number(right.costUsd) - Number(left.costUsd))
-      .slice(0, 20);
-  });
-  server.get("/api/admin/conversation-analytics/by-channel", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return groupRunsByMetadata(await listAllRuns(options), "channel");
-  });
-  server.get("/api/admin/conversation-analytics/failure-patterns", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const failed = (await listAllRuns(options)).filter((run) => run.status === "failed");
-    return aggregateFailurePatterns(failed);
-  });
-  server.get("/api/admin/conversation-analytics/latency-distribution", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return latencyDistribution(await listAllRuns(options));
-  });
+  registerAdminObservabilityCompatRoutes(server, options);
   registerAdminAnalyticsCompatibilityRoutes(server, options);
   registerAgentEvalCompatibilityRoutes(server, options);
   registerMetricIngestionRoutes(server, options);
@@ -1363,7 +1191,7 @@ export function summarizeUsers(runs: readonly AgentRunRecord[]) {
   return [...byUser.values()].sort((left, right) => right.lastActiveAt.localeCompare(left.lastActiveAt));
 }
 
-async function listAllToolCalls(options: ReactorCompatibilityRouteOptions): Promise<readonly ToolCallRecord[]> {
+export async function listAllToolCalls(options: ReactorCompatibilityRouteOptions): Promise<readonly ToolCallRecord[]> {
   const runs = await listAllRuns(options);
   const toolCalls: ToolCallRecord[] = [];
 
@@ -1929,7 +1757,7 @@ function countBehaviorAssertions(value: JsonObject): number {
     (readNullableNumber(value.maxToolExposureCount) === undefined ? 0 : 1);
 }
 
-function toolCallRanking(toolCalls: readonly ToolCallRecord[]) {
+export function toolCallRanking(toolCalls: readonly ToolCallRecord[]) {
   const byName = new Map<string, { failures: number; name: string; total: number }>();
 
   for (const call of toolCalls) {
@@ -1975,7 +1803,7 @@ function toolOutcomeStats(toolCalls: readonly ToolCallRecord[], server?: string)
   };
 }
 
-function aggregateFailurePatterns(runs: readonly AgentRunRecord[]): JsonObject {
+export function aggregateFailurePatterns(runs: readonly AgentRunRecord[]): JsonObject {
   const totalFailures = runs.length;
   const byClass = new Map<string, { errorClass: string; count: number; sampleRunIds: string[] }>();
   for (const run of runs) {
@@ -2048,7 +1876,7 @@ function toolOutcome(toolCall: ToolCallRecord): string {
   return "error";
 }
 
-function usageByUser(runs: readonly AgentRunRecord[]) {
+export function usageByUser(runs: readonly AgentRunRecord[]) {
   const byUser = new Map<string, { costUsd: number; inputTokens: number; outputTokens: number; userId: string }>();
 
   for (const run of runs) {
@@ -2065,7 +1893,7 @@ function usageByUser(runs: readonly AgentRunRecord[]) {
   return [...byUser.values()].sort((left, right) => right.costUsd - left.costUsd);
 }
 
-function usageByModel(runs: readonly AgentRunRecord[]) {
+export function usageByModel(runs: readonly AgentRunRecord[]) {
   const byModel = new Map<string, { costUsd: number; inputTokens: number; model: string; outputTokens: number }>();
 
   for (const run of runs) {
@@ -2081,7 +1909,7 @@ function usageByModel(runs: readonly AgentRunRecord[]) {
   return [...byModel.values()].sort((left, right) => right.costUsd - left.costUsd);
 }
 
-function dailyUsage(runs: readonly AgentRunRecord[]) {
+export function dailyUsage(runs: readonly AgentRunRecord[]) {
   const byDay = new Map<string, { costUsd: number; date: string; runs: number }>();
 
   for (const run of runs) {
@@ -2097,7 +1925,7 @@ function dailyUsage(runs: readonly AgentRunRecord[]) {
   return [...byDay.values()].sort((left, right) => left.date.localeCompare(right.date));
 }
 
-function groupRunsByMetadata(runs: readonly AgentRunRecord[], _key: string) {
+export function groupRunsByMetadata(runs: readonly AgentRunRecord[], _key: string) {
   const byChannel = new Map<string, { channel: string; failed: number; total: number }>();
 
   for (const run of runs) {
@@ -2113,7 +1941,7 @@ function groupRunsByMetadata(runs: readonly AgentRunRecord[], _key: string) {
   return [...byChannel.values()].sort((left, right) => right.total - left.total);
 }
 
-function latencyDistribution(runs: readonly AgentRunRecord[]) {
+export function latencyDistribution(runs: readonly AgentRunRecord[]) {
   const buckets = { "0-1s": 0, "1-5s": 0, "5-30s": 0, "30s+": 0, unknown: 0 };
 
   for (const run of runs) {
@@ -2437,7 +2265,7 @@ export function compareCreatedAtDesc(left: JsonObject, right: JsonObject): numbe
   return (epochMillisOrNull(right.createdAt) ?? 0) - (epochMillisOrNull(left.createdAt) ?? 0);
 }
 
-function latencyWindowStart(days: number): Date {
+export function latencyWindowStart(days: number): Date {
   const start = new Date();
   start.setUTCDate(start.getUTCDate() - days);
   return start;
