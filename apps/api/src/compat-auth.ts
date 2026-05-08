@@ -86,7 +86,6 @@ export function toReactorAuthResponse(login: LoginResult): JsonObject {
 
 export function toReactorUserResponse(user: LoginResult["user"]): JsonObject {
   return {
-    adminScope: user.role === "admin" ? "FULL" : null,
     email: user.email,
     id: user.id,
     name: user.name,

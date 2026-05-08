@@ -67,13 +67,10 @@ export async function recordMetricEvent(
   options: ReactorCompatibilityRouteOptions,
   input: { readonly kind: string; readonly payload: JsonObject }
 ): Promise<CompatRecord> {
-  const tenantId = stringField(input.payload.tenantId, "default");
-
   if (options.admin?.metricEventStore) {
     const saved = await options.admin.metricEventStore.record({
       kind: input.kind,
-      payload: input.payload,
-      tenantId
+      payload: input.payload
     });
     return metricEventStoreRecordToCompat(saved);
   }

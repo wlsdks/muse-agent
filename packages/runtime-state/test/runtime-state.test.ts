@@ -263,8 +263,7 @@ describe("admin audit and metric event stores", () => {
     });
     metricStore.record({
       kind: "eval-result",
-      payload: { pass: true },
-      tenantId: "tenant-1"
+      payload: { pass: true }
     });
 
     expect(auditStore.listRecent()).toMatchObject([{ action: "SIMULATE", id: "audit-2" }]);
@@ -286,8 +285,7 @@ describe("admin audit and metric event stores", () => {
       {
         id: "metric-1",
         kind: "eval-result",
-        payload: { pass: true },
-        tenantId: "tenant-1"
+        payload: { pass: true }
       }
     ]);
   });
@@ -330,8 +328,7 @@ describe("Kysely admin operation mapping", () => {
       createdAt: now,
       id: "metric-event-1",
       kind: "eval-result",
-      payload: { pass: true },
-      tenantId: "tenant-1"
+      payload: { pass: true }
     });
 
     expect(mapAdminAlertRow(alert)).toMatchObject({ id: "alert-1", status: "open", target: "tenant-1" });
@@ -349,8 +346,7 @@ describe("Kysely admin operation mapping", () => {
     expect(mapMetricAuditTrailRow(metric)).toMatchObject({
       id: "metric-event-1",
       kind: "eval-result",
-      payload: { pass: true },
-      tenantId: "tenant-1"
+      payload: { pass: true }
     });
   });
 });

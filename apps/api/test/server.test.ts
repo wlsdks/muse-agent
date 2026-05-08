@@ -400,12 +400,12 @@ describe("api server", () => {
     expect(registered.json()).toMatchObject({
       error: null,
       user: {
-        adminScope: null,
         email,
         name: "Compat",
         role: "USER"
       }
     });
+    expect(registered.json().user).not.toHaveProperty("adminScope");
     expect(registered.json()).not.toHaveProperty("expiresAt");
     expect(duplicate.statusCode).toBe(409);
     expect(duplicate.json()).toEqual({
@@ -414,11 +414,11 @@ describe("api server", () => {
       user: null
     });
     expect(me.json()).toMatchObject({
-      adminScope: null,
       email,
       name: "Compat",
       role: "USER"
     });
+    expect(me.json()).not.toHaveProperty("adminScope");
     expect(me.json()).not.toHaveProperty("identity");
     expect(logout.json()).toEqual({ message: "Logged out" });
     expect(afterLogout.statusCode).toBe(401);
@@ -466,12 +466,12 @@ describe("api server", () => {
     expect(exchanged.json()).toMatchObject({
       error: null,
       user: {
-        adminScope: "FULL",
         email: "iam_user@example.invalid",
         id: "iam-user-1",
         role: "ADMIN"
       }
     });
+    expect(exchanged.json().user).not.toHaveProperty("adminScope");
     expect(exchanged.json().token).toBeTruthy();
   });
 
@@ -5016,12 +5016,12 @@ describe("api server", () => {
     expect(apiLogin.json()).toMatchObject({
       error: null,
       user: {
-        adminScope: "FULL",
         email: "first_account",
         name: "First",
         role: "ADMIN"
       }
     });
+    expect(apiLogin.json().user).not.toHaveProperty("adminScope");
     expect(apiLogin.json()).not.toHaveProperty("expiresAt");
     expect(wrongPasswordChange.statusCode).toBe(400);
     expect(wrongPasswordChange.json()).toMatchObject({ error: "Current password is incorrect" });
@@ -5036,11 +5036,11 @@ describe("api server", () => {
     });
     expect(newPasswordLogin.statusCode).toBe(200);
     expect(apiMe.json()).toMatchObject({
-      adminScope: "FULL",
       email: "first_account",
       name: "First",
       role: "ADMIN"
     });
+    expect(apiMe.json()).not.toHaveProperty("adminScope");
     expect(exchangeDisabled.statusCode).toBe(404);
     expect(exchangeDisabled.json()).toEqual({
       error: "IAM token exchange is not enabled",

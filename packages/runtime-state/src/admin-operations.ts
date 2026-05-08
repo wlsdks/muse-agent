@@ -100,14 +100,12 @@ export interface MetricAuditEvent {
   readonly kind: string;
   readonly payload: JsonObject;
   readonly createdAt: Date;
-  readonly tenantId?: string;
 }
 
 export interface MetricAuditEventInput {
   readonly id?: string;
   readonly kind: string;
   readonly payload: JsonObject;
-  readonly tenantId?: string;
 }
 
 export interface MetricAuditEventStore {
@@ -377,8 +375,7 @@ export class InMemoryMetricAuditEventStore implements MetricAuditEventStore {
       createdAt: this.now(),
       id: input.id ?? this.idFactory(),
       kind: input.kind,
-      payload: input.payload,
-      tenantId: input.tenantId
+      payload: input.payload
     };
 
     this.events.push(event);
@@ -414,8 +411,7 @@ export class KyselyMetricAuditEventStore implements MetricAuditEventStore {
       createdAt: this.now(),
       id: input.id ?? this.idFactory(),
       kind: input.kind,
-      payload: input.payload,
-      tenantId: input.tenantId
+      payload: input.payload
     };
 
     await this.db
@@ -685,7 +681,7 @@ export function createMetricAuditTrailInsert(event: MetricAuditEvent): MetricAud
     resource_id: event.id,
     resource_type: "metric_event",
     source_ip: null,
-    tenant_id: event.tenantId ?? "default",
+    tenant_id: "default",
     time: event.createdAt
   };
 }
@@ -695,8 +691,7 @@ export function mapMetricAuditTrailRow(row: MetricAuditTrailRow | MetricAuditTra
     createdAt: toDate(row.time ?? new Date(0)),
     id: row.resource_id ?? createRunId("metric_event"),
     kind: row.event_type,
-    payload: jsonObject(row.detail),
-    tenantId: row.tenant_id
+    payload: jsonObject(row.detail)
   };
 }
 
