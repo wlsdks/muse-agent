@@ -65,6 +65,7 @@ import { registerAdminPlatformCompatRoutes } from "./admin-platform-compat-route
 import { registerAdminSessionCompatRoutes } from "./admin-session-compat-routes.js";
 import { registerAdminTenantAlertCompatRoutes } from "./admin-tenant-alert-compat-routes.js";
 import { registerAgentCompatibilityRoutes } from "./agent-compat-routes.js";
+import { registerAgentEvalCompatRoutes } from "./agent-eval-compat-routes.js";
 import { registerApprovalCompatibilityRoutes } from "./approval-compat-routes.js";
 import { registerAuthCompatibilityRoutes } from "./auth-compat-routes.js";
 import { registerGuardCompatibilityRoutes } from "./guard-compat-routes.js";
@@ -394,223 +395,14 @@ function registerAdminCompatibilityRoutes(server: FastifyInstance, options: Reac
   registerAdminSessionCompatRoutes(server, options);
   registerAdminObservabilityCompatRoutes(server, options);
   registerAdminAnalyticsCompatRoutes(server, options);
-  registerAgentEvalCompatibilityRoutes(server, options);
+  registerAgentEvalCompatRoutes(server, options);
   registerMetricIngestionCompatRoutes(server, options);
 
 }
 
 // registerAdminAnalyticsCompatibilityRoutes lives in apps/api/src/admin-analytics-compat-routes.ts.
 
-function registerAgentEvalCompatibilityRoutes(
-  server: FastifyInstance,
-  options: ReactorCompatibilityRouteOptions
-): void {
-  server.get("/api/admin/agent-eval/cases", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const enabledOnly = readQueryBoolean(request, "enabledOnly", true);
-    const tags = readQueryStringSet(request, "tags");
-    const limit = Math.max(0, readQueryInteger(request, "limit", 100));
-    return (await listAgentEvalCases(options, { enabledOnly, limit, tags: [...tags] })).map(toEvalCaseResponse);
-  });
-
-  server.get("/api/admin/agent-eval/run-logs", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const limit = Math.max(0, readQueryInteger(request, "limit", 50));
-    const runs = await listAllRuns(options, { limit });
-    const logsByRunId = new Map<string, JsonObject>();
-
-    for (const log of await listAgentEvalRunLogs(options, limit)) {
-      const response = toEvalRunLogResponse(log);
-      logsByRunId.set(String(response.runId), response);
-    }
-
-    for (const run of runs) {
-      logsByRunId.set(run.id, await runLogResponse(run, options));
-    }
-
-    return [...logsByRunId.values()].slice(0, limit);
-  });
-
-  server.post("/api/admin/agent-eval/cases/promote", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const body = toJsonObject(request.body);
-    const runId = readBodyString(body, "runId") ?? readBodyString(body, "sourceRunId");
-
-    if (!runId) {
-      return reply.status(400).send({
-        code: "INVALID_AGENT_EVAL_PROMOTION",
-        message: "Body must include runId"
-      });
-    }
-
-    const behaviorAssertionCount = countBehaviorAssertions(body);
-
-    if (behaviorAssertionCount === 0) {
-      return reply.status(400).send({
-        code: "INVALID_AGENT_EVAL_PROMOTION",
-        message: "Promotion requires at least one deterministic assertion"
-      });
-    }
-
-    const run = await options.historyStore?.findRun(runId);
-
-    if (!run) {
-      return reply.status(404).send(errorResponse(`run log를 찾을 수 없습니다: ${runId}`));
-    }
-
-    const toolCalls = await (options.historyStore?.listToolCalls(runId) ?? []);
-    const toolNames = [...new Set(toolCalls.map((toolCall) => toolCall.name))];
-    const id = readBodyString(body, "id") ?? createRunId("eval_case");
-    const record = await saveAgentEvalCase(options, {
-      agentType: run.mode,
-      assertionCount: countEvalAssertions({ ...body, agentType: run.mode, model: run.model }),
-      enabled: readBoolean(body.enabled, true),
-      expectedAnswerContains: readStringSet(body.expectedAnswerContains),
-      expectedExposedToolNames: readStringSet(body.expectedExposedToolNames),
-      expectedToolNames: readStringSet(body.expectedToolNames),
-      forbiddenAnswerContains: readStringSet(body.forbiddenAnswerContains),
-      forbiddenExposedToolNames: readStringSet(body.forbiddenExposedToolNames),
-      forbiddenToolNames: readStringSet(body.forbiddenToolNames),
-      id,
-      maxToolExposureCount: readNullableNumber(body.maxToolExposureCount) ?? null,
-      minScore: readNumber(body.minScore, 1),
-      model: run.model,
-      name: readBodyString(body, "name") ?? `Promoted run ${run.id}`,
-      sourceRunId: run.id,
-      tags: readStringSet(body.tags),
-      toolExposureNames: toolNames,
-      userInput: run.input
-    });
-    await runLogRecord(run, options);
-    return toEvalCaseResponse(record);
-  });
-
-  server.post("/api/admin/agent-eval/cases/:id/replay", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    const existing = await getAgentEvalCase(options, id);
-
-    if (!existing) {
-      return reply.status(404).send(errorResponse(`eval case를 찾을 수 없습니다: ${id}`));
-    }
-
-    if (!options.agentRuntime) {
-      return badRequest(
-        reply,
-        "AGENT_EVAL_UNAVAILABLE",
-        "AgentExecutor 미등록 — eval 기능을 사용할 수 없습니다"
-      );
-    }
-
-    let replay;
-
-    try {
-      replay = await replayEvalCase(existing, request, options);
-    } catch (error) {
-      return reply.status(500).send({
-        code: "AGENT_EVAL_REPLAY_FAILED",
-        message: error instanceof Error ? error.message : "Agent eval replay failed"
-      });
-    }
-
-    const result = await evaluateRunAgainstCase(existing, replay.run, options, replay.toolCalls);
-    const stored = await storeEvalResult(
-      result,
-      readQueryBoolean(request, "llmJudge", false),
-      options,
-      existing,
-      replay.run
-    );
-    return {
-      caseId: id,
-      deterministic: result,
-      storedResults: stored
-    };
-  });
-
-  server.post("/api/admin/agent-eval/cases/:caseId/evaluate-run/:runId", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { caseId, runId } = request.params as { readonly caseId: string; readonly runId: string };
-    const existing = await getAgentEvalCase(options, caseId);
-
-    if (!existing) {
-      return reply.status(404).send(errorResponse(`eval case를 찾을 수 없습니다: ${caseId}`));
-    }
-
-    const run = await options.historyStore?.findRun(runId);
-
-    if (!run) {
-      return reply.status(404).send(errorResponse(`run log를 찾을 수 없습니다: ${runId}`));
-    }
-
-    const result = await evaluateRunAgainstCase(existing, run, options);
-    const stored = await storeEvalResult(result, readQueryBoolean(request, "llmJudge", false), options, existing, run);
-    return {
-      caseId,
-      deterministic: result,
-      storedResults: stored
-    };
-  });
-
-  server.get("/api/admin/agent-eval/results", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const caseId = readQueryString(request, "caseId");
-    const tier = readQueryString(request, "tier");
-    const limit = Math.max(0, readQueryInteger(request, "limit", 100));
-    return listAgentEvalResults(options, { caseId, limit, tier });
-  });
-
-  server.get("/api/admin/tools/stats", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return toolOutcomeStats(await listAllToolCalls(options), readQueryString(request, "server"));
-  });
-
-  server.get("/api/admin/tools/accuracy", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const stats = toolOutcomeStats(await listAllToolCalls(options));
-    const total = Number(stats.total);
-    const byOutcome = toJsonObject(stats.byOutcome);
-    const ok = Number(byOutcome.ok ?? 0);
-    const invalidArg = Number(byOutcome.invalid_arg ?? 0);
-    const timeout = Number(byOutcome.timeout ?? 0);
-    const errors = Number(byOutcome.error ?? 0);
-    const notFound = Number(byOutcome.not_found ?? 0);
-    const denominator = total > 0 ? total : 1;
-    return {
-      accuracy: stats.accuracy,
-      errorRate: errors / denominator,
-      invalidCallRate: invalidArg / denominator,
-      ok,
-      notFoundRate: notFound / denominator,
-      timeoutRate: timeout / denominator,
-      total
-    };
-  });
-}
+// registerAgentEvalCompatibilityRoutes lives in apps/api/src/agent-eval-compat-routes.ts.
 
 export async function sessionDetail(
   request: FastifyRequest,
@@ -827,7 +619,7 @@ export async function listAllToolCalls(options: ReactorCompatibilityRouteOptions
   return toolCalls;
 }
 
-async function runLogRecord(
+export async function runLogRecord(
   run: AgentRunRecord,
   options: ReactorCompatibilityRouteOptions,
   toolCallsOverride?: readonly ToolCallRecord[]
@@ -859,7 +651,7 @@ async function runLogRecord(
   });
 }
 
-async function saveAgentEvalCase(options: ReactorCompatibilityRouteOptions, record: JsonObject): Promise<CompatRecord> {
+export async function saveAgentEvalCase(options: ReactorCompatibilityRouteOptions, record: JsonObject): Promise<CompatRecord> {
   if (options.agentEvalStore) {
     const saved = await options.agentEvalStore.saveCase(prepareEvalRecord(record, "eval_case"));
     return evalStoreRecordToCompat(saved, "eval_case");
@@ -868,7 +660,7 @@ async function saveAgentEvalCase(options: ReactorCompatibilityRouteOptions, reco
   return createRecord(state.agentEvalCases, record, "eval_case");
 }
 
-async function listAgentEvalCases(
+export async function listAgentEvalCases(
   options: ReactorCompatibilityRouteOptions,
   filters: { readonly enabledOnly?: boolean; readonly limit?: number; readonly tags?: readonly string[] } = {}
 ): Promise<readonly CompatRecord[]> {
@@ -883,7 +675,7 @@ async function listAgentEvalCases(
     .slice(0, filters.limit ?? 100);
 }
 
-async function getAgentEvalCase(options: ReactorCompatibilityRouteOptions, id: string): Promise<CompatRecord | undefined> {
+export async function getAgentEvalCase(options: ReactorCompatibilityRouteOptions, id: string): Promise<CompatRecord | undefined> {
   if (options.agentEvalStore) {
     const row = await options.agentEvalStore.getCase(id);
     return row ? evalStoreRecordToCompat(row, "eval_case") : undefined;
@@ -901,7 +693,7 @@ async function saveAgentEvalRunLog(options: ReactorCompatibilityRouteOptions, re
   return createRecord(state.agentEvalRunLogs, record, "agent_eval_run_log");
 }
 
-async function listAgentEvalRunLogs(options: ReactorCompatibilityRouteOptions, limit: number): Promise<readonly CompatRecord[]> {
+export async function listAgentEvalRunLogs(options: ReactorCompatibilityRouteOptions, limit: number): Promise<readonly CompatRecord[]> {
   if (options.agentEvalStore) {
     const rows = await options.agentEvalStore.listRunLogs(limit);
     return rows.map((row) => evalStoreRecordToCompat(row, "agent_eval_run_log"));
@@ -984,11 +776,11 @@ function evalStoreRecordToCompat(record: JsonObject, prefix: string): CompatReco
   };
 }
 
-async function runLogResponse(run: AgentRunRecord, options: ReactorCompatibilityRouteOptions): Promise<JsonObject> {
+export async function runLogResponse(run: AgentRunRecord, options: ReactorCompatibilityRouteOptions): Promise<JsonObject> {
   return toEvalRunLogResponse(await runLogRecord(run, options));
 }
 
-function toEvalRunLogResponse(log: JsonObject): JsonObject {
+export function toEvalRunLogResponse(log: JsonObject): JsonObject {
   const toolExposure = isRecord(log.toolExposure) ? log.toolExposure : {};
   const toolCalls = Array.isArray(log.toolCalls) ? log.toolCalls : [];
   const retrievedChunks = Array.isArray(log.retrievedChunks) ? log.retrievedChunks : [];
@@ -1021,7 +813,7 @@ function toEvalToolCall(toolCall: ToolCallRecord): JsonObject {
   };
 }
 
-function toEvalCaseResponse(record: JsonObject): JsonObject {
+export function toEvalCaseResponse(record: JsonObject): JsonObject {
   return {
     agentType: typeof record.agentType === "string" ? record.agentType : null,
     assertionCount: readNumber(record.assertionCount, countEvalAssertions(record)),
@@ -1035,7 +827,7 @@ function toEvalCaseResponse(record: JsonObject): JsonObject {
   };
 }
 
-async function evaluateRunAgainstCase(
+export async function evaluateRunAgainstCase(
   evalCase: JsonObject,
   run: AgentRunRecord,
   options: ReactorCompatibilityRouteOptions,
@@ -1126,7 +918,7 @@ async function evaluateRunAgainstCase(
   };
 }
 
-async function replayEvalCase(
+export async function replayEvalCase(
   evalCase: JsonObject,
   request: FastifyRequest,
   options: ReactorCompatibilityRouteOptions
@@ -1244,7 +1036,7 @@ function agentEvalResult(
   };
 }
 
-async function storeEvalResult(
+export async function storeEvalResult(
   result: JsonObject,
   includeLlmJudge: boolean,
   options: ReactorCompatibilityRouteOptions,
@@ -1365,13 +1157,13 @@ function extractJsonObject(raw: string): string {
   return start >= 0 && end >= start ? trimmed.slice(start, end + 1) : trimmed;
 }
 
-function countEvalAssertions(value: JsonObject): number {
+export function countEvalAssertions(value: JsonObject): number {
   return countBehaviorAssertions(value) +
     (typeof value.agentType === "string" && value.agentType.length > 0 ? 1 : 0) +
     (typeof value.model === "string" && value.model.length > 0 ? 1 : 0);
 }
 
-function countBehaviorAssertions(value: JsonObject): number {
+export function countBehaviorAssertions(value: JsonObject): number {
   return readStringSet(value.expectedAnswerContains).length +
     readStringSet(value.forbiddenAnswerContains).length +
     readStringSet(value.expectedToolNames).length +
@@ -1396,7 +1188,7 @@ export function toolCallRanking(toolCalls: readonly ToolCallRecord[]) {
   return [...byName.values()].sort((left, right) => right.total - left.total);
 }
 
-function toolOutcomeStats(toolCalls: readonly ToolCallRecord[], server?: string): JsonObject {
+export function toolOutcomeStats(toolCalls: readonly ToolCallRecord[], server?: string): JsonObject {
   const rows = toolCalls
     .filter((call) => !server || call.name.startsWith(`${server}:`) || call.name.startsWith(`${server}.`))
     .map((call) => ({
@@ -6273,7 +6065,7 @@ function notFound(reply: FastifyReply, code: string) {
   });
 }
 
-function badRequest(reply: FastifyReply, code: string, message: string) {
+export function badRequest(reply: FastifyReply, code: string, message: string) {
   return reply.status(400).send({ code, message });
 }
 
@@ -7200,7 +6992,7 @@ export function readStringArray(value: unknown): readonly string[] | undefined {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined;
 }
 
-function readStringSet(value: unknown): string[] {
+export function readStringSet(value: unknown): string[] {
   if (Array.isArray(value)) {
     return [...new Set(value.filter((item): item is string => typeof item === "string" && item.trim().length > 0))];
   }
@@ -7215,7 +7007,7 @@ export function readQueryString(request: FastifyRequest, key: string): string | 
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
-function readQueryStringSet(request: FastifyRequest, key: string): Set<string> {
+export function readQueryStringSet(request: FastifyRequest, key: string): Set<string> {
   const query = request.query as Record<string, unknown>;
   return new Set(readStringSet(query[key]));
 }
