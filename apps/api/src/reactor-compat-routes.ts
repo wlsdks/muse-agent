@@ -62,6 +62,7 @@ import { createHash } from "node:crypto";
 import { registerAgentCompatibilityRoutes } from "./agent-compat-routes.js";
 import { registerApprovalCompatibilityRoutes } from "./approval-compat-routes.js";
 import { registerAuthCompatibilityRoutes } from "./auth-compat-routes.js";
+import { registerGuardCompatibilityRoutes } from "./guard-compat-routes.js";
 import { registerPolicyCompatibilityRoutes } from "./policy-compat-routes.js";
 import { registerDocumentRoutes } from "./document-compat-routes.js";
 import { registerFeedbackCompatRoutes } from "./feedback-compat-routes.js";
@@ -192,7 +193,7 @@ interface CompatGuardStageField {
 
 let state: CompatState = createCompatState();
 
-const inputGuardStages: readonly CompatGuardStage[] = [
+export const inputGuardStages: readonly CompatGuardStage[] = [
   {
     className: "RateLimitStage",
     config: [
@@ -355,347 +356,7 @@ function createCompatState(): CompatState {
 
 // registerPolicyCompatibilityRoutes lives in apps/api/src/policy-compat-routes.ts.
 
-function registerGuardCompatibilityRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  registerInputGuardRuleRoutes(server, options);
-  registerOutputGuardRuleRoutes(server, options);
-
-  server.get("/api/admin/input-guard/pipeline", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return Promise.all(inputGuardStages.map((stage) => toGuardStageResponse(stage, options)));
-  });
-
-  server.put("/api/admin/input-guard/settings", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const settings = stringMapField(toBody(request.body).settings);
-    let updated = 0;
-
-    for (const [key, value] of Object.entries(settings)) {
-      if (!key.startsWith("guard.")) {
-        continue;
-      }
-
-      await options.runtimeSettings.set({
-        category: "guard",
-        key,
-        type: "string",
-        value
-      });
-      updated += 1;
-    }
-
-    await recordAdminAudit(request, options, {
-      action: "UPDATE_SETTINGS",
-      category: "input_guard",
-      detail: `keys=${Object.keys(settings).join(",")}`
-    });
-
-    return {
-      note: "Some changes require a server restart",
-      updated
-    };
-  });
-
-  server.put("/api/admin/input-guard/pipeline/reorder", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const order = readStringArray(toBody(request.body).order) ?? [];
-    const known = new Set(inputGuardStages.map((stage) => stage.name));
-    const unknown = order.filter((stageName) => !known.has(stageName));
-
-    if (order.length === 0 || unknown.length > 0) {
-      const knownStages = [...known].join(", ");
-      return reply.status(400).send(errorResponse(
-        unknown.length > 0
-          ? `알 수 없는 stage: [${unknown.join(", ")}] (등록된 stage: [${knownStages}])`
-          : "요청 형식이 올바르지 않습니다"
-      ));
-    }
-
-    await Promise.all(order.map((stageName, index) =>
-      options.runtimeSettings.set({
-        category: "guard",
-        key: `guard.stage.${stageName}.order`,
-        type: "number",
-        value: String(index)
-      })
-    ));
-
-    await recordAdminAudit(request, options, {
-      action: "PIPELINE_REORDER",
-      category: "input_guard",
-      detail: `order=${order.join(",")}`
-    });
-
-    return {
-      note: "Changed order applies after server restart",
-      order
-    };
-  });
-
-  server.get("/api/admin/input-guard/stages/:stageName/config", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { stageName } = request.params as { readonly stageName: string };
-    const stage = inputGuardStages.find((item) => item.name === stageName);
-
-    if (!stage) {
-      return reply.status(404).send();
-    }
-
-    return stageConfigResponse(stage, options);
-  });
-
-  server.put("/api/admin/input-guard/stages/:stageName/config", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { stageName } = request.params as { readonly stageName: string };
-    const stage = inputGuardStages.find((item) => item.name === stageName);
-
-    if (!stage) {
-      return reply.status(404).send();
-    }
-
-    const config = stringMapField(toBody(request.body).config);
-    const allowed = new Set(stage.config.map((item) => item.key));
-    const unknown = Object.keys(config).filter((key) => !allowed.has(key));
-
-    if (stage.config.length === 0 || Object.keys(config).length === 0 || unknown.length > 0) {
-      const allowedKeys = [...allowed].join(", ");
-      return reply.status(400).send(errorResponse(
-        unknown.length > 0
-          ? `알 수 없는 config 키: [${unknown.join(", ")}] (허용: [${allowedKeys}])`
-          : `${stageName} 에는 노출된 tunable 파라미터가 없습니다`
-      ));
-    }
-
-    await Promise.all(Object.entries(config).map(([key, value]) =>
-      options.runtimeSettings.set({
-        category: "guard",
-        key: `guard.stage.${stageName}.${key}`,
-        type: "string",
-        value
-      })
-    ));
-
-    const restartRequired = stage.config
-      .filter((item) => item.restartRequired && Object.prototype.hasOwnProperty.call(config, item.key))
-      .map((item) => item.key);
-
-    await recordAdminAudit(request, options, {
-      action: "STAGE_CONFIG_UPDATE",
-      category: "input_guard",
-      detail: `keys=${Object.keys(config).join(",")} restartRequired=${restartRequired.join(",")}`,
-      resourceId: stageName,
-      resourceType: "guard_stage"
-    });
-
-    return {
-      note: restartRequired.length === 0
-        ? "Changes apply immediately"
-        : `The following keys apply after restart: ${restartRequired.join(", ")}`,
-      restartRequired,
-      stageName,
-      updated: Object.keys(config).length
-    };
-  });
-
-  server.get("/api/admin/input-guard/audits", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const limit = Math.max(1, readQueryInteger(request, "limit", 200));
-    const action = readQueryString(request, "action")?.toUpperCase();
-    const audits = (await listAdminAuditRecords(options, Math.min(500, limit)))
-      .filter((row) => stringField(row.category, "") === "input_guard")
-      .filter((row) => !action || stringField(row.action, "").toUpperCase() === action)
-      .sort(compareCreatedAtDesc)
-      .slice(0, Math.min(500, limit))
-      .map(toInputGuardAuditResponse);
-
-    return { audits, total: audits.length };
-  });
-
-  server.post("/api/admin/input-guard/simulate", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const result = await simulateGuard(request.body, options);
-    const input = readBodyString(request.body, "input")
-      ?? readBodyString(request.body, "text")
-      ?? readBodyString(request.body, "message")
-      ?? "";
-
-    await recordAdminAudit(request, options, {
-      action: "SIMULATE",
-      category: "input_guard",
-      detail: `input=${input.slice(0, 100)} passed=${result.passed === true}`
-    });
-
-    return result;
-  });
-}
-
-function registerInputGuardRuleRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/admin/input-guard/rules", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const rules = (await listInputGuardRules(options)).map(toInputGuardRuleResponse);
-    return { rules, total: rules.length };
-  });
-  server.get("/api/admin/input-guard/rules/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    const rule = await getInputGuardRule(options, id);
-    return rule ? toInputGuardRuleResponse(rule) : reply.status(404).send();
-  });
-  server.post("/api/admin/input-guard/rules", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const error = validateInputGuardRule(request.body);
-    return error
-      ? reply.status(400).send(error)
-      : toInputGuardRuleResponse(await createInputGuardRule(options, request.body));
-  });
-  server.put("/api/admin/input-guard/rules/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    const existing = await getInputGuardRule(options, id);
-
-    if (!existing) {
-      return reply.status(404).send();
-    }
-
-    const error = validateInputGuardRule(request.body);
-    return error
-      ? reply.status(400).send(error)
-      : toInputGuardRuleResponse(await updateInputGuardRule(options, existing, request.body));
-  });
-  server.delete("/api/admin/input-guard/rules/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    const deleted = await deleteInputGuardRule(options, id);
-    return deleted ? { deleted: true, id } : reply.status(404).send();
-  });
-}
-
-function registerOutputGuardRuleRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/output-guard/rules", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return (await listOutputGuardRules(options)).map(toOutputGuardRuleResponse);
-  });
-  server.get("/api/output-guard/rules/audits", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const limit = readQueryInteger(request, "limit", 100);
-    return (await listOutputGuardAudits(options, limit)).map(toOutputGuardAuditResponse);
-  });
-  server.post("/api/output-guard/rules", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const error = validateOutputGuardRule(request.body);
-
-    if (error) {
-      return reply.status(400).send(error);
-    }
-
-    const rule = await createOutputGuardRule(options, request.body);
-    await recordOutputGuardAudit(options, "CREATE", request, rule.id, outputGuardRuleDetail(rule));
-    return reply.status(201).send(toOutputGuardRuleResponse(rule));
-  });
-  server.post("/api/output-guard/rules/simulate", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const error = validateOutputGuardSimulation(request.body);
-
-    if (error) {
-      return reply.status(400).send(error);
-    }
-
-    const response = await simulateOutputGuardRules(options, request.body);
-    await recordOutputGuardAudit(
-      options,
-      "SIMULATE",
-      request,
-      undefined,
-      `blocked=${response.blocked}, matched=${response.matchedRules.length}, includeDisabled=${readBoolean(toBody(request.body).includeDisabled, false)}`
-    );
-    return response;
-  });
-  server.put("/api/output-guard/rules/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    const existing = await getOutputGuardRule(options, id);
-
-    if (!existing) {
-      return outputGuardRuleNotFound(reply, id);
-    }
-
-    const error = validateOutputGuardRule(request.body, true);
-
-    if (error) {
-      return reply.status(400).send(error);
-    }
-
-    const rule = await updateOutputGuardRule(options, existing, request.body);
-    await recordOutputGuardAudit(options, "UPDATE", request, rule.id, outputGuardRuleDetail(rule));
-    return toOutputGuardRuleResponse(rule);
-  });
-  server.delete("/api/output-guard/rules/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    const existing = await getOutputGuardRule(options, id);
-
-    if (!existing) {
-      return outputGuardRuleNotFound(reply, id);
-    }
-
-    await deleteOutputGuardRule(options, existing.id);
-    await recordOutputGuardAudit(options, "DELETE", request, existing.id, `name=${stringField(existing.name, "")}`);
-    return reply.status(204).send();
-  });
-}
+// registerGuardCompatibilityRoutes lives in apps/api/src/guard-compat-routes.ts.
 
 function registerMemoryAndFeedbackRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   registerUserMemoryCompatRoutes(server, options);
@@ -3816,7 +3477,7 @@ function metricEventStoreRecordToCompat(record: {
   };
 }
 
-async function recordAdminAudit(
+export async function recordAdminAudit(
   request: FastifyRequest,
   options: ReactorCompatibilityRouteOptions,
   input: JsonObject
@@ -3851,7 +3512,7 @@ function toAdminAuditResponse(record: JsonObject): JsonObject {
   };
 }
 
-async function listAdminAuditRecords(
+export async function listAdminAuditRecords(
   options: ReactorCompatibilityRouteOptions,
   limit = 1000
 ): Promise<readonly JsonObject[]> {
@@ -3886,7 +3547,7 @@ function adminAuditStoreRecordToCompat(record: {
   };
 }
 
-function toInputGuardAuditResponse(record: JsonObject): JsonObject {
+export function toInputGuardAuditResponse(record: JsonObject): JsonObject {
   return {
     action: stringField(record.action, "UPDATE").toUpperCase(),
     actor: stringField(record.actor, "anonymous"),
@@ -3951,7 +3612,7 @@ function inputGuardStatsResponse(options: ReactorCompatibilityRouteOptions, peri
   };
 }
 
-function compareCreatedAtDesc(left: JsonObject, right: JsonObject): number {
+export function compareCreatedAtDesc(left: JsonObject, right: JsonObject): number {
   return (epochMillisOrNull(right.createdAt) ?? 0) - (epochMillisOrNull(left.createdAt) ?? 0);
 }
 
@@ -4177,7 +3838,7 @@ function numberOrString(value: unknown, fallback: number): number | string {
   return typeof value === "string" && value.trim().length > 0 ? value : readNumber(value, fallback);
 }
 
-function readBoolean(value: unknown, fallback: boolean): boolean {
+export function readBoolean(value: unknown, fallback: boolean): boolean {
   if (typeof value === "boolean") {
     return value;
   }
@@ -4596,7 +4257,7 @@ async function respondPromptExperiment(
   return record ? toPromptExperimentResponse(record) : reply.status(404).send(errorResponse(`Experiment not found: ${id}`));
 }
 
-async function createInputGuardRule(
+export async function createInputGuardRule(
   options: ReactorCompatibilityRouteOptions,
   bodyValue: unknown
 ): Promise<CompatRecord> {
@@ -4613,7 +4274,7 @@ async function createInputGuardRule(
   });
 }
 
-async function updateInputGuardRule(
+export async function updateInputGuardRule(
   options: ReactorCompatibilityRouteOptions,
   existing: CompatRecord,
   bodyValue: unknown
@@ -4641,7 +4302,7 @@ async function saveInputGuardRule(options: ReactorCompatibilityRouteOptions, rec
   return createRecord(state.inputGuardRules, record, "input_guard_rule");
 }
 
-async function listInputGuardRules(options: ReactorCompatibilityRouteOptions): Promise<readonly CompatRecord[]> {
+export async function listInputGuardRules(options: ReactorCompatibilityRouteOptions): Promise<readonly CompatRecord[]> {
   if (options.guardRuleStore) {
     const rows = await options.guardRuleStore.listInputRules();
     return rows.map((row) => guardStoreRecordToCompat(row, "input_guard_rule"));
@@ -4650,7 +4311,7 @@ async function listInputGuardRules(options: ReactorCompatibilityRouteOptions): P
   return [...state.inputGuardRules.values()];
 }
 
-async function getInputGuardRule(options: ReactorCompatibilityRouteOptions, id: string): Promise<CompatRecord | undefined> {
+export async function getInputGuardRule(options: ReactorCompatibilityRouteOptions, id: string): Promise<CompatRecord | undefined> {
   if (options.guardRuleStore) {
     const row = await options.guardRuleStore.getInputRule(id);
     return row ? guardStoreRecordToCompat(row, "input_guard_rule") : undefined;
@@ -4659,7 +4320,7 @@ async function getInputGuardRule(options: ReactorCompatibilityRouteOptions, id: 
   return findCompatRecord(state.inputGuardRules, id);
 }
 
-async function deleteInputGuardRule(options: ReactorCompatibilityRouteOptions, id: string): Promise<boolean> {
+export async function deleteInputGuardRule(options: ReactorCompatibilityRouteOptions, id: string): Promise<boolean> {
   if (options.guardRuleStore) {
     return options.guardRuleStore.deleteInputRule(id);
   }
@@ -4667,7 +4328,7 @@ async function deleteInputGuardRule(options: ReactorCompatibilityRouteOptions, i
   return state.inputGuardRules.delete(id);
 }
 
-function toInputGuardRuleResponse(record: JsonObject) {
+export function toInputGuardRuleResponse(record: JsonObject) {
   return {
     action: inputGuardAction(record.action),
     category: stringField(record.category, "custom"),
@@ -4683,7 +4344,7 @@ function toInputGuardRuleResponse(record: JsonObject) {
   };
 }
 
-function validateInputGuardRule(bodyValue: unknown): JsonObject | undefined {
+export function validateInputGuardRule(bodyValue: unknown): JsonObject | undefined {
   const body = toBody(bodyValue);
   const name = readBodyString(body, "name") ?? "";
   const pattern = readBodyString(body, "pattern") ?? "";
@@ -4726,7 +4387,7 @@ function inputGuardAction(value: unknown): string {
   return normalized === "warn" || normalized === "flag" ? normalized : "block";
 }
 
-async function createOutputGuardRule(
+export async function createOutputGuardRule(
   options: ReactorCompatibilityRouteOptions,
   bodyValue: unknown
 ): Promise<CompatRecord> {
@@ -4741,7 +4402,7 @@ async function createOutputGuardRule(
   });
 }
 
-async function updateOutputGuardRule(
+export async function updateOutputGuardRule(
   options: ReactorCompatibilityRouteOptions,
   existing: CompatRecord,
   bodyValue: unknown
@@ -4768,7 +4429,7 @@ async function saveOutputGuardRule(options: ReactorCompatibilityRouteOptions, re
   return createRecord(state.outputGuardRules, record, "output_guard_rule");
 }
 
-async function listOutputGuardRules(options: ReactorCompatibilityRouteOptions): Promise<readonly CompatRecord[]> {
+export async function listOutputGuardRules(options: ReactorCompatibilityRouteOptions): Promise<readonly CompatRecord[]> {
   if (options.guardRuleStore) {
     const rows = await options.guardRuleStore.listOutputRules();
     return rows.map((row) => guardStoreRecordToCompat(row, "output_guard_rule"));
@@ -4777,7 +4438,7 @@ async function listOutputGuardRules(options: ReactorCompatibilityRouteOptions): 
   return [...state.outputGuardRules.values()];
 }
 
-async function getOutputGuardRule(options: ReactorCompatibilityRouteOptions, id: string): Promise<CompatRecord | undefined> {
+export async function getOutputGuardRule(options: ReactorCompatibilityRouteOptions, id: string): Promise<CompatRecord | undefined> {
   if (options.guardRuleStore) {
     const row = await options.guardRuleStore.getOutputRule(id);
     return row ? guardStoreRecordToCompat(row, "output_guard_rule") : undefined;
@@ -4786,7 +4447,7 @@ async function getOutputGuardRule(options: ReactorCompatibilityRouteOptions, id:
   return findCompatRecord(state.outputGuardRules, id);
 }
 
-async function deleteOutputGuardRule(options: ReactorCompatibilityRouteOptions, id: string): Promise<boolean> {
+export async function deleteOutputGuardRule(options: ReactorCompatibilityRouteOptions, id: string): Promise<boolean> {
   if (options.guardRuleStore) {
     return options.guardRuleStore.deleteOutputRule(id);
   }
@@ -4794,7 +4455,7 @@ async function deleteOutputGuardRule(options: ReactorCompatibilityRouteOptions, 
   return state.outputGuardRules.delete(id);
 }
 
-function toOutputGuardRuleResponse(record: JsonObject) {
+export function toOutputGuardRuleResponse(record: JsonObject) {
   return {
     action: outputGuardAction(record.action),
     createdAt: epochMillisOrNull(record.createdAt) ?? Date.now(),
@@ -4808,7 +4469,7 @@ function toOutputGuardRuleResponse(record: JsonObject) {
   };
 }
 
-function validateOutputGuardRule(bodyValue: unknown, partial = false): JsonObject | undefined {
+export function validateOutputGuardRule(bodyValue: unknown, partial = false): JsonObject | undefined {
   const body = toBody(bodyValue);
   const action = body.action;
   const name = body.name;
@@ -4851,7 +4512,7 @@ function validateOutputGuardRule(bodyValue: unknown, partial = false): JsonObjec
   return undefined;
 }
 
-function validateOutputGuardSimulation(bodyValue: unknown): JsonObject | undefined {
+export function validateOutputGuardSimulation(bodyValue: unknown): JsonObject | undefined {
   const body = toBody(bodyValue);
   const content = body.content;
 
@@ -4866,7 +4527,7 @@ function validateOutputGuardSimulation(bodyValue: unknown): JsonObject | undefin
   return undefined;
 }
 
-function outputGuardRuleNotFound(reply: FastifyReply, id: string) {
+export function outputGuardRuleNotFound(reply: FastifyReply, id: string) {
   return reply.status(404).send(errorResponse(`Output guard rule '${id}' not found`));
 }
 
@@ -4874,7 +4535,7 @@ function outputGuardAction(value: unknown): string {
   return typeof value === "string" && value.trim().toUpperCase() === "REJECT" ? "REJECT" : "MASK";
 }
 
-async function simulateOutputGuardRules(options: ReactorCompatibilityRouteOptions, bodyValue: unknown) {
+export async function simulateOutputGuardRules(options: ReactorCompatibilityRouteOptions, bodyValue: unknown) {
   const body = toBody(bodyValue);
   const originalContent = readBodyString(body, "content") ?? readBodyString(body, "text") ?? "";
   const includeDisabled = readBoolean(body.includeDisabled, false);
@@ -4932,7 +4593,7 @@ async function simulateOutputGuardRules(options: ReactorCompatibilityRouteOption
   };
 }
 
-async function recordOutputGuardAudit(
+export async function recordOutputGuardAudit(
   options: ReactorCompatibilityRouteOptions,
   action: string,
   request: FastifyRequest,
@@ -4954,7 +4615,7 @@ async function recordOutputGuardAudit(
   return createRecord(state.outputGuardRuleAudits, record, "output_guard_audit");
 }
 
-async function listOutputGuardAudits(
+export async function listOutputGuardAudits(
   options: ReactorCompatibilityRouteOptions,
   limit: number
 ): Promise<readonly CompatRecord[]> {
@@ -4986,7 +4647,7 @@ function guardStoreRecordToCompat(record: JsonObject, prefix: string): CompatRec
   };
 }
 
-function toOutputGuardAuditResponse(record: JsonObject) {
+export function toOutputGuardAuditResponse(record: JsonObject) {
   return {
     action: outputGuardAction(record.action) === "REJECT" ? "REJECT" : stringField(record.action, "CREATE"),
     actor: stringField(record.actor, "anonymous"),
@@ -4997,7 +4658,7 @@ function toOutputGuardAuditResponse(record: JsonObject) {
   };
 }
 
-function outputGuardRuleDetail(rule: JsonObject): string {
+export function outputGuardRuleDetail(rule: JsonObject): string {
   return `name=${stringField(rule.name, "")}, action=${outputGuardAction(rule.action)}, priority=${readNumber(rule.priority, 100)}, enabled=${readBoolean(rule.enabled, true)}`;
 }
 
@@ -8209,7 +7870,7 @@ function doctorStatusShortCode(status: string): string {
   return status === "SKIPPED" ? "SKIP" : status;
 }
 
-async function simulateGuard(value: unknown, options: ReactorCompatibilityRouteOptions) {
+export async function simulateGuard(value: unknown, options: ReactorCompatibilityRouteOptions) {
   const input = readBodyString(value, "input")
     ?? readBodyString(value, "text")
     ?? readBodyString(value, "message")
@@ -8985,7 +8646,7 @@ function nullableBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
-async function toGuardStageResponse(
+export async function toGuardStageResponse(
   stage: CompatGuardStage,
   options: ReactorCompatibilityRouteOptions
 ): Promise<JsonObject> {
@@ -8998,7 +8659,7 @@ async function toGuardStageResponse(
   };
 }
 
-async function stageConfigResponse(
+export async function stageConfigResponse(
   stage: CompatGuardStage,
   options: ReactorCompatibilityRouteOptions
 ): Promise<JsonObject> {
@@ -9034,7 +8695,7 @@ async function runtimeSettingStringOrNull(
   return setting?.value && setting.value.trim().length > 0 ? setting.value : null;
 }
 
-function stringMapField(value: unknown): Record<string, string> {
+export function stringMapField(value: unknown): Record<string, string> {
   if (!isRecord(value)) {
     return {};
   }
@@ -9316,7 +8977,7 @@ function agentModeResponse(value: AgentSpecInput["mode"]): string {
   return value === "plan_execute" ? "PLAN_EXECUTE" : (value ?? "react").toUpperCase();
 }
 
-function readStringArray(value: unknown): readonly string[] | undefined {
+export function readStringArray(value: unknown): readonly string[] | undefined {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined;
 }
 
