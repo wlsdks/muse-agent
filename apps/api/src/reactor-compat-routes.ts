@@ -60,6 +60,7 @@ import { createRunId, type JsonObject } from "@muse/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHash } from "node:crypto";
 import { registerAuthCompatibilityRoutes } from "./auth-compat-routes.js";
+import { registerDocumentRoutes } from "./document-compat-routes.js";
 import { registerIntentRoutes } from "./intent-compat-routes.js";
 import { registerPersonaRoutes } from "./persona-compat-routes.js";
 import { registerPromptTemplateRoutes } from "./prompt-template-compat-routes.js";
@@ -1210,139 +1211,7 @@ function registerFeedbackRoutes(server: FastifyInstance, options: ReactorCompati
 
 // registerIntentRoutes lives in apps/api/src/intent-compat-routes.ts.
 
-function registerDocumentRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/documents", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const limit = readQueryInteger(request, "limit", 100);
-    return (await listDocuments(options, { limit: Math.min(Math.max(limit, 1), 1000) }))
-      .slice(0, Math.min(Math.max(limit, 1), 1000))
-      .map((document) => ({
-        content: stringField(document.content, ""),
-        id: document.id,
-        metadata: jsonObjectField(document.metadata)
-      }));
-  });
-  server.post("/api/documents", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const body = toBody(request.body);
-    const validationError = validateAddDocumentBody(body);
-
-    if (validationError) {
-      return reply.status(400).send(validationErrorResponse(validationError));
-    }
-
-    const duplicate = await findDocumentByContentHash(options, computeContentHash(readBodyString(body, "content") ?? ""));
-
-    if (duplicate) {
-      return duplicateDocumentConflict(reply, duplicate.id);
-    }
-
-    return reply.status(201).send(toDocumentResponse(await createDocument(options, body)));
-  });
-  server.post("/api/documents/batch", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const documents = toBody(request.body).documents;
-    const items: readonly unknown[] = Array.isArray(documents) ? documents : [];
-
-    if (items.length === 0) {
-      return reply.status(400).send(validationErrorResponse({ documents: "Documents list must not be empty" }));
-    }
-
-    if (items.length > 100) {
-      return reply.status(400).send(validationErrorResponse({ documents: "Batch must not exceed 100 documents" }));
-    }
-
-    for (const [index, item] of items.entries()) {
-      const body = toBody(item);
-      const validationError = validateAddDocumentBody(body);
-
-      if (validationError) {
-        return reply.status(400).send(validationErrorResponse(prefixValidationDetails(`documents[${index}]`, validationError)));
-      }
-
-      const duplicate = await findDocumentByContentHash(options, computeContentHash(readBodyString(body, "content") ?? ""));
-
-      if (duplicate) {
-        return duplicateDocumentConflict(reply, duplicate.id);
-      }
-    }
-
-    const saved = await Promise.all(items.map((item) => createDocument(options, item)));
-    return reply.status(201).send({
-      count: saved.length,
-      ids: saved.map((document) => document.id),
-      totalChunks: saved.reduce((total, document) => total + readNumber(document.chunkCount, 1), 0)
-    });
-  });
-  server.post("/api/documents/search", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const query = (readBodyString(request.body, "query") ?? "").toLowerCase();
-    const topK = readNumber(toBody(request.body).topK, 5);
-
-    if (query.trim().length === 0) {
-      return reply.status(400).send(validationErrorResponse({ query: "Search query is required" }));
-    }
-
-    if (query.length > 10_000) {
-      return reply.status(400).send(validationErrorResponse({
-        query: "Search query must not exceed 10000 characters"
-      }));
-    }
-
-    if (topK < 1) {
-      return reply.status(400).send(validationErrorResponse({ topK: "topK must be at least 1" }));
-    }
-
-    if (topK > 100) {
-      return reply.status(400).send(validationErrorResponse({ topK: "topK must not exceed 100" }));
-    }
-
-    return (await searchDocuments(options, query, { limit: Math.min(Math.max(topK, 1), 100) }))
-      .map(toSearchResultResponse);
-  });
-  server.delete("/api/documents", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const ids = stringArrayField(toBody(request.body).ids, []);
-
-    if (ids.length === 0) {
-      return reply.status(400).send(validationErrorResponse({ ids: "IDs list must not be empty" }));
-    }
-
-    if (ids.length > 100) {
-      return reply.status(400).send(validationErrorResponse({
-        ids: "Cannot delete more than 100 documents at once"
-      }));
-    }
-
-    await deleteDocuments(options, ids);
-
-    return reply.status(204).send();
-  });
-  server.delete("/api/documents/:documentId", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { documentId } = request.params as { readonly documentId: string };
-    await deleteDocument(options, documentId);
-    return reply.status(204).send();
-  });
-}
+// registerDocumentRoutes lives in apps/api/src/document-compat-routes.ts.
 
 function registerPromptAndRagRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   registerPersonaRoutes(server, options);
@@ -4785,7 +4654,7 @@ function numberField(value: JsonObject, key: string): number {
   return typeof item === "number" && Number.isFinite(item) ? item : 0;
 }
 
-function readNumber(value: unknown, fallback: number): number {
+export function readNumber(value: unknown, fallback: number): number {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
   }
@@ -6493,7 +6362,7 @@ export function toIntentResponse(record: JsonObject) {
   };
 }
 
-async function createDocument(options: ReactorCompatibilityRouteOptions, bodyValue: unknown): Promise<CompatRecord> {
+export async function createDocument(options: ReactorCompatibilityRouteOptions, bodyValue: unknown): Promise<CompatRecord> {
   const body = toBody(bodyValue);
   const content = readBodyString(body, "content") ?? "";
   const metadata = documentMetadata(body);
@@ -6509,7 +6378,7 @@ async function createDocument(options: ReactorCompatibilityRouteOptions, bodyVal
   });
 }
 
-function toDocumentResponse(record: JsonObject) {
+export function toDocumentResponse(record: JsonObject) {
   return {
     chunkCount: readNumber(record.chunkCount, 1),
     chunkIds: stringArrayField(record.chunkIds, []),
@@ -6519,7 +6388,7 @@ function toDocumentResponse(record: JsonObject) {
   };
 }
 
-function toSearchResultResponse(record: JsonObject) {
+export function toSearchResultResponse(record: JsonObject) {
   return {
     content: stringField(record.content, ""),
     id: stringField(record.id, ""),
@@ -6572,7 +6441,7 @@ function documentRecordMetadata(record: JsonObject, metadata: JsonObject): JsonO
   };
 }
 
-async function listDocuments(
+export async function listDocuments(
   options: ReactorCompatibilityRouteOptions,
   listOptions: { readonly limit?: number } = {}
 ): Promise<readonly CompatRecord[]> {
@@ -6580,7 +6449,7 @@ async function listDocuments(
   return stored ? stored.map(storedRagDocumentToCompat) : [...state.documents.values()].slice(0, listOptions.limit ?? 100);
 }
 
-async function searchDocuments(
+export async function searchDocuments(
   options: ReactorCompatibilityRouteOptions,
   query: string,
   searchOptions: { readonly limit?: number } = {}
@@ -6596,7 +6465,7 @@ async function searchDocuments(
     .slice(0, searchOptions.limit ?? 5);
 }
 
-async function deleteDocument(options: ReactorCompatibilityRouteOptions, id: string): Promise<boolean> {
+export async function deleteDocument(options: ReactorCompatibilityRouteOptions, id: string): Promise<boolean> {
   if (options.ragIngestion?.documentStore) {
     return options.ragIngestion.documentStore.delete(id);
   }
@@ -6604,7 +6473,7 @@ async function deleteDocument(options: ReactorCompatibilityRouteOptions, id: str
   return state.documents.delete(id);
 }
 
-async function deleteDocuments(options: ReactorCompatibilityRouteOptions, ids: readonly string[]): Promise<number> {
+export async function deleteDocuments(options: ReactorCompatibilityRouteOptions, ids: readonly string[]): Promise<number> {
   if (options.ragIngestion?.documentStore) {
     return options.ragIngestion.documentStore.deleteMany(ids);
   }
@@ -6645,7 +6514,7 @@ function documentMetadata(body: CompatBody): JsonObject {
     : metadata;
 }
 
-function validateAddDocumentBody(body: CompatBody): JsonObject | undefined {
+export function validateAddDocumentBody(body: CompatBody): JsonObject | undefined {
   const content = readBodyString(body, "content");
 
   if (!content) {
@@ -6671,13 +6540,13 @@ export function validationErrorResponse(details: JsonObject): JsonObject {
   };
 }
 
-function prefixValidationDetails(prefix: string, details: JsonObject): JsonObject {
+export function prefixValidationDetails(prefix: string, details: JsonObject): JsonObject {
   return Object.fromEntries(
     Object.entries(details).map(([field, message]) => [`${prefix}.${field}`, message])
   );
 }
 
-async function findDocumentByContentHash(
+export async function findDocumentByContentHash(
   options: ReactorCompatibilityRouteOptions,
   contentHash: string
 ): Promise<CompatRecord | undefined> {
@@ -6693,14 +6562,14 @@ async function findDocumentByContentHash(
   });
 }
 
-function duplicateDocumentConflict(reply: FastifyReply, existingId: string) {
+export function duplicateDocumentConflict(reply: FastifyReply, existingId: string) {
   return reply.status(409).send({
     error: "Document with identical content already exists",
     existingId
   });
 }
 
-function computeContentHash(content: string): string {
+export function computeContentHash(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
@@ -10027,16 +9896,16 @@ function nullableNumberResponse(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function stringField(value: unknown, fallback: string): string {
+export function stringField(value: unknown, fallback: string): string {
   return typeof value === "string" ? value : fallback;
 }
 
-function stringArrayField(value: unknown, fallback: string[]): string[] {
+export function stringArrayField(value: unknown, fallback: string[]): string[] {
   const parsed = readStringArray(value);
   return parsed ? [...parsed] : fallback;
 }
 
-function jsonObjectField(value: unknown): JsonObject {
+export function jsonObjectField(value: unknown): JsonObject {
   return isRecord(value) ? toJsonObject(value) : {};
 }
 
