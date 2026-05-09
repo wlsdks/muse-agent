@@ -245,6 +245,12 @@ importers:
         specifier: workspace:*
         version: link:../shared
 
+  packages/calendar:
+    dependencies:
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
+
   packages/db:
     dependencies:
       '@muse/shared':

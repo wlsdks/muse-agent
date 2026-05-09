@@ -1,0 +1,346 @@
+import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
+
+import { CalendarProviderError } from "./errors.js";
+import type {
+  CalendarEvent,
+  CalendarEventInput,
+  CalendarEventUpdate,
+  CalendarProvider,
+  CalendarProviderInfo,
+  CalendarRange,
+  CredentialRequirement
+} from "./types.js";
+
+export interface CalDAVCalendarProviderOptions {
+  readonly url: string;
+  readonly username: string;
+  readonly password: string;
+  readonly fetchImpl?: typeof fetch;
+}
+
+const credentialRequirements: readonly CredentialRequirement[] = [
+  {
+    description: "CalDAV calendar URL (e.g. https://caldav.icloud.com/<user-id>/calendars/home/)",
+    key: "url",
+    label: "CalDAV URL",
+    secret: false
+  },
+  { description: "Account username (typically email)", key: "username", label: "Username", secret: false },
+  {
+    description: "App-specific password (iCloud / Fastmail / Proton issue these from account settings)",
+    key: "password",
+    label: "App password",
+    secret: true
+  }
+];
+
+/**
+ * Minimal CalDAV adapter built directly on `fetch` — no `tsdav` /
+ * `ical.js` dependency. Covers the four operations the agent needs:
+ *
+ *   - listEvents: REPORT calendar-query with VEVENT time-range.
+ *     Parses returned VCALENDAR blocks into `CalendarEvent`s.
+ *   - createEvent / updateEvent: PUT a VCALENDAR/VEVENT to
+ *     `<url>/<uid>.ics`.
+ *   - deleteEvent: DELETE the same path.
+ *
+ * Works against iCloud, Fastmail, Proton, and any compliant CalDAV
+ * server. iCloud requires an app-specific password — the CLI wizard
+ * tells the user where to issue one.
+ */
+export class CalDAVCalendarProvider implements CalendarProvider {
+  readonly id = "caldav";
+  private readonly url: string;
+  private readonly authHeader: string;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(options: CalDAVCalendarProviderOptions) {
+    this.url = options.url.endsWith("/") ? options.url : `${options.url}/`;
+    this.authHeader = `Basic ${Buffer.from(`${options.username}:${options.password}`).toString("base64")}`;
+    this.fetchImpl = options.fetchImpl ?? fetch;
+  }
+
+  describe(): CalendarProviderInfo {
+    return {
+      credentials: credentialRequirements,
+      description: "CalDAV calendar (iCloud / Fastmail / Proton / generic).",
+      displayName: "CalDAV",
+      id: this.id,
+      local: false
+    };
+  }
+
+  async listEvents(range: CalendarRange): Promise<readonly CalendarEvent[]> {
+    const body = renderCalendarQueryReport(range);
+    const response = await this.fetchImpl(this.url, {
+      body,
+      headers: this.headers({ depth: "1", contentType: 'application/xml; charset="utf-8"' }),
+      method: "REPORT"
+    });
+
+    if (!response.ok) {
+      throw new CalendarProviderError(this.id, `HTTP_${response.status}`, await this.errorText(response));
+    }
+
+    const xml = await response.text();
+    return parseCalendarQueryResponse(xml, this.id, this.url);
+  }
+
+  async createEvent(input: CalendarEventInput): Promise<CalendarEvent> {
+    const uid = `cal_${randomUUID()}`;
+    const ics = renderVEvent(uid, input);
+    const href = `${this.url}${uid}.ics`;
+
+    const response = await this.fetchImpl(href, {
+      body: ics,
+      headers: this.headers({ contentType: "text/calendar; charset=utf-8" }),
+      method: "PUT"
+    });
+
+    if (!response.ok) {
+      throw new CalendarProviderError(this.id, `HTTP_${response.status}`, await this.errorText(response));
+    }
+
+    return {
+      allDay: input.allDay ?? false,
+      endsAt: input.endsAt,
+      id: uid,
+      providerId: this.id,
+      startsAt: input.startsAt,
+      title: input.title,
+      ...(input.location ? { location: input.location } : {}),
+      ...(input.notes ? { notes: input.notes } : {}),
+      ...(input.tags && input.tags.length > 0 ? { tags: [...input.tags] } : {})
+    };
+  }
+
+  async updateEvent(id: string, input: CalendarEventUpdate): Promise<CalendarEvent> {
+    const events = await this.listEvents({
+      from: new Date(0),
+      to: new Date(Date.now() + 365 * 86_400_000)
+    });
+    const existing = events.find((event) => event.id === id);
+
+    if (!existing) {
+      throw new CalendarProviderError(this.id, "EVENT_NOT_FOUND", `CalDAV event not found: ${id}`);
+    }
+
+    const merged: CalendarEventInput = {
+      allDay: input.allDay ?? existing.allDay,
+      endsAt: input.endsAt ?? existing.endsAt,
+      startsAt: input.startsAt ?? existing.startsAt,
+      title: input.title ?? existing.title,
+      ...(applyOptional(existing.location, input.location) ? { location: applyOptional(existing.location, input.location)! } : {}),
+      ...(applyOptional(existing.notes, input.notes) ? { notes: applyOptional(existing.notes, input.notes)! } : {})
+    };
+
+    const ics = renderVEvent(id, merged);
+    const href = `${this.url}${id}.ics`;
+    const response = await this.fetchImpl(href, {
+      body: ics,
+      headers: this.headers({ contentType: "text/calendar; charset=utf-8" }),
+      method: "PUT"
+    });
+
+    if (!response.ok) {
+      throw new CalendarProviderError(this.id, `HTTP_${response.status}`, await this.errorText(response));
+    }
+
+    return { ...existing, ...merged, id, providerId: this.id };
+  }
+
+  async deleteEvent(id: string): Promise<void> {
+    const response = await this.fetchImpl(`${this.url}${id}.ics`, {
+      headers: this.headers({}),
+      method: "DELETE"
+    });
+
+    if (!response.ok && response.status !== 404) {
+      throw new CalendarProviderError(this.id, `HTTP_${response.status}`, await this.errorText(response));
+    }
+  }
+
+  private headers(extras: { readonly depth?: string; readonly contentType?: string }): Record<string, string> {
+    const headers: Record<string, string> = { authorization: this.authHeader };
+    if (extras.depth) {
+      headers.depth = extras.depth;
+    }
+    if (extras.contentType) {
+      headers["content-type"] = extras.contentType;
+    }
+    return headers;
+  }
+
+  private async errorText(response: Response): Promise<string> {
+    const text = await response.text().catch(() => "");
+    return `CalDAV ${response.status}: ${text}`.slice(0, 500);
+  }
+}
+
+function applyOptional(existing: string | undefined, next: string | null | undefined): string | undefined {
+  if (next === null) {
+    return undefined;
+  }
+  return next ?? existing;
+}
+
+function renderCalendarQueryReport(range: CalendarRange): string {
+  return `<?xml version="1.0" encoding="utf-8" ?>
+<C:calendar-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:prop>
+    <D:getetag/>
+    <C:calendar-data/>
+  </D:prop>
+  <C:filter>
+    <C:comp-filter name="VCALENDAR">
+      <C:comp-filter name="VEVENT">
+        <C:time-range start="${formatIcsTime(range.from)}" end="${formatIcsTime(range.to)}"/>
+      </C:comp-filter>
+    </C:comp-filter>
+  </C:filter>
+</C:calendar-query>`;
+}
+
+function renderVEvent(uid: string, input: CalendarEventInput): string {
+  const now = new Date();
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Muse//Muse Calendar 1.0//EN",
+    "BEGIN:VEVENT",
+    `UID:${escapeIcsText(uid)}`,
+    `DTSTAMP:${formatIcsTime(now)}`,
+    `SUMMARY:${escapeIcsText(input.title)}`,
+    input.allDay
+      ? `DTSTART;VALUE=DATE:${formatIcsDate(input.startsAt)}`
+      : `DTSTART:${formatIcsTime(input.startsAt)}`,
+    input.allDay
+      ? `DTEND;VALUE=DATE:${formatIcsDate(input.endsAt)}`
+      : `DTEND:${formatIcsTime(input.endsAt)}`,
+    input.location ? `LOCATION:${escapeIcsText(input.location)}` : null,
+    input.notes ? `DESCRIPTION:${escapeIcsText(input.notes)}` : null,
+    "END:VEVENT",
+    "END:VCALENDAR"
+  ].filter((line): line is string => Boolean(line));
+
+  return `${lines.join("\r\n")}\r\n`;
+}
+
+function parseCalendarQueryResponse(xml: string, providerId: string, baseUrl: string): readonly CalendarEvent[] {
+  const responses = xml.match(/<(?:D:)?response[\s\S]*?<\/(?:D:)?response>/giu) ?? [];
+  return responses.flatMap((entry): readonly CalendarEvent[] => {
+    const href = entry.match(/<(?:D:)?href>([\s\S]*?)<\/(?:D:)?href>/iu)?.[1]?.trim();
+    const data = entry.match(/<(?:C:)?calendar-data[^>]*>([\s\S]*?)<\/(?:C:)?calendar-data>/iu)?.[1] ?? "";
+    if (!data || !href) {
+      return [];
+    }
+
+    const decoded = decodeXmlText(data);
+    const event = parseVEvent(decoded, providerId, hrefToId(href, baseUrl));
+    return event ? [event] : [];
+  });
+}
+
+function parseVEvent(ics: string, providerId: string, fallbackId: string): CalendarEvent | undefined {
+  const summary = matchIcs(ics, "SUMMARY");
+  const dtstart = matchIcsLine(ics, "DTSTART");
+  const dtend = matchIcsLine(ics, "DTEND");
+  const uid = matchIcs(ics, "UID");
+  const location = matchIcs(ics, "LOCATION");
+  const description = matchIcs(ics, "DESCRIPTION");
+
+  if (!summary || !dtstart) {
+    return undefined;
+  }
+
+  const allDay = dtstart.params.includes("VALUE=DATE");
+  const startsAt = parseIcsTime(dtstart.value, allDay);
+  const endsAt = dtend ? parseIcsTime(dtend.value, allDay) : startsAt;
+
+  if (!startsAt || !endsAt) {
+    return undefined;
+  }
+
+  return {
+    allDay,
+    endsAt,
+    id: uid ?? fallbackId,
+    providerId,
+    startsAt,
+    title: summary,
+    ...(location ? { location } : {}),
+    ...(description ? { notes: description } : {})
+  };
+}
+
+function matchIcs(ics: string, key: string): string | undefined {
+  const line = matchIcsLine(ics, key);
+  return line ? unescapeIcsText(line.value) : undefined;
+}
+
+function matchIcsLine(ics: string, key: string): { readonly value: string; readonly params: string } | undefined {
+  const re = new RegExp(`(^|\\r?\\n)${key}([^:\\r\\n]*):([^\\r\\n]*)`, "u");
+  const match = ics.match(re);
+  if (!match) {
+    return undefined;
+  }
+  return { params: match[2] ?? "", value: match[3] ?? "" };
+}
+
+function escapeIcsText(value: string): string {
+  return value
+    .replace(/\\/gu, "\\\\")
+    .replace(/\n/gu, "\\n")
+    .replace(/,/gu, "\\,")
+    .replace(/;/gu, "\\;");
+}
+
+function unescapeIcsText(value: string): string {
+  return value
+    .replace(/\\n/giu, "\n")
+    .replace(/\\,/gu, ",")
+    .replace(/\\;/gu, ";")
+    .replace(/\\\\/gu, "\\");
+}
+
+function formatIcsTime(value: Date): string {
+  return value.toISOString().replace(/[-:]/gu, "").replace(/\.\d{3}Z$/u, "Z");
+}
+
+function formatIcsDate(value: Date): string {
+  return value.toISOString().slice(0, 10).replace(/-/gu, "");
+}
+
+function parseIcsTime(value: string, allDay: boolean): Date | undefined {
+  if (allDay && /^\d{8}$/u.test(value)) {
+    const year = value.slice(0, 4);
+    const month = value.slice(4, 6);
+    const day = value.slice(6, 8);
+    const parsed = new Date(`${year}-${month}-${day}T00:00:00Z`);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+
+  const match = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/u);
+  if (!match) {
+    return undefined;
+  }
+  const [, year, month, day, hour, minute, second, zulu] = match;
+  const iso = `${year}-${month}-${day}T${hour}:${minute}:${second}${zulu === "Z" ? "Z" : ""}`;
+  const parsed = new Date(iso);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+function hrefToId(href: string, baseUrl: string): string {
+  const trimmed = href.trim();
+  const stripped = trimmed.startsWith(baseUrl) ? trimmed.slice(baseUrl.length) : trimmed.split("/").pop() ?? trimmed;
+  return stripped.replace(/\.ics$/u, "") || randomUUID();
+}
+
+function decodeXmlText(value: string): string {
+  return value
+    .replace(/&lt;/gu, "<")
+    .replace(/&gt;/gu, ">")
+    .replace(/&amp;/gu, "&")
+    .replace(/&quot;/gu, "\"");
+}
