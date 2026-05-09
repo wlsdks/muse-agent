@@ -42,7 +42,6 @@ export interface MuseDatabase {
   readonly task_memories: CompatibilityTable;
   readonly tool_calls: ToolCallTable;
   readonly trace_events: TraceEventTable;
-  readonly user_identities: UserIdentityTable;
   readonly user_memories: UserMemoryTable;
   readonly users: UserTable;
 }
@@ -105,16 +104,6 @@ export interface UserTable {
   readonly email: string;
   readonly name: string;
   readonly password_hash: string;
-  readonly created_at: Timestamp;
-  readonly updated_at: Timestamp;
-}
-
-export interface UserIdentityTable {
-  readonly slack_user_id: string;
-  readonly email: string;
-  readonly display_name: string | null;
-  readonly jira_account_id: string | null;
-  readonly bitbucket_uuid: string | null;
   readonly created_at: Timestamp;
   readonly updated_at: Timestamp;
 }

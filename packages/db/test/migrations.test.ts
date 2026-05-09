@@ -12,7 +12,6 @@ describe("db migrations", () => {
     for (const table of [
       "agent_runs",
       "users",
-      "user_identities",
       "conversation_messages",
       "tool_calls",
       "checkpoints",
