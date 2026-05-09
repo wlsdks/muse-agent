@@ -519,7 +519,7 @@ describe("createJarvisTools", () => {
     return tool;
   }
 
-  it("registers fourteen zero-IO ambient utility tools", () => {
+  it("registers fifteen zero-IO ambient utility tools", () => {
     const tools = createJarvisTools();
     expect(tools.map((tool) => tool.definition.name).sort()).toEqual([
       "csv_parse",
@@ -528,6 +528,7 @@ describe("createJarvisTools", () => {
       "kv_summarize",
       "markdown_table",
       "math_eval",
+      "next_weekday",
       "regex_extract",
       "slugify",
       "text_stats",
@@ -540,6 +541,40 @@ describe("createJarvisTools", () => {
     for (const tool of tools) {
       expect(tool.definition.risk).toBe("read");
     }
+  });
+
+  it("next_weekday resolves a weekday to the next strict-future ISO date", async () => {
+    const tool = getTool("next_weekday");
+
+    // 2026-05-07 is a Thursday → next Monday is 2026-05-11
+    const monday = (await tool.execute(
+      { reference: "2026-05-07T01:23:45.000Z", weekday: "Monday" },
+      { runId: "r" }
+    )) as { iso: string; weekday: string };
+    expect(monday).toEqual({ iso: "2026-05-11", weekday: "monday" });
+
+    // 'mon' alias works
+    expect(
+      (await tool.execute({ reference: "2026-05-07T00:00:00.000Z", weekday: "mon" }, { runId: "r" })) as {
+        iso: string;
+      }
+    ).toMatchObject({ iso: "2026-05-11" });
+
+    // Reference is itself Thursday → next Thursday is one week later
+    const nextThursday = (await tool.execute(
+      { reference: "2026-05-07T12:00:00.000Z", weekday: "thursday" },
+      { runId: "r" }
+    )) as { iso: string };
+    expect(nextThursday.iso).toBe("2026-05-14");
+
+    // Defaults reference to the injected clock (2026-05-07 Thu) when omitted
+    const sundayFromInjectedNow = (await tool.execute({ weekday: "Sun" }, { runId: "r" })) as { iso: string };
+    expect(sundayFromInjectedNow.iso).toBe("2026-05-10");
+
+    expect(await tool.execute({ weekday: "" }, { runId: "r" })).toEqual({ error: "weekday is required" });
+    expect(await tool.execute({ weekday: "blursday" }, { runId: "r" })).toMatchObject({
+      error: expect.stringContaining("weekday must be one of")
+    });
   });
 
   it("csv_parse handles headers, quoted fields, escaped quotes, CRLF, header:false", async () => {

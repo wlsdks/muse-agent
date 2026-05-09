@@ -27,6 +27,7 @@ export function createJarvisTools(options: JarvisToolFactoryOptions = {}): reado
     createTimeDiffTool(),
     createTimeAddTool(),
     createTimeRelativeTool(now),
+    createNextWeekdayTool(now),
     createTextStatsTool(),
     createMathEvalTool(),
     createJsonQueryTool(),
@@ -789,6 +790,71 @@ function parseCsvRecords(text: string): string[][] {
     records.push(row);
   }
   return records;
+}
+
+const WEEKDAY_NAMES: ReadonlyArray<readonly string[]> = [
+  ["sunday", "sun"],
+  ["monday", "mon"],
+  ["tuesday", "tue", "tues"],
+  ["wednesday", "wed"],
+  ["thursday", "thu", "thur", "thurs"],
+  ["friday", "fri"],
+  ["saturday", "sat"]
+];
+
+function createNextWeekdayTool(now: () => Date): MuseTool {
+  return {
+    definition: {
+      description:
+        "Resolves a weekday name (e.g. 'Monday' / 'mon' / 'TUES') to the next ISO date on which it falls. " +
+        "Optional `reference` (ISO-8601) pins the comparison point; otherwise the current clock is used. " +
+        "If the reference is itself that weekday, returns the occurrence one week later (always a strict 'next'). " +
+        "Returns `{ iso, weekday }` (UTC date stripped of time-of-day) so the agent can stamp reminders or compose schedules without inline math.",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          reference: {
+            description: "Optional ISO-8601 reference timestamp. Defaults to now.",
+            type: "string"
+          },
+          weekday: {
+            description: "Weekday name or 3-letter abbreviation (case-insensitive).",
+            type: "string"
+          }
+        },
+        required: ["weekday"],
+        type: "object"
+      },
+      keywords: ["calendar", "schedule", "weekday", "next"],
+      name: "next_weekday",
+      risk: "read"
+    },
+    execute: (args): JsonObject => {
+      const weekdayInput = typeof args["weekday"] === "string" ? (args["weekday"] as string).trim().toLowerCase() : "";
+      if (weekdayInput.length === 0) {
+        return { error: "weekday is required" };
+      }
+      const targetIndex = WEEKDAY_NAMES.findIndex((aliases) => aliases.includes(weekdayInput));
+      if (targetIndex < 0) {
+        return { error: `weekday must be one of: ${WEEKDAY_NAMES.map((aliases) => aliases[0]).join(", ")}` };
+      }
+      const reference = readRequiredDate(args, "reference") ?? now();
+      const referenceDay = new Date(Date.UTC(
+        reference.getUTCFullYear(),
+        reference.getUTCMonth(),
+        reference.getUTCDate()
+      ));
+      const currentIndex = referenceDay.getUTCDay();
+      let delta = (targetIndex - currentIndex + 7) % 7;
+      if (delta === 0) {
+        delta = 7;
+      }
+      const next = new Date(referenceDay.getTime() + delta * 86_400_000);
+      const iso = next.toISOString().slice(0, 10);
+      const weekdayName = WEEKDAY_NAMES[targetIndex]?.[0] ?? weekdayInput;
+      return { iso, weekday: weekdayName } satisfies JsonObject;
+    }
+  };
 }
 
 function readOptionalString(args: JsonObject, key: string): string | undefined {
