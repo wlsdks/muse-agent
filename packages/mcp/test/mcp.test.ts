@@ -18,6 +18,7 @@ import {
   createFilesystemMcpServer,
   createJsonMcpServer,
   createMathMcpServer,
+  createNotesMcpServer,
   createRegexMcpServer,
   createUrlMcpServer,
   createMcpSecurityPolicyInsert,
@@ -932,6 +933,73 @@ describe("muse.fetch loopback server", () => {
     const connection = createLoopbackMcpConnection(server);
     const result = await connection.callTool!("get", { url: "https://api.example.test/" });
     expect(result).toEqual({ error: "fetch failed: network down" });
+  });
+});
+
+describe("muse.notes loopback server", () => {
+  function createStubRetriever(matches: readonly { id: string; content: string; score: number; source?: string }[]) {
+    let capturedQueries: readonly string[] | undefined;
+    let capturedTopK: number | undefined;
+    return {
+      lastCall: () => ({ queries: capturedQueries, topK: capturedTopK }),
+      retriever: {
+        retrieve: (queries: readonly string[], topK: number) => {
+          capturedQueries = queries;
+          capturedTopK = topK;
+          return matches;
+        }
+      }
+    };
+  }
+
+  it("muse.notes#search returns matches with id/content/score and optional source", async () => {
+    const { retriever, lastCall } = createStubRetriever([
+      { content: "Buy milk and eggs.", id: "doc-1", score: 0.92, source: "groceries.md" },
+      { content: "Mom's birthday is on the 15th.", id: "doc-2", score: 0.81 }
+    ]);
+    const connection = createLoopbackMcpConnection(createNotesMcpServer({ retriever }));
+    const result = await connection.callTool!("search", { query: "groceries" }) as { matches: Array<Record<string, unknown>> };
+
+    expect(lastCall().queries).toEqual(["groceries"]);
+    expect(lastCall().topK).toBe(5);
+    expect(result.matches).toEqual([
+      { content: "Buy milk and eggs.", id: "doc-1", score: 0.92, source: "groceries.md" },
+      { content: "Mom's birthday is on the 15th.", id: "doc-2", score: 0.81 }
+    ]);
+  });
+
+  it("muse.notes#search clamps limit to [1, maxLimit] and trims whitespace", async () => {
+    const { retriever, lastCall } = createStubRetriever([]);
+    const connection = createLoopbackMcpConnection(createNotesMcpServer({ retriever, defaultLimit: 5, maxLimit: 10 }));
+
+    await connection.callTool!("search", { limit: 100, query: "  hello  " });
+    expect(lastCall().queries).toEqual(["hello"]);
+    expect(lastCall().topK).toBe(10);
+
+    await connection.callTool!("search", { limit: -5, query: "hi" });
+    expect(lastCall().topK).toBe(1);
+
+    await connection.callTool!("search", { query: "default" });
+    expect(lastCall().topK).toBe(5);
+  });
+
+  it("muse.notes#search rejects empty / overlong queries", async () => {
+    const { retriever } = createStubRetriever([]);
+    const connection = createLoopbackMcpConnection(createNotesMcpServer({ retriever, maxQueryLength: 16 }));
+
+    expect(await connection.callTool!("search", { query: "" })).toEqual({ error: "query is required" });
+    expect(await connection.callTool!("search", { query: "   " })).toEqual({ error: "query is required" });
+    expect(await connection.callTool!("search", { query: "x".repeat(17) })).toMatchObject({
+      error: expect.stringContaining("query must be at most 16 characters")
+    });
+  });
+
+  it("muse.notes is exposed as a Muse tool with name 'muse.notes.search' and read risk", () => {
+    const { retriever } = createStubRetriever([]);
+    const tools = createLoopbackMcpMuseTools(createNotesMcpServer({ retriever }));
+    expect(tools).toHaveLength(1);
+    expect(tools[0]?.definition.name).toBe("muse.notes.search");
+    expect(tools[0]?.definition.risk).toBe("read");
   });
 });
 

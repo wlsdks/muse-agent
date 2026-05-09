@@ -1325,6 +1325,7 @@ export {
   createLoopbackMcpConnection,
   createLoopbackMcpMuseTools,
   createMathMcpServer,
+  createNotesMcpServer,
   createRegexMcpServer,
   createTextUtilsMcpServer,
   createTimeMcpServer,
@@ -1334,5 +1335,8 @@ export {
   type FilesystemMcpServerOptions,
   type LoopbackMcpCatalogEntry,
   type LoopbackMcpServer,
-  type LoopbackMcpToolDefinition
+  type LoopbackMcpToolDefinition,
+  type NotesDocumentMatch,
+  type NotesDocumentRetriever,
+  type NotesMcpServerOptions
 } from "./loopback.js";

@@ -58,6 +58,7 @@ import {
   createFetchMcpServer,
   createFilesystemMcpServer,
   createLoopbackMcpMuseTools,
+  createNotesMcpServer,
   type LoopbackMcpServer,
   type McpSecurityPolicyInput,
   type McpSecurityPolicyStore,
@@ -127,7 +128,7 @@ import {
   type TokenUsageSink
 } from "@muse/observability";
 import { CircuitBreakerRegistry } from "@muse/resilience";
-import { createDefaultRagPipeline } from "./rag-query.js";
+import { createDefaultRagPipeline, createDocumentStoreRetriever } from "./rag-query.js";
 import {
   InMemoryRuntimeSettingsStore,
   KyselyRuntimeSettingsStore,
@@ -344,9 +345,11 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const museTools = parseBoolean(env.MUSE_TOOLS_ENABLED, true) ? createMuseTools() : [];
   const loopbackMcpTools = createLoopbackMcpToolsFromEnv(env);
   let schedulerService: DynamicScheduler | undefined;
+  let notesLoopbackTools: readonly MuseTool[] = [];
   const toolRegistry = new DynamicToolRegistry([
     () => museTools,
     () => loopbackMcpTools,
+    () => notesLoopbackTools,
     () => runnerTools,
     () => mcpManager.toMuseTools(),
     () => schedulerService ? createSchedulerTools(schedulerService) : []
@@ -358,6 +361,11 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     ...(modelProvider ? { modelProvider } : {}),
     ...(defaultModel ? { defaultModel } : {})
   });
+  if (ragPipeline) {
+    notesLoopbackTools = createLoopbackMcpMuseTools(createNotesMcpServer({
+      retriever: createDocumentStoreRetriever(ragDocumentStore)
+    }));
+  }
   const agentRuntime = modelProvider && defaultModel
     ? createAgentRuntime({
       agentSpecResolver,

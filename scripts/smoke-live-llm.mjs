@@ -38,6 +38,7 @@ const env = {
   ...process.env,
   MUSE_MODEL: provider.model,
   MUSE_MODEL_PROVIDER_ID: provider.providerId,
+  MUSE_RAG_PIPELINE_ENABLED: "true",
   PORT: String(port),
   ...(provider.apiKey ? { MUSE_MODEL_API_KEY: provider.apiKey } : {})
 };
@@ -232,6 +233,44 @@ try {
     const code = body.errorCode ?? body.code;
     assert(code === "PII_DETECTED",
       `expected PII_DETECTED, got ${code}: ${JSON.stringify(body)}`);
+  });
+
+  await record("muse.notes.search (live) — LLM searches the user's personal notes", async () => {
+    const seed = await fetch(`${baseUrl}/api/admin/rag/seed-policy`, {
+      body: JSON.stringify({
+        entries: [
+          {
+            content: "Mom's birthday is on May 15. Buy white roses and write a card mentioning the trip to Jeju.",
+            key: "mom-birthday",
+            title: "Mom's birthday"
+          },
+          {
+            content: "Garage door opener spare battery is in the kitchen drawer next to the matches.",
+            key: "garage-battery",
+            title: "Garage door battery"
+          }
+        ]
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    assert(seed.status === 200 || seed.status === 201, `expected seed ok, got ${seed.status}`);
+
+    const response = await fetch(`${baseUrl}/api/chat`, {
+      body: JSON.stringify({
+        message:
+          "Use the muse.notes.search tool to find what to buy for mom's birthday from my notes, then reply with only the flower color and what to mention. No other words.",
+        runId: "live-notes-search"
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    const body = await response.json();
+    assert(response.status === 200, `expected 200, got ${response.status}: ${JSON.stringify(body)}`);
+    assert(Array.isArray(body.toolsUsed) && body.toolsUsed.includes("muse.notes.search"),
+      `expected toolsUsed to include 'muse.notes.search', got ${JSON.stringify(body.toolsUsed)} content="${body.content}"`);
+    assert(/white|jeju/iu.test(body.content ?? ""),
+      `expected note content to surface in answer (white/jeju), got "${body.content}"`);
   });
 
   await record("POST /api/multi-agent/orchestrate (live, sequential)", async () => {

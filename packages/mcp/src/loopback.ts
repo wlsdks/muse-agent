@@ -1217,6 +1217,86 @@ export function describeBuiltinLoopbackMcpServers(): readonly LoopbackMcpCatalog
   return [...defaults, ...optIn];
 }
 
+/**
+ * Reference loopback server: personal notes search backed by the user's
+ * RAG document store. Exposes `muse.notes.search(query, limit?)` so the agent
+ * can explicitly look things up in the user's indexed notes / docs without
+ * relying on the implicit RAG context injection. Returns up to `limit`
+ * matches (default 5, max 20) ranked by retriever score.
+ */
+export interface NotesDocumentMatch {
+  readonly id: string;
+  readonly content: string;
+  readonly score: number;
+  readonly source?: string;
+}
+
+export interface NotesDocumentRetriever {
+  retrieve(queries: readonly string[], topK: number): Promise<readonly NotesDocumentMatch[]> | readonly NotesDocumentMatch[];
+}
+
+export interface NotesMcpServerOptions {
+  readonly retriever: NotesDocumentRetriever;
+  readonly defaultLimit?: number;
+  readonly maxLimit?: number;
+  readonly maxQueryLength?: number;
+}
+
+export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMcpServer {
+  const defaultLimit = Math.max(1, Math.trunc(options.defaultLimit ?? 5));
+  const maxLimit = Math.max(defaultLimit, Math.trunc(options.maxLimit ?? 20));
+  const maxQueryLength = Math.max(16, Math.trunc(options.maxQueryLength ?? 1_000));
+  return {
+    description: "Search the user's RAG-indexed personal notes (loopback MCP).",
+    name: "muse.notes",
+    tools: [
+      {
+        description:
+          "Search the user's personal notes / RAG-indexed documents for `query`. " +
+          `Returns up to \`limit\` matches (default ${defaultLimit}, max ${maxLimit}) ranked by retriever score. ` +
+          "Each match contains its id, full chunk content, score, and (when known) source. " +
+          "Use this when the user asks about something they've written down, captured, or saved before.",
+        execute: async (args): Promise<JsonObject> => {
+          const query = readString(args, "query")?.trim();
+          if (!query) {
+            return { error: "query is required" };
+          }
+          if (query.length > maxQueryLength) {
+            return { error: `query must be at most ${maxQueryLength} characters` };
+          }
+          const limitArg = args["limit"];
+          const limit = typeof limitArg === "number" && Number.isFinite(limitArg)
+            ? Math.max(1, Math.min(maxLimit, Math.trunc(limitArg)))
+            : defaultLimit;
+          const matches = await options.retriever.retrieve([query], limit);
+          return {
+            matches: matches.slice(0, limit).map((match) => ({
+              content: match.content,
+              id: match.id,
+              score: match.score,
+              ...(match.source !== undefined ? { source: match.source } : {})
+            })) as JsonValue
+          } satisfies JsonObject;
+        },
+        inputSchema: {
+          additionalProperties: false,
+          properties: {
+            limit: {
+              description: `Max matches to return. Defaults to ${defaultLimit}; capped at ${maxLimit}.`,
+              type: "number"
+            },
+            query: { description: "What to search for in the user's notes.", type: "string" }
+          },
+          required: ["query"],
+          type: "object"
+        },
+        name: "search",
+        risk: "read"
+      }
+    ]
+  };
+}
+
 /** All eight default loopback servers (time / text / math / json / url / crypto / diff / regex). `muse.fetch` is opt-in via `createFetchMcpServer`. */
 export function createDefaultLoopbackMcpServers(options: BuiltinLoopbackOptions = {}): readonly LoopbackMcpServer[] {
   return [
