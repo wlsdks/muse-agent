@@ -264,7 +264,7 @@ try {
     const response = await fetch(`${baseUrl}/api/chat`, {
       body: JSON.stringify({
         message:
-          "Search the user's notes for 'mom' using muse.notes.search, then call muse.notes.read on the returned `path` to get the full content, then reply with only the flower color and the city to mention. No other words.",
+          "Step 1: call the tool muse.notes.search with query=\"mom\". Step 2: take the path string from the first match in the returned array and call the tool muse.notes.read with that exact path. Step 3: reply with only the flower color and the city mentioned in the note content. No questions, no clarifications, no other words. Both tool calls are mandatory.",
         runId: "live-notes-search"
       }),
       headers: { "content-type": "application/json" },
