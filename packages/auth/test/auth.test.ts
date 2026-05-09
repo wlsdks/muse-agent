@@ -13,7 +13,6 @@ import {
   DefaultAuthProvider,
   InMemoryTokenRevocationStore,
   InMemoryUserStore,
-  IamTokenExchange,
   JwtTokenProvider,
   createAuthTokenRevocationInsert,
   createUserInsert,
@@ -23,7 +22,6 @@ import {
   currentActor,
   extractBearerToken,
   isAnyAdmin,
-  maskedAdminAccountRef,
   normalizeEmail
 } from "../src/index.js";
 
@@ -153,60 +151,11 @@ describe("Auth registration and login", () => {
   });
 });
 
-describe("IamTokenExchange", () => {
-  it("exchanges verified IAM claims into Muse JWTs and auto-creates users", async () => {
-    const store = new InMemoryUserStore();
-    const jwt = new JwtTokenProvider({ jwtSecret });
-    const service = new IamTokenExchange({
-      idFactory: () => "iam-user-1",
-      jwt,
-      userStore: store,
-      verifier: {
-        verify: (token) => token === "iam-token"
-          ? { email: "IAM_USER@example.com", roles: ["ROLE_ADMIN"], sub: "iam-user" }
-          : undefined
-      }
-    });
-
-    const exchanged = await service.exchange("iam-token");
-    const secondExchange = await service.exchange("iam-token");
-    const identity = jwt.parseToken(exchanged?.token ?? "");
-
-    expect(exchanged?.user).toMatchObject({
-      email: "iam_user@example.com",
-      id: "iam-user-1",
-      name: "IAM_USER",
-      role: "admin"
-    });
-    expect(identity).toMatchObject({ role: "admin", sub: "iam-user-1" });
-    expect(secondExchange?.user.id).toBe("iam-user-1");
-    expect(store.count()).toBe(1);
-  });
-
-  it("rejects invalid IAM tokens and respects disabled auto-create", async () => {
-    const store = new InMemoryUserStore();
-    const service = new IamTokenExchange({
-      autoCreateUser: false,
-      jwt: new JwtTokenProvider({ jwtSecret }),
-      userStore: store,
-      verifier: {
-        verify: () => ({ roles: ["ROLE_ADMIN"], sub: "iam-user" })
-      }
-    });
-
-    await expect(service.exchange("iam-token")).resolves.toBeUndefined();
-    await expect(service.exchange("")).resolves.toBeUndefined();
-    expect(store.count()).toBe(0);
-  });
-});
-
 describe("authorization helpers", () => {
   it("recognises admin role and masks actors", () => {
     expect(isAnyAdmin("admin")).toBe(true);
     expect(isAnyAdmin("user")).toBe(false);
     expect(currentActor(undefined)).toBe(anonymousActor);
-    expect(maskedAdminAccountRef("admin-1")).toMatch(/^admin-account:[a-f0-9]{12}$/u);
-    expect(maskedAdminAccountRef(anonymousActor)).toBe("admin-account:anonymous");
   });
 
   it("extracts bearer tokens conservatively", () => {

@@ -5,7 +5,6 @@ import {
   AuthRateLimiter,
   extractBearerToken,
   type AuthIdentity,
-  type IamTokenExchange,
   type LoginResult,
   type MuseAuth,
   type UserRole
@@ -74,7 +73,6 @@ export interface ReactorCompatibilityRouteOptions {
   readonly agentSpecRegistry: AgentSpecRegistry;
   readonly authRateLimiter: AuthRateLimiter;
   readonly authService?: MuseAuth;
-  readonly iamTokenExchangeService?: IamTokenExchange;
   readonly authorizeAdmin: (request: FastifyRequest, reply: FastifyReply) => boolean;
   readonly apiPathRegistry?: () => readonly string[];
   readonly debugReplayCaptureStore?: DebugReplayCaptureStore;
@@ -634,8 +632,6 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/admin/users/usage/cost",
     "/api/admin/users/usage/daily",
     "/api/auth/change-password",
-    "/api/auth/demo-login",
-    "/api/auth/exchange",
     "/api/auth/login",
     "/api/auth/logout",
     "/api/auth/me",

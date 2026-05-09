@@ -1,7 +1,7 @@
 /**
  * Reactor-compat auth routes extracted from reactor-compat-routes.ts.
  *
- * Wires `/api/auth/*` endpoints (register, login, demo-login, exchange,
+ * Wires `/api/auth/*` endpoints (register, login,
  * me, logout, change-password) using the shared
  * `ReactorCompatibilityRouteOptions` so call sites in
  * registerReactorCompatibilityRoutes don't change.
@@ -92,68 +92,6 @@ export function registerAuthCompatibilityRoutes(server: FastifyInstance, options
     }
 
     options.authRateLimiter.recordSuccess(key);
-    return toReactorAuthResponse(login);
-  });
-
-  server.post("/api/auth/demo-login", async (_request, reply) => {
-    const authService = requireAuthService(options, reply);
-
-    if (!authService) {
-      return reply;
-    }
-
-    const credentials = {
-      email: ["demo", "reactor.local"].join("@"),
-      name: "Demo Admin",
-      password: "demo-password"
-    };
-
-    try {
-      const login = await authService.register(credentials);
-      const user = await authService.updateUserRole(login.user.id, "admin");
-      return toReactorAuthResponse({
-        ...login,
-        user: user ?? login.user
-      });
-    } catch {
-      const login = await authService.login(credentials.email, credentials.password);
-      const user = login ? await authService.updateUserRole(login.user.id, "admin") : undefined;
-      return login ? toReactorAuthResponse({ ...login, user: user ?? login.user }) : reply.status(401).send({
-        code: "DEMO_LOGIN_UNAVAILABLE",
-        message: "Demo user exists but could not be authenticated"
-      });
-    }
-  });
-
-  server.post("/api/auth/exchange", async (request, reply) => {
-    if (!options.iamTokenExchangeService) {
-      return reply.status(404).send({
-        error: "IAM token exchange is not enabled",
-        token: "",
-        user: null
-      });
-    }
-
-    const token = readBodyString(request.body, "token") ?? "";
-
-    if (!token) {
-      return reply.status(400).send({
-        error: "IAM token must not be blank",
-        token: "",
-        user: null
-      });
-    }
-
-    const login = await options.iamTokenExchangeService.exchange(token);
-
-    if (!login) {
-      return reply.status(401).send({
-        error: "IAM token verification failed",
-        token: "",
-        user: null
-      });
-    }
-
     return toReactorAuthResponse(login);
   });
 

@@ -18,7 +18,6 @@ import {
 import {
   AuthRateLimiter,
   extractBearerToken,
-  type IamTokenExchange,
   isAnyAdmin,
   type AuthIdentity,
   type LoginResult,
@@ -56,7 +55,6 @@ export interface ServerOptions {
   readonly admin?: AdminRouteState;
   readonly agentSpecRegistry?: AgentSpecRegistry;
   readonly authService?: MuseAuth;
-  readonly iamTokenExchangeService?: IamTokenExchange;
   readonly authRateLimiter?: AuthRateLimiter;
   readonly debugReplayCaptureStore?: DebugReplayCaptureStore;
   readonly latencyQuery?: LatencyQuery;
@@ -330,7 +328,6 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     agentSpecRegistry,
     authRateLimiter,
     authService,
-    iamTokenExchangeService: options.iamTokenExchangeService,
     authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
     apiPathRegistry: () => [...apiPaths].sort(),
     debugReplayCaptureStore: options.debugReplayCaptureStore,
@@ -1575,8 +1572,6 @@ function isPublicRequest(method: string, url: string): boolean {
       path === "/auth/register" ||
       path === "/api/auth/login" ||
       path === "/api/auth/register" ||
-      path === "/api/auth/demo-login" ||
-      path === "/api/auth/exchange" ||
       path === "/api/error-report"
     ))
   );

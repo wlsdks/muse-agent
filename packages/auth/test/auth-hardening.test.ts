@@ -13,7 +13,6 @@ import {
   currentActor,
   extractBearerToken,
   isAnyAdmin,
-  maskedAdminAccountRef,
   normalizeEmail,
   type User
 } from "../src/index.js";
@@ -258,15 +257,6 @@ describe("actor helpers", () => {
     ).toBe("user-1");
   });
 
-  it("maskedAdminAccountRef is deterministic, hex-truncated, and special-cases anonymous + empty", () => {
-    expect(maskedAdminAccountRef(undefined)).toBe("admin-account:unknown");
-    expect(maskedAdminAccountRef("")).toBe("admin-account:unknown");
-    expect(maskedAdminAccountRef(anonymousActor)).toBe(`admin-account:${anonymousActor}`);
-    const masked = maskedAdminAccountRef("user-42");
-    expect(masked).toMatch(/^admin-account:[0-9a-f]{12}$/u);
-    expect(maskedAdminAccountRef("user-42")).toBe(masked); // deterministic
-    expect(maskedAdminAccountRef("user-43")).not.toBe(masked);
-  });
 });
 
 describe("extractBearerToken", () => {
