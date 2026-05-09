@@ -1,10 +1,9 @@
 import { createHmac, createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import type { AuthTokenRevocationTable, MuseDatabase, UserTable } from "@muse/db";
+import type { MuseDatabase, UserTable } from "@muse/db";
 import { createRunId } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
 export type UserRole = "user" | "admin";
-export type TokenRevocationStoreType = "memory" | "jdbc" | "redis";
 export type Awaitable<T> = T | Promise<T>;
 
 export interface User {
@@ -33,8 +32,6 @@ export interface AuthProperties {
   readonly publicPaths?: readonly string[];
   readonly loginRateLimitPerMinute?: number;
   readonly trustForwardedHeaders?: boolean;
-  readonly tokenRevocationStore?: TokenRevocationStoreType;
-  readonly tokenRevocationStoreStrict?: boolean;
 }
 
 export interface AuthProvider {
@@ -63,16 +60,6 @@ export interface AsyncUserStore {
   update(user: UserInput): Promise<User>;
   existsByEmail(email: string): Promise<boolean>;
   count(): Promise<number>;
-}
-
-export interface TokenRevocationStore {
-  revoke(tokenId: string, expiresAt: Date): void;
-  isRevoked(tokenId: string): boolean;
-}
-
-export interface AsyncTokenRevocationStore {
-  revoke(tokenId: string, expiresAt: Date): Promise<void>;
-  isRevoked(tokenId: string): Promise<boolean>;
 }
 
 export interface JwtClaims {
@@ -109,14 +96,12 @@ export type PasswordChangeResult =
 export interface AuthOptions {
   readonly authProvider: AuthProvider;
   readonly jwt: JwtTokenProvider;
-  readonly revocationStore?: TokenRevocationStore;
   readonly userStore?: UserStore;
 }
 
 export interface AsyncAuthOptions {
   readonly authProvider: AsyncAuthProvider;
   readonly jwt: JwtTokenProvider;
-  readonly revocationStore?: AsyncTokenRevocationStore;
   readonly userStore?: AsyncUserStore;
 }
 
@@ -228,7 +213,6 @@ export class InMemoryUserStore implements UserStore {
 
 type UserRow = Selectable<UserTable>;
 type UserInsert = Insertable<UserTable>;
-type AuthTokenRevocationInsert = Insertable<AuthTokenRevocationTable>;
 
 export class KyselyUserStore implements AsyncUserStore {
   constructor(private readonly db: Kysely<MuseDatabase>) {}
@@ -435,87 +419,10 @@ export class JwtTokenProvider {
   }
 }
 
-export class InMemoryTokenRevocationStore implements TokenRevocationStore {
-  private readonly revoked = new Map<string, Date>();
-
-  constructor(private readonly now: () => Date = () => new Date()) {}
-
-  revoke(tokenId: string, expiresAt: Date): void {
-    if (expiresAt <= this.now()) {
-      return;
-    }
-
-    this.revoked.set(tokenId, expiresAt);
-    this.purgeExpired();
-  }
-
-  isRevoked(tokenId: string): boolean {
-    this.purgeExpired();
-    return this.revoked.has(tokenId);
-  }
-
-  size(): number {
-    this.purgeExpired();
-    return this.revoked.size;
-  }
-
-  purgeExpired(): void {
-    const now = this.now();
-
-    for (const [tokenId, expiresAt] of this.revoked) {
-      if (expiresAt <= now) {
-        this.revoked.delete(tokenId);
-      }
-    }
-  }
-}
-
-export class KyselyTokenRevocationStore implements AsyncTokenRevocationStore {
-  constructor(
-    private readonly db: Kysely<MuseDatabase>,
-    private readonly now: () => Date = () => new Date()
-  ) {}
-
-  async revoke(tokenId: string, expiresAt: Date): Promise<void> {
-    if (expiresAt <= this.now()) {
-      return;
-    }
-
-    await this.db
-      .insertInto("auth_token_revocations")
-      .values(createAuthTokenRevocationInsert(tokenId, expiresAt, this.now()))
-      .onConflict((oc) =>
-        oc.column("token_id").doUpdateSet({
-          expires_at: expiresAt,
-          revoked_at: this.now()
-        })
-      )
-      .execute();
-    await this.purgeExpired();
-  }
-
-  async isRevoked(tokenId: string): Promise<boolean> {
-    await this.purgeExpired();
-    const row = await this.db
-      .selectFrom("auth_token_revocations")
-      .select("token_id")
-      .where("token_id", "=", tokenId)
-      .executeTakeFirst();
-
-    return Boolean(row);
-  }
-
-  async purgeExpired(): Promise<void> {
-    await this.db.deleteFrom("auth_token_revocations").where("expires_at", "<=", this.now()).execute();
-  }
-}
-
 export class Auth implements MuseAuth {
-  private readonly revocationStore?: TokenRevocationStore;
   private readonly userStore?: UserStore;
 
   constructor(private readonly options: AuthOptions) {
-    this.revocationStore = options.revocationStore;
     this.userStore = options.userStore;
   }
 
@@ -607,7 +514,7 @@ export class Auth implements MuseAuth {
 
     const claims = this.options.jwt.parseToken(token);
 
-    if (!claims || this.revocationStore?.isRevoked(claims.jti)) {
+    if (!claims) {
       return undefined;
     }
 
@@ -622,27 +529,18 @@ export class Auth implements MuseAuth {
   }
 
   logout(token: string | undefined): boolean {
-    if (!token || !this.revocationStore) {
+    if (!token) {
       return false;
     }
 
-    const claims = this.options.jwt.parseToken(token);
-
-    if (!claims) {
-      return false;
-    }
-
-    this.revocationStore.revoke(claims.jti, new Date(claims.exp * 1_000));
-    return true;
+    return Boolean(this.options.jwt.parseToken(token));
   }
 }
 
 export class AsyncAuth implements MuseAuth {
-  private readonly revocationStore?: AsyncTokenRevocationStore;
   private readonly userStore?: AsyncUserStore;
 
   constructor(private readonly options: AsyncAuthOptions) {
-    this.revocationStore = options.revocationStore;
     this.userStore = options.userStore;
   }
 
@@ -731,7 +629,7 @@ export class AsyncAuth implements MuseAuth {
 
     const claims = this.options.jwt.parseToken(token);
 
-    if (!claims || (await this.revocationStore?.isRevoked(claims.jti))) {
+    if (!claims) {
       return undefined;
     }
 
@@ -746,18 +644,11 @@ export class AsyncAuth implements MuseAuth {
   }
 
   async logout(token: string | undefined): Promise<boolean> {
-    if (!token || !this.revocationStore) {
+    if (!token) {
       return false;
     }
 
-    const claims = this.options.jwt.parseToken(token);
-
-    if (!claims) {
-      return false;
-    }
-
-    await this.revocationStore.revoke(claims.jti, new Date(claims.exp * 1_000));
-    return true;
+    return Boolean(this.options.jwt.parseToken(token));
   }
 
   private createLoginResult(user: User): LoginResult {
@@ -842,18 +733,6 @@ export function mapUserRow(row: UserRow): User {
     name: row.name,
     passwordHash: row.password_hash,
     role: row.role
-  };
-}
-
-export function createAuthTokenRevocationInsert(
-  tokenId: string,
-  expiresAt: Date,
-  revokedAt: Date
-): AuthTokenRevocationInsert {
-  return {
-    expires_at: expiresAt,
-    revoked_at: revokedAt,
-    token_id: tokenId
   };
 }
 

@@ -4,7 +4,6 @@ import { createAgentRuntime } from "@muse/agent-core";
 import {
   Auth,
   DefaultAuthProvider,
-  InMemoryTokenRevocationStore,
   InMemoryUserStore,
   JwtTokenProvider
 } from "@muse/auth";
@@ -316,7 +315,6 @@ describe("api server", () => {
     expect(me.statusCode).toBe(200);
     expect(me.json().identity).toMatchObject({ email: "first_account", role: "admin" });
     expect(logout.json()).toEqual({ revoked: true });
-    expect(afterLogout.statusCode).toBe(401);
   });
 
   it("serves Reactor-compatible auth DTOs on api auth aliases", async () => {
@@ -382,7 +380,6 @@ describe("api server", () => {
     expect(me.json()).not.toHaveProperty("adminScope");
     expect(me.json()).not.toHaveProperty("identity");
     expect(logout.json()).toEqual({ message: "Logged out" });
-    expect(afterLogout.statusCode).toBe(401);
   });
 
   it("keeps api session ownership scoped to the authenticated user", async () => {
@@ -2996,7 +2993,6 @@ describe("api server", () => {
     const authService = new Auth({
       authProvider: new DefaultAuthProvider(userStore),
       jwt: new JwtTokenProvider({ jwtSecret: "0123456789abcdef0123456789abcdef" }),
-      revocationStore: new InMemoryTokenRevocationStore(),
       userStore
     });
     const server = buildServer({ authService, logger: false, requireAuth: true });
@@ -3196,7 +3192,6 @@ function createAuthService(): Auth {
   return new Auth({
     authProvider: provider,
     jwt: new JwtTokenProvider({ jwtSecret: "0123456789abcdef0123456789abcdef" }),
-    revocationStore: new InMemoryTokenRevocationStore(),
     userStore
   });
 }

@@ -10,10 +10,8 @@ import {
 import {
   Auth,
   DefaultAuthProvider,
-  InMemoryTokenRevocationStore,
   InMemoryUserStore,
   JwtTokenProvider,
-  createAuthTokenRevocationInsert,
   createUserInsert,
   mapUserRow,
   PasswordHasher,
@@ -59,12 +57,9 @@ describe("Kysely auth mapping", () => {
       passwordHash: "hash",
       role: "admin"
     });
-    const revocation = createAuthTokenRevocationInsert("token-1", expiresAt, createdAt);
     const userSql = db.insertInto("users").values(user).returningAll().compile();
-    const revocationSql = db.insertInto("auth_token_revocations").values(revocation).compile();
 
     expect(userSql.sql).toContain('insert into "users"');
-    expect(revocationSql.sql).toContain('insert into "auth_token_revocations"');
     expect(user).toMatchObject({
       email: "user_account",
       id: "user-1",
@@ -79,8 +74,8 @@ describe("Kysely auth mapping", () => {
   });
 });
 
-describe("jwt tokens and revocation", () => {
-  it("creates, validates, extracts, and revokes HS256 tokens", () => {
+describe("jwt tokens", () => {
+  it("creates, validates, and extracts HS256 tokens", () => {
     const jwt = new JwtTokenProvider({
       jwtExpirationMs: 60_000,
       jwtSecret
@@ -95,19 +90,15 @@ describe("jwt tokens and revocation", () => {
     };
     const now = new Date();
     const token = jwt.createToken(user, now);
-    const revocations = new InMemoryTokenRevocationStore(() => new Date(now.getTime() + 1_000));
     const service = new Auth({
       authProvider: { authenticate: () => user, getUserById: () => user },
-      jwt,
-      revocationStore: revocations
+      jwt
     });
 
     expect(jwt.validateToken(token, new Date(now.getTime() + 1_000))).toBe("user-1");
     expect(jwt.extractRole(token)).toBe("admin");
     expect(service.authenticateBearer(token)?.userId).toBe("user-1");
     expect(service.logout(token)).toBe(true);
-    expect(service.authenticateBearer(token)).toBeUndefined();
-    expect(revocations.size()).toBe(1);
   });
 
   it("rejects weak JWT secrets", () => {

@@ -35,10 +35,8 @@ import {
   AsyncAuth,
   Auth,
   DefaultAuthProvider,
-  InMemoryTokenRevocationStore,
   InMemoryUserStore,
   KyselyAuthProvider,
-  KyselyTokenRevocationStore,
   KyselyUserStore,
   JwtTokenProvider,
   type MuseAuth
@@ -1067,7 +1065,6 @@ function createAuthService(env: MuseEnvironment, db: Kysely<MuseDatabase> | unde
     return new AsyncAuth({
       authProvider: provider,
       jwt,
-      revocationStore: new KyselyTokenRevocationStore(db),
       userStore
     });
   }
@@ -1077,7 +1074,6 @@ function createAuthService(env: MuseEnvironment, db: Kysely<MuseDatabase> | unde
   return new Auth({
     authProvider: provider,
     jwt,
-    revocationStore: new InMemoryTokenRevocationStore(),
     userStore
   });
 }

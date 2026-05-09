@@ -16,7 +16,6 @@ export interface MuseDatabase {
   readonly agent_specs: AgentSpecTable;
   readonly alert_instances: CompatibilityTable;
   readonly alert_rules: AlertRuleTable;
-  readonly auth_token_revocations: AuthTokenRevocationTable;
   readonly checkpoints: CheckpointTable;
   readonly conversation_messages: ConversationMessageTable;
   readonly conversation_summaries: ConversationSummaryTable;
@@ -150,12 +149,6 @@ export interface UserIdentityTable {
   readonly bitbucket_uuid: string | null;
   readonly created_at: Timestamp;
   readonly updated_at: Timestamp;
-}
-
-export interface AuthTokenRevocationTable {
-  readonly token_id: string;
-  readonly expires_at: Timestamp;
-  readonly revoked_at: Timestamp;
 }
 
 export interface ConversationSummaryTable {

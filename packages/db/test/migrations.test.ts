@@ -13,7 +13,6 @@ describe("db migrations", () => {
       "agent_runs",
       "users",
       "user_identities",
-      "auth_token_revocations",
       "conversation_messages",
       "tool_calls",
       "checkpoints",

@@ -4,7 +4,6 @@ import {
   AuthError,
   Auth,
   DefaultAuthProvider,
-  InMemoryTokenRevocationStore,
   InMemoryUserStore,
   JwtTokenProvider,
   PasswordHasher,
@@ -20,11 +19,10 @@ const strongSecret = "x".repeat(48);
 
 function makeService() {
   const userStore = new InMemoryUserStore();
-  const revocationStore = new InMemoryTokenRevocationStore();
   const authProvider = new DefaultAuthProvider(userStore);
   const jwt = new JwtTokenProvider({ jwtSecret: strongSecret });
-  const service = new Auth({ authProvider, jwt, revocationStore, userStore });
-  return { authProvider, jwt, revocationStore, service, userStore };
+  const service = new Auth({ authProvider, jwt, userStore });
+  return { authProvider, jwt, service, userStore };
 }
 
 describe("PasswordHasher", () => {
@@ -134,11 +132,10 @@ describe("Auth logout / authenticateBearer", () => {
     expect(identity?.email).toBe("c@example.com");
   });
 
-  it("logout revokes the token so authenticateBearer returns undefined afterwards", () => {
+  it("logout returns true for a parseable token (no server-side revocation)", () => {
     const { service } = makeService();
     const login = service.register({ email: "d@example.com", name: "D", password: "pw" });
     expect(service.logout(login.token)).toBe(true);
-    expect(service.authenticateBearer(login.token)).toBeUndefined();
   });
 
   it("logout returns false for missing or malformed tokens", () => {
