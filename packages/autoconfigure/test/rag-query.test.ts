@@ -115,11 +115,18 @@ describe("createDocumentStoreRetriever", () => {
 });
 
 describe("createDefaultRagPipeline", () => {
-  it("returns undefined unless MUSE_RAG_PIPELINE_ENABLED=true", () => {
+  it("returns undefined when MUSE_RAG_PIPELINE_ENABLED=false explicitly disables RAG", () => {
     expect(createDefaultRagPipeline({
       documentStore: new InMemoryRagDocumentStore(),
-      env: { MUSE_RAG_HYDE_ENABLED: "true" }
+      env: { MUSE_RAG_PIPELINE_ENABLED: "false" }
     })).toBeUndefined();
+  });
+
+  it("defaults to enabled when MUSE_RAG_PIPELINE_ENABLED is unset (personal-pivot default)", () => {
+    expect(createDefaultRagPipeline({
+      documentStore: new InMemoryRagDocumentStore(),
+      env: {}
+    })).toBeDefined();
   });
 
   it("assembles a working pipeline that retrieves stored documents when enabled", async () => {

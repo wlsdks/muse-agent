@@ -223,13 +223,10 @@ try {
     }
   });
 
-  await record("muse.notes.search registers when ragPipeline is enabled and returns matches", async () => {
+  await record("muse.notes.search registers by default and returns matches when ragPipeline is enabled", async () => {
     const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
     const assembly = createMuseRuntimeAssembly({
-      env: {
-        MUSE_RAG_PIPELINE_ENABLED: "true",
-        MUSE_TOOLS_ENABLED: "false"
-      }
+      env: { MUSE_TOOLS_ENABLED: "false" }
     });
     await assembly.ragIngestion.documentStore.save({
       content: "Mom's birthday is on May 15. Buy flowers and write a card.",
@@ -251,11 +248,13 @@ try {
     assert(matches.some((match) => match.id === "doc-mom-birthday"), `expected to find mom birthday doc, got ${JSON.stringify(matches)}`);
   });
 
-  await record("muse.notes.search is absent when ragPipeline is disabled", async () => {
+  await record("muse.notes.search is absent when MUSE_RAG_PIPELINE_ENABLED=false explicitly disables RAG", async () => {
     const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
-    const assembly = createMuseRuntimeAssembly({ env: { MUSE_TOOLS_ENABLED: "false" } });
+    const assembly = createMuseRuntimeAssembly({
+      env: { MUSE_RAG_PIPELINE_ENABLED: "false", MUSE_TOOLS_ENABLED: "false" }
+    });
     const names = assembly.toolRegistry.list().map((tool) => tool.definition.name);
-    assert(!names.includes("muse.notes.search"), `expected muse.notes.search to be absent without RAG pipeline, got ${names.join(", ")}`);
+    assert(!names.includes("muse.notes.search"), `expected muse.notes.search to be absent when RAG is disabled, got ${names.join(", ")}`);
   });
 
   await record("Muse ambient tools can be disabled via MUSE_TOOLS_ENABLED=false", async () => {

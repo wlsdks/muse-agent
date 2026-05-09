@@ -105,12 +105,18 @@ export function createDefaultRagQueryTransformer(args: CreateDefaultRagQueryTran
   return composeQueryTransformers(stages);
 }
 
-function parseBooleanFlag(value: string | undefined): boolean {
+function parseBooleanFlag(value: string | undefined, fallback = false): boolean {
   if (typeof value !== "string") {
-    return false;
+    return fallback;
   }
   const normalized = value.trim().toLowerCase();
-  return normalized === "true" || normalized === "1" || normalized === "yes";
+  if (normalized === "true" || normalized === "1" || normalized === "yes") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "0" || normalized === "no") {
+    return false;
+  }
+  return fallback;
 }
 
 function parseMaxQueries(value: string | undefined, fallback: number): number {
@@ -176,12 +182,12 @@ export interface RagPipelineEnv extends RagQueryTransformerEnv {
  *     model provider available)
  *   - maxContextTokens: tunable via `MUSE_RAG_MAX_CONTEXT_TOKENS`
  *
- * Returns `undefined` unless `MUSE_RAG_PIPELINE_ENABLED=true` so the runtime
- * preserves its current "no RAG" default. With the flag on but no documents
- * stored, the pipeline returns an empty context — non-blocking but explicit.
+ * Personal-pivot default: ON. Set `MUSE_RAG_PIPELINE_ENABLED=false` to
+ * disable. With the flag on but no documents stored, the pipeline returns
+ * an empty context — non-blocking but explicit.
  */
 export function createDefaultRagPipeline(args: CreateDefaultRagPipelineArgs): RagPipeline | undefined {
-  if (!parseBooleanFlag(args.env.MUSE_RAG_PIPELINE_ENABLED)) {
+  if (!parseBooleanFlag(args.env.MUSE_RAG_PIPELINE_ENABLED, true)) {
     return undefined;
   }
   const queryTransformer = createDefaultRagQueryTransformer({
