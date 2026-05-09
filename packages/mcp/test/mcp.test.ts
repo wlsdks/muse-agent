@@ -22,8 +22,10 @@ import {
   createTasksMcpServer,
   createRegexMcpServer,
   AppleNotesProvider,
+  LocalDirNotesProvider,
   NotesProviderError,
   NotesProviderRegistry,
+  NotesValidationError,
   NotionNotesProvider,
   createUrlMcpServer,
   createMcpSecurityPolicyInsert,
@@ -1322,5 +1324,55 @@ describe("notes provider abstraction", () => {
     const notion = new NotionNotesProvider({ databaseId: "db1", token: "t" });
     const info = notion.describe();
     expect(info).toMatchObject({ id: "notion", local: false });
+  });
+
+  it("LocalDirNotesProvider supports save → list → read → search → append", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const root = mkdtempSync(`${tmpdir}/muse-localdir-`);
+    const provider = new LocalDirNotesProvider({ notesDir: root });
+
+    const saved = await provider.save({ body: "First line\nKeyword here\n", title: "note.md" });
+    expect(saved).toMatchObject({ id: "note.md", providerId: "local", title: "note.md" });
+
+    const listed = await provider.list();
+    expect(listed.map((entry) => entry.id)).toEqual(["note.md"]);
+
+    const fetched = await provider.read("note.md");
+    expect(fetched?.body).toContain("Keyword here");
+
+    const hits = await provider.search("keyword", 5);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({ id: "note.md", line: 2 });
+
+    const appended = await provider.append({ body: "Second keyword\n", id: "note.md" });
+    expect(appended.body).toContain("Second keyword");
+
+    const missing = await provider.read("nope.md");
+    expect(missing).toBeUndefined();
+  });
+
+  it("LocalDirNotesProvider rejects sandbox escapes", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const root = mkdtempSync(`${tmpdir}/muse-localdir-escape-`);
+    const provider = new LocalDirNotesProvider({ notesDir: root });
+
+    await expect(provider.read("../etc/passwd")).rejects.toBeInstanceOf(NotesValidationError);
+    await expect(provider.read("/etc/passwd")).rejects.toBeInstanceOf(NotesValidationError);
+    await expect(provider.save({ body: "x", title: "/abs.md" })).rejects.toBeInstanceOf(NotesValidationError);
+    await expect(provider.search("   ", 5)).rejects.toBeInstanceOf(NotesValidationError);
+  });
+
+  it("LocalDirNotesProvider blocks overwrite without explicit flag", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const root = mkdtempSync(`${tmpdir}/muse-localdir-overwrite-`);
+    const provider = new LocalDirNotesProvider({ notesDir: root });
+
+    await provider.save({ body: "v1", title: "doc.md" });
+    await expect(provider.save({ body: "v2", title: "doc.md" })).rejects.toMatchObject({ code: "ALREADY_EXISTS" });
+    const replaced = await provider.save({ body: "v2", overwrite: true, title: "doc.md" });
+    expect(replaced.body).toBe("v2");
   });
 });

@@ -1341,14 +1341,16 @@ export {
   type NotesMcpServerOptions
 } from "./loopback.js";
 
-// Notes provider abstraction (LocalDir is the only impl wired into
-// createNotesMcpServer today; AppleNotes/Notion are typed scaffolds).
+// Notes provider abstraction. LocalDir is a real adapter; AppleNotes
+// and Notion are typed scaffolds that throw NOT_IMPLEMENTED.
 export {
   AppleNotesProvider,
+  LocalDirNotesProvider,
   NotesProviderError,
   NotesProviderRegistry,
   NotesValidationError,
   NotionNotesProvider,
+  type LocalDirNotesProviderOptions,
   type NotesAppendInput,
   type NotesContent,
   type NotesEntry,
