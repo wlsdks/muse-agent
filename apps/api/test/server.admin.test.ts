@@ -525,12 +525,6 @@ describe("api server: admin / ops / settings / memory", () => {
       method: "GET",
       url: `/api/user-memory/${owner.user.id}`
     });
-    const adminModels = await server.inject({
-      headers: ownerHeaders,
-      method: "GET",
-      url: "/api/admin/models"
-    });
-
     expect(update.json()).toEqual({ updated: true });
     expect(memory.json()).toMatchObject({
       facts: {},
@@ -538,14 +532,6 @@ describe("api server: admin / ops / settings / memory", () => {
       recentTopics: []
     });
     expect(forbidden.statusCode).toBe(403);
-    expect(adminModels.json()).toEqual(expect.arrayContaining([
-      {
-        inputPricePerMillionTokens: 0.15,
-        isDefault: false,
-        name: "gemini-3-flash",
-        outputPricePerMillionTokens: 0.6
-      }
-    ]));
   });
 
   it("matches Reactor task memory maintenance availability and purge semantics", async () => {

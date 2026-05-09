@@ -321,7 +321,6 @@ export {
 // Model registry helpers live in apps/api/src/compat-models.ts.
 export {
   agentModeResponse,
-  listAdminModelRegistry,
   listSessionModels,
   parseAgentMode
 } from "./compat-models.js";
@@ -403,7 +402,6 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/admin/doctor/summary",
     "/api/admin/metrics/latency/summary",
     "/api/admin/metrics/latency/timeseries",
-    "/api/admin/models",
     "/api/admin/platform/cache/invalidate",
     "/api/admin/platform/cache/stats",
     "/api/admin/platform/health",

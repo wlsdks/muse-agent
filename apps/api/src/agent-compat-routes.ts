@@ -17,7 +17,6 @@ import {
   findAgentSpec,
   findAgentSpecOrReply,
   isRecord,
-  listAdminModelRegistry,
   parseAgentMode,
   parseAgentSpecInput,
   readQueryBoolean,
@@ -118,13 +117,5 @@ export function registerAgentCompatibilityRoutes(server: FastifyInstance, option
 
     await options.agentSpecRegistry.deleteById(spec.id);
     return reply.status(204).send();
-  });
-
-  server.get("/api/admin/models", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return listAdminModelRegistry(options);
   });
 }

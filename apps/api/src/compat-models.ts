@@ -1,8 +1,7 @@
 /**
  * Reactor-compat model registry helpers extracted from
  * reactor-compat-routes.ts. Covers /api/sessions/models (the dropdown
- * source for the chat surface) and /api/admin/models (the priced
- * registry the admin platform shows). Plus the agent-mode normalizers
+ * source for the chat surface) and the agent-mode normalizers
  * (parseAgentMode, agentModeResponse).
  */
 
@@ -20,29 +19,6 @@ export async function listSessionModels(options: ReactorCompatibilityRouteOption
     defaultModel,
     models: names.map((name) => ({ isDefault: name === defaultModel, name }))
   };
-}
-
-export function listAdminModelRegistry(options: ReactorCompatibilityRouteOptions) {
-  const defaultModel = options.defaultModel ?? "";
-  const pricing = [
-    { input: 0.15, name: "gemini-3-flash-preview", output: 0.6 },
-    { input: 0.15, name: "gemini-3-flash", output: 0.6 },
-    { input: 1.25, name: "gemini-3-pro-preview", output: 10 },
-    { input: 1.25, name: "gemini-3-pro", output: 10 },
-    { input: 0.15, name: "gemini-2.5-flash", output: 0.6 },
-    { input: 1.25, name: "gemini-2.5-pro", output: 10 },
-    { input: 2.5, name: "gpt-4o", output: 10 },
-    { input: 0.15, name: "gpt-4o-mini", output: 0.6 },
-    { input: 3, name: "claude-sonnet-4-20250514", output: 15 },
-    { input: 15, name: "claude-opus-4-20250514", output: 75 }
-  ];
-
-  return pricing.map((model) => ({
-    inputPricePerMillionTokens: model.input,
-    isDefault: model.name === defaultModel,
-    name: model.name,
-    outputPricePerMillionTokens: model.output
-  }));
 }
 
 export function parseAgentMode(value: unknown): AgentSpecInput["mode"] | undefined {
