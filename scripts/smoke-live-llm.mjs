@@ -17,11 +17,27 @@
  */
 
 import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import net from "node:net";
+import os from "node:os";
+import path from "node:path";
 
 const rootDir = process.cwd();
 const port = await findFreePort();
 const baseUrl = `http://127.0.0.1:${port}`;
+
+const notesDir = mkdtempSync(path.join(os.tmpdir(), "muse-live-notes-"));
+mkdirSync(path.join(notesDir, "people"), { recursive: true });
+writeFileSync(
+  path.join(notesDir, "people", "mom.md"),
+  "# Mom's birthday\n\nMay 15. Buy white roses and write a card mentioning the trip to Jeju.\n",
+  "utf8"
+);
+writeFileSync(
+  path.join(notesDir, "house.md"),
+  "Garage door opener spare battery is in the kitchen drawer next to the matches.\n",
+  "utf8"
+);
 
 const provider = pickProvider();
 
@@ -38,7 +54,7 @@ const env = {
   ...process.env,
   MUSE_MODEL: provider.model,
   MUSE_MODEL_PROVIDER_ID: provider.providerId,
-  MUSE_RAG_PIPELINE_ENABLED: "true",
+  MUSE_NOTES_DIR: notesDir,
   PORT: String(port),
   ...(provider.apiKey ? { MUSE_MODEL_API_KEY: provider.apiKey } : {})
 };
@@ -235,27 +251,7 @@ try {
       `expected PII_DETECTED, got ${code}: ${JSON.stringify(body)}`);
   });
 
-  await record("muse.notes.search (live) — LLM searches the user's personal notes", async () => {
-    const seed = await fetch(`${baseUrl}/api/admin/rag/seed-policy`, {
-      body: JSON.stringify({
-        entries: [
-          {
-            content: "Mom's birthday is on May 15. Buy white roses and write a card mentioning the trip to Jeju.",
-            key: "mom-birthday",
-            title: "Mom's birthday"
-          },
-          {
-            content: "Garage door opener spare battery is in the kitchen drawer next to the matches.",
-            key: "garage-battery",
-            title: "Garage door battery"
-          }
-        ]
-      }),
-      headers: { "content-type": "application/json" },
-      method: "POST"
-    });
-    assert(seed.status === 200 || seed.status === 201, `expected seed ok, got ${seed.status}`);
-
+  await record("muse.notes.search (live) — LLM greps the markdown notes directory", async () => {
     const response = await fetch(`${baseUrl}/api/chat`, {
       body: JSON.stringify({
         message:
@@ -326,6 +322,11 @@ try {
 
   api.kill("SIGTERM");
   await waitForExit(api, 5_000);
+  try {
+    rmSync(notesDir, { force: true, recursive: true });
+  } catch {
+    // best effort
+  }
   process.exitCode = failures > 0 ? 1 : 0;
 }
 

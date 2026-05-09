@@ -1,3 +1,6 @@
+import { mkdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join as pathJoin } from "node:path";
 import {
   createAgentRuntime,
   createCasualLureStripResponseFilter,
@@ -128,7 +131,7 @@ import {
   type TokenUsageSink
 } from "@muse/observability";
 import { CircuitBreakerRegistry } from "@muse/resilience";
-import { createDefaultRagPipeline, createDocumentStoreRetriever } from "./rag-query.js";
+import { createDefaultRagPipeline } from "./rag-query.js";
 import {
   InMemoryRuntimeSettingsStore,
   KyselyRuntimeSettingsStore,
@@ -344,8 +347,12 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const runnerTools = createRunnerTools(env);
   const museTools = parseBoolean(env.MUSE_TOOLS_ENABLED, true) ? createMuseTools() : [];
   const loopbackMcpTools = createLoopbackMcpToolsFromEnv(env);
+  const notesDir = resolveNotesDir(env);
+  ensureNotesDir(notesDir);
+  const notesLoopbackTools = parseBoolean(env.MUSE_NOTES_ENABLED, true)
+    ? createLoopbackMcpMuseTools(createNotesMcpServer({ notesDir }))
+    : [];
   let schedulerService: DynamicScheduler | undefined;
-  let notesLoopbackTools: readonly MuseTool[] = [];
   const toolRegistry = new DynamicToolRegistry([
     () => museTools,
     () => loopbackMcpTools,
@@ -361,11 +368,6 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     ...(modelProvider ? { modelProvider } : {}),
     ...(defaultModel ? { defaultModel } : {})
   });
-  if (ragPipeline) {
-    notesLoopbackTools = createLoopbackMcpMuseTools(createNotesMcpServer({
-      retriever: createDocumentStoreRetriever(ragDocumentStore)
-    }));
-  }
   const agentRuntime = modelProvider && defaultModel
     ? createAgentRuntime({
       agentSpecResolver,
@@ -700,6 +702,23 @@ export function parseBoolean(value: string | undefined, fallback: boolean): bool
   }
 
   return value === "1" || value.toLowerCase() === "true" || value.toLowerCase() === "yes";
+}
+
+function resolveNotesDir(env: MuseEnvironment): string {
+  const override = env.MUSE_NOTES_DIR?.trim();
+  if (override && override.length > 0) {
+    return override;
+  }
+  return pathJoin(homedir(), ".muse", "notes");
+}
+
+function ensureNotesDir(notesDir: string): void {
+  try {
+    mkdirSync(notesDir, { recursive: true });
+  } catch {
+    // Best-effort — the notes server will surface clearer errors when the
+    // first list/read/save call hits a permissions issue.
+  }
 }
 
 export function parseInteger(value: string | undefined, fallback: number): number {

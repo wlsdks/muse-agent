@@ -1336,7 +1336,5 @@ export {
   type LoopbackMcpCatalogEntry,
   type LoopbackMcpServer,
   type LoopbackMcpToolDefinition,
-  type NotesDocumentMatch,
-  type NotesDocumentRetriever,
   type NotesMcpServerOptions
 } from "./loopback.js";

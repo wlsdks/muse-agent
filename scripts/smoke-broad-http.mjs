@@ -223,38 +223,48 @@ try {
     }
   });
 
-  await record("muse.notes.search registers by default and returns matches when ragPipeline is enabled", async () => {
-    const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
-    const assembly = createMuseRuntimeAssembly({
-      env: { MUSE_TOOLS_ENABLED: "false" }
-    });
-    await assembly.ragIngestion.documentStore.save({
-      content: "Mom's birthday is on May 15. Buy flowers and write a card.",
-      id: "doc-mom-birthday",
-      indexed: true,
-      source: "personal-notes/mom.md"
-    });
-    await assembly.ragIngestion.documentStore.save({
-      content: "The garage door opener battery is in the kitchen drawer next to the matches.",
-      id: "doc-garage",
-      indexed: true,
-      source: "personal-notes/house.md"
-    });
-    const tool = assembly.toolRegistry.list().find((entry) => entry.definition.name === "muse.notes.search");
-    assert(tool, "expected muse.notes.search to be registered when ragPipeline is enabled");
-    const result = await tool.execute({ limit: 3, query: "birthday" }, { runId: "smoke-notes-search" });
-    const matches = result?.matches;
-    assert(Array.isArray(matches) && matches.length > 0, `expected matches array, got ${JSON.stringify(result)}`);
-    assert(matches.some((match) => match.id === "doc-mom-birthday"), `expected to find mom birthday doc, got ${JSON.stringify(matches)}`);
+  await record("muse.notes.* (filesystem-backed) registers 5 tools by default and round-trips save→read→search", async () => {
+    const os = await import("node:os");
+    const fs = await import("node:fs/promises");
+    const tmpDir = await fs.mkdtemp(`${os.tmpdir()}/muse-notes-smoke-`);
+    try {
+      const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
+      const assembly = createMuseRuntimeAssembly({
+        env: { MUSE_NOTES_DIR: tmpDir, MUSE_TOOLS_ENABLED: "false" }
+      });
+      const tools = assembly.toolRegistry.list().map((entry) => entry.definition.name);
+      for (const required of ["muse.notes.list", "muse.notes.read", "muse.notes.search", "muse.notes.save", "muse.notes.append"]) {
+        assert(tools.includes(required), `expected tool registry to include ${required}, got ${tools.join(", ")}`);
+      }
+      const saveTool = assembly.toolRegistry.list().find((entry) => entry.definition.name === "muse.notes.save");
+      const searchTool = assembly.toolRegistry.list().find((entry) => entry.definition.name === "muse.notes.search");
+      const readTool = assembly.toolRegistry.list().find((entry) => entry.definition.name === "muse.notes.read");
+      const saved = await saveTool.execute(
+        { content: "# Mom\n\nBirthday May 15. White roses.", path: "people/mom.md" },
+        { runId: "smoke-notes" }
+      );
+      assert(saved?.created === true, `expected save to create note, got ${JSON.stringify(saved)}`);
+      const searched = await searchTool.execute({ query: "birthday" }, { runId: "smoke-notes" });
+      assert(Array.isArray(searched?.matches) && searched.matches.length > 0,
+        `expected search to find a match, got ${JSON.stringify(searched)}`);
+      assert(searched.matches[0].path === "people/mom.md",
+        `expected match path 'people/mom.md', got ${JSON.stringify(searched.matches[0])}`);
+      const readBack = await readTool.execute({ path: "people/mom.md" }, { runId: "smoke-notes" });
+      assert(readBack?.content?.includes("White roses"),
+        `expected note content to round-trip, got ${JSON.stringify(readBack)}`);
+    } finally {
+      await fs.rm(tmpDir, { force: true, recursive: true });
+    }
   });
 
-  await record("muse.notes.search is absent when MUSE_RAG_PIPELINE_ENABLED=false explicitly disables RAG", async () => {
+  await record("muse.notes.* is absent when MUSE_NOTES_ENABLED=false explicitly disables the notes server", async () => {
     const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
     const assembly = createMuseRuntimeAssembly({
-      env: { MUSE_RAG_PIPELINE_ENABLED: "false", MUSE_TOOLS_ENABLED: "false" }
+      env: { MUSE_NOTES_ENABLED: "false", MUSE_TOOLS_ENABLED: "false" }
     });
     const names = assembly.toolRegistry.list().map((tool) => tool.definition.name);
-    assert(!names.includes("muse.notes.search"), `expected muse.notes.search to be absent when RAG is disabled, got ${names.join(", ")}`);
+    assert(!names.some((name) => name.startsWith("muse.notes.")),
+      `expected no muse.notes.* tools when disabled, got ${names.filter((n) => n.startsWith("muse.notes.")).join(", ")}`);
   });
 
   await record("Muse ambient tools can be disabled via MUSE_TOOLS_ENABLED=false", async () => {

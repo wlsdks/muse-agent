@@ -6,7 +6,7 @@ import {
   PostgresIntrospector,
   PostgresQueryCompiler
 } from "kysely";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createDefaultLoopbackMcpServers,
@@ -936,70 +936,101 @@ describe("muse.fetch loopback server", () => {
   });
 });
 
-describe("muse.notes loopback server", () => {
-  function createStubRetriever(matches: readonly { id: string; content: string; score: number; source?: string }[]) {
-    let capturedQueries: readonly string[] | undefined;
-    let capturedTopK: number | undefined;
-    return {
-      lastCall: () => ({ queries: capturedQueries, topK: capturedTopK }),
-      retriever: {
-        retrieve: (queries: readonly string[], topK: number) => {
-          capturedQueries = queries;
-          capturedTopK = topK;
-          return matches;
-        }
-      }
-    };
-  }
+describe("muse.notes loopback server (filesystem-backed)", () => {
+  let tmpRoot: string;
 
-  it("muse.notes#search returns matches with id/content/score and optional source", async () => {
-    const { retriever, lastCall } = createStubRetriever([
-      { content: "Buy milk and eggs.", id: "doc-1", score: 0.92, source: "groceries.md" },
-      { content: "Mom's birthday is on the 15th.", id: "doc-2", score: 0.81 }
-    ]);
-    const connection = createLoopbackMcpConnection(createNotesMcpServer({ retriever }));
-    const result = await connection.callTool!("search", { query: "groceries" }) as { matches: Array<Record<string, unknown>> };
-
-    expect(lastCall().queries).toEqual(["groceries"]);
-    expect(lastCall().topK).toBe(5);
-    expect(result.matches).toEqual([
-      { content: "Buy milk and eggs.", id: "doc-1", score: 0.92, source: "groceries.md" },
-      { content: "Mom's birthday is on the 15th.", id: "doc-2", score: 0.81 }
-    ]);
+  beforeEach(async () => {
+    const os = await import("node:os");
+    const fs = await import("node:fs/promises");
+    tmpRoot = await fs.mkdtemp(`${os.tmpdir()}/muse-notes-test-`);
   });
 
-  it("muse.notes#search clamps limit to [1, maxLimit] and trims whitespace", async () => {
-    const { retriever, lastCall } = createStubRetriever([]);
-    const connection = createLoopbackMcpConnection(createNotesMcpServer({ retriever, defaultLimit: 5, maxLimit: 10 }));
-
-    await connection.callTool!("search", { limit: 100, query: "  hello  " });
-    expect(lastCall().queries).toEqual(["hello"]);
-    expect(lastCall().topK).toBe(10);
-
-    await connection.callTool!("search", { limit: -5, query: "hi" });
-    expect(lastCall().topK).toBe(1);
-
-    await connection.callTool!("search", { query: "default" });
-    expect(lastCall().topK).toBe(5);
+  afterEach(async () => {
+    const fs = await import("node:fs/promises");
+    await fs.rm(tmpRoot, { force: true, recursive: true });
   });
 
-  it("muse.notes#search rejects empty / overlong queries", async () => {
-    const { retriever } = createStubRetriever([]);
-    const connection = createLoopbackMcpConnection(createNotesMcpServer({ retriever, maxQueryLength: 16 }));
-
-    expect(await connection.callTool!("search", { query: "" })).toEqual({ error: "query is required" });
-    expect(await connection.callTool!("search", { query: "   " })).toEqual({ error: "query is required" });
-    expect(await connection.callTool!("search", { query: "x".repeat(17) })).toMatchObject({
-      error: expect.stringContaining("query must be at most 16 characters")
+  it("save creates a markdown note + read returns its UTF-8 content", async () => {
+    const conn = createLoopbackMcpConnection(createNotesMcpServer({ notesDir: tmpRoot }));
+    const saved = await conn.callTool!("save", {
+      content: "# Mom's birthday\n\nMay 15. White roses.",
+      path: "people/mom.md"
+    });
+    expect(saved).toMatchObject({ created: true, path: "people/mom.md" });
+    const read = await conn.callTool!("read", { path: "people/mom.md" });
+    expect(read).toMatchObject({
+      content: "# Mom's birthday\n\nMay 15. White roses.",
+      path: "people/mom.md"
     });
   });
 
-  it("muse.notes is exposed as a Muse tool with name 'muse.notes.search' and read risk", () => {
-    const { retriever } = createStubRetriever([]);
-    const tools = createLoopbackMcpMuseTools(createNotesMcpServer({ retriever }));
-    expect(tools).toHaveLength(1);
-    expect(tools[0]?.definition.name).toBe("muse.notes.search");
-    expect(tools[0]?.definition.risk).toBe("read");
+  it("save without overwrite errors on an existing path; with overwrite=true replaces", async () => {
+    const conn = createLoopbackMcpConnection(createNotesMcpServer({ notesDir: tmpRoot }));
+    await conn.callTool!("save", { content: "first", path: "n.md" });
+    const dup = await conn.callTool!("save", { content: "second", path: "n.md" });
+    expect(dup).toMatchObject({ error: expect.stringContaining("already exists") });
+    const replaced = await conn.callTool!("save", { content: "second", overwrite: true, path: "n.md" });
+    expect(replaced).toMatchObject({ created: false, path: "n.md" });
+    const read = await conn.callTool!("read", { path: "n.md" });
+    expect(read).toMatchObject({ content: "second" });
+  });
+
+  it("append creates the file when missing and tail-appends on subsequent calls", async () => {
+    const conn = createLoopbackMcpConnection(createNotesMcpServer({ notesDir: tmpRoot }));
+    await conn.callTool!("append", { content: "line one\n", path: "journal.md" });
+    await conn.callTool!("append", { content: "line two\n", path: "journal.md" });
+    const read = await conn.callTool!("read", { path: "journal.md" });
+    expect(read).toMatchObject({ content: "line one\nline two\n" });
+  });
+
+  it("list returns directory entries with sizeBytes for files; skips hidden + non-.md is ignored by search", async () => {
+    const conn = createLoopbackMcpConnection(createNotesMcpServer({ notesDir: tmpRoot }));
+    await conn.callTool!("save", { content: "abc", path: "a.md" });
+    await conn.callTool!("save", { content: "def", path: "sub/b.md" });
+    const fs = await import("node:fs/promises");
+    await fs.writeFile(`${tmpRoot}/.hidden`, "secret");
+    const listed = await conn.callTool!("list", {}) as { entries: Array<{ name: string; isDirectory: boolean }> };
+    expect(listed.entries.map((e) => e.name).sort()).toEqual(["a.md", "sub"]);
+    const subListed = await conn.callTool!("list", { subdir: "sub" }) as { entries: Array<{ name: string }> };
+    expect(subListed.entries.map((e) => e.name)).toEqual(["b.md"]);
+  });
+
+  it("search finds case-insensitive substring matches with line numbers + snippet", async () => {
+    const conn = createLoopbackMcpConnection(createNotesMcpServer({ notesDir: tmpRoot }));
+    await conn.callTool!("save", { content: "Mom's BIRTHDAY is May 15.\nBuy white roses.", path: "people/mom.md" });
+    await conn.callTool!("save", { content: "Garage opener battery.", path: "house.md" });
+    const result = await conn.callTool!("search", { query: "birthday" }) as { matches: Array<{ path: string; line: number; snippet: string }> };
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0]).toMatchObject({ line: 1, path: "people/mom.md" });
+    expect(result.matches[0]?.snippet).toContain("BIRTHDAY");
+  });
+
+  it("rejects path traversal attempts and absolute paths", async () => {
+    const conn = createLoopbackMcpConnection(createNotesMcpServer({ notesDir: tmpRoot }));
+    expect(await conn.callTool!("read", { path: "../etc/passwd" })).toEqual({
+      error: "path escapes the notes directory"
+    });
+    expect(await conn.callTool!("save", { content: "x", path: "/tmp/leak.md" })).toEqual({
+      error: "path must be relative to the notes directory"
+    });
+    expect(await conn.callTool!("read", { path: "" })).toEqual({ error: "path must not be empty" });
+  });
+
+  it("registers as 5 Muse tools (list/read/search/save/append) with correct risk levels", () => {
+    const tools = createLoopbackMcpMuseTools(createNotesMcpServer({ notesDir: tmpRoot }));
+    expect(tools.map((t) => t.definition.name).sort()).toEqual([
+      "muse.notes.append",
+      "muse.notes.list",
+      "muse.notes.read",
+      "muse.notes.save",
+      "muse.notes.search"
+    ]);
+    const byName = new Map(tools.map((t) => [t.definition.name, t.definition.risk] as const));
+    expect(byName.get("muse.notes.list")).toBe("read");
+    expect(byName.get("muse.notes.read")).toBe("read");
+    expect(byName.get("muse.notes.search")).toBe("read");
+    expect(byName.get("muse.notes.save")).toBe("write");
+    expect(byName.get("muse.notes.append")).toBe("write");
   });
 });
 
