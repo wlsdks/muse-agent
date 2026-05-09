@@ -127,11 +127,6 @@ import {
   type TokenUsageSink
 } from "@muse/observability";
 import { CircuitBreakerRegistry } from "@muse/resilience";
-import {
-  InMemoryGuardRuleStore,
-  KyselyGuardRuleStore,
-  type GuardRuleStore
-} from "@muse/policy";
 import { createDefaultRagPipeline } from "./rag-query.js";
 import {
   InMemoryRuntimeSettingsStore,
@@ -210,7 +205,6 @@ export interface MuseRuntimeAssembly {
   readonly sessionTagStore: SessionTagStore;
   readonly taskMemoryStore: TaskMemoryStore & TaskMemoryMaintenance;
   readonly userMemoryStore: UserMemoryStore;
-  readonly guardRuleStore: GuardRuleStore;
   readonly observability: {
     readonly budgetTracker: MonthlyBudgetTracker;
     readonly costAnomalyDetector: CostAnomalyDetector;
@@ -317,7 +311,6 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const taskMemoryStore = createTaskMemoryStore(db, env);
   const userMemoryStore = createUserMemoryStore(db);
   const sessionTagStore = createSessionTagStore(db);
-  const guardRuleStore = createGuardRuleStore(db);
   const ragIngestionPolicyStore = createRagIngestionPolicyStore(db);
   const ragIngestionCandidateStore = createRagIngestionCandidateStore(db);
   const ragDocumentStore = createRagDocumentStore(db);
@@ -442,7 +435,6 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     sessionTagStore,
     taskMemoryStore,
     userMemoryStore,
-    guardRuleStore,
     observability: {
       budgetTracker,
       costAnomalyDetector,
@@ -667,14 +659,9 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     scheduler: assembly.scheduler,
     sessionTagStore: assembly.sessionTagStore,
     taskMemoryMaintenance: assembly.taskMemoryStore,
-    guardRuleStore: assembly.guardRuleStore,
     userMemoryStore: assembly.userMemoryStore,
     conversationSummaryStore: assembly.conversationSummaryStore
   };
-}
-
-function createGuardRuleStore(db: Kysely<MuseDatabase> | undefined): GuardRuleStore {
-  return db ? new KyselyGuardRuleStore(db) : new InMemoryGuardRuleStore();
 }
 
 function createRagIngestionPolicyStore(db: Kysely<MuseDatabase> | undefined): RagIngestionPolicyStore {

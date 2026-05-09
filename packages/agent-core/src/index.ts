@@ -53,13 +53,11 @@ import {
 import {
   detectSystemPromptLeakage,
   detectTopicDrift,
-  evaluateOutputGuardRules,
   findInjectionPatterns,
   maskPii,
   normalizeStructuredOutput,
   sanitizeSourceBlocks,
   type GuardBlockRateMonitor,
-  type GuardRuleStore,
   type StructuredOutputFormat,
   type TopicDriftOptions
 } from "@muse/policy";
@@ -1743,7 +1741,6 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
 
 export {
-  createDynamicOutputGuardRuleStage,
   createInjectionInputGuard,
   createLlmClassificationInputGuard,
   createPiiInputGuard,

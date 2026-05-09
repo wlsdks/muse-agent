@@ -2,10 +2,8 @@ import type { ModelProvider } from "@muse/model";
 import {
   detectSystemPromptLeakage,
   detectTopicDrift,
-  evaluateOutputGuardRules,
   findInjectionPatterns,
   maskPii,
-  type GuardRuleStore,
   type TopicDriftOptions
 } from "@muse/policy";
 import { joinMessages, joinUserMessages, parseLlmClassificationDecision } from "./internals.js";
@@ -139,35 +137,6 @@ export function createPiiMaskingOutputGuard(): OutputGuardStage {
       };
     },
     id: "pii-output-mask"
-  };
-}
-
-export function createDynamicOutputGuardRuleStage(
-  store: Pick<GuardRuleStore, "listOutputRules">
-): OutputGuardStage {
-  return {
-    async check(content) {
-      const decision = await evaluateOutputGuardRules(store, content);
-
-      if (decision.action === "modify") {
-        return {
-          action: "modify",
-          content: decision.content,
-          reason: decision.reason
-        };
-      }
-
-      if (decision.action === "reject") {
-        return {
-          action: "reject",
-          code: "OUTPUT_GUARD_RULE_REJECTED",
-          reason: decision.reason
-        };
-      }
-
-      return { action: "allow" };
-    },
-    id: "dynamic-output-guard-rule-stage"
   };
 }
 

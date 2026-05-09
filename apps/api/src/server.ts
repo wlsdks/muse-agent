@@ -26,7 +26,6 @@ import { describeBuiltinLoopbackMcpServers } from "@muse/mcp";
 import type { ConversationSummaryStore, TaskMemoryMaintenance, UserMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
 import type { JarvisObservabilitySnapshot, LatencyQuery, TokenCostQuery } from "@muse/observability";
-import type { GuardRuleStore } from "@muse/policy";
 import type { RagDocumentStore, RagIngestionCandidateStore, RagIngestionPolicyStore } from "@muse/rag";
 import {
   InMemoryRuntimeSettingsStore,
@@ -71,7 +70,6 @@ export interface ServerOptions {
   readonly scheduler?: SchedulerRouteScheduler;
   readonly sessionTagStore?: SessionTagStore;
   readonly taskMemoryMaintenance?: TaskMemoryMaintenance;
-  readonly guardRuleStore?: GuardRuleStore;
   readonly userMemoryStore?: UserMemoryStore;
   readonly conversationSummaryStore?: ConversationSummaryStore;
   readonly agentCardIdentity?: {
@@ -341,7 +339,6 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     scheduler: options.scheduler,
     sessionTagStore: options.sessionTagStore,
     taskMemoryMaintenance: options.taskMemoryMaintenance,
-    guardRuleStore: options.guardRuleStore,
     userMemoryStore: options.userMemoryStore
   });
 

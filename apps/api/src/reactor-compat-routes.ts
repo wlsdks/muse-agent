@@ -18,8 +18,6 @@ import type {
   LatencySummary,
   TokenCostQuery
 } from "@muse/observability";
-import type { GuardRuleStore } from "@muse/policy";
-import { inputGuardSimulationToJson, simulateInputGuardPipeline } from "@muse/policy";
 import type {
   RagDocumentStore,
   RagIngestionCandidateStatus,
@@ -48,7 +46,6 @@ import { isRecord, nowIso } from "./compat-parsers.js";
 import { notFound } from "./compat-responses.js";
 import { listDocuments } from "./compat-document-store.js";
 import { currentAuthIdentity } from "./compat-user-memory-store.js";
-import { listInputGuardRules } from "./compat-guard-rule-store.js";
 import { defaultRagIngestionPolicy } from "./compat-rag-ingestion.js";
 import { registerAdminObservabilityCompatRoutes } from "./admin-observability-compat-routes.js";
 import { registerAdminPlatformCompatRoutes } from "./admin-platform-compat-routes.js";
@@ -56,7 +53,6 @@ import { registerAdminSessionCompatRoutes } from "./admin-session-compat-routes.
 import { registerAdminPlatformAlertCompatRoutes } from "./admin-platform-alert-compat-routes.js";
 import { registerAgentCompatibilityRoutes } from "./agent-compat-routes.js";
 import { registerAuthCompatibilityRoutes } from "./auth-compat-routes.js";
-import { registerGuardCompatibilityRoutes } from "./guard-compat-routes.js";
 import { registerMcpCompatibilityRoutes } from "./mcp-compat-routes.js";
 import { registerMetricIngestionCompatRoutes } from "./metric-ingestion-compat-routes.js";
 import { registerPromptAndRagRoutes } from "./rag-ingestion-compat-routes.js";
@@ -89,7 +85,6 @@ export interface ReactorCompatibilityRouteOptions {
   readonly scheduler?: SchedulerRouteScheduler;
   readonly sessionTagStore?: SessionTagStore;
   readonly taskMemoryMaintenance?: TaskMemoryMaintenance;
-  readonly guardRuleStore?: GuardRuleStore;
   readonly userMemoryStore?: UserMemoryStore;
   readonly agentCardIdentity?: {
     readonly name?: string;
@@ -113,9 +108,6 @@ export type { CompatBody } from "./compat-parsers.js";
 
 interface CompatState {
   readonly documents: CompatCollection;
-  readonly inputGuardRules: CompatCollection;
-  readonly outputGuardRuleAudits: CompatCollection;
-  readonly outputGuardRules: CompatCollection;
   readonly metricEvents: CompatCollection;
   readonly proactiveChannels: CompatCollection;
   readonly ragCandidates: CompatCollection;
@@ -140,7 +132,6 @@ export function registerReactorCompatibilityRoutes(
   registerAuthCompatibilityRoutes(server, options);
   registerSessionCompatibilityRoutes(server, options);
   registerAgentCompatibilityRoutes(server, options);
-  registerGuardCompatibilityRoutes(server, options);
   registerUserMemoryCompatRoutes(server, options);
   registerPromptAndRagRoutes(server, options);
   registerMcpCompatibilityRoutes(server, options);
@@ -155,9 +146,6 @@ export function registerReactorCompatibilityRoutes(
 function createCompatState(): CompatState {
   return {
     documents: new Map(),
-    inputGuardRules: new Map(),
-    outputGuardRuleAudits: new Map(),
-    outputGuardRules: new Map(),
     metricEvents: new Map(),
     proactiveChannels: new Map(),
     ragCandidates: new Map(),
@@ -174,8 +162,6 @@ function createCompatState(): CompatState {
 // registerSessionCompatibilityRoutes lives in apps/api/src/session-compat-routes.ts.
 
 // registerAgentCompatibilityRoutes lives in apps/api/src/agent-compat-routes.ts.
-
-// registerGuardCompatibilityRoutes lives in apps/api/src/guard-compat-routes.ts.
 
 // registerDocumentRoutes lives in apps/api/src/document-compat-routes.ts.
 
@@ -357,31 +343,6 @@ function findRecordByParam(
 }
 
 
-// Input/output guard-rule store helpers live in apps/api/src/compat-guard-rule-store.ts.
-export {
-  createInputGuardRule,
-  createOutputGuardRule,
-  deleteInputGuardRule,
-  deleteOutputGuardRule,
-  getInputGuardRule,
-  getOutputGuardRule,
-  listInputGuardRules,
-  listOutputGuardAudits,
-  listOutputGuardRules,
-  outputGuardRuleDetail,
-  outputGuardRuleNotFound,
-  recordOutputGuardAudit,
-  simulateOutputGuardRules,
-  toInputGuardRuleResponse,
-  toOutputGuardAuditResponse,
-  toOutputGuardRuleResponse,
-  updateInputGuardRule,
-  updateOutputGuardRule,
-  validateInputGuardRule,
-  validateOutputGuardRule,
-  validateOutputGuardSimulation
-} from "./compat-guard-rule-store.js";
-
 export function getStateRagIngestionPolicy(): JsonObject {
   return state.ragIngestionPolicy;
 }
@@ -392,18 +353,6 @@ export function getStateRagCandidates(): readonly CompatRecord[] {
 
 export function getStateMetricEvents(): CompatCollection {
   return state.metricEvents;
-}
-
-export function getStateInputGuardRules(): CompatCollection {
-  return state.inputGuardRules;
-}
-
-export function getStateOutputGuardRules(): CompatCollection {
-  return state.outputGuardRules;
-}
-
-export function getStateOutputGuardRuleAudits(): CompatCollection {
-  return state.outputGuardRuleAudits;
 }
 
 export function getStateSessionTags(): Map<string, CompatRecord[]> {
@@ -493,15 +442,6 @@ export {
   swaggerSourcePath
 } from "./compat-mcp-proxy.js";
 
-// Input guard pipeline definition + simulation live in apps/api/src/compat-guard-pipeline.ts.
-export {
-  inputGuardStages,
-  simulateGuard,
-  stageConfigResponse,
-  toGuardStageResponse
-} from "./compat-guard-pipeline.js";
-
-
 // Dashboard + platform-health helpers live in apps/api/src/compat-dashboard.ts.
 export {
   dashboardSummary,
@@ -579,15 +519,6 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/admin/debug/replay/{id}",
     "/api/admin/doctor",
     "/api/admin/doctor/summary",
-    "/api/admin/input-guard/audits",
-    "/api/admin/input-guard/pipeline",
-    "/api/admin/input-guard/pipeline/reorder",
-    "/api/admin/input-guard/rules",
-    "/api/admin/input-guard/rules/{id}",
-    "/api/admin/input-guard/settings",
-    "/api/admin/input-guard/simulate",
-    "/api/admin/input-guard/stages/{stageName}/config",
-    "/api/admin/input-guard/stats",
     "/api/admin/metrics/latency/summary",
     "/api/admin/metrics/latency/timeseries",
     "/api/admin/models",
@@ -654,10 +585,6 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/models",
     "/api/ops/dashboard",
     "/api/ops/metrics/names",
-    "/api/output-guard/rules",
-    "/api/output-guard/rules/{id}",
-    "/api/output-guard/rules/audits",
-    "/api/output-guard/rules/simulate",
     "/api/rag-ingestion/candidates",
     "/api/rag-ingestion/candidates/{id}/approve",
     "/api/rag-ingestion/candidates/{id}/reject",

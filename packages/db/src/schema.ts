@@ -21,7 +21,6 @@ export interface MuseDatabase {
   readonly conversation_summaries: ConversationSummaryTable;
   readonly debug_replay_captures: DebugReplayCaptureTable;
   readonly hook_traces: HookTraceTable;
-  readonly input_guard_rules: InputGuardRuleTable;
   readonly mcp_security_policy: McpSecurityPolicyTable;
   readonly mcp_servers: McpServerTable;
   readonly metric_agent_executions: CompatibilityTable;
@@ -35,8 +34,6 @@ export interface MuseDatabase {
   readonly metric_spans: CompatibilityTable;
   readonly metric_token_usage: MetricTokenUsageTable;
   readonly metric_tool_calls: CompatibilityTable;
-  readonly output_guard_rule_audits: OutputGuardRuleAuditTable;
-  readonly output_guard_rules: OutputGuardRuleTable;
   readonly rag_documents: RagDocumentTable;
   readonly rag_ingestion_candidates: RagIngestionCandidateTable;
   readonly rag_ingestion_policy: RagIngestionPolicyTable;
@@ -200,41 +197,6 @@ export interface ToolCallTable {
   readonly error: string | null;
   readonly started_at: NullableTimestamp;
   readonly completed_at: NullableTimestamp;
-  readonly created_at: Timestamp;
-}
-
-export interface InputGuardRuleTable {
-  readonly id: string;
-  readonly name: string;
-  readonly pattern: string;
-  readonly pattern_type: string;
-  readonly action: string;
-  readonly priority: number;
-  readonly category: string;
-  readonly description: string | null;
-  readonly enabled: boolean;
-  readonly created_at: Timestamp;
-  readonly updated_at: Timestamp;
-}
-
-export interface OutputGuardRuleTable {
-  readonly id: string;
-  readonly name: string;
-  readonly pattern: string;
-  readonly action: string;
-  readonly priority: number;
-  readonly replacement: string;
-  readonly enabled: boolean;
-  readonly created_at: Timestamp;
-  readonly updated_at: Timestamp;
-}
-
-export interface OutputGuardRuleAuditTable {
-  readonly id: string;
-  readonly rule_id: string | null;
-  readonly action: string;
-  readonly actor: string;
-  readonly detail: string | null;
   readonly created_at: Timestamp;
 }
 

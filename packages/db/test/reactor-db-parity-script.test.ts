@@ -23,22 +23,19 @@ describe("verify-reactor-db-parity", () => {
         CREATE TABLE conversation_messages (id uuid primary key);
         CREATE TABLE IF NOT EXISTS pending_approvals (id text primary key);
         CREATE TABLE public.feedback (id text primary key);
-        CREATE TABLE IF NOT EXISTS input_guard_rules (id text primary key);
       `
     });
 
     const report = buildDbParityReport(root.reactor, root.muse);
 
-    expect(report.reactor.tableCount).toBe(4);
+    expect(report.reactor.tableCount).toBe(3);
     expect(report.muse.tableCount).toBe(2);
     expect(report.missingReactorTables.map((table) => table.name)).toEqual([
       "conversation_messages",
-      "feedback",
-      "input_guard_rules"
+      "feedback"
     ]);
     expect(report.missingByFamily).toMatchObject({
       feedback: 1,
-      "guard/policy": 1,
       "memory/context": 1
     });
   });

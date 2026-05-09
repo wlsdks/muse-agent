@@ -162,51 +162,6 @@ export const migrations: readonly SqlMigration[] = [
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
-      CREATE TABLE IF NOT EXISTS input_guard_rules (
-        id VARCHAR(128) PRIMARY KEY,
-        name VARCHAR(160) NOT NULL,
-        pattern TEXT NOT NULL,
-        pattern_type VARCHAR(32) NOT NULL DEFAULT 'regex',
-        action VARCHAR(32) NOT NULL DEFAULT 'block',
-        priority INTEGER NOT NULL DEFAULT 100,
-        category VARCHAR(80) NOT NULL DEFAULT 'custom',
-        description TEXT,
-        enabled BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_input_guard_rules_enabled ON input_guard_rules(enabled);
-      CREATE INDEX IF NOT EXISTS idx_input_guard_rules_priority ON input_guard_rules(priority ASC);
-      CREATE INDEX IF NOT EXISTS idx_input_guard_rules_category ON input_guard_rules(category);
-
-      CREATE TABLE IF NOT EXISTS output_guard_rules (
-        id VARCHAR(128) PRIMARY KEY,
-        name VARCHAR(160) NOT NULL,
-        pattern TEXT NOT NULL,
-        action VARCHAR(32) NOT NULL,
-        priority INTEGER NOT NULL DEFAULT 100,
-        replacement TEXT NOT NULL DEFAULT '[REDACTED]',
-        enabled BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_output_guard_rules_enabled ON output_guard_rules(enabled);
-      CREATE INDEX IF NOT EXISTS idx_output_guard_rules_priority ON output_guard_rules(enabled, priority, created_at);
-
-      CREATE TABLE IF NOT EXISTS output_guard_rule_audits (
-        id VARCHAR(128) PRIMARY KEY,
-        rule_id VARCHAR(128),
-        action VARCHAR(40) NOT NULL,
-        actor VARCHAR(160) NOT NULL,
-        detail TEXT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_output_guard_rule_audits_created_at ON output_guard_rule_audits(created_at);
-      CREATE INDEX IF NOT EXISTS idx_output_guard_rule_audits_rule_id ON output_guard_rule_audits(rule_id);
-
       CREATE TABLE IF NOT EXISTS rag_ingestion_policy (
         id VARCHAR(80) PRIMARY KEY,
         enabled BOOLEAN NOT NULL DEFAULT FALSE,
