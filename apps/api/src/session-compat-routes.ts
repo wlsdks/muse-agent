@@ -10,7 +10,6 @@ import {
   clampLimit,
   errorResponse,
   exportSession,
-  isAdminLikeRequest,
   listSessionModels,
   nowIso,
   compatSessionDetail,
@@ -75,13 +74,6 @@ export function registerSessionCompatibilityRoutes(server: FastifyInstance, opti
     if (!run) {
       return reply.status(404).send({
         error: `Session not found: ${sessionId}`,
-        timestamp: nowIso()
-      });
-    }
-
-    if ((!run.userId || run.userId !== userId) && !isAdminLikeRequest(request)) {
-      return reply.status(403).send({
-        error: "세션 접근이 거부되었습니다",
         timestamp: nowIso()
       });
     }

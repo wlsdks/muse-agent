@@ -72,8 +72,7 @@ export function toCompatUserResponse(user: LoginResult["user"]): JsonObject {
   return {
     email: user.email,
     id: user.id,
-    name: user.name,
-    role: user.role.toUpperCase()
+    name: user.name
   };
 }
 

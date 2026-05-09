@@ -17,7 +17,6 @@ import {
 } from "@muse/agent-specs";
 import {
   extractBearerToken,
-  isAnyAdmin,
   type AuthIdentity,
   type LoginResult,
   type MuseAuth
@@ -1571,27 +1570,16 @@ function authorizeAdmin(
   reply: { status(statusCode: number): { send(payload: unknown): void } },
   authEnabled: boolean
 ): boolean {
-  return authorizeAdminRole(request, reply, authEnabled, isAnyAdmin);
-}
-
-function authorizeAdminRole(
-  request: unknown,
-  reply: { status(statusCode: number): { send(payload: unknown): void } },
-  authEnabled: boolean,
-  isAllowed: (role: Parameters<typeof isAnyAdmin>[0]) => boolean
-): boolean {
   if (!authEnabled) {
     return true;
   }
 
-  const identity = getAuthIdentity(request);
-
-  if (isAllowed(identity?.role)) {
+  if (getAuthIdentity(request)) {
     return true;
   }
 
-  reply.status(403).send({
-    error: "관리자 권한이 필요합니다",
+  reply.status(401).send({
+    error: "인증이 필요합니다",
     timestamp: new Date().toISOString()
   });
   return false;

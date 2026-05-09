@@ -162,11 +162,6 @@ export function readAuthUserId(request: FastifyRequest): string | undefined {
   return (request as { auth?: { userId?: string } }).auth?.userId;
 }
 
-export function isAdminLikeRequest(request: FastifyRequest): boolean {
-  const role = (request as { auth?: { role?: string } }).auth?.role;
-  return role === undefined || role === "admin";
-}
-
 export function readBodyString(value: unknown, key: string): string | undefined {
   const body = toBody(value);
   const item = body[key];

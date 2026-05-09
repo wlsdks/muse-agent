@@ -39,10 +39,12 @@ describe("api server: auth + session ownership", () => {
     });
 
     expect(registered.statusCode).toBe(201);
-    expect(registered.json().user).toMatchObject({ role: "admin" });
+    expect(registered.json().user).toMatchObject({ email: "first_account", name: "First" });
+    expect(registered.json().user).not.toHaveProperty("role");
     expect(protectedWithoutToken.statusCode).toBe(401);
     expect(me.statusCode).toBe(200);
-    expect(me.json().identity).toMatchObject({ email: "first_account", role: "admin" });
+    expect(me.json().identity).toMatchObject({ email: "first_account" });
+    expect(me.json().identity).not.toHaveProperty("role");
     expect(logout.json()).toEqual({ revoked: true });
   });
 
@@ -89,10 +91,10 @@ describe("api server: auth + session ownership", () => {
       error: null,
       user: {
         email,
-        name: "Compat",
-        role: "USER"
+        name: "Compat"
       }
     });
+    expect(registered.json().user).not.toHaveProperty("role");
     expect(registered.json().user).not.toHaveProperty("adminScope");
     expect(registered.json()).not.toHaveProperty("expiresAt");
     expect(duplicate.statusCode).toBe(409);
@@ -103,24 +105,19 @@ describe("api server: auth + session ownership", () => {
     });
     expect(me.json()).toMatchObject({
       email,
-      name: "Compat",
-      role: "USER"
+      name: "Compat"
     });
+    expect(me.json()).not.toHaveProperty("role");
     expect(me.json()).not.toHaveProperty("adminScope");
     expect(me.json()).not.toHaveProperty("identity");
     expect(logout.json()).toEqual({ message: "Logged out" });
   });
 
-  it("keeps api session ownership scoped to the authenticated user", async () => {
+  it("requires auth for session routes and serves the owner's runs", async () => {
     const authService = createAuthService();
     const ownerEmail = ["owner", "example.invalid"].join("@");
-    const memberEmail = ["member", "example.invalid"].join("@");
-    const managerEmail = ["manager", "example.invalid"].join("@");
     const owner = authService.register({ email: ownerEmail, name: "Owner", password: "password-1" });
-    const member = authService.register({ email: memberEmail, name: "Member", password: "password-1" });
-    authService.register({ email: managerEmail, name: "Other", password: "password-1" });
-    const memberLogin = authService.login(memberEmail, "password-1");
-    const otherLogin = authService.login(managerEmail, "password-1");
+    const ownerLogin = authService.login(ownerEmail, "password-1");
     const historyStore = new InMemoryAgentRunHistoryStore();
     historyStore.createRun({
       id: "owner-run",
@@ -129,71 +126,32 @@ describe("api server: auth + session ownership", () => {
       provider: "provider",
       userId: owner.user.id
     });
-    historyStore.createRun({
-      id: "member-run",
-      input: "member prompt",
-      model: "provider/model",
-      provider: "provider",
-      userId: member.user.id
-    });
-    historyStore.createRun({
-      id: "orphan-run",
-      input: "orphan prompt",
-      model: "provider/model",
-      provider: "provider"
-    });
     const server = buildServer({ authService, historyStore, logger: false, requireAuth: true });
-    const headers = { authorization: `Bearer ${memberLogin?.token ?? ""}` };
-    const otherHeaders = { authorization: `Bearer ${otherLogin?.token ?? ""}` };
+    const headers = { authorization: `Bearer ${ownerLogin?.token ?? ""}` };
 
     const unauthenticatedSessions = await server.inject({
       method: "GET",
       url: "/api/sessions"
     });
-    const spoofedList = await server.inject({
+    const ownList = await server.inject({
       headers,
       method: "GET",
-      url: `/api/sessions?userId=${owner.user.id}`
+      url: "/api/sessions"
     });
     const clampedSessions = await server.inject({
       headers,
       method: "GET",
       url: "/api/sessions?limit=500"
     });
-    const forbiddenDelete = await server.inject({
-      headers,
-      method: "DELETE",
-      url: "/api/sessions/owner-run"
-    });
-    const otherForbiddenDetail = await server.inject({
-      headers: otherHeaders,
-      method: "GET",
-      url: "/api/sessions/owner-run"
-    });
-    const otherForbiddenExport = await server.inject({
-      headers: otherHeaders,
-      method: "GET",
-      url: "/api/sessions/owner-run/export"
-    });
-    const orphanDetail = await server.inject({
-      headers,
-      method: "GET",
-      url: "/api/sessions/orphan-run"
-    });
-    const orphanDelete = await server.inject({
-      headers,
-      method: "DELETE",
-      url: "/api/sessions/orphan-run"
-    });
     const markdownExport = await server.inject({
       headers,
       method: "GET",
-      url: "/api/sessions/member-run/export?format=md"
+      url: "/api/sessions/owner-run/export?format=md"
     });
     const ownDelete = await server.inject({
       headers,
       method: "DELETE",
-      url: "/api/sessions/member-run"
+      url: "/api/sessions/owner-run"
     });
 
     expect(unauthenticatedSessions.statusCode).toBe(401);
@@ -202,38 +160,17 @@ describe("api server: auth + session ownership", () => {
       timestamp: expect.any(String)
     });
     expect(unauthenticatedSessions.json()).not.toHaveProperty("code");
-    expect(spoofedList.json()).toMatchObject({
-      items: [{ preview: "member prompt", sessionId: "member-run" }],
+    expect(ownList.json()).toMatchObject({
+      items: [{ preview: "owner prompt", sessionId: "owner-run" }],
       total: 1
     });
     expect(clampedSessions.json()).toMatchObject({
       limit: 200,
       total: 1
     });
-    expect(forbiddenDelete.statusCode).toBe(403);
-    expect(forbiddenDelete.json()).toMatchObject({
-      error: "세션 접근이 거부되었습니다",
-      timestamp: expect.any(String)
-    });
-    expect(forbiddenDelete.json()).not.toHaveProperty("code");
-    expect(otherLogin).toBeDefined();
-    expect(otherForbiddenDetail.statusCode).toBe(403);
-    expect(otherForbiddenExport.statusCode).toBe(403);
-    expect(orphanDetail.statusCode).toBe(403);
-    expect(orphanDetail.json()).toMatchObject({
-      error: "세션 접근이 거부되었습니다",
-      timestamp: expect.any(String)
-    });
-    expect(orphanDetail.json()).not.toHaveProperty("code");
-    expect(orphanDelete.statusCode).toBe(403);
-    expect(orphanDelete.json()).toMatchObject({
-      error: "세션 접근이 거부되었습니다",
-      timestamp: expect.any(String)
-    });
-    expect(orphanDelete.json()).not.toHaveProperty("code");
     expect(markdownExport.statusCode).toBe(200);
     expect(markdownExport.headers["content-type"]).toContain("text/markdown");
-    expect(markdownExport.body).toContain("# Conversation: member-run");
+    expect(markdownExport.body).toContain("# Conversation: owner-run");
     expect(ownDelete.statusCode).toBe(204);
   });
 });

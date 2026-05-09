@@ -7,7 +7,7 @@
  * registerCompatibilityRoutes don't change.
  */
 
-import { extractBearerToken, type LoginResult } from "@muse/auth";
+import { extractBearerToken } from "@muse/auth";
 import type { FastifyInstance } from "fastify";
 import {
   errorMessage,
@@ -37,15 +37,7 @@ export function registerAuthCompatibilityRoutes(server: FastifyInstance, options
 
     try {
       const login = await authService.register(parsed.value);
-      let normalizedLogin: LoginResult = login;
-
-      if (login.user.role === "admin") {
-        const normalizedUser = await authService.updateUserRole(login.user.id, "user");
-        const relogin = await authService.login(parsed.value.email, parsed.value.password);
-        normalizedLogin = relogin ?? (normalizedUser ? { ...login, user: normalizedUser } : login);
-      }
-
-      return reply.status(201).send(toCompatAuthResponse(normalizedLogin));
+      return reply.status(201).send(toCompatAuthResponse(login));
     } catch (error) {
       const code = error instanceof Error && "code" in error ? String(error.code) : "REGISTRATION_FAILED";
       return reply.status(code === "USER_EXISTS" ? 409 : 400).send({

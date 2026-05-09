@@ -5,8 +5,7 @@ import {
   extractBearerToken,
   type AuthIdentity,
   type LoginResult,
-  type MuseAuth,
-  type UserRole
+  type MuseAuth
 } from "@muse/auth";
 import type { McpServer } from "@muse/mcp";
 import type { TaskMemoryMaintenance, UserMemory, UserMemoryStore } from "@muse/memory";
@@ -471,7 +470,6 @@ export {
   dateOrNull,
   dateOrUndefined,
   epochMillisOrNull,
-  isAdminLikeRequest,
   isJsonValue,
   isRecord,
   jsonObjectField,

@@ -4,12 +4,10 @@
  * Owns the three `MuseTracer` implementations (no-op, in-memory,
  * persisted), the five `TraceEventSink` adapters (Kysely DB sink,
  * in-memory queryable sink, Pino log sink, OpenTelemetry exporter,
- * Timescale row exporter), the `createTenantSpanProcessor` decorator
- * that injects `tenant.id` from the recorded attributes, the
- * `createNoOpMuseTracer` convenience factory, the `createTraceEventInsert`
- * row builder, and the private span-handle classes
- * (`InMemorySpanHandle`, `PersistedSpanHandle`, `noOpSpanHandle`)
- * + the small attribute / payload helpers.
+ * Timescale row exporter), the `createNoOpMuseTracer` convenience
+ * factory, the `createTraceEventInsert` row builder, and the private
+ * span-handle classes (`InMemorySpanHandle`, `PersistedSpanHandle`,
+ * `noOpSpanHandle`) + the small attribute / payload helpers.
  *
  * Re-exported from the observability barrel for backwards compatibility.
  */

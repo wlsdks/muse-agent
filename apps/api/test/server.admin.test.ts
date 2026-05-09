@@ -144,11 +144,6 @@ describe("api server: admin / ops / settings / memory", () => {
       name: "Ops Admin",
       password: "password-1"
     });
-    const user = authService.register({
-      email: "ops_user",
-      name: "Ops User",
-      password: "password-1"
-    });
     const metrics = new InMemoryAgentMetrics();
     const schedulerStore = new InMemoryScheduledJobStore({ idFactory: () => "ops-job-1" });
     const schedulerExecutionStore = new InMemoryScheduledJobExecutionStore({ idFactory: () => "ops-exec-1" });
@@ -199,8 +194,7 @@ describe("api server: admin / ops / settings / memory", () => {
         store: schedulerStore
       }
     });
-    const forbidden = await server.inject({
-      headers: { authorization: `Bearer ${user.token}` },
+    const unauthenticated = await server.inject({
       method: "GET",
       url: "/api/ops/dashboard"
     });
@@ -210,7 +204,7 @@ describe("api server: admin / ops / settings / memory", () => {
       url: "/api/ops/dashboard"
     });
 
-    expect(forbidden.statusCode).toBe(403);
+    expect(unauthenticated.statusCode).toBe(401);
     expect(dashboard.statusCode).toBe(200);
     expect(dashboard.json()).not.toHaveProperty("employeeValue");
     expect(dashboard.json()).toMatchObject({

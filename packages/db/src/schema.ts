@@ -105,7 +105,6 @@ export interface UserTable {
   readonly email: string;
   readonly name: string;
   readonly password_hash: string;
-  readonly role: "user" | "admin";
   readonly created_at: Timestamp;
   readonly updated_at: Timestamp;
 }

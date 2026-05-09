@@ -3,7 +3,6 @@ import type { MuseDatabase, UserTable } from "@muse/db";
 import { createRunId } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
-export type UserRole = "user" | "admin";
 export type Awaitable<T> = T | Promise<T>;
 
 export interface User {
@@ -11,7 +10,6 @@ export interface User {
   readonly email: string;
   readonly name: string;
   readonly passwordHash: string;
-  readonly role: UserRole;
   readonly createdAt: Date;
 }
 
@@ -20,7 +18,6 @@ export interface UserInput {
   readonly email: string;
   readonly name: string;
   readonly passwordHash: string;
-  readonly role?: UserRole;
   readonly createdAt?: Date;
   readonly updatedAt?: Date;
 }
@@ -66,7 +63,6 @@ export interface JwtClaims {
   readonly sub: string;
   readonly jti: string;
   readonly email: string;
-  readonly role: UserRole;
   readonly iat: number;
   readonly exp: number;
   readonly accountId?: string;
@@ -75,7 +71,6 @@ export interface JwtClaims {
 export interface AuthIdentity {
   readonly userId: string;
   readonly email: string;
-  readonly role: UserRole;
   readonly tokenId: string;
   readonly expiresAt: Date;
   readonly accountId?: string;
@@ -114,7 +109,6 @@ export interface MuseAuth {
     readonly userId: string;
   }): Awaitable<PasswordChangeResult>;
   getUserById(userId: string): Awaitable<Omit<User, "passwordHash"> | undefined>;
-  updateUserRole(userId: string, role: UserRole): Awaitable<Omit<User, "passwordHash"> | undefined>;
   authenticateBearer(token: string | undefined): Awaitable<AuthIdentity | undefined>;
   logout(token: string | undefined): Awaitable<boolean>;
 }
@@ -263,7 +257,6 @@ export class KyselyUserStore implements AsyncUserStore {
           email: normalized.email,
           name: normalized.name,
           password_hash: normalized.passwordHash,
-          role: normalized.role,
           updated_at: now
         })
       )
@@ -376,7 +369,6 @@ export class JwtTokenProvider {
       exp: expiresAt,
       iat: issuedAt,
       jti: createRunId("token"),
-      role: user.role,
       sub: user.id
     };
 
@@ -395,10 +387,6 @@ export class JwtTokenProvider {
 
   validateToken(token: string, now = new Date()): string | undefined {
     return this.parseToken(token, now)?.sub;
-  }
-
-  extractRole(token: string): UserRole | undefined {
-    return this.parseToken(token)?.role;
   }
 
   extractEmail(token: string): string | undefined {
@@ -446,12 +434,10 @@ export class Auth implements MuseAuth {
     const provider = this.options.authProvider;
     const passwordHash =
       provider instanceof DefaultAuthProvider ? provider.hashPassword(input.password) : new PasswordHasher().hashPassword(input.password);
-    const role: UserRole = this.userStore.count() === 0 ? "admin" : "user";
     const user = this.userStore.save({
       email: input.email,
       name: input.name,
-      passwordHash,
-      role
+      passwordHash
     });
     const token = this.options.jwt.createToken(user);
     const expiresAt = this.options.jwt.extractExpiration(token) ?? new Date(Date.now() + defaultJwtExpirationMs);
@@ -482,8 +468,7 @@ export class Auth implements MuseAuth {
       email: user.email,
       id: user.id,
       name: user.name,
-      passwordHash: this.options.authProvider.hashPassword(input.newPassword),
-      role: user.role
+      passwordHash: this.options.authProvider.hashPassword(input.newPassword)
     });
     return "changed";
   }
@@ -491,20 +476,6 @@ export class Auth implements MuseAuth {
   getUserById(userId: string): Omit<User, "passwordHash"> | undefined {
     const user = this.options.authProvider.getUserById(userId);
     return user ? publicUser(user) : undefined;
-  }
-
-  updateUserRole(userId: string, role: UserRole): Omit<User, "passwordHash"> | undefined {
-    if (!this.userStore) {
-      return undefined;
-    }
-
-    const user = this.options.authProvider.getUserById(userId);
-
-    if (!user) {
-      return undefined;
-    }
-
-    return publicUser(this.userStore.update({ ...user, role }));
   }
 
   authenticateBearer(token: string | undefined): AuthIdentity | undefined {
@@ -522,7 +493,6 @@ export class Auth implements MuseAuth {
       accountId: claims.accountId,
       email: claims.email,
       expiresAt: new Date(claims.exp * 1_000),
-      role: claims.role,
       tokenId: claims.jti,
       userId: claims.sub
     };
@@ -562,12 +532,10 @@ export class AsyncAuth implements MuseAuth {
     const provider = this.options.authProvider;
     const passwordHash =
       provider instanceof KyselyAuthProvider ? provider.hashPassword(input.password) : new PasswordHasher().hashPassword(input.password);
-    const role: UserRole = (await this.userStore.count()) === 0 ? "admin" : "user";
     const user = await this.userStore.save({
       email: input.email,
       name: input.name,
-      passwordHash,
-      role
+      passwordHash
     });
 
     return this.createLoginResult(user);
@@ -597,8 +565,7 @@ export class AsyncAuth implements MuseAuth {
       email: user.email,
       id: user.id,
       name: user.name,
-      passwordHash: this.options.authProvider.hashPassword(input.newPassword),
-      role: user.role
+      passwordHash: this.options.authProvider.hashPassword(input.newPassword)
     });
     return "changed";
   }
@@ -606,20 +573,6 @@ export class AsyncAuth implements MuseAuth {
   async getUserById(userId: string): Promise<Omit<User, "passwordHash"> | undefined> {
     const user = await this.options.authProvider.getUserById(userId);
     return user ? publicUser(user) : undefined;
-  }
-
-  async updateUserRole(userId: string, role: UserRole): Promise<Omit<User, "passwordHash"> | undefined> {
-    if (!this.userStore) {
-      return undefined;
-    }
-
-    const user = await this.options.authProvider.getUserById(userId);
-
-    if (!user) {
-      return undefined;
-    }
-
-    return publicUser(await this.userStore.update({ ...user, role }));
   }
 
   async authenticateBearer(token: string | undefined): Promise<AuthIdentity | undefined> {
@@ -637,7 +590,6 @@ export class AsyncAuth implements MuseAuth {
       accountId: claims.accountId,
       email: claims.email,
       expiresAt: new Date(claims.exp * 1_000),
-      role: claims.role,
       tokenId: claims.jti,
       userId: claims.sub
     };
@@ -656,10 +608,6 @@ export class AsyncAuth implements MuseAuth {
     const expiresAt = this.options.jwt.extractExpiration(token) ?? new Date(Date.now() + defaultJwtExpirationMs);
     return { expiresAt, token, user: publicUser(user) };
   }
-}
-
-export function isAnyAdmin(role: UserRole | undefined | null): boolean {
-  return role === "admin";
 }
 
 export function currentActor(identity: AuthIdentity | undefined): string {
@@ -695,8 +643,7 @@ function normalizeUserInput(input: UserInput): User {
     email,
     id: input.id ?? createRunId("user"),
     name: input.name.trim(),
-    passwordHash: input.passwordHash,
-    role: input.role ?? "user"
+    passwordHash: input.passwordHash
   };
 }
 
@@ -705,8 +652,7 @@ function publicUser(user: User): Omit<User, "passwordHash"> {
     createdAt: user.createdAt,
     email: user.email,
     id: user.id,
-    name: user.name,
-    role: user.role
+    name: user.name
   };
 }
 
@@ -720,7 +666,6 @@ export function createUserInsert(input: UserInput): UserInsert {
     id: user.id,
     name: user.name,
     password_hash: user.passwordHash,
-    role: user.role,
     updated_at: updatedAt
   };
 }
@@ -731,8 +676,7 @@ export function mapUserRow(row: UserRow): User {
     email: row.email,
     id: row.id,
     name: row.name,
-    passwordHash: row.password_hash,
-    role: row.role
+    passwordHash: row.password_hash
   };
 }
 
@@ -790,14 +734,9 @@ function isJwtClaims(value: unknown): value is JwtClaims {
     typeof value.sub === "string" &&
     typeof value.jti === "string" &&
     typeof value.email === "string" &&
-    isUserRole(value.role) &&
     typeof value.iat === "number" &&
     typeof value.exp === "number"
   );
-}
-
-function isUserRole(value: unknown): value is UserRole {
-  return value === "user" || value === "admin";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

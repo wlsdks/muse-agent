@@ -10,7 +10,6 @@ import {
   anonymousActor,
   currentActor,
   extractBearerToken,
-  isAnyAdmin,
   normalizeEmail,
   type User
 } from "../src/index.js";
@@ -57,14 +56,12 @@ describe("JwtTokenProvider edge cases", () => {
     email: "user@example.com",
     id: "user-1",
     name: "User",
-    passwordHash: "v1:salt:hash",
-    role: "user"
+    passwordHash: "v1:salt:hash"
   };
 
-  it("creates a token, validates the subject, and surfaces the role", () => {
+  it("creates a token and validates the subject", () => {
     const token = jwt.createToken(sampleUser);
     expect(jwt.validateToken(token)).toBe("user-1");
-    expect(jwt.extractRole(token)).toBe("user");
   });
 
   it("returns undefined for an expired token", () => {
@@ -151,29 +148,6 @@ describe("Auth logout / authenticateBearer", () => {
   });
 });
 
-describe("Auth.updateUserRole", () => {
-  it("promotes a user to admin and returns the public projection", () => {
-    const { service } = makeService();
-    const registration = service.register({ email: "e@example.com", name: "E", password: "pw" });
-    const promoted = service.updateUserRole(registration.user.id, "admin");
-    expect(promoted?.role).toBe("admin");
-  });
-
-  it("returns undefined when the user does not exist", () => {
-    const { service } = makeService();
-    expect(service.updateUserRole("ghost", "admin")).toBeUndefined();
-  });
-});
-
-describe("authorization helpers", () => {
-  it("isAnyAdmin recognises only the admin role", () => {
-    expect(isAnyAdmin("admin")).toBe(true);
-    expect(isAnyAdmin("user")).toBe(false);
-    expect(isAnyAdmin(null)).toBe(false);
-    expect(isAnyAdmin(undefined)).toBe(false);
-  });
-});
-
 describe("actor helpers", () => {
   it("currentActor falls back to the anonymous sentinel when identity or userId is missing", () => {
     expect(currentActor(undefined)).toBe(anonymousActor);
@@ -182,7 +156,6 @@ describe("actor helpers", () => {
         accountId: "acct",
         email: "a@b.c",
         expiresAt: new Date(),
-        role: "user",
         tokenId: "t-1",
         userId: "    "
       })
@@ -192,7 +165,6 @@ describe("actor helpers", () => {
         accountId: "acct",
         email: "a@b.c",
         expiresAt: new Date(),
-        role: "user",
         tokenId: "t-1",
         userId: "user-1"
       })

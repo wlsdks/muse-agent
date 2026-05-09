@@ -16,7 +16,6 @@ import type { JsonObject } from "@muse/shared";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import {
   errorResponse,
-  isAdminLikeRequest,
   isRecord,
   nowIso,
   readAuthUserId,
@@ -75,10 +74,6 @@ export async function compatSessionDetail(
 
   if (!run) {
     return reply.status(404).send(errorResponse(`Session not found: ${sessionId}`));
-  }
-
-  if ((!run.userId || run.userId !== userId) && !isAdminLikeRequest(request)) {
-    return reply.status(403).send(errorResponse("세션 접근이 거부되었습니다"));
   }
 
   const messages = await options.historyStore.listMessages(sessionId);

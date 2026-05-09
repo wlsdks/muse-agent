@@ -18,7 +18,6 @@ import {
   anonymousActor,
   currentActor,
   extractBearerToken,
-  isAnyAdmin,
   normalizeEmail
 } from "../src/index.js";
 
@@ -48,29 +47,25 @@ describe("Kysely auth mapping", () => {
   it("builds PostgreSQL payloads for users and token revocations", () => {
     const db = createPostgresBuilder();
     const createdAt = new Date("2026-05-06T00:00:00.000Z");
-    const expiresAt = new Date("2026-05-06T01:00:00.000Z");
     const user = createUserInsert({
       createdAt,
       email: " USER_ACCOUNT ",
       id: "user-1",
       name: "User",
-      passwordHash: "hash",
-      role: "admin"
+      passwordHash: "hash"
     });
     const userSql = db.insertInto("users").values(user).returningAll().compile();
 
     expect(userSql.sql).toContain('insert into "users"');
     expect(user).toMatchObject({
       email: "user_account",
-      id: "user-1",
-      role: "admin"
+      id: "user-1"
     });
     expect(mapUserRow(user)).toMatchObject({
       email: "user_account",
-      id: "user-1",
-      role: "admin"
+      id: "user-1"
     });
-    expect(mapUserRow(user)).not.toHaveProperty("tenantId");
+    expect(mapUserRow(user)).not.toHaveProperty("role");
   });
 });
 
@@ -85,8 +80,7 @@ describe("jwt tokens", () => {
       email: "user_account",
       id: "user-1",
       name: "User",
-      passwordHash: "hash",
-      role: "admin" as const
+      passwordHash: "hash"
     };
     const now = new Date();
     const token = jwt.createToken(user, now);
@@ -96,7 +90,6 @@ describe("jwt tokens", () => {
     });
 
     expect(jwt.validateToken(token, new Date(now.getTime() + 1_000))).toBe("user-1");
-    expect(jwt.extractRole(token)).toBe("admin");
     expect(service.authenticateBearer(token)?.userId).toBe("user-1");
     expect(service.logout(token)).toBe(true);
   });
@@ -107,7 +100,7 @@ describe("jwt tokens", () => {
 });
 
 describe("Auth registration and login", () => {
-  it("registers first user as admin and returns login tokens", () => {
+  it("registers a user and returns login tokens", () => {
     const store = new InMemoryUserStore();
     const provider = new DefaultAuthProvider(store);
     const service = new Auth({
@@ -127,7 +120,7 @@ describe("Auth registration and login", () => {
       userId: registered.user.id
     });
 
-    expect(registered.user.role).toBe("admin");
+    expect(registered.user).not.toHaveProperty("role");
     expect(login?.token).toBeTruthy();
     expect(login?.user).not.toHaveProperty("passwordHash");
     expect(changed).toBe("changed");
@@ -142,9 +135,7 @@ describe("Auth registration and login", () => {
 });
 
 describe("authorization helpers", () => {
-  it("recognises admin role and masks actors", () => {
-    expect(isAnyAdmin("admin")).toBe(true);
-    expect(isAnyAdmin("user")).toBe(false);
+  it("masks anonymous actors", () => {
     expect(currentActor(undefined)).toBe(anonymousActor);
   });
 
