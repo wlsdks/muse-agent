@@ -198,7 +198,6 @@ interface CompatState {
   readonly slackFaq: CompatCollection;
   readonly slackFaqEvents: Map<string, CompatRecord[]>;
   readonly slackFaqFeedback: Map<string, Record<string, { thumbsDown: number; thumbsUp: number }>>;
-  readonly swaggerSources: CompatCollection;
   readonly userMemory: Map<string, {
     facts: Record<string, string>;
     preferences: Record<string, string>;
@@ -263,7 +262,6 @@ function createCompatState(): CompatState {
     slackFaq: new Map(),
     slackFaqEvents: new Map(),
     slackFaqFeedback: new Map(),
-    swaggerSources: new Map(),
     userMemory: new Map(),
     toolPolicy: defaultToolPolicy(),
     toolPolicyStored: false
