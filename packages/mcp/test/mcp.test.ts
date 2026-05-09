@@ -21,6 +21,10 @@ import {
   createNotesMcpServer,
   createTasksMcpServer,
   createRegexMcpServer,
+  AppleNotesProvider,
+  NotesProviderError,
+  NotesProviderRegistry,
+  NotionNotesProvider,
   createUrlMcpServer,
   createMcpSecurityPolicyInsert,
   createMcpServerInsert,
@@ -1284,5 +1288,39 @@ describe("muse.tasks loopback server", () => {
     writeFileSync(file, "not valid json");
     const recovered = await connection.callTool!("list", { status: "all" });
     expect(recovered).toMatchObject({ total: 0 });
+  });
+});
+
+describe("notes provider abstraction", () => {
+  it("registers and routes providers via NotesProviderRegistry", () => {
+    const apple = new AppleNotesProvider();
+    const notion = new NotionNotesProvider({ token: "fake" });
+    const registry = new NotesProviderRegistry([apple, notion]);
+
+    expect(registry.has("apple")).toBe(true);
+    expect(registry.has("notion")).toBe(true);
+    expect(registry.has("ghost")).toBe(false);
+    expect(registry.describe()).toHaveLength(2);
+    expect(registry.primary()?.id).toBe("apple");
+  });
+
+  it("throws PROVIDER_NOT_FOUND for unknown providerId", () => {
+    const registry = new NotesProviderRegistry([new AppleNotesProvider()]);
+    expect(() => registry.require("ghost")).toThrowError(NotesProviderError);
+  });
+
+  it("AppleNotesProvider scaffolds reject every operation with NOT_IMPLEMENTED", async () => {
+    const apple = new AppleNotesProvider();
+    await expect(apple.list()).rejects.toMatchObject({ code: "NOT_IMPLEMENTED", providerId: "apple" });
+    await expect(apple.read("x")).rejects.toMatchObject({ code: "NOT_IMPLEMENTED" });
+    await expect(apple.search("x", 5)).rejects.toMatchObject({ code: "NOT_IMPLEMENTED" });
+    await expect(apple.save({ body: "b", title: "t" })).rejects.toMatchObject({ code: "NOT_IMPLEMENTED" });
+    await expect(apple.append({ body: "b", id: "x" })).rejects.toMatchObject({ code: "NOT_IMPLEMENTED" });
+  });
+
+  it("NotionNotesProvider describes itself with the right id", () => {
+    const notion = new NotionNotesProvider({ databaseId: "db1", token: "t" });
+    const info = notion.describe();
+    expect(info).toMatchObject({ id: "notion", local: false });
   });
 });
