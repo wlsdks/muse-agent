@@ -90,8 +90,7 @@ const defaultTtlMs = 60 * 60 * 1_000;
 const identityMetadataKeys = [
   "requesterAccountId",
   "requesterEmail",
-  "userEmail",
-  "slackUserEmail"
+  "userEmail"
 ] as const;
 
 export class NoOpResponseCache implements ResponseCache {

@@ -154,7 +154,10 @@ describe("tool utilities", () => {
     expect(isWorkspaceMutationPrompt("Summarize the latest note.")).toBe(false);
     expect(isWorkspaceMutationPrompt("Please assign this task to example-user.")).toBe(false);
     expect(isWorkspaceMutationPrompt("Show unassigned issues.")).toBe(false);
-    expect(isWorkspaceMutationPrompt("Write this page as a Slack message.")).toBe(false);
+    // Formatting-context keywords (마크다운으로 / json으로 / 테이블로 …) suppress
+    // an otherwise-mutating prompt: "이 페이지를 마크다운으로 정리해" reads as "render
+    // the existing page as markdown", not "modify the workspace".
+    expect(isWorkspaceMutationPrompt("이 페이지를 마크다운으로 정리해줘")).toBe(false);
     expect(isWorkspaceMutationPrompt("PR에 코멘트해줘")).toBe(true);
   });
 

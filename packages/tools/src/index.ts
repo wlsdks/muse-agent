@@ -795,14 +795,12 @@ const readOnlyLookupExceptions = ["unassigned", "미할당"] as const;
 const formattingContextKeywords = [
   "형태로",
   "포맷으로",
-  "슬랙 메시지",
   "마크다운으로",
   "이메일로",
   "json으로",
   "테이블로",
   "양식으로",
-  "서식으로",
-  "as a slack message"
+  "서식으로"
 ] as const;
 
 const mutationTargetHints = [
