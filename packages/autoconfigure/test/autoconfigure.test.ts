@@ -15,12 +15,10 @@ import { KyselyRagDocumentStore, KyselyRagIngestionCandidateStore, KyselyRagInge
 import { KyselyRuntimeSettingsStore } from "@muse/runtime-settings";
 import {
   KyselyAdminOperationsStore,
-  KyselyAdminAuditStore,
   KyselyAgentRunHistoryStore,
   KyselyDebugReplayCaptureStore,
   KyselyHookTraceStore,
   KyselyMetricAuditEventStore,
-  KyselyPendingApprovalStore,
   KyselySessionTagStore
 } from "@muse/runtime-state";
 import {
@@ -28,13 +26,6 @@ import {
   KyselyScheduledJobExecutionStore,
   KyselyScheduledJobStore
 } from "@muse/scheduler";
-import {
-  KyselyChannelFaqRegistrationStore,
-  KyselySlackBotInstanceStore,
-  KyselySlackFeedbackEventStore,
-  KyselySlackResponseTrackerStore,
-  SlackBotResponseTracker
-} from "@muse/integrations";
 import {
   DummyDriver,
   Kysely,
@@ -118,11 +109,9 @@ describe("autoconfigure", () => {
     expect(assembly.historyStore).toBeInstanceOf(KyselyAgentRunHistoryStore);
     expect(assembly.hookTraceStore).toBeInstanceOf(KyselyHookTraceStore);
     expect(assembly.adminOperationsStore).toBeInstanceOf(KyselyAdminOperationsStore);
-    expect(assembly.adminAuditStore).toBeInstanceOf(KyselyAdminAuditStore);
     expect(assembly.debugReplayCaptureStore).toBeInstanceOf(KyselyDebugReplayCaptureStore);
     expect(assembly.metricAuditEventStore).toBeInstanceOf(KyselyMetricAuditEventStore);
     expect(assembly.observability.tracer).toBeInstanceOf(PersistedMuseTracer);
-    expect(assembly.approvalStore).toBeInstanceOf(KyselyPendingApprovalStore);
     expect(assembly.mcp.serverStore).toBeInstanceOf(KyselyMcpServerStore);
     expect(assembly.mcp.securityPolicyStore).toBeInstanceOf(KyselyMcpSecurityPolicyStore);
     expect((assembly.runtimeSettings as unknown as { readonly store: unknown }).store)
@@ -140,10 +129,6 @@ describe("autoconfigure", () => {
     expect(assembly.ragIngestion.policyStore).toBeInstanceOf(KyselyRagIngestionPolicyStore);
     expect(assembly.ragIngestion.candidateStore).toBeInstanceOf(KyselyRagIngestionCandidateStore);
     expect(assembly.ragIngestion.documentStore).toBeInstanceOf(KyselyRagDocumentStore);
-    expect(assembly.slackPersistence.botStore).toBeInstanceOf(KyselySlackBotInstanceStore);
-    expect(assembly.slackPersistence.faqStore).toBeInstanceOf(KyselyChannelFaqRegistrationStore);
-    expect(assembly.slackPersistence.feedbackStore).toBeInstanceOf(KyselySlackFeedbackEventStore);
-    expect(assembly.slackPersistence.responseTrackerStore).toBeInstanceOf(KyselySlackResponseTrackerStore);
   });
 
   it("assembles AgentRuntime when an OpenAI-compatible model endpoint is configured", () => {
@@ -178,42 +163,6 @@ describe("autoconfigure", () => {
         output: "Diagnostic response: hello"
       }
     });
-  });
-
-  it("does not register the Slack progress hook when MUSE_SLACK_BOT_TOKEN is unset", async () => {
-    const assembly = createMuseRuntimeAssembly({
-      env: {
-        MUSE_MODEL: "diagnostic/smoke",
-        MUSE_MODEL_PROVIDER_ID: "diagnostic"
-      }
-    });
-    const runtime = assembly.agentRuntime as unknown as { readonly hooks?: readonly { readonly id?: string }[] };
-    expect((runtime.hooks ?? []).some((hook) => hook.id === "slack-progress")).toBe(false);
-  });
-
-  it("registers the Slack progress hook when MUSE_SLACK_BOT_TOKEN is set", async () => {
-    const assembly = createMuseRuntimeAssembly({
-      env: {
-        MUSE_MODEL: "diagnostic/smoke",
-        MUSE_MODEL_PROVIDER_ID: "diagnostic",
-        MUSE_SLACK_BOT_TOKEN: "xoxb-test-token"
-      }
-    });
-    const runtime = assembly.agentRuntime as unknown as { readonly hooks?: readonly { readonly id?: string }[] };
-    expect((runtime.hooks ?? []).some((hook) => hook.id === "slack-progress")).toBe(true);
-  });
-
-  it("opts out of the Slack progress hook via MUSE_SLACK_PROGRESS_ENABLED=false even with a token", async () => {
-    const assembly = createMuseRuntimeAssembly({
-      env: {
-        MUSE_MODEL: "diagnostic/smoke",
-        MUSE_MODEL_PROVIDER_ID: "diagnostic",
-        MUSE_SLACK_BOT_TOKEN: "xoxb-test-token",
-        MUSE_SLACK_PROGRESS_ENABLED: "false"
-      }
-    });
-    const runtime = assembly.agentRuntime as unknown as { readonly hooks?: readonly { readonly id?: string }[] };
-    expect((runtime.hooks ?? []).some((hook) => hook.id === "slack-progress")).toBe(false);
   });
 
   it("feeds the MonthlyBudgetTracker from each agent run", async () => {
@@ -383,24 +332,6 @@ describe("autoconfigure", () => {
     expect(anthropic.modelProvider?.id).toBe("anthropic");
     expect(gemini.modelProvider?.id).toBe("gemini");
     expect(ollama.modelProvider?.id).toBe("ollama");
-  });
-
-  it("maps Slack API options from environment", () => {
-    const options = createApiServerOptions({
-      env: {
-        MUSE_SLACK_BOT_TOKEN: "xoxb-token",
-        MUSE_SLACK_ENABLED: "true",
-        MUSE_SLACK_SIGNING_SECRET: "signing-secret"
-      }
-    });
-
-    expect(options.slack).toMatchObject({
-      botToken: "xoxb-token",
-      enabled: true,
-      signingSecret: "signing-secret"
-    });
-    expect(options.slack.responseTracker).toBeInstanceOf(SlackBotResponseTracker);
-    expect(options.slack.feedbackStore).toBeTruthy();
   });
 
   it("parses primitive env values conservatively", () => {

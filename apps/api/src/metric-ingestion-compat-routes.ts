@@ -9,14 +9,38 @@
  */
 
 import type { FastifyInstance } from "fastify";
+import type { JsonObject } from "@muse/shared";
 import {
+  createRecord,
   errorResponse,
+  getStateMetricEvents,
   isRecord,
-  recordMetricEvent,
   stringField,
   toJsonObject,
+  type CompatRecord,
   type ReactorCompatibilityRouteOptions
 } from "./reactor-compat-routes.js";
+
+async function recordMetricEvent(
+  options: ReactorCompatibilityRouteOptions,
+  input: { readonly kind: string; readonly payload: JsonObject }
+): Promise<CompatRecord> {
+  if (options.admin?.metricEventStore) {
+    const saved = await options.admin.metricEventStore.record({
+      kind: input.kind,
+      payload: input.payload
+    });
+    return {
+      createdAt: saved.createdAt.toISOString(),
+      id: saved.id,
+      kind: saved.kind,
+      payload: saved.payload,
+      updatedAt: saved.createdAt.toISOString()
+    };
+  }
+
+  return createRecord(getStateMetricEvents(), input, "metric_event");
+}
 
 export function registerMetricIngestionCompatRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   for (const route of ["mcp-health", "tool-call", "eval-result"]) {

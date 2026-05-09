@@ -35,9 +35,6 @@ importers:
       '@muse/autoconfigure':
         specifier: workspace:*
         version: link:../../packages/autoconfigure
-      '@muse/integrations':
-        specifier: workspace:*
-        version: link:../../packages/integrations
       '@muse/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
@@ -211,9 +208,6 @@ importers:
       '@muse/db':
         specifier: workspace:*
         version: link:../db
-      '@muse/integrations':
-        specifier: workspace:*
-        version: link:../integrations
       '@muse/mcp':
         specifier: workspace:*
         version: link:../mcp
@@ -278,27 +272,6 @@ importers:
       testcontainers:
         specifier: ^11.14.0
         version: 11.14.0
-
-  packages/integrations:
-    dependencies:
-      '@muse/agent-core':
-        specifier: workspace:*
-        version: link:../agent-core
-      '@muse/db':
-        specifier: workspace:*
-        version: link:../db
-      '@muse/model':
-        specifier: workspace:*
-        version: link:../model
-      '@muse/observability':
-        specifier: workspace:*
-        version: link:../observability
-      '@muse/shared':
-        specifier: workspace:*
-        version: link:../shared
-      kysely:
-        specifier: ^0.28.17
-        version: 0.28.17
 
   packages/mcp:
     dependencies:

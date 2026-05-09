@@ -1,5 +1,4 @@
 import type {
-  AdminAuditTable,
   AdminAlertTable,
   AdminCostUsageTable,
   AdminSloTable,
@@ -54,45 +53,6 @@ export interface AdminOperationsStore {
   costSummary(): Awaitable<AdminCostSummary>;
 }
 
-export interface AdminAuditRecord {
-  readonly id: string;
-  readonly category: string;
-  readonly action: string;
-  readonly actor: string;
-  readonly resourceType?: string | null;
-  readonly resourceId?: string | null;
-  readonly detail?: string | null;
-  readonly createdAt: Date;
-}
-
-export interface AdminAuditInput {
-  readonly id?: string;
-  readonly category: string;
-  readonly action: string;
-  readonly actor: string;
-  readonly resourceType?: string | null;
-  readonly resourceId?: string | null;
-  readonly detail?: string | null;
-}
-
-export interface AdminAuditQueryFilter {
-  readonly category?: string;
-  readonly action?: string;
-  readonly limit?: number;
-  readonly offset?: number;
-}
-
-export interface AdminAuditQueryPage {
-  readonly items: readonly AdminAuditRecord[];
-  readonly total: number;
-}
-
-export interface AdminAuditStore {
-  record(input: AdminAuditInput): Awaitable<AdminAuditRecord>;
-  listRecent(limit?: number): Awaitable<readonly AdminAuditRecord[]>;
-  query(filter?: AdminAuditQueryFilter): Awaitable<AdminAuditQueryPage>;
-}
-
 export interface MetricAuditEvent {
   readonly id: string;
   readonly kind: string;
@@ -139,8 +99,6 @@ export interface KyselyAdminOperationsStoreOptions {
 type AdminAlertRow = Selectable<AdminAlertTable>;
 type AdminSloRow = Selectable<AdminSloTable>;
 type AdminCostUsageRow = Selectable<AdminCostUsageTable>;
-type AdminAuditRow = Selectable<AdminAuditTable>;
-type AdminAuditInsert = Insertable<AdminAuditTable>;
 type MetricAuditTrailRow = Selectable<MetricAuditTrailTable>;
 type MetricAuditTrailInsert = Insertable<MetricAuditTrailTable>;
 type AdminAlertInsert = Insertable<AdminAlertTable>;
@@ -221,115 +179,6 @@ export class InMemoryAdminOperationsStore implements AdminOperationsStore {
     return {
       byModel: sumCostsByModel(this.costs),
       totalCostUsd: formatCost(this.costs.reduce((sum, item) => sum + Number(item.costUsd), 0))
-    };
-  }
-}
-
-export class InMemoryAdminAuditStore implements AdminAuditStore {
-  private readonly audits = new Map<string, AdminAuditRecord>();
-  private readonly idFactory: () => string;
-  private readonly maxAudits: number;
-  private readonly now: () => Date;
-
-  constructor(options: {
-    readonly idFactory?: () => string;
-    readonly maxAudits?: number;
-    readonly now?: () => Date;
-  } = {}) {
-    this.idFactory = options.idFactory ?? (() => createRunId("admin_audit"));
-    this.maxAudits = Math.max(1, options.maxAudits ?? 50_000);
-    this.now = options.now ?? (() => new Date());
-  }
-
-  record(input: AdminAuditInput): AdminAuditRecord {
-    const record: AdminAuditRecord = {
-      action: input.action.toUpperCase(),
-      actor: input.actor,
-      category: input.category,
-      createdAt: this.now(),
-      detail: input.detail ?? null,
-      id: input.id ?? this.idFactory(),
-      resourceId: input.resourceId ?? null,
-      resourceType: input.resourceType ?? null
-    };
-
-    this.audits.set(record.id, record);
-    trimOldestMap(this.audits, this.maxAudits);
-    return record;
-  }
-
-  listRecent(limit = 1000): readonly AdminAuditRecord[] {
-    return [...this.audits.values()]
-      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
-      .slice(0, Math.max(1, limit));
-  }
-
-  query(filter: AdminAuditQueryFilter = {}): AdminAuditQueryPage {
-    const limit = Math.max(1, filter.limit ?? 50);
-    const offset = Math.max(0, filter.offset ?? 0);
-    const category = filter.category?.toLowerCase();
-    const action = filter.action?.toUpperCase();
-    const filtered = [...this.audits.values()]
-      .filter((record) => !category || record.category.toLowerCase() === category)
-      .filter((record) => !action || record.action.toUpperCase() === action)
-      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
-    return {
-      items: filtered.slice(offset, offset + limit),
-      total: filtered.length
-    };
-  }
-}
-
-export class KyselyAdminAuditStore implements AdminAuditStore {
-  private readonly idFactory: () => string;
-  private readonly now: () => Date;
-
-  constructor(
-    private readonly db: Kysely<MuseDatabase>,
-    options: { readonly idFactory?: () => string; readonly now?: () => Date } = {}
-  ) {
-    this.idFactory = options.idFactory ?? (() => createRunId("admin_audit"));
-    this.now = options.now ?? (() => new Date());
-  }
-
-  async record(input: AdminAuditInput): Promise<AdminAuditRecord> {
-    const row = await this.db
-      .insertInto("admin_audits")
-      .values(createAdminAuditInsert(input, { idFactory: this.idFactory, now: this.now }))
-      .returningAll()
-      .executeTakeFirstOrThrow();
-    return mapAdminAuditRow(row);
-  }
-
-  async listRecent(limit = 1000): Promise<readonly AdminAuditRecord[]> {
-    const rows = await this.db
-      .selectFrom("admin_audits")
-      .selectAll()
-      .orderBy("created_at", "desc")
-      .limit(Math.max(1, limit))
-      .execute();
-    return rows.map(mapAdminAuditRow);
-  }
-
-  async query(filter: AdminAuditQueryFilter = {}): Promise<AdminAuditQueryPage> {
-    const limit = Math.max(1, filter.limit ?? 50);
-    const offset = Math.max(0, filter.offset ?? 0);
-    let listing = this.db.selectFrom("admin_audits").selectAll();
-    let counter = this.db.selectFrom("admin_audits").select((eb) => eb.fn.countAll().as("total"));
-    if (filter.category) {
-      listing = listing.where("category", "=", filter.category.toLowerCase());
-      counter = counter.where("category", "=", filter.category.toLowerCase());
-    }
-    if (filter.action) {
-      listing = listing.where("action", "=", filter.action.toUpperCase());
-      counter = counter.where("action", "=", filter.action.toUpperCase());
-    }
-    const rows = await listing.orderBy("created_at", "desc").limit(limit).offset(offset).execute();
-    const totalRow = await counter.executeTakeFirst();
-    const total = totalRow ? Number(totalRow.total ?? 0) : 0;
-    return {
-      items: rows.map(mapAdminAuditRow),
-      total: Number.isFinite(total) ? total : 0
     };
   }
 }
@@ -606,35 +455,6 @@ export function mapAdminCostUsageRow(row: AdminCostUsageRow): AdminCostUsage {
   };
 }
 
-export function createAdminAuditInsert(
-  input: AdminAuditInput,
-  options: { readonly idFactory: () => string; readonly now: () => Date }
-): AdminAuditInsert {
-  return {
-    action: input.action.toUpperCase(),
-    actor: input.actor,
-    category: input.category,
-    created_at: options.now(),
-    detail: input.detail ?? null,
-    id: input.id ?? options.idFactory(),
-    resource_id: input.resourceId ?? null,
-    resource_type: input.resourceType ?? null
-  };
-}
-
-export function mapAdminAuditRow(row: AdminAuditRow | AdminAuditInsert): AdminAuditRecord {
-  return {
-    action: row.action.toUpperCase(),
-    actor: row.actor,
-    category: row.category,
-    createdAt: toDate(row.created_at ?? new Date(0)),
-    detail: row.detail ?? null,
-    id: row.id,
-    resourceId: row.resource_id ?? null,
-    resourceType: row.resource_type ?? null
-  };
-}
-
 export function createMetricAuditTrailInsert(event: MetricAuditEvent): MetricAuditTrailInsert {
   return {
     actor_email: null,
@@ -686,18 +506,6 @@ function compareById(left: { readonly id: string }, right: { readonly id: string
 
 function toDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
-}
-
-function trimOldestMap<K, V>(map: Map<K, V>, maxSize: number): void {
-  while (map.size > maxSize) {
-    const oldest = map.keys().next().value as K | undefined;
-
-    if (oldest === undefined) {
-      return;
-    }
-
-    map.delete(oldest);
-  }
 }
 
 function jsonObject(value: unknown): JsonObject {

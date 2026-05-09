@@ -19,7 +19,6 @@
 
 import type { FastifyInstance } from "fastify";
 import {
-  compareCreatedAtDesc,
   createInputGuardRule,
   createOutputGuardRule,
   deleteInputGuardRule,
@@ -28,18 +27,14 @@ import {
   getInputGuardRule,
   getOutputGuardRule,
   inputGuardStages,
-  listAdminAuditRecords,
   listInputGuardRules,
   listOutputGuardAudits,
   listOutputGuardRules,
   outputGuardRuleDetail,
   outputGuardRuleNotFound,
   readBoolean,
-  readBodyString,
   readQueryInteger,
-  readQueryString,
   readStringArray,
-  recordAdminAudit,
   recordOutputGuardAudit,
   simulateGuard,
   simulateOutputGuardRules,
@@ -48,7 +43,6 @@ import {
   stringMapField,
   toBody,
   toGuardStageResponse,
-  toInputGuardAuditResponse,
   toInputGuardRuleResponse,
   toOutputGuardAuditResponse,
   toOutputGuardRuleResponse,
@@ -94,12 +88,6 @@ export function registerGuardCompatibilityRoutes(server: FastifyInstance, option
       updated += 1;
     }
 
-    await recordAdminAudit(request, options, {
-      action: "UPDATE_SETTINGS",
-      category: "input_guard",
-      detail: `keys=${Object.keys(settings).join(",")}`
-    });
-
     return {
       note: "Some changes require a server restart",
       updated
@@ -132,12 +120,6 @@ export function registerGuardCompatibilityRoutes(server: FastifyInstance, option
         value: String(index)
       })
     ));
-
-    await recordAdminAudit(request, options, {
-      action: "PIPELINE_REORDER",
-      category: "input_guard",
-      detail: `order=${order.join(",")}`
-    });
 
     return {
       note: "Changed order applies after server restart",
@@ -198,14 +180,6 @@ export function registerGuardCompatibilityRoutes(server: FastifyInstance, option
       .filter((item) => item.restartRequired && Object.prototype.hasOwnProperty.call(config, item.key))
       .map((item) => item.key);
 
-    await recordAdminAudit(request, options, {
-      action: "STAGE_CONFIG_UPDATE",
-      category: "input_guard",
-      detail: `keys=${Object.keys(config).join(",")} restartRequired=${restartRequired.join(",")}`,
-      resourceId: stageName,
-      resourceType: "guard_stage"
-    });
-
     return {
       note: restartRequired.length === 0
         ? "Changes apply immediately"
@@ -216,21 +190,12 @@ export function registerGuardCompatibilityRoutes(server: FastifyInstance, option
     };
   });
 
-  server.get("/api/admin/input-guard/audits", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+  server.get("/api/admin/input-guard/audits", async (_request, reply) => {
+    if (!options.authorizeAdmin(_request, reply)) {
       return reply;
     }
 
-    const limit = Math.max(1, readQueryInteger(request, "limit", 200));
-    const action = readQueryString(request, "action")?.toUpperCase();
-    const audits = (await listAdminAuditRecords(options, Math.min(500, limit)))
-      .filter((row) => stringField(row.category, "") === "input_guard")
-      .filter((row) => !action || stringField(row.action, "").toUpperCase() === action)
-      .sort(compareCreatedAtDesc)
-      .slice(0, Math.min(500, limit))
-      .map(toInputGuardAuditResponse);
-
-    return { audits, total: audits.length };
+    return { audits: [], total: 0 };
   });
 
   server.post("/api/admin/input-guard/simulate", async (request, reply) => {
@@ -238,19 +203,7 @@ export function registerGuardCompatibilityRoutes(server: FastifyInstance, option
       return reply;
     }
 
-    const result = await simulateGuard(request.body, options);
-    const input = readBodyString(request.body, "input")
-      ?? readBodyString(request.body, "text")
-      ?? readBodyString(request.body, "message")
-      ?? "";
-
-    await recordAdminAudit(request, options, {
-      action: "SIMULATE",
-      category: "input_guard",
-      detail: `input=${input.slice(0, 100)} passed=${result.passed === true}`
-    });
-
-    return result;
+    return simulateGuard(request.body, options);
   });
 }
 

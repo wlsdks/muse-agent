@@ -25,9 +25,8 @@ import {
 } from "./reactor-compat-routes.js";
 
 export async function dashboardSummary(options: ReactorCompatibilityRouteOptions) {
-  const [scheduledJobs, pendingApprovals, mcpServers, recentExecutions] = await Promise.all([
+  const [scheduledJobs, mcpServers, recentExecutions] = await Promise.all([
     options.scheduler?.store.list() ?? [],
-    options.pendingApprovalStore?.countPending() ?? 0,
     options.mcp?.manager.listServers() ?? [],
     options.scheduler?.executionStore?.findRecent(6) ?? []
   ]);
@@ -38,9 +37,6 @@ export async function dashboardSummary(options: ReactorCompatibilityRouteOptions
   const failedJobs = scheduledJobs.filter((job) => job.enabled !== false && job.lastStatus === "failed").length;
 
   return {
-    approvals: {
-      pendingCount: pendingApprovals
-    },
     generatedAt: Date.now(),
     mcp: mcpStatusSummary(options, mcpServers),
     metrics: opsMetricSnapshots(options),

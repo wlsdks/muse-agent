@@ -16,7 +16,6 @@ describe("db migrations", () => {
       "auth_token_revocations",
       "conversation_messages",
       "tool_calls",
-      "pending_approvals",
       "checkpoints",
       "trace_events",
       "hook_traces",
@@ -47,10 +46,8 @@ describe("db migrations", () => {
     const sql = migrations.map((migration) => migration.up).join("\n");
 
     for (const table of [
-      "admin_audits",
       "alert_instances",
       "alert_rules",
-      "channel_faq_registrations",
       "conversation_summaries",
       "debug_replay_captures",
       "input_guard_rules",
@@ -71,7 +68,6 @@ describe("db migrations", () => {
       "rag_ingestion_candidates",
       "rag_ingestion_policy",
       "session_tags",
-      "slack_bot_instances",
       "slo_config",
       "task_memories",
       "tool_policy",

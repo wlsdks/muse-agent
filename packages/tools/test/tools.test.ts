@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { createToolNameApprovalPolicy, createToolPolicyConfig } from "@muse/policy";
+import { createToolPolicyConfig } from "@muse/policy";
 import {
   createJarvisTools,
   createRustRunnerTool,
@@ -77,75 +77,9 @@ describe("ToolExecutor", () => {
     expect(result.sanitized?.findings.some((finding) => finding.name === "role_override")).toBe(true);
   });
 
-  it("blocks tools that require approval before execution", async () => {
-    const executor = new ToolExecutor({
-      approvalPolicy: createToolNameApprovalPolicy(["write_note"]),
-      registry: new ToolRegistry([writeTool])
-    });
-
-    const result = await executor.execute({
-      arguments: {},
-      context: { runId: "run-1" },
-      id: "call-1",
-      name: "write_note"
-    });
-
-    expect(result).toMatchObject({
-      output: "Error: tool execution requires approval",
-      status: "blocked"
-    });
-  });
-
-  it("executes approval-gated tools with approved modified arguments", async () => {
-    let capturedApproval: unknown;
-    const approvedTool: MuseTool = {
-      definition: {
-        description: "Writes approved input.",
-        inputSchema: { type: "object" },
-        name: "write_note",
-        risk: "write"
-      },
-      execute: (args) => `approved:${args.text}`
-    };
-    const executor = new ToolExecutor({
-      approvalPolicy: createToolNameApprovalPolicy(["write_note"]),
-      approvalStore: {
-        requestApproval: async (input) => {
-          capturedApproval = input;
-          return { approved: true, modifiedArguments: { text: "reviewed" } };
-        }
-      },
-      registry: new ToolRegistry([approvedTool])
-    });
-
-    const result = await executor.execute({
-      arguments: { text: "draft" },
-      context: { runId: "run-1", userId: "user-1" },
-      id: "call-1",
-      name: "write_note"
-    });
-
-    expect(capturedApproval).toMatchObject({
-      arguments: { text: "draft" },
-      runId: "run-1",
-      toolName: "write_note",
-      userId: "user-1"
-    });
-    expect(result.status).toBe("completed");
-    expect(result.output).toContain("approved:reviewed");
-  });
-
-  it("blocks write tools before approval or execution when dynamic tool policy denies the channel", async () => {
-    let approvals = 0;
+  it("blocks write tools before execution when dynamic tool policy denies the channel", async () => {
     let executions = 0;
     const executor = new ToolExecutor({
-      approvalPolicy: createToolNameApprovalPolicy(["write_note"]),
-      approvalStore: {
-        requestApproval: async () => {
-          approvals += 1;
-          return { approved: true };
-        }
-      },
       registry: new ToolRegistry([{
         ...writeTool,
         execute: () => {
@@ -172,7 +106,6 @@ describe("ToolExecutor", () => {
       output: "Error: Slack write tools are disabled",
       status: "blocked"
     });
-    expect(approvals).toBe(0);
     expect(executions).toBe(0);
   });
 

@@ -41,8 +41,7 @@ import type {
   AgentRunHistoryStore,
   AgentRunMode,
   CheckpointStore,
-  HookTraceStore,
-  PendingApprovalStore
+  HookTraceStore
 } from "@muse/runtime-state";
 import {
   COMPACTION_SUMMARY_PREFIX,
@@ -62,8 +61,7 @@ import {
   type GuardBlockRateMonitor,
   type GuardRuleStore,
   type StructuredOutputFormat,
-  type TopicDriftOptions,
-  type ToolApprovalPolicy
+  type TopicDriftOptions
 } from "@muse/policy";
 import { createRunId, type JsonObject } from "@muse/shared";
 import { ToolCallDeduplicator } from "./tool-call-deduplicator.js";
@@ -211,8 +209,6 @@ export interface AgentRuntimeOptions {
   readonly toolRegistry?: ToolRegistry;
   readonly toolExecutor?: ToolExecutor;
   readonly toolExposurePolicy?: ToolExposurePolicy;
-  readonly toolApprovalPolicy?: ToolApprovalPolicy;
-  readonly toolApprovalStore?: PendingApprovalStore;
   readonly toolPolicyProvider?: ToolPolicyProvider;
   readonly maxToolCalls?: number;
   readonly circuitBreaker?: CircuitBreaker;
@@ -355,8 +351,6 @@ export class AgentRuntime {
     this.toolExecutor = options.toolExecutor ??
       (options.toolRegistry
         ? new ToolExecutor({
-            approvalPolicy: options.toolApprovalPolicy,
-            approvalStore: options.toolApprovalStore,
             toolPolicyProvider: options.toolPolicyProvider,
             registry: options.toolRegistry
           })

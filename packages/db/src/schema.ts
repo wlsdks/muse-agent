@@ -9,7 +9,6 @@ type JsonColumn<T extends JsonValue = JsonValue> = ColumnType<T, T | string | un
 type CompatibilityTable = Record<string, ColumnType<unknown, unknown, unknown>>;
 
 export interface MuseDatabase {
-  readonly admin_audits: AdminAuditTable;
   readonly admin_alerts: AdminAlertTable;
   readonly admin_cost_usage: AdminCostUsageTable;
   readonly admin_slos: AdminSloTable;
@@ -18,7 +17,6 @@ export interface MuseDatabase {
   readonly alert_instances: CompatibilityTable;
   readonly alert_rules: AlertRuleTable;
   readonly auth_token_revocations: AuthTokenRevocationTable;
-  readonly channel_faq_registrations: ChannelFaqRegistrationTable;
   readonly checkpoints: CheckpointTable;
   readonly conversation_messages: ConversationMessageTable;
   readonly conversation_summaries: ConversationSummaryTable;
@@ -40,7 +38,6 @@ export interface MuseDatabase {
   readonly metric_tool_calls: CompatibilityTable;
   readonly output_guard_rule_audits: OutputGuardRuleAuditTable;
   readonly output_guard_rules: OutputGuardRuleTable;
-  readonly pending_approvals: PendingApprovalTable;
   readonly rag_documents: RagDocumentTable;
   readonly rag_ingestion_candidates: RagIngestionCandidateTable;
   readonly rag_ingestion_policy: RagIngestionPolicyTable;
@@ -49,9 +46,6 @@ export interface MuseDatabase {
   readonly scheduled_job_locks: ScheduledJobLockTable;
   readonly scheduled_jobs: ScheduledJobTable;
   readonly session_tags: SessionTagTable;
-  readonly slack_bot_instances: SlackBotInstanceTable;
-  readonly slack_feedback_events: SlackFeedbackEventTable;
-  readonly slack_response_tracking: SlackResponseTrackingTable;
   readonly slo_config: CompatibilityTable;
   readonly task_memories: CompatibilityTable;
   readonly tool_calls: ToolCallTable;
@@ -86,17 +80,6 @@ export interface AdminCostUsageTable {
   readonly id: string;
   readonly model: string | null;
   readonly cost_usd: NumericString;
-  readonly created_at: Timestamp;
-}
-
-export interface AdminAuditTable {
-  readonly id: string;
-  readonly category: string;
-  readonly action: string;
-  readonly actor: string;
-  readonly resource_type: string | null;
-  readonly resource_id: string | null;
-  readonly detail: string | null;
   readonly created_at: Timestamp;
 }
 
@@ -319,75 +302,6 @@ export interface RagIngestionCandidateTable {
   readonly reviewed_by: string | null;
   readonly review_comment: string | null;
   readonly ingested_document_id: string | null;
-}
-
-export interface SlackBotInstanceTable {
-  readonly id: string;
-  readonly name: string;
-  readonly bot_token: string;
-  readonly app_token: string;
-  readonly persona_id: string;
-  readonly default_channel: string | null;
-  readonly enabled: boolean;
-  readonly created_at: Timestamp;
-  readonly updated_at: Timestamp;
-}
-
-export interface ChannelFaqRegistrationTable {
-  readonly channel_id: string;
-  readonly channel_name: string | null;
-  readonly enabled: boolean;
-  readonly auto_reply_mode: "MENTION" | "ALWAYS" | "OFF";
-  readonly confidence_threshold: number;
-  readonly days_back: number;
-  readonly re_ingest_interval_hours: number;
-  readonly last_ingested_at: NullableTimestamp;
-  readonly last_message_count: number | null;
-  readonly last_chunk_count: number | null;
-  readonly last_status: "OK" | "FAILED" | "RUNNING" | null;
-  readonly last_error: string | null;
-  readonly registered_by: string | null;
-  readonly registered_at: Timestamp;
-  readonly updated_at: Timestamp;
-}
-
-export interface SlackResponseTrackingTable {
-  readonly channel_id: string;
-  readonly message_ts: string;
-  readonly session_id: string;
-  readonly user_prompt: string;
-  readonly response: string | null;
-  readonly expires_at: Timestamp;
-  readonly created_at: Timestamp;
-  readonly updated_at: Timestamp;
-}
-
-export interface SlackFeedbackEventTable {
-  readonly id: string;
-  readonly channel_id: string;
-  readonly message_ts: string;
-  readonly session_id: string;
-  readonly user_id: string;
-  readonly rating: "thumbs_down" | "thumbs_up";
-  readonly query: string;
-  readonly response: string;
-  readonly metadata: JsonColumn;
-  readonly created_at: Timestamp;
-}
-
-export interface PendingApprovalTable {
-  readonly id: string;
-  readonly run_id: string;
-  readonly user_id: string;
-  readonly tool_name: string;
-  readonly arguments: JsonColumn;
-  readonly context: JsonColumn;
-  readonly timeout_ms: number;
-  readonly status: "pending" | "approved" | "rejected" | "expired" | "cancelled";
-  readonly reason: string | null;
-  readonly modified_arguments: JsonColumn;
-  readonly requested_at: Timestamp;
-  readonly resolved_at: NullableTimestamp;
 }
 
 export interface CheckpointTable {

@@ -1,111 +1,18 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   createAdminAlertInsert,
-  createAdminAuditInsert,
   createAdminCostUsageInsert,
   createMetricAuditTrailInsert,
   createAdminSloInsert,
-  InMemoryAdminAuditStore,
   InMemoryAdminOperationsStore,
   InMemoryMetricAuditEventStore,
   InMemoryCheckpointStore,
   InMemoryHookTraceStore,
-  InMemoryPendingApprovalStore,
   mapAdminAlertRow,
-  mapAdminAuditRow,
   mapAdminCostUsageRow,
   mapMetricAuditTrailRow,
   mapAdminSloRow
 } from "../src/index.js";
-
-describe("InMemoryPendingApprovalStore", () => {
-  it("resolves a pending approval when approved", async () => {
-    const store = new InMemoryPendingApprovalStore({
-      defaultTimeoutMs: 5_000,
-      idFactory: () => "approval-1"
-    });
-    const response = store.requestApproval({
-      arguments: { amount: 10 },
-      runId: "run-1",
-      toolName: "write_record",
-      userId: "user-1"
-    });
-
-    expect(store.listPending()).toHaveLength(1);
-    expect(store.approve("approval-1", { amount: 5 })).toBe(true);
-    await expect(response).resolves.toEqual({
-      approved: true,
-      modifiedArguments: { amount: 5 }
-    });
-    expect(store.countPending()).toBe(0);
-  });
-
-  it("resolves a pending approval when rejected", async () => {
-    const store = new InMemoryPendingApprovalStore({ idFactory: () => "approval-2" });
-    const response = store.requestApproval({
-      arguments: {},
-      runId: "run-1",
-      toolName: "send_message",
-      userId: "user-1"
-    });
-
-    expect(store.reject("approval-2", "Needs smaller scope")).toBe(true);
-    await expect(response).resolves.toEqual({
-      approved: false,
-      reason: "Needs smaller scope"
-    });
-  });
-
-  it("times out and cleans up unresolved approvals", async () => {
-    vi.useFakeTimers();
-    const store = new InMemoryPendingApprovalStore({
-      defaultTimeoutMs: 100,
-      idFactory: () => "approval-timeout"
-    });
-    const response = store.requestApproval({
-      arguments: {},
-      runId: "run-1",
-      toolName: "slow_tool",
-      userId: "user-1"
-    });
-
-    await vi.advanceTimersByTimeAsync(100);
-    await expect(response).resolves.toMatchObject({
-      approved: false,
-      reason: "Approval timed out after 100ms"
-    });
-    expect(store.listPending()).toEqual([]);
-    vi.useRealTimers();
-  });
-
-  it("evicts the oldest pending approval when maxPending is exceeded", async () => {
-    const store = new InMemoryPendingApprovalStore({
-      defaultTimeoutMs: 5_000,
-      idFactory: sequentialIds("approval"),
-      maxPending: 1
-    });
-    const first = store.requestApproval({
-      arguments: {},
-      runId: "run-1",
-      toolName: "first_tool",
-      userId: "user-1"
-    });
-    const second = store.requestApproval({
-      arguments: {},
-      runId: "run-2",
-      toolName: "second_tool",
-      userId: "user-1"
-    });
-
-    await expect(first).resolves.toMatchObject({
-      approved: false,
-      reason: expect.stringContaining("overflow")
-    });
-    expect(store.listPending().map((approval) => approval.id)).toEqual(["approval-2"]);
-    expect(store.approve("approval-2")).toBe(true);
-    await expect(second).resolves.toMatchObject({ approved: true });
-  });
-});
 
 describe("InMemoryCheckpointStore", () => {
   it("saves and replays checkpoints sorted by step", async () => {
@@ -236,49 +143,19 @@ describe("InMemoryAdminOperationsStore", () => {
   });
 });
 
-describe("admin audit and metric event stores", () => {
-  it("stores bounded admin audits and metric events in memory", () => {
+describe("metric event store", () => {
+  it("records metric events in memory", () => {
     const now = new Date("2026-05-06T00:00:00.000Z");
-    const auditStore = new InMemoryAdminAuditStore({
-      idFactory: sequentialIds("audit"),
-      maxAudits: 1,
-      now: () => now
-    });
     const metricStore = new InMemoryMetricAuditEventStore({
       idFactory: sequentialIds("metric"),
       now: () => now
     });
 
-    auditStore.record({
-      action: "update",
-      actor: "admin-1",
-      category: "input_guard"
-    });
-    auditStore.record({
-      action: "simulate",
-      actor: "admin-1",
-      category: "input_guard"
-    });
     metricStore.record({
       kind: "eval-result",
       payload: { pass: true }
     });
 
-    expect(auditStore.listRecent()).toMatchObject([{ action: "SIMULATE", id: "audit-2" }]);
-
-    const queryAll = auditStore.query({ limit: 10 });
-    expect(queryAll.total).toBe(1);
-    expect(queryAll.items.map((entry) => entry.action)).toEqual(["SIMULATE"]);
-
-    const filteredByCategory = auditStore.query({ category: "input_guard", limit: 10 });
-    expect(filteredByCategory.total).toBe(1);
-
-    const filteredByAction = auditStore.query({ action: "simulate", limit: 10 });
-    expect(filteredByAction.items.map((entry) => entry.action)).toEqual(["SIMULATE"]);
-
-    const noMatch = auditStore.query({ category: "missing", limit: 10 });
-    expect(noMatch.total).toBe(0);
-    expect(noMatch.items).toEqual([]);
     expect(metricStore.listRecent()).toMatchObject([
       {
         id: "metric-1",
@@ -312,16 +189,6 @@ describe("Kysely admin operation mapping", () => {
       costUsd: "1.25000000",
       model: "provider/model"
     }, options);
-    const audit = createAdminAuditInsert({
-      action: "update",
-      actor: "admin-1",
-      category: "input_guard",
-      resourceId: "stage-1",
-      resourceType: "guard_stage"
-    }, {
-      idFactory: () => "admin-audit-1",
-      now: () => now
-    });
     const metric = createMetricAuditTrailInsert({
       createdAt: now,
       id: "metric-event-1",
@@ -334,12 +201,6 @@ describe("Kysely admin operation mapping", () => {
     expect(mapAdminCostUsageRow(cost)).toEqual({
       costUsd: "1.25000000",
       model: "provider/model"
-    });
-    expect(mapAdminAuditRow(audit)).toMatchObject({
-      action: "UPDATE",
-      actor: "admin-1",
-      id: "admin-audit-1",
-      resourceId: "stage-1"
     });
     expect(mapMetricAuditTrailRow(metric)).toMatchObject({
       id: "metric-event-1",

@@ -24,12 +24,6 @@ import {
   type LoginResult,
   type MuseAuth
 } from "@muse/auth";
-import type {
-  ChannelFaqRegistrationStore,
-  SlackBotInstanceStore,
-  SlackFeedbackEventStore,
-  SlackResponseTrackerStore
-} from "@muse/integrations";
 import { describeBuiltinLoopbackMcpServers } from "@muse/mcp";
 import type { ConversationSummaryStore, TaskMemoryMaintenance, UserMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
@@ -45,7 +39,6 @@ import type {
   AgentRunHistoryStore,
   AgentRunRecord,
   DebugReplayCaptureStore,
-  PendingApprovalStore,
   SessionTagStore
 } from "@muse/runtime-state";
 import type { JsonObject, JsonValue } from "@muse/shared";
@@ -55,7 +48,6 @@ import { registerMcpRoutes, type McpRouteMcp } from "./mcp-routes.js";
 import { registerMultiAgentRoutes } from "./multi-agent-routes.js";
 import { registerReactorCompatibilityRoutes } from "./reactor-compat-routes.js";
 import { registerSchedulerRoutes, type SchedulerRouteScheduler } from "./scheduler-routes.js";
-import { registerSlackRoutes, type SlackRouteOptions } from "./slack-routes.js";
 
 export interface ServerOptions {
   readonly logger?: boolean;
@@ -70,7 +62,6 @@ export interface ServerOptions {
   readonly latencyQuery?: LatencyQuery;
   readonly tokenCostQuery?: TokenCostQuery;
   readonly historyStore?: AgentRunHistoryStore;
-  readonly pendingApprovalStore?: PendingApprovalStore;
   readonly mcp?: McpRouteMcp;
   readonly modelProvider?: ModelProvider;
   readonly defaultModel?: string;
@@ -82,14 +73,7 @@ export interface ServerOptions {
   };
   readonly runtimeSettings?: RuntimeSettings;
   readonly scheduler?: SchedulerRouteScheduler;
-  readonly slackPersistence?: {
-    readonly botStore: SlackBotInstanceStore;
-    readonly faqStore: ChannelFaqRegistrationStore;
-    readonly feedbackStore?: SlackFeedbackEventStore;
-    readonly responseTrackerStore?: SlackResponseTrackerStore;
-  };
   readonly sessionTagStore?: SessionTagStore;
-  readonly slack?: SlackRouteOptions;
   readonly taskMemoryMaintenance?: TaskMemoryMaintenance;
   readonly guardRuleStore?: GuardRuleStore;
   readonly toolPolicyStore?: ToolPolicyStore;
@@ -336,11 +320,6 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     admin: options.admin,
     authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService))
   });
-  registerSlackRoutes(server, {
-    agentRuntime: options.agentRuntime,
-    defaultModel: options.defaultModel,
-    slack: options.slack
-  });
   registerMultiAgentRoutes(server, {
     agentRuntime: options.agentRuntime,
     agentSpecRegistry,
@@ -365,11 +344,9 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     historyStore: options.historyStore,
     mcp: options.mcp,
     modelProvider: options.modelProvider,
-    pendingApprovalStore: options.pendingApprovalStore,
     ragIngestion: options.ragIngestion,
     runtimeSettings,
     scheduler: options.scheduler,
-    slackPersistence: options.slackPersistence,
     sessionTagStore: options.sessionTagStore,
     taskMemoryMaintenance: options.taskMemoryMaintenance,
     guardRuleStore: options.guardRuleStore,
@@ -584,8 +561,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         mcpEnabled: Boolean(options.mcp),
         modelProviderConfigured: Boolean(options.modelProvider),
         ragEnabled: Boolean(options.ragIngestion),
-        schedulerEnabled: Boolean(options.scheduler),
-        slackEnabled: Boolean(options.slack)
+        schedulerEnabled: Boolean(options.scheduler)
       },
       defaultModel: options.defaultModel ?? null,
       locales: { response: parseResponseLocales(process.env.MUSE_RESPONSE_LOCALES) },
@@ -1603,11 +1579,7 @@ function isPublicRequest(method: string, url: string): boolean {
       path === "/api/auth/register" ||
       path === "/api/auth/demo-login" ||
       path === "/api/auth/exchange" ||
-      path === "/api/error-report" ||
-      path === "/api/slack/commands" ||
-      path === "/api/slack/events" ||
-      path === "/slack/commands" ||
-      path === "/slack/events"
+      path === "/api/error-report"
     ))
   );
 }

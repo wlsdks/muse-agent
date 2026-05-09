@@ -22,7 +22,6 @@
     "@muse/auth": "workspace:*",
     "@muse/cache": "workspace:*",
     "@muse/db": "workspace:*",
-    "@muse/integrations": "workspace:*",
     "@muse/memory": "workspace:*",
     "@muse/mcp": "workspace:*",
     "@muse/model": "workspace:*",

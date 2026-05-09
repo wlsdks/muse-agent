@@ -3,14 +3,11 @@
  * reactor-compat-routes.ts.
  *
  * Wires:
- *   - GET /api/admin/audits (paginated, with optional category/action filter)
- *   - GET /api/admin/audits/export (CSV)
  *   - GET /api/admin/debug/replay (+ /:id)
  *   - GET /api/admin/input-guard/stats
  *   - GET /api/admin/jarvis/snapshot
  *   - GET /api/admin/metrics/latency/{summary,timeseries}
  *   - GET /api/admin/rag-analytics/{status,by-channel}
- *   - GET /api/admin/slack-activity/{channels,daily}
  *   - GET /api/admin/tenant/export/{executions,tools}
  *   - GET /api/admin/tools/{stats,accuracy}
  *   - POST /api/admin/task-memory/maintenance/{purge-expired,purge-terminal}
@@ -18,18 +15,12 @@
 
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
-  adminAuditRows,
-  adminAuditStoreRecordToCompat,
-  clampLimit,
-  csvRows,
-  dailyUsage,
   debugReplayResponse,
   errorResponse,
   getDebugReplayCapture,
   getStateRagCandidates,
   groupRecordsByField,
-  groupRunsByChannel,
-  inputGuardStatsResponse,
+  jsonObjectField,
   latencySummary,
   latencySummaryFromQuery,
   latencyTimeseries,
@@ -41,13 +32,11 @@ import {
   listDocuments,
   ragStatusSummary,
   readAuthUserId,
-  readNumber,
   readQueryInteger,
   readQueryString,
   runsCsv,
   saveDebugReplayCapture,
   stringField,
-  toAdminAuditResponse,
   toJsonObject,
   toolCallsCsv,
   toolOutcomeStats,
@@ -55,78 +44,66 @@ import {
 } from "./reactor-compat-routes.js";
 import type { JsonObject } from "@muse/shared";
 
+function inputGuardStatsResponse(options: ReactorCompatibilityRouteOptions, periodHours: number): JsonObject {
+  const events = (options.admin?.observability?.metrics?.recordedEvents() ?? [])
+    .map(toJsonObject)
+    .filter((event) => event.type === "guard_rejection");
+  const byStage = new Map<string, {
+    errors: number;
+    reasons: Map<string, number>;
+    rejected: number;
+    stage: string;
+  }>();
+
+  for (const event of events) {
+    const payload = jsonObjectField(event.payload);
+    const stage = stringField(payload.stage, "unknown");
+    const reason = stringField(payload.reason, "unknown");
+    const stats = byStage.get(stage) ?? {
+      errors: 0,
+      reasons: new Map<string, number>(),
+      rejected: 0,
+      stage
+    };
+
+    stats.rejected += 1;
+    stats.reasons.set(reason, (stats.reasons.get(reason) ?? 0) + 1);
+    byStage.set(stage, stats);
+  }
+
+  const totalRejected = events.length;
+
+  return {
+    blockRate: totalRejected > 0 ? 1 : 0,
+    byStage: [...byStage.values()]
+      .sort((left, right) => right.rejected - left.rejected || left.stage.localeCompare(right.stage))
+      .map((stage) => ({
+        allowed: 0,
+        errors: stage.errors,
+        rejected: stage.rejected,
+        stage: stage.stage,
+        topReasons: [...stage.reasons.entries()]
+          .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+          .slice(0, 5)
+          .map(([reason, count]) => ({ count, reason })),
+        triggered: stage.rejected + stage.errors
+      })),
+    periodHours,
+    totalAllowed: 0,
+    totalErrors: 0,
+    totalRejected,
+    totalRequests: totalRejected
+  };
+}
+
 export function registerAdminAnalyticsCompatRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  registerAuditRoutes(server, options);
   registerDebugReplayRoutes(server, options);
   registerStatsRoutes(server, options);
   registerLatencyRoutes(server, options);
-  registerRagAndSlackRoutes(server, options);
+  registerRagAnalyticsRoutes(server, options);
   registerTenantExportRoutes(server, options);
   registerToolStatsRoutes(server, options);
   registerTaskMemoryMaintenanceRoutes(server, options);
-}
-
-function registerAuditRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/admin/audits", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const offset = Math.max(0, readQueryInteger(request, "offset", 0));
-    const pageLimit = clampLimit(readQueryInteger(request, "pageLimit", 50));
-    const category = readQueryString(request, "category") ?? undefined;
-    const action = readQueryString(request, "action") ?? undefined;
-
-    if (options.admin?.auditStore) {
-      const auditPage = await options.admin.auditStore.query({
-        ...(action ? { action } : {}),
-        ...(category ? { category } : {}),
-        limit: pageLimit,
-        offset
-      });
-      const items = auditPage.items
-        .map((record) => toAdminAuditResponse(adminAuditStoreRecordToCompat(record)));
-      return {
-        items,
-        limit: pageLimit,
-        offset,
-        total: auditPage.total
-      };
-    }
-
-    const limit = Math.max(1, readQueryInteger(request, "limit", 1000));
-    const rows = await adminAuditRows(request, options, limit);
-    return {
-      items: rows.slice(offset, offset + pageLimit),
-      limit: pageLimit,
-      offset,
-      total: Math.min(rows.length, limit)
-    };
-  });
-
-  server.get("/api/admin/audits/export", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const rows = await adminAuditRows(request, options, readQueryInteger(request, "limit", 5000));
-    const stamp = new Date().toISOString().slice(0, 16).replace(/\D/gu, "");
-    reply.header("content-disposition", `attachment; filename="audit-export-${stamp}.csv"`);
-    reply.header("content-type", "text/csv; charset=utf-8");
-    return csvRows(
-      ["id", "timestamp", "category", "action", "actor", "resource_type", "resource_id", "detail"],
-      rows.map((row) => [
-        row.id,
-        new Date(readNumber(row.createdAt, Date.now())).toISOString(),
-        row.category,
-        row.action,
-        row.actor,
-        row.resourceType ?? "",
-        row.resourceId ?? "",
-        row.detail ?? ""
-      ])
-    );
-  });
 }
 
 function registerDebugReplayRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
@@ -228,7 +205,7 @@ function registerLatencyRoutes(server: FastifyInstance, options: ReactorCompatib
   });
 }
 
-function registerRagAndSlackRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
+function registerRagAnalyticsRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   server.get("/api/admin/rag-analytics/status", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;
@@ -243,22 +220,6 @@ function registerRagAndSlackRoutes(server: FastifyInstance, options: ReactorComp
     }
 
     return groupRecordsByField([...getStateRagCandidates(), ...await listDocuments(options, { limit: 1000 })], "channelId", "api");
-  });
-
-  server.get("/api/admin/slack-activity/channels", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return groupRunsByChannel(await listAllRuns(options));
-  });
-
-  server.get("/api/admin/slack-activity/daily", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return dailyUsage(await listAllRuns(options));
   });
 }
 

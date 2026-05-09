@@ -9,15 +9,10 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  buildApprovalDecisionQuery,
   buildCheckpointUpsertQuery,
-  buildPendingApprovalsQuery,
   createHookTraceInsert,
-  createPendingApprovalInsert,
-  mapApprovalResponse,
   mapCheckpointRow,
-  mapHookTraceRow,
-  mapPendingApprovalRow
+  mapHookTraceRow
 } from "../src/kysely-stores.js";
 
 describe("Kysely runtime state stores", () => {
@@ -51,32 +46,6 @@ describe("Kysely runtime state stores", () => {
     ]);
   });
 
-  it("builds PostgreSQL pending approval queries for operator work queues", () => {
-    const db = createPostgresBuilder();
-    const list = buildPendingApprovalsQuery(db, "user-1").compile();
-    const decision = buildApprovalDecisionQuery(db, "approval-1", "approved", {
-      modifiedArguments: { limit: 5 },
-      now: () => new Date("2026-01-01T00:00:00.000Z")
-    }).compile();
-
-    expect(list.sql).toContain('from "pending_approvals"');
-    expect(list.sql).toContain('where "status" = $1 and "user_id" = $2');
-    expect(list.sql).toContain('order by "requested_at" desc');
-    expect(list.parameters).toEqual(["pending", "user-1"]);
-
-    expect(decision.sql).toContain('update "pending_approvals"');
-    expect(decision.sql).toContain('where "id" = $5 and "status" = $6');
-    expect(decision.sql).toContain("returning *");
-    expect(decision.parameters).toEqual([
-      { limit: 5 },
-      null,
-      new Date("2026-01-01T00:00:00.000Z"),
-      "approved",
-      "approval-1",
-      "pending"
-    ]);
-  });
-
   it("maps PostgreSQL rows back to runtime state value objects", () => {
     expect(
       mapCheckpointRow({
@@ -92,71 +61,6 @@ describe("Kysely runtime state stores", () => {
       runId: "run-1",
       state: { value: "saved" },
       step: 4
-    });
-
-    expect(
-      mapPendingApprovalRow({
-        arguments: { amount: 10 },
-        context: {
-          action: "create_record",
-          impactScope: "workspace",
-          reason: "requires approval",
-          reversibility: "partially_reversible"
-        },
-        id: "approval-1",
-        modified_arguments: {},
-        reason: null,
-        requested_at: new Date("2026-01-01T00:00:00.000Z"),
-        resolved_at: null,
-        run_id: "run-1",
-        status: "pending",
-        timeout_ms: 30_000,
-        tool_name: "create_record",
-        user_id: "user-1"
-      })
-    ).toMatchObject({
-      context: {
-        action: "create_record",
-        impactScope: "workspace",
-        reason: "requires approval",
-        reversibility: "partially_reversible"
-      },
-      id: "approval-1",
-      status: "pending",
-      timeoutMs: 30_000
-    });
-  });
-
-  it("creates pending approval rows with bounded timeouts and maps approved responses", () => {
-    const now = new Date("2026-01-01T00:00:00.000Z");
-    const row = createPendingApprovalInsert(
-      {
-        arguments: { path: "docs/plan.md" },
-        runId: "run-1",
-        timeoutMs: 0,
-        toolName: "write_file",
-        userId: "user-1"
-      },
-      { defaultTimeoutMs: 45_000, idFactory: () => "approval-1", now: () => now }
-    );
-
-    expect(row).toMatchObject({
-      id: "approval-1",
-      requested_at: now,
-      status: "pending",
-      timeout_ms: 45_000
-    });
-    expect(
-      mapApprovalResponse({
-        ...row,
-        modified_arguments: { path: "docs/final.md" },
-        reason: null,
-        resolved_at: now,
-        status: "approved"
-      })
-    ).toEqual({
-      approved: true,
-      modifiedArguments: { path: "docs/final.md" }
     });
   });
 

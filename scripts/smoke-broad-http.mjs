@@ -96,14 +96,6 @@ try {
     assert(Array.isArray(body) || (body && typeof body === "object"), "expected array or object");
   });
 
-  await record("GET /api/admin/audits", async () => {
-    const response = await fetch(`${baseUrl}/api/admin/audits`);
-    assert(response.status === 200, `expected 200, got ${response.status}`);
-    const body = await response.json();
-    assert(Array.isArray(body.items), "expected items array");
-    assert(typeof body.total === "number", "expected total number");
-  });
-
   await record("GET /api/admin/metrics/latency/summary", async () => {
     const response = await fetch(`${baseUrl}/api/admin/metrics/latency/summary`);
     assert(response.status === 200, `expected 200, got ${response.status}`);
@@ -187,13 +179,6 @@ try {
     assert(typeof body.accuracy === "number", "expected accuracy number");
     assert(typeof body.timeoutRate === "number", "expected timeoutRate number");
     assert(typeof body.errorRate === "number", "expected errorRate number");
-  });
-
-  await record("GET /api/approvals/pending", async () => {
-    const response = await fetch(`${baseUrl}/api/approvals/pending`);
-    assert(response.status === 200, `expected 200, got ${response.status}`);
-    const body = await response.json();
-    assert(Array.isArray(body), "expected array");
   });
 
   await record("GET /api/scheduler/jobs", async () => {
@@ -522,110 +507,6 @@ try {
     assert(report.totalAttacks === 3, `expected 3 attacks, got ${report.totalAttacks}`);
     assert(report.totalBlocked === 2, `expected 2 blocked, got ${report.totalBlocked}`);
     assert(report.totalBypassed === 1, `expected 1 bypass, got ${report.totalBypassed}`);
-  });
-
-  await record("Cost anomaly hook + monthly budget tracker react to a 5× spike", async () => {
-    const { CostAnomalyDetector, MonthlyBudgetTracker } = await import(`${rootDir}/packages/observability/dist/index.js`);
-    const { createCostAnomalyHook } = await import(`${rootDir}/packages/integrations/dist/index.js`);
-    const detector = new CostAnomalyDetector({ minSamples: 4, thresholdMultiplier: 3, windowSize: 50 });
-    const tracker = new MonthlyBudgetTracker({
-      monthlyLimitUsd: 1,
-      now: () => new Date("2026-05-15T00:00:00Z"),
-      warningPercent: 50
-    });
-    const events = [];
-    let nextCost = 0.001;
-    const hook = createCostAnomalyHook({
-      budgetTracker: tracker,
-      costFromResponse: () => nextCost,
-      detector,
-      notify: async (event) => {
-        events.push(event);
-      }
-    });
-    const ctx = {
-      input: { messages: [], metadata: {}, model: "smoke" },
-      runId: "cost-smoke",
-      startedAt: new Date()
-    };
-    for (let i = 0; i < 4; i += 1) {
-      await hook.afterComplete(ctx, { id: "r", model: "smoke", output: "" });
-    }
-    nextCost = 0.6;
-    await hook.afterComplete(ctx, { id: "r", model: "smoke", output: "" });
-    assert(events.length >= 1, `expected at least one cost notification, got ${events.length}`);
-    const last = events[events.length - 1];
-    assert(last.anomaly?.multiplier > 3 || last.budgetStatus === "warning" || last.budgetStatus === "exceeded",
-      `expected anomaly or budget breach, got ${JSON.stringify(last)}`);
-  });
-
-  await record("Prompt drift detector flags an output-length distribution shift", async () => {
-    const { PromptDriftDetector } = await import(`${rootDir}/packages/observability/dist/index.js`);
-    const { createPromptDriftHook } = await import(`${rootDir}/packages/integrations/dist/index.js`);
-    const detector = new PromptDriftDetector({
-      deviationThreshold: 1,
-      minSamples: 10,
-      windowSize: 100
-    });
-    const notified = [];
-    const hook = createPromptDriftHook({
-      detector,
-      notify: async (anomalies) => {
-        notified.push(...anomalies);
-      }
-    });
-
-    const ctx = {
-      input: { messages: [{ content: "hello", role: "user" }], model: "smoke" },
-      runId: "drift-smoke",
-      startedAt: new Date()
-    };
-    for (let i = 0; i < 10; i += 1) {
-      await hook.beforeStart(ctx);
-      await hook.afterComplete(ctx, { id: "r", model: "smoke", output: "x" });
-    }
-    for (let i = 0; i < 10; i += 1) {
-      await hook.beforeStart(ctx);
-      await hook.afterComplete(ctx, { id: "r", model: "smoke", output: "x".repeat(8_000) });
-    }
-    assert(notified.length >= 1, `expected drift anomaly, got ${notified.length}`);
-    assert(notified.some((a) => a.type === "output_length"), "expected output_length anomaly");
-  });
-
-  await record("SLO alert hook records latency and surfaces threshold violations", async () => {
-    const { SloAlertEvaluator } = await import(`${rootDir}/packages/observability/dist/index.js`);
-    const { createSloAlertHook } = await import(`${rootDir}/packages/integrations/dist/index.js`);
-    let now = 1_000_000;
-    const evaluator = new SloAlertEvaluator({
-      cooldownSeconds: 30,
-      errorRateThreshold: 0.5,
-      latencyThresholdMs: 1_000,
-      minSamples: 3,
-      now: () => now,
-      windowSeconds: 600
-    });
-    const notified = [];
-    const hook = createSloAlertHook({
-      evaluator,
-      notify: async (violations) => {
-        notified.push(...violations);
-      },
-      now: () => now
-    });
-
-    for (let runIndex = 0; runIndex < 3; runIndex += 1) {
-      const ctx = {
-        input: { messages: [], model: "smoke" },
-        runId: `slo-run-${runIndex}`,
-        startedAt: new Date(now)
-      };
-      await hook.beforeStart(ctx);
-      now += 5_000;
-      await hook.afterComplete(ctx, { id: "r", model: "smoke", output: "" });
-    }
-
-    assert(notified.length >= 1, `expected at least one violation, got ${notified.length}`);
-    assert(notified[0].type === "latency", `expected latency violation type, got ${notified[0]?.type}`);
   });
 
   await record("LLM contextual compressor extracts relevant content and drops IRRELEVANT docs", async () => {

@@ -1,10 +1,8 @@
 import { spawn } from "node:child_process";
 import type { ModelTool } from "@muse/model";
 import {
-  createAlwaysApprovePolicy,
   ToolOutputSanitizer,
   type SanitizedToolOutput,
-  type ToolApprovalPolicy,
   type ToolPolicyConfig
 } from "@muse/policy";
 import type { JsonObject, JsonValue } from "@muse/shared";
@@ -65,21 +63,6 @@ export interface ToolCallRequest {
   readonly name: string;
   readonly arguments: JsonObject;
   readonly context: MuseToolContext;
-}
-
-export interface ToolApprovalStore {
-  requestApproval(input: {
-    readonly runId: string;
-    readonly userId: string;
-    readonly toolName: string;
-    readonly arguments: JsonObject;
-    readonly timeoutMs?: number;
-    readonly context?: JsonObject;
-  }): Promise<{
-    readonly approved: boolean;
-    readonly reason?: string;
-    readonly modifiedArguments?: JsonObject;
-  }>;
 }
 
 export interface ToolExecutionResult {
@@ -307,23 +290,17 @@ export function createWorkspaceToolRoutingPlan(
 }
 
 export class ToolExecutor {
-  private readonly approvalPolicy: ToolApprovalPolicy;
-  private readonly approvalStore?: ToolApprovalStore;
   private readonly idempotencyStore?: ToolIdempotencyStore;
   private readonly registry: ToolRegistry;
   private readonly sanitizer: ToolOutputSanitizer;
   private readonly toolPolicyProvider?: ToolPolicyProvider;
 
   constructor(options: {
-    readonly approvalPolicy?: ToolApprovalPolicy;
-    readonly approvalStore?: ToolApprovalStore;
     readonly idempotencyStore?: ToolIdempotencyStore;
     readonly registry: ToolRegistry;
     readonly sanitizer?: ToolOutputSanitizer;
     readonly toolPolicyProvider?: ToolPolicyProvider;
   }) {
-    this.approvalPolicy = options.approvalPolicy ?? createAlwaysApprovePolicy();
-    this.approvalStore = options.approvalStore;
     this.idempotencyStore = options.idempotencyStore;
     this.registry = options.registry;
     this.sanitizer = options.sanitizer ?? new ToolOutputSanitizer();
@@ -337,8 +314,6 @@ export class ToolExecutor {
       return this.failed(request, `Error: tool not found: ${request.name}`);
     }
 
-    const argsWithRisk = { ...request.arguments, risk: tool.definition.risk };
-    let executionArguments = request.arguments;
     const idempotencyKey = readIdempotencyKey(request);
     const policyBlock = await this.evaluateToolPolicy(request, tool);
 
@@ -351,25 +326,8 @@ export class ToolExecutor {
       return { ...existing, id: request.id };
     }
 
-    if (this.approvalPolicy.requiresApproval(tool.definition.name, argsWithRisk)) {
-      const approval = await this.requestApproval(request);
-
-      if (!approval.approved) {
-        return {
-          id: request.id,
-          name: request.name,
-          output: approval.reason
-            ? `Error: tool execution was not approved: ${approval.reason}`
-            : "Error: tool execution requires approval",
-          status: "blocked"
-        };
-      }
-
-      executionArguments = approval.modifiedArguments ?? request.arguments;
-    }
-
     try {
-      const raw = await tool.execute(executionArguments, request.context);
+      const raw = await tool.execute(request.arguments, request.context);
       const output = stringifyToolOutput(raw);
       const sanitized = this.sanitizer.sanitize(request.name, output);
       const result = {
@@ -389,23 +347,6 @@ export class ToolExecutor {
       const message = error instanceof Error ? error.message : "unknown tool failure";
       return this.failed(request, `Error: ${message}`);
     }
-  }
-
-  private async requestApproval(request: ToolCallRequest) {
-    if (!this.approvalStore) {
-      return { approved: false };
-    }
-
-    return this.approvalStore.requestApproval({
-      arguments: request.arguments,
-      context: {
-        toolCallId: request.id,
-        workspaceId: request.context.workspaceId ?? null
-      },
-      runId: request.context.runId,
-      toolName: request.name,
-      userId: request.context.userId ?? "anonymous"
-    });
   }
 
   private async evaluateToolPolicy(request: ToolCallRequest, tool: MuseTool): Promise<ToolExecutionResult | undefined> {

@@ -5,7 +5,6 @@
  */
 
 import type { LoginResult, MuseAuth } from "@muse/auth";
-import type { PendingApprovalStore } from "@muse/runtime-state";
 import type { JsonObject } from "@muse/shared";
 import type { FastifyReply } from "fastify";
 import {
@@ -25,21 +24,6 @@ export function requireAuthService(options: ReactorCompatibilityRouteOptions, re
   }
 
   return options.authService;
-}
-
-export function requirePendingApprovalStore(
-  options: ReactorCompatibilityRouteOptions,
-  reply: FastifyReply
-): PendingApprovalStore | undefined {
-  if (!options.pendingApprovalStore) {
-    reply.status(404).send({
-      code: "APPROVAL_STORE_UNAVAILABLE",
-      message: "Pending approval store is not configured"
-    });
-    return undefined;
-  }
-
-  return options.pendingApprovalStore;
 }
 
 export function parseAuthCredentials(

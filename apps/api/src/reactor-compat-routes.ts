@@ -11,14 +11,6 @@ import {
   type UserRole
 } from "@muse/auth";
 import type { McpServer } from "@muse/mcp";
-import type {
-  ChannelFaqRegistration,
-  ChannelFaqRegistrationStore,
-  SlackBotInstance,
-  SlackBotInstanceStore,
-  SlackFeedbackEventStore,
-  SlackResponseTrackerStore
-} from "@muse/integrations";
 import type { TaskMemoryMaintenance, UserMemory, UserMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
 import type {
@@ -45,7 +37,6 @@ import type {
   AgentRunRecord,
   ConversationMessageRecord,
   DebugReplayCaptureStore,
-  PendingApprovalStore,
   SessionTag,
   SessionTagStore,
   ToolCallRecord
@@ -67,7 +58,6 @@ import { registerAdminPlatformCompatRoutes } from "./admin-platform-compat-route
 import { registerAdminSessionCompatRoutes } from "./admin-session-compat-routes.js";
 import { registerAdminPlatformAlertCompatRoutes } from "./admin-platform-alert-compat-routes.js";
 import { registerAgentCompatibilityRoutes } from "./agent-compat-routes.js";
-import { registerApprovalCompatibilityRoutes } from "./approval-compat-routes.js";
 import { registerAuthCompatibilityRoutes } from "./auth-compat-routes.js";
 import { registerGuardCompatibilityRoutes } from "./guard-compat-routes.js";
 import { registerMcpCompatibilityRoutes } from "./mcp-compat-routes.js";
@@ -75,7 +65,6 @@ import { registerMetricIngestionCompatRoutes } from "./metric-ingestion-compat-r
 import { registerPolicyCompatibilityRoutes } from "./policy-compat-routes.js";
 import { registerPromptAndRagRoutes } from "./rag-ingestion-compat-routes.js";
 import { registerSessionCompatibilityRoutes } from "./session-compat-routes.js";
-import { registerSlackCompatibilityRoutes } from "./slack-compat-routes.js";
 import { registerUserMemoryCompatRoutes } from "./user-memory-compat-routes.js";
 import { recordedSpans, recordedTraceEvents, type AdminRouteState } from "./admin-routes.js";
 import type { McpRouteMcp } from "./mcp-routes.js";
@@ -97,7 +86,6 @@ export interface ReactorCompatibilityRouteOptions {
   readonly historyStore?: AgentRunHistoryStore;
   readonly mcp?: McpRouteMcp;
   readonly modelProvider?: ModelProvider;
-  readonly pendingApprovalStore?: PendingApprovalStore;
   readonly ragIngestion?: {
     readonly candidateStore: RagIngestionCandidateStore;
     readonly documentStore?: RagDocumentStore;
@@ -105,12 +93,6 @@ export interface ReactorCompatibilityRouteOptions {
   };
   readonly runtimeSettings: RuntimeSettings;
   readonly scheduler?: SchedulerRouteScheduler;
-  readonly slackPersistence?: {
-    readonly botStore: SlackBotInstanceStore;
-    readonly faqStore: ChannelFaqRegistrationStore;
-    readonly feedbackStore?: SlackFeedbackEventStore;
-    readonly responseTrackerStore?: SlackResponseTrackerStore;
-  };
   readonly sessionTagStore?: SessionTagStore;
   readonly taskMemoryMaintenance?: TaskMemoryMaintenance;
   readonly guardRuleStore?: GuardRuleStore;
@@ -137,7 +119,6 @@ export type CompatCollection = Map<string, CompatRecord>;
 export type { CompatBody } from "./compat-parsers.js";
 
 interface CompatState {
-  readonly adminAudits: CompatCollection;
   readonly documents: CompatCollection;
   readonly inputGuardRules: CompatCollection;
   readonly outputGuardRuleAudits: CompatCollection;
@@ -148,10 +129,6 @@ interface CompatState {
   ragIngestionPolicy: JsonObject;
   ragIngestionPolicyStored: boolean;
   readonly sessionTags: Map<string, CompatRecord[]>;
-  readonly slackBots: CompatCollection;
-  readonly slackFaq: CompatCollection;
-  readonly slackFaqEvents: Map<string, CompatRecord[]>;
-  readonly slackFaqFeedback: Map<string, Record<string, { thumbsDown: number; thumbsUp: number }>>;
   readonly userMemory: Map<string, {
     facts: Record<string, string>;
     preferences: Record<string, string>;
@@ -172,13 +149,11 @@ export function registerReactorCompatibilityRoutes(
   registerAuthCompatibilityRoutes(server, options);
   registerSessionCompatibilityRoutes(server, options);
   registerAgentCompatibilityRoutes(server, options);
-  registerApprovalCompatibilityRoutes(server, options);
   registerPolicyCompatibilityRoutes(server, options);
   registerGuardCompatibilityRoutes(server, options);
   registerUserMemoryCompatRoutes(server, options);
   registerPromptAndRagRoutes(server, options);
   registerMcpCompatibilityRoutes(server, options);
-  registerSlackCompatibilityRoutes(server, options);
   registerAdminPlatformCompatRoutes(server, options);
   registerAdminPlatformAlertCompatRoutes(server, options);
   registerAdminSessionCompatRoutes(server, options);
@@ -189,7 +164,6 @@ export function registerReactorCompatibilityRoutes(
 
 function createCompatState(): CompatState {
   return {
-    adminAudits: new Map(),
     documents: new Map(),
     inputGuardRules: new Map(),
     outputGuardRuleAudits: new Map(),
@@ -200,10 +174,6 @@ function createCompatState(): CompatState {
     ragIngestionPolicy: defaultRagIngestionPolicy(),
     ragIngestionPolicyStored: false,
     sessionTags: new Map(),
-    slackBots: new Map(),
-    slackFaq: new Map(),
-    slackFaqEvents: new Map(),
-    slackFaqFeedback: new Map(),
     userMemory: new Map(),
     toolPolicy: defaultToolPolicy(),
     toolPolicyStored: false
@@ -217,8 +187,6 @@ function createCompatState(): CompatState {
 
 // registerAgentCompatibilityRoutes lives in apps/api/src/agent-compat-routes.ts.
 
-// registerApprovalCompatibilityRoutes lives in apps/api/src/approval-compat-routes.ts.
-
 // registerPolicyCompatibilityRoutes lives in apps/api/src/policy-compat-routes.ts.
 
 // registerGuardCompatibilityRoutes lives in apps/api/src/guard-compat-routes.ts.
@@ -228,8 +196,6 @@ function createCompatState(): CompatState {
 // registerPromptAndRagRoutes lives in apps/api/src/rag-ingestion-compat-routes.ts.
 
 // registerMcpCompatibilityRoutes lives in apps/api/src/mcp-compat-routes.ts.
-
-// registerSlackCompatibilityRoutes lives in apps/api/src/slack-compat-routes.ts.
 
 // registerAdminAnalyticsCompatibilityRoutes lives in apps/api/src/admin-analytics-compat-routes.ts.
 
@@ -262,19 +228,6 @@ export {
 } from "./compat-run-aggregations.js";
 
 
-// Admin-audit + metric-event store helpers live in
-// apps/api/src/compat-audit-store.ts.
-export {
-  adminAuditRows,
-  adminAuditStoreRecordToCompat,
-  compareCreatedAtDesc,
-  inputGuardStatsResponse,
-  listAdminAuditRecords,
-  recordAdminAudit,
-  recordMetricEvent,
-  toAdminAuditResponse,
-  toInputGuardAuditResponse
-} from "./compat-audit-store.js";
 
 /**
  * Personal-Muse: dispatch debug-replay persistence to the configured
@@ -448,19 +401,6 @@ export function getStateToolPolicy(): JsonObject {
   return state.toolPolicy;
 }
 
-export function getStateSlackFaqEvents(channelId: string): readonly CompatRecord[] {
-  return state.slackFaqEvents.get(channelId) ?? [];
-}
-
-export function getStateSlackFaqFeedback(channelId: string): Record<string, { thumbsDown: number; thumbsUp: number }> {
-  return state.slackFaqFeedback.get(channelId) ?? {};
-}
-
-export function deleteStateSlackFaqChannel(channelId: string): void {
-  state.slackFaqEvents.delete(channelId);
-  state.slackFaqFeedback.delete(channelId);
-}
-
 export function getStateRagIngestionPolicy(): JsonObject {
   return state.ragIngestionPolicy;
 }
@@ -471,10 +411,6 @@ export function getStateRagCandidates(): readonly CompatRecord[] {
 
 export function getStateMetricEvents(): CompatCollection {
   return state.metricEvents;
-}
-
-export function getStateAdminAudits(): CompatCollection {
-  return state.adminAudits;
 }
 
 export function getStateInputGuardRules(): CompatCollection {
@@ -521,14 +457,6 @@ export function getStateDocuments(): CompatCollection {
   return state.documents;
 }
 
-export function getStateSlackBots(): CompatCollection {
-  return state.slackBots;
-}
-
-export function getStateSlackFaq(): CompatCollection {
-  return state.slackFaq;
-}
-
 export type UserMemoryRecord = {
   facts: Record<string, string>;
   preferences: Record<string, string>;
@@ -538,10 +466,6 @@ export type UserMemoryRecord = {
 
 export function getStateUserMemory(): Map<string, UserMemoryRecord> {
   return state.userMemory;
-}
-
-export function getAllStateSlackFaqEvents(): readonly CompatRecord[] {
-  return [...state.slackFaqEvents.values()].flat();
 }
 
 // Tool-policy store helpers live in apps/api/src/compat-tool-policy-store.ts.
@@ -580,46 +504,12 @@ export {
 
 // validationErrorResponse + prefixValidationDetails live in apps/api/src/compat-responses.ts.
 
-// Slack-bot + proactive-channel store helpers live in apps/api/src/compat-slack-store.ts.
-export {
-  createSlackBot,
-  deleteSlackBot,
-  getSlackBot,
-  listProactiveChannels,
-  listSlackBots,
-  saveProactiveChannels,
-  slackBotNotFound,
-  toProactiveChannelResponse,
-  toSlackBotResponse,
-  updateSlackBot,
-  validateSlackBotCreate
-} from "./compat-slack-store.js";
-
-
-// Slack FAQ store + helpers live in apps/api/src/compat-slack-faq-store.ts.
-export {
-  deleteSlackFaqRegistration,
-  getSlackFaqRegistration,
-  listSlackFaqRegistrations,
-  saveSlackFaqRegistration,
-  slackFaqAutoReplyMode,
-  slackFaqDryRun,
-  slackFaqIngest,
-  slackFaqNotFound,
-  slackFaqProbe,
-  slackFaqStats,
-  toSlackFaqEvent,
-  toSlackFaqRegistration,
-  validateSlackFaqChannelId
-} from "./compat-slack-faq-store.js";
-
 // Auth helpers live in apps/api/src/compat-auth.ts.
 export {
   authRateLimitKey,
   errorMessage,
   parseAuthCredentials,
   requireAuthService,
-  requirePendingApprovalStore,
   toReactorAuthResponse,
   toReactorUserResponse
 } from "./compat-auth.js";
@@ -722,8 +612,6 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/admin/agent-specs",
     "/api/admin/agent-specs/{id}",
     "/api/admin/agent-specs/{id}/system-prompt",
-    "/api/admin/audits",
-    "/api/admin/audits/export",
     "/api/admin/capabilities",
     "/api/admin/conversation-analytics/failure-patterns",
     "/api/admin/conversation-analytics/latency-distribution",
@@ -762,19 +650,6 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/admin/settings",
     "/api/admin/settings/{key}",
     "/api/admin/settings/refresh",
-    "/api/admin/slack-activity/channels",
-    "/api/admin/slack-activity/daily",
-    "/api/admin/slack-bots",
-    "/api/admin/slack-bots/{id}",
-    "/api/admin/slack/channels/faq",
-    "/api/admin/slack/channels/faq/{channelId}",
-    "/api/admin/slack/channels/faq/{channelId}/dry-run",
-    "/api/admin/slack/channels/faq/{channelId}/events",
-    "/api/admin/slack/channels/faq/{channelId}/feedback",
-    "/api/admin/slack/channels/faq/{channelId}/ingest",
-    "/api/admin/slack/channels/faq/{channelId}/probe",
-    "/api/admin/slack/channels/faq/{channelId}/stats",
-    "/api/admin/slack/channels/faq/stats",
     "/api/admin/task-memory/maintenance/purge-expired",
     "/api/admin/task-memory/maintenance/purge-terminal",
     "/api/admin/tenant/export/executions",
@@ -793,9 +668,6 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/admin/users/usage/by-model",
     "/api/admin/users/usage/cost",
     "/api/admin/users/usage/daily",
-    "/api/approvals",
-    "/api/approvals/{id}/approve",
-    "/api/approvals/{id}/reject",
     "/api/auth/change-password",
     "/api/auth/demo-login",
     "/api/auth/exchange",
@@ -828,8 +700,6 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/output-guard/rules/{id}",
     "/api/output-guard/rules/audits",
     "/api/output-guard/rules/simulate",
-    "/api/proactive-channels",
-    "/api/proactive-channels/{channelId}",
     "/api/rag-ingestion/candidates",
     "/api/rag-ingestion/candidates/{id}/approve",
     "/api/rag-ingestion/candidates/{id}/reject",

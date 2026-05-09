@@ -49,23 +49,6 @@ import {
   InMemoryResponseCache
 } from "@muse/cache";
 import {
-  FetchSlackWebApiMessageTransport,
-  InMemoryChannelFaqRegistrationStore,
-  InMemorySlackFeedbackEventStore,
-  InMemorySlackBotInstanceStore,
-  InMemorySlackResponseTrackerStore,
-  KyselyChannelFaqRegistrationStore,
-  KyselySlackFeedbackEventStore,
-  KyselySlackBotInstanceStore,
-  KyselySlackResponseTrackerStore,
-  SlackBotResponseTracker,
-  createSlackProgressHook,
-  type ChannelFaqRegistrationStore,
-  type SlackFeedbackEventStore,
-  type SlackBotInstanceStore,
-  type SlackResponseTrackerStore
-} from "@muse/integrations";
-import {
   DefaultMcpTransportConnector,
   InMemoryMcpSecurityPolicyStore,
   InMemoryMcpServerStore,
@@ -162,29 +145,23 @@ import {
   type RuntimeSettingsStore
 } from "@muse/runtime-settings";
 import {
-  InMemoryAdminAuditStore,
   InMemoryAdminOperationsStore,
   InMemoryAgentRunHistoryStore,
   InMemoryDebugReplayCaptureStore,
   InMemoryHookTraceStore,
   InMemoryMetricAuditEventStore,
-  InMemoryPendingApprovalStore,
   InMemorySessionTagStore,
-  KyselyAdminAuditStore,
   KyselyAdminOperationsStore,
   KyselyAgentRunHistoryStore,
   KyselyDebugReplayCaptureStore,
   KyselyHookTraceStore,
   KyselyMetricAuditEventStore,
-  KyselyPendingApprovalStore,
   KyselySessionTagStore,
-  type AdminAuditStore,
   type AdminOperationsStore,
   type AgentRunHistoryStore,
   type DebugReplayCaptureStore,
   type HookTraceStore,
   type MetricAuditEventStore,
-  type PendingApprovalStore,
   type SessionTagStore
 } from "@muse/runtime-state";
 import {
@@ -224,9 +201,7 @@ export interface MuseRuntimeAssembly {
   readonly defaultModel?: string;
   readonly historyStore: AgentRunHistoryStore;
   readonly hookTraceStore: HookTraceStore;
-  readonly adminAuditStore: AdminAuditStore;
   readonly adminOperationsStore: AdminOperationsStore;
-  readonly approvalStore: PendingApprovalStore;
   readonly mcp: {
     readonly manager: McpManager;
     readonly securityPolicyProvider: McpSecurityPolicyProvider;
@@ -270,12 +245,6 @@ export interface MuseRuntimeAssembly {
     readonly service: DynamicScheduler;
     readonly store: ScheduledJobStore;
   };
-  readonly slackPersistence: {
-    readonly botStore: SlackBotInstanceStore;
-    readonly faqStore: ChannelFaqRegistrationStore;
-    readonly feedbackStore: SlackFeedbackEventStore;
-    readonly responseTrackerStore: SlackResponseTrackerStore;
-  };
   readonly toolRegistry: ToolRegistry;
 }
 
@@ -299,11 +268,9 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const agentSpecResolver = new RuleBasedAgentSpecResolver(agentSpecRegistry);
   const historyStore = createHistoryStore(db);
   const hookTraceStore = createHookTraceStore(db, env);
-  const adminAuditStore = createAdminAuditStore(db);
   const adminOperationsStore = createAdminOperationsStore(db);
   const metricAuditEventStore = createMetricAuditEventStore(db);
   const debugReplayCaptureStore = createDebugReplayCaptureStore(db);
-  const approvalStore = createApprovalStore(db, env);
   const cacheStatsStore = new InMemoryCacheStatsStore();
   const cacheMetrics = new InMemoryCacheMetricsRecorder(cacheStatsStore);
   const responseCache = new InMemoryResponseCache({
@@ -361,10 +328,6 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const ragIngestionPolicyStore = createRagIngestionPolicyStore(db);
   const ragIngestionCandidateStore = createRagIngestionCandidateStore(db);
   const ragDocumentStore = createRagDocumentStore(db);
-  const slackBotStore = createSlackBotInstanceStore(db);
-  const channelFaqRegistrationStore = createChannelFaqRegistrationStore(db);
-  const slackFeedbackStore = createSlackFeedbackEventStore(db);
-  const slackResponseTrackerStore = createSlackResponseTrackerStore(db);
   const defaultModel = parseOptionalString(env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL);
   const mcpServerStore = createMcpServerStore(db, env);
   const initialMcpPolicy = {
@@ -427,8 +390,6 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       guards: createInputGuards(env),
       outputGuards: createOutputGuards(env),
       requestTimeoutMs: parseInteger(env.MUSE_MODEL_REQUEST_TIMEOUT_MS, 45_000),
-      toolApprovalPolicy: createToolApprovalPolicy(env),
-      toolApprovalStore: approvalStore,
       toolPolicyProvider: () => toolPolicyStore.getStored(),
       responseFilters: createResponseFilters(env),
       responseCache: parseBoolean(env.MUSE_CACHE_ENABLED, true) ? responseCache : undefined,
@@ -475,9 +436,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     defaultModel,
     historyStore,
     hookTraceStore,
-    adminAuditStore,
     adminOperationsStore,
-    approvalStore,
     mcp: {
       manager: mcpManager,
       securityPolicyProvider: mcpSecurityPolicyProvider,
@@ -521,12 +480,6 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       executionStore: schedulerExecutionStore,
       service: schedulerService,
       store: schedulerStore
-    },
-    slackPersistence: {
-      botStore: slackBotStore,
-      faqStore: channelFaqRegistrationStore,
-      feedbackStore: slackFeedbackStore,
-      responseTrackerStore: slackResponseTrackerStore
     }
   };
 }
@@ -567,13 +520,6 @@ function createTracingPipeline(db: Kysely<MuseDatabase> | undefined): {
   };
 }
 
-function createApprovalStore(db: Kysely<MuseDatabase> | undefined, env: MuseEnvironment): PendingApprovalStore {
-  const defaultTimeoutMs = parseInteger(env.MUSE_APPROVAL_TIMEOUT_MS, 300_000);
-  return db
-    ? new KyselyPendingApprovalStore(db, { defaultTimeoutMs })
-    : new InMemoryPendingApprovalStore({ defaultTimeoutMs });
-}
-
 function createHookTraceStore(db: Kysely<MuseDatabase> | undefined, env: MuseEnvironment): HookTraceStore {
   return db
     ? new KyselyHookTraceStore(db)
@@ -582,10 +528,6 @@ function createHookTraceStore(db: Kysely<MuseDatabase> | undefined, env: MuseEnv
 
 function createAdminOperationsStore(db: Kysely<MuseDatabase> | undefined): AdminOperationsStore {
   return db ? new KyselyAdminOperationsStore(db) : new InMemoryAdminOperationsStore();
-}
-
-function createAdminAuditStore(db: Kysely<MuseDatabase> | undefined): AdminAuditStore {
-  return db ? new KyselyAdminAuditStore(db) : new InMemoryAdminAuditStore();
 }
 
 function createMetricAuditEventStore(db: Kysely<MuseDatabase> | undefined): MetricAuditEventStore {
@@ -670,7 +612,6 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
         responseCache: assembly.cache.responseCache
       },
       observability: assembly.observability,
-      auditStore: assembly.adminAuditStore,
       metricEventStore: assembly.metricAuditEventStore,
       operations: assembly.adminOperationsStore,
       resilience: assembly.resilience
@@ -682,7 +623,6 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
       allowCredentials: true
     },
     debugReplayCaptureStore: assembly.debugReplayCaptureStore,
-    pendingApprovalStore: assembly.approvalStore,
     defaultModel: assembly.defaultModel,
     latencyQuery: assembly.observability.latencyQuery,
     tokenCostQuery: assembly.observability.tokenCostQuery,
@@ -734,20 +674,12 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     ragIngestion: assembly.ragIngestion,
     runtimeSettings: assembly.runtimeSettings,
     scheduler: assembly.scheduler,
-    slackPersistence: assembly.slackPersistence,
     sessionTagStore: assembly.sessionTagStore,
     taskMemoryMaintenance: assembly.taskMemoryStore,
     guardRuleStore: assembly.guardRuleStore,
     toolPolicyStore: assembly.toolPolicyStore,
     userMemoryStore: assembly.userMemoryStore,
-    conversationSummaryStore: assembly.conversationSummaryStore,
-    slack: {
-      botToken: parseOptionalString(env.MUSE_SLACK_BOT_TOKEN),
-      enabled: parseBoolean(env.MUSE_SLACK_ENABLED, false),
-      feedbackStore: assembly.slackPersistence.feedbackStore,
-      responseTracker: new SlackBotResponseTracker({ store: assembly.slackPersistence.responseTrackerStore }),
-      signingSecret: parseOptionalString(env.MUSE_SLACK_SIGNING_SECRET)
-    }
+    conversationSummaryStore: assembly.conversationSummaryStore
   };
 }
 
@@ -769,24 +701,6 @@ function createRagIngestionCandidateStore(db: Kysely<MuseDatabase> | undefined):
 
 function createRagDocumentStore(db: Kysely<MuseDatabase> | undefined): RagDocumentStore {
   return db ? new KyselyRagDocumentStore(db) : new InMemoryRagDocumentStore();
-}
-
-function createSlackBotInstanceStore(db: Kysely<MuseDatabase> | undefined): SlackBotInstanceStore {
-  return db ? new KyselySlackBotInstanceStore(db) : new InMemorySlackBotInstanceStore();
-}
-
-function createChannelFaqRegistrationStore(db: Kysely<MuseDatabase> | undefined): ChannelFaqRegistrationStore {
-  return db ? new KyselyChannelFaqRegistrationStore(db) : new InMemoryChannelFaqRegistrationStore();
-}
-
-function createSlackFeedbackEventStore(db: Kysely<MuseDatabase> | undefined): SlackFeedbackEventStore {
-  return db ? new KyselySlackFeedbackEventStore(db) : new InMemorySlackFeedbackEventStore();
-}
-
-function createSlackResponseTrackerStore(
-  db: Kysely<MuseDatabase> | undefined
-): SlackResponseTrackerStore {
-  return db ? new KyselySlackResponseTrackerStore(db) : new InMemorySlackResponseTrackerStore();
 }
 
 export function requireEnv(env: MuseEnvironment, key: string): string {
@@ -917,27 +831,11 @@ function createScheduledAgentExecutor(
 }
 
 /**
- * Builds the env-driven runtime hook list:
- *
- *   - Slack progress hook fires `assistant.threads.setStatus` (throttled at
- *     `MUSE_SLACK_PROGRESS_INTERVAL_MS`, default 1500ms) before/after every
- *     tool call when the agent run carries `metadata.slackChannelId` +
- *     `metadata.slackThreadTs`. Wired only when both `MUSE_SLACK_BOT_TOKEN`
- *     is set and `MUSE_SLACK_PROGRESS_ENABLED` is true (default true). Hook
- *     errors are demoted to a tracer span via the runtime's hook contract.
+ * Personal-Muse: no env-driven default runtime hooks. JARVIS-style
+ * deployments wire hooks directly when assembling the runtime.
  */
-function createDefaultRuntimeHooks(env: MuseEnvironment): readonly HookStage[] {
-  const hooks: HookStage[] = [];
-  const slackBotToken = parseOptionalString(env.MUSE_SLACK_BOT_TOKEN);
-  if (slackBotToken && parseBoolean(env.MUSE_SLACK_PROGRESS_ENABLED, true)) {
-    hooks.push(
-      createSlackProgressHook({
-        minUpdateIntervalMs: parseInteger(env.MUSE_SLACK_PROGRESS_INTERVAL_MS, 1_500),
-        transport: new FetchSlackWebApiMessageTransport(slackBotToken)
-      })
-    );
-  }
-  return hooks;
+function createDefaultRuntimeHooks(_env: MuseEnvironment): readonly HookStage[] {
+  return [];
 }
 
 function createInputGuards(env: MuseEnvironment): readonly GuardStage[] {
@@ -1064,22 +962,6 @@ function createResponseFilters(env: MuseEnvironment) {
       ? [createStructuredOutputResponseFilter()]
       : [])
   ];
-}
-
-function createToolApprovalPolicy(env: MuseEnvironment) {
-  const toolNames = new Set(parseCsv(env.MUSE_TOOL_APPROVAL_NAMES) ?? []);
-  const risks = new Set(parseCsv(env.MUSE_TOOL_APPROVAL_RISKS) ?? []);
-
-  if (toolNames.size === 0 && risks.size === 0) {
-    return undefined;
-  }
-
-  return {
-    requiresApproval(toolName: string, args: { readonly [key: string]: unknown }): boolean {
-      const risk = args.risk;
-      return toolNames.has(toolName) || (typeof risk === "string" && risks.has(risk));
-    }
-  };
 }
 
 function createRunnerTools(env: MuseEnvironment): readonly MuseTool[] {

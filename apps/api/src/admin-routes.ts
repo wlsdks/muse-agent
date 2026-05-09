@@ -3,7 +3,6 @@ import type {
   AdminAlertInput,
   AdminAlertSeverity,
   AdminCostUsage,
-  AdminAuditStore,
   MetricAuditEventStore,
   AdminOperationsStore,
   AdminSloInput
@@ -33,7 +32,6 @@ export interface AdminRouteState {
     };
     readonly tracer?: unknown;
   };
-  readonly auditStore?: AdminAuditStore;
   readonly metricEventStore?: MetricAuditEventStore;
   readonly resilience?: {
     readonly circuitBreakerRegistry?: {

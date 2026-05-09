@@ -135,20 +135,6 @@ export const migrations: readonly SqlMigration[] = [
       CREATE INDEX IF NOT EXISTS idx_auth_token_revocations_expires_at
         ON auth_token_revocations(expires_at);
 
-      CREATE TABLE IF NOT EXISTS admin_audits (
-        id VARCHAR(128) PRIMARY KEY,
-        category VARCHAR(80) NOT NULL,
-        action VARCHAR(80) NOT NULL,
-        actor VARCHAR(160) NOT NULL,
-        resource_type VARCHAR(160),
-        resource_id VARCHAR(255),
-        detail TEXT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_admin_audits_created_at ON admin_audits(created_at);
-      CREATE INDEX IF NOT EXISTS idx_admin_audits_category_action ON admin_audits(category, action);
-
       CREATE TABLE IF NOT EXISTS alert_rules (
         id VARCHAR(128) PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
@@ -352,79 +338,6 @@ export const migrations: readonly SqlMigration[] = [
       CREATE INDEX IF NOT EXISTS idx_task_memories_expires_at
         ON task_memories(expires_at);
 
-      CREATE TABLE IF NOT EXISTS slack_bot_instances (
-        id VARCHAR(128) PRIMARY KEY,
-        name VARCHAR(120) NOT NULL UNIQUE,
-        bot_token VARCHAR(500) NOT NULL,
-        app_token VARCHAR(500) NOT NULL,
-        persona_id VARCHAR(128) NOT NULL,
-        default_channel VARCHAR(120),
-        enabled BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_slack_bot_instances_enabled
-        ON slack_bot_instances(enabled);
-
-      CREATE TABLE IF NOT EXISTS channel_faq_registrations (
-        channel_id VARCHAR(80) PRIMARY KEY,
-        channel_name VARCHAR(160),
-        enabled BOOLEAN NOT NULL DEFAULT TRUE,
-        auto_reply_mode VARCHAR(32) NOT NULL DEFAULT 'MENTION',
-        confidence_threshold REAL NOT NULL DEFAULT 0.8,
-        days_back INTEGER NOT NULL DEFAULT 30,
-        re_ingest_interval_hours INTEGER NOT NULL DEFAULT 24,
-        last_ingested_at TIMESTAMPTZ,
-        last_message_count INTEGER,
-        last_chunk_count INTEGER,
-        last_status VARCHAR(40),
-        last_error TEXT,
-        registered_by VARCHAR(128),
-        registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_channel_faq_due
-        ON channel_faq_registrations(enabled, last_ingested_at);
-
-      CREATE TABLE IF NOT EXISTS slack_response_tracking (
-        channel_id VARCHAR(80) NOT NULL,
-        message_ts VARCHAR(80) NOT NULL,
-        session_id VARCHAR(255) NOT NULL,
-        user_prompt TEXT NOT NULL,
-        response TEXT,
-        expires_at TIMESTAMPTZ NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        PRIMARY KEY(channel_id, message_ts)
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_slack_response_tracking_expires_at
-        ON slack_response_tracking(expires_at);
-      CREATE INDEX IF NOT EXISTS idx_slack_response_tracking_session_id
-        ON slack_response_tracking(session_id);
-
-      CREATE TABLE IF NOT EXISTS slack_feedback_events (
-        id VARCHAR(128) PRIMARY KEY,
-        channel_id VARCHAR(80) NOT NULL,
-        message_ts VARCHAR(80) NOT NULL,
-        session_id VARCHAR(255) NOT NULL,
-        user_id VARCHAR(255) NOT NULL,
-        rating VARCHAR(40) NOT NULL,
-        query TEXT NOT NULL,
-        response TEXT NOT NULL,
-        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_slack_feedback_events_session_id
-        ON slack_feedback_events(session_id, created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_slack_feedback_events_message
-        ON slack_feedback_events(channel_id, message_ts);
-      CREATE INDEX IF NOT EXISTS idx_slack_feedback_events_rating
-        ON slack_feedback_events(rating, created_at DESC);
-
       CREATE TABLE IF NOT EXISTS debug_replay_captures (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_hash VARCHAR(128),
@@ -623,26 +536,6 @@ export const migrations: readonly SqlMigration[] = [
         ON tool_calls(run_id, created_at);
       CREATE INDEX IF NOT EXISTS idx_tool_calls_name_created_at
         ON tool_calls(name, created_at DESC);
-
-      CREATE TABLE IF NOT EXISTS pending_approvals (
-        id VARCHAR(128) PRIMARY KEY,
-        run_id VARCHAR(128) NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
-        user_id VARCHAR(128) NOT NULL,
-        tool_name VARCHAR(200) NOT NULL,
-        arguments JSONB NOT NULL DEFAULT '{}'::jsonb,
-        context JSONB NOT NULL DEFAULT '{}'::jsonb,
-        timeout_ms BIGINT NOT NULL DEFAULT 300000,
-        status VARCHAR(32) NOT NULL DEFAULT 'pending',
-        reason TEXT,
-        modified_arguments JSONB NOT NULL DEFAULT '{}'::jsonb,
-        requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        resolved_at TIMESTAMPTZ
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_pending_approvals_status_requested_at
-        ON pending_approvals(status, requested_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_pending_approvals_user_status_requested_at
-        ON pending_approvals(user_id, status, requested_at DESC);
 
       CREATE TABLE IF NOT EXISTS checkpoints (
         id VARCHAR(128) PRIMARY KEY,
