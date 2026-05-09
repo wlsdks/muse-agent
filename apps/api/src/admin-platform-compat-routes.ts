@@ -14,7 +14,7 @@
  *   - GET /api/admin/doctor (+ /summary)
  *   - GET /api/admin/platform/cache/stats
  *   - GET /api/admin/platform/vectorstore/stats
- *   - POST /api/admin/platform/cache/{invalidate,invalidate-key,invalidate-by-pattern}
+ *   - POST /api/admin/platform/cache/invalidate
  */
 
 import type { FastifyInstance } from "fastify";
@@ -201,40 +201,6 @@ function registerPlatformCacheInvalidationRoutes(server: FastifyInstance, option
       cacheEnabled: true,
       invalidated: true,
       message: "Response cache invalidated"
-    };
-  });
-  server.post("/api/admin/platform/cache/invalidate-key", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const key = readBodyString(request.body, "key") ?? "";
-
-    if (key.trim().length === 0) {
-      return reply.status(400).send(errorResponse("key is required"));
-    }
-
-    const cache = options.admin?.cache?.responseCache;
-    return {
-      cacheEnabled: Boolean(cache),
-      invalidated: cache?.invalidate?.(key) ?? false
-    };
-  });
-  server.post("/api/admin/platform/cache/invalidate-by-pattern", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const pattern = readBodyString(request.body, "pattern") ?? "";
-
-    if (pattern.trim().length === 0) {
-      return reply.status(400).send(errorResponse("pattern is required"));
-    }
-
-    const cache = options.admin?.cache?.responseCache;
-    return {
-      cacheEnabled: Boolean(cache),
-      invalidatedCount: cache?.invalidateByPattern?.(pattern) ?? 0
     };
   });
 }

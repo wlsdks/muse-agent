@@ -4517,30 +4517,6 @@ describe("api server", () => {
       method: "POST",
       url: "/api/admin/platform/cache/invalidate"
     });
-    const platformCacheInvalidateKeyMissing = await server.inject({
-      headers,
-      method: "POST",
-      payload: {},
-      url: "/api/admin/platform/cache/invalidate-key"
-    });
-    const platformCacheInvalidateKey = await server.inject({
-      headers,
-      method: "POST",
-      payload: { key: "cache-key" },
-      url: "/api/admin/platform/cache/invalidate-key"
-    });
-    const platformCacheInvalidatePatternMissing = await server.inject({
-      headers,
-      method: "POST",
-      payload: {},
-      url: "/api/admin/platform/cache/invalidate-by-pattern"
-    });
-    const platformCacheInvalidatePattern = await server.inject({
-      headers,
-      method: "POST",
-      payload: { pattern: "prefix*" },
-      url: "/api/admin/platform/cache/invalidate-by-pattern"
-    });
     const doctor = await server.inject({
       headers,
       method: "GET",
@@ -5025,18 +5001,6 @@ describe("api server", () => {
       invalidated: false,
       message: "Response cache is disabled"
     });
-    expect(platformCacheInvalidateKeyMissing.statusCode).toBe(400);
-    expect(platformCacheInvalidateKeyMissing.json()).toMatchObject({
-      error: "key is required",
-      timestamp: expect.any(String)
-    });
-    expect(platformCacheInvalidateKey.json()).toEqual({ cacheEnabled: false, invalidated: false });
-    expect(platformCacheInvalidatePatternMissing.statusCode).toBe(400);
-    expect(platformCacheInvalidatePatternMissing.json()).toMatchObject({
-      error: "pattern is required",
-      timestamp: expect.any(String)
-    });
-    expect(platformCacheInvalidatePattern.json()).toEqual({ cacheEnabled: false, invalidatedCount: 0 });
     expect(doctor.headers["x-doctor-status"]).toBe("OK");
     expect(doctor.json()).toMatchObject({
       sections: expect.arrayContaining([

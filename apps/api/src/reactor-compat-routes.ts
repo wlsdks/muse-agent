@@ -931,8 +931,6 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/admin/platform/alerts/{id}/resolve",
     "/api/admin/platform/alerts/evaluate",
     "/api/admin/platform/cache/invalidate",
-    "/api/admin/platform/cache/invalidate-by-pattern",
-    "/api/admin/platform/cache/invalidate-key",
     "/api/admin/platform/cache/stats",
     "/api/admin/platform/health",
     "/api/admin/platform/vectorstore/stats",
