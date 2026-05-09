@@ -7,6 +7,7 @@ import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import { isCancel, password, text } from "@clack/prompts";
 import { Command } from "commander";
 import { renderMuseStatusTui, type MuseStatusTuiModel } from "./tui.js";
+import { registerMcpCommands } from "./commands-mcp.js";
 import { registerOrchestrateCommands } from "./commands-orchestrate.js";
 import { registerSchedulerCommands, registerSetupCommands } from "./commands-scheduler-setup.js";
 
@@ -244,80 +245,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       io.stdout(`Removed Muse API token for ${baseUrl}\n`);
     });
 
-  const mcp = program.command("mcp").description("Manage MCP servers");
-
-  mcp
-    .command("list")
-    .description("List MCP servers")
-    .action(async (_options, command) => {
-      writeOutput(io, await apiRequest(io, command, "/api/mcp/servers"));
-    });
-
-  mcp
-    .command("add")
-    .description("Register an MCP server")
-    .argument("<name>", "Server name")
-    .requiredOption("--transport <type>", "stdio, sse, streamable, or http")
-    .option("--config <json>", "Transport config JSON", "{}")
-    .option("--description <text>", "Description")
-    .option("--no-auto-connect", "Do not connect immediately")
-    .action(async (name: string, options, command) => {
-      writeOutput(io, await apiRequest(io, command, "/api/mcp/servers", {
-        autoConnect: options.autoConnect,
-        config: parseJsonObject(options.config),
-        description: options.description,
-        name,
-        transportType: options.transport
-      }));
-    });
-
-  mcp
-    .command("connect")
-    .description("Connect an MCP server")
-    .argument("<name>", "Server name")
-    .action(async (name: string, _options, command) => {
-      writeOutput(
-        io,
-        await apiRequest(io, command, `/api/mcp/servers/${encodeURIComponent(name)}/connect`, undefined, "POST")
-      );
-    });
-
-  mcp
-    .command("disconnect")
-    .description("Disconnect an MCP server")
-    .argument("<name>", "Server name")
-    .action(async (name: string, _options, command) => {
-      writeOutput(
-        io,
-        await apiRequest(io, command, `/api/mcp/servers/${encodeURIComponent(name)}/disconnect`, undefined, "POST")
-      );
-    });
-
-  mcp
-    .command("tools")
-    .description("List MCP tools")
-    .argument("[name]", "Optional server name")
-    .action(async (name: string | undefined, _options, command) => {
-      const path = name
-        ? `/api/mcp/servers/${encodeURIComponent(name)}/tools`
-        : "/api/mcp/tools";
-      writeOutput(io, await apiRequest(io, command, path));
-    });
-
-  mcp
-    .command("call")
-    .description("Call a connected MCP tool")
-    .argument("<server>", "Server name")
-    .argument("<tool>", "Tool name")
-    .option("--args <json>", "Tool arguments JSON", "{}")
-    .action(async (serverName: string, toolName: string, options, command) => {
-      writeOutput(io, await apiRequest(
-        io,
-        command,
-        `/api/mcp/servers/${encodeURIComponent(serverName)}/tools/${encodeURIComponent(toolName)}/call`,
-        { args: parseJsonObject(options.args) }
-      ));
-    });
+  registerMcpCommands(program, io, { apiRequest, writeOutput });
 
   const specs = program.command("specs").description("List, inspect, and resolve agent specs");
 
@@ -900,16 +828,6 @@ function writeOutput(io: ProgramIO, value: unknown, textField?: string): void {
   }
 
   io.stdout(`${JSON.stringify(value, null, 2)}\n`);
-}
-
-function parseJsonObject(value: string): Record<string, unknown> {
-  const parsed = JSON.parse(value) as unknown;
-
-  if (!isRecord(parsed)) {
-    throw new Error("Expected a JSON object");
-  }
-
-  return parsed;
 }
 
 function dropUndefined(value: Record<string, unknown>): Record<string, unknown> {
