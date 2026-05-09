@@ -1340,6 +1340,104 @@ describe("notes provider abstraction", () => {
     const notion = new NotionNotesProvider({ databaseId: "db1", token: "t" });
     const info = notion.describe();
     expect(info).toMatchObject({ id: "notion", local: false });
+    expect(info.description).toContain("db1");
+  });
+
+  it("NotionNotesProvider rejects empty token at construction", () => {
+    expect(() => new NotionNotesProvider({ token: "" })).toThrow(NotesValidationError);
+  });
+
+  it("NotionNotesProvider.list requires databaseId", async () => {
+    const notion = new NotionNotesProvider({ token: "secret_x", fetchImpl: async () => new Response("{}") });
+    const error = await notion.list().catch((err) => err);
+    expect(error).toBeInstanceOf(NotesProviderError);
+    expect((error as NotesProviderError).code).toBe("MISSING_DATABASE_ID");
+  });
+
+  it("NotionNotesProvider.list parses database query results", async () => {
+    const fetchImpl = async (url: string, init: RequestInit) => {
+      expect(url).toContain("/v1/databases/db_xyz/query");
+      expect(init.method).toBe("POST");
+      const headers = init.headers as Record<string, string>;
+      expect(headers.Authorization).toBe("Bearer secret_token");
+      expect(headers["Notion-Version"]).toBe("2022-06-28");
+      return new Response(
+        JSON.stringify({
+          results: [
+            {
+              id: "page-1",
+              last_edited_time: "2026-05-09T10:00:00Z",
+              parent: { database_id: "db_xyz" },
+              properties: { Name: { title: [{ plain_text: "Daily standup" }] } }
+            }
+          ]
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    };
+    const notion = new NotionNotesProvider({ databaseId: "db_xyz", fetchImpl, token: "secret_token" });
+    const entries = await notion.list();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ id: "page-1", providerId: "notion", title: "Daily standup", folder: "db_xyz" });
+  });
+
+  it("NotionNotesProvider.read returns undefined on 404 and joins paragraph blocks", async () => {
+    const calls: string[] = [];
+    const fetchImpl = async (url: string) => {
+      calls.push(url);
+      if (url.endsWith("/v1/pages/missing")) {
+        return new Response(JSON.stringify({ message: "not found" }), { status: 404 });
+      }
+      if (url.endsWith("/v1/pages/p1")) {
+        return new Response(JSON.stringify({
+          id: "p1",
+          last_edited_time: "2026-05-09T10:00:00Z",
+          properties: { Name: { title: [{ plain_text: "Hello" }] } }
+        }), { status: 200 });
+      }
+      if (url.endsWith("/v1/blocks/p1/children?page_size=100")) {
+        return new Response(JSON.stringify({
+          results: [
+            { id: "b1", paragraph: { rich_text: [{ plain_text: "first line" }] }, type: "paragraph" },
+            { id: "b2", paragraph: { rich_text: [{ plain_text: "second line" }] }, type: "paragraph" },
+            { id: "b3", type: "code" }
+          ]
+        }), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    };
+    const notion = new NotionNotesProvider({ fetchImpl, token: "t" });
+    expect(await notion.read("missing")).toBeUndefined();
+    const content = await notion.read("p1");
+    expect(content).toBeDefined();
+    expect(content!.title).toBe("Hello");
+    expect(content!.body).toBe("first line\nsecond line");
+  });
+
+  it("NotionNotesProvider maps 401 to NOTION_AUTH", async () => {
+    const fetchImpl = async () => new Response("Unauthorized", { status: 401 });
+    const notion = new NotionNotesProvider({ databaseId: "db1", fetchImpl, token: "bad" });
+    const error = await notion.list().catch((err) => err);
+    expect(error).toBeInstanceOf(NotesProviderError);
+    expect((error as NotesProviderError).code).toBe("NOTION_AUTH");
+  });
+
+  it("NotionNotesProvider.search hits /v1/search and maps to NotesSearchHit", async () => {
+    const fetchImpl = async (url: string, init: RequestInit) => {
+      expect(url).toContain("/v1/search");
+      const body = JSON.parse(init.body as string);
+      expect(body.query).toBe("standup");
+      expect(body.filter).toMatchObject({ property: "object", value: "page" });
+      return new Response(JSON.stringify({
+        results: [
+          { id: "p9", properties: { Name: { title: [{ plain_text: "standup notes" }] } } }
+        ]
+      }), { status: 200 });
+    };
+    const notion = new NotionNotesProvider({ fetchImpl, token: "t" });
+    const hits = await notion.search("standup", 5);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({ id: "p9", providerId: "notion", title: "standup notes" });
   });
 
   it("LocalDirNotesProvider supports save → list → read → search → append", async () => {
