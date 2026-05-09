@@ -25,7 +25,7 @@ export async function adminDiagnostic(
   options: CompatibilityRouteOptions,
   mode: "report" | "summary"
 ) {
-  if (!options.authorizeAdmin(request, reply)) {
+  if (!options.requireAuthenticated(request, reply)) {
     return reply;
   }
 

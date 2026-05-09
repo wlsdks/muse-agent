@@ -52,7 +52,7 @@ export interface CompatibilityRouteOptions {
   readonly agentRuntime?: AgentRuntime;
   readonly agentSpecRegistry: AgentSpecRegistry;
   readonly authService?: MuseAuth;
-  readonly authorizeAdmin: (request: FastifyRequest, reply: FastifyReply) => boolean;
+  readonly requireAuthenticated: (request: FastifyRequest, reply: FastifyReply) => boolean;
   readonly apiPathRegistry?: () => readonly string[];
   readonly debugReplayCaptureStore?: DebugReplayCaptureStore;
   readonly defaultModel?: string;

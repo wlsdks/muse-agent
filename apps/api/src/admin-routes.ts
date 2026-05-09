@@ -9,7 +9,7 @@ import type {
 import type { TraceEventInput } from "@muse/observability";
 
 export interface AdminRouteOptions {
-  readonly authorizeAdmin: (request: FastifyRequest, reply: FastifyReply) => boolean;
+  readonly requireAuthenticated: (request: FastifyRequest, reply: FastifyReply) => boolean;
   readonly admin?: AdminRouteState;
 }
 
@@ -47,7 +47,7 @@ interface CircuitBreakerView {
 
 export function registerAdminRoutes(server: FastifyInstance, options: AdminRouteOptions): void {
   server.get("/admin/metrics", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -59,7 +59,7 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
   });
 
   server.get("/admin/cache", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -72,7 +72,7 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
   });
 
   server.delete("/admin/cache", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -81,7 +81,7 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
   });
 
   server.get("/admin/resilience/circuit-breakers", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -99,7 +99,7 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
   });
 
   server.post("/admin/resilience/circuit-breakers/:name/reset", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -121,7 +121,7 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
   });
 
   server.post("/admin/resilience/circuit-breakers/reset", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -130,7 +130,7 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
   });
 
   server.get("/admin/alerts", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -139,7 +139,7 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
   });
 
   server.post("/admin/alerts", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -159,7 +159,7 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
   });
 
   server.get("/admin/slos", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -168,7 +168,7 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
   });
 
   server.put("/admin/slos/:sloId", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -189,7 +189,7 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
   });
 
   server.get("/admin/costs/summary", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -198,7 +198,7 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
   });
 
   server.post("/admin/costs/usage", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 

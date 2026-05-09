@@ -65,7 +65,7 @@ export async function findAgentSpecOrReply(
   reply: FastifyReply,
   options: CompatibilityRouteOptions
 ) {
-  if (!options.authorizeAdmin(request, reply)) {
+  if (!options.requireAuthenticated(request, reply)) {
     return undefined;
   }
 

@@ -39,7 +39,7 @@ export function registerAdminSessionCompatRoutes(server: FastifyInstance, option
 
 function registerSessionRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/admin/sessions/overview", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -54,7 +54,7 @@ function registerSessionRoutes(server: FastifyInstance, options: CompatibilityRo
     };
   });
   server.get("/api/admin/sessions", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -69,14 +69,14 @@ function registerSessionRoutes(server: FastifyInstance, options: CompatibilityRo
     };
   });
   server.get("/api/admin/sessions/:sessionId/export", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
     return exportSession(request, reply, options);
   });
   server.post("/api/admin/sessions/:sessionId/tags", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -90,7 +90,7 @@ function registerSessionRoutes(server: FastifyInstance, options: CompatibilityRo
     return createSessionTag(options, request, sessionId, label, readBodyNullableString(request.body, "comment") ?? null);
   });
   server.delete("/api/admin/sessions/:sessionId/tags/:tagId", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -104,7 +104,7 @@ function registerSessionRoutes(server: FastifyInstance, options: CompatibilityRo
     return reply.status(204).send();
   });
   server.get("/api/admin/sessions/:sessionId", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -114,7 +114,7 @@ function registerSessionRoutes(server: FastifyInstance, options: CompatibilityRo
     return isRecord(detail) && "run" in detail ? { ...detail, tags } : detail;
   });
   server.delete("/api/admin/sessions/:sessionId", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 

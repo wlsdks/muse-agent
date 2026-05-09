@@ -43,14 +43,14 @@ export function registerAdminPlatformCompatRoutes(server: FastifyInstance, optio
 
 function registerRuntimeSettingsRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/admin/settings", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
     return (await options.runtimeSettings.list()).map(toCompatRuntimeSetting);
   });
   server.get("/api/admin/settings/:key", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -59,7 +59,7 @@ function registerRuntimeSettingsRoutes(server: FastifyInstance, options: Compati
     return setting ? toCompatRuntimeSetting(setting) : reply.status(404).send(errorResponse(`설정을 찾을 수 없습니다: ${key}`));
   });
   server.put("/api/admin/settings/:key", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -87,7 +87,7 @@ function registerRuntimeSettingsRoutes(server: FastifyInstance, options: Compati
     };
   });
   server.delete("/api/admin/settings/:key", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -96,7 +96,7 @@ function registerRuntimeSettingsRoutes(server: FastifyInstance, options: Compati
     return reply.status(204).send();
   });
   server.post("/api/admin/settings/refresh", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -107,21 +107,21 @@ function registerRuntimeSettingsRoutes(server: FastifyInstance, options: Compati
 
 function registerOpsAndCapabilitiesRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/ops/dashboard", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
     return dashboardSummary(options);
   });
   server.get("/api/ops/metrics/names", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
     return ["agent_run", "tool_call", "cache", "scheduler"];
   });
   server.get("/api/admin/capabilities", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -131,7 +131,7 @@ function registerOpsAndCapabilitiesRoutes(server: FastifyInstance, options: Comp
 
 function registerPlatformHealthRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/admin/platform/health", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -140,7 +140,7 @@ function registerPlatformHealthRoutes(server: FastifyInstance, options: Compatib
   server.get("/api/admin/doctor", async (request, reply) => adminDiagnostic(request, reply, options, "report"));
   server.get("/api/admin/doctor/summary", async (request, reply) => adminDiagnostic(request, reply, options, "summary"));
   server.get("/api/admin/platform/cache/stats", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -170,7 +170,7 @@ function registerPlatformHealthRoutes(server: FastifyInstance, options: Compatib
 
 function registerPlatformCacheInvalidationRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.post("/api/admin/platform/cache/invalidate", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 

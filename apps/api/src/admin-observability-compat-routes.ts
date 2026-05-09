@@ -34,7 +34,7 @@ export function registerAdminObservabilityCompatRoutes(server: FastifyInstance, 
 
 function registerTraceRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/admin/traces", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -43,7 +43,7 @@ function registerTraceRoutes(server: FastifyInstance, options: CompatibilityRout
     return traceEvents.length > 0 ? traceEvents : recordedSpans(options.admin?.observability?.tracer);
   });
   server.get("/api/admin/traces/:traceId/spans", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -64,7 +64,7 @@ function registerTraceRoutes(server: FastifyInstance, options: CompatibilityRout
 
 function registerToolCallRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/admin/tool-calls", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -74,7 +74,7 @@ function registerToolCallRoutes(server: FastifyInstance, options: CompatibilityR
       : listAllToolCalls(options);
   });
   server.get("/api/admin/tool-calls/ranking", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -84,7 +84,7 @@ function registerToolCallRoutes(server: FastifyInstance, options: CompatibilityR
 
 function registerTokenCostRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/admin/token-cost/by-session", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -116,7 +116,7 @@ function registerTokenCostRoutes(server: FastifyInstance, options: Compatibility
     }));
   });
   server.get("/api/admin/token-cost/daily", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -137,7 +137,7 @@ function registerTokenCostRoutes(server: FastifyInstance, options: Compatibility
     return dailyUsage(await listAllRuns(options));
   });
   server.get("/api/admin/token-cost/top-expensive", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -167,7 +167,7 @@ function registerTokenCostRoutes(server: FastifyInstance, options: Compatibility
 
 function registerConversationAnalyticsRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/admin/conversation-analytics/failure-patterns", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -175,7 +175,7 @@ function registerConversationAnalyticsRoutes(server: FastifyInstance, options: C
     return aggregateFailurePatterns(failed);
   });
   server.get("/api/admin/conversation-analytics/latency-distribution", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 

@@ -53,7 +53,7 @@ export async function proxySwaggerSourceRequest(
   path: string,
   body?: JsonObject
 ) {
-  if (!options.authorizeAdmin(request, reply)) {
+  if (!options.requireAuthenticated(request, reply)) {
     return reply;
   }
 

@@ -27,7 +27,7 @@ import {
   applyCompatWebContractHeaders,
   applyCorsHeaders,
   attachAuthIdentity,
-  authorizeAdmin,
+  requireAuthenticated,
   headerValue,
   isPublicRequest,
   parseMultipartBody,
@@ -183,16 +183,16 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
 
 
   registerSchedulerRoutes(server, {
-    authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
+    requireAuthenticated: (request, reply) => requireAuthenticated(request, reply, Boolean(authService)),
     scheduler: options.scheduler
   });
   registerMcpRoutes(server, {
-    authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
+    requireAuthenticated: (request, reply) => requireAuthenticated(request, reply, Boolean(authService)),
     mcp: options.mcp
   });
   registerAdminRoutes(server, {
     admin: options.admin,
-    authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService))
+    requireAuthenticated: (request, reply) => requireAuthenticated(request, reply, Boolean(authService))
   });
   registerMultiAgentRoutes(server, {
     agentRuntime: options.agentRuntime,
@@ -204,7 +204,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     agentRuntime: options.agentRuntime,
     agentSpecRegistry,
     authService,
-    authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
+    requireAuthenticated: (request, reply) => requireAuthenticated(request, reply, Boolean(authService)),
     apiPathRegistry: () => [...apiPaths].sort(),
     debugReplayCaptureStore: options.debugReplayCaptureStore,
     defaultModel: options.defaultModel,

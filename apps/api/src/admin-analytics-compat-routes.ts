@@ -44,7 +44,7 @@ export function registerAdminAnalyticsCompatRoutes(server: FastifyInstance, opti
 
 function registerDebugReplayRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/admin/debug/replay", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -62,7 +62,7 @@ function registerDebugReplayRoutes(server: FastifyInstance, options: Compatibili
   });
 
   server.get("/api/admin/debug/replay/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -81,7 +81,7 @@ function registerDebugReplayRoutes(server: FastifyInstance, options: Compatibili
 
 function registerStatsRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/admin/muse/snapshot", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
     if (!options.museObservabilitySnapshot) {
@@ -97,7 +97,7 @@ function registerStatsRoutes(server: FastifyInstance, options: CompatibilityRout
 
 function registerLatencyRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/admin/metrics/latency/summary", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -114,7 +114,7 @@ function registerLatencyRoutes(server: FastifyInstance, options: CompatibilityRo
   });
 
   server.get("/api/admin/metrics/latency/timeseries", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -134,7 +134,7 @@ function registerLatencyRoutes(server: FastifyInstance, options: CompatibilityRo
 
 function registerToolStatsRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/admin/tools/stats", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -142,7 +142,7 @@ function registerToolStatsRoutes(server: FastifyInstance, options: Compatibility
   });
 
   server.get("/api/admin/tools/accuracy", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -169,7 +169,7 @@ function registerToolStatsRoutes(server: FastifyInstance, options: Compatibility
 
 function registerTaskMemoryMaintenanceRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.post("/api/admin/task-memory/maintenance/purge-expired", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -182,7 +182,7 @@ function registerTaskMemoryMaintenanceRoutes(server: FastifyInstance, options: C
   });
 
   server.post("/api/admin/task-memory/maintenance/purge-terminal", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 

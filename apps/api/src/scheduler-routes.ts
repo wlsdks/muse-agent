@@ -17,7 +17,7 @@ export interface SchedulerRouteScheduler {
 }
 
 export interface SchedulerRouteOptions {
-  readonly authorizeAdmin: (
+  readonly requireAuthenticated: (
     request: unknown,
     reply: { status(statusCode: number): { send(payload: ApiError): void } }
   ) => boolean;
@@ -36,7 +36,7 @@ type ParseResult<T> = { readonly ok: true; readonly value: T } | { readonly erro
 export function registerSchedulerRoutes(server: FastifyInstance, options: SchedulerRouteOptions): void {
   for (const prefix of ["/admin/scheduler", "/scheduler", "/api/scheduler"]) {
     server.get(`${prefix}/jobs`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -60,7 +60,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
     });
 
     server.get(`${prefix}/jobs/:jobId`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -79,7 +79,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
     });
 
     server.post(`${prefix}/jobs`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -101,7 +101,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
     });
 
     server.put(`${prefix}/jobs/:jobId`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -109,7 +109,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
     });
 
     server.patch(`${prefix}/jobs/:jobId`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -117,7 +117,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
     });
 
     server.delete(`${prefix}/jobs/:jobId`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -136,7 +136,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
     });
 
     server.post(`${prefix}/jobs/:jobId/trigger`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -144,7 +144,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
     });
 
     server.post(`${prefix}/jobs/:jobId/dry-run`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -152,7 +152,7 @@ export function registerSchedulerRoutes(server: FastifyInstance, options: Schedu
     });
 
     server.get(`${prefix}/jobs/:jobId/executions`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 

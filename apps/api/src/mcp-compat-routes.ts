@@ -34,7 +34,7 @@ import {
 
 export function registerMcpCompatibilityRoutes(server: FastifyInstance, options: CompatibilityRouteOptions): void {
   server.get("/api/mcp/servers/:name/preflight", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -60,7 +60,7 @@ export function registerMcpCompatibilityRoutes(server: FastifyInstance, options:
     return proxyMcpAdminRequest(reply, serverConfig, "GET", "/admin/preflight");
   });
   server.get("/api/mcp/servers/:name/access-policy", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -73,7 +73,7 @@ export function registerMcpCompatibilityRoutes(server: FastifyInstance, options:
     return proxyMcpAdminRequest(reply, serverConfig, "GET", "/admin/access-policy");
   });
   server.put("/api/mcp/servers/:name/access-policy", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -92,7 +92,7 @@ export function registerMcpCompatibilityRoutes(server: FastifyInstance, options:
     return proxyMcpAdminRequest(reply, serverConfig, "PUT", "/admin/access-policy", parsed.value);
   });
   server.delete("/api/mcp/servers/:name/access-policy", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -105,7 +105,7 @@ export function registerMcpCompatibilityRoutes(server: FastifyInstance, options:
     return proxyMcpAdminRequest(reply, serverConfig, "DELETE", "/admin/access-policy");
   });
   server.post("/api/mcp/servers/:name/access-policy/emergency-deny-all", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 

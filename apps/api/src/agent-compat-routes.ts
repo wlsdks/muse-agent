@@ -29,7 +29,7 @@ export function registerAgentCompatibilityRoutes(server: FastifyInstance, option
   server.get("/.well-known/agent-card.json", async () => agentCardResponse(options));
 
   server.get("/api/admin/agent-specs", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -41,7 +41,7 @@ export function registerAgentCompatibilityRoutes(server: FastifyInstance, option
   });
 
   server.get("/api/admin/agent-specs/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -61,7 +61,7 @@ export function registerAgentCompatibilityRoutes(server: FastifyInstance, option
   });
 
   server.post("/api/admin/agent-specs", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -79,7 +79,7 @@ export function registerAgentCompatibilityRoutes(server: FastifyInstance, option
   });
 
   server.put("/api/admin/agent-specs/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 
@@ -104,7 +104,7 @@ export function registerAgentCompatibilityRoutes(server: FastifyInstance, option
   });
 
   server.delete("/api/admin/agent-specs/:id", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
+    if (!options.requireAuthenticated(request, reply)) {
       return reply;
     }
 

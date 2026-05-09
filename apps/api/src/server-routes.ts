@@ -21,7 +21,7 @@ import type { JsonObject } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 
 import {
-  authorizeAdmin,
+  requireAuthenticated,
   createOpenApiDocument,
   getAuthIdentity,
   isRecord,
@@ -76,7 +76,7 @@ export function registerAdminRunRoutes(
   gate: AdminGate
 ): void {
   server.get("/admin/summary", async (request, reply) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
 
@@ -97,7 +97,7 @@ export function registerAdminRunRoutes(
   });
 
   server.get("/admin/users/:userId/runs", async (request, reply) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
 
@@ -113,7 +113,7 @@ export function registerAdminRunRoutes(
   });
 
   const findRunDetail = async (request: unknown, reply: { status(statusCode: number): { send(payload: unknown): void } }, runId: string) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
 
@@ -149,7 +149,7 @@ export function registerAdminRunRoutes(
   });
 
   server.get("/api/admin/runs", async (request, reply) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
 
@@ -406,7 +406,7 @@ export function registerSessionSummaryRoutes(
   gate: AdminGate
 ): void {
   server.get("/api/admin/sessions/:sessionId/summary", async (request, reply) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
     if (!options.conversationSummaryStore) {
@@ -427,7 +427,7 @@ export function registerSessionSummaryRoutes(
   });
 
   server.put("/api/admin/sessions/:sessionId/summary", async (request, reply) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
     if (!options.conversationSummaryStore) {
@@ -462,7 +462,7 @@ export function registerSessionSummaryRoutes(
   });
 
   server.delete("/api/admin/sessions/:sessionId/summary", async (request, reply) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
     if (!options.conversationSummaryStore) {
@@ -524,7 +524,7 @@ interface CalendarRoutesGate {
 
 export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRoutesGate): void {
   server.get("/api/calendar/providers", async (request, reply) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
     return {
@@ -534,7 +534,7 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
   });
 
   server.get("/api/calendar/events", async (request, reply) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
     const query = request.query as { readonly fromIso?: string; readonly toIso?: string; readonly providerId?: string } | undefined;
@@ -568,7 +568,7 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
   const credentialStore = gate.credentialStore;
 
   server.get("/api/calendar/credentials", async (request, reply) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
     const ids = await credentialStore.list();
@@ -576,7 +576,7 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
   });
 
   server.put("/api/calendar/credentials/:providerId", async (request, reply) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
     const { providerId } = request.params as { readonly providerId: string };
@@ -592,7 +592,7 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
   });
 
   server.delete("/api/calendar/credentials/:providerId", async (request, reply) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
     const { providerId } = request.params as { readonly providerId: string };
@@ -628,7 +628,7 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
   const { tasksFile } = gate;
 
   server.get("/api/tasks", async (request, reply) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
     const status = readStatusQuery((request.query as { readonly status?: string } | undefined)?.status);
@@ -640,7 +640,7 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
   });
 
   server.post("/api/tasks", async (request, reply) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
     const body = request.body as { readonly title?: unknown; readonly notes?: unknown; readonly tags?: unknown } | null;
@@ -664,7 +664,7 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
   });
 
   server.post("/api/tasks/:id/complete", async (request, reply) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
     const { id } = request.params as { readonly id: string };
@@ -681,7 +681,7 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
   });
 
   server.delete("/api/tasks/:id", async (request, reply) => {
-    if (!authorizeAdmin(request, reply, Boolean(gate.authService))) {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;
     }
     const { id } = request.params as { readonly id: string };

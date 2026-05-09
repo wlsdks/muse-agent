@@ -991,7 +991,17 @@ export function toLoginResponse(login: LoginResult) {
   };
 }
 
-export function authorizeAdmin(
+/**
+ * Per-route auth guard. Returns true to continue, or writes a 401 reply
+ * and returns false. When `authEnabled` is false (the personal-use
+ * default), every request passes — there's no separate role tier in
+ * this 1-user codebase. Only the presence of an identity is checked
+ * when auth is enabled.
+ *
+ * Was previously named `authorizeAdmin`; the "Admin" suffix was Reactor
+ * multi-tenant residue (no admin role exists here).
+ */
+export function requireAuthenticated(
   request: unknown,
   reply: { status(statusCode: number): { send(payload: unknown): void } },
   authEnabled: boolean

@@ -19,7 +19,7 @@ export interface McpRouteMcp {
 }
 
 export interface McpRouteOptions {
-  readonly authorizeAdmin: (
+  readonly requireAuthenticated: (
     request: unknown,
     reply: { status(statusCode: number): { send(payload: ApiError): void } }
   ) => boolean;
@@ -37,7 +37,7 @@ type JsonObject = NonNullable<McpServerInput["config"]>;
 export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOptions): void {
   for (const prefix of ["/api/mcp", "/mcp", "/admin/mcp"]) {
     server.get(`${prefix}/servers`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -51,7 +51,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.post(`${prefix}/servers`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -88,7 +88,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.get(`${prefix}/servers/:name`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -109,7 +109,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.put(`${prefix}/servers/:name`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -117,7 +117,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.patch(`${prefix}/servers/:name`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -125,7 +125,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.delete(`${prefix}/servers/:name`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -146,7 +146,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.post(`${prefix}/servers/:name/connect`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -154,7 +154,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.post(`${prefix}/servers/:name/disconnect`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -175,7 +175,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.get(`${prefix}/servers/:name/health`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -183,7 +183,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.post(`${prefix}/servers/:name/reconnect`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -191,7 +191,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.post(`${prefix}/reconnect-due`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -205,7 +205,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.get(`${prefix}/servers/:name/tools`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -225,7 +225,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.get(`${prefix}/tools`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -239,7 +239,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.post(`${prefix}/servers/:name/tools/:toolName/call`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -247,7 +247,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.get(`${prefix}/security`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -255,7 +255,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.put(`${prefix}/security`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
@@ -263,7 +263,7 @@ export function registerMcpRoutes(server: FastifyInstance, options: McpRouteOpti
     });
 
     server.delete(`${prefix}/security`, async (request, reply) => {
-      if (!options.authorizeAdmin(request, reply)) {
+      if (!options.requireAuthenticated(request, reply)) {
         return reply;
       }
 
