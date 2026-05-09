@@ -390,10 +390,11 @@ describe("createJarvisTools", () => {
     return tool;
   }
 
-  it("registers sixteen zero-IO ambient utility tools", () => {
+  it("registers seventeen zero-IO ambient utility tools", () => {
     const tools = createJarvisTools();
     expect(tools.map((tool) => tool.definition.name).sort()).toEqual([
       "base64",
+      "cron_for_datetime",
       "csv_parse",
       "hash_text",
       "json_query",
@@ -561,6 +562,48 @@ describe("createJarvisTools", () => {
     expect(
       await tool.execute({ mode: "decode", text: "!!!not-base64!!!" }, { runId: "r" })
     ).toEqual({ error: "input is not valid base64" });
+  });
+
+  it("cron_for_datetime returns once/daily/weekly/monthly cron expressions for an ISO datetime", async () => {
+    const tool = getTool("cron_for_datetime");
+
+    // 2026-05-10T15:30:00Z is a Sunday (UTC dayOfWeek=0)
+    const once = (await tool.execute(
+      { iso: "2026-05-10T15:30:00Z" },
+      { runId: "r" }
+    )) as { cron: string; iso: string; mode: string };
+    expect(once).toEqual({
+      cron: "30 15 10 5 *",
+      iso: "2026-05-10T15:30:00.000Z",
+      mode: "once"
+    });
+
+    const daily = (await tool.execute(
+      { iso: "2026-05-10T09:00:00Z", mode: "daily" },
+      { runId: "r" }
+    )) as { cron: string };
+    expect(daily.cron).toBe("0 9 * * *");
+
+    const weekly = (await tool.execute(
+      { iso: "2026-05-11T08:00:00Z", mode: "WEEKLY" },
+      { runId: "r" }
+    )) as { cron: string };
+    // 2026-05-11 is a Monday → dayOfWeek=1
+    expect(weekly.cron).toBe("0 8 * * 1");
+
+    const monthly = (await tool.execute(
+      { iso: "2026-05-15T22:45:00Z", mode: "monthly" },
+      { runId: "r" }
+    )) as { cron: string };
+    expect(monthly.cron).toBe("45 22 15 * *");
+
+    expect(await tool.execute({ iso: "" }, { runId: "r" })).toEqual({ error: "iso is required" });
+    expect(await tool.execute({ iso: "not-a-date" }, { runId: "r" })).toMatchObject({
+      error: expect.stringContaining("invalid ISO-8601 datetime")
+    });
+    expect(await tool.execute({ iso: "2026-05-10T15:30:00Z", mode: "yearly" }, { runId: "r" })).toMatchObject({
+      error: expect.stringContaining("mode must be one of")
+    });
   });
 
   it("markdown_table renders rows with derived columns, escaping, and truncation", async () => {

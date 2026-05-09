@@ -39,7 +39,8 @@ export function createJarvisTools(options: JarvisToolFactoryOptions = {}): reado
     createMarkdownTableTool(),
     createHashTextTool(),
     createCsvParseTool(),
-    createBase64Tool()
+    createBase64Tool(),
+    createCronForDatetimeTool()
   ];
 }
 
@@ -797,6 +798,77 @@ function padBase64(input: string): string {
   const remainder = input.length % 4;
   return remainder === 0 ? input : input + "=".repeat(4 - remainder);
 }
+
+function createCronForDatetimeTool(): MuseTool {
+  return {
+    definition: {
+      description:
+        "Converts an ISO-8601 datetime to a cron expression for the scheduler. " +
+        "`mode` controls the recurrence: 'once' (default) returns a yearly-recurring expression at that exact minute/hour/day/month — disable the scheduled job after it fires for true one-shot semantics; 'daily' fires every day at that hour:minute; 'weekly' fires every week on that weekday at that hour:minute; 'monthly' fires every month on that day-of-month at that hour:minute. " +
+        "Bridge for natural-language reminders: compose with `time_now` + `time_add` / `next_weekday` / `time_relative` to build the ISO, then pass it here, then call `scheduler_create_job` with the returned cron.",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          iso: { description: "ISO-8601 datetime (UTC).", type: "string" },
+          mode: {
+            description: "'once' | 'daily' | 'weekly' | 'monthly'. Defaults to 'once'.",
+            type: "string"
+          }
+        },
+        required: ["iso"],
+        type: "object"
+      },
+      keywords: ["cron", "schedule", "reminder", "datetime", "scheduler"],
+      name: "cron_for_datetime",
+      risk: "read"
+    },
+    execute: (args): JsonObject => {
+      const isoInput = typeof args["iso"] === "string" ? (args["iso"] as string).trim() : "";
+      const modeInput = typeof args["mode"] === "string" ? (args["mode"] as string).trim().toLowerCase() : "once";
+      const mode = modeInput.length === 0 ? "once" : modeInput;
+
+      if (!CRON_DATETIME_MODES.has(mode)) {
+        return { error: `mode must be one of: once, daily, weekly, monthly (got '${mode}')` };
+      }
+
+      if (!isoInput) {
+        return { error: "iso is required" };
+      }
+
+      const at = new Date(isoInput);
+
+      if (Number.isNaN(at.getTime())) {
+        return { error: `invalid ISO-8601 datetime: '${isoInput}'` };
+      }
+
+      const minute = at.getUTCMinutes();
+      const hour = at.getUTCHours();
+      const dayOfMonth = at.getUTCDate();
+      const month = at.getUTCMonth() + 1;
+      const dayOfWeek = at.getUTCDay();
+
+      let cron: string;
+      switch (mode) {
+        case "daily":
+          cron = `${minute} ${hour} * * *`;
+          break;
+        case "weekly":
+          cron = `${minute} ${hour} * * ${dayOfWeek}`;
+          break;
+        case "monthly":
+          cron = `${minute} ${hour} ${dayOfMonth} * *`;
+          break;
+        default:
+          cron = `${minute} ${hour} ${dayOfMonth} ${month} *`;
+          break;
+      }
+
+      return { cron, iso: at.toISOString(), mode } satisfies JsonObject;
+    }
+  };
+}
+
+const CRON_DATETIME_MODES = new Set(["once", "daily", "weekly", "monthly"]);
 
 function parseCsvRecords(text: string): string[][] {
   const records: string[][] = [];
