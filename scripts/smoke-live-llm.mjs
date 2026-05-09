@@ -39,6 +39,10 @@ writeFileSync(
   "utf8"
 );
 
+const calendarSandbox = mkdtempSync(path.join(os.tmpdir(), "muse-live-calendar-"));
+const calendarFile = path.join(calendarSandbox, "calendar.json");
+const credentialsFile = path.join(calendarSandbox, "credentials.json");
+
 const provider = pickProvider();
 
 if (!provider) {
@@ -52,6 +56,9 @@ console.log(`smoke:live — using ${provider.label}`);
 
 const env = {
   ...process.env,
+  MUSE_CALENDAR_FILE: calendarFile,
+  MUSE_CALENDAR_PROVIDERS: "local",
+  MUSE_CREDENTIALS_FILE: credentialsFile,
   MUSE_MODEL: provider.model,
   MUSE_MODEL_PROVIDER_ID: provider.providerId,
   MUSE_NOTES_DIR: notesDir,
@@ -340,6 +347,7 @@ try {
   await waitForExit(api, 5_000);
   try {
     rmSync(notesDir, { force: true, recursive: true });
+    rmSync(calendarSandbox, { force: true, recursive: true });
   } catch {
     // best effort
   }
