@@ -76,7 +76,6 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE TABLE IF NOT EXISTS agent_runs (
         id VARCHAR(128) PRIMARY KEY,
-        workspace_id VARCHAR(128),
         user_id VARCHAR(128),
         status VARCHAR(32) NOT NULL,
         provider VARCHAR(128) NOT NULL,
@@ -95,8 +94,6 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE INDEX IF NOT EXISTS idx_agent_runs_user_created_at
         ON agent_runs(user_id, created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_agent_runs_workspace_created_at
-        ON agent_runs(workspace_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_agent_runs_status_created_at
         ON agent_runs(status, created_at DESC);
 
@@ -218,18 +215,6 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE INDEX IF NOT EXISTS idx_output_guard_rule_audits_created_at ON output_guard_rule_audits(created_at);
       CREATE INDEX IF NOT EXISTS idx_output_guard_rule_audits_rule_id ON output_guard_rule_audits(rule_id);
-
-      CREATE TABLE IF NOT EXISTS tool_policy (
-        id VARCHAR(80) PRIMARY KEY,
-        enabled BOOLEAN NOT NULL DEFAULT FALSE,
-        write_tool_names JSONB NOT NULL DEFAULT '[]'::jsonb,
-        deny_write_channels JSONB NOT NULL DEFAULT '[]'::jsonb,
-        deny_write_message TEXT NOT NULL DEFAULT 'Error: This tool is not allowed in this channel',
-        allow_write_tool_names_in_deny_channels BOOLEAN NOT NULL DEFAULT FALSE,
-        allow_write_tool_names_by_channel JSONB NOT NULL DEFAULT '{}'::jsonb,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
 
       CREATE TABLE IF NOT EXISTS rag_ingestion_policy (
         id VARCHAR(80) PRIMARY KEY,

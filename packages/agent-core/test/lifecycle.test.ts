@@ -32,7 +32,7 @@ describe("lifecycle recorders", () => {
             { content: "system seed", role: "system" },
             { content: "user ask", role: "user" }
           ],
-          metadata: { userId: "u-1", workspaceId: "w-1" },
+          metadata: { userId: "u-1" },
           model: "provider/model"
         }
       }),
@@ -48,8 +48,7 @@ describe("lifecycle recorders", () => {
       model: "provider/model",
       provider: "openai",
       status: "running",
-      userId: "u-1",
-      workspaceId: "w-1"
+      userId: "u-1"
     });
     const messages = await historyStore.listMessages("run-1");
     const roles = messages.map((m) => m.role).sort();

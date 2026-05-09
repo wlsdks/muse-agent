@@ -35,8 +35,7 @@ export async function recordRunStart(args: LifecycleRunStartArgs): Promise<void>
       provider: args.provider,
       startedAt: args.context.startedAt,
       status: "running",
-      userId: metadataString(args.context.input.metadata, "userId"),
-      workspaceId: metadataString(args.context.input.metadata, "workspaceId")
+      userId: metadataString(args.context.input.metadata, "userId")
     });
 
     for (const message of args.context.input.messages) {

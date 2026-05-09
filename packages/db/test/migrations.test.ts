@@ -70,7 +70,6 @@ describe("db migrations", () => {
       "session_tags",
       "slo_config",
       "task_memories",
-      "tool_policy",
       "user_memories"
     ]) {
       expect(sql).toContain(`CREATE TABLE IF NOT EXISTS ${table}`);

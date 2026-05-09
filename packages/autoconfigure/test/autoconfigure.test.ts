@@ -10,7 +10,7 @@ import {
 } from "@muse/memory";
 import { KyselyMcpSecurityPolicyStore, KyselyMcpServerStore } from "@muse/mcp";
 import { PersistedMuseTracer } from "@muse/observability";
-import { KyselyGuardRuleStore, KyselyToolPolicyStore } from "@muse/policy";
+import { KyselyGuardRuleStore } from "@muse/policy";
 import { KyselyRagDocumentStore, KyselyRagIngestionCandidateStore, KyselyRagIngestionPolicyStore } from "@muse/rag";
 import { KyselyRuntimeSettingsStore } from "@muse/runtime-settings";
 import {
@@ -125,7 +125,6 @@ describe("autoconfigure", () => {
     expect(assembly.userMemoryStore).toBeInstanceOf(KyselyUserMemoryStore);
     expect(assembly.sessionTagStore).toBeInstanceOf(KyselySessionTagStore);
     expect(assembly.guardRuleStore).toBeInstanceOf(KyselyGuardRuleStore);
-    expect(assembly.toolPolicyStore).toBeInstanceOf(KyselyToolPolicyStore);
     expect(assembly.ragIngestion.policyStore).toBeInstanceOf(KyselyRagIngestionPolicyStore);
     expect(assembly.ragIngestion.candidateStore).toBeInstanceOf(KyselyRagIngestionCandidateStore);
     expect(assembly.ragIngestion.documentStore).toBeInstanceOf(KyselyRagDocumentStore);

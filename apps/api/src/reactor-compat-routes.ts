@@ -20,8 +20,8 @@ import type {
   LatencySummary,
   TokenCostQuery
 } from "@muse/observability";
-import type { GuardRuleStore, ToolPolicyInput, ToolPolicyStore } from "@muse/policy";
-import { inputGuardSimulationToJson, simulateInputGuardPipeline, toolPolicyToJson } from "@muse/policy";
+import type { GuardRuleStore } from "@muse/policy";
+import { inputGuardSimulationToJson, simulateInputGuardPipeline } from "@muse/policy";
 import type {
   RagDocumentStore,
   RagIngestionCandidateStatus,
@@ -52,7 +52,6 @@ import { listDocuments } from "./compat-document-store.js";
 import { currentAuthIdentity } from "./compat-user-memory-store.js";
 import { listInputGuardRules } from "./compat-guard-rule-store.js";
 import { defaultRagIngestionPolicy } from "./compat-rag-ingestion.js";
-import { defaultToolPolicy } from "./compat-tool-policy-store.js";
 import { registerAdminObservabilityCompatRoutes } from "./admin-observability-compat-routes.js";
 import { registerAdminPlatformCompatRoutes } from "./admin-platform-compat-routes.js";
 import { registerAdminSessionCompatRoutes } from "./admin-session-compat-routes.js";
@@ -62,7 +61,6 @@ import { registerAuthCompatibilityRoutes } from "./auth-compat-routes.js";
 import { registerGuardCompatibilityRoutes } from "./guard-compat-routes.js";
 import { registerMcpCompatibilityRoutes } from "./mcp-compat-routes.js";
 import { registerMetricIngestionCompatRoutes } from "./metric-ingestion-compat-routes.js";
-import { registerPolicyCompatibilityRoutes } from "./policy-compat-routes.js";
 import { registerPromptAndRagRoutes } from "./rag-ingestion-compat-routes.js";
 import { registerSessionCompatibilityRoutes } from "./session-compat-routes.js";
 import { registerUserMemoryCompatRoutes } from "./user-memory-compat-routes.js";
@@ -96,7 +94,6 @@ export interface ReactorCompatibilityRouteOptions {
   readonly sessionTagStore?: SessionTagStore;
   readonly taskMemoryMaintenance?: TaskMemoryMaintenance;
   readonly guardRuleStore?: GuardRuleStore;
-  readonly toolPolicyStore?: ToolPolicyStore;
   readonly userMemoryStore?: UserMemoryStore;
   readonly agentCardIdentity?: {
     readonly name?: string;
@@ -135,8 +132,6 @@ interface CompatState {
     recentTopics: string[];
     updatedAt: string;
   }>;
-  toolPolicyStored: boolean;
-  toolPolicy: JsonObject;
 }
 
 let state: CompatState = createCompatState();
@@ -149,7 +144,6 @@ export function registerReactorCompatibilityRoutes(
   registerAuthCompatibilityRoutes(server, options);
   registerSessionCompatibilityRoutes(server, options);
   registerAgentCompatibilityRoutes(server, options);
-  registerPolicyCompatibilityRoutes(server, options);
   registerGuardCompatibilityRoutes(server, options);
   registerUserMemoryCompatRoutes(server, options);
   registerPromptAndRagRoutes(server, options);
@@ -174,9 +168,7 @@ function createCompatState(): CompatState {
     ragIngestionPolicy: defaultRagIngestionPolicy(),
     ragIngestionPolicyStored: false,
     sessionTags: new Map(),
-    userMemory: new Map(),
-    toolPolicy: defaultToolPolicy(),
-    toolPolicyStored: false
+    userMemory: new Map()
   };
 }
 
@@ -186,8 +178,6 @@ function createCompatState(): CompatState {
 // registerSessionCompatibilityRoutes lives in apps/api/src/session-compat-routes.ts.
 
 // registerAgentCompatibilityRoutes lives in apps/api/src/agent-compat-routes.ts.
-
-// registerPolicyCompatibilityRoutes lives in apps/api/src/policy-compat-routes.ts.
 
 // registerGuardCompatibilityRoutes lives in apps/api/src/guard-compat-routes.ts.
 
@@ -214,7 +204,6 @@ export {
 export {
   aggregateFailurePatterns,
   dailyUsage,
-  groupRunsByChannel,
   latencyDistribution,
   latencySummary,
   latencySummaryFromQuery,
@@ -397,10 +386,6 @@ export {
   validateOutputGuardSimulation
 } from "./compat-guard-rule-store.js";
 
-export function getStateToolPolicy(): JsonObject {
-  return state.toolPolicy;
-}
-
 export function getStateRagIngestionPolicy(): JsonObject {
   return state.ragIngestionPolicy;
 }
@@ -427,16 +412,6 @@ export function getStateOutputGuardRuleAudits(): CompatCollection {
 
 export function getStateSessionTags(): Map<string, CompatRecord[]> {
   return state.sessionTags;
-}
-
-export function isStateToolPolicyStored(): boolean {
-  return state.toolPolicyStored;
-}
-
-export function setStateToolPolicy(policy: JsonObject, stored: boolean): JsonObject {
-  state.toolPolicy = policy;
-  state.toolPolicyStored = stored;
-  return state.toolPolicy;
 }
 
 export function isStateRagIngestionPolicyStored(): boolean {
@@ -467,16 +442,6 @@ export type UserMemoryRecord = {
 export function getStateUserMemory(): Map<string, UserMemoryRecord> {
   return state.userMemory;
 }
-
-// Tool-policy store helpers live in apps/api/src/compat-tool-policy-store.ts.
-export {
-  clearToolPolicy,
-  defaultToolPolicy,
-  readStoredToolPolicy,
-  saveToolPolicy,
-  toToolPolicyResponse,
-  validateToolPolicyBody
-} from "./compat-tool-policy-store.js";
 
 export function readIfMatchVersion(request: FastifyRequest): number | undefined {
   const raw = request.headers["if-match"];
@@ -707,7 +672,6 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/sessions",
     "/api/sessions/{sessionId}",
     "/api/sessions/{sessionId}/export",
-    "/api/tool-policy",
     "/api/user-memory/{userId}",
     "/api/user-memory/{userId}/facts",
     "/api/user-memory/{userId}/preferences"

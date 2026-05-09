@@ -11,7 +11,6 @@ export type ConversationRole = "system" | "user" | "assistant" | "tool";
 
 export interface AgentRunRecord {
   readonly id: string;
-  readonly workspaceId?: string;
   readonly userId?: string;
   readonly status: RunStatus;
   readonly provider: string;
@@ -55,7 +54,6 @@ export interface ToolCallRecord {
 
 export interface CreateAgentRunInput {
   readonly id?: string;
-  readonly workspaceId?: string;
   readonly userId?: string;
   readonly status?: RunStatus;
   readonly provider: string;
@@ -443,8 +441,7 @@ export function createAgentRunRecord(
     status: input.status ?? "queued",
     tokenUsage: input.tokenUsage ?? {},
     updatedAt: input.updatedAt ?? createdAt,
-    userId: input.userId,
-    workspaceId: input.workspaceId
+    userId: input.userId
   };
 }
 
@@ -504,8 +501,7 @@ export function createAgentRunInsert(
     status: record.status,
     token_usage: record.tokenUsage,
     updated_at: record.updatedAt,
-    user_id: record.userId ?? null,
-    workspace_id: record.workspaceId ?? null
+    user_id: record.userId ?? null
   };
 }
 
@@ -586,8 +582,7 @@ export function mapAgentRunRow(row: AgentRunRow): AgentRunRecord {
     status: row.status,
     tokenUsage: toJsonObject(row.token_usage),
     updatedAt: toDate(row.updated_at),
-    userId: row.user_id ?? undefined,
-    workspaceId: row.workspace_id ?? undefined
+    userId: row.user_id ?? undefined
   };
 }
 

@@ -49,7 +49,6 @@ export interface MuseDatabase {
   readonly slo_config: CompatibilityTable;
   readonly task_memories: CompatibilityTable;
   readonly tool_calls: ToolCallTable;
-  readonly tool_policy: ToolPolicyTable;
   readonly trace_events: TraceEventTable;
   readonly user_identities: UserIdentityTable;
   readonly user_memories: UserMemoryTable;
@@ -170,7 +169,6 @@ export interface ConversationSummaryTable {
 
 export interface AgentRunTable {
   readonly id: string;
-  readonly workspace_id: string | null;
   readonly user_id: string | null;
   readonly status: RunStatus;
   readonly provider: string;
@@ -210,18 +208,6 @@ export interface ToolCallTable {
   readonly started_at: NullableTimestamp;
   readonly completed_at: NullableTimestamp;
   readonly created_at: Timestamp;
-}
-
-export interface ToolPolicyTable {
-  readonly id: string;
-  readonly enabled: boolean;
-  readonly write_tool_names: JsonColumn;
-  readonly deny_write_channels: JsonColumn;
-  readonly deny_write_message: string;
-  readonly allow_write_tool_names_in_deny_channels: JsonColumn;
-  readonly allow_write_tool_names_by_channel: JsonColumn;
-  readonly created_at: Timestamp;
-  readonly updated_at: Timestamp;
 }
 
 export interface InputGuardRuleTable {

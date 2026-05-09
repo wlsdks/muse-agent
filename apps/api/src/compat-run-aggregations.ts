@@ -185,22 +185,6 @@ export function dailyUsage(runs: readonly AgentRunRecord[]) {
   return [...byDay.values()].sort((left, right) => left.date.localeCompare(right.date));
 }
 
-export function groupRunsByChannel(runs: readonly AgentRunRecord[]) {
-  const byChannel = new Map<string, { channel: string; failed: number; total: number }>();
-
-  for (const run of runs) {
-    const channel = run.workspaceId ?? "api";
-    const existing = byChannel.get(channel) ?? { channel, failed: 0, total: 0 };
-    byChannel.set(channel, {
-      channel,
-      failed: existing.failed + (run.status === "failed" ? 1 : 0),
-      total: existing.total + 1
-    });
-  }
-
-  return [...byChannel.values()].sort((left, right) => right.total - left.total);
-}
-
 export function latencyDistribution(runs: readonly AgentRunRecord[]) {
   const buckets = { "0-1s": 0, "1-5s": 0, "5-30s": 0, "30s+": 0, unknown: 0 };
 

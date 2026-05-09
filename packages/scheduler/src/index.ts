@@ -537,8 +537,7 @@ export class ScheduledMcpToolInvoker {
     const args = resolveTemplateJson(job.toolArguments, job);
     const output = await tool.execute(args, {
       runId: `scheduler_${job.id}_${Date.now()}`,
-      userId: "scheduler",
-      workspaceId: "scheduler"
+      userId: "scheduler"
     });
 
     return typeof output === "string" ? output : JSON.stringify(output, null, 2);

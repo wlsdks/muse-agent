@@ -126,8 +126,7 @@ import {
   ToolRegistry,
   toModelTool,
   type ToolExecutionResult,
-  type ToolExposurePolicy,
-  type ToolPolicyProvider
+  type ToolExposurePolicy
 } from "@muse/tools";
 
 import type {
@@ -209,7 +208,6 @@ export interface AgentRuntimeOptions {
   readonly toolRegistry?: ToolRegistry;
   readonly toolExecutor?: ToolExecutor;
   readonly toolExposurePolicy?: ToolExposurePolicy;
-  readonly toolPolicyProvider?: ToolPolicyProvider;
   readonly maxToolCalls?: number;
   readonly circuitBreaker?: CircuitBreaker;
   readonly fallbackStrategy?: FallbackStrategy;
@@ -351,7 +349,6 @@ export class AgentRuntime {
     this.toolExecutor = options.toolExecutor ??
       (options.toolRegistry
         ? new ToolExecutor({
-            toolPolicyProvider: options.toolPolicyProvider,
             registry: options.toolRegistry
           })
         : undefined);
@@ -1477,10 +1474,8 @@ export class AgentRuntime {
     const result = await this.toolExecutor.execute({
       arguments: toolCall.arguments,
       context: {
-        channel: metadataString(context.input.metadata, "channel"),
         runId: context.runId,
-        userId: metadataString(context.input.metadata, "userId"),
-        workspaceId: metadataString(context.input.metadata, "workspaceId")
+        userId: metadataString(context.input.metadata, "userId")
       },
       id: toolCall.id,
       name: toolCall.name

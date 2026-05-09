@@ -443,8 +443,7 @@ async function callMcpTool(
   const sanitizer = new ToolOutputSanitizer({ maxOutputLength: policy?.maxToolOutputLength });
   const rawOutput = await tool.execute(parsed.value, {
     runId: `mcp_api_${Date.now()}`,
-    userId: "admin",
-    workspaceId: "admin"
+    userId: "owner"
   });
   const sanitized = sanitizer.sanitize(tool.definition.name, stringifyToolOutput(rawOutput));
 

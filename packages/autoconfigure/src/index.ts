@@ -131,11 +131,8 @@ import {
 import { CircuitBreakerRegistry } from "@muse/resilience";
 import {
   InMemoryGuardRuleStore,
-  InMemoryToolPolicyStore,
   KyselyGuardRuleStore,
-  KyselyToolPolicyStore,
-  type GuardRuleStore,
-  type ToolPolicyStore
+  type GuardRuleStore
 } from "@muse/policy";
 import { createDefaultRagPipeline } from "./rag-query.js";
 import {
@@ -216,7 +213,6 @@ export interface MuseRuntimeAssembly {
   readonly taskMemoryStore: TaskMemoryStore & TaskMemoryMaintenance;
   readonly userMemoryStore: UserMemoryStore;
   readonly guardRuleStore: GuardRuleStore;
-  readonly toolPolicyStore: ToolPolicyStore;
   readonly observability: {
     readonly budgetTracker: MonthlyBudgetTracker;
     readonly costAnomalyDetector: CostAnomalyDetector;
@@ -324,7 +320,6 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const userMemoryStore = createUserMemoryStore(db);
   const sessionTagStore = createSessionTagStore(db);
   const guardRuleStore = createGuardRuleStore(db);
-  const toolPolicyStore = createToolPolicyStore(db);
   const ragIngestionPolicyStore = createRagIngestionPolicyStore(db);
   const ragIngestionCandidateStore = createRagIngestionCandidateStore(db);
   const ragDocumentStore = createRagDocumentStore(db);
@@ -390,7 +385,6 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       guards: createInputGuards(env),
       outputGuards: createOutputGuards(env),
       requestTimeoutMs: parseInteger(env.MUSE_MODEL_REQUEST_TIMEOUT_MS, 45_000),
-      toolPolicyProvider: () => toolPolicyStore.getStored(),
       responseFilters: createResponseFilters(env),
       responseCache: parseBoolean(env.MUSE_CACHE_ENABLED, true) ? responseCache : undefined,
       retry: {
@@ -451,7 +445,6 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     taskMemoryStore,
     userMemoryStore,
     guardRuleStore,
-    toolPolicyStore,
     observability: {
       budgetTracker,
       costAnomalyDetector,
@@ -677,14 +670,9 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     sessionTagStore: assembly.sessionTagStore,
     taskMemoryMaintenance: assembly.taskMemoryStore,
     guardRuleStore: assembly.guardRuleStore,
-    toolPolicyStore: assembly.toolPolicyStore,
     userMemoryStore: assembly.userMemoryStore,
     conversationSummaryStore: assembly.conversationSummaryStore
   };
-}
-
-function createToolPolicyStore(db: Kysely<MuseDatabase> | undefined): ToolPolicyStore {
-  return db ? new KyselyToolPolicyStore(db) : new InMemoryToolPolicyStore();
 }
 
 function createGuardRuleStore(db: Kysely<MuseDatabase> | undefined): GuardRuleStore {

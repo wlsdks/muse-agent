@@ -14,7 +14,6 @@ export type RunStatus = "queued" | "running" | "blocked" | "completed" | "failed
 
 export interface RunIdentity {
   readonly runId: string;
-  readonly workspaceId?: string;
   readonly userId?: string;
 }
 

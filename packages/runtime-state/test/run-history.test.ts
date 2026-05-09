@@ -33,8 +33,7 @@ describe("InMemoryAgentRunHistoryStore", () => {
       input: "Summarize this",
       model: "model-a",
       provider: "provider-a",
-      userId: "user-1",
-      workspaceId: "workspace-1"
+      userId: "user-1"
     });
     const message = store.appendMessage({
       content: "Summarize this",
