@@ -519,9 +519,10 @@ describe("createJarvisTools", () => {
     return tool;
   }
 
-  it("registers thirteen zero-IO ambient utility tools", () => {
+  it("registers fourteen zero-IO ambient utility tools", () => {
     const tools = createJarvisTools();
     expect(tools.map((tool) => tool.definition.name).sort()).toEqual([
+      "csv_parse",
       "hash_text",
       "json_query",
       "kv_summarize",
@@ -539,6 +540,44 @@ describe("createJarvisTools", () => {
     for (const tool of tools) {
       expect(tool.definition.risk).toBe("read");
     }
+  });
+
+  it("csv_parse handles headers, quoted fields, escaped quotes, CRLF, header:false", async () => {
+    const tool = getTool("csv_parse");
+
+    const headers = (await tool.execute(
+      { text: "name,age,city\nAlice,30,Seoul\nBob,25,\"New York\"\n" },
+      { runId: "r" }
+    )) as { headers: string[]; rows: Record<string, string>[] };
+    expect(headers.headers).toEqual(["name", "age", "city"]);
+    expect(headers.rows).toEqual([
+      { age: "30", city: "Seoul", name: "Alice" },
+      { age: "25", city: "New York", name: "Bob" }
+    ]);
+
+    const escapedQuotes = (await tool.execute(
+      { text: 'note\n"she said ""hi""\nand left"\n' },
+      { runId: "r" }
+    )) as { rows: Record<string, string>[] };
+    expect(escapedQuotes.rows[0]?.note).toBe('she said "hi"\nand left');
+
+    const crlf = (await tool.execute(
+      { text: "a,b\r\n1,2\r\n3,4" },
+      { runId: "r" }
+    )) as { rows: Record<string, string>[] };
+    expect(crlf.rows).toEqual([{ a: "1", b: "2" }, { a: "3", b: "4" }]);
+
+    const noHeader = (await tool.execute(
+      { header: false, text: "1,2,3\n4,5,6" },
+      { runId: "r" }
+    )) as { rows: string[][] };
+    expect(noHeader.rows).toEqual([
+      ["1", "2", "3"],
+      ["4", "5", "6"]
+    ]);
+
+    const empty = (await tool.execute({ text: "" }, { runId: "r" })) as { rows: unknown[] };
+    expect(empty.rows).toEqual([]);
   });
 
   it("hash_text returns hex digests, supports sha1/md5, and rejects unknown algorithms", async () => {

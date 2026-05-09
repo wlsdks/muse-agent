@@ -35,7 +35,8 @@ export function createJarvisTools(options: JarvisToolFactoryOptions = {}): reado
     createRegexExtractTool(),
     createKvSummarizeTool(),
     createMarkdownTableTool(),
-    createHashTextTool()
+    createHashTextTool(),
+    createCsvParseTool()
   ];
 }
 
@@ -670,6 +671,124 @@ function createHashTextTool(): MuseTool {
       return { algorithm, digest } satisfies JsonObject;
     }
   };
+}
+
+const CSV_PARSE_MAX_ROWS = 1_000;
+const CSV_PARSE_MAX_TEXT_LENGTH = 200_000;
+
+function createCsvParseTool(): MuseTool {
+  return {
+    definition: {
+      description:
+        "Parses CSV `text` into structured rows. With `header: true` (default), the first non-empty record becomes the column names and each remaining record returns as an object keyed by those names; `headers` is included on the response. With `header: false`, every record returns as an array of strings under `rows`. " +
+        "Handles quoted fields, escaped quotes (`\"\"` → `\"`), CRLF/LF line endings, and trailing empty fields. Bounded inputs: text ≤ 200k characters, ≤ 1000 records.",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          header: {
+            description: "When true (default), parse the first row as headers and return objects.",
+            type: "boolean"
+          },
+          text: { description: "CSV-formatted text.", type: "string" }
+        },
+        required: ["text"],
+        type: "object"
+      },
+      keywords: ["csv", "parse", "spreadsheet", "table"],
+      name: "csv_parse",
+      risk: "read"
+    },
+    execute: (args): JsonObject => {
+      const text = typeof args["text"] === "string" ? (args["text"] as string) : "";
+      if (text.length === 0) {
+        return { rows: [] } satisfies JsonObject;
+      }
+      if (text.length > CSV_PARSE_MAX_TEXT_LENGTH) {
+        return { error: `text must be ≤ ${CSV_PARSE_MAX_TEXT_LENGTH} characters` };
+      }
+      const useHeader = args["header"] === false ? false : true;
+      const records = parseCsvRecords(text);
+      if (useHeader) {
+        if (records.length === 0) {
+          return { headers: [], rows: [] } satisfies JsonObject;
+        }
+        const headers = records[0] ?? [];
+        const dataRecords = records.slice(1, 1 + CSV_PARSE_MAX_ROWS);
+        const rows = dataRecords.map((record) => {
+          const row: Record<string, string> = {};
+          for (let index = 0; index < headers.length; index += 1) {
+            row[headers[index] ?? ""] = record[index] ?? "";
+          }
+          return row;
+        });
+        return { headers, rows } satisfies JsonObject;
+      }
+      return { rows: records.slice(0, CSV_PARSE_MAX_ROWS) } satisfies JsonObject;
+    }
+  };
+}
+
+function parseCsvRecords(text: string): string[][] {
+  const records: string[][] = [];
+  let field = "";
+  let row: string[] = [];
+  let inQuotes = false;
+  let index = 0;
+  while (index < text.length) {
+    const character = text[index];
+    if (inQuotes) {
+      if (character === '"') {
+        if (text[index + 1] === '"') {
+          field += '"';
+          index += 2;
+          continue;
+        }
+        inQuotes = false;
+        index += 1;
+        continue;
+      }
+      field += character;
+      index += 1;
+      continue;
+    }
+    if (character === '"') {
+      inQuotes = true;
+      index += 1;
+      continue;
+    }
+    if (character === ",") {
+      row.push(field);
+      field = "";
+      index += 1;
+      continue;
+    }
+    if (character === "\r") {
+      if (text[index + 1] === "\n") {
+        index += 1;
+      }
+      row.push(field);
+      records.push(row);
+      row = [];
+      field = "";
+      index += 1;
+      continue;
+    }
+    if (character === "\n") {
+      row.push(field);
+      records.push(row);
+      row = [];
+      field = "";
+      index += 1;
+      continue;
+    }
+    field += character;
+    index += 1;
+  }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    records.push(row);
+  }
+  return records;
 }
 
 function readOptionalString(args: JsonObject, key: string): string | undefined {
