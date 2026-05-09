@@ -5100,16 +5100,7 @@ describe("api server", () => {
       startedAt: null,
       status: "PENDING"
     });
-    expect(platformHealth.json()).toMatchObject({
-      activeAlerts: 0,
-      cacheExactHits: 0,
-      cacheMisses: 0,
-      cacheSemanticHits: 0,
-      pipelineBufferUsage: 0,
-      pipelineDropRate: 0,
-      pipelineWriteLatencyMs: 0,
-      services: []
-    });
+    expect(platformHealth.json()).toEqual({ activeAlerts: 0 });
     expect(platformCacheStats.json()).toMatchObject({
       config: {
         cacheableTemperature: 1,

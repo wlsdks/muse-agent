@@ -63,14 +63,7 @@ export async function dashboardSummary(options: ReactorCompatibilityRouteOptions
 export async function platformHealthDashboard(options: ReactorCompatibilityRouteOptions): Promise<JsonObject> {
   const alerts = await (options.admin?.operations?.listAlerts() ?? []);
   return {
-    activeAlerts: alerts.filter((alert) => toJsonObject(alert).status === "open").length,
-    cacheExactHits: 0,
-    cacheMisses: 0,
-    cacheSemanticHits: 0,
-    pipelineBufferUsage: 0,
-    pipelineDropRate: 0,
-    pipelineWriteLatencyMs: 0,
-    services: []
+    activeAlerts: alerts.filter((alert) => toJsonObject(alert).status === "open").length
   };
 }
 
