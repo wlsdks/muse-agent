@@ -247,13 +247,6 @@ function registerSlackFaqRoutes(server: FastifyInstance, options: ReactorCompati
 
     return slackFaqStats();
   });
-  server.get("/api/admin/slack/channels/faq/scheduler/health", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return { enabled: false };
-  });
   server.get("/api/admin/slack/channels/faq/:channelId", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;
