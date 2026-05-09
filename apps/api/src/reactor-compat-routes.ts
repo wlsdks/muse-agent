@@ -248,18 +248,6 @@ export function ragStatusSummary(documents: readonly CompatRecord[] = [...getSta
 
 // chunkText lives in apps/api/src/compat-parsers.ts.
 
-export function groupRecordsByField(records: readonly JsonObject[], field: string, fallback: string): readonly JsonObject[] {
-  const groups = new Map<string, { count: number; key: string }>();
-
-  for (const record of records) {
-    const key = typeof record[field] === "string" ? record[field] : fallback;
-    const existing = groups.get(key) ?? { count: 0, key };
-    groups.set(key, { count: existing.count + 1, key });
-  }
-
-  return [...groups.values()].sort((left, right) => right.count - left.count);
-}
-
 export function debugReplayResponse(run: AgentRunRecord): JsonObject {
   return {
     capturedAt: run.createdAt.toISOString(),
@@ -524,7 +512,6 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/admin/platform/cache/stats",
     "/api/admin/platform/health",
     "/api/admin/platform/vectorstore/stats",
-    "/api/admin/rag-analytics/by-channel",
     "/api/admin/rag-analytics/status",
     "/api/admin/rag/seed-policy",
     "/api/admin/sessions",

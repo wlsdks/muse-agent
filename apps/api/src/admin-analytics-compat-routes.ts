@@ -17,8 +17,6 @@ import {
   debugReplayResponse,
   errorResponse,
   getDebugReplayCapture,
-  getStateRagCandidates,
-  groupRecordsByField,
   latencySummary,
   latencySummaryFromQuery,
   latencyTimeseries,
@@ -151,13 +149,6 @@ function registerRagAnalyticsRoutes(server: FastifyInstance, options: ReactorCom
     return ragStatusSummary(await listDocuments(options, { limit: 1000 }));
   });
 
-  server.get("/api/admin/rag-analytics/by-channel", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return groupRecordsByField([...getStateRagCandidates(), ...await listDocuments(options, { limit: 1000 })], "channelId", "api");
-  });
 }
 
 function registerTenantExportRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
