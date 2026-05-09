@@ -1004,168 +1004,21 @@ export function createFetchMcpServer(options: FetchMcpServerOptions): LoopbackMc
   };
 }
 
-export interface FilesystemMcpServerOptions {
-  /**
-   * Absolute paths the filesystem reader is permitted to access. Empty by
-   * default — opt-in required. Each root is resolved to an absolute path; a
-   * call is allowed only when the requested path resolves to the root itself
-   * or a descendant (with a path-separator boundary, so "/etc" never matches
-   * "/etc-passwd").
-   */
-  readonly allowedRoots: readonly string[];
-  /** Cap on bytes returned by `read`. Default 65,536 (64KB). */
-  readonly maxBodyBytes?: number;
-  /** Cap on entries returned by `list`. Default 256. */
-  readonly maxListEntries?: number;
-  /** Optional fs override (used in tests). Must implement readFile/readdir/stat with the node:fs/promises shape. */
-  readonly fs?: {
-    readFile(path: string): Promise<Buffer>;
-    readdir(path: string, options: { withFileTypes: true }): Promise<readonly { name: string; isDirectory(): boolean; isFile(): boolean; isSymbolicLink(): boolean }[]>;
-    stat(path: string): Promise<{ size: number; mtime: Date; isDirectory(): boolean; isFile(): boolean; isSymbolicLink(): boolean }>;
-  };
-  /** Optional path module override (used in tests). */
-  readonly path?: { resolve(...segments: string[]): string; sep: string };
-}
-
 /**
- * Reference loopback server: bounded filesystem reader. Opt-in,
- * allowlist-rooted, body-capped, read-only. Lets Muse inspect files inside
- * an operator-defined workspace without giving it free disk access.
+ * `muse.fs` bounded filesystem reader (allowlist-rooted, read-only).
  *
- * NOT included in `createDefaultLoopbackMcpServers` — operators who want
- * filesystem access must construct it explicitly with the roots they trust.
+ * Implementation lives in `./loopback-filesystem.ts` (lifted out so
+ * the path-allowlist policy and the small fs/path injection seams
+ * stay co-located). Imported here for the catalog's own use AND
+ * re-exported so the `@muse/mcp` barrel and existing tests keep
+ * working without import-site edits.
  */
-export function createFilesystemMcpServer(options: FilesystemMcpServerOptions): LoopbackMcpServer {
-  const pathLib = options.path ?? { resolve: nodePathResolve, sep: nodePathSep };
-  const fsLib: NonNullable<FilesystemMcpServerOptions["fs"]> = options.fs ?? {
-    readFile: (path) => nodeReadFile(path),
-    readdir: (path, opts) => nodeReaddir(path, opts) as ReturnType<NonNullable<FilesystemMcpServerOptions["fs"]>["readdir"]>,
-    stat: (path) => nodeStat(path)
-  };
-  const maxBodyBytes = options.maxBodyBytes ?? 65_536;
-  const maxListEntries = options.maxListEntries ?? 256;
-  const roots = options.allowedRoots.map((root) => pathLib.resolve(root));
+import {
+  createFilesystemMcpServer,
+  type FilesystemMcpServerOptions
+} from "./loopback-filesystem.js";
 
-  function checkAllowed(rawPath: string): { readonly allowed: true; readonly resolved: string } | { readonly allowed: false; readonly error: string } {
-    if (typeof rawPath !== "string" || rawPath.length === 0) {
-      return { allowed: false, error: "path is required" };
-    }
-    const resolved = pathLib.resolve(rawPath);
-    const allowed = roots.some((root) => resolved === root || resolved.startsWith(`${root}${pathLib.sep}`));
-    if (!allowed) {
-      return { allowed: false, error: `path '${rawPath}' is not under any configured allowlist root` };
-    }
-    return { allowed: true, resolved };
-  }
-
-  function entryKind(entry: { isDirectory(): boolean; isFile(): boolean; isSymbolicLink(): boolean }): "directory" | "file" | "symlink" | "other" {
-    if (entry.isDirectory()) {
-      return "directory";
-    }
-    if (entry.isFile()) {
-      return "file";
-    }
-    if (entry.isSymbolicLink()) {
-      return "symlink";
-    }
-    return "other";
-  }
-
-  return {
-    description: "Built-in filesystem reader (loopback MCP, allowlist-rooted, read-only).",
-    name: "muse.fs",
-    tools: [
-      {
-        description:
-          "Reads a UTF-8 text file inside the configured allowlist and returns { content, bytes, truncated }. Output is truncated at maxBodyBytes (default 64KB). Binary files may produce replacement characters.",
-        execute: async (args): Promise<JsonObject> => {
-          const decision = checkAllowed(readString(args, "path") ?? "");
-          if (!decision.allowed) {
-            return { error: decision.error };
-          }
-          try {
-            const buffer = await fsLib.readFile(decision.resolved);
-            const truncated = buffer.byteLength > maxBodyBytes;
-            const slice = truncated ? buffer.subarray(0, maxBodyBytes) : buffer;
-            return {
-              bytes: buffer.byteLength,
-              content: slice.toString("utf8"),
-              truncated
-            } satisfies JsonObject;
-          } catch (error) {
-            return { error: `read failed: ${error instanceof Error ? error.message : String(error)}` };
-          }
-        },
-        inputSchema: {
-          additionalProperties: false,
-          properties: { path: { type: "string" } },
-          required: ["path"],
-          type: "object"
-        },
-        name: "read",
-        risk: "read"
-      },
-      {
-        description:
-          "Lists the immediate entries of a directory inside the configured allowlist. Returns { entries: [{ name, kind }] } where kind is directory|file|symlink|other. Capped at maxListEntries (default 256).",
-        execute: async (args): Promise<JsonObject> => {
-          const decision = checkAllowed(readString(args, "path") ?? "");
-          if (!decision.allowed) {
-            return { error: decision.error };
-          }
-          try {
-            const dirents = await fsLib.readdir(decision.resolved, { withFileTypes: true });
-            const truncated = dirents.length > maxListEntries;
-            const limited = truncated ? dirents.slice(0, maxListEntries) : dirents;
-            return {
-              entries: limited.map((entry) => ({ kind: entryKind(entry), name: entry.name })) as JsonValue,
-              total: dirents.length,
-              truncated
-            } satisfies JsonObject;
-          } catch (error) {
-            return { error: `list failed: ${error instanceof Error ? error.message : String(error)}` };
-          }
-        },
-        inputSchema: {
-          additionalProperties: false,
-          properties: { path: { type: "string" } },
-          required: ["path"],
-          type: "object"
-        },
-        name: "list",
-        risk: "read"
-      },
-      {
-        description:
-          "Returns metadata for a path inside the configured allowlist: { kind, size, mtime }. mtime is an ISO-8601 string. Symlinks are reported as kind=symlink without following.",
-        execute: async (args): Promise<JsonObject> => {
-          const decision = checkAllowed(readString(args, "path") ?? "");
-          if (!decision.allowed) {
-            return { error: decision.error };
-          }
-          try {
-            const stats = await fsLib.stat(decision.resolved);
-            return {
-              kind: entryKind(stats),
-              mtime: stats.mtime.toISOString(),
-              size: stats.size
-            } satisfies JsonObject;
-          } catch (error) {
-            return { error: `stat failed: ${error instanceof Error ? error.message : String(error)}` };
-          }
-        },
-        inputSchema: {
-          additionalProperties: false,
-          properties: { path: { type: "string" } },
-          required: ["path"],
-          type: "object"
-        },
-        name: "stat",
-        risk: "read"
-      }
-    ]
-  };
-}
+export { createFilesystemMcpServer, type FilesystemMcpServerOptions };
 
 export interface LoopbackMcpCatalogEntry {
   readonly name: string;
