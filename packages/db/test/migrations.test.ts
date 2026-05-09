@@ -20,7 +20,6 @@ describe("db migrations", () => {
       "checkpoints",
       "trace_events",
       "hook_traces",
-      "admin_tenants",
       "admin_alerts",
       "admin_slos",
       "admin_cost_usage",
@@ -73,7 +72,6 @@ describe("db migrations", () => {
       "metric_spans",
       "metric_token_usage",
       "metric_tool_calls",
-      "model_pricing",
       "output_guard_rule_audits",
       "output_guard_rules",
       "personas",
@@ -86,7 +84,6 @@ describe("db migrations", () => {
       "slack_bot_instances",
       "slo_config",
       "task_memories",
-      "tenants",
       "tool_policy",
       "trials",
       "user_memories"

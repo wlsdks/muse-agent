@@ -306,7 +306,6 @@ export class KyselyUserStore implements AsyncUserStore {
           name: normalized.name,
           password_hash: normalized.passwordHash,
           role: normalized.role,
-          tenant_id: null,
           updated_at: now
         })
       )
@@ -994,7 +993,6 @@ export function createUserInsert(input: UserInput): UserInsert {
     name: user.name,
     password_hash: user.passwordHash,
     role: user.role,
-    tenant_id: null,
     updated_at: updatedAt
   };
 }

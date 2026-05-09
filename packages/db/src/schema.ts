@@ -13,7 +13,6 @@ export interface MuseDatabase {
   readonly admin_alerts: AdminAlertTable;
   readonly admin_cost_usage: AdminCostUsageTable;
   readonly admin_slos: AdminSloTable;
-  readonly admin_tenants: AdminTenantTable;
   readonly agent_eval_cases: AgentEvalCaseTable;
   readonly agent_eval_results: AgentEvalResultTable;
   readonly agent_run_logs: AgentRunLogTable;
@@ -46,7 +45,6 @@ export interface MuseDatabase {
   readonly metric_spans: CompatibilityTable;
   readonly metric_token_usage: MetricTokenUsageTable;
   readonly metric_tool_calls: CompatibilityTable;
-  readonly model_pricing: ModelPricingTable;
   readonly output_guard_rule_audits: OutputGuardRuleAuditTable;
   readonly output_guard_rules: OutputGuardRuleTable;
   readonly pending_approvals: PendingApprovalTable;
@@ -66,7 +64,6 @@ export interface MuseDatabase {
   readonly slack_response_tracking: SlackResponseTrackingTable;
   readonly slo_config: CompatibilityTable;
   readonly task_memories: CompatibilityTable;
-  readonly tenants: CompatibilityTable;
   readonly tool_calls: ToolCallTable;
   readonly tool_policy: ToolPolicyTable;
   readonly trace_events: TraceEventTable;
@@ -74,15 +71,6 @@ export interface MuseDatabase {
   readonly user_identities: UserIdentityTable;
   readonly user_memories: UserMemoryTable;
   readonly users: UserTable;
-}
-
-export interface AdminTenantTable {
-  readonly id: string;
-  readonly name: string;
-  readonly status: "active" | "suspended" | "disabled";
-  readonly monthly_budget_usd: NullableNumericString;
-  readonly created_at: Timestamp;
-  readonly updated_at: Timestamp;
 }
 
 export interface AdminAlertTable {
@@ -107,7 +95,6 @@ export interface AdminSloTable {
 
 export interface AdminCostUsageTable {
   readonly id: string;
-  readonly tenant_id: string | null;
   readonly model: string | null;
   readonly cost_usd: NumericString;
   readonly created_at: Timestamp;
@@ -126,7 +113,6 @@ export interface AdminAuditTable {
 
 export interface MetricAuditTrailTable {
   readonly time: Timestamp;
-  readonly tenant_id: string;
   readonly actor_id: string | null;
   readonly actor_email: string | null;
   readonly event_type: string;
@@ -136,23 +122,8 @@ export interface MetricAuditTrailTable {
   readonly source_ip: string | null;
 }
 
-export interface ModelPricingTable {
-  readonly id: string;
-  readonly provider: string;
-  readonly model: string;
-  readonly prompt_price_per_1k: NumericString;
-  readonly completion_price_per_1k: NumericString;
-  readonly cached_input_price_per_1k: NumericString;
-  readonly reasoning_price_per_1k: NumericString;
-  readonly batch_prompt_price_per_1k: NumericString;
-  readonly batch_completion_price_per_1k: NumericString;
-  readonly effective_from: Timestamp;
-  readonly effective_to: NullableTimestamp;
-}
-
 export interface AlertRuleTable {
   readonly id: string;
-  readonly tenant_id: string | null;
   readonly name: string;
   readonly description: string;
   readonly type: string;
@@ -161,7 +132,6 @@ export interface AlertRuleTable {
   readonly threshold: number;
   readonly window_minutes: number;
   readonly enabled: boolean;
-  readonly platform_only: boolean;
   readonly created_at: Timestamp;
 }
 
@@ -284,7 +254,6 @@ export interface AgentEvalResultTable {
 
 export interface DebugReplayCaptureTable {
   readonly id: ColumnType<string, string | undefined, string>;
-  readonly tenant_id: string;
   readonly user_hash: string | null;
   readonly captured_at: Timestamp;
   readonly user_prompt: string;
@@ -355,7 +324,6 @@ export interface UserTable {
   readonly name: string;
   readonly password_hash: string;
   readonly role: "user" | "admin";
-  readonly tenant_id: string | null;
   readonly created_at: Timestamp;
   readonly updated_at: Timestamp;
 }
@@ -721,7 +689,6 @@ export interface ScheduledJobLockTable {
 
 export interface MetricTokenUsageTable {
   readonly time: Timestamp;
-  readonly tenant_id: string;
   readonly run_id: string;
   readonly model: string;
   readonly provider: string;

@@ -572,8 +572,7 @@ export function createAdminCostUsageInsert(
     cost_usd: input.costUsd,
     created_at: options.now(),
     id: options.idFactory("cost_usage"),
-    model: input.model ?? null,
-    tenant_id: null
+    model: input.model ?? null
   };
 }
 
@@ -645,7 +644,6 @@ export function createMetricAuditTrailInsert(event: MetricAuditEvent): MetricAud
     resource_id: event.id,
     resource_type: "metric_event",
     source_ip: null,
-    tenant_id: "default",
     time: event.createdAt
   };
 }

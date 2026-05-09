@@ -55,7 +55,6 @@ export class KyselyTokenUsageSink implements TokenUsageSink {
         reasoning_tokens: event.reasoningTokens ?? 0,
         run_id: event.runId,
         step_type: event.stepType ?? "act",
-        tenant_id: "default",
         time: event.recordedAt ?? new Date(),
         total_tokens: event.totalTokens
       })

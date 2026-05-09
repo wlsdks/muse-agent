@@ -614,7 +614,6 @@ export function createDebugReplayCaptureInsert(record: JsonObject): DebugReplayC
     id: stringValue(record.id) || undefined,
     metadata_json: jsonObject(record.metadata),
     model_id: nullableString(record.modelId),
-    tenant_id: "default",
     tools_attempted: jsonArray(record.toolsAttempted),
     user_hash: nullableString(record.userHash),
     user_prompt: stringValue(record.userPrompt)

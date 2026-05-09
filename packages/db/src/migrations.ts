@@ -109,15 +109,12 @@ export const migrations: readonly SqlMigration[] = [
         name VARCHAR(255) NOT NULL,
         password_hash VARCHAR(255) NOT NULL,
         role VARCHAR(32) NOT NULL DEFAULT 'user',
-        tenant_id VARCHAR(128),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
       CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
         ON users(email);
-      CREATE INDEX IF NOT EXISTS idx_users_tenant
-        ON users(tenant_id);
 
       CREATE TABLE IF NOT EXISTS user_identities (
         slack_user_id VARCHAR(64) PRIMARY KEY,
@@ -141,47 +138,6 @@ export const migrations: readonly SqlMigration[] = [
       CREATE INDEX IF NOT EXISTS idx_auth_token_revocations_expires_at
         ON auth_token_revocations(expires_at);
 
-      CREATE TABLE IF NOT EXISTS tenants (
-        id VARCHAR(128) PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        slug VARCHAR(120) NOT NULL UNIQUE,
-        plan VARCHAR(40) NOT NULL DEFAULT 'free',
-        status VARCHAR(40) NOT NULL DEFAULT 'active',
-        max_requests_per_month BIGINT NOT NULL DEFAULT 1000,
-        max_tokens_per_month BIGINT NOT NULL DEFAULT 1000000,
-        max_users INTEGER NOT NULL DEFAULT 5,
-        max_agents INTEGER NOT NULL DEFAULT 3,
-        max_mcp_servers INTEGER NOT NULL DEFAULT 5,
-        billing_cycle_start INTEGER NOT NULL DEFAULT 1,
-        billing_email VARCHAR(255),
-        slo_availability DOUBLE PRECISION NOT NULL DEFAULT 0.995,
-        slo_latency_p99_ms BIGINT NOT NULL DEFAULT 10000,
-        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_tenants_slug ON tenants(slug);
-      CREATE INDEX IF NOT EXISTS idx_tenants_status ON tenants(status);
-
-      CREATE TABLE IF NOT EXISTS model_pricing (
-        id VARCHAR(128) PRIMARY KEY,
-        provider VARCHAR(80) NOT NULL,
-        model VARCHAR(255) NOT NULL,
-        prompt_price_per_1k NUMERIC(18, 8) NOT NULL DEFAULT 0,
-        completion_price_per_1k NUMERIC(18, 8) NOT NULL DEFAULT 0,
-        cached_input_price_per_1k NUMERIC(18, 8) NOT NULL DEFAULT 0,
-        reasoning_price_per_1k NUMERIC(18, 8) NOT NULL DEFAULT 0,
-        batch_prompt_price_per_1k NUMERIC(18, 8) NOT NULL DEFAULT 0,
-        batch_completion_price_per_1k NUMERIC(18, 8) NOT NULL DEFAULT 0,
-        effective_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        effective_to TIMESTAMPTZ,
-        UNIQUE(provider, model, effective_from)
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_pricing_provider_model
-        ON model_pricing(provider, model, effective_from DESC);
-
       CREATE TABLE IF NOT EXISTS admin_audits (
         id VARCHAR(128) PRIMARY KEY,
         category VARCHAR(80) NOT NULL,
@@ -198,7 +154,6 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE TABLE IF NOT EXISTS alert_rules (
         id VARCHAR(128) PRIMARY KEY,
-        tenant_id VARCHAR(128),
         name VARCHAR(255) NOT NULL,
         description TEXT NOT NULL DEFAULT '',
         type VARCHAR(40) NOT NULL,
@@ -207,16 +162,12 @@ export const migrations: readonly SqlMigration[] = [
         threshold DOUBLE PRECISION NOT NULL,
         window_minutes INTEGER NOT NULL DEFAULT 15,
         enabled BOOLEAN NOT NULL DEFAULT TRUE,
-        platform_only BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
-
-      CREATE INDEX IF NOT EXISTS idx_alert_rules_tenant ON alert_rules(tenant_id);
 
       CREATE TABLE IF NOT EXISTS alert_instances (
         id VARCHAR(128) PRIMARY KEY,
         rule_id VARCHAR(128) NOT NULL,
-        tenant_id VARCHAR(128),
         severity VARCHAR(40) NOT NULL,
         status VARCHAR(40) NOT NULL DEFAULT 'active',
         message TEXT NOT NULL,
@@ -227,12 +178,10 @@ export const migrations: readonly SqlMigration[] = [
         acknowledged_by VARCHAR(160)
       );
 
-      CREATE INDEX IF NOT EXISTS idx_alert_instances_tenant ON alert_instances(tenant_id, status);
       CREATE INDEX IF NOT EXISTS idx_alert_instances_rule ON alert_instances(rule_id);
 
       CREATE TABLE IF NOT EXISTS slo_config (
         id VARCHAR(128) PRIMARY KEY,
-        tenant_id VARCHAR(128) NOT NULL UNIQUE,
         availability_target DOUBLE PRECISION NOT NULL DEFAULT 0.995,
         latency_p99_target_ms BIGINT NOT NULL DEFAULT 10000,
         apdex_satisfied_ms BIGINT NOT NULL DEFAULT 5000,
@@ -668,7 +617,6 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE TABLE IF NOT EXISTS debug_replay_captures (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id VARCHAR(128) NOT NULL,
         user_hash VARCHAR(128),
         captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         user_prompt TEXT NOT NULL,
@@ -680,14 +628,13 @@ export const migrations: readonly SqlMigration[] = [
         expires_at TIMESTAMPTZ NOT NULL
       );
 
-      CREATE INDEX IF NOT EXISTS idx_debug_replay_captures_tenant_time
-        ON debug_replay_captures(tenant_id, captured_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_debug_replay_captures_captured_at
+        ON debug_replay_captures(captured_at DESC);
       CREATE INDEX IF NOT EXISTS idx_debug_replay_captures_expires
         ON debug_replay_captures(expires_at);
 
       CREATE TABLE IF NOT EXISTS metric_agent_executions (
         time TIMESTAMPTZ NOT NULL,
-        tenant_id VARCHAR(128) NOT NULL,
         run_id VARCHAR(128) NOT NULL,
         user_id VARCHAR(128),
         session_id VARCHAR(128),
@@ -714,7 +661,6 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE TABLE IF NOT EXISTS metric_tool_calls (
         time TIMESTAMPTZ NOT NULL,
-        tenant_id VARCHAR(128) NOT NULL,
         run_id VARCHAR(128) NOT NULL,
         tool_name VARCHAR(255) NOT NULL,
         tool_source VARCHAR(40) NOT NULL DEFAULT 'local',
@@ -728,7 +674,6 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE TABLE IF NOT EXISTS metric_token_usage (
         time TIMESTAMPTZ NOT NULL,
-        tenant_id VARCHAR(128) NOT NULL,
         run_id VARCHAR(128) NOT NULL,
         model VARCHAR(255) NOT NULL,
         provider VARCHAR(80) NOT NULL,
@@ -743,7 +688,6 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE TABLE IF NOT EXISTS metric_sessions (
         time TIMESTAMPTZ NOT NULL,
-        tenant_id VARCHAR(128) NOT NULL,
         session_id VARCHAR(128) NOT NULL,
         user_id VARCHAR(128),
         channel VARCHAR(80),
@@ -759,7 +703,6 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE TABLE IF NOT EXISTS metric_guard_events (
         time TIMESTAMPTZ NOT NULL,
-        tenant_id VARCHAR(128) NOT NULL,
         user_id VARCHAR(128),
         channel VARCHAR(80),
         stage VARCHAR(80) NOT NULL,
@@ -772,7 +715,6 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE TABLE IF NOT EXISTS metric_mcp_health (
         time TIMESTAMPTZ NOT NULL,
-        tenant_id VARCHAR(128) NOT NULL,
         server_name VARCHAR(120) NOT NULL,
         status VARCHAR(40) NOT NULL DEFAULT 'connected',
         response_time_ms BIGINT NOT NULL DEFAULT 0,
@@ -783,7 +725,6 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE TABLE IF NOT EXISTS metric_eval_results (
         time TIMESTAMPTZ NOT NULL,
-        tenant_id VARCHAR(128) NOT NULL,
         eval_run_id VARCHAR(128) NOT NULL,
         test_case_id VARCHAR(128) NOT NULL,
         pass BOOLEAN NOT NULL,
@@ -799,7 +740,6 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE TABLE IF NOT EXISTS metric_spans (
         time TIMESTAMPTZ NOT NULL,
-        tenant_id VARCHAR(128) NOT NULL,
         trace_id VARCHAR(64) NOT NULL,
         span_id VARCHAR(64) NOT NULL,
         parent_span_id VARCHAR(64),
@@ -814,7 +754,6 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE TABLE IF NOT EXISTS metric_audit_trail (
         time TIMESTAMPTZ NOT NULL,
-        tenant_id VARCHAR(128) NOT NULL,
         actor_id VARCHAR(128),
         actor_email VARCHAR(255),
         event_type VARCHAR(80) NOT NULL,
@@ -826,7 +765,6 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE TABLE IF NOT EXISTS metric_quota_events (
         time TIMESTAMPTZ NOT NULL,
-        tenant_id VARCHAR(128) NOT NULL,
         action VARCHAR(80) NOT NULL,
         current_usage BIGINT NOT NULL DEFAULT 0,
         quota_limit BIGINT NOT NULL DEFAULT 0,
@@ -836,7 +774,6 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE TABLE IF NOT EXISTS metric_hitl_events (
         time TIMESTAMPTZ NOT NULL,
-        tenant_id VARCHAR(128) NOT NULL,
         run_id VARCHAR(128) NOT NULL,
         tool_name VARCHAR(255) NOT NULL,
         approved BOOLEAN NOT NULL,
@@ -942,18 +879,6 @@ export const migrations: readonly SqlMigration[] = [
       CREATE INDEX IF NOT EXISTS idx_hook_traces_hook_status_created_at
         ON hook_traces(hook_id, status, created_at DESC);
 
-      CREATE TABLE IF NOT EXISTS admin_tenants (
-        id VARCHAR(128) PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        status VARCHAR(32) NOT NULL DEFAULT 'active',
-        monthly_budget_usd NUMERIC(18, 8),
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_admin_tenants_status_updated_at
-        ON admin_tenants(status, updated_at DESC);
-
       CREATE TABLE IF NOT EXISTS admin_alerts (
         id VARCHAR(128) PRIMARY KEY,
         severity VARCHAR(32) NOT NULL,
@@ -984,14 +909,13 @@ export const migrations: readonly SqlMigration[] = [
 
       CREATE TABLE IF NOT EXISTS admin_cost_usage (
         id VARCHAR(128) PRIMARY KEY,
-        tenant_id VARCHAR(128),
         model VARCHAR(255),
         cost_usd NUMERIC(18, 8) NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
-      CREATE INDEX IF NOT EXISTS idx_admin_cost_usage_tenant_created_at
-        ON admin_cost_usage(tenant_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_admin_cost_usage_created_at
+        ON admin_cost_usage(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_admin_cost_usage_model_created_at
         ON admin_cost_usage(model, created_at DESC);
 
