@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@muse/calendar": "workspace:*",
     "@muse/db": "workspace:*",
     "@muse/shared": "workspace:*",
     "@muse/tools": "workspace:*",

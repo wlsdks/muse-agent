@@ -269,6 +269,22 @@ try {
       `expected note content to surface in answer (white/jeju), got "${body.content}"`);
   });
 
+  await record("muse.calendar.add (live) — LLM creates a calendar event", async () => {
+    const response = await fetch(`${baseUrl}/api/chat`, {
+      body: JSON.stringify({
+        message:
+          "Call the tool muse.calendar.add exactly once with title=\"Smoke test event\", startsAtIso=\"2099-01-15T10:00:00Z\", endsAtIso=\"2099-01-15T11:00:00Z\". After the tool call returns, reply with the literal text DONE and nothing else.",
+        runId: "live-calendar-add"
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    const body = await response.json();
+    assert(response.status === 200, `expected 200, got ${response.status}: ${JSON.stringify(body)}`);
+    assert(Array.isArray(body.toolsUsed) && body.toolsUsed.includes("muse.calendar.add"),
+      `expected toolsUsed to include muse.calendar.add, got ${JSON.stringify(body.toolsUsed)} content="${body.content}"`);
+  });
+
   await record("POST /api/multi-agent/orchestrate (live, sequential)", async () => {
     for (const name of ["live-research", "live-coder"]) {
       const seed = await fetch(`${baseUrl}/api/admin/agent-specs`, {

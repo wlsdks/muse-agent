@@ -1317,6 +1317,7 @@ function toErrorMessage(error: unknown): string {
 export {
   createCryptoMcpServer,
   createDefaultLoopbackMcpServers,
+  createCalendarMcpServer,
   createDiffMcpServer,
   createFetchMcpServer,
   createFilesystemMcpServer,

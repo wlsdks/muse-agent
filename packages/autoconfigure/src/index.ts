@@ -1,6 +1,15 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
+import {
+  CalDAVCalendarProvider,
+  CalendarProviderRegistry,
+  FileCalendarCredentialStore,
+  GoogleCalendarProvider,
+  LocalCalendarProvider,
+  MacOsCalendarProvider,
+  type CalendarProvider
+} from "@muse/calendar";
 import {
   createAgentRuntime,
   createCasualLureStripResponseFilter,
@@ -57,6 +66,7 @@ import {
   KyselyMcpServerStore,
   McpManager,
   McpSecurityPolicyProvider,
+  createCalendarMcpServer,
   createDefaultLoopbackMcpServers,
   createFetchMcpServer,
   createFilesystemMcpServer,
@@ -160,7 +170,14 @@ import {
   type ScheduledJobExecutionStore,
   type ScheduledJobStore
 } from "@muse/scheduler";
-import { createMuseTools, createRustRunnerTool, ToolRegistry, type MuseTool } from "@muse/tools";
+import {
+  createDefaultToolExposurePolicy,
+  createMuseTools,
+  createRustRunnerTool,
+  ToolRegistry,
+  type MuseTool,
+  type ToolExposurePolicy
+} from "@muse/tools";
 import type { MuseDatabase } from "@muse/db";
 import type { Kysely } from "kysely";
 
@@ -217,6 +234,7 @@ export interface MuseRuntimeAssembly {
     readonly store: ScheduledJobStore;
   };
   readonly toolRegistry: ToolRegistry;
+  readonly calendar: CalendarProviderRegistry;
 }
 
 export interface ApiServerAssemblyOptions {
@@ -327,11 +345,16 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const notesLoopbackTools = parseBoolean(env.MUSE_NOTES_ENABLED, true)
     ? createLoopbackMcpMuseTools(createNotesMcpServer({ notesDir }))
     : [];
+  const calendarRegistry = buildCalendarRegistry(env);
+  const calendarLoopbackTools = parseBoolean(env.MUSE_CALENDAR_ENABLED, true) && calendarRegistry.list().length > 0
+    ? createLoopbackMcpMuseTools(createCalendarMcpServer({ registry: calendarRegistry }))
+    : [];
   let schedulerService: DynamicScheduler | undefined;
   const toolRegistry = new DynamicToolRegistry([
     () => museTools,
     () => loopbackMcpTools,
     () => notesLoopbackTools,
+    () => calendarLoopbackTools,
     () => runnerTools,
     () => mcpManager.toMuseTools(),
     () => schedulerService ? createSchedulerTools(schedulerService) : []
@@ -363,6 +386,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       tokenUsageSink,
       tracer,
       toolRegistry,
+      toolExposurePolicy: createPersonalToolExposurePolicy(env),
       userMemoryProvider: parseBoolean(env.MUSE_USER_MEMORY_INJECTION, true)
         ? userMemoryStore
         : undefined,
@@ -429,6 +453,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     resilience: {
       circuitBreakerRegistry
     },
+    calendar: calendarRegistry,
     runtimeSettings: new RuntimeSettings(createRuntimeSettingsStore(db)),
     toolRegistry,
     scheduler: {
@@ -654,6 +679,115 @@ function resolveNotesDir(env: MuseEnvironment): string {
     return override;
   }
   return pathJoin(homedir(), ".muse", "notes");
+}
+
+function resolveCredentialsFile(env: MuseEnvironment): string {
+  const override = env.MUSE_CREDENTIALS_FILE?.trim();
+  if (override && override.length > 0) {
+    return override;
+  }
+  return pathJoin(homedir(), ".muse", "credentials.json");
+}
+
+function resolveLocalCalendarFile(env: MuseEnvironment): string {
+  const override = env.MUSE_CALENDAR_FILE?.trim();
+  if (override && override.length > 0) {
+    return override;
+  }
+  return pathJoin(homedir(), ".muse", "calendar.json");
+}
+
+function buildCalendarRegistry(env: MuseEnvironment): CalendarProviderRegistry {
+  const registry = new CalendarProviderRegistry();
+  const requested = (env.MUSE_CALENDAR_PROVIDERS?.trim() || "local")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0);
+  const credentials = readCredentialsSync(resolveCredentialsFile(env));
+
+  for (const id of requested) {
+    const provider = tryBuildCalendarProvider(id, env, credentials[id]);
+    if (provider) {
+      registry.register(provider);
+    }
+  }
+
+  return registry;
+}
+
+function tryBuildCalendarProvider(
+  id: string,
+  env: MuseEnvironment,
+  credentials: { readonly [key: string]: unknown } | undefined
+): CalendarProvider | undefined {
+  if (id === "local") {
+    return new LocalCalendarProvider({ file: resolveLocalCalendarFile(env) });
+  }
+
+  if (id === "gcal") {
+    const clientId = stringField(credentials, "clientId") ?? env.MUSE_GCAL_CLIENT_ID;
+    const clientSecret = stringField(credentials, "clientSecret") ?? env.MUSE_GCAL_CLIENT_SECRET;
+    const refreshToken = stringField(credentials, "refreshToken") ?? env.MUSE_GCAL_REFRESH_TOKEN;
+    if (!clientId || !clientSecret || !refreshToken) {
+      return undefined;
+    }
+    return new GoogleCalendarProvider({
+      calendarId: stringField(credentials, "calendarId") ?? env.MUSE_GCAL_CALENDAR_ID ?? "primary",
+      clientId,
+      clientSecret,
+      refreshToken
+    });
+  }
+
+  if (id === "caldav") {
+    const url = stringField(credentials, "url") ?? env.MUSE_CALDAV_URL;
+    const username = stringField(credentials, "username") ?? env.MUSE_CALDAV_USERNAME;
+    const password = stringField(credentials, "password") ?? env.MUSE_CALDAV_APP_PASSWORD;
+    if (!url || !username || !password) {
+      return undefined;
+    }
+    return new CalDAVCalendarProvider({ password, url, username });
+  }
+
+  if (id === "macos") {
+    const calendarName = stringField(credentials, "calendarName") ?? env.MUSE_MACOS_CALENDAR_NAME;
+    return new MacOsCalendarProvider(calendarName ? { calendarName } : {});
+  }
+
+  return undefined;
+}
+
+function createPersonalToolExposurePolicy(env: MuseEnvironment): ToolExposurePolicy {
+  // Personal pivot: the agent operates in a single-user environment
+  // with no shared workspace to protect, so the workspace-mutation-
+  // intent heuristic is the wrong default. Allow `write` tools (notes
+  // save, calendar add/update/delete, etc.) without requiring a
+  // workspace-edit prompt shape. Operators can still tighten via the
+  // env var if running Muse in a multi-user context.
+  return createDefaultToolExposurePolicy({
+    allowWriteWithoutMutationIntent: parseBoolean(env.MUSE_ALLOW_WRITE_WITHOUT_MUTATION_INTENT, true)
+  });
+}
+
+function readCredentialsSync(file: string): Record<string, Record<string, unknown>> {
+  try {
+    const raw = readFileSync(file, "utf8");
+    const parsed = JSON.parse(raw) as { readonly providers?: unknown };
+    if (!parsed || typeof parsed !== "object" || !parsed.providers || typeof parsed.providers !== "object") {
+      return {};
+    }
+    return { ...(parsed.providers as Record<string, Record<string, unknown>>) };
+  } catch {
+    return {};
+  }
+}
+
+function stringField(record: { readonly [key: string]: unknown } | undefined, key: string): string | undefined {
+  if (!record) {
+    return undefined;
+  }
+  const value = record[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function ensureNotesDir(notesDir: string): void {

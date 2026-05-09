@@ -21,6 +21,7 @@
     "@muse/agent-specs": "workspace:*",
     "@muse/auth": "workspace:*",
     "@muse/cache": "workspace:*",
+    "@muse/calendar": "workspace:*",
     "@muse/db": "workspace:*",
     "@muse/memory": "workspace:*",
     "@muse/mcp": "workspace:*",

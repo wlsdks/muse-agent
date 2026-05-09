@@ -199,6 +199,9 @@ importers:
       '@muse/cache':
         specifier: workspace:*
         version: link:../cache
+      '@muse/calendar':
+        specifier: workspace:*
+        version: link:../calendar
       '@muse/db':
         specifier: workspace:*
         version: link:../db
@@ -275,6 +278,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.4.3)
+      '@muse/calendar':
+        specifier: workspace:*
+        version: link:../calendar
       '@muse/db':
         specifier: workspace:*
         version: link:../db
