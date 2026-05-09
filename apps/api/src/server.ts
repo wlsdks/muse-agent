@@ -30,26 +30,29 @@ import type {
   SlackFeedbackEventStore,
   SlackResponseTrackerStore
 } from "@muse/integrations";
-import type { AgentEvalStore } from "@muse/eval";
 import { describeBuiltinLoopbackMcpServers } from "@muse/mcp";
 import type { ConversationSummaryStore, TaskMemoryMaintenance, UserMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
-import type { FollowupSuggestionStore, JarvisObservabilitySnapshot, LatencyQuery, TokenCostQuery } from "@muse/observability";
+import type { JarvisObservabilitySnapshot, LatencyQuery, TokenCostQuery } from "@muse/observability";
 import type { GuardRuleStore, ToolPolicyStore } from "@muse/policy";
-import type { FeedbackStore, PromptLabCatalogStore, PromptLabExperimentStore } from "@muse/promptlab";
 import type { RagDocumentStore, RagIngestionCandidateStore, RagIngestionPolicyStore } from "@muse/rag";
 import {
   InMemoryRuntimeSettingsStore,
   RuntimeSettings,
   type RuntimeSettingType
 } from "@muse/runtime-settings";
-import type { AgentRunHistoryStore, AgentRunRecord, PendingApprovalStore, SessionTagStore } from "@muse/runtime-state";
+import type {
+  AgentRunHistoryStore,
+  AgentRunRecord,
+  DebugReplayCaptureStore,
+  PendingApprovalStore,
+  SessionTagStore
+} from "@muse/runtime-state";
 import type { JsonObject, JsonValue } from "@muse/shared";
 import Fastify, { type FastifyInstance } from "fastify";
 import { registerAdminRoutes, type AdminRouteState } from "./admin-routes.js";
 import { registerMcpRoutes, type McpRouteMcp } from "./mcp-routes.js";
 import { registerMultiAgentRoutes } from "./multi-agent-routes.js";
-import { registerQualityRoutes } from "./quality-routes.js";
 import { registerReactorCompatibilityRoutes } from "./reactor-compat-routes.js";
 import { registerSchedulerRoutes, type SchedulerRouteScheduler } from "./scheduler-routes.js";
 import { registerSlackRoutes, type SlackRouteOptions } from "./slack-routes.js";
@@ -58,18 +61,14 @@ export interface ServerOptions {
   readonly logger?: boolean;
   readonly cors?: CorsOptions;
   readonly agentRuntime?: AgentRuntime;
-  readonly agentEvalStore?: AgentEvalStore;
   readonly admin?: AdminRouteState;
   readonly agentSpecRegistry?: AgentSpecRegistry;
   readonly authService?: MuseAuth;
   readonly iamTokenExchangeService?: IamTokenExchange;
   readonly authRateLimiter?: AuthRateLimiter;
-  readonly followupSuggestionStore?: FollowupSuggestionStore;
+  readonly debugReplayCaptureStore?: DebugReplayCaptureStore;
   readonly latencyQuery?: LatencyQuery;
   readonly tokenCostQuery?: TokenCostQuery;
-  readonly feedbackStore?: FeedbackStore;
-  readonly promptLabCatalogStore?: PromptLabCatalogStore;
-  readonly promptLabExperimentStore?: PromptLabExperimentStore;
   readonly historyStore?: AgentRunHistoryStore;
   readonly pendingApprovalStore?: PendingApprovalStore;
   readonly mcp?: McpRouteMcp;
@@ -333,11 +332,6 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
     mcp: options.mcp
   });
-  registerQualityRoutes(server, {
-    authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
-    defaultModel: options.defaultModel,
-    modelProvider: options.modelProvider
-  });
   registerAdminRoutes(server, {
     admin: options.admin,
     authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService))
@@ -354,7 +348,6 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   });
   registerReactorCompatibilityRoutes(server, {
     admin: options.admin,
-    agentEvalStore: options.agentEvalStore,
     agentRuntime: options.agentRuntime,
     agentSpecRegistry,
     authRateLimiter,
@@ -362,11 +355,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     iamTokenExchangeService: options.iamTokenExchangeService,
     authorizeAdmin: (request, reply) => authorizeAdmin(request, reply, Boolean(authService)),
     apiPathRegistry: () => [...apiPaths].sort(),
+    debugReplayCaptureStore: options.debugReplayCaptureStore,
     defaultModel: options.defaultModel,
-    feedbackStore: options.feedbackStore,
-    promptLabCatalogStore: options.promptLabCatalogStore,
-    promptLabExperimentStore: options.promptLabExperimentStore,
-    followupSuggestionStore: options.followupSuggestionStore,
     latencyQuery: options.latencyQuery,
     tokenCostQuery: options.tokenCostQuery,
     agentCardIdentity: options.agentCardIdentity,

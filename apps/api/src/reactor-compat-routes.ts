@@ -19,11 +19,9 @@ import type {
   SlackFeedbackEventStore,
   SlackResponseTrackerStore
 } from "@muse/integrations";
-import type { AgentEvalStore } from "@muse/eval";
 import type { TaskMemoryMaintenance, UserMemory, UserMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
 import type {
-  FollowupSuggestionStore,
   JarvisObservabilitySnapshot,
   LatencyQuery,
   LatencyPoint,
@@ -32,7 +30,6 @@ import type {
 } from "@muse/observability";
 import type { GuardRuleStore, ToolPolicyInput, ToolPolicyStore } from "@muse/policy";
 import { inputGuardSimulationToJson, simulateInputGuardPipeline, toolPolicyToJson } from "@muse/policy";
-import type { FeedbackStore, PromptLabCatalogStore, PromptLabExperimentStore } from "@muse/promptlab";
 import type {
   RagDocumentStore,
   RagIngestionCandidateStatus,
@@ -47,6 +44,7 @@ import type {
   AgentRunHistoryStore,
   AgentRunRecord,
   ConversationMessageRecord,
+  DebugReplayCaptureStore,
   PendingApprovalStore,
   SessionTag,
   SessionTagStore,
@@ -59,37 +57,9 @@ import { createHash } from "node:crypto";
 import { registerAdminAnalyticsCompatRoutes } from "./admin-analytics-compat-routes.js";
 import { isRecord, nowIso } from "./compat-parsers.js";
 import { notFound } from "./compat-responses.js";
-import {
-  agentEvalResult,
-  countBehaviorAssertions,
-  countEvalAssertions,
-  replayRunId,
-  replayToolCalls,
-  syntheticReplayRun,
-  toEvalRunLogResponse,
-  toEvalToolCall
-} from "./compat-agent-eval-shape.js";
-import {
-  saveAgentEvalRunLog,
-  saveAgentEvalResult
-} from "./compat-agent-eval-store.js";
-import {
-  countDocuments,
-  listDocuments,
-  saveDocumentRecord
-} from "./compat-document-store.js";
-import { judgeEvalWithModel } from "./compat-eval-judge.js";
-import { feedbackRating, listFeedback } from "./compat-feedback-store.js";
+import { listDocuments } from "./compat-document-store.js";
 import { currentAuthIdentity } from "./compat-user-memory-store.js";
 import { listInputGuardRules } from "./compat-guard-rule-store.js";
-import {
-  appendPromptVersion,
-  getPromptTemplate,
-  listPromptTemplates,
-  promptVersions,
-  savePromptTemplate,
-  toVersionResponse
-} from "./compat-promptlab-catalog-store.js";
 import { defaultRagIngestionPolicy } from "./compat-rag-ingestion.js";
 import { defaultToolPolicy } from "./compat-tool-policy-store.js";
 import { registerAdminObservabilityCompatRoutes } from "./admin-observability-compat-routes.js";
@@ -97,15 +67,13 @@ import { registerAdminPlatformCompatRoutes } from "./admin-platform-compat-route
 import { registerAdminSessionCompatRoutes } from "./admin-session-compat-routes.js";
 import { registerAdminPlatformAlertCompatRoutes } from "./admin-platform-alert-compat-routes.js";
 import { registerAgentCompatibilityRoutes } from "./agent-compat-routes.js";
-import { registerAgentEvalCompatRoutes } from "./agent-eval-compat-routes.js";
 import { registerApprovalCompatibilityRoutes } from "./approval-compat-routes.js";
 import { registerAuthCompatibilityRoutes } from "./auth-compat-routes.js";
 import { registerGuardCompatibilityRoutes } from "./guard-compat-routes.js";
 import { registerMcpCompatibilityRoutes } from "./mcp-compat-routes.js";
 import { registerMetricIngestionCompatRoutes } from "./metric-ingestion-compat-routes.js";
 import { registerPolicyCompatibilityRoutes } from "./policy-compat-routes.js";
-import { registerFeedbackCompatRoutes } from "./feedback-compat-routes.js";
-import { registerPromptAndRagRoutes } from "./prompt-rag-compat-routes.js";
+import { registerPromptAndRagRoutes } from "./rag-ingestion-compat-routes.js";
 import { registerSessionCompatibilityRoutes } from "./session-compat-routes.js";
 import { registerSlackCompatibilityRoutes } from "./slack-compat-routes.js";
 import { registerUserMemoryCompatRoutes } from "./user-memory-compat-routes.js";
@@ -115,7 +83,6 @@ import type { SchedulerRouteScheduler } from "./scheduler-routes.js";
 
 export interface ReactorCompatibilityRouteOptions {
   readonly admin?: AdminRouteState;
-  readonly agentEvalStore?: AgentEvalStore;
   readonly agentRuntime?: AgentRuntime;
   readonly agentSpecRegistry: AgentSpecRegistry;
   readonly authRateLimiter: AuthRateLimiter;
@@ -123,11 +90,8 @@ export interface ReactorCompatibilityRouteOptions {
   readonly iamTokenExchangeService?: IamTokenExchange;
   readonly authorizeAdmin: (request: FastifyRequest, reply: FastifyReply) => boolean;
   readonly apiPathRegistry?: () => readonly string[];
+  readonly debugReplayCaptureStore?: DebugReplayCaptureStore;
   readonly defaultModel?: string;
-  readonly feedbackStore?: FeedbackStore;
-  readonly promptLabCatalogStore?: PromptLabCatalogStore;
-  readonly promptLabExperimentStore?: PromptLabExperimentStore;
-  readonly followupSuggestionStore?: FollowupSuggestionStore;
   readonly latencyQuery?: LatencyQuery;
   readonly tokenCostQuery?: TokenCostQuery;
   readonly historyStore?: AgentRunHistoryStore;
@@ -173,23 +137,13 @@ export type CompatCollection = Map<string, CompatRecord>;
 export type { CompatBody } from "./compat-parsers.js";
 
 interface CompatState {
-  readonly agentEvalCases: CompatCollection;
-  readonly agentEvalResults: CompatCollection;
-  readonly agentEvalRunLogs: CompatCollection;
   readonly adminAudits: CompatCollection;
   readonly documents: CompatCollection;
-  readonly feedback: CompatCollection;
   readonly inputGuardRules: CompatCollection;
-  readonly intents: CompatCollection;
   readonly outputGuardRuleAudits: CompatCollection;
   readonly outputGuardRules: CompatCollection;
-  readonly personas: CompatCollection;
   readonly metricEvents: CompatCollection;
-  readonly promptExperiments: CompatCollection;
-  readonly promptExperimentReports: CompatCollection;
-  readonly promptExperimentTrials: Map<string, JsonObject[]>;
   readonly proactiveChannels: CompatCollection;
-  readonly promptTemplates: CompatCollection;
   readonly ragCandidates: CompatCollection;
   ragIngestionPolicy: JsonObject;
   ragIngestionPolicyStored: boolean;
@@ -222,7 +176,6 @@ export function registerReactorCompatibilityRoutes(
   registerPolicyCompatibilityRoutes(server, options);
   registerGuardCompatibilityRoutes(server, options);
   registerUserMemoryCompatRoutes(server, options);
-  registerFeedbackCompatRoutes(server, options);
   registerPromptAndRagRoutes(server, options);
   registerMcpCompatibilityRoutes(server, options);
   registerSlackCompatibilityRoutes(server, options);
@@ -231,29 +184,18 @@ export function registerReactorCompatibilityRoutes(
   registerAdminSessionCompatRoutes(server, options);
   registerAdminObservabilityCompatRoutes(server, options);
   registerAdminAnalyticsCompatRoutes(server, options);
-  registerAgentEvalCompatRoutes(server, options);
   registerMetricIngestionCompatRoutes(server, options);
 }
 
 function createCompatState(): CompatState {
   return {
-    agentEvalCases: new Map(),
-    agentEvalResults: new Map(),
-    agentEvalRunLogs: new Map(),
     adminAudits: new Map(),
     documents: new Map(),
-    feedback: new Map(),
     inputGuardRules: new Map(),
-    intents: new Map(),
     outputGuardRuleAudits: new Map(),
     outputGuardRules: new Map(),
-    personas: new Map(),
     metricEvents: new Map(),
-    promptExperiments: new Map(),
-    promptExperimentReports: new Map(),
-    promptExperimentTrials: new Map(),
     proactiveChannels: new Map(),
-    promptTemplates: new Map(),
     ragCandidates: new Map(),
     ragIngestionPolicy: defaultRagIngestionPolicy(),
     ragIngestionPolicyStored: false,
@@ -281,23 +223,15 @@ function createCompatState(): CompatState {
 
 // registerGuardCompatibilityRoutes lives in apps/api/src/guard-compat-routes.ts.
 
-// registerPersonaRoutes lives in apps/api/src/persona-compat-routes.ts.
-
-// registerPromptTemplateRoutes lives in apps/api/src/prompt-template-compat-routes.ts.
-
-// registerIntentRoutes lives in apps/api/src/intent-compat-routes.ts.
-
 // registerDocumentRoutes lives in apps/api/src/document-compat-routes.ts.
 
-// registerPromptAndRagRoutes lives in apps/api/src/prompt-rag-compat-routes.ts.
+// registerPromptAndRagRoutes lives in apps/api/src/rag-ingestion-compat-routes.ts.
 
 // registerMcpCompatibilityRoutes lives in apps/api/src/mcp-compat-routes.ts.
 
 // registerSlackCompatibilityRoutes lives in apps/api/src/slack-compat-routes.ts.
 
 // registerAdminAnalyticsCompatibilityRoutes lives in apps/api/src/admin-analytics-compat-routes.ts.
-
-// registerAgentEvalCompatibilityRoutes lives in apps/api/src/agent-eval-compat-routes.ts.
 
 // Session/run helpers live in apps/api/src/compat-session-store.ts.
 export {
@@ -309,37 +243,6 @@ export {
   summarizeUsers,
   toSessionResponse
 } from "./compat-session-store.js";
-
-// Eval orchestrators live in apps/api/src/compat-agent-eval-orchestrator.ts.
-
-// Agent-eval store CRUD helpers live in apps/api/src/compat-agent-eval-store.ts.
-export {
-  getAgentEvalCase,
-  getDebugReplayCapture,
-  listAgentEvalCases,
-  listAgentEvalResults,
-  listAgentEvalRunLogs,
-  listDebugReplayCaptures,
-  saveAgentEvalCase,
-  saveDebugReplayCapture
-} from "./compat-agent-eval-store.js";
-
-// Eval response shape helpers live in apps/api/src/compat-agent-eval-shape.ts.
-
-export {
-  evaluateRunAgainstCase,
-  replayEvalCase,
-  runLogRecord,
-  runLogResponse,
-  storeEvalResult
-} from "./compat-agent-eval-orchestrator.js";
-
-export { toEvalCaseResponse, toEvalRunLogResponse } from "./compat-agent-eval-shape.js";
-
-
-// LLM-as-judge pipeline lives in apps/api/src/compat-eval-judge.ts.
-
-export { countBehaviorAssertions, countEvalAssertions } from "./compat-agent-eval-shape.js";
 
 // Pure run-aggregation helpers live in apps/api/src/compat-run-aggregations.ts.
 export {
@@ -367,12 +270,44 @@ export {
   compareCreatedAtDesc,
   inputGuardStatsResponse,
   listAdminAuditRecords,
-  passRateByDay,
   recordAdminAudit,
   recordMetricEvent,
   toAdminAuditResponse,
   toInputGuardAuditResponse
 } from "./compat-audit-store.js";
+
+/**
+ * Personal-Muse: dispatch debug-replay persistence to the configured
+ * `DebugReplayCaptureStore` when present, otherwise drop the capture.
+ * Mirrors the surface admin-analytics-compat-routes.ts expects without
+ * pulling the deleted `@muse/eval` package back in.
+ */
+export async function saveDebugReplayCapture(
+  options: ReactorCompatibilityRouteOptions,
+  record: JsonObject
+): Promise<JsonObject> {
+  if (options.debugReplayCaptureStore) {
+    return options.debugReplayCaptureStore.saveDebugReplayCapture(record);
+  }
+  return record;
+}
+
+export async function listDebugReplayCaptures(
+  options: ReactorCompatibilityRouteOptions,
+  limit: number
+): Promise<readonly JsonObject[]> {
+  if (options.debugReplayCaptureStore) {
+    return options.debugReplayCaptureStore.listDebugReplayCaptures(limit);
+  }
+  return [];
+}
+
+export async function getDebugReplayCapture(
+  options: ReactorCompatibilityRouteOptions,
+  id: string
+): Promise<JsonObject | undefined> {
+  return options.debugReplayCaptureStore?.getDebugReplayCapture(id);
+}
 
 export function ragStatusSummary(documents: readonly CompatRecord[] = [...getStateDocuments().values()]): JsonObject {
   const records = [...state.ragCandidates.values(), ...documents];
@@ -534,18 +469,6 @@ export function getStateRagCandidates(): readonly CompatRecord[] {
   return [...state.ragCandidates.values()];
 }
 
-export function getStateAgentEvalCases(): CompatCollection {
-  return state.agentEvalCases;
-}
-
-export function getStateAgentEvalRunLogs(): CompatCollection {
-  return state.agentEvalRunLogs;
-}
-
-export function getStateAgentEvalResults(): CompatCollection {
-  return state.agentEvalResults;
-}
-
 export function getStateMetricEvents(): CompatCollection {
   return state.metricEvents;
 }
@@ -594,22 +517,6 @@ export function getStateRagCandidatesMap(): CompatCollection {
   return state.ragCandidates;
 }
 
-export function getStateFeedback(): CompatCollection {
-  return state.feedback;
-}
-
-export function getStatePersonas(): CompatCollection {
-  return state.personas;
-}
-
-export function getStatePromptTemplates(): CompatCollection {
-  return state.promptTemplates;
-}
-
-export function getStateIntents(): CompatCollection {
-  return state.intents;
-}
-
 export function getStateDocuments(): CompatCollection {
   return state.documents;
 }
@@ -620,18 +527,6 @@ export function getStateSlackBots(): CompatCollection {
 
 export function getStateSlackFaq(): CompatCollection {
   return state.slackFaq;
-}
-
-export function getStatePromptExperiments(): CompatCollection {
-  return state.promptExperiments;
-}
-
-export function getStatePromptExperimentReports(): CompatCollection {
-  return state.promptExperimentReports;
-}
-
-export function getStatePromptExperimentTrials(): Map<string, JsonObject[]> {
-  return state.promptExperimentTrials;
 }
 
 export type UserMemoryRecord = {
@@ -659,59 +554,12 @@ export {
   validateToolPolicyBody
 } from "./compat-tool-policy-store.js";
 
-// Feedback store + helpers live in apps/api/src/compat-feedback-store.ts.
-export {
-  createFeedback,
-  deleteFeedback,
-  feedbackStats,
-  filterFeedback,
-  getFeedback,
-  isUnreviewedNegativeFeedback,
-  listFeedback,
-  parseFeedbackRating,
-  parseFeedbackReviewStatus,
-  toFeedbackExportItem,
-  toFeedbackResponse,
-  updateFeedbackReview,
-  validateFeedbackReviewBody,
-  validateFeedbackSubmitBody
-} from "./compat-feedback-store.js";
-
 export function readIfMatchVersion(request: FastifyRequest): number | undefined {
   const raw = request.headers["if-match"];
   const value = Array.isArray(raw) ? raw[0] : raw;
   const parsed = value ? Number.parseInt(value.trim().replace(/^"|"$/g, ""), 10) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : undefined;
 }
-
-// PromptLab catalog store helpers (persona+template+intent) live in apps/api/src/compat-promptlab-catalog-store.ts.
-export {
-  appendPromptVersion,
-  createIntent,
-  createPersona,
-  createPromptTemplate,
-  deleteIntent,
-  deletePersona,
-  deletePromptTemplate,
-  getIntent,
-  getPersona,
-  getPromptTemplate,
-  listIntents,
-  listPersonas,
-  listPromptTemplates,
-  savePromptTemplate,
-  setPromptVersionStatus,
-  toIntentResponse,
-  toPersonaResponse,
-  toTemplateDetailResponse,
-  toTemplateResponse,
-  updateIntent,
-  updatePersona,
-  validateIntentBody,
-  validatePersonaBody,
-  validatePromptTemplateBody,
-  validatePromptVersionBody
-} from "./compat-promptlab-catalog-store.js";
 
 // Document/RAG store helpers live in apps/api/src/compat-document-store.ts.
 export {
@@ -783,29 +631,6 @@ export {
   listSessionModels,
   parseAgentMode
 } from "./compat-models.js";
-
-// Prompt-experiment lifecycle helpers live in apps/api/src/compat-prompt-experiment.ts.
-export {
-  activatePromptExperiment,
-  cancelPromptExperiment,
-  createPromptExperiment,
-  deletePromptExperiment,
-  getPromptExperiment,
-  getPromptExperimentReport,
-  listPromptExperimentTrials,
-  listPromptExperiments,
-  parsePromptExperimentRequest,
-  prepareCatalogRecord,
-  promptFeedbackAnalysis,
-  promptLabRecordToCompat,
-  respondPromptExperiment,
-  runPromptAutoOptimize,
-  runPromptExperiment,
-  toPromptExperimentResponse,
-  toPromptExperimentStatusResponse,
-  toPromptReportResponse,
-  toPromptTrialResponse
-} from "./compat-prompt-experiment.js";
 
 // MCP admin proxy helpers live in apps/api/src/compat-mcp-proxy.ts.
 export {
@@ -894,12 +719,6 @@ export function adminCapabilitiesResponse(options: ReactorCompatibilityRouteOpti
 
 function compatibilityApiPaths(): readonly string[] {
   return [
-    "/api/admin/agent-eval/cases",
-    "/api/admin/agent-eval/cases/{caseId}/evaluate-run/{runId}",
-    "/api/admin/agent-eval/cases/{id}/replay",
-    "/api/admin/agent-eval/cases/promote",
-    "/api/admin/agent-eval/results",
-    "/api/admin/agent-eval/run-logs",
     "/api/admin/agent-specs",
     "/api/admin/agent-specs/{id}",
     "/api/admin/agent-specs/{id}/system-prompt",
@@ -912,9 +731,6 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/admin/debug/replay/{id}",
     "/api/admin/doctor",
     "/api/admin/doctor/summary",
-    "/api/admin/evals/pass-rate",
-    "/api/admin/evals/runs",
-    "/api/admin/followup-suggestions/stats",
     "/api/admin/input-guard/audits",
     "/api/admin/input-guard/pipeline",
     "/api/admin/input-guard/pipeline/reorder",
@@ -992,14 +808,6 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/documents/batch",
     "/api/documents/search",
     "/api/error-report",
-    "/api/feedback",
-    "/api/feedback/{feedbackId}",
-    "/api/feedback/bulk-update",
-    "/api/feedback/export",
-    "/api/feedback/stats",
-    "/api/feedback/unreviewed-count",
-    "/api/intents",
-    "/api/intents/{intentName}",
     "/api/mcp/servers",
     "/api/mcp/servers/{name}",
     "/api/mcp/servers/{name}/access-policy",
@@ -1020,25 +828,8 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/output-guard/rules/{id}",
     "/api/output-guard/rules/audits",
     "/api/output-guard/rules/simulate",
-    "/api/personas",
-    "/api/personas/{personaId}",
     "/api/proactive-channels",
     "/api/proactive-channels/{channelId}",
-    "/api/prompt-lab/analyze",
-    "/api/prompt-lab/auto-optimize",
-    "/api/prompt-lab/experiments",
-    "/api/prompt-lab/experiments/{id}",
-    "/api/prompt-lab/experiments/{id}/activate",
-    "/api/prompt-lab/experiments/{id}/cancel",
-    "/api/prompt-lab/experiments/{id}/report",
-    "/api/prompt-lab/experiments/{id}/run",
-    "/api/prompt-lab/experiments/{id}/status",
-    "/api/prompt-lab/experiments/{id}/trials",
-    "/api/prompt-templates",
-    "/api/prompt-templates/{templateId}",
-    "/api/prompt-templates/{templateId}/versions",
-    "/api/prompt-templates/{templateId}/versions/{versionId}/activate",
-    "/api/prompt-templates/{templateId}/versions/{versionId}/archive",
     "/api/rag-ingestion/candidates",
     "/api/rag-ingestion/candidates/{id}/approve",
     "/api/rag-ingestion/candidates/{id}/reject",

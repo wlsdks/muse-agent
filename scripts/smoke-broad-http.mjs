@@ -222,13 +222,6 @@ try {
     assert(response.status === 200, `expected 200, got ${response.status}`);
   });
 
-  await record("GET /api/admin/followup-suggestions/stats", async () => {
-    const response = await fetch(`${baseUrl}/api/admin/followup-suggestions/stats`);
-    assert(response.status === 200, `expected 200, got ${response.status}`);
-    const body = await response.json();
-    assert(typeof body.totalImpressions === "number" || typeof body.total === "number", "expected stats shape");
-  });
-
   await record("GET /api/admin/agent-specs reveals registered Jarvis tools via OpenAPI surface", async () => {
     const response = await fetch(`${baseUrl}/api/openapi.json`);
     const body = await response.json();
@@ -326,36 +319,6 @@ try {
       `expected cost block with baselineUsd, got ${JSON.stringify(snapshot.cost)}`);
     assert(snapshot.budget && typeof snapshot.budget.totalCostUsd === "number" && typeof snapshot.budget.month === "string",
       `expected budget block with totalCostUsd + month, got ${JSON.stringify(snapshot.budget)}`);
-  });
-
-  await record("Response completeness evaluator scores sampled responses 0..100", async () => {
-    const { createResponseCompletenessEvaluator } = await import(`${rootDir}/packages/eval/dist/index.js`);
-    const provider = {
-      id: "judge",
-      generate: async (request) => ({ id: "r", model: request.model, output: "92" }),
-      listModels: async () => [],
-      stream: async function* () {
-        yield { response: { id: "r", model: "judge", output: "" }, type: "done" };
-      }
-    };
-    const evaluator = createResponseCompletenessEvaluator({
-      model: "fake/judge",
-      provider,
-      randomSource: () => 0,
-      sampleRate: 1
-    });
-    const score = await evaluator.scoreIfSampled("How do I install muse?", "Run pnpm install.");
-    assert(score !== undefined, "expected sampled score");
-    assert(score.overall === 92, `expected 92, got ${score.overall}`);
-    assert(score.sampledAt instanceof Date, "expected sampledAt Date");
-
-    const skip = createResponseCompletenessEvaluator({
-      model: "fake/judge",
-      provider,
-      randomSource: () => 0.9,
-      sampleRate: 0.1
-    });
-    assert((await skip.scoreIfSampled("q", "a")) === undefined, "expected sampling skip");
   });
 
   await record("GET /.well-known/agent-card.json returns A2A card with tool input schemas", async () => {

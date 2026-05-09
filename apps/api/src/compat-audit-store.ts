@@ -243,24 +243,3 @@ export function inputGuardStatsResponse(options: ReactorCompatibilityRouteOption
 export function compareCreatedAtDesc(left: JsonObject, right: JsonObject): number {
   return (epochMillisOrNull(right.createdAt) ?? 0) - (epochMillisOrNull(left.createdAt) ?? 0);
 }
-
-export function passRateByDay(results: readonly JsonObject[]): readonly JsonObject[] {
-  const byDay = new Map<string, { date: string; passed: number; total: number }>();
-
-  for (const result of results) {
-    const date = String(result.evaluatedAt ?? result.createdAt ?? nowIso()).slice(0, 10);
-    const existing = byDay.get(date) ?? { date, passed: 0, total: 0 };
-    byDay.set(date, {
-      date,
-      passed: existing.passed + (result.passed === true ? 1 : 0),
-      total: existing.total + 1
-    });
-  }
-
-  return [...byDay.values()].map((row) => ({
-    date: row.date,
-    passRate: row.total > 0 ? row.passed / row.total : 0,
-    passed: row.passed,
-    total: row.total
-  }));
-}

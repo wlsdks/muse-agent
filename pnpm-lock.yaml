@@ -35,9 +35,6 @@ importers:
       '@muse/autoconfigure':
         specifier: workspace:*
         version: link:../../packages/autoconfigure
-      '@muse/eval':
-        specifier: workspace:*
-        version: link:../../packages/eval
       '@muse/integrations':
         specifier: workspace:*
         version: link:../../packages/integrations
@@ -59,9 +56,6 @@ importers:
       '@muse/policy':
         specifier: workspace:*
         version: link:../../packages/policy
-      '@muse/promptlab':
-        specifier: workspace:*
-        version: link:../../packages/promptlab
       '@muse/rag':
         specifier: workspace:*
         version: link:../../packages/rag
@@ -217,9 +211,6 @@ importers:
       '@muse/db':
         specifier: workspace:*
         version: link:../db
-      '@muse/eval':
-        specifier: workspace:*
-        version: link:../eval
       '@muse/integrations':
         specifier: workspace:*
         version: link:../integrations
@@ -238,9 +229,6 @@ importers:
       '@muse/policy':
         specifier: workspace:*
         version: link:../policy
-      '@muse/promptlab':
-        specifier: workspace:*
-        version: link:../promptlab
       '@muse/rag':
         specifier: workspace:*
         version: link:../rag
@@ -290,21 +278,6 @@ importers:
       testcontainers:
         specifier: ^11.14.0
         version: 11.14.0
-
-  packages/eval:
-    dependencies:
-      '@muse/db':
-        specifier: workspace:*
-        version: link:../db
-      '@muse/model':
-        specifier: workspace:*
-        version: link:../model
-      '@muse/shared':
-        specifier: workspace:*
-        version: link:../shared
-      kysely:
-        specifier: ^0.28.17
-        version: 0.28.17
 
   packages/integrations:
     dependencies:
@@ -395,24 +368,6 @@ importers:
       '@muse/db':
         specifier: workspace:*
         version: link:../db
-      '@muse/model':
-        specifier: workspace:*
-        version: link:../model
-      '@muse/shared':
-        specifier: workspace:*
-        version: link:../shared
-      kysely:
-        specifier: ^0.28.17
-        version: 0.28.17
-
-  packages/promptlab:
-    dependencies:
-      '@muse/db':
-        specifier: workspace:*
-        version: link:../db
-      '@muse/eval':
-        specifier: workspace:*
-        version: link:../eval
       '@muse/model':
         specifier: workspace:*
         version: link:../model

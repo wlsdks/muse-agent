@@ -48,19 +48,12 @@ describe("db migrations", () => {
 
     for (const table of [
       "admin_audits",
-      "agent_eval_cases",
-      "agent_eval_results",
-      "agent_run_logs",
       "alert_instances",
       "alert_rules",
       "channel_faq_registrations",
       "conversation_summaries",
       "debug_replay_captures",
-      "experiment_reports",
-      "experiments",
-      "feedback",
       "input_guard_rules",
-      "intent_definitions",
       "metric_agent_executions",
       "metric_audit_trail",
       "metric_eval_results",
@@ -74,9 +67,6 @@ describe("db migrations", () => {
       "metric_tool_calls",
       "output_guard_rule_audits",
       "output_guard_rules",
-      "personas",
-      "prompt_templates",
-      "prompt_versions",
       "rag_documents",
       "rag_ingestion_candidates",
       "rag_ingestion_policy",
@@ -85,7 +75,6 @@ describe("db migrations", () => {
       "slo_config",
       "task_memories",
       "tool_policy",
-      "trials",
       "user_memories"
     ]) {
       expect(sql).toContain(`CREATE TABLE IF NOT EXISTS ${table}`);

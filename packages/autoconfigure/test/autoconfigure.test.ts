@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { MuseDatabase } from "@muse/db";
 import { KyselyAgentSpecRegistry } from "@muse/agent-specs";
 import { AsyncAuth } from "@muse/auth";
-import { KyselyAgentEvalStore } from "@muse/eval";
 import {
   InMemoryTaskMemoryStore,
   KyselyConversationSummaryStore,
@@ -13,12 +12,12 @@ import { KyselyMcpSecurityPolicyStore, KyselyMcpServerStore } from "@muse/mcp";
 import { PersistedMuseTracer } from "@muse/observability";
 import { KyselyGuardRuleStore, KyselyToolPolicyStore } from "@muse/policy";
 import { KyselyRagDocumentStore, KyselyRagIngestionCandidateStore, KyselyRagIngestionPolicyStore } from "@muse/rag";
-import { KyselyFeedbackStore, KyselyPromptLabCatalogStore, KyselyPromptLabExperimentStore } from "@muse/promptlab";
 import { KyselyRuntimeSettingsStore } from "@muse/runtime-settings";
 import {
   KyselyAdminOperationsStore,
   KyselyAdminAuditStore,
   KyselyAgentRunHistoryStore,
+  KyselyDebugReplayCaptureStore,
   KyselyHookTraceStore,
   KyselyMetricAuditEventStore,
   KyselyPendingApprovalStore,
@@ -102,7 +101,7 @@ describe("autoconfigure", () => {
     expect(options.requireAuth).toBe(true);
     expect(options.mcp.manager).toBeTruthy();
     expect(options.scheduler.store.list()).toEqual([]);
-    expect(options.followupSuggestionStore.aggregateStats().totalClicks).toBe(0);
+    expect(options.debugReplayCaptureStore).toBeTruthy();
     expect(options.taskMemoryMaintenance.purgeExpired(new Date())).toBe(0);
   });
 
@@ -120,10 +119,7 @@ describe("autoconfigure", () => {
     expect(assembly.hookTraceStore).toBeInstanceOf(KyselyHookTraceStore);
     expect(assembly.adminOperationsStore).toBeInstanceOf(KyselyAdminOperationsStore);
     expect(assembly.adminAuditStore).toBeInstanceOf(KyselyAdminAuditStore);
-    expect(assembly.agentEvalStore).toBeInstanceOf(KyselyAgentEvalStore);
-    expect(assembly.feedbackStore).toBeInstanceOf(KyselyFeedbackStore);
-    expect(assembly.promptLabCatalogStore).toBeInstanceOf(KyselyPromptLabCatalogStore);
-    expect(assembly.promptLabExperimentStore).toBeInstanceOf(KyselyPromptLabExperimentStore);
+    expect(assembly.debugReplayCaptureStore).toBeInstanceOf(KyselyDebugReplayCaptureStore);
     expect(assembly.metricAuditEventStore).toBeInstanceOf(KyselyMetricAuditEventStore);
     expect(assembly.observability.tracer).toBeInstanceOf(PersistedMuseTracer);
     expect(assembly.approvalStore).toBeInstanceOf(KyselyPendingApprovalStore);

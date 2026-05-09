@@ -1,19 +1,18 @@
 /**
- * Reactor-compat admin analytics routes extracted from
+ * Personal-Muse admin analytics routes extracted from
  * reactor-compat-routes.ts.
  *
  * Wires:
  *   - GET /api/admin/audits (paginated, with optional category/action filter)
  *   - GET /api/admin/audits/export (CSV)
  *   - GET /api/admin/debug/replay (+ /:id)
- *   - GET /api/admin/evals/runs (+ /pass-rate)
- *   - GET /api/admin/followup-suggestions/stats
  *   - GET /api/admin/input-guard/stats
  *   - GET /api/admin/jarvis/snapshot
  *   - GET /api/admin/metrics/latency/{summary,timeseries}
  *   - GET /api/admin/rag-analytics/{status,by-channel}
  *   - GET /api/admin/slack-activity/{channels,daily}
  *   - GET /api/admin/tenant/export/{executions,tools}
+ *   - GET /api/admin/tools/{stats,accuracy}
  *   - POST /api/admin/task-memory/maintenance/{purge-expired,purge-terminal}
  */
 
@@ -36,12 +35,10 @@ import {
   latencyTimeseries,
   latencyTimeseriesFromQuery,
   latencyWindowStart,
-  listAgentEvalResults,
   listAllRuns,
   listAllToolCalls,
   listDebugReplayCaptures,
   listDocuments,
-  passRateByDay,
   ragStatusSummary,
   readAuthUserId,
   readNumber,
@@ -53,6 +50,7 @@ import {
   toAdminAuditResponse,
   toJsonObject,
   toolCallsCsv,
+  toolOutcomeStats,
   type ReactorCompatibilityRouteOptions
 } from "./reactor-compat-routes.js";
 import type { JsonObject } from "@muse/shared";
@@ -60,11 +58,11 @@ import type { JsonObject } from "@muse/shared";
 export function registerAdminAnalyticsCompatRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   registerAuditRoutes(server, options);
   registerDebugReplayRoutes(server, options);
-  registerEvalDashboardRoutes(server, options);
   registerStatsRoutes(server, options);
   registerLatencyRoutes(server, options);
   registerRagAndSlackRoutes(server, options);
   registerTenantExportRoutes(server, options);
+  registerToolStatsRoutes(server, options);
   registerTaskMemoryMaintenanceRoutes(server, options);
 }
 
@@ -168,44 +166,7 @@ function registerDebugReplayRoutes(server: FastifyInstance, options: ReactorComp
   });
 }
 
-function registerEvalDashboardRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/admin/evals/runs", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const limit = Math.max(1, readQueryInteger(request, "limit", 100));
-    return listAgentEvalResults(options, { limit });
-  });
-
-  server.get("/api/admin/evals/pass-rate", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return passRateByDay(await listAgentEvalResults(options, { limit: 5_000 }));
-  });
-}
-
 function registerStatsRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/admin/followup-suggestions/stats", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const hours = Math.min(168, Math.max(1, readQueryInteger(request, "hours", 24)));
-    const stats = options.followupSuggestionStore?.aggregateStats(hours * 60 * 60 * 1000)
-      ?? { byCategory: [], ctr: 0, totalClicks: 0, totalImpressions: 0 };
-
-    return {
-      byCategory: stats.byCategory,
-      ctr: stats.ctr,
-      totalClicks: stats.totalClicks,
-      totalImpressions: stats.totalImpressions,
-      windowHours: hours
-    };
-  });
-
   server.get("/api/admin/input-guard/stats", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;
@@ -318,6 +279,41 @@ function registerTenantExportRoutes(server: FastifyInstance, options: ReactorCom
 
     reply.header("content-type", "text/csv; charset=utf-8");
     return toolCallsCsv(await listAllToolCalls(options));
+  });
+}
+
+function registerToolStatsRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
+  server.get("/api/admin/tools/stats", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    return toolOutcomeStats(await listAllToolCalls(options), readQueryString(request, "server"));
+  });
+
+  server.get("/api/admin/tools/accuracy", async (request, reply) => {
+    if (!options.authorizeAdmin(request, reply)) {
+      return reply;
+    }
+
+    const stats = toolOutcomeStats(await listAllToolCalls(options));
+    const total = Number(stats.total);
+    const byOutcome = toJsonObject(stats.byOutcome);
+    const ok = Number(byOutcome.ok ?? 0);
+    const invalidArg = Number(byOutcome.invalid_arg ?? 0);
+    const timeout = Number(byOutcome.timeout ?? 0);
+    const errors = Number(byOutcome.error ?? 0);
+    const notFound = Number(byOutcome.not_found ?? 0);
+    const denominator = total > 0 ? total : 1;
+    return {
+      accuracy: stats.accuracy,
+      errorRate: errors / denominator,
+      invalidCallRate: invalidArg / denominator,
+      ok,
+      notFoundRate: notFound / denominator,
+      timeoutRate: timeout / denominator,
+      total
+    };
   });
 }
 

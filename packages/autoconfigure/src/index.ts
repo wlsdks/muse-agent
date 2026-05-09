@@ -49,11 +49,6 @@ import {
   InMemoryResponseCache
 } from "@muse/cache";
 import {
-  InMemoryAgentEvalStore,
-  KyselyAgentEvalStore,
-  type AgentEvalStore
-} from "@muse/eval";
-import {
   FetchSlackWebApiMessageTransport,
   InMemoryChannelFaqRegistrationStore,
   InMemorySlackFeedbackEventStore,
@@ -161,17 +156,6 @@ import {
 } from "@muse/policy";
 import { createDefaultRagPipeline } from "./rag-query.js";
 import {
-  InMemoryFeedbackStore,
-  InMemoryPromptLabCatalogStore,
-  InMemoryPromptLabExperimentStore,
-  KyselyFeedbackStore,
-  KyselyPromptLabCatalogStore,
-  KyselyPromptLabExperimentStore,
-  type FeedbackStore,
-  type PromptLabCatalogStore,
-  type PromptLabExperimentStore
-} from "@muse/promptlab";
-import {
   InMemoryRuntimeSettingsStore,
   KyselyRuntimeSettingsStore,
   RuntimeSettings,
@@ -181,6 +165,7 @@ import {
   InMemoryAdminAuditStore,
   InMemoryAdminOperationsStore,
   InMemoryAgentRunHistoryStore,
+  InMemoryDebugReplayCaptureStore,
   InMemoryHookTraceStore,
   InMemoryMetricAuditEventStore,
   InMemoryPendingApprovalStore,
@@ -188,6 +173,7 @@ import {
   KyselyAdminAuditStore,
   KyselyAdminOperationsStore,
   KyselyAgentRunHistoryStore,
+  KyselyDebugReplayCaptureStore,
   KyselyHookTraceStore,
   KyselyMetricAuditEventStore,
   KyselyPendingApprovalStore,
@@ -195,6 +181,7 @@ import {
   type AdminAuditStore,
   type AdminOperationsStore,
   type AgentRunHistoryStore,
+  type DebugReplayCaptureStore,
   type HookTraceStore,
   type MetricAuditEventStore,
   type PendingApprovalStore,
@@ -248,10 +235,7 @@ export interface MuseRuntimeAssembly {
   };
   readonly modelProvider?: ModelProvider;
   readonly metricAuditEventStore: MetricAuditEventStore;
-  readonly agentEvalStore: AgentEvalStore;
-  readonly feedbackStore: FeedbackStore;
-  readonly promptLabCatalogStore: PromptLabCatalogStore;
-  readonly promptLabExperimentStore: PromptLabExperimentStore;
+  readonly debugReplayCaptureStore: DebugReplayCaptureStore;
   readonly conversationSummaryStore: ConversationSummaryStore;
   readonly sessionTagStore: SessionTagStore;
   readonly taskMemoryStore: TaskMemoryStore & TaskMemoryMaintenance;
@@ -318,10 +302,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const adminAuditStore = createAdminAuditStore(db);
   const adminOperationsStore = createAdminOperationsStore(db);
   const metricAuditEventStore = createMetricAuditEventStore(db);
-  const agentEvalStore = createAgentEvalStore(db);
-  const feedbackStore = createFeedbackStore(db);
-  const promptLabCatalogStore = createPromptLabCatalogStore(db);
-  const promptLabExperimentStore = createPromptLabExperimentStore(db);
+  const debugReplayCaptureStore = createDebugReplayCaptureStore(db);
   const approvalStore = createApprovalStore(db, env);
   const cacheStatsStore = new InMemoryCacheStatsStore();
   const cacheMetrics = new InMemoryCacheMetricsRecorder(cacheStatsStore);
@@ -505,10 +486,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     },
     modelProvider,
     metricAuditEventStore,
-    agentEvalStore,
-    feedbackStore,
-    promptLabCatalogStore,
-    promptLabExperimentStore,
+    debugReplayCaptureStore,
     conversationSummaryStore,
     sessionTagStore,
     taskMemoryStore,
@@ -614,20 +592,8 @@ function createMetricAuditEventStore(db: Kysely<MuseDatabase> | undefined): Metr
   return db ? new KyselyMetricAuditEventStore(db) : new InMemoryMetricAuditEventStore();
 }
 
-function createAgentEvalStore(db: Kysely<MuseDatabase> | undefined): AgentEvalStore {
-  return db ? new KyselyAgentEvalStore(db) : new InMemoryAgentEvalStore();
-}
-
-function createFeedbackStore(db: Kysely<MuseDatabase> | undefined): FeedbackStore {
-  return db ? new KyselyFeedbackStore(db) : new InMemoryFeedbackStore();
-}
-
-function createPromptLabExperimentStore(db: Kysely<MuseDatabase> | undefined): PromptLabExperimentStore {
-  return db ? new KyselyPromptLabExperimentStore(db) : new InMemoryPromptLabExperimentStore();
-}
-
-function createPromptLabCatalogStore(db: Kysely<MuseDatabase> | undefined): PromptLabCatalogStore {
-  return db ? new KyselyPromptLabCatalogStore(db) : new InMemoryPromptLabCatalogStore();
+function createDebugReplayCaptureStore(db: Kysely<MuseDatabase> | undefined): DebugReplayCaptureStore {
+  return db ? new KyselyDebugReplayCaptureStore(db) : new InMemoryDebugReplayCaptureStore();
 }
 
 function createRuntimeSettingsStore(db: Kysely<MuseDatabase> | undefined): RuntimeSettingsStore {
@@ -711,17 +677,13 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     },
     agentRuntime: assembly.agentRuntime,
     agentSpecRegistry: assembly.agentSpecRegistry,
-    agentEvalStore: assembly.agentEvalStore,
     authService: assembly.authService,
     cors: {
       allowCredentials: true
     },
+    debugReplayCaptureStore: assembly.debugReplayCaptureStore,
     pendingApprovalStore: assembly.approvalStore,
     defaultModel: assembly.defaultModel,
-    feedbackStore: assembly.feedbackStore,
-    promptLabCatalogStore: assembly.promptLabCatalogStore,
-    promptLabExperimentStore: assembly.promptLabExperimentStore,
-    followupSuggestionStore: assembly.observability.followupSuggestionStore,
     latencyQuery: assembly.observability.latencyQuery,
     tokenCostQuery: assembly.observability.tokenCostQuery,
     agentCardIdentity: {
