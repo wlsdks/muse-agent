@@ -5,7 +5,6 @@
  * Wires:
  *   - GET /api/admin/traces (+ /:traceId/spans)
  *   - GET /api/admin/tool-calls (+ /ranking)
- *   - GET /api/admin/users/usage/{cost,daily,by-model}
  *   - GET /api/admin/token-cost/{by-session,daily,top-expensive}
  *   - GET /api/admin/conversation-analytics/{failure-patterns,latency-distribution}
  */
@@ -23,15 +22,12 @@ import {
   readQueryInteger,
   readQueryString,
   toolCallRanking,
-  usageByModel,
-  usageByUser,
   type ReactorCompatibilityRouteOptions
 } from "./reactor-compat-routes.js";
 
 export function registerAdminObservabilityCompatRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   registerTraceRoutes(server, options);
   registerToolCallRoutes(server, options);
-  registerUserUsageRoutes(server, options);
   registerTokenCostRoutes(server, options);
   registerConversationAnalyticsRoutes(server, options);
 }
@@ -83,30 +79,6 @@ function registerToolCallRoutes(server: FastifyInstance, options: ReactorCompati
     }
 
     return toolCallRanking(await listAllToolCalls(options));
-  });
-}
-
-function registerUserUsageRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/admin/users/usage/cost", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return usageByUser(await listAllRuns(options));
-  });
-  server.get("/api/admin/users/usage/daily", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return dailyUsage(await listAllRuns(options));
-  });
-  server.get("/api/admin/users/usage/by-model", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return usageByModel(await listAllRuns(options));
   });
 }
 

@@ -210,24 +210,6 @@ export async function listAllRuns(
   }) ?? [];
 }
 
-export function summarizeUsers(runs: readonly AgentRunRecord[]) {
-  const byUser = new Map<string, { lastActiveAt: string; runCount: number; userId: string }>();
-
-  for (const run of runs) {
-    const userId = run.userId ?? "anonymous";
-    const existing = byUser.get(userId);
-    const updatedAt = run.updatedAt.toISOString();
-
-    byUser.set(userId, {
-      lastActiveAt: existing && existing.lastActiveAt > updatedAt ? existing.lastActiveAt : updatedAt,
-      runCount: (existing?.runCount ?? 0) + 1,
-      userId
-    });
-  }
-
-  return [...byUser.values()].sort((left, right) => right.lastActiveAt.localeCompare(left.lastActiveAt));
-}
-
 export async function listAllToolCalls(options: ReactorCompatibilityRouteOptions): Promise<readonly ToolCallRecord[]> {
   const runs = await listAllRuns(options);
   const toolCalls: ToolCallRecord[] = [];

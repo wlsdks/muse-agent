@@ -28,13 +28,11 @@ import {
   readBodyString,
   readQueryInteger,
   sessionDetail,
-  summarizeUsers,
   type ReactorCompatibilityRouteOptions
 } from "./reactor-compat-routes.js";
 
 export function registerAdminSessionCompatRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
   registerSessionRoutes(server, options);
-  registerUserRoutes(server, options);
 
   server.get("/admin/doctor", async (request, reply) => adminDiagnostic(request, reply, options, "report"));
 }
@@ -137,20 +135,3 @@ function registerSessionRoutes(server: FastifyInstance, options: ReactorCompatib
   });
 }
 
-function registerUserRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/admin/users", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return summarizeUsers(await listAllRuns(options));
-  });
-  server.get("/api/admin/users/:userId/sessions", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { userId } = request.params as { readonly userId: string };
-    return options.historyStore?.listRunsByUser(userId) ?? [];
-  });
-}

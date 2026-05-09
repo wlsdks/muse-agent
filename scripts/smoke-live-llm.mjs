@@ -255,7 +255,7 @@ try {
     const response = await fetch(`${baseUrl}/api/chat`, {
       body: JSON.stringify({
         message:
-          "Use the muse.notes.search tool to find what to buy for mom's birthday from my notes, then reply with only the flower color and what to mention. No other words.",
+          "Search the user's notes for 'mom' using muse.notes.search, then call muse.notes.read on the returned `path` to get the full content, then reply with only the flower color and the city to mention. No other words.",
         runId: "live-notes-search"
       }),
       headers: { "content-type": "application/json" },

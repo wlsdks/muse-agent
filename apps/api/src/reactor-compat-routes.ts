@@ -146,7 +146,6 @@ export {
   listAllToolCalls,
   reactorSessionDetail,
   sessionDetail,
-  summarizeUsers,
   toSessionResponse
 } from "./compat-session-store.js";
 
@@ -161,9 +160,7 @@ export {
   latencyTimeseriesFromQuery,
   latencyWindowStart,
   toolCallRanking,
-  toolOutcomeStats,
-  usageByModel,
-  usageByUser
+  toolOutcomeStats
 } from "./compat-run-aggregations.js";
 
 
@@ -432,11 +429,6 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/admin/tools/stats",
     "/api/admin/traces",
     "/api/admin/traces/{traceId}/spans",
-    "/api/admin/users",
-    "/api/admin/users/{userId}/sessions",
-    "/api/admin/users/usage/by-model",
-    "/api/admin/users/usage/cost",
-    "/api/admin/users/usage/daily",
     "/api/auth/change-password",
     "/api/auth/login",
     "/api/auth/logout",

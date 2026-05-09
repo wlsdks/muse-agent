@@ -136,39 +136,6 @@ function toolOutcome(toolCall: ToolCallRecord): string {
   return "error";
 }
 
-export function usageByUser(runs: readonly AgentRunRecord[]) {
-  const byUser = new Map<string, { costUsd: number; inputTokens: number; outputTokens: number; userId: string }>();
-
-  for (const run of runs) {
-    const userId = run.userId ?? "anonymous";
-    const existing = byUser.get(userId) ?? { costUsd: 0, inputTokens: 0, outputTokens: 0, userId };
-    byUser.set(userId, {
-      costUsd: existing.costUsd + Number(run.costUsd),
-      inputTokens: existing.inputTokens + numberField(run.tokenUsage, "inputTokens"),
-      outputTokens: existing.outputTokens + numberField(run.tokenUsage, "outputTokens"),
-      userId
-    });
-  }
-
-  return [...byUser.values()].sort((left, right) => right.costUsd - left.costUsd);
-}
-
-export function usageByModel(runs: readonly AgentRunRecord[]) {
-  const byModel = new Map<string, { costUsd: number; inputTokens: number; model: string; outputTokens: number }>();
-
-  for (const run of runs) {
-    const existing = byModel.get(run.model) ?? { costUsd: 0, inputTokens: 0, model: run.model, outputTokens: 0 };
-    byModel.set(run.model, {
-      costUsd: existing.costUsd + Number(run.costUsd),
-      inputTokens: existing.inputTokens + numberField(run.tokenUsage, "inputTokens"),
-      model: run.model,
-      outputTokens: existing.outputTokens + numberField(run.tokenUsage, "outputTokens")
-    });
-  }
-
-  return [...byModel.values()].sort((left, right) => right.costUsd - left.costUsd);
-}
-
 export function dailyUsage(runs: readonly AgentRunRecord[]) {
   const byDay = new Map<string, { costUsd: number; date: string; runs: number }>();
 
