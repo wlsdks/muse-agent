@@ -10,6 +10,7 @@ import { renderMuseStatusTui, type MuseStatusTuiModel } from "./tui.js";
 import { registerMcpCommands } from "./commands-mcp.js";
 import { registerOrchestrateCommands } from "./commands-orchestrate.js";
 import { registerSchedulerCommands, registerSetupCommands } from "./commands-scheduler-setup.js";
+import { registerSpecsCommands } from "./commands-specs.js";
 
 export interface CliPromptAdapter {
   text(options: { readonly message: string; readonly placeholder?: string }): Promise<string>;
@@ -247,34 +248,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
 
   registerMcpCommands(program, io, { apiRequest, writeOutput });
 
-  const specs = program.command("specs").description("List, inspect, and resolve agent specs");
-
-  specs
-    .command("list")
-    .description("List all registered agent specs")
-    .action(async (_options, command) => {
-      writeOutput(io, await apiRequest(io, command, "/agent-specs"));
-    });
-
-  specs
-    .command("get")
-    .description("Fetch a single agent spec by name")
-    .argument("<name>", "Agent spec name")
-    .action(async (name: string, _options, command) => {
-      writeOutput(io, await apiRequest(io, command, `/agent-specs/${encodeURIComponent(name)}`));
-    });
-
-  specs
-    .command("resolve")
-    .description("Resolve which agent spec matches a user prompt")
-    .argument("<text...>", "User prompt to route")
-    .action(async (textParts: readonly string[], _options, command) => {
-      const text = textParts.join(" ").trim();
-      if (text.length === 0) {
-        throw new Error("specs resolve requires a non-empty prompt");
-      }
-      writeOutput(io, await apiRequest(io, command, "/agent-specs/resolve", { text }));
-    });
+  registerSpecsCommands(program, io, { apiRequest, writeOutput });
 
   registerOrchestrateCommands(program, io, { apiRequest, writeOutput });
 
