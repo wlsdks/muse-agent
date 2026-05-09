@@ -4020,41 +4020,9 @@ describe("api server", () => {
       name: "First",
       password: "password-1"
     });
-    const member = authService.register({
-      email: "member_account",
-      name: "Member",
-      password: "password-1"
-    });
-    authService.register({
-      email: "manager_account",
-      name: "Manager",
-      password: "password-1"
-    });
-    const managerLogin = authService.login("manager_account", "password-1");
     const server = buildServer({ authService, logger: false, requireAuth: true });
     const headers = { authorization: `Bearer ${admin.token}` };
-    const managerHeaders = { authorization: `Bearer ${managerLogin?.token ?? ""}` };
 
-    const roles = await server.inject({ headers, method: "GET", url: "/api/admin/rbac/roles" });
-    const managerRoles = await server.inject({ headers: managerHeaders, method: "GET", url: "/api/admin/rbac/roles" });
-    const roleUpdate = await server.inject({
-      headers,
-      method: "PUT",
-      payload: { role: "ADMIN" },
-      url: `/api/admin/rbac/users/${member.user.id}/role`
-    });
-    const invalidRole = await server.inject({
-      headers,
-      method: "PUT",
-      payload: { role: "BAD_ROLE" },
-      url: `/api/admin/rbac/users/${member.user.id}/role`
-    });
-    const missingRoleUser = await server.inject({
-      headers,
-      method: "PUT",
-      payload: { role: "ADMIN" },
-      url: "/api/admin/rbac/users/missing-user/role"
-    });
     const pipeline = await server.inject({ headers, method: "GET", url: "/api/admin/input-guard/pipeline" });
     const settingsUpdate = await server.inject({
       headers,
@@ -4151,25 +4119,6 @@ describe("api server", () => {
     const ragDelete = await server.inject({ headers, method: "DELETE", url: "/api/rag-ingestion/policy" });
     const ragAfterDelete = await server.inject({ headers, method: "GET", url: "/api/rag-ingestion/policy" });
 
-    expect(roles.json()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ permissions: expect.arrayContaining(["settings:write"]), role: "ADMIN", scope: "FULL" })
-    ]));
-    expect(managerLogin).toBeDefined();
-    expect(managerRoles.statusCode).toBe(403);
-    expect(roleUpdate.json()).toEqual({ role: "ADMIN", userId: member.user.id });
-    expect(authService.getUserById(member.user.id)).toMatchObject({ role: "admin" });
-    expect(invalidRole.statusCode).toBe(400);
-    expect(invalidRole.json()).toMatchObject({
-      error: "유효하지 않은 역할: BAD_ROLE",
-      timestamp: expect.any(String)
-    });
-    expect(invalidRole.json()).not.toHaveProperty("code");
-    expect(missingRoleUser.statusCode).toBe(404);
-    expect(missingRoleUser.json()).toMatchObject({
-      error: "사용자를 찾을 수 없습니다: missing-user",
-      timestamp: expect.any(String)
-    });
-    expect(missingRoleUser.json()).not.toHaveProperty("code");
     expect(pipeline.json()).toEqual(expect.arrayContaining([
       expect.objectContaining({ className: "RateLimitStage", name: "RateLimit", order: 0 })
     ]));
@@ -4776,28 +4725,6 @@ describe("api server", () => {
       method: "GET",
       url: "/api/admin/tenant/export/tools"
     });
-    const platformUserByEmail = await server.inject({
-      headers,
-      method: "GET",
-      url: "/api/admin/platform/users/by-email?email=first_account"
-    });
-    const missingPlatformUserByEmail = await server.inject({
-      headers,
-      method: "GET",
-      url: "/api/admin/platform/users/by-email?email=missing_account"
-    });
-    const invalidPlatformUserRole = await server.inject({
-      headers,
-      method: "POST",
-      payload: { role: "not_a_role" },
-      url: `/api/admin/platform/users/${registered.user.id}/role`
-    });
-    const platformUserRole = await server.inject({
-      headers,
-      method: "POST",
-      payload: { role: "admin" },
-      url: `/api/admin/platform/users/${registered.user.id}/role`
-    });
     const taskPurgeExpired = await server.inject({
       headers,
       method: "POST",
@@ -5231,20 +5158,6 @@ describe("api server", () => {
     expect(tenantQuota.json()).not.toHaveProperty("tokenUsagePercent");
     expect(tenantExecutionsExport.body).toContain("run-compat");
     expect(tenantToolsExport.body).toContain("read_file");
-    expect(platformUserByEmail.json()).toMatchObject({ email: "first_account", id: registered.user.id });
-    expect(missingPlatformUserByEmail.statusCode).toBe(404);
-    expect(missingPlatformUserByEmail.json()).toMatchObject({
-      error: "User not found: missing_account",
-      timestamp: expect.any(String)
-    });
-    expect(missingPlatformUserByEmail.json()).not.toHaveProperty("code");
-    expect(invalidPlatformUserRole.statusCode).toBe(400);
-    expect(invalidPlatformUserRole.json()).toMatchObject({
-      error: "invalid role: not_a_role",
-      timestamp: expect.any(String)
-    });
-    expect(invalidPlatformUserRole.json()).not.toHaveProperty("code");
-    expect(platformUserRole.json()).toMatchObject({ id: registered.user.id, role: "ADMIN" });
     expect(taskPurgeExpired.json()).toMatchObject({ deleted: 0 });
     expect(taskPurgeTerminal.json()).toMatchObject({ deleted: 0 });
     expect(slackFaq.json()).toMatchObject({

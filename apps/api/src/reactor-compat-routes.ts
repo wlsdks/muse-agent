@@ -853,13 +853,6 @@ export {
 
 // errorResponse + badRequest + clampLimit live in apps/api/src/compat-responses.ts.
 
-// RBAC role helpers live in apps/api/src/compat-rbac-roles.ts.
-export {
-  parseUserRole,
-  roleDefinitions,
-  userRoleResponse
-} from "./compat-rbac-roles.js";
-
 // RAG ingestion policy + candidate review helpers live in apps/api/src/compat-rag-ingestion.ts.
 export {
   clearRagIngestionPolicy,
@@ -943,14 +936,10 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/admin/platform/cache/invalidate-key",
     "/api/admin/platform/cache/stats",
     "/api/admin/platform/health",
-    "/api/admin/platform/users/{id}/role",
-    "/api/admin/platform/users/by-email",
     "/api/admin/platform/vectorstore/stats",
     "/api/admin/rag-analytics/by-channel",
     "/api/admin/rag-analytics/status",
     "/api/admin/rag/seed-policy",
-    "/api/admin/rbac/roles",
-    "/api/admin/rbac/users/{userId}/role",
     "/api/admin/sessions",
     "/api/admin/sessions/{sessionId}",
     "/api/admin/sessions/{sessionId}/export",

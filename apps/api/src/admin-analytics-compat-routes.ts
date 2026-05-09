@@ -14,8 +14,6 @@
  *   - GET /api/admin/rag-analytics/{status,by-channel}
  *   - GET /api/admin/slack-activity/{channels,daily}
  *   - GET /api/admin/tenant/{quality,tools,quota,export/executions,export/tools}
- *   - GET /api/admin/platform/users/by-email
- *   - POST /api/admin/platform/users/:id/role
  *   - POST /api/admin/task-memory/maintenance/{purge-expired,purge-terminal}
  */
 
@@ -45,11 +43,9 @@ import {
   listDebugReplayCaptures,
   listDocuments,
   numberField,
-  parseUserRole,
   passRateByDay,
   ragStatusSummary,
   readAuthUserId,
-  readBodyString,
   readNumber,
   readQueryInteger,
   readQueryString,
@@ -60,7 +56,6 @@ import {
   toJsonObject,
   toolCallRanking,
   toolCallsCsv,
-  userRoleResponse,
   type ReactorCompatibilityRouteOptions
 } from "./reactor-compat-routes.js";
 import type { JsonObject } from "@muse/shared";
@@ -73,7 +68,6 @@ export function registerAdminAnalyticsCompatRoutes(server: FastifyInstance, opti
   registerLatencyRoutes(server, options);
   registerRagAndSlackRoutes(server, options);
   registerTenantQualityRoutes(server, options);
-  registerPlatformAnalyticsRoutes(server, options);
   registerTaskMemoryMaintenanceRoutes(server, options);
 }
 
@@ -367,45 +361,6 @@ function registerTenantQualityRoutes(server: FastifyInstance, options: ReactorCo
 
     reply.header("content-type", "text/csv; charset=utf-8");
     return toolCallsCsv(await listAllToolCalls(options));
-  });
-}
-
-function registerPlatformAnalyticsRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/admin/platform/users/by-email", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const email = readQueryString(request, "email");
-    const auth = (request as { auth?: { email?: string; role?: string; userId?: string } }).auth;
-
-    if (!email) {
-      return reply.status(400).send(errorResponse("email is required"));
-    }
-
-    return auth?.email === email
-      ? { email, id: auth.userId ?? "current-user", role: auth.role ?? "admin" }
-      : reply.status(404).send(errorResponse(`User not found: ${email}`));
-  });
-
-  server.post("/api/admin/platform/users/:id/role", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const { id } = request.params as { readonly id: string };
-    const rawRole = readBodyString(request.body, "role") ?? "";
-    const role = parseUserRole(rawRole);
-
-    if (!role) {
-      return reply.status(400).send(errorResponse(`invalid role: ${rawRole}`));
-    }
-
-    if (!(await options.authService?.updateUserRole(id, role))) {
-      return reply.status(404).send(errorResponse(`User not found: ${id}`));
-    }
-
-    return { id, role: userRoleResponse(role) };
   });
 }
 
