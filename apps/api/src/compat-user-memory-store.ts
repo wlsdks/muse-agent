@@ -75,6 +75,18 @@ export async function deleteUserMemory(options: CompatibilityRouteOptions, userI
   getStateUserMemory().delete(userId);
 }
 
+/**
+ * Authorise a `/api/user-memory/:userId` request.
+ *
+ * When `options.authService` is undefined (the personal-use default with
+ * auth disabled), every request to a non-empty / non-`anonymous` userId
+ * is allowed — there's only one user. Previously this branch returned
+ * false because `currentAuthIdentity` is also undefined, which 403'd
+ * every personal-use call.
+ *
+ * When auth is configured, the caller must be authenticated AND target
+ * their own userId.
+ */
 export async function canAccessUserMemory(
   request: FastifyRequest,
   options: CompatibilityRouteOptions,
@@ -82,6 +94,10 @@ export async function canAccessUserMemory(
 ): Promise<boolean> {
   if (userId.trim().length === 0 || userId.toLowerCase() === "anonymous") {
     return false;
+  }
+
+  if (!options.authService) {
+    return true;
   }
 
   const identity = await currentAuthIdentity(request, options);
@@ -112,7 +128,7 @@ export function toUserMemoryResponse(memory: {
 
 export function userForbidden(reply: FastifyReply) {
   return reply.status(403).send({
-    error: "관리자 권한이 필요합니다",
+    error: "이 사용자 메모리에 접근할 권한이 없습니다",
     timestamp: nowIso()
   });
 }

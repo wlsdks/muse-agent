@@ -517,6 +517,35 @@ describe("api server: admin / ops / settings / memory", () => {
     expect(forbidden.statusCode).toBe(403);
   });
 
+  it("user-memory routes work without auth (personal-use default)", async () => {
+    // Regression for round 90: when auth is disabled (no authService),
+    // canAccessUserMemory previously 403'd every call because
+    // currentAuthIdentity returned undefined. The personal-use codebase
+    // has only one user, so any non-anonymous userId should be allowed.
+    const server = buildServer({ logger: false });
+
+    const update = await server.inject({
+      method: "PUT",
+      payload: { key: "tone", value: "concise" },
+      url: "/api/user-memory/me/preferences"
+    });
+    expect(update.statusCode).toBe(200);
+    expect(update.json()).toEqual({ updated: true });
+
+    const memory = await server.inject({
+      method: "GET",
+      url: "/api/user-memory/me"
+    });
+    expect(memory.statusCode).toBe(200);
+    expect(memory.json()).toMatchObject({ preferences: { tone: "concise" } });
+
+    const anonymous = await server.inject({
+      method: "GET",
+      url: "/api/user-memory/anonymous"
+    });
+    expect(anonymous.statusCode).toBe(403);
+  });
+
   it("matches task memory maintenance availability and purge semantics", async () => {
     const authService = createAuthService();
     const registered = authService.register({
