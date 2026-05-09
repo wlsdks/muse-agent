@@ -1024,7 +1024,6 @@ function compatibilityApiPaths(): readonly string[] {
     "/api/admin/users/usage/by-model",
     "/api/admin/users/usage/cost",
     "/api/admin/users/usage/daily",
-    "/api/admin/users/usage/top",
     "/api/approvals",
     "/api/approvals/{id}/approve",
     "/api/approvals/{id}/reject",

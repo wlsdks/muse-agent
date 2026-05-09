@@ -5,7 +5,7 @@
  * Wires:
  *   - GET /api/admin/traces (+ /:traceId/spans)
  *   - GET /api/admin/tool-calls (+ /ranking)
- *   - GET /api/admin/users/usage/{top,cost,daily,by-model}
+ *   - GET /api/admin/users/usage/{cost,daily,by-model}
  *   - GET /api/admin/token-cost/{by-session,daily,top-expensive}
  *   - GET /api/admin/conversation-analytics/{by-channel,failure-patterns,latency-distribution}
  */
@@ -23,7 +23,6 @@ import {
   listAllToolCalls,
   readQueryInteger,
   readQueryString,
-  summarizeUsers,
   toolCallRanking,
   usageByModel,
   usageByUser,
@@ -89,13 +88,6 @@ function registerToolCallRoutes(server: FastifyInstance, options: ReactorCompati
 }
 
 function registerUserUsageRoutes(server: FastifyInstance, options: ReactorCompatibilityRouteOptions): void {
-  server.get("/api/admin/users/usage/top", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    return summarizeUsers(await listAllRuns(options));
-  });
   server.get("/api/admin/users/usage/cost", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;
