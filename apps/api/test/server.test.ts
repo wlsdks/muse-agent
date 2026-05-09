@@ -1380,12 +1380,6 @@ describe("api server", () => {
       },
       url: "/admin/alerts"
     });
-    const alertId = alert.json().id as string;
-    const acknowledged = await server.inject({
-      headers,
-      method: "POST",
-      url: `/admin/alerts/${alertId}/ack`
-    });
     const slo = await server.inject({
       headers,
       method: "PUT",
@@ -1413,7 +1407,6 @@ describe("api server", () => {
     });
 
     expect(alert.statusCode).toBe(201);
-    expect(acknowledged.json()).toMatchObject({ id: alertId, status: "acknowledged" });
     expect(slo.json()).toMatchObject({ id: "availability", status: "violated" });
     expect(cost.json()).toEqual({
       byModel: { "provider/model": "1.25000000" },

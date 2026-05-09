@@ -12,7 +12,7 @@ import type { Insertable, Kysely, Selectable } from "kysely";
 type Awaitable<T> = T | Promise<T>;
 
 export type AdminAlertSeverity = "info" | "warning" | "critical";
-export type AdminAlertStatus = "open" | "acknowledged" | "resolved";
+export type AdminAlertStatus = "open" | "resolved";
 export type AdminSloStatus = "healthy" | "at_risk" | "violated";
 
 export interface AdminAlert {
@@ -22,7 +22,6 @@ export interface AdminAlert {
   readonly message: string;
   readonly target?: string;
   readonly createdAt: Date;
-  readonly acknowledgedAt?: Date;
 }
 
 export interface AdminSlo {
@@ -48,7 +47,6 @@ export interface AdminCostSummary {
 export interface AdminOperationsStore {
   listAlerts(): Awaitable<readonly AdminAlert[]>;
   createAlert(input: AdminAlertInput): Awaitable<AdminAlert>;
-  acknowledgeAlert(id: string): Awaitable<AdminAlert | undefined>;
   resolveAlert(id: string): Awaitable<AdminAlert | undefined>;
   listSlos(): Awaitable<readonly AdminSlo[]>;
   upsertSlo(input: AdminSloInput): Awaitable<AdminSlo>;
@@ -179,23 +177,6 @@ export class InMemoryAdminOperationsStore implements AdminOperationsStore {
     return alert;
   }
 
-  acknowledgeAlert(id: string): AdminAlert | undefined {
-    const existing = this.alerts.get(id);
-
-    if (!existing) {
-      return undefined;
-    }
-
-    const updated: AdminAlert = {
-      ...existing,
-      acknowledgedAt: this.now(),
-      status: "acknowledged"
-    };
-
-    this.alerts.set(id, updated);
-    return updated;
-  }
-
   resolveAlert(id: string): AdminAlert | undefined {
     const existing = this.alerts.get(id);
 
@@ -205,7 +186,6 @@ export class InMemoryAdminOperationsStore implements AdminOperationsStore {
 
     const updated: AdminAlert = {
       ...existing,
-      acknowledgedAt: existing.acknowledgedAt ?? this.now(),
       status: "resolved"
     };
 
@@ -467,25 +447,10 @@ export class KyselyAdminOperationsStore implements AdminOperationsStore {
     return mapAdminAlertRow(row);
   }
 
-  async acknowledgeAlert(id: string): Promise<AdminAlert | undefined> {
-    const row = await this.db
-      .updateTable("admin_alerts")
-      .set({
-        acknowledged_at: this.now(),
-        status: "acknowledged"
-      })
-      .where("id", "=", id)
-      .returningAll()
-      .executeTakeFirst();
-
-    return row ? mapAdminAlertRow(row) : undefined;
-  }
-
   async resolveAlert(id: string): Promise<AdminAlert | undefined> {
     const row = await this.db
       .updateTable("admin_alerts")
       .set({
-        acknowledged_at: this.now(),
         status: "resolved"
       })
       .where("id", "=", id)
@@ -614,12 +579,11 @@ export function createAdminCostUsageInsert(
 
 export function mapAdminAlertRow(row: AdminAlertRow): AdminAlert {
   return {
-    acknowledgedAt: row.acknowledged_at ? toDate(row.acknowledged_at) : undefined,
     createdAt: toDate(row.created_at ?? new Date(0)),
     id: row.id,
     message: row.message,
     severity: row.severity,
-    status: row.status,
+    status: row.status === "acknowledged" ? "open" : row.status,
     target: row.target ?? undefined
   };
 }

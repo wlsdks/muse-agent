@@ -202,7 +202,7 @@ describe("InMemoryAdminOperationsStore", () => {
       now: () => new Date("2026-01-01T00:00:00.000Z")
     });
 
-    const alert = await store.createAlert({
+    await store.createAlert({
       message: "Budget threshold crossed",
       severity: "critical",
       target: "tenant-1"
@@ -213,7 +213,6 @@ describe("InMemoryAdminOperationsStore", () => {
       severity: "warning",
       target: "tenant-1"
     });
-    const acknowledged = await store.acknowledgeAlert(alert.id);
     const resolved = await store.resolveAlert(alertToResolve.id);
     const slo = await store.upsertSlo({
       actual: 94,
@@ -227,7 +226,6 @@ describe("InMemoryAdminOperationsStore", () => {
       model: "provider/model"
     });
 
-    expect(acknowledged).toMatchObject({ id: alert.id, status: "acknowledged" });
     expect(resolved).toMatchObject({ id: alertToResolve.id, status: "resolved" });
     expect(await store.listAlerts()).toHaveLength(2);
     expect(slo).toMatchObject({ id: "availability", status: "violated" });

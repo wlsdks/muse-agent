@@ -194,30 +194,6 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
     return reply.status(201).send(await operations.createAlert(parsed.value));
   });
 
-  server.post("/admin/alerts/:alertId/ack", async (request, reply) => {
-    if (!options.authorizeAdmin(request, reply)) {
-      return reply;
-    }
-
-    const operations = requireOperations(options, reply);
-
-    if (!operations) {
-      return reply;
-    }
-
-    const { alertId } = request.params as { readonly alertId: string };
-    const alert = await operations.acknowledgeAlert(alertId);
-
-    if (!alert) {
-      return reply.status(404).send({
-        code: "ADMIN_ALERT_NOT_FOUND",
-        message: `Admin alert not found: ${alertId}`
-      });
-    }
-
-    return alert;
-  });
-
   server.get("/admin/slos", async (request, reply) => {
     if (!options.authorizeAdmin(request, reply)) {
       return reply;
