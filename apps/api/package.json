@@ -28,6 +28,7 @@
     "@muse/scheduler": "workspace:*",
     "@muse/shared": "workspace:*",
     "@muse/tools": "workspace:*",
+    "@muse/voice": "workspace:*",
     "fastify": "^5.8.5"
   }
 }

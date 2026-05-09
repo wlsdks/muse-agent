@@ -17,12 +17,14 @@ import type {
   SessionTagStore
 } from "@muse/runtime-state";
 import type { JsonObject } from "@muse/shared";
+import type { VoiceProviderRegistry } from "@muse/voice";
 import Fastify, { type FastifyInstance } from "fastify";
 import { registerAdminRoutes, type AdminRouteState } from "./admin-routes.js";
 import { registerMcpRoutes, type McpRouteMcp } from "./mcp-routes.js";
 import { registerMultiAgentRoutes } from "./multi-agent-routes.js";
 import { registerCompatibilityRoutes } from "./compat-routes.js";
 import { registerSchedulerRoutes, type SchedulerRouteScheduler } from "./scheduler-routes.js";
+import { registerVoiceRoutes } from "./voice-routes.js";
 import {
   applyCompatWebContractHeaders,
   applyCorsHeaders,
@@ -83,6 +85,7 @@ export interface ServerOptions {
   readonly calendar?: CalendarProviderRegistry;
   readonly calendarCredentialStore?: CalendarCredentialStore;
   readonly tasksFile?: string;
+  readonly voice?: VoiceProviderRegistry;
 }
 
 export interface ToolCatalogEntry {
@@ -239,6 +242,9 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   }
   if (options.tasksFile) {
     registerTasksRoutes(server, { authService, tasksFile: options.tasksFile });
+  }
+  if (options.voice) {
+    registerVoiceRoutes(server, { authService, registry: options.voice });
   }
 
   return server;

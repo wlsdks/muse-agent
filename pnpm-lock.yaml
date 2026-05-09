@@ -71,6 +71,9 @@ importers:
       '@muse/tools':
         specifier: workspace:*
         version: link:../../packages/tools
+      '@muse/voice':
+        specifier: workspace:*
+        version: link:../../packages/voice
       fastify:
         specifier: ^5.8.5
         version: 5.8.5
