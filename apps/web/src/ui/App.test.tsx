@@ -21,7 +21,8 @@ describe("MuseConsole", () => {
     const html = renderConsole();
     expect(html).toContain("Muse");
     expect(html).toContain("Ask Muse");
-    expect(html).toContain("Approvals");
+    expect(html).toContain("Tasks");
+    expect(html).toContain("Upcoming");
   });
 
   it("renders the new tool catalog and orchestration panels in the side panel", () => {

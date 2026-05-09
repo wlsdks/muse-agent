@@ -22,14 +22,6 @@ interface ChatResponse {
   readonly metadata?: Record<string, unknown>;
 }
 
-interface ApprovalSummary {
-  readonly id: string;
-  readonly runId: string;
-  readonly toolName: string;
-  readonly userId: string;
-  readonly status: string;
-}
-
 interface SessionSummary {
   readonly id?: string;
   readonly status?: string;
@@ -39,7 +31,6 @@ interface SessionSummary {
 }
 
 interface AdminSummary {
-  readonly pendingApprovals?: number;
   readonly recentRuns?: readonly SessionSummary[];
 }
 
@@ -151,10 +142,6 @@ export function MuseConsole() {
     queryFn: () => client.get<AdminSummary>("/admin/summary"),
     queryKey: ["admin-summary", apiUrl, token]
   });
-  const approvals = useQuery({
-    queryFn: () => client.get<readonly ApprovalSummary[]>("/api/approvals/pending"),
-    queryKey: ["approvals", apiUrl, token]
-  });
   const tools = useQuery({
     queryFn: () => client.get<ToolCatalogResponse>("/api/tools"),
     queryKey: ["tools", apiUrl, token]
@@ -177,7 +164,6 @@ export function MuseConsole() {
       <section className="status-strip" aria-label="Runtime status">
         <StatusMetric label="API" value={health.data?.status ?? statusLabel(health.status)} />
         <StatusMetric label="Service" value={health.data?.service ?? "muse-api"} />
-        <StatusMetric label="Approvals" value={String(admin.data?.pendingApprovals ?? approvals.data?.length ?? 0)} />
         <StatusMetric label="Tools" value={String(tools.data?.total ?? 0)} />
         <StatusMetric label="Orchestrations" value={String(orchestrations.data?.total ?? 0)} />
       </section>
@@ -187,7 +173,6 @@ export function MuseConsole() {
         <aside className="side-panel">
           <TasksPanel client={client} />
           <CalendarEventsPanel client={client} />
-          <ApprovalsPanel approvals={approvals.data ?? []} loading={approvals.isLoading} />
           <RunsPanel runs={admin.data?.recentRuns ?? []} loading={admin.isLoading} />
           <ToolCatalogPanel tools={tools.data?.tools ?? []} loading={tools.isLoading} />
           <CalendarSettingsPanel client={client} />
@@ -275,25 +260,6 @@ function ChatPanel({ client }: { readonly client: ApiClient }) {
           ? `Error: ${chat.error instanceof Error ? chat.error.message : "request failed"}`
           : latest?.response ?? latest?.content ?? ""}
       </output>
-    </section>
-  );
-}
-
-function ApprovalsPanel(props: { readonly approvals: readonly ApprovalSummary[]; readonly loading: boolean }) {
-  return (
-    <section className="tool-surface compact" aria-label="Approvals">
-      <div className="surface-heading">
-        <h2>Approvals</h2>
-        <span>{props.loading ? "Loading" : props.approvals.length}</span>
-      </div>
-      <ul className="record-list">
-        {props.approvals.map((approval) => (
-          <li key={approval.id}>
-            <strong>{approval.toolName}</strong>
-            <span>{approval.userId}</span>
-          </li>
-        ))}
-      </ul>
     </section>
   );
 }

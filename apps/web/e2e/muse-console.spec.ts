@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("operator console smokes chat, approvals, and recent runs against API routes", async ({ page }) => {
+test("operator console smokes chat and recent runs against API routes", async ({ page }) => {
   await page.route("http://127.0.0.1:3000/health", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -11,7 +11,6 @@ test("operator console smokes chat, approvals, and recent runs against API route
     await route.fulfill({
       contentType: "application/json",
       json: {
-        pendingApprovals: 1,
         recentRuns: [
           {
             id: "run-1",
@@ -22,20 +21,6 @@ test("operator console smokes chat, approvals, and recent runs against API route
           }
         ]
       }
-    });
-  });
-  await page.route("http://127.0.0.1:3000/api/approvals/pending", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      json: [
-        {
-          id: "approval-1",
-          runId: "run-approval",
-          status: "pending",
-          toolName: "write_file",
-          userId: "example-user"
-        }
-      ]
     });
   });
   await page.route("http://127.0.0.1:3000/api/chat", async (route) => {
@@ -51,7 +36,6 @@ test("operator console smokes chat, approvals, and recent runs against API route
 
   await expect(page.getByRole("heading", { exact: true, name: "Muse" })).toBeVisible();
   await expect(page.getByLabel("Runtime status")).toContainText("ok");
-  await expect(page.getByLabel("Approvals")).toContainText("write_file");
   await expect(page.getByLabel("Recent runs")).toContainText("completed");
 
   await page.getByPlaceholder("Compare two product directions, clarify tradeoffs, or choose a next step.").fill("Compare launch options");
