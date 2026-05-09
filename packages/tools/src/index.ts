@@ -1,8 +1,5 @@
 import type { ModelTool } from "@muse/model";
-import {
-  ToolOutputSanitizer,
-  type SanitizedToolOutput
-} from "@muse/policy";
+import type { SanitizedToolOutput } from "@muse/policy";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 export type ToolRisk = "read" | "write" | "execute";
@@ -260,68 +257,10 @@ export function createWorkspaceToolRoutingPlan(
   };
 }
 
-export class ToolExecutor {
-  private readonly idempotencyStore?: ToolIdempotencyStore;
-  private readonly registry: ToolRegistry;
-  private readonly sanitizer: ToolOutputSanitizer;
-
-  constructor(options: {
-    readonly idempotencyStore?: ToolIdempotencyStore;
-    readonly registry: ToolRegistry;
-    readonly sanitizer?: ToolOutputSanitizer;
-  }) {
-    this.idempotencyStore = options.idempotencyStore;
-    this.registry = options.registry;
-    this.sanitizer = options.sanitizer ?? new ToolOutputSanitizer();
-  }
-
-  async execute(request: ToolCallRequest): Promise<ToolExecutionResult> {
-    const tool = this.registry.get(request.name);
-
-    if (!tool) {
-      return this.failed(request, `Error: tool not found: ${request.name}`);
-    }
-
-    const idempotencyKey = readIdempotencyKey(request);
-
-    const existing = idempotencyKey ? this.idempotencyStore?.get(idempotencyKey) : undefined;
-    if (existing) {
-      return { ...existing, id: request.id };
-    }
-
-    try {
-      const raw = await tool.execute(request.arguments, request.context);
-      const output = stringifyToolOutput(raw);
-      const sanitized = this.sanitizer.sanitize(request.name, output);
-      const result = {
-        id: request.id,
-        name: request.name,
-        output: sanitized.content,
-        sanitized,
-        status: "completed"
-      } satisfies ToolExecutionResult;
-
-      if (idempotencyKey) {
-        this.idempotencyStore?.set(idempotencyKey, result);
-      }
-
-      return result;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "unknown tool failure";
-      return this.failed(request, `Error: ${message}`);
-    }
-  }
-
-  private failed(request: ToolCallRequest, error: string): ToolExecutionResult {
-    return {
-      error,
-      id: request.id,
-      name: request.name,
-      output: error,
-      status: "failed"
-    };
-  }
-}
+// ToolExecutor lives in `./executor.ts` (lifted out so the
+// tool-execution loop stays in one cohesive module). Re-exported
+// at the bottom of this file so the `@muse/tools` barrel keeps
+// working without import-site edits.
 
 export class ToolRegistryError extends Error {
   constructor(message: string) {
@@ -483,13 +422,6 @@ function hasMutationHint(normalized: string): boolean {
 function hasMutationTargetHint(normalized: string): boolean {
   return mutationTargetHints.some((hint) => normalized.includes(hint))
     || mutationTargetPatterns.some((pattern) => pattern.test(normalized));
-}
-
-function readIdempotencyKey(request: ToolCallRequest): string | undefined {
-  const key = request.arguments.idempotencyKey ?? request.arguments.idempotency_key;
-  return typeof key === "string" && key.trim().length > 0
-    ? `${request.context.runId}:${request.name}:${key.trim()}`
-    : undefined;
 }
 
 function blockTool(toolName: string, code: ToolExposureBlock["code"], reason: string): ToolExposureBlock {
@@ -682,14 +614,6 @@ const mutationTargetHints = [
 
 const mutationTargetPatterns = [/\bpr\b/u] as const;
 
-function stringifyToolOutput(value: ToolExecutionValue): string {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  return JSON.stringify(value, null, 2);
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -710,3 +634,5 @@ export {
   type RunnerCommandResponse,
   type RustRunnerToolOptions
 } from "./runner.js";
+
+export { ToolExecutor } from "./executor.js";
