@@ -1342,7 +1342,8 @@ export {
 } from "./loopback.js";
 
 // Notes provider abstraction. LocalDir is a real adapter; AppleNotes
-// and Notion are typed scaffolds that throw NOT_IMPLEMENTED.
+// Apple Notes is a real osascript adapter (macOS-only); Notion is
+// still a typed scaffold that throws NOT_IMPLEMENTED.
 export {
   AppleNotesProvider,
   LocalDirNotesProvider,
@@ -1350,6 +1351,7 @@ export {
   NotesProviderRegistry,
   NotesValidationError,
   NotionNotesProvider,
+  type AppleNotesProviderOptions,
   type LocalDirNotesProviderOptions,
   type NotesAppendInput,
   type NotesContent,

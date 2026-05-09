@@ -1311,13 +1311,29 @@ describe("notes provider abstraction", () => {
     expect(() => registry.require("ghost")).toThrowError(NotesProviderError);
   });
 
-  it("AppleNotesProvider scaffolds reject every operation with NOT_IMPLEMENTED", async () => {
+  it("AppleNotesProvider describes itself as a local osascript adapter", () => {
     const apple = new AppleNotesProvider();
-    await expect(apple.list()).rejects.toMatchObject({ code: "NOT_IMPLEMENTED", providerId: "apple" });
-    await expect(apple.read("x")).rejects.toMatchObject({ code: "NOT_IMPLEMENTED" });
-    await expect(apple.search("x", 5)).rejects.toMatchObject({ code: "NOT_IMPLEMENTED" });
-    await expect(apple.save({ body: "b", title: "t" })).rejects.toMatchObject({ code: "NOT_IMPLEMENTED" });
-    await expect(apple.append({ body: "b", id: "x" })).rejects.toMatchObject({ code: "NOT_IMPLEMENTED" });
+    const info = apple.describe();
+    expect(info.id).toBe("apple");
+    expect(info.local).toBe(true);
+    expect(info.displayName).toBe("Apple Notes");
+    expect(info.description).toContain("AppleScript");
+  });
+
+  it("AppleNotesProvider validates inputs before invoking osascript", async () => {
+    const apple = new AppleNotesProvider();
+    await expect(apple.read("")).rejects.toMatchObject({ code: "EMPTY_ID" });
+    await expect(apple.search("   ", 5)).rejects.toMatchObject({ code: "EMPTY_QUERY" });
+    await expect(apple.save({ body: "b", title: "  " })).rejects.toMatchObject({ code: "EMPTY_TITLE" });
+    await expect(apple.append({ body: "b", id: "" })).rejects.toMatchObject({ code: "EMPTY_ID" });
+  });
+
+  it("AppleNotesProvider surfaces osascript failures as typed provider errors", async () => {
+    const apple = new AppleNotesProvider({ osascriptPath: "/usr/bin/false" });
+    const error = await apple.list().catch((err) => err);
+    expect(error).toBeInstanceOf(NotesProviderError);
+    expect((error as NotesProviderError).providerId).toBe("apple");
+    expect((error as NotesProviderError).code).toMatch(/^EXIT_/);
   });
 
   it("NotionNotesProvider describes itself with the right id", () => {
