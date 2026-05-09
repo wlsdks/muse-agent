@@ -42,6 +42,7 @@ writeFileSync(
 const calendarSandbox = mkdtempSync(path.join(os.tmpdir(), "muse-live-calendar-"));
 const calendarFile = path.join(calendarSandbox, "calendar.json");
 const credentialsFile = path.join(calendarSandbox, "credentials.json");
+const tasksFile = path.join(calendarSandbox, "tasks.json");
 
 const provider = pickProvider();
 
@@ -62,6 +63,7 @@ const env = {
   MUSE_MODEL: provider.model,
   MUSE_MODEL_PROVIDER_ID: provider.providerId,
   MUSE_NOTES_DIR: notesDir,
+  MUSE_TASKS_FILE: tasksFile,
   PORT: String(port),
   ...(provider.apiKey ? { MUSE_MODEL_API_KEY: provider.apiKey } : {})
 };
@@ -274,6 +276,22 @@ try {
       `expected toolsUsed to include 'muse.notes.search', got ${JSON.stringify(body.toolsUsed)} content="${body.content}"`);
     assert(/white|jeju/iu.test(body.content ?? ""),
       `expected note content to surface in answer (white/jeju), got "${body.content}"`);
+  });
+
+  await record("muse.tasks.add (live) — LLM appends a personal todo", async () => {
+    const response = await fetch(`${baseUrl}/api/chat`, {
+      body: JSON.stringify({
+        message:
+          "Call the tool muse.tasks.add exactly once with title=\"Buy birthday card\". After the tool returns, reply with the literal text DONE and nothing else.",
+        runId: "live-tasks-add"
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    const body = await response.json();
+    assert(response.status === 200, `expected 200, got ${response.status}: ${JSON.stringify(body)}`);
+    assert(Array.isArray(body.toolsUsed) && body.toolsUsed.includes("muse.tasks.add"),
+      `expected toolsUsed to include muse.tasks.add, got ${JSON.stringify(body.toolsUsed)} content="${body.content}"`);
   });
 
   await record("muse.calendar.add (live) — LLM creates a calendar event", async () => {

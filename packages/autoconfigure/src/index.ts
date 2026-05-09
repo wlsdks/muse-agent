@@ -67,6 +67,7 @@ import {
   McpManager,
   McpSecurityPolicyProvider,
   createCalendarMcpServer,
+  createTasksMcpServer,
   createDefaultLoopbackMcpServers,
   createFetchMcpServer,
   createFilesystemMcpServer,
@@ -349,12 +350,17 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const calendarLoopbackTools = parseBoolean(env.MUSE_CALENDAR_ENABLED, true) && calendarRegistry.list().length > 0
     ? createLoopbackMcpMuseTools(createCalendarMcpServer({ registry: calendarRegistry }))
     : [];
+  const tasksFile = resolveTasksFile(env);
+  const tasksLoopbackTools = parseBoolean(env.MUSE_TASKS_ENABLED, true)
+    ? createLoopbackMcpMuseTools(createTasksMcpServer({ file: tasksFile }))
+    : [];
   let schedulerService: DynamicScheduler | undefined;
   const toolRegistry = new DynamicToolRegistry([
     () => museTools,
     () => loopbackMcpTools,
     () => notesLoopbackTools,
     () => calendarLoopbackTools,
+    () => tasksLoopbackTools,
     () => runnerTools,
     () => mcpManager.toMuseTools(),
     () => schedulerService ? createSchedulerTools(schedulerService) : []
@@ -697,6 +703,14 @@ function resolveLocalCalendarFile(env: MuseEnvironment): string {
     return override;
   }
   return pathJoin(homedir(), ".muse", "calendar.json");
+}
+
+function resolveTasksFile(env: MuseEnvironment): string {
+  const override = env.MUSE_TASKS_FILE?.trim();
+  if (override && override.length > 0) {
+    return override;
+  }
+  return pathJoin(homedir(), ".muse", "tasks.json");
 }
 
 function buildCalendarRegistry(env: MuseEnvironment): CalendarProviderRegistry {

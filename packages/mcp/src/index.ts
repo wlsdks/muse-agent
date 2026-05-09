@@ -1318,6 +1318,7 @@ export {
   createCryptoMcpServer,
   createDefaultLoopbackMcpServers,
   createCalendarMcpServer,
+  createTasksMcpServer,
   createDiffMcpServer,
   createFetchMcpServer,
   createFilesystemMcpServer,

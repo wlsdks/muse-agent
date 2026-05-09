@@ -19,6 +19,7 @@ import {
   createJsonMcpServer,
   createMathMcpServer,
   createNotesMcpServer,
+  createTasksMcpServer,
   createRegexMcpServer,
   createUrlMcpServer,
   createMcpSecurityPolicyInsert,
@@ -1215,5 +1216,73 @@ describe("muse.fs loopback server", () => {
 
     const escapeAttempt = await connection.callTool!("read", { path: `${root}/../etc/passwd` });
     expect(escapeAttempt).toMatchObject({ error: expect.stringContaining("not under any configured allowlist root") });
+  });
+});
+
+describe("muse.tasks loopback server", () => {
+  it("supports the add → list → complete → search lifecycle", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-tasks-`);
+    let counter = 0;
+    const idFactory = () => `task_${++counter}`;
+    const server = createTasksMcpServer({ file: `${dir}/tasks.json`, idFactory });
+    const connection = createLoopbackMcpConnection(server);
+
+    const add1 = await connection.callTool!("add", { title: "Buy groceries", tags: ["home"] });
+    expect(add1).toMatchObject({ task: { id: "task_1", status: "open", title: "Buy groceries" } });
+
+    const add2 = await connection.callTool!("add", { notes: "weekly", title: "Pay rent" });
+    expect(add2).toMatchObject({ task: { id: "task_2", status: "open" } });
+
+    const listOpen = await connection.callTool!("list", {});
+    expect(listOpen).toMatchObject({ status: "open", total: 2 });
+
+    const completed = await connection.callTool!("complete", { id: "task_1" });
+    expect(completed).toMatchObject({ task: { id: "task_1", status: "done" } });
+    expect((completed.task as { completedAt?: string }).completedAt).toBeDefined();
+
+    const listOpenAfter = await connection.callTool!("list", {});
+    expect(listOpenAfter).toMatchObject({ total: 1 });
+
+    const listAll = await connection.callTool!("list", { status: "all" });
+    expect(listAll).toMatchObject({ status: "all", total: 2 });
+
+    const search = await connection.callTool!("search", { query: "rent", status: "open" });
+    expect(search).toMatchObject({ total: 1, tasks: [{ id: "task_2" }] });
+
+    const noMatches = await connection.callTool!("search", { query: "nonexistent" });
+    expect(noMatches).toMatchObject({ total: 0 });
+  });
+
+  it("returns errors for invalid input and missing ids", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-tasks-err-`);
+    const connection = createLoopbackMcpConnection(createTasksMcpServer({ file: `${dir}/tasks.json` }));
+
+    const noTitle = await connection.callTool!("add", {});
+    expect(noTitle).toMatchObject({ error: expect.stringContaining("title is required") });
+
+    const missing = await connection.callTool!("complete", { id: "task_does_not_exist" });
+    expect(missing).toMatchObject({ error: expect.stringContaining("not found") });
+
+    const emptyQuery = await connection.callTool!("search", { query: "  " });
+    expect(emptyQuery).toMatchObject({ error: expect.stringContaining("query is required") });
+  });
+
+  it("treats a missing or corrupt file as empty", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-tasks-corrupt-`);
+    const file = `${dir}/tasks.json`;
+
+    const connection = createLoopbackMcpConnection(createTasksMcpServer({ file }));
+    const empty = await connection.callTool!("list", { status: "all" });
+    expect(empty).toMatchObject({ total: 0 });
+
+    writeFileSync(file, "not valid json");
+    const recovered = await connection.callTool!("list", { status: "all" });
+    expect(recovered).toMatchObject({ total: 0 });
   });
 });
