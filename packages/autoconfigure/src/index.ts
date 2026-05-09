@@ -669,7 +669,8 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     userMemoryStore: assembly.userMemoryStore,
     conversationSummaryStore: assembly.conversationSummaryStore,
     calendar: assembly.calendar,
-    calendarCredentialStore: new FileCalendarCredentialStore(resolveCredentialsFile(env))
+    calendarCredentialStore: new FileCalendarCredentialStore(resolveCredentialsFile(env)),
+    tasksFile: resolveTasksFile(env)
   };
 }
 

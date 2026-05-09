@@ -97,6 +97,40 @@ interface CalendarCredentialsResponse {
   readonly providers: readonly string[];
 }
 
+interface TaskRow {
+  readonly id: string;
+  readonly title: string;
+  readonly status: "open" | "done";
+  readonly createdAt: string;
+  readonly completedAt?: string;
+  readonly notes?: string;
+  readonly tags?: readonly string[];
+}
+
+interface TasksResponse {
+  readonly tasks: readonly TaskRow[];
+  readonly status: "open" | "done" | "all";
+  readonly total: number;
+}
+
+interface CalendarEventRow {
+  readonly id: string;
+  readonly providerId: string;
+  readonly title: string;
+  readonly startsAtIso: string;
+  readonly endsAtIso: string;
+  readonly allDay: boolean;
+  readonly location: string | null;
+  readonly notes: string | null;
+  readonly tags: readonly string[];
+  readonly url: string | null;
+}
+
+interface CalendarEventsResponse {
+  readonly events: readonly CalendarEventRow[];
+  readonly total: number;
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -151,6 +185,8 @@ export function MuseConsole() {
       <section className="workspace">
         <ChatPanel client={client} />
         <aside className="side-panel">
+          <TasksPanel client={client} />
+          <CalendarEventsPanel client={client} />
           <ApprovalsPanel approvals={approvals.data ?? []} loading={approvals.isLoading} />
           <RunsPanel runs={admin.data?.recentRuns ?? []} loading={admin.isLoading} />
           <ToolCatalogPanel tools={tools.data?.tools ?? []} loading={tools.isLoading} />
@@ -306,6 +342,108 @@ function ToolCatalogPanel(props: { readonly tools: readonly ToolCatalogEntry[]; 
           <li key={tool.name}>
             <strong>{tool.name}</strong>
             <span className={`risk-${tool.risk}`}>{tool.risk}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function TasksPanel({ client }: { readonly client: ApiClient }) {
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const tasks = useQuery({
+    queryFn: () => client.get<TasksResponse>("/api/tasks?status=open"),
+    queryKey: ["tasks", "open"]
+  });
+
+  const addTask = useMutation({
+    mutationFn: async (title: string) => client.post<TaskRow>("/api/tasks", { title }),
+    onError: (err) => setError(err instanceof Error ? err.message : "Failed to add task"),
+    onSuccess: async () => {
+      setDraft("");
+      setError(null);
+      await tasks.refetch();
+    }
+  });
+
+  const completeTask = useMutation({
+    mutationFn: async (id: string) => client.post<TaskRow>(`/api/tasks/${encodeURIComponent(id)}/complete`, {}),
+    onError: (err) => setError(err instanceof Error ? err.message : "Failed to complete task"),
+    onSuccess: async () => { await tasks.refetch(); }
+  });
+
+  return (
+    <section className="tool-surface compact" aria-label="Tasks">
+      <div className="surface-heading">
+        <h2>Tasks</h2>
+        <span>{tasks.isLoading ? "Loading" : (tasks.data?.total ?? 0)}</span>
+      </div>
+      {error ? <p className="status-error">{error}</p> : null}
+      <form
+        className="connection-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const trimmed = draft.trim();
+          if (trimmed.length > 0) {
+            addTask.mutate(trimmed);
+          }
+        }}
+        style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}
+      >
+        <input
+          aria-label="New task title"
+          placeholder="Add a task…"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          style={{ flex: 1 }}
+        />
+        <button type="submit" disabled={addTask.isPending || draft.trim().length === 0}>Add</button>
+      </form>
+      <ul className="record-list">
+        {(tasks.data?.tasks ?? []).map((task) => (
+          <li key={task.id}>
+            <strong>{task.title}</strong>
+            <button
+              type="button"
+              onClick={() => completeTask.mutate(task.id)}
+              disabled={completeTask.isPending}
+              style={{ marginLeft: "0.5rem" }}
+            >
+              ✓ Done
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function CalendarEventsPanel({ client }: { readonly client: ApiClient }) {
+  const events = useQuery({
+    queryFn: () => {
+      const from = new Date();
+      const to = new Date(from.getTime() + 14 * 86_400_000);
+      return client.get<CalendarEventsResponse>(
+        `/api/calendar/events?fromIso=${encodeURIComponent(from.toISOString())}&toIso=${encodeURIComponent(to.toISOString())}`
+      );
+    },
+    queryKey: ["calendar-events"]
+  });
+
+  return (
+    <section className="tool-surface compact" aria-label="Upcoming events">
+      <div className="surface-heading">
+        <h2>Upcoming (14d)</h2>
+        <span>{events.isLoading ? "Loading" : (events.data?.total ?? 0)}</span>
+      </div>
+      <ul className="record-list">
+        {(events.data?.events ?? []).slice(0, 8).map((event) => (
+          <li key={`${event.providerId}:${event.id}`}>
+            <strong>{event.title}</strong>
+            <span className="risk-read">
+              {new Date(event.startsAtIso).toLocaleDateString()} · {event.providerId}
+            </span>
           </li>
         ))}
       </ul>

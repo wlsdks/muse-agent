@@ -45,6 +45,7 @@ import {
   registerCoreRoutes,
   registerRuntimeSettingsRoutes,
   registerSessionSummaryRoutes,
+  registerTasksRoutes,
   registerToolsRoutes
 } from "./server-routes.js";
 
@@ -81,6 +82,7 @@ export interface ServerOptions {
   readonly museObservabilitySnapshot?: () => Promise<MuseObservabilitySnapshot>;
   readonly calendar?: CalendarProviderRegistry;
   readonly calendarCredentialStore?: CalendarCredentialStore;
+  readonly tasksFile?: string;
 }
 
 export interface ToolCatalogEntry {
@@ -234,6 +236,9 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       credentialStore: options.calendarCredentialStore,
       registry: options.calendar
     });
+  }
+  if (options.tasksFile) {
+    registerTasksRoutes(server, { authService, tasksFile: options.tasksFile });
   }
 
   return server;
