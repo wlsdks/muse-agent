@@ -42,7 +42,6 @@ import { registerAdminSessionCompatRoutes } from "./admin-session-compat-routes.
 import { registerAgentCompatibilityRoutes } from "./agent-compat-routes.js";
 import { registerAuthCompatibilityRoutes } from "./auth-compat-routes.js";
 import { registerMcpCompatibilityRoutes } from "./mcp-compat-routes.js";
-import { registerMetricIngestionCompatRoutes } from "./metric-ingestion-compat-routes.js";
 import { registerSessionCompatibilityRoutes } from "./session-compat-routes.js";
 import { registerUserMemoryCompatRoutes } from "./user-memory-compat-routes.js";
 import { recordedSpans, recordedTraceEvents, type AdminRouteState } from "./admin-routes.js";
@@ -89,7 +88,6 @@ export type CompatCollection = Map<string, CompatRecord>;
 export type { CompatBody } from "./compat-parsers.js";
 
 interface CompatState {
-  readonly metricEvents: CompatCollection;
   readonly proactiveChannels: CompatCollection;
   readonly sessionTags: Map<string, CompatRecord[]>;
   readonly userMemory: Map<string, {
@@ -116,12 +114,10 @@ export function registerReactorCompatibilityRoutes(
   registerAdminSessionCompatRoutes(server, options);
   registerAdminObservabilityCompatRoutes(server, options);
   registerAdminAnalyticsCompatRoutes(server, options);
-  registerMetricIngestionCompatRoutes(server, options);
 }
 
 function createCompatState(): CompatState {
   return {
-    metricEvents: new Map(),
     proactiveChannels: new Map(),
     sessionTags: new Map(),
     userMemory: new Map()
@@ -218,9 +214,6 @@ export { csvRows, runsCsv, toolCallsCsv } from "./compat-csv.js";
 
 // Numeric/boolean parsers live in apps/api/src/compat-parsers.ts.
 
-// registerMetricIngestionRoutes lives in apps/api/src/metric-ingestion-compat-routes.ts.
-
-
 // Agent-spec helpers live in apps/api/src/compat-agent-spec.ts.
 export {
   agentCardResponse,
@@ -280,10 +273,6 @@ function findRecordByParam(
   return record ?? notFound(reply, "COMPAT_RECORD_NOT_FOUND");
 }
 
-
-export function getStateMetricEvents(): CompatCollection {
-  return state.metricEvents;
-}
 
 export function getStateSessionTags(): Map<string, CompatRecord[]> {
   return state.sessionTags;

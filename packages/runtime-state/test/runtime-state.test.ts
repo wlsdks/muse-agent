@@ -2,15 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   createAdminAlertInsert,
   createAdminCostUsageInsert,
-  createMetricAuditTrailInsert,
   createAdminSloInsert,
   InMemoryAdminOperationsStore,
-  InMemoryMetricAuditEventStore,
   InMemoryCheckpointStore,
   InMemoryHookTraceStore,
   mapAdminAlertRow,
   mapAdminCostUsageRow,
-  mapMetricAuditTrailRow,
   mapAdminSloRow
 } from "../src/index.js";
 
@@ -143,29 +140,6 @@ describe("InMemoryAdminOperationsStore", () => {
   });
 });
 
-describe("metric event store", () => {
-  it("records metric events in memory", () => {
-    const now = new Date("2026-05-06T00:00:00.000Z");
-    const metricStore = new InMemoryMetricAuditEventStore({
-      idFactory: sequentialIds("metric"),
-      now: () => now
-    });
-
-    metricStore.record({
-      kind: "eval-result",
-      payload: { pass: true }
-    });
-
-    expect(metricStore.listRecent()).toMatchObject([
-      {
-        id: "metric-1",
-        kind: "eval-result",
-        payload: { pass: true }
-      }
-    ]);
-  });
-});
-
 describe("Kysely admin operation mapping", () => {
   it("creates and maps admin operation rows without private data", () => {
     const now = new Date("2026-01-01T00:00:00.000Z");
@@ -189,23 +163,12 @@ describe("Kysely admin operation mapping", () => {
       costUsd: "1.25000000",
       model: "provider/model"
     }, options);
-    const metric = createMetricAuditTrailInsert({
-      createdAt: now,
-      id: "metric-event-1",
-      kind: "eval-result",
-      payload: { pass: true }
-    });
 
     expect(mapAdminAlertRow(alert)).toMatchObject({ id: "alert-1", status: "open", target: "tenant-1" });
     expect(mapAdminSloRow(slo)).toMatchObject({ id: "availability", status: "violated" });
     expect(mapAdminCostUsageRow(cost)).toEqual({
       costUsd: "1.25000000",
       model: "provider/model"
-    });
-    expect(mapMetricAuditTrailRow(metric)).toMatchObject({
-      id: "metric-event-1",
-      kind: "eval-result",
-      payload: { pass: true }
     });
   });
 });

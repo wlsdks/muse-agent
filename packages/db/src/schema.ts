@@ -24,7 +24,6 @@ export interface MuseDatabase {
   readonly mcp_security_policy: McpSecurityPolicyTable;
   readonly mcp_servers: McpServerTable;
   readonly metric_agent_executions: CompatibilityTable;
-  readonly metric_audit_trail: MetricAuditTrailTable;
   readonly metric_eval_results: CompatibilityTable;
   readonly metric_guard_events: CompatibilityTable;
   readonly metric_hitl_events: CompatibilityTable;
@@ -73,17 +72,6 @@ export interface AdminCostUsageTable {
   readonly model: string | null;
   readonly cost_usd: NumericString;
   readonly created_at: Timestamp;
-}
-
-export interface MetricAuditTrailTable {
-  readonly time: Timestamp;
-  readonly actor_id: string | null;
-  readonly actor_email: string | null;
-  readonly event_type: string;
-  readonly resource_type: string | null;
-  readonly resource_id: string | null;
-  readonly detail: JsonColumn;
-  readonly source_ip: string | null;
 }
 
 export interface AlertRuleTable {

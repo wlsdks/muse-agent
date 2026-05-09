@@ -16,7 +16,6 @@ import {
   KyselyAgentRunHistoryStore,
   KyselyDebugReplayCaptureStore,
   KyselyHookTraceStore,
-  KyselyMetricAuditEventStore,
   KyselySessionTagStore
 } from "@muse/runtime-state";
 import {
@@ -108,7 +107,6 @@ describe("autoconfigure", () => {
     expect(assembly.hookTraceStore).toBeInstanceOf(KyselyHookTraceStore);
     expect(assembly.adminOperationsStore).toBeInstanceOf(KyselyAdminOperationsStore);
     expect(assembly.debugReplayCaptureStore).toBeInstanceOf(KyselyDebugReplayCaptureStore);
-    expect(assembly.metricAuditEventStore).toBeInstanceOf(KyselyMetricAuditEventStore);
     expect(assembly.observability.tracer).toBeInstanceOf(PersistedMuseTracer);
     expect(assembly.mcp.serverStore).toBeInstanceOf(KyselyMcpServerStore);
     expect(assembly.mcp.securityPolicyStore).toBeInstanceOf(KyselyMcpSecurityPolicyStore);

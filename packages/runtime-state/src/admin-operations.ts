@@ -2,10 +2,9 @@ import type {
   AdminAlertTable,
   AdminCostUsageTable,
   AdminSloTable,
-  MetricAuditTrailTable,
   MuseDatabase
 } from "@muse/db";
-import { createRunId, type JsonObject } from "@muse/shared";
+import { createRunId } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
 type Awaitable<T> = T | Promise<T>;
@@ -53,24 +52,6 @@ export interface AdminOperationsStore {
   costSummary(): Awaitable<AdminCostSummary>;
 }
 
-export interface MetricAuditEvent {
-  readonly id: string;
-  readonly kind: string;
-  readonly payload: JsonObject;
-  readonly createdAt: Date;
-}
-
-export interface MetricAuditEventInput {
-  readonly id?: string;
-  readonly kind: string;
-  readonly payload: JsonObject;
-}
-
-export interface MetricAuditEventStore {
-  record(input: MetricAuditEventInput): Awaitable<MetricAuditEvent>;
-  listRecent(limit?: number): Awaitable<readonly MetricAuditEvent[]>;
-}
-
 export interface AdminAlertInput {
   readonly id?: string;
   readonly severity?: AdminAlertSeverity;
@@ -99,8 +80,6 @@ export interface KyselyAdminOperationsStoreOptions {
 type AdminAlertRow = Selectable<AdminAlertTable>;
 type AdminSloRow = Selectable<AdminSloTable>;
 type AdminCostUsageRow = Selectable<AdminCostUsageTable>;
-type MetricAuditTrailRow = Selectable<MetricAuditTrailTable>;
-type MetricAuditTrailInsert = Insertable<MetricAuditTrailTable>;
 type AdminAlertInsert = Insertable<AdminAlertTable>;
 type AdminSloInsert = Insertable<AdminSloTable>;
 type AdminCostUsageInsert = Insertable<AdminCostUsageTable>;
@@ -180,85 +159,6 @@ export class InMemoryAdminOperationsStore implements AdminOperationsStore {
       byModel: sumCostsByModel(this.costs),
       totalCostUsd: formatCost(this.costs.reduce((sum, item) => sum + Number(item.costUsd), 0))
     };
-  }
-}
-
-export class InMemoryMetricAuditEventStore implements MetricAuditEventStore {
-  private readonly events: MetricAuditEvent[] = [];
-  private readonly idFactory: () => string;
-  private readonly maxEvents: number;
-  private readonly now: () => Date;
-
-  constructor(options: {
-    readonly idFactory?: () => string;
-    readonly maxEvents?: number;
-    readonly now?: () => Date;
-  } = {}) {
-    this.idFactory = options.idFactory ?? (() => createRunId("metric_event"));
-    this.maxEvents = Math.max(1, options.maxEvents ?? 50_000);
-    this.now = options.now ?? (() => new Date());
-  }
-
-  record(input: MetricAuditEventInput): MetricAuditEvent {
-    const event: MetricAuditEvent = {
-      createdAt: this.now(),
-      id: input.id ?? this.idFactory(),
-      kind: input.kind,
-      payload: input.payload
-    };
-
-    this.events.push(event);
-
-    while (this.events.length > this.maxEvents) {
-      this.events.shift();
-    }
-
-    return event;
-  }
-
-  listRecent(limit = 1000): readonly MetricAuditEvent[] {
-    return [...this.events]
-      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
-      .slice(0, Math.max(1, limit));
-  }
-}
-
-export class KyselyMetricAuditEventStore implements MetricAuditEventStore {
-  private readonly idFactory: () => string;
-  private readonly now: () => Date;
-
-  constructor(
-    private readonly db: Kysely<MuseDatabase>,
-    options: { readonly idFactory?: () => string; readonly now?: () => Date } = {}
-  ) {
-    this.idFactory = options.idFactory ?? (() => createRunId("metric_event"));
-    this.now = options.now ?? (() => new Date());
-  }
-
-  async record(input: MetricAuditEventInput): Promise<MetricAuditEvent> {
-    const event: MetricAuditEvent = {
-      createdAt: this.now(),
-      id: input.id ?? this.idFactory(),
-      kind: input.kind,
-      payload: input.payload
-    };
-
-    await this.db
-      .insertInto("metric_audit_trail")
-      .values(createMetricAuditTrailInsert(event))
-      .executeTakeFirstOrThrow();
-
-    return event;
-  }
-
-  async listRecent(limit = 1000): Promise<readonly MetricAuditEvent[]> {
-    const rows = await this.db
-      .selectFrom("metric_audit_trail")
-      .selectAll()
-      .orderBy("time", "desc")
-      .limit(Math.max(1, limit))
-      .execute();
-    return rows.map(mapMetricAuditTrailRow);
   }
 }
 
@@ -455,28 +355,6 @@ export function mapAdminCostUsageRow(row: AdminCostUsageRow): AdminCostUsage {
   };
 }
 
-export function createMetricAuditTrailInsert(event: MetricAuditEvent): MetricAuditTrailInsert {
-  return {
-    actor_email: null,
-    actor_id: null,
-    detail: event.payload,
-    event_type: event.kind,
-    resource_id: event.id,
-    resource_type: "metric_event",
-    source_ip: null,
-    time: event.createdAt
-  };
-}
-
-export function mapMetricAuditTrailRow(row: MetricAuditTrailRow | MetricAuditTrailInsert): MetricAuditEvent {
-  return {
-    createdAt: toDate(row.time ?? new Date(0)),
-    id: row.resource_id ?? createRunId("metric_event"),
-    kind: row.event_type,
-    payload: jsonObject(row.detail)
-  };
-}
-
 function calculateSloStatus(target: number, actual: number | undefined): AdminSloStatus {
   if (actual === undefined || actual >= target) {
     return "healthy";
@@ -506,17 +384,4 @@ function compareById(left: { readonly id: string }, right: { readonly id: string
 
 function toDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
-}
-
-function jsonObject(value: unknown): JsonObject {
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value) as unknown;
-      return jsonObject(parsed);
-    } catch {
-      return {};
-    }
-  }
-
-  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {};
 }

@@ -3,7 +3,6 @@ import type {
   AdminAlertInput,
   AdminAlertSeverity,
   AdminCostUsage,
-  MetricAuditEventStore,
   AdminOperationsStore,
   AdminSloInput
 } from "@muse/runtime-state";
@@ -32,7 +31,6 @@ export interface AdminRouteState {
     };
     readonly tracer?: unknown;
   };
-  readonly metricEventStore?: MetricAuditEventStore;
   readonly resilience?: {
     readonly circuitBreakerRegistry?: {
       getIfExists(name: string): CircuitBreakerView | undefined;

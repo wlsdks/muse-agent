@@ -351,17 +351,6 @@ export const migrations: readonly SqlMigration[] = [
         attributes JSONB NOT NULL DEFAULT '{}'::jsonb
       );
 
-      CREATE TABLE IF NOT EXISTS metric_audit_trail (
-        time TIMESTAMPTZ NOT NULL,
-        actor_id VARCHAR(128),
-        actor_email VARCHAR(255),
-        event_type VARCHAR(80) NOT NULL,
-        resource_type VARCHAR(80),
-        resource_id VARCHAR(128),
-        detail JSONB NOT NULL DEFAULT '{}'::jsonb,
-        source_ip VARCHAR(45)
-      );
-
       CREATE TABLE IF NOT EXISTS metric_quota_events (
         time TIMESTAMPTZ NOT NULL,
         action VARCHAR(80) NOT NULL,

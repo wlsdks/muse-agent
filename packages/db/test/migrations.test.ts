@@ -50,7 +50,6 @@ describe("db migrations", () => {
       "conversation_summaries",
       "debug_replay_captures",
       "metric_agent_executions",
-      "metric_audit_trail",
       "metric_eval_results",
       "metric_guard_events",
       "metric_hitl_events",
