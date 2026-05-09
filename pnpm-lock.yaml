@@ -436,6 +436,8 @@ importers:
         specifier: workspace:*
         version: link:../shared
 
+  packages/voice: {}
+
 packages:
 
   '@alcalzone/ansi-tokenize@0.3.0':
