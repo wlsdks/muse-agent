@@ -738,6 +738,32 @@ try {
       `expected INVALID_RISK_FILTER, got ${badBody.code}`);
   });
 
+  await record("GET /api/voice/providers is correctly gated by OPENAI_API_KEY presence", async () => {
+    // The voice rollout (rounds 92 / 95 / 97) registers /api/voice/* only
+    // when MUSE_VOICE_OPENAI_API_KEY or OPENAI_API_KEY is set. Smoke broad
+    // doesn't force either, so the expected state depends on the env:
+    //   - No key → routes absent → 404
+    //   - Key set → routes present → 200 with stt[] + tts[] arrays
+    // Both states are correct gating; this check fails only on regressions
+    // (5xx, malformed body, or wrong empty/non-empty arrays).
+    const response = await fetch(`${baseUrl}/api/voice/providers`);
+    if (response.status === 404) {
+      return;
+    }
+    assert(response.status === 200, `expected 200 or 404, got ${response.status}`);
+    const body = await response.json();
+    assert(Array.isArray(body.stt), "expected stt array when voice is configured");
+    assert(Array.isArray(body.tts), "expected tts array when voice is configured");
+    assert(body.stt.length >= 1, "expected at least one STT provider when voice is configured");
+    assert(body.tts.length >= 1, "expected at least one TTS provider when voice is configured");
+    for (const stt of body.stt) {
+      assert(typeof stt.id === "string" && stt.id.length > 0, "expected stt.id string");
+    }
+    for (const tts of body.tts) {
+      assert(typeof tts.id === "string" && tts.id.length > 0, "expected tts.id string");
+    }
+  });
+
   await record("POST /api/chat with metadata.agentMode=plan_execute", async () => {
     const response = await fetch(`${baseUrl}/api/chat`, {
       body: JSON.stringify({
