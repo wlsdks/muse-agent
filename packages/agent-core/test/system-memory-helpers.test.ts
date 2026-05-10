@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { appendSystemSection, renderUserMemorySection } from "../src/runtime-helpers.js";
+import {
+  appendSystemSection,
+  buildPersonaSnapshot,
+  renderUserMemorySection,
+  resolvePersonaSnapshot
+} from "../src/runtime-helpers.js";
 
 describe("renderUserMemorySection", () => {
   it("returns undefined when the snapshot has no facts, preferences, or recent topics", () => {
@@ -88,5 +93,96 @@ describe("appendSystemSection", () => {
   it("uses the default sectionId='context' when none is supplied", () => {
     const result = appendSystemSection([], "a body");
     expect(result[0]?.content).toContain("<!-- muse:context -->");
+  });
+});
+
+describe("buildPersonaSnapshot", () => {
+  it("renders a key=value; key=value; … snapshot with fact./pref./topics segments", () => {
+    const snapshot = buildPersonaSnapshot(
+      {
+        facts: { name: "Alice", role: "operator", extra: "ignored" },
+        preferences: { tz: "Asia/Seoul", lang: "ko" },
+        recentTopics: ["jarvis", "mcp", "agents", "extra-topic"],
+        userId: "u-1"
+      },
+      2
+    );
+    expect(snapshot).toBeDefined();
+    expect(snapshot).toContain("fact.name=Alice");
+    expect(snapshot).toContain("fact.role=operator");
+    // maxEntries=2 caps facts; "extra" must be dropped.
+    expect(snapshot).not.toContain("ignored");
+    expect(snapshot).toContain("pref.tz=Asia/Seoul");
+    expect(snapshot).toContain("pref.lang=ko");
+    // topics caps at 3 regardless of maxEntries.
+    expect(snapshot).toContain("topics=jarvis,mcp,agents");
+    expect(snapshot).not.toContain("extra-topic");
+    // Single-line concat with `; `.
+    expect(snapshot?.split("\n")).toHaveLength(1);
+    expect(snapshot).toContain("; ");
+  });
+
+  it("returns undefined when the snapshot would be empty", () => {
+    expect(
+      buildPersonaSnapshot({ facts: {}, preferences: {}, userId: "u" }, 10)
+    ).toBeUndefined();
+  });
+});
+
+describe("resolvePersonaSnapshot", () => {
+  it("returns undefined when no provider is configured", async () => {
+    expect(
+      await resolvePersonaSnapshot({ messages: [] }, undefined, 10)
+    ).toBeUndefined();
+  });
+
+  it("returns undefined when metadata.userId is missing", async () => {
+    expect(
+      await resolvePersonaSnapshot(
+        { messages: [], metadata: {} },
+        { findByUserId: async () => ({ facts: { x: "y" }, preferences: {}, userId: "ghost" }) },
+        10
+      )
+    ).toBeUndefined();
+  });
+
+  it("returns the rendered snapshot when provider + userId resolve to a memory", async () => {
+    const snapshot = await resolvePersonaSnapshot(
+      { messages: [], metadata: { userId: "alice" } },
+      {
+        findByUserId: async (id) => ({
+          facts: { project: "muse" },
+          preferences: { tone: "concise" },
+          userId: id
+        })
+      },
+      5
+    );
+    expect(snapshot).toContain("fact.project=muse");
+    expect(snapshot).toContain("pref.tone=concise");
+  });
+
+  it("fails open: provider error → undefined (does not throw)", async () => {
+    const snapshot = await resolvePersonaSnapshot(
+      { messages: [], metadata: { userId: "alice" } },
+      {
+        findByUserId: async () => {
+          throw new Error("provider exploded");
+        }
+      },
+      5
+    );
+    expect(snapshot).toBeUndefined();
+  });
+
+  it("returns undefined when memory exists but is empty", async () => {
+    const snapshot = await resolvePersonaSnapshot(
+      { messages: [], metadata: { userId: "alice" } },
+      {
+        findByUserId: async (id) => ({ facts: {}, preferences: {}, userId: id })
+      },
+      5
+    );
+    expect(snapshot).toBeUndefined();
   });
 });

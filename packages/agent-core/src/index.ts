@@ -68,6 +68,7 @@ import {
   metadataString,
   numberMetadata,
   recordContextWindowSpanAttributes,
+  resolvePersonaSnapshot as resolvePersonaSnapshotFn,
   stringListMetadata
 } from "./runtime-helpers.js";
 import {
@@ -392,7 +393,15 @@ export class AgentRuntime {
       const memoryAppliedContext: AgentRunContext = { ...layeredContext, input: memoryAppliedInput };
       const summaryAppliedInput = await applyStoredConversationSummaryFn(memoryAppliedContext, this.conversationSummaryStore);
       const summaryAppliedContext: AgentRunContext = { ...memoryAppliedContext, input: summaryAppliedInput };
-      const preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model);
+      // Round 160: resolve the persona snapshot once per request and
+      // forward to the trim layer so a compaction during this turn
+      // re-injects user-context inside the [User context: ...] block.
+      const personaSnapshot = await resolvePersonaSnapshotFn(
+        summaryAppliedContext.input,
+        this.userMemoryProvider,
+        this.userMemoryMaxEntries
+      );
+      const preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot);
       recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
       const tools = this.modelTools(layeredContext);
       const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
@@ -511,7 +520,15 @@ export class AgentRuntime {
       const memoryAppliedContext: AgentRunContext = { ...layeredContext, input: memoryAppliedInput };
       const summaryAppliedInput = await applyStoredConversationSummaryFn(memoryAppliedContext, this.conversationSummaryStore);
       const summaryAppliedContext: AgentRunContext = { ...memoryAppliedContext, input: summaryAppliedInput };
-      const preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model);
+      // Round 160: resolve the persona snapshot once per request and
+      // forward to the trim layer so a compaction during this turn
+      // re-injects user-context inside the [User context: ...] block.
+      const personaSnapshot = await resolvePersonaSnapshotFn(
+        summaryAppliedContext.input,
+        this.userMemoryProvider,
+        this.userMemoryMaxEntries
+      );
+      const preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot);
       recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
       const tools = this.modelTools(layeredContext);
       const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
@@ -632,7 +649,8 @@ export class AgentRuntime {
 
   private prepareModelRequest(
     input: AgentRunInput,
-    model: string
+    model: string,
+    personaSnapshot?: string
   ): {
     readonly contextWindow?: AgentContextWindowReport;
     readonly request: Pick<ModelRequest, "messages" | "metadata" | "model">;
@@ -647,7 +665,15 @@ export class AgentRuntime {
       };
     }
 
-    const trimResult = trimConversationMessages(input.messages, this.contextWindow);
+    // Merge the resolved persona snapshot into the trim options so
+    // it becomes part of the compaction summary's `[User context: ...]`
+    // block when the trim fires (round 159 primitive). When unset
+    // (no provider / no userId / empty memory), trim sees `undefined`
+    // and behaves identically to before.
+    const trimOptions: ConversationTrimOptions = personaSnapshot
+      ? { ...this.contextWindow, personaSnapshot }
+      : this.contextWindow;
+    const trimResult = trimConversationMessages(input.messages, trimOptions);
 
     return {
       contextWindow: {

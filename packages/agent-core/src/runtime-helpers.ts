@@ -5,7 +5,12 @@ import type { AgentRunMode } from "@muse/runtime-state";
 import type { JsonObject } from "@muse/shared";
 import { ModelRoutingError } from "./errors.js";
 import { isRecord } from "./internals.js";
-import type { AgentSpecRunReport, UserMemorySnapshot } from "./types.js";
+import type {
+  AgentRunInput,
+  AgentSpecRunReport,
+  UserMemoryProvider,
+  UserMemorySnapshot
+} from "./types.js";
 
 /** Subset of the runtime context window report consumed by tracing helpers. */
 export interface SpanAttributableContextWindow {
@@ -205,6 +210,65 @@ export function renderUserMemorySection(memory: UserMemorySnapshot, maxEntries: 
     lines.push(`Recent topics: ${memory.recentTopics.slice(0, maxEntries).join(", ")}`);
   }
   return lines.join("\n");
+}
+
+/**
+ * Build the compact persona snapshot string consumed by
+ * `trimConversationMessages.personaSnapshot` (round 159). Different
+ * shape from `renderUserMemorySection` — this one is a single-line
+ * `key=value; key=value; …` form so it slots cleanly into the
+ * `[User context: …]` block of a compaction summary without
+ * blowing the post-compaction budget.
+ *
+ * Caps: `maxEntries` facts + `maxEntries` preferences + up to 3
+ * recent topics. Returns `undefined` when the snapshot would be
+ * empty (so callers can pass it through to trim without bloating
+ * the prompt for users with no recorded memory).
+ */
+export function buildPersonaSnapshot(memory: UserMemorySnapshot, maxEntries: number): string | undefined {
+  const factEntries = Object.entries(memory.facts).slice(0, maxEntries);
+  const preferenceEntries = Object.entries(memory.preferences).slice(0, maxEntries);
+  const topics = (memory.recentTopics ?? []).slice(0, 3);
+  const parts: string[] = [];
+  for (const [key, value] of factEntries) {
+    parts.push(`fact.${key}=${value}`);
+  }
+  for (const [key, value] of preferenceEntries) {
+    parts.push(`pref.${key}=${value}`);
+  }
+  if (topics.length > 0) {
+    parts.push(`topics=${topics.join(",")}`);
+  }
+  if (parts.length === 0) {
+    return undefined;
+  }
+  return parts.join("; ");
+}
+
+/**
+ * Fetch + render the persona snapshot for the current run's user,
+ * if a provider is configured AND `metadata.userId` is present.
+ * Fail-open: any error or missing memory returns `undefined` so the
+ * trim path stays unaffected.
+ */
+export async function resolvePersonaSnapshot(
+  input: AgentRunInput,
+  provider: UserMemoryProvider | undefined,
+  maxEntries: number
+): Promise<string | undefined> {
+  if (!provider) {
+    return undefined;
+  }
+  const userId = metadataString(input.metadata, "userId");
+  if (!userId) {
+    return undefined;
+  }
+  try {
+    const memory = await provider.findByUserId(userId);
+    return memory ? buildPersonaSnapshot(memory, maxEntries) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
