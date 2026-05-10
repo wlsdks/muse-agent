@@ -18,6 +18,7 @@ import {
   filterReminders,
   fireReminder,
   parseReminderDueAt,
+  parseReminderVia,
   readReminders,
   readReminderStatusFilter,
   serializeReminder,
@@ -69,21 +70,11 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     if (parsed instanceof Error) {
       return reply.status(400).send({ code: "INVALID_REMINDER_DUE_AT", message: parsed.message });
     }
-    let via: { providerId: string; destination: string } | undefined;
-    if (body?.via !== undefined) {
-      const candidate = body.via as { providerId?: unknown; destination?: unknown } | null;
-      if (!candidate
-        || typeof candidate.providerId !== "string"
-        || typeof candidate.destination !== "string"
-        || candidate.providerId.trim().length === 0
-        || candidate.destination.trim().length === 0) {
-        return reply.status(400).send({
-          code: "INVALID_REMINDER_VIA",
-          message: "via must be { providerId: string, destination: string } with non-empty values"
-        });
-      }
-      via = { destination: candidate.destination.trim(), providerId: candidate.providerId.trim() };
+    const viaResult = parseReminderVia(body?.via);
+    if (viaResult instanceof Error) {
+      return reply.status(400).send({ code: "INVALID_REMINDER_VIA", message: viaResult.message });
     }
+    const via = viaResult;
     const reminders = await readReminders(remindersFile);
     const created: PersistedReminder = {
       createdAt: new Date().toISOString(),

@@ -106,6 +106,32 @@ export function parseReminderDueAt(raw: string, now: () => Date): string | Error
 }
 
 /**
+ * Validate a `via` payload supplied by the REST route, the MCP
+ * `add` tool, or any future `update` surface. Returns the cleaned
+ * `{ providerId, destination }` (trimmed) or an Error explaining
+ * what's wrong. Both fields must be present + non-empty strings.
+ *
+ * Returns `undefined` when the input is `undefined` so the caller
+ * can use the result directly in an optional spread.
+ */
+export function parseReminderVia(raw: unknown): ReminderVia | Error | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!raw || typeof raw !== "object") {
+    return new Error("via must be an object with providerId + destination");
+  }
+  const candidate = raw as { providerId?: unknown; destination?: unknown };
+  if (typeof candidate.providerId !== "string"
+    || typeof candidate.destination !== "string"
+    || candidate.providerId.trim().length === 0
+    || candidate.destination.trim().length === 0) {
+    return new Error("via.providerId and via.destination must be non-empty strings");
+  }
+  return { destination: candidate.destination.trim(), providerId: candidate.providerId.trim() };
+}
+
+/**
  * Flip a reminder pending → fired. Phase A of active firing
  * (see `docs/design/reminder-firing.md`): the LLM can call
  * `muse.reminders.fire` after it's delivered the reminder

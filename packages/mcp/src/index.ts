@@ -526,12 +526,14 @@ export {
   filterReminders,
   fireReminder,
   parseReminderDueAt,
+  parseReminderVia,
   readReminders,
   readReminderStatusFilter,
   serializeReminder,
   writeReminders,
   type PersistedReminder,
-  type ReminderStatusFilter
+  type ReminderStatusFilter,
+  type ReminderVia
 } from "./personal-reminders-store.js";
 
 // Phase B firing engine — see docs/design/reminder-firing.md. The

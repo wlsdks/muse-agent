@@ -8,6 +8,7 @@ import {
   filterReminders,
   fireReminder,
   parseReminderDueAt,
+  parseReminderVia,
   readReminders,
   readReminderStatusFilter,
   serializeReminder,
@@ -80,21 +81,11 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           if (parsed instanceof Error) {
             return { error: parsed.message };
           }
-          let via: { providerId: string; destination: string } | undefined;
-          const viaRaw = args["via"];
-          if (viaRaw !== undefined) {
-            if (!viaRaw || typeof viaRaw !== "object") {
-              return { error: "via must be an object with providerId + destination" };
-            }
-            const candidate = viaRaw as { providerId?: unknown; destination?: unknown };
-            if (typeof candidate.providerId !== "string"
-              || typeof candidate.destination !== "string"
-              || candidate.providerId.trim().length === 0
-              || candidate.destination.trim().length === 0) {
-              return { error: "via.providerId and via.destination must be non-empty strings" };
-            }
-            via = { destination: candidate.destination.trim(), providerId: candidate.providerId.trim() };
+          const viaResult = parseReminderVia(args["via"]);
+          if (viaResult instanceof Error) {
+            return { error: viaResult.message };
           }
+          const via = viaResult;
           const reminders = await readReminders(file);
           const created: PersistedReminder = {
             createdAt: now().toISOString(),

@@ -2550,6 +2550,34 @@ describe("muse.messaging loopback server", () => {
   });
 });
 
+describe("parseReminderVia", () => {
+  it("returns undefined when input is undefined (caller spreads result optionally)", async () => {
+    const { parseReminderVia } = await import("../src/index.js");
+    expect(parseReminderVia(undefined)).toBeUndefined();
+  });
+
+  it("trims and returns the cleaned ReminderVia on valid input", async () => {
+    const { parseReminderVia } = await import("../src/index.js");
+    expect(parseReminderVia({ destination: "  C123  ", providerId: " slack " })).toEqual({
+      destination: "C123",
+      providerId: "slack"
+    });
+  });
+
+  it("returns an Error explaining the rejection branches", async () => {
+    const { parseReminderVia } = await import("../src/index.js");
+    expect(parseReminderVia(null)).toBeInstanceOf(Error);
+    expect(parseReminderVia("string")).toBeInstanceOf(Error);
+    expect(parseReminderVia({ destination: "x" })).toMatchObject({ message: expect.stringContaining("non-empty") });
+    expect(parseReminderVia({ destination: "", providerId: "slack" })).toMatchObject({
+      message: expect.stringContaining("non-empty")
+    });
+    expect(parseReminderVia({ destination: "   ", providerId: "slack" })).toMatchObject({
+      message: expect.stringContaining("non-empty")
+    });
+  });
+});
+
 describe("muse.reminders loopback server", () => {
   it("supports the add → due → clear lifecycle with relative dueAt", async () => {
     const { mkdtempSync } = await import("node:fs");
