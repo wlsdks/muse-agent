@@ -5,6 +5,10 @@ const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? "127.0.0.1";
 
 const options = createApiServerOptions();
+if (!options.agentRuntime) {
+
+  console.warn("[muse] Agent runtime is not configured — set MUSE_MODEL (e.g. gemini/gemini-2.0-flash) or export GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / OPENROUTER_API_KEY for auto-default. /api/chat will return 503 until one is set.");
+}
 const seeded = await seedExternalMcpServers(
   options.mcpBootstrap.serverStore,
   options.mcpBootstrap.externalServerInputs

@@ -36,7 +36,8 @@ import {
   createMuseRuntimeAssembly,
   parseBoolean,
   parseInteger,
-  requireEnv
+  requireEnv,
+  resolveDefaultModel
 } from "../src/index.js";
 
 describe("autoconfigure", () => {
@@ -533,6 +534,38 @@ describe("autoconfigure", () => {
       "muse.tasks-multi.complete",
       "muse.tasks-multi.search"
     ]));
+  });
+
+  it("resolveDefaultModel honors MUSE_MODEL when explicitly set", () => {
+    expect(resolveDefaultModel({ MUSE_MODEL: "openai/gpt-4o-mini" })).toBe("openai/gpt-4o-mini");
+    expect(resolveDefaultModel({ MUSE_DEFAULT_MODEL: "anthropic/claude-haiku-4-5-20251001" }))
+      .toBe("anthropic/claude-haiku-4-5-20251001");
+  });
+
+  it("resolveDefaultModel infers from credentials when MUSE_MODEL is unset", () => {
+    expect(resolveDefaultModel({ GEMINI_API_KEY: "x" })).toBe("gemini/gemini-2.0-flash");
+    expect(resolveDefaultModel({ GOOGLE_API_KEY: "x" })).toBe("gemini/gemini-2.0-flash");
+    expect(resolveDefaultModel({ OPENAI_API_KEY: "x" })).toBe("openai/gpt-4o-mini");
+    expect(resolveDefaultModel({ ANTHROPIC_API_KEY: "x" })).toBe("anthropic/claude-haiku-4-5-20251001");
+    expect(resolveDefaultModel({ OPENROUTER_API_KEY: "x" }))
+      .toBe("openrouter/google/gemini-2.0-flash-001");
+  });
+
+  it("resolveDefaultModel returns undefined when no model + no credentials present", () => {
+    expect(resolveDefaultModel({})).toBeUndefined();
+  });
+
+  it("resolveDefaultModel prefers GEMINI over OPENAI when both keys are present", () => {
+    expect(resolveDefaultModel({
+      GEMINI_API_KEY: "g",
+      OPENAI_API_KEY: "o"
+    })).toBe("gemini/gemini-2.0-flash");
+  });
+
+  it("createMuseRuntimeAssembly wires agentRuntime when only an API key is in env (no MUSE_MODEL)", () => {
+    const assembly = createMuseRuntimeAssembly({ env: { GEMINI_API_KEY: "fake-key-for-test" } });
+    expect(assembly.agentRuntime).toBeDefined();
+    expect(assembly.defaultModel).toBe("gemini/gemini-2.0-flash");
   });
 });
 

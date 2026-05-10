@@ -311,7 +311,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const taskMemoryStore = createTaskMemoryStore(db, env);
   const userMemoryStore = createUserMemoryStore(db);
   const sessionTagStore = createSessionTagStore(db);
-  const defaultModel = parseOptionalString(env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL);
+  const defaultModel = resolveDefaultModel(env);
   const mcpServerStore = createMcpServerStore(db, env);
   const externalServerInputs = loadExternalMcpConfig(env);
   const initialMcpPolicy = {
@@ -678,8 +678,43 @@ export function parseInteger(value: string | undefined, fallback: number): numbe
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+/**
+ * Resolve the default model identifier the runtime should use. Honors
+ * `MUSE_MODEL` / `MUSE_DEFAULT_MODEL` first; when neither is set,
+ * falls back to a sensible default inferred from whichever provider
+ * API key is present in the environment. Returns undefined only when
+ * no signal at all is available.
+ *
+ * Personal-JARVIS UX: a user who exports `GEMINI_API_KEY` once and
+ * runs `node apps/api/dist/index.js` should get a working chat
+ * endpoint without having to also set `MUSE_MODEL`.
+ */
+export function resolveDefaultModel(env: MuseEnvironment): string | undefined {
+  const explicit = parseOptionalString(env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL);
+  if (explicit) {
+    return explicit;
+  }
+  return inferDefaultModelFromCredentials(env);
+}
+
+function inferDefaultModelFromCredentials(env: MuseEnvironment): string | undefined {
+  if (parseOptionalString(env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY)) {
+    return "gemini/gemini-2.0-flash";
+  }
+  if (parseOptionalString(env.OPENAI_API_KEY)) {
+    return "openai/gpt-4o-mini";
+  }
+  if (parseOptionalString(env.ANTHROPIC_API_KEY)) {
+    return "anthropic/claude-haiku-4-5-20251001";
+  }
+  if (parseOptionalString(env.OPENROUTER_API_KEY)) {
+    return "openrouter/google/gemini-2.0-flash-001";
+  }
+  return undefined;
+}
+
 function createModelProvider(env: MuseEnvironment): ModelProvider | undefined {
-  const defaultModel = parseOptionalString(env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL);
+  const defaultModel = resolveDefaultModel(env);
   const baseUrl = parseOptionalString(env.MUSE_MODEL_BASE_URL);
 
   if (!defaultModel) {
