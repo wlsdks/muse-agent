@@ -23,6 +23,7 @@ import type { Command } from "commander";
 
 import { runCalendarSetup } from "./setup-calendar.js";
 import { runMessagingSetup } from "./setup-messaging.js";
+import { runModelSetup } from "./setup-model.js";
 import type { ProgramIO } from "./program.js";
 
 export interface SchedulerSetupHelpers {
@@ -112,6 +113,13 @@ export function registerSetupCommands(program: Command, io: ProgramIO): void {
     .action(async () => {
       await runMessagingSetup({ stderr: io.stderr, stdout: io.stdout });
     });
+
+  setup
+    .command("model")
+    .description("Configure LLM provider keys (openai / anthropic / gemini / openrouter / ollama)")
+    .action(async () => {
+      await runModelSetup({ stderr: io.stderr, stdout: io.stdout });
+    });
 }
 
 async function renderSetupStatus(): Promise<string> {
@@ -194,6 +202,7 @@ async function renderSetupStatus(): Promise<string> {
 
   lines.push("");
   lines.push("Wizards:");
+  lines.push("  muse setup model       — LLM provider keys (OpenAI / Anthropic / Gemini / OpenRouter / Ollama)");
   lines.push("  muse setup calendar    — OAuth / CalDAV / macOS calendar credentials");
   lines.push("  muse setup messaging   — Telegram / Discord / Slack / LINE bot tokens");
   lines.push("  muse mcp config-add    — register an external MCP server");
