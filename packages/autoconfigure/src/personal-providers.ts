@@ -94,6 +94,14 @@ export function resolveTasksFile(env: MuseEnvironment): string {
   return pathJoin(homedir(), ".muse", "tasks.json");
 }
 
+export function resolveMessagingCredentialsFile(env: MuseEnvironment): string {
+  const override = env.MUSE_MESSAGING_CREDENTIALS_FILE?.trim();
+  if (override && override.length > 0) {
+    return override;
+  }
+  return pathJoin(homedir(), ".muse", "messaging.json");
+}
+
 export function buildCalendarRegistry(env: MuseEnvironment): CalendarProviderRegistry {
   const registry = new CalendarProviderRegistry();
   const requested = (env.MUSE_CALENDAR_PROVIDERS?.trim() || "local")
@@ -395,33 +403,43 @@ function stringField(record: { readonly [key: string]: unknown } | undefined, ke
 }
 
 /**
- * Build the messaging provider registry from env tokens. Each
- * provider is opt-in via its own env var; absence is silent (no
- * registration, no error). Phase 1 surface is outbound-only — see
- * `docs/design/messaging.md`.
+ * Build the messaging provider registry from env tokens **and**
+ * the persisted credential file (`~/.muse/messaging.json` or
+ * `MUSE_MESSAGING_CREDENTIALS_FILE`). Env wins when both are
+ * present; absence is silent. Phase 1 surface is outbound-only —
+ * see `docs/design/messaging.md`.
  *
- * Recognised tokens:
- *   - MUSE_TELEGRAM_BOT_TOKEN
- *   - MUSE_DISCORD_BOT_TOKEN
- *   - MUSE_SLACK_BOT_TOKEN  (xoxb-...)
- *   - MUSE_LINE_CHANNEL_ACCESS_TOKEN
+ * Recognised inputs:
+ *   - MUSE_TELEGRAM_BOT_TOKEN          (env) or providers.telegram.token   (file)
+ *   - MUSE_DISCORD_BOT_TOKEN           (env) or providers.discord.token    (file)
+ *   - MUSE_SLACK_BOT_TOKEN  (xoxb-...) (env) or providers.slack.token      (file)
+ *   - MUSE_LINE_CHANNEL_ACCESS_TOKEN   (env) or providers.line.token       (file)
  */
 export function buildMessagingRegistry(env: MuseEnvironment): MessagingProviderRegistry {
   const registry = new MessagingProviderRegistry();
-  const telegramToken = env.MUSE_TELEGRAM_BOT_TOKEN?.trim();
-  if (telegramToken && telegramToken.length > 0) {
+  const file = readCredentialsSync(resolveMessagingCredentialsFile(env));
+  const tokenFor = (envKey: string, providerId: string): string | undefined => {
+    const fromEnv = env[envKey]?.trim();
+    if (fromEnv && fromEnv.length > 0) {
+      return fromEnv;
+    }
+    const fromFile = stringField(file[providerId], "token");
+    return fromFile && fromFile.length > 0 ? fromFile : undefined;
+  };
+  const telegramToken = tokenFor("MUSE_TELEGRAM_BOT_TOKEN", "telegram");
+  if (telegramToken) {
     registry.register(new TelegramProvider({ token: telegramToken }));
   }
-  const discordToken = env.MUSE_DISCORD_BOT_TOKEN?.trim();
-  if (discordToken && discordToken.length > 0) {
+  const discordToken = tokenFor("MUSE_DISCORD_BOT_TOKEN", "discord");
+  if (discordToken) {
     registry.register(new DiscordProvider({ token: discordToken }));
   }
-  const slackToken = env.MUSE_SLACK_BOT_TOKEN?.trim();
-  if (slackToken && slackToken.length > 0) {
+  const slackToken = tokenFor("MUSE_SLACK_BOT_TOKEN", "slack");
+  if (slackToken) {
     registry.register(new SlackProvider({ token: slackToken }));
   }
-  const lineToken = env.MUSE_LINE_CHANNEL_ACCESS_TOKEN?.trim();
-  if (lineToken && lineToken.length > 0) {
+  const lineToken = tokenFor("MUSE_LINE_CHANNEL_ACCESS_TOKEN", "line");
+  if (lineToken) {
     registry.register(new LineProvider({ token: lineToken }));
   }
   return registry;

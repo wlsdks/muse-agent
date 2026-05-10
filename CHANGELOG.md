@@ -27,6 +27,16 @@ move from `Unreleased` to dated/versioned headings.
   plays through afplay/aplay. Falls back to a friendly stderr hint
   when no voice provider is configured. Shared playback helper
   (`voice-playback.ts`) ready for any future "speak this" surface.
+- **`muse setup messaging` interactive wizard** — `@clack/prompts`
+  multiselect of Telegram / Discord / Slack / LINE, masked password
+  prompt per token, persists to `~/.muse/messaging.json`
+  (chmod 600 via `FileMessagingCredentialStore`). Existing tokens
+  shown masked with a replace-or-keep confirm. KakaoTalk skipped
+  on purpose. `buildMessagingRegistry(env)` now reads both env
+  tokens and the credentials file (env wins on conflict), so
+  setup-once-then-use works without re-exporting on every shell.
+  `muse setup` status surfaces per-provider source ("telegram
+  (file)", "discord (env)") for instant diagnosis.
 - **`muse.messaging.{providers, send}` MCP loopback tool** — Phase 3
   of the messenger plan. Once any provider env token is set, the
   agent runtime auto-registers a loopback MCP server so the LLM can

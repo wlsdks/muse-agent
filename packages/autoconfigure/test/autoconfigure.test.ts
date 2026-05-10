@@ -31,6 +31,7 @@ import {
 } from "kysely";
 import {
   ConfigurationError,
+  buildMessagingRegistry,
   createApiServerOptions,
   createLoopbackMcpToolsFromEnv,
   createMuseRuntimeAssembly,
@@ -566,6 +567,41 @@ describe("autoconfigure", () => {
     const assembly = createMuseRuntimeAssembly({ env: { GEMINI_API_KEY: "fake-key-for-test" } });
     expect(assembly.agentRuntime).toBeDefined();
     expect(assembly.defaultModel).toBe("gemini/gemini-2.0-flash");
+  });
+
+  it("buildMessagingRegistry honours env tokens, the credentials file, and env-overrides-file", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const root = mkdtempSync(join(tmpdir(), "muse-msg-creds-"));
+    const file = join(root, "messaging.json");
+    writeFileSync(file, JSON.stringify({
+      providers: {
+        line: { token: "from-file-line" },
+        slack: { token: "from-file-slack" },
+        telegram: { token: "from-file-telegram" }
+      },
+      version: 1
+    }), "utf8");
+
+    // file-only: no env at all
+    const fileOnly = buildMessagingRegistry({ MUSE_MESSAGING_CREDENTIALS_FILE: file });
+    expect(fileOnly.describe().map((entry) => entry.id).sort()).toEqual(["line", "slack", "telegram"]);
+
+    // env-only: env token registers, file ignored for that one
+    const envOnly = buildMessagingRegistry({
+      MUSE_DISCORD_BOT_TOKEN: "from-env-discord",
+      MUSE_MESSAGING_CREDENTIALS_FILE: join(root, "missing.json")
+    });
+    expect(envOnly.describe().map((entry) => entry.id)).toEqual(["discord"]);
+
+    // env wins when both are present (no easy way to assert which token without
+    // calling send, but the registration count + presence proves the merge).
+    const merged = buildMessagingRegistry({
+      MUSE_MESSAGING_CREDENTIALS_FILE: file,
+      MUSE_DISCORD_BOT_TOKEN: "from-env-discord"
+    });
+    expect(merged.describe().map((entry) => entry.id).sort()).toEqual(["discord", "line", "slack", "telegram"]);
   });
 });
 

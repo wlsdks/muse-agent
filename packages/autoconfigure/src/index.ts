@@ -146,6 +146,7 @@ export {
   buildMessagingRegistry,
   buildVoiceRegistry,
   resolveLocalCalendarFile,
+  resolveMessagingCredentialsFile,
   resolveNotesDir,
   resolveTasksFile
 } from "./personal-providers.js";

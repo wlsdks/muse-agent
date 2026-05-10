@@ -15,12 +15,14 @@ import { join as pathJoin } from "node:path";
 
 import {
   resolveLocalCalendarFile,
+  resolveMessagingCredentialsFile,
   resolveNotesDir,
   resolveTasksFile
 } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
 import { runCalendarSetup } from "./setup-calendar.js";
+import { runMessagingSetup } from "./setup-messaging.js";
 import type { ProgramIO } from "./program.js";
 
 export interface SchedulerSetupHelpers {
@@ -103,6 +105,13 @@ export function registerSetupCommands(program: Command, io: ProgramIO): void {
     .action(async () => {
       await runCalendarSetup({ stderr: io.stderr, stdout: io.stdout });
     });
+
+  setup
+    .command("messaging")
+    .description("Configure messenger providers (telegram / discord / slack / line) and store tokens")
+    .action(async () => {
+      await runMessagingSetup({ stderr: io.stderr, stdout: io.stdout });
+    });
 }
 
 async function renderSetupStatus(): Promise<string> {
@@ -175,11 +184,57 @@ async function renderSetupStatus(): Promise<string> {
     lines.push("  [info] voice — set OPENAI_API_KEY (or MUSE_VOICE_OPENAI_API_KEY) to enable `muse listen` / TTS");
   }
 
+  const messagingFile = resolveMessagingCredentialsFile(env);
+  const messagingHits = await readMessagingProviderState(messagingFile, env);
+  if (messagingHits.length > 0) {
+    lines.push(`  [ok]   messaging — ${messagingHits.join(", ")}`);
+  } else {
+    lines.push("  [info] messaging — no providers yet; run `muse setup messaging`");
+  }
+
   lines.push("");
   lines.push("Wizards:");
-  lines.push("  muse setup calendar   — OAuth / CalDAV / macOS calendar credentials");
-  lines.push("  muse mcp config-add   — register an external MCP server");
+  lines.push("  muse setup calendar    — OAuth / CalDAV / macOS calendar credentials");
+  lines.push("  muse setup messaging   — Telegram / Discord / Slack / LINE bot tokens");
+  lines.push("  muse mcp config-add    — register an external MCP server");
   return `${lines.join("\n")}\n`;
+}
+
+async function readMessagingProviderState(
+  file: string,
+  env: Record<string, string | undefined>
+): Promise<readonly string[]> {
+  let storedProviders: Record<string, unknown> = {};
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    const parsed = JSON.parse(raw) as { providers?: Record<string, unknown> };
+    if (parsed && typeof parsed === "object" && parsed.providers && typeof parsed.providers === "object") {
+      storedProviders = parsed.providers;
+    }
+  } catch {
+    // missing or malformed → treat as empty
+  }
+  const lines: string[] = [];
+  const probe = (id: string, envKey: string): void => {
+    const fromEnv = env[envKey]?.trim();
+    const fromFile = isRecord(storedProviders[id]) && typeof storedProviders[id].token === "string"
+      ? "file"
+      : undefined;
+    if (fromEnv && fromEnv.length > 0) {
+      lines.push(`${id} (env)`);
+    } else if (fromFile) {
+      lines.push(`${id} (file)`);
+    }
+  };
+  probe("telegram", "MUSE_TELEGRAM_BOT_TOKEN");
+  probe("discord", "MUSE_DISCORD_BOT_TOKEN");
+  probe("slack", "MUSE_SLACK_BOT_TOKEN");
+  probe("line", "MUSE_LINE_CHANNEL_ACCESS_TOKEN");
+  return lines;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function countConfiguredApiKeys(env: Record<string, string | undefined>): { total: number; names: string[] } {
