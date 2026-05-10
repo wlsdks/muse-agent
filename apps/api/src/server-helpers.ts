@@ -603,74 +603,34 @@ export function invalid(code: string, message: string): ParseResult<never> {
 }
 
 // ---------------------------------------------------------------------------
-// Generic input util
+// Generic input util — implementation in `./server-input-utils.js`.
+// Imported here for the rest of `server-helpers.ts` to use AND
+// re-exported so the existing import sites across the API package
+// keep working without import-site edits.
 // ---------------------------------------------------------------------------
+import {
+  isJsonObject,
+  isJsonValue,
+  isRecord,
+  optionalBoolean,
+  optionalNullableString,
+  optionalString,
+  optionalStringArray,
+  parseResponseLocales,
+  parseRuntimeSettingType
+} from "./server-input-utils.js";
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-export function isJsonObject(value: unknown): value is NonNullable<AgentRunInput["metadata"]> {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return Object.values(value).every(isJsonValue);
-}
-
-export function isJsonValue(value: unknown): boolean {
-  if (value === null || typeof value === "boolean" || typeof value === "string") {
-    return true;
-  }
-
-  if (typeof value === "number") {
-    return Number.isFinite(value);
-  }
-
-  if (Array.isArray(value)) {
-    return value.every(isJsonValue);
-  }
-
-  return isRecord(value) && Object.values(value).every(isJsonValue);
-}
-
-export function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-export function optionalNullableString(value: unknown): string | null | undefined {
-  return value === null || typeof value === "string" ? value : undefined;
-}
-
-export function optionalBoolean(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined;
-}
-
-export function optionalStringArray(value: unknown): readonly string[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-
-  return value.filter((item): item is string => typeof item === "string");
-}
-
-export function parseRuntimeSettingType(value: unknown): RuntimeSettingType | undefined {
-  return value === "string" || value === "number" || value === "boolean" || value === "json"
-    ? value
-    : undefined;
-}
-
-export function parseResponseLocales(raw: string | undefined): readonly string[] {
-  const fallback = ["ko", "en"];
-  if (typeof raw !== "string" || raw.trim().length === 0) {
-    return fallback;
-  }
-  const parsed = raw
-    .split(",")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter((entry) => entry === "ko" || entry === "en");
-  return parsed.length > 0 ? Array.from(new Set(parsed)) : fallback;
-}
+export {
+  isJsonObject,
+  isJsonValue,
+  isRecord,
+  optionalBoolean,
+  optionalNullableString,
+  optionalString,
+  optionalStringArray,
+  parseResponseLocales,
+  parseRuntimeSettingType
+};
 
 // ---------------------------------------------------------------------------
 // Multipart + SSE
