@@ -3,8 +3,7 @@ import type {
   AdminAlertInput,
   AdminAlertSeverity,
   AdminCostUsage,
-  AdminOperationsStore,
-  AdminSloInput
+  AdminOperationsStore
 } from "@muse/runtime-state";
 import type { TraceEventInput } from "@muse/observability";
 
@@ -158,36 +157,6 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
     return reply.status(201).send(await operations.createAlert(parsed.value));
   });
 
-  server.get("/admin/slos", async (request, reply) => {
-    if (!options.requireAuthenticated(request, reply)) {
-      return reply;
-    }
-
-    const operations = requireOperations(options, reply);
-    return operations ? operations.listSlos() : reply;
-  });
-
-  server.put("/admin/slos/:sloId", async (request, reply) => {
-    if (!options.requireAuthenticated(request, reply)) {
-      return reply;
-    }
-
-    const operations = requireOperations(options, reply);
-
-    if (!operations) {
-      return reply;
-    }
-
-    const { sloId } = request.params as { readonly sloId: string };
-    const parsed = parseSloInput(request.body, sloId);
-
-    if (!parsed.ok) {
-      return reply.status(400).send(parsed.error);
-    }
-
-    return operations.upsertSlo(parsed.value);
-  });
-
   server.get("/admin/costs/summary", async (request, reply) => {
     if (!options.requireAuthenticated(request, reply)) {
       return reply;
@@ -288,43 +257,6 @@ function parseAlertInput(value: unknown): ParseResult<AdminAlertInput> {
   };
 }
 
-function parseSloInput(value: unknown, sloId: string): ParseResult<AdminSloInput> {
-  if (
-    !isRecord(value) ||
-    typeof value.name !== "string" ||
-    value.name.trim().length === 0 ||
-    typeof value.window !== "string" ||
-    value.window.trim().length === 0
-  ) {
-    return invalid("INVALID_ADMIN_SLO", "Body must include non-empty name and window strings");
-  }
-
-  const target = parseNumber(value.target, "INVALID_ADMIN_SLO", "SLO target must be a finite number");
-
-  if (!target.ok) {
-    return target;
-  }
-
-  const actual = value.actual === undefined
-    ? ({ ok: true, value: undefined } as const)
-    : parseNumber(value.actual, "INVALID_ADMIN_SLO", "SLO actual must be a finite number");
-
-  if (!actual.ok) {
-    return actual;
-  }
-
-  return {
-    ok: true,
-    value: {
-      id: sloId,
-      ...(actual.value !== undefined ? { actual: actual.value } : {}),
-      name: value.name.trim(),
-      target: target.value,
-      window: value.window.trim()
-    }
-  };
-}
-
 function parseCostUsage(value: unknown): ParseResult<AdminCostUsage> {
   if (!isRecord(value)) {
     return invalid("INVALID_ADMIN_COST_USAGE", "Body must be an object");
@@ -374,14 +306,6 @@ function parseCost(value: string | number, code: string): ParseResult<string> {
   }
 
   return { ok: true, value: parsed.toFixed(8) };
-}
-
-function parseNumber(value: unknown, code: string, message: string): ParseResult<number> {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return invalid(code, message);
-  }
-
-  return { ok: true, value };
 }
 
 function invalid(code: string, message: string): ParseResult<never> {

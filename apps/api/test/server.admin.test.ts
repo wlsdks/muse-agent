@@ -318,7 +318,7 @@ describe("api server: admin / ops / settings / memory", () => {
     expect(reset.json()).toEqual({ name: "model.generate", state: "closed" });
   });
 
-  it("exposes tenant, alert, cost, and SLO admin operations", async () => {
+  it("exposes alert and cost admin operations", async () => {
     const authService = createAuthService();
     const registered = authService.register({
       email: "first_account",
@@ -341,22 +341,10 @@ describe("api server: admin / ops / settings / memory", () => {
       headers,
       method: "POST",
       payload: {
-        message: "High spend",
-        severity: "critical",
-        target: "tenant-1"
+        message: "Cost spike detected",
+        severity: "critical"
       },
       url: "/admin/alerts"
-    });
-    const slo = await server.inject({
-      headers,
-      method: "PUT",
-      payload: {
-        actual: 94,
-        name: "Availability",
-        target: 99.9,
-        window: "30d"
-      },
-      url: "/admin/slos/availability"
     });
     const cost = await server.inject({
       headers,
@@ -374,7 +362,6 @@ describe("api server: admin / ops / settings / memory", () => {
     });
 
     expect(alert.statusCode).toBe(201);
-    expect(slo.json()).toMatchObject({ id: "availability", status: "violated" });
     expect(cost.json()).toEqual({
       byModel: { "provider/model": "1.25000000" },
       totalCostUsd: "1.25000000"
