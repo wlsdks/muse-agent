@@ -152,6 +152,23 @@ interface UserMemoryResponse {
   readonly updatedAt: string;
 }
 
+interface ScheduledJobRow {
+  readonly id: string;
+  readonly name: string;
+  readonly cronExpression: string;
+  readonly enabled: boolean;
+  readonly jobType: string;
+  readonly lastRunAt: number | null;
+  readonly lastStatus: string | null;
+}
+
+interface ScheduledJobsResponse {
+  readonly items: readonly ScheduledJobRow[];
+  readonly total: number;
+  readonly limit: number;
+  readonly offset: number;
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -205,6 +222,7 @@ export function MuseConsole() {
           <TasksPanel client={client} />
           <NotesPanel client={client} />
           <MemoryPanel client={client} />
+          <SchedulerPanel client={client} />
           <CalendarEventsPanel client={client} />
           <RunsPanel runs={admin.data?.recentRuns ?? []} loading={admin.isLoading} />
           <ToolCatalogPanel tools={tools.data?.tools ?? []} loading={tools.isLoading} />
@@ -568,6 +586,65 @@ function MemoryPanel({ client }: { readonly client: ApiClient }) {
             <span style={{ color: "var(--muted, #888)", marginLeft: "0.5rem", fontSize: "0.85em" }}>
               {value}
             </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function SchedulerPanel({ client }: { readonly client: ApiClient }) {
+  const jobs = useQuery({
+    queryFn: () => client.get<ScheduledJobsResponse>("/api/scheduler/jobs?limit=10"),
+    queryKey: ["scheduler-jobs"],
+    // The endpoint always returns at least an empty list when scheduler
+    // is unavailable, so retry: false isn't strictly needed — but it
+    // keeps the panel quiet on auth failures too.
+    retry: false
+  });
+
+  const items = jobs.data?.items ?? [];
+  const enabledCount = items.filter((job) => job.enabled).length;
+  const totalCount = jobs.data?.total ?? 0;
+
+  return (
+    <section className="tool-surface compact" aria-label="Scheduler">
+      <div className="surface-heading">
+        <h2>Scheduler</h2>
+        <span>{jobs.isLoading ? "Loading" : `${enabledCount}/${totalCount}`}</span>
+      </div>
+      {jobs.isError ? (
+        <p className="status-error">Scheduler is not available.</p>
+      ) : null}
+      {!jobs.isLoading && !jobs.isError && items.length === 0 ? (
+        <p className="status-info" style={{ fontSize: "0.85em", margin: 0 }}>
+          No jobs scheduled. Use `muse scheduler create-job` or the agent's
+          scheduler tools to add one.
+        </p>
+      ) : null}
+      <ul className="record-list">
+        {items.map((job) => (
+          <li key={job.id}>
+            <strong>{job.name}</strong>
+            <span style={{ color: "var(--muted, #888)", marginLeft: "0.5rem", fontSize: "0.85em" }}>
+              {job.cronExpression}
+            </span>
+            {!job.enabled ? (
+              <span style={{ color: "var(--muted, #888)", marginLeft: "0.5rem", fontSize: "0.85em" }}>
+                (disabled)
+              </span>
+            ) : null}
+            {job.lastStatus ? (
+              <span style={{
+                color: job.lastStatus === "FAILED" || job.lastStatus === "failed"
+                  ? "var(--error, #c0392b)"
+                  : "var(--muted, #888)",
+                marginLeft: "0.5rem",
+                fontSize: "0.85em"
+              }}>
+                {job.lastStatus.toLowerCase()}
+              </span>
+            ) : null}
           </li>
         ))}
       </ul>

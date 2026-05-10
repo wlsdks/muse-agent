@@ -56,6 +56,15 @@ describe("MuseConsole", () => {
     expect(html).toMatch(/<h2>Memory<\/h2>/u);
   });
 
+  it("renders the Scheduler panel section heading", () => {
+    const html = renderConsole();
+    // The scheduler panel renders before /api/scheduler/jobs resolves
+    // (queries are disabled in the static test render). Header `Scheduler`
+    // and aria-label both present.
+    expect(html).toContain('aria-label="Scheduler"');
+    expect(html).toMatch(/<h2>Scheduler<\/h2>/u);
+  });
+
   it("includes status metrics for tools and orchestrations counts", () => {
     const html = renderConsole();
     // Status strip metric labels — capitalised plural forms.
