@@ -23,6 +23,7 @@ import {
   createTasksMcpServer,
   createRegexMcpServer,
   AppleNotesProvider,
+  AppleRemindersProvider,
   LocalDirNotesProvider,
   LocalFileTasksProvider,
   NotesProviderError,
@@ -1782,5 +1783,36 @@ describe("tasks provider abstraction", () => {
   it("constructor rejects empty file path with TasksValidationError", () => {
     expect(() => new LocalFileTasksProvider({ file: "" })).toThrow(TasksValidationError);
     expect(() => new LocalFileTasksProvider({ file: "   " })).toThrow(TasksValidationError);
+  });
+
+  it("AppleRemindersProvider describes itself as a local osascript adapter", () => {
+    const apple = new AppleRemindersProvider();
+    const info = apple.describe();
+    expect(info.id).toBe("apple-reminders");
+    expect(info.local).toBe(true);
+    expect(info.displayName).toBe("Apple Reminders");
+    expect(info.description).toContain("AppleScript");
+  });
+
+  it("AppleRemindersProvider scopes the description when a list filter is set", () => {
+    const scoped = new AppleRemindersProvider({ list: "Groceries" });
+    expect(scoped.describe().description).toContain("Groceries");
+  });
+
+  it("AppleRemindersProvider validates inputs before invoking osascript", async () => {
+    const apple = new AppleRemindersProvider();
+    await expect(apple.add({ title: "  " })).rejects.toMatchObject({ code: "EMPTY_TITLE" });
+    await expect(apple.complete("")).rejects.toMatchObject({ code: "EMPTY_ID" });
+    await expect(apple.search("   ", 10)).rejects.toMatchObject({ code: "EMPTY_QUERY" });
+  });
+
+  it("AppleRemindersProvider surfaces osascript failures as typed provider errors", async () => {
+    // /usr/bin/false exits non-zero with empty stdout/stderr — exercises the
+    // generic EXIT_<code> code path without needing a real Reminders.app.
+    const apple = new AppleRemindersProvider({ osascriptPath: "/usr/bin/false" });
+    const error = await apple.list().catch((err) => err);
+    expect(error).toBeInstanceOf(TasksProviderError);
+    expect((error as TasksProviderError).providerId).toBe("apple-reminders");
+    expect((error as TasksProviderError).code).toMatch(/^EXIT_/);
   });
 });

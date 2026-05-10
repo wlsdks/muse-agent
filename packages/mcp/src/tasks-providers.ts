@@ -134,3 +134,7 @@ export class TasksProviderRegistry {
 // stays byte-identical.
 export { LocalFileTasksProvider } from "./tasks-providers-local-file.js";
 export type { LocalFileTasksProviderOptions } from "./tasks-providers-local-file.js";
+
+// Apple Reminders adapter is in its own file (round 153 lift).
+export { AppleRemindersProvider } from "./tasks-providers-apple.js";
+export type { AppleRemindersProviderOptions } from "./tasks-providers-apple.js";

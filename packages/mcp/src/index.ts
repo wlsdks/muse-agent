@@ -503,13 +503,15 @@ export {
 } from "./notes-providers.js";
 
 // Tasks provider abstraction (round 152). Mirrors the notes-providers
-// pattern. Currently ships a single LocalFile backend; Apple Reminders
-// (osascript) and Notion DB land in subsequent iters.
+// pattern. LocalFile + AppleReminders backends land at rounds 152 + 153;
+// Notion DB lands later.
 export {
+  AppleRemindersProvider,
   LocalFileTasksProvider,
   TasksProviderError,
   TasksProviderRegistry,
   TasksValidationError,
+  type AppleRemindersProviderOptions,
   type LocalFileTasksProviderOptions,
   type Task,
   type TaskInput,
