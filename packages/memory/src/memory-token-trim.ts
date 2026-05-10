@@ -17,6 +17,7 @@
 
 import { createHash } from "node:crypto";
 import {
+  COMPACTION_PERSONA_SNAPSHOT_PREFIX,
   COMPACTION_PINNED_ENTITIES_PREFIX,
   COMPACTION_SUMMARY_PREFIX,
   DEFAULT_CACHE_KEY_MAX_CHARS,
@@ -191,7 +192,8 @@ export function trimConversationMessages(
       droppedCount,
       originalSnapshot,
       estimator,
-      messageStructureOverhead
+      messageStructureOverhead,
+      options.personaSnapshot
     );
   }
 
@@ -390,7 +392,8 @@ function insertCompactionSummary(
   droppedCount: number,
   originalSnapshot: readonly ConversationMessage[],
   estimator: TokenEstimator,
-  messageStructureOverhead: number
+  messageStructureOverhead: number,
+  personaSnapshot: string | undefined
 ): number {
   const previousSummary = messages[0]?.role === "system" && messages[0].content.startsWith(COMPACTION_SUMMARY_PREFIX)
     ? messages[0].content
@@ -401,7 +404,7 @@ function insertCompactionSummary(
   }
 
   const summary: ConversationMessage = {
-    content: buildCompactionSummaryText(messages, originalSnapshot, droppedCount, previousSummary),
+    content: buildCompactionSummaryText(messages, originalSnapshot, droppedCount, previousSummary, personaSnapshot),
     role: "system"
   };
   const summaryTokens = estimateMessageTokens(summary, estimator, messageStructureOverhead);
@@ -417,7 +420,8 @@ function buildCompactionSummaryText(
   messages: readonly ConversationMessage[],
   originalSnapshot: readonly ConversationMessage[],
   droppedCount: number,
-  previousSummary: string | undefined
+  previousSummary: string | undefined,
+  personaSnapshot: string | undefined
 ): string {
   const toolNames = unique(
     messages.flatMap((message) =>
@@ -429,8 +433,11 @@ function buildCompactionSummaryText(
     .slice(-2)
     .map((message) => compactLine(message.content).slice(0, 80));
   const pinnedEntities = extractPinnedEntities(originalSnapshot);
+  // Strip a previous `User context: ...` block from the carried-over
+  // summary so successive compaction rounds don't accumulate stale
+  // copies. The fresh `personaSnapshot` (if any) is re-emitted below.
   const lines = previousSummary
-    ? [previousSummary, `[Additional compaction round: ${droppedCount} messages removed]`]
+    ? [stripPersonaSnapshot(previousSummary), `[Additional compaction round: ${droppedCount} messages removed]`]
     : [`${COMPACTION_SUMMARY_PREFIX}: ${droppedCount} messages compacted]`];
 
   if (toolNames.length > 0) {
@@ -445,7 +452,24 @@ function buildCompactionSummaryText(
     lines.push(`${COMPACTION_PINNED_ENTITIES_PREFIX}: ${pinnedEntities.join(", ")}`);
   }
 
+  if (personaSnapshot && personaSnapshot.trim().length > 0) {
+    // Single-line tag that downstream tooling (and the LLM) can spot.
+    // Body is included verbatim — caller is responsible for any
+    // structuring (e.g. `key=value` lines).
+    lines.push(`${COMPACTION_PERSONA_SNAPSHOT_PREFIX}: ${personaSnapshot.trim()}`);
+  }
+
   return lines.join("\n");
+}
+
+function stripPersonaSnapshot(summary: string): string {
+  // Drop any line starting with `User context: ...` so successive
+  // compactions don't accumulate stale snapshots. Keeps every other
+  // line intact.
+  return summary
+    .split("\n")
+    .filter((line) => !line.startsWith(`${COMPACTION_PERSONA_SNAPSHOT_PREFIX}: `))
+    .join("\n");
 }
 
 function estimateMessageTokens(

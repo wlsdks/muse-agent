@@ -8,6 +8,7 @@ import {
   PostgresQueryCompiler
 } from "kysely";
 import {
+  COMPACTION_PERSONA_SNAPSHOT_PREFIX,
   COMPACTION_SUMMARY_PREFIX,
   COMPACTION_PINNED_ENTITIES_PREFIX,
   buildActiveTaskMemoryQuery,
@@ -374,6 +375,113 @@ describe("conversation trimming", () => {
     expect(second.messages[0]?.content).toContain(COMPACTION_SUMMARY_PREFIX);
     expect(second.messages[0]?.content).toContain("Additional compaction round");
     expect(second.messages[0]?.content).toContain("REACTOR-101");
+  });
+
+  it("includes the personaSnapshot in the compaction summary when a trim fires", () => {
+    const result = trimConversationMessages(
+      [
+        user("first topic"),
+        assistant("first answer"),
+        user("second topic"),
+        assistant("second answer"),
+        user("third topic"),
+        assistant("third answer"),
+        user("current topic")
+      ],
+      {
+        estimator: lengthEstimator,
+        maxContextWindowTokens: 120,
+        outputReserveTokens: 20,
+        personaSnapshot: "name=Alice; tz=Asia/Seoul; preferred_lang=ko"
+      }
+    );
+
+    expect(result.summaryInserted).toBe(true);
+    expect(result.messages[0]?.content).toContain(`${COMPACTION_PERSONA_SNAPSHOT_PREFIX}: `);
+    expect(result.messages[0]?.content).toContain("name=Alice");
+    expect(result.messages[0]?.content).toContain("tz=Asia/Seoul");
+  });
+
+  it("does NOT add a persona-snapshot block when no compaction fires", () => {
+    // Under-budget conversation → no summary, no User context line.
+    // Critical: the feature must not bloat prompts on cheap/short runs.
+    const result = trimConversationMessages(
+      [user("hi"), assistant("hello")],
+      {
+        estimator: lengthEstimator,
+        maxContextWindowTokens: 1_000,
+        outputReserveTokens: 0,
+        personaSnapshot: "name=Alice"
+      }
+    );
+
+    expect(result.summaryInserted).toBe(false);
+    expect(result.messages[0]?.content).not.toContain(COMPACTION_PERSONA_SNAPSHOT_PREFIX);
+  });
+
+  it("treats an empty/whitespace personaSnapshot as absent (no User context line)", () => {
+    const result = trimConversationMessages(
+      [
+        user("first topic"),
+        assistant("first answer"),
+        user("second topic"),
+        assistant("second answer"),
+        user("third topic"),
+        assistant("third answer"),
+        user("current topic")
+      ],
+      {
+        estimator: lengthEstimator,
+        maxContextWindowTokens: 120,
+        outputReserveTokens: 20,
+        personaSnapshot: "   "
+      }
+    );
+
+    expect(result.summaryInserted).toBe(true);
+    expect(result.messages[0]?.content).not.toContain(COMPACTION_PERSONA_SNAPSHOT_PREFIX);
+  });
+
+  it("strips a stale persona snapshot from the carried previousSummary on the next compaction round", () => {
+    // First compaction stamps personaSnapshot="ver=1".
+    const first = trimConversationMessages(
+      [
+        user("first topic REACTOR-101"),
+        assistant("first answer"),
+        user("second topic"),
+        assistant("second answer"),
+        user("current topic")
+      ],
+      {
+        estimator: lengthEstimator,
+        maxContextWindowTokens: 100,
+        outputReserveTokens: 20,
+        personaSnapshot: "ver=1"
+      }
+    );
+    expect(first.messages[0]?.content).toContain("ver=1");
+
+    // Second compaction with a NEW snapshot — the stale `ver=1` line
+    // must be stripped, only `ver=2` should appear.
+    const second = trimConversationMessages(
+      [
+        ...first.messages,
+        assistant("answer to current topic"),
+        user("yet another"),
+        assistant("yet another answer"),
+        user("latest topic")
+      ],
+      {
+        estimator: lengthEstimator,
+        maxContextWindowTokens: 100,
+        outputReserveTokens: 20,
+        personaSnapshot: "ver=2"
+      }
+    );
+
+    expect(second.summaryInserted).toBe(true);
+    expect(second.messages[0]?.content).toContain("ver=2");
+    expect(second.messages[0]?.content).not.toContain("ver=1");
   });
 });
 

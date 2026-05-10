@@ -38,6 +38,27 @@ export interface ConversationTrimOptions {
    * existing callers see no change.
    */
   readonly workingBudgetTokens?: number;
+  /**
+   * Optional pre-resolved persona / user-model snapshot. When the
+   * trim fires (working_budget OR hard_limit) and the compaction
+   * summary is inserted, this snapshot becomes a `[User context]`
+   * block in the summary so the agent doesn't lose what it had
+   * learned about the user across the boundary.
+   *
+   * Caller responsibilities:
+   *   - Resolve the snapshot synchronously (e.g. from a
+   *     UserMemoryStore in autoconfigure / agent-core).
+   *   - Keep it short — it competes for the same budget. A few
+   *     hundred tokens of structured key=value lines is the
+   *     intended shape, not a full memory dump.
+   *   - Treat it as untrusted: snapshot text should not contain
+   *     instructions the agent could mistake for system prompts.
+   *
+   * When unset OR the trim doesn't fire, no `[User context]`
+   * block is added (the prompt stays as-is so non-compacted runs
+   * pay zero overhead for the feature).
+   */
+  readonly personaSnapshot?: string;
 }
 
 export interface ConversationTrimResult {
@@ -170,6 +191,12 @@ export const DEFAULT_COMPACTION_THRESHOLD = 3;
 export const DEFAULT_WORKING_BUDGET_RATIO = 0.4;
 export const COMPACTION_SUMMARY_PREFIX = "[Conversation summary";
 export const COMPACTION_PINNED_ENTITIES_PREFIX = "Pinned entities for pronoun resolution";
+/**
+ * Prefix for the persona / user-model snapshot block appended to
+ * compaction summaries. Stable string so future tooling can detect
+ * + strip it during further trimming if needed.
+ */
+export const COMPACTION_PERSONA_SNAPSHOT_PREFIX = "User context";
 export const DEFAULT_TASK_MEMORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 
 // Conversation-summary persistence (in-memory + Kysely stores, upsert
