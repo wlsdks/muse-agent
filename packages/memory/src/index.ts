@@ -266,6 +266,15 @@ export {
   trimConversationMessages
 } from "./memory-token-trim.js";
 
+// Tool-output trimming primitive (round 161 — Context Engineering
+// step 1.b). Used by agent-core/model-loop to cap individual tool
+// results before they land as messages.
+export {
+  trimToolOutput,
+  type ToolOutputTrimOptions,
+  type ToolOutputTrimResult
+} from "./memory-tool-output-trim.js";
+
 export {
   createUserMemoryAutoExtractHook,
   type UserMemoryAutoExtractOptions

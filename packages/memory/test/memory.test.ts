@@ -11,6 +11,7 @@ import {
   COMPACTION_PERSONA_SNAPSHOT_PREFIX,
   COMPACTION_SUMMARY_PREFIX,
   COMPACTION_PINNED_ENTITIES_PREFIX,
+  trimToolOutput,
   buildActiveTaskMemoryQuery,
   buildConversationSummaryUpsertQuery,
   buildTaskMemoryUpsertQuery,
@@ -440,6 +441,65 @@ describe("conversation trimming", () => {
 
     expect(result.summaryInserted).toBe(true);
     expect(result.messages[0]?.content).not.toContain(COMPACTION_PERSONA_SNAPSHOT_PREFIX);
+  });
+
+  it("trimToolOutput passes through when input fits the cap", () => {
+    const result = trimToolOutput("hello world", { maxChars: 100 });
+    expect(result.truncated).toBe(false);
+    expect(result.output).toBe("hello world");
+    expect(result.originalLength).toBe(11);
+  });
+
+  it("trimToolOutput preserves head + tail with an elision marker", () => {
+    const long = "A".repeat(50) + "MIDDLE-CONTENT" + "B".repeat(50);
+    const result = trimToolOutput(long, { maxChars: 60 });
+    expect(result.truncated).toBe(true);
+    expect(result.originalLength).toBe(long.length);
+    expect(result.output.length).toBeLessThanOrEqual(60);
+    expect(result.output).toContain("[truncated:");
+    expect(result.output).toContain("chars elided");
+    // Head should still start with 'A's; tail should end with 'B's.
+    expect(result.output.startsWith("A")).toBe(true);
+    expect(result.output.endsWith("B")).toBe(true);
+    // Middle content must be elided.
+    expect(result.output).not.toContain("MIDDLE-CONTENT");
+  });
+
+  it("trimToolOutput surfaces the optional hint inside the marker", () => {
+    const long = "x".repeat(500);
+    const result = trimToolOutput(long, {
+      hint: "tool muse.fs.read returned a larger result",
+      maxChars: 100
+    });
+    expect(result.output).toContain("muse.fs.read");
+  });
+
+  it("trimToolOutput honors headRatio for asymmetric head/tail allocation", () => {
+    const long = "X".repeat(40) + "Y".repeat(40);
+    const result = trimToolOutput(long, { headRatio: 0.9, maxChars: 50 });
+    // Most of the budget went to head → mostly X's.
+    const xCount = (result.output.match(/X/gu) ?? []).length;
+    const yCount = (result.output.match(/Y/gu) ?? []).length;
+    expect(xCount).toBeGreaterThan(yCount);
+  });
+
+  it("trimToolOutput is a no-op when maxChars <= 0", () => {
+    const long = "z".repeat(1_000);
+    expect(trimToolOutput(long, { maxChars: 0 })).toMatchObject({
+      output: long,
+      truncated: false
+    });
+    expect(trimToolOutput(long, { maxChars: -1 })).toMatchObject({
+      output: long,
+      truncated: false
+    });
+  });
+
+  it("trimToolOutput collapses to marker only when budget is below marker length", () => {
+    const long = "q".repeat(1_000);
+    const result = trimToolOutput(long, { maxChars: 10 });
+    expect(result.truncated).toBe(true);
+    expect(result.output.length).toBeLessThanOrEqual(10);
   });
 
   it("strips a stale persona snapshot from the carried previousSummary on the next compaction round", () => {

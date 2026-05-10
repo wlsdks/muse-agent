@@ -409,6 +409,13 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       historyStore,
       hooks: runtimeHooks,
       hookTraceStore,
+      // Round 161: per-tool-result character cap. Default 8_000
+      // chars (~2_000 tokens at the rough 1-token-per-4-chars
+      // approximation) — large enough for small file reads and
+      // typical tool replies, small enough that a single huge
+      // result can't blow the working budget. Tunable via
+      // MUSE_MAX_TOOL_OUTPUT_CHARS; 0 disables the cap.
+      maxToolOutputChars: parseInteger(env.MUSE_MAX_TOOL_OUTPUT_CHARS, 8_000),
       metrics: runtimeAgentMetrics,
       modelProvider,
       guards: createInputGuards(env),

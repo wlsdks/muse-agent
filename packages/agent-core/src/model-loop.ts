@@ -23,6 +23,7 @@ import type {
   ModelResponse,
   ModelToolCall
 } from "@muse/model";
+import { trimToolOutput } from "@muse/memory";
 import type { AgentMetrics, MuseTracer, TokenUsageSink } from "@muse/observability";
 import { renderToolResults } from "@muse/prompts";
 
@@ -43,6 +44,15 @@ export interface ModelLoopRunner {
   readonly tracer: MuseTracer;
   readonly metrics: AgentMetrics;
   readonly tokenUsageSink?: TokenUsageSink;
+  /**
+   * Per-tool-result character cap (round 161, Context Engineering
+   * step 1.b). When set and an individual tool output exceeds the
+   * cap, the message-bound copy is truncated head+tail with an
+   * elision marker. The original `result.output` on the tracked
+   * tool result is left unchanged so traces / metrics see the full
+   * text. 0 or undefined disables the cap.
+   */
+  readonly maxToolOutputChars?: number;
   generateWithTracing(
     context: AgentRunContext,
     provider: ModelProvider,
@@ -115,8 +125,13 @@ export async function executeModelLoop(
       deduplicator.record(toolCall, executed.result);
       toolsUsed.push(toolCall.name);
       toolResults.push(executed);
+      // Round 161: cap individual tool results so a single big
+      // output doesn't blow the context window. Original
+      // executed.result.output is left intact for traces / metrics
+      // — only the message-bound copy is truncated.
+      const messageContent = capToolOutput(executed.result.output, toolCall.name, runner.maxToolOutputChars);
       toolMessages.push({
-        content: executed.result.output,
+        content: messageContent,
         name: toolCall.name,
         role: "tool",
         toolCallId: toolCall.id
@@ -124,7 +139,9 @@ export async function executeModelLoop(
     }
 
     const toolSummary = renderToolResults(
-      toolResults.map((item) => `${item.result.name}: ${item.result.output}`).join("\n\n")
+      toolResults
+        .map((item) => `${item.result.name}: ${capToolOutput(item.result.output, item.result.name, runner.maxToolOutputChars)}`)
+        .join("\n\n")
     );
     const nextMessages = [...messages, ...toolMessages];
     messages = toolSummary
@@ -198,8 +215,13 @@ export async function* executeStreamingModelLoop(
       deduplicator.record(toolCall, executed.result);
       toolsUsed.push(toolCall.name);
       toolResults.push(executed);
+      // Round 161: cap individual tool results so a single big
+      // output doesn't blow the context window. Original
+      // executed.result.output is left intact for traces / metrics
+      // — only the message-bound copy is truncated.
+      const messageContent = capToolOutput(executed.result.output, toolCall.name, runner.maxToolOutputChars);
       toolMessages.push({
-        content: executed.result.output,
+        content: messageContent,
         name: toolCall.name,
         role: "tool",
         toolCallId: toolCall.id
@@ -207,7 +229,9 @@ export async function* executeStreamingModelLoop(
     }
 
     const toolSummary = renderToolResults(
-      toolResults.map((item) => `${item.result.name}: ${item.result.output}`).join("\n\n")
+      toolResults
+        .map((item) => `${item.result.name}: ${capToolOutput(item.result.output, item.result.name, runner.maxToolOutputChars)}`)
+        .join("\n\n")
     );
     const nextMessages = [...messages, ...toolMessages];
     messages = toolSummary
@@ -296,4 +320,22 @@ async function* streamModelTurn(
   } finally {
     span.end();
   }
+}
+
+
+/**
+ * Apply the per-tool-result character cap (round 161). Pure
+ * delegate to `trimToolOutput` from @muse/memory; here just
+ * threads in the per-tool hint that surfaces in the elision
+ * marker. When `maxChars` is undefined or 0, the original
+ * output passes through unchanged.
+ */
+function capToolOutput(output: string, toolName: string, maxChars: number | undefined): string {
+  if (!maxChars || maxChars <= 0) {
+    return output;
+  }
+  return trimToolOutput(output, {
+    hint: `tool ${toolName} returned a larger result`,
+    maxChars
+  }).output;
 }

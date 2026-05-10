@@ -194,6 +194,16 @@ export interface AgentRuntimeOptions {
   readonly toolExecutor?: ToolExecutor;
   readonly toolExposurePolicy?: ToolExposurePolicy;
   readonly maxToolCalls?: number;
+  /**
+   * Per-tool-result character cap (Context Engineering step 1.b,
+   * round 161). When set and a tool returns more than `maxChars`
+   * characters, the message-bound copy is truncated head+tail with
+   * an explicit elision marker so the agent sees the truncation
+   * rather than guessing why the result looks short. The original
+   * result on traces / metrics stays intact. 0 or undefined = no
+   * cap (legacy behavior).
+   */
+  readonly maxToolOutputChars?: number;
   readonly circuitBreaker?: CircuitBreaker;
   readonly fallbackStrategy?: FallbackStrategy;
   readonly retry?: RetryOptions;
@@ -296,6 +306,7 @@ export class AgentRuntime {
   private readonly toolExecutor?: ToolExecutor;
   private readonly toolExposurePolicy?: ToolExposurePolicy;
   private readonly maxToolCalls: number;
+  private readonly maxToolOutputChars: number;
   private readonly circuitBreaker?: CircuitBreaker;
   private readonly fallbackStrategy?: FallbackStrategy;
   private readonly retry?: RetryOptions;
@@ -336,6 +347,7 @@ export class AgentRuntime {
           })
         : undefined);
     this.maxToolCalls = Math.max(0, options.maxToolCalls ?? 10);
+    this.maxToolOutputChars = Math.max(0, options.maxToolOutputChars ?? 0);
     this.circuitBreaker = options.circuitBreaker;
     this.fallbackStrategy = options.fallbackStrategy;
     this.retry = options.retry;
@@ -750,6 +762,7 @@ export class AgentRuntime {
       executeToolCall: (context, toolCall, activeTools) => this.executeToolCall(context, toolCall, activeTools),
       generateWithTracing: (context, provider, request) => this.generateWithTracing(context, provider, request),
       maxToolCalls: this.maxToolCalls,
+      maxToolOutputChars: this.maxToolOutputChars,
       metrics: this.metrics,
       tokenUsageSink: this.tokenUsageSink,
       tracer: this.tracer
