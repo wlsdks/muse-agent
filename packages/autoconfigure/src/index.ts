@@ -79,17 +79,7 @@ import {
   type TaskMemoryStore,
   type UserMemoryStore
 } from "@muse/memory";
-import {
-  AnthropicProvider,
-  DiagnosticModelProvider,
-  GeminiProvider,
-  OllamaProvider,
-  OpenAICompatibleProvider,
-  OpenAIProvider,
-  OpenRouterProvider,
-  parseModelName,
-  type ModelProvider
-} from "@muse/model";
+import type { ModelProvider } from "@muse/model";
 import {
   CostAnomalyDetector,
   InMemoryAgentMetrics,
@@ -692,100 +682,12 @@ export function parseInteger(value: string | undefined, fallback: number): numbe
  * runs `node apps/api/dist/index.js` should get a working chat
  * endpoint without having to also set `MUSE_MODEL`.
  */
-export function resolveDefaultModel(env: MuseEnvironment): string | undefined {
-  const explicit = parseOptionalString(env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL);
-  if (explicit) {
-    return explicit;
-  }
-  return inferDefaultModelFromCredentials(env);
-}
+import {
+  createModelProvider,
+  resolveDefaultModel
+} from "./autoconfigure-model-provider.js";
 
-function inferDefaultModelFromCredentials(env: MuseEnvironment): string | undefined {
-  if (parseOptionalString(env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY)) {
-    return "gemini/gemini-2.0-flash";
-  }
-  if (parseOptionalString(env.OPENAI_API_KEY)) {
-    return "openai/gpt-4o-mini";
-  }
-  if (parseOptionalString(env.ANTHROPIC_API_KEY)) {
-    return "anthropic/claude-haiku-4-5-20251001";
-  }
-  if (parseOptionalString(env.OPENROUTER_API_KEY)) {
-    return "openrouter/google/gemini-2.0-flash-001";
-  }
-  return undefined;
-}
-
-function createModelProvider(env: MuseEnvironment): ModelProvider | undefined {
-  const defaultModel = resolveDefaultModel(env);
-  const baseUrl = parseOptionalString(env.MUSE_MODEL_BASE_URL);
-
-  if (!defaultModel) {
-    return undefined;
-  }
-
-  const explicitProviderId = parseOptionalString(env.MUSE_MODEL_PROVIDER_ID);
-  const providerId = explicitProviderId
-    ?? (baseUrl ? "openai-compatible" : parseModelName(defaultModel).providerId)
-    ?? "openai-compatible";
-  const models = parseCsv(env.MUSE_MODEL_LIST) ?? [parseModelName(defaultModel).modelId];
-
-  switch (providerId) {
-    case "diagnostic":
-      return new DiagnosticModelProvider({
-        defaultModel,
-        models
-      });
-    case "anthropic":
-      return new AnthropicProvider({
-        apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env.ANTHROPIC_API_KEY),
-        baseUrl,
-        defaultModel,
-        models
-      });
-    case "gemini":
-      return new GeminiProvider({
-        apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY),
-        baseUrl,
-        defaultModel,
-        models
-      });
-    case "ollama":
-      return new OllamaProvider({
-        baseUrl,
-        defaultModel,
-        models
-      });
-    case "openai":
-      return new OpenAIProvider({
-        apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env.OPENAI_API_KEY),
-        baseUrl,
-        defaultModel,
-        models
-      });
-    case "openrouter":
-      return new OpenRouterProvider({
-        apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env.OPENROUTER_API_KEY),
-        appName: parseOptionalString(env.MUSE_APP_NAME) ?? "Muse",
-        baseUrl,
-        defaultModel,
-        models,
-        siteUrl: parseOptionalString(env.MUSE_SITE_URL)
-      });
-    default:
-      if (!baseUrl) {
-        return undefined;
-      }
-
-      return new OpenAICompatibleProvider({
-        apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env.OPENAI_API_KEY),
-        baseUrl,
-        defaultModel,
-        id: providerId,
-        models
-      });
-  }
-}
+export { createModelProvider, resolveDefaultModel };
 
 function createScheduledAgentExecutor(
   runtime: () => AgentRuntime | undefined,
@@ -1019,7 +921,7 @@ function parseNonNegativeFloat(value: string | undefined, fallback: number): num
   return parsed;
 }
 
-function parseCsv(value: string | undefined): readonly string[] | undefined {
+export function parseCsv(value: string | undefined): readonly string[] | undefined {
   const entries = value
     ?.split(",")
     .map((entry) => entry.trim())
@@ -1028,7 +930,7 @@ function parseCsv(value: string | undefined): readonly string[] | undefined {
   return entries && entries.length > 0 ? entries : undefined;
 }
 
-function parseOptionalString(value: string | undefined): string | undefined {
+export function parseOptionalString(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
 }
