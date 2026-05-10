@@ -14,10 +14,8 @@ import { dirname } from "node:path";
 import type { AgentSpecResolver } from "@muse/agent-core";
 import { extractBearerToken } from "@muse/auth";
 import type { AgentSpecRegistry } from "@muse/agent-specs";
-import type { CalendarCredentialStore, CalendarProviderRegistry } from "@muse/calendar";
 import { describeBuiltinLoopbackMcpServers } from "@muse/mcp";
 import type { RuntimeSettings } from "@muse/runtime-settings";
-import type { JsonObject } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 
 import {
@@ -516,98 +514,10 @@ export function registerRuntimeSettingsRoutes(
   });
 }
 
-interface CalendarRoutesGate {
-  readonly authService: ServerOptions["authService"];
-  readonly registry: CalendarProviderRegistry;
-  readonly credentialStore?: CalendarCredentialStore;
-}
-
-export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRoutesGate): void {
-  server.get("/api/calendar/providers", async (request, reply) => {
-    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
-      return reply;
-    }
-    return {
-      enabled: gate.registry.list().map((provider) => provider.id),
-      providers: gate.registry.describe()
-    };
-  });
-
-  server.get("/api/calendar/events", async (request, reply) => {
-    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
-      return reply;
-    }
-    const query = request.query as { readonly fromIso?: string; readonly toIso?: string; readonly providerId?: string } | undefined;
-    const from = parseIsoOrDefault(query?.fromIso, new Date());
-    const to = parseIsoOrDefault(query?.toIso, new Date(from.getTime() + 30 * 86_400_000));
-    try {
-      const events = await gate.registry.listEvents({ from, to }, query?.providerId);
-      return {
-        events: events.map((event) => ({
-          allDay: event.allDay,
-          endsAtIso: event.endsAt.toISOString(),
-          id: event.id,
-          location: event.location ?? null,
-          notes: event.notes ?? null,
-          providerId: event.providerId,
-          startsAtIso: event.startsAt.toISOString(),
-          tags: event.tags ?? [],
-          title: event.title,
-          url: event.url ?? null
-        })),
-        total: events.length
-      };
-    } catch (error) {
-      return reply.status(502).send({ code: "CALENDAR_LIST_FAILED", message: error instanceof Error ? error.message : String(error) });
-    }
-  });
-
-  if (!gate.credentialStore) {
-    return;
-  }
-  const credentialStore = gate.credentialStore;
-
-  server.get("/api/calendar/credentials", async (request, reply) => {
-    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
-      return reply;
-    }
-    const ids = await credentialStore.list();
-    return { providers: ids };
-  });
-
-  server.put("/api/calendar/credentials/:providerId", async (request, reply) => {
-    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
-      return reply;
-    }
-    const { providerId } = request.params as { readonly providerId: string };
-    const body = request.body;
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
-      return reply.status(400).send({
-        code: "INVALID_CREDENTIAL_PAYLOAD",
-        message: "Body must be a JSON object of credential key/value pairs"
-      });
-    }
-    await credentialStore.save(providerId, body as JsonObject);
-    return { providerId, saved: true };
-  });
-
-  server.delete("/api/calendar/credentials/:providerId", async (request, reply) => {
-    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
-      return reply;
-    }
-    const { providerId } = request.params as { readonly providerId: string };
-    await credentialStore.remove(providerId);
-    return reply.status(204).send();
-  });
-}
-
-function parseIsoOrDefault(value: string | undefined, fallback: Date): Date {
-  if (!value) {
-    return fallback;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
-}
+// `/api/calendar/*` routes live in `./calendar-routes.ts` (lifted out
+// to keep the calendar surface focused). Re-exported here so server.ts
+// and any future consumers keep working through `./server-routes.js`.
+export { registerCalendarRoutes } from "./calendar-routes.js";
 
 interface TasksRoutesGate {
   readonly authService: ServerOptions["authService"];
