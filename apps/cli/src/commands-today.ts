@@ -3,16 +3,23 @@
  *
  * Remote mode: GET /api/today?lookaheadHours=N (one round-trip).
  * Local mode (--local): compose the same shape from the on-disk
- * tasks file and notes dir without an API server. Calendar events
- * are skipped in --local because the CalendarProviderRegistry
- * requires async boot (OAuth tokens, CalDAV creds) — running through
- * the API server still serves that case.
+ * tasks file, notes dir, and the local calendar file without an API
+ * server. OAuth (Google) and CalDAV calendar providers stay
+ * API-only — they need credential bootstrapping that's owned by the
+ * runtime assembly, so `--local` only sees events written to
+ * `~/.muse/calendar.json`.
  */
 
 import { promises as fs } from "node:fs";
 import { join, resolve as resolvePath } from "node:path";
 
-import { resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
+import {
+  createMuseRuntimeAssembly,
+  resolveLocalCalendarFile,
+  resolveNotesDir,
+  resolveTasksFile
+} from "@muse/autoconfigure";
+import { LocalCalendarProvider } from "@muse/calendar";
 import { readTasks, serializeTask, type PersistedTask } from "@muse/mcp";
 import type { Command } from "commander";
 
@@ -46,14 +53,32 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
     .description("Personal morning briefing — open tasks, next 24h calendar, recent notes")
     .option("--json", "Print machine-readable JSON instead of the formatted summary")
     .option("--lookahead-hours <n>", "Hours of calendar look-ahead (default 24)")
-    .option("--local", "Compose locally without the API (calendar events are skipped)")
+    .option("--local", "Compose locally without the API (calendar limited to the local file)")
+    .option("--brief", "Render the briefing as a 2-3 sentence natural-language summary via the configured model")
+    .option("--model <name>", "Model id to use for --brief (defaults to MUSE_MODEL)")
     .action(async (
-      options: { readonly json?: boolean; readonly lookaheadHours?: string; readonly local?: boolean },
+      options: {
+        readonly json?: boolean;
+        readonly lookaheadHours?: string;
+        readonly local?: boolean;
+        readonly brief?: boolean;
+        readonly model?: string;
+      },
       command
     ) => {
       const briefing = options.local
         ? await composeLocalBriefing(parseLookaheadHours(options.lookaheadHours))
         : await fetchRemoteBriefing(io, command, helpers, options.lookaheadHours);
+
+      if (options.brief) {
+        const prose = await renderBrief(io, command, helpers, briefing, options.local === true, options.model);
+        if (options.json) {
+          helpers.writeOutput(io, { ...briefing, brief: prose });
+          return;
+        }
+        io.stdout(`${prose.trim()}\n`);
+        return;
+      }
 
       if (options.json) {
         helpers.writeOutput(io, briefing);
@@ -65,6 +90,71 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
       io.stdout(formatEvents(briefing.events));
       io.stdout(formatNotes(briefing.notes));
     });
+}
+
+const BRIEF_SYSTEM_PROMPT =
+  "You are Muse, the user's personal AI assistant in the JARVIS tradition. " +
+  "Render the morning briefing JSON as a short, conversational summary (2-3 sentences, max 4). " +
+  "Lead with the most time-sensitive thing (the next event or an overdue task). " +
+  "Mention overall task count, the soonest event with its time, and one recent note if relevant. " +
+  "Be warm but concise — no bullet lists, no headers. Match the user's locale.";
+
+async function renderBrief(
+  io: ProgramIO,
+  command: Command,
+  helpers: TodayCommandHelpers,
+  briefing: TodayBriefing,
+  local: boolean,
+  modelOverride: string | undefined
+): Promise<string> {
+  // /api/chat doesn't take a system message, so the prompt is folded
+  // into the single user message. The local path keeps the system
+  // role separate via agentRuntime.run's messages array.
+  const remoteMessage =
+    `${BRIEF_SYSTEM_PROMPT}\n\nBriefing JSON:\n${JSON.stringify(briefing, null, 2)}\n\n` +
+    "Render this as a short conversational morning brief.";
+
+  if (local) {
+    const userBody = `Briefing JSON:\n${JSON.stringify(briefing, null, 2)}\n\nRender this as a short conversational morning brief.`;
+    return runLocalBrief(io, userBody, modelOverride);
+  }
+
+  const body: Record<string, unknown> = {
+    message: remoteMessage,
+    metadata: { source: "today.brief" }
+  };
+  if (modelOverride) {
+    body.model = modelOverride;
+  }
+  const response = (await helpers.apiRequest(io, command, "/api/chat", body)) as Record<string, unknown>;
+  const content = typeof response.content === "string" ? response.content : "";
+  if (!content) {
+    throw new Error(
+      `today --brief got an empty response from the model${
+        typeof response.errorMessage === "string" ? ` (${response.errorMessage})` : ""
+      }`
+    );
+  }
+  return content;
+}
+
+async function runLocalBrief(io: ProgramIO, userMessage: string, modelOverride: string | undefined): Promise<string> {
+  const assembly = io.createRuntimeAssembly?.() ?? createMuseRuntimeAssembly();
+  if (!assembly.agentRuntime || !(modelOverride ?? assembly.defaultModel)) {
+    throw new Error("today --brief --local requires MUSE_MODEL and a configured model provider");
+  }
+  const result = await assembly.agentRuntime.run({
+    messages: [
+      { content: BRIEF_SYSTEM_PROMPT, role: "system" },
+      { content: userMessage, role: "user" }
+    ],
+    model: modelOverride ?? assembly.defaultModel ?? "default"
+  });
+  const text = result.response.output;
+  if (!text || text.trim().length === 0) {
+    throw new Error("today --brief --local: model returned an empty response");
+  }
+  return text;
 }
 
 async function fetchRemoteBriefing(
@@ -83,19 +173,37 @@ async function composeLocalBriefing(lookaheadHours: number): Promise<TodayBriefi
   const env = process.env as Record<string, string | undefined>;
   const tasksFile = resolveTasksFile(env);
   const notesDir = resolveNotesDir(env);
+  const calendarFile = resolveLocalCalendarFile(env);
+  const now = new Date();
+  const horizon = new Date(now.getTime() + lookaheadHours * 3_600_000);
 
-  const [tasks, notes] = await Promise.all([
+  const [tasks, events, notes] = await Promise.all([
     readOpenTasks(tasksFile).catch(() => undefined),
+    readLocalEvents(calendarFile, now, horizon).catch(() => undefined),
     readRecentNotes(notesDir).catch(() => undefined)
   ]);
 
   return {
-    events: undefined,
-    generatedAt: new Date().toISOString(),
+    events,
+    generatedAt: now.toISOString(),
     lookaheadHours,
     notes,
     tasks
   };
+}
+
+async function readLocalEvents(
+  file: string,
+  from: Date,
+  to: Date
+): Promise<readonly { id: string; title: string; startsAtIso: string }[]> {
+  const provider = new LocalCalendarProvider({ file });
+  const events = await provider.listEvents({ from, to });
+  return events.map((event) => ({
+    id: event.id,
+    startsAtIso: event.startsAt.toISOString(),
+    title: event.title
+  }));
 }
 
 async function readOpenTasks(tasksFile: string): Promise<readonly { id: string; title: string }[]> {

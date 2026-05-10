@@ -139,7 +139,12 @@ import {
   resolveTasksFile
 } from "./personal-providers.js";
 
-export { buildVoiceRegistry, resolveNotesDir, resolveTasksFile } from "./personal-providers.js";
+export {
+  buildVoiceRegistry,
+  resolveLocalCalendarFile,
+  resolveNotesDir,
+  resolveTasksFile
+} from "./personal-providers.js";
 import {
   createConversationSummaryStore,
   createDebugReplayCaptureStore,
