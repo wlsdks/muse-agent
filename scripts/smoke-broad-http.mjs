@@ -833,6 +833,33 @@ try {
     assert(reread.content.includes("gamma"), "expected appended content in re-read");
   });
 
+  await record("GET /api/today consolidates the personal-domain briefing", async () => {
+    // /api/today (round 123) is the server-side aggregator that backs
+    // `muse today` since round 124. Smoke broad already wires
+    // MUSE_NOTES_DIR + MUSE_TASKS_FILE to temp dirs above, plus the
+    // default local calendar provider — so all three sections should
+    // render as arrays (possibly empty) rather than undefined.
+    const reply = await fetch(`${baseUrl}/api/today?lookaheadHours=12`);
+    assert(reply.status === 200, `expected 200, got ${reply.status}`);
+    const body = await reply.json();
+    assert(typeof body.generatedAt === "string" && body.generatedAt.length > 0,
+      `expected generatedAt string, got ${JSON.stringify(body.generatedAt)}`);
+    assert(body.lookaheadHours === 12,
+      `expected echoed lookaheadHours=12, got ${body.lookaheadHours}`);
+    assert(Array.isArray(body.tasks),
+      `expected tasks array (notesDir wired in smoke env), got ${typeof body.tasks}`);
+    assert(Array.isArray(body.events),
+      `expected events array (default local calendar provider), got ${typeof body.events}`);
+    assert(Array.isArray(body.notes),
+      `expected notes array (notesDir wired in smoke env), got ${typeof body.notes}`);
+
+    // Lookahead clamp (server caps at 168h = 7 days).
+    const tooBig = await fetch(`${baseUrl}/api/today?lookaheadHours=99999`);
+    const tooBigBody = await tooBig.json();
+    assert(tooBigBody.lookaheadHours === 168,
+      `expected lookaheadHours clamped to 168, got ${tooBigBody.lookaheadHours}`);
+  });
+
   await record("POST /api/chat with metadata.agentMode=plan_execute", async () => {
     const response = await fetch(`${baseUrl}/api/chat`, {
       body: JSON.stringify({
