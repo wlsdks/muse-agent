@@ -1355,4 +1355,165 @@ describe("cli program", () => {
       }
     }
   });
+
+  it("mcp config-add appends a stdio entry to ~/.muse/mcp.json", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const tmp = await mkdtemp(path.join(tmpdir(), "muse-mcp-add-cli-"));
+    const target = path.join(tmp, "mcp.json");
+
+    const previous = process.env.MUSE_MCP_CONFIG;
+    process.env.MUSE_MCP_CONFIG = target;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram(io);
+      await program.parseAsync([
+        "node", "muse", "mcp", "config-add", "fs",
+        "--command", "npx",
+        "--arg", "-y", "--arg", "@modelcontextprotocol/server-filesystem", "--arg", "/tmp",
+        "--env", "FOO=bar"
+      ], { from: "node" });
+
+      expect(output.join("")).toContain(`added fs (stdio) → ${target}`);
+      const written = JSON.parse(await readFile(target, "utf8")) as {
+        mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }>;
+      };
+      expect(written.mcpServers.fs).toMatchObject({
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+        env: { FOO: "bar" }
+      });
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MUSE_MCP_CONFIG;
+      } else {
+        process.env.MUSE_MCP_CONFIG = previous;
+      }
+    }
+  });
+
+  it("mcp config-add appends a streamable URL entry with headers", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const tmp = await mkdtemp(path.join(tmpdir(), "muse-mcp-add-cli-"));
+    const target = path.join(tmp, "mcp.json");
+
+    const previous = process.env.MUSE_MCP_CONFIG;
+    process.env.MUSE_MCP_CONFIG = target;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram(io);
+      await program.parseAsync([
+        "node", "muse", "mcp", "config-add", "gh",
+        "--url", "https://api.githubcopilot.com/mcp/",
+        "--header", "Authorization=Bearer xyz",
+        "--header", "X-Trace=abc"
+      ], { from: "node" });
+
+      expect(output.join("")).toContain("added gh (streamable)");
+      const written = JSON.parse(await readFile(target, "utf8")) as {
+        mcpServers: Record<string, { url: string; transport: string; headers: Record<string, string> }>;
+      };
+      expect(written.mcpServers.gh).toMatchObject({
+        url: "https://api.githubcopilot.com/mcp/",
+        transport: "streamable",
+        headers: { Authorization: "Bearer xyz", "X-Trace": "abc" }
+      });
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MUSE_MCP_CONFIG;
+      } else {
+        process.env.MUSE_MCP_CONFIG = previous;
+      }
+    }
+  });
+
+  it("mcp config-add --dry-run prints merged JSON without writing", async () => {
+    const { writeFile, readFile } = await import("node:fs/promises");
+    const tmp = await mkdtemp(path.join(tmpdir(), "muse-mcp-add-cli-"));
+    const target = path.join(tmp, "mcp.json");
+    await writeFile(target, JSON.stringify({ mcpServers: { existing: { command: "node" } } }), "utf8");
+
+    const previous = process.env.MUSE_MCP_CONFIG;
+    process.env.MUSE_MCP_CONFIG = target;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram(io);
+      await program.parseAsync([
+        "node", "muse", "mcp", "config-add", "fresh",
+        "--command", "node", "--dry-run"
+      ], { from: "node" });
+
+      const out = output.join("");
+      expect(out).toContain("\"existing\"");
+      expect(out).toContain("\"fresh\"");
+      // File should still hold only `existing` because of --dry-run.
+      const persisted = JSON.parse(await readFile(target, "utf8")) as {
+        mcpServers: Record<string, unknown>;
+      };
+      expect(Object.keys(persisted.mcpServers)).toEqual(["existing"]);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MUSE_MCP_CONFIG;
+      } else {
+        process.env.MUSE_MCP_CONFIG = previous;
+      }
+    }
+  });
+
+  it("mcp config-add rejects duplicate names with a non-zero exit", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    const tmp = await mkdtemp(path.join(tmpdir(), "muse-mcp-add-cli-"));
+    const target = path.join(tmp, "mcp.json");
+    await writeFile(target, JSON.stringify({ mcpServers: { taken: { command: "node" } } }), "utf8");
+
+    const previous = process.env.MUSE_MCP_CONFIG;
+    process.env.MUSE_MCP_CONFIG = target;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram(io);
+      let exitError: unknown;
+      try {
+        await program.parseAsync([
+          "node", "muse", "mcp", "config-add", "taken", "--command", "echo"
+        ], { from: "node" });
+      } catch (err) {
+        exitError = err;
+      }
+      expect(output.join("")).toContain("already exists");
+      expect(exitError).toBeDefined();
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MUSE_MCP_CONFIG;
+      } else {
+        process.env.MUSE_MCP_CONFIG = previous;
+      }
+    }
+  });
+
+  it("mcp config-add rejects entries with neither --command nor --url", async () => {
+    const tmp = await mkdtemp(path.join(tmpdir(), "muse-mcp-add-cli-"));
+    const target = path.join(tmp, "mcp.json");
+
+    const previous = process.env.MUSE_MCP_CONFIG;
+    process.env.MUSE_MCP_CONFIG = target;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram(io);
+      let exitError: unknown;
+      try {
+        await program.parseAsync([
+          "node", "muse", "mcp", "config-add", "incomplete"
+        ], { from: "node" });
+      } catch (err) {
+        exitError = err;
+      }
+      expect(output.join("")).toMatch(/--command.*--url/);
+      expect(exitError).toBeDefined();
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MUSE_MCP_CONFIG;
+      } else {
+        process.env.MUSE_MCP_CONFIG = previous;
+      }
+    }
+  });
 });

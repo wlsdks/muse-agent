@@ -7,6 +7,32 @@ move from `Unreleased` to dated/versioned headings.
 
 ## [Unreleased]
 
+### Added (round 189)
+
+- **`muse mcp config-add` CLI** — flag-driven (non-interactive,
+  scriptable) entry adder for `~/.muse/mcp.json`. Round 175's
+  `config-show` and round 182's `config-doctor` covered inspection;
+  this command closes the editing loop without hand-editing the
+  JSON. Supports stdio entries (`--command` / `--arg` repeatable
+  / `--cwd` / `--env KEY=VALUE` repeatable) and remote entries
+  (`--url` / `--transport streamable|sse` / `--header KEY=VALUE`
+  repeatable), plus `--description`, `--disabled`, and `--dry-run`
+  (prints merged JSON without writing). Auto-infers transport
+  from which flag is set; explicit `--transport` always wins.
+  Atomic writes via `mkdirSync(recursive: true)` then
+  `writeFileSync` of the merged shape. Duplicate names are
+  rejected with a non-zero exit and a clear message. 5 new vitest
+  cases (cli 40 → 45): stdio entry round-trips through disk;
+  streamable URL with multiple headers; `--dry-run` preserves the
+  existing file; duplicate name rejected; missing `--command` and
+  `--url` rejected with `must specify either` error. Live dogfood
+  verified: created a fresh tmp config, added stdio + streamable
+  entries, `config-show` printed both correctly, `config-doctor`
+  reported `OK` for both, duplicate-name attempt errored as
+  expected. Caveat: the `@clack/prompts` interactive flow (round
+  175 design note) is still deferred — flag-driven shipped first
+  because it's testable and CI-scriptable.
+
 ### Changed
 
 - **`packages/tools/src/muse-tools.ts` decomposition continues**.
