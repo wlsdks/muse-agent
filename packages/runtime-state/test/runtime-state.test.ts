@@ -2,13 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   createAdminAlertInsert,
   createAdminCostUsageInsert,
-  createAdminSloInsert,
   InMemoryAdminOperationsStore,
   InMemoryCheckpointStore,
   InMemoryHookTraceStore,
   mapAdminAlertRow,
-  mapAdminCostUsageRow,
-  mapAdminSloRow
+  mapAdminCostUsageRow
 } from "../src/index.js";
 
 describe("InMemoryCheckpointStore", () => {
@@ -100,7 +98,7 @@ describe("InMemoryHookTraceStore", () => {
 });
 
 describe("InMemoryAdminOperationsStore", () => {
-  it("tracks alerts, SLO status, and cost summaries", async () => {
+  it("tracks alerts and cost summaries", async () => {
     const store = new InMemoryAdminOperationsStore({
       idFactory: (kind) => `${kind}-1`,
       now: () => new Date("2026-01-01T00:00:00.000Z")
@@ -108,23 +106,14 @@ describe("InMemoryAdminOperationsStore", () => {
 
     await store.createAlert({
       message: "Budget threshold crossed",
-      severity: "critical",
-      target: "tenant-1"
+      severity: "critical"
     });
     const alertToResolve = await store.createAlert({
       id: "alert-resolve",
       message: "Latency threshold crossed",
-      severity: "warning",
-      target: "tenant-1"
+      severity: "warning"
     });
     const resolved = await store.resolveAlert(alertToResolve.id);
-    const slo = await store.upsertSlo({
-      actual: 94,
-      id: "availability",
-      name: "Availability",
-      target: 99.9,
-      window: "30d"
-    });
     const costs = await store.recordCost({
       costUsd: "1.25000000",
       model: "provider/model"
@@ -132,7 +121,6 @@ describe("InMemoryAdminOperationsStore", () => {
 
     expect(resolved).toMatchObject({ id: alertToResolve.id, status: "resolved" });
     expect(await store.listAlerts()).toHaveLength(2);
-    expect(slo).toMatchObject({ id: "availability", status: "violated" });
     expect(costs).toEqual({
       byModel: { "provider/model": "1.25000000" },
       totalCostUsd: "1.25000000"
@@ -144,28 +132,19 @@ describe("Kysely admin operation mapping", () => {
   it("creates and maps admin operation rows without private data", () => {
     const now = new Date("2026-01-01T00:00:00.000Z");
     const options = {
-      idFactory: (kind: "alert" | "slo" | "cost_usage") => `${kind}-1`,
+      idFactory: (kind: "alert" | "cost_usage") => `${kind}-1`,
       now: () => now
     };
     const alert = createAdminAlertInsert({
       message: "Budget threshold crossed",
-      severity: "critical",
-      target: "tenant-1"
-    }, options);
-    const slo = createAdminSloInsert({
-      actual: 94,
-      id: "availability",
-      name: "Availability",
-      target: 99.9,
-      window: "30d"
+      severity: "critical"
     }, options);
     const cost = createAdminCostUsageInsert({
       costUsd: "1.25000000",
       model: "provider/model"
     }, options);
 
-    expect(mapAdminAlertRow(alert)).toMatchObject({ id: "alert-1", status: "open", target: "tenant-1" });
-    expect(mapAdminSloRow(slo)).toMatchObject({ id: "availability", status: "violated" });
+    expect(mapAdminAlertRow(alert)).toMatchObject({ id: "alert-1", status: "open" });
     expect(mapAdminCostUsageRow(cost)).toEqual({
       costUsd: "1.25000000",
       model: "provider/model"

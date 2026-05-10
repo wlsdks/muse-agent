@@ -1,7 +1,6 @@
 import type {
   AdminAlertTable,
   AdminCostUsageTable,
-  AdminSloTable,
   MuseDatabase
 } from "@muse/db";
 import { createRunId } from "@muse/shared";
@@ -11,7 +10,6 @@ type Awaitable<T> = T | Promise<T>;
 
 export type AdminAlertSeverity = "info" | "warning" | "critical";
 export type AdminAlertStatus = "open" | "resolved";
-export type AdminSloStatus = "healthy" | "at_risk" | "violated";
 
 export interface AdminAlert {
   readonly id: string;
@@ -20,16 +18,6 @@ export interface AdminAlert {
   readonly message: string;
   readonly target?: string;
   readonly createdAt: Date;
-}
-
-export interface AdminSlo {
-  readonly id: string;
-  readonly name: string;
-  readonly target: number;
-  readonly actual?: number;
-  readonly window: string;
-  readonly status: AdminSloStatus;
-  readonly updatedAt: Date;
 }
 
 export interface AdminCostUsage {
@@ -46,8 +34,6 @@ export interface AdminOperationsStore {
   listAlerts(): Awaitable<readonly AdminAlert[]>;
   createAlert(input: AdminAlertInput): Awaitable<AdminAlert>;
   resolveAlert(id: string): Awaitable<AdminAlert | undefined>;
-  listSlos(): Awaitable<readonly AdminSlo[]>;
-  upsertSlo(input: AdminSloInput): Awaitable<AdminSlo>;
   recordCost(input: AdminCostUsage): Awaitable<AdminCostSummary>;
   costSummary(): Awaitable<AdminCostSummary>;
 }
@@ -59,36 +45,25 @@ export interface AdminAlertInput {
   readonly target?: string;
 }
 
-export interface AdminSloInput {
-  readonly id?: string;
-  readonly name: string;
-  readonly target: number;
-  readonly actual?: number;
-  readonly window: string;
-}
-
 export interface InMemoryAdminOperationsStoreOptions {
-  readonly idFactory?: (kind: "alert" | "slo") => string;
+  readonly idFactory?: (kind: "alert") => string;
   readonly now?: () => Date;
 }
 
 export interface KyselyAdminOperationsStoreOptions {
-  readonly idFactory?: (kind: "alert" | "slo" | "cost_usage") => string;
+  readonly idFactory?: (kind: "alert" | "cost_usage") => string;
   readonly now?: () => Date;
 }
 
 type AdminAlertRow = Selectable<AdminAlertTable>;
-type AdminSloRow = Selectable<AdminSloTable>;
 type AdminCostUsageRow = Selectable<AdminCostUsageTable>;
 type AdminAlertInsert = Insertable<AdminAlertTable>;
-type AdminSloInsert = Insertable<AdminSloTable>;
 type AdminCostUsageInsert = Insertable<AdminCostUsageTable>;
 
 export class InMemoryAdminOperationsStore implements AdminOperationsStore {
-  private readonly idFactory: (kind: "alert" | "slo") => string;
+  private readonly idFactory: (kind: "alert") => string;
   private readonly now: () => Date;
   private readonly alerts = new Map<string, AdminAlert>();
-  private readonly slos = new Map<string, AdminSlo>();
   private readonly costs: AdminCostUsage[] = [];
 
   constructor(options: InMemoryAdminOperationsStoreOptions = {}) {
@@ -130,25 +105,6 @@ export class InMemoryAdminOperationsStore implements AdminOperationsStore {
     return updated;
   }
 
-  listSlos(): readonly AdminSlo[] {
-    return [...this.slos.values()].sort(compareById);
-  }
-
-  upsertSlo(input: AdminSloInput): AdminSlo {
-    const slo: AdminSlo = {
-      id: input.id ?? this.idFactory("slo"),
-      name: input.name,
-      status: calculateSloStatus(input.target, input.actual),
-      target: input.target,
-      ...(input.actual !== undefined ? { actual: input.actual } : {}),
-      updatedAt: this.now(),
-      window: input.window
-    };
-
-    this.slos.set(slo.id, slo);
-    return slo;
-  }
-
   recordCost(input: AdminCostUsage): AdminCostSummary {
     this.costs.push(input);
     return this.costSummary();
@@ -163,7 +119,7 @@ export class InMemoryAdminOperationsStore implements AdminOperationsStore {
 }
 
 export class KyselyAdminOperationsStore implements AdminOperationsStore {
-  private readonly idFactory: (kind: "alert" | "slo" | "cost_usage") => string;
+  private readonly idFactory: (kind: "alert" | "cost_usage") => string;
   private readonly now: () => Date;
 
   constructor(
@@ -207,35 +163,6 @@ export class KyselyAdminOperationsStore implements AdminOperationsStore {
       .executeTakeFirst();
 
     return row ? mapAdminAlertRow(row) : undefined;
-  }
-
-  async listSlos(): Promise<readonly AdminSlo[]> {
-    const rows = await this.db.selectFrom("admin_slos").selectAll().orderBy("id", "asc").execute();
-    return rows.map(mapAdminSloRow);
-  }
-
-  async upsertSlo(input: AdminSloInput): Promise<AdminSlo> {
-    const row = createAdminSloInsert(input, {
-      idFactory: this.idFactory,
-      now: this.now
-    });
-    const saved = await this.db
-      .insertInto("admin_slos")
-      .values(row)
-      .onConflict((oc) =>
-        oc.column("id").doUpdateSet({
-          actual: row.actual,
-          name: row.name,
-          status: row.status,
-          target: row.target,
-          updated_at: row.updated_at,
-          window: row.window
-        })
-      )
-      .returningAll()
-      .executeTakeFirstOrThrow();
-
-    return mapAdminSloRow(saved);
   }
 
   async recordCost(input: AdminCostUsage): Promise<AdminCostSummary> {
@@ -298,21 +225,6 @@ export function createAdminAlertInsert(
   };
 }
 
-export function createAdminSloInsert(
-  input: AdminSloInput,
-  options: Required<KyselyAdminOperationsStoreOptions>
-): AdminSloInsert {
-  return {
-    actual: input.actual ?? null,
-    id: input.id ?? options.idFactory("slo"),
-    name: input.name,
-    status: calculateSloStatus(input.target, input.actual),
-    target: input.target,
-    updated_at: options.now(),
-    window: input.window
-  };
-}
-
 export function createAdminCostUsageInsert(
   input: AdminCostUsage,
   options: Required<KyselyAdminOperationsStoreOptions>
@@ -336,31 +248,11 @@ export function mapAdminAlertRow(row: AdminAlertRow): AdminAlert {
   };
 }
 
-export function mapAdminSloRow(row: AdminSloRow): AdminSlo {
-  return {
-    actual: row.actual ?? undefined,
-    id: row.id,
-    name: row.name,
-    status: row.status,
-    target: row.target,
-    updatedAt: toDate(row.updated_at),
-    window: row.window
-  };
-}
-
 export function mapAdminCostUsageRow(row: AdminCostUsageRow): AdminCostUsage {
   return {
     costUsd: row.cost_usd,
     model: row.model ?? undefined
   };
-}
-
-function calculateSloStatus(target: number, actual: number | undefined): AdminSloStatus {
-  if (actual === undefined || actual >= target) {
-    return "healthy";
-  }
-
-  return actual >= target * 0.95 ? "at_risk" : "violated";
 }
 
 function sumCostsByModel(items: readonly AdminCostUsage[]): Readonly<Record<string, string>> {
@@ -376,10 +268,6 @@ function sumCostsByModel(items: readonly AdminCostUsage[]): Readonly<Record<stri
 
 function formatCost(value: number): string {
   return Number.isFinite(value) ? value.toFixed(8) : "0.00000000";
-}
-
-function compareById(left: { readonly id: string }, right: { readonly id: string }): number {
-  return left.id.localeCompare(right.id);
 }
 
 function toDate(value: Date | string): Date {
