@@ -9,23 +9,15 @@
 import type { JsonObject } from "@muse/shared";
 import type { FastifyRequest } from "fastify";
 
+import { isJsonValue, isRecord } from "./server-input-utils.js";
+
 export type CompatBody = Record<string, unknown>;
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-export function isJsonValue(value: unknown): boolean {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return typeof value !== "number" || Number.isFinite(value);
-  }
-
-  if (Array.isArray(value)) {
-    return value.every(isJsonValue);
-  }
-
-  return isRecord(value) && Object.values(value).every(isJsonValue);
-}
+// Re-exported so the compat-* sibling modules can keep importing
+// `isRecord` / `isJsonValue` from this hub without import-site edits.
+// The truth lives in `./server-input-utils.js` (round 122 canonical
+// home for shape-inspection helpers across the API package).
+export { isJsonValue, isRecord };
 
 export function toBody(value: unknown): CompatBody {
   return isRecord(value) ? value : {};
