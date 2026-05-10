@@ -764,6 +764,7 @@ export interface NotionNotesProviderOptions {
 const NOTION_DEFAULT_ENDPOINT = "https://api.notion.com/v1";
 const NOTION_DEFAULT_VERSION = "2022-06-28";
 const NOTION_DEFAULT_TITLE_PROPERTY = "Name";
+const NOTION_LIST_MAX_PAGES = 10;
 
 /**
  * Notion API adapter — talks to `api.notion.com/v1` with the
@@ -826,12 +827,33 @@ export class NotionNotesProvider implements NotesProvider {
 
   async list(): Promise<readonly NotesEntry[]> {
     const databaseId = this.requireDatabaseId("list");
-    const body = await this.request("POST", `/databases/${databaseId}/query`, { page_size: 100 });
-    const results = isRecordArray(body, "results");
-    return results.flatMap((result): readonly NotesEntry[] => {
-      const entry = parsePageSummary(result, this.id, this.titleProperty);
-      return entry ? [entry] : [];
-    });
+    const all: NotesEntry[] = [];
+    let cursor: string | undefined;
+    // Notion's `/databases/:id/query` returns at most `page_size` (capped
+    // at 100) per call and signals more via `has_more` + `next_cursor`.
+    // Cap pages at 10 (≈1000 entries) — a personal user with that many
+    // notes likely wants the agent to search instead of listing all.
+    for (let page = 0; page < NOTION_LIST_MAX_PAGES; page += 1) {
+      const requestBody: Record<string, unknown> = { page_size: 100 };
+      if (cursor) {
+        requestBody.start_cursor = cursor;
+      }
+      const body = await this.request("POST", `/databases/${databaseId}/query`, requestBody);
+      const results = isRecordArray(body, "results");
+      for (const result of results) {
+        const entry = parsePageSummary(result, this.id, this.titleProperty);
+        if (entry) {
+          all.push(entry);
+        }
+      }
+      const hasMore = (body as { has_more?: unknown }).has_more === true;
+      const nextCursor = (body as { next_cursor?: unknown }).next_cursor;
+      if (!hasMore || typeof nextCursor !== "string" || nextCursor.length === 0) {
+        break;
+      }
+      cursor = nextCursor;
+    }
+    return all;
   }
 
   async read(id: string): Promise<NotesContent | undefined> {

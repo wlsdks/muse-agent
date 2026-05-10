@@ -1382,6 +1382,50 @@ describe("notes provider abstraction", () => {
     expect(entries[0]).toMatchObject({ id: "page-1", providerId: "notion", title: "Daily standup", folder: "db_xyz" });
   });
 
+  it("NotionNotesProvider.list paginates via has_more / next_cursor until exhaustion", async () => {
+    const requestBodies: Array<Record<string, unknown>> = [];
+    const fetchImpl = async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string) as Record<string, unknown>;
+      requestBodies.push(body);
+      // Page 1 → has_more, Page 2 → has_more, Page 3 → done.
+      if (!body.start_cursor) {
+        return new Response(JSON.stringify({
+          has_more: true,
+          next_cursor: "cursor-2",
+          results: [
+            { id: "p1", properties: { Name: { title: [{ plain_text: "first" }] } } },
+            { id: "p2", properties: { Name: { title: [{ plain_text: "second" }] } } }
+          ]
+        }), { status: 200 });
+      }
+      if (body.start_cursor === "cursor-2") {
+        return new Response(JSON.stringify({
+          has_more: true,
+          next_cursor: "cursor-3",
+          results: [
+            { id: "p3", properties: { Name: { title: [{ plain_text: "third" }] } } }
+          ]
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        has_more: false,
+        next_cursor: null,
+        results: [
+          { id: "p4", properties: { Name: { title: [{ plain_text: "fourth" }] } } }
+        ]
+      }), { status: 200 });
+    };
+    const notion = new NotionNotesProvider({ databaseId: "db_xyz", fetchImpl, token: "t" });
+    const entries = await notion.list();
+
+    expect(requestBodies).toHaveLength(3);
+    expect(requestBodies[0]).toMatchObject({ page_size: 100 });
+    expect(requestBodies[0]).not.toHaveProperty("start_cursor");
+    expect(requestBodies[1]).toMatchObject({ start_cursor: "cursor-2" });
+    expect(requestBodies[2]).toMatchObject({ start_cursor: "cursor-3" });
+    expect(entries.map((entry) => entry.id)).toEqual(["p1", "p2", "p3", "p4"]);
+  });
+
   it("NotionNotesProvider.read returns undefined on 404 and joins paragraph blocks", async () => {
     const calls: string[] = [];
     const fetchImpl = async (url: string) => {
