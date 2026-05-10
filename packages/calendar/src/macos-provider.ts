@@ -58,8 +58,8 @@ export class MacOsCalendarProvider implements CalendarProvider {
 
   async listEvents(range: CalendarRange): Promise<readonly CalendarEvent[]> {
     const calendarRef = this.calendarRef();
-    const startIso = range.from.toISOString();
-    const endIso = range.to.toISOString();
+    const startIso = isoForOsascript(range.from);
+    const endIso = isoForOsascript(range.to);
     const script = `
       set output to ""
       set rangeStart to (do shell script "date -j -f '%Y-%m-%dT%H:%M:%SZ' '${startIso}' '+%s'") as integer
@@ -89,8 +89,8 @@ export class MacOsCalendarProvider implements CalendarProvider {
         set targetCal to first item of (${calendarRef})
         set newEvt to make new event at targetCal with properties { ¬
           summary: ${quote(input.title)}, ¬
-          start date: (do shell script "date -j -f '%Y-%m-%dT%H:%M:%SZ' '${input.startsAt.toISOString()}' '+%Y-%m-%d %H:%M:%S'") as date, ¬
-          end date: (do shell script "date -j -f '%Y-%m-%dT%H:%M:%SZ' '${input.endsAt.toISOString()}' '+%Y-%m-%d %H:%M:%S'") as date${input.location ? `, ¬\n          location: ${quote(input.location)}` : ""}${input.notes ? `, ¬\n          description: ${quote(input.notes)}` : ""}${input.allDay ? `, ¬\n          allday event: true` : ""} ¬
+          start date: (do shell script "date -j -f '%Y-%m-%dT%H:%M:%SZ' '${isoForOsascript(input.startsAt)}' '+%Y-%m-%d %H:%M:%S'") as date, ¬
+          end date: (do shell script "date -j -f '%Y-%m-%dT%H:%M:%SZ' '${isoForOsascript(input.endsAt)}' '+%Y-%m-%d %H:%M:%S'") as date${input.location ? `, ¬\n          location: ${quote(input.location)}` : ""}${input.notes ? `, ¬\n          description: ${quote(input.notes)}` : ""}${input.allDay ? `, ¬\n          allday event: true` : ""} ¬
         }
         return uid of newEvt as string
       end tell
@@ -112,8 +112,8 @@ export class MacOsCalendarProvider implements CalendarProvider {
     const calendarRef = this.calendarRef();
     const fragments = [
       input.title !== undefined ? `set summary of evt to ${quote(input.title)}` : null,
-      input.startsAt !== undefined ? `set start date of evt to (do shell script "date -j -f '%Y-%m-%dT%H:%M:%SZ' '${input.startsAt.toISOString()}' '+%Y-%m-%d %H:%M:%S'") as date` : null,
-      input.endsAt !== undefined ? `set end date of evt to (do shell script "date -j -f '%Y-%m-%dT%H:%M:%SZ' '${input.endsAt.toISOString()}' '+%Y-%m-%d %H:%M:%S'") as date` : null,
+      input.startsAt !== undefined ? `set start date of evt to (do shell script "date -j -f '%Y-%m-%dT%H:%M:%SZ' '${isoForOsascript(input.startsAt)}' '+%Y-%m-%d %H:%M:%S'") as date` : null,
+      input.endsAt !== undefined ? `set end date of evt to (do shell script "date -j -f '%Y-%m-%dT%H:%M:%SZ' '${isoForOsascript(input.endsAt)}' '+%Y-%m-%d %H:%M:%S'") as date` : null,
       input.location !== undefined ? `set location of evt to ${quote(input.location ?? "")}` : null,
       input.notes !== undefined ? `set description of evt to ${quote(input.notes ?? "")}` : null
     ].filter((fragment): fragment is string => Boolean(fragment));
@@ -236,4 +236,16 @@ function parseListOutput(output: string, providerId: string): readonly CalendarE
 
 function quote(value: string): string {
   return `"${value.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"')}"`;
+}
+
+/**
+ * `Date.toISOString()` returns `YYYY-MM-DDTHH:mm:ss.sssZ` (24 chars
+ * with milliseconds). The AppleScript shell-out passes the result to
+ * `date -j -f '%Y-%m-%dT%H:%M:%SZ'`, which expects the literal `Z`
+ * to follow the seconds with no `.SSS` in between — that format
+ * silently fails on the millisecond suffix and leaves Calendar.app
+ * unable to parse the date. Strip milliseconds so the format matches.
+ */
+function isoForOsascript(date: Date): string {
+  return `${date.toISOString().slice(0, 19)}Z`;
 }
