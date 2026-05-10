@@ -648,3 +648,109 @@ export function RemindersPanel({ client }: { readonly client: ApiClient }) {
     </section>
   );
 }
+
+interface MessagingProviderInfo {
+  readonly id: string;
+  readonly displayName: string;
+  readonly description: string;
+  readonly local?: boolean;
+}
+
+interface MessagingProvidersResponse {
+  readonly providers: readonly MessagingProviderInfo[];
+}
+
+interface MessagingInboundRow {
+  readonly providerId: string;
+  readonly messageId: string;
+  readonly source: string;
+  readonly sender?: string;
+  readonly receivedAtIso: string;
+  readonly text: string;
+}
+
+interface MessagingInboxResponse {
+  readonly providerId: string;
+  readonly inbound: readonly MessagingInboundRow[];
+  readonly total: number;
+}
+
+export function MessagingInboxPanel({ client }: { readonly client: ApiClient }) {
+  const providers = useQuery({
+    queryFn: () => client.get<MessagingProvidersResponse>("/api/messaging/providers"),
+    queryKey: ["messaging-providers"],
+    retry: false
+  });
+  const list = providers.data?.providers ?? [];
+  const [providerId, setProviderId] = useState<string>("");
+  const [source, setSource] = useState<string>("");
+  const effective = providerId.length > 0 ? providerId : list[0]?.id ?? "";
+
+  const needsSource = effective === "discord" || effective === "slack";
+
+  const inbox = useQuery({
+    enabled: effective.length > 0 && (!needsSource || source.length > 0),
+    queryFn: () => {
+      const params = new URLSearchParams({ providerId: effective, limit: "20" });
+      if (needsSource && source.length > 0) {
+        params.set("source", source);
+      }
+      return client.get<MessagingInboxResponse>(`/api/messaging/inbox?${params.toString()}`);
+    },
+    queryKey: ["messaging-inbox", effective, source],
+    retry: false
+  });
+
+  return (
+    <section className="tool-surface compact" aria-label="Messaging">
+      <div className="surface-heading">
+        <h2>Messaging</h2>
+        <span>{inbox.isLoading ? "Loading" : (inbox.data?.total ?? 0)}</span>
+      </div>
+      {list.length === 0 ? (
+        <p className="status-info" style={{ fontSize: "0.85em", margin: 0 }}>
+          No providers configured. Set MUSE_TELEGRAM_BOT_TOKEN / MUSE_DISCORD_BOT_TOKEN /
+          MUSE_SLACK_BOT_TOKEN / MUSE_LINE_CHANNEL_ACCESS_TOKEN to enable.
+        </p>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
+            <select
+              aria-label="Messaging provider"
+              value={effective}
+              onChange={(event) => setProviderId(event.target.value)}
+              style={{ flex: 1 }}
+            >
+              {list.map((p) => (
+                <option key={p.id} value={p.id}>{p.displayName}</option>
+              ))}
+            </select>
+            {needsSource ? (
+              <input
+                aria-label="Channel id"
+                placeholder="Channel id"
+                value={source}
+                onChange={(event) => setSource(event.target.value)}
+                style={{ flex: 1 }}
+              />
+            ) : null}
+          </div>
+          {inbox.error ? (
+            <p className="status-error">{inbox.error instanceof Error ? inbox.error.message : "Failed to load inbox"}</p>
+          ) : null}
+          <ul className="record-list">
+            {(inbox.data?.inbound ?? []).map((message) => (
+              <li key={`${message.providerId}:${message.messageId}`}>
+                <strong>{message.sender ?? message.source}</strong>
+                <span style={{ marginLeft: "0.5rem" }}>{message.text}</span>
+                <span className="risk-read" style={{ marginLeft: "0.5rem" }}>
+                  {new Date(message.receivedAtIso).toLocaleString()}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}

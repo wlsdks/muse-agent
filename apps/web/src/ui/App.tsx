@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import {
   CalendarEventsPanel,
   MemoryPanel,
+  MessagingInboxPanel,
   NotesPanel,
   RemindersPanel,
   SchedulerPanel,
@@ -150,6 +151,7 @@ export function MuseConsole() {
           <VoicePanel apiUrl={apiUrl} token={token} />
           <TasksPanel client={client} />
           <RemindersPanel client={client} />
+          <MessagingInboxPanel client={client} />
           <NotesPanel client={client} />
           <MemoryPanel client={client} />
           <SchedulerPanel client={client} />

@@ -72,6 +72,12 @@ describe("MuseConsole", () => {
     expect(html).toMatch(/<h2>LLM cost \(7d\)<\/h2>/u);
   });
 
+  it("renders the Messaging panel section heading", () => {
+    const html = renderConsole();
+    expect(html).toContain('aria-label="Messaging"');
+    expect(html).toMatch(/<h2>Messaging<\/h2>/u);
+  });
+
   it("renders the Reminders panel with text + when inputs and an Add reminder button", () => {
     const html = renderConsole();
     expect(html).toContain('aria-label="Reminders"');
