@@ -63,6 +63,26 @@ export interface OrchestrationRunOptions {
    * Undefined or 0 disables the cap (legacy verbatim concat).
    */
   readonly maxOutputCharsPerWorker?: number;
+  /**
+   * LLM-summarized fan-in (Context Engineering step 1.e — round 183
+   * upgrade over round 170's deterministic head+tail trim). When
+   * provided, each worker's `response.output` is replaced with the
+   * summarizer's return value BEFORE the deterministic trim and
+   * BEFORE the parent concat. Composes naturally with
+   * `maxOutputCharsPerWorker`: summarize first, then trim the
+   * summary as a belt-and-suspenders guard against an unbounded
+   * summarizer return.
+   *
+   * Failures (rejected promise, timeout) fall back to the raw
+   * worker output — the orchestrator never blocks on summarization.
+   * Tracked results stay byte-identical regardless of summarizer
+   * usage (same fidelity contract as `maxOutputCharsPerWorker`).
+   *
+   * Caller-provided so `@muse/multi-agent` stays model-agnostic; the
+   * autoconfigure layer wires a real summarizer that uses the
+   * configured `ModelProvider`.
+   */
+  readonly summarizeWorkerOutput?: (workerId: string, output: string) => Promise<string>;
 }
 
 export interface MultiAgentOrchestrationResult {
@@ -332,7 +352,13 @@ export class MultiAgentOrchestrator {
 
     return {
       mode,
-      response: buildOrchestrationResponse(runId, input.model, results, options.maxOutputCharsPerWorker),
+      response: await buildOrchestrationResponse(
+        runId,
+        input.model,
+        results,
+        options.maxOutputCharsPerWorker,
+        options.summarizeWorkerOutput
+      ),
       results,
       runId
     };
@@ -531,25 +557,29 @@ function joinMessages(messages: readonly ModelMessage[]): string {
   return messages.map((message) => message.content).join("\n");
 }
 
-function buildOrchestrationResponse(
+async function buildOrchestrationResponse(
   runId: string,
   model: string,
   results: readonly OrchestrationStepResult[],
-  maxOutputCharsPerWorker: number | undefined
-): AgentRunResult["response"] {
+  maxOutputCharsPerWorker: number | undefined,
+  summarizeWorkerOutput: ((workerId: string, output: string) => Promise<string>) | undefined
+): Promise<AgentRunResult["response"]> {
   const cap = maxOutputCharsPerWorker && maxOutputCharsPerWorker > 0 ? maxOutputCharsPerWorker : undefined;
-  const output = results
-    .map((result) =>
-      result.status === "completed"
-        ? `## ${result.workerId}\n${capWorkerOutput(result.workerId, result.result?.response.output ?? "", cap)}`
-        : `## ${result.workerId}\nError: ${result.error ?? "unknown error"}`
-    )
-    .join("\n\n");
+  const projected = await Promise.all(results.map(async (result) => {
+    if (result.status !== "completed") {
+      return `## ${result.workerId}\nError: ${result.error ?? "unknown error"}`;
+    }
+    const raw = result.result?.response.output ?? "";
+    const summarized = summarizeWorkerOutput
+      ? await applyWorkerSummarizer(result.workerId, raw, summarizeWorkerOutput)
+      : raw;
+    return `## ${result.workerId}\n${capWorkerOutput(result.workerId, summarized, cap)}`;
+  }));
 
   return {
     id: createRunId("multi_agent_response"),
     model,
-    output,
+    output: projected.join("\n\n"),
     raw: {
       runId,
       workers: results.map((result) => ({
@@ -558,6 +588,22 @@ function buildOrchestrationResponse(
       }))
     }
   };
+}
+
+async function applyWorkerSummarizer(
+  workerId: string,
+  output: string,
+  summarize: (workerId: string, output: string) => Promise<string>
+): Promise<string> {
+  if (output.length === 0) {
+    return output;
+  }
+  try {
+    const summary = await summarize(workerId, output);
+    return typeof summary === "string" && summary.length > 0 ? summary : output;
+  } catch {
+    return output;
+  }
 }
 
 function capWorkerOutput(workerId: string, output: string, cap: number | undefined): string {

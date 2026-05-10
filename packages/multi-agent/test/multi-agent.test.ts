@@ -236,6 +236,71 @@ describe("MultiAgentOrchestrator", () => {
     );
     expect(zeroCap.response.output).toContain(big);
   });
+
+  it("summarizeWorkerOutput replaces each worker's output before the fan-in concat (CE 1.e LLM)", async () => {
+    const big = "x".repeat(1_500);
+    const verbose = new RuleBasedAgentWorker("verbose", "Verbose", [], (input) =>
+      createWorkerResult("verbose", big, input)
+    );
+    const orchestrator = new MultiAgentOrchestrator({
+      idFactory: () => "orch-summarizer-1",
+      workers: [verbose]
+    });
+
+    const calls: Array<{ workerId: string; length: number }> = [];
+    const result = await orchestrator.run(
+      { messages: [{ content: "summarize", role: "user" }], model: "model-1" },
+      {
+        summarizeWorkerOutput: async (workerId, output) => {
+          calls.push({ length: output.length, workerId });
+          return `[summary of ${workerId}: ${output.length} chars]`;
+        }
+      }
+    );
+
+    expect(calls).toEqual([{ length: 1_500, workerId: "verbose" }]);
+    expect(result.response.output).toContain("[summary of verbose: 1500 chars]");
+    expect(result.response.output).not.toContain(big);
+    expect(result.results[0]?.result?.response.output).toBe(big);
+  });
+
+  it("summarizeWorkerOutput failures fall back to raw output without blocking the orchestration", async () => {
+    const original = "fallback target output";
+    const worker = new RuleBasedAgentWorker("flaky", "Flaky", [], (input) =>
+      createWorkerResult("flaky", original, input)
+    );
+    const orchestrator = new MultiAgentOrchestrator({ workers: [worker] });
+
+    const result = await orchestrator.run(
+      { messages: [{ content: "go", role: "user" }], model: "model-1" },
+      {
+        summarizeWorkerOutput: async () => {
+          throw new Error("LLM unavailable");
+        }
+      }
+    );
+
+    expect(result.response.output).toContain(original);
+  });
+
+  it("summarizeWorkerOutput composes with maxOutputCharsPerWorker (summary still capped)", async () => {
+    const worker = new RuleBasedAgentWorker("verbose", "Verbose", [], (input) =>
+      createWorkerResult("verbose", "anything", input)
+    );
+    const orchestrator = new MultiAgentOrchestrator({ workers: [worker] });
+    const longSummary = "S".repeat(2_000);
+
+    const result = await orchestrator.run(
+      { messages: [{ content: "go", role: "user" }], model: "model-1" },
+      {
+        maxOutputCharsPerWorker: 200,
+        summarizeWorkerOutput: async () => longSummary
+      }
+    );
+
+    expect(result.response.output.length).toBeLessThan(500);
+    expect(result.response.output).toContain("agent verbose output trimmed by orchestrator fan-in");
+  });
 });
 
 function makeDelayedWorker(id: string, output: string, delayMs: number): RuleBasedAgentWorker {

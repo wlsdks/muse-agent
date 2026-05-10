@@ -204,7 +204,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   registerMultiAgentRoutes(server, {
     agentRuntime: options.agentRuntime,
     agentSpecRegistry,
-    defaultModel: options.defaultModel
+    defaultModel: options.defaultModel,
+    modelProvider: options.modelProvider
   });
   registerCompatibilityRoutes(server, {
     admin: options.admin,

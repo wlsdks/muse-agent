@@ -11,7 +11,7 @@ import {
   type OrchestrationHistoryStore,
   type OrchestrationMode
 } from "@muse/multi-agent";
-import type { ModelMessage } from "@muse/model";
+import type { ModelMessage, ModelProvider } from "@muse/model";
 import type { JsonObject } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 
@@ -20,6 +20,7 @@ export interface MultiAgentRouteOptions {
   readonly agentSpecRegistry: AgentSpecRegistry;
   readonly defaultModel?: string;
   readonly historyStore?: OrchestrationHistoryStore;
+  readonly modelProvider?: ModelProvider;
 }
 
 interface ApiError {
@@ -34,6 +35,7 @@ interface OrchestrateBody {
   readonly workerIds?: readonly string[];
   readonly maxWorkers?: number;
   readonly maxOutputCharsPerWorker?: number;
+  readonly summarize?: boolean;
 }
 
 type ParseResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: ApiError };
@@ -156,13 +158,18 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
       model: parsed.value.model ?? options.defaultModel ?? "default"
     };
 
+    const summarizer = parsed.value.summarize === true
+      ? createWorkerSummarizer(options.modelProvider, input.model)
+      : undefined;
+
     try {
       const orchestration = await orchestrator.run(input, {
         ...(parsed.value.mode ? { mode: parsed.value.mode } : {}),
         ...(parsed.value.maxWorkers !== undefined ? { maxWorkers: parsed.value.maxWorkers } : {}),
         ...(parsed.value.maxOutputCharsPerWorker !== undefined
           ? { maxOutputCharsPerWorker: parsed.value.maxOutputCharsPerWorker }
-          : {})
+          : {}),
+        ...(summarizer ? { summarizeWorkerOutput: summarizer } : {})
       });
 
       return {
@@ -225,12 +232,16 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
       messages: [{ content: parsed.value.message, role: "user" }],
       model: parsed.value.model ?? options.defaultModel ?? "default"
     };
+    const summarizer = parsed.value.summarize === true
+      ? createWorkerSummarizer(options.modelProvider, input.model)
+      : undefined;
     const orchestrationOptions = {
       ...(parsed.value.mode ? { mode: parsed.value.mode } : {}),
       ...(parsed.value.maxWorkers !== undefined ? { maxWorkers: parsed.value.maxWorkers } : {}),
       ...(parsed.value.maxOutputCharsPerWorker !== undefined
         ? { maxOutputCharsPerWorker: parsed.value.maxOutputCharsPerWorker }
-        : {})
+        : {}),
+      ...(summarizer ? { summarizeWorkerOutput: summarizer } : {})
     };
 
     reply.header("content-type", "text/event-stream; charset=utf-8");
@@ -251,6 +262,7 @@ interface SseStreamArgs {
     readonly mode?: OrchestrationMode;
     readonly maxWorkers?: number;
     readonly maxOutputCharsPerWorker?: number;
+    readonly summarizeWorkerOutput?: (workerId: string, output: string) => Promise<string>;
   };
   readonly mode: OrchestrationMode;
 }
@@ -424,6 +436,13 @@ function parseOrchestrateBody(value: unknown): ParseResult<OrchestrateBody> {
     return invalid("INVALID_ORCHESTRATE_REQUEST", "maxOutputCharsPerWorker must be a non-negative number");
   }
 
+  let summarize: boolean | undefined;
+  if (typeof body.summarize === "boolean") {
+    summarize = body.summarize;
+  } else if (body.summarize !== undefined) {
+    return invalid("INVALID_ORCHESTRATE_REQUEST", "summarize must be a boolean");
+  }
+
   return {
     ok: true,
     value: {
@@ -432,7 +451,8 @@ function parseOrchestrateBody(value: unknown): ParseResult<OrchestrateBody> {
       ...(mode ? { mode } : {}),
       ...(workerIds ? { workerIds } : {}),
       ...(maxWorkers !== undefined ? { maxWorkers } : {}),
-      ...(maxOutputCharsPerWorker !== undefined ? { maxOutputCharsPerWorker } : {})
+      ...(maxOutputCharsPerWorker !== undefined ? { maxOutputCharsPerWorker } : {}),
+      ...(summarize !== undefined ? { summarize } : {})
     }
   };
 }
@@ -477,3 +497,34 @@ export type MultiAgentOrchestrateResponseBody = {
   }>;
   readonly runId: string;
 };
+
+const SUMMARIZER_SYSTEM_PROMPT =
+  "You are summarizing the output of a sub-agent for a parent orchestrator. Return a single concise summary (3 sentences max) capturing the key facts, decisions, and any error / blocker. Drop reasoning steps and verbose framing. Output the summary text only — no preamble, no markdown.";
+const SUMMARIZER_MAX_OUTPUT_TOKENS = 256;
+const SUMMARIZER_REQUEST_TIMEOUT_MS = 15_000;
+
+function createWorkerSummarizer(
+  modelProvider: ModelProvider | undefined,
+  model: string
+): ((workerId: string, output: string) => Promise<string>) | undefined {
+  if (!modelProvider) {
+    return undefined;
+  }
+  return async (workerId, output) => {
+    const userContent = `Sub-agent id: ${workerId}\n\nSub-agent output:\n${output}`;
+    const response = await Promise.race([
+      modelProvider.generate({
+        maxOutputTokens: SUMMARIZER_MAX_OUTPUT_TOKENS,
+        messages: [
+          { content: SUMMARIZER_SYSTEM_PROMPT, role: "system" },
+          { content: userContent, role: "user" }
+        ],
+        model,
+        temperature: 0.2
+      }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("summarizer timeout")), SUMMARIZER_REQUEST_TIMEOUT_MS))
+    ]);
+    const text = response.output?.trim() ?? "";
+    return text.length > 0 ? text : output;
+  };
+}
