@@ -626,6 +626,100 @@ describe("cli program", () => {
     expect(combined).toContain("openai-tts");
   });
 
+  it("today fans out to tasks / calendar / notes and prints a unified briefing", async () => {
+    const { io, output } = captureOutput();
+    const requests: Array<{ readonly url: string }> = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url) => {
+        requests.push({ url: String(url) });
+        const path = String(url);
+        if (path.includes("/api/tasks?status=open")) {
+          return new Response(JSON.stringify({
+            status: "open",
+            tasks: [{ id: "task_123abc", status: "open", title: "Write iter summary" }],
+            total: 1
+          }));
+        }
+        if (path.includes("/api/calendar/events")) {
+          return new Response(JSON.stringify({
+            events: [{
+              endsAtIso: "2026-05-10T11:00:00Z",
+              id: "evt-1",
+              providerId: "local",
+              startsAtIso: "2026-05-10T10:00:00Z",
+              title: "Standup"
+            }],
+            total: 1
+          }));
+        }
+        if (path.endsWith("/api/notes/list")) {
+          return new Response(JSON.stringify({
+            dir: "",
+            entries: [
+              { isDirectory: false, name: "older.md", sizeBytes: 50 },
+              { isDirectory: false, name: "newer.md", sizeBytes: 80 },
+              { isDirectory: true, name: "subdir" }
+            ],
+            truncated: false
+          }));
+        }
+        return new Response("{}");
+      }
+    });
+
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "today", "--lookahead-hours", "12"],
+      { from: "node" }
+    );
+
+    const urls = requests.map((entry) => entry.url);
+    expect(urls.some((url) => url.includes("/api/tasks?status=open"))).toBe(true);
+    expect(urls.some((url) => url.includes("/api/calendar/events"))).toBe(true);
+    expect(urls.some((url) => url.endsWith("/api/notes/list"))).toBe(true);
+
+    const combined = output.join("");
+    expect(combined).toContain("Today (");
+    expect(combined).toContain("next 12h");
+    expect(combined).toContain("Write iter summary");
+    expect(combined).toContain("Standup");
+    expect(combined).toContain("newer.md");
+    expect(combined).toContain("older.md");
+    // The directory entry is filtered out (only files are listed).
+    expect(combined).not.toContain("subdir");
+  });
+
+  it("today --json emits structured briefing data", async () => {
+    const { io, output } = captureOutput();
+    const program = createProgram({
+      ...io,
+      fetch: async (url) => {
+        const path = String(url);
+        if (path.includes("/api/tasks")) {
+          return new Response(JSON.stringify({ status: "open", tasks: [], total: 0 }));
+        }
+        if (path.includes("/api/calendar/events")) {
+          return new Response(JSON.stringify({ events: [], total: 0 }));
+        }
+        return new Response(JSON.stringify({ entries: [], truncated: false }));
+      }
+    });
+
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "today", "--json"],
+      { from: "node" }
+    );
+
+    const combined = output.join("");
+    const parsed = JSON.parse(combined.trim());
+    expect(parsed).toMatchObject({
+      events: [],
+      notes: [],
+      tasks: []
+    });
+    expect(typeof parsed.generatedAt).toBe("string");
+  });
+
   it("notes list / read / search / save / append hit the /api/notes routes", async () => {
     const { io, output } = captureOutput();
     const requests: Array<{ readonly body?: string; readonly method?: string; readonly url: string }> = [];

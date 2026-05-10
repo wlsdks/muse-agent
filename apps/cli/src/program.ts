@@ -17,6 +17,7 @@ import { registerNotesCommands } from "./commands-notes.js";
 import { registerSchedulerCommands, registerSetupCommands } from "./commands-scheduler-setup.js";
 import { registerSpecsCommands } from "./commands-specs.js";
 import { registerTasksCommands } from "./commands-tasks.js";
+import { registerTodayCommands } from "./commands-today.js";
 import { registerVoiceCommands } from "./commands-voice.js";
 
 export interface CliPromptAdapter {
@@ -226,6 +227,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerSchedulerCommands(program, io, { apiRequest, writeOutput });
   registerSetupCommands(program, io);
   registerTasksCommands(program, io, { apiRequest, writeOutput });
+  registerTodayCommands(program, io, { apiRequest, writeOutput });
   registerVoiceCommands(program, io, { apiRequest, readApiOptions, writeOutput });
 
   return program;
