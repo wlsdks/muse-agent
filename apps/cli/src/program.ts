@@ -11,6 +11,7 @@ import { registerAuthCommands } from "./commands-auth.js";
 import { registerConfigCommands } from "./commands-config.js";
 import { registerMcpCommands } from "./commands-mcp.js";
 import { registerOrchestrateCommands } from "./commands-orchestrate.js";
+import { registerMemoryCommands } from "./commands-memory.js";
 import { registerSchedulerCommands, registerSetupCommands } from "./commands-scheduler-setup.js";
 import { registerSpecsCommands } from "./commands-specs.js";
 import { registerVoiceCommands } from "./commands-voice.js";
@@ -216,6 +217,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       writeOutput(io, await apiRequest(io, command, "/api/admin/muse/snapshot"));
     });
 
+  registerMemoryCommands(program, io, { apiRequest, writeOutput });
   registerSchedulerCommands(program, io, { apiRequest, writeOutput });
   registerSetupCommands(program, io);
   registerVoiceCommands(program, io, { apiRequest, readApiOptions, writeOutput });
@@ -282,7 +284,7 @@ async function apiRequest(
   command: Command,
   path: string,
   body?: Record<string, unknown>,
-  method?: "GET" | "POST"
+  method?: "GET" | "POST" | "PUT" | "DELETE"
 ) {
   const { baseUrl, token } = await readApiOptions(io, command);
   const response = await (io.fetch ?? globalThis.fetch)(new URL(path, baseUrl).toString(), {

@@ -626,6 +626,54 @@ describe("cli program", () => {
     expect(combined).toContain("openai-tts");
   });
 
+  it("memory show / set / clear hit the user-memory routes", async () => {
+    const { io, output } = captureOutput();
+    const requests: Array<{ readonly body?: string; readonly method?: string; readonly url: string }> = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url, init) => {
+        requests.push({ body: typeof init?.body === "string" ? init.body : undefined, method: init?.method, url: String(url) });
+        const path = String(url);
+        if (path.endsWith("/api/user-memory/me")) {
+          if (init?.method === "DELETE") {
+            return new Response(null, { status: 204 });
+          }
+          return new Response(JSON.stringify({
+            facts: { name: "Stark" },
+            preferences: { tone: "concise" },
+            recentTopics: ["voice", "notes"],
+            updatedAt: "2026-05-10T00:00:00Z"
+          }));
+        }
+        if (path.endsWith("/api/user-memory/me/preferences")) {
+          return new Response(JSON.stringify({ updated: true }));
+        }
+        return new Response("{}");
+      }
+    });
+
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "memory", "show"],
+      { from: "node" }
+    );
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "memory", "set", "preference", "tone", "concise"],
+      { from: "node" }
+    );
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "memory", "clear"],
+      { from: "node" }
+    );
+
+    expect(requests[0]).toMatchObject({ url: "http://api.test/api/user-memory/me", method: "GET" });
+    expect(requests[1]).toMatchObject({ url: "http://api.test/api/user-memory/me/preferences", method: "PUT" });
+    expect(JSON.parse(requests[1]!.body!)).toMatchObject({ key: "tone", value: "concise" });
+    expect(requests[2]).toMatchObject({ url: "http://api.test/api/user-memory/me", method: "DELETE" });
+    const combined = output.join("");
+    expect(combined).toContain("Stark");
+    expect(combined).toContain("Cleared user memory for me");
+  });
+
   it("voice tts POSTs the text and writes the binary audio response to --out", async () => {
     const { mkdtempSync, readFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
