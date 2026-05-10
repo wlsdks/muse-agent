@@ -1195,4 +1195,97 @@ describe("cli program", () => {
 
     expect(JSON.parse(requests[0]?.body ?? "{}")).toEqual({ message: "no mode" });
   });
+
+  it("mcp config-path prints the path resolved from MUSE_MCP_CONFIG", async () => {
+    const previous = process.env.MUSE_MCP_CONFIG;
+    process.env.MUSE_MCP_CONFIG = "/tmp/test/mcp.json";
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram(io);
+      await program.parseAsync(["node", "muse", "mcp", "config-path"], { from: "node" });
+      expect(output.join("")).toContain("/tmp/test/mcp.json");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MUSE_MCP_CONFIG;
+      } else {
+        process.env.MUSE_MCP_CONFIG = previous;
+      }
+    }
+  });
+
+  it("mcp config-show reports a missing-file message when MUSE_MCP_CONFIG points at nothing", async () => {
+    const tmp = await mkdtemp(path.join(tmpdir(), "muse-mcp-config-cli-"));
+    const target = path.join(tmp, "missing.json");
+    const previous = process.env.MUSE_MCP_CONFIG;
+    process.env.MUSE_MCP_CONFIG = target;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram(io);
+      await program.parseAsync(["node", "muse", "mcp", "config-show"], { from: "node" });
+      const out = output.join("");
+      expect(out).toContain(`config: ${target}`);
+      expect(out).toContain("(no entries");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MUSE_MCP_CONFIG;
+      } else {
+        process.env.MUSE_MCP_CONFIG = previous;
+      }
+    }
+  });
+
+  it("mcp config-show prints one row per parsed entry", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    const tmp = await mkdtemp(path.join(tmpdir(), "muse-mcp-config-cli-"));
+    const target = path.join(tmp, "mcp.json");
+    await writeFile(target, JSON.stringify({
+      mcpServers: {
+        filesystem: { args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"], command: "npx" },
+        github: { url: "https://api.githubcopilot.com/mcp/" }
+      }
+    }), "utf8");
+
+    const previous = process.env.MUSE_MCP_CONFIG;
+    process.env.MUSE_MCP_CONFIG = target;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram(io);
+      await program.parseAsync(["node", "muse", "mcp", "config-show"], { from: "node" });
+      const out = output.join("");
+      expect(out).toContain("filesystem\tstdio\tcommand=npx");
+      expect(out).toContain("github\tstreamable\turl=https://api.githubcopilot.com/mcp/");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MUSE_MCP_CONFIG;
+      } else {
+        process.env.MUSE_MCP_CONFIG = previous;
+      }
+    }
+  });
+
+  it("mcp config-show --json emits structured output", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    const tmp = await mkdtemp(path.join(tmpdir(), "muse-mcp-config-cli-"));
+    const target = path.join(tmp, "mcp.json");
+    await writeFile(target, JSON.stringify({
+      mcpServers: { fs: { command: "node", args: ["server.js"] } }
+    }), "utf8");
+
+    const previous = process.env.MUSE_MCP_CONFIG;
+    process.env.MUSE_MCP_CONFIG = target;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram(io);
+      await program.parseAsync(["node", "muse", "mcp", "config-show", "--json"], { from: "node" });
+      const parsed = JSON.parse(output.join("")) as { entries: Array<{ name: string }>; path: string };
+      expect(parsed.path).toBe(target);
+      expect(parsed.entries.map((entry) => entry.name)).toEqual(["fs"]);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MUSE_MCP_CONFIG;
+      } else {
+        process.env.MUSE_MCP_CONFIG = previous;
+      }
+    }
+  });
 });

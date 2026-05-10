@@ -1,16 +1,22 @@
 /**
- * `muse mcp` command group, extracted from apps/cli/src/program.ts.
+ * `muse mcp` command group.
  *
- * Self-contained: only consumes the `apiRequest` / `writeOutput`
- * helpers (passed in as dependencies). Wraps the MCP server
- * management endpoints (list / add / connect / disconnect / tools /
- * call) in commander argument-parsing.
- *
- * Owns the local `parseJsonObject` helper for `--config` and `--args`
- * flag parsing.
+ * Two surfaces share this group:
+ *   - API-backed subcommands (`list`, `add`, `connect`, ...) hit the
+ *     running server's admin endpoints; they manage the in-process
+ *     `McpServerStore` for the live runtime.
+ *   - File-backed subcommands (`config-path`, `config-show`) inspect
+ *     `~/.muse/mcp.json` directly; they don't need a running server,
+ *     so they work during initial setup and dogfood debugging.
  */
 
 import type { Command } from "commander";
+
+import {
+  ConfigurationError,
+  loadExternalMcpConfig,
+  resolveExternalMcpConfigFile
+} from "@muse/autoconfigure";
 
 import type { ProgramIO } from "./program.js";
 
@@ -28,6 +34,47 @@ export interface McpHelpers {
 export function registerMcpCommands(program: Command, io: ProgramIO, helpers: McpHelpers): void {
   const { apiRequest, writeOutput } = helpers;
   const mcp = program.command("mcp").description("Manage MCP servers");
+
+  mcp
+    .command("config-path")
+    .description("Print the path to ~/.muse/mcp.json (Claude-Desktop-style external MCP config)")
+    .action(() => {
+      io.stdout(`${resolveExternalMcpConfigFile(process.env)}\n`);
+    });
+
+  mcp
+    .command("config-show")
+    .description("Read ~/.muse/mcp.json and print parsed entries (does not contact the server)")
+    .option("--json", "Print machine-readable JSON")
+    .action((options: { readonly json?: boolean }, command) => {
+      const path = resolveExternalMcpConfigFile(process.env);
+      let entries;
+      try {
+        entries = loadExternalMcpConfig(process.env);
+      } catch (cause) {
+        if (cause instanceof ConfigurationError) {
+          io.stderr(`${cause.message}\n`);
+          command.error("Invalid MCP config", { exitCode: 1 });
+          return;
+        }
+        throw cause;
+      }
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ entries, path }, null, 2)}\n`);
+        return;
+      }
+      io.stdout(`config: ${path}\n`);
+      if (entries.length === 0) {
+        io.stdout("(no entries — file is missing or has empty mcpServers)\n");
+        return;
+      }
+      for (const entry of entries) {
+        const summary = entry.transportType === "stdio"
+          ? `command=${stringify(entry.config?.command)} args=${stringify(entry.config?.args)}`
+          : `url=${stringify(entry.config?.url)}`;
+        io.stdout(`${entry.name}\t${entry.transportType}\t${summary}\n`);
+      }
+    });
 
   mcp
     .command("list")
@@ -109,4 +156,17 @@ function parseJsonObject(value: string): Record<string, unknown> {
     throw new Error("Expected a JSON object");
   }
   return parsed as Record<string, unknown>;
+}
+
+function stringify(value: unknown): string {
+  if (value === undefined || value === null) {
+    return "(none)";
+  }
+  if (Array.isArray(value)) {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  return JSON.stringify(value);
 }
