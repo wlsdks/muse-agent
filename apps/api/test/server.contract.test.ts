@@ -309,11 +309,11 @@ describe("api server: web contract + manifest", () => {
       readonly total: number;
       readonly servers: readonly { readonly name: string; readonly optIn: boolean; readonly tools: readonly { readonly name: string }[]; readonly toolCount: number; readonly requires?: readonly string[] }[];
     };
-    expect(body.total).toBe(11);
+    expect(body.total).toBe(12);
     const names = body.servers.map((entry) => entry.name).sort();
     expect(names).toEqual([
       "muse.crypto", "muse.diff", "muse.fetch", "muse.fs", "muse.json", "muse.math",
-      "muse.messaging", "muse.regex", "muse.text", "muse.time", "muse.url"
+      "muse.messaging", "muse.regex", "muse.reminders", "muse.text", "muse.time", "muse.url"
     ]);
     const fs = body.servers.find((entry) => entry.name === "muse.fs")!;
     expect(fs.optIn).toBe(true);

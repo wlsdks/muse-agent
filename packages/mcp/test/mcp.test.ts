@@ -20,6 +20,7 @@ import {
   createMathMcpServer,
   createMessagingMcpServer,
   createNotesMcpServer,
+  createRemindersMcpServer,
   createNotesRegistryMcpServer,
   createTasksMcpServer,
   createRegexMcpServer,
@@ -2496,5 +2497,74 @@ describe("muse.messaging loopback server", () => {
     await expect(connection.callTool!("send", { destination: "x", providerId: "", text: "hi" }))
       .resolves.toMatchObject({ error: expect.stringContaining("providerId is required") });
     expect(calls).toBe(0);
+  });
+});
+
+describe("muse.reminders loopback server", () => {
+  it("supports the add → due → clear lifecycle with relative dueAt", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-"));
+    let counter = 0;
+    const fixedNow = new Date("2026-05-11T08:00:00Z");
+    const server = createRemindersMcpServer({
+      file: join(dir, "reminders.json"),
+      idFactory: () => `rem_${++counter}`,
+      now: () => fixedNow
+    });
+    const connection = createLoopbackMcpConnection(server);
+
+    const added = await connection.callTool!("add", {
+      dueAt: "2026-05-11T07:00:00Z", // overdue relative to fixedNow
+      text: "Buy milk"
+    });
+    expect(added).toMatchObject({
+      reminder: {
+        dueAt: "2026-05-11T07:00:00.000Z",
+        id: "rem_1",
+        status: "pending",
+        text: "Buy milk"
+      }
+    });
+
+    const future = await connection.callTool!("add", {
+      dueAt: "2026-05-12T09:00:00Z",
+      text: "Pay rent"
+    });
+    expect(future).toMatchObject({ reminder: { id: "rem_2", status: "pending" } });
+
+    const due = await connection.callTool!("due", { status: "due" });
+    expect(due).toMatchObject({ status: "due", total: 1 });
+    expect((due.reminders as Array<{ id: string }>)[0]?.id).toBe("rem_1");
+
+    const all = await connection.callTool!("due", { status: "all" });
+    expect(all).toMatchObject({ status: "all", total: 2 });
+
+    const removed = await connection.callTool!("clear", { id: "rem_1" });
+    expect(removed).toMatchObject({ id: "rem_1", removed: true });
+
+    const after = await connection.callTool!("due", { status: "all" });
+    expect(after).toMatchObject({ total: 1 });
+  });
+
+  it("returns structured errors for invalid input + missing ids", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-err-"));
+    const connection = createLoopbackMcpConnection(createRemindersMcpServer({ file: join(dir, "reminders.json") }));
+
+    const noText = await connection.callTool!("add", { dueAt: "2026-05-11T07:00:00Z" });
+    expect(noText).toMatchObject({ error: expect.stringContaining("text is required") });
+
+    const noDue = await connection.callTool!("add", { text: "x" });
+    expect(noDue).toMatchObject({ error: expect.stringContaining("dueAt is required") });
+
+    const badPhrase = await connection.callTool!("add", { dueAt: "lolwhen", text: "x" });
+    expect(badPhrase).toMatchObject({ error: expect.stringContaining("ISO-8601") });
+
+    const missing = await connection.callTool!("clear", { id: "rem_does_not_exist" });
+    expect(missing).toMatchObject({ error: expect.stringContaining("not found") });
   });
 });

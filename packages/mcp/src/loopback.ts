@@ -164,6 +164,7 @@ export { createFilesystemMcpServer, type FilesystemMcpServerOptions };
 import { MessagingProviderRegistry } from "@muse/messaging";
 
 import { createMessagingMcpServer } from "./loopback-messaging.js";
+import { createRemindersMcpServer } from "./loopback-reminders.js";
 
 export interface LoopbackMcpCatalogEntry {
   readonly name: string;
@@ -200,6 +201,9 @@ export function describeBuiltinLoopbackMcpServers(): readonly LoopbackMcpCatalog
   // provider, so a zero-config user sees this entry but won't see the
   // tools as callable until they set a token.
   const messagingServer = createMessagingMcpServer({ registry: new MessagingProviderRegistry() });
+  // Reminders is always-on at the default path — the placeholder file
+  // is never read because `describe()` only walks the tools array.
+  const remindersServer = createRemindersMcpServer({ file: "/dev/null" });
 
   const optIn: readonly LoopbackMcpCatalogEntry[] = [
     {
@@ -232,6 +236,16 @@ export function describeBuiltinLoopbackMcpServers(): readonly LoopbackMcpCatalog
         "MUSE_TELEGRAM_BOT_TOKEN | MUSE_DISCORD_BOT_TOKEN | MUSE_SLACK_BOT_TOKEN | MUSE_LINE_CHANNEL_ACCESS_TOKEN"
       ],
       tools: messagingServer.tools.map((tool) => ({
+        description: tool.description ?? "",
+        name: tool.name,
+        risk: tool.risk
+      }))
+    },
+    {
+      description: remindersServer.description ?? "",
+      name: remindersServer.name,
+      optIn: false,
+      tools: remindersServer.tools.map((tool) => ({
         description: tool.description ?? "",
         name: tool.name,
         risk: tool.risk

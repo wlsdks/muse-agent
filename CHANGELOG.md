@@ -27,6 +27,13 @@ move from `Unreleased` to dated/versioned headings.
   plays through afplay/aplay. Falls back to a friendly stderr hint
   when no voice provider is configured. Shared playback helper
   (`voice-playback.ts`) ready for any future "speak this" surface.
+- **`muse.reminders.{add, due, clear}` MCP loopback** — agent
+  surface for the reminder store. The LLM can now schedule its
+  own reminders ("내일 6시에 우유 사라고 알려줘" → `add` with
+  parsed dueAt), check what the user should see right now (`due`
+  status filter for overdue+now-or-earlier pending), and remove
+  one by id (`clear`). Always-on at `~/.muse/reminders.json`
+  (catalog total: 11 → 12); the file self-creates on first write.
 - **`muse remind` — passive personal reminders + `muse today` integration**.
   `muse remind <when> <text...>` adds an entry to
   `~/.muse/reminders.json` (or `MUSE_REMINDERS_FILE`). `<when>`

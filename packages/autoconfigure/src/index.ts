@@ -62,6 +62,7 @@ import {
   createLoopbackMcpMuseTools,
   createMessagingMcpServer,
   createNotesMcpServer,
+  createRemindersMcpServer,
   createNotesRegistryMcpServer,
   createTasksRegistryMcpServer,
   type LoopbackMcpServer,
@@ -402,6 +403,11 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const messagingLoopbackTools = messagingRegistry.list().length > 0
     ? createLoopbackMcpMuseTools(createMessagingMcpServer({ registry: messagingRegistry }))
     : [];
+  // Reminders loopback: always registered. The store self-creates on
+  // first write, so a fresh install sees the tool but the file is
+  // absent until the LLM adds the first reminder.
+  const remindersFile = resolveRemindersFile(env);
+  const remindersLoopbackTools = createLoopbackMcpMuseTools(createRemindersMcpServer({ file: remindersFile }));
   const schedulerHandle: { current: DynamicScheduler | undefined } = { current: undefined };
   const toolRegistry = new DynamicToolRegistry([
     () => museTools,
@@ -413,6 +419,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => tasksLoopbackTools,
     () => tasksRegistryLoopbackTools,
     () => messagingLoopbackTools,
+    () => remindersLoopbackTools,
     () => runnerTools,
     () => mcpManager.toMuseTools(),
     () => schedulerHandle.current ? createSchedulerTools(schedulerHandle.current) : []

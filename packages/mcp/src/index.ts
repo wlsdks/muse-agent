@@ -541,6 +541,14 @@ export {
   type MessagingMcpServerOptions
 } from "./loopback-messaging.js";
 
+// Reminders loopback — the LLM can add/list/clear reminders against
+// the same `~/.muse/reminders.json` the CLI / REST surface uses.
+// Read-only at fire time; passive surfacing through `muse today`.
+export {
+  createRemindersMcpServer,
+  type RemindersMcpServerOptions
+} from "./loopback-reminders.js";
+
 // Context reference MCP server (round 167 — Context Engineering 1.d
 // foundation). `muse.context.fetch` / `muse.context.list` against an
 // in-process ContextReferenceStore.
