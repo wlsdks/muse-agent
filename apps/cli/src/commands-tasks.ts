@@ -32,6 +32,13 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
   const tasks = program.command("tasks").description("Personal todo list");
 
   tasks
+    .command("providers")
+    .description("GET /api/tasks/providers — list configured tasks backends")
+    .action(async (_options, command) => {
+      helpers.writeOutput(io, await helpers.apiRequest(io, command, "/api/tasks/providers"));
+    });
+
+  tasks
     .command("list")
     .description("GET /api/tasks — list tasks newest-first, filter by status")
     .option("--status <status>", "Status filter: open (default), done, or all", "open")

@@ -6,7 +6,11 @@ import {
 } from "@muse/agent-specs";
 import { extractBearerToken, type MuseAuth } from "@muse/auth";
 import type { CalendarCredentialStore, CalendarProviderRegistry } from "@muse/calendar";
-import { describeBuiltinLoopbackMcpServers, type NotesProviderRegistry } from "@muse/mcp";
+import {
+  describeBuiltinLoopbackMcpServers,
+  type NotesProviderRegistry,
+  type TasksProviderRegistry
+} from "@muse/mcp";
 import type { ConversationSummaryStore, TaskMemoryMaintenance, UserMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
 import type { MuseObservabilitySnapshot, LatencyQuery, TokenCostQuery } from "@muse/observability";
@@ -87,6 +91,7 @@ export interface ServerOptions {
   readonly calendar?: CalendarProviderRegistry;
   readonly calendarCredentialStore?: CalendarCredentialStore;
   readonly tasksFile?: string;
+  readonly tasksProviderRegistry?: TasksProviderRegistry;
   readonly notesDir?: string;
   readonly notesProviderRegistry?: NotesProviderRegistry;
   readonly voice?: VoiceProviderRegistry;
@@ -245,7 +250,11 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     });
   }
   if (options.tasksFile) {
-    registerTasksRoutes(server, { authService, tasksFile: options.tasksFile });
+    registerTasksRoutes(server, {
+      authService,
+      tasksFile: options.tasksFile,
+      ...(options.tasksProviderRegistry ? { tasksProviderRegistry: options.tasksProviderRegistry } : {})
+    });
   }
   if (options.notesDir) {
     registerNotesRoutes(server, {

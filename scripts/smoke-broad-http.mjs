@@ -798,6 +798,15 @@ try {
     const after = await fetch(`${baseUrl}/api/tasks?status=all`).then((response) => response.json());
     assert(!after.tasks.some((task) => task.id === created.id),
       "expected the task to be gone after DELETE");
+
+    // GET /api/tasks/providers (round 155 wiring): smoke broad runs
+    // without MUSE_TASKS_PROVIDERS override, so the registry has just
+    // the local baseline. Symmetric with /api/notes/providers (r146).
+    const providers = await fetch(`${baseUrl}/api/tasks/providers`).then((response) => response.json());
+    assert(Array.isArray(providers.providers) && providers.providers.length >= 1,
+      `expected providers array, got ${JSON.stringify(providers)}`);
+    assert(providers.providers.some((info) => info.id === "local" && info.local === true),
+      `expected baseline local tasks provider, got ${JSON.stringify(providers.providers)}`);
   });
 
   await record("/api/notes REST round-trips save → list → search → read → append", async () => {

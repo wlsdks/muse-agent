@@ -23,6 +23,7 @@ import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+import type { TasksProviderRegistry } from "@muse/mcp";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -31,6 +32,15 @@ import type { ServerOptions } from "./server.js";
 interface TasksRoutesGate {
   readonly authService: ServerOptions["authService"];
   readonly tasksFile: string;
+  /**
+   * Optional registry of all configured tasks backends (LocalFile +
+   * AppleReminders + future Notion DB). When provided,
+   * `/api/tasks/providers` exposes the list so the CLI / web UI can
+   * surface what's wired without going through chat. Distinct from
+   * `tasksFile`, which is the single JSON path used by the inline
+   * filesystem routes (`/api/tasks` GET/POST/etc).
+   */
+  readonly tasksProviderRegistry?: TasksProviderRegistry;
 }
 
 interface PersistedTaskRow {
@@ -111,6 +121,36 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
     }
     await writeTasksFile(tasksFile, next);
     return reply.status(204).send();
+  });
+
+  server.get("/api/tasks/providers", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
+      return reply;
+    }
+    // When the assembly didn't wire a registry (e.g. server constructed
+    // directly in tests with just `tasksFile`), report the inline
+    // filesystem-only baseline so the CLI / web UI gets a stable
+    // shape regardless of how the server was constructed.
+    if (!gate.tasksProviderRegistry) {
+      return {
+        providers: [
+          {
+            description: `Inline filesystem-only tasks store rooted at ${tasksFile}.`,
+            displayName: "Local file (inline)",
+            id: "local",
+            local: true
+          }
+        ]
+      };
+    }
+    return {
+      providers: gate.tasksProviderRegistry.describe().map((info) => ({
+        description: info.description,
+        displayName: info.displayName,
+        id: info.id,
+        local: info.local
+      }))
+    };
   });
 }
 

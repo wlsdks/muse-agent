@@ -218,6 +218,7 @@ export interface MuseRuntimeAssembly {
   readonly toolRegistry: ToolRegistry;
   readonly calendar: CalendarProviderRegistry;
   readonly notesProviderRegistry?: NotesProviderRegistry;
+  readonly tasksProviderRegistry?: TasksProviderRegistry;
   readonly voice?: VoiceProviderRegistry;
 }
 
@@ -480,6 +481,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       store: schedulerStore
     },
     ...(notesRegistry ? { notesProviderRegistry: notesRegistry } : {}),
+    ...(tasksRegistry ? { tasksProviderRegistry: tasksRegistry } : {}),
     voice: buildVoiceRegistry(env)
   };
 }
@@ -564,6 +566,7 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     notesDir: resolveNotesDir(env),
     ...(assembly.notesProviderRegistry ? { notesProviderRegistry: assembly.notesProviderRegistry } : {}),
     tasksFile: resolveTasksFile(env),
+    ...(assembly.tasksProviderRegistry ? { tasksProviderRegistry: assembly.tasksProviderRegistry } : {}),
     voice: assembly.voice
   };
 }
