@@ -21,19 +21,24 @@ backlog — don't let it grow unchecked.
 - `no-eval` / `no-with` — defense against unsafe code paths
 - `@typescript-eslint/no-unused-vars` — unused imports, params, and
   caught errors. Prefix with `_` to silence intentionally
-  (e.g. `(_event) => ...`). Promoted from `warn` in round 174 after
-  the sweep.
+  (e.g. `(_event) => ...`). Promoted in round 174 after the sweep.
 - `prefer-const` — flag `let` declarations that are never
-  reassigned. Promoted from `warn` in round 174. The autoconfigure
+  reassigned. Promoted in round 174. The autoconfigure
   scheduler-handle pattern (closure forward-reference into a value
   assigned later) uses a `const { current }` holder object instead
   of `let`; reach for the same pattern when this rule complains.
-
-## Currently enforced as `warn`
-
-- `no-empty` — flag empty blocks (`catch {}` is allowed).
+- `no-empty` (with `allowEmptyCatch: true`) — promoted in round 181.
+  Empty `catch {}` is fine; other empty blocks are bugs in waiting.
+- `no-empty-pattern` — destructuring that binds nothing is almost
+  always a typo.
 - `no-useless-escape` — over-escaped regex/string characters.
-- `no-async-promise-executor` — `new Promise(async ...)` anti-pattern.
+- `no-unsafe-finally` — `return` / `throw` inside `finally` swallows
+  the original control flow.
+- `no-async-promise-executor` — `new Promise(async ...)` is the
+  classic forgotten-await pattern.
+- `no-prototype-builtins` — direct `obj.hasOwnProperty(...)` breaks
+  on null-prototype objects; `Object.hasOwn(obj, ...)` is the
+  modern fix.
 
 ## Off (but reconsider before tightening)
 
