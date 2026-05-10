@@ -593,10 +593,16 @@ export class AppleNotesProvider implements NotesProvider {
       return after;
     }
 
-    const target = folder ? `folder ${quote(folder)}` : `default account`;
+    // AppleScript Notes.app: notes live inside `folder`, not directly
+    // inside `account`. When no folder is specified, omit the `at`
+    // clause so Notes.app uses the default folder of the default
+    // account. The previous `at default account` form was invalid
+    // AppleScript and would error at runtime — silent CI bug because
+    // the real-osascript path stays untested.
+    const atClause = folder ? ` at folder ${quote(folder)}` : "";
     const script = `
       tell application "Notes"
-        set newNote to make new note at ${target} with properties {name:${quote(input.title)}, body:${quote(input.body)}}
+        set newNote to make new note${atClause} with properties {name:${quote(input.title)}, body:${quote(input.body)}}
         return id of newNote as string
       end tell
     `;
