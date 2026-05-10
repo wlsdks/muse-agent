@@ -11,7 +11,6 @@ type CompatibilityTable = Record<string, ColumnType<unknown, unknown, unknown>>;
 export interface MuseDatabase {
   readonly admin_alerts: AdminAlertTable;
   readonly admin_cost_usage: AdminCostUsageTable;
-  readonly admin_slos: AdminSloTable;
   readonly agent_runs: AgentRunTable;
   readonly agent_specs: AgentSpecTable;
   readonly alert_rules: AlertRuleTable;
@@ -43,16 +42,6 @@ export interface AdminAlertTable {
   readonly target: string | null;
   readonly created_at: Timestamp;
   readonly acknowledged_at: NullableTimestamp;
-}
-
-export interface AdminSloTable {
-  readonly id: string;
-  readonly name: string;
-  readonly target: number;
-  readonly actual: number | null;
-  readonly window: string;
-  readonly status: "healthy" | "at_risk" | "violated";
-  readonly updated_at: Timestamp;
 }
 
 export interface AdminCostUsageTable {

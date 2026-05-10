@@ -313,19 +313,6 @@ export const migrations: readonly SqlMigration[] = [
       CREATE INDEX IF NOT EXISTS idx_admin_alerts_target_created_at
         ON admin_alerts(target, created_at DESC);
 
-      CREATE TABLE IF NOT EXISTS admin_slos (
-        id VARCHAR(128) PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        target DOUBLE PRECISION NOT NULL,
-        actual DOUBLE PRECISION,
-        "window" VARCHAR(80) NOT NULL,
-        status VARCHAR(32) NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_admin_slos_status_updated_at
-        ON admin_slos(status, updated_at DESC);
-
       CREATE TABLE IF NOT EXISTS admin_cost_usage (
         id VARCHAR(128) PRIMARY KEY,
         model VARCHAR(255),

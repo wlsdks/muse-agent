@@ -18,7 +18,6 @@ describe("db migrations", () => {
       "trace_events",
       "hook_traces",
       "admin_alerts",
-      "admin_slos",
       "admin_cost_usage",
       "runtime_settings",
       "agent_specs",
