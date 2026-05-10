@@ -7,6 +7,16 @@ move from `Unreleased` to dated/versioned headings.
 
 ## [Unreleased]
 
+### Added
+
+- `muse.tasks.add` (`dueAt`) and `muse.calendar.add`
+  (`startsAtIso` / `endsAtIso`) accept relative-time phrases
+  in addition to ISO-8601: `tomorrow`, `tomorrow at 6pm`,
+  `today at 14:30`, `in 3 hours`, `in 2 days`, `next Monday`,
+  `next Monday at 9am`, plus `noon` / `midnight` time suffixes.
+  Resolved server-side against the local clock — no more relying
+  on the LLM to chain `time_now` + `time_add` correctly.
+
 ### Added (round 190)
 
 - **`muse.tasks.add` accepts `dueAt`**. Real bug surfaced via

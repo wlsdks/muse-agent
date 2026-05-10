@@ -1422,7 +1422,7 @@ describe("muse.tasks loopback server", () => {
       dueAt: "not a date",
       title: "Test"
     }) as { error?: string };
-    expect(result.error).toContain("dueAt must be a valid ISO-8601");
+    expect(result.error).toContain("dueAt must be an ISO-8601 timestamp or a supported relative phrase");
   });
 
   it("ignores dueAt when omitted (back-compat with pre-dueAt entries)", async () => {
@@ -1441,6 +1441,95 @@ describe("muse.tasks loopback server", () => {
     };
     expect(list.tasks[0]).toMatchObject({ id: "old-1" });
     expect(list.tasks[0]?.dueAt).toBeUndefined();
+  });
+
+  it("resolves relative dueAt phrases server-side ('in 3 hours', 'tomorrow at 6pm', 'next Monday')", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-tasks-rel-`);
+    let counter = 0;
+    const fixedNow = new Date("2026-05-10T12:00:00Z");
+    const server = createTasksMcpServer({
+      file: `${dir}/tasks.json`,
+      idFactory: () => `task_${++counter}`,
+      now: () => fixedNow
+    });
+    const connection = createLoopbackMcpConnection(server);
+
+    const inHours = await connection.callTool!("add", {
+      dueAt: "in 3 hours",
+      title: "Stand-up follow-up"
+    }) as { task: { dueAt?: string } };
+    expect(inHours.task.dueAt).toBe("2026-05-10T15:00:00.000Z");
+
+    const tomorrowEvening = await connection.callTool!("add", {
+      dueAt: "tomorrow at 6pm",
+      title: "Call mom"
+    }) as { task: { dueAt?: string } };
+    // 09:00 default replaced with 18:00; date wall-clock is local; ISO normalises.
+    expect(tomorrowEvening.task.dueAt).toMatch(/^2026-05-1[12]T/u);
+
+    const nextMonday = await connection.callTool!("add", {
+      dueAt: "next monday",
+      title: "File expenses"
+    }) as { task: { dueAt?: string } };
+    // 2026-05-10 is a Sunday → next Monday is 2026-05-11 wall-clock.
+    expect(nextMonday.task.dueAt).toMatch(/^2026-05-1[12]T/u);
+  });
+
+  describe("resolveRelativeTimePhrase", () => {
+    it("parses 'in N <unit>' offsets", async () => {
+      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const fixed = new Date("2026-05-10T12:00:00Z");
+      const now = () => fixed;
+      expect(resolveRelativeTimePhrase("in 30 minutes", now)?.toISOString())
+        .toBe("2026-05-10T12:30:00.000Z");
+      expect(resolveRelativeTimePhrase("in 3 hours", now)?.toISOString())
+        .toBe("2026-05-10T15:00:00.000Z");
+      expect(resolveRelativeTimePhrase("in 2 days", now)?.toISOString())
+        .toBe("2026-05-12T12:00:00.000Z");
+      expect(resolveRelativeTimePhrase("in 1 week", now)?.toISOString())
+        .toBe("2026-05-17T12:00:00.000Z");
+    });
+
+    it("supports time-of-day suffixes (am/pm/HH:MM/noon/midnight)", async () => {
+      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const tomorrow6pm = resolveRelativeTimePhrase("tomorrow at 6pm", () => new Date("2026-05-10T12:00:00Z"));
+      expect(tomorrow6pm?.getHours()).toBe(18);
+      expect(tomorrow6pm?.getMinutes()).toBe(0);
+
+      const tomorrow1430 = resolveRelativeTimePhrase("tomorrow at 14:30", () => new Date("2026-05-10T12:00:00Z"));
+      expect(tomorrow1430?.getHours()).toBe(14);
+      expect(tomorrow1430?.getMinutes()).toBe(30);
+
+      const todayNoon = resolveRelativeTimePhrase("today at noon", () => new Date("2026-05-10T08:00:00Z"));
+      expect(todayNoon?.getHours()).toBe(12);
+
+      const tomorrowMidnight = resolveRelativeTimePhrase("tomorrow at midnight", () => new Date("2026-05-10T12:00:00Z"));
+      expect(tomorrowMidnight?.getHours()).toBe(0);
+    });
+
+    it("returns undefined for unsupported phrases (caller decides fallback)", async () => {
+      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const now = () => new Date("2026-05-10T12:00:00Z");
+      expect(resolveRelativeTimePhrase("sometime", now)).toBeUndefined();
+      expect(resolveRelativeTimePhrase("yesterday", now)).toBeUndefined();
+      expect(resolveRelativeTimePhrase("", now)).toBeUndefined();
+      expect(resolveRelativeTimePhrase("tomorrow at 25:00", now)).toBeUndefined();
+    });
+  });
+
+  it("rejects dueAt phrases that don't match ISO or any supported relative form", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-tasks-rel-bad-`);
+    const connection = createLoopbackMcpConnection(createTasksMcpServer({ file: `${dir}/tasks.json` }));
+
+    const result = await connection.callTool!("add", {
+      dueAt: "sometime soon",
+      title: "Vague"
+    }) as { error?: string };
+    expect(result.error).toMatch(/ISO-8601 timestamp or a supported relative phrase/u);
   });
 });
 

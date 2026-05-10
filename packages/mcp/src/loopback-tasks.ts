@@ -6,6 +6,7 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 
 import type { LoopbackMcpServer } from "./loopback.js";
 import { readString, readStringArray, errorMessage } from "./loopback-helpers.js";
+import { resolveRelativeTimePhrase } from "./loopback-relative-time.js";
 
 /**
  * `muse.tasks` loopback MCP server — personal todo list backed by a
@@ -68,10 +69,9 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
     tools: [
       {
         description:
-          "Append a new task. Required: `title`. Optional: `notes` (free-form text), `tags` (string array), `dueAt` (ISO-8601 timestamp). " +
-          "For relative due dates ('tomorrow', 'in 3 hours', 'next Monday') resolve the ISO first by chaining tools in this exact order: " +
-          "(1) call `time_now` to get the current ISO, (2) call `time_add` with that ISO as `base` plus the offset (e.g. `days: 1`, `hours: 3`) — OR call `next_weekday` for day names — (3) pass the resulting `iso` as `dueAt`. " +
-          "Don't call `time_add` without first getting `time_now`'s output. " +
+          "Append a new task. Required: `title`. Optional: `notes` (free-form text), `tags` (string array), `dueAt`. " +
+          "`dueAt` accepts either an ISO-8601 timestamp OR a simple relative phrase: 'tomorrow', 'tomorrow at 6pm', 'today at 14:30', 'in 3 hours', 'in 2 days', 'next Monday', 'next Monday at 9am'. " +
+          "Pass the user's natural-language phrase directly — the server resolves it against the current local time. " +
           "Returns the created task with its generated id.",
         execute: async (args): Promise<JsonObject> => {
           const title = readString(args, "title")?.trim();
@@ -83,11 +83,16 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           const dueAtRaw = readString(args, "dueAt")?.trim();
           let dueAt: string | undefined;
           if (dueAtRaw && dueAtRaw.length > 0) {
-            const parsed = new Date(dueAtRaw);
-            if (Number.isNaN(parsed.getTime())) {
-              return { error: `dueAt must be a valid ISO-8601 timestamp (got ${JSON.stringify(dueAtRaw)})` };
+            const isoParsed = new Date(dueAtRaw);
+            if (!Number.isNaN(isoParsed.getTime()) && /^\d{4}-\d{2}-\d{2}/u.test(dueAtRaw)) {
+              dueAt = isoParsed.toISOString();
+            } else {
+              const relative = resolveRelativeTimePhrase(dueAtRaw, now);
+              if (!relative) {
+                return { error: `dueAt must be an ISO-8601 timestamp or a supported relative phrase (got ${JSON.stringify(dueAtRaw)})` };
+              }
+              dueAt = relative.toISOString();
             }
-            dueAt = parsed.toISOString();
           }
           const tasks = await readTasks(file);
           const created: PersistedTask = {

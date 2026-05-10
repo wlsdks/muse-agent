@@ -8,6 +8,7 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { readBoolean, readString, readStringArray, errorMessage } from "./loopback-helpers.js";
 import type { LoopbackMcpServer } from "./loopback.js";
+import { resolveRelativeTimePhrase } from "./loopback-relative-time.js";
 
 /**
  * `muse.calendar` loopback MCP server.
@@ -88,9 +89,8 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
       {
         description:
           "Create a new calendar event. `startsAtIso` is required; `endsAtIso` defaults to startsAt + 60 minutes. " +
-          "For relative times ('tomorrow at 3pm', 'next Friday morning') resolve the ISO first by chaining tools in this exact order: " +
-          "(1) call `time_now` to get the current ISO, (2) call `time_add` with that ISO as `base` plus the offset — OR call `next_weekday` for day names — (3) pass the resulting `iso` as `startsAtIso`. " +
-          "Don't call `time_add` without first getting `time_now`'s output. " +
+          "Both fields accept either an ISO-8601 timestamp OR a simple relative phrase: 'tomorrow at 3pm', 'today at 14:30', 'in 2 hours', 'next Friday', 'next Monday at 9am'. " +
+          "Pass the user's natural-language phrase directly — the server resolves it against the current local time. " +
           "If `providerId` is omitted, the primary (first registered) provider is used.",
         execute: async (args): Promise<JsonObject> => {
           const title = readString(args, "title")?.trim();
@@ -235,6 +235,11 @@ function parseIsoDate(value: string | undefined): Date | undefined {
   if (!value) {
     return undefined;
   }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  if (/^\d{4}-\d{2}-\d{2}/u.test(value)) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+  return resolveRelativeTimePhrase(value, () => new Date());
 }
