@@ -626,6 +626,62 @@ describe("cli program", () => {
     expect(combined).toContain("openai-tts");
   });
 
+  it("calendar providers / events hit the /api/calendar routes with the right query params", async () => {
+    const { io, output } = captureOutput();
+    const requests: Array<{ readonly method?: string; readonly url: string }> = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url, init) => {
+        requests.push({ method: init?.method, url: String(url) });
+        const path = String(url);
+        if (path.endsWith("/api/calendar/providers")) {
+          return new Response(JSON.stringify({
+            enabled: ["local"],
+            providers: [{ description: "Local file", displayName: "Local", id: "local", local: true }]
+          }));
+        }
+        if (path.includes("/api/calendar/events")) {
+          return new Response(JSON.stringify({
+            events: [{
+              endsAtIso: "2026-05-10T11:00:00Z",
+              id: "evt-1",
+              providerId: "local",
+              startsAtIso: "2026-05-10T10:00:00Z",
+              title: "Standup"
+            }],
+            total: 1
+          }));
+        }
+        return new Response("{}");
+      }
+    });
+
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "calendar", "providers"],
+      { from: "node" }
+    );
+    await program.parseAsync(
+      [
+        "node", "muse", "--api-url", "http://api.test",
+        "calendar", "events",
+        "--from", "2026-05-10T00:00:00Z",
+        "--to", "2026-05-11T00:00:00Z",
+        "--provider", "local"
+      ],
+      { from: "node" }
+    );
+
+    expect(requests[0]).toMatchObject({ url: "http://api.test/api/calendar/providers", method: "GET" });
+    expect(requests[1]?.method).toBe("GET");
+    expect(requests[1]?.url).toContain("fromIso=2026-05-10T00%3A00%3A00Z");
+    expect(requests[1]?.url).toContain("toIso=2026-05-11T00%3A00%3A00Z");
+    expect(requests[1]?.url).toContain("providerId=local");
+
+    const combined = output.join("");
+    expect(combined).toContain("local");
+    expect(combined).toContain("Standup");
+  });
+
   it("memory show / set / clear hit the user-memory routes", async () => {
     const { io, output } = captureOutput();
     const requests: Array<{ readonly body?: string; readonly method?: string; readonly url: string }> = [];

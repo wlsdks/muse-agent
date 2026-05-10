@@ -11,6 +11,7 @@ import { registerAuthCommands } from "./commands-auth.js";
 import { registerConfigCommands } from "./commands-config.js";
 import { registerMcpCommands } from "./commands-mcp.js";
 import { registerOrchestrateCommands } from "./commands-orchestrate.js";
+import { registerCalendarCommands } from "./commands-calendar.js";
 import { registerMemoryCommands } from "./commands-memory.js";
 import { registerSchedulerCommands, registerSetupCommands } from "./commands-scheduler-setup.js";
 import { registerSpecsCommands } from "./commands-specs.js";
@@ -217,6 +218,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       writeOutput(io, await apiRequest(io, command, "/api/admin/muse/snapshot"));
     });
 
+  registerCalendarCommands(program, io, { apiRequest, writeOutput });
   registerMemoryCommands(program, io, { apiRequest, writeOutput });
   registerSchedulerCommands(program, io, { apiRequest, writeOutput });
   registerSetupCommands(program, io);
