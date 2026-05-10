@@ -123,19 +123,6 @@ export const migrations: readonly SqlMigration[] = [
       CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
         ON users(email);
 
-      CREATE TABLE IF NOT EXISTS alert_rules (
-        id VARCHAR(128) PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        description TEXT NOT NULL DEFAULT '',
-        type VARCHAR(40) NOT NULL,
-        severity VARCHAR(40) NOT NULL DEFAULT 'warning',
-        metric VARCHAR(120) NOT NULL,
-        threshold DOUBLE PRECISION NOT NULL,
-        window_minutes INTEGER NOT NULL DEFAULT 15,
-        enabled BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-
       CREATE TABLE IF NOT EXISTS conversation_summaries (
         session_id VARCHAR(255) PRIMARY KEY,
         narrative TEXT NOT NULL,

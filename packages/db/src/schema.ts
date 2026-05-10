@@ -13,7 +13,6 @@ export interface MuseDatabase {
   readonly admin_cost_usage: AdminCostUsageTable;
   readonly agent_runs: AgentRunTable;
   readonly agent_specs: AgentSpecTable;
-  readonly alert_rules: AlertRuleTable;
   readonly checkpoints: CheckpointTable;
   readonly conversation_messages: ConversationMessageTable;
   readonly conversation_summaries: ConversationSummaryTable;
@@ -48,19 +47,6 @@ export interface AdminCostUsageTable {
   readonly id: string;
   readonly model: string | null;
   readonly cost_usd: NumericString;
-  readonly created_at: Timestamp;
-}
-
-export interface AlertRuleTable {
-  readonly id: string;
-  readonly name: string;
-  readonly description: string;
-  readonly type: string;
-  readonly severity: string;
-  readonly metric: string;
-  readonly threshold: number;
-  readonly window_minutes: number;
-  readonly enabled: boolean;
   readonly created_at: Timestamp;
 }
 

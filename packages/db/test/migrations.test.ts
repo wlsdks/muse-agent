@@ -43,7 +43,6 @@ describe("db migrations", () => {
     const sql = migrations.map((migration) => migration.up).join("\n");
 
     for (const table of [
-      "alert_rules",
       "conversation_summaries",
       "debug_replay_captures",
       "metric_token_usage",

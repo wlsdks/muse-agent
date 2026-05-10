@@ -8,7 +8,6 @@ describe("MuseDatabase", () => {
       "admin_cost_usage",
       "agent_runs",
       "agent_specs",
-      "alert_rules",
       "users",
       "conversation_summaries",
       "conversation_messages",
