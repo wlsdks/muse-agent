@@ -111,6 +111,14 @@ export interface UserMemoryTable {
   readonly preferences: JsonColumn;
   readonly recent_topics: string;
   readonly updated_at: Timestamp;
+  /**
+   * Typed user-model slots (Context Engineering 1.c, round 165).
+   * Stored as JSONB so the runtime can evolve the slot taxonomy
+   * without further migrations. Nullable — old rows that pre-date
+   * this column have no typed slots, which the @muse/memory layer
+   * treats as `userModel: undefined`.
+   */
+  readonly user_model: JsonColumn<JsonValue | null>;
 }
 
 export interface SessionTagTable {

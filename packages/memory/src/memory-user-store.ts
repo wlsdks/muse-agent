@@ -16,6 +16,7 @@
  */
 
 import type { MuseDatabase } from "@muse/db";
+import type { JsonValue } from "@muse/shared";
 import type { Insertable, Kysely } from "kysely";
 import { EMPTY_USER_MODEL, type UserMemory, type UserMemoryStore, type UserModel, type UserModelSlot } from "./index.js";
 
@@ -92,7 +93,8 @@ export class KyselyUserMemoryStore implements UserMemoryStore {
       preferences: existing?.preferences ?? {},
       recentTopics: existing?.recentTopics ?? [],
       updatedAt: new Date(),
-      userId
+      userId,
+      ...(existing?.userModel ? { userModel: existing.userModel } : {})
     });
   }
 
@@ -103,13 +105,32 @@ export class KyselyUserMemoryStore implements UserMemoryStore {
       preferences: { ...(existing?.preferences ?? {}), [key]: value },
       recentTopics: existing?.recentTopics ?? [],
       updatedAt: new Date(),
-      userId
+      userId,
+      ...(existing?.userModel ? { userModel: existing.userModel } : {})
     });
   }
 
   async deleteByUserId(userId: string): Promise<boolean> {
     const result = await this.db.deleteFrom("user_memories").where("user_id", "=", userId).executeTakeFirst();
     return Number(result.numDeletedRows ?? 0) > 0;
+  }
+
+  /**
+   * Round 165: typed-slot upsert, mirrors `InMemoryUserMemoryStore.upsertUserModelSlot`.
+   * Replace-by-id within the slot's `kind`, other kinds untouched.
+   * Stored as JSONB on `user_memories.user_model`.
+   */
+  async upsertUserModelSlot(userId: string, slot: UserModelSlot): Promise<UserMemory> {
+    const existing = await this.findByUserId(userId);
+    const baseModel = existing?.userModel ?? EMPTY_USER_MODEL;
+    return this.save({
+      facts: existing?.facts ?? {},
+      preferences: existing?.preferences ?? {},
+      recentTopics: existing?.recentTopics ?? [],
+      updatedAt: new Date(),
+      userId,
+      userModel: applyUserModelSlot(baseModel, slot)
+    });
   }
 
   private async save(memory: UserMemory): Promise<UserMemory> {
@@ -121,7 +142,8 @@ export class KyselyUserMemoryStore implements UserMemoryStore {
         facts: insert.facts,
         preferences: insert.preferences,
         recent_topics: insert.recent_topics,
-        updated_at: insert.updated_at
+        updated_at: insert.updated_at,
+        user_model: insert.user_model
       }))
       .returningAll()
       .executeTakeFirstOrThrow();
@@ -136,11 +158,16 @@ export function createUserMemoryInsert(memory: UserMemory): UserMemoryInsert {
     preferences: { ...memory.preferences },
     recent_topics: memory.recentTopics.join("\n"),
     updated_at: memory.updatedAt,
-    user_id: memory.userId
+    user_id: memory.userId,
+    // null when userModel is undefined so Postgres stores SQL NULL
+    // (column is nullable). On read, mapUserMemoryRow turns null
+    // back into undefined.
+    user_model: memory.userModel ? serializeUserModel(memory.userModel) : null
   };
 }
 
 export function mapUserMemoryRow(row: UserMemoryRow): UserMemory {
+  const userModel = parseUserModelJson(row.user_model);
   return {
     facts: jsonStringRecord(row.facts),
     preferences: jsonStringRecord(row.preferences),
@@ -148,8 +175,133 @@ export function mapUserMemoryRow(row: UserMemoryRow): UserMemory {
       ? row.recent_topics.split(/\r?\n/u).map((item) => item.trim()).filter(Boolean)
       : [],
     updatedAt: dateValue(row.updated_at),
-    userId: stringValue(row.user_id)
+    userId: stringValue(row.user_id),
+    ...(userModel ? { userModel } : {})
   };
+}
+
+/**
+ * Serialize the UserModel for JSONB storage. We store Date objects
+ * as ISO strings so the column round-trips through JSON.parse
+ * cleanly — `parseUserModelJson` rehydrates the Dates on read.
+ */
+function serializeUserModel(model: UserModel): JsonValue {
+  return {
+    goals: model.goals.map((slot) => slotToJson(slot)),
+    preferences: model.preferences.map((slot) => slotToJson(slot)),
+    schedule: model.schedule.map((slot) => slotToJson(slot)),
+    vetoes: model.vetoes.map((slot) => slotToJson(slot))
+  } as JsonValue;
+}
+
+function slotToJson(slot: UserModelSlot): JsonValue {
+  // Drop optional Date fields when undefined and serialize present
+  // ones to ISO strings. Cast through Record<string, JsonValue> at
+  // the boundary; the runtime enforces the discriminated-union
+  // invariants on read.
+  const base: Record<string, JsonValue> = {
+    id: slot.id,
+    kind: slot.kind,
+    updatedAt: slot.updatedAt instanceof Date ? slot.updatedAt.toISOString() : String(slot.updatedAt),
+    value: slot.value,
+    ...(slot.confidence !== undefined ? { confidence: slot.confidence } : {})
+  };
+  if (slot.kind === "preference" && slot.category) {
+    base.category = slot.category;
+  } else if (slot.kind === "schedule" && slot.recurrence) {
+    base.recurrence = slot.recurrence;
+  } else if (slot.kind === "veto" && slot.scope) {
+    base.scope = slot.scope;
+  } else if (slot.kind === "goal") {
+    if (slot.dueAt instanceof Date) {
+      base.dueAt = slot.dueAt.toISOString();
+    }
+    if (slot.progress !== undefined) {
+      base.progress = slot.progress;
+    }
+  }
+  return base as JsonValue;
+}
+
+function parseUserModelJson(raw: unknown): UserModel | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+  const record = raw as Record<string, unknown>;
+  const result: UserModel = {
+    goals: parseSlotArray(record.goals, "goal") as UserModel["goals"],
+    preferences: parseSlotArray(record.preferences, "preference") as UserModel["preferences"],
+    schedule: parseSlotArray(record.schedule, "schedule") as UserModel["schedule"],
+    vetoes: parseSlotArray(record.vetoes, "veto") as UserModel["vetoes"]
+  };
+  // Any kind populated → return; otherwise undefined so callers see
+  // legacy (no-userModel) shape for users who never wrote one.
+  if (
+    result.goals.length === 0 &&
+    result.preferences.length === 0 &&
+    result.schedule.length === 0 &&
+    result.vetoes.length === 0
+  ) {
+    return undefined;
+  }
+  return result;
+}
+
+function parseSlotArray(raw: unknown, expectedKind: UserModelSlot["kind"]): readonly UserModelSlot[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const out: UserModelSlot[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+    const slot = entry as Record<string, unknown>;
+    if (slot.kind !== expectedKind) {
+      continue;
+    }
+    if (typeof slot.id !== "string" || typeof slot.value !== "string") {
+      continue;
+    }
+    const updatedAt = typeof slot.updatedAt === "string" ? new Date(slot.updatedAt) : undefined;
+    if (!updatedAt || Number.isNaN(updatedAt.getTime())) {
+      continue;
+    }
+    const base = {
+      id: slot.id,
+      updatedAt,
+      value: slot.value,
+      ...(typeof slot.confidence === "number" ? { confidence: slot.confidence } : {})
+    };
+    if (expectedKind === "preference") {
+      out.push({
+        ...base,
+        kind: "preference",
+        ...(typeof slot.category === "string" ? { category: slot.category } : {})
+      });
+    } else if (expectedKind === "schedule") {
+      out.push({
+        ...base,
+        kind: "schedule",
+        ...(typeof slot.recurrence === "string" ? { recurrence: slot.recurrence } : {})
+      });
+    } else if (expectedKind === "veto") {
+      out.push({
+        ...base,
+        kind: "veto",
+        ...(typeof slot.scope === "string" ? { scope: slot.scope } : {})
+      });
+    } else if (expectedKind === "goal") {
+      const dueAt = typeof slot.dueAt === "string" ? new Date(slot.dueAt) : undefined;
+      out.push({
+        ...base,
+        kind: "goal",
+        ...(dueAt && !Number.isNaN(dueAt.getTime()) ? { dueAt } : {}),
+        ...(typeof slot.progress === "number" ? { progress: slot.progress } : {})
+      });
+    }
+  }
+  return out;
 }
 
 function cloneUserMemory(memory: UserMemory | undefined): UserMemory | undefined {

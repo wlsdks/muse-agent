@@ -148,7 +148,8 @@ export const migrations: readonly SqlMigration[] = [
         facts JSONB NOT NULL DEFAULT '{}'::jsonb,
         preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
         recent_topics TEXT NOT NULL DEFAULT '',
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        user_model JSONB
       );
 
       CREATE INDEX IF NOT EXISTS idx_user_memories_updated_at ON user_memories(updated_at DESC);

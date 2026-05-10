@@ -851,6 +851,69 @@ describe("user memory store", () => {
     });
   });
 
+  it("round-trips typed UserModel slots through the Kysely insert builder + row mapper", () => {
+    const now = new Date("2026-05-10T00:00:00.000Z");
+    const insert = createUserMemoryInsert({
+      facts: { team: "platform" },
+      preferences: { tone: "concise" },
+      recentTopics: [],
+      updatedAt: now,
+      userId: "user-2",
+      userModel: {
+        goals: [
+          {
+            dueAt: new Date("2026-08-01T00:00:00.000Z"),
+            id: "muse-v1",
+            kind: "goal",
+            progress: 0.4,
+            updatedAt: now,
+            value: "ship Muse 1.0"
+          }
+        ],
+        preferences: [
+          { category: "style", id: "concise", kind: "preference", updatedAt: now, value: "yes" }
+        ],
+        schedule: [],
+        vetoes: [
+          { id: "no-eggs", kind: "veto", scope: "food", updatedAt: now, value: "do not suggest eggs" }
+        ]
+      }
+    });
+    // user_model column populated as a JSONB-ready object.
+    expect(insert.user_model).toBeTruthy();
+
+    // Map it back through mapUserMemoryRow — Dates should rehydrate
+    // and the discriminated union should reconstruct each slot.
+    const mapped = mapUserMemoryRow(insert);
+    expect(mapped.userModel).toBeDefined();
+    expect(mapped.userModel?.preferences).toHaveLength(1);
+    expect(mapped.userModel?.vetoes).toHaveLength(1);
+    expect(mapped.userModel?.goals).toHaveLength(1);
+    expect(mapped.userModel?.goals[0]?.dueAt).toBeInstanceOf(Date);
+    expect(mapped.userModel?.goals[0]?.progress).toBe(0.4);
+    // Round-trip through actual JSON (simulates a Postgres JSONB
+    // read where the value comes back already parsed but Dates as
+    // ISO strings).
+    const jsonRoundTripped = JSON.parse(JSON.stringify(insert));
+    const rehydrated = mapUserMemoryRow(jsonRoundTripped);
+    expect(rehydrated.userModel?.goals[0]?.dueAt?.toISOString()).toBe("2026-08-01T00:00:00.000Z");
+    expect(rehydrated.userModel?.goals[0]?.value).toBe("ship Muse 1.0");
+  });
+
+  it("treats a null user_model column as an absent userModel (legacy rows)", () => {
+    const insert = createUserMemoryInsert({
+      facts: {},
+      preferences: {},
+      recentTopics: [],
+      updatedAt: new Date(),
+      userId: "old-user"
+    });
+    // No userModel on input → user_model column is null on insert.
+    expect(insert.user_model).toBeNull();
+    const mapped = mapUserMemoryRow(insert);
+    expect(mapped.userModel).toBeUndefined();
+  });
+
   it("upserts typed UserModel slots into the in-memory store with replace-by-id semantics", () => {
     const store = new InMemoryUserMemoryStore();
     const now = new Date("2026-05-10T00:00:00Z");
