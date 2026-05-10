@@ -1,5 +1,4 @@
 import { lookup } from "node:dns/promises";
-import net from "node:net";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import {
@@ -861,104 +860,26 @@ export function normalizeReconnectPolicy(input: Partial<McpReconnectPolicy> | un
   };
 }
 
-export function validateMcpServer(
-  server: McpServer,
-  policy: McpSecurityPolicy,
-  options: McpServerValidationOptions = {}
-): {
-  readonly reason?: string;
-  readonly valid: boolean;
-} {
-  if (server.name.trim().length === 0) {
-    return { reason: "MCP server name is required", valid: false };
-  }
+// Validators live in `./validators.ts` (round 140 lift). Two-step
+// import + export so external call-sites stay byte-identical and
+// the local `validateMcpServer` / `validateStdioCommand` /
+// `validateStdioArgs` references inside this file (transport +
+// manager) still resolve.
+import {
+  isPrivateOrReservedHost,
+  isPublicHttpUrl,
+  validateMcpServer,
+  validateStdioArgs,
+  validateStdioCommand
+} from "./validators.js";
 
-  if (server.transportType === "stdio") {
-    const command = typeof server.config.command === "string" ? server.config.command : undefined;
-
-    if (!command || !validateStdioCommand(command, server.name, policy)) {
-      return { reason: "STDIO command is not allowed", valid: false };
-    }
-
-    if (!validateStdioArgs(resolveStdioArgs(server), server.name)) {
-      return { reason: "STDIO args contain unsafe control characters", valid: false };
-    }
-  }
-
-  if (server.transportType === "http") {
-    return { reason: "HTTP MCP transport is deprecated; use streamable instead", valid: false };
-  }
-
-  if (server.transportType === "sse" || server.transportType === "streamable") {
-    const url = typeof server.config.url === "string" ? server.config.url : undefined;
-
-    if (!url || !isPublicHttpUrl(url, options)) {
-      return { reason: "Remote MCP URL is not allowed", valid: false };
-    }
-  }
-
-  return { valid: true };
-}
-
-export function validateStdioCommand(command: string, _serverName: string, policy: McpSecurityPolicy): boolean {
-  return !command.includes("..") &&
-    !command.includes("/") &&
-    !command.includes("\\") &&
-    policy.allowedStdioCommands.includes(command);
-}
-
-export function validateStdioArgs(args: readonly string[], _serverName: string): boolean {
-  return args.every((arg) => !/[\x00-\x08\x0B-\x1F]/u.test(arg));
-}
-
-export function isPrivateOrReservedHost(host: string | undefined): boolean {
-  if (!host) {
-    return true;
-  }
-
-  const normalized = host.toLowerCase();
-
-  if (normalized === "localhost" || normalized.endsWith(".localhost")) {
-    return true;
-  }
-
-  const ipVersion = net.isIP(normalized);
-
-  if (ipVersion === 0) {
-    return false;
-  }
-
-  if (ipVersion === 4) {
-    const parts = normalized.split(".").map(Number);
-    const [a = 0, b = 0] = parts;
-
-    return (
-      a === 0 ||
-      a === 10 ||
-      a === 127 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      a >= 224
-    );
-  }
-
-  return normalized === "::1" ||
-    normalized.startsWith("fc") ||
-    normalized.startsWith("fd") ||
-    normalized.startsWith("fe80");
-}
-
-export function isPublicHttpUrl(value: string, options: McpServerValidationOptions = {}): boolean {
-  try {
-    const url = new URL(value);
-
-    return (url.protocol === "https:" || url.protocol === "http:") &&
-      (options.allowPrivateAddresses || !isPrivateOrReservedHost(url.hostname));
-  } catch {
-    return false;
-  }
-}
+export {
+  isPrivateOrReservedHost,
+  isPublicHttpUrl,
+  validateMcpServer,
+  validateStdioArgs,
+  validateStdioCommand
+};
 
 export function createMcpMuseTool(serverName: string, tool: McpRemoteTool, connection: McpConnection): MuseTool {
   return {
