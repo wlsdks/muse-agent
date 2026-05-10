@@ -25,6 +25,7 @@ import { registerMultiAgentRoutes } from "./multi-agent-routes.js";
 import { registerCompatibilityRoutes } from "./compat-routes.js";
 import { registerNotesRoutes } from "./notes-routes.js";
 import { registerMessagingRoutes } from "./messaging-routes.js";
+import { lineWebhookPlugin } from "./messaging-webhooks-routes.js";
 import { registerRemindersRoutes } from "./reminders-routes.js";
 import { parseQuietHours, startReminderTick } from "./reminder-tick.js";
 import { registerSchedulerRoutes, type SchedulerRouteScheduler } from "./scheduler-routes.js";
@@ -96,6 +97,12 @@ export interface ServerOptions {
   readonly voice?: VoiceProviderRegistry;
   readonly messaging?: MessagingProviderRegistry;
   readonly remindersFile?: string;
+  /**
+   * Path to the persisted LINE inbox (default ~/.muse/line-inbox.json).
+   * Combined with `MUSE_LINE_CHANNEL_SECRET` from env, enables the
+   * `POST /api/messaging/webhooks/line` route.
+   */
+  readonly lineInboxFile?: string;
 }
 
 export interface ToolCatalogEntry {
@@ -273,6 +280,16 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   }
   if (options.remindersFile) {
     registerRemindersRoutes(server, { authService, remindersFile: options.remindersFile });
+  }
+  // LINE webhook (Phase 2.b.2): only registered when both the channel
+  // secret and an inbox file path are configured. The plugin scopes a
+  // buffer-mode JSON parser so signature verification sees raw bytes.
+  const lineSecret = process.env.MUSE_LINE_CHANNEL_SECRET?.trim();
+  if (lineSecret && lineSecret.length > 0 && options.lineInboxFile) {
+    void server.register(lineWebhookPlugin, {
+      channelSecret: lineSecret,
+      inboxFile: options.lineInboxFile
+    });
   }
   registerTodayRoutes(server, {
     authService,
