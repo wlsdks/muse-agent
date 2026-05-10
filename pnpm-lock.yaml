@@ -335,6 +335,9 @@ importers:
       '@muse/agent-core':
         specifier: workspace:*
         version: link:../agent-core
+      '@muse/memory':
+        specifier: workspace:*
+        version: link:../memory
       '@muse/model':
         specifier: workspace:*
         version: link:../model

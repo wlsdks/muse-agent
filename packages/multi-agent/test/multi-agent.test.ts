@@ -190,6 +190,52 @@ describe("MultiAgentOrchestrator", () => {
       )
     ).rejects.toThrow(NoAgentWorkerError);
   });
+
+  it("maxOutputCharsPerWorker caps each worker's output in the fan-in concat (CE 1.e)", async () => {
+    const big = "x".repeat(2_000);
+    const noisyA = new RuleBasedAgentWorker("noisy-a", "Noisy A", [], (input) =>
+      createWorkerResult("noisy-a", big, input)
+    );
+    const noisyB = new RuleBasedAgentWorker("noisy-b", "Noisy B", [], (input) =>
+      createWorkerResult("noisy-b", big, input)
+    );
+    const orchestrator = new MultiAgentOrchestrator({
+      idFactory: () => "orchestration-fanin-1",
+      workers: [noisyA, noisyB]
+    });
+
+    const result = await orchestrator.run(
+      { messages: [{ content: "summarize both", role: "user" }], model: "model-1" },
+      { maxOutputCharsPerWorker: 200, mode: "parallel" }
+    );
+
+    // Fan-in concat is bounded: 2 workers * 200 cap + framing slack, not 4_000+.
+    expect(result.response.output.length).toBeLessThan(700);
+    expect(result.response.output).toContain("agent noisy-a output trimmed by orchestrator fan-in");
+    expect(result.response.output).toContain("agent noisy-b output trimmed by orchestrator fan-in");
+    // Tracked results keep the FULL original output for trace fidelity.
+    expect(result.results[0]?.result?.response.output).toBe(big);
+    expect(result.results[1]?.result?.response.output).toBe(big);
+  });
+
+  it("maxOutputCharsPerWorker undefined / 0 keeps the legacy verbatim concat", async () => {
+    const big = "y".repeat(800);
+    const worker = new RuleBasedAgentWorker("verbose", "Verbose", [], (input) =>
+      createWorkerResult("verbose", big, input)
+    );
+    const orchestrator = new MultiAgentOrchestrator({ workers: [worker] });
+
+    const undefinedCap = await orchestrator.run(
+      { messages: [{ content: "go", role: "user" }], model: "model-1" }
+    );
+    expect(undefinedCap.response.output).toContain(big);
+
+    const zeroCap = await orchestrator.run(
+      { messages: [{ content: "go", role: "user" }], model: "model-1" },
+      { maxOutputCharsPerWorker: 0 }
+    );
+    expect(zeroCap.response.output).toContain(big);
+  });
 });
 
 function makeDelayedWorker(id: string, output: string, delayMs: number): RuleBasedAgentWorker {

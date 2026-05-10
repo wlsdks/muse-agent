@@ -33,6 +33,7 @@ interface OrchestrateBody {
   readonly mode?: OrchestrationMode;
   readonly workerIds?: readonly string[];
   readonly maxWorkers?: number;
+  readonly maxOutputCharsPerWorker?: number;
 }
 
 type ParseResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: ApiError };
@@ -158,7 +159,10 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
     try {
       const orchestration = await orchestrator.run(input, {
         ...(parsed.value.mode ? { mode: parsed.value.mode } : {}),
-        ...(parsed.value.maxWorkers !== undefined ? { maxWorkers: parsed.value.maxWorkers } : {})
+        ...(parsed.value.maxWorkers !== undefined ? { maxWorkers: parsed.value.maxWorkers } : {}),
+        ...(parsed.value.maxOutputCharsPerWorker !== undefined
+          ? { maxOutputCharsPerWorker: parsed.value.maxOutputCharsPerWorker }
+          : {})
       });
 
       return {
@@ -223,7 +227,10 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
     };
     const orchestrationOptions = {
       ...(parsed.value.mode ? { mode: parsed.value.mode } : {}),
-      ...(parsed.value.maxWorkers !== undefined ? { maxWorkers: parsed.value.maxWorkers } : {})
+      ...(parsed.value.maxWorkers !== undefined ? { maxWorkers: parsed.value.maxWorkers } : {}),
+      ...(parsed.value.maxOutputCharsPerWorker !== undefined
+        ? { maxOutputCharsPerWorker: parsed.value.maxOutputCharsPerWorker }
+        : {})
     };
 
     reply.header("content-type", "text/event-stream; charset=utf-8");
@@ -240,7 +247,11 @@ interface SseStreamArgs {
   readonly messageBus: InMemoryAgentMessageBus;
   readonly orchestrator: MultiAgentOrchestrator;
   readonly input: AgentRunInput;
-  readonly options: { readonly mode?: OrchestrationMode; readonly maxWorkers?: number };
+  readonly options: {
+    readonly mode?: OrchestrationMode;
+    readonly maxWorkers?: number;
+    readonly maxOutputCharsPerWorker?: number;
+  };
   readonly mode: OrchestrationMode;
 }
 
@@ -403,6 +414,16 @@ function parseOrchestrateBody(value: unknown): ParseResult<OrchestrateBody> {
     return invalid("INVALID_ORCHESTRATE_REQUEST", "maxWorkers must be a positive number");
   }
 
+  let maxOutputCharsPerWorker: number | undefined;
+
+  if (typeof body.maxOutputCharsPerWorker === "number"
+    && Number.isFinite(body.maxOutputCharsPerWorker)
+    && body.maxOutputCharsPerWorker >= 0) {
+    maxOutputCharsPerWorker = body.maxOutputCharsPerWorker;
+  } else if (body.maxOutputCharsPerWorker !== undefined) {
+    return invalid("INVALID_ORCHESTRATE_REQUEST", "maxOutputCharsPerWorker must be a non-negative number");
+  }
+
   return {
     ok: true,
     value: {
@@ -410,7 +431,8 @@ function parseOrchestrateBody(value: unknown): ParseResult<OrchestrateBody> {
       ...(typeof body.model === "string" && body.model.trim().length > 0 ? { model: body.model } : {}),
       ...(mode ? { mode } : {}),
       ...(workerIds ? { workerIds } : {}),
-      ...(maxWorkers !== undefined ? { maxWorkers } : {})
+      ...(maxWorkers !== undefined ? { maxWorkers } : {}),
+      ...(maxOutputCharsPerWorker !== undefined ? { maxOutputCharsPerWorker } : {})
     }
   };
 }

@@ -1,4 +1,5 @@
 import type { AgentRunInput, AgentRunResult, AgentRuntime } from "@muse/agent-core";
+import { trimToolOutput } from "@muse/memory";
 import type { ModelMessage } from "@muse/model";
 import { createRunId, type JsonObject } from "@muse/shared";
 import type { AgentMessage, AgentMessageBus } from "./agent-message-bus.js";
@@ -46,6 +47,22 @@ export interface OrchestrationRunOptions {
   readonly mode?: OrchestrationMode;
   readonly workerIds?: readonly string[];
   readonly maxWorkers?: number;
+  /**
+   * Per-worker output character cap for the fan-in summary (Context
+   * Engineering step 1.e). When set, each worker's `response.output`
+   * is run through `trimToolOutput` (head + tail + marker) BEFORE the
+   * orchestrator concatenates the workers' outputs into the parent
+   * response. Prevents N parallel workers from collectively blowing
+   * the parent's context window.
+   *
+   * Tracked results (`MultiAgentOrchestrationResult.results`) keep the
+   * full original `AgentRunResult.response.output` so traces / metrics
+   * still see every worker's full reasoning — the cap applies only to
+   * the fan-in concat the parent agent reads back.
+   *
+   * Undefined or 0 disables the cap (legacy verbatim concat).
+   */
+  readonly maxOutputCharsPerWorker?: number;
 }
 
 export interface MultiAgentOrchestrationResult {
@@ -315,7 +332,7 @@ export class MultiAgentOrchestrator {
 
     return {
       mode,
-      response: buildOrchestrationResponse(runId, input.model, results),
+      response: buildOrchestrationResponse(runId, input.model, results, options.maxOutputCharsPerWorker),
       results,
       runId
     };
@@ -517,12 +534,14 @@ function joinMessages(messages: readonly ModelMessage[]): string {
 function buildOrchestrationResponse(
   runId: string,
   model: string,
-  results: readonly OrchestrationStepResult[]
+  results: readonly OrchestrationStepResult[],
+  maxOutputCharsPerWorker: number | undefined
 ): AgentRunResult["response"] {
+  const cap = maxOutputCharsPerWorker && maxOutputCharsPerWorker > 0 ? maxOutputCharsPerWorker : undefined;
   const output = results
     .map((result) =>
       result.status === "completed"
-        ? `## ${result.workerId}\n${result.result?.response.output ?? ""}`
+        ? `## ${result.workerId}\n${capWorkerOutput(result.workerId, result.result?.response.output ?? "", cap)}`
         : `## ${result.workerId}\nError: ${result.error ?? "unknown error"}`
     )
     .join("\n\n");
@@ -539,6 +558,16 @@ function buildOrchestrationResponse(
       }))
     }
   };
+}
+
+function capWorkerOutput(workerId: string, output: string, cap: number | undefined): string {
+  if (!cap) {
+    return output;
+  }
+  return trimToolOutput(output, {
+    hint: `agent ${workerId} output trimmed by orchestrator fan-in`,
+    maxChars: cap
+  }).output;
 }
 
 function errorMessage(error: unknown): string {
