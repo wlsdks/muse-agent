@@ -21,6 +21,7 @@ import {
   computeApproximateTokens,
   createConversationSummaryInsert,
   createUserMemoryAutoExtractHook,
+  pickAutoExtractSystemPrompt,
   createUserMemoryInsert,
   createTaskMemoryInsert,
   createApproximateTokenEstimator,
@@ -1335,5 +1336,65 @@ describe("createUserMemoryAutoExtractHook", () => {
     await hook.afterComplete!(makeContext("u", "x"), makeResponse("y"));
     expect(captured.fact).toBe("x=y");
     expect(captured.slotCalls).toBe(0); // never invoked because the store doesn't have the method
+  });
+});
+
+describe("pickAutoExtractSystemPrompt", () => {
+  it("uses the Korean prompt when the user message is mostly Hangul", () => {
+    const prompt = pickAutoExtractSystemPrompt("저는 계란 알레르기가 있어요. 절대 계란 메뉴는 추천하지 마세요.");
+    expect(prompt).toMatch(/규칙:/);
+    expect(prompt).toMatch(/JSON 객체만 출력/);
+  });
+
+  it("uses the English prompt for English-only messages", () => {
+    const prompt = pickAutoExtractSystemPrompt("By the way, my spouse Alex prefers matcha lattes in the morning.");
+    expect(prompt).toMatch(/^You analyse a single exchange/);
+    expect(prompt).toMatch(/Output only the JSON object/);
+  });
+
+  it("falls back to the English prompt when the message is mixed but mostly English", () => {
+    const prompt = pickAutoExtractSystemPrompt("Sure, my Korean nickname is 진안 but the rest of my profile is in English.");
+    expect(prompt).toMatch(/^You analyse a single exchange/);
+  });
+
+  it("uses the Korean prompt when Hangul ratio crosses the 30% threshold", () => {
+    // 9 Hangul chars + 5 ASCII = ~64% Hangul.
+    const prompt = pickAutoExtractSystemPrompt("저는 hello 오늘 좋아");
+    expect(prompt).toMatch(/규칙:/);
+  });
+
+  it("falls back to English on empty input", () => {
+    expect(pickAutoExtractSystemPrompt("")).toMatch(/^You analyse a single exchange/);
+  });
+});
+
+describe("createUserMemoryAutoExtractHook prompt language", () => {
+  it("sends the Korean system prompt when the user message is in Korean", async () => {
+    const store = new InMemoryUserMemoryStore();
+    const captured: { systemPrompt?: string } = {};
+    const provider = {
+      id: "stub",
+      generate: vi.fn(async (request: { messages: Array<{ role: string; content: string }> }) => {
+        const sys = request.messages.find((m) => m.role === "system");
+        captured.systemPrompt = sys?.content;
+        return { id: "r-ko", model: "stub", output: "{\"facts\":{},\"preferences\":{},\"vetoes\":[],\"goals\":[]}" };
+      }),
+      listModels: vi.fn(async () => []),
+      stream: vi.fn(async function* () {})
+    };
+    const hook = createUserMemoryAutoExtractHook({ model: "stub", modelProvider: provider as never, store });
+
+    await hook.afterComplete!(
+      {
+        input: {
+          messages: [{ content: "저는 매일 아침 7시에 일어납니다.", role: "user" as const }],
+          metadata: { userId: "u-ko" }
+        },
+        runId: "run-ko"
+      },
+      { id: "r", model: "stub", output: "알겠습니다." }
+    );
+
+    expect(captured.systemPrompt).toMatch(/규칙:/);
   });
 });

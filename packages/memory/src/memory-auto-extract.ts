@@ -66,7 +66,7 @@ interface ExtractionPayload {
   readonly goals?: readonly ExtractedSlot[];
 }
 
-const systemPrompt = `You analyse a single exchange (the latest user turn + assistant reply) and extract any NEW personal facts, preferences, vetoes, or goals the user revealed. Output strict JSON of shape:
+const systemPromptEn = `You analyse a single exchange (the latest user turn + assistant reply) and extract any NEW personal facts, preferences, vetoes, or goals the user revealed. Output strict JSON of shape:
 {
   "facts": { "<short_key>": "<value>" },
   "preferences": { "<short_key>": "<value>" },
@@ -81,6 +81,44 @@ Rules:
 - Goals are multi-session objectives ("I want to ship Muse 1.0 by Q1", "learn Korean by summer"). Skip single-turn intentions.
 - If nothing new to record, output {"facts":{},"preferences":{},"vetoes":[],"goals":[]}.
 - Output only the JSON object. No prose, no code fence.`;
+
+const systemPromptKo = `이번 대화 한 턴(최신 사용자 발화 + 어시스턴트 응답)을 분석하여 사용자가 새로 드러낸 개인 사실(facts), 선호(preferences), 금기(vetoes), 목표(goals)를 추출하라. 다음 JSON 스키마를 정확히 따르라:
+{
+  "facts": { "<short_key>": "<value>" },
+  "preferences": { "<short_key>": "<value>" },
+  "vetoes": [{"id": "<short_id>", "value": "<rule>", "scope": "<optional>"}],
+  "goals": [{"id": "<short_id>", "value": "<objective>"}]
+}
+규칙:
+- 이번 턴에서 사용자가 명시적으로 말한 항목만 포함하라(추론 금지).
+- key/id는 snake_case ASCII, 최대 32자 (예: spouse_name, no_eggs, ship_v1). 키는 영어로 쓰되 value는 한국어 그대로 둘 수 있다.
+- value는 간결한 문자열, 최대 200자.
+- vetoes는 명시적 "하지 마라 / 절대 / 피하라" 류 규칙("계란 추천 금지", "월요일에는 회의 잡지 마"). scope는 "food", "tooling", "meetings" 같은 짧은 태그.
+- goals는 여러 세션에 걸친 다단계 목표("Q1까지 Muse 1.0 출시", "여름까지 한국어 배우기"). 한 턴짜리 의도는 제외.
+- 새로 기록할 게 없으면 {"facts":{},"preferences":{},"vetoes":[],"goals":[]} 출력.
+- JSON 객체만 출력하라. 추가 설명, 코드 펜스 금지.`;
+
+/**
+ * Pick the auto-extract system prompt based on the user's message
+ * language. Heuristic: ratio of Hangul syllables (U+AC00–U+D7AF)
+ * over total characters; >= 30% triggers the Korean prompt.
+ * Anything else (English, mixed, or non-Korean non-ASCII) keeps
+ * the English prompt as the conservative default.
+ */
+export function pickAutoExtractSystemPrompt(userPrompt: string): string {
+  const total = userPrompt.length;
+  if (total === 0) {
+    return systemPromptEn;
+  }
+  let hangul = 0;
+  for (const char of userPrompt) {
+    const code = char.codePointAt(0);
+    if (code !== undefined && code >= 0xAC00 && code <= 0xD7AF) {
+      hangul += 1;
+    }
+  }
+  return hangul / total >= 0.3 ? systemPromptKo : systemPromptEn;
+}
 
 export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOptions): HookStageShape {
   const maxFacts = Math.max(0, Math.trunc(options.maxFactsPerExchange ?? 5));
@@ -145,6 +183,7 @@ async function runExtraction(
   userPrompt: string,
   assistantOutput: string
 ): Promise<ExtractionPayload | undefined> {
+  const systemPrompt = pickAutoExtractSystemPrompt(userPrompt);
   const response = await modelProvider.generate({
     maxOutputTokens: 512,
     messages: [

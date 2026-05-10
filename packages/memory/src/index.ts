@@ -324,6 +324,7 @@ export {
 
 export {
   createUserMemoryAutoExtractHook,
+  pickAutoExtractSystemPrompt,
   type UserMemoryAutoExtractOptions
 } from "./memory-auto-extract.js";
 
