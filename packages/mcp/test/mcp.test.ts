@@ -24,10 +24,14 @@ import {
   createRegexMcpServer,
   AppleNotesProvider,
   LocalDirNotesProvider,
+  LocalFileTasksProvider,
   NotesProviderError,
   NotesProviderRegistry,
   NotesValidationError,
   NotionNotesProvider,
+  TasksProviderError,
+  TasksProviderRegistry,
+  TasksValidationError,
   createUrlMcpServer,
   createMcpSecurityPolicyInsert,
   createMcpServerInsert,
@@ -1665,5 +1669,118 @@ describe("createNotesRegistryMcpServer", () => {
       .toMatchObject({ error: expect.stringContaining("title") });
     expect(await conn.callTool!("append", { id: "x", providerId: "apple" }))
       .toMatchObject({ error: expect.stringContaining("body") });
+  });
+});
+
+describe("tasks provider abstraction", () => {
+  it("LocalFileTasksProvider round-trips add → list → complete → search against the JSON file", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const join = await import("node:path").then((m) => m.join);
+    const root = mkdtempSync(`${tmpdir}/muse-tasks-provider-`);
+    const file = join(root, "tasks.json");
+
+    let counter = 0;
+    const provider = new LocalFileTasksProvider({
+      file,
+      idFactory: () => `task-${++counter}`,
+      now: () => new Date(2026, 0, counter, 12, 0, 0)
+    });
+
+    expect(provider.describe()).toMatchObject({ id: "local", local: true });
+
+    const added = await provider.add({
+      notes: "investigate before tomorrow",
+      tags: ["urgent"],
+      title: "Review the PR"
+    });
+    expect(added).toMatchObject({
+      id: "task-1",
+      providerId: "local",
+      status: "open",
+      title: "Review the PR"
+    });
+    expect(added.notes).toBe("investigate before tomorrow");
+    expect(added.tags).toEqual(["urgent"]);
+
+    await provider.add({ title: "Buy groceries" });
+
+    const openList = await provider.list("open");
+    // Newest-first ordering by createdAt: task-2 came after task-1.
+    expect(openList.map((task) => task.id)).toEqual(["task-2", "task-1"]);
+    expect(openList[0]?.providerId).toBe("local");
+
+    const completed = await provider.complete("task-1");
+    expect(completed).toMatchObject({ id: "task-1", status: "done" });
+    expect(completed?.completedAt).toBeInstanceOf(Date);
+
+    // Idempotency: re-completing the same task does not move the timestamp.
+    const idempotent = await provider.complete("task-1");
+    expect(idempotent?.completedAt?.getTime()).toBe(completed?.completedAt?.getTime());
+
+    const doneList = await provider.list("done");
+    expect(doneList.map((task) => task.id)).toEqual(["task-1"]);
+
+    const allList = await provider.list("all");
+    expect(allList).toHaveLength(2);
+
+    const hits = await provider.search("groceries", 10);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({ id: "task-2", providerId: "local", status: "open" });
+
+    const notesHits = await provider.search("INVESTIGATE", 10);
+    expect(notesHits[0]?.snippet).toBe("investigate before tomorrow");
+
+    // The on-disk JSON shape stays stable (compatible with createTasksMcpServer
+    // in loopback-tasks.ts).
+    const { readFileSync } = await import("node:fs");
+    const persisted = JSON.parse(readFileSync(file, "utf8"));
+    expect(persisted.tasks).toHaveLength(2);
+    expect(persisted.tasks[0]).toMatchObject({ id: "task-1", status: "done" });
+
+    // Crash protection — partial / missing / unparseable file still yields
+    // an empty list (no throw on a fresh user).
+    const crashFile = join(root, "missing.json");
+    const fresh = new LocalFileTasksProvider({ file: crashFile });
+    expect(await fresh.list()).toEqual([]);
+
+    const badFile = join(root, "bad.json");
+    writeFileSync(badFile, "{not valid json", "utf8");
+    const corrupted = new LocalFileTasksProvider({ file: badFile });
+    expect(await corrupted.list()).toEqual([]);
+  });
+
+  it("rejects empty title + empty query with TasksValidationError", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const join = await import("node:path").then((m) => m.join);
+    const root = mkdtempSync(`${tmpdir}/muse-tasks-validation-`);
+    const provider = new LocalFileTasksProvider({ file: join(root, "tasks.json") });
+
+    await expect(provider.add({ title: "   " })).rejects.toBeInstanceOf(TasksValidationError);
+    await expect(provider.search("", 10)).rejects.toBeInstanceOf(TasksValidationError);
+    await expect(provider.complete("")).rejects.toBeInstanceOf(TasksValidationError);
+  });
+
+  it("TasksProviderRegistry routes by providerId and surfaces TasksProviderError on miss", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const join = await import("node:path").then((m) => m.join);
+    const root = mkdtempSync(`${tmpdir}/muse-tasks-registry-`);
+    const local = new LocalFileTasksProvider({ file: join(root, "tasks.json") });
+    const registry = new TasksProviderRegistry([local]);
+
+    expect(registry.list().map((p) => p.id)).toEqual(["local"]);
+    expect(registry.describe()[0]).toMatchObject({ id: "local", local: true });
+    expect(registry.has("local")).toBe(true);
+    expect(registry.has("ghost")).toBe(false);
+    expect(registry.primary()?.id).toBe("local");
+    expect(registry.require("local")).toBe(local);
+    expect(() => registry.require("ghost")).toThrow(TasksProviderError);
+  });
+
+  it("constructor rejects empty file path with TasksValidationError", () => {
+    expect(() => new LocalFileTasksProvider({ file: "" })).toThrow(TasksValidationError);
+    expect(() => new LocalFileTasksProvider({ file: "   " })).toThrow(TasksValidationError);
   });
 });

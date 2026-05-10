@@ -501,3 +501,19 @@ export {
   type NotesSearchHit,
   type NotionNotesProviderOptions
 } from "./notes-providers.js";
+
+// Tasks provider abstraction (round 152). Mirrors the notes-providers
+// pattern. Currently ships a single LocalFile backend; Apple Reminders
+// (osascript) and Notion DB land in subsequent iters.
+export {
+  LocalFileTasksProvider,
+  TasksProviderError,
+  TasksProviderRegistry,
+  TasksValidationError,
+  type LocalFileTasksProviderOptions,
+  type Task,
+  type TaskInput,
+  type TaskSearchHit,
+  type TasksProvider,
+  type TasksProviderInfo
+} from "./tasks-providers.js";
