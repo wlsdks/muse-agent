@@ -6,10 +6,9 @@
  * the `TokenCostQuery` interface + its in-memory and Kysely
  * implementations (`bySession` runId-prefix lookup, `daily` model-bucketed
  * aggregation, `topExpensive` per-runId sum + DESC-by-cost ranking with
- * limit), and the two TokenUsageSink decorators that fan a recorded
- * usage event out to the `CostAnomalyDetector` + `MonthlyBudgetTracker`
- * primitives. All four `TokenCost*Entry` shapes + `TokenCostQueryWindow`
- * type move with the queries.
+ * limit), and the TokenUsageSink decorator that fans recorded usage
+ * events into the `MonthlyBudgetTracker`. All four `TokenCost*Entry`
+ * shapes + `TokenCostQueryWindow` type move with the queries.
  *
  * Re-exported from the observability barrel for backwards compatibility.
  */
@@ -17,10 +16,7 @@
 import type { MuseDatabase } from "@muse/db";
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
-import type {
-  CostAnomalyDetector,
-  MonthlyBudgetTracker
-} from "./observability-detectors.js";
+import type { MonthlyBudgetTracker } from "./observability-detectors.js";
 import type {
   QueryableTokenUsageSink,
   TokenUsageRecord,
@@ -284,21 +280,6 @@ export class KyselyTokenCostQuery implements TokenCostQuery {
       totalTokens: Number(row.total_tokens ?? 0)
     }));
   }
-}
-
-/**
- * Wraps a TokenUsageSink so each recorded usage event also feeds a
- * `CostAnomalyDetector`. Anomaly evaluation still happens via the
- * detector's own `evaluate()` API; this decorator only ensures the
- * cost samples land.
- */
-export function createCostAnomalyFeedingTokenUsageSink(
-  detector: CostAnomalyDetector,
-  inner: TokenUsageSink
-): TokenUsageSink {
-  return wrapTokenUsageSink(inner, async (event) => {
-    detector.recordCost(event.estimatedCostUsd ?? 0);
-  });
 }
 
 /**

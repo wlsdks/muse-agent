@@ -17,7 +17,6 @@
  */
 
 import type {
-  CostAnomalyDetector,
   DriftStats,
   MonthlyBudgetSnapshot,
   MonthlyBudgetTracker,
@@ -53,9 +52,6 @@ export interface MuseObservabilitySnapshot {
     readonly violations: readonly SloViolation[];
   };
   readonly drift?: DriftStats;
-  readonly cost?: {
-    readonly baselineUsd: number;
-  };
   readonly budget?: MonthlyBudgetSnapshot;
   readonly followups?: FollowupStats;
 }
@@ -65,7 +61,6 @@ export interface MuseObservabilitySnapshotProviderOptions {
   readonly tokenCostQuery?: TokenCostQuery;
   readonly sloEvaluator?: SloAlertEvaluator;
   readonly driftDetector?: PromptDriftDetector;
-  readonly costAnomalyDetector?: CostAnomalyDetector;
   readonly budgetTracker?: MonthlyBudgetTracker;
   readonly followupSuggestionStore?: FollowupSuggestionStore;
   readonly windowDays?: number;
@@ -95,7 +90,6 @@ export function createMuseObservabilitySnapshotProvider(
         tokenCost?: { daily: readonly TokenCostDailyEntry[]; topExpensive: readonly TokenCostTopExpensiveEntry[] };
         slo?: MuseObservabilitySnapshot["slo"];
         drift?: DriftStats;
-        cost?: { baselineUsd: number };
         budget?: MonthlyBudgetSnapshot;
         followups?: FollowupStats;
       } = { generatedAt, windowEnd, windowStart };
@@ -140,14 +134,6 @@ export function createMuseObservabilitySnapshotProvider(
           result.drift = options.driftDetector.stats();
         } catch (error) {
           options.logger?.("MuseObservability: driftDetector failed", error);
-        }
-      }
-
-      if (options.costAnomalyDetector) {
-        try {
-          result.cost = { baselineUsd: options.costAnomalyDetector.baseline() };
-        } catch (error) {
-          options.logger?.("MuseObservability: costAnomalyDetector failed", error);
         }
       }
 

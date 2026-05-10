@@ -2,12 +2,10 @@
  * Sliding-window detectors / trackers / evaluators extracted from
  * packages/observability/src/index.ts.
  *
- * Owns four observability primitives that every Muse alarm
- * surface (cost-anomaly notifier, monthly-budget alerter, prompt-
- * drift detector, SLO alerter) builds on:
+ * Owns three observability primitives that every Muse alarm surface
+ * (monthly-budget alerter, prompt-drift detector, SLO alerter)
+ * builds on:
  *
- *   - `CostAnomalyDetector`: rolling-window cost monitor that fires
- *     when latest cost exceeds `baseline × thresholdMultiplier`.
  *   - `MonthlyBudgetTracker`: monthly USD aggregator with
  *     month-rollover reset.
  *   - `PromptDriftDetector`: rolling-window first-half / second-half
@@ -18,91 +16,6 @@
  *
  * Re-exported from the observability barrel for backwards compatibility.
  */
-
-export interface CostAnomaly {
-  readonly currentCost: number;
-  readonly baselineCost: number;
-  readonly multiplier: number;
-  readonly threshold: number;
-  readonly message: string;
-  readonly at: Date;
-}
-
-export interface CostAnomalyDetectorOptions {
-  readonly windowSize?: number;
-  readonly thresholdMultiplier?: number;
-  readonly minSamples?: number;
-  readonly now?: () => number;
-}
-
-export class CostAnomalyDetector {
-  readonly #windowSize: number;
-  readonly #thresholdMultiplier: number;
-  readonly #minSamples: number;
-  readonly #now: () => number;
-  readonly #costs: number[] = [];
-
-  constructor(options: CostAnomalyDetectorOptions = {}) {
-    const windowSize = options.windowSize ?? 100;
-    const thresholdMultiplier = options.thresholdMultiplier ?? 3;
-    const minSamples = options.minSamples ?? 10;
-    if (!Number.isFinite(windowSize) || windowSize <= 0) {
-      throw new Error("CostAnomalyDetector windowSize must be positive");
-    }
-    if (!Number.isFinite(thresholdMultiplier) || thresholdMultiplier <= 0) {
-      throw new Error("CostAnomalyDetector thresholdMultiplier must be positive");
-    }
-    if (!Number.isFinite(minSamples) || minSamples <= 0) {
-      throw new Error("CostAnomalyDetector minSamples must be positive");
-    }
-    this.#windowSize = windowSize;
-    this.#thresholdMultiplier = thresholdMultiplier;
-    this.#minSamples = minSamples;
-    this.#now = options.now ?? (() => Date.now());
-  }
-
-  recordCost(costUsd: number): void {
-    if (!Number.isFinite(costUsd) || costUsd < 0) {
-      return;
-    }
-    this.#costs.push(costUsd);
-    while (this.#costs.length > this.#windowSize) {
-      this.#costs.shift();
-    }
-  }
-
-  evaluate(): CostAnomaly | undefined {
-    if (this.#costs.length < this.#minSamples) {
-      return undefined;
-    }
-    const latest = this.#costs[this.#costs.length - 1] ?? 0;
-    const baseline = meanOfNumbers(this.#costs);
-    if (baseline <= 0) {
-      return undefined;
-    }
-    const multiplier = latest / baseline;
-    if (multiplier <= this.#thresholdMultiplier) {
-      return undefined;
-    }
-    return {
-      at: new Date(this.#now()),
-      baselineCost: baseline,
-      currentCost: latest,
-      message:
-        `Request cost $${latest.toFixed(6)} is ${multiplier.toFixed(1)}× the baseline ` +
-        `$${baseline.toFixed(6)} (threshold ${this.#thresholdMultiplier.toFixed(1)}×)`,
-      multiplier,
-      threshold: this.#thresholdMultiplier
-    };
-  }
-
-  baseline(): number {
-    if (this.#costs.length === 0) {
-      return 0;
-    }
-    return meanOfNumbers(this.#costs);
-  }
-}
 
 export type MonthlyBudgetStatus = "ok" | "warning" | "exceeded";
 

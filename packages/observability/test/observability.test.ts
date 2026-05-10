@@ -4,7 +4,6 @@ import {
   createMcpStartupCheck,
   createTraceEventInsert,
   InMemoryAgentMetrics,
-  CostAnomalyDetector,
   createMuseObservabilitySnapshotProvider,
   InMemoryFollowupSuggestionStore,
   InMemoryLatencyQuery,
@@ -856,49 +855,6 @@ describe("PromptDriftDetector", () => {
   });
 });
 
-describe("CostAnomalyDetector", () => {
-  it("returns no anomaly until min samples are recorded", () => {
-    const detector = new CostAnomalyDetector({ minSamples: 5, thresholdMultiplier: 3 });
-    [0.001, 0.001, 0.001].forEach((cost) => detector.recordCost(cost));
-    expect(detector.evaluate()).toBeUndefined();
-  });
-
-  it("flags an anomaly when latest cost exceeds baseline × threshold", () => {
-    const detector = new CostAnomalyDetector({ minSamples: 4, thresholdMultiplier: 3 });
-    [0.001, 0.001, 0.001, 0.001].forEach((cost) => detector.recordCost(cost));
-    detector.recordCost(0.05);
-    const anomaly = detector.evaluate();
-    expect(anomaly?.multiplier).toBeGreaterThan(3);
-    expect(anomaly?.currentCost).toBeCloseTo(0.05, 6);
-  });
-
-  it("ignores negative or non-finite cost samples", () => {
-    const detector = new CostAnomalyDetector({ minSamples: 3 });
-    detector.recordCost(-1);
-    detector.recordCost(Number.NaN);
-    detector.recordCost(Number.POSITIVE_INFINITY);
-    expect(detector.baseline()).toBe(0);
-  });
-
-  it("evicts oldest samples when the window is full", () => {
-    const detector = new CostAnomalyDetector({ minSamples: 3, windowSize: 3 });
-    [0.01, 0.02, 0.03, 0.04, 0.05].forEach((cost) => detector.recordCost(cost));
-    expect(detector.baseline()).toBeCloseTo((0.03 + 0.04 + 0.05) / 3, 6);
-  });
-
-  it("returns no anomaly when the baseline is zero", () => {
-    const detector = new CostAnomalyDetector({ minSamples: 3 });
-    [0, 0, 0].forEach((cost) => detector.recordCost(cost));
-    expect(detector.evaluate()).toBeUndefined();
-  });
-
-  it("rejects invalid configuration", () => {
-    expect(() => new CostAnomalyDetector({ windowSize: 0 })).toThrow(/windowSize/u);
-    expect(() => new CostAnomalyDetector({ thresholdMultiplier: 0 })).toThrow(/thresholdMultiplier/u);
-    expect(() => new CostAnomalyDetector({ minSamples: 0 })).toThrow(/minSamples/u);
-  });
-});
-
 describe("MonthlyBudgetTracker", () => {
   it("returns 'ok' when no monthly limit is configured", () => {
     const tracker = new MonthlyBudgetTracker({ now: () => new Date("2026-05-15T00:00:00Z") });
@@ -1019,19 +975,15 @@ describe("createMuseObservabilitySnapshotProvider", () => {
     expect(snapshot.slo?.violations).toHaveLength(1);
   });
 
-  it("includes drift stats and cost baseline when detectors are configured", async () => {
+  it("includes drift stats when the driftDetector is configured", async () => {
     const driftDetector = new PromptDriftDetector({ minSamples: 4, windowSize: 50 });
     [10, 20, 30, 40].forEach((value) => driftDetector.recordInput(value));
-    const costAnomalyDetector = new CostAnomalyDetector({ minSamples: 3 });
-    [0.01, 0.02, 0.03].forEach((cost) => costAnomalyDetector.recordCost(cost));
     const provider = createMuseObservabilitySnapshotProvider({
-      costAnomalyDetector,
       driftDetector,
       now: () => new Date("2026-05-15T00:00:00.000Z")
     });
     const snapshot = await provider.snapshot();
     expect(snapshot.drift?.inputMean).toBe(25);
-    expect(snapshot.cost?.baselineUsd).toBeCloseTo(0.02, 5);
   });
 
   it("emits the budget snapshot when budgetTracker is provided", async () => {

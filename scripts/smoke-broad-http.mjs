@@ -334,8 +334,8 @@ try {
       snapshot.drift.sampleCount > 0,
       "expected drift detector to have at least one sample after the earlier /api/chat call (proves drift detector is fed by recordTokenUsage)"
     );
-    assert(snapshot.cost && typeof snapshot.cost.baselineUsd === "number",
-      `expected cost block with baselineUsd, got ${JSON.stringify(snapshot.cost)}`);
+    assert(snapshot.cost === undefined,
+      `cost block was removed with CostAnomalyDetector; got ${JSON.stringify(snapshot.cost)}`);
     assert(snapshot.budget && typeof snapshot.budget.totalCostUsd === "number" && typeof snapshot.budget.month === "string",
       `expected budget block with totalCostUsd + month, got ${JSON.stringify(snapshot.budget)}`);
   });

@@ -68,14 +68,12 @@ import {
 } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
 import {
-  CostAnomalyDetector,
   InMemoryAgentMetrics,
   InMemoryFollowupSuggestionStore,
   MonthlyBudgetTracker,
   PromptDriftDetector,
   SloAlertEvaluator,
   createBudgetTrackingTokenUsageSink,
-  createCostAnomalyFeedingTokenUsageSink,
   createDerivedAgentMetrics,
   createMuseObservabilitySnapshotProvider,
   type AgentMetrics,
@@ -225,7 +223,6 @@ export interface MuseRuntimeAssembly {
   readonly userMemoryStore: UserMemoryStore;
   readonly observability: {
     readonly budgetTracker: MonthlyBudgetTracker;
-    readonly costAnomalyDetector: CostAnomalyDetector;
     readonly driftDetector: PromptDriftDetector;
     readonly followupSuggestionStore: InMemoryFollowupSuggestionStore;
     readonly latencyQuery: LatencyQuery;
@@ -294,11 +291,6 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     minSamples: parseInteger(env.MUSE_DRIFT_MIN_SAMPLES, 20),
     windowSize: parseInteger(env.MUSE_DRIFT_WINDOW_SIZE, 200)
   });
-  const costAnomalyDetector = new CostAnomalyDetector({
-    minSamples: parseInteger(env.MUSE_COST_ANOMALY_MIN_SAMPLES, 10),
-    thresholdMultiplier: parsePositiveFloat(env.MUSE_COST_ANOMALY_THRESHOLD_MULTIPLIER, 3),
-    windowSize: parseInteger(env.MUSE_COST_ANOMALY_WINDOW_SIZE, 100)
-  });
   const budgetTracker = new MonthlyBudgetTracker({
     monthlyLimitUsd: parseNonNegativeFloat(env.MUSE_BUDGET_MONTHLY_LIMIT_USD, 0),
     warningPercent: parseInteger(env.MUSE_BUDGET_WARNING_PERCENT, 80)
@@ -316,7 +308,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const { tracer, latencyQuery, tokenCostQuery, traceSink } = tracingPipeline;
   const tokenUsageSink: TokenUsageSink = createBudgetTrackingTokenUsageSink(
     budgetTracker,
-    createCostAnomalyFeedingTokenUsageSink(costAnomalyDetector, tracingPipeline.tokenUsageSink)
+    tracingPipeline.tokenUsageSink
   );
   const circuitBreakerRegistry = new CircuitBreakerRegistry({
     failureThreshold: parseInteger(env.MUSE_CIRCUIT_BREAKER_FAILURE_THRESHOLD, 5),
@@ -544,7 +536,6 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     userMemoryStore,
     observability: {
       budgetTracker,
-      costAnomalyDetector,
       driftDetector,
       followupSuggestionStore,
       latencyQuery,
@@ -628,7 +619,6 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     museObservabilitySnapshot: () =>
       createMuseObservabilitySnapshotProvider({
         budgetTracker: assembly.observability.budgetTracker,
-        costAnomalyDetector: assembly.observability.costAnomalyDetector,
         driftDetector: assembly.observability.driftDetector,
         followupSuggestionStore: assembly.observability.followupSuggestionStore,
         latencyQuery: assembly.observability.latencyQuery,

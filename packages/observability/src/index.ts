@@ -249,12 +249,9 @@ export interface QueryableTokenUsageSink extends TokenUsageSink {
 // Sliding-window detectors / trackers / evaluators live in
 // packages/observability/src/observability-detectors.ts.
 export {
-  CostAnomalyDetector,
   MonthlyBudgetTracker,
   PromptDriftDetector,
   SloAlertEvaluator,
-  type CostAnomaly,
-  type CostAnomalyDetectorOptions,
   type DriftAnomaly,
   type DriftStats,
   type DriftType,
@@ -436,7 +433,6 @@ export function createMcpStartupCheck(
 // packages/observability/src/observability-token-cost.ts.
 export {
   createBudgetTrackingTokenUsageSink,
-  createCostAnomalyFeedingTokenUsageSink,
   InMemoryTokenCostQuery,
   InMemoryTokenUsageSink,
   KyselyTokenCostQuery,
