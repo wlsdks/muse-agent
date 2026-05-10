@@ -2651,6 +2651,46 @@ describe("muse.reminders loopback server", () => {
     expect(pendingOnly).toMatchObject({ status: "pending", total: 2 });
   });
 
+  it("fire flips a pending reminder to status='fired' with a timestamp", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-fire-"));
+    let counter = 0;
+    const fixedNow = new Date("2026-05-11T08:00:00Z");
+    const server = createRemindersMcpServer({
+      file: join(dir, "reminders.json"),
+      idFactory: () => `rem_${++counter}`,
+      now: () => fixedNow
+    });
+    const connection = createLoopbackMcpConnection(server);
+
+    await connection.callTool!("add", { dueAt: "2026-05-11T07:00:00Z", text: "Buy milk" });
+
+    // Default firedAt: now.
+    const fired = await connection.callTool!("fire", { id: "rem_1" });
+    expect(fired).toMatchObject({
+      reminder: { firedAt: "2026-05-11T08:00:00.000Z", id: "rem_1", status: "fired", text: "Buy milk" }
+    });
+
+    // After firing, `due` no longer surfaces it (status filter excludes "fired").
+    const due = await connection.callTool!("due", { status: "due" });
+    expect(due).toMatchObject({ total: 0 });
+
+    // Explicit firedAt is preserved.
+    await connection.callTool!("add", { dueAt: "2026-05-11T07:30:00Z", text: "Pay rent" });
+    const explicit = await connection.callTool!("fire", { firedAt: "2026-05-11T09:15:00Z", id: "rem_2" });
+    expect(explicit).toMatchObject({ reminder: { firedAt: "2026-05-11T09:15:00.000Z", id: "rem_2" } });
+
+    // Missing id → error.
+    const missing = await connection.callTool!("fire", { id: "rem_does_not_exist" });
+    expect(missing).toMatchObject({ error: expect.stringContaining("not found") });
+
+    // Bad firedAt → error.
+    const bad = await connection.callTool!("fire", { firedAt: "lolwhen", id: "rem_2" });
+    expect(bad).toMatchObject({ error: expect.stringContaining("ISO-8601") });
+  });
+
   it("snooze bumps dueAt forward and revives fired reminders to pending", async () => {
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");

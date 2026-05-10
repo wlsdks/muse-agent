@@ -6,6 +6,7 @@ import { errorMessage, readString } from "./loopback-helpers.js";
 import type { LoopbackMcpServer } from "./loopback.js";
 import {
   filterReminders,
+  fireReminder,
   parseReminderDueAt,
   readReminders,
   readReminderStatusFilter,
@@ -30,6 +31,9 @@ import {
  *     ("그 우유 뭐였지?") still find fired/old entries.
  *   - `muse.reminders.snooze` (write) — bump a reminder's dueAt
  *     forward (default 10 min) and reset status to pending.
+ *   - `muse.reminders.fire` (write) — flip status pending → fired
+ *     after the LLM has delivered the message itself (Phase A of
+ *     `docs/design/reminder-firing.md`).
  *   - `muse.reminders.clear` (write) — drop a reminder by id.
  *
  * Active firing through messaging is a follow-up iter — this server
@@ -233,6 +237,56 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           type: "object"
         },
         name: "snooze",
+        risk: "write"
+      },
+      {
+        description:
+          "Mark a reminder as fired (delivered). Use this after you've sent the reminder text " +
+          "through `muse.messaging.send` so it stops surfacing in `due`/`today`. `firedAt` defaults " +
+          "to the current time; pass an explicit ISO-8601 if recording a delayed log entry. " +
+          "Status flips pending → fired; `snooze` is the inverse if the user wants it back.",
+        execute: async (args): Promise<JsonObject> => {
+          const id = readString(args, "id");
+          if (!id) {
+            return { error: "id is required" };
+          }
+          const firedAtRaw = readString(args, "firedAt")?.trim();
+          let firedAt: string;
+          if (firedAtRaw && firedAtRaw.length > 0) {
+            const parsed = new Date(firedAtRaw);
+            if (Number.isNaN(parsed.getTime())) {
+              return { error: `firedAt must be a parseable ISO-8601 timestamp (got ${JSON.stringify(firedAtRaw)})` };
+            }
+            firedAt = parsed.toISOString();
+          } else {
+            firedAt = now().toISOString();
+          }
+          const reminders = await readReminders(file);
+          const next = fireReminder(reminders, id, firedAt);
+          if (!next) {
+            return { error: `reminder not found: ${id}` };
+          }
+          try {
+            await writeReminders(file, next);
+          } catch (error) {
+            return { error: errorMessage(error) };
+          }
+          const fired = next.find((reminder) => reminder.id === id) as PersistedReminder;
+          return { reminder: serializeReminder(fired) as JsonValue };
+        },
+        inputSchema: {
+          additionalProperties: false,
+          properties: {
+            firedAt: {
+              description: "Optional ISO-8601 timestamp; defaults to now.",
+              type: "string"
+            },
+            id: { type: "string" }
+          },
+          required: ["id"],
+          type: "object"
+        },
+        name: "fire",
         risk: "write"
       },
       {

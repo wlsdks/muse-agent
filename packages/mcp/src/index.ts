@@ -524,6 +524,7 @@ export {
 // the REST routes, the CLI, and `muse today` (both surfaces).
 export {
   filterReminders,
+  fireReminder,
   parseReminderDueAt,
   readReminders,
   readReminderStatusFilter,

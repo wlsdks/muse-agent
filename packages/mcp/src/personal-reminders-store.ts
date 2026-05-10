@@ -89,6 +89,35 @@ export function parseReminderDueAt(raw: string, now: () => Date): string | Error
 }
 
 /**
+ * Flip a reminder pending → fired. Phase A of active firing
+ * (see `docs/design/reminder-firing.md`): the LLM can call
+ * `muse.reminders.fire` after it's delivered the reminder
+ * through messaging, closing the loop without a daemon.
+ *
+ * Returns the new array (immutable, status flipped, `firedAt`
+ * set) on success or `undefined` when no reminder matches `id`,
+ * letting the caller surface its own 404.
+ */
+export function fireReminder(
+  reminders: readonly PersistedReminder[],
+  id: string,
+  firedAt: string
+): readonly PersistedReminder[] | undefined {
+  const index = reminders.findIndex((reminder) => reminder.id === id);
+  if (index < 0) {
+    return undefined;
+  }
+  const fired: PersistedReminder = {
+    ...reminders[index]!,
+    firedAt,
+    status: "fired"
+  };
+  const next = [...reminders];
+  next[index] = fired;
+  return next;
+}
+
+/**
  * Filter helper used by both the REST list endpoint and the CLI's
  * `--local` mode. `due` returns reminders whose dueAt is at or
  * before `now` AND status is still "pending" — i.e. things the
