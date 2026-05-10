@@ -28,3 +28,9 @@ export { SlackProvider, type SlackProviderOptions } from "./slack-provider.js";
 export { LineProvider, type LineProviderOptions } from "./line-provider.js";
 
 export { validateOutboundMessage } from "./validate.js";
+
+export {
+  appendInbound,
+  readInbox,
+  type AppendInboundOptions
+} from "./inbox-store.js";

@@ -12,7 +12,8 @@ import {
   validateOutboundMessage
 } from "../src/index.js";
 import { clampInboundLimit, tryParseJson } from "../src/provider-helpers.js";
-import { mkdtempSync } from "node:fs";
+import { appendInbound, readInbox } from "../src/inbox-store.js";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -432,6 +433,83 @@ describe("MessagingProviderRegistry", () => {
     const inbound = await registry.fetchInbound("telegram", { limit: 5 });
     expect(inbound).toHaveLength(1);
     expect(inbound[0]?.text).toBe("yo");
+  });
+});
+
+describe("inbox-store", () => {
+  function makeMessage(overrides: Partial<{ messageId: string; receivedAtIso: string; text: string }> = {}): import("../src/index.js").InboundMessage {
+    return {
+      messageId: overrides.messageId ?? "msg-1",
+      providerId: "line",
+      receivedAtIso: overrides.receivedAtIso ?? "2026-05-11T08:00:00.000Z",
+      source: "U-stark",
+      text: overrides.text ?? "hello"
+    };
+  }
+
+  it("readInbox returns [] for missing/malformed files", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-inbox-"));
+    expect(await readInbox(join(root, "missing.json"))).toEqual([]);
+    // malformed JSON
+    const { writeFileSync } = await import("node:fs");
+    const bad = join(root, "bad.json");
+    writeFileSync(bad, "{not json", "utf8");
+    expect(await readInbox(bad)).toEqual([]);
+    // wrong shape
+    const wrong = join(root, "wrong.json");
+    writeFileSync(wrong, '{"messages":[]}', "utf8");
+    expect(await readInbox(wrong)).toEqual([]);
+  });
+
+  it("appendInbound persists newest-last; readInbox surfaces newest-first", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-inbox-rw-"));
+    const file = join(root, "inbox.json");
+    await appendInbound(file, makeMessage({ messageId: "1", text: "first" }));
+    await appendInbound(file, makeMessage({ messageId: "2", text: "second" }));
+    await appendInbound(file, makeMessage({ messageId: "3", text: "third" }));
+    const out = await readInbox(file);
+    expect(out.map((m) => m.text)).toEqual(["third", "second", "first"]);
+  });
+
+  it("appendInbound trims to capacity dropping oldest", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-inbox-cap-"));
+    const file = join(root, "inbox.json");
+    for (let index = 0; index < 5; index += 1) {
+      await appendInbound(file, makeMessage({ messageId: `m${index.toString()}` }), { capacity: 3 });
+    }
+    const out = await readInbox(file);
+    expect(out.map((m) => m.messageId)).toEqual(["m4", "m3", "m2"]);
+    // On disk it's stored newest-last
+    const persisted = JSON.parse(readFileSync(file, "utf8")) as { inbox: Array<{ messageId: string }> };
+    expect(persisted.inbox.map((m) => m.messageId)).toEqual(["m2", "m3", "m4"]);
+  });
+
+  it("readInbox honours `limit` (default 100, max 200)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-inbox-limit-"));
+    const file = join(root, "inbox.json");
+    for (let index = 0; index < 30; index += 1) {
+      await appendInbound(file, makeMessage({ messageId: `m${index.toString()}` }));
+    }
+    expect(await readInbox(file, 5)).toHaveLength(5);
+    expect(await readInbox(file)).toHaveLength(30); // 30 < default 100
+    expect(await readInbox(file, 9999)).toHaveLength(30); // capped to 200, but only 30 exist
+  });
+
+  it("isInboundMessage rejects malformed entries on read", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-inbox-bad-"));
+    const file = join(root, "inbox.json");
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(file, JSON.stringify({
+      inbox: [
+        { messageId: "ok", providerId: "line", receivedAtIso: "x", source: "y", text: "z" },
+        { messageId: 42 }, // bad type → skipped
+        null,
+        { providerId: "line" } // missing required fields → skipped
+      ]
+    }), "utf8");
+    const out = await readInbox(file);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.messageId).toBe("ok");
   });
 });
 
