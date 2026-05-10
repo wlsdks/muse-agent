@@ -30,10 +30,29 @@ move from `Unreleased` to dated/versioned headings.
 
 ### Added
 
+- **`--local` mode for `muse tasks`, `muse notes`, `muse today`** —
+  the CLI no longer requires a running API server for personal
+  data. `--local` reads/writes `~/.muse/tasks.json` and
+  `~/.muse/notes/` directly via the same engine the API uses
+  (`@muse/mcp` shared store + `createNotesMcpServer` in-process),
+  so on-disk state stays byte-identical between modes. Calendar
+  is still served through the API in this iter — its registry
+  needs OAuth/CalDAV boot. Three new CLI vitest cases cover
+  tasks/notes/today round-trips with `fetch` rigged to throw
+  (proves no API hop). Dogfood: `node muse tasks list --local`
+  works with the API server stopped.
 - **`muse tasks add --due <when>`** — CLI surface caught up to the
   MCP tool. Accepts ISO-8601 or relative phrases ("tomorrow at
   6pm", "in 3 hours", "next Monday"); `POST /api/tasks` parses
   both via the same resolver re-exported from `@muse/mcp`.
+
+### Refactored
+
+- Personal task on-disk shape, atomic writes, status filter, and
+  dueAt parsing moved to `@muse/mcp/personal-tasks-store`. The MCP
+  loopback tool, the Fastify REST routes, and the CLI's `--local`
+  mode now share one implementation; previously the API duplicated
+  parsing inline.
 
 ### Added
 

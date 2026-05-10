@@ -101,6 +101,9 @@ importers:
       '@muse/calendar':
         specifier: workspace:*
         version: link:../../packages/calendar
+      '@muse/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
       '@muse/voice':
         specifier: workspace:*
         version: link:../../packages/voice

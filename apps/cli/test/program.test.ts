@@ -1651,4 +1651,120 @@ describe("cli program", () => {
     expect(out).toContain("You: 오늘 날씨 어때?");
     expect(out).toContain("Muse: 안녕하세요");
   });
+
+  it("tasks --local round-trips add → list → complete → delete on disk without touching the API", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-local-tasks-"));
+    const tasksFile = path.join(root, "tasks.json");
+    const previous = process.env.MUSE_TASKS_FILE;
+    process.env.MUSE_TASKS_FILE = tasksFile;
+    try {
+      const { io: io1, output: output1 } = captureOutput();
+      const program1 = createProgram({
+        ...io1,
+        fetch: async () => { throw new Error("fetch must not be called in --local mode"); }
+      });
+      await program1.parseAsync(
+        ["node", "muse", "tasks", "add", "Local round-trip", "--due", "2026-12-31T23:59:00Z", "--local"],
+        { from: "node" }
+      );
+      const created = JSON.parse(output1.join("")) as { id: string; dueAt: string; title: string };
+      expect(created.title).toBe("Local round-trip");
+      expect(created.dueAt).toBe("2026-12-31T23:59:00.000Z");
+
+      const { io: io2, output: output2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("fetch in --local"); } });
+      await program2.parseAsync(["node", "muse", "tasks", "list", "--local"], { from: "node" });
+      const listed = JSON.parse(output2.join("")) as { tasks: Array<{ id: string; title: string }>; total: number };
+      expect(listed.total).toBe(1);
+      expect(listed.tasks[0]?.id).toBe(created.id);
+
+      const { io: io3 } = captureOutput();
+      const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("fetch in --local"); } });
+      await program3.parseAsync(["node", "muse", "tasks", "complete", created.id, "--local"], { from: "node" });
+
+      const { io: io4 } = captureOutput();
+      const program4 = createProgram({ ...io4, fetch: async () => { throw new Error("fetch in --local"); } });
+      await program4.parseAsync(["node", "muse", "tasks", "delete", created.id, "--local"], { from: "node" });
+
+      const { io: io5, output: output5 } = captureOutput();
+      const program5 = createProgram({ ...io5, fetch: async () => { throw new Error("fetch in --local"); } });
+      await program5.parseAsync(["node", "muse", "tasks", "list", "--status", "all", "--local"], { from: "node" });
+      const after = JSON.parse(output5.join("")) as { total: number };
+      expect(after.total).toBe(0);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MUSE_TASKS_FILE;
+      } else {
+        process.env.MUSE_TASKS_FILE = previous;
+      }
+    }
+  });
+
+  it("notes --local round-trips save → list → read → search without touching the API", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-local-notes-"));
+    const previous = process.env.MUSE_NOTES_DIR;
+    process.env.MUSE_NOTES_DIR = root;
+    try {
+      const { io: io1 } = captureOutput();
+      const program1 = createProgram({
+        ...io1,
+        fetch: async () => { throw new Error("fetch must not be called in --local mode"); }
+      });
+      await program1.parseAsync(
+        ["node", "muse", "notes", "save", "daily/2026-05-10.md", "Hello", "from", "local", "mode", "--local"],
+        { from: "node" }
+      );
+
+      const { io: io2, output: output2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("fetch in --local"); } });
+      await program2.parseAsync(["node", "muse", "notes", "read", "daily/2026-05-10.md", "--local"], { from: "node" });
+      const read = JSON.parse(output2.join("")) as { content: string; path: string };
+      expect(read.content).toBe("Hello from local mode");
+      expect(read.path).toBe("daily/2026-05-10.md");
+
+      const { io: io3, output: output3 } = captureOutput();
+      const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("fetch in --local"); } });
+      await program3.parseAsync(["node", "muse", "notes", "search", "local", "mode", "--local"], { from: "node" });
+      const found = JSON.parse(output3.join("")) as { matches: Array<{ path: string; line: number }> };
+      expect(found.matches.length).toBeGreaterThan(0);
+      expect(found.matches[0]?.path).toBe("daily/2026-05-10.md");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MUSE_NOTES_DIR;
+      } else {
+        process.env.MUSE_NOTES_DIR = previous;
+      }
+    }
+  });
+
+  it("today --local composes tasks + recent notes without touching the API", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-local-today-"));
+    const tasksFile = path.join(root, "tasks.json");
+    const notesDir = path.join(root, "notes");
+    const prevTasks = process.env.MUSE_TASKS_FILE;
+    const prevNotes = process.env.MUSE_NOTES_DIR;
+    process.env.MUSE_TASKS_FILE = tasksFile;
+    process.env.MUSE_NOTES_DIR = notesDir;
+    try {
+      const { io: io1 } = captureOutput();
+      const seed = createProgram({ ...io1, fetch: async () => { throw new Error("fetch in --local"); } });
+      await seed.parseAsync(["node", "muse", "tasks", "add", "Pick", "up", "milk", "--local"], { from: "node" });
+      await seed.parseAsync(
+        ["node", "muse", "notes", "save", "weekly/plan.md", "milestones", "for", "next", "week", "--local"],
+        { from: "node" }
+      );
+
+      const { io: io2, output: output2 } = captureOutput();
+      const program = createProgram({ ...io2, fetch: async () => { throw new Error("fetch in --local"); } });
+      await program.parseAsync(["node", "muse", "today", "--local"], { from: "node" });
+      const text = output2.join("");
+      expect(text).toContain("Today");
+      expect(text).toContain(", local)");
+      expect(text).toContain("Pick up milk");
+      expect(text).toContain("weekly/plan.md");
+    } finally {
+      if (prevTasks === undefined) { delete process.env.MUSE_TASKS_FILE; } else { process.env.MUSE_TASKS_FILE = prevTasks; }
+      if (prevNotes === undefined) { delete process.env.MUSE_NOTES_DIR; } else { process.env.MUSE_NOTES_DIR = prevNotes; }
+    }
+  });
 });

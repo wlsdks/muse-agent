@@ -19,6 +19,7 @@
     "@muse/agent-core": "workspace:*",
     "@muse/autoconfigure": "workspace:*",
     "@muse/calendar": "workspace:*",
+    "@muse/mcp": "workspace:*",
     "@muse/voice": "workspace:*",
     "commander": "^14.0.3",
     "ink": "^7.0.2",
