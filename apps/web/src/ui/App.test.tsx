@@ -37,6 +37,16 @@ describe("MuseConsole", () => {
     expect(html).toContain("Record");
   });
 
+  it("renders the Notes panel with a save form", () => {
+    const html = renderConsole();
+    expect(html).toContain("Notes");
+    // The save form's filename input + body textarea + Save button —
+    // textarea by aria-label, button label.
+    expect(html).toContain('placeholder="filename.md"');
+    expect(html).toContain('aria-label="New note content"');
+    expect(html).toMatch(/>\s*Save\s*<\/button>/u);
+  });
+
   it("includes status metrics for tools and orchestrations counts", () => {
     const html = renderConsole();
     // Status strip metric labels — capitalised plural forms.

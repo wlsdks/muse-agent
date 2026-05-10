@@ -122,6 +122,29 @@ interface CalendarEventsResponse {
   readonly total: number;
 }
 
+interface NotesEntryRow {
+  readonly name: string;
+  readonly isDirectory: boolean;
+  readonly sizeBytes?: number;
+}
+
+interface NotesListResponse {
+  readonly dir: string;
+  readonly entries: readonly NotesEntryRow[];
+  readonly truncated: boolean;
+}
+
+interface NotesProviderInfo {
+  readonly id: string;
+  readonly displayName: string;
+  readonly description: string;
+  readonly local: boolean;
+}
+
+interface NotesProvidersResponse {
+  readonly providers: readonly NotesProviderInfo[];
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -173,6 +196,7 @@ export function MuseConsole() {
         <aside className="side-panel">
           <VoicePanel apiUrl={apiUrl} token={token} />
           <TasksPanel client={client} />
+          <NotesPanel client={client} />
           <CalendarEventsPanel client={client} />
           <RunsPanel runs={admin.data?.recentRuns ?? []} loading={admin.isLoading} />
           <ToolCatalogPanel tools={tools.data?.tools ?? []} loading={tools.isLoading} />
@@ -379,6 +403,101 @@ function TasksPanel({ client }: { readonly client: ApiClient }) {
             >
               ✓ Done
             </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function NotesPanel({ client }: { readonly client: ApiClient }) {
+  const [draftPath, setDraftPath] = useState("");
+  const [draftBody, setDraftBody] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const notes = useQuery({
+    queryFn: () => client.get<NotesListResponse>("/api/notes/list"),
+    queryKey: ["notes-list"],
+    // 404s when notesDir is not configured on the server — surface that
+    // gracefully rather than treating it as a fatal panel error.
+    retry: false
+  });
+  const providers = useQuery({
+    queryFn: () => client.get<NotesProvidersResponse>("/api/notes/providers"),
+    queryKey: ["notes-providers"],
+    retry: false
+  });
+
+  const saveNote = useMutation({
+    mutationFn: async (input: { readonly path: string; readonly content: string }) =>
+      client.post<{ readonly path: string }>("/api/notes/save", input),
+    onError: (err) => setError(err instanceof Error ? err.message : "Failed to save note"),
+    onSuccess: async () => {
+      setDraftPath("");
+      setDraftBody("");
+      setError(null);
+      await notes.refetch();
+    }
+  });
+
+  const fileEntries = (notes.data?.entries ?? []).filter((entry) => !entry.isDirectory);
+  const providerCount = providers.data?.providers.length ?? 0;
+
+  return (
+    <section className="tool-surface compact" aria-label="Notes">
+      <div className="surface-heading">
+        <h2>Notes</h2>
+        <span>{notes.isLoading ? "Loading" : fileEntries.length}</span>
+      </div>
+      {providerCount > 1 ? (
+        <p className="status-info" style={{ fontSize: "0.85em", margin: "0 0 0.5rem 0" }}>
+          {providerCount} providers configured: {(providers.data?.providers ?? []).map((p) => p.id).join(", ")}
+        </p>
+      ) : null}
+      {notes.isError ? (
+        <p className="status-error">Notes are not configured (set MUSE_NOTES_DIR).</p>
+      ) : null}
+      {error ? <p className="status-error">{error}</p> : null}
+      <form
+        className="connection-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const path = draftPath.trim();
+          const content = draftBody.trim();
+          if (path.length > 0 && content.length > 0) {
+            saveNote.mutate({ content, path });
+          }
+        }}
+        style={{ display: "flex", flexDirection: "column", gap: "0.25rem", marginBottom: "0.5rem" }}
+      >
+        <input
+          aria-label="New note filename (e.g. journal.md)"
+          placeholder="filename.md"
+          value={draftPath}
+          onChange={(event) => setDraftPath(event.target.value)}
+        />
+        <textarea
+          aria-label="New note content"
+          placeholder="Note body…"
+          value={draftBody}
+          onChange={(event) => setDraftBody(event.target.value)}
+          rows={3}
+        />
+        <button
+          type="submit"
+          disabled={saveNote.isPending || draftPath.trim().length === 0 || draftBody.trim().length === 0}
+        >
+          Save
+        </button>
+      </form>
+      <ul className="record-list">
+        {fileEntries.slice(0, 10).map((entry) => (
+          <li key={entry.name}>
+            <strong>{entry.name}</strong>
+            {entry.sizeBytes !== undefined ? (
+              <span style={{ color: "var(--muted, #888)", marginLeft: "0.5rem", fontSize: "0.85em" }}>
+                {entry.sizeBytes}b
+              </span>
+            ) : null}
           </li>
         ))}
       </ul>
