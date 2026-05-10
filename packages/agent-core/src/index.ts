@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import {
   buildCacheKey,
   cacheableModelRequest,
@@ -22,14 +21,12 @@ import {
   createNoOpMuseTracer,
   type AgentMetrics,
   type MuseTracer,
-  type SpanHandle,
   type TokenUsageSink
 } from "@muse/observability";
 import type { ExemplarRetriever, PromptLayerRegistry } from "@muse/prompts";
 import type { CircuitBreaker, FallbackStrategy, RetryOptions } from "@muse/resilience";
 import type {
   AgentRunHistoryStore,
-  AgentRunMode,
   CheckpointStore,
   HookTraceStore
 } from "@muse/runtime-state";
@@ -39,20 +36,8 @@ import {
   type ConversationSummaryStore,
   type ConversationTrimOptions
 } from "@muse/memory";
-import {
-  detectSystemPromptLeakage,
-  detectTopicDrift,
-  findInjectionPatterns,
-  maskPii,
-  normalizeStructuredOutput,
-  sanitizeSourceBlocks,
-  type GuardBlockRateMonitor,
-  type StructuredOutputFormat,
-  type TopicDriftOptions
-} from "@muse/policy";
-import { createRunId, type JsonObject } from "@muse/shared";
-import { ToolCallDeduplicator } from "./tool-call-deduplicator.js";
-import { isRecord, withResponseFilterRaw } from "./internals.js";
+import type { GuardBlockRateMonitor } from "@muse/policy";
+import { createRunId } from "@muse/shared";
 import {
   recordCheckpoint,
   recordRunComplete,
@@ -62,9 +47,7 @@ import {
 import { invokeHooks } from "./hook-orchestration.js";
 import { invokeModel } from "./model-invocation.js";
 import {
-  appendSystemSection,
   failMissingProvider,
-  isModelMessage,
   latestUserPrompt,
   metadataString,
   numberMetadata,
@@ -81,13 +64,11 @@ import {
 } from "./runtime-internals.js";
 import {
   isPlanExecuteMode,
-  type PlanStep,
-  type StepExecutionResult
+  type PlanStep
 } from "./plan-execute.js";
 import {
   executePlanExecuteLoop as executePlanExecuteLoopFn,
-  streamPlanExecute as streamPlanExecuteFn,
-  type PlanExecuteRunner
+  streamPlanExecute as streamPlanExecuteFn
 } from "./plan-execute-loop.js";
 import {
   applyAgentSpec as applyAgentSpecFn,
@@ -107,11 +88,6 @@ import {
   applyResponseFilters as applyResponseFiltersFn,
   evaluateGuards as evaluateGuardsFn
 } from "./guard-pipeline.js";
-import {
-  createAgentCheckpointState,
-  encodeCheckpointMessages,
-  type AgentCheckpointState
-} from "./checkpoint.js";
 import { ModelRoutingError } from "./errors.js";
 import {
   ToolExecutor,
@@ -127,18 +103,12 @@ import type {
   AgentRunInput,
   AgentRunResult,
   AgentSpecResolver,
-  AgentSpecRunReport,
-  Awaitable,
   GuardStage,
   HookStage,
-  LlmClassificationInputGuardOptions,
-  OutputGuardContext,
   OutputGuardStage,
-  ResponseFilterContext,
   ResponseFilterStage,
   UserMemoryInjectionOptions,
-  UserMemoryProvider,
-  VerifiedSource
+  UserMemoryProvider
 } from "./types.js";
 
 export type {

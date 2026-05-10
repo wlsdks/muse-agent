@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryAgentSpecRegistry, RuleBasedAgentSpecResolver } from "@muse/agent-specs";
-import { InMemoryResponseCache } from "@muse/cache";
 import { ModelProviderRegistry, type ModelProvider, type ModelRequest, type ModelResponse } from "@muse/model";
 import { InMemoryAgentMetrics, InMemoryMuseTracer } from "@muse/observability";
 import { InMemoryExemplarRetriever, InMemoryPromptLayerRegistry } from "@muse/prompts";
@@ -31,7 +30,6 @@ import {
   createVerifiedSourcesResponseFilter,
   createZeroResultOverclaimResponseFilter,
   decodeCheckpointMessages,
-  encodeCheckpointMessages,
   extractJsonArray,
   GuardBlockedError,
   HookRegistry,

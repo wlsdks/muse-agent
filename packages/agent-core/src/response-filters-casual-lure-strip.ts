@@ -18,7 +18,7 @@ export function createCasualLureStripResponseFilter(): ResponseFilterStage {
   const reactionOnlyTools = new Set(["add_reaction"]);
   const suggestionBlockPattern =
     /(\n+|(?<=[.!?])\s+)(예를\s*들어\s+)?(\*\*)?\s*(?:[\p{So}\p{Sk}]{0,3}\s*)?(함께|이렇게|이런\s*건|이런\s*걸|이런\s*것들?|이런\s*질문|아래처럼|궁금하신|궁금한|다음에\s*\S{1,6}|추가로|도움이\s*필요|어떤|오늘의)[^\n]{0,40}(볼까요|어떠세요|해\s*보세요|활용해\s*보세요|있나요|있으신가요|물어보세요|물어보셔도|물어보실\s*수\s*있어요|도와드릴까요|좋아요|하신가요|하실까요|수\s*있어요|보세요|드릴까요|골라주세요)[?!.:]\s*(\*\*)?\s+((\s*[*\-0-9.][^\n]*|\s*["'][^\n]*)\n?){2,}$/su;
-  const quotedBulletTailPattern = /\n\n+([^\n]{0,80}\n)?(\s*[*\-]\s*[*`]*["'][^\n]*\n?){2,}$/su;
+  const quotedBulletTailPattern = /\n\n+([^\n]{0,80}\n)?(\s*[*-]\s*[*`]*["'][^\n]*\n?){2,}$/su;
   const trailingSymbolPattern = /[\p{So}\p{Sk}\p{Sc}\s~*_:)(-]+$/u;
   const lurePatterns = [
     /(도와드릴|찾아드릴|정리해\s*드릴|보여드릴|확인해\s*드릴|알려\s*드릴|봐드릴|체크해\s*드릴|브리핑해\s*드릴|요약해\s*드릴).{0,120}[?!.]\s*\$?\s*$/s,

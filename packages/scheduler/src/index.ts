@@ -1,11 +1,10 @@
-import type { ScheduledJobExecutionTable, ScheduledJobTable, MuseDatabase } from "@muse/db";
+import type { ScheduledJobExecutionTable, ScheduledJobTable } from "@muse/db";
 import type { McpManager } from "@muse/mcp";
 import { TimeoutError, withTimeout } from "@muse/resilience";
-import { createRunId, type JsonObject, type JsonValue } from "@muse/shared";
+import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 import { CronExpressionParser } from "cron-parser";
-import type { Insertable, Kysely, Selectable } from "kysely";
-import { NoOpDistributedSchedulerLock } from "./scheduler-locks.js";
+import type { Insertable, Selectable } from "kysely";
 
 export type Awaitable<T> = T | Promise<T>;
 export type ScheduledJobType = "mcp_tool" | "agent";
@@ -193,9 +192,6 @@ type ScheduledJobRow = Selectable<ScheduledJobTable>;
 type ScheduledJobInsert = Insertable<ScheduledJobTable>;
 type ScheduledJobExecutionRow = Selectable<ScheduledJobExecutionTable>;
 type ScheduledJobExecutionInsert = Insertable<ScheduledJobExecutionTable>;
-const resultTruncationLimit = 5_000;
-const defaultMaxJobs = 1_000;
-const defaultMaxExecutions = 200;
 const defaultTimezone = "UTC";
 const defaultRetryCount = 3;
 export const defaultExecutionTimeoutMs = 300_000;
@@ -669,7 +665,7 @@ export function resolveJobTimeout(job: ScheduledJob, fallbackMs: number): number
 function validateTimezone(timezone: string): void {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(new Date());
-  } catch (error) {
+  } catch {
     throw new SchedulerValidationError(`Invalid timezone: ${timezone}`);
   }
 }

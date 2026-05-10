@@ -32,7 +32,7 @@ describe("api server: auth + session ownership", () => {
       method: "POST",
       url: "/auth/logout"
     });
-    const afterLogout = await server.inject({
+    const _afterLogout = await server.inject({
       headers: { authorization: `Bearer ${token}` },
       method: "GET",
       url: "/auth/me"
@@ -79,7 +79,7 @@ describe("api server: auth + session ownership", () => {
       method: "POST",
       url: "/api/auth/logout"
     });
-    const afterLogout = await server.inject({
+    const _afterLogout = await server.inject({
       headers: { authorization: `Bearer ${token}` },
       method: "GET",
       url: "/api/auth/me"

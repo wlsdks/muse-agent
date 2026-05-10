@@ -1,4 +1,4 @@
-import { createHmac, createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import type { MuseDatabase, UserTable } from "@muse/db";
 import { createRunId } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
@@ -743,6 +743,3 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function sha256Hex(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}

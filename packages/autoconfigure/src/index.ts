@@ -64,7 +64,6 @@ import {
   createNotesRegistryMcpServer,
   createTasksRegistryMcpServer,
   type LoopbackMcpServer,
-  type McpSecurityPolicyInput,
   type McpSecurityPolicyStore,
   type McpServerInput,
   type McpServerStore,
@@ -103,7 +102,6 @@ import {
   createDerivedAgentMetrics,
   createMuseObservabilitySnapshotProvider,
   type AgentMetrics,
-  type MuseObservabilitySnapshot,
   type LatencyQuery,
   type MuseTracer,
   type QueryableTraceEventSink,
@@ -111,7 +109,7 @@ import {
   type TokenUsageSink
 } from "@muse/observability";
 import { CircuitBreakerRegistry } from "@muse/resilience";
-import { RuntimeSettings, type RuntimeSettingsStore } from "@muse/runtime-settings";
+import { RuntimeSettings } from "@muse/runtime-settings";
 import {
   type AgentRunHistoryStore,
   type DebugReplayCaptureStore,
@@ -124,7 +122,6 @@ import {
   NodeCronScheduler,
   ScheduledJobDispatcher,
   ScheduledMcpToolInvoker,
-  type DistributedSchedulerLock,
   type ScheduledAgentExecutor,
   type ScheduledJobExecutionStore,
   type ScheduledJobStore
@@ -167,11 +164,7 @@ import {
   createTracingPipeline,
   createUserMemoryStore
 } from "./store-factories.js";
-import {
-  loadExternalMcpConfig,
-  resolveExternalMcpConfigFile,
-  seedExternalMcpServers
-} from "./external-mcp-config.js";
+import { loadExternalMcpConfig } from "./external-mcp-config.js";
 
 export {
   loadExternalMcpConfig,

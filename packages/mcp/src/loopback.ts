@@ -680,14 +680,6 @@ export function createDefaultLoopbackMcpServers(options: BuiltinLoopbackOptions 
   ];
 }
 
-function readJsonObject(args: JsonObject, key: string): Record<string, unknown> | undefined {
-  const value = args[key];
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  return value as Record<string, unknown>;
-}
-
 interface DiffEntry {
   readonly kind: "equal" | "insert" | "delete";
   readonly line: string;
@@ -941,22 +933,6 @@ export {
   createCalendarMcpServer,
   type CalendarMcpServerOptions
 } from "./loopback-calendar.js";
-
-function readStringArray(args: JsonObject, key: string): readonly string[] | undefined {
-  const value = args[key];
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  return value.filter((entry): entry is string => typeof entry === "string");
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
-
 
 /**
  * `muse.tasks` personal todo list backed by a single JSON file.

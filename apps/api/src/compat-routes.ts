@@ -1,40 +1,24 @@
-import type { AgentCardToolInput, AgentSpec, AgentSpecInput, AgentSpecRegistry } from "@muse/agent-specs";
-import { buildAgentCard } from "@muse/agent-specs";
-import type { AgentRunResult, AgentRuntime } from "@muse/agent-core";
-import {
-  extractBearerToken,
-  type AuthIdentity,
-  type LoginResult,
-  type MuseAuth
-} from "@muse/auth";
-import type { McpServer } from "@muse/mcp";
-import type { TaskMemoryMaintenance, UserMemory, UserMemoryStore } from "@muse/memory";
+import type { AgentCardToolInput, AgentSpecRegistry } from "@muse/agent-specs";
+import type { AgentRuntime } from "@muse/agent-core";
+import type { MuseAuth } from "@muse/auth";
+import type { TaskMemoryMaintenance, UserMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
 import type {
   MuseObservabilitySnapshot,
   LatencyQuery,
-  LatencyPoint,
-  LatencySummary,
   TokenCostQuery
 } from "@muse/observability";
 import type { RuntimeSetting, RuntimeSettings, RuntimeSettingType } from "@muse/runtime-settings";
 import type {
   AgentRunHistoryStore,
   AgentRunRecord,
-  ConversationMessageRecord,
   DebugReplayCaptureStore,
-  SessionTag,
-  SessionTagStore,
-  ToolCallRecord
+  SessionTagStore
 } from "@muse/runtime-state";
-import type { ScheduledJobExecution } from "@muse/scheduler";
 import { createRunId, type JsonObject } from "@muse/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { createHash } from "node:crypto";
 import { registerAdminAnalyticsCompatRoutes } from "./admin-analytics-compat-routes.js";
 import { isRecord, nowIso } from "./compat-parsers.js";
-import { notFound } from "./compat-responses.js";
-import { currentAuthIdentity } from "./compat-user-memory-store.js";
 import { registerAdminObservabilityCompatRoutes } from "./admin-observability-compat-routes.js";
 import { registerAdminPlatformCompatRoutes } from "./admin-platform-compat-routes.js";
 import { registerAdminSessionCompatRoutes } from "./admin-session-compat-routes.js";
@@ -43,7 +27,7 @@ import { registerAuthCompatibilityRoutes } from "./auth-compat-routes.js";
 import { registerMcpCompatibilityRoutes } from "./mcp-compat-routes.js";
 import { registerSessionCompatibilityRoutes } from "./session-compat-routes.js";
 import { registerUserMemoryCompatRoutes } from "./user-memory-compat-routes.js";
-import { recordedSpans, recordedTraceEvents, type AdminRouteState } from "./admin-routes.js";
+import { type AdminRouteState } from "./admin-routes.js";
 import type { McpRouteMcp } from "./mcp-routes.js";
 import type { SchedulerRouteScheduler } from "./scheduler-routes.js";
 
@@ -256,18 +240,6 @@ export {
 export function findCompatRecord(collection: CompatCollection, id: string): CompatRecord | undefined {
   return collection.get(id) ?? [...collection.values()].find((record) => record.name === id || record.channelId === id);
 }
-
-function findRecordByParam(
-  collection: CompatCollection,
-  request: FastifyRequest,
-  reply: FastifyReply,
-  paramName: string
-) {
-  const id = (request.params as Record<string, string>)[paramName];
-  const record = id ? findCompatRecord(collection, id) : undefined;
-  return record ?? notFound(reply, "COMPAT_RECORD_NOT_FOUND");
-}
-
 
 export function getStateSessionTags(): Map<string, CompatRecord[]> {
   return state.sessionTags;

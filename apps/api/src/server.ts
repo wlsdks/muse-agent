@@ -6,11 +6,7 @@ import {
 } from "@muse/agent-specs";
 import { extractBearerToken, type MuseAuth } from "@muse/auth";
 import type { CalendarCredentialStore, CalendarProviderRegistry } from "@muse/calendar";
-import {
-  describeBuiltinLoopbackMcpServers,
-  type NotesProviderRegistry,
-  type TasksProviderRegistry
-} from "@muse/mcp";
+import type { NotesProviderRegistry, TasksProviderRegistry } from "@muse/mcp";
 import type { ConversationSummaryStore, TaskMemoryMaintenance, UserMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
 import type { MuseObservabilitySnapshot, LatencyQuery, TokenCostQuery } from "@muse/observability";
@@ -20,7 +16,6 @@ import type {
   DebugReplayCaptureStore,
   SessionTagStore
 } from "@muse/runtime-state";
-import type { JsonObject } from "@muse/shared";
 import type { VoiceProviderRegistry } from "@muse/voice";
 import Fastify, { type FastifyInstance } from "fastify";
 import { registerAdminRoutes, type AdminRouteState } from "./admin-routes.js";

@@ -27,7 +27,6 @@ import {
   renderTemplateVariables,
   type CronScheduler,
   type DistributedSchedulerLock,
-  type ScheduledAgentExecutor,
   type ScheduledJob
 } from "../src/index.js";
 import type { Kysely } from "kysely";

@@ -4,7 +4,6 @@ import type { ColumnType, Generated } from "kysely";
 type Timestamp = ColumnType<Date, Date | string | undefined, Date | string>;
 type NullableTimestamp = ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
 type NumericString = ColumnType<string, string | number | undefined, string | number>;
-type NullableNumericString = ColumnType<string | null, string | number | null | undefined, string | number | null>;
 type JsonColumn<T extends JsonValue = JsonValue> = ColumnType<T, T | string | undefined, T | string>;
 type CompatibilityTable = Record<string, ColumnType<unknown, unknown, unknown>>;
 

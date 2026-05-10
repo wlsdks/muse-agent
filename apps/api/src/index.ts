@@ -10,11 +10,11 @@ const seeded = await seedExternalMcpServers(
   options.mcpBootstrap.externalServerInputs
 );
 if (seeded.length > 0) {
-  // eslint-disable-next-line no-console
+   
   console.log(`[muse] seeded ${seeded.length} external MCP server(s) from ~/.muse/mcp.json: ${seeded.join(", ")}`);
   for (const name of seeded) {
     void options.mcp.manager.connect(name).catch((cause: unknown) => {
-      // eslint-disable-next-line no-console
+       
       console.warn(`[muse] failed to connect external MCP server '${name}': ${cause instanceof Error ? cause.message : String(cause)}`);
     });
   }
