@@ -25,6 +25,39 @@ interface MessagingRoutesGate {
 }
 
 export function registerMessagingRoutes(server: FastifyInstance, gate: MessagingRoutesGate): void {
+  server.get("/api/messaging/inbox", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
+      return reply;
+    }
+    const query = (request.query as { providerId?: string; limit?: string } | undefined) ?? {};
+    const providerId = typeof query.providerId === "string" ? query.providerId.trim() : "";
+    if (providerId.length === 0) {
+      return reply.status(400).send({
+        code: "INVALID_MESSAGING_REQUEST",
+        message: "providerId query parameter is required"
+      });
+    }
+    const limitNum = query.limit ? Number(query.limit) : undefined;
+    const opts = limitNum !== undefined && Number.isFinite(limitNum) ? { limit: limitNum } : undefined;
+    try {
+      const inbound = await gate.registry.fetchInbound(providerId, opts);
+      return reply.status(200).send({ inbound, providerId, total: inbound.length });
+    } catch (error) {
+      if (error instanceof MessagingProviderError) {
+        if (error.code === "PROVIDER_NOT_FOUND") {
+          return reply.status(404).send({ code: "MESSAGING_PROVIDER_UNKNOWN", message: error.message });
+        }
+        return reply.status(502).send({
+          code: "MESSAGING_PROVIDER_FAILED",
+          message: error.message,
+          providerId: error.providerId,
+          ...(error.status !== undefined ? { upstreamStatus: error.status } : {})
+        });
+      }
+      throw error;
+    }
+  });
+
   server.get("/api/messaging/providers", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;

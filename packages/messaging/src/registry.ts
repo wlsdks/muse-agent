@@ -1,5 +1,7 @@
 import { MessagingProviderError } from "./errors.js";
 import type {
+  InboundFetchOptions,
+  InboundMessage,
   MessagingProvider,
   MessagingProviderInfo,
   OutboundMessage,
@@ -51,5 +53,17 @@ export class MessagingProviderRegistry {
 
   async send(providerId: string, message: OutboundMessage): Promise<OutboundReceipt> {
     return this.require(providerId).send(message);
+  }
+
+  async fetchInbound(providerId: string, options?: InboundFetchOptions): Promise<readonly InboundMessage[]> {
+    const provider = this.require(providerId);
+    if (!provider.fetchInbound) {
+      throw new MessagingProviderError(
+        providerId,
+        "UPSTREAM_FAILED",
+        `${providerId} does not support inbound fetch yet (Phase 2 is rolling out per-provider; Telegram first)`
+      );
+    }
+    return provider.fetchInbound(options);
   }
 }

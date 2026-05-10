@@ -137,6 +137,78 @@ describe("LineProvider", () => {
   });
 });
 
+describe("TelegramProvider.fetchInbound", () => {
+  it("calls getUpdates with limit + timeout=0 and maps text updates to InboundMessage", async () => {
+    let seenUrl = "";
+    const provider = new TelegramProvider({
+      baseUrl: "https://tg.test",
+      fetch: async (url) => {
+        seenUrl = String(url);
+        return fakeJsonResponse({
+          ok: true,
+          result: [
+            {
+              message: {
+                chat: { id: 999, username: "stark" },
+                date: 1700000000,
+                from: { first_name: "Stark", id: 999, username: "stark97" },
+                message_id: 5,
+                text: "hello"
+              },
+              update_id: 100
+            },
+            { update_id: 101 }, // no message → skipped
+            {
+              message: { chat: { id: 999 }, date: 1700000060, message_id: 6, text: "second" },
+              update_id: 102
+            }
+          ]
+        });
+      },
+      token: "TOKEN"
+    });
+    const inbound = await provider.fetchInbound({ limit: 10 });
+    expect(seenUrl).toBe("https://tg.test/botTOKEN/getUpdates?limit=10&timeout=0");
+    expect(inbound).toHaveLength(2);
+    expect(inbound[0]).toMatchObject({
+      messageId: "5",
+      providerId: "telegram",
+      receivedAtIso: "2023-11-14T22:13:20.000Z",
+      sender: "stark97",
+      source: "999",
+      text: "hello"
+    });
+    expect(inbound[1]?.messageId).toBe("6");
+    expect(inbound[1]?.sender).toBeUndefined();
+  });
+
+  it("clamps limit to [1, 100] and defaults to 20 when omitted", async () => {
+    const seen: string[] = [];
+    const provider = new TelegramProvider({
+      baseUrl: "https://tg.test",
+      fetch: async (url) => {
+        seen.push(String(url));
+        return fakeJsonResponse({ ok: true, result: [] });
+      },
+      token: "x"
+    });
+    await provider.fetchInbound();
+    await provider.fetchInbound({ limit: 0 });
+    await provider.fetchInbound({ limit: 9999 });
+    expect(seen[0]).toContain("limit=20");
+    expect(seen[1]).toContain("limit=1");
+    expect(seen[2]).toContain("limit=100");
+  });
+
+  it("throws MessagingProviderError when getUpdates 4xxs", async () => {
+    const provider = new TelegramProvider({
+      fetch: async () => fakeJsonResponse({ description: "Unauthorized", ok: false }, { status: 401 }),
+      token: "x"
+    });
+    await expect(provider.fetchInbound()).rejects.toMatchObject({ code: "UPSTREAM_FAILED", status: 401 });
+  });
+});
+
 describe("MessagingProviderRegistry", () => {
   it("describes registered providers and routes send to the matching id", async () => {
     const tg = new TelegramProvider({
@@ -155,6 +227,32 @@ describe("MessagingProviderRegistry", () => {
     await expect(registry.send("telegram", { destination: "1", text: "hi" }))
       .rejects.toMatchObject({ code: "PROVIDER_NOT_FOUND" });
     expect(() => registry.require("telegram")).toThrow(MessagingProviderError);
+  });
+
+  it("fetchInbound surfaces a clear error for providers without inbound support", async () => {
+    const slack = new SlackProvider({ token: "x" });
+    const registry = new MessagingProviderRegistry([slack]);
+    await expect(registry.fetchInbound("slack")).rejects.toMatchObject({
+      code: "UPSTREAM_FAILED",
+      message: expect.stringContaining("does not support inbound")
+    });
+  });
+
+  it("fetchInbound delegates to the provider when supported", async () => {
+    const tg = new TelegramProvider({
+      fetch: async () => fakeJsonResponse({
+        ok: true,
+        result: [{
+          message: { chat: { id: 1 }, date: 1700000000, message_id: 7, text: "yo" },
+          update_id: 1
+        }]
+      }),
+      token: "x"
+    });
+    const registry = new MessagingProviderRegistry([tg]);
+    const inbound = await registry.fetchInbound("telegram", { limit: 5 });
+    expect(inbound).toHaveLength(1);
+    expect(inbound[0]?.text).toBe("yo");
   });
 });
 

@@ -62,6 +62,50 @@ export function registerMessagingCommands(
     });
 
   messaging
+    .command("inbox")
+    .description("Fetch recent inbound messages (Phase 2.a — Telegram only; one-shot, no offset state)")
+    .argument("<provider>", "Provider id: telegram (Discord/Slack/LINE inbound coming later)")
+    .option("--limit <n>", "Max messages (default 20, max 100)")
+    .option("--local", "Build the registry from process.env directly instead of GETing the API (not yet wired)")
+    .option("--json", "Print the raw inbound array instead of the formatted list")
+    .action(async (
+      provider: string,
+      options: { readonly limit?: string } & SharedOptions,
+      command
+    ) => {
+      const limitNum = options.limit ? Number(options.limit) : undefined;
+      let inbound: ReadonlyArray<Record<string, unknown>>;
+      if (options.local) {
+        const registry = buildMessagingRegistry(process.env as Record<string, string | undefined>);
+        const opts = limitNum !== undefined && Number.isFinite(limitNum) ? { limit: limitNum } : undefined;
+        inbound = (await registry.fetchInbound(provider, opts)) as unknown as ReadonlyArray<Record<string, unknown>>;
+      } else {
+        const params = new URLSearchParams({ providerId: provider });
+        if (limitNum !== undefined && Number.isFinite(limitNum)) {
+          params.set("limit", String(limitNum));
+        }
+        const response = (await helpers.apiRequest(io, command, `/api/messaging/inbox?${params.toString()}`)) as {
+          inbound: ReadonlyArray<Record<string, unknown>>;
+        };
+        inbound = response.inbound ?? [];
+      }
+      if (options.json) {
+        helpers.writeOutput(io, { inbound, providerId: provider, total: inbound.length });
+        return;
+      }
+      if (inbound.length === 0) {
+        io.stdout(`Inbox (${provider}): (empty)\n`);
+        return;
+      }
+      const lines = inbound.map((entry) => {
+        const sender = entry.sender ? `@${String(entry.sender)}` : `chat ${String(entry.source ?? "?")}`;
+        const time = String(entry.receivedAtIso ?? "").slice(0, 16).replace("T", " ");
+        return `  ${time}  ${sender}: ${String(entry.text ?? "")}`;
+      });
+      io.stdout(`Inbox (${provider}, ${inbound.length}):\n${lines.join("\n")}\n`);
+    });
+
+  messaging
     .command("send")
     .description("Send a message via a configured provider (--local skips the API)")
     .argument("<provider>", "Provider id: telegram | discord | slack | line")

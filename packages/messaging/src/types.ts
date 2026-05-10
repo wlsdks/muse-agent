@@ -1,10 +1,16 @@
 /**
- * Provider-neutral messaging contract — Phase 1 (outbound only).
+ * Provider-neutral messaging contract.
  *
  * Each platform adapter (Telegram / Discord / Slack / LINE) implements
  * `MessagingProvider`. The `MessagingProviderRegistry` fans out
  * `describe()` for the provider list and routes `send()` to the
  * provider id requested by the caller.
+ *
+ * Phase 1 surface is outbound-only (`send`). Phase 2 adds inbound:
+ *   - `fetchInbound` (this iter) — one-shot read of the recent
+ *     inbox, no offset state, no daemon. Telegram-only at landing.
+ *   - polling / Socket Mode / webhook (later iters) — long-running
+ *     daemon for push-style delivery.
  */
 
 export type MessagingProviderId = "telegram" | "discord" | "slack" | "line" | string;
@@ -48,8 +54,36 @@ export interface OutboundReceipt {
   readonly raw?: unknown;
 }
 
+export interface InboundFetchOptions {
+  /** Cap on returned messages (provider may further restrict). */
+  readonly limit?: number;
+}
+
+export interface InboundMessage {
+  readonly providerId: MessagingProviderId;
+  /** Platform-native message id (Telegram message_id, etc.). */
+  readonly messageId: string;
+  /** Where the message lives — chat / channel / user id. Mirrors `OutboundMessage.destination`. */
+  readonly source: string;
+  /** Sender display label when the platform exposes one (Telegram username, etc.). */
+  readonly sender?: string;
+  /** ISO-8601 timestamp; provider-supplied when available, otherwise synthesised. */
+  readonly receivedAtIso: string;
+  /** Plain-text body. Rich payloads (entities, media) are reserved for a future iter. */
+  readonly text: string;
+  /** Raw provider payload for debugging. Advisory — not part of the contract. */
+  readonly raw?: unknown;
+}
+
 export interface MessagingProvider {
   readonly id: MessagingProviderId;
   describe(): MessagingProviderInfo;
   send(message: OutboundMessage): Promise<OutboundReceipt>;
+  /**
+   * One-shot fetch of recent inbound messages. Optional — providers
+   * that haven't shipped inbound yet omit this method, and the
+   * registry/CLI surface a clean "not supported yet" error rather
+   * than crashing.
+   */
+  fetchInbound?(options?: InboundFetchOptions): Promise<readonly InboundMessage[]>;
 }

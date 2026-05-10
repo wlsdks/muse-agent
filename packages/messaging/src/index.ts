@@ -13,6 +13,8 @@ export {
 } from "./credential-store.js";
 
 export type {
+  InboundFetchOptions,
+  InboundMessage,
   MessagingProvider,
   MessagingProviderId,
   MessagingProviderInfo,
