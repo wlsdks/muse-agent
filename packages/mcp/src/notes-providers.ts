@@ -765,6 +765,7 @@ const NOTION_DEFAULT_ENDPOINT = "https://api.notion.com/v1";
 const NOTION_DEFAULT_VERSION = "2022-06-28";
 const NOTION_DEFAULT_TITLE_PROPERTY = "Name";
 const NOTION_LIST_MAX_PAGES = 10;
+const NOTION_BLOCKS_MAX_PAGES = 10;
 
 /**
  * Notion API adapter — talks to `api.notion.com/v1` with the
@@ -869,8 +870,7 @@ export class NotionNotesProvider implements NotesProvider {
       }
       throw error;
     }
-    const blocks = await this.request("GET", `/blocks/${id}/children?page_size=100`, undefined);
-    const blockResults = isRecordArray(blocks, "results");
+    const blockResults = await this.fetchAllBlockChildren(id);
     const body = blockResults.map(extractParagraphText).filter((line) => line.length > 0).join("\n");
     const summary = parsePageSummary(page, this.id, this.titleProperty);
     if (!summary) {
@@ -977,9 +977,36 @@ export class NotionNotesProvider implements NotesProvider {
     return this.databaseId;
   }
 
+  /**
+   * Fetch every child block of a Notion page, paginating via `start_cursor`
+   * until exhaustion or the per-page cap. Notion caps `page_size` at 100,
+   * so a long page (e.g. a daily journal in one Notion page) silently
+   * truncated at 100 paragraph blocks before this helper existed.
+   */
+  private async fetchAllBlockChildren(pageId: string): Promise<readonly unknown[]> {
+    const all: unknown[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < NOTION_BLOCKS_MAX_PAGES; page += 1) {
+      const url = cursor
+        ? `/blocks/${pageId}/children?page_size=100&start_cursor=${encodeURIComponent(cursor)}`
+        : `/blocks/${pageId}/children?page_size=100`;
+      const body = await this.request("GET", url, undefined);
+      const results = isRecordArray(body, "results");
+      for (const result of results) {
+        all.push(result);
+      }
+      const hasMore = (body as { has_more?: unknown }).has_more === true;
+      const nextCursor = (body as { next_cursor?: unknown }).next_cursor;
+      if (!hasMore || typeof nextCursor !== "string" || nextCursor.length === 0) {
+        break;
+      }
+      cursor = nextCursor;
+    }
+    return all;
+  }
+
   private async replaceBlocks(pageId: string, body: string): Promise<void> {
-    const existing = await this.request("GET", `/blocks/${pageId}/children?page_size=100`, undefined);
-    const blockResults = isRecordArray(existing, "results");
+    const blockResults = await this.fetchAllBlockChildren(pageId);
     for (const block of blockResults) {
       const blockId = (block as { id?: string }).id;
       if (!blockId) {

@@ -1459,6 +1459,48 @@ describe("notes provider abstraction", () => {
     expect(content!.body).toBe("first line\nsecond line");
   });
 
+  it("NotionNotesProvider.read paginates block children via has_more / next_cursor", async () => {
+    const blockUrls: string[] = [];
+    const fetchImpl = async (url: string) => {
+      const path = String(url);
+      if (path.endsWith("/v1/pages/long")) {
+        return new Response(JSON.stringify({
+          id: "long",
+          properties: { Name: { title: [{ plain_text: "Long page" }] } }
+        }), { status: 200 });
+      }
+      if (path.includes("/v1/blocks/long/children")) {
+        blockUrls.push(path);
+        if (!path.includes("start_cursor=")) {
+          return new Response(JSON.stringify({
+            has_more: true,
+            next_cursor: "blk-2",
+            results: [
+              { id: "b1", paragraph: { rich_text: [{ plain_text: "alpha" }] }, type: "paragraph" }
+            ]
+          }), { status: 200 });
+        }
+        if (path.includes("start_cursor=blk-2")) {
+          return new Response(JSON.stringify({
+            has_more: false,
+            next_cursor: null,
+            results: [
+              { id: "b2", paragraph: { rich_text: [{ plain_text: "beta" }] }, type: "paragraph" }
+            ]
+          }), { status: 200 });
+        }
+      }
+      return new Response("{}", { status: 200 });
+    };
+    const notion = new NotionNotesProvider({ fetchImpl, token: "t" });
+    const content = await notion.read("long");
+
+    expect(content?.body).toBe("alpha\nbeta");
+    expect(blockUrls).toHaveLength(2);
+    expect(blockUrls[0]).not.toContain("start_cursor=");
+    expect(blockUrls[1]).toContain("start_cursor=blk-2");
+  });
+
   it("NotionNotesProvider maps 401 to NOTION_AUTH", async () => {
     const fetchImpl = async () => new Response("Unauthorized", { status: 401 });
     const notion = new NotionNotesProvider({ databaseId: "db1", fetchImpl, token: "bad" });
