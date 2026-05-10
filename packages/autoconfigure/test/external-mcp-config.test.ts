@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   ConfigurationError,
+  diagnoseExternalMcpConfig,
+  diagnoseExternalMcpConfigFile,
   loadExternalMcpConfig,
   parseExternalMcpConfig,
   resolveExternalMcpConfigFile,
@@ -171,5 +173,100 @@ describe("seedExternalMcpServers", () => {
   it("returns [] when given no entries", async () => {
     const store = new InMemoryMcpServerStore();
     expect(await seedExternalMcpServers(store, [])).toEqual([]);
+  });
+});
+
+describe("diagnoseExternalMcpConfig", () => {
+  it("collects per-entry errors instead of bailing on the first one", () => {
+    const diagnoses = diagnoseExternalMcpConfig(JSON.stringify({
+      mcpServers: {
+        good: { command: "node", args: ["a.js"] },
+        broken: { description: "no transport given" },
+        also_good: { url: "https://example.com/mcp" }
+      }
+    }));
+
+    expect(diagnoses.map((entry) => [entry.name, entry.status])).toEqual([
+      ["good", "ok"],
+      ["broken", "error"],
+      ["also_good", "ok"]
+    ]);
+    const broken = diagnoses.find((entry) => entry.name === "broken");
+    expect(broken?.findings.join(" ")).toMatch(/command.*url/);
+  });
+
+  it("marks disabled entries as skipped, not error", () => {
+    const diagnoses = diagnoseExternalMcpConfig(JSON.stringify({
+      mcpServers: {
+        retired: { command: "node", args: ["b.js"], disabled: true }
+      }
+    }));
+
+    expect(diagnoses).toHaveLength(1);
+    expect(diagnoses[0]?.status).toBe("skipped");
+    expect(diagnoses[0]?.findings.join(" ")).toContain("disabled: true");
+  });
+
+  it("flags malformed URLs as findings on otherwise-ok entries", () => {
+    const diagnoses = diagnoseExternalMcpConfig(JSON.stringify({
+      mcpServers: {
+        bad_url: { url: "not a url" }
+      }
+    }));
+
+    expect(diagnoses[0]?.status).toBe("ok");
+    expect(diagnoses[0]?.findings.join(" ")).toContain("not a valid URL");
+  });
+
+  it("warns on non-http(s) URL protocols", () => {
+    const diagnoses = diagnoseExternalMcpConfig(JSON.stringify({
+      mcpServers: {
+        ftp_entry: { url: "ftp://example.com/mcp" }
+      }
+    }));
+
+    expect(diagnoses[0]?.status).toBe("ok");
+    expect(diagnoses[0]?.findings.join(" ")).toContain("expected http: or https:");
+  });
+
+  it("still throws ConfigurationError on outer JSON parse failure", () => {
+    expect(() => diagnoseExternalMcpConfig("{not json")).toThrow(ConfigurationError);
+  });
+
+  it("returns [] when mcpServers is missing", () => {
+    expect(diagnoseExternalMcpConfig("{}")).toEqual([]);
+  });
+});
+
+describe("diagnoseExternalMcpConfigFile", () => {
+  let tmpRoot: string;
+
+  beforeEach(() => {
+    tmpRoot = mkdtempSync(join(tmpdir(), "muse-mcp-doctor-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpRoot, { force: true, recursive: true });
+  });
+
+  it("returns [] when the file does not exist", () => {
+    const diagnoses = diagnoseExternalMcpConfigFile({ MUSE_MCP_CONFIG: join(tmpRoot, "missing.json") });
+    expect(diagnoses).toEqual([]);
+  });
+
+  it("reads + diagnoses an existing file via MUSE_MCP_CONFIG override", () => {
+    const path = join(tmpRoot, "mcp.json");
+    writeFileSync(path, JSON.stringify({
+      mcpServers: {
+        good: { command: "node" },
+        bad: { url: "https://" }
+      }
+    }), "utf8");
+
+    const diagnoses = diagnoseExternalMcpConfigFile({ MUSE_MCP_CONFIG: path });
+    expect(diagnoses.map((entry) => entry.name)).toEqual(["good", "bad"]);
+    expect(diagnoses[0]?.status).toBe("ok");
+    expect(diagnoses[1]?.status).toBe("ok");
+    expect(diagnoses[1]?.findings.join(" ")).toMatch(/url.*not a valid|expected http/);
   });
 });

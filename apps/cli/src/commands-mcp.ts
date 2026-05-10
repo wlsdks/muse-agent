@@ -14,6 +14,7 @@ import type { Command } from "commander";
 
 import {
   ConfigurationError,
+  diagnoseExternalMcpConfigFile,
   loadExternalMcpConfig,
   resolveExternalMcpConfigFile
 } from "@muse/autoconfigure";
@@ -73,6 +74,48 @@ export function registerMcpCommands(program: Command, io: ProgramIO, helpers: Mc
           ? `command=${stringify(entry.config?.command)} args=${stringify(entry.config?.args)}`
           : `url=${stringify(entry.config?.url)}`;
         io.stdout(`${entry.name}\t${entry.transportType}\t${summary}\n`);
+      }
+    });
+
+  mcp
+    .command("config-doctor")
+    .description("Validate every entry in ~/.muse/mcp.json and report findings (per-entry, no bail on first error)")
+    .option("--json", "Print machine-readable JSON")
+    .action((options: { readonly json?: boolean }, command) => {
+      const path = resolveExternalMcpConfigFile(process.env);
+      let diagnoses;
+      try {
+        diagnoses = diagnoseExternalMcpConfigFile(process.env);
+      } catch (cause) {
+        if (cause instanceof ConfigurationError) {
+          io.stderr(`${cause.message}\n`);
+          command.error("MCP config has a top-level error (e.g. malformed JSON)", { exitCode: 1 });
+          return;
+        }
+        throw cause;
+      }
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ diagnoses, path }, null, 2)}\n`);
+        return;
+      }
+      io.stdout(`config: ${path}\n`);
+      if (diagnoses.length === 0) {
+        io.stdout("(no entries — file is missing or has empty mcpServers)\n");
+        return;
+      }
+      let errorCount = 0;
+      for (const diagnosis of diagnoses) {
+        if (diagnosis.status === "error") {
+          errorCount += 1;
+        }
+        const transport = diagnosis.transportType ?? "?";
+        const findings = diagnosis.findings.length > 0
+          ? diagnosis.findings.join("; ")
+          : "no issues";
+        io.stdout(`${diagnosis.name}\t${diagnosis.status.toUpperCase()}\t${transport}\t${findings}\n`);
+      }
+      if (errorCount > 0) {
+        command.error(`${errorCount} of ${diagnoses.length} entries had errors`, { exitCode: 1 });
       }
     });
 

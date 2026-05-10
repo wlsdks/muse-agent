@@ -207,6 +207,123 @@ function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+export type ExternalMcpEntryStatus = "ok" | "skipped" | "error";
+
+export interface ExternalMcpEntryDiagnosis {
+  readonly name: string;
+  readonly status: ExternalMcpEntryStatus;
+  readonly transportType?: McpTransportType;
+  readonly findings: readonly string[];
+  readonly entry?: McpServerInput;
+}
+
+/**
+ * Per-entry validation that collects all errors instead of bailing
+ * on the first malformed entry. The `parseExternalMcpConfig` parser
+ * throws on the first invalid entry it sees — useful at runtime
+ * (loud failure) but unhelpful for the doctor flow where the user
+ * wants to see every problem at once.
+ *
+ * Returns `ok` (fully valid + would be loaded), `skipped`
+ * (valid + `disabled: true`, intentionally not loaded), or `error`
+ * (would have thrown if parsed live, with the original error
+ * message in `findings`).
+ *
+ * Outer JSON parse errors still throw `ConfigurationError` — they
+ * affect every entry equally, so per-entry collection makes no
+ * sense there.
+ */
+export function diagnoseExternalMcpConfig(
+  raw: string,
+  source = "<inline>"
+): readonly ExternalMcpEntryDiagnosis[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (cause) {
+    throw new ConfigurationError(
+      `Invalid JSON in MCP config (${source}): ${cause instanceof Error ? cause.message : String(cause)}`
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new ConfigurationError(`MCP config (${source}) must be a JSON object`);
+  }
+  const root = parsed as Record<string, unknown>;
+  const servers = root.mcpServers;
+  if (servers === undefined || servers === null) {
+    return [];
+  }
+  if (typeof servers !== "object" || Array.isArray(servers)) {
+    throw new ConfigurationError(`MCP config (${source}).mcpServers must be a JSON object`);
+  }
+  const out: ExternalMcpEntryDiagnosis[] = [];
+  for (const [rawName, value] of Object.entries(servers as Record<string, unknown>)) {
+    const trimmedName = rawName.trim();
+    if (trimmedName.length === 0) {
+      out.push({ findings: ["server name must be a non-empty string"], name: rawName, status: "error" });
+      continue;
+    }
+    if (value && typeof value === "object" && !Array.isArray(value) && (value as Record<string, unknown>).disabled === true) {
+      out.push({ findings: ["disabled: true — entry will not be loaded at boot"], name: trimmedName, status: "skipped" });
+      continue;
+    }
+    try {
+      const entry = parseEntry(trimmedName, value, source);
+      if (entry) {
+        out.push({
+          entry,
+          findings: validateEntry(entry),
+          name: trimmedName,
+          status: "ok",
+          transportType: entry.transportType
+        });
+      }
+    } catch (cause) {
+      out.push({
+        findings: [cause instanceof Error ? cause.message : String(cause)],
+        name: trimmedName,
+        status: "error"
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Run `diagnoseExternalMcpConfig` against the resolved external
+ * MCP config file. Returns an empty array when the file is missing
+ * (same as `loadExternalMcpConfig`) so doctor flows distinguish
+ * "not configured" from "configured but broken".
+ */
+export function diagnoseExternalMcpConfigFile(
+  env: MuseEnvironment
+): readonly ExternalMcpEntryDiagnosis[] {
+  const path = resolveExternalMcpConfigFile(env);
+  const raw = tryReadFile(path);
+  if (raw === undefined) {
+    return [];
+  }
+  return diagnoseExternalMcpConfig(raw, path);
+}
+
+function validateEntry(entry: McpServerInput): readonly string[] {
+  const findings: string[] = [];
+  if (entry.transportType === "streamable" || entry.transportType === "sse") {
+    const url = (entry.config as { url?: unknown } | undefined)?.url;
+    if (typeof url === "string") {
+      try {
+        const parsedUrl = new URL(url);
+        if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+          findings.push(`url protocol is '${parsedUrl.protocol}', expected http: or https:`);
+        }
+      } catch {
+        findings.push(`url is not a valid URL: ${JSON.stringify(url)}`);
+      }
+    }
+  }
+  return findings;
+}
+
 /**
  * Seed parsed external entries into a `McpServerStore`. Existing
  * entries (looked up by name) are left untouched so manually-edited

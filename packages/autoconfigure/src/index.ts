@@ -167,11 +167,14 @@ import {
 import { loadExternalMcpConfig } from "./external-mcp-config.js";
 
 export {
+  diagnoseExternalMcpConfig,
+  diagnoseExternalMcpConfigFile,
   loadExternalMcpConfig,
   parseExternalMcpConfig,
   resolveExternalMcpConfigFile,
   seedExternalMcpServers
 } from "./external-mcp-config.js";
+export type { ExternalMcpEntryDiagnosis, ExternalMcpEntryStatus } from "./external-mcp-config.js";
 
 export interface MuseEnvironment {
   readonly [key: string]: string | undefined;

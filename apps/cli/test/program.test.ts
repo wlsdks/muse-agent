@@ -1288,4 +1288,71 @@ describe("cli program", () => {
       }
     }
   });
+
+  it("mcp config-doctor reports OK rows for valid entries and exits 0", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    const tmp = await mkdtemp(path.join(tmpdir(), "muse-mcp-doctor-cli-"));
+    const target = path.join(tmp, "mcp.json");
+    await writeFile(target, JSON.stringify({
+      mcpServers: {
+        fs: { command: "node", args: ["server.js"] },
+        gh: { url: "https://api.github.com/mcp/" }
+      }
+    }), "utf8");
+
+    const previous = process.env.MUSE_MCP_CONFIG;
+    process.env.MUSE_MCP_CONFIG = target;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram(io);
+      await program.parseAsync(["node", "muse", "mcp", "config-doctor"], { from: "node" });
+      const out = output.join("");
+      expect(out).toContain(`config: ${target}`);
+      expect(out).toContain("fs\tOK\tstdio");
+      expect(out).toContain("gh\tOK\tstreamable");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MUSE_MCP_CONFIG;
+      } else {
+        process.env.MUSE_MCP_CONFIG = previous;
+      }
+    }
+  });
+
+  it("mcp config-doctor reports per-entry errors without bailing on the first", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    const tmp = await mkdtemp(path.join(tmpdir(), "muse-mcp-doctor-cli-"));
+    const target = path.join(tmp, "mcp.json");
+    await writeFile(target, JSON.stringify({
+      mcpServers: {
+        good: { command: "node" },
+        broken: { description: "no transport given" },
+        also_good: { url: "https://example.com/mcp" }
+      }
+    }), "utf8");
+
+    const previous = process.env.MUSE_MCP_CONFIG;
+    process.env.MUSE_MCP_CONFIG = target;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram(io);
+      let exitError: unknown;
+      try {
+        await program.parseAsync(["node", "muse", "mcp", "config-doctor"], { from: "node" });
+      } catch (err) {
+        exitError = err;
+      }
+      const out = output.join("");
+      expect(out).toContain("good\tOK\tstdio");
+      expect(out).toContain("broken\tERROR");
+      expect(out).toContain("also_good\tOK\tstreamable");
+      expect(exitError).toBeDefined();
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MUSE_MCP_CONFIG;
+      } else {
+        process.env.MUSE_MCP_CONFIG = previous;
+      }
+    }
+  });
 });
