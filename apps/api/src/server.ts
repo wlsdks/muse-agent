@@ -7,6 +7,7 @@ import {
 import { extractBearerToken, type MuseAuth } from "@muse/auth";
 import type { CalendarCredentialStore, CalendarProviderRegistry } from "@muse/calendar";
 import type { NotesProviderRegistry, TasksProviderRegistry } from "@muse/mcp";
+import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { ConversationSummaryStore, TaskMemoryMaintenance, UserMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
 import type { MuseObservabilitySnapshot, LatencyQuery, TokenCostQuery } from "@muse/observability";
@@ -23,6 +24,7 @@ import { registerMcpRoutes, type McpRouteMcp } from "./mcp-routes.js";
 import { registerMultiAgentRoutes } from "./multi-agent-routes.js";
 import { registerCompatibilityRoutes } from "./compat-routes.js";
 import { registerNotesRoutes } from "./notes-routes.js";
+import { registerMessagingRoutes } from "./messaging-routes.js";
 import { registerSchedulerRoutes, type SchedulerRouteScheduler } from "./scheduler-routes.js";
 import { registerTodayRoutes } from "./today-routes.js";
 import { registerVoiceRoutes } from "./voice-routes.js";
@@ -90,6 +92,7 @@ export interface ServerOptions {
   readonly notesDir?: string;
   readonly notesProviderRegistry?: NotesProviderRegistry;
   readonly voice?: VoiceProviderRegistry;
+  readonly messaging?: MessagingProviderRegistry;
 }
 
 export interface ToolCatalogEntry {
@@ -261,6 +264,9 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   }
   if (options.voice) {
     registerVoiceRoutes(server, { authService, registry: options.voice });
+  }
+  if (options.messaging) {
+    registerMessagingRoutes(server, { authService, registry: options.messaging });
   }
   registerTodayRoutes(server, {
     authService,

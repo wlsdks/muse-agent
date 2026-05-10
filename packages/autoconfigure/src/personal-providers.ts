@@ -47,6 +47,14 @@ import {
   type TasksProvider
 } from "@muse/mcp";
 import {
+  DiscordProvider,
+  LineProvider,
+  MessagingProviderRegistry,
+  SlackProvider,
+  TelegramProvider,
+  type MessagingProvider
+} from "@muse/messaging";
+import {
   OpenAITtsProvider,
   OpenAIWhisperSttProvider,
   VoiceProviderRegistry
@@ -385,3 +393,39 @@ function stringField(record: { readonly [key: string]: unknown } | undefined, ke
   const value = record[key];
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
+
+/**
+ * Build the messaging provider registry from env tokens. Each
+ * provider is opt-in via its own env var; absence is silent (no
+ * registration, no error). Phase 1 surface is outbound-only — see
+ * `docs/design/messaging.md`.
+ *
+ * Recognised tokens:
+ *   - MUSE_TELEGRAM_BOT_TOKEN
+ *   - MUSE_DISCORD_BOT_TOKEN
+ *   - MUSE_SLACK_BOT_TOKEN  (xoxb-...)
+ *   - MUSE_LINE_CHANNEL_ACCESS_TOKEN
+ */
+export function buildMessagingRegistry(env: MuseEnvironment): MessagingProviderRegistry {
+  const registry = new MessagingProviderRegistry();
+  const telegramToken = env.MUSE_TELEGRAM_BOT_TOKEN?.trim();
+  if (telegramToken && telegramToken.length > 0) {
+    registry.register(new TelegramProvider({ token: telegramToken }));
+  }
+  const discordToken = env.MUSE_DISCORD_BOT_TOKEN?.trim();
+  if (discordToken && discordToken.length > 0) {
+    registry.register(new DiscordProvider({ token: discordToken }));
+  }
+  const slackToken = env.MUSE_SLACK_BOT_TOKEN?.trim();
+  if (slackToken && slackToken.length > 0) {
+    registry.register(new SlackProvider({ token: slackToken }));
+  }
+  const lineToken = env.MUSE_LINE_CHANNEL_ACCESS_TOKEN?.trim();
+  if (lineToken && lineToken.length > 0) {
+    registry.register(new LineProvider({ token: lineToken }));
+  }
+  return registry;
+}
+
+// Suppress unused-import warning when only the type is referenced.
+export type { MessagingProvider };

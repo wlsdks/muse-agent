@@ -1949,6 +1949,43 @@ describe("cli program", () => {
     expect(output.join("")).toContain("You have 1 open task: Buy milk.");
   });
 
+  it("messaging providers/send round-trip: --local routes through the in-process registry without the API", async () => {
+    const prevTg = process.env.MUSE_TELEGRAM_BOT_TOKEN;
+    process.env.MUSE_TELEGRAM_BOT_TOKEN = "fake-token";
+    try {
+      const seenUrls: string[] = [];
+      // Patch global fetch for this test only — buildMessagingRegistry's
+      // TelegramProvider uses the global. Restore in finally.
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async (url: string | URL | Request) => {
+        seenUrls.push(String(url));
+        return new Response(JSON.stringify({ ok: true, result: { message_id: 11 } }), { status: 200 });
+      }) as typeof fetch;
+      try {
+        const { io: io1, output: output1 } = captureOutput();
+        const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("api fetch must not be called"); } });
+        await program1.parseAsync(["node", "muse", "messaging", "providers", "--local"], { from: "node" });
+        expect(output1.join("")).toContain("Telegram");
+
+        const { io: io2, output: output2 } = captureOutput();
+        const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("api fetch must not be called"); } });
+        await program2.parseAsync(
+          ["node", "muse", "messaging", "send", "telegram", "@me", "hello", "world", "--local"],
+          { from: "node" }
+        );
+        const text = output2.join("");
+        expect(text).toContain("Sent telegram → @me");
+        expect(text).toContain("id 11");
+        expect(seenUrls).toHaveLength(1);
+        expect(seenUrls[0]).toContain("/botfake-token/sendMessage");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    } finally {
+      if (prevTg === undefined) { delete process.env.MUSE_TELEGRAM_BOT_TOKEN; } else { process.env.MUSE_TELEGRAM_BOT_TOKEN = prevTg; }
+    }
+  });
+
   it("setup (default) prints a status summary covering model, mcp, calendar, notes, tasks, voice", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-setup-status-"));
     const tasksFile = path.join(root, "tasks.json");

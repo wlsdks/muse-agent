@@ -125,11 +125,13 @@ import {
   type ToolExposurePolicy
 } from "@muse/tools";
 import { VoiceProviderRegistry } from "@muse/voice";
+import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { MuseDatabase } from "@muse/db";
 import type { Kysely } from "kysely";
 
 import {
   buildCalendarRegistry,
+  buildMessagingRegistry,
   buildNotesRegistry,
   buildTasksRegistry,
   buildVoiceRegistry,
@@ -140,6 +142,7 @@ import {
 } from "./personal-providers.js";
 
 export {
+  buildMessagingRegistry,
   buildVoiceRegistry,
   resolveLocalCalendarFile,
   resolveNotesDir,
@@ -236,6 +239,7 @@ export interface MuseRuntimeAssembly {
   readonly notesProviderRegistry?: NotesProviderRegistry;
   readonly tasksProviderRegistry?: TasksProviderRegistry;
   readonly voice?: VoiceProviderRegistry;
+  readonly messaging?: MessagingProviderRegistry;
 }
 
 export interface ApiServerAssemblyOptions {
@@ -538,7 +542,8 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     },
     ...(notesRegistry ? { notesProviderRegistry: notesRegistry } : {}),
     ...(tasksRegistry ? { tasksProviderRegistry: tasksRegistry } : {}),
-    voice: buildVoiceRegistry(env)
+    voice: buildVoiceRegistry(env),
+    messaging: buildMessagingRegistry(env)
   };
 }
 
@@ -634,7 +639,8 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     ...(assembly.notesProviderRegistry ? { notesProviderRegistry: assembly.notesProviderRegistry } : {}),
     tasksFile: resolveTasksFile(env),
     ...(assembly.tasksProviderRegistry ? { tasksProviderRegistry: assembly.tasksProviderRegistry } : {}),
-    voice: assembly.voice
+    voice: assembly.voice,
+    messaging: assembly.messaging
   };
 }
 

@@ -23,6 +23,7 @@ import { registerMcpCommands } from "./commands-mcp.js";
 import { registerOrchestrateCommands } from "./commands-orchestrate.js";
 import { registerCalendarCommands } from "./commands-calendar.js";
 import { registerMemoryCommands } from "./commands-memory.js";
+import { registerMessagingCommands } from "./commands-messaging.js";
 import { registerNotesCommands } from "./commands-notes.js";
 import { registerSchedulerCommands, registerSetupCommands } from "./commands-scheduler-setup.js";
 import { registerSpecsCommands } from "./commands-specs.js";
@@ -236,6 +237,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
 
   registerCalendarCommands(program, io, { apiRequest, writeOutput });
   registerMemoryCommands(program, io, { apiRequest, writeOutput });
+  registerMessagingCommands(program, io, { apiRequest, writeOutput });
   registerNotesCommands(program, io, { apiRequest, writeOutput });
   registerSchedulerCommands(program, io, { apiRequest, writeOutput });
   registerSetupCommands(program, io);

@@ -27,6 +27,17 @@ move from `Unreleased` to dated/versioned headings.
   plays through afplay/aplay. Falls back to a friendly stderr hint
   when no voice provider is configured. Shared playback helper
   (`voice-playback.ts`) ready for any future "speak this" surface.
+- **`@muse/messaging` package + `muse messaging {providers, send}` CLI**
+  — Phase 1 (outbound) of the Telegram / Discord / Slack / LINE
+  integration. Provider-neutral contract mirrors `@muse/calendar`
+  (`MessagingProvider` / `MessagingProviderRegistry` /
+  `FileMessagingCredentialStore`); each platform is a thin REST
+  wrapper around its sendMessage equivalent. Opt-in via env tokens
+  (`MUSE_TELEGRAM_BOT_TOKEN` / `MUSE_DISCORD_BOT_TOKEN` /
+  `MUSE_SLACK_BOT_TOKEN` / `MUSE_LINE_CHANNEL_ACCESS_TOKEN`).
+  KakaoTalk skipped on purpose — Kakao restricts general bots to
+  verified business channels. Phase 2 (inbound: polling /
+  Socket Mode / webhook) tracked in `docs/design/messaging.md`.
 
 ### Removed
 

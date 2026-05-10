@@ -53,6 +53,9 @@ importers:
       '@muse/memory':
         specifier: workspace:*
         version: link:../../packages/memory
+      '@muse/messaging':
+        specifier: workspace:*
+        version: link:../../packages/messaging
       '@muse/model':
         specifier: workspace:*
         version: link:../../packages/model
@@ -104,6 +107,9 @@ importers:
       '@muse/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
+      '@muse/messaging':
+        specifier: workspace:*
+        version: link:../../packages/messaging
       '@muse/voice':
         specifier: workspace:*
         version: link:../../packages/voice
@@ -235,6 +241,9 @@ importers:
       '@muse/memory':
         specifier: workspace:*
         version: link:../memory
+      '@muse/messaging':
+        specifier: workspace:*
+        version: link:../messaging
       '@muse/model':
         specifier: workspace:*
         version: link:../model
@@ -341,6 +350,16 @@ importers:
       kysely:
         specifier: ^0.28.17
         version: 0.28.17
+
+  packages/messaging:
+    dependencies:
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@24.12.2)(vite@8.0.10(@types/node@24.12.2)(esbuild@0.27.7)(tsx@4.21.0)(yaml@2.8.4))
 
   packages/model:
     dependencies:
