@@ -67,9 +67,9 @@ Add to that:
   it. Single-letter names belong only to obvious loop indices and
   `(a, b) => ...` comparators.
 - **No round-marker noise in code.** Comments referencing the
-  iteration round (`round 167`, `migrated in iter #57`) belong in
-  commit messages and `docs/migration-plan.md`, not in source. They
-  rot and add no information a fresh reader needs.
+  iteration round (`round 167`, `added in iter #57`) belong in
+  commit messages and `CHANGELOG.md`, not in source. They rot and
+  add no information a fresh reader needs.
 - **Re-export-only imports go away.** If `import { X } from "./y"` is
   paired with `export { X } from "./y"` and `X` isn't used in the
   file body, drop the `import` line — `export-from` covers it.

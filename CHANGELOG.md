@@ -1,0 +1,104 @@
+# Changelog
+
+All notable changes to Muse are recorded here. The format is loosely based on
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project is in
+continuous iteration on `main`; once a tagged release exists, sections will
+move from `Unreleased` to dated/versioned headings.
+
+## [Unreleased]
+
+### Removed
+
+- **All Reactor-migration artifacts**. Muse is now a fresh
+  personal-JARVIS project, no longer framed as a port of an
+  existing system. Deleted `docs/migration-plan.md` (1623-line
+  iteration log), `docs/audits/reactor-*` audits,
+  `docs/superpowers/plans/2026-05-06-reactor-migration-*` plans,
+  `.claude/rules/migration-loop.md`, `.claude/rules/redaction.md`
+  (Reactor-redaction rules), `.claude/commands/migrate-iteration.md`,
+  `.claude/commands/audit-parity.md`, `.claude/agents/parity-auditor.md`,
+  `scripts/verify-reactor-{db,route}-parity.mjs`, the
+  `verify:reactor-{db,routes}` package.json scripts, and
+  `packages/db/test/reactor-db-parity-script.test.ts`. CLAUDE.md
+  drops the "Don't migrate Reactor's Spring module boundaries"
+  rule + all migration-plan / migration-loop / redaction pointers;
+  AGENTS.md, README.md, README.ko.md, CONTRIBUTING.md, and the
+  remaining `.claude/rules/*.md` files lose their Reactor-leaning
+  language. The CLI's `muse spec --json` description is now
+  "Print the fixed runtime stack" (was "...migration stack"). New
+  rule `.claude/rules/iteration-loop.md` reframes the
+  per-iteration discipline as continuous personal-JARVIS
+  development.
+
+### Added
+
+- **Open-source baseline files**: `LICENSE` (MIT), `CODE_OF_CONDUCT.md`
+  (Contributor Covenant 2.1), `CONTRIBUTING.md`, `SECURITY.md`. Root
+  `package.json` carries `license` / `homepage` / `repository` / `bugs`
+  fields.
+- **Korean auto-extract prompt** for the user-memory hook.
+  `pickAutoExtractSystemPrompt(userPrompt)` switches to a Korean system
+  prompt when the user message is ≥30% Hangul; English remains the
+  conservative default. JSON keys stay snake_case ASCII; values stay in
+  the user's native language.
+- **CE step 1.e — LLM-summarized fan-in**.
+  `OrchestrationRunOptions.summarizeWorkerOutput?: (workerId, output) =>
+  Promise<string>` replaces each worker's verbose output with an LLM-
+  generated summary before the parent concat. Composes with
+  `maxOutputCharsPerWorker`. `/api/multi-agent/orchestrate` accepts a
+  `summarize: boolean` body flag; the route builds a Gemini-style
+  summarizer from the configured `ModelProvider` (256-token cap, 15s
+  timeout, fail-open to raw output).
+- **`muse mcp config-doctor` CLI** — per-entry validation that doesn't
+  bail on the first malformed entry. Prints
+  `<name>\t<STATUS>\t<transport>\t<findings>` per row, exits 1 when any
+  entry has `error` status. Soft findings include URL validity for
+  streamable/sse transports.
+- **`muse mcp config-path` / `config-show`** — file-based ergonomics
+  surface for `~/.muse/mcp.json`, no API server required.
+- **Voice mode design doc** in `docs/design/voice-mode.md`.
+  Phases A/B/D/E shipped (provider interfaces, OpenAI Whisper STT +
+  TTS adapters, `/api/voice/*` routes, `<VoicePanel>` Web component).
+  Phase C contract written for the next iter to pick up.
+- **`~/.muse/mcp.json` Claude-Desktop-style external MCP config loader**.
+  Supports stdio (`command`/`args`) and streamable/sse (`url`/`headers`).
+  Disabled entries (`disabled: true`) silently skipped; missing file is
+  not an error. The boot script seeds entries into the runtime store
+  before listening.
+- **MCP `roots` capability**. Muse's MCP client now advertises the
+  capability and serves a `roots/list` handler. Configurable via
+  `MUSE_MCP_CLIENT_ROOTS` (csv of absolute paths).
+- **`GET /api/health` alias** under the `/api/*` prefix.
+- **Notion tasks adapter**. `NotionTasksProvider` mirrors the round 128
+  Notion notes adapter against `api.notion.com/v1` for the tasks domain.
+  Opt-in via `MUSE_NOTION_TASKS_*` env vars.
+- **Context Engineering primitives** (rounds 157-170):
+  working-budget compaction trigger, persona snapshot injection,
+  tool-output context-aware trimming, typed user-memory slots
+  (preferences / schedule / vetoes / goals), `ContextReferenceStore`
+  with `muse.context.fetch` / `muse.context.list` MCP server,
+  deterministic per-worker output cap on the multi-agent fan-in.
+
+### Changed
+
+- **Default model auto-detection**. `/api/chat` no longer requires
+  `MUSE_MODEL` to be set explicitly — the provider is inferred from
+  the available API key (`GEMINI_API_KEY` / `OPENAI_API_KEY` /
+  `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY`). Boot-time warning on
+  missing-credentials.
+- **ESLint flat config + `typescript-eslint/recommended`** wired
+  across the monorepo. All 11 rules at `error`; `pnpm lint` blocks
+  on any violation.
+- **`packages/tools/src/muse-tools.ts` decomposition**. 1193 → 606 LOC.
+  Time/datetime tools moved to `muse-tools-time.ts` (357 LOC),
+  text-formatting tools moved to `muse-tools-text.ts` (253 LOC),
+  shared parsers in `muse-tools-helpers.ts` (27 LOC). Public
+  `createMuseTools()` surface byte-identical.
+
+### Fixed
+
+- `/api/health` 404 when accessed under the `/api/*` prefix.
+- Multi-agent fan-in could blow the parent context on N parallel
+  verbose workers — now bounded by `maxOutputCharsPerWorker`.
+- Stale lint warnings (80 → 0) across the monorepo, mostly dead
+  barrel-re-export imports.

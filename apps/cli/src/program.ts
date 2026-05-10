@@ -87,7 +87,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
 
   program
     .command("spec")
-    .description("Print the fixed migration stack")
+    .description("Print the fixed runtime stack")
     .option("--json", "Print machine-readable JSON")
     .action((options: { readonly json?: boolean }) => {
       const spec = {

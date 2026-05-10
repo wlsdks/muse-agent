@@ -68,8 +68,7 @@ crates/
   runner/             Rust sandbox: shell/process/file execution
 
 docs/
-  migration-plan.md   running iteration notes
-  audits/             periodic deep-dive audits
+  design/             design docs (e.g. voice-mode.md)
 
 .claude/
   rules/              domain-specific rules auto-loaded with CLAUDE.md
@@ -99,8 +98,8 @@ predictable.
 
 - [`CLAUDE.md`](CLAUDE.md) — the contract every Claude Code agent reads first.
 - [`.claude/rules/`](.claude/rules/) — domain-specific rules.
-- [`docs/migration-plan.md`](docs/migration-plan.md) — running iteration notes.
-- [`docs/audits/`](docs/audits/) — periodic audits.
+- [`CHANGELOG.md`](CHANGELOG.md) — running development log (Keep a Changelog format).
+- [`docs/design/`](docs/design/) — multi-iter design docs (e.g. voice-mode.md).
 
 This file is the cross-agent product brief. It should not duplicate
 the rules in `CLAUDE.md` or `.claude/rules/`.

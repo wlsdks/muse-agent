@@ -23,11 +23,12 @@ test before HTTP smoke.
    GEMINI_API_KEY=… pnpm smoke:live
    ```
    Auto-skips when no provider key is present.
-5. **Reactor parity gates** (run when routes or DB schema change):
+5. **Lint gate**:
    ```bash
-   REACTOR_SOURCE_DIR=<reactor-path> pnpm verify:reactor-routes
-   REACTOR_SOURCE_DIR=<reactor-path> pnpm verify:reactor-db
+   pnpm lint
    ```
+   ESLint flat config, all 11 rules at `error`. New violations
+   block exit-0.
 
 ## Test placement
 

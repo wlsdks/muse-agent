@@ -37,7 +37,7 @@ describe("db migrations", () => {
     expect(sql).not.toMatch(/\b(?:sk-|ghp_|xox[baprs]-)/);
   });
 
-  it("covers Reactor persistent table names required by DB parity", () => {
+  it("covers the persistent table names the runtime relies on", () => {
     const sql = migrations.map((migration) => migration.up).join("\n");
 
     for (const table of [

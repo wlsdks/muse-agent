@@ -15,9 +15,9 @@ Read these in order:
 3. [`CLAUDE.md`](CLAUDE.md) — the contract every agent (and human)
    reads first; under 100 lines, points at the rule files below.
 4. [`.claude/rules/`](.claude/rules/) — domain-specific rules
-   (architecture, testing, commits, code style, redaction,
-   migration loop). Each is short and load-bearing — when an
-   iteration violates a rule, the rule moves up the priority list.
+   (architecture, testing, commits, code style, iteration loop).
+   Each is short and load-bearing — when an iteration violates a
+   rule, the rule moves up the priority list.
 
 ## Local setup
 

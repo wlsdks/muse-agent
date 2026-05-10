@@ -11,8 +11,9 @@
 
 Subjects and bodies are written in English.
 
-Make small commits after coherent milestones. Don't mix unrelated
-migration work into one commit.
+Make small commits after coherent milestones. One iteration goal
+per commit (or two when a `feat:` naturally pairs with a `test:`).
+Don't mix unrelated work into one commit.
 
 ## Push policy
 

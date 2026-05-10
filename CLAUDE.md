@@ -21,12 +21,11 @@ pnpm test -- -t "<test name>"          # single test by name
 pnpm check                             # build + test for every workspace
 
 # before claiming "this works" on the full system:
-pnpm smoke:broad                       # 49 HTTP endpoints, diagnostic provider
-GEMINI_API_KEY=… pnpm smoke:live       # 6 endpoints, real LLM round-trip
+pnpm smoke:broad                       # 47 HTTP endpoints, diagnostic provider
+GEMINI_API_KEY=… pnpm smoke:live       # 12 endpoints, real LLM round-trip
 
-# when routes or DB schema changed:
-REACTOR_SOURCE_DIR=<path> pnpm verify:reactor-routes
-REACTOR_SOURCE_DIR=<path> pnpm verify:reactor-db
+# before commit (lint gate):
+pnpm lint                              # 0 errors / 0 warnings required
 ```
 
 These commands are the ground truth. If any fails, stop and triage.
@@ -46,7 +45,6 @@ These commands are the ground truth. If any fails, stop and triage.
 - Don't push, force-push, or `--no-verify` without explicit user approval.
 - Don't commit live Jira / Confluence / Bitbucket / Slack-workspace credentials.
 - Don't bloat this file past 100 lines — add to `.claude/rules/<topic>.md` instead.
-- Don't migrate Reactor's Spring module boundaries — only its runtime discipline.
 - Don't accept "passes diagnostic smoke" as proof — run `smoke:live` for any change in the request/response path.
 
 ## Domain rules
@@ -58,8 +56,7 @@ For depth, read the matching file under `.claude/rules/`:
 - [`testing.md`](.claude/rules/testing.md) — verification gates and the narrowest-useful-test rule.
 - [`commits.md`](.claude/rules/commits.md) — Conventional Commits + push policy + after-correction protocol.
 - [`code-style.md`](.claude/rules/code-style.md) — ESLint gate, naming, comment policy, dead-import rule.
-- [`redaction.md`](.claude/rules/redaction.md) — synthetic identifiers when migrating Reactor content.
-- [`migration-loop.md`](.claude/rules/migration-loop.md) — per-iteration discipline for the recurring migration loop.
+- [`iteration-loop.md`](.claude/rules/iteration-loop.md) — per-iteration discipline for the continuous-development loop.
 
 ## Cross-session memory
 
@@ -71,4 +68,4 @@ which detail files (`feedback_loop_behavior.md`,
 `project_muse_identity.md`, …) are relevant.
 
 For broader product context, see [`AGENTS.md`](AGENTS.md) and
-[`docs/migration-plan.md`](docs/migration-plan.md).
+[`CHANGELOG.md`](CHANGELOG.md).

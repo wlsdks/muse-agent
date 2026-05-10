@@ -198,8 +198,8 @@ collaboration. Start here:
   (architecture, testing, commits, code style, …).
 - [`.claude/commands/`](.claude/commands/) — reusable slash commands.
 - [`.claude/agents/`](.claude/agents/) — subagent definitions.
-- [`docs/migration-plan.md`](docs/migration-plan.md) — running
-  iteration log.
+- [`CHANGELOG.md`](CHANGELOG.md) — running development log
+  (Keep a Changelog format).
 
 Use Conventional Commits (`feat:`, `fix:`, `refactor:`, `test:`,
 `docs:`, `chore:`). Commits and PR descriptions are written in

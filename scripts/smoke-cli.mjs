@@ -97,7 +97,7 @@ try {
     assert(/config\.json/u.test(result.stdout), `expected config.json in path, got: ${result.stdout}`);
   });
 
-  await record("muse spec --json prints the fixed migration stack as JSON", () => {
+  await record("muse spec --json prints the fixed runtime stack as JSON", () => {
     const result = runCli(["spec", "--json"]);
     assert(result.status === 0, `expected exit 0, got ${result.status}`);
     const parsed = JSON.parse(result.stdout);
