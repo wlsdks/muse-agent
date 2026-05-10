@@ -411,6 +411,40 @@ describe("autoconfigure", () => {
     const names = assembly.toolRegistry.list().map((tool) => tool.definition.name);
     expect(names).toEqual(expect.arrayContaining(["muse.time.now", "muse.fs.read"]));
   });
+
+  it("registers muse.notes-multi tools only when MUSE_NOTES_PROVIDERS adds another backend beyond local", () => {
+    const baseline = createMuseRuntimeAssembly({ env: {} });
+    const baselineNames = baseline.toolRegistry.list().map((tool) => tool.definition.name);
+
+    // Default: only local provider → muse.notes (filesystem-only) is enough,
+    // muse.notes-multi.* tools should NOT be registered.
+    expect(baselineNames.some((name) => name.startsWith("muse.notes-multi."))).toBe(false);
+    expect(baselineNames).toEqual(expect.arrayContaining(["muse.notes.list"]));
+
+    // Adding apple → registry has 2 providers → muse.notes-multi.* surfaces.
+    const enabled = createMuseRuntimeAssembly({
+      env: { MUSE_NOTES_PROVIDERS: "local,apple" }
+    });
+    const enabledNames = enabled.toolRegistry.list().map((tool) => tool.definition.name);
+    expect(enabledNames).toEqual(expect.arrayContaining([
+      "muse.notes-multi.providers",
+      "muse.notes-multi.list",
+      "muse.notes-multi.read",
+      "muse.notes-multi.search",
+      "muse.notes-multi.save",
+      "muse.notes-multi.append"
+    ]));
+  });
+
+  it("skips Notion notes provider when no token is available", () => {
+    // notion requested but no token → silent skip; registry stays at 1 (local
+    // baseline) so muse.notes-multi.* tools NOT registered.
+    const assembly = createMuseRuntimeAssembly({
+      env: { MUSE_NOTES_PROVIDERS: "local,notion" }
+    });
+    const names = assembly.toolRegistry.list().map((tool) => tool.definition.name);
+    expect(names.some((name) => name.startsWith("muse.notes-multi."))).toBe(false);
+  });
 });
 
 function createPostgresBuilder(): Kysely<MuseDatabase> {

@@ -60,6 +60,7 @@ import {
   createFilesystemMcpServer,
   createLoopbackMcpMuseTools,
   createNotesMcpServer,
+  createNotesRegistryMcpServer,
   type LoopbackMcpServer,
   type McpSecurityPolicyInput,
   type McpSecurityPolicyStore,
@@ -135,6 +136,7 @@ import type { Kysely } from "kysely";
 
 import {
   buildCalendarRegistry,
+  buildNotesRegistry,
   buildVoiceRegistry,
   ensureNotesDir,
   resolveCredentialsFile,
@@ -321,6 +323,16 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const notesLoopbackTools = parseBoolean(env.MUSE_NOTES_ENABLED, true)
     ? createLoopbackMcpMuseTools(createNotesMcpServer({ notesDir }))
     : [];
+  // Notes registry MCP surface (`muse.notes-multi`): only registered
+  // when the user opts into >1 provider via MUSE_NOTES_PROVIDERS.
+  // Default users (LocalDir only) get the inline `muse.notes` server
+  // above and skip the registry overhead.
+  const notesRegistry = parseBoolean(env.MUSE_NOTES_ENABLED, true)
+    ? buildNotesRegistry(env)
+    : undefined;
+  const notesRegistryLoopbackTools = notesRegistry && notesRegistry.list().length >= 2
+    ? createLoopbackMcpMuseTools(createNotesRegistryMcpServer({ registry: notesRegistry }))
+    : [];
   const calendarRegistry = buildCalendarRegistry(env);
   const calendarLoopbackTools = parseBoolean(env.MUSE_CALENDAR_ENABLED, true) && calendarRegistry.list().length > 0
     ? createLoopbackMcpMuseTools(createCalendarMcpServer({ registry: calendarRegistry }))
@@ -334,6 +346,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => museTools,
     () => loopbackMcpTools,
     () => notesLoopbackTools,
+    () => notesRegistryLoopbackTools,
     () => calendarLoopbackTools,
     () => tasksLoopbackTools,
     () => runnerTools,
