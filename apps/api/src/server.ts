@@ -26,6 +26,7 @@ import { registerCompatibilityRoutes } from "./compat-routes.js";
 import { registerNotesRoutes } from "./notes-routes.js";
 import { registerMessagingRoutes } from "./messaging-routes.js";
 import { registerRemindersRoutes } from "./reminders-routes.js";
+import { startReminderTick } from "./reminder-tick.js";
 import { registerSchedulerRoutes, type SchedulerRouteScheduler } from "./scheduler-routes.js";
 import { registerTodayRoutes } from "./today-routes.js";
 import { registerVoiceRoutes } from "./voice-routes.js";
@@ -280,6 +281,36 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     tasksFile: options.tasksFile,
     ...(options.remindersFile ? { remindersFile: options.remindersFile } : {})
   });
+
+  // Optional Phase B daemon: every MUSE_REMINDER_TICK_MS (default
+  // 60s) call runDueReminders. Activates only when the user has
+  // wired both default routing env vars + a matching messaging
+  // provider. Off by default so this code path is opt-in and tests
+  // / fresh installs don't accidentally fire empty intervals.
+  const env = process.env;
+  const tickProvider = env.MUSE_REMINDER_DEFAULT_PROVIDER?.trim();
+  const tickDestination = env.MUSE_REMINDER_DEFAULT_DESTINATION?.trim();
+  if (
+    tickProvider && tickProvider.length > 0
+    && tickDestination && tickDestination.length > 0
+    && options.remindersFile
+    && options.messaging
+    && options.messaging.has(tickProvider)
+  ) {
+    const tickMsRaw = env.MUSE_REMINDER_TICK_MS ? Number(env.MUSE_REMINDER_TICK_MS) : undefined;
+    const tickHandle = startReminderTick({
+      destination: tickDestination,
+      errorLogger: (message) => server.log.warn(message),
+      ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
+      logger: (message) => server.log.info(message),
+      providerId: tickProvider,
+      registry: options.messaging,
+      remindersFile: options.remindersFile
+    });
+    server.addHook("onClose", async () => {
+      tickHandle.stop();
+    });
+  }
 
   return server;
 }
