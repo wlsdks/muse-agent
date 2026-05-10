@@ -27,9 +27,10 @@ import { registerNotesRoutes } from "./notes-routes.js";
 import { registerMessagingRoutes } from "./messaging-routes.js";
 import { lineWebhookPlugin } from "./messaging-webhooks-routes.js";
 import { registerRemindersRoutes } from "./reminders-routes.js";
+import { parseDiscordPollChannels, startDiscordPollTick } from "./discord-poll-tick.js";
 import { parseQuietHours, startReminderTick } from "./reminder-tick.js";
 import { startTelegramPollTick } from "./telegram-poll-tick.js";
-import { TelegramProvider } from "@muse/messaging";
+import { DiscordProvider, TelegramProvider } from "@muse/messaging";
 import { registerSchedulerRoutes, type SchedulerRouteScheduler } from "./scheduler-routes.js";
 import { registerTodayRoutes } from "./today-routes.js";
 import { registerVoiceRoutes } from "./voice-routes.js";
@@ -112,6 +113,12 @@ export interface ServerOptions {
    * a follow-up slice.
    */
   readonly telegramInboxFile?: string;
+  /**
+   * Path to the persisted Discord inbox (default
+   * ~/.muse/discord-inbox.json). The Phase 2.c.3 polling daemon
+   * writes here on each tick.
+   */
+  readonly discordInboxFile?: string;
 }
 
 export interface ToolCatalogEntry {
@@ -366,6 +373,39 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         ...(pollMsRaw !== undefined ? { intervalMs: pollMsRaw } : {}),
         logger: (message) => server.log.info(message),
         provider: telegram
+      });
+      server.addHook("onClose", async () => {
+        pollHandle.stop();
+      });
+    }
+  }
+
+  // Optional Phase 2.c.3 daemon: poll a user-configured list of
+  // Discord channels (MUSE_DISCORD_POLL_CHANNELS=ch1,ch2) every
+  // MUSE_DISCORD_POLL_INTERVAL_MS (default 30s) and persist each
+  // new message into discordInboxFile. Off unless the user sets
+  // MUSE_DISCORD_POLL_ENABLED=1.
+  const discordPollEnabled = process.env.MUSE_DISCORD_POLL_ENABLED?.trim() === "1";
+  const discordChannels = parseDiscordPollChannels(process.env.MUSE_DISCORD_POLL_CHANNELS);
+  if (
+    discordPollEnabled
+    && discordChannels
+    && options.discordInboxFile
+    && options.messaging
+    && options.messaging.has("discord")
+  ) {
+    const discord = options.messaging.require("discord");
+    if (discord instanceof DiscordProvider) {
+      const pollMsRaw = process.env.MUSE_DISCORD_POLL_INTERVAL_MS
+        ? Number(process.env.MUSE_DISCORD_POLL_INTERVAL_MS)
+        : undefined;
+      const pollHandle = startDiscordPollTick({
+        channels: discordChannels,
+        errorLogger: (message) => server.log.warn(message),
+        inboxFile: options.discordInboxFile,
+        ...(pollMsRaw !== undefined ? { intervalMs: pollMsRaw } : {}),
+        logger: (message) => server.log.info(message),
+        provider: discord
       });
       server.addHook("onClose", async () => {
         pollHandle.stop();

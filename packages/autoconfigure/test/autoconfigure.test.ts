@@ -47,6 +47,7 @@ import {
   resolveNotesDir,
   resolveRemindersFile,
   resolveDiscordAfterFile,
+  resolveDiscordInboxFile,
   resolveTasksFile,
   resolveTelegramInboxFile,
   resolveTelegramOffsetFile
@@ -560,6 +561,7 @@ describe("autoconfigure", () => {
     expect(resolveTelegramOffsetFile({ MUSE_TELEGRAM_OFFSET_FILE: "/tmp/tg.json" })).toBe("/tmp/tg.json");
     expect(resolveTelegramInboxFile({ MUSE_TELEGRAM_INBOX_FILE: "/tmp/tin.json" })).toBe("/tmp/tin.json");
     expect(resolveDiscordAfterFile({ MUSE_DISCORD_AFTER_FILE: "/tmp/da.json" })).toBe("/tmp/da.json");
+    expect(resolveDiscordInboxFile({ MUSE_DISCORD_INBOX_FILE: "/tmp/din.json" })).toBe("/tmp/din.json");
 
     // Empty / whitespace-only override → falls back to default.
     expect(resolveTasksFile({ MUSE_TASKS_FILE: "" }).endsWith("/.muse/tasks.json")).toBe(true);
@@ -576,6 +578,7 @@ describe("autoconfigure", () => {
     expect(resolveTelegramOffsetFile({}).endsWith("/.muse/telegram-offset.json")).toBe(true);
     expect(resolveTelegramInboxFile({}).endsWith("/.muse/telegram-inbox.json")).toBe(true);
     expect(resolveDiscordAfterFile({}).endsWith("/.muse/discord-after.json")).toBe(true);
+    expect(resolveDiscordInboxFile({}).endsWith("/.muse/discord-inbox.json")).toBe(true);
   });
 
   it("resolveDefaultModel honors MUSE_MODEL when explicitly set", () => {

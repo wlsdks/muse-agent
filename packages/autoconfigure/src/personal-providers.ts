@@ -117,6 +117,10 @@ export function resolveDiscordAfterFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_DISCORD_AFTER_FILE", "discord-after.json");
 }
 
+export function resolveDiscordInboxFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_DISCORD_INBOX_FILE", "discord-inbox.json");
+}
+
 export function resolveModelKeysFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_MODEL_KEYS_FILE", "models.json");
 }

@@ -127,6 +127,7 @@ import {
   ensureNotesDir,
   mergeModelKeysFromFile,
   resolveCredentialsFile,
+  resolveDiscordInboxFile,
   resolveLineInboxFile,
   resolveNotesDir,
   resolveRemindersFile,
@@ -145,6 +146,7 @@ export {
   resolveNotesDir,
   resolveRemindersFile,
   resolveDiscordAfterFile,
+  resolveDiscordInboxFile,
   resolveTasksFile,
   resolveTelegramInboxFile,
   resolveTelegramOffsetFile
@@ -659,7 +661,8 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     messaging: assembly.messaging,
     remindersFile: resolveRemindersFile(env),
     lineInboxFile: resolveLineInboxFile(env),
-    telegramInboxFile: resolveTelegramInboxFile(env)
+    telegramInboxFile: resolveTelegramInboxFile(env),
+    discordInboxFile: resolveDiscordInboxFile(env)
   };
 }
 
