@@ -1,4 +1,5 @@
 import { MessagingProviderError } from "./errors.js";
+import { clampInboundLimit, tryParseJson } from "./provider-helpers.js";
 import type {
   InboundFetchOptions,
   InboundMessage,
@@ -40,8 +41,6 @@ interface DiscordErrorResponse {
   readonly message?: string;
   readonly code?: number;
 }
-
-const MAX_INBOUND_LIMIT = 100;
 
 export class DiscordProvider implements MessagingProvider {
   readonly id = "discord";
@@ -93,12 +92,7 @@ export class DiscordProvider implements MessagingProvider {
     });
     const text = await response.text();
     if (!response.ok) {
-      let errorPayload: DiscordErrorResponse | undefined;
-      try {
-        errorPayload = text.length > 0 ? (JSON.parse(text) as DiscordErrorResponse) : undefined;
-      } catch {
-        errorPayload = undefined;
-      }
+      const errorPayload = tryParseJson<DiscordErrorResponse>(text);
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
@@ -106,13 +100,8 @@ export class DiscordProvider implements MessagingProvider {
         response.status
       );
     }
-    let messages: readonly DiscordChannelMessage[] = [];
-    try {
-      const parsed = text.length > 0 ? (JSON.parse(text) as readonly DiscordChannelMessage[]) : [];
-      messages = Array.isArray(parsed) ? parsed : [];
-    } catch {
-      messages = [];
-    }
+    const parsed = tryParseJson<readonly DiscordChannelMessage[]>(text);
+    const messages: readonly DiscordChannelMessage[] = Array.isArray(parsed) ? parsed : [];
     return messages.flatMap((message): readonly InboundMessage[] => {
       if (typeof message.content !== "string" || message.content.length === 0) {
         return [];
@@ -142,12 +131,7 @@ export class DiscordProvider implements MessagingProvider {
       method: "POST"
     });
     const text = await response.text();
-    let parsed: DiscordMessageResponse | undefined;
-    try {
-      parsed = text.length > 0 ? (JSON.parse(text) as DiscordMessageResponse) : undefined;
-    } catch {
-      parsed = undefined;
-    }
+    const parsed = tryParseJson<DiscordMessageResponse>(text);
     if (!response.ok) {
       throw new MessagingProviderError(
         this.id,
@@ -168,9 +152,3 @@ export class DiscordProvider implements MessagingProvider {
   }
 }
 
-function clampInboundLimit(raw: number | undefined): number {
-  if (raw === undefined || !Number.isFinite(raw)) {
-    return 20;
-  }
-  return Math.max(1, Math.min(MAX_INBOUND_LIMIT, Math.trunc(raw)));
-}

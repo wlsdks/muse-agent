@@ -11,6 +11,7 @@ import {
   TelegramProvider,
   validateOutboundMessage
 } from "../src/index.js";
+import { clampInboundLimit, tryParseJson } from "../src/provider-helpers.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,6 +23,42 @@ function fakeJsonResponse(payload: unknown, init: ResponseInit = {}): Response {
     ...init
   });
 }
+
+describe("clampInboundLimit", () => {
+  it("returns the default when raw is undefined or non-finite", () => {
+    expect(clampInboundLimit(undefined)).toBe(20);
+    expect(clampInboundLimit(Number.NaN)).toBe(20);
+    expect(clampInboundLimit(Number.POSITIVE_INFINITY)).toBe(20);
+  });
+
+  it("clamps to [1, 100] (default cap) and truncates fractions", () => {
+    expect(clampInboundLimit(0)).toBe(1);
+    expect(clampInboundLimit(-5)).toBe(1);
+    expect(clampInboundLimit(50.7)).toBe(50);
+    expect(clampInboundLimit(9999)).toBe(100);
+  });
+
+  it("honours a custom max", () => {
+    expect(clampInboundLimit(80, 50)).toBe(50);
+    expect(clampInboundLimit(10, 50)).toBe(10);
+  });
+});
+
+describe("tryParseJson", () => {
+  it("returns undefined for empty body", () => {
+    expect(tryParseJson<unknown>("")).toBeUndefined();
+  });
+
+  it("returns undefined for malformed JSON", () => {
+    expect(tryParseJson<unknown>("not json")).toBeUndefined();
+    expect(tryParseJson<unknown>("{nope}")).toBeUndefined();
+  });
+
+  it("returns the typed value on success", () => {
+    const out = tryParseJson<{ ok: boolean; n: number }>('{"ok":true,"n":3}');
+    expect(out).toEqual({ n: 3, ok: true });
+  });
+});
 
 describe("validateOutboundMessage", () => {
   it("rejects empty destination + empty text", () => {

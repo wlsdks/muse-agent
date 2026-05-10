@@ -1,4 +1,5 @@
 import { MessagingProviderError } from "./errors.js";
+import { tryParseJson } from "./provider-helpers.js";
 import type {
   MessagingProvider,
   MessagingProviderInfo,
@@ -67,12 +68,7 @@ export class LineProvider implements MessagingProvider {
     });
     if (!response.ok) {
       const text = await response.text();
-      let parsed: LineErrorResponse | undefined;
-      try {
-        parsed = text.length > 0 ? (JSON.parse(text) as LineErrorResponse) : undefined;
-      } catch {
-        parsed = undefined;
-      }
+      const parsed = tryParseJson<LineErrorResponse>(text);
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",

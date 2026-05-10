@@ -1,4 +1,5 @@
 import { MessagingProviderError } from "./errors.js";
+import { tryParseJson } from "./provider-helpers.js";
 import type {
   MessagingProvider,
   MessagingProviderInfo,
@@ -54,12 +55,7 @@ export class SlackProvider implements MessagingProvider {
       method: "POST"
     });
     const text = await response.text();
-    let parsed: SlackPostMessageResponse | undefined;
-    try {
-      parsed = text.length > 0 ? (JSON.parse(text) as SlackPostMessageResponse) : undefined;
-    } catch {
-      parsed = undefined;
-    }
+    const parsed = tryParseJson<SlackPostMessageResponse>(text);
     if (!response.ok || !parsed?.ok) {
       throw new MessagingProviderError(
         this.id,

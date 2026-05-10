@@ -1,4 +1,5 @@
 import { MessagingProviderError, MessagingValidationError } from "./errors.js";
+import { clampInboundLimit, tryParseJson } from "./provider-helpers.js";
 import type {
   InboundFetchOptions,
   InboundMessage,
@@ -51,8 +52,6 @@ interface TelegramGetUpdatesResponse {
   readonly result?: readonly TelegramUpdate[];
 }
 
-const MAX_INBOUND_LIMIT = 100;
-
 export class TelegramProvider implements MessagingProvider {
   readonly id = "telegram";
   private readonly token: string;
@@ -92,12 +91,7 @@ export class TelegramProvider implements MessagingProvider {
     const url = `${this.baseUrl}/bot${this.token}/getUpdates?limit=${limit.toString()}&timeout=0`;
     const response = await this.fetchImpl(url, { method: "GET" });
     const text = await response.text();
-    let parsed: TelegramGetUpdatesResponse | undefined;
-    try {
-      parsed = text.length > 0 ? (JSON.parse(text) as TelegramGetUpdatesResponse) : undefined;
-    } catch {
-      parsed = undefined;
-    }
+    const parsed = tryParseJson<TelegramGetUpdatesResponse>(text);
     if (!response.ok || !parsed?.ok) {
       throw new MessagingProviderError(
         this.id,
@@ -138,12 +132,7 @@ export class TelegramProvider implements MessagingProvider {
       method: "POST"
     });
     const text = await response.text();
-    let parsed: TelegramSendResponse | undefined;
-    try {
-      parsed = text.length > 0 ? (JSON.parse(text) as TelegramSendResponse) : undefined;
-    } catch {
-      parsed = undefined;
-    }
+    const parsed = tryParseJson<TelegramSendResponse>(text);
     if (!response.ok || !parsed?.ok) {
       throw new MessagingProviderError(
         this.id,
@@ -163,13 +152,6 @@ export class TelegramProvider implements MessagingProvider {
       raw: parsed.result
     };
   }
-}
-
-function clampInboundLimit(raw: number | undefined): number {
-  if (raw === undefined || !Number.isFinite(raw)) {
-    return 20;
-  }
-  return Math.max(1, Math.min(MAX_INBOUND_LIMIT, Math.trunc(raw)));
 }
 
 // Re-export so callers don't have to depend on the validate module.
