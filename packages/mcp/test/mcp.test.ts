@@ -2553,6 +2553,61 @@ describe("muse.messaging loopback server", () => {
       providerErrorCode: "UPSTREAM_FAILED"
     });
   });
+
+  it("muse.messaging.poll_now is hidden when no pollNow dispatcher is supplied", async () => {
+    const { MessagingProviderRegistry } = await import("@muse/messaging");
+    const server = createMessagingMcpServer({ registry: new MessagingProviderRegistry() });
+    const connection = createLoopbackMcpConnection(server);
+    const tools = await connection.listTools();
+    expect(tools.map((t) => t.name)).not.toContain("poll_now");
+  });
+
+  it("muse.messaging.poll_now invokes the supplied dispatcher and returns ingested count", async () => {
+    const { MessagingProviderRegistry } = await import("@muse/messaging");
+    const calls: { providerId: string; source?: string }[] = [];
+    const server = createMessagingMcpServer({
+      pollNow: async (providerId, source) => {
+        calls.push({ providerId, ...(source !== undefined ? { source } : {}) });
+        return { ingested: 3 };
+      },
+      registry: new MessagingProviderRegistry()
+    });
+    const connection = createLoopbackMcpConnection(server);
+    const tools = await connection.listTools();
+    expect(tools.map((t) => t.name)).toContain("poll_now");
+    const result = await connection.callTool!("poll_now", { providerId: "telegram" });
+    expect(result).toMatchObject({ ingested: 3, providerId: "telegram" });
+    expect(calls).toEqual([{ providerId: "telegram" }]);
+    const withSource = await connection.callTool!("poll_now", { providerId: "discord", source: "ch-9" });
+    expect(withSource).toMatchObject({ ingested: 3, providerId: "discord" });
+    expect(calls[1]).toEqual({ providerId: "discord", source: "ch-9" });
+  });
+
+  it("muse.messaging.poll_now surfaces dispatcher errors as structured tool errors", async () => {
+    const { MessagingProviderRegistry } = await import("@muse/messaging");
+    const server = createMessagingMcpServer({
+      pollNow: async () => { throw new Error("source (channel id) is required for discord"); },
+      registry: new MessagingProviderRegistry()
+    });
+    const connection = createLoopbackMcpConnection(server);
+    const result = await connection.callTool!("poll_now", { providerId: "discord" });
+    expect(result).toMatchObject({
+      error: expect.stringContaining("source (channel id) is required")
+    });
+  });
+
+  it("muse.messaging.poll_now rejects calls without providerId before invoking the dispatcher", async () => {
+    const { MessagingProviderRegistry } = await import("@muse/messaging");
+    let called = 0;
+    const server = createMessagingMcpServer({
+      pollNow: async () => { called += 1; return { ingested: 0 }; },
+      registry: new MessagingProviderRegistry()
+    });
+    const connection = createLoopbackMcpConnection(server);
+    const result = await connection.callTool!("poll_now", {});
+    expect(result).toMatchObject({ error: expect.stringContaining("providerId") });
+    expect(called).toBe(0);
+  });
 });
 
 describe("parseReminderVia", () => {

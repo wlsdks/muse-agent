@@ -6,7 +6,7 @@ import {
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { errorMessage, readString } from "./loopback-helpers.js";
-import type { LoopbackMcpServer } from "./loopback.js";
+import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "./loopback.js";
 
 /**
  * `muse.messaging` loopback MCP server.
@@ -31,18 +31,90 @@ import type { LoopbackMcpServer } from "./loopback.js";
  * we don't want the LLM to discover a tool that always errors with
  * "no providers configured".
  */
+/**
+ * Agent-triggered "poll now" closure. When supplied to
+ * `createMessagingMcpServer`, the `poll_now` tool is registered so
+ * the LLM can request an off-cadence pull on a configured provider
+ * — useful for "let me check Telegram right now" without waiting
+ * for the next daemon tick.
+ *
+ * The closure dispatches to the provider's `pollUpdates` and writes
+ * each new message to the daemon-shared inbox file, so the next
+ * `inbox` call returns the freshly-ingested entries. Returns the
+ * count for the LLM to acknowledge.
+ *
+ * Optional because not every runtime has the inbox-file plumbing
+ * available (e.g. the MCP-only paths in tests). When omitted, the
+ * tool simply isn't registered — same pattern as the empty-registry
+ * branch.
+ */
+export interface PollNowDispatcher {
+  (providerId: string, source?: string): Promise<{ ingested: number }>;
+}
+
 export interface MessagingMcpServerOptions {
   readonly registry: MessagingProviderRegistry;
+  readonly pollNow?: PollNowDispatcher;
 }
 
 export function createMessagingMcpServer(options: MessagingMcpServerOptions): LoopbackMcpServer {
-  const { registry } = options;
+  const { registry, pollNow } = options;
+
+  const pollNowTool: LoopbackMcpToolDefinition[] = pollNow ? [{
+    description:
+      "Trigger a poll on a per-channel/per-provider inbound source right now, bypassing the " +
+      "daemon's cadence. Useful for 'check Telegram now' or 'pull Slack #ops latest' on demand. " +
+      "Appends any new messages to the same inbox file the daemon writes, so a subsequent " +
+      "`inbox` call returns them. `providerId` is one of `telegram` (source ignored), `discord` " +
+      "(source = channel id, REQUIRED), `slack` (source = channel id like C0123ABCD, REQUIRED). " +
+      "LINE is not pollable (it's webhook-fed); call `inbox` directly instead.",
+    execute: async (args): Promise<JsonObject> => {
+      const providerId = readString(args, "providerId")?.trim();
+      if (!providerId) {
+        return { error: "providerId is required" };
+      }
+      const source = readString(args, "source")?.trim();
+      try {
+        const result = await pollNow(providerId, source && source.length > 0 ? source : undefined);
+        return { ingested: result.ingested, providerId };
+      } catch (error) {
+        if (error instanceof MessagingProviderError) {
+          return {
+            error: error.message,
+            providerErrorCode: error.code,
+            ...(error.status !== undefined ? { upstreamStatus: error.status } : {})
+          };
+        }
+        return { error: errorMessage(error) };
+      }
+    },
+    inputSchema: {
+      additionalProperties: false,
+      properties: {
+        providerId: {
+          description: "Provider id from `providers` (telegram | discord | slack).",
+          type: "string"
+        },
+        source: {
+          description:
+            "Platform-native source — Discord channel id (required for discord), Slack channel " +
+            "id like C0123ABCD (required for slack). Telegram ignores this.",
+          type: "string"
+        }
+      },
+      required: ["providerId"],
+      type: "object"
+    },
+    name: "poll_now",
+    risk: "write" as const
+  }] : [];
 
   return {
     description:
       "Outbound messengers (Telegram / Discord / Slack / LINE). Send plain-text messages through any configured provider.",
     name: "muse.messaging",
     tools: [
+      ...pollNowTool,
       {
         description:
           "List the messaging providers the user has wired up. Each entry has `id` (use it for `send`), " +

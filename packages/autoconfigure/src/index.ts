@@ -113,7 +113,14 @@ import {
   type ToolExposurePolicy
 } from "@muse/tools";
 import { VoiceProviderRegistry } from "@muse/voice";
-import type { MessagingProviderRegistry } from "@muse/messaging";
+import {
+  DiscordProvider,
+  SlackProvider,
+  TelegramProvider,
+  appendInbound,
+  type InboundMessage,
+  type MessagingProviderRegistry
+} from "@muse/messaging";
 import type { MuseDatabase } from "@muse/db";
 import type { Kysely } from "kysely";
 
@@ -416,8 +423,40 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   // tool that always errors with "no providers configured". Read +
   // write surface (`providers` / `send`).
   const messagingRegistry = buildMessagingRegistry(env);
+  // Agent-triggered poll-now dispatcher: walks the per-provider
+  // concrete pollUpdates → appendInbound chain so the LLM can pull
+  // a single provider off-cadence (e.g. "check Telegram now").
+  // LINE is webhook-fed only, so it raises a clear error rather
+  // than silently succeeding with `ingested: 0`.
+  const pollNow = async (providerId: string, source?: string): Promise<{ ingested: number }> => {
+    const provider = messagingRegistry.require(providerId);
+    let inbound: readonly InboundMessage[];
+    let inboxFile: string;
+    if (provider instanceof TelegramProvider) {
+      inbound = await provider.pollUpdates();
+      inboxFile = resolveTelegramInboxFile(env);
+    } else if (provider instanceof DiscordProvider) {
+      if (!source) {
+        throw new Error("source (channel id) is required for discord");
+      }
+      inbound = await provider.pollUpdates({ source });
+      inboxFile = resolveDiscordInboxFile(env);
+    } else if (provider instanceof SlackProvider) {
+      if (!source) {
+        throw new Error("source (channel id) is required for slack");
+      }
+      inbound = await provider.pollUpdates({ source });
+      inboxFile = resolveSlackInboxFile(env);
+    } else {
+      throw new Error(`poll_now is not supported for provider: ${providerId} (LINE uses webhooks; call inbox directly)`);
+    }
+    for (const message of inbound) {
+      await appendInbound(inboxFile, message);
+    }
+    return { ingested: inbound.length };
+  };
   const messagingLoopbackTools = messagingRegistry.list().length > 0
-    ? createLoopbackMcpMuseTools(createMessagingMcpServer({ registry: messagingRegistry }))
+    ? createLoopbackMcpMuseTools(createMessagingMcpServer({ pollNow, registry: messagingRegistry }))
     : [];
   // Reminders loopback: always registered. The store self-creates on
   // first write, so a fresh install sees the tool but the file is
