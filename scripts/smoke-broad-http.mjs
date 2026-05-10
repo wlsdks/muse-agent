@@ -831,6 +831,16 @@ try {
 
     const reread = await fetch(`${baseUrl}/api/notes/read?path=${encodeURIComponent(path)}`).then((response) => response.json());
     assert(reread.content.includes("gamma"), "expected appended content in re-read");
+
+    // GET /api/notes/providers (round 146 wiring): with no
+    // MUSE_NOTES_PROVIDERS override, smoke broad runs with just
+    // the inline filesystem-only baseline, so the route should
+    // surface exactly one provider with id="local".
+    const providers = await fetch(`${baseUrl}/api/notes/providers`).then((response) => response.json());
+    assert(Array.isArray(providers.providers) && providers.providers.length >= 1,
+      `expected providers array, got ${JSON.stringify(providers)}`);
+    assert(providers.providers.some((info) => info.id === "local" && info.local === true),
+      `expected baseline local notes provider, got ${JSON.stringify(providers.providers)}`);
   });
 
   await record("GET /api/today consolidates the personal-domain briefing", async () => {

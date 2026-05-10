@@ -22,7 +22,10 @@
  * mapping once the consumers settle.
  */
 
-import { createNotesMcpServer } from "@muse/mcp";
+import {
+  createNotesMcpServer,
+  type NotesProviderRegistry
+} from "@muse/mcp";
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 
@@ -32,6 +35,15 @@ import type { ServerOptions } from "./server.js";
 interface NotesRoutesGate {
   readonly authService: ServerOptions["authService"];
   readonly notesDir: string;
+  /**
+   * Optional registry of all configured notes backends (LocalDir +
+   * AppleNotes + Notion etc). When provided, `/api/notes/providers`
+   * exposes the list so the CLI / web UI can surface what's wired
+   * without going through chat. Distinct from `notesDir`, which is
+   * the single filesystem root used by the inline filesystem
+   * routes (`/api/notes/list`, `/read`, etc).
+   */
+  readonly notesProviderRegistry?: NotesProviderRegistry;
 }
 
 type ToolResult = string | JsonValue;
@@ -131,5 +143,35 @@ export function registerNotesRoutes(server: FastifyInstance, gate: NotesRoutesGa
     }
     const result = await callTool("append", { content: body.content, path: body.path });
     return sendToolResult(reply, result);
+  });
+
+  server.get("/api/notes/providers", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
+      return reply;
+    }
+    // When the assembly didn't wire a registry (e.g. server constructed
+    // directly in tests with just `notesDir`), report the inline
+    // filesystem-only baseline so the CLI / web UI gets a stable
+    // shape regardless of how the server was constructed.
+    if (!gate.notesProviderRegistry) {
+      return {
+        providers: [
+          {
+            description: `Inline filesystem-only notes store rooted at ${gate.notesDir}.`,
+            displayName: "Local directory (inline)",
+            id: "local",
+            local: true
+          }
+        ]
+      };
+    }
+    return {
+      providers: gate.notesProviderRegistry.describe().map((info) => ({
+        description: info.description,
+        displayName: info.displayName,
+        id: info.id,
+        local: info.local
+      }))
+    };
   });
 }

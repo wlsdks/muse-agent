@@ -775,6 +775,33 @@ describe("cli program", () => {
     expect(combined).toContain("alpha");
   });
 
+  it("notes providers hits /api/notes/providers and surfaces the configured backends", async () => {
+    const { io, output } = captureOutput();
+    const requests: Array<{ readonly url: string }> = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url) => {
+        requests.push({ url: String(url) });
+        return new Response(JSON.stringify({
+          providers: [
+            { description: "Local FS", displayName: "Local directory", id: "local", local: true },
+            { description: "Notion API", displayName: "Notion", id: "notion", local: false }
+          ]
+        }));
+      }
+    });
+
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "notes", "providers"],
+      { from: "node" }
+    );
+
+    expect(requests[0]?.url).toBe("http://api.test/api/notes/providers");
+    const combined = output.join("");
+    expect(combined).toContain("local");
+    expect(combined).toContain("notion");
+  });
+
   it("tasks list / add / complete / delete hit the /api/tasks routes", async () => {
     const { io, output } = captureOutput();
     const requests: Array<{ readonly body?: string; readonly method?: string; readonly url: string }> = [];

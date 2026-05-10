@@ -64,7 +64,8 @@ import {
   type LoopbackMcpServer,
   type McpSecurityPolicyInput,
   type McpSecurityPolicyStore,
-  type McpServerStore
+  type McpServerStore,
+  type NotesProviderRegistry
 } from "@muse/mcp";
 import {
   createUserMemoryAutoExtractHook,
@@ -213,6 +214,7 @@ export interface MuseRuntimeAssembly {
   };
   readonly toolRegistry: ToolRegistry;
   readonly calendar: CalendarProviderRegistry;
+  readonly notesProviderRegistry?: NotesProviderRegistry;
   readonly voice?: VoiceProviderRegistry;
 }
 
@@ -463,6 +465,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       service: schedulerService,
       store: schedulerStore
     },
+    ...(notesRegistry ? { notesProviderRegistry: notesRegistry } : {}),
     voice: buildVoiceRegistry(env)
   };
 }
@@ -545,6 +548,7 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     calendar: assembly.calendar,
     calendarCredentialStore: new FileCalendarCredentialStore(resolveCredentialsFile(env)),
     notesDir: resolveNotesDir(env),
+    ...(assembly.notesProviderRegistry ? { notesProviderRegistry: assembly.notesProviderRegistry } : {}),
     tasksFile: resolveTasksFile(env),
     voice: assembly.voice
   };

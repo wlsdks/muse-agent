@@ -2,6 +2,11 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  LocalDirNotesProvider,
+  NotesProviderRegistry,
+  NotionNotesProvider
+} from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
 import { buildServer } from "../src/server.js";
@@ -103,5 +108,40 @@ describe("api server: /api/notes/*", () => {
     const server = buildServer({ logger: false });
     const reply = await server.inject({ method: "GET", url: "/api/notes/list" });
     expect(reply.statusCode).toBe(404);
+  });
+
+  it("GET /api/notes/providers reports the inline filesystem-only baseline when no registry is wired", async () => {
+    const { server, notesDir } = makeServer();
+
+    const reply = await server.inject({ method: "GET", url: "/api/notes/providers" });
+    expect(reply.statusCode).toBe(200);
+    const body = reply.json() as { providers: { id: string; local: boolean; description: string }[] };
+    expect(body.providers).toHaveLength(1);
+    expect(body.providers[0]).toMatchObject({
+      id: "local",
+      local: true
+    });
+    expect(body.providers[0]?.description).toContain(notesDir);
+  });
+
+  it("GET /api/notes/providers reports the wired registry when present", async () => {
+    const notesDir = mkdtempSync(join(tmpdir(), "muse-api-notes-providers-"));
+    const registry = new NotesProviderRegistry();
+    registry.register(new LocalDirNotesProvider({ notesDir }));
+    registry.register(new NotionNotesProvider({
+      databaseId: "11111111-1111-1111-1111-111111111111",
+      fetchImpl: async () => new Response("{}", { status: 200 }),
+      token: "secret-test-token"
+    }));
+    const server = buildServer({ logger: false, notesDir, notesProviderRegistry: registry });
+
+    const reply = await server.inject({ method: "GET", url: "/api/notes/providers" });
+    expect(reply.statusCode).toBe(200);
+    const body = reply.json() as { providers: { id: string; local: boolean }[] };
+    expect(body.providers).toHaveLength(2);
+    const ids = body.providers.map((info) => info.id);
+    expect(ids).toEqual(expect.arrayContaining(["local", "notion"]));
+    const notionInfo = body.providers.find((info) => info.id === "notion");
+    expect(notionInfo?.local).toBe(false);
   });
 });

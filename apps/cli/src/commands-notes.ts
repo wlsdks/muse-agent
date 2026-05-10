@@ -37,6 +37,13 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
   const notes = program.command("notes").description("Personal notes (filesystem-backed)");
 
   notes
+    .command("providers")
+    .description("GET /api/notes/providers — list configured notes backends")
+    .action(async (_options, command) => {
+      helpers.writeOutput(io, await helpers.apiRequest(io, command, "/api/notes/providers"));
+    });
+
+  notes
     .command("list")
     .description("GET /api/notes/list — directory entries")
     .option("--subdir <path>", "Subdirectory relative to the notes root")
