@@ -850,6 +850,75 @@ describe("user memory store", () => {
       userId: "user-1"
     });
   });
+
+  it("upserts typed UserModel slots into the in-memory store with replace-by-id semantics", () => {
+    const store = new InMemoryUserMemoryStore();
+    const now = new Date("2026-05-10T00:00:00Z");
+
+    const after1 = store.upsertUserModelSlot!("u1", {
+      category: "style",
+      id: "concise",
+      kind: "preference",
+      updatedAt: now,
+      value: "yes"
+    });
+    expect(after1.userModel?.preferences).toHaveLength(1);
+    expect(after1.userModel?.preferences[0]).toMatchObject({ id: "concise", value: "yes" });
+
+    const after2 = store.upsertUserModelSlot!("u1", {
+      id: "no-eggs",
+      kind: "veto",
+      scope: "food",
+      updatedAt: now,
+      value: "do not suggest eggs"
+    });
+    expect(after2.userModel?.preferences).toHaveLength(1);
+    expect(after2.userModel?.vetoes).toHaveLength(1);
+
+    // Same id within the same kind → REPLACE, not append.
+    const after3 = store.upsertUserModelSlot!("u1", {
+      category: "style",
+      id: "concise",
+      kind: "preference",
+      updatedAt: now,
+      value: "always"
+    });
+    expect(after3.userModel?.preferences).toHaveLength(1);
+    expect(after3.userModel?.preferences[0]?.value).toBe("always");
+    // Other kinds untouched.
+    expect(after3.userModel?.vetoes).toHaveLength(1);
+  });
+
+  it("preserves typed slots through findByUserId clone and through fact upserts", () => {
+    const store = new InMemoryUserMemoryStore();
+    const now = new Date("2026-05-10T00:00:00Z");
+    store.upsertUserModelSlot!("u1", {
+      id: "muse-v1",
+      kind: "goal",
+      progress: 0.3,
+      updatedAt: now,
+      value: "ship 1.0"
+    });
+    store.upsertFact("u1", "name", "Alice");
+
+    const memory = store.findByUserId("u1");
+    expect(memory?.facts.name).toBe("Alice");
+    expect(memory?.userModel?.goals).toHaveLength(1);
+    expect(memory?.userModel?.goals[0]?.id).toBe("muse-v1");
+
+    // Mutating the returned arrays must not affect the stored copy
+    // (cloneUserMemory should deep-copy the slot arrays).
+    (memory?.userModel?.goals as unknown as { length: number }).length = 0;
+    const memoryAgain = store.findByUserId("u1");
+    expect(memoryAgain?.userModel?.goals).toHaveLength(1);
+  });
+
+  it("legacy callers without typed slots see no userModel field at all", () => {
+    const store = new InMemoryUserMemoryStore();
+    store.upsertFact("u2", "team", "platform");
+    const memory = store.findByUserId("u2");
+    expect(memory?.userModel).toBeUndefined();
+  });
 });
 
 describe("conversation summary store", () => {

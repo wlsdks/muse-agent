@@ -17,7 +17,7 @@
 
 import type { MuseDatabase } from "@muse/db";
 import type { Insertable, Kysely } from "kysely";
-import type { UserMemory, UserMemoryStore } from "./index.js";
+import { EMPTY_USER_MODEL, type UserMemory, type UserMemoryStore, type UserModel, type UserModelSlot } from "./index.js";
 
 type UserMemoryRow = Record<string, unknown>;
 type UserMemoryInsert = Insertable<MuseDatabase["user_memories"]>;
@@ -41,9 +41,26 @@ export class InMemoryUserMemoryStore implements UserMemoryStore {
     return this.memories.delete(userId);
   }
 
+  /**
+   * Round 164: typed-slot upsert. Replace-by-id semantics within
+   * the slot's `kind` — a new preference with the same `id` overwrites
+   * the prior one. New slots are appended. Other kinds are left
+   * untouched.
+   */
+  upsertUserModelSlot(userId: string, slot: UserModelSlot): UserMemory {
+    const existing = this.memories.get(userId);
+    const baseModel = existing?.userModel ?? EMPTY_USER_MODEL;
+    const nextModel = applyUserModelSlot(baseModel, slot);
+    return this.upsert(userId, { userModel: nextModel });
+  }
+
   private upsert(
     userId: string,
-    patch: { readonly facts?: Readonly<Record<string, string>>; readonly preferences?: Readonly<Record<string, string>> }
+    patch: {
+      readonly facts?: Readonly<Record<string, string>>;
+      readonly preferences?: Readonly<Record<string, string>>;
+      readonly userModel?: UserModel;
+    }
   ): UserMemory {
     const existing = this.memories.get(userId);
     const updated: UserMemory = {
@@ -51,7 +68,8 @@ export class InMemoryUserMemoryStore implements UserMemoryStore {
       preferences: { ...(existing?.preferences ?? {}), ...(patch.preferences ?? {}) },
       recentTopics: existing?.recentTopics ?? [],
       updatedAt: new Date(),
-      userId
+      userId,
+      ...(patch.userModel ? { userModel: patch.userModel } : (existing?.userModel ? { userModel: existing.userModel } : {}))
     };
 
     this.memories.set(userId, updated);
@@ -141,9 +159,48 @@ function cloneUserMemory(memory: UserMemory | undefined): UserMemory | undefined
       preferences: { ...memory.preferences },
       recentTopics: [...memory.recentTopics],
       updatedAt: memory.updatedAt,
-      userId: memory.userId
+      userId: memory.userId,
+      ...(memory.userModel ? { userModel: cloneUserModel(memory.userModel) } : {})
     }
     : undefined;
+}
+
+function cloneUserModel(model: UserModel): UserModel {
+  return {
+    goals: model.goals.map((slot) => ({ ...slot })),
+    preferences: model.preferences.map((slot) => ({ ...slot })),
+    schedule: model.schedule.map((slot) => ({ ...slot })),
+    vetoes: model.vetoes.map((slot) => ({ ...slot }))
+  };
+}
+
+/**
+ * Replace-or-append the slot inside the matching kind's array.
+ * Replace happens when an existing slot in the same kind shares
+ * the same `id`; otherwise the slot is appended. Other kinds are
+ * passed through unchanged.
+ */
+function applyUserModelSlot(model: UserModel, slot: UserModelSlot): UserModel {
+  switch (slot.kind) {
+    case "preference":
+      return { ...model, preferences: replaceOrAppend(model.preferences, slot) };
+    case "schedule":
+      return { ...model, schedule: replaceOrAppend(model.schedule, slot) };
+    case "veto":
+      return { ...model, vetoes: replaceOrAppend(model.vetoes, slot) };
+    case "goal":
+      return { ...model, goals: replaceOrAppend(model.goals, slot) };
+  }
+}
+
+function replaceOrAppend<T extends { readonly id: string }>(items: readonly T[], next: T): T[] {
+  const idx = items.findIndex((item) => item.id === next.id);
+  if (idx === -1) {
+    return [...items, next];
+  }
+  const copy = [...items];
+  copy[idx] = next;
+  return copy;
 }
 
 function stringValue(value: unknown): string {

@@ -1,5 +1,7 @@
 import type { ModelMessage, ModelToolCall } from "@muse/model";
 
+import type { UserModel, UserModelSlot } from "./user-model-slots.js";
+
 export interface TokenEstimator {
   estimate(text: string): number;
 }
@@ -222,6 +224,14 @@ export interface UserMemory {
   readonly preferences: Readonly<Record<string, string>>;
   readonly recentTopics: readonly string[];
   readonly updatedAt: Date;
+  /**
+   * Typed user-model slots (Context Engineering 1.c, rounds 162-164).
+   * Optional so legacy callers and the Kysely store (which doesn't
+   * yet have a `user_model_json` column) keep working untouched.
+   * When set, `buildPersonaSnapshot` composes the typed segments
+   * alongside the legacy `facts` / `preferences` records.
+   */
+  readonly userModel?: UserModel;
 }
 
 export interface UserMemoryStore {
@@ -229,6 +239,14 @@ export interface UserMemoryStore {
   upsertFact(userId: string, key: string, value: string): Awaitable<UserMemory>;
   upsertPreference(userId: string, key: string, value: string): Awaitable<UserMemory>;
   deleteByUserId(userId: string): Awaitable<boolean>;
+  /**
+   * Optional typed-slot upsert. When the store implements it, callers
+   * can write structured `UserModel` slots; replace-by-id semantics
+   * (slot.id is the key within the slot's `kind`). Stores that return
+   * `undefined` for this method should be treated as not supporting
+   * typed slots — callers fall back to `upsertFact` / `upsertPreference`.
+   */
+  upsertUserModelSlot?(userId: string, slot: UserModelSlot): Awaitable<UserMemory>;
 }
 
 
