@@ -30,6 +30,7 @@ import {
   NotesProviderRegistry,
   NotesValidationError,
   NotionNotesProvider,
+  NotionTasksProvider,
   TasksProviderError,
   TasksProviderRegistry,
   TasksValidationError,
@@ -1872,6 +1873,257 @@ describe("tasks provider abstraction", () => {
       .toMatchObject({ error: expect.stringContaining("id") });
     expect(await conn.callTool!("search", { providerId: "apple-reminders" }))
       .toMatchObject({ error: expect.stringContaining("query") });
+  });
+
+  it("NotionTasksProvider rejects empty token + empty databaseId at construction", () => {
+    expect(() => new NotionTasksProvider({ databaseId: "db", token: "" })).toThrow(TasksValidationError);
+    expect(() => new NotionTasksProvider({ databaseId: "", token: "secret" })).toThrow(TasksValidationError);
+  });
+
+  it("NotionTasksProvider describes itself with the configured database", () => {
+    const provider = new NotionTasksProvider({
+      databaseId: "db_tasks",
+      fetchImpl: async () => new Response("{}"),
+      token: "secret"
+    });
+    expect(provider.describe()).toMatchObject({ id: "notion", local: false });
+    expect(provider.describe().description).toContain("db_tasks");
+  });
+
+  it("NotionTasksProvider.list passes a Status select filter and parses rows into Tasks", async () => {
+    const recorded: Array<{ url: string; body: unknown }> = [];
+    const fetchImpl = async (url: string, init: RequestInit) => {
+      recorded.push({ body: JSON.parse(init.body as string), url });
+      return new Response(
+        JSON.stringify({
+          has_more: false,
+          next_cursor: null,
+          results: [
+            {
+              created_time: "2026-05-09T08:00:00Z",
+              id: "page-A",
+              last_edited_time: "2026-05-09T09:00:00Z",
+              parent: { database_id: "db_tasks" },
+              properties: {
+                Name: { title: [{ plain_text: "Ship Muse 1.0" }] },
+                Status: { select: { name: "Open" } }
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    };
+    const provider = new NotionTasksProvider({
+      databaseId: "db_tasks",
+      fetchImpl,
+      token: "secret_token"
+    });
+
+    const open = await provider.list("open");
+
+    expect(recorded[0]?.url).toContain("/v1/databases/db_tasks/query");
+    expect(recorded[0]?.body).toMatchObject({
+      filter: { property: "Status", select: { equals: "Open" } }
+    });
+    expect(open).toHaveLength(1);
+    expect(open[0]).toMatchObject({
+      id: "page-A",
+      providerId: "notion",
+      status: "open",
+      title: "Ship Muse 1.0"
+    });
+    expect(open[0]?.createdAt).toEqual(new Date("2026-05-09T08:00:00Z"));
+  });
+
+  it("NotionTasksProvider.add posts to /pages with parent.database_id and the open status option", async () => {
+    let posted: { url: string; body: Record<string, unknown> } | undefined;
+    const fetchImpl = async (url: string, init: RequestInit) => {
+      posted = { body: JSON.parse(init.body as string) as Record<string, unknown>, url };
+      return new Response(
+        JSON.stringify({
+          created_time: "2026-05-10T12:00:00Z",
+          id: "page-new",
+          parent: { database_id: "db_tasks" },
+          properties: {
+            Name: { title: [{ plain_text: "Refactor model loop" }] },
+            Status: { select: { name: "Open" } }
+          }
+        }),
+        { status: 200 }
+      );
+    };
+    const provider = new NotionTasksProvider({
+      databaseId: "db_tasks",
+      fetchImpl,
+      token: "secret"
+    });
+
+    const created = await provider.add({ title: "Refactor model loop" });
+
+    expect(posted?.url).toContain("/v1/pages");
+    expect(posted?.body).toMatchObject({
+      parent: { database_id: "db_tasks" },
+      properties: {
+        Name: { title: [{ text: { content: "Refactor model loop" } }] },
+        Status: { select: { name: "Open" } }
+      }
+    });
+    expect(created).toMatchObject({
+      id: "page-new",
+      providerId: "notion",
+      status: "open",
+      title: "Refactor model loop"
+    });
+  });
+
+  it("NotionTasksProvider.complete patches the Status select to Done and surfaces completedAt", async () => {
+    let patched: { url: string; method: string; body: Record<string, unknown> } | undefined;
+    const fetchImpl = async (url: string, init: RequestInit) => {
+      patched = {
+        body: JSON.parse(init.body as string) as Record<string, unknown>,
+        method: init.method ?? "",
+        url
+      };
+      return new Response(
+        JSON.stringify({
+          created_time: "2026-05-09T08:00:00Z",
+          id: "page-A",
+          last_edited_time: "2026-05-10T15:30:00Z",
+          parent: { database_id: "db_tasks" },
+          properties: {
+            Name: { title: [{ plain_text: "Ship Muse 1.0" }] },
+            Status: { select: { name: "Done" } }
+          }
+        }),
+        { status: 200 }
+      );
+    };
+    const provider = new NotionTasksProvider({
+      databaseId: "db_tasks",
+      fetchImpl,
+      token: "secret"
+    });
+
+    const done = await provider.complete("page-A");
+
+    expect(patched?.method).toBe("PATCH");
+    expect(patched?.url).toContain("/v1/pages/page-A");
+    expect(patched?.body).toMatchObject({
+      properties: { Status: { select: { name: "Done" } } }
+    });
+    expect(done).toMatchObject({ id: "page-A", status: "done" });
+    expect(done?.completedAt).toEqual(new Date("2026-05-10T15:30:00Z"));
+  });
+
+  it("NotionTasksProvider.complete returns undefined on a 404 instead of throwing", async () => {
+    const fetchImpl = async () => new Response("not found", { status: 404 });
+    const provider = new NotionTasksProvider({
+      databaseId: "db_tasks",
+      fetchImpl,
+      token: "secret"
+    });
+    expect(await provider.complete("page-missing")).toBeUndefined();
+  });
+
+  it("NotionTasksProvider.search filters /search hits to the configured database", async () => {
+    const fetchImpl = async () => new Response(
+      JSON.stringify({
+        results: [
+          {
+            created_time: "2026-05-09T08:00:00Z",
+            id: "in-db",
+            parent: { database_id: "db_tasks" },
+            properties: {
+              Name: { title: [{ plain_text: "Hit inside the tasks DB" }] },
+              Status: { select: { name: "Open" } }
+            }
+          },
+          {
+            created_time: "2026-05-09T08:00:00Z",
+            id: "outside-db",
+            parent: { database_id: "other_database" },
+            properties: {
+              Name: { title: [{ plain_text: "Unrelated page" }] }
+            }
+          }
+        ]
+      }),
+      { status: 200 }
+    );
+    const provider = new NotionTasksProvider({
+      databaseId: "db_tasks",
+      fetchImpl,
+      token: "secret"
+    });
+
+    const hits = await provider.search("hit", 10);
+
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatchObject({
+      id: "in-db",
+      providerId: "notion",
+      status: "open",
+      title: "Hit inside the tasks DB"
+    });
+  });
+
+  it("NotionTasksProvider maps 401/403 to NOTION_AUTH and 429 to NOTION_RATE_LIMIT", async () => {
+    const make401 = new NotionTasksProvider({
+      databaseId: "db_tasks",
+      fetchImpl: async () => new Response("unauthorized", { status: 401 }),
+      token: "secret"
+    });
+    const auth = await make401.list().catch((err) => err);
+    expect(auth).toBeInstanceOf(TasksProviderError);
+    expect((auth as TasksProviderError).code).toBe("NOTION_AUTH");
+
+    const make429 = new NotionTasksProvider({
+      databaseId: "db_tasks",
+      fetchImpl: async () => new Response("slow down", { status: 429 }),
+      token: "secret"
+    });
+    const rate = await make429.list().catch((err) => err);
+    expect(rate).toBeInstanceOf(TasksProviderError);
+    expect((rate as TasksProviderError).code).toBe("NOTION_RATE_LIMIT");
+  });
+
+  it("NotionTasksProvider honors custom titleProperty + statusProperty + statusOpenValue", async () => {
+    const recorded: Array<{ body: Record<string, unknown> }> = [];
+    const fetchImpl = async (_url: string, init: RequestInit) => {
+      recorded.push({ body: JSON.parse(init.body as string) as Record<string, unknown> });
+      return new Response(
+        JSON.stringify({
+          created_time: "2026-05-09T08:00:00Z",
+          id: "page-1",
+          parent: { database_id: "db_tasks" },
+          properties: {
+            Title: { title: [{ plain_text: "Custom" }] },
+            State: { select: { name: "Active" } }
+          }
+        }),
+        { status: 200 }
+      );
+    };
+    const provider = new NotionTasksProvider({
+      databaseId: "db_tasks",
+      fetchImpl,
+      statusOpenValue: "Active",
+      statusProperty: "State",
+      titleProperty: "Title",
+      token: "secret"
+    });
+
+    const created = await provider.add({ title: "Custom" });
+
+    expect(recorded[0]?.body).toMatchObject({
+      properties: {
+        State: { select: { name: "Active" } },
+        Title: { title: [{ text: { content: "Custom" } }] }
+      }
+    });
+    expect(created.status).toBe("open");
+    expect(created.title).toBe("Custom");
   });
 });
 

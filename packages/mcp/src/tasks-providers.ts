@@ -11,8 +11,8 @@
  *
  * Three concrete adapters land in their own per-provider files:
  *   - `LocalFileTasksProvider`   → `tasks-providers-local-file.ts`
- *   - `AppleRemindersProvider`   → `tasks-providers-apple.ts` (next iter)
- *   - `NotionTasksProvider`      → `tasks-providers-notion.ts` (later)
+ *   - `AppleRemindersProvider`   → `tasks-providers-apple.ts`
+ *   - `NotionTasksProvider`      → `tasks-providers-notion.ts`
  *
  * They are re-exported at the bottom of this file so external
  * `import { LocalFileTasksProvider } from "@muse/mcp"` call sites
@@ -138,3 +138,7 @@ export type { LocalFileTasksProviderOptions } from "./tasks-providers-local-file
 // Apple Reminders adapter is in its own file (round 153 lift).
 export { AppleRemindersProvider } from "./tasks-providers-apple.js";
 export type { AppleRemindersProviderOptions } from "./tasks-providers-apple.js";
+
+// Notion DB adapter (round 169) — talks to api.notion.com/v1.
+export { NotionTasksProvider } from "./tasks-providers-notion.js";
+export type { NotionTasksProviderOptions } from "./tasks-providers-notion.js";
