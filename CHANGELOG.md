@@ -7,6 +7,27 @@ move from `Unreleased` to dated/versioned headings.
 
 ## [Unreleased]
 
+### Added
+
+- **`muse calendar events --local`** and **`muse calendar providers
+  --local`** complete the `--local` trio. The CLI instantiates
+  `LocalCalendarProvider` against `~/.muse/calendar.json` directly.
+  OAuth (Google) and CalDAV stay API-only. `muse today --local`
+  now also surfaces local-file events instead of skipping calendar.
+- **`muse today --brief [--model <id>]`** — JARVIS-style natural
+  language summary. Composes the structured briefing, feeds it
+  to the configured model with a short system prompt, prints 2-3
+  sentences leading with the most time-sensitive item. Works in
+  both remote and `--local` mode.
+- **`muse setup` (no args)** — configuration health-check across
+  model key, MCP entries, calendar credentials, notes/tasks state,
+  voice key. Pure read-only inspection, no API needed.
+
+### Removed
+
+- `muse memory --user <id>` flag — Muse is single-user, the CLI
+  hard-codes `me`. Multi-tenant residue from the Reactor migration.
+
 ### Fixed
 
 - **Gemini parallel-tool 400** — when the model issued N parallel
