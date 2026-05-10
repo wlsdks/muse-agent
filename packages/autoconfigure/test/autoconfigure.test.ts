@@ -39,7 +39,14 @@ import {
   parseBoolean,
   parseInteger,
   requireEnv,
-  resolveDefaultModel
+  resolveDefaultModel,
+  resolveLineInboxFile,
+  resolveLocalCalendarFile,
+  resolveMessagingCredentialsFile,
+  resolveModelKeysFile,
+  resolveNotesDir,
+  resolveRemindersFile,
+  resolveTasksFile
 } from "../src/index.js";
 
 describe("autoconfigure", () => {
@@ -536,6 +543,30 @@ describe("autoconfigure", () => {
       "muse.tasks-multi.complete",
       "muse.tasks-multi.search"
     ]));
+  });
+
+  it("the dot-muse path resolvers honour env overrides and fall back to ~/.muse defaults", () => {
+    // Env override branch — supplied path is returned verbatim.
+    expect(resolveTasksFile({ MUSE_TASKS_FILE: "/tmp/custom-tasks.json" })).toBe("/tmp/custom-tasks.json");
+    expect(resolveNotesDir({ MUSE_NOTES_DIR: "/tmp/custom-notes" })).toBe("/tmp/custom-notes");
+    expect(resolveRemindersFile({ MUSE_REMINDERS_FILE: "/tmp/r.json" })).toBe("/tmp/r.json");
+    expect(resolveLocalCalendarFile({ MUSE_CALENDAR_FILE: "/tmp/c.json" })).toBe("/tmp/c.json");
+    expect(resolveMessagingCredentialsFile({ MUSE_MESSAGING_CREDENTIALS_FILE: "/tmp/m.json" })).toBe("/tmp/m.json");
+    expect(resolveModelKeysFile({ MUSE_MODEL_KEYS_FILE: "/tmp/k.json" })).toBe("/tmp/k.json");
+    expect(resolveLineInboxFile({ MUSE_LINE_INBOX_FILE: "/tmp/l.json" })).toBe("/tmp/l.json");
+
+    // Empty / whitespace-only override → falls back to default.
+    expect(resolveTasksFile({ MUSE_TASKS_FILE: "" }).endsWith("/.muse/tasks.json")).toBe(true);
+    expect(resolveTasksFile({ MUSE_TASKS_FILE: "   " }).endsWith("/.muse/tasks.json")).toBe(true);
+
+    // Default path branch — each resolver picks its own filename.
+    expect(resolveTasksFile({}).endsWith("/.muse/tasks.json")).toBe(true);
+    expect(resolveNotesDir({}).endsWith("/.muse/notes")).toBe(true);
+    expect(resolveRemindersFile({}).endsWith("/.muse/reminders.json")).toBe(true);
+    expect(resolveLocalCalendarFile({}).endsWith("/.muse/calendar.json")).toBe(true);
+    expect(resolveMessagingCredentialsFile({}).endsWith("/.muse/messaging.json")).toBe(true);
+    expect(resolveModelKeysFile({}).endsWith("/.muse/models.json")).toBe(true);
+    expect(resolveLineInboxFile({}).endsWith("/.muse/line-inbox.json")).toBe(true);
   });
 
   it("resolveDefaultModel honors MUSE_MODEL when explicitly set", () => {

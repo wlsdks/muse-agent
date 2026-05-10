@@ -62,68 +62,51 @@ import {
 
 import type { MuseEnvironment } from "./index.js";
 
-export function resolveNotesDir(env: MuseEnvironment): string {
-  const override = env.MUSE_NOTES_DIR?.trim();
+/**
+ * Eight resolvers under personal-providers all share the same
+ * shape: trim the env override, fall back to a default path under
+ * `~/.muse/`. Encoding it once keeps each resolver one line and
+ * makes adding a new one (e.g. a future plugin's data dir) a
+ * one-liner that doesn't tempt copy-paste drift.
+ */
+function resolveDotMusePath(env: MuseEnvironment, envKey: string, defaultName: string): string {
+  const override = env[envKey]?.trim();
   if (override && override.length > 0) {
     return override;
   }
-  return pathJoin(homedir(), ".muse", "notes");
+  return pathJoin(homedir(), ".muse", defaultName);
+}
+
+export function resolveNotesDir(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_NOTES_DIR", "notes");
 }
 
 export function resolveCredentialsFile(env: MuseEnvironment): string {
-  const override = env.MUSE_CREDENTIALS_FILE?.trim();
-  if (override && override.length > 0) {
-    return override;
-  }
-  return pathJoin(homedir(), ".muse", "credentials.json");
+  return resolveDotMusePath(env, "MUSE_CREDENTIALS_FILE", "credentials.json");
 }
 
 export function resolveLocalCalendarFile(env: MuseEnvironment): string {
-  const override = env.MUSE_CALENDAR_FILE?.trim();
-  if (override && override.length > 0) {
-    return override;
-  }
-  return pathJoin(homedir(), ".muse", "calendar.json");
+  return resolveDotMusePath(env, "MUSE_CALENDAR_FILE", "calendar.json");
 }
 
 export function resolveTasksFile(env: MuseEnvironment): string {
-  const override = env.MUSE_TASKS_FILE?.trim();
-  if (override && override.length > 0) {
-    return override;
-  }
-  return pathJoin(homedir(), ".muse", "tasks.json");
+  return resolveDotMusePath(env, "MUSE_TASKS_FILE", "tasks.json");
 }
 
 export function resolveMessagingCredentialsFile(env: MuseEnvironment): string {
-  const override = env.MUSE_MESSAGING_CREDENTIALS_FILE?.trim();
-  if (override && override.length > 0) {
-    return override;
-  }
-  return pathJoin(homedir(), ".muse", "messaging.json");
+  return resolveDotMusePath(env, "MUSE_MESSAGING_CREDENTIALS_FILE", "messaging.json");
 }
 
 export function resolveRemindersFile(env: MuseEnvironment): string {
-  const override = env.MUSE_REMINDERS_FILE?.trim();
-  if (override && override.length > 0) {
-    return override;
-  }
-  return pathJoin(homedir(), ".muse", "reminders.json");
+  return resolveDotMusePath(env, "MUSE_REMINDERS_FILE", "reminders.json");
 }
 
 export function resolveLineInboxFile(env: MuseEnvironment): string {
-  const override = env.MUSE_LINE_INBOX_FILE?.trim();
-  if (override && override.length > 0) {
-    return override;
-  }
-  return pathJoin(homedir(), ".muse", "line-inbox.json");
+  return resolveDotMusePath(env, "MUSE_LINE_INBOX_FILE", "line-inbox.json");
 }
 
 export function resolveModelKeysFile(env: MuseEnvironment): string {
-  const override = env.MUSE_MODEL_KEYS_FILE?.trim();
-  if (override && override.length > 0) {
-    return override;
-  }
-  return pathJoin(homedir(), ".muse", "models.json");
+  return resolveDotMusePath(env, "MUSE_MODEL_KEYS_FILE", "models.json");
 }
 
 /**
