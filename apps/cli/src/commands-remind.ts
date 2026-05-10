@@ -17,7 +17,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import { resolveRemindersFile } from "@muse/autoconfigure";
+import { buildMessagingRegistry, resolveRemindersFile } from "@muse/autoconfigure";
 import {
   filterReminders,
   fireReminder,
@@ -28,6 +28,7 @@ import {
   writeReminders,
   type PersistedReminder
 } from "@muse/mcp";
+import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
@@ -255,6 +256,105 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       }
       const firedAtOut = String(payload.firedAt ?? firedAt);
       io.stdout(`Fired [${id.slice(0, 12)}] at ${shortDateTime(firedAtOut)}\n`);
+    });
+
+  remind
+    .command("run")
+    .description("Phase B firing loop: deliver every due reminder via messaging then mark fired")
+    .option(
+      "--via <provider>",
+      "Messaging provider id (telegram | discord | slack | line). Required unless --dry-run."
+    )
+    .option(
+      "--destination <id>",
+      "Platform-native chat / channel / user id. Required unless --dry-run."
+    )
+    .option("--dry-run", "Preview which reminders would fire without sending or persisting")
+    .option("--local", "Read/write the local reminders file directly (always implicit; no --no-local mode yet)")
+    .option("--json", "Print the raw run summary as JSON")
+    .action(async (
+      options: {
+        readonly via?: string;
+        readonly destination?: string;
+        readonly dryRun?: boolean;
+        readonly json?: boolean;
+        readonly local?: boolean;
+      }
+    ) => {
+      // The deterministic firing loop. No LLM is dispatched — this is
+      // the "Phase B" engine described in docs/design/reminder-firing.md
+      // run in one-shot mode. A future iter wires it to scheduler so
+      // it ticks every minute automatically.
+      const file = localRemindersFile();
+      const all = await readReminders(file);
+      const due = filterReminders(all, "due", () => new Date());
+
+      if (due.length === 0) {
+        const summary = { delivered: 0, due: 0, errors: [] as string[] };
+        if (options.json) {
+          helpers.writeOutput(io, summary);
+        } else {
+          io.stdout("No reminders are due right now.\n");
+        }
+        return;
+      }
+
+      if (options.dryRun) {
+        const summary = {
+          delivered: 0,
+          due: due.length,
+          errors: [] as string[],
+          previews: due.map((reminder) => ({ id: reminder.id, text: reminder.text }))
+        };
+        if (options.json) {
+          helpers.writeOutput(io, summary);
+        } else {
+          io.stdout(`Would fire ${due.length.toString()} reminder(s):\n`);
+          for (const reminder of due) {
+            io.stdout(`  - [${reminder.id.slice(0, 12)}] ${reminder.text}\n`);
+          }
+        }
+        return;
+      }
+
+      const provider = options.via?.trim();
+      const destination = options.destination?.trim();
+      if (!provider || !destination) {
+        throw new Error("--via and --destination are required (or use --dry-run for a preview)");
+      }
+
+      const registry: MessagingProviderRegistry = buildMessagingRegistry(
+        process.env as Record<string, string | undefined>
+      );
+
+      const errors: string[] = [];
+      let delivered = 0;
+      const reminders = [...await readReminders(file)];
+      for (const reminder of due) {
+        try {
+          await registry.send(provider, { destination, text: reminder.text });
+          const next = fireReminder(reminders, reminder.id, new Date().toISOString());
+          if (next) {
+            // Mutate the in-flight array so the next iteration sees the
+            // updated state. Final write happens once after the loop.
+            reminders.splice(0, reminders.length, ...next);
+          }
+          delivered += 1;
+        } catch (cause) {
+          errors.push(`${reminder.id}: ${cause instanceof Error ? cause.message : String(cause)}`);
+        }
+      }
+      await writeReminders(file, reminders);
+
+      const summary = { delivered, due: due.length, errors };
+      if (options.json) {
+        helpers.writeOutput(io, summary);
+        return;
+      }
+      io.stdout(`Fired ${delivered.toString()} of ${due.length.toString()} reminder(s) via ${provider}\n`);
+      for (const error of errors) {
+        io.stderr(`  ! ${error}\n`);
+      }
     });
 
   remind

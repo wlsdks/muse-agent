@@ -2089,4 +2089,77 @@ describe("cli program", () => {
       restore("notes", "MUSE_NOTES_DIR");
     }
   });
+
+  it("muse remind run delivers only due reminders via the messaging provider then fires them", async () => {
+    const fsp = await import("node:fs/promises");
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-remind-run-"));
+    const remindersFile = path.join(root, "reminders.json");
+    // Two reminders: one in the past (due), one in 2027 (future).
+    await fsp.writeFile(remindersFile, JSON.stringify({
+      reminders: [
+        {
+          createdAt: "2026-01-01T00:00:00Z",
+          dueAt: "1970-01-01T00:00:00Z",
+          id: "rem_due",
+          status: "pending",
+          text: "Buy milk"
+        },
+        {
+          createdAt: "2026-05-11T00:00:00Z",
+          dueAt: "2027-01-01T00:00:00Z",
+          id: "rem_future",
+          status: "pending",
+          text: "Future thing"
+        }
+      ]
+    }), "utf8");
+
+    const prevFile = process.env.MUSE_REMINDERS_FILE;
+    const prevTg = process.env.MUSE_TELEGRAM_BOT_TOKEN;
+    process.env.MUSE_REMINDERS_FILE = remindersFile;
+    process.env.MUSE_TELEGRAM_BOT_TOKEN = "fake-token";
+    const originalFetch = globalThis.fetch;
+    const sentBodies: string[] = [];
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      if (typeof init?.body === "string") {
+        sentBodies.push(init.body);
+      }
+      return new Response(JSON.stringify({ ok: true, result: { message_id: 99 } }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      // Dry run: previews due, never calls fetch.
+      const { io: ioDry, output: outDry } = captureOutput();
+      const dry = createProgram({ ...ioDry, fetch: async () => { throw new Error("api fetch must not be called"); } });
+      await dry.parseAsync(["node", "muse", "remind", "run", "--dry-run"], { from: "node" });
+      const dryText = outDry.join("");
+      expect(dryText).toContain("Would fire 1 reminder(s):");
+      expect(dryText).toContain("Buy milk");
+      expect(sentBodies).toHaveLength(0);
+
+      // Live run: delivers, fires, persists.
+      const { io: ioRun, output: outRun } = captureOutput();
+      const run = createProgram({ ...ioRun, fetch: async () => { throw new Error("api fetch must not be called"); } });
+      await run.parseAsync(
+        ["node", "muse", "remind", "run", "--via", "telegram", "--destination", "@me", "--json"],
+        { from: "node" }
+      );
+      const runResult = JSON.parse(outRun.join("")) as { delivered: number; due: number; errors: string[] };
+      expect(runResult).toMatchObject({ delivered: 1, due: 1, errors: [] });
+      expect(sentBodies).toHaveLength(1);
+      expect(JSON.parse(sentBodies[0]!)).toMatchObject({ chat_id: "@me", text: "Buy milk" });
+
+      const after = JSON.parse(await fsp.readFile(remindersFile, "utf8")) as {
+        reminders: Array<{ id: string; status: string; firedAt?: string }>;
+      };
+      const dueRow = after.reminders.find((r) => r.id === "rem_due");
+      const futureRow = after.reminders.find((r) => r.id === "rem_future");
+      expect(dueRow?.status).toBe("fired");
+      expect(typeof dueRow?.firedAt).toBe("string");
+      expect(futureRow?.status).toBe("pending");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (prevFile === undefined) { delete process.env.MUSE_REMINDERS_FILE; } else { process.env.MUSE_REMINDERS_FILE = prevFile; }
+      if (prevTg === undefined) { delete process.env.MUSE_TELEGRAM_BOT_TOKEN; } else { process.env.MUSE_TELEGRAM_BOT_TOKEN = prevTg; }
+    }
+  });
 });
