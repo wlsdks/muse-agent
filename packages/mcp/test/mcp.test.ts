@@ -2648,4 +2648,39 @@ describe("muse.reminders loopback server", () => {
     const pendingOnly = await connection.callTool!("search", { query: "milk", status: "pending" });
     expect(pendingOnly).toMatchObject({ status: "pending", total: 2 });
   });
+
+  it("snooze bumps dueAt forward and revives fired reminders to pending", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-snooze-"));
+    let counter = 0;
+    const fixedNow = new Date("2026-05-11T08:00:00Z");
+    const server = createRemindersMcpServer({
+      file: join(dir, "reminders.json"),
+      idFactory: () => `rem_${++counter}`,
+      now: () => fixedNow
+    });
+    const connection = createLoopbackMcpConnection(server);
+
+    await connection.callTool!("add", { dueAt: "2026-05-11T07:00:00Z", text: "Buy milk" });
+
+    // Default snooze: +10 minutes from fixedNow.
+    const defaulted = await connection.callTool!("snooze", { id: "rem_1" });
+    expect(defaulted).toMatchObject({
+      reminder: { dueAt: "2026-05-11T08:10:00.000Z", id: "rem_1", status: "pending" }
+    });
+
+    // Explicit relative snooze.
+    const explicit = await connection.callTool!("snooze", { dueAt: "in 30 minutes", id: "rem_1" });
+    expect(explicit).toMatchObject({ reminder: { dueAt: "2026-05-11T08:30:00.000Z" } });
+
+    // Missing id surfaces a clean error.
+    const missing = await connection.callTool!("snooze", { id: "rem_does_not_exist" });
+    expect(missing).toMatchObject({ error: expect.stringContaining("not found") });
+
+    // Bad dueAt phrase surfaces a clean error too.
+    const bad = await connection.callTool!("snooze", { dueAt: "lolwhen", id: "rem_1" });
+    expect(bad).toMatchObject({ error: expect.stringContaining("ISO-8601") });
+  });
 });

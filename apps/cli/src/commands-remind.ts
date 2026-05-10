@@ -141,6 +141,65 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
     });
 
   remind
+    .command("snooze")
+    .description("Bump a reminder's dueAt forward (default 10 min)")
+    .argument("<id>", "Reminder id")
+    .option(
+      "--in <when>",
+      "When to remind instead. Same grammar as `add` (e.g. 'in 30 minutes', 'tomorrow at 9am')"
+    )
+    .option("--local", "Update the local reminders file instead of the API")
+    .option("--json", "Print the raw response instead of a short confirmation")
+    .action(async (
+      id: string,
+      options: { readonly in?: string } & SharedOptions,
+      command
+    ) => {
+      let payload: Record<string, unknown>;
+      if (options.local) {
+        const file = localRemindersFile();
+        const reminders = await readReminders(file);
+        const index = reminders.findIndex((reminder) => reminder.id === id);
+        if (index < 0) {
+          throw new Error(`reminder not found: ${id}`);
+        }
+        let nextDueAt: string;
+        if (options.in && options.in.trim().length > 0) {
+          const parsed = parseReminderDueAt(options.in, () => new Date());
+          if (parsed instanceof Error) {
+            throw parsed;
+          }
+          nextDueAt = parsed;
+        } else {
+          nextDueAt = new Date(Date.now() + 10 * 60_000).toISOString();
+        }
+        const snoozed: PersistedReminder = { ...reminders[index]!, dueAt: nextDueAt, status: "pending" };
+        const next = [...reminders];
+        next[index] = snoozed;
+        await writeReminders(file, next);
+        payload = serializeReminder(snoozed);
+      } else {
+        const body: Record<string, unknown> = {};
+        if (options.in && options.in.trim().length > 0) {
+          body.dueAt = options.in.trim();
+        }
+        payload = (await helpers.apiRequest(
+          io,
+          command,
+          `/api/reminders/${encodeURIComponent(id)}/snooze`,
+          body,
+          "POST"
+        )) as Record<string, unknown>;
+      }
+      if (options.json) {
+        helpers.writeOutput(io, payload);
+        return;
+      }
+      const dueAt = String(payload.dueAt ?? "");
+      io.stdout(`Snoozed [${id.slice(0, 12)}] → ${shortDateTime(dueAt)}\n`);
+    });
+
+  remind
     .command("clear")
     .description("Remove a reminder")
     .argument("<id>", "Reminder id")

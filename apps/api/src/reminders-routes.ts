@@ -79,6 +79,35 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     return reply.status(201).send(serializeReminder(created));
   });
 
+  server.post("/api/reminders/:id/snooze", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
+      return reply;
+    }
+    const { id } = request.params as { readonly id: string };
+    const body = request.body as { readonly dueAt?: unknown } | null;
+    let nextDueAt: string;
+    const dueAtRaw = typeof body?.dueAt === "string" ? body.dueAt.trim() : "";
+    if (dueAtRaw.length > 0) {
+      const parsed = parseReminderDueAt(dueAtRaw, () => new Date());
+      if (parsed instanceof Error) {
+        return reply.status(400).send({ code: "INVALID_REMINDER_DUE_AT", message: parsed.message });
+      }
+      nextDueAt = parsed;
+    } else {
+      nextDueAt = new Date(Date.now() + 10 * 60_000).toISOString();
+    }
+    const reminders = await readReminders(remindersFile);
+    const index = reminders.findIndex((reminder) => reminder.id === id);
+    if (index < 0) {
+      return reply.status(404).send({ code: "REMINDER_NOT_FOUND", message: `reminder not found: ${id}` });
+    }
+    const snoozed: PersistedReminder = { ...reminders[index]!, dueAt: nextDueAt, status: "pending" };
+    const next = [...reminders];
+    next[index] = snoozed;
+    await writeReminders(remindersFile, next);
+    return reply.status(200).send(serializeReminder(snoozed));
+  });
+
   server.delete("/api/reminders/:id", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;

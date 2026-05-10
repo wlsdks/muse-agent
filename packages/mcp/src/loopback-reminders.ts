@@ -24,9 +24,12 @@ import {
  *   - `muse.reminders.due` (read) — list reminders the user should
  *     see right now (status=pending && dueAt ≤ now), so the LLM can
  *     proactively surface them when answering anything time-shaped.
+
  *   - `muse.reminders.search` (read) — substring grep across the
  *     reminder text. Defaults to status="all" so vague callbacks
  *     ("그 우유 뭐였지?") still find fired/old entries.
+ *   - `muse.reminders.snooze` (write) — bump a reminder's dueAt
+ *     forward (default 10 min) and reset status to pending.
  *   - `muse.reminders.clear` (write) — drop a reminder by id.
  *
  * Active firing through messaging is a follow-up iter — this server
@@ -172,6 +175,65 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
         },
         name: "search",
         risk: "read"
+      },
+      {
+        description:
+          "Bump a reminder's dueAt forward. `id` selects the reminder, `dueAt` accepts the same " +
+          "ISO-8601-or-relative grammar as `add` ('in 30 minutes', 'tomorrow at 9am', etc.). " +
+          "If `dueAt` is omitted, defaults to a 10-minute snooze from now. " +
+          "Status is reset to 'pending' so a fired reminder can be revived. Returns the updated reminder.",
+        execute: async (args): Promise<JsonObject> => {
+          const id = readString(args, "id");
+          if (!id) {
+            return { error: "id is required" };
+          }
+          const dueAtRaw = readString(args, "dueAt")?.trim();
+          let nextDueAt: string;
+          if (dueAtRaw && dueAtRaw.length > 0) {
+            const parsed = parseReminderDueAt(dueAtRaw, now);
+            if (parsed instanceof Error) {
+              return { error: parsed.message };
+            }
+            nextDueAt = parsed;
+          } else {
+            // Default snooze: 10 minutes from now. The LLM can still
+            // override with an explicit phrase when the user is more
+            // specific ("snooze 30 mins", "until tomorrow morning").
+            nextDueAt = new Date(now().getTime() + 10 * 60_000).toISOString();
+          }
+          const reminders = await readReminders(file);
+          const index = reminders.findIndex((reminder) => reminder.id === id);
+          if (index < 0) {
+            return { error: `reminder not found: ${id}` };
+          }
+          const snoozed: PersistedReminder = {
+            ...reminders[index]!,
+            dueAt: nextDueAt,
+            status: "pending"
+          };
+          const next = [...reminders];
+          next[index] = snoozed;
+          try {
+            await writeReminders(file, next);
+          } catch (error) {
+            return { error: errorMessage(error) };
+          }
+          return { reminder: serializeReminder(snoozed) as JsonValue };
+        },
+        inputSchema: {
+          additionalProperties: false,
+          properties: {
+            dueAt: {
+              description: "New due time. Same grammar as `add` (ISO or relative phrase). Omit for a 10-minute snooze.",
+              type: "string"
+            },
+            id: { type: "string" }
+          },
+          required: ["id"],
+          type: "object"
+        },
+        name: "snooze",
+        risk: "write"
       },
       {
         description: "Remove a reminder by id. Returns `{ removed: true, id }` on success or an error if no match.",
