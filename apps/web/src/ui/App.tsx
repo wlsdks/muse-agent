@@ -145,6 +145,13 @@ interface NotesProvidersResponse {
   readonly providers: readonly NotesProviderInfo[];
 }
 
+interface UserMemoryResponse {
+  readonly facts: Readonly<Record<string, string>>;
+  readonly preferences: Readonly<Record<string, string>>;
+  readonly recentTopics: readonly string[];
+  readonly updatedAt: string;
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -197,6 +204,7 @@ export function MuseConsole() {
           <VoicePanel apiUrl={apiUrl} token={token} />
           <TasksPanel client={client} />
           <NotesPanel client={client} />
+          <MemoryPanel client={client} />
           <CalendarEventsPanel client={client} />
           <RunsPanel runs={admin.data?.recentRuns ?? []} loading={admin.isLoading} />
           <ToolCatalogPanel tools={tools.data?.tools ?? []} loading={tools.isLoading} />
@@ -498,6 +506,68 @@ function NotesPanel({ client }: { readonly client: ApiClient }) {
                 {entry.sizeBytes}b
               </span>
             ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function MemoryPanel({ client }: { readonly client: ApiClient }) {
+  const memory = useQuery({
+    queryFn: () => client.get<UserMemoryResponse>("/api/user-memory/me"),
+    queryKey: ["user-memory", "me"],
+    // 403 (auth on, JWT subject != "me") and 404 (no memory yet) both
+    // surface as friendly status — the panel is read-only so retrying
+    // doesn't help.
+    retry: false
+  });
+
+  if (memory.isError) {
+    return (
+      <section className="tool-surface compact" aria-label="Memory">
+        <div className="surface-heading">
+          <h2>Memory</h2>
+          <span>—</span>
+        </div>
+        <p className="status-info" style={{ fontSize: "0.85em", margin: 0 }}>
+          No memory recorded yet. The agent will start populating this as you chat.
+        </p>
+      </section>
+    );
+  }
+
+  const factEntries = Object.entries(memory.data?.facts ?? {});
+  const prefEntries = Object.entries(memory.data?.preferences ?? {});
+  const topics = memory.data?.recentTopics ?? [];
+  const totalSlots = factEntries.length + prefEntries.length + topics.length;
+
+  return (
+    <section className="tool-surface compact" aria-label="Memory">
+      <div className="surface-heading">
+        <h2>Memory</h2>
+        <span>{memory.isLoading ? "Loading" : totalSlots}</span>
+      </div>
+      {topics.length > 0 ? (
+        <p style={{ fontSize: "0.85em", margin: "0 0 0.5rem 0" }}>
+          <strong>Recent:</strong> {topics.slice(0, 5).join(", ")}
+        </p>
+      ) : null}
+      <ul className="record-list">
+        {factEntries.slice(0, 6).map(([key, value]) => (
+          <li key={`fact-${key}`}>
+            <strong>{key}</strong>
+            <span style={{ color: "var(--muted, #888)", marginLeft: "0.5rem", fontSize: "0.85em" }}>
+              {value}
+            </span>
+          </li>
+        ))}
+        {prefEntries.slice(0, 4).map(([key, value]) => (
+          <li key={`pref-${key}`}>
+            <strong>{key}</strong>
+            <span style={{ color: "var(--muted, #888)", marginLeft: "0.5rem", fontSize: "0.85em" }}>
+              {value}
+            </span>
           </li>
         ))}
       </ul>
