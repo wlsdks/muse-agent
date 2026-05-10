@@ -682,15 +682,28 @@ describe("autoconfigure", () => {
     expect(merged.describe().map((entry) => entry.id).sort()).toEqual(["discord", "line", "slack", "telegram"]);
   });
 
-  it("buildMessagingRegistry wires MUSE_TELEGRAM_OFFSET_FILE into the TelegramProvider", async () => {
+  it("buildMessagingRegistry wires offset + inbox files into the TelegramProvider", async () => {
     const { mkdtempSync, promises: fs } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
+    const { TelegramProvider } = await import("@muse/messaging");
     const root = mkdtempSync(join(tmpdir(), "muse-tg-wire-"));
-    const offsetFile = join(root, "tg.json");
-    // Seed an offset so the registry-built provider must include it in
-    // the request URL — proves offsetFile was plumbed end-to-end.
+    const offsetFile = join(root, "tg-offset.json");
+    const inboxFile = join(root, "tg-inbox.json");
+    // Seed both: a high-watermark for pollUpdates and one persisted
+    // message for fetchInbound (so the store-read path has something
+    // to return).
     await fs.writeFile(offsetFile, JSON.stringify({ offset: 555, version: 1 }), "utf8");
+    await fs.writeFile(inboxFile, JSON.stringify({
+      inbox: [{
+        messageId: "10",
+        providerId: "telegram",
+        receivedAtIso: "2026-05-11T00:00:00.000Z",
+        source: "999",
+        text: "from inbox file"
+      }],
+      version: 1
+    }), "utf8");
     const seenUrls: string[] = [];
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (url: string | URL | Request) => {
@@ -702,9 +715,19 @@ describe("autoconfigure", () => {
     try {
       const registry = buildMessagingRegistry({
         MUSE_TELEGRAM_BOT_TOKEN: "TOK",
+        MUSE_TELEGRAM_INBOX_FILE: inboxFile,
         MUSE_TELEGRAM_OFFSET_FILE: offsetFile
       });
-      await registry.fetchInbound("telegram");
+      // fetchInbound goes through the inbox file once configured — the
+      // daemon-served read path. Bot API must not be hit here.
+      const inboxRead = await registry.fetchInbound("telegram");
+      expect(inboxRead.map((m) => m.text)).toEqual(["from inbox file"]);
+      expect(seenUrls).toEqual([]);
+      // pollUpdates is the Bot-API-side ingestion path the daemon uses.
+      // It must include the stored offset in the URL.
+      const telegram = registry.require("telegram");
+      expect(telegram).toBeInstanceOf(TelegramProvider);
+      await (telegram as InstanceType<typeof TelegramProvider>).pollUpdates();
     } finally {
       globalThis.fetch = originalFetch;
     }

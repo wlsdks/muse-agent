@@ -1,12 +1,17 @@
 /**
- * Telegram polling daemon (Phase 2.a.3 per docs/design/messaging.md).
+ * Telegram polling daemon (Phase 2.a.3 + 2.a.4 per docs/design/messaging.md).
  *
- * Calls `registry.fetchInbound("telegram")` on a setInterval cadence
- * and appends each returned `InboundMessage` to a JSON inbox file
- * via `@muse/messaging/appendInbound`. The TelegramProvider built by
- * `buildMessagingRegistry` already has offset persistence (Phase
- * 2.a.1+2), so each tick advances through the queue rather than
- * reprocessing.
+ * Calls `provider.pollUpdates()` on a setInterval cadence and
+ * appends each returned `InboundMessage` to a JSON inbox file via
+ * `@muse/messaging/appendInbound`. `pollUpdates` already advances
+ * the persisted offset (Phase 2.a.1+2), so each tick walks the
+ * queue rather than reprocessing.
+ *
+ * Why `provider` and not `registry`: the daemon is the Bot-API-side
+ * ingestion path. The user-facing `registry.fetchInbound` reads
+ * from the inbox file once configured (Phase 2.a.4), so calling it
+ * here would create a read/write loop. Taking the provider directly
+ * keeps the two surfaces separated.
  *
  * Off by default. Activates only when:
  *   - `MUSE_TELEGRAM_POLL_ENABLED === "1"`, and
@@ -18,12 +23,11 @@
  * (default 30_000); clamped to [5s, 1h].
  */
 
-import { appendInbound, type MessagingProviderRegistry } from "@muse/messaging";
+import { appendInbound, type TelegramProvider } from "@muse/messaging";
 
 export interface TelegramPollOptions {
-  readonly registry: MessagingProviderRegistry;
+  readonly provider: TelegramProvider;
   readonly inboxFile: string;
-  readonly providerId?: string;
   readonly intervalMs?: number;
   readonly fetchLimit?: number;
   readonly logger?: (message: string) => void;
@@ -41,7 +45,6 @@ const MAX_INTERVAL_MS = 60 * 60_000;
 
 export function startTelegramPollTick(options: TelegramPollOptions): TelegramPollHandle {
   const intervalMs = clampInterval(options.intervalMs ?? DEFAULT_INTERVAL_MS);
-  const providerId = options.providerId ?? "telegram";
   let polling = false;
 
   const tickOnce = async (): Promise<void> => {
@@ -50,7 +53,9 @@ export function startTelegramPollTick(options: TelegramPollOptions): TelegramPol
     }
     polling = true;
     try {
-      const inbound = await options.registry.fetchInbound(providerId, options.fetchLimit !== undefined ? { limit: options.fetchLimit } : undefined);
+      const inbound = await options.provider.pollUpdates(
+        options.fetchLimit !== undefined ? { limit: options.fetchLimit } : undefined
+      );
       if (inbound.length === 0) {
         return;
       }

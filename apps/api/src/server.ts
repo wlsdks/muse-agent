@@ -29,6 +29,7 @@ import { lineWebhookPlugin } from "./messaging-webhooks-routes.js";
 import { registerRemindersRoutes } from "./reminders-routes.js";
 import { parseQuietHours, startReminderTick } from "./reminder-tick.js";
 import { startTelegramPollTick } from "./telegram-poll-tick.js";
+import { TelegramProvider } from "@muse/messaging";
 import { registerSchedulerRoutes, type SchedulerRouteScheduler } from "./scheduler-routes.js";
 import { registerTodayRoutes } from "./today-routes.js";
 import { registerVoiceRoutes } from "./voice-routes.js";
@@ -350,19 +351,26 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     && options.messaging
     && options.messaging.has("telegram")
   ) {
-    const pollMsRaw = process.env.MUSE_TELEGRAM_POLL_INTERVAL_MS
-      ? Number(process.env.MUSE_TELEGRAM_POLL_INTERVAL_MS)
-      : undefined;
-    const pollHandle = startTelegramPollTick({
-      errorLogger: (message) => server.log.warn(message),
-      inboxFile: options.telegramInboxFile,
-      ...(pollMsRaw !== undefined ? { intervalMs: pollMsRaw } : {}),
-      logger: (message) => server.log.info(message),
-      registry: options.messaging
-    });
-    server.addHook("onClose", async () => {
-      pollHandle.stop();
-    });
+    // The daemon walks Bot API directly, so it needs the concrete
+    // TelegramProvider (with offset persistence) rather than the
+    // registry's generic fetchInbound — that one reads from the
+    // inbox file once Phase 2.a.4 wiring is in place.
+    const telegram = options.messaging.require("telegram");
+    if (telegram instanceof TelegramProvider) {
+      const pollMsRaw = process.env.MUSE_TELEGRAM_POLL_INTERVAL_MS
+        ? Number(process.env.MUSE_TELEGRAM_POLL_INTERVAL_MS)
+        : undefined;
+      const pollHandle = startTelegramPollTick({
+        errorLogger: (message) => server.log.warn(message),
+        inboxFile: options.telegramInboxFile,
+        ...(pollMsRaw !== undefined ? { intervalMs: pollMsRaw } : {}),
+        logger: (message) => server.log.info(message),
+        provider: telegram
+      });
+      server.addHook("onClose", async () => {
+        pollHandle.stop();
+      });
+    }
   }
 
   return server;

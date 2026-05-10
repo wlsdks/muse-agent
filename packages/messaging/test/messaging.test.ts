@@ -423,6 +423,45 @@ describe("telegram-offset-store", () => {
   });
 });
 
+describe("TelegramProvider.fetchInbound inbox-file branch", () => {
+  it("when inboxFile is configured, fetchInbound reads from the persisted store and does not hit Bot API", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-tg-inbox-"));
+    const inboxFile = join(dir, "telegram-inbox.json");
+    const { promises: fs } = await import("node:fs");
+    await fs.writeFile(inboxFile, JSON.stringify({
+      inbox: [
+        { messageId: "1", providerId: "telegram", receivedAtIso: "2026-05-11T00:00:00Z", source: "999", text: "older" },
+        { messageId: "2", providerId: "telegram", receivedAtIso: "2026-05-11T00:01:00Z", source: "999", text: "newer" }
+      ],
+      version: 1
+    }), "utf8");
+    let fetchCalls = 0;
+    const provider = new TelegramProvider({
+      fetch: async () => { fetchCalls += 1; return fakeJsonResponse({ ok: true, result: [] }); },
+      inboxFile,
+      token: "T"
+    });
+    const inbound = await provider.fetchInbound({ limit: 10 });
+    // Stored newest-last; readInbox reverses to newest-first.
+    expect(inbound.map((m) => m.text)).toEqual(["newer", "older"]);
+    expect(fetchCalls).toBe(0);
+  });
+
+  it("pollUpdates still hits Bot API even when inboxFile is configured", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-tg-poll-"));
+    const inboxFile = join(dir, "telegram-inbox.json");
+    let seenUrl = "";
+    const provider = new TelegramProvider({
+      baseUrl: "https://tg.test",
+      fetch: async (url) => { seenUrl = String(url); return fakeJsonResponse({ ok: true, result: [] }); },
+      inboxFile,
+      token: "T"
+    });
+    await provider.pollUpdates();
+    expect(seenUrl).toBe("https://tg.test/botT/getUpdates?limit=20&timeout=0");
+  });
+});
+
 describe("TelegramProvider.fetchInbound offset tracking", () => {
   it("omits ?offset when no offsetFile is configured (backward-compat snapshot mode)", async () => {
     let seenUrl = "";

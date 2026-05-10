@@ -486,10 +486,14 @@ export function buildMessagingRegistry(env: MuseEnvironment): MessagingProviderR
   };
   const telegramToken = tokenFor("MUSE_TELEGRAM_BOT_TOKEN", "telegram");
   if (telegramToken) {
-    // Always wire the offset file. The provider only reads/writes it
-    // when fetchInbound runs, so a missing file is fine (first poll
-    // falls back to Telegram's default — oldest visible update).
+    // `offsetFile` and `inboxFile` are always wired. The provider
+    // only touches them on demand: `pollUpdates` reads/writes the
+    // offset; `fetchInbound` reads the inbox when configured (and
+    // otherwise falls through to a snapshot poll). The Phase 2.a.3
+    // daemon appends new messages to the same inbox so the web
+    // panel / REST converge on a single store.
     registry.register(new TelegramProvider({
+      inboxFile: resolveTelegramInboxFile(env),
       offsetFile: resolveTelegramOffsetFile(env),
       token: telegramToken
     }));

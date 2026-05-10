@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { InboundMessage, MessagingProviderRegistry } from "@muse/messaging";
+import type { InboundMessage, TelegramProvider } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
 
 import { startTelegramPollTick } from "../src/telegram-poll-tick.js";
@@ -17,10 +17,13 @@ function makeMessage(messageId: string, text: string): InboundMessage {
   };
 }
 
-function fakeRegistry(batches: readonly (readonly InboundMessage[] | Error)[]): MessagingProviderRegistry {
+// Lightweight TelegramProvider stub — the daemon only calls pollUpdates,
+// so the rest of the provider surface is unused. Cast through unknown
+// to keep test fixtures from depending on the full class shape.
+function fakeProvider(batches: readonly (readonly InboundMessage[] | Error)[]): TelegramProvider {
   let call = 0;
   return {
-    fetchInbound: async () => {
+    pollUpdates: async () => {
       const next = batches[call] ?? [];
       call += 1;
       if (next instanceof Error) {
@@ -28,7 +31,7 @@ function fakeRegistry(batches: readonly (readonly InboundMessage[] | Error)[]): 
       }
       return next;
     }
-  } as unknown as MessagingProviderRegistry;
+  } as unknown as TelegramProvider;
 }
 
 describe("startTelegramPollTick", () => {
@@ -39,7 +42,7 @@ describe("startTelegramPollTick", () => {
     const handle = startTelegramPollTick({
       inboxFile,
       logger: (m) => logged.push(m),
-      registry: fakeRegistry([[makeMessage("1", "hi"), makeMessage("2", "second")]])
+      provider: fakeProvider([[makeMessage("1", "hi"), makeMessage("2", "second")]])
     });
     try {
       await handle.tickOnce();
@@ -58,7 +61,7 @@ describe("startTelegramPollTick", () => {
     const handle = startTelegramPollTick({
       inboxFile,
       logger: (m) => logged.push(m),
-      registry: fakeRegistry([[]])
+      provider: fakeProvider([[]])
     });
     try {
       await handle.tickOnce();
@@ -76,8 +79,8 @@ describe("startTelegramPollTick", () => {
     let inflight = 0;
     let peak = 0;
     let calls = 0;
-    const slowRegistry: MessagingProviderRegistry = {
-      fetchInbound: async () => {
+    const slowProvider: TelegramProvider = {
+      pollUpdates: async () => {
         inflight += 1;
         peak = Math.max(peak, inflight);
         await new Promise((resolve) => setTimeout(resolve, 5));
@@ -85,8 +88,8 @@ describe("startTelegramPollTick", () => {
         inflight -= 1;
         return [];
       }
-    } as unknown as MessagingProviderRegistry;
-    const handle = startTelegramPollTick({ inboxFile, registry: slowRegistry });
+    } as unknown as TelegramProvider;
+    const handle = startTelegramPollTick({ inboxFile, provider: slowProvider });
     try {
       await Promise.all([handle.tickOnce(), handle.tickOnce()]);
       expect(calls).toBe(1);
@@ -103,7 +106,7 @@ describe("startTelegramPollTick", () => {
     const handle = startTelegramPollTick({
       errorLogger: (m) => errors.push(m),
       inboxFile,
-      registry: fakeRegistry([new Error("Telegram getUpdates failed: 503")])
+      provider: fakeProvider([new Error("Telegram getUpdates failed: 503")])
     });
     try {
       await handle.tickOnce();

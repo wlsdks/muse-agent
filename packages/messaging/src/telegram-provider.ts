@@ -1,4 +1,5 @@
 import { MessagingProviderError, MessagingValidationError } from "./errors.js";
+import { readInbox } from "./inbox-store.js";
 import { clampInboundLimit, tryParseJson } from "./provider-helpers.js";
 import { readTelegramOffset, writeTelegramOffset } from "./telegram-offset-store.js";
 import type {
@@ -23,13 +24,22 @@ export interface TelegramProviderOptions {
   /** Optional Telegram parse_mode (e.g. "MarkdownV2"). Off by default. */
   readonly parseMode?: "MarkdownV2" | "HTML";
   /**
-   * When set, `fetchInbound` advances through the update queue using
+   * When set, `pollUpdates` advances through the update queue using
    * `?offset=<update_id+1>` and persists the high-watermark to this
    * file (atomic tmp+rename). Without it, every call returns the
    * most-recent snapshot — fine for one-shot inspection, wrong for a
    * polling daemon that must not reprocess messages.
    */
   readonly offsetFile?: string;
+  /**
+   * When set, `fetchInbound` reads from this persisted inbox file
+   * (mirrors LineProvider). The Phase 2.a.3 polling daemon appends
+   * each `pollUpdates` result to the same file, so the read API and
+   * the daemon converge on the same store. Without it, `fetchInbound`
+   * falls back to a live `pollUpdates` call — the one-shot snapshot
+   * path used by CLI inspection.
+   */
+  readonly inboxFile?: string;
 }
 
 const DEFAULT_BASE_URL = "https://api.telegram.org";
@@ -68,6 +78,7 @@ export class TelegramProvider implements MessagingProvider {
   private readonly baseUrl: string;
   private readonly parseMode: TelegramProviderOptions["parseMode"];
   private readonly offsetFile: string | undefined;
+  private readonly inboxFile: string | undefined;
 
   constructor(options: TelegramProviderOptions) {
     this.token = options.token;
@@ -75,6 +86,7 @@ export class TelegramProvider implements MessagingProvider {
     this.baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
     this.parseMode = options.parseMode;
     this.offsetFile = options.offsetFile;
+    this.inboxFile = options.inboxFile;
   }
 
   describe(): MessagingProviderInfo {
@@ -86,18 +98,35 @@ export class TelegramProvider implements MessagingProvider {
   }
 
   /**
-   * Fetch recent updates via Bot API `getUpdates`. When the
-   * constructor was given an `offsetFile`, the call passes
-   * `?offset=<stored+1>` (or the stored value if it's already
-   * `+1`-shaped — we store the high-watermark, see below) and
-   * persists `max(update_id) + 1` back on success. Without
-   * `offsetFile`, behaviour is snapshot-style: every call returns
-   * the most recent `limit` updates currently visible to the bot.
+   * Read-side surface: when `inboxFile` is configured, return the
+   * persisted entries the polling daemon (see `pollUpdates`) wrote.
+   * When it isn't, fall through to a live `pollUpdates` call — the
+   * legacy one-shot path that CLI / contract tests rely on.
+   *
+   * The split keeps the user-facing inbox view (web panel / REST)
+   * decoupled from the offset-advancing ingestion path: the daemon
+   * polls, the read API serves the cache.
+   */
+  async fetchInbound(options?: InboundFetchOptions): Promise<readonly InboundMessage[]> {
+    if (this.inboxFile) {
+      const limit = clampInboundLimit(options?.limit);
+      return readInbox(this.inboxFile, limit);
+    }
+    return this.pollUpdates(options);
+  }
+
+  /**
+   * Hit Bot API `getUpdates` directly. When the constructor was
+   * given an `offsetFile`, the call passes `?offset=<stored>` and
+   * persists `max(update_id) + 1` back on success — so a polling
+   * daemon can advance through the queue rather than reprocessing.
+   * Without `offsetFile`, behaviour is snapshot-style: every call
+   * returns the most recent `limit` updates currently visible.
    *
    * Telegram caps `getUpdates` at 100 results per call regardless of
    * `limit`; we surface that ceiling rather than silently truncate.
    */
-  async fetchInbound(options?: InboundFetchOptions): Promise<readonly InboundMessage[]> {
+  async pollUpdates(options?: InboundFetchOptions): Promise<readonly InboundMessage[]> {
     const limit = clampInboundLimit(options?.limit);
     const offsetParam = this.offsetFile ? await readTelegramOffset(this.offsetFile) : undefined;
     // `timeout=0` keeps the call short — the long-poll modes are for
