@@ -1,6 +1,8 @@
 # Voice Mode — Design Doc
 
-Status: **Proposal** (not started). Last updated 2026-05-10.
+Status: **In progress** — Phases A, B, D, E shipped. Phase C (`muse
+listen` CLI) is the next concrete implementation iter. Last
+updated 2026-05-10 (round 185 reconciliation).
 
 This doc captures the design space for adding a voice interface to
 Muse: speak to it in natural language, hear it speak back.
@@ -122,23 +124,68 @@ since the two are always paired in voice-mode flows.
 
 ## Rollout
 
-1. **Phase A (this doc)**: design doc + provider interfaces.
-   Zero runtime impact.
-2. **Phase B**: `@muse/voice` package with interfaces +
-   `OpenAIWhisperSttProvider` + `OpenAITtsProvider`. Unit tests with
-   mocked fetch. No CLI / Web changes yet.
-3. **Phase C**: `muse listen` CLI command. Sox dependency check,
-   push-to-talk via stdin, reply pipes through `afplay` / `aplay`.
-4. **Phase D**: `/api/voice/stt` + `/api/voice/tts` API endpoints
-   that proxy to the configured providers (auth-gated, same as
-   `/api/calendar/credentials`).
-5. **Phase E**: Web voice button (`<VoicePanel>`) — captures via
-   MediaRecorder, posts to the API, plays response audio.
-6. **Phase F (deferred)**: wake-word ambient mode + local
-   Whisper.cpp / Piper providers + Gemini Live.
+1. **Phase A — DONE**: this design doc + the provider interfaces in
+   `packages/voice/src/types.ts` (`SpeechToTextProvider` /
+   `TextToSpeechProvider` / `VoiceProviderRegistry`). Zero runtime
+   impact.
+2. **Phase B — DONE**: `@muse/voice` package shipped with
+   `OpenAIWhisperSttProvider` (`packages/voice/src/openai-whisper.ts`)
+   and `OpenAITtsProvider` (`packages/voice/src/openai-tts.ts`). Unit
+   tests with mocked fetch in `packages/voice/test/voice.test.ts`.
+   `buildVoiceRegistry(env)` in `packages/autoconfigure/src/personal-providers.ts`
+   wires them when `OPENAI_API_KEY` (or `MUSE_VOICE_OPENAI_API_KEY`)
+   is set.
+3. **Phase C — PENDING**: `muse listen` CLI command. Sox dependency
+   check, push-to-talk via stdin, reply pipes through `afplay` (macOS)
+   / `aplay` (Linux). Natural next iter — see "Phase C contract"
+   below.
+4. **Phase D — DONE**: `/api/voice/stt` + `/api/voice/tts` +
+   `/api/voice/providers` endpoints in `apps/api/src/voice-routes.ts`,
+   auth-gated. Routes are registered only when the registry has at
+   least one provider (`buildVoiceRegistry` returns `undefined`
+   otherwise → 404 instead of 503).
+5. **Phase E — DONE**: Web `VoicePanel` component in
+   `apps/web/src/ui/App.tsx` (line 470+). Captures via
+   `MediaRecorder`, posts WebM/Opus to `/api/voice/stt`, then plays
+   response audio from `/api/voice/tts` through an HTML `<audio>`
+   blob URL.
+6. **Phase F — DEFERRED**: wake-word ambient mode (Picovoice
+   Porcupine / openWakeWord) + local Whisper.cpp / Piper providers
+   + Gemini Live streaming. Out of scope until Phase C lands and
+   real personal-use latency / cost data justifies the effort.
 
-Each phase is independently shippable. Phase B is the smallest
-foundation we can land before phases C/D/E need anything.
+Each phase is independently shippable. Phase C is the missing piece
+for the CLI side of the personal-JARVIS loop.
+
+## Phase C contract — `muse listen`
+
+Concrete shape so the next iter can pick this up without
+re-deciding:
+
+- New CLI command `muse listen [--lang ko|en] [--voice <name>] [--output mp3|wav]`.
+- Boot check: shell out `which sox`. Missing → exit 1 with
+  `install sox: brew install sox (macOS) | apt install sox (Linux)`
+  message. No silent failure.
+- Capture: spawn `rec -r 16000 -c 1 -t wav -` (sox), pipe stdout to
+  a Buffer until the user signals stop (default: press Enter; later:
+  silence detection via sox's `silence` effect).
+- POST raw WAV bytes to `/api/voice/stt` (or skip the API and call
+  `SpeechToTextProvider.transcribe` directly when running in local
+  mode — the `apps/cli` already has the runtime assembly via
+  `createMuseRuntimeAssembly`).
+- Pipe transcribed text through `/api/chat` (existing CLI plumbing
+  has `apiRequest` in `commands-mcp.ts` etc).
+- POST agent reply text to `/api/voice/tts`, write returned audio to
+  a temp file, spawn `afplay` (macOS) or `aplay` (Linux) to play.
+- Cleanup: temp audio file deleted after playback. Sox child killed
+  on Ctrl-C.
+- Tests: mock the sox / afplay shells via injected dependencies
+  (same pattern as `osascriptPath` in `MacOsCalendarProvider`); the
+  HTTP path is covered by the existing `voice-routes.test.ts`.
+
+Risk: macOS will prompt for microphone access on first run. The
+permission flow is OS-managed; the CLI just needs to surface a
+helpful message when sox returns a permission-denied exit code.
 
 ## Open questions
 
@@ -156,6 +203,9 @@ foundation we can land before phases C/D/E need anything.
 ## Why this doc is short
 
 Voice mode is a separate sub-project, not a single iteration. The
-above is the "decided enough to start" baseline — concrete enough
-that whoever picks Phase B can write the `@muse/voice` skeleton
-without re-asking the same questions.
+above is the "decided enough to start" baseline. Phases B / D / E
+landed across the round 130-160 era; round 185 reconciled this doc
+with the shipped state and named Phase C as the next concrete iter.
+The Phase C contract section is concrete enough that the next
+iteration can implement `muse listen` without re-asking the same
+questions.
