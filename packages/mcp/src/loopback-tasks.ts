@@ -34,6 +34,7 @@ interface PersistedTask {
   readonly status: "open" | "done";
   readonly createdAt: string;
   readonly completedAt?: string;
+  readonly dueAt?: string;
   readonly notes?: string;
   readonly tags?: readonly string[];
 }
@@ -67,7 +68,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
     tools: [
       {
         description:
-          "Append a new task. Required: `title`. Optional: `notes` (free-form text), `tags` (string array). " +
+          "Append a new task. Required: `title`. Optional: `notes` (free-form text), `tags` (string array), `dueAt` (ISO-8601 timestamp). " +
           "Returns the created task with its generated id.",
         execute: async (args): Promise<JsonObject> => {
           const title = readString(args, "title")?.trim();
@@ -76,6 +77,15 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           }
           const notes = readString(args, "notes") ?? undefined;
           const tags = readStringArray(args, "tags") ?? undefined;
+          const dueAtRaw = readString(args, "dueAt")?.trim();
+          let dueAt: string | undefined;
+          if (dueAtRaw && dueAtRaw.length > 0) {
+            const parsed = new Date(dueAtRaw);
+            if (Number.isNaN(parsed.getTime())) {
+              return { error: `dueAt must be a valid ISO-8601 timestamp (got ${JSON.stringify(dueAtRaw)})` };
+            }
+            dueAt = parsed.toISOString();
+          }
           const tasks = await readTasks(file);
           const created: PersistedTask = {
             createdAt: now().toISOString(),
@@ -83,6 +93,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
             status: "open",
             title,
             ...(notes ? { notes } : {}),
+            ...(dueAt ? { dueAt } : {}),
             ...(tags && tags.length > 0 ? { tags } : {})
           };
           try {
@@ -95,6 +106,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
         inputSchema: {
           additionalProperties: false,
           properties: {
+            dueAt: { description: "Optional ISO-8601 due timestamp (e.g. 2026-05-15T18:00:00Z).", type: "string" },
             notes: { type: "string" },
             tags: { items: { type: "string" }, type: "array" },
             title: { type: "string" }
@@ -254,18 +266,27 @@ function serializeTask(task: PersistedTask): JsonObject {
     status: task.status,
     title: task.title,
     ...(task.completedAt ? { completedAt: task.completedAt } : {}),
+    ...(task.dueAt ? { dueAt: task.dueAt } : {}),
     ...(task.notes ? { notes: task.notes } : {}),
     ...(task.tags && task.tags.length > 0 ? { tags: [...task.tags] as JsonValue } : {})
   };
 }
 
 function isPersistedTask(value: unknown): value is PersistedTask {
-  return Boolean(value)
-    && typeof value === "object"
-    && typeof (value as PersistedTask).id === "string"
-    && typeof (value as PersistedTask).title === "string"
-    && typeof (value as PersistedTask).createdAt === "string"
-    && ((value as PersistedTask).status === "open" || (value as PersistedTask).status === "done");
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as PersistedTask;
+  if (typeof candidate.id !== "string"
+    || typeof candidate.title !== "string"
+    || typeof candidate.createdAt !== "string"
+    || (candidate.status !== "open" && candidate.status !== "done")) {
+    return false;
+  }
+  if (candidate.dueAt !== undefined && typeof candidate.dueAt !== "string") {
+    return false;
+  }
+  return true;
 }
 
 function readStatusFilter(value: string | undefined): "open" | "done" | "all" {

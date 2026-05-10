@@ -1385,6 +1385,63 @@ describe("muse.tasks loopback server", () => {
     const recovered = await connection.callTool!("list", { status: "all" });
     expect(recovered).toMatchObject({ total: 0 });
   });
+
+  it("accepts a dueAt ISO timestamp on add and surfaces it in list / search", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-tasks-due-`);
+    let counter = 0;
+    const idFactory = () => `task_${++counter}`;
+    const server = createTasksMcpServer({ file: `${dir}/tasks.json`, idFactory });
+    const connection = createLoopbackMcpConnection(server);
+
+    const added = await connection.callTool!("add", {
+      dueAt: "2026-05-15T18:00:00Z",
+      title: "Buy milk"
+    }) as { task: { dueAt?: string; id: string } };
+    expect(added.task.dueAt).toBe("2026-05-15T18:00:00.000Z");
+
+    const list = await connection.callTool!("list", {}) as {
+      tasks: ReadonlyArray<{ dueAt?: string; id: string }>;
+    };
+    expect(list.tasks[0]?.dueAt).toBe("2026-05-15T18:00:00.000Z");
+
+    const search = await connection.callTool!("search", { query: "milk" }) as {
+      tasks: ReadonlyArray<{ dueAt?: string }>;
+    };
+    expect(search.tasks[0]?.dueAt).toBe("2026-05-15T18:00:00.000Z");
+  });
+
+  it("rejects an invalid dueAt with a clear error", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-tasks-due-bad-`);
+    const connection = createLoopbackMcpConnection(createTasksMcpServer({ file: `${dir}/tasks.json` }));
+
+    const result = await connection.callTool!("add", {
+      dueAt: "not a date",
+      title: "Test"
+    }) as { error?: string };
+    expect(result.error).toContain("dueAt must be a valid ISO-8601");
+  });
+
+  it("ignores dueAt when omitted (back-compat with pre-dueAt entries)", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-tasks-due-back-`);
+    const file = `${dir}/tasks.json`;
+    writeFileSync(file, JSON.stringify({
+      tasks: [
+        { createdAt: "2026-05-01T00:00:00Z", id: "old-1", status: "open", title: "Legacy task" }
+      ]
+    }), "utf8");
+    const connection = createLoopbackMcpConnection(createTasksMcpServer({ file }));
+    const list = await connection.callTool!("list", { status: "all" }) as {
+      tasks: ReadonlyArray<{ dueAt?: string; id: string }>;
+    };
+    expect(list.tasks[0]).toMatchObject({ id: "old-1" });
+    expect(list.tasks[0]?.dueAt).toBeUndefined();
+  });
 });
 
 describe("notes provider abstraction", () => {

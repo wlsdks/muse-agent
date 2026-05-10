@@ -7,6 +7,34 @@ move from `Unreleased` to dated/versioned headings.
 
 ## [Unreleased]
 
+### Added (round 190)
+
+- **`muse.tasks.add` accepts `dueAt`**. Real bug surfaced via
+  dogfood: when a user said "Add a task: 우유 사기 — due
+  tomorrow", the LLM responded with "I cannot set a due date" and
+  asked to proceed without one — the tool's input schema only
+  accepted `title` / `notes` / `tags`. Adds optional
+  `dueAt: string` (ISO-8601) to the schema; invalid timestamps are
+  rejected with `dueAt must be a valid ISO-8601 timestamp`. The
+  field round-trips through the on-disk JSON
+  (`PersistedTask.dueAt`) and surfaces in `list` / `search` /
+  `complete` responses. Back-compat: legacy entries without
+  `dueAt` still parse (the type guard's new branch only rejects
+  when `dueAt` is present and non-string). 3 new vitest cases
+  (mcp 118 → 121): valid ISO timestamp round-trips through add →
+  list → search; invalid timestamp errors with a clear message;
+  legacy pre-`dueAt` entry still loads. **Live dogfood verified**:
+  real Gemini call with the same Korean prompt that failed before
+  ("Add a task: 우유 사기 due 2026-05-15T18:00:00Z") now invokes
+  `muse.tasks.add` with both fields, the task persists with
+  `dueAt: "2026-05-15T18:00:00.000Z"`, and `GET /api/tasks` shows
+  it. Caveat: `dueAt` is currently a free-form ISO timestamp the
+  LLM emits; natural-language relative dates ("tomorrow", "next
+  Monday") still need the LLM to compose `time_now` + `time_add`
+  / `next_weekday` first. The tool composition works (round 179
+  shipped those time tools) but the prompt-engineering nudge
+  isn't there yet — future iter.
+
 ### Added (round 189)
 
 - **`muse mcp config-add` CLI** — flag-driven (non-interactive,
