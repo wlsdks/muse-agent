@@ -110,6 +110,57 @@ export function resolveRemindersFile(env: MuseEnvironment): string {
   return pathJoin(homedir(), ".muse", "reminders.json");
 }
 
+export function resolveModelKeysFile(env: MuseEnvironment): string {
+  const override = env.MUSE_MODEL_KEYS_FILE?.trim();
+  if (override && override.length > 0) {
+    return override;
+  }
+  return pathJoin(homedir(), ".muse", "models.json");
+}
+
+/**
+ * Merge model API keys saved by `muse setup model` into the env
+ * record. Env always wins on conflict — a one-off shell export
+ * stays effective. The file shape comes from `setup-model.ts`:
+ *   { providers: { openai: { token, suggestedModel }, ... } }
+ *
+ * Recognised file ids → env keys:
+ *   openai      → OPENAI_API_KEY
+ *   anthropic   → ANTHROPIC_API_KEY
+ *   gemini      → GEMINI_API_KEY
+ *   openrouter  → OPENROUTER_API_KEY
+ *   ollama      → OLLAMA_BASE_URL  (the file's `token` field is
+ *                                   the URL, not a secret)
+ *
+ * Sync read by design — `createMuseRuntimeAssembly` is sync and
+ * reads env directly; the file fallback rides the same path.
+ */
+export function mergeModelKeysFromFile(env: MuseEnvironment): MuseEnvironment {
+  const file = readCredentialsSync(resolveModelKeysFile(env));
+  if (Object.keys(file).length === 0) {
+    return env;
+  }
+  const fileKeyForEnv: Record<string, string | undefined> = {};
+  const map: ReadonlyArray<{ id: string; envKey: string }> = [
+    { envKey: "OPENAI_API_KEY", id: "openai" },
+    { envKey: "ANTHROPIC_API_KEY", id: "anthropic" },
+    { envKey: "GEMINI_API_KEY", id: "gemini" },
+    { envKey: "OPENROUTER_API_KEY", id: "openrouter" },
+    { envKey: "OLLAMA_BASE_URL", id: "ollama" }
+  ];
+  for (const entry of map) {
+    const token = stringField(file[entry.id], "token");
+    if (token && token.length > 0) {
+      fileKeyForEnv[entry.envKey] = token;
+    }
+  }
+  if (Object.keys(fileKeyForEnv).length === 0) {
+    return env;
+  }
+  // Env wins: spread file first, env second.
+  return { ...fileKeyForEnv, ...env };
+}
+
 export function buildCalendarRegistry(env: MuseEnvironment): CalendarProviderRegistry {
   const registry = new CalendarProviderRegistry();
   const requested = (env.MUSE_CALENDAR_PROVIDERS?.trim() || "local")

@@ -35,6 +35,7 @@ import {
   createApiServerOptions,
   createLoopbackMcpToolsFromEnv,
   createMuseRuntimeAssembly,
+  mergeModelKeysFromFile,
   parseBoolean,
   parseInteger,
   requireEnv,
@@ -567,6 +568,46 @@ describe("autoconfigure", () => {
     const assembly = createMuseRuntimeAssembly({ env: { GEMINI_API_KEY: "fake-key-for-test" } });
     expect(assembly.agentRuntime).toBeDefined();
     expect(assembly.defaultModel).toBe("gemini/gemini-2.0-flash");
+  });
+
+  it("mergeModelKeysFromFile lifts ~/.muse/models.json keys into env (env wins on conflict)", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const root = mkdtempSync(join(tmpdir(), "muse-modelkeys-"));
+    const file = join(root, "models.json");
+    writeFileSync(file, JSON.stringify({
+      providers: {
+        anthropic: { suggestedModel: "anthropic/claude-haiku-4-5", token: "from-file-anthropic" },
+        gemini: { suggestedModel: "gemini/gemini-2.0-flash", token: "from-file-gemini" },
+        ollama: { suggestedModel: "ollama/llama3.2", token: "http://localhost:11434" },
+        openai: { suggestedModel: "openai/gpt-4o-mini", token: "from-file-openai" }
+      },
+      version: 1
+    }), "utf8");
+
+    // file-only: empty env, all four file entries appear under their env keys.
+    const fileOnly = mergeModelKeysFromFile({ MUSE_MODEL_KEYS_FILE: file });
+    expect(fileOnly.OPENAI_API_KEY).toBe("from-file-openai");
+    expect(fileOnly.ANTHROPIC_API_KEY).toBe("from-file-anthropic");
+    expect(fileOnly.GEMINI_API_KEY).toBe("from-file-gemini");
+    expect(fileOnly.OLLAMA_BASE_URL).toBe("http://localhost:11434");
+
+    // env wins on conflict: a one-off shell export stays effective.
+    const merged = mergeModelKeysFromFile({
+      MUSE_MODEL_KEYS_FILE: file,
+      OPENAI_API_KEY: "from-env-openai"
+    });
+    expect(merged.OPENAI_API_KEY).toBe("from-env-openai");
+    expect(merged.ANTHROPIC_API_KEY).toBe("from-file-anthropic"); // file still fills in
+
+    // Missing file → identity (env unchanged, no crash).
+    const noFile = mergeModelKeysFromFile({
+      MUSE_MODEL_KEYS_FILE: join(root, "missing.json"),
+      OPENAI_API_KEY: "stays"
+    });
+    expect(noFile.OPENAI_API_KEY).toBe("stays");
+    expect(noFile.GEMINI_API_KEY).toBeUndefined();
   });
 
   it("buildMessagingRegistry honours env tokens, the credentials file, and env-overrides-file", async () => {

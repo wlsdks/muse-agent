@@ -138,6 +138,7 @@ import {
   buildTasksRegistry,
   buildVoiceRegistry,
   ensureNotesDir,
+  mergeModelKeysFromFile,
   resolveCredentialsFile,
   resolveNotesDir,
   resolveRemindersFile,
@@ -147,8 +148,10 @@ import {
 export {
   buildMessagingRegistry,
   buildVoiceRegistry,
+  mergeModelKeysFromFile,
   resolveLocalCalendarFile,
   resolveMessagingCredentialsFile,
+  resolveModelKeysFile,
   resolveNotesDir,
   resolveRemindersFile,
   resolveTasksFile
@@ -260,7 +263,7 @@ export class ConfigurationError extends Error {
 }
 
 export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}): MuseRuntimeAssembly {
-  const env = options.env ?? process.env;
+  const env = mergeModelKeysFromFile(options.env ?? process.env);
   const db = options.db;
   const authService = createAuthService(env, db);
   const agentSpecRegistry = db ? new KyselyAgentSpecRegistry(db) : new InMemoryAgentSpecRegistry();
@@ -569,7 +572,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
 
 
 export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
-  const env = options.env ?? process.env;
+  const env = mergeModelKeysFromFile(options.env ?? process.env);
   const assembly = createMuseRuntimeAssembly(options);
 
   return {

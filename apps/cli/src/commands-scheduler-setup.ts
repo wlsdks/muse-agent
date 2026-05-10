@@ -128,18 +128,21 @@ async function renderSetupStatus(): Promise<string> {
   const lines: string[] = ["Muse setup status:"];
 
   const modelEnv = env.MUSE_MODEL?.trim() ?? "";
-  const apiKeyHits = countConfiguredApiKeys(env);
-  if (modelEnv.length > 0 || apiKeyHits.total > 0) {
+  const modelKeysFile = env.MUSE_MODEL_KEYS_FILE?.trim() && env.MUSE_MODEL_KEYS_FILE.trim().length > 0
+    ? env.MUSE_MODEL_KEYS_FILE.trim()
+    : pathJoin(home, ".muse", "models.json");
+  const modelKeyHits = await readModelKeyState(modelKeysFile, env);
+  if (modelEnv.length > 0 || modelKeyHits.length > 0) {
     const detail: string[] = [];
     if (modelEnv.length > 0) {
       detail.push(`MUSE_MODEL=${modelEnv}`);
     }
-    if (apiKeyHits.total > 0) {
-      detail.push(`${apiKeyHits.total} provider key(s): ${apiKeyHits.names.join(", ")}`);
+    if (modelKeyHits.length > 0) {
+      detail.push(`${modelKeyHits.length.toString()} provider key(s): ${modelKeyHits.join(", ")}`);
     }
     lines.push(`  [ok]   model — ${detail.join(", ")}`);
   } else {
-    lines.push("  [todo] model — set MUSE_MODEL and a provider key (OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENROUTER_API_KEY / OLLAMA_BASE_URL)");
+    lines.push("  [todo] model — run `muse setup model` or export OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENROUTER_API_KEY / OLLAMA_BASE_URL");
   }
 
   const mcpFile = env.MUSE_MCP_CONFIG?.trim() && env.MUSE_MCP_CONFIG.trim().length > 0
@@ -209,6 +212,40 @@ async function renderSetupStatus(): Promise<string> {
   return `${lines.join("\n")}\n`;
 }
 
+async function readModelKeyState(
+  file: string,
+  env: Record<string, string | undefined>
+): Promise<readonly string[]> {
+  let storedProviders: Record<string, unknown> = {};
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    const parsed = JSON.parse(raw) as { providers?: Record<string, unknown> };
+    if (parsed && typeof parsed === "object" && parsed.providers && typeof parsed.providers === "object") {
+      storedProviders = parsed.providers;
+    }
+  } catch {
+    // missing or malformed → treat as empty
+  }
+  const lines: string[] = [];
+  const probe = (id: string, envKey: string): void => {
+    const fromEnv = env[envKey]?.trim();
+    const fromFile = isRecord(storedProviders[id]) && typeof storedProviders[id].token === "string"
+      ? "file"
+      : undefined;
+    if (fromEnv && fromEnv.length > 0) {
+      lines.push(`${id} (env)`);
+    } else if (fromFile) {
+      lines.push(`${id} (file)`);
+    }
+  };
+  probe("openai", "OPENAI_API_KEY");
+  probe("anthropic", "ANTHROPIC_API_KEY");
+  probe("gemini", "GEMINI_API_KEY");
+  probe("openrouter", "OPENROUTER_API_KEY");
+  probe("ollama", "OLLAMA_BASE_URL");
+  return lines;
+}
+
 async function readMessagingProviderState(
   file: string,
   env: Record<string, string | undefined>
@@ -244,18 +281,6 @@ async function readMessagingProviderState(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function countConfiguredApiKeys(env: Record<string, string | undefined>): { total: number; names: string[] } {
-  const candidates: ReadonlyArray<{ key: string; label: string }> = [
-    { key: "OPENAI_API_KEY", label: "openai" },
-    { key: "ANTHROPIC_API_KEY", label: "anthropic" },
-    { key: "GEMINI_API_KEY", label: "gemini" },
-    { key: "OPENROUTER_API_KEY", label: "openrouter" },
-    { key: "OLLAMA_BASE_URL", label: "ollama" }
-  ];
-  const present = candidates.filter((entry) => (env[entry.key] ?? "").trim().length > 0);
-  return { names: present.map((entry) => entry.label), total: present.length };
 }
 
 async function readMcpEntryCount(file: string): Promise<number> {
