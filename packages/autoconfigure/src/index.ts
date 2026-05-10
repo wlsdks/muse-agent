@@ -116,6 +116,15 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { MuseDatabase } from "@muse/db";
 import type { Kysely } from "kysely";
 
+import {
+  parseBoolean,
+  parseCsv,
+  parseInteger,
+  parseNonNegativeFloat,
+  parseOptionalString,
+  parsePositiveFloat,
+  parseSloErrorRate
+} from "./env-parsers.js";
 import { createResponseFilters } from "./response-filters.js";
 
 import {
@@ -676,14 +685,6 @@ export function requireEnv(env: MuseEnvironment, key: string): string {
   return value;
 }
 
-export function parseBoolean(value: string | undefined, fallback: boolean): boolean {
-  if (value === undefined) {
-    return fallback;
-  }
-
-  return value === "1" || value.toLowerCase() === "true" || value.toLowerCase() === "yes";
-}
-
 function createPersonalToolExposurePolicy(env: MuseEnvironment): ToolExposurePolicy {
   // Personal pivot: the agent operates in a single-user environment
   // with no shared workspace to protect, so the workspace-mutation-
@@ -696,15 +697,6 @@ function createPersonalToolExposurePolicy(env: MuseEnvironment): ToolExposurePol
   });
 }
 
-
-export function parseInteger(value: string | undefined, fallback: number): number {
-  if (value === undefined || value.trim().length === 0) {
-    return fallback;
-  }
-
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
 
 /**
  * Resolve the default model identifier the runtime should use. Honors
@@ -723,6 +715,13 @@ import {
 } from "./autoconfigure-model-provider.js";
 
 export { createModelProvider, resolveDefaultModel };
+
+export {
+  parseBoolean,
+  parseCsv,
+  parseInteger,
+  parseOptionalString
+} from "./env-parsers.js";
 
 function createScheduledAgentExecutor(
   runtime: () => AgentRuntime | undefined,
@@ -851,44 +850,6 @@ export function createLoopbackMcpToolsFromEnv(env: MuseEnvironment): readonly Mu
   }
 
   return servers.flatMap((server) => createLoopbackMcpMuseTools(server));
-}
-
-function parseSloErrorRate(value: string | undefined, fallback: number): number {
-  const parsed = value === undefined ? Number.NaN : Number.parseFloat(value);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
-    return fallback;
-  }
-  return parsed;
-}
-
-function parsePositiveFloat(value: string | undefined, fallback: number): number {
-  const parsed = value === undefined ? Number.NaN : Number.parseFloat(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return fallback;
-  }
-  return parsed;
-}
-
-function parseNonNegativeFloat(value: string | undefined, fallback: number): number {
-  const parsed = value === undefined ? Number.NaN : Number.parseFloat(value);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return fallback;
-  }
-  return parsed;
-}
-
-export function parseCsv(value: string | undefined): readonly string[] | undefined {
-  const entries = value
-    ?.split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-
-  return entries && entries.length > 0 ? entries : undefined;
-}
-
-export function parseOptionalString(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed && trimmed.length > 0 ? trimmed : undefined;
 }
 
 function createAuthService(env: MuseEnvironment, db: Kysely<MuseDatabase> | undefined): MuseAuth | undefined {

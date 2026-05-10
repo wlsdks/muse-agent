@@ -10,7 +10,8 @@ import {
   type ModelProvider
 } from "@muse/model";
 
-import { parseCsv, parseOptionalString, type MuseEnvironment } from "./index.js";
+import { parseCsv, parseOptionalString } from "./env-parsers.js";
+import type { MuseEnvironment } from "./index.js";
 
 /**
  * Resolve the default model identifier the runtime should use.

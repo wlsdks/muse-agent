@@ -4,11 +4,9 @@
  * `createAgentRuntime`. Extracted from `index.ts` to keep the big
  * runtime-assembly factory focused on wiring, not on filter policy.
  *
- * Uses hoisted `function` declarations from `./index.js`
- * (parseBoolean / parseInteger / parseCsv / parseOptionalString)
- * via deferred-use circular import — safe because the parsers are
- * only invoked from within `createResponseFilters` after the index
- * module has finished initializing.
+ * The env parsers live in `./env-parsers.js` so this module doesn't
+ * have to import from `index.js` (the prior arrangement worked via
+ * hoisted-function circular import; the dedicated module is cleaner).
  */
 
 import {
@@ -29,7 +27,8 @@ import {
   createZeroResultOverclaimResponseFilter
 } from "@muse/agent-core";
 
-import { parseBoolean, parseCsv, parseInteger, parseOptionalString, type MuseEnvironment } from "./index.js";
+import { parseBoolean, parseCsv, parseInteger, parseOptionalString } from "./env-parsers.js";
+import type { MuseEnvironment } from "./index.js";
 
 function responseLocales(env: MuseEnvironment): ReadonlySet<"ko" | "en"> {
   const raw = parseCsv(env.MUSE_RESPONSE_LOCALES) ?? ["ko", "en"];
