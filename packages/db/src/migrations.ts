@@ -290,15 +290,12 @@ export const migrations: readonly SqlMigration[] = [
         severity VARCHAR(32) NOT NULL,
         status VARCHAR(32) NOT NULL DEFAULT 'open',
         message TEXT NOT NULL,
-        target VARCHAR(255),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         acknowledged_at TIMESTAMPTZ
       );
 
       CREATE INDEX IF NOT EXISTS idx_admin_alerts_status_created_at
         ON admin_alerts(status, created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_admin_alerts_target_created_at
-        ON admin_alerts(target, created_at DESC);
 
       CREATE TABLE IF NOT EXISTS admin_cost_usage (
         id VARCHAR(128) PRIMARY KEY,

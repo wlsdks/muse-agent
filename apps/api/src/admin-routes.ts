@@ -246,13 +246,11 @@ function parseAlertInput(value: unknown): ParseResult<AdminAlertInput> {
     return severity;
   }
 
-  const target = optionalString(value.target);
   return {
     ok: true,
     value: {
       message: value.message.trim(),
-      ...(severity.value ? { severity: severity.value } : {}),
-      ...(target ? { target } : {})
+      ...(severity.value ? { severity: severity.value } : {})
     }
   };
 }

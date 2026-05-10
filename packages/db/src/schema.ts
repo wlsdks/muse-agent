@@ -38,7 +38,6 @@ export interface AdminAlertTable {
   readonly severity: "info" | "warning" | "critical";
   readonly status: "open" | "acknowledged" | "resolved";
   readonly message: string;
-  readonly target: string | null;
   readonly created_at: Timestamp;
   readonly acknowledged_at: NullableTimestamp;
 }

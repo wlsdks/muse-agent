@@ -16,7 +16,6 @@ export interface AdminAlert {
   readonly severity: AdminAlertSeverity;
   readonly status: AdminAlertStatus;
   readonly message: string;
-  readonly target?: string;
   readonly createdAt: Date;
 }
 
@@ -42,7 +41,6 @@ export interface AdminAlertInput {
   readonly id?: string;
   readonly severity?: AdminAlertSeverity;
   readonly message: string;
-  readonly target?: string;
 }
 
 export interface InMemoryAdminOperationsStoreOptions {
@@ -81,8 +79,7 @@ export class InMemoryAdminOperationsStore implements AdminOperationsStore {
       id: input.id ?? this.idFactory("alert"),
       message: input.message,
       severity: input.severity ?? "warning",
-      status: "open",
-      ...(input.target ? { target: input.target } : {})
+      status: "open"
     };
 
     this.alerts.set(alert.id, alert);
@@ -220,8 +217,7 @@ export function createAdminAlertInsert(
     id: input.id ?? options.idFactory("alert"),
     message: input.message,
     severity: input.severity ?? "warning",
-    status: "open",
-    target: input.target ?? null
+    status: "open"
   };
 }
 
@@ -243,8 +239,7 @@ export function mapAdminAlertRow(row: AdminAlertRow): AdminAlert {
     id: row.id,
     message: row.message,
     severity: row.severity,
-    status: row.status === "acknowledged" ? "open" : row.status,
-    target: row.target ?? undefined
+    status: row.status === "acknowledged" ? "open" : row.status
   };
 }
 
