@@ -1,4 +1,5 @@
 import { MessagingProviderError } from "./errors.js";
+import { readInbox } from "./inbox-store.js";
 import { clampInboundLimit, tryParseJson } from "./provider-helpers.js";
 import { readSlackAfter, writeSlackAfter } from "./slack-after-store.js";
 import type {
@@ -20,10 +21,19 @@ export interface SlackProviderOptions {
    * When set, `pollUpdates` reads/writes a per-channel `ts` cursor
    * through this file (atomic tmp+rename). Without it, each
    * `pollUpdates` call is snapshot-style — the most recent `limit`
-   * messages currently visible. The existing `fetchInbound` is
-   * unaffected — Phase 2.d.1 only adds the polling foundation.
+   * messages currently visible.
    */
   readonly afterFile?: string;
+  /**
+   * When set, `fetchInbound` reads from this persisted inbox file
+   * (Phase 2.d.4 — mirrors Discord/Telegram). The Phase 2.d.3
+   * polling daemon writes here, so the read API and the daemon
+   * converge on the same store. When `source` is supplied alongside,
+   * results are filtered to that channel id; otherwise all entries
+   * are returned. Without `inboxFile`, fetchInbound stays in
+   * snapshot mode and `source` remains required.
+   */
+  readonly inboxFile?: string;
 }
 
 const DEFAULT_BASE_URL = "https://slack.com/api";
@@ -57,12 +67,14 @@ export class SlackProvider implements MessagingProvider {
   private readonly fetchImpl: typeof globalThis.fetch;
   private readonly baseUrl: string;
   private readonly afterFile: string | undefined;
+  private readonly inboxFile: string | undefined;
 
   constructor(options: SlackProviderOptions) {
     this.token = options.token;
     this.fetchImpl = options.fetch ?? globalThis.fetch;
     this.baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
     this.afterFile = options.afterFile;
+    this.inboxFile = options.inboxFile;
   }
 
   describe(): MessagingProviderInfo {
@@ -74,20 +86,24 @@ export class SlackProvider implements MessagingProvider {
   }
 
   /**
-   * One-shot fetch of recent messages from a single channel via
-   * Slack's `conversations.history` endpoint. Like Discord, Slack
-   * is per-channel (no global "what's incoming" stream), so the
-   * caller MUST pass the channel id as `options.source`. The
-   * Real-time Messaging / Socket Mode push delivery lands in
-   * Phase 2.b.
-   *
-   * Slack returns each message's `ts` (an epoch-seconds string with
-   * microsecond precision); we surface that both as the receipt id
-   * AND parse it into ISO-8601 for `receivedAtIso`. Bot messages
-   * (subtype="bot_message" or no `user`) are kept — the LLM may want
-   * to read its own outgoing trail too.
+   * Read-side surface. When `inboxFile` is configured, returns the
+   * persisted entries the polling daemon wrote (Phase 2.d.3+4); a
+   * `source` option filters to that channel id, unset returns all.
+   * When `inboxFile` isn't configured, falls through to a live
+   * `conversations.history` snapshot — preserves the pre-2.d.4
+   * one-shot path that the CLI/REST contract tests rely on, with
+   * `source` still required in that mode.
    */
   async fetchInbound(options?: InboundFetchOptions): Promise<readonly InboundMessage[]> {
+    if (this.inboxFile) {
+      const limit = clampInboundLimit(options?.limit);
+      const all = await readInbox(this.inboxFile, limit);
+      const source = options?.source?.trim();
+      if (!source || source.length === 0) {
+        return all;
+      }
+      return all.filter((message) => message.source === source);
+    }
     return this.fetchHistory(options, false);
   }
 

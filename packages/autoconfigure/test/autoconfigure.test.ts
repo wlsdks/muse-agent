@@ -794,15 +794,26 @@ describe("autoconfigure", () => {
     expect(seenUrls[0]).toContain("&after=1099999999999999999");
   });
 
-  it("buildMessagingRegistry wires MUSE_SLACK_AFTER_FILE into the SlackProvider", async () => {
+  it("buildMessagingRegistry wires after + inbox files into the SlackProvider", async () => {
     const { mkdtempSync, promises: fs } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
     const { SlackProvider } = await import("@muse/messaging");
     const root = mkdtempSync(join(tmpdir(), "muse-slack-wire-"));
     const afterFile = join(root, "after.json");
+    const inboxFile = join(root, "inbox.json");
     await fs.writeFile(afterFile, JSON.stringify({
       after: { "C-9": "1700000000.123456" },
+      version: 1
+    }), "utf8");
+    await fs.writeFile(inboxFile, JSON.stringify({
+      inbox: [{
+        messageId: "1700000099.999999",
+        providerId: "slack",
+        receivedAtIso: "2026-05-11T00:00:00.000Z",
+        source: "C-9",
+        text: "from inbox file"
+      }],
       version: 1
     }), "utf8");
     const seenBodies: string[] = [];
@@ -816,8 +827,16 @@ describe("autoconfigure", () => {
     try {
       const registry = buildMessagingRegistry({
         MUSE_SLACK_AFTER_FILE: afterFile,
-        MUSE_SLACK_BOT_TOKEN: "xoxb-test"
+        MUSE_SLACK_BOT_TOKEN: "xoxb-test",
+        MUSE_SLACK_INBOX_FILE: inboxFile
       });
+      // fetchInbound goes through the inbox file once configured.
+      // Slack API must not be hit here.
+      const inboxRead = await registry.fetchInbound("slack", { source: "C-9" });
+      expect(inboxRead.map((m) => m.text)).toEqual(["from inbox file"]);
+      expect(seenBodies).toEqual([]);
+      // pollUpdates is the Slack-API-side ingestion path the daemon
+      // uses; must include the stored ts cursor in the form body.
       const slack = registry.require("slack");
       expect(slack).toBeInstanceOf(SlackProvider);
       await (slack as InstanceType<typeof SlackProvider>).pollUpdates({ source: "C-9" });

@@ -530,10 +530,13 @@ export function buildMessagingRegistry(env: MuseEnvironment): MessagingProviderR
   const slackToken = tokenFor("MUSE_SLACK_BOT_TOKEN", "slack");
   if (slackToken) {
     // Phase 2.d.1+2: afterFile drives pollUpdates' per-channel ts
-    // cursor. Touched only on demand, missing file is fine — first
-    // poll falls back to Slack's newest-first snapshot.
+    // cursor. Phase 2.d.4: inboxFile makes fetchInbound serve the
+    // daemon-fed store (channel-filtered when source is given).
+    // Both files are wired unconditionally; the provider only
+    // touches them on demand, so an absent file is fine.
     registry.register(new SlackProvider({
       afterFile: resolveSlackAfterFile(env),
+      inboxFile: resolveSlackInboxFile(env),
       token: slackToken
     }));
   }

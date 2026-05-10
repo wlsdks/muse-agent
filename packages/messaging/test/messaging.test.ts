@@ -447,6 +447,51 @@ describe("slack-after-store", () => {
   });
 });
 
+describe("SlackProvider.fetchInbound inbox-file branch", () => {
+  it("when inboxFile is configured, fetchInbound reads from the persisted store and does not hit Slack API", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-slack-inbox-"));
+    const inboxFile = join(dir, "slack-inbox.json");
+    const { promises: fs } = await import("node:fs");
+    await fs.writeFile(inboxFile, JSON.stringify({
+      inbox: [
+        { messageId: "1700000001.000100", providerId: "slack", receivedAtIso: "2026-05-11T00:00:00Z", source: "C-A", text: "in C-A" },
+        { messageId: "1700000002.000200", providerId: "slack", receivedAtIso: "2026-05-11T00:01:00Z", source: "C-B", text: "in C-B" },
+        { messageId: "1700000003.000300", providerId: "slack", receivedAtIso: "2026-05-11T00:02:00Z", source: "C-A", text: "in C-A again" }
+      ],
+      version: 1
+    }), "utf8");
+    let fetchCalls = 0;
+    const provider = new SlackProvider({
+      fetch: async () => { fetchCalls += 1; return fakeJsonResponse({ messages: [], ok: true }); },
+      inboxFile,
+      token: "x"
+    });
+    // No `source` → all channels (newest-first).
+    const all = await provider.fetchInbound({ limit: 10 });
+    expect(all.map((m) => m.messageId)).toEqual(["1700000003.000300", "1700000002.000200", "1700000001.000100"]);
+    // With `source` → filtered to that channel.
+    const onlyA = await provider.fetchInbound({ limit: 10, source: "C-A" });
+    expect(onlyA.map((m) => m.messageId)).toEqual(["1700000003.000300", "1700000001.000100"]);
+    expect(fetchCalls).toBe(0);
+  });
+
+  it("pollUpdates still hits Slack API even when inboxFile is configured", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-slack-poll-with-inbox-"));
+    const inboxFile = join(dir, "slack-inbox.json");
+    let seenBody = "";
+    const provider = new SlackProvider({
+      fetch: async (_url, init) => {
+        seenBody = String(init?.body ?? "");
+        return fakeJsonResponse({ messages: [], ok: true });
+      },
+      inboxFile,
+      token: "x"
+    });
+    await provider.pollUpdates({ source: "C-1" });
+    expect(seenBody).toContain("channel=C-1");
+  });
+});
+
 describe("SlackProvider.pollUpdates", () => {
   it("without afterFile, polls without oldest= (snapshot mode)", async () => {
     let seenBody = "";
