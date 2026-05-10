@@ -626,6 +626,77 @@ describe("cli program", () => {
     expect(combined).toContain("openai-tts");
   });
 
+  it("notes list / read / search / save / append hit the /api/notes routes", async () => {
+    const { io, output } = captureOutput();
+    const requests: Array<{ readonly body?: string; readonly method?: string; readonly url: string }> = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url, init) => {
+        requests.push({ body: typeof init?.body === "string" ? init.body : undefined, method: init?.method, url: String(url) });
+        const path = String(url);
+        if (path.includes("/api/notes/list")) {
+          return new Response(JSON.stringify({
+            dir: "",
+            entries: [{ isDirectory: false, name: "diary.md", sizeBytes: 42 }],
+            truncated: false
+          }));
+        }
+        if (path.includes("/api/notes/read")) {
+          return new Response(JSON.stringify({ content: "alpha\nbeta\n", path: "diary.md", sizeBytes: 12 }));
+        }
+        if (path.includes("/api/notes/search")) {
+          return new Response(JSON.stringify({ matches: [{ line: 2, path: "diary.md", snippet: "beta keyword" }] }));
+        }
+        if (path.endsWith("/api/notes/save")) {
+          return new Response(JSON.stringify({ created: true, path: "new.md", sizeBytes: 5 }));
+        }
+        if (path.endsWith("/api/notes/append")) {
+          return new Response(JSON.stringify({ path: "diary.md", sizeBytes: 18 }));
+        }
+        return new Response("{}");
+      }
+    });
+
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "notes", "list", "--subdir", "daily"],
+      { from: "node" }
+    );
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "notes", "read", "diary.md"],
+      { from: "node" }
+    );
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "notes", "search", "beta", "keyword", "--limit", "5"],
+      { from: "node" }
+    );
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "notes", "save", "new.md", "hello", "world", "--overwrite"],
+      { from: "node" }
+    );
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "notes", "append", "diary.md", "more", "text"],
+      { from: "node" }
+    );
+
+    expect(requests[0]?.url).toContain("/api/notes/list?subdir=daily");
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[1]?.url).toContain("/api/notes/read?path=diary.md");
+    expect(requests[1]?.method).toBe("GET");
+    expect(requests[2]?.url).toContain("/api/notes/search?");
+    expect(requests[2]?.url).toContain("query=beta+keyword");
+    expect(requests[2]?.url).toContain("limit=5");
+    expect(requests[3]?.method).toBe("POST");
+    expect(requests[3]?.url).toBe("http://api.test/api/notes/save");
+    expect(JSON.parse(requests[3]!.body!)).toMatchObject({ content: "hello world", overwrite: true, path: "new.md" });
+    expect(requests[4]?.method).toBe("POST");
+    expect(requests[4]?.url).toBe("http://api.test/api/notes/append");
+    expect(JSON.parse(requests[4]!.body!)).toMatchObject({ content: "more text", path: "diary.md" });
+
+    const combined = output.join("");
+    expect(combined).toContain("diary.md");
+    expect(combined).toContain("alpha");
+  });
+
   it("tasks list / add / complete / delete hit the /api/tasks routes", async () => {
     const { io, output } = captureOutput();
     const requests: Array<{ readonly body?: string; readonly method?: string; readonly url: string }> = [];
