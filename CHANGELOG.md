@@ -27,6 +27,16 @@ move from `Unreleased` to dated/versioned headings.
   plays through afplay/aplay. Falls back to a friendly stderr hint
   when no voice provider is configured. Shared playback helper
   (`voice-playback.ts`) ready for any future "speak this" surface.
+- **`muse remind` — passive personal reminders + `muse today` integration**.
+  `muse remind <when> <text...>` adds an entry to
+  `~/.muse/reminders.json` (or `MUSE_REMINDERS_FILE`). `<when>`
+  accepts the same grammar as task `--due` (ISO-8601 or relative
+  phrase, e.g. "tomorrow at 6pm"). `muse today` (both API and
+  CLI `--local`) now surfaces overdue + within-lookahead pending
+  reminders so the morning briefing is your reminder check-in.
+  Active firing through messaging (`muse remind --send-now`) is a
+  follow-up — this iter is read-only at fire time. Companion REST
+  surface: `GET/POST/DELETE /api/reminders` with `?status=pending|fired|all|due`.
 - **`muse setup messaging` interactive wizard** — `@clack/prompts`
   multiselect of Telegram / Discord / Slack / LINE, masked password
   prompt per token, persists to `~/.muse/messaging.json`

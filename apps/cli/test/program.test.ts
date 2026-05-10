@@ -2029,4 +2029,64 @@ describe("cli program", () => {
       restore("model", "MUSE_MODEL");
     }
   });
+
+  it("muse remind --local round-trips add → list → clear and surfaces overdue items in today", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-remind-"));
+    const remindersFile = path.join(root, "reminders.json");
+    const tasksFile = path.join(root, "tasks.json");
+    const notesDir = path.join(root, "notes");
+    const prev = {
+      reminders: process.env.MUSE_REMINDERS_FILE,
+      tasks: process.env.MUSE_TASKS_FILE,
+      notes: process.env.MUSE_NOTES_DIR
+    };
+    process.env.MUSE_REMINDERS_FILE = remindersFile;
+    process.env.MUSE_TASKS_FILE = tasksFile;
+    process.env.MUSE_NOTES_DIR = notesDir;
+    try {
+      // Add an overdue reminder via --local; ISO timestamp in 1970 is
+      // guaranteed in the past so it must show as (overdue) in today.
+      const { io: io1, output: output1 } = captureOutput();
+      const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("fetch in --local"); } });
+      await program1.parseAsync(
+        ["node", "muse", "remind", "1970-01-01T00:00:00Z", "ping", "old", "thing", "--local", "--json"],
+        { from: "node" }
+      );
+      const created = JSON.parse(output1.join("")) as { id: string; dueAt: string; text: string };
+      expect(created.text).toBe("ping old thing");
+      expect(created.dueAt.startsWith("1970-")).toBe(true);
+
+      const { io: io2, output: output2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("fetch in --local"); } });
+      await program2.parseAsync(["node", "muse", "remind", "list", "--local", "--json"], { from: "node" });
+      const listed = JSON.parse(output2.join("")) as { reminders: Array<{ id: string; text: string }>; total: number };
+      expect(listed.total).toBe(1);
+      expect(listed.reminders[0]?.id).toBe(created.id);
+
+      const { io: io3, output: output3 } = captureOutput();
+      const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("fetch in --local"); } });
+      await program3.parseAsync(["node", "muse", "today", "--local"], { from: "node" });
+      const text = output3.join("");
+      expect(text).toContain("Reminders (1):");
+      expect(text).toContain("ping old thing");
+      expect(text).toContain("(overdue)");
+
+      const { io: io4 } = captureOutput();
+      const program4 = createProgram({ ...io4, fetch: async () => { throw new Error("fetch in --local"); } });
+      await program4.parseAsync(["node", "muse", "remind", "clear", created.id, "--local"], { from: "node" });
+
+      const { io: io5, output: output5 } = captureOutput();
+      const program5 = createProgram({ ...io5, fetch: async () => { throw new Error("fetch in --local"); } });
+      await program5.parseAsync(["node", "muse", "remind", "list", "--status", "all", "--local", "--json"], { from: "node" });
+      const after = JSON.parse(output5.join("")) as { total: number };
+      expect(after.total).toBe(0);
+    } finally {
+      const restore = (key: keyof typeof prev, envKey: string): void => {
+        if (prev[key] === undefined) { delete process.env[envKey]; } else { process.env[envKey] = prev[key]!; }
+      };
+      restore("reminders", "MUSE_REMINDERS_FILE");
+      restore("tasks", "MUSE_TASKS_FILE");
+      restore("notes", "MUSE_NOTES_DIR");
+    }
+  });
 });

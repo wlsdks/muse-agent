@@ -17,10 +17,17 @@ import {
   createMuseRuntimeAssembly,
   resolveLocalCalendarFile,
   resolveNotesDir,
+  resolveRemindersFile,
   resolveTasksFile
 } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
-import { readTasks, serializeTask, type PersistedTask } from "@muse/mcp";
+import {
+  readReminders,
+  readTasks,
+  serializeReminder,
+  serializeTask,
+  type PersistedTask
+} from "@muse/mcp";
 import type { TextToSpeechProvider } from "@muse/voice";
 import type { Command } from "commander";
 
@@ -47,6 +54,7 @@ interface TodayBriefing {
   readonly tasks?: readonly { readonly id: string; readonly title: string }[];
   readonly events?: readonly { readonly id: string; readonly title: string; readonly startsAtIso: string }[];
   readonly notes?: readonly string[];
+  readonly reminders?: readonly { readonly id: string; readonly text: string; readonly dueAt: string }[];
 }
 
 export interface TodayCommandHelpers {
@@ -117,6 +125,7 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
       }
 
       io.stdout(`Today (${shortDateLabel(briefing.generatedAt)}, next ${briefing.lookaheadHours}h${options.local ? ", local" : ""})\n`);
+      io.stdout(formatReminders(briefing.reminders, briefing.generatedAt));
       io.stdout(formatTasks(briefing.tasks));
       io.stdout(formatEvents(briefing.events));
       io.stdout(formatNotes(briefing.notes));
@@ -226,13 +235,15 @@ async function composeLocalBriefing(lookaheadHours: number): Promise<TodayBriefi
   const tasksFile = resolveTasksFile(env);
   const notesDir = resolveNotesDir(env);
   const calendarFile = resolveLocalCalendarFile(env);
+  const remindersFile = resolveRemindersFile(env);
   const now = new Date();
   const horizon = new Date(now.getTime() + lookaheadHours * 3_600_000);
 
-  const [tasks, events, notes] = await Promise.all([
+  const [tasks, events, notes, reminders] = await Promise.all([
     readOpenTasks(tasksFile).catch(() => undefined),
     readLocalEvents(calendarFile, now, horizon).catch(() => undefined),
-    readRecentNotes(notesDir).catch(() => undefined)
+    readRecentNotes(notesDir).catch(() => undefined),
+    readDueReminders(remindersFile, horizon).catch(() => undefined)
   ]);
 
   return {
@@ -240,8 +251,32 @@ async function composeLocalBriefing(lookaheadHours: number): Promise<TodayBriefi
     generatedAt: now.toISOString(),
     lookaheadHours,
     notes,
+    reminders,
     tasks
   };
+}
+
+async function readDueReminders(
+  file: string,
+  horizon: Date
+): Promise<readonly { id: string; text: string; dueAt: string }[]> {
+  const all = await readReminders(file);
+  return all
+    .filter((reminder) => {
+      if (reminder.status !== "pending") {
+        return false;
+      }
+      const due = Date.parse(reminder.dueAt);
+      if (Number.isNaN(due)) {
+        return false;
+      }
+      return due <= horizon.getTime();
+    })
+    .sort((left, right) => left.dueAt.localeCompare(right.dueAt))
+    .map((reminder) => {
+      const serialized = serializeReminder(reminder);
+      return { dueAt: String(serialized.dueAt), id: String(serialized.id), text: String(serialized.text) };
+    });
 }
 
 async function readLocalEvents(
@@ -340,6 +375,29 @@ function parseLookaheadHours(raw: string | undefined): number {
 
 function shortDateLabel(generatedAt: string): string {
   return generatedAt.slice(0, 10);
+}
+
+function formatReminders(
+  reminders: readonly { readonly id: string; readonly text: string; readonly dueAt: string }[] | undefined,
+  generatedAt: string
+): string {
+  if (!reminders || reminders.length === 0) {
+    return "";
+  }
+  const nowMs = Date.parse(generatedAt);
+  const lines = reminders.map((reminder) => {
+    const dueMs = Date.parse(reminder.dueAt);
+    const overdue = Number.isFinite(dueMs) && Number.isFinite(nowMs) && dueMs < nowMs ? " (overdue)" : "";
+    return `  - [${reminder.id.slice(0, 12)}] ${shortDateTimeBrief(reminder.dueAt)}  ${reminder.text}${overdue}`;
+  });
+  return `\nReminders (${reminders.length}):\n${lines.join("\n")}\n`;
+}
+
+function shortDateTimeBrief(iso: string): string {
+  if (iso.length < 16) {
+    return iso;
+  }
+  return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
 }
 
 function formatTasks(tasks: readonly { readonly id: string; readonly title: string }[] | undefined): string {

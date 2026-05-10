@@ -30,6 +30,11 @@ import { promises as fs } from "node:fs";
 import { join, resolve as pathResolve } from "node:path";
 
 import type { CalendarEvent, CalendarProviderRegistry } from "@muse/calendar";
+import {
+  readReminders,
+  serializeReminder,
+  type PersistedReminder
+} from "@muse/mcp";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -45,6 +50,7 @@ interface TodayRoutesGate {
   readonly calendar?: CalendarProviderRegistry;
   readonly notesDir?: string;
   readonly tasksFile?: string;
+  readonly remindersFile?: string;
 }
 
 interface PersistedTaskRow {
@@ -69,10 +75,11 @@ export function registerTodayRoutes(server: FastifyInstance, gate: TodayRoutesGa
     const now = new Date();
     const horizon = new Date(now.getTime() + hours * 3_600_000);
 
-    const [tasks, events, notes] = await Promise.all([
+    const [tasks, events, notes, reminders] = await Promise.all([
       readOpenTasks(gate.tasksFile).catch(() => undefined),
       readUpcomingEvents(gate.calendar, now, horizon).catch(() => undefined),
-      readRecentNotes(gate.notesDir).catch(() => undefined)
+      readRecentNotes(gate.notesDir).catch(() => undefined),
+      readDueReminders(gate.remindersFile, now, horizon).catch(() => undefined)
     ]);
 
     return {
@@ -80,9 +87,40 @@ export function registerTodayRoutes(server: FastifyInstance, gate: TodayRoutesGa
       generatedAt: now.toISOString(),
       lookaheadHours: hours,
       notes,
+      reminders,
       tasks
     };
   });
+}
+
+/**
+ * Reminders surfaced in the briefing: anything pending whose dueAt
+ * is at-or-before the lookahead horizon. The window includes
+ * already-overdue reminders (dueAt < now) so the user sees them
+ * even if they skipped earlier briefings.
+ */
+async function readDueReminders(
+  file: string | undefined,
+  _now: Date,
+  horizon: Date
+): Promise<readonly Record<string, unknown>[] | undefined> {
+  if (!file) {
+    return undefined;
+  }
+  const all = await readReminders(file);
+  const surfaced = all.filter((reminder: PersistedReminder) => {
+    if (reminder.status !== "pending") {
+      return false;
+    }
+    const due = Date.parse(reminder.dueAt);
+    if (Number.isNaN(due)) {
+      return false;
+    }
+    return due <= horizon.getTime();
+  });
+  return surfaced
+    .sort((left, right) => left.dueAt.localeCompare(right.dueAt))
+    .map(serializeReminder);
 }
 
 async function readOpenTasks(tasksFile: string | undefined): Promise<readonly PersistedTaskRow[] | undefined> {
