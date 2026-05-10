@@ -169,6 +169,15 @@ interface ScheduledJobsResponse {
   readonly offset: number;
 }
 
+interface TokenCostDailyRow {
+  readonly day: string;
+  readonly model: string;
+  readonly promptTokens: number;
+  readonly completionTokens: number;
+  readonly totalTokens: number;
+  readonly totalCostUsd: number;
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -223,6 +232,7 @@ export function MuseConsole() {
           <NotesPanel client={client} />
           <MemoryPanel client={client} />
           <SchedulerPanel client={client} />
+          <TokenCostPanel client={client} />
           <CalendarEventsPanel client={client} />
           <RunsPanel runs={admin.data?.recentRuns ?? []} loading={admin.isLoading} />
           <ToolCatalogPanel tools={tools.data?.tools ?? []} loading={tools.isLoading} />
@@ -645,6 +655,64 @@ function SchedulerPanel({ client }: { readonly client: ApiClient }) {
                 {job.lastStatus.toLowerCase()}
               </span>
             ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function TokenCostPanel({ client }: { readonly client: ApiClient }) {
+  const cost = useQuery({
+    queryFn: () => client.get<readonly TokenCostDailyRow[]>("/api/admin/token-cost/daily?days=7"),
+    queryKey: ["token-cost-daily"],
+    // The route returns an array even when no data — retry: false keeps
+    // auth-failure 401/403 quiet.
+    retry: false
+  });
+
+  const rows = cost.data ?? [];
+  const totalCost = rows.reduce((sum, row) => sum + (Number(row.totalCostUsd) || 0), 0);
+  const totalTokens = rows.reduce((sum, row) => sum + (row.totalTokens || 0), 0);
+
+  // Group by model for the breakdown line — useful when the user is
+  // running multiple providers (e.g. gemini-2.0-flash + gpt-4o-mini).
+  const byModel = new Map<string, number>();
+  for (const row of rows) {
+    byModel.set(row.model, (byModel.get(row.model) ?? 0) + (Number(row.totalCostUsd) || 0));
+  }
+  const modelBreakdown = [...byModel.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 3);
+
+  return (
+    <section className="tool-surface compact" aria-label="LLM cost">
+      <div className="surface-heading">
+        <h2>LLM cost (7d)</h2>
+        <span>{cost.isLoading ? "Loading" : `$${totalCost.toFixed(4)}`}</span>
+      </div>
+      {cost.isError ? (
+        <p className="status-info" style={{ fontSize: "0.85em", margin: 0 }}>
+          Cost data is unavailable (admin auth required, or no recent runs).
+        </p>
+      ) : null}
+      {!cost.isLoading && !cost.isError && rows.length === 0 ? (
+        <p className="status-info" style={{ fontSize: "0.85em", margin: 0 }}>
+          No LLM usage in the last 7 days.
+        </p>
+      ) : null}
+      {rows.length > 0 ? (
+        <p style={{ fontSize: "0.85em", margin: "0 0 0.25rem 0" }}>
+          {totalTokens.toLocaleString()} tokens across {byModel.size} model{byModel.size === 1 ? "" : "s"}.
+        </p>
+      ) : null}
+      <ul className="record-list">
+        {modelBreakdown.map(([model, modelCost]) => (
+          <li key={`model-${model}`}>
+            <strong>{model}</strong>
+            <span style={{ color: "var(--muted, #888)", marginLeft: "0.5rem", fontSize: "0.85em" }}>
+              ${modelCost.toFixed(4)}
+            </span>
           </li>
         ))}
       </ul>

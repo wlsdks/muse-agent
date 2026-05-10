@@ -65,6 +65,13 @@ describe("MuseConsole", () => {
     expect(html).toMatch(/<h2>Scheduler<\/h2>/u);
   });
 
+  it("renders the LLM cost panel section heading", () => {
+    const html = renderConsole();
+    // Token-cost panel: aria-label "LLM cost", header "LLM cost (7d)".
+    expect(html).toContain('aria-label="LLM cost"');
+    expect(html).toMatch(/<h2>LLM cost \(7d\)<\/h2>/u);
+  });
+
   it("includes status metrics for tools and orchestrations counts", () => {
     const html = renderConsole();
     // Status strip metric labels — capitalised plural forms.
