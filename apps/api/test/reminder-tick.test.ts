@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { describe, expect, it, vi } from "vitest";
 
-import { startReminderTick } from "../src/reminder-tick.js";
+import { isQuietHour, parseQuietHours, startReminderTick } from "../src/reminder-tick.js";
 
 interface MessageSent {
   readonly providerId: string;
@@ -29,6 +29,43 @@ function seedReminders(file: string, dueAt: string): void {
     ]
   }), "utf8");
 }
+
+describe("parseQuietHours", () => {
+  it("parses valid <start>-<end> ranges", () => {
+    expect(parseQuietHours("23-7")).toEqual({ endHour: 7, startHour: 23 });
+    expect(parseQuietHours("0-6")).toEqual({ endHour: 6, startHour: 0 });
+    expect(parseQuietHours(" 22 - 06 ")).toBeUndefined(); // spaces around digits not supported
+    expect(parseQuietHours("22-06")).toEqual({ endHour: 6, startHour: 22 });
+  });
+
+  it("returns undefined for malformed / out-of-range / empty", () => {
+    expect(parseQuietHours(undefined)).toBeUndefined();
+    expect(parseQuietHours("")).toBeUndefined();
+    expect(parseQuietHours("midnight-noon")).toBeUndefined();
+    expect(parseQuietHours("24-7")).toBeUndefined();
+    expect(parseQuietHours("-1-7")).toBeUndefined();
+    expect(parseQuietHours("7-7")).toBeUndefined(); // ambiguous
+  });
+});
+
+describe("isQuietHour", () => {
+  it("normal range: inclusive start, exclusive end", () => {
+    const r = { endHour: 7, startHour: 1 };
+    expect(isQuietHour(0, r)).toBe(false);
+    expect(isQuietHour(1, r)).toBe(true);
+    expect(isQuietHour(6, r)).toBe(true);
+    expect(isQuietHour(7, r)).toBe(false);
+  });
+
+  it("midnight wrap (23-7 covers 23, 0..6)", () => {
+    const r = { endHour: 7, startHour: 23 };
+    expect(isQuietHour(22, r)).toBe(false);
+    expect(isQuietHour(23, r)).toBe(true);
+    expect(isQuietHour(0, r)).toBe(true);
+    expect(isQuietHour(6, r)).toBe(true);
+    expect(isQuietHour(7, r)).toBe(false);
+  });
+});
 
 describe("startReminderTick", () => {
   it("tickOnce delivers due reminders and marks them fired", async () => {
@@ -119,6 +156,42 @@ describe("startReminderTick", () => {
         reminders: Array<{ status: string }>;
       };
       expect(after.reminders[0]?.status).toBe("pending");
+    } finally {
+      handle.stop();
+    }
+  });
+
+  it("quiet hours: tickOnce skips firing inside the window, fires after it ends", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-tick-quiet-"));
+    const file = join(dir, "reminders.json");
+    seedReminders(file, "1970-01-01T00:00:00Z");
+    const sent: MessageSent[] = [];
+    let fakeHour = 2; // 02:00 — inside 23-7 window
+    const handle = startReminderTick({
+      destination: "@me",
+      now: () => {
+        const date = new Date("2026-05-11T00:00:00Z");
+        date.setHours(fakeHour);
+        return date;
+      },
+      providerId: "telegram",
+      quietHours: { endHour: 7, startHour: 23 },
+      registry: fakeRegistry(sent),
+      remindersFile: file
+    });
+    try {
+      // 02:00 → quiet, skip.
+      await handle.tickOnce();
+      expect(sent).toHaveLength(0);
+      const after1 = JSON.parse(readFileSync(file, "utf8")) as { reminders: Array<{ status: string }> };
+      expect(after1.reminders[0]?.status).toBe("pending");
+
+      // 09:00 → past the boundary; the queued reminder fires.
+      fakeHour = 9;
+      await handle.tickOnce();
+      expect(sent).toHaveLength(1);
+      const after2 = JSON.parse(readFileSync(file, "utf8")) as { reminders: Array<{ status: string }> };
+      expect(after2.reminders[0]?.status).toBe("fired");
     } finally {
       handle.stop();
     }

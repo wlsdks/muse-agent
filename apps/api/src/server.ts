@@ -26,7 +26,7 @@ import { registerCompatibilityRoutes } from "./compat-routes.js";
 import { registerNotesRoutes } from "./notes-routes.js";
 import { registerMessagingRoutes } from "./messaging-routes.js";
 import { registerRemindersRoutes } from "./reminders-routes.js";
-import { startReminderTick } from "./reminder-tick.js";
+import { parseQuietHours, startReminderTick } from "./reminder-tick.js";
 import { registerSchedulerRoutes, type SchedulerRouteScheduler } from "./scheduler-routes.js";
 import { registerTodayRoutes } from "./today-routes.js";
 import { registerVoiceRoutes } from "./voice-routes.js";
@@ -298,12 +298,14 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     && options.messaging.has(tickProvider)
   ) {
     const tickMsRaw = env.MUSE_REMINDER_TICK_MS ? Number(env.MUSE_REMINDER_TICK_MS) : undefined;
+    const quietHours = parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
     const tickHandle = startReminderTick({
       destination: tickDestination,
       errorLogger: (message) => server.log.warn(message),
       ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
       logger: (message) => server.log.info(message),
       providerId: tickProvider,
+      ...(quietHours ? { quietHours } : {}),
       registry: options.messaging,
       remindersFile: options.remindersFile
     });

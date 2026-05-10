@@ -68,6 +68,13 @@ The store already supports the read side (`status: "pending" |
 
 - User-configurable "don't ping me between 23:00 and 07:00";
   reminders queue inside that window and fire at 07:01.
+- Shipped: `MUSE_REMINDER_QUIET_HOURS=23-7` (inclusive start,
+  exclusive end; midnight-wrap supported). Daemon's `tickOnce`
+  short-circuits during the window — pending reminders stay
+  pending and the first tick after `endHour` flushes them.
+- Out of scope (still): batch delivery (combine N queued
+  reminders into one digest message). Today each one fires
+  individually as it always has.
 
 ## Contract surface (Phase A landing this iter)
 
