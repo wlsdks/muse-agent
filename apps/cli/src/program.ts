@@ -18,6 +18,7 @@ export { defaultCredentialPath } from "./credential-store.js";
 import { renderMuseStatusTui, type MuseStatusTuiModel } from "./tui.js";
 import { registerAuthCommands } from "./commands-auth.js";
 import { registerConfigCommands } from "./commands-config.js";
+import { registerListenCommand } from "./commands-listen.js";
 import { registerMcpCommands } from "./commands-mcp.js";
 import { registerOrchestrateCommands } from "./commands-orchestrate.js";
 import { registerCalendarCommands } from "./commands-calendar.js";
@@ -199,6 +200,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     writeStoredToken
   });
 
+  registerListenCommand(program, io, { apiRequest });
   registerMcpCommands(program, io, { apiRequest, writeOutput });
 
   registerSpecsCommands(program, io, { apiRequest, writeOutput });

@@ -138,6 +138,8 @@ import {
   resolveNotesDir,
   resolveTasksFile
 } from "./personal-providers.js";
+
+export { buildVoiceRegistry } from "./personal-providers.js";
 import {
   createConversationSummaryStore,
   createDebugReplayCaptureStore,

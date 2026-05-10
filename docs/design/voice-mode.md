@@ -1,8 +1,9 @@
 # Voice Mode — Design Doc
 
-Status: **In progress** — Phases A, B, D, E shipped. Phase C (`muse
-listen` CLI) is the next concrete implementation iter. Last
-updated 2026-05-10 (round 185 reconciliation).
+Status: **v1 complete** — Phases A, B, C, D, E shipped. Phase F
+(wake-word ambient mode + local Whisper.cpp / Piper / Gemini Live)
+remains deferred. Last updated 2026-05-10 (round 198 — Phase C
+landed in `apps/cli/src/commands-listen.ts`).
 
 This doc captures the design space for adding a voice interface to
 Muse: speak to it in natural language, hear it speak back.
@@ -135,10 +136,14 @@ since the two are always paired in voice-mode flows.
    `buildVoiceRegistry(env)` in `packages/autoconfigure/src/personal-providers.ts`
    wires them when `OPENAI_API_KEY` (or `MUSE_VOICE_OPENAI_API_KEY`)
    is set.
-3. **Phase C — PENDING**: `muse listen` CLI command. Sox dependency
-   check, push-to-talk via stdin, reply pipes through `afplay` (macOS)
-   / `aplay` (Linux). Natural next iter — see "Phase C contract"
-   below.
+3. **Phase C — DONE**: `muse listen` CLI command shipped in
+   `apps/cli/src/commands-listen.ts`. Sox boot check (which → exit
+   1 with install hint), push-to-talk via stdin, capture pipes
+   through `SpeechToTextProvider` → `/api/chat` →
+   `TextToSpeechProvider` → `afplay` (macOS) / `aplay` (Linux).
+   Process boundaries injected via `ListenShells` for testability.
+   Round 185 contract section below preserved as historical
+   record.
 4. **Phase D — DONE**: `/api/voice/stt` + `/api/voice/tts` +
    `/api/voice/providers` endpoints in `apps/api/src/voice-routes.ts`,
    auth-gated. Routes are registered only when the registry has at

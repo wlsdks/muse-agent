@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { EventEmitter } from "node:events";
+import { Readable } from "node:stream";
+import { Command } from "commander";
 import { createProgram, defaultConfigPath } from "../src/program.js";
+import { registerListenCommand, type ListenShells } from "../src/commands-listen.js";
 import { appendChatTurn } from "../src/tui.js";
 
 function captureOutput() {
@@ -1515,5 +1519,136 @@ describe("cli program", () => {
         process.env.MUSE_MCP_CONFIG = previous;
       }
     }
+  });
+
+  it("muse listen exits with a clear hint when sox is not installed", async () => {
+    const { io, output } = captureOutput();
+    const program = new Command();
+    program.exitOverride();
+    program.configureOutput({ writeOut: io.stdout, writeErr: io.stderr });
+    registerListenCommand(program, io, {
+      apiRequest: async () => ({}),
+      buildVoiceProviders: () => ({
+        stt: { describe: () => ({ description: "", displayName: "", id: "stub", local: false, supportedFormats: [] }), id: "stub", transcribe: async () => ({ text: "" }) },
+        tts: { describe: () => ({ availableVoices: [], description: "", displayName: "", id: "stub", local: false, supportedFormats: ["mp3"] }), id: "stub", synthesize: async () => ({ audio: new Uint8Array(0), format: "mp3", mimeType: "audio/mp3" }) }
+      }),
+      shells: {
+        playAudio: async () => undefined,
+        spawnRec: () => { throw new Error("should not be called"); },
+        waitForEnter: async () => undefined,
+        which: () => undefined
+      }
+    });
+    let exitError: unknown;
+    try {
+      await program.parseAsync(["node", "muse", "listen"], { from: "node" });
+    } catch (err) {
+      exitError = err;
+    }
+    expect(output.join("")).toContain("sox is not installed");
+    expect(exitError).toBeDefined();
+  });
+
+  it("muse listen exits with a clear hint when voice providers are not configured", async () => {
+    const { io, output } = captureOutput();
+    const program = new Command();
+    program.exitOverride();
+    program.configureOutput({ writeOut: io.stdout, writeErr: io.stderr });
+    registerListenCommand(program, io, {
+      apiRequest: async () => ({}),
+      buildVoiceProviders: () => ({}),
+      shells: {
+        playAudio: async () => undefined,
+        spawnRec: () => { throw new Error("should not be called"); },
+        waitForEnter: async () => undefined,
+        which: () => "/usr/bin/sox"
+      }
+    });
+    let exitError: unknown;
+    try {
+      await program.parseAsync(["node", "muse", "listen"], { from: "node" });
+    } catch (err) {
+      exitError = err;
+    }
+    expect(output.join("")).toContain("voice providers are not configured");
+    expect(exitError).toBeDefined();
+  });
+
+  it("muse listen completes the capture → STT → chat → TTS → play round-trip with mocked shells", async () => {
+    const { io, output } = captureOutput();
+    const program = new Command();
+    program.configureOutput({ writeOut: io.stdout, writeErr: io.stderr });
+
+    const apiCalls: Array<{ path: string; body?: Record<string, unknown> }> = [];
+    const playedFiles: string[] = [];
+    const sttCalls: Array<{ language?: string; bytes: number }> = [];
+    const ttsCalls: Array<{ text: string; voice?: string; format?: string }> = [];
+
+    const fakeRec: ListenShells["spawnRec"] = () => {
+      const stdout = new Readable();
+      stdout._read = (): void => {};
+      stdout.push(Buffer.from("RIFFfakefake-WAV-bytes"));
+      stdout.push(null);
+      const child = new EventEmitter() as EventEmitter & { stdout: Readable; kill: (signal: string) => void };
+      child.stdout = stdout;
+      child.kill = (): void => {
+        process.nextTick(() => child.emit("close", 0));
+      };
+      return child as ReturnType<ListenShells["spawnRec"]>;
+    };
+
+    let enterCount = 0;
+    const waitForEnter: ListenShells["waitForEnter"] = async () => {
+      enterCount += 1;
+    };
+
+    registerListenCommand(program, io, {
+      apiRequest: async (_io, _command, path, body) => {
+        apiCalls.push({ body, path });
+        return { content: "안녕하세요! 도움이 필요하시면 말씀해주세요." };
+      },
+      buildVoiceProviders: () => ({
+        stt: {
+          describe: () => ({ description: "", displayName: "Whisper Stub", id: "stub-stt", local: false, supportedFormats: ["audio/wav"] }),
+          id: "stub-stt",
+          transcribe: async (request) => {
+            sttCalls.push({ bytes: request.audio.byteLength, language: request.language });
+            return { text: "오늘 날씨 어때?" };
+          }
+        },
+        tts: {
+          describe: () => ({ availableVoices: ["alloy"], description: "", displayName: "TTS Stub", id: "stub-tts", local: false, supportedFormats: ["mp3"] }),
+          id: "stub-tts",
+          synthesize: async (request) => {
+            ttsCalls.push({ format: request.format, text: request.text, voice: request.voice });
+            return { audio: new Uint8Array([0x49, 0x44, 0x33]), format: "mp3", mimeType: "audio/mp3" };
+          }
+        }
+      }),
+      shells: {
+        playAudio: async (filePath) => {
+          playedFiles.push(filePath);
+        },
+        spawnRec: fakeRec,
+        waitForEnter,
+        which: () => "/usr/local/bin/sox"
+      }
+    });
+
+    await program.parseAsync(["node", "muse", "listen", "--lang", "ko", "--voice", "alloy"], { from: "node" });
+
+    expect(enterCount).toBe(2);
+    expect(sttCalls).toHaveLength(1);
+    expect(sttCalls[0]?.language).toBe("ko");
+    expect(sttCalls[0]?.bytes).toBeGreaterThan(0);
+    expect(apiCalls).toEqual([{ body: { message: "오늘 날씨 어때?" }, path: "/api/chat" }]);
+    expect(ttsCalls).toHaveLength(1);
+    expect(ttsCalls[0]?.text).toContain("안녕하세요");
+    expect(ttsCalls[0]?.voice).toBe("alloy");
+    expect(playedFiles).toHaveLength(1);
+    expect(playedFiles[0]?.endsWith("reply.mp3")).toBe(true);
+    const out = output.join("");
+    expect(out).toContain("You: 오늘 날씨 어때?");
+    expect(out).toContain("Muse: 안녕하세요");
   });
 });

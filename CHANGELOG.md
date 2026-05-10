@@ -9,6 +9,20 @@ move from `Unreleased` to dated/versioned headings.
 
 ### Added
 
+- **`muse listen` CLI** — Voice Phase C from `docs/design/voice-mode.md`.
+  Push-to-talk loop: press Enter to start recording, again to stop;
+  CLI captures via `sox` (`rec -r 16000 -c 1 -t wav -`), transcribes
+  through the configured `SpeechToTextProvider`, sends transcript to
+  `/api/chat`, synthesizes the reply via `TextToSpeechProvider`,
+  plays through `afplay` (macOS) / `aplay` (Linux). Flags:
+  `--lang ko|en` (STT hint), `--voice <name>` (TTS voice id),
+  `--format mp3|wav|opus|aac|flac`. Sox / player shells injected via
+  `ListenShells` so tests run without audio hardware. Missing sox
+  exits 1 with `brew install sox` / `apt install sox` hint; missing
+  voice providers (no `OPENAI_API_KEY` / `MUSE_VOICE_OPENAI_API_KEY`)
+  exits 1 with the env-var hint. Phase F (wake-word ambient mode +
+  local Whisper.cpp / Piper) stays deferred until real
+  latency/cost data justifies.
 - `muse.tasks.add` (`dueAt`) and `muse.calendar.add`
   (`startsAtIso` / `endsAtIso`) accept relative-time phrases
   in addition to ISO-8601: `tomorrow`, `tomorrow at 6pm`,
