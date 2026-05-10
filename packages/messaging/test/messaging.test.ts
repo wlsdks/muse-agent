@@ -198,6 +198,75 @@ describe("DiscordProvider.fetchInbound", () => {
   });
 });
 
+describe("SlackProvider.fetchInbound", () => {
+  it("posts to conversations.history with form body and maps text messages", async () => {
+    let seenUrl = "";
+    let seenAuth = "";
+    let seenBody = "";
+    const provider = new SlackProvider({
+      baseUrl: "https://slk.test/api",
+      fetch: async (url, init) => {
+        seenUrl = String(url);
+        seenAuth = (init?.headers as Record<string, string>).authorization ?? "";
+        seenBody = String(init?.body);
+        return fakeJsonResponse({
+          messages: [
+            { text: "hi from stark", ts: "1700000000.000100", type: "message", user: "U-STARK" },
+            // empty text → skipped
+            { text: "", ts: "1700000010.000100", type: "message", user: "U-BOT" },
+            { bot_id: "B-1", subtype: "bot_message", text: "deploy ok", ts: "1700000020.000100", username: "deployer" }
+          ],
+          ok: true
+        });
+      },
+      token: "xoxb-test"
+    });
+    const inbound = await provider.fetchInbound({ limit: 10, source: "C123" });
+    expect(seenUrl).toBe("https://slk.test/api/conversations.history");
+    expect(seenAuth).toBe("Bearer xoxb-test");
+    expect(seenBody).toContain("channel=C123");
+    expect(seenBody).toContain("limit=10");
+    expect(inbound).toHaveLength(2);
+    expect(inbound[0]).toMatchObject({
+      messageId: "1700000000.000100",
+      providerId: "slack",
+      receivedAtIso: "2023-11-14T22:13:20.000Z",
+      sender: "U-STARK",
+      source: "C123",
+      text: "hi from stark"
+    });
+    // bot messages keep `username` as the sender display
+    expect(inbound[1]).toMatchObject({ sender: "deployer", text: "deploy ok" });
+  });
+
+  it("rejects calls without `source` before any HTTP", async () => {
+    let calls = 0;
+    const provider = new SlackProvider({
+      fetch: async () => {
+        calls += 1;
+        return fakeJsonResponse({ messages: [], ok: true });
+      },
+      token: "x"
+    });
+    await expect(provider.fetchInbound()).rejects.toMatchObject({
+      code: "INVALID_DESTINATION",
+      message: expect.stringContaining("source")
+    });
+    expect(calls).toBe(0);
+  });
+
+  it("turns ok:false into MessagingProviderError carrying the slack error code", async () => {
+    const provider = new SlackProvider({
+      fetch: async () => fakeJsonResponse({ error: "channel_not_found", ok: false }),
+      token: "x"
+    });
+    await expect(provider.fetchInbound({ source: "C-bogus" })).rejects.toMatchObject({
+      code: "UPSTREAM_FAILED",
+      message: expect.stringContaining("channel_not_found")
+    });
+  });
+});
+
 describe("SlackProvider", () => {
   it("requires ok:true and surfaces ts as message id", async () => {
     const provider = new SlackProvider({
@@ -338,9 +407,11 @@ describe("MessagingProviderRegistry", () => {
   });
 
   it("fetchInbound surfaces a clear error for providers without inbound support", async () => {
-    const slack = new SlackProvider({ token: "x" });
-    const registry = new MessagingProviderRegistry([slack]);
-    await expect(registry.fetchInbound("slack")).rejects.toMatchObject({
+    // LINE is webhook-only; its provider intentionally lacks
+    // fetchInbound. Slack/Discord/Telegram all implement it now.
+    const line = new LineProvider({ token: "x" });
+    const registry = new MessagingProviderRegistry([line]);
+    await expect(registry.fetchInbound("line")).rejects.toMatchObject({
       code: "UPSTREAM_FAILED",
       message: expect.stringContaining("does not support inbound")
     });
