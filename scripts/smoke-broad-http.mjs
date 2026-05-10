@@ -1,14 +1,23 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { mkdtempSync } from "node:fs";
 import net from "node:net";
+import { tmpdir } from "node:os";
+import { join as pathJoin } from "node:path";
 
 const rootDir = process.cwd();
 const port = await findFreePort();
 const baseUrl = `http://127.0.0.1:${port}`;
+// Isolate notes/tasks file paths from `~/.muse/...` so smoke runs
+// don't pollute the developer's real personal store.
+const notesDir = mkdtempSync(pathJoin(tmpdir(), "muse-smoke-notes-"));
+const tasksFile = pathJoin(mkdtempSync(pathJoin(tmpdir(), "muse-smoke-tasks-")), "tasks.json");
 const env = {
   ...process.env,
   MUSE_MODEL: "diagnostic/smoke",
   MUSE_MODEL_PROVIDER_ID: "diagnostic",
+  MUSE_NOTES_DIR: notesDir,
+  MUSE_TASKS_FILE: tasksFile,
   PORT: String(port)
 };
 const api = spawn("pnpm", ["--filter", "@muse/api", "dev"], {
@@ -762,6 +771,66 @@ try {
     for (const tts of body.tts) {
       assert(typeof tts.id === "string" && tts.id.length > 0, "expected tts.id string");
     }
+  });
+
+  await record("/api/tasks REST round-trips create → list → complete → delete", async () => {
+    // Personal-domain trio REST coverage (rounds 104 + 110-112). Smoke
+    // broad spawns the API with MUSE_TASKS_FILE pointing at a temp dir
+    // so this never touches the developer's real ~/.muse/tasks.json.
+    const created = await fetch(`${baseUrl}/api/tasks`, {
+      body: JSON.stringify({ tags: ["smoke"], title: "smoke broad task" }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    }).then((response) => response.json());
+    assert(typeof created.id === "string" && created.id.length > 0, "expected created.id string");
+
+    const listed = await fetch(`${baseUrl}/api/tasks?status=open`).then((response) => response.json());
+    assert(Array.isArray(listed.tasks) && listed.tasks.some((task) => task.id === created.id),
+      "expected the created task in /api/tasks?status=open");
+
+    const completed = await fetch(`${baseUrl}/api/tasks/${created.id}/complete`, { method: "POST" })
+      .then((response) => response.json());
+    assert(completed.status === "done", `expected completed status=done, got ${completed.status}`);
+
+    const removed = await fetch(`${baseUrl}/api/tasks/${created.id}`, { method: "DELETE" });
+    assert(removed.status === 204, `expected 204 on delete, got ${removed.status}`);
+
+    const after = await fetch(`${baseUrl}/api/tasks?status=all`).then((response) => response.json());
+    assert(!after.tasks.some((task) => task.id === created.id),
+      "expected the task to be gone after DELETE");
+  });
+
+  await record("/api/notes REST round-trips save → list → search → read → append", async () => {
+    // Personal-domain trio REST coverage (round 111). MUSE_NOTES_DIR
+    // override keeps the smoke run isolated.
+    const path = "smoke-broad.md";
+    const save = await fetch(`${baseUrl}/api/notes/save`, {
+      body: JSON.stringify({ content: "alpha\nbeta keyword line\n", path }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    }).then((response) => response.json());
+    assert(save.path === path, `expected path=${path}, got ${save.path}`);
+
+    const list = await fetch(`${baseUrl}/api/notes/list`).then((response) => response.json());
+    assert(Array.isArray(list.entries) && list.entries.some((entry) => entry.name === path),
+      `expected ${path} in /api/notes/list entries`);
+
+    const search = await fetch(`${baseUrl}/api/notes/search?query=keyword`).then((response) => response.json());
+    assert(Array.isArray(search.matches) && search.matches.some((hit) => hit.path === path),
+      "expected the saved note to surface in /api/notes/search?query=keyword");
+
+    const read = await fetch(`${baseUrl}/api/notes/read?path=${encodeURIComponent(path)}`).then((response) => response.json());
+    assert(read.content.includes("beta keyword line"), `expected the saved body in /api/notes/read, got ${read.content}`);
+
+    const append = await fetch(`${baseUrl}/api/notes/append`, {
+      body: JSON.stringify({ content: "gamma\n", path }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    assert(append.status === 200, `expected 200 on append, got ${append.status}`);
+
+    const reread = await fetch(`${baseUrl}/api/notes/read?path=${encodeURIComponent(path)}`).then((response) => response.json());
+    assert(reread.content.includes("gamma"), "expected appended content in re-read");
   });
 
   await record("POST /api/chat with metadata.agentMode=plan_execute", async () => {
