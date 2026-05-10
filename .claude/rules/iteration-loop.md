@@ -2,15 +2,16 @@
 
 Muse is developed as a personal-JARVIS-style AI conductor in a
 continuous iteration loop. Every iteration is a fresh agent with no
-prior context — read this file plus `CHANGELOG.md` first.
+prior context — read this file plus `git log --oneline -15` first.
 
 ## Per-iteration discipline
 
 1. **Orient (≤ 2 minutes):**
-   - `git log --oneline -15`
-   - read the most recent entries under `## [Unreleased]` in
-     `CHANGELOG.md`
+   - `git log --oneline -15` is the running dev log; conventional
+     commit messages carry the per-iter narrative
    - `git status -sb` (clean tree before starting)
+   - skim `## [Unreleased]` in `CHANGELOG.md` only when the prior
+     iter actually shipped user-visible behavior
 
 2. **Pick exactly one goal** in priority order:
 
@@ -35,8 +36,15 @@ prior context — read this file plus `CHANGELOG.md` first.
 4. **Quality gates each iteration:**
    - `pnpm check` green (build + tests for every workspace)
    - `pnpm lint` 0 errors / 0 warnings
-   - 1–2 conventional commits per iteration
-   - new entry under `## [Unreleased]` in `CHANGELOG.md`
+   - 1–2 conventional commits per iteration — the commit body IS
+     the iter narrative, so write it sharply
+   - `CHANGELOG.md` entries are **NOT** a per-iter requirement.
+     Add a 1–3 line entry under `## [Unreleased]` only when an
+     iter ships user-visible behavior (new feature, breaking
+     change, real bug fix, public-API change). Internal refactors
+     / lint sweeps / docs / decomp belong in commit messages, not
+     in the changelog. Don't write paragraph-length entries —
+     the git log already has the detail.
 
 5. **Forbidden in iterations:**
    - Pushing to remote, force-push, `--no-verify` without
