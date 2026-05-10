@@ -184,9 +184,10 @@ export class LocalFileTasksProvider implements TasksProvider {
     if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { tasks?: unknown }).tasks)) {
       return [];
     }
-    return (parsed as { tasks: unknown[] }).tasks.flatMap((entry): readonly PersistedTask[] =>
-      isPersistedTask(entry) ? [entry] : []
-    );
+    // Use Array#filter with a type predicate so TypeScript narrows the
+    // result to PersistedTask[] without the verbose flatMap-with-empty-arr
+    // workaround. Same idiom that `LocalDirNotesProvider.list` could use.
+    return (parsed as { tasks: unknown[] }).tasks.filter(isPersistedTask);
   }
 
   private async writeTasks(tasks: readonly PersistedTask[]): Promise<void> {

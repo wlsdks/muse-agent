@@ -483,6 +483,14 @@ export {
   type NotesRegistryMcpServerOptions
 } from "./loopback-notes-registry.js";
 
+// Tasks registry MCP server (round 154). Companion to muse.tasks
+// (filesystem-only) — exposes `muse.tasks-multi.*` against any
+// composed TasksProviderRegistry.
+export {
+  createTasksRegistryMcpServer,
+  type TasksRegistryMcpServerOptions
+} from "./loopback-tasks-registry.js";
+
 export {
   AppleNotesProvider,
   LocalDirNotesProvider,

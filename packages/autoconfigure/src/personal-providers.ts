@@ -36,10 +36,14 @@ import {
 } from "@muse/calendar";
 import {
   AppleNotesProvider,
+  AppleRemindersProvider,
   LocalDirNotesProvider,
+  LocalFileTasksProvider,
   NotesProviderRegistry,
   NotionNotesProvider,
-  type NotesProvider
+  TasksProviderRegistry,
+  type NotesProvider,
+  type TasksProvider
 } from "@muse/mcp";
 import {
   OpenAITtsProvider,
@@ -213,6 +217,59 @@ function tryBuildNotesProvider(
       ...(databaseId ? { databaseId } : {}),
       ...(titleProperty ? { titleProperty } : {})
     });
+  }
+
+  return undefined;
+}
+
+/**
+ * Build a `TasksProviderRegistry` from env. Always registers
+ * `LocalFileTasksProvider` (rooted at `MUSE_TASKS_FILE` resolved via
+ * `resolveTasksFile`) so the agent has at least filesystem-backed
+ * tasks. Apple Reminders (osascript, macOS-only) registers opt-in
+ * via `MUSE_TASKS_PROVIDERS`. Notion DB lands in a future iter.
+ *
+ * Env (resolution order):
+ *   - `MUSE_TASKS_PROVIDERS` — comma-separated subset of
+ *     `local,apple-reminders`. Defaults to `local`. Adding
+ *     `apple-reminders` registers an `AppleRemindersProvider`; the
+ *     osascript calls fail with `REMINDERS_PERMISSION` until the
+ *     user grants Reminders access on macOS, but the registry
+ *     itself is built unconditionally so the agent surfaces a typed
+ *     error rather than a missing tool.
+ *   - `MUSE_APPLE_REMINDERS_LIST` — optional list scope (e.g.
+ *     "Groceries", "Work"). Default: every list, add lands in the
+ *     default Reminders list.
+ *
+ * The caller decides whether to register the registry-aware MCP
+ * server (`createTasksRegistryMcpServer`) on top of the inline
+ * filesystem-only `createTasksMcpServer`.
+ */
+export function buildTasksRegistry(env: MuseEnvironment): TasksProviderRegistry {
+  const registry = new TasksProviderRegistry();
+  const requested = (env.MUSE_TASKS_PROVIDERS?.trim() || "local")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0);
+
+  for (const id of requested) {
+    const provider = tryBuildTasksProvider(id, env);
+    if (provider) {
+      registry.register(provider);
+    }
+  }
+
+  return registry;
+}
+
+function tryBuildTasksProvider(id: string, env: MuseEnvironment): TasksProvider | undefined {
+  if (id === "local") {
+    return new LocalFileTasksProvider({ file: resolveTasksFile(env) });
+  }
+
+  if (id === "apple-reminders") {
+    const list = env.MUSE_APPLE_REMINDERS_LIST?.trim();
+    return new AppleRemindersProvider(list ? { list } : {});
   }
 
   return undefined;

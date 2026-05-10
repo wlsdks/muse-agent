@@ -61,11 +61,13 @@ import {
   createLoopbackMcpMuseTools,
   createNotesMcpServer,
   createNotesRegistryMcpServer,
+  createTasksRegistryMcpServer,
   type LoopbackMcpServer,
   type McpSecurityPolicyInput,
   type McpSecurityPolicyStore,
   type McpServerStore,
-  type NotesProviderRegistry
+  type NotesProviderRegistry,
+  type TasksProviderRegistry
 } from "@muse/mcp";
 import {
   createUserMemoryAutoExtractHook,
@@ -138,6 +140,7 @@ import type { Kysely } from "kysely";
 import {
   buildCalendarRegistry,
   buildNotesRegistry,
+  buildTasksRegistry,
   buildVoiceRegistry,
   ensureNotesDir,
   resolveCredentialsFile,
@@ -343,6 +346,16 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const tasksLoopbackTools = parseBoolean(env.MUSE_TASKS_ENABLED, true)
     ? createLoopbackMcpMuseTools(createTasksMcpServer({ file: tasksFile }))
     : [];
+  // Tasks registry MCP surface (`muse.tasks-multi`): only registered
+  // when the user opts into >1 provider via MUSE_TASKS_PROVIDERS.
+  // Default users (LocalFile only) get the inline `muse.tasks` server
+  // above and skip the registry overhead. Symmetric with notesRegistry.
+  const tasksRegistry = parseBoolean(env.MUSE_TASKS_ENABLED, true)
+    ? buildTasksRegistry(env)
+    : undefined;
+  const tasksRegistryLoopbackTools = tasksRegistry && tasksRegistry.list().length >= 2
+    ? createLoopbackMcpMuseTools(createTasksRegistryMcpServer({ registry: tasksRegistry }))
+    : [];
   let schedulerService: DynamicScheduler | undefined;
   const toolRegistry = new DynamicToolRegistry([
     () => museTools,
@@ -351,6 +364,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => notesRegistryLoopbackTools,
     () => calendarLoopbackTools,
     () => tasksLoopbackTools,
+    () => tasksRegistryLoopbackTools,
     () => runnerTools,
     () => mcpManager.toMuseTools(),
     () => schedulerService ? createSchedulerTools(schedulerService) : []

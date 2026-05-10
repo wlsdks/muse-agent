@@ -445,6 +445,30 @@ describe("autoconfigure", () => {
     const names = assembly.toolRegistry.list().map((tool) => tool.definition.name);
     expect(names.some((name) => name.startsWith("muse.notes-multi."))).toBe(false);
   });
+
+  it("registers muse.tasks-multi tools only when MUSE_TASKS_PROVIDERS adds another backend beyond local", () => {
+    const baseline = createMuseRuntimeAssembly({ env: {} });
+    const baselineNames = baseline.toolRegistry.list().map((tool) => tool.definition.name);
+
+    // Default: only local provider → muse.tasks (filesystem-only) is enough,
+    // muse.tasks-multi.* tools should NOT be registered.
+    expect(baselineNames.some((name) => name.startsWith("muse.tasks-multi."))).toBe(false);
+    expect(baselineNames).toEqual(expect.arrayContaining(["muse.tasks.list"]));
+
+    // Adding apple-reminders → registry has 2 providers → muse.tasks-multi.*
+    // surfaces (5 tools: providers / list / add / complete / search).
+    const enabled = createMuseRuntimeAssembly({
+      env: { MUSE_TASKS_PROVIDERS: "local,apple-reminders" }
+    });
+    const enabledNames = enabled.toolRegistry.list().map((tool) => tool.definition.name);
+    expect(enabledNames).toEqual(expect.arrayContaining([
+      "muse.tasks-multi.providers",
+      "muse.tasks-multi.list",
+      "muse.tasks-multi.add",
+      "muse.tasks-multi.complete",
+      "muse.tasks-multi.search"
+    ]));
+  });
 });
 
 function createPostgresBuilder(): Kysely<MuseDatabase> {

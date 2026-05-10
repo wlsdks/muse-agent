@@ -33,6 +33,7 @@ import {
   TasksProviderError,
   TasksProviderRegistry,
   TasksValidationError,
+  createTasksRegistryMcpServer,
   createUrlMcpServer,
   createMcpSecurityPolicyInsert,
   createMcpServerInsert,
@@ -1814,5 +1815,61 @@ describe("tasks provider abstraction", () => {
     expect(error).toBeInstanceOf(TasksProviderError);
     expect((error as TasksProviderError).providerId).toBe("apple-reminders");
     expect((error as TasksProviderError).code).toMatch(/^EXIT_/);
+  });
+
+  it("createTasksRegistryMcpServer round-trips list / add / complete / search through the registry", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const join = await import("node:path").then((m) => m.join);
+    const root = mkdtempSync(`${tmpdir}/muse-tasks-multi-`);
+
+    let counter = 0;
+    const local = new LocalFileTasksProvider({
+      file: join(root, "tasks.json"),
+      idFactory: () => `task-${++counter}`,
+      now: () => new Date(2026, 0, counter, 12, 0, 0)
+    });
+    const registry = new TasksProviderRegistry([local]);
+    const conn = createLoopbackMcpConnection(createTasksRegistryMcpServer({ registry }));
+
+    const providers = await conn.callTool!("providers", {}) as { providers: { id: string }[] };
+    expect(providers.providers.map((p) => p.id)).toEqual(["local"]);
+
+    const added = await conn.callTool!("add", {
+      providerId: "local",
+      title: "Buy groceries"
+    }) as { task: { id: string; status: string; title: string } };
+    expect(added.task).toMatchObject({ id: "task-1", status: "open", title: "Buy groceries" });
+
+    const listed = await conn.callTool!("list", { providerId: "local", status: "open" }) as { total: number; tasks: { id: string }[] };
+    expect(listed.total).toBe(1);
+    expect(listed.tasks[0]?.id).toBe("task-1");
+
+    const completed = await conn.callTool!("complete", { id: "task-1", providerId: "local" }) as { task: { status: string } };
+    expect(completed.task.status).toBe("done");
+
+    const searched = await conn.callTool!("search", { providerId: "local", query: "groceries" }) as { hits: { id: string; status: string }[] };
+    expect(searched.hits[0]).toMatchObject({ id: "task-1", status: "done" });
+  });
+
+  it("createTasksRegistryMcpServer surfaces TasksProviderError with code in the tool response", async () => {
+    const registry = new TasksProviderRegistry([new AppleRemindersProvider()]);
+    const conn = createLoopbackMcpConnection(createTasksRegistryMcpServer({ registry }));
+
+    const missingProvider = await conn.callTool!("complete", { id: "x", providerId: "ghost" }) as { code?: string; error?: string };
+    expect(missingProvider.code).toBe("PROVIDER_NOT_FOUND");
+    expect(missingProvider.error).toContain("ghost");
+  });
+
+  it("createTasksRegistryMcpServer rejects writes with missing required fields without invoking providers", async () => {
+    const registry = new TasksProviderRegistry([new AppleRemindersProvider()]);
+    const conn = createLoopbackMcpConnection(createTasksRegistryMcpServer({ registry }));
+
+    expect(await conn.callTool!("add", { providerId: "apple-reminders" }))
+      .toMatchObject({ error: expect.stringContaining("title") });
+    expect(await conn.callTool!("complete", { providerId: "apple-reminders" }))
+      .toMatchObject({ error: expect.stringContaining("id") });
+    expect(await conn.callTool!("search", { providerId: "apple-reminders" }))
+      .toMatchObject({ error: expect.stringContaining("query") });
   });
 });
