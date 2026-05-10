@@ -8,6 +8,7 @@ import {
   credentialPath,
   defaultCredentialPath as defaultCredentialPathFromStore,
   deleteStoredToken,
+  isRecord,
   readStoredToken,
   writeStoredToken
 } from "./credential-store.js";
@@ -670,6 +671,3 @@ function readResponseRunId(value: unknown): string | undefined {
   return undefined;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}

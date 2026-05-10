@@ -162,7 +162,7 @@ function isCredentialStore(value: unknown): value is CredentialStore {
       && typeof credential.updatedAt === "string");
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
