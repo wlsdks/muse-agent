@@ -72,6 +72,13 @@ describe("MuseConsole", () => {
     expect(html).toMatch(/<h2>LLM cost \(7d\)<\/h2>/u);
   });
 
+  it("renders the Today brief panel with a Render button", () => {
+    const html = renderConsole();
+    expect(html).toContain('aria-label="Today brief"');
+    expect(html).toMatch(/<h2>Today<\/h2>/u);
+    expect(html).toMatch(/>Render brief<\/button>/u);
+  });
+
   it("renders the Messaging panel section heading", () => {
     const html = renderConsole();
     expect(html).toContain('aria-label="Messaging"');

@@ -9,6 +9,7 @@ import {
   RemindersPanel,
   SchedulerPanel,
   TasksPanel,
+  TodayBriefPanel,
   TokenCostPanel
 } from "./personal-panels.js";
 
@@ -149,6 +150,7 @@ export function MuseConsole() {
         <ChatPanel client={client} />
         <aside className="side-panel">
           <VoicePanel apiUrl={apiUrl} token={token} />
+          <TodayBriefPanel client={client} />
           <TasksPanel client={client} />
           <RemindersPanel client={client} />
           <MessagingInboxPanel client={client} />

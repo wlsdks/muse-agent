@@ -649,6 +649,91 @@ export function RemindersPanel({ client }: { readonly client: ApiClient }) {
   );
 }
 
+interface TodayBriefingResponse {
+  readonly generatedAt: string;
+  readonly lookaheadHours: number;
+  readonly tasks?: readonly { readonly id: string; readonly title: string }[];
+  readonly events?: readonly { readonly id: string; readonly title: string; readonly startsAtIso: string }[];
+  readonly notes?: readonly string[];
+  readonly reminders?: readonly { readonly id: string; readonly text: string; readonly dueAt: string }[];
+}
+
+interface ChatResponse {
+  readonly content?: string;
+  readonly errorMessage?: string;
+  readonly success?: boolean;
+}
+
+const BRIEF_SYSTEM_PROMPT =
+  "You are Muse, the user's personal AI assistant in the JARVIS tradition. " +
+  "Render the morning briefing JSON as a short, conversational summary (2-3 sentences, max 4). " +
+  "Lead with the most time-sensitive thing in this priority: an overdue reminder, then the next event, " +
+  "then an overdue or soon-due task. Mention overall task count, the soonest event with its time, " +
+  "any pending reminders by count (call out overdue ones explicitly), and one recent note if relevant. " +
+  "Be warm but concise — no bullet lists, no headers. Match the user's locale.";
+
+export function TodayBriefPanel({ client }: { readonly client: ApiClient }) {
+  const briefing = useQuery({
+    queryFn: () => client.get<TodayBriefingResponse>("/api/today"),
+    queryKey: ["today-brief"],
+    retry: false
+  });
+  const [prose, setProse] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const renderBrief = useMutation({
+    mutationFn: async (payload: TodayBriefingResponse) => {
+      const message = `${BRIEF_SYSTEM_PROMPT}\n\nBriefing JSON:\n${JSON.stringify(payload, null, 2)}\n\nRender this as a short conversational morning brief.`;
+      return client.post<ChatResponse>("/api/chat", { message, metadata: { source: "today.brief" } });
+    },
+    onError: (err) => setError(err instanceof Error ? err.message : "Failed to render brief"),
+    onSuccess: (response) => {
+      setError(null);
+      setProse(response.content?.trim() ?? "(empty response)");
+    }
+  });
+
+  const tasks = briefing.data?.tasks?.length ?? 0;
+  const events = briefing.data?.events?.length ?? 0;
+  const reminders = briefing.data?.reminders?.length ?? 0;
+
+  return (
+    <section className="tool-surface compact" aria-label="Today brief">
+      <div className="surface-heading">
+        <h2>Today</h2>
+        <span>{briefing.isLoading ? "Loading" : `${tasks.toString()} · ${events.toString()} · ${reminders.toString()}`}</span>
+      </div>
+      {briefing.error ? (
+        <p className="status-error">
+          {briefing.error instanceof Error ? briefing.error.message : "Failed to load briefing"}
+        </p>
+      ) : null}
+      {error ? <p className="status-error">{error}</p> : null}
+      <button
+        type="button"
+        onClick={() => {
+          if (briefing.data) {
+            renderBrief.mutate(briefing.data);
+          }
+        }}
+        disabled={renderBrief.isPending || !briefing.data}
+        style={{ marginBottom: "0.5rem" }}
+      >
+        {renderBrief.isPending ? "Composing…" : "Render brief"}
+      </button>
+      {prose ? (
+        <p style={{ margin: "0.5rem 0", lineHeight: 1.4 }}>{prose}</p>
+      ) : (
+        <p className="status-info" style={{ fontSize: "0.85em", margin: 0 }}>
+          {briefing.data
+            ? `${tasks.toString()} task(s), ${events.toString()} event(s), ${reminders.toString()} reminder(s) due. Press "Render brief" for the JARVIS-style summary.`
+            : ""}
+        </p>
+      )}
+    </section>
+  );
+}
+
 interface MessagingProviderInfo {
   readonly id: string;
   readonly displayName: string;
