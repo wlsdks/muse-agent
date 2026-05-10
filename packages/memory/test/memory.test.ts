@@ -11,6 +11,8 @@ import {
   COMPACTION_PERSONA_SNAPSHOT_PREFIX,
   COMPACTION_SUMMARY_PREFIX,
   COMPACTION_PINNED_ENTITIES_PREFIX,
+  composeUserModelSnapshot,
+  EMPTY_USER_MODEL,
   trimToolOutput,
   buildActiveTaskMemoryQuery,
   buildConversationSummaryUpsertQuery,
@@ -542,6 +544,120 @@ describe("conversation trimming", () => {
     expect(second.summaryInserted).toBe(true);
     expect(second.messages[0]?.content).toContain("ver=2");
     expect(second.messages[0]?.content).not.toContain("ver=1");
+  });
+});
+
+describe("composeUserModelSnapshot", () => {
+  const now = new Date("2026-05-10T00:00:00.000Z");
+
+  it("returns undefined for an empty model so callers can short-circuit", () => {
+    expect(composeUserModelSnapshot(EMPTY_USER_MODEL)).toBeUndefined();
+  });
+
+  it("renders preferences with optional category prefix", () => {
+    const snapshot = composeUserModelSnapshot({
+      ...EMPTY_USER_MODEL,
+      preferences: [
+        { category: "style", id: "concise", kind: "preference", updatedAt: now, value: "yes" },
+        { id: "no-emoji", kind: "preference", updatedAt: now, value: "true" }
+      ]
+    });
+    expect(snapshot).toContain("pref.style.concise=yes");
+    // No category → bare `pref.<id>=`.
+    expect(snapshot).toContain("pref.no-emoji=true");
+  });
+
+  it("renders schedule slots with optional recurrence in parens", () => {
+    const snapshot = composeUserModelSnapshot({
+      ...EMPTY_USER_MODEL,
+      schedule: [
+        { id: "wakeup", kind: "schedule", recurrence: "daily 07:00 KST", updatedAt: now, value: "morning routine" }
+      ]
+    });
+    expect(snapshot).toContain("sched.wakeup=morning routine (daily 07:00 KST)");
+  });
+
+  it("renders veto slots with optional scope tag", () => {
+    const snapshot = composeUserModelSnapshot({
+      ...EMPTY_USER_MODEL,
+      vetoes: [
+        { id: "no-eggs", kind: "veto", scope: "food", updatedAt: now, value: "do not suggest eggs" },
+        { id: "no-meetings-mondays", kind: "veto", updatedAt: now, value: "block all" }
+      ]
+    });
+    expect(snapshot).toContain("veto.food.no-eggs=do not suggest eggs");
+    // No scope → bare `veto.<id>=`.
+    expect(snapshot).toContain("veto.no-meetings-mondays=block all");
+  });
+
+  it("renders goals with progress and dueAt decorators", () => {
+    const snapshot = composeUserModelSnapshot({
+      ...EMPTY_USER_MODEL,
+      goals: [
+        {
+          dueAt: new Date("2026-03-31T00:00:00.000Z"),
+          id: "muse-v1",
+          kind: "goal",
+          progress: 0.5,
+          updatedAt: now,
+          value: "ship Muse 1.0"
+        }
+      ]
+    });
+    expect(snapshot).toContain("goal.muse-v1=ship Muse 1.0 (50%, due 2026-03-31)");
+  });
+
+  it("clamps progress to [0,1] before formatting", () => {
+    const overrun = composeUserModelSnapshot({
+      ...EMPTY_USER_MODEL,
+      goals: [
+        { id: "g1", kind: "goal", progress: 1.5, updatedAt: now, value: "x" }
+      ]
+    });
+    expect(overrun).toContain("(100%)");
+    const negative = composeUserModelSnapshot({
+      ...EMPTY_USER_MODEL,
+      goals: [
+        { id: "g2", kind: "goal", progress: -0.3, updatedAt: now, value: "x" }
+      ]
+    });
+    expect(negative).toContain("(0%)");
+  });
+
+  it("caps each kind at maxPerKind and reports the elided count", () => {
+    const snapshot = composeUserModelSnapshot(
+      {
+        ...EMPTY_USER_MODEL,
+        preferences: Array.from({ length: 8 }, (_unused, index) => ({
+          id: `p${index}`,
+          kind: "preference" as const,
+          updatedAt: now,
+          value: `v${index}`
+        }))
+      },
+      { maxPerKind: 3 }
+    );
+    expect(snapshot).toContain("pref.p0=v0");
+    expect(snapshot).toContain("pref.p2=v2");
+    expect(snapshot).not.toContain("pref.p3=v3");
+    expect(snapshot).toContain("[5 slots elided]");
+  });
+
+  it("right-truncates with elided-count tail when composed snapshot exceeds maxChars", () => {
+    const snapshot = composeUserModelSnapshot(
+      {
+        ...EMPTY_USER_MODEL,
+        preferences: Array.from({ length: 8 }, (_unused, index) => ({
+          id: `p${index}`,
+          kind: "preference" as const,
+          updatedAt: now,
+          value: "x".repeat(40)
+        }))
+      },
+      { maxChars: 100, maxPerKind: 100 }
+    );
+    expect(snapshot?.length ?? 0).toBeLessThanOrEqual(100);
+    expect(snapshot).toContain("slots elided");
   });
 });
 

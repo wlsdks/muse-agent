@@ -275,6 +275,23 @@ export {
   type ToolOutputTrimResult
 } from "./memory-tool-output-trim.js";
 
+// Typed user-model slots (round 162 — Context Engineering step
+// 1.c foundation). Parallel structure to the legacy free-text
+// `Record<string,string>` facts/preferences. Persistence + runtime
+// wiring lands in subsequent iters.
+export {
+  EMPTY_USER_MODEL,
+  composeUserModelSnapshot,
+  type UserGoalSlot,
+  type UserModel,
+  type UserModelComposeOptions,
+  type UserModelSlot,
+  type UserModelSlotBase,
+  type UserPreferenceSlot,
+  type UserScheduleSlot,
+  type UserVetoSlot
+} from "./user-model-slots.js";
+
 export {
   createUserMemoryAutoExtractHook,
   type UserMemoryAutoExtractOptions
