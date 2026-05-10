@@ -25,6 +25,7 @@ import { registerMultiAgentRoutes } from "./multi-agent-routes.js";
 import { registerCompatibilityRoutes } from "./compat-routes.js";
 import { registerNotesRoutes } from "./notes-routes.js";
 import { registerSchedulerRoutes, type SchedulerRouteScheduler } from "./scheduler-routes.js";
+import { registerTodayRoutes } from "./today-routes.js";
 import { registerVoiceRoutes } from "./voice-routes.js";
 import {
   applyCompatWebContractHeaders,
@@ -251,6 +252,12 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   if (options.voice) {
     registerVoiceRoutes(server, { authService, registry: options.voice });
   }
+  registerTodayRoutes(server, {
+    authService,
+    calendar: options.calendar,
+    notesDir: options.notesDir,
+    tasksFile: options.tasksFile
+  });
 
   return server;
 }
