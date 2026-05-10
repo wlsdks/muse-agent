@@ -28,6 +28,7 @@ import { registerMessagingRoutes } from "./messaging-routes.js";
 import { lineWebhookPlugin } from "./messaging-webhooks-routes.js";
 import { registerRemindersRoutes } from "./reminders-routes.js";
 import { parseQuietHours, startReminderTick } from "./reminder-tick.js";
+import { startTelegramPollTick } from "./telegram-poll-tick.js";
 import { registerSchedulerRoutes, type SchedulerRouteScheduler } from "./scheduler-routes.js";
 import { registerTodayRoutes } from "./today-routes.js";
 import { registerVoiceRoutes } from "./voice-routes.js";
@@ -103,6 +104,13 @@ export interface ServerOptions {
    * `POST /api/messaging/webhooks/line` route.
    */
   readonly lineInboxFile?: string;
+  /**
+   * Path to the persisted Telegram inbox (default
+   * ~/.muse/telegram-inbox.json). The polling daemon writes here on
+   * each tick; the per-provider read API will consult this file in
+   * a follow-up slice.
+   */
+  readonly telegramInboxFile?: string;
 }
 
 export interface ToolCatalogEntry {
@@ -328,6 +336,32 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     });
     server.addHook("onClose", async () => {
       tickHandle.stop();
+    });
+  }
+
+  // Optional Phase 2.a.3 daemon: poll Telegram every
+  // MUSE_TELEGRAM_POLL_INTERVAL_MS (default 30s) and persist each
+  // new InboundMessage into telegramInboxFile. Off unless the user
+  // sets MUSE_TELEGRAM_POLL_ENABLED=1 — keeps fresh installs quiet.
+  const pollEnabled = process.env.MUSE_TELEGRAM_POLL_ENABLED?.trim() === "1";
+  if (
+    pollEnabled
+    && options.telegramInboxFile
+    && options.messaging
+    && options.messaging.has("telegram")
+  ) {
+    const pollMsRaw = process.env.MUSE_TELEGRAM_POLL_INTERVAL_MS
+      ? Number(process.env.MUSE_TELEGRAM_POLL_INTERVAL_MS)
+      : undefined;
+    const pollHandle = startTelegramPollTick({
+      errorLogger: (message) => server.log.warn(message),
+      inboxFile: options.telegramInboxFile,
+      ...(pollMsRaw !== undefined ? { intervalMs: pollMsRaw } : {}),
+      logger: (message) => server.log.info(message),
+      registry: options.messaging
+    });
+    server.addHook("onClose", async () => {
+      pollHandle.stop();
     });
   }
 

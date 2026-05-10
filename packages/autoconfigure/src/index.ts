@@ -143,7 +143,8 @@ import {
   resolveLineInboxFile,
   resolveNotesDir,
   resolveRemindersFile,
-  resolveTasksFile
+  resolveTasksFile,
+  resolveTelegramInboxFile
 } from "./personal-providers.js";
 
 export {
@@ -157,6 +158,7 @@ export {
   resolveNotesDir,
   resolveRemindersFile,
   resolveTasksFile,
+  resolveTelegramInboxFile,
   resolveTelegramOffsetFile
 } from "./personal-providers.js";
 import {
@@ -668,7 +670,8 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     voice: assembly.voice,
     messaging: assembly.messaging,
     remindersFile: resolveRemindersFile(env),
-    lineInboxFile: resolveLineInboxFile(env)
+    lineInboxFile: resolveLineInboxFile(env),
+    telegramInboxFile: resolveTelegramInboxFile(env)
   };
 }
 

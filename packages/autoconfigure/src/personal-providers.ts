@@ -109,6 +109,10 @@ export function resolveTelegramOffsetFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_TELEGRAM_OFFSET_FILE", "telegram-offset.json");
 }
 
+export function resolveTelegramInboxFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_TELEGRAM_INBOX_FILE", "telegram-inbox.json");
+}
+
 export function resolveModelKeysFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_MODEL_KEYS_FILE", "models.json");
 }

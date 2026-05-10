@@ -47,6 +47,7 @@ import {
   resolveNotesDir,
   resolveRemindersFile,
   resolveTasksFile,
+  resolveTelegramInboxFile,
   resolveTelegramOffsetFile
 } from "../src/index.js";
 
@@ -556,6 +557,7 @@ describe("autoconfigure", () => {
     expect(resolveModelKeysFile({ MUSE_MODEL_KEYS_FILE: "/tmp/k.json" })).toBe("/tmp/k.json");
     expect(resolveLineInboxFile({ MUSE_LINE_INBOX_FILE: "/tmp/l.json" })).toBe("/tmp/l.json");
     expect(resolveTelegramOffsetFile({ MUSE_TELEGRAM_OFFSET_FILE: "/tmp/tg.json" })).toBe("/tmp/tg.json");
+    expect(resolveTelegramInboxFile({ MUSE_TELEGRAM_INBOX_FILE: "/tmp/tin.json" })).toBe("/tmp/tin.json");
 
     // Empty / whitespace-only override → falls back to default.
     expect(resolveTasksFile({ MUSE_TASKS_FILE: "" }).endsWith("/.muse/tasks.json")).toBe(true);
@@ -570,6 +572,7 @@ describe("autoconfigure", () => {
     expect(resolveModelKeysFile({}).endsWith("/.muse/models.json")).toBe(true);
     expect(resolveLineInboxFile({}).endsWith("/.muse/line-inbox.json")).toBe(true);
     expect(resolveTelegramOffsetFile({}).endsWith("/.muse/telegram-offset.json")).toBe(true);
+    expect(resolveTelegramInboxFile({}).endsWith("/.muse/telegram-inbox.json")).toBe(true);
   });
 
   it("resolveDefaultModel honors MUSE_MODEL when explicitly set", () => {
