@@ -10,9 +10,11 @@ import {
   SlackProvider,
   TelegramProvider,
   readDiscordAfter,
+  readSlackAfter,
   readTelegramOffset,
   validateOutboundMessage,
   writeDiscordAfter,
+  writeSlackAfter,
   writeTelegramOffset
 } from "../src/index.js";
 import { clampInboundLimit, tryParseJson } from "../src/provider-helpers.js";
@@ -420,6 +422,96 @@ describe("SlackProvider", () => {
       code: "UPSTREAM_FAILED",
       message: expect.stringContaining("channel_not_found")
     });
+  });
+});
+
+describe("slack-after-store", () => {
+  it("readSlackAfter returns undefined when the file is missing or malformed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-slack-after-"));
+    expect(await readSlackAfter(join(dir, "missing.json"), "C-1")).toBeUndefined();
+    const garbage = join(dir, "garbage.json");
+    const { promises: fs } = await import("node:fs");
+    await fs.writeFile(garbage, "not json", "utf8");
+    expect(await readSlackAfter(garbage, "C-1")).toBeUndefined();
+  });
+
+  it("write+read round-trips per-channel cursors without collision", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-slack-after-"));
+    const file = join(dir, "after.json");
+    await writeSlackAfter(file, "C-A", "1700000000.000100");
+    await writeSlackAfter(file, "C-B", "1700000001.000200");
+    await writeSlackAfter(file, "C-A", "1700000099.999999"); // overwrite C-A
+    expect(await readSlackAfter(file, "C-A")).toBe("1700000099.999999");
+    expect(await readSlackAfter(file, "C-B")).toBe("1700000001.000200");
+    expect(await readSlackAfter(file, "C-missing")).toBeUndefined();
+  });
+});
+
+describe("SlackProvider.pollUpdates", () => {
+  it("without afterFile, polls without oldest= (snapshot mode)", async () => {
+    let seenBody = "";
+    const provider = new SlackProvider({
+      fetch: async (_url, init) => {
+        seenBody = String(init?.body ?? "");
+        return fakeJsonResponse({ messages: [], ok: true });
+      },
+      token: "x"
+    });
+    await provider.pollUpdates({ source: "C-9" });
+    expect(seenBody).not.toContain("oldest=");
+  });
+
+  it("with afterFile, passes oldest=<stored> and advances to the newest ts by parseFloat", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-slack-poll-"));
+    const afterFile = join(dir, "after.json");
+    await writeSlackAfter(afterFile, "C-9", "1700000000.000100");
+    let seenBody = "";
+    const provider = new SlackProvider({
+      afterFile,
+      fetch: async (_url, init) => {
+        seenBody = String(init?.body ?? "");
+        return fakeJsonResponse({
+          messages: [
+            // Newest-first response. Mix microsecond precision to
+            // exercise parseFloat comparison.
+            { text: "newest", ts: "1700000099.999999", user: "U1" },
+            { text: "older", ts: "1700000050.500000", user: "U1" }
+          ],
+          ok: true
+        });
+      },
+      token: "x"
+    });
+    const inbound = await provider.pollUpdates({ source: "C-9" });
+    expect(seenBody).toContain("oldest=1700000000.000100");
+    expect(inbound).toHaveLength(2);
+    expect(await readSlackAfter(afterFile, "C-9")).toBe("1700000099.999999");
+  });
+
+  it("with afterFile, empty response leaves the cursor untouched", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-slack-empty-"));
+    const afterFile = join(dir, "after.json");
+    await writeSlackAfter(afterFile, "C-9", "1700000000.777777");
+    const provider = new SlackProvider({
+      afterFile,
+      fetch: async () => fakeJsonResponse({ messages: [], ok: true }),
+      token: "x"
+    });
+    await provider.pollUpdates({ source: "C-9" });
+    expect(await readSlackAfter(afterFile, "C-9")).toBe("1700000000.777777");
+  });
+
+  it("rejects calls without `source` (channel id) before any HTTP", async () => {
+    let calls = 0;
+    const provider = new SlackProvider({
+      fetch: async () => { calls += 1; return fakeJsonResponse({ messages: [], ok: true }); },
+      token: "x"
+    });
+    await expect(provider.pollUpdates()).rejects.toMatchObject({
+      code: "INVALID_DESTINATION",
+      message: expect.stringContaining("source")
+    });
+    expect(calls).toBe(0);
   });
 });
 

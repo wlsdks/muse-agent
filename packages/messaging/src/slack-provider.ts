@@ -1,5 +1,6 @@
 import { MessagingProviderError } from "./errors.js";
 import { clampInboundLimit, tryParseJson } from "./provider-helpers.js";
+import { readSlackAfter, writeSlackAfter } from "./slack-after-store.js";
 import type {
   InboundFetchOptions,
   InboundMessage,
@@ -15,6 +16,14 @@ export interface SlackProviderOptions {
   readonly token: string;
   readonly fetch?: typeof globalThis.fetch;
   readonly baseUrl?: string;
+  /**
+   * When set, `pollUpdates` reads/writes a per-channel `ts` cursor
+   * through this file (atomic tmp+rename). Without it, each
+   * `pollUpdates` call is snapshot-style — the most recent `limit`
+   * messages currently visible. The existing `fetchInbound` is
+   * unaffected — Phase 2.d.1 only adds the polling foundation.
+   */
+  readonly afterFile?: string;
 }
 
 const DEFAULT_BASE_URL = "https://slack.com/api";
@@ -47,11 +56,13 @@ export class SlackProvider implements MessagingProvider {
   private readonly token: string;
   private readonly fetchImpl: typeof globalThis.fetch;
   private readonly baseUrl: string;
+  private readonly afterFile: string | undefined;
 
   constructor(options: SlackProviderOptions) {
     this.token = options.token;
     this.fetchImpl = options.fetch ?? globalThis.fetch;
     this.baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
+    this.afterFile = options.afterFile;
   }
 
   describe(): MessagingProviderInfo {
@@ -77,16 +88,44 @@ export class SlackProvider implements MessagingProvider {
    * to read its own outgoing trail too.
    */
   async fetchInbound(options?: InboundFetchOptions): Promise<readonly InboundMessage[]> {
+    return this.fetchHistory(options, false);
+  }
+
+  /**
+   * Polling-side surface for a daemon: like `fetchInbound` but
+   * advances the per-channel `ts` cursor when an `afterFile` is
+   * configured. Each call passes `oldest=<stored>` to Slack and
+   * persists the newest `ts` back on success — so a polling tick
+   * walks the channel rather than re-reading the same window.
+   *
+   * Without `afterFile`, behaves identically to `fetchInbound`.
+   * `source` is required either way.
+   */
+  async pollUpdates(options?: InboundFetchOptions): Promise<readonly InboundMessage[]> {
+    return this.fetchHistory(options, true);
+  }
+
+  private async fetchHistory(
+    options: InboundFetchOptions | undefined,
+    advanceCursor: boolean
+  ): Promise<readonly InboundMessage[]> {
     const channel = options?.source?.trim();
     if (!channel || channel.length === 0) {
       throw new MessagingProviderError(
         this.id,
         "INVALID_DESTINATION",
-        "Slack fetchInbound requires `source` (channel id, e.g. C0123ABCD)"
+        "Slack channel history requires `source` (channel id, e.g. C0123ABCD)"
       );
     }
     const limit = clampInboundLimit(options?.limit);
-    const params = new URLSearchParams({ channel, limit: limit.toString() });
+    const cursor = advanceCursor && this.afterFile
+      ? await readSlackAfter(this.afterFile, channel)
+      : undefined;
+    const formParams: Record<string, string> = { channel, limit: limit.toString() };
+    if (cursor !== undefined) {
+      formParams["oldest"] = cursor;
+    }
+    const params = new URLSearchParams(formParams);
     const response = await this.fetchImpl(`${this.baseUrl}/conversations.history`, {
       body: params.toString(),
       headers: {
@@ -106,6 +145,15 @@ export class SlackProvider implements MessagingProvider {
       );
     }
     const messages = parsed.messages ?? [];
+    // Newest-first response: advance cursor to the most recent `ts`
+    // (ack everything seen, whether the entry survived the
+    // text/empty filter or not).
+    if (advanceCursor && this.afterFile && messages.length > 0) {
+      const newest = pickNewestTs(messages);
+      if (newest !== undefined) {
+        await writeSlackAfter(this.afterFile, channel, newest);
+      }
+    }
     return messages.flatMap((message): readonly InboundMessage[] => {
       if (typeof message.text !== "string" || message.text.length === 0) {
         return [];
@@ -153,6 +201,33 @@ export class SlackProvider implements MessagingProvider {
       raw: parsed
     };
   }
+}
+
+/**
+ * Pick the most-recent Slack `ts` from a batch. `ts` is
+ * `<epoch>.<microseconds>` — comparing as parseFloat is precise
+ * enough for the cursor (Slack's own `oldest=` parameter compares
+ * the same way), and avoids the lexicographic-on-string pitfall
+ * for any future tooling that surfaces sub-second timestamps in a
+ * different length.
+ */
+function pickNewestTs(messages: readonly SlackHistoryMessage[]): string | undefined {
+  let best: number | undefined;
+  let bestStr: string | undefined;
+  for (const message of messages) {
+    if (typeof message.ts !== "string" || message.ts.length === 0) {
+      continue;
+    }
+    const parsed = Number.parseFloat(message.ts);
+    if (!Number.isFinite(parsed)) {
+      continue;
+    }
+    if (best === undefined || parsed > best) {
+      best = parsed;
+      bestStr = message.ts;
+    }
+  }
+  return bestStr;
 }
 
 /**

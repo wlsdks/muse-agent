@@ -44,3 +44,8 @@ export {
   readDiscordAfter,
   writeDiscordAfter
 } from "./discord-after-store.js";
+
+export {
+  readSlackAfter,
+  writeSlackAfter
+} from "./slack-after-store.js";
