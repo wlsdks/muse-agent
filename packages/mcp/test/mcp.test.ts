@@ -2651,6 +2651,40 @@ describe("muse.reminders loopback server", () => {
     expect(pendingOnly).toMatchObject({ status: "pending", total: 2 });
   });
 
+  it("add accepts an optional via override and serializes it back on response", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-via-"));
+    const server = createRemindersMcpServer({
+      file: join(dir, "reminders.json"),
+      idFactory: () => "rem_via_1",
+      now: () => new Date("2026-05-11T08:00:00Z")
+    });
+    const connection = createLoopbackMcpConnection(server);
+
+    const ok = await connection.callTool!("add", {
+      dueAt: "2026-05-11T09:00:00Z",
+      text: "Deploy alert",
+      via: { destination: "C123", providerId: "slack" }
+    });
+    expect(ok).toMatchObject({
+      reminder: {
+        id: "rem_via_1",
+        text: "Deploy alert",
+        via: { destination: "C123", providerId: "slack" }
+      }
+    });
+
+    // Validation: missing destination → clean error before the file is touched.
+    const bad = await connection.callTool!("add", {
+      dueAt: "2026-05-11T09:00:00Z",
+      text: "x",
+      via: { providerId: "slack" }
+    });
+    expect(bad).toMatchObject({ error: expect.stringContaining("via.providerId and via.destination") });
+  });
+
   it("fire flips a pending reminder to status='fired' with a timestamp", async () => {
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
@@ -2837,5 +2871,54 @@ describe("runDueReminders", () => {
     expect(summary.errors).toHaveLength(1);
     expect(summary.errors[0]).toContain("rem_a");
     expect(summary.errors[0]).toContain("upstream 503");
+  });
+
+  it("respects per-reminder via override (Phase C); falls back to defaults when via is absent", async () => {
+    const { runDueReminders } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-fire-via-"));
+    const file = join(dir, "reminders.json");
+    writeFileSync(file, JSON.stringify({
+      reminders: [
+        // Has via → goes to Slack channel C123 even though defaults are telegram/@me.
+        {
+          createdAt: "2026-01-01T00:00:00Z",
+          dueAt: "1970-01-01T00:00:00Z",
+          id: "rem_via",
+          status: "pending",
+          text: "Deploy alert",
+          via: { destination: "C123", providerId: "slack" }
+        },
+        // No via → uses the daemon defaults.
+        {
+          createdAt: "2026-01-01T00:00:00Z",
+          dueAt: "1970-01-01T00:00:00Z",
+          id: "rem_default",
+          status: "pending",
+          text: "Buy milk"
+        }
+      ]
+    }), "utf8");
+
+    const sent: Array<{ providerId: string; destination: string; text: string }> = [];
+    const fakeRegistry = {
+      send: async (providerId: string, message: { destination: string; text: string }) => {
+        sent.push({ destination: message.destination, providerId, text: message.text });
+        return { destination: message.destination, messageId: "stub", providerId };
+      }
+    };
+    const summary = await runDueReminders({
+      destination: "@me",
+      file,
+      providerId: "telegram",
+      registry: fakeRegistry as unknown as Parameters<typeof runDueReminders>[0]["registry"]
+    });
+    expect(summary.delivered).toBe(2);
+    expect(sent).toEqual(expect.arrayContaining([
+      { destination: "C123", providerId: "slack", text: "Deploy alert" },
+      { destination: "@me", providerId: "telegram", text: "Buy milk" }
+    ]));
   });
 });

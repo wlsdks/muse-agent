@@ -67,16 +67,30 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
     .argument("<text...>", "Reminder text (joined by spaces)")
     .option("--local", "Write directly to the local reminders file instead of the API")
     .option("--json", "Print the raw response instead of a short confirmation")
+    .option(
+      "--via-provider <id>",
+      "Per-reminder routing override — provider id (telegram | discord | slack | line). Both --via flags must be set together."
+    )
+    .option("--via-destination <id>", "Per-reminder routing override — platform-native chat / channel / user id")
     .action(async (
       when: string,
       textParts: readonly string[],
-      options: SharedOptions,
+      options: SharedOptions & { readonly viaProvider?: string; readonly viaDestination?: string },
       command
     ) => {
       const text = textParts.join(" ").trim();
       if (text.length === 0) {
         throw new Error("text is required");
       }
+      const viaProvider = options.viaProvider?.trim();
+      const viaDestination = options.viaDestination?.trim();
+      if ((viaProvider && !viaDestination) || (!viaProvider && viaDestination)) {
+        throw new Error("--via-provider and --via-destination must be set together (or neither)");
+      }
+      const via = viaProvider && viaDestination
+        ? { destination: viaDestination, providerId: viaProvider }
+        : undefined;
+
       let payload: Record<string, unknown>;
       if (options.local) {
         const dueAt = parseReminderDueAt(when, () => new Date());
@@ -88,17 +102,19 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
           dueAt,
           id: `rem_${randomUUID()}`,
           status: "pending",
-          text
+          text,
+          ...(via ? { via } : {})
         };
         const file = localRemindersFile();
         const existing = await readReminders(file);
         await writeReminders(file, [...existing, created]);
         payload = serializeReminder(created);
       } else {
-        payload = (await helpers.apiRequest(io, command, "/api/reminders", {
-          dueAt: when,
-          text
-        }, "POST")) as Record<string, unknown>;
+        const body: Record<string, unknown> = { dueAt: when, text };
+        if (via) {
+          body.via = via;
+        }
+        payload = (await helpers.apiRequest(io, command, "/api/reminders", body, "POST")) as Record<string, unknown>;
       }
       if (options.json) {
         helpers.writeOutput(io, payload);
@@ -106,7 +122,8 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       }
       const id = String(payload.id ?? "");
       const dueAt = String(payload.dueAt ?? "");
-      io.stdout(`Added [${id.slice(0, 12)}] ${text} — due ${shortDateTime(dueAt)}\n`);
+      const viaSuffix = via ? ` → ${via.providerId}:${via.destination}` : "";
+      io.stdout(`Added [${id.slice(0, 12)}] ${text} — due ${shortDateTime(dueAt)}${viaSuffix}\n`);
     });
 
   remind

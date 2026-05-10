@@ -22,6 +22,11 @@ import type { JsonObject } from "@muse/shared";
 
 import { parseTaskDueAt } from "./personal-tasks-store.js";
 
+export interface ReminderVia {
+  readonly providerId: string;
+  readonly destination: string;
+}
+
 export interface PersistedReminder {
   readonly id: string;
   readonly text: string;
@@ -29,6 +34,15 @@ export interface PersistedReminder {
   readonly createdAt: string;
   readonly status: "pending" | "fired";
   readonly firedAt?: string;
+  /**
+   * Phase C of docs/design/reminder-firing.md. Optional per-reminder
+   * routing override — when set, the firing loop ignores its
+   * `providerId`/`destination` defaults and delivers via this
+   * platform / chat instead. Useful when the user mixes channels
+   * ("send the deploy alerts to Slack but the daily brief to
+   * Telegram"); the daemon stays a single tick.
+   */
+  readonly via?: ReminderVia;
 }
 
 export type ReminderStatusFilter = "pending" | "fired" | "all" | "due";
@@ -69,7 +83,10 @@ export function serializeReminder(reminder: PersistedReminder): JsonObject {
     id: reminder.id,
     status: reminder.status,
     text: reminder.text,
-    ...(reminder.firedAt ? { firedAt: reminder.firedAt } : {})
+    ...(reminder.firedAt ? { firedAt: reminder.firedAt } : {}),
+    ...(reminder.via
+      ? { via: { destination: reminder.via.destination, providerId: reminder.via.providerId } }
+      : {})
   };
 }
 
@@ -154,6 +171,13 @@ function isPersistedReminder(value: unknown): value is PersistedReminder {
   }
   if (candidate.firedAt !== undefined && typeof candidate.firedAt !== "string") {
     return false;
+  }
+  if (candidate.via !== undefined) {
+    if (!candidate.via || typeof candidate.via !== "object"
+      || typeof candidate.via.providerId !== "string"
+      || typeof candidate.via.destination !== "string") {
+      return false;
+    }
   }
   return true;
 }

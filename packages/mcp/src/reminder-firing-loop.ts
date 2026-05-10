@@ -54,8 +54,13 @@ export async function runDueReminders(options: RunDueRemindersOptions): Promise<
 
   for (const reminder of due) {
     try {
-      await options.registry.send(options.providerId, {
-        destination: options.destination,
+      // Phase C: per-reminder routing wins when set; the loop's
+      // defaults are the fallback when the reminder doesn't
+      // declare a destination.
+      const providerId = reminder.via?.providerId ?? options.providerId;
+      const destination = reminder.via?.destination ?? options.destination;
+      await options.registry.send(providerId, {
+        destination,
         text: reminder.text
       });
       const updated = fireReminder(next, reminder.id, now().toISOString());

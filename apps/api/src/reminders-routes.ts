@@ -55,6 +55,7 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     const body = request.body as {
       readonly text?: unknown;
       readonly dueAt?: unknown;
+      readonly via?: unknown;
     } | null;
     const text = typeof body?.text === "string" ? body.text.trim() : "";
     if (text.length === 0) {
@@ -68,13 +69,29 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     if (parsed instanceof Error) {
       return reply.status(400).send({ code: "INVALID_REMINDER_DUE_AT", message: parsed.message });
     }
+    let via: { providerId: string; destination: string } | undefined;
+    if (body?.via !== undefined) {
+      const candidate = body.via as { providerId?: unknown; destination?: unknown } | null;
+      if (!candidate
+        || typeof candidate.providerId !== "string"
+        || typeof candidate.destination !== "string"
+        || candidate.providerId.trim().length === 0
+        || candidate.destination.trim().length === 0) {
+        return reply.status(400).send({
+          code: "INVALID_REMINDER_VIA",
+          message: "via must be { providerId: string, destination: string } with non-empty values"
+        });
+      }
+      via = { destination: candidate.destination.trim(), providerId: candidate.providerId.trim() };
+    }
     const reminders = await readReminders(remindersFile);
     const created: PersistedReminder = {
       createdAt: new Date().toISOString(),
       dueAt: parsed,
       id: `rem_${randomUUID()}`,
       status: "pending",
-      text
+      text,
+      ...(via ? { via } : {})
     };
     await writeReminders(remindersFile, [...reminders, created]);
     return reply.status(201).send(serializeReminder(created));

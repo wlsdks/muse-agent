@@ -64,7 +64,9 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           "OR a relative phrase: 'tomorrow', 'tomorrow at 6pm', 'today at 14:30', 'in 3 hours', 'in 2 days', " +
           "'next Monday', 'next Monday at 9am'. The server resolves the phrase against the current local time, " +
           "so pass the user's natural-language input directly. Reminders surface in `muse today` once dueAt " +
-          "has passed.",
+          "has passed. " +
+          "Optional `via: { providerId, destination }` overrides the firing daemon's default route per reminder " +
+          "(\"send THIS one to Slack channel C123 instead of the user's usual Telegram\").",
         execute: async (args): Promise<JsonObject> => {
           const text = readString(args, "text")?.trim();
           if (!text) {
@@ -78,13 +80,29 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           if (parsed instanceof Error) {
             return { error: parsed.message };
           }
+          let via: { providerId: string; destination: string } | undefined;
+          const viaRaw = args["via"];
+          if (viaRaw !== undefined) {
+            if (!viaRaw || typeof viaRaw !== "object") {
+              return { error: "via must be an object with providerId + destination" };
+            }
+            const candidate = viaRaw as { providerId?: unknown; destination?: unknown };
+            if (typeof candidate.providerId !== "string"
+              || typeof candidate.destination !== "string"
+              || candidate.providerId.trim().length === 0
+              || candidate.destination.trim().length === 0) {
+              return { error: "via.providerId and via.destination must be non-empty strings" };
+            }
+            via = { destination: candidate.destination.trim(), providerId: candidate.providerId.trim() };
+          }
           const reminders = await readReminders(file);
           const created: PersistedReminder = {
             createdAt: now().toISOString(),
             dueAt: parsed,
             id: idFactory(),
             status: "pending",
-            text
+            text,
+            ...(via ? { via } : {})
           };
           try {
             await writeReminders(file, [...reminders, created]);
@@ -100,7 +118,19 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
               description: "ISO-8601 timestamp or relative phrase ('tomorrow at 6pm', 'in 3 hours', 'next Monday').",
               type: "string"
             },
-            text: { description: "Reminder body shown back to the user when due.", type: "string" }
+            text: { description: "Reminder body shown back to the user when due.", type: "string" },
+            via: {
+              additionalProperties: false,
+              description:
+                "Optional per-reminder routing override. Both fields required when set. " +
+                "When omitted, the firing daemon's default provider/destination is used.",
+              properties: {
+                destination: { description: "Platform-native chat / channel / user id.", type: "string" },
+                providerId: { description: "telegram | discord | slack | line", type: "string" }
+              },
+              required: ["providerId", "destination"],
+              type: "object"
+            }
           },
           required: ["text", "dueAt"],
           type: "object"
