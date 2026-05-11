@@ -120,6 +120,51 @@ export function registerSetupCommands(program: Command, io: ProgramIO): void {
     .action(async () => {
       await runModelSetup({ stderr: io.stderr, stdout: io.stdout });
     });
+
+  setup
+    .command("wizard")
+    .description("End-to-end onboarding: model → calendar → messaging in one pass")
+    .action(async () => {
+      await runSetupWizard({ stderr: io.stderr, stdout: io.stdout });
+    });
+}
+
+/**
+ * Sequential wizard — walks the user through every setup step in
+ * one terminal session. Each step uses the same routine the
+ * dedicated `muse setup <area>` command runs, so an interrupted
+ * wizard can be resumed by running that individual command later.
+ *
+ * Order is fixed: model first (a runtime without a model can't
+ * answer anything, so this is the most-critical step), then
+ * calendar (local provider works offline, optional remote
+ * providers later), then messaging (Slack/Discord/Telegram/LINE).
+ */
+async function runSetupWizard(io: { stderr(line: string): void; stdout(line: string): void }): Promise<void> {
+  io.stdout("");
+  io.stdout("─── Muse setup wizard ────────────────────────────");
+  io.stdout("Three steps: model → calendar → messaging.");
+  io.stdout("You can stop at any step and resume with `muse setup <area>` later.");
+  io.stdout("");
+
+  io.stdout("[1/3] Model provider");
+  io.stdout("─────────────────────");
+  await runModelSetup(io);
+  io.stdout("");
+
+  io.stdout("[2/3] Calendar");
+  io.stdout("─────────────────");
+  await runCalendarSetup(io);
+  io.stdout("");
+
+  io.stdout("[3/3] Messaging");
+  io.stdout("──────────────────");
+  await runMessagingSetup(io);
+  io.stdout("");
+
+  io.stdout("──── Wizard complete ────");
+  io.stdout("Run `muse setup` (no args) to verify the final health-check report.");
+  io.stdout("");
 }
 
 async function renderSetupStatus(): Promise<string> {
