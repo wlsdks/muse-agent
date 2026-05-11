@@ -26,6 +26,7 @@ import { registerCalendarCommands } from "./commands-calendar.js";
 import { registerMemoryCommands } from "./commands-memory.js";
 import { registerCostCommands } from "./commands-cost.js";
 import { registerDoctorCommand } from "./commands-doctor.js";
+import { registerLatencyCommands } from "./commands-latency.js";
 import { registerRunsCommands } from "./commands-runs.js";
 import { registerMessagingCommands } from "./commands-messaging.js";
 import { registerRemindCommands } from "./commands-remind.js";
@@ -287,6 +288,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerRunsCommands(program, io, { apiRequest, writeOutput });
   registerDoctorCommand(program, io, { apiRequest, writeOutput });
   registerCostCommands(program, io, { apiRequest, writeOutput });
+  registerLatencyCommands(program, io, { apiRequest, writeOutput });
   registerTelemetryCommands(program, io, { apiRequest, writeOutput });
   registerTodayCommands(program, io, {
     apiRequest,
