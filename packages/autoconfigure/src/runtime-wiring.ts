@@ -1,0 +1,140 @@
+/**
+ * Runtime-wiring helpers extracted from `index.ts`. Each function
+ * here turns env / store state into one piece of the
+ * `createMuseRuntimeAssembly` factory:
+ *
+ *   - `createPersonalToolExposurePolicy` — single-user-friendly
+ *     ToolExposurePolicy (allows `write` tools without requiring a
+ *     workspace-edit prompt shape).
+ *   - `createScheduledAgentExecutor` — bridge between
+ *     `DynamicScheduler.run` and `AgentRuntime.run`.
+ *   - `createDefaultRuntimeHooks` — empty by design for
+ *     personal-Muse; runtimes wire hooks directly.
+ *   - `createInputGuards` / `createOutputGuards` — env-toggled
+ *     injection / PII / system-prompt-leakage stages.
+ *   - `createRunnerTools` — MUSE_RUNNER_ENABLED-gated Rust runner
+ *     bridge.
+ *
+ * Lifting these out of `index.ts` shrinks the big runtime-assembly
+ * file by ~125 LOC and keeps each helper next to its peers rather
+ * than scattered after the assembly factory body.
+ */
+
+import {
+  createInjectionInputGuard,
+  createPiiInputGuard,
+  createPiiMaskingOutputGuard,
+  createSystemPromptLeakageOutputGuard,
+  type AgentRuntime,
+  type GuardStage,
+  type HookStage,
+  type OutputGuardStage
+} from "@muse/agent-core";
+import type { ScheduledAgentExecutor } from "@muse/scheduler";
+import {
+  createDefaultToolExposurePolicy,
+  createRustRunnerTool,
+  type MuseTool,
+  type ToolExposurePolicy
+} from "@muse/tools";
+
+import { parseBoolean, parseCsv, parseOptionalString } from "./env-parsers.js";
+import { ConfigurationError, type MuseEnvironment } from "./index.js";
+
+export function createPersonalToolExposurePolicy(env: MuseEnvironment): ToolExposurePolicy {
+  // Personal pivot: the agent operates in a single-user environment
+  // with no shared workspace to protect, so the workspace-mutation-
+  // intent heuristic is the wrong default. Allow `write` tools (notes
+  // save, calendar add/update/delete, etc.) without requiring a
+  // workspace-edit prompt shape. Operators can still tighten via the
+  // env var if running Muse in a multi-user context.
+  return createDefaultToolExposurePolicy({
+    allowWriteWithoutMutationIntent: parseBoolean(env.MUSE_ALLOW_WRITE_WITHOUT_MUTATION_INTENT, true)
+  });
+}
+
+export function createScheduledAgentExecutor(
+  runtime: () => AgentRuntime | undefined,
+  defaultModel: string | undefined
+): ScheduledAgentExecutor {
+  return {
+    async execute(job) {
+      const agentRuntime = runtime();
+
+      if (!agentRuntime) {
+        throw new ConfigurationError("Scheduled agent execution requires a configured model provider");
+      }
+
+      const result = await agentRuntime.run({
+        messages: [
+          ...(job.agentSystemPrompt ? [{ content: job.agentSystemPrompt, role: "system" as const }] : []),
+          { content: job.agentPrompt ?? "", role: "user" }
+        ],
+        metadata: {
+          jobId: job.id,
+          scheduler: true
+        },
+        model: job.agentModel ?? defaultModel ?? "default"
+      });
+
+      return result.response.output;
+    }
+  };
+}
+
+/**
+ * Personal-Muse: no env-driven default runtime hooks. Muse
+ * deployments wire hooks directly when assembling the runtime.
+ */
+export function createDefaultRuntimeHooks(_env: MuseEnvironment): readonly HookStage[] {
+  return [];
+}
+
+export function createInputGuards(env: MuseEnvironment): readonly GuardStage[] {
+  if (!parseBoolean(env.MUSE_INPUT_GUARDS_ENABLED, true)) {
+    return [];
+  }
+
+  const guards: GuardStage[] = [];
+
+  if (parseBoolean(env.MUSE_INPUT_GUARD_INJECTION_ENABLED, true)) {
+    guards.push(createInjectionInputGuard());
+  }
+
+  if (parseBoolean(env.MUSE_INPUT_GUARD_PII_ENABLED, true)) {
+    guards.push(createPiiInputGuard());
+  }
+
+  return guards;
+}
+
+export function createOutputGuards(env: MuseEnvironment): readonly OutputGuardStage[] {
+  if (!parseBoolean(env.MUSE_OUTPUT_GUARDS_ENABLED, true)) {
+    return [];
+  }
+
+  const guards: OutputGuardStage[] = [];
+
+  if (parseBoolean(env.MUSE_OUTPUT_GUARD_PII_MASK_ENABLED, true)) {
+    guards.push(createPiiMaskingOutputGuard());
+  }
+
+  const canaryTokens = parseCsv(env.MUSE_OUTPUT_GUARD_SYSTEM_PROMPT_CANARY_TOKENS);
+  if (parseBoolean(env.MUSE_OUTPUT_GUARD_SYSTEM_PROMPT_LEAK_ENABLED, false) && canaryTokens && canaryTokens.length > 0) {
+    guards.push(createSystemPromptLeakageOutputGuard({ canaryTokens }));
+  }
+
+  return guards;
+}
+
+export function createRunnerTools(env: MuseEnvironment): readonly MuseTool[] {
+  if (!parseBoolean(env.MUSE_RUNNER_ENABLED, false)) {
+    return [];
+  }
+
+  return [
+    createRustRunnerTool({
+      runnerPath: parseOptionalString(env.MUSE_RUNNER_PATH) ?? "muse-runner"
+    })
+  ];
+}

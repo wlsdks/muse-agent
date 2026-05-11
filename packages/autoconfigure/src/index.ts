@@ -4,14 +4,8 @@ import {
 } from "@muse/calendar";
 import {
   createAgentRuntime,
-  createInjectionInputGuard,
-  createPiiInputGuard,
-  createPiiMaskingOutputGuard,
-  createSystemPromptLeakageOutputGuard,
   type AgentRuntime,
-  type GuardStage,
-  type HookStage,
-  type OutputGuardStage
+  type HookStage
 } from "@muse/agent-core";
 import {
   InMemoryAgentSpecRegistry,
@@ -97,20 +91,16 @@ import {
   NodeCronScheduler,
   ScheduledJobDispatcher,
   ScheduledMcpToolInvoker,
-  type ScheduledAgentExecutor,
   type ScheduledJobExecutionStore,
   type ScheduledJobStore
 } from "@muse/scheduler";
 import {
-  createDefaultToolExposurePolicy,
   createMuseTools,
-  createRustRunnerTool,
   createSkillListTool,
   createSkillReadTool,
   createSkillRunTool,
   ToolRegistry,
-  type MuseTool,
-  type ToolExposurePolicy
+  type MuseTool
 } from "@muse/tools";
 import { VoiceProviderRegistry } from "@muse/voice";
 import {
@@ -202,6 +192,14 @@ import {
 } from "./store-factories.js";
 import { DynamicToolRegistry } from "./dynamic-tool-registry.js";
 import { loadExternalMcpConfig } from "./external-mcp-config.js";
+import {
+  createDefaultRuntimeHooks,
+  createInputGuards,
+  createOutputGuards,
+  createPersonalToolExposurePolicy,
+  createRunnerTools,
+  createScheduledAgentExecutor
+} from "./runtime-wiring.js";
 
 export {
   collectSetupStatusJson,
@@ -911,19 +909,6 @@ export function requireEnv(env: MuseEnvironment, key: string): string {
   return value;
 }
 
-function createPersonalToolExposurePolicy(env: MuseEnvironment): ToolExposurePolicy {
-  // Personal pivot: the agent operates in a single-user environment
-  // with no shared workspace to protect, so the workspace-mutation-
-  // intent heuristic is the wrong default. Allow `write` tools (notes
-  // save, calendar add/update/delete, etc.) without requiring a
-  // workspace-edit prompt shape. Operators can still tighten via the
-  // env var if running Muse in a multi-user context.
-  return createDefaultToolExposurePolicy({
-    allowWriteWithoutMutationIntent: parseBoolean(env.MUSE_ALLOW_WRITE_WITHOUT_MUTATION_INTENT, true)
-  });
-}
-
-
 /**
  * Resolve the default model identifier the runtime should use. Honors
  * `MUSE_MODEL` / `MUSE_DEFAULT_MODEL` first; when neither is set,
@@ -949,98 +934,6 @@ export {
   parseOptionalString
 } from "./env-parsers.js";
 
-function createScheduledAgentExecutor(
-  runtime: () => AgentRuntime | undefined,
-  defaultModel: string | undefined
-): ScheduledAgentExecutor {
-  return {
-    async execute(job) {
-      const agentRuntime = runtime();
-
-      if (!agentRuntime) {
-        throw new ConfigurationError("Scheduled agent execution requires a configured model provider");
-      }
-
-      const result = await agentRuntime.run({
-        messages: [
-          ...(job.agentSystemPrompt ? [{ content: job.agentSystemPrompt, role: "system" as const }] : []),
-          { content: job.agentPrompt ?? "", role: "user" }
-        ],
-        metadata: {
-          jobId: job.id,
-          scheduler: true
-        },
-        model: job.agentModel ?? defaultModel ?? "default"
-      });
-
-      return result.response.output;
-    }
-  };
-}
-
-/**
- * Personal-Muse: no env-driven default runtime hooks. Muse
- * deployments wire hooks directly when assembling the runtime.
- */
-function createDefaultRuntimeHooks(_env: MuseEnvironment): readonly HookStage[] {
-  return [];
-}
-
-function createInputGuards(env: MuseEnvironment): readonly GuardStage[] {
-  if (!parseBoolean(env.MUSE_INPUT_GUARDS_ENABLED, true)) {
-    return [];
-  }
-
-  const guards: GuardStage[] = [];
-
-  if (parseBoolean(env.MUSE_INPUT_GUARD_INJECTION_ENABLED, true)) {
-    guards.push(createInjectionInputGuard());
-  }
-
-  if (parseBoolean(env.MUSE_INPUT_GUARD_PII_ENABLED, true)) {
-    guards.push(createPiiInputGuard());
-  }
-
-  return guards;
-}
-
-function createOutputGuards(env: MuseEnvironment): readonly OutputGuardStage[] {
-  if (!parseBoolean(env.MUSE_OUTPUT_GUARDS_ENABLED, true)) {
-    return [];
-  }
-
-  const guards: OutputGuardStage[] = [];
-
-  if (parseBoolean(env.MUSE_OUTPUT_GUARD_PII_MASK_ENABLED, true)) {
-    guards.push(createPiiMaskingOutputGuard());
-  }
-
-  const canaryTokens = parseCsv(env.MUSE_OUTPUT_GUARD_SYSTEM_PROMPT_CANARY_TOKENS);
-  if (parseBoolean(env.MUSE_OUTPUT_GUARD_SYSTEM_PROMPT_LEAK_ENABLED, false) && canaryTokens && canaryTokens.length > 0) {
-    guards.push(createSystemPromptLeakageOutputGuard({ canaryTokens }));
-  }
-
-  return guards;
-}
-
-/**
- * Parses MUSE_RESPONSE_LOCALES (CSV, default "ko,en") into the set of
- * locale codes whose response filters should be active. Keeping Korean as
- * a default preserves UX for the original Korean operator base; adding
- * English by default unlocks the same casual-lure / greeting cleanup for
- * English-speaking users.
- */
-function createRunnerTools(env: MuseEnvironment): readonly MuseTool[] {
-  if (!parseBoolean(env.MUSE_RUNNER_ENABLED, false)) {
-    return [];
-  }
-
-  return [
-    createRustRunnerTool({
-      runnerPath: parseOptionalString(env.MUSE_RUNNER_PATH) ?? "muse-runner"
-    })
-  ];
-}
 
 /**
  * Builds the env-driven set of MCP loopback servers operators can plug in
