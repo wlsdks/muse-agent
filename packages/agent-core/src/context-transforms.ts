@@ -20,10 +20,22 @@ import {
   type PromptLayerRegistry
 } from "@muse/prompts";
 
+import { renderActiveContextSection, type ActiveContextProvider, type ActiveContextSnapshot } from "./active-context.js";
+import {
+  renderEpisodicSection,
+  type EpisodicRecallProvider,
+  type EpisodicRecallSnapshot
+} from "./episodic-recall.js";
+import {
+  renderInboxSection,
+  type InboxContextProvider,
+  type InboxSnapshot
+} from "./inbox-context.js";
 import { joinUserMessages } from "./internals.js";
 import {
   appendSystemSection,
   applyAgentSpecSystemPrompt,
+  latestUserPrompt,
   metadataString,
   renderUserMemorySection
 } from "./runtime-helpers.js";
@@ -88,6 +100,111 @@ export async function applyAgentSpec(
       }
     };
   }
+}
+
+/**
+ * Inject `[Active Context]` (current time, timezone, working-hours,
+ * active task, current focus) so the agent does not have to call
+ * `muse.time.now` or the task tools just to orient itself.
+ * Fail-open: any provider error returns the input untouched.
+ */
+export async function applyActiveContext(
+  context: AgentRunContext,
+  provider: ActiveContextProvider | undefined
+): Promise<AgentRunInput> {
+  if (!provider) {
+    return context.input;
+  }
+  let snapshot: ActiveContextSnapshot | undefined;
+  try {
+    snapshot = (await provider.resolve(metadataString(context.input.metadata, "userId"))) ?? undefined;
+  } catch {
+    return context.input;
+  }
+  const rendered = renderActiveContextSection(snapshot);
+  if (!rendered) {
+    return context.input;
+  }
+  return {
+    ...context.input,
+    messages: appendSystemSection(context.input.messages, rendered, "active-context"),
+    metadata: {
+      ...context.input.metadata,
+      activeContextApplied: true,
+      ...(snapshot?.isWorkingHours !== undefined ? { activeContextInWorkingHours: snapshot.isWorkingHours } : {})
+    }
+  };
+}
+
+/**
+ * Inject `[Recent Messages]` (Slack / Discord / Telegram / LINE unread
+ * highlights) so the agent does not need to invoke the inbox tool to
+ * notice new traffic. Fail-open.
+ */
+export async function applyInboxContext(
+  context: AgentRunContext,
+  provider: InboxContextProvider | undefined
+): Promise<AgentRunInput> {
+  if (!provider) {
+    return context.input;
+  }
+  let snapshot: InboxSnapshot | undefined;
+  try {
+    snapshot = (await provider.resolve(metadataString(context.input.metadata, "userId"))) ?? undefined;
+  } catch {
+    return context.input;
+  }
+  const rendered = renderInboxSection(snapshot);
+  if (!rendered) {
+    return context.input;
+  }
+  return {
+    ...context.input,
+    messages: appendSystemSection(context.input.messages, rendered, "inbox-context"),
+    metadata: {
+      ...context.input.metadata,
+      inboxContextApplied: true,
+      inboxContextMessageCount: snapshot?.messages.length ?? 0
+    }
+  };
+}
+
+/**
+ * Inject `[Episodic Memory]` — top-K relevant prior session summaries
+ * — so the agent surfaces multi-session memory without each session
+ * starting from a blank slate. Fail-open. Skipped silently when the
+ * latest user prompt is empty.
+ */
+export async function applyEpisodicRecall(
+  context: AgentRunContext,
+  provider: EpisodicRecallProvider | undefined
+): Promise<AgentRunInput> {
+  if (!provider) {
+    return context.input;
+  }
+  const query = latestUserPrompt(context.input.messages);
+  if (!query) {
+    return context.input;
+  }
+  let snapshot: EpisodicRecallSnapshot | undefined;
+  try {
+    snapshot = (await provider.resolve(query, metadataString(context.input.metadata, "userId"))) ?? undefined;
+  } catch {
+    return context.input;
+  }
+  const rendered = renderEpisodicSection(snapshot);
+  if (!rendered) {
+    return context.input;
+  }
+  return {
+    ...context.input,
+    messages: appendSystemSection(context.input.messages, rendered, "episodic-recall"),
+    metadata: {
+      ...context.input.metadata,
+      episodicRecallApplied: true,
+      episodicRecallMatchCount: snapshot?.matches.length ?? 0
+    }
+  };
 }
 
 export async function applyUserMemory(

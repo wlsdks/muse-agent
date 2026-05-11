@@ -71,13 +71,20 @@ import {
   streamPlanExecute as streamPlanExecuteFn
 } from "./plan-execute-loop.js";
 import {
+  applyActiveContext as applyActiveContextFn,
   applyAgentSpec as applyAgentSpecFn,
+  applyEpisodicRecall as applyEpisodicRecallFn,
+  applyInboxContext as applyInboxContextFn,
   applyPromptExemplars as applyPromptExemplarsFn,
   applyPromptLayers as applyPromptLayersFn,
   applyStoredConversationSummary as applyStoredConversationSummaryFn,
   applyUserMemory as applyUserMemoryFn,
   persistConversationSummaryFromRequest as persistConversationSummaryFromRequestFn
 } from "./context-transforms.js";
+import type { ActiveContextProvider } from "./active-context.js";
+import type { InboxContextProvider } from "./inbox-context.js";
+import type { EpisodicRecallProvider } from "./episodic-recall.js";
+import type { ToolFilter } from "./tool-filter.js";
 import {
   executeModelLoop as executeModelLoopFn,
   executeStreamingModelLoop as executeStreamingModelLoopFn,
@@ -133,6 +140,51 @@ export type {
   UserMemorySnapshot,
   VerifiedSource
 } from "./types.js";
+
+// Context Engineering surfaces (Phases 1–4)
+export {
+  DefaultActiveContextProvider,
+  renderActiveContextSection,
+  type ActiveContextProvider,
+  type ActiveContextSnapshot,
+  type ActiveTaskHint,
+  type ActiveTaskResolver,
+  type DefaultActiveContextProviderOptions
+} from "./active-context.js";
+export {
+  formatCurrentTime,
+  isWorkingHours,
+  parseWorkingHoursString,
+  resolveTimezone,
+  type FormattedTime
+} from "./time-helpers.js";
+export {
+  renderInboxSection,
+  type InboundSummary,
+  type InboxContextProvider,
+  type InboxSnapshot
+} from "./inbox-context.js";
+export {
+  cosineSimilarity,
+  EmbeddingEpisodicRecallProvider,
+  InMemoryEpisodicRecallProvider,
+  renderEpisodicSection,
+  type EmbeddingClient,
+  type EmbeddingEpisodicRecallProviderOptions,
+  type EmbeddingEpisodicRecallStore,
+  type EpisodicMatch,
+  type EpisodicRecallProvider,
+  type EpisodicRecallSnapshot,
+  type InMemoryEpisodicRecallProviderOptions,
+  type StoredEpisode
+} from "./episodic-recall.js";
+export {
+  DefaultToolFilter,
+  DEFAULT_DOMAIN_KEYWORDS,
+  inferDomain,
+  type ToolFilter,
+  type ToolFilterContext
+} from "./tool-filter.js";
 
 
 export {
@@ -205,6 +257,28 @@ export interface AgentRuntimeOptions {
   readonly exemplarRetriever?: ExemplarRetriever;
   readonly exemplarTopK?: number;
   readonly promptLayerRegistry?: PromptLayerRegistry;
+  /**
+   * Context Engineering Phase 1: pull current time / timezone /
+   * working-hours / active task and inject as a `[Active Context]`
+   * system-prompt block. Fail-open per transform.
+   */
+  readonly activeContextProvider?: ActiveContextProvider;
+  /**
+   * Context Engineering Phase 2: surface recent inbound messages
+   * (Slack / Discord / Telegram / LINE) as a `[Recent Messages]`
+   * system-prompt block.
+   */
+  readonly inboxContextProvider?: InboxContextProvider;
+  /**
+   * Context Engineering Phase 3: retrieve top-K prior session
+   * summaries and inject as `[Episodic Memory]`.
+   */
+  readonly episodicRecallProvider?: EpisodicRecallProvider;
+  /**
+   * Context Engineering Phase 4: filter the tool catalog advertised
+   * per request by user-prompt keywords + metadata scope hints.
+   */
+  readonly toolFilter?: ToolFilter;
   readonly defaults?: {
     readonly maxOutputTokens?: number;
     readonly temperature?: number;
@@ -309,6 +383,10 @@ export class AgentRuntime {
   private readonly exemplarRetriever?: ExemplarRetriever;
   private readonly exemplarTopK: number;
   private readonly promptLayerRegistry?: PromptLayerRegistry;
+  private readonly activeContextProvider?: ActiveContextProvider;
+  private readonly inboxContextProvider?: InboxContextProvider;
+  private readonly episodicRecallProvider?: EpisodicRecallProvider;
+  private readonly toolFilter?: ToolFilter;
   private readonly defaults: AgentRuntimeOptions["defaults"];
 
   constructor(options: AgentRuntimeOptions) {
@@ -353,6 +431,10 @@ export class AgentRuntime {
     this.exemplarRetriever = options.exemplarRetriever;
     this.exemplarTopK = Math.max(1, options.exemplarTopK ?? 3);
     this.promptLayerRegistry = options.promptLayerRegistry;
+    this.activeContextProvider = options.activeContextProvider;
+    this.inboxContextProvider = options.inboxContextProvider;
+    this.episodicRecallProvider = options.episodicRecallProvider;
+    this.toolFilter = options.toolFilter;
     this.defaults = options.defaults;
 
     if (!this.modelProvider && !this.modelRegistry) {
@@ -390,8 +472,14 @@ export class AgentRuntime {
 
       const memoryAppliedInput = await applyUserMemoryFn(layeredContext, this.userMemoryProvider, this.userMemoryMaxEntries);
       const memoryAppliedContext: AgentRunContext = { ...layeredContext, input: memoryAppliedInput };
-      const summaryAppliedInput = await applyStoredConversationSummaryFn(memoryAppliedContext, this.conversationSummaryStore);
-      const summaryAppliedContext: AgentRunContext = { ...memoryAppliedContext, input: summaryAppliedInput };
+      const activeContextInput = await applyActiveContextFn(memoryAppliedContext, this.activeContextProvider);
+      const activeContextContext: AgentRunContext = { ...memoryAppliedContext, input: activeContextInput };
+      const inboxAppliedInput = await applyInboxContextFn(activeContextContext, this.inboxContextProvider);
+      const inboxAppliedContext: AgentRunContext = { ...activeContextContext, input: inboxAppliedInput };
+      const episodicAppliedInput = await applyEpisodicRecallFn(inboxAppliedContext, this.episodicRecallProvider);
+      const episodicAppliedContext: AgentRunContext = { ...inboxAppliedContext, input: episodicAppliedInput };
+      const summaryAppliedInput = await applyStoredConversationSummaryFn(episodicAppliedContext, this.conversationSummaryStore);
+      const summaryAppliedContext: AgentRunContext = { ...episodicAppliedContext, input: summaryAppliedInput };
       // Round 160: resolve the persona snapshot once per request and
       // forward to the trim layer so a compaction during this turn
       // re-injects user-context inside the [User context: ...] block.
@@ -517,8 +605,14 @@ export class AgentRuntime {
 
       const memoryAppliedInput = await applyUserMemoryFn(layeredContext, this.userMemoryProvider, this.userMemoryMaxEntries);
       const memoryAppliedContext: AgentRunContext = { ...layeredContext, input: memoryAppliedInput };
-      const summaryAppliedInput = await applyStoredConversationSummaryFn(memoryAppliedContext, this.conversationSummaryStore);
-      const summaryAppliedContext: AgentRunContext = { ...memoryAppliedContext, input: summaryAppliedInput };
+      const activeContextInput = await applyActiveContextFn(memoryAppliedContext, this.activeContextProvider);
+      const activeContextContext: AgentRunContext = { ...memoryAppliedContext, input: activeContextInput };
+      const inboxAppliedInput = await applyInboxContextFn(activeContextContext, this.inboxContextProvider);
+      const inboxAppliedContext: AgentRunContext = { ...activeContextContext, input: inboxAppliedInput };
+      const episodicAppliedInput = await applyEpisodicRecallFn(inboxAppliedContext, this.episodicRecallProvider);
+      const episodicAppliedContext: AgentRunContext = { ...inboxAppliedContext, input: episodicAppliedInput };
+      const summaryAppliedInput = await applyStoredConversationSummaryFn(episodicAppliedContext, this.conversationSummaryStore);
+      const summaryAppliedContext: AgentRunContext = { ...episodicAppliedContext, input: summaryAppliedInput };
       // Round 160: resolve the persona snapshot once per request and
       // forward to the trim layer so a compaction during this turn
       // re-injects user-context inside the [User context: ...] block.
@@ -695,17 +789,26 @@ export class AgentRuntime {
       return [];
     }
 
-    return this.toolRegistry
+    const userMessage = latestUserPrompt(context.input.messages);
+    const tools = this.toolRegistry
       .planForContext({
         allowedToolNames: stringListMetadata(context.input.metadata?.allowedToolNames),
         forbiddenToolNames: stringListMetadata(context.input.metadata?.forbiddenToolNames),
         localMode: context.input.metadata?.localMode === true,
         maxTools: numberMetadata(context.input.metadata?.maxTools),
-        prompt: latestUserPrompt(context.input.messages),
+        prompt: userMessage,
         recentToolNames: stringListMetadata(context.input.metadata?.recentToolNames)
       }, this.toolExposurePolicy)
-      .tools
-      .map((tool) => toModelTool(tool));
+      .tools;
+
+    const filtered = this.toolFilter
+      ? this.toolFilter.filter(tools, {
+          scopeHints: stringListMetadata(context.input.metadata?.toolScopes),
+          userMessage
+        })
+      : tools;
+
+    return filtered.map((tool) => toModelTool(tool));
   }
 
   private async readCache(key: string, model: string) {
