@@ -25,6 +25,17 @@ export interface AttachmentHint {
   readonly ref?: string;
 }
 
+// Per-field length caps. The metadata is user-supplied (web upload
+// form, CLI file pin, voice screenshot) so an overlong or
+// adversarial value must not blow the system prompt or break the
+// `[Attached Files]` block layout. The caps are deliberately
+// generous for normal use and sharp enough to bound the worst case.
+const MAX_NAME_CHARS = 256;
+const MAX_MIME_CHARS = 128;
+const MAX_REF_CHARS = 256;
+const MAX_DESCRIPTION_CHARS = 1024;
+const MAX_ATTACHMENT_ENTRIES = 16;
+
 export function parseAttachmentsFromMetadata(metadata: unknown): readonly AttachmentHint[] {
   if (!metadata || typeof metadata !== "object") {
     return [];
@@ -39,19 +50,26 @@ export function parseAttachmentsFromMetadata(metadata: unknown): readonly Attach
       continue;
     }
     const record = entry as Record<string, unknown>;
-    const name = typeof record.name === "string" ? record.name.trim() : "";
-    if (name.length === 0) {
+    const name = boundedString(record.name, MAX_NAME_CHARS);
+    if (!name) {
       continue;
     }
+    const mimeType = boundedString(record.mimeType, MAX_MIME_CHARS);
+    const ref = boundedString(record.ref, MAX_REF_CHARS);
+    // Description is rendered inline in the prompt, so collapse any
+    // control / newline characters to spaces — otherwise the
+    // `[Attached Files]` block layout breaks AND a hostile metadata
+    // source could splice extra pseudo-section headers via embedded
+    // newlines.
+    const description = boundedString(
+      typeof record.description === "string" ? sanitizeInline(record.description) : undefined,
+      MAX_DESCRIPTION_CHARS
+    );
     out.push({
-      ...(typeof record.description === "string" && record.description.trim().length > 0
-        ? { description: record.description.trim() }
-        : {}),
-      ...(typeof record.mimeType === "string" && record.mimeType.trim().length > 0
-        ? { mimeType: record.mimeType.trim() }
-        : {}),
+      ...(description ? { description } : {}),
+      ...(mimeType ? { mimeType } : {}),
       name,
-      ...(typeof record.ref === "string" && record.ref.trim().length > 0 ? { ref: record.ref.trim() } : {}),
+      ...(ref ? { ref } : {}),
       ...(typeof record.size === "number" && Number.isFinite(record.size) && record.size >= 0
         ? { size: record.size }
         : {})
@@ -60,13 +78,32 @@ export function parseAttachmentsFromMetadata(metadata: unknown): readonly Attach
   return out;
 }
 
+function boundedString(value: unknown, max: number): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
+}
+
+function sanitizeInline(value: string): string {
+  // Collapse any whitespace run (\n, \r, \t, multiple spaces) to a
+  // single space so descriptions render on one line and cannot
+  // inject pseudo-section headers via embedded newlines.
+  return value.replace(/\s+/gu, " ");
+}
+
 export function renderAttachmentSection(attachments: readonly AttachmentHint[]): string | undefined {
   if (attachments.length === 0) {
     return undefined;
   }
   const lines: string[] = ["[Attached Files]"];
   lines.push("Files the user attached to this turn. Treat as primary source material when relevant.");
-  for (const entry of attachments.slice(0, 16)) {
+  const shown = attachments.slice(0, MAX_ATTACHMENT_ENTRIES);
+  for (const entry of shown) {
     const parts: string[] = [entry.name];
     if (entry.mimeType) {
       parts.push(entry.mimeType);
@@ -83,6 +120,9 @@ export function renderAttachmentSection(attachments: readonly AttachmentHint[]):
     } else {
       lines.push(header);
     }
+  }
+  if (attachments.length > shown.length) {
+    lines.push(`…and ${(attachments.length - shown.length).toString()} more attachment(s) not shown.`);
   }
   return lines.join("\n");
 }
