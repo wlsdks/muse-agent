@@ -136,6 +136,34 @@ describe("system prompt building", () => {
     expect(stripPromptCacheBoundary(prompt)).not.toContain(MUSE_CACHE_BOUNDARY_MARKER);
   });
 
+  it("does not leave a triple-newline artifact when the marker sat between two section gaps (iter 28)", () => {
+    // Production-case layout: `buildSystemPrompt({ includeCacheBoundary: true })`
+    // joins sections with `\n\n`, so the marker is bounded by two
+    // newlines on each side: `STABLE\n\n<marker>\n\nDYNAMIC`.
+    //
+    // Pre-iter-28, the single-newline replaceAll
+    //   `\n<marker>\n` → `\n`
+    // consumed exactly ONE newline from each side, yielding
+    //   `STABLE\n` + `\n` + `\nDYNAMIC` = `STABLE\n\n\nDYNAMIC`
+    // — a triple-newline whitespace leak landing in the model's
+    // system prompt at the exact spot the marker used to sit.
+    //
+    // Iter 28 collapses any 3-or-more newline run that results from
+    // marker stripping back to the canonical `\n\n` section gap.
+    const prompt = `STABLE\n\n${MUSE_CACHE_BOUNDARY_MARKER}\n\nDYNAMIC`;
+    expect(stripPromptCacheBoundary(prompt)).toBe("STABLE\n\nDYNAMIC");
+  });
+
+  it("preserves intentional triple-newlines that did not result from marker removal (iter 28)", () => {
+    // Negative case for the iter-28 fix: stripping the marker must
+    // not collapse `\n\n\n` runs elsewhere in the prompt. The
+    // ordered-pattern fix (longest match first) only removes the
+    // marker plus its immediate `\n` / `\n\n` border, so any
+    // author-supplied multi-newline run stays exactly as written.
+    const prompt = `head\n\n\nfoot${MUSE_CACHE_BOUNDARY_MARKER}`;
+    expect(stripPromptCacheBoundary(prompt)).toBe("head\n\n\nfoot");
+  });
+
   it("builds sanitized context packet values for audit metadata", () => {
     expect(
       buildPromptContextPacket({

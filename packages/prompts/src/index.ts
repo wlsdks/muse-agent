@@ -427,11 +427,21 @@ export function splitPromptCacheBoundary(prompt: string): CacheBoundarySplit | u
 }
 
 export function stripPromptCacheBoundary(prompt: string): string {
-  // `replaceAll` so multiple markers (e.g. a buggy producer that
-  // emitted the marker twice, or a future change that appends a
-  // second one) are all removed — `replace` only handled the first
-  // occurrence and would leak the rest into the model context.
+  // The production-case layout `buildSystemPrompt` produces is
+  //   `<stable>\n\n<marker>\n\n<dynamic>`
+  // — two newlines on each side because every section is joined with
+  // `\n\n`. The double-newline branch handles that exact shape and
+  // collapses the marker + surrounding gap back to a single section
+  // separator. Single-newline branch keeps the iter-21 semantics for
+  // an inline `text\n<marker>\nmore` shape. Final replaceAll catches
+  // any bare marker that survived (no surrounding newlines), and
+  // `replaceAll` everywhere so multiple markers are all removed.
+  //
+  // Pre-iter-28 only the single-newline + bare branches existed, so
+  // the production case left a `\n\n\n` whitespace leak exactly
+  // where the marker used to sit.
   return prompt
+    .replaceAll(`\n\n${MUSE_CACHE_BOUNDARY_MARKER}\n\n`, "\n\n")
     .replaceAll(`\n${MUSE_CACHE_BOUNDARY_MARKER}\n`, "\n")
     .replaceAll(MUSE_CACHE_BOUNDARY_MARKER, "");
 }
