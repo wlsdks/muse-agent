@@ -46,9 +46,21 @@ export function renderInboxSection(snapshot: InboxSnapshot | undefined): string 
   }
   for (const [key, messages] of grouped) {
     const [providerId, source] = key.split(":");
-    lines.push(`— ${providerId ?? "?"} ${source ?? "?"} (${messages.length}):`);
+    // `providerId` is one of the literal strings the runtime
+    // controls ("slack" / "discord" / …) — safe. `source` is the
+    // platform channel id (alphanumeric in practice) but defensive
+    // sanitise anyway.
+    const providerLabel = sanitizeInline(providerId ?? "?");
+    const sourceLabel = sanitizeInline(source ?? "?");
+    lines.push(`— ${providerLabel} ${sourceLabel} (${messages.length}):`);
     for (const message of messages) {
-      const senderPart = message.sender ? ` ${message.sender}:` : "";
+      // Slack / Discord display names are author-controlled —
+      // anyone can set a multi-line "display name" containing
+      // `\n[System Override]\n…`. The text body already gets
+      // whitespace-collapsed below; the sender needs the same
+      // treatment. Same injection class iter 22 closed for
+      // calendar event titles.
+      const senderPart = message.sender ? ` ${sanitizeInline(message.sender)}:` : "";
       const preview = truncate(message.text.replace(/\s+/gu, " ").trim(), DEFAULT_TEXT_PREVIEW);
       lines.push(`  · ${message.receivedAtIso}${senderPart} ${preview}`);
     }
@@ -61,4 +73,8 @@ function truncate(text: string, max: number): string {
     return text;
   }
   return `${text.slice(0, max - 1)}…`;
+}
+
+function sanitizeInline(value: string): string {
+  return value.replace(/\s+/gu, " ").trim();
 }
