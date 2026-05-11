@@ -662,8 +662,7 @@ const modelPrefixToProvider: Readonly<Record<string, string>> = {
   "phi": "ollama",
   "pixtral-": "mistral",
   "qwen": "ollama",
-  "starcoder": "ollama",
-  "text-embedding-": "openai"
+  "starcoder": "ollama"
 };
 
 function modelMatchesCapabilities(model: ModelInfo, criteria: ModelSelectionCriteria): boolean {
