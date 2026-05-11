@@ -205,16 +205,31 @@ export function mergeModelKeysFromFile(env: MuseEnvironment): MuseEnvironment {
     { envKey: "OPENROUTER_API_KEY", id: "openrouter" },
     { envKey: "OLLAMA_BASE_URL", id: "ollama" }
   ];
+  let firstSuggestedModel: string | undefined;
   for (const entry of map) {
     const token = stringField(file[entry.id], "token");
     if (token && token.length > 0) {
       fileKeyForEnv[entry.envKey] = token;
+      // Capture the first provider's `suggestedModel` so `setup model`
+      // produces a turnkey configuration — without it the user has to
+      // separately `export MUSE_MODEL=...` even though the wizard
+      // already asked them to pick a provider.
+      if (firstSuggestedModel === undefined) {
+        const suggested = stringField(file[entry.id], "suggestedModel");
+        if (suggested && suggested.length > 0) {
+          firstSuggestedModel = suggested;
+        }
+      }
     }
   }
   if (Object.keys(fileKeyForEnv).length === 0) {
     return env;
   }
-  // Env wins: spread file first, env second.
+  // Env wins: spread file first, env second. MUSE_MODEL only falls
+  // back to the file value when env doesn't already have one.
+  if (firstSuggestedModel !== undefined) {
+    fileKeyForEnv["MUSE_MODEL"] = firstSuggestedModel;
+  }
   return { ...fileKeyForEnv, ...env };
 }
 

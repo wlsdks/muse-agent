@@ -707,6 +707,19 @@ describe("autoconfigure", () => {
     });
     expect(noFile.OPENAI_API_KEY).toBe("stays");
     expect(noFile.GEMINI_API_KEY).toBeUndefined();
+
+    // MUSE_MODEL falls back to the first provider's `suggestedModel`
+    // when env doesn't already set it — keeps `muse setup model`
+    // turnkey without a second export step. Provider iteration is
+    // OPENAI → ANTHROPIC → GEMINI → OPENROUTER → OLLAMA.
+    expect(fileOnly.MUSE_MODEL).toBe("openai/gpt-4o-mini");
+
+    // Env wins on MUSE_MODEL too.
+    const mergedWithModel = mergeModelKeysFromFile({
+      MUSE_MODEL: "anthropic/claude-haiku-4-5-20251001",
+      MUSE_MODEL_KEYS_FILE: file
+    });
+    expect(mergedWithModel.MUSE_MODEL).toBe("anthropic/claude-haiku-4-5-20251001");
   });
 
   it("buildMessagingRegistry honours env tokens, the credentials file, and env-overrides-file", async () => {

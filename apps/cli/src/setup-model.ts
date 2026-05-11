@@ -1,15 +1,12 @@
 /**
  * `muse setup model` — interactive wizard for the LLM provider key
- * + default model id. Persists to `~/.muse/models.json` (chmod 600)
- * and prints the env-var lines the user needs to add to their shell
- * rc so the runtime picks them up.
+ * + default model id. Persists to `~/.muse/models.json` (chmod 600).
  *
- * Doesn't touch autoconfigure's boot path. The runtime continues to
- * read environment variables directly; this wizard's job is to
- * collect the keys + tell the user how to wire them. A follow-up
- * iter can teach autoconfigure to fall back to this file (mirroring
- * what messaging already does), so a single `source ~/.muse/env.sh`
- * isn't strictly required forever.
+ * `mergeModelKeysFromFile` in autoconfigure auto-loads this file at
+ * runtime boot, so the user doesn't need shell-rc exports — running
+ * the wizard once is enough. The wizard prints the resolved
+ * environment names + the chosen MUSE_MODEL so the user knows what
+ * the next `muse` invocation will see.
  */
 
 import { promises as fs } from "node:fs";
@@ -92,7 +89,7 @@ export async function runModelSetup(io: SetupModelIO): Promise<void> {
   const file = pathJoin(home, ".muse", "models.json");
 
   io.stdout(`Model setup — keys will be saved to ${file} (chmod 600).\n`);
-  io.stdout("This file isn't auto-loaded yet — the wizard prints export lines for your shell rc.\n\n");
+  io.stdout("autoconfigure loads this file at boot, so no shell-rc exports are required.\n\n");
 
   const selection = await multiselect({
     message: "Which model providers do you want to enable?",
@@ -142,14 +139,23 @@ export async function runModelSetup(io: SetupModelIO): Promise<void> {
   }
 
   await writePersisted(file, persisted);
-  io.stdout(`\n✓ Saved ${collected.length.toString()} provider(s) to ${file}\n\n`);
-  io.stdout("Add to your shell rc (or run `source <(...)`):\n");
+  io.stdout(`\n✓ Saved ${collected.length.toString()} provider(s) to ${file}\n`);
+  io.stdout("autoconfigure will load these at next boot. Resolved environment:\n");
   for (const { spec, token } of collected) {
-    io.stdout(`  export ${spec.envKey}=${quoteForShell(token)}\n`);
+    io.stdout(`  ${spec.envKey} = ${maskSecret(token)}\n`);
   }
-  // Default model env: use the first selected provider's suggested model.
-  io.stdout(`  export MUSE_MODEL=${collected[0]!.spec.suggestedModel}\n`);
-  io.stdout("\nTip: `muse setup` shows the current state once env is loaded.\n");
+  // Default model env: use the first selected provider's suggested
+  // model. mergeModelKeysFromFile auto-derives MUSE_MODEL from this
+  // when env doesn't already have one.
+  io.stdout(`  MUSE_MODEL    = ${collected[0]!.spec.suggestedModel}  (override with MUSE_MODEL=… in env)\n`);
+  io.stdout("\nTip: `muse setup` shows the current state.\n");
+}
+
+function maskSecret(token: string): string {
+  if (token.length <= 8) {
+    return "*".repeat(token.length);
+  }
+  return `${token.slice(0, 4)}…${token.slice(-4)}`;
 }
 
 async function readPersisted(file: string): Promise<PersistedShape> {
@@ -173,7 +179,3 @@ async function writePersisted(file: string, value: PersistedShape): Promise<void
   await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
-function quoteForShell(value: string): string {
-  // Single-quote and escape any embedded single quotes — safe for bash/zsh.
-  return `'${value.replace(/'/gu, "'\\''")}'`;
-}
