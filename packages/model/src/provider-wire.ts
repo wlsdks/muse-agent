@@ -186,6 +186,32 @@ function stripEncryptedContent(r: Record<string, unknown>): Record<string, unkno
   return rest;
 }
 
+/**
+ * Replays a non-stream ModelResponse as a sequence of ModelEvent values so
+ * delegate-to-generate stream() wrappers (Anthropic, Gemini) emit the same
+ * tool-call-started/finished + citations triplet that the native OpenAI
+ * Responses SSE parser produces. Without this, Anthropic/Gemini clients
+ * silently drop the web_search status + citation events the API surface
+ * relays to UI clients.
+ */
+export async function* synthesizeStreamEventsFromResponse(
+  response: ModelResponse
+): AsyncGenerator<ModelEvent> {
+  if (response.output.length > 0) {
+    yield { text: response.output, type: "text-delta" };
+  }
+  for (const toolCall of response.toolCalls ?? []) {
+    yield { toolCall, type: "tool-call" };
+  }
+  const citations = response.citations ?? [];
+  if (citations.length > 0) {
+    yield { name: "web_search", type: "tool-call-started" };
+    yield { count: citations.length, name: "web_search", type: "tool-call-finished" };
+    yield { items: citations, type: "citations" };
+  }
+  yield { response, type: "done" };
+}
+
 export function toGeminiRequest(
   request: ModelRequest,
   policy: { enabled: boolean; maxUses: number } = { enabled: false, maxUses: 5 }

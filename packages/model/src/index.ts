@@ -14,6 +14,7 @@ import {
   parseOpenAIResponsesStream,
   parseOpenAIStream,
   renderDiagnosticOutput,
+  synthesizeStreamEventsFromResponse,
   toAnthropicRequest,
   toGeminiRequest,
   toOpenAIChatRequest,
@@ -515,16 +516,7 @@ export class AnthropicProvider implements ModelProvider {
 
   async *stream(request: ModelRequest): AsyncIterable<ModelEvent> {
     const response = await this.generate(request);
-
-    if (response.output.length > 0) {
-      yield { text: response.output, type: "text-delta" };
-    }
-
-    for (const toolCall of response.toolCalls ?? []) {
-      yield { toolCall, type: "tool-call" };
-    }
-
-    yield { response, type: "done" };
+    yield* synthesizeStreamEventsFromResponse(response);
   }
 
   private requestHeaders(): Record<string, string> {
@@ -600,16 +592,7 @@ export class GeminiProvider implements ModelProvider {
 
   async *stream(request: ModelRequest): AsyncIterable<ModelEvent> {
     const response = await this.generate(request);
-
-    if (response.output.length > 0) {
-      yield { text: response.output, type: "text-delta" };
-    }
-
-    for (const toolCall of response.toolCalls ?? []) {
-      yield { toolCall, type: "tool-call" };
-    }
-
-    yield { response, type: "done" };
+    yield* synthesizeStreamEventsFromResponse(response);
   }
 }
 

@@ -9,10 +9,17 @@ import {
   fromGeminiResponse,
   fromOpenAIResponsesResponse,
   parseOpenAIResponsesStream,
+  synthesizeStreamEventsFromResponse,
   toAnthropicRequest,
   toGeminiRequest,
   toOpenAIResponsesRequest
 } from "./provider-wire.js";
+
+async function collect<T>(stream: AsyncIterable<T>): Promise<T[]> {
+  const out: T[] = [];
+  for await (const item of stream) out.push(item);
+  return out;
+}
 
 describe("toOpenAIResponsesRequest", () => {
   const base = {
@@ -215,5 +222,55 @@ describe("fromGeminiResponse extracts grounding citations", () => {
       candidates: [{ content: { role: "model", parts: [{ text: "x" }] }, finishReason: "STOP" }]
     });
     expect(r.citations).toEqual([]);
+  });
+});
+
+describe("synthesizeStreamEventsFromResponse", () => {
+  it("emits text-delta then done for a plain response (no tools, no citations)", async () => {
+    const events = await collect(synthesizeStreamEventsFromResponse({
+      id: "r1", model: "m", output: "hi"
+    }));
+    expect(events.map((e) => e.type)).toEqual(["text-delta", "done"]);
+  });
+
+  it("emits tool-call events for function tool calls before done", async () => {
+    const events = await collect(synthesizeStreamEventsFromResponse({
+      id: "r1", model: "m", output: "hi",
+      toolCalls: [{ id: "t1", name: "x", arguments: {} }]
+    }));
+    expect(events.map((e) => e.type)).toEqual(["text-delta", "tool-call", "done"]);
+  });
+
+  it("synthesizes tool-call-started + finished + citations when response has citations", async () => {
+    const events = await collect(synthesizeStreamEventsFromResponse({
+      id: "r1", model: "m", output: "hi",
+      citations: [
+        { url: "https://a.test", title: "A" },
+        { url: "https://b.test", title: "B" }
+      ]
+    }));
+    expect(events.map((e) => e.type)).toEqual([
+      "text-delta",
+      "tool-call-started",
+      "tool-call-finished",
+      "citations",
+      "done"
+    ]);
+    const finished = events.find((e) => e.type === "tool-call-finished") as { count?: number } | undefined;
+    expect(finished?.count).toBe(2);
+  });
+
+  it("does not emit synthetic web_search events when citations array is empty", async () => {
+    const events = await collect(synthesizeStreamEventsFromResponse({
+      id: "r1", model: "m", output: "hi", citations: []
+    }));
+    expect(events.map((e) => e.type)).toEqual(["text-delta", "done"]);
+  });
+
+  it("skips text-delta when output is empty", async () => {
+    const events = await collect(synthesizeStreamEventsFromResponse({
+      id: "r1", model: "m", output: ""
+    }));
+    expect(events.map((e) => e.type)).toEqual(["done"]);
   });
 });
