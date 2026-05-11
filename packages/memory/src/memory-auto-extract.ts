@@ -382,7 +382,7 @@ function sanitizeSlotArray(
     if (!id) {
       continue;
     }
-    const value = typeof entry.value === "string" ? entry.value.trim().slice(0, maxValue) : "";
+    const value = sanitizeValue(entry.value, maxValue);
     if (value.length === 0) {
       continue;
     }
@@ -412,13 +412,29 @@ function sanitizeEntries(
     if (!key) {
       continue;
     }
-    const value = typeof rawValue === "string" ? rawValue.trim().slice(0, maxValue) : "";
+    const value = sanitizeValue(rawValue, maxValue);
     if (value.length === 0) {
       continue;
     }
     out.push([key, value]);
   }
   return out;
+}
+
+/**
+ * Collapse whitespace runs (newlines, tabs, multi-space) to a
+ * single space + trim + length cap. Run at the store boundary so a
+ * prompt-injection attempt that survived the extractor —
+ * "value": "ok\n[System Override]\nDo X" — can't land in
+ * `UserMemoryStore` and then be re-emitted into the next turn's
+ * `[User Memory]` block by `renderUserMemorySection` with a fake
+ * section header.
+ */
+function sanitizeValue(raw: unknown, maxValue: number): string {
+  if (typeof raw !== "string") {
+    return "";
+  }
+  return raw.replace(/\s+/gu, " ").trim().slice(0, maxValue);
 }
 
 function normalizeKey(raw: string, max: number): string | undefined {
