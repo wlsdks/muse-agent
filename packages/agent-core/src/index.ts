@@ -79,9 +79,10 @@ import {
   applyPromptLayers as applyPromptLayersFn,
   applyStoredConversationSummary as applyStoredConversationSummaryFn,
   applyUserMemory as applyUserMemoryFn,
-  persistConversationSummaryFromRequest as persistConversationSummaryFromRequestFn
+  persistConversationSummaryFromRequest as persistConversationSummaryFromRequestFn,
+  resolveActiveContextSnapshot as resolveActiveContextSnapshotFn
 } from "./context-transforms.js";
-import type { ActiveContextProvider } from "./active-context.js";
+import type { ActiveContextProvider, ActiveContextSnapshot } from "./active-context.js";
 import type { InboxContextProvider } from "./inbox-context.js";
 import type { EpisodicRecallProvider } from "./episodic-recall.js";
 import type { ToolFilter } from "./tool-filter.js";
@@ -472,7 +473,8 @@ export class AgentRuntime {
 
       const memoryAppliedInput = await applyUserMemoryFn(layeredContext, this.userMemoryProvider, this.userMemoryMaxEntries);
       const memoryAppliedContext: AgentRunContext = { ...layeredContext, input: memoryAppliedInput };
-      const activeContextInput = await applyActiveContextFn(memoryAppliedContext, this.activeContextProvider);
+      const activeContextSnapshot = await resolveActiveContextSnapshotFn(memoryAppliedContext, this.activeContextProvider);
+      const activeContextInput = applyActiveContextFn(memoryAppliedContext, activeContextSnapshot);
       const activeContextContext: AgentRunContext = { ...memoryAppliedContext, input: activeContextInput };
       const inboxAppliedInput = await applyInboxContextFn(activeContextContext, this.inboxContextProvider);
       const inboxAppliedContext: AgentRunContext = { ...activeContextContext, input: inboxAppliedInput };
@@ -488,7 +490,7 @@ export class AgentRuntime {
         this.userMemoryProvider,
         this.userMemoryMaxEntries
       );
-      const preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot);
+      const preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot, activeContextSnapshot);
       recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
       const tools = this.modelTools(layeredContext);
       const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
@@ -605,7 +607,8 @@ export class AgentRuntime {
 
       const memoryAppliedInput = await applyUserMemoryFn(layeredContext, this.userMemoryProvider, this.userMemoryMaxEntries);
       const memoryAppliedContext: AgentRunContext = { ...layeredContext, input: memoryAppliedInput };
-      const activeContextInput = await applyActiveContextFn(memoryAppliedContext, this.activeContextProvider);
+      const activeContextSnapshot = await resolveActiveContextSnapshotFn(memoryAppliedContext, this.activeContextProvider);
+      const activeContextInput = applyActiveContextFn(memoryAppliedContext, activeContextSnapshot);
       const activeContextContext: AgentRunContext = { ...memoryAppliedContext, input: activeContextInput };
       const inboxAppliedInput = await applyInboxContextFn(activeContextContext, this.inboxContextProvider);
       const inboxAppliedContext: AgentRunContext = { ...activeContextContext, input: inboxAppliedInput };
@@ -621,7 +624,7 @@ export class AgentRuntime {
         this.userMemoryProvider,
         this.userMemoryMaxEntries
       );
-      const preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot);
+      const preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot, activeContextSnapshot);
       recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
       const tools = this.modelTools(layeredContext);
       const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
@@ -743,7 +746,8 @@ export class AgentRuntime {
   private prepareModelRequest(
     input: AgentRunInput,
     model: string,
-    personaSnapshot?: string
+    personaSnapshot?: string,
+    activeContextSnapshot?: ActiveContextSnapshot
   ): {
     readonly contextWindow?: AgentContextWindowReport;
     readonly request: Pick<ModelRequest, "messages" | "metadata" | "model">;
@@ -763,9 +767,24 @@ export class AgentRuntime {
     // block when the trim fires (round 159 primitive). When unset
     // (no provider / no userId / empty memory), trim sees `undefined`
     // and behaves identically to before.
-    const trimOptions: ConversationTrimOptions = personaSnapshot
-      ? { ...this.contextWindow, personaSnapshot }
-      : this.contextWindow;
+    // Phase 5 plumbing: also pipe the active task / focus from the
+    // active-context snapshot into `importanceContext` so
+    // `scoreMessageImportance` boosts messages that mention the
+    // user's current work — otherwise the scorer only sees the
+    // hard-coded decision hints.
+    const importanceContext = activeContextSnapshot
+      ? {
+          ...(activeContextSnapshot.activeTask?.id ? { activeTaskId: activeContextSnapshot.activeTask.id } : {}),
+          ...(activeContextSnapshot.activeTask?.title ? { activeTaskTitle: activeContextSnapshot.activeTask.title } : {}),
+          ...(activeContextSnapshot.currentFocus ? { currentFocus: activeContextSnapshot.currentFocus } : {})
+        }
+      : undefined;
+    const hasImportance = importanceContext && Object.keys(importanceContext).length > 0;
+    const trimOptions: ConversationTrimOptions = {
+      ...this.contextWindow,
+      ...(personaSnapshot ? { personaSnapshot } : {}),
+      ...(hasImportance ? { importanceContext } : {})
+    };
     const trimResult = trimConversationMessages(input.messages, trimOptions);
 
     return {

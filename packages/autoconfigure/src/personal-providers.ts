@@ -70,7 +70,7 @@ import {
   type InboxContextProvider,
   type ToolFilter
 } from "@muse/agent-core";
-import type { ConversationSummaryStore, UserMemoryStore } from "@muse/memory";
+import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore } from "@muse/memory";
 
 import type { MuseEnvironment } from "./index.js";
 
@@ -585,12 +585,37 @@ export type { MessagingProvider };
  */
 export function buildActiveContextProvider(
   env: MuseEnvironment,
-  userMemoryStore: UserMemoryStore | undefined
+  userMemoryStore: UserMemoryStore | undefined,
+  taskMemoryStore?: TaskMemoryStore
 ): ActiveContextProvider | undefined {
   if (env.MUSE_ACTIVE_CONTEXT_ENABLED?.trim().toLowerCase() === "false") {
     return undefined;
   }
+  const activeTaskResolver = taskMemoryStore
+    ? {
+        async resolve(options: { readonly userId?: string; readonly sessionId?: string }) {
+          const { sessionId, userId } = options;
+          if (!sessionId) {
+            return undefined;
+          }
+          try {
+            const state = await taskMemoryStore.findActiveBySession(sessionId, userId);
+            if (!state) {
+              return undefined;
+            }
+            return {
+              id: state.taskId,
+              ...(state.metadata?.dueIso ? { dueIso: state.metadata.dueIso } : {}),
+              title: state.goal
+            };
+          } catch {
+            return undefined;
+          }
+        }
+      }
+    : undefined;
   return new DefaultActiveContextProvider({
+    ...(activeTaskResolver ? { activeTaskResolver } : {}),
     ...(env.MUSE_DEFAULT_TIMEZONE?.trim() ? { defaultTimezone: env.MUSE_DEFAULT_TIMEZONE.trim() } : {}),
     ...(userMemoryStore ? { userMemoryProvider: userMemoryStore } : {})
   });

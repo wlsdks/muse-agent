@@ -33,12 +33,21 @@ export interface ActiveContextSnapshot {
   readonly currentFocus?: string;
 }
 
+export interface ActiveContextResolveOptions {
+  readonly userId?: string;
+  readonly sessionId?: string;
+}
+
 export interface ActiveContextProvider {
-  resolve(userId?: string): Promise<ActiveContextSnapshot | undefined> | ActiveContextSnapshot | undefined;
+  resolve(
+    options?: ActiveContextResolveOptions | string
+  ): Promise<ActiveContextSnapshot | undefined> | ActiveContextSnapshot | undefined;
 }
 
 export interface ActiveTaskResolver {
-  resolve(userId: string): Promise<ActiveTaskHint | undefined> | ActiveTaskHint | undefined;
+  resolve(
+    options: { readonly userId?: string; readonly sessionId?: string }
+  ): Promise<ActiveTaskHint | undefined> | ActiveTaskHint | undefined;
 }
 
 export interface DefaultActiveContextProviderOptions {
@@ -61,7 +70,14 @@ export class DefaultActiveContextProvider implements ActiveContextProvider {
     this.defaultTimezone = options.defaultTimezone;
   }
 
-  async resolve(userId?: string): Promise<ActiveContextSnapshot | undefined> {
+  async resolve(
+    options?: ActiveContextResolveOptions | string
+  ): Promise<ActiveContextSnapshot | undefined> {
+    const resolved = typeof options === "string"
+      ? { userId: options }
+      : options ?? {};
+    const userId = resolved.userId;
+    const sessionId = resolved.sessionId;
     const now = this.now();
     let timezone = this.defaultTimezone;
     let workingHours: { start: number; end: number } | undefined;
@@ -89,9 +105,9 @@ export class DefaultActiveContextProvider implements ActiveContextProvider {
     }
     const formatted = formatCurrentTime(now, timezone);
     let activeTask: ActiveTaskHint | undefined;
-    if (userId && this.activeTaskResolver) {
+    if (this.activeTaskResolver && (userId || sessionId)) {
       try {
-        activeTask = (await this.activeTaskResolver.resolve(userId)) ?? undefined;
+        activeTask = (await this.activeTaskResolver.resolve({ sessionId, userId })) ?? undefined;
       } catch {
         activeTask = undefined;
       }
