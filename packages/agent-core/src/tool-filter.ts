@@ -59,6 +59,14 @@ export class DefaultToolFilter implements ToolFilter {
     scopeSet: ReadonlySet<string>,
     recentSet: ReadonlySet<string>
   ): boolean {
+    // `inferDomain` returns the domain already lowercased — every
+    // downstream comparison (scopeSet, extraKeywords lookup) is then
+    // symmetric. Before iter 25 the heuristics lookup
+    // (`extraKeywords[domain]`) was case-sensitive while the scope
+    // check (`scopeSet.has(domain.toLowerCase())`) was case-insensitive,
+    // so a tool with explicit `domain: "Messaging"` silently lost its
+    // heuristic-keyword path. Centralising the lowercase in inferDomain
+    // closes the asymmetry.
     const domain = inferDomain(definition);
     if (!domain || domain === "core") {
       return true;
@@ -69,7 +77,7 @@ export class DefaultToolFilter implements ToolFilter {
     if (recentSet.has(definition.name)) {
       return true;
     }
-    if (scopeSet.has(domain.toLowerCase())) {
+    if (scopeSet.has(domain)) {
       return true;
     }
     for (const keyword of definition.keywords ?? []) {
@@ -126,12 +134,20 @@ const BUILTIN_PREFIX_DOMAIN: Readonly<Record<string, string>> = Object.freeze({
 
 /**
  * Read the tool's domain. Honours an explicit `definition.domain`
- * first, then falls back to a name-prefix lookup. Returns undefined
- * when nothing matches (tool is always-on).
+ * first (normalised — trimmed + lowercased), then falls back to a
+ * name-prefix lookup whose values are already lowercase. Returns
+ * undefined when nothing matches (tool is always-on).
+ *
+ * Domains are a case-insensitive taxonomy: returning the normalised
+ * form here means callers can compare with `===` and use the value
+ * as a `Record` key (scope set, heuristics lookup) without paying
+ * for per-call-site lowercase conversions, and — more importantly —
+ * without falling into the case-mismatch bug where a tool tagged
+ * `domain: "Messaging"` silently lost its heuristic-keyword path.
  */
 export function inferDomain(definition: MuseToolDefinition): string | undefined {
   if (typeof definition.domain === "string" && definition.domain.trim().length > 0) {
-    return definition.domain.trim();
+    return definition.domain.trim().toLowerCase();
   }
   for (const [prefix, domain] of Object.entries(BUILTIN_PREFIX_DOMAIN)) {
     if (definition.name.startsWith(prefix)) {

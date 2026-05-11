@@ -134,9 +134,57 @@ describe("inferDomain", () => {
     );
   });
 
+  it("normalises explicit domains to lowercase (iter 25)", () => {
+    // Before iter 25 the explicit-domain path returned the raw trimmed
+    // value. A tool tagged `domain: "Messaging"` therefore landed on a
+    // case-sensitive heuristics lookup that silently failed, while the
+    // scope-set check was case-insensitive — asymmetric. Normalising
+    // here closes the gap so every downstream comparison is consistent.
+    expect(inferDomain({ description: "", domain: "Messaging", inputSchema: {}, name: "x", risk: "read" })).toBe(
+      "messaging"
+    );
+    expect(inferDomain({ description: "", domain: " CALENDAR ", inputSchema: {}, name: "x", risk: "read" })).toBe(
+      "calendar"
+    );
+  });
+
   it("falls back to prefix-based detection", () => {
     expect(inferDomain({ description: "", inputSchema: {}, name: "muse.calendar.list", risk: "read" })).toBe("calendar");
     expect(inferDomain({ description: "", inputSchema: {}, name: "muse.time.now", risk: "read" })).toBe("core");
     expect(inferDomain({ description: "", inputSchema: {}, name: "legacy.foo", risk: "read" })).toBeUndefined();
+  });
+});
+
+describe("DefaultToolFilter explicit-domain case handling (iter 25)", () => {
+  it("matches heuristics for tools whose explicit domain has non-lowercase casing", () => {
+    // Personal-assistant users adding custom tools naturally write
+    // `domain: "Messaging"` (sentence case). Before iter 25 the
+    // `extraKeywords[domain]` lookup was case-sensitive while the
+    // scope-set check was case-insensitive, so "post to slack" with
+    // a "Messaging"-tagged tool dropped silently. After iter 25 the
+    // lookup is symmetric.
+    const filter = new DefaultToolFilter();
+    const mixedCaseTool: MuseTool = tool({
+      description: "Custom messaging integration",
+      domain: "Messaging",
+      inputSchema: {},
+      name: "vendor.chat.send",
+      risk: "write"
+    });
+    const kept = filter.filter([mixedCaseTool], { userMessage: "post this to slack please" });
+    expect(kept.map((t) => t.definition.name)).toContain("vendor.chat.send");
+  });
+
+  it("scope hint with non-lowercase casing still matches a mixed-case tool domain", () => {
+    const filter = new DefaultToolFilter();
+    const mixedCaseTool: MuseTool = tool({
+      description: "Custom calendar integration",
+      domain: "Calendar",
+      inputSchema: {},
+      name: "vendor.cal.list",
+      risk: "read"
+    });
+    const kept = filter.filter([mixedCaseTool], { scopeHints: ["CALENDAR"], userMessage: "hi" });
+    expect(kept.map((t) => t.definition.name)).toContain("vendor.cal.list");
   });
 });
