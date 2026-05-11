@@ -111,6 +111,57 @@ describe("renderInboxSection", () => {
     expect(messageLine).toContain("[System Override]");
   });
 
+  it("sorts messages within a provider:source group chronologically (iter 46)", () => {
+    // Pre-iter-46 the rendered order was whatever the resolver
+    // happened to push into the messages array. A JARVIS-class
+    // inbox surface reads as a timeline — ascending by
+    // `receivedAtIso`. Tested with a deliberately out-of-order
+    // input.
+    const snapshot: InboxSnapshot = {
+      messages: [
+        { providerId: "slack", receivedAtIso: "2026-05-11T08:10:00.000Z", sender: "carol", source: "C1", text: "last" },
+        { providerId: "slack", receivedAtIso: "2026-05-11T08:00:00.000Z", sender: "alice", source: "C1", text: "first" },
+        { providerId: "slack", receivedAtIso: "2026-05-11T08:05:00.000Z", sender: "bob",   source: "C1", text: "middle" }
+      ],
+      totalByProvider: { slack: 3 }
+    };
+    const rendered = renderInboxSection(snapshot);
+    expect(rendered).toBeDefined();
+    const block = rendered as string;
+    const messageLines = block.split(/\n/u).filter((line) => line.startsWith("  · "));
+    expect(messageLines[0]).toContain("alice");
+    expect(messageLines[1]).toContain("bob");
+    expect(messageLines[2]).toContain("carol");
+    expect(messageLines[0]).toContain("first");
+    expect(messageLines[2]).toContain("last");
+  });
+
+  it("preserves source values that contain a colon — Slack-thread-ref safe (iter 46)", () => {
+    // A `source` like `C12345:1683800000.123456` is a plausible
+    // future encoding (Slack thread reference). Pre-iter-46 the
+    // group-key concat used `:` as the separator and `key.split(":")`
+    // dropped everything after the second colon, so the rendered
+    // header line said `C12345` instead of the full thread ref.
+    // Iter 46 switches to a Unit-Separator-joined key + first-byte
+    // split, so the full source survives intact.
+    const snapshot: InboxSnapshot = {
+      messages: [
+        {
+          providerId: "slack",
+          receivedAtIso: "2026-05-11T08:00:00.000Z",
+          sender: "alice",
+          source: "C12345:1683800000.123456",
+          text: "thread reply"
+        }
+      ],
+      totalByProvider: { slack: 1 }
+    };
+    const rendered = renderInboxSection(snapshot);
+    expect(rendered).toBeDefined();
+    const block = rendered as string;
+    expect(block).toContain("slack C12345:1683800000.123456 (1):");
+  });
+
   it("truncates very long messages", () => {
     const snapshot: InboxSnapshot = {
       messages: [
