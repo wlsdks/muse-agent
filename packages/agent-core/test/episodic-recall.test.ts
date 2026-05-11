@@ -75,6 +75,36 @@ describe("InMemoryEpisodicRecallProvider", () => {
     expect(snapshot?.matches.map((m) => m.sessionId).sort()).toEqual(["legacy-1", "u1-1"]);
   });
 
+  it("tokenises Japanese (Hiragana + Katakana + CJK Han) narratives so non-Hangul-locale users get recall (iter 35)", async () => {
+    // Pre-iter-35 `tokenSet` only recognised English letters, digits,
+    // and Korean Hangul (`가-힣`). Japanese / Chinese narratives were
+    // tokenised as a single split-separator run → empty token set →
+    // zero recall, even when the query and narrative shared every
+    // character. Matches the CJK ranges already used by
+    // `memory-token-trim.ts:isCjkCodePoint`.
+    const provider = new InMemoryEpisodicRecallProvider({
+      episodes: [
+        { narrative: "東京で会議が予定されています", sessionId: "s-tokyo" },
+        { narrative: "サンフランシスコの天気は晴れです", sessionId: "s-sf" }
+      ],
+      minScore: 0.05
+    });
+    const snapshot = await provider.resolve("東京での会議の予定は？");
+    expect(snapshot?.matches[0]?.sessionId).toBe("s-tokyo");
+  });
+
+  it("tokenises Chinese ideographs too (iter 35)", async () => {
+    const provider = new InMemoryEpisodicRecallProvider({
+      episodes: [
+        { narrative: "明天上海开会讨论新方案", sessionId: "s-shanghai" },
+        { narrative: "巴黎旅行计划已经确定", sessionId: "s-paris" }
+      ],
+      minScore: 0.05
+    });
+    const snapshot = await provider.resolve("上海明天的会议");
+    expect(snapshot?.matches[0]?.sessionId).toBe("s-shanghai");
+  });
+
   it("caps maxQueryChars so a huge prompt cannot blow CPU on the recall path", async () => {
     const provider = new InMemoryEpisodicRecallProvider({
       episodes: [{ narrative: "JARVIS planning", sessionId: "s-1" }],

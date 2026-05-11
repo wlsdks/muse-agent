@@ -198,13 +198,59 @@ function isVisibleToUser(
   return false;
 }
 
+// Character class for tokenisable runs. Includes the same CJK ranges
+// `memory-token-trim.ts:isCjkCodePoint` already uses, so episodic
+// recall works across the same locales the token estimator handles:
+//   - a-z 0-9            ASCII text (English, Latin transliterations)
+//   - 가-힯      Hangul Syllables + some Jamo Extended-A (Korean)
+//   - 一-鿿      CJK Unified Ideographs (Chinese Hanzi + Japanese Kanji)
+//   - ぀-ゟ      Hiragana (Japanese)
+//   - ゠-ヿ      Katakana (Japanese)
+// Before iter 35 only Hangul was recognised, so Japanese / Chinese
+// narratives produced an empty token set → zero recall, even when
+// query and narrative shared every meaningful character.
+const TOKEN_NON_WORD_RE = /[^a-z0-9가-힯一-鿿぀-ゟ゠-ヿ]+/u;
+
+function hasCjkChar(value: string): boolean {
+  for (const ch of value) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (
+      (code >= 0x4e00 && code <= 0x9fff) ||  // CJK Unified Ideographs
+      (code >= 0xac00 && code <= 0xd7af) ||  // Hangul Syllables
+      (code >= 0x3040 && code <= 0x309f) ||  // Hiragana
+      (code >= 0x30a0 && code <= 0x30ff)     // Katakana
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function tokenSet(value: string): Set<string> {
-  return new Set(
-    value
-      .toLowerCase()
-      .split(/[^a-z0-9가-힣]+/u)
-      .filter((token) => token.length >= 2)
-  );
+  const tokens = new Set<string>();
+  for (const raw of value.toLowerCase().split(TOKEN_NON_WORD_RE)) {
+    if (raw.length < 2) {
+      continue;
+    }
+    if (hasCjkChar(raw)) {
+      // CJK scripts don't separate words with whitespace, so a
+      // contiguous run like "東京で会議" arrives as ONE raw token.
+      // Whole-token equality would only match identical phrases —
+      // a paraphrase like "東京の会議" would Jaccard to 0. Emit
+      // character bigrams instead: the standard dependency-free
+      // fallback for CJK tokenisation. "東京で会議" →
+      // {"東京","京で","で会","会議"}; the paraphrase shares
+      // "東京" and "会議", scoring 2/6 ≈ 0.33 → above the default
+      // minScore. ASCII tokens keep their existing whole-word
+      // behaviour.
+      for (let index = 0; index < raw.length - 1; index += 1) {
+        tokens.add(raw.slice(index, index + 2));
+      }
+    } else {
+      tokens.add(raw);
+    }
+  }
+  return tokens;
 }
 
 function jaccardSimilarity(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
