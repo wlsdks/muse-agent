@@ -100,18 +100,29 @@ export interface ModelRequest {
   readonly metadata?: JsonObject;
 }
 
+export interface WebSearchCitation {
+  readonly url: string;
+  readonly title: string;
+  readonly snippet?: string;
+  readonly providerRaw?: unknown;
+}
+
 export interface ModelResponse {
   readonly id: string;
   readonly model: string;
   readonly output: string;
   readonly toolCalls?: readonly ModelToolCall[];
   readonly usage?: ModelUsage;
+  readonly citations?: readonly WebSearchCitation[];
   readonly raw?: unknown;
 }
 
 export type ModelEvent =
   | { readonly type: "text-delta"; readonly text: string }
   | { readonly type: "tool-call"; readonly toolCall: ModelToolCall }
+  | { readonly type: "tool-call-started"; readonly name: string }
+  | { readonly type: "tool-call-finished"; readonly name: string; readonly count?: number }
+  | { readonly type: "citations"; readonly items: readonly WebSearchCitation[] }
   | { readonly type: "done"; readonly response: ModelResponse }
   | { readonly type: "error"; readonly error: ModelProviderError };
 
