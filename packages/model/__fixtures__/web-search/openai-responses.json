@@ -1,0 +1,41 @@
+{
+  "id": "resp_001",
+  "object": "response",
+  "model": "gpt-4o",
+  "output": [
+    {
+      "type": "web_search_call",
+      "id": "ws_001",
+      "status": "completed",
+      "action": { "type": "search", "query": "today top tech news" }
+    },
+    {
+      "type": "message",
+      "id": "msg_001",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "Reports today highlight ...",
+          "annotations": [
+            {
+              "type": "url_citation",
+              "url": "https://example.com/news/a",
+              "title": "Example News A",
+              "start_index": 0,
+              "end_index": 20
+            },
+            {
+              "type": "url_citation",
+              "url": "https://example.com/news/b",
+              "title": "Example News B",
+              "start_index": 21,
+              "end_index": 40
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "usage": { "input_tokens": 12, "output_tokens": 34, "total_tokens": 46 }
+}

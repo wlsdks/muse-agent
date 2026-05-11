@@ -1,0 +1,46 @@
+{
+  "id": "msg_001",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-3-5-sonnet-20241022",
+  "content": [
+    {
+      "type": "server_tool_use",
+      "id": "stu_001",
+      "name": "web_search",
+      "input": { "query": "today top tech news" }
+    },
+    {
+      "type": "web_search_tool_result",
+      "tool_use_id": "stu_001",
+      "content": [
+        {
+          "type": "web_search_result",
+          "url": "https://example.com/news/a",
+          "title": "Example News A",
+          "encrypted_content": "OPAQUE_BLOB"
+        },
+        {
+          "type": "web_search_result",
+          "url": "https://example.com/news/b",
+          "title": "Example News B",
+          "encrypted_content": "OPAQUE_BLOB"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "text": "Reports today highlight ...",
+      "citations": [
+        {
+          "type": "web_search_result_location",
+          "url": "https://example.com/news/a",
+          "title": "Example News A",
+          "cited_text": "Reports today"
+        }
+      ]
+    }
+  ],
+  "usage": { "input_tokens": 30, "output_tokens": 60 },
+  "stop_reason": "end_turn"
+}

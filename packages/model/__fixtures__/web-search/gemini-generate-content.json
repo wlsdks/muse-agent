@@ -1,0 +1,18 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [{ "text": "Reports today highlight ..." }]
+      },
+      "finishReason": "STOP",
+      "groundingMetadata": {
+        "groundingChunks": [
+          { "web": { "uri": "https://example.com/news/a", "title": "Example News A" } },
+          { "web": { "uri": "https://example.com/news/b", "title": "Example News B" } }
+        ]
+      }
+    }
+  ],
+  "usageMetadata": { "promptTokenCount": 10, "candidatesTokenCount": 25, "totalTokenCount": 35 }
+}
