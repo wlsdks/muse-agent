@@ -14,7 +14,12 @@
  */
 
 import type { UserMemoryProvider } from "./types.js";
-import { formatCurrentTime, isWorkingHours, parseWorkingHoursString } from "./time-helpers.js";
+import {
+  formatCurrentTime,
+  humanizeRelativeFromIso,
+  isWorkingHours,
+  parseWorkingHoursString
+} from "./time-helpers.js";
 
 export interface ActiveTaskHint {
   readonly id?: string;
@@ -187,7 +192,8 @@ export function renderActiveContextSection(snapshot: ActiveContextSnapshot | und
       taskParts.push(`id=${snapshot.activeTask.id}`);
     }
     if (snapshot.activeTask.dueIso) {
-      taskParts.push(`due=${snapshot.activeTask.dueIso}`);
+      const relative = humanizeRelativeFromIso(snapshot.nowIso, snapshot.activeTask.dueIso);
+      taskParts.push(relative ? `due=${snapshot.activeTask.dueIso} (${relative})` : `due=${snapshot.activeTask.dueIso}`);
     }
     lines.push(`active_task: ${taskParts.join(" · ")}`);
   }
@@ -202,9 +208,33 @@ export function renderActiveContextSection(snapshot: ActiveContextSnapshot | und
         : event.endIso
           ? `${event.startIso} → ${event.endIso}`
           : event.startIso;
+      // Humanize the start time relative to now ("in 30 min" / "now"
+      // / "2h ago") so the agent answers "next meeting?" without
+      // doing ISO date arithmetic. Past-ended events get a clear
+      // `ended` marker so they're not mistaken for upcoming.
+      const annotation = event.allDay
+        ? undefined
+        : eventTimeAnnotation(snapshot.nowIso, event);
+      const annotationPart = annotation ? ` [${annotation}]` : "";
       const locationPart = event.location ? ` @ ${event.location}` : "";
-      lines.push(`  · ${timePart} ${event.title}${locationPart}`);
+      lines.push(`  · ${timePart}${annotationPart} ${event.title}${locationPart}`);
     }
   }
   return lines.join("\n");
+}
+
+function eventTimeAnnotation(nowIso: string, event: CalendarEventHint): string | undefined {
+  const nowMs = Date.parse(nowIso);
+  const startMs = Date.parse(event.startIso);
+  const endMs = event.endIso ? Date.parse(event.endIso) : Number.NaN;
+  if (!Number.isFinite(nowMs) || !Number.isFinite(startMs)) {
+    return undefined;
+  }
+  if (Number.isFinite(endMs) && endMs < nowMs) {
+    return "ended";
+  }
+  if (startMs <= nowMs && (!Number.isFinite(endMs) || endMs >= nowMs)) {
+    return "happening now";
+  }
+  return humanizeRelativeFromIso(nowIso, event.startIso);
 }

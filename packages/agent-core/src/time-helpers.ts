@@ -97,3 +97,44 @@ function isValidTimezone(timezone: string): boolean {
     return false;
   }
 }
+
+/**
+ * Render the offset from `now` to `target` as a short, human-readable
+ * phrase ("in 30 min", "2h ago", "now", "in 3 days"). Lets the agent
+ * read a calendar event line and answer "when's the next meeting?"
+ * without doing date arithmetic in its head.
+ *
+ * Returns undefined when either input cannot be parsed so the caller
+ * can fall back to the raw ISO.
+ */
+export function humanizeRelativeFromIso(nowIso: string, targetIso: string): string | undefined {
+  const now = Date.parse(nowIso);
+  const target = Date.parse(targetIso);
+  if (!Number.isFinite(now) || !Number.isFinite(target)) {
+    return undefined;
+  }
+  return humanizeRelativeMs(target - now);
+}
+
+export function humanizeRelativeMs(deltaMs: number): string {
+  if (!Number.isFinite(deltaMs)) {
+    return "unknown";
+  }
+  const abs = Math.abs(deltaMs);
+  // Within ±60 seconds → call it "now" so a meeting that started a few
+  // seconds ago still reads as "now" rather than "1 min ago".
+  if (abs < 60_000) {
+    return "now";
+  }
+  const isPast = deltaMs < 0;
+  const minutes = Math.round(abs / 60_000);
+  if (minutes < 60) {
+    return isPast ? `${minutes.toString()} min ago` : `in ${minutes.toString()} min`;
+  }
+  const hours = Math.round(abs / 3_600_000);
+  if (hours < 24) {
+    return isPast ? `${hours.toString()}h ago` : `in ${hours.toString()}h`;
+  }
+  const days = Math.round(abs / 86_400_000);
+  return isPast ? `${days.toString()} day(s) ago` : `in ${days.toString()} day(s)`;
+}

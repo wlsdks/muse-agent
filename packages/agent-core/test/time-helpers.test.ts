@@ -65,3 +65,33 @@ describe("parseWorkingHoursString", () => {
     expect(parseWorkingHoursString(undefined)).toBeUndefined();
   });
 });
+
+describe("humanizeRelativeFromIso (iter 7)", () => {
+  const now = "2026-05-11T12:00:00.000Z";
+
+  it("returns 'now' when within ±60 seconds", async () => {
+    const { humanizeRelativeFromIso } = await import("../src/time-helpers.js");
+    expect(humanizeRelativeFromIso(now, "2026-05-11T12:00:30.000Z")).toBe("now");
+    expect(humanizeRelativeFromIso(now, "2026-05-11T11:59:45.000Z")).toBe("now");
+  });
+
+  it("formats future offsets with 'in <unit>'", async () => {
+    const { humanizeRelativeFromIso } = await import("../src/time-helpers.js");
+    expect(humanizeRelativeFromIso(now, "2026-05-11T12:30:00.000Z")).toBe("in 30 min");
+    expect(humanizeRelativeFromIso(now, "2026-05-11T14:00:00.000Z")).toBe("in 2h");
+    expect(humanizeRelativeFromIso(now, "2026-05-14T12:00:00.000Z")).toBe("in 3 day(s)");
+  });
+
+  it("formats past offsets with 'ago'", async () => {
+    const { humanizeRelativeFromIso } = await import("../src/time-helpers.js");
+    expect(humanizeRelativeFromIso(now, "2026-05-11T11:30:00.000Z")).toBe("30 min ago");
+    expect(humanizeRelativeFromIso(now, "2026-05-11T10:00:00.000Z")).toBe("2h ago");
+    expect(humanizeRelativeFromIso(now, "2026-05-09T12:00:00.000Z")).toBe("2 day(s) ago");
+  });
+
+  it("returns undefined for unparseable input", async () => {
+    const { humanizeRelativeFromIso } = await import("../src/time-helpers.js");
+    expect(humanizeRelativeFromIso("not a date", now)).toBeUndefined();
+    expect(humanizeRelativeFromIso(now, "")).toBeUndefined();
+  });
+});

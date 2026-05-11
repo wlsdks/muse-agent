@@ -159,6 +159,8 @@ export {
 } from "./active-context.js";
 export {
   formatCurrentTime,
+  humanizeRelativeFromIso,
+  humanizeRelativeMs,
   isWorkingHours,
   parseWorkingHoursString,
   resolveTimezone,

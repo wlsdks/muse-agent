@@ -27,6 +27,42 @@ describe("active context calendar surface (D1)", () => {
     expect(rendered).toContain("(all day)");
   });
 
+  it("annotates events with human-readable relative time (iter 7)", () => {
+    // fixedNow is 2026-05-11T08:00:00.000Z
+    const rendered = renderActiveContextSection({
+      localHour: 8,
+      nowIso: fixedNow.toISOString(),
+      timezone: "UTC",
+      todaysEvents: [
+        // Ended already (06:00 → 07:00 UTC)
+        { endIso: "2026-05-11T07:00:00.000Z", startIso: "2026-05-11T06:00:00.000Z", title: "Morning yoga" },
+        // Happening right now (07:30 → 09:00)
+        { endIso: "2026-05-11T09:00:00.000Z", startIso: "2026-05-11T07:30:00.000Z", title: "Standup" },
+        // 30 minutes from now
+        { endIso: "2026-05-11T09:00:00.000Z", startIso: "2026-05-11T08:30:00.000Z", title: "Sync with PM" },
+        // 4 hours from now
+        { endIso: "2026-05-11T13:00:00.000Z", startIso: "2026-05-11T12:00:00.000Z", title: "Lunch with Alex" }
+      ],
+      weekday: "Monday"
+    });
+    expect(rendered).toContain("[ended]");
+    expect(rendered).toContain("[happening now]");
+    expect(rendered).toContain("[in 30 min]");
+    expect(rendered).toContain("[in 4h]");
+  });
+
+  it("annotates active_task due time relative to now (iter 7)", () => {
+    const rendered = renderActiveContextSection({
+      activeTask: { dueIso: "2026-05-11T09:00:00.000Z", id: "T-1", title: "Ship the doc" },
+      localHour: 8,
+      nowIso: fixedNow.toISOString(),
+      timezone: "UTC",
+      weekday: "Monday"
+    });
+    expect(rendered).toContain("active_task: Ship the doc · id=T-1");
+    expect(rendered).toContain("(in 1h)");
+  });
+
   it("DefaultActiveContextProvider feeds events through the resolver", async () => {
     const resolver: CalendarEventsResolver = {
       async resolve() {
