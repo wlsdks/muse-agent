@@ -2030,6 +2030,60 @@ describe("cli program", () => {
     }
   });
 
+  it("muse setup status reflects ~/.muse/models.json autoload (Loop #56 — no shell-rc export required)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-setup-autoload-"));
+    const modelKeysFile = path.join(root, "models.json");
+    const fsp = await import("node:fs/promises");
+    await fsp.writeFile(modelKeysFile, JSON.stringify({
+      providers: {
+        openai: { suggestedModel: "openai/gpt-4o-mini", token: "sk-from-file" }
+      },
+      version: 1
+    }), "utf8");
+    const prev = {
+      keys: process.env.MUSE_MODEL_KEYS_FILE,
+      openai: process.env.OPENAI_API_KEY,
+      anthropic: process.env.ANTHROPIC_API_KEY,
+      gemini: process.env.GEMINI_API_KEY,
+      openrouter: process.env.OPENROUTER_API_KEY,
+      ollama: process.env.OLLAMA_BASE_URL,
+      model: process.env.MUSE_MODEL
+    };
+    process.env.MUSE_MODEL_KEYS_FILE = modelKeysFile;
+    // Clear ambient developer env so only the file-sourced key counts.
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OLLAMA_BASE_URL;
+    delete process.env.MUSE_MODEL;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("fetch must not be called"); } });
+      await program.parseAsync(["node", "muse", "setup"], { from: "node" });
+      const text = output.join("");
+      // Model should resolve from file → MUSE_MODEL auto-derived,
+      // openai key counted, voice marked [ok] (since OPENAI_API_KEY
+      // is now visible via merged env).
+      expect(text).toContain("MUSE_MODEL=openai/gpt-4o-mini");
+      expect(text).toContain("1 provider key(s): openai");
+      expect(text).toContain("[ok]   voice — OpenAI key present");
+      // Stale "or export ..." advice must be gone.
+      expect(text).not.toContain("export OPENAI_API_KEY");
+    } finally {
+      const restore = (key: keyof typeof prev, envKey: string) => {
+        if (prev[key] === undefined) { delete process.env[envKey]; } else { process.env[envKey] = prev[key]!; }
+      };
+      restore("keys", "MUSE_MODEL_KEYS_FILE");
+      restore("openai", "OPENAI_API_KEY");
+      restore("anthropic", "ANTHROPIC_API_KEY");
+      restore("gemini", "GEMINI_API_KEY");
+      restore("openrouter", "OPENROUTER_API_KEY");
+      restore("ollama", "OLLAMA_BASE_URL");
+      restore("model", "MUSE_MODEL");
+    }
+  });
+
   it("muse remind --local round-trips add → list → clear and surfaces overdue items in today", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-remind-"));
     const remindersFile = path.join(root, "reminders.json");

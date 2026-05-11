@@ -14,6 +14,7 @@ import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
 
 import {
+  mergeModelKeysFromFile,
   resolveLocalCalendarFile,
   resolveMessagingCredentialsFile,
   resolveNotesDir,
@@ -123,7 +124,13 @@ export function registerSetupCommands(program: Command, io: ProgramIO): void {
 }
 
 async function renderSetupStatus(): Promise<string> {
-  const env = process.env as Record<string, string | undefined>;
+  // Mirror autoconfigure's runtime boot: lift ~/.muse/models.json
+  // tokens (+ derived MUSE_MODEL) into env so the status reflects
+  // what the next `muse` invocation actually sees, not just raw
+  // process.env. Without this, a freshly-`setup model`'d user would
+  // see `[todo] model` even though autoconfigure would happily wire
+  // them up next boot.
+  const env = mergeModelKeysFromFile(process.env as Record<string, string | undefined>);
   const home = homedir();
   const lines: string[] = ["Muse setup status:"];
 
@@ -142,7 +149,7 @@ async function renderSetupStatus(): Promise<string> {
     }
     lines.push(`  [ok]   model — ${detail.join(", ")}`);
   } else {
-    lines.push("  [todo] model — run `muse setup model` or export OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENROUTER_API_KEY / OLLAMA_BASE_URL");
+    lines.push("  [todo] model — run `muse setup model` (autoloads from ~/.muse/models.json)");
   }
 
   const mcpFile = env.MUSE_MCP_CONFIG?.trim() && env.MUSE_MCP_CONFIG.trim().length > 0
@@ -192,7 +199,7 @@ async function renderSetupStatus(): Promise<string> {
   if (voiceConfigured) {
     lines.push("  [ok]   voice — OpenAI key present (Whisper STT + TTS available)");
   } else {
-    lines.push("  [info] voice — set OPENAI_API_KEY (or MUSE_VOICE_OPENAI_API_KEY) to enable `muse listen` / TTS");
+    lines.push("  [info] voice — run `muse setup model` and pick OpenAI (or export MUSE_VOICE_OPENAI_API_KEY) to enable `muse listen` / TTS");
   }
 
   const messagingFile = resolveMessagingCredentialsFile(env);
