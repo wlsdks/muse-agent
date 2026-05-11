@@ -24,6 +24,7 @@ import { registerMcpCommands } from "./commands-mcp.js";
 import { registerOrchestrateCommands } from "./commands-orchestrate.js";
 import { registerCalendarCommands } from "./commands-calendar.js";
 import { registerMemoryCommands } from "./commands-memory.js";
+import { registerAnalyticsCommands } from "./commands-analytics.js";
 import { registerCostCommands } from "./commands-cost.js";
 import { registerDoctorCommand } from "./commands-doctor.js";
 import { registerLatencyCommands } from "./commands-latency.js";
@@ -295,6 +296,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerTracesCommands(program, io, { apiRequest, writeOutput });
   registerSettingsCommands(program, io, { apiRequest, writeOutput });
   registerToolsAdminCommands(program, io, { apiRequest, writeOutput });
+  registerAnalyticsCommands(program, io, { apiRequest, writeOutput });
   registerTelemetryCommands(program, io, { apiRequest, writeOutput });
   registerTodayCommands(program, io, {
     apiRequest,
