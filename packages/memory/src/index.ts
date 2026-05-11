@@ -375,6 +375,7 @@ export {
 
 export {
   createUserMemoryAutoExtractHook,
+  extractJsonObject,
   pickAutoExtractSystemPrompt,
   type UserMemoryAutoExtractOptions
 } from "./memory-auto-extract.js";

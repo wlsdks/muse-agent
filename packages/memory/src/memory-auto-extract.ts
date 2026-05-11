@@ -51,6 +51,18 @@ export interface UserMemoryAutoExtractOptions {
   readonly maxGoalsPerExchange?: number;
   readonly maxKeyLength?: number;
   readonly maxValueLength?: number;
+  /**
+   * Character cap on the user-turn slice that's sent to the
+   * extraction model. Default 2048. The extractor only needs
+   * enough text to identify newly-stated facts; an entire 100KB
+   * message would otherwise balloon the extra LLM call.
+   */
+  readonly maxUserPromptChars?: number;
+  /**
+   * Character cap on the assistant-reply slice. Default 2048.
+   * Mirrors the user-prompt cap.
+   */
+  readonly maxAssistantOutputChars?: number;
 }
 
 interface ExtractedSlot {
@@ -127,6 +139,8 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
   const maxGoals = Math.max(0, Math.trunc(options.maxGoalsPerExchange ?? 3));
   const maxKey = Math.max(1, Math.trunc(options.maxKeyLength ?? 32));
   const maxValue = Math.max(1, Math.trunc(options.maxValueLength ?? 200));
+  const maxUserPrompt = Math.max(64, Math.trunc(options.maxUserPromptChars ?? 2_048));
+  const maxAssistantOutput = Math.max(64, Math.trunc(options.maxAssistantOutputChars ?? 2_048));
 
   return {
     afterComplete: async (context, response) => {
@@ -140,8 +154,18 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
         return;
       }
 
+      // Bound the extraction-call cost: a 100KB user turn would
+      // otherwise echo all 100KB into the extra LLM call. The
+      // extractor only needs enough text to identify newly-stated
+      // facts in this turn.
+      const boundedUser = userPrompt.length > maxUserPrompt
+        ? `${userPrompt.slice(0, maxUserPrompt - 1)}…`
+        : userPrompt;
+      const boundedAssistant = assistantOutput.length > maxAssistantOutput
+        ? `${assistantOutput.slice(0, maxAssistantOutput - 1)}…`
+        : assistantOutput;
       try {
-        const payload = await runExtraction(options.modelProvider, options.model, userPrompt, assistantOutput);
+        const payload = await runExtraction(options.modelProvider, options.model, boundedUser, boundedAssistant);
         if (!payload) {
           return;
         }
@@ -200,18 +224,81 @@ async function runExtraction(
   if (!response.output) {
     return undefined;
   }
+  return extractJsonObject(response.output);
+}
 
-  const trimmed = response.output.trim();
+/**
+ * Best-effort JSON-object extractor. The model is told to emit raw
+ * JSON, but smaller models sometimes wrap the payload in
+ * `Here's the JSON:\n{...}` prose or stick a trailing comment after
+ * the closing brace. This helper:
+ *   1. strips outer whitespace
+ *   2. strips a markdown code fence if present
+ *   3. otherwise scans for the FIRST balanced `{ ... }` block in the
+ *      text and parses it
+ * Returns undefined when no parseable object is found so the caller
+ * fails open just like before.
+ */
+export function extractJsonObject(raw: string): ExtractionPayload | undefined {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  // Fast path: stripped code fence (the most common deviation).
   const stripped = trimmed.replace(/^```(?:json)?\s*/iu, "").replace(/\s*```$/iu, "");
+  const direct = tryParseObject(stripped);
+  if (direct) {
+    return direct;
+  }
+  // Slow path: locate the first balanced top-level brace block.
+  const block = findFirstBalancedBraceBlock(stripped);
+  return block ? tryParseObject(block) : undefined;
+}
+
+function tryParseObject(input: string): ExtractionPayload | undefined {
   try {
-    const parsed = JSON.parse(stripped) as ExtractionPayload;
-    if (!parsed || typeof parsed !== "object") {
-      return undefined;
-    }
-    return parsed;
+    const parsed = JSON.parse(input) as ExtractionPayload;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }
+}
+
+function findFirstBalancedBraceBlock(input: string): string | undefined {
+  const start = input.indexOf("{");
+  if (start < 0) {
+    return undefined;
+  }
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let index = start; index < input.length; index += 1) {
+    const ch = input[index];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      escape = true;
+      continue;
+    }
+    if (ch === "\"") {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (ch === "{") {
+      depth += 1;
+    } else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return input.slice(start, index + 1);
+      }
+    }
+  }
+  return undefined;
 }
 
 interface PersistLimits {
