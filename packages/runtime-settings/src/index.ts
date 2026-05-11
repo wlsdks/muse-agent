@@ -194,5 +194,34 @@ function parseFiniteNumber(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+export interface WebSearchRuntimeSettings {
+  readonly enabled: boolean;
+  readonly maxUses: number;
+}
+
+const DEFAULT_WEB_SEARCH: WebSearchRuntimeSettings = { enabled: true, maxUses: 5 };
+
+export async function readWebSearchSettings(
+  store: RuntimeSettingsStore,
+  env: Readonly<Record<string, string | undefined>>
+): Promise<WebSearchRuntimeSettings> {
+  const enabledRaw = await store.findValue("webSearch.enabled");
+  const maxRaw = await store.findValue("webSearch.maxUses");
+  let enabled = enabledRaw === undefined ? DEFAULT_WEB_SEARCH.enabled : enabledRaw === "true";
+  let maxUses = DEFAULT_WEB_SEARCH.maxUses;
+  if (maxRaw !== undefined) {
+    const n = Number.parseInt(maxRaw, 10);
+    if (Number.isFinite(n) && n > 0) maxUses = n;
+  }
+  const envFlag = env.MUSE_WEB_SEARCH?.toLowerCase();
+  if (envFlag === "off") enabled = false;
+  const envMax = env.MUSE_WEB_SEARCH_MAX_USES;
+  if (envMax !== undefined) {
+    const n = Number.parseInt(envMax, 10);
+    if (Number.isFinite(n) && n > 0) maxUses = n;
+  }
+  return { enabled, maxUses };
+}
+
 export { KyselyRuntimeSettingsStore } from "./kysely-store.js";
 export type { KyselyRuntimeSettingsStoreOptions } from "./kysely-store.js";
