@@ -34,6 +34,13 @@ export interface RunTelemetryEvent {
   readonly inputTokens?: number;
   readonly outputTokens?: number;
   readonly cachedInputTokens?: number;
+  /**
+   * End-to-end run wall-clock duration in milliseconds. Computed by
+   * the runtime as `recordedAtMs - startedAtMs` so the aggregator
+   * can answer "how slow are my agent runs?" without re-correlating
+   * across `run.started` and `run.completed` traces.
+   */
+  readonly latencyMs?: number;
 }
 
 export interface TelemetrySummaryOptions {
@@ -52,6 +59,17 @@ export interface TelemetrySummary {
     readonly input: number;
     readonly output: number;
     readonly cachedInput: number;
+  };
+  /**
+   * Run-latency stats across events whose `latencyMs` was recorded.
+   * Undefined when no event in the window carried a latency value
+   * (older events, or future telemetry shapes that omit it).
+   */
+  readonly latency?: {
+    readonly count: number;
+    readonly averageMs: number;
+    readonly maxMs: number;
+    readonly p95Ms: number;
   };
 }
 
@@ -108,6 +126,7 @@ export class InMemoryTelemetryAggregator implements TelemetryAggregator {
     let inputSum = 0;
     let outputSum = 0;
     let cachedSum = 0;
+    const latencies: number[] = [];
     for (const event of inWindow) {
       for (const [key, value] of Object.entries(event.contextFlags)) {
         if (value) {
@@ -125,6 +144,9 @@ export class InMemoryTelemetryAggregator implements TelemetryAggregator {
       inputSum += event.inputTokens ?? 0;
       outputSum += event.outputTokens ?? 0;
       cachedSum += event.cachedInputTokens ?? 0;
+      if (typeof event.latencyMs === "number" && Number.isFinite(event.latencyMs) && event.latencyMs >= 0) {
+        latencies.push(event.latencyMs);
+      }
     }
     const counterAverages: Record<string, number> = {};
     for (const [key, sum] of Object.entries(counterSums)) {
@@ -138,6 +160,7 @@ export class InMemoryTelemetryAggregator implements TelemetryAggregator {
       budgetAverages,
       counterAverages,
       flagCounts,
+      ...(latencies.length > 0 ? { latency: computeLatencyStats(latencies) } : {}),
       tokenTotals: { cachedInput: cachedSum, input: inputSum, output: outputSum },
       totalRuns: inWindow.length,
       windowEndMs,
@@ -173,4 +196,23 @@ export class InMemoryTelemetryAggregator implements TelemetryAggregator {
   clear(): void {
     this.events.length = 0;
   }
+}
+
+/**
+ * Compute average / max / p95 over a non-empty array of latencies.
+ * Sort + nearest-rank percentile; cheap because the in-memory ring
+ * buffer caps at DEFAULT_CAPACITY (10k) entries.
+ */
+function computeLatencyStats(latencies: readonly number[]): NonNullable<TelemetrySummary["latency"]> {
+  const sorted = [...latencies].sort((a, b) => a - b);
+  const count = sorted.length;
+  const sum = sorted.reduce((total, value) => total + value, 0);
+  const averageMs = sum / count;
+  const maxMs = sorted[count - 1] ?? 0;
+  // Nearest-rank p95: `ceil(0.95 * n)`-th element (1-indexed). For
+  // small samples (n < 20) p95 collapses to the max; that's the
+  // honest behaviour given we don't have enough data to distinguish.
+  const p95Index = Math.min(count - 1, Math.ceil(0.95 * count) - 1);
+  const p95Ms = sorted[Math.max(0, p95Index)] ?? maxMs;
+  return { averageMs, count, maxMs, p95Ms };
 }

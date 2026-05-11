@@ -111,6 +111,45 @@ describe("InMemoryTelemetryAggregator (phase A)", () => {
     expect(agg.recent({}).map((e) => e.runId)).toEqual(["r-1", "r-2"]);
   });
 
+  it("rolls up latency stats (average / max / p95) across events that carry latencyMs (iter 37)", () => {
+    const now = 10_000;
+    const agg = new InMemoryTelemetryAggregator({ now: () => now });
+    // 10 runs with latencies 100..1000 in 100ms steps.
+    for (let i = 0; i < 10; i++) {
+      agg.record(evt({
+        latencyMs: 100 * (i + 1),
+        recordedAtMs: now - 100 + i,
+        runId: `r-${i.toString()}`
+      }));
+    }
+    const summary = agg.summary();
+    expect(summary.latency).toBeDefined();
+    expect(summary.latency?.count).toBe(10);
+    expect(summary.latency?.averageMs).toBe(550); // (100+200+...+1000)/10
+    expect(summary.latency?.maxMs).toBe(1_000);
+    // Nearest-rank p95 with n=10: ceil(0.95 * 10) - 1 = 9 → 1000ms.
+    expect(summary.latency?.p95Ms).toBe(1_000);
+  });
+
+  it("omits the latency block when no event in window carries latencyMs (iter 37)", () => {
+    const now = 10_000;
+    const agg = new InMemoryTelemetryAggregator({ now: () => now });
+    agg.record(evt({ recordedAtMs: now - 100, runId: "r-no-latency" }));
+    const summary = agg.summary();
+    expect(summary.latency).toBeUndefined();
+  });
+
+  it("ignores negative / non-finite latency values defensively (iter 37)", () => {
+    const now = 10_000;
+    const agg = new InMemoryTelemetryAggregator({ now: () => now });
+    agg.record(evt({ latencyMs: -5, recordedAtMs: now - 50, runId: "r-neg" }));
+    agg.record(evt({ latencyMs: Number.NaN, recordedAtMs: now - 40, runId: "r-nan" }));
+    agg.record(evt({ latencyMs: 250, recordedAtMs: now - 30, runId: "r-ok" }));
+    const summary = agg.summary();
+    expect(summary.latency?.count).toBe(1);
+    expect(summary.latency?.averageMs).toBe(250);
+  });
+
   it("aggregates budget tokens", () => {
     const now = 10_000;
     const agg = new InMemoryTelemetryAggregator({ now: () => now });

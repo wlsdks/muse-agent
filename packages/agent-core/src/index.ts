@@ -619,7 +619,7 @@ export class AgentRuntime {
       }
       await this.invokeHooks("afterComplete", layeredContext, guardedResponse);
       this.recordAgentRun(layeredContext, guardedResponse.model, "completed", startedAtMs);
-      this.recordTelemetry(layeredContext, selected.provider.id, selected.model, guardedResponse, promptBudget);
+      this.recordTelemetry(layeredContext, selected.provider.id, selected.model, guardedResponse, promptBudget, startedAtMs);
       return createRunResult(
         context.runId,
         guardedResponse,
@@ -782,7 +782,7 @@ export class AgentRuntime {
       }
       await this.invokeHooks("afterComplete", layeredContext, response);
       this.recordAgentRun(layeredContext, response.model, "completed", startedAtMs);
-      this.recordTelemetry(layeredContext, selected.provider.id, selected.model, response, promptBudget);
+      this.recordTelemetry(layeredContext, selected.provider.id, selected.model, response, promptBudget, startedAtMs);
       if ((!forwardTextDeltas || isPlanExecuteRun) && response.output.length > 0) {
         yield { runId: layeredContext.runId, text: response.output, type: "text-delta" };
       }
@@ -1049,7 +1049,8 @@ export class AgentRuntime {
     providerId: string,
     model: string,
     response: ModelResponse,
-    promptBudget: ReturnType<typeof measureSystemPromptBudget>
+    promptBudget: ReturnType<typeof measureSystemPromptBudget>,
+    startedAtMs: number
   ): void {
     if (!this.telemetryAggregator) {
       return;
@@ -1062,16 +1063,19 @@ export class AgentRuntime {
         budgetTokens[`section.${section.id}`] = section.estimatedTokens;
       }
     }
+    const recordedAtMs = Date.now();
+    const latencyMs = Math.max(0, recordedAtMs - startedAtMs);
     this.telemetryAggregator.record({
       ...(promptBudget ? { budgetTokens } : {}),
       ...(response.usage?.cachedInputTokens !== undefined ? { cachedInputTokens: response.usage.cachedInputTokens } : {}),
       contextCounters: projected.counters,
       contextFlags: projected.flags,
       ...(response.usage?.inputTokens !== undefined ? { inputTokens: response.usage.inputTokens } : {}),
+      latencyMs,
       model,
       ...(response.usage?.outputTokens !== undefined ? { outputTokens: response.usage.outputTokens } : {}),
       providerId,
-      recordedAtMs: Date.now(),
+      recordedAtMs,
       runId: context.runId
     });
   }
