@@ -9,6 +9,30 @@ move from `Unreleased` to dated/versioned headings.
 
 ### Added
 
+- **Native server-side `web_search`** is now default-on across OpenAI /
+  Anthropic / Gemini. The agent surfaces normalized `citations[]` on every
+  response. Set `MUSE_WEB_SEARCH=off` (env) or `webSearch.enabled=false`
+  (runtime-settings) to disable.
+
+  - **Breaking**: the OpenAI adapter migrated from Chat Completions to
+    the Responses API (`/v1/responses`). The OpenAI-compatible path
+    (`/v1/chat/completions`) used by Ollama / OpenRouter / LM Studio is
+    unchanged.
+  - **Gemini limitation**: Gemini's `generateContent` API rejects
+    requests that mix the built-in `googleSearch` tool with function
+    declarations. When Muse auto-registers ambient tools (notes / tasks
+    / calendar / messaging / reminders / mcp loopback), function tools
+    win and grounding is skipped. To use grounding on Gemini, issue
+    requests with no function tools (e.g. set `MUSE_TOOLS_ENABLED=false`
+    or pass an empty tool registry).
+  - CLI: `muse chat ... --no-web-search` opts out per request.
+  - API: `POST /api/chat` accepts `metadata.tools.web_search: false`;
+    response body includes `citations[]`; stream emits
+    `event: tool_call` (`phase: started|finished`) and
+    `event: citations` SSE events.
+  - Web UI: assistant messages render citation chips; setup panel has a
+    `webSearch.enabled` toggle.
+
 - **`muse calendar events --local`** and **`muse calendar providers
   --local`** complete the `--local` trio. The CLI instantiates
   `LocalCalendarProvider` against `~/.muse/calendar.json` directly.

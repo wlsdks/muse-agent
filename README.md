@@ -99,6 +99,9 @@ node apps/cli/dist/index.js \
 pnpm --filter @muse/web dev   # http://localhost:5173
 ```
 
+Native web search is enabled by default for OpenAI / Anthropic / Gemini.
+Responses include `citations[]`; disable with `MUSE_WEB_SEARCH=off`.
+
 ## Personal-domain tools
 
 The agent ships three personal-pivot loopback MCP servers, all

@@ -23,7 +23,9 @@ Each model declares its capabilities so the runtime can route safely:
 
 `packages/model` ships adapters for:
 
-- OpenAI
+- OpenAI (Responses API — `/v1/responses`). OpenAI-compatible endpoints
+  used by Ollama, OpenRouter, LM Studio, and other compat backends still
+  use `/v1/chat/completions` via `OpenAICompatibleProvider`.
 - Anthropic
 - Google Gemini
 - OpenRouter

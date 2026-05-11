@@ -98,6 +98,9 @@ node apps/cli/dist/index.js \
 pnpm --filter @muse/web dev   # http://localhost:5173
 ```
 
+OpenAI / Anthropic / Gemini는 네이티브 웹 검색이 기본 활성. 응답에
+`citations[]`가 포함되고, `MUSE_WEB_SEARCH=off`로 끌 수 있다.
+
 ## 개인 도메인 도구
 
 에이전트는 personal-pivot loopback MCP 서버 3종을 탑재한다.
