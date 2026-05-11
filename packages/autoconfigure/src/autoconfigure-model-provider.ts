@@ -78,6 +78,20 @@ function inferDefaultModelFromCredentials(env: MuseEnvironment): string | undefi
  * when an unknown providerId is paired with `MUSE_MODEL_BASE_URL`
  * (the local Ollama / LM Studio / vLLM path).
  */
+interface OpenAICompatPreset {
+  readonly baseUrl: string;
+  readonly envKey: string;
+}
+
+const OPENAI_COMPAT_PRESETS: Readonly<Record<string, OpenAICompatPreset>> = {
+  cerebras: { baseUrl: "https://api.cerebras.ai/v1", envKey: "CEREBRAS_API_KEY" },
+  deepseek: { baseUrl: "https://api.deepseek.com/v1", envKey: "DEEPSEEK_API_KEY" },
+  groq: { baseUrl: "https://api.groq.com/openai/v1", envKey: "GROQ_API_KEY" },
+  mistral: { baseUrl: "https://api.mistral.ai/v1", envKey: "MISTRAL_API_KEY" },
+  moonshot: { baseUrl: "https://api.moonshot.ai/v1", envKey: "MOONSHOT_API_KEY" },
+  together: { baseUrl: "https://api.together.xyz/v1", envKey: "TOGETHER_API_KEY" }
+};
+
 function providerIdFromPrefix(modelSpec: string): string | undefined {
   const lower = modelSpec.toLowerCase();
   for (const [prefix, providerId] of Object.entries(knownModelPrefixes())) {
@@ -145,55 +159,17 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
         models,
         siteUrl: parseOptionalString(env.MUSE_SITE_URL)
       });
-    case "groq":
-      return new OpenAICompatibleProvider({
-        apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env.GROQ_API_KEY),
-        baseUrl: baseUrl ?? "https://api.groq.com/openai/v1",
-        defaultModel,
-        id: "groq",
-        models
-      });
-    case "deepseek":
-      return new OpenAICompatibleProvider({
-        apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env.DEEPSEEK_API_KEY),
-        baseUrl: baseUrl ?? "https://api.deepseek.com/v1",
-        defaultModel,
-        id: "deepseek",
-        models
-      });
-    case "together":
-      return new OpenAICompatibleProvider({
-        apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env.TOGETHER_API_KEY),
-        baseUrl: baseUrl ?? "https://api.together.xyz/v1",
-        defaultModel,
-        id: "together",
-        models
-      });
-    case "mistral":
-      return new OpenAICompatibleProvider({
-        apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env.MISTRAL_API_KEY),
-        baseUrl: baseUrl ?? "https://api.mistral.ai/v1",
-        defaultModel,
-        id: "mistral",
-        models
-      });
-    case "moonshot":
-      return new OpenAICompatibleProvider({
-        apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env.MOONSHOT_API_KEY),
-        baseUrl: baseUrl ?? "https://api.moonshot.ai/v1",
-        defaultModel,
-        id: "moonshot",
-        models
-      });
-    case "cerebras":
-      return new OpenAICompatibleProvider({
-        apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env.CEREBRAS_API_KEY),
-        baseUrl: baseUrl ?? "https://api.cerebras.ai/v1",
-        defaultModel,
-        id: "cerebras",
-        models
-      });
     default:
+      if (OPENAI_COMPAT_PRESETS[providerId]) {
+        const preset = OPENAI_COMPAT_PRESETS[providerId];
+        return new OpenAICompatibleProvider({
+          apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env[preset.envKey]),
+          baseUrl: baseUrl ?? preset.baseUrl,
+          defaultModel,
+          id: providerId,
+          models
+        });
+      }
       if (!baseUrl) {
         return undefined;
       }
