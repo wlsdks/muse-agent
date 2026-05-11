@@ -213,11 +213,22 @@ export function renderActiveContextSection(snapshot: ActiveContextSnapshot | und
   if (snapshot.todaysEvents && snapshot.todaysEvents.length > 0) {
     lines.push("today_events:");
     for (const event of snapshot.todaysEvents.slice(0, 8)) {
+      // Same defensive Round 3 pattern iter 22 used for `dueIso` and
+      // iter 33 for inbox `receivedAtIso`. `startIso` / `endIso` are
+      // typed `string` and supposed to come from `Date.toISOString()`
+      // but `CalendarEventsResolver` is a third-party-pluggable
+      // interface — a buggy adapter (or a malicious event source
+      // upstream of the calendar API) could land a newline-bearing
+      // string there, splicing a fake `[System Override]` section
+      // header into `[Active Context]`. Inline-sanitise both before
+      // they touch the rendered line.
+      const startIsoSafe = sanitizeInline(event.startIso);
+      const endIsoSafe = event.endIso ? sanitizeInline(event.endIso) : undefined;
       const timePart = event.allDay
         ? "(all day)"
-        : event.endIso
-          ? `${event.startIso} → ${event.endIso}`
-          : event.startIso;
+        : endIsoSafe
+          ? `${startIsoSafe} → ${endIsoSafe}`
+          : startIsoSafe;
       // Humanize the start time relative to now ("in 30 min" / "now"
       // / "2h ago") so the agent answers "next meeting?" without
       // doing ISO date arithmetic. Past-ended events get a clear
