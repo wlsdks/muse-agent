@@ -741,3 +741,10 @@ function compareSelectedModels(criteria: ModelSelectionCriteria): (left: Selecte
 function costRank(cost: ModelCapabilities["cost"]): number {
   return ({ free: 0, low: 1, medium: 2, high: 3, unknown: 4 })[cost];
 }
+
+export {
+  decideWebSearchPolicy,
+  type DecideWebSearchPolicyArgs,
+  type WebSearchPolicy,
+  type WebSearchSettings
+} from "./web-search-policy.js";
