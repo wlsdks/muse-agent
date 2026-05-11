@@ -1176,5 +1176,6 @@ export {
   createVerifiedSourcesResponseFilter,
   createZeroResultOverclaimResponseFilter
 } from "./response-filters.js";
+export { sanitiseCitations, type SanitiseCitationsResult } from "./citation-sanitiser.js";
 
 
