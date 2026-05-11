@@ -20,14 +20,8 @@ import type {
   McpTransportType
 } from "@muse/mcp";
 
-export interface ApiError {
-  readonly code: string;
-  readonly message: string;
-}
-
-export type ParseResult<T> =
-  | { readonly ok: true; readonly value: T }
-  | { readonly error: ApiError; readonly ok: false };
+import type { ApiError, ParseResult } from "./compat-responses.js";
+export type { ApiError, ParseResult };
 
 export type JsonObject = NonNullable<McpServerInput["config"]>;
 
