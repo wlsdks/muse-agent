@@ -221,6 +221,13 @@ async function runProviderSuite(provider) {
       assert(response.status === 200, `expected 200, got ${response.status}: ${JSON.stringify(body)}`);
       assert(body.success === true, `expected success=true, got ${JSON.stringify(body)}`);
       const citations = Array.isArray(body.citations) ? body.citations : [];
+      // Gemini's generateContent API rejects mixing google_search with function
+      // tools, so when Muse auto-registers ambient tools the grounding tool is
+      // intentionally skipped (see fix(model) skip-Gemini-googleSearch). Treat
+      // an empty result as soft-pass on Gemini; OpenAI/Anthropic remain strict.
+      if (provider.providerId === "gemini" && citations.length === 0) {
+        return;
+      }
       assert(
         citations.length > 0,
         `expected citations.length > 0 with native web_search (got 0); content="${body.content?.slice(0, 200)}"`
