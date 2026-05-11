@@ -220,6 +220,7 @@ export {
   type InMemoryTelemetryAggregatorOptions,
   type RunTelemetryEvent,
   type TelemetryAggregator,
+  type TelemetryRecentOptions,
   type TelemetrySummary,
   type TelemetrySummaryOptions
 } from "./telemetry-aggregator.js";

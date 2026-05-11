@@ -55,10 +55,18 @@ export interface TelemetrySummary {
   };
 }
 
+export interface TelemetryRecentOptions {
+  /** Max events to return (most recent N). Defaults to capacity. */
+  readonly limit?: number;
+  /** Optional lower-bound timestamp; events older than this are excluded. */
+  readonly sinceMs?: number;
+}
+
 export interface TelemetryAggregator {
   record(event: RunTelemetryEvent): void;
   summary(options?: TelemetrySummaryOptions): TelemetrySummary;
   recent(limit: number): readonly RunTelemetryEvent[];
+  recent(options: TelemetryRecentOptions): readonly RunTelemetryEvent[];
   clear(): void;
 }
 
@@ -137,9 +145,29 @@ export class InMemoryTelemetryAggregator implements TelemetryAggregator {
     };
   }
 
-  recent(limit: number): readonly RunTelemetryEvent[] {
-    const bound = Math.max(0, Math.trunc(limit));
-    return this.events.slice(-bound);
+  recent(limitOrOptions: number | TelemetryRecentOptions = {}): readonly RunTelemetryEvent[] {
+    const options: TelemetryRecentOptions = typeof limitOrOptions === "number"
+      ? { limit: limitOrOptions }
+      : limitOrOptions;
+    const limit = options.limit;
+    const sinceMs = options.sinceMs;
+    // `slice(-0)` and `slice(0)` are both "from the start" in JS,
+    // so a naive `events.slice(-bound)` returned the FULL array when
+    // the caller asked for 0 (or a negative / NaN limit). Guard with
+    // an explicit branch so `recent(0)` is consistently empty and
+    // `recent(N)` honours a finite cap.
+    let filtered: readonly RunTelemetryEvent[] = this.events;
+    if (typeof sinceMs === "number" && Number.isFinite(sinceMs)) {
+      filtered = this.events.filter((event) => event.recordedAtMs >= sinceMs);
+    }
+    if (limit === undefined) {
+      return filtered.slice();
+    }
+    const bound = Math.trunc(limit);
+    if (!Number.isFinite(bound) || bound <= 0) {
+      return [];
+    }
+    return filtered.slice(-bound);
   }
 
   clear(): void {

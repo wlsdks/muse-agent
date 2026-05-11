@@ -75,6 +75,42 @@ describe("InMemoryTelemetryAggregator (phase A)", () => {
     expect(summary.totalRuns).toBe(1);
   });
 
+  it("recent(0) returns empty (slice(-0) was a footgun before iter 26)", () => {
+    // Before iter 26, `Math.max(0, Math.trunc(0)) === 0` followed by
+    // `events.slice(-0) === events.slice(0)` returned the ENTIRE
+    // event list when the caller asked for 0 — a silent footgun for
+    // any UI that conditionally requested "the last N where N might
+    // be 0". The fix branches explicitly on bound ≤ 0.
+    const agg = new InMemoryTelemetryAggregator({ now: () => 2_000 });
+    agg.record(evt({ runId: "r-1" }));
+    agg.record(evt({ runId: "r-2" }));
+    expect(agg.recent(0)).toEqual([]);
+    expect(agg.recent(-5)).toEqual([]);
+    expect(agg.recent(Number.NaN)).toEqual([]);
+  });
+
+  it("recent({ sinceMs }) filters to events at or after the threshold (iter 26)", () => {
+    // The new options-object overload makes `recent` symmetric with
+    // `summary({ sinceMs })`: ops can ask "show me raw events from
+    // the last hour" without re-filtering by hand.
+    const agg = new InMemoryTelemetryAggregator({ now: () => 10_000 });
+    agg.record(evt({ recordedAtMs: 1_000, runId: "old" }));
+    agg.record(evt({ recordedAtMs: 5_000, runId: "mid" }));
+    agg.record(evt({ recordedAtMs: 9_500, runId: "fresh" }));
+    const recent = agg.recent({ sinceMs: 5_000 });
+    expect(recent.map((e) => e.runId)).toEqual(["mid", "fresh"]);
+    // limit + sinceMs combine: filter first, then last-N.
+    const lastOne = agg.recent({ limit: 1, sinceMs: 5_000 });
+    expect(lastOne.map((e) => e.runId)).toEqual(["fresh"]);
+  });
+
+  it("recent({}) with no limit returns every retained event", () => {
+    const agg = new InMemoryTelemetryAggregator({ now: () => 1_000 });
+    agg.record(evt({ runId: "r-1" }));
+    agg.record(evt({ runId: "r-2" }));
+    expect(agg.recent({}).map((e) => e.runId)).toEqual(["r-1", "r-2"]);
+  });
+
   it("aggregates budget tokens", () => {
     const now = 10_000;
     const agg = new InMemoryTelemetryAggregator({ now: () => now });
