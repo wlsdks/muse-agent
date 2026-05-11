@@ -104,4 +104,49 @@ describe("scoreMessageImportance", () => {
     expect(decisive).toBeGreaterThan(plain);
     expect(shipIt).toBeGreaterThan(plain);
   });
+
+  it("ignores too-short activeTaskTitle so a 1-char hint can't saturate every message (iter 18)", () => {
+    // Pathological: a one-character activeTaskTitle like "X" would
+    // substring-match every English message ("X" appears in "fix",
+    // "exit", "tax" …). The guard rejects hints shorter than 3
+    // chars so unrelated chatter doesn't get the +0.5 bonus.
+    const unrelatedWithShortHint = scoreMessageImportance(userMessage("just casual chitchat"), {
+      activeTaskTitle: "X",
+      messageIndex: 5,
+      totalMessages: 10
+    });
+    const unrelatedWithoutHint = scoreMessageImportance(userMessage("just casual chitchat"), {
+      messageIndex: 5,
+      totalMessages: 10
+    });
+    // Both should score the same — the short hint must not boost.
+    expect(unrelatedWithShortHint).toBe(unrelatedWithoutHint);
+
+    // A 3+ char hint still boosts when the message references it.
+    const matchedWithRealHint = scoreMessageImportance(userMessage("update on Ship feature"), {
+      activeTaskTitle: "Ship feature",
+      messageIndex: 5,
+      totalMessages: 10
+    });
+    expect(matchedWithRealHint).toBeGreaterThan(unrelatedWithoutHint);
+  });
+
+  it("ignores too-short activeTaskId and currentFocus the same way (iter 18)", () => {
+    const base = scoreMessageImportance(userMessage("totally unrelated stuff"), {
+      messageIndex: 0,
+      totalMessages: 10
+    });
+    const shortId = scoreMessageImportance(userMessage("totally unrelated stuff"), {
+      activeTaskId: "T1", // 2 chars — must be rejected
+      messageIndex: 0,
+      totalMessages: 10
+    });
+    const shortFocus = scoreMessageImportance(userMessage("totally unrelated stuff"), {
+      currentFocus: "hi", // 2 chars — must be rejected
+      messageIndex: 0,
+      totalMessages: 10
+    });
+    expect(shortId).toBe(base);
+    expect(shortFocus).toBe(base);
+  });
 });

@@ -61,13 +61,21 @@ export function scoreMessageImportance(
     score += 0.2;
   }
   const content = message.content.toLowerCase();
-  if (context.activeTaskTitle && content.includes(context.activeTaskTitle.toLowerCase())) {
+  // Minimum-length guard: a 1-char `activeTaskTitle` ("X") or a
+  // 2-char `currentFocus` ("hi") would substring-match nearly
+  // every message and saturate the importance score regardless of
+  // relevance, the same false-positive class iter 16 closed in
+  // tool-filter. Three characters preserves real signal (Korean
+  // morphemes are usually 2-syllable / 6 bytes, English domain
+  // words like "rag", "pii", "ttl" stay matchable) while killing
+  // off pathological one/two-char triggers.
+  if (matchableHint(context.activeTaskTitle) && content.includes(context.activeTaskTitle!.toLowerCase())) {
     score += 0.5;
   }
-  if (context.activeTaskId && content.includes(context.activeTaskId.toLowerCase())) {
+  if (matchableHint(context.activeTaskId) && content.includes(context.activeTaskId!.toLowerCase())) {
     score += 0.3;
   }
-  if (context.currentFocus && content.includes(context.currentFocus.toLowerCase())) {
+  if (matchableHint(context.currentFocus) && content.includes(context.currentFocus!.toLowerCase())) {
     score += 0.3;
   }
   for (const hint of DECISION_HINTS) {
@@ -88,6 +96,11 @@ function clampUnit(value: number): number {
   if (value < 0) return 0;
   if (value > 1) return 1;
   return value;
+}
+
+function matchableHint(value: string | undefined): boolean {
+  if (typeof value !== "string") return false;
+  return value.trim().length >= 3;
 }
 
 export const IMPORTANCE_DEFAULT_THRESHOLD = 0.5;
