@@ -1177,5 +1177,6 @@ export {
   createZeroResultOverclaimResponseFilter
 } from "./response-filters.js";
 export { sanitiseCitations, type SanitiseCitationsResult } from "./citation-sanitiser.js";
+export { buildModelRequestWithWebSearch } from "./model-invocation.js";
 
 

@@ -19,7 +19,7 @@
 import { estimateCostUsd } from "@muse/cache";
 import type { CircuitBreaker, FallbackStrategy, RetryOptions } from "@muse/resilience";
 import { retry, withTimeout } from "@muse/resilience";
-import { decideWebSearchPolicy, type ModelProvider, type ModelRequest, type ModelResponse, type WebSearchSettings } from "@muse/model";
+import { decideWebSearchPolicy, parseModelName, type ModelProvider, type ModelRequest, type ModelResponse, type WebSearchSettings } from "@muse/model";
 import type { AgentMetrics, MuseTracer, TokenUsageSink } from "@muse/observability";
 import type { JsonObject } from "@muse/shared";
 import { isRetryableProviderError, recordUsageSpanAttributes } from "./runtime-helpers.js";
@@ -38,8 +38,9 @@ export function buildModelRequestWithWebSearch(
     env: Readonly<Record<string, string | undefined>>;
   }
 ): ModelRequest {
+  const parsed = parseModelName(request.model);
   const policy = decideWebSearchPolicy({
-    model: parseProviderAndModel(request.model),
+    model: { provider: parsed.providerId ?? "", modelId: parsed.modelId },
     settings: ctx.settings,
     override: ctx.override,
     env: ctx.env
@@ -51,12 +52,6 @@ export function buildModelRequestWithWebSearch(
     ...request,
     metadata: { ...(request.metadata ?? {}), webSearchPolicy: policyAsJson }
   };
-}
-
-function parseProviderAndModel(spec: string): { provider: string; modelId: string } {
-  const [provider, ...rest] = spec.split("/");
-  const modelId = rest.join("/") || provider || "";
-  return { provider: provider ?? "", modelId };
 }
 
 export interface InvokeModelArgs {
