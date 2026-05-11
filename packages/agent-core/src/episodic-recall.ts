@@ -127,7 +127,7 @@ export class InMemoryEpisodicRecallProvider implements EpisodicRecallProvider {
   }
 }
 
-function tokenSet(value: string): Set<string> {
+export function tokenSet(value: string): Set<string> {
   return new Set(
     value
       .toLowerCase()
@@ -136,7 +136,7 @@ function tokenSet(value: string): Set<string> {
   );
 }
 
-function jaccardSimilarity(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
+export function jaccardSimilarity(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
   if (a.size === 0 || b.size === 0) {
     return 0;
   }
@@ -148,4 +148,77 @@ function jaccardSimilarity(a: ReadonlySet<string>, b: ReadonlySet<string>): numb
   }
   const unionSize = a.size + b.size - intersection;
   return unionSize === 0 ? 0 : intersection / unionSize;
+}
+
+export interface SummaryListSource {
+  listAll?(options?: { readonly userId?: string; readonly limit?: number }):
+    | Promise<readonly { readonly sessionId: string; readonly narrative: string; readonly createdAt?: Date; readonly userId?: string }[]>
+    | readonly { readonly sessionId: string; readonly narrative: string; readonly createdAt?: Date; readonly userId?: string }[];
+}
+
+export interface StoreBackedEpisodicRecallProviderOptions {
+  readonly store: SummaryListSource;
+  readonly topK?: number;
+  readonly minScore?: number;
+  /** Max summaries fetched per resolve. Default 200. */
+  readonly maxFetched?: number;
+}
+
+/**
+ * EpisodicRecallProvider that lazy-fetches summaries from a
+ * `ConversationSummaryStore.listAll`-compatible source on every
+ * resolve. Lazy on purpose: new sessions added to the store show up
+ * on the next run without restarting the runtime. Jaccard
+ * token-overlap scoring — same shape as `InMemoryEpisodicRecallProvider`.
+ *
+ * Skips silently when the store does not implement `listAll` (e.g.
+ * a legacy in-memory store) so the runtime keeps working.
+ */
+export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider {
+  private readonly store: SummaryListSource;
+  private readonly topK: number;
+  private readonly minScore: number;
+  private readonly maxFetched: number;
+
+  constructor(options: StoreBackedEpisodicRecallProviderOptions) {
+    this.store = options.store;
+    this.topK = Math.max(1, options.topK ?? 3);
+    this.minScore = Math.max(0, options.minScore ?? 0.15);
+    this.maxFetched = Math.max(1, options.maxFetched ?? 200);
+  }
+
+  async resolve(query: string, userId?: string): Promise<EpisodicRecallSnapshot | undefined> {
+    if (!this.store.listAll) {
+      return undefined;
+    }
+    const queryTokens = tokenSet(query);
+    if (queryTokens.size === 0) {
+      return undefined;
+    }
+    let summaries: ReadonlyArray<{ readonly sessionId: string; readonly narrative: string; readonly createdAt?: Date; readonly userId?: string }>;
+    try {
+      summaries = await this.store.listAll({ limit: this.maxFetched, userId });
+    } catch {
+      return undefined;
+    }
+    const scored: EpisodicMatch[] = [];
+    for (const summary of summaries) {
+      if (userId && summary.userId && summary.userId !== userId) {
+        continue;
+      }
+      const score = jaccardSimilarity(queryTokens, tokenSet(summary.narrative));
+      if (score < this.minScore) {
+        continue;
+      }
+      scored.push({
+        createdAtIso: summary.createdAt?.toISOString(),
+        narrative: summary.narrative,
+        sessionId: summary.sessionId,
+        similarity: score
+      });
+    }
+    scored.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
+    const top = scored.slice(0, this.topK);
+    return top.length === 0 ? undefined : { matches: top };
+  }
 }

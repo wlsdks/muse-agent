@@ -64,11 +64,13 @@ import {
 import {
   DefaultActiveContextProvider,
   DefaultToolFilter,
+  StoreBackedEpisodicRecallProvider,
   type ActiveContextProvider,
+  type EpisodicRecallProvider,
   type InboxContextProvider,
   type ToolFilter
 } from "@muse/agent-core";
-import type { UserMemoryStore } from "@muse/memory";
+import type { ConversationSummaryStore, UserMemoryStore } from "@muse/memory";
 
 import type { MuseEnvironment } from "./index.js";
 
@@ -650,6 +652,39 @@ export function buildInboxContextProvider(env: MuseEnvironment): InboxContextPro
   const perProviderLimit = clampPositive(env.MUSE_INBOX_INJECT_LIMIT, 20);
   const totalLimit = clampPositive(env.MUSE_INBOX_INJECT_TOTAL_LIMIT, 80);
   return new FileBackedInboxContextProvider({ perProviderLimit, sources, totalLimit });
+}
+
+/**
+ * Context Engineering Phase 3 — build a `StoreBackedEpisodicRecallProvider`
+ * over the persisted conversation-summary store. Returns `undefined`
+ * when `MUSE_EPISODIC_RECALL_ENABLED=false` or when no store is
+ * available. Jaccard token-overlap recall — no embeddings, no
+ * pgvector. Default on so newly-shipped users get cross-session
+ * memory the moment their first session compacts.
+ */
+export function buildEpisodicRecallProvider(
+  env: MuseEnvironment,
+  summaryStore: ConversationSummaryStore | undefined
+): EpisodicRecallProvider | undefined {
+  if (env.MUSE_EPISODIC_RECALL_ENABLED?.trim().toLowerCase() === "false") {
+    return undefined;
+  }
+  if (!summaryStore || typeof summaryStore.listAll !== "function") {
+    return undefined;
+  }
+  const topK = clampPositive(env.MUSE_EPISODIC_RECALL_TOPK, 3);
+  const maxFetched = clampPositive(env.MUSE_EPISODIC_RECALL_MAX_FETCHED, 200);
+  const minScoreRaw = env.MUSE_EPISODIC_RECALL_MIN_SCORE?.trim();
+  const minScoreParsed = minScoreRaw ? Number.parseFloat(minScoreRaw) : Number.NaN;
+  const minScore = Number.isFinite(minScoreParsed) && minScoreParsed >= 0
+    ? minScoreParsed
+    : 0.15;
+  return new StoreBackedEpisodicRecallProvider({
+    maxFetched,
+    minScore,
+    store: summaryStore,
+    topK
+  });
 }
 
 /**

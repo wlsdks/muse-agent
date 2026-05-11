@@ -12,7 +12,7 @@ a tool.
 |---|---|---|---|
 | 1 | Active Context Injection | Shipped | `MUSE_ACTIVE_CONTEXT_ENABLED` (default on) |
 | 2 | Messaging Inbox Auto-Injection | Shipped | `MUSE_INBOX_CONTEXT_ENABLED` (default on when any messaging token is set) |
-| 3 | Episodic Recall (token-overlap) | Shipped | `MUSE_EPISODIC_RECALL_ENABLED` (opt-in via DI; runs in-process) |
+| 3 | Episodic Recall (token-overlap, store-backed) | Shipped | `MUSE_EPISODIC_RECALL_ENABLED` (default on; reads persisted summaries from Postgres) |
 | 4 | Context-aware Tool Filter | Shipped | `MUSE_TOOL_FILTER_ENABLED=true` (opt-in) |
 | 5 | Importance-weighted Compaction | Shipped | `MUSE_COMPACTION_STRATEGY=importance` (default `temporal`) |
 
@@ -79,37 +79,55 @@ on every resolve so the same message isn't re-injected.
 **Status.** Live. Daemons in `apps/api` (telegram-poll-tick,
 channel-poll-tick) feed the inbox files; this transform reads them.
 
-## Phase 3 — Episodic Recall (token-overlap)
+## Phase 3 — Episodic Recall (token-overlap, store-backed)
 
-**What.** At each request, search prior conversation summaries by
-Jaccard token overlap on the latest user prompt and inject top-K as
-`[Episodic Memory]`. Runs entirely in-process — no embedding API
-call, no pgvector, no external dependency. Sized for personal
-single-user scope where session counts stay small.
+**What.** At each request, the runtime lazy-fetches recent
+conversation summaries from `ConversationSummaryStore.listAll`,
+scores them against the latest user prompt by Jaccard token overlap,
+and injects top-K as `[Episodic Memory]`. Runs entirely in-process
+on the Muse Postgres — no embedding API call, no pgvector, no
+external dependency.
 
 **Files.**
 - `packages/agent-core/src/episodic-recall.ts` —
-  `InMemoryEpisodicRecallProvider` (Jaccard token overlap),
-  `EpisodicRecallProvider` interface, `renderEpisodicSection`
+  `EpisodicRecallProvider` interface, `InMemoryEpisodicRecallProvider`
+  (static episode list), `StoreBackedEpisodicRecallProvider` (lazy
+  fetch from any source implementing `listAll`), `renderEpisodicSection`
+- `packages/memory/src/memory-conversation-summary-store.ts` —
+  `listAll` on both InMemory + Kysely stores, `userId` column mapped
+  in `conversation_summaries`
+- `packages/db/src/migrations.ts` — `0002_conversation_summaries_user_id`
+  (adds `user_id` column + index; **no pgvector**)
+- `packages/autoconfigure/src/personal-providers.ts` —
+  `buildEpisodicRecallProvider(env, summaryStore)`
 
-**Wiring.**
-- `applyEpisodicRecall` transform in
-  `packages/agent-core/src/context-transforms.ts` is already wired
-  into `AgentRuntime.run` / `stream`. autoconfigure does not yet
-  build an `InMemoryEpisodicRecallProvider` instance by default —
-  callers wire it explicitly with the list of `StoredEpisode`s they
-  want searchable (e.g. snapshot from `ConversationSummaryStore`).
+**Env.**
+- `MUSE_EPISODIC_RECALL_ENABLED` (default `true`; set `false` to skip)
+- `MUSE_EPISODIC_RECALL_TOPK` (default 3)
+- `MUSE_EPISODIC_RECALL_MAX_FETCHED` (default 200 — cap on
+  summaries pulled per resolve, keeps a long-running personal
+  setup from drifting into O(n) cost over time)
+- `MUSE_EPISODIC_RECALL_MIN_SCORE` (default 0.15 — Jaccard
+  threshold)
+
+**Wiring.** `autoconfigure` builds the provider when (a) the
+conversation-summary store is persisted (`MUSE_CONVERSATION_SUMMARY_PERSIST`
+default true) and (b) the env flag is on. `AgentRuntime.run` / `stream`
+already thread the transform through the request pipeline. New
+sessions become searchable the moment their compaction summary is
+saved — no restart required.
 
 **Trade-offs (why token-overlap is fine for personal scope).**
-- Pros: zero infra, zero API cost, deterministic, easy to debug.
+- Pros: zero infra outside the Postgres already in use, zero API
+  cost, deterministic, easy to debug.
 - Cons: paraphrase / multi-language recall is weaker than an
   embedding-backed search. Korean morphology (하다 / 한 / 했던) is
-  partially absorbed via lowercase + CJK runs but not as well as a
-  semantic embedding would.
+  partially absorbed via lowercase + CJK-aware tokenization but
+  not as well as a semantic embedding would.
 - Threshold for swapping in an embedding-backed provider: corpus
-  grows past ~100 active sessions, OR cross-language recall starts
-  feeling necessary, OR a query consistently misses a known prior
-  session. The `EpisodicRecallProvider` interface is the swap
+  grows past ~hundreds of active sessions, OR cross-language recall
+  starts feeling necessary, OR a query consistently misses a known
+  prior session. The `EpisodicRecallProvider` interface is the swap
   point — the runtime doesn't care which impl is wired.
 
 ## Phase 4 — Tool Filter

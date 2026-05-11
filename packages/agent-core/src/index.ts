@@ -166,12 +166,17 @@ export {
 } from "./inbox-context.js";
 export {
   InMemoryEpisodicRecallProvider,
+  jaccardSimilarity,
   renderEpisodicSection,
+  StoreBackedEpisodicRecallProvider,
+  tokenSet,
   type EpisodicMatch,
   type EpisodicRecallProvider,
   type EpisodicRecallSnapshot,
   type InMemoryEpisodicRecallProviderOptions,
-  type StoredEpisode
+  type StoreBackedEpisodicRecallProviderOptions,
+  type StoredEpisode,
+  type SummaryListSource
 } from "./episodic-recall.js";
 export {
   DefaultToolFilter,

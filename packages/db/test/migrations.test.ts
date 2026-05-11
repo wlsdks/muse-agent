@@ -3,7 +3,10 @@ import { migrationNames, migrations } from "../src/index.js";
 
 describe("db migrations", () => {
   it("keeps migration names stable and sorted", () => {
-    expect(migrationNames()).toEqual(["0001_runtime_state"]);
+    expect(migrationNames()).toEqual([
+      "0001_runtime_state",
+      "0002_conversation_summaries_user_id"
+    ]);
   });
 
   it("creates core runtime state tables", () => {

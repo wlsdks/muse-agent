@@ -400,6 +400,22 @@ export const migrations: readonly SqlMigration[] = [
       CREATE INDEX IF NOT EXISTS idx_scheduled_job_locks_locked_until
         ON scheduled_job_locks(locked_until);
     `
+  },
+  {
+    down: `
+      DROP INDEX IF EXISTS idx_conversation_summaries_user_id;
+      ALTER TABLE IF EXISTS conversation_summaries
+        DROP COLUMN IF EXISTS user_id;
+    `,
+    name: "0002_conversation_summaries_user_id",
+    up: `
+      ALTER TABLE conversation_summaries
+        ADD COLUMN IF NOT EXISTS user_id VARCHAR(128);
+
+      CREATE INDEX IF NOT EXISTS idx_conversation_summaries_user_id
+        ON conversation_summaries(user_id)
+        WHERE user_id IS NOT NULL;
+    `
   }
 ];
 

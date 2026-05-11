@@ -128,6 +128,7 @@ import { createResponseFilters } from "./response-filters.js";
 import {
   buildActiveContextProvider,
   buildCalendarRegistry,
+  buildEpisodicRecallProvider,
   buildInboxContextProvider,
   buildMessagingRegistry,
   buildNotesRegistry,
@@ -148,6 +149,7 @@ import {
 
 export {
   buildActiveContextProvider,
+  buildEpisodicRecallProvider,
   buildInboxContextProvider,
   buildMessagingRegistry,
   buildToolFilter,
@@ -522,6 +524,13 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
         parseBoolean(env.MUSE_USER_MEMORY_INJECTION, true) ? userMemoryStore : undefined
       ),
       inboxContextProvider: buildInboxContextProvider(env),
+      // Phase 3: store-backed episodic recall. Reuses the same
+      // ConversationSummaryStore that conversation-summary persistence
+      // already writes to, so cross-session memory works the moment a
+      // session compacts.
+      episodicRecallProvider: parseBoolean(env.MUSE_CONVERSATION_SUMMARY_PERSIST, true)
+        ? buildEpisodicRecallProvider(env, conversationSummaryStore)
+        : undefined,
       toolFilter: buildToolFilter(env)
     })
     : undefined;

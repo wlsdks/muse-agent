@@ -147,6 +147,25 @@ describe("autoconfigure", () => {
     expect(buildToolFilter({ MUSE_TOOL_FILTER_ENABLED: "true" })).toBeDefined();
   });
 
+  it("buildEpisodicRecallProvider returns a provider when the store supports listAll (Phase 3)", async () => {
+    const { buildEpisodicRecallProvider } = await import("../src/personal-providers.js");
+    const { InMemoryConversationSummaryStore } = await import("@muse/memory");
+    const store = new InMemoryConversationSummaryStore();
+    expect(buildEpisodicRecallProvider({}, store)).toBeDefined();
+  });
+
+  it("buildEpisodicRecallProvider returns undefined when disabled or no store", async () => {
+    const { buildEpisodicRecallProvider } = await import("../src/personal-providers.js");
+    const { InMemoryConversationSummaryStore } = await import("@muse/memory");
+    expect(buildEpisodicRecallProvider({}, undefined)).toBeUndefined();
+    expect(
+      buildEpisodicRecallProvider(
+        { MUSE_EPISODIC_RECALL_ENABLED: "false" },
+        new InMemoryConversationSummaryStore()
+      )
+    ).toBeUndefined();
+  });
+
   it("assembles auth and API options when JWT secret is configured", () => {
     const options = createApiServerOptions({
       env: {

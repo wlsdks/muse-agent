@@ -188,12 +188,31 @@ export interface ConversationSummary {
   readonly summarizedUpToIndex: number;
   readonly createdAt?: Date;
   readonly updatedAt?: Date;
+  /**
+   * Owning user. Used by `listAll` to scope episodic-recall searches
+   * so user A doesn't surface user B's prior sessions. Optional —
+   * legacy rows that pre-date the 0002 migration leave it undefined.
+   */
+  readonly userId?: string;
+}
+
+export interface ConversationSummaryListOptions {
+  /** Only return summaries owned by this user. Omit to return any owner. */
+  readonly userId?: string;
+  /** Cap on returned rows. Default 200. Sort: newest `updatedAt` first. */
+  readonly limit?: number;
 }
 
 export interface ConversationSummaryStore {
   get(sessionId: string): Awaitable<ConversationSummary | undefined>;
   save(summary: ConversationSummary): Awaitable<ConversationSummary>;
   delete(sessionId: string): Awaitable<boolean>;
+  /**
+   * Optional: list saved summaries newest-first, optionally filtered by
+   * user. Stores that pre-date the 0002 migration may omit this — the
+   * episodic-recall provider falls back to "no recall" when missing.
+   */
+  listAll?(options?: ConversationSummaryListOptions): Awaitable<readonly ConversationSummary[]>;
 }
 
 export const DEFAULT_CACHE_KEY_MAX_CHARS = 2_000;
