@@ -90,6 +90,40 @@ try {
     assert(body.includes("event: done"), "expected event: done");
   });
 
+  await record("/api/chat response includes citations[] field", async () => {
+    const response = await fetch(`${baseUrl}/api/chat`, {
+      body: JSON.stringify({ message: "hi" }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    const body = await response.json();
+    assert(response.status === 200, `expected 200, got ${response.status}`);
+    assert(Array.isArray(body.citations), `/api/chat response must include citations[], got ${JSON.stringify(body.citations)}`);
+  });
+
+  await record("/api/chat/stream SSE includes event: done", async () => {
+    const response = await fetch(`${baseUrl}/api/chat/stream`, {
+      body: JSON.stringify({ message: "hi", runId: "smoke-citations-stream" }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    assert(response.status === 200, `expected 200, got ${response.status}`);
+    const text = await response.text();
+    assert(text.includes("event: done"), "expected event: done in SSE stream");
+  });
+
+  await record("/api/chat accepts per-request web_search override via metadata.tools", async () => {
+    const response = await fetch(`${baseUrl}/api/chat`, {
+      body: JSON.stringify({
+        message: "hi",
+        metadata: { tools: { web_search: false } }
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    assert(response.status === 200, `/api/chat accepts metadata.tools.web_search override, got ${response.status}`);
+  });
+
   await record("GET /api/openapi.json", async () => {
     const response = await fetch(`${baseUrl}/api/openapi.json`);
     const body = await response.json();
