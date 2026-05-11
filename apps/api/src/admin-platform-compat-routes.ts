@@ -25,7 +25,7 @@ import {
   readAuthUserId,
   readBodyNullableString,
   readBodyString,
-  readNumber,
+  coerceNumber,
   toBody,
   toJsonObject,
   toCompatRuntimeSetting,
@@ -136,9 +136,9 @@ function registerPlatformHealthRoutes(server: FastifyInstance, options: Compatib
     }
 
     const snapshot = toJsonObject(options.admin?.cache?.metrics?.snapshot());
-    const exact = readNumber(snapshot.exactHits, 0);
-    const semantic = readNumber(snapshot.semanticHits, 0);
-    const misses = readNumber(snapshot.misses, 0);
+    const exact = coerceNumber(snapshot.exactHits, 0);
+    const semantic = coerceNumber(snapshot.semanticHits, 0);
+    const misses = coerceNumber(snapshot.misses, 0);
     const total = exact + semantic + misses;
 
     return {

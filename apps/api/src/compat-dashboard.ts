@@ -13,7 +13,7 @@ import {
   jsonObjectField,
   nullableStringResponse,
   opsMetricSnapshots,
-  readBoolean,
+  coerceBoolean,
   compatEnumString,
   stringField,
   toJsonObject,
@@ -96,7 +96,7 @@ function responseTrustSummary(events: readonly JsonObject[]): JsonObject {
     outputGuardRejected: outputGuardActions.filter((payload) => payload.action === "rejected").length,
     unverifiedResponses: agentRuns.filter((payload) => {
       const metadata = jsonObjectField(payload.metadata);
-      return readBoolean(metadata.verified, true) === false || readBoolean(metadata.grounded, true) === false;
+      return coerceBoolean(metadata.verified, true) === false || coerceBoolean(metadata.grounded, true) === false;
     }).length
   };
 }

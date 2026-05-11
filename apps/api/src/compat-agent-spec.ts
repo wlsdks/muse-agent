@@ -18,7 +18,7 @@ import {
   parseAgentMode,
   readBodyNullableString,
   readBodyString,
-  readStringArray,
+  coerceStringArray,
   type ApiError,
   type ParseResult,
   type CompatibilityRouteOptions
@@ -47,11 +47,11 @@ export function parseAgentSpecInput(value: unknown, id?: string): ParseResult<Ag
       enabled: typeof value.enabled === "boolean" ? value.enabled : undefined,
       id,
       independentExecution: typeof value.independentExecution === "boolean" ? value.independentExecution : undefined,
-      keywords: readStringArray(value.keywords),
+      keywords: coerceStringArray(value.keywords),
       mode,
       name,
       systemPrompt: readBodyNullableString(value, "systemPrompt"),
-      toolNames: readStringArray(value.toolNames)
+      toolNames: coerceStringArray(value.toolNames)
     }
   };
 }
@@ -100,11 +100,11 @@ export function toAgentSpecUpdateInput(body: Record<string, unknown>, existing: 
     independentExecution: typeof body.independentExecution === "boolean"
       ? body.independentExecution
       : existing.independentExecution,
-    keywords: Array.isArray(body.keywords) ? readStringArray(body.keywords) : existing.keywords,
+    keywords: Array.isArray(body.keywords) ? coerceStringArray(body.keywords) : existing.keywords,
     mode: body.mode === undefined ? existing.mode : parseAgentMode(body.mode),
     name: readBodyString(body, "name") ?? existing.name,
     systemPrompt: body.systemPrompt === null ? null : readBodyString(body, "systemPrompt") ?? existing.systemPrompt,
-    toolNames: Array.isArray(body.toolNames) ? readStringArray(body.toolNames) : existing.toolNames
+    toolNames: Array.isArray(body.toolNames) ? coerceStringArray(body.toolNames) : existing.toolNames
   };
 }
 

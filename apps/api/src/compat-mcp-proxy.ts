@@ -11,7 +11,7 @@ import {
   invalid,
   nowIso,
   readBodyString,
-  readNumber,
+  coerceNumber,
   readStringSet,
   toBody,
   type ParseResult,
@@ -128,7 +128,7 @@ export async function proxyMcpAdminRequest(
     });
   }
 
-  const timeoutMs = readNumber(serverConfig.config.adminTimeoutMs, 15_000);
+  const timeoutMs = coerceNumber(serverConfig.config.adminTimeoutMs, 15_000);
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort(), timeoutMs);
 

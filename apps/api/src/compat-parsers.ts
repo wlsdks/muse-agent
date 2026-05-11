@@ -39,12 +39,12 @@ export function stringField(value: unknown, fallback: string): string {
   return typeof value === "string" ? value : fallback;
 }
 
-export function readStringArray(value: unknown): readonly string[] | undefined {
+export function coerceStringArray(value: unknown): readonly string[] | undefined {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined;
 }
 
 export function stringArrayField(value: unknown, fallback: string[]): string[] {
-  const parsed = readStringArray(value);
+  const parsed = coerceStringArray(value);
   return parsed ? [...parsed] : fallback;
 }
 
@@ -75,7 +75,7 @@ export function numberField(value: JsonObject, key: string): number {
   return typeof item === "number" && Number.isFinite(item) ? item : 0;
 }
 
-export function readNumber(value: unknown, fallback: number): number {
+export function coerceNumber(value: unknown, fallback: number): number {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
   }
@@ -89,15 +89,15 @@ export function readNumber(value: unknown, fallback: number): number {
 }
 
 export function readNullableNumber(value: unknown): number | undefined {
-  const parsed = readNumber(value, Number.NaN);
+  const parsed = coerceNumber(value, Number.NaN);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 export function numberOrString(value: unknown, fallback: number): number | string {
-  return typeof value === "string" && value.trim().length > 0 ? value : readNumber(value, fallback);
+  return typeof value === "string" && value.trim().length > 0 ? value : coerceNumber(value, fallback);
 }
 
-export function readBoolean(value: unknown, fallback: boolean): boolean {
+export function coerceBoolean(value: unknown, fallback: boolean): boolean {
   if (typeof value === "boolean") {
     return value;
   }
