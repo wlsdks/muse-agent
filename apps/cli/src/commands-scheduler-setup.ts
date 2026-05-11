@@ -257,6 +257,16 @@ async function renderSetupStatus(): Promise<string> {
     pushNext(snap.messaging.nextStep);
   }
 
+  // web search
+  const ws = snap.webSearch;
+  push(
+    "ok",
+    "web search",
+    ws.enabled
+      ? `enabled (maxUses ${ws.maxUses.toString()}, source=${ws.source})`
+      : `disabled (source=${ws.source})`
+  );
+
   lines.push("");
   lines.push("Wizards:");
   lines.push("  muse setup model       — LLM provider keys (OpenAI / Anthropic / Gemini / OpenRouter / Ollama)");
