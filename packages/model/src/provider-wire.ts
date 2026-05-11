@@ -201,10 +201,13 @@ export function toGeminiRequest(
     }]
     : [];
 
-  if (policy.enabled) {
+  // Gemini API rejects requests that combine built-in grounding tools with
+  // function declarations. When the caller registers function tools, those
+  // win and grounding is skipped — users who want web grounding on Gemini
+  // need to issue the request without function tools.
+  const hasFunctionTools = (request.tools?.length ?? 0) > 0;
+  if (policy.enabled && !hasFunctionTools) {
     const { modelId } = parseModelName(request.model || "");
-    // Gemini 1.5 uses the older googleSearchRetrieval grounding tool;
-    // Gemini 2.0+ uses the unified googleSearch tool.
     if (modelId.startsWith("gemini-1.5")) {
       tools.push({ googleSearchRetrieval: {} });
     } else {

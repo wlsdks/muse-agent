@@ -163,6 +163,18 @@ describe("toGeminiRequest web_search injection", () => {
     );
     expect(out.tools ?? []).not.toEqual(expect.arrayContaining([{ googleSearch: {} }]));
   });
+
+  it("skips googleSearch when caller-supplied function tools are present (Gemini API rejects the combination)", () => {
+    const out = toGeminiRequest(
+      {
+        model: "gemini/gemini-2.0-flash",
+        messages: [{ role: "user" as const, content: "x" }],
+        tools: [{ name: "muse_now", description: "current time", inputSchema: { type: "object" }, risk: "read" }]
+      },
+      { enabled: true, maxUses: 5 }
+    );
+    expect(out.tools ?? []).not.toEqual(expect.arrayContaining([{ googleSearch: {} }]));
+  });
 });
 
 describe("fromGeminiResponse extracts grounding citations", () => {
