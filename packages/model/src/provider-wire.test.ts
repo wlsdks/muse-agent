@@ -33,6 +33,29 @@ describe("toOpenAIResponsesRequest", () => {
     expect(out.tools ?? []).toEqual([]);
   });
 
+  it("wraps assistant turns as input_text (Responses API input shape, not output)", () => {
+    const out = toOpenAIResponsesRequest(
+      {
+        model: "openai/gpt-4o",
+        messages: [
+          { role: "user" as const, content: "hi" },
+          { role: "assistant" as const, content: "hello back" },
+          { role: "user" as const, content: "ok" }
+        ]
+      },
+      "gpt-4o",
+      { enabled: false, maxUses: 5 }
+    );
+    expect(out.input.map((item: { role: string; content: Array<{ type: string }> }) => ({
+      role: item.role,
+      type: item.content[0]?.type
+    }))).toEqual([
+      { role: "user", type: "input_text" },
+      { role: "assistant", type: "input_text" },
+      { role: "user", type: "input_text" }
+    ]);
+  });
+
   it("injects { type:'web_search' } when policy enabled", () => {
     const out = toOpenAIResponsesRequest(base, "gpt-4o", { enabled: true, maxUses: 5 });
     expect(out.tools).toEqual([{ type: "web_search" }]);

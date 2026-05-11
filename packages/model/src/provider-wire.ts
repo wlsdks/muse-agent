@@ -513,7 +513,7 @@ export function toOpenAIResponsesRequest(
     input: request.messages.map((m) => ({
       role: m.role,
       content: [{
-        type: m.role === "assistant" ? "output_text" : "input_text",
+        type: "input_text",
         text: typeof m.content === "string" ? m.content : ""
       }]
     })),
