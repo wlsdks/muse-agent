@@ -749,7 +749,7 @@ describe("autoconfigure", () => {
     expect(mergedWithModel.MUSE_MODEL).toBe("anthropic/claude-haiku-4-5-20251001");
   });
 
-  it("mergeModelKeysFromFile hydrates the new Groq / DeepSeek / Together / Mistral / Moonshot presets", async () => {
+  it("mergeModelKeysFromFile hydrates every OpenAI-compat preset (Groq / DeepSeek / Together / Mistral / Moonshot / Cerebras)", async () => {
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -757,6 +757,7 @@ describe("autoconfigure", () => {
     const file = join(root, "models.json");
     writeFileSync(file, JSON.stringify({
       providers: {
+        cerebras: { token: "from-file-cerebras" },
         deepseek: { token: "from-file-deepseek" },
         groq: { token: "from-file-groq" },
         mistral: { token: "from-file-mistral" },
@@ -772,6 +773,7 @@ describe("autoconfigure", () => {
     expect(merged.TOGETHER_API_KEY).toBe("from-file-together");
     expect(merged.MISTRAL_API_KEY).toBe("from-file-mistral");
     expect(merged.MOONSHOT_API_KEY).toBe("from-file-moonshot");
+    expect(merged.CEREBRAS_API_KEY).toBe("from-file-cerebras");
   });
 
   it("buildMessagingRegistry honours env tokens, the credentials file, and env-overrides-file", async () => {
