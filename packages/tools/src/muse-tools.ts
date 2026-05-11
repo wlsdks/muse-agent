@@ -76,6 +76,7 @@ function createJsonQueryTool(): MuseTool {
         required: ["document", "path"],
         type: "object"
       },
+      domain: "core",
       keywords: ["json", "query", "extract"],
       name: "json_query",
       risk: "read"
@@ -129,6 +130,7 @@ function createUrlPartsTool(): MuseTool {
         required: ["url"],
         type: "object"
       },
+      domain: "core",
       keywords: ["url", "parse", "link", "host"],
       name: "url_parts",
       risk: "read"
@@ -189,6 +191,7 @@ function createRegexExtractTool(): MuseTool {
         required: ["pattern", "text"],
         type: "object"
       },
+      domain: "core",
       keywords: ["regex", "extract", "match", "find"],
       name: "regex_extract",
       risk: "read"

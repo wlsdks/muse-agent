@@ -23,6 +23,7 @@ export function createTextStatsTool(): MuseTool {
         required: ["text"],
         type: "object"
       },
+      domain: "core",
       keywords: ["text", "count", "statistics"],
       name: "text_stats",
       risk: "read"
@@ -60,6 +61,7 @@ export function createSlugifyTool(): MuseTool {
         required: ["text"],
         type: "object"
       },
+      domain: "core",
       keywords: ["slug", "url", "filename", "identifier"],
       name: "slugify",
       risk: "read"
@@ -87,6 +89,7 @@ export function createKvSummarizeTool(): MuseTool {
         required: ["data"],
         type: "object"
       },
+      domain: "core",
       keywords: ["summarize", "flatten", "kv", "format"],
       name: "kv_summarize",
       risk: "read"
@@ -138,6 +141,7 @@ export function createMarkdownTableTool(): MuseTool {
         required: ["rows"],
         type: "object"
       },
+      domain: "core",
       keywords: ["markdown", "table", "format"],
       name: "markdown_table",
       risk: "read"

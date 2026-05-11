@@ -31,6 +31,7 @@ export function createTimeNowTool(now: () => Date): MuseTool {
         },
         type: "object"
       },
+      domain: "core",
       keywords: ["time", "clock", "now", "date"],
       name: "time_now",
       risk: "read"
@@ -79,6 +80,7 @@ export function createTimeDiffTool(): MuseTool {
         required: ["from", "to"],
         type: "object"
       },
+      domain: "core",
       keywords: ["time", "duration", "diff", "interval"],
       name: "time_diff",
       risk: "read"
@@ -113,6 +115,7 @@ export function createTimeAddTool(): MuseTool {
         required: ["base"],
         type: "object"
       },
+      domain: "core",
       keywords: ["time", "schedule", "add", "shift"],
       name: "time_add",
       risk: "read"
@@ -152,6 +155,7 @@ export function createTimeRelativeTool(now: () => Date): MuseTool {
         required: ["at"],
         type: "object"
       },
+      domain: "core",
       keywords: ["time", "relative", "humanize", "ago"],
       name: "time_relative",
       risk: "read"
@@ -194,6 +198,7 @@ export function createNextWeekdayTool(now: () => Date): MuseTool {
         required: ["weekday"],
         type: "object"
       },
+      domain: "core",
       keywords: ["calendar", "schedule", "weekday", "next"],
       name: "next_weekday",
       risk: "read"
@@ -245,6 +250,7 @@ export function createCronForDatetimeTool(): MuseTool {
         required: ["iso"],
         type: "object"
       },
+      domain: "core",
       keywords: ["cron", "schedule", "reminder", "datetime", "scheduler"],
       name: "cron_for_datetime",
       risk: "read"

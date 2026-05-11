@@ -59,6 +59,7 @@ export function createRustRunnerTool(options: RustRunnerToolOptions = {}): MuseT
         required: ["command"],
         type: "object"
       },
+      domain: "system",
       name: "run_command",
       risk: "execute"
     },

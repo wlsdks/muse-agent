@@ -26,6 +26,7 @@ export function createMathEvalTool(): MuseTool {
         required: ["expression"],
         type: "object"
       },
+      domain: "core",
       keywords: ["math", "calculate", "arithmetic"],
       name: "math_eval",
       risk: "read"
@@ -75,6 +76,7 @@ export function createHashTextTool(): MuseTool {
         required: ["text"],
         type: "object"
       },
+      domain: "core",
       keywords: ["hash", "fingerprint", "dedupe", "sha256"],
       name: "hash_text",
       risk: "read"
@@ -115,6 +117,7 @@ export function createCsvParseTool(): MuseTool {
         required: ["text"],
         type: "object"
       },
+      domain: "core",
       keywords: ["csv", "parse", "spreadsheet", "table"],
       name: "csv_parse",
       risk: "read"
@@ -168,6 +171,7 @@ export function createBase64Tool(): MuseTool {
         required: ["mode", "text"],
         type: "object"
       },
+      domain: "core",
       keywords: ["base64", "encode", "decode", "jwt", "transport"],
       name: "base64",
       risk: "read"
