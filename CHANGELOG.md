@@ -57,6 +57,16 @@ move from `Unreleased` to dated/versioned headings.
   verify a `MUSE_WEB_SEARCH=off` override is being honored without
   hitting an endpoint.
 
+- **Admin API now mirrored in the CLI** — ten previously web-only
+  observability / admin surfaces now have thin CLI wrappers:
+  `muse runs list/show`, `muse doctor`, `muse cost {daily,top,for}`,
+  `muse latency {summary,timeseries}`, `muse traces {list,spans}`,
+  `muse settings {list,get,set,unset,refresh}`,
+  `muse tools {stats,accuracy,calls,ranking}`,
+  `muse analytics {failures,latency-distribution}`,
+  `muse debug {replay,replay-show}`, plus `muse scheduler {delete,executions}`.
+  Operators can now triage from the terminal without curl or the web UI.
+
 - **`muse calendar events --local`** and **`muse calendar providers
   --local`** complete the `--local` trio. The CLI instantiates
   `LocalCalendarProvider` against `~/.muse/calendar.json` directly.
