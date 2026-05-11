@@ -15,6 +15,15 @@ import type { MuseTool, MuseToolDefinition } from "@muse/tools";
 export interface ToolFilterContext {
   readonly userMessage: string;
   readonly scopeHints?: readonly string[];
+  /**
+   * Tools the agent invoked on previous turns of this run /
+   * session. The filter retains any tool whose name appears here so
+   * a follow-up question ("reply to that") does not lose access to
+   * the messaging / calendar / etc. capability that's already in
+   * flight. Populated by the runtime from
+   * `metadata.recentToolNames`.
+   */
+  readonly recentToolNames?: readonly string[];
 }
 
 export interface ToolFilter {
@@ -40,16 +49,24 @@ export class DefaultToolFilter implements ToolFilter {
   filter(tools: readonly MuseTool[], context: ToolFilterContext): readonly MuseTool[] {
     const promptLower = context.userMessage.toLowerCase();
     const scopeSet = new Set((context.scopeHints ?? []).map((value) => value.toLowerCase()));
-    return tools.filter((tool) => this.shouldKeep(tool.definition, promptLower, scopeSet));
+    const recentSet = new Set(context.recentToolNames ?? []);
+    return tools.filter((tool) => this.shouldKeep(tool.definition, promptLower, scopeSet, recentSet));
   }
 
   private shouldKeep(
     definition: MuseToolDefinition,
     promptLower: string,
-    scopeSet: ReadonlySet<string>
+    scopeSet: ReadonlySet<string>,
+    recentSet: ReadonlySet<string>
   ): boolean {
     const domain = inferDomain(definition);
     if (!domain || domain === "core") {
+      return true;
+    }
+    // Retain tools the agent already used on a prior turn — a
+    // follow-up like "reply to that" doesn't repeat the original
+    // keyword and would otherwise drop the matching domain.
+    if (recentSet.has(definition.name)) {
       return true;
     }
     if (scopeSet.has(domain.toLowerCase())) {
@@ -73,27 +90,40 @@ export class DefaultToolFilter implements ToolFilter {
 export const DEFAULT_DOMAIN_KEYWORDS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   calendar: ["calendar", "schedule", "meeting", "event", "캘린더", "일정", "회의"],
   messaging: ["slack", "discord", "telegram", "line", "메시지", "채널", "dm", "message"],
-  notes: ["note", "memo", "wiki", "doc", "노트", "메모", "문서"],
-  system: ["설정", "config", "setting", "version"],
+  notes: ["note", "memo", "wiki", "doc", "노트", "메모", "문서", "위키"],
+  system: ["설정", "config", "setting", "version", "버전"],
   tasks: ["task", "todo", "reminder", "할일", "태스크", "리마인더"]
 });
 
 /**
- * Read the tool's domain. Supports a future `definition.domain` field
- * AND falls back to `definition.scopes` for partial back-compat.
- * Returns undefined when no domain is declared (tool is always-on).
+ * `muse.<prefix>.*` → domain mapping. Lookup table rather than an
+ * if-chain so adding a new built-in domain is a one-line change.
+ * `core` tools are always-on; non-core domains gate the tool behind
+ * the prompt-keyword / scope-hint / recent-tool filter.
+ */
+const BUILTIN_PREFIX_DOMAIN: Readonly<Record<string, string>> = Object.freeze({
+  "muse.calendar.": "calendar",
+  "muse.context.": "core",
+  "muse.messaging.": "messaging",
+  "muse.notes.": "notes",
+  "muse.skills.": "core",
+  "muse.tasks.": "tasks",
+  "muse.time.": "core"
+});
+
+/**
+ * Read the tool's domain. Honours an explicit `definition.domain`
+ * first, then falls back to a name-prefix lookup. Returns undefined
+ * when nothing matches (tool is always-on).
  */
 export function inferDomain(definition: MuseToolDefinition): string | undefined {
-  const withDomain = definition as MuseToolDefinition & { readonly domain?: string };
-  if (typeof withDomain.domain === "string" && withDomain.domain.trim().length > 0) {
-    return withDomain.domain.trim();
+  if (typeof definition.domain === "string" && definition.domain.trim().length > 0) {
+    return definition.domain.trim();
   }
-  const name = definition.name;
-  if (name.startsWith("muse.messaging.")) return "messaging";
-  if (name.startsWith("muse.calendar.")) return "calendar";
-  if (name.startsWith("muse.tasks.")) return "tasks";
-  if (name.startsWith("muse.notes.")) return "notes";
-  if (name.startsWith("muse.time.")) return "core";
-  if (name.startsWith("muse.context.")) return "core";
+  for (const [prefix, domain] of Object.entries(BUILTIN_PREFIX_DOMAIN)) {
+    if (definition.name.startsWith(prefix)) {
+      return domain;
+    }
+  }
   return undefined;
 }

@@ -35,6 +35,41 @@ describe("DefaultToolFilter", () => {
     const kept = filter.filter(tools, { scopeHints: ["calendar"], userMessage: "hi" });
     expect(kept.map((t) => t.definition.name)).toContain("muse.calendar.upcoming");
   });
+
+  it("retains tools the agent already used on a prior turn (iter 5)", () => {
+    // No messaging keyword in this turn, but the agent invoked
+    // muse.messaging.send last turn — retain it so a follow-up like
+    // "reply to that" can still trigger the messaging path.
+    const kept = filter.filter(tools, {
+      recentToolNames: ["muse.messaging.send"],
+      userMessage: "reply to that"
+    });
+    expect(kept.map((t) => t.definition.name)).toContain("muse.messaging.send");
+    // Unrelated calendar / notes still hidden — no false-positive
+    // expansion from the recent set.
+    expect(kept.map((t) => t.definition.name)).not.toContain("muse.calendar.upcoming");
+  });
+});
+
+describe("inferDomain prefix table (iter 5)", () => {
+  it("recognises muse.skills.* as core (always-on)", () => {
+    expect(inferDomain({ description: "", inputSchema: {}, name: "muse.skills.list", risk: "read" })).toBe("core");
+    expect(inferDomain({ description: "", inputSchema: {}, name: "muse.skills.run", risk: "execute" })).toBe("core");
+  });
+
+  it("recognises muse.notes.* (Korean note keywords surface notes-domain tools)", () => {
+    const filter = new DefaultToolFilter();
+    const notesTool: MuseTool = tool({
+      description: "List notes",
+      inputSchema: {},
+      name: "muse.notes.list",
+      risk: "read"
+    });
+    const kept = filter.filter([notesTool], { userMessage: "내 노트 보여줘" });
+    expect(kept).toHaveLength(1);
+    const kept2 = filter.filter([notesTool], { userMessage: "위키 검색 좀" });
+    expect(kept2).toHaveLength(1);
+  });
 });
 
 describe("inferDomain", () => {

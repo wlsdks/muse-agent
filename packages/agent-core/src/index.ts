@@ -850,6 +850,7 @@ export class AgentRuntime {
 
     const filtered = this.toolFilter
       ? this.toolFilter.filter(tools, {
+          recentToolNames: stringListMetadata(context.input.metadata?.recentToolNames),
           scopeHints: stringListMetadata(context.input.metadata?.toolScopes),
           userMessage
         })
