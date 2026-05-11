@@ -141,8 +141,16 @@ export function createSkillRunTool(registry: SkillRegistryView, options: SkillRu
       risk: "execute"
     },
     execute: async (args): Promise<JsonObject> => {
-      const name = readRequiredString(args, "name");
-      const command = readRequiredString(args, "command");
+      const nameRaw = args["name"];
+      const commandRaw = args["command"];
+      if (typeof nameRaw !== "string" || nameRaw.trim().length === 0) {
+        return { error: "name must be a non-empty string" };
+      }
+      if (typeof commandRaw !== "string" || commandRaw.trim().length === 0) {
+        return { error: "command must not be empty" };
+      }
+      const name = nameRaw;
+      const command = commandRaw;
       const skill = registry.get(name);
       if (!skill) {
         return { error: `skill not found: ${name}` };
@@ -152,9 +160,6 @@ export function createSkillRunTool(registry: SkillRegistryView, options: SkillRu
         return { error: `skill ${name} declares no requires.bins / requires.anyBins, refusing to run` };
       }
       const trimmed = command.trim();
-      if (trimmed.length === 0) {
-        return { error: "command must not be empty" };
-      }
       const tokens = parseShellTokens(trimmed);
       const first = tokens[0];
       if (!first || !allowlist.has(first)) {
