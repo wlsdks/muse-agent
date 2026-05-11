@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import anthropicFixture from "../__fixtures__/web-search/anthropic-messages.json" with { type: "json" };
+import geminiFixture from "../__fixtures__/web-search/gemini-generate-content.json" with { type: "json" };
 import openaiFixture from "../__fixtures__/web-search/openai-responses.json" with { type: "json" };
 
 import {
   fromAnthropicResponse,
+  fromGeminiResponse,
   fromOpenAIResponsesResponse,
   parseOpenAIResponsesStream,
   toAnthropicRequest,
+  toGeminiRequest,
   toOpenAIResponsesRequest
 } from "./provider-wire.js";
 
@@ -133,5 +136,49 @@ describe("parseOpenAIResponsesStream", () => {
     expect(types).toContain("citations");
     expect(types).toContain("text-delta");
     expect(types).toContain("done");
+  });
+});
+
+describe("toGeminiRequest web_search injection", () => {
+  it("uses googleSearchRetrieval for gemini-1.5*", () => {
+    const out = toGeminiRequest(
+      { model: "gemini/gemini-1.5-flash", messages: [{ role: "user" as const, content: "x" }] },
+      { enabled: true, maxUses: 5 }
+    );
+    expect(out.tools).toEqual(expect.arrayContaining([{ googleSearchRetrieval: {} }]));
+  });
+
+  it("uses googleSearch for gemini-2.0+", () => {
+    const out = toGeminiRequest(
+      { model: "gemini/gemini-2.0-flash", messages: [{ role: "user" as const, content: "x" }] },
+      { enabled: true, maxUses: 5 }
+    );
+    expect(out.tools).toEqual(expect.arrayContaining([{ googleSearch: {} }]));
+  });
+
+  it("does not inject when disabled", () => {
+    const out = toGeminiRequest(
+      { model: "gemini/gemini-2.0-flash", messages: [{ role: "user" as const, content: "x" }] },
+      { enabled: false, maxUses: 5 }
+    );
+    expect(out.tools ?? []).not.toEqual(expect.arrayContaining([{ googleSearch: {} }]));
+  });
+});
+
+describe("fromGeminiResponse extracts grounding citations", () => {
+  it("parses groundingChunks into citations[]", () => {
+    const r = fromGeminiResponse("gemini", "gemini-2.0-flash", geminiFixture);
+    expect(r.citations).toHaveLength(2);
+    expect(r.citations?.[0]).toMatchObject({
+      url: "https://example.com/news/a",
+      title: "Example News A"
+    });
+  });
+
+  it("returns empty citations when groundingMetadata absent", () => {
+    const r = fromGeminiResponse("gemini", "gemini-2.0-flash", {
+      candidates: [{ content: { role: "model", parts: [{ text: "x" }] }, finishReason: "STOP" }]
+    });
+    expect(r.citations).toEqual([]);
   });
 });

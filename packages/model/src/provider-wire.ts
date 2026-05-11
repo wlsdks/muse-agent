@@ -186,7 +186,32 @@ function stripEncryptedContent(r: Record<string, unknown>): Record<string, unkno
   return rest;
 }
 
-export function toGeminiRequest(request: ModelRequest) {
+export function toGeminiRequest(
+  request: ModelRequest,
+  policy: { enabled: boolean; maxUses: number } = { enabled: false, maxUses: 5 }
+) {
+  // Build the tools array: function declarations first, then search tool when enabled.
+  const tools: unknown[] = request.tools && request.tools.length > 0
+    ? [{
+      functionDeclarations: request.tools.map((tool) => ({
+        description: tool.description,
+        name: tool.name,
+        parameters: sanitizeGeminiSchema(tool.inputSchema)
+      }))
+    }]
+    : [];
+
+  if (policy.enabled) {
+    const { modelId } = parseModelName(request.model || "");
+    // Gemini 1.5 uses the older googleSearchRetrieval grounding tool;
+    // Gemini 2.0+ uses the unified googleSearch tool.
+    if (modelId.startsWith("gemini-1.5")) {
+      tools.push({ googleSearchRetrieval: {} });
+    } else {
+      tools.push({ googleSearch: {} });
+    }
+  }
+
   return {
     contents: buildGeminiContents(request.messages),
     ...(request.maxOutputTokens || request.temperature !== undefined
@@ -197,17 +222,7 @@ export function toGeminiRequest(request: ModelRequest) {
         }
       }
       : {}),
-    ...(request.tools && request.tools.length > 0
-      ? {
-        tools: [{
-          functionDeclarations: request.tools.map((tool) => ({
-            description: tool.description,
-            name: tool.name,
-            parameters: sanitizeGeminiSchema(tool.inputSchema)
-          }))
-        }]
-      }
-      : {}),
+    ...(tools.length > 0 ? { tools } : {}),
     ...(request.messages.some((message) => message.role === "system")
       ? {
         systemInstruction: {
@@ -376,7 +391,19 @@ export function fromGeminiResponse(providerId: string, model: string, payload: u
     }];
   });
 
+  // groundingMetadata lives on the candidate, not the top-level payload.
+  const groundingChunks = (
+    candidate as { groundingMetadata?: { groundingChunks?: Array<{ web?: { uri?: string; title?: string } }> } } | undefined
+  )?.groundingMetadata?.groundingChunks ?? [];
+  const citations: WebSearchCitation[] = [];
+  for (const chunk of groundingChunks) {
+    if (chunk?.web?.uri && chunk.web.title) {
+      citations.push({ url: chunk.web.uri, title: chunk.web.title, providerRaw: chunk as Record<string, unknown> });
+    }
+  }
+
   return {
+    citations,
     id: typeof payload.responseId === "string" ? payload.responseId : `${providerId}-response`,
     model,
     output,

@@ -574,8 +574,11 @@ export class GeminiProvider implements ModelProvider {
       url.searchParams.set("key", this.apiKey);
     }
 
+    const policy = (request.metadata?.webSearchPolicy as { enabled: boolean; maxUses: number } | undefined)
+      ?? { enabled: false, maxUses: 5 };
+
     const response = await this.fetchImpl(url.toString(), {
-      body: JSON.stringify(toGeminiRequest(request)),
+      body: JSON.stringify(toGeminiRequest(request, policy)),
       headers: {
         "content-type": "application/json",
         ...this.headers
