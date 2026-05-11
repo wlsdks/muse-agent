@@ -133,19 +133,28 @@ export function renderAttachmentSection(attachments: readonly AttachmentHint[]):
   lines.push("Files the user attached to this turn. Treat as primary source material when relevant.");
   const shown = attachments.slice(0, MAX_ATTACHMENT_ENTRIES);
   for (const entry of shown) {
-    const parts: string[] = [entry.name];
+    // Iter 44 — render-boundary defensive sanitisation. The
+    // `parseAttachmentsFromMetadata` path already strips newlines
+    // at parse time, but `renderAttachmentSection` is exported and
+    // external callers can hand in `AttachmentHint[]` directly
+    // (third-party integration, in-process test fixture, future
+    // code path). Without these guards a pre-built hint carrying
+    // literal newlines would splice a fake `[System Override]`
+    // section into `[Attached Files]`. Same Round 3 pattern iters
+    // 22 / 24 / 33 / 34 closed across the other render paths.
+    const parts: string[] = [sanitizeInline(entry.name)];
     if (entry.mimeType) {
-      parts.push(entry.mimeType);
+      parts.push(sanitizeInline(entry.mimeType));
     }
     if (entry.size !== undefined) {
       parts.push(formatSize(entry.size));
     }
     if (entry.ref) {
-      parts.push(`ref=${entry.ref}`);
+      parts.push(`ref=${sanitizeInline(entry.ref)}`);
     }
     const header = `- ${parts.join(" · ")}`;
     if (entry.description) {
-      lines.push(`${header}\n    ${entry.description}`);
+      lines.push(`${header}\n    ${sanitizeInline(entry.description)}`);
     } else {
       lines.push(header);
     }
