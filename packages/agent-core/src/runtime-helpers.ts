@@ -202,6 +202,25 @@ function setNumericAttr(span: SpanHandle, key: string, value: unknown): void {
 }
 
 /**
+ * Stamp every `ctx.budget.*` attribute from a flattened prompt
+ * budget record onto the span. Read-only — caller owns the report
+ * shape (`promptBudgetSpanAttributes(report)`).
+ */
+export function recordPromptBudgetSpanAttributes(
+  span: SpanHandle,
+  attributes: Readonly<Record<string, number>> | undefined
+): void {
+  if (!attributes) {
+    return;
+  }
+  for (const [key, value] of Object.entries(attributes)) {
+    if (Number.isFinite(value)) {
+      span.setAttribute(key, value);
+    }
+  }
+}
+
+/**
  * Writes per-call token usage onto a tracing span. Each individual usage field
  * is conditional so an adapter that only reports `outputTokens` does not also
  * stamp `usage.input_tokens=undefined` onto the span.

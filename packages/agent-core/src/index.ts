@@ -53,6 +53,7 @@ import {
   numberMetadata,
   recordContextEngineeringSpanAttributes,
   recordContextWindowSpanAttributes,
+  recordPromptBudgetSpanAttributes,
   resolvePersonaSnapshot as resolvePersonaSnapshotFn,
   stringListMetadata
 } from "./runtime-helpers.js";
@@ -86,6 +87,7 @@ import {
 import type { ActiveContextProvider, ActiveContextSnapshot } from "./active-context.js";
 import { applyAttachmentContext as applyAttachmentContextFn } from "./attachment-context.js";
 import { applySkillsContext as applySkillsContextFn, type SkillCatalogProvider } from "./skills-context.js";
+import { measureSystemPromptBudget, promptBudgetSpanAttributes } from "./prompt-budget.js";
 import type { InboxContextProvider } from "./inbox-context.js";
 import type { EpisodicRecallProvider } from "./episodic-recall.js";
 import type { ToolFilter } from "./tool-filter.js";
@@ -206,6 +208,13 @@ export {
   type SkillCatalogEntry,
   type SkillCatalogProvider
 } from "./skills-context.js";
+export {
+  measureSystemPromptBudget,
+  measureSystemPromptText,
+  promptBudgetSpanAttributes,
+  type PromptBudgetReport,
+  type PromptBudgetSection
+} from "./prompt-budget.js";
 
 
 export {
@@ -522,6 +531,10 @@ export class AgentRuntime {
       const preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot, activeContextSnapshot);
       recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
       recordContextEngineeringSpanAttributes(runSpan, summaryAppliedContext.input.metadata);
+      const promptBudget = measureSystemPromptBudget(preparedRequest.request.messages);
+      if (promptBudget) {
+        recordPromptBudgetSpanAttributes(runSpan, promptBudgetSpanAttributes(promptBudget));
+      }
       const tools = this.modelTools(layeredContext);
       const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
       const cached = await this.readCache(cacheKey, selected.model);
@@ -659,6 +672,10 @@ export class AgentRuntime {
       const preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot, activeContextSnapshot);
       recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
       recordContextEngineeringSpanAttributes(runSpan, summaryAppliedContext.input.metadata);
+      const promptBudget = measureSystemPromptBudget(preparedRequest.request.messages);
+      if (promptBudget) {
+        recordPromptBudgetSpanAttributes(runSpan, promptBudgetSpanAttributes(promptBudget));
+      }
       const tools = this.modelTools(layeredContext);
       const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
       const cached = await this.readCache(cacheKey, selected.model);
