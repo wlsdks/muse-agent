@@ -177,6 +177,19 @@ export function recordUsageSpanAttributes(span: SpanHandle, response: ModelRespo
   if (usage.reasoningTokens !== undefined) {
     span.setAttribute("usage.reasoning_tokens", usage.reasoningTokens);
   }
+
+  // D9 (observability-only path): surface prompt-cache hit
+  // contribution when the provider reports it (OpenAI auto-caching
+  // and Anthropic ephemeral cache both populate this). For
+  // personal-scope Gemini setups the field stays absent and the
+  // attribute is simply not stamped.
+  if (usage.cachedInputTokens !== undefined) {
+    span.setAttribute("usage.cached_input_tokens", usage.cachedInputTokens);
+    if (usage.inputTokens !== undefined && usage.inputTokens > 0) {
+      const ratio = usage.cachedInputTokens / usage.inputTokens;
+      span.setAttribute("usage.cache_hit_ratio", Math.max(0, Math.min(1, ratio)));
+    }
+  }
 }
 
 /**

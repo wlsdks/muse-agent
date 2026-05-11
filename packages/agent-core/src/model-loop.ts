@@ -25,7 +25,12 @@ import type {
 } from "@muse/model";
 import { createHash } from "node:crypto";
 
-import { trimToolOutput, type ContextReferenceStore } from "@muse/memory";
+import {
+  applyToolOutputImportance,
+  scoreToolOutputImportance,
+  trimToolOutput,
+  type ContextReferenceStore
+} from "@muse/memory";
 import type { AgentMetrics, MuseTracer, TokenUsageSink } from "@muse/observability";
 import { renderToolResults } from "@muse/prompts";
 
@@ -352,17 +357,23 @@ export function capToolOutput(
   if (!maxChars || maxChars <= 0) {
     return output;
   }
+  // D5: scale the per-tool budget by importance class so calendar /
+  // tasks / notes results get more retention than a noisy web-fetch
+  // dump. `scoreToolOutputImportance` uses the same name-prefix
+  // heuristic as `inferDomain`, neutral 1.0 fallback.
+  const importance = scoreToolOutputImportance(toolName);
+  const effectiveMaxChars = applyToolOutputImportance(maxChars, importance);
   // Round 168: when a ref store is configured, stash the full
   // output BEFORE trimming and surface `ref=<id>` in the marker.
   // Content-addressed via sha256 prefix so the same payload
   // returned by repeated tool calls dedupes.
-  const ref = refStore && output.length > maxChars
+  const ref = refStore && output.length > effectiveMaxChars
     ? putToolOutputRef(refStore, output, toolName)
     : undefined;
   const hint = ref
     ? `tool ${toolName} returned a larger result; ref=${ref}, expand via muse.context.fetch({ ref })`
     : `tool ${toolName} returned a larger result`;
-  return trimToolOutput(output, { hint, maxChars }).output;
+  return trimToolOutput(output, { hint, maxChars: effectiveMaxChars }).output;
 }
 
 function putToolOutputRef(

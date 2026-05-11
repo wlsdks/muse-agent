@@ -257,6 +257,12 @@ export {
   type ImportanceContext
 } from "./message-importance.js";
 
+// Context Engineering D5: tool-output importance scoring.
+export {
+  applyToolOutputImportance,
+  scoreToolOutputImportance
+} from "./tool-output-importance.js";
+
 
 export interface KyselyTaskMemoryStoreOptions {
   readonly now?: () => Date;
