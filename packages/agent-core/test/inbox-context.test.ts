@@ -136,6 +136,64 @@ describe("renderInboxSection", () => {
     expect(messageLines[2]).toContain("last");
   });
 
+  it("humanises receivedAtIso into relative time when nowIso is passed (iter 56)", () => {
+    // JARVIS-class freshness affordance: with `nowIso` threaded
+    // through, the agent reads "[5 min ago]" / "[1h ago]" instead
+    // of parsing raw ISO datetimes. Mirrors iter 53 for episodic
+    // recall and iter 41 / 52 for events / reminders / tasks.
+    const snapshot: InboxSnapshot = {
+      messages: [
+        {
+          providerId: "slack",
+          receivedAtIso: "2026-05-11T11:55:00.000Z",  // 5 min before nowIso
+          sender: "alice",
+          source: "C1",
+          text: "ping?"
+        }
+      ],
+      totalByProvider: { slack: 1 }
+    };
+    const rendered = renderInboxSection(snapshot, "2026-05-11T12:00:00.000Z");
+    expect(rendered).toContain("5 min ago");
+    // Raw ISO no longer present on the message line.
+    expect(rendered).not.toContain("2026-05-11T11:55:00.000Z");
+  });
+
+  it("falls back to raw ISO when nowIso is not provided (iter 56 — legacy contract)", () => {
+    const snapshot: InboxSnapshot = {
+      messages: [
+        {
+          providerId: "slack",
+          receivedAtIso: "2026-05-11T11:55:00.000Z",
+          sender: "alice",
+          source: "C1",
+          text: "ping?"
+        }
+      ],
+      totalByProvider: { slack: 1 }
+    };
+    const rendered = renderInboxSection(snapshot);
+    expect(rendered).toContain("2026-05-11T11:55:00.000Z");
+  });
+
+  it("falls back to raw ISO when nowIso is unparseable (iter 56)", () => {
+    const snapshot: InboxSnapshot = {
+      messages: [
+        {
+          providerId: "slack",
+          receivedAtIso: "2026-05-11T11:55:00.000Z",
+          source: "C1",
+          text: "ping?"
+        }
+      ],
+      totalByProvider: { slack: 1 }
+    };
+    const rendered = renderInboxSection(snapshot, "not a date");
+    // humanizeRelativeFromIso returns undefined → renderer falls
+    // back to the raw ISO so the time anchor is always present.
+    expect(rendered).toContain("2026-05-11T11:55:00.000Z");
+  });
+
   it("preserves source values that contain a colon — Slack-thread-ref safe (iter 46)", () => {
     // A `source` like `C12345:1683800000.123456` is a plausible
     // future encoding (Slack thread reference). Pre-iter-46 the

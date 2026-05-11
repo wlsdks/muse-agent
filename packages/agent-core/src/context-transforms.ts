@@ -191,7 +191,11 @@ export async function applyInboxContext(
     // "transform failed" from "transform not configured".
     return failedMetadata(context.input, "inboxContextFailed");
   }
-  const rendered = renderInboxSection(snapshot);
+  // Iter 56 — thread the run's start time as `nowIso` so the
+  // inbox renderer can humanise `receivedAtIso` into "[5 min ago]"
+  // / "[3h ago]" / etc. Matches the freshness affordance the other
+  // context surfaces already use.
+  const rendered = renderInboxSection(snapshot, context.startedAt.toISOString());
   if (!rendered) {
     return context.input;
   }

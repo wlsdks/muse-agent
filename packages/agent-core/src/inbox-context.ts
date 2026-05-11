@@ -12,6 +12,8 @@
  * the small interface and the renderer.
  */
 
+import { humanizeRelativeFromIso } from "./time-helpers.js";
+
 export interface InboundSummary {
   readonly providerId: string;
   readonly source: string;
@@ -31,7 +33,10 @@ export interface InboxContextProvider {
 
 const DEFAULT_TEXT_PREVIEW = 200;
 
-export function renderInboxSection(snapshot: InboxSnapshot | undefined): string | undefined {
+export function renderInboxSection(
+  snapshot: InboxSnapshot | undefined,
+  nowIso?: string
+): string | undefined {
   if (!snapshot || snapshot.messages.length === 0) {
     return undefined;
   }
@@ -90,8 +95,18 @@ export function renderInboxSection(snapshot: InboxSnapshot | undefined): string 
       // there. Round 3 defensive seam, mirrors iter 22's `dueIso`
       // sanitisation and iter 24's episodic `createdAtIso`.
       const receivedAtIsoSafe = sanitizeInline(message.receivedAtIso);
+      // Iter 56 — JARVIS-class freshness affordance. When `nowIso`
+      // is wired (the runtime caller has it), humanise the
+      // timestamp to "[5 min ago]" / "[3h ago]" so the agent reads
+      // recency directly instead of parsing ISO datetimes. Mirrors
+      // iter-53 for episodic recall and iter-41 / 52 for events,
+      // reminders, tasks. Legacy callers (no nowIso) still get the
+      // raw ISO — existing contract preserved.
+      const timeLabel = nowIso
+        ? humanizeRelativeFromIso(nowIso, receivedAtIsoSafe) ?? receivedAtIsoSafe
+        : receivedAtIsoSafe;
       const preview = truncate(sanitizeInline(message.text), DEFAULT_TEXT_PREVIEW);
-      lines.push(`  · ${receivedAtIsoSafe}${senderPart} ${preview}`);
+      lines.push(`  · ${timeLabel}${senderPart} ${preview}`);
     }
   }
   return lines.join("\n");
