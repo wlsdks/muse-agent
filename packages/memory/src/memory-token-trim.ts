@@ -31,7 +31,7 @@ import {
   type TokenEstimator,
   type TokenEstimatorOptions
 } from "./index.js";
-import { IMPORTANCE_DEFAULT_THRESHOLD, scoreMessageImportance } from "./message-importance.js";
+import { IMPORTANCE_DEFAULT_THRESHOLD, recencyBonus, scoreMessageContent } from "./message-importance.js";
 
 interface CacheEntry {
   readonly expiresAt: number;
@@ -238,6 +238,32 @@ function trimByImportance(
     return currentTokens;
   }
   const threshold = options.importanceThreshold ?? IMPORTANCE_DEFAULT_THRESHOLD;
+  // Iter 49 — content-score cache. The content-dependent portion of
+  // the importance score is INVARIANT for a given message across
+  // every iteration of the while-loop (it doesn't depend on the
+  // message's current index in the array). Only the recency bonus
+  // varies as we remove messages. Splitting the scorer + caching
+  // the content score drops total substring-include work from
+  // O(N²·H) to O(N·H), where H is the decision-hint list length.
+  // WeakMap key by message reference so the entry is GC'd along with
+  // the message if it's removed.
+  const contentScoreCache = new WeakMap<ConversationMessage, number>();
+  const importanceContext = options.importanceContext ?? {};
+  function cachedContentScore(message: ConversationMessage): number {
+    const cached = contentScoreCache.get(message);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const score = scoreMessageContent(message, importanceContext);
+    contentScoreCache.set(message, score);
+    return score;
+  }
+  function clampUnitLocal(value: number): number {
+    if (!Number.isFinite(value)) return 0;
+    if (value < 0) return 0;
+    if (value > 1) return 1;
+    return value;
+  }
   let totalMessagesForScoring = messages.length;
   let totalTokens = currentTokens;
   const skipCount = firstNonSystemIndex(messages);
@@ -282,13 +308,14 @@ function trimByImportance(
       if (message.role === "tool") {
         continue;
       }
-      const score = scoreMessageImportance(message, {
-        activeTaskId: options.importanceContext?.activeTaskId,
-        activeTaskTitle: options.importanceContext?.activeTaskTitle,
-        currentFocus: options.importanceContext?.currentFocus,
-        messageIndex: index,
-        totalMessages: totalMessagesForScoring
-      });
+      // Iter 49 — combine cached content score with per-iteration
+      // recency bonus. Functionally identical to the prior
+      // `scoreMessageImportance` call but avoids redoing the
+      // substring searches over `DECISION_HINTS` + activeTaskTitle /
+      // activeTaskId / currentFocus on every outer iteration.
+      const score = clampUnitLocal(
+        cachedContentScore(message) + recencyBonus(index, totalMessagesForScoring)
+      );
       if (score >= threshold) {
         continue;
       }

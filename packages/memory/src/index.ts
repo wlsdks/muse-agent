@@ -253,6 +253,8 @@ export {
 // Context Engineering Phase 5: message importance scoring.
 export {
   IMPORTANCE_DEFAULT_THRESHOLD,
+  recencyBonus,
+  scoreMessageContent,
   scoreMessageImportance,
   type ImportanceContext
 } from "./message-importance.js";

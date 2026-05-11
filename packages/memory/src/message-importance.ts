@@ -47,6 +47,28 @@ export function scoreMessageImportance(
   message: ConversationMessage,
   context: ImportanceContext
 ): number {
+  return clampUnit(
+    scoreMessageContent(message, context)
+      + recencyBonus(context.messageIndex, context.totalMessages)
+  );
+}
+
+/**
+ * Content-only portion of the importance score — invariant across
+ * iterations of `trimByImportance`'s while-loop. Iter 49 split this
+ * out from `scoreMessageImportance` so the trim can WeakMap-cache
+ * the expensive substring-search work per message and only
+ * recompute the cheap recency bonus per scan. For a 1000-message
+ * conversation with 100 removals this drops total substring-include
+ * calls from ~2.5M to ~25k.
+ *
+ * Returns an unclamped intermediate score — the caller composes it
+ * with `recencyBonus` and applies `clampUnit` to the sum.
+ */
+export function scoreMessageContent(
+  message: ConversationMessage,
+  context: Omit<ImportanceContext, "messageIndex" | "totalMessages">
+): number {
   let score = 0.1; // base
   // Role bonus. Previously a plain assistant turn fell through
   // every branch and received 0 role bonus, which kept every plain
@@ -84,11 +106,18 @@ export function scoreMessageImportance(
       break;
     }
   }
-  const recency = context.totalMessages > 1
-    ? context.messageIndex / (context.totalMessages - 1)
+  return score;
+}
+
+/**
+ * Recency portion — varies per iteration as messages are removed.
+ * Cheap to recompute. Returns 0..0.1.
+ */
+export function recencyBonus(messageIndex: number, totalMessages: number): number {
+  const recency = totalMessages > 1
+    ? messageIndex / (totalMessages - 1)
     : 1;
-  score += recency * 0.1;
-  return clampUnit(score);
+  return recency * 0.1;
 }
 
 function clampUnit(value: number): number {
