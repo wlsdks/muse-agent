@@ -297,6 +297,10 @@ async function* streamModelTurn(
         throw event.error;
       }
 
+      if (event.type !== "done") {
+        continue;
+      }
+
       for (const toolCall of event.response.toolCalls ?? []) {
         if (!toolCalls.has(toolCall.id)) {
           toolCalls.set(toolCall.id, toolCall);
