@@ -96,6 +96,33 @@ describe("renderSkillsCatalogSection (iter 15)", () => {
     expect(headerLines[0]).toBe("[Available Skills]");
   });
 
+  it("truncates over-long descriptions to bound per-skill prompt cost (iter 55)", () => {
+    // A SKILL.md author with a 10KB description × 40 entries could
+    // balloon the catalog block past 10K tokens — pure per-request
+    // overhead since the full body lives behind `muse.skills.read`.
+    // iter 55 caps each description at ~200 chars with an ellipsis.
+    const longDescription = "x".repeat(1_000);
+    const out = renderSkillsCatalogSection([
+      { description: longDescription, name: "bloated" }
+    ]);
+    expect(out).toBeDefined();
+    const block = out as string;
+    const line = block.split(/\n/u).find((l) => l.startsWith("- bloated"));
+    expect(line).toBeDefined();
+    // The rendered line includes the entry prefix `- bloated: ` plus
+    // a 199-char chunk + `…`. Total description portion ≤ 200 chars.
+    expect(line).toMatch(/…$/u);
+    expect((line as string).length).toBeLessThan(250);
+  });
+
+  it("preserves short descriptions verbatim (iter 55)", () => {
+    const out = renderSkillsCatalogSection([
+      { description: "short and sweet.", name: "tidy" }
+    ]);
+    expect(out).toContain("- tidy: short and sweet.");
+    expect(out).not.toContain("…");
+  });
+
   it("emits an 'and N more' tail when entries exceed MAX_SKILLS_PER_PROMPT", () => {
     const entries = Array.from({ length: 45 }, (_, index) => ({
       description: `desc ${(index + 1).toString()}`,

@@ -38,6 +38,15 @@ export interface SkillCatalogProvider {
 }
 
 const MAX_SKILLS_PER_PROMPT = 40;
+// Iter 55 — per-skill description cap. SKILL.md `description`
+// frontmatter has no parser-side bound, so a verbose author (or a
+// catalog with 40+ skills carrying long routing prose) can balloon
+// the `[Available Skills]` block well past 10K tokens — pure
+// per-request overhead since the agent is supposed to call
+// `muse.skills.read` for the full body anyway. 200 chars is plenty
+// to convey routing intent ("use this when …") while keeping the
+// catalog block compact.
+const MAX_DESCRIPTION_CHARS = 200;
 
 export function renderSkillsCatalogSection(entries: readonly SkillCatalogEntry[]): string | undefined {
   if (entries.length === 0) {
@@ -54,7 +63,7 @@ export function renderSkillsCatalogSection(entries: readonly SkillCatalogEntry[]
     // episodic-recall already use.
     const emoji = entry.emoji ? `${sanitizeInline(entry.emoji)} ` : "";
     const name = sanitizeInline(entry.name);
-    const description = sanitizeInline(entry.description);
+    const description = truncate(sanitizeInline(entry.description), MAX_DESCRIPTION_CHARS);
     const bins = entry.requiresBins && entry.requiresBins.length > 0
       ? ` (bins: ${entry.requiresBins.map(sanitizeInline).join(", ")})`
       : "";
@@ -70,6 +79,13 @@ export function renderSkillsCatalogSection(entries: readonly SkillCatalogEntry[]
     lines.push(`…and ${(entries.length - MAX_SKILLS_PER_PROMPT).toString()} more (call \`muse.skills.list\` to enumerate).`);
   }
   return lines.join("\n");
+}
+
+function truncate(value: string, max: number): string {
+  if (value.length <= max) {
+    return value;
+  }
+  return `${value.slice(0, max - 1)}…`;
 }
 
 function sanitizeInline(value: string): string {
