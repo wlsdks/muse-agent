@@ -35,7 +35,17 @@ const DOMAIN_WEIGHTS: Readonly<Record<string, number>> = {
 export function scoreToolOutputImportance(toolName: string): number {
   const lower = toolName.toLowerCase();
   for (const [prefix, weight] of Object.entries(DOMAIN_WEIGHTS)) {
-    if (lower.startsWith(`muse.${prefix}.`) || lower.includes(`.${prefix}.`) || lower.startsWith(`${prefix}.`)) {
+    if (
+      lower.startsWith(`muse.${prefix}.`) ||
+      // Registry-backed multi-provider variants:
+      //   `muse.tasks-multi.*`, `muse.calendar-multi.*`, `muse.notes-multi.*`
+      // surface the same personal-data semantics as their single-
+      // provider siblings, so they get the same elevated weight
+      // (iter 39).
+      lower.startsWith(`muse.${prefix}-multi.`) ||
+      lower.includes(`.${prefix}.`) ||
+      lower.startsWith(`${prefix}.`)
+    ) {
       return weight;
     }
   }

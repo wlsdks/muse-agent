@@ -36,7 +36,6 @@ import { renderToolResults } from "@muse/prompts";
 
 import { recordTokenUsageEvent } from "./model-invocation.js";
 import { appendSystemSection, recordUsageSpanAttributes } from "./runtime-helpers.js";
-import { sanitizeRequestForProvider } from "./prompt-cache-safety.js";
 import {
   blockedToolResult,
   type ExecutedToolResult,
@@ -277,7 +276,7 @@ async function* streamModelTurn(
   let response: ModelResponse | undefined;
 
   try {
-    for await (const event of provider.stream(sanitizeRequestForProvider(request))) {
+    for await (const event of provider.stream(request)) {
       if (event.type === "text-delta") {
         streamedOutput += event.text;
         if (options.forwardTextDeltas) {

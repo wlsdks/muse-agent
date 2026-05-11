@@ -59,6 +59,14 @@ export class DefaultToolFilter implements ToolFilter {
     scopeSet: ReadonlySet<string>,
     recentSet: ReadonlySet<string>
   ): boolean {
+    // `inferDomain` returns the domain already lowercased — every
+    // downstream comparison (scopeSet, extraKeywords lookup) is then
+    // symmetric. Before iter 25 the heuristics lookup
+    // (`extraKeywords[domain]`) was case-sensitive while the scope
+    // check (`scopeSet.has(domain.toLowerCase())`) was case-insensitive,
+    // so a tool with explicit `domain: "Messaging"` silently lost its
+    // heuristic-keyword path. Centralising the lowercase in inferDomain
+    // closes the asymmetry.
     const domain = inferDomain(definition);
     if (!domain || domain === "core") {
       return true;
@@ -69,22 +77,74 @@ export class DefaultToolFilter implements ToolFilter {
     if (recentSet.has(definition.name)) {
       return true;
     }
-    if (scopeSet.has(domain.toLowerCase())) {
+    if (scopeSet.has(domain)) {
       return true;
     }
     for (const keyword of definition.keywords ?? []) {
-      if (keyword && promptLower.includes(keyword.toLowerCase())) {
+      if (isMatchableKeyword(keyword) && keywordMatchesPrompt(keyword, promptLower)) {
         return true;
       }
     }
     const heuristics = this.extraKeywords[domain] ?? [];
     for (const trigger of heuristics) {
-      if (promptLower.includes(trigger.toLowerCase())) {
+      if (isMatchableKeyword(trigger) && keywordMatchesPrompt(trigger, promptLower)) {
         return true;
       }
     }
     return false;
   }
+}
+
+const ASCII_ONLY_RE = /^[\x00-\x7f]+$/u;
+
+/**
+ * Keyword → prompt matcher.
+ *
+ * Pre-iter-36 every keyword used raw `promptLower.includes(kw)`. That
+ * silently substring-matched short ASCII triggers inside larger
+ * words — `"dm"` (legitimate Slack DM keyword) fired on `"admin"`,
+ * `"freedom"`, `"wisdom"`, etc, expanding the messaging tool catalog
+ * for unrelated prompts. The fix routes ASCII-only keywords through
+ * a word-boundary regex (`\b…\b`) while keeping the substring path
+ * for CJK keywords — Korean / Japanese / Chinese scripts don't use
+ * whitespace word boundaries, and JS's ASCII-flavoured `\b` would
+ * never match between two CJK chars.
+ */
+function keywordMatchesPrompt(keyword: string, promptLower: string): boolean {
+  const kw = keyword.toLowerCase();
+  if (ASCII_ONLY_RE.test(kw)) {
+    return wordBoundaryRegexFor(kw).test(promptLower);
+  }
+  return promptLower.includes(kw);
+}
+
+const wordBoundaryCache = new Map<string, RegExp>();
+
+function wordBoundaryRegexFor(keywordLower: string): RegExp {
+  const cached = wordBoundaryCache.get(keywordLower);
+  if (cached) {
+    return cached;
+  }
+  const re = new RegExp(`\\b${escapeRegex(keywordLower)}\\b`, "u");
+  wordBoundaryCache.set(keywordLower, re);
+  return re;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+/**
+ * Reject keywords that are too short to discriminate. Single-character
+ * triggers ("a", "v") would match nearly every English prompt and
+ * silently disable the per-domain filter. Two-character minimum
+ * matches Korean (most morphemes are 2+ syllables) and English (the
+ * shortest meaningful domain word is "gh" / "pr" / "ai") without
+ * losing real signal. Empty / whitespace-only entries are also
+ * dropped.
+ */
+function isMatchableKeyword(keyword: unknown): keyword is string {
+  return typeof keyword === "string" && keyword.trim().length >= 2;
 }
 
 export const DEFAULT_DOMAIN_KEYWORDS: Readonly<Record<string, readonly string[]>> = Object.freeze({
@@ -100,25 +160,46 @@ export const DEFAULT_DOMAIN_KEYWORDS: Readonly<Record<string, readonly string[]>
  * if-chain so adding a new built-in domain is a one-line change.
  * `core` tools are always-on; non-core domains gate the tool behind
  * the prompt-keyword / scope-hint / recent-tool filter.
+ *
+ * Includes the registry-backed `<domain>-multi` variants
+ * (iter 47, sibling of iter 39 fix in tool-output-importance.ts).
+ * The autoconfigure layer registers `muse.tasks-multi.*`,
+ * `muse.calendar-multi.*`, and `muse.notes-multi.*` alongside the
+ * single-provider tools; without these mappings they bypassed the
+ * domain filter entirely and surfaced on every prompt.
+ *
+ * `muse.reminders.*` lands in tasks (reminders are task-adjacent).
  */
 const BUILTIN_PREFIX_DOMAIN: Readonly<Record<string, string>> = Object.freeze({
   "muse.calendar.": "calendar",
+  "muse.calendar-multi.": "calendar",
   "muse.context.": "core",
   "muse.messaging.": "messaging",
   "muse.notes.": "notes",
+  "muse.notes-multi.": "notes",
+  "muse.reminders.": "tasks",
   "muse.skills.": "core",
   "muse.tasks.": "tasks",
+  "muse.tasks-multi.": "tasks",
   "muse.time.": "core"
 });
 
 /**
  * Read the tool's domain. Honours an explicit `definition.domain`
- * first, then falls back to a name-prefix lookup. Returns undefined
- * when nothing matches (tool is always-on).
+ * first (normalised — trimmed + lowercased), then falls back to a
+ * name-prefix lookup whose values are already lowercase. Returns
+ * undefined when nothing matches (tool is always-on).
+ *
+ * Domains are a case-insensitive taxonomy: returning the normalised
+ * form here means callers can compare with `===` and use the value
+ * as a `Record` key (scope set, heuristics lookup) without paying
+ * for per-call-site lowercase conversions, and — more importantly —
+ * without falling into the case-mismatch bug where a tool tagged
+ * `domain: "Messaging"` silently lost its heuristic-keyword path.
  */
 export function inferDomain(definition: MuseToolDefinition): string | undefined {
   if (typeof definition.domain === "string" && definition.domain.trim().length > 0) {
-    return definition.domain.trim();
+    return definition.domain.trim().toLowerCase();
   }
   for (const [prefix, domain] of Object.entries(BUILTIN_PREFIX_DOMAIN)) {
     if (definition.name.startsWith(prefix)) {

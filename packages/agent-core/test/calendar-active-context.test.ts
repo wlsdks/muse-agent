@@ -34,8 +34,9 @@ describe("active context calendar surface (D1)", () => {
       nowIso: fixedNow.toISOString(),
       timezone: "UTC",
       todaysEvents: [
-        // Ended already (06:00 → 07:00 UTC)
-        { endIso: "2026-05-11T07:00:00.000Z", startIso: "2026-05-11T06:00:00.000Z", title: "Morning yoga" },
+        // Freshly-ended event — within the iter-40 30-min grace
+        // window so still rendered. Ended at 07:45 (15 min ago).
+        { endIso: "2026-05-11T07:45:00.000Z", startIso: "2026-05-11T07:00:00.000Z", title: "Morning yoga" },
         // Happening right now (07:30 → 09:00)
         { endIso: "2026-05-11T09:00:00.000Z", startIso: "2026-05-11T07:30:00.000Z", title: "Standup" },
         // 30 minutes from now

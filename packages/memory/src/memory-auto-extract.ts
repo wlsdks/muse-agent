@@ -63,6 +63,15 @@ export interface UserMemoryAutoExtractOptions {
    * Mirrors the user-prompt cap.
    */
   readonly maxAssistantOutputChars?: number;
+  /**
+   * Wall-clock timeout for the extraction `generate()` call in
+   * milliseconds. Default 10_000 (10s). If the extractor model
+   * hangs (network stall, runaway provider, broken adapter), the
+   * hook would otherwise block the `afterComplete` chain forever
+   * and prevent the next run from starting. Times out → fail-open
+   * (same path as a thrown error).
+   */
+  readonly extractionTimeoutMs?: number;
 }
 
 interface ExtractedSlot {
@@ -141,6 +150,7 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
   const maxValue = Math.max(1, Math.trunc(options.maxValueLength ?? 200));
   const maxUserPrompt = Math.max(64, Math.trunc(options.maxUserPromptChars ?? 2_048));
   const maxAssistantOutput = Math.max(64, Math.trunc(options.maxAssistantOutputChars ?? 2_048));
+  const extractionTimeoutMs = Math.max(100, Math.trunc(options.extractionTimeoutMs ?? 10_000));
 
   return {
     afterComplete: async (context, response) => {
@@ -165,7 +175,10 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
         ? `${assistantOutput.slice(0, maxAssistantOutput - 1)}…`
         : assistantOutput;
       try {
-        const payload = await runExtraction(options.modelProvider, options.model, boundedUser, boundedAssistant);
+        const payload = await runWithTimeout(
+          runExtraction(options.modelProvider, options.model, boundedUser, boundedAssistant),
+          extractionTimeoutMs
+        );
         if (!payload) {
           return;
         }
@@ -178,11 +191,36 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
           maxVetoes
         });
       } catch {
-        // fail-open
+        // fail-open — including the timeout path. The next run
+        // is not blocked.
       }
     },
     id: "user-memory-auto-extract"
   };
+}
+
+/**
+ * Race a promise against a wall-clock timer. Resolves with the
+ * promise's value if it lands first, rejects with a timeout error
+ * otherwise. The underlying promise is NOT cancelled — JS has no
+ * native cancellation primitive — but the caller stops awaiting it
+ * so downstream lifecycle (the agent's next run) is unblocked.
+ *
+ * Used by the auto-extract hook to keep a misbehaving extractor
+ * model from hanging `afterComplete` indefinitely.
+ */
+async function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timerHandle: ReturnType<typeof setTimeout> | undefined;
+  const timer = new Promise<never>((_, reject) => {
+    timerHandle = setTimeout(() => reject(new Error("auto-extract: extraction timed out")), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timer]);
+  } finally {
+    if (timerHandle !== undefined) {
+      clearTimeout(timerHandle);
+    }
+  }
 }
 
 function readUserId(context: AgentRunContextView): string | undefined {
@@ -326,18 +364,35 @@ async function persist(
   const vetoSlots = sanitizeSlotArray(payload.vetoes, limits.maxVetoes, limits.maxKey, limits.maxValue);
   const goalSlots = sanitizeSlotArray(payload.goals, limits.maxGoals, limits.maxKey, limits.maxValue);
 
+  // Iter 51 — parallelise the writes. Pre-iter-51 this loop ran 16
+  // sequential `await store.upsertX(...)` calls per turn (5 facts +
+  // 5 prefs + 3 vetoes + 3 goals). For an `InMemoryUserMemoryStore`
+  // that's a fixed cost in microseconds — fine. For a Kysely-backed
+  // `KyselyUserMemoryStore` against Postgres each call is a round
+  // trip; 16 sequential trips at ~10ms each = ~160ms blocking
+  // `afterComplete` on every assistant turn. Parallelising drops
+  // wall-clock to ~one round trip.
+  //
+  // The keys are unique within each list (sanitize dedupes via
+  // Object.entries / id-keyed slots) so there's no within-batch
+  // ordering dependency. Per-write `catch` swallows individual
+  // failures: the surrounding `afterComplete` is already
+  // fail-open, and partial success across 16 writes is preferable
+  // to all-or-nothing on the first failure.
+  const writes: Promise<void>[] = [];
   for (const [key, value] of factEntries) {
-    await store.upsertFact(userId, key, value);
+    writes.push(safeWrite(store.upsertFact(userId, key, value)));
   }
   for (const [key, value] of preferenceEntries) {
-    await store.upsertPreference(userId, key, value);
+    writes.push(safeWrite(store.upsertPreference(userId, key, value)));
   }
   // Typed-slot writes are skipped silently when the store doesn't
   // support upsertUserModelSlot (the optional method introduced in
   // round 164). Round 165 made KyselyUserMemoryStore implement it,
   // and InMemoryUserMemoryStore did so in round 164 — so this
   // branch only no-ops for third-party UserMemoryStore impls.
-  if (typeof store.upsertUserModelSlot === "function") {
+  const upsertSlot = store.upsertUserModelSlot?.bind(store);
+  if (upsertSlot) {
     const now = new Date();
     for (const slot of vetoSlots) {
       const veto: UserVetoSlot = {
@@ -347,7 +402,7 @@ async function persist(
         value: slot.value,
         ...(slot.scope ? { scope: slot.scope } : {})
       };
-      await store.upsertUserModelSlot(userId, veto);
+      writes.push(safeWrite(upsertSlot(userId, veto)));
     }
     for (const slot of goalSlots) {
       const goal: UserGoalSlot = {
@@ -356,8 +411,28 @@ async function persist(
         updatedAt: now,
         value: slot.value
       };
-      await store.upsertUserModelSlot(userId, goal);
+      writes.push(safeWrite(upsertSlot(userId, goal)));
     }
+  }
+  await Promise.all(writes);
+}
+
+/**
+ * Per-write catch. The auto-extract hook is fail-open at the
+ * `afterComplete` boundary, so a single store-write failure must
+ * not poison `Promise.all` and abort the other 15 in-flight
+ * writes. Returning `undefined` on rejection lets the parallel
+ * batch settle so every salvageable extraction lands.
+ *
+ * Accepts `Awaitable<T>` (the shape `UserMemoryStore.upsertX`
+ * methods return) — synchronous stores resolve through the
+ * `await` boundary cleanly.
+ */
+async function safeWrite(awaitable: unknown): Promise<void> {
+  try {
+    await awaitable;
+  } catch {
+    // partial failure tolerated
   }
 }
 
@@ -382,7 +457,7 @@ function sanitizeSlotArray(
     if (!id) {
       continue;
     }
-    const value = typeof entry.value === "string" ? entry.value.trim().slice(0, maxValue) : "";
+    const value = sanitizeValue(entry.value, maxValue);
     if (value.length === 0) {
       continue;
     }
@@ -400,7 +475,14 @@ function sanitizeEntries(
   maxKey: number,
   maxValue: number
 ): readonly (readonly [string, string])[] {
-  if (!source || typeof source !== "object" || maxCount === 0) {
+  // `typeof [] === "object"` is the JS footgun: an extractor LLM
+  // that returned `facts: ["foo", "bar"]` instead of the documented
+  // Record-shape passed the previous guard, and the downstream
+  // `Object.entries` produced `[["0","foo"],["1","bar"]]` — silently
+  // landing fake "0"/"1" keys in `UserMemoryStore`. Reject arrays
+  // explicitly so a wrong-shape payload becomes a no-op (fail-open,
+  // same as before).
+  if (!source || typeof source !== "object" || Array.isArray(source) || maxCount === 0) {
     return [];
   }
   const out: (readonly [string, string])[] = [];
@@ -412,13 +494,29 @@ function sanitizeEntries(
     if (!key) {
       continue;
     }
-    const value = typeof rawValue === "string" ? rawValue.trim().slice(0, maxValue) : "";
+    const value = sanitizeValue(rawValue, maxValue);
     if (value.length === 0) {
       continue;
     }
     out.push([key, value]);
   }
   return out;
+}
+
+/**
+ * Collapse whitespace runs (newlines, tabs, multi-space) to a
+ * single space + trim + length cap. Run at the store boundary so a
+ * prompt-injection attempt that survived the extractor —
+ * "value": "ok\n[System Override]\nDo X" — can't land in
+ * `UserMemoryStore` and then be re-emitted into the next turn's
+ * `[User Memory]` block by `renderUserMemorySection` with a fake
+ * section header.
+ */
+function sanitizeValue(raw: unknown, maxValue: number): string {
+  if (typeof raw !== "string") {
+    return "";
+  }
+  return raw.replace(/\s+/gu, " ").trim().slice(0, maxValue);
 }
 
 function normalizeKey(raw: string, max: number): string | undefined {

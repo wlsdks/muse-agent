@@ -401,26 +401,13 @@ export function normalizeReconnectPolicy(input: Partial<McpReconnectPolicy> | un
   };
 }
 
-// Validators live in `./validators.ts` (round 140 lift). Two-step
-// import + export so external call-sites stay byte-identical and
-// the local `validateMcpServer` / `validateStdioCommand` /
-// `validateStdioArgs` references inside this file (transport +
-// manager) still resolve.
-import {
-  isPrivateOrReservedHost,
-  isPublicHttpUrl,
-  validateMcpServer,
-  validateStdioArgs,
-  validateStdioCommand
-} from "./validators.js";
-
 export {
   isPrivateOrReservedHost,
   isPublicHttpUrl,
   validateMcpServer,
   validateStdioArgs,
   validateStdioCommand
-};
+} from "./validators.js";
 
 export function createMcpMuseTool(serverName: string, tool: McpRemoteTool, connection: McpConnection): MuseTool {
   return {

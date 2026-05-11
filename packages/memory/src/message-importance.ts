@@ -47,6 +47,28 @@ export function scoreMessageImportance(
   message: ConversationMessage,
   context: ImportanceContext
 ): number {
+  return clampUnit(
+    scoreMessageContent(message, context)
+      + recencyBonus(context.messageIndex, context.totalMessages)
+  );
+}
+
+/**
+ * Content-only portion of the importance score — invariant across
+ * iterations of `trimByImportance`'s while-loop. Iter 49 split this
+ * out from `scoreMessageImportance` so the trim can WeakMap-cache
+ * the expensive substring-search work per message and only
+ * recompute the cheap recency bonus per scan. For a 1000-message
+ * conversation with 100 removals this drops total substring-include
+ * calls from ~2.5M to ~25k.
+ *
+ * Returns an unclamped intermediate score — the caller composes it
+ * with `recencyBonus` and applies `clampUnit` to the sum.
+ */
+export function scoreMessageContent(
+  message: ConversationMessage,
+  context: Omit<ImportanceContext, "messageIndex" | "totalMessages">
+): number {
   let score = 0.1; // base
   // Role bonus. Previously a plain assistant turn fell through
   // every branch and received 0 role bonus, which kept every plain
@@ -61,13 +83,21 @@ export function scoreMessageImportance(
     score += 0.2;
   }
   const content = message.content.toLowerCase();
-  if (context.activeTaskTitle && content.includes(context.activeTaskTitle.toLowerCase())) {
+  // Minimum-length guard: a 1-char `activeTaskTitle` ("X") or a
+  // 2-char `currentFocus` ("hi") would substring-match nearly
+  // every message and saturate the importance score regardless of
+  // relevance, the same false-positive class iter 16 closed in
+  // tool-filter. Three characters preserves real signal (Korean
+  // morphemes are usually 2-syllable / 6 bytes, English domain
+  // words like "rag", "pii", "ttl" stay matchable) while killing
+  // off pathological one/two-char triggers.
+  if (matchableHint(context.activeTaskTitle) && content.includes(context.activeTaskTitle!.toLowerCase())) {
     score += 0.5;
   }
-  if (context.activeTaskId && content.includes(context.activeTaskId.toLowerCase())) {
+  if (matchableHint(context.activeTaskId) && content.includes(context.activeTaskId!.toLowerCase())) {
     score += 0.3;
   }
-  if (context.currentFocus && content.includes(context.currentFocus.toLowerCase())) {
+  if (matchableHint(context.currentFocus) && content.includes(context.currentFocus!.toLowerCase())) {
     score += 0.3;
   }
   for (const hint of DECISION_HINTS) {
@@ -76,11 +106,18 @@ export function scoreMessageImportance(
       break;
     }
   }
-  const recency = context.totalMessages > 1
-    ? context.messageIndex / (context.totalMessages - 1)
+  return score;
+}
+
+/**
+ * Recency portion — varies per iteration as messages are removed.
+ * Cheap to recompute. Returns 0..0.1.
+ */
+export function recencyBonus(messageIndex: number, totalMessages: number): number {
+  const recency = totalMessages > 1
+    ? messageIndex / (totalMessages - 1)
     : 1;
-  score += recency * 0.1;
-  return clampUnit(score);
+  return recency * 0.1;
 }
 
 function clampUnit(value: number): number {
@@ -88,6 +125,11 @@ function clampUnit(value: number): number {
   if (value < 0) return 0;
   if (value > 1) return 1;
   return value;
+}
+
+function matchableHint(value: string | undefined): boolean {
+  if (typeof value !== "string") return false;
+  return value.trim().length >= 3;
 }
 
 export const IMPORTANCE_DEFAULT_THRESHOLD = 0.5;

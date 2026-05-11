@@ -23,7 +23,6 @@ import type { ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
 import type { AgentMetrics, MuseTracer, TokenUsageSink } from "@muse/observability";
 import type { JsonObject } from "@muse/shared";
 import { isRetryableProviderError, recordUsageSpanAttributes } from "./runtime-helpers.js";
-import { sanitizeRequestForProvider } from "./prompt-cache-safety.js";
 
 export interface InvokeModelArgs {
   readonly provider: ModelProvider;
@@ -97,14 +96,11 @@ async function invokeWithFallback(args: InvokeModelArgs): Promise<ModelResponse>
 }
 
 async function invokeWithResilience(args: InvokeModelArgs): Promise<ModelResponse> {
-  // Strip the (currently dormant) cache-boundary marker before the
-  // request reaches any provider — see prompt-cache-safety.ts.
-  const sanitizedRequest = sanitizeRequestForProvider(args.request);
   const operation = () => {
     if (args.requestTimeoutMs === undefined) {
-      return args.provider.generate(sanitizedRequest);
+      return args.provider.generate(args.request);
     }
-    return withTimeout(() => args.provider.generate(sanitizedRequest), args.requestTimeoutMs);
+    return withTimeout(() => args.provider.generate(args.request), args.requestTimeoutMs);
   };
   if (!args.retry) {
     return operation();

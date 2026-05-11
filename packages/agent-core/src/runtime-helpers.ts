@@ -187,6 +187,15 @@ export function recordContextEngineeringSpanAttributes(span: SpanHandle, metadat
   setNumericAttr(span, "ctx.attachment_count", record["attachmentContextCount"]);
   setBooleanAttr(span, "ctx.skills_catalog_applied", record["skillsCatalogApplied"]);
   setNumericAttr(span, "ctx.skills_catalog_count", record["skillsCatalogCount"]);
+  // Failure flags — iter 19. Each transform stamps `xxxFailed: true`
+  // in its fail-open catch block. Surfacing the flag onto the span
+  // lets ops distinguish a silently-throwing transform from one
+  // that simply wasn't configured. Healthy turns leave these
+  // attributes absent — only set when something actually broke.
+  setBooleanAttr(span, "ctx.inbox_context_failed", record["inboxContextFailed"]);
+  setBooleanAttr(span, "ctx.episodic_recall_failed", record["episodicRecallFailed"]);
+  setBooleanAttr(span, "ctx.user_memory_failed", record["userMemoryFailed"]);
+  setBooleanAttr(span, "ctx.skills_catalog_failed", record["skillsCatalogFailed"]);
 }
 
 function setBooleanAttr(span: SpanHandle, key: string, value: unknown): void {
@@ -199,6 +208,66 @@ function setNumericAttr(span: SpanHandle, key: string, value: unknown): void {
   if (typeof value === "number" && Number.isFinite(value)) {
     span.setAttribute(key, value);
   }
+}
+
+/**
+ * Stamp every `ctx.budget.*` attribute from a flattened prompt
+ * budget record onto the span. Read-only — caller owns the report
+ * shape (`promptBudgetSpanAttributes(report)`).
+ */
+export function recordPromptBudgetSpanAttributes(
+  span: SpanHandle,
+  attributes: Readonly<Record<string, number>> | undefined
+): void {
+  if (!attributes) {
+    return;
+  }
+  for (const [key, value] of Object.entries(attributes)) {
+    if (Number.isFinite(value)) {
+      span.setAttribute(key, value);
+    }
+  }
+}
+
+/**
+ * Project a metadata bag into a `RunTelemetryEvent`-ready shape so
+ * the aggregator (phase A) gets a stable view: separate boolean
+ * flags from numeric counters. Picks every key the runtime stamps
+ * in `recordContextEngineeringSpanAttributes`.
+ */
+export function projectTelemetryMetadata(
+  metadata: JsonObject | undefined
+): { flags: Readonly<Record<string, boolean>>; counters: Readonly<Record<string, number>> } {
+  const flags: Record<string, boolean> = {};
+  const counters: Record<string, number> = {};
+  if (!metadata) {
+    return { counters, flags };
+  }
+  const record = metadata as Record<string, unknown>;
+  const flagKeys: readonly string[] = [
+    "activeContextApplied", "activeContextInWorkingHours",
+    "inboxContextApplied", "episodicRecallApplied",
+    "attachmentContextApplied", "skillsCatalogApplied",
+    "inboxContextFailed", "episodicRecallFailed",
+    "userMemoryFailed", "skillsCatalogFailed"
+  ];
+  const counterKeys: readonly string[] = [
+    "inboxContextMessageCount", "episodicRecallMatchCount",
+    "attachmentContextCount", "skillsCatalogCount"
+  ];
+  for (const key of flagKeys) {
+    const value = record[key];
+    if (typeof value === "boolean") {
+      flags[key] = value;
+    }
+  }
+  for (const key of counterKeys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      counters[key] = value;
+    }
+  }
+  return { counters, flags };
 }
 
 /**

@@ -273,6 +273,30 @@ function toGeminiContent(message: ModelMessage): { role: string; parts: unknown[
     };
   }
 
+  // Vision-capable Gemini accepts `inlineData: { mimeType, data }`
+  // (base64) and `fileData: { mimeType, fileUri }` parts alongside
+  // text. Add image parts only when the message carries attachments —
+  // otherwise keep the legacy single-text-part shape so the request
+  // payload stays compact for the common case.
+  const attachments = message.attachments ?? [];
+  if (attachments.length > 0) {
+    const parts: Array<Record<string, unknown>> = [];
+    if (message.content && message.content.length > 0) {
+      parts.push({ text: message.content });
+    }
+    for (const attachment of attachments) {
+      if (attachment.dataBase64) {
+        parts.push({ inlineData: { data: attachment.dataBase64, mimeType: attachment.mimeType } });
+      } else if (attachment.url) {
+        parts.push({ fileData: { fileUri: attachment.url, mimeType: attachment.mimeType } });
+      }
+    }
+    return {
+      parts,
+      role: message.role === "assistant" ? "model" : "user"
+    };
+  }
+
   return {
     parts: [{ text: message.content }],
     role: message.role === "assistant" ? "model" : "user"
@@ -333,6 +357,31 @@ function toOpenAIMessage(message: ModelMessage) {
       content: message.content,
       role: message.role,
       tool_call_id: message.toolCallId
+    };
+  }
+
+  // Vision-capable provider: user message can carry multipart
+  // content with image parts. OpenAI Chat Completions accepts
+  // `{ type: "image_url", image_url: { url } }` for hosted refs
+  // and `{ type: "image_url", image_url: { url: "data:<mime>;base64,<b64>" } }`
+  // for inline bytes. Build the multipart array only when at least
+  // one attachment is present; otherwise keep the simple string
+  // content shape so unaffected calls aren't rewritten.
+  if (message.role === "user" && message.attachments && message.attachments.length > 0) {
+    const parts: Array<Record<string, unknown>> = [];
+    if (message.content && message.content.length > 0) {
+      parts.push({ text: message.content, type: "text" });
+    }
+    for (const attachment of message.attachments) {
+      const url = attachment.url
+        ?? (attachment.dataBase64 ? `data:${attachment.mimeType};base64,${attachment.dataBase64}` : undefined);
+      if (!url) continue;
+      parts.push({ image_url: { url }, type: "image_url" });
+    }
+    return {
+      content: parts,
+      name: message.name,
+      role: message.role
     };
   }
 

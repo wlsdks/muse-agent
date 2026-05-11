@@ -147,6 +147,33 @@ describe("autoconfigure", () => {
     expect(buildToolFilter({ MUSE_TOOL_FILTER_ENABLED: "true" })).toBeDefined();
   });
 
+  it("buildTelemetryAggregator is ON by default and OFF when MUSE_TELEMETRY_AGGREGATOR_ENABLED=false (iter 38)", async () => {
+    const { buildTelemetryAggregator } = await import("../src/personal-providers.js");
+    expect(buildTelemetryAggregator({})).toBeDefined();
+    expect(buildTelemetryAggregator({ MUSE_TELEMETRY_AGGREGATOR_ENABLED: "false" })).toBeUndefined();
+    // explicit "true" stays enabled
+    expect(buildTelemetryAggregator({ MUSE_TELEMETRY_AGGREGATOR_ENABLED: "true" })).toBeDefined();
+  });
+
+  it("buildTelemetryAggregator honours MUSE_TELEMETRY_AGGREGATOR_CAPACITY (iter 38)", async () => {
+    const { buildTelemetryAggregator } = await import("../src/personal-providers.js");
+    const agg = buildTelemetryAggregator({ MUSE_TELEMETRY_AGGREGATOR_CAPACITY: "3" });
+    expect(agg).toBeDefined();
+    // record 5, expect only last 3 retained
+    const evt = {
+      contextCounters: {},
+      contextFlags: {},
+      model: "diagnostic/smoke",
+      providerId: "diagnostic",
+      recordedAtMs: 1_000,
+      runId: "r-1"
+    };
+    for (let i = 0; i < 5; i++) {
+      agg!.record({ ...evt, recordedAtMs: 1_000 + i, runId: `r-${i.toString()}` });
+    }
+    expect(agg!.recent(10).map((e) => e.runId)).toEqual(["r-2", "r-3", "r-4"]);
+  });
+
   it("buildEpisodicRecallProvider returns a provider when the store supports listAll (Phase 3)", async () => {
     const { buildEpisodicRecallProvider } = await import("../src/personal-providers.js");
     const { InMemoryConversationSummaryStore } = await import("@muse/memory");

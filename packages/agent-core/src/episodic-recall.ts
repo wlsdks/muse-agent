@@ -9,6 +9,8 @@
  * surface is the agent's last user message.
  */
 
+import { humanizeRelativeFromIso } from "./time-helpers.js";
+
 export interface EpisodicMatch {
   readonly sessionId: string;
   readonly narrative: string;
@@ -26,7 +28,10 @@ export interface EpisodicRecallProvider {
 
 const MAX_EPISODIC_CHARS = 1_500;
 
-export function renderEpisodicSection(snapshot: EpisodicRecallSnapshot | undefined): string | undefined {
+export function renderEpisodicSection(
+  snapshot: EpisodicRecallSnapshot | undefined,
+  nowIso?: string
+): string | undefined {
   if (!snapshot || snapshot.matches.length === 0) {
     return undefined;
   }
@@ -34,7 +39,24 @@ export function renderEpisodicSection(snapshot: EpisodicRecallSnapshot | undefin
   lines.push("Past conversations that may be relevant. Soft context — verify before acting.");
   let charsUsed = 0;
   for (const match of snapshot.matches) {
-    const header = match.createdAtIso ? `(${match.createdAtIso}, sim=${formatSim(match.similarity)})` : `(sim=${formatSim(match.similarity)})`;
+    // `createdAtIso` is supposed to come from `Date.toISOString()`
+    // (always safe) but the EpisodicRecallSnapshot is fed by
+    // arbitrary `EpisodicRecallProvider` implementations — a
+    // third-party store could put any string in there, including
+    // one carrying `\n[System Override]\n`. Sanitise defensively,
+    // same shape iter 22 uses for `dueIso`.
+    const createdAtIsoSafe = match.createdAtIso ? sanitizeNarrativeInline(match.createdAtIso) : undefined;
+    // Iter 53 — JARVIS-class freshness affordance. When `nowIso` is
+    // wired in (the runtime caller has it), humanise the timestamp
+    // to "1 day ago" / "in 3h" / "3 weeks ago" so the agent reads
+    // recency directly instead of parsing ISO datetimes. Legacy
+    // callers (no nowIso) still get the raw ISO so the existing
+    // contract isn't broken — only the prompt rendering improves
+    // when the runtime threads nowIso through.
+    const headerTime = createdAtIsoSafe
+      ? (nowIso ? humanizeRelativeFromIso(nowIso, createdAtIsoSafe) ?? createdAtIsoSafe : createdAtIsoSafe)
+      : undefined;
+    const header = headerTime ? `(${headerTime}, sim=${formatSim(match.similarity)})` : `(sim=${formatSim(match.similarity)})`;
     // Account for the rendered prefix ("— " + header + " ") so the
     // running `charsUsed` reflects the actual prompt-bytes consumed
     // — the previous impl counted only narrative length and could
@@ -100,6 +122,26 @@ export interface InMemoryEpisodicRecallProviderOptions {
    * short enough to bound the Jaccard inner loop.
    */
   readonly maxQueryChars?: number;
+  /**
+   * Iter 43 — recency boost weight (max addition to a semantic
+   * score, decays exponentially with episode age). JARVIS-class
+   * personal assistants prefer recently-relevant memory: between
+   * two similar narratives, the newer one should win.
+   *
+   * Default 0.15. Set to 0 to disable.
+   */
+  readonly recencyWeight?: number;
+  /**
+   * Half-life in days for the recency boost. Default 14: an
+   * episode 14 days old contributes half the boost a brand-new
+   * episode does. After ~3 half-lives (≈ 6 weeks) the boost is
+   * effectively zero.
+   */
+  readonly recencyHalfLifeDays?: number;
+  /**
+   * Injectable clock; defaults to `Date.now()`. Test-only.
+   */
+  readonly now?: () => number;
 }
 
 /**
@@ -122,6 +164,9 @@ export class InMemoryEpisodicRecallProvider implements EpisodicRecallProvider {
   private readonly minScore: number;
   private readonly allowAnonymousEpisodes: boolean;
   private readonly maxQueryChars: number;
+  private readonly recencyWeight: number;
+  private readonly recencyHalfLifeDays: number;
+  private readonly now: () => number;
 
   constructor(options: InMemoryEpisodicRecallProviderOptions = {}) {
     this.episodes = [...(options.episodes ?? [])];
@@ -129,6 +174,9 @@ export class InMemoryEpisodicRecallProvider implements EpisodicRecallProvider {
     this.minScore = Math.max(0, options.minScore ?? 0.15);
     this.allowAnonymousEpisodes = options.allowAnonymousEpisodes ?? false;
     this.maxQueryChars = Math.max(64, options.maxQueryChars ?? 4_096);
+    this.recencyWeight = Math.max(0, options.recencyWeight ?? DEFAULT_RECENCY_WEIGHT);
+    this.recencyHalfLifeDays = Math.max(0.01, options.recencyHalfLifeDays ?? DEFAULT_RECENCY_HALF_LIFE_DAYS);
+    this.now = options.now ?? (() => Date.now());
   }
 
   add(episode: StoredEpisode): void {
@@ -141,20 +189,26 @@ export class InMemoryEpisodicRecallProvider implements EpisodicRecallProvider {
     if (queryTokens.size === 0) {
       return undefined;
     }
+    const nowMs = this.now();
     const scored: EpisodicMatch[] = [];
     for (const episode of this.episodes) {
       if (!isVisibleToUser(userId, episode.userId, this.allowAnonymousEpisodes)) {
         continue;
       }
-      const score = jaccardSimilarity(queryTokens, tokenSet(episode.narrative));
-      if (score < this.minScore) {
+      const baseSim = jaccardSimilarity(queryTokens, tokenSet(episode.narrative));
+      // Threshold guards baseSim ONLY — a recency-only match (no
+      // semantic overlap) must not surface, otherwise every recent
+      // session would muscle its way into the recall regardless of
+      // relevance.
+      if (baseSim < this.minScore) {
         continue;
       }
+      const recencyBoost = computeRecencyBoost(episode.createdAtIso, nowMs, this.recencyWeight, this.recencyHalfLifeDays);
       scored.push({
         createdAtIso: episode.createdAtIso,
         narrative: episode.narrative,
         sessionId: episode.sessionId,
-        similarity: score
+        similarity: baseSim + recencyBoost
       });
     }
     scored.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
@@ -191,16 +245,103 @@ function isVisibleToUser(
   return false;
 }
 
-export function tokenSet(value: string): Set<string> {
-  return new Set(
-    value
-      .toLowerCase()
-      .split(/[^a-z0-9가-힣]+/u)
-      .filter((token) => token.length >= 2)
-  );
+// Character class for tokenisable runs. Includes the same CJK ranges
+// `memory-token-trim.ts:isCjkCodePoint` already uses, so episodic
+// recall works across the same locales the token estimator handles:
+//   - a-z 0-9            ASCII text (English, Latin transliterations)
+//   - 가-힯      Hangul Syllables + some Jamo Extended-A (Korean)
+//   - 一-鿿      CJK Unified Ideographs (Chinese Hanzi + Japanese Kanji)
+//   - ぀-ゟ      Hiragana (Japanese)
+//   - ゠-ヿ      Katakana (Japanese)
+// Before iter 35 only Hangul was recognised, so Japanese / Chinese
+// narratives produced an empty token set → zero recall, even when
+// query and narrative shared every meaningful character.
+const TOKEN_NON_WORD_RE = /[^a-z0-9가-힯一-鿿぀-ゟ゠-ヿ]+/u;
+
+const DAY_MS = 24 * 60 * 60 * 1_000;
+const DEFAULT_RECENCY_WEIGHT = 0.15;
+const DEFAULT_RECENCY_HALF_LIFE_DAYS = 14;
+
+/**
+ * Iter 43 — recency boost. Returns an additive contribution to the
+ * episode's similarity score that decays exponentially with episode
+ * age:
+ *
+ *   boost = weight * exp(-age_days / half_life_days)
+ *
+ * - Brand-new episodes get the full `weight` (default 0.15).
+ * - At one half-life (default 14 days) the boost is `weight / 2`.
+ * - After ~3 half-lives (~6 weeks) the boost is effectively zero.
+ *
+ * JARVIS-class personal assistants prefer recently-relevant memory:
+ * between two similar narratives, the newer one should rank higher.
+ * The boost is ADDED to the Jaccard score AFTER the `minScore`
+ * gate, so a recency-only match (no semantic overlap) still can't
+ * surface — it would have already been filtered out.
+ *
+ * Returns 0 when `createdAtIso` is missing / unparseable, or when
+ * the configured weight is 0 (feature disabled).
+ */
+function computeRecencyBoost(
+  createdAtIso: string | undefined,
+  nowMs: number,
+  weight: number,
+  halfLifeDays: number
+): number {
+  if (weight <= 0 || !createdAtIso) {
+    return 0;
+  }
+  const createdMs = Date.parse(createdAtIso);
+  if (!Number.isFinite(createdMs)) {
+    return 0;
+  }
+  const ageDays = Math.max(0, (nowMs - createdMs) / DAY_MS);
+  return weight * Math.exp(-ageDays / halfLifeDays);
 }
 
-export function jaccardSimilarity(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
+function hasCjkChar(value: string): boolean {
+  for (const ch of value) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (
+      (code >= 0x4e00 && code <= 0x9fff) ||  // CJK Unified Ideographs
+      (code >= 0xac00 && code <= 0xd7af) ||  // Hangul Syllables
+      (code >= 0x3040 && code <= 0x309f) ||  // Hiragana
+      (code >= 0x30a0 && code <= 0x30ff)     // Katakana
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function tokenSet(value: string): Set<string> {
+  const tokens = new Set<string>();
+  for (const raw of value.toLowerCase().split(TOKEN_NON_WORD_RE)) {
+    if (raw.length < 2) {
+      continue;
+    }
+    if (hasCjkChar(raw)) {
+      // CJK scripts don't separate words with whitespace, so a
+      // contiguous run like "東京で会議" arrives as ONE raw token.
+      // Whole-token equality would only match identical phrases —
+      // a paraphrase like "東京の会議" would Jaccard to 0. Emit
+      // character bigrams instead: the standard dependency-free
+      // fallback for CJK tokenisation. "東京で会議" →
+      // {"東京","京で","で会","会議"}; the paraphrase shares
+      // "東京" and "会議", scoring 2/6 ≈ 0.33 → above the default
+      // minScore. ASCII tokens keep their existing whole-word
+      // behaviour.
+      for (let index = 0; index < raw.length - 1; index += 1) {
+        tokens.add(raw.slice(index, index + 2));
+      }
+    } else {
+      tokens.add(raw);
+    }
+  }
+  return tokens;
+}
+
+function jaccardSimilarity(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
   if (a.size === 0 || b.size === 0) {
     return 0;
   }
@@ -234,6 +375,12 @@ export interface StoreBackedEpisodicRecallProviderOptions {
   readonly allowAnonymousEpisodes?: boolean;
   /** Cap on user-prompt tokenisation input. Default 4_096 chars. */
   readonly maxQueryChars?: number;
+  /** Recency boost weight (iter 43). See `InMemoryEpisodicRecallProviderOptions`. */
+  readonly recencyWeight?: number;
+  /** Recency half-life in days (iter 43). */
+  readonly recencyHalfLifeDays?: number;
+  /** Injectable clock (test only). */
+  readonly now?: () => number;
 }
 
 /**
@@ -253,6 +400,9 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
   private readonly maxFetched: number;
   private readonly allowAnonymousEpisodes: boolean;
   private readonly maxQueryChars: number;
+  private readonly recencyWeight: number;
+  private readonly recencyHalfLifeDays: number;
+  private readonly now: () => number;
 
   constructor(options: StoreBackedEpisodicRecallProviderOptions) {
     this.store = options.store;
@@ -261,6 +411,9 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
     this.maxFetched = Math.max(1, options.maxFetched ?? 200);
     this.allowAnonymousEpisodes = options.allowAnonymousEpisodes ?? false;
     this.maxQueryChars = Math.max(64, options.maxQueryChars ?? 4_096);
+    this.recencyWeight = Math.max(0, options.recencyWeight ?? DEFAULT_RECENCY_WEIGHT);
+    this.recencyHalfLifeDays = Math.max(0.01, options.recencyHalfLifeDays ?? DEFAULT_RECENCY_HALF_LIFE_DAYS);
+    this.now = options.now ?? (() => Date.now());
   }
 
   async resolve(query: string, userId?: string): Promise<EpisodicRecallSnapshot | undefined> {
@@ -278,20 +431,23 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
     } catch {
       return undefined;
     }
+    const nowMs = this.now();
     const scored: EpisodicMatch[] = [];
     for (const summary of summaries) {
       if (!isVisibleToUser(userId, summary.userId, this.allowAnonymousEpisodes)) {
         continue;
       }
-      const score = jaccardSimilarity(queryTokens, tokenSet(summary.narrative));
-      if (score < this.minScore) {
+      const baseSim = jaccardSimilarity(queryTokens, tokenSet(summary.narrative));
+      if (baseSim < this.minScore) {
         continue;
       }
+      const createdAtIso = summary.createdAt?.toISOString();
+      const recencyBoost = computeRecencyBoost(createdAtIso, nowMs, this.recencyWeight, this.recencyHalfLifeDays);
       scored.push({
-        createdAtIso: summary.createdAt?.toISOString(),
+        createdAtIso,
         narrative: summary.narrative,
         sessionId: summary.sessionId,
-        similarity: score
+        similarity: baseSim + recencyBoost
       });
     }
     scored.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));

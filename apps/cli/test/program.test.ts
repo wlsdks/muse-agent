@@ -2510,4 +2510,92 @@ describe("cli program", () => {
       if (prevTg === undefined) { delete process.env.MUSE_TELEGRAM_BOT_TOKEN; } else { process.env.MUSE_TELEGRAM_BOT_TOKEN = prevTg; }
     }
   });
+
+  it("muse telemetry summary calls /admin/telemetry/summary and pretty-prints the result (iter 48)", async () => {
+    const { io, output } = captureOutput();
+    const requests: { readonly url: string }[] = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url) => {
+        requests.push({ url: String(url) });
+        return new Response(JSON.stringify({
+          enabled: true,
+          summary: {
+            budgetAverages: { total: 12_500 },
+            counterAverages: { inboxContextMessageCount: 3.5 },
+            flagCounts: { activeContextApplied: 12, inboxContextApplied: 7 },
+            latency: { averageMs: 1_200, count: 12, maxMs: 2_400, p95Ms: 2_100 },
+            tokenTotals: { cachedInput: 0, input: 30_000, output: 4_500 },
+            totalRuns: 12,
+            windowEndMs: Date.parse("2026-05-11T12:00:00.000Z"),
+            windowStartMs: Date.parse("2026-05-04T12:00:00.000Z")
+          }
+        }));
+      }
+    });
+    await program.parseAsync([
+      "node", "muse",
+      "--api-url", "http://api.test",
+      "telemetry", "summary"
+    ], { from: "node" });
+    expect(requests[0]?.url).toBe("http://api.test/admin/telemetry/summary");
+    const text = output.join("");
+    expect(text).toContain("Total runs: 12");
+    expect(text).toContain("Latency (n=12)");
+    expect(text).toContain("average: 1200 ms");
+    expect(text).toContain("p95:     2100 ms");
+    expect(text).toContain("activeContextApplied: 12");
+    expect(text).toContain("inboxContextMessageCount: 3.50");
+  });
+
+  it("muse telemetry recent hits /admin/telemetry/recent with limit + sinceMs (iter 48)", async () => {
+    const { io, output } = captureOutput();
+    const requests: { readonly url: string }[] = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url) => {
+        requests.push({ url: String(url) });
+        return new Response(JSON.stringify({
+          enabled: true,
+          events: [
+            {
+              inputTokens: 1_000,
+              latencyMs: 320,
+              model: "gemini-2.0-flash",
+              outputTokens: 200,
+              providerId: "google",
+              recordedAtMs: Date.parse("2026-05-11T11:00:00.000Z"),
+              runId: "r-1"
+            }
+          ]
+        }));
+      }
+    });
+    await program.parseAsync([
+      "node", "muse",
+      "--api-url", "http://api.test",
+      "telemetry", "recent", "--limit", "5", "--since-ms", "1700000000000"
+    ], { from: "node" });
+    expect(requests[0]?.url).toBe(
+      "http://api.test/admin/telemetry/recent?limit=5&sinceMs=1700000000000"
+    );
+    const text = output.join("");
+    expect(text).toContain("google/gemini-2.0-flash");
+    expect(text).toContain("latency=320ms");
+    expect(text).toContain("run=r-1");
+  });
+
+  it("muse telemetry summary reports `disabled` cleanly when aggregator is off (iter 48)", async () => {
+    const { io, output } = captureOutput();
+    const program = createProgram({
+      ...io,
+      fetch: async () => new Response(JSON.stringify({ enabled: false }))
+    });
+    await program.parseAsync([
+      "node", "muse",
+      "--api-url", "http://api.test",
+      "telemetry", "summary"
+    ], { from: "node" });
+    expect(output.join("")).toContain("disabled");
+  });
 });

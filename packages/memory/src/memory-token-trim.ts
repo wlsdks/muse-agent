@@ -31,7 +31,7 @@ import {
   type TokenEstimator,
   type TokenEstimatorOptions
 } from "./index.js";
-import { IMPORTANCE_DEFAULT_THRESHOLD, scoreMessageImportance } from "./message-importance.js";
+import { IMPORTANCE_DEFAULT_THRESHOLD, recencyBonus, scoreMessageContent } from "./message-importance.js";
 
 interface CacheEntry {
   readonly expiresAt: number;
@@ -238,10 +238,57 @@ function trimByImportance(
     return currentTokens;
   }
   const threshold = options.importanceThreshold ?? IMPORTANCE_DEFAULT_THRESHOLD;
-  const totalMessagesForScoring = messages.length;
+  // Iter 49 — content-score cache. The content-dependent portion of
+  // the importance score is INVARIANT for a given message across
+  // every iteration of the while-loop (it doesn't depend on the
+  // message's current index in the array). Only the recency bonus
+  // varies as we remove messages. Splitting the scorer + caching
+  // the content score drops total substring-include work from
+  // O(N²·H) to O(N·H), where H is the decision-hint list length.
+  // WeakMap key by message reference so the entry is GC'd along with
+  // the message if it's removed.
+  const contentScoreCache = new WeakMap<ConversationMessage, number>();
+  const importanceContext = options.importanceContext ?? {};
+  function cachedContentScore(message: ConversationMessage): number {
+    const cached = contentScoreCache.get(message);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const score = scoreMessageContent(message, importanceContext);
+    contentScoreCache.set(message, score);
+    return score;
+  }
+  function clampUnitLocal(value: number): number {
+    if (!Number.isFinite(value)) return 0;
+    if (value < 0) return 0;
+    if (value > 1) return 1;
+    return value;
+  }
+  let totalMessagesForScoring = messages.length;
   let totalTokens = currentTokens;
   const skipCount = firstNonSystemIndex(messages);
-  const protectedIndex = Math.max(0, findLastIndex(messages, (message) => message.role === "user"));
+  // Both `protectedIndex` and `totalMessagesForScoring` MUST decrement
+  // alongside each removal. Pre-iter-27 they were captured once
+  // up-front, which created two coupled bugs:
+  //
+  //   1. `protectedIndex` stale → the for-loop guard
+  //      `index < protectedIndex` kept iterating up to the original
+  //      slot of the last user message, but after N removals that
+  //      slot now CONTAINS the last user message (shifted left N
+  //      positions). The user's current question became a victim
+  //      candidate, defeating the entire purpose of the protected
+  //      boundary.
+  //
+  //   2. `totalMessagesForScoring` stale → the recency bonus
+  //      `messageIndex / (totalMessages - 1)` used the original
+  //      message count, so the (now-shifted-left) user message
+  //      scored as if it were near the start of the conversation —
+  //      depressed by ~0.1, making it MORE attractive as a victim.
+  //
+  // Decrementing both after every successful removal keeps the
+  // protected boundary and the recency math in lockstep with the
+  // mutated array.
+  let protectedIndex = Math.max(0, findLastIndex(messages, (message) => message.role === "user"));
 
   while (totalTokens > budgetTokens) {
     let victimIndex = -1;
@@ -261,13 +308,14 @@ function trimByImportance(
       if (message.role === "tool") {
         continue;
       }
-      const score = scoreMessageImportance(message, {
-        activeTaskId: options.importanceContext?.activeTaskId,
-        activeTaskTitle: options.importanceContext?.activeTaskTitle,
-        currentFocus: options.importanceContext?.currentFocus,
-        messageIndex: index,
-        totalMessages: totalMessagesForScoring
-      });
+      // Iter 49 — combine cached content score with per-iteration
+      // recency bonus. Functionally identical to the prior
+      // `scoreMessageImportance` call but avoids redoing the
+      // substring searches over `DECISION_HINTS` + activeTaskTitle /
+      // activeTaskId / currentFocus on every outer iteration.
+      const score = clampUnitLocal(
+        cachedContentScore(message) + recencyBonus(index, totalMessagesForScoring)
+      );
       if (score >= threshold) {
         continue;
       }
@@ -280,6 +328,11 @@ function trimByImportance(
       break;
     }
     totalTokens -= removeAt(messages, tokens, victimIndex, 1);
+    // Victim was always at index < protectedIndex (strict loop bound),
+    // so the user-message slot shifts left by exactly one. Keep both
+    // counters in sync with the mutated array.
+    protectedIndex--;
+    totalMessagesForScoring--;
   }
 
   return totalTokens;

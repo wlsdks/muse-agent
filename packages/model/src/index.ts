@@ -21,12 +21,33 @@ export { sanitizeGeminiSchema } from "./provider-wire.js";
 
 export type ModelRole = "system" | "user" | "assistant" | "tool";
 
+export interface ModelMessageAttachment {
+  /** MIME type, e.g. "image/png", "application/pdf". */
+  readonly mimeType: string;
+  /**
+   * Either base64-encoded inline bytes OR a URL the provider can
+   * fetch. Exactly one of the two should be set; providers that
+   * support inline data (Gemini) prefer `dataBase64`, providers
+   * that prefer URL refs (OpenAI image_url) prefer `url`.
+   */
+  readonly dataBase64?: string;
+  readonly url?: string;
+}
+
 export interface ModelMessage {
   readonly role: ModelRole;
   readonly content: string;
   readonly name?: string;
   readonly toolCallId?: string;
   readonly toolCalls?: readonly ModelToolCall[];
+  /**
+   * Optional binary attachments for vision-capable models. Provider
+   * adapters that support inline data (Gemini) send via
+   * `dataBase64` + `mimeType`; adapters that prefer URL refs (OpenAI
+   * vision) send via `url`. Adapters that don't support binary
+   * input silently ignore the field and ship only `content`.
+   */
+  readonly attachments?: readonly ModelMessageAttachment[];
 }
 
 export interface ModelCapabilities {

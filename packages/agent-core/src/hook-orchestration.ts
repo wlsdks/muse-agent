@@ -17,17 +17,17 @@ import type { HookLifecycle, HookTraceStore } from "@muse/runtime-state";
 import type { AgentRunContext, HookStage } from "./types.js";
 
 /** Mirror of the runtime's pluggable hook registry surface. */
-export interface HookRegistryLike {
+interface HookRegistryLike {
   list(): readonly HookStage[];
 }
 
-export interface InvokeHooksDeps {
+interface InvokeHooksDeps {
   readonly hooks: readonly HookStage[];
   readonly hookRegistry?: HookRegistryLike;
   readonly hookTraceStore?: HookTraceStore;
 }
 
-export type InvokeHookValue<Name extends keyof HookStage> =
+type InvokeHookValue<Name extends keyof HookStage> =
   Name extends "beforeTool" ? ModelToolCall :
   Name extends "afterTool" ? { readonly result: ToolExecutionResult; readonly toolCall: ModelToolCall } :
   Name extends "afterComplete" ? ModelResponse :

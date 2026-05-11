@@ -102,6 +102,20 @@ export function parseSkillFrontmatter(frontmatter: string): SkillFrontmatter {
   for (const line of lines) {
     if (inMetadata) {
       metadataJson += `${line}\n`;
+      // Brace-balanced exit. The other two states (`inRequires`,
+      // `inInstall`) use a `line.trim() === "}" || "}"` heuristic
+      // that breaks on nested objects — the OpenClaw-style
+      // `metadata:` block ALWAYS nests (`{ "openclaw": { ... } }`)
+      // so the same heuristic here would exit at the FIRST inner
+      // `}`, lose the outer fields, and break `safeJsonObject`.
+      // Counting braces (string-aware) gives a single deterministic
+      // exit at the true close of the object — and also closes the
+      // pre-iter-32 bug where `inMetadata` had no exit at all and
+      // greedily consumed every trailing simple-string field below
+      // `metadata:` (description / emoji / homepage).
+      if (isJsonBlockComplete(metadataJson, "{", "}")) {
+        inMetadata = false;
+      }
       continue;
     }
     if (inRequires) {
@@ -198,6 +212,47 @@ function stripQuotes(value: string): string {
     return trimmed.slice(1, -1);
   }
   return trimmed;
+}
+
+/**
+ * Returns true once the accumulated text contains a fully-balanced
+ * top-level block opened by `open` and closed by `close`. String-
+ * literal-aware so a `"label": "{ … }"` value does not confuse the
+ * depth counter. Used by the multi-line `metadata:` parser to find
+ * the real end of a nested JSON object across line breaks.
+ */
+function isJsonBlockComplete(text: string, open: string, close: string): boolean {
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let sawOpen = false;
+  for (const ch of text) {
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\") {
+        escape = true;
+        continue;
+      }
+      if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+    if (ch === open) {
+      depth += 1;
+      sawOpen = true;
+    } else if (ch === close) {
+      depth -= 1;
+    }
+  }
+  return sawOpen && depth === 0;
 }
 
 function safeJsonObject(value: string): Record<string, unknown> | undefined {

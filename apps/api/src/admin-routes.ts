@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { TraceEventInput } from "@muse/observability";
+import type { TelemetryAggregator } from "@muse/agent-core";
 
 export interface AdminRouteOptions {
   readonly requireAuthenticated: (request: FastifyRequest, reply: FastifyReply) => boolean;
@@ -21,6 +22,7 @@ export interface AdminRouteState {
       listByRunId?(runId: string): readonly TraceEventInput[];
     };
     readonly tracer?: unknown;
+    readonly telemetryAggregator?: TelemetryAggregator;
   };
   readonly resilience?: {
     readonly circuitBreakerRegistry?: {
@@ -60,6 +62,53 @@ export function registerAdminRoutes(server: FastifyInstance, options: AdminRoute
     return {
       metrics: options.admin?.cache?.metrics?.snapshot() ?? null,
       size: cache?.size?.() ?? null
+    };
+  });
+
+  // Iter 38: surfaces the in-process `TelemetryAggregator` that
+  // autoconfigure now instantiates by default. Reads the rolling
+  // 7-day window of ctx.* flags, counters, budget tokens, latency
+  // stats. Returns 503-shaped `{ enabled: false }` when the
+  // aggregator is disabled via `MUSE_TELEMETRY_AGGREGATOR_ENABLED=false`
+  // so callers can disambiguate "feature off" from "empty window".
+  server.get("/admin/telemetry/summary", async (request, reply) => {
+    if (!options.requireAuthenticated(request, reply)) {
+      return reply;
+    }
+
+    const aggregator = options.admin?.observability?.telemetryAggregator;
+    if (!aggregator) {
+      return { enabled: false };
+    }
+    const sinceMsRaw = (request.query as { sinceMs?: string } | undefined)?.sinceMs;
+    const sinceMs = typeof sinceMsRaw === "string" && /^\d+$/u.test(sinceMsRaw)
+      ? Number.parseInt(sinceMsRaw, 10)
+      : undefined;
+    return {
+      enabled: true,
+      summary: aggregator.summary(sinceMs !== undefined ? { sinceMs } : undefined)
+    };
+  });
+
+  server.get("/admin/telemetry/recent", async (request, reply) => {
+    if (!options.requireAuthenticated(request, reply)) {
+      return reply;
+    }
+
+    const aggregator = options.admin?.observability?.telemetryAggregator;
+    if (!aggregator) {
+      return { enabled: false, events: [] };
+    }
+    const query = (request.query ?? {}) as { limit?: string; sinceMs?: string };
+    const limit = typeof query.limit === "string" && /^\d+$/u.test(query.limit)
+      ? Number.parseInt(query.limit, 10)
+      : 50;
+    const sinceMs = typeof query.sinceMs === "string" && /^\d+$/u.test(query.sinceMs)
+      ? Number.parseInt(query.sinceMs, 10)
+      : undefined;
+    return {
+      enabled: true,
+      events: aggregator.recent(sinceMs !== undefined ? { limit, sinceMs } : { limit })
     };
   });
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { InMemoryTelemetryAggregator } from "@muse/agent-core";
 import { InMemoryTaskMemoryStore } from "@muse/memory";
 import { InMemoryAgentMetrics } from "@muse/observability";
 import {
@@ -537,5 +538,81 @@ describe("api server: admin / ops / settings / memory", () => {
     expect(invalidRetention.json()).not.toHaveProperty("code");
     expect(purgeTerminal.statusCode).toBe(200);
     expect(purgeTerminal.json()).toMatchObject({ deleted: 1 });
+  });
+
+  it("GET /admin/telemetry/summary returns enabled:false when no aggregator wired (iter 38)", async () => {
+    const server = buildServer({ logger: false });
+    const response = await server.inject({ method: "GET", url: "/admin/telemetry/summary" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ enabled: false });
+  });
+
+  it("GET /admin/telemetry/summary returns rolled-up stats when aggregator is wired (iter 38)", async () => {
+    const telemetryAggregator = new InMemoryTelemetryAggregator({ now: () => 10_000 });
+    telemetryAggregator.record({
+      contextCounters: { inboxContextMessageCount: 4 },
+      contextFlags: { activeContextApplied: true, inboxContextApplied: true },
+      inputTokens: 1_200,
+      latencyMs: 420,
+      model: "gemini-2.0-flash",
+      outputTokens: 240,
+      providerId: "google",
+      recordedAtMs: 9_000,
+      runId: "r-a"
+    });
+    telemetryAggregator.record({
+      contextCounters: { inboxContextMessageCount: 2 },
+      contextFlags: { activeContextApplied: true },
+      inputTokens: 800,
+      latencyMs: 180,
+      model: "gemini-2.0-flash",
+      outputTokens: 90,
+      providerId: "google",
+      recordedAtMs: 9_500,
+      runId: "r-b"
+    });
+    const server = buildServer({
+      admin: { observability: { telemetryAggregator } },
+      logger: false
+    });
+    const response = await server.inject({ method: "GET", url: "/admin/telemetry/summary" });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { enabled: boolean; summary: { totalRuns: number; latency?: { averageMs: number; count: number }; flagCounts: Record<string, number> } };
+    expect(body.enabled).toBe(true);
+    expect(body.summary.totalRuns).toBe(2);
+    expect(body.summary.flagCounts).toMatchObject({ activeContextApplied: 2, inboxContextApplied: 1 });
+    expect(body.summary.latency?.count).toBe(2);
+    expect(body.summary.latency?.averageMs).toBe(300);
+  });
+
+  it("GET /admin/telemetry/recent returns the latest events with limit + sinceMs (iter 38)", async () => {
+    const telemetryAggregator = new InMemoryTelemetryAggregator({ now: () => 10_000 });
+    for (let i = 0; i < 5; i++) {
+      telemetryAggregator.record({
+        contextCounters: {},
+        contextFlags: {},
+        model: "diagnostic/smoke",
+        providerId: "diagnostic",
+        recordedAtMs: 9_000 + i * 100,
+        runId: `r-${i.toString()}`
+      });
+    }
+    const server = buildServer({
+      admin: { observability: { telemetryAggregator } },
+      logger: false
+    });
+    const response = await server.inject({ method: "GET", url: "/admin/telemetry/recent?limit=2" });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { enabled: boolean; events: readonly { runId: string }[] };
+    expect(body.enabled).toBe(true);
+    expect(body.events.map((event) => event.runId)).toEqual(["r-3", "r-4"]);
+    const sinceResponse = await server.inject({
+      method: "GET",
+      url: "/admin/telemetry/recent?sinceMs=9300&limit=10"
+    });
+    expect(sinceResponse.json()).toMatchObject({
+      enabled: true,
+      events: [{ runId: "r-3" }, { runId: "r-4" }]
+    });
   });
 });

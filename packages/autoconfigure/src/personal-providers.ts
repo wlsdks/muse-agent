@@ -44,6 +44,7 @@ import {
   NotionNotesProvider,
   NotionTasksProvider,
   TasksProviderRegistry,
+  readReminders,
   type NotesProvider,
   type TasksProvider
 } from "@muse/mcp";
@@ -65,12 +66,16 @@ import {
 import {
   DefaultActiveContextProvider,
   DefaultToolFilter,
+  InMemoryTelemetryAggregator,
   StoreBackedEpisodicRecallProvider,
   type ActiveContextProvider,
   type EpisodicRecallProvider,
   type InboxContextProvider,
+  type ReminderHint,
+  type RemindersResolver,
   type SkillCatalogEntry,
   type SkillCatalogProvider,
+  type TelemetryAggregator,
   type ToolFilter
 } from "@muse/agent-core";
 import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore } from "@muse/memory";
@@ -679,10 +684,30 @@ export function buildActiveContextProvider(
         }
       }
     : undefined;
+  // Iter 41: read pending reminders from the local store and feed
+  // them into [Active Context] so the agent can say "you asked me
+  // to remind you about X at 3 — it's 2:55" without an extra tool
+  // call. Opt-out via `MUSE_ACTIVE_CONTEXT_REMINDERS_ENABLED=false`.
+  const remindersResolver: RemindersResolver | undefined =
+    env.MUSE_ACTIVE_CONTEXT_REMINDERS_ENABLED?.trim().toLowerCase() === "false"
+      ? undefined
+      : {
+        async resolve(): Promise<readonly ReminderHint[] | undefined> {
+          try {
+            const reminders = await readReminders(resolveRemindersFile(env));
+            return reminders
+              .filter((reminder) => reminder.status === "pending")
+              .map((reminder) => ({ dueIso: reminder.dueAt, text: reminder.text }));
+          } catch {
+            return undefined;
+          }
+        }
+      };
   return new DefaultActiveContextProvider({
     ...(activeTaskResolver ? { activeTaskResolver } : {}),
     ...(calendarEventsResolver ? { calendarEventsResolver } : {}),
     ...(env.MUSE_DEFAULT_TIMEZONE?.trim() ? { defaultTimezone: env.MUSE_DEFAULT_TIMEZONE.trim() } : {}),
+    ...(remindersResolver ? { remindersResolver } : {}),
     ...(userMemoryStore ? { userMemoryProvider: userMemoryStore } : {})
   });
 }
@@ -791,6 +816,29 @@ export function buildToolFilter(env: MuseEnvironment): ToolFilter | undefined {
 }
 
 /**
+ * In-process telemetry aggregator (iter 38 — wiring the surface
+ * iters 8 / 17 / 26 / 37 built but never instantiated in
+ * production). Default ON; `MUSE_TELEMETRY_AGGREGATOR_ENABLED=false`
+ * skips construction (returns undefined → AgentRuntime no-ops the
+ * `recordTelemetry` call so per-run telemetry is free of overhead).
+ *
+ * The aggregator is in-process and bounded by `capacity` (default
+ * 10k events ~= a week of moderate use); restart wipes state. A
+ * durable Kysely-backed sink can layer on later — every consumer
+ * accesses the same `TelemetryAggregator` interface.
+ */
+export function buildTelemetryAggregator(env: MuseEnvironment): TelemetryAggregator | undefined {
+  if (env.MUSE_TELEMETRY_AGGREGATOR_ENABLED?.trim().toLowerCase() === "false") {
+    return undefined;
+  }
+  const capacityRaw = env.MUSE_TELEMETRY_AGGREGATOR_CAPACITY?.trim();
+  const capacity = capacityRaw && /^\d+$/u.test(capacityRaw)
+    ? Number.parseInt(capacityRaw, 10)
+    : undefined;
+  return new InMemoryTelemetryAggregator(capacity !== undefined ? { capacity } : {});
+}
+
+/**
  * Build the SKILL.md registry by scanning user + workspace dirs.
  * Loads asynchronously off the hot path of
  * `createMuseRuntimeAssembly` — callers `await` the promise once
@@ -847,6 +895,12 @@ function toCatalogEntry(skill: Skill): SkillCatalogEntry {
     name: skill.name,
     ...(skill.frontmatter.requires?.bins && skill.frontmatter.requires.bins.length > 0
       ? { requiresBins: [...skill.frontmatter.requires.bins] }
+      : {}),
+    // iter 45: any-of CLI requirement (e.g. "codex OR claude")
+    // forwarded so the agent can see the alternate-CLI dependency
+    // in `[Available Skills]` and route accordingly.
+    ...(skill.frontmatter.requires?.anyBins && skill.frontmatter.requires.anyBins.length > 0
+      ? { requiresAnyBins: [...skill.frontmatter.requires.anyBins] }
       : {})
   };
 }

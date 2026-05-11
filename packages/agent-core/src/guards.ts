@@ -1,4 +1,3 @@
-import type { ModelProvider } from "@muse/model";
 import {
   detectSystemPromptLeakage,
   detectTopicDrift,
@@ -163,7 +162,3 @@ export function createSystemPromptLeakageOutputGuard(options: {
   };
 }
 
-// Avoid unused-import warning when the file is only consumed for the
-// runtime guard factories (the ModelProvider typing is needed by
-// LlmClassificationInputGuardOptions).
-export type GuardFactoryProvider = ModelProvider;

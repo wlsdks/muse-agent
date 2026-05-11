@@ -42,6 +42,40 @@ describe("trimConversationMessages with compactionStrategy=\"importance\"", () =
     expect(result.removedCount).toBeGreaterThan(0);
   });
 
+  it("never removes the last user message even after many importance-trim iterations (iter 27)", () => {
+    // Pre-iter-27 bug: `trimByImportance` captured `protectedIndex`
+    // ONCE before the while-loop, so subsequent removals shifted the
+    // last-user message left into the victim-candidate range. The
+    // recency bonus also used a stale `totalMessages`, deflating the
+    // user message's score below other candidates'. With an
+    // aggressive budget and a high importance threshold, the loop
+    // would happily strip the user's actual current question.
+    const messages: readonly ConversationMessage[] = [
+      { content: "[system]", role: "system" },
+      user("filler one"),
+      user("filler two"),
+      user("filler three"),
+      user("filler four"),
+      user("filler five"),
+      user("filler six"),
+      user("filler seven"),
+      user("filler eight"),
+      user("CRITICAL LAST USER MESSAGE — must survive")
+    ];
+
+    const result = trimConversationMessages(messages, {
+      compactionStrategy: "importance",
+      importanceThreshold: 0.99, // everyone is below threshold → all candidates
+      maxContextWindowTokens: 60, // aggressive — forces many removals
+      outputReserveTokens: 10
+    });
+
+    // The literal last message must remain the user's actual question.
+    const last = result.messages[result.messages.length - 1];
+    expect(last?.role).toBe("user");
+    expect(last?.content).toBe("CRITICAL LAST USER MESSAGE — must survive");
+  });
+
   it("falls back to temporal trim when strategy is default", () => {
     const messages: readonly ConversationMessage[] = [
       user("oldest message about Ship feature"),

@@ -420,6 +420,21 @@ describe("AgentRuntime", () => {
     });
   });
 
+  it("stamps run.latency_ms on the muse.agent.run span (iter 48)", async () => {
+    const tracer = new InMemoryMuseTracer();
+    const runtime = createAgentRuntime({ modelProvider: createProvider(), tracer });
+    await runtime.run({
+      messages: [{ content: "Hi", role: "user" }],
+      model: "provider/model",
+      runId: "run-latency"
+    });
+    const runSpan = tracer.recordedSpans().find((span) => span.name === "muse.agent.run");
+    expect(runSpan).toBeDefined();
+    const latency = runSpan?.attributes["run.latency_ms"];
+    expect(typeof latency).toBe("number");
+    expect(latency as number).toBeGreaterThanOrEqual(0);
+  });
+
   it("routes provider-prefixed models through a registry", async () => {
     const runtime = createAgentRuntime({
       modelRegistry: new ModelProviderRegistry(

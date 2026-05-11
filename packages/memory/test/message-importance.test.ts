@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { scoreMessageImportance } from "../src/message-importance.js";
+import { recencyBonus, scoreMessageContent, scoreMessageImportance } from "../src/message-importance.js";
 import type { ConversationMessage } from "../src/index.js";
 
 function userMessage(content: string): ConversationMessage {
@@ -103,5 +103,96 @@ describe("scoreMessageImportance", () => {
     });
     expect(decisive).toBeGreaterThan(plain);
     expect(shipIt).toBeGreaterThan(plain);
+  });
+
+  it("ignores too-short activeTaskTitle so a 1-char hint can't saturate every message (iter 18)", () => {
+    // Pathological: a one-character activeTaskTitle like "X" would
+    // substring-match every English message ("X" appears in "fix",
+    // "exit", "tax" …). The guard rejects hints shorter than 3
+    // chars so unrelated chatter doesn't get the +0.5 bonus.
+    const unrelatedWithShortHint = scoreMessageImportance(userMessage("just casual chitchat"), {
+      activeTaskTitle: "X",
+      messageIndex: 5,
+      totalMessages: 10
+    });
+    const unrelatedWithoutHint = scoreMessageImportance(userMessage("just casual chitchat"), {
+      messageIndex: 5,
+      totalMessages: 10
+    });
+    // Both should score the same — the short hint must not boost.
+    expect(unrelatedWithShortHint).toBe(unrelatedWithoutHint);
+
+    // A 3+ char hint still boosts when the message references it.
+    const matchedWithRealHint = scoreMessageImportance(userMessage("update on Ship feature"), {
+      activeTaskTitle: "Ship feature",
+      messageIndex: 5,
+      totalMessages: 10
+    });
+    expect(matchedWithRealHint).toBeGreaterThan(unrelatedWithoutHint);
+  });
+
+  it("ignores too-short activeTaskId and currentFocus the same way (iter 18)", () => {
+    const base = scoreMessageImportance(userMessage("totally unrelated stuff"), {
+      messageIndex: 0,
+      totalMessages: 10
+    });
+    const shortId = scoreMessageImportance(userMessage("totally unrelated stuff"), {
+      activeTaskId: "T1", // 2 chars — must be rejected
+      messageIndex: 0,
+      totalMessages: 10
+    });
+    const shortFocus = scoreMessageImportance(userMessage("totally unrelated stuff"), {
+      currentFocus: "hi", // 2 chars — must be rejected
+      messageIndex: 0,
+      totalMessages: 10
+    });
+    expect(shortId).toBe(base);
+    expect(shortFocus).toBe(base);
+  });
+});
+
+describe("scoreMessageContent + recencyBonus split (iter 49)", () => {
+  // Iter 49 split the public `scoreMessageImportance` into the
+  // content-only `scoreMessageContent` + the iteration-dependent
+  // `recencyBonus`, so the trim's outer while-loop can WeakMap-cache
+  // the expensive substring-search work. These tests pin that the
+  // combined output still matches the single-call public API across
+  // a range of inputs.
+  function combine(message: ConversationMessage, context: Parameters<typeof scoreMessageImportance>[1]): number {
+    const raw = scoreMessageContent(message, context) + recencyBonus(context.messageIndex, context.totalMessages);
+    if (!Number.isFinite(raw)) return 0;
+    if (raw < 0) return 0;
+    if (raw > 1) return 1;
+    return raw;
+  }
+
+  it("split-combine equals the single-call public API for plain chat", () => {
+    const msg = userMessage("totally generic message");
+    const ctx = { messageIndex: 3, totalMessages: 10 };
+    expect(combine(msg, ctx)).toBeCloseTo(scoreMessageImportance(msg, ctx), 10);
+  });
+
+  it("split-combine equals public API when activeTaskTitle matches", () => {
+    const msg = userMessage("update on Ship feature progress");
+    const ctx = { activeTaskTitle: "Ship feature", messageIndex: 7, totalMessages: 10 };
+    expect(combine(msg, ctx)).toBeCloseTo(scoreMessageImportance(msg, ctx), 10);
+  });
+
+  it("split-combine equals public API for tool-call assistant + decision hint", () => {
+    const msg = assistantMessage(
+      "decided to ship it next sprint",
+      [{ arguments: {}, id: "tc-1", name: "calendar.create" }]
+    );
+    const ctx = { messageIndex: 5, totalMessages: 10 };
+    expect(combine(msg, ctx)).toBeCloseTo(scoreMessageImportance(msg, ctx), 10);
+  });
+
+  it("recencyBonus returns 1.0 * 0.1 = 0.1 for the newest message in a multi-msg conversation", () => {
+    expect(recencyBonus(9, 10)).toBeCloseTo(0.1);
+    expect(recencyBonus(0, 10)).toBeCloseTo(0);
+  });
+
+  it("recencyBonus returns 0.1 for a one-message conversation (edge case)", () => {
+    expect(recencyBonus(0, 1)).toBeCloseTo(0.1);
   });
 });

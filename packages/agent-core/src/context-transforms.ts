@@ -103,6 +103,24 @@ export async function applyAgentSpec(
 }
 
 /**
+ * Stamp a `<transform>Failed: true` flag onto the input metadata
+ * so observability can distinguish "transform threw" from
+ * "transform not configured". Used by every transform's catch
+ * block so failures don't disappear silently — the surface stays
+ * fail-open (caller still gets a usable input), but the run span
+ * now records WHICH transform tripped.
+ */
+function failedMetadata(input: AgentRunInput, failureKey: string): AgentRunInput {
+  return {
+    ...input,
+    metadata: {
+      ...input.metadata,
+      [failureKey]: true
+    }
+  };
+}
+
+/**
  * Resolve the `ActiveContextSnapshot` once per request so both the
  * `applyActiveContext` system-prompt injection AND the importance
  * scorer used during compaction can read from a single source of
@@ -168,9 +186,16 @@ export async function applyInboxContext(
   try {
     snapshot = (await provider.resolve(metadataString(context.input.metadata, "userId"))) ?? undefined;
   } catch {
-    return context.input;
+    // Fail-open: leave the prompt unchanged but stamp a failure
+    // flag onto metadata so observability can distinguish
+    // "transform failed" from "transform not configured".
+    return failedMetadata(context.input, "inboxContextFailed");
   }
-  const rendered = renderInboxSection(snapshot);
+  // Iter 56 — thread the run's start time as `nowIso` so the
+  // inbox renderer can humanise `receivedAtIso` into "[5 min ago]"
+  // / "[3h ago]" / etc. Matches the freshness affordance the other
+  // context surfaces already use.
+  const rendered = renderInboxSection(snapshot, context.startedAt.toISOString());
   if (!rendered) {
     return context.input;
   }
@@ -206,9 +231,13 @@ export async function applyEpisodicRecall(
   try {
     snapshot = (await provider.resolve(query, metadataString(context.input.metadata, "userId"))) ?? undefined;
   } catch {
-    return context.input;
+    return failedMetadata(context.input, "episodicRecallFailed");
   }
-  const rendered = renderEpisodicSection(snapshot);
+  // Iter 53 — thread the run's start time as `nowIso` so the
+  // episodic renderer can humanise `createdAtIso` into "1 day ago"
+  // / "3 weeks ago" / etc. Matches the freshness affordance the
+  // active-context and reminders blocks already use.
+  const rendered = renderEpisodicSection(snapshot, context.startedAt.toISOString());
   if (!rendered) {
     return context.input;
   }
@@ -239,7 +268,7 @@ export async function applyUserMemory(
   try {
     memory = await provider.findByUserId(userId);
   } catch {
-    return context.input;
+    return failedMetadata(context.input, "userMemoryFailed");
   }
   if (!memory) {
     return context.input;

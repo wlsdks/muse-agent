@@ -21,6 +21,25 @@ describe("scoreToolOutputImportance (D5)", () => {
     expect(scoreToolOutputImportance("plugin.random")).toBe(1);
     expect(scoreToolOutputImportance("muse.unknown.op")).toBe(1);
   });
+
+  it("recognises the `<domain>-multi` provider-registry variants (iter 39)", () => {
+    // `muse.tasks-multi.*`, `muse.calendar-multi.*`, `muse.notes-multi.*`
+    // are the registry-backed siblings of `muse.tasks.*` etc. They surface
+    // the same personal-data semantics — a meeting list out of
+    // `muse.calendar-multi.upcoming` is just as valuable as the same list
+    // out of `muse.calendar.upcoming`. Pre-iter-39 the prefix matcher
+    // only recognised `muse.<domain>.` followed by a `.`, so the multi-
+    // provider tools fell through to the neutral 1.0 weight and their
+    // outputs got trimmed against the same uniform cap as a generic web
+    // fetch.
+    expect(scoreToolOutputImportance("muse.tasks-multi.list")).toBeGreaterThan(1);
+    expect(scoreToolOutputImportance("muse.calendar-multi.upcoming")).toBeGreaterThan(1);
+    expect(scoreToolOutputImportance("muse.notes-multi.search")).toBeGreaterThan(1);
+    // Same elevated weight as the non-multi variants (1.4 / 1.5).
+    expect(scoreToolOutputImportance("muse.tasks-multi.create")).toBe(
+      scoreToolOutputImportance("muse.tasks.create")
+    );
+  });
 });
 
 describe("applyToolOutputImportance", () => {

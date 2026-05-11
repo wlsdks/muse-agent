@@ -95,6 +95,28 @@ metadata:
     const parsed = parseSkillFrontmatter("");
     expect(parsed).toEqual({ description: "", name: "" });
   });
+
+  it("exits the metadata block at the closing brace so fields below metadata survive (iter 32)", () => {
+    // Pre-iter-32 the `inMetadata` flag flipped on at `metadata:` but
+    // had NO exit condition — every subsequent line, including
+    // unrelated fields like `description` / `emoji` / `homepage`,
+    // was appended to `metadataJson`. That broke JSON.parse AND
+    // silently lost the trailing fields. (Compare with the
+    // `inRequires` / `inInstall` siblings, which DID exit on
+    // `line.trim() === "}"`.)
+    const parsed = parseSkillFrontmatter(`name: codex
+metadata:
+  {
+    "muse": { "requires": { "anyBins": ["codex"] } }
+  }
+description: "Codex CLI"
+emoji: "🧩"`);
+    // metadata still parses
+    expect(parsed.requires?.anyBins).toEqual(["codex"]);
+    // and the fields BELOW metadata are not lost
+    expect(parsed.description).toBe("Codex CLI");
+    expect(parsed.emoji).toBe("🧩");
+  });
 });
 
 describe("parseSkillFile", () => {
