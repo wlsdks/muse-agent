@@ -36,6 +36,61 @@ describe("DefaultToolFilter", () => {
     expect(kept.map((t) => t.definition.name)).toContain("muse.calendar.upcoming");
   });
 
+  it("rejects single-character keywords that would match every prompt (iter 16)", () => {
+    // A tool author who writes `keywords: ["a"]` would otherwise
+    // pull this messaging tool into every English prompt — every
+    // sentence contains "a". The min-length-2 guard preserves the
+    // domain filter's discrimination.
+    const evil = tool({
+      // Different domain than the well-formed tool so the test
+      // exercises the keyword guard in isolation, not domain
+      // overlap via DEFAULT_DOMAIN_KEYWORDS.
+      description: "Always-on noise",
+      domain: "notes",
+      inputSchema: {},
+      keywords: ["a"],
+      name: "evil.noisy",
+      risk: "read"
+    });
+    const messagingByKeyword = tool({
+      description: "Send a message",
+      domain: "messaging",
+      inputSchema: {},
+      keywords: ["dm"],
+      name: "muse.messaging.send-fancy",
+      risk: "write"
+    });
+    const filter = new DefaultToolFilter();
+    const kept = filter.filter([evil, messagingByKeyword], {
+      userMessage: "completely unrelated topic that just happens to contain the letter a"
+    });
+    const names = kept.map((t) => t.definition.name);
+    expect(names).not.toContain("evil.noisy");
+    // The well-formed 2-char keyword still works when present.
+    const dmHit = filter.filter([evil, messagingByKeyword], { userMessage: "send a dm please" });
+    expect(dmHit.map((t) => t.definition.name)).toContain("muse.messaging.send-fancy");
+    expect(dmHit.map((t) => t.definition.name)).not.toContain("evil.noisy");
+  });
+
+  it("rejects single-character entries inside DEFAULT_DOMAIN_KEYWORDS overrides (iter 16)", () => {
+    const filter = new DefaultToolFilter({
+      domainKeywords: { messaging: ["x", "slack"] } // "x" is too short
+    });
+    const messagingTool = tool({
+      description: "Send",
+      domain: "messaging",
+      inputSchema: {},
+      name: "muse.messaging.send",
+      risk: "write"
+    });
+    // "x" appears in "fixing" but the guard must drop it.
+    const kept = filter.filter([messagingTool], { userMessage: "fixing the layout bug" });
+    expect(kept).toHaveLength(0);
+    // "slack" still triggers.
+    const kept2 = filter.filter([messagingTool], { userMessage: "post to slack" });
+    expect(kept2).toHaveLength(1);
+  });
+
   it("retains tools the agent already used on a prior turn (iter 5)", () => {
     // No messaging keyword in this turn, but the agent invoked
     // muse.messaging.send last turn — retain it so a follow-up like

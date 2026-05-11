@@ -73,18 +73,31 @@ export class DefaultToolFilter implements ToolFilter {
       return true;
     }
     for (const keyword of definition.keywords ?? []) {
-      if (keyword && promptLower.includes(keyword.toLowerCase())) {
+      if (isMatchableKeyword(keyword) && promptLower.includes(keyword.toLowerCase())) {
         return true;
       }
     }
     const heuristics = this.extraKeywords[domain] ?? [];
     for (const trigger of heuristics) {
-      if (promptLower.includes(trigger.toLowerCase())) {
+      if (isMatchableKeyword(trigger) && promptLower.includes(trigger.toLowerCase())) {
         return true;
       }
     }
     return false;
   }
+}
+
+/**
+ * Reject keywords that are too short to discriminate. Single-character
+ * triggers ("a", "v") would match nearly every English prompt and
+ * silently disable the per-domain filter. Two-character minimum
+ * matches Korean (most morphemes are 2+ syllables) and English (the
+ * shortest meaningful domain word is "gh" / "pr" / "ai") without
+ * losing real signal. Empty / whitespace-only entries are also
+ * dropped.
+ */
+function isMatchableKeyword(keyword: unknown): keyword is string {
+  return typeof keyword === "string" && keyword.trim().length >= 2;
 }
 
 export const DEFAULT_DOMAIN_KEYWORDS: Readonly<Record<string, readonly string[]>> = Object.freeze({
