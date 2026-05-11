@@ -74,4 +74,34 @@ describe("createModelProvider — OpenAI-compatible presets", () => {
     expect(provider).toBeInstanceOf(OpenAICompatibleProvider);
     expect(provider?.id).toBe("moonshot");
   });
+
+  it("autoconfigures Groq when only GROQ_API_KEY is set (no MUSE_MODEL)", () => {
+    const provider = createModelProvider({ GROQ_API_KEY: "grq" });
+    expect(provider).toBeInstanceOf(OpenAICompatibleProvider);
+    expect(provider?.id).toBe("groq");
+  });
+
+  it("autoconfigures DeepSeek when only DEEPSEEK_API_KEY is set", () => {
+    const provider = createModelProvider({ DEEPSEEK_API_KEY: "ds" });
+    expect(provider).toBeInstanceOf(OpenAICompatibleProvider);
+    expect(provider?.id).toBe("deepseek");
+  });
+
+  it("autoconfigures Together when only TOGETHER_API_KEY is set", () => {
+    const provider = createModelProvider({ TOGETHER_API_KEY: "tg" });
+    expect(provider).toBeInstanceOf(OpenAICompatibleProvider);
+    expect(provider?.id).toBe("together");
+  });
+
+  it("autoconfigures Mistral when only MISTRAL_API_KEY is set", () => {
+    const provider = createModelProvider({ MISTRAL_API_KEY: "ms" });
+    expect(provider).toBeInstanceOf(OpenAICompatibleProvider);
+    expect(provider?.id).toBe("mistral");
+  });
+
+  it("autoconfigures Moonshot when only MOONSHOT_API_KEY is set", () => {
+    const provider = createModelProvider({ MOONSHOT_API_KEY: "mn" });
+    expect(provider).toBeInstanceOf(OpenAICompatibleProvider);
+    expect(provider?.id).toBe("moonshot");
+  });
 });

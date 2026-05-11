@@ -48,6 +48,21 @@ function inferDefaultModelFromCredentials(env: MuseEnvironment): string | undefi
   if (parseOptionalString(env.OPENROUTER_API_KEY)) {
     return "openrouter/google/gemini-2.0-flash-001";
   }
+  if (parseOptionalString(env.GROQ_API_KEY)) {
+    return "groq/llama-3.3-70b-versatile";
+  }
+  if (parseOptionalString(env.DEEPSEEK_API_KEY)) {
+    return "deepseek/deepseek-chat";
+  }
+  if (parseOptionalString(env.MISTRAL_API_KEY)) {
+    return "mistral/mistral-small-latest";
+  }
+  if (parseOptionalString(env.MOONSHOT_API_KEY)) {
+    return "moonshot/moonshot-v1-8k";
+  }
+  if (parseOptionalString(env.TOGETHER_API_KEY)) {
+    return "together/meta-llama/Llama-3.3-70B-Instruct-Turbo";
+  }
   return undefined;
 }
 
