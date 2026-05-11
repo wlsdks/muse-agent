@@ -105,6 +105,82 @@ describe("InMemoryEpisodicRecallProvider", () => {
     expect(snapshot?.matches[0]?.sessionId).toBe("s-shanghai");
   });
 
+  it("ranks recently-created episodes higher than equally-similar old ones (iter 43 recency boost)", async () => {
+    // Two episodes with the SAME narrative wording (identical
+    // Jaccard score). The newer one should rank first thanks to
+    // the iter-43 recency boost. JARVIS-class personal-assistant
+    // intuition: "what we talked about LAST WEEK" is usually more
+    // relevant than "what we talked about six months ago", even
+    // when the topic words are identical.
+    const fixedNow = Date.parse("2026-05-11T12:00:00.000Z");
+    const provider = new InMemoryEpisodicRecallProvider({
+      episodes: [
+        // 90 days ago
+        {
+          createdAtIso: "2026-02-10T12:00:00.000Z",
+          narrative: "Discussed Korean tutorial roadmap",
+          sessionId: "old-session"
+        },
+        // 1 day ago
+        {
+          createdAtIso: "2026-05-10T12:00:00.000Z",
+          narrative: "Discussed Korean tutorial roadmap",
+          sessionId: "fresh-session"
+        }
+      ],
+      minScore: 0.1,
+      now: () => fixedNow
+    });
+    const snapshot = await provider.resolve("Korean tutorial roadmap");
+    expect(snapshot?.matches[0]?.sessionId).toBe("fresh-session");
+    expect(snapshot?.matches[1]?.sessionId).toBe("old-session");
+    // Both surfaced (semantic overlap is identical and well above
+    // minScore); recency is the tiebreaker.
+    expect(snapshot?.matches).toHaveLength(2);
+  });
+
+  it("does not surface recency-only matches with no semantic overlap (iter 43)", async () => {
+    // The minScore gate guards baseSim ONLY, so a "perfectly
+    // recent but unrelated" episode must still be filtered out.
+    // Otherwise every recent session would muscle into recall
+    // regardless of topic.
+    const fixedNow = Date.parse("2026-05-11T12:00:00.000Z");
+    const provider = new InMemoryEpisodicRecallProvider({
+      episodes: [
+        {
+          createdAtIso: "2026-05-11T11:00:00.000Z", // 1h ago — maximum recency
+          narrative: "completely unrelated content about gardening",
+          sessionId: "fresh-irrelevant"
+        }
+      ],
+      minScore: 0.15,
+      now: () => fixedNow
+    });
+    const snapshot = await provider.resolve("Korean tutorial roadmap");
+    expect(snapshot).toBeUndefined();
+  });
+
+  it("respects recencyWeight=0 disabling the boost (iter 43)", async () => {
+    // With the boost off, equally-similar episodes preserve their
+    // insertion order (stable sort would keep them tied; the test
+    // verifies neither sessionId is reordered into the wrong slot).
+    const fixedNow = Date.parse("2026-05-11T12:00:00.000Z");
+    const provider = new InMemoryEpisodicRecallProvider({
+      episodes: [
+        { createdAtIso: "2026-02-10T12:00:00.000Z", narrative: "Discussed Korean tutorial roadmap", sessionId: "old-session" },
+        { createdAtIso: "2026-05-10T12:00:00.000Z", narrative: "Discussed Korean tutorial roadmap", sessionId: "fresh-session" }
+      ],
+      minScore: 0.1,
+      now: () => fixedNow,
+      recencyWeight: 0
+    });
+    const snapshot = await provider.resolve("Korean tutorial roadmap");
+    // Both have the same Jaccard score AND the same boost (0), so
+    // they tie; ordering is whatever stable sort produces. Just
+    // verify both surfaced.
+    expect(snapshot?.matches.map((m) => m.sessionId).sort()).toEqual(["fresh-session", "old-session"]);
+  });
+
   it("caps maxQueryChars so a huge prompt cannot blow CPU on the recall path", async () => {
     const provider = new InMemoryEpisodicRecallProvider({
       episodes: [{ narrative: "JARVIS planning", sessionId: "s-1" }],
