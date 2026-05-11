@@ -169,7 +169,7 @@ export async function collectSetupStatusJson(): Promise<SetupStatusSnapshot> {
       status: modelStatus,
       ...(museModel.length > 0 ? { muse_model: museModel } : {}),
       ...(modelStatus === "todo"
-        ? { nextStep: "Run `muse setup model` to wire OpenAI / Anthropic / Gemini / OpenRouter / Ollama / Groq / DeepSeek / Together / Mistral / Moonshot" }
+        ? { nextStep: "Run `muse setup model` to wire OpenAI / Anthropic / Gemini / OpenRouter / Ollama / Groq / DeepSeek / Together / Mistral / Moonshot / Cerebras" }
         : {})
     },
     notes: {

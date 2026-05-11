@@ -51,7 +51,7 @@ packages/
   model/              ModelProvider interface + provider wire-format
                       adapters (OpenAI / Anthropic / Gemini / OpenRouter /
                       Ollama + OpenAI-compat presets for Groq / DeepSeek /
-                      Together / Mistral / Moonshot)
+                      Together / Mistral / Moonshot / Cerebras)
   tools/              tool registry, executor, sanitiser, approval path
   multi-agent/        SupervisorAgent, MultiAgentOrchestrator,
                       message bus, history

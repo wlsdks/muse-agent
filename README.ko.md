@@ -50,7 +50,7 @@ packages/
   model/              ModelProvider 인터페이스와 공급자 wire-format
                       어댑터 (OpenAI / Anthropic / Gemini / OpenRouter /
                       Ollama + OpenAI-호환 프리셋: Groq / DeepSeek /
-                      Together / Mistral / Moonshot)
+                      Together / Mistral / Moonshot / Cerebras)
   tools/              tool 레지스트리, executor, sanitiser, 승인 경로
   multi-agent/        SupervisorAgent, MultiAgentOrchestrator,
                       메시지 버스, 히스토리

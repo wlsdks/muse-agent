@@ -14,8 +14,12 @@ import type { Command } from "commander";
 
 import { runCalendarSetup } from "./setup-calendar.js";
 import { runMessagingSetup } from "./setup-messaging.js";
-import { runModelSetup } from "./setup-model.js";
+import { runModelSetup, SETUP_MODEL_PROVIDER_SPECS } from "./setup-model.js";
 import type { ProgramIO } from "./program.js";
+
+function providerIdList(): string {
+  return SETUP_MODEL_PROVIDER_SPECS.map((spec) => spec.id).join(" / ");
+}
 
 export interface SchedulerSetupHelpers {
   readonly apiRequest: (
@@ -135,7 +139,7 @@ export function registerSetupCommands(program: Command, io: ProgramIO): void {
 
   setup
     .command("model")
-    .description("Configure LLM provider keys (openai / anthropic / gemini / openrouter / ollama / groq / deepseek / together / mistral / moonshot)")
+    .description(`Configure LLM provider keys (${providerIdList()})`)
     .action(async () => {
       await runModelSetup({ stderr: io.stderr, stdout: io.stdout });
     });
@@ -292,7 +296,7 @@ async function renderSetupStatus(): Promise<string> {
   lines.push("");
   lines.push("Wizards:");
   lines.push("  muse setup wizard      — end-to-end onboarding (model → calendar → messaging)");
-  lines.push("  muse setup model       — LLM provider keys (OpenAI / Anthropic / Gemini / OpenRouter / Ollama / Groq / DeepSeek / Together / Mistral / Moonshot)");
+  lines.push(`  muse setup model       — LLM provider keys (${providerIdList()})`);
   lines.push("  muse setup calendar    — OAuth / CalDAV / macOS calendar credentials");
   lines.push("  muse setup messaging   — Telegram / Discord / Slack / LINE bot tokens");
   lines.push("  muse mcp config-add    — register an external MCP server");
