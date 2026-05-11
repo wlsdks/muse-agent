@@ -1,8 +1,6 @@
 import {
-  McpRegistryError,
   McpSecurityPolicyProvider,
   type McpManager,
-  type McpSecurityPolicy,
   type McpSecurityPolicyStore,
   type McpServer
 } from "@muse/mcp";
@@ -10,13 +8,21 @@ import { ToolOutputSanitizer } from "@muse/policy";
 import type { FastifyInstance } from "fastify";
 
 import {
-  isRecord,
   parseMcpSecurityPolicyInput,
   parseMcpServerInput,
   parseToolCallBody,
-  type ApiError,
-  type JsonObject
+  type ApiError
 } from "./mcp-routes-parsers.js";
+import {
+  sendMcpError,
+  sendMcpSecurityUnavailable,
+  sendMcpServerNotFound,
+  stringifyToolOutput,
+  toCompatEnum,
+  toMcpSecurityPolicyResponse,
+  toServerDetail,
+  toServerSummary
+} from "./mcp-routes-shapers.js";
 
 export interface McpRouteMcp {
   readonly manager: McpManager;
@@ -508,70 +514,6 @@ async function findMcpServer(manager: McpManager, name: string): Promise<McpServ
   return (await manager.listServers()).find((entry) => entry.name === name);
 }
 
-function toServerSummary(server: McpServer, manager: McpManager) {
-  return {
-    autoConnect: server.autoConnect,
-    createdAt: server.createdAt.getTime(),
-    description: server.description ?? null,
-    id: server.id,
-    name: server.name,
-    status: toCompatEnum(manager.getStatus(server.name) ?? "pending"),
-    toolCount: manager.getToolCatalog(server.name).length,
-    transportType: toCompatEnum(server.transportType),
-    updatedAt: server.updatedAt.getTime()
-  };
-}
-
-function toServerDetail(server: McpServer, manager: McpManager) {
-  return {
-    autoConnect: server.autoConnect,
-    config: sanitizeConfig(server.config),
-    createdAt: server.createdAt.getTime(),
-    description: server.description ?? null,
-    id: server.id,
-    name: server.name,
-    status: toCompatEnum(manager.getStatus(server.name) ?? "pending"),
-    tools: manager.getToolCatalog(server.name).map((tool) => tool.name),
-    transportType: toCompatEnum(server.transportType),
-    updatedAt: server.updatedAt.getTime(),
-    version: server.version ?? null
-  };
-}
-
-function sendMcpServerNotFound(
-  reply: { status(statusCode: number): { send(payload: ApiError): void } },
-  name: string
-) {
-  return reply.status(404).send({
-    code: "MCP_SERVER_NOT_FOUND",
-    message: `MCP server not found: ${name}`
-  });
-}
-
-function sendMcpSecurityUnavailable(reply: { status(statusCode: number): { send(payload: ApiError): void } }) {
-  return reply.status(404).send({
-    code: "MCP_SECURITY_UNAVAILABLE",
-    message: "MCP security policy store is not configured"
-  });
-}
-
-function sendMcpError(
-  reply: { status(statusCode: number): { send(payload: ApiError): void } },
-  error: unknown
-) {
-  if (error instanceof McpRegistryError) {
-    return reply.status(409).send({
-      code: "MCP_REGISTRY_ERROR",
-      message: error.message
-    });
-  }
-
-  return reply.status(500).send({
-    code: "MCP_OPERATION_FAILED",
-    message: error instanceof Error ? error.message : "MCP operation failed"
-  });
-}
-
 function resolveMcpSecurityPolicyProvider(mcp: McpRouteMcp | undefined): McpSecurityPolicyProvider | undefined {
   if (mcp?.securityPolicyProvider) {
     return mcp.securityPolicyProvider;
@@ -580,49 +522,4 @@ function resolveMcpSecurityPolicyProvider(mcp: McpRouteMcp | undefined): McpSecu
   return mcp?.securityPolicyStore ? new McpSecurityPolicyProvider(mcp.securityPolicyStore) : undefined;
 }
 
-function toCompatEnum(value: string): string {
-  return value.toUpperCase();
-}
-
-function toMcpSecurityPolicyResponse(policy: McpSecurityPolicy) {
-  return {
-    allowedServerNames: [...policy.allowedServerNames],
-    createdAt: policy.createdAt.getTime(),
-    maxToolOutputLength: policy.maxToolOutputLength,
-    updatedAt: policy.updatedAt.getTime()
-  };
-}
-
-function sanitizeConfig(config: JsonObject): JsonObject {
-  return Object.fromEntries(
-    Object.entries(config).map(([key, value]) => [
-      key,
-      isSensitiveConfigKey(key) ? "[redacted]" : sanitizeConfigValue(value)
-    ])
-  ) as JsonObject;
-}
-
-function sanitizeConfigValue(value: JsonObject[string]): JsonObject[string] {
-  if (Array.isArray(value)) {
-    return value.map((entry) => sanitizeConfigValue(entry)) as JsonObject[string];
-  }
-
-  if (isRecord(value)) {
-    return sanitizeConfig(value as JsonObject);
-  }
-
-  return value;
-}
-
-function stringifyToolOutput(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  return JSON.stringify(value);
-}
-
-function isSensitiveConfigKey(key: string): boolean {
-  return /authorization|password|secret|token|api[_-]?key|credential/iu.test(key);
-}
 
