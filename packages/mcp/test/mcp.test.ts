@@ -2437,6 +2437,54 @@ describe("muse.context loopback server (round 167)", () => {
       expect((entry as { content?: string }).content).toBeUndefined();
     }
   });
+
+  it("active is omitted when no activeContextProvider is wired", async () => {
+    const { InMemoryContextReferenceStore } = await import("@muse/memory");
+    const store = new InMemoryContextReferenceStore();
+    const server = createContextReferenceMcpServer({ store });
+    const toolNames = server.tools.map((tool) => tool.name);
+    expect(toolNames).toEqual(["fetch", "list"]);
+  });
+
+  it("active resolves the snapshot and forwards userId / sessionId", async () => {
+    const { InMemoryContextReferenceStore } = await import("@muse/memory");
+    const store = new InMemoryContextReferenceStore();
+    const received: { userId?: string; sessionId?: string } = {};
+    const provider = {
+      resolve(options?: { readonly userId?: string; readonly sessionId?: string } | string) {
+        const opts = typeof options === "string" ? { userId: options } : options;
+        if (opts?.userId) { received.userId = opts.userId; }
+        if (opts?.sessionId) { received.sessionId = opts.sessionId; }
+        return {
+          localHour: 14,
+          nowIso: "2026-05-11T05:00:00.000Z",
+          timezone: "Asia/Seoul",
+          weekday: "Monday"
+        };
+      }
+    };
+    const conn = createLoopbackMcpConnection(
+      createContextReferenceMcpServer({ activeContextProvider: provider, store })
+    );
+    const result = await conn.callTool!("active", { sessionId: "session-42", userId: "alice" }) as {
+      found: boolean;
+      snapshot?: { timezone?: string; weekday?: string };
+    };
+    expect(result.found).toBe(true);
+    expect(result.snapshot?.timezone).toBe("Asia/Seoul");
+    expect(received).toEqual({ sessionId: "session-42", userId: "alice" });
+  });
+
+  it("active returns { found: false } when the provider returns nothing", async () => {
+    const { InMemoryContextReferenceStore } = await import("@muse/memory");
+    const store = new InMemoryContextReferenceStore();
+    const provider = { resolve: () => undefined };
+    const conn = createLoopbackMcpConnection(
+      createContextReferenceMcpServer({ activeContextProvider: provider, store })
+    );
+    const result = await conn.callTool!("active", {}) as { found: boolean };
+    expect(result.found).toBe(false);
+  });
 });
 
 describe("muse.messaging loopback server", () => {

@@ -422,9 +422,11 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     maxEntries: parseInteger(env.MUSE_CONTEXT_REF_MAX_ENTRIES, 1_000),
     ttlMs: parseInteger(env.MUSE_CONTEXT_REF_TTL_MS, 30 * 60 * 1_000)
   });
-  const contextReferenceLoopbackTools = createLoopbackMcpMuseTools(
-    createContextReferenceMcpServer({ store: contextReferenceStore })
-  );
+  // Loopback-tools construction is hoisted below `activeContextProvider`
+  // so the optional `muse.context.active` tool can hand the same
+  // provider instance the runtime uses. See the assignment near the
+  // `agentRuntime` declaration.
+  let contextReferenceLoopbackTools: readonly MuseTool[] = [];
   const notesDir = resolveNotesDir(env);
   ensureNotesDir(notesDir);
   const notesLoopbackTools = parseBoolean(env.MUSE_NOTES_ENABLED, true)
@@ -638,12 +640,19 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   ];
   // Lifted above `createAgentRuntime` so the same provider instance is
   // both injected into the runtime (for `[Active Context]` system-section
-  // composition) and exposed on the assembly for the REST surface.
+  // composition) and exposed on the assembly for the REST surface +
+  // `muse.context.active` MCP tool.
   const activeContextProvider = buildActiveContextProvider(
     env,
     parseBoolean(env.MUSE_USER_MEMORY_INJECTION, true) ? userMemoryStore : undefined,
     taskMemoryStore,
     calendarRegistry
+  );
+  contextReferenceLoopbackTools = createLoopbackMcpMuseTools(
+    createContextReferenceMcpServer({
+      store: contextReferenceStore,
+      ...(activeContextProvider ? { activeContextProvider } : {})
+    })
   );
   const agentRuntime = modelProvider && defaultModel
     ? createAgentRuntime({

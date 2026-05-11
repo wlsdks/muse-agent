@@ -1,6 +1,7 @@
 /**
  * `muse.context` loopback MCP server — agent-callable surface over
- * the `ContextReferenceStore` (Context Engineering 1.d, round 167).
+ * the `ContextReferenceStore` (Context Engineering 1.d, round 167)
+ * and the Phase-1 `ActiveContextProvider`.
  *
  * Tools:
  *   - `muse.context.fetch({ ref })` — return the full content
@@ -11,6 +12,10 @@
  *     their source tool, `originalLength`, and `createdAt`. Useful
  *     for the agent (or a debugger UI) to see what's available
  *     without fetching every blob.
+ *   - `muse.context.active({ userId?, sessionId? })` — resolve the
+ *     same `[Active Context]` snapshot the runtime injects into the
+ *     system prompt. Only registered when an `activeContextProvider`
+ *     is wired (i.e. `MUSE_ACTIVE_CONTEXT_ENABLED !== "false"`).
  *
  * The store is in-process: refs survive only within the same
  * server. Cross-process sharing is intentionally out of scope —
@@ -21,20 +26,73 @@
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { readString } from "./loopback-helpers.js";
-import type { LoopbackMcpServer } from "./loopback.js";
+import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "./loopback.js";
 import type { ContextReferenceStore } from "@muse/memory";
+
+/**
+ * Minimal structural shape of `ActiveContextProvider` from
+ * `@muse/agent-core`. Duplicated here to avoid making `@muse/mcp`
+ * depend on `@muse/agent-core` (which would tighten the dep graph
+ * for one method). `autoconfigure` passes the real provider in.
+ */
+interface ActiveContextProviderLike {
+  resolve(
+    options?: { readonly userId?: string; readonly sessionId?: string } | string
+  ): Promise<unknown> | unknown;
+}
 
 export interface ContextReferenceMcpServerOptions {
   readonly store: ContextReferenceStore;
+  /**
+   * When provided, the server exposes `muse.context.active` so the
+   * agent can read its own Phase-1 snapshot without trusting the
+   * cached `[Active Context]` block in the system prompt to still
+   * be accurate (e.g., after a long tool loop the clock moved).
+   */
+  readonly activeContextProvider?: ActiveContextProviderLike;
 }
 
 export function createContextReferenceMcpServer(
   options: ContextReferenceMcpServerOptions
 ): LoopbackMcpServer {
-  const { store } = options;
+  const { store, activeContextProvider } = options;
+  const activeTool: LoopbackMcpToolDefinition[] = activeContextProvider
+    ? [
+        {
+          description:
+            "Resolve the current `[Active Context]` snapshot (time, weekday, timezone, " +
+            "working-hours, active task, today's calendar events). Pass userId + sessionId " +
+            "to pick up the same per-user preferences the runtime uses when composing the " +
+            "system prompt.",
+          execute: async (args): Promise<JsonObject> => {
+            const userId = readString(args, "userId")?.trim();
+            const sessionId = readString(args, "sessionId")?.trim();
+            const snapshot = await activeContextProvider.resolve({
+              ...(userId ? { userId } : {}),
+              ...(sessionId ? { sessionId } : {})
+            });
+            if (!snapshot) {
+              return { found: false };
+            }
+            return { found: true, snapshot: snapshot as unknown as JsonValue };
+          },
+          inputSchema: {
+            additionalProperties: false,
+            properties: {
+              sessionId: { type: "string" },
+              userId: { type: "string" }
+            },
+            type: "object"
+          },
+          domain: "core",
+          name: "active",
+          risk: "read"
+        }
+      ]
+    : [];
 
   return {
-    description: "Server-side reference cache for large tool outputs (Context Engineering 1.d).",
+    description: "Server-side reference cache for large tool outputs + Phase-1 active-context resolver.",
     name: "muse.context",
     tools: [
       {
@@ -97,7 +155,8 @@ export function createContextReferenceMcpServer(
         domain: "core",
         name: "list",
         risk: "read"
-      }
+      },
+      ...activeTool
     ]
   };
 }
