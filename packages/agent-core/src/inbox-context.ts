@@ -61,8 +61,15 @@ export function renderInboxSection(snapshot: InboxSnapshot | undefined): string 
       // treatment. Same injection class iter 22 closed for
       // calendar event titles.
       const senderPart = message.sender ? ` ${sanitizeInline(message.sender)}:` : "";
-      const preview = truncate(message.text.replace(/\s+/gu, " ").trim(), DEFAULT_TEXT_PREVIEW);
-      lines.push(`  · ${message.receivedAtIso}${senderPart} ${preview}`);
+      // `receivedAtIso` is supposed to come from `Date.toISOString()`
+      // and is normally safe, but `InboundSummary` is fed by
+      // arbitrary `InboxContextProvider` implementations — a buggy
+      // (or hostile) adapter could land a newline-bearing string
+      // there. Round 3 defensive seam, mirrors iter 22's `dueIso`
+      // sanitisation and iter 24's episodic `createdAtIso`.
+      const receivedAtIsoSafe = sanitizeInline(message.receivedAtIso);
+      const preview = truncate(sanitizeInline(message.text), DEFAULT_TEXT_PREVIEW);
+      lines.push(`  · ${receivedAtIsoSafe}${senderPart} ${preview}`);
     }
   }
   return lines.join("\n");
