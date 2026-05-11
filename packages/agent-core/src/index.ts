@@ -177,10 +177,8 @@ export {
 } from "./inbox-context.js";
 export {
   InMemoryEpisodicRecallProvider,
-  jaccardSimilarity,
   renderEpisodicSection,
   StoreBackedEpisodicRecallProvider,
-  tokenSet,
   type EpisodicMatch,
   type EpisodicRecallProvider,
   type EpisodicRecallSnapshot,

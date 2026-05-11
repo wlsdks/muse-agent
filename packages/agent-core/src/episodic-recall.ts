@@ -191,7 +191,7 @@ function isVisibleToUser(
   return false;
 }
 
-export function tokenSet(value: string): Set<string> {
+function tokenSet(value: string): Set<string> {
   return new Set(
     value
       .toLowerCase()
@@ -200,7 +200,7 @@ export function tokenSet(value: string): Set<string> {
   );
 }
 
-export function jaccardSimilarity(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
+function jaccardSimilarity(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
   if (a.size === 0 || b.size === 0) {
     return 0;
   }
