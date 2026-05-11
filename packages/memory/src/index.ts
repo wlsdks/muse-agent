@@ -61,6 +61,25 @@ export interface ConversationTrimOptions {
    * pay zero overhead for the feature).
    */
   readonly personaSnapshot?: string;
+  /**
+   * Context Engineering Phase 5: when set, the trim's old-history
+   * pass scores each removable message via `scoreMessageImportance`
+   * and prefers removing the lowest-scoring ones first, so
+   * multi-day task state survives longer than casual chat.
+   *
+   * `"temporal"` (default) — legacy oldest-first.
+   * `"importance"` — score-aware. Messages above
+   * `importanceThreshold` are preserved when possible; the
+   * remaining-budget pressure can still force removal of high-score
+   * messages to honour the hard cap.
+   */
+  readonly compactionStrategy?: "temporal" | "importance";
+  readonly importanceThreshold?: number;
+  readonly importanceContext?: {
+    readonly activeTaskId?: string;
+    readonly activeTaskTitle?: string;
+    readonly currentFocus?: string;
+  };
 }
 
 export interface ConversationTrimResult {
@@ -169,12 +188,38 @@ export interface ConversationSummary {
   readonly summarizedUpToIndex: number;
   readonly createdAt?: Date;
   readonly updatedAt?: Date;
+  /**
+   * Context Engineering Phase 3: pre-computed embedding for
+   * episodic-recall vector search. Optional — when omitted, the
+   * summary is still saved but excluded from `findSimilar` lookups.
+   */
+  readonly embedding?: readonly number[];
+  /** Owning user. Required for per-user `findSimilar` scoping. */
+  readonly userId?: string;
+}
+
+export interface FindSimilarOptions {
+  readonly userId?: string;
+  readonly topK?: number;
+  readonly minScore?: number;
+}
+
+export interface SimilarConversationSummary {
+  readonly summary: ConversationSummary;
+  readonly similarity: number;
 }
 
 export interface ConversationSummaryStore {
   get(sessionId: string): Awaitable<ConversationSummary | undefined>;
   save(summary: ConversationSummary): Awaitable<ConversationSummary>;
   delete(sessionId: string): Awaitable<boolean>;
+  /**
+   * Context Engineering Phase 3: cosine-similarity vector search
+   * over saved embeddings. Optional — stores that pre-date the
+   * pgvector migration omit it. Callers fall back to the in-memory
+   * token-overlap recall when this method is absent.
+   */
+  findSimilar?(embedding: readonly number[], options?: FindSimilarOptions): Awaitable<readonly SimilarConversationSummary[]>;
 }
 
 export const DEFAULT_CACHE_KEY_MAX_CHARS = 2_000;
@@ -206,11 +251,21 @@ export const DEFAULT_TASK_MEMORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 // pair) lives in packages/memory/src/memory-conversation-summary-store.ts.
 export {
   buildConversationSummaryUpsertQuery,
+  cosineSimilarityVector,
   createConversationSummaryInsert,
+  formatVectorLiteral,
   InMemoryConversationSummaryStore,
   KyselyConversationSummaryStore,
-  mapConversationSummaryRow
+  mapConversationSummaryRow,
+  parseVectorLiteral
 } from "./memory-conversation-summary-store.js";
+
+// Context Engineering Phase 5: message importance scoring.
+export {
+  IMPORTANCE_DEFAULT_THRESHOLD,
+  scoreMessageImportance,
+  type ImportanceContext
+} from "./message-importance.js";
 
 
 export interface KyselyTaskMemoryStoreOptions {

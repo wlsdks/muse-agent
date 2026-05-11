@@ -31,6 +31,7 @@ import {
   type TokenEstimator,
   type TokenEstimatorOptions
 } from "./index.js";
+import { IMPORTANCE_DEFAULT_THRESHOLD, scoreMessageImportance } from "./message-importance.js";
 
 interface CacheEntry {
   readonly expiresAt: number;
@@ -173,6 +174,9 @@ export function trimConversationMessages(
       ? (workingTarget as number)
       : hardBudgetTokens;
 
+  if (options.compactionStrategy === "importance") {
+    totalTokens = trimByImportance(messages, tokens, totalTokens, trimTarget, options);
+  }
   totalTokens = trimOldHistory(messages, tokens, totalTokens, trimTarget);
   totalTokens -= ensureBoundaryIntegrity(messages, tokens);
   totalTokens = trimLeadingMemoryMessages(messages, tokens, totalTokens, trimTarget);
@@ -211,6 +215,74 @@ export function trimConversationMessages(
     summaryInserted,
     triggeredBy
   };
+}
+
+/**
+ * Score-aware first pass for the importance compaction strategy.
+ * Looks at the removable window (between the leading system messages
+ * and the last user message) and drops low-importance messages first,
+ * stopping as soon as the conversation fits the trim target. Always
+ * preserves message-pair integrity by deferring to the regular
+ * `trimOldHistory` pass for any structural cleanup; this pass only
+ * picks LOW-score victims and never touches high-importance ones
+ * until they're the only options left.
+ */
+function trimByImportance(
+  messages: ConversationMessage[],
+  tokens: number[],
+  currentTokens: number,
+  budgetTokens: number,
+  options: ConversationTrimOptions
+): number {
+  if (currentTokens <= budgetTokens) {
+    return currentTokens;
+  }
+  const threshold = options.importanceThreshold ?? IMPORTANCE_DEFAULT_THRESHOLD;
+  const totalMessagesForScoring = messages.length;
+  let totalTokens = currentTokens;
+  const skipCount = firstNonSystemIndex(messages);
+  const protectedIndex = Math.max(0, findLastIndex(messages, (message) => message.role === "user"));
+
+  while (totalTokens > budgetTokens) {
+    let victimIndex = -1;
+    let victimScore = Infinity;
+    for (let index = skipCount; index < protectedIndex; index++) {
+      const message = messages[index];
+      if (!message) {
+        continue;
+      }
+      // Don't pick a tool-call assistant alone — that would orphan
+      // its tool replies and break boundary integrity. The follow-up
+      // `trimOldHistory` pass handles those as groups.
+      if (message.role === "assistant" && hasToolCalls(message)) {
+        continue;
+      }
+      // Don't pick a tool reply alone — same reason.
+      if (message.role === "tool") {
+        continue;
+      }
+      const score = scoreMessageImportance(message, {
+        activeTaskId: options.importanceContext?.activeTaskId,
+        activeTaskTitle: options.importanceContext?.activeTaskTitle,
+        currentFocus: options.importanceContext?.currentFocus,
+        messageIndex: index,
+        totalMessages: totalMessagesForScoring
+      });
+      if (score >= threshold) {
+        continue;
+      }
+      if (score < victimScore) {
+        victimScore = score;
+        victimIndex = index;
+      }
+    }
+    if (victimIndex < 0) {
+      break;
+    }
+    totalTokens -= removeAt(messages, tokens, victimIndex, 1);
+  }
+
+  return totalTokens;
 }
 
 function trimOldHistory(
