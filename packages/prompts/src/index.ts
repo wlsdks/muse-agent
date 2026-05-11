@@ -427,9 +427,13 @@ export function splitPromptCacheBoundary(prompt: string): CacheBoundarySplit | u
 }
 
 export function stripPromptCacheBoundary(prompt: string): string {
+  // `replaceAll` so multiple markers (e.g. a buggy producer that
+  // emitted the marker twice, or a future change that appends a
+  // second one) are all removed — `replace` only handled the first
+  // occurrence and would leak the rest into the model context.
   return prompt
-    .replace(`\n${MUSE_CACHE_BOUNDARY_MARKER}\n`, "\n")
-    .replace(MUSE_CACHE_BOUNDARY_MARKER, "");
+    .replaceAll(`\n${MUSE_CACHE_BOUNDARY_MARKER}\n`, "\n")
+    .replaceAll(MUSE_CACHE_BOUNDARY_MARKER, "");
 }
 
 export function buildPromptContextPacket(input: PromptBuildInput): PromptContextPacket {

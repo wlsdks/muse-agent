@@ -122,6 +122,20 @@ describe("system prompt building", () => {
     expect(stripPromptCacheBoundary(prompt)).toBe("stable\ndynamic");
   });
 
+  it("strips ALL occurrences of the boundary marker, not just the first (iter 21)", () => {
+    // A buggy producer or a future code path that emits two markers
+    // — accidental or otherwise — must not leak the second one to
+    // the model. `replaceAll` defends against that.
+    const prompt = [
+      "stable",
+      MUSE_CACHE_BOUNDARY_MARKER,
+      "mid",
+      MUSE_CACHE_BOUNDARY_MARKER,
+      "dynamic"
+    ].join("\n");
+    expect(stripPromptCacheBoundary(prompt)).not.toContain(MUSE_CACHE_BOUNDARY_MARKER);
+  });
+
   it("builds sanitized context packet values for audit metadata", () => {
     expect(
       buildPromptContextPacket({
