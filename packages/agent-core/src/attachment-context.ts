@@ -50,17 +50,29 @@ export function parseAttachmentsFromMetadata(metadata: unknown): readonly Attach
       continue;
     }
     const record = entry as Record<string, unknown>;
-    const name = boundedString(record.name, MAX_NAME_CHARS);
+    // EVERY user-supplied string gets the same inline-sanitisation
+    // pass before the bound check. Round 1 (iter 4) only sanitised
+    // `description`, which left a CRLF or `\n[System Override]\n`
+    // injection vector wide open on `name` — the most prominent
+    // field of all. `name` / `mimeType` / `ref` all sit on the
+    // `- name · mime · size · ref=…` header line in
+    // `[Attached Files]`, so a literal newline anywhere there can
+    // splice a fake section into the prompt.
+    const name = boundedString(
+      typeof record.name === "string" ? sanitizeInline(record.name) : undefined,
+      MAX_NAME_CHARS
+    );
     if (!name) {
       continue;
     }
-    const mimeType = boundedString(record.mimeType, MAX_MIME_CHARS);
-    const ref = boundedString(record.ref, MAX_REF_CHARS);
-    // Description is rendered inline in the prompt, so collapse any
-    // control / newline characters to spaces — otherwise the
-    // `[Attached Files]` block layout breaks AND a hostile metadata
-    // source could splice extra pseudo-section headers via embedded
-    // newlines.
+    const mimeType = boundedString(
+      typeof record.mimeType === "string" ? sanitizeInline(record.mimeType) : undefined,
+      MAX_MIME_CHARS
+    );
+    const ref = boundedString(
+      typeof record.ref === "string" ? sanitizeInline(record.ref) : undefined,
+      MAX_REF_CHARS
+    );
     const description = boundedString(
       typeof record.description === "string" ? sanitizeInline(record.description) : undefined,
       MAX_DESCRIPTION_CHARS
