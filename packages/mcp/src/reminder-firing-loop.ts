@@ -1,5 +1,6 @@
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
+import { appendReminderHistory } from "./personal-reminder-history-store.js";
 import {
   filterReminders,
   fireReminder,
@@ -29,6 +30,14 @@ export interface RunDueRemindersOptions {
   readonly providerId: string;
   readonly destination: string;
   readonly now?: () => Date;
+  /**
+   * When set, every delivery attempt (success or failure) is
+   * appended to this file via `appendReminderHistory`. Records the
+   * resolved providerId/destination so the user can audit "did the
+   * 9am reminder actually land?" weeks later — even if the source
+   * reminder has since been cleared.
+   */
+  readonly historyFile?: string;
 }
 
 export interface RunDueRemindersSummary {
@@ -53,17 +62,20 @@ export async function runDueReminders(options: RunDueRemindersOptions): Promise<
   let next: readonly PersistedReminder[] = all;
 
   for (const reminder of due) {
+    // Phase C: per-reminder routing wins when set; the loop's
+    // defaults are the fallback when the reminder doesn't
+    // declare a destination. Resolved before the try so the
+    // history record can attribute the failure to the same
+    // resolved destination on the failure path.
+    const providerId = reminder.via?.providerId ?? options.providerId;
+    const destination = reminder.via?.destination ?? options.destination;
     try {
-      // Phase C: per-reminder routing wins when set; the loop's
-      // defaults are the fallback when the reminder doesn't
-      // declare a destination.
-      const providerId = reminder.via?.providerId ?? options.providerId;
-      const destination = reminder.via?.destination ?? options.destination;
       await options.registry.send(providerId, {
         destination,
         text: reminder.text
       });
-      const updated = fireReminder(next, reminder.id, now().toISOString());
+      const firedAtIso = now().toISOString();
+      const updated = fireReminder(next, reminder.id, firedAtIso);
       if (updated) {
         next = updated;
         const justFired = updated.find((entry) => entry.id === reminder.id);
@@ -72,8 +84,30 @@ export async function runDueReminders(options: RunDueRemindersOptions): Promise<
         }
       }
       delivered += 1;
+      if (options.historyFile) {
+        await appendReminderHistory(options.historyFile, {
+          destination,
+          firedAtIso,
+          providerId,
+          reminderId: reminder.id,
+          status: "delivered",
+          text: reminder.text
+        });
+      }
     } catch (cause) {
-      errors.push(`${reminder.id}: ${cause instanceof Error ? cause.message : String(cause)}`);
+      const message = cause instanceof Error ? cause.message : String(cause);
+      errors.push(`${reminder.id}: ${message}`);
+      if (options.historyFile) {
+        await appendReminderHistory(options.historyFile, {
+          destination,
+          error: message,
+          firedAtIso: now().toISOString(),
+          providerId,
+          reminderId: reminder.id,
+          status: "failed",
+          text: reminder.text
+        });
+      }
     }
   }
 

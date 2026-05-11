@@ -28,6 +28,13 @@ export interface ReminderTickOptions {
   readonly logger?: (message: string) => void;
   readonly errorLogger?: (message: string) => void;
   /**
+   * Optional reminder-history sidecar (default
+   * ~/.muse/reminder-history.json). When set, every delivery
+   * attempt is appended so `muse.reminders.history` can audit
+   * "did the 9am reminder land?" weeks later.
+   */
+  readonly historyFile?: string;
+  /**
    * Phase D quiet-hours window in local time. Inclusive start,
    * exclusive end; supports midnight wrap (e.g. 23–7 means 23:00,
    * 00:00 … 06:59 are quiet, 07:00 onwards fires). When a tick
@@ -114,7 +121,8 @@ export function startReminderTick(options: ReminderTickOptions): ReminderTickHan
         destination: options.destination,
         file: options.remindersFile,
         providerId: options.providerId,
-        registry: options.registry
+        registry: options.registry,
+        ...(options.historyFile ? { historyFile: options.historyFile } : {})
       });
       if (summary.delivered > 0 || summary.errors.length > 0) {
         options.logger?.(

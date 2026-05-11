@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { errorMessage, readString } from "./loopback-helpers.js";
-import type { LoopbackMcpServer } from "./loopback.js";
+import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "./loopback.js";
+import { readReminderHistory } from "./personal-reminder-history-store.js";
 import {
   filterReminders,
   fireReminder,
@@ -46,6 +47,14 @@ export interface RemindersMcpServerOptions {
   readonly idFactory?: () => string;
   readonly now?: () => Date;
   readonly maxListEntries?: number;
+  /**
+   * When set, the `history` tool is registered so the agent can audit
+   * recent delivery attempts. Backed by the same file the firing
+   * daemon writes via `appendReminderHistory`. When omitted, the
+   * tool simply doesn't appear — same pattern as the messaging
+   * MCP server's optional `pollNow` / `pollAll`.
+   */
+  readonly historyFile?: string;
 }
 
 export function createRemindersMcpServer(options: RemindersMcpServerOptions): LoopbackMcpServer {
@@ -53,12 +62,49 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
   const idFactory = options.idFactory ?? (() => `rem_${randomUUID()}`);
   const now = options.now ?? (() => new Date());
   const maxListEntries = Math.max(1, Math.trunc(options.maxListEntries ?? 200));
+  const historyFile = options.historyFile;
+
+  const historyTool: LoopbackMcpToolDefinition[] = historyFile ? [{
+    description:
+      "Audit recent reminder delivery attempts. Returns the daemon's per-firing log " +
+      "(newest first) with `reminderId`, `text`, `providerId`, `destination`, `firedAtIso`, " +
+      "`status` ('delivered' | 'failed'), and `error` on failure. Default limit 100, cap 500. " +
+      "Use this to answer 'did the 9am reminder land?' / 'why didn't my Slack reminder fire?'.",
+    execute: async (args): Promise<JsonObject> => {
+      const limitRaw = args["limit"];
+      const limit = typeof limitRaw === "number" && Number.isFinite(limitRaw)
+        ? Math.max(1, Math.min(500, Math.trunc(limitRaw)))
+        : undefined;
+      try {
+        const entries = await readReminderHistory(historyFile, limit);
+        return {
+          entries: entries as unknown as JsonValue,
+          total: entries.length
+        };
+      } catch (error) {
+        return { error: errorMessage(error) };
+      }
+    },
+    inputSchema: {
+      additionalProperties: false,
+      properties: {
+        limit: {
+          description: "Max entries to return (newest first). Default 100, cap 500.",
+          type: "number"
+        }
+      },
+      type: "object"
+    },
+    name: "history",
+    risk: "read"
+  }] : [];
 
   return {
     description:
       "Personal reminders (passive — surfaced in `muse today`). Single JSON file, loopback MCP.",
     name: "muse.reminders",
     tools: [
+      ...historyTool,
       {
         description:
           "Add a one-shot reminder. `text` is the reminder body. `dueAt` accepts either an ISO-8601 timestamp " +

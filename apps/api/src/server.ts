@@ -119,6 +119,13 @@ export interface ServerOptions {
   }>;
   readonly remindersFile?: string;
   /**
+   * Optional reminder-history sidecar (default
+   * ~/.muse/reminder-history.json). When configured, the daemon
+   * appends each firing attempt so `muse.reminders.history` can
+   * audit recent deliveries.
+   */
+  readonly reminderHistoryFile?: string;
+  /**
    * Path to the persisted LINE inbox (default ~/.muse/line-inbox.json).
    * Combined with `MUSE_LINE_CHANNEL_SECRET` from env, enables the
    * `POST /api/messaging/webhooks/line` route.
@@ -365,6 +372,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       destination: tickDestination,
       errorLogger: (message) => server.log.warn(message),
       ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
+      ...(options.reminderHistoryFile ? { historyFile: options.reminderHistoryFile } : {}),
       logger: (message) => server.log.info(message),
       providerId: tickProvider,
       ...(quietHours ? { quietHours } : {}),

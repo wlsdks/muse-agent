@@ -536,6 +536,13 @@ export {
   type ReminderVia
 } from "./personal-reminders-store.js";
 
+export {
+  appendReminderHistory,
+  readReminderHistory,
+  type AppendReminderHistoryOptions,
+  type ReminderHistoryEntry
+} from "./personal-reminder-history-store.js";
+
 // Phase B firing engine — see docs/design/reminder-firing.md. The
 // CLI's `muse remind run` and a future scheduler hook share this.
 export {

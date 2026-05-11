@@ -122,6 +122,10 @@ export function resolveRemindersFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_REMINDERS_FILE", "reminders.json");
 }
 
+export function resolveReminderHistoryFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_REMINDER_HISTORY_FILE", "reminder-history.json");
+}
+
 export function resolveLineInboxFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_LINE_INBOX_FILE", "line-inbox.json");
 }

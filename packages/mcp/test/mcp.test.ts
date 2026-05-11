@@ -3042,3 +3042,137 @@ describe("runDueReminders", () => {
     ]));
   });
 });
+
+describe("reminder-history-store", () => {
+  it("readReminderHistory returns empty for missing or malformed files", async () => {
+    const { readReminderHistory } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-hist-"));
+    expect(await readReminderHistory(join(dir, "missing.json"))).toEqual([]);
+    const garbage = join(dir, "garbage.json");
+    const { promises: fs } = await import("node:fs");
+    await fs.writeFile(garbage, "not json", "utf8");
+    expect(await readReminderHistory(garbage)).toEqual([]);
+  });
+
+  it("appends entries (newest-last on disk) and reads newest-first with limit", async () => {
+    const { appendReminderHistory, readReminderHistory } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-hist-"));
+    const file = join(dir, "h.json");
+    await appendReminderHistory(file, {
+      destination: "@me",
+      firedAtIso: "2026-05-11T08:00:00.000Z",
+      providerId: "telegram",
+      reminderId: "rem_1",
+      status: "delivered",
+      text: "Buy milk"
+    });
+    await appendReminderHistory(file, {
+      destination: "@me",
+      error: "503",
+      firedAtIso: "2026-05-11T09:00:00.000Z",
+      providerId: "telegram",
+      reminderId: "rem_2",
+      status: "failed",
+      text: "Pay rent"
+    });
+    const entries = await readReminderHistory(file);
+    expect(entries.map((e) => e.reminderId)).toEqual(["rem_2", "rem_1"]);
+    expect(entries[0]).toMatchObject({ error: "503", status: "failed" });
+    const limited = await readReminderHistory(file, 1);
+    expect(limited.map((e) => e.reminderId)).toEqual(["rem_2"]);
+  });
+});
+
+describe("runDueReminders historyFile", () => {
+  it("appends a 'delivered' entry on success and a 'failed' entry with error on failure", async () => {
+    const { runDueReminders, readReminderHistory } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-hist-fire-"));
+    const file = join(dir, "reminders.json");
+    const historyFile = join(dir, "history.json");
+    writeFileSync(file, JSON.stringify({
+      reminders: [
+        { createdAt: "2026-01-01T00:00:00Z", dueAt: "1970-01-01T00:00:00Z", id: "rem_ok", status: "pending", text: "OK" },
+        { createdAt: "2026-01-01T00:00:00Z", dueAt: "1970-01-01T00:00:00Z", id: "rem_fail", status: "pending", text: "FAIL" }
+      ]
+    }), "utf8");
+    let calls = 0;
+    const fakeRegistry = {
+      send: async (_pid: string, message: { destination: string; text: string }) => {
+        calls += 1;
+        if (message.text === "FAIL") {
+          throw new Error("upstream 503");
+        }
+        return { destination: message.destination, messageId: "stub", providerId: "telegram" };
+      }
+    };
+    await runDueReminders({
+      destination: "@me",
+      file,
+      historyFile,
+      now: () => new Date("2026-05-11T08:00:00Z"),
+      providerId: "telegram",
+      registry: fakeRegistry as unknown as Parameters<typeof runDueReminders>[0]["registry"]
+    });
+    expect(calls).toBe(2);
+    const history = await readReminderHistory(historyFile);
+    expect(history).toHaveLength(2);
+    expect(history.find((e) => e.reminderId === "rem_ok")).toMatchObject({
+      destination: "@me",
+      providerId: "telegram",
+      status: "delivered"
+    });
+    expect(history.find((e) => e.reminderId === "rem_fail")).toMatchObject({
+      error: "upstream 503",
+      status: "failed"
+    });
+  });
+});
+
+describe("muse.reminders.history tool", () => {
+  it("is hidden when no historyFile is supplied", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-history-tool-"));
+    const server = createRemindersMcpServer({ file: join(dir, "reminders.json") });
+    const connection = createLoopbackMcpConnection(server);
+    const tools = await connection.listTools();
+    expect(tools.map((t) => t.name)).not.toContain("history");
+  });
+
+  it("returns persisted entries newest-first with optional limit", async () => {
+    const { appendReminderHistory } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-history-tool-"));
+    const historyFile = join(dir, "history.json");
+    await appendReminderHistory(historyFile, {
+      destination: "@me", firedAtIso: "2026-05-11T08:00:00Z",
+      providerId: "telegram", reminderId: "rem_1", status: "delivered", text: "first"
+    });
+    await appendReminderHistory(historyFile, {
+      destination: "C123", firedAtIso: "2026-05-11T09:00:00Z",
+      providerId: "slack", reminderId: "rem_2", status: "delivered", text: "second"
+    });
+    const server = createRemindersMcpServer({
+      file: join(dir, "reminders.json"),
+      historyFile
+    });
+    const connection = createLoopbackMcpConnection(server);
+    const tools = await connection.listTools();
+    expect(tools.map((t) => t.name)).toContain("history");
+    const result = await connection.callTool!("history", {}) as { entries: unknown[]; total: number };
+    expect(result.total).toBe(2);
+    expect((result.entries[0] as { reminderId: string }).reminderId).toBe("rem_2");
+  });
+});

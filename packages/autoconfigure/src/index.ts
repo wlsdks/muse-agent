@@ -153,6 +153,7 @@ import {
   resolveDiscordInboxFile,
   resolveLineInboxFile,
   resolveNotesDir,
+  resolveReminderHistoryFile,
   resolveRemindersFile,
   resolveSlackInboxFile,
   resolveTasksFile,
@@ -176,6 +177,7 @@ export {
   resolveRemindersFile,
   resolveDiscordAfterFile,
   resolveDiscordInboxFile,
+  resolveReminderHistoryFile,
   resolveSlackAfterFile,
   resolveSlackInboxFile,
   resolveTasksFile,
@@ -535,7 +537,10 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   // first write, so a fresh install sees the tool but the file is
   // absent until the LLM adds the first reminder.
   const remindersFile = resolveRemindersFile(env);
-  const remindersLoopbackTools = createLoopbackMcpMuseTools(createRemindersMcpServer({ file: remindersFile }));
+  const reminderHistoryFile = resolveReminderHistoryFile(env);
+  const remindersLoopbackTools = createLoopbackMcpMuseTools(
+    createRemindersMcpServer({ file: remindersFile, historyFile: reminderHistoryFile })
+  );
   const schedulerHandle: { current: DynamicScheduler | undefined } = { current: undefined };
 
   // Skills (SKILL.md) registry — async disk scan deferred via
@@ -876,6 +881,7 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     ...(assembly.messagingPollNow ? { messagingPollNow: assembly.messagingPollNow } : {}),
     ...(assembly.messagingPollAll ? { messagingPollAll: assembly.messagingPollAll } : {}),
     remindersFile: resolveRemindersFile(env),
+    reminderHistoryFile: resolveReminderHistoryFile(env),
     lineInboxFile: resolveLineInboxFile(env),
     telegramInboxFile: resolveTelegramInboxFile(env),
     discordInboxFile: resolveDiscordInboxFile(env),
