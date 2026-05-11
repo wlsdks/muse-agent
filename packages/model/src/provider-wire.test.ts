@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import anthropicFixture from "../__fixtures__/web-search/anthropic-messages.json" with { type: "json" };
 import openaiFixture from "../__fixtures__/web-search/openai-responses.json" with { type: "json" };
 
 import {
+  fromAnthropicResponse,
   fromOpenAIResponsesResponse,
   parseOpenAIResponsesStream,
+  toAnthropicRequest,
   toOpenAIResponsesRequest
 } from "./provider-wire.js";
 
@@ -66,6 +69,36 @@ describe("fromOpenAIResponsesResponse", () => {
     };
     const r = fromOpenAIResponsesResponse("openai", "gpt-4o", payload);
     expect(r.citations).toEqual([]);
+  });
+});
+
+describe("toAnthropicRequest web_search injection", () => {
+  const base = { model: "anthropic/claude-3-5-sonnet-20241022", messages: [{ role: "user" as const, content: "x" }] };
+
+  it("appends web_search_20250305 tool when enabled", () => {
+    const out = toAnthropicRequest(base, "claude-3-5-sonnet-20241022", { enabled: true, maxUses: 3 });
+    const tool = (out.tools ?? []).find((t: { type?: string }) => t.type === "web_search_20250305");
+    expect(tool).toBeDefined();
+    expect(tool).toMatchObject({ type: "web_search_20250305", name: "web_search", max_uses: 3 });
+  });
+
+  it("does not append when disabled", () => {
+    const out = toAnthropicRequest(base, "claude-3-5-sonnet-20241022", { enabled: false, maxUses: 5 });
+    expect((out.tools ?? []).some((t: { type?: string }) => t.type === "web_search_20250305")).toBe(false);
+  });
+});
+
+describe("fromAnthropicResponse extracts citations", () => {
+  it("parses web_search_tool_result citations and drops encrypted_content", () => {
+    const r = fromAnthropicResponse("anthropic", "claude-3-5-sonnet-20241022", anthropicFixture);
+    expect(r.citations).toHaveLength(2);
+    expect(r.citations?.[0]).toMatchObject({ url: "https://example.com/news/a", title: "Example News A" });
+    expect(JSON.stringify(r.citations?.[0]?.providerRaw)).not.toContain("OPAQUE_BLOB");
+  });
+
+  it("output text is the concatenation of text blocks", () => {
+    const r = fromAnthropicResponse("anthropic", "claude-3-5-sonnet-20241022", anthropicFixture);
+    expect(r.output).toContain("Reports today highlight");
   });
 });
 

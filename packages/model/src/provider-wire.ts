@@ -47,11 +47,23 @@ export function toOpenAIChatRequest(request: ModelRequest, defaultModel: string 
   };
 }
 
-export function toAnthropicRequest(request: ModelRequest, defaultModel: string | undefined) {
+export function toAnthropicRequest(
+  request: ModelRequest,
+  defaultModel: string | undefined,
+  policy: { enabled: boolean; maxUses: number } = { enabled: false, maxUses: 5 }
+) {
   const system = request.messages
     .filter((message) => message.role === "system")
     .map((message) => message.content)
     .join("\n\n");
+
+  const tools: Array<Record<string, unknown>> = request.tools && request.tools.length > 0
+    ? request.tools.map(toAnthropicTool)
+    : [];
+
+  if (policy.enabled) {
+    tools.push({ type: "web_search_20250305", name: "web_search", max_uses: policy.maxUses });
+  }
 
   return {
     max_tokens: request.maxOutputTokens ?? 4096,
@@ -61,7 +73,7 @@ export function toAnthropicRequest(request: ModelRequest, defaultModel: string |
     model: parseModelName(request.model || defaultModel || "").modelId,
     ...(system.length > 0 ? { system } : {}),
     ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
-    ...(request.tools && request.tools.length > 0 ? { tools: request.tools.map(toAnthropicTool) } : {})
+    ...(tools.length > 0 ? { tools } : {})
   };
 }
 
@@ -127,7 +139,39 @@ export function fromAnthropicResponse(providerId: string, requestedModel: string
     }];
   });
 
+  const seenUrls = new Set<string>();
+  const citations: WebSearchCitation[] = [];
+
+  for (const block of content) {
+    if (!isRecord(block)) continue;
+
+    // web_search_tool_result blocks contain the actual search results
+    if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
+      for (const result of block.content) {
+        if (!isRecord(result) || result.type !== "web_search_result") continue;
+        const url = typeof result.url === "string" ? result.url : undefined;
+        const title = typeof result.title === "string" ? result.title : "";
+        if (!url || seenUrls.has(url)) continue;
+        seenUrls.add(url);
+        citations.push({ url, title, providerRaw: stripEncryptedContent(result) });
+      }
+    }
+
+    // text blocks may carry inline citation references
+    if (block.type === "text" && Array.isArray(block.citations)) {
+      for (const cite of block.citations) {
+        if (!isRecord(cite) || cite.type !== "web_search_result_location") continue;
+        const url = typeof cite.url === "string" ? cite.url : undefined;
+        const title = typeof cite.title === "string" ? cite.title : "";
+        if (!url || seenUrls.has(url)) continue;
+        seenUrls.add(url);
+        citations.push({ url, title, providerRaw: cite });
+      }
+    }
+  }
+
   return {
+    citations,
     id: typeof payload.id === "string" ? payload.id : `${providerId}-response`,
     model: typeof payload.model === "string" ? payload.model : requestedModel,
     output,
@@ -135,6 +179,11 @@ export function fromAnthropicResponse(providerId: string, requestedModel: string
     toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
     usage: parseAnthropicUsage(payload.usage)
   };
+}
+
+function stripEncryptedContent(r: Record<string, unknown>): Record<string, unknown> {
+  const { encrypted_content: _encrypted, ...rest } = r as { encrypted_content?: unknown };
+  return rest;
 }
 
 export function toGeminiRequest(request: ModelRequest) {

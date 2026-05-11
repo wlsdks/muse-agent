@@ -492,8 +492,11 @@ export class AnthropicProvider implements ModelProvider {
   }
 
   async generate(request: ModelRequest): Promise<ModelResponse> {
+    const policy = (request.metadata?.webSearchPolicy as { enabled: boolean; maxUses: number } | undefined)
+      ?? { enabled: false, maxUses: 5 };
+
     const response = await this.fetchImpl(`${this.baseUrl}/messages`, {
-      body: JSON.stringify(toAnthropicRequest(request, this.defaultModel)),
+      body: JSON.stringify(toAnthropicRequest(request, this.defaultModel, policy)),
       headers: this.requestHeaders(),
       method: "POST"
     });
