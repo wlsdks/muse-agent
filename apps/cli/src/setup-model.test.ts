@@ -48,6 +48,13 @@ describe("SETUP_MODEL_PROVIDER_SPECS", () => {
     }
   });
 
+  it("placeholderHint is descriptive (not just '...') so wizard prompts guide the user", () => {
+    for (const spec of SETUP_MODEL_PROVIDER_SPECS) {
+      const trimmed = spec.placeholderHint.replace(/\./g, "").trim();
+      expect(trimmed.length, `${spec.id} placeholderHint is too uninformative: ${JSON.stringify(spec.placeholderHint)}`).toBeGreaterThan(0);
+    }
+  });
+
   it("ollama is the only non-secret entry (env carries a base URL, not a token)", () => {
     const nonSecret = SETUP_MODEL_PROVIDER_SPECS.filter((spec) => !spec.secret).map((spec) => spec.id);
     expect(nonSecret).toEqual(["ollama"]);

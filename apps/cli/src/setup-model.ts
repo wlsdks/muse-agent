@@ -121,7 +121,7 @@ export const SETUP_MODEL_PROVIDER_SPECS: readonly SetupModelProviderSpec[] = [
     envKey: "MISTRAL_API_KEY",
     id: "mistral",
     label: "Mistral (mistral-large / codestral)",
-    placeholderHint: "...",
+    placeholderHint: "32-char opaque token",
     secret: true,
     suggestedModel: "mistral/mistral-small-latest"
   },
