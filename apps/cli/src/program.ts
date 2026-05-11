@@ -236,6 +236,25 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       writeOutput(io, await apiRequest(io, command, "/api/admin/muse/snapshot"));
     });
 
+  program
+    .command("context")
+    .description("GET /api/active-context — print the Phase-1 active-context snapshot the agent sees")
+    .option("--json", "Print machine-readable JSON instead of the formatted summary")
+    .option("--user <id>", "Resolve the snapshot for a specific userId")
+    .option("--session <id>", "Resolve the snapshot for a specific sessionId")
+    .action(async (options: { readonly json?: boolean; readonly user?: string; readonly session?: string }, command) => {
+      const params = new URLSearchParams();
+      if (options.user) { params.set("userId", options.user); }
+      if (options.session) { params.set("sessionId", options.session); }
+      const qs = params.toString();
+      const snapshot = await apiRequest(io, command, `/api/active-context${qs ? `?${qs}` : ""}`) as Record<string, unknown>;
+      if (options.json) {
+        writeOutput(io, snapshot);
+        return;
+      }
+      io.stdout(`${renderActiveContext(snapshot)}\n`);
+    });
+
   registerCalendarCommands(program, io, { apiRequest, writeOutput });
   registerMemoryCommands(program, io, { apiRequest, writeOutput });
   registerMessagingCommands(program, io, { apiRequest, writeOutput });
@@ -677,6 +696,51 @@ function writeOutput(io: ProgramIO, value: unknown, textField?: string): void {
 
 function dropUndefined(value: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value).filter((entry) => entry[1] !== undefined));
+}
+
+function renderActiveContext(snapshot: Record<string, unknown>): string {
+  // Pretty-print the same fields the agent loop renders into the
+  // `[Active Context]` system section. Layout mirrors
+  // `renderActiveContextSection` from @muse/agent-core so the CLI
+  // operator sees what the prompt will contain — without committing
+  // to a structural import that drags agent-core into the CLI tree.
+  const lines: string[] = [];
+  const nowIso = typeof snapshot.nowIso === "string" ? snapshot.nowIso : undefined;
+  const weekday = typeof snapshot.weekday === "string" ? snapshot.weekday : "?";
+  const timezone = typeof snapshot.timezone === "string" ? snapshot.timezone : "?";
+  lines.push(`now=${nowIso ?? "?"} (${weekday}, ${timezone})`);
+  const workingHours = isRecord(snapshot.workingHours)
+    ? snapshot.workingHours as { start?: number; end?: number }
+    : undefined;
+  if (workingHours && typeof workingHours.start === "number" && typeof workingHours.end === "number") {
+    const inWindow = snapshot.isWorkingHours === undefined
+      ? "unknown"
+      : snapshot.isWorkingHours ? "yes" : "no";
+    lines.push(`working_hours=${workingHours.start.toString()}-${workingHours.end.toString()} (in_window=${inWindow})`);
+  }
+  if (typeof snapshot.currentFocus === "string" && snapshot.currentFocus.trim()) {
+    lines.push(`current_focus: ${snapshot.currentFocus}`);
+  }
+  const activeTask = isRecord(snapshot.activeTask) ? snapshot.activeTask : undefined;
+  if (activeTask && typeof activeTask.title === "string") {
+    const parts = [activeTask.title];
+    if (typeof activeTask.id === "string") { parts.push(`id=${activeTask.id}`); }
+    if (typeof activeTask.dueIso === "string") { parts.push(`due=${activeTask.dueIso}`); }
+    lines.push(`active_task: ${parts.join(" · ")}`);
+  }
+  const events = Array.isArray(snapshot.todaysEvents) ? snapshot.todaysEvents : [];
+  if (events.length > 0) {
+    lines.push("today_events:");
+    for (const eventValue of events.slice(0, 8)) {
+      if (!isRecord(eventValue)) { continue; }
+      const title = typeof eventValue.title === "string" ? eventValue.title : "(untitled)";
+      const startIso = typeof eventValue.startIso === "string" ? eventValue.startIso : "?";
+      const allDay = eventValue.allDay === true;
+      const locationPart = typeof eventValue.location === "string" ? ` @ ${eventValue.location}` : "";
+      lines.push(`  · ${allDay ? "(all day)" : startIso} ${title}${locationPart}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 interface RunLogInput {

@@ -564,6 +564,65 @@ describe("cli program", () => {
     expect(requests[2]?.url).toBe("http://api.test/api/multi-agent/orchestrations/stats");
   });
 
+  it("context hits /api/active-context and renders the snapshot inline", async () => {
+    const { io, output } = captureOutput();
+    const requests: Array<{ readonly method?: string; readonly url: string }> = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url, init) => {
+        requests.push({ method: init?.method, url: String(url) });
+        return new Response(JSON.stringify({
+          activeTask: { dueIso: "2026-05-11T08:00:00.000Z", id: "task-7", title: "Plan iteration loop" },
+          currentFocus: "muse decomp",
+          isWorkingHours: true,
+          localHour: 14,
+          nowIso: "2026-05-11T05:00:00.000Z",
+          timezone: "Asia/Seoul",
+          todaysEvents: [{ allDay: false, location: "Zoom", startIso: "2026-05-11T07:00:00.000Z", title: "Standup" }],
+          weekday: "Monday",
+          workingHours: { end: 18, start: 9 }
+        }));
+      }
+    });
+
+    await program.parseAsync(["node", "muse", "--api-url", "http://api.test", "context"], { from: "node" });
+    expect(requests[0]).toMatchObject({ url: "http://api.test/api/active-context", method: "GET" });
+    const combined = output.join("");
+    expect(combined).toContain("now=2026-05-11T05:00:00.000Z (Monday, Asia/Seoul)");
+    expect(combined).toContain("working_hours=9-18 (in_window=yes)");
+    expect(combined).toContain("current_focus: muse decomp");
+    expect(combined).toContain("active_task: Plan iteration loop · id=task-7 · due=2026-05-11T08:00:00.000Z");
+    expect(combined).toContain("today_events:");
+    expect(combined).toContain("Standup @ Zoom");
+  });
+
+  it("context --json prints the raw snapshot and forwards user/session params", async () => {
+    const { io, output } = captureOutput();
+    const requests: Array<{ readonly method?: string; readonly url: string }> = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url, init) => {
+        requests.push({ method: init?.method, url: String(url) });
+        return new Response(JSON.stringify({
+          localHour: 9,
+          nowIso: "2026-05-11T00:00:00.000Z",
+          timezone: "UTC",
+          weekday: "Monday"
+        }));
+      }
+    });
+
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "context", "--json", "--user", "alice", "--session", "s-42"],
+      { from: "node" }
+    );
+    expect(requests[0]?.url).toContain("/api/active-context?");
+    expect(requests[0]?.url).toContain("userId=alice");
+    expect(requests[0]?.url).toContain("sessionId=s-42");
+    const combined = output.join("");
+    expect(combined).toContain('"timezone": "UTC"');
+  });
+
   it("runtime / loopback / snapshot hit the Muse endpoints and print JSON", async () => {
     const { io, output } = captureOutput();
     const requests: Array<{ readonly method?: string; readonly url: string }> = [];
