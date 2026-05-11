@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider, useMutation, useQuery } from "@tansta
 import { useMemo, useRef, useState } from "react";
 
 import {
+  ActiveContextPanel,
   CalendarEventsPanel,
   MemoryPanel,
   MessagingInboxPanel,
@@ -152,6 +153,7 @@ export function MuseConsole() {
         <aside className="side-panel">
           <VoicePanel apiUrl={apiUrl} token={token} />
           <TodayBriefPanel client={client} />
+          <ActiveContextPanel client={client} />
           <SetupPanel client={client} />
           <TasksPanel client={client} />
           <RemindersPanel client={client} />

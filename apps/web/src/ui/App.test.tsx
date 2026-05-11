@@ -88,6 +88,16 @@ describe("MuseConsole", () => {
     expect(html).toMatch(/<h2>Setup<\/h2>/u);
   });
 
+  it("renders the Active context panel section heading", () => {
+    const html = renderConsole();
+    // ActiveContextPanel queries /api/active-context; queries are
+    // disabled in static render so snapshot.data is undefined → both
+    // the snapshot-list and disabled-hint branches are skipped and
+    // only the header renders.
+    expect(html).toContain('aria-label="Active context"');
+    expect(html).toMatch(/<h2>Active context<\/h2>/u);
+  });
+
   it("renders the Messaging panel section heading", () => {
     const html = renderConsole();
     expect(html).toContain('aria-label="Messaging"');

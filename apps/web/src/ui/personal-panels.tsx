@@ -843,3 +843,7 @@ export function MessagingInboxPanel({ client }: { readonly client: ApiClient }) 
 // SetupPanel (Loop #70) lives in its own file; re-exported here so
 // App.tsx's barrel import keeps working.
 export { SetupPanel } from "./setup-panel.js";
+
+// ActiveContextPanel — read-only view of GET /api/active-context.
+// Same barrel-re-export pattern as SetupPanel / RemindersPanel.
+export { ActiveContextPanel } from "./active-context-panel.js";
