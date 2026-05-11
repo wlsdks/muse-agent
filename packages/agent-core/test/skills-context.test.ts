@@ -98,7 +98,7 @@ describe("applySkillsContext (iter 15)", () => {
     expect(emptyProvider).toBe(original.input);
   });
 
-  it("fails open when provider.list throws", async () => {
+  it("fails open + stamps skillsCatalogFailed when provider.list throws (iter 19)", async () => {
     const original = {
       input: { messages: [{ content: "hi", role: "user" as const }], model: "diagnostic/smoke" },
       runId: "r-3",
@@ -109,6 +109,10 @@ describe("applySkillsContext (iter 15)", () => {
         throw new Error("registry down");
       }
     });
-    expect(result).toBe(original.input);
+    // Prompt-level fail-open: no [Available Skills] section appended.
+    expect(result.messages).toBe(original.input.messages);
+    // Observability surface: failure metadata is stamped.
+    const metadata = result.metadata as { skillsCatalogFailed?: boolean };
+    expect(metadata.skillsCatalogFailed).toBe(true);
   });
 });

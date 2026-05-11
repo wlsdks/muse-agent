@@ -187,6 +187,15 @@ export function recordContextEngineeringSpanAttributes(span: SpanHandle, metadat
   setNumericAttr(span, "ctx.attachment_count", record["attachmentContextCount"]);
   setBooleanAttr(span, "ctx.skills_catalog_applied", record["skillsCatalogApplied"]);
   setNumericAttr(span, "ctx.skills_catalog_count", record["skillsCatalogCount"]);
+  // Failure flags — iter 19. Each transform stamps `xxxFailed: true`
+  // in its fail-open catch block. Surfacing the flag onto the span
+  // lets ops distinguish a silently-throwing transform from one
+  // that simply wasn't configured. Healthy turns leave these
+  // attributes absent — only set when something actually broke.
+  setBooleanAttr(span, "ctx.inbox_context_failed", record["inboxContextFailed"]);
+  setBooleanAttr(span, "ctx.episodic_recall_failed", record["episodicRecallFailed"]);
+  setBooleanAttr(span, "ctx.user_memory_failed", record["userMemoryFailed"]);
+  setBooleanAttr(span, "ctx.skills_catalog_failed", record["skillsCatalogFailed"]);
 }
 
 function setBooleanAttr(span: SpanHandle, key: string, value: unknown): void {

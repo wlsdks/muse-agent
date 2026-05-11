@@ -115,6 +115,34 @@ describe("recordContextEngineeringSpanAttributes (iter 8)", () => {
     recordContextEngineeringSpanAttributes(span, undefined);
     expect(span.recorded).toEqual([]);
   });
+
+  it("surfaces every transform failure flag (iter 19)", () => {
+    const span = fakeSpan();
+    recordContextEngineeringSpanAttributes(span, {
+      episodicRecallFailed: true,
+      inboxContextFailed: true,
+      skillsCatalogFailed: true,
+      userMemoryFailed: true
+    });
+    const byKey = new Map(span.recorded.map((entry) => [entry.key, entry.value]));
+    expect(byKey.get("ctx.inbox_context_failed")).toBe(true);
+    expect(byKey.get("ctx.episodic_recall_failed")).toBe(true);
+    expect(byKey.get("ctx.user_memory_failed")).toBe(true);
+    expect(byKey.get("ctx.skills_catalog_failed")).toBe(true);
+  });
+
+  it("leaves failure attributes absent on a healthy turn (iter 19)", () => {
+    const span = fakeSpan();
+    recordContextEngineeringSpanAttributes(span, {
+      activeContextApplied: true,
+      inboxContextApplied: true
+    });
+    const keys = span.recorded.map((entry) => entry.key);
+    expect(keys).not.toContain("ctx.inbox_context_failed");
+    expect(keys).not.toContain("ctx.episodic_recall_failed");
+    expect(keys).not.toContain("ctx.user_memory_failed");
+    expect(keys).not.toContain("ctx.skills_catalog_failed");
+  });
 });
 
 describe("recordUsageSpanAttributes", () => {

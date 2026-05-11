@@ -71,7 +71,13 @@ export async function applySkillsContext(
   try {
     entries = await provider.list();
   } catch {
-    return context.input;
+    return {
+      ...context.input,
+      metadata: {
+        ...context.input.metadata,
+        skillsCatalogFailed: true
+      }
+    };
   }
   const rendered = renderSkillsCatalogSection(entries);
   if (!rendered) {
