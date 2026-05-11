@@ -12,7 +12,7 @@ import {
   nowIso,
   readBodyString,
   coerceNumber,
-  readStringSet,
+  coerceStringSet,
   toBody,
   type ParseResult,
   type CompatibilityRouteOptions
@@ -174,10 +174,10 @@ function parseJsonOrText(text: string): unknown {
 export function parseMcpAccessPolicy(value: unknown): ParseResult<JsonObject> {
   const body = toBody(value);
   const parsed: JsonObject = {
-    allowedBitbucketRepositories: readStringSet(body.allowedBitbucketRepositories),
-    allowedConfluenceSpaceKeys: readStringSet(body.allowedConfluenceSpaceKeys),
-    allowedJiraProjectKeys: readStringSet(body.allowedJiraProjectKeys),
-    allowedSourceNames: readStringSet(body.allowedSourceNames),
+    allowedBitbucketRepositories: coerceStringSet(body.allowedBitbucketRepositories),
+    allowedConfluenceSpaceKeys: coerceStringSet(body.allowedConfluenceSpaceKeys),
+    allowedJiraProjectKeys: coerceStringSet(body.allowedJiraProjectKeys),
+    allowedSourceNames: coerceStringSet(body.allowedSourceNames),
     allowDirectUrlLoads: nullableBoolean(body.allowDirectUrlLoads),
     allowPreviewReads: nullableBoolean(body.allowPreviewReads),
     allowPreviewWrites: nullableBoolean(body.allowPreviewWrites),

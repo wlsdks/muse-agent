@@ -48,7 +48,7 @@ export function stringArrayField(value: unknown, fallback: string[]): string[] {
   return parsed ? [...parsed] : fallback;
 }
 
-export function readStringSet(value: unknown): string[] {
+export function coerceStringSet(value: unknown): string[] {
   if (Array.isArray(value)) {
     return [...new Set(value.filter((item): item is string => typeof item === "string" && item.trim().length > 0))];
   }
@@ -88,7 +88,7 @@ export function coerceNumber(value: unknown, fallback: number): number {
   return fallback;
 }
 
-export function readNullableNumber(value: unknown): number | undefined {
+export function coerceNullableNumber(value: unknown): number | undefined {
   const parsed = coerceNumber(value, Number.NaN);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
@@ -120,7 +120,7 @@ export function readQueryString(request: FastifyRequest, key: string): string | 
 
 export function readQueryStringSet(request: FastifyRequest, key: string): Set<string> {
   const query = request.query as Record<string, unknown>;
-  return new Set(readStringSet(query[key]));
+  return new Set(coerceStringSet(query[key]));
 }
 
 export function readQueryInteger(request: FastifyRequest, key: string, fallback: number): number {
