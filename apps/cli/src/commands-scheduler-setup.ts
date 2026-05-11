@@ -23,7 +23,7 @@ export interface SchedulerSetupHelpers {
     command: Command,
     path: string,
     body?: Record<string, unknown>,
-    method?: "GET" | "POST"
+    method?: "GET" | "POST" | "PUT" | "DELETE"
   ) => Promise<unknown>;
   readonly writeOutput: (io: ProgramIO, value: unknown, textField?: string) => void;
 }
@@ -77,6 +77,28 @@ export function registerSchedulerCommands(program: Command, io: ProgramIO, helpe
       writeOutput(
         io,
         await apiRequest(io, command, `/api/scheduler/jobs/${encodeURIComponent(jobId)}/dry-run`, undefined, "POST")
+      );
+    });
+
+  scheduler
+    .command("delete")
+    .description("Delete a scheduled job")
+    .argument("<job-id>", "Job ID")
+    .action(async (jobId: string, _options, command) => {
+      writeOutput(
+        io,
+        await apiRequest(io, command, `/api/scheduler/jobs/${encodeURIComponent(jobId)}`, undefined, "DELETE")
+      );
+    });
+
+  scheduler
+    .command("executions")
+    .description("List recent executions for a scheduled job")
+    .argument("<job-id>", "Job ID")
+    .action(async (jobId: string, _options, command) => {
+      writeOutput(
+        io,
+        await apiRequest(io, command, `/api/scheduler/jobs/${encodeURIComponent(jobId)}/executions`)
       );
     });
 }
