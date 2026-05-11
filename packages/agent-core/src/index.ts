@@ -51,6 +51,7 @@ import {
   latestUserPrompt,
   metadataString,
   numberMetadata,
+  projectTelemetryMetadata,
   recordContextEngineeringSpanAttributes,
   recordContextWindowSpanAttributes,
   recordPromptBudgetSpanAttributes,
@@ -88,6 +89,7 @@ import type { ActiveContextProvider, ActiveContextSnapshot } from "./active-cont
 import { applyAttachmentContext as applyAttachmentContextFn } from "./attachment-context.js";
 import { applySkillsContext as applySkillsContextFn, type SkillCatalogProvider } from "./skills-context.js";
 import { measureSystemPromptBudget, promptBudgetSpanAttributes } from "./prompt-budget.js";
+import type { TelemetryAggregator } from "./telemetry-aggregator.js";
 import type { InboxContextProvider } from "./inbox-context.js";
 import type { EpisodicRecallProvider } from "./episodic-recall.js";
 import type { ToolFilter } from "./tool-filter.js";
@@ -213,6 +215,14 @@ export {
   type PromptBudgetReport,
   type PromptBudgetSection
 } from "./prompt-budget.js";
+export {
+  InMemoryTelemetryAggregator,
+  type InMemoryTelemetryAggregatorOptions,
+  type RunTelemetryEvent,
+  type TelemetryAggregator,
+  type TelemetrySummary,
+  type TelemetrySummaryOptions
+} from "./telemetry-aggregator.js";
 
 
 export {
@@ -312,6 +322,13 @@ export interface AgentRuntimeOptions {
    * block listing registered external-CLI integrations.
    */
   readonly skillCatalogProvider?: SkillCatalogProvider;
+  /**
+   * Telemetry aggregator (phase A). When provided, the runtime
+   * records one `RunTelemetryEvent` per successful run so the
+   * operator can later query daily / weekly summaries via
+   * `aggregator.summary()`.
+   */
+  readonly telemetryAggregator?: TelemetryAggregator;
   readonly defaults?: {
     readonly maxOutputTokens?: number;
     readonly temperature?: number;
@@ -421,6 +438,7 @@ export class AgentRuntime {
   private readonly episodicRecallProvider?: EpisodicRecallProvider;
   private readonly toolFilter?: ToolFilter;
   private readonly skillCatalogProvider?: SkillCatalogProvider;
+  private readonly telemetryAggregator?: TelemetryAggregator;
   private readonly defaults: AgentRuntimeOptions["defaults"];
 
   constructor(options: AgentRuntimeOptions) {
@@ -470,6 +488,7 @@ export class AgentRuntime {
     this.episodicRecallProvider = options.episodicRecallProvider;
     this.toolFilter = options.toolFilter;
     this.skillCatalogProvider = options.skillCatalogProvider;
+    this.telemetryAggregator = options.telemetryAggregator;
     this.defaults = options.defaults;
 
     if (!this.modelProvider && !this.modelRegistry) {
@@ -599,6 +618,7 @@ export class AgentRuntime {
       }
       await this.invokeHooks("afterComplete", layeredContext, guardedResponse);
       this.recordAgentRun(layeredContext, guardedResponse.model, "completed", startedAtMs);
+      this.recordTelemetry(layeredContext, selected.provider.id, selected.model, guardedResponse, promptBudget);
       return createRunResult(
         context.runId,
         guardedResponse,
@@ -761,6 +781,7 @@ export class AgentRuntime {
       }
       await this.invokeHooks("afterComplete", layeredContext, response);
       this.recordAgentRun(layeredContext, response.model, "completed", startedAtMs);
+      this.recordTelemetry(layeredContext, selected.provider.id, selected.model, response, promptBudget);
       if ((!forwardTextDeltas || isPlanExecuteRun) && response.output.length > 0) {
         yield { runId: layeredContext.runId, text: response.output, type: "text-delta" };
       }
@@ -1019,6 +1040,38 @@ export class AgentRuntime {
       model,
       runId: context.runId,
       status
+    });
+  }
+
+  private recordTelemetry(
+    context: AgentRunContext,
+    providerId: string,
+    model: string,
+    response: ModelResponse,
+    promptBudget: ReturnType<typeof measureSystemPromptBudget>
+  ): void {
+    if (!this.telemetryAggregator) {
+      return;
+    }
+    const projected = projectTelemetryMetadata(context.input.metadata);
+    const budgetTokens: Record<string, number> = {};
+    if (promptBudget) {
+      budgetTokens["total"] = promptBudget.totalEstimatedTokens;
+      for (const section of promptBudget.sections) {
+        budgetTokens[`section.${section.id}`] = section.estimatedTokens;
+      }
+    }
+    this.telemetryAggregator.record({
+      ...(promptBudget ? { budgetTokens } : {}),
+      ...(response.usage?.cachedInputTokens !== undefined ? { cachedInputTokens: response.usage.cachedInputTokens } : {}),
+      contextCounters: projected.counters,
+      contextFlags: projected.flags,
+      ...(response.usage?.inputTokens !== undefined ? { inputTokens: response.usage.inputTokens } : {}),
+      model,
+      ...(response.usage?.outputTokens !== undefined ? { outputTokens: response.usage.outputTokens } : {}),
+      providerId,
+      recordedAtMs: Date.now(),
+      runId: context.runId
     });
   }
 

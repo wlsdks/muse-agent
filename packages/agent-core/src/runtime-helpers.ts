@@ -230,6 +230,47 @@ export function recordPromptBudgetSpanAttributes(
 }
 
 /**
+ * Project a metadata bag into a `RunTelemetryEvent`-ready shape so
+ * the aggregator (phase A) gets a stable view: separate boolean
+ * flags from numeric counters. Picks every key the runtime stamps
+ * in `recordContextEngineeringSpanAttributes`.
+ */
+export function projectTelemetryMetadata(
+  metadata: JsonObject | undefined
+): { flags: Readonly<Record<string, boolean>>; counters: Readonly<Record<string, number>> } {
+  const flags: Record<string, boolean> = {};
+  const counters: Record<string, number> = {};
+  if (!metadata) {
+    return { counters, flags };
+  }
+  const record = metadata as Record<string, unknown>;
+  const flagKeys: readonly string[] = [
+    "activeContextApplied", "activeContextInWorkingHours",
+    "inboxContextApplied", "episodicRecallApplied",
+    "attachmentContextApplied", "skillsCatalogApplied",
+    "inboxContextFailed", "episodicRecallFailed",
+    "userMemoryFailed", "skillsCatalogFailed"
+  ];
+  const counterKeys: readonly string[] = [
+    "inboxContextMessageCount", "episodicRecallMatchCount",
+    "attachmentContextCount", "skillsCatalogCount"
+  ];
+  for (const key of flagKeys) {
+    const value = record[key];
+    if (typeof value === "boolean") {
+      flags[key] = value;
+    }
+  }
+  for (const key of counterKeys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      counters[key] = value;
+    }
+  }
+  return { counters, flags };
+}
+
+/**
  * Writes per-call token usage onto a tracing span. Each individual usage field
  * is conditional so an adapter that only reports `outputTokens` does not also
  * stamp `usage.input_tokens=undefined` onto the span.
