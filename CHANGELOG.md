@@ -33,6 +33,30 @@ move from `Unreleased` to dated/versioned headings.
   - Web UI: assistant messages render citation chips; setup panel has a
     `webSearch.enabled` toggle.
 
+- **Five new OpenAI-compatible provider presets** — Groq, DeepSeek,
+  Together, Mistral, Moonshot. Just export the matching key
+  (`GROQ_API_KEY`, `DEEPSEEK_API_KEY`, …) and `muse` auto-selects a
+  sensible default model. The interactive `muse setup model` wizard
+  now offers all 10 providers (legacy 5 + new 5) and the JSON / CLI
+  setup status surfaces each preset.
+- **Bare-prefix model spec inference** — `MUSE_MODEL=mistral-small-latest`
+  (no `provider/` prefix) now resolves to the Mistral provider via the
+  `knownModelPrefixes()` map instead of falling through to undefined.
+  Same fix applies to `moonshot-`, `codestral-`, `pixtral-`, etc.
+
+- **Fixes to the streaming + multi-turn paths shipped alongside
+  `web_search`**: Anthropic / Gemini `provider.stream()` now synthesise
+  `tool-call-started` / `tool-call-finished` / `citations` `ModelEvent`s
+  the same way the OpenAI Responses SSE parser does (was: silently
+  dropped on those two providers). OpenAI Responses request `input[]`
+  items now always use `content[].type: "input_text"` (was: `output_text`
+  for assistant turns, which is the response-side shape).
+
+- **`webSearch` policy line in `muse setup`** — the human-readable setup
+  output now reports `enabled / maxUses / source` so operators can
+  verify a `MUSE_WEB_SEARCH=off` override is being honored without
+  hitting an endpoint.
+
 - **`muse calendar events --local`** and **`muse calendar providers
   --local`** complete the `--local` trio. The CLI instantiates
   `LocalCalendarProvider` against `~/.muse/calendar.json` directly.
