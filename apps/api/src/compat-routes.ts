@@ -8,7 +8,7 @@ import type {
   LatencyQuery,
   TokenCostQuery
 } from "@muse/observability";
-import type { RuntimeSetting, RuntimeSettings, RuntimeSettingType } from "@muse/runtime-settings";
+import type { RuntimeSetting, RuntimeSettings } from "@muse/runtime-settings";
 import type {
   AgentRunHistoryStore,
   AgentRunRecord,
@@ -423,12 +423,7 @@ export function opsMetricSnapshots(options: CompatibilityRouteOptions): readonly
 }
 
 
-export function parseRuntimeSettingType(value: unknown): RuntimeSettingType | undefined {
-  const normalized = typeof value === "string" ? value.trim().toLowerCase() : undefined;
-  return normalized === "string" || normalized === "number" || normalized === "boolean" || normalized === "json"
-    ? normalized
-    : undefined;
-}
+export { parseRuntimeSettingType } from "./server-input-utils.js";
 
 
 // Body/query parsers + JSON normalizers live in apps/api/src/compat-parsers.ts.

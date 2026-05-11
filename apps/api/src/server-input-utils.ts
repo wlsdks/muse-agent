@@ -63,8 +63,9 @@ export function optionalStringArray(value: unknown): readonly string[] | undefin
 }
 
 export function parseRuntimeSettingType(value: unknown): RuntimeSettingType | undefined {
-  return value === "string" || value === "number" || value === "boolean" || value === "json"
-    ? value
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : undefined;
+  return normalized === "string" || normalized === "number" || normalized === "boolean" || normalized === "json"
+    ? normalized
     : undefined;
 }
 
