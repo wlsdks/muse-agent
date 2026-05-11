@@ -200,6 +200,7 @@ import {
   createTracingPipeline,
   createUserMemoryStore
 } from "./store-factories.js";
+import { DynamicToolRegistry } from "./dynamic-tool-registry.js";
 import { loadExternalMcpConfig } from "./external-mcp-config.js";
 
 export {
@@ -1097,28 +1098,3 @@ function createAuthService(env: MuseEnvironment, db: Kysely<MuseDatabase> | unde
   });
 }
 
-class DynamicToolRegistry extends ToolRegistry {
-  constructor(private readonly sources: readonly (() => readonly MuseTool[])[]) {
-    super();
-  }
-
-  override get(name: string): MuseTool | undefined {
-    return super.get(name) ?? this.dynamicTools().find((tool) => tool.definition.name === name);
-  }
-
-  override list(): readonly MuseTool[] {
-    return [...super.list(), ...this.dynamicTools()];
-  }
-
-  private dynamicTools(): readonly MuseTool[] {
-    const byName = new Map<string, MuseTool>();
-
-    for (const source of this.sources) {
-      for (const tool of source()) {
-        byName.set(tool.definition.name, tool);
-      }
-    }
-
-    return [...byName.values()];
-  }
-}
