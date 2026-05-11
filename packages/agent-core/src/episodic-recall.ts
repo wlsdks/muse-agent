@@ -9,6 +9,8 @@
  * surface is the agent's last user message.
  */
 
+import { humanizeRelativeFromIso } from "./time-helpers.js";
+
 export interface EpisodicMatch {
   readonly sessionId: string;
   readonly narrative: string;
@@ -26,7 +28,10 @@ export interface EpisodicRecallProvider {
 
 const MAX_EPISODIC_CHARS = 1_500;
 
-export function renderEpisodicSection(snapshot: EpisodicRecallSnapshot | undefined): string | undefined {
+export function renderEpisodicSection(
+  snapshot: EpisodicRecallSnapshot | undefined,
+  nowIso?: string
+): string | undefined {
   if (!snapshot || snapshot.matches.length === 0) {
     return undefined;
   }
@@ -41,7 +46,17 @@ export function renderEpisodicSection(snapshot: EpisodicRecallSnapshot | undefin
     // one carrying `\n[System Override]\n`. Sanitise defensively,
     // same shape iter 22 uses for `dueIso`.
     const createdAtIsoSafe = match.createdAtIso ? sanitizeNarrativeInline(match.createdAtIso) : undefined;
-    const header = createdAtIsoSafe ? `(${createdAtIsoSafe}, sim=${formatSim(match.similarity)})` : `(sim=${formatSim(match.similarity)})`;
+    // Iter 53 — JARVIS-class freshness affordance. When `nowIso` is
+    // wired in (the runtime caller has it), humanise the timestamp
+    // to "1 day ago" / "in 3h" / "3 weeks ago" so the agent reads
+    // recency directly instead of parsing ISO datetimes. Legacy
+    // callers (no nowIso) still get the raw ISO so the existing
+    // contract isn't broken — only the prompt rendering improves
+    // when the runtime threads nowIso through.
+    const headerTime = createdAtIsoSafe
+      ? (nowIso ? humanizeRelativeFromIso(nowIso, createdAtIsoSafe) ?? createdAtIsoSafe : createdAtIsoSafe)
+      : undefined;
+    const header = headerTime ? `(${headerTime}, sim=${formatSim(match.similarity)})` : `(sim=${formatSim(match.similarity)})`;
     // Account for the rendered prefix ("— " + header + " ") so the
     // running `charsUsed` reflects the actual prompt-bytes consumed
     // — the previous impl counted only narrative length and could

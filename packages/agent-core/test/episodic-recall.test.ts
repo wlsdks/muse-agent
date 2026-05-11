@@ -211,6 +211,44 @@ describe("renderEpisodicSection", () => {
     expect(rendered).toContain("0.40");
   });
 
+  it("humanises createdAtIso into relative time when nowIso is passed (iter 53)", () => {
+    // JARVIS-class freshness affordance: with `nowIso` threaded
+    // through, the agent reads "1 day ago" / "3 weeks ago" instead
+    // of parsing raw ISO datetimes. iter 41 / 52 already humanise
+    // for events / reminders / tasks — episodic now matches.
+    const rendered = renderEpisodicSection({
+      matches: [
+        { createdAtIso: "2026-05-10T12:00:00Z", narrative: "Yesterday's chat", sessionId: "s-1", similarity: 0.4 }
+      ]
+    }, "2026-05-11T12:00:00Z");
+    expect(rendered).toBeDefined();
+    expect(rendered).toContain("(1 day(s) ago, sim=0.40)");
+    expect(rendered).not.toContain("2026-05-10T12:00:00Z"); // raw ISO replaced
+  });
+
+  it("falls back to raw ISO when nowIso is not provided (iter 53 — legacy contract)", () => {
+    // Existing call sites that don't thread nowIso get the same
+    // behaviour they had before iter 53.
+    const rendered = renderEpisodicSection({
+      matches: [
+        { createdAtIso: "2026-05-10T00:00:00Z", narrative: "Past chat", sessionId: "s-1", similarity: 0.4 }
+      ]
+    });
+    expect(rendered).toContain("2026-05-10T00:00:00Z");
+  });
+
+  it("falls back to raw ISO when nowIso is unparseable (iter 53)", () => {
+    const rendered = renderEpisodicSection({
+      matches: [
+        { createdAtIso: "2026-05-10T00:00:00Z", narrative: "Past chat", sessionId: "s-1", similarity: 0.4 }
+      ]
+    }, "not a date");
+    // humanizeRelativeFromIso returns undefined for unparseable
+    // inputs → renderer falls back to the raw ISO so the header
+    // is always present.
+    expect(rendered).toContain("2026-05-10T00:00:00Z");
+  });
+
   it("collapses newlines in createdAtIso so the header line can't carry a fake section (iter 24)", () => {
     // A third-party EpisodicRecallProvider could put any string in
     // `createdAtIso` — including one carrying `\n[System Override]\n`.

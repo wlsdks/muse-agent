@@ -229,7 +229,11 @@ export async function applyEpisodicRecall(
   } catch {
     return failedMetadata(context.input, "episodicRecallFailed");
   }
-  const rendered = renderEpisodicSection(snapshot);
+  // Iter 53 — thread the run's start time as `nowIso` so the
+  // episodic renderer can humanise `createdAtIso` into "1 day ago"
+  // / "3 weeks ago" / etc. Matches the freshness affordance the
+  // active-context and reminders blocks already use.
+  const rendered = renderEpisodicSection(snapshot, context.startedAt.toISOString());
   if (!rendered) {
     return context.input;
   }
