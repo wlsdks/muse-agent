@@ -254,6 +254,7 @@ export function createSchedulerTools(service: DynamicScheduler): readonly MuseTo
           properties: {},
           type: "object"
         },
+        domain: "tasks",
         keywords: ["scheduler", "schedule", "job", "jobs", "cron"],
         name: "scheduler_list_jobs",
         risk: "read"
@@ -285,6 +286,7 @@ export function createSchedulerTools(service: DynamicScheduler): readonly MuseTo
           required: ["cronExpression", "name"],
           type: "object"
         },
+        domain: "tasks",
         keywords: ["scheduler", "schedule", "job", "jobs", "cron", "create", "add"],
         name: "scheduler_create_job",
         risk: "write"
@@ -299,6 +301,7 @@ export function createSchedulerTools(service: DynamicScheduler): readonly MuseTo
       definition: {
         description: "Trigger a scheduler job immediately and persist the execution result.",
         inputSchema: schedulerJobIdInputSchema(),
+        domain: "tasks",
         keywords: ["scheduler", "schedule", "job", "jobs", "trigger", "run"],
         name: "scheduler_trigger_job",
         risk: "write"
@@ -314,6 +317,7 @@ export function createSchedulerTools(service: DynamicScheduler): readonly MuseTo
       definition: {
         description: "Dry-run a scheduler job immediately without mutating the job's last status.",
         inputSchema: schedulerJobIdInputSchema(),
+        domain: "tasks",
         keywords: ["scheduler", "schedule", "job", "jobs", "dry", "dry-run", "test"],
         name: "scheduler_dry_run_job",
         risk: "write"
