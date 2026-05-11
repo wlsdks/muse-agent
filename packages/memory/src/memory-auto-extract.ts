@@ -400,7 +400,14 @@ function sanitizeEntries(
   maxKey: number,
   maxValue: number
 ): readonly (readonly [string, string])[] {
-  if (!source || typeof source !== "object" || maxCount === 0) {
+  // `typeof [] === "object"` is the JS footgun: an extractor LLM
+  // that returned `facts: ["foo", "bar"]` instead of the documented
+  // Record-shape passed the previous guard, and the downstream
+  // `Object.entries` produced `[["0","foo"],["1","bar"]]` — silently
+  // landing fake "0"/"1" keys in `UserMemoryStore`. Reject arrays
+  // explicitly so a wrong-shape payload becomes a no-op (fail-open,
+  // same as before).
+  if (!source || typeof source !== "object" || Array.isArray(source) || maxCount === 0) {
     return [];
   }
   const out: (readonly [string, string])[] = [];
