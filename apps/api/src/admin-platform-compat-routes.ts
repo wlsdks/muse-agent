@@ -2,7 +2,7 @@
  * Muse compat admin platform-infrastructure routes extracted from
  * compat-routes.ts. Covers the slice of /api/admin that deals with
  * runtime-settings, ops dashboard, capabilities, platform doctor,
- * cache, and vector-store stats.
+ * and cache stats.
  *
  * Wires:
  *   - GET/PUT/DELETE /api/admin/settings (+ /:key)

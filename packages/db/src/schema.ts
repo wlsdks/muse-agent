@@ -60,9 +60,9 @@ export interface ConversationSummaryTable {
   readonly created_at: Timestamp;
   readonly updated_at: Timestamp;
   /**
-   * Owning user — required for `findSimilar` / `listAll` per-user
-   * scoping when episodic recall is enabled. Nullable so legacy
-   * rows written before the 0002 migration stay readable.
+   * Owning user — required for `listAll` per-user scoping when
+   * episodic recall is enabled. Nullable so legacy rows written
+   * before the 0002 migration stay readable.
    */
   readonly user_id: ColumnType<string | null, string | null | undefined, string | null>;
 }
