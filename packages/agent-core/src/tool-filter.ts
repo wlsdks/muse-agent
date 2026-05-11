@@ -81,18 +81,57 @@ export class DefaultToolFilter implements ToolFilter {
       return true;
     }
     for (const keyword of definition.keywords ?? []) {
-      if (isMatchableKeyword(keyword) && promptLower.includes(keyword.toLowerCase())) {
+      if (isMatchableKeyword(keyword) && keywordMatchesPrompt(keyword, promptLower)) {
         return true;
       }
     }
     const heuristics = this.extraKeywords[domain] ?? [];
     for (const trigger of heuristics) {
-      if (isMatchableKeyword(trigger) && promptLower.includes(trigger.toLowerCase())) {
+      if (isMatchableKeyword(trigger) && keywordMatchesPrompt(trigger, promptLower)) {
         return true;
       }
     }
     return false;
   }
+}
+
+const ASCII_ONLY_RE = /^[\x00-\x7f]+$/u;
+
+/**
+ * Keyword → prompt matcher.
+ *
+ * Pre-iter-36 every keyword used raw `promptLower.includes(kw)`. That
+ * silently substring-matched short ASCII triggers inside larger
+ * words — `"dm"` (legitimate Slack DM keyword) fired on `"admin"`,
+ * `"freedom"`, `"wisdom"`, etc, expanding the messaging tool catalog
+ * for unrelated prompts. The fix routes ASCII-only keywords through
+ * a word-boundary regex (`\b…\b`) while keeping the substring path
+ * for CJK keywords — Korean / Japanese / Chinese scripts don't use
+ * whitespace word boundaries, and JS's ASCII-flavoured `\b` would
+ * never match between two CJK chars.
+ */
+function keywordMatchesPrompt(keyword: string, promptLower: string): boolean {
+  const kw = keyword.toLowerCase();
+  if (ASCII_ONLY_RE.test(kw)) {
+    return wordBoundaryRegexFor(kw).test(promptLower);
+  }
+  return promptLower.includes(kw);
+}
+
+const wordBoundaryCache = new Map<string, RegExp>();
+
+function wordBoundaryRegexFor(keywordLower: string): RegExp {
+  const cached = wordBoundaryCache.get(keywordLower);
+  if (cached) {
+    return cached;
+  }
+  const re = new RegExp(`\\b${escapeRegex(keywordLower)}\\b`, "u");
+  wordBoundaryCache.set(keywordLower, re);
+  return re;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 /**

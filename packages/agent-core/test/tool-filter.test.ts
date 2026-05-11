@@ -155,6 +155,60 @@ describe("inferDomain", () => {
   });
 });
 
+describe("DefaultToolFilter keyword word-boundary matching (iter 36)", () => {
+  it("does not match short ASCII keywords as substrings inside larger words", () => {
+    // Pre-iter-36 the keyword loop used `promptLower.includes(kw)`
+    // unconditionally. "dm" is a legitimate messaging keyword (Slack
+    // direct message), but as a raw substring it fired on "admin",
+    // "freedom", "wisdom", every accidental "...dm..." in normal
+    // prose — silently expanding the tool catalog for unrelated
+    // prompts. Same false-positive class iter 16 closed for
+    // 1-character keywords; this is the bigger sibling.
+    const filter = new DefaultToolFilter();
+    const messagingTool = tool({
+      description: "Send DM",
+      domain: "messaging",
+      inputSchema: {},
+      name: "muse.messaging.send",
+      risk: "write"
+    });
+    const kept = filter.filter([messagingTool], { userMessage: "I need to do some admin tasks today" });
+    expect(kept).toHaveLength(0);
+  });
+
+  it("still matches the same short keyword when it is a real word", () => {
+    const filter = new DefaultToolFilter();
+    const messagingTool = tool({
+      description: "Send DM",
+      domain: "messaging",
+      inputSchema: {},
+      name: "muse.messaging.send",
+      risk: "write"
+    });
+    const kept = filter.filter([messagingTool], { userMessage: "send a dm to bob about the launch" });
+    expect(kept).toHaveLength(1);
+  });
+
+  it("CJK keywords still match as substrings (no word boundaries in CJK scripts)", () => {
+    // Korean / Japanese / Chinese scripts don't use whitespace word
+    // boundaries the same way ASCII does, so the substring fallback
+    // is the correct semantics there. `\b` would never match between
+    // two CJK chars under JS's ASCII-flavoured `\w`.
+    const filter = new DefaultToolFilter();
+    const calendarTool = tool({
+      description: "Calendar",
+      domain: "calendar",
+      inputSchema: {},
+      name: "muse.calendar.upcoming",
+      risk: "read"
+    });
+    // "회의" is in DEFAULT_DOMAIN_KEYWORDS.calendar; the user
+    // message embeds it inside a Korean sentence.
+    const kept = filter.filter([calendarTool], { userMessage: "내일 회의가 있어?" });
+    expect(kept).toHaveLength(1);
+  });
+});
+
 describe("DefaultToolFilter explicit-domain case handling (iter 25)", () => {
   it("matches heuristics for tools whose explicit domain has non-lowercase casing", () => {
     // Personal-assistant users adding custom tools naturally write
