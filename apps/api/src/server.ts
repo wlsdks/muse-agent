@@ -331,7 +331,11 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     });
   }
   if (options.remindersFile) {
-    registerRemindersRoutes(server, { authService, remindersFile: options.remindersFile });
+    registerRemindersRoutes(server, {
+      authService,
+      remindersFile: options.remindersFile,
+      ...(options.reminderHistoryFile ? { reminderHistoryFile: options.reminderHistoryFile } : {})
+    });
   }
   // LINE webhook (Phase 2.b.2): only registered when both the channel
   // secret and an inbox file path are configured. The plugin scopes a

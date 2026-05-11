@@ -531,6 +531,20 @@ interface RemindersResponse {
   readonly total: number;
 }
 
+interface ReminderHistoryEntry {
+  readonly reminderId: string;
+  readonly text: string;
+  readonly providerId: string;
+  readonly destination: string;
+  readonly firedAtIso: string;
+  readonly status: "delivered" | "failed";
+  readonly error?: string;
+}
+interface ReminderHistoryResponse {
+  readonly entries: readonly ReminderHistoryEntry[];
+  readonly total: number;
+}
+
 export function RemindersPanel({ client }: { readonly client: ApiClient }) {
   const [text, setText] = useState("");
   const [dueAt, setDueAt] = useState("");
@@ -539,6 +553,16 @@ export function RemindersPanel({ client }: { readonly client: ApiClient }) {
   const reminders = useQuery({
     queryFn: () => client.get<RemindersResponse>("/api/reminders?status=pending"),
     queryKey: ["reminders", "pending"],
+    retry: false
+  });
+
+  // Audit log (Loop #52): 404 means the daemon-fed history file
+  // isn't wired in this runtime; treat as empty rather than error.
+  const history = useQuery({
+    queryFn: () =>
+      client.get<ReminderHistoryResponse>("/api/reminders/history?limit=5")
+        .catch(() => ({ entries: [], total: 0 } satisfies ReminderHistoryResponse)),
+    queryKey: ["reminders", "history"],
     retry: false
   });
 
@@ -647,6 +671,31 @@ export function RemindersPanel({ client }: { readonly client: ApiClient }) {
           </li>
         ))}
       </ul>
+      {(history.data?.entries ?? []).length > 0 ? (
+        <details style={{ marginTop: "0.5rem" }}>
+          <summary style={{ cursor: "pointer", fontSize: "0.85em" }}>
+            Recent firings ({history.data?.total ?? 0})
+          </summary>
+          <ul className="record-list" style={{ marginTop: "0.25rem" }}>
+            {(history.data?.entries ?? []).map((entry) => (
+              <li key={`${entry.reminderId}:${entry.firedAtIso}`}>
+                <strong>{entry.text}</strong>
+                <span className="risk-read" style={{ marginLeft: "0.5rem" }}>
+                  {entry.status === "delivered" ? "✓" : "✗"} {entry.providerId} → {entry.destination}
+                </span>
+                <span style={{ marginLeft: "0.5rem", fontSize: "0.8em", opacity: 0.7 }}>
+                  {new Date(entry.firedAtIso).toLocaleString()}
+                </span>
+                {entry.error ? (
+                  <p className="status-error" style={{ fontSize: "0.75em", margin: "0.15rem 0 0 0" }}>
+                    {entry.error}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
     </section>
   );
 }

@@ -20,6 +20,7 @@ import {
   parseReminderDueAt,
   parseReminderVia,
   readReminders,
+  readReminderHistory,
   readReminderStatusFilter,
   serializeReminder,
   writeReminders,
@@ -33,6 +34,12 @@ import type { ServerOptions } from "./server.js";
 interface RemindersRoutesGate {
   readonly authService: ServerOptions["authService"];
   readonly remindersFile: string;
+  /**
+   * When set, `GET /api/reminders/history` is registered so the web
+   * console can show the daemon's per-firing audit log. Without it,
+   * the endpoint isn't exposed (404).
+   */
+  readonly reminderHistoryFile?: string;
 }
 
 export function registerRemindersRoutes(server: FastifyInstance, gate: RemindersRoutesGate): void {
@@ -160,4 +167,20 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     await writeReminders(remindersFile, next);
     return reply.status(204).send();
   });
+
+  if (gate.reminderHistoryFile) {
+    const historyFile = gate.reminderHistoryFile;
+    server.get("/api/reminders/history", async (request, reply) => {
+      if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
+        return reply;
+      }
+      const query = (request.query as { readonly limit?: string } | undefined) ?? {};
+      const limitRaw = query.limit ? Number(query.limit) : undefined;
+      const limit = limitRaw !== undefined && Number.isFinite(limitRaw)
+        ? Math.max(1, Math.min(500, Math.trunc(limitRaw)))
+        : undefined;
+      const entries = await readReminderHistory(historyFile, limit);
+      return { entries, total: entries.length };
+    });
+  }
 }
