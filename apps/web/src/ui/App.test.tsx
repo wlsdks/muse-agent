@@ -79,6 +79,15 @@ describe("MuseConsole", () => {
     expect(html).toMatch(/>Render brief<\/button>/u);
   });
 
+  it("renders the Setup panel section heading", () => {
+    const html = renderConsole();
+    // SetupPanel is gated on query data; queries are disabled in static
+    // render so status.data is undefined → sections is [] → only the
+    // header renders. That's exactly what we want to assert here.
+    expect(html).toContain('aria-label="Setup"');
+    expect(html).toMatch(/<h2>Setup<\/h2>/u);
+  });
+
   it("renders the Messaging panel section heading", () => {
     const html = renderConsole();
     expect(html).toContain('aria-label="Messaging"');
