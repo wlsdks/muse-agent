@@ -79,7 +79,7 @@ describe("DefaultActiveContextProvider", () => {
       now: () => fixedNow,
       userMemoryProvider: memoryProvider
     });
-    const snapshot = await provider.resolve("u1");
+    const snapshot = await provider.resolve({ userId: "u1" });
     expect(snapshot?.workingHours).toEqual({ end: 17, start: 9 });
     expect(snapshot?.isWorkingHours).toBe(true);
   });
@@ -94,8 +94,48 @@ describe("DefaultActiveContextProvider", () => {
         }
       }
     });
-    const snapshot = await provider.resolve("u1");
+    const snapshot = await provider.resolve({ userId: "u1" });
     expect(snapshot?.nowIso).toBe(fixedNow.toISOString());
+  });
+
+  it("prefers preferences.current_focus over facts.current_focus (iter 11 regression)", async () => {
+    // Preferences are user-set (intentional); facts are auto-extracted.
+    // When BOTH are present, the user's explicit setting must win.
+    const memoryProvider = {
+      async findByUserId() {
+        return {
+          facts: { current_focus: "auto-extracted stale focus" },
+          preferences: { current_focus: "user-set fresh focus" },
+          userId: "u1"
+        };
+      }
+    };
+    const provider = new DefaultActiveContextProvider({
+      defaultTimezone: "UTC",
+      now: () => fixedNow,
+      userMemoryProvider: memoryProvider
+    });
+    const snapshot = await provider.resolve({ userId: "u1" });
+    expect(snapshot?.currentFocus).toBe("user-set fresh focus");
+  });
+
+  it("falls back to facts.current_focus when preferences has none (iter 11)", async () => {
+    const memoryProvider = {
+      async findByUserId() {
+        return {
+          facts: { current_focus: "extracted focus" },
+          preferences: {},
+          userId: "u1"
+        };
+      }
+    };
+    const provider = new DefaultActiveContextProvider({
+      defaultTimezone: "UTC",
+      now: () => fixedNow,
+      userMemoryProvider: memoryProvider
+    });
+    const snapshot = await provider.resolve({ userId: "u1" });
+    expect(snapshot?.currentFocus).toBe("extracted focus");
   });
 
   it("loads active task from resolver when configured", async () => {
@@ -108,7 +148,7 @@ describe("DefaultActiveContextProvider", () => {
       defaultTimezone: "UTC",
       now: () => fixedNow
     });
-    const snapshot = await provider.resolve("u1");
+    const snapshot = await provider.resolve({ userId: "u1" });
     expect(snapshot?.activeTask).toEqual({ id: "T-9", title: "Drafting plan" });
   });
 });

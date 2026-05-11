@@ -60,7 +60,7 @@ export interface ActiveContextResolveOptions {
 
 export interface ActiveContextProvider {
   resolve(
-    options?: ActiveContextResolveOptions | string
+    options?: ActiveContextResolveOptions
   ): Promise<ActiveContextSnapshot | undefined> | ActiveContextSnapshot | undefined;
 }
 
@@ -100,11 +100,9 @@ export class DefaultActiveContextProvider implements ActiveContextProvider {
   }
 
   async resolve(
-    options?: ActiveContextResolveOptions | string
+    options?: ActiveContextResolveOptions
   ): Promise<ActiveContextSnapshot | undefined> {
-    const resolved = typeof options === "string"
-      ? { userId: options }
-      : options ?? {};
+    const resolved = options ?? {};
     const userId = resolved.userId;
     const sessionId = resolved.sessionId;
     const now = this.now();
@@ -123,7 +121,12 @@ export class DefaultActiveContextProvider implements ActiveContextProvider {
           if (typeof workingHoursRaw === "string") {
             workingHours = parseWorkingHoursString(workingHoursRaw);
           }
-          const focus = memory.facts["current_focus"] ?? memory.preferences["current_focus"];
+          // Preferences are user-set (intentional, e.g. `muse memory
+          // set preferences.current_focus "..."`); facts are
+          // auto-extracted from conversation. The user's explicit
+          // setting must win over a heuristic extraction, so
+          // preferences come first and facts only fill the gap.
+          const focus = memory.preferences["current_focus"] ?? memory.facts["current_focus"];
           if (typeof focus === "string" && focus.trim()) {
             currentFocus = focus.trim();
           }
