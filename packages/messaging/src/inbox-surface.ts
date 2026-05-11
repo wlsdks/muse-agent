@@ -59,37 +59,94 @@ export class FileBackedInboxContextProvider {
   }
 
   async resolve(): Promise<InboxSnapshot | undefined> {
-    const allFresh: InboundSummary[] = [];
-    const totals: Record<string, number> = {};
+    // Two-phase to avoid silent message loss: first collect fresh
+    // messages from every source WITHOUT touching cursors, then apply
+    // the total cap, THEN advance cursors only for the surfaced
+    // subset. The previous flow advanced cursors before applying the
+    // cross-source cap, so messages dropped by the cap were marked
+    // "already injected" and were lost forever — never visible to the
+    // model on any future turn.
+    interface CollectedSource {
+      readonly config: InboxSourceConfig;
+      readonly fresh: readonly InboundMessage[];
+    }
+    const collected: CollectedSource[] = [];
     for (const config of this.sources) {
       try {
         const cursor = await readInboxInjectionCursor(config.cursorFile);
         const inbox = await readInbox(config.inboxFile, this.perProviderLimit * 4);
         const fresh = filterFresh(inbox, cursor, this.perProviderLimit);
-        if (fresh.length === 0) {
-          continue;
+        if (fresh.length > 0) {
+          collected.push({ config, fresh });
         }
-        totals[config.providerId] = (totals[config.providerId] ?? 0) + fresh.length;
-        for (const message of fresh) {
-          allFresh.push(toSummary(message));
-        }
-        const advance: Record<string, string> = {};
-        for (const message of fresh) {
-          const existing = advance[message.source];
-          if (!existing || message.receivedAtIso > existing) {
-            advance[message.source] = message.receivedAtIso;
-          }
-        }
-        await advanceInboxInjectionCursor(config.cursorFile, advance);
       } catch {
         // fail-open per source
       }
     }
-    if (allFresh.length === 0) {
+    if (collected.length === 0) {
       return undefined;
     }
-    const capped = allFresh.slice(0, this.totalLimit);
-    return { messages: capped, totalByProvider: totals };
+
+    // Pass 2: apply the total cap. Round-robin across providers so a
+    // single chatty channel cannot starve the others when the cap
+    // bites — Slack with 50 fresh + Discord with 5 fresh and a
+    // totalLimit of 30 should yield ~25 Slack + 5 Discord, not 30
+    // Slack and 0 Discord.
+    const surfaced: { readonly providerId: string; readonly message: InboundMessage }[] = [];
+    const queues = collected.map((entry) => ({
+      messages: [...entry.fresh],
+      providerId: entry.config.providerId
+    }));
+    while (surfaced.length < this.totalLimit) {
+      let progressed = false;
+      for (const queue of queues) {
+        if (surfaced.length >= this.totalLimit) break;
+        const next = queue.messages.shift();
+        if (!next) continue;
+        surfaced.push({ message: next, providerId: queue.providerId });
+        progressed = true;
+      }
+      if (!progressed) break;
+    }
+    if (surfaced.length === 0) {
+      return undefined;
+    }
+
+    // Pass 3: advance cursors ONLY for messages we actually surfaced.
+    // Group by (providerId, source) so the cursor for a source moves
+    // to the newest ISO we actually shipped — not to messages still
+    // sitting in the unshipped tail.
+    const advanceBySource = new Map<string, { cursorFile: string; advance: Record<string, string> }>();
+    for (const { message, providerId } of surfaced) {
+      const config = collected.find((entry) => entry.config.providerId === providerId)?.config;
+      if (!config) continue;
+      const bucket = advanceBySource.get(config.cursorFile) ?? {
+        advance: {},
+        cursorFile: config.cursorFile
+      };
+      const current = bucket.advance[message.source];
+      if (!current || message.receivedAtIso > current) {
+        bucket.advance[message.source] = message.receivedAtIso;
+      }
+      advanceBySource.set(config.cursorFile, bucket);
+    }
+    for (const bucket of advanceBySource.values()) {
+      try {
+        await advanceInboxInjectionCursor(bucket.cursorFile, bucket.advance);
+      } catch {
+        // fail-open: a cursor write failure means the next turn will
+        // re-surface, which is much better than silent loss.
+      }
+    }
+
+    const totals: Record<string, number> = {};
+    for (const entry of surfaced) {
+      totals[entry.providerId] = (totals[entry.providerId] ?? 0) + 1;
+    }
+    return {
+      messages: surfaced.map((entry) => toSummary(entry.message)),
+      totalByProvider: totals
+    };
   }
 }
 
