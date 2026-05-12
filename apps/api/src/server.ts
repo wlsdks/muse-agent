@@ -375,6 +375,33 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // provider. Off by default so this code path is opt-in and tests
   // / fresh installs don't accidentally fire empty intervals.
   const env = process.env;
+
+  // Phase D shared activity tracker. Either the reminder daemon or
+  // the proactive daemon (or both) can opt into agent-synthesized
+  // text via their respective MUSE_*_AGENT_TURN flag; when either is
+  // active AND an agent runtime is wired, one tracker records
+  // /api/chat* presence and feeds both downstream consumers.
+  const phaseDReminderOn = env.MUSE_REMINDER_AGENT_TURN?.trim().toLowerCase() === "true"
+    && Boolean(options.agentRuntime)
+    && Boolean(options.defaultModel);
+  const phaseDProactiveOn = env.MUSE_PROACTIVE_AGENT_TURN?.trim().toLowerCase() === "true"
+    && Boolean(options.agentRuntime)
+    && Boolean(options.defaultModel);
+  const presenceFile = env.MUSE_PROACTIVE_PRESENCE_FILE?.trim();
+  const sharedActivityTracker = (phaseDReminderOn || phaseDProactiveOn)
+    ? (presenceFile && presenceFile.length > 0
+      ? createFileBackedActivityTracker({ file: presenceFile })
+      : createInMemoryActivityTracker())
+    : undefined;
+  if (sharedActivityTracker) {
+    server.addHook("onRequest", async (request) => {
+      const path = (request as { readonly url?: string }).url ?? "";
+      if (path.startsWith("/api/chat") || path === "/chat" || path === "/chat/stream") {
+        sharedActivityTracker.record();
+      }
+    });
+  }
+
   const tickProvider = env.MUSE_REMINDER_DEFAULT_PROVIDER?.trim();
   const tickDestination = env.MUSE_REMINDER_DEFAULT_DESTINATION?.trim();
   if (
@@ -386,7 +413,14 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   ) {
     const tickMsRaw = env.MUSE_REMINDER_TICK_MS ? Number(env.MUSE_REMINDER_TICK_MS) : undefined;
     const quietHours = parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+    const reminderPhaseDWindowRaw = env.MUSE_REMINDER_ACTIVE_SESSION_WINDOW_MS
+      ? Number(env.MUSE_REMINDER_ACTIVE_SESSION_WINDOW_MS)
+      : undefined;
     const tickHandle = startReminderTick({
+      ...(phaseDReminderOn && sharedActivityTracker ? { activitySource: sharedActivityTracker } : {}),
+      ...(phaseDReminderOn && options.defaultModel ? { agentModel: options.defaultModel } : {}),
+      ...(phaseDReminderOn && options.agentRuntime ? { agentRuntime: options.agentRuntime } : {}),
+      ...(reminderPhaseDWindowRaw !== undefined ? { activeSessionWindowMs: reminderPhaseDWindowRaw } : {}),
       destination: tickDestination,
       errorLogger: (message) => server.log.warn(message),
       ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
@@ -426,34 +460,18 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const proactiveSidecarFile = env.MUSE_PROACTIVE_SIDECAR_FILE?.trim()
       || `${process.env.HOME ?? ""}/.muse/proactive-fired.json`;
 
-    // Phase D — agent-initiated turn. Activates when an agent runtime
-    // is wired AND MUSE_PROACTIVE_AGENT_TURN=true (default false to
-    // keep the LLM call opt-in). The activity tracker records every
-    // /api/chat* request; the proactive loop reads it per tick to
-    // gate synthesis.
-    const phaseDEnabled = env.MUSE_PROACTIVE_AGENT_TURN?.trim().toLowerCase() === "true";
+    // Phase D — agent-initiated turn. Uses the shared activity tracker
+    // created above so a single onRequest hook unlocks both this
+    // daemon and the reminder daemon when their respective
+    // MUSE_*_AGENT_TURN flag is on.
     const phaseDWindowRaw = env.MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS
       ? Number(env.MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS)
       : undefined;
-    const presenceFile = env.MUSE_PROACTIVE_PRESENCE_FILE?.trim();
-    const activityTracker = phaseDEnabled && options.agentRuntime && options.defaultModel
-      ? (presenceFile && presenceFile.length > 0
-        ? createFileBackedActivityTracker({ file: presenceFile })
-        : createInMemoryActivityTracker())
-      : undefined;
-    if (activityTracker) {
-      server.addHook("onRequest", async (request) => {
-        const path = (request as { readonly url?: string }).url ?? "";
-        if (path.startsWith("/api/chat") || path === "/chat" || path === "/chat/stream") {
-          activityTracker.record();
-        }
-      });
-    }
 
     const proactiveHandle = startProactiveTick({
-      ...(activityTracker ? { activitySource: activityTracker } : {}),
-      ...(activityTracker && options.defaultModel ? { agentModel: options.defaultModel } : {}),
-      ...(activityTracker && options.agentRuntime ? { agentRuntime: options.agentRuntime } : {}),
+      ...(phaseDProactiveOn && sharedActivityTracker ? { activitySource: sharedActivityTracker } : {}),
+      ...(phaseDProactiveOn && options.defaultModel ? { agentModel: options.defaultModel } : {}),
+      ...(phaseDProactiveOn && options.agentRuntime ? { agentRuntime: options.agentRuntime } : {}),
       ...(phaseDWindowRaw !== undefined ? { activeSessionWindowMs: phaseDWindowRaw } : {}),
       ...(proactiveCalendar ? { calendarRegistry: proactiveCalendar } : {}),
       ...(options.tasksFile ? { tasksFile: options.tasksFile } : {}),

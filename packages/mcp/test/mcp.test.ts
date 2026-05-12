@@ -3149,6 +3149,135 @@ describe("reminder-history-store", () => {
   });
 });
 
+describe("runDueReminders Phase D (agent synthesis)", () => {
+  function seedReminders(file: string): void {
+    const { writeFileSync } = require("node:fs") as typeof import("node:fs");
+    writeFileSync(file, JSON.stringify({
+      reminders: [{
+        createdAt: "2026-05-12T00:00:00Z",
+        dueAt: "1970-01-01T00:00:00Z", // past = due
+        id: "rem_phaseD",
+        status: "pending",
+        text: "Pay rent"
+      }]
+    }), "utf8");
+  }
+
+  function makeFakeRegistry() {
+    const sent: Array<{ providerId: string; destination: string; text: string }> = [];
+    return {
+      registry: {
+        send: async (providerId: string, message: { destination: string; text: string }) => {
+          sent.push({ destination: message.destination, providerId, text: message.text });
+          return { destination: message.destination, messageId: "stub", providerId };
+        }
+      },
+      sent
+    };
+  }
+
+  it("synthesises the reminder text via agent when activity window is fresh", async () => {
+    const { runDueReminders } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-reminder-phaseD-"));
+    const file = join(dir, "reminders.json");
+    seedReminders(file);
+
+    const fixedNow = new Date("2026-05-11T08:00:00Z");
+    const runCalls: Array<{ model: string; userMessage: string }> = [];
+    const agentRuntime = {
+      run: async (input: { model: string; messages: readonly { role: string; content: string }[] }) => {
+        const userMessage = input.messages.find((m) => m.role === "user")?.content ?? "";
+        runCalls.push({ model: input.model, userMessage });
+        return { response: { output: "Rent is due — want me to open the bank transfer page?" } };
+      }
+    };
+    const activitySource = { lastActivityMs: () => fixedNow.getTime() - 30_000 };
+    const msg = makeFakeRegistry();
+
+    const summary = await runDueReminders({
+      activeSessionWindowMs: 5 * 60_000,
+      activitySource,
+      agentModel: "claude-opus-4-7",
+      agentRuntime,
+      destination: "@me",
+      file,
+      now: () => fixedNow,
+      providerId: "telegram",
+      registry: msg.registry as unknown as Parameters<typeof runDueReminders>[0]["registry"]
+    });
+    expect(summary).toMatchObject({ delivered: 1, errors: [] });
+    expect(runCalls).toHaveLength(1);
+    expect(runCalls[0]!.userMessage).toContain("Pay rent");
+    expect(msg.sent[0]?.text).toBe("Rent is due — want me to open the bank transfer page?");
+  });
+
+  it("falls back to flat text when activity window has lapsed", async () => {
+    const { runDueReminders } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-reminder-phaseD-stale-"));
+    const file = join(dir, "reminders.json");
+    seedReminders(file);
+
+    const fixedNow = new Date("2026-05-11T08:00:00Z");
+    let agentCalled = false;
+    const agentRuntime = {
+      run: async () => {
+        agentCalled = true;
+        return { response: { output: "(should not be used)" } };
+      }
+    };
+    const activitySource = { lastActivityMs: () => fixedNow.getTime() - 30 * 60_000 };
+    const msg = makeFakeRegistry();
+    await runDueReminders({
+      activitySource,
+      agentModel: "claude-opus-4-7",
+      agentRuntime,
+      destination: "@me",
+      file,
+      now: () => fixedNow,
+      providerId: "telegram",
+      registry: msg.registry as unknown as Parameters<typeof runDueReminders>[0]["registry"]
+    });
+    expect(agentCalled).toBe(false);
+    expect(msg.sent[0]?.text).toBe("Pay rent");
+  });
+
+  it("records the synthesis error in summary + still delivers the flat text", async () => {
+    const { runDueReminders } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-reminder-phaseD-err-"));
+    const file = join(dir, "reminders.json");
+    seedReminders(file);
+
+    const fixedNow = new Date("2026-05-11T08:00:00Z");
+    const agentRuntime = {
+      run: async () => { throw new Error("model timeout"); }
+    };
+    const activitySource = { lastActivityMs: () => fixedNow.getTime() - 1_000 };
+    const msg = makeFakeRegistry();
+    const summary = await runDueReminders({
+      activitySource,
+      agentModel: "claude-opus-4-7",
+      agentRuntime,
+      destination: "@me",
+      file,
+      now: () => fixedNow,
+      providerId: "telegram",
+      registry: msg.registry as unknown as Parameters<typeof runDueReminders>[0]["registry"]
+    });
+    expect(summary.delivered).toBe(1); // still fires
+    expect(msg.sent[0]?.text).toBe("Pay rent"); // flat fallback
+    expect(summary.errors.some((e) => e.includes("model timeout"))).toBe(true);
+  });
+});
+
 describe("runDueReminders historyFile", () => {
   it("appends a 'delivered' entry on success and a 'failed' entry with error on failure", async () => {
     const { runDueReminders, readReminderHistory } = await import("../src/index.js");

@@ -64,6 +64,24 @@ move from `Unreleased` to dated/versioned headings.
   bring their own model). See `docs/design/voice-mode.md` for the
   full Phase F contract.
 
+- **Reminder firing — agent-synthesized text (Phase D mirror)**.
+  When `MUSE_REMINDER_AGENT_TURN=true` AND an `AgentRuntime` is
+  wired AND the user touched `/api/chat*` within
+  `MUSE_REMINDER_ACTIVE_SESSION_WINDOW_MS` (default 300_000 = 5
+  min), the firing loop spawns a one-shot agent run with a
+  JARVIS-style synthesis prompt and uses the LLM reply as the
+  delivered message instead of the raw `reminder.text`.
+  - Falls back to the flat reminder text on missing wires, stale
+    window, empty reply, or synthesis error (failure logs to
+    `summary.errors` but the reminder still fires so the user
+    never misses a beat).
+  - The activity tracker is **shared** with the proactive daemon:
+    a single `onRequest` hook on `/api/chat*` unlocks both daemons
+    in lockstep. `MUSE_PROACTIVE_PRESENCE_FILE` still drives the
+    file-backed variant for multi-process setups.
+  - History records the *delivered* text (synthesized or flat) so
+    `muse.reminders.history` reflects what the user actually saw.
+
 - **`muse proactive test` / `muse proactive scan`** — operator tools
   for verifying the proactive surfacing daemon without waiting for
   a real imminent event.

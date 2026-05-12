@@ -8,6 +8,10 @@ import {
   writeReminders,
   type PersistedReminder
 } from "./personal-reminders-store.js";
+import type {
+  ProactiveActivitySource,
+  ProactiveAgentRuntimeLike
+} from "./proactive-notice-loop.js";
 
 /**
  * Phase B firing engine — see `docs/design/reminder-firing.md`.
@@ -38,6 +42,22 @@ export interface RunDueRemindersOptions {
    * reminder has since been cleared.
    */
   readonly historyFile?: string;
+  /**
+   * Phase D (mirrors proactive surfacing) — when all three are set
+   * AND the activity source reports activity within
+   * `activeSessionWindowMs`, the firing loop spawns a one-shot
+   * agent run with a JARVIS-style synthesis prompt and uses the
+   * LLM reply as the delivered message instead of the raw
+   * `reminder.text`. Falls back to the flat text on missing wires,
+   * stale window, empty reply, or synthesis error (the failure is
+   * recorded in `summary.errors` but the reminder still fires with
+   * the original text so the user never misses a beat).
+   */
+  readonly agentRuntime?: ProactiveAgentRuntimeLike;
+  readonly agentModel?: string;
+  readonly activitySource?: ProactiveActivitySource;
+  /** Default 5 minutes (300_000 ms). */
+  readonly activeSessionWindowMs?: number;
 }
 
 export interface RunDueRemindersSummary {
@@ -61,6 +81,13 @@ export async function runDueReminders(options: RunDueRemindersOptions): Promise<
   const fired: PersistedReminder[] = [];
   let next: readonly PersistedReminder[] = all;
 
+  // Phase D — decide once whether the active-session window allows
+  // agent-synthesized notices for this tick. All three pieces must
+  // be wired AND the activity tracker must report something within
+  // the window. Mirrors the proactive-tick gate so a shared
+  // activity tracker unlocks both daemons in lockstep.
+  const phaseDActive = isActiveSessionWindow(now(), options);
+
   for (const reminder of due) {
     // Phase C: per-reminder routing wins when set; the loop's
     // defaults are the fallback when the reminder doesn't
@@ -69,10 +96,17 @@ export async function runDueReminders(options: RunDueRemindersOptions): Promise<
     // resolved destination on the failure path.
     const providerId = reminder.via?.providerId ?? options.providerId;
     const destination = reminder.via?.destination ?? options.destination;
+    const deliveredText = phaseDActive
+      ? await synthesizeReminderText(reminder, options).catch((cause) => {
+          const message = cause instanceof Error ? cause.message : String(cause);
+          errors.push(`${reminder.id} synthesis: ${message}`);
+          return reminder.text;
+        })
+      : reminder.text;
     try {
       await options.registry.send(providerId, {
         destination,
-        text: reminder.text
+        text: deliveredText
       });
       const firedAtIso = now().toISOString();
       const updated = fireReminder(next, reminder.id, firedAtIso);
@@ -91,7 +125,7 @@ export async function runDueReminders(options: RunDueRemindersOptions): Promise<
           providerId,
           reminderId: reminder.id,
           status: "delivered",
-          text: reminder.text
+          text: deliveredText
         });
       }
     } catch (cause) {
@@ -105,7 +139,7 @@ export async function runDueReminders(options: RunDueRemindersOptions): Promise<
           providerId,
           reminderId: reminder.id,
           status: "failed",
-          text: reminder.text
+          text: deliveredText
         });
       }
     }
@@ -116,4 +150,53 @@ export async function runDueReminders(options: RunDueRemindersOptions): Promise<
   }
 
   return { delivered, due: due.length, errors, fired };
+}
+
+const DEFAULT_ACTIVE_WINDOW_MS = 5 * 60_000;
+
+function isActiveSessionWindow(now: Date, options: RunDueRemindersOptions): boolean {
+  if (!options.agentRuntime || !options.agentModel || !options.activitySource) {
+    return false;
+  }
+  const lastMs = options.activitySource.lastActivityMs();
+  if (lastMs === undefined) {
+    return false;
+  }
+  const window = options.activeSessionWindowMs ?? DEFAULT_ACTIVE_WINDOW_MS;
+  return now.getTime() - lastMs <= window;
+}
+
+const REMINDER_PHASE_D_SYSTEM_PROMPT =
+  `You are Muse, the user's JARVIS-style assistant. A reminder the
+user set earlier just came due. Compose a single short heads-up
+(one or two sentences, ≤ 200 chars) that:
+- Names the reminder text and signals it's now (not later)
+- Suggests ONE concrete next step the user can take, when an
+  obvious one fits the reminder. Skip the suggestion if nothing
+  obvious — never invent context.
+
+No emojis, no markdown, no lists, no JSON. Plain text only.`;
+
+async function synthesizeReminderText(
+  reminder: PersistedReminder,
+  options: RunDueRemindersOptions
+): Promise<string> {
+  if (!options.agentRuntime || !options.agentModel) {
+    return reminder.text;
+  }
+  const dueLine = reminder.dueAt ? `due at: ${reminder.dueAt}` : `due: now`;
+  const factSheet = [
+    `kind: reminder`,
+    `reminder text: ${reminder.text}`,
+    dueLine
+  ].join("\n");
+  const result = await options.agentRuntime.run({
+    messages: [
+      { content: REMINDER_PHASE_D_SYSTEM_PROMPT, role: "system" },
+      { content: factSheet, role: "user" }
+    ],
+    model: options.agentModel
+  });
+  const reply = result.response.output.trim();
+  return reply.length > 0 ? reply : reminder.text;
 }

@@ -16,7 +16,11 @@
  * upstream messenger or stalling firing forever.
  */
 
-import { runDueReminders } from "@muse/mcp";
+import {
+  runDueReminders,
+  type ProactiveActivitySource,
+  type ProactiveAgentRuntimeLike
+} from "@muse/mcp";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 export interface ReminderTickOptions {
@@ -44,6 +48,16 @@ export interface ReminderTickOptions {
   readonly quietHours?: QuietHourRange;
   /** Injectable clock for tests; default is `() => new Date()`. */
   readonly now?: () => Date;
+  /**
+   * Phase D — agent-synthesized reminder text when the user is
+   * around. Pass all three to enable; otherwise the daemon
+   * delivers the raw `reminder.text` as before.
+   */
+  readonly agentRuntime?: ProactiveAgentRuntimeLike;
+  readonly agentModel?: string;
+  readonly activitySource?: ProactiveActivitySource;
+  /** Phase D session window. Default 5 minutes (300_000 ms). */
+  readonly activeSessionWindowMs?: number;
 }
 
 export interface QuietHourRange {
@@ -118,6 +132,10 @@ export function startReminderTick(options: ReminderTickOptions): ReminderTickHan
     firing = true;
     try {
       const summary = await runDueReminders({
+        ...(options.activeSessionWindowMs !== undefined ? { activeSessionWindowMs: options.activeSessionWindowMs } : {}),
+        ...(options.activitySource ? { activitySource: options.activitySource } : {}),
+        ...(options.agentModel ? { agentModel: options.agentModel } : {}),
+        ...(options.agentRuntime ? { agentRuntime: options.agentRuntime } : {}),
         destination: options.destination,
         file: options.remindersFile,
         providerId: options.providerId,
