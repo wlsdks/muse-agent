@@ -199,6 +199,16 @@ export interface RunDueProactiveNoticesOptions {
   readonly modelProvider?: ProactiveModelProviderLike;
   readonly agentRuntime?: ProactiveAgentRuntimeLike;
   readonly agentModel?: string;
+  /**
+   * Optional persona preamble — caller-built persona snapshot that
+   * names the user, their language, reply preferences. Prepended to
+   * the Phase D system prompt so the synthesized notice addresses
+   * the user by name and respects their preferences ("Stark님,
+   * Q3 메모가 5분 후 마감입니다" instead of the generic
+   * "Send Q3 budget memo due in 5 min"). Empty / undefined → no
+   * personalisation, the daemon falls back to the generic prompt.
+   */
+  readonly personaPreamble?: string;
   readonly activitySource?: ProactiveActivitySource;
   /** Default 5 minutes (300_000 ms). */
   readonly activeSessionWindowMs?: number;
@@ -457,8 +467,11 @@ async function synthesizeNoticeText(
   if (!options.agentModel) {
     return item.text;
   }
+  const systemContent = options.personaPreamble && options.personaPreamble.trim().length > 0
+    ? `${options.personaPreamble.trim()}\n\n${PHASE_D_SYSTEM_PROMPT}`
+    : PHASE_D_SYSTEM_PROMPT;
   const messages = [
-    { content: PHASE_D_SYSTEM_PROMPT, role: "system" as const },
+    { content: systemContent, role: "system" as const },
     { content: item.factSheet, role: "user" as const }
   ];
   let reply: string;

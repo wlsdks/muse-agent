@@ -148,11 +148,16 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
       "--destination <id>",
       "Messaging destination — chat id / channel id / log tag (default MUSE_PROACTIVE_DESTINATION or '@me')"
     )
+    .option(
+      "--user <id>",
+      "User identity whose persona personalises proactive notices (default $MUSE_USER_ID or $USER)"
+    )
     .action(async (options: {
       readonly interval: string;
       readonly leadMinutes: string;
       readonly provider?: string;
       readonly destination?: string;
+      readonly user?: string;
     }) => {
       const e = env();
       const interval = Math.max(5, Number.parseInt(options.interval, 10) || 60);
@@ -176,10 +181,39 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
         ? e.MUSE_PROACTIVE_SIDECAR_FILE.trim()
         : join(homedir(), ".muse", "proactive-fired.json");
 
+      // Pull the persona for the configured user so Phase D synthesis
+      // addresses the user by name + honours language/style prefs
+      // ("Stark님, Q3 메모가 5분 후 마감입니다" instead of the generic
+      // "Send Q3 budget memo due in 5 min"). Best-effort — assembly
+      // and persona resolution failures fall back to the generic
+      // synthesis prompt.
+      const userId = (options.user ?? e.MUSE_USER_ID ?? e.USER ?? "default").trim();
+      let personaPreamble: string | undefined;
+      let agentModel: string | undefined;
+      let modelProvider: Parameters<typeof runDueProactiveNotices>[0]["modelProvider"];
+      try {
+        const { createMuseRuntimeAssembly } = await import("@muse/autoconfigure");
+        const assembly = createMuseRuntimeAssembly();
+        if (assembly.modelProvider && assembly.defaultModel) {
+          modelProvider = assembly.modelProvider as unknown as Parameters<typeof runDueProactiveNotices>[0]["modelProvider"];
+          agentModel = assembly.defaultModel;
+        }
+        const userMemory = await Promise.resolve(assembly.userMemoryStore.findByUserId(userId));
+        if (userMemory) {
+          const { buildJarvisPersona } = await import("./program.js");
+          personaPreamble = buildJarvisPersona(userMemory, userId);
+        }
+      } catch { /* fail-open — synthesis falls back to generic */ }
+
       io.stdout(`muse proactive watch — every ${interval.toString()} s, lead ${leadMinutes.toString()} min\n`);
       io.stdout(`  provider=${provider}, destination=${destination}\n`);
       io.stdout(`  tasksFile=${tasksFile}\n`);
       io.stdout(`  historyFile=${historyFile}\n`);
+      if (personaPreamble && agentModel && modelProvider) {
+        io.stdout(`  persona: ${userId} (Phase D agent synthesis active via ${agentModel})\n`);
+      } else if (agentModel && modelProvider) {
+        io.stdout(`  persona: (none for user '${userId}' — generic Phase D)\n`);
+      }
       io.stdout(`  (Ctrl-C to stop)\n\n`);
 
       let stopped = false;
@@ -196,6 +230,10 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
         const startedAt = new Date();
         try {
           const summary = await runDueProactiveNotices({
+            ...(agentModel ? { agentModel } : {}),
+            ...(modelProvider ? { modelProvider } : {}),
+            ...(personaPreamble ? { personaPreamble } : {}),
+            ...(modelProvider ? { activitySource: { lastActivityMs: () => Date.now() } } : {}),
             ...(calendarRegistry.list().length > 0 ? { calendarRegistry } : {}),
             destination,
             historyFile,
