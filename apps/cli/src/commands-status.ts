@@ -1,0 +1,215 @@
+/**
+ * `muse status` — at-a-glance JARVIS dashboard.
+ *
+ * Distinct from `muse doctor` (operator health-check) and
+ * `muse setup` (config wizard): this one is for the user, every
+ * morning, "is JARVIS watching me?". Pure disk reads, no model
+ * call, so it returns in <100 ms even on a cold start.
+ *
+ * Sections:
+ *   1. who Muse thinks you are (user id + persona snapshot)
+ *   2. model + tools enabled by env
+ *   3. imminent — open tasks due soon
+ *   4. last proactive notice — when, what, how delivered
+ *   5. notification log — file path + last line
+ */
+
+import { readFile, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+import type { Command } from "commander";
+
+import type { ProgramIO } from "./program.js";
+
+interface StatusOptions {
+  readonly user?: string;
+  readonly json?: boolean;
+}
+
+function envValue(key: string): string | undefined {
+  const v = process.env[key]?.trim();
+  return v && v.length > 0 ? v : undefined;
+}
+
+async function safeReadJson(path: string): Promise<unknown | undefined> {
+  try {
+    const raw = await readFile(path, "utf8");
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readLogTail(path: string, lines = 1): Promise<string | undefined> {
+  try {
+    const raw = await readFile(path, "utf8");
+    const trimmed = raw.split("\n").filter((line) => line.length > 0);
+    return trimmed.slice(-lines).join("\n");
+  } catch {
+    return undefined;
+  }
+}
+
+async function fileSize(path: string): Promise<number | undefined> {
+  try {
+    const s = await stat(path);
+    return s.size;
+  } catch {
+    return undefined;
+  }
+}
+
+function defaultUserId(): string {
+  return envValue("MUSE_USER_ID") ?? envValue("USER") ?? "default";
+}
+
+function defaultUserMemoryFile(): string {
+  return envValue("MUSE_USER_MEMORY_FILE") ?? join(homedir(), ".muse", "user-memory.json");
+}
+
+function defaultTasksFile(): string {
+  return envValue("MUSE_TASKS_FILE") ?? join(homedir(), ".muse", "tasks.json");
+}
+
+function defaultProactiveHistoryFile(): string {
+  return envValue("MUSE_PROACTIVE_HISTORY_FILE") ?? join(homedir(), ".muse", "proactive-history.json");
+}
+
+function defaultLogFile(): string {
+  return envValue("MUSE_MESSAGING_LOG_FILE") ?? join(homedir(), ".muse", "notifications.log");
+}
+
+interface PersistedTask {
+  readonly id: string;
+  readonly title: string;
+  readonly status: string;
+  readonly dueAt?: string;
+}
+
+interface ProactiveHistoryEntry {
+  readonly firedAtIso?: string;
+  readonly status?: string;
+  readonly kind?: string;
+  readonly providerId?: string;
+  readonly text?: string;
+}
+
+async function collectStatus(userId: string) {
+  const userMemoryFile = defaultUserMemoryFile();
+  const tasksFile = defaultTasksFile();
+  const historyFile = defaultProactiveHistoryFile();
+  const logFile = defaultLogFile();
+
+  const memoryDoc = await safeReadJson(userMemoryFile) as { users?: Record<string, unknown> } | undefined;
+  const persona = (memoryDoc?.users?.[userId] ?? undefined) as
+    | { facts?: Record<string, string>; preferences?: Record<string, string>; updatedAt?: string }
+    | undefined;
+
+  const tasksDoc = await safeReadJson(tasksFile) as { tasks?: readonly PersistedTask[] } | undefined;
+  const allTasks = tasksDoc?.tasks ?? [];
+  const now = Date.now();
+  const due24h = allTasks.filter((task) => {
+    if (task.status !== "open" || !task.dueAt) return false;
+    const due = new Date(task.dueAt).getTime();
+    return Number.isFinite(due) && due >= now && due <= now + 24 * 60 * 60 * 1000;
+  });
+
+  const historyDoc = await safeReadJson(historyFile) as { entries?: readonly ProactiveHistoryEntry[] } | undefined;
+  const lastNotice = historyDoc?.entries?.[historyDoc.entries.length - 1];
+
+  const logTail = await readLogTail(logFile, 1);
+  const logBytes = await fileSize(logFile);
+
+  return {
+    model: envValue("MUSE_MODEL") ?? envValue("MUSE_DEFAULT_MODEL"),
+    persona: {
+      factCount: persona?.facts ? Object.keys(persona.facts).length : 0,
+      preferenceCount: persona?.preferences ? Object.keys(persona.preferences).length : 0,
+      updatedAt: persona?.updatedAt,
+      userId,
+      vetoCount: persona?.preferences
+        ? Object.keys(persona.preferences).filter((k) => k.startsWith("veto:")).length
+        : 0,
+      goalCount: persona?.preferences
+        ? Object.keys(persona.preferences).filter((k) => k.startsWith("goal:")).length
+        : 0
+    },
+    tasks: {
+      file: tasksFile,
+      totalOpen: allTasks.filter((task) => task.status === "open").length,
+      due24h: due24h.map((task) => ({ id: task.id, title: task.title, dueAt: task.dueAt }))
+    },
+    lastNotice: lastNotice
+      ? {
+          firedAtIso: lastNotice.firedAtIso,
+          kind: lastNotice.kind,
+          providerId: lastNotice.providerId,
+          status: lastNotice.status,
+          text: lastNotice.text
+        }
+      : undefined,
+    notificationLog: {
+      file: logFile,
+      bytes: logBytes,
+      lastLine: logTail
+    }
+  };
+}
+
+export function registerStatusCommand(program: Command, io: ProgramIO): void {
+  program
+    .command("status")
+    .description("JARVIS-style at-a-glance dashboard: persona + model + imminent tasks + last notice")
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--json", "Emit structured JSON instead of the formatted report")
+    .action(async (options: StatusOptions) => {
+      const userId = options.user ?? defaultUserId();
+      const snap = await collectStatus(userId);
+
+      if (options.json) {
+        io.stdout(`${JSON.stringify(snap, null, 2)}\n`);
+        return;
+      }
+
+      io.stdout("Muse status:\n");
+      io.stdout("\n");
+      io.stdout(`  user: ${snap.persona.userId}\n`);
+      if (snap.persona.factCount + snap.persona.preferenceCount > 0) {
+        const parts: string[] = [];
+        if (snap.persona.factCount > 0) parts.push(`${snap.persona.factCount.toString()} fact(s)`);
+        if (snap.persona.preferenceCount > 0) parts.push(`${snap.persona.preferenceCount.toString()} pref(s)`);
+        if (snap.persona.vetoCount > 0) parts.push(`${snap.persona.vetoCount.toString()} veto(es)`);
+        if (snap.persona.goalCount > 0) parts.push(`${snap.persona.goalCount.toString()} goal(s)`);
+        io.stdout(`    persona: ${parts.join(", ")}\n`);
+        if (snap.persona.updatedAt) {
+          io.stdout(`    last update: ${snap.persona.updatedAt}\n`);
+        }
+      } else {
+        io.stdout(`    persona: (empty — Muse hasn't learned anything about you yet)\n`);
+      }
+      io.stdout("\n");
+      io.stdout(`  model: ${snap.model ?? "(unset — set MUSE_MODEL or run muse setup model)"}\n`);
+      io.stdout("\n");
+      io.stdout(`  tasks: ${snap.tasks.totalOpen.toString()} open, ${snap.tasks.due24h.length.toString()} due in 24 h\n`);
+      for (const task of snap.tasks.due24h.slice(0, 5)) {
+        io.stdout(`    · ${task.title} (${task.dueAt ?? "no due"})\n`);
+      }
+      io.stdout("\n");
+      if (snap.lastNotice) {
+        io.stdout(`  last notice: [${snap.lastNotice.firedAtIso ?? "?"}] via ${snap.lastNotice.providerId ?? "?"}\n`);
+        if (snap.lastNotice.text) {
+          io.stdout(`    "${snap.lastNotice.text.slice(0, 120)}"\n`);
+        }
+      } else {
+        io.stdout(`  last notice: (none yet — run 'muse proactive watch' to start delivering)\n`);
+      }
+      io.stdout("\n");
+      io.stdout(`  notifications log: ${snap.notificationLog.file}${
+        snap.notificationLog.bytes !== undefined ? ` (${snap.notificationLog.bytes.toString()} bytes)` : " (not yet created)"
+      }\n`);
+      if (snap.notificationLog.lastLine) {
+        io.stdout(`    last: ${snap.notificationLog.lastLine}\n`);
+      }
+    });
+}
