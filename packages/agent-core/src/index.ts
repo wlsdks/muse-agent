@@ -3,6 +3,7 @@ import {
   cacheableModelRequest,
   cachedResponseFromModelResponse,
   type CacheMetricsRecorder,
+  type CachedResponse,
   type ResponseCache
 } from "@muse/cache";
 import {
@@ -21,6 +22,7 @@ import {
   createNoOpMuseTracer,
   type AgentMetrics,
   type MuseTracer,
+  type SpanHandle,
   type TokenUsageSink
 } from "@muse/observability";
 import type { ExemplarRetriever, PromptLayerRegistry } from "@muse/prompts";
@@ -498,73 +500,11 @@ export class AgentRuntime {
     });
 
     try {
-      await this.recordCheckpoint(context, 0, "start", context.input.messages);
-      await evaluateGuardsFn(context, this.guards, this.tracer, this.metrics, this.guardBlockRateMonitor);
-      await this.invokeHooks("beforeStart", context);
-
-      const selected = this.resolveProvider(context.input.model);
-      runSpan.setAttribute("model.selected", selected.model);
-      const layeredContext = await applyPromptExemplarsFn(
-        applyPromptLayersFn(context, selected.provider.id, selected.model, this.promptLayerRegistry),
-        this.exemplarRetriever,
-        this.exemplarTopK
-      );
-      await this.recordRunStart(layeredContext, selected.provider.id, selected.model);
-
-      const memoryAppliedInput = await applyUserMemoryFn(layeredContext, this.userMemoryProvider, this.userMemoryMaxEntries);
-      const memoryAppliedContext: AgentRunContext = { ...layeredContext, input: memoryAppliedInput };
-      const activeContextSnapshot = await resolveActiveContextSnapshotFn(memoryAppliedContext, this.activeContextProvider);
-      const activeContextInput = applyActiveContextFn(memoryAppliedContext, activeContextSnapshot);
-      const attachmentAppliedInput = applyAttachmentContextFn({ ...memoryAppliedContext, input: activeContextInput });
-      const skillsAppliedInput = await applySkillsContextFn({ ...memoryAppliedContext, input: attachmentAppliedInput }, this.skillCatalogProvider);
-      const activeContextContext: AgentRunContext = { ...memoryAppliedContext, input: skillsAppliedInput };
-      const inboxAppliedInput = await applyInboxContextFn(activeContextContext, this.inboxContextProvider);
-      const inboxAppliedContext: AgentRunContext = { ...activeContextContext, input: inboxAppliedInput };
-      const episodicAppliedInput = await applyEpisodicRecallFn(inboxAppliedContext, this.episodicRecallProvider);
-      const episodicAppliedContext: AgentRunContext = { ...inboxAppliedContext, input: episodicAppliedInput };
-      const summaryAppliedInput = await applyStoredConversationSummaryFn(episodicAppliedContext, this.conversationSummaryStore);
-      const summaryAppliedContext: AgentRunContext = { ...episodicAppliedContext, input: summaryAppliedInput };
-      // Round 160: resolve the persona snapshot once per request and
-      // forward to the trim layer so a compaction during this turn
-      // re-injects user-context inside the [User context: ...] block.
-      const personaSnapshot = await resolvePersonaSnapshotFn(
-        summaryAppliedContext.input,
-        this.userMemoryProvider,
-        this.userMemoryMaxEntries
-      );
-      const preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot, activeContextSnapshot);
-      recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
-      recordContextEngineeringSpanAttributes(runSpan, summaryAppliedContext.input.metadata);
-      const promptBudget = measureSystemPromptBudget(preparedRequest.request.messages);
-      if (promptBudget) {
-        recordPromptBudgetSpanAttributes(runSpan, promptBudgetSpanAttributes(promptBudget));
-      }
-      const tools = this.modelTools(layeredContext);
-      const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
-      const cached = await this.readCache(cacheKey, selected.model);
+      const { cached, cacheKey, layeredContext, preparedRequest, promptBudget, selected, summaryAppliedMessageCount, tools } =
+        await this.prepareInvocation(context, runSpan);
 
       if (cached) {
-        const cachedResponse: ModelResponse = {
-          id: `${context.runId}:cache`,
-          model: cached.model ?? selected.model,
-          output: cached.content
-        };
-        const filteredCachedResponse = await applyResponseFiltersFn(layeredContext, cachedResponse, this.responseFilters, this.tracer, {
-          toolInsights: [],
-          toolsUsed: cached.toolsUsed,
-          verifiedSources: []
-        });
-        const guardedCachedResponse = await applyOutputGuardsFn(layeredContext, filteredCachedResponse, this.outputGuards, this.tracer, this.metrics);
-
-        await this.recordRunComplete(layeredContext, {
-          finalResponse: guardedCachedResponse,
-          intermediateMessages: [],
-          toolResults: [],
-          toolsUsed: cached.toolsUsed
-        });
-        await this.recordCheckpoint(layeredContext, 100, "complete", layeredContext.input.messages, guardedCachedResponse.output);
-        await this.invokeHooks("afterComplete", layeredContext, guardedCachedResponse);
-        this.recordAgentRun(layeredContext, guardedCachedResponse.model, "completed", startedAtMs);
+        const guardedCachedResponse = await this.processCachedResponse(layeredContext, cached, selected, startedAtMs);
         return createRunResult(
           context.runId,
           guardedCachedResponse,
@@ -583,34 +523,17 @@ export class AgentRuntime {
       const execution = isPlanExecuteMode(layeredContext.input.metadata)
         ? await executePlanExecuteLoopFn(this.modelLoopRunner(), layeredContext, selected.provider, loopRequest)
         : await executeModelLoopFn(this.modelLoopRunner(), layeredContext, selected.provider, loopRequest);
-      const filteredResponse = await applyResponseFiltersFn(
-        layeredContext,
-        execution.finalResponse,
-        this.responseFilters,
-        this.tracer,
-        responseFilterEvidenceFromExecution(execution)
-      );
-      const guardedResponse = await applyOutputGuardsFn(layeredContext, filteredResponse, this.outputGuards, this.tracer, this.metrics);
-
-      await this.recordRunComplete(layeredContext, { ...execution, finalResponse: guardedResponse });
-      await this.recordCheckpoint(layeredContext, 100, "complete", layeredContext.input.messages, guardedResponse.output);
-      await this.writeCache(cacheKey, guardedResponse, execution.toolsUsed);
-      if (preparedRequest.contextWindow?.summaryInserted) {
-        await persistConversationSummaryFromRequestFn(
-          layeredContext,
-          preparedRequest.request,
-          summaryAppliedContext.input.messages.length,
-          this.conversationSummaryStore
-        );
-      }
-      await this.invokeHooks("afterComplete", layeredContext, guardedResponse);
-      this.recordAgentRun(layeredContext, guardedResponse.model, "completed", startedAtMs);
-      // Iter 48: stamp wall-clock run latency on the trace span too,
-      // not just into the in-process telemetry aggregator. Lets a
-      // trace-store consumer correlate latency with the same
-      // ctx.* span attrs without going through a separate query.
-      runSpan.setAttribute("run.latency_ms", Date.now() - startedAtMs);
-      this.recordTelemetry(layeredContext, selected.provider.id, selected.model, guardedResponse, promptBudget, startedAtMs);
+      const guardedResponse = await this.finalizeInvocation({
+        cacheKey,
+        context: layeredContext,
+        execution,
+        preparedRequest,
+        promptBudget,
+        runSpan,
+        selected,
+        startedAtMs,
+        summaryAppliedMessageCount
+      });
       return createRunResult(
         context.runId,
         guardedResponse,
@@ -619,11 +542,7 @@ export class AgentRuntime {
         { toolsUsed: execution.toolsUsed }
       );
     } catch (error) {
-      runSpan.setError(error);
-      await this.recordCheckpoint(context, 900, "failed", context.input.messages, error instanceof Error ? error.message : String(error));
-      await this.recordRunFailure(context, error);
-      this.recordAgentRun(context, context.input.model, "failed", startedAtMs);
-      await this.invokeHooks("onError", context, error);
+      await this.handleRunError(context, runSpan, error, startedAtMs);
       throw error;
     } finally {
       runSpan.end();
@@ -645,73 +564,11 @@ export class AgentRuntime {
     });
 
     try {
-      await this.recordCheckpoint(context, 0, "start", context.input.messages);
-      await evaluateGuardsFn(context, this.guards, this.tracer, this.metrics, this.guardBlockRateMonitor);
-      await this.invokeHooks("beforeStart", context);
-
-      const selected = this.resolveProvider(context.input.model);
-      runSpan.setAttribute("model.selected", selected.model);
-      const layeredContext = await applyPromptExemplarsFn(
-        applyPromptLayersFn(context, selected.provider.id, selected.model, this.promptLayerRegistry),
-        this.exemplarRetriever,
-        this.exemplarTopK
-      );
-      await this.recordRunStart(layeredContext, selected.provider.id, selected.model);
-
-      const memoryAppliedInput = await applyUserMemoryFn(layeredContext, this.userMemoryProvider, this.userMemoryMaxEntries);
-      const memoryAppliedContext: AgentRunContext = { ...layeredContext, input: memoryAppliedInput };
-      const activeContextSnapshot = await resolveActiveContextSnapshotFn(memoryAppliedContext, this.activeContextProvider);
-      const activeContextInput = applyActiveContextFn(memoryAppliedContext, activeContextSnapshot);
-      const attachmentAppliedInput = applyAttachmentContextFn({ ...memoryAppliedContext, input: activeContextInput });
-      const skillsAppliedInput = await applySkillsContextFn({ ...memoryAppliedContext, input: attachmentAppliedInput }, this.skillCatalogProvider);
-      const activeContextContext: AgentRunContext = { ...memoryAppliedContext, input: skillsAppliedInput };
-      const inboxAppliedInput = await applyInboxContextFn(activeContextContext, this.inboxContextProvider);
-      const inboxAppliedContext: AgentRunContext = { ...activeContextContext, input: inboxAppliedInput };
-      const episodicAppliedInput = await applyEpisodicRecallFn(inboxAppliedContext, this.episodicRecallProvider);
-      const episodicAppliedContext: AgentRunContext = { ...inboxAppliedContext, input: episodicAppliedInput };
-      const summaryAppliedInput = await applyStoredConversationSummaryFn(episodicAppliedContext, this.conversationSummaryStore);
-      const summaryAppliedContext: AgentRunContext = { ...episodicAppliedContext, input: summaryAppliedInput };
-      // Round 160: resolve the persona snapshot once per request and
-      // forward to the trim layer so a compaction during this turn
-      // re-injects user-context inside the [User context: ...] block.
-      const personaSnapshot = await resolvePersonaSnapshotFn(
-        summaryAppliedContext.input,
-        this.userMemoryProvider,
-        this.userMemoryMaxEntries
-      );
-      const preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot, activeContextSnapshot);
-      recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
-      recordContextEngineeringSpanAttributes(runSpan, summaryAppliedContext.input.metadata);
-      const promptBudget = measureSystemPromptBudget(preparedRequest.request.messages);
-      if (promptBudget) {
-        recordPromptBudgetSpanAttributes(runSpan, promptBudgetSpanAttributes(promptBudget));
-      }
-      const tools = this.modelTools(layeredContext);
-      const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
-      const cached = await this.readCache(cacheKey, selected.model);
+      const { cached, cacheKey, layeredContext, preparedRequest, promptBudget, selected, summaryAppliedMessageCount, tools } =
+        await this.prepareInvocation(context, runSpan);
 
       if (cached) {
-        const cachedResponse: ModelResponse = {
-          id: `${context.runId}:cache`,
-          model: cached.model ?? selected.model,
-          output: cached.content
-        };
-        const filteredCachedResponse = await applyResponseFiltersFn(layeredContext, cachedResponse, this.responseFilters, this.tracer, {
-          toolInsights: [],
-          toolsUsed: cached.toolsUsed,
-          verifiedSources: []
-        });
-        const guardedCachedResponse = await applyOutputGuardsFn(layeredContext, filteredCachedResponse, this.outputGuards, this.tracer, this.metrics);
-
-        await this.recordRunComplete(layeredContext, {
-          finalResponse: guardedCachedResponse,
-          intermediateMessages: [],
-          toolResults: [],
-          toolsUsed: cached.toolsUsed
-        });
-        await this.recordCheckpoint(layeredContext, 100, "complete", layeredContext.input.messages, guardedCachedResponse.output);
-        await this.invokeHooks("afterComplete", layeredContext, guardedCachedResponse);
-        this.recordAgentRun(layeredContext, guardedCachedResponse.model, "completed", startedAtMs);
+        const guardedCachedResponse = await this.processCachedResponse(layeredContext, cached, selected, startedAtMs);
         yield { runId: layeredContext.runId, text: guardedCachedResponse.output, type: "text-delta" };
         yield { response: guardedCachedResponse, runId: layeredContext.runId, type: "done" };
         return;
@@ -749,48 +606,188 @@ export class AgentRuntime {
         }
         execution = next.value;
       }
-      const filteredResponse = await applyResponseFiltersFn(
-        layeredContext,
-        execution.finalResponse,
-        this.responseFilters,
-        this.tracer,
-        responseFilterEvidenceFromExecution(execution)
-      );
-      const response = await applyOutputGuardsFn(layeredContext, filteredResponse, this.outputGuards, this.tracer, this.metrics);
-      await this.recordRunComplete(layeredContext, {
-        ...execution,
-        finalResponse: response
+      const response = await this.finalizeInvocation({
+        cacheKey,
+        context: layeredContext,
+        execution,
+        preparedRequest,
+        promptBudget,
+        runSpan,
+        selected,
+        startedAtMs,
+        summaryAppliedMessageCount
       });
-      await this.recordCheckpoint(layeredContext, 100, "complete", layeredContext.input.messages, response.output);
-      await this.writeCache(cacheKey, response, execution.toolsUsed);
-      if (preparedRequest.contextWindow?.summaryInserted) {
-        await persistConversationSummaryFromRequestFn(
-          layeredContext,
-          preparedRequest.request,
-          summaryAppliedContext.input.messages.length,
-          this.conversationSummaryStore
-        );
-      }
-      await this.invokeHooks("afterComplete", layeredContext, response);
-      this.recordAgentRun(layeredContext, response.model, "completed", startedAtMs);
-      // Iter 48 — wall-clock run latency on the trace span (same as
-      // the `run` path).
-      runSpan.setAttribute("run.latency_ms", Date.now() - startedAtMs);
-      this.recordTelemetry(layeredContext, selected.provider.id, selected.model, response, promptBudget, startedAtMs);
       if ((!forwardTextDeltas || isPlanExecuteRun) && response.output.length > 0) {
         yield { runId: layeredContext.runId, text: response.output, type: "text-delta" };
       }
       yield { response, runId: layeredContext.runId, type: "done" };
     } catch (error) {
-      runSpan.setError(error);
-      await this.recordCheckpoint(context, 900, "failed", context.input.messages, error instanceof Error ? error.message : String(error));
-      await this.recordRunFailure(context, error);
-      this.recordAgentRun(context, context.input.model, "failed", startedAtMs);
-      await this.invokeHooks("onError", context, error);
+      await this.handleRunError(context, runSpan, error, startedAtMs);
       throw error;
     } finally {
       runSpan.end();
     }
+  }
+
+  private async prepareInvocation(
+    context: AgentRunContext,
+    runSpan: SpanHandle
+  ): Promise<{
+    readonly cached: CachedResponse | undefined;
+    readonly cacheKey: string;
+    readonly layeredContext: AgentRunContext;
+    readonly preparedRequest: ReturnType<AgentRuntime["prepareModelRequest"]>;
+    readonly promptBudget: ReturnType<typeof measureSystemPromptBudget>;
+    readonly selected: { readonly provider: ModelProvider; readonly model: string };
+    readonly summaryAppliedMessageCount: number;
+    readonly tools: readonly ModelTool[];
+  }> {
+    await this.recordCheckpoint(context, 0, "start", context.input.messages);
+    await evaluateGuardsFn(context, this.guards, this.tracer, this.metrics, this.guardBlockRateMonitor);
+    await this.invokeHooks("beforeStart", context);
+
+    const selected = this.resolveProvider(context.input.model);
+    runSpan.setAttribute("model.selected", selected.model);
+    const layeredContext = await applyPromptExemplarsFn(
+      applyPromptLayersFn(context, selected.provider.id, selected.model, this.promptLayerRegistry),
+      this.exemplarRetriever,
+      this.exemplarTopK
+    );
+    await this.recordRunStart(layeredContext, selected.provider.id, selected.model);
+
+    const memoryAppliedInput = await applyUserMemoryFn(layeredContext, this.userMemoryProvider, this.userMemoryMaxEntries);
+    const memoryAppliedContext: AgentRunContext = { ...layeredContext, input: memoryAppliedInput };
+    const activeContextSnapshot = await resolveActiveContextSnapshotFn(memoryAppliedContext, this.activeContextProvider);
+    const activeContextInput = applyActiveContextFn(memoryAppliedContext, activeContextSnapshot);
+    const attachmentAppliedInput = applyAttachmentContextFn({ ...memoryAppliedContext, input: activeContextInput });
+    const skillsAppliedInput = await applySkillsContextFn({ ...memoryAppliedContext, input: attachmentAppliedInput }, this.skillCatalogProvider);
+    const activeContextContext: AgentRunContext = { ...memoryAppliedContext, input: skillsAppliedInput };
+    const inboxAppliedInput = await applyInboxContextFn(activeContextContext, this.inboxContextProvider);
+    const inboxAppliedContext: AgentRunContext = { ...activeContextContext, input: inboxAppliedInput };
+    const episodicAppliedInput = await applyEpisodicRecallFn(inboxAppliedContext, this.episodicRecallProvider);
+    const episodicAppliedContext: AgentRunContext = { ...inboxAppliedContext, input: episodicAppliedInput };
+    const summaryAppliedInput = await applyStoredConversationSummaryFn(episodicAppliedContext, this.conversationSummaryStore);
+    const summaryAppliedContext: AgentRunContext = { ...episodicAppliedContext, input: summaryAppliedInput };
+    // Round 160: resolve the persona snapshot once per request and
+    // forward to the trim layer so a compaction during this turn
+    // re-injects user-context inside the [User context: ...] block.
+    const personaSnapshot = await resolvePersonaSnapshotFn(
+      summaryAppliedContext.input,
+      this.userMemoryProvider,
+      this.userMemoryMaxEntries
+    );
+    const preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot, activeContextSnapshot);
+    recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
+    recordContextEngineeringSpanAttributes(runSpan, summaryAppliedContext.input.metadata);
+    const promptBudget = measureSystemPromptBudget(preparedRequest.request.messages);
+    if (promptBudget) {
+      recordPromptBudgetSpanAttributes(runSpan, promptBudgetSpanAttributes(promptBudget));
+    }
+    const tools = this.modelTools(layeredContext);
+    const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
+    const cached = await this.readCache(cacheKey, selected.model);
+
+    return {
+      cached,
+      cacheKey,
+      layeredContext,
+      preparedRequest,
+      promptBudget,
+      selected,
+      summaryAppliedMessageCount: summaryAppliedContext.input.messages.length,
+      tools
+    };
+  }
+
+  private async finalizeInvocation(args: {
+    readonly cacheKey: string;
+    readonly context: AgentRunContext;
+    readonly execution: ModelLoopExecution;
+    readonly preparedRequest: ReturnType<AgentRuntime["prepareModelRequest"]>;
+    readonly promptBudget: ReturnType<typeof measureSystemPromptBudget>;
+    readonly runSpan: SpanHandle;
+    readonly selected: { readonly provider: ModelProvider; readonly model: string };
+    readonly startedAtMs: number;
+    readonly summaryAppliedMessageCount: number;
+  }): Promise<ModelResponse> {
+    const { cacheKey, context, execution, preparedRequest, promptBudget, runSpan, selected, startedAtMs, summaryAppliedMessageCount } = args;
+    const filtered = await applyResponseFiltersFn(
+      context,
+      execution.finalResponse,
+      this.responseFilters,
+      this.tracer,
+      responseFilterEvidenceFromExecution(execution)
+    );
+    const guarded = await applyOutputGuardsFn(context, filtered, this.outputGuards, this.tracer, this.metrics);
+
+    await this.recordRunComplete(context, { ...execution, finalResponse: guarded });
+    await this.recordCheckpoint(context, 100, "complete", context.input.messages, guarded.output);
+    await this.writeCache(cacheKey, guarded, execution.toolsUsed);
+    if (preparedRequest.contextWindow?.summaryInserted) {
+      await persistConversationSummaryFromRequestFn(
+        context,
+        preparedRequest.request,
+        summaryAppliedMessageCount,
+        this.conversationSummaryStore
+      );
+    }
+    await this.invokeHooks("afterComplete", context, guarded);
+    this.recordAgentRun(context, guarded.model, "completed", startedAtMs);
+    // Iter 48: stamp wall-clock run latency on the trace span so a
+    // trace-store consumer can correlate latency with the same ctx.*
+    // span attrs without going through a separate query.
+    runSpan.setAttribute("run.latency_ms", Date.now() - startedAtMs);
+    this.recordTelemetry(context, selected.provider.id, selected.model, guarded, promptBudget, startedAtMs);
+    return guarded;
+  }
+
+  private async handleRunError(
+    context: AgentRunContext,
+    runSpan: SpanHandle,
+    error: unknown,
+    startedAtMs: number
+  ): Promise<void> {
+    runSpan.setError(error);
+    await this.recordCheckpoint(
+      context,
+      900,
+      "failed",
+      context.input.messages,
+      error instanceof Error ? error.message : String(error)
+    );
+    await this.recordRunFailure(context, error);
+    this.recordAgentRun(context, context.input.model, "failed", startedAtMs);
+    await this.invokeHooks("onError", context, error);
+  }
+
+  private async processCachedResponse(
+    context: AgentRunContext,
+    cached: CachedResponse,
+    selected: { readonly provider: ModelProvider; readonly model: string },
+    startedAtMs: number
+  ): Promise<ModelResponse> {
+    const cachedResponse: ModelResponse = {
+      id: `${context.runId}:cache`,
+      model: cached.model ?? selected.model,
+      output: cached.content
+    };
+    const filtered = await applyResponseFiltersFn(context, cachedResponse, this.responseFilters, this.tracer, {
+      toolInsights: [],
+      toolsUsed: cached.toolsUsed,
+      verifiedSources: []
+    });
+    const guarded = await applyOutputGuardsFn(context, filtered, this.outputGuards, this.tracer, this.metrics);
+
+    await this.recordRunComplete(context, {
+      finalResponse: guarded,
+      intermediateMessages: [],
+      toolResults: [],
+      toolsUsed: cached.toolsUsed
+    });
+    await this.recordCheckpoint(context, 100, "complete", context.input.messages, guarded.output);
+    await this.invokeHooks("afterComplete", context, guarded);
+    this.recordAgentRun(context, guarded.model, "completed", startedAtMs);
+    return guarded;
   }
 
   private resolveProvider(model: string): { readonly provider: ModelProvider; readonly model: string } {
