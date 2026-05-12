@@ -129,6 +129,21 @@ async function probePiperVoice(): Promise<ProbeResult> {
   };
 }
 
+async function probeSox(): Promise<ProbeResult> {
+  const sox = await commandOnPath("sox") ?? await commandOnPath("rec");
+  if (sox) {
+    return { detail: sox, label: "sox (mic capture for `muse listen`)", status: "ok" };
+  }
+  return {
+    detail: "not on PATH",
+    fix:
+      "macOS: brew install sox        # records WAV from the system mic\n" +
+      "       Linux: apt install sox  # or `pip install sounddevice` for a Python alt",
+    label: "sox (mic capture for `muse listen`)",
+    status: "todo"
+  };
+}
+
 function renderResult(result: ProbeResult): string {
   const tag = result.status === "ok" ? "[ok]  " : "[todo]";
   const lines: string[] = [`  ${tag} ${result.label} — ${result.detail}`];
@@ -154,7 +169,8 @@ export function registerSetupVoiceCommand(program: Command, io: ProgramIO): void
         probeWhisperBinary(),
         probeWhisperModel(),
         probePiperBinary(),
-        probePiperVoice()
+        probePiperVoice(),
+        probeSox()
       ]);
 
       if (options.json) {
@@ -169,7 +185,7 @@ export function registerSetupVoiceCommand(program: Command, io: ProgramIO): void
       const todoCount = results.filter((r) => r.status === "todo").length;
       io.stdout("\n");
       if (todoCount === 0) {
-        io.stdout("All four checks green — `muse listen` and `/api/voice/tts` should work end-to-end.\n");
+        io.stdout(`All ${results.length.toString()} checks green — \`muse listen\` and \`/api/voice/tts\` should work end-to-end.\n`);
       } else {
         io.stdout(`${todoCount.toString()} of ${results.length.toString()} steps still missing. Follow the → hints above.\n`);
         io.stdout("Full docs: docs/setup-local-llm.md → \"Voice mode\" (when added) or docs/design/voice-mode.md.\n");

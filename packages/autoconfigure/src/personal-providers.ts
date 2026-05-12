@@ -428,6 +428,29 @@ function tryBuildTasksProvider(id: string, env: MuseEnvironment): TasksProvider 
  *   - `MUSE_VOICE_TTS_VOICE` — OpenAI voice name (alloy / echo / …).
  *   - `MUSE_VOICE_TTS_MODEL` / `MUSE_VOICE_STT_MODEL` — model overrides.
  */
+/**
+ * Synchronously look for `whisper-cli` (homebrew's binary name) or
+ * `whisper-cpp` (project default) on $PATH. Returns the first hit
+ * or undefined. Used so a user who just ran `brew install whisper-cpp`
+ * doesn't need to set MUSE_WHISPER_CPP_PATH manually.
+ */
+function detectWhisperBinarySync(): string | undefined {
+  const path = process.env.PATH ?? "";
+  for (const dir of path.split(":")) {
+    if (!dir) continue;
+    for (const name of ["whisper-cli", "whisper-cpp"]) {
+      const candidate = `${dir.replace(/\/+$/, "")}/${name}`;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { accessSync, constants } = require("node:fs") as typeof import("node:fs");
+        accessSync(candidate, constants.X_OK);
+        return candidate;
+      } catch { /* miss */ }
+    }
+  }
+  return undefined;
+}
+
 export function buildVoiceRegistry(env: MuseEnvironment): VoiceProviderRegistry | undefined {
   const sttChoice = env.MUSE_VOICE_STT?.trim().toLowerCase();
   const ttsChoice = env.MUSE_VOICE_TTS?.trim().toLowerCase();
@@ -444,9 +467,17 @@ export function buildVoiceRegistry(env: MuseEnvironment): VoiceProviderRegistry 
   const registry = new VoiceProviderRegistry();
 
   if (useLocalStt) {
+    // Homebrew's whisper.cpp formula installs the binary as
+    // `whisper-cli`, not `whisper-cpp`. Auto-resolve so the user
+    // doesn't have to set MUSE_WHISPER_CPP_PATH after a plain
+    // `brew install whisper-cpp`. Explicit env still wins.
+    const explicitBinary = env.MUSE_WHISPER_CPP_PATH?.trim();
+    const detectedBinary = explicitBinary && explicitBinary.length > 0
+      ? explicitBinary
+      : detectWhisperBinarySync();
     registry.registerStt(
       new WhisperCppSttProvider({
-        ...(env.MUSE_WHISPER_CPP_PATH?.trim() ? { binaryPath: env.MUSE_WHISPER_CPP_PATH.trim() } : {}),
+        ...(detectedBinary ? { binaryPath: detectedBinary } : {}),
         ...(env.MUSE_WHISPER_CPP_MODEL?.trim() ? { modelPath: env.MUSE_WHISPER_CPP_MODEL.trim() } : {})
       })
     );
