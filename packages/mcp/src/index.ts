@@ -507,6 +507,7 @@ export { resolveRelativeTimePhrase } from "./loopback-relative-time.js";
 // Personal task store — pure data layer shared between the MCP tool,
 // the REST routes, and the CLI's --local mode.
 export {
+  compareTasksByDueDate,
   parseTaskDueAt,
   readTasks,
   readTaskStatusFilter,

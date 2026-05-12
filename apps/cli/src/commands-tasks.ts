@@ -15,6 +15,7 @@ import { randomUUID } from "node:crypto";
 
 import { resolveTasksFile } from "@muse/autoconfigure";
 import {
+  compareTasksByDueDate,
   parseTaskDueAt,
   readTasks,
   readTaskStatusFilter,
@@ -83,7 +84,7 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
         const all = await readTasks(file);
         const filtered = all
           .filter((task) => status === "all" || task.status === status)
-          .sort((left, right) => (right.createdAt ?? "").localeCompare(left.createdAt ?? ""));
+          .sort(compareTasksByDueDate);
         payload = { status, tasks: filtered.map(serializeTask), total: filtered.length };
       } else {
         const path = `/api/tasks?status=${encodeURIComponent(options.status)}`;

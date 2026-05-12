@@ -121,6 +121,33 @@ export function parseTaskDueAt(raw: string, now: () => Date): string | Error {
   return relative.toISOString();
 }
 
+/**
+ * Comparator that puts the task the user most needs to see at the
+ * top: most-imminent dueAt first; tasks without a dueAt sink to the
+ * bottom; createdAt-desc breaks remaining ties.
+ *
+ * Personal-JARVIS UX: when a user has 12 open tasks, "what's due
+ * soonest?" is the only question that matters. The previous default
+ * (creation-date desc) buried last week's hard deadline behind
+ * today's quick capture. Use this with `[...tasks].sort(compareTasksByDueDate)`.
+ */
+export function compareTasksByDueDate(left: PersistedTask, right: PersistedTask): number {
+  const leftDue = left.dueAt;
+  const rightDue = right.dueAt;
+  if (leftDue && rightDue) {
+    if (leftDue !== rightDue) {
+      return leftDue.localeCompare(rightDue);
+    }
+  } else if (leftDue) {
+    return -1;
+  } else if (rightDue) {
+    return 1;
+  }
+  // Tie-breaker: most-recently-created first so a fresh quick
+  // capture surfaces above stale undated cruft.
+  return (right.createdAt ?? "").localeCompare(left.createdAt ?? "");
+}
+
 function isPersistedTask(value: unknown): value is PersistedTask {
   if (!value || typeof value !== "object") {
     return false;

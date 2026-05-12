@@ -6,7 +6,7 @@
  * working through the existing `./server-routes.js` path.
  *
  * Endpoints:
- *   - GET    /api/tasks — list newest-first, filterable by status
+ *   - GET    /api/tasks — list dueAt-first (most-imminent on top, undated last), filterable by status
  *   - POST   /api/tasks — create a new task with title + optional notes/tags/dueAt
  *   - POST   /api/tasks/:id/complete — mark done with completedAt
  *   - DELETE /api/tasks/:id — remove
@@ -19,6 +19,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  compareTasksByDueDate,
   parseTaskDueAt,
   readTasks,
   readTaskStatusFilter,
@@ -56,7 +57,7 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
     const tasks = await readTasks(tasksFile);
     const filtered = tasks
       .filter((task) => status === "all" || task.status === status)
-      .sort((left, right) => (right.createdAt ?? "").localeCompare(left.createdAt ?? ""));
+      .sort(compareTasksByDueDate);
     return { status, tasks: filtered, total: filtered.length };
   });
 

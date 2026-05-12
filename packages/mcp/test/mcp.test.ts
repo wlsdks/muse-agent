@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  compareTasksByDueDate,
   createDefaultLoopbackMcpServers,
   createLoopbackMcpConnection,
   createLoopbackMcpMuseTools,
@@ -1330,6 +1331,41 @@ describe("muse.fs loopback server", () => {
 
     const escapeAttempt = await connection.callTool!("read", { path: `${root}/../etc/passwd` });
     expect(escapeAttempt).toMatchObject({ error: expect.stringContaining("not under any configured allowlist root") });
+  });
+});
+
+describe("compareTasksByDueDate", () => {
+  const mk = (id: string, dueAt: string | undefined, createdAt: string) => ({
+    createdAt, dueAt, id, status: "open" as const, title: id
+  });
+
+  it("puts the most-imminent dueAt first", () => {
+    const tasks = [
+      mk("late", "2026-05-20T00:00:00Z", "2026-05-13T10:00:00Z"),
+      mk("soon", "2026-05-14T00:00:00Z", "2026-05-13T09:00:00Z"),
+      mk("now", "2026-05-13T12:00:00Z", "2026-05-13T08:00:00Z")
+    ];
+    const sorted = [...tasks].sort(compareTasksByDueDate).map((t) => t.id);
+    expect(sorted).toEqual(["now", "soon", "late"]);
+  });
+
+  it("sinks tasks without a dueAt to the bottom, newest-created first within that bucket", () => {
+    const tasks = [
+      mk("undated-old", undefined, "2026-05-10T00:00:00Z"),
+      mk("dated", "2026-05-14T00:00:00Z", "2026-05-13T00:00:00Z"),
+      mk("undated-new", undefined, "2026-05-13T00:00:00Z")
+    ];
+    const sorted = [...tasks].sort(compareTasksByDueDate).map((t) => t.id);
+    expect(sorted).toEqual(["dated", "undated-new", "undated-old"]);
+  });
+
+  it("breaks dueAt ties by newest-created first", () => {
+    const tasks = [
+      mk("same-due-old", "2026-05-14T00:00:00Z", "2026-05-12T00:00:00Z"),
+      mk("same-due-new", "2026-05-14T00:00:00Z", "2026-05-13T00:00:00Z")
+    ];
+    const sorted = [...tasks].sort(compareTasksByDueDate).map((t) => t.id);
+    expect(sorted).toEqual(["same-due-new", "same-due-old"]);
   });
 });
 
