@@ -88,11 +88,13 @@ file-backed by default:
   registry. `muse setup calendar` walks the user through OAuth /
   app-password setup interactively.
 
-User-memory auto-extraction (`MUSE_USER_MEMORY_AUTO_EXTRACT=true`)
-runs an extra structured-output LLM call after each turn to
-persist newly stated facts / preferences into the
-`UserMemoryStore`. Disabled by default to keep token cost
-predictable.
+User-memory auto-extraction (`MUSE_USER_MEMORY_AUTO_EXTRACT=true`,
+default `true`) runs an extra structured-output LLM call after each
+turn to persist newly stated facts / preferences into the
+`UserMemoryStore`. JARVIS-class memory is core to the product
+identity, so the per-turn cost is on by default. Set to `false`
+when an offline run / cheap-model budget / disabled-memory test
+rig wants to skip the extra call.
 
 ## Where to look next
 

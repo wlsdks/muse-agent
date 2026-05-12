@@ -453,7 +453,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   ]);
   const runtimeHooks = [
     ...createDefaultRuntimeHooks(env),
-    ...(parseBoolean(env.MUSE_USER_MEMORY_AUTO_EXTRACT, false) && modelProvider && defaultModel
+    ...(parseBoolean(env.MUSE_USER_MEMORY_AUTO_EXTRACT, true) && modelProvider && defaultModel
       ? [createUserMemoryAutoExtractHook({
         model: env.MUSE_USER_MEMORY_AUTO_EXTRACT_MODEL ?? defaultModel,
         modelProvider,

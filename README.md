@@ -183,7 +183,7 @@ Personal-domain toggles:
 | `MUSE_CALENDAR_FILE` | `~/.muse/calendar.json` | Local calendar provider file |
 | `MUSE_CALENDAR_PROVIDERS` | `local` | Comma list: `local,gcal,caldav,macos` |
 | `MUSE_CREDENTIALS_FILE` | `~/.muse/credentials.json` | chmod-600 OAuth / app-password store |
-| `MUSE_USER_MEMORY_AUTO_EXTRACT` | `false` | LLM auto-extracts facts/preferences after each turn |
+| `MUSE_USER_MEMORY_AUTO_EXTRACT` | `true` | LLM auto-extracts facts/preferences after each turn — set `false` to skip the extra per-turn call |
 
 ## Contributing
 

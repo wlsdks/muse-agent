@@ -4,8 +4,11 @@
  * prompt + assistant response and persists any newly-stated facts /
  * preferences into the `UserMemoryStore`.
  *
- * Disabled by default (extra LLM call per turn = extra tokens). Wired
- * in by autoconfigure when `MUSE_USER_MEMORY_AUTO_EXTRACT=true`.
+ * Enabled by default — JARVIS-class memory is core to the product
+ * identity, and the per-turn extraction cost is the operator's own
+ * (single-user-personal). Opt out via
+ * `MUSE_USER_MEMORY_AUTO_EXTRACT=false` when the extra LLM call is
+ * not wanted (cheap-model fallback, offline run, etc).
  *
  * Failure mode: fail-open. Any error in the extraction call (timeout,
  * malformed JSON, store write fail) is swallowed — the agent run that

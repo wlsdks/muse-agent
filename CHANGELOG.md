@@ -7,6 +7,18 @@ move from `Unreleased` to dated/versioned headings.
 
 ## [Unreleased]
 
+### Changed
+
+- **`MUSE_USER_MEMORY_AUTO_EXTRACT` default flips from `false` to
+  `true`**. JARVIS-class memory ("the assistant that remembers")
+  is central to Muse's identity, so the per-turn structured-output
+  LLM call that persists newly stated facts / preferences into the
+  `UserMemoryStore` is now on by default. The extractor runs
+  fail-open with a 10-second wall-clock cap and bounded
+  input slices (2 KB / 2 KB user / assistant). Set
+  `MUSE_USER_MEMORY_AUTO_EXTRACT=false` to skip the extra call
+  (offline runs, cheap-model budgets, disabled-memory test rigs).
+
 ### Added
 
 - **Native server-side `web_search`** is now default-on across OpenAI /
