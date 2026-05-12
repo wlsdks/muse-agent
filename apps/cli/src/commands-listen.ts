@@ -22,9 +22,10 @@ import { join as pathJoin } from "node:path";
 import { platform } from "node:process";
 
 import { buildVoiceRegistry } from "@muse/autoconfigure";
-import type {
-  SpeechToTextProvider,
-  TextToSpeechProvider
+import {
+  TextScanWakeWordDetector,
+  type SpeechToTextProvider,
+  type TextToSpeechProvider
 } from "@muse/voice";
 import type { Command } from "commander";
 
@@ -63,6 +64,8 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
     .option("--lang <code>", "Language hint for STT (e.g. 'ko', 'en'). Defaults to autodetect")
     .option("--voice <name>", "TTS voice id (provider-specific, e.g. 'alloy' for OpenAI)")
     .option("--format <type>", "TTS output format: mp3 | wav | opus | aac | flac", "mp3")
+    .option("--wake <phrase>", "Voice Phase F.1 ambient mode: listen continuously and trigger on this phrase (e.g. 'hey muse'). Ctrl-C to stop")
+    .option("--clip-seconds <seconds>", "Wake-word mode clip length in seconds (default 5)", "5")
     .action(async (options: ListenOptions, command) => {
       const shells = helpers.shells ?? defaultShells();
       const providers = (helpers.buildVoiceProviders ?? defaultBuildVoiceProviders)();
@@ -77,6 +80,105 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
         command.error("sox missing", { exitCode: 1 });
         return;
       }
+
+      const runVoiceTurn = async (prompt: string): Promise<void> => {
+        io.stdout(`You: ${prompt}\n`);
+        const chatResponse = await helpers.apiRequest(io, command, "/api/chat", { message: prompt }, "POST") as {
+          readonly content?: string;
+        };
+        const reply = chatResponse.content?.trim() ?? "(no reply)";
+        io.stdout(`Muse: ${reply}\n`);
+        const tts = await providers.tts!.synthesize({
+          text: reply,
+          ...(options.voice ? { voice: options.voice } : {}),
+          ...(options.format ? { format: parseFormat(options.format) } : {})
+        });
+        const dir = mkdtempSync(pathJoin(tmpdir(), "muse-listen-"));
+        const audioFile = pathJoin(dir, `reply.${tts.format}`);
+        writeFileSync(audioFile, tts.audio);
+        try {
+          await shells.playAudio(audioFile);
+        } finally {
+          try {
+            unlinkSync(audioFile);
+          } catch {
+            // best-effort cleanup
+          }
+        }
+      };
+
+      // Phase F.1 — wake-word ambient mode.
+      if (options.wake && options.wake.trim().length > 0) {
+        const detector = new TextScanWakeWordDetector({ phrase: options.wake.trim() });
+        const clipSeconds = Math.max(2, Math.min(30, Number(options.clipSeconds ?? "5")));
+        io.stdout(`Listening for "${options.wake.trim()}"... Ctrl-C to stop.\n`);
+        let active = true;
+        const onSignal = (): void => {
+          active = false;
+        };
+        process.once("SIGINT", onSignal);
+        try {
+          while (active) {
+            let clipAudio: Buffer;
+            try {
+              clipAudio = await captureWavForSeconds(shells, clipSeconds);
+            } catch (cause) {
+              io.stderr(`sox error: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+              break;
+            }
+            if (!active) break;
+            if (clipAudio.byteLength === 0) {
+              continue;
+            }
+            const stt = await providers.stt.transcribe({
+              audio: new Uint8Array(clipAudio),
+              mimeType: "audio/wav",
+              ...(options.lang ? { language: options.lang } : {})
+            });
+            const transcript = stt.text.trim();
+            if (transcript.length === 0) {
+              continue;
+            }
+            const scan = detector.scan(transcript);
+            if (!scan.detected) {
+              continue;
+            }
+            // Wake fired. Use residual when present; otherwise capture the next clip.
+            let prompt = scan.residual ?? "";
+            if (prompt.length === 0) {
+              io.stdout(`Wake detected. Listening for prompt (${clipSeconds.toString()}s)...\n`);
+              try {
+                const followAudio = await captureWavForSeconds(shells, clipSeconds);
+                if (followAudio.byteLength === 0) continue;
+                const followStt = await providers.stt.transcribe({
+                  audio: new Uint8Array(followAudio),
+                  mimeType: "audio/wav",
+                  ...(options.lang ? { language: options.lang } : {})
+                });
+                prompt = followStt.text.trim();
+              } catch (cause) {
+                io.stderr(`sox error during prompt capture: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+                break;
+              }
+            }
+            if (prompt.length === 0) {
+              io.stderr("Empty prompt after wake; resuming listen.\n");
+              continue;
+            }
+            try {
+              await runVoiceTurn(prompt);
+            } catch (cause) {
+              io.stderr(`voice turn failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+            }
+            io.stdout(`Listening for "${options.wake.trim()}"...\n`);
+          }
+        } finally {
+          process.off("SIGINT", onSignal);
+        }
+        return;
+      }
+
+      // Phase C — push-to-talk.
       io.stdout("Press Enter to start recording, Enter again to stop.\n");
       await shells.waitForEnter();
       io.stdout("Recording... press Enter to stop.\n");
@@ -115,36 +217,35 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
         mimeType: "audio/wav",
         ...(options.lang ? { language: options.lang } : {})
       });
-      io.stdout(`You: ${stt.text}\n`);
-      const chatResponse = await helpers.apiRequest(io, command, "/api/chat", { message: stt.text }, "POST") as {
-        readonly content?: string;
-      };
-      const reply = chatResponse.content?.trim() ?? "(no reply)";
-      io.stdout(`Muse: ${reply}\n`);
-      const tts = await providers.tts.synthesize({
-        text: reply,
-        ...(options.voice ? { voice: options.voice } : {}),
-        ...(options.format ? { format: parseFormat(options.format) } : {})
-      });
-      const dir = mkdtempSync(pathJoin(tmpdir(), "muse-listen-"));
-      const audioFile = pathJoin(dir, `reply.${tts.format}`);
-      writeFileSync(audioFile, tts.audio);
-      try {
-        await shells.playAudio(audioFile);
-      } finally {
-        try {
-          unlinkSync(audioFile);
-        } catch {
-          // best-effort cleanup
-        }
-      }
+      await runVoiceTurn(stt.text);
     });
+}
+
+async function captureWavForSeconds(shells: ListenShells, seconds: number): Promise<Buffer> {
+  const recording = shells.spawnRec(["-q", "-r", "16000", "-c", "1", "-t", "wav", "-"]);
+  const chunks: Buffer[] = [];
+  recording.stdout?.on("data", (chunk: Buffer) => chunks.push(chunk));
+  const stopPromise = new Promise<void>((resolve, reject) => {
+    recording.once("error", reject);
+    recording.once("close", () => resolve());
+  });
+  const timer = setTimeout(() => {
+    recording.kill("SIGTERM");
+  }, seconds * 1000);
+  try {
+    await stopPromise;
+  } finally {
+    clearTimeout(timer);
+  }
+  return Buffer.concat(chunks);
 }
 
 interface ListenOptions {
   readonly lang?: string;
   readonly voice?: string;
   readonly format?: string;
+  readonly wake?: string;
+  readonly clipSeconds?: string;
 }
 
 function parseFormat(raw: string): "mp3" | "wav" | "opus" | "aac" | "flac" {

@@ -6,6 +6,7 @@ import {
   OpenAITtsProvider,
   OpenAIWhisperSttProvider,
   PiperTtsProvider,
+  TextScanWakeWordDetector,
   VoiceProviderError,
   VoiceProviderRegistry,
   VoiceValidationError,
@@ -357,6 +358,51 @@ describe("PiperTtsProvider", () => {
     const error = await provider.synthesize({ text: "hi" }).catch((err) => err);
     expect(error).toBeInstanceOf(VoiceProviderError);
     expect((error as VoiceProviderError).code).toBe("SPAWN_FAILED");
+  });
+});
+
+describe("TextScanWakeWordDetector", () => {
+  it("rejects an empty phrase", () => {
+    expect(() => new TextScanWakeWordDetector({ phrase: "  " })).toThrow();
+  });
+
+  it("detects a basic case-insensitive match", () => {
+    const detector = new TextScanWakeWordDetector({ phrase: "hey muse" });
+    const result = detector.scan("Hey Muse what's the weather?");
+    expect(result.detected).toBe(true);
+    expect(result.residual).toBe("what's the weather?");
+  });
+
+  it("tolerates extra whitespace + punctuation in the input", () => {
+    const detector = new TextScanWakeWordDetector({ phrase: "hey muse" });
+    const result = detector.scan("Hey,  Muse — open the deploy doc");
+    expect(result.detected).toBe(true);
+    expect(result.residual).toContain("open the deploy doc");
+  });
+
+  it("returns detected without residual when the phrase is at the tail", () => {
+    const detector = new TextScanWakeWordDetector({ phrase: "hey muse" });
+    const result = detector.scan("Hey muse");
+    expect(result).toMatchObject({ detected: true });
+    expect(result.residual).toBeUndefined();
+  });
+
+  it("returns not-detected when the phrase is absent", () => {
+    const detector = new TextScanWakeWordDetector({ phrase: "hey muse" });
+    expect(detector.scan("hello there").detected).toBe(false);
+  });
+
+  it("handles empty / missing transcripts", () => {
+    const detector = new TextScanWakeWordDetector({ phrase: "hey muse" });
+    expect(detector.scan("").detected).toBe(false);
+    expect(detector.scan("   ").detected).toBe(false);
+  });
+
+  it("exposes a describe() with the phrase quoted", () => {
+    const detector = new TextScanWakeWordDetector({ phrase: "open sesame" });
+    const info = detector.describe();
+    expect(info.id).toBe("text-scan");
+    expect(info.description).toContain("open sesame");
   });
 });
 

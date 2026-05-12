@@ -49,6 +49,19 @@ move from `Unreleased` to dated/versioned headings.
   bring their own model). See `docs/design/voice-mode.md` for the
   full Phase F contract.
 
+- **Wake-word ambient mode** for `muse listen` (Voice Phase F.1
+  first cut). New `--wake "hey muse"` flag turns the CLI into a
+  continuous-listen daemon: short rolling clips (default 5s,
+  override via `--clip-seconds`) are transcribed through the
+  configured STT provider, scanned for the wake phrase, and on a
+  hit Muse either uses the residual text after the phrase as the
+  prompt (same clip) or captures another clip to get one. Ctrl-C
+  stops the loop. Implemented against a new `WakeWordDetector`
+  abstraction in `@muse/voice` so a future
+  `OnnxWakeWordDetector` (openWakeWord / Porcupine) drops in
+  without touching the CLI. This Phase F.1 cut uses the
+  text-scan path; the openWakeWord ONNX adapter is future work.
+
 - **Local Piper TTS** via the new `PiperTtsProvider`. Set
   `MUSE_VOICE_TTS=piper` AND `MUSE_PIPER_VOICE=/path/to/voice.onnx`
   to route `/api/voice/tts` through the local `piper` binary

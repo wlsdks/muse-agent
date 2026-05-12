@@ -42,3 +42,10 @@ export {
   type PiperTtsProviderOptions
 } from "./piper.js";
 export { VoiceProviderRegistry } from "./registry.js";
+export {
+  TextScanWakeWordDetector,
+  type TextScanWakeWordDetectorOptions,
+  type WakeWordDetector,
+  type WakeWordDetectorInfo,
+  type WakeWordDetectorResult
+} from "./wake-word.js";
