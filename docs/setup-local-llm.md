@@ -172,6 +172,41 @@ extra binaries plus their model files. Probe what's installed:
 muse setup voice
 ```
 
+### Verified install (M3 Pro, ~5 min, zero recurring cost):
+
+```bash
+# 1. binaries
+brew install whisper-cpp pipx
+pipx install piper-tts
+
+# 2. model files
+mkdir -p ~/.muse/whisper-models ~/.muse/piper-voices
+
+# Whisper base.en — 140 MB, English STT (multilingual `base` adds Korean / Japanese / ...)
+curl -L -o ~/.muse/whisper-models/ggml-base.en.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+
+# Piper lessac medium — 63 MB, US English TTS (KSS for Korean voice)
+cd ~/.muse/piper-voices
+curl -LO https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+curl -LO https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
+
+# 3. verify — all four checks should be [ok]
+muse setup voice
+```
+
+Measured roundtrip on this machine after the install above:
+
+  | Stage | Command | Time |
+  | --- | --- | --- |
+  | TTS  | `echo "Hello Stark..." \| piper --model ...` | ~200 ms (Metal-accelerated) |
+  | STT  | `whisper-cli -f greeting.wav -m ggml-base.en.bin` | **525 ms total** |
+  | Roundtrip | piper → whisper-cli | < 1 s |
+
+Whisper-cpp's Metal backend (Apple-Silicon GPU) is what makes 525 ms
+end-to-end possible. Linux/Windows users on CPU should expect
+3–5× slower; the install path is identical.
+
 Sample first-run output:
 
 ```
