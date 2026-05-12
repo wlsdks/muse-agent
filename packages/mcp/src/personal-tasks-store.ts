@@ -35,6 +35,14 @@ export interface PersistedTask {
    * fire when due-soon.
    */
   readonly proactive?: boolean;
+  /**
+   * When true, the proactive watcher fires this task EVEN during
+   * `routine_active_hours`-derived quiet hours. Use for genuine
+   * "wake me at 3 AM" situations (security alert, plane in 6 hours,
+   * babysitter cancelling). Default undefined / false → respect
+   * quiet hours.
+   */
+  readonly urgent?: boolean;
 }
 
 export type TaskStatusFilter = "open" | "done" | "all";
@@ -78,7 +86,8 @@ export function serializeTask(task: PersistedTask): JsonObject {
     ...(task.dueAt ? { dueAt: task.dueAt } : {}),
     ...(task.notes ? { notes: task.notes } : {}),
     ...(task.tags && task.tags.length > 0 ? { tags: [...task.tags] as JsonValue } : {}),
-    ...(task.proactive === false ? { proactive: false } : {})
+    ...(task.proactive === false ? { proactive: false } : {}),
+    ...(task.urgent === true ? { urgent: true } : {})
   };
 }
 

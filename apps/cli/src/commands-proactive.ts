@@ -25,7 +25,7 @@ import {
   resolveTasksFile
 } from "@muse/autoconfigure";
 import type { CalendarEvent } from "@muse/calendar";
-import { appendProactiveHistory, readProactiveHistory, readTasks, runDueProactiveNotices, writeTasks } from "@muse/mcp";
+import { appendProactiveHistory, readProactiveHistory, readTasks, runDueProactiveNotices, writeTasks, type PersistedTask } from "@muse/mcp";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -320,14 +320,30 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
       while (!stopped) {
         const startedAt = new Date();
         // Quiet-hours gate: if we know the user's routine and the
-        // current hour isn't in the active band, skip this tick.
-        // JARVIS doesn't wake Tony at 3 AM unless explicitly told.
+        // current hour isn't in the active band, skip this tick —
+        // UNLESS any imminent task is flagged `urgent: true`, in
+        // which case JARVIS interrupts even at 3 AM.
         if (activeHourSet && !options.ignoreRoutine && !activeHourSet.has(startedAt.getHours())) {
-          // Quiet — sleep until the next interval. No log spam.
-          if (!stopped) {
-            await new Promise((resolve) => setTimeout(resolve, interval * 1000));
+          let urgentImminent = false;
+          try {
+            const tasksNow = await readTasks(tasksFile);
+            const cutoff = startedAt.getTime() + leadMinutes * 60_000;
+            urgentImminent = tasksNow.some((t: PersistedTask) =>
+              t.status === "open"
+              && t.urgent === true
+              && typeof t.dueAt === "string"
+              && new Date(t.dueAt).getTime() <= cutoff
+              && new Date(t.dueAt).getTime() >= startedAt.getTime()
+            );
+          } catch { /* ignore — fall through to skip */ }
+          if (!urgentImminent) {
+            // Quiet — sleep until the next interval. No log spam.
+            if (!stopped) {
+              await new Promise((resolve) => setTimeout(resolve, interval * 1000));
+            }
+            continue;
           }
-          continue;
+          io.stdout(`[${startedAt.toISOString()}] quiet-hours override: imminent urgent task — firing\n`);
         }
         try {
           const summary = await runDueProactiveNotices({

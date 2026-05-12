@@ -111,10 +111,14 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
       "Due date: ISO-8601 (2026-05-15T18:00Z) or relative phrase ('tomorrow at 6pm', 'in 3 hours', 'next Monday')"
     )
     .option("--local", "Write directly to the local tasks file instead of the API")
+    .option(
+      "--urgent",
+      "Mark as urgent: proactive watcher fires this task even during routine_active_hours-derived quiet hours"
+    )
     .option("--json", "Print the raw response instead of a short confirmation")
     .action(async (
       titleParts: readonly string[],
-      options: { readonly notes?: string; readonly tags?: string; readonly due?: string } & SharedOptions,
+      options: { readonly notes?: string; readonly tags?: string; readonly due?: string; readonly urgent?: boolean } & SharedOptions,
       command
     ) => {
       const title = titleParts.join(" ").trim();
@@ -143,7 +147,8 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
           title,
           ...(options.notes && options.notes.length > 0 ? { notes: options.notes } : {}),
           ...(tags && tags.length > 0 ? { tags } : {}),
-          ...(dueAt ? { dueAt } : {})
+          ...(dueAt ? { dueAt } : {}),
+          ...(options.urgent === true ? { urgent: true } : {})
         };
         const existing = await readTasks(file);
         await writeTasks(file, [...existing, persisted]);
