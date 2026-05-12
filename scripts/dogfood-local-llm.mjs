@@ -106,6 +106,15 @@ async function rawOllamaProbe(prompt) {
   return { firstMs, genMs, text, tokens, totalMs, tps };
 }
 
+// Warm-up call so the first measured probe doesn't pay the
+// model-load tax. JARVIS daily use sees this once per `ollama serve`
+// lifetime; we want to characterize the steady-state experience.
+console.log("  warm-up: loading model into RAM…");
+const warmupStart = performance.now();
+await rawOllamaProbe("ok");
+const warmupMs = performance.now() - warmupStart;
+console.log(`    warm-up took ${warmupMs.toFixed(0)}ms (cold-start; subsequent calls reuse the loaded model)`);
+
 console.log("  probe 1: raw Ollama /v1/chat/completions");
 const koMsg = "안녕! 너 어떤 모델이야? 두 문장으로 짧게 한국어로 답해줘.";
 const raw = await rawOllamaProbe(koMsg);
@@ -175,6 +184,7 @@ if (!has2) {
 // ── 3. Verdict ──────────────────────────────────────────────────────
 console.log("---");
 const verdict = {
+  coldStartMs: Math.round(warmupMs),
   firstTokenMs: Math.round(raw.firstMs),
   koreanReplyOk: koOk,
   museApiOk: museOk && museBody?.success === true,
@@ -186,10 +196,13 @@ for (const [k, v] of Object.entries(verdict)) {
   console.log(`  ${k}: ${v}`);
 }
 
-// Tier classification (rough heuristic for the setup-local guide):
+// Tier classification (warm-start, the steady-state experience):
 //   first-token <500ms + tps > 30 + ko_ok + muse_ok → "JARVIS-fit"
 //   first-token <1500ms + tps > 15 + muse_ok       → "usable"
 //   else                                            → "needs more hardware"
+// `coldStartMs` is reported for context but does not gate the tier —
+// Ollama keeps the model resident for `OLLAMA_KEEP_ALIVE` (default 5m)
+// so users pay cold-start once per session, not per request.
 const tier =
   verdict.firstTokenMs < 500 && verdict.rawTokensPerSec > 30 && verdict.koreanReplyOk && verdict.museApiOk
     ? "JARVIS-fit"
