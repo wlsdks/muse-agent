@@ -441,7 +441,6 @@ function detectWhisperBinarySync(): string | undefined {
     for (const name of ["whisper-cli", "whisper-cpp"]) {
       const candidate = `${dir.replace(/\/+$/, "")}/${name}`;
       try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { accessSync, constants } = require("node:fs") as typeof import("node:fs");
         accessSync(candidate, constants.X_OK);
         return candidate;
