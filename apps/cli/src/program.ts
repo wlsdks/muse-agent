@@ -42,6 +42,7 @@ import { registerSetupLocalCommand } from "./commands-setup-local.js";
 import { registerSetupVoiceCommand } from "./commands-setup-voice.js";
 import { registerBriefCommand } from "./commands-brief.js";
 import { registerApprovalCommands } from "./commands-approval.js";
+import { registerAskCommand } from "./commands-ask.js";
 import { registerJobCommands } from "./commands-jobs.js";
 import { registerNotesRagCommands } from "./commands-notes-rag.js";
 import { registerRememberCommands } from "./commands-remember.js";
@@ -416,6 +417,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerNotesRagCommands(program, io);
   registerJobCommands(program, io);
   registerApprovalCommands(program, io);
+  registerAskCommand(program, io);
   registerWatchFolderCommand(program, io);
   registerRoutineCommand(program, io);
   registerTrustCommands(program, io);
