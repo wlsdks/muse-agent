@@ -26,7 +26,8 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { createMuseRuntimeAssembly, resolveNotesDir } from "@muse/autoconfigure";
+import { createMuseRuntimeAssembly, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
+import { readTasks, type PersistedTask } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js";
@@ -40,6 +41,7 @@ interface AskOptions {
   readonly top?: string;
   readonly embedModel?: string;
   readonly autoReindex?: boolean;
+  readonly tasks?: boolean;
 }
 
 interface IndexChunk {
@@ -111,6 +113,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
     .option(
       "--no-auto-reindex",
       "Skip the auto-stale check before search (default: reindex incrementally when a note's mtime is newer than the index)"
+    )
+    .option(
+      "--no-tasks",
+      "Skip injecting open tasks as grounding context (default: include open tasks alongside notes so 'what should I focus on?' answers correctly)"
     )
     .action(async (queryParts: readonly string[], options: AskOptions) => {
       const query = queryParts.join(" ").trim();
@@ -191,27 +197,71 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         ? "(no relevant notes found)"
         : scored.map((r, i) => `<<note ${(i + 1).toString()} — ${r.file} (score ${r.score.toFixed(3)})>>\n${r.chunk.text}\n<<end>>`).join("\n\n");
 
+      // Pull open tasks as a second grounding source. Real JARVIS
+      // questions ("what should I focus on today?", "what's left
+      // for the wedding?") hit tasks, not notes — and we have a
+      // task store already. Sort by due date so the most imminent
+      // are first; cap the dump to keep the prompt tight.
+      let openTasks: readonly PersistedTask[] = [];
+      if (options.tasks !== false) {
+        try {
+          const tasksFile = resolveTasksFile(process.env as Record<string, string | undefined>);
+          const all = await readTasks(tasksFile);
+          openTasks = all
+            .filter((t) => t.status === "open")
+            .sort((a, b) => {
+              const ad = a.dueAt ? new Date(a.dueAt).getTime() : Number.POSITIVE_INFINITY;
+              const bd = b.dueAt ? new Date(b.dueAt).getTime() : Number.POSITIVE_INFINITY;
+              return ad - bd;
+            })
+            .slice(0, 20);
+        } catch {
+          // tasks file missing or unreadable — silently skip, notes
+          // grounding still works
+        }
+      }
+      const taskBlock = openTasks.length === 0
+        ? "(no open tasks)"
+        : openTasks
+          .map((t, i) => {
+            const due = t.dueAt ? ` (due ${t.dueAt})` : "";
+            const urgent = t.urgent ? " [URGENT]" : "";
+            return `<<task ${(i + 1).toString()} — ${t.id}${urgent}>>\n${t.title}${due}\n<<end>>`;
+          })
+          .join("\n\n");
+
       const systemPrompt = [
         ...(personaPrompt ? [personaPrompt, ""] : []),
         "You are Muse, the user's JARVIS-style personal AI conductor.",
-        "Answer the user's question USING ONLY the notes provided below as context.",
-        "If the notes don't contain enough information, say so directly — do not invent facts.",
+        "Answer the user's question USING ONLY the notes and open tasks provided below as context.",
+        "If neither notes nor tasks contain enough information, say so directly — do not invent facts.",
         "Reply in the user's preferred language (from persona prefs).",
         "Keep it concise — 2–4 sentences unless the question explicitly needs more.",
-        "Do NOT include the raw note markers (<<note N>>) in your answer; just speak naturally.",
-        "Cite the source filename inline like '[from <file>]' when you draw on a specific note.",
+        "Do NOT include the raw markers (<<note N>>, <<task N>>) in your answer; just speak naturally.",
+        "Cite the source filename inline like '[from <file>]' when you draw on a specific note; cite tasks as '[task: <title>]'.",
         "",
         "=== USER NOTES (top relevant chunks) ===",
         contextBlock,
-        "=== END NOTES ==="
+        "=== END NOTES ===",
+        "",
+        "=== USER OPEN TASKS (sorted by due date, most imminent first) ===",
+        taskBlock,
+        "=== END TASKS ==="
       ].join("\n");
 
       // Show citation header before streaming the answer so the user
       // sees what's being grounded against, then the model output.
+      const groundedParts: string[] = [];
       if (scored.length > 0) {
-        io.stdout(`(grounded on ${scored.length.toString()} chunk(s) — ${scored.map((r) => r.file.split("/").pop()).join(", ")})\n\n`);
+        groundedParts.push(`${scored.length.toString()} note chunk(s) — ${scored.map((r) => r.file.split("/").pop()).join(", ")}`);
+      }
+      if (openTasks.length > 0) {
+        groundedParts.push(`${openTasks.length.toString()} open task(s)`);
+      }
+      if (groundedParts.length > 0) {
+        io.stdout(`(grounded on ${groundedParts.join("; ")})\n\n`);
       } else {
-        io.stdout("(no matching notes — answering from persona + general knowledge)\n\n");
+        io.stdout("(no matching notes or tasks — answering from persona + general knowledge)\n\n");
       }
 
       for await (const event of assembly.modelProvider.stream({
