@@ -1,9 +1,14 @@
 # Voice Mode — Design Doc
 
-Status: **v1 complete** — Phases A, B, C, D, E shipped. Phase F
-(wake-word ambient mode + local Whisper.cpp / Piper / Gemini Live)
-remains deferred. Last updated 2026-05-10 (round 198 — Phase C
-landed in `apps/cli/src/commands-listen.ts`).
+Status: **Phase F.1 + F.2 + F.3 first cuts shipped.**
+- F.1: `muse listen --wake "hey muse"` text-scan detector.
+  openWakeWord / Porcupine ONNX adapter is future work.
+- F.2: WhisperCppSttProvider (local STT).
+- F.3: PiperTtsProvider (local TTS) + LiveVoiceProvider abstraction
+  + FakeLiveVoiceProvider. Concrete GeminiLiveProvider /
+  OpenAIRealtimeProvider implementations are future work
+  (websocket reconnect / partial-message accumulation).
+Phases A-E shipped previously. Last updated 2026-05-12.
 
 This doc captures the design space for adding a voice interface to
 Muse: speak to it in natural language, hear it speak back.

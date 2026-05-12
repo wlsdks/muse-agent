@@ -1,8 +1,12 @@
 # Proactive surfacing — Design Doc
 
-Status: **design** — no implementation yet. This doc scopes the JARVIS-shaped
-"the assistant says something *first*" surface that turns Muse from
-request-response into anticipatory. Last updated 2026-05-12.
+Status: **Phases A + B + C + D shipped**. Phase D (agent-initiated
+turn) lands an in-memory presence tracker rather than the full
+presence pub/sub described below — same user-visible behaviour for
+single-machine use, simpler to operate. Multi-device routing (where
+the notice fires through the surface the user is currently looking
+at instead of always going through messaging) is the remaining
+Phase D follow-up. Last updated 2026-05-12.
 
 ## Why a separate design
 
