@@ -820,6 +820,17 @@ async function runChatRepl(
   }
   const agentRuntime = assembly.agentRuntime;
   const memoryStore = assembly.userMemoryStore;
+  // Pull the auto-extract helpers (re-exported from autoconfigure so
+  // the CLI doesn't need @muse/memory as a direct dep). Imported
+  // lazily so the test harness can stub the assembly without
+  // exercising this path.
+  const autoconfigureHelpers = await import("@muse/autoconfigure").catch(() => undefined);
+  const autoExtract = autoconfigureHelpers?.pickAutoExtractSystemPrompt
+    ? {
+        pickSystemPrompt: autoconfigureHelpers.pickAutoExtractSystemPrompt,
+        extractJsonObject: autoconfigureHelpers.extractJsonObject
+      }
+    : undefined;
 
   // Look up persistent user memory for this identity. The "what
   // makes Muse JARVIS-class" core: every session opens with the
@@ -1004,6 +1015,55 @@ async function runChatRepl(
         history.push({ content: trimmed, role: "user" });
         history.push({ content: accumulated, role: "assistant" });
         await appendLastChatTurn({ message: trimmed, response: accumulated });
+
+        // Fire-and-forget auto-extract: ask the same model to look at
+        // the just-finished turn and pull out NEW facts/preferences,
+        // then upsert to the persistent store. Failures stay silent
+        // (network glitch, model emitted unparseable JSON, etc.) so
+        // they never block the next prompt — that's the openclaw
+        // differentiation in action: every chat improves what Muse
+        // knows about you, but never at the cost of UX.
+        if (autoExtract && memoryStore && toolsDisabled && assembly.modelProvider) {
+          const turnUser = trimmed;
+          const turnAssistant = accumulated;
+          void (async () => {
+            try {
+              const systemPrompt = autoExtract.pickSystemPrompt(turnUser);
+              let raw = "";
+              for await (const ev of assembly.modelProvider!.stream({
+                messages: [
+                  { content: systemPrompt, role: "system" },
+                  { content: `User turn:\n${turnUser}\n\nAssistant reply:\n${turnAssistant}`, role: "user" }
+                ],
+                model: currentModel ?? assembly.defaultModel ?? "default"
+              })) {
+                if (ev.type === "text-delta" && typeof ev.text === "string") {
+                  raw += ev.text;
+                }
+              }
+              const payload = autoExtract.extractJsonObject(raw);
+              if (!payload) return;
+              let wroteAny = false;
+              for (const [key, value] of Object.entries(payload.facts ?? {})) {
+                if (typeof value === "string" && value.length > 0) {
+                  await Promise.resolve(memoryStore.upsertFact(userId, key, value));
+                  wroteAny = true;
+                }
+              }
+              for (const [key, value] of Object.entries(payload.preferences ?? {})) {
+                if (typeof value === "string" && value.length > 0) {
+                  await Promise.resolve(memoryStore.upsertPreference(userId, key, value));
+                  wroteAny = true;
+                }
+              }
+              if (wroteAny) {
+                userMemory = await Promise.resolve(memoryStore.findByUserId(userId));
+              }
+            } catch {
+              // Fail-open. Extraction is opportunistic, not required.
+            }
+          })();
+        }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         io.stderr(`(error: ${msg})\n`);

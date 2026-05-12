@@ -51,12 +51,23 @@ import {
 } from "@muse/mcp";
 import {
   createUserMemoryAutoExtractHook,
+  extractJsonObject,
   InMemoryContextReferenceStore,
+  pickAutoExtractSystemPrompt,
   type ConversationSummaryStore,
+  type ExtractionPayload,
   type TaskMemoryMaintenance,
   type TaskMemoryStore,
   type UserMemoryStore
 } from "@muse/memory";
+// Re-export the auto-extract helpers so downstream packages
+// (apps/cli) can run user-memory extraction on chat turns without
+// pulling @muse/memory directly.
+export {
+  extractJsonObject,
+  pickAutoExtractSystemPrompt,
+  type ExtractionPayload
+};
 import type { ModelProvider } from "@muse/model";
 import {
   InMemoryAgentMetrics,

@@ -83,7 +83,7 @@ interface ExtractedSlot {
   readonly scope?: string;
 }
 
-interface ExtractionPayload {
+export interface ExtractionPayload {
   readonly facts?: Readonly<Record<string, string>>;
   readonly preferences?: Readonly<Record<string, string>>;
   readonly vetoes?: readonly ExtractedSlot[];
