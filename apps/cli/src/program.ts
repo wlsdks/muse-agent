@@ -903,6 +903,14 @@ async function runChatRepl(
   }
   const agentRuntime = assembly.agentRuntime;
   const memoryStore = assembly.userMemoryStore;
+
+  // Resolve the per-user trust list once at REPL start. The tool-using
+  // path passes blocked tools through `metadata.forbiddenToolNames`,
+  // which the existing DefaultToolExposurePolicy already honours.
+  // Trusted tools list is reserved for future "auto-approve" gates;
+  // for now it's informational (visible via /whoami extension).
+  const { readTrust } = await import("./commands-trust.js");
+  let trust = await readTrust(userId).catch(() => ({ blockedTools: [] as string[], trustedTools: [] as string[] }));
   // Pull the auto-extract helpers (re-exported from autoconfigure so
   // the CLI doesn't need @muse/memory as a direct dep). Imported
   // lazily so the test harness can stub the assembly without
@@ -1048,6 +1056,7 @@ async function runChatRepl(
               currentPersona = next;
               userId = composeUserKey();
               userMemory = memoryStore ? await Promise.resolve(memoryStore.findByUserId(userId)) : undefined;
+              trust = await readTrust(userId).catch(() => ({ blockedTools: [] as string[], trustedTools: [] as string[] }));
               io.stdout(`(persona → ${currentPersona ?? "(base)"}; userKey=${userId})\n`);
               if (userMemory) {
                 const factCount = Object.keys(userMemory.facts).length;
@@ -1057,6 +1066,11 @@ async function runChatRepl(
                 io.stdout(`  (no memory for this persona yet — start fresh)\n`);
               }
             }
+            break;
+          case "trust":
+            io.stdout(`  trust for ${userId}:\n`);
+            io.stdout(`    + trusted (${trust.trustedTools.length.toString()}): ${trust.trustedTools.join(", ") || "(none)"}\n`);
+            io.stdout(`    × blocked (${trust.blockedTools.length.toString()}): ${trust.blockedTools.join(", ") || "(none)"}\n`);
             break;
           case "help":
             io.stdout("  /exit, /quit          leave\n");
@@ -1068,6 +1082,7 @@ async function runChatRepl(
             io.stdout("  /pref key=value       remember a preference\n");
             io.stdout("  /whoami               show what Muse knows about you\n");
             io.stdout("  /persona <slot>       switch persona slot (work / home / none); each has its own memory\n");
+            io.stdout("  /trust                show this user's trusted + blocked tools\n");
             io.stdout("  /help                 this list\n");
             break;
           default:
@@ -1104,12 +1119,18 @@ async function runChatRepl(
         } else {
           // Tool-using path: route through the agent runtime so the
           // tool registry + guards + memory hooks fire. Streams the
-          // final text once when the agent settles.
-          const metadata: Record<string, string | number> = {};
+          // final text once when the agent settles. Blocked-tool list
+          // from `muse trust block <tool>` flows in via
+          // `forbiddenToolNames`, which the tool exposure policy
+          // hard-filters before the model ever sees the registry.
+          const metadata: Record<string, string | number | readonly string[]> = {};
           if (toolsDisabled) metadata.maxTools = 0;
+          if (trust.blockedTools.length > 0) {
+            metadata.forbiddenToolNames = trust.blockedTools;
+          }
           for await (const event of agentRuntime.stream({
             messages,
-            ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+            ...(Object.keys(metadata).length > 0 ? { metadata: metadata as Record<string, string | number> } : {}),
             model: currentModel ?? assembly.defaultModel ?? "default"
           })) {
             if (event.type === "text-delta") {
