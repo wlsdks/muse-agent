@@ -146,6 +146,48 @@ endpoint works with Muse. Common alternatives:
 The `muse setup local` wizard only knows about Ollama today; the
 others work but you wire them through env vars.
 
+## Voice mode (optional)
+
+Muse's voice loop (Whisper STT → local LLM → Piper TTS) needs two
+extra binaries plus their model files. Probe what's installed:
+
+```bash
+muse setup voice
+```
+
+Sample first-run output:
+
+```
+Muse voice toolchain:
+  [todo] whisper-cpp binary — not on PATH
+         → macOS: brew install whisper-cpp
+  [todo] whisper ggml model — ~/.muse/whisper-models/ggml-base.en.bin not found
+         → mkdir -p ~/.muse/whisper-models && curl -L -o … ggml-base.en.bin
+  [todo] piper binary — not on PATH
+         → pipx install piper-tts
+  [todo] piper voice (.onnx) — ~/.muse/piper-voices/*.onnx not found
+         → curl -LO … en_US-lessac-medium.onnx
+```
+
+The four steps are:
+
+1. **`whisper-cpp` binary** — local STT.
+   `brew install whisper-cpp` (macOS) or build from
+   github.com/ggerganov/whisper.cpp.
+2. **ggml model** — pick a size by language. English-only `base.en`
+   is ~150 MB; multilingual `base` adds Korean / Japanese / etc.
+3. **`piper` binary** — local TTS. `pipx install piper-tts` works on
+   every OS; rhasspy/piper releases are statically-linked
+   alternatives.
+4. **Piper voice** — `.onnx` voice file + paired `.json` config from
+   huggingface.co/rhasspy/piper-voices/. Lessac (English) and KSS
+   (Korean) are common picks.
+
+Override paths with env: `MUSE_WHISPER_CPP_PATH`,
+`MUSE_WHISPER_CPP_MODEL_PATH`, `MUSE_PIPER_PATH`, `MUSE_PIPER_VOICE_PATH`.
+The voice provider tests pass with mocked runners (no binaries) so
+the integration shape is verified even when the toolchain is missing.
+
 ## Troubleshooting
 
 **`Ollama daemon not reachable`** — `ollama serve &` not running. On
