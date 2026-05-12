@@ -45,9 +45,9 @@ Pass `--check` to dry-run without writing.
 
 | Tier | Model | Size on disk | Min RAM | Strengths | Weaknesses |
 | --- | --- | --- | --- | --- | --- |
-| **low** | `qwen2.5:1.5b-instruct` | 1.0 GB | 4 GB | **proven 90 ms first-token** on M3 Pro; JARVIS-fit | older (Sep 2024); tool calling fragile |
-| **mid** | `qwen2.5:7b-instruct` | 4.7 GB | 8 GB | **proven 201 ms first-token + 27 tok/s**; recommended daily-driver | older (Sep 2024) |
-| **high** | `qwen3.5:9b-q4_K_M` | 6.6 GB | 12 GB | newest (Apr 2026), better reply quality, multimodal-capable | slower first-token (~30 s on M3 Pro) |
+| **low** | `qwen3.5:2b-q4_K_M` | 1.9 GB | 6 GB | **recommended daily-driver** — Apr 2026 Qwen 3.5, 159 ms first-token via `OllamaProvider` (think:false auto) | thinking model (Muse handles automatically) |
+| **mid** | `qwen2.5:7b-instruct` | 4.7 GB | 8 GB | proven baseline, 201 ms first-token, 27 tok/s | older (Sep 2024) |
+| **high** | `qwen3.5:9b-q4_K_M` | 6.6 GB | 12 GB | best reply quality at moderate cost, Apr 2026 Qwen 3.5 | needs ≥ 12 GB RAM |
 | **power** | `qwen3.6:27b` | 17 GB | 32 GB | open-weight agentic-coding tier (Apr 2026), best 27 B coding model | M-Pro 32 GB+ or workstation only |
 
 **Why low + mid stay on Qwen 2.5 even though Qwen 3.5 is newer:** the
@@ -56,10 +56,11 @@ plain-text prompts. Dogfood measurements on this machine:
 
 | Model | Quant | Warm first-token | Verdict |
 | --- | --- | --- | --- |
-| qwen2.5:1.5b-instruct | Q4_K_M | **90 ms** | JARVIS-fit |
+| qwen3.5:2b-q4_K_M (via Muse OllamaProvider) | Q4_K_M | **159 ms** | **JARVIS-fit** ← new default |
 | qwen2.5:7b-instruct | Q4_K_M | **201 ms** | JARVIS-fit |
-| qwen3.5:0.8b | Q8 (only build) | timed out at 5 min | unusable |
-| qwen3.5:2b (default) | Q8 | 134 s | unusable |
+| qwen2.5:1.5b-instruct | Q4_K_M | **90 ms** | JARVIS-fit (legacy) |
+| qwen3.5:0.8b (Q8-only) | Q8 | hard to use (no Q4 build) | skip |
+| qwen3.5:2b (Q8 default, /v1 endpoint) | Q8 | 134 s | reasoning-on artifact — Muse routes via /api/chat + think:false |
 | qwen3.5:2b-q4_K_M | Q4_K_M | 39 s | borderline |
 
 Qwen 3.5:9 B stays as the "high" tier because at that size reply
