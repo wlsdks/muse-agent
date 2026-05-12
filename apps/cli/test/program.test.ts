@@ -2132,7 +2132,9 @@ describe("cli program", () => {
         readonly model: { readonly status: string; readonly muse_model?: string; readonly providerKeys: readonly string[] };
         readonly tasks: { readonly status: string; readonly entryCount?: number };
         readonly notes: { readonly status: string; readonly fileCount?: number };
-        readonly voice: { readonly status: string; readonly source: string };
+        readonly voice: { readonly status: string; readonly source: string; readonly sttBackend: string; readonly ttsBackend: string };
+        readonly userMemory: { readonly status: string; readonly autoExtract: boolean };
+        readonly proactive: { readonly status: string; readonly enabled: boolean; readonly leadMinutes: number };
       };
       // Model derived from file: openai token + MUSE_MODEL auto-set.
       expect(snapshot.model.status).toBe("ok");
@@ -2144,8 +2146,18 @@ describe("cli program", () => {
       // Seeded fixtures: one task + one note.
       expect(snapshot.tasks).toMatchObject({ status: "ok", entryCount: 1 });
       expect(snapshot.notes).toMatchObject({ status: "ok", fileCount: 1 });
-      // Voice resolves via merged env (OPENAI_API_KEY from file).
-      expect(snapshot.voice).toMatchObject({ status: "ok", source: "openai_api_key" });
+      // Voice resolves via merged env (OPENAI_API_KEY from file). The
+      // STT/TTS backend defaults to openai-* when no local override is set.
+      expect(snapshot.voice).toMatchObject({
+        source: "openai_api_key",
+        status: "ok",
+        sttBackend: "openai-whisper",
+        ttsBackend: "openai-tts"
+      });
+      // User-memory auto-extract is default-on.
+      expect(snapshot.userMemory).toMatchObject({ autoExtract: true, status: "ok" });
+      // Proactive surfacing is off without the required env vars.
+      expect(snapshot.proactive).toMatchObject({ enabled: false, leadMinutes: 10, status: "info" });
     } finally {
       const restore = (key: keyof typeof prev, envKey: string) => {
         if (prev[key] === undefined) { delete process.env[envKey]; } else { process.env[envKey] = prev[key]!; }
@@ -2272,7 +2284,7 @@ describe("cli program", () => {
       // is now visible via merged env).
       expect(text).toContain("MUSE_MODEL=openai/gpt-4o-mini");
       expect(text).toContain("1 provider key(s): openai");
-      expect(text).toContain("[ok]   voice — OpenAI key present");
+      expect(text).toContain("[ok]   voice — stt=openai-whisper, tts=openai-tts");
       // Stale "or export ..." advice must be gone.
       expect(text).not.toContain("export OPENAI_API_KEY");
     } finally {

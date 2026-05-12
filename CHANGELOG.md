@@ -60,6 +60,29 @@ move from `Unreleased` to dated/versioned headings.
   bring their own model). See `docs/design/voice-mode.md` for the
   full Phase F contract.
 
+- **`muse setup status` now surfaces the recent env knobs**. The
+  setup-status snapshot (used by both `muse setup` CLI text /
+  `--json` and `GET /api/setup/status`) gained three sections /
+  fields so operators can verify their toggles without grepping
+  env:
+  - `voice.sttBackend` and `voice.ttsBackend` resolve the
+    effective backend (`openai-whisper` / `whisper-cpp` for STT,
+    `openai-tts` / `piper` for TTS) given the configured env. The
+    CLI line reads `[ok] voice — stt=openai-whisper, tts=openai-tts`
+    (or your local-only combo) instead of the previous "OpenAI
+    key present" string.
+  - New `userMemory` section: `{ status, autoExtract, model? }`.
+    Reflects the `MUSE_USER_MEMORY_AUTO_EXTRACT` flag (default
+    `true`) and the resolved extraction model.
+  - New `proactive` section:
+    `{ status, enabled, providerId?, destination?, leadMinutes,
+    tickMs, agentTurn, quietHours?, sidecarFile, nextStep? }`.
+    The `enabled` boolean reflects whether
+    `MUSE_PROACTIVE_PROVIDER` + `MUSE_PROACTIVE_DESTINATION` are
+    set (the server-side daemon also needs a calendar or tasks
+    signal, which the snapshot doesn't enumerate). Phase D
+    `agentTurn` exposes whether `MUSE_PROACTIVE_AGENT_TURN=true`.
+
 - **`LiveVoiceProvider` abstraction** for duplex (audio-in /
   audio+text-out) providers like Gemini Live and OpenAI Realtime
   (Voice Phase F.3). Ships the interface

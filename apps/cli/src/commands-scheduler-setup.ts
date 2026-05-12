@@ -269,9 +269,9 @@ async function renderSetupStatus(): Promise<string> {
 
   // voice
   if (snap.voice.status === "ok") {
-    push("ok", "voice", "OpenAI key present (Whisper STT + TTS available)");
+    push("ok", "voice", `stt=${snap.voice.sttBackend}, tts=${snap.voice.ttsBackend}`);
   } else {
-    push("info", "voice", "no key");
+    push("info", "voice", "no provider wired");
     pushNext(snap.voice.nextStep);
   }
 
@@ -292,6 +292,31 @@ async function renderSetupStatus(): Promise<string> {
       ? `enabled (maxUses ${ws.maxUses.toString()}, source=${ws.source})`
       : `disabled (source=${ws.source})`
   );
+
+  // user memory (auto-extract)
+  const um = snap.userMemory;
+  if (um.autoExtract) {
+    const detail = um.model ? `auto-extract on (model=${um.model})` : "auto-extract on";
+    push("ok", "user memory", detail);
+  } else {
+    push("info", "user memory", "auto-extract disabled");
+    pushNext(um.nextStep);
+  }
+
+  // proactive surfacing
+  const pr = snap.proactive;
+  if (pr.enabled) {
+    const detail: string[] = [];
+    detail.push(`${pr.providerId ?? "?"} → ${pr.destination ?? "?"}`);
+    detail.push(`lead=${pr.leadMinutes.toString()}min`);
+    detail.push(`tick=${pr.tickMs.toString()}ms`);
+    if (pr.agentTurn) detail.push("agent-turn=true");
+    if (pr.quietHours) detail.push(`quiet=${pr.quietHours}`);
+    push("ok", "proactive", detail.join(", "));
+  } else {
+    push("info", "proactive", "disabled");
+    pushNext(pr.nextStep);
+  }
 
   lines.push("");
   lines.push("Wizards:");

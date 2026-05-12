@@ -44,9 +44,43 @@ export interface SetupStatusSnapshot {
   };
   readonly notes: { readonly status: "ok" | "info"; readonly dir: string; readonly fileCount?: number; readonly nextStep?: string };
   readonly tasks: { readonly status: "ok" | "info"; readonly file: string; readonly entryCount?: number; readonly nextStep?: string };
-  readonly voice: { readonly status: "ok" | "info"; readonly source: "openai_api_key" | "muse_voice_openai_api_key" | "none"; readonly nextStep?: string };
+  readonly voice: {
+    readonly status: "ok" | "info";
+    readonly source: "openai_api_key" | "muse_voice_openai_api_key" | "none";
+    /**
+     * Resolved STT backend after autoconfigure's
+     * `MUSE_VOICE_STT` resolution. `none` when no provider is wired.
+     */
+    readonly sttBackend: "openai-whisper" | "whisper-cpp" | "none";
+    /** Resolved TTS backend (MUSE_VOICE_TTS=piper requires MUSE_PIPER_VOICE). */
+    readonly ttsBackend: "openai-tts" | "piper" | "none";
+    readonly nextStep?: string;
+  };
   readonly messaging: { readonly status: "ok" | "info"; readonly providers: readonly string[]; readonly nextStep?: string };
   readonly webSearch: { readonly status: "ok" | "info"; readonly enabled: boolean; readonly maxUses: number; readonly source: "default" | "env" };
+  readonly userMemory: {
+    readonly status: "ok" | "info";
+    /** `true` when the auto-extract hook is currently active. */
+    readonly autoExtract: boolean;
+    /** Resolved extraction model when auto-extract is on (`undefined` when off). */
+    readonly model?: string;
+    readonly nextStep?: string;
+  };
+  readonly proactive: {
+    readonly status: "ok" | "info";
+    /** `true` when the daemon would actually start given current env. */
+    readonly enabled: boolean;
+    readonly providerId?: string;
+    readonly destination?: string;
+    readonly leadMinutes: number;
+    readonly tickMs: number;
+    /** Phase D — when `true`, fired notices spawn a one-shot agent run. */
+    readonly agentTurn: boolean;
+    /** Effective quiet-hours window (proactive override > reminder share > none). */
+    readonly quietHours?: string;
+    readonly sidecarFile: string;
+    readonly nextStep?: string;
+  };
 }
 
 export interface WebSearchEnvSnapshot {
@@ -124,9 +158,49 @@ export async function collectSetupStatusJson(): Promise<SetupStatusSnapshot> {
   const voiceSource: "openai_api_key" | "muse_voice_openai_api_key" | "none" = voiceFromMuse
     ? "muse_voice_openai_api_key"
     : voiceFromBase ? "openai_api_key" : "none";
+  const voiceSttChoice = env.MUSE_VOICE_STT?.trim().toLowerCase();
+  const voiceTtsChoice = env.MUSE_VOICE_TTS?.trim().toLowerCase();
+  const hasPiperVoice = Boolean(env.MUSE_PIPER_VOICE?.trim());
+  const sttBackend: "openai-whisper" | "whisper-cpp" | "none" =
+    voiceSttChoice === "whisper-cpp"
+      ? "whisper-cpp"
+      : voiceSource !== "none" ? "openai-whisper" : "none";
+  const ttsBackend: "openai-tts" | "piper" | "none" =
+    voiceTtsChoice === "piper" && hasPiperVoice
+      ? "piper"
+      : voiceSource !== "none" ? "openai-tts" : "none";
 
   const messagingFile = resolveMessagingCredentialsFile(env);
   const messagingHits = await readMessagingProviderState(messagingFile, env);
+
+  // User-memory auto-extract (default-on as of the recent flip).
+  const autoExtractEnv = env.MUSE_USER_MEMORY_AUTO_EXTRACT?.trim().toLowerCase();
+  const autoExtractEnabled = autoExtractEnv === undefined
+    ? true
+    : autoExtractEnv === "true";
+  const autoExtractModel = env.MUSE_USER_MEMORY_AUTO_EXTRACT_MODEL?.trim() || museModel || undefined;
+
+  // Proactive surfacing daemon — collect raw env + compute the
+  // "would activate" predicate the way server.ts does. The daemon
+  // additionally requires a calendar registry OR tasksFile at runtime;
+  // the snapshot can't know those without booting autoconfigure, so it
+  // reports the env-gated state only.
+  const proactiveProvider = env.MUSE_PROACTIVE_PROVIDER?.trim();
+  const proactiveDestination = env.MUSE_PROACTIVE_DESTINATION?.trim();
+  const proactiveLeadRaw = env.MUSE_PROACTIVE_LEAD_MINUTES?.trim();
+  const proactiveLead = proactiveLeadRaw && /^\d+$/u.test(proactiveLeadRaw)
+    ? Number.parseInt(proactiveLeadRaw, 10)
+    : 10;
+  const proactiveTickRaw = env.MUSE_PROACTIVE_TICK_MS?.trim();
+  const proactiveTickMs = proactiveTickRaw && /^\d+$/u.test(proactiveTickRaw)
+    ? Number.parseInt(proactiveTickRaw, 10)
+    : 60_000;
+  const proactiveAgentTurn = env.MUSE_PROACTIVE_AGENT_TURN?.trim().toLowerCase() === "true";
+  const proactiveQuietHours = env.MUSE_PROACTIVE_QUIET_HOURS?.trim()
+    || env.MUSE_REMINDER_QUIET_HOURS?.trim();
+  const proactiveSidecarFile = env.MUSE_PROACTIVE_SIDECAR_FILE?.trim()
+    || pathJoin(home, ".muse", "proactive-fired.json");
+  const proactiveEnabled = Boolean(proactiveProvider && proactiveDestination);
 
   const modelStatus = museModel.length > 0 || providerKeys.length > 0 ? "ok" : "todo";
   const calendarLocalStatus = calendarBytes !== undefined ? "ok" : "info";
@@ -191,14 +265,38 @@ export async function collectSetupStatusJson(): Promise<SetupStatusSnapshot> {
     },
     voice: {
       source: voiceSource,
-      status: voiceSource === "none" ? "info" : "ok",
-      ...(voiceSource === "none"
-        ? { nextStep: "Run `muse setup model` and pick OpenAI, or export MUSE_VOICE_OPENAI_API_KEY" }
+      sttBackend,
+      status: sttBackend === "none" && ttsBackend === "none" ? "info" : "ok",
+      ttsBackend,
+      ...(sttBackend === "none" && ttsBackend === "none"
+        ? { nextStep: "Run `muse setup model` and pick OpenAI, or export MUSE_VOICE_OPENAI_API_KEY, or set MUSE_VOICE_STT=whisper-cpp / MUSE_VOICE_TTS=piper + MUSE_PIPER_VOICE for local-only" }
         : {})
     },
     webSearch: {
       ...readWebSearchEnvSnapshot(env),
       status: "ok" as const
+    },
+    userMemory: {
+      autoExtract: autoExtractEnabled,
+      status: "ok" as const,
+      ...(autoExtractEnabled && autoExtractModel ? { model: autoExtractModel } : {}),
+      ...(autoExtractEnabled
+        ? {}
+        : { nextStep: "Set MUSE_USER_MEMORY_AUTO_EXTRACT=true to re-enable JARVIS-class memory capture" })
+    },
+    proactive: {
+      agentTurn: proactiveAgentTurn,
+      ...(proactiveDestination ? { destination: proactiveDestination } : {}),
+      enabled: proactiveEnabled,
+      leadMinutes: proactiveLead,
+      ...(proactiveProvider ? { providerId: proactiveProvider } : {}),
+      ...(proactiveQuietHours ? { quietHours: proactiveQuietHours } : {}),
+      sidecarFile: proactiveSidecarFile,
+      status: proactiveEnabled ? "ok" as const : "info" as const,
+      tickMs: proactiveTickMs,
+      ...(proactiveEnabled
+        ? {}
+        : { nextStep: "Set MUSE_PROACTIVE_PROVIDER + MUSE_PROACTIVE_DESTINATION to enable calendar/task push notices" })
     }
   };
 }
