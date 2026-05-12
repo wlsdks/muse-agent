@@ -27,6 +27,12 @@ export { DiscordProvider, type DiscordProviderOptions } from "./discord-provider
 export { SlackProvider, type SlackProviderOptions } from "./slack-provider.js";
 export { LineProvider, type LineProviderOptions } from "./line-provider.js";
 export { LogMessagingProvider, type LogMessagingProviderOptions } from "./log-provider.js";
+export {
+  MacosNotificationProvider,
+  type MacosNotificationProviderOptions,
+  type OsascriptRunner,
+  type OsascriptRunResult
+} from "./macos-notification-provider.js";
 
 export { validateOutboundMessage } from "./validate.js";
 

@@ -48,6 +48,7 @@ import {
   DiscordProvider,
   LineProvider,
   LogMessagingProvider,
+  MacosNotificationProvider,
   MessagingProviderRegistry,
   SlackProvider,
   TelegramProvider,
@@ -570,6 +571,21 @@ export function buildMessagingRegistry(env: MuseEnvironment): MessagingProviderR
   if (env.MUSE_MESSAGING_LOG_ENABLED !== "false") {
     const logFile = env.MUSE_MESSAGING_LOG_FILE?.trim();
     registry.register(new LogMessagingProvider(logFile ? { file: logFile } : {}));
+  }
+  // `macos-notification` is OPT-IN — native popups are more invasive
+  // than a log file, so users have to flip the flag deliberately.
+  // Only registers on darwin; the provider constructor throws when
+  // the host isn't macOS, so the try/catch leaves the registry intact
+  // on Linux / Windows where the env var would be a no-op.
+  if (env.MUSE_MESSAGING_MACOS_NOTIFICATION_ENABLED === "true") {
+    try {
+      const title = env.MUSE_MESSAGING_MACOS_NOTIFICATION_TITLE?.trim();
+      registry.register(new MacosNotificationProvider(title ? { title } : {}));
+    } catch {
+      // Non-darwin host — skip silently. The opt-in flag is a hint,
+      // not a hard requirement, and a stray flag in a shared dotfile
+      // shouldn't break boot on Linux.
+    }
   }
   return registry;
 }

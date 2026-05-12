@@ -818,6 +818,19 @@ describe("autoconfigure", () => {
       MUSE_MESSAGING_LOG_ENABLED: "false"
     });
     expect(noLog.describe().map((entry) => entry.id).sort()).toEqual(["line", "slack", "telegram"]);
+
+    // opt in to macOS desktop notifications (darwin-only; this test
+    // host happens to be darwin — on Linux the registry silently
+    // skips, so we assert presence only via `includes` to keep the
+    // check portable).
+    if (process.platform === "darwin") {
+      const withNotif = buildMessagingRegistry({
+        MUSE_MESSAGING_CREDENTIALS_FILE: file,
+        MUSE_MESSAGING_LOG_ENABLED: "false",
+        MUSE_MESSAGING_MACOS_NOTIFICATION_ENABLED: "true"
+      });
+      expect(withNotif.describe().map((entry) => entry.id)).toContain("macos-notification");
+    }
   });
 
   it("buildMessagingRegistry wires offset + inbox files into the TelegramProvider", async () => {
