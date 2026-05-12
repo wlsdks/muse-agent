@@ -42,6 +42,7 @@ import { registerSetupLocalCommand } from "./commands-setup-local.js";
 import { registerSetupVoiceCommand } from "./commands-setup-voice.js";
 import { registerStatusCommand } from "./commands-status.js";
 import { registerRoutineCommand } from "./commands-routine.js";
+import { registerTrustCommands } from "./commands-trust.js";
 import { registerWatchFolderCommand } from "./commands-watch-folder.js";
 import { registerSpecsCommands } from "./commands-specs.js";
 import { registerTasksCommands } from "./commands-tasks.js";
@@ -405,6 +406,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerStatusCommand(program, io);
   registerWatchFolderCommand(program, io);
   registerRoutineCommand(program, io);
+  registerTrustCommands(program, io);
   registerTasksCommands(program, io, { apiRequest, writeOutput });
   registerRunsCommands(program, io, { apiRequest, writeOutput });
   registerDoctorCommand(program, io, { apiRequest, writeOutput });
