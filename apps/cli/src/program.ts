@@ -495,6 +495,22 @@ export async function readPipedStdin(): Promise<string> {
  * context window; the long tail of facts is loaded by trim/episodic
  * memory paths the agent runtime already owns.
  */
+/**
+ * Single source of truth for the "Current local context: ..." line
+ * injected into system prompts so the model never has to guess what
+ * "today" or "tomorrow" means. Used both by buildJarvisPersona (when
+ * a persona exists) and by `muse ask` (always, even with no persona)
+ * — JARVIS knows what day it is regardless of whether the user has
+ * filed any personal facts.
+ */
+export function formatCurrentContextLine(now: Date = new Date()): string {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+  const dayOfWeek = now.toLocaleDateString("en-US", { weekday: "long", timeZone: tz });
+  const dateStr = now.toLocaleDateString("en-CA", { timeZone: tz });
+  const timeStr = now.toLocaleTimeString("en-GB", { hour: "2-digit", hour12: false, minute: "2-digit", timeZone: tz });
+  return `Current local context: ${dateStr} ${timeStr} ${dayOfWeek} (${tz}).`;
+}
+
 export function buildJarvisPersona(
   memory: { readonly facts: Readonly<Record<string, string>>; readonly preferences: Readonly<Record<string, string>>; readonly recentTopics?: readonly string[] },
   userId: string,
@@ -529,13 +545,8 @@ export function buildJarvisPersona(
   // doesn't have to guess. JARVIS knows what day it is; "오늘 일정"
   // / "tomorrow morning" only makes sense when the model has a
   // concrete now.
-  const now = options.now ?? new Date();
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
-  const dayOfWeek = now.toLocaleDateString("en-US", { weekday: "long", timeZone: tz });
-  const dateStr = now.toLocaleDateString("en-CA", { timeZone: tz }); // YYYY-MM-DD
-  const timeStr = now.toLocaleTimeString("en-GB", { hour: "2-digit", hour12: false, minute: "2-digit", timeZone: tz });
   lines.push("");
-  lines.push(`Current local context: ${dateStr} ${timeStr} ${dayOfWeek} (${tz}).`);
+  lines.push(formatCurrentContextLine(options.now));
   if (facts.length > 0) {
     lines.push("");
     lines.push("Facts the user has shared:");

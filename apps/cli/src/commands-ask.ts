@@ -32,7 +32,7 @@ import { readReminders, readTasks, type PersistedReminder, type PersistedTask } 
 import type { Command } from "commander";
 
 import { isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js";
-import { buildJarvisPersona, readPipedStdin } from "./program.js";
+import { buildJarvisPersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
 import type { ProgramIO } from "./program.js";
 
 interface AskOptions {
@@ -338,6 +338,15 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
 
       const systemPrompt = [
         ...(personaPrompt ? [personaPrompt, ""] : []),
+        // Date/time line is ALWAYS present, even with no persona —
+        // questions like "anything due today?" / "is the dentist
+        // tomorrow?" require the model to know `now`, regardless of
+        // whether any facts have been remembered. When a persona is
+        // injected, this duplicates the line buildJarvisPersona
+        // emits; that's harmless. When persona is absent, this is
+        // the only path that grounds the model in time.
+        formatCurrentContextLine(),
+        "",
         "You are Muse, the user's JARVIS-style personal AI conductor.",
         "Answer the user's question USING ONLY the notes, open tasks, upcoming events, and pending reminders provided below as context.",
         "If none of the provided context contains enough information, say so directly — do not invent facts.",
