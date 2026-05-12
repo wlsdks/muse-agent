@@ -42,6 +42,20 @@ export interface ReminderHint {
   readonly dueIso: string;
 }
 
+/**
+ * Learned activity pattern (from `muse routine --apply`, persisted as
+ * `routine_active_hours` / `routine_active_days` facts in user memory).
+ * Surfaced so the model can answer "is now a typical work hour for
+ * the user?" without guessing — and so it can propose plans aligned
+ * with the user's actual rhythm.
+ */
+export interface RoutineHint {
+  /** Hours of day the user is typically active, e.g. `[9, 14, 20]`. */
+  readonly activeHours?: readonly number[];
+  /** Day-of-week labels the user is typically active, e.g. `["Mon", "Tue"]`. */
+  readonly activeDays?: readonly string[];
+}
+
 export interface ActiveContextSnapshot {
   readonly nowIso: string;
   readonly weekday: string;
@@ -66,6 +80,12 @@ export interface ActiveContextSnapshot {
    * proactive nudge surface.
    */
   readonly reminders?: readonly ReminderHint[];
+  /**
+   * Learned activity pattern surfaced from `routine_active_hours` /
+   * `routine_active_days` facts. Empty arrays / undefined mean the
+   * pattern isn't known yet — the renderer omits the line.
+   */
+  readonly routine?: RoutineHint;
 }
 
 export interface ActiveContextResolveOptions {
@@ -133,6 +153,7 @@ export class DefaultActiveContextProvider implements ActiveContextProvider {
     let timezone = this.defaultTimezone;
     let workingHours: { start: number; end: number } | undefined;
     let currentFocus: string | undefined;
+    let routine: RoutineHint | undefined;
     if (userId && this.userMemoryProvider) {
       try {
         const memory = await this.userMemoryProvider.findByUserId(userId);
@@ -154,6 +175,16 @@ export class DefaultActiveContextProvider implements ActiveContextProvider {
           if (typeof focus === "string" && focus.trim()) {
             currentFocus = focus.trim();
           }
+          // `muse routine --apply` writes `routine_active_hours` (CSV
+          // of 0-23 integers) and `routine_active_days` (CSV of
+          // weekday labels) into facts. Until now they fed the proactive
+          // daemon's quiet-hours filter but the LLM never saw them —
+          // so "is now a typical work hour?" was guesswork. Parse
+          // defensively: bad ints / out-of-range hours are dropped
+          // rather than poisoning the snapshot.
+          const hoursFact = memory.facts["routine_active_hours"];
+          const daysFact = memory.facts["routine_active_days"];
+          routine = buildRoutineHint(hoursFact, daysFact);
         }
       } catch {
         // fail-open: keep nowIso + timezone defaults
@@ -198,6 +229,7 @@ export class DefaultActiveContextProvider implements ActiveContextProvider {
       localHour: formatted.localHour,
       nowIso: formatted.iso,
       reminders,
+      routine,
       timezone: formatted.timezone,
       todaysEvents,
       weekday: formatted.weekday,
@@ -343,7 +375,83 @@ export function renderActiveContextSection(snapshot: ActiveContextSnapshot | und
       }
     }
   }
+  if (snapshot.routine) {
+    const routineLine = renderRoutineLine(snapshot.routine, snapshot.localHour, snapshot.weekday);
+    if (routineLine) {
+      lines.push(routineLine);
+    }
+  }
   return lines.join("\n");
+}
+
+/**
+ * Render the learned-routine line, e.g.
+ *   `routine: active_hours=9,14,20 active_days=Mon,Tue,Wed (now: typical hour, typical day)`
+ *
+ * Omits the trailing parenthetical when the current hour/day match
+ * status can't be computed. Returns undefined when the routine carries
+ * no usable data so the renderer skips the line.
+ */
+function renderRoutineLine(
+  routine: RoutineHint,
+  localHour: number,
+  weekday: string
+): string | undefined {
+  const hours = (routine.activeHours ?? []).filter((h) => Number.isFinite(h));
+  const days = (routine.activeDays ?? []).map((d) => d.trim()).filter((d) => d.length > 0);
+  if (hours.length === 0 && days.length === 0) {
+    return undefined;
+  }
+  const parts: string[] = ["routine:"];
+  if (hours.length > 0) {
+    parts.push(`active_hours=${hours.join(",")}`);
+  }
+  if (days.length > 0) {
+    parts.push(`active_days=${days.join(",")}`);
+  }
+  const flags: string[] = [];
+  if (hours.length > 0) {
+    flags.push(hours.includes(localHour) ? "typical hour" : "off-hour");
+  }
+  if (days.length > 0) {
+    const weekdayShort = weekday.slice(0, 3);
+    const dayMatch = days.some((d) => d.toLowerCase().startsWith(weekdayShort.toLowerCase()));
+    flags.push(dayMatch ? "typical day" : "off-day");
+  }
+  return flags.length > 0 ? `${parts.join(" ")} (now: ${flags.join(", ")})` : parts.join(" ");
+}
+
+/**
+ * Parse the CSV facts written by `muse routine --apply`. Drops
+ * non-integer / out-of-range entries defensively so a corrupted
+ * fact can't poison the snapshot.
+ */
+function buildRoutineHint(
+  hoursFact: string | undefined,
+  daysFact: string | undefined
+): RoutineHint | undefined {
+  const hours: number[] = [];
+  if (typeof hoursFact === "string") {
+    for (const raw of hoursFact.split(",")) {
+      const n = Number.parseInt(raw.trim(), 10);
+      if (Number.isFinite(n) && n >= 0 && n <= 23) {
+        hours.push(n);
+      }
+    }
+  }
+  const days: string[] = [];
+  if (typeof daysFact === "string") {
+    for (const raw of daysFact.split(",")) {
+      const trimmed = raw.trim();
+      if (trimmed.length > 0) {
+        days.push(trimmed);
+      }
+    }
+  }
+  if (hours.length === 0 && days.length === 0) {
+    return undefined;
+  }
+  return { activeDays: days, activeHours: hours };
 }
 
 function sanitizeInline(value: string): string {

@@ -110,6 +110,56 @@ describe("buildJarvisPersona", () => {
     ).toBeUndefined();
   });
 
+  it("surfaces recentTopics under their own header so JARVIS continuity isn't amnesic", () => {
+    const prompt = buildJarvisPersona(
+      {
+        facts: { name: "Stark" },
+        preferences: {},
+        recentTopics: ["Q3 budget memo", "wedding venue shortlist", "muse onboarding flow"]
+      },
+      "stark"
+    );
+    expect(prompt).toContain("Recent topics the user has been working on:");
+    expect(prompt).toContain("Q3 budget memo");
+    expect(prompt).toContain("wedding venue shortlist");
+    expect(prompt).toContain("muse onboarding flow");
+  });
+
+  it("caps recentTopics to the 5 most recent and dedupes whitespace-collapsed entries", () => {
+    const prompt = buildJarvisPersona(
+      {
+        facts: { name: "Stark" },
+        preferences: {},
+        recentTopics: [
+          "topic 1", "topic 2", "topic 3",
+          "topic 4", "topic 5", "topic 6", "topic 7",
+          "topic 7", "  ", "topic 7"
+        ]
+      },
+      "stark"
+    );
+    // Keeps the tail (most recent) — drops "topic 1" + "topic 2" because cap is 5
+    expect(prompt).not.toContain("topic 1");
+    expect(prompt).not.toContain("topic 2");
+    expect(prompt).toContain("topic 3");
+    expect(prompt).toContain("topic 7");
+    // Empty / duplicate entries don't survive the dedupe
+    const topicLines = prompt!.split("\n").filter((l) => l.startsWith("  - topic "));
+    expect(topicLines).toHaveLength(5);
+  });
+
+  it("emits the persona block when recentTopics is the only signal (no facts/prefs/etc.)", () => {
+    // JARVIS continuity case: user hasn't set name/prefs but has had
+    // prior sessions whose topics were auto-extracted. The persona
+    // should still emit so the next REPL turn isn't amnesic.
+    const prompt = buildJarvisPersona(
+      { facts: {}, preferences: {}, recentTopics: ["the prior conversation"] },
+      "stark"
+    );
+    expect(prompt).toContain("the prior conversation");
+    expect(prompt).toContain("Recent topics");
+  });
+
   it("injects current local date / time / day-of-week so the model knows when 'today' is", () => {
     const fixed = new Date("2026-05-12T13:45:00Z"); // Tuesday
     const prompt = buildJarvisPersona(

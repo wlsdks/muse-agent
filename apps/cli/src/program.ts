@@ -530,7 +530,12 @@ export function buildJarvisPersona(
     else if (key.startsWith("goal:")) goals.push([key.slice(5), value]);
     else plainPrefs.push([key, value]);
   }
-  if (facts.length === 0 && plainPrefs.length === 0 && vetoes.length === 0 && goals.length === 0) {
+  // Cap to the 5 most recent topics. The auto-extractor appends in
+  // chronological order, so the tail is the freshest. Dedupe defensively
+  // — a buggy extractor that re-emits the same topic shouldn't bloat
+  // the persona block.
+  const recentTopics = dedupeNonEmpty(memory.recentTopics ?? []).slice(-5);
+  if (facts.length === 0 && plainPrefs.length === 0 && vetoes.length === 0 && goals.length === 0 && recentTopics.length === 0) {
     return undefined;
   }
   const lines: string[] = [
@@ -567,7 +572,29 @@ export function buildJarvisPersona(
     lines.push("Goals the user is pursuing:");
     for (const [id, value] of goals) lines.push(`  - ${id}: ${value}`);
   }
+  if (recentTopics.length > 0) {
+    // Auto-extracted at REPL exit. Without this section the persona
+    // started every new session amnesic — the user just spent 30
+    // min talking about "the Q3 budget memo" and the next session
+    // has no idea. JARVIS-class continuity: surface them so the
+    // model can pick up the thread instead of asking from scratch.
+    lines.push("");
+    lines.push("Recent topics the user has been working on:");
+    for (const topic of recentTopics) lines.push(`  - ${topic}`);
+  }
   return lines.join("\n");
+}
+
+function dedupeNonEmpty(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of values) {
+    const value = raw.trim();
+    if (value.length === 0 || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
 }
 
 // ── Conversation history for `muse chat -c` ──────────────────────────

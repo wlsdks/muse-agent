@@ -54,6 +54,44 @@ describe("renderActiveContextSection", () => {
     expect(renderActiveContextSection(undefined)).toBeUndefined();
   });
 
+  it("renders the learned routine line with current-hour/day match flags", () => {
+    // fixedNow = 2026-05-11T12:00:00.000Z, Monday. localHour=12 matches
+    // routine hours [9,12,20] → "typical hour"; weekday "Monday"
+    // matches days ["Mon","Wed"] → "typical day".
+    const rendered = renderActiveContextSection({
+      localHour: 12,
+      nowIso: fixedNow.toISOString(),
+      routine: { activeDays: ["Mon", "Wed"], activeHours: [9, 12, 20] },
+      timezone: "UTC",
+      weekday: "Monday"
+    });
+    expect(rendered).toContain("routine: active_hours=9,12,20 active_days=Mon,Wed");
+    expect(rendered).toContain("(now: typical hour, typical day)");
+  });
+
+  it("marks the current hour as off-hour when it isn't in the routine set", () => {
+    const rendered = renderActiveContextSection({
+      localHour: 3, // not in [9,12,20]
+      nowIso: fixedNow.toISOString(),
+      routine: { activeHours: [9, 12, 20] },
+      timezone: "UTC",
+      weekday: "Monday"
+    });
+    expect(rendered).toContain("routine: active_hours=9,12,20");
+    expect(rendered).toContain("(now: off-hour)");
+  });
+
+  it("omits the routine line entirely when both arrays are empty", () => {
+    const rendered = renderActiveContextSection({
+      localHour: 12,
+      nowIso: fixedNow.toISOString(),
+      routine: { activeDays: [], activeHours: [] },
+      timezone: "UTC",
+      weekday: "Monday"
+    });
+    expect(rendered).not.toContain("routine:");
+  });
+
   it("prefixes [OVERDUE] on the active_task line when dueIso is past nowIso (iter 52)", () => {
     // fixedNow = 2026-05-11T12:00:00.000Z. Task was due 3h ago.
     // JARVIS-class: the urgency must be the FIRST thing the agent
@@ -465,6 +503,60 @@ describe("DefaultActiveContextProvider", () => {
     });
     const snapshot = await provider.resolve({ userId: "u1" });
     expect(snapshot?.currentFocus).toBe("extracted focus");
+  });
+
+  it("reads routine_active_hours / routine_active_days facts into snapshot.routine", async () => {
+    const memoryProvider = {
+      async findByUserId() {
+        return {
+          facts: { routine_active_days: "Mon,Tue,Wed", routine_active_hours: "09,14,20" },
+          preferences: {},
+          userId: "u1"
+        };
+      }
+    };
+    const provider = new DefaultActiveContextProvider({
+      defaultTimezone: "UTC",
+      now: () => fixedNow,
+      userMemoryProvider: memoryProvider
+    });
+    const snapshot = await provider.resolve({ userId: "u1" });
+    expect(snapshot?.routine?.activeHours).toEqual([9, 14, 20]);
+    expect(snapshot?.routine?.activeDays).toEqual(["Mon", "Tue", "Wed"]);
+  });
+
+  it("drops out-of-range / non-numeric routine hours rather than poisoning the snapshot", async () => {
+    const memoryProvider = {
+      async findByUserId() {
+        return {
+          facts: { routine_active_hours: "9, 25, abc, 14, -1, 20" },
+          preferences: {},
+          userId: "u1"
+        };
+      }
+    };
+    const provider = new DefaultActiveContextProvider({
+      defaultTimezone: "UTC",
+      now: () => fixedNow,
+      userMemoryProvider: memoryProvider
+    });
+    const snapshot = await provider.resolve({ userId: "u1" });
+    expect(snapshot?.routine?.activeHours).toEqual([9, 14, 20]);
+  });
+
+  it("leaves snapshot.routine undefined when no routine facts exist", async () => {
+    const memoryProvider = {
+      async findByUserId() {
+        return { facts: {}, preferences: {}, userId: "u1" };
+      }
+    };
+    const provider = new DefaultActiveContextProvider({
+      defaultTimezone: "UTC",
+      now: () => fixedNow,
+      userMemoryProvider: memoryProvider
+    });
+    const snapshot = await provider.resolve({ userId: "u1" });
+    expect(snapshot?.routine).toBeUndefined();
   });
 
   it("loads active task from resolver when configured", async () => {
