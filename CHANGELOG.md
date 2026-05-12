@@ -35,9 +35,13 @@ move from `Unreleased` to dated/versioned headings.
     JARVIS-style synthesis prompt and uses the LLM reply (with the
     emoji prefix kept) as the notice text. Falls back to the flat
     "⏰ {title} in {N} min" string when the window has lapsed,
-    the agent is missing, or synthesis errors. Activity tracker is
-    in-process; restart wipes state, which means the first request
-    after boot is the first "recent" activity.
+    the agent is missing, or synthesis errors. Activity tracker
+    defaults to in-process; set
+    `MUSE_PROACTIVE_PRESENCE_FILE=~/.muse/presence.json` to switch
+    to a file-backed tracker that two processes (apps/api + a
+    future `muse listen` daemon) can share, so activity on either
+    surface unlocks Phase D for both. Writes are debounced to once
+    per second to avoid disk thrash.
   Off by default — activates only when `MUSE_PROACTIVE_PROVIDER` +
   `MUSE_PROACTIVE_DESTINATION` are set, the named provider is
   registered, AND at least one signal is available (a calendar

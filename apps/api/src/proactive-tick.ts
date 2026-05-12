@@ -13,6 +13,9 @@
  * to [5s, 1h] for the same reason reminder-tick clamps.
  */
 
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
+import { dirname } from "node:path";
+
 import {
   runDueProactiveNotices,
   type ProactiveActivitySource,
@@ -152,6 +155,104 @@ export function createInMemoryActivityTracker(): InMemoryActivityTracker {
     lastActivityMs: () => lastMs,
     record: (at?: number) => {
       lastMs = at ?? Date.now();
+    }
+  };
+}
+
+/**
+ * File-backed presence tracker for multi-process / multi-device
+ * Phase D. Two processes pointing at the same file (e.g. apps/api on
+ * machine A + a future `muse listen` daemon on the same `~/.muse`)
+ * see each other's activity through the shared JSON blob. The format
+ * is intentionally minimal — just `{ lastActivityMs: number }`.
+ *
+ * Writes are debounced to once per `debounceMs` (default 1s) so a
+ * burst of /api/chat requests doesn't thrash the disk. Reads are
+ * cached for the same window so the daemon's per-tick `lastActivityMs()`
+ * call doesn't re-read the file every minute either (negligible
+ * either way, but keeps the abstraction symmetric).
+ */
+export interface FileBackedActivityTrackerOptions {
+  readonly file: string;
+  readonly debounceMs?: number;
+  /** Test seam — defaults to `() => Date.now()`. */
+  readonly now?: () => number;
+}
+
+export function createFileBackedActivityTracker(options: FileBackedActivityTrackerOptions): InMemoryActivityTracker {
+  const now = options.now ?? (() => Date.now());
+  const debounceMs = Math.max(0, options.debounceMs ?? 1_000);
+  let cachedLastMs: number | undefined;
+  let cachedAtMs = 0;
+  let pendingWriteMs: number | undefined;
+  let lastWriteAtMs = 0;
+  let writeTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const readFromDisk = (): number | undefined => {
+    try {
+      const raw = readFileSync(options.file, "utf8");
+      const parsed = JSON.parse(raw) as { readonly lastActivityMs?: unknown };
+      if (typeof parsed.lastActivityMs === "number" && Number.isFinite(parsed.lastActivityMs)) {
+        return parsed.lastActivityMs;
+      }
+    } catch {
+      // Missing / malformed file — treat as "never recorded".
+    }
+    return undefined;
+  };
+
+  const flushWrite = (): void => {
+    if (pendingWriteMs === undefined) return;
+    const value = pendingWriteMs;
+    pendingWriteMs = undefined;
+    lastWriteAtMs = now();
+    try {
+      const tmp = `${options.file}.tmp-${process.pid.toString()}-${lastWriteAtMs.toString()}`;
+      mkdirSync(dirname(options.file), { recursive: true });
+      writeFileSync(tmp, `${JSON.stringify({ lastActivityMs: value })}\n`, "utf8");
+      renameSync(tmp, options.file);
+    } catch {
+      // Best-effort — the daemon will see a slightly older value
+      // until the next successful write. Don't crash the request hook.
+    }
+  };
+
+  return {
+    lastActivityMs: () => {
+      const nowMs = now();
+      if (cachedLastMs !== undefined && nowMs - cachedAtMs < debounceMs) {
+        return cachedLastMs;
+      }
+      cachedLastMs = readFromDisk();
+      cachedAtMs = nowMs;
+      // The in-flight pending value (if any) wins over the on-disk
+      // value — otherwise a daemon tick that lands between record()
+      // and the debounced flush would miss the new activity.
+      if (pendingWriteMs !== undefined && (cachedLastMs === undefined || pendingWriteMs > cachedLastMs)) {
+        return pendingWriteMs;
+      }
+      return cachedLastMs;
+    },
+    record: (at?: number) => {
+      const value = at ?? now();
+      pendingWriteMs = pendingWriteMs === undefined ? value : Math.max(pendingWriteMs, value);
+      // Invalidate the read cache so the next lastActivityMs() picks
+      // up the new value even if we haven't flushed yet.
+      cachedAtMs = 0;
+      const elapsed = now() - lastWriteAtMs;
+      if (elapsed >= debounceMs) {
+        flushWrite();
+        return;
+      }
+      if (writeTimer) return;
+      writeTimer = setTimeout(() => {
+        writeTimer = undefined;
+        flushWrite();
+      }, debounceMs - elapsed);
+      // Don't keep the process alive solely to flush activity.
+      if (typeof writeTimer.unref === "function") {
+        writeTimer.unref();
+      }
     }
   };
 }
