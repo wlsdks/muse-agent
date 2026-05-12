@@ -32,7 +32,7 @@ import { readReminders, readTasks, type PersistedReminder, type PersistedTask } 
 import type { Command } from "commander";
 
 import { isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js";
-import { buildJarvisPersona } from "./program.js";
+import { buildJarvisPersona, readPipedStdin } from "./program.js";
 import type { ProgramIO } from "./program.js";
 
 interface AskOptions {
@@ -107,8 +107,8 @@ function cosine(a: readonly number[], b: readonly number[]): number {
 export function registerAskCommand(program: Command, io: ProgramIO): void {
   program
     .command("ask")
-    .description("Ask a question with your notes as context — RAG-grounded one-shot via local Qwen")
-    .argument("<query...>", "Free-text question")
+    .description("Ask a question with your notes as context — RAG-grounded one-shot via local Qwen. Reads piped stdin too: `cat doc.md | muse ask 'summarize this'`")
+    .argument("[query...]", "Free-text question (omit to read entire query from stdin)")
     .option("--user <id>", "User identity")
     .option("--persona <slot>", "Persona slot")
     .option("--model <tag>", "Chat model override")
@@ -136,9 +136,25 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       "Skip injecting pending reminders as grounding context (default: include pending reminders sorted by due date)"
     )
     .action(async (queryParts: readonly string[], options: AskOptions) => {
-      const query = queryParts.join(" ").trim();
-      if (query.length === 0) {
-        io.stderr("usage: muse ask <query>\n");
+      const argQuery = queryParts.join(" ").trim();
+      const piped = await (io.readPipedStdin ?? readPipedStdin)();
+
+      // Composition follows the same idiom as `muse chat`:
+      //   args + stdin → instruction first, content after
+      //   args only     → use args
+      //   stdin only    → treat stdin as the question
+      //   neither       → usage error
+      // Lets `cat doc.md | muse ask "summarize this"` work, plus
+      // `echo "question?" | muse ask` for headless pipelines.
+      let query: string;
+      if (argQuery.length > 0 && piped.length > 0) {
+        query = `${argQuery}\n\n${piped}`;
+      } else if (argQuery.length > 0) {
+        query = argQuery;
+      } else if (piped.length > 0) {
+        query = piped;
+      } else {
+        io.stderr("usage: muse ask <query>   |   cat content | muse ask [optional-instruction]\n");
         process.exitCode = 1;
         return;
       }

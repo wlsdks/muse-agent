@@ -468,7 +468,7 @@ async function resolveChatMessage(io: ProgramIO, messageParts: readonly string[]
   });
 }
 
-async function readPipedStdin(): Promise<string> {
+export async function readPipedStdin(): Promise<string> {
   // Skip when stdin is a TTY — interactive shells leave stdin attached
   // even when no one's typing; reading it would block forever.
   //
