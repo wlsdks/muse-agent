@@ -27,6 +27,7 @@
     "smoke:diagnostic": "node scripts/smoke-diagnostic-runtime.mjs",
     "smoke:live": "node scripts/smoke-live-llm.mjs",
     "smoke:live:all": "node scripts/smoke-live-all-providers.mjs",
+    "demo": "pnpm --filter @muse/autoconfigure build && pnpm --filter @muse/mcp build && pnpm --filter @muse/messaging build && node scripts/demo.mjs",
     "dogfood:auto-extract": "pnpm --filter @muse/api build && pnpm --filter @muse/autoconfigure build && node scripts/dogfood-auto-extract.mjs",
     "dogfood:phase-d": "pnpm --filter @muse/mcp build && pnpm --filter @muse/autoconfigure build && node scripts/dogfood-phase-d.mjs",
     "test:e2e": "pnpm build && pnpm --filter @muse/web test:e2e",
