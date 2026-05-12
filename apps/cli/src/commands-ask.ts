@@ -26,9 +26,9 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
+import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveNotesDir, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
 import type { CalendarEvent } from "@muse/calendar";
-import { readTasks, type PersistedTask } from "@muse/mcp";
+import { readReminders, readTasks, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js";
@@ -45,6 +45,7 @@ interface AskOptions {
   readonly tasks?: boolean;
   readonly calendar?: boolean;
   readonly calendarDays?: string;
+  readonly reminders?: boolean;
 }
 
 interface IndexChunk {
@@ -129,6 +130,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       "--calendar-days <n>",
       "Window (in days from now) to pull calendar events into context (default 7)",
       "7"
+    )
+    .option(
+      "--no-reminders",
+      "Skip injecting pending reminders as grounding context (default: include pending reminders sorted by due date)"
     )
     .action(async (queryParts: readonly string[], options: AskOptions) => {
       const query = queryParts.join(" ").trim();
@@ -286,15 +291,39 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           })
           .join("\n\n");
 
+      // Pull pending reminders as a fourth grounding source.
+      // Reminders are fire-once notifications ("ping me in 2 hours"),
+      // distinct from tasks (general TODOs) and events (timed
+      // meetings). "What reminders did I set?" / "anything I asked
+      // you to remind me of?" lands here.
+      let pendingReminders: readonly PersistedReminder[] = [];
+      if (options.reminders !== false) {
+        try {
+          const file = resolveRemindersFile(process.env as Record<string, string | undefined>);
+          const all = await readReminders(file);
+          pendingReminders = all
+            .filter((r) => r.status === "pending")
+            .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
+            .slice(0, 20);
+        } catch {
+          // file missing — silently skip
+        }
+      }
+      const reminderBlock = pendingReminders.length === 0
+        ? "(no pending reminders)"
+        : pendingReminders
+          .map((r, i) => `<<reminder ${(i + 1).toString()} — ${r.id} (due ${r.dueAt})>>\n${r.text}\n<<end>>`)
+          .join("\n\n");
+
       const systemPrompt = [
         ...(personaPrompt ? [personaPrompt, ""] : []),
         "You are Muse, the user's JARVIS-style personal AI conductor.",
-        "Answer the user's question USING ONLY the notes, open tasks, and upcoming events provided below as context.",
+        "Answer the user's question USING ONLY the notes, open tasks, upcoming events, and pending reminders provided below as context.",
         "If none of the provided context contains enough information, say so directly — do not invent facts.",
         "Reply in the user's preferred language (from persona prefs).",
         "Keep it concise — 2–4 sentences unless the question explicitly needs more.",
-        "Do NOT include the raw markers (<<note N>>, <<task N>>, <<event N>>) in your answer; just speak naturally.",
-        "Cite sources inline: '[from <file>]' for notes, '[task: <title>]' for tasks, '[event: <title>]' for calendar entries.",
+        "Do NOT include the raw markers (<<note N>>, <<task N>>, <<event N>>, <<reminder N>>) in your answer; just speak naturally.",
+        "Cite sources inline: '[from <file>]' for notes, '[task: <title>]' for tasks, '[event: <title>]' for calendar entries, '[reminder: <text>]' for reminders.",
         "",
         "=== USER NOTES (top relevant chunks) ===",
         contextBlock,
@@ -306,7 +335,11 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         "",
         "=== UPCOMING CALENDAR EVENTS (sorted chronologically) ===",
         calendarBlock,
-        "=== END CALENDAR ==="
+        "=== END CALENDAR ===",
+        "",
+        "=== PENDING REMINDERS (sorted by due date) ===",
+        reminderBlock,
+        "=== END REMINDERS ==="
       ].join("\n");
 
       // Show citation header before streaming the answer so the user
@@ -321,10 +354,13 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       if (upcomingEvents.length > 0) {
         groundedParts.push(`${upcomingEvents.length.toString()} upcoming event(s)`);
       }
+      if (pendingReminders.length > 0) {
+        groundedParts.push(`${pendingReminders.length.toString()} pending reminder(s)`);
+      }
       if (groundedParts.length > 0) {
         io.stdout(`(grounded on ${groundedParts.join("; ")})\n\n`);
       } else {
-        io.stdout("(no matching notes, tasks, or events — answering from persona + general knowledge)\n\n");
+        io.stdout("(no matching notes, tasks, events, or reminders — answering from persona + general knowledge)\n\n");
       }
 
       for await (const event of assembly.modelProvider.stream({
