@@ -13,13 +13,13 @@ describe("pickPreset", () => {
   });
 
   it("prefers highest-tier preset already installed", () => {
-    const installed = new Set(["qwen2.5:1.5b-instruct", "qwen2.5:7b-instruct"]);
+    const installed = new Set(["qwen3.5:2b-q4_K_M", "qwen2.5:7b-instruct"]);
     expect(pickPreset(installed)?.tag).toBe("qwen2.5:7b-instruct");
   });
 
   it("returns 9b when 9b installed alongside smaller", () => {
     const installed = new Set([
-      "qwen2.5:1.5b-instruct",
+      "qwen3.5:2b-q4_K_M",
       "qwen2.5:7b-instruct",
       "qwen3.5:9b-q4_K_M"
     ]);
@@ -44,9 +44,9 @@ describe("pickPreset", () => {
   });
 
   it("matches an override against the preset table when possible", () => {
-    const chosen = pickPreset(new Set(), "qwen2.5:1.5b-instruct");
+    const chosen = pickPreset(new Set(), "qwen3.5:2b-q4_K_M");
     expect(chosen?.tier).toBe("low");
-    expect(chosen?.approxSizeGb).toBe(1.0);
+    expect(chosen?.approxSizeGb).toBe(1.9);
   });
 });
 

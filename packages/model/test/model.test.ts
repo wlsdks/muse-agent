@@ -675,13 +675,13 @@ describe("provider adapter contracts", () => {
       errorProvider: () => new OllamaProvider({
         baseUrl: "http://ollama.example.test/v1",
         defaultModel: "model-test",
-        fetch: fakeOpenAIChatFetch({ forceError: true }),
+        fetch: fakeOllamaChatFetch({ forceError: true }),
         models: ["model-test"]
       }),
       provider: () => new OllamaProvider({
         baseUrl: "http://ollama.example.test/v1",
         defaultModel: "model-test",
-        fetch: fakeOpenAIChatFetch(),
+        fetch: fakeOllamaChatFetch(),
         models: ["model-test"]
       })
     }
@@ -905,6 +905,61 @@ describe("live provider smoke gates", () => {
     })).resolves.toMatchObject({ model: expect.any(String) });
   });
 });
+
+/**
+ * Ollama's native /api/chat shape — used by OllamaProvider's
+ * think:false override. NDJSON streaming, single-JSON non-streaming.
+ * The OpenAI-compat shim (used by other providers) has a different
+ * shape (`choices[]`, SSE) and is faked separately below.
+ */
+function fakeOllamaChatFetch(options: { readonly forceError?: boolean } = {}): typeof globalThis.fetch {
+  return async (url, init) => {
+    if (options.forceError) {
+      return new Response("temporary provider failure", { status: 503, statusText: "Unavailable" });
+    }
+    // listModels still hits the /v1/models OpenAI-compat endpoint via
+    // the parent. Forward those untouched through the OpenAI fake.
+    if (String(url).includes("/models")) {
+      return new Response(JSON.stringify({ data: [{ id: "model-test", object: "model" }] }));
+    }
+    const body = JSON.parse(String(init?.body)) as { readonly stream?: boolean };
+    if (body.stream) {
+      return new Response(new ReadableStream({
+        start(controller) {
+          const enc = new TextEncoder();
+          controller.enqueue(enc.encode(JSON.stringify({ message: { content: "contract ", role: "assistant" }, model: "model-test" }) + "\n"));
+          controller.enqueue(enc.encode(JSON.stringify({ message: { content: "response", role: "assistant" }, model: "model-test" }) + "\n"));
+          controller.enqueue(enc.encode(JSON.stringify({
+            done: true,
+            eval_count: 5,
+            message: {
+              content: "",
+              role: "assistant",
+              tool_calls: [{ function: { arguments: { query: "muse" }, name: "search" }, id: "call-1" }]
+            },
+            model: "model-test",
+            prompt_eval_count: 11
+          }) + "\n"));
+          controller.close();
+        }
+      }));
+    }
+    return new Response(JSON.stringify({
+      done: true,
+      eval_count: 5,
+      message: {
+        content: "contract response",
+        role: "assistant",
+        tool_calls: [{
+          function: { arguments: { query: "muse" }, name: "search" },
+          id: "call-1"
+        }]
+      },
+      model: "model-test",
+      prompt_eval_count: 11
+    }));
+  };
+}
 
 function fakeOpenAIChatFetch(options: { readonly forceError?: boolean } = {}): typeof globalThis.fetch {
   return async (_url, init) => {
