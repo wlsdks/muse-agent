@@ -46,6 +46,7 @@ import { registerStatusCommand } from "./commands-status.js";
 import { registerRoutineCommand } from "./commands-routine.js";
 import { registerTrustCommands } from "./commands-trust.js";
 import { registerWatchFolderCommand } from "./commands-watch-folder.js";
+import { registerWebhookCommand } from "./commands-webhook.js";
 import { registerSpecsCommands } from "./commands-specs.js";
 import { registerTasksCommands } from "./commands-tasks.js";
 import { registerTelemetryCommands } from "./commands-telemetry.js";
@@ -412,6 +413,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerWatchFolderCommand(program, io);
   registerRoutineCommand(program, io);
   registerTrustCommands(program, io);
+  registerWebhookCommand(program, io);
   registerTasksCommands(program, io, { apiRequest, writeOutput });
   registerRunsCommands(program, io, { apiRequest, writeOutput });
   registerDoctorCommand(program, io, { apiRequest, writeOutput });
@@ -557,6 +559,12 @@ export function buildJarvisPersona(
 // runtime's ConversationSummaryStore, not this CLI cache.
 
 const HISTORY_TURN_LIMIT = 12;
+// Files larger than this many lines (each turn = 1 line, so 60 lines =
+// 30 turns) trigger an LLM compaction pass at REPL boot. The compacted
+// file then holds a single synthesized "summary" entry plus the last
+// HISTORY_TURN_LIMIT * 2 verbatim turns. JARVIS doesn't forget; it
+// abstracts the old conversation into a one-paragraph recap.
+const HISTORY_COMPACT_THRESHOLD = 60;
 
 function lastChatHistoryPath(): string {
   const home = process.env.HOME ?? "~";
@@ -630,6 +638,85 @@ export async function appendActivity(event: ActivityEvent): Promise<void> {
   const stamped = { ...event, tsIso: event.tsIso ?? new Date().toISOString() };
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(stamped)}\n`, { flag: "a", mode: 0o600 });
+}
+
+/**
+ * If last-chat.jsonl has grown past HISTORY_COMPACT_THRESHOLD lines,
+ * summarize the older portion via a one-shot model call and rewrite
+ * the file with: [{ role: "system", content: "(summary)" }, ...
+ * last HISTORY_TURN_LIMIT * 2 verbatim turns].
+ *
+ * Best-effort — extraction failures leave the original file
+ * untouched, so a network glitch never loses chat memory.
+ */
+export async function maybeCompactLastChatHistory(
+  modelProvider: {
+    stream(request: {
+      readonly model: string;
+      readonly messages: readonly { readonly role: string; readonly content: string }[];
+    }): AsyncIterable<{ readonly type: string; readonly text?: string }>;
+  },
+  model: string
+): Promise<{ readonly compacted: boolean; readonly dropped: number; readonly summary?: string }> {
+  const filePath = lastChatHistoryPath();
+  let raw: string;
+  try {
+    raw = await readFile(filePath, "utf8");
+  } catch (cause) {
+    if (isNodeError(cause) && cause.code === "ENOENT") {
+      return { compacted: false, dropped: 0 };
+    }
+    throw cause;
+  }
+  const lines = raw.split("\n").filter((l) => l.trim().length > 0);
+  if (lines.length <= HISTORY_COMPACT_THRESHOLD) {
+    return { compacted: false, dropped: 0 };
+  }
+  const keepRecent = HISTORY_TURN_LIMIT * 2;
+  const older = lines.slice(0, lines.length - keepRecent);
+  const recent = lines.slice(-keepRecent);
+  const olderText = older.map((line) => {
+    try {
+      const parsed = JSON.parse(line) as { role?: string; content?: string };
+      const role = parsed.role ?? "?";
+      const content = (parsed.content ?? "").slice(0, 400);
+      return `${role}: ${content}`;
+    } catch {
+      return line;
+    }
+  }).join("\n");
+
+  let summary = "";
+  try {
+    for await (const ev of modelProvider.stream({
+      messages: [
+        {
+          content:
+            "Summarise the following multi-turn user↔assistant chat as one short paragraph (≤ 200 chars). " +
+            "Preserve names, decisions, follow-up items. Plain text, no quotes, no JSON.",
+          role: "system"
+        },
+        { content: olderText, role: "user" }
+      ],
+      model
+    })) {
+      if (ev.type === "text-delta" && typeof ev.text === "string") {
+        summary += ev.text;
+      }
+    }
+  } catch {
+    return { compacted: false, dropped: 0 };
+  }
+  const trimmedSummary = summary.trim();
+  if (trimmedSummary.length === 0) {
+    return { compacted: false, dropped: 0 };
+  }
+  const nextLines = [
+    JSON.stringify({ content: `(Previous-conversation summary) ${trimmedSummary}`, role: "system" }),
+    ...recent
+  ];
+  await writeFile(filePath, `${nextLines.join("\n")}\n`, { mode: 0o600 });
+  return { compacted: true, dropped: older.length, summary: trimmedSummary };
 }
 
 async function clearLastChatHistory(): Promise<void> {
@@ -877,6 +964,23 @@ async function runChatRepl(
   }
 ): Promise<void> {
   const readline = await import("node:readline/promises");
+  // Long-session compaction: if last-chat.jsonl has grown past the
+  // compact threshold, summarize the old turns and rewrite the file
+  // before seeding history. Falls through cleanly on failure.
+  if (options.continueHistory) {
+    try {
+      const probeAssembly = io.createRuntimeAssembly?.() ?? createMuseRuntimeAssembly();
+      if (probeAssembly.modelProvider && (options.model ?? probeAssembly.defaultModel)) {
+        const compaction = await maybeCompactLastChatHistory(
+          probeAssembly.modelProvider as Parameters<typeof maybeCompactLastChatHistory>[0],
+          options.model ?? probeAssembly.defaultModel ?? "default"
+        );
+        if (compaction.compacted) {
+          process.stderr.write(`(compacted ${compaction.dropped.toString()} older line(s) into a summary)\n`);
+        }
+      }
+    } catch { /* compaction is best-effort */ }
+  }
   const seedHistory = options.continueHistory ? await readLastChatHistory() : [];
   const history: { role: "user" | "assistant"; content: string }[] = [...seedHistory];
   let currentModel = options.model;
