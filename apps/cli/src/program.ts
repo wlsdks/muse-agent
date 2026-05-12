@@ -41,6 +41,7 @@ import { registerSchedulerCommands, registerSetupCommands } from "./commands-sch
 import { registerSetupLocalCommand } from "./commands-setup-local.js";
 import { registerSetupVoiceCommand } from "./commands-setup-voice.js";
 import { registerStatusCommand } from "./commands-status.js";
+import { registerRoutineCommand } from "./commands-routine.js";
 import { registerWatchFolderCommand } from "./commands-watch-folder.js";
 import { registerSpecsCommands } from "./commands-specs.js";
 import { registerTasksCommands } from "./commands-tasks.js";
@@ -403,6 +404,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerSetupVoiceCommand(program, io);
   registerStatusCommand(program, io);
   registerWatchFolderCommand(program, io);
+  registerRoutineCommand(program, io);
   registerTasksCommands(program, io, { apiRequest, writeOutput });
   registerRunsCommands(program, io, { apiRequest, writeOutput });
   registerDoctorCommand(program, io, { apiRequest, writeOutput });
@@ -596,6 +598,31 @@ async function appendLastChatTurn(turn: { readonly message: string; readonly res
     `${JSON.stringify({ content: turn.message, role: "user" })}\n` +
     `${JSON.stringify({ content: turn.response, role: "assistant" })}\n`;
   await writeFile(filePath, payload, { flag: "a", mode: 0o600 });
+}
+
+// ── Activity log for pattern learning (`muse routine`) ──────────────
+// One JSONL line per REPL start / chat turn. The aggregator reads
+// the log over a rolling window and writes a `routine.active_hours`
+// fact into the persistent user memory so the persona injection
+// surfaces it in subsequent sessions. JARVIS knows when you're
+// usually awake.
+
+interface ActivityEvent {
+  readonly kind: "repl-start" | "chat-turn";
+  readonly userId: string;
+  readonly tsIso?: string;
+}
+
+function activityLogPath(): string {
+  const home = process.env.HOME ?? "~";
+  return path.join(home, ".muse", "activity.jsonl");
+}
+
+export async function appendActivity(event: ActivityEvent): Promise<void> {
+  const filePath = activityLogPath();
+  const stamped = { ...event, tsIso: event.tsIso ?? new Date().toISOString() };
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(stamped)}\n`, { flag: "a", mode: 0o600 });
 }
 
 async function clearLastChatHistory(): Promise<void> {
@@ -903,6 +930,11 @@ async function runChatRepl(
     output: process.stdout,
     terminal: true
   });
+
+  // Append a session marker to the activity log so `muse routine`
+  // can later infer active-hours patterns. Best-effort; failures
+  // never block the REPL.
+  await appendActivity({ kind: "repl-start", userId }).catch(() => undefined);
 
   io.stdout("\n");
   io.stdout("Muse REPL — type /help for commands, /exit to quit.\n");
