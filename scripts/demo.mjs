@@ -70,7 +70,7 @@ console.log("");
 console.log("Muse JARVIS demo — 5-step end-to-end walkthrough");
 console.log("");
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 6;
 const start = performance.now();
 
 step(0, TOTAL_STEPS, "Resolving local LLM");
@@ -196,8 +196,50 @@ ok(`MCP entries: ${snap.mcp.externalServerCount ?? 0}`);
 ok(`calendar (local): ${snap.calendar?.local?.status ?? "n/a"}`);
 ok(`messaging registry includes: log (always-on)`);
 
-// ── Step 5: Codex / Claude Desktop bridge ────────────────────────────
-step(5, TOTAL_STEPS, "External MCP bridge (Codex / Claude Desktop)");
+// ── Step 5: morning brief (one-command JARVIS ritual) ────────────────
+step(5, TOTAL_STEPS, "muse brief — morning ritual");
+if (pick.modelId) {
+  try {
+    const { spawnSync } = await import("node:child_process");
+    // Seed a tmp persona + tasks so the brief has something concrete
+    // to summarise. The real user-memory.json keeps its data isolated.
+    const briefDir = mkdtempSync(join(tmpdir(), "muse-demo-brief-"));
+    const memoryFile = join(briefDir, "user-memory.json");
+    const tasksFile = join(briefDir, "tasks.json");
+    writeFileSync(memoryFile, JSON.stringify({
+      version: 1,
+      users: {
+        demo: {
+          facts: { name: "Demo" },
+          preferences: { reply_style: "concise" },
+          recentTopics: [],
+          updatedAt: new Date().toISOString(),
+          userId: "demo"
+        }
+      }
+    }), "utf8");
+    const due = new Date(Date.now() + 2 * 3600_000).toISOString();
+    writeFileSync(tasksFile, JSON.stringify({
+      tasks: [{ createdAt: new Date().toISOString(), dueAt: due, id: "demo-task", status: "open", title: "Send the Q3 budget memo" }]
+    }), "utf8");
+    process.stdout.write("  muse> ");
+    spawnSync(process.execPath, [join(ROOT.pathname, "apps/cli/dist/index.js"), "brief", "--user", "demo"], {
+      env: {
+        ...process.env,
+        MUSE_TASKS_FILE: tasksFile,
+        MUSE_USER_MEMORY_FILE: memoryFile
+      },
+      stdio: ["ignore", "inherit", "inherit"]
+    });
+  } catch (cause) {
+    warn(`brief skipped: ${cause instanceof Error ? cause.message : String(cause)}`);
+  }
+} else {
+  note("skipped — no model");
+}
+
+// ── Step 6: Codex / Claude Desktop bridge ────────────────────────────
+step(6, TOTAL_STEPS, "External MCP bridge (Codex / Claude Desktop)");
 const bridgePath = join(ROOT.pathname, "packages/mcp/bin/muse-mcp-stdio.mjs");
 if (existsSync(bridgePath)) {
   ok(`stdio bridge available: packages/mcp/bin/muse-mcp-stdio.mjs`);
