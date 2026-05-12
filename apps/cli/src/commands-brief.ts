@@ -3,10 +3,11 @@
  *
  * The walk-into-the-lab ritual: one command, two-three sentences,
  * personalised to the user's persona (language, name, reply style).
- * Pulls today's tasks + upcoming calendar events (next 24 h, across
- * every configured provider) + last few proactive notices, hands
- * the structured fact-sheet to the local Qwen, and streams the
- * synthesis straight to stdout.
+ * Pulls today's tasks + upcoming calendar events + pending
+ * reminders (each capped to the next 24 h across every configured
+ * provider) + last few proactive notices, hands the structured
+ * fact-sheet to the local Qwen, and streams the synthesis straight
+ * to stdout.
  *
  * Zero external cost (local LLM, file IO). Honours the user's
  * `routine_active_hours` + `language` preferences.
@@ -28,10 +29,11 @@ import {
   buildVoiceRegistry,
   createMuseRuntimeAssembly,
   resolveProactiveHistoryFile,
+  resolveRemindersFile,
   resolveTasksFile
 } from "@muse/autoconfigure";
 import type { CalendarEvent } from "@muse/calendar";
-import { readProactiveHistory } from "@muse/mcp";
+import { readProactiveHistory, readReminders, type PersistedReminder } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { buildJarvisPersona } from "./program.js";
@@ -181,6 +183,26 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
         // history alone
       }
 
+      // Pending reminders due in the same 24 h window. Reminders
+      // are fire-once notifications the user explicitly set
+      // ("ping me at 3 PM about the dentist"); the brief should
+      // surface them alongside tasks + events so nothing slips.
+      let dueReminders: readonly PersistedReminder[] = [];
+      try {
+        const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
+        const all = await readReminders(remindersFile);
+        dueReminders = all
+          .filter((r) => r.status === "pending")
+          .filter((r) => {
+            const due = new Date(r.dueAt).getTime();
+            return due >= now.getTime() && due <= horizon.getTime();
+          })
+          .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
+          .slice(0, 10);
+      } catch {
+        // reminders file missing or unreadable — brief still works
+      }
+
       const factSheet = [
         `Today: ${now.toISOString().slice(0, 10)} ${now.toLocaleDateString("en-US", { weekday: "long" })} ${now.toTimeString().slice(0, 5)} local`,
         `Open tasks: ${openTasks.length.toString()}`,
@@ -194,6 +216,8 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
           const loc = e.location ? ` @ ${e.location}` : "";
           return `  · ${when} ${e.title}${loc} [${e.providerId}]`;
         }),
+        `Pending reminders due in next 24h: ${dueReminders.length.toString()}`,
+        ...dueReminders.map((r) => `  · ${r.dueAt.slice(11, 16)} UTC ${r.text}`),
         `Recent proactive notices (last 5): ${recentHistory.length.toString()}`,
         ...recentHistory.slice(-3).map((entry) => `  · ${entry.firedAtIso ?? "?"} ${entry.title}: ${entry.text.slice(0, 80)}`)
       ].join("\n");
