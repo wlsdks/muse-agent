@@ -156,8 +156,9 @@ since the two are always paired in voice-mode flows.
    blob URL.
 6. **Phase F — DEFERRED**: wake-word ambient mode (Picovoice
    Porcupine / openWakeWord) + local Whisper.cpp / Piper providers
-   + Gemini Live streaming. Out of scope until Phase C lands and
-   real personal-use latency / cost data justifies the effort.
+   + Gemini Live streaming. Phase C dogfooding is enough to justify
+   the effort — see the **Phase F contract** section below for the
+   pre-resolved design choices.
 
 Each phase is independently shippable. Phase C is the missing piece
 for the CLI side of the personal-JARVIS loop.
@@ -204,6 +205,117 @@ helpful message when sox returns a permission-denied exit code.
   cheap.)
 - Voice cloning / custom voices? (Out of scope. ElevenLabs custom
   voices are the obvious extension but defer to Phase F.)
+
+## Phase F contract — wake-word ambient + local-only providers
+
+Concrete pre-resolved choices so the next iter can pick this up
+without re-deciding the trade-offs.
+
+### Three sub-features
+
+Phase F is actually three independent threads. Each ships on its
+own; combining them is what makes Muse fully JARVIS-shaped.
+
+1. **Wake-word ambient mode** (`muse listen --wake "hey muse"`).
+   Long-running process listens passively, only transcribes the
+   prompt after the wake word fires.
+2. **Local Whisper.cpp STT provider.** Same interface as
+   `OpenAIWhisperSttProvider` but offline. Selectable via
+   `MUSE_VOICE_STT=whisper-cpp`.
+3. **Local Piper TTS provider** + (optional) **Gemini Live
+   streaming**. Same interface as `OpenAITtsProvider`; Gemini Live
+   is its own duplex socket and may need a separate
+   `LiveVoiceProvider` interface.
+
+Below details each.
+
+### F.1 — Wake-word ambient mode
+
+- New CLI command `muse listen --wake "hey muse" [--continuous]`.
+  Without `--wake`, the existing Phase C push-to-talk behaviour
+  applies.
+- Wake-word detector choice: **openWakeWord** (default) or
+  **Picovoice Porcupine** (opt-in via `MUSE_VOICE_WAKE_ENGINE=porcupine`).
+  Comparison:
+
+  | Engine | License | Custom words | Latency | Setup |
+  | --- | --- | --- | --- | --- |
+  | openWakeWord | Apache-2.0 | Yes (Python trainer) | ~50 ms | pip install or ONNX |
+  | Porcupine | Commercial (free tier) | Yes (cloud trainer) | ~30 ms | npm @picovoice/porcupine-node + AccessKey |
+
+  openWakeWord wins on licence; Porcupine wins on out-of-the-box
+  quality + Node-native binding. Default to openWakeWord with a
+  Porcupine fallback for users who already have an AccessKey.
+
+- Long-running mic loop: replace the Phase C "spawn sox per
+  utterance" with `node-record-lpcm16` (or sox-spawned long mode)
+  feeding a ring buffer. Detector consumes 80 ms frames; on a hit,
+  flushes the last `MUSE_VOICE_WAKE_PROMPT_WINDOW_MS` (default
+  6000 ms) of the buffer to the STT provider.
+- Heartbeat: detector spins at the audio rate; emit a "still
+  listening" log line every 60 s so the operator knows the loop
+  hasn't deadlocked.
+- Mute toggle: `SIGUSR1` pauses the detector; `SIGUSR2` resumes.
+  Avoids racy mid-utterance restart on TTS playback (otherwise
+  Muse hears itself say "Hey Muse..." and wakes).
+- Tests: stub `node-record-lpcm16` + the detector with a fixture
+  audio stream; assert the STT call fires once on the wake-frame.
+
+### F.2 — Local Whisper.cpp STT provider
+
+- New package `@muse/voice` provider `WhisperCppSttProvider`.
+- Binary discovery: `MUSE_WHISPER_CPP_PATH` (default `whisper-cpp`,
+  found via PATH). Missing → fail-fast at construction with a
+  "install whisper-cpp: brew install whisper-cpp" message.
+- Model discovery: `MUSE_WHISPER_CPP_MODEL` (default
+  `~/.muse/whisper-models/ggml-base.en.bin`). First call lazy-downloads
+  via `MUSE_WHISPER_CPP_MODEL_URL` (default Hugging Face Whisper-base
+  URL) into the model dir if absent.
+- Transcribe flow: write the input WAV to a tmp file, spawn
+  `whisper-cpp -f tmp.wav -m model.bin -nt -l auto -otxt -of out`,
+  read `out.txt`, delete temp files. ~3-10 s first call (model load),
+  ~1-2 s subsequent.
+- Tests: mock the spawn the same way `MacOsCalendarProvider` mocks
+  `osascript`; assert the command-line, assert the output is read.
+
+### F.3 — Local Piper TTS + Gemini Live
+
+**Piper:**
+
+- New provider `PiperTtsProvider` in `@muse/voice`.
+- Binary: `MUSE_PIPER_PATH` (default `piper`).
+- Voice model: `MUSE_PIPER_VOICE` (default `en_US-amy-low.onnx`).
+- Synthesis: spawn `piper -m voice.onnx -f out.wav` and pipe the
+  text on stdin. Same lazy-download pattern as Whisper.cpp.
+
+**Gemini Live (optional duplex stream):**
+
+- Gemini's Live API streams text + audio over a single websocket.
+  Doesn't fit the existing `SpeechToTextProvider` / `TextToSpeechProvider`
+  one-shot contracts cleanly. Introduce a new
+  `LiveVoiceProvider` interface that maps onto the websocket
+  shape. Gated by `MUSE_VOICE_LIVE=gemini`.
+- `muse listen --live` uses the live provider end-to-end (no
+  Phase C / Phase F.1 STT round-trip), opening a websocket on
+  process start and routing the wake-word detector's
+  flushed-window directly into it.
+- Cost / latency win is dramatic when it works; fragility is real
+  (websocket reconnect, partial-message accumulation). Treat this
+  as the riskiest of the three threads and ship it last.
+
+### Phasing within Phase F
+
+F.1 (wake word) and F.2 (Whisper.cpp) are independent — either
+can ship first. F.3 builds on F.1 (needs the long-running mic
+loop). Suggested order:
+
+1. **F.2 first** — adds a new provider, no new long-running
+   processes. Lowest-risk first cut.
+2. **F.1 second** — long-running mic loop is the bigger
+   architectural change.
+3. **F.3 last** — websocket duplex stream + accumulator.
+
+Each step is independently shippable.
 
 ## Why this doc is short
 
