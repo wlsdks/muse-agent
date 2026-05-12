@@ -26,7 +26,8 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { createMuseRuntimeAssembly, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
+import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
+import type { CalendarEvent } from "@muse/calendar";
 import { readTasks, type PersistedTask } from "@muse/mcp";
 import type { Command } from "commander";
 
@@ -42,6 +43,8 @@ interface AskOptions {
   readonly embedModel?: string;
   readonly autoReindex?: boolean;
   readonly tasks?: boolean;
+  readonly calendar?: boolean;
+  readonly calendarDays?: string;
 }
 
 interface IndexChunk {
@@ -117,6 +120,15 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
     .option(
       "--no-tasks",
       "Skip injecting open tasks as grounding context (default: include open tasks alongside notes so 'what should I focus on?' answers correctly)"
+    )
+    .option(
+      "--no-calendar",
+      "Skip injecting upcoming calendar events as grounding context (default: include events from the configured providers)"
+    )
+    .option(
+      "--calendar-days <n>",
+      "Window (in days from now) to pull calendar events into context (default 7)",
+      "7"
     )
     .action(async (queryParts: readonly string[], options: AskOptions) => {
       const query = queryParts.join(" ").trim();
@@ -230,15 +242,59 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           })
           .join("\n\n");
 
+      // Pull upcoming calendar events as a third grounding source.
+      // "What's on my schedule this week?", "any meetings tomorrow?",
+      // "when am I free?" — questions the LLM can only answer if it
+      // sees the events. Iterate over all registered providers
+      // (local + gcal + caldav + macos) so users with mixed setups
+      // get one merged view.
+      let upcomingEvents: readonly CalendarEvent[] = [];
+      if (options.calendar !== false) {
+        const days = Math.max(1, Math.min(30, Number.parseInt(options.calendarDays ?? "7", 10) || 7));
+        const from = new Date();
+        const to = new Date(from.getTime() + days * 24 * 60 * 60 * 1000);
+        try {
+          const registry = buildCalendarRegistry(process.env as Record<string, string | undefined>);
+          const providers = registry.list();
+          const collected: CalendarEvent[] = [];
+          for (const provider of providers) {
+            try {
+              const events = await provider.listEvents({ from, to });
+              collected.push(...events);
+            } catch {
+              // single provider failed (auth lapsed, network) —
+              // keep going with whatever we got
+            }
+          }
+          upcomingEvents = collected
+            .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())
+            .slice(0, 20);
+        } catch {
+          // registry assembly failed — skip calendar grounding
+        }
+      }
+      const calendarBlock = upcomingEvents.length === 0
+        ? "(no upcoming events)"
+        : upcomingEvents
+          .map((e, i) => {
+            const when = e.allDay
+              ? `${e.startsAt.toISOString().slice(0, 10)} (all-day)`
+              : `${e.startsAt.toISOString()} → ${e.endsAt.toISOString()}`;
+            const loc = e.location ? ` @ ${e.location}` : "";
+            const provider = `[${e.providerId}]`;
+            return `<<event ${(i + 1).toString()} — ${provider}>>\n${e.title}${loc}\n${when}\n<<end>>`;
+          })
+          .join("\n\n");
+
       const systemPrompt = [
         ...(personaPrompt ? [personaPrompt, ""] : []),
         "You are Muse, the user's JARVIS-style personal AI conductor.",
-        "Answer the user's question USING ONLY the notes and open tasks provided below as context.",
-        "If neither notes nor tasks contain enough information, say so directly — do not invent facts.",
+        "Answer the user's question USING ONLY the notes, open tasks, and upcoming events provided below as context.",
+        "If none of the provided context contains enough information, say so directly — do not invent facts.",
         "Reply in the user's preferred language (from persona prefs).",
         "Keep it concise — 2–4 sentences unless the question explicitly needs more.",
-        "Do NOT include the raw markers (<<note N>>, <<task N>>) in your answer; just speak naturally.",
-        "Cite the source filename inline like '[from <file>]' when you draw on a specific note; cite tasks as '[task: <title>]'.",
+        "Do NOT include the raw markers (<<note N>>, <<task N>>, <<event N>>) in your answer; just speak naturally.",
+        "Cite sources inline: '[from <file>]' for notes, '[task: <title>]' for tasks, '[event: <title>]' for calendar entries.",
         "",
         "=== USER NOTES (top relevant chunks) ===",
         contextBlock,
@@ -246,7 +302,11 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         "",
         "=== USER OPEN TASKS (sorted by due date, most imminent first) ===",
         taskBlock,
-        "=== END TASKS ==="
+        "=== END TASKS ===",
+        "",
+        "=== UPCOMING CALENDAR EVENTS (sorted chronologically) ===",
+        calendarBlock,
+        "=== END CALENDAR ==="
       ].join("\n");
 
       // Show citation header before streaming the answer so the user
@@ -258,10 +318,13 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       if (openTasks.length > 0) {
         groundedParts.push(`${openTasks.length.toString()} open task(s)`);
       }
+      if (upcomingEvents.length > 0) {
+        groundedParts.push(`${upcomingEvents.length.toString()} upcoming event(s)`);
+      }
       if (groundedParts.length > 0) {
         io.stdout(`(grounded on ${groundedParts.join("; ")})\n\n`);
       } else {
-        io.stdout("(no matching notes or tasks — answering from persona + general knowledge)\n\n");
+        io.stdout("(no matching notes, tasks, or events — answering from persona + general knowledge)\n\n");
       }
 
       for await (const event of assembly.modelProvider.stream({
