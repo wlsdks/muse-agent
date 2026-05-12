@@ -1018,6 +1018,12 @@ describe("cli program", () => {
   });
 
   it("memory show / set / clear hit the user-memory routes", async () => {
+    // Test pins the API user-id to "me" — the historical default
+    // when memory commands were single-tenant. The CLI now resolves
+    // MUSE_USER_ID → $USER → "default", so pin via env to keep the
+    // request URL deterministic.
+    const prevUser = process.env.MUSE_USER_ID;
+    process.env.MUSE_USER_ID = "me";
     const { io, output } = captureOutput();
     const requests: Array<{ readonly body?: string; readonly method?: string; readonly url: string }> = [];
     const program = createProgram({
@@ -1063,6 +1069,11 @@ describe("cli program", () => {
     const combined = output.join("");
     expect(combined).toContain("Stark");
     expect(combined).toContain("Cleared user memory");
+    if (prevUser === undefined) {
+      delete process.env.MUSE_USER_ID;
+    } else {
+      process.env.MUSE_USER_ID = prevUser;
+    }
   });
 
   it("voice tts POSTs the text and writes the binary audio response to --out", async () => {

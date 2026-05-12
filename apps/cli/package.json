@@ -20,6 +20,7 @@
     "@muse/autoconfigure": "workspace:*",
     "@muse/calendar": "workspace:*",
     "@muse/mcp": "workspace:*",
+    "@muse/memory": "workspace:*",
     "@muse/messaging": "workspace:*",
     "@muse/prompts": "workspace:*",
     "@muse/voice": "workspace:*",

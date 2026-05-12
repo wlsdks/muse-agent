@@ -66,7 +66,12 @@ export function registerRememberCommands(program: Command, io: ProgramIO): void 
       const userKey = composeKey(options.user, options.persona);
       const assembly = createMuseRuntimeAssembly();
       if (!assembly.modelProvider || !(options.model ?? assembly.defaultModel)) {
-        io.stderr("muse remember requires a configured model — set MUSE_MODEL or pass --model.\n");
+        io.stderr(
+          "muse remember requires a configured model for natural-language extraction.\n"
+          + "  Set MUSE_MODEL or pass --model, OR use the no-LLM direct path:\n"
+          + `  muse memory set --local --user ${userKey} fact <key> "<value>"\n`
+          + `  muse memory set --local --user ${userKey} preference <key> "<value>"\n`
+        );
         process.exitCode = 2;
         return;
       }

@@ -202,6 +202,10 @@ export function registerStatusCommand(program: Command, io: ProgramIO): void {
         }
       } else {
         io.stdout(`    persona: (empty — Muse hasn't learned anything about you yet)\n`);
+        io.stdout(`    onboarding:\n`);
+        io.stdout(`      muse remember "My name is ${snap.persona.userId} and I prefer concise Korean replies"\n`);
+        io.stdout(`      muse memory set fact name "${snap.persona.userId}"   # no-LLM direct path\n`);
+        io.stdout(`    once seeded, muse ask/chat/brief will address you by name and honour your preferences.\n`);
       }
       io.stdout("\n");
       io.stdout(`  model: ${snap.model ?? "(unset — set MUSE_MODEL or run muse setup model)"}\n`);

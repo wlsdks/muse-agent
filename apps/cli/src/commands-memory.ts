@@ -1,28 +1,38 @@
 /**
  * `muse memory` command group.
  *
- * Wraps the personal user-memory CRUD on `/api/user-memory/me`:
+ * Two backends, picked by `--local`:
  *
- *   - `muse memory show` — GET, prints facts / preferences / recent topics
- *   - `muse memory set <kind> <key> <value>` — PUT a fact or preference
+ *   - default (API): wraps `/api/user-memory/<userId>` CRUD.
+ *   - `--local`:     writes directly to `~/.muse/user-memory.json`
+ *                     via FileUserMemoryStore (same file the API
+ *                     server reads/writes, so they round-trip).
+ *
+ *   - `muse memory show` — facts / preferences / recent topics
+ *   - `muse memory set <kind> <key> <value>` — write a fact or preference
  *     (kind = "fact" | "preference")
- *   - `muse memory clear` — DELETE the user-memory record
+ *   - `muse memory clear` — wipe the record for this user
  *
- * Single-user product: there's no `--user` flag — the CLI always
- * targets the canonical `me` userId. Multi-tenant residue from the
- * Reactor migration.
- *
- * Output is human-readable by default; `--json` opts into the raw
- * API response.
+ * User identity resolves the same way every other personal command
+ * does: `--user` flag → `$MUSE_USER_ID` → `$USER` → `"default"`.
+ * Matches commands-status.ts / commands-ask.ts / commands-brief.ts
+ * so a single user sees the same persona everywhere.
  */
 
+import { FileUserMemoryStore } from "@muse/memory";
 import type { Command } from "commander";
 
 import { formatMemoryShow } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
 
-const MEMORY_USER_ID = "me";
-const MEMORY_BASE_PATH = `/api/user-memory/${MEMORY_USER_ID}`;
+function envValue(key: string): string | undefined {
+  const v = process.env[key]?.trim();
+  return v && v.length > 0 ? v : undefined;
+}
+
+function resolveMemoryUserId(explicit: string | undefined): string {
+  return explicit ?? envValue("MUSE_USER_ID") ?? envValue("USER") ?? "default";
+}
 
 export interface MemoryCommandHelpers {
   readonly apiRequest: (
@@ -35,20 +45,43 @@ export interface MemoryCommandHelpers {
   readonly writeOutput: (io: ProgramIO, value: unknown, textField?: string) => void;
 }
 
+interface MemoryCommonOptions {
+  readonly user?: string;
+  readonly local?: boolean;
+  readonly json?: boolean;
+}
+
 export function registerMemoryCommands(program: Command, io: ProgramIO, helpers: MemoryCommandHelpers): void {
   const memory = program.command("memory").description("Personal user-memory facts / preferences");
 
   memory
     .command("show")
     .description("Print stored facts, preferences, and recent topics")
-    .option("--json", "Print the raw API response instead of the formatted summary")
-    .action(async (options: { readonly json?: boolean }, command) => {
-      const result = await helpers.apiRequest(io, command, MEMORY_BASE_PATH);
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--local", "Read directly from ~/.muse/user-memory.json instead of the API")
+    .option("--json", "Print the raw response instead of the formatted summary")
+    .action(async (options: MemoryCommonOptions, command) => {
+      const userId = resolveMemoryUserId(options.user);
+      let payload: Record<string, unknown> | undefined;
+      if (options.local) {
+        const store = new FileUserMemoryStore();
+        const memoryRecord = await store.findByUserId(userId);
+        payload = memoryRecord
+          ? {
+              facts: memoryRecord.facts,
+              preferences: memoryRecord.preferences,
+              recentTopics: memoryRecord.recentTopics,
+              updatedAt: memoryRecord.updatedAt.toISOString()
+            }
+          : { facts: {}, preferences: {}, recentTopics: [] };
+      } else {
+        payload = (await helpers.apiRequest(io, command, `/api/user-memory/${userId}`)) as Record<string, unknown> | undefined;
+      }
       if (options.json) {
-        helpers.writeOutput(io, result);
+        helpers.writeOutput(io, payload ?? {});
         return;
       }
-      const merged = { userId: MEMORY_USER_ID, ...((result as Record<string, unknown>) ?? {}) };
+      const merged = { userId, ...(payload ?? {}) };
       io.stdout(formatMemoryShow(merged as unknown as Parameters<typeof formatMemoryShow>[0]));
     });
 
@@ -58,16 +91,37 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
     .argument("<kind>", "Entry kind: 'fact' or 'preference'")
     .argument("<key>", "Memory key (e.g. timezone)")
     .argument("<value>", "Memory value")
-    .option("--json", "Print the raw API response instead of a short confirmation")
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--local", "Write directly to ~/.muse/user-memory.json instead of the API")
+    .option("--json", "Print the raw response instead of a short confirmation")
     .action(async (
       kind: string,
       key: string,
       value: string,
-      options: { readonly json?: boolean },
+      options: MemoryCommonOptions,
       command
     ) => {
       const segment = parseKindSegment(kind);
-      const result = await helpers.apiRequest(io, command, `${MEMORY_BASE_PATH}/${segment}`, { key, value }, "PUT");
+      const userId = resolveMemoryUserId(options.user);
+      if (options.local) {
+        const store = new FileUserMemoryStore();
+        const updated = segment === "facts"
+          ? await store.upsertFact(userId, key, value)
+          : await store.upsertPreference(userId, key, value);
+        if (options.json) {
+          helpers.writeOutput(io, {
+            facts: updated.facts,
+            preferences: updated.preferences,
+            recentTopics: updated.recentTopics,
+            updatedAt: updated.updatedAt.toISOString(),
+            userId: updated.userId
+          });
+          return;
+        }
+        io.stdout(`Set ${segment.slice(0, -1)} ${key} = ${value} (user=${userId}, local)\n`);
+        return;
+      }
+      const result = await helpers.apiRequest(io, command, `/api/user-memory/${userId}/${segment}`, { key, value }, "PUT");
       if (options.json) {
         helpers.writeOutput(io, result);
         return;
@@ -78,8 +132,23 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
   memory
     .command("clear")
     .description("Wipe stored user memory")
-    .action(async (_options, command) => {
-      await helpers.apiRequest(io, command, MEMORY_BASE_PATH, undefined, "DELETE");
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--local", "Clear directly in ~/.muse/user-memory.json instead of via API")
+    .option("--force", "Skip the confirmation prompt (required for --local)")
+    .action(async (options: MemoryCommonOptions & { readonly force?: boolean }, command) => {
+      const userId = resolveMemoryUserId(options.user);
+      if (options.local) {
+        if (!options.force) {
+          io.stderr(`Refusing to clear ${userId} without --force\n`);
+          process.exitCode = 2;
+          return;
+        }
+        const store = new FileUserMemoryStore();
+        await store.deleteByUserId(userId);
+        io.stdout(`Cleared user memory (user=${userId}, local)\n`);
+        return;
+      }
+      await helpers.apiRequest(io, command, `/api/user-memory/${userId}`, undefined, "DELETE");
       io.stdout("Cleared user memory\n");
     });
 }

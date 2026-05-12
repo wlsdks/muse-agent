@@ -107,6 +107,9 @@ importers:
       '@muse/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
+      '@muse/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
       '@muse/messaging':
         specifier: workspace:*
         version: link:../../packages/messaging
