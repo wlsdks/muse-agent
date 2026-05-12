@@ -55,7 +55,8 @@ import {
 import {
   OpenAITtsProvider,
   OpenAIWhisperSttProvider,
-  VoiceProviderRegistry
+  VoiceProviderRegistry,
+  WhisperCppSttProvider
 } from "@muse/voice";
 import type {
   SkillCatalogEntry,
@@ -400,46 +401,69 @@ function tryBuildTasksProvider(id: string, env: MuseEnvironment): TasksProvider 
  * available. Returns `undefined` when nothing was registered so the
  * `/api/voice/*` routes stay absent (404) by default.
  *
- * Today only OpenAI (Whisper STT + TTS-1) is recognized — the package
- * `@muse/voice` ships those adapters as Phase B. Future iterations
- * (Phase F) can add Whisper.cpp / Piper / ElevenLabs / Gemini Live
- * here without changing the route surface.
+ * STT selection (Phase F.2 — local Whisper.cpp):
+ *   - `MUSE_VOICE_STT=whisper-cpp` → register `WhisperCppSttProvider`
+ *     (no OpenAI key required). The provider spawns the
+ *     `whisper-cpp` binary; tune the binary / model paths via
+ *     `MUSE_WHISPER_CPP_PATH` and `MUSE_WHISPER_CPP_MODEL`.
+ *   - `MUSE_VOICE_STT=openai-whisper` (default) → register
+ *     `OpenAIWhisperSttProvider` when an OpenAI key is set.
  *
- * Env (resolution order):
+ * TTS:
+ *   - `OpenAITtsProvider` registered when an OpenAI key is present.
+ *     Piper / Gemini Live land in Phase F.3.
+ *
+ * Env (OpenAI resolution order):
  *   - `MUSE_VOICE_OPENAI_API_KEY` — Muse-specific override. Set this
  *     to use a different OpenAI key for voice than for the chat
  *     model (e.g. separate billing).
  *   - `OPENAI_API_KEY` — standard OpenAI SDK convention. The chat
  *     model already uses this as a fallback, so a personal user who
  *     sets it once gets both chat AND voice for free.
- *   - When neither is set, the registry is empty and the routes are
- *     not registered (404). The earlier `MUSE_OPENAI_API_KEY` name
- *     was a one-iter mismatch with both conventions — dropped.
+ *   - When neither is set AND `MUSE_VOICE_STT` isn't `whisper-cpp`,
+ *     the registry is empty and the routes are not registered (404).
  *   - `MUSE_VOICE_TTS_VOICE` — default voice (alloy / echo / fable /
  *     onyx / nova / shimmer). Defaults to `alloy`.
  *   - `MUSE_VOICE_TTS_MODEL` / `MUSE_VOICE_STT_MODEL` — model overrides.
  */
 export function buildVoiceRegistry(env: MuseEnvironment): VoiceProviderRegistry | undefined {
+  const sttChoice = env.MUSE_VOICE_STT?.trim().toLowerCase();
   const openAiKey = env.MUSE_VOICE_OPENAI_API_KEY?.trim()
     || env.OPENAI_API_KEY?.trim();
-  if (!openAiKey) {
+  const useLocalStt = sttChoice === "whisper-cpp";
+
+  if (!openAiKey && !useLocalStt) {
     return undefined;
   }
 
   const registry = new VoiceProviderRegistry();
-  registry.registerStt(
-    new OpenAIWhisperSttProvider({
-      apiKey: openAiKey,
-      ...(env.MUSE_VOICE_STT_MODEL?.trim() ? { model: env.MUSE_VOICE_STT_MODEL.trim() } : {})
-    })
-  );
-  registry.registerTts(
-    new OpenAITtsProvider({
-      apiKey: openAiKey,
-      ...(env.MUSE_VOICE_TTS_MODEL?.trim() ? { model: env.MUSE_VOICE_TTS_MODEL.trim() } : {}),
-      ...(env.MUSE_VOICE_TTS_VOICE?.trim() ? { defaultVoice: env.MUSE_VOICE_TTS_VOICE.trim() } : {})
-    })
-  );
+
+  if (useLocalStt) {
+    registry.registerStt(
+      new WhisperCppSttProvider({
+        ...(env.MUSE_WHISPER_CPP_PATH?.trim() ? { binaryPath: env.MUSE_WHISPER_CPP_PATH.trim() } : {}),
+        ...(env.MUSE_WHISPER_CPP_MODEL?.trim() ? { modelPath: env.MUSE_WHISPER_CPP_MODEL.trim() } : {})
+      })
+    );
+  } else if (openAiKey) {
+    registry.registerStt(
+      new OpenAIWhisperSttProvider({
+        apiKey: openAiKey,
+        ...(env.MUSE_VOICE_STT_MODEL?.trim() ? { model: env.MUSE_VOICE_STT_MODEL.trim() } : {})
+      })
+    );
+  }
+
+  if (openAiKey) {
+    registry.registerTts(
+      new OpenAITtsProvider({
+        apiKey: openAiKey,
+        ...(env.MUSE_VOICE_TTS_MODEL?.trim() ? { model: env.MUSE_VOICE_TTS_MODEL.trim() } : {}),
+        ...(env.MUSE_VOICE_TTS_VOICE?.trim() ? { defaultVoice: env.MUSE_VOICE_TTS_VOICE.trim() } : {})
+      })
+    );
+  }
+
   return registry;
 }
 

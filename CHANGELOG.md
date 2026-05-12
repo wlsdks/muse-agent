@@ -7,6 +7,19 @@ move from `Unreleased` to dated/versioned headings.
 
 ## [Unreleased]
 
+### Added
+
+- **Local Whisper.cpp STT** via the new `WhisperCppSttProvider`. Set
+  `MUSE_VOICE_STT=whisper-cpp` to route `/api/voice/stt` (and the
+  CLI `muse listen` path, once it picks up the runtime registry)
+  through the local `whisper-cpp` binary instead of OpenAI Whisper.
+  Tune the binary / model paths with `MUSE_WHISPER_CPP_PATH`
+  (default `whisper-cpp` via `$PATH`) and `MUSE_WHISPER_CPP_MODEL`
+  (default `~/.muse/whisper-models/ggml-base.en.bin` — operators
+  bring their own model). OpenAI TTS is still registered when an
+  `OPENAI_API_KEY` is set; Piper TTS lands in voice-mode Phase F.3.
+  See `docs/design/voice-mode.md` for the full Phase F contract.
+
 ### Changed
 
 - **`MUSE_USER_MEMORY_AUTO_EXTRACT` default flips from `false` to
