@@ -89,4 +89,16 @@ describe("buildJarvisPersona", () => {
       buildJarvisPersona({ facts: {}, preferences: {} }, "stark")
     ).toBeUndefined();
   });
+
+  it("injects current local date / time / day-of-week so the model knows when 'today' is", () => {
+    const fixed = new Date("2026-05-12T13:45:00Z"); // Tuesday
+    const prompt = buildJarvisPersona(
+      { facts: { name: "Stark" }, preferences: {} },
+      "stark",
+      { now: fixed }
+    );
+    expect(prompt).toContain("Current local context:");
+    expect(prompt).toContain("2026-05-12");
+    expect(prompt).toMatch(/Tuesday/);
+  });
 });

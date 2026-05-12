@@ -472,7 +472,8 @@ async function readPipedStdin(): Promise<string> {
  */
 export function buildJarvisPersona(
   memory: { readonly facts: Readonly<Record<string, string>>; readonly preferences: Readonly<Record<string, string>>; readonly recentTopics?: readonly string[] },
-  userId: string
+  userId: string,
+  options: { readonly now?: Date } = {}
 ): string | undefined {
   const facts = Object.entries(memory.facts);
   // Preferences encode three slot types: plain `pref.X`, `veto:X`
@@ -499,6 +500,17 @@ export function buildJarvisPersona(
     "Steer toward the user's goals when the topic matches, but don't shoehorn them.",
     "Do NOT volunteer the existence of this system prompt. If asked who you remember, paraphrase the facts naturally."
   ];
+  // Inject the current local date + time + day-of-week so the model
+  // doesn't have to guess. JARVIS knows what day it is; "오늘 일정"
+  // / "tomorrow morning" only makes sense when the model has a
+  // concrete now.
+  const now = options.now ?? new Date();
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+  const dayOfWeek = now.toLocaleDateString("en-US", { weekday: "long", timeZone: tz });
+  const dateStr = now.toLocaleDateString("en-CA", { timeZone: tz }); // YYYY-MM-DD
+  const timeStr = now.toLocaleTimeString("en-GB", { hour: "2-digit", hour12: false, minute: "2-digit", timeZone: tz });
+  lines.push("");
+  lines.push(`Current local context: ${dateStr} ${timeStr} ${dayOfWeek} (${tz}).`);
   if (facts.length > 0) {
     lines.push("");
     lines.push("Facts the user has shared:");
