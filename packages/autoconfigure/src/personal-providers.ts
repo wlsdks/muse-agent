@@ -22,7 +22,7 @@
  * imports it back as a type-only consumer.
  */
 
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 
 import {
   CalDAVCalendarProvider,
@@ -86,6 +86,7 @@ import {
 
 import type { MuseEnvironment } from "./index.js";
 import { OPENAI_COMPAT_PRESETS } from "./openai-compat-presets.js";
+import { clampPositive, readCredentialsSync, stringField } from "./provider-utils.js";
 
 import {
   resolveCredentialsFile,
@@ -469,26 +470,6 @@ export function ensureNotesDir(notesDir: string): void {
   }
 }
 
-function readCredentialsSync(file: string): Record<string, Record<string, unknown>> {
-  try {
-    const raw = readFileSync(file, "utf8");
-    const parsed = JSON.parse(raw) as { readonly providers?: unknown };
-    if (!parsed || typeof parsed !== "object" || !parsed.providers || typeof parsed.providers !== "object") {
-      return {};
-    }
-    return { ...(parsed.providers as Record<string, Record<string, unknown>>) };
-  } catch {
-    return {};
-  }
-}
-
-function stringField(record: { readonly [key: string]: unknown } | undefined, key: string): string | undefined {
-  if (!record) {
-    return undefined;
-  }
-  const value = record[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
 
 /**
  * Build the messaging provider registry from env tokens **and**
@@ -857,10 +838,3 @@ function toCatalogEntry(skill: Skill): SkillCatalogEntry {
   };
 }
 
-function clampPositive(value: string | undefined, fallback: number): number {
-  const parsed = value === undefined ? Number.NaN : Number.parseInt(value.trim(), 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return fallback;
-  }
-  return parsed;
-}
