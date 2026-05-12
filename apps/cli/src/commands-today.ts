@@ -35,7 +35,7 @@ import {
 import type { TextToSpeechProvider } from "@muse/voice";
 import type { Command } from "commander";
 
-import { formatLocalDateTime as shortDateTimeBrief } from "./human-formatters.js";
+import { formatLocalDate, formatLocalDateTime as shortDateTimeBrief } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
 import {
   loadDefaultTts,
@@ -107,12 +107,34 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
       if (options.speak && !options.brief) {
         throw new Error("--speak requires --brief (only the brief prose is spoken)");
       }
-      const briefing = options.local
-        ? await composeLocalBriefing(parseLookaheadHours(options.lookaheadHours))
-        : await fetchRemoteBriefing(io, command, helpers, options.lookaheadHours);
+      let briefing: TodayBriefing;
+      let usedLocal = options.local === true;
+      if (options.local) {
+        briefing = await composeLocalBriefing(parseLookaheadHours(options.lookaheadHours));
+      } else {
+        try {
+          briefing = await fetchRemoteBriefing(io, command, helpers, options.lookaheadHours);
+        } catch (cause) {
+          // JARVIS UX: a personal user without the API daemon up
+          // should still get a useful morning briefing. The
+          // apiRequest helper raises a friendly one-line error
+          // when ECONNREFUSED / ENOTFOUND hits, but the briefing
+          // itself is reconstructible from the same on-disk
+          // sources used by `--local`. Surface the fall-back
+          // explicitly on stderr so the user knows what's
+          // happening, but never fail the command.
+          if (isApiUnreachable(cause)) {
+            io.stderr("muse: API not reachable — falling back to local briefing.\n");
+            briefing = await composeLocalBriefing(parseLookaheadHours(options.lookaheadHours));
+            usedLocal = true;
+          } else {
+            throw cause;
+          }
+        }
+      }
 
       if (options.brief) {
-        const prose = await renderBrief(io, command, helpers, briefing, options.local === true, options.model);
+        const prose = await renderBrief(io, command, helpers, briefing, usedLocal, options.model);
         if (options.json) {
           helpers.writeOutput(io, { ...briefing, brief: prose });
         } else {
@@ -129,7 +151,7 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
         return;
       }
 
-      io.stdout(`Today (${shortDateLabel(briefing.generatedAt)}, next ${briefing.lookaheadHours}h${options.local ? ", local" : ""})\n`);
+      io.stdout(`Today (${shortDateLabel(briefing.generatedAt)}, next ${briefing.lookaheadHours}h${usedLocal ? ", local" : ""})\n`);
       io.stdout(formatReminders(briefing.reminders, briefing.generatedAt));
       io.stdout(formatTasks(briefing.tasks));
       io.stdout(formatEvents(briefing.events));
@@ -225,6 +247,19 @@ async function fetchRemoteBriefing(
     ? `?lookaheadHours=${encodeURIComponent(lookaheadHoursFlag)}`
     : "";
   return (await helpers.apiRequest(io, command, `/api/today${lookaheadParam}`)) as TodayBriefing;
+}
+
+/**
+ * Detect the friendly "API not reachable" / "API host unresolved"
+ * error shape `program.ts` raises when the daemon is down.
+ * Triggers the local-mode fallback in the morning briefing.
+ */
+function isApiUnreachable(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const msg = error.message;
+  return msg.includes("Muse API not reachable") || msg.includes("Muse API host unresolved");
 }
 
 async function composeLocalBriefing(lookaheadHours: number): Promise<TodayBriefing> {
@@ -371,7 +406,7 @@ function parseLookaheadHours(raw: string | undefined): number {
 }
 
 function shortDateLabel(generatedAt: string): string {
-  return generatedAt.slice(0, 10);
+  return formatLocalDate(generatedAt);
 }
 
 function formatReminders(
