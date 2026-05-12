@@ -105,6 +105,77 @@ export function registerSchedulerCommands(program: Command, io: ProgramIO, helpe
         await apiRequest(io, command, `/api/scheduler/jobs/${encodeURIComponent(jobId)}/executions`)
       );
     });
+
+  scheduler
+    .command("next")
+    .description("Show what's scheduled to fire next: scheduler jobs + pending reminders, soonest first")
+    .option("--limit <n>", "How many entries to surface (default 5)")
+    .option("--json", "Emit structured JSON instead of the formatted preview")
+    .action(async (options: { readonly limit?: string; readonly json?: boolean }, command) => {
+      const limit = Math.max(1, Math.min(50, Number.parseInt(options.limit ?? "5", 10) || 5));
+      const [jobs, reminders] = await Promise.all([
+        apiRequest(io, command, "/api/scheduler/jobs")
+          .then((value) => Array.isArray((value as { jobs?: unknown[] }).jobs)
+            ? ((value as { jobs: SchedulerJobRow[] }).jobs)
+            : Array.isArray(value) ? (value as SchedulerJobRow[]) : [])
+          .catch(() => [] as SchedulerJobRow[]),
+        apiRequest(io, command, "/api/reminders?status=pending")
+          .then((value) => ((value as { reminders?: PendingReminderRow[] }).reminders) ?? [])
+          .catch(() => [] as PendingReminderRow[])
+      ]);
+      const merged: PreviewEntry[] = [];
+      for (const job of jobs) {
+        if (!job.nextRunAt) continue;
+        merged.push({
+          when: job.nextRunAt,
+          kind: "job",
+          label: `${job.name ?? job.id ?? "(unnamed)"} — cron ${job.cronExpression ?? "?"}`
+        });
+      }
+      for (const rem of reminders) {
+        merged.push({
+          when: rem.dueAt,
+          kind: "reminder",
+          label: rem.text ?? "(no text)"
+        });
+      }
+      const upcoming = merged
+        .filter((e) => typeof e.when === "string" && e.when.length > 0)
+        .sort((a, b) => (a.when ?? "").localeCompare(b.when ?? ""))
+        .slice(0, limit);
+      if (options.json) {
+        writeOutput(io, { entries: upcoming, total: upcoming.length });
+        return;
+      }
+      if (upcoming.length === 0) {
+        io.stdout("Nothing scheduled next.\n");
+        return;
+      }
+      io.stdout(`Next ${upcoming.length.toString()} scheduled item(s):\n`);
+      for (const entry of upcoming) {
+        io.stdout(`  · ${entry.when}  [${entry.kind}] ${entry.label}\n`);
+      }
+    });
+}
+
+interface SchedulerJobRow {
+  readonly id?: string;
+  readonly name?: string;
+  readonly cronExpression?: string;
+  readonly nextRunAt?: string;
+  readonly enabled?: boolean;
+}
+
+interface PendingReminderRow {
+  readonly id?: string;
+  readonly text?: string;
+  readonly dueAt?: string;
+}
+
+interface PreviewEntry {
+  readonly when?: string;
+  readonly kind: "job" | "reminder";
+  readonly label: string;
 }
 
 export function registerSetupCommands(program: Command, io: ProgramIO): void {
