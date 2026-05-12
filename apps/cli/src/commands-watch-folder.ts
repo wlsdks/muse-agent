@@ -26,11 +26,14 @@ import { homedir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { watch } from "node:fs";
 
+import { randomUUID } from "node:crypto";
+
 import {
   buildMessagingRegistry,
-  resolveProactiveHistoryFile
+  resolveProactiveHistoryFile,
+  resolveTasksFile
 } from "@muse/autoconfigure";
-import { appendProactiveHistory } from "@muse/mcp";
+import { appendProactiveHistory, parseTaskDueAt, readTasks, writeTasks, type PersistedTask } from "@muse/mcp";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
@@ -41,6 +44,29 @@ interface WatchOptions {
   readonly path?: string;
   readonly provider?: string;
   readonly destination?: string;
+  readonly asTask?: boolean;
+  readonly defaultLeadMinutes?: string;
+}
+
+/**
+ * If the file body has a recognisable "due:" / "마감:" / "due at"
+ * line, return the parsed dueAt. Otherwise return undefined and the
+ * caller falls back to `defaultLeadMinutes` from now.
+ *
+ * Recognised patterns (case-insensitive):
+ *   due: tomorrow at 6pm
+ *   due: 2026-05-15T14:00Z
+ *   마감: 내일 오후 3시
+ */
+function extractDueHint(body: string): string | undefined {
+  const lines = body.split("\n").slice(0, 8);
+  for (const line of lines) {
+    const m = /^\s*(?:due|마감|deadline)\s*[:\-]\s*(.+)$/i.exec(line.trim());
+    if (m && m[1]) {
+      return m[1].trim();
+    }
+  }
+  return undefined;
 }
 
 export function registerWatchFolderCommand(program: Command, io: ProgramIO): void {
@@ -50,11 +76,23 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
     .option("--path <dir>", "Directory to watch (default ~/.muse/inbox)")
     .option("--provider <id>", "Messaging provider (default 'log')")
     .option("--destination <id>", "Messaging destination (default '@me')")
+    .option(
+      "--as-task",
+      "Also create a tracked task per file (title=filename, notes=body, dueAt parsed or +1h). Lets the proactive daemon pick it up later."
+    )
+    .option(
+      "--default-lead-minutes <n>",
+      "When --as-task is set and no due:/마감: line is found, use this many minutes from now as the default dueAt (default 60)",
+      "60"
+    )
     .action(async (options: WatchOptions) => {
       const dir = options.path ?? join(homedir(), ".muse", "inbox");
       const processedDir = join(dir, ".processed");
       const provider = options.provider ?? "log";
       const destination = options.destination ?? "@me";
+      const asTask = options.asTask === true;
+      const defaultLead = Math.max(1, Number.parseInt(options.defaultLeadMinutes ?? "60", 10) || 60);
+      const tasksFile = asTask ? resolveTasksFile(process.env as Record<string, string | undefined>) : undefined;
 
       await mkdir(dir, { recursive: true });
       await mkdir(processedDir, { recursive: true });
@@ -69,6 +107,9 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
 
       io.stdout(`muse watch-folder — watching ${dir}\n`);
       io.stdout(`  provider=${provider}, destination=${destination}\n`);
+      if (asTask) {
+        io.stdout(`  as-task: ON (each file also becomes an open task in ${tasksFile!})\n`);
+      }
       io.stdout(`  (Drop any text file here to fire a notice. Ctrl-C to stop.)\n\n`);
 
       // De-dupe: fs.watch can fire "rename" twice for one file on some
@@ -104,6 +145,42 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
           const text = `📥 ${title}: ${firstLine.length > 200 ? `${firstLine.slice(0, 197)}…` : firstLine}`;
 
           await registry.send(provider, { destination, text });
+
+          // --as-task path: also create a tracked task so the
+          // proactive daemon later fires its own reminder for the
+          // imminent dueAt. The inbox file becomes a first-class
+          // task that participates in done/snooze/dismiss flows.
+          if (asTask && tasksFile) {
+            try {
+              const hint = extractDueHint(raw);
+              let dueAt: string | undefined;
+              if (hint) {
+                const parsed = parseTaskDueAt(hint, () => new Date());
+                if (parsed instanceof Error) {
+                  dueAt = undefined;
+                } else {
+                  dueAt = parsed;
+                }
+              }
+              if (!dueAt) {
+                dueAt = new Date(Date.now() + defaultLead * 60_000).toISOString();
+              }
+              const task: PersistedTask = {
+                createdAt: new Date().toISOString(),
+                dueAt,
+                id: `inbox_${randomUUID()}`,
+                notes: raw.slice(0, 1000),
+                status: "open",
+                tags: ["inbox", "watch-folder"],
+                title
+              };
+              const existing = await readTasks(tasksFile);
+              await writeTasks(tasksFile, [...existing, task]);
+              io.stdout(`  + task created: ${task.id} (dueAt ${dueAt})\n`);
+            } catch (cause) {
+              io.stderr(`  task-create failed for ${filename}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+            }
+          }
 
           // Archive so the next fs.watch event doesn't re-trigger.
           const archived = join(processedDir, `${Date.now().toString()}-${filename}`);
