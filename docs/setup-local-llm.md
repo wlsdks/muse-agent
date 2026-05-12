@@ -42,9 +42,26 @@ Pass `--check` to dry-run without writing.
 
 | Tier | Model | Size on disk | Min RAM | Strengths | Weaknesses |
 | --- | --- | --- | --- | --- | --- |
-| **low** | `qwen2.5:1.5b-instruct` | 1.0 GB | 4 GB | fits 4 GB MacBook Air, fast responses, Korean OK | tool calling fragile; long reasoning fails |
+| **low** | `qwen2.5:1.5b-instruct` | 1.0 GB | 4 GB | fits 4 GB laptops, **snappy** (90 ms first-token on M3 Pro), Korean OK | tool calling fragile; long reasoning fails |
 | **mid** | `qwen2.5:3b` | 2.0 GB | 6 GB | useful JARVIS surface | Korean weaker than 7B |
-| **high** | `qwen2.5:7b-instruct` | 4.7 GB | 8 GB | stable tool-calling, strong Korean, recommended | model load takes ~5 s first time |
+| **high** | `qwen2.5:7b-instruct` | 4.7 GB | 8 GB | stable tool-calling, strong Korean | model load takes ~2 s on first request; ~27 tok/s feels "OK" not "snappy" |
+
+**Measured on M3 Pro / 36 GB RAM, Ollama 0.21.1** (run
+`node scripts/dogfood-local-llm.mjs <tag>` to reproduce):
+
+| Model | Cold-start | Warm first-token | Tok/s (raw) | Muse `/api/chat` | Tier |
+| --- | --- | --- | --- | --- | --- |
+| qwen2.5:1.5b-instruct | 274 ms | **90 ms** | 91 | 3.0 s | **JARVIS-fit** |
+| qwen2.5:7b-instruct | 1.9 s | 201 ms | 27 | 12.5 s | usable |
+| gemma4:26b (too big) | 22 s | 11 s | 36 | 22 s | needs more hardware |
+
+The `/api/chat` figure is wall-clock from request to response and
+includes Muse's agent pipeline (system prompt, tool registry,
+user-memory hook). 7B's 12 s round-trip vs 1.5B's 3 s for the same
+"1+1?" prompt shows the agent overhead scales with model tok/s —
+fine for daily JARVIS use, but if you want **chat-only snappiness on
+a heavy model** drop `/api/chat` and call the model directly through
+the `OllamaProvider`.
 
 All three are **Apache 2.0** — free for any use including commercial.
 
@@ -149,17 +166,25 @@ The script:
 3. Asserts a Korean reply contains Hangul.
 4. Prints a tier verdict (`JARVIS-fit` / `usable` / `needs more hardware`).
 
-Sample output:
+Sample output (M3 Pro, 7B):
 
 ```
 VERDICT for qwen2.5:7b-instruct:
-  firstTokenMs: 320
+  coldStartMs: 1883
+  firstTokenMs: 201
   koreanReplyOk: true
   museApiOk: true
-  museRoundtripMs: 1840
-  rawTokensPerSec: 67.3
-  tier: JARVIS-fit
+  museRoundtripMs: 12484
+  rawTokensPerSec: 26.9
+  tier: usable
 ```
+
+`firstTokenMs` is *warm* — the script runs a discarded warm-up call
+first so the measurement reflects what you actually feel on the second
+request and beyond. `coldStartMs` is reported separately for
+transparency; it's the one-time tax Ollama pays to load the gguf
+from disk into RAM (and stays loaded for `OLLAMA_KEEP_ALIVE`,
+default 5 min).
 
 If the verdict is `needs more hardware`, drop to the next-smaller
 tier — the script reports actual numbers so the choice is data-driven,
