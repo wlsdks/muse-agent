@@ -3,9 +3,10 @@
  *
  * The walk-into-the-lab ritual: one command, two-three sentences,
  * personalised to the user's persona (language, name, reply style).
- * Pulls today's tasks + calendar (when wired) + last few proactive
- * notices, hands the structured fact-sheet to the local Qwen, and
- * streams the synthesis straight to stdout.
+ * Pulls today's tasks + upcoming calendar events (next 24 h, across
+ * every configured provider) + last few proactive notices, hands
+ * the structured fact-sheet to the local Qwen, and streams the
+ * synthesis straight to stdout.
  *
  * Zero external cost (local LLM, file IO). Honours the user's
  * `routine_active_hours` + `language` preferences.
@@ -23,11 +24,13 @@ import { tmpdir, platform } from "node:os";
 import { join as pathJoin } from "node:path";
 
 import {
+  buildCalendarRegistry,
   buildVoiceRegistry,
   createMuseRuntimeAssembly,
   resolveProactiveHistoryFile,
   resolveTasksFile
 } from "@muse/autoconfigure";
+import type { CalendarEvent } from "@muse/calendar";
 import { readProactiveHistory } from "@muse/mcp";
 import type { Command } from "commander";
 
@@ -155,11 +158,42 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
       const historyFile = resolveProactiveHistoryFile(process.env as Record<string, string | undefined>);
       const recentHistory = await readProactiveHistory(historyFile, 5);
 
+      // Pull every configured calendar provider, merge into one
+      // chronological list for the next 24 h. A morning briefing
+      // that doesn't mention the 9 AM dentist is a broken JARVIS.
+      let upcomingEvents: readonly CalendarEvent[] = [];
+      try {
+        const registry = buildCalendarRegistry(process.env as Record<string, string | undefined>);
+        const collected: CalendarEvent[] = [];
+        for (const provider of registry.list()) {
+          try {
+            const events = await provider.listEvents({ from: now, to: horizon });
+            collected.push(...events);
+          } catch {
+            // single provider failed — keep the rest
+          }
+        }
+        upcomingEvents = collected
+          .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())
+          .slice(0, 10);
+      } catch {
+        // registry build failed — brief still works on tasks +
+        // history alone
+      }
+
       const factSheet = [
         `Today: ${now.toISOString().slice(0, 10)} ${now.toLocaleDateString("en-US", { weekday: "long" })} ${now.toTimeString().slice(0, 5)} local`,
         `Open tasks: ${openTasks.length.toString()}`,
         `Tasks due in next 24h: ${dueSoon.length.toString()}`,
         ...dueSoon.slice(0, 5).map((t) => `  · ${t.title} (due ${t.dueAt})`),
+        `Events in next 24h: ${upcomingEvents.length.toString()}`,
+        ...upcomingEvents.map((e) => {
+          const when = e.allDay
+            ? `${e.startsAt.toISOString().slice(0, 10)} (all-day)`
+            : `${e.startsAt.toISOString().slice(11, 16)}–${e.endsAt.toISOString().slice(11, 16)} UTC`;
+          const loc = e.location ? ` @ ${e.location}` : "";
+          return `  · ${when} ${e.title}${loc} [${e.providerId}]`;
+        }),
         `Recent proactive notices (last 5): ${recentHistory.length.toString()}`,
         ...recentHistory.slice(-3).map((entry) => `  · ${entry.firedAtIso ?? "?"} ${entry.title}: ${entry.text.slice(0, 80)}`)
       ].join("\n");
