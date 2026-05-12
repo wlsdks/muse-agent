@@ -94,17 +94,43 @@ Desktop MCP bridge in one narrated run.
 ### Daily-driver flows
 
 ```bash
-# Continuous REPL (local Ollama, --no-tools for snappy chat,
-# --continue picks up prior turns from ~/.muse/last-chat.jsonl):
-muse chat -i --local --no-tools --continue --model ollama/qwen2.5:7b-instruct
+# JARVIS REPL — continuous conversation, token streaming, persona-aware:
+muse repl --user stark
 
 # Stdin piping for ad-hoc summarisation:
 cat note.md | muse chat --local --no-tools --model ollama/qwen2.5:7b-instruct "한 단락으로 요약"
 
-# Real-time proactive daemon (Ctrl-C to stop). LogMessagingProvider
-# writes every notice to ~/.muse/notifications.log — credential-free.
-muse proactive watch --interval 60 --lead-minutes 10
+# Real-time proactive daemon (Ctrl-C to stop). Notices are
+# personalised — they address you by name in your preferred language:
+muse proactive watch --user stark --interval 60
+
+# At-a-glance dashboard — model, persona, imminent tasks, last notice:
+muse status --user stark
 ```
+
+### What "JARVIS" means in Muse
+
+Muse keeps a persistent personal model at `~/.muse/user-memory.json`
+keyed by `--user <id>`. Every REPL turn the model sees:
+
+- Your **facts** (`name`, `city`, `role`, …) — auto-extracted from
+  chat or set manually with `/fact key=value`
+- Your **preferences** (`language`, `reply_style`, …) — same auto-
+  extract path, slash command `/pref key=value`
+- Your **vetoes** (`no_coffee`, `no_email_after_9pm`, …) — things
+  Muse must never suggest. Recognised when you state a hard rule.
+- Your **goals** — active objectives Muse can steer toward
+- The current local **date / time / day-of-week**
+
+The same persona ships into `muse proactive watch`, so the
+notification "Send Q3 memo due in 5 min" gets translated through
+your prefs and lands as **"Q3 예산 메모를 금융팀에 보내야 합니다. 지금
+작성 시작할까요?"** — same daemon, same model, no extra work.
+
+This is the **openclaw differentiator**: openclaw wraps another
+AI for one call. Muse remembers you, learns from natural
+conversation, and uses what it learns to shape every future
+turn AND every proactive notice.
 
 ### Cloud + API server (BYOK)
 
