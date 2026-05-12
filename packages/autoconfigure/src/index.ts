@@ -97,9 +97,6 @@ import {
 } from "@muse/scheduler";
 import {
   createMuseTools,
-  createSkillListTool,
-  createSkillReadTool,
-  createSkillRunTool,
   ToolRegistry,
   type MuseTool
 } from "@muse/tools";
@@ -119,6 +116,7 @@ import {
 } from "./env-parsers.js";
 import { createResponseFilters } from "./response-filters.js";
 import { createMessagingPollDispatchers } from "./messaging-poll-dispatchers.js";
+import { createSkillRuntime } from "./skills-runtime.js";
 
 import {
   buildActiveContextProvider,
@@ -128,7 +126,6 @@ import {
   buildMessagingRegistry,
   buildNotesRegistry,
   buildSkillCatalogProvider,
-  buildSkillRegistry,
   buildTasksRegistry,
   buildTelemetryAggregator,
   buildToolFilter,
@@ -475,53 +472,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   );
   const schedulerHandle: { current: DynamicScheduler | undefined } = { current: undefined };
 
-  // Skills (SKILL.md) registry — async disk scan deferred via
-  // Promise wrap so this assembly stays synchronous. Tools that
-  // need the registry (`muse.skills.*`) read through a small view
-  // that resolves the promise lazily on the first invocation.
-  const skillRegistryPromise = buildSkillRegistry(env);
-  let skillRegistryCache: Awaited<typeof skillRegistryPromise>;
-  const skillRegistryView = {
-    list: () => {
-      if (!skillRegistryCache) return [];
-      return skillRegistryCache.list().map((skill) => ({
-        body: skill.body,
-        description: skill.description,
-        ...(skill.frontmatter.emoji ? { emoji: skill.frontmatter.emoji } : {}),
-        name: skill.name,
-        ...(skill.frontmatter.requires?.anyBins
-          ? { requiresAnyBins: [...skill.frontmatter.requires.anyBins] }
-          : {}),
-        ...(skill.frontmatter.requires?.bins ? { requiresBins: [...skill.frontmatter.requires.bins] } : {})
-      }));
-    },
-    get: (name: string) => {
-      if (!skillRegistryCache) return undefined;
-      const skill = skillRegistryCache.get(name);
-      if (!skill) return undefined;
-      return {
-        body: skill.body,
-        description: skill.description,
-        ...(skill.frontmatter.emoji ? { emoji: skill.frontmatter.emoji } : {}),
-        name: skill.name,
-        ...(skill.frontmatter.requires?.anyBins
-          ? { requiresAnyBins: [...skill.frontmatter.requires.anyBins] }
-          : {}),
-        ...(skill.frontmatter.requires?.bins ? { requiresBins: [...skill.frontmatter.requires.bins] } : {})
-      };
-    }
-  };
-  void skillRegistryPromise.then((registry) => {
-    skillRegistryCache = registry;
-  });
-
-  const skillTools = parseBoolean(env.MUSE_SKILLS_ENABLED, true)
-    ? [
-        createSkillListTool(skillRegistryView),
-        createSkillReadTool(skillRegistryView),
-        createSkillRunTool(skillRegistryView)
-      ]
-    : [];
+  const { skillRegistryPromise, skillTools } = createSkillRuntime(env);
 
   const toolRegistry = new DynamicToolRegistry([
     () => museTools,
