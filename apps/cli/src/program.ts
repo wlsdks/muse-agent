@@ -186,10 +186,15 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       "--reset",
       "clear ~/.muse/last-chat.jsonl before this turn (use after --continue to start a fresh conversation)"
     )
+    .option(
+      "-i, --interactive",
+      "open a continuous REPL — each line is a turn, /exit quits, /reset clears, /help lists commands (--local only)"
+    )
     .action(async (
       messageParts: readonly string[],
       options: {
         readonly continue?: boolean;
+        readonly interactive?: boolean;
         readonly json?: boolean;
         readonly local?: boolean;
         readonly log?: boolean;
@@ -204,6 +209,18 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     ) => {
       if (options.reset) {
         await clearLastChatHistory();
+      }
+      if (options.interactive) {
+        if (!options.local) {
+          throw new Error("--interactive requires --local (REPL goes through the local runtime; remote streaming REPL is a future iteration)");
+        }
+        const cliConfigForRepl = await readConfigStore(io);
+        await runChatRepl(io, {
+          continueHistory: options.continue ?? false,
+          disableTools: options.tools === false,
+          model: options.model ?? cliConfigForRepl.defaultModel
+        });
+        return;
       }
       const message = await resolveChatMessage(io, messageParts);
       const cliConfig = await readConfigStore(io);
@@ -673,6 +690,140 @@ function createTuiChatSubmitter(
 
     return readChatResponseText(body);
   };
+}
+
+/**
+ * Continuous chat REPL — `muse chat -i`. One readline loop, each line
+ * is a turn, slash commands manage session state. Lives next to
+ * `runLocalChat` because it shares the assembly creation + history
+ * persistence; the REPL just amortises that cost across many turns.
+ *
+ * Slash commands:
+ *   /exit, /quit           — leave (Ctrl-D / Ctrl-C work too)
+ *   /reset                 — clear in-memory + on-disk history
+ *   /history               — show how many turns are in context
+ *   /model <tag>           — switch to a different model mid-session
+ *   /tools on|off          — toggle the tool registry for subsequent turns
+ *   /help                  — list these
+ *
+ * In-memory history is the source of truth during the session;
+ * `~/.muse/last-chat.jsonl` is updated after every assistant reply so
+ * a crash mid-conversation doesn't lose the trail and a follow-up
+ * `muse chat -c` outside the REPL still picks up where the user
+ * left off.
+ */
+async function runChatRepl(
+  io: ProgramIO,
+  options: {
+    readonly model: string | undefined;
+    readonly disableTools: boolean;
+    readonly continueHistory: boolean;
+  }
+): Promise<void> {
+  const readline = await import("node:readline/promises");
+  const seedHistory = options.continueHistory ? await readLastChatHistory() : [];
+  const history: { role: "user" | "assistant"; content: string }[] = [...seedHistory];
+  let currentModel = options.model;
+  let toolsDisabled = options.disableTools;
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: true
+  });
+
+  io.stdout("\n");
+  io.stdout("Muse REPL — type /help for commands, /exit to quit.\n");
+  io.stdout(`  model: ${currentModel ?? "(default)"}, tools: ${toolsDisabled ? "off" : "on"}, history: ${history.length.toString()} turns\n`);
+  io.stdout("\n");
+
+  let active = true;
+  const onSigint = (): void => {
+    io.stdout("\n(ctrl-c — exiting)\n");
+    active = false;
+    rl.close();
+  };
+  rl.on("SIGINT", onSigint);
+
+  try {
+    while (active) {
+      let line: string;
+      try {
+        line = await rl.question("you> ");
+      } catch {
+        break;
+      }
+      const trimmed = line.trim();
+      if (trimmed.length === 0) continue;
+
+      if (trimmed.startsWith("/")) {
+        const [cmd, ...rest] = trimmed.slice(1).split(/\s+/);
+        const arg = rest.join(" ").trim();
+        switch (cmd) {
+          case "exit":
+          case "quit":
+            io.stdout("(bye)\n");
+            active = false;
+            break;
+          case "reset":
+            history.length = 0;
+            await clearLastChatHistory();
+            io.stdout("(history cleared)\n");
+            break;
+          case "history":
+            io.stdout(`(${history.length.toString()} turns in context)\n`);
+            break;
+          case "model":
+            if (arg.length === 0) {
+              io.stdout(`(current model: ${currentModel ?? "(default)"})\n`);
+            } else {
+              currentModel = arg;
+              io.stdout(`(model → ${arg})\n`);
+            }
+            break;
+          case "tools":
+            if (arg === "on") {
+              toolsDisabled = false;
+              io.stdout("(tools on)\n");
+            } else if (arg === "off") {
+              toolsDisabled = true;
+              io.stdout("(tools off — chat-only fast path)\n");
+            } else {
+              io.stdout(`(tools currently ${toolsDisabled ? "off" : "on"}; usage: /tools on|off)\n`);
+            }
+            break;
+          case "help":
+            io.stdout("  /exit, /quit          leave\n");
+            io.stdout("  /reset                clear history (both memory + disk)\n");
+            io.stdout("  /history              show turn count\n");
+            io.stdout("  /model <tag>          switch model (e.g. ollama/qwen2.5:7b-instruct)\n");
+            io.stdout("  /tools on|off         toggle tool registry\n");
+            io.stdout("  /help                 this list\n");
+            break;
+          default:
+            io.stdout(`(unknown command: /${cmd ?? ""} — try /help)\n`);
+        }
+        continue;
+      }
+
+      try {
+        const result = await runLocalChat(io, trimmed, currentModel, undefined, {
+          disableTools: toolsDisabled,
+          priorHistory: history
+        });
+        io.stdout(`muse> ${result.response}\n\n`);
+        history.push({ content: trimmed, role: "user" });
+        history.push({ content: result.response, role: "assistant" });
+        await appendLastChatTurn({ message: trimmed, response: result.response });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        io.stderr(`(error: ${msg})\n`);
+      }
+    }
+  } finally {
+    rl.off("SIGINT", onSigint);
+    rl.close();
+  }
 }
 
 async function runLocalChat(
