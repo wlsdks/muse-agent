@@ -322,13 +322,15 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     .option("--tools", "Enable the tool registry (default off for speed)")
     .option("--no-continue", "Start a fresh conversation instead of resuming ~/.muse/last-chat.jsonl")
     .option("--user <id>", "User identity for persistent memory (default $MUSE_USER_ID or $USER)")
-    .action(async (options: { readonly model?: string; readonly tools?: boolean; readonly continue?: boolean; readonly user?: string }) => {
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …); same user can hold multiple distinct personas")
+    .action(async (options: { readonly model?: string; readonly tools?: boolean; readonly continue?: boolean; readonly user?: string; readonly persona?: string }) => {
       const cliConfig = await readConfigStore(io);
       await runChatRepl(io, {
         continueHistory: options.continue !== false,
         disableTools: options.tools !== true,
         model: options.model ?? cliConfig.defaultModel,
-        ...(options.user ? { userId: options.user } : {})
+        ...(options.user ? { userId: options.user } : {}),
+        ...(options.persona ? { persona: options.persona } : {})
       });
     });
 
@@ -837,6 +839,7 @@ async function runChatRepl(
     readonly disableTools: boolean;
     readonly continueHistory: boolean;
     readonly userId?: string;
+    readonly persona?: string;
   }
 ): Promise<void> {
   const readline = await import("node:readline/promises");
@@ -844,7 +847,16 @@ async function runChatRepl(
   const history: { role: "user" | "assistant"; content: string }[] = [...seedHistory];
   let currentModel = options.model;
   let toolsDisabled = options.disableTools;
-  const userId = options.userId ?? process.env.MUSE_USER_ID ?? process.env.USER ?? "default";
+  const baseUserId = options.userId ?? process.env.MUSE_USER_ID ?? process.env.USER ?? "default";
+  // Multi-persona: the on-disk store keys persona slots as
+  // `<user>@<persona>` so a single human ("stark") can have a
+  // distinct work / home / hobby context with its own facts,
+  // prefs, vetoes, goals. No persona suffix → the bare userId.
+  let currentPersona = options.persona?.trim();
+  const composeUserKey = (): string => currentPersona && currentPersona.length > 0
+    ? `${baseUserId}@${currentPersona}`
+    : baseUserId;
+  let userId = composeUserKey();
 
   // Build the runtime assembly once and reuse across turns; the
   // streaming loop calls `agentRuntime.stream(...)` directly so
@@ -994,6 +1006,24 @@ async function runChatRepl(
               }
             }
             break;
+          case "persona":
+            if (arg.length === 0) {
+              io.stdout(`(current persona: ${currentPersona ?? "(none — base profile)"}; usage: /persona work | /persona home | /persona none)\n`);
+            } else {
+              const next = arg === "none" || arg === "off" || arg === "default" ? undefined : arg;
+              currentPersona = next;
+              userId = composeUserKey();
+              userMemory = memoryStore ? await Promise.resolve(memoryStore.findByUserId(userId)) : undefined;
+              io.stdout(`(persona → ${currentPersona ?? "(base)"}; userKey=${userId})\n`);
+              if (userMemory) {
+                const factCount = Object.keys(userMemory.facts).length;
+                const prefCount = Object.keys(userMemory.preferences).length;
+                io.stdout(`  remembered: ${factCount.toString()} fact(s), ${prefCount.toString()} pref(s) for this persona\n`);
+              } else {
+                io.stdout(`  (no memory for this persona yet — start fresh)\n`);
+              }
+            }
+            break;
           case "help":
             io.stdout("  /exit, /quit          leave\n");
             io.stdout("  /reset                clear history (both memory + disk)\n");
@@ -1003,6 +1033,7 @@ async function runChatRepl(
             io.stdout("  /fact key=value       remember a fact about you (persists across sessions)\n");
             io.stdout("  /pref key=value       remember a preference\n");
             io.stdout("  /whoami               show what Muse knows about you\n");
+            io.stdout("  /persona <slot>       switch persona slot (work / home / none); each has its own memory\n");
             io.stdout("  /help                 this list\n");
             break;
           default:
