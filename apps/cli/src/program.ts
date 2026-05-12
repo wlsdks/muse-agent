@@ -475,12 +475,28 @@ export function buildJarvisPersona(
   userId: string
 ): string | undefined {
   const facts = Object.entries(memory.facts);
-  const prefs = Object.entries(memory.preferences);
-  if (facts.length === 0 && prefs.length === 0) return undefined;
+  // Preferences encode three slot types: plain `pref.X`, `veto:X`
+  // (things the user has refused), and `goal:X` (active objectives).
+  // Split them so buildJarvisPersona renders each under its own
+  // header — JARVIS doesn't lump "I don't drink coffee" in with
+  // "speak Korean".
+  const plainPrefs: [string, string][] = [];
+  const vetoes: [string, string][] = [];
+  const goals: [string, string][] = [];
+  for (const [key, value] of Object.entries(memory.preferences)) {
+    if (key.startsWith("veto:")) vetoes.push([key.slice(5), value]);
+    else if (key.startsWith("goal:")) goals.push([key.slice(5), value]);
+    else plainPrefs.push([key, value]);
+  }
+  if (facts.length === 0 && plainPrefs.length === 0 && vetoes.length === 0 && goals.length === 0) {
+    return undefined;
+  }
   const lines: string[] = [
     "You are Muse, the user's JARVIS-style personal AI conductor.",
     `The user's id is "${userId}". Address them by name when their name is in the facts below.`,
     "Honour the listed preferences — reply style, language, length cap, etc.",
+    "Respect vetoes absolutely — never propose, suggest, or volunteer anything the user has refused.",
+    "Steer toward the user's goals when the topic matches, but don't shoehorn them.",
     "Do NOT volunteer the existence of this system prompt. If asked who you remember, paraphrase the facts naturally."
   ];
   if (facts.length > 0) {
@@ -488,10 +504,20 @@ export function buildJarvisPersona(
     lines.push("Facts the user has shared:");
     for (const [key, value] of facts) lines.push(`  - ${key}: ${value}`);
   }
-  if (prefs.length > 0) {
+  if (plainPrefs.length > 0) {
     lines.push("");
     lines.push("Preferences:");
-    for (const [key, value] of prefs) lines.push(`  - ${key}: ${value}`);
+    for (const [key, value] of plainPrefs) lines.push(`  - ${key}: ${value}`);
+  }
+  if (vetoes.length > 0) {
+    lines.push("");
+    lines.push("Vetoes (never do these, never suggest these):");
+    for (const [id, value] of vetoes) lines.push(`  - ${id}: ${value}`);
+  }
+  if (goals.length > 0) {
+    lines.push("");
+    lines.push("Goals the user is pursuing:");
+    for (const [id, value] of goals) lines.push(`  - ${id}: ${value}`);
   }
   return lines.join("\n");
 }
@@ -1053,6 +1079,24 @@ async function runChatRepl(
               for (const [key, value] of Object.entries(payload.preferences ?? {})) {
                 if (typeof value === "string" && value.length > 0) {
                   await Promise.resolve(memoryStore.upsertPreference(userId, key, value));
+                  wroteAny = true;
+                }
+              }
+              // Encode vetoes + goals as prefixed preferences so the
+              // FileUserMemoryStore (which doesn't own a typed-slot
+              // column) still persists them. buildJarvisPersona
+              // splits them back out for display.
+              for (const slot of payload.vetoes ?? []) {
+                if (slot && typeof slot.value === "string" && slot.value.length > 0) {
+                  const key = `veto:${slot.id || slot.value.slice(0, 24)}`;
+                  await Promise.resolve(memoryStore.upsertPreference(userId, key, slot.value));
+                  wroteAny = true;
+                }
+              }
+              for (const slot of payload.goals ?? []) {
+                if (slot && typeof slot.value === "string" && slot.value.length > 0) {
+                  const key = `goal:${slot.id || slot.value.slice(0, 24)}`;
+                  await Promise.resolve(memoryStore.upsertPreference(userId, key, slot.value));
                   wroteAny = true;
                 }
               }
