@@ -21,6 +21,7 @@ import { join } from "node:path";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
+import { readTrust } from "./commands-trust.js";
 
 interface StatusOptions {
   readonly user?: string;
@@ -106,6 +107,10 @@ async function collectStatus(userId: string) {
     | { facts?: Record<string, string>; preferences?: Record<string, string>; updatedAt?: string }
     | undefined;
 
+  const trust = await readTrust(userId).catch(() => ({ blockedTools: [] as string[], trustedTools: [] as string[] }));
+  const routineHours = persona?.facts?.routine_active_hours;
+  const routineDays = persona?.facts?.routine_active_days;
+
   const tasksDoc = await safeReadJson(tasksFile) as { tasks?: readonly PersistedTask[] } | undefined;
   const allTasks = tasksDoc?.tasks ?? [];
   const now = Date.now();
@@ -153,6 +158,16 @@ async function collectStatus(userId: string) {
       file: logFile,
       bytes: logBytes,
       lastLine: logTail
+    },
+    trust: {
+      trustedCount: trust.trustedTools.length,
+      blockedCount: trust.blockedTools.length,
+      trustedSample: trust.trustedTools.slice(0, 3),
+      blockedSample: trust.blockedTools.slice(0, 3)
+    },
+    routine: {
+      activeHours: routineHours,
+      activeDays: routineDays
     }
   };
 }
@@ -210,6 +225,20 @@ export function registerStatusCommand(program: Command, io: ProgramIO): void {
       }\n`);
       if (snap.notificationLog.lastLine) {
         io.stdout(`    last: ${snap.notificationLog.lastLine}\n`);
+      }
+      io.stdout("\n");
+      if (snap.routine.activeHours || snap.routine.activeDays) {
+        io.stdout(`  routine: hours ${snap.routine.activeHours ?? "(none)"}, days ${snap.routine.activeDays ?? "(none)"}\n`);
+      } else {
+        io.stdout(`  routine: (run 'muse routine --user ${snap.persona.userId} --apply' after a few REPL sessions)\n`);
+      }
+      io.stdout("\n");
+      io.stdout(`  trust: ${snap.trust.trustedCount.toString()} trusted, ${snap.trust.blockedCount.toString()} blocked\n`);
+      if (snap.trust.trustedSample.length > 0) {
+        io.stdout(`    + ${snap.trust.trustedSample.join(", ")}${snap.trust.trustedCount > 3 ? `, +${(snap.trust.trustedCount - 3).toString()} more` : ""}\n`);
+      }
+      if (snap.trust.blockedSample.length > 0) {
+        io.stdout(`    × ${snap.trust.blockedSample.join(", ")}${snap.trust.blockedCount > 3 ? `, +${(snap.trust.blockedCount - 3).toString()} more` : ""}\n`);
       }
     });
 }
