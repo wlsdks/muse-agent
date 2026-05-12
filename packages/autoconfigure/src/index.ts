@@ -54,7 +54,6 @@ import {
 } from "@muse/mcp";
 import {
   createUserMemoryAutoExtractHook,
-  DEFAULT_WORKING_BUDGET_RATIO,
   InMemoryContextReferenceStore,
   type ConversationSummaryStore,
   type TaskMemoryMaintenance,
@@ -187,6 +186,7 @@ import {
 import { DynamicToolRegistry } from "./dynamic-tool-registry.js";
 import { loadExternalMcpConfig } from "./external-mcp-config.js";
 import {
+  buildContextWindowOptions,
   createDefaultRuntimeHooks,
   createInputGuards,
   createOutputGuards,
@@ -523,39 +523,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       cacheMetrics,
       circuitBreaker: circuitBreakerRegistry.get("model.generate"),
       contextReferenceStore,
-      contextWindow: (() => {
-        // Working-budget compaction trigger (round 157 + 158): proactive
-        // compaction at ~40% of nominal so quality stays high before the
-        // hard cap is hit (Anthropic effective-context-engineering /
-        // NoLiMa context-rot research). User can override the soft target
-        // via MUSE_LLM_WORKING_BUDGET_TOKENS; setting it to 0 disables
-        // proactive compaction entirely (legacy hard-cap-only behavior).
-        const maxContextWindowTokens = parseInteger(env.MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS, 128_000);
-        const outputReserveTokens = parseInteger(env.MUSE_LLM_MAX_OUTPUT_TOKENS, 4_096);
-        const explicitWorkingBudget = env.MUSE_LLM_WORKING_BUDGET_TOKENS;
-        const workingBudgetTokens = explicitWorkingBudget !== undefined
-          ? parseInteger(explicitWorkingBudget, 0)
-          : Math.floor(maxContextWindowTokens * DEFAULT_WORKING_BUDGET_RATIO);
-        // Context Engineering Phase 5: importance-aware compaction.
-        // `MUSE_COMPACTION_STRATEGY=importance` enables score-aware
-        // trimming so multi-day task state survives longer than casual
-        // chat. Default stays `temporal` (legacy oldest-first).
-        const strategyRaw = env.MUSE_COMPACTION_STRATEGY?.trim().toLowerCase();
-        const compactionStrategy: "temporal" | "importance" =
-          strategyRaw === "importance" ? "importance" : "temporal";
-        const importanceThresholdRaw = env.MUSE_COMPACTION_IMPORTANCE_THRESHOLD?.trim();
-        const importanceThreshold = importanceThresholdRaw
-          ? Number.parseFloat(importanceThresholdRaw)
-          : Number.NaN;
-        return {
-          maxContextWindowTokens,
-          outputReserveTokens,
-          // 0 disables; positive values pass through to trimConversationMessages.
-          ...(workingBudgetTokens > 0 ? { workingBudgetTokens } : {}),
-          compactionStrategy,
-          ...(Number.isFinite(importanceThreshold) ? { importanceThreshold } : {})
-        };
-      })(),
+      contextWindow: buildContextWindowOptions(env),
       historyStore,
       hooks: runtimeHooks,
       hookTraceStore,

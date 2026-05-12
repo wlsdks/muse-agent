@@ -30,6 +30,7 @@ import {
   type HookStage,
   type OutputGuardStage
 } from "@muse/agent-core";
+import { DEFAULT_WORKING_BUDGET_RATIO, type ConversationTrimOptions } from "@muse/memory";
 import type { ScheduledAgentExecutor } from "@muse/scheduler";
 import {
   createDefaultToolExposurePolicy,
@@ -38,7 +39,7 @@ import {
   type ToolExposurePolicy
 } from "@muse/tools";
 
-import { parseBoolean, parseCsv, parseOptionalString } from "./env-parsers.js";
+import { parseBoolean, parseCsv, parseInteger, parseOptionalString } from "./env-parsers.js";
 import { ConfigurationError, type MuseEnvironment } from "./index.js";
 
 export function createPersonalToolExposurePolicy(env: MuseEnvironment): ToolExposurePolicy {
@@ -88,6 +89,45 @@ export function createScheduledAgentExecutor(
  */
 export function createDefaultRuntimeHooks(_env: MuseEnvironment): readonly HookStage[] {
   return [];
+}
+
+/**
+ * Build `AgentRuntime.contextWindow` options from env.
+ *
+ * Working-budget compaction (round 157+158): proactive compaction at
+ * ~40% of nominal keeps quality high before the hard cap is hit
+ * (Anthropic effective-context-engineering / NoLiMa context-rot
+ * research). Operators override the soft target via
+ * `MUSE_LLM_WORKING_BUDGET_TOKENS`; `0` disables proactive compaction
+ * (legacy hard-cap-only behavior).
+ *
+ * Context Engineering Phase 5: `MUSE_COMPACTION_STRATEGY=importance`
+ * flips the trim to score-aware so multi-day task state survives
+ * longer than casual chat. Default stays `temporal`
+ * (legacy oldest-first).
+ */
+export function buildContextWindowOptions(env: MuseEnvironment): ConversationTrimOptions {
+  const maxContextWindowTokens = parseInteger(env.MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS, 128_000);
+  const outputReserveTokens = parseInteger(env.MUSE_LLM_MAX_OUTPUT_TOKENS, 4_096);
+  const explicitWorkingBudget = env.MUSE_LLM_WORKING_BUDGET_TOKENS;
+  const workingBudgetTokens = explicitWorkingBudget !== undefined
+    ? parseInteger(explicitWorkingBudget, 0)
+    : Math.floor(maxContextWindowTokens * DEFAULT_WORKING_BUDGET_RATIO);
+  const strategyRaw = env.MUSE_COMPACTION_STRATEGY?.trim().toLowerCase();
+  const compactionStrategy: "temporal" | "importance" =
+    strategyRaw === "importance" ? "importance" : "temporal";
+  const importanceThresholdRaw = env.MUSE_COMPACTION_IMPORTANCE_THRESHOLD?.trim();
+  const importanceThreshold = importanceThresholdRaw
+    ? Number.parseFloat(importanceThresholdRaw)
+    : Number.NaN;
+  return {
+    maxContextWindowTokens,
+    outputReserveTokens,
+    // 0 disables; positive values pass through to trimConversationMessages.
+    ...(workingBudgetTokens > 0 ? { workingBudgetTokens } : {}),
+    compactionStrategy,
+    ...(Number.isFinite(importanceThreshold) ? { importanceThreshold } : {})
+  };
 }
 
 export function createInputGuards(env: MuseEnvironment): readonly GuardStage[] {
