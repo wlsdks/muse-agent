@@ -373,10 +373,14 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       if (pendingReminders.length > 0) {
         groundedParts.push(`${pendingReminders.length.toString()} pending reminder(s)`);
       }
+      // Grounding diagnostic goes to stderr so `muse ask "?" > answer.txt`
+      // and `| jq` style pipelines get a clean stdout. Same convention
+      // as the auto-reindex banner above. The blank line separating
+      // header from answer body stays out of stdout entirely.
       if (groundedParts.length > 0) {
-        io.stdout(`(grounded on ${groundedParts.join("; ")})\n\n`);
+        io.stderr(`(grounded on ${groundedParts.join("; ")})\n`);
       } else {
-        io.stdout("(no matching notes, tasks, events, or reminders — answering from persona + general knowledge)\n\n");
+        io.stderr("(no matching notes, tasks, events, or reminders — answering from persona + general knowledge)\n");
       }
 
       for await (const event of assembly.modelProvider.stream({
