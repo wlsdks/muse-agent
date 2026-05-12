@@ -40,6 +40,7 @@ import { registerNotesCommands } from "./commands-notes.js";
 import { registerSchedulerCommands, registerSetupCommands } from "./commands-scheduler-setup.js";
 import { registerSetupLocalCommand } from "./commands-setup-local.js";
 import { registerSetupVoiceCommand } from "./commands-setup-voice.js";
+import { registerBriefCommand } from "./commands-brief.js";
 import { registerStatusCommand } from "./commands-status.js";
 import { registerRoutineCommand } from "./commands-routine.js";
 import { registerTrustCommands } from "./commands-trust.js";
@@ -404,6 +405,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerSetupLocalCommand(program, io, { readConfigStore, writeConfigStore });
   registerSetupVoiceCommand(program, io);
   registerStatusCommand(program, io);
+  registerBriefCommand(program, io);
   registerWatchFolderCommand(program, io);
   registerRoutineCommand(program, io);
   registerTrustCommands(program, io);
