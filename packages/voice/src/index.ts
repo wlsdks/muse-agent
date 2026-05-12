@@ -26,6 +26,12 @@ export {
   type OpenAIWhisperSttProviderOptions
 } from "./openai-whisper.js";
 export {
+  WhisperCppSttProvider,
+  type WhisperCppRunResult,
+  type WhisperCppRunner,
+  type WhisperCppSttProviderOptions
+} from "./whisper-cpp.js";
+export {
   OpenAITtsProvider,
   type OpenAITtsProviderOptions
 } from "./openai-tts.js";
