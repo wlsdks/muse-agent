@@ -172,6 +172,18 @@ Pick a model at runtime via env:
 | `MUSE_MODEL_API_KEY` | `…` | per-provider env vars (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`) also work |
 | `MUSE_MODEL_BASE_URL` | `http://localhost:11434/v1` | overrides for OpenAI-compatible endpoints (Ollama, LM Studio, custom) |
 
+Free / offline path — Ollama with an open-source model:
+
+```bash
+brew install ollama && ollama serve &
+ollama pull qwen2.5:7b-instruct        # 4.7 GB, Apache 2.0
+muse setup local                       # wires defaultModel into ~/.config/muse/config.json
+```
+
+See [`docs/setup-local-llm.md`](docs/setup-local-llm.md) for low-spec
+(1.5B) vs high-spec (7B) tiers, license notes, and the dogfood script
+that measures first-token latency on your hardware.
+
 Personal-domain toggles:
 
 | Env | Default | Effect |
