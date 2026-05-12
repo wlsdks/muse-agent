@@ -23,8 +23,6 @@
  */
 
 import { mkdirSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join as pathJoin } from "node:path";
 
 import {
   CalDAVCalendarProvider,
@@ -89,97 +87,46 @@ import {
 import type { MuseEnvironment } from "./index.js";
 import { OPENAI_COMPAT_PRESETS } from "./openai-compat-presets.js";
 
-/**
- * Eight resolvers under personal-providers all share the same
- * shape: trim the env override, fall back to a default path under
- * `~/.muse/`. Encoding it once keeps each resolver one line and
- * makes adding a new one (e.g. a future plugin's data dir) a
- * one-liner that doesn't tempt copy-paste drift.
- */
-function resolveDotMusePath(env: MuseEnvironment, envKey: string, defaultName: string): string {
-  const override = env[envKey]?.trim();
-  if (override && override.length > 0) {
-    return override;
-  }
-  return pathJoin(homedir(), ".muse", defaultName);
-}
+import {
+  resolveCredentialsFile,
+  resolveDiscordAfterFile,
+  resolveDiscordInboxFile,
+  resolveInboxInjectionCursorFile,
+  resolveLineInboxFile,
+  resolveLocalCalendarFile,
+  resolveMessagingCredentialsFile,
+  resolveModelKeysFile,
+  resolveNotesDir,
+  resolveRemindersFile,
+  resolveSlackAfterFile,
+  resolveSlackInboxFile,
+  resolveTasksFile,
+  resolveTelegramInboxFile,
+  resolveTelegramOffsetFile,
+  resolveUserSkillsDir,
+  resolveWorkspaceSkillsDir
+} from "./provider-paths.js";
 
-export function resolveNotesDir(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_NOTES_DIR", "notes");
-}
-
-export function resolveCredentialsFile(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_CREDENTIALS_FILE", "credentials.json");
-}
-
-export function resolveLocalCalendarFile(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_CALENDAR_FILE", "calendar.json");
-}
-
-export function resolveTasksFile(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_TASKS_FILE", "tasks.json");
-}
-
-export function resolveMessagingCredentialsFile(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_MESSAGING_CREDENTIALS_FILE", "messaging.json");
-}
-
-export function resolveRemindersFile(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_REMINDERS_FILE", "reminders.json");
-}
-
-export function resolveReminderHistoryFile(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_REMINDER_HISTORY_FILE", "reminder-history.json");
-}
-
-export function resolveLineInboxFile(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_LINE_INBOX_FILE", "line-inbox.json");
-}
-
-export function resolveTelegramOffsetFile(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_TELEGRAM_OFFSET_FILE", "telegram-offset.json");
-}
-
-export function resolveTelegramInboxFile(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_TELEGRAM_INBOX_FILE", "telegram-inbox.json");
-}
-
-export function resolveDiscordAfterFile(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_DISCORD_AFTER_FILE", "discord-after.json");
-}
-
-export function resolveDiscordInboxFile(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_DISCORD_INBOX_FILE", "discord-inbox.json");
-}
-
-export function resolveSlackAfterFile(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_SLACK_AFTER_FILE", "slack-after.json");
-}
-
-export function resolveSlackInboxFile(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_SLACK_INBOX_FILE", "slack-inbox.json");
-}
-
-export function resolveUserSkillsDir(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_SKILLS_DIR", "skills");
-}
-
-export function resolveWorkspaceSkillsDir(env: MuseEnvironment): string | undefined {
-  const override = env.MUSE_WORKSPACE_SKILLS_DIR?.trim();
-  return override && override.length > 0 ? override : undefined;
-}
-
-export function resolveInboxInjectionCursorFile(env: MuseEnvironment, providerId: string): string {
-  return resolveDotMusePath(
-    env,
-    `MUSE_${providerId.toUpperCase()}_INBOX_INJECTION_CURSOR_FILE`,
-    `${providerId}-inbox-injection.json`
-  );
-}
-
-export function resolveModelKeysFile(env: MuseEnvironment): string {
-  return resolveDotMusePath(env, "MUSE_MODEL_KEYS_FILE", "models.json");
-}
+export {
+  resolveCredentialsFile,
+  resolveDiscordAfterFile,
+  resolveDiscordInboxFile,
+  resolveInboxInjectionCursorFile,
+  resolveLineInboxFile,
+  resolveLocalCalendarFile,
+  resolveMessagingCredentialsFile,
+  resolveModelKeysFile,
+  resolveNotesDir,
+  resolveReminderHistoryFile,
+  resolveRemindersFile,
+  resolveSlackAfterFile,
+  resolveSlackInboxFile,
+  resolveTasksFile,
+  resolveTelegramInboxFile,
+  resolveTelegramOffsetFile,
+  resolveUserSkillsDir,
+  resolveWorkspaceSkillsDir
+} from "./provider-paths.js";
 
 /**
  * Merge model API keys saved by `muse setup model` into the env
