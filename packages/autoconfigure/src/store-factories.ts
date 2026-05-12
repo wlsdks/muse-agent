@@ -21,6 +21,7 @@ import type { Kysely } from "kysely";
 import {
   InMemoryConversationSummaryStore,
   InMemoryTaskMemoryStore,
+  FileUserMemoryStore,
   InMemoryUserMemoryStore,
   KyselyConversationSummaryStore,
   KyselyTaskMemoryStore,
@@ -151,8 +152,23 @@ export function createConversationSummaryStore(db: Kysely<MuseDatabase> | undefi
   return db ? new KyselyConversationSummaryStore(db) : new InMemoryConversationSummaryStore();
 }
 
-export function createUserMemoryStore(db: Kysely<MuseDatabase> | undefined): UserMemoryStore {
-  return db ? new KyselyUserMemoryStore(db) : new InMemoryUserMemoryStore();
+export function createUserMemoryStore(
+  db: Kysely<MuseDatabase> | undefined,
+  env?: MuseEnvironment
+): UserMemoryStore {
+  if (db) return new KyselyUserMemoryStore(db);
+  // Default for the DB-less daily-driver path: a JSON file at
+  // ~/.muse/user-memory.json. Persistence is what makes Muse
+  // "knows you" across CLI sessions (the JARVIS core). Override
+  // path via MUSE_USER_MEMORY_FILE; opt out and fall back to a
+  // pure in-memory store via MUSE_USER_MEMORY_PERSIST=false (rare —
+  // tests that want a clean slate per run).
+  const persist = env?.MUSE_USER_MEMORY_PERSIST !== "false";
+  if (!persist) {
+    return new InMemoryUserMemoryStore();
+  }
+  const file = env?.MUSE_USER_MEMORY_FILE?.trim();
+  return new FileUserMemoryStore(file && file.length > 0 ? { file } : {});
 }
 
 export function createSessionTagStore(db: Kysely<MuseDatabase> | undefined): SessionTagStore {

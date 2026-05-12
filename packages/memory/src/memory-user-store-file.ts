@@ -1,0 +1,174 @@
+/**
+ * `FileUserMemoryStore` — JSON-file-backed UserMemoryStore for the
+ * JARVIS daily-driver path that doesn't run Postgres. Auto-extract
+ * + REPL writes facts/preferences here; the file is the
+ * source-of-truth so a new shell session starts knowing the user.
+ *
+ * On-disk shape: a single JSON object keyed by userId, mirroring the
+ * `UserMemory` interface. Atomic tmp+rename writes; the parent
+ * directory is created on demand; mode 0o600 so the credential-ish
+ * facts (api keys, tokens, etc.) the user might confide stay
+ * private even on shared boxes.
+ *
+ * Drop-in replacement for `InMemoryUserMemoryStore` — same surface,
+ * just persists. Autoconfigure prefers Kysely when a DB is wired,
+ * this file store otherwise, and falls back to in-memory only when
+ * the user explicitly disables persistence.
+ */
+
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+
+import {
+  type UserMemory,
+  type UserMemoryStore,
+  type UserModel
+} from "./index.js";
+
+export interface FileUserMemoryStoreOptions {
+  /**
+   * Absolute path of the JSON file. Defaults to
+   * `~/.muse/user-memory.json`. The file format is
+   * `{ "<userId>": UserMemory, ... }` so multiple identities can
+   * coexist in one store (e.g. a personal user + a household
+   * shared profile).
+   */
+  readonly file?: string;
+  /** Injectable clock for tests. */
+  readonly now?: () => Date;
+}
+
+type StoredMemory = {
+  readonly userId: string;
+  readonly facts: Record<string, string>;
+  readonly preferences: Record<string, string>;
+  readonly recentTopics: readonly string[];
+  readonly updatedAt: string;
+  readonly userModel?: UserModel;
+};
+
+type StoredFile = { readonly version: 1; readonly users: Record<string, StoredMemory> };
+
+function defaultPath(): string {
+  return join(homedir(), ".muse", "user-memory.json");
+}
+
+function emptyFile(): StoredFile {
+  return { users: {}, version: 1 };
+}
+
+function memoryToStored(memory: UserMemory): StoredMemory {
+  return {
+    facts: { ...memory.facts },
+    preferences: { ...memory.preferences },
+    recentTopics: [...memory.recentTopics],
+    updatedAt: memory.updatedAt.toISOString(),
+    userId: memory.userId,
+    ...(memory.userModel ? { userModel: memory.userModel } : {})
+  };
+}
+
+function storedToMemory(stored: StoredMemory): UserMemory {
+  return {
+    facts: { ...stored.facts },
+    preferences: { ...stored.preferences },
+    recentTopics: [...stored.recentTopics],
+    updatedAt: new Date(stored.updatedAt),
+    userId: stored.userId,
+    ...(stored.userModel ? { userModel: stored.userModel } : {})
+  };
+}
+
+export class FileUserMemoryStore implements UserMemoryStore {
+  private readonly file: string;
+  private readonly now: () => Date;
+
+  constructor(options: FileUserMemoryStoreOptions = {}) {
+    this.file = options.file ?? defaultPath();
+    this.now = options.now ?? (() => new Date());
+  }
+
+  async findByUserId(userId: string): Promise<UserMemory | undefined> {
+    const data = await this.read();
+    const entry = data.users[userId];
+    return entry ? storedToMemory(entry) : undefined;
+  }
+
+  async upsertFact(userId: string, key: string, value: string): Promise<UserMemory> {
+    return this.patch(userId, (existing) => ({
+      ...existing,
+      facts: { ...existing.facts, [key]: value }
+    }));
+  }
+
+  async upsertPreference(userId: string, key: string, value: string): Promise<UserMemory> {
+    return this.patch(userId, (existing) => ({
+      ...existing,
+      preferences: { ...existing.preferences, [key]: value }
+    }));
+  }
+
+  // upsertUserModelSlot is intentionally omitted — typed-slot writes
+  // are routed through the in-memory or Kysely stores when available.
+  // The file store only owns the legacy facts + preferences shape,
+  // which is enough for the JARVIS daily-driver path.
+
+  async deleteByUserId(userId: string): Promise<boolean> {
+    const data = await this.read();
+    if (!data.users[userId]) {
+      return false;
+    }
+    const { [userId]: _dropped, ...rest } = data.users;
+    await this.write({ ...data, users: rest });
+    return true;
+  }
+
+  private async patch(userId: string, mutator: (existing: UserMemory) => UserMemory): Promise<UserMemory> {
+    const data = await this.read();
+    const existingStored = data.users[userId];
+    const baseline: UserMemory = existingStored
+      ? storedToMemory(existingStored)
+      : {
+          facts: {},
+          preferences: {},
+          recentTopics: [],
+          updatedAt: this.now(),
+          userId
+        };
+    const updated: UserMemory = { ...mutator(baseline), updatedAt: this.now() };
+    const next: StoredFile = {
+      ...data,
+      users: { ...data.users, [userId]: memoryToStored(updated) }
+    };
+    await this.write(next);
+    return updated;
+  }
+
+  private async read(): Promise<StoredFile> {
+    try {
+      const raw = await readFile(this.file, "utf8");
+      const parsed = JSON.parse(raw) as unknown;
+      if (!parsed || typeof parsed !== "object") {
+        return emptyFile();
+      }
+      const root = parsed as { version?: number; users?: Record<string, StoredMemory> };
+      if (root.version !== 1 || !root.users) {
+        return emptyFile();
+      }
+      return { users: root.users, version: 1 };
+    } catch (cause) {
+      if (cause instanceof Error && (cause as NodeJS.ErrnoException).code === "ENOENT") {
+        return emptyFile();
+      }
+      throw cause;
+    }
+  }
+
+  private async write(data: StoredFile): Promise<void> {
+    await mkdir(dirname(this.file), { recursive: true });
+    const tmp = `${this.file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
+    await writeFile(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
+    await rename(tmp, this.file);
+  }
+}

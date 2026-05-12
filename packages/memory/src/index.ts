@@ -312,6 +312,14 @@ export {
   mapUserMemoryRow
 } from "./memory-user-store.js";
 
+// File-backed UserMemoryStore — the JARVIS-class persistent layer for
+// the daily-driver path that doesn't run Postgres. `~/.muse/user-memory.json`
+// keyed by userId.
+export {
+  FileUserMemoryStore,
+  type FileUserMemoryStoreOptions
+} from "./memory-user-store-file.js";
+
 
 
 // Task-memory persistence + quality validation lives in

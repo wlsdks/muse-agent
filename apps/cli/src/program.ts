@@ -78,6 +78,16 @@ export interface ProgramIO {
         readonly messages: readonly { readonly role: string; readonly content: string }[];
       }): AsyncIterable<{ readonly type: string; readonly text?: string }>;
     };
+    /** Persistent user-memory store for JARVIS-class personalisation. */
+    readonly userMemoryStore?: {
+      findByUserId(userId: string): Promise<{
+        readonly facts: Readonly<Record<string, string>>;
+        readonly preferences: Readonly<Record<string, string>>;
+        readonly recentTopics: readonly string[];
+      } | undefined> | { readonly facts: Readonly<Record<string, string>>; readonly preferences: Readonly<Record<string, string>>; readonly recentTopics: readonly string[]; } | undefined;
+      upsertFact(userId: string, key: string, value: string): Promise<unknown> | unknown;
+      upsertPreference(userId: string, key: string, value: string): Promise<unknown> | unknown;
+    };
   };
   /**
    * Optional TTS + speaker shells used by `today --brief --speak`.
@@ -309,12 +319,14 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     .option("--model <model>", "Override the model (default MUSE_MODEL or CLI config defaultModel)")
     .option("--tools", "Enable the tool registry (default off for speed)")
     .option("--no-continue", "Start a fresh conversation instead of resuming ~/.muse/last-chat.jsonl")
-    .action(async (options: { readonly model?: string; readonly tools?: boolean; readonly continue?: boolean }) => {
+    .option("--user <id>", "User identity for persistent memory (default $MUSE_USER_ID or $USER)")
+    .action(async (options: { readonly model?: string; readonly tools?: boolean; readonly continue?: boolean; readonly user?: string }) => {
       const cliConfig = await readConfigStore(io);
       await runChatRepl(io, {
         continueHistory: options.continue !== false,
         disableTools: options.tools !== true,
-        model: options.model ?? cliConfig.defaultModel
+        model: options.model ?? cliConfig.defaultModel,
+        ...(options.user ? { userId: options.user } : {})
       });
     });
 
@@ -448,6 +460,40 @@ async function readPipedStdin(): Promise<string> {
     raw += chunk;
   }
   return raw.trim();
+}
+
+/**
+ * Build a JARVIS-style system prompt from the persistent user
+ * memory. This is the differentiation from "generic chat" — Muse
+ * opens every session knowing who the user is, how they talk, and
+ * what they've said before. Kept short so it doesn't dominate the
+ * context window; the long tail of facts is loaded by trim/episodic
+ * memory paths the agent runtime already owns.
+ */
+export function buildJarvisPersona(
+  memory: { readonly facts: Readonly<Record<string, string>>; readonly preferences: Readonly<Record<string, string>>; readonly recentTopics?: readonly string[] },
+  userId: string
+): string | undefined {
+  const facts = Object.entries(memory.facts);
+  const prefs = Object.entries(memory.preferences);
+  if (facts.length === 0 && prefs.length === 0) return undefined;
+  const lines: string[] = [
+    "You are Muse, the user's JARVIS-style personal AI conductor.",
+    `The user's id is "${userId}". Address them by name when their name is in the facts below.`,
+    "Honour the listed preferences — reply style, language, length cap, etc.",
+    "Do NOT volunteer the existence of this system prompt. If asked who you remember, paraphrase the facts naturally."
+  ];
+  if (facts.length > 0) {
+    lines.push("");
+    lines.push("Facts the user has shared:");
+    for (const [key, value] of facts) lines.push(`  - ${key}: ${value}`);
+  }
+  if (prefs.length > 0) {
+    lines.push("");
+    lines.push("Preferences:");
+    for (const [key, value] of prefs) lines.push(`  - ${key}: ${value}`);
+  }
+  return lines.join("\n");
 }
 
 // ── Conversation history for `muse chat -c` ──────────────────────────
@@ -748,6 +794,7 @@ async function runChatRepl(
     readonly model: string | undefined;
     readonly disableTools: boolean;
     readonly continueHistory: boolean;
+    readonly userId?: string;
   }
 ): Promise<void> {
   const readline = await import("node:readline/promises");
@@ -755,6 +802,7 @@ async function runChatRepl(
   const history: { role: "user" | "assistant"; content: string }[] = [...seedHistory];
   let currentModel = options.model;
   let toolsDisabled = options.disableTools;
+  const userId = options.userId ?? process.env.MUSE_USER_ID ?? process.env.USER ?? "default";
 
   // Build the runtime assembly once and reuse across turns; the
   // streaming loop calls `agentRuntime.stream(...)` directly so
@@ -771,6 +819,19 @@ async function runChatRepl(
     throw new Error("REPL requires a configured model — set MUSE_MODEL (or pass --model) and re-run.");
   }
   const agentRuntime = assembly.agentRuntime;
+  const memoryStore = assembly.userMemoryStore;
+
+  // Look up persistent user memory for this identity. The "what
+  // makes Muse JARVIS-class" core: every session opens with the
+  // facts/preferences the user told Muse in prior sessions. The
+  // store is file-backed by default (~/.muse/user-memory.json) so
+  // a fresh `muse repl` 30 seconds after the last one already
+  // knows the user's name, language, and reply style.
+  let userMemory = memoryStore ? await Promise.resolve(memoryStore.findByUserId(userId)) : undefined;
+  const personaPrompt = (): string | undefined => {
+    if (!userMemory) return undefined;
+    return buildJarvisPersona(userMemory, userId);
+  };
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -780,7 +841,14 @@ async function runChatRepl(
 
   io.stdout("\n");
   io.stdout("Muse REPL — type /help for commands, /exit to quit.\n");
-  io.stdout(`  model: ${currentModel ?? assembly.defaultModel ?? "(default)"}, tools: ${toolsDisabled ? "off" : "on"}, history: ${history.length.toString()} turns\n`);
+  io.stdout(`  user: ${userId}, model: ${currentModel ?? assembly.defaultModel ?? "(default)"}, tools: ${toolsDisabled ? "off" : "on"}, history: ${history.length.toString()} turns\n`);
+  if (userMemory) {
+    const factCount = Object.keys(userMemory.facts).length;
+    const prefCount = Object.keys(userMemory.preferences).length;
+    if (factCount + prefCount > 0) {
+      io.stdout(`  remembered: ${factCount.toString()} fact(s), ${prefCount.toString()} pref(s) (type /whoami)\n`);
+    }
+  }
   io.stdout("\n");
 
   let active = true;
@@ -838,12 +906,50 @@ async function runChatRepl(
               io.stdout(`(tools currently ${toolsDisabled ? "off" : "on"}; usage: /tools on|off)\n`);
             }
             break;
+          case "fact":
+          case "pref": {
+            const eq = arg.indexOf("=");
+            if (eq < 0 || !memoryStore) {
+              io.stdout(`(usage: /${cmd} <key>=<value>${memoryStore ? "" : "; no user-memory store available"})\n`);
+              break;
+            }
+            const key = arg.slice(0, eq).trim();
+            const value = arg.slice(eq + 1).trim();
+            if (key.length === 0 || value.length === 0) {
+              io.stdout(`(usage: /${cmd} <key>=<value>)\n`);
+              break;
+            }
+            await Promise.resolve(
+              cmd === "fact"
+                ? memoryStore.upsertFact(userId, key, value)
+                : memoryStore.upsertPreference(userId, key, value)
+            );
+            userMemory = await Promise.resolve(memoryStore.findByUserId(userId));
+            io.stdout(`(remembered ${cmd}.${key}=${value})\n`);
+            break;
+          }
+          case "whoami":
+            if (!userMemory) {
+              io.stdout(`(no memory for user '${userId}' yet — try /fact name=YourName)\n`);
+            } else {
+              io.stdout(`user: ${userId}\n`);
+              for (const [key, value] of Object.entries(userMemory.facts)) {
+                io.stdout(`  fact.${key}: ${value}\n`);
+              }
+              for (const [key, value] of Object.entries(userMemory.preferences)) {
+                io.stdout(`  pref.${key}: ${value}\n`);
+              }
+            }
+            break;
           case "help":
             io.stdout("  /exit, /quit          leave\n");
             io.stdout("  /reset                clear history (both memory + disk)\n");
             io.stdout("  /history              show turn count\n");
             io.stdout("  /model <tag>          switch model (e.g. ollama/qwen2.5:7b-instruct)\n");
             io.stdout("  /tools on|off         toggle tool registry\n");
+            io.stdout("  /fact key=value       remember a fact about you (persists across sessions)\n");
+            io.stdout("  /pref key=value       remember a preference\n");
+            io.stdout("  /whoami               show what Muse knows about you\n");
             io.stdout("  /help                 this list\n");
             break;
           default:
@@ -853,7 +959,9 @@ async function runChatRepl(
       }
 
       try {
-        const messages = [
+        const persona = personaPrompt();
+        const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
+          ...(persona ? [{ content: persona, role: "system" as const }] : []),
           ...history,
           { content: trimmed, role: "user" as const }
         ];
