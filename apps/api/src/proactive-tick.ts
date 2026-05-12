@@ -13,7 +13,11 @@
  * to [5s, 1h] for the same reason reminder-tick clamps.
  */
 
-import { runDueProactiveNotices } from "@muse/mcp";
+import {
+  runDueProactiveNotices,
+  type ProactiveActivitySource,
+  type ProactiveAgentRuntimeLike
+} from "@muse/mcp";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
@@ -36,6 +40,15 @@ export interface ProactiveTickOptions {
   readonly intervalMs?: number;
   readonly logger?: (message: string) => void;
   readonly errorLogger?: (message: string) => void;
+  /**
+   * Phase D — agent-initiated turn. Pass all three to enable
+   * LLM-composed heads-ups when the user has recent chat activity.
+   */
+  readonly agentRuntime?: ProactiveAgentRuntimeLike;
+  readonly agentModel?: string;
+  readonly activitySource?: ProactiveActivitySource;
+  /** Phase D session window. Default 5 minutes (300_000 ms). */
+  readonly activeSessionWindowMs?: number;
   /**
    * Shared with the reminder daemon — operators rarely want a
    * different quiet window for the two channels. Parse via
@@ -71,6 +84,10 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
     firing = true;
     try {
       const summary = await runDueProactiveNotices({
+        ...(options.activeSessionWindowMs !== undefined ? { activeSessionWindowMs: options.activeSessionWindowMs } : {}),
+        ...(options.activitySource ? { activitySource: options.activitySource } : {}),
+        ...(options.agentModel ? { agentModel: options.agentModel } : {}),
+        ...(options.agentRuntime ? { agentRuntime: options.agentRuntime } : {}),
         ...(options.calendarRegistry ? { calendarRegistry: options.calendarRegistry } : {}),
         destination: options.destination,
         ...(options.leadMinutes !== undefined ? { leadMinutes: options.leadMinutes } : {}),
@@ -115,4 +132,26 @@ function clampInterval(raw: number): number {
     return DEFAULT_INTERVAL_MS;
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
+}
+
+/**
+ * Tiny in-memory presence tracker for Phase D. The chat-route hook
+ * calls `record()` on every /api/chat* request; the proactive
+ * daemon reads `lastActivityMs()` to decide whether to compose an
+ * agent-synthesized notice. No history kept — just the most recent
+ * timestamp — since the daemon only ever asks "is the user
+ * around right now?".
+ */
+export interface InMemoryActivityTracker extends ProactiveActivitySource {
+  record(at?: number): void;
+}
+
+export function createInMemoryActivityTracker(): InMemoryActivityTracker {
+  let lastMs: number | undefined;
+  return {
+    lastActivityMs: () => lastMs,
+    record: (at?: number) => {
+      lastMs = at ?? Date.now();
+    }
+  };
 }

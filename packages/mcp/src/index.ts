@@ -553,6 +553,8 @@ export {
   readProactiveFired,
   runDueProactiveNotices,
   writeProactiveFired,
+  type ProactiveActivitySource,
+  type ProactiveAgentRuntimeLike,
   type ProactiveFiredEntry,
   type ProactiveFiredKind,
   type RunDueProactiveNoticesOptions,

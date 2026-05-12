@@ -29,7 +29,7 @@ import { lineWebhookPlugin } from "./messaging-webhooks-routes.js";
 import { registerRemindersRoutes } from "./reminders-routes.js";
 import { parseDiscordPollChannels, startDiscordPollTick } from "./discord-poll-tick.js";
 import { parseQuietHours, startReminderTick } from "./reminder-tick.js";
-import { startProactiveTick } from "./proactive-tick.js";
+import { createInMemoryActivityTracker, startProactiveTick } from "./proactive-tick.js";
 import { parseSlackPollChannels, startSlackPollTick } from "./slack-poll-tick.js";
 import { startTelegramPollTick } from "./telegram-poll-tick.js";
 import { DiscordProvider, SlackProvider, TelegramProvider } from "@muse/messaging";
@@ -425,7 +425,33 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
     const proactiveSidecarFile = env.MUSE_PROACTIVE_SIDECAR_FILE?.trim()
       || `${process.env.HOME ?? ""}/.muse/proactive-fired.json`;
+
+    // Phase D — agent-initiated turn. Activates when an agent runtime
+    // is wired AND MUSE_PROACTIVE_AGENT_TURN=true (default false to
+    // keep the LLM call opt-in). The activity tracker records every
+    // /api/chat* request; the proactive loop reads it per tick to
+    // gate synthesis.
+    const phaseDEnabled = env.MUSE_PROACTIVE_AGENT_TURN?.trim().toLowerCase() === "true";
+    const phaseDWindowRaw = env.MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS
+      ? Number(env.MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS)
+      : undefined;
+    const activityTracker = phaseDEnabled && options.agentRuntime && options.defaultModel
+      ? createInMemoryActivityTracker()
+      : undefined;
+    if (activityTracker) {
+      server.addHook("onRequest", async (request) => {
+        const path = (request as { readonly url?: string }).url ?? "";
+        if (path.startsWith("/api/chat") || path === "/chat" || path === "/chat/stream") {
+          activityTracker.record();
+        }
+      });
+    }
+
     const proactiveHandle = startProactiveTick({
+      ...(activityTracker ? { activitySource: activityTracker } : {}),
+      ...(activityTracker && options.defaultModel ? { agentModel: options.defaultModel } : {}),
+      ...(activityTracker && options.agentRuntime ? { agentRuntime: options.agentRuntime } : {}),
+      ...(phaseDWindowRaw !== undefined ? { activeSessionWindowMs: phaseDWindowRaw } : {}),
       ...(proactiveCalendar ? { calendarRegistry: proactiveCalendar } : {}),
       ...(options.tasksFile ? { tasksFile: options.tasksFile } : {}),
       destination: proactiveDestination,

@@ -96,6 +96,42 @@ interface ImminentItem {
   readonly id: string;
   readonly startsAt: Date;
   readonly text: string;
+  /**
+   * Short factual description fed to the agent-synthesis prompt
+   * when Phase D is active. The flat `text` already contains it,
+   * but `factSheet` strips emoji + redundant suffix so the LLM
+   * has a clean input.
+   */
+  readonly factSheet: string;
+}
+
+/**
+ * Phase D — track when the user was last seen on a Muse surface
+ * (REST /api/chat, /api/chat/stream, or any future presence pub/sub
+ * client). The proactive loop reads this to decide whether to
+ * compose a one-shot agent-synthesized heads-up or fall back to
+ * the flat Phase A/B notice string.
+ */
+export interface ProactiveActivitySource {
+  /**
+   * Wall-clock ms (Date.now() shape) of the most recent activity,
+   * or undefined when the user has never been seen.
+   */
+  lastActivityMs(): number | undefined;
+}
+
+/**
+ * Structural duck-type of `@muse/agent-core`'s `AgentRuntime.run`.
+ * Avoids a cross-package dep (@muse/mcp doesn't import agent-core
+ * to dodge the circular path that auto-extract had to dodge too).
+ * Consumers (apps/api) pass the real AgentRuntime — TS structural
+ * typing makes that work without a runtime type tag.
+ */
+export interface ProactiveAgentRuntimeLike {
+  run(input: {
+    readonly model: string;
+    readonly messages: readonly { readonly role: "system" | "user" | "assistant"; readonly content: string }[];
+  }): Promise<{ readonly response: { readonly output: string } }>;
 }
 
 export interface RunDueProactiveNoticesOptions {
@@ -121,6 +157,19 @@ export interface RunDueProactiveNoticesOptions {
   readonly sidecarFile: string;
   /** Injectable clock for tests. Default `() => new Date()`. */
   readonly now?: () => Date;
+  /**
+   * Phase D — agent-initiated turn. When all three are set AND the
+   * activity source reports recent activity (within
+   * `activeSessionWindowMs`), the daemon spawns a one-shot agent run
+   * with a synthesis prompt to compose a JARVIS-style heads-up
+   * instead of the flat "⏰ {title} in {N} min" string. On error /
+   * timeout / missing window, falls back to the flat text.
+   */
+  readonly agentRuntime?: ProactiveAgentRuntimeLike;
+  readonly agentModel?: string;
+  readonly activitySource?: ProactiveActivitySource;
+  /** Default 5 minutes (300_000 ms). */
+  readonly activeSessionWindowMs?: number;
 }
 
 export interface RunDueProactiveNoticesSummary {
@@ -149,13 +198,9 @@ export async function runDueProactiveNotices(
       for (const event of events) {
         if (event.allDay) continue;
         if (event.startsAt < nowDate || event.startsAt > cutoff) continue;
-        // Phase C opt-out: `[no-proactive]` marker in notes / title
-        // (case-insensitive) tells the daemon to skip this event.
-        // The marker is provider-neutral (works with CalDAV / Google
-        // Calendar / LocalCalendar / macOS Calendar) since every
-        // backend surfaces user-typed notes or title text.
         if (isCalendarOptedOut(event)) continue;
         imminent.push({
+          factSheet: calendarFactSheet(event, nowDate),
           id: event.id,
           kind: "calendar",
           startsAt: event.startsAt,
@@ -174,14 +219,12 @@ export async function runDueProactiveNotices(
       for (const task of tasks) {
         if (task.status !== "open") continue;
         if (!task.dueAt) continue;
-        // Phase C opt-out: explicit `proactive: false` on a task
-        // suppresses the notice without affecting the rest of the
-        // task's lifecycle (still due, still surfaces in `muse today`).
         if (task.proactive === false) continue;
         const dueAt = new Date(task.dueAt);
         if (Number.isNaN(dueAt.getTime())) continue;
         if (dueAt < nowDate || dueAt > cutoff) continue;
         imminent.push({
+          factSheet: taskFactSheet(task, dueAt, nowDate),
           id: task.id,
           kind: "task",
           startsAt: dueAt,
@@ -203,6 +246,13 @@ export async function runDueProactiveNotices(
   let firedThisRun = 0;
   let nextFired: readonly ProactiveFiredEntry[] = fired;
 
+  // Phase D — decide once whether the active-session window allows
+  // agent-synthesized notices for this tick. All three pieces must
+  // be wired AND the activity tracker must report something within
+  // the window. Re-checking per-item would let the window expire
+  // mid-tick.
+  const phaseDActive = isActiveSessionWindow(nowDate, options);
+
   for (const item of imminent) {
     const candidate: ProactiveFiredEntry = {
       firedAt: now().toISOString(),
@@ -215,10 +265,18 @@ export async function runDueProactiveNotices(
       continue;
     }
 
+    const noticeText = phaseDActive
+      ? await synthesizeNoticeText(item, options).catch((cause) => {
+          const message = cause instanceof Error ? cause.message : String(cause);
+          errors.push(`${item.kind}:${item.id} synthesis: ${message}`);
+          return item.text;
+        })
+      : item.text;
+
     try {
       await options.messagingRegistry.send(options.providerId, {
         destination: options.destination,
-        text: item.text
+        text: noticeText
       });
       firedThisRun += 1;
       nextFired = [...nextFired, candidate];
@@ -267,4 +325,81 @@ function taskNoticeText(task: PersistedTask, dueAt: Date, now: Date): string {
   return minutes === 0
     ? `📋 ${task.title} due now`
     : `📋 ${task.title} due in ${minutes} min`;
+}
+
+function calendarFactSheet(event: CalendarEvent, now: Date): string {
+  const minutes = Math.max(0, Math.round((event.startsAt.getTime() - now.getTime()) / 60_000));
+  const parts = [
+    `kind: calendar event`,
+    `title: ${event.title}`,
+    `starts in: ${minutes.toString()} minute(s)`,
+    `start ISO: ${event.startsAt.toISOString()}`
+  ];
+  if (event.location) parts.push(`location: ${event.location}`);
+  if (event.notes) parts.push(`notes: ${event.notes.slice(0, 200)}`);
+  return parts.join("\n");
+}
+
+function taskFactSheet(task: PersistedTask, dueAt: Date, now: Date): string {
+  const minutes = Math.max(0, Math.round((dueAt.getTime() - now.getTime()) / 60_000));
+  const parts = [
+    `kind: task`,
+    `title: ${task.title}`,
+    `due in: ${minutes.toString()} minute(s)`,
+    `due ISO: ${dueAt.toISOString()}`
+  ];
+  if (task.notes) parts.push(`notes: ${task.notes.slice(0, 200)}`);
+  if (task.tags && task.tags.length > 0) parts.push(`tags: ${task.tags.join(", ")}`);
+  return parts.join("\n");
+}
+
+const DEFAULT_ACTIVE_WINDOW_MS = 5 * 60_000;
+
+function isActiveSessionWindow(now: Date, options: RunDueProactiveNoticesOptions): boolean {
+  if (!options.agentRuntime || !options.agentModel || !options.activitySource) {
+    return false;
+  }
+  const lastMs = options.activitySource.lastActivityMs();
+  if (lastMs === undefined) {
+    return false;
+  }
+  const window = options.activeSessionWindowMs ?? DEFAULT_ACTIVE_WINDOW_MS;
+  return now.getTime() - lastMs <= window;
+}
+
+const PHASE_D_SYSTEM_PROMPT =
+  `You are Muse, the user's JARVIS-style assistant. The proactive
+daemon just detected an imminent calendar event or task. Compose a
+single short heads-up (one or two sentences, ≤ 200 chars) that:
+- Names the item and how soon it fires
+- Mentions location if a calendar event lists one
+- Suggests ONE concrete next step the user can take (e.g.
+  "want me to pull up yesterday's notes?", "shall I draft the
+  reply?"). Skip the suggestion if nothing obvious fits.
+
+Do NOT prefix with the time emoji — the surface adds it. No
+markdown, no lists, no JSON, plain text only.`;
+
+async function synthesizeNoticeText(
+  item: ImminentItem,
+  options: RunDueProactiveNoticesOptions
+): Promise<string> {
+  if (!options.agentRuntime || !options.agentModel) {
+    return item.text;
+  }
+  const result = await options.agentRuntime.run({
+    messages: [
+      { content: PHASE_D_SYSTEM_PROMPT, role: "system" },
+      { content: item.factSheet, role: "user" }
+    ],
+    model: options.agentModel
+  });
+  const reply = result.response.output.trim();
+  if (reply.length === 0) {
+    return item.text;
+  }
+  // Prepend the same emoji the flat path uses so the messaging
+  // channel keeps a visual signal.
+  const prefix = item.kind === "calendar" ? "⏰" : "📋";
+  return reply.startsWith(prefix) ? reply : `${prefix} ${reply}`;
 }

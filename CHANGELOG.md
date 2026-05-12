@@ -9,7 +9,7 @@ move from `Unreleased` to dated/versioned headings.
 
 ### Added
 
-- **Proactive surfacing (Phases A + B + C)**. New daemon scans the
+- **Proactive surfacing (Phases A + B + C + D)**. New daemon scans the
   calendar registry AND the personal-tasks store every minute
   (`MUSE_PROACTIVE_TICK_MS`, default 60s) and pushes a one-line
   notice via the messaging registry for items in the
@@ -27,6 +27,17 @@ move from `Unreleased` to dated/versioned headings.
     - Tasks: explicit `proactive: false` field on a `PersistedTask`
       suppresses the notice without affecting the rest of the
       lifecycle (still due, still surfaces in `muse today`).
+  - **Phase D — agent-initiated turn**: when
+    `MUSE_PROACTIVE_AGENT_TURN=true` AND an `AgentRuntime` is wired
+    AND the user has touched `/api/chat*` within
+    `MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS` (default 300_000 =
+    5 min), the daemon spawns a one-shot agent run with a
+    JARVIS-style synthesis prompt and uses the LLM reply (with the
+    emoji prefix kept) as the notice text. Falls back to the flat
+    "⏰ {title} in {N} min" string when the window has lapsed,
+    the agent is missing, or synthesis errors. Activity tracker is
+    in-process; restart wipes state, which means the first request
+    after boot is the first "recent" activity.
   Off by default — activates only when `MUSE_PROACTIVE_PROVIDER` +
   `MUSE_PROACTIVE_DESTINATION` are set, the named provider is
   registered, AND at least one signal is available (a calendar

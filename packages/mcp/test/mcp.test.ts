@@ -3660,6 +3660,131 @@ describe("runDueProactiveNotices", () => {
     expect(msg.sent[0]?.text).toContain("Normal task");
   });
 
+  it("Phase D: synthesises notice text via agent when active-session window is in range", async () => {
+    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-proactive-phaseD-"));
+    const sidecarFile = join(dir, "proactive-fired.json");
+
+    const fixedNow = new Date("2026-05-12T14:55:00Z");
+    const cal = makeFakeCalendarRegistry([
+      { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-1", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
+    ]);
+    const msg = makeFakeMessagingRegistry();
+
+    const runCalls: Array<{ model: string; userMessage: string }> = [];
+    const agentRuntime = {
+      run: async (input: { model: string; messages: readonly { role: string; content: string }[] }) => {
+        const userMessage = input.messages.find((m) => m.role === "user")?.content ?? "";
+        runCalls.push({ model: input.model, userMessage });
+        return { response: { output: "Standup in 5 — want me to pull up yesterday's notes?" } };
+      }
+    };
+    const activitySource = {
+      lastActivityMs: () => fixedNow.getTime() - 60_000 // 1 min ago
+    };
+
+    const summary = await runDueProactiveNotices({
+      activeSessionWindowMs: 5 * 60_000,
+      activitySource,
+      agentModel: "claude-opus-4-7",
+      agentRuntime,
+      calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+      destination: "@me",
+      messagingRegistry: msg.registry as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
+      now: () => fixedNow,
+      providerId: "telegram",
+      sidecarFile
+    });
+    expect(summary).toMatchObject({ fired: 1, errors: [] });
+    expect(runCalls).toHaveLength(1);
+    expect(runCalls[0]!.model).toBe("claude-opus-4-7");
+    expect(runCalls[0]!.userMessage).toContain("Standup");
+    expect(runCalls[0]!.userMessage).toContain("starts in: 5");
+    // Notice text comes from the agent + the emoji prefix.
+    expect(msg.sent[0]?.text).toBe("⏰ Standup in 5 — want me to pull up yesterday's notes?");
+  });
+
+  it("Phase D: falls back to flat text when no recent activity", async () => {
+    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-proactive-phaseD-stale-"));
+    const sidecarFile = join(dir, "proactive-fired.json");
+
+    const fixedNow = new Date("2026-05-12T14:55:00Z");
+    const cal = makeFakeCalendarRegistry([
+      { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-1", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
+    ]);
+    const msg = makeFakeMessagingRegistry();
+
+    let runCalled = false;
+    const agentRuntime = {
+      run: async () => {
+        runCalled = true;
+        return { response: { output: "ignored" } };
+      }
+    };
+    const activitySource = {
+      lastActivityMs: () => fixedNow.getTime() - 10 * 60_000 // 10 min ago, outside the 5-min default
+    };
+
+    const summary = await runDueProactiveNotices({
+      activitySource,
+      agentModel: "claude-opus-4-7",
+      agentRuntime,
+      calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+      destination: "@me",
+      messagingRegistry: msg.registry as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
+      now: () => fixedNow,
+      providerId: "telegram",
+      sidecarFile
+    });
+    expect(summary.fired).toBe(1);
+    expect(runCalled).toBe(false);
+    expect(msg.sent[0]?.text).toBe("⏰ Standup in 5 min");
+  });
+
+  it("Phase D: falls back to flat text + records error when synthesis throws", async () => {
+    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-proactive-phaseD-err-"));
+    const sidecarFile = join(dir, "proactive-fired.json");
+
+    const fixedNow = new Date("2026-05-12T14:55:00Z");
+    const cal = makeFakeCalendarRegistry([
+      { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-1", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
+    ]);
+    const msg = makeFakeMessagingRegistry();
+
+    const agentRuntime = {
+      run: async () => { throw new Error("model timeout"); }
+    };
+    const activitySource = {
+      lastActivityMs: () => fixedNow.getTime() - 30_000
+    };
+
+    const summary = await runDueProactiveNotices({
+      activitySource,
+      agentModel: "claude-opus-4-7",
+      agentRuntime,
+      calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+      destination: "@me",
+      messagingRegistry: msg.registry as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
+      now: () => fixedNow,
+      providerId: "telegram",
+      sidecarFile
+    });
+    expect(summary.fired).toBe(1);
+    expect(msg.sent[0]?.text).toBe("⏰ Standup in 5 min"); // flat fallback
+    expect(summary.errors.some((e) => e.includes("model timeout"))).toBe(true);
+  });
+
   it("combines calendar + task sources in one run", async () => {
     const { runDueProactiveNotices } = await import("../src/index.js");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
