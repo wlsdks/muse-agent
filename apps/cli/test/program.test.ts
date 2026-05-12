@@ -332,7 +332,10 @@ describe("cli program", () => {
             response: {
               id: "response-1",
               model: input.model,
-              output: `local:${input.messages[0]?.content ?? ""}`
+              // runLocalChat injects a "Current local context: ..."
+              // system message at index 0 so the model knows `now`.
+              // The user-typed message is the last entry.
+              output: `local:${input.messages.at(-1)?.content ?? ""}`
             },
             runId: "local-run-1"
           }),
@@ -404,9 +407,10 @@ describe("cli program", () => {
             response: {
               id: "response-1",
               model: input.model,
-              output: `local-tui:${input.messages[0]?.content ?? ""}`
+              // System date prefix at index 0; user turn at the end.
+              output: `local-tui:${input.messages.at(-1)?.content ?? ""}`
             },
-            runId: `local-tui-${input.messages[0]?.content ?? "run"}`
+            runId: `local-tui-${input.messages.at(-1)?.content ?? "run"}`
           }),
           stream: async function* () {}
         },

@@ -1545,7 +1545,19 @@ async function runLocalChat(
   if (options.disableTools) metadata.maxTools = 0;
   const hasMetadata = Object.keys(metadata).length > 0;
 
+  // Ground the model in `now` even on the non-interactive
+  // `muse chat --local "msg"` path. Same fix family as iter #15
+  // (`muse ask`) and iter #16 (REPL): runLocalChat previously sent
+  // ZERO system content, so questions like "what's today's date?"
+  // got hallucinated answers (e.g. "Friday 2026-05-12" when the
+  // real local now was Wednesday 2026-05-13). Persona/user-memory
+  // loading is intentionally NOT done here — the chat one-shot
+  // path doesn't have userId plumbed, and the most common
+  // hallucination class is the date one. The agent runtime is
+  // free to append its own system prompt; this prefix just
+  // guarantees the date is always present.
   const messages = [
+    { content: formatCurrentContextLine(), role: "system" as const },
     ...(options.priorHistory ?? []),
     { content: message, role: "user" as const }
   ];
