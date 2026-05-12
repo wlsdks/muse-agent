@@ -92,10 +92,25 @@ move from `Unreleased` to dated/versioned headings.
   (Voice Phase F.3). Ships the interface
   (`LiveVoiceSession.sendAudio` / `endTurn` / `events()` /
   `close()`) and a `FakeLiveVoiceProvider` for tests / dry runs.
-  Concrete `GeminiLiveProvider` / `OpenAIRealtimeProvider`
-  implementations are future work — websocket reconnect +
-  partial-message accumulation are the fragile pieces and ship
-  once dogfood demand justifies the integration cost.
+
+- **Gemini Live wire-format helpers** —
+  `buildGeminiLiveSetupFrame`, `buildGeminiLiveAudioFrame`,
+  `buildGeminiLiveEndTurnFrame`, `parseGeminiLiveServerFrame`.
+  These compose into a future `GeminiLiveProvider` (which would
+  implement `LiveVoiceProvider`) without locking the websocket
+  transport details. Parser surfaces text-delta / audio-delta
+  / turn-complete events; malformed JSON resolves to an error
+  event so a single consumer loop handles both happy and sad
+  paths.
+
+- **`AudioFrameWakeWordDetector` interface** + a
+  `FakeAudioFrameWakeWordDetector` test seam. Extends the
+  Phase F.1 wake-word scaffolding so a future
+  `OnnxWakeWordDetector` (openWakeWord / Porcupine) can plug in
+  alongside the existing text-scan detector without changing the
+  CLI loop's shape. The audio-frame variant consumes 80 ms
+  PCM16 frames at 16 kHz and exposes `feedFrame()` +
+  `reset()`.
 
 - **Wake-word ambient mode** for `muse listen` (Voice Phase F.1
   first cut). New `--wake "hey muse"` flag turns the CLI into a

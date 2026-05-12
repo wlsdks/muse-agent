@@ -43,7 +43,12 @@ export {
 } from "./piper.js";
 export { VoiceProviderRegistry } from "./registry.js";
 export {
+  FakeAudioFrameWakeWordDetector,
   TextScanWakeWordDetector,
+  type AudioFrameWakeWordDetector,
+  type AudioFrameWakeWordDetectorInfo,
+  type AudioFrameWakeWordDetectorResult,
+  type FakeAudioFrameWakeWordDetectorOptions,
   type TextScanWakeWordDetectorOptions,
   type WakeWordDetector,
   type WakeWordDetectorInfo,
@@ -59,3 +64,10 @@ export {
   type LiveVoiceProviderInfo,
   type LiveVoiceSession
 } from "./live-voice.js";
+export {
+  buildGeminiLiveAudioFrame,
+  buildGeminiLiveEndTurnFrame,
+  buildGeminiLiveSetupFrame,
+  parseGeminiLiveServerFrame,
+  type GeminiLiveSetupOptions
+} from "./gemini-live-protocol.js";

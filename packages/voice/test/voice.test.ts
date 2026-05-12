@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  FakeAudioFrameWakeWordDetector,
   FakeLiveVoiceProvider,
   OpenAITtsProvider,
   OpenAIWhisperSttProvider,
@@ -12,6 +13,10 @@ import {
   VoiceProviderRegistry,
   VoiceValidationError,
   WhisperCppSttProvider,
+  buildGeminiLiveAudioFrame,
+  buildGeminiLiveEndTurnFrame,
+  buildGeminiLiveSetupFrame,
+  parseGeminiLiveServerFrame,
   type LiveVoiceEvent,
   type PiperRunner,
   type WhisperCppRunner
@@ -405,6 +410,127 @@ describe("TextScanWakeWordDetector", () => {
     const info = detector.describe();
     expect(info.id).toBe("text-scan");
     expect(info.description).toContain("open sesame");
+  });
+});
+
+describe("FakeAudioFrameWakeWordDetector", () => {
+  it("describes itself with default sampleRate + frameSamples", () => {
+    const detector = new FakeAudioFrameWakeWordDetector();
+    const info = detector.describe();
+    expect(info.id).toBe("fake-audio-wake");
+    expect(info.sampleRate).toBe(16_000);
+    expect(info.frameSamples).toBe(1_280);
+  });
+
+  it("fires on the configured Nth frame and stays quiet otherwise", () => {
+    const detector = new FakeAudioFrameWakeWordDetector({ fireOnFrame: 3, fireConfidence: 0.8 });
+    const empty = new Int16Array(1_280);
+    expect(detector.feedFrame(empty).detected).toBe(false);
+    expect(detector.feedFrame(empty).detected).toBe(false);
+    const fired = detector.feedFrame(empty);
+    expect(fired.detected).toBe(true);
+    expect(fired.confidence).toBe(0.8);
+    expect(detector.feedFrame(empty).detected).toBe(false);
+  });
+
+  it("reset() returns the frame counter to zero", () => {
+    const detector = new FakeAudioFrameWakeWordDetector({ fireOnFrame: 2 });
+    const empty = new Int16Array(1_280);
+    expect(detector.feedFrame(empty).detected).toBe(false);
+    expect(detector.feedFrame(empty).detected).toBe(true);
+    detector.reset();
+    expect(detector.feedFrame(empty).detected).toBe(false);
+    expect(detector.feedFrame(empty).detected).toBe(true);
+  });
+});
+
+describe("Gemini Live protocol", () => {
+  it("buildGeminiLiveSetupFrame emits {setup: {model, generationConfig?, systemInstruction?}}", () => {
+    const raw = buildGeminiLiveSetupFrame({
+      model: "models/gemini-2.0-flash-live-001",
+      voice: "Aoede",
+      system: "Be terse."
+    });
+    const parsed = JSON.parse(raw) as { setup: Record<string, unknown> };
+    expect(parsed.setup.model).toBe("models/gemini-2.0-flash-live-001");
+    const gen = parsed.setup.generationConfig as Record<string, unknown>;
+    expect((gen.speechConfig as Record<string, unknown>)).toBeDefined();
+    expect((parsed.setup.systemInstruction as { parts: Array<{ text: string }> }).parts[0]!.text).toBe("Be terse.");
+  });
+
+  it("buildGeminiLiveSetupFrame omits generationConfig when no voice / config given", () => {
+    const raw = buildGeminiLiveSetupFrame({ model: "models/x" });
+    const parsed = JSON.parse(raw) as { setup: Record<string, unknown> };
+    expect(parsed.setup.model).toBe("models/x");
+    expect(parsed.setup.generationConfig).toBeUndefined();
+  });
+
+  it("buildGeminiLiveAudioFrame base64-encodes the audio + sets mimeType", () => {
+    const raw = buildGeminiLiveAudioFrame(new Uint8Array([0x01, 0x02, 0x03]), "audio/pcm;rate=16000");
+    const parsed = JSON.parse(raw) as {
+      realtimeInput: { mediaChunks: Array<{ data: string; mimeType: string }> };
+    };
+    expect(parsed.realtimeInput.mediaChunks[0]!.mimeType).toBe("audio/pcm;rate=16000");
+    expect(parsed.realtimeInput.mediaChunks[0]!.data).toBe(Buffer.from([1, 2, 3]).toString("base64"));
+  });
+
+  it("buildGeminiLiveEndTurnFrame emits {clientContent: {turnComplete: true}}", () => {
+    const raw = buildGeminiLiveEndTurnFrame();
+    expect(JSON.parse(raw)).toEqual({ clientContent: { turnComplete: true } });
+  });
+
+  it("parseGeminiLiveServerFrame returns text-delta events from modelTurn.parts[].text", () => {
+    const events = parseGeminiLiveServerFrame(JSON.stringify({
+      serverContent: {
+        modelTurn: { parts: [{ text: "hello " }, { text: "there" }] }
+      }
+    }));
+    expect(events).toEqual([
+      { text: "hello ", type: "text-delta" },
+      { text: "there", type: "text-delta" }
+    ]);
+  });
+
+  it("parseGeminiLiveServerFrame decodes inlineData parts into audio-delta events", () => {
+    const audio = Buffer.from([0xAA, 0xBB]);
+    const events = parseGeminiLiveServerFrame(JSON.stringify({
+      serverContent: {
+        modelTurn: {
+          parts: [
+            { inlineData: { data: audio.toString("base64"), mimeType: "audio/pcm;rate=24000" } }
+          ]
+        }
+      }
+    }));
+    expect(events).toHaveLength(1);
+    const first = events[0];
+    expect(first?.type).toBe("audio-delta");
+    if (first?.type === "audio-delta") {
+      expect(Array.from(first.audio)).toEqual([0xAA, 0xBB]);
+      expect(first.mimeType).toBe("audio/pcm;rate=24000");
+    }
+  });
+
+  it("parseGeminiLiveServerFrame appends a turn-complete event when serverContent.turnComplete is true", () => {
+    const events = parseGeminiLiveServerFrame(JSON.stringify({
+      serverContent: {
+        modelTurn: { parts: [{ text: "done" }] },
+        turnComplete: true
+      }
+    }));
+    expect(events).toHaveLength(2);
+    expect(events[1]).toMatchObject({ type: "turn-complete" });
+  });
+
+  it("parseGeminiLiveServerFrame ignores setupComplete + unknown frames", () => {
+    expect(parseGeminiLiveServerFrame(JSON.stringify({ setupComplete: {} }))).toEqual([]);
+    expect(parseGeminiLiveServerFrame(JSON.stringify({ unrelated: true }))).toEqual([]);
+  });
+
+  it("parseGeminiLiveServerFrame surfaces malformed JSON as an error event", () => {
+    const events = parseGeminiLiveServerFrame("not json {");
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe("error");
   });
 });
 

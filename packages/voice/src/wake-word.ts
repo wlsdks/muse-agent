@@ -112,6 +112,118 @@ function normalise(text: string): string {
     .trim();
 }
 
+/**
+ * Audio-frame wake-word detector — the future path for
+ * onnxruntime-node / openWakeWord / Picovoice Porcupine adapters.
+ *
+ * Where `WakeWordDetector.scan(text)` runs on already-transcribed
+ * text (cheap to wire, expensive to run because every clip pays for
+ * STT), this interface consumes raw PCM16 audio frames at a fixed
+ * sample rate. The CLI's `muse listen --wake` loop chooses between
+ * the two flavours based on configuration:
+ *
+ *   - Text-scan: chunk-based — record N seconds, STT, scan transcript.
+ *   - Audio-frame: stream-based — feed continuous 80 ms PCM16 frames,
+ *     poll for the detector's "fired" signal, then capture the next
+ *     utterance for the actual prompt.
+ *
+ * No concrete `OnnxWakeWordDetector` yet — that needs the
+ * onnxruntime-node dep + a mel-spectrogram preprocessor + the
+ * openWakeWord ONNX model files, all of which want real dogfood
+ * before locking the details. The interface + `FakeAudioFrameWakeWordDetector`
+ * is enough scaffolding to wire the CLI loop and write tests now.
+ */
+
+export interface AudioFrameWakeWordDetectorInfo {
+  readonly id: string;
+  readonly displayName: string;
+  readonly description: string;
+  /** Sample rate the detector expects (Hz). openWakeWord defaults to 16_000. */
+  readonly sampleRate: number;
+  /** Expected PCM16 frame length in samples (80 ms at 16 kHz = 1280). */
+  readonly frameSamples: number;
+}
+
+export interface AudioFrameWakeWordDetectorResult {
+  readonly detected: boolean;
+  /** Model confidence in [0, 1]. Optional — some detectors only return a boolean. */
+  readonly confidence?: number;
+}
+
+export interface AudioFrameWakeWordDetector {
+  readonly id: string;
+  describe(): AudioFrameWakeWordDetectorInfo;
+  /**
+   * Feed a single PCM16 frame. The detector accumulates state across
+   * frames; callers don't need to track sliding-window context.
+   * Returns the post-frame detection result.
+   */
+  feedFrame(samples: Int16Array): AudioFrameWakeWordDetectorResult;
+  /**
+   * Clear internal state — call after a successful wake fire so the
+   * next utterance starts fresh and the same model output doesn't
+   * re-trigger on tail audio.
+   */
+  reset(): void;
+}
+
+/**
+ * Test seam — scripted detector that fires on the Nth feedFrame
+ * call. Useful for asserting that the CLI's stream loop reads
+ * frames, polls for detection, captures the next utterance, and
+ * resets between firings.
+ */
+export interface FakeAudioFrameWakeWordDetectorOptions {
+  readonly id?: string;
+  /** Fire on the Nth feedFrame call (1-indexed). Default 1 = fires immediately. */
+  readonly fireOnFrame?: number;
+  /** Confidence to report on the firing frame. Default 0.95. */
+  readonly fireConfidence?: number;
+  /** Sample rate to advertise. Default 16_000. */
+  readonly sampleRate?: number;
+  /** Frame samples to advertise. Default 1280 (80 ms at 16 kHz). */
+  readonly frameSamples?: number;
+}
+
+export class FakeAudioFrameWakeWordDetector implements AudioFrameWakeWordDetector {
+  readonly id: string;
+  private readonly fireOnFrame: number;
+  private readonly fireConfidence: number;
+  private readonly sampleRate: number;
+  private readonly frameSamples: number;
+  private frameCount = 0;
+
+  constructor(options: FakeAudioFrameWakeWordDetectorOptions = {}) {
+    this.id = options.id ?? "fake-audio-wake";
+    this.fireOnFrame = Math.max(1, options.fireOnFrame ?? 1);
+    this.fireConfidence = options.fireConfidence ?? 0.95;
+    this.sampleRate = options.sampleRate ?? 16_000;
+    this.frameSamples = options.frameSamples ?? 1_280;
+  }
+
+  describe(): AudioFrameWakeWordDetectorInfo {
+    return {
+      id: this.id,
+      displayName: "Fake audio-frame wake",
+      description: `Scripted detector that fires on frame ${this.fireOnFrame.toString()}`,
+      sampleRate: this.sampleRate,
+      frameSamples: this.frameSamples
+    };
+  }
+
+  feedFrame(_samples: Int16Array): AudioFrameWakeWordDetectorResult {
+    this.frameCount += 1;
+    if (this.frameCount === this.fireOnFrame) {
+      return { detected: true, confidence: this.fireConfidence };
+    }
+    return { detected: false };
+  }
+
+  reset(): void {
+    this.frameCount = 0;
+  }
+}
+
 function sliceAfterPhraseInOriginal(original: string, needle: string): string {
   // Walk the original text character-by-character, tracking the
   // normalised cursor. When the cursor passes the end of the
