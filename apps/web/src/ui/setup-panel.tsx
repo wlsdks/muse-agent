@@ -28,8 +28,23 @@ interface SetupStatusResponse {
   };
   readonly notes: SetupStatusSection & { readonly fileCount?: number };
   readonly tasks: SetupStatusSection & { readonly entryCount?: number };
-  readonly voice: SetupStatusSection & { readonly source: string };
+  readonly voice: SetupStatusSection & {
+    readonly source: string;
+    readonly sttBackend?: "openai-whisper" | "whisper-cpp" | "none";
+    readonly ttsBackend?: "openai-tts" | "piper" | "none";
+  };
   readonly messaging: SetupStatusSection & { readonly providers: readonly string[] };
+  readonly userMemory?: SetupStatusSection & { readonly autoExtract: boolean; readonly model?: string };
+  readonly proactive?: SetupStatusSection & {
+    readonly enabled: boolean;
+    readonly providerId?: string;
+    readonly destination?: string;
+    readonly leadMinutes: number;
+    readonly tickMs: number;
+    readonly agentTurn: boolean;
+    readonly quietHours?: string;
+    readonly sidecarFile: string;
+  };
 }
 
 function statusGlyph(status: "ok" | "todo" | "info"): string {
@@ -84,8 +99,41 @@ export function SetupPanel({ client }: { readonly client: ApiClient }) {
       { detail: data.calendar.credentials.status === "ok" ? "credentials present" : "no credentials yet", id: "calendar (oauth/caldav)", nextStep: data.calendar.credentials.nextStep, status: data.calendar.credentials.status },
       { detail: data.notes.fileCount !== undefined ? `${data.notes.fileCount.toString()} file(s)` : "not yet created", id: "notes", nextStep: data.notes.nextStep, status: data.notes.status },
       { detail: data.tasks.entryCount !== undefined ? `${data.tasks.entryCount.toString()} entry/entries` : "not yet created", id: "tasks", nextStep: data.tasks.nextStep, status: data.tasks.status },
-      { detail: data.voice.source === "none" ? "no key" : data.voice.source, id: "voice", nextStep: data.voice.nextStep, status: data.voice.status },
-      { detail: data.messaging.providers.length > 0 ? data.messaging.providers.join(", ") : "no providers yet", id: "messaging", nextStep: data.messaging.nextStep, status: data.messaging.status }
+      {
+        detail: data.voice.sttBackend && data.voice.ttsBackend
+          ? `stt=${data.voice.sttBackend}, tts=${data.voice.ttsBackend}`
+          : (data.voice.source === "none" ? "no provider wired" : data.voice.source),
+        id: "voice",
+        nextStep: data.voice.nextStep,
+        status: data.voice.status
+      },
+      { detail: data.messaging.providers.length > 0 ? data.messaging.providers.join(", ") : "no providers yet", id: "messaging", nextStep: data.messaging.nextStep, status: data.messaging.status },
+      ...(data.userMemory
+        ? [{
+          detail: data.userMemory.autoExtract
+            ? (data.userMemory.model ? `auto-extract on (model=${data.userMemory.model})` : "auto-extract on")
+            : "auto-extract disabled",
+          id: "user memory",
+          nextStep: data.userMemory.nextStep,
+          status: data.userMemory.status
+        }]
+        : []),
+      ...(data.proactive
+        ? [{
+          detail: data.proactive.enabled
+            ? [
+              `${data.proactive.providerId ?? "?"} → ${data.proactive.destination ?? "?"}`,
+              `lead=${data.proactive.leadMinutes.toString()}min`,
+              `tick=${data.proactive.tickMs.toString()}ms`,
+              ...(data.proactive.agentTurn ? ["agent-turn=true"] : []),
+              ...(data.proactive.quietHours ? [`quiet=${data.proactive.quietHours}`] : [])
+            ].join(", ")
+            : "disabled",
+          id: "proactive",
+          nextStep: data.proactive.nextStep,
+          status: data.proactive.status
+        }]
+        : [])
     ]
     : [];
   const todoCount = sections.filter((entry) => entry.status === "todo").length;

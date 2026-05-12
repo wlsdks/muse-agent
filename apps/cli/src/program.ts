@@ -21,6 +21,7 @@ import { registerAuthCommands } from "./commands-auth.js";
 import { registerConfigCommands } from "./commands-config.js";
 import { registerListenCommand } from "./commands-listen.js";
 import { registerMcpCommands } from "./commands-mcp.js";
+import { registerProactiveCommands } from "./commands-proactive.js";
 import { registerOrchestrateCommands } from "./commands-orchestrate.js";
 import { registerCalendarCommands } from "./commands-calendar.js";
 import { registerMemoryCommands } from "./commands-memory.js";
@@ -237,6 +238,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
 
   registerListenCommand(program, io, { apiRequest });
   registerMcpCommands(program, io, { apiRequest, writeOutput });
+  registerProactiveCommands(program, io);
 
   registerSpecsCommands(program, io, { apiRequest, writeOutput });
 

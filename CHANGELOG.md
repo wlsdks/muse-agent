@@ -64,6 +64,28 @@ move from `Unreleased` to dated/versioned headings.
   bring their own model). See `docs/design/voice-mode.md` for the
   full Phase F contract.
 
+- **`muse proactive test` / `muse proactive scan`** — operator tools
+  for verifying the proactive surfacing daemon without waiting for
+  a real imminent event.
+  - `muse proactive test [--text <message>]` sends a one-line
+    notice through `MUSE_PROACTIVE_PROVIDER` / `MUSE_PROACTIVE_DESTINATION`
+    so the operator can confirm the messaging channel works
+    end-to-end. Exits 1 with a helpful message when either env is
+    missing or the configured provider isn't registered.
+  - `muse proactive scan [--lead-minutes N]` dry-runs the
+    calendar + tasks scan against the same window the daemon
+    would use and prints what would fire next tick. Doesn't push,
+    doesn't touch the sidecar.
+
+- **Web SetupPanel now surfaces voice STT/TTS backends, user-memory
+  auto-extract, and proactive daemon state** — parity with the CLI
+  `muse setup` output. The `voice` row reads
+  `stt=openai-whisper, tts=openai-tts` (or whichever local
+  combo is wired), the new `user memory` row reflects
+  `MUSE_USER_MEMORY_AUTO_EXTRACT`, and the new `proactive` row
+  shows the provider/destination/lead/tick + Phase D and
+  quiet-hours flags when the daemon would activate.
+
 - **`muse setup status` now surfaces the recent env knobs**. The
   setup-status snapshot (used by both `muse setup` CLI text /
   `--json` and `GET /api/setup/status`) gained three sections /

@@ -133,6 +133,7 @@ import {
 
 export {
   buildActiveContextProvider,
+  buildCalendarRegistry,
   buildEpisodicRecallProvider,
   buildInboxContextProvider,
   buildMessagingRegistry,

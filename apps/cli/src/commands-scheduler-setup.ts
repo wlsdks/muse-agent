@@ -325,6 +325,8 @@ async function renderSetupStatus(): Promise<string> {
   lines.push("  muse setup calendar    — OAuth / CalDAV / macOS calendar credentials");
   lines.push("  muse setup messaging   — Telegram / Discord / Slack / LINE bot tokens");
   lines.push("  muse mcp config-add    — register an external MCP server");
+  lines.push("  muse proactive test    — push a one-line test notice through MUSE_PROACTIVE_PROVIDER");
+  lines.push("  muse proactive scan    — dry-run the lead-minutes window across calendar + tasks");
   return `${lines.join("\n")}\n`;
 }
 

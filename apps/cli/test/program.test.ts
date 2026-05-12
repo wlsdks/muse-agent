@@ -2610,4 +2610,83 @@ describe("cli program", () => {
     ], { from: "node" });
     expect(output.join("")).toContain("disabled");
   });
+
+  it("muse proactive test exits 1 with a helpful message when MUSE_PROACTIVE_PROVIDER is missing", async () => {
+    const prev = {
+      provider: process.env.MUSE_PROACTIVE_PROVIDER,
+      destination: process.env.MUSE_PROACTIVE_DESTINATION
+    };
+    delete process.env.MUSE_PROACTIVE_PROVIDER;
+    delete process.env.MUSE_PROACTIVE_DESTINATION;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({
+        ...io,
+        exitOverride: true
+      });
+      await expect(
+        program.parseAsync(["node", "muse", "proactive", "test"], { from: "node" })
+      ).rejects.toBeTruthy();
+      const text = output.join("");
+      expect(text).toContain("MUSE_PROACTIVE_PROVIDER");
+      expect(text).toContain("MUSE_PROACTIVE_DESTINATION");
+    } finally {
+      if (prev.provider !== undefined) process.env.MUSE_PROACTIVE_PROVIDER = prev.provider;
+      if (prev.destination !== undefined) process.env.MUSE_PROACTIVE_DESTINATION = prev.destination;
+    }
+  });
+
+  it("muse proactive test exits 1 when the configured provider is not registered", async () => {
+    const prev = {
+      provider: process.env.MUSE_PROACTIVE_PROVIDER,
+      destination: process.env.MUSE_PROACTIVE_DESTINATION,
+      telegram: process.env.MUSE_TELEGRAM_BOT_TOKEN
+    };
+    process.env.MUSE_PROACTIVE_PROVIDER = "telegram";
+    process.env.MUSE_PROACTIVE_DESTINATION = "@me";
+    delete process.env.MUSE_TELEGRAM_BOT_TOKEN;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, exitOverride: true });
+      await expect(
+        program.parseAsync(["node", "muse", "proactive", "test"], { from: "node" })
+      ).rejects.toBeTruthy();
+      expect(output.join("")).toContain("not registered");
+    } finally {
+      if (prev.provider !== undefined) process.env.MUSE_PROACTIVE_PROVIDER = prev.provider;
+      else delete process.env.MUSE_PROACTIVE_PROVIDER;
+      if (prev.destination !== undefined) process.env.MUSE_PROACTIVE_DESTINATION = prev.destination;
+      else delete process.env.MUSE_PROACTIVE_DESTINATION;
+      if (prev.telegram !== undefined) process.env.MUSE_TELEGRAM_BOT_TOKEN = prev.telegram;
+    }
+  });
+
+  it("muse proactive scan reports empty calendar + empty tasks without error", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-proactive-scan-"));
+    const tasksFile = path.join(root, "tasks.json");
+    const prev = {
+      tasks: process.env.MUSE_TASKS_FILE,
+      calProviders: process.env.MUSE_CALENDAR_PROVIDERS,
+      calFile: process.env.MUSE_CALENDAR_FILE
+    };
+    process.env.MUSE_TASKS_FILE = tasksFile;
+    // Force calendar registry empty by disabling all providers.
+    process.env.MUSE_CALENDAR_PROVIDERS = "";
+    process.env.MUSE_CALENDAR_FILE = path.join(root, "calendar.json");
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram(io);
+      await program.parseAsync(["node", "muse", "proactive", "scan"], { from: "node" });
+      const text = output.join("");
+      expect(text).toContain("Window:");
+      expect(text).toContain("no due-soon tasks");
+    } finally {
+      if (prev.tasks !== undefined) process.env.MUSE_TASKS_FILE = prev.tasks;
+      else delete process.env.MUSE_TASKS_FILE;
+      if (prev.calProviders !== undefined) process.env.MUSE_CALENDAR_PROVIDERS = prev.calProviders;
+      else delete process.env.MUSE_CALENDAR_PROVIDERS;
+      if (prev.calFile !== undefined) process.env.MUSE_CALENDAR_FILE = prev.calFile;
+      else delete process.env.MUSE_CALENDAR_FILE;
+    }
+  });
 });
