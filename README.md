@@ -176,7 +176,7 @@ Free / offline path — Ollama with an open-source model:
 
 ```bash
 brew install ollama && ollama serve &
-ollama pull qwen3.5:9b                 # 6.6 GB, Apr 2026 — recommended daily-driver
+ollama pull qwen3.5:9b-q4_K_M          # 6.6 GB, Apr 2026 — recommended daily-driver
 muse setup local                       # wires defaultModel into ~/.config/muse/config.json
 ```
 

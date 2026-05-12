@@ -45,22 +45,22 @@ export const LOCAL_MODEL_PRESETS: readonly LocalModelPreset[] = [
   {
     approxSizeGb: 1.0,
     minRamGb: 4,
-    note: "lowest; chat-only on 4 GB hardware",
-    tag: "qwen3.5:0.8b",
+    note: "lowest; proven JARVIS-fit (90 ms first-token on M3 Pro); Qwen 2.5 used because qwen3.5:0.8b is Q8-only and times out",
+    tag: "qwen2.5:1.5b-instruct",
     tier: "low"
   },
   {
-    approxSizeGb: 2.7,
-    minRamGb: 8,
+    approxSizeGb: 1.9,
+    minRamGb: 6,
     note: "mid; balanced JARVIS surface, good Korean",
-    tag: "qwen3.5:2b",
+    tag: "qwen3.5:2b-q4_K_M",
     tier: "mid"
   },
   {
     approxSizeGb: 6.6,
     minRamGb: 12,
     note: "high; recommended JARVIS daily-driver, stable tool calling",
-    tag: "qwen3.5:9b",
+    tag: "qwen3.5:9b-q4_K_M",
     tier: "high"
   },
   {
@@ -71,6 +71,15 @@ export const LOCAL_MODEL_PRESETS: readonly LocalModelPreset[] = [
     tier: "power"
   }
 ];
+
+/**
+ * Default Ollama tags for Qwen 3.5 sizes ship with Q8_0 quantisation
+ * (2× the disk + ~3× the inference latency of Q4_K_M for the same
+ * weights). Dogfood on M3 Pro: `qwen3.5:2b` first-token = 134 s,
+ * `qwen3.5:2b-q4_K_M` first-token < 500 ms. The presets always use
+ * the `-q4_K_M` suffix so users don't accidentally pull the slow
+ * variant.
+ */
 
 export interface SetupLocalHelpers {
   readonly readConfigStore: ConfigCommandHelpers["readConfigStore"];
