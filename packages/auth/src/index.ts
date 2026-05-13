@@ -22,10 +22,16 @@ export interface UserInput {
   readonly updatedAt?: Date;
 }
 
-export interface AuthProperties {
+/**
+ * Internal — only `JwtTokenProvider`'s constructor reads this.
+ * Dropped from the public surface in the personal-irrelevant sweep;
+ * the `selfRegistrationEnabled` field went too (zero references
+ * anywhere in the repo, leftover from a multi-tenant abstraction
+ * that never landed on this side).
+ */
+interface AuthProperties {
   readonly jwtSecret: string;
   readonly jwtExpirationMs?: number;
-  readonly selfRegistrationEnabled?: boolean;
 }
 
 export interface AuthProvider {
@@ -56,7 +62,8 @@ export interface AsyncUserStore {
   count(): Promise<number>;
 }
 
-export interface JwtClaims {
+/** Internal — encoded into JWTs by `JwtTokenProvider` + decoded back. */
+interface JwtClaims {
   readonly sub: string;
   readonly jti: string;
   readonly email: string;
@@ -79,7 +86,8 @@ export interface LoginResult {
   readonly expiresAt: Date;
 }
 
-export type PasswordChangeResult =
+/** Internal — return type of `MuseAuth.changePassword`. */
+type PasswordChangeResult =
   | "changed"
   | "invalid_current_password"
   | "unsupported"
@@ -91,7 +99,8 @@ export interface AuthOptions {
   readonly userStore?: UserStore;
 }
 
-export interface AsyncAuthOptions {
+/** Internal — consumed by `AsyncAuth`'s constructor. */
+interface AsyncAuthOptions {
   readonly authProvider: AsyncAuthProvider;
   readonly jwt: JwtTokenProvider;
   readonly userStore?: AsyncUserStore;
