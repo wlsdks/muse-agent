@@ -18,6 +18,7 @@ import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { mergeModelKeysFromFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
@@ -297,13 +298,18 @@ function summariseEpisodes(rows: readonly EpisodeRow[], userId: string) {
 /**
  * `{ configured: ["gemini", "ollama"], total: 2 }` over the five
  * canonical provider env keys mirrored from
- * `personal-providers.ts` + the `commands-doctor.ts` probe. Pure
- * env-var read — does not touch the network, does not parse the
- * credentials file (so a user who configured providers exclusively
- * via `muse setup model` and `source` won't be misreported as
- * "0 configured"). The credentials-file overlay is a documented
- * limitation of `muse doctor` as well; status mirrors it on
- * purpose for behaviour parity.
+ * `personal-providers.ts`. Probes both `process.env` AND the
+ * `~/.muse/models.json` credentials file written by `muse setup
+ * model` — the runtime's `mergeModelKeysFromFile` does the same
+ * merge, so status mirrors that surface. A user who configured
+ * keys exclusively through the wizard (no shell export) used to
+ * see "0 configured" — that bug shipped briefly and is closed
+ * here.
+ *
+ * No token bytes are read or echoed; only `value !== undefined`
+ * after the merge. The credentials file may legitimately not
+ * exist on a fresh install (mergeModelKeysFromFile returns the
+ * input env unchanged in that case).
  */
 function summariseProviders() {
   const checks: ReadonlyArray<{ id: string; envKey: string }> = [
@@ -313,9 +319,11 @@ function summariseProviders() {
     { envKey: "OPENROUTER_API_KEY", id: "openrouter" },
     { envKey: "OLLAMA_BASE_URL", id: "ollama" }
   ];
+  const merged = mergeModelKeysFromFile({ ...process.env });
   const configured: string[] = [];
   for (const check of checks) {
-    if (envValue(check.envKey) !== undefined) {
+    const v = merged[check.envKey];
+    if (typeof v === "string" && v.trim().length > 0) {
       configured.push(check.id);
     }
   }

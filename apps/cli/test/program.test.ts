@@ -3437,22 +3437,30 @@ describe("cli program", () => {
     }
   });
 
-  it("muse status surfaces the list of providers with env keys set (envs only — no credentials-file overlay)", async () => {
+  it("muse status surfaces configured providers from env AND from the muse-setup-model credentials file", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-status-providers-"));
+    const fsp = await import("node:fs/promises");
+    const modelKeysFile = path.join(root, "models.json");
     const prev = {
       gemini: process.env.GEMINI_API_KEY,
       anthropic: process.env.ANTHROPIC_API_KEY,
       openai: process.env.OPENAI_API_KEY,
       openrouter: process.env.OPENROUTER_API_KEY,
-      ollama: process.env.OLLAMA_BASE_URL
+      ollama: process.env.OLLAMA_BASE_URL,
+      modelKeysFile: process.env.MUSE_MODEL_KEYS_FILE
     };
     delete process.env.GEMINI_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.OPENROUTER_API_KEY;
     delete process.env.OLLAMA_BASE_URL;
-    process.env.GEMINI_API_KEY = "gem-test";
-    process.env.OLLAMA_BASE_URL = "http://localhost:11434";
+    // Point at a non-existent file first so the real ~/.muse/models.json
+    // on the dev box can't leak through and inflate the count.
+    process.env.MUSE_MODEL_KEYS_FILE = modelKeysFile;
     try {
+      // Env-only case.
+      process.env.GEMINI_API_KEY = "gem-test";
+      process.env.OLLAMA_BASE_URL = "http://localhost:11434";
       const { io, output } = captureOutput();
       const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
       await program.parseAsync(["node", "muse", "status", "--user", "stark", "--json"], { from: "node" });
@@ -3467,12 +3475,32 @@ describe("cli program", () => {
       await program2.parseAsync(["node", "muse", "status", "--user", "stark"], { from: "node" });
       expect(out2.join("")).toContain("providers: 2 configured — gemini, ollama");
 
+      // File-only case: drop the env keys, write the wizard's models.json
+      // shape — anthropic via file, gemini via file. The fix asserts that
+      // these show up even though no shell export ran.
       delete process.env.GEMINI_API_KEY;
       delete process.env.OLLAMA_BASE_URL;
+      await fsp.writeFile(modelKeysFile, JSON.stringify({
+        providers: {
+          anthropic: { token: "ant-from-file" },
+          gemini: { token: "gem-from-file", suggestedModel: "gemini-2.5-pro" }
+        }
+      }), "utf8");
       const { io: io3, output: out3 } = captureOutput();
       const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("no fetch"); } });
-      await program3.parseAsync(["node", "muse", "status", "--user", "stark"], { from: "node" });
-      expect(out3.join("")).toContain("providers: 0 configured");
+      await program3.parseAsync(["node", "muse", "status", "--user", "stark", "--json"], { from: "node" });
+      const snap3 = JSON.parse(out3.join("")) as { providers: { configured: readonly string[]; total: number } };
+      expect(snap3.providers.total).toBe(2);
+      // Order is fixed by the canonical-checks list, not by file iteration:
+      // gemini first, anthropic second.
+      expect(snap3.providers.configured).toEqual(["gemini", "anthropic"]);
+
+      // Empty-state: drop the file, drop env. Expect 0 configured.
+      await fsp.rm(modelKeysFile);
+      const { io: io4, output: out4 } = captureOutput();
+      const program4 = createProgram({ ...io4, fetch: async () => { throw new Error("no fetch"); } });
+      await program4.parseAsync(["node", "muse", "status", "--user", "stark"], { from: "node" });
+      expect(out4.join("")).toContain("providers: 0 configured");
     } finally {
       const restore = (envKey: keyof typeof prev, k: string): void => {
         if (prev[envKey] === undefined) delete process.env[k];
@@ -3483,6 +3511,7 @@ describe("cli program", () => {
       restore("openai", "OPENAI_API_KEY");
       restore("openrouter", "OPENROUTER_API_KEY");
       restore("ollama", "OLLAMA_BASE_URL");
+      restore("modelKeysFile", "MUSE_MODEL_KEYS_FILE");
     }
   });
 
