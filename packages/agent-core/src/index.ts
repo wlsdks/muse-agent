@@ -48,6 +48,11 @@ export {
   type FollowupPromise
 } from "./followup-detector.js";
 export {
+  createFollowupCaptureHook,
+  type CapturedFollowup,
+  type FollowupCaptureHookOptions
+} from "./followup-capture-hook.js";
+export {
   formatCurrentTime,
   humanizeRelativeFromIso,
   humanizeRelativeMs,
