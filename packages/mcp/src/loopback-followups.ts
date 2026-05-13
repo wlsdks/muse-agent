@@ -1,0 +1,173 @@
+import type { JsonObject, JsonValue } from "@muse/shared";
+
+import { errorMessage, readString } from "./loopback-helpers.js";
+import type { LoopbackMcpServer } from "./loopback.js";
+import {
+  cancelFollowup,
+  readFollowups,
+  readFollowupStatusFilter,
+  serializeFollowup,
+  snoozeFollowup
+} from "./personal-followups-store.js";
+import { parseReminderDueAt } from "./personal-reminders-store.js";
+
+/**
+ * `muse.followup` loopback MCP server — gives the agent
+ * introspection + control over its own self-captured follow-up
+ * promises (`~/.muse/followups.json`).
+ *
+ * Intentionally NO `add` / `fire` tools:
+ *
+ *   - Capture is *automatic* — the runtime hook detects time-bound
+ *     promises in assistant turns and writes them with the linkage
+ *     fields (`originRunId`, `originTurnHash`) that a manually-added
+ *     entry would lack. Exposing `add` to the LLM would invite
+ *     stale, ungrounded commitments.
+ *   - Firing is daemon-only (`apps/api/src/followup-tick.ts`). The
+ *     LLM doesn't deliver followups; the messaging sink does.
+ *
+ * So the surface is just: see the queue, snooze it, cancel it.
+ * Use cases: "I changed my mind, drop that 3pm check-in", "push
+ * the report follow-up to tomorrow morning instead".
+ */
+export interface FollowupsMcpServerOptions {
+  readonly file: string;
+  readonly now?: () => Date;
+  readonly maxListEntries?: number;
+}
+
+export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): LoopbackMcpServer {
+  const file = options.file;
+  const now = options.now ?? (() => new Date());
+  const maxListEntries = Math.max(1, Math.trunc(options.maxListEntries ?? 200));
+
+  return {
+    description:
+      "Self-captured follow-up promises. Read + cancel + snooze; capture is automatic, firing is daemon-only.",
+    name: "muse.followup",
+    tools: [
+      {
+        description:
+          "List followups the agent has promised. `status` filter: 'scheduled' (default), 'fired', 'cancelled', or 'all'. " +
+          "Sorted by scheduledFor ascending up to `" + maxListEntries.toString() + "` entries. " +
+          "Use 'scheduled' to see what's still pending; 'all' to look back at history when the user says " +
+          "'did you follow up on that?'.",
+        execute: async (args): Promise<JsonObject> => {
+          const status = readFollowupStatusFilter(readString(args, "status"));
+          const all = await readFollowups(file);
+          const filtered = status === "all" ? all : all.filter((entry) => entry.status === status);
+          const sorted = [...filtered]
+            .sort((left, right) => left.scheduledFor.localeCompare(right.scheduledFor))
+            .slice(0, maxListEntries);
+          return {
+            followups: sorted.map(serializeFollowup) as JsonValue,
+            status,
+            total: sorted.length
+          };
+        },
+        inputSchema: {
+          additionalProperties: false,
+          properties: {
+            status: { enum: ["scheduled", "fired", "cancelled", "all"], type: "string" }
+          },
+          type: "object"
+        },
+        domain: "tasks",
+        name: "list",
+        risk: "read"
+      },
+      {
+        description:
+          "Cancel a scheduled followup. Only works on entries with status='scheduled' — already-fired or " +
+          "already-cancelled entries return an error rather than silently no-op. `reason` is recorded on " +
+          "the entry (default 'agent-cancelled'). Use this when the user revokes a prior commitment.",
+        execute: async (args): Promise<JsonObject> => {
+          const id = readString(args, "id");
+          if (!id) {
+            return { error: "id is required" };
+          }
+          const reason = readString(args, "reason")?.trim() || "agent-cancelled";
+          try {
+            const patched = await cancelFollowup(file, id, reason);
+            if (!patched) {
+              // Differentiate "not found" from "wrong status" so the LLM can
+              // adjust — e.g. apologise that it already fired and ask if the
+              // user wants a fresh one instead.
+              const all = await readFollowups(file);
+              const existing = all.find((entry) => entry.id === id);
+              if (!existing) {
+                return { error: `followup not found: ${id}` };
+              }
+              return { error: `followup ${id} is already ${existing.status}; only scheduled followups can be cancelled` };
+            }
+            return { followup: serializeFollowup(patched) as JsonValue };
+          } catch (error) {
+            return { error: errorMessage(error) };
+          }
+        },
+        inputSchema: {
+          additionalProperties: false,
+          properties: {
+            id: { type: "string" },
+            reason: { description: "Short reason recorded on the entry. Default 'agent-cancelled'.", type: "string" }
+          },
+          required: ["id"],
+          type: "object"
+        },
+        domain: "tasks",
+        name: "cancel",
+        risk: "write"
+      },
+      {
+        description:
+          "Push a scheduled followup's `scheduledFor` to a new time. `scheduledFor` accepts the same " +
+          "grammar as `muse.reminders.snooze` — either ISO-8601 or relative ('in 2 hours', 'tomorrow at 9am', " +
+          "'2시간 뒤'). Lifecycle-guarded: only scheduled entries can be snoozed; resurrecting fired or " +
+          "cancelled entries would be a surprise.",
+        execute: async (args): Promise<JsonObject> => {
+          const id = readString(args, "id");
+          if (!id) {
+            return { error: "id is required" };
+          }
+          const whenRaw = readString(args, "scheduledFor")?.trim();
+          if (!whenRaw) {
+            return { error: "scheduledFor is required" };
+          }
+          const parsed = parseReminderDueAt(whenRaw, now);
+          if (parsed instanceof Error) {
+            return { error: parsed.message };
+          }
+          try {
+            const patched = await snoozeFollowup(file, id, parsed);
+            if (!patched) {
+              const all = await readFollowups(file);
+              const existing = all.find((entry) => entry.id === id);
+              if (!existing) {
+                return { error: `followup not found: ${id}` };
+              }
+              return { error: `followup ${id} is already ${existing.status}; only scheduled followups can be snoozed` };
+            }
+            return { followup: serializeFollowup(patched) as JsonValue };
+          } catch (error) {
+            return { error: errorMessage(error) };
+          }
+        },
+        inputSchema: {
+          additionalProperties: false,
+          properties: {
+            id: { type: "string" },
+            scheduledFor: {
+              description: "New target time. ISO-8601 or relative phrase ('in 2 hours', 'tomorrow at 9am').",
+              type: "string"
+            }
+          },
+          required: ["id", "scheduledFor"],
+          type: "object"
+        },
+        domain: "tasks",
+        name: "snooze",
+        risk: "write"
+      }
+    ]
+  };
+}

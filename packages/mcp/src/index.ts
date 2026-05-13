@@ -615,6 +615,14 @@ export {
   type RemindersMcpServerOptions
 } from "./loopback-reminders.js";
 
+// Followup loopback — agent introspection + control over its own
+// self-captured follow-up promises. List/cancel/snooze only; capture
+// is automatic via the runtime hook, firing is daemon-only.
+export {
+  createFollowupsMcpServer,
+  type FollowupsMcpServerOptions
+} from "./loopback-followups.js";
+
 // Proactive surfacing audit loopback — `muse.proactive.history`
 // over ~/.muse/proactive-history.json.
 export {

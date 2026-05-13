@@ -37,6 +37,7 @@ import {
   createDefaultLoopbackMcpServers,
   createFetchMcpServer,
   createFilesystemMcpServer,
+  createFollowupsMcpServer,
   createLoopbackMcpMuseTools,
   createMessagingMcpServer,
   createNotesMcpServer,
@@ -470,6 +471,14 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const proactiveLoopbackTools = createLoopbackMcpMuseTools(
     createProactiveMcpServer({ historyFile: proactiveHistoryFile })
   );
+  // Self-followup loopback — list / cancel / snooze the agent's
+  // own captured promises. Capture is automatic (runtime hook);
+  // firing is daemon-only — the LLM only sees the queue + the
+  // two write tools that modify lifecycle.
+  const followupsFile = resolveFollowupsFile(env);
+  const followupsLoopbackTools = createLoopbackMcpMuseTools(
+    createFollowupsMcpServer({ file: followupsFile })
+  );
   const schedulerHandle: { current: DynamicScheduler | undefined } = { current: undefined };
 
   const { skillRegistryPromise, skillTools } = createSkillRuntime(env);
@@ -486,12 +495,12 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => messagingLoopbackTools,
     () => remindersLoopbackTools,
     () => proactiveLoopbackTools,
+    () => followupsLoopbackTools,
     () => runnerTools,
     () => skillTools,
     () => mcp.manager.toMuseTools(),
     () => schedulerHandle.current ? createSchedulerTools(schedulerHandle.current) : []
   ]);
-  const followupsFile = resolveFollowupsFile(env);
   const runtimeHooks = [
     ...createDefaultRuntimeHooks(env),
     ...(parseBoolean(env.MUSE_USER_MEMORY_AUTO_EXTRACT, true) && modelProvider && defaultModel

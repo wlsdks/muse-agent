@@ -18,6 +18,7 @@ import {
   createDiffMcpServer,
   createFetchMcpServer,
   createFilesystemMcpServer,
+  createFollowupsMcpServer,
   createJsonMcpServer,
   createMathMcpServer,
   createMessagingMcpServer,
@@ -4614,5 +4615,99 @@ describe("snoozeFollowup", () => {
     const after = await readFollowups(file);
     expect(after.find((f) => f.id === "fu_done")?.status).toBe("fired");
     expect(after.find((f) => f.id === "fu_dropped")?.status).toBe("cancelled");
+  });
+});
+
+describe("muse.followup loopback server", () => {
+  it("list filters by status, returns serialized entries sorted by scheduledFor", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const dir = mkdtempSync(join(tmpdir(), "muse-followup-mcp-list-"));
+    const file = join(dir, "followups.json");
+    writeFileSync(file, JSON.stringify({
+      followups: [
+        { createdAt: "2026-05-10T00:00:00Z", id: "fu_later", scheduledFor: "2026-05-12T10:00:00Z", status: "scheduled", summary: "Later", userId: "stark" },
+        { createdAt: "2026-05-10T00:00:00Z", id: "fu_sooner", scheduledFor: "2026-05-11T09:00:00Z", status: "scheduled", summary: "Sooner", userId: "stark" },
+        { createdAt: "2026-05-10T00:00:00Z", firedAt: "2026-05-10T13:00:00Z", id: "fu_done", scheduledFor: "2026-05-10T12:00:00Z", status: "fired", summary: "Old", userId: "stark" }
+      ]
+    }), "utf8");
+
+    const connection = createLoopbackMcpConnection(createFollowupsMcpServer({ file }));
+
+    const def = await connection.callTool!("list", {});
+    expect(def).toMatchObject({ status: "scheduled", total: 2 });
+    expect((def.followups as Array<{ id: string }>).map((f) => f.id)).toEqual(["fu_sooner", "fu_later"]);
+
+    const all = await connection.callTool!("list", { status: "all" });
+    expect(all).toMatchObject({ status: "all", total: 3 });
+
+    const fired = await connection.callTool!("list", { status: "fired" });
+    expect(fired).toMatchObject({ status: "fired", total: 1 });
+    expect((fired.followups as Array<{ id: string }>)[0]?.id).toBe("fu_done");
+  });
+
+  it("cancel transitions scheduled → cancelled; rejects already-fired with a guiding error", async () => {
+    const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const dir = mkdtempSync(join(tmpdir(), "muse-followup-mcp-cancel-"));
+    const file = join(dir, "followups.json");
+    writeFileSync(file, JSON.stringify({
+      followups: [
+        { createdAt: "2026-05-10T00:00:00Z", id: "fu_drop", scheduledFor: "2026-05-11T09:00:00Z", status: "scheduled", summary: "Drop me", userId: "stark" },
+        { createdAt: "2026-05-10T00:00:00Z", firedAt: "2026-05-10T13:00:00Z", id: "fu_already", scheduledFor: "2026-05-10T12:00:00Z", status: "fired", summary: "Fired", userId: "stark" }
+      ]
+    }), "utf8");
+
+    const connection = createLoopbackMcpConnection(createFollowupsMcpServer({ file }));
+
+    const ok = await connection.callTool!("cancel", { id: "fu_drop", reason: "user-revoked" });
+    expect(ok).toMatchObject({ followup: { id: "fu_drop", status: "cancelled", cancelReason: "user-revoked" } });
+
+    const onDisk = JSON.parse(readFileSync(file, "utf8")) as { followups: Array<{ id: string; status: string }> };
+    expect(onDisk.followups.find((f) => f.id === "fu_drop")?.status).toBe("cancelled");
+
+    const reFired = await connection.callTool!("cancel", { id: "fu_already" });
+    expect(reFired).toMatchObject({ error: expect.stringContaining("already fired") });
+
+    const missing = await connection.callTool!("cancel", { id: "fu_nope" });
+    expect(missing).toMatchObject({ error: expect.stringContaining("not found") });
+
+    const noId = await connection.callTool!("cancel", {});
+    expect(noId).toMatchObject({ error: expect.stringContaining("id is required") });
+  });
+
+  it("snooze parses relative scheduledFor and rejects non-scheduled entries", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const dir = mkdtempSync(join(tmpdir(), "muse-followup-mcp-snooze-"));
+    const file = join(dir, "followups.json");
+    writeFileSync(file, JSON.stringify({
+      followups: [
+        { createdAt: "2026-05-10T00:00:00Z", id: "fu_push", scheduledFor: "2026-05-11T09:00:00Z", status: "scheduled", summary: "Push", userId: "stark" },
+        { cancelReason: "x", createdAt: "2026-05-10T00:00:00Z", id: "fu_dropped", scheduledFor: "2026-05-10T08:00:00Z", status: "cancelled", summary: "Dropped", userId: "stark" }
+      ]
+    }), "utf8");
+
+    // Pin the clock so the "in 2 hours" assertion is deterministic.
+    const fixedNow = new Date("2026-05-11T08:00:00Z");
+    const connection = createLoopbackMcpConnection(createFollowupsMcpServer({ file, now: () => fixedNow }));
+
+    const ok = await connection.callTool!("snooze", { id: "fu_push", scheduledFor: "in 2 hours" });
+    expect(ok).toMatchObject({ followup: { id: "fu_push", status: "scheduled", scheduledFor: "2026-05-11T10:00:00.000Z" } });
+
+    const cancelled = await connection.callTool!("snooze", { id: "fu_dropped", scheduledFor: "tomorrow at 9am" });
+    expect(cancelled).toMatchObject({ error: expect.stringContaining("already cancelled") });
+
+    const noWhen = await connection.callTool!("snooze", { id: "fu_push" });
+    expect(noWhen).toMatchObject({ error: expect.stringContaining("scheduledFor is required") });
+
+    const badPhrase = await connection.callTool!("snooze", { id: "fu_push", scheduledFor: "lol-not-a-time" });
+    expect(badPhrase).toMatchObject({ error: expect.stringContaining("ISO-8601") });
   });
 });
