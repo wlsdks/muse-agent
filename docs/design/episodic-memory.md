@@ -1,6 +1,45 @@
 # Episodic memory cross-session recall
 
-Status: **design-only.** Audit finding #26 (Tier 3).
+Status: **all 5 steps shipped + persona surfacing + LLM-judge
+paraphrase recall.** Audit finding #26 (Tier 3). The chain
+captures + surfaces + manages prior-session summaries:
+
+- Step 1 — `~/.muse/episodes.json` store in `@muse/mcp`
+  (`personal-episodes-store.ts`) — same shape as the followups /
+  tasks stores, vacuum-trimmable.
+- Step 2 — `[SESSION_BOUNDARY]` sentinel written to
+  `last-chat.jsonl` at REPL boot via `appendSessionBoundary` in
+  `apps/cli/src/chat-history.ts`. Filtered out of the seed-history
+  reader so it never leaks into the next turn's context.
+- Step 3a — `extractCurrentSessionTurns` + `summariseSession` in
+  `@muse/agent-core/src/episodic-summariser.ts` (pure logic;
+  fails soft on transport / parse / empty output). Includes
+  secret-scrubbing for OpenAI / Anthropic / GitHub / Google /
+  OAuth API key shapes.
+- Step 3b — REPL exit hook (`captureEndOfSessionEpisode`) wires
+  it together; gated by `MUSE_EPISODIC_MEMORY_ENABLED=true`.
+- Step 4 — persona surfacing. `buildMusePersona` renders up to
+  `MUSE_EPISODIC_MEMORY_MAX_ENTRIES` (default 20) episodes with
+  `topics` tags inline so the LLM can paraphrase-match across
+  prior sessions.
+- Step 5 — `muse episode list|show|remove|clear|search` CLI +
+  `muse.episode.{list,search,show,remove,clear}` MCP loopback.
+  Search supports `mode: "substring" | "llm-judge"` — the
+  LLM-judge mode replaces the originally-designed vector-RAG path
+  (see "Substantive design change" below).
+
+**Substantive design change** vs. the original spec: this doc
+originally called for pgvector + an embedding index for
+semantic recall. After dogfooding on the personal-agent scale
+(≤ a few hundred episodes lifetime), we decided in-context
+expansion + LLM-judge retrieval beats vector RAG: zero
+infrastructure cost, no manual input UX, paraphrase recall via
+the model's native synonymy. The original RAG plan was scrapped;
+the `mode: "llm-judge"` path closed the same gap with one extra
+generate call per query.
+
+The original "Generation" / "Storage" / etc. sections below
+preserve the design rationale and are kept for reference.
 
 ## The problem
 

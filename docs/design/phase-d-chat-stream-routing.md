@@ -1,6 +1,31 @@
 # Phase D — agent-initiated turn → chat-stream routing
 
-Status: **design-only.** Audit finding #20.
+Status: **shipped end-to-end** — broker primitive, SSE route,
+producer wiring, CLI consumer. Audit finding #20. The agent-
+initiated notice chain runs through:
+
+- Broker primitive — `InMemoryAgentInitiatedNoticeBroker` in
+  `@muse/agent-core/src/agent-initiated-notice.ts`. In-memory
+  pub/sub with per-subscriber queue backpressure (default 16,
+  oldest dropped).
+- SSE route — `GET /api/agent-notices/stream?userId=…` in
+  `apps/api/src/agent-notices-routes.ts`. Emits `event: open`
+  ack on connect, then `event: notice` per publish.
+- Producer wiring — proactive notice loop publishes alongside
+  the messaging-sink send (structural `AgentInitiatedNoticeBrokerLike`
+  to avoid cross-package value deps). Reminder + followup + pattern
+  daemons each plug their notices through the same broker.
+- CLI consumer — `muse agent-notices tail [--user] [--json]` SSE
+  consumer in `apps/cli/src/commands-agent-notices.ts`.
+
+Phase D synthesis (model-composed delivery text when the user
+has recent activity within the session-window) ships in the
+reminder + proactive + followup daemons. The pattern daemon
+delivers the cluster's `suggestion` string verbatim — synthesis
+there is a future iter when the proactive-pattern flow has been
+dogfooded more.
+
+Original design rationale below preserved for reference.
 
 ## Why this needs a design pass
 

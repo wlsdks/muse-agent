@@ -1,6 +1,31 @@
 # Self-queueing follow-up
 
-Status: **design-only.** Audit finding #25 (Tier 3).
+Status: **all 5 steps shipped end-to-end + CLI + MCP loopback.**
+Audit finding #25 (Tier 3). The full chain runs in production:
+
+- Step 1 — rule detector (English + Korean) — `extractFollowupPromises`
+  in `@muse/agent-core/src/followup-detector.ts`.
+- Step 2 — `~/.muse/followups.json` store — `personal-followups-store.ts`
+  in `@muse/mcp`. Atomic tmp+rename writes, tolerant reads.
+- Step 3 — runtime capture hook — `createFollowupCaptureHook` in
+  `@muse/agent-core`, wired into the autoconfigure runtime hook
+  stack. Auto-captures from assistant turn output.
+- Step 4 — firing engine + daemon — `runDueFollowups` in
+  `@muse/mcp` + `apps/api/src/followup-tick.ts` `setInterval`
+  rider. LLM-synthesised delivery via the messaging registry.
+- Step 5 — LLM-fallback detector + per-day budget. Opt-in via
+  `MUSE_FOLLOWUP_LLM_FALLBACK=true`. Budget tracker:
+  `~/.muse/followup-llm-budget.json`.
+- User surface — `muse followup list|show|cancel|snooze` CLI +
+  `muse.followup.{list,cancel,snooze}` loopback MCP tools.
+
+Env knobs that activate the daemon path:
+`MUSE_FOLLOWUP_DEFAULT_PROVIDER`, `MUSE_FOLLOWUP_DEFAULT_DESTINATION`,
+`MUSE_FOLLOWUP_TICK_MS`, `MUSE_FOLLOWUP_MAX_PER_TICK`,
+`MUSE_FOLLOWUP_QUIET_HOURS`.
+
+The text below preserves the original design rationale — kept for
+reference even though every step now exists in code.
 
 ## Why this matters
 
