@@ -43,6 +43,11 @@ export {
   type InMemoryAgentInitiatedNoticeBrokerOptions
 } from "./agent-initiated-notice.js";
 export {
+  extractFollowupPromises,
+  type ExtractFollowupPromisesOptions,
+  type FollowupPromise
+} from "./followup-detector.js";
+export {
   formatCurrentTime,
   humanizeRelativeFromIso,
   humanizeRelativeMs,
