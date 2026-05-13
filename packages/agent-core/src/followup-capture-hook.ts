@@ -28,7 +28,8 @@ import { createHash } from "node:crypto";
 
 import {
   extractFollowupPromises,
-  type ExtractFollowupPromisesOptions
+  type ExtractFollowupPromisesOptions,
+  type FollowupPromise
 } from "./followup-detector.js";
 import type { HookStage } from "./types.js";
 
@@ -82,6 +83,15 @@ export interface FollowupCaptureHookOptions {
    * them; capping prevents the store from filling with noise.
    */
   readonly maxCapturesPerTurn?: number;
+  /**
+   * Optional LLM-fallback detector (step 5 of agent-self-followup.md).
+   * Runs *after* the rule detector and contributes additional
+   * promises that the regex pass missed. Caller is responsible for
+   * gating this on env (`MUSE_FOLLOWUP_LLM_FALLBACK=true`) and the
+   * per-day budget. Errors / empty returns are tolerated: the hook
+   * carries on with just the rule-detector output.
+   */
+  readonly additionalDetector?: (text: string, now: Date) => Promise<readonly FollowupPromise[]>;
 }
 
 const DEFAULT_MAX = 8;
@@ -103,10 +113,24 @@ export function createFollowupCaptureHook(options: FollowupCaptureHookOptions): 
         return;
       }
       const turnHash = hashTurn(output);
-      const promises = extractFollowupPromises(output, {
-        now: now(),
+      const anchor = now();
+      const rulePromises = extractFollowupPromises(output, {
+        now: anchor,
         ...(options.slotHours ? { slotHours: options.slotHours } : {})
       });
+      let llmPromises: readonly FollowupPromise[] = [];
+      if (options.additionalDetector) {
+        try {
+          llmPromises = await options.additionalDetector(output, anchor);
+        } catch {
+          // Detector errors must not block the rule-detector path.
+          llmPromises = [];
+        }
+      }
+      // Merge: rule-detector promises FIRST so they win the
+      // minute-precision dedupe over the LLM fallback (rules carry
+      // "high" confidence; LLM is a soft pin).
+      const promises: readonly FollowupPromise[] = [...rulePromises, ...llmPromises];
       if (promises.length === 0) {
         return;
       }

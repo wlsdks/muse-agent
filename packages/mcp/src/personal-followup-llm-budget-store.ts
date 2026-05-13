@@ -1,0 +1,100 @@
+/**
+ * Per-day budget tracker for the followup LLM-fallback detector.
+ *
+ * Step 5 of `docs/design/agent-self-followup.md` adds an opt-in
+ * LLM call per assistant turn when `MUSE_FOLLOWUP_LLM_FALLBACK=true`.
+ * Every call costs an extra model round-trip; without a cap, a
+ * chatty session can quietly burn the user's daily quota.
+ *
+ * This module owns `~/.muse/followup-llm-budget.json` — a one-line
+ * `{ date, calls }` record that auto-resets on date change. The
+ * capture-hook wiring increments before each LLM call and short-
+ * circuits when `isBudgetExhausted` returns true.
+ *
+ * Tolerant reads + atomic tmp+rename writes, same as the other
+ * personal stores. A corrupt file is treated as "no budget used
+ * today" — better to allow one extra LLM call than to permanently
+ * lock the feature out on a bad parse.
+ */
+
+import { promises as fs } from "node:fs";
+import { dirname } from "node:path";
+
+export interface FollowupLlmBudgetRecord {
+  /** Local-day key — `YYYY-MM-DD`. Used so the count resets each day automatically. */
+  readonly date: string;
+  readonly calls: number;
+}
+
+export async function readFollowupLlmBudget(file: string): Promise<FollowupLlmBudgetRecord | undefined> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch {
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object") return undefined;
+  const candidate = parsed as Partial<FollowupLlmBudgetRecord>;
+  if (
+    typeof candidate.date !== "string"
+    || typeof candidate.calls !== "number"
+    || !Number.isFinite(candidate.calls)
+  ) {
+    return undefined;
+  }
+  return { calls: candidate.calls, date: candidate.date };
+}
+
+export async function writeFollowupLlmBudget(file: string, record: FollowupLlmBudgetRecord): Promise<void> {
+  const payload = `${JSON.stringify(record, null, 2)}\n`;
+  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
+  await fs.mkdir(dirname(file), { recursive: true });
+  await fs.writeFile(tmp, payload, "utf8");
+  await fs.rename(tmp, file);
+}
+
+/**
+ * Atomic read → maybe-reset (if date rolled over) → increment →
+ * write. Returns the post-increment record so the caller can
+ * record analytics or test `isBudgetExhausted` against the new
+ * count without re-reading.
+ */
+export async function incrementFollowupLlmBudget(file: string, today: string): Promise<FollowupLlmBudgetRecord> {
+  const existing = await readFollowupLlmBudget(file);
+  const next: FollowupLlmBudgetRecord = existing && existing.date === today
+    ? { calls: existing.calls + 1, date: today }
+    : { calls: 1, date: today };
+  await writeFollowupLlmBudget(file, next);
+  return next;
+}
+
+/**
+ * Pure check. Cap <= 0 short-circuits to "exhausted" so a
+ * misconfigured cap can't accidentally allow infinite calls.
+ * No record (fresh install) → never exhausted. Date mismatch
+ * (yesterday's record vs today) → never exhausted, the next
+ * `incrementFollowupLlmBudget` will reset.
+ */
+export function isFollowupLlmBudgetExhausted(
+  record: FollowupLlmBudgetRecord | undefined,
+  today: string,
+  cap: number
+): boolean {
+  if (!Number.isFinite(cap) || cap <= 0) return true;
+  if (!record) return false;
+  if (record.date !== today) return false;
+  return record.calls >= cap;
+}
+
+export function formatLocalDay(date: Date): string {
+  const year = date.getFullYear().toString().padStart(4, "0");
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const day = date.getDate().toString().padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}

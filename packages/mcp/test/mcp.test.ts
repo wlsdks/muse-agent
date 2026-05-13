@@ -5231,3 +5231,57 @@ describe("muse.pattern loopback server", () => {
     expect(onDisk.fired).toEqual([]);
   });
 });
+
+describe("personal-followup-llm-budget-store", () => {
+  it("read tolerates missing / bad-JSON / wrong-shape files (returns undefined)", async () => {
+    const { readFollowupLlmBudget } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-llm-budget-read-"));
+
+    expect(await readFollowupLlmBudget(join(dir, "missing.json"))).toBeUndefined();
+
+    const bad = join(dir, "bad.json");
+    writeFileSync(bad, "not json", "utf8");
+    expect(await readFollowupLlmBudget(bad)).toBeUndefined();
+
+    const wrong = join(dir, "wrong.json");
+    writeFileSync(wrong, JSON.stringify({ wrongKey: 1 }), "utf8");
+    expect(await readFollowupLlmBudget(wrong)).toBeUndefined();
+
+    const nanCalls = join(dir, "nan.json");
+    writeFileSync(nanCalls, JSON.stringify({ date: "2026-05-13", calls: "twenty" }), "utf8");
+    expect(await readFollowupLlmBudget(nanCalls)).toBeUndefined();
+  });
+
+  it("incrementFollowupLlmBudget increments same-day; resets on date change", async () => {
+    const { incrementFollowupLlmBudget, readFollowupLlmBudget } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-llm-budget-inc-"));
+    const file = join(dir, "budget.json");
+
+    const first = await incrementFollowupLlmBudget(file, "2026-05-13");
+    expect(first).toEqual({ calls: 1, date: "2026-05-13" });
+
+    const second = await incrementFollowupLlmBudget(file, "2026-05-13");
+    expect(second).toEqual({ calls: 2, date: "2026-05-13" });
+
+    const next = await incrementFollowupLlmBudget(file, "2026-05-14");
+    expect(next).toEqual({ calls: 1, date: "2026-05-14" });
+
+    expect(await readFollowupLlmBudget(file)).toEqual({ calls: 1, date: "2026-05-14" });
+  });
+
+  it("isFollowupLlmBudgetExhausted: no record / date mismatch → false; cap reached → true; cap <= 0 → true (safety)", async () => {
+    const { isFollowupLlmBudgetExhausted } = await import("../src/index.js");
+    expect(isFollowupLlmBudgetExhausted(undefined, "2026-05-13", 20)).toBe(false);
+    expect(isFollowupLlmBudgetExhausted({ calls: 19, date: "2026-05-13" }, "2026-05-13", 20)).toBe(false);
+    expect(isFollowupLlmBudgetExhausted({ calls: 20, date: "2026-05-13" }, "2026-05-13", 20)).toBe(true);
+    expect(isFollowupLlmBudgetExhausted({ calls: 100, date: "2026-05-12" }, "2026-05-13", 20)).toBe(false);
+    expect(isFollowupLlmBudgetExhausted({ calls: 0, date: "2026-05-13" }, "2026-05-13", 0)).toBe(true);
+    expect(isFollowupLlmBudgetExhausted({ calls: 5, date: "2026-05-13" }, "2026-05-13", -1)).toBe(true);
+  });
+});

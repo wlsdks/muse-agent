@@ -99,6 +99,7 @@ export {
   resolveDiscordAfterFile,
   resolveDiscordInboxFile,
   resolveEpisodesFile,
+  resolveFollowupLlmBudgetFile,
   resolveFollowupsFile,
   resolveInboxInjectionCursorFile,
   resolvePatternsFiredFile,

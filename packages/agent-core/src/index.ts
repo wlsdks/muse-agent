@@ -53,6 +53,10 @@ export {
   type FollowupCaptureHookOptions
 } from "./followup-capture-hook.js";
 export {
+  extractFollowupPromisesLlm,
+  type ExtractFollowupPromisesLlmOptions
+} from "./followup-llm-detector.js";
+export {
   formatCurrentTime,
   humanizeRelativeFromIso,
   humanizeRelativeMs,

@@ -2,6 +2,7 @@ import { CalendarProviderRegistry } from "@muse/calendar";
 import {
   createAgentRuntime,
   createFollowupCaptureHook,
+  extractFollowupPromisesLlm,
   InMemoryAgentInitiatedNoticeBroker,
   type ActiveContextProvider,
   type AgentInitiatedNoticeBroker,
@@ -39,6 +40,10 @@ import {
   createFetchMcpServer,
   createFilesystemMcpServer,
   createFollowupsMcpServer,
+  formatFollowupLlmBudgetDay,
+  incrementFollowupLlmBudget,
+  isFollowupLlmBudgetExhausted,
+  readFollowupLlmBudget,
   createLoopbackMcpMuseTools,
   createMessagingMcpServer,
   createNotesMcpServer,
@@ -147,6 +152,7 @@ import {
   ensureNotesDir,
   mergeModelKeysFromFile,
   resolveEpisodesFile,
+  resolveFollowupLlmBudgetFile,
   resolveFollowupsFile,
   resolveNotesDir,
   resolvePatternsFiredFile,
@@ -345,6 +351,49 @@ export class ConfigurationError extends Error {
   }
 }
 
+/**
+ * Build the `additionalDetector` closure the followup capture hook
+ * uses for its step-5 LLM fallback. Wraps `extractFollowupPromisesLlm`
+ * with the per-day budget check so a chatty session can't burn
+ * `MUSE_FOLLOWUP_LLM_BUDGET_PER_DAY` calls.
+ *
+ * Returns `[]` (skip path) when:
+ *   - today's call count already meets/exceeds the cap, or
+ *   - the LLM detector itself errors / returns nothing.
+ *
+ * Increments the budget BEFORE the call so even a failed
+ * `generate` counts against the cap — we paid for the round-trip
+ * regardless. Counter wraparound on date change is handled by the
+ * store; no per-call date logic here.
+ */
+function createBudgetedLlmDetector(options: {
+  readonly modelProvider: ModelProvider;
+  readonly model: string;
+  readonly budgetFile: string;
+  readonly cap: number;
+}): (text: string, now: Date) => Promise<readonly Awaited<ReturnType<typeof extractFollowupPromisesLlm>>[number][]> {
+  return async (text: string, now: Date) => {
+    const today = formatFollowupLlmBudgetDay(now);
+    const current = await readFollowupLlmBudget(options.budgetFile);
+    if (isFollowupLlmBudgetExhausted(current, today, options.cap)) {
+      return [];
+    }
+    try {
+      await incrementFollowupLlmBudget(options.budgetFile, today);
+    } catch {
+      // Budget bookkeeping failure shouldn't block detection — but
+      // we already paid one "logical" call so don't double-charge
+      // by also running the LLM if the disk is wedged. Skip.
+      return [];
+    }
+    return extractFollowupPromisesLlm(text, {
+      model: options.model,
+      modelProvider: options.modelProvider,
+      now
+    });
+  };
+}
+
 export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}): MuseRuntimeAssembly {
   const env = mergeModelKeysFromFile(options.env ?? process.env);
   const db = options.db;
@@ -539,7 +588,21 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       ? [createFollowupCaptureHook({
         persist: async (captured: CapturedFollowup) => {
           await upsertFollowup(followupsFile, captured as PersistedFollowup);
-        }
+        },
+        // Step 5 — opt-in LLM-fallback detector with a per-day
+        // budget cap. Off by default; one extra `generate` call per
+        // turn when enabled, gated by MUSE_FOLLOWUP_LLM_BUDGET_PER_DAY
+        // (default 20) so a chatty session can't quietly burn quota.
+        ...(parseBoolean(env.MUSE_FOLLOWUP_LLM_FALLBACK, false) && modelProvider && defaultModel
+          ? {
+              additionalDetector: createBudgetedLlmDetector({
+                budgetFile: resolveFollowupLlmBudgetFile(env),
+                cap: parseInteger(env.MUSE_FOLLOWUP_LLM_BUDGET_PER_DAY, 20),
+                model: env.MUSE_FOLLOWUP_LLM_MODEL ?? defaultModel,
+                modelProvider
+              })
+            }
+          : {})
       })]
       : [])
   ];

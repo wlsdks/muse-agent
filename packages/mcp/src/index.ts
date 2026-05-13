@@ -538,6 +538,18 @@ export {
   type PersistedFollowup
 } from "./personal-followups-store.js";
 
+// LLM-fallback budget tracker — step 5 of agent-self-followup.md.
+// Per-day counter so MUSE_FOLLOWUP_LLM_FALLBACK=true can't
+// silently burn the user's quota.
+export {
+  formatLocalDay as formatFollowupLlmBudgetDay,
+  incrementFollowupLlmBudget,
+  isFollowupLlmBudgetExhausted,
+  readFollowupLlmBudget,
+  writeFollowupLlmBudget,
+  type FollowupLlmBudgetRecord
+} from "./personal-followup-llm-budget-store.js";
+
 // Pattern-detection cooldown sidecar — step 4 of
 // docs/design/pattern-detection.md. Tracks the last firing time
 // per detector-assigned pattern id so a fired suggestion does not

@@ -163,4 +163,45 @@ describe("createFollowupCaptureHook", () => {
     await hook.afterComplete?.(context(), response("in 30 minutes — actually, in 30 min works too."));
     expect(captured).toHaveLength(1);
   });
+
+  it("merges rule + additionalDetector output and dedupes by minute; rule wins on tie", async () => {
+    const captured: CapturedFollowup[] = [];
+    const hook = createFollowupCaptureHook({
+      now: () => new Date("2026-05-13T08:00:00Z"),
+      persist: (followup) => { captured.push(followup); },
+      // Turn contains ONE rule-detectable promise ("in 30 minutes" → 08:30Z).
+      // LLM detector contributes two more:
+      //   - 09:30Z — distinct from the rule's 08:30, must persist.
+      //   - 08:30Z — collides with the rule's, should be dropped (rule
+      //     comes first in the merge → its summary wins).
+      additionalDetector: async () => [
+        { confidence: "low", kind: "today-at", originalText: "30 min from now (LLM duplicate)", scheduledFor: new Date("2026-05-13T08:30:00Z") },
+        { confidence: "low", kind: "today-at", originalText: "circle back in 90 minutes", scheduledFor: new Date("2026-05-13T09:30:00Z") }
+      ]
+    });
+    await hook.afterComplete?.(context(), response("I'll ping you in 30 minutes — sound good?"));
+    expect(captured).toHaveLength(2);
+    expect(captured.map((c) => c.scheduledFor)).toEqual([
+      "2026-05-13T08:30:00.000Z",
+      "2026-05-13T09:30:00.000Z"
+    ]);
+    // The 8:30 entry came from the RULE detector (higher in the merge order),
+    // so its summary reflects the original text the rule pulled — NOT the
+    // LLM's "(LLM duplicate)" phrasing.
+    expect(captured[0]!.summary).toContain("30 minutes");
+    expect(captured[0]!.summary).not.toContain("LLM duplicate");
+    expect(captured[1]!.summary).toContain("90 minutes");
+  });
+
+  it("additionalDetector errors are tolerated — rule output still persists", async () => {
+    const captured: CapturedFollowup[] = [];
+    const hook = createFollowupCaptureHook({
+      now: () => new Date("2026-05-13T08:00:00Z"),
+      persist: (followup) => { captured.push(followup); },
+      additionalDetector: async () => { throw new Error("model down"); }
+    });
+    await hook.afterComplete?.(context(), response("I'll ping you in 30 minutes."));
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.scheduledFor).toBe("2026-05-13T08:30:00.000Z");
+  });
 });
