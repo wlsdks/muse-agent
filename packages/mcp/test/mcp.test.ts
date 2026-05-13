@@ -5514,3 +5514,93 @@ describe("personal-followup-llm-budget-store", () => {
     expect(isFollowupLlmBudgetExhausted({ calls: 5, date: "2026-05-13" }, "2026-05-13", -1)).toBe(true);
   });
 });
+
+describe("muse.history loopback server", () => {
+  async function seedFiles() {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-history-mcp-"));
+    const reminderHistoryFile = join(dir, "reminder-history.json");
+    const proactiveHistoryFile = join(dir, "proactive-history.json");
+    const followupsFile = join(dir, "followups.json");
+    const patternsFiredFile = join(dir, "patterns-fired.json");
+    const episodesFile = join(dir, "episodes.json");
+
+    const t1 = "2026-05-12T08:00:00.000Z";
+    const t2 = "2026-05-12T09:30:00.000Z";
+    const t3 = "2026-05-12T10:15:00.000Z";
+    const t4 = "2026-05-12T22:00:00.000Z";
+    const t5 = "2026-05-13T07:45:00.000Z";
+
+    writeFileSync(reminderHistoryFile, JSON.stringify({
+      entries: [
+        { reminderId: "rem_a", text: "Pick up dry cleaning", providerId: "telegram", destination: "@me", firedAtIso: t2, status: "delivered" }
+      ],
+      version: 1
+    }), "utf8");
+    writeFileSync(proactiveHistoryFile, JSON.stringify({
+      entries: [
+        { kind: "calendar", itemId: "evt_a", startIso: t5, title: "Standup", providerId: "telegram", destination: "@me", text: "Standup in 5 min", firedAtIso: t5, status: "delivered" }
+      ],
+      version: 1
+    }), "utf8");
+    writeFileSync(followupsFile, JSON.stringify({
+      followups: [
+        { id: "fu_a", userId: "stark", scheduledFor: t3, status: "fired", summary: "Send Q3 memo", firedAt: t3, createdAt: t1 },
+        { id: "fu_pending", userId: "stark", scheduledFor: "2030-01-01T00:00:00Z", status: "scheduled", summary: "Later", createdAt: t1 }
+      ]
+    }), "utf8");
+    writeFileSync(patternsFiredFile, JSON.stringify({
+      fired: [
+        { patternId: "pat_morning_walk", firedAtMs: Date.parse(t1), suggestion: "morning walk routine" }
+      ]
+    }), "utf8");
+    writeFileSync(episodesFile, JSON.stringify({
+      episodes: [
+        { id: "ep_a", userId: "stark", startedAt: "2026-05-12T21:30:00Z", endedAt: t4, summary: "Reviewed Q3 budget memo" }
+      ]
+    }), "utf8");
+
+    return { reminderHistoryFile, proactiveHistoryFile, followupsFile, patternsFiredFile, episodesFile };
+  }
+
+  it("recent merges every store newest-first and skips non-fired followups", async () => {
+    const { createHistoryMcpServer, createLoopbackMcpConnection } = await import("../src/index.js");
+    const files = await seedFiles();
+    const conn = createLoopbackMcpConnection(createHistoryMcpServer(files));
+
+    const r = await conn.callTool!("recent", {});
+    expect(r.total).toBe(5);
+    const ids = (r.entries as Array<{ kind: string; id?: string }>).map((e) => `${e.kind}:${e.id ?? ""}`);
+    expect(ids).toEqual([
+      "proactive:evt_a",
+      "episode:ep_a",
+      "followup:fu_a",
+      "reminder:rem_a",
+      "pattern:pat_morning_walk"
+    ]);
+  });
+
+  it("recent honours kind / sinceIso / limit filters and rejects invalid kind", async () => {
+    const { createHistoryMcpServer, createLoopbackMcpConnection } = await import("../src/index.js");
+    const files = await seedFiles();
+    const conn = createLoopbackMcpConnection(createHistoryMcpServer(files));
+
+    const byKind = await conn.callTool!("recent", { kind: "followup" });
+    expect((byKind.entries as Array<{ id?: string }>).map((e) => e.id)).toEqual(["fu_a"]);
+
+    const sinceLate = await conn.callTool!("recent", { sinceIso: "2026-05-12T22:00:00Z" });
+    // Only proactive (t5) + episode (t4) survive.
+    expect(sinceLate.total).toBe(2);
+
+    const limited = await conn.callTool!("recent", { limit: 2 });
+    expect(limited.total).toBe(2);
+
+    const bogus = await conn.callTool!("recent", { kind: "bogus" });
+    expect(bogus).toMatchObject({ error: expect.stringContaining("kind must be one of") });
+
+    const badSince = await conn.callTool!("recent", { sinceIso: "not-an-iso" });
+    expect(badSince).toMatchObject({ error: expect.stringContaining("parseable ISO timestamp") });
+  });
+});

@@ -17,6 +17,7 @@ import {
   createCalendarMcpServer,
   createEpisodesMcpServer,
   createFollowupsMcpServer,
+  createHistoryMcpServer,
   createLoopbackMcpMuseTools,
   createMessagingMcpServer,
   createNotesMcpServer,
@@ -74,6 +75,7 @@ export interface LoopbackToolsBundle {
   readonly followups: readonly MuseTool[];
   readonly episodes: readonly MuseTool[];
   readonly patterns: readonly MuseTool[];
+  readonly history: readonly MuseTool[];
 }
 
 export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle {
@@ -160,10 +162,26 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
     })
   );
 
+  // Unified activity-feed loopback — `muse.history.recent`.
+  // Mirrors the `muse history` CLI; lets a chat-REPL or external
+  // agent answer "what did you do last night?" without fanning
+  // out across muse.reminders.history / muse.proactive.history /
+  // muse.followups.list / etc.
+  const history = createLoopbackMcpMuseTools(
+    createHistoryMcpServer({
+      episodesFile: deps.episodesFile,
+      followupsFile: deps.followupsFile,
+      patternsFiredFile: deps.patternsFiredFile,
+      proactiveHistoryFile: deps.proactiveHistoryFile,
+      reminderHistoryFile: deps.reminderHistoryFile
+    })
+  );
+
   return {
     calendar,
     episodes,
     followups,
+    history,
     messaging,
     notes,
     notesRegistry,

@@ -17,34 +17,24 @@
  * For a JARVIS user the question "what did you do for me yesterday?"
  * crosses all five. Without this command they'd have to run four
  * separate `list`-shaped commands and merge by hand.
+ *
+ * The merge itself lives in `@muse/mcp/personal-activity-feed` so
+ * the `muse.history.recent` loopback MCP tool reuses the same
+ * implementation.
  */
 
-import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 import {
-  readFollowups,
-  readProactiveHistory,
-  readReminderHistory,
-  type PersistedFollowup
+  ACTIVITY_KINDS,
+  readActivityFeed,
+  type ActivityKind
 } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { formatLocalDateTime } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
-
-type ActivityKind = "reminder" | "proactive" | "followup" | "pattern" | "episode";
-
-interface ActivityEntry {
-  readonly kind: ActivityKind;
-  readonly whenIso: string;
-  readonly summary: string;
-  readonly status?: string;
-  readonly providerId?: string;
-  readonly destination?: string;
-  readonly id?: string;
-}
 
 interface HistoryOptions {
   readonly kind?: string;
@@ -53,109 +43,10 @@ interface HistoryOptions {
   readonly json?: boolean;
 }
 
-interface PatternFiredRow {
-  readonly patternId?: unknown;
-  readonly firedAtMs?: unknown;
-  readonly suggestion?: unknown;
-}
-
-interface EpisodeRow {
-  readonly id?: unknown;
-  readonly endedAt?: unknown;
-  readonly summary?: unknown;
-}
-
 function envOr(key: string, fallbackName: string): string {
   const v = process.env[key]?.trim();
   return v && v.length > 0 ? v : join(homedir(), ".muse", fallbackName);
 }
-
-async function safeReadJson(path: string): Promise<unknown | undefined> {
-  try {
-    const raw = await fs.readFile(path, "utf8");
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return undefined;
-  }
-}
-
-async function readReminderActivity(): Promise<readonly ActivityEntry[]> {
-  const file = envOr("MUSE_REMINDER_HISTORY_FILE", "reminder-history.json");
-  const rows = await readReminderHistory(file).catch(() => [] as const);
-  return rows.map((row): ActivityEntry => ({
-    destination: row.destination,
-    id: row.reminderId,
-    kind: "reminder",
-    providerId: row.providerId,
-    status: row.status,
-    summary: row.text,
-    whenIso: row.firedAtIso
-  }));
-}
-
-async function readProactiveActivity(): Promise<readonly ActivityEntry[]> {
-  const file = envOr("MUSE_PROACTIVE_HISTORY_FILE", "proactive-history.json");
-  const rows = await readProactiveHistory(file).catch(() => [] as const);
-  return rows.map((row): ActivityEntry => ({
-    destination: row.destination,
-    id: row.itemId,
-    kind: "proactive",
-    providerId: row.providerId,
-    status: row.status,
-    summary: row.text || row.title,
-    whenIso: row.firedAtIso
-  }));
-}
-
-async function readFollowupActivity(): Promise<readonly ActivityEntry[]> {
-  const file = envOr("MUSE_FOLLOWUPS_FILE", "followups.json");
-  const rows = await readFollowups(file).catch(() => [] as const);
-  return rows
-    .filter((row: PersistedFollowup) => row.status === "fired" && typeof row.firedAt === "string")
-    .map((row): ActivityEntry => ({
-      id: row.id,
-      kind: "followup",
-      status: "fired",
-      summary: row.summary,
-      whenIso: row.firedAt as string
-    }));
-}
-
-async function readPatternActivity(): Promise<readonly ActivityEntry[]> {
-  const file = envOr("MUSE_PATTERNS_FIRED_FILE", "patterns-fired.json");
-  const doc = await safeReadJson(file) as { fired?: readonly PatternFiredRow[] } | undefined;
-  const rows = doc?.fired ?? [];
-  return rows.flatMap((row): readonly ActivityEntry[] => {
-    if (typeof row.patternId !== "string" || typeof row.firedAtMs !== "number" || !Number.isFinite(row.firedAtMs)) {
-      return [];
-    }
-    return [{
-      id: row.patternId,
-      kind: "pattern",
-      summary: typeof row.suggestion === "string" ? row.suggestion : `pattern ${row.patternId}`,
-      whenIso: new Date(row.firedAtMs).toISOString()
-    }];
-  });
-}
-
-async function readEpisodeActivity(): Promise<readonly ActivityEntry[]> {
-  const file = envOr("MUSE_EPISODES_FILE", "episodes.json");
-  const doc = await safeReadJson(file) as { episodes?: readonly EpisodeRow[] } | undefined;
-  const rows = doc?.episodes ?? [];
-  return rows.flatMap((row): readonly ActivityEntry[] => {
-    if (typeof row.id !== "string" || typeof row.endedAt !== "string" || typeof row.summary !== "string") {
-      return [];
-    }
-    return [{
-      id: row.id,
-      kind: "episode",
-      summary: row.summary,
-      whenIso: row.endedAt
-    }];
-  });
-}
-
-const ALL_KINDS: ReadonlySet<ActivityKind> = new Set(["reminder", "proactive", "followup", "pattern", "episode"]);
 
 function parseLimit(raw: string | undefined, fallback: number, cap: number): number {
   if (!raw) return fallback;
@@ -174,34 +65,29 @@ export function registerHistoryCommand(program: Command, io: ProgramIO): void {
     .option("--json", "Emit a structured array instead of the formatted feed")
     .action(async (options: HistoryOptions) => {
       const kindFilter = options.kind?.trim().toLowerCase();
-      if (kindFilter && !ALL_KINDS.has(kindFilter as ActivityKind)) {
+      if (kindFilter && !ACTIVITY_KINDS.has(kindFilter as ActivityKind)) {
         throw new Error(`--kind must be one of: reminder, proactive, followup, pattern, episode (got '${kindFilter}')`);
       }
-      const sinceMs = options.since ? Date.parse(options.since) : Number.NEGATIVE_INFINITY;
-      if (options.since && !Number.isFinite(sinceMs)) {
-        throw new Error(`--since must be a parseable ISO timestamp (got '${options.since}')`);
+      let sinceMs: number | undefined;
+      if (options.since) {
+        const parsed = Date.parse(options.since);
+        if (!Number.isFinite(parsed)) {
+          throw new Error(`--since must be a parseable ISO timestamp (got '${options.since}')`);
+        }
+        sinceMs = parsed;
       }
       const limit = parseLimit(options.limit, 20, 200);
 
-      const readers: ReadonlyArray<readonly [ActivityKind, () => Promise<readonly ActivityEntry[]>]> = [
-        ["reminder", readReminderActivity],
-        ["proactive", readProactiveActivity],
-        ["followup", readFollowupActivity],
-        ["pattern", readPatternActivity],
-        ["episode", readEpisodeActivity]
-      ];
-      const selected = kindFilter
-        ? readers.filter(([k]) => k === kindFilter)
-        : readers;
-      const bundles = await Promise.all(selected.map(async ([, reader]) => reader()));
-      const merged = bundles.flat()
-        .filter((entry) => {
-          if (!Number.isFinite(sinceMs)) return true;
-          const t = Date.parse(entry.whenIso);
-          return Number.isFinite(t) && t >= sinceMs;
-        })
-        .sort((left, right) => right.whenIso.localeCompare(left.whenIso))
-        .slice(0, limit);
+      const merged = await readActivityFeed({
+        episodesFile: envOr("MUSE_EPISODES_FILE", "episodes.json"),
+        followupsFile: envOr("MUSE_FOLLOWUPS_FILE", "followups.json"),
+        ...(kindFilter ? { kind: kindFilter as ActivityKind } : {}),
+        limit,
+        patternsFiredFile: envOr("MUSE_PATTERNS_FIRED_FILE", "patterns-fired.json"),
+        proactiveHistoryFile: envOr("MUSE_PROACTIVE_HISTORY_FILE", "proactive-history.json"),
+        reminderHistoryFile: envOr("MUSE_REMINDER_HISTORY_FILE", "reminder-history.json"),
+        ...(sinceMs !== undefined ? { sinceMs } : {})
+      });
 
       if (options.json) {
         io.stdout(`${JSON.stringify({ entries: merged, total: merged.length }, null, 2)}\n`);

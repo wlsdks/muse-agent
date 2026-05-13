@@ -704,6 +704,25 @@ export {
   type StatusMcpServerOptions
 } from "./loopback-status.js";
 
+// Unified activity-feed loopback — `muse.history.recent` merges
+// the five personal audit stores so an agent can answer
+// "what did you do for me?" in one call instead of fanning out
+// across muse.reminders.history / muse.proactive.history / etc.
+export {
+  createHistoryMcpServer,
+  type HistoryMcpServerOptions
+} from "./loopback-history.js";
+
+// Underlying helper, exported so the CLI's `muse history` command
+// shares the merge logic instead of duplicating it.
+export {
+  ACTIVITY_KINDS,
+  readActivityFeed,
+  type ActivityEntry,
+  type ActivityKind,
+  type ReadActivityFeedOptions
+} from "./personal-activity-feed.js";
+
 // Context reference MCP server (Context Engineering 1.d
 // foundation). `muse.context.fetch` / `muse.context.list` against an
 // in-process ContextReferenceStore.
