@@ -183,6 +183,7 @@ async function collectStatus(userId: string) {
 
   return {
     model: envValue("MUSE_MODEL") ?? envValue("MUSE_DEFAULT_MODEL"),
+    providers: summariseProviders(),
     persona: {
       factCount: persona?.facts ? Object.keys(persona.facts).length : 0,
       preferenceCount: persona?.preferences ? Object.keys(persona.preferences).length : 0,
@@ -294,6 +295,34 @@ function summariseEpisodes(rows: readonly EpisodeRow[], userId: string) {
 }
 
 /**
+ * `{ configured: ["gemini", "ollama"], total: 2 }` over the five
+ * canonical provider env keys mirrored from
+ * `personal-providers.ts` + the `commands-doctor.ts` probe. Pure
+ * env-var read — does not touch the network, does not parse the
+ * credentials file (so a user who configured providers exclusively
+ * via `muse setup model` and `source` won't be misreported as
+ * "0 configured"). The credentials-file overlay is a documented
+ * limitation of `muse doctor` as well; status mirrors it on
+ * purpose for behaviour parity.
+ */
+function summariseProviders() {
+  const checks: ReadonlyArray<{ id: string; envKey: string }> = [
+    { envKey: "GEMINI_API_KEY", id: "gemini" },
+    { envKey: "ANTHROPIC_API_KEY", id: "anthropic" },
+    { envKey: "OPENAI_API_KEY", id: "openai" },
+    { envKey: "OPENROUTER_API_KEY", id: "openrouter" },
+    { envKey: "OLLAMA_BASE_URL", id: "ollama" }
+  ];
+  const configured: string[] = [];
+  for (const check of checks) {
+    if (envValue(check.envKey) !== undefined) {
+      configured.push(check.id);
+    }
+  }
+  return { configured, total: configured.length };
+}
+
+/**
  * `{ pending, fired, overdue, total, nextDueAt, nextText }` over
  * `~/.muse/reminders.json`. Reminders are single-user — there is no
  * userId field on the row, so unlike followups/episodes the filter
@@ -396,6 +425,11 @@ export function registerStatusCommand(program: Command, io: ProgramIO): void {
       }
       io.stdout("\n");
       io.stdout(`  model: ${snap.model ?? "(unset — set MUSE_MODEL or run muse setup model)"}\n`);
+      if (snap.providers.total > 0) {
+        io.stdout(`    providers: ${snap.providers.total.toString()} configured — ${snap.providers.configured.join(", ")}\n`);
+      } else {
+        io.stdout(`    providers: 0 configured — set GEMINI_API_KEY / ANTHROPIC_API_KEY / etc. or run muse setup model\n`);
+      }
       io.stdout("\n");
       io.stdout(`  tasks: ${snap.tasks.totalOpen.toString()} open, ${snap.tasks.due24h.length.toString()} due in 24 h\n`);
       for (const task of snap.tasks.due24h.slice(0, 5)) {

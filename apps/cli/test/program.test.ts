@@ -3437,6 +3437,55 @@ describe("cli program", () => {
     }
   });
 
+  it("muse status surfaces the list of providers with env keys set (envs only — no credentials-file overlay)", async () => {
+    const prev = {
+      gemini: process.env.GEMINI_API_KEY,
+      anthropic: process.env.ANTHROPIC_API_KEY,
+      openai: process.env.OPENAI_API_KEY,
+      openrouter: process.env.OPENROUTER_API_KEY,
+      ollama: process.env.OLLAMA_BASE_URL
+    };
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OLLAMA_BASE_URL;
+    process.env.GEMINI_API_KEY = "gem-test";
+    process.env.OLLAMA_BASE_URL = "http://localhost:11434";
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+      await program.parseAsync(["node", "muse", "status", "--user", "stark", "--json"], { from: "node" });
+      const snap = JSON.parse(output.join("")) as {
+        providers: { configured: readonly string[]; total: number };
+      };
+      expect(snap.providers.total).toBe(2);
+      expect(snap.providers.configured).toEqual(["gemini", "ollama"]);
+
+      const { io: io2, output: out2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      await program2.parseAsync(["node", "muse", "status", "--user", "stark"], { from: "node" });
+      expect(out2.join("")).toContain("providers: 2 configured — gemini, ollama");
+
+      delete process.env.GEMINI_API_KEY;
+      delete process.env.OLLAMA_BASE_URL;
+      const { io: io3, output: out3 } = captureOutput();
+      const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("no fetch"); } });
+      await program3.parseAsync(["node", "muse", "status", "--user", "stark"], { from: "node" });
+      expect(out3.join("")).toContain("providers: 0 configured");
+    } finally {
+      const restore = (envKey: keyof typeof prev, k: string): void => {
+        if (prev[envKey] === undefined) delete process.env[k];
+        else process.env[k] = prev[envKey];
+      };
+      restore("gemini", "GEMINI_API_KEY");
+      restore("anthropic", "ANTHROPIC_API_KEY");
+      restore("openai", "OPENAI_API_KEY");
+      restore("openrouter", "OPENROUTER_API_KEY");
+      restore("ollama", "OLLAMA_BASE_URL");
+    }
+  });
+
   it("muse status surfaces reminder pending/fired/overdue counts and next due entry", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-status-reminders-"));
     const fsp = await import("node:fs/promises");
