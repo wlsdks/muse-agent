@@ -4299,3 +4299,267 @@ describe("runDueProactiveNotices", () => {
     expect(await readProactiveHistory(garbled)).toEqual([]);
   });
 });
+
+describe("runDueFollowups", () => {
+  it("synthesizes, delivers, and marks due followups as fired", async () => {
+    const { runDueFollowups } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const dir = mkdtempSync(join(tmpdir(), "muse-followup-fire-"));
+    const file = join(dir, "followups.json");
+    writeFileSync(file, JSON.stringify({
+      followups: [
+        {
+          createdAt: "2026-05-10T00:00:00Z",
+          id: "fu_overdue",
+          scheduledFor: "2026-05-11T07:30:00Z",
+          status: "scheduled",
+          summary: "Check on the Q3 budget memo",
+          userId: "stark"
+        },
+        {
+          createdAt: "2026-05-10T00:00:00Z",
+          id: "fu_future",
+          scheduledFor: "2030-01-01T00:00:00Z",
+          status: "scheduled",
+          summary: "Year-end recap",
+          userId: "stark"
+        },
+        {
+          createdAt: "2026-05-10T00:00:00Z",
+          firedAt: "2026-05-10T12:00:00Z",
+          id: "fu_already_fired",
+          scheduledFor: "2026-05-10T00:00:00Z",
+          status: "fired",
+          summary: "Old one",
+          userId: "stark"
+        }
+      ]
+    }), "utf8");
+
+    const sent: Array<{ providerId: string; destination: string; text: string }> = [];
+    const fakeRegistry = {
+      send: async (providerId: string, message: { destination: string; text: string }) => {
+        sent.push({ destination: message.destination, providerId, text: message.text });
+        return { destination: message.destination, messageId: "stub", providerId };
+      }
+    };
+    const generateCalls: Array<{ model: string; messages: readonly { role: string; content: string }[] }> = [];
+    const modelProvider = {
+      generate: async (req: { model: string; messages: readonly { role: "system" | "user" | "assistant"; content: string }[] }) => {
+        generateCalls.push({ messages: req.messages, model: req.model });
+        return { output: "Quick check on the Q3 budget memo — any blockers I can chase down?" };
+      }
+    };
+
+    const summary = await runDueFollowups({
+      destination: "@me",
+      file,
+      model: "gemini-2.0-flash",
+      modelProvider,
+      now: () => new Date("2026-05-11T08:00:00Z"),
+      providerId: "telegram",
+      registry: fakeRegistry as unknown as Parameters<typeof runDueFollowups>[0]["registry"]
+    });
+
+    expect(summary).toMatchObject({ delivered: 1, due: 1, errors: [] });
+    expect(summary.fired[0]).toMatchObject({ id: "fu_overdue", status: "fired" });
+    expect(sent).toEqual([{
+      destination: "@me",
+      providerId: "telegram",
+      text: "Quick check on the Q3 budget memo — any blockers I can chase down?"
+    }]);
+    expect(generateCalls).toHaveLength(1);
+    expect(generateCalls[0]?.messages[1]?.content).toContain("Check on the Q3 budget memo");
+
+    const persisted = JSON.parse(readFileSync(file, "utf8")) as {
+      followups: Array<{ id: string; status: string; firedAt?: string }>;
+    };
+    expect(persisted.followups.find((f) => f.id === "fu_overdue")).toMatchObject({ status: "fired" });
+    expect(persisted.followups.find((f) => f.id === "fu_future")).toMatchObject({ status: "scheduled" });
+    expect(persisted.followups.find((f) => f.id === "fu_already_fired")).toMatchObject({ status: "fired" });
+  });
+
+  it("zero-due is a no-op: no synthesis, no send, no rewrite", async () => {
+    const { runDueFollowups } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync, statSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const dir = mkdtempSync(join(tmpdir(), "muse-followup-empty-"));
+    const file = join(dir, "followups.json");
+    writeFileSync(file, JSON.stringify({
+      followups: [{
+        createdAt: "2026-05-10T00:00:00Z",
+        id: "fu_future",
+        scheduledFor: "2030-01-01T00:00:00Z",
+        status: "scheduled",
+        summary: "Not yet",
+        userId: "stark"
+      }]
+    }), "utf8");
+    const before = statSync(file).mtimeMs;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    const summary = await runDueFollowups({
+      destination: "@me",
+      file,
+      model: "gemini-2.0-flash",
+      modelProvider: {
+        generate: async () => { throw new Error("must not be called"); }
+      },
+      now: () => new Date("2026-05-11T00:00:00Z"),
+      providerId: "telegram",
+      registry: {
+        send: async () => { throw new Error("must not be called"); }
+      } as unknown as Parameters<typeof runDueFollowups>[0]["registry"]
+    });
+    expect(summary).toMatchObject({ delivered: 0, due: 0, errors: [] });
+    expect(statSync(file).mtimeMs).toBe(before);
+  });
+
+  it("captures per-followup errors without aborting the loop", async () => {
+    const { runDueFollowups } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const dir = mkdtempSync(join(tmpdir(), "muse-followup-err-"));
+    const file = join(dir, "followups.json");
+    writeFileSync(file, JSON.stringify({
+      followups: [
+        {
+          createdAt: "2026-05-10T00:00:00Z",
+          id: "fu_a",
+          scheduledFor: "2026-05-11T07:30:00Z",
+          status: "scheduled",
+          summary: "Promise A",
+          userId: "stark"
+        },
+        {
+          createdAt: "2026-05-10T00:00:00Z",
+          id: "fu_b",
+          scheduledFor: "2026-05-11T07:31:00Z",
+          status: "scheduled",
+          summary: "Promise B",
+          userId: "stark"
+        }
+      ]
+    }), "utf8");
+
+    let sendCalls = 0;
+    const fakeRegistry = {
+      send: async () => {
+        sendCalls += 1;
+        if (sendCalls === 1) {
+          throw new Error("upstream 503");
+        }
+        return { destination: "@me", messageId: "ok", providerId: "telegram" };
+      }
+    };
+    const summary = await runDueFollowups({
+      destination: "@me",
+      file,
+      model: "gemini-2.0-flash",
+      modelProvider: {
+        generate: async () => ({ output: "Following up." })
+      },
+      now: () => new Date("2026-05-11T08:00:00Z"),
+      providerId: "telegram",
+      registry: fakeRegistry as unknown as Parameters<typeof runDueFollowups>[0]["registry"]
+    });
+
+    expect(summary.due).toBe(2);
+    expect(summary.delivered).toBe(1);
+    expect(summary.errors).toHaveLength(1);
+    expect(summary.errors[0]).toContain("fu_a");
+    expect(summary.errors[0]).toContain("upstream 503");
+
+    const persisted = JSON.parse(readFileSync(file, "utf8")) as {
+      followups: Array<{ id: string; status: string }>;
+    };
+    expect(persisted.followups.find((f) => f.id === "fu_a")).toMatchObject({ status: "scheduled" });
+    expect(persisted.followups.find((f) => f.id === "fu_b")).toMatchObject({ status: "fired" });
+  });
+
+  it("records an error and skips delivery when synthesis returns empty text", async () => {
+    const { runDueFollowups } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const dir = mkdtempSync(join(tmpdir(), "muse-followup-empty-synth-"));
+    const file = join(dir, "followups.json");
+    writeFileSync(file, JSON.stringify({
+      followups: [{
+        createdAt: "2026-05-10T00:00:00Z",
+        id: "fu_blank",
+        scheduledFor: "2026-05-11T07:30:00Z",
+        status: "scheduled",
+        summary: "Anything",
+        userId: "stark"
+      }]
+    }), "utf8");
+
+    let sendCalled = false;
+    const summary = await runDueFollowups({
+      destination: "@me",
+      file,
+      model: "gemini-2.0-flash",
+      modelProvider: { generate: async () => ({ output: "   " }) },
+      now: () => new Date("2026-05-11T08:00:00Z"),
+      providerId: "telegram",
+      registry: {
+        send: async () => {
+          sendCalled = true;
+          return { destination: "@me", messageId: "x", providerId: "telegram" };
+        }
+      } as unknown as Parameters<typeof runDueFollowups>[0]["registry"]
+    });
+
+    expect(sendCalled).toBe(false);
+    expect(summary.delivered).toBe(0);
+    expect(summary.errors[0]).toContain("synthesis returned empty text");
+    const persisted = JSON.parse(readFileSync(file, "utf8")) as {
+      followups: Array<{ id: string; status: string }>;
+    };
+    expect(persisted.followups.find((f) => f.id === "fu_blank")).toMatchObject({ status: "scheduled" });
+  });
+
+  it("respects maxPerTick — leaves overflow due-but-not-fired", async () => {
+    const { runDueFollowups } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const dir = mkdtempSync(join(tmpdir(), "muse-followup-cap-"));
+    const file = join(dir, "followups.json");
+    writeFileSync(file, JSON.stringify({
+      followups: [1, 2, 3, 4, 5].map((n) => ({
+        createdAt: "2026-05-10T00:00:00Z",
+        id: `fu_${n.toString()}`,
+        scheduledFor: "2026-05-11T07:00:00Z",
+        status: "scheduled",
+        summary: `Promise ${n.toString()}`,
+        userId: "stark"
+      }))
+    }), "utf8");
+
+    const summary = await runDueFollowups({
+      destination: "@me",
+      file,
+      maxPerTick: 2,
+      model: "gemini-2.0-flash",
+      modelProvider: { generate: async () => ({ output: "Following up." }) },
+      now: () => new Date("2026-05-11T08:00:00Z"),
+      providerId: "telegram",
+      registry: {
+        send: async () => ({ destination: "@me", messageId: "ok", providerId: "telegram" })
+      } as unknown as Parameters<typeof runDueFollowups>[0]["registry"]
+    });
+
+    expect(summary).toMatchObject({ delivered: 2, due: 2 });
+  });
+});

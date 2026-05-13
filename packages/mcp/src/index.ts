@@ -537,6 +537,15 @@ export {
   type PersistedFollowup
 } from "./personal-followups-store.js";
 
+// Self-followup firing engine — step 4 of agent-self-followup.md.
+// Re-enters the model to compose the delivery message, sends via
+// the messaging registry, marks the entry fired.
+export {
+  runDueFollowups,
+  type RunDueFollowupsOptions,
+  type RunDueFollowupsSummary
+} from "./followup-firing-loop.js";
+
 // Personal reminders store — passive reminder list shared between
 // the REST routes, the CLI, and `muse today` (both surfaces).
 export {
