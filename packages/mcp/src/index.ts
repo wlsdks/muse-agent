@@ -519,6 +519,24 @@ export {
   type TaskStatusFilter
 } from "./personal-tasks-store.js";
 
+// Personal followups store — agent-self-followup design doc step 2.
+// The detector (`extractFollowupPromises` in @muse/agent-core)
+// produces typed promises; this layer persists them to
+// `~/.muse/followups.json` so the firing daemon (later step) can
+// pick them up and honour them.
+export {
+  cancelFollowup,
+  markFollowupFired,
+  readFollowups,
+  readFollowupStatusFilter,
+  serializeFollowup,
+  upsertFollowup,
+  writeFollowups,
+  type FollowupStatus,
+  type FollowupStatusFilter,
+  type PersistedFollowup
+} from "./personal-followups-store.js";
+
 // Personal reminders store — passive reminder list shared between
 // the REST routes, the CLI, and `muse today` (both surfaces).
 export {

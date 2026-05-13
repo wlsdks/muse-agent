@@ -1,0 +1,169 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+
+import {
+  cancelFollowup,
+  markFollowupFired,
+  readFollowups,
+  readFollowupStatusFilter,
+  serializeFollowup,
+  upsertFollowup,
+  writeFollowups,
+  type PersistedFollowup
+} from "./personal-followups-store.js";
+
+function tmpFile(): string {
+  const dir = mkdtempSync(join(tmpdir(), "muse-followups-"));
+  return join(dir, "followups.json");
+}
+
+function fixture(overrides: Partial<PersistedFollowup> = {}): PersistedFollowup {
+  return {
+    createdAt: "2026-05-13T10:00:00.000Z",
+    id: "fu_test_1",
+    scheduledFor: "2026-05-13T10:30:00.000Z",
+    status: "scheduled",
+    summary: "check Q3 budget memo",
+    userId: "stark",
+    ...overrides
+  };
+}
+
+describe("readFollowups", () => {
+  it("returns [] when the file is missing", async () => {
+    expect(await readFollowups("/nonexistent/path/followups.json")).toEqual([]);
+  });
+
+  it("returns [] when the JSON is invalid", async () => {
+    const file = tmpFile();
+    writeFileSync(file, "{not json", "utf8");
+    expect(await readFollowups(file)).toEqual([]);
+  });
+
+  it("returns [] when the shape is wrong (missing followups array)", async () => {
+    const file = tmpFile();
+    writeFileSync(file, JSON.stringify({ wrong: "shape" }), "utf8");
+    expect(await readFollowups(file)).toEqual([]);
+  });
+
+  it("filters out malformed entries while keeping valid ones", async () => {
+    const file = tmpFile();
+    writeFileSync(file, JSON.stringify({
+      followups: [
+        fixture({ id: "fu_ok" }),
+        { id: "fu_no_user", scheduledFor: "x", createdAt: "x", summary: "x", status: "scheduled" }, // missing userId
+        fixture({ id: "fu_bad_status", status: "garbage" as never })
+      ]
+    }), "utf8");
+    const out = await readFollowups(file);
+    expect(out.map((f) => f.id)).toEqual(["fu_ok"]);
+  });
+});
+
+describe("writeFollowups", () => {
+  it("round-trips an array of followups through the on-disk shape", async () => {
+    const file = tmpFile();
+    const original = [fixture({ id: "fu_a" }), fixture({ id: "fu_b", summary: "second" })];
+    await writeFollowups(file, original);
+    const reloaded = await readFollowups(file);
+    expect(reloaded).toHaveLength(2);
+    expect(reloaded.map((f) => f.id).sort()).toEqual(["fu_a", "fu_b"]);
+  });
+});
+
+describe("upsertFollowup", () => {
+  it("appends a new id", async () => {
+    const file = tmpFile();
+    await upsertFollowup(file, fixture({ id: "fu_1" }));
+    await upsertFollowup(file, fixture({ id: "fu_2", summary: "second" }));
+    const all = await readFollowups(file);
+    expect(all.map((f) => f.id).sort()).toEqual(["fu_1", "fu_2"]);
+  });
+
+  it("replaces an existing id in place rather than duplicating", async () => {
+    const file = tmpFile();
+    await upsertFollowup(file, fixture({ id: "fu_1", summary: "v1" }));
+    await upsertFollowup(file, fixture({ id: "fu_1", summary: "v2" }));
+    const all = await readFollowups(file);
+    expect(all).toHaveLength(1);
+    expect(all[0]?.summary).toBe("v2");
+  });
+});
+
+describe("markFollowupFired", () => {
+  it("flips status scheduled → fired and stamps firedAt", async () => {
+    const file = tmpFile();
+    await upsertFollowup(file, fixture({ id: "fu_fire" }));
+    const result = await markFollowupFired(file, "fu_fire", "2026-05-13T10:30:01.000Z");
+    expect(result?.status).toBe("fired");
+    expect(result?.firedAt).toBe("2026-05-13T10:30:01.000Z");
+    const all = await readFollowups(file);
+    expect(all[0]?.status).toBe("fired");
+  });
+
+  it("returns undefined when the id is not found", async () => {
+    const file = tmpFile();
+    await upsertFollowup(file, fixture({ id: "fu_x" }));
+    expect(await markFollowupFired(file, "fu_missing", "2026-05-13T10:30:01.000Z")).toBeUndefined();
+  });
+
+  it("returns undefined when the followup is already fired", async () => {
+    const file = tmpFile();
+    await upsertFollowup(file, fixture({ id: "fu_done", firedAt: "x", status: "fired" }));
+    expect(await markFollowupFired(file, "fu_done", "2026-05-13T10:30:01.000Z")).toBeUndefined();
+  });
+});
+
+describe("cancelFollowup", () => {
+  it("flips status scheduled → cancelled with the supplied reason", async () => {
+    const file = tmpFile();
+    await upsertFollowup(file, fixture({ id: "fu_cancel" }));
+    const result = await cancelFollowup(file, "fu_cancel", "user-cancelled");
+    expect(result?.status).toBe("cancelled");
+    expect(result?.cancelReason).toBe("user-cancelled");
+  });
+
+  it("returns undefined when the followup is already fired", async () => {
+    const file = tmpFile();
+    await upsertFollowup(file, fixture({ id: "fu_old", firedAt: "x", status: "fired" }));
+    expect(await cancelFollowup(file, "fu_old", "snooze-replaced")).toBeUndefined();
+  });
+});
+
+describe("serializeFollowup", () => {
+  it("omits optional fields that are undefined", () => {
+    const out = serializeFollowup(fixture()) as Record<string, unknown>;
+    expect("firedAt" in out).toBe(false);
+    expect("cancelReason" in out).toBe(false);
+    expect("originRunId" in out).toBe(false);
+    expect("kind" in out).toBe(false);
+  });
+
+  it("includes optional fields that are set", () => {
+    const out = serializeFollowup(fixture({
+      firedAt: "2026-05-13T10:30:01.000Z",
+      kind: "relative-minutes",
+      originRunId: "run_abc",
+      originTurnHash: "sha256:deadbeef"
+    })) as Record<string, unknown>;
+    expect(out.firedAt).toBe("2026-05-13T10:30:01.000Z");
+    expect(out.kind).toBe("relative-minutes");
+    expect(out.originRunId).toBe("run_abc");
+    expect(out.originTurnHash).toBe("sha256:deadbeef");
+  });
+});
+
+describe("readFollowupStatusFilter", () => {
+  it("defaults to 'scheduled' for unknown / undefined input", () => {
+    expect(readFollowupStatusFilter(undefined)).toBe("scheduled");
+    expect(readFollowupStatusFilter("nonsense")).toBe("scheduled");
+  });
+
+  it("passes the canonical statuses through", () => {
+    expect(readFollowupStatusFilter("fired")).toBe("fired");
+    expect(readFollowupStatusFilter("cancelled")).toBe("cancelled");
+    expect(readFollowupStatusFilter("all")).toBe("all");
+  });
+});
