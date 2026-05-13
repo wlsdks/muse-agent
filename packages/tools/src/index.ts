@@ -64,7 +64,18 @@ export interface ToolDescriptionIssue {
   readonly toolName: string;
 }
 
-export type ToolExposureScope = "conversation" | "workspace" | "local";
+/**
+ * Marker that a tool requires the local execution mode (CLI / runner)
+ * rather than the normal API-server context. The exposure policy
+ * blocks tools tagged `"local"` when `localMode !== true`.
+ *
+ * Historically this was a `"conversation" | "workspace" | "local"`
+ * union, but only `"local"` was ever read as a runtime discriminator
+ * and nothing registered tools with the other two values — that was
+ * multi-tenant residue. The union now carries only the value that
+ * actually drives behaviour; future scopes can extend it.
+ */
+export type ToolExposureScope = "local";
 
 export interface ToolExposureContext {
   readonly allowedToolNames?: readonly string[];
