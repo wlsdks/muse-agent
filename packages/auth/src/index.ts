@@ -1,7 +1,13 @@
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import type { MuseDatabase, UserTable } from "@muse/db";
 import { createRunId } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
+
+import { AuthError } from "./auth-error.js";
+import { defaultJwtExpirationMs, JwtTokenProvider } from "./jwt.js";
+
+export { AuthError } from "./auth-error.js";
+export { JwtTokenProvider } from "./jwt.js";
 
 export type Awaitable<T> = T | Promise<T>;
 
@@ -20,18 +26,6 @@ export interface UserInput {
   readonly passwordHash: string;
   readonly createdAt?: Date;
   readonly updatedAt?: Date;
-}
-
-/**
- * Internal — only `JwtTokenProvider`'s constructor reads this.
- * Dropped from the public surface in the personal-irrelevant sweep;
- * the `selfRegistrationEnabled` field went too (zero references
- * anywhere in the repo, leftover from a multi-tenant abstraction
- * that never landed on this side).
- */
-interface AuthProperties {
-  readonly jwtSecret: string;
-  readonly jwtExpirationMs?: number;
 }
 
 export interface AuthProvider {
@@ -60,16 +54,6 @@ export interface AsyncUserStore {
   update(user: UserInput): Promise<User>;
   existsByEmail(email: string): Promise<boolean>;
   count(): Promise<number>;
-}
-
-/** Internal — encoded into JWTs by `JwtTokenProvider` + decoded back. */
-interface JwtClaims {
-  readonly sub: string;
-  readonly jti: string;
-  readonly email: string;
-  readonly iat: number;
-  readonly exp: number;
-  readonly accountId?: string;
 }
 
 export interface AuthIdentity {
@@ -121,21 +105,9 @@ export interface MuseAuth {
 
 export const anonymousActor = "anonymous";
 
-const defaultJwtExpirationMs = 86_400_000;
-const minimumJwtSecretBytes = 32;
 const passwordHashVersion = "scrypt-v1";
 const passwordKeyLength = 64;
 const defaultMaxUsers = 10_000;
-
-export class AuthError extends Error {
-  readonly code: string;
-
-  constructor(code: string, message: string) {
-    super(message);
-    this.name = "AuthError";
-    this.code = code;
-  }
-}
 
 export class InMemoryUserStore implements UserStore {
   private readonly maxUsers: number;
@@ -348,64 +320,6 @@ export class KyselyAuthProvider implements AsyncAuthProvider {
 
   hashPassword(password: string): string {
     return this.passwordHasher.hashPassword(password);
-  }
-}
-
-export class JwtTokenProvider {
-  private readonly jwtExpirationMs: number;
-  private readonly secret: Buffer;
-
-  constructor(private readonly properties: AuthProperties) {
-    this.jwtExpirationMs = properties.jwtExpirationMs ?? defaultJwtExpirationMs;
-    this.secret = Buffer.from(properties.jwtSecret);
-
-    if (this.secret.byteLength < minimumJwtSecretBytes) {
-      throw new AuthError(
-        "WEAK_JWT_SECRET",
-        `JWT secret must be at least ${minimumJwtSecretBytes} bytes for HS256`
-      );
-    }
-  }
-
-  createToken(user: User, now = new Date()): string {
-    const issuedAt = Math.floor(now.getTime() / 1_000);
-    const expiresAt = Math.floor((now.getTime() + this.jwtExpirationMs) / 1_000);
-    const claims: JwtClaims = {
-      email: user.email,
-      exp: expiresAt,
-      iat: issuedAt,
-      jti: createRunId("token"),
-      sub: user.id
-    };
-
-    return signJwt(claims, this.secret);
-  }
-
-  parseToken(token: string, now = new Date()): JwtClaims | undefined {
-    const claims = verifyJwt(token, this.secret);
-
-    if (!claims || claims.exp <= Math.floor(now.getTime() / 1_000)) {
-      return undefined;
-    }
-
-    return claims;
-  }
-
-  validateToken(token: string, now = new Date()): string | undefined {
-    return this.parseToken(token, now)?.sub;
-  }
-
-  extractEmail(token: string): string | undefined {
-    return this.parseToken(token)?.email;
-  }
-
-  extractTokenId(token: string): string | undefined {
-    return this.parseToken(token)?.jti;
-  }
-
-  extractExpiration(token: string): Date | undefined {
-    const claims = this.parseToken(token);
-    return claims ? new Date(claims.exp * 1_000) : undefined;
   }
 }
 
@@ -684,64 +598,5 @@ export function mapUserRow(row: UserRow): User {
 
 function toDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
-}
-
-function signJwt(claims: JwtClaims, secret: Buffer): string {
-  const header = { alg: "HS256", typ: "JWT" };
-  const unsigned = `${base64UrlJson(header)}.${base64UrlJson(claims)}`;
-  const signature = createHmac("sha256", secret).update(unsigned).digest("base64url");
-  return `${unsigned}.${signature}`;
-}
-
-function verifyJwt(token: string, secret: Buffer): JwtClaims | undefined {
-  const [header, payload, signature] = token.split(".");
-
-  if (!header || !payload || !signature) {
-    return undefined;
-  }
-
-  const expected = createHmac("sha256", secret).update(`${header}.${payload}`).digest("base64url");
-  const expectedBuffer = Buffer.from(expected);
-  const actualBuffer = Buffer.from(signature);
-
-  if (expectedBuffer.length !== actualBuffer.length || !timingSafeEqual(expectedBuffer, actualBuffer)) {
-    return undefined;
-  }
-
-  const parsedHeader = parseBase64UrlJson(header);
-
-  if (!isRecord(parsedHeader) || parsedHeader.alg !== "HS256") {
-    return undefined;
-  }
-
-  const parsedClaims = parseBase64UrlJson(payload);
-  return isJwtClaims(parsedClaims) ? parsedClaims : undefined;
-}
-
-function base64UrlJson(value: unknown): string {
-  return Buffer.from(JSON.stringify(value)).toString("base64url");
-}
-
-function parseBase64UrlJson(value: string): unknown {
-  try {
-    return JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as unknown;
-  } catch {
-    return undefined;
-  }
-}
-
-function isJwtClaims(value: unknown): value is JwtClaims {
-  return (
-    isRecord(value) &&
-    typeof value.sub === "string" &&
-    typeof value.jti === "string" &&
-    typeof value.email === "string" &&
-    typeof value.iat === "number" &&
-    typeof value.exp === "number"
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
