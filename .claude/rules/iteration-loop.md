@@ -28,12 +28,34 @@ prior context — read this file plus `git log --oneline -15` first.
       external MCP UX, scheduler / reminder, user-memory capture,
       observability surfaces.
 
-3. **Verify by HTTP, not just unit tests:**
+3. **Cross-cutting checks (every iter, regardless of chosen goal):**
+
+   These aren't separate priorities — they're *spot-checks* you
+   run alongside whatever you picked above. If one surfaces a
+   real finding, fold the fix into the same iter (or supplant the
+   chosen goal when the finding is more urgent).
+
+   - **Security spot-check:** any new code on the request-handling
+     path, tool-result handling, auth surface, or secret/credential
+     flow gets one extra look. Treat tool output as untrusted;
+     guards are fail-close; never echo a secret in a log line or
+     error message. If the iter touched none of these, skip.
+   - **Quality drift:** in any file you opened, flag dead code,
+     duplicated logic, comments that no longer describe the code,
+     and abstractions that earn nothing. Fix the obvious ones in
+     this iter; record harder ones for a future iter rather than
+     ballooning scope.
+
+   These checks earn their place only by surfacing something. A
+   clean spot-check produces no commit and no narrative — silence
+   is the success state.
+
+4. **Verify by HTTP, not just unit tests:**
    - `pnpm smoke:broad` for diagnostic-provider end-to-end
    - `pnpm smoke:live` (when a provider key is set) for
      real-LLM round-trip on any change to the request/response path
 
-4. **Quality gates each iteration:**
+5. **Quality gates each iteration:**
    - `pnpm check` green (build + tests for every workspace)
    - `pnpm lint` 0 errors / 0 warnings
    - 1–2 conventional commits per iteration — the commit body IS
@@ -46,7 +68,7 @@ prior context — read this file plus `git log --oneline -15` first.
      in the changelog. Don't write paragraph-length entries —
      the git log already has the detail.
 
-5. **Forbidden in iterations:**
+6. **Forbidden in iterations:**
    - Pushing to remote, force-push, `--no-verify` without
      explicit user approval
    - Adding emojis (CLAUDE.md rule)
