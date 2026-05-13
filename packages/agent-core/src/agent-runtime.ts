@@ -9,7 +9,6 @@ import {
 import {
   ModelProviderRegistry,
   parseModelName,
-  type ModelEvent,
   type ModelMessage,
   type ModelProvider,
   type ModelRequest,
@@ -84,10 +83,7 @@ import {
   executeStreamingModelLoop as executeStreamingModelLoopFn,
   type ModelLoopRunner
 } from "./model-loop.js";
-import {
-  isPlanExecuteMode,
-  type PlanStep
-} from "./plan-execute.js";
+import { isPlanExecuteMode } from "./plan-execute.js";
 import {
   executePlanExecuteLoop as executePlanExecuteLoopFn,
   streamPlanExecute as streamPlanExecuteFn
@@ -125,152 +121,26 @@ import type {
   HookStage,
   OutputGuardStage,
   ResponseFilterStage,
-  UserMemoryInjectionOptions,
   UserMemoryProvider
 } from "./types.js";
+import type {
+  AgentRuntimeOptions,
+  AgentRuntimeStreamEvent,
+  ToolApprovalGate
+} from "./agent-runtime-types.js";
 
-export interface AgentRuntimeOptions {
-  readonly modelProvider?: ModelProvider;
-  readonly modelRegistry?: ModelProviderRegistry;
-  readonly agentSpecResolver?: AgentSpecResolver;
-  readonly historyStore?: AgentRunHistoryStore;
-  readonly checkpointStore?: CheckpointStore;
-  readonly hookRegistry?: HookRegistry;
-  readonly hookTraceStore?: HookTraceStore;
-  readonly responseCache?: ResponseCache;
-  readonly cacheMetrics?: CacheMetricsRecorder;
-  readonly guardBlockRateMonitor?: GuardBlockRateMonitor;
-  readonly toolRegistry?: ToolRegistry;
-  readonly toolExecutor?: ToolExecutor;
-  readonly toolExposurePolicy?: ToolExposurePolicy;
-  readonly maxToolCalls?: number;
-  /**
-   * Per-tool-result character cap (Context Engineering step 1.b,
-   * When set and a tool returns more than `maxChars`
-   * characters, the message-bound copy is truncated head+tail with
-   * an explicit elision marker so the agent sees the truncation
-   * rather than guessing why the result looks short. The original
-   * result on traces / metrics stays intact. 0 or undefined = no
-   * cap (legacy behavior).
-   */
-  readonly maxToolOutputChars?: number;
-  /**
-   * Optional ContextReferenceStore for just-in-time retrieval
-   * (Context Engineering step 1.d). When provided AND a
-   * tool result triggers truncation, the full original output is
-   * stashed in the store under a sha256-prefix id and the
-   * truncation marker surfaces `ref=<id>` so the agent can call
-   * `muse.context.fetch({ ref })` to expand on demand. Same
-   * content → same ref so repeated truncations dedupe. When
-   * undefined, truncation behaves exactly as it did 
-   * (head+tail+marker, no ref).
-   */
-  readonly contextReferenceStore?: ContextReferenceStore;
-  readonly circuitBreaker?: CircuitBreaker;
-  readonly fallbackStrategy?: FallbackStrategy;
-  readonly retry?: RetryOptions;
-  readonly requestTimeoutMs?: number;
-  readonly contextWindow?: ConversationTrimOptions;
-  readonly metrics?: AgentMetrics;
-  readonly tracer?: MuseTracer;
-  readonly tokenUsageSink?: TokenUsageSink;
-  readonly userMemoryProvider?: UserMemoryProvider;
-  readonly userMemoryInjection?: UserMemoryInjectionOptions;
-  readonly conversationSummaryStore?: ConversationSummaryStore;
-  readonly guards?: readonly GuardStage[];
-  readonly hooks?: readonly HookStage[];
-  readonly outputGuards?: readonly OutputGuardStage[];
-  readonly responseFilters?: readonly ResponseFilterStage[];
-  readonly exemplarRetriever?: ExemplarRetriever;
-  readonly exemplarTopK?: number;
-  readonly promptLayerRegistry?: PromptLayerRegistry;
-  /**
-   * Context Engineering Phase 1: pull current time / timezone /
-   * working-hours / active task and inject as a `[Active Context]`
-   * system-prompt block. Fail-open per transform.
-   */
-  readonly activeContextProvider?: ActiveContextProvider;
-  /**
-   * Context Engineering Phase 2: surface recent inbound messages
-   * (Slack / Discord / Telegram / LINE) as a `[Recent Messages]`
-   * system-prompt block.
-   */
-  readonly inboxContextProvider?: InboxContextProvider;
-  /**
-   * Context Engineering Phase 3: retrieve top-K prior session
-   * summaries and inject as `[Episodic Memory]`.
-   */
-  readonly episodicRecallProvider?: EpisodicRecallProvider;
-  /**
-   * Context Engineering Phase 4: filter the tool catalog advertised
-   * per request by user-prompt keywords + metadata scope hints.
-   */
-  readonly toolFilter?: ToolFilter;
-  /**
-   * SKILL.md catalog provider — surfaces an `[Available Skills]`
-   * block listing registered external-CLI integrations.
-   */
-  readonly skillCatalogProvider?: SkillCatalogProvider;
-  /**
-   * Telemetry aggregator (phase A). When provided, the runtime
-   * records one `RunTelemetryEvent` per successful run so the
-   * operator can later query daily / weekly summaries via
-   * `aggregator.summary()`.
-   */
-  readonly telemetryAggregator?: TelemetryAggregator;
-  /**
-   * Runtime gate consulted before each tool call. Returning
-   * `{ allowed: false, reason }` short-circuits the executor and
-   * surfaces a blocked-tool result so the model sees the rejection
-   * and the run history records it. The personal-JARVIS shape uses
-   * this to enforce ~/.muse/trust.json: read tools pass, execute
-   * tools require an entry in `trustedTools`, anything in
-   * `blockedTools` is always rejected.
-   */
-  readonly toolApprovalGate?: ToolApprovalGate;
-  readonly defaults?: {
-    readonly maxOutputTokens?: number;
-    readonly temperature?: number;
-  };
-}
-
-export type ToolRiskLevel = "read" | "write" | "execute";
-
-export interface ToolApprovalGateInput {
-  readonly toolCall: ModelToolCall;
-  readonly risk: ToolRiskLevel;
-  readonly userId?: string;
-  readonly runId: string;
-}
-
-export interface ToolApprovalGateDecision {
-  readonly allowed: boolean;
-  readonly reason?: string;
-}
-
-export type ToolApprovalGate = (
-  input: ToolApprovalGateInput
-) => ToolApprovalGateDecision | Promise<ToolApprovalGateDecision>;
-
-export type AgentRuntimeStreamEvent =
-  | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "text-delta" }>)
-  | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call" }>)
-  | { readonly runId: string; readonly toolCall: ModelToolCall; readonly type: "tool-result" }
-  | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call-started" }>)
-  | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call-finished" }>)
-  | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "citations" }>)
-  | { readonly plan: readonly PlanStep[]; readonly runId: string; readonly type: "plan-generated" }
-  | {
-      readonly description: string;
-      readonly runId: string;
-      readonly stepIndex: number;
-      readonly tool: string;
-      readonly type: "plan-step-executing";
-    }
-  | { readonly runId: string; readonly stepIndex: number; readonly success: boolean; readonly type: "plan-step-result" }
-  | { readonly runId: string; readonly type: "synthesis-started" }
-  | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "done" }>)
-  | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "error" }>);
+// Public types and option shapes live in ./agent-runtime-types.ts.
+// Re-exported here so existing consumers — the @muse/agent-core
+// barrel + tests — keep working through the historical
+// `./agent-runtime.js` path.
+export type {
+  AgentRuntimeOptions,
+  AgentRuntimeStreamEvent,
+  ToolApprovalGate,
+  ToolApprovalGateDecision,
+  ToolApprovalGateInput,
+  ToolRiskLevel
+} from "./agent-runtime-types.js";
 
 export class AgentRuntime {
   private readonly modelProvider?: ModelProvider;
