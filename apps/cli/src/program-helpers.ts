@@ -1,0 +1,478 @@
+/**
+ * Infrastructure helpers extracted from `program.ts`:
+ *
+ *   - HTTP wire: `apiRequest`, `friendlyFetchError`, SSE stream
+ *     parsing (`readSseEvents`, `parseSseEvent`, `readSseField`).
+ *   - Local config: `readConfigStore`, `writeConfigStore`,
+ *     `setConfigValue`, `configPath`, `readApiOptions`.
+ *   - Interactive auth: `resolveAuthToken`, `promptText`,
+ *     `promptPassword`, `readPromptValue`.
+ *   - Output shaping: `writeOutput`, `dropUndefined`.
+ *   - Run-log persistence: `writeRunLog`, `readResponseRunId`,
+ *     `renderActiveContext`.
+ *   - Misc guards: `isNodeError`.
+ *
+ * Everything here is provider-neutral and chat-REPL-independent;
+ * the chat REPL itself stays in program.ts (next decomp phase
+ * will lift it into chat-repl.ts).
+ */
+
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+import { isCancel, password, text } from "@clack/prompts";
+import type { Command } from "commander";
+
+import { isRecord, readStoredToken } from "./credential-store.js";
+import { formatCitations } from "./human-formatters.js";
+import type { ProgramIO } from "./program.js";
+
+export interface ApiOptions {
+  readonly baseUrl: string;
+  readonly token?: string;
+}
+
+export interface MuseCliConfig {
+  readonly apiUrl?: string;
+  readonly defaultModel?: string;
+}
+
+export interface ReadApiOptionsOptions {
+  readonly includeStoredToken?: boolean;
+}
+
+export interface SseEvent {
+  readonly data: string;
+  readonly event: string;
+}
+
+export interface RunLogInput {
+  readonly apiUrl?: string;
+  readonly message: string;
+  readonly model?: string;
+  readonly response: unknown;
+  readonly source?: "cli.local" | "cli.remote" | "cli.remote.stream";
+}
+
+export function defaultConfigPath(home = process.env.HOME ?? "~"): string {
+  return path.join(home, ".config", "muse", "config.json");
+}
+
+export function configPath(io: ProgramIO): string {
+  return io.configDir ? path.join(io.configDir, "config.json") : defaultConfigPath();
+}
+
+export async function resolveAuthToken(io: ProgramIO, token: string | undefined): Promise<string> {
+  const trimmed = token?.trim();
+
+  if (trimmed && trimmed.length > 0) {
+    return trimmed;
+  }
+
+  return promptPassword(io, { message: "Muse API token" });
+}
+
+export async function promptText(
+  io: ProgramIO,
+  options: { readonly message: string; readonly placeholder?: string }
+): Promise<string> {
+  const value = io.prompts
+    ? await io.prompts.text(options)
+    : await text(options);
+
+  return readPromptValue(value, "Prompt was cancelled");
+}
+
+export async function promptPassword(io: ProgramIO, options: { readonly message: string }): Promise<string> {
+  const value = io.prompts
+    ? await io.prompts.password(options)
+    : await password(options);
+
+  return readPromptValue(value, "Authentication was cancelled");
+}
+
+function readPromptValue(value: unknown, cancelMessage: string): string {
+  if (isCancel(value)) {
+    throw new Error(cancelMessage);
+  }
+
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error("Interactive input must not be empty");
+  }
+
+  return value.trim();
+}
+
+export async function apiRequest(
+  io: ProgramIO,
+  command: Command,
+  reqPath: string,
+  body?: Record<string, unknown>,
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+) {
+  const { baseUrl, token } = await readApiOptions(io, command);
+  let response: Response;
+  try {
+    response = await (io.fetch ?? globalThis.fetch)(new URL(reqPath, baseUrl).toString(), {
+      body: body ? JSON.stringify(dropUndefined(body)) : undefined,
+      headers: {
+        ...(body ? { "content-type": "application/json" } : {}),
+        ...(token ? { authorization: `Bearer ${token}` } : {})
+      },
+      method: method ?? (body ? "POST" : "GET")
+    });
+  } catch (error) {
+    throw friendlyFetchError(baseUrl, error);
+  }
+  const responseText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`Muse API ${response.status}: ${responseText || response.statusText}`);
+  }
+
+  return responseText.length > 0 ? JSON.parse(responseText) as unknown : undefined;
+}
+
+/**
+ * Translate node-fetch / undici network errors into a single-line message
+ * the user can act on. Without this, `ECONNREFUSED` surfaces as a raw
+ * undici stack trace whenever the API server isn't running — which for a
+ * personal-mode CLI is the most common state.
+ */
+export function friendlyFetchError(baseUrl: string, error: unknown): Error {
+  const cause = isRecord(error) && isRecord(error.cause) ? error.cause : undefined;
+  const code = cause && typeof cause.code === "string" ? cause.code : undefined;
+  if (code === "ECONNREFUSED") {
+    return new Error(
+      `Muse API not reachable at ${baseUrl} — start it with \`pnpm --filter @muse/api dev\` or set --api-url.`
+    );
+  }
+  if (code === "ENOTFOUND") {
+    return new Error(`Muse API host unresolved (${baseUrl}). Check --api-url.`);
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return new Error(`Muse API request failed: ${message}`);
+}
+
+export async function readApiOptions(
+  io: ProgramIO,
+  command: Command,
+  readOptions: ReadApiOptionsOptions = {}
+): Promise<ApiOptions> {
+  const globalOptions = command.optsWithGlobals() as { readonly apiUrl?: string; readonly token?: string };
+  const config = await readConfigStore(io);
+  const baseUrl = globalOptions.apiUrl ?? process.env.MUSE_API_URL ?? config.apiUrl ?? "http://127.0.0.1:3000";
+  const explicitToken = globalOptions.token ?? process.env.MUSE_API_TOKEN;
+
+  return {
+    baseUrl,
+    token: explicitToken ?? (readOptions.includeStoredToken === false ? undefined : await readStoredToken(io, baseUrl))
+  };
+}
+
+export async function readConfigStore(io: ProgramIO): Promise<MuseCliConfig> {
+  try {
+    const raw = await readFile(configPath(io), "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (!isRecord(parsed)) {
+      throw new Error("Invalid Muse config format");
+    }
+
+    return {
+      ...(typeof parsed.apiUrl === "string" && parsed.apiUrl.trim().length > 0 ? { apiUrl: parsed.apiUrl } : {}),
+      ...(typeof parsed.defaultModel === "string" && parsed.defaultModel.trim().length > 0
+        ? { defaultModel: parsed.defaultModel }
+        : {})
+    };
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      return {};
+    }
+
+    throw error;
+  }
+}
+
+export async function writeConfigStore(io: ProgramIO, config: MuseCliConfig): Promise<void> {
+  const filePath = configPath(io);
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+  await chmod(filePath, 0o600);
+}
+
+export function setConfigValue(config: MuseCliConfig, key: string, value: string): MuseCliConfig {
+  const trimmed = value.trim();
+
+  if (trimmed.length === 0) {
+    throw new Error("Config value must not be empty");
+  }
+
+  if (key === "apiUrl") {
+    return { ...config, apiUrl: trimmed };
+  }
+
+  if (key === "defaultModel") {
+    return { ...config, defaultModel: trimmed };
+  }
+
+  throw new Error(`Unsupported config key: ${key}`);
+}
+
+export function isNodeError(value: unknown): value is NodeJS.ErrnoException {
+  return value instanceof Error && "code" in value;
+}
+
+export async function* readSseEvents(response: Response): AsyncIterable<SseEvent> {
+  let buffer = "";
+
+  for await (const chunk of readResponseChunks(response)) {
+    buffer += chunk;
+    const parts = buffer.split(/\r?\n\r?\n/u);
+    buffer = parts.pop() ?? "";
+
+    for (const part of parts) {
+      const event = parseSseEvent(part);
+      if (event) {
+        yield event;
+      }
+    }
+  }
+
+  const event = parseSseEvent(buffer);
+  if (event) {
+    yield event;
+  }
+}
+
+async function* readResponseChunks(response: Response): AsyncIterable<string> {
+  if (!response.body) {
+    yield await response.text();
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      yield decoder.decode(value, { stream: true });
+    }
+
+    const tail = decoder.decode();
+    if (tail.length > 0) {
+      yield tail;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+export function parseSseEvent(value: string): SseEvent | undefined {
+  if (value.trim().length === 0) {
+    return undefined;
+  }
+
+  let event = "message";
+  const data: string[] = [];
+
+  for (const line of value.split(/\r?\n/u)) {
+    if (line.startsWith("event:")) {
+      event = readSseField(line);
+      continue;
+    }
+
+    if (line.startsWith("data:")) {
+      data.push(readSseField(line));
+    }
+  }
+
+  return {
+    data: data.join("\n"),
+    event
+  };
+}
+
+export function readSseField(line: string): string {
+  const value = line.slice(line.indexOf(":") + 1);
+  return value.startsWith(" ") ? value.slice(1) : value;
+}
+
+export function writeOutput(io: ProgramIO, value: unknown, textField?: string): void {
+  if (textField && isRecord(value) && typeof value[textField] === "string") {
+    io.stdout(`${value[textField]}\n`);
+    return;
+  }
+
+  io.stdout(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+export function dropUndefined(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).filter((entry) => entry[1] !== undefined));
+}
+
+export function renderActiveContext(snapshot: Record<string, unknown>): string {
+  // Pretty-print the same fields the agent loop renders into the
+  // `[Active Context]` system section. Layout mirrors
+  // `renderActiveContextSection` from @muse/agent-core so the CLI
+  // operator sees what the prompt will contain — without committing
+  // to a structural import that drags agent-core into the CLI tree.
+  const lines: string[] = [];
+  const nowIso = typeof snapshot.nowIso === "string" ? snapshot.nowIso : undefined;
+  const weekday = typeof snapshot.weekday === "string" ? snapshot.weekday : "?";
+  const timezone = typeof snapshot.timezone === "string" ? snapshot.timezone : "?";
+  lines.push(`now=${nowIso ?? "?"} (${weekday}, ${timezone})`);
+  const workingHours = isRecord(snapshot.workingHours)
+    ? snapshot.workingHours as { start?: number; end?: number }
+    : undefined;
+  if (workingHours && typeof workingHours.start === "number" && typeof workingHours.end === "number") {
+    const inWindow = snapshot.isWorkingHours === undefined
+      ? "unknown"
+      : snapshot.isWorkingHours ? "yes" : "no";
+    lines.push(`working_hours=${workingHours.start.toString()}-${workingHours.end.toString()} (in_window=${inWindow})`);
+  }
+  if (typeof snapshot.currentFocus === "string" && snapshot.currentFocus.trim()) {
+    lines.push(`current_focus: ${snapshot.currentFocus}`);
+  }
+  const activeTask = isRecord(snapshot.activeTask) ? snapshot.activeTask : undefined;
+  if (activeTask && typeof activeTask.title === "string") {
+    const parts = [activeTask.title];
+    if (typeof activeTask.id === "string") { parts.push(`id=${activeTask.id}`); }
+    if (typeof activeTask.dueIso === "string") { parts.push(`due=${activeTask.dueIso}`); }
+    lines.push(`active_task: ${parts.join(" · ")}`);
+  }
+  const events = Array.isArray(snapshot.todaysEvents) ? snapshot.todaysEvents : [];
+  if (events.length > 0) {
+    lines.push("today_events:");
+    for (const eventValue of events.slice(0, 8)) {
+      if (!isRecord(eventValue)) { continue; }
+      const title = typeof eventValue.title === "string" ? eventValue.title : "(untitled)";
+      const startIso = typeof eventValue.startIso === "string" ? eventValue.startIso : "?";
+      const allDay = eventValue.allDay === true;
+      const locationPart = typeof eventValue.location === "string" ? ` @ ${eventValue.location}` : "";
+      lines.push(`  · ${allDay ? "(all day)" : startIso} ${title}${locationPart}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+export async function writeRunLog(workspaceDir: string, input: RunLogInput, now = new Date()): Promise<string> {
+  const runDir = path.join(workspaceDir, ".muse", "runs");
+  const runId = readResponseRunId(input.response) ?? `cli-${now.getTime().toString()}`;
+  const filePath = path.join(runDir, `${runId}.jsonl`);
+  const event = {
+    apiUrl: input.apiUrl ?? process.env.MUSE_API_URL ?? "http://127.0.0.1:3000",
+    message: input.message,
+    model: input.model ?? null,
+    recordedAt: now.toISOString(),
+    response: input.response,
+    source: input.source ?? "cli.remote",
+    type: "chat.completed"
+  };
+
+  await mkdir(runDir, { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(event)}\n`, { flag: "a" });
+  return filePath;
+}
+
+export function readResponseRunId(value: unknown): string | undefined {
+  if (isRecord(value) && typeof value.runId === "string" && value.runId.trim().length > 0) {
+    return value.runId;
+  }
+
+  return undefined;
+}
+
+/**
+ * The streamRemoteChat helper relies on `readSseEvents` + `formatCitations`
+ * — kept here so the SSE stream-reader and the citation renderer stay
+ * close, but it imports the chat-specific types from program.ts.
+ */
+export async function streamRemoteChat(
+  io: ProgramIO,
+  command: Command,
+  message: string,
+  model: string | undefined,
+  jsonMode: boolean,
+  agentMode: string | undefined,
+  disableWebSearch?: boolean
+) {
+  const { baseUrl, token } = await readApiOptions(io, command);
+  const metadataTools = disableWebSearch ? { web_search: false } : undefined;
+  const metadata =
+    agentMode || metadataTools
+      ? { ...(agentMode ? { agentMode } : {}), ...(metadataTools ? { tools: metadataTools } : {}) }
+      : undefined;
+  const response = await (io.fetch ?? globalThis.fetch)(new URL("/api/chat/stream", baseUrl).toString(), {
+    body: JSON.stringify(dropUndefined({
+      message,
+      model,
+      metadata
+    })),
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { authorization: `Bearer ${token}` } : {})
+    },
+    method: "POST"
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Muse API ${response.status}: ${errorText || response.statusText}`);
+  }
+
+  let output = "";
+  let streamCitations: Array<{ url: string; title: string }> | undefined;
+
+  for await (const event of readSseEvents(response)) {
+    if (event.event === "error") {
+      throw new Error(`Muse API stream error: ${event.data}`);
+    }
+
+    if (event.event === "message") {
+      output += event.data;
+      if (!jsonMode) {
+        io.stdout(event.data);
+      }
+      continue;
+    }
+
+    if (event.event === "citations") {
+      try {
+        const parsed = JSON.parse(event.data) as unknown;
+        if (Array.isArray(parsed)) {
+          streamCitations = parsed as Array<{ url: string; title: string }>;
+        }
+      } catch {
+        // Malformed citations event — ignore and continue.
+      }
+      continue;
+    }
+
+    if (event.event === "done") {
+      break;
+    }
+  }
+
+  if (!jsonMode && !output.endsWith("\n")) {
+    io.stdout("\n");
+  }
+
+  if (!jsonMode && streamCitations) {
+    const citationsText = formatCitations(streamCitations);
+    if (citationsText) {
+      io.stdout(`${citationsText}\n`);
+    }
+  }
+
+  return {
+    citations: streamCitations,
+    response: output,
+    streamed: true
+  };
+}
