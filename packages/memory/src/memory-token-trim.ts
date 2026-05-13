@@ -15,88 +15,28 @@
  * Re-exported from the memory barrel for backwards compatibility.
  */
 
-import { createHash } from "node:crypto";
 import {
   COMPACTION_PERSONA_SNAPSHOT_PREFIX,
   COMPACTION_PINNED_ENTITIES_PREFIX,
   COMPACTION_SUMMARY_PREFIX,
-  DEFAULT_CACHE_KEY_MAX_CHARS,
   DEFAULT_COMPACTION_THRESHOLD,
   DEFAULT_MESSAGE_STRUCTURE_OVERHEAD,
-  DEFAULT_TOKEN_CACHE_MAX_ENTRIES,
-  DEFAULT_TOKEN_CACHE_TTL_MS,
   type ConversationMessage,
   type ConversationTrimOptions,
   type ConversationTrimResult,
-  type TokenEstimator,
-  type TokenEstimatorOptions
+  type TokenEstimator
 } from "./index.js";
 import { IMPORTANCE_DEFAULT_THRESHOLD, recencyBonus, scoreMessageContent } from "./message-importance.js";
+import { createApproximateTokenEstimator } from "./token-estimator.js";
+import { extractPinnedEntities } from "./pinned-entities.js";
 
-interface CacheEntry {
-  readonly expiresAt: number;
-  readonly tokens: number;
-}
-
-export function createApproximateTokenEstimator(options: TokenEstimatorOptions = {}): TokenEstimator {
-  const cacheKeyMaxChars = options.cacheKeyMaxChars ?? DEFAULT_CACHE_KEY_MAX_CHARS;
-  const maxEntries = options.maxEntries ?? DEFAULT_TOKEN_CACHE_MAX_ENTRIES;
-  const ttlMs = options.ttlMs ?? DEFAULT_TOKEN_CACHE_TTL_MS;
-  const cache = new Map<string, CacheEntry>();
-
-  return {
-    estimate(text: string): number {
-      if (text.length === 0) {
-        return 0;
-      }
-
-      const key = text.length <= cacheKeyMaxChars ? text : sha256Hex(text);
-      const now = Date.now();
-      const cached = cache.get(key);
-
-      if (cached && cached.expiresAt > now) {
-        return cached.tokens;
-      }
-
-      const tokens = computeApproximateTokens(text);
-      cache.set(key, { expiresAt: now + ttlMs, tokens });
-      trimOldestCacheEntries(cache, maxEntries);
-      return tokens;
-    }
-  };
-}
-
-export function computeApproximateTokens(text: string): number {
-  if (text.length === 0) {
-    return 0;
-  }
-
-  let latinChars = 0;
-  let cjkChars = 0;
-  let emojiChars = 0;
-  let otherChars = 0;
-
-  for (const char of text) {
-    const codePoint = char.codePointAt(0) ?? 0;
-
-    if (isEmojiCodePoint(codePoint)) {
-      emojiChars++;
-    } else if (isCjkCodePoint(codePoint)) {
-      cjkChars++;
-    } else if (codePoint <= 0x7f) {
-      latinChars++;
-    } else {
-      otherChars++;
-    }
-  }
-
-  const latinTokens = Math.floor(latinChars / 4);
-  const cjkTokens = Math.floor((cjkChars * 2 + 1) / 3);
-  const emojiTokens = emojiChars;
-  const otherTokens = Math.floor(otherChars / 3);
-
-  return Math.max(1, latinTokens + cjkTokens + emojiTokens + otherTokens);
-}
+// Re-exported for backwards compatibility — the @muse/memory barrel
+// keeps these names available even though their definitions now
+// live in `token-estimator.ts` and `pinned-entities.ts`.
+export {
+  computeApproximateTokens,
+  createApproximateTokenEstimator
+} from "./token-estimator.js";
 
 export function estimateConversationTokens(
   messages: readonly ConversationMessage[],
@@ -660,88 +600,4 @@ function unique(values: readonly string[]): readonly string[] {
 
 function compactLine(value: string): string {
   return value.replace(/\s+/gu, " ").trim();
-}
-
-const issueKeyPattern = /\b[A-Z][A-Z0-9]+-\d+\b/gu;
-const entityNounPattern =
-  /(?<noun>[가-힣A-Za-z]{2,}(?:\s+[가-힣A-Za-z0-9]{2,}){0,3})\s*(?<type>버그|이슈|기능|모듈|프로젝트|시스템|서비스|페이지|문서)/gu;
-const quotedEntityPattern = /["'「『](?<term>[^"'」』\n]{2,50})["'」』]/gu;
-const maxPinnedEntities = 5;
-
-function extractPinnedEntities(messages: readonly ConversationMessage[]): readonly string[] {
-  const collected = new Set<string>();
-
-  for (const message of messages) {
-    if (message.role !== "user") {
-      continue;
-    }
-
-    for (const match of message.content.matchAll(issueKeyPattern)) {
-      addPinnedEntity(collected, match[0]);
-    }
-
-    if (collected.size >= maxPinnedEntities) {
-      break;
-    }
-
-    for (const match of message.content.matchAll(entityNounPattern)) {
-      const groups = match.groups ?? {};
-      addPinnedEntity(collected, `${groups.noun?.trim() ?? ""} ${groups.type ?? ""}`);
-    }
-
-    if (collected.size >= maxPinnedEntities) {
-      break;
-    }
-
-    for (const match of message.content.matchAll(quotedEntityPattern)) {
-      addPinnedEntity(collected, match.groups?.term?.trim() ?? "");
-    }
-
-    if (collected.size >= maxPinnedEntities) {
-      break;
-    }
-  }
-
-  return [...collected].slice(0, maxPinnedEntities);
-}
-
-function addPinnedEntity(collected: Set<string>, value: string): void {
-  const normalized = compactLine(value);
-
-  if (normalized.length > 0 && collected.size < maxPinnedEntities) {
-    collected.add(normalized);
-  }
-}
-
-function trimOldestCacheEntries(cache: Map<string, CacheEntry>, maxEntries: number): void {
-  while (cache.size > maxEntries) {
-    const oldestKey = cache.keys().next().value as string | undefined;
-
-    if (oldestKey === undefined) {
-      return;
-    }
-
-    cache.delete(oldestKey);
-  }
-}
-
-function isEmojiCodePoint(codePoint: number): boolean {
-  return (
-    (codePoint >= 0x1f300 && codePoint <= 0x1faff) ||
-    (codePoint >= 0x2600 && codePoint <= 0x27bf) ||
-    (codePoint >= 0xfe00 && codePoint <= 0xfe0f)
-  );
-}
-
-function isCjkCodePoint(codePoint: number): boolean {
-  return (
-    (codePoint >= 0x4e00 && codePoint <= 0x9fff) ||
-    (codePoint >= 0xac00 && codePoint <= 0xd7af) ||
-    (codePoint >= 0x3040 && codePoint <= 0x309f) ||
-    (codePoint >= 0x30a0 && codePoint <= 0x30ff)
-  );
-}
-
-function sha256Hex(text: string): string {
-  return createHash("sha256").update(text).digest("hex");
 }
