@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildJarvisPersona, formatCurrentContextLine } from "./program.js";
+import { buildJarvisPersona, formatCurrentContextLine } from "./jarvis-persona.js";
 
 describe("formatCurrentContextLine", () => {
   it("emits a single 'Current local context: YYYY-MM-DD HH:MM Weekday (TZ).' line", () => {

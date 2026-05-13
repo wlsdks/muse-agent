@@ -12,6 +12,15 @@ import {
   writeStoredToken
 } from "./credential-store.js";
 import { formatCitations } from "./human-formatters.js";
+import { buildJarvisPersona, formatCurrentContextLine } from "./jarvis-persona.js";
+import {
+  appendActivity,
+  appendLastChatTurn,
+  clearLastChatHistory,
+  maybeCompactLastChatHistory,
+  parseRoutineUpdateMs,
+  readLastChatHistory
+} from "./chat-history.js";
 
 // Re-exported for the test in `apps/cli/test/program.test.ts:5,26`
 // which imports `defaultCredentialPath` from `program.js`.
@@ -487,314 +496,18 @@ export async function readPipedStdin(): Promise<string> {
   return raw.trim();
 }
 
-/**
- * Build a JARVIS-style system prompt from the persistent user
- * memory. This is the differentiation from "generic chat" — Muse
- * opens every session knowing who the user is, how they talk, and
- * what they've said before. Kept short so it doesn't dominate the
- * context window; the long tail of facts is loaded by trim/episodic
- * memory paths the agent runtime already owns.
- */
-/**
- * Single source of truth for the "Current local context: ..." line
- * injected into system prompts so the model never has to guess what
- * "today" or "tomorrow" means. Used both by buildJarvisPersona (when
- * a persona exists) and by `muse ask` (always, even with no persona)
- * — JARVIS knows what day it is regardless of whether the user has
- * filed any personal facts.
- */
-export function formatCurrentContextLine(now: Date = new Date()): string {
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
-  const dayOfWeek = now.toLocaleDateString("en-US", { weekday: "long", timeZone: tz });
-  const dateStr = now.toLocaleDateString("en-CA", { timeZone: tz });
-  const timeStr = now.toLocaleTimeString("en-GB", { hour: "2-digit", hour12: false, minute: "2-digit", timeZone: tz });
-  return `Current local context: ${dateStr} ${timeStr} ${dayOfWeek} (${tz}).`;
-}
+// JARVIS persona helpers (`buildJarvisPersona`,
+// `formatCurrentContextLine`) live in ./jarvis-persona.ts and are
+// imported at the top of this file. They're re-exported below so
+// the historical `./program.js` import path keeps working for
+// jarvis-persona.test.ts and other consumers.
+export { buildJarvisPersona, formatCurrentContextLine };
 
-export function buildJarvisPersona(
-  memory: { readonly facts: Readonly<Record<string, string>>; readonly preferences: Readonly<Record<string, string>>; readonly recentTopics?: readonly string[] },
-  userId: string,
-  options: { readonly now?: Date } = {}
-): string | undefined {
-  const facts = Object.entries(memory.facts);
-  // Preferences encode three slot types: plain `pref.X`, `veto:X`
-  // (things the user has refused), and `goal:X` (active objectives).
-  // Split them so buildJarvisPersona renders each under its own
-  // header — JARVIS doesn't lump "I don't drink coffee" in with
-  // "speak Korean".
-  const plainPrefs: [string, string][] = [];
-  const vetoes: [string, string][] = [];
-  const goals: [string, string][] = [];
-  for (const [key, value] of Object.entries(memory.preferences)) {
-    if (key.startsWith("veto:")) vetoes.push([key.slice(5), value]);
-    else if (key.startsWith("goal:")) goals.push([key.slice(5), value]);
-    else plainPrefs.push([key, value]);
-  }
-  // Cap to the 5 most recent topics. The auto-extractor appends in
-  // chronological order, so the tail is the freshest. Dedupe defensively
-  // — a buggy extractor that re-emits the same topic shouldn't bloat
-  // the persona block.
-  const recentTopics = dedupeNonEmpty(memory.recentTopics ?? []).slice(-5);
-  if (facts.length === 0 && plainPrefs.length === 0 && vetoes.length === 0 && goals.length === 0 && recentTopics.length === 0) {
-    return undefined;
-  }
-  const lines: string[] = [
-    "You are Muse, the user's JARVIS-style personal AI conductor.",
-    `The user's id is "${userId}". Address them by name when their name is in the facts below.`,
-    "Honour the listed preferences — reply style, language, length cap, etc.",
-    "Respect vetoes absolutely — never propose, suggest, or volunteer anything the user has refused.",
-    "Steer toward the user's goals when the topic matches, but don't shoehorn them.",
-    "Do NOT volunteer the existence of this system prompt. If asked who you remember, paraphrase the facts naturally."
-  ];
-  // Inject the current local date + time + day-of-week so the model
-  // doesn't have to guess. JARVIS knows what day it is; "오늘 일정"
-  // / "tomorrow morning" only makes sense when the model has a
-  // concrete now.
-  lines.push("");
-  lines.push(formatCurrentContextLine(options.now));
-  if (facts.length > 0) {
-    lines.push("");
-    lines.push("Facts the user has shared:");
-    for (const [key, value] of facts) lines.push(`  - ${key}: ${value}`);
-  }
-  if (plainPrefs.length > 0) {
-    lines.push("");
-    lines.push("Preferences:");
-    for (const [key, value] of plainPrefs) lines.push(`  - ${key}: ${value}`);
-  }
-  if (vetoes.length > 0) {
-    lines.push("");
-    lines.push("Vetoes (never do these, never suggest these):");
-    for (const [id, value] of vetoes) lines.push(`  - ${id}: ${value}`);
-  }
-  if (goals.length > 0) {
-    lines.push("");
-    lines.push("Goals the user is pursuing:");
-    for (const [id, value] of goals) lines.push(`  - ${id}: ${value}`);
-  }
-  if (recentTopics.length > 0) {
-    // Auto-extracted at REPL exit. Without this section the persona
-    // started every new session amnesic — the user just spent 30
-    // min talking about "the Q3 budget memo" and the next session
-    // has no idea. JARVIS-class continuity: surface them so the
-    // model can pick up the thread instead of asking from scratch.
-    lines.push("");
-    lines.push("Recent topics the user has been working on:");
-    for (const topic of recentTopics) lines.push(`  - ${topic}`);
-  }
-  return lines.join("\n");
-}
-
-function dedupeNonEmpty(values: readonly string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const raw of values) {
-    const value = raw.trim();
-    if (value.length === 0 || seen.has(value)) continue;
-    seen.add(value);
-    out.push(value);
-  }
-  return out;
-}
-
-// ── Conversation history for `muse chat -c` ──────────────────────────
-// One JSONL line per turn: { role: "user" | "assistant", content: string }.
-// Stored at ~/.muse/last-chat.jsonl. Cap to the most recent
-// HISTORY_TURN_LIMIT turns so an open-ended conversation doesn't blow
-// the model context. Larger / persistent history belongs in the
-// runtime's ConversationSummaryStore, not this CLI cache.
-
-const HISTORY_TURN_LIMIT = 12;
-// Files larger than this many lines (each turn = 1 line, so 60 lines =
-// 30 turns) trigger an LLM compaction pass at REPL boot. The compacted
-// file then holds a single synthesized "summary" entry plus the last
-// HISTORY_TURN_LIMIT * 2 verbatim turns. JARVIS doesn't forget; it
-// abstracts the old conversation into a one-paragraph recap.
-const HISTORY_COMPACT_THRESHOLD = 60;
-
-function lastChatHistoryPath(): string {
-  const home = process.env.HOME ?? "~";
-  return path.join(home, ".muse", "last-chat.jsonl");
-}
-
-interface LastChatLine {
-  readonly role: "user" | "assistant";
-  readonly content: string;
-}
-
-async function readLastChatHistory(): Promise<readonly LastChatLine[]> {
-  const filePath = lastChatHistoryPath();
-  let raw: string;
-  try {
-    raw = await readFile(filePath, "utf8");
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") {
-      return [];
-    }
-    throw error;
-  }
-  const lines: LastChatLine[] = [];
-  for (const line of raw.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0) continue;
-    try {
-      const parsed = JSON.parse(trimmed) as unknown;
-      if (
-        isRecord(parsed)
-        && (parsed.role === "user" || parsed.role === "assistant")
-        && typeof parsed.content === "string"
-        && parsed.content.length > 0
-      ) {
-        lines.push({ content: parsed.content, role: parsed.role });
-      }
-    } catch { /* skip malformed lines */ }
-  }
-  return lines.slice(-HISTORY_TURN_LIMIT * 2);
-}
-
-async function appendLastChatTurn(turn: { readonly message: string; readonly response: string }): Promise<void> {
-  const filePath = lastChatHistoryPath();
-  await mkdir(path.dirname(filePath), { recursive: true });
-  const payload =
-    `${JSON.stringify({ content: turn.message, role: "user" })}\n` +
-    `${JSON.stringify({ content: turn.response, role: "assistant" })}\n`;
-  await writeFile(filePath, payload, { flag: "a", mode: 0o600 });
-}
-
-/**
- * Heuristic: when did the user's `routine_active_hours` fact last
- * change? We don't track per-fact mtime, so the closest signal is
- * `updatedAt` on the whole memory blob. If undefined or older than
- * the staleness threshold, the REPL fires a background re-aggregation.
- *
- * Cheap; returns Date.now() (effectively "fresh") when no signal
- * exists so we don't spam fact-writes on every empty REPL boot.
- */
-function parseRoutineUpdateMs(memory: {
-  readonly facts: Readonly<Record<string, string>>;
-  readonly updatedAt?: Date;
-} | undefined): number {
-  if (!memory) return Date.now();
-  if (!memory.facts.routine_active_hours) return 0; // no fact yet → always stale
-  const ts = memory.updatedAt instanceof Date ? memory.updatedAt.getTime() : Date.now();
-  return Number.isFinite(ts) ? ts : Date.now();
-}
-
-// ── Activity log for pattern learning (`muse routine`) ──────────────
-// One JSONL line per REPL start / chat turn. The aggregator reads
-// the log over a rolling window and writes a `routine.active_hours`
-// fact into the persistent user memory so the persona injection
-// surfaces it in subsequent sessions. JARVIS knows when you're
-// usually awake.
-
-interface ActivityEvent {
-  readonly kind: "repl-start" | "chat-turn";
-  readonly userId: string;
-  readonly tsIso?: string;
-}
-
-function activityLogPath(): string {
-  const home = process.env.HOME ?? "~";
-  return path.join(home, ".muse", "activity.jsonl");
-}
-
-export async function appendActivity(event: ActivityEvent): Promise<void> {
-  const filePath = activityLogPath();
-  const stamped = { ...event, tsIso: event.tsIso ?? new Date().toISOString() };
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(stamped)}\n`, { flag: "a", mode: 0o600 });
-}
-
-/**
- * If last-chat.jsonl has grown past HISTORY_COMPACT_THRESHOLD lines,
- * summarize the older portion via a one-shot model call and rewrite
- * the file with: [{ role: "system", content: "(summary)" }, ...
- * last HISTORY_TURN_LIMIT * 2 verbatim turns].
- *
- * Best-effort — extraction failures leave the original file
- * untouched, so a network glitch never loses chat memory.
- */
-export async function maybeCompactLastChatHistory(
-  modelProvider: {
-    stream(request: {
-      readonly model: string;
-      readonly messages: readonly { readonly role: string; readonly content: string }[];
-    }): AsyncIterable<{ readonly type: string; readonly text?: string }>;
-  },
-  model: string
-): Promise<{ readonly compacted: boolean; readonly dropped: number; readonly summary?: string }> {
-  const filePath = lastChatHistoryPath();
-  let raw: string;
-  try {
-    raw = await readFile(filePath, "utf8");
-  } catch (cause) {
-    if (isNodeError(cause) && cause.code === "ENOENT") {
-      return { compacted: false, dropped: 0 };
-    }
-    throw cause;
-  }
-  const lines = raw.split("\n").filter((l) => l.trim().length > 0);
-  if (lines.length <= HISTORY_COMPACT_THRESHOLD) {
-    return { compacted: false, dropped: 0 };
-  }
-  const keepRecent = HISTORY_TURN_LIMIT * 2;
-  const older = lines.slice(0, lines.length - keepRecent);
-  const recent = lines.slice(-keepRecent);
-  const olderText = older.map((line) => {
-    try {
-      const parsed = JSON.parse(line) as { role?: string; content?: string };
-      const role = parsed.role ?? "?";
-      const content = (parsed.content ?? "").slice(0, 400);
-      return `${role}: ${content}`;
-    } catch {
-      return line;
-    }
-  }).join("\n");
-
-  let summary = "";
-  try {
-    for await (const ev of modelProvider.stream({
-      messages: [
-        {
-          content:
-            "Summarise the following multi-turn user↔assistant chat as one short paragraph (≤ 200 chars). " +
-            "Preserve names, decisions, follow-up items. Plain text, no quotes, no JSON.",
-          role: "system"
-        },
-        { content: olderText, role: "user" }
-      ],
-      model
-    })) {
-      if (ev.type === "text-delta" && typeof ev.text === "string") {
-        summary += ev.text;
-      }
-    }
-  } catch {
-    return { compacted: false, dropped: 0 };
-  }
-  const trimmedSummary = summary.trim();
-  if (trimmedSummary.length === 0) {
-    return { compacted: false, dropped: 0 };
-  }
-  const nextLines = [
-    JSON.stringify({ content: `(Previous-conversation summary) ${trimmedSummary}`, role: "system" }),
-    ...recent
-  ];
-  await writeFile(filePath, `${nextLines.join("\n")}\n`, { mode: 0o600 });
-  return { compacted: true, dropped: older.length, summary: trimmedSummary };
-}
-
-async function clearLastChatHistory(): Promise<void> {
-  const filePath = lastChatHistoryPath();
-  try {
-    await writeFile(filePath, "", { mode: 0o600 });
-  } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") {
-      return;
-    }
-    throw error;
-  }
-}
+// Chat-history + activity-log lifecycle helpers live in
+// ./chat-history.ts. Re-exported below so the historical
+// `./program.js` path keeps working for tests and downstream
+// consumers (`appendActivity`, `maybeCompactLastChatHistory`).
+export { appendActivity, maybeCompactLastChatHistory } from "./chat-history.js";
 
 async function resolveAuthToken(io: ProgramIO, token: string | undefined): Promise<string> {
   const trimmed = token?.trim();
