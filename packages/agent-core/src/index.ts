@@ -143,7 +143,11 @@ export {
   AgentRuntime,
   createAgentRuntime,
   type AgentRuntimeOptions,
-  type AgentRuntimeStreamEvent
+  type AgentRuntimeStreamEvent,
+  type ToolApprovalGate,
+  type ToolApprovalGateDecision,
+  type ToolApprovalGateInput,
+  type ToolRiskLevel
 } from "./agent-runtime.js";
 
 export {

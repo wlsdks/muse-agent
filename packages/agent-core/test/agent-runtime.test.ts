@@ -878,6 +878,93 @@ describe("AgentRuntime", () => {
     ]);
   });
 
+  it("toolApprovalGate can block an execute-risk call before the executor runs", async () => {
+    const executeTool = vi.fn(() => ({ ok: true }));
+    const gateCalls: { name: string; risk: string }[] = [];
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Run a shell command.",
+          inputSchema: { type: "object" },
+          name: "exec_shell",
+          risk: "execute"
+        },
+        execute: executeTool
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        {
+          id: "tool",
+          model: "test-model",
+          output: "Running.",
+          toolCalls: [{ arguments: { cmd: "ls" }, id: "tc-1", name: "exec_shell" }]
+        },
+        { id: "final", model: "test-model", output: "Blocked, fine." }
+      ]),
+      toolApprovalGate: ({ toolCall, risk }) => {
+        gateCalls.push({ name: toolCall.name, risk });
+        return { allowed: false, reason: `exec_shell not in trust list` };
+      },
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      // `localMode: true` is required for the default exposure policy
+      // to surface `risk: "execute"` tools to the model in the first
+      // place — the gate is what enforces trust *within* that
+      // exposed surface.
+      messages: [{ content: "do it", role: "user" }],
+      metadata: { localMode: true },
+      model: "provider/model",
+      runId: "run-gate-block"
+    });
+
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(gateCalls).toEqual([{ name: "exec_shell", risk: "execute" }]);
+    // The model sees the rejection as a blocked-tool result and
+    // proceeds to the final message rather than fatal-erroring.
+    expect(result.response.output).toBe("Blocked, fine.");
+  });
+
+  it("toolApprovalGate allows the call through when decision is { allowed: true }", async () => {
+    const executeTool = vi.fn(() => ({ ok: true }));
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Read a status field.",
+          inputSchema: { type: "object" },
+          name: "read_status",
+          risk: "read"
+        },
+        execute: executeTool
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        {
+          id: "tool",
+          model: "test-model",
+          output: "Reading.",
+          toolCalls: [{ arguments: {}, id: "tc-2", name: "read_status" }]
+        },
+        { id: "final", model: "test-model", output: "Healthy." }
+      ]),
+      toolApprovalGate: () => ({ allowed: true }),
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "check status", role: "user" }],
+      model: "provider/model"
+    });
+
+    expect(executeTool).toHaveBeenCalledOnce();
+    expect(result.response.output).toBe("Healthy.");
+  });
+
   it("filters risky tools before exposing them to the model", async () => {
     const generated: ModelRequest[] = [];
     const toolRegistry = new ToolRegistry([

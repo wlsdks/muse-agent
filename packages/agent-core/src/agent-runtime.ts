@@ -218,11 +218,39 @@ export interface AgentRuntimeOptions {
    * `aggregator.summary()`.
    */
   readonly telemetryAggregator?: TelemetryAggregator;
+  /**
+   * Runtime gate consulted before each tool call. Returning
+   * `{ allowed: false, reason }` short-circuits the executor and
+   * surfaces a blocked-tool result so the model sees the rejection
+   * and the run history records it. The personal-JARVIS shape uses
+   * this to enforce ~/.muse/trust.json: read tools pass, execute
+   * tools require an entry in `trustedTools`, anything in
+   * `blockedTools` is always rejected.
+   */
+  readonly toolApprovalGate?: ToolApprovalGate;
   readonly defaults?: {
     readonly maxOutputTokens?: number;
     readonly temperature?: number;
   };
 }
+
+export type ToolRiskLevel = "read" | "write" | "execute";
+
+export interface ToolApprovalGateInput {
+  readonly toolCall: ModelToolCall;
+  readonly risk: ToolRiskLevel;
+  readonly userId?: string;
+  readonly runId: string;
+}
+
+export interface ToolApprovalGateDecision {
+  readonly allowed: boolean;
+  readonly reason?: string;
+}
+
+export type ToolApprovalGate = (
+  input: ToolApprovalGateInput
+) => ToolApprovalGateDecision | Promise<ToolApprovalGateDecision>;
 
 export type AgentRuntimeStreamEvent =
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "text-delta" }>)
@@ -285,6 +313,7 @@ export class AgentRuntime {
   private readonly toolFilter?: ToolFilter;
   private readonly skillCatalogProvider?: SkillCatalogProvider;
   private readonly telemetryAggregator?: TelemetryAggregator;
+  private readonly toolApprovalGate?: ToolApprovalGate;
   private readonly defaults: AgentRuntimeOptions["defaults"];
 
   constructor(options: AgentRuntimeOptions) {
@@ -335,6 +364,7 @@ export class AgentRuntime {
     this.toolFilter = options.toolFilter;
     this.skillCatalogProvider = options.skillCatalogProvider;
     this.telemetryAggregator = options.telemetryAggregator;
+    this.toolApprovalGate = options.toolApprovalGate;
     this.defaults = options.defaults;
 
     if (!this.modelProvider && !this.modelRegistry) {
@@ -810,6 +840,22 @@ export class AgentRuntime {
     }
 
     await this.invokeHooks("beforeTool", context, toolCall);
+
+    if (this.toolApprovalGate) {
+      const risk = this.resolveToolRisk(toolCall.name);
+      const decision = await this.toolApprovalGate({
+        risk,
+        runId: context.runId,
+        toolCall,
+        userId: metadataString(context.input.metadata, "userId")
+      });
+      if (!decision.allowed) {
+        const reason = decision.reason ?? "tool call rejected by approval gate";
+        const executed = blockedToolResult(toolCall, `Error: ${reason}`);
+        await this.invokeHooks("afterTool", context, executed);
+        return executed;
+      }
+    }
 
     if (!this.toolExecutor) {
       const executed = blockedToolResult(toolCall, "Error: tool executor is not configured");
