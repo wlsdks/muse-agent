@@ -32,6 +32,7 @@ import { parseDiscordPollChannels, startDiscordPollTick } from "./discord-poll-t
 import { parseQuietHours, startReminderTick } from "./reminder-tick.js";
 import { createFileBackedActivityTracker, createInMemoryActivityTracker, startProactiveTick } from "./proactive-tick.js";
 import { startFollowupTick } from "./followup-tick.js";
+import { startPatternTick } from "./pattern-tick.js";
 import { parseSlackPollChannels, startSlackPollTick } from "./slack-poll-tick.js";
 import { startTelegramPollTick } from "./telegram-poll-tick.js";
 import { DiscordProvider, SlackProvider, TelegramProvider } from "@muse/messaging";
@@ -158,6 +159,15 @@ export interface ServerOptions {
    * the followup-tick daemon synthesizes + delivers due promises.
    */
   readonly followupsFile?: string;
+  /**
+   * Path to the pattern-detection cooldown sidecar (default
+   * ~/.muse/patterns-fired.json). When set alongside
+   * MUSE_PROACTIVE_PATTERN_ENABLED=true + provider/destination
+   * env and a registered messaging provider, the pattern-tick
+   * daemon scans activity / tasks / notes mtimes every cadence
+   * and fires the strongest in-slot patterns.
+   */
+  readonly patternsFiredFile?: string;
   /**
    * Path to the persisted LINE inbox (default ~/.muse/line-inbox.json).
    * Combined with `MUSE_LINE_CHANNEL_SECRET` from env, enables the
@@ -569,6 +579,48 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     });
     server.addHook("onClose", async () => {
       followupHandle.stop();
+    });
+  }
+
+  // Pattern-detection firing daemon — step 4 wiring of
+  // agent-pattern-detection.md. Off by default; activates when
+  // MUSE_PROACTIVE_PATTERN_ENABLED=true AND provider/destination
+  // are set AND the named messaging provider is registered AND
+  // a patternsFiredFile is configured (autoconfigure default).
+  const patternEnabled = (env.MUSE_PROACTIVE_PATTERN_ENABLED ?? "").trim().toLowerCase() === "true";
+  const patternProvider = env.MUSE_PROACTIVE_PATTERN_PROVIDER?.trim();
+  const patternDestination = env.MUSE_PROACTIVE_PATTERN_DESTINATION?.trim();
+  if (
+    patternEnabled
+    && patternProvider && patternProvider.length > 0
+    && patternDestination && patternDestination.length > 0
+    && options.patternsFiredFile
+    && options.messaging
+    && options.messaging.has(patternProvider)
+  ) {
+    const tickMsRaw = env.MUSE_PROACTIVE_PATTERN_TICK_MS ? Number(env.MUSE_PROACTIVE_PATTERN_TICK_MS) : undefined;
+    const cooldownMsRaw = env.MUSE_PROACTIVE_PATTERN_COOLDOWN_MS ? Number(env.MUSE_PROACTIVE_PATTERN_COOLDOWN_MS) : undefined;
+    const minConfidenceRaw = env.MUSE_PROACTIVE_PATTERN_MIN_CONFIDENCE ? Number(env.MUSE_PROACTIVE_PATTERN_MIN_CONFIDENCE) : undefined;
+    const maxPerTickRaw = env.MUSE_PROACTIVE_PATTERN_MAX_PER_TICK ? Number(env.MUSE_PROACTIVE_PATTERN_MAX_PER_TICK) : undefined;
+    const patternQuietHours = parseQuietHours(env.MUSE_PROACTIVE_PATTERN_QUIET_HOURS)
+      ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+    const patternHandle = startPatternTick({
+      destination: patternDestination,
+      errorLogger: (message) => server.log.warn(message),
+      logger: (message) => server.log.info(message),
+      ...(options.tasksFile ? { tasksFile: options.tasksFile } : {}),
+      ...(options.notesDir ? { notesDir: options.notesDir } : {}),
+      ...(cooldownMsRaw !== undefined ? { cooldownMs: cooldownMsRaw } : {}),
+      ...(maxPerTickRaw !== undefined ? { maxPerTick: maxPerTickRaw } : {}),
+      ...(minConfidenceRaw !== undefined ? { minConfidence: minConfidenceRaw } : {}),
+      ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
+      patternsFiredFile: options.patternsFiredFile,
+      providerId: patternProvider,
+      ...(patternQuietHours ? { quietHours: patternQuietHours } : {}),
+      registry: options.messaging
+    });
+    server.addHook("onClose", async () => {
+      patternHandle.stop();
     });
   }
 

@@ -28,7 +28,7 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
  * import to keep `@muse/mcp` from depending on `@muse/agent-core`
  * — the only call site here is the optional `publish` fan-out.
  */
-interface AgentInitiatedNoticeBrokerLike {
+export interface AgentInitiatedNoticeBrokerLike {
   publish(userId: string, notice: {
     readonly kind: string;
     readonly text: string;

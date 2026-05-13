@@ -550,6 +550,18 @@ export {
   type PatternFiredRecord
 } from "./personal-patterns-fired-store.js";
 
+// Pattern-detection firing engine — wiring half of step 4. The
+// `apps/api/src/pattern-tick.ts` setInterval rider drives this on
+// MUSE_PROACTIVE_PATTERN_TICK_MS; the engine itself is pure data
+// over the messaging registry + cooldown sidecar so tests skip the
+// daemon entirely.
+export {
+  runDuePatternNotices,
+  type RunDuePatternNoticesOptions,
+  type RunDuePatternNoticesSummary
+} from "./pattern-firing-loop.js";
+export { type AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
+
 // Episodic memory store — step 1 of docs/design/episodic-memory.md.
 // Pure CRUD over `~/.muse/episodes.json`; later steps add the
 // session-boundary sentinel, end-of-session summariser hook,

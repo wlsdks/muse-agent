@@ -4773,6 +4773,137 @@ describe("personal-patterns-fired-store", () => {
   });
 });
 
+describe("runDuePatternNotices", () => {
+  it("delivers fireable pattern suggestions, records the fire, returns the summary", async () => {
+    const { runDuePatternNotices } = await import("../src/index.js");
+    const { mkdtempSync, mkdirSync, writeFileSync, utimesSync, readFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const root = mkdtempSync(join(tmpdir(), "muse-pat-fire-"));
+    const notesDir = join(root, "notes");
+    mkdirSync(notesDir);
+    mkdirSync(join(notesDir, "journal"));
+    // Five Tuesdays in a row at 21:30 local → strong cluster.
+    const tuesdays = [
+      new Date(2026, 3, 7, 21, 30),  // Apr 7
+      new Date(2026, 3, 14, 21, 30), // Apr 14
+      new Date(2026, 3, 21, 21, 30), // Apr 21
+      new Date(2026, 3, 28, 21, 30), // Apr 28
+      new Date(2026, 4, 5, 21, 30)   // May 5
+    ];
+    for (let i = 0; i < tuesdays.length; i++) {
+      const file = join(notesDir, "journal", `entry-${i.toString()}.md`);
+      writeFileSync(file, "x", "utf8");
+      const secs = tuesdays[i]!.getTime() / 1000;
+      utimesSync(file, secs, secs);
+    }
+
+    const firedFile = join(root, "patterns-fired.json");
+    const sent: Array<{ providerId: string; destination: string; text: string }> = [];
+    const fakeRegistry = {
+      send: async (providerId: string, message: { destination: string; text: string }) => {
+        sent.push({ destination: message.destination, providerId, text: message.text });
+        return { destination: message.destination, messageId: "stub", providerId };
+      }
+    };
+
+    const summary = await runDuePatternNotices({
+      destination: "@me",
+      now: () => new Date(2026, 4, 12, 21, 30), // Tuesday May 12
+      patternsFiredFile: firedFile,
+      providerId: "telegram",
+      registry: fakeRegistry as unknown as Parameters<typeof runDuePatternNotices>[0]["registry"],
+      signals: {
+        activityFile: join(root, "no-activity.jsonl"),
+        notesDir,
+        tasksFile: join(root, "no-tasks.json")
+      }
+    });
+
+    expect(summary.fireable).toBe(1);
+    expect(summary.delivered).toBe(1);
+    expect(summary.errors).toEqual([]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.text).toContain("journal notes");
+    expect(sent[0]!.text).toContain("21-24");
+
+    const persisted = JSON.parse(readFileSync(firedFile, "utf8")) as { fired: Array<{ patternId: string }> };
+    expect(persisted.fired).toHaveLength(1);
+    expect(persisted.fired[0]!.patternId).toBe(summary.fired[0]!.id);
+  });
+
+  it("zero-fireable is a no-op (no send, no record write)", async () => {
+    const { runDuePatternNotices } = await import("../src/index.js");
+    const { mkdtempSync, mkdirSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const root = mkdtempSync(join(tmpdir(), "muse-pat-fire-noop-"));
+    mkdirSync(join(root, "notes"));
+
+    const summary = await runDuePatternNotices({
+      destination: "@me",
+      now: () => new Date(2026, 4, 12, 21, 30),
+      patternsFiredFile: join(root, "patterns-fired.json"),
+      providerId: "telegram",
+      registry: {
+        send: async () => { throw new Error("must not be called"); }
+      } as unknown as Parameters<typeof runDuePatternNotices>[0]["registry"],
+      signals: {
+        activityFile: join(root, "no-activity.jsonl"),
+        notesDir: join(root, "notes"),
+        tasksFile: join(root, "no-tasks.json")
+      }
+    });
+    expect(summary).toMatchObject({ delivered: 0, errors: [], fireable: 0 });
+  });
+
+  it("collects per-pattern errors and does NOT record a failed pattern", async () => {
+    const { runDuePatternNotices } = await import("../src/index.js");
+    const { mkdtempSync, mkdirSync, writeFileSync, utimesSync, readFileSync, statSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const root = mkdtempSync(join(tmpdir(), "muse-pat-fire-err-"));
+    const notesDir = join(root, "notes");
+    mkdirSync(notesDir);
+    mkdirSync(join(notesDir, "journal"));
+    const tuesdays = [
+      new Date(2026, 3, 14, 21, 30),
+      new Date(2026, 3, 21, 21, 30),
+      new Date(2026, 3, 28, 21, 30)
+    ];
+    for (let i = 0; i < tuesdays.length; i++) {
+      const file = join(notesDir, "journal", `entry-${i.toString()}.md`);
+      writeFileSync(file, "x", "utf8");
+      const secs = tuesdays[i]!.getTime() / 1000;
+      utimesSync(file, secs, secs);
+    }
+    const firedFile = join(root, "patterns-fired.json");
+
+    const summary = await runDuePatternNotices({
+      destination: "@me",
+      now: () => new Date(2026, 4, 12, 21, 30),
+      patternsFiredFile: firedFile,
+      providerId: "telegram",
+      registry: {
+        send: async () => { throw new Error("upstream 503"); }
+      } as unknown as Parameters<typeof runDuePatternNotices>[0]["registry"],
+      signals: {
+        activityFile: join(root, "no-activity.jsonl"),
+        notesDir,
+        tasksFile: join(root, "no-tasks.json")
+      }
+    });
+    expect(summary.delivered).toBe(0);
+    expect(summary.errors).toHaveLength(1);
+    expect(summary.errors[0]).toContain("upstream 503");
+    // No cooldown record should have been written for a failed send.
+    expect(() => statSync(firedFile)).toThrow();
+    expect(() => readFileSync(firedFile, "utf8")).toThrow();
+  });
+});
+
 describe("personal-episodes-store", () => {
   it("read tolerates missing / corrupt / wrong-shape files and drops invalid entries", async () => {
     const { readEpisodes } = await import("../src/index.js");
