@@ -19,6 +19,14 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { mergeModelKeysFromFile } from "@muse/autoconfigure";
+import {
+  readFollowups,
+  readReminders,
+  summariseEpisodesRows,
+  summariseFollowupsRows,
+  summarisePatternsFiredRows,
+  summariseRemindersRows
+} from "@muse/mcp";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
@@ -113,33 +121,6 @@ interface ProactiveHistoryEntry {
   readonly text?: string;
 }
 
-interface FollowupRow {
-  readonly id?: unknown;
-  readonly userId?: unknown;
-  readonly scheduledFor?: unknown;
-  readonly status?: unknown;
-  readonly summary?: unknown;
-}
-
-interface EpisodeRow {
-  readonly id?: unknown;
-  readonly userId?: unknown;
-  readonly endedAt?: unknown;
-  readonly summary?: unknown;
-}
-
-interface PatternFiredRow {
-  readonly patternId?: unknown;
-  readonly firedAtMs?: unknown;
-}
-
-interface ReminderRow {
-  readonly id?: unknown;
-  readonly text?: unknown;
-  readonly dueAt?: unknown;
-  readonly status?: unknown;
-}
-
 async function collectStatus(userId: string) {
   const userMemoryFile = defaultUserMemoryFile();
   const tasksFile = defaultTasksFile();
@@ -167,17 +148,17 @@ async function collectStatus(userId: string) {
   const historyDoc = await safeReadJson(historyFile) as { entries?: readonly ProactiveHistoryEntry[] } | undefined;
   const lastNotice = historyDoc?.entries?.[historyDoc.entries.length - 1];
 
-  const followupsDoc = await safeReadJson(defaultFollowupsFile()) as { followups?: readonly FollowupRow[] } | undefined;
-  const followupsByStatus = summariseFollowups(followupsDoc?.followups ?? [], userId);
+  const followups = await readFollowups(defaultFollowupsFile()).catch(() => [] as const);
+  const followupsByStatus = summariseFollowupsRows(followups, userId);
 
-  const episodesDoc = await safeReadJson(defaultEpisodesFile()) as { episodes?: readonly EpisodeRow[] } | undefined;
-  const episodesSummary = summariseEpisodes(episodesDoc?.episodes ?? [], userId);
+  const episodesDoc = await safeReadJson(defaultEpisodesFile()) as { episodes?: readonly unknown[] } | undefined;
+  const episodesSummary = summariseEpisodesRows(episodesDoc?.episodes ?? [], userId);
 
-  const patternsFiredDoc = await safeReadJson(defaultPatternsFiredFile()) as { fired?: readonly PatternFiredRow[] } | undefined;
-  const patternsSummary = summarisePatternsFired(patternsFiredDoc?.fired ?? []);
+  const patternsFiredDoc = await safeReadJson(defaultPatternsFiredFile()) as { fired?: readonly unknown[] } | undefined;
+  const patternsSummary = summarisePatternsFiredRows(patternsFiredDoc?.fired ?? []);
 
-  const remindersDoc = await safeReadJson(defaultRemindersFile()) as { reminders?: readonly ReminderRow[] } | undefined;
-  const remindersSummary = summariseReminders(remindersDoc?.reminders ?? [], now);
+  const reminders = await readReminders(defaultRemindersFile()).catch(() => [] as const);
+  const remindersSummary = summariseRemindersRows(reminders, now);
 
   const logTail = await readLogTail(logFile, 1);
   const logBytes = await fileSize(logFile);
@@ -234,68 +215,6 @@ async function collectStatus(userId: string) {
 }
 
 /**
- * Pull a `{ scheduled, fired, cancelled, total, nextScheduledFor }`
- * envelope out of `~/.muse/followups.json`. Filters to the active
- * userId so a shared-machine install doesn't surface other users'
- * queues.
- */
-function summariseFollowups(rows: readonly FollowupRow[], userId: string) {
-  let scheduled = 0;
-  let fired = 0;
-  let cancelled = 0;
-  let nextScheduledForMs = Number.POSITIVE_INFINITY;
-  let nextScheduledForIso: string | undefined;
-  let nextScheduledSummary: string | undefined;
-  let total = 0;
-  for (const row of rows) {
-    if (typeof row.userId !== "string" || row.userId !== userId) continue;
-    total += 1;
-    if (row.status === "scheduled") {
-      scheduled += 1;
-      if (typeof row.scheduledFor === "string") {
-        const ms = Date.parse(row.scheduledFor);
-        if (Number.isFinite(ms) && ms < nextScheduledForMs) {
-          nextScheduledForMs = ms;
-          nextScheduledForIso = row.scheduledFor;
-          nextScheduledSummary = typeof row.summary === "string" ? row.summary : undefined;
-        }
-      }
-    } else if (row.status === "fired") {
-      fired += 1;
-    } else if (row.status === "cancelled") {
-      cancelled += 1;
-    }
-  }
-  return {
-    cancelled,
-    fired,
-    nextScheduledFor: nextScheduledForIso,
-    nextScheduledSummary,
-    scheduled,
-    total
-  };
-}
-
-/**
- * `{ total, lastEndedAt, lastSummary }` for the user's prior-session
- * memory store. Filters to the active userId to avoid cross-leak.
- */
-function summariseEpisodes(rows: readonly EpisodeRow[], userId: string) {
-  let total = 0;
-  let lastEndedAt: string | undefined;
-  let lastSummary: string | undefined;
-  for (const row of rows) {
-    if (typeof row.userId !== "string" || row.userId !== userId) continue;
-    total += 1;
-    if (typeof row.endedAt === "string" && (lastEndedAt === undefined || row.endedAt > lastEndedAt)) {
-      lastEndedAt = row.endedAt;
-      lastSummary = typeof row.summary === "string" ? row.summary : undefined;
-    }
-  }
-  return { lastEndedAt, lastSummary, total };
-}
-
-/**
  * `{ configured: ["gemini", "ollama"], total: 2 }` over the five
  * canonical provider env keys mirrored from
  * `personal-providers.ts`. Probes both `process.env` AND the
@@ -328,72 +247,6 @@ function summariseProviders() {
     }
   }
   return { configured, total: configured.length };
-}
-
-/**
- * `{ pending, fired, overdue, total, nextDueAt, nextText }` over
- * `~/.muse/reminders.json`. Reminders are single-user — there is no
- * userId field on the row, so unlike followups/episodes the filter
- * stays off. Overdue = pending && dueAt in the past; next = earliest
- * pending dueAt (regardless of whether it's already overdue, so the
- * report still points at the next thing to deal with).
- */
-function summariseReminders(rows: readonly ReminderRow[], nowMs: number) {
-  let pending = 0;
-  let fired = 0;
-  let overdue = 0;
-  let total = 0;
-  let nextDueAtMs = Number.POSITIVE_INFINITY;
-  let nextDueAtIso: string | undefined;
-  let nextText: string | undefined;
-  for (const row of rows) {
-    if (typeof row.id !== "string") continue;
-    total += 1;
-    if (row.status === "fired") {
-      fired += 1;
-      continue;
-    }
-    if (row.status !== "pending") continue;
-    pending += 1;
-    if (typeof row.dueAt !== "string") continue;
-    const ms = Date.parse(row.dueAt);
-    if (!Number.isFinite(ms)) continue;
-    if (ms < nowMs) overdue += 1;
-    if (ms < nextDueAtMs) {
-      nextDueAtMs = ms;
-      nextDueAtIso = row.dueAt;
-      nextText = typeof row.text === "string" ? row.text : undefined;
-    }
-  }
-  return {
-    fired,
-    nextDueAt: nextDueAtIso,
-    nextText,
-    overdue,
-    pending,
-    total
-  };
-}
-
-/**
- * `{ total, lastFiredAtIso }` over the cooldown sidecar.
- * patternsFired.json doesn't carry a userId — it's a single-user
- * file by design.
- */
-function summarisePatternsFired(rows: readonly PatternFiredRow[]) {
-  let total = 0;
-  let lastFiredMs = Number.NEGATIVE_INFINITY;
-  for (const row of rows) {
-    if (typeof row.patternId !== "string") continue;
-    total += 1;
-    if (typeof row.firedAtMs === "number" && Number.isFinite(row.firedAtMs) && row.firedAtMs > lastFiredMs) {
-      lastFiredMs = row.firedAtMs;
-    }
-  }
-  return {
-    lastFiredAtIso: Number.isFinite(lastFiredMs) ? new Date(lastFiredMs).toISOString() : undefined,
-    total
-  };
 }
 
 export function registerStatusCommand(program: Command, io: ProgramIO): void {
