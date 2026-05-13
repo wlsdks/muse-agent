@@ -773,7 +773,12 @@ export function createLoopbackMcpToolsFromEnv(env: MuseEnvironment): readonly Mu
   const servers: LoopbackMcpServer[] = [];
 
   if (parseBoolean(env.MUSE_LOOPBACK_MCP_ENABLED, false)) {
-    servers.push(...createDefaultLoopbackMcpServers());
+    const searxngUrl = env.MUSE_SEARXNG_URL?.trim();
+    const searxngEngines = env.MUSE_SEARXNG_ENGINES?.trim();
+    servers.push(...createDefaultLoopbackMcpServers({
+      ...(searxngUrl && searxngUrl.length > 0 ? { searxngUrl } : {}),
+      ...(searxngEngines && searxngEngines.length > 0 ? { searxngEngines } : {})
+    }));
   }
 
   const fetchHosts = parseCsv(env.MUSE_LOOPBACK_FETCH_HOSTS);

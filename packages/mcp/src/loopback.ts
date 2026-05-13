@@ -84,6 +84,10 @@ export function createLoopbackMcpMuseTools(server: LoopbackMcpServer): readonly 
 export interface BuiltinLoopbackOptions {
   readonly now?: () => Date;
   readonly uuid?: () => string;
+  /** Forwarded to `createSearchMcpServer` so a self-hosted SearXNG instance becomes the preferred backend. */
+  readonly searxngUrl?: string;
+  /** Forwarded to `createSearchMcpServer` — comma-separated engine list passed through to SearXNG. */
+  readonly searxngEngines?: string;
 }
 
 import { createJsonMcpServer } from "./loopback-json-server.js";
@@ -293,7 +297,10 @@ export function createDefaultLoopbackMcpServers(options: BuiltinLoopbackOptions 
     createCryptoMcpServer(options),
     createDiffMcpServer(),
     createRegexMcpServer(),
-    createSearchMcpServer()
+    createSearchMcpServer({
+      ...(options.searxngUrl ? { searxngUrl: options.searxngUrl } : {}),
+      ...(options.searxngEngines ? { searxngEngines: options.searxngEngines } : {})
+    })
   ];
 }
 

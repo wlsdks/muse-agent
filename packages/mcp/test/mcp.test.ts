@@ -1477,6 +1477,81 @@ describe("muse.search loopback server", () => {
     const names = createDefaultLoopbackMcpServers().map((s) => s.name);
     expect(names).toContain("muse.search");
   });
+
+  it("when searxngUrl is set, hits SearXNG JSON first and returns its results with backend=searxng", async () => {
+    let calledSearxng = false;
+    let calledDdg = false;
+    const fakeFetch: typeof globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (url.startsWith("http://searx.local")) {
+        calledSearxng = true;
+        return new Response(JSON.stringify({
+          results: [
+            { title: "Searx First", url: "https://searx.example/a", content: "first searx snippet" },
+            { title: "Searx Second", url: "https://searx.example/b", content: "second searx snippet" }
+          ]
+        }), { headers: { "content-type": "application/json" }, status: 200 });
+      }
+      calledDdg = true;
+      return new Response("should not be called", { status: 500 });
+    };
+    const server = createSearchMcpServer({ fetch: fakeFetch, searxngUrl: "http://searx.local" });
+    const connection = createLoopbackMcpConnection(server);
+    const result = await connection.callTool!("search", { query: "muse" });
+    expect(calledSearxng).toBe(true);
+    expect(calledDdg).toBe(false);
+    expect(result).toMatchObject({ backend: "searxng", query: "muse", total: 2 });
+    const rows = result.results as { title: string; url: string; snippet: string }[];
+    expect(rows[0]?.url).toBe("https://searx.example/a");
+    expect(rows[0]?.snippet).toBe("first searx snippet");
+  });
+
+  it("when SearXNG fails (non-2xx, bad JSON, or zero results), falls through to the DDG HTML backend", async () => {
+    // Path 1: HTTP error on searxng → DDG runs.
+    const httpErrFetch: typeof globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (url.startsWith("http://searx.local")) return new Response("down", { status: 503 });
+      return new Response(`<a rel="nofollow" class="result__a" href="https://example.com/a">title</a><a class="result__snippet" href="x">snip</a>`, { status: 200 });
+    };
+    const r1 = await createLoopbackMcpConnection(createSearchMcpServer({ fetch: httpErrFetch, searxngUrl: "http://searx.local" }))
+      .callTool!("search", { query: "x" });
+    expect(r1).toMatchObject({ backend: "duckduckgo", total: 1 });
+
+    // Path 2: SearXNG returns zero hits → DDG runs.
+    const zeroFetch: typeof globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (url.startsWith("http://searx.local")) return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      return new Response(`<a rel="nofollow" class="result__a" href="https://example.com/b">t</a><a class="result__snippet" href="x">s</a>`, { status: 200 });
+    };
+    const r2 = await createLoopbackMcpConnection(createSearchMcpServer({ fetch: zeroFetch, searxngUrl: "http://searx.local" }))
+      .callTool!("search", { query: "x" });
+    expect(r2).toMatchObject({ backend: "duckduckgo", total: 1 });
+
+    // Path 3: SearXNG returns malformed JSON (no `results` array) → DDG runs.
+    const badJsonFetch: typeof globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (url.startsWith("http://searx.local")) return new Response(JSON.stringify({ oops: "wrong shape" }), { status: 200 });
+      return new Response(`<a rel="nofollow" class="result__a" href="https://example.com/c">t</a><a class="result__snippet" href="x">s</a>`, { status: 200 });
+    };
+    const r3 = await createLoopbackMcpConnection(createSearchMcpServer({ fetch: badJsonFetch, searxngUrl: "http://searx.local" }))
+      .callTool!("search", { query: "x" });
+    expect(r3).toMatchObject({ backend: "duckduckgo", total: 1 });
+  });
+
+  it("forwards searxngEngines through as the `engines` query param", async () => {
+    let seenUrl = "";
+    const fakeFetch: typeof globalThis.fetch = async (input) => {
+      seenUrl = String(input);
+      return new Response(JSON.stringify({ results: [{ title: "x", url: "https://x", content: "y" }] }), { status: 200 });
+    };
+    await createLoopbackMcpConnection(createSearchMcpServer({
+      fetch: fakeFetch,
+      searxngEngines: "google,brave",
+      searxngUrl: "http://searx.local"
+    })).callTool!("search", { query: "muse" });
+    expect(seenUrl).toContain("engines=google");
+    expect(seenUrl).toContain("brave");
+  });
 });
 
 describe("compareTasksByDueDate", () => {
