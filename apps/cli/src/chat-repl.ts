@@ -758,24 +758,37 @@ export function parseAgentMode(value: string | undefined): AgentMode | undefined
  * block. Caller invokes once per REPL boot; the result feeds
  * `buildMusePersona`'s new `episodes` field.
  *
- * `MUSE_EPISODIC_MEMORY_MAX_ENTRIES` (default 5) caps the block;
+ * `MUSE_EPISODIC_MEMORY_MAX_ENTRIES` (default 20) caps the block;
  * 0 / negative / non-numeric values fall back to the default rather
  * than producing nonsense like "render -3 entries".
+ *
+ * The default went 5 → 20 once we decided to skip vector RAG. At
+ * personal scale (≤ a few hundred episodes over the assistant's
+ * lifetime) the cheaper play is to surface enough episodes in the
+ * persona block that the LLM can do paraphrase matching natively
+ * (e.g. "Notion thing" → matches "Q3 budget memo" tagged "Notion").
+ * 20 entries at ~80 tokens each ≈ 1.6 K tokens of persona — fits
+ * comfortably alongside the rest of the prompt on modern context
+ * windows.
  */
 async function loadPersonaEpisodes(
   userId: string
-): Promise<readonly { readonly endedAt: string; readonly summary: string }[]> {
+): Promise<readonly { readonly endedAt: string; readonly summary: string; readonly topics?: readonly string[] }[]> {
   const { readEpisodes } = await import("@muse/mcp");
   const { resolveEpisodesFile } = await import("@muse/autoconfigure");
   const file = resolveEpisodesFile(process.env as Record<string, string | undefined>);
   const all = await readEpisodes(file);
   const capRaw = Number(process.env.MUSE_EPISODIC_MEMORY_MAX_ENTRIES);
-  const cap = Number.isFinite(capRaw) && capRaw > 0 ? Math.trunc(capRaw) : 5;
+  const cap = Number.isFinite(capRaw) && capRaw > 0 ? Math.trunc(capRaw) : 20;
   return all
     .filter((entry) => entry.userId === userId)
     .sort((left, right) => right.endedAt.localeCompare(left.endedAt))
     .slice(0, cap)
-    .map((entry) => ({ endedAt: entry.endedAt, summary: entry.summary }));
+    .map((entry) => ({
+      endedAt: entry.endedAt,
+      summary: entry.summary,
+      ...(entry.topics && entry.topics.length > 0 ? { topics: entry.topics } : {})
+    }));
 }
 
 export function readChatResponseText(value: unknown): string {

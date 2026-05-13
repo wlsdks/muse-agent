@@ -539,7 +539,14 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   // REPL exit; manual add would let the LLM lie about history).
   const episodesFile = resolveEpisodesFile(env);
   const episodesLoopbackTools = createLoopbackMcpMuseTools(
-    createEpisodesMcpServer({ file: episodesFile })
+    createEpisodesMcpServer({
+      file: episodesFile,
+      // LLM-judge search mode opts in only when a modelProvider +
+      // defaultModel are wired. Without them, the substring path
+      // still works; llm-judge requests return a clear error rather
+      // than silently degrading.
+      ...(modelProvider && defaultModel ? { model: defaultModel, modelProvider } : {})
+    })
   );
   // Pattern loopback — run detectors on demand, audit fired
   // history, reset cooldown. The daemon stays the sole firer.

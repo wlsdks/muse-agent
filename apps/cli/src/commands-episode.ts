@@ -87,6 +87,58 @@ export function registerEpisodeCommands(program: Command, io: ProgramIO): void {
     });
 
   episode
+    .command("search")
+    .description("Search episodes by substring (default) or by LLM relevance judge with --llm-judge")
+    .argument("<query...>", "Query (joined by spaces)")
+    .option("--user <userId>", "Filter to a single user")
+    .option("--limit <n>", "Max matches (default 10, cap 50)")
+    .option("--llm-judge", "Ask the model to pick relevant ids from the full episode list (catches paraphrase recall; one extra LLM call)")
+    .option("--json", "Print the raw payload")
+    .action(async (queryParts: readonly string[], options: { readonly user?: string; readonly limit?: string; readonly llmJudge?: boolean } & SharedOptions) => {
+      const query = queryParts.join(" ").trim();
+      if (query.length === 0) {
+        throw new Error("query is required");
+      }
+      const limit = parseLimit(options.limit, 10, 50);
+      const userFilter = options.user?.trim();
+      const all = await readEpisodes(localEpisodesFile());
+      const scoped = userFilter ? all.filter((e) => e.userId === userFilter) : all;
+      let matches: readonly PersistedEpisode[];
+      let mode: "substring" | "llm-judge";
+      if (options.llmJudge) {
+        mode = "llm-judge";
+        matches = await runLlmJudgeFromCli(scoped, query, limit);
+      } else {
+        mode = "substring";
+        const needle = query.toLowerCase();
+        matches = scoped
+          .filter((entry) => {
+            if (entry.summary.toLowerCase().includes(needle)) return true;
+            if (entry.topics) {
+              for (const topic of entry.topics) {
+                if (topic.toLowerCase().includes(needle)) return true;
+              }
+            }
+            return false;
+          })
+          .sort((left, right) => right.endedAt.localeCompare(left.endedAt))
+          .slice(0, limit);
+      }
+      const payload = {
+        episodes: matches.map(serializeEpisode),
+        mode,
+        query,
+        total: matches.length,
+        ...(userFilter ? { userId: userFilter } : {})
+      };
+      if (options.json) {
+        io.stdout(`${JSON.stringify(payload, null, 2)}\n`);
+        return;
+      }
+      io.stdout(formatEpisodeList(matches, userFilter));
+    });
+
+  episode
     .command("remove")
     .description("Drop a single episode (irreversible)")
     .argument("<id>", "Episode id or unambiguous prefix")
@@ -181,4 +233,80 @@ function compactOneLine(value: string, maxChars: number): string {
   const single = value.replace(/\s+/gu, " ").trim();
   if (single.length <= maxChars) return single;
   return `${single.slice(0, maxChars - 1)}…`;
+}
+
+/**
+ * `--llm-judge` mode: send the query + every candidate episode's
+ * (id, date, summary, topics) to the configured local model and
+ * parse a JSON array of ids back. Lazy-import the assembly so the
+ * other subcommands don't pay the autoconfigure boot cost.
+ *
+ * Throws when no model is wired so the user gets a clean
+ * "configure MUSE_MODEL first" message instead of silently
+ * degrading to substring.
+ */
+async function runLlmJudgeFromCli(
+  candidates: readonly PersistedEpisode[],
+  query: string,
+  limit: number
+): Promise<readonly PersistedEpisode[]> {
+  if (candidates.length === 0) return [];
+  const { createMuseRuntimeAssembly } = await import("@muse/autoconfigure");
+  const assembly = createMuseRuntimeAssembly();
+  if (!assembly.modelProvider || !assembly.defaultModel) {
+    throw new Error("--llm-judge requires MUSE_MODEL (and a wired model provider). Set MUSE_MODEL and re-run.");
+  }
+  const sorted = [...candidates].sort((left, right) => right.endedAt.localeCompare(left.endedAt));
+  const lines: string[] = [];
+  for (const ep of sorted) {
+    const topicSuffix = ep.topics && ep.topics.length > 0 ? ` [${ep.topics.join(", ")}]` : "";
+    lines.push(`[${ep.id}] ${ep.endedAt.slice(0, 10)}: ${ep.summary.replace(/\s+/gu, " ").trim()}${topicSuffix}`);
+  }
+  const systemPrompt =
+    "You are an episode selector. Return STRICT JSON: a single array of episode id strings, ordered by relevance. " +
+    "NEVER invent ids that were not in the input. NEVER include explanatory text. Return [] when nothing meaningfully matches.";
+  const userMessage = `Query: ${query}\n\nEpisodes:\n${lines.join("\n")}\n\nReturn at most ${limit.toString()} ids.`;
+
+  const response = await assembly.modelProvider.generate({
+    maxOutputTokens: 320,
+    messages: [
+      { content: systemPrompt, role: "system" },
+      { content: userMessage, role: "user" }
+    ],
+    model: assembly.defaultModel,
+    temperature: 0
+  });
+  const ids = parseLlmJudgeIds((response.output ?? "").trim());
+  const byId = new Map(sorted.map((ep) => [ep.id, ep] as const));
+  const seen = new Set<string>();
+  const out: PersistedEpisode[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const ep = byId.get(id);
+    if (!ep) continue;
+    seen.add(id);
+    out.push(ep);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function parseLlmJudgeIds(raw: string): readonly string[] {
+  const first = raw.indexOf("[");
+  if (first < 0) return [];
+  let depth = 0;
+  let body = "";
+  for (let i = first; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (ch === "[") depth += 1;
+    else if (ch === "]") {
+      depth -= 1;
+      if (depth === 0) { body = raw.slice(first, i + 1); break; }
+    }
+  }
+  if (!body) return [];
+  let parsed: unknown;
+  try { parsed = JSON.parse(body) as unknown; } catch { return []; }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter((id): id is string => typeof id === "string" && id.length > 0);
 }

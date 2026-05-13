@@ -5142,6 +5142,82 @@ describe("muse.episode loopback server", () => {
     onDisk = JSON.parse(readFileSync(file, "utf8")) as { episodes: unknown[] };
     expect(onDisk.episodes).toEqual([]);
   });
+
+  it("search mode=llm-judge — rejects when no modelProvider wired", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-ep-mcp-judge-noprov-"));
+    const file = join(dir, "episodes.json");
+    writeFileSync(file, JSON.stringify({ episodes: [] }), "utf8");
+    const connection = createLoopbackMcpConnection(createEpisodesMcpServer({ file }));
+    const result = await connection.callTool!("search", { mode: "llm-judge", query: "anything" });
+    expect(result).toMatchObject({ error: expect.stringContaining("llm-judge mode requires modelProvider") });
+  });
+
+  it("search mode=llm-judge — picks ids returned by the model in relevance order, drops hallucinated ids", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-ep-mcp-judge-ok-"));
+    const file = join(dir, "episodes.json");
+    writeFileSync(file, JSON.stringify({
+      episodes: [
+        { id: "ep_a", userId: "stark", startedAt: "2026-05-12T22:00:00Z", endedAt: "2026-05-12T22:18:00Z", summary: "Q3 budget memo discussion. User decided to draft in Notion.", topics: ["Q3 budget memo", "Notion"] },
+        { id: "ep_b", userId: "stark", startedAt: "2026-05-11T22:00:00Z", endedAt: "2026-05-11T22:18:00Z", summary: "Wedding venue shortlist.", topics: ["wedding"] },
+        { id: "ep_c", userId: "stark", startedAt: "2026-05-10T22:00:00Z", endedAt: "2026-05-10T22:18:00Z", summary: "Routine setup discussion.", topics: ["routine"] }
+      ]
+    }), "utf8");
+
+    let seenMessages: ReadonlyArray<{ role: string; content: string }> = [];
+    const modelProvider = {
+      generate: async (req: { messages: ReadonlyArray<{ role: "system" | "user" | "assistant"; content: string }> }) => {
+        seenMessages = req.messages;
+        // Model returns ep_a first (most relevant), ep_b second, then a fake id that must be dropped.
+        return { output: '["ep_a", "ep_b", "ep_does_not_exist"]' };
+      }
+    };
+    const connection = createLoopbackMcpConnection(createEpisodesMcpServer({
+      file,
+      model: "stub",
+      modelProvider
+    }));
+
+    const result = await connection.callTool!("search", { mode: "llm-judge", query: "Notion thing" });
+    expect(result.mode).toBe("llm-judge");
+    expect(result.total).toBe(2);
+    expect((result.episodes as Array<{ id: string }>).map((e) => e.id)).toEqual(["ep_a", "ep_b"]);
+    // The user message has every candidate id + topic in the prompt.
+    const userMsg = seenMessages.find((m) => m.role === "user")?.content ?? "";
+    expect(userMsg).toContain("[ep_a]");
+    expect(userMsg).toContain("Notion");
+    expect(userMsg).toContain("Query: Notion thing");
+  });
+
+  it("search mode=llm-judge — tolerates prose wrap + returns [] on malformed JSON", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-ep-mcp-judge-edge-"));
+    const file = join(dir, "episodes.json");
+    writeFileSync(file, JSON.stringify({
+      episodes: [
+        { id: "ep_x", userId: "stark", startedAt: "2026-05-12T22:00:00Z", endedAt: "2026-05-12T22:18:00Z", summary: "S", topics: ["t"] }
+      ]
+    }), "utf8");
+
+    const wrappedProvider = {
+      generate: async () => ({ output: 'Sure, here you go: ["ep_x"] — hope this helps!' })
+    };
+    const wrappedConn = createLoopbackMcpConnection(createEpisodesMcpServer({ file, model: "stub", modelProvider: wrappedProvider }));
+    const wrapped = await wrappedConn.callTool!("search", { mode: "llm-judge", query: "x" });
+    expect((wrapped.episodes as Array<{ id: string }>).map((e) => e.id)).toEqual(["ep_x"]);
+
+    const badProvider = { generate: async () => ({ output: "completely-not-json" }) };
+    const badConn = createLoopbackMcpConnection(createEpisodesMcpServer({ file, model: "stub", modelProvider: badProvider }));
+    const bad = await badConn.callTool!("search", { mode: "llm-judge", query: "x" });
+    expect(bad.total).toBe(0);
+  });
 });
 
 describe("muse.pattern loopback server", () => {

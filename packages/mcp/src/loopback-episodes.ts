@@ -9,6 +9,7 @@ import {
   serializeEpisode,
   type PersistedEpisode
 } from "./personal-episodes-store.js";
+import type { ProactiveModelProviderLike } from "./proactive-notice-loop.js";
 
 /**
  * `muse.episode` loopback MCP server — gives the agent
@@ -33,11 +34,25 @@ import {
 export interface EpisodesMcpServerOptions {
   readonly file: string;
   readonly maxListEntries?: number;
+  /**
+   * Optional model provider for the `search` tool's `mode: "llm-judge"`
+   * path. When unset, the LLM-judge mode is rejected at request time
+   * with a clear "not configured" error; the substring path still works.
+   *
+   * Personal-scale Muse skips a vector index entirely — at ≤ a few
+   * hundred episodes, asking the LLM to pick relevant ids from the
+   * full list (one round-trip per query) is cheaper than running
+   * pgvector + embeddings, and the LLM does paraphrase recall
+   * natively ("Notion thing" → matches "Q3 budget memo / Notion").
+   */
+  readonly modelProvider?: ProactiveModelProviderLike;
+  readonly model?: string;
 }
 
 export function createEpisodesMcpServer(options: EpisodesMcpServerOptions): LoopbackMcpServer {
   const file = options.file;
   const maxListEntries = Math.max(1, Math.trunc(options.maxListEntries ?? 50));
+  const llmJudgeReady = Boolean(options.modelProvider && options.model);
 
   return {
     description:
@@ -93,9 +108,31 @@ export function createEpisodesMcpServer(options: EpisodesMcpServerOptions): Loop
           const limit = typeof limitRaw === "number" && Number.isFinite(limitRaw)
             ? Math.max(1, Math.min(maxListEntries, Math.trunc(limitRaw)))
             : Math.min(maxListEntries, 10);
-          const needle = query.toLowerCase();
+          const modeRaw = readString(args, "mode");
+          const mode = modeRaw === "llm-judge" ? "llm-judge" : "substring";
+
           const all = await readEpisodes(file);
           const scoped = userId ? all.filter((e) => e.userId === userId) : all;
+
+          if (mode === "llm-judge") {
+            if (!llmJudgeReady) {
+              return { error: "llm-judge mode requires modelProvider + model to be wired into createEpisodesMcpServer; falling back: re-run with mode: 'substring'" };
+            }
+            try {
+              const matches = await runLlmJudge(scoped, query, limit, options);
+              return {
+                episodes: matches.map(serializeEpisode) as JsonValue,
+                mode: "llm-judge",
+                query,
+                total: matches.length,
+                ...(userId ? { userId } : {})
+              };
+            } catch (cause) {
+              return { error: `llm-judge failed: ${errorMessage(cause)}` };
+            }
+          }
+
+          const needle = query.toLowerCase();
           const matches = scoped
             .filter((episode) => {
               if (episode.summary.toLowerCase().includes(needle)) return true;
@@ -110,6 +147,7 @@ export function createEpisodesMcpServer(options: EpisodesMcpServerOptions): Loop
             .slice(0, limit);
           return {
             episodes: matches.map(serializeEpisode) as JsonValue,
+            mode: "substring",
             query,
             total: matches.length,
             ...(userId ? { userId } : {})
@@ -119,7 +157,13 @@ export function createEpisodesMcpServer(options: EpisodesMcpServerOptions): Loop
           additionalProperties: false,
           properties: {
             limit: { type: "number" },
-            query: { description: "Substring to grep for (case-insensitive).", type: "string" },
+            mode: {
+              description:
+                "'substring' (default) for case-insensitive grep; 'llm-judge' asks the model to pick relevant ids from the full episode list (one extra round-trip; catches paraphrase recall — 'Notion thing' → matches an episode tagged 'Notion').",
+              enum: ["substring", "llm-judge"],
+              type: "string"
+            },
+            query: { description: "Substring (mode=substring) or natural-language query (mode=llm-judge).", type: "string" },
             userId: { type: "string" }
           },
           required: ["query"],
@@ -219,4 +263,80 @@ export function createEpisodesMcpServer(options: EpisodesMcpServerOptions): Loop
       }
     ]
   };
+}
+
+const LLM_JUDGE_SYSTEM_PROMPT =
+  `You are an episode selector. The user gives you a natural-language
+query and a list of prior-session summaries. Return the ids of the
+episodes that are MOST relevant to the query, in descending order of
+relevance.
+
+Output STRICT JSON: a single array of episode-id strings, e.g.
+["ep_abc", "ep_def"]. NEVER invent ids that were not in the input.
+NEVER include explanatory text. Return [] when nothing meaningfully
+matches.`;
+
+async function runLlmJudge(
+  episodes: readonly PersistedEpisode[],
+  query: string,
+  limit: number,
+  options: EpisodesMcpServerOptions
+): Promise<readonly PersistedEpisode[]> {
+  if (episodes.length === 0) return [];
+  // Sort newest-first so the LLM has a chronological prior.
+  const candidates = [...episodes].sort((left, right) => right.endedAt.localeCompare(left.endedAt));
+  const lines: string[] = [];
+  for (const ep of candidates) {
+    const topicSuffix = ep.topics && ep.topics.length > 0 ? ` [${ep.topics.join(", ")}]` : "";
+    lines.push(`[${ep.id}] ${ep.endedAt.slice(0, 10)}: ${ep.summary.replace(/\s+/gu, " ").trim()}${topicSuffix}`);
+  }
+  const userMessage = `Query: ${query}\n\nEpisodes:\n${lines.join("\n")}\n\nReturn at most ${limit.toString()} ids.`;
+
+  const response = await options.modelProvider!.generate({
+    maxOutputTokens: 320,
+    messages: [
+      { content: LLM_JUDGE_SYSTEM_PROMPT, role: "system" },
+      { content: userMessage, role: "user" }
+    ],
+    model: options.model!,
+    temperature: 0
+  });
+  const ids = parseLlmJudgeOutput((response.output ?? "").trim());
+  // Resolve in the order the LLM returned (preserves its relevance ranking),
+  // dedupe, cap at `limit`, drop hallucinated ids.
+  const byId = new Map(candidates.map((ep) => [ep.id, ep] as const));
+  const seen = new Set<string>();
+  const out: PersistedEpisode[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const ep = byId.get(id);
+    if (!ep) continue;
+    seen.add(id);
+    out.push(ep);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function parseLlmJudgeOutput(raw: string): readonly string[] {
+  const first = raw.indexOf("[");
+  if (first < 0) return [];
+  let depth = 0;
+  let body = "";
+  for (let i = first; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (ch === "[") depth += 1;
+    else if (ch === "]") {
+      depth -= 1;
+      if (depth === 0) {
+        body = raw.slice(first, i + 1);
+        break;
+      }
+    }
+  }
+  if (!body) return [];
+  let parsed: unknown;
+  try { parsed = JSON.parse(body) as unknown; } catch { return []; }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter((id): id is string => typeof id === "string" && id.length > 0);
 }

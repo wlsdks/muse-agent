@@ -30,13 +30,22 @@ interface JarvisPersonaMemory {
 
 /**
  * Minimal structural shape pulled in for the persona block. Matches
- * `PersistedEpisode` from `@muse/mcp` (endedAt + summary), but the
- * persona builder stays I/O-free so this stays declared locally
- * rather than depending on the mcp package's full type.
+ * `PersistedEpisode` from `@muse/mcp` (endedAt + summary + topics),
+ * but the persona builder stays I/O-free so this stays declared
+ * locally rather than depending on the mcp package's full type.
+ *
+ * `topics` is optional + array-of-strings: surfaced inline next to
+ * the summary so the model can do paraphrase recall against the
+ * topic tags ("Notion thing" → matches an episode tagged "Notion").
+ * For a personal-scale agent (≤ a few hundred episodes), this
+ * in-context approach beats running pgvector + an embedding index
+ * — fewer moving parts, no manual input, the LLM does the matching
+ * with the rest of the persona block.
  */
 export interface EpisodicPersonaHint {
   readonly endedAt: string;
   readonly summary: string;
+  readonly topics?: readonly string[];
 }
 
 export function formatCurrentContextLine(now: Date = new Date()): string {
@@ -133,12 +142,18 @@ export function buildMusePersona(
     // Episodic memory pairs with recentTopics — topics give breadth
     // ("what subjects"), episodes give depth ("what was decided").
     // Caller resolves the per-user filter + sort (newest first) +
-    // cap (default 5) before passing them in.
+    // cap (MUSE_EPISODIC_MEMORY_MAX_ENTRIES, default 20) before
+    // passing them in. Each entry renders `date: summary [topic1, topic2]`
+    // so the LLM can do paraphrase recall against the tag set
+    // ("Notion thing" → matches the entry tagged "Notion").
     lines.push("");
     lines.push("Episodic memory (recent prior sessions, summarized):");
     for (const entry of episodes) {
       const date = formatEpisodeDate(entry.endedAt);
-      lines.push(`  - ${date}: ${entry.summary.trim()}`);
+      const topicSuffix = entry.topics && entry.topics.length > 0
+        ? ` [${entry.topics.join(", ")}]`
+        : "";
+      lines.push(`  - ${date}: ${entry.summary.trim()}${topicSuffix}`);
     }
   }
   return lines.join("\n");

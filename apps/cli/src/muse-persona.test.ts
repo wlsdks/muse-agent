@@ -239,4 +239,23 @@ describe("buildMusePersona", () => {
     );
     expect(prompt).toContain("  - yesterday-ish: Legacy entry shape.");
   });
+
+  it("renders episode topics inline so the LLM can paraphrase-match against the tag set", () => {
+    const prompt = buildMusePersona(
+      {
+        facts: { name: "Stark" },
+        preferences: {},
+        episodes: [
+          { endedAt: "2026-05-12T22:00:00Z", summary: "Drafted budget memo.", topics: ["Q3 budget memo", "Notion"] },
+          { endedAt: "2026-05-11T22:00:00Z", summary: "No tags here." }
+        ]
+      },
+      "stark"
+    );
+    // Tagged entry shows `[Q3 budget memo, Notion]` suffix.
+    expect(prompt).toContain("  - 2026-05-12: Drafted budget memo. [Q3 budget memo, Notion]");
+    // Untagged entry stays clean — no empty `[]` suffix.
+    expect(prompt).toContain("  - 2026-05-11: No tags here.");
+    expect(prompt).not.toContain("No tags here. [");
+  });
 });

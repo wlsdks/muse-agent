@@ -3209,6 +3209,50 @@ describe("cli program", () => {
     }
   });
 
+  it("muse episode search --json (substring) matches summary + topics case-insensitively", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-episode-search-"));
+    const episodesFile = path.join(root, "episodes.json");
+    const fsp = await import("node:fs/promises");
+    const prev = process.env.MUSE_EPISODES_FILE;
+    process.env.MUSE_EPISODES_FILE = episodesFile;
+    try {
+      await fsp.writeFile(episodesFile, JSON.stringify({
+        episodes: [
+          { id: "ep_a", userId: "stark", startedAt: "2026-05-12T22:00:00Z", endedAt: "2026-05-12T22:18:00Z", summary: "Q3 BUDGET memo discussion.", topics: ["Q3 budget memo", "Notion"] },
+          { id: "ep_b", userId: "stark", startedAt: "2026-05-11T22:00:00Z", endedAt: "2026-05-11T22:18:00Z", summary: "Wedding venue shortlist.", topics: ["wedding"] }
+        ]
+      }), "utf8");
+
+      // Summary substring match (case-insensitive).
+      const { io: io1, output: out1 } = captureOutput();
+      const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+      await program1.parseAsync(["node", "muse", "episode", "search", "budget", "--json"], { from: "node" });
+      const r1 = JSON.parse(out1.join("")) as { mode: string; total: number; episodes: Array<{ id: string }> };
+      expect(r1.mode).toBe("substring");
+      expect(r1.total).toBe(1);
+      expect(r1.episodes[0]!.id).toBe("ep_a");
+
+      // Topic match.
+      const { io: io2, output: out2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      await program2.parseAsync(["node", "muse", "episode", "search", "notion", "--json"], { from: "node" });
+      const r2 = JSON.parse(out2.join("")) as { total: number; episodes: Array<{ id: string }> };
+      expect(r2.total).toBe(1);
+      expect(r2.episodes[0]!.id).toBe("ep_a");
+
+      // Empty query rejects.
+      const { io: io3 } = captureOutput();
+      const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("no fetch"); } });
+      program3.exitOverride();
+      // commander treats <query...> as required, so a no-arg call should reject; but `search` with empty " " also rejects from our own guard.
+      await expect(program3.parseAsync(["node", "muse", "episode", "search", "   ", "--json"], { from: "node" }))
+        .rejects.toThrow(/query is required/u);
+    } finally {
+      if (prev !== undefined) process.env.MUSE_EPISODES_FILE = prev;
+      else delete process.env.MUSE_EPISODES_FILE;
+    }
+  });
+
   it("muse episode remove drops a single record; clear requires --yes and wipes the file", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-episode-remove-"));
     const episodesFile = path.join(root, "episodes.json");
