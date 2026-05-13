@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   MUSE_CACHE_BOUNDARY_MARKER,
   InMemoryPromptLayerRegistry,
+  TODAY_BRIEF_SYSTEM_PROMPT,
   buildPlanningSystemPrompt,
   buildPromptContextPacket,
+  buildTodayBriefUserMessage,
   FullExemplarRetriever,
   InMemoryExemplarRetriever,
   buildLayeredSystemPrompt,
@@ -239,6 +241,34 @@ describe("buildPlanningSystemPrompt", () => {
       userPrompt: "do thing"
     });
     expect(result.startsWith("[Role]")).toBe(true);
+  });
+});
+
+describe("today-brief prompt", () => {
+  it("mentions every section currently shipped in the briefing JSON so the LLM has priority guidance", () => {
+    // Smoke-tests the prompt covers all five sections the today
+    // route + composeLocalBriefing emit. Followups joined reminders
+    // / tasks / events / notes; this asserts the prompt was kept in
+    // sync (a JSON-only addition without prompt awareness would
+    // leave the LLM unsure how to weight followups vs reminders).
+    const text = TODAY_BRIEF_SYSTEM_PROMPT.toLowerCase();
+    expect(text).toContain("reminder");
+    expect(text).toContain("followup");
+    expect(text).toContain("event");
+    expect(text).toContain("task");
+    expect(text).toContain("note");
+  });
+
+  it("buildTodayBriefUserMessage round-trips the followups field through the JSON payload", () => {
+    const briefing = {
+      followups: [{ id: "fu_a", scheduledFor: "2026-05-13T09:00:00Z", summary: "Send Q3 memo" }],
+      generatedAt: "2026-05-13T08:00:00Z",
+      lookaheadHours: 24
+    };
+    const message = buildTodayBriefUserMessage(briefing);
+    expect(message).toContain("\"followups\"");
+    expect(message).toContain("Send Q3 memo");
+    expect(message).toContain(TODAY_BRIEF_SYSTEM_PROMPT);
   });
 });
 
