@@ -16,6 +16,7 @@
 import { readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { dirname } from "node:path";
 
+import type { AgentInitiatedNoticeBroker } from "@muse/agent-core";
 import {
   runDueProactiveNotices,
   type ProactiveActivitySource,
@@ -71,6 +72,14 @@ export interface ProactiveTickOptions {
    * at the wiring layer.
    */
   readonly quietHours?: QuietHourRange;
+  /**
+   * Phase D broker. When provided alongside
+   * `agentInitiatedNoticeUserId`, every delivered notice is also
+   * published so live `/api/agent-notices/stream` subscribers see
+   * the same heads-up inline.
+   */
+  readonly agentInitiatedNoticeBroker?: AgentInitiatedNoticeBroker;
+  readonly agentInitiatedNoticeUserId?: string;
   /** Injectable clock for tests; default is `() => new Date()`. */
   readonly now?: () => Date;
 }
@@ -101,6 +110,8 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
       const summary = await runDueProactiveNotices({
         ...(options.activeSessionWindowMs !== undefined ? { activeSessionWindowMs: options.activeSessionWindowMs } : {}),
         ...(options.activitySource ? { activitySource: options.activitySource } : {}),
+        ...(options.agentInitiatedNoticeBroker ? { agentInitiatedNoticeBroker: options.agentInitiatedNoticeBroker } : {}),
+        ...(options.agentInitiatedNoticeUserId ? { agentInitiatedNoticeUserId: options.agentInitiatedNoticeUserId } : {}),
         ...(options.agentModel ? { agentModel: options.agentModel } : {}),
         ...(options.modelProvider ? { modelProvider: options.modelProvider } : {}),
         ...(options.agentRuntime ? { agentRuntime: options.agentRuntime } : {}),

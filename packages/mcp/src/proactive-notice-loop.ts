@@ -22,6 +22,21 @@ import { dirname } from "node:path";
 import type { CalendarEvent, CalendarProviderRegistry } from "@muse/calendar";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
+/**
+ * Structural shape of the Phase D broker (defined in
+ * `@muse/agent-core/AgentInitiatedNoticeBroker`). We avoid the
+ * import to keep `@muse/mcp` from depending on `@muse/agent-core`
+ * — the only call site here is the optional `publish` fan-out.
+ */
+interface AgentInitiatedNoticeBrokerLike {
+  publish(userId: string, notice: {
+    readonly kind: string;
+    readonly text: string;
+    readonly generatedAt: string;
+    readonly sourceId?: string;
+  }): void;
+}
+
 import { appendProactiveHistory } from "./personal-proactive-history-store.js";
 import { readTasks, type PersistedTask } from "./personal-tasks-store.js";
 
@@ -220,6 +235,19 @@ export interface RunDueProactiveNoticesOptions {
    * underlying calendar event has since been edited or removed.
    */
   readonly historyFile?: string;
+  /**
+   * Phase D broker. When set, every successfully synthesised /
+   * delivered notice is ALSO published here so live
+   * `/api/agent-notices/stream` subscribers see it inline. The
+   * `userId` lets the broker fan to the right subscriber bucket;
+   * the messaging-sink delivery is unchanged either way.
+   *
+   * Fail-soft: a broker publish never throws (the in-memory
+   * implementation is non-blocking), but the try/catch around
+   * the messaging send also guards this call.
+   */
+  readonly agentInitiatedNoticeBroker?: AgentInitiatedNoticeBrokerLike;
+  readonly agentInitiatedNoticeUserId?: string;
 }
 
 export interface RunDueProactiveNoticesSummary {
@@ -334,6 +362,18 @@ export async function runDueProactiveNotices(
       firedThisRun += 1;
       nextFired = [...nextFired, candidate];
       seen.add(key);
+      // Phase D broker fan-out: publish the same notice so live
+      // chat-stream subscribers see it inline. Always alongside the
+      // messaging-sink delivery — not a replacement. Fail-soft per
+      // the broker contract (in-memory broker never throws).
+      if (options.agentInitiatedNoticeBroker && options.agentInitiatedNoticeUserId) {
+        options.agentInitiatedNoticeBroker.publish(options.agentInitiatedNoticeUserId, {
+          generatedAt: firedAtIso,
+          kind: item.kind,
+          sourceId: item.id,
+          text: noticeText
+        });
+      }
       if (options.historyFile) {
         await appendProactiveHistory(options.historyFile, {
           destination: options.destination,

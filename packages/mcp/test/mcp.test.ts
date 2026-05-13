@@ -4064,6 +4064,76 @@ describe("runDueProactiveNotices", () => {
     expect(msg.sent[0]?.text).toBe("⏰ Standup in 5 — want a quick agenda?");
   });
 
+  it("Phase D: publishes to the agent-initiated-notice broker alongside the messaging send", async () => {
+    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-proactive-phaseD-broker-"));
+    const sidecarFile = join(dir, "proactive-fired.json");
+
+    const fixedNow = new Date("2026-05-12T14:55:00Z");
+    const cal = makeFakeCalendarRegistry([
+      { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-1", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
+    ]);
+    const msg = makeFakeMessagingRegistry();
+    const published: Array<{ userId: string; notice: { kind: string; text: string; sourceId?: string } }> = [];
+    const broker = {
+      publish: (userId: string, notice: { kind: string; text: string; generatedAt: string; sourceId?: string }) => {
+        published.push({ notice, userId });
+      }
+    };
+
+    const summary = await runDueProactiveNotices({
+      agentInitiatedNoticeBroker: broker,
+      agentInitiatedNoticeUserId: "stark",
+      calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+      destination: "@me",
+      messagingRegistry: msg.registry as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
+      now: () => fixedNow,
+      providerId: "telegram",
+      sidecarFile
+    });
+    expect(summary).toMatchObject({ fired: 1, errors: [] });
+
+    // Both sinks fired with the same text.
+    expect(msg.sent).toHaveLength(1);
+    expect(published).toHaveLength(1);
+    expect(published[0]?.userId).toBe("stark");
+    expect(published[0]?.notice.text).toBe(msg.sent[0]?.text);
+    expect(published[0]?.notice.kind).toBe("calendar");
+    expect(published[0]?.notice.sourceId).toBe("evt-1");
+  });
+
+  it("Phase D: does not publish to the broker when agentInitiatedNoticeUserId is missing", async () => {
+    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-proactive-phaseD-broker-noUser-"));
+    const sidecarFile = join(dir, "proactive-fired.json");
+    const fixedNow = new Date("2026-05-12T14:55:00Z");
+    const cal = makeFakeCalendarRegistry([
+      { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-1", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
+    ]);
+    const msg = makeFakeMessagingRegistry();
+    let publishCalls = 0;
+    const broker = { publish: () => { publishCalls += 1; } };
+
+    await runDueProactiveNotices({
+      agentInitiatedNoticeBroker: broker,
+      // intentionally no agentInitiatedNoticeUserId
+      calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+      destination: "@me",
+      messagingRegistry: msg.registry as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
+      now: () => fixedNow,
+      providerId: "telegram",
+      sidecarFile
+    });
+    expect(publishCalls).toBe(0);
+    expect(msg.sent).toHaveLength(1); // messaging still fired
+  });
+
   it("Phase D: drops back to flat text when synthesis emits tool-call JSON", async () => {
     const { runDueProactiveNotices } = await import("../src/index.js");
     const { mkdtempSync } = await import("node:fs");
