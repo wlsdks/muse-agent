@@ -89,6 +89,10 @@ function defaultPatternsFiredFile(): string {
   return envValue("MUSE_PATTERNS_FIRED_FILE") ?? join(homedir(), ".muse", "patterns-fired.json");
 }
 
+function defaultRemindersFile(): string {
+  return envValue("MUSE_REMINDERS_FILE") ?? join(homedir(), ".muse", "reminders.json");
+}
+
 function defaultLogFile(): string {
   return envValue("MUSE_MESSAGING_LOG_FILE") ?? join(homedir(), ".muse", "notifications.log");
 }
@@ -128,6 +132,13 @@ interface PatternFiredRow {
   readonly firedAtMs?: unknown;
 }
 
+interface ReminderRow {
+  readonly id?: unknown;
+  readonly text?: unknown;
+  readonly dueAt?: unknown;
+  readonly status?: unknown;
+}
+
 async function collectStatus(userId: string) {
   const userMemoryFile = defaultUserMemoryFile();
   const tasksFile = defaultTasksFile();
@@ -163,6 +174,9 @@ async function collectStatus(userId: string) {
 
   const patternsFiredDoc = await safeReadJson(defaultPatternsFiredFile()) as { fired?: readonly PatternFiredRow[] } | undefined;
   const patternsSummary = summarisePatternsFired(patternsFiredDoc?.fired ?? []);
+
+  const remindersDoc = await safeReadJson(defaultRemindersFile()) as { reminders?: readonly ReminderRow[] } | undefined;
+  const remindersSummary = summariseReminders(remindersDoc?.reminders ?? [], now);
 
   const logTail = await readLogTail(logFile, 1);
   const logBytes = await fileSize(logFile);
@@ -212,7 +226,8 @@ async function collectStatus(userId: string) {
     },
     followups: followupsByStatus,
     episodes: episodesSummary,
-    patterns: patternsSummary
+    patterns: patternsSummary,
+    reminders: remindersSummary
   };
 }
 
@@ -276,6 +291,51 @@ function summariseEpisodes(rows: readonly EpisodeRow[], userId: string) {
     }
   }
   return { lastEndedAt, lastSummary, total };
+}
+
+/**
+ * `{ pending, fired, overdue, total, nextDueAt, nextText }` over
+ * `~/.muse/reminders.json`. Reminders are single-user — there is no
+ * userId field on the row, so unlike followups/episodes the filter
+ * stays off. Overdue = pending && dueAt in the past; next = earliest
+ * pending dueAt (regardless of whether it's already overdue, so the
+ * report still points at the next thing to deal with).
+ */
+function summariseReminders(rows: readonly ReminderRow[], nowMs: number) {
+  let pending = 0;
+  let fired = 0;
+  let overdue = 0;
+  let total = 0;
+  let nextDueAtMs = Number.POSITIVE_INFINITY;
+  let nextDueAtIso: string | undefined;
+  let nextText: string | undefined;
+  for (const row of rows) {
+    if (typeof row.id !== "string") continue;
+    total += 1;
+    if (row.status === "fired") {
+      fired += 1;
+      continue;
+    }
+    if (row.status !== "pending") continue;
+    pending += 1;
+    if (typeof row.dueAt !== "string") continue;
+    const ms = Date.parse(row.dueAt);
+    if (!Number.isFinite(ms)) continue;
+    if (ms < nowMs) overdue += 1;
+    if (ms < nextDueAtMs) {
+      nextDueAtMs = ms;
+      nextDueAtIso = row.dueAt;
+      nextText = typeof row.text === "string" ? row.text : undefined;
+    }
+  }
+  return {
+    fired,
+    nextDueAt: nextDueAtIso,
+    nextText,
+    overdue,
+    pending,
+    total
+  };
 }
 
 /**
@@ -363,6 +423,15 @@ export function registerStatusCommand(program: Command, io: ProgramIO): void {
       if (snap.patterns.total > 0) {
         io.stdout(`  patterns: ${snap.patterns.total.toString()} fired`);
         io.stdout(snap.patterns.lastFiredAtIso ? `, last ${snap.patterns.lastFiredAtIso}\n` : "\n");
+        io.stdout("\n");
+      }
+      if (snap.reminders.total > 0) {
+        const overdueClause = snap.reminders.overdue > 0 ? ` (${snap.reminders.overdue.toString()} overdue)` : "";
+        io.stdout(`  reminders: ${snap.reminders.pending.toString()} pending${overdueClause}, ${snap.reminders.fired.toString()} fired\n`);
+        if (snap.reminders.nextDueAt) {
+          const text = snap.reminders.nextText ? ` — ${snap.reminders.nextText.slice(0, 80)}` : "";
+          io.stdout(`    next: ${snap.reminders.nextDueAt}${text}\n`);
+        }
         io.stdout("\n");
       }
       if (snap.lastNotice) {

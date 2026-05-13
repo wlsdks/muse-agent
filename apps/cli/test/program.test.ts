@@ -3437,6 +3437,48 @@ describe("cli program", () => {
     }
   });
 
+  it("muse status surfaces reminder pending/fired/overdue counts and next due entry", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-status-reminders-"));
+    const fsp = await import("node:fs/promises");
+    const remindersFile = path.join(root, "reminders.json");
+    const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const soon = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const later = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await fsp.writeFile(remindersFile, JSON.stringify({
+      reminders: [
+        { id: "rem_overdue", text: "Call vet (overdue)", dueAt: past, status: "pending", createdAt: "2026-05-10T00:00:00Z" },
+        { id: "rem_soon", text: "Pick up dry cleaning", dueAt: soon, status: "pending", createdAt: "2026-05-12T00:00:00Z" },
+        { id: "rem_later", text: "Submit Q3 memo", dueAt: later, status: "pending", createdAt: "2026-05-12T01:00:00Z" },
+        { id: "rem_done", text: "Already fired", dueAt: past, status: "fired", firedAt: past, createdAt: "2026-05-09T00:00:00Z" }
+      ]
+    }), "utf8");
+
+    const prev = process.env.MUSE_REMINDERS_FILE;
+    process.env.MUSE_REMINDERS_FILE = remindersFile;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+      await program.parseAsync(["node", "muse", "status", "--user", "stark", "--json"], { from: "node" });
+      const snap = JSON.parse(output.join("")) as {
+        reminders: { pending: number; fired: number; overdue: number; total: number; nextDueAt?: string; nextText?: string };
+      };
+
+      expect(snap.reminders).toMatchObject({ pending: 3, fired: 1, overdue: 1, total: 4 });
+      expect(snap.reminders.nextDueAt).toBe(past);
+      expect(snap.reminders.nextText).toBe("Call vet (overdue)");
+
+      const { io: io2, output: out2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      await program2.parseAsync(["node", "muse", "status", "--user", "stark"], { from: "node" });
+      const text = out2.join("");
+      expect(text).toContain("reminders: 3 pending (1 overdue), 1 fired");
+      expect(text).toContain("Call vet (overdue)");
+    } finally {
+      if (prev !== undefined) process.env.MUSE_REMINDERS_FILE = prev;
+      else delete process.env.MUSE_REMINDERS_FILE;
+    }
+  });
+
   it("muse episode search --json (substring) matches summary + topics case-insensitively", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-episode-search-"));
     const episodesFile = path.join(root, "episodes.json");
