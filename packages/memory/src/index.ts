@@ -404,10 +404,14 @@ export {
 } from "./pattern-signals.js";
 export {
   detectTimeOfDayPatterns,
+  detectWeeklyTaskPatterns,
   type DetectTimeOfDayPatternsOptions,
+  type DetectWeeklyTaskPatternsOptions,
   type HourBand,
   type PatternMatch,
-  type Weekday
+  type TimeOfDayMatch,
+  type Weekday,
+  type WeeklyTaskMatch
 } from "./pattern-detector.js";
 
 

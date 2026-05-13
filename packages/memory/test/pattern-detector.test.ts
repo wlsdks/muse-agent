@@ -1,14 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { detectTimeOfDayPatterns } from "../src/pattern-detector.js";
-import type { NoteMtimeSignal, PatternSignals } from "../src/pattern-signals.js";
+import { detectTimeOfDayPatterns, detectWeeklyTaskPatterns } from "../src/pattern-detector.js";
+import type { NoteMtimeSignal, PatternSignals, TaskSignal } from "../src/pattern-signals.js";
 
-function makeSignals(noteEdits: readonly NoteMtimeSignal[]): PatternSignals {
+function makeSignals(noteEdits: readonly NoteMtimeSignal[], tasks: readonly TaskSignal[] = []): PatternSignals {
   return {
     activityEvents: [],
     capturedAtMs: Date.parse("2026-05-13T21:00:00Z"),
     noteEdits,
-    tasks: []
+    tasks
+  };
+}
+
+function localTask(id: string, title: string, year: number, month: number, day: number, hour = 9, minute = 0): TaskSignal {
+  return {
+    createdAtMs: new Date(year, month - 1, day, hour, minute, 0, 0).getTime(),
+    id,
+    status: "open",
+    title
   };
 }
 
@@ -127,5 +136,125 @@ describe("detectTimeOfDayPatterns", () => {
     const matches = detectTimeOfDayPatterns(new Date(2026, 4, 13, 21, 0), signals);
     expect(matches[0]!.bucket.pathFamily).toBe("alpha");
     expect(matches[0]!.confidence).toBeGreaterThan(matches[1]!.confidence);
+  });
+});
+
+describe("detectWeeklyTaskPatterns", () => {
+  it("returns [] when no tasks exist", () => {
+    expect(detectWeeklyTaskPatterns(new Date(), makeSignals([], []))).toEqual([]);
+  });
+
+  it("ignores clusters that don't meet matches + distinctWeeks floors", () => {
+    // 3 identical-title tasks but all created on the SAME Monday →
+    // matches=3, distinctWeeks=1 (below default 2). Drops out.
+    const signals = makeSignals([], [
+      localTask("t1", "Daily standup", 2026, 5, 4, 9),
+      localTask("t2", "Daily standup", 2026, 5, 4, 9),
+      localTask("t3", "Daily standup", 2026, 5, 4, 9)
+    ]);
+    expect(detectWeeklyTaskPatterns(new Date(2026, 4, 11, 9, 0), signals)).toEqual([]);
+  });
+
+  it("fires on 3 same-title tasks across 3 Mondays, raising missingThisWeek when none exists yet this week", () => {
+    // Mondays: Apr 27, May 4, May 11 in 2026.
+    // "now" = Monday May 11 09:00 LOCAL — same weekday but ONE matching task already in this week.
+    // No "Standup notes" task this week → missingThisWeek=true.
+    const signals = makeSignals([], [
+      localTask("t1", "Standup notes", 2026, 4, 27, 9, 5),
+      localTask("t2", "Standup notes", 2026, 5, 4, 9, 5),
+      localTask("t3", "Standup notes", 2026, 5, 11, 9, 5) // already this week → missing=false
+    ]);
+    const now = new Date(2026, 4, 11, 9, 0); // Monday May 11
+    const matches = detectWeeklyTaskPatterns(now, signals);
+    expect(matches).toHaveLength(1);
+    const match = matches[0]!;
+    expect(match.category).toBe("weekly-task");
+    expect(match.bucket.weekday).toBe("Mon");
+    expect(match.bucket.matches).toBe(3);
+    expect(match.bucket.distinctWeeks).toBe(3);
+    expect(match.missingThisWeek).toBe(false);
+
+    // Now drop the in-week entry — should flip missingThisWeek=true.
+    const signalsMissing = makeSignals([], [
+      localTask("t1", "Standup notes", 2026, 4, 20, 9, 5),
+      localTask("t2", "Standup notes", 2026, 4, 27, 9, 5),
+      localTask("t3", "Standup notes", 2026, 5, 4, 9, 5)
+    ]);
+    const matchesMissing = detectWeeklyTaskPatterns(new Date(2026, 4, 11, 9, 0), signalsMissing);
+    expect(matchesMissing[0]!.missingThisWeek).toBe(true);
+  });
+
+  it("normaliser is conservative — collapses whitespace + lowercases + strips trailing punctuation, but NOT cross-token fuzz", () => {
+    // These three should cluster as one (case + whitespace + trailing dot).
+    const signals = makeSignals([], [
+      localTask("t1", "Daily Standup", 2026, 4, 20, 9, 0),
+      localTask("t2", "daily  standup.", 2026, 4, 27, 9, 0),
+      localTask("t3", "DAILY STANDUP", 2026, 5, 4, 9, 0),
+      // These two should NOT join the cluster (extra word).
+      localTask("t4", "Daily standup notes", 2026, 4, 21, 9, 0),
+      localTask("t5", "Daily standup notes", 2026, 4, 28, 9, 0)
+    ]);
+    const matches = detectWeeklyTaskPatterns(new Date(2026, 4, 11, 9, 0), signals);
+    const cluster = matches.find((m) => m.bucket.titleKey === "daily standup");
+    expect(cluster).toBeDefined();
+    expect(cluster!.bucket.matches).toBe(3);
+    expect(cluster!.relatedTitles).toEqual(["Daily Standup", "daily  standup.", "DAILY STANDUP"]);
+    // The "notes" variant has only 2 matches — below the default
+    // minMatches floor, so it's correctly filtered out. Drop the
+    // matches threshold to verify it would have clustered separately.
+    const matchesLowFloor = detectWeeklyTaskPatterns(new Date(2026, 4, 11, 9, 0), signals, { minMatches: 2 });
+    const noted = matchesLowFloor.find((m) => m.bucket.titleKey === "daily standup notes");
+    expect(noted).toBeDefined();
+    expect(noted!.bucket.matches).toBe(2);
+  });
+
+  it("currentSlotOnly filters to clusters whose weekday matches now AND missingThisWeek is true", () => {
+    // Two clusters: Monday standup (3 weeks of data, missing this week)
+    // and Friday retro (3 weeks of data, but it's currently Monday — wrong weekday).
+    const signals = makeSignals([], [
+      localTask("t1", "Standup", 2026, 4, 20, 9, 0),
+      localTask("t2", "Standup", 2026, 4, 27, 9, 0),
+      localTask("t3", "Standup", 2026, 5, 4, 9, 0),
+      localTask("t4", "Retro", 2026, 4, 24, 16, 0),
+      localTask("t5", "Retro", 2026, 5, 1, 16, 0),
+      localTask("t6", "Retro", 2026, 5, 8, 16, 0)
+    ]);
+    const matches = detectWeeklyTaskPatterns(
+      new Date(2026, 4, 11, 9, 0), // Monday May 11
+      signals,
+      { currentSlotOnly: true }
+    );
+    expect(matches.map((m) => m.bucket.titleKey)).toEqual(["standup"]);
+    expect(matches[0]!.missingThisWeek).toBe(true);
+  });
+
+  it("stable id is sha256-derived from `weekly-task:weekday:titleKey`", () => {
+    const signals = makeSignals([], [
+      localTask("t1", "Standup notes", 2026, 4, 20, 9, 0),
+      localTask("t2", "Standup notes", 2026, 4, 27, 9, 0),
+      localTask("t3", "Standup notes", 2026, 5, 4, 9, 0)
+    ]);
+    const first = detectWeeklyTaskPatterns(new Date(2026, 4, 11, 9, 0), signals)[0]!;
+    expect(first.id).toMatch(/^[a-f0-9]{12}$/u);
+    // Different task ids but same weekday + normalised title → same cluster id.
+    const altered = makeSignals([], [
+      localTask("xA", "STANDUP NOTES.", 2026, 4, 20, 9, 0),
+      localTask("xB", "standup notes", 2026, 4, 27, 9, 0),
+      localTask("xC", "Standup  Notes", 2026, 5, 4, 9, 0)
+    ]);
+    const second = detectWeeklyTaskPatterns(new Date(2026, 4, 11, 9, 0), altered)[0]!;
+    expect(second.id).toBe(first.id);
+  });
+
+  it("drops blank-title tasks instead of crashing on an empty titleKey", () => {
+    const signals = makeSignals([], [
+      localTask("t1", "   ", 2026, 4, 20, 9, 0),
+      localTask("t2", "Real one", 2026, 4, 20, 9, 0),
+      localTask("t3", "Real one", 2026, 4, 27, 9, 0),
+      localTask("t4", "Real one", 2026, 5, 4, 9, 0)
+    ]);
+    const matches = detectWeeklyTaskPatterns(new Date(2026, 4, 11, 9, 0), signals);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]!.bucket.titleKey).toBe("real one");
   });
 });
