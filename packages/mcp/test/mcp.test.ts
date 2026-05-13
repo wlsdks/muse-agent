@@ -4711,3 +4711,156 @@ describe("muse.followup loopback server", () => {
     expect(badPhrase).toMatchObject({ error: expect.stringContaining("ISO-8601") });
   });
 });
+
+describe("personal-episodes-store", () => {
+  it("read tolerates missing / corrupt / wrong-shape files and drops invalid entries", async () => {
+    const { readEpisodes } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const dir = mkdtempSync(join(tmpdir(), "muse-ep-read-"));
+    // Missing file.
+    expect(await readEpisodes(join(dir, "missing.json"))).toEqual([]);
+
+    // Bad JSON.
+    const garbled = join(dir, "garbled.json");
+    writeFileSync(garbled, "not json", "utf8");
+    expect(await readEpisodes(garbled)).toEqual([]);
+
+    // Wrong-shape root.
+    const wrongShape = join(dir, "wrong.json");
+    writeFileSync(wrongShape, JSON.stringify({ wrongKey: "x" }), "utf8");
+    expect(await readEpisodes(wrongShape)).toEqual([]);
+
+    // Mixed valid / invalid entries — the invalid ones are silently dropped
+    // (empty summary, non-string topic, missing field) so a corrupt entry
+    // doesn't sink the whole file.
+    const mixed = join(dir, "mixed.json");
+    writeFileSync(mixed, JSON.stringify({
+      episodes: [
+        { id: "ep_ok", userId: "stark", startedAt: "2026-05-12T22:00:00Z", endedAt: "2026-05-12T22:18:00Z", summary: "Good one", topics: ["Q3"] },
+        { id: "ep_blank", userId: "stark", startedAt: "x", endedAt: "x", summary: "  " },
+        { id: "ep_no_topics_ok", userId: "stark", startedAt: "2026-05-11T22:00:00Z", endedAt: "2026-05-11T22:18:00Z", summary: "No topics field is fine" },
+        { id: "ep_bad_topics", userId: "stark", startedAt: "x", endedAt: "x", summary: "yes", topics: [1, 2] },
+        "not even an object"
+      ]
+    }), "utf8");
+    const survivors = await readEpisodes(mixed);
+    expect(survivors.map((e) => e.id)).toEqual(["ep_ok", "ep_no_topics_ok"]);
+  });
+
+  it("upsert replaces by id; remove + clear behave correctly", async () => {
+    const { upsertEpisode, removeEpisode, clearEpisodes, readEpisodes } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const dir = mkdtempSync(join(tmpdir(), "muse-ep-crud-"));
+    const file = join(dir, "episodes.json");
+
+    await upsertEpisode(file, {
+      endedAt: "2026-05-12T22:18:00Z",
+      id: "ep_1",
+      startedAt: "2026-05-12T22:00:00Z",
+      summary: "Original summary",
+      topics: ["Q3"],
+      userId: "stark"
+    });
+    await upsertEpisode(file, {
+      endedAt: "2026-05-11T22:18:00Z",
+      id: "ep_2",
+      startedAt: "2026-05-11T22:00:00Z",
+      summary: "Second one",
+      userId: "stark"
+    });
+    expect((await readEpisodes(file)).map((e) => e.id)).toEqual(["ep_1", "ep_2"]);
+
+    // Re-upsert ep_1 with a different summary — should replace, not duplicate.
+    await upsertEpisode(file, {
+      endedAt: "2026-05-12T22:18:00Z",
+      id: "ep_1",
+      startedAt: "2026-05-12T22:00:00Z",
+      summary: "Re-summarised after retry",
+      topics: ["Q3", "Notion"],
+      userId: "stark"
+    });
+    const after = await readEpisodes(file);
+    expect(after).toHaveLength(2);
+    expect(after.find((e) => e.id === "ep_1")?.summary).toBe("Re-summarised after retry");
+    expect(after.find((e) => e.id === "ep_1")?.topics).toEqual(["Q3", "Notion"]);
+
+    // remove returns true on hit, false on miss; the file shrinks accordingly.
+    expect(await removeEpisode(file, "ep_1")).toBe(true);
+    expect(await removeEpisode(file, "ep_does_not_exist")).toBe(false);
+    expect((await readEpisodes(file)).map((e) => e.id)).toEqual(["ep_2"]);
+
+    // clear drops everything but keeps the shape readable.
+    await clearEpisodes(file);
+    expect(await readEpisodes(file)).toEqual([]);
+  });
+
+  it("vacuum keeps the N most-recent by endedAt and returns the drop count", async () => {
+    const { upsertEpisode, vacuumEpisodes, readEpisodes } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const dir = mkdtempSync(join(tmpdir(), "muse-ep-vacuum-"));
+    const file = join(dir, "episodes.json");
+
+    for (let i = 1; i <= 5; i += 1) {
+      const day = String(i).padStart(2, "0");
+      await upsertEpisode(file, {
+        endedAt: `2026-05-${day}T22:18:00Z`,
+        id: `ep_${i.toString()}`,
+        startedAt: `2026-05-${day}T22:00:00Z`,
+        summary: `Session ${i.toString()}`,
+        userId: "stark"
+      });
+    }
+
+    // No-op when under the cap.
+    expect(await vacuumEpisodes(file, 10)).toBe(0);
+    expect((await readEpisodes(file)).length).toBe(5);
+
+    // Cap to 2 — should drop the three oldest by endedAt.
+    expect(await vacuumEpisodes(file, 2)).toBe(3);
+    const kept = (await readEpisodes(file)).map((e) => e.id).sort();
+    expect(kept).toEqual(["ep_4", "ep_5"]);
+  });
+
+  it("serialize emits topics only when present and non-empty", async () => {
+    const { serializeEpisode } = await import("../src/index.js");
+    const withTopics = serializeEpisode({
+      endedAt: "2026-05-12T22:18:00Z",
+      id: "ep_t",
+      startedAt: "2026-05-12T22:00:00Z",
+      summary: "Has topics",
+      topics: ["Q3"],
+      userId: "stark"
+    });
+    expect(withTopics).toHaveProperty("topics", ["Q3"]);
+
+    const withoutTopics = serializeEpisode({
+      endedAt: "2026-05-12T22:18:00Z",
+      id: "ep_nt",
+      startedAt: "2026-05-12T22:00:00Z",
+      summary: "No topics",
+      userId: "stark"
+    });
+    expect(withoutTopics).not.toHaveProperty("topics");
+
+    const emptyTopics = serializeEpisode({
+      endedAt: "2026-05-12T22:18:00Z",
+      id: "ep_et",
+      startedAt: "2026-05-12T22:00:00Z",
+      summary: "Empty topics array",
+      topics: [],
+      userId: "stark"
+    });
+    // Empty array is treated as "no topics" — the field is dropped from the
+    // serialised form to keep callers' rendering paths simple.
+    expect(emptyTopics).not.toHaveProperty("topics");
+  });
+});

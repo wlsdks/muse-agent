@@ -538,6 +538,21 @@ export {
   type PersistedFollowup
 } from "./personal-followups-store.js";
 
+// Episodic memory store — step 1 of docs/design/episodic-memory.md.
+// Pure CRUD over `~/.muse/episodes.json`; later steps add the
+// session-boundary sentinel, end-of-session summariser hook,
+// persona surfacing, and `muse episode` CLI.
+export {
+  clearEpisodes,
+  readEpisodes,
+  removeEpisode,
+  serializeEpisode,
+  upsertEpisode,
+  vacuumEpisodes,
+  writeEpisodes,
+  type PersistedEpisode
+} from "./personal-episodes-store.js";
+
 // Self-followup firing engine — step 4 of agent-self-followup.md.
 // Re-enters the model to compose the delivery message, sends via
 // the messaging registry, marks the entry fired.

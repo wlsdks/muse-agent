@@ -53,6 +53,10 @@ export function resolveFollowupsFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_FOLLOWUPS_FILE", "followups.json");
 }
 
+export function resolveEpisodesFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_EPISODES_FILE", "episodes.json");
+}
+
 export function resolveLineInboxFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_LINE_INBOX_FILE", "line-inbox.json");
 }
