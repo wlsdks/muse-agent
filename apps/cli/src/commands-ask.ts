@@ -352,8 +352,17 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         "If none of the provided context contains enough information, say so directly — do not invent facts.",
         "Reply in the user's preferred language (from persona prefs).",
         "Keep it concise — 2–4 sentences unless the question explicitly needs more.",
-        "Do NOT include the raw markers (<<note N>>, <<task N>>, <<event N>>, <<reminder N>>) in your answer; just speak naturally.",
-        "Cite sources inline: '[from <file>]' for notes, '[task: <title>]' for tasks, '[event: <title>]' for calendar entries, '[reminder: <text>]' for reminders.",
+        "Do NOT include the raw '<<note N — ...>>' / '<<task N>>' / '<<event N>>' / '<<reminder N>>' wrapper markers in your answer; speak naturally.",
+        // Smaller models (2B Qwen, etc.) echo angle-bracket placeholders
+        // literally — a `<file>` placeholder ended up in user-visible
+        // output. Show the substitution worked example so the model
+        // copies the SHAPE, not the placeholder name.
+        "Cite sources inline by substituting the actual value (NEVER keep angle-bracket placeholders):",
+        "  - for notes:     [from journal/2026-05-12.md]",
+        "  - for tasks:     [task: Q3 budget memo]",
+        "  - for events:    [event: Standup]",
+        "  - for reminders: [reminder: pick up milk]",
+        "Use only the filename (not the full path or score) when citing a note.",
         "",
         "=== USER NOTES (top relevant chunks) ===",
         contextBlock,

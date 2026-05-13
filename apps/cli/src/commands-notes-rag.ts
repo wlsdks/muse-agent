@@ -17,7 +17,7 @@
  */
 
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { join as pathJoin } from "node:path";
+import { join as pathJoin, resolve as pathResolve, sep as pathSep } from "node:path";
 
 import { resolveNotesDir } from "@muse/autoconfigure";
 import type { Command } from "commander";
@@ -237,12 +237,32 @@ export async function isNotesIndexStale(dir: string, indexPath?: string): Promis
   if (!index) return true;
   const builtMs = new Date(index.builtAtIso).getTime();
   if (!Number.isFinite(builtMs)) return true;
+  // Dogfood-found case: a previous test run built the index against
+  // a tmp NOTES_DIR (e.g. /var/folders/.../tmp.XYZ/notes/n.md) and the
+  // index file remained under ~/.muse/. Subsequent `muse ask` loaded
+  // the stale index because no file in the *current* notesDir had a
+  // newer mtime than the build — so the agent grounded on a file
+  // whose path no longer existed on disk. Detect both shapes:
+  //   - indexed file lives outside the current dir → wrong-corpus stale
+  //   - indexed file no longer exists on disk     → ghost stale
+  const resolvedDir = pathResolve(dir);
+  for (const entry of index.files) {
+    const resolvedPath = pathResolve(entry.path);
+    const insideDir = resolvedPath === resolvedDir
+      || resolvedPath.startsWith(`${resolvedDir}${pathSep}`);
+    if (!insideDir) {
+      return true;
+    }
+    try {
+      await stat(entry.path);
+    } catch {
+      return true;
+    }
+  }
   const files = await walkMarkdown(dir);
   for (const { mtimeMs } of files) {
     if (mtimeMs > builtMs) return true;
   }
-  // Also stale if files are missing (deleted on disk but still indexed)
-  // — left out for now since deletions are rare for personal-scale corpora.
   return false;
 }
 
