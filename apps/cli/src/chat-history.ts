@@ -28,6 +28,13 @@ export const HISTORY_TURN_LIMIT = 12;
 // file then holds a single synthesized "summary" entry plus the last
 // HISTORY_TURN_LIMIT * 2 verbatim turns.
 export const HISTORY_COMPACT_THRESHOLD = 60;
+// Sentinel content the REPL writes at boot to mark a session break in
+// `last-chat.jsonl`. The episodic-memory extractor (later step) reads
+// from the most-recent boundary to EOF to know which range belongs to
+// the just-finished session. `readLastChatHistory` ignores it because
+// the role is `system`, not user/assistant — so seed-history paths
+// stay clean while the boundary remains discoverable.
+export const SESSION_BOUNDARY_CONTENT = "[SESSION_BOUNDARY]";
 
 export interface LastChatLine {
   readonly role: "user" | "assistant";
@@ -99,6 +106,73 @@ export async function clearLastChatHistory(): Promise<void> {
     }
     throw error;
   }
+}
+
+export interface SessionBoundary {
+  readonly tsIso: string;
+  readonly userId?: string;
+}
+
+/**
+ * Append a `[SESSION_BOUNDARY]` marker to last-chat.jsonl. Called once
+ * per REPL boot, before any seed read. Step 2 of
+ * docs/design/episodic-memory.md — the later end-of-session
+ * summariser hook scans from the most recent boundary to EOF.
+ *
+ * The line uses role: "system" so `readLastChatHistory`'s
+ * user|assistant filter silently drops it — the seed history a
+ * fresh REPL sees stays clean, but the boundary remains parseable
+ * via `readSessionBoundaries`.
+ */
+export async function appendSessionBoundary(event: SessionBoundary = { tsIso: new Date().toISOString() }): Promise<void> {
+  const filePath = lastChatHistoryPath();
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const payload = {
+    content: SESSION_BOUNDARY_CONTENT,
+    role: "system" as const,
+    tsIso: event.tsIso,
+    ...(event.userId ? { userId: event.userId } : {})
+  };
+  await writeFile(filePath, `${JSON.stringify(payload)}\n`, { flag: "a", mode: 0o600 });
+}
+
+/**
+ * Return every `[SESSION_BOUNDARY]` line in last-chat.jsonl, oldest
+ * first. The end-of-session summariser hook (step 3) reads this to
+ * find where the current session began. Returns `[]` when the file
+ * is absent or contains no boundaries yet.
+ */
+export async function readSessionBoundaries(): Promise<readonly SessionBoundary[]> {
+  const filePath = lastChatHistoryPath();
+  let raw: string;
+  try {
+    raw = await readFile(filePath, "utf8");
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+  const boundaries: SessionBoundary[] = [];
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (
+        isRecord(parsed)
+        && parsed.role === "system"
+        && parsed.content === SESSION_BOUNDARY_CONTENT
+        && typeof parsed.tsIso === "string"
+      ) {
+        boundaries.push({
+          tsIso: parsed.tsIso,
+          ...(typeof parsed.userId === "string" ? { userId: parsed.userId } : {})
+        });
+      }
+    } catch { /* skip malformed lines */ }
+  }
+  return boundaries;
 }
 
 export async function appendActivity(event: ActivityEvent): Promise<void> {

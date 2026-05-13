@@ -26,6 +26,7 @@ import { isRecord } from "./credential-store.js";
 import {
   appendActivity,
   appendLastChatTurn,
+  appendSessionBoundary,
   clearLastChatHistory,
   maybeCompactLastChatHistory,
   parseRoutineUpdateMs,
@@ -237,6 +238,12 @@ export async function runChatRepl(
   // can later infer active-hours patterns. Best-effort; failures
   // never block the REPL.
   await appendActivity({ kind: "repl-start", userId }).catch(() => undefined);
+
+  // Episodic-memory step 2 — boundary sentinel for the upcoming
+  // end-of-session summariser (later step). Writes a `system`-role
+  // marker into last-chat.jsonl; `readLastChatHistory` filters it
+  // out so the seed history stays clean. Best-effort.
+  await appendSessionBoundary({ tsIso: new Date().toISOString(), userId }).catch(() => undefined);
 
   // Auto-refresh routine fact when stale (≥ 7 d since last update).
   // Background fire-and-forget — keeps the persona's

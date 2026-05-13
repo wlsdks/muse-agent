@@ -2943,6 +2943,63 @@ describe("cli program", () => {
     }
   });
 
+  it("appendSessionBoundary writes a [SESSION_BOUNDARY] line that readLastChatHistory ignores", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-boundary-"));
+    const fsp = await import("node:fs/promises");
+    const prev = process.env.HOME;
+    process.env.HOME = root;
+    try {
+      const {
+        appendLastChatTurn,
+        appendSessionBoundary,
+        readLastChatHistory,
+        readSessionBoundaries,
+        SESSION_BOUNDARY_CONTENT
+      } = await import("../src/chat-history.js");
+
+      await appendSessionBoundary({ tsIso: "2026-05-13T08:00:00.000Z", userId: "stark" });
+      await appendLastChatTurn({ message: "hi", response: "hello" });
+      await appendSessionBoundary({ tsIso: "2026-05-13T09:00:00.000Z", userId: "stark" });
+      await appendLastChatTurn({ message: "again", response: "yes" });
+
+      // Seed history must NOT include the boundary lines — only
+      // user/assistant turns flow through readLastChatHistory.
+      const seed = await readLastChatHistory();
+      expect(seed.every((line) => line.role === "user" || line.role === "assistant")).toBe(true);
+      expect(seed.find((line) => line.content === SESSION_BOUNDARY_CONTENT)).toBeUndefined();
+      expect(seed.map((l) => l.content)).toEqual(["hi", "hello", "again", "yes"]);
+
+      // The boundary reader picks up both markers in order.
+      const boundaries = await readSessionBoundaries();
+      expect(boundaries.map((b) => b.tsIso)).toEqual([
+        "2026-05-13T08:00:00.000Z",
+        "2026-05-13T09:00:00.000Z"
+      ]);
+      expect(boundaries.every((b) => b.userId === "stark")).toBe(true);
+
+      // Raw file contains the literal sentinel content (the future
+      // extractor scans this directly).
+      const raw = await fsp.readFile(path.join(root, ".muse", "last-chat.jsonl"), "utf8");
+      expect(raw).toContain(SESSION_BOUNDARY_CONTENT);
+    } finally {
+      if (prev !== undefined) process.env.HOME = prev;
+      else delete process.env.HOME;
+    }
+  });
+
+  it("readSessionBoundaries returns [] when last-chat.jsonl is missing", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-boundary-missing-"));
+    const prev = process.env.HOME;
+    process.env.HOME = root;
+    try {
+      const { readSessionBoundaries } = await import("../src/chat-history.js");
+      expect(await readSessionBoundaries()).toEqual([]);
+    } finally {
+      if (prev !== undefined) process.env.HOME = prev;
+      else delete process.env.HOME;
+    }
+  });
+
   it("muse followup cancel flips scheduled → cancelled; rejects already-fired", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-followup-cancel-"));
     const followupsFile = path.join(root, "followups.json");
