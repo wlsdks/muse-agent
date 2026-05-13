@@ -510,6 +510,20 @@ export {
   type ReadActivityFeedOptions
 } from "./personal-activity-feed.js";
 
+// Dashboard summarizers shared between the `muse.status.snapshot`
+// MCP tool and the `muse status` CLI command — keeps the two
+// surfaces' coverage from drifting.
+export {
+  summariseEpisodesRows,
+  summariseFollowupsRows,
+  summarisePatternsFiredRows,
+  summariseRemindersRows,
+  type EpisodesSummary,
+  type FollowupsSummary,
+  type PatternsFiredSummary,
+  type RemindersSummary
+} from "./personal-status-summary.js";
+
 // Context reference MCP server (Context Engineering 1.d
 // foundation). `muse.context.fetch` / `muse.context.list` against an
 // in-process ContextReferenceStore.

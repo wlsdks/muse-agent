@@ -19,7 +19,15 @@ import { join as pathJoin } from "node:path";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "./loopback.js";
+import { readFollowups } from "./personal-followups-store.js";
 import { readProactiveHistory } from "./personal-proactive-history-store.js";
+import { readReminders } from "./personal-reminders-store.js";
+import {
+  summariseEpisodesRows,
+  summariseFollowupsRows,
+  summarisePatternsFiredRows,
+  summariseRemindersRows
+} from "./personal-status-summary.js";
 
 export interface StatusMcpServerOptions {
   /** Override path for ~/.muse/user-memory.json. */
@@ -32,6 +40,14 @@ export interface StatusMcpServerOptions {
   readonly logFile?: string;
   /** Override path for ~/.muse/trust.json. */
   readonly trustFile?: string;
+  /** Override path for ~/.muse/reminders.json. */
+  readonly remindersFile?: string;
+  /** Override path for ~/.muse/followups.json. */
+  readonly followupsFile?: string;
+  /** Override path for ~/.muse/episodes.json. */
+  readonly episodesFile?: string;
+  /** Override path for ~/.muse/patterns-fired.json. */
+  readonly patternsFiredFile?: string;
   /**
    * Resolved active model name (typically autoconfigure's
    * `defaultModel`, which already merges `~/.muse/models.json`'s
@@ -82,6 +98,10 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
   const historyFile = options.historyFile ?? homeMuse("proactive-history.json");
   const logFile = options.logFile ?? homeMuse("notifications.log");
   const trustFile = options.trustFile ?? homeMuse("trust.json");
+  const remindersFile = options.remindersFile ?? homeMuse("reminders.json");
+  const followupsFile = options.followupsFile ?? homeMuse("followups.json");
+  const episodesFile = options.episodesFile ?? homeMuse("episodes.json");
+  const patternsFiredFile = options.patternsFiredFile ?? homeMuse("patterns-fired.json");
 
   const snapshotTool: LoopbackMcpToolDefinition = {
     description:
@@ -130,7 +150,49 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
         | undefined;
       const trust = trustDoc?.users?.[userId];
 
+      // Dashboard summarizers — same shape `muse status` CLI uses,
+      // shared via `personal-status-summary.ts`. Each load is
+      // fail-soft (missing file → empty rows → empty summary)
+      // because a fresh install hasn't written any of these yet.
+      const [reminders, followups, episodesDoc, patternsDoc] = await Promise.all([
+        readReminders(remindersFile).catch(() => [] as const),
+        readFollowups(followupsFile).catch(() => [] as const),
+        safeReadJson(episodesFile).catch(() => undefined),
+        safeReadJson(patternsFiredFile).catch(() => undefined)
+      ]);
+      const remindersSummary = summariseRemindersRows(reminders, now);
+      const followupsSummary = summariseFollowupsRows(followups, userId);
+      const episodesRows = (episodesDoc as { episodes?: readonly unknown[] } | undefined)?.episodes ?? [];
+      const episodesSummary = summariseEpisodesRows(episodesRows, userId);
+      const patternsRows = (patternsDoc as { fired?: readonly unknown[] } | undefined)?.fired ?? [];
+      const patternsSummary = summarisePatternsFiredRows(patternsRows);
+
       const snapshot: JsonObject = {
+        episodes: {
+          last_ended_at: episodesSummary.lastEndedAt ?? null,
+          last_summary: episodesSummary.lastSummary ?? null,
+          total: episodesSummary.total
+        } as unknown as JsonValue,
+        followups: {
+          cancelled: followupsSummary.cancelled,
+          fired: followupsSummary.fired,
+          next_scheduled_for: followupsSummary.nextScheduledFor ?? null,
+          next_scheduled_summary: followupsSummary.nextScheduledSummary ?? null,
+          scheduled: followupsSummary.scheduled,
+          total: followupsSummary.total
+        } as unknown as JsonValue,
+        patterns: {
+          last_fired_at: patternsSummary.lastFiredAtIso ?? null,
+          total: patternsSummary.total
+        } as unknown as JsonValue,
+        reminders: {
+          fired: remindersSummary.fired,
+          next_due_at: remindersSummary.nextDueAt ?? null,
+          next_text: remindersSummary.nextText ?? null,
+          overdue: remindersSummary.overdue,
+          pending: remindersSummary.pending,
+          total: remindersSummary.total
+        } as unknown as JsonValue,
         log: {
           bytes: logBytes ?? null,
           file: logFile

@@ -185,11 +185,18 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
   // so an external Claude-Desktop agent calling this tool sees the
   // same model the runtime actually uses — not the env-only view
   // that previously misreported "null" for wizard-only setups.
-  // userMemoryFile + trustFile default to ~/.muse/*.json inside
-  // the loopback server; autoconfigure doesn't override them.
+  // Passes every dashboard store-path resolved by autoconfigure so
+  // the snapshot covers the same surface as `muse status` CLI
+  // (reminders + followups + episodes + patterns). userMemoryFile
+  // + trustFile fall back to ~/.muse/*.json inside the loopback
+  // server.
   const status = createLoopbackMcpMuseTools(
     createStatusMcpServer({
+      episodesFile: deps.episodesFile,
+      followupsFile: deps.followupsFile,
       historyFile: deps.proactiveHistoryFile,
+      patternsFiredFile: deps.patternsFiredFile,
+      remindersFile: deps.remindersFile,
       tasksFile: deps.tasksFile,
       ...(deps.defaultModel ? { model: deps.defaultModel } : {})
     })

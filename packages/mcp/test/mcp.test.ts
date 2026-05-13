@@ -5549,6 +5549,79 @@ describe("muse.status loopback server", () => {
     }
   });
 
+  it("snapshot surfaces reminders / followups / episodes / patterns summaries from their respective stores", async () => {
+    const { createStatusMcpServer, createLoopbackMcpConnection } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-status-mcp-dashboard-"));
+    const userMemoryFile = join(dir, "user-memory.json");
+    const tasksFile = join(dir, "tasks.json");
+    const remindersFile = join(dir, "reminders.json");
+    const followupsFile = join(dir, "followups.json");
+    const episodesFile = join(dir, "episodes.json");
+    const patternsFiredFile = join(dir, "patterns-fired.json");
+
+    const past = new Date(Date.now() - 60 * 60_000).toISOString();
+    const soon = new Date(Date.now() + 30 * 60_000).toISOString();
+
+    writeFileSync(userMemoryFile, JSON.stringify({ users: { stark: { facts: { name: "Tony" } } } }), "utf8");
+    writeFileSync(tasksFile, JSON.stringify({ tasks: [] }), "utf8");
+    writeFileSync(remindersFile, JSON.stringify({
+      reminders: [
+        { id: "rem_overdue", text: "Call vet", dueAt: past, status: "pending", createdAt: "2026-05-10T00:00:00Z" },
+        { id: "rem_soon", text: "Pick up dry cleaning", dueAt: soon, status: "pending", createdAt: "2026-05-12T00:00:00Z" },
+        { id: "rem_done", text: "Already fired", dueAt: past, status: "fired", firedAt: past, createdAt: "2026-05-09T00:00:00Z" }
+      ]
+    }), "utf8");
+    writeFileSync(followupsFile, JSON.stringify({
+      followups: [
+        { id: "fu_a", userId: "stark", scheduledFor: "2030-01-01T09:00:00Z", status: "scheduled", summary: "Send Q3 memo", createdAt: "2026-05-12T00:00:00Z" },
+        { id: "fu_done", userId: "stark", scheduledFor: past, status: "fired", summary: "Fired one", firedAt: past, createdAt: past },
+        { id: "fu_other", userId: "rhodey", scheduledFor: "2030-02-01T00:00:00Z", status: "scheduled", summary: "Other user", createdAt: past }
+      ]
+    }), "utf8");
+    writeFileSync(episodesFile, JSON.stringify({
+      episodes: [
+        { id: "ep_a", userId: "stark", startedAt: "2026-05-12T21:30:00Z", endedAt: "2026-05-12T22:00:00Z", summary: "Reviewed Q3 budget memo" },
+        { id: "ep_b", userId: "rhodey", startedAt: "2026-05-11T10:00:00Z", endedAt: "2026-05-11T10:30:00Z", summary: "Other user — filtered" }
+      ]
+    }), "utf8");
+    writeFileSync(patternsFiredFile, JSON.stringify({
+      fired: [{ patternId: "pat_walk", firedAtMs: 1_800_000_000_000, suggestion: "morning walk" }]
+    }), "utf8");
+
+    const connection = createLoopbackMcpConnection(createStatusMcpServer({
+      episodesFile,
+      followupsFile,
+      patternsFiredFile,
+      remindersFile,
+      tasksFile,
+      userMemoryFile
+    }));
+    const snap = await connection.callTool!("snapshot", { user_id: "stark" }) as {
+      reminders: { pending: number; fired: number; overdue: number; total: number; next_due_at?: string; next_text?: string };
+      followups: { scheduled: number; fired: number; cancelled: number; total: number; next_scheduled_for?: string };
+      episodes: { total: number; last_summary?: string };
+      patterns: { total: number; last_fired_at?: string };
+    };
+
+    expect(snap.reminders).toMatchObject({ pending: 2, fired: 1, overdue: 1, total: 3 });
+    expect(snap.reminders.next_due_at).toBe(past);
+    expect(snap.reminders.next_text).toBe("Call vet");
+
+    // rhodey's scheduled followup is filtered out by userId.
+    expect(snap.followups).toMatchObject({ scheduled: 1, fired: 1, cancelled: 0, total: 2 });
+    expect(snap.followups.next_scheduled_for).toBe("2030-01-01T09:00:00Z");
+
+    // rhodey's episode filtered out.
+    expect(snap.episodes.total).toBe(1);
+    expect(snap.episodes.last_summary).toBe("Reviewed Q3 budget memo");
+
+    expect(snap.patterns.total).toBe(1);
+    expect(snap.patterns.last_fired_at).toBe(new Date(1_800_000_000_000).toISOString());
+  });
+
   it("snapshot falls back to process.env.MUSE_MODEL when no options.model is set", async () => {
     const { createStatusMcpServer, createLoopbackMcpConnection } = await import("../src/index.js");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
