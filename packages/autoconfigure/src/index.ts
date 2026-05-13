@@ -35,12 +35,14 @@ import {
   createContextReferenceMcpServer,
   createTasksMcpServer,
   createDefaultLoopbackMcpServers,
+  createEpisodesMcpServer,
   createFetchMcpServer,
   createFilesystemMcpServer,
   createFollowupsMcpServer,
   createLoopbackMcpMuseTools,
   createMessagingMcpServer,
   createNotesMcpServer,
+  createPatternsMcpServer,
   createProactiveMcpServer,
   createRemindersMcpServer,
   createNotesRegistryMcpServer,
@@ -144,8 +146,10 @@ import {
   buildVoiceRegistry,
   ensureNotesDir,
   mergeModelKeysFromFile,
+  resolveEpisodesFile,
   resolveFollowupsFile,
   resolveNotesDir,
+  resolvePatternsFiredFile,
   resolveProactiveHistoryFile,
   resolveReminderHistoryFile,
   resolveRemindersFile,
@@ -481,6 +485,23 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const followupsLoopbackTools = createLoopbackMcpMuseTools(
     createFollowupsMcpServer({ file: followupsFile })
   );
+  // Episode loopback — read-shaped tools plus user-revocable
+  // remove/clear. No agent-side `add` (capture is automatic at
+  // REPL exit; manual add would let the LLM lie about history).
+  const episodesFile = resolveEpisodesFile(env);
+  const episodesLoopbackTools = createLoopbackMcpMuseTools(
+    createEpisodesMcpServer({ file: episodesFile })
+  );
+  // Pattern loopback — run detectors on demand, audit fired
+  // history, reset cooldown. The daemon stays the sole firer.
+  const patternsFiredFile = resolvePatternsFiredFile(env);
+  const patternsLoopbackTools = createLoopbackMcpMuseTools(
+    createPatternsMcpServer({
+      file: patternsFiredFile,
+      notesDir,
+      tasksFile: resolveTasksFile(env)
+    })
+  );
   const schedulerHandle: { current: DynamicScheduler | undefined } = { current: undefined };
 
   const { skillRegistryPromise, skillTools } = createSkillRuntime(env);
@@ -498,6 +519,8 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => remindersLoopbackTools,
     () => proactiveLoopbackTools,
     () => followupsLoopbackTools,
+    () => episodesLoopbackTools,
+    () => patternsLoopbackTools,
     () => runnerTools,
     () => skillTools,
     () => mcp.manager.toMuseTools(),

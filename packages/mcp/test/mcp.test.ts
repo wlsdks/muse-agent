@@ -18,8 +18,10 @@ import {
   createDiffMcpServer,
   createFetchMcpServer,
   createFilesystemMcpServer,
+  createEpisodesMcpServer,
   createFollowupsMcpServer,
   createJsonMcpServer,
+  createPatternsMcpServer,
   createMathMcpServer,
   createMessagingMcpServer,
   createNotesMcpServer,
@@ -5054,5 +5056,178 @@ describe("personal-episodes-store", () => {
     // Empty array is treated as "no topics" — the field is dropped from the
     // serialised form to keep callers' rendering paths simple.
     expect(emptyTopics).not.toHaveProperty("topics");
+  });
+});
+
+describe("muse.episode loopback server", () => {
+  async function seedFile(): Promise<{ file: string }> {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-ep-mcp-"));
+    const file = join(dir, "episodes.json");
+    writeFileSync(file, JSON.stringify({
+      episodes: [
+        { id: "ep_a", userId: "stark", startedAt: "2026-05-12T22:00:00Z", endedAt: "2026-05-12T22:18:00Z", summary: "Discussed Q3 budget memo. Decided Notion.", topics: ["Q3 budget memo", "Notion"] },
+        { id: "ep_b", userId: "stark", startedAt: "2026-05-11T22:00:00Z", endedAt: "2026-05-11T22:18:00Z", summary: "Wedding venue shortlist — three candidates.", topics: ["wedding"] },
+        { id: "ep_c", userId: "rhodey", startedAt: "2026-05-10T18:00:00Z", endedAt: "2026-05-10T18:30:00Z", summary: "Different user.", topics: ["other"] }
+      ]
+    }), "utf8");
+    return { file };
+  }
+
+  it("list sorts newest-first, honours `limit` + `userId`", async () => {
+    const { file } = await seedFile();
+    const connection = createLoopbackMcpConnection(createEpisodesMcpServer({ file }));
+
+    const all = await connection.callTool!("list", {});
+    expect(all.total).toBe(3);
+    expect((all.episodes as Array<{ id: string }>).map((e) => e.id)).toEqual(["ep_a", "ep_b", "ep_c"]);
+
+    const scoped = await connection.callTool!("list", { userId: "stark" });
+    expect(scoped).toMatchObject({ userId: "stark", total: 2 });
+
+    const limited = await connection.callTool!("list", { limit: 1 });
+    expect(limited.total).toBe(1);
+    expect((limited.episodes as Array<{ id: string }>)[0]!.id).toBe("ep_a");
+  });
+
+  it("search matches summary AND topic substrings (case-insensitive); query required", async () => {
+    const { file } = await seedFile();
+    const connection = createLoopbackMcpConnection(createEpisodesMcpServer({ file }));
+
+    const bySummary = await connection.callTool!("search", { query: "BUDGET" });
+    expect(bySummary.total).toBe(1);
+    expect((bySummary.episodes as Array<{ id: string }>)[0]!.id).toBe("ep_a");
+
+    const byTopic = await connection.callTool!("search", { query: "wedding" });
+    expect(byTopic.total).toBe(1);
+    expect((byTopic.episodes as Array<{ id: string }>)[0]!.id).toBe("ep_b");
+
+    const noQuery = await connection.callTool!("search", {});
+    expect(noQuery).toMatchObject({ error: expect.stringContaining("query is required") });
+  });
+
+  it("show returns the full record by id; missing id yields a structured error", async () => {
+    const { file } = await seedFile();
+    const connection = createLoopbackMcpConnection(createEpisodesMcpServer({ file }));
+
+    const ok = await connection.callTool!("show", { id: "ep_a" });
+    expect((ok.episode as { summary: string }).summary).toContain("Q3 budget memo");
+
+    const missing = await connection.callTool!("show", { id: "ep_nope" });
+    expect(missing).toMatchObject({ error: expect.stringContaining("not found") });
+  });
+
+  it("remove drops one entry on hit, errors on miss; clear refuses without confirm:true", async () => {
+    const { file } = await seedFile();
+    const { readFileSync } = await import("node:fs");
+    const connection = createLoopbackMcpConnection(createEpisodesMcpServer({ file }));
+
+    const removed = await connection.callTool!("remove", { id: "ep_b" });
+    expect(removed).toMatchObject({ id: "ep_b", removed: true });
+    let onDisk = JSON.parse(readFileSync(file, "utf8")) as { episodes: Array<{ id: string }> };
+    expect(onDisk.episodes.map((e) => e.id)).toEqual(["ep_a", "ep_c"]);
+
+    const missMatch = await connection.callTool!("remove", { id: "ep_nope" });
+    expect(missMatch).toMatchObject({ error: expect.stringContaining("not found") });
+
+    const refused = await connection.callTool!("clear", {});
+    expect(refused).toMatchObject({ error: expect.stringContaining("confirm:true") });
+    onDisk = JSON.parse(readFileSync(file, "utf8")) as { episodes: Array<{ id: string }> };
+    expect(onDisk.episodes.length).toBe(2);
+
+    const cleared = await connection.callTool!("clear", { confirm: true });
+    expect(cleared).toEqual({ cleared: true, removed: 2 });
+    onDisk = JSON.parse(readFileSync(file, "utf8")) as { episodes: unknown[] };
+    expect(onDisk.episodes).toEqual([]);
+  });
+});
+
+describe("muse.pattern loopback server", () => {
+  async function seedTuesdayJournalsAndFired(): Promise<{ root: string; firedFile: string; notesDir: string }> {
+    const { mkdtempSync, mkdirSync, writeFileSync, utimesSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const root = mkdtempSync(join(tmpdir(), "muse-pat-mcp-"));
+    const notesDir = join(root, "notes");
+    mkdirSync(notesDir);
+    mkdirSync(join(notesDir, "journal"));
+    const tuesdays = [
+      new Date(2026, 3, 14, 21, 30),
+      new Date(2026, 3, 21, 21, 30),
+      new Date(2026, 3, 28, 21, 30)
+    ];
+    for (let i = 0; i < tuesdays.length; i++) {
+      const f = join(notesDir, "journal", `entry-${i.toString()}.md`);
+      writeFileSync(f, "x", "utf8");
+      const secs = tuesdays[i]!.getTime() / 1000;
+      utimesSync(f, secs, secs);
+    }
+    const firedFile = join(root, "patterns-fired.json");
+    writeFileSync(firedFile, JSON.stringify({
+      fired: [
+        { patternId: "abc123def456", firedAtMs: 1_700_000_000_000 },
+        { patternId: "deadbeef0001", firedAtMs: 1_600_000_000_000 }
+      ]
+    }), "utf8");
+    return { firedFile, notesDir, root };
+  }
+
+  it("list runs both detectors on the actual filesystem signals", async () => {
+    const { firedFile, notesDir, root } = await seedTuesdayJournalsAndFired();
+    const { join } = await import("node:path");
+    const connection = createLoopbackMcpConnection(createPatternsMcpServer({
+      activityFile: join(root, "no-activity.jsonl"),
+      file: firedFile,
+      notesDir,
+      now: () => new Date(2026, 4, 12, 21, 30),
+      tasksFile: join(root, "no-tasks.json")
+    }));
+
+    const listed = await connection.callTool!("list", {});
+    expect(listed.total).toBeGreaterThan(0);
+    const tod = (listed.patterns as Array<{ category: string }>).find((p) => p.category === "time-of-day-action");
+    expect(tod).toBeDefined();
+  });
+
+  it("fired_history returns the cooldown sidecar newest-first up to `limit`", async () => {
+    const { firedFile, notesDir, root } = await seedTuesdayJournalsAndFired();
+    const { join } = await import("node:path");
+    const connection = createLoopbackMcpConnection(createPatternsMcpServer({
+      activityFile: join(root, "no-activity.jsonl"),
+      file: firedFile,
+      notesDir,
+      tasksFile: join(root, "no-tasks.json")
+    }));
+
+    const listed = await connection.callTool!("fired_history", {});
+    expect(listed.total).toBe(2);
+    expect((listed.fired as Array<{ firedAtMs: number }>)[0]!.firedAtMs).toBe(1_700_000_000_000);
+
+    const limited = await connection.callTool!("fired_history", { limit: 1 });
+    expect(limited.total).toBe(1);
+  });
+
+  it("reset refuses without confirm:true; wipes with confirm and reports prior count", async () => {
+    const { firedFile, notesDir, root } = await seedTuesdayJournalsAndFired();
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const connection = createLoopbackMcpConnection(createPatternsMcpServer({
+      activityFile: join(root, "no-activity.jsonl"),
+      file: firedFile,
+      notesDir,
+      tasksFile: join(root, "no-tasks.json")
+    }));
+
+    const refused = await connection.callTool!("reset", {});
+    expect(refused).toMatchObject({ error: expect.stringContaining("confirm:true") });
+    let onDisk = JSON.parse(readFileSync(firedFile, "utf8")) as { fired: unknown[] };
+    expect(onDisk.fired.length).toBe(2);
+
+    const cleared = await connection.callTool!("reset", { confirm: true });
+    expect(cleared).toEqual({ cleared: true, removed: 2 });
+    onDisk = JSON.parse(readFileSync(firedFile, "utf8")) as { fired: unknown[] };
+    expect(onDisk.fired).toEqual([]);
   });
 });

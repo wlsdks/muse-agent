@@ -662,6 +662,21 @@ export {
   type FollowupsMcpServerOptions
 } from "./loopback-followups.js";
 
+// Episode loopback — agent introspection over prior-session
+// summaries. List / search / show / remove / clear; capture is
+// automatic via the REPL exit hook, never agent-issued.
+export {
+  createEpisodesMcpServer,
+  type EpisodesMcpServerOptions
+} from "./loopback-episodes.js";
+
+// Pattern loopback — agent-driven audit + cooldown reset. The
+// daemon stays the sole firer (no `fire`/`record` tool here).
+export {
+  createPatternsMcpServer,
+  type PatternsMcpServerOptions
+} from "./loopback-patterns.js";
+
 // Proactive surfacing audit loopback — `muse.proactive.history`
 // over ~/.muse/proactive-history.json.
 export {
