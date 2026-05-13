@@ -391,4 +391,23 @@ export {
   type UserMemoryAutoExtractOptions
 } from "./memory-auto-extract.js";
 
+// Pattern detection — `docs/design/pattern-detection.md` steps 1+2.
+// Signal aggregator + category-1 time-of-day-action detector. Later
+// steps add the weekly-task detector and the proactive integration.
+export {
+  aggregateActivitySignals,
+  type ActivityEventSignal,
+  type AggregateActivitySignalsOptions,
+  type NoteMtimeSignal,
+  type PatternSignals,
+  type TaskSignal
+} from "./pattern-signals.js";
+export {
+  detectTimeOfDayPatterns,
+  type DetectTimeOfDayPatternsOptions,
+  type HourBand,
+  type PatternMatch,
+  type Weekday
+} from "./pattern-detector.js";
+
 
