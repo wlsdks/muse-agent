@@ -13,6 +13,7 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { readString } from "./loopback-helpers.js";
 import type { LoopbackMcpServer } from "./loopback.js";
+import type { ProactiveModelProviderLike } from "./proactive-notice-loop.js";
 
 /**
  * `muse.notes` loopback MCP server.
@@ -33,6 +34,23 @@ export interface NotesMcpServerOptions {
   readonly maxQueryLength?: number;
   readonly maxFileBytes?: number;
   readonly maxListEntries?: number;
+  /**
+   * Optional model provider for the `search` tool's `mode: "llm-judge"`
+   * path. When set with `model`, the search tool gains a paraphrase-
+   * recall mode that asks the LLM to pick relevant note paths from
+   * a list of (path, first-paragraph-preview) pairs. No vector index
+   * needed — at personal scale (≤ a few hundred notes) one extra
+   * round-trip is cheaper than running pgvector + embeddings.
+   *
+   * Two-step retrieval pattern: this tool returns paths; the LLM
+   * then `muse.notes.read`s each chosen path for the full content.
+   */
+  readonly modelProvider?: ProactiveModelProviderLike;
+  readonly model?: string;
+  /** Cap on preview chars per note in the LLM-judge prompt. Default 200. */
+  readonly judgePreviewChars?: number;
+  /** Cap on notes considered in a single LLM-judge call. Default 200. */
+  readonly judgeMaxCandidates?: number;
 }
 
 interface NotesPathSafe {
@@ -64,28 +82,10 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
     return { absolute, relative };
   }
 
+  // Thin wrapper over the module-level walker that closes over the
+  // server's `root` so callers don't need to keep passing it.
   async function walkMarkdown(dir: string, accept: (relPath: string) => void, visited: Set<string>): Promise<void> {
-    if (visited.has(dir)) {
-      return;
-    }
-    visited.add(dir);
-    let entries: Array<{ name: string; isDirectory(): boolean; isFile(): boolean }>;
-    try {
-      entries = (await nodeReaddir(dir, { withFileTypes: true })) as unknown as Array<{ name: string; isDirectory(): boolean; isFile(): boolean }>;
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (entry.name.startsWith(".")) {
-        continue;
-      }
-      const childAbs = nodePathResolve(dir, entry.name);
-      if (entry.isDirectory()) {
-        await walkMarkdown(childAbs, accept, visited);
-      } else if (entry.isFile() && /\.(md|markdown|txt)$/iu.test(entry.name)) {
-        accept(childAbs.slice(root.length + 1));
-      }
-    }
+    await walkMarkdownFrom(root, dir, accept, visited);
   }
 
   return {
@@ -197,9 +197,11 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
       },
       {
         description:
-          "Case-insensitive substring search across markdown / text files in the notes directory. " +
-          `Returns up to \`limit\` matches (default ${defaultSearchLimit}, max ${maxSearchLimit}) with file path, ` +
-          "1-based line number, and the matching line text. Skips hidden files and binary extensions.",
+          "Search notes. `mode: 'substring'` (default) does case-insensitive grep across markdown files and " +
+          `returns up to \`limit\` matches (default ${defaultSearchLimit}, max ${maxSearchLimit}) with path + line + snippet. ` +
+          "`mode: 'llm-judge'` asks the model to pick the most relevant note paths from a list of (path, first-paragraph-preview) pairs — " +
+          "useful for paraphrase queries (\"the Notion thing\" → matches a note tagged Notion); follow up with " +
+          "`muse.notes.read` on each returned path. llm-judge mode requires modelProvider + model wired into createNotesMcpServer.",
         execute: async (args): Promise<JsonObject> => {
           const query = readString(args, "query")?.trim();
           if (!query) {
@@ -212,6 +214,33 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
           const limit = typeof limitArg === "number" && Number.isFinite(limitArg)
             ? Math.max(1, Math.min(maxSearchLimit, Math.trunc(limitArg)))
             : defaultSearchLimit;
+          const mode = readString(args, "mode") === "llm-judge" ? "llm-judge" : "substring";
+
+          if (mode === "llm-judge") {
+            if (!options.modelProvider || !options.model) {
+              return { error: "llm-judge mode requires modelProvider + model wired into createNotesMcpServer; re-run with mode: 'substring' or configure the provider" };
+            }
+            try {
+              const paths = await runNotesLlmJudge({
+                judgeMaxCandidates: Math.max(1, Math.trunc(options.judgeMaxCandidates ?? 200)),
+                judgePreviewChars: Math.max(50, Math.trunc(options.judgePreviewChars ?? 200)),
+                limit,
+                maxFileBytes,
+                model: options.model,
+                modelProvider: options.modelProvider,
+                query,
+                root
+              });
+              return {
+                matches: paths.map((p) => ({ path: p })) as JsonValue,
+                mode: "llm-judge",
+                query
+              } satisfies JsonObject;
+            } catch (cause) {
+              return { error: `llm-judge failed: ${cause instanceof Error ? cause.message : String(cause)}` };
+            }
+          }
+
           const needle = query.toLowerCase();
           const files: string[] = [];
           await walkMarkdown(root, (rel) => { files.push(rel); }, new Set());
@@ -251,16 +280,21 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
               }
             }
           }
-          return { matches: matches as JsonValue } satisfies JsonObject;
+          return { matches: matches as JsonValue, mode: "substring" } satisfies JsonObject;
         },
         inputSchema: {
           additionalProperties: false,
           properties: {
             limit: {
-              description: `Max matches to return. Defaults to ${defaultSearchLimit}; capped at ${maxSearchLimit}.`,
+              description: `Max matches (substring) or paths (llm-judge) to return. Defaults to ${defaultSearchLimit}; capped at ${maxSearchLimit}.`,
               type: "number"
             },
-            query: { description: "Substring to grep for (case-insensitive).", type: "string" }
+            mode: {
+              description: "'substring' (default) for case-insensitive grep; 'llm-judge' for paraphrase-aware path selection by the model.",
+              enum: ["substring", "llm-judge"],
+              type: "string"
+            },
+            query: { description: "Substring (substring mode) or natural-language query (llm-judge mode).", type: "string" }
           },
           required: ["query"],
           type: "object"
@@ -378,4 +412,140 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
       }
     ]
   };
+}
+
+async function walkMarkdownFrom(
+  root: string,
+  dir: string,
+  accept: (relPath: string) => void,
+  visited: Set<string>
+): Promise<void> {
+  if (visited.has(dir)) {
+    return;
+  }
+  visited.add(dir);
+  let entries: Array<{ name: string; isDirectory(): boolean; isFile(): boolean }>;
+  try {
+    entries = (await nodeReaddir(dir, { withFileTypes: true })) as unknown as Array<{ name: string; isDirectory(): boolean; isFile(): boolean }>;
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) {
+      continue;
+    }
+    const childAbs = nodePathResolve(dir, entry.name);
+    if (entry.isDirectory()) {
+      await walkMarkdownFrom(root, childAbs, accept, visited);
+    } else if (entry.isFile() && /\.(md|markdown|txt)$/iu.test(entry.name)) {
+      accept(childAbs.slice(root.length + 1));
+    }
+  }
+}
+
+const NOTES_JUDGE_SYSTEM_PROMPT =
+  `You are a notes-path selector. The user gives you a natural-language
+query and a list of (path, first-paragraph-preview) pairs from their
+markdown notes. Return the paths most relevant to the query, in
+descending order of relevance.
+
+Output STRICT JSON: a single array of path strings, e.g.
+["daily/2026-05-12.md", "projects/q3-budget.md"]. NEVER invent paths
+that were not in the input. NEVER include explanatory text. Return
+[] when nothing meaningfully matches.`;
+
+interface NotesLlmJudgeArgs {
+  readonly root: string;
+  readonly query: string;
+  readonly limit: number;
+  readonly maxFileBytes: number;
+  readonly judgePreviewChars: number;
+  readonly judgeMaxCandidates: number;
+  readonly modelProvider: ProactiveModelProviderLike;
+  readonly model: string;
+}
+
+async function runNotesLlmJudge(args: NotesLlmJudgeArgs): Promise<readonly string[]> {
+  const files: string[] = [];
+  await walkMarkdownFrom(args.root, args.root, (rel) => { files.push(rel); }, new Set());
+  if (files.length === 0) return [];
+
+  // Build (path, preview) pairs. Preview = first non-blank chunk of the
+  // note, capped to `judgePreviewChars`. Skips files over maxFileBytes
+  // entirely (those would blow the prompt). Capped at judgeMaxCandidates.
+  type Pair = { readonly path: string; readonly preview: string };
+  const pairs: Pair[] = [];
+  for (const rel of files) {
+    if (pairs.length >= args.judgeMaxCandidates) break;
+    const abs = nodePathResolve(args.root, rel);
+    let stat: Awaited<ReturnType<typeof nodeStat>>;
+    try {
+      stat = await nodeStat(abs);
+    } catch {
+      continue;
+    }
+    if (stat.size > args.maxFileBytes) continue;
+    let body: string;
+    try {
+      body = await nodeReadFile(abs, "utf8");
+    } catch {
+      continue;
+    }
+    const preview = previewOf(body, args.judgePreviewChars);
+    pairs.push({ path: rel, preview });
+  }
+  if (pairs.length === 0) return [];
+
+  const lines = pairs.map((p) => `[${p.path}] ${p.preview}`);
+  const userMessage = `Query: ${args.query}\n\nNotes:\n${lines.join("\n")}\n\nReturn at most ${args.limit.toString()} paths.`;
+
+  const response = await args.modelProvider.generate({
+    maxOutputTokens: 320,
+    messages: [
+      { content: NOTES_JUDGE_SYSTEM_PROMPT, role: "system" },
+      { content: userMessage, role: "user" }
+    ],
+    model: args.model,
+    temperature: 0
+  });
+  const parsed = parseNotesJudgeOutput((response.output ?? "").trim());
+
+  // Resolve in model order, drop hallucinated paths, cap at limit.
+  const known = new Set(pairs.map((p) => p.path));
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const path of parsed) {
+    if (seen.has(path)) continue;
+    if (!known.has(path)) continue;
+    seen.add(path);
+    out.push(path);
+    if (out.length >= args.limit) break;
+  }
+  return out;
+}
+
+function previewOf(body: string, maxChars: number): string {
+  const collapsed = body.replace(/\s+/gu, " ").trim();
+  if (collapsed.length <= maxChars) return collapsed;
+  return `${collapsed.slice(0, maxChars - 1)}…`;
+}
+
+function parseNotesJudgeOutput(raw: string): readonly string[] {
+  const first = raw.indexOf("[");
+  if (first < 0) return [];
+  let depth = 0;
+  let body = "";
+  for (let i = first; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (ch === "[") depth += 1;
+    else if (ch === "]") {
+      depth -= 1;
+      if (depth === 0) { body = raw.slice(first, i + 1); break; }
+    }
+  }
+  if (!body) return [];
+  let parsed: unknown;
+  try { parsed = JSON.parse(body) as unknown; } catch { return []; }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter((p): p is string => typeof p === "string" && p.length > 0);
 }

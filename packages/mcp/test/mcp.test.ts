@@ -1153,6 +1153,84 @@ describe("muse.notes loopback server (filesystem-backed)", () => {
     expect(byName.get("muse.notes.save")).toBe("write");
     expect(byName.get("muse.notes.append")).toBe("write");
   });
+
+  it("muse.notes.search mode=llm-judge rejects without modelProvider; returns mode field in substring path", async () => {
+    const { mkdtempSync, writeFileSync, mkdirSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-notes-judge-noprov-"));
+    mkdirSync(join(dir, "journal"), { recursive: true });
+    writeFileSync(join(dir, "journal", "hello.md"), "Hello world!", "utf8");
+    const connection = createLoopbackMcpConnection(createNotesMcpServer({ notesDir: dir }));
+
+    // Substring path now also reports mode in the payload.
+    const substring = await connection.callTool!("search", { query: "hello" });
+    expect(substring.mode).toBe("substring");
+
+    // llm-judge rejects without provider.
+    const refused = await connection.callTool!("search", { mode: "llm-judge", query: "anything" });
+    expect(refused).toMatchObject({ error: expect.stringContaining("llm-judge mode requires modelProvider") });
+  });
+
+  it("muse.notes.search mode=llm-judge: model picks paths from previews; drops hallucinated paths", async () => {
+    const { mkdtempSync, writeFileSync, mkdirSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-notes-judge-ok-"));
+    mkdirSync(join(dir, "journal"), { recursive: true });
+    mkdirSync(join(dir, "projects"), { recursive: true });
+    writeFileSync(join(dir, "journal", "2026-05-12.md"), "Q3 budget memo planning. Drafting in Notion.", "utf8");
+    writeFileSync(join(dir, "journal", "2026-05-11.md"), "Wedding venue shortlist.", "utf8");
+    writeFileSync(join(dir, "projects", "routine.md"), "Routine setup notes.", "utf8");
+
+    let seenUser = "";
+    const modelProvider = {
+      generate: async (req: { messages: ReadonlyArray<{ role: "system" | "user" | "assistant"; content: string }> }) => {
+        seenUser = req.messages.find((m) => m.role === "user")?.content ?? "";
+        return { output: '["journal/2026-05-12.md", "fake/hallucinated.md"]' };
+      }
+    };
+    const connection = createLoopbackMcpConnection(createNotesMcpServer({
+      model: "stub",
+      modelProvider,
+      notesDir: dir
+    }));
+
+    const result = await connection.callTool!("search", { mode: "llm-judge", query: "Notion thing" });
+    expect(result.mode).toBe("llm-judge");
+    expect((result.matches as Array<{ path: string }>).map((m) => m.path)).toEqual(["journal/2026-05-12.md"]);
+    // The hallucinated path is dropped — never appears in the result set.
+    expect(JSON.stringify(result)).not.toContain("hallucinated");
+    // User message contained the actual file previews.
+    expect(seenUser).toContain("Query: Notion thing");
+    expect(seenUser).toContain("[journal/2026-05-12.md]");
+    expect(seenUser).toContain("Q3 budget memo");
+  });
+
+  it("muse.notes.search mode=llm-judge tolerates prose wrap; returns [] on malformed JSON", async () => {
+    const { mkdtempSync, writeFileSync, mkdirSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-notes-judge-edge-"));
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "note.md"), "Some content.", "utf8");
+
+    const wrapped = createLoopbackMcpConnection(createNotesMcpServer({
+      model: "stub",
+      modelProvider: { generate: async () => ({ output: 'Sure, here you go: ["note.md"] — hope this helps!' }) },
+      notesDir: dir
+    }));
+    const wrapResult = await wrapped.callTool!("search", { mode: "llm-judge", query: "x" });
+    expect((wrapResult.matches as Array<{ path: string }>).map((m) => m.path)).toEqual(["note.md"]);
+
+    const bad = createLoopbackMcpConnection(createNotesMcpServer({
+      model: "stub",
+      modelProvider: { generate: async () => ({ output: "not-json-at-all" }) },
+      notesDir: dir
+    }));
+    const badResult = await bad.callTool!("search", { mode: "llm-judge", query: "x" });
+    expect((badResult.matches as Array<{ path: string }>).length).toBe(0);
+  });
 });
 
 describe("muse.fs loopback server", () => {

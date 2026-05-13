@@ -471,7 +471,13 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const notesDir = resolveNotesDir(env);
   ensureNotesDir(notesDir);
   const notesLoopbackTools = parseBoolean(env.MUSE_NOTES_ENABLED, true)
-    ? createLoopbackMcpMuseTools(createNotesMcpServer({ notesDir }))
+    ? createLoopbackMcpMuseTools(createNotesMcpServer({
+        notesDir,
+        // LLM-judge search mode opts in only when modelProvider +
+        // defaultModel are wired (same gate as episodes). Substring
+        // mode keeps working without a model.
+        ...(modelProvider && defaultModel ? { model: defaultModel, modelProvider } : {})
+      }))
     : [];
   // Notes registry MCP surface (`muse.notes-multi`): only registered
   // when the user opts into >1 provider via MUSE_NOTES_PROVIDERS.
