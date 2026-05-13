@@ -98,6 +98,7 @@ export {
   resolveCredentialsFile,
   resolveDiscordAfterFile,
   resolveDiscordInboxFile,
+  resolveFollowupsFile,
   resolveInboxInjectionCursorFile,
   resolveLineInboxFile,
   resolveLocalCalendarFile,

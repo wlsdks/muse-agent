@@ -49,6 +49,10 @@ export function resolveProactiveHistoryFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_PROACTIVE_HISTORY_FILE", "proactive-history.json");
 }
 
+export function resolveFollowupsFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_FOLLOWUPS_FILE", "followups.json");
+}
+
 export function resolveLineInboxFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_LINE_INBOX_FILE", "line-inbox.json");
 }

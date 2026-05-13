@@ -1,10 +1,12 @@
 import { CalendarProviderRegistry } from "@muse/calendar";
 import {
   createAgentRuntime,
+  createFollowupCaptureHook,
   InMemoryAgentInitiatedNoticeBroker,
   type ActiveContextProvider,
   type AgentInitiatedNoticeBroker,
   type AgentRuntime,
+  type CapturedFollowup,
   type HookStage
 } from "@muse/agent-core";
 import {
@@ -42,6 +44,7 @@ import {
   createRemindersMcpServer,
   createNotesRegistryMcpServer,
   createTasksRegistryMcpServer,
+  upsertFollowup,
   type LoopbackMcpServer,
   type McpManager,
   type McpSecurityPolicyProvider,
@@ -49,6 +52,7 @@ import {
   type McpServerInput,
   type McpServerStore,
   type NotesProviderRegistry,
+  type PersistedFollowup,
   type TasksProviderRegistry
 } from "@muse/mcp";
 import {
@@ -139,6 +143,7 @@ import {
   buildVoiceRegistry,
   ensureNotesDir,
   mergeModelKeysFromFile,
+  resolveFollowupsFile,
   resolveNotesDir,
   resolveProactiveHistoryFile,
   resolveReminderHistoryFile,
@@ -156,6 +161,7 @@ export {
   buildToolFilter,
   buildVoiceRegistry,
   mergeModelKeysFromFile,
+  resolveFollowupsFile,
   resolveInboxInjectionCursorFile,
   resolveLineInboxFile,
   resolveLocalCalendarFile,
@@ -485,6 +491,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => mcp.manager.toMuseTools(),
     () => schedulerHandle.current ? createSchedulerTools(schedulerHandle.current) : []
   ]);
+  const followupsFile = resolveFollowupsFile(env);
   const runtimeHooks = [
     ...createDefaultRuntimeHooks(env),
     ...(parseBoolean(env.MUSE_USER_MEMORY_AUTO_EXTRACT, true) && modelProvider && defaultModel
@@ -493,6 +500,13 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
         modelProvider,
         store: userMemoryStore
       }) as HookStage]
+      : []),
+    ...(parseBoolean(env.MUSE_FOLLOWUP_CAPTURE_ENABLED, true)
+      ? [createFollowupCaptureHook({
+        persist: async (captured: CapturedFollowup) => {
+          await upsertFollowup(followupsFile, captured as PersistedFollowup);
+        }
+      })]
       : [])
   ];
   // Lifted above `createAgentRuntime` so the same provider instance is
