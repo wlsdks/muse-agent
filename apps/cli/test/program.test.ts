@@ -3129,6 +3129,128 @@ describe("cli program", () => {
     }
   });
 
+  it("muse episode list --json sorts newest-first, honours --user and --limit", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-episode-list-"));
+    const episodesFile = path.join(root, "episodes.json");
+    const fsp = await import("node:fs/promises");
+    const prev = process.env.MUSE_EPISODES_FILE;
+    process.env.MUSE_EPISODES_FILE = episodesFile;
+    try {
+      await fsp.writeFile(episodesFile, JSON.stringify({
+        episodes: [
+          { id: "ep_one", userId: "stark", startedAt: "2026-05-11T22:00:00Z", endedAt: "2026-05-11T22:18:00Z", summary: "S1", topics: ["a"] },
+          { id: "ep_two", userId: "stark", startedAt: "2026-05-12T22:00:00Z", endedAt: "2026-05-12T22:18:00Z", summary: "S2" },
+          { id: "ep_three", userId: "rhodey", startedAt: "2026-05-12T18:00:00Z", endedAt: "2026-05-12T18:30:00Z", summary: "S3" },
+          { id: "ep_four", userId: "stark", startedAt: "2026-05-13T22:00:00Z", endedAt: "2026-05-13T22:18:00Z", summary: "S4" }
+        ]
+      }), "utf8");
+
+      // Default — every entry, newest first.
+      const { io: io1, output: out1 } = captureOutput();
+      const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+      await program1.parseAsync(["node", "muse", "episode", "list", "--json"], { from: "node" });
+      const listed1 = JSON.parse(out1.join("")) as { episodes: Array<{ id: string }>; total: number };
+      expect(listed1.total).toBe(4);
+      expect(listed1.episodes.map((e) => e.id)).toEqual(["ep_four", "ep_two", "ep_three", "ep_one"]);
+
+      // --user filters
+      const { io: io2, output: out2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      await program2.parseAsync(["node", "muse", "episode", "list", "--user", "stark", "--json"], { from: "node" });
+      const listed2 = JSON.parse(out2.join("")) as { episodes: Array<{ id: string; userId: string }>; total: number; userId: string };
+      expect(listed2.userId).toBe("stark");
+      expect(listed2.total).toBe(3);
+      expect(listed2.episodes.every((e) => e.userId === "stark")).toBe(true);
+
+      // --limit caps the slice
+      const { io: io3, output: out3 } = captureOutput();
+      const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("no fetch"); } });
+      await program3.parseAsync(["node", "muse", "episode", "list", "--limit", "2", "--json"], { from: "node" });
+      const listed3 = JSON.parse(out3.join("")) as { total: number; episodes: Array<{ id: string }> };
+      expect(listed3.total).toBe(2);
+      expect(listed3.episodes.map((e) => e.id)).toEqual(["ep_four", "ep_two"]);
+    } finally {
+      if (prev !== undefined) process.env.MUSE_EPISODES_FILE = prev;
+      else delete process.env.MUSE_EPISODES_FILE;
+    }
+  });
+
+  it("muse episode show resolves an unambiguous prefix; rejects ambiguous prefixes", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-episode-show-"));
+    const episodesFile = path.join(root, "episodes.json");
+    const fsp = await import("node:fs/promises");
+    const prev = process.env.MUSE_EPISODES_FILE;
+    process.env.MUSE_EPISODES_FILE = episodesFile;
+    try {
+      await fsp.writeFile(episodesFile, JSON.stringify({
+        episodes: [
+          { id: "ep_alpha", userId: "stark", startedAt: "2026-05-12T22:00:00Z", endedAt: "2026-05-12T22:18:00Z", summary: "A", topics: ["alpha"] },
+          { id: "ep_ambig_one", userId: "stark", startedAt: "2026-05-11T22:00:00Z", endedAt: "2026-05-11T22:18:00Z", summary: "B" },
+          { id: "ep_ambig_two", userId: "stark", startedAt: "2026-05-10T22:00:00Z", endedAt: "2026-05-10T22:18:00Z", summary: "C" }
+        ]
+      }), "utf8");
+
+      const { io: io1, output: out1 } = captureOutput();
+      const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+      await program1.parseAsync(["node", "muse", "episode", "show", "ep_alpha", "--json"], { from: "node" });
+      const shown = JSON.parse(out1.join("")) as { id: string; summary: string; topics?: string[] };
+      expect(shown.id).toBe("ep_alpha");
+      expect(shown.summary).toBe("A");
+      expect(shown.topics).toEqual(["alpha"]);
+
+      const { io: io2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      program2.exitOverride();
+      await expect(program2.parseAsync(["node", "muse", "episode", "show", "ep_ambig"], { from: "node" }))
+        .rejects.toThrow(/Ambiguous episode id/u);
+    } finally {
+      if (prev !== undefined) process.env.MUSE_EPISODES_FILE = prev;
+      else delete process.env.MUSE_EPISODES_FILE;
+    }
+  });
+
+  it("muse episode remove drops a single record; clear requires --yes and wipes the file", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-episode-remove-"));
+    const episodesFile = path.join(root, "episodes.json");
+    const fsp = await import("node:fs/promises");
+    const prev = process.env.MUSE_EPISODES_FILE;
+    process.env.MUSE_EPISODES_FILE = episodesFile;
+    try {
+      await fsp.writeFile(episodesFile, JSON.stringify({
+        episodes: [
+          { id: "ep_keep", userId: "stark", startedAt: "2026-05-12T22:00:00Z", endedAt: "2026-05-12T22:18:00Z", summary: "Keep me" },
+          { id: "ep_drop", userId: "stark", startedAt: "2026-05-11T22:00:00Z", endedAt: "2026-05-11T22:18:00Z", summary: "Drop me" }
+        ]
+      }), "utf8");
+
+      // Remove one — survives the other.
+      const { io: io1 } = captureOutput();
+      const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+      await program1.parseAsync(["node", "muse", "episode", "remove", "ep_drop"], { from: "node" });
+      const after1 = JSON.parse(await fsp.readFile(episodesFile, "utf8")) as { episodes: Array<{ id: string }> };
+      expect(after1.episodes.map((e) => e.id)).toEqual(["ep_keep"]);
+
+      // clear without --yes rejects.
+      const { io: io2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      program2.exitOverride();
+      await expect(program2.parseAsync(["node", "muse", "episode", "clear"], { from: "node" }))
+        .rejects.toThrow(/Refusing to clear without --yes/u);
+
+      // clear --yes wipes.
+      const { io: io3, output: out3 } = captureOutput();
+      const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("no fetch"); } });
+      await program3.parseAsync(["node", "muse", "episode", "clear", "--yes", "--json"], { from: "node" });
+      const result = JSON.parse(out3.join("")) as { cleared: boolean; removed: number };
+      expect(result).toEqual({ cleared: true, removed: 1 });
+      const after2 = JSON.parse(await fsp.readFile(episodesFile, "utf8")) as { episodes: unknown[] };
+      expect(after2.episodes).toEqual([]);
+    } finally {
+      if (prev !== undefined) process.env.MUSE_EPISODES_FILE = prev;
+      else delete process.env.MUSE_EPISODES_FILE;
+    }
+  });
+
   it("readSessionBoundaries returns [] when last-chat.jsonl is missing", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-boundary-missing-"));
     const prev = process.env.HOME;
