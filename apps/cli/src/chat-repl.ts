@@ -223,9 +223,14 @@ export async function runChatRepl(
   // a fresh `muse repl` 30 seconds after the last one already
   // knows the user's name, language, and reply style.
   let userMemory = memoryStore ? await Promise.resolve(memoryStore.findByUserId(userId)) : undefined;
+  // Episodic-memory step 4 — load the most-recent N episodes for
+  // this userId once at REPL boot and pass them through to the
+  // persona block. Best-effort: a missing or corrupt episodes file
+  // just means an empty episodes array, not a REPL boot failure.
+  const personaEpisodes = await loadPersonaEpisodes(userId).catch(() => []);
   const personaPrompt = (): string | undefined => {
     if (!userMemory) return undefined;
-    return buildMusePersona(userMemory, userId);
+    return buildMusePersona({ ...userMemory, episodes: personaEpisodes }, userId);
   };
 
   const rl = readline.createInterface({
@@ -745,6 +750,32 @@ export function parseAgentMode(value: string | undefined): AgentMode | undefined
     return normalized;
   }
   throw new Error(`--mode must be 'react' or 'plan_execute' (got '${value}')`);
+}
+
+/**
+ * Episodic-memory step 4 — resolve the N most-recent prior-session
+ * episodes for the given userId and shape them for the persona
+ * block. Caller invokes once per REPL boot; the result feeds
+ * `buildMusePersona`'s new `episodes` field.
+ *
+ * `MUSE_EPISODIC_MEMORY_MAX_ENTRIES` (default 5) caps the block;
+ * 0 / negative / non-numeric values fall back to the default rather
+ * than producing nonsense like "render -3 entries".
+ */
+async function loadPersonaEpisodes(
+  userId: string
+): Promise<readonly { readonly endedAt: string; readonly summary: string }[]> {
+  const { readEpisodes } = await import("@muse/mcp");
+  const { resolveEpisodesFile } = await import("@muse/autoconfigure");
+  const file = resolveEpisodesFile(process.env as Record<string, string | undefined>);
+  const all = await readEpisodes(file);
+  const capRaw = Number(process.env.MUSE_EPISODIC_MEMORY_MAX_ENTRIES);
+  const cap = Number.isFinite(capRaw) && capRaw > 0 ? Math.trunc(capRaw) : 5;
+  return all
+    .filter((entry) => entry.userId === userId)
+    .sort((left, right) => right.endedAt.localeCompare(left.endedAt))
+    .slice(0, cap)
+    .map((entry) => ({ endedAt: entry.endedAt, summary: entry.summary }));
 }
 
 export function readChatResponseText(value: unknown): string {

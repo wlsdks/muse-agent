@@ -171,4 +171,72 @@ describe("buildMusePersona", () => {
     expect(prompt).toContain("2026-05-12");
     expect(prompt).toMatch(/Tuesday/);
   });
+
+  it("emits the persona block when episodes are the only signal — no amnesia even on the first session after init", () => {
+    const prompt = buildMusePersona(
+      {
+        facts: {},
+        preferences: {},
+        episodes: [
+          { endedAt: "2026-05-12T22:18:00Z", summary: "Discussed Q3 budget memo — drafting in Notion, deadline Friday." }
+        ]
+      },
+      "stark"
+    );
+    expect(prompt).toContain("Episodic memory (recent prior sessions, summarized):");
+    expect(prompt).toContain("- 2026-05-12: Discussed Q3 budget memo");
+  });
+
+  it("renders multiple episodes one per line under the episodic header, preserving caller-provided order", () => {
+    const prompt = buildMusePersona(
+      {
+        facts: { name: "Stark" },
+        preferences: {},
+        // Caller sorts newest-first; the builder must not re-sort.
+        episodes: [
+          { endedAt: "2026-05-12T22:00:00Z", summary: "Discussed Q3 budget memo." },
+          { endedAt: "2026-05-11T22:00:00Z", summary: "Wedding venue shortlist — three candidates." },
+          { endedAt: "2026-05-10T22:00:00Z", summary: "Set up muse routine. User active 9/14/20." }
+        ]
+      },
+      "stark"
+    );
+    const section = prompt!.split("Episodic memory")[1] ?? "";
+    const lines = section.split("\n").filter((line) => line.startsWith("  - "));
+    expect(lines).toEqual([
+      "  - 2026-05-12: Discussed Q3 budget memo.",
+      "  - 2026-05-11: Wedding venue shortlist — three candidates.",
+      "  - 2026-05-10: Set up muse routine. User active 9/14/20."
+    ]);
+  });
+
+  it("drops episodes with an empty summary so a half-formed upstream blob never prints a dateless body", () => {
+    const prompt = buildMusePersona(
+      {
+        facts: { name: "Stark" },
+        preferences: {},
+        episodes: [
+          { endedAt: "2026-05-12T22:00:00Z", summary: "" },
+          { endedAt: "2026-05-11T22:00:00Z", summary: "   " },
+          { endedAt: "2026-05-10T22:00:00Z", summary: "Real summary survives" }
+        ]
+      },
+      "stark"
+    );
+    expect(prompt).toContain("Real summary survives");
+    expect(prompt).not.toContain("  - 2026-05-12: ");
+    expect(prompt).not.toContain("  - 2026-05-11: ");
+  });
+
+  it("falls back to the raw endedAt when the value isn't a YYYY-MM-DD-shaped ISO string", () => {
+    const prompt = buildMusePersona(
+      {
+        facts: { name: "Stark" },
+        preferences: {},
+        episodes: [{ endedAt: "yesterday-ish", summary: "Legacy entry shape." }]
+      },
+      "stark"
+    );
+    expect(prompt).toContain("  - yesterday-ish: Legacy entry shape.");
+  });
 });

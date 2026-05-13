@@ -19,6 +19,24 @@ interface JarvisPersonaMemory {
   readonly facts: Readonly<Record<string, string>>;
   readonly preferences: Readonly<Record<string, string>>;
   readonly recentTopics?: readonly string[];
+  /**
+   * Episodic-memory step 4 — optional injected episodes. The caller
+   * resolves them from `~/.muse/episodes.json` (per-user filter +
+   * sort + cap happens upstream, not here). Passing them in keeps
+   * `buildMusePersona` synchronous and pure: this file does no I/O.
+   */
+  readonly episodes?: readonly EpisodicPersonaHint[];
+}
+
+/**
+ * Minimal structural shape pulled in for the persona block. Matches
+ * `PersistedEpisode` from `@muse/mcp` (endedAt + summary), but the
+ * persona builder stays I/O-free so this stays declared locally
+ * rather than depending on the mcp package's full type.
+ */
+export interface EpisodicPersonaHint {
+  readonly endedAt: string;
+  readonly summary: string;
 }
 
 export function formatCurrentContextLine(now: Date = new Date()): string {
@@ -53,7 +71,18 @@ export function buildMusePersona(
   // — a buggy extractor that re-emits the same topic shouldn't bloat
   // the persona block.
   const recentTopics = dedupeNonEmpty(memory.recentTopics ?? []).slice(-5);
-  if (facts.length === 0 && plainPrefs.length === 0 && vetoes.length === 0 && goals.length === 0 && recentTopics.length === 0) {
+  // Episodes arrive pre-sorted + capped from the caller. Defensive
+  // filter here drops entries with an empty summary so a half-formed
+  // upstream blob can't print a "  - 2026-05-13: " line with no body.
+  const episodes = (memory.episodes ?? []).filter((entry) => entry.summary.trim().length > 0);
+  if (
+    facts.length === 0
+    && plainPrefs.length === 0
+    && vetoes.length === 0
+    && goals.length === 0
+    && recentTopics.length === 0
+    && episodes.length === 0
+  ) {
     return undefined;
   }
   const lines: string[] = [
@@ -100,7 +129,31 @@ export function buildMusePersona(
     lines.push("Recent topics the user has been working on:");
     for (const topic of recentTopics) lines.push(`  - ${topic}`);
   }
+  if (episodes.length > 0) {
+    // Episodic memory pairs with recentTopics — topics give breadth
+    // ("what subjects"), episodes give depth ("what was decided").
+    // Caller resolves the per-user filter + sort (newest first) +
+    // cap (default 5) before passing them in.
+    lines.push("");
+    lines.push("Episodic memory (recent prior sessions, summarized):");
+    for (const entry of episodes) {
+      const date = formatEpisodeDate(entry.endedAt);
+      lines.push(`  - ${date}: ${entry.summary.trim()}`);
+    }
+  }
   return lines.join("\n");
+}
+
+function formatEpisodeDate(iso: string): string {
+  // Render the YYYY-MM-DD prefix so the persona block stays readable
+  // even when the ISO timestamp carries millisecond precision. Fall
+  // back to the raw value when the input isn't a parseable ISO date
+  // — the design doc allows older entries to land without the
+  // strict shape, and dropping them silently here would hide bugs.
+  if (/^\d{4}-\d{2}-\d{2}/u.test(iso)) {
+    return iso.slice(0, 10);
+  }
+  return iso;
 }
 
 function dedupeNonEmpty(values: readonly string[]): string[] {
