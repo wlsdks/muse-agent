@@ -31,8 +31,11 @@ import { join, resolve as pathResolve } from "node:path";
 
 import type { CalendarEvent, CalendarProviderRegistry } from "@muse/calendar";
 import {
+  readFollowups,
   readReminders,
+  serializeFollowup,
   serializeReminder,
+  type PersistedFollowup,
   type PersistedReminder
 } from "@muse/mcp";
 import type { FastifyInstance } from "fastify";
@@ -51,6 +54,7 @@ interface TodayRoutesGate {
   readonly notesDir?: string;
   readonly tasksFile?: string;
   readonly remindersFile?: string;
+  readonly followupsFile?: string;
 }
 
 interface PersistedTaskRow {
@@ -75,15 +79,17 @@ export function registerTodayRoutes(server: FastifyInstance, gate: TodayRoutesGa
     const now = new Date();
     const horizon = new Date(now.getTime() + hours * 3_600_000);
 
-    const [tasks, events, notes, reminders] = await Promise.all([
+    const [tasks, events, notes, reminders, followups] = await Promise.all([
       readOpenTasks(gate.tasksFile).catch(() => undefined),
       readUpcomingEvents(gate.calendar, now, horizon).catch(() => undefined),
       readRecentNotes(gate.notesDir).catch(() => undefined),
-      readDueReminders(gate.remindersFile, now, horizon).catch(() => undefined)
+      readDueReminders(gate.remindersFile, now, horizon).catch(() => undefined),
+      readDueFollowups(gate.followupsFile, horizon).catch(() => undefined)
     ]);
 
     return {
       events,
+      followups,
       generatedAt: now.toISOString(),
       lookaheadHours: hours,
       notes,
@@ -121,6 +127,35 @@ async function readDueReminders(
   return surfaced
     .sort((left, right) => left.dueAt.localeCompare(right.dueAt))
     .map(serializeReminder);
+}
+
+/**
+ * Followups surfaced in the briefing: anything `scheduled` whose
+ * `scheduledFor` is at-or-before the lookahead horizon. Like
+ * reminders, the window includes already-overdue followups (the
+ * agent promised to do X yesterday, didn't fire, today is the day).
+ */
+async function readDueFollowups(
+  file: string | undefined,
+  horizon: Date
+): Promise<readonly Record<string, unknown>[] | undefined> {
+  if (!file) {
+    return undefined;
+  }
+  const all = await readFollowups(file);
+  const surfaced = all.filter((followup: PersistedFollowup) => {
+    if (followup.status !== "scheduled") {
+      return false;
+    }
+    const when = Date.parse(followup.scheduledFor);
+    if (Number.isNaN(when)) {
+      return false;
+    }
+    return when <= horizon.getTime();
+  });
+  return surfaced
+    .sort((left, right) => left.scheduledFor.localeCompare(right.scheduledFor))
+    .map(serializeFollowup);
 }
 
 async function readOpenTasks(tasksFile: string | undefined): Promise<readonly PersistedTaskRow[] | undefined> {

@@ -415,7 +415,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     calendar: options.calendar,
     notesDir: options.notesDir,
     tasksFile: options.tasksFile,
-    ...(options.remindersFile ? { remindersFile: options.remindersFile } : {})
+    ...(options.remindersFile ? { remindersFile: options.remindersFile } : {}),
+    ...(options.followupsFile ? { followupsFile: options.followupsFile } : {})
   });
 
   // Optional Phase B daemon: every MUSE_REMINDER_TICK_MS (default

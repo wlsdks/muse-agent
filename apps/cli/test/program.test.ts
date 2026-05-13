@@ -1816,6 +1816,44 @@ describe("cli program", () => {
     }
   });
 
+  it("today --local surfaces scheduled followups due within the horizon", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-today-followups-"));
+    const fsp = await import("node:fs/promises");
+    const followupsFile = path.join(root, "followups.json");
+    const past = new Date(Date.now() - 60 * 60_000).toISOString();
+    const soon = new Date(Date.now() + 30 * 60_000).toISOString();
+    const farFuture = new Date(Date.now() + 7 * 24 * 60 * 60_000).toISOString();
+    await fsp.writeFile(followupsFile, JSON.stringify({
+      followups: [
+        { id: "fu_overdue", userId: "stark", scheduledFor: past, status: "scheduled", summary: "Send Q3 memo", createdAt: "2026-05-10T00:00:00Z" },
+        { id: "fu_soon", userId: "stark", scheduledFor: soon, status: "scheduled", summary: "Call vet", createdAt: "2026-05-12T00:00:00Z" },
+        { id: "fu_far", userId: "stark", scheduledFor: farFuture, status: "scheduled", summary: "Pay quarterly tax", createdAt: "2026-05-12T01:00:00Z" }
+      ]
+    }), "utf8");
+    const prev = process.env.MUSE_FOLLOWUPS_FILE;
+    process.env.MUSE_FOLLOWUPS_FILE = followupsFile;
+    try {
+      // JSON path: followups field has the in-horizon scheduled rows.
+      const { io: io1, output: out1 } = captureOutput();
+      const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("local"); } });
+      await program1.parseAsync(["node", "muse", "today", "--local", "--json"], { from: "node" });
+      const briefing = JSON.parse(out1.join("")) as { followups: Array<{ id: string; summary: string; scheduledFor: string }> };
+      expect(briefing.followups.map((row) => row.id)).toEqual(["fu_overdue", "fu_soon"]);
+
+      // Formatted path: "Followups (2):" banner + the overdue marker on the past entry.
+      const { io: io2, output: out2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("local"); } });
+      await program2.parseAsync(["node", "muse", "today", "--local"], { from: "node" });
+      const text = out2.join("");
+      expect(text).toContain("Followups (2):");
+      expect(text).toContain("Send Q3 memo (overdue)");
+      expect(text).toContain("Call vet");
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_FOLLOWUPS_FILE;
+      else process.env.MUSE_FOLLOWUPS_FILE = prev;
+    }
+  });
+
   it("today --local composes tasks + recent notes without touching the API", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-local-today-"));
     const tasksFile = path.join(root, "tasks.json");

@@ -64,6 +64,31 @@ describe("api server: GET /api/today", () => {
     expect(tooBig.json()).toMatchObject({ lookaheadHours: 168 });
   });
 
+  it("surfaces scheduled followups due within the lookahead horizon (skipping fired/cancelled/future-beyond-horizon)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-today-followups-"));
+    const followupsFile = join(dir, "followups.json");
+    const past = new Date(Date.now() - 60 * 60_000).toISOString();
+    const soon = new Date(Date.now() + 30 * 60_000).toISOString();
+    const farFuture = new Date(Date.now() + 7 * 24 * 60 * 60_000).toISOString();
+    writeFileSync(followupsFile, JSON.stringify({
+      followups: [
+        { id: "fu_overdue", userId: "stark", scheduledFor: past, status: "scheduled", summary: "Send Q3 memo", createdAt: "2026-05-10T00:00:00Z" },
+        { id: "fu_soon", userId: "stark", scheduledFor: soon, status: "scheduled", summary: "Call vet", createdAt: "2026-05-12T00:00:00Z" },
+        { id: "fu_far", userId: "stark", scheduledFor: farFuture, status: "scheduled", summary: "Pay quarterly tax", createdAt: "2026-05-12T01:00:00Z" },
+        { id: "fu_fired", userId: "stark", scheduledFor: past, status: "fired", summary: "Already happened", firedAt: past, createdAt: "2026-05-09T00:00:00Z" },
+        { id: "fu_cancelled", userId: "stark", scheduledFor: soon, status: "cancelled", summary: "User said no", cancelReason: "user-cancelled", createdAt: "2026-05-12T00:00:00Z" }
+      ]
+    }), "utf8");
+
+    const server = buildServer({ followupsFile, logger: false });
+    const reply = await server.inject({ method: "GET", url: "/api/today?lookaheadHours=24" });
+    expect(reply.statusCode).toBe(200);
+    const body = reply.json() as { followups: Array<{ id: string; summary: string }> };
+    // overdue + soon ordered by scheduledFor; far-future + fired + cancelled excluded.
+    expect(body.followups.map((row) => row.id)).toEqual(["fu_overdue", "fu_soon"]);
+    expect(body.followups[0]?.summary).toBe("Send Q3 memo");
+  });
+
   it("returns undefined sections when nothing is configured", async () => {
     const server = buildServer({ logger: false });
     const reply = await server.inject({ method: "GET", url: "/api/today" });
@@ -72,6 +97,7 @@ describe("api server: GET /api/today", () => {
     expect(body.tasks).toBeUndefined();
     expect(body.events).toBeUndefined();
     expect(body.notes).toBeUndefined();
+    expect(body.followups).toBeUndefined();
     expect(body.lookaheadHours).toBe(24);
   });
 });

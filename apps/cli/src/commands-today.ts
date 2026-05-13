@@ -15,6 +15,7 @@ import { join, resolve as resolvePath } from "node:path";
 
 import {
   createMuseRuntimeAssembly,
+  resolveFollowupsFile,
   resolveLocalCalendarFile,
   resolveNotesDir,
   resolveRemindersFile,
@@ -22,8 +23,10 @@ import {
 } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
 import {
+  readFollowups,
   readReminders,
   readTasks,
+  serializeFollowup,
   serializeReminder,
   serializeTask,
   type PersistedTask
@@ -60,6 +63,7 @@ interface TodayBriefing {
   readonly events?: readonly { readonly id: string; readonly title: string; readonly startsAtIso: string }[];
   readonly notes?: readonly string[];
   readonly reminders?: readonly { readonly id: string; readonly text: string; readonly dueAt: string }[];
+  readonly followups?: readonly { readonly id: string; readonly summary: string; readonly scheduledFor: string }[];
 }
 
 export interface TodayCommandHelpers {
@@ -153,6 +157,7 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
 
       io.stdout(`Today (${shortDateLabel(briefing.generatedAt)}, next ${briefing.lookaheadHours}h${usedLocal ? ", local" : ""})\n`);
       io.stdout(formatReminders(briefing.reminders, briefing.generatedAt));
+      io.stdout(formatFollowups(briefing.followups, briefing.generatedAt));
       io.stdout(formatTasks(briefing.tasks));
       io.stdout(formatEvents(briefing.events));
       io.stdout(formatNotes(briefing.notes));
@@ -268,18 +273,21 @@ async function composeLocalBriefing(lookaheadHours: number): Promise<TodayBriefi
   const notesDir = resolveNotesDir(env);
   const calendarFile = resolveLocalCalendarFile(env);
   const remindersFile = resolveRemindersFile(env);
+  const followupsFile = resolveFollowupsFile(env);
   const now = new Date();
   const horizon = new Date(now.getTime() + lookaheadHours * 3_600_000);
 
-  const [tasks, events, notes, reminders] = await Promise.all([
+  const [tasks, events, notes, reminders, followups] = await Promise.all([
     readOpenTasks(tasksFile).catch(() => undefined),
     readLocalEvents(calendarFile, now, horizon).catch(() => undefined),
     readRecentNotes(notesDir).catch(() => undefined),
-    readDueReminders(remindersFile, horizon).catch(() => undefined)
+    readDueReminders(remindersFile, horizon).catch(() => undefined),
+    readDueFollowups(followupsFile, horizon).catch(() => undefined)
   ]);
 
   return {
     events,
+    followups,
     generatedAt: now.toISOString(),
     lookaheadHours,
     notes,
@@ -308,6 +316,33 @@ async function readDueReminders(
     .map((reminder) => {
       const serialized = serializeReminder(reminder);
       return { dueAt: String(serialized.dueAt), id: String(serialized.id), text: String(serialized.text) };
+    });
+}
+
+async function readDueFollowups(
+  file: string,
+  horizon: Date
+): Promise<readonly { id: string; summary: string; scheduledFor: string }[]> {
+  const all = await readFollowups(file);
+  return all
+    .filter((followup) => {
+      if (followup.status !== "scheduled") {
+        return false;
+      }
+      const when = Date.parse(followup.scheduledFor);
+      if (Number.isNaN(when)) {
+        return false;
+      }
+      return when <= horizon.getTime();
+    })
+    .sort((left, right) => left.scheduledFor.localeCompare(right.scheduledFor))
+    .map((followup) => {
+      const serialized = serializeFollowup(followup);
+      return {
+        id: String(serialized.id),
+        scheduledFor: String(serialized.scheduledFor),
+        summary: String(serialized.summary)
+      };
     });
 }
 
@@ -425,6 +460,22 @@ function formatReminders(
   return `\nReminders (${reminders.length}):\n${lines.join("\n")}\n`;
 }
 
+
+function formatFollowups(
+  followups: readonly { readonly id: string; readonly summary: string; readonly scheduledFor: string }[] | undefined,
+  generatedAt: string
+): string {
+  if (!followups || followups.length === 0) {
+    return "";
+  }
+  const nowMs = Date.parse(generatedAt);
+  const lines = followups.map((followup) => {
+    const dueMs = Date.parse(followup.scheduledFor);
+    const overdue = Number.isFinite(dueMs) && Number.isFinite(nowMs) && dueMs < nowMs ? " (overdue)" : "";
+    return `  - [${followup.id.slice(0, 12)}] ${shortDateTimeBrief(followup.scheduledFor)}  ${followup.summary}${overdue}`;
+  });
+  return `\nFollowups (${followups.length}):\n${lines.join("\n")}\n`;
+}
 
 function formatTasks(tasks: readonly { readonly id: string; readonly title: string }[] | undefined): string {
   if (!tasks) {
