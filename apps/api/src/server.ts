@@ -29,10 +29,13 @@ import { lineWebhookPlugin } from "./messaging-webhooks-routes.js";
 import { registerProactiveRoutes } from "./proactive-routes.js";
 import { registerRemindersRoutes } from "./reminders-routes.js";
 import { parseDiscordPollChannels, startDiscordPollTick } from "./discord-poll-tick.js";
-import { parseQuietHours, startReminderTick } from "./reminder-tick.js";
-import { createFileBackedActivityTracker, createInMemoryActivityTracker, startProactiveTick } from "./proactive-tick.js";
-import { startFollowupTick } from "./followup-tick.js";
-import { startPatternTick } from "./pattern-tick.js";
+import { createFileBackedActivityTracker, createInMemoryActivityTracker } from "./proactive-tick.js";
+import {
+  startFollowupDaemonIfConfigured,
+  startPatternDaemonIfConfigured,
+  startProactiveDaemonIfConfigured,
+  startReminderDaemonIfConfigured
+} from "./tick-daemons.js";
 import { parseSlackPollChannels, startSlackPollTick } from "./slack-poll-tick.js";
 import { startTelegramPollTick } from "./telegram-poll-tick.js";
 import { DiscordProvider, SlackProvider, TelegramProvider } from "@muse/messaging";
@@ -448,181 +451,16 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     });
   }
 
-  const tickProvider = env.MUSE_REMINDER_DEFAULT_PROVIDER?.trim();
-  const tickDestination = env.MUSE_REMINDER_DEFAULT_DESTINATION?.trim();
-  if (
-    tickProvider && tickProvider.length > 0
-    && tickDestination && tickDestination.length > 0
-    && options.remindersFile
-    && options.messaging
-    && options.messaging.has(tickProvider)
-  ) {
-    const tickMsRaw = env.MUSE_REMINDER_TICK_MS ? Number(env.MUSE_REMINDER_TICK_MS) : undefined;
-    const quietHours = parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
-    const reminderPhaseDWindowRaw = env.MUSE_REMINDER_ACTIVE_SESSION_WINDOW_MS
-      ? Number(env.MUSE_REMINDER_ACTIVE_SESSION_WINDOW_MS)
-      : undefined;
-    const tickHandle = startReminderTick({
-      ...(phaseDReminderOn && sharedActivityTracker ? { activitySource: sharedActivityTracker } : {}),
-      ...(phaseDReminderOn && options.defaultModel ? { agentModel: options.defaultModel } : {}),
-      ...(phaseDReminderOn && options.agentRuntime ? { agentRuntime: options.agentRuntime } : {}),
-      ...(reminderPhaseDWindowRaw !== undefined ? { activeSessionWindowMs: reminderPhaseDWindowRaw } : {}),
-      destination: tickDestination,
-      errorLogger: (message) => server.log.warn(message),
-      ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
-      ...(options.reminderHistoryFile ? { historyFile: options.reminderHistoryFile } : {}),
-      logger: (message) => server.log.info(message),
-      providerId: tickProvider,
-      ...(quietHours ? { quietHours } : {}),
-      registry: options.messaging,
-      remindersFile: options.remindersFile
-    });
-    server.addHook("onClose", async () => {
-      tickHandle.stop();
-    });
-  }
-
-  // Proactive surfacing daemon (Phase A per docs/design/proactive-surfacing.md).
-  // Off by default; activates when MUSE_PROACTIVE_PROVIDER +
-  // MUSE_PROACTIVE_DESTINATION are set AND the named messaging provider
-  // is registered AND a calendar registry is wired.
-  const proactiveProvider = env.MUSE_PROACTIVE_PROVIDER?.trim();
-  const proactiveDestination = env.MUSE_PROACTIVE_DESTINATION?.trim();
-  const proactiveCalendar = options.calendar && options.calendar.list().length > 0
-    ? options.calendar
-    : undefined;
-  const proactiveHasSignal = Boolean(proactiveCalendar) || Boolean(options.tasksFile);
-  if (
-    proactiveProvider && proactiveProvider.length > 0
-    && proactiveDestination && proactiveDestination.length > 0
-    && options.messaging
-    && options.messaging.has(proactiveProvider)
-    && proactiveHasSignal
-  ) {
-    const proactiveTickMsRaw = env.MUSE_PROACTIVE_TICK_MS ? Number(env.MUSE_PROACTIVE_TICK_MS) : undefined;
-    const proactiveLeadRaw = env.MUSE_PROACTIVE_LEAD_MINUTES ? Number(env.MUSE_PROACTIVE_LEAD_MINUTES) : undefined;
-    const proactiveQuietHours = parseQuietHours(env.MUSE_PROACTIVE_QUIET_HOURS)
-      ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
-    const proactiveSidecarFile = env.MUSE_PROACTIVE_SIDECAR_FILE?.trim()
-      || `${process.env.HOME ?? ""}/.muse/proactive-fired.json`;
-
-    // Phase D — agent-initiated turn. Uses the shared activity tracker
-    // created above so a single onRequest hook unlocks both this
-    // daemon and the reminder daemon when their respective
-    // MUSE_*_AGENT_TURN flag is on.
-    const phaseDWindowRaw = env.MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS
-      ? Number(env.MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS)
-      : undefined;
-
-    const proactiveHandle = startProactiveTick({
-      ...(phaseDProactiveOn && sharedActivityTracker ? { activitySource: sharedActivityTracker } : {}),
-      ...(phaseDProactiveOn && options.defaultModel ? { agentModel: options.defaultModel } : {}),
-      // Prefer modelProvider: synthesis is one-shot text gen and the
-      // agent runtime's tool registry trips up ≤ 3B local models
-      // into emitting tool-call JSON. Fall back to agentRuntime when
-      // no provider is available (legacy path).
-      ...(phaseDProactiveOn && options.modelProvider
-        ? { modelProvider: options.modelProvider }
-        : phaseDProactiveOn && options.agentRuntime
-          ? { agentRuntime: options.agentRuntime }
-          : {}),
-      ...(phaseDWindowRaw !== undefined ? { activeSessionWindowMs: phaseDWindowRaw } : {}),
-      ...(options.proactiveHistoryFile ? { historyFile: options.proactiveHistoryFile } : {}),
-      ...(proactiveCalendar ? { calendarRegistry: proactiveCalendar } : {}),
-      ...(options.tasksFile ? { tasksFile: options.tasksFile } : {}),
-      destination: proactiveDestination,
-      errorLogger: (message) => server.log.warn(message),
-      ...(proactiveTickMsRaw !== undefined ? { intervalMs: proactiveTickMsRaw } : {}),
-      ...(proactiveLeadRaw !== undefined ? { leadMinutes: proactiveLeadRaw } : {}),
-      logger: (message) => server.log.info(message),
-      messagingRegistry: options.messaging,
-      providerId: proactiveProvider,
-      ...(proactiveQuietHours ? { quietHours: proactiveQuietHours } : {}),
-      sidecarFile: proactiveSidecarFile
-    });
-    server.addHook("onClose", async () => {
-      proactiveHandle.stop();
-    });
-  }
-
-  // Self-followup firing daemon — step 4 of agent-self-followup.md.
-  // Off by default; activates when MUSE_FOLLOWUP_DEFAULT_PROVIDER +
-  // MUSE_FOLLOWUP_DEFAULT_DESTINATION are set AND a modelProvider
-  // is wired (synthesis is the primary path, not opt-in).
-  const followupProvider = env.MUSE_FOLLOWUP_DEFAULT_PROVIDER?.trim();
-  const followupDestination = env.MUSE_FOLLOWUP_DEFAULT_DESTINATION?.trim();
-  if (
-    followupProvider && followupProvider.length > 0
-    && followupDestination && followupDestination.length > 0
-    && options.followupsFile
-    && options.messaging
-    && options.messaging.has(followupProvider)
-    && options.modelProvider
-    && options.defaultModel
-  ) {
-    const followupTickMsRaw = env.MUSE_FOLLOWUP_TICK_MS ? Number(env.MUSE_FOLLOWUP_TICK_MS) : undefined;
-    const followupMaxPerTickRaw = env.MUSE_FOLLOWUP_MAX_PER_TICK ? Number(env.MUSE_FOLLOWUP_MAX_PER_TICK) : undefined;
-    const followupQuietHours = parseQuietHours(env.MUSE_FOLLOWUP_QUIET_HOURS)
-      ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
-    const followupHandle = startFollowupTick({
-      destination: followupDestination,
-      errorLogger: (message) => server.log.warn(message),
-      followupsFile: options.followupsFile,
-      ...(followupTickMsRaw !== undefined ? { intervalMs: followupTickMsRaw } : {}),
-      logger: (message) => server.log.info(message),
-      ...(followupMaxPerTickRaw !== undefined ? { maxPerTick: followupMaxPerTickRaw } : {}),
-      model: options.defaultModel,
-      modelProvider: options.modelProvider,
-      providerId: followupProvider,
-      ...(followupQuietHours ? { quietHours: followupQuietHours } : {}),
-      registry: options.messaging
-    });
-    server.addHook("onClose", async () => {
-      followupHandle.stop();
-    });
-  }
-
-  // Pattern-detection firing daemon — step 4 wiring of
-  // agent-pattern-detection.md. Off by default; activates when
-  // MUSE_PROACTIVE_PATTERN_ENABLED=true AND provider/destination
-  // are set AND the named messaging provider is registered AND
-  // a patternsFiredFile is configured (autoconfigure default).
-  const patternEnabled = (env.MUSE_PROACTIVE_PATTERN_ENABLED ?? "").trim().toLowerCase() === "true";
-  const patternProvider = env.MUSE_PROACTIVE_PATTERN_PROVIDER?.trim();
-  const patternDestination = env.MUSE_PROACTIVE_PATTERN_DESTINATION?.trim();
-  if (
-    patternEnabled
-    && patternProvider && patternProvider.length > 0
-    && patternDestination && patternDestination.length > 0
-    && options.patternsFiredFile
-    && options.messaging
-    && options.messaging.has(patternProvider)
-  ) {
-    const tickMsRaw = env.MUSE_PROACTIVE_PATTERN_TICK_MS ? Number(env.MUSE_PROACTIVE_PATTERN_TICK_MS) : undefined;
-    const cooldownMsRaw = env.MUSE_PROACTIVE_PATTERN_COOLDOWN_MS ? Number(env.MUSE_PROACTIVE_PATTERN_COOLDOWN_MS) : undefined;
-    const minConfidenceRaw = env.MUSE_PROACTIVE_PATTERN_MIN_CONFIDENCE ? Number(env.MUSE_PROACTIVE_PATTERN_MIN_CONFIDENCE) : undefined;
-    const maxPerTickRaw = env.MUSE_PROACTIVE_PATTERN_MAX_PER_TICK ? Number(env.MUSE_PROACTIVE_PATTERN_MAX_PER_TICK) : undefined;
-    const patternQuietHours = parseQuietHours(env.MUSE_PROACTIVE_PATTERN_QUIET_HOURS)
-      ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
-    const patternHandle = startPatternTick({
-      destination: patternDestination,
-      errorLogger: (message) => server.log.warn(message),
-      logger: (message) => server.log.info(message),
-      ...(options.tasksFile ? { tasksFile: options.tasksFile } : {}),
-      ...(options.notesDir ? { notesDir: options.notesDir } : {}),
-      ...(cooldownMsRaw !== undefined ? { cooldownMs: cooldownMsRaw } : {}),
-      ...(maxPerTickRaw !== undefined ? { maxPerTick: maxPerTickRaw } : {}),
-      ...(minConfidenceRaw !== undefined ? { minConfidence: minConfidenceRaw } : {}),
-      ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
-      patternsFiredFile: options.patternsFiredFile,
-      providerId: patternProvider,
-      ...(patternQuietHours ? { quietHours: patternQuietHours } : {}),
-      registry: options.messaging
-    });
-    server.addHook("onClose", async () => {
-      patternHandle.stop();
-    });
-  }
+  // Tick daemons — reminder, proactive, followup, pattern. Each
+  // is off by default and activates when its env keys + required
+  // options line up. The four function calls below replace ~200
+  // lines of inline env-parsing scaffolding that all five blocks
+  // shared the same shape of.
+  const phaseDWiring = { phaseDProactiveOn, phaseDReminderOn, sharedActivityTracker };
+  startReminderDaemonIfConfigured(env, server, options, phaseDWiring);
+  startProactiveDaemonIfConfigured(env, server, options, phaseDWiring);
+  startFollowupDaemonIfConfigured(env, server, options);
+  startPatternDaemonIfConfigured(env, server, options);
 
   // Optional Phase 2.a.3 daemon: poll Telegram every
   // MUSE_TELEGRAM_POLL_INTERVAL_MS (default 30s) and persist each
