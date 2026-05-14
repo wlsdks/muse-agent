@@ -490,6 +490,15 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   });
   registerVoiceCommands(program, io, { apiRequest, readApiOptions, writeOutput });
 
+  // Goal 060 — `muse` with no subcommand should print help instead
+  // of exiting silently / surfacing a confusing "unknown command"
+  // error. Commander's default behavior shows help text via
+  // `outputHelp`; we route it through `io.stdout` so tests can
+  // capture it the same way they capture any other command output.
+  program.action(() => {
+    program.outputHelp();
+  });
+
   return program;
 }
 

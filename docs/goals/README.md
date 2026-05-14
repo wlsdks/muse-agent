@@ -79,7 +79,7 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 057 | [`muse runs delete <run-id>`](057-muse-runs-delete.md)                             | JARVIS feature       | open   |
 | 058 | [`muse notes search --mode llm-judge` polish](058-muse-notes-search-llm-judge-polish.md) | JARVIS feature | open |
 | 059 | [`muse calendar import <file.ics>`](059-muse-calendar-import-ics.md)               | JARVIS feature       | open   |
-| 060 | [Top-level muse with no args prints help](060-muse-help-on-empty.md)               | UX polish            | open   |
+| 060 | [Top-level muse with no args prints help](060-muse-help-on-empty.md)               | UX polish            | done   |
 | 061 | [`muse today` colorize output (TTY-aware)](061-today-colorize.md)                  | UX polish            | open   |
 | 062 | [`muse history` relative time format](062-history-relative-time.md)                | UX polish            | open   |
 | 063 | [`muse history` icon-per-kind](063-history-icon-per-kind.md)                       | UX polish            | open   |

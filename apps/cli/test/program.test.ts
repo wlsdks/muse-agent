@@ -3616,6 +3616,19 @@ describe("cli program", () => {
     expect(resolveReplHistoryCap("9999")).toBe(9999);
   });
 
+  it("muse with no subcommand prints help instead of erroring (goal 060)", async () => {
+    const { io, output } = captureOutput();
+    const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+    await program.parseAsync(["node", "muse"], { from: "node" });
+    const text = output.join("");
+    // commander's outputHelp produces a Usage banner + Commands section.
+    expect(text).toContain("Usage:");
+    expect(text).toContain("muse");
+    // A handful of real subcommands the user could discover.
+    expect(text).toContain("status");
+    expect(text).toContain("history");
+  });
+
   it("compileHistoryGrep treats input as regex first, falls back to substring on metacharacter errors (goal 050)", async () => {
     const { compileHistoryGrep } = await import("../src/commands-history.js");
     // Plain substring matches the literal anywhere.

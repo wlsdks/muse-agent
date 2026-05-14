@@ -16,4 +16,9 @@ similar. Should print --help.
 
 ## Status
 
-open
+done — bare `muse` invocation now triggers a `program.action(...)`
+that calls `program.outputHelp()`, so the user sees the Usage
+banner + Commands list instead of commander's confusing
+"unknown command" / silent exit. cli +1 unit test asserts the
+Usage banner + a couple of discoverable subcommand names
+appear in stdout for `muse` with no args.
