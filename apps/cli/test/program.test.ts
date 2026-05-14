@@ -3956,6 +3956,36 @@ describe("cli program", () => {
     expect(sawSignals).toEqual(["SIGTERM"]);
   });
 
+  it("muse trace tail helpers parse interval / limit / events (goal 076)", async () => {
+    const {
+      resolveTraceTailIntervalMs,
+      resolveTraceTailLimit,
+      extractTraceTailEvents
+    } = await import("../src/commands-traces.js");
+    expect(resolveTraceTailIntervalMs(undefined)).toBe(2_000);
+    expect(resolveTraceTailIntervalMs("5")).toBe(5_000);
+    expect(resolveTraceTailIntervalMs("0")).toBe(2_000);
+    expect(resolveTraceTailIntervalMs("-1")).toBe(2_000);
+    expect(resolveTraceTailIntervalMs("999")).toBe(60_000); // upper clamp
+    expect(resolveTraceTailIntervalMs("0.5")).toBe(1_000); // lower clamp to 1s
+
+    expect(resolveTraceTailLimit(undefined)).toBe(20);
+    expect(resolveTraceTailLimit("50")).toBe(50);
+    expect(resolveTraceTailLimit("0")).toBe(20);
+    expect(resolveTraceTailLimit("9999")).toBe(200);
+
+    // Array → array.
+    expect(extractTraceTailEvents([{ id: "a" }, { id: "b" }])).toHaveLength(2);
+    // { events: [...] } envelope → unwrapped.
+    expect(extractTraceTailEvents({ events: [{ id: "a" }] })).toHaveLength(1);
+    // { spans: [...] } envelope also accepted (alternative shape).
+    expect(extractTraceTailEvents({ spans: [{ spanId: "x" }] })).toHaveLength(1);
+    // Garbage → empty.
+    expect(extractTraceTailEvents(null)).toEqual([]);
+    expect(extractTraceTailEvents("not json")).toEqual([]);
+    expect(extractTraceTailEvents({})).toEqual([]);
+  });
+
   it("muse mcp status renders 'reconnecting in Ns' for servers with a scheduled retry (goal 075)", async () => {
     const fixedNow = new Date("2026-05-14T12:00:00Z");
     const { io, output } = captureOutput();
