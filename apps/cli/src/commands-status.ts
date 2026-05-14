@@ -32,6 +32,14 @@ import type { Command } from "commander";
 import type { ProgramIO } from "./program.js";
 import { readTrust } from "./commands-trust.js";
 
+/**
+ * Goal 064 — version marker for the `muse status --json` payload.
+ * Bumped when fields are renamed or removed; additive changes
+ * keep the existing value. Exported so jq pipelines + downstream
+ * scripts (and the test suite) can pin the contract.
+ */
+export const MUSE_STATUS_SCHEMA_VERSION = 1;
+
 interface StatusOptions {
   readonly user?: string;
   readonly json?: boolean;
@@ -173,6 +181,10 @@ async function collectStatus(userId: string) {
   const logBytes = await fileSize(logFile);
 
   return {
+    // Goal 064 — schemaVersion lets jq pipelines detect breaking
+    // changes ("if .schemaVersion >= 2 then …"). Bump when fields
+    // are renamed / removed (additive changes don't bump).
+    schemaVersion: MUSE_STATUS_SCHEMA_VERSION,
     ...resolveModelInfo(),
     providers: summariseProviders(),
     persona: {

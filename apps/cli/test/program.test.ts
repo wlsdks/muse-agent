@@ -3649,6 +3649,16 @@ describe("cli program", () => {
     expect(formatRelativeTime("not-a-date", now)).toBe("not-a-date");
   });
 
+  it("muse status --json carries schemaVersion (goal 064)", async () => {
+    const { MUSE_STATUS_SCHEMA_VERSION } = await import("../src/commands-status.js");
+    expect(MUSE_STATUS_SCHEMA_VERSION).toBe(1);
+    const { io, output } = captureOutput();
+    const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+    await program.parseAsync(["node", "muse", "status", "--user", "schema-probe", "--json"], { from: "node" });
+    const parsed = JSON.parse(output.join("")) as { schemaVersion?: number };
+    expect(parsed.schemaVersion).toBe(MUSE_STATUS_SCHEMA_VERSION);
+  });
+
   it("resolveLockUntilMs honours --hours + --minutes and defaults to 1h on zero (goal 052)", async () => {
     const { resolveLockUntilMs } = await import("../src/commands-session.js");
     const now = 1_000_000_000_000; // arbitrary fixed epoch
