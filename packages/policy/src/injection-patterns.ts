@@ -115,7 +115,27 @@ export const sharedInjectionPatterns: readonly InjectionPattern[] = [
   { name: "credential_extraction", regex: /(비밀번호|패스워드|password|비번|암호|api\s*key|secret|토큰|token|인증\s*키).{0,15}(알려|보여|출력|공개|말해|tell|show|reveal|give)/is },
   { name: "environment_extraction", regex: /(환경\s*변수|env|environment).{0,15}(값|value|확인|알려|보여|출력|조회|read|print|echo|get)/is },
   { name: "command_injection", regex: /(curl|wget|fetch|http).{0,10}(internal|localhost|127\.0\.0|10\.|172\.|192\.168)/is },
-  { name: "cross_user_access", regex: /(다른|타|other).{0,10}(사용자|유저|사람|user|계정|account).{0,15}(대화|채팅|메시지|이력|기록|데이터|정보|내역|chat|message|history|data)/is }
+  { name: "cross_user_access", regex: /(다른|타|other).{0,10}(사용자|유저|사람|user|계정|account).{0,15}(대화|채팅|메시지|이력|기록|데이터|정보|내역|chat|message|history|data)/is },
+  // goal 033 — five additional pattern families covering attack
+  // vectors the previous library didn't catch:
+  //
+  // 1. Conversation history poisoning — claims about what the
+  //    "previous" turn said, designed to trick the model into
+  //    treating attacker-supplied text as trusted history.
+  { name: "history_poisoning", regex: /\b(previous|prior|earlier|last)\s+(user|assistant|system)\s+(said|told|wrote|asked|requested|specified|instructed)\b/i },
+  { name: "history_poisoning", regex: /(이전|위의|앞의|아까).{0,10}(사용자|유저|어시스턴트|시스템).{0,10}(말|썼|요청|지시)/s },
+  // 2. Training-data / confidential-context extraction.
+  { name: "training_data_extraction", regex: /\b(reveal|show|leak|print|dump)\b.{0,30}\b(training|fine[-\s]?tune|confidential|internal|proprietary|private)\b.{0,30}\b(data|set|context|document|memory|knowledge)\b/i },
+  // 3. Code-execution sandbox escape — instructing the agent to
+  //    execute code in a sandbox, often paired with output coercion.
+  { name: "sandbox_escape", regex: /\b(execute|run|eval|interpret)\b.{0,15}\b(the following|this|code|shell|bash|python|javascript|js)\b.{0,30}(without|bypass|skip|ignore).{0,15}(filter|guard|check|review|approval)/is },
+  // 4. Few-shot poisoning — injects a fake Q/A pair that primes the
+  //    model toward an attacker-chosen response.
+  { name: "few_shot_poisoning", regex: /\b(Q|Question|User)\s*:\s*.{1,80}\n+\s*\b(A|Answer|Assistant)\s*:\s*(here|sure|of course|certainly).{0,30}\b(ignore|bypass|skip|override)\b/is },
+  // 5. Tool-name spoofing — references a tool call in user-controlled
+  //    text, hoping the model treats it as a tool message.
+  { name: "tool_spoofing", regex: /<tool[_\s-]?(call|use|name|result|output)>\s*\w+\s*<\/tool[_\s-]?(call|use|name|result|output)>/i },
+  { name: "tool_spoofing", regex: /\b(call|invoke|use)\s+(the)?\s*(tool|function|mcp|api)\s+["']?\w+["']?\s*(without|skipping|bypassing)\s+(approval|review|confirmation|check)/i }
 ];
 
 export function normalizeForInjectionDetection(text: string): string {

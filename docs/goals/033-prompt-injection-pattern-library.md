@@ -19,4 +19,8 @@ adversarial JSON-injection — and snapshot-test it.
 
 ## Status
 
-open
+done — added 5 pattern families (7 regex entries total) to
+`sharedInjectionPatterns`: history_poisoning (en + ko),
+training_data_extraction, sandbox_escape, few_shot_poisoning,
+tool_spoofing. policy +6 tests covering each new family plus a
+false-positive sanity check on ordinary planning text.
