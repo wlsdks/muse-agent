@@ -17,10 +17,18 @@ const minimumJwtSecretBytes = 32;
 
 /**
  * Internal — only `JwtTokenProvider`'s constructor reads this.
+ *
+ * `previousJwtSecrets` enables zero-downtime secret rotation: set
+ * a new `jwtSecret`, list the old one in `previousJwtSecrets`, and
+ * outstanding tokens stay valid until they expire. New tokens are
+ * always signed with `jwtSecret`. Verification walks the array
+ * (current first, then previous) so a compromised secret can be
+ * rotated out without invalidating every active session.
  */
 export interface AuthProperties {
   readonly jwtSecret: string;
   readonly jwtExpirationMs?: number;
+  readonly previousJwtSecrets?: readonly string[];
 }
 
 /** Internal — encoded into JWTs by `JwtTokenProvider` + decoded back. */
@@ -47,6 +55,13 @@ interface JwtUser {
 export class JwtTokenProvider {
   private readonly jwtExpirationMs: number;
   private readonly secret: Buffer;
+  /**
+   * Decoded previous secrets (rotation grace window). Verification
+   * tries `secret` first, then walks this array; signing always
+   * uses `secret`. Each entry must independently meet the 32-byte
+   * minimum so a tiny leftover doesn't weaken the verifier.
+   */
+  private readonly previousSecrets: readonly Buffer[];
 
   constructor(private readonly properties: AuthProperties) {
     this.jwtExpirationMs = properties.jwtExpirationMs ?? defaultJwtExpirationMs;
@@ -58,6 +73,17 @@ export class JwtTokenProvider {
         `JWT secret must be at least ${minimumJwtSecretBytes} bytes for HS256`
       );
     }
+
+    this.previousSecrets = (properties.previousJwtSecrets ?? []).map((raw) => {
+      const buf = Buffer.from(raw);
+      if (buf.byteLength < minimumJwtSecretBytes) {
+        throw new AuthError(
+          "WEAK_JWT_SECRET",
+          `Every previousJwtSecret must be at least ${minimumJwtSecretBytes} bytes for HS256`
+        );
+      }
+      return buf;
+    });
   }
 
   createToken(user: JwtUser, now = new Date()): string {
@@ -75,7 +101,17 @@ export class JwtTokenProvider {
   }
 
   parseToken(token: string, now = new Date()): JwtClaims | undefined {
-    const claims = verifyJwt(token, this.secret);
+    let claims = verifyJwt(token, this.secret);
+    // Try previous-secret grace window only if current secret rejects.
+    if (!claims) {
+      for (const previous of this.previousSecrets) {
+        const candidate = verifyJwt(token, previous);
+        if (candidate) {
+          claims = candidate;
+          break;
+        }
+      }
+    }
 
     if (!claims || claims.exp <= Math.floor(now.getTime() / 1_000)) {
       return undefined;

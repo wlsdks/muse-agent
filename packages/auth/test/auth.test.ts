@@ -97,6 +97,35 @@ describe("jwt tokens", () => {
   it("rejects weak JWT secrets", () => {
     expect(() => new JwtTokenProvider({ jwtSecret: "short" })).toThrow("JWT secret");
   });
+
+  it("accepts a token signed by a previous secret during a rotation grace window", () => {
+    const oldSecret = "old-secret-padded-out-to-thirty-two-bytes";
+    const newSecret = "new-secret-padded-out-to-thirty-two-bytes";
+    const oldJwt = new JwtTokenProvider({ jwtSecret: oldSecret });
+    const token = oldJwt.createToken({ email: "user@example.com", id: "u1" });
+    // A fresh provider with the new current secret + the old one in
+    // the previousJwtSecrets array should still verify outstanding
+    // tokens signed by the old secret.
+    const rotated = new JwtTokenProvider({
+      jwtSecret: newSecret,
+      previousJwtSecrets: [oldSecret]
+    });
+    expect(rotated.validateToken(token)).toBe("u1");
+    // New tokens always use the current secret — a provider with only
+    // the new secret (no previous) verifies new tokens but rejects
+    // old ones.
+    const onlyNew = new JwtTokenProvider({ jwtSecret: newSecret });
+    expect(onlyNew.validateToken(token)).toBeUndefined();
+    const freshToken = rotated.createToken({ email: "user@example.com", id: "u1" });
+    expect(onlyNew.validateToken(freshToken)).toBe("u1");
+  });
+
+  it("rejects weak entries in previousJwtSecrets too — every member meets the 32-byte minimum", () => {
+    expect(() => new JwtTokenProvider({
+      jwtSecret: "thirty-two-byte-secret-for-real-here",
+      previousJwtSecrets: ["weak"]
+    })).toThrow("Every previousJwtSecret");
+  });
 });
 
 describe("Auth registration and login", () => {

@@ -24,4 +24,13 @@ honouring the previous one during a grace window.
 
 ## Status
 
-open
+done — `AuthProperties.previousJwtSecrets?: readonly string[]`
+added. `JwtTokenProvider.parseToken` walks the array only when
+the current secret rejects; signing always uses the current
+secret. Every member of `previousJwtSecrets` is validated against
+the same 32-byte minimum (WEAK_JWT_SECRET error on weak entry).
+auth +2 tests (grace-window accept; weak previous rejected).
+
+Env-var wiring (\`MUSE_JWT_SECRET_PREVIOUS\` CSV) deferred to a
+follow-up — the API surface is in place, the autoconfigure
+parsing is a one-liner the next caller can add.
