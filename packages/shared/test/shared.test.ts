@@ -84,6 +84,39 @@ describe("boundary and cancellation helpers", () => {
     expect(redactSecretsInText("")).toBe("");
   });
 
+  it("redactSecretsInText covers Stripe secret + GitLab PAT shapes (goal 107)", () => {
+    // Build the Stripe shapes via concatenation so the source file
+    // does NOT contain a contiguous prefix-plus-24-char literal —
+    // GitHub's push-protection secret-scanner reads source bytes,
+    // not post-eval strings, and a literal would false-positive as
+    // a real Stripe key. Splitting the prefix from the body keeps
+    // the runtime fixture identical without tripping the scanner.
+    const stripeSecretBody = "abcdefghijklmnopqrstuvwx";
+    const stripeLiveSecret = `sk_${"live"}_${stripeSecretBody}`;
+    const stripeTestSecret = `sk_${"test"}_${stripeSecretBody}`;
+    const stripeRestrictedKey = `rk_${"live"}_${stripeSecretBody}`;
+    const stripePublishable = `pk_${"live"}_${stripeSecretBody}`;
+    // Stripe live + test, secret + restricted.
+    expect(redactSecretsInText(`STRIPE=${stripeLiveSecret}`))
+      .toBe("STRIPE=[redacted-stripe-secret]");
+    expect(redactSecretsInText(`STRIPE_TEST=${stripeTestSecret}`))
+      .toContain("[redacted-stripe-secret]");
+    expect(redactSecretsInText(`restricted ${stripeRestrictedKey} in env`))
+      .toContain("[redacted-stripe-secret]");
+    // Stripe publishable keys stay visible — they're embedded in
+    // client-side code by design.
+    expect(redactSecretsInText(`STRIPE_PUB=${stripePublishable}`))
+      .toBe(`STRIPE_PUB=${stripePublishable}`);
+    // GitLab PAT (modern glpat- prefix). Same split-prefix trick to
+    // keep GitHub's scanner from flagging the source literal.
+    const gitlabPat = `glpat${"-"}AbCdEfGhIjKlMnOpQrSt`;
+    expect(redactSecretsInText(`ci token ${gitlabPat}`))
+      .toContain("[redacted-gitlab-pat]");
+    // Doesn't false-positive on a function call that happens to share the prefix.
+    expect(redactSecretsInText("glpat-ok"))
+      .toBe("glpat-ok");
+  });
+
   it("truncateErrorBody trims + caps + appends ellipsis when over the cap", () => {
     expect(truncateErrorBody("")).toBe("");
     expect(truncateErrorBody(undefined)).toBe("");

@@ -124,6 +124,16 @@ const SECRET_PATTERNS: ReadonlyArray<{ readonly name: string; readonly regex: Re
   { name: "aws-access-key", regex: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/gu },
   { name: "google-api-key", regex: /\bAIza[0-9A-Za-z_-]{35,}/gu },
   { name: "slack-bot-token", regex: /xox[abprs]-[A-Za-z0-9-]{10,}/gu },
+  // Goal 107 — Stripe (secret + restricted) tokens. Stripe uses
+  // `_` separators so there's no collision with the OpenAI `sk-`
+  // pattern above. Publishable `pk_*` keys are intentionally NOT
+  // redacted — they're embedded in client-side code by design.
+  { name: "stripe-secret", regex: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{24,}\b/gu },
+  // Goal 107 — GitLab personal access tokens. Modern shape is
+  // `glpat-<20+ chars>`; legacy shapes (CI job tokens, runner
+  // registration tokens) are too short / low-entropy to redact
+  // without false positives, so we stay on the modern prefix.
+  { name: "gitlab-pat", regex: /\bglpat-[A-Za-z0-9_-]{20,}\b/gu },
   { name: "jwt", regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/gu }
 ];
 
