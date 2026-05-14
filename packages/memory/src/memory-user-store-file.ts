@@ -25,6 +25,7 @@ import {
   type UserMemoryStore,
   type UserModel
 } from "./index.js";
+import { sanitizeUserMemoryValue } from "./memory-user-store.js";
 
 export interface FileUserMemoryStoreOptions {
   /**
@@ -96,16 +97,18 @@ export class FileUserMemoryStore implements UserMemoryStore {
   }
 
   async upsertFact(userId: string, key: string, value: string): Promise<UserMemory> {
+    const safe = sanitizeUserMemoryValue(value);
     return this.patch(userId, (existing) => ({
       ...existing,
-      facts: { ...existing.facts, [key]: value }
+      facts: { ...existing.facts, [key]: safe }
     }));
   }
 
   async upsertPreference(userId: string, key: string, value: string): Promise<UserMemory> {
+    const safe = sanitizeUserMemoryValue(value);
     return this.patch(userId, (existing) => ({
       ...existing,
-      preferences: { ...existing.preferences, [key]: value }
+      preferences: { ...existing.preferences, [key]: safe }
     }));
   }
 

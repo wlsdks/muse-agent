@@ -72,4 +72,41 @@ describe("FileUserMemoryStore", () => {
     const memory = await store.findByUserId("stark");
     expect(memory?.facts).toEqual({ city: "Seoul" }); // prior "name" lost because file was wiped
   });
+
+  it("upsertFact / upsertPreference strip ANSI / control bytes from value (defense-in-depth)", async () => {
+    const { store } = await newStore();
+    // ESC + CSI + BEL + NUL all need to be gone before this value
+    // reaches the persona-expansion path that re-emits it next turn.
+    await store.upsertFact("stark", "name", "Tony\x1b[2J\x07\x00Stark");
+    await store.upsertPreference("stark", "tone", "concise\x9b31m");
+    const memory = await store.findByUserId("stark");
+    expect(memory?.facts).toEqual({ name: "Tony[2JStark" });
+    expect(memory?.preferences).toEqual({ tone: "concise31m" });
+  });
+});
+
+describe("sanitizeUserMemoryValue (direct unit tests)", () => {
+  it("strips C0 control bytes except newline + tab", async () => {
+    const { sanitizeUserMemoryValue } = await import("../src/index.js");
+    expect(sanitizeUserMemoryValue("a\x00b\x07c\x1bd")).toBe("abcd");
+    expect(sanitizeUserMemoryValue("line1\nline2\tindented")).toBe("line1\nline2\tindented");
+  });
+
+  it("strips DEL + C1 high-set range (0x7f-0x9f) — bare CSI is the dangerous one", async () => {
+    const { sanitizeUserMemoryValue } = await import("../src/index.js");
+    expect(sanitizeUserMemoryValue("title\x7fbody")).toBe("titlebody");
+    expect(sanitizeUserMemoryValue("title\x9b31mEVIL")).toBe("title31mEVIL");
+  });
+
+  it("caps oversized values at MAX_USER_MEMORY_VALUE_CHARS", async () => {
+    const { sanitizeUserMemoryValue, MAX_USER_MEMORY_VALUE_CHARS } = await import("../src/index.js");
+    const big = "x".repeat(MAX_USER_MEMORY_VALUE_CHARS + 100);
+    expect(sanitizeUserMemoryValue(big).length).toBe(MAX_USER_MEMORY_VALUE_CHARS);
+  });
+
+  it("passes plain ASCII + multi-byte Unicode through unchanged", async () => {
+    const { sanitizeUserMemoryValue } = await import("../src/index.js");
+    expect(sanitizeUserMemoryValue("간결한 한국어 응답을 선호함")).toBe("간결한 한국어 응답을 선호함");
+    expect(sanitizeUserMemoryValue("plain ascii — 42 chars")).toBe("plain ascii — 42 chars");
+  });
 });

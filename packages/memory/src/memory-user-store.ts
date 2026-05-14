@@ -23,6 +23,37 @@ import { EMPTY_USER_MODEL, type UserMemory, type UserMemoryStore, type UserModel
 type UserMemoryRow = Record<string, unknown>;
 type UserMemoryInsert = Insertable<MuseDatabase["user_memories"]>;
 
+/**
+ * Maximum length, in code points, the user-memory store will
+ * persist for a single fact / preference value. Chosen so the
+ * persona-expansion path that re-emits these into the next turn's
+ * system prompt can't be ballooned by a single oversized auto-
+ * extract (whether from a hostile chat message or a malformed
+ * tool result).
+ */
+export const MAX_USER_MEMORY_VALUE_CHARS = 2048;
+
+/**
+ * Strip C0/C1 control bytes (except newline / tab) and cap length.
+ * Defense-in-depth at the persistence layer: `muse remember`'s
+ * `--no-llm` direct path, the LLM-extract path, AND the chat-turn
+ * auto-extract hook all funnel through `upsertFact` /
+ * `upsertPreference` — pinning the sanitiser to the store means
+ * every caller is covered with one rule.
+ *
+ * Treat the inputs as untrusted (an attacker who steers the model
+ * into extracting a value containing `\x1b[2J` would otherwise
+ * land it in `~/.muse/user-memory.json` and re-inject it next turn
+ * via the persona-expansion path).
+ */
+export function sanitizeUserMemoryValue(raw: string): string {
+  const stripped = raw.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/gu, "");
+  if (stripped.length <= MAX_USER_MEMORY_VALUE_CHARS) {
+    return stripped;
+  }
+  return stripped.slice(0, MAX_USER_MEMORY_VALUE_CHARS);
+}
+
 export class InMemoryUserMemoryStore implements UserMemoryStore {
   private readonly memories = new Map<string, UserMemory>();
 
@@ -31,11 +62,11 @@ export class InMemoryUserMemoryStore implements UserMemoryStore {
   }
 
   upsertFact(userId: string, key: string, value: string): UserMemory {
-    return this.upsert(userId, { facts: { [key]: value } });
+    return this.upsert(userId, { facts: { [key]: sanitizeUserMemoryValue(value) } });
   }
 
   upsertPreference(userId: string, key: string, value: string): UserMemory {
-    return this.upsert(userId, { preferences: { [key]: value } });
+    return this.upsert(userId, { preferences: { [key]: sanitizeUserMemoryValue(value) } });
   }
 
   deleteByUserId(userId: string): boolean {
@@ -89,7 +120,7 @@ export class KyselyUserMemoryStore implements UserMemoryStore {
   async upsertFact(userId: string, key: string, value: string): Promise<UserMemory> {
     const existing = await this.findByUserId(userId);
     return this.save({
-      facts: { ...(existing?.facts ?? {}), [key]: value },
+      facts: { ...(existing?.facts ?? {}), [key]: sanitizeUserMemoryValue(value) },
       preferences: existing?.preferences ?? {},
       recentTopics: existing?.recentTopics ?? [],
       updatedAt: new Date(),
@@ -102,7 +133,7 @@ export class KyselyUserMemoryStore implements UserMemoryStore {
     const existing = await this.findByUserId(userId);
     return this.save({
       facts: existing?.facts ?? {},
-      preferences: { ...(existing?.preferences ?? {}), [key]: value },
+      preferences: { ...(existing?.preferences ?? {}), [key]: sanitizeUserMemoryValue(value) },
       recentTopics: existing?.recentTopics ?? [],
       updatedAt: new Date(),
       userId,

@@ -93,7 +93,6 @@ export function registerSearchCommand(program: Command, io: ProgramIO): void {
  * the bytes entirely. Treat tool output as untrusted (CLAUDE.md).
  */
 export function stripUntrustedTerminalChars(value: string): string {
-  // eslint-disable-next-line no-control-regex
   return value.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/gu, "");
 }
 

@@ -289,7 +289,15 @@ export interface UserMemory {
 
 export interface UserMemoryStore {
   findByUserId(userId: string): Awaitable<UserMemory | undefined>;
+  /**
+   * Persist a fact for the user. Implementations MUST pipe `value`
+   * through `sanitizeUserMemoryValue` before persistence so a
+   * compromised auto-extract hook can't smuggle ANSI / control bytes
+   * or oversized blobs into the persona-expansion path that gets
+   * re-emitted into future system prompts.
+   */
   upsertFact(userId: string, key: string, value: string): Awaitable<UserMemory>;
+  /** Same sanitisation contract as upsertFact. */
   upsertPreference(userId: string, key: string, value: string): Awaitable<UserMemory>;
   deleteByUserId(userId: string): Awaitable<boolean>;
   /**
@@ -309,7 +317,9 @@ export {
   createUserMemoryInsert,
   InMemoryUserMemoryStore,
   KyselyUserMemoryStore,
-  mapUserMemoryRow
+  mapUserMemoryRow,
+  MAX_USER_MEMORY_VALUE_CHARS,
+  sanitizeUserMemoryValue
 } from "./memory-user-store.js";
 
 // File-backed UserMemoryStore — the JARVIS-class persistent layer for
