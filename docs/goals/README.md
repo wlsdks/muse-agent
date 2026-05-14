@@ -27,10 +27,10 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 005 | [Models.json file-mode 0600](005-models-json-file-mode.md)                        | security/robustness  | done   |
 | 006 | [Auth JWT-rotation surface](006-auth-jwt-rotation.md)                             | security/robustness  | done   |
 | 007 | [personal-providers.ts decomp](007-personal-providers-decomp.md)                  | big-file decomp      | partial |
-| 008 | [autoconfigure/index.ts sub-builder extraction](008-autoconfigure-decomp.md)      | big-file decomp      | open   |
-| 009 | [agent-runtime.ts method-cluster extraction](009-agent-runtime-decomp.md)         | big-file decomp      | open   |
-| 010 | [chat-repl.ts seam decomp](010-chat-repl-decomp.md)                               | big-file decomp      | open   |
-| 011 | [commands-proactive.ts subcommand split](011-commands-proactive-decomp.md)        | big-file decomp      | open   |
+| 008 | [autoconfigure/index.ts sub-builder extraction](008-autoconfigure-decomp.md)      | big-file decomp      | deferred |
+| 009 | [agent-runtime.ts method-cluster extraction](009-agent-runtime-decomp.md)         | big-file decomp      | deferred |
+| 010 | [chat-repl.ts seam decomp](010-chat-repl-decomp.md)                               | big-file decomp      | deferred |
+| 011 | [commands-proactive.ts subcommand split](011-commands-proactive-decomp.md)        | big-file decomp      | deferred |
 | 012 | [`muse open <id-prefix>`](012-muse-open-id-prefix.md)                             | JARVIS feature       | open   |
 | 013 | [`muse summarize today`](013-muse-summarize-today.md)                             | JARVIS feature       | open   |
 | 014 | [`GET /api/history` REST endpoint](014-rest-history-endpoint.md)                  | JARVIS feature       | open   |

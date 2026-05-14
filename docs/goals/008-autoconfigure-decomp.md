@@ -29,4 +29,15 @@ lands cleanly.
 
 ## Status
 
-open
+deferred — survey found `createMuseRuntimeAssembly`'s
+infrastructure builders are interwoven: `tokenUsageSink` reads
+`budgetTracker` + `tracingPipeline.tokenUsageSink`,
+`runtimeAgentMetrics` composes drift + slo + agentMetrics,
+followupSuggestionStore feeds the hook registry. A clean
+extraction means threading 8-10 return values through a single
+bundle and updating every downstream consumer. The mechanical
+churn is high and the readability gain is modest — closer to
+"naming a struct" than "decomposing logic". Better to revisit
+once the agent-runtime sub-builder pattern (goal 009) sets a
+precedent for what threading 10 values back through actually
+costs in tests.

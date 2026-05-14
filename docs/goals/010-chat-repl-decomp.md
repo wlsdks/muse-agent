@@ -22,4 +22,8 @@ persistence.
 
 ## Status
 
-open
+deferred — under the 700-LOC big-file threshold (629). Recent
+slash-command extraction (f6e5df2) already split the most cohesive
+seam. Remaining structure is intertwined REPL state +
+agent/runtime wiring; further extraction earns little. Re-open
+if the file regrows past 700.

@@ -28,4 +28,15 @@ extraction.
 
 ## Status
 
-open
+deferred — the file is one giant `AgentRuntime` class (753 LOC
+inside the class body). Method-cluster extraction either:
+(a) inlines methods into the same file but separates declarations,
+which doesn't reduce LOC much, or
+(b) extracts methods into module-level helpers + threads `this`
+state through explicit params — high churn, every method has
+private deps on the surrounding class state.
+The current 901 LOC is "tall but readable" — methods stay
+grouped by lifecycle phase. Defer until a concrete pain point
+(e.g., a new hook category that needs to compose with existing
+ones) forces the issue. The runtime tests (512+) catch any
+behavioural drift, so this isn't blocking quality.

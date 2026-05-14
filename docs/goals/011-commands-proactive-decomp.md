@@ -21,4 +21,8 @@ implementation. Split per-subcommand for clarity.
 
 ## Status
 
-open
+deferred — under the 700-LOC big-file threshold (572). Subcommand
+split is clean but earns little per-iter: each subcommand is
+< 80 LOC and they share helpers that would all need re-export
+glue. Re-open if the file regrows or if a new subcommand pushes
+past 700.
