@@ -106,6 +106,16 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 084 | [Chat rate limiter per-user keying](084-rate-limit-per-user.md)                    | security/robustness  | done   |
 | 085 | [Prompt injection detection telemetry](085-injection-detection-telemetry.md)       | security/robustness  | done   |
 | 086 | [Proactive notice secret redaction](086-proactive-notice-secret-redaction.md)      | security/robustness  | done   |
+| 087 | [`muse vision <image>` via Ollama](087-muse-vision-ollama.md)                      | JARVIS feature       | open   |
+| 088 | [`muse read <pdf>` document understanding](088-muse-read-pdf.md)                   | JARVIS feature       | open   |
+| 089 | [`muse glance` active-window awareness](089-muse-glance-active-window.md)          | JARVIS feature       | open   |
+| 090 | [Episode semantic index](090-episode-semantic-index.md)                            | JARVIS feature       | open   |
+| 091 | [`muse recall <query>` cross-store](091-muse-recall-cross-store.md)                | JARVIS feature       | open   |
+| 092 | [`muse feeds` RSS/Atom ingest](092-muse-feeds-rss.md)                              | JARVIS feature       | open   |
+| 093 | [Linux libnotify provider](093-linux-libnotify-provider.md)                        | JARVIS feature       | open   |
+| 094 | [`muse persona` templates](094-muse-persona-templates.md)                          | JARVIS feature       | open   |
+| 095 | [`muse status --suggestions`](095-muse-status-suggestions.md)                      | JARVIS feature       | open   |
+| 096 | [`muse show <image>` terminal render](096-muse-show-terminal-image.md)             | JARVIS feature       | open   |
 
 Categories:
 
