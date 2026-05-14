@@ -1108,6 +1108,70 @@ describe("cli program", () => {
     }
   });
 
+  it("muse memory honours --persona and MUSE_PERSONA so multi-persona slots are addressable (goal 103)", async () => {
+    const { resolveMemoryUserId } = await import("../src/commands-memory.js");
+
+    // Helper unit-level: --persona wins; env fills the gap; whitespace
+    // is normalised the same as goal 097.
+    expect(resolveMemoryUserId("stark", "work")).toBe("stark@work");
+    expect(resolveMemoryUserId("stark", undefined)).toBe("stark");
+    const prevPersona = process.env.MUSE_PERSONA;
+    process.env.MUSE_PERSONA = "home";
+    try {
+      expect(resolveMemoryUserId("stark", undefined)).toBe("stark@home");
+      expect(resolveMemoryUserId("stark", "work")).toBe("stark@work");
+    } finally {
+      if (prevPersona === undefined) delete process.env.MUSE_PERSONA;
+      else process.env.MUSE_PERSONA = prevPersona;
+    }
+
+    // End-to-end: the API URL the CLI hits carries the user@slot
+    // composite, so a `MUSE_PERSONA=work muse memory show` reaches
+    // the work record (and not the bare `stark` one).
+    const prevUser = process.env.MUSE_USER_ID;
+    process.env.MUSE_USER_ID = "stark";
+    process.env.MUSE_PERSONA = "work";
+    try {
+      const { io, output } = captureOutput();
+      const requests: Array<{ readonly method?: string; readonly url: string }> = [];
+      const program = createProgram({
+        ...io,
+        fetch: async (url, init) => {
+          requests.push({ method: init?.method, url: String(url) });
+          return new Response(JSON.stringify({ facts: { name: "Stark (work)" }, preferences: {}, recentTopics: [] }));
+        }
+      });
+      await program.parseAsync(
+        ["node", "muse", "--api-url", "http://api.test", "memory", "show"],
+        { from: "node" }
+      );
+      expect(requests[0]?.url).toBe("http://api.test/api/user-memory/stark@work");
+      expect(output.join("")).toContain("Stark (work)");
+
+      // Explicit --persona still wins over MUSE_PERSONA env.
+      const { io: io2, output: out2 } = captureOutput();
+      const requests2: Array<{ readonly url: string }> = [];
+      const program2 = createProgram({
+        ...io2,
+        fetch: async (url) => {
+          requests2.push({ url: String(url) });
+          return new Response(JSON.stringify({ facts: { name: "Stark (home)" }, preferences: {}, recentTopics: [] }));
+        }
+      });
+      await program2.parseAsync(
+        ["node", "muse", "--api-url", "http://api.test", "memory", "show", "--persona", "home"],
+        { from: "node" }
+      );
+      expect(requests2[0]?.url).toBe("http://api.test/api/user-memory/stark@home");
+      expect(out2.join("")).toContain("Stark (home)");
+    } finally {
+      if (prevUser === undefined) delete process.env.MUSE_USER_ID;
+      else process.env.MUSE_USER_ID = prevUser;
+      if (prevPersona === undefined) delete process.env.MUSE_PERSONA;
+      else process.env.MUSE_PERSONA = prevPersona;
+    }
+  });
+
   it("voice tts POSTs the text and writes the binary audio response to --out", async () => {
     const { mkdtempSync, readFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");

@@ -25,6 +25,7 @@ import { FileUserMemoryStore } from "@muse/memory";
 import type { Command } from "commander";
 
 import { formatMemoryShow } from "./human-formatters.js";
+import { resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
 function envValue(key: string): string | undefined {
@@ -32,8 +33,18 @@ function envValue(key: string): string | undefined {
   return v && v.length > 0 ? v : undefined;
 }
 
-function resolveMemoryUserId(explicit: string | undefined): string {
-  return explicit ?? envValue("MUSE_USER_ID") ?? envValue("USER") ?? "default";
+/**
+ * Goal 103 — extend the goal-097 persona precedence to `muse memory`.
+ * The on-disk store keys multi-persona slots as `<user>@<persona>`
+ * (see chat-repl.ts header); without honouring the slot here, a
+ * user with `MUSE_PERSONA=work` couldn't `muse memory show` /
+ * `set` against their work slot — the command silently read /
+ * wrote the bare `<user>` record instead.
+ */
+export function resolveMemoryUserId(explicit: string | undefined, personaOption?: string): string {
+  const base = explicit ?? envValue("MUSE_USER_ID") ?? envValue("USER") ?? "default";
+  const slot = resolvePersona(personaOption);
+  return slot ? `${base}@${slot}` : base;
 }
 
 export interface MemoryCommandHelpers {
@@ -49,6 +60,7 @@ export interface MemoryCommandHelpers {
 
 interface MemoryCommonOptions {
   readonly user?: string;
+  readonly persona?: string;
   readonly local?: boolean;
   readonly json?: boolean;
 }
@@ -60,10 +72,11 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
     .command("show")
     .description("Print stored facts, preferences, and recent topics")
     .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …); falls back to MUSE_PERSONA env")
     .option("--local", "Read directly from ~/.muse/user-memory.json instead of the API")
     .option("--json", "Print the raw response instead of the formatted summary")
     .action(async (options: MemoryCommonOptions, command) => {
-      const userId = resolveMemoryUserId(options.user);
+      const userId = resolveMemoryUserId(options.user, options.persona);
       let payload: Record<string, unknown> | undefined;
       if (options.local) {
         const store = new FileUserMemoryStore();
@@ -94,6 +107,7 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
     .argument("<key>", "Memory key (e.g. timezone)")
     .argument("<value>", "Memory value")
     .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …); falls back to MUSE_PERSONA env")
     .option("--local", "Write directly to ~/.muse/user-memory.json instead of the API")
     .option("--json", "Print the raw response instead of a short confirmation")
     .action(async (
@@ -104,7 +118,7 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
       command
     ) => {
       const segment = parseKindSegment(kind);
-      const userId = resolveMemoryUserId(options.user);
+      const userId = resolveMemoryUserId(options.user, options.persona);
       if (options.local) {
         const store = new FileUserMemoryStore();
         const updated = segment === "facts"
@@ -135,10 +149,11 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
     .command("diff")
     .description("Show added / changed / removed facts + preferences since a baseline snapshot (goal 051)")
     .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …); falls back to MUSE_PERSONA env")
     .option("--baseline <path>", "Path to a baseline JSON file (shape: { facts?, preferences? }). When omitted, treats baseline as empty so every entry shows as added.")
     .option("--json", "Emit the structured diff payload instead of a formatted summary")
     .action(async (options: MemoryCommonOptions & { readonly baseline?: string }) => {
-      const userId = resolveMemoryUserId(options.user);
+      const userId = resolveMemoryUserId(options.user, options.persona);
       const store = new FileUserMemoryStore();
       const memoryRecord = await store.findByUserId(userId);
       const current: MemorySnapshotLike = memoryRecord
@@ -179,10 +194,11 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
     .command("clear")
     .description("Wipe stored user memory")
     .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …); falls back to MUSE_PERSONA env")
     .option("--local", "Clear directly in ~/.muse/user-memory.json instead of via API")
     .option("--force", "Skip the confirmation prompt (required for --local)")
     .action(async (options: MemoryCommonOptions & { readonly force?: boolean }, command) => {
-      const userId = resolveMemoryUserId(options.user);
+      const userId = resolveMemoryUserId(options.user, options.persona);
       if (options.local) {
         if (!options.force) {
           io.stderr(`Refusing to clear ${userId} without --force\n`);
