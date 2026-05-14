@@ -805,6 +805,53 @@ describe("MessagingProviderRegistry", () => {
     expect(() => registry.require("telegram")).toThrow(MessagingProviderError);
   });
 
+  it("scrubs credential shapes from outbound text at the dispatch chokepoint (goal 111)", async () => {
+    // Capture the text the provider actually sees so the assertion
+    // pins the *post-redaction* form, not the pre-call form.
+    let receivedText: string | undefined;
+    const stub = {
+      describe: () => ({ description: "stub", displayName: "Stub", id: "stub" }),
+      id: "stub",
+      send: async (message: { destination: string; text: string }) => {
+        receivedText = message.text;
+        return { destination: message.destination, messageId: "ok-1", providerId: "stub" };
+      }
+    } as unknown as Parameters<typeof MessagingProviderRegistry.prototype.register>[0];
+    const registry = new MessagingProviderRegistry([stub]);
+
+    await registry.send("stub", {
+      destination: "@me",
+      text: "rotate sk-proj-abcdefghijklmnopqrstuvwxyz and ghp_abcdefghijklmnopqrstuvwxyzABCDEF today"
+    });
+
+    // Provider receives the scrubbed form — verbatim secrets MUST NOT
+    // hit Telegram / Discord / Slack / LINE / macOS Notification banner.
+    expect(receivedText).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz");
+    expect(receivedText).not.toContain("ghp_abcdefghijklmnopqrstuvwxyzABCDEF");
+    expect(receivedText).toContain("[redacted-openai-key]");
+    expect(receivedText).toContain("[redacted-github-pat]");
+    // Non-credential context survives so the human still gets the
+    // surrounding sentence.
+    expect(receivedText).toContain("rotate ");
+    expect(receivedText).toContain("today");
+  });
+
+  it("leaves clean text unchanged (no double-flagging the proactive scrub)", async () => {
+    let receivedText: string | undefined;
+    const stub = {
+      describe: () => ({ description: "stub", displayName: "Stub", id: "stub" }),
+      id: "stub",
+      send: async (message: { destination: string; text: string }) => {
+        receivedText = message.text;
+        return { destination: message.destination, messageId: "ok-2", providerId: "stub" };
+      }
+    } as unknown as Parameters<typeof MessagingProviderRegistry.prototype.register>[0];
+    const registry = new MessagingProviderRegistry([stub]);
+
+    await registry.send("stub", { destination: "@me", text: "Q3 budget memo due in 5 min" });
+    expect(receivedText).toBe("Q3 budget memo due in 5 min");
+  });
+
   it("fetchInbound surfaces a clear error for providers without inbound support", async () => {
     // All four shipped providers implement fetchInbound in some form
     // now. The "not supported" guard still matters for any future
