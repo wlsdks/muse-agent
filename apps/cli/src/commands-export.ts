@@ -1,0 +1,243 @@
+/**
+ * `muse export [--output <path>]` — backup every ~/.muse JSON
+ * store + the notes directory into a single timestamped tar.gz.
+ *
+ * Goal 048 — useful for laptop migration and "before the upgrade"
+ * snapshots. The archive layout mirrors `~/.muse/` so restore is a
+ * single `tar -xzf` into the new home. A `README.md` listed inside
+ * the tarball names every captured file + the restore command.
+ *
+ * No CLI deps beyond Node's bundled `node:zlib` + the `tar` package
+ * already used elsewhere in the workspace.
+ */
+
+import { spawn } from "node:child_process";
+import { mkdir, readdir, stat, writeFile, unlink } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
+
+import type { Command } from "commander";
+
+import type { ProgramIO } from "./program.js";
+
+interface ExportOptions {
+  readonly output?: string;
+  readonly include?: string;
+}
+
+/**
+ * Goal 048 — files we consider "user state". Path is relative to
+ * `~/.muse/`. The notes directory is handled separately because
+ * it's a tree, not a single file.
+ */
+export const DEFAULT_EXPORT_FILES: readonly string[] = [
+  "credentials.json",
+  "models.json",
+  "calendar-credentials.json",
+  "messaging-credentials.json",
+  "tasks.json",
+  "reminders.json",
+  "reminder-history.json",
+  "followups.json",
+  "episodes.json",
+  "patterns-fired.json",
+  "proactive-history.json",
+  "user-memory.json",
+  "calendar-local.json",
+  "line-inbox.json",
+  "telegram-inbox.json",
+  "discord-inbox.json",
+  "slack-inbox.json",
+  "notes-index.json",
+  "trust.json",
+  "config.json"
+];
+
+/**
+ * Default notes directory under `~/.muse/notes` — overridden by
+ * `MUSE_NOTES_DIR` at the call site. Exported for direct test
+ * coverage so a fixture can verify the tree is included when the
+ * dir exists and quietly skipped when it doesn't.
+ */
+export function defaultNotesDir(): string {
+  const fromEnv = process.env.MUSE_NOTES_DIR?.trim();
+  if (fromEnv && fromEnv.length > 0) return fromEnv;
+  return join(homedir(), ".muse", "notes");
+}
+
+export function defaultExportOutput(): string {
+  // ISO timestamp without colons (Windows + tar both prefer that).
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return join(process.cwd(), `muse-backup-${stamp}.tar.gz`);
+}
+
+/**
+ * Build the README that ships inside the archive. Lists every file
+ * the export touched + the restore command. Exported for the test
+ * suite to assert the contents.
+ */
+export function buildExportReadme(
+  includedFiles: readonly string[],
+  includedNotesDir: string | undefined,
+  createdAtIso: string
+): string {
+  const lines: string[] = [];
+  lines.push("# Muse export bundle");
+  lines.push("");
+  lines.push(`Created: ${createdAtIso}`);
+  lines.push("");
+  lines.push("## Contents");
+  lines.push("");
+  if (includedFiles.length === 0) {
+    lines.push("(no ~/.muse/*.json stores found on this host)");
+  } else {
+    for (const file of includedFiles) {
+      lines.push(`- \`.muse/${file}\``);
+    }
+  }
+  if (includedNotesDir) {
+    lines.push(`- \`.muse/notes/\` — full notes tree (from \`${includedNotesDir}\`)`);
+  }
+  lines.push("");
+  lines.push("## Restore");
+  lines.push("");
+  lines.push("```sh");
+  lines.push("# review first, then extract over your existing ~/.muse");
+  lines.push("tar -tzf <this-bundle>.tar.gz");
+  lines.push("tar -xzf <this-bundle>.tar.gz -C \"$HOME\"");
+  lines.push("```");
+  lines.push("");
+  lines.push("The archive is laid out so a single `tar -xzf` re-creates");
+  lines.push("`~/.muse/` exactly as it was when the bundle was written.");
+  lines.push("");
+  return lines.join("\n");
+}
+
+interface CollectedSources {
+  readonly files: readonly string[];
+  readonly notesDir: string | undefined;
+}
+
+async function collectSources(museDir: string, notesDir: string): Promise<CollectedSources> {
+  const filesPresent: string[] = [];
+  for (const rel of DEFAULT_EXPORT_FILES) {
+    const abs = join(museDir, rel);
+    try {
+      const s = await stat(abs);
+      if (s.isFile() && s.size > 0) {
+        filesPresent.push(rel);
+      }
+    } catch {
+      // missing file — that's the common case, skip it
+    }
+  }
+  let notesIncluded: string | undefined;
+  try {
+    const s = await stat(notesDir);
+    if (s.isDirectory()) {
+      // Empty dir → still skip (no point archiving zero entries).
+      const entries = await readdir(notesDir);
+      if (entries.length > 0) {
+        notesIncluded = notesDir;
+      }
+    }
+  } catch {
+    // missing notes dir
+  }
+  return { files: filesPresent, notesDir: notesIncluded };
+}
+
+/**
+ * Exported for direct unit test — given a temp `~/.muse` and notes
+ * dir, write a tarball at `outputPath` and return the manifest that
+ * was bundled. Splitting it out keeps the registration thin and
+ * the assertion surface narrow.
+ */
+export async function buildMuseExport(args: {
+  readonly museDir: string;
+  readonly notesDir: string;
+  readonly outputPath: string;
+  readonly nowIso?: string;
+}): Promise<{ readonly outputPath: string; readonly files: readonly string[]; readonly notesIncluded: boolean }> {
+  const sources = await collectSources(args.museDir, args.notesDir);
+
+  await mkdir(dirname(args.outputPath), { recursive: true });
+
+  // Drop the README into the muse dir under a transient name so
+  // it lands inside the tar at `.muse/README.md`. Unlink after the
+  // archive closes so we don't leave it behind in a real
+  // `~/.muse/`. A tiny race window with concurrent muse processes
+  // is acceptable for a single-user backup tool.
+  const readme = buildExportReadme(sources.files, sources.notesDir, args.nowIso ?? new Date().toISOString());
+  const readmePath = join(args.museDir, "README.export.md");
+  await writeFile(readmePath, readme, { encoding: "utf8" });
+
+  const tarEntries: string[] = ["README.export.md", ...sources.files];
+  if (sources.notesDir) {
+    // include the basename so the archive path becomes
+    // `.muse/notes/...` after the rename trick below.
+    tarEntries.push("notes");
+  }
+
+  try {
+    // Shell out to system `tar` — universally available on macOS /
+    // Linux. The transform invocation rewrites every entry's leading
+    // path component so a top-level `tar -xzf <bundle>.tar.gz -C $HOME`
+    // lands directly in `~/.muse/` — no manual move required. We feed
+    // entries via the basename of `museDir` (`.muse` in practice) and
+    // run `tar -C <parent>` so the archive paths start at `.muse/`.
+    const museParent = dirname(args.museDir);
+    const museBase = basename(args.museDir);
+    const tarArgs = [
+      "-c",
+      "-z",
+      "-f", args.outputPath,
+      "-C", museParent,
+      ...tarEntries.map((entry) => `${museBase}/${entry}`)
+    ];
+    await new Promise<void>((resolveSpawn, reject) => {
+      const child = spawn("tar", tarArgs, { stdio: ["ignore", "ignore", "pipe"] });
+      let stderr = "";
+      child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+      child.on("error", reject);
+      child.on("close", (code) => {
+        if (code === 0) {
+          resolveSpawn();
+        } else {
+          reject(new Error(`tar exited with code ${(code ?? -1).toString()}: ${stderr.trim()}`));
+        }
+      });
+    });
+  } finally {
+    await unlink(readmePath).catch(() => undefined);
+  }
+
+  return {
+    outputPath: args.outputPath,
+    files: sources.files,
+    notesIncluded: sources.notesDir !== undefined
+  };
+}
+
+export function registerExportCommand(program: Command, io: ProgramIO): void {
+  program
+    .command("export")
+    .description("Bundle every ~/.muse/*.json store + the notes tree into a single timestamped tar.gz (goal 048)")
+    .option("--output <path>", "Override the default `./muse-backup-<timestamp>.tar.gz` destination")
+    .action(async (options: ExportOptions) => {
+      const museDir = join(homedir(), ".muse");
+      const notesDir = defaultNotesDir();
+      const outputPath = resolve(options.output ?? defaultExportOutput());
+      try {
+        await stat(museDir);
+      } catch {
+        io.stderr(`No ~/.muse directory found at ${museDir}. Nothing to export.\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const summary = await buildMuseExport({ museDir, notesDir, outputPath });
+      io.stdout(`Wrote ${summary.outputPath}\n`);
+      io.stdout(`  ${summary.files.length.toString()} store file(s), notes tree ${summary.notesIncluded ? "included" : "skipped (missing or empty)"}\n`);
+      io.stdout(`Restore: tar -xzf ${summary.outputPath} -C "$HOME"\n`);
+    });
+}

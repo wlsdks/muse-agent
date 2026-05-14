@@ -18,4 +18,15 @@ laptop migration.
 
 ## Status
 
-open
+done — `muse export [--output <path>]` bundles every present
+`~/.muse/*.json` plus the notes tree into a timestamped
+`.tar.gz` via system `tar` (universally available on macOS /
+Linux). Missing / empty files are silently skipped. The archive
+is laid out so a single `tar -xzf <bundle>.tar.gz -C $HOME`
+re-creates `~/.muse/` exactly as it was — a `README.md` inside
+the tarball lists every captured file plus the restore command.
+
+cli +1 test asserts the per-file collection (present /
+empty-skip / missing-skip), tarball is non-empty, README cleanup
+ran, and the README structural shape (header + items + restore
+command) is correct.

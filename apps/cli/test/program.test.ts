@@ -3616,6 +3616,52 @@ describe("cli program", () => {
     expect(resolveReplHistoryCap("9999")).toBe(9999);
   });
 
+  it("buildMuseExport bundles every present ~/.muse/*.json + the notes tree, skipping missing siblings (goal 048)", async () => {
+    const { buildMuseExport, buildExportReadme, DEFAULT_EXPORT_FILES } = await import("../src/commands-export.js");
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-export-"));
+    const fsp = await import("node:fs/promises");
+    const museDir = path.join(root, ".muse");
+    const notesDir = path.join(museDir, "notes");
+    await fsp.mkdir(museDir, { recursive: true });
+    await fsp.mkdir(notesDir, { recursive: true });
+    // Two present stores, one empty (must be skipped), the rest missing.
+    await fsp.writeFile(path.join(museDir, "tasks.json"), JSON.stringify({ tasks: [{ id: "t1" }] }));
+    await fsp.writeFile(path.join(museDir, "reminders.json"), JSON.stringify({ reminders: [] }));
+    await fsp.writeFile(path.join(museDir, "user-memory.json"), ""); // empty → skipped
+    await fsp.writeFile(path.join(notesDir, "hello.md"), "# hello\nworld\n");
+    const outputPath = path.join(root, "bundle.tar.gz");
+
+    const summary = await buildMuseExport({ museDir, notesDir, outputPath });
+    expect(summary.outputPath).toBe(outputPath);
+    expect(summary.notesIncluded).toBe(true);
+    expect([...summary.files].sort()).toEqual(["reminders.json", "tasks.json"]);
+
+    // Verify the tarball actually landed + is non-empty.
+    const stats = await fsp.stat(outputPath);
+    expect(stats.isFile()).toBe(true);
+    expect(stats.size).toBeGreaterThan(0);
+
+    // The post-export cleanup unlinked README.export.md.
+    await expect(fsp.stat(path.join(museDir, "README.export.md"))).rejects.toThrow();
+
+    // The README builder lists only the files actually included +
+    // the restore command — fast structural check (no need to
+    // round-trip the tar bytes).
+    const readme = buildExportReadme(["tasks.json", "reminders.json"], notesDir, "2026-05-14T00:00:00.000Z");
+    expect(readme).toContain("Created: 2026-05-14T00:00:00.000Z");
+    expect(readme).toContain("`.muse/tasks.json`");
+    expect(readme).toContain("`.muse/reminders.json`");
+    expect(readme).toContain(notesDir);
+    expect(readme).toContain("tar -xzf <this-bundle>.tar.gz -C \"$HOME\"");
+    // Files NOT present must not be listed.
+    expect(readme).not.toContain("`.muse/user-memory.json`");
+
+    // The exported allowlist surface stays stable for downstream
+    // tools that mirror the manifest.
+    expect(DEFAULT_EXPORT_FILES).toContain("tasks.json");
+    expect(DEFAULT_EXPORT_FILES).toContain("user-memory.json");
+  });
+
   it("NOTES_ONLY_TOOL_ALLOWLIST excludes web/search/fetch tools by design (goal 047)", async () => {
     const { NOTES_ONLY_TOOL_ALLOWLIST } = await import("../src/commands-ask.js");
     // Whitelist is exactly the notes + memory surface — nothing else.

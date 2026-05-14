@@ -67,7 +67,7 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 045 | [server.ts ServerOptions type cleanup](045-server-options-type-cleanup.md)         | big-file decomp      | done   |
 | 046 | [`muse status --watch`](046-muse-status-watch.md)                                  | JARVIS feature       | done   |
 | 047 | [`muse ask --notes-only`](047-muse-ask-notes-only.md)                              | JARVIS feature       | done   |
-| 048 | [`muse export` (backup tarball)](048-muse-export.md)                               | JARVIS feature       | open   |
+| 048 | [`muse export` (backup tarball)](048-muse-export.md)                               | JARVIS feature       | done   |
 | 049 | [`muse import <tar>` (restore)](049-muse-import.md)                                | JARVIS feature       | open   |
 | 050 | [`muse history --grep <pattern>`](050-muse-history-grep.md)                        | JARVIS feature       | open   |
 | 051 | [`muse memory diff [<since>]`](051-muse-memory-diff.md)                            | JARVIS feature       | open   |
