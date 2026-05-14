@@ -17,4 +17,19 @@ retry with backoff instead of marking the notice as failed.
 
 ## Status
 
-open
+done — new `sendWithRetry` helper inside
+`proactive-notice-loop.ts` wraps the `messagingRegistry.send`
+call in a 3-attempt exponential backoff (0ms, 200ms, 800ms).
+Final failure re-throws to the existing catch block so history
+gets the same `status: "failed"` entry callers already
+consume.
+
+Scope discipline: the retry is intentionally narrow — three
+attempts, no jitter, no infinite ladder. The outer tick
+cadence (typically 60s) gives a free retry every minute, so
+covering the 1-2 second transient blip window is what matters.
+
+mcp +2 tests:
+  - 2 throws followed by success → fired=1, errors=[], 3 attempts.
+  - 3 consecutive throws → fired=0, errors=1 (with upstream
+    message), history sidecar carries the failed entry.

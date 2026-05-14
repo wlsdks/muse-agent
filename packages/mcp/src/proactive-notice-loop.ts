@@ -61,6 +61,40 @@ export interface ProactiveFiredEntry {
 const MAX_FIRED_ENTRIES = 1_000;
 
 /**
+ * Goal 070 — wrap `messagingRegistry.send` in a 3-attempt
+ * exponential backoff (0ms, 200ms, 800ms). Transient 5xx /
+ * network blips often resolve on a second try; the prior loop
+ * marked them as `failed` on the first throw and the user had
+ * to manually re-fire. The retry is intentionally narrow — only
+ * three tries, no jitter, no infinite ladder — because the
+ * outer tick cadence (typically 60s) gives us a free retry
+ * every minute anyway.
+ *
+ * Errors from the final attempt re-throw so the caller's
+ * existing catch block writes the failed-status history entry.
+ */
+async function sendWithRetry(
+  registry: MessagingProviderRegistry,
+  providerId: string,
+  message: { readonly destination: string; readonly text: string }
+): Promise<void> {
+  const backoffsMs: readonly number[] = [0, 200, 800];
+  let lastError: unknown;
+  for (const backoff of backoffsMs) {
+    if (backoff > 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, backoff));
+    }
+    try {
+      await registry.send(providerId, message);
+      return;
+    } catch (cause) {
+      lastError = cause;
+    }
+  }
+  throw lastError;
+}
+
+/**
  * Goal 052 — payload of `~/.muse/session-lock.json`. Written by
  * `muse session lock --hours N`, read by `runDueProactiveNotices`
  * to gate firing. The `reason` field is optional and exists so the
@@ -450,10 +484,15 @@ export async function runDueProactiveNotices(
 
     const firedAtIso = now().toISOString();
     try {
-      await options.messagingRegistry.send(options.providerId, {
-        destination: options.destination,
-        text: noticeText
-      });
+      // Goal 070 — retry transient messaging errors with
+      // exponential backoff (3 attempts: 0ms, 200ms, 800ms).
+      // Final failure still falls through to the catch +
+      // history append below.
+      await sendWithRetry(
+        options.messagingRegistry,
+        options.providerId,
+        { destination: options.destination, text: noticeText }
+      );
       firedThisRun += 1;
       nextFired = [...nextFired, candidate];
       seen.add(key);

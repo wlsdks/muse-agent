@@ -3881,6 +3881,85 @@ describe("runDueProactiveNotices", () => {
     };
   }
 
+  it("retries transient messaging failures with exponential backoff (goal 070)", async () => {
+    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-proactive-retry-"));
+    const sidecarFile = join(dir, "proactive-fired.json");
+
+    const fixedNow = new Date("2026-05-12T14:55:00Z");
+    const cal = makeFakeCalendarRegistry([
+      { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-retry", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
+    ]);
+
+    // First two sends throw, third succeeds.
+    const attempts: string[] = [];
+    const flakyRegistry = {
+      send: async (providerId: string, msg: { destination: string; text: string }) => {
+        attempts.push(`${providerId}:${msg.destination}`);
+        if (attempts.length < 3) {
+          throw new Error("upstream 503");
+        }
+        return { destination: msg.destination, messageId: "ok", providerId };
+      }
+    };
+
+    const summary = await runDueProactiveNotices({
+      calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+      destination: "@me",
+      messagingRegistry: flakyRegistry as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
+      now: () => fixedNow,
+      providerId: "telegram",
+      sidecarFile
+    });
+    expect(summary.fired).toBe(1);
+    expect(summary.errors).toEqual([]);
+    expect(attempts.length).toBe(3);
+  });
+
+  it("gives up after 3 attempts and records failure in history (goal 070)", async () => {
+    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { mkdtempSync, readFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-proactive-retry-fail-"));
+    const sidecarFile = join(dir, "proactive-fired.json");
+    const historyFile = join(dir, "proactive-history.json");
+
+    const fixedNow = new Date("2026-05-12T14:55:00Z");
+    const cal = makeFakeCalendarRegistry([
+      { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-fail", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
+    ]);
+
+    const attempts: number[] = [];
+    const alwaysFailing = {
+      send: async (_providerId: string, _msg: { destination: string; text: string }) => {
+        attempts.push(1);
+        throw new Error("upstream 503");
+      }
+    };
+
+    const summary = await runDueProactiveNotices({
+      calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+      destination: "@me",
+      historyFile,
+      messagingRegistry: alwaysFailing as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
+      now: () => fixedNow,
+      providerId: "telegram",
+      sidecarFile
+    });
+    expect(summary.fired).toBe(0);
+    expect(summary.errors.length).toBe(1);
+    expect(summary.errors[0]).toContain("upstream 503");
+    expect(attempts.length).toBe(3); // three attempts, then give up
+    // History records the failure so the user can audit.
+    const historyRaw = readFileSync(historyFile, "utf8");
+    expect(historyRaw).toContain("\"status\": \"failed\"");
+    expect(historyRaw).toContain("upstream 503");
+  });
+
   it("scrubs accidental credentials from delivered notice text (goal 086)", async () => {
     const { runDueProactiveNotices } = await import("../src/index.js");
     const { mkdtempSync, writeFileSync } = await import("node:fs");

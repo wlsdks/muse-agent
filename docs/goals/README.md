@@ -89,7 +89,7 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 067 | [Ctrl-C handling in long-running commands](067-ctrl-c-friendly.md)                 | UX polish            | done   |
 | 068 | [`muse doctor --watch` (TUI)](068-doctor-watch-mode.md)                            | UX polish            | done   |
 | 069 | [Reminder firing idempotency on restart](069-reminder-firing-idempotent.md)        | reliability          | done   |
-| 070 | [Proactive notice retry on transient fail](070-proactive-retry-on-transient-failure.md) | reliability    | open   |
+| 070 | [Proactive notice retry on transient fail](070-proactive-retry-on-transient-failure.md) | reliability    | done   |
 | 071 | [Calendar fallback to local on remote fail](071-calendar-fallback-on-remote-fail.md) | reliability        | open   |
 | 072 | [Episode capture on SIGTERM](072-episode-capture-on-sigterm.md)                    | reliability          | open   |
 | 073 | [User-memory auto-extract throttle](073-user-memory-extract-throttle.md)           | reliability          | open   |
