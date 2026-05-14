@@ -371,6 +371,35 @@ describe("McpManager", () => {
     });
   });
 
+  it("connect() returns false + sets status='disabled' when the name is absent from allowedServerNames (goal 032)", async () => {
+    const store = new InMemoryMcpServerStore();
+    const policyStore = new InMemoryMcpSecurityPolicyStore({
+      initial: { allowedServerNames: ["only-this-one"] }
+    });
+    // Pre-seed a server that bypasses the register-time allowlist check
+    // (could exist from a prior policy era). The connect-time gate is
+    // what we're testing — the defense-in-depth layer that keeps
+    // policy drift from silently activating a now-disallowed server.
+    await store.save({
+      autoConnect: false,
+      config: { command: "node" },
+      name: "stale-server",
+      transportType: "stdio"
+    });
+    const manager = new McpManager(store, {
+      securityPolicyProvider: new McpSecurityPolicyProvider(policyStore)
+    });
+
+    const result = await manager.connect("stale-server");
+    expect(result).toBe(false);
+    expect(manager.getStatus("stale-server")).toBe("disabled");
+
+    // Allowlist EMPTY means everything's allowed — the original
+    // 'optional opt-in' contract. Lock that in too.
+    const openStore = new InMemoryMcpSecurityPolicyStore({ initial: { allowedServerNames: [] } });
+    expect(await new McpSecurityPolicyProvider(openStore).isServerAllowed("anything")).toBe(true);
+  });
+
   it("marks denied or invalid servers without throwing", async () => {
     const store = new InMemoryMcpServerStore();
     const policyStore = new InMemoryMcpSecurityPolicyStore({

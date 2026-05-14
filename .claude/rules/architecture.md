@@ -48,6 +48,22 @@ Each model declares its capabilities so the runtime can route safely:
 - They MUST NOT become the core runtime API.
 - OpenAI Agents SDK, Vercel AI SDK, LangGraph.js may be studied but must not own Muse contracts.
 
+## MCP server allowlist (goal 032)
+
+`McpSecurityPolicy.allowedServerNames` controls which external MCP
+server names are eligible for connection. Enforcement is two-layered:
+
+- At register time, `McpManager.register` checks the allowlist + marks
+  a denied server `disabled` without throwing.
+- At connect time, `McpManager.connect` re-checks via
+  `securityPolicyProvider.isServerAllowed(name)` so a policy change
+  between register and connect still gates correctly. Returns `false`
+  + status `"disabled"` on denial — no exception.
+
+Empty `allowedServerNames` means everything's allowed (opt-in
+posture). Populate it when you need a strict allowlist (multi-MCP
+machines, shared workstations).
+
 ## Provider-specific schema quirks
 
 - **Gemini**: tool inputSchemas pass through `sanitizeGeminiSchema` to strip

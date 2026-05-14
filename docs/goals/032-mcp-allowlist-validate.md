@@ -21,4 +21,12 @@ adds defense-in-depth + makes mcp.json drift more visible.
 
 ## Status
 
-open
+done — verified: the allowlist gate IS enforced at both
+register-time (existing test) AND connect-time (`McpManager.connect`
+calls `securityPolicyProvider.isServerAllowed` before connector
+invocation). Lock-in test added for the connect path: pre-seeds a
+server name absent from the allowlist via direct store.save,
+then asserts `connect()` returns false + status flips to
+`"disabled"`. Empty-allowlist-means-all-allowed convention also
+locked. Architecture rule doc updated with the two-layered
+enforcement note. mcp +1 test.
