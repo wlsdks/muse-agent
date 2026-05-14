@@ -35,6 +35,7 @@ import { isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
 import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
 import type { ProgramIO } from "./program.js";
+import { withSigintAbort } from "./sigint-abort.js";
 
 interface AskOptions {
   readonly user?: string;
@@ -477,19 +478,25 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // Chat-only fast path — direct modelProvider.stream, no tool
         // registry. Suitable for "explain this", "summarise that"
         // queries that don't need fresh external data.
-        for await (const event of assembly.modelProvider.stream({
-          messages: [
-            { content: systemPrompt, role: "system" },
-            { content: query, role: "user" }
-          ],
-          ...(webSearchPolicy ? { metadata: { webSearchPolicy } } : {}),
-          model
-        }) as AsyncIterable<{ type: string; text?: string }>) {
-          if (event.type === "text-delta" && typeof event.text === "string") {
-            collectedAnswer += event.text;
-            if (!options.json) io.stdout(event.text);
+        // Goal 067 — wrap the streaming loop in `withSigintAbort` so
+        // a Ctrl-C exits cleanly with code 130 instead of leaving
+        // the stream pump dangling on the model adapter side.
+        await withSigintAbort(async (signal) => {
+          for await (const event of assembly.modelProvider!.stream({
+            messages: [
+              { content: systemPrompt, role: "system" },
+              { content: query, role: "user" }
+            ],
+            ...(webSearchPolicy ? { metadata: { webSearchPolicy } } : {}),
+            model
+          }) as AsyncIterable<{ type: string; text?: string }>) {
+            if (signal.aborted) break;
+            if (event.type === "text-delta" && typeof event.text === "string") {
+              collectedAnswer += event.text;
+              if (!options.json) io.stdout(event.text);
+            }
           }
-        }
+        }, { onSigint: () => { if (!options.json) io.stderr("\n(Ctrl-C — aborting…)\n"); } });
       }
 
       if (options.json) {

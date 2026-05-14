@@ -3940,6 +3940,34 @@ describe("cli program", () => {
     }
   });
 
+  it("withSigintAbort threads an AbortSignal + sets exit code 130 on Ctrl-C (goal 067)", async () => {
+    const { withSigintAbort } = await import("../src/sigint-abort.js");
+    // Happy path: no SIGINT → action runs to completion + no exit code touched.
+    process.exitCode = undefined as unknown as number;
+    const ok = await withSigintAbort(async (signal) => {
+      expect(signal.aborted).toBe(false);
+      return "done";
+    });
+    expect(ok).toBe("done");
+    expect(process.exitCode).toBeUndefined();
+
+    // SIGINT path: emit SIGINT mid-action; abort fires, exit code = 130.
+    process.exitCode = undefined as unknown as number;
+    let sawAbort = false;
+    let noticeFired = false;
+    await withSigintAbort(async (signal) => {
+      // Schedule the SIGINT for next tick so the listener is wired.
+      setImmediate(() => process.emit("SIGINT" as never));
+      await new Promise<void>((resolve) => {
+        signal.addEventListener("abort", () => { sawAbort = true; resolve(); }, { once: true });
+      });
+    }, { onSigint: () => { noticeFired = true; } });
+    expect(sawAbort).toBe(true);
+    expect(noticeFired).toBe(true);
+    expect(process.exitCode).toBe(130);
+    process.exitCode = 0;
+  });
+
   it("muse completion bash + zsh emit valid scripts mentioning real subcommands (goal 066)", async () => {
     const { io, output } = captureOutput();
     const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });

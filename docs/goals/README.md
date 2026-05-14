@@ -86,7 +86,7 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 064 | [`muse status` JSON schemaVersion](064-status-schema-version.md)                   | UX polish            | done   |
 | 065 | [`muse search` backend latency in output](065-search-backend-latency.md)           | UX polish            | done   |
 | 066 | [zsh + bash completions](066-zsh-completions.md)                                   | UX polish            | done   |
-| 067 | [Ctrl-C handling in long-running commands](067-ctrl-c-friendly.md)                 | UX polish            | open   |
+| 067 | [Ctrl-C handling in long-running commands](067-ctrl-c-friendly.md)                 | UX polish            | done   |
 | 068 | [`muse doctor --watch` (TUI)](068-doctor-watch-mode.md)                            | UX polish            | open   |
 | 069 | [Reminder firing idempotency on restart](069-reminder-firing-idempotent.md)        | reliability          | open   |
 | 070 | [Proactive notice retry on transient fail](070-proactive-retry-on-transient-failure.md) | reliability    | open   |
