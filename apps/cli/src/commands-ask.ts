@@ -253,6 +253,11 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
 
       const userMemory = await Promise.resolve(assembly.userMemoryStore.findByUserId(userKey));
       const personaPrompt = userMemory ? buildMusePersona(userMemory, userKey) : undefined;
+      // Goal 094 — persona template preamble (JARVIS / casual /
+      // professional / default). Loaded lazily so a fresh install
+      // without the persona.json sidecar just silent-falls to "".
+      const { loadActivePersonaPreamble } = await import("./persona-store.js");
+      const personaTemplatePreamble = await loadActivePersonaPreamble();
 
       // Compose RAG context block
       const contextBlock = scored.length === 0
@@ -361,6 +366,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           .join("\n\n");
 
       const systemPrompt = [
+        ...(personaTemplatePreamble.length > 0 ? [personaTemplatePreamble, ""] : []),
         ...(personaPrompt ? [personaPrompt, ""] : []),
         // Date/time line is ALWAYS present, even with no persona —
         // questions like "anything due today?" / "is the dentist

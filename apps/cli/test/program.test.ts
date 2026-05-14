@@ -3956,6 +3956,52 @@ describe("cli program", () => {
     expect(sawSignals).toEqual(["SIGTERM"]);
   });
 
+  it("persona store: read missing → default, switch active, custom preamble overrides built-in (goal 094)", async () => {
+    const {
+      BUILTIN_PERSONAS,
+      isBuiltinPersonaId,
+      readPersonaStore,
+      writePersonaStore,
+      resolveActivePersonaPreamble
+    } = await import("../src/persona-store.js");
+    const root = await mkdtemp(path.join(tmpdir(), "muse-persona-"));
+    const file = path.join(root, "persona.json");
+
+    // Built-in id detection.
+    expect(isBuiltinPersonaId("jarvis")).toBe(true);
+    expect(isBuiltinPersonaId("nonexistent")).toBe(false);
+    // JARVIS preamble contains the "sir" address hint.
+    const jarvis = BUILTIN_PERSONAS.find((p) => p.id === "jarvis");
+    expect(jarvis?.preamble.toLowerCase()).toContain("sir");
+
+    // Missing file → default.
+    const empty = await readPersonaStore(file);
+    expect(empty.activeId).toBe("default");
+    expect(empty.custom).toEqual({});
+    expect(resolveActivePersonaPreamble(empty)).toBe("");
+
+    // Write + read round-trip.
+    await writePersonaStore(file, {
+      activeId: "jarvis",
+      custom: { "tony": { preamble: "Speak like Tony Stark, sardonic and confident." } }
+    });
+    const round = await readPersonaStore(file);
+    expect(round.activeId).toBe("jarvis");
+    expect(round.custom["tony"]?.preamble).toContain("Tony Stark");
+
+    // Active = jarvis → built-in preamble surfaces.
+    expect(resolveActivePersonaPreamble(round).toLowerCase()).toContain("sir");
+
+    // Custom preamble overrides built-in id (a user-defined
+    // `jarvis` under `custom` wins over the built-in).
+    const override = await readPersonaStore(file);
+    const withOverride = {
+      ...override,
+      custom: { ...override.custom, jarvis: { preamble: "OVERRIDDEN" } }
+    };
+    expect(resolveActivePersonaPreamble(withOverride)).toBe("OVERRIDDEN");
+  });
+
   it("parseFeedBody handles RSS 2.0 + Atom + filterRecentFeedEntries cutoff (goal 092)", async () => {
     const { parseFeedBody, filterRecentFeedEntries } = await import("../src/feeds-store.js");
 

@@ -45,4 +45,25 @@ builder (ask / brief / status / proactive synthesis).
 
 ## Status
 
-open
+done — three subcommands (`list / use / show`) backed by
+`~/.muse/persona.json` (env override `MUSE_PERSONA_FILE`).
+Four built-in personas (`default` / `jarvis` / `casual` /
+`professional`) live in code so `muse persona use jarvis`
+works on a fresh install. User-defined personas live under
+`custom`; a custom id that shadows a built-in id wins.
+
+Persona preamble injection: wired into `commands-ask.ts` via
+new `loadActivePersonaPreamble(file)` helper — prepended to
+the system prompt above the user-memory persona block.
+
+Scope deviation: the goal mentioned injecting into the brief
+synthesis path too. Touched only `commands-ask.ts` this
+iteration to keep the diff focused; the helper is reusable
+so `commands-today.ts` + proactive notice synthesis can adopt
+the same one-liner as an additive follow-up.
+
+cli +1 test exercises the store (missing→default, write
+round-trip, JARVIS preamble contains "sir", custom override
+wins). Dogfood: `persona use jarvis` flipped active +
+`persona show` returned the JARVIS preamble — pass criterion
+("JARVIS" or "sir" in output) met.

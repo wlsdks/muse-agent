@@ -86,6 +86,7 @@ import { registerCompletionCommand } from "./commands-completion.js";
 import { registerImportCommand } from "./commands-import.js";
 import { registerFeedsCommand } from "./commands-feeds.js";
 import { registerGlanceCommand } from "./commands-glance.js";
+import { registerPersonaCommand } from "./commands-persona.js";
 import { registerReadCommand } from "./commands-read.js";
 import { registerRecallCommand } from "./commands-recall.js";
 import { registerVisionCommand } from "./commands-vision.js";
@@ -485,6 +486,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerGlanceCommand(program, io);
   registerRecallCommand(program, io);
   registerFeedsCommand(program, io);
+  registerPersonaCommand(program, io);
   registerWatchFolderCommand(program, io);
   registerRoutineCommand(program, io);
   registerTrustCommands(program, io);
