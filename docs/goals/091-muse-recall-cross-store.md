@@ -48,4 +48,22 @@ semantic index Muse has and returns top-K hits with attribution.
 
 ## Status
 
-open
+done — `muse recall <query> [--limit N] [--source
+notes|episodes|all] [--embed-model <tag>] [--json]`
+cosine-searches the union of the notes-index (existing) +
+episodes-index (goal 090). One embedding call per invocation,
+then a pure `rankRecallCandidates` merge + sort step that
+drops zero-similarity rows. Each hit reports
+`{ source, ref, score, snippet }`.
+
+Per-source soft-fail: missing notes-index → stderr hint but
+episode hits still surface (and vice versa). Test escape
+hatch `MUSE_RECALL_TEST_QUERY_EMBEDDING` (CSV of numbers)
+bypasses the live embed call so the dogfood asserts ranking
+without needing Ollama.
+
+cli +1 test exercises `rankRecallCandidates` across
+all / notes-only / episodes-only / limit-clamp. Dogfood:
+planted a 2-chunk notes-index with deterministic embeddings
++ ran `muse recall` with the test hook; top hit
+`ref: "q3.md"` per pass criterion.

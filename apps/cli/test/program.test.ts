@@ -3956,6 +3956,40 @@ describe("cli program", () => {
     expect(sawSignals).toEqual(["SIGTERM"]);
   });
 
+  it("rankRecallCandidates merges + sorts notes + episodes by cosine (goal 091)", async () => {
+    const { rankRecallCandidates } = await import("../src/commands-recall.js");
+    const queryVec = [1, 0, 0, 0];
+    const noteChunks = [
+      { path: "q3.md", text: "Q3 budget memo body", embedding: [1, 0, 0, 0] },
+      { path: "weather.md", text: "rain forecast", embedding: [0, 1, 0, 0] }
+    ];
+    const episodeEntries = [
+      { id: "ep_a", summary: "discussed Q3 spending", embedding: [0.8, 0.2, 0, 0] },
+      { id: "ep_b", summary: "weekend plans", embedding: [0, 0, 1, 0] }
+    ];
+
+    // Default: merged + ranked across both sources; zero-score
+    // candidates dropped.
+    const all = rankRecallCandidates({ queryVec, noteChunks, episodeEntries, limit: 5, source: "all" });
+    expect(all.length).toBe(2);
+    expect(all[0]?.source).toBe("notes");
+    expect(all[0]?.ref).toBe("q3.md");
+    expect(all[1]?.source).toBe("episodes");
+
+    // --source notes drops episodes.
+    const notesOnly = rankRecallCandidates({ queryVec, noteChunks, episodeEntries, limit: 5, source: "notes" });
+    expect(notesOnly.every((h) => h.source === "notes")).toBe(true);
+
+    // --source episodes drops notes.
+    const epsOnly = rankRecallCandidates({ queryVec, noteChunks, episodeEntries, limit: 5, source: "episodes" });
+    expect(epsOnly.every((h) => h.source === "episodes")).toBe(true);
+
+    // Limit clamps the result count.
+    const oneHit = rankRecallCandidates({ queryVec, noteChunks, episodeEntries, limit: 1, source: "all" });
+    expect(oneHit.length).toBe(1);
+    expect(oneHit[0]?.ref).toBe("q3.md");
+  });
+
   it("buildEpisodeIndex reuses unchanged entries + re-embeds changed summaries (goal 090)", async () => {
     const { buildEpisodeIndex } = await import("../src/episode-index.js");
     const calls: string[] = [];
