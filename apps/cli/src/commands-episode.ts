@@ -25,6 +25,13 @@ import {
 import { resolveEpisodesFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
+import { embed } from "./embed.js";
+import {
+  buildEpisodeIndex,
+  defaultEpisodeIndexFile,
+  loadEpisodeIndex,
+  saveEpisodeIndex
+} from "./episode-index.js";
 import { formatLocalDateTime as shortDateTime } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
 
@@ -175,6 +182,56 @@ export function registerEpisodeCommands(program: Command, io: ProgramIO): void {
         return;
       }
       io.stdout(`Cleared ${before.length.toString()} episode(s)\n`);
+    });
+
+  // Goal 090 — semantic index over episodes.json. Mirrors the
+  // notes-index pipeline so `muse recall` (goal 091) can fan
+  // across notes + episodes with one cosine math implementation.
+  episode
+    .command("reindex")
+    .description("Embed every episode summary into ~/.muse/episodes-index.json (goal 090)")
+    .option("--embed-model <tag>", "Embedding model id (default 'nomic-embed-text')", "nomic-embed-text")
+    .option("--force", "Re-embed every entry even when an existing index could be reused")
+    .option("--json", "Emit a structured summary")
+    .action(async (options: { readonly embedModel?: string; readonly force?: boolean; readonly json?: boolean }) => {
+      const model = options.embedModel ?? "nomic-embed-text";
+      const indexFile = defaultEpisodeIndexFile();
+      const previous = await loadEpisodeIndex(indexFile);
+      const episodes = await readEpisodes(localEpisodesFile());
+      let summary;
+      try {
+        summary = await buildEpisodeIndex({
+          episodes,
+          embedFn: (text) => embed(text, model),
+          previous,
+          model,
+          nowIso: new Date().toISOString(),
+          force: options.force === true
+        });
+      } catch (cause) {
+        io.stderr(
+          `muse episode reindex: embedding failed — ` +
+          `is Ollama running with '${model}' pulled? ` +
+          `(underlying: ${cause instanceof Error ? cause.message : String(cause)})\n`
+        );
+        process.exitCode = 1;
+        return;
+      }
+      await saveEpisodeIndex(indexFile, summary.index);
+      const payload = {
+        indexPath: indexFile,
+        total: summary.index.entries.length,
+        embedded: summary.embedded,
+        skipped: summary.skipped
+      };
+      if (options.json) {
+        io.stdout(`${JSON.stringify(payload, null, 2)}\n`);
+        return;
+      }
+      io.stdout(
+        `Indexed ${payload.total.toString()} episode(s) into ${indexFile} ` +
+        `(embedded ${summary.embedded.toString()}, reused ${summary.skipped.toString()})\n`
+      );
     });
 }
 

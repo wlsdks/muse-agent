@@ -3956,6 +3956,76 @@ describe("cli program", () => {
     expect(sawSignals).toEqual(["SIGTERM"]);
   });
 
+  it("buildEpisodeIndex reuses unchanged entries + re-embeds changed summaries (goal 090)", async () => {
+    const { buildEpisodeIndex } = await import("../src/episode-index.js");
+    const calls: string[] = [];
+    const fakeEmbed = async (text: string): Promise<number[]> => {
+      calls.push(text);
+      return [text.length, 0, 0, 0];
+    };
+    type EpInput = Parameters<typeof buildEpisodeIndex>[0]["episodes"];
+
+    // Initial build: 2 episodes, both must embed.
+    const first = await buildEpisodeIndex({
+      episodes: [
+        { id: "ep1", userId: "u", summary: "Q3 budget", startedAt: "t1", endedAt: "t2" },
+        { id: "ep2", userId: "u", summary: "wedding", startedAt: "t3", endedAt: "t4" }
+      ] as unknown as EpInput,
+      embedFn: fakeEmbed,
+      previous: undefined,
+      model: "nomic-embed-text",
+      nowIso: "2026-05-15T00:00:00Z"
+    });
+    expect(first.embedded).toBe(2);
+    expect(first.skipped).toBe(0);
+    expect(first.index.entries.map((e) => e.id)).toEqual(["ep1", "ep2"]);
+
+    // Second build: same rows → both reuse (zero embed calls).
+    calls.length = 0;
+    const second = await buildEpisodeIndex({
+      episodes: [
+        { id: "ep1", userId: "u", summary: "Q3 budget", startedAt: "t1", endedAt: "t2" },
+        { id: "ep2", userId: "u", summary: "wedding", startedAt: "t3", endedAt: "t4" }
+      ] as unknown as EpInput,
+      embedFn: fakeEmbed,
+      previous: first.index,
+      model: "nomic-embed-text",
+      nowIso: "2026-05-15T01:00:00Z"
+    });
+    expect(second.embedded).toBe(0);
+    expect(second.skipped).toBe(2);
+    expect(calls).toEqual([]);
+
+    // Third build: ep1 summary changed → re-embed only ep1.
+    const third = await buildEpisodeIndex({
+      episodes: [
+        { id: "ep1", userId: "u", summary: "Q3 budget revised", startedAt: "t1", endedAt: "t2" },
+        { id: "ep2", userId: "u", summary: "wedding", startedAt: "t3", endedAt: "t4" }
+      ] as unknown as EpInput,
+      embedFn: fakeEmbed,
+      previous: second.index,
+      model: "nomic-embed-text",
+      nowIso: "2026-05-15T02:00:00Z"
+    });
+    expect(third.embedded).toBe(1);
+    expect(third.skipped).toBe(1);
+    expect(calls).toEqual(["Q3 budget revised"]);
+
+    // Model change → full rebuild.
+    calls.length = 0;
+    const fourth = await buildEpisodeIndex({
+      episodes: [
+        { id: "ep1", userId: "u", summary: "Q3 budget revised", startedAt: "t1", endedAt: "t2" }
+      ] as unknown as EpInput,
+      embedFn: fakeEmbed,
+      previous: third.index,
+      model: "different-model",
+      nowIso: "2026-05-15T03:00:00Z"
+    });
+    expect(fourth.embedded).toBe(1);
+    expect(calls).toEqual(["Q3 budget revised"]);
+  });
+
   it("parseOsascriptGlance normalises missing/empty fields (goal 089)", async () => {
     const { parseOsascriptGlance } = await import("../src/commands-glance.js");
     expect(parseOsascriptGlance("Terminal\nmuse — repl\nselected text here\n")).toEqual({

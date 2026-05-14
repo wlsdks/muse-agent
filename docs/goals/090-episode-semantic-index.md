@@ -42,4 +42,24 @@ over `episodes.json` so each summary becomes a queryable vector.
 
 ## Status
 
-open
+done — new `muse episode reindex [--embed-model <tag>]
+[--force] [--json]` subcommand under the existing `muse
+episode` group. Pure logic lives in
+`apps/cli/src/episode-index.ts` (`buildEpisodeIndex`) so the
+dedupe + skip / model-mismatch / forced-rebuild branches are
+testable without standing up Ollama. Embedding HTTP call is
+shared with future goal 091 via the new
+`apps/cli/src/embed.ts` helper (`embed(text, model)` +
+`cosineSimilarity(a, b)`).
+
+Index lives at `~/.muse/episodes-index.json` (env override
+`MUSE_EPISODES_INDEX_FILE`); shape mirrors `notes-index`
+with a version gate that triggers a clean rebuild on mismatch
+(same posture as goal 074).
+
+cli +1 test covers the four `buildEpisodeIndex` branches
+(initial embed / reuse / changed-summary re-embed /
+model-change full rebuild). Dogfood on this host hit the
+best-effort skip path (Ollama not running) — clean
+"is Ollama running with 'nomic-embed-text' pulled?" stderr
+hint per the JARVIS-NEXT.md contract.
