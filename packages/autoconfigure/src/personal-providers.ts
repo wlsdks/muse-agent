@@ -10,14 +10,14 @@
  *   - Default-path resolvers for the personal-domain trio's local
  *     storage: notes dir, tasks file, local calendar file, plus the
  *     credentials JSON file consumed by remote calendar providers
- *   - `buildVoiceRegistry` — env → `VoiceProviderRegistry` with
- *     OpenAI Whisper + TTS-1 when an API key is available
  *   - `ensureNotesDir` — best-effort `mkdir -p` so the inline
  *     Notes MCP server has a directory to land into
  *
- * Registry builders that have outgrown an inline definition live
- * under `./registry-builders/` — `buildMessagingRegistry` (goal 007)
- * and `buildCalendarRegistry` (goal 041) so far.
+ * Registry builders live under `./registry-builders/`:
+ * `buildMessagingRegistry` (goal 007), `buildCalendarRegistry`
+ * (goal 041), `buildVoiceRegistry` (goal 042). The functions are
+ * re-exported from this module so existing `index.ts` call sites
+ * stay byte-identical.
  *
  * The shape of `MuseEnvironment` stays in `index.ts`; this module
  * imports it back as a type-only consumer.
@@ -38,13 +38,6 @@ import {
   type TasksProvider
 } from "@muse/mcp";
 import type { MessagingProvider } from "@muse/messaging";
-import {
-  OpenAITtsProvider,
-  OpenAIWhisperSttProvider,
-  PiperTtsProvider,
-  VoiceProviderRegistry,
-  WhisperCppSttProvider
-} from "@muse/voice";
 import type {
   SkillCatalogEntry,
   SkillCatalogProvider
@@ -321,114 +314,7 @@ function tryBuildTasksProvider(id: string, env: MuseEnvironment): TasksProvider 
   return undefined;
 }
 
-/**
- * Build a `VoiceProviderRegistry` from env when voice credentials are
- * available. Returns `undefined` when nothing was registered so the
- * `/api/voice/*` routes stay absent (404) by default.
- *
- * STT selection (Phase F.2 — local Whisper.cpp):
- *   - `MUSE_VOICE_STT=whisper-cpp` → register `WhisperCppSttProvider`
- *     (no OpenAI key required). Binary / model paths come from
- *     `MUSE_WHISPER_CPP_PATH` and `MUSE_WHISPER_CPP_MODEL`.
- *   - `MUSE_VOICE_STT=openai-whisper` (default) → register
- *     `OpenAIWhisperSttProvider` when an OpenAI key is set.
- *
- * TTS selection (Phase F.3 — local Piper):
- *   - `MUSE_VOICE_TTS=piper` → register `PiperTtsProvider`
- *     (no OpenAI key required). Requires `MUSE_PIPER_VOICE` (path to
- *     a .onnx voice file). `MUSE_PIPER_PATH` overrides the binary.
- *   - `MUSE_VOICE_TTS=openai-tts` (default) → register
- *     `OpenAITtsProvider` when an OpenAI key is set.
- *
- * Env (OpenAI resolution order):
- *   - `MUSE_VOICE_OPENAI_API_KEY` — Muse-specific override.
- *   - `OPENAI_API_KEY` — standard convention.
- *   - When neither is set AND neither STT nor TTS chooses a local
- *     backend, the registry is empty and the routes are not
- *     registered (404).
- *   - `MUSE_VOICE_TTS_VOICE` — OpenAI voice name (alloy / echo / …).
- *   - `MUSE_VOICE_TTS_MODEL` / `MUSE_VOICE_STT_MODEL` — model overrides.
- */
-/**
- * Synchronously look for `whisper-cli` (homebrew's binary name) or
- * `whisper-cpp` (project default) on $PATH. Returns the first hit
- * or undefined. Used so a user who just ran `brew install whisper-cpp`
- * doesn't need to set MUSE_WHISPER_CPP_PATH manually.
- */
-function detectWhisperBinarySync(): string | undefined {
-  const path = process.env.PATH ?? "";
-  for (const dir of path.split(":")) {
-    if (!dir) continue;
-    for (const name of ["whisper-cli", "whisper-cpp"]) {
-      const candidate = `${dir.replace(/\/+$/, "")}/${name}`;
-      try {
-        const { accessSync, constants } = require("node:fs") as typeof import("node:fs");
-        accessSync(candidate, constants.X_OK);
-        return candidate;
-      } catch { /* miss */ }
-    }
-  }
-  return undefined;
-}
-
-export function buildVoiceRegistry(env: MuseEnvironment): VoiceProviderRegistry | undefined {
-  const sttChoice = env.MUSE_VOICE_STT?.trim().toLowerCase();
-  const ttsChoice = env.MUSE_VOICE_TTS?.trim().toLowerCase();
-  const piperVoice = env.MUSE_PIPER_VOICE?.trim();
-  const openAiKey = env.MUSE_VOICE_OPENAI_API_KEY?.trim()
-    || env.OPENAI_API_KEY?.trim();
-  const useLocalStt = sttChoice === "whisper-cpp";
-  const useLocalTts = ttsChoice === "piper" && piperVoice && piperVoice.length > 0;
-
-  if (!openAiKey && !useLocalStt && !useLocalTts) {
-    return undefined;
-  }
-
-  const registry = new VoiceProviderRegistry();
-
-  if (useLocalStt) {
-    // Homebrew's whisper.cpp formula installs the binary as
-    // `whisper-cli`, not `whisper-cpp`. Auto-resolve so the user
-    // doesn't have to set MUSE_WHISPER_CPP_PATH after a plain
-    // `brew install whisper-cpp`. Explicit env still wins.
-    const explicitBinary = env.MUSE_WHISPER_CPP_PATH?.trim();
-    const detectedBinary = explicitBinary && explicitBinary.length > 0
-      ? explicitBinary
-      : detectWhisperBinarySync();
-    registry.registerStt(
-      new WhisperCppSttProvider({
-        ...(detectedBinary ? { binaryPath: detectedBinary } : {}),
-        ...(env.MUSE_WHISPER_CPP_MODEL?.trim() ? { modelPath: env.MUSE_WHISPER_CPP_MODEL.trim() } : {})
-      })
-    );
-  } else if (openAiKey) {
-    registry.registerStt(
-      new OpenAIWhisperSttProvider({
-        apiKey: openAiKey,
-        ...(env.MUSE_VOICE_STT_MODEL?.trim() ? { model: env.MUSE_VOICE_STT_MODEL.trim() } : {})
-      })
-    );
-  }
-
-  if (useLocalTts && piperVoice) {
-    registry.registerTts(
-      new PiperTtsProvider({
-        modelPath: piperVoice,
-        ...(env.MUSE_PIPER_PATH?.trim() ? { binaryPath: env.MUSE_PIPER_PATH.trim() } : {})
-      })
-    );
-  } else if (openAiKey) {
-    registry.registerTts(
-      new OpenAITtsProvider({
-        apiKey: openAiKey,
-        ...(env.MUSE_VOICE_TTS_MODEL?.trim() ? { model: env.MUSE_VOICE_TTS_MODEL.trim() } : {}),
-        ...(env.MUSE_VOICE_TTS_VOICE?.trim() ? { defaultVoice: env.MUSE_VOICE_TTS_VOICE.trim() } : {})
-      })
-    );
-  }
-
-  return registry;
-}
+export { buildVoiceRegistry } from "./registry-builders/voice.js";
 
 export function ensureNotesDir(notesDir: string): void {
   try {

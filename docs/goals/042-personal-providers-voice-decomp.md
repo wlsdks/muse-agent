@@ -15,4 +15,9 @@ helper (16 LOC).
 
 ## Status
 
-open
+done — `buildVoiceRegistry` + `detectWhisperBinarySync` helper
+moved to `registry-builders/voice.ts` mirroring 007 (messaging) +
+041 (calendar). `personal-providers.ts` shrank from 543 → 429 LOC
+(well under the <470 target) and no longer imports any
+`@muse/voice` provider classes. Function is re-exported so callers
+stay byte-identical. All gates green.
