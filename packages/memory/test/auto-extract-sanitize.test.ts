@@ -220,4 +220,92 @@ describe("auto-extract value sanitisation at store boundary", () => {
     const memory = await store.findByUserId("stark");
     expect(memory?.facts ?? {}).toEqual({});
   });
+
+  it("extractionCooldownMs throttles repeated extractions per user (goal 073)", async () => {
+    let providerCalls = 0;
+    const provider = {
+      id: "diagnostic",
+      async generate() {
+        providerCalls += 1;
+        return {
+          id: `r-${providerCalls.toString()}`,
+          model: "diagnostic/smoke",
+          output: JSON.stringify({
+            facts: { fav: `value-${providerCalls.toString()}` },
+            goals: [], preferences: {}, vetoes: []
+          })
+        };
+      },
+      async listModels() { return []; },
+      async *stream() { /* not used */ }
+    };
+
+    let nowMs = 1_000_000_000_000;
+    const store = new InMemoryUserMemoryStore();
+    const hook = createUserMemoryAutoExtractHook({
+      model: "diagnostic/smoke",
+      modelProvider: provider,
+      store,
+      extractionCooldownMs: 60_000, // 1/min per user
+      now: () => nowMs
+    });
+
+    const runTurn = async (userId: string): Promise<void> => {
+      await hook.afterComplete!(
+        {
+          input: { messages: [{ content: "hi", role: "user" }], metadata: { userId } },
+          runId: `r-${nowMs.toString()}-${userId}`
+        },
+        { id: "r-x", model: "diagnostic/smoke", output: "noted." }
+      );
+    };
+
+    // Turn 1 fires extraction.
+    await runTurn("stark");
+    expect(providerCalls).toBe(1);
+
+    // Turn 2, 10s later, for the same user → throttled (no provider call).
+    nowMs += 10_000;
+    await runTurn("stark");
+    expect(providerCalls).toBe(1);
+
+    // Different user → independent bucket, extraction fires.
+    await runTurn("alice");
+    expect(providerCalls).toBe(2);
+
+    // 60s after stark's first turn (50s after the throttled #2) →
+    // cooldown elapsed, extraction fires again.
+    nowMs += 50_000;
+    await runTurn("stark");
+    expect(providerCalls).toBe(3);
+
+    // Explicit cooldown = 0 disables the throttle.
+    nowMs = 2_000_000_000_000;
+    const store2 = new InMemoryUserMemoryStore();
+    let providerCalls2 = 0;
+    const hook2 = createUserMemoryAutoExtractHook({
+      model: "diagnostic/smoke",
+      modelProvider: {
+        id: "diagnostic",
+        async generate() {
+          providerCalls2 += 1;
+          return { id: "r", model: "diagnostic/smoke", output: JSON.stringify({ facts: {}, goals: [], preferences: {}, vetoes: [] }) };
+        },
+        async listModels() { return []; },
+        async *stream() { /* not used */ }
+      },
+      store: store2,
+      extractionCooldownMs: 0,
+      now: () => nowMs
+    });
+    await hook2.afterComplete!(
+      { input: { messages: [{ content: "hi", role: "user" }], metadata: { userId: "stark" } }, runId: "r1" },
+      { id: "r1", model: "diagnostic/smoke", output: "noted." }
+    );
+    await hook2.afterComplete!(
+      { input: { messages: [{ content: "hi", role: "user" }], metadata: { userId: "stark" } }, runId: "r2" },
+      { id: "r2", model: "diagnostic/smoke", output: "noted." }
+    );
+    expect(providerCalls2).toBe(2);
+  });
 });

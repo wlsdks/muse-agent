@@ -75,6 +75,20 @@ export interface UserMemoryAutoExtractOptions {
    * (same path as a thrown error).
    */
   readonly extractionTimeoutMs?: number;
+  /**
+   * Goal 073 — minimum interval between extractions per user
+   * (milliseconds). When a turn fires inside the cooldown
+   * window for that user, the extraction is skipped silently
+   * (fail-open). Default 60_000 (1/min). 0 disables throttling.
+   */
+  readonly extractionCooldownMs?: number;
+  /**
+   * Goal 073 — injectable clock for deterministic tests. The
+   * throttle compares `now()` against the per-user last-fire
+   * timestamp; without this, tests have to wait real seconds
+   * to see the cooldown elapse.
+   */
+  readonly now?: () => number;
 }
 
 interface ExtractedSlot {
@@ -154,6 +168,12 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
   const maxUserPrompt = Math.max(64, Math.trunc(options.maxUserPromptChars ?? 2_048));
   const maxAssistantOutput = Math.max(64, Math.trunc(options.maxAssistantOutputChars ?? 2_048));
   const extractionTimeoutMs = Math.max(100, Math.trunc(options.extractionTimeoutMs ?? 10_000));
+  // Goal 073 — per-user cooldown to prevent a burst of short
+  // turns from churning user-memory.json. Default 1/min;
+  // explicit 0 disables.
+  const extractionCooldownMs = Math.max(0, Math.trunc(options.extractionCooldownMs ?? 60_000));
+  const now = options.now ?? (() => Date.now());
+  const lastFiredByUser = new Map<string, number>();
 
   return {
     afterComplete: async (context, response) => {
@@ -165,6 +185,19 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
       const assistantOutput = response.output?.trim() ?? "";
       if (!userPrompt || !assistantOutput) {
         return;
+      }
+      // Goal 073 — throttle gate. When the previous extraction
+      // for this user fired within `extractionCooldownMs`, skip
+      // silently (no extraction, no write). Fail-open posture
+      // matches the rest of the hook — losing a single throttled
+      // extraction is preferable to blocking subsequent runs.
+      if (extractionCooldownMs > 0) {
+        const lastFiredAt = lastFiredByUser.get(userId);
+        const nowMs = now();
+        if (lastFiredAt !== undefined && nowMs - lastFiredAt < extractionCooldownMs) {
+          return;
+        }
+        lastFiredByUser.set(userId, nowMs);
       }
 
       // Bound the extraction-call cost: a 100KB user turn would
