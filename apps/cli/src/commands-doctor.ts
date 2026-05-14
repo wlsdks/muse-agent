@@ -50,43 +50,108 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
     .option("--full", "Emit the full JSON report instead of the one-line summary")
     .option("--json", "Emit JSON even for the summary form")
     .option("--local", "Probe local-only signals (skip the API daemon)")
-    .action(async (options: { readonly full?: boolean; readonly json?: boolean; readonly local?: boolean }, command: Command) => {
-      if (options.local) {
-        const report = await runLocalDoctor();
-        if (options.json || options.full) {
-          helpers.writeOutput(io, report);
-        } else {
-          io.stdout(formatLocalDoctor(report));
+    .option("--watch", "Re-run on a fixed cadence until Ctrl-C (default 5s) (goal 068)")
+    .option(
+      "--interval <seconds>",
+      "Refresh interval in seconds when --watch is set (default 5, clamped to [1, 3600])"
+    )
+    .action(async (
+      options: {
+        readonly full?: boolean;
+        readonly json?: boolean;
+        readonly local?: boolean;
+        readonly watch?: boolean;
+        readonly interval?: string;
+      },
+      command: Command
+    ) => {
+      const runOnce = async (): Promise<"ok" | "warn" | "fail" | "remote"> => {
+        if (options.local) {
+          const report = await runLocalDoctor();
+          if (options.json || options.full) {
+            helpers.writeOutput(io, report);
+          } else {
+            io.stdout(formatLocalDoctor(report));
+          }
+          return report.worst;
         }
+        const path = options.full ? "/api/admin/doctor" : "/api/admin/doctor/summary";
+        const response = await helpers.apiRequest(io, command, path);
+        if (options.full || options.json) {
+          helpers.writeOutput(io, response);
+          return "remote";
+        }
+        if (!isRecord(response)) {
+          helpers.writeOutput(io, response);
+          return "remote";
+        }
+        const snapshot = response as DoctorSummary;
+        const status = snapshot.status ?? "unknown";
+        const label = snapshot.statusLabel ?? "";
+        const summary = snapshot.summary ?? "";
+        const stamp = snapshot.generatedAt ?? "";
+        io.stdout(`[${status}] ${summary}${label ? ` — ${label}` : ""}${stamp ? ` (${stamp})` : ""}\n`);
+        return "remote";
+      };
+
+      if (!options.watch) {
+        const worst = await runOnce();
         // Goal 030: surface the overall verdict as an exit code so
         // CI / dotfile bootstrap scripts can `muse doctor --local
         // || warn-user`. 0 for ok+warn (non-fatal); 1 for fail.
-        // Warn doesn't fail because it's expected on a personal
-        // install where (e.g.) Ollama isn't running.
-        if (report.worst === "fail") {
+        if (options.local && worst === "fail") {
           process.exitCode = 1;
         }
         return;
       }
-      const path = options.full ? "/api/admin/doctor" : "/api/admin/doctor/summary";
-      const response = await helpers.apiRequest(io, command, path);
 
-      if (options.full || options.json) {
-        helpers.writeOutput(io, response);
+      // Goal 068 — watch mode. Same ANSI clear / cursor-home as
+      // `muse status --watch` (goal 046) so the UX is consistent.
+      // `--json` short-circuits the loop — emitting JSON every tick
+      // is a stream-consumer's job, not doctor's.
+      if (options.json) {
+        await runOnce();
         return;
       }
-
-      if (!isRecord(response)) {
-        helpers.writeOutput(io, response);
-        return;
+      const intervalMs = resolveDoctorWatchIntervalMs(options.interval);
+      let stopped = false;
+      const sigintHandler = (): void => { stopped = true; };
+      process.once("SIGINT", sigintHandler);
+      try {
+        while (!stopped) {
+          io.stdout("\x1b[2J\x1b[H");
+          await runOnce();
+          io.stdout(`\n  (watching every ${(intervalMs / 1000).toString()}s — Ctrl-C to exit)\n`);
+          if (stopped) break;
+          await new Promise<void>((resolve) => {
+            const handle = setTimeout(resolve, intervalMs);
+            const earlyWake = (): void => {
+              clearTimeout(handle);
+              resolve();
+            };
+            process.once("SIGINT", earlyWake);
+          });
+        }
+      } finally {
+        process.off("SIGINT", sigintHandler);
       }
-      const snapshot = response as DoctorSummary;
-      const status = snapshot.status ?? "unknown";
-      const label = snapshot.statusLabel ?? "";
-      const summary = snapshot.summary ?? "";
-      const stamp = snapshot.generatedAt ?? "";
-      io.stdout(`[${status}] ${summary}${label ? ` — ${label}` : ""}${stamp ? ` (${stamp})` : ""}\n`);
     });
+}
+
+/**
+ * Goal 068 — parse `--interval <n>` for `muse doctor --watch`.
+ * Default 5s, clamped to [1, 3600]. Exported for direct test
+ * coverage of the boundary behavior. Mirrors
+ * `resolveStatusWatchIntervalMs` so the two watch loops share
+ * the same parser contract.
+ */
+export function resolveDoctorWatchIntervalMs(raw: string | undefined): number {
+  const defaultMs = 5_000;
+  if (!raw) return defaultMs;
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return defaultMs;
+  const seconds = Math.min(3600, Math.max(1, parsed));
+  return Math.round(seconds * 1000);
 }
 
 interface LocalCheck {

@@ -3940,6 +3940,18 @@ describe("cli program", () => {
     }
   });
 
+  it("resolveDoctorWatchIntervalMs defaults to 5s and clamps to [1s, 3600s] (goal 068)", async () => {
+    const { resolveDoctorWatchIntervalMs } = await import("../src/commands-doctor.js");
+    expect(resolveDoctorWatchIntervalMs(undefined)).toBe(5_000);
+    expect(resolveDoctorWatchIntervalMs("")).toBe(5_000);
+    expect(resolveDoctorWatchIntervalMs("nope")).toBe(5_000);
+    expect(resolveDoctorWatchIntervalMs("0")).toBe(5_000);
+    expect(resolveDoctorWatchIntervalMs("-5")).toBe(5_000);
+    expect(resolveDoctorWatchIntervalMs("2")).toBe(2_000);
+    expect(resolveDoctorWatchIntervalMs("0.5")).toBe(1_000); // sub-1s clamps up
+    expect(resolveDoctorWatchIntervalMs("99999")).toBe(3_600_000); // upper clamp
+  });
+
   it("withSigintAbort threads an AbortSignal + sets exit code 130 on Ctrl-C (goal 067)", async () => {
     const { withSigintAbort } = await import("../src/sigint-abort.js");
     // Happy path: no SIGINT → action runs to completion + no exit code touched.
