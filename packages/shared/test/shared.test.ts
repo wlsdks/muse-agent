@@ -5,6 +5,7 @@ import {
   DEFAULT_ERROR_BODY_CAP,
   formatBoundaryViolation,
   hmacSha256Hex,
+  redactSecretsInText,
   sha256Hex,
   truncateErrorBody,
   verifyHmacSha256Hex
@@ -50,6 +51,37 @@ describe("boundary and cancellation helpers", () => {
 
     expect(token.signal.aborted).toBe(true);
     expect(() => token.throwIfCancelled()).toThrow("timeout");
+  });
+
+  it("redactSecretsInText scrubs high-confidence credential shapes (goal 086)", () => {
+    // OpenAI sk- + sk-proj-.
+    expect(redactSecretsInText("rotate sk-proj-abcdefghijklmnopqrstuvwxyz today"))
+      .toBe("rotate [redacted-openai-key] today");
+    expect(redactSecretsInText("oldkey sk-abcdefghijklmnopqrstuvwxyz"))
+      .toContain("[redacted-openai-key]");
+    // Anthropic sk-ant-.
+    expect(redactSecretsInText("note: sk-ant-api03-abcdefghijklmnop"))
+      .toContain("[redacted-anthropic-key]");
+    // GitHub PAT.
+    expect(redactSecretsInText("gh token ghp_abcdefghijklmnopqrstuvwxyzABCDEF"))
+      .toContain("[redacted-github-pat]");
+    // AWS access key.
+    expect(redactSecretsInText("AKIAIOSFODNN7EXAMPLE access"))
+      .toContain("[redacted-aws-access-key]");
+    // Google API key.
+    expect(redactSecretsInText("key=AIzaSyABCDEF1234567890abcdef1234567890ABCDE"))
+      .toContain("[redacted-google-api-key]");
+    // Slack bot token.
+    expect(redactSecretsInText("token=xoxb-12345-67890-AbCdEf"))
+      .toContain("[redacted-slack-bot-token]");
+    // JWT.
+    expect(redactSecretsInText("bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"))
+      .toContain("[redacted-jwt]");
+    // No false positive on plain English.
+    expect(redactSecretsInText("Q3 budget memo due in 5 min"))
+      .toBe("Q3 budget memo due in 5 min");
+    // Empty / non-string input passes through.
+    expect(redactSecretsInText("")).toBe("");
   });
 
   it("truncateErrorBody trims + caps + appends ellipsis when over the cap", () => {

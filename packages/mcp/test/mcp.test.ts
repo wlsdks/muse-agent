@@ -3818,6 +3818,43 @@ describe("runDueProactiveNotices", () => {
     };
   }
 
+  it("scrubs accidental credentials from delivered notice text (goal 086)", async () => {
+    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-proactive-redact-"));
+    const sidecarFile = join(dir, "proactive-fired.json");
+    const tasksFile = join(dir, "tasks.json");
+    // Task title includes an OpenAI-shaped secret — would otherwise
+    // round-trip back via the messaging sink.
+    writeFileSync(tasksFile, JSON.stringify({
+      tasks: [{
+        id: "task-leak",
+        title: "rotate API key sk-proj-abcdefghijklmnopqrstuvwxyz today",
+        status: "open",
+        dueAt: "2026-05-12T15:00:00Z",
+        createdAt: "2026-05-12T14:00:00Z"
+      }]
+    }));
+    const fixedNow = new Date("2026-05-12T14:55:00Z");
+    const msg = makeFakeMessagingRegistry();
+
+    await runDueProactiveNotices({
+      destination: "@me",
+      messagingRegistry: msg.registry as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
+      now: () => fixedNow,
+      providerId: "log",
+      sidecarFile,
+      tasksFile
+    });
+    expect(msg.sent.length).toBe(1);
+    const delivered = msg.sent[0]?.text ?? "";
+    // The credential shape is scrubbed.
+    expect(delivered).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz");
+    expect(delivered).toContain("[redacted-openai-key]");
+  });
+
   it("skips firing when sessionLockFile points at an active marker (goal 052)", async () => {
     const { runDueProactiveNotices, writeSessionLock } = await import("../src/index.js");
     const { mkdtempSync } = await import("node:fs");

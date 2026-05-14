@@ -105,7 +105,7 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 083 | [MCP server fingerprint pinning](083-mcp-server-fingerprint-pinning.md)            | security/robustness  | done   |
 | 084 | [Chat rate limiter per-user keying](084-rate-limit-per-user.md)                    | security/robustness  | done   |
 | 085 | [Prompt injection detection telemetry](085-injection-detection-telemetry.md)       | security/robustness  | done   |
-| 086 | [Proactive notice secret redaction](086-proactive-notice-secret-redaction.md)      | security/robustness  | open   |
+| 086 | [Proactive notice secret redaction](086-proactive-notice-secret-redaction.md)      | security/robustness  | done   |
 
 Categories:
 

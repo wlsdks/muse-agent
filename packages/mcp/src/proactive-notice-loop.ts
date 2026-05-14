@@ -21,6 +21,7 @@ import { dirname } from "node:path";
 
 import type { CalendarEvent, CalendarProviderRegistry } from "@muse/calendar";
 import type { MessagingProviderRegistry } from "@muse/messaging";
+import { redactSecretsInText } from "@muse/shared";
 
 /**
  * Structural shape of the Phase D broker (defined in
@@ -432,13 +433,20 @@ export async function runDueProactiveNotices(
       continue;
     }
 
-    const noticeText = phaseDActive
+    const rawNoticeText = phaseDActive
       ? await synthesizeNoticeText(item, options).catch((cause) => {
           const message = cause instanceof Error ? cause.message : String(cause);
           errors.push(`${item.kind}:${item.id} synthesis: ${message}`);
           return item.text;
         })
       : item.text;
+    // Goal 086 — scrub high-confidence credential shapes before
+    // anything downstream (messaging sink, history sidecar, live
+    // broker subscribers) sees the text. The synthesised notice
+    // had access to persona facts + task summaries; a task title
+    // like `"rotate API key sk-proj-..."` would otherwise round-
+    // trip back via Telegram / Slack.
+    const noticeText = redactSecretsInText(rawNoticeText);
 
     const firedAtIso = now().toISOString();
     try {

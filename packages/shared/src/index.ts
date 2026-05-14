@@ -101,6 +101,50 @@ export function stripUntrustedTerminalChars(value: string): string {
   return value.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/gu, "");
 }
 
+/**
+ * Goal 086 — high-confidence secret-shape patterns. Each entry
+ * names the family + the regex that catches the bytes. The
+ * matches are replaced with `[redacted-<family>]` so an operator
+ * reading a proactive-notice log line still sees WHICH kind of
+ * secret leaked (without leaking the secret itself).
+ *
+ * The patterns lean toward "stable prefix + entropy length". A
+ * false positive on a regular sentence is much less harmful than
+ * a false negative on a real credential, but we still prefer
+ * recognisable upstream-issued shapes over generic "long random
+ * string" heuristics.
+ */
+const SECRET_PATTERNS: ReadonlyArray<{ readonly name: string; readonly regex: RegExp }> = [
+  // Order matters: the more-specific Anthropic / OpenAI-project
+  // prefixes must run before the generic `sk-` so a token like
+  // `sk-ant-api03-...` lands in the right bucket.
+  { name: "anthropic-key", regex: /sk-ant-[A-Za-z0-9_-]{20,}/gu },
+  { name: "openai-key", regex: /sk-(?:proj-)?[A-Za-z0-9_-]{20,}/gu },
+  { name: "github-pat", regex: /gh[pousr]_[A-Za-z0-9_]{30,}/gu },
+  { name: "aws-access-key", regex: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/gu },
+  { name: "google-api-key", regex: /\bAIza[0-9A-Za-z_-]{35,}/gu },
+  { name: "slack-bot-token", regex: /xox[abprs]-[A-Za-z0-9-]{10,}/gu },
+  { name: "jwt", regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/gu }
+];
+
+/**
+ * Goal 086 — strip high-confidence credential shapes from a text
+ * payload. Used pre-delivery on proactive notices so a credential
+ * that accidentally landed in a task title (`"rotate API key
+ * sk-proj-..."`) doesn't round-trip back via Telegram / Slack.
+ *
+ * Returns the scrubbed string. The function never throws; an
+ * empty / non-string input passes through.
+ */
+export function redactSecretsInText(value: string): string {
+  if (typeof value !== "string" || value.length === 0) return value;
+  let scrubbed = value;
+  for (const { name, regex } of SECRET_PATTERNS) {
+    scrubbed = scrubbed.replace(regex, `[redacted-${name}]`);
+  }
+  return scrubbed;
+}
+
 export function truncateErrorBody(body: string | undefined, cap: number = DEFAULT_ERROR_BODY_CAP): string {
   if (!body) {
     return "";
