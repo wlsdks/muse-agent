@@ -4113,6 +4113,55 @@ describe("cli program", () => {
     expect(resolveActivePersonaPreamble(withOverride)).toBe("OVERRIDDEN");
   });
 
+  it("muse persona use <typo-id> suggests the closest valid id and exits 1 (goal 100)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-persona-use-typo-"));
+    const fsp = await import("node:fs/promises");
+    const personaFile = path.join(root, "persona.json");
+    // Seed a custom id so the candidate list spans built-in + custom.
+    await fsp.writeFile(personaFile, JSON.stringify({
+      activeId: "default",
+      custom: { "tony": { preamble: "Sardonic, confident." } }
+    }), "utf8");
+
+    const prev = process.env.MUSE_PERSONA_FILE;
+    process.env.MUSE_PERSONA_FILE = personaFile;
+    const prevExitCode = process.exitCode;
+    process.exitCode = 0;
+    try {
+      // Built-in typo → 'jarvis' suggestion.
+      const { io: io1, output: out1 } = captureOutput();
+      const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+      await program1.parseAsync(["node", "muse", "persona", "use", "jarvss"], { from: "node" });
+      const text1 = out1.join("");
+      expect(text1).toContain("no persona with id 'jarvss'");
+      expect(text1).toContain("did you mean 'jarvis'?");
+      expect(process.exitCode).toBe(1);
+
+      // Custom typo → custom id suggestion (one-edit from 'tony').
+      process.exitCode = 0;
+      const { io: io2, output: out2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      await program2.parseAsync(["node", "muse", "persona", "use", "tonu"], { from: "node" });
+      const text2 = out2.join("");
+      expect(text2).toContain("did you mean 'tony'?");
+      expect(process.exitCode).toBe(1);
+
+      // Unrelated id → no false-positive suggestion.
+      process.exitCode = 0;
+      const { io: io3, output: out3 } = captureOutput();
+      const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("no fetch"); } });
+      await program3.parseAsync(["node", "muse", "persona", "use", "xyz-totally-elsewhere"], { from: "node" });
+      const text3 = out3.join("");
+      expect(text3).toContain("no persona with id 'xyz-totally-elsewhere'");
+      expect(text3).not.toContain("did you mean");
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = prevExitCode;
+      if (prev === undefined) delete process.env.MUSE_PERSONA_FILE;
+      else process.env.MUSE_PERSONA_FILE = prev;
+    }
+  });
+
   it("parseFeedBody handles RSS 2.0 + Atom + filterRecentFeedEntries cutoff (goal 092)", async () => {
     const { parseFeedBody, filterRecentFeedEntries } = await import("../src/feeds-store.js");
 

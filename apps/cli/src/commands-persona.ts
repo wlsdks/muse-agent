@@ -5,6 +5,7 @@
 
 import type { Command } from "commander";
 
+import { closestCommandName } from "./closest-command.js";
 import {
   BUILTIN_PERSONAS,
   defaultPersonaFile,
@@ -53,7 +54,18 @@ export function registerPersonaCommand(program: Command, io: ProgramIO): void {
       const store = await readPersonaStore(file);
       const exists = isBuiltinPersonaId(trimmed) || trimmed in store.custom;
       if (!exists) {
-        io.stderr(`muse persona use: no persona with id '${trimmed}' (run \`muse persona list\` to see the options)\n`);
+        // Goal 100 — fuzzy-suggest the closest valid id when the
+        // user mistyped (`jarvss` → `jarvis`). Reuses the goal-099
+        // Levenshtein helper so the precedence + length-aware
+        // edit cap stays consistent across CLI surfaces.
+        const candidates = [
+          ...BUILTIN_PERSONAS.map((p) => p.id),
+          ...Object.keys(store.custom)
+        ];
+        const suggestion = closestCommandName(trimmed, candidates);
+        io.stderr(`muse persona use: no persona with id '${trimmed}'`);
+        if (suggestion) io.stderr(` — did you mean '${suggestion}'?`);
+        io.stderr(` (run \`muse persona list\` to see the options)\n`);
         process.exitCode = 1;
         return;
       }
