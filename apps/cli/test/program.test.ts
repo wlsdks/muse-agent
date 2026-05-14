@@ -3956,6 +3956,44 @@ describe("cli program", () => {
     expect(sawSignals).toEqual(["SIGTERM"]);
   });
 
+  it("muse vision helpers: resolveVisionModel + loadImageAsBase64 + buildOllamaVisionBody (goal 087)", async () => {
+    const { resolveVisionModel, loadImageAsBase64, buildOllamaVisionBody } = await import("../src/commands-vision.js");
+
+    // resolveVisionModel: explicit > env > default
+    expect(resolveVisionModel("custom:7b", {})).toBe("custom:7b");
+    expect(resolveVisionModel(undefined, { MUSE_VISION_MODEL: "llava:7b" })).toBe("llava:7b");
+    expect(resolveVisionModel(undefined, {})).toBe("llama3.2-vision:latest");
+    expect(resolveVisionModel("   ", { MUSE_VISION_MODEL: "x" })).toBe("x");
+
+    // loadImageAsBase64: data URL path passes through, http path fetches.
+    const dataUrl = "data:image/png;base64,iVBORw0KGgo=";
+    expect(await loadImageAsBase64(dataUrl)).toBe("iVBORw0KGgo=");
+
+    // Note: use a fresh Uint8Array (not Buffer.from([]).buffer) so
+    // we don't grab the shared pool that backs other tests' buffers.
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const stubFetch: typeof globalThis.fetch = (async () => new Response(
+      pngBytes,
+      { status: 200 }
+    )) as typeof globalThis.fetch;
+    const fromHttp = await loadImageAsBase64("https://example.test/x.png", stubFetch);
+    expect(fromHttp).toBe(Buffer.from(pngBytes).toString("base64"));
+
+    // Local file path.
+    const fsp = await import("node:fs/promises");
+    const root = await mkdtemp(path.join(tmpdir(), "muse-vision-test-"));
+    const file = path.join(root, "img.png");
+    await fsp.writeFile(file, Buffer.from("hello"));
+    expect(await loadImageAsBase64(file)).toBe(Buffer.from("hello").toString("base64"));
+
+    // buildOllamaVisionBody shape.
+    const body = buildOllamaVisionBody({ model: "m", prompt: "p", imageBase64: "QkFTRTY0" });
+    expect(body).toEqual({ model: "m", prompt: "p", images: ["QkFTRTY0"], stream: false });
+
+    // Malformed data URL throws.
+    await expect(loadImageAsBase64("data:image/png;base64NOCOMMA")).rejects.toThrow(/comma/);
+  });
+
   it("planActivityLogCompaction filters by suffix + age + allow-list (goal 080)", async () => {
     const { planActivityLogCompaction, COMPACTABLE_STORE_BASENAMES } = await import("../src/commands-maintenance.js");
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-compact-"));

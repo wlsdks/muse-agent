@@ -37,4 +37,19 @@ existing endpoint; no new native deps, no cloud roundtrip.
 
 ## Status
 
-open
+done — `muse vision <path|url|data:>` POSTs the image (base64)
+to `<ollamaUrl>/api/generate` with `{ model, prompt, images,
+stream:false }`. Model resolution: `--model` > `MUSE_VISION_MODEL`
+env > `llama3.2-vision:latest`. Three input shapes: local path,
+http(s):// URL (fetched + base64-encoded), data URL
+(prefix-stripped passthrough).
+
+Three pure helpers exported for tests: `resolveVisionModel`,
+`loadImageAsBase64`, `buildOllamaVisionBody`. cli +1 test
+covers each branch of all three.
+
+Ollama unreachable → clean stderr hint pointing at
+`ollama serve` + `ollama pull <model>`, exit 1. Dogfood on this
+host hit exactly that path (no Ollama running) — matches the
+JARVIS-NEXT.md "best-effort skip" contract; unit test carries
+the correctness contract.

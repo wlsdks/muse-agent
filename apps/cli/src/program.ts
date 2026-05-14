@@ -84,6 +84,7 @@ import { registerAskCommand } from "./commands-ask.js";
 import { registerExportCommand } from "./commands-export.js";
 import { registerCompletionCommand } from "./commands-completion.js";
 import { registerImportCommand } from "./commands-import.js";
+import { registerVisionCommand } from "./commands-vision.js";
 import { registerMaintenanceCommand } from "./commands-maintenance.js";
 import { registerMetricsCommands } from "./commands-metrics.js";
 import { registerSessionCommands } from "./commands-session.js";
@@ -475,6 +476,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerCompletionCommand(program, io);
   registerMetricsCommands(program, io, { apiRequest, writeOutput });
   registerMaintenanceCommand(program, io);
+  registerVisionCommand(program, io);
   registerWatchFolderCommand(program, io);
   registerRoutineCommand(program, io);
   registerTrustCommands(program, io);
