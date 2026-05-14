@@ -3796,6 +3796,55 @@ describe("cli program", () => {
     }
   });
 
+  it("apiRequest formats an HTML 404 into a one-line hint instead of dumping the body", async () => {
+    const { formatApiErrorResponse } = await import("../src/program-helpers.js");
+    // A multi-KB HTML 404 (what Next.js dev server returns when
+    // the CLI's --api-url defaults to 127.0.0.1:3000 and the user
+    // has the web app on that port instead of the muse API).
+    const htmlBody = `<!DOCTYPE html><html><head><title>404</title></head><body>${"<script>".repeat(500)}</body></html>`;
+    const fakeResponse = {
+      status: 404,
+      statusText: "Not Found",
+      headers: {
+        get(name: string): string | null {
+          return name.toLowerCase() === "content-type" ? "text/html; charset=utf-8" : null;
+        }
+      }
+    };
+    const err = formatApiErrorResponse(fakeResponse, htmlBody, "http://127.0.0.1:3000");
+    expect(err.message).toContain("Muse API 404 at http://127.0.0.1:3000");
+    expect(err.message).toContain("response was HTML, not JSON");
+    expect(err.message).toContain("--api-url");
+    expect(err.message).not.toContain("<!DOCTYPE");
+    expect(err.message).not.toContain("<script>");
+  });
+
+  it("apiRequest formats a non-HTML 4xx body but caps it at 240 chars", async () => {
+    const { formatApiErrorResponse } = await import("../src/program-helpers.js");
+    const longJson = `{"error":"${"x".repeat(500)}"}`;
+    const fakeResponse = {
+      status: 422,
+      statusText: "Unprocessable Entity",
+      headers: { get: (): string | null => "application/json" }
+    };
+    const err = formatApiErrorResponse(fakeResponse, longJson, "http://localhost:3000");
+    expect(err.message).toMatch(/^Muse API 422:/);
+    // Trimmed preview + ellipsis indicator (240 chars + 1 for the ellipsis).
+    expect(err.message.length).toBeLessThan(280);
+    expect(err.message).toContain("…");
+  });
+
+  it("apiRequest falls back to statusText when the body is empty", async () => {
+    const { formatApiErrorResponse } = await import("../src/program-helpers.js");
+    const fakeResponse = {
+      status: 500,
+      statusText: "Internal Server Error",
+      headers: { get: (): string | null => null }
+    };
+    const err = formatApiErrorResponse(fakeResponse, "", "http://localhost:3000");
+    expect(err.message).toBe("Muse API 500: Internal Server Error");
+  });
+
   it("muse status surfaces the log-file / last-notice inconsistency instead of saying '(not yet created)'", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-status-loginconsist-"));
     const fsp = await import("node:fs/promises");

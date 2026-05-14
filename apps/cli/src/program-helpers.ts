@@ -127,10 +127,36 @@ export async function apiRequest(
   const responseText = await response.text();
 
   if (!response.ok) {
-    throw new Error(`Muse API ${response.status}: ${responseText || response.statusText}`);
+    throw formatApiErrorResponse(response, responseText, baseUrl);
   }
 
   return responseText.length > 0 ? JSON.parse(responseText) as unknown : undefined;
+}
+
+/**
+ * Build a one-line Error from a non-OK API response. Caps large
+ * bodies + special-cases HTML responses — the common dogfood
+ * failure mode is `--api-url` (or the default `127.0.0.1:3000`)
+ * pointing at a Next.js dev server instead of the Muse API, in
+ * which case the upstream returns a multi-kilobyte HTML 404 page.
+ * Dumping the raw HTML into the terminal hid the actual problem.
+ */
+export function formatApiErrorResponse(
+  response: { readonly status: number; readonly statusText: string; readonly headers: { get(name: string): string | null } },
+  body: string,
+  baseUrl: string
+): Error {
+  const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
+  if (contentType.includes("text/html")) {
+    return new Error(
+      `Muse API ${response.status} at ${baseUrl}: response was HTML, not JSON. ` +
+      `The URL probably points at a web server instead of the Muse API — ` +
+      `start the API with \`pnpm --filter @muse/api dev\` or pass --api-url <correct url>.`
+    );
+  }
+  const trimmed = body.trim();
+  const preview = trimmed.length > 240 ? `${trimmed.slice(0, 240)}…` : trimmed;
+  return new Error(`Muse API ${response.status}: ${preview || response.statusText}`);
 }
 
 /**
@@ -423,7 +449,7 @@ export async function streamRemoteChat(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Muse API ${response.status}: ${errorText || response.statusText}`);
+    throw formatApiErrorResponse(response, errorText, baseUrl);
   }
 
   let output = "";
