@@ -196,6 +196,50 @@ export function registerMcpCommands(program: Command, io: ProgramIO, helpers: Mc
       writeOutput(io, await apiRequest(io, command, "/api/mcp/servers"));
     });
 
+  // Goal 075 — surface reconnect progress. `getHealth` returns
+  // `{ status, error?, reconnectAttempts, nextReconnectAt? }`
+  // per server; we render "reconnecting in 8s" so an operator
+  // doesn't stare at "disconnected" wondering whether retry is
+  // still scheduled.
+  mcp
+    .command("status")
+    .description("Show per-server health, including reconnect schedule (goal 075)")
+    .option("--json", "Print the raw health payload from /api/mcp/servers/:name/health")
+    .action(async (options: { readonly json?: boolean }, command) => {
+      const servers = (await apiRequest(io, command, "/api/mcp/servers")) as Array<{ name: string }>;
+      if (!Array.isArray(servers) || servers.length === 0) {
+        io.stdout("(no MCP servers registered)\n");
+        return;
+      }
+      const now = Date.now();
+      const rows: Array<Record<string, unknown>> = [];
+      for (const server of servers) {
+        const health = await apiRequest(io, command, `/api/mcp/servers/${encodeURIComponent(server.name)}/health`) as {
+          status?: string;
+          error?: string;
+          reconnectAttempts?: number;
+          nextReconnectAt?: string;
+        };
+        rows.push({ name: server.name, ...health });
+      }
+      if (options.json) {
+        writeOutput(io, rows);
+        return;
+      }
+      for (const row of rows) {
+        const status = String(row["status"] ?? "?");
+        const attempts = Number(row["reconnectAttempts"] ?? 0);
+        const nextAt = row["nextReconnectAt"] ? new Date(String(row["nextReconnectAt"])) : undefined;
+        let reconnectClause = "";
+        if (nextAt && !Number.isNaN(nextAt.getTime())) {
+          const seconds = Math.max(0, Math.round((nextAt.getTime() - now) / 1000));
+          reconnectClause = ` (reconnecting in ${seconds.toString()}s, attempt ${attempts.toString()})`;
+        }
+        const errorClause = row["error"] ? ` — ${String(row["error"])}` : "";
+        io.stdout(`${String(row["name"])}\t${status.toUpperCase()}${reconnectClause}${errorClause}\n`);
+      }
+    });
+
   mcp
     .command("add")
     .description("Register an MCP server")

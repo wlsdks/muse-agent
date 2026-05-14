@@ -94,7 +94,7 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 072 | [Episode capture on SIGTERM](072-episode-capture-on-sigterm.md)                    | reliability          | done   |
 | 073 | [User-memory auto-extract throttle](073-user-memory-extract-throttle.md)           | reliability          | done   |
 | 074 | [Notes index rebuild on schema bump](074-notes-index-schema-bump-rebuild.md)       | reliability          | done   |
-| 075 | [MCP reconnect backoff progress](075-mcp-reconnect-backoff-progress.md)            | reliability          | open   |
+| 075 | [MCP reconnect backoff progress](075-mcp-reconnect-backoff-progress.md)            | reliability          | done   |
 | 076 | [`muse trace tail` — live-tail spans](076-muse-trace-tail.md)                      | observability        | open   |
 | 077 | [`muse metrics show` (SLO + drift)](077-muse-metrics-show.md)                      | observability        | open   |
 | 078 | [`muse status` today's token-cost rollup](078-status-token-cost-rollup.md)         | observability        | open   |

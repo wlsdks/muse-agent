@@ -3956,6 +3956,45 @@ describe("cli program", () => {
     expect(sawSignals).toEqual(["SIGTERM"]);
   });
 
+  it("muse mcp status renders 'reconnecting in Ns' for servers with a scheduled retry (goal 075)", async () => {
+    const fixedNow = new Date("2026-05-14T12:00:00Z");
+    const { io, output } = captureOutput();
+    const program = createProgram({
+      ...io,
+      fetch: async (url) => {
+        const path = String(url);
+        if (path.endsWith("/api/mcp/servers")) {
+          return new Response(JSON.stringify([
+            { name: "alpha" }, { name: "beta" }
+          ]));
+        }
+        if (path.endsWith("/api/mcp/servers/alpha/health")) {
+          return new Response(JSON.stringify({
+            status: "unhealthy",
+            error: "stdio spawn failed",
+            reconnectAttempts: 2,
+            nextReconnectAt: new Date(fixedNow.getTime() + 8_000).toISOString()
+          }));
+        }
+        if (path.endsWith("/api/mcp/servers/beta/health")) {
+          return new Response(JSON.stringify({
+            status: "healthy",
+            reconnectAttempts: 0
+          }));
+        }
+        return new Response("{}");
+      }
+    });
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "mcp", "status"],
+      { from: "node" }
+    );
+    const text = output.join("");
+    expect(text).toMatch(/alpha\tUNHEALTHY.*reconnecting in \d+s.*attempt 2.*stdio spawn failed/);
+    expect(text).toContain("beta\tHEALTHY");
+    expect(text).not.toContain("beta\tHEALTHY (reconnecting");
+  });
+
   it("isNotesIndexValid gates the on-disk schema version (goal 074)", async () => {
     const { isNotesIndexValid, NOTES_INDEX_SCHEMA_VERSION, isNotesIndexStale } = await import("../src/commands-notes-rag.js");
     expect(NOTES_INDEX_SCHEMA_VERSION).toBe(1);
