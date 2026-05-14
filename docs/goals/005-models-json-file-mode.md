@@ -26,4 +26,11 @@ Match that.
 
 ## Status
 
-open
+done — audit verified all three credential-bearing JSON stores
+(setup-model.ts → models.json, FileMessagingCredentialStore →
+messaging.json, FileCalendarCredentialStore → credentials.json)
+already use `mode: 0o600` + post-write `chmod` fallback. No code
+change needed. Added a lock-in test against
+FileMessagingCredentialStore so future refactors can't silently
+regress the mode bits. Skipped on win32 where POSIX mode bits are
+meaningless.

@@ -967,4 +967,19 @@ describe("FileMessagingCredentialStore", () => {
     expect(await store.list()).toEqual(["slack"]);
     expect(await store.load("telegram")).toBeUndefined();
   });
+
+  it("persists credentials with file mode 0600 (goal 005 — defense-in-depth on shared boxes)", async () => {
+    if (process.platform === "win32") {
+      // POSIX mode bits don't exist on Windows; the constructor + writes
+      // still succeed but stat().mode is meaningless. Skip the assertion.
+      return;
+    }
+    const root = mkdtempSync(join(tmpdir(), "muse-msg-creds-mode-"));
+    const file = join(root, "messaging.json");
+    const store = new FileMessagingCredentialStore(file);
+    await store.save("telegram", { token: "secret-bot-token" });
+    const { statSync } = await import("node:fs");
+    const mode = statSync(file).mode & 0o777;
+    expect(mode).toBe(0o600);
+  });
 });
