@@ -23,7 +23,7 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 001 | [API default port conflict](001-api-default-port.md)                              | security/robustness  | done   |
 | 002 | [Verify error-body cap on non-HTML responses](002-error-body-cap-non-html.md)     | security/robustness  | done   |
 | 003 | [SSE stream control-byte strip](003-sse-control-byte-strip.md)                    | security/robustness  | done   |
-| 004 | [Tool-loop timeout + max-iterations audit](004-tool-loop-timeout-audit.md)        | security/robustness  | open   |
+| 004 | [Tool-loop timeout + max-iterations audit](004-tool-loop-timeout-audit.md)        | security/robustness  | done   |
 | 005 | [Models.json file-mode 0600](005-models-json-file-mode.md)                        | security/robustness  | open   |
 | 006 | [Auth JWT-rotation surface](006-auth-jwt-rotation.md)                             | security/robustness  | open   |
 | 007 | [personal-providers.ts decomp](007-personal-providers-decomp.md)                  | big-file decomp      | open   |

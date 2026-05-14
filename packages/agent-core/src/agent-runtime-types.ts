@@ -71,6 +71,15 @@ export interface AgentRuntimeOptions {
   readonly toolExposurePolicy?: ToolExposurePolicy;
   readonly maxToolCalls?: number;
   /**
+   * Wall-clock cap, in ms, for a single agent run's tool-loop.
+   * Default 300_000 (5 min). CLAUDE.md non-negotiable: tool loops
+   * have explicit limits AND timeouts. Checked between iterations
+   * — when the deadline passes the loop disables tools on the
+   * next model call so the agent gets one synthesis turn to wrap
+   * up instead of being cut off mid-thought.
+   */
+  readonly maxRunWallclockMs?: number;
+  /**
    * Per-tool-result character cap (Context Engineering step 1.b).
    * When set and a tool returns more than `maxChars` characters,
    * the message-bound copy is truncated head+tail with an explicit

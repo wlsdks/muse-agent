@@ -157,6 +157,7 @@ export class AgentRuntime {
   private readonly toolExecutor?: ToolExecutor;
   private readonly toolExposurePolicy?: ToolExposurePolicy;
   private readonly maxToolCalls: number;
+  private readonly maxRunWallclockMs: number;
   private readonly maxToolOutputChars: number;
   private readonly contextReferenceStore?: ContextReferenceStore;
   private readonly circuitBreaker?: CircuitBreaker;
@@ -206,6 +207,10 @@ export class AgentRuntime {
           })
         : undefined);
     this.maxToolCalls = Math.max(0, options.maxToolCalls ?? 10);
+    // CLAUDE.md non-negotiable: tool loops have explicit limits AND
+    // timeouts. Default 5 minutes — long enough for chained tool
+    // calls + model latency, short enough to bound a runaway loop.
+    this.maxRunWallclockMs = Math.max(0, options.maxRunWallclockMs ?? 300_000);
     this.maxToolOutputChars = Math.max(0, options.maxToolOutputChars ?? 0);
     if (options.contextReferenceStore) {
       this.contextReferenceStore = options.contextReferenceStore;
@@ -689,6 +694,7 @@ export class AgentRuntime {
     return {
       executeToolCall: (context, toolCall, activeTools) => this.executeToolCall(context, toolCall, activeTools),
       generateWithTracing: (context, provider, request) => this.generateWithTracing(context, provider, request),
+      maxRunWallclockMs: this.maxRunWallclockMs,
       maxToolCalls: this.maxToolCalls,
       maxToolOutputChars: this.maxToolOutputChars,
       ...(this.contextReferenceStore ? { contextReferenceStore: this.contextReferenceStore } : {}),

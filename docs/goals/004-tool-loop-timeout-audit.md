@@ -25,4 +25,10 @@ forever on a tool that returns instantly.
 
 ## Status
 
-open
+done — `maxRunWallclockMs` option added to AgentRuntimeOptions
+(default 300_000 / 5 min). Wired through ModelLoopRunner →
+executeModelLoop + executeStreamingModelLoop. When the deadline
+passes mid-loop, tools are disabled on the next model call so the
+agent gets one clean synthesis turn instead of being cut off.
+agent-core +1 test (deadline 5ms, mock provider sleeps 20ms;
+tool fires once on turn 1, turn 2 has no tools and returns final).

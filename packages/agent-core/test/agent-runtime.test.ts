@@ -965,6 +965,59 @@ describe("AgentRuntime", () => {
     expect(result.response.output).toBe("Healthy.");
   });
 
+  it("maxRunWallclockMs disables further tool calls once the deadline passes", async () => {
+    const executeTool = vi.fn(() => "tool-result");
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Always returns work to do.",
+          inputSchema: { type: "object" },
+          name: "read_status",
+          risk: "read"
+        },
+        execute: executeTool
+      }
+    ]);
+    // Provider yields a tool-call on turn 1 (with sleep so the
+    // 5ms deadline is exceeded by the time we check at turn 2),
+    // then a clean final response on turn 2.
+    const provider: ModelProvider = {
+      id: "stub",
+      listModels: async () => [],
+      generate: async (req: ModelRequest) => {
+        const isFirst = req.tools !== undefined && req.tools.length > 0;
+        if (isFirst) {
+          await new Promise((r) => setTimeout(r, 20));
+          return {
+            id: "tool",
+            model: "test-model",
+            output: "Looking...",
+            toolCalls: [{ arguments: {}, id: "tc-1", name: "read_status" }]
+          };
+        }
+        return { id: "final", model: "test-model", output: "Done." };
+      },
+      stream: async function* () { /* unused */ }
+    };
+    const runtime = createAgentRuntime({
+      maxRunWallclockMs: 5,
+      maxToolCalls: 10,
+      modelProvider: provider,
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "check status", role: "user" }],
+      model: "provider/model"
+    });
+
+    // The tool fired once on turn 1; turn 2 had tools disabled
+    // (wallclock exceeded) so the model returned a final answer
+    // without asking for another tool.
+    expect(executeTool).toHaveBeenCalledOnce();
+    expect(result.response.output).toBe("Done.");
+  });
+
   it("filters risky tools before exposing them to the model", async () => {
     const generated: ModelRequest[] = [];
     const toolRegistry = new ToolRegistry([

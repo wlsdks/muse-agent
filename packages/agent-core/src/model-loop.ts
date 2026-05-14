@@ -48,6 +48,15 @@ import type { AgentRunContext } from "./types.js";
 
 export interface ModelLoopRunner {
   readonly maxToolCalls: number;
+  /**
+   * Wall-clock cap, in ms, for a single run's tool-loop. Counts
+   * from the start of `executeModelLoop` / `executeStreamingModelLoop`.
+   * Checked between iterations — if the deadline passes the loop
+   * returns the current response with no further tool execution.
+   * 0 / undefined disables the deadline. CLAUDE.md non-negotiable:
+   * "Tool loops have explicit limits and timeouts."
+   */
+  readonly maxRunWallclockMs?: number;
   readonly tracer: MuseTracer;
   readonly metrics: AgentMetrics;
   readonly tokenUsageSink?: TokenUsageSink;
@@ -104,9 +113,18 @@ export async function executeModelLoop(
   let messages: readonly ModelMessage[] = [...request.messages];
   let toolCallCount = 0;
   const deduplicator = new ToolCallDeduplicator();
+  const deadlineMs = runner.maxRunWallclockMs && runner.maxRunWallclockMs > 0
+    ? Date.now() + runner.maxRunWallclockMs
+    : undefined;
 
   while (true) {
-    const activeTools = toolCallCount < runner.maxToolCalls ? request.tools : [];
+    // Wall-clock deadline cuts the loop short BEFORE the next model
+    // call — disables tools for the final synthesis turn so the
+    // model returns a clean response instead of asking for another
+    // tool we'd refuse. Honours the iter's "explicit limits and
+    // timeouts" non-negotiable from CLAUDE.md.
+    const wallclockExceeded = deadlineMs !== undefined && Date.now() > deadlineMs;
+    const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls) ? request.tools : [];
     const response = await runner.generateWithTracing(context, provider, {
       ...request,
       messages,
@@ -185,9 +203,13 @@ export async function* executeStreamingModelLoop(
   let messages: readonly ModelMessage[] = [...request.messages];
   let toolCallCount = 0;
   const deduplicator = new ToolCallDeduplicator();
+  const deadlineMs = runner.maxRunWallclockMs && runner.maxRunWallclockMs > 0
+    ? Date.now() + runner.maxRunWallclockMs
+    : undefined;
 
   while (true) {
-    const activeTools = toolCallCount < runner.maxToolCalls ? request.tools : [];
+    const wallclockExceeded = deadlineMs !== undefined && Date.now() > deadlineMs;
+    const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls) ? request.tools : [];
     const turnStream = streamModelTurn(runner, context, provider, {
       ...request,
       messages,
