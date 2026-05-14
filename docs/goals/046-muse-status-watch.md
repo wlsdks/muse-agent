@@ -18,4 +18,12 @@ Ctrl-C exit.
 
 ## Status
 
-open
+done — `muse status --watch` redraws the dashboard on a fixed
+cadence (default 5s, `--interval <seconds>` override clamped to
+[1, 3600]) until SIGINT. The render path was extracted to a
+shared `renderStatus(io, snap)` so the one-shot and watch loops
+both consume `collectStatus` + the same formatted layout.
+ANSI `\x1b[2J\x1b[H` clears + parks the cursor between ticks.
+`--json` short-circuits watch (a watch loop emitting JSON every
+tick is a stream consumer's job, not status's). cli +1 unit
+test for the interval-parser boundaries.

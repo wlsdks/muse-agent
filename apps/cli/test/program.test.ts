@@ -3616,6 +3616,21 @@ describe("cli program", () => {
     expect(resolveReplHistoryCap("9999")).toBe(9999);
   });
 
+  it("resolveStatusWatchIntervalMs defaults to 5s and clamps to [1s, 3600s] (goal 046)", async () => {
+    const { resolveStatusWatchIntervalMs } = await import("../src/commands-status.js");
+    expect(resolveStatusWatchIntervalMs(undefined)).toBe(5_000);
+    expect(resolveStatusWatchIntervalMs("")).toBe(5_000);
+    expect(resolveStatusWatchIntervalMs("not-a-number")).toBe(5_000);
+    expect(resolveStatusWatchIntervalMs("0")).toBe(5_000);
+    expect(resolveStatusWatchIntervalMs("-3")).toBe(5_000);
+    // Clean values pass through.
+    expect(resolveStatusWatchIntervalMs("2")).toBe(2_000);
+    expect(resolveStatusWatchIntervalMs("0.5")).toBe(1_000);
+    expect(resolveStatusWatchIntervalMs("60")).toBe(60_000);
+    // Upper clamp at 3600s.
+    expect(resolveStatusWatchIntervalMs("99999")).toBe(3_600_000);
+  });
+
   it("muse calendar tomorrow / this-week compute the right ranges (goal 021)", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-cal-quick-"));
     const fsp = await import("node:fs/promises");

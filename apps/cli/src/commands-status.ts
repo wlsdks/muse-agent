@@ -35,6 +35,15 @@ import { readTrust } from "./commands-trust.js";
 interface StatusOptions {
   readonly user?: string;
   readonly json?: boolean;
+  /**
+   * Goal 046 — when set, redraws the status snapshot on a fixed
+   * cadence until Ctrl-C. `--json` short-circuits this (a watch
+   * loop emitting JSON every tick is a stream consumer's job, not
+   * status's) so the option is silently ignored when both are set.
+   */
+  readonly watch?: boolean;
+  /** Seconds between renders in --watch mode. Defaults to 5. */
+  readonly interval?: string;
 }
 
 function envValue(key: string): string | undefined {
@@ -283,22 +292,24 @@ function summariseProviders() {
   return { configured, total: configured.length };
 }
 
-export function registerStatusCommand(program: Command, io: ProgramIO): void {
-  program
-    .command("status")
-    .description("JARVIS-style at-a-glance dashboard: persona + model + imminent tasks + last notice")
-    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
-    .option("--json", "Emit structured JSON instead of the formatted report")
-    .action(async (options: StatusOptions) => {
-      const userId = options.user ?? defaultUserId();
-      const snap = await collectStatus(userId);
+/**
+ * Goal 046 — parse `--interval <n>` (seconds) for `muse status --watch`.
+ * Default 5s, clamped to [1, 3600] so a bad input can't lock the
+ * loop into a single tick or starve the terminal with sub-second
+ * refreshes. Exported for direct test coverage of the boundary
+ * behavior.
+ */
+export function resolveStatusWatchIntervalMs(raw: string | undefined): number {
+  const defaultMs = 5_000;
+  if (!raw) return defaultMs;
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return defaultMs;
+  const seconds = Math.min(3600, Math.max(1, parsed));
+  return Math.round(seconds * 1000);
+}
 
-      if (options.json) {
-        io.stdout(`${JSON.stringify(snap, null, 2)}\n`);
-        return;
-      }
-
-      io.stdout("Muse status:\n");
+function renderStatus(io: ProgramIO, snap: Awaited<ReturnType<typeof collectStatus>>): void {
+  io.stdout("Muse status:\n");
       io.stdout("\n");
       io.stdout(`  user: ${snap.persona.userId}\n`);
       if (snap.persona.factCount + snap.persona.preferenceCount > 0) {
@@ -408,6 +419,66 @@ export function registerStatusCommand(program: Command, io: ProgramIO): void {
       }
       if (snap.trust.blockedSample.length > 0) {
         io.stdout(`    × ${snap.trust.blockedSample.join(", ")}${snap.trust.blockedCount > 3 ? `, +${(snap.trust.blockedCount - 3).toString()} more` : ""}\n`);
+      }
+}
+
+export function registerStatusCommand(program: Command, io: ProgramIO): void {
+  program
+    .command("status")
+    .description("JARVIS-style at-a-glance dashboard: persona + model + imminent tasks + last notice")
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--json", "Emit structured JSON instead of the formatted report")
+    .option("--watch", "Redraw the dashboard on a fixed cadence until Ctrl-C (goal 046)")
+    .option(
+      "--interval <seconds>",
+      "Refresh interval in seconds when --watch is set (default 5, clamped to [1, 3600])"
+    )
+    .action(async (options: StatusOptions) => {
+      const userId = options.user ?? defaultUserId();
+
+      if (options.json) {
+        // --watch is ignored with --json (a watch loop emitting JSON
+        // every tick is a stream consumer's job, not status's).
+        const snap = await collectStatus(userId);
+        io.stdout(`${JSON.stringify(snap, null, 2)}\n`);
+        return;
+      }
+
+      if (!options.watch) {
+        const snap = await collectStatus(userId);
+        renderStatus(io, snap);
+        return;
+      }
+
+      // ANSI `ESC [ 2 J` clears the screen; `ESC [ H` parks the
+      // cursor at home. Together they produce a stable, redrawable
+      // viewport for the watch loop. We render first (so a Ctrl-C
+      // before the first tick still shows a snapshot), then poll on
+      // the parsed interval.
+      const intervalMs = resolveStatusWatchIntervalMs(options.interval);
+      let stopped = false;
+      const sigintHandler = (): void => { stopped = true; };
+      process.once("SIGINT", sigintHandler);
+      try {
+        while (!stopped) {
+          io.stdout("[2J[H");
+          const snap = await collectStatus(userId);
+          renderStatus(io, snap);
+          io.stdout(`\n  (watching every ${(intervalMs / 1000).toString()}s — Ctrl-C to exit)\n`);
+          if (stopped) break;
+          await new Promise<void>((resolve) => {
+            const handle = setTimeout(resolve, intervalMs);
+            // If SIGINT fires mid-sleep, resolve immediately so the
+            // loop check picks up `stopped` and exits cleanly.
+            const earlyWake = (): void => {
+              clearTimeout(handle);
+              resolve();
+            };
+            process.once("SIGINT", earlyWake);
+          });
+        }
+      } finally {
+        process.off("SIGINT", sigintHandler);
       }
     });
 }
