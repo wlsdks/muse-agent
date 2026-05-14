@@ -3498,6 +3498,73 @@ describe("cli program", () => {
     }
   });
 
+  it("captureEndOfSessionEpisode scrubs LLM-generated summary + topics before write (goal 109)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-eos-redact-"));
+    const fsp = await import("node:fs/promises");
+    const prevHome = process.env.HOME;
+    const prevEnabled = process.env.MUSE_EPISODIC_MEMORY_ENABLED;
+    process.env.HOME = root;
+    process.env.MUSE_EPISODIC_MEMORY_ENABLED = "true";
+    try {
+      const { appendLastChatTurn, appendSessionBoundary } = await import("../src/chat-history.js");
+      await appendSessionBoundary({ tsIso: "2026-05-13T08:00:00.000Z", userId: "stark" });
+      await appendLastChatTurn({ message: "Plan rotation", response: "ok" });
+
+      const { captureEndOfSessionEpisode } = await import("../src/chat-end-session.js");
+
+      // Stub provider hallucinates a credential into BOTH the summary
+      // body AND a topic. Even though goal 108 made the input turns
+      // clean, the LLM is free to invent a sk-/ghp- shape; goal 109's
+      // post-summary scrub catches that.
+      const stubProvider = {
+        id: "stub",
+        listModels: async () => [],
+        generate: async () => ({
+          id: "stub-resp",
+          model: "stub",
+          output: [
+            "Discussed key rotation. Old key was sk-proj-abcdefghijklmnopqrstuvwxyz.",
+            "topics: rotation, ghp_abcdefghijklmnopqrstuvwxyzABCDEF, security"
+          ].join("\n")
+        }),
+        stream: async function* () { /* unused */ }
+      } as unknown as Parameters<typeof captureEndOfSessionEpisode>[0]["modelProvider"];
+
+      const captured = await captureEndOfSessionEpisode({
+        model: "stub",
+        modelProvider: stubProvider,
+        now: () => new Date("2026-05-13T08:15:00.000Z"),
+        userId: "stark"
+      });
+      expect(captured.status).toBe("captured");
+      if (captured.status !== "captured") return;
+
+      // In-memory episode object: secrets replaced with markers.
+      expect(captured.episode.summary).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz");
+      expect(captured.episode.summary).toContain("[redacted-openai-key]");
+      expect(captured.episode.summary).toContain("Discussed key rotation");
+      expect(captured.episode.topics ?? []).toContain("[redacted-github-pat]");
+      expect((captured.episode.topics ?? []).join(" ")).not.toContain("ghp_abcdefghijklmnopqrstuvwxyzABCDEF");
+      // Other topics survive unchanged.
+      expect(captured.episode.topics).toContain("rotation");
+      expect(captured.episode.topics).toContain("security");
+
+      // On-disk persistence carries the same scrubbed form.
+      const onDisk = JSON.parse(await fsp.readFile(path.join(root, ".muse", "episodes.json"), "utf8")) as {
+        episodes: Array<{ summary: string; topics?: string[] }>;
+      };
+      const persisted = onDisk.episodes[0]!;
+      expect(persisted.summary).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz");
+      expect(persisted.summary).toContain("[redacted-openai-key]");
+      expect((persisted.topics ?? []).join("|")).not.toContain("ghp_abcdefghijklmnopqrstuvwxyzABCDEF");
+    } finally {
+      if (prevHome !== undefined) process.env.HOME = prevHome;
+      else delete process.env.HOME;
+      if (prevEnabled !== undefined) process.env.MUSE_EPISODIC_MEMORY_ENABLED = prevEnabled;
+      else delete process.env.MUSE_EPISODIC_MEMORY_ENABLED;
+    }
+  });
+
   it("captureEndOfSessionEpisode fails soft and writes nothing when the summariser errors", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-eos-soft-"));
     const fsp = await import("node:fs/promises");

@@ -39,6 +39,7 @@ import {
   type PersistedEpisode
 } from "@muse/mcp";
 import { resolveEpisodesFile } from "@muse/autoconfigure";
+import { redactSecretsInText } from "@muse/shared";
 
 // Pull the ModelProvider shape from the summariser's own options so
 // @muse/cli stays off a direct @muse/model dependency — the
@@ -129,12 +130,20 @@ export async function captureEndOfSessionEpisode(options: CaptureEndOfSessionOpt
   if (!ownerId) {
     return { reason: "no userId available (boundary missing it, no fallback supplied)", status: "skipped" };
   }
+  // Goal 109 — defense-in-depth scrub on the LLM-generated summary
+  // + topics. The input turns are already redacted (goal 108 hits
+  // last-chat.jsonl), but a model is free to hallucinate a
+  // credential-shaped string into its summary or echo a token
+  // verbatim from a non-history surface. Running the same shared
+  // helper here means the on-disk episode shares the credential-
+  // hygiene guarantee with the rest of the persistence layer.
+  const scrubbedTopics = summary.topics.map((topic) => redactSecretsInText(topic));
   const episode: PersistedEpisode = {
     endedAt: now().toISOString(),
     id: `ep_${randomUUID()}`,
     startedAt: range.startedAt,
-    summary: summary.summary,
-    ...(summary.topics.length > 0 ? { topics: summary.topics } : {}),
+    summary: redactSecretsInText(summary.summary),
+    ...(scrubbedTopics.length > 0 ? { topics: scrubbedTopics } : {}),
     userId: ownerId
   };
 
