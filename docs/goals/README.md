@@ -31,7 +31,7 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 009 | [agent-runtime.ts method-cluster extraction](009-agent-runtime-decomp.md)         | big-file decomp      | deferred |
 | 010 | [chat-repl.ts seam decomp](010-chat-repl-decomp.md)                               | big-file decomp      | deferred |
 | 011 | [commands-proactive.ts subcommand split](011-commands-proactive-decomp.md)        | big-file decomp      | deferred |
-| 012 | [`muse open <id-prefix>`](012-muse-open-id-prefix.md)                             | JARVIS feature       | open   |
+| 012 | [`muse open <id-prefix>`](012-muse-open-id-prefix.md)                             | JARVIS feature       | done   |
 | 013 | [`muse summarize today`](013-muse-summarize-today.md)                             | JARVIS feature       | open   |
 | 014 | [`GET /api/history` REST endpoint](014-rest-history-endpoint.md)                  | JARVIS feature       | open   |
 | 015 | [Web UI history panel](015-web-history-panel.md)                                  | JARVIS feature       | open   |

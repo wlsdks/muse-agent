@@ -1848,6 +1848,74 @@ describe("cli program", () => {
     }
   });
 
+  it("muse open <prefix> dispatches to the right store + handles ambiguous + miss", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-open-"));
+    const fsp = await import("node:fs/promises");
+    const remindersFile = path.join(root, "reminders.json");
+    const followupsFile = path.join(root, "followups.json");
+    const episodesFile = path.join(root, "episodes.json");
+
+    await fsp.writeFile(remindersFile, JSON.stringify({
+      reminders: [{ id: "rem_call_vet", text: "Call vet", dueAt: "2026-05-14T18:00:00Z", status: "pending", createdAt: "2026-05-12T00:00:00Z" }]
+    }), "utf8");
+    await fsp.writeFile(followupsFile, JSON.stringify({
+      followups: [{ id: "fu_send_memo", userId: "stark", scheduledFor: "2026-05-15T09:00:00Z", status: "scheduled", summary: "Send Q3 memo", createdAt: "2026-05-12T00:00:00Z" }]
+    }), "utf8");
+    await fsp.writeFile(episodesFile, JSON.stringify({
+      episodes: [
+        { id: "ep_a", userId: "stark", startedAt: "2026-05-12T21:30:00Z", endedAt: "2026-05-12T22:00:00Z", summary: "Reviewed budget" },
+        { id: "ep_b", userId: "stark", startedAt: "2026-05-13T21:30:00Z", endedAt: "2026-05-13T22:00:00Z", summary: "Other session" }
+      ]
+    }), "utf8");
+
+    const prev = {
+      reminders: process.env.MUSE_REMINDERS_FILE,
+      followups: process.env.MUSE_FOLLOWUPS_FILE,
+      episodes: process.env.MUSE_EPISODES_FILE
+    };
+    process.env.MUSE_REMINDERS_FILE = remindersFile;
+    process.env.MUSE_FOLLOWUPS_FILE = followupsFile;
+    process.env.MUSE_EPISODES_FILE = episodesFile;
+    try {
+      // Unique hit: dispatches to followup.
+      const { io: io1, output: out1 } = captureOutput();
+      const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+      await program1.parseAsync(["node", "muse", "open", "fu_send", "--json"], { from: "node" });
+      const r1 = JSON.parse(out1.join("")) as { kind: string; record: { id: string; summary: string } };
+      expect(r1.kind).toBe("followup");
+      expect(r1.record.summary).toBe("Send Q3 memo");
+
+      // Ambiguous: 'ep_' matches both episodes.
+      const { io: io2, output: out2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      await program2.parseAsync(["node", "muse", "open", "ep_", "--json"], { from: "node" });
+      const r2 = JSON.parse(out2.join("")) as { ambiguous: boolean; hits: Array<{ kind: string; id: string }> };
+      expect(r2.ambiguous).toBe(true);
+      expect(r2.hits.map((h) => h.id).sort()).toEqual(["ep_a", "ep_b"]);
+
+      // Miss: nothing matches.
+      const { io: io3, output: out3 } = captureOutput();
+      const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("no fetch"); } });
+      await program3.parseAsync(["node", "muse", "open", "nonexistent_xyz", "--json"], { from: "node" });
+      const r3 = JSON.parse(out3.join("")) as { matches: number };
+      expect(r3.matches).toBe(0);
+
+      // Formatted miss output.
+      const { io: io4, output: out4 } = captureOutput();
+      const program4 = createProgram({ ...io4, fetch: async () => { throw new Error("no fetch"); } });
+      await program4.parseAsync(["node", "muse", "open", "nonexistent_xyz"], { from: "node" });
+      expect(out4.join("")).toContain("no records found with id prefix");
+    } finally {
+      const restore = (k: keyof typeof prev, envKey: string): void => {
+        if (prev[k] === undefined) delete process.env[envKey];
+        else process.env[envKey] = prev[k];
+      };
+      restore("reminders", "MUSE_REMINDERS_FILE");
+      restore("followups", "MUSE_FOLLOWUPS_FILE");
+      restore("episodes", "MUSE_EPISODES_FILE");
+    }
+  });
+
   it("muse history merges reminder + proactive + followup + pattern + episode firings, newest first", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-history-"));
     const fsp = await import("node:fs/promises");

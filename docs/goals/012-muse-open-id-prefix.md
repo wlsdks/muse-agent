@@ -26,4 +26,9 @@ that mental overhead.
 
 ## Status
 
-open
+done — new `muse open <prefix>` CLI command. Scans six stores in
+fixed order (reminders → followups → episodes → patterns-fired →
+proactive-history → tasks). Unique match prints the record;
+ambiguous prints all hits with a nudge to lengthen prefix; miss
+prints a friendly empty hint. `--json` for scripting. cli +1
+test covers all three branches.

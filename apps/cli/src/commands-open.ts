@@ -1,0 +1,148 @@
+/**
+ * `muse open <id-prefix>` — unified lookup across activity stores.
+ *
+ * `muse history` / `muse status` / `muse remind list` each print
+ * 12-char ID prefixes. To inspect one, the user previously had to
+ * know which subcommand owns the ID space (followup vs episode vs
+ * reminder vs task vs proactive-history). This command scans every
+ * known store in a fixed order, returns the first prefix match,
+ * and surfaces the full record. Ambiguous matches print a
+ * disambiguation list.
+ *
+ * Probe order:
+ *   reminders → followups → episodes → patterns-fired →
+ *   proactive-history → tasks
+ *
+ * Pure-read; no LLM, no model invocation. Goal 012.
+ */
+
+import { promises as fs } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+import {
+  readFollowups,
+  readProactiveHistory,
+  readReminders,
+  readTasks
+} from "@muse/mcp";
+import type { Command } from "commander";
+
+import type { ProgramIO } from "./program.js";
+
+interface OpenOptions {
+  readonly json?: boolean;
+}
+
+interface Hit {
+  readonly kind: "reminder" | "followup" | "episode" | "pattern" | "proactive" | "task";
+  readonly id: string;
+  readonly record: Record<string, unknown>;
+}
+
+function envOr(key: string, fallbackName: string): string {
+  const v = process.env[key]?.trim();
+  return v && v.length > 0 ? v : join(homedir(), ".muse", fallbackName);
+}
+
+async function safeReadJson(path: string): Promise<unknown | undefined> {
+  try {
+    const raw = await fs.readFile(path, "utf8");
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+async function scanAll(prefix: string): Promise<readonly Hit[]> {
+  const hits: Hit[] = [];
+
+  // Reminders
+  for (const r of await readReminders(envOr("MUSE_REMINDERS_FILE", "reminders.json")).catch(() => [])) {
+    if (r.id.startsWith(prefix)) hits.push({ kind: "reminder", id: r.id, record: r as unknown as Record<string, unknown> });
+  }
+
+  // Followups
+  for (const f of await readFollowups(envOr("MUSE_FOLLOWUPS_FILE", "followups.json")).catch(() => [])) {
+    if (f.id.startsWith(prefix)) hits.push({ kind: "followup", id: f.id, record: f as unknown as Record<string, unknown> });
+  }
+
+  // Episodes
+  const episodesDoc = await safeReadJson(envOr("MUSE_EPISODES_FILE", "episodes.json")) as { episodes?: readonly Record<string, unknown>[] } | undefined;
+  for (const e of episodesDoc?.episodes ?? []) {
+    const id = e["id"];
+    if (typeof id === "string" && id.startsWith(prefix)) hits.push({ kind: "episode", id, record: e });
+  }
+
+  // Patterns fired (sidecar)
+  const patternsDoc = await safeReadJson(envOr("MUSE_PATTERNS_FIRED_FILE", "patterns-fired.json")) as { fired?: readonly Record<string, unknown>[] } | undefined;
+  for (const p of patternsDoc?.fired ?? []) {
+    const id = p["patternId"];
+    if (typeof id === "string" && id.startsWith(prefix)) hits.push({ kind: "pattern", id, record: p });
+  }
+
+  // Proactive history
+  for (const entry of await readProactiveHistory(envOr("MUSE_PROACTIVE_HISTORY_FILE", "proactive-history.json")).catch(() => [])) {
+    if (entry.itemId.startsWith(prefix)) hits.push({ kind: "proactive", id: entry.itemId, record: entry as unknown as Record<string, unknown> });
+  }
+
+  // Tasks
+  for (const t of await readTasks(envOr("MUSE_TASKS_FILE", "tasks.json")).catch(() => [])) {
+    if (t.id.startsWith(prefix)) hits.push({ kind: "task", id: t.id, record: t as unknown as Record<string, unknown> });
+  }
+
+  return hits;
+}
+
+export function registerOpenCommand(program: Command, io: ProgramIO): void {
+  program
+    .command("open")
+    .description("Look up an activity record by ID prefix (scans every store; first hit wins, ambiguous matches surfaced)")
+    .argument("<prefix>", "Substring matched against record IDs (must be a prefix, e.g. 'rem_a' or 'ep_b')")
+    .option("--json", "Emit the matched record as JSON")
+    .action(async (prefix: string, options: OpenOptions) => {
+      const trimmed = prefix.trim();
+      if (trimmed.length === 0) {
+        io.stderr("prefix is required\n");
+        process.exitCode = 1;
+        return;
+      }
+      const hits = await scanAll(trimmed);
+      if (hits.length === 0) {
+        if (options.json) {
+          io.stdout(`${JSON.stringify({ matches: 0, prefix: trimmed }, null, 2)}\n`);
+        } else {
+          io.stdout(`(no records found with id prefix '${trimmed}')\n`);
+        }
+        process.exitCode = 1;
+        return;
+      }
+      if (hits.length > 1) {
+        if (options.json) {
+          io.stdout(`${JSON.stringify({
+            ambiguous: true,
+            hits: hits.map((h) => ({ kind: h.kind, id: h.id }))
+          }, null, 2)}\n`);
+        } else {
+          io.stdout(`Ambiguous prefix '${trimmed}' matched ${hits.length.toString()} record(s):\n`);
+          for (const h of hits) {
+            io.stdout(`  [${h.kind}] ${h.id}\n`);
+          }
+          io.stdout(`(re-run with a longer prefix to disambiguate)\n`);
+        }
+        process.exitCode = 1;
+        return;
+      }
+      const hit = hits[0]!;
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ kind: hit.kind, record: hit.record }, null, 2)}\n`);
+        return;
+      }
+      io.stdout(`[${hit.kind}] ${hit.id}\n\n`);
+      for (const [k, v] of Object.entries(hit.record)) {
+        if (v === undefined || v === null) continue;
+        const display = typeof v === "string" ? v : JSON.stringify(v);
+        io.stdout(`  ${k}: ${display}\n`);
+      }
+    });
+}
