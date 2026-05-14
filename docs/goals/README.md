@@ -51,6 +51,55 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 029 | [User-memory diff broadcaster](029-user-memory-diff-broadcaster.md)               | reliability          | done   |
 | 030 | [`muse doctor` overall health summary + exit code](030-doctor-summary-exit.md)    | UX polish            | done   |
 
+| 033 | [Expand prompt-injection input guard library](033-prompt-injection-pattern-library.md) | security/robustness | open   |
+| 034 | [REPL long-session memory audit](034-repl-memory-leak-audit.md)                    | security/robustness  | open   |
+| 035 | [Audit every ~/.muse JSON store file-mode](035-audit-store-file-modes.md)          | security/robustness  | open   |
+| 036 | [Final env-only-probe sweep](036-env-only-probe-final-sweep.md)                    | security/robustness  | open   |
+| 037 | [Cache-Control: no-store on /api/admin/*](037-admin-cache-control-no-store.md)     | security/robustness  | open   |
+| 038 | [Followup write durability + recovery](038-followup-write-durability.md)           | security/robustness  | open   |
+| 039 | [Webhook signature validation (LINE / Slack)](039-webhook-signature-validation.md) | security/robustness  | open   |
+| 040 | [CORS allowlist instead of wildcard](040-cors-allowlist-not-wildcard.md)           | security/robustness  | open   |
+| 041 | [Extract buildCalendarRegistry](041-personal-providers-calendar-decomp.md)         | big-file decomp      | open   |
+| 042 | [Extract buildVoiceRegistry](042-personal-providers-voice-decomp.md)               | big-file decomp      | open   |
+| 043 | [Extract buildNotesRegistry](043-personal-providers-notes-decomp.md)               | big-file decomp      | open   |
+| 044 | [Extract buildTasksRegistry](044-personal-providers-tasks-decomp.md)               | big-file decomp      | open   |
+| 045 | [server.ts ServerOptions type cleanup](045-server-options-type-cleanup.md)         | big-file decomp      | open   |
+| 046 | [`muse status --watch`](046-muse-status-watch.md)                                  | JARVIS feature       | open   |
+| 047 | [`muse ask --notes-only`](047-muse-ask-notes-only.md)                              | JARVIS feature       | open   |
+| 048 | [`muse export` (backup tarball)](048-muse-export.md)                               | JARVIS feature       | open   |
+| 049 | [`muse import <tar>` (restore)](049-muse-import.md)                                | JARVIS feature       | open   |
+| 050 | [`muse history --grep <pattern>`](050-muse-history-grep.md)                        | JARVIS feature       | open   |
+| 051 | [`muse memory diff [<since>]`](051-muse-memory-diff.md)                            | JARVIS feature       | open   |
+| 052 | [`muse session lock --hours N`](052-muse-session-lock.md)                          | JARVIS feature       | open   |
+| 053 | [`muse trust list --by-domain`](053-muse-trust-by-domain.md)                       | JARVIS feature       | open   |
+| 054 | [`muse today --summarize`](054-muse-summarize-today.md)                            | JARVIS feature       | open   |
+| 055 | [`muse search --time today\|week\|month`](055-muse-search-time-range.md)          | JARVIS feature       | open   |
+| 056 | [`muse open <id> --raw`](056-muse-open-raw.md)                                     | JARVIS feature       | open   |
+| 057 | [`muse runs delete <run-id>`](057-muse-runs-delete.md)                             | JARVIS feature       | open   |
+| 058 | [`muse notes search --mode llm-judge` polish](058-muse-notes-search-llm-judge-polish.md) | JARVIS feature | open |
+| 059 | [`muse calendar import <file.ics>`](059-muse-calendar-import-ics.md)               | JARVIS feature       | open   |
+| 060 | [Top-level muse with no args prints help](060-muse-help-on-empty.md)               | UX polish            | open   |
+| 061 | [`muse today` colorize output (TTY-aware)](061-today-colorize.md)                  | UX polish            | open   |
+| 062 | [`muse history` relative time format](062-history-relative-time.md)                | UX polish            | open   |
+| 063 | [`muse history` icon-per-kind](063-history-icon-per-kind.md)                       | UX polish            | open   |
+| 064 | [`muse status` JSON schemaVersion](064-status-schema-version.md)                   | UX polish            | open   |
+| 065 | [`muse search` backend latency in output](065-search-backend-latency.md)           | UX polish            | open   |
+| 066 | [zsh + bash completions](066-zsh-completions.md)                                   | UX polish            | open   |
+| 067 | [Ctrl-C handling in long-running commands](067-ctrl-c-friendly.md)                 | UX polish            | open   |
+| 068 | [`muse doctor --watch` (TUI)](068-doctor-watch-mode.md)                            | UX polish            | open   |
+| 069 | [Reminder firing idempotency on restart](069-reminder-firing-idempotent.md)        | reliability          | open   |
+| 070 | [Proactive notice retry on transient fail](070-proactive-retry-on-transient-failure.md) | reliability    | open   |
+| 071 | [Calendar fallback to local on remote fail](071-calendar-fallback-on-remote-fail.md) | reliability        | open   |
+| 072 | [Episode capture on SIGTERM](072-episode-capture-on-sigterm.md)                    | reliability          | open   |
+| 073 | [User-memory auto-extract throttle](073-user-memory-extract-throttle.md)           | reliability          | open   |
+| 074 | [Notes index rebuild on schema bump](074-notes-index-schema-bump-rebuild.md)       | reliability          | open   |
+| 075 | [MCP reconnect backoff progress](075-mcp-reconnect-backoff-progress.md)            | reliability          | open   |
+| 076 | [`muse trace tail` — live-tail spans](076-muse-trace-tail.md)                      | observability        | open   |
+| 077 | [`muse metrics show` (SLO + drift)](077-muse-metrics-show.md)                      | observability        | open   |
+| 078 | [`muse status` today's token-cost rollup](078-status-token-cost-rollup.md)         | observability        | open   |
+| 079 | [proactive-history.json rotation on size](079-proactive-history-rotation.md)       | observability        | open   |
+| 080 | [Activity log compaction](080-activity-log-compaction.md)                          | observability        | open   |
+
 Categories:
 
 - **security/robustness** — bug fix, hardening, defense-in-depth
@@ -58,3 +107,4 @@ Categories:
 - **JARVIS feature** — new user-facing surface or workflow
 - **UX polish** — empty-state hints, formatting toggles, clearer errors
 - **reliability** — auto-behavior correctness, throttling, deduping
+- **observability** — surfaces over runs / metrics / cost / traces
