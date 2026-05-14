@@ -3939,6 +3939,45 @@ describe("cli program", () => {
     }
   });
 
+  it("parseIcsEvents extracts the minimum-viable VEVENT shape (goal 059)", async () => {
+    const { parseIcsEvents } = await import("../src/ics-parser.js");
+    const body = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "BEGIN:VEVENT",
+      "UID:evt-1@muse",
+      "SUMMARY:Coffee with Alice",
+      "DTSTART:20260515T140000Z",
+      "DTEND:20260515T150000Z",
+      "LOCATION:Cafe Muse",
+      "DESCRIPTION:Catch up\\nwith Alice",
+      "END:VEVENT",
+      "BEGIN:VEVENT",
+      "UID:evt-2@muse",
+      "SUMMARY:Holiday",
+      "DTSTART;VALUE=DATE:20260516",
+      "DTEND;VALUE=DATE:20260517",
+      "END:VEVENT",
+      "BEGIN:VEVENT",
+      "SUMMARY:Malformed — no DTSTART",
+      "END:VEVENT",
+      "END:VCALENDAR"
+    ].join("\r\n");
+
+    const events = parseIcsEvents(body);
+    expect(events.length).toBe(2);
+    expect(events[0]?.title).toBe("Coffee with Alice");
+    expect(events[0]?.allDay).toBe(false);
+    expect(events[0]?.startsAt.toISOString()).toBe("2026-05-15T14:00:00.000Z");
+    expect(events[0]?.endsAt.toISOString()).toBe("2026-05-15T15:00:00.000Z");
+    expect(events[0]?.location).toBe("Cafe Muse");
+    expect(events[0]?.notes).toBe("Catch up\nwith Alice");
+    expect(events[0]?.uid).toBe("evt-1@muse");
+
+    expect(events[1]?.allDay).toBe(true);
+    expect(events[1]?.startsAt.toISOString()).toBe("2026-05-16T00:00:00.000Z");
+  });
+
   it("computeMemoryDiff buckets added / changed / removed per slot (goal 051)", async () => {
     const { computeMemoryDiff } = await import("../src/commands-memory.js");
     const baseline = {

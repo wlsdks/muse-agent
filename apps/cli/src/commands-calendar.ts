@@ -11,11 +11,14 @@
  * assembly.
  */
 
+import { readFile } from "node:fs/promises";
+
 import { resolveLocalCalendarFile } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
 import type { Command } from "commander";
 
 import { formatCalendarEvents, formatProvidersList } from "./human-formatters.js";
+import { parseIcsEvents } from "./ics-parser.js";
 import type { ProgramIO } from "./program.js";
 
 export interface CalendarCommandHelpers {
@@ -182,4 +185,80 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
     end.setHours(23, 59, 59, 999);
     return { from: now, to: end };
   });
+
+  // Goal 059 — one-shot bulk import from an .ics file into the
+  // local calendar provider. Idempotent by (title, startsAt) so
+  // re-running the same import doesn't duplicate. Use
+  // `--allow-duplicates` to bypass the dedupe.
+  calendar
+    .command("import")
+    .description("Bulk-import an .ics file into the local calendar provider (idempotent by title+start) (goal 059)")
+    .argument("<file>", "Path to a .ics file")
+    .option("--allow-duplicates", "Skip the (title, startsAt) dedupe check and write every parsed event")
+    .option("--dry-run", "Parse + report what would be written without touching disk")
+    .option("--json", "Emit a structured summary instead of a formatted report")
+    .action(async (
+      file: string,
+      options: { readonly allowDuplicates?: boolean; readonly dryRun?: boolean; readonly json?: boolean }
+    ) => {
+      let body: string;
+      try {
+        body = await readFile(file, "utf8");
+      } catch (cause) {
+        io.stderr(`Could not read ${file}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const parsed = parseIcsEvents(body);
+      if (parsed.length === 0) {
+        const empty = { created: 0, parsed: 0, skipped: 0 };
+        if (options.json) {
+          helpers.writeOutput(io, empty);
+        } else {
+          io.stdout(`No VEVENT blocks found in ${file}\n`);
+        }
+        return;
+      }
+      const provider = localCalendarProvider();
+      // Range covers every parsed event so we can dedupe against
+      // existing rows by (title, startsAt-ms). Cheap enough at the
+      // single-user scale this importer targets.
+      const startsAtMs = parsed.map((e) => e.startsAt.getTime());
+      const rangeFrom = new Date(Math.min(...startsAtMs));
+      const rangeTo = new Date(Math.max(...parsed.map((e) => e.endsAt.getTime())) + 24 * 60 * 60 * 1000);
+      const existing = options.allowDuplicates
+        ? []
+        : await provider.listEvents({ from: rangeFrom, to: rangeTo });
+      const dupKey = (title: string, startsAt: Date): string => `${title}|${startsAt.toISOString()}`;
+      const existingKeys = new Set(existing.map((e) => dupKey(e.title, e.startsAt)));
+      let created = 0;
+      let skipped = 0;
+      for (const event of parsed) {
+        if (existingKeys.has(dupKey(event.title, event.startsAt))) {
+          skipped += 1;
+          continue;
+        }
+        if (!options.dryRun) {
+          await provider.createEvent({
+            title: event.title,
+            startsAt: event.startsAt,
+            endsAt: event.endsAt,
+            ...(event.allDay ? { allDay: true } : {}),
+            ...(event.location ? { location: event.location } : {}),
+            ...(event.notes ? { notes: event.notes } : {})
+          });
+        }
+        created += 1;
+        existingKeys.add(dupKey(event.title, event.startsAt));
+      }
+      const summary = { parsed: parsed.length, created, skipped, dryRun: options.dryRun === true };
+      if (options.json) {
+        helpers.writeOutput(io, summary);
+        return;
+      }
+      io.stdout(
+        `Imported ${created.toString()}${options.dryRun ? " (dry-run)" : ""} event(s) from ${file} ` +
+        `(${parsed.length.toString()} parsed, ${skipped.toString()} skipped as duplicate)\n`
+      );
+    });
 }
