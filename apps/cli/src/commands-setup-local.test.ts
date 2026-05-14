@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LOCAL_MODEL_PRESETS, pickPreset } from "./commands-setup-local.js";
+import { LOCAL_MODEL_PRESETS, checkPresetRam, pickPreset } from "./commands-setup-local.js";
 
 describe("pickPreset", () => {
   it("returns highest-tier preset when nothing pulled (so caller can render pull hint)", () => {
@@ -47,6 +47,41 @@ describe("pickPreset", () => {
     const chosen = pickPreset(new Set(), "qwen3.5:2b-q4_K_M");
     expect(chosen?.tier).toBe("low");
     expect(chosen?.approxSizeGb).toBe(1.9);
+  });
+});
+
+describe("checkPresetRam (goal 105)", () => {
+  const power = LOCAL_MODEL_PRESETS.find((p) => p.tier === "power")!;  // 32 GB
+  const high = LOCAL_MODEL_PRESETS.find((p) => p.tier === "high")!;    // 12 GB
+  const low = LOCAL_MODEL_PRESETS.find((p) => p.tier === "low")!;      // 6 GB
+
+  it("returns undefined when machine RAM clears the bar", () => {
+    expect(checkPresetRam(36, power)).toBeUndefined();
+    expect(checkPresetRam(32, power)).toBeUndefined();   // exact match passes
+    expect(checkPresetRam(16, high)).toBeUndefined();
+  });
+
+  it("warns when machine RAM is below the preset minimum", () => {
+    const warning = checkPresetRam(8, power);
+    expect(warning?.severity).toBe("warn");
+    expect(warning?.message).toContain("8.0 GB RAM");
+    expect(warning?.message).toContain(power.tag);
+    expect(warning?.message).toContain("≥ 32 GB");
+  });
+
+  it("references the small-tier fallback in the message so the user has a one-liner fix", () => {
+    const warning = checkPresetRam(4, high);
+    expect(warning?.message).toMatch(/muse setup local --model qwen3\.5:2b-q4_K_M/);
+  });
+
+  it("skips the check for custom presets with minRamGb=0", () => {
+    expect(checkPresetRam(2, { ...low, tag: "custom-tag", minRamGb: 0 })).toBeUndefined();
+  });
+
+  it("skips the check on a non-finite or non-positive machine reading", () => {
+    expect(checkPresetRam(NaN, high)).toBeUndefined();
+    expect(checkPresetRam(0, high)).toBeUndefined();
+    expect(checkPresetRam(-1, high)).toBeUndefined();
   });
 });
 

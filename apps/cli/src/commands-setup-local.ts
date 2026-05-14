@@ -16,6 +16,8 @@
  * the README.
  */
 
+import { totalmem } from "node:os";
+
 import type { Command } from "commander";
 
 import type { ConfigCommandHelpers } from "./commands-config.js";
@@ -146,6 +148,41 @@ function formatBytes(bytes: number | undefined): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
+/**
+ * Goal 105 — JARVIS-style pre-flight check. Compare available
+ * machine RAM against the chosen preset's stated minimum and
+ * return a one-liner the action can print before writing config
+ * (or pulling a 17 GB model onto an 8 GB laptop).
+ *
+ * Returns:
+ *   - `undefined` when the rig clears the bar (≥ minRamGb).
+ *   - `{ severity: "warn", message }` when the rig is below the
+ *     stated minimum but the preset is otherwise valid.
+ *
+ * `machineRamGb` is split out as a parameter so the unit test
+ * doesn't need to mock `os.totalmem()`. Caller passes
+ * `totalmem() / 1024 ** 3` at runtime.
+ */
+export function checkPresetRam(
+  machineRamGb: number,
+  preset: LocalModelPreset
+): { readonly severity: "warn"; readonly message: string } | undefined {
+  // `minRamGb: 0` means "unknown / custom preset" — skip the
+  // check rather than produce a misleading "below 0 GB" warning.
+  if (!Number.isFinite(machineRamGb) || machineRamGb <= 0) return undefined;
+  if (preset.minRamGb <= 0) return undefined;
+  if (machineRamGb >= preset.minRamGb) return undefined;
+  return {
+    severity: "warn",
+    message:
+      `Heads up: this machine reports ${machineRamGb.toFixed(1)} GB RAM, ` +
+      `but ${preset.tag} wants ≥ ${preset.minRamGb.toString()} GB. ` +
+      `Expect slow first-tokens / occasional OOM kills. ` +
+      `Drop to a smaller tier (\`muse setup local --model qwen3.5:2b-q4_K_M\`) ` +
+      `or close memory-heavy apps before pulling.`
+  };
+}
+
 export function registerSetupLocalCommand(
   program: Command,
   io: ProgramIO,
@@ -205,6 +242,13 @@ export function registerSetupLocalCommand(
       io.stdout(`Recommended: ollama/${chosen.tag}\n`);
       io.stdout(`  tier: ${chosen.tier}  approx ${chosen.approxSizeGb.toFixed(1)} GB on disk, ≥ ${chosen.minRamGb.toString()} GB RAM\n`);
       io.stdout(`  note: ${chosen.note}\n`);
+
+      // Goal 105 — pre-flight RAM check so we don't silently send
+      // a user with an 8 GB laptop to pull a 17 GB power-tier model.
+      const ramWarning = checkPresetRam(totalmem() / (1024 ** 3), chosen);
+      if (ramWarning) {
+        io.stdout(`  warn: ${ramWarning.message}\n`);
+      }
 
       if (!alreadyPulled) {
         io.stdout(`\n  not pulled yet. Run:\n`);
