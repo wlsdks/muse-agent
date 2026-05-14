@@ -3616,6 +3616,23 @@ describe("cli program", () => {
     expect(resolveReplHistoryCap("9999")).toBe(9999);
   });
 
+  it("groupToolsByDomain buckets entries by prefix and lands dot-less names in (unscoped) (goal 053)", async () => {
+    const { groupToolsByDomain } = await import("../src/commands-trust.js");
+    const grouped = groupToolsByDomain([
+      "notion.notes.search",
+      "notion.tasks.add",
+      "notion.notes.read",
+      "gcal.events.list",
+      "rawtoolname"
+    ]);
+    expect(Object.keys(grouped).sort()).toEqual(["(unscoped)", "gcal", "notion"]);
+    expect(grouped["notion"]).toEqual(["notion.notes.search", "notion.tasks.add", "notion.notes.read"]);
+    expect(grouped["gcal"]).toEqual(["gcal.events.list"]);
+    expect(grouped["(unscoped)"]).toEqual(["rawtoolname"]);
+    // Empty input → empty record (no implicit (unscoped) bucket).
+    expect(groupToolsByDomain([])).toEqual({});
+  });
+
   it("muse with no subcommand prints help instead of erroring (goal 060)", async () => {
     const { io, output } = captureOutput();
     const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });

@@ -95,6 +95,25 @@ function withoutValue(list: readonly string[], value: string): string[] {
   return list.filter((v) => v !== value);
 }
 
+/**
+ * Goal 053 — split each tool name on the first '.' and group by
+ * the prefix so the user sees "I trust 3 tools from notion + 1
+ * from gcal" instead of a flat alphabetised list. A tool name
+ * without a dot lands in an `(unscoped)` bucket so it stays
+ * visible. Exported for direct unit-test coverage.
+ */
+export function groupToolsByDomain(tools: readonly string[]): Record<string, readonly string[]> {
+  const grouped: Record<string, string[]> = {};
+  for (const tool of tools) {
+    const dot = tool.indexOf(".");
+    const domain = dot > 0 ? tool.slice(0, dot) : "(unscoped)";
+    const bucket = grouped[domain] ?? [];
+    bucket.push(tool);
+    grouped[domain] = bucket;
+  }
+  return grouped;
+}
+
 export function registerTrustCommands(program: Command, io: ProgramIO): void {
   const trust = program.command("trust").description("Per-user tool trust list (skills trust calibration)");
 
@@ -104,17 +123,37 @@ export function registerTrustCommands(program: Command, io: ProgramIO): void {
     .option("--user <id>", "User identity (default: $MUSE_USER_ID or $USER)")
     .option("--persona <slot>", "Persona slot")
     .option("--json", "Print machine-readable JSON")
-    .action(async (options: { readonly user?: string; readonly persona?: string; readonly json?: boolean }) => {
+    .option("--by-domain", "Group entries by MCP server domain (the tool-name prefix before the first '.') (goal 053)")
+    .action(async (options: { readonly user?: string; readonly persona?: string; readonly json?: boolean; readonly byDomain?: boolean }) => {
       const key = options.user
         ? (options.persona ? `${options.user}@${options.persona}` : options.user)
         : defaultUserKey(options.persona);
       const file = await readTrustFile(trustPath());
       const entry = entryFor(file, key);
+      const byDomain = options.byDomain
+        ? { trusted: groupToolsByDomain(entry.trustedTools), blocked: groupToolsByDomain(entry.blockedTools) }
+        : undefined;
       if (options.json) {
-        io.stdout(`${JSON.stringify({ key, ...entry }, null, 2)}\n`);
+        io.stdout(`${JSON.stringify({ key, ...entry, ...(byDomain ? { byDomain } : {}) }, null, 2)}\n`);
         return;
       }
       io.stdout(`Trust for ${key}:\n`);
+      if (byDomain) {
+        const renderGroup = (label: string, glyph: string, grouped: ReturnType<typeof groupToolsByDomain>): void => {
+          const domains = Object.keys(grouped).sort();
+          const total = domains.reduce((sum, d) => sum + grouped[d]!.length, 0);
+          io.stdout(`  ${label} (${total.toString()} across ${domains.length.toString()} domain${domains.length === 1 ? "" : "s"}):\n`);
+          if (total === 0) io.stdout(`    (none)\n`);
+          for (const domain of domains) {
+            const tools = grouped[domain]!.slice().sort();
+            io.stdout(`    [${domain}] ${tools.length.toString()}\n`);
+            for (const tool of tools) io.stdout(`      ${glyph} ${tool}\n`);
+          }
+        };
+        renderGroup("trusted", "+", byDomain.trusted);
+        renderGroup("blocked", "×", byDomain.blocked);
+        return;
+      }
       io.stdout(`  trusted (${entry.trustedTools.length.toString()}):\n`);
       for (const tool of entry.trustedTools.sort()) io.stdout(`    + ${tool}\n`);
       if (entry.trustedTools.length === 0) io.stdout(`    (none)\n`);
