@@ -19,4 +19,11 @@ that the agent then processes as user input.
 
 ## Status
 
-open
+done (verify only) — LINE webhook
+`POST /api/messaging/webhooks/line` already validates
+`X-Line-Signature` via HMAC-SHA256(channelSecret, rawBody) +
+`timingSafeEqual`. Existing tests in
+`apps/api/test/messaging-webhooks.test.ts` cover valid-signature
+accept + bad-secret 401 + missing-signature 401. Slack: no
+webhook handler exists in the codebase — Slack inbound is
+poll-mode via `fetchInbound`, not push. No code change needed.
