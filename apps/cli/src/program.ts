@@ -89,6 +89,7 @@ import { registerGlanceCommand } from "./commands-glance.js";
 import { registerPersonaCommand } from "./commands-persona.js";
 import { registerReadCommand } from "./commands-read.js";
 import { registerRecallCommand } from "./commands-recall.js";
+import { registerShowCommand } from "./commands-show.js";
 import { registerVisionCommand } from "./commands-vision.js";
 import { registerMaintenanceCommand } from "./commands-maintenance.js";
 import { registerMetricsCommands } from "./commands-metrics.js";
@@ -482,6 +483,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerMetricsCommands(program, io, { apiRequest, writeOutput });
   registerMaintenanceCommand(program, io);
   registerVisionCommand(program, io);
+  registerShowCommand(program, io);
   registerReadCommand(program, io);
   registerGlanceCommand(program, io);
   registerRecallCommand(program, io);

@@ -3956,6 +3956,31 @@ describe("cli program", () => {
     expect(sawSignals).toEqual(["SIGTERM"]);
   });
 
+  it("buildIterm2InlineImageSequence + detectInlineImageSupport gate inline rendering correctly (goal 096)", async () => {
+    const { buildIterm2InlineImageSequence, detectInlineImageSupport } = await import("../src/commands-show.js");
+
+    // PNG header bytes — content is opaque to the helper, but a real image makes the test honest.
+    const imageBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const sequence = buildIterm2InlineImageSequence({ imageBytes, name: "muse.png" });
+
+    expect(sequence.startsWith("\x1b]1337;File=inline=1;name=")).toBe(true);
+    expect(sequence.endsWith("\x07")).toBe(true);
+
+    // Round-trip: split on `:`, base64-decode each side, expect original inputs back.
+    const headerMatch = sequence.match(/^\x1b\]1337;File=inline=1;name=([^:]+):([^\x07]+)\x07$/);
+    expect(headerMatch).not.toBeNull();
+    expect(Buffer.from(headerMatch![1]!, "base64").toString("utf8")).toBe("muse.png");
+    expect(Buffer.from(headerMatch![2]!, "base64").equals(imageBytes)).toBe(true);
+
+    // Capability gate: iTerm/WezTerm/tabby/kitty → true; everything else → false.
+    expect(detectInlineImageSupport({ TERM_PROGRAM: "iTerm.app" } as NodeJS.ProcessEnv)).toBe(true);
+    expect(detectInlineImageSupport({ TERM_PROGRAM: "WezTerm" } as NodeJS.ProcessEnv)).toBe(true);
+    expect(detectInlineImageSupport({ TERM_PROGRAM: "tabby" } as NodeJS.ProcessEnv)).toBe(true);
+    expect(detectInlineImageSupport({ TERM: "xterm-kitty" } as NodeJS.ProcessEnv)).toBe(true);
+    expect(detectInlineImageSupport({ TERM_PROGRAM: "Apple_Terminal" } as NodeJS.ProcessEnv)).toBe(false);
+    expect(detectInlineImageSupport({} as NodeJS.ProcessEnv)).toBe(false);
+  });
+
   it("suggestPatternHints surfaces patterns whose median hour matches now (goal 095)", async () => {
     const { suggestPatternHints } = await import("../src/commands-status.js");
     const now = new Date("2026-05-15T09:00:00Z"); // 09 UTC

@@ -40,4 +40,17 @@ doesn't advertise inline-image support.
 
 ## Status
 
-open
+done — `apps/cli/src/commands-show.ts` registers `muse show <path>`
+with the iTerm2 inline-image escape sequence
+(`ESC ] 1337 ; File = inline=1 ; name=<b64-name> : <b64-image> BEL`).
+`detectInlineImageSupport(env)` returns true for `TERM_PROGRAM` ∈
+`{ iTerm.app, WezTerm, tabby }` or `TERM` starting with `xterm-kitty`;
+all other terminals fall through to `open` / `xdg-open` unless
+`--inline-only` forces the byte stream. Both helpers are pure +
+exported so the unit test in `apps/cli/test/program.test.ts` pins
+the shape (header bytes, `BEL` terminator, base64 round-trip of
+name + image) without writing to stdout or spawning child
+processes. Dogfood passed on a hand-rolled 1×1 PNG: `od -c` of the
+output starts with `033 ] 1 3 3 7 ; F i l e = i n l i n e = 1`,
+matching the pass criterion. `pnpm check` + `pnpm lint` 0/0 +
+`pnpm smoke:broad` 51/51 + `pnpm smoke:live` 13/13 all green.

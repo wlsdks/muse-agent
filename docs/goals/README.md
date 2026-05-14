@@ -115,7 +115,7 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 093 | [Linux libnotify provider](093-linux-libnotify-provider.md)                        | JARVIS feature       | done   |
 | 094 | [`muse persona` templates](094-muse-persona-templates.md)                          | JARVIS feature       | done   |
 | 095 | [`muse status --suggestions`](095-muse-status-suggestions.md)                      | JARVIS feature       | done   |
-| 096 | [`muse show <image>` terminal render](096-muse-show-terminal-image.md)             | JARVIS feature       | open   |
+| 096 | [`muse show <image>` terminal render](096-muse-show-terminal-image.md)             | JARVIS feature       | done   |
 
 Categories:
 
