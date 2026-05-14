@@ -3788,6 +3788,43 @@ describe("cli program", () => {
     // A handful of real subcommands the user could discover.
     expect(text).toContain("status");
     expect(text).toContain("history");
+    // Goal 099 — the fallback `[unknown_subcommand]` argument must
+    // not leak into the usage banner; "muse [options] [command]"
+    // stays canonical.
+    expect(text).not.toContain("[unknown_subcommand]");
+  });
+
+  it("muse <typo> prints 'Did you mean ...' and exits non-zero (goal 099)", async () => {
+    const prevExitCode = process.exitCode;
+    process.exitCode = 0;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+      await program.parseAsync(["node", "muse", "statu"], { from: "node" });
+      const text = output.join("");
+      expect(text).toContain("unknown command 'statu'");
+      expect(text).toContain("Did you mean 'muse status'?");
+      expect(text).toContain("muse --help");
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = prevExitCode;
+    }
+  });
+
+  it("muse <unrelated-arg> errors without a misleading suggestion (goal 099)", async () => {
+    const prevExitCode = process.exitCode;
+    process.exitCode = 0;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+      await program.parseAsync(["node", "muse", "totally-unrelated-input"], { from: "node" });
+      const text = output.join("");
+      expect(text).toContain("unknown command 'totally-unrelated-input'");
+      expect(text).not.toContain("Did you mean");
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = prevExitCode;
+    }
   });
 
   it("compileHistoryGrep treats input as regex first, falls back to substring on metacharacter errors (goal 050)", async () => {

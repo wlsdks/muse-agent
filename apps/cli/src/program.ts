@@ -10,6 +10,7 @@ import {
   writeStoredToken
 } from "./credential-store.js";
 import { formatCitations } from "./human-formatters.js";
+import { closestCommandName } from "./closest-command.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
 import {
   appendLastChatTurn,
@@ -513,15 +514,50 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerVoiceCommands(program, io, { apiRequest, readApiOptions, writeOutput });
 
   // Goal 060 — `muse` with no subcommand should print help instead
-  // of exiting silently / surfacing a confusing "unknown command"
-  // error. Commander's default behavior shows help text via
-  // `outputHelp`; we route it through `io.stdout` so tests can
-  // capture it the same way they capture any other command output.
-  program.action(() => {
-    program.outputHelp();
+  // of exiting silently. Goal 099 — `muse statu` (and other typos)
+  // should suggest the closest command instead of commander's
+  // confusing "too many arguments" error. Accept an optional
+  // positional and either show help (no arg) or a
+  // friendly-with-suggestion error (unknown arg). The argument is
+  // a fallback catchall — overriding the usage line keeps the help
+  // banner clean ("muse [options] [command]" stays the canonical
+  // form a user sees).
+  program.argument("[unknown_subcommand]");
+  program.allowExcessArguments(true);
+  program.usage("[options] [command]");
+  program.action((unknownSubcommand?: string) => {
+    const attempted = typeof unknownSubcommand === "string" ? unknownSubcommand.trim() : "";
+    if (attempted.length === 0) {
+      program.outputHelp();
+      return;
+    }
+    const known = listAllCommandNames(program);
+    const suggestion = closestCommandName(attempted, known);
+    io.stderr(`error: unknown command '${attempted}'\n`);
+    if (suggestion) {
+      io.stderr(`Did you mean 'muse ${suggestion}'?\n`);
+    }
+    io.stderr("Run `muse --help` for the list of commands.\n");
+    process.exitCode = 1;
   });
 
   return program;
+}
+
+/**
+ * Goal 099 — flatten the root program's `.commands` array into
+ * a deduped list of names (skips hidden / `*` placeholder
+ * entries). Used by the unknown-subcommand fallback to ground
+ * the "Did you mean …" suggestion.
+ */
+function listAllCommandNames(program: Command): readonly string[] {
+  const seen = new Set<string>();
+  for (const cmd of program.commands) {
+    const name = cmd.name();
+    if (!name || name === "*") continue;
+    seen.add(name);
+  }
+  return Array.from(seen).sort();
 }
 
 
