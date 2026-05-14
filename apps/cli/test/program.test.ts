@@ -3605,6 +3605,83 @@ describe("cli program", () => {
     }
   });
 
+  it("muse search --site <domain> prepends site:<domain> to the query (goal 017)", async () => {
+    const originalFetch = globalThis.fetch;
+    const prev = process.env.MUSE_SEARXNG_URL;
+    let capturedUrl = "";
+    try {
+      process.env.MUSE_SEARXNG_URL = "http://searx.test.local";
+      globalThis.fetch = (async (input: RequestInfo | URL): Promise<Response> => {
+        capturedUrl = String(input);
+        return new Response(JSON.stringify({ results: [{ title: "x", url: "https://example.com/y" }] }), {
+          headers: { "content-type": "application/json" },
+          status: 200
+        });
+      }) as typeof globalThis.fetch;
+      const { io } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("api off"); } });
+      await program.parseAsync(["node", "muse", "search", "best deals", "--site", "example.com", "--json"], { from: "node" });
+      expect(capturedUrl).toContain("site%3Aexample.com");
+
+      // Reject shell-meta-ish domains.
+      const { io: io2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("api off"); } });
+      program2.exitOverride();
+      await expect(program2.parseAsync(["node", "muse", "search", "x", "--site", "bad;site", "--json"], { from: "node" }))
+        .rejects.toThrow(/--site must be a bare domain/u);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (prev !== undefined) process.env.MUSE_SEARXNG_URL = prev;
+      else delete process.env.MUSE_SEARXNG_URL;
+    }
+  });
+
+  it("muse search --to-notes <path> writes a markdown note with title + numbered results (goal 016)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-search-tonotes-"));
+    const fsp = await import("node:fs/promises");
+    const notesDir = path.join(root, "notes");
+    await fsp.mkdir(notesDir, { recursive: true });
+    const originalFetch = globalThis.fetch;
+    const prev = { searxng: process.env.MUSE_SEARXNG_URL, notes: process.env.MUSE_NOTES_DIR };
+    process.env.MUSE_NOTES_DIR = notesDir;
+    delete process.env.MUSE_SEARXNG_URL;
+    try {
+      globalThis.fetch = (async (): Promise<Response> => {
+        return new Response(
+          `<a rel="nofollow" class="result__a" href="https://example.com/one">First Hit</a>` +
+          `<a class="result__snippet" href="x">first body</a>`,
+          { status: 200 }
+        );
+      }) as typeof globalThis.fetch;
+
+      const { io } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("api off"); } });
+      await program.parseAsync(["node", "muse", "search", "rust async", "--to-notes", "research/rust.md", "--json"], { from: "node" });
+      const written = await fsp.readFile(path.join(notesDir, "research/rust.md"), "utf8");
+      expect(written).toContain("# Search: rust async");
+      expect(written).toContain("First Hit");
+      expect(written).toContain("https://example.com/one");
+
+      // --overwrite required for an existing file.
+      const { io: io2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("api off"); } });
+      await program2.parseAsync(["node", "muse", "search", "rust again", "--to-notes", "research/rust.md", "--json"], { from: "node" });
+      expect(process.exitCode).toBe(1);
+      process.exitCode = 0;
+
+      const { io: io3 } = captureOutput();
+      const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("api off"); } });
+      await program3.parseAsync(["node", "muse", "search", "rust again", "--to-notes", "research/rust.md", "--overwrite", "--json"], { from: "node" });
+      const after = await fsp.readFile(path.join(notesDir, "research/rust.md"), "utf8");
+      expect(after).toContain("# Search: rust again");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (prev.searxng !== undefined) process.env.MUSE_SEARXNG_URL = prev.searxng;
+      if (prev.notes === undefined) delete process.env.MUSE_NOTES_DIR;
+      else process.env.MUSE_NOTES_DIR = prev.notes;
+    }
+  });
+
   it("muse search formatted output strips ANSI / control characters from untrusted backend text", async () => {
     const { stripUntrustedTerminalChars } = await import("../src/commands-search.js");
     // Direct unit checks on the helper:

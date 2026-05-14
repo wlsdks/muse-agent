@@ -24,4 +24,4 @@ url + snippet per result.
 
 ## Status
 
-open
+done — `--site <domain>` (goal 017) prepends `site:` to the query with domain-format validation; `--to-notes <path>` (goal 016) writes a markdown note via LocalDirNotesProvider, with `--overwrite` guard. cli +2 tests covering both flags + the overwrite-required negative path.

@@ -23,4 +23,8 @@ or refreshes on demand.
 
 ## Status
 
-open
+deferred — backend prerequisite (`GET /api/history`, goal 014)
+landed. The React panel + queryClient wiring + Playwright e2e
++ style-match to personal-panels.tsx is its own focused iter
+(~150 LOC plus visual dogfood loop). Re-open as a dedicated UI
+iter; batching alongside the API change would dilute review.
