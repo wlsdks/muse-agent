@@ -68,9 +68,9 @@ export function registerSearchCommand(program: Command, io: ProgramIO): void {
       io.stdout(`(${total.toString()} result(s) via ${backend})\n\n`);
       for (let i = 0; i < rows.length; i += 1) {
         const r = rows[i]!;
-        const title = (r.title ?? "").trim() || "(untitled)";
-        const url = (r.url ?? "").trim();
-        const snippet = (r.snippet ?? "").replace(/\s+/gu, " ").trim();
+        const title = stripUntrustedTerminalChars(r.title ?? "").trim() || "(untitled)";
+        const url = stripUntrustedTerminalChars(r.url ?? "").trim();
+        const snippet = stripUntrustedTerminalChars(r.snippet ?? "").replace(/\s+/gu, " ").trim();
         io.stdout(`  [${(i + 1).toString()}] ${title}\n`);
         if (url.length > 0) io.stdout(`      ${url}\n`);
         if (snippet.length > 0) {
@@ -80,6 +80,21 @@ export function registerSearchCommand(program: Command, io: ProgramIO): void {
         io.stdout("\n");
       }
     });
+}
+
+/**
+ * Strip C0/C1 control characters from untrusted text before
+ * writing to the terminal. Search results come from external HTTP
+ * backends (SearXNG or DuckDuckGo HTML scraping); a hostile result
+ * could embed ANSI escape sequences (`\x1b[…m`, `\x1b[2J`, `\x1b]…`)
+ * to clear the screen, hide text, set window titles, or otherwise
+ * confuse the user. We allow newline + tab through other paths and
+ * already collapse whitespace; for the unsafe range we just drop
+ * the bytes entirely. Treat tool output as untrusted (CLAUDE.md).
+ */
+export function stripUntrustedTerminalChars(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/gu, "");
 }
 
 function parseLimit(raw: string | undefined, fallback: number, cap: number): number {

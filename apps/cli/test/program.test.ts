@@ -3455,6 +3455,44 @@ describe("cli program", () => {
     }
   });
 
+  it("muse search formatted output strips ANSI / control characters from untrusted backend text", async () => {
+    const { stripUntrustedTerminalChars } = await import("../src/commands-search.js");
+    // Direct unit checks on the helper:
+    expect(stripUntrustedTerminalChars("Hello\x1b[2J\x1b[H")).toBe("Hello[2J[H");
+    expect(stripUntrustedTerminalChars("a\x07b\x00c")).toBe("abc");
+    expect(stripUntrustedTerminalChars("ok\nstays")).toBe("ok\nstays");
+    // C1 range (e.g. \x9b "CSI") is also stripped — some terminals
+    // honour the bare CSI as start-of-escape-sequence.
+    expect(stripUntrustedTerminalChars("title\x9b31mEVIL")).toBe("title31mEVIL");
+
+    // End-to-end: a backend whose snippet embeds a bare ESC[2J does
+    // NOT make it through to stdout.
+    const originalFetch = globalThis.fetch;
+    const prev = process.env.MUSE_SEARXNG_URL;
+    try {
+      delete process.env.MUSE_SEARXNG_URL;
+      globalThis.fetch = (async (): Promise<Response> => {
+        return new Response(
+          `<a rel="nofollow" class="result__a" href="https://example.com/one">Plain Title</a>` +
+          `<a class="result__snippet" href="x">snippet \x1b[2J\x07with control bytes</a>`,
+          { status: 200 }
+        );
+      }) as typeof globalThis.fetch;
+
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("api fetch off"); } });
+      await program.parseAsync(["node", "muse", "search", "test"], { from: "node" });
+      const text = output.join("");
+      expect(text).toContain("snippet [2Jwith control bytes"); // the ESC + BEL are gone, the literal "[2J" survives as plain text
+      expect(text).not.toMatch(/\x1b/u);
+      expect(text).not.toMatch(/\x07/u);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (prev !== undefined) process.env.MUSE_SEARXNG_URL = prev;
+      else delete process.env.MUSE_SEARXNG_URL;
+    }
+  });
+
   it("resolveOllamaUrl reads OLLAMA_BASE_URL from env first, then ~/.muse/models.json, then default", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-ollama-url-"));
     const fsp = await import("node:fs/promises");
