@@ -262,6 +262,34 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
     }
   }
 
+  // Goal 102 — same footgun, embedding edition. When the user has
+  // ever run `muse notes reindex`, `~/.muse/notes-index.json` exists
+  // and records the embedding model in its `model` field. Falling
+  // back to `nomic-embed-text` (the default in `commands-notes-rag.ts`)
+  // keeps the probe useful when the file is malformed or pre-versioned.
+  // Probe only when (a) the index exists AND (b) Ollama is reachable —
+  // we don't want to nag users who never opted into notes RAG.
+  if (ollamaModels) {
+    const notesIndexPath = join(muse_home, "notes-index.json");
+    const embedModel = await readNotesIndexEmbedModel(notesIndexPath);
+    if (embedModel !== undefined) {
+      const match = findOllamaModelTag(ollamaModels, embedModel);
+      if (match) {
+        checks.push({
+          detail: `${embedModel} pulled (${formatBytes(match.size)}) — RAG over ~/notes works`,
+          name: "ollama embed model",
+          status: "ok"
+        });
+      } else {
+        checks.push({
+          detail: `${embedModel} NOT pulled — \`ollama pull ${embedModel}\` (notes RAG will throw on next search)`,
+          name: "ollama embed model",
+          status: "warn"
+        });
+      }
+    }
+  }
+
   // SearXNG (optional — `MUSE_SEARXNG_URL` opt-in). When set, probe
   // both reachability (`/healthz`) AND the JSON-format path that
   // `muse.search` actually uses — a SearXNG instance with the
@@ -433,6 +461,46 @@ export function findOllamaModelTag(
   const normalize = (s: string): string => (s.includes(":") ? s : `${s}:latest`);
   const target = normalize(configuredTag.trim());
   return models.find((m) => normalize(m.name) === target);
+}
+
+/**
+ * Goal 102 — pure parser pulled out for direct testing. Returns
+ * the recorded embed model name (or the documented default,
+ * `nomic-embed-text`, when the file exists but doesn't carry one)
+ * when notes RAG is in use on this host; `undefined` when no
+ * index has ever been written.
+ *
+ * `rawJson` is the literal file body, or `undefined` to mean
+ * "ENOENT". Malformed JSON / missing-field cases fall through to
+ * the documented default — a noisy probe is better than a silent
+ * gap when the user has clearly opted into RAG.
+ */
+export function parseNotesIndexEmbedModel(rawJson: string | undefined): string | undefined {
+  if (rawJson === undefined) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawJson);
+  } catch {
+    return "nomic-embed-text";
+  }
+  if (!parsed || typeof parsed !== "object") return "nomic-embed-text";
+  const candidate = (parsed as { model?: unknown }).model;
+  if (typeof candidate === "string" && candidate.trim().length > 0) {
+    return candidate.trim();
+  }
+  return "nomic-embed-text";
+}
+
+async function readNotesIndexEmbedModel(path: string): Promise<string | undefined> {
+  try {
+    const raw = await fs.readFile(path, "utf8");
+    return parseNotesIndexEmbedModel(raw);
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    // Unreadable index (permissions?) — flag the probe instead of
+    // silently dropping.
+    return parseNotesIndexEmbedModel("");
+  }
 }
 
 /** GB / MB / kB formatter for doctor's model-pulled detail line. */

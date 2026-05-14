@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { findOllamaModelTag, type OllamaTagsEntry } from "./commands-doctor.js";
+import {
+  findOllamaModelTag,
+  parseNotesIndexEmbedModel,
+  type OllamaTagsEntry
+} from "./commands-doctor.js";
 
 describe("findOllamaModelTag (goal 101)", () => {
   const models: readonly OllamaTagsEntry[] = [
@@ -33,5 +37,30 @@ describe("findOllamaModelTag (goal 101)", () => {
 
   it("does NOT match a different tag of the same base (q4 vs q8)", () => {
     expect(findOllamaModelTag(models, "qwen3.5:9b-q8_0")).toBeUndefined();
+  });
+});
+
+describe("parseNotesIndexEmbedModel (goal 102)", () => {
+  it("returns the recorded model when the index carries one", () => {
+    expect(parseNotesIndexEmbedModel(JSON.stringify({ model: "mxbai-embed-large", version: 1 })))
+      .toBe("mxbai-embed-large");
+  });
+
+  it("falls back to the documented default when the field is missing", () => {
+    expect(parseNotesIndexEmbedModel(JSON.stringify({ version: 1 }))).toBe("nomic-embed-text");
+  });
+
+  it("falls back to the default on malformed JSON (corrupt index)", () => {
+    expect(parseNotesIndexEmbedModel("{ this is not json")).toBe("nomic-embed-text");
+  });
+
+  it("returns undefined when no file exists at all (user has not opted into RAG)", () => {
+    expect(parseNotesIndexEmbedModel(undefined)).toBeUndefined();
+  });
+
+  it("trims whitespace and treats whitespace-only model as missing", () => {
+    expect(parseNotesIndexEmbedModel(JSON.stringify({ model: "  nomic-embed-text  " })))
+      .toBe("nomic-embed-text");
+    expect(parseNotesIndexEmbedModel(JSON.stringify({ model: "   " }))).toBe("nomic-embed-text");
   });
 });
