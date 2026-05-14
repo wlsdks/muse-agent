@@ -19,6 +19,8 @@
  * so a single user sees the same persona everywhere.
  */
 
+import { readFile } from "node:fs/promises";
+
 import { FileUserMemoryStore } from "@muse/memory";
 import type { Command } from "commander";
 
@@ -130,6 +132,50 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
     });
 
   memory
+    .command("diff")
+    .description("Show added / changed / removed facts + preferences since a baseline snapshot (goal 051)")
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--baseline <path>", "Path to a baseline JSON file (shape: { facts?, preferences? }). When omitted, treats baseline as empty so every entry shows as added.")
+    .option("--json", "Emit the structured diff payload instead of a formatted summary")
+    .action(async (options: MemoryCommonOptions & { readonly baseline?: string }) => {
+      const userId = resolveMemoryUserId(options.user);
+      const store = new FileUserMemoryStore();
+      const memoryRecord = await store.findByUserId(userId);
+      const current: MemorySnapshotLike = memoryRecord
+        ? { facts: memoryRecord.facts, preferences: memoryRecord.preferences }
+        : { facts: {}, preferences: {} };
+
+      let baseline: MemorySnapshotLike = { facts: {}, preferences: {} };
+      if (options.baseline) {
+        try {
+          const raw = await readFile(options.baseline, "utf8");
+          const parsed = JSON.parse(raw) as MemorySnapshotLike;
+          baseline = {
+            facts: parsed.facts ?? {},
+            preferences: parsed.preferences ?? {}
+          };
+        } catch (cause) {
+          io.stderr(`Could not read baseline ${options.baseline}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+          process.exitCode = 1;
+          return;
+        }
+      }
+
+      const diff = computeMemoryDiff(baseline, current);
+      if (options.json) {
+        helpers.writeOutput(io, diff);
+        return;
+      }
+      if (diff.totalChanges === 0) {
+        io.stdout(`No memory changes for ${userId}\n`);
+        return;
+      }
+      io.stdout(`Memory diff for ${userId} (${diff.totalChanges.toString()} change(s)):\n\n`);
+      renderDiffSlot(io, "facts", diff.facts);
+      renderDiffSlot(io, "preferences", diff.preferences);
+    });
+
+  memory
     .command("clear")
     .description("Wipe stored user memory")
     .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
@@ -162,4 +208,81 @@ function parseKindSegment(kind: string): "facts" | "preferences" {
     return "preferences";
   }
   throw new Error("kind must be 'fact' or 'preference'");
+}
+
+/**
+ * Goal 051 — shape of the diff returned by `computeMemoryDiff`.
+ * Each slot kind (facts / preferences) gets three buckets so a
+ * dashboard or commit-style message can render "added 2, changed
+ * 1, removed 0" without re-walking the data.
+ */
+export interface MemoryDiffSlot {
+  readonly added: Readonly<Record<string, string>>;
+  readonly changed: Readonly<Record<string, { readonly from: string; readonly to: string }>>;
+  readonly removed: Readonly<Record<string, string>>;
+}
+
+export interface MemoryDiff {
+  readonly facts: MemoryDiffSlot;
+  readonly preferences: MemoryDiffSlot;
+  readonly totalChanges: number;
+}
+
+interface MemorySnapshotLike {
+  readonly facts?: Readonly<Record<string, string>>;
+  readonly preferences?: Readonly<Record<string, string>>;
+}
+
+/**
+ * Goal 051 — pure diff over the two map-shaped memory slots. The
+ * caller is responsible for loading + parsing the JSON; this
+ * function only takes plain objects so tests can drive it with
+ * fixtures and the CLI can read from either a file or an API
+ * response without branching the diff code.
+ */
+export function computeMemoryDiff(
+  previous: MemorySnapshotLike,
+  current: MemorySnapshotLike
+): MemoryDiff {
+  const facts = diffSlot(previous.facts ?? {}, current.facts ?? {});
+  const preferences = diffSlot(previous.preferences ?? {}, current.preferences ?? {});
+  const totalChanges =
+    Object.keys(facts.added).length + Object.keys(facts.changed).length + Object.keys(facts.removed).length +
+    Object.keys(preferences.added).length + Object.keys(preferences.changed).length + Object.keys(preferences.removed).length;
+  return { facts, preferences, totalChanges };
+}
+
+function renderDiffSlot(io: ProgramIO, label: string, slot: MemoryDiffSlot): void {
+  const total = Object.keys(slot.added).length + Object.keys(slot.changed).length + Object.keys(slot.removed).length;
+  if (total === 0) return;
+  io.stdout(`  ${label}:\n`);
+  for (const [key, value] of Object.entries(slot.added)) {
+    io.stdout(`    + ${key} = ${value}\n`);
+  }
+  for (const [key, change] of Object.entries(slot.changed)) {
+    io.stdout(`    ~ ${key}: ${change.from} -> ${change.to}\n`);
+  }
+  for (const [key, value] of Object.entries(slot.removed)) {
+    io.stdout(`    - ${key} (was ${value})\n`);
+  }
+  io.stdout("\n");
+}
+
+function diffSlot(prev: Readonly<Record<string, string>>, curr: Readonly<Record<string, string>>): MemoryDiffSlot {
+  const added: Record<string, string> = {};
+  const changed: Record<string, { from: string; to: string }> = {};
+  const removed: Record<string, string> = {};
+  for (const [key, value] of Object.entries(curr)) {
+    if (!(key in prev)) {
+      added[key] = value;
+    } else if (prev[key] !== value) {
+      changed[key] = { from: prev[key]!, to: value };
+    }
+  }
+  for (const [key, value] of Object.entries(prev)) {
+    if (!(key in curr)) {
+      removed[key] = value;
+    }
+  }
+  return { added, changed, removed };
 }

@@ -3923,6 +3923,37 @@ describe("cli program", () => {
     }
   });
 
+  it("computeMemoryDiff buckets added / changed / removed per slot (goal 051)", async () => {
+    const { computeMemoryDiff } = await import("../src/commands-memory.js");
+    const baseline = {
+      facts: { name: "Stark", city: "Seoul" },
+      preferences: { language: "ko" }
+    };
+    const current = {
+      facts: { name: "Stark", city: "Tokyo", role: "engineer" },
+      preferences: { language: "ko", style: "concise" }
+    };
+    const diff = computeMemoryDiff(baseline, current);
+    expect(diff.facts.added).toEqual({ role: "engineer" });
+    expect(diff.facts.changed).toEqual({ city: { from: "Seoul", to: "Tokyo" } });
+    expect(diff.facts.removed).toEqual({});
+    expect(diff.preferences.added).toEqual({ style: "concise" });
+    expect(diff.preferences.changed).toEqual({});
+    expect(diff.preferences.removed).toEqual({});
+    expect(diff.totalChanges).toBe(3);
+
+    // Empty baseline = every current entry counts as added.
+    const fromZero = computeMemoryDiff({}, current);
+    expect(Object.keys(fromZero.facts.added).length).toBe(3);
+    expect(Object.keys(fromZero.preferences.added).length).toBe(2);
+    expect(fromZero.totalChanges).toBe(5);
+
+    // Removed bucket fires when a key drops out.
+    const removal = computeMemoryDiff({ facts: { a: "1", b: "2" } }, { facts: { a: "1" } });
+    expect(removal.facts.removed).toEqual({ b: "2" });
+    expect(removal.totalChanges).toBe(1);
+  });
+
   it("encryptExportBuffer + decryptExportBuffer round-trip with the right passphrase (goal 081)", async () => {
     const { encryptExportBuffer, decryptExportBuffer, isEncryptedExportBuffer } = await import("../src/export-crypto.js");
     const plain = Buffer.from("hello-muse-export-bytes\n");
