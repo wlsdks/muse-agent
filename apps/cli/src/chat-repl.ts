@@ -163,6 +163,19 @@ export async function runChatRepl(
   }
   const seedHistory = options.continueHistory ? await readLastChatHistory() : [];
   const history: { role: "user" | "assistant"; content: string }[] = [...seedHistory];
+  // Goal 034: keep the in-memory history array bounded so a
+  // multi-day REPL session doesn't grow the heap without limit.
+  // Default cap holds 1000 turns (2000 entries — user + assistant
+  // pair). The on-disk history file via `appendLastChatTurn` stays
+  // authoritative; in-memory eviction only affects what's passed
+  // to the next model call, which the runtime's own context-window
+  // trim handles separately anyway.
+  const maxHistoryEntries = resolveReplHistoryCap(process.env.MUSE_REPL_MAX_HISTORY_ENTRIES);
+  const trimHistoryIfOversize = (): void => {
+    if (history.length > maxHistoryEntries) {
+      history.splice(0, history.length - maxHistoryEntries);
+    }
+  };
   let currentModel = options.model;
   let toolsDisabled = options.disableTools;
   const baseUserId = options.userId ?? process.env.MUSE_USER_ID ?? process.env.USER ?? "default";
@@ -409,6 +422,7 @@ export async function runChatRepl(
         io.stdout("\n\n");
         history.push({ content: trimmed, role: "user" });
         history.push({ content: accumulated, role: "assistant" });
+        trimHistoryIfOversize();
         await appendLastChatTurn({ message: trimmed, response: accumulated });
 
         // Fire-and-forget auto-extract: ask the same model to look at
@@ -627,3 +641,17 @@ export function readChatResponseText(value: unknown): string {
 
   return JSON.stringify(value);
 }
+
+/**
+ * Goal 034 — resolve the REPL in-memory history cap from an env
+ * string. Default 2000 entries (1000 user/assistant pairs). Bad /
+ * non-positive values fall back to the default so a typoed env
+ * doesn't accidentally disable bounding.
+ */
+export function resolveReplHistoryCap(raw: string | undefined): number {
+  if (!raw) return 2000;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 2000;
+  return parsed;
+}
+

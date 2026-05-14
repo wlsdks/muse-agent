@@ -53,7 +53,7 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 031 | [Rate-limit POST /api/chat per-IP](031-rate-limit-api-chat.md)                    | security/robustness  | done   |
 | 032 | [MCP allowlist validation](032-mcp-allowlist-validate.md)                          | security/robustness  | done   |
 | 033 | [Expand prompt-injection input guard library](033-prompt-injection-pattern-library.md) | security/robustness | done   |
-| 034 | [REPL long-session memory audit](034-repl-memory-leak-audit.md)                    | security/robustness  | open   |
+| 034 | [REPL long-session memory audit](034-repl-memory-leak-audit.md)                    | security/robustness  | done   |
 | 035 | [Audit every ~/.muse JSON store file-mode](035-audit-store-file-modes.md)          | security/robustness  | open   |
 | 036 | [Final env-only-probe sweep](036-env-only-probe-final-sweep.md)                    | security/robustness  | open   |
 | 037 | [Cache-Control: no-store on /api/admin/*](037-admin-cache-control-no-store.md)     | security/robustness  | open   |

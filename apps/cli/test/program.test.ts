@@ -3605,6 +3605,17 @@ describe("cli program", () => {
     }
   });
 
+  it("resolveReplHistoryCap honours the env var + falls back to 2000 on invalid input (goal 034)", async () => {
+    const { resolveReplHistoryCap } = await import("../src/chat-repl.js");
+    expect(resolveReplHistoryCap(undefined)).toBe(2000);
+    expect(resolveReplHistoryCap("")).toBe(2000);
+    expect(resolveReplHistoryCap("not-a-number")).toBe(2000);
+    expect(resolveReplHistoryCap("0")).toBe(2000);
+    expect(resolveReplHistoryCap("-5")).toBe(2000);
+    expect(resolveReplHistoryCap("100")).toBe(100);
+    expect(resolveReplHistoryCap("9999")).toBe(9999);
+  });
+
   it("muse calendar tomorrow / this-week compute the right ranges (goal 021)", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-cal-quick-"));
     const fsp = await import("node:fs/promises");

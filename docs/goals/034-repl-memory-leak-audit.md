@@ -21,4 +21,13 @@ multi-hour session.
 
 ## Status
 
-open
+done — survey identified the in-memory `history` array in
+chat-repl.ts as the only unbounded structure (every user +
+assistant turn pushed; no eviction). Added a soft cap (default
+2000 entries / 1000 turns; override via
+MUSE_REPL_MAX_HISTORY_ENTRIES). When the array exceeds the cap,
+older entries are spliced — on-disk history via
+`appendLastChatTurn` stays authoritative; trimming only affects
+what's passed to the next model call, which the runtime's own
+context-window trim handles anyway. Lifted the env-parse into
+`resolveReplHistoryCap` for direct unit testing (cli +1 test).
