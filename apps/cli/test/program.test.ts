@@ -3605,6 +3605,52 @@ describe("cli program", () => {
     }
   });
 
+  it("muse calendar tomorrow / this-week compute the right ranges (goal 021)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-cal-quick-"));
+    const fsp = await import("node:fs/promises");
+    const calendarFile = path.join(root, "calendar.json");
+    const now = new Date();
+    const today = new Date(now);
+    today.setHours(10, 0, 0, 0);
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(11, 0, 0, 0);
+    const monthAway = new Date(now);
+    monthAway.setDate(monthAway.getDate() + 30);
+    monthAway.setHours(9, 0, 0, 0);
+
+    const events = [
+      { id: "ev_today", title: "Today's standup", startsAt: today.toISOString(), endsAt: new Date(today.getTime() + 30 * 60_000).toISOString(), allDay: false },
+      { id: "ev_tomorrow", title: "Tomorrow's review", startsAt: tomorrow.toISOString(), endsAt: new Date(tomorrow.getTime() + 60 * 60_000).toISOString(), allDay: false },
+      { id: "ev_month", title: "Next month", startsAt: monthAway.toISOString(), endsAt: new Date(monthAway.getTime() + 60 * 60_000).toISOString(), allDay: false }
+    ];
+    await fsp.writeFile(calendarFile, JSON.stringify({ events }), "utf8");
+
+    const prev = process.env.MUSE_CALENDAR_FILE;
+    process.env.MUSE_CALENDAR_FILE = calendarFile;
+    try {
+      const { io: io1, output: out1 } = captureOutput();
+      const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("api off"); } });
+      await program1.parseAsync(["node", "muse", "calendar", "tomorrow", "--local", "--json"], { from: "node" });
+      const r1 = JSON.parse(out1.join("")) as { events: Array<{ id: string }>; total: number };
+      expect(r1.events.map((e) => e.id)).toEqual(["ev_tomorrow"]);
+
+      const { io: io2, output: out2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("api off"); } });
+      await program2.parseAsync(["node", "muse", "calendar", "this-week", "--local", "--json"], { from: "node" });
+      const r2 = JSON.parse(out2.join("")) as { events: Array<{ id: string }> };
+      // ev_today is fixed at 10:00 today; ev_tomorrow at 11:00 tomorrow.
+      // Depending on weekday + current hour, either may already be in
+      // the past (today) or after end-of-week (tomorrow when today is
+      // Sunday). What's invariant: ev_month (30 days away) is NEVER
+      // in this-week's range. That's the lock-in.
+      expect(r2.events.map((e) => e.id)).not.toContain("ev_month");
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_CALENDAR_FILE;
+      else process.env.MUSE_CALENDAR_FILE = prev;
+    }
+  });
+
   it("muse history --kind X empty output tailors the empty hint to the requested kind (goal 022)", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-hist-emptyhint-"));
     const fsp = await import("node:fs/promises");

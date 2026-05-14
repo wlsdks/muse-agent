@@ -25,4 +25,7 @@ optional SSE) for user-memory changes.
 
 ## Status
 
-open
+deferred
+ — pub/sub + SSE + REPL subscriber is a coherent feature but
+the next-turn persona re-read already covers the common case.
+Defer until cross-process notification becomes a felt need.

@@ -22,4 +22,7 @@ spam Telegram with dozens of pings. Add a circuit-breaker: if
 
 ## Status
 
-open
+deferred
+ — defense against a hypothetical busy day with many imminent
+items aligning. Not yet observed in dogfood; revisit when a real
+storm of notices surfaces the need.

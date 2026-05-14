@@ -22,4 +22,7 @@ facts/prefs inline.
 
 ## Status
 
-open
+deferred
+ — output restructure with two new branches. The current dense
+output works fine; revisit when concrete dogfood feedback shows
+which fields are noise vs signal in compact mode.

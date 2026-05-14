@@ -23,4 +23,8 @@ runtime + notes-RAG embedding path.
 
 ## Status
 
-open
+deferred
+ — needs runtime metadata gating (web_search: false) + tool
+registry filtering to drop muse.search. Worth a dedicated iter
+that also covers a smoke:live verification that the model does
+not invoke web tools when the flag is set.

@@ -22,4 +22,8 @@ search "morning"` could rank patterns by relevance via an LLM.
 
 ## Status
 
-open
+deferred
+ — mirrors notes/episodes pattern but pattern search is less
+called than notes/episodes. Worth doing once patterns have
+been observed long enough that substring search starts feeling
+limiting.

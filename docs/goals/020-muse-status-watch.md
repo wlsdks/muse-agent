@@ -24,4 +24,7 @@ followup fires).
 
 ## Status
 
-open
+deferred
+ — TUI loop mode + interval option + clean Ctrl-C handling.
+Bigger scope than fits this batch; better as its own iter that
+also wires through a stable terminal-clear sequence.

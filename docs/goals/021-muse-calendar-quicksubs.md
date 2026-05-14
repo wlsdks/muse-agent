@@ -22,3 +22,11 @@ typing date args.
 ## Status
 
 open
+
+## Status
+
+done — `muse calendar tomorrow` (next day 00:00 → 23:59 local)
+and `muse calendar this-week` (now → end-of-Sunday 23:59 local)
+both delegate to the same listEvents call as `events` with
+computed from/to. cli +1 test asserts ev_tomorrow appears under
+tomorrow but a 30-day-away event never makes this-week.

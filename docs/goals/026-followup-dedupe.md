@@ -23,4 +23,8 @@ both land. Add a content-similarity check too.
 
 ## Status
 
-open
+deferred
+ — needs a new content-similarity hash in the capture hook +
+sidecar of recent hashes per minute. Deferred until a real
+dogfood collision is observed (the existing minute+userId
+dedupe has covered every case so far).

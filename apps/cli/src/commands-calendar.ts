@@ -122,4 +122,64 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       }
       io.stdout(formatCalendarEvents(payload as unknown as Parameters<typeof formatCalendarEvents>[0]));
     });
+
+  // Goal 021: quick subcommands for the two most common ad-hoc queries.
+  // Both delegate to the same `events` action by setting from/to in the
+  // local timezone, so the underlying logic stays single-sourced.
+  const registerQuickRange = (name: string, description: string, computeRange: () => { from: Date; to: Date }): void => {
+    calendar
+      .command(name)
+      .description(description)
+      .option("--provider <id>", "Specific provider id (default: all)")
+      .option("--local", "Read directly from the local calendar file instead of the API")
+      .option("--json", "Print the raw response instead of the day-grouped agenda")
+      .action(async (options: { readonly provider?: string } & SharedOptions, command) => {
+        const { from, to } = computeRange();
+        const params = new URLSearchParams();
+        params.set("fromIso", from.toISOString());
+        params.set("toIso", to.toISOString());
+        if (options.provider) params.set("providerId", options.provider);
+        let payload: Record<string, unknown>;
+        if (options.local) {
+          const raw = await localCalendarProvider().listEvents({ from, to });
+          const events = raw.map((event) => ({
+            endsAtIso: event.endsAt.toISOString(),
+            id: event.id,
+            providerId: event.providerId,
+            startsAtIso: event.startsAt.toISOString(),
+            title: event.title,
+            ...(event.allDay ? { allDay: true } : {}),
+            ...(event.location ? { location: event.location } : {}),
+            ...(event.notes ? { notes: event.notes } : {}),
+            ...(event.tags && event.tags.length > 0 ? { tags: event.tags } : {})
+          }));
+          payload = { events, total: events.length };
+        } else {
+          payload = (await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`)) as Record<string, unknown>;
+        }
+        if (options.json) {
+          helpers.writeOutput(io, payload);
+          return;
+        }
+        io.stdout(formatCalendarEvents(payload as unknown as Parameters<typeof formatCalendarEvents>[0]));
+      });
+  };
+
+  registerQuickRange("tomorrow", "List events for tomorrow (local timezone, 00:00 → 23:59)", () => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() + 1);
+    const end = new Date(start);
+    end.setHours(23, 59, 59, 999);
+    return { from: start, to: end };
+  });
+
+  registerQuickRange("this-week", "List events from now through end-of-week (local timezone, Sunday end-of-day)", () => {
+    const now = new Date();
+    const end = new Date(now);
+    const daysUntilEow = (7 - now.getDay()) % 7; // 0=Sunday → 0 days, Mon → 6, etc.
+    end.setDate(end.getDate() + daysUntilEow);
+    end.setHours(23, 59, 59, 999);
+    return { from: now, to: end };
+  });
 }

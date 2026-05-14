@@ -37,18 +37,18 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 015 | [Web UI history panel](015-web-history-panel.md)                                  | JARVIS feature       | deferred |
 | 016 | [`muse search --to-notes <path>`](016-muse-search-to-notes.md)                    | JARVIS feature       | done   |
 | 017 | [`muse search --site <domain>`](017-muse-search-site-filter.md)                   | JARVIS feature       | done   |
-| 018 | [`muse ask --notes-only`](018-muse-ask-notes-only.md)                             | JARVIS feature       | open   |
+| 018 | [`muse ask --notes-only`](018-muse-ask-notes-only.md)                             | JARVIS feature       | deferred |
 | 019 | [`muse remember --json`](019-muse-remember-json.md)                               | JARVIS feature       | done   |
-| 020 | [`muse status --watch`](020-muse-status-watch.md)                                 | JARVIS feature       | open   |
-| 021 | [`muse calendar tomorrow` / `this-week`](021-muse-calendar-quicksubs.md)          | JARVIS feature       | open   |
+| 020 | [`muse status --watch`](020-muse-status-watch.md)                                 | JARVIS feature       | deferred |
+| 021 | [`muse calendar tomorrow` / `this-week`](021-muse-calendar-quicksubs.md)          | JARVIS feature       | done   |
 | 022 | [`muse history --kind X` empty hint](022-history-empty-kind-hint.md)              | UX polish            | done   |
 | 023 | [`muse search` 429 / rate-limit hint](023-search-rate-limit-hint.md)              | UX polish            | done   |
-| 024 | [`muse status` --compact / --verbose toggles](024-status-compact-verbose.md)      | UX polish            | open   |
-| 025 | [`muse today` pattern-detector suggestions](025-today-pattern-suggestions.md)     | UX polish            | open   |
-| 026 | [Followup dedupe — same-summary same-minute](026-followup-dedupe.md)              | reliability          | open   |
-| 027 | [Proactive circuit-breaker — notices/hour cap](027-proactive-circuit-breaker.md)  | reliability          | open   |
-| 028 | [Pattern detector LLM-judge mode](028-pattern-llm-judge.md)                       | reliability          | open   |
-| 029 | [User-memory diff broadcaster](029-user-memory-diff-broadcaster.md)               | reliability          | open   |
+| 024 | [`muse status` --compact / --verbose toggles](024-status-compact-verbose.md)      | UX polish            | deferred |
+| 025 | [`muse today` pattern-detector suggestions](025-today-pattern-suggestions.md)     | UX polish            | deferred |
+| 026 | [Followup dedupe — same-summary same-minute](026-followup-dedupe.md)              | reliability          | deferred |
+| 027 | [Proactive circuit-breaker — notices/hour cap](027-proactive-circuit-breaker.md)  | reliability          | deferred |
+| 028 | [Pattern detector LLM-judge mode](028-pattern-llm-judge.md)                       | reliability          | deferred |
+| 029 | [User-memory diff broadcaster](029-user-memory-diff-broadcaster.md)               | reliability          | done   |
 | 030 | [`muse doctor` overall health summary + exit code](030-doctor-summary-exit.md)    | UX polish            | done   |
 
 Categories:

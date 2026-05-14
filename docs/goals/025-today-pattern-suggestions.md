@@ -23,4 +23,8 @@ between 07:30 and 08:00" without an extra command.
 
 ## Status
 
-open
+deferred
+ — needs new TodayBriefing field + reading patterns-fired
+sidecar + format block + integration with the today routes API
+mirror. Defer until pattern detection has more stored history
+worth surfacing.
