@@ -3956,6 +3956,47 @@ describe("cli program", () => {
     expect(sawSignals).toEqual(["SIGTERM"]);
   });
 
+  it("muse status surfaces today's token-cost rollup from the sidecar JSON (goal 078)", async () => {
+    const { readTokenCostToday } = await import("../src/commands-status.js");
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-cost-"));
+    const file = path.join(root, "token-cost-today.json");
+    // Missing file → unavailable.
+    const missing = await readTokenCostToday(file);
+    expect(missing.available).toBe(false);
+
+    // Present file → fields surface.
+    const fsp = await import("node:fs/promises");
+    await fsp.writeFile(file, JSON.stringify({
+      totalUsd: 1.234,
+      totalTokens: 5678,
+      runs: 12,
+      asOfIso: "2026-05-14T12:00:00Z"
+    }));
+    const present = await readTokenCostToday(file);
+    expect(present).toEqual({
+      available: true,
+      totalUsd: 1.234,
+      totalTokens: 5678,
+      runs: 12,
+      asOfIso: "2026-05-14T12:00:00Z"
+    });
+
+    // muse status renders the cost line when the sidecar is set.
+    const prev = process.env.MUSE_TOKEN_COST_TODAY_FILE;
+    process.env.MUSE_TOKEN_COST_TODAY_FILE = file;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+      await program.parseAsync(["node", "muse", "status", "--user", "stark"], { from: "node" });
+      const text = output.join("");
+      expect(text).toContain("cost (today): $1.2340, 5678 tokens over 12 run(s)");
+      expect(text).toContain("as of: 2026-05-14T12:00:00Z");
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_TOKEN_COST_TODAY_FILE;
+      else process.env.MUSE_TOKEN_COST_TODAY_FILE = prev;
+    }
+  });
+
   it("formatMetricsSnapshot pretty-prints SLO / drift / token / budget sections (goal 077)", async () => {
     const { formatMetricsSnapshot } = await import("../src/commands-metrics.js");
     // Empty payload → friendly hint.

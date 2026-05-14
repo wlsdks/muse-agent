@@ -123,6 +123,40 @@ function defaultLogFile(): string {
   return envValue("MUSE_MESSAGING_LOG_FILE") ?? join(homedir(), ".muse", "notifications.log");
 }
 
+/**
+ * Goal 078 — optional path to a sidecar JSON the observability
+ * snapshotter (or an operator's cron) writes daily-cost totals
+ * into. Default `~/.muse/token-cost-today.json` so an off-the-
+ * shelf write lands where `muse status` looks. Shape:
+ * `{ totalUsd, totalTokens, runs, asOfIso }` — every field
+ * optional so a partial / forward-compatible writer still
+ * renders.
+ */
+function defaultTokenCostTodayFile(): string {
+  return envValue("MUSE_TOKEN_COST_TODAY_FILE") ?? join(homedir(), ".muse", "token-cost-today.json");
+}
+
+interface TokenCostTodayShape {
+  readonly totalUsd?: number;
+  readonly totalTokens?: number;
+  readonly runs?: number;
+  readonly asOfIso?: string;
+}
+
+/**
+ * Goal 078 — read the daily-cost sidecar. Tolerant: any read /
+ * parse / shape failure returns `{ available: false }` so the
+ * status renderer prints a clear "(no cost data)" instead of
+ * crashing. Exported for direct test coverage.
+ */
+export async function readTokenCostToday(path: string): Promise<{ readonly available: boolean } & TokenCostTodayShape> {
+  const parsed = await safeReadJson(path) as TokenCostTodayShape | undefined;
+  if (!parsed || typeof parsed !== "object") {
+    return { available: false };
+  }
+  return { available: true, ...parsed };
+}
+
 interface PersistedTask {
   readonly id: string;
   readonly title: string;
@@ -180,6 +214,11 @@ async function collectStatus(userId: string) {
   const logTail = await readLogTail(logFile, 1);
   const logBytes = await fileSize(logFile);
 
+  // Goal 078 — today's token-cost rollup from the sidecar a
+  // future observability dump (or operator cron) writes.
+  // Missing file → `{ available: false }`, renderer says so.
+  const tokenCost = await readTokenCostToday(defaultTokenCostTodayFile());
+
   return {
     // Goal 064 — schemaVersion lets jq pipelines detect breaking
     // changes ("if .schemaVersion >= 2 then …"). Bump when fields
@@ -231,7 +270,8 @@ async function collectStatus(userId: string) {
     followups: followupsByStatus,
     episodes: episodesSummary,
     patterns: patternsSummary,
-    reminders: remindersSummary
+    reminders: remindersSummary,
+    cost: tokenCost
   };
 }
 
@@ -388,6 +428,19 @@ function renderStatus(io: ProgramIO, snap: Awaited<ReturnType<typeof collectStat
         if (snap.reminders.nextDueAt) {
           const text = snap.reminders.nextText ? ` — ${snap.reminders.nextText.slice(0, 80)}` : "";
           io.stdout(`    next: ${snap.reminders.nextDueAt}${text}\n`);
+        }
+        io.stdout("\n");
+      }
+      // Goal 078 — today's token-cost rollup. Renders only when
+      // the sidecar JSON is present + parseable; otherwise stays
+      // silent so a fresh install doesn't show a useless line.
+      if (snap.cost.available) {
+        const usd = typeof snap.cost.totalUsd === "number" ? `$${snap.cost.totalUsd.toFixed(4)}` : "(no usd)";
+        const tokens = typeof snap.cost.totalTokens === "number" ? `${snap.cost.totalTokens.toString()} tokens` : "(no tokens)";
+        const runs = typeof snap.cost.runs === "number" ? ` over ${snap.cost.runs.toString()} run(s)` : "";
+        io.stdout(`  cost (today): ${usd}, ${tokens}${runs}\n`);
+        if (snap.cost.asOfIso) {
+          io.stdout(`    as of: ${snap.cost.asOfIso}\n`);
         }
         io.stdout("\n");
       }

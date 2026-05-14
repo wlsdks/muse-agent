@@ -97,7 +97,7 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 075 | [MCP reconnect backoff progress](075-mcp-reconnect-backoff-progress.md)            | reliability          | done   |
 | 076 | [`muse trace tail` — live-tail spans](076-muse-trace-tail.md)                      | observability        | done   |
 | 077 | [`muse metrics show` (SLO + drift)](077-muse-metrics-show.md)                      | observability        | done   |
-| 078 | [`muse status` today's token-cost rollup](078-status-token-cost-rollup.md)         | observability        | open   |
+| 078 | [`muse status` today's token-cost rollup](078-status-token-cost-rollup.md)         | observability        | done   |
 | 079 | [proactive-history.json rotation on size](079-proactive-history-rotation.md)       | observability        | open   |
 | 080 | [Activity log compaction](080-activity-log-compaction.md)                          | observability        | open   |
 | 081 | [`muse export --encrypt`](081-muse-export-encrypt.md)                              | security/robustness  | done   |
