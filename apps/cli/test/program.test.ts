@@ -3956,6 +3956,37 @@ describe("cli program", () => {
     expect(sawSignals).toEqual(["SIGTERM"]);
   });
 
+  it("isNotesIndexValid gates the on-disk schema version (goal 074)", async () => {
+    const { isNotesIndexValid, NOTES_INDEX_SCHEMA_VERSION, isNotesIndexStale } = await import("../src/commands-notes-rag.js");
+    expect(NOTES_INDEX_SCHEMA_VERSION).toBe(1);
+
+    // Valid shape.
+    expect(isNotesIndexValid({ version: NOTES_INDEX_SCHEMA_VERSION })).toBe(true);
+    // Missing / wrong version → invalid.
+    expect(isNotesIndexValid(undefined)).toBe(false);
+    expect(isNotesIndexValid({})).toBe(false);
+    expect(isNotesIndexValid({ version: 0 })).toBe(false);
+    expect(isNotesIndexValid({ version: 2 })).toBe(false);
+    expect(isNotesIndexValid({ version: "1" })).toBe(false);
+
+    // End-to-end: a v0 index on disk causes `isNotesIndexStale` to
+    // return true so the next reindex rebuilds the file from scratch
+    // (instead of inheriting any v0 entries).
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-notes-schema-"));
+    const fsp = await import("node:fs/promises");
+    const notesDir = path.join(root, "notes");
+    const indexPath = path.join(root, "notes-index.json");
+    await fsp.mkdir(notesDir, { recursive: true });
+    await fsp.writeFile(path.join(notesDir, "alpha.md"), "# alpha\nhello\n");
+    await fsp.writeFile(indexPath, JSON.stringify({
+      version: 0,
+      model: "stale-embed",
+      builtAtIso: "2020-01-01T00:00:00.000Z",
+      files: [{ path: path.join(notesDir, "ghost.md"), mtimeMs: 0, chunks: [] }]
+    }));
+    expect(await isNotesIndexStale(notesDir, indexPath)).toBe(true);
+  });
+
   it("resolveDoctorWatchIntervalMs defaults to 5s and clamps to [1s, 3600s] (goal 068)", async () => {
     const { resolveDoctorWatchIntervalMs } = await import("../src/commands-doctor.js");
     expect(resolveDoctorWatchIntervalMs(undefined)).toBe(5_000);

@@ -42,8 +42,18 @@ interface FileEntry {
   readonly chunks: readonly IndexChunk[];
 }
 
+/**
+ * Goal 074 — schema version for `~/.muse/notes-index.json`.
+ * Bumped when fields are renamed / removed or the embedding
+ * layout changes. `loadIndex` treats a mismatch as "stale" so
+ * the next `reindexNotes` rebuilds from scratch instead of
+ * carrying stale (incompatible) entries forward. Exported for
+ * direct unit-test coverage + future bumpers.
+ */
+export const NOTES_INDEX_SCHEMA_VERSION = 1;
+
 interface NotesIndex {
-  readonly version: 1;
+  readonly version: typeof NOTES_INDEX_SCHEMA_VERSION;
   readonly model: string;
   readonly builtAtIso: string;
   readonly files: FileEntry[];
@@ -130,13 +140,41 @@ function cosine(a: readonly number[], b: readonly number[]): number {
 }
 
 async function loadIndex(path: string): Promise<NotesIndex | undefined> {
+  let raw: string;
   try {
-    const raw = await readFile(path, "utf8");
-    return JSON.parse(raw) as NotesIndex;
+    raw = await readFile(path, "utf8");
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw cause;
   }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // Goal 074 — malformed JSON treated the same as a schema
+    // mismatch: discard so the next reindex rebuilds.
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object") return undefined;
+  const candidate = parsed as Partial<NotesIndex>;
+  // Goal 074 — schema-version gate. Discarding the index on
+  // version mismatch forces `reindexNotes` to start from a
+  // clean slate instead of carrying stale (incompatible)
+  // entries forward. `isNotesIndexValid` surfaces the same
+  // check to `isNotesIndexStale` so callers can log a hint.
+  if (!isNotesIndexValid(candidate)) return undefined;
+  return candidate as NotesIndex;
+}
+
+/**
+ * Goal 074 — pure validator for the on-disk `notes-index.json`.
+ * Exported so the auto-stale check + tests share the same
+ * predicate (no risk of the loader accepting a shape the
+ * stale-check rejects).
+ */
+export function isNotesIndexValid(candidate: { readonly version?: unknown } | null | undefined): boolean {
+  if (!candidate || typeof candidate !== "object") return false;
+  return (candidate as { version?: unknown }).version === NOTES_INDEX_SCHEMA_VERSION;
 }
 
 async function saveIndex(path: string, index: NotesIndex): Promise<void> {
@@ -211,7 +249,7 @@ export async function reindexNotes(
     builtAtIso: new Date().toISOString(),
     files: next,
     model: options.model,
-    version: 1
+    version: NOTES_INDEX_SCHEMA_VERSION
   };
   await saveIndex(indexPath, index);
   return {
