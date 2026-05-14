@@ -64,6 +64,24 @@ function parseLimit(raw: string | undefined, fallback: number, cap: number): num
 }
 
 /**
+ * Goal 063 — kind → ASCII glyph for the formatted feed, so a quick
+ * scroll can pick out reminders vs episodes vs patterns at a
+ * glance. Kept ASCII-only (no emoji) per CLAUDE.md; the glyphs
+ * stay readable in every terminal (vt100, headless CI, etc.) and
+ * never widen the column.
+ *
+ * Exported so tests can pin the contract and downstream UI can
+ * reuse the same mapping when it wants its own scanning glyphs.
+ */
+export const HISTORY_KIND_ICONS: Readonly<Record<string, string>> = Object.freeze({
+  reminder: "(R)",
+  proactive: "(P)",
+  followup: "(F)",
+  pattern: "(*)",
+  episode: "(E)"
+});
+
+/**
  * Goal 050 — compile `--grep <pattern>` into a `RegExp` we can apply
  * to `entry.summary`. The pattern is tried as a regex first; if
  * that throws (unbalanced metacharacters etc.), we fall back to a
@@ -154,7 +172,8 @@ export function registerHistoryCommand(program: Command, io: ProgramIO): void {
           ? ` via ${entry.providerId}${entry.destination ? `→${entry.destination}` : ""}`
           : "";
         const when = formatRelativeTime(entry.whenIso, now);
-        const head = `[${when}] ${entry.kind}${status}${via}`;
+        const icon = HISTORY_KIND_ICONS[entry.kind] ?? "(.)";
+        const head = `${icon} [${when}] ${entry.kind}${status}${via}`;
         io.stdout(`  ${head}\n`);
         const summary = entry.summary.replace(/\s+/gu, " ").trim();
         const truncated = summary.length > 140 ? `${summary.slice(0, 139)}…` : summary;

@@ -3628,6 +3628,21 @@ describe("cli program", () => {
     expect(resolveReplHistoryCap("9999")).toBe(9999);
   });
 
+  it("HISTORY_KIND_ICONS surfaces one ASCII glyph per kind for quick scanning (goal 063)", async () => {
+    const { HISTORY_KIND_ICONS } = await import("../src/commands-history.js");
+    // Every documented kind has a glyph.
+    expect(HISTORY_KIND_ICONS["reminder"]).toBe("(R)");
+    expect(HISTORY_KIND_ICONS["proactive"]).toBe("(P)");
+    expect(HISTORY_KIND_ICONS["followup"]).toBe("(F)");
+    expect(HISTORY_KIND_ICONS["pattern"]).toBe("(*)");
+    expect(HISTORY_KIND_ICONS["episode"]).toBe("(E)");
+    // Glyphs stay ASCII-only (no emoji per CLAUDE.md) so they
+    // render in every terminal + CI without falling back.
+    for (const v of Object.values(HISTORY_KIND_ICONS)) {
+      expect(/^[\x20-\x7E]+$/u.test(v)).toBe(true);
+    }
+  });
+
   it("formatRelativeTime renders past + future deltas and falls back to ISO past 7 days (goal 062)", async () => {
     const { formatRelativeTime } = await import("../src/human-formatters.js");
     const now = new Date("2026-05-14T12:00:00Z");

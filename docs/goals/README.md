@@ -82,7 +82,7 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 060 | [Top-level muse with no args prints help](060-muse-help-on-empty.md)               | UX polish            | done   |
 | 061 | [`muse today` colorize output (TTY-aware)](061-today-colorize.md)                  | UX polish            | open   |
 | 062 | [`muse history` relative time format](062-history-relative-time.md)                | UX polish            | done   |
-| 063 | [`muse history` icon-per-kind](063-history-icon-per-kind.md)                       | UX polish            | open   |
+| 063 | [`muse history` icon-per-kind](063-history-icon-per-kind.md)                       | UX polish            | done   |
 | 064 | [`muse status` JSON schemaVersion](064-status-schema-version.md)                   | UX polish            | done   |
 | 065 | [`muse search` backend latency in output](065-search-backend-latency.md)           | UX polish            | open   |
 | 066 | [zsh + bash completions](066-zsh-completions.md)                                   | UX polish            | open   |
