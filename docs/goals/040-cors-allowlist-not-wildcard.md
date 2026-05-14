@@ -19,4 +19,11 @@ http://localhost:3000).
 
 ## Status
 
-open
+done — `server-http-plumbing.ts` already strict-allowlists (defaults
+`127.0.0.1:5173` + `localhost:5173`; `*` is excluded). Added
+env-driven `MUSE_CORS_ALLOWED_ORIGINS` (CSV) in
+`api-server-options.ts` so an operator can extend the list without
+re-compiling. A literal `*` token is filtered out so a typoed env
+cannot silently downgrade to wildcard mode. autoconfigure +3
+tests (CSV parsed; bare `*` rejected; `*` filtered out of a CSV
+while siblings survive).

@@ -38,7 +38,19 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     agentSpecRegistry: assembly.agentSpecRegistry,
     authService: assembly.authService,
     cors: {
-      allowCredentials: true
+      allowCredentials: true,
+      // Goal 040: env-driven CORS allowlist (CSV). Reject `*` so a
+      // typoed env can't silently downgrade to wildcard mode — the
+      // strict defaults in server-http-plumbing already exclude `*`,
+      // so this just extends the list when the operator opts in.
+      ...(() => {
+        const raw = env.MUSE_CORS_ALLOWED_ORIGINS?.trim();
+        if (!raw) return {};
+        const origins = raw.split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0 && s !== "*");
+        return origins.length > 0 ? { allowedOrigins: origins } : {};
+      })()
     },
     debugReplayCaptureStore: assembly.debugReplayCaptureStore,
     defaultModel: assembly.defaultModel,

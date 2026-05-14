@@ -211,6 +211,42 @@ describe("autoconfigure", () => {
     expect(options.taskMemoryMaintenance.purgeExpired(new Date())).toBe(0);
   });
 
+  it("parses MUSE_CORS_ALLOWED_ORIGINS into the cors.allowedOrigins list", () => {
+    const options = createApiServerOptions({
+      env: {
+        MUSE_AUTH_JWT_SECRET: "0123456789abcdef0123456789abcdef",
+        MUSE_CORS_ALLOWED_ORIGINS: "https://example.com, https://example.org"
+      }
+    });
+    expect(options.cors).toEqual({
+      allowCredentials: true,
+      allowedOrigins: ["https://example.com", "https://example.org"]
+    });
+  });
+
+  it("rejects a bare `*` in MUSE_CORS_ALLOWED_ORIGINS so a typo cannot silently widen to wildcard", () => {
+    const options = createApiServerOptions({
+      env: {
+        MUSE_AUTH_JWT_SECRET: "0123456789abcdef0123456789abcdef",
+        MUSE_CORS_ALLOWED_ORIGINS: "*"
+      }
+    });
+    expect(options.cors).toEqual({ allowCredentials: true });
+  });
+
+  it("filters `*` out of a CSV but keeps the other origins", () => {
+    const options = createApiServerOptions({
+      env: {
+        MUSE_AUTH_JWT_SECRET: "0123456789abcdef0123456789abcdef",
+        MUSE_CORS_ALLOWED_ORIGINS: "https://example.com,*,https://example.org"
+      }
+    });
+    expect(options.cors).toEqual({
+      allowCredentials: true,
+      allowedOrigins: ["https://example.com", "https://example.org"]
+    });
+  });
+
   it("uses Kysely-backed stores when a database handle is provided", () => {
     const assembly = createMuseRuntimeAssembly({
       db: createPostgresBuilder(),
