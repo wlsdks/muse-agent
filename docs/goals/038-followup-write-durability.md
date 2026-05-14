@@ -19,4 +19,10 @@ mode that re-scans uncommitted entries on startup.
 
 ## Status
 
-open
+done — `writeFollowups` opens the tmp file via `fs.open` + calls
+`handle.sync()` (fsync) before close, ensuring the payload lands
+on disk before the atomic rename. Without this, a power loss
+between writeFile and rename could commit the rename pointing at
+zero-length data on filesystems that journal metadata + data
+separately. Plus new `cleanupFollowupTempFiles(file)` to scrub
+orphan `.tmp-*` siblings on demand. mcp +2 tests.

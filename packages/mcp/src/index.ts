@@ -313,6 +313,7 @@ export {
 // pick them up and honour them.
 export {
   cancelFollowup,
+  cleanupFollowupTempFiles,
   markFollowupFired,
   readFollowups,
   readFollowupStatusFilter,

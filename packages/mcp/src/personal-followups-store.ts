@@ -87,9 +87,50 @@ export async function writeFollowups(file: string, followups: readonly Persisted
   const payload = `${JSON.stringify({ followups }, null, 2)}\n`;
   const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
   await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(tmp, payload, { encoding: "utf8", mode: 0o600 });
+  // Goal 038: write + fsync the tmp file before rename so the
+  // promised payload is on disk before the metadata flip. Without
+  // fsync, a power loss between writeFile() and rename() can
+  // leave the rename committed pointing at zero-length / partial
+  // data (filesystems journal metadata + data separately).
+  const handle = await fs.open(tmp, "w", 0o600);
+  try {
+    await handle.writeFile(payload, "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
   await fs.rename(tmp, file);
   await fs.chmod(file, 0o600).catch(() => undefined);
+}
+
+/**
+ * Goal 038: clean up orphan `.tmp-*` siblings of `file` left over
+ * from a previous crash mid-write. Called by `readFollowups`
+ * (idempotent + cheap on a normal install where no orphans exist).
+ * Best-effort — a stale temp file is annoying disk-space but not
+ * a correctness issue, so any directory-walk error swallows
+ * silently.
+ */
+export async function cleanupFollowupTempFiles(file: string): Promise<readonly string[]> {
+  const dir = dirname(file);
+  const base = file.split("/").pop() ?? file;
+  let entries: readonly { readonly name: string }[];
+  try {
+    entries = (await fs.readdir(dir, { withFileTypes: true })) as unknown as readonly { readonly name: string }[];
+  } catch {
+    return [];
+  }
+  const cleaned: string[] = [];
+  for (const entry of entries) {
+    if (!entry.name.startsWith(`${base}.tmp-`)) continue;
+    try {
+      await fs.unlink(`${dir}/${entry.name}`);
+      cleaned.push(entry.name);
+    } catch {
+      // Best-effort.
+    }
+  }
+  return cleaned;
 }
 
 export function serializeFollowup(followup: PersistedFollowup): JsonObject {

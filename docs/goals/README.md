@@ -57,7 +57,7 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 035 | [Audit every ~/.muse JSON store file-mode](035-audit-store-file-modes.md)          | security/robustness  | done   |
 | 036 | [Final env-only-probe sweep](036-env-only-probe-final-sweep.md)                    | security/robustness  | done   |
 | 037 | [Cache-Control: no-store on /api/admin/*](037-admin-cache-control-no-store.md)     | security/robustness  | done   |
-| 038 | [Followup write durability + recovery](038-followup-write-durability.md)           | security/robustness  | open   |
+| 038 | [Followup write durability + recovery](038-followup-write-durability.md)           | security/robustness  | done   |
 | 039 | [Webhook signature validation (LINE / Slack)](039-webhook-signature-validation.md) | security/robustness  | open   |
 | 040 | [CORS allowlist instead of wildcard](040-cors-allowlist-not-wildcard.md)           | security/robustness  | open   |
 | 041 | [Extract buildCalendarRegistry](041-personal-providers-calendar-decomp.md)         | big-file decomp      | open   |

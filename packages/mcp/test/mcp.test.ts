@@ -5779,6 +5779,44 @@ describe("muse.status loopback server", () => {
   });
 });
 
+describe("followup write durability + temp-file recovery (goal 038)", () => {
+  it("writeFollowups round-trips data through fsync + atomic rename (no tmp orphan on clean write)", async () => {
+    const { mkdtempSync, readFileSync, readdirSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { writeFollowups } = await import("../src/index.js");
+    const dir = mkdtempSync(join(tmpdir(), "muse-fu-durability-"));
+    const file = join(dir, "followups.json");
+    await writeFollowups(file, [
+      { id: "fu_a", userId: "stark", scheduledFor: "2026-05-15T09:00:00Z", status: "scheduled", summary: "x", createdAt: "2026-05-12T00:00:00Z" }
+    ]);
+    const onDisk = JSON.parse(readFileSync(file, "utf8")) as { followups: Array<{ id: string }> };
+    expect(onDisk.followups[0]!.id).toBe("fu_a");
+    // No `.tmp-` files left after a clean write.
+    const siblings = readdirSync(dir).filter((n) => n.includes(".tmp-"));
+    expect(siblings).toEqual([]);
+  });
+
+  it("cleanupFollowupTempFiles removes orphan .tmp-* siblings (crash-recovery)", async () => {
+    const { mkdtempSync, writeFileSync, readdirSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { cleanupFollowupTempFiles } = await import("../src/index.js");
+    const dir = mkdtempSync(join(tmpdir(), "muse-fu-orphan-"));
+    const file = join(dir, "followups.json");
+    writeFileSync(file, JSON.stringify({ followups: [] }), "utf8");
+    // Simulate a crash mid-write: two leftover .tmp- files.
+    writeFileSync(`${file}.tmp-12345-1000`, "{partial", "utf8");
+    writeFileSync(`${file}.tmp-12345-2000`, "{partial", "utf8");
+
+    const cleaned = await cleanupFollowupTempFiles(file);
+    expect(cleaned.length).toBe(2);
+    const after = readdirSync(dir);
+    expect(after.some((n) => n.includes(".tmp-"))).toBe(false);
+    expect(after).toContain("followups.json");
+  });
+});
+
 describe("sensitive store file-mode lock-ins (goal 035)", () => {
   it("writeFollowups persists ~/.muse/followups.json with mode 0600", async () => {
     if (process.platform === "win32") return;
