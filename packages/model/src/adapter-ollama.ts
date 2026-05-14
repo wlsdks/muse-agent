@@ -20,7 +20,7 @@ import type { JsonObject } from "@muse/shared";
 import {
   localModelCapabilities
 } from "./provider-wire.js";
-import { ModelProviderError, OpenAICompatibleProvider } from "./provider-base.js";
+import { ModelProviderError, OpenAICompatibleProvider, isRetryableHttpStatus } from "./provider-base.js";
 import type {
   ModelEvent,
   ModelInfo,
@@ -65,7 +65,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       throw new ModelProviderError(
         this.id,
         `Ollama /api/chat failed with ${resp.status.toString()}: ${(await resp.text().catch(() => "")) || resp.statusText}`,
-        resp.status >= 500
+        isRetryableHttpStatus(resp.status)
       );
     }
     const json = await resp.json() as OllamaNativeChatResponse;
@@ -114,7 +114,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         error: new ModelProviderError(
           this.id,
           `Ollama stream failed with ${resp.status.toString()}: ${(await resp.text().catch(() => "")) || resp.statusText}`,
-          resp.status >= 500
+          isRetryableHttpStatus(resp.status)
         ),
         type: "error"
       };

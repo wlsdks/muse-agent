@@ -40,6 +40,29 @@ export class ModelProviderError extends Error {
   }
 }
 
+/**
+ * Goal 106 — classify an HTTP status from a provider as retryable.
+ *
+ *   - 5xx: server-side failure, almost always transient.
+ *   - 429: Too Many Requests / rate limit. Every major LLM
+ *     provider (OpenAI, Anthropic, Gemini, OpenRouter, Ollama)
+ *     uses this status for token/RPS budgeting; retry-after
+ *     backoff is the right response, not fail-fast.
+ *
+ * Anything else (400, 401, 403, 404, 422 …) is the caller's
+ * problem — bad key, bad model, malformed payload — and MUST
+ * fail fast so the agent loop doesn't burn budget retrying a
+ * permanent error. Documented in `.claude/rules/architecture.md`.
+ *
+ * Pure, side-effect-free — used by every adapter so the
+ * classification stays consistent across providers.
+ */
+export function isRetryableHttpStatus(status: number): boolean {
+  if (!Number.isFinite(status)) return false;
+  if (status === 429) return true;
+  return status >= 500 && status <= 599;
+}
+
 export class OpenAICompatibleProvider implements ModelProvider {
   readonly id: string;
 
@@ -81,7 +104,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       throw new ModelProviderError(
         this.id,
         `OpenAI-compatible request failed with ${response.status}: ${truncateErrorBody(body) || response.statusText}`,
-        response.status >= 500
+        isRetryableHttpStatus(response.status)
       );
     }
 
@@ -102,7 +125,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
         error: new ModelProviderError(
           this.id,
           `OpenAI-compatible stream failed with ${response.status}: ${truncateErrorBody(body) || response.statusText}`,
-          response.status >= 500
+          isRetryableHttpStatus(response.status)
         ),
         type: "error"
       };

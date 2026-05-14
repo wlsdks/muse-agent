@@ -16,7 +16,7 @@
 
 import { truncateErrorBody } from "@muse/shared";
 
-import { ModelProviderError, OpenAICompatibleProvider } from "./provider-base.js";
+import { ModelProviderError, OpenAICompatibleProvider, isRetryableHttpStatus } from "./provider-base.js";
 import {
   fromOpenAIResponsesResponse,
   parseOpenAIResponsesStream,
@@ -73,7 +73,7 @@ export class OpenAIProvider extends OpenAICompatibleProvider {
       throw new ModelProviderError(
         this.id,
         `OpenAI Responses API error: ${response.status}: ${truncateErrorBody(errBody) || response.statusText}`,
-        response.status >= 500
+        isRetryableHttpStatus(response.status)
       );
     }
 
@@ -104,7 +104,7 @@ export class OpenAIProvider extends OpenAICompatibleProvider {
         error: new ModelProviderError(
           this.id,
           `OpenAI Responses API stream error: ${response.status}: ${truncateErrorBody(errBody) || response.statusText}`,
-          response.status >= 500
+          isRetryableHttpStatus(response.status)
         ),
         type: "error"
       };

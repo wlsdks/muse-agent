@@ -172,7 +172,7 @@ export interface DiagnosticModelProviderOptions {
   readonly models?: readonly string[];
 }
 
-export { ModelProviderError, OpenAICompatibleProvider } from "./provider-base.js";
+export { ModelProviderError, OpenAICompatibleProvider, isRetryableHttpStatus } from "./provider-base.js";
 export { DiagnosticModelProvider } from "./adapter-diagnostic.js";
 export { OpenAIProvider, OpenRouterProvider } from "./adapter-openai.js";
 export { OllamaProvider } from "./adapter-ollama.js";

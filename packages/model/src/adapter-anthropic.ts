@@ -7,7 +7,7 @@
 
 import { truncateErrorBody } from "@muse/shared";
 
-import { ModelProviderError } from "./provider-base.js";
+import { ModelProviderError, isRetryableHttpStatus } from "./provider-base.js";
 import {
   anthropicModelCapabilities,
   fromAnthropicResponse,
@@ -70,7 +70,7 @@ export class AnthropicProvider implements ModelProvider {
       throw new ModelProviderError(
         this.id,
         `Anthropic request failed with ${response.status}: ${truncateErrorBody(body) || response.statusText}`,
-        response.status >= 500
+        isRetryableHttpStatus(response.status)
       );
     }
 
