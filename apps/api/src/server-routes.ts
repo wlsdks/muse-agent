@@ -285,6 +285,25 @@ export function registerAdminRunRoutes(
     }
     return { before, deleted, scanned: runs.length };
   });
+
+  // Goal 085 — operators can read the live per-family
+  // injection-detection counter snapshot. The guard layer is
+  // responsible for bumping the counter on every firing pattern;
+  // this route just exposes the read so dashboards can scrape
+  // it. 404 when no counter is wired so callers can disambiguate
+  // "no detections yet" from "telemetry is off".
+  server.get("/api/admin/security/injection-counts", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
+      return reply;
+    }
+    if (!options.injectionDetectionCounter) {
+      return reply.status(404).send({
+        code: "INJECTION_COUNTER_DISABLED",
+        message: "Injection detection counter is not wired into this server"
+      });
+    }
+    return options.injectionDetectionCounter.snapshot();
+  });
 }
 
 export function registerAuthRoutes(server: FastifyInstance, authService: NonNullable<ServerOptions["authService"]>): void {

@@ -1,5 +1,6 @@
 export * from "./adversarial-red-team.js";
 export * from "./guard-monitor.js";
+export * from "./injection-detection-counter.js";
 export * from "./injection-patterns.js";
 export * from "./migration-redaction.js";
 export * from "./pii-patterns.js";

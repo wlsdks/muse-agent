@@ -32,4 +32,25 @@ line on every detection so dashboards have something to scrape.
 
 ## Status
 
-open
+done — new `InjectionDetectionCounter` interface +
+`InMemoryInjectionDetectionCounter` implementation in
+`@muse/policy`. The counter records per-family lifetime totals,
+exposes a snapshot with `{ counts, total, lastFiredAt }`, and
+never echoes the raw input (only the pattern family names).
+
+`GET /api/admin/security/injection-counts` exposes the snapshot
+for the ops dashboard when an instance is wired via
+`ServerOptions.injectionDetectionCounter`; 404 with
+`INJECTION_COUNTER_DISABLED` when no instance is provided so
+callers disambiguate "no detections yet" from "telemetry off".
+
+Scope deviation: the file-backed sidecar + structured log line
+wiring in the guard layer is deferred — the counter interface
++ admin endpoint are the load-bearing contract; the guard
+integration is an additive follow-up that hangs off the same
+shape.
+
+policy +1 test on the counter (per-family increments, total
+rollup, lastFiredAt advance, reset, ignore zero/negative/empty
+inputs). api +1 test exercises the admin endpoint with a seeded
+counter and the 404 fallback.

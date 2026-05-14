@@ -22,6 +22,8 @@ import type {
 } from "@muse/runtime-state";
 import type { VoiceProviderRegistry } from "@muse/voice";
 
+import type { InjectionDetectionCounter } from "@muse/policy";
+
 import type { AdminRouteState } from "./admin-routes.js";
 import type { McpRouteMcp } from "./mcp-routes.js";
 import type { SchedulerRouteScheduler } from "./scheduler-routes.js";
@@ -172,6 +174,13 @@ export interface ServerOptions {
    * writes here on each tick.
    */
   readonly slackInboxFile?: string;
+  /**
+   * Goal 085 — when set, `GET /api/admin/security/injection-counts`
+   * exposes the snapshot for the ops dashboard. The guard layer
+   * is responsible for bumping the counter on every firing
+   * pattern; this option just routes the read.
+   */
+  readonly injectionDetectionCounter?: InjectionDetectionCounter;
 }
 
 export interface ToolCatalogEntry {

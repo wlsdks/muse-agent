@@ -616,6 +616,27 @@ describe("api server: admin / ops / settings / memory", () => {
     });
   });
 
+  it("GET /api/admin/security/injection-counts surfaces the wired counter snapshot (goal 085)", async () => {
+    const { InMemoryInjectionDetectionCounter } = await import("@muse/policy");
+    const counter = new InMemoryInjectionDetectionCounter({ now: () => new Date("2026-05-14T00:00:00Z") });
+    counter.bumpFrom([{ name: "history_poisoning", count: 3 }]);
+    const server = buildServer({ injectionDetectionCounter: counter, logger: false });
+    const ok = await server.inject({ method: "GET", url: "/api/admin/security/injection-counts" });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toEqual({
+      counts: { history_poisoning: 3 },
+      total: 3,
+      lastFiredAt: "2026-05-14T00:00:00.000Z"
+    });
+
+    // 404 when no counter is wired so dashboards disambiguate
+    // "no detections yet" from "telemetry feature is off".
+    const off = buildServer({ logger: false });
+    const missing = await off.inject({ method: "GET", url: "/api/admin/security/injection-counts" });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json()).toMatchObject({ code: "INJECTION_COUNTER_DISABLED" });
+  });
+
   it("DELETE /api/admin/runs/:runId removes a run, returns 404 once gone (goal 057)", async () => {
     const historyStore = new InMemoryAgentRunHistoryStore();
     historyStore.createRun({ id: "run-del-1", input: "x", model: "m", provider: "p", userId: "u" });
