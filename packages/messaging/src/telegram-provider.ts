@@ -1,3 +1,5 @@
+import { truncateErrorBody } from "@muse/shared";
+
 import { MessagingProviderError, MessagingValidationError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
 import { clampInboundLimit, tryParseJson } from "./provider-helpers.js";
@@ -140,7 +142,7 @@ export class TelegramProvider implements MessagingProvider {
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
-        `Telegram getUpdates failed: ${parsed?.description ?? (text || response.statusText)}`,
+        `Telegram getUpdates failed: ${parsed?.description ?? (truncateErrorBody(text) || response.statusText)}`,
         response.status
       );
     }
@@ -188,7 +190,7 @@ export class TelegramProvider implements MessagingProvider {
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
-        `Telegram sendMessage failed: ${parsed?.description ?? (text || response.statusText)}`,
+        `Telegram sendMessage failed: ${parsed?.description ?? (truncateErrorBody(text) || response.statusText)}`,
         response.status
       );
     }

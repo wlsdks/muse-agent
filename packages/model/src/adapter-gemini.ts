@@ -6,6 +6,8 @@
  * plumbing.
  */
 
+import { truncateErrorBody } from "@muse/shared";
+
 import { ModelProviderError } from "./provider-base.js";
 import {
   fromGeminiResponse,
@@ -77,7 +79,7 @@ export class GeminiProvider implements ModelProvider {
       const body = await response.text().catch(() => "");
       throw new ModelProviderError(
         this.id,
-        `Gemini request failed with ${response.status}: ${body || response.statusText}`,
+        `Gemini request failed with ${response.status}: ${truncateErrorBody(body) || response.statusText}`,
         response.status >= 500
       );
     }

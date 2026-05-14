@@ -11,6 +11,8 @@
  * cycle when the base class lived in index.ts.
  */
 
+import { truncateErrorBody } from "@muse/shared";
+
 import {
   defaultRemoteModelCapabilities,
   fromOpenAIChatResponse,
@@ -78,7 +80,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       const body = await response.text().catch(() => "");
       throw new ModelProviderError(
         this.id,
-        `OpenAI-compatible request failed with ${response.status}: ${body || response.statusText}`,
+        `OpenAI-compatible request failed with ${response.status}: ${truncateErrorBody(body) || response.statusText}`,
         response.status >= 500
       );
     }
@@ -99,7 +101,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       yield {
         error: new ModelProviderError(
           this.id,
-          `OpenAI-compatible stream failed with ${response.status}: ${body || response.statusText}`,
+          `OpenAI-compatible stream failed with ${response.status}: ${truncateErrorBody(body) || response.statusText}`,
           response.status >= 500
         ),
         type: "error"

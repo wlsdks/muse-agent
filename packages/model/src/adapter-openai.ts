@@ -14,6 +14,8 @@
  * HTTP shape.
  */
 
+import { truncateErrorBody } from "@muse/shared";
+
 import { ModelProviderError, OpenAICompatibleProvider } from "./provider-base.js";
 import {
   fromOpenAIResponsesResponse,
@@ -70,7 +72,7 @@ export class OpenAIProvider extends OpenAICompatibleProvider {
       const errBody = await response.text().catch(() => "");
       throw new ModelProviderError(
         this.id,
-        `OpenAI Responses API error: ${response.status}: ${errBody || response.statusText}`,
+        `OpenAI Responses API error: ${response.status}: ${truncateErrorBody(errBody) || response.statusText}`,
         response.status >= 500
       );
     }
@@ -101,7 +103,7 @@ export class OpenAIProvider extends OpenAICompatibleProvider {
       yield {
         error: new ModelProviderError(
           this.id,
-          `OpenAI Responses API stream error: ${response.status}: ${errBody || response.statusText}`,
+          `OpenAI Responses API stream error: ${response.status}: ${truncateErrorBody(errBody) || response.statusText}`,
           response.status >= 500
         ),
         type: "error"

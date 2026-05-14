@@ -5,6 +5,8 @@
  * and the `ModelProvider` interface plumbing.
  */
 
+import { truncateErrorBody } from "@muse/shared";
+
 import { ModelProviderError } from "./provider-base.js";
 import {
   anthropicModelCapabilities,
@@ -67,7 +69,7 @@ export class AnthropicProvider implements ModelProvider {
       const body = await response.text().catch(() => "");
       throw new ModelProviderError(
         this.id,
-        `Anthropic request failed with ${response.status}: ${body || response.statusText}`,
+        `Anthropic request failed with ${response.status}: ${truncateErrorBody(body) || response.statusText}`,
         response.status >= 500
       );
     }

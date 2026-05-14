@@ -24,4 +24,9 @@ backend.
 
 ## Status
 
-open
+done — new `truncateErrorBody` helper in @muse/shared (default cap
+240 + ellipsis), applied at 8 sites: agent-notices SSE error path
+(routed through `formatApiErrorResponse`), 4 model adapter error
+paths (OpenAI base + adapter-openai + adapter-anthropic +
+adapter-gemini), 2 messaging provider sites (telegram + discord).
+Plus shared tests +1.

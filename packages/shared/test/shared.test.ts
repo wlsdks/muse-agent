@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   createCancellationToken,
   createRunId,
+  DEFAULT_ERROR_BODY_CAP,
   formatBoundaryViolation,
   hmacSha256Hex,
   sha256Hex,
+  truncateErrorBody,
   verifyHmacSha256Hex
 } from "../src/index.js";
 
@@ -48,5 +50,16 @@ describe("boundary and cancellation helpers", () => {
 
     expect(token.signal.aborted).toBe(true);
     expect(() => token.throwIfCancelled()).toThrow("timeout");
+  });
+
+  it("truncateErrorBody trims + caps + appends ellipsis when over the cap", () => {
+    expect(truncateErrorBody("")).toBe("");
+    expect(truncateErrorBody(undefined)).toBe("");
+    expect(truncateErrorBody("  hi  ")).toBe("hi");
+    expect(truncateErrorBody("x".repeat(DEFAULT_ERROR_BODY_CAP))).toHaveLength(DEFAULT_ERROR_BODY_CAP);
+    const big = truncateErrorBody("x".repeat(DEFAULT_ERROR_BODY_CAP + 50));
+    expect(big.endsWith("…")).toBe(true);
+    expect(big.length).toBe(DEFAULT_ERROR_BODY_CAP + 1); // cap + ellipsis
+    expect(truncateErrorBody("short", 4)).toBe("shor…");
   });
 });

@@ -21,7 +21,7 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | #   | Goal                                                                              | Category             | Status |
 | --- | --------------------------------------------------------------------------------- | -------------------- | ------ |
 | 001 | [API default port conflict](001-api-default-port.md)                              | security/robustness  | done   |
-| 002 | [Verify error-body cap on non-HTML responses](002-error-body-cap-non-html.md)     | security/robustness  | open   |
+| 002 | [Verify error-body cap on non-HTML responses](002-error-body-cap-non-html.md)     | security/robustness  | done   |
 | 003 | [SSE stream control-byte strip](003-sse-control-byte-strip.md)                    | security/robustness  | open   |
 | 004 | [Tool-loop timeout + max-iterations audit](004-tool-loop-timeout-audit.md)        | security/robustness  | open   |
 | 005 | [Models.json file-mode 0600](005-models-json-file-mode.md)                        | security/robustness  | open   |

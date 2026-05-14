@@ -17,7 +17,7 @@
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
-import { readApiOptions, readSseEvents } from "./program-helpers.js";
+import { formatApiErrorResponse, readApiOptions, readSseEvents } from "./program-helpers.js";
 
 export interface AgentNoticesCommandHelpers {
   readonly apiRequest: (
@@ -77,7 +77,7 @@ export function registerAgentNoticesCommands(
         });
         if (!response.ok) {
           const text = await response.text();
-          throw new Error(`Muse API ${response.status}: ${text || response.statusText}`);
+          throw formatApiErrorResponse(response, text, baseUrl);
         }
         for await (const event of readSseEvents(response)) {
           if (event.event === "open") {

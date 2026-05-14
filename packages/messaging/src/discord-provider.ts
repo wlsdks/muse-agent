@@ -1,3 +1,5 @@
+import { truncateErrorBody } from "@muse/shared";
+
 import { readDiscordAfter, writeDiscordAfter } from "./discord-after-store.js";
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
@@ -151,7 +153,7 @@ export class DiscordProvider implements MessagingProvider {
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
-        `Discord channels.messages failed: ${errorPayload?.message ?? (text || response.statusText)}`,
+        `Discord channels.messages failed: ${errorPayload?.message ?? (truncateErrorBody(text) || response.statusText)}`,
         response.status
       );
     }
@@ -200,7 +202,7 @@ export class DiscordProvider implements MessagingProvider {
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
-        `Discord sendMessage failed: ${parsed?.message ?? (text || response.statusText)}`,
+        `Discord sendMessage failed: ${parsed?.message ?? (truncateErrorBody(text) || response.statusText)}`,
         response.status
       );
     }

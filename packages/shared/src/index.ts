@@ -64,6 +64,36 @@ export function formatBoundaryViolation(violation: BoundaryViolation): string {
   return `Boundary violation: ${details.join("; ")}`;
 }
 
+/**
+ * Default cap for `truncateErrorBody`. Chosen to keep a one-line
+ * preview readable on a 200-column terminal even when prefixed
+ * with provider id + status. Goal 002.
+ */
+export const DEFAULT_ERROR_BODY_CAP = 240;
+
+/**
+ * Cap an upstream response body for inclusion in an error message.
+ * Library + CLI sites that wrap a non-OK HTTP response into a
+ * thrown error funnel through this so a single hostile upstream
+ * (or a misrouted call that returns a multi-kilobyte HTML page)
+ * can't flood the user's stderr with one giant string.
+ *
+ * Trims surrounding whitespace, slices to `cap`, appends `…` when
+ * the body was longer than the cap. Empty / falsy input returns
+ * the empty string — caller decides whether to fall back to
+ * `statusText`.
+ */
+export function truncateErrorBody(body: string | undefined, cap: number = DEFAULT_ERROR_BODY_CAP): string {
+  if (!body) {
+    return "";
+  }
+  const trimmed = body.trim();
+  if (trimmed.length <= cap) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, cap)}…`;
+}
+
 export function createCancellationToken(): CancellationToken {
   const controller = new AbortController();
 
