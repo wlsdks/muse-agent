@@ -1,9 +1,8 @@
 # Contributing to Muse
 
 Muse is a personal-JARVIS-style AI conductor — provider-neutral, tool /
-MCP first, deterministic safety. The repo runs as a continuous
-iteration loop where each iteration is one focused change with full
-verification before commit. Outside contributions follow the same
+MCP first, deterministic safety. Every change is one focused goal with
+full verification before commit. Outside contributions follow the same
 discipline.
 
 ## Before you start
@@ -15,9 +14,9 @@ Read these in order:
 3. [`CLAUDE.md`](CLAUDE.md) — the contract every agent (and human)
    reads first; under 100 lines, points at the rule files below.
 4. [`.claude/rules/`](.claude/rules/) — domain-specific rules
-   (architecture, testing, commits, code style, iteration loop).
-   Each is short and load-bearing — when an iteration violates a
-   rule, the rule moves up the priority list.
+   (architecture, testing, commits, code style, CLI product).
+   Each is short and load-bearing — when a change violates a rule,
+   the rule moves up the priority list.
 
 ## Local setup
 

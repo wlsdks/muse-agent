@@ -56,7 +56,6 @@ For depth, read the matching file under `.claude/rules/`:
 - [`testing.md`](.claude/rules/testing.md) — verification gates and the narrowest-useful-test rule.
 - [`commits.md`](.claude/rules/commits.md) — Conventional Commits + push policy + after-correction protocol.
 - [`code-style.md`](.claude/rules/code-style.md) — ESLint gate, naming, comment policy, dead-import rule.
-- [`iteration-loop.md`](.claude/rules/iteration-loop.md) — per-iteration discipline for the continuous-development loop.
 
 ## Cross-session memory
 
