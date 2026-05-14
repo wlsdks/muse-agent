@@ -33,6 +33,14 @@ export {
   type OsascriptRunner,
   type OsascriptRunResult
 } from "./macos-notification-provider.js";
+export {
+  LinuxLibnotifyProvider,
+  buildNotifySendArgv,
+  type LibnotifyUrgency,
+  type LinuxLibnotifyProviderOptions,
+  type NotifySendRunner,
+  type NotifySendRunResult
+} from "./linux-libnotify-provider.js";
 
 export { validateOutboundMessage } from "./validate.js";
 

@@ -39,4 +39,22 @@ hosts so the messaging registry skips it cleanly.
 
 ## Status
 
-open
+done — new `LinuxLibnotifyProvider` parallels
+`MacosNotificationProvider`. Spawns `notify-send` via the same
+runner-injection pattern (constructor-throw on non-linux unless
+a test runner is provided). Pure argv builder
+`buildNotifySendArgv` is exported so the unit test pins the
+exact command line without firing a real notification.
+
+Opt-in via `MUSE_MESSAGING_LIBNOTIFY_ENABLED=true`, mirroring
+the macOS flag. Optional `MUSE_MESSAGING_LIBNOTIFY_TITLE` (app
+name) + `MUSE_MESSAGING_LIBNOTIFY_URGENCY` (low|normal|critical)
+env knobs. Autoconfigure swallows the wrong-OS throw silently
+so a shared dotfile setting both Linux + macOS flags doesn't
+break boot on either.
+
+messaging +5 tests (argv builder happy + subtitle-less,
+send round-trip, custom title/urgency, non-linux guard,
+non-zero exit surfaces `MessagingProviderError`). Dogfood is
+best-effort-skipped on this macOS host per JARVIS-NEXT.md
+contract; the unit tests carry correctness.

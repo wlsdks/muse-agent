@@ -10,6 +10,7 @@
 import {
   DiscordProvider,
   LineProvider,
+  LinuxLibnotifyProvider,
   LogMessagingProvider,
   MacosNotificationProvider,
   MessagingProviderRegistry,
@@ -113,6 +114,23 @@ export function buildMessagingRegistry(env: MuseEnvironment): MessagingProviderR
       // Non-darwin host — skip silently. The opt-in flag is a hint,
       // not a hard requirement, and a stray flag in a shared dotfile
       // shouldn't break boot on Linux.
+    }
+  }
+  // Goal 093 — `libnotify` is the Linux parallel of the macOS
+  // notification provider. Same OPT-IN posture; same skip-on-wrong-OS
+  // contract via the provider's own constructor guard.
+  if (env.MUSE_MESSAGING_LIBNOTIFY_ENABLED === "true") {
+    try {
+      const title = env.MUSE_MESSAGING_LIBNOTIFY_TITLE?.trim();
+      const urgencyRaw = env.MUSE_MESSAGING_LIBNOTIFY_URGENCY?.trim().toLowerCase();
+      const urgency = urgencyRaw === "low" || urgencyRaw === "critical" ? urgencyRaw : undefined;
+      registry.register(new LinuxLibnotifyProvider({
+        ...(title ? { title } : {}),
+        ...(urgency ? { urgency } : {})
+      }));
+    } catch {
+      // Non-linux host — skip silently. Mirrors the macOS path so a
+      // shared dotfile that exports both flags doesn't break boot.
     }
   }
   return registry;
