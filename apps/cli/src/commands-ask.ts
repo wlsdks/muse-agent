@@ -49,7 +49,24 @@ interface AskOptions {
   readonly reminders?: boolean;
   readonly json?: boolean;
   readonly withTools?: boolean;
+  /**
+   * Goal 047 — clamps the answer to notes + local-memory grounding
+   * only. Disables native web_search on every provider path and,
+   * when `--with-tools` is also set, allowlists the agent runtime
+   * to muse.notes / muse.notes-multi / muse.context only.
+   */
+  readonly notesOnly?: boolean;
 }
+
+/**
+ * Goal 047 — the allowlist consumed via `metadata.allowedToolNames`
+ * when `muse ask --notes-only` runs in `--with-tools` mode. Notes +
+ * notes-multi cover both inline and registry-aware paths; context
+ * is the persona / memory accessor so the model can still reach
+ * for "what did the user tell me about X". Web/fetch tools and
+ * everything else stay off.
+ */
+export const NOTES_ONLY_TOOL_ALLOWLIST = ["muse.notes", "muse.notes-multi", "muse.context"] as const;
 
 interface IndexChunk {
   readonly file: string;
@@ -141,6 +158,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
     .option(
       "--with-tools",
       "Run through the agent runtime so the model can call MCP tools (muse.search, muse.notes.*, muse.tasks.*, etc.). Default off — the chat-only fast path streams ~2x faster but can't fetch fresh web data."
+    )
+    .option(
+      "--notes-only",
+      "Clamp grounding to local notes + memory only — disables native web_search on every provider path and, when combined with --with-tools, allowlists the agent runtime to muse.notes / muse.notes-multi / muse.context only (goal 047)."
     )
     .action(async (queryParts: readonly string[], options: AskOptions) => {
       const argQuery = queryParts.join(" ").trim();
@@ -408,6 +429,17 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         io.stderr("(no matching notes, tasks, events, or reminders — answering from persona + general knowledge)\n");
       }
 
+      // Goal 047 — when --notes-only is set, native web_search is
+      // hard-disabled on both the chat-only fast path and the
+      // agent-runtime path. The flag also clamps the tool registry
+      // in the agent-runtime case (see allowedToolNames metadata
+      // below). Cost: zero — `webSearchPolicy.enabled: false` flows
+      // through adapter-anthropic / adapter-openai / adapter-gemini
+      // so they don't request the native tool from the upstream API.
+      const webSearchPolicy = options.notesOnly
+        ? { enabled: false, maxUses: 0 }
+        : undefined;
+
       let collectedAnswer = "";
       let toolsUsed: readonly string[] = [];
       if (options.withTools) {
@@ -426,7 +458,11 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             { content: systemPrompt, role: "system" },
             { content: query, role: "user" }
           ],
-          metadata: { userId: userKey },
+          metadata: {
+            userId: userKey,
+            ...(options.notesOnly ? { allowedToolNames: [...NOTES_ONLY_TOOL_ALLOWLIST] } : {}),
+            ...(webSearchPolicy ? { webSearchPolicy } : {})
+          },
           model
         });
         collectedAnswer = result.response.output ?? "";
@@ -446,6 +482,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             { content: systemPrompt, role: "system" },
             { content: query, role: "user" }
           ],
+          ...(webSearchPolicy ? { metadata: { webSearchPolicy } } : {}),
           model
         }) as AsyncIterable<{ type: string; text?: string }>) {
           if (event.type === "text-delta" && typeof event.text === "string") {

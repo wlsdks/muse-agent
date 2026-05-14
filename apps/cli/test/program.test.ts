@@ -3616,6 +3616,18 @@ describe("cli program", () => {
     expect(resolveReplHistoryCap("9999")).toBe(9999);
   });
 
+  it("NOTES_ONLY_TOOL_ALLOWLIST excludes web/search/fetch tools by design (goal 047)", async () => {
+    const { NOTES_ONLY_TOOL_ALLOWLIST } = await import("../src/commands-ask.js");
+    // Whitelist is exactly the notes + memory surface — nothing else.
+    expect([...NOTES_ONLY_TOOL_ALLOWLIST].sort()).toEqual(["muse.context", "muse.notes", "muse.notes-multi"]);
+    // Negative assertions — the names below would betray the goal if
+    // they crept into the allowlist, so guard them explicitly.
+    expect([...NOTES_ONLY_TOOL_ALLOWLIST]).not.toContain("muse.search");
+    expect([...NOTES_ONLY_TOOL_ALLOWLIST]).not.toContain("muse.fetch");
+    expect([...NOTES_ONLY_TOOL_ALLOWLIST]).not.toContain("muse.url");
+    expect([...NOTES_ONLY_TOOL_ALLOWLIST]).not.toContain("web_search");
+  });
+
   it("resolveStatusWatchIntervalMs defaults to 5s and clamps to [1s, 3600s] (goal 046)", async () => {
     const { resolveStatusWatchIntervalMs } = await import("../src/commands-status.js");
     expect(resolveStatusWatchIntervalMs(undefined)).toBe(5_000);
