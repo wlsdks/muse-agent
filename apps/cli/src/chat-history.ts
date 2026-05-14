@@ -20,6 +20,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { redactSecretsInText } from "@muse/shared";
+
 import { isRecord } from "./credential-store.js";
 
 export const HISTORY_TURN_LIMIT = 12;
@@ -90,9 +92,17 @@ export async function readLastChatHistory(): Promise<readonly LastChatLine[]> {
 export async function appendLastChatTurn(turn: { readonly message: string; readonly response: string }): Promise<void> {
   const filePath = lastChatHistoryPath();
   await mkdir(path.dirname(filePath), { recursive: true });
+  // Goal 108 — scrub credentials BEFORE the JSONL write so a leaked
+  // sk-/glpat-/AKIA... in either side of the turn doesn't persist on
+  // disk and round-trip back into the model on the next
+  // `muse chat --continue`. Pure helper (`redactSecretsInText`)
+  // replaces matches with `[redacted-<name>]` markers; the rest of
+  // the turn passes through unchanged so the conversation reads
+  // normally. The trade is intentional: a personal JARVIS should
+  // forget credential strings rather than recall them verbatim.
   const payload =
-    `${JSON.stringify({ content: turn.message, role: "user" })}\n` +
-    `${JSON.stringify({ content: turn.response, role: "assistant" })}\n`;
+    `${JSON.stringify({ content: redactSecretsInText(turn.message), role: "user" })}\n` +
+    `${JSON.stringify({ content: redactSecretsInText(turn.response), role: "assistant" })}\n`;
   await writeFile(filePath, payload, { flag: "a", mode: 0o600 });
 }
 

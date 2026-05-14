@@ -3389,6 +3389,45 @@ describe("cli program", () => {
     }
   });
 
+  it("appendLastChatTurn redacts credential shapes before persisting to disk (goal 108)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-chat-redact-"));
+    const fsp = await import("node:fs/promises");
+    const prev = process.env.HOME;
+    process.env.HOME = root;
+    try {
+      const { appendLastChatTurn, readLastChatHistory } = await import("../src/chat-history.js");
+      // A turn whose user side carries an OpenAI sk- token AND whose
+      // assistant side echoes a GitHub PAT. Both must land on disk
+      // with `[redacted-…]` markers — not the verbatim secret.
+      await appendLastChatTurn({
+        message: "rotate sk-proj-abcdefghijklmnopqrstuvwxyz tomorrow",
+        response: "noted. The old ghp_abcdefghijklmnopqrstuvwxyzABCDEF will rotate Friday."
+      });
+
+      const rawPath = path.join(root, ".muse", "last-chat.jsonl");
+      const raw = await fsp.readFile(rawPath, "utf8");
+      // Verbatim secrets MUST NOT survive to disk.
+      expect(raw).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz");
+      expect(raw).not.toContain("ghp_abcdefghijklmnopqrstuvwxyzABCDEF");
+      // Redaction markers DO survive — provides context to the next
+      // turn ("the user mentioned a key here") without the secret.
+      expect(raw).toContain("[redacted-openai-key]");
+      expect(raw).toContain("[redacted-github-pat]");
+      // Non-credential context survives unchanged.
+      expect(raw).toContain("rotate ");
+      expect(raw).toContain("rotate Friday");
+
+      // readLastChatHistory returns the redacted form (it's what the
+      // next --continue invocation will hand back to the model).
+      const seed = await readLastChatHistory();
+      expect(seed[0]?.content).toContain("[redacted-openai-key]");
+      expect(seed[1]?.content).toContain("[redacted-github-pat]");
+    } finally {
+      if (prev !== undefined) process.env.HOME = prev;
+      else delete process.env.HOME;
+    }
+  });
+
   it("captureEndOfSessionEpisode is gated by MUSE_EPISODIC_MEMORY_ENABLED and writes a real episode on the happy path", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-eos-"));
     const fsp = await import("node:fs/promises");
