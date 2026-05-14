@@ -41,6 +41,14 @@ interface HistoryOptions {
   readonly since?: string;
   readonly limit?: string;
   readonly json?: boolean;
+  /**
+   * Goal 050 — substring or regex pattern applied to `entry.summary`.
+   * Case-insensitive by default unless `--case-sensitive` is set.
+   * A bare string searches as a substring; if the value can be
+   * compiled as a regex (no flag conflicts), it's used as one.
+   */
+  readonly grep?: string;
+  readonly caseSensitive?: boolean;
 }
 
 function envOr(key: string, fallbackName: string): string {
@@ -55,6 +63,23 @@ function parseLimit(raw: string | undefined, fallback: number, cap: number): num
   return Math.min(cap, Math.trunc(parsed));
 }
 
+/**
+ * Goal 050 — compile `--grep <pattern>` into a `RegExp` we can apply
+ * to `entry.summary`. The pattern is tried as a regex first; if
+ * that throws (unbalanced metacharacters etc.), we fall back to a
+ * literal substring search by escaping the value. Exported for
+ * direct unit-test coverage of the boundary cases.
+ */
+export function compileHistoryGrep(raw: string, caseSensitive: boolean): RegExp {
+  const flags = caseSensitive ? "" : "iu";
+  try {
+    return new RegExp(raw, flags);
+  } catch {
+    const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(escaped, flags);
+  }
+}
+
 export function registerHistoryCommand(program: Command, io: ProgramIO): void {
   program
     .command("history")
@@ -62,6 +87,8 @@ export function registerHistoryCommand(program: Command, io: ProgramIO): void {
     .option("--kind <one>", "Filter to a single kind: reminder | proactive | followup | pattern | episode")
     .option("--since <iso>", "Drop entries older than this ISO timestamp")
     .option("--limit <n>", "Max entries (default 20, cap 200)")
+    .option("--grep <pattern>", "Filter entries whose summary matches the given substring or regex (goal 050)")
+    .option("--case-sensitive", "Make --grep case-sensitive (default: case-insensitive)")
     .option("--json", "Emit a structured array instead of the formatted feed")
     .action(async (options: HistoryOptions) => {
       const kindFilter = options.kind?.trim().toLowerCase();
@@ -78,23 +105,37 @@ export function registerHistoryCommand(program: Command, io: ProgramIO): void {
       }
       const limit = parseLimit(options.limit, 20, 200);
 
-      const merged = await readActivityFeed({
+      // Goal 050 — when `--grep` is set, read above the normal cap
+      // (×10, still bounded) and post-filter so the user still sees
+      // up to `limit` MATCHING entries. Without the bump, a 200-entry
+      // history that mostly doesn't match the pattern would silently
+      // return zero hits.
+      const grepPattern = options.grep
+        ? compileHistoryGrep(options.grep, options.caseSensitive === true)
+        : undefined;
+      const fetchLimit = grepPattern ? Math.min(2000, limit * 10) : limit;
+      const candidates = await readActivityFeed({
         episodesFile: envOr("MUSE_EPISODES_FILE", "episodes.json"),
         followupsFile: envOr("MUSE_FOLLOWUPS_FILE", "followups.json"),
         ...(kindFilter ? { kind: kindFilter as ActivityKind } : {}),
-        limit,
+        limit: fetchLimit,
         patternsFiredFile: envOr("MUSE_PATTERNS_FIRED_FILE", "patterns-fired.json"),
         proactiveHistoryFile: envOr("MUSE_PROACTIVE_HISTORY_FILE", "proactive-history.json"),
         reminderHistoryFile: envOr("MUSE_REMINDER_HISTORY_FILE", "reminder-history.json"),
         ...(sinceMs !== undefined ? { sinceMs } : {})
       });
+      const merged = grepPattern
+        ? candidates.filter((entry) => grepPattern.test(entry.summary)).slice(0, limit)
+        : candidates;
 
       if (options.json) {
         io.stdout(`${JSON.stringify({ entries: merged, total: merged.length }, null, 2)}\n`);
         return;
       }
       if (merged.length === 0) {
-        if (kindFilter) {
+        if (grepPattern) {
+          io.stdout(`(no activity matched --grep '${options.grep ?? ""}' — try a broader pattern or drop other filters)\n`);
+        } else if (kindFilter) {
           io.stdout(`(no ${kindFilter} activity yet — try \`muse history\` without the filter to see other kinds)\n`);
         } else {
           io.stdout("(no activity yet — JARVIS hasn't fired anything in the configured stores)\n");

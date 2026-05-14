@@ -3616,6 +3616,29 @@ describe("cli program", () => {
     expect(resolveReplHistoryCap("9999")).toBe(9999);
   });
 
+  it("compileHistoryGrep treats input as regex first, falls back to substring on metacharacter errors (goal 050)", async () => {
+    const { compileHistoryGrep } = await import("../src/commands-history.js");
+    // Plain substring matches the literal anywhere.
+    const plain = compileHistoryGrep("budget", false);
+    expect(plain.test("Q3 budget memo")).toBe(true);
+    expect(plain.test("BUDGET review")).toBe(true);
+    expect(plain.test("calendar")).toBe(false);
+
+    // Regex metacharacters honoured when valid.
+    const meta = compileHistoryGrep("^bug-\\d+", false);
+    expect(meta.test("bug-12 still open")).toBe(true);
+    expect(meta.test("Q3 bug-12")).toBe(false); // anchored
+
+    // --case-sensitive flips the flag.
+    const strict = compileHistoryGrep("Budget", true);
+    expect(strict.test("Q3 Budget memo")).toBe(true);
+    expect(strict.test("Q3 budget memo")).toBe(false);
+
+    // Invalid regex falls back to literal substring.
+    const broken = compileHistoryGrep("(unclosed", false);
+    expect(broken.test("contains (unclosed paren")).toBe(true);
+  });
+
   it("listMuseImportEntries + findImportCollisions round-trip an exported bundle correctly (goal 049)", async () => {
     const { buildMuseExport } = await import("../src/commands-export.js");
     const { listMuseImportEntries, findImportCollisions } = await import("../src/commands-import.js");
