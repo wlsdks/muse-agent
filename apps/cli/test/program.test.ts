@@ -3708,6 +3708,77 @@ describe("cli program", () => {
     }
   });
 
+  it("muse status reports the inferred model when MUSE_MODEL is unset but a provider key resolves one", async () => {
+    const prev = {
+      muse_model: process.env.MUSE_MODEL,
+      muse_default_model: process.env.MUSE_DEFAULT_MODEL,
+      gemini: process.env.GEMINI_API_KEY,
+      anthropic: process.env.ANTHROPIC_API_KEY,
+      openai: process.env.OPENAI_API_KEY,
+      openrouter: process.env.OPENROUTER_API_KEY,
+      ollama: process.env.OLLAMA_BASE_URL,
+      modelKeysFile: process.env.MUSE_MODEL_KEYS_FILE
+    };
+    // Block the real ~/.muse/models.json overlay so the wizard
+    // can't leak into the env-only case.
+    delete process.env.MUSE_MODEL;
+    delete process.env.MUSE_DEFAULT_MODEL;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OLLAMA_BASE_URL;
+    process.env.MUSE_MODEL_KEYS_FILE = path.join(await mkdtemp(path.join(tmpdir(), "muse-status-modelinf-")), "missing.json");
+    try {
+      // 1) GEMINI_API_KEY only → inferred gemini/gemini-2.0-flash.
+      process.env.GEMINI_API_KEY = "gem-test";
+      const { io: io1, output: out1 } = captureOutput();
+      const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+      await program1.parseAsync(["node", "muse", "status", "--user", "stark", "--json"], { from: "node" });
+      const snap1 = JSON.parse(out1.join("")) as { model?: string; modelInferredFrom?: string };
+      expect(snap1.model).toBe("gemini/gemini-2.0-flash");
+      expect(snap1.modelInferredFrom).toBe("GEMINI_API_KEY");
+
+      // Formatted output annotates the line.
+      const { io: io1f, output: out1f } = captureOutput();
+      const program1f = createProgram({ ...io1f, fetch: async () => { throw new Error("no fetch"); } });
+      await program1f.parseAsync(["node", "muse", "status", "--user", "stark"], { from: "node" });
+      expect(out1f.join("")).toContain("model: gemini/gemini-2.0-flash (inferred from GEMINI_API_KEY)");
+
+      // 2) MUSE_MODEL explicit → no inference annotation.
+      process.env.MUSE_MODEL = "gemini-2.5-pro";
+      const { io: io2, output: out2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      await program2.parseAsync(["node", "muse", "status", "--user", "stark", "--json"], { from: "node" });
+      const snap2 = JSON.parse(out2.join("")) as { model?: string; modelInferredFrom?: string };
+      expect(snap2.model).toBe("gemini-2.5-pro");
+      expect(snap2.modelInferredFrom).toBeUndefined();
+
+      // 3) Nothing resolvable → unset.
+      delete process.env.MUSE_MODEL;
+      delete process.env.GEMINI_API_KEY;
+      const { io: io3, output: out3 } = captureOutput();
+      const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("no fetch"); } });
+      await program3.parseAsync(["node", "muse", "status", "--user", "stark", "--json"], { from: "node" });
+      const snap3 = JSON.parse(out3.join("")) as { model?: string; modelInferredFrom?: string };
+      expect(snap3.model).toBeUndefined();
+      expect(snap3.modelInferredFrom).toBeUndefined();
+    } finally {
+      const restore = (envKey: keyof typeof prev, k: string): void => {
+        if (prev[envKey] === undefined) delete process.env[k];
+        else process.env[k] = prev[envKey];
+      };
+      restore("muse_model", "MUSE_MODEL");
+      restore("muse_default_model", "MUSE_DEFAULT_MODEL");
+      restore("gemini", "GEMINI_API_KEY");
+      restore("anthropic", "ANTHROPIC_API_KEY");
+      restore("openai", "OPENAI_API_KEY");
+      restore("openrouter", "OPENROUTER_API_KEY");
+      restore("ollama", "OLLAMA_BASE_URL");
+      restore("modelKeysFile", "MUSE_MODEL_KEYS_FILE");
+    }
+  });
+
   it("muse status surfaces configured providers from env AND from the muse-setup-model credentials file", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-status-providers-"));
     const fsp = await import("node:fs/promises");

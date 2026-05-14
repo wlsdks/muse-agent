@@ -18,7 +18,7 @@ import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { mergeModelKeysFromFile } from "@muse/autoconfigure";
+import { mergeModelKeysFromFile, resolveDefaultModel } from "@muse/autoconfigure";
 import {
   readFollowups,
   readReminders,
@@ -164,7 +164,7 @@ async function collectStatus(userId: string) {
   const logBytes = await fileSize(logFile);
 
   return {
-    model: envValue("MUSE_MODEL") ?? envValue("MUSE_DEFAULT_MODEL"),
+    ...resolveModelInfo(),
     providers: summariseProviders(),
     persona: {
       factCount: persona?.facts ? Object.keys(persona.facts).length : 0,
@@ -212,6 +212,40 @@ async function collectStatus(userId: string) {
     patterns: patternsSummary,
     reminders: remindersSummary
   };
+}
+
+/**
+ * `{ model, modelInferredFrom }` — what model the runtime will
+ * actually invoke. Mirrors `resolveDefaultModel` from autoconfigure
+ * so a user who has only `GEMINI_API_KEY` set (no `MUSE_MODEL`
+ * export) sees the inferred `gemini/gemini-2.0-flash` instead of
+ * the misleading "(unset)" the status command used to print when
+ * it only read `process.env.MUSE_MODEL`.
+ *
+ * `modelInferredFrom` carries the env key name when the model came
+ * from inference, so the formatted output can annotate the line —
+ * matches the `muse doctor` warn-detail format
+ * ("inferred from GEMINI_API_KEY").
+ */
+function resolveModelInfo(): { model?: string; modelInferredFrom?: string } {
+  const merged = mergeModelKeysFromFile({ ...process.env });
+  const explicit = (merged.MUSE_MODEL?.trim() || merged.MUSE_DEFAULT_MODEL?.trim() || "") || undefined;
+  if (explicit) {
+    return { model: explicit };
+  }
+  const resolved = resolveDefaultModel(merged);
+  if (!resolved) {
+    return {};
+  }
+  const inferredFrom = [
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "OPENROUTER_API_KEY",
+    "OLLAMA_BASE_URL"
+  ].find((k) => typeof merged[k] === "string" && (merged[k] as string).trim().length > 0);
+  return { model: resolved, modelInferredFrom: inferredFrom };
 }
 
 /**
@@ -285,7 +319,12 @@ export function registerStatusCommand(program: Command, io: ProgramIO): void {
         io.stdout(`    once seeded, muse ask/chat/brief will address you by name and honour your preferences.\n`);
       }
       io.stdout("\n");
-      io.stdout(`  model: ${snap.model ?? "(unset — set MUSE_MODEL or run muse setup model)"}\n`);
+      const modelLine = snap.model
+        ? snap.modelInferredFrom
+          ? `${snap.model} (inferred from ${snap.modelInferredFrom})`
+          : snap.model
+        : "(unset — set MUSE_MODEL or run muse setup model)";
+      io.stdout(`  model: ${modelLine}\n`);
       if (snap.providers.total > 0) {
         io.stdout(`    providers: ${snap.providers.total.toString()} configured — ${snap.providers.configured.join(", ")}\n`);
       } else {
