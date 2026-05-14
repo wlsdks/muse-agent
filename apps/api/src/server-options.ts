@@ -118,6 +118,14 @@ export interface ServerOptions {
    */
   readonly proactiveHistoryFile?: string;
   /**
+   * Goal 052 — path to the session-lock marker (default
+   * `~/.muse/session-lock.json`). When set, the proactive tick
+   * daemon reads it every cycle; an active lock skips firing and
+   * surfaces a "skipped (locked until X)" log line instead of a
+   * stream of zero-fire ticks.
+   */
+  readonly sessionLockFile?: string;
+  /**
    * Path to the self-followup store (default ~/.muse/followups.json).
    * When set alongside MUSE_FOLLOWUP_DEFAULT_PROVIDER /
    * MUSE_FOLLOWUP_DEFAULT_DESTINATION and a wired modelProvider,

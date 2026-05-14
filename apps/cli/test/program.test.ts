@@ -3628,6 +3628,75 @@ describe("cli program", () => {
     expect(resolveReplHistoryCap("9999")).toBe(9999);
   });
 
+  it("resolveLockUntilMs honours --hours + --minutes and defaults to 1h on zero (goal 052)", async () => {
+    const { resolveLockUntilMs } = await import("../src/commands-session.js");
+    const now = 1_000_000_000_000; // arbitrary fixed epoch
+    // Default → +1h.
+    expect(resolveLockUntilMs(undefined, undefined, now) - now).toBe(60 * 60_000);
+    // --hours 2 → +2h.
+    expect(resolveLockUntilMs("2", undefined, now) - now).toBe(2 * 60 * 60_000);
+    // --minutes 30 → +30m.
+    expect(resolveLockUntilMs(undefined, "30", now) - now).toBe(30 * 60_000);
+    // Both combine.
+    expect(resolveLockUntilMs("1", "30", now) - now).toBe(90 * 60_000);
+    // Decimal hours.
+    expect(resolveLockUntilMs("0.5", undefined, now) - now).toBe(30 * 60_000);
+    // Negatives reject.
+    expect(() => resolveLockUntilMs("-1", undefined, now)).toThrow();
+    expect(() => resolveLockUntilMs(undefined, "-5", now)).toThrow();
+    // Non-numeric rejects.
+    expect(() => resolveLockUntilMs("abc", undefined, now)).toThrow();
+  });
+
+  it("muse session lock / unlock / status round-trip writes + reads the marker (goal 052)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-session-"));
+    const lockFile = path.join(root, "session-lock.json");
+    const prev = process.env.MUSE_SESSION_LOCK_FILE;
+    process.env.MUSE_SESSION_LOCK_FILE = lockFile;
+    try {
+      // status when no file exists → unlocked.
+      const { io: io0, output: out0 } = captureOutput();
+      const p0 = createProgram({ ...io0, fetch: async () => { throw new Error("no fetch"); } });
+      await p0.parseAsync(["node", "muse", "session", "status", "--json"], { from: "node" });
+      const r0 = JSON.parse(out0.join("")) as { active: boolean; expired: boolean };
+      expect(r0.active).toBe(false);
+      expect(r0.expired).toBe(false);
+
+      // lock --hours 2 --reason "deep work" → marker on disk.
+      const { io: io1, output: out1 } = captureOutput();
+      const p1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+      await p1.parseAsync(["node", "muse", "session", "lock", "--hours", "2", "--reason", "deep work", "--json"], { from: "node" });
+      const written = JSON.parse(out1.join("")) as { until: string; setAt: string; reason: string };
+      expect(written.reason).toBe("deep work");
+      expect(new Date(written.until).getTime()).toBeGreaterThan(Date.now() + 60 * 60_000);
+
+      // status reads the marker as active.
+      const { io: io2, output: out2 } = captureOutput();
+      const p2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      await p2.parseAsync(["node", "muse", "session", "status", "--json"], { from: "node" });
+      const r2 = JSON.parse(out2.join("")) as { active: boolean; minutesRemaining: number };
+      expect(r2.active).toBe(true);
+      expect(r2.minutesRemaining).toBeGreaterThan(60);
+
+      // unlock removes it.
+      const { io: io3, output: out3 } = captureOutput();
+      const p3 = createProgram({ ...io3, fetch: async () => { throw new Error("no fetch"); } });
+      await p3.parseAsync(["node", "muse", "session", "unlock", "--json"], { from: "node" });
+      const r3 = JSON.parse(out3.join("")) as { cleared: boolean };
+      expect(r3.cleared).toBe(true);
+
+      // status again → unlocked.
+      const { io: io4, output: out4 } = captureOutput();
+      const p4 = createProgram({ ...io4, fetch: async () => { throw new Error("no fetch"); } });
+      await p4.parseAsync(["node", "muse", "session", "status", "--json"], { from: "node" });
+      const r4 = JSON.parse(out4.join("")) as { active: boolean };
+      expect(r4.active).toBe(false);
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_SESSION_LOCK_FILE;
+      else process.env.MUSE_SESSION_LOCK_FILE = prev;
+    }
+  });
+
   it("groupToolsByDomain buckets entries by prefix and lands dot-less names in (unscoped) (goal 053)", async () => {
     const { groupToolsByDomain } = await import("../src/commands-trust.js");
     const grouped = groupToolsByDomain([

@@ -80,6 +80,12 @@ export interface ProactiveTickOptions {
    */
   readonly agentInitiatedNoticeBroker?: AgentInitiatedNoticeBroker;
   readonly agentInitiatedNoticeUserId?: string;
+  /**
+   * Goal 052 — `~/.muse/session-lock.json` path. Read on every
+   * tick by `runDueProactiveNotices`; when the marker is active,
+   * the tick reports `sessionLockedUntil` and skips firing.
+   */
+  readonly sessionLockFile?: string;
   /** Injectable clock for tests; default is `() => new Date()`. */
   readonly now?: () => Date;
 }
@@ -122,10 +128,18 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
         messagingRegistry: options.messagingRegistry,
         now,
         providerId: options.providerId,
+        ...(options.sessionLockFile ? { sessionLockFile: options.sessionLockFile } : {}),
         sidecarFile: options.sidecarFile,
         ...(options.tasksFile ? { tasksFile: options.tasksFile } : {})
       });
-      if (summary.fired > 0 || summary.errors.length > 0) {
+      if (summary.sessionLockedUntil) {
+        // Goal 052 — log once per tick when the session lock blocks
+        // firing. Keeps the audit trail intact ("did anything fire
+        // during my focus block?") without spamming the user.
+        options.logger?.(
+          `proactive-tick: skipped (session locked until ${summary.sessionLockedUntil})`
+        );
+      } else if (summary.fired > 0 || summary.errors.length > 0) {
         options.logger?.(
           `proactive-tick: fired ${summary.fired.toString()} of ${summary.imminent.toString()} imminent via ${options.providerId}` +
             (summary.errors.length > 0 ? `, ${summary.errors.length.toString()} error(s)` : "")

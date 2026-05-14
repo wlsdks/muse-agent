@@ -59,6 +59,63 @@ export interface ProactiveFiredEntry {
 
 const MAX_FIRED_ENTRIES = 1_000;
 
+/**
+ * Goal 052 — payload of `~/.muse/session-lock.json`. Written by
+ * `muse session lock --hours N`, read by `runDueProactiveNotices`
+ * to gate firing. The `reason` field is optional and exists so the
+ * user can write "deep work" / "PR review" / etc. — surfaced in
+ * the daemon log and `muse session status`.
+ */
+export interface SessionLockPayload {
+  readonly until: string;
+  readonly setAt: string;
+  readonly reason?: string;
+}
+
+/**
+ * Goal 052 — write a fresh session-lock marker. Atomic write via
+ * tmp+rename + 0o600 file mode to match the other personal stores.
+ */
+export async function writeSessionLock(file: string, payload: SessionLockPayload): Promise<void> {
+  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
+  const fsm = await import("node:fs/promises");
+  const pathMod = await import("node:path");
+  await fsm.mkdir(pathMod.dirname(file), { recursive: true });
+  await fsm.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  await fsm.rename(tmp, file);
+  await fsm.chmod(file, 0o600).catch(() => undefined);
+}
+
+/**
+ * Goal 052 — best-effort read + expiry check. Returns the `until`
+ * ISO string when the lock is still active at `nowDate`; otherwise
+ * `undefined`. Tolerant: any read / JSON / shape error treats the
+ * session as unlocked (fail-open) so a corrupted marker cannot
+ * permanently silence the daemon.
+ */
+export async function readSessionLock(file: string, nowDate: Date): Promise<string | undefined> {
+  let raw: string;
+  try {
+    const fsm = await import("node:fs/promises");
+    raw = await fsm.readFile(file, "utf8");
+  } catch {
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object") return undefined;
+  const until = (parsed as { until?: unknown }).until;
+  if (typeof until !== "string") return undefined;
+  const expiresAt = new Date(until);
+  if (Number.isNaN(expiresAt.getTime())) return undefined;
+  if (expiresAt.getTime() <= nowDate.getTime()) return undefined;
+  return until;
+}
+
 export async function readProactiveFired(file: string): Promise<readonly ProactiveFiredEntry[]> {
   let raw: string;
   try {
@@ -248,6 +305,15 @@ export interface RunDueProactiveNoticesOptions {
    */
   readonly agentInitiatedNoticeBroker?: AgentInitiatedNoticeBrokerLike;
   readonly agentInitiatedNoticeUserId?: string;
+  /**
+   * Goal 052 — path to the session-lock marker file. When the file
+   * exists and its payload's `until` timestamp is still in the
+   * future, the proactive loop skips firing for this tick and
+   * surfaces the marker via `sessionLockedUntil` in the summary so
+   * the caller can log it. Independent of agent-active-window
+   * gating: a session lock blocks both flat and Phase-D notices.
+   */
+  readonly sessionLockFile?: string;
 }
 
 export interface RunDueProactiveNoticesSummary {
@@ -257,6 +323,13 @@ export interface RunDueProactiveNoticesSummary {
   readonly fired: number;
   /** Human-readable error strings, one per failed delivery. */
   readonly errors: readonly string[];
+  /**
+   * Goal 052 — when a session lock was active for this tick, the
+   * ISO timestamp the lock expires at. Otherwise undefined. Callers
+   * use this to log "skipped tick — locked until …" lines so the
+   * user understands why nothing fired during a focus window.
+   */
+  readonly sessionLockedUntil?: string;
 }
 
 export async function runDueProactiveNotices(
@@ -265,6 +338,20 @@ export async function runDueProactiveNotices(
   const now = options.now ?? (() => new Date());
   const leadMinutes = options.leadMinutes ?? 10;
   const nowDate = now();
+
+  // Goal 052 — short-circuit before any work when the user has put
+  // the session into Do-Not-Disturb. We surface `sessionLockedUntil`
+  // on the summary so the daemon can log it (vs. silently looking
+  // dead). The lock is fail-open: any read / parse error treats the
+  // session as unlocked, so a corrupted marker can't permanently
+  // gag the daemon.
+  if (options.sessionLockFile) {
+    const lock = await readSessionLock(options.sessionLockFile, nowDate);
+    if (lock) {
+      return { errors: [], fired: 0, imminent: 0, sessionLockedUntil: lock };
+    }
+  }
+
   const cutoff = new Date(nowDate.getTime() + leadMinutes * 60_000);
 
   const errors: string[] = [];

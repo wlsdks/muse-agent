@@ -14,6 +14,7 @@ import {
   resolveProactiveHistoryFile,
   resolveReminderHistoryFile,
   resolveRemindersFile,
+  resolveSessionLockFile,
   resolveSlackInboxFile,
   resolveTasksFile,
   resolveTelegramInboxFile
@@ -132,6 +133,7 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     remindersFile: resolveRemindersFile(env),
     reminderHistoryFile: resolveReminderHistoryFile(env),
     proactiveHistoryFile: resolveProactiveHistoryFile(env),
+    sessionLockFile: resolveSessionLockFile(env),
     followupsFile: resolveFollowupsFile(env),
     patternsFiredFile: resolvePatternsFiredFile(env),
     episodesFile: resolveEpisodesFile(env),

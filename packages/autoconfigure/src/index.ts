@@ -176,6 +176,7 @@ export {
   resolveDiscordInboxFile,
   resolveProactiveHistoryFile,
   resolveReminderHistoryFile,
+  resolveSessionLockFile,
   resolveSlackAfterFile,
   resolveSlackInboxFile,
   resolveTasksFile,

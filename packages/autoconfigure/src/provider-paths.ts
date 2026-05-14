@@ -49,6 +49,15 @@ export function resolveProactiveHistoryFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_PROACTIVE_HISTORY_FILE", "proactive-history.json");
 }
 
+/**
+ * Goal 052 — `~/.muse/session-lock.json` by default; overridable
+ * via `MUSE_SESSION_LOCK_FILE` (tests use a tempdir to avoid
+ * touching the user's real home).
+ */
+export function resolveSessionLockFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_SESSION_LOCK_FILE", "session-lock.json");
+}
+
 export function resolveFollowupsFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_FOLLOWUPS_FILE", "followups.json");
 }

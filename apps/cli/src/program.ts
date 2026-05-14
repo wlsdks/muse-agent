@@ -83,6 +83,7 @@ import { registerApprovalCommands } from "./commands-approval.js";
 import { registerAskCommand } from "./commands-ask.js";
 import { registerExportCommand } from "./commands-export.js";
 import { registerImportCommand } from "./commands-import.js";
+import { registerSessionCommands } from "./commands-session.js";
 import { registerJobCommands } from "./commands-jobs.js";
 import { registerNotesRagCommands } from "./commands-notes-rag.js";
 import { registerRememberCommands } from "./commands-remember.js";
@@ -467,6 +468,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerAskCommand(program, io);
   registerExportCommand(program, io);
   registerImportCommand(program, io);
+  registerSessionCommands(program, io);
   registerWatchFolderCommand(program, io);
   registerRoutineCommand(program, io);
   registerTrustCommands(program, io);

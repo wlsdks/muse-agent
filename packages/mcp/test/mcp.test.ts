@@ -3729,6 +3729,60 @@ describe("runDueProactiveNotices", () => {
     };
   }
 
+  it("skips firing when sessionLockFile points at an active marker (goal 052)", async () => {
+    const { runDueProactiveNotices, writeSessionLock } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-proactive-lock-"));
+    const sidecarFile = join(dir, "proactive-fired.json");
+    const lockFile = join(dir, "session-lock.json");
+
+    const fixedNow = new Date("2026-05-12T14:55:00Z");
+    const cal = makeFakeCalendarRegistry([
+      { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-lock", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
+    ]);
+    const msg = makeFakeMessagingRegistry();
+
+    // Lock active — until is 30 min in the future.
+    await writeSessionLock(lockFile, {
+      setAt: fixedNow.toISOString(),
+      until: new Date(fixedNow.getTime() + 30 * 60_000).toISOString(),
+      reason: "deep work"
+    });
+
+    const blocked = await runDueProactiveNotices({
+      calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+      destination: "@me",
+      messagingRegistry: msg.registry as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
+      now: () => fixedNow,
+      providerId: "telegram",
+      sessionLockFile: lockFile,
+      sidecarFile
+    });
+    // Sidecar is honored — nothing was probed.
+    expect(blocked.fired).toBe(0);
+    expect(blocked.imminent).toBe(0);
+    expect(blocked.sessionLockedUntil).toBeTruthy();
+    expect(msg.sent).toEqual([]);
+
+    // Move the clock past `until` — firing resumes.
+    const afterLock = new Date(fixedNow.getTime() + 45 * 60_000);
+    const unlocked = await runDueProactiveNotices({
+      calendarRegistry: makeFakeCalendarRegistry([
+        { endsAt: new Date(afterLock.getTime() + 60 * 60_000), id: "evt-lock-after", startsAt: new Date(afterLock.getTime() + 5 * 60_000), title: "Standup later" }
+      ]) as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+      destination: "@me",
+      messagingRegistry: msg.registry as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
+      now: () => afterLock,
+      providerId: "telegram",
+      sessionLockFile: lockFile,
+      sidecarFile
+    });
+    expect(unlocked.fired).toBe(1);
+    expect(unlocked.sessionLockedUntil).toBeUndefined();
+  });
+
   it("fires imminent events, persists the sidecar, dedupes on a second run", async () => {
     const { runDueProactiveNotices, readProactiveFired } = await import("../src/index.js");
     const { mkdtempSync } = await import("node:fs");

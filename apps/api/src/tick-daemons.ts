@@ -132,6 +132,7 @@ export function startProactiveDaemonIfConfigured(
     messagingRegistry: options.messaging,
     providerId: proactiveProvider,
     ...(proactiveQuietHours ? { quietHours: proactiveQuietHours } : {}),
+    ...(options.sessionLockFile ? { sessionLockFile: options.sessionLockFile } : {}),
     sidecarFile: proactiveSidecarFile
   });
   server.addHook("onClose", async () => {

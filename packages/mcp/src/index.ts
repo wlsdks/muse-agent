@@ -421,15 +421,18 @@ export {
 // tasks due-soon). See docs/design/proactive-surfacing.md.
 export {
   readProactiveFired,
+  readSessionLock,
   runDueProactiveNotices,
   writeProactiveFired,
+  writeSessionLock,
   type ProactiveActivitySource,
   type ProactiveAgentRuntimeLike,
   type ProactiveFiredEntry,
   type ProactiveFiredKind,
   type ProactiveModelProviderLike,
   type RunDueProactiveNoticesOptions,
-  type RunDueProactiveNoticesSummary
+  type RunDueProactiveNoticesSummary,
+  type SessionLockPayload
 } from "./proactive-notice-loop.js";
 export {
   appendProactiveHistory,

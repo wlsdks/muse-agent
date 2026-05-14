@@ -64,6 +64,7 @@ export {
   resolveProactiveHistoryFile,
   resolveReminderHistoryFile,
   resolveRemindersFile,
+  resolveSessionLockFile,
   resolveSlackAfterFile,
   resolveSlackInboxFile,
   resolveTasksFile,
