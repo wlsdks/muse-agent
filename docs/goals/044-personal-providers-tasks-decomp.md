@@ -14,4 +14,9 @@ Same continuation. Tasks builder ~86 LOC + tryBuildTasksProvider helper.
 
 ## Status
 
-open
+done — `buildTasksRegistry` + `tryBuildTasksProvider` moved to
+`registry-builders/tasks.ts` mirroring 007 / 041 / 042 / 043.
+`personal-providers.ts`: 349 → 256 LOC (beats the <330 target,
+and the file is now mostly env-driven path resolvers +
+re-exports as the goal predicted). Function re-exported so
+callers stay byte-identical. All gates green.

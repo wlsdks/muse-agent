@@ -63,7 +63,7 @@ verifiable. Open-ended ideas don't count — they live in `docs/design/`.
 | 041 | [Extract buildCalendarRegistry](041-personal-providers-calendar-decomp.md)         | big-file decomp      | done   |
 | 042 | [Extract buildVoiceRegistry](042-personal-providers-voice-decomp.md)               | big-file decomp      | done   |
 | 043 | [Extract buildNotesRegistry](043-personal-providers-notes-decomp.md)               | big-file decomp      | done   |
-| 044 | [Extract buildTasksRegistry](044-personal-providers-tasks-decomp.md)               | big-file decomp      | open   |
+| 044 | [Extract buildTasksRegistry](044-personal-providers-tasks-decomp.md)               | big-file decomp      | done   |
 | 045 | [server.ts ServerOptions type cleanup](045-server-options-type-cleanup.md)         | big-file decomp      | open   |
 | 046 | [`muse status --watch`](046-muse-status-watch.md)                                  | JARVIS feature       | open   |
 | 047 | [`muse ask --notes-only`](047-muse-ask-notes-only.md)                              | JARVIS feature       | open   |
