@@ -12,17 +12,58 @@
  */
 
 import { spawn } from "node:child_process";
-import { stat } from "node:fs/promises";
-import { homedir } from "node:os";
+import { readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import type { Command } from "commander";
 
+import { decryptExportBuffer, isEncryptedExportBuffer } from "./export-crypto.js";
 import type { ProgramIO } from "./program.js";
 
 interface ImportOptions {
   readonly force?: boolean;
   readonly dryRun?: boolean;
+  /**
+   * Goal 081 — explicit decrypt mode. Even without the flag the
+   * importer auto-detects an encrypted bundle by reading the
+   * magic header, so the flag is opt-in only for the case where
+   * the operator wants the prompt forced (e.g. a CI passphrase
+   * env should be present but the operator wants to verify).
+   */
+  readonly decrypt?: boolean;
+}
+
+/**
+ * Goal 081 — when the importer detects an encrypted bundle (or
+ * `--decrypt` is set), decrypt the bytes to a temp file and
+ * return that path so the rest of the pipeline keeps working
+ * unchanged. Caller is responsible for unlinking the temp.
+ */
+async function decryptToTempIfNeeded(bundlePath: string, decryptOptIn: boolean): Promise<{ readonly path: string; readonly tempPath: string | undefined }> {
+  const bytes = await readFile(bundlePath);
+  if (!isEncryptedExportBuffer(bytes) && !decryptOptIn) {
+    return { path: bundlePath, tempPath: undefined };
+  }
+  if (!isEncryptedExportBuffer(bytes) && decryptOptIn) {
+    throw new Error("--decrypt set but the bundle has no MUSE encrypted-header magic");
+  }
+  const passphrase = process.env.MUSE_EXPORT_PASSPHRASE?.trim();
+  let key: string;
+  if (passphrase && passphrase.length > 0) {
+    key = passphrase;
+  } else {
+    const { password } = await import("@clack/prompts");
+    const answer = await password({ message: "Decrypt passphrase:" });
+    if (typeof answer !== "string" || answer.trim().length === 0) {
+      throw new Error("import aborted: passphrase is required for an encrypted bundle");
+    }
+    key = answer;
+  }
+  const plain = decryptExportBuffer(bytes, key);
+  const tempPath = join(tmpdir(), `muse-import-${process.pid.toString()}-${Date.now().toString()}.tar.gz`);
+  await writeFile(tempPath, plain, { mode: 0o600 });
+  return { path: tempPath, tempPath };
 }
 
 /**
@@ -100,9 +141,10 @@ export function registerImportCommand(program: Command, io: ProgramIO): void {
   program
     .command("import")
     .description("Restore a `muse export` tarball into ~/.muse/ (goal 049). Refuses to overwrite without --force.")
-    .argument("<bundle>", "Path to a `.tar.gz` produced by `muse export`")
+    .argument("<bundle>", "Path to a `.tar.gz` produced by `muse export` (encrypted `.enc` bundles auto-detected)")
     .option("--force", "Overwrite existing ~/.muse/* files when they collide with bundle entries")
     .option("--dry-run", "Print the plan without touching disk")
+    .option("--decrypt", "Require an encrypted bundle (passphrase via $MUSE_EXPORT_PASSPHRASE or interactive prompt). Auto-detection runs without the flag too. (goal 081)")
     .action(async (bundlePathArg: string, options: ImportOptions) => {
       const bundlePath = resolve(bundlePathArg);
       try {
@@ -112,43 +154,60 @@ export function registerImportCommand(program: Command, io: ProgramIO): void {
         process.exitCode = 1;
         return;
       }
-      const entries = await listMuseImportEntries(bundlePath);
-      if (entries.length === 0) {
-        io.stderr(`Bundle ${bundlePath} contains no .muse/* entries — refusing to extract.\n`);
+      let workingBundle: string;
+      let tempPath: string | undefined;
+      try {
+        const decrypted = await decryptToTempIfNeeded(bundlePath, options.decrypt === true);
+        workingBundle = decrypted.path;
+        tempPath = decrypted.tempPath;
+      } catch (cause) {
+        io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
         process.exitCode = 1;
         return;
       }
-      const home = homedir();
-      const collisions = await findImportCollisions(home, entries);
-
-      if (options.dryRun) {
-        io.stdout(`Plan for ${bundlePath} → ${home}:\n`);
-        for (const entry of entries) {
-          const rel = entry.replace(/^\.muse\//, "");
-          const willOverwrite = collisions.includes(rel);
-          io.stdout(`  ${willOverwrite ? "OVERWRITE" : "create   "} ~/.muse/${rel}\n`);
+      try {
+        const entries = await listMuseImportEntries(workingBundle);
+        if (entries.length === 0) {
+          io.stderr(`Bundle ${bundlePath} contains no .muse/* entries — refusing to extract.\n`);
+          process.exitCode = 1;
+          return;
         }
-        io.stdout(`\n${entries.length.toString()} entry/entries, ${collisions.length.toString()} collision(s).\n`);
-        return;
-      }
+        const home = homedir();
+        const collisions = await findImportCollisions(home, entries);
 
-      if (collisions.length > 0 && !options.force) {
-        io.stderr(`Refusing to overwrite ${collisions.length.toString()} existing file(s) in ~/.muse:\n`);
-        for (const rel of collisions.slice(0, 10)) {
-          io.stderr(`  - ${rel}\n`);
+        if (options.dryRun) {
+          io.stdout(`Plan for ${bundlePath} → ${home}:\n`);
+          for (const entry of entries) {
+            const rel = entry.replace(/^\.muse\//, "");
+            const willOverwrite = collisions.includes(rel);
+            io.stdout(`  ${willOverwrite ? "OVERWRITE" : "create   "} ~/.muse/${rel}\n`);
+          }
+          io.stdout(`\n${entries.length.toString()} entry/entries, ${collisions.length.toString()} collision(s).\n`);
+          return;
         }
-        if (collisions.length > 10) {
-          io.stderr(`  - … (${(collisions.length - 10).toString()} more)\n`);
-        }
-        io.stderr(`Re-run with --force to overwrite, or --dry-run to inspect.\n`);
-        process.exitCode = 1;
-        return;
-      }
 
-      await extractMuseBundle(bundlePath, home);
-      io.stdout(`Restored ${entries.length.toString()} file(s) into ~/.muse from ${bundlePath}\n`);
-      if (collisions.length > 0) {
-        io.stdout(`  (${collisions.length.toString()} pre-existing file(s) overwritten via --force)\n`);
+        if (collisions.length > 0 && !options.force) {
+          io.stderr(`Refusing to overwrite ${collisions.length.toString()} existing file(s) in ~/.muse:\n`);
+          for (const rel of collisions.slice(0, 10)) {
+            io.stderr(`  - ${rel}\n`);
+          }
+          if (collisions.length > 10) {
+            io.stderr(`  - … (${(collisions.length - 10).toString()} more)\n`);
+          }
+          io.stderr(`Re-run with --force to overwrite, or --dry-run to inspect.\n`);
+          process.exitCode = 1;
+          return;
+        }
+
+        await extractMuseBundle(workingBundle, home);
+        io.stdout(`Restored ${entries.length.toString()} file(s) into ~/.muse from ${bundlePath}\n`);
+        if (collisions.length > 0) {
+          io.stdout(`  (${collisions.length.toString()} pre-existing file(s) overwritten via --force)\n`);
+        }
+      } finally {
+        if (tempPath) {
+          await unlink(tempPath).catch(() => undefined);
+        }
       }
     });
 }

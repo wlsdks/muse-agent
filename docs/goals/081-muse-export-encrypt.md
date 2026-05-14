@@ -26,4 +26,21 @@ hand off.
 
 ## Status
 
-open
+done — `muse export --encrypt` wraps the bundle with AES-256-GCM
+using a passphrase-derived key (PBKDF2-SHA256, 200k iterations,
+32-byte key, 16-byte salt + 12-byte IV). Layout:
+
+  magic "MUSE" (4) + version (1) + reserved (1) + salt (16) +
+  iv (12) + ciphertext (var) + auth-tag (16)
+
+`muse import` auto-detects the magic header so an encrypted
+bundle restores via the same `muse import <path>` invocation
+the cleartext path uses; `--decrypt` opt-in is available for the
+case where an operator wants the assertion enforced. Passphrase
+comes from `MUSE_EXPORT_PASSPHRASE` env when set; falls back to
+`@clack/prompts` interactive password input otherwise. Output
+file gets a `.enc` suffix when encrypting.
+
+cli +2 tests: pure-buffer crypto round-trip (right passphrase,
+wrong passphrase, missing magic) + end-to-end build → decrypt →
+list-entries through a temp directory.

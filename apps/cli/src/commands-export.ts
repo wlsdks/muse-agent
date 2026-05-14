@@ -12,17 +12,25 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdir, readdir, stat, writeFile, unlink } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, writeFile, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
 import type { Command } from "commander";
 
+import { encryptExportBuffer } from "./export-crypto.js";
 import type { ProgramIO } from "./program.js";
 
 interface ExportOptions {
   readonly output?: string;
   readonly include?: string;
+  /**
+   * Goal 081 — wrap the bundle with AES-256-GCM. Passphrase comes
+   * from `MUSE_EXPORT_PASSPHRASE` env when set; the CLI falls
+   * back to stdin (with an interactive prompt) otherwise. Output
+   * filename gets `.enc` suffix when encrypted.
+   */
+  readonly encrypt?: boolean;
 }
 
 /**
@@ -152,14 +160,28 @@ async function collectSources(museDir: string, notesDir: string): Promise<Collec
  * dir, write a tarball at `outputPath` and return the manifest that
  * was bundled. Splitting it out keeps the registration thin and
  * the assertion surface narrow.
+ *
+ * Goal 081 — when `passphrase` is set, the tar is built to a temp
+ * path, then encrypted in one pass and written to `outputPath`.
+ * The temp tarball is unlinked even if encryption throws so we
+ * never leave a cleartext shadow next to the encrypted bundle.
  */
 export async function buildMuseExport(args: {
   readonly museDir: string;
   readonly notesDir: string;
   readonly outputPath: string;
   readonly nowIso?: string;
-}): Promise<{ readonly outputPath: string; readonly files: readonly string[]; readonly notesIncluded: boolean }> {
+  readonly passphrase?: string;
+}): Promise<{ readonly outputPath: string; readonly files: readonly string[]; readonly notesIncluded: boolean; readonly encrypted: boolean }> {
   const sources = await collectSources(args.museDir, args.notesDir);
+
+  // Goal 081 — when encrypting we still build the tar with system
+  // `tar` (same posture as the cleartext path), but route it
+  // through a temp file we can read + encrypt + final-write +
+  // unlink. The temp path lives next to the final output so a
+  // partial failure doesn't leave a cleartext sibling in cwd.
+  const passphrase = args.passphrase;
+  const tarPath = passphrase ? `${args.outputPath}.cleartext.tmp` : args.outputPath;
 
   await mkdir(dirname(args.outputPath), { recursive: true });
 
@@ -191,7 +213,7 @@ export async function buildMuseExport(args: {
     const tarArgs = [
       "-c",
       "-z",
-      "-f", args.outputPath,
+      "-f", tarPath,
       "-C", museParent,
       ...tarEntries.map((entry) => `${museBase}/${entry}`)
     ];
@@ -208,15 +230,48 @@ export async function buildMuseExport(args: {
         }
       });
     });
+
+    if (passphrase) {
+      // Read cleartext tarball, encrypt to the final path, then
+      // unlink the cleartext temp. The unlink runs in the outer
+      // `finally` so a thrown encrypt also cleans up.
+      const plain = await readFile(tarPath);
+      const cipher = encryptExportBuffer(plain, passphrase);
+      await writeFile(args.outputPath, cipher, { mode: 0o600 });
+    }
   } finally {
     await unlink(readmePath).catch(() => undefined);
+    if (passphrase) {
+      await unlink(tarPath).catch(() => undefined);
+    }
   }
 
   return {
     outputPath: args.outputPath,
     files: sources.files,
-    notesIncluded: sources.notesDir !== undefined
+    notesIncluded: sources.notesDir !== undefined,
+    encrypted: Boolean(passphrase)
   };
+}
+
+/**
+ * Goal 081 — when `--encrypt` is set we need a passphrase. Prefer
+ * the env so headless / CI flows work without a TTY; fall back to
+ * an interactive `@clack/prompts` password input. Exported so the
+ * test suite can patch `passphraseFromEnv` directly instead of
+ * mocking the prompt library.
+ */
+export async function resolveExportPassphrase(): Promise<string> {
+  const fromEnv = process.env.MUSE_EXPORT_PASSPHRASE?.trim();
+  if (fromEnv && fromEnv.length > 0) return fromEnv;
+  // Lazy import — `@clack/prompts` pulls in tty machinery we
+  // don't want in the happy `MUSE_EXPORT_PASSPHRASE` path.
+  const { password } = await import("@clack/prompts");
+  const answer = await password({ message: "Export passphrase (keep it safe — Muse cannot recover lost passphrases):" });
+  if (typeof answer !== "string" || answer.trim().length === 0) {
+    throw new Error("export aborted: passphrase is required for --encrypt");
+  }
+  return answer;
 }
 
 export function registerExportCommand(program: Command, io: ProgramIO): void {
@@ -224,10 +279,14 @@ export function registerExportCommand(program: Command, io: ProgramIO): void {
     .command("export")
     .description("Bundle every ~/.muse/*.json store + the notes tree into a single timestamped tar.gz (goal 048)")
     .option("--output <path>", "Override the default `./muse-backup-<timestamp>.tar.gz` destination")
+    .option("--encrypt", "Encrypt the bundle with AES-256-GCM (passphrase via $MUSE_EXPORT_PASSPHRASE or interactive prompt). Output gets a .enc suffix. (goal 081)")
     .action(async (options: ExportOptions) => {
       const museDir = join(homedir(), ".muse");
       const notesDir = defaultNotesDir();
-      const outputPath = resolve(options.output ?? defaultExportOutput());
+      let outputPath = resolve(options.output ?? defaultExportOutput());
+      if (options.encrypt && !outputPath.endsWith(".enc")) {
+        outputPath = `${outputPath}.enc`;
+      }
       try {
         await stat(museDir);
       } catch {
@@ -235,9 +294,28 @@ export function registerExportCommand(program: Command, io: ProgramIO): void {
         process.exitCode = 1;
         return;
       }
-      const summary = await buildMuseExport({ museDir, notesDir, outputPath });
-      io.stdout(`Wrote ${summary.outputPath}\n`);
+      let passphrase: string | undefined;
+      if (options.encrypt) {
+        try {
+          passphrase = await resolveExportPassphrase();
+        } catch (cause) {
+          io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+          process.exitCode = 1;
+          return;
+        }
+      }
+      const summary = await buildMuseExport({
+        museDir,
+        notesDir,
+        outputPath,
+        ...(passphrase ? { passphrase } : {})
+      });
+      io.stdout(`Wrote ${summary.outputPath}${summary.encrypted ? " (encrypted)" : ""}\n`);
       io.stdout(`  ${summary.files.length.toString()} store file(s), notes tree ${summary.notesIncluded ? "included" : "skipped (missing or empty)"}\n`);
-      io.stdout(`Restore: tar -xzf ${summary.outputPath} -C "$HOME"\n`);
+      if (summary.encrypted) {
+        io.stdout(`Restore: muse import ${summary.outputPath} --decrypt\n`);
+      } else {
+        io.stdout(`Restore: tar -xzf ${summary.outputPath} -C "$HOME"\n`);
+      }
     });
 }

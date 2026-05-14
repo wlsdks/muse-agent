@@ -3838,6 +3838,60 @@ describe("cli program", () => {
     expect(collisions).not.toContain("reminders.json");
   });
 
+  it("encryptExportBuffer + decryptExportBuffer round-trip with the right passphrase (goal 081)", async () => {
+    const { encryptExportBuffer, decryptExportBuffer, isEncryptedExportBuffer } = await import("../src/export-crypto.js");
+    const plain = Buffer.from("hello-muse-export-bytes\n");
+    const cipher = encryptExportBuffer(plain, "correct horse battery staple");
+    expect(isEncryptedExportBuffer(cipher)).toBe(true);
+    expect(cipher.subarray(0, 4).toString("ascii")).toBe("MUSE");
+    // The encrypted blob does not contain the plaintext.
+    expect(cipher.includes(plain)).toBe(false);
+    // Right passphrase decrypts to identical bytes.
+    expect(decryptExportBuffer(cipher, "correct horse battery staple").equals(plain)).toBe(true);
+    // Wrong passphrase throws a clear, non-byte-leaking message.
+    expect(() => decryptExportBuffer(cipher, "WRONG")).toThrow(/wrong passphrase/i);
+    // A buffer without the magic header is detected up front.
+    expect(isEncryptedExportBuffer(Buffer.from("PK"))).toBe(false);
+    expect(() => decryptExportBuffer(Buffer.from("PK"), "anything")).toThrow(/MUSE magic/);
+  });
+
+  it("buildMuseExport --encrypt round-trips through muse import --decrypt (goal 081)", async () => {
+    const { buildMuseExport } = await import("../src/commands-export.js");
+    const { listMuseImportEntries } = await import("../src/commands-import.js");
+    const { decryptExportBuffer, isEncryptedExportBuffer } = await import("../src/export-crypto.js");
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-export-enc-"));
+    const fsp = await import("node:fs/promises");
+    const museDir = path.join(root, ".muse");
+    const notesDir = path.join(museDir, "notes");
+    await fsp.mkdir(museDir, { recursive: true });
+    await fsp.mkdir(notesDir, { recursive: true });
+    await fsp.writeFile(path.join(museDir, "tasks.json"), JSON.stringify({ tasks: [{ id: "t1" }] }));
+    await fsp.writeFile(path.join(notesDir, "hi.md"), "hello");
+    const outputPath = path.join(root, "bundle.tar.gz.enc");
+
+    const summary = await buildMuseExport({
+      museDir, notesDir, outputPath,
+      passphrase: "my-laptop-backup-2026"
+    });
+    expect(summary.encrypted).toBe(true);
+    expect(summary.outputPath).toBe(outputPath);
+
+    // On-disk file is encrypted (magic header present, no
+    // cleartext shadow next to it).
+    const onDisk = await fsp.readFile(outputPath);
+    expect(isEncryptedExportBuffer(onDisk)).toBe(true);
+    await expect(fsp.stat(`${outputPath}.cleartext.tmp`)).rejects.toThrow();
+
+    // Decrypting yields a real .tar.gz that listMuseImportEntries
+    // can read.
+    const decrypted = decryptExportBuffer(onDisk, "my-laptop-backup-2026");
+    const clearPath = path.join(root, "decrypted.tar.gz");
+    await fsp.writeFile(clearPath, decrypted);
+    const entries = await listMuseImportEntries(clearPath);
+    expect(entries).toContain(".muse/tasks.json");
+    expect(entries.some((e) => e === ".muse/notes/hi.md")).toBe(true);
+  });
+
   it("buildMuseExport bundles every present ~/.muse/*.json + the notes tree, skipping missing siblings (goal 048)", async () => {
     const { buildMuseExport, buildExportReadme, DEFAULT_EXPORT_FILES } = await import("../src/commands-export.js");
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-export-"));
