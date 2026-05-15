@@ -3,6 +3,7 @@ import {
   RuleBasedAgentSpecResolver
 } from "@muse/agent-specs";
 import { extractBearerToken } from "@muse/auth";
+import { parseBoolean } from "@muse/autoconfigure";
 import { InMemoryRuntimeSettingsStore, RuntimeSettings } from "@muse/runtime-settings";
 import Fastify, { type FastifyInstance } from "fastify";
 import { registerAdminRoutes } from "./admin-routes.js";
@@ -294,10 +295,13 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // text via their respective MUSE_*_AGENT_TURN flag; when either is
   // active AND an agent runtime is wired, one tracker records
   // /api/chat* presence and feeds both downstream consumers.
-  const phaseDReminderOn = env.MUSE_REMINDER_AGENT_TURN?.trim().toLowerCase() === "true"
+  // Goal 130 — route through the goal-128 parseBoolean so common
+  // admin spellings (`1`, `yes`, `on`, case-insensitive) work
+  // uniformly with the rest of Muse's env-flag parsing.
+  const phaseDReminderOn = parseBoolean(env.MUSE_REMINDER_AGENT_TURN, false)
     && Boolean(options.agentRuntime)
     && Boolean(options.defaultModel);
-  const phaseDProactiveOn = env.MUSE_PROACTIVE_AGENT_TURN?.trim().toLowerCase() === "true"
+  const phaseDProactiveOn = parseBoolean(env.MUSE_PROACTIVE_AGENT_TURN, false)
     && Boolean(options.agentRuntime)
     && Boolean(options.defaultModel);
   const presenceFile = env.MUSE_PROACTIVE_PRESENCE_FILE?.trim();

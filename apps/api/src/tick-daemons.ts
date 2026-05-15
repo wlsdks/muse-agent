@@ -16,6 +16,7 @@
  * them too would hide more than it reveals.
  */
 
+import { parseBoolean } from "@muse/autoconfigure";
 import type { FastifyInstance } from "fastify";
 
 import type { ServerOptions } from "./server.js";
@@ -185,7 +186,9 @@ export function startPatternDaemonIfConfigured(
   server: FastifyInstance,
   options: ServerOptions
 ): void {
-  const patternEnabled = (env.MUSE_PROACTIVE_PATTERN_ENABLED ?? "").trim().toLowerCase() === "true";
+  // Goal 130 — route through the goal-128 parseBoolean so common
+  // admin spellings (`1`, `yes`, `on`) work uniformly.
+  const patternEnabled = parseBoolean(env.MUSE_PROACTIVE_PATTERN_ENABLED, false);
   const patternProvider = env.MUSE_PROACTIVE_PATTERN_PROVIDER?.trim();
   const patternDestination = env.MUSE_PROACTIVE_PATTERN_DESTINATION?.trim();
   if (

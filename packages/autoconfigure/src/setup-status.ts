@@ -14,6 +14,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
 
+import { parseBoolean } from "./env-parsers.js";
 import {
   mergeModelKeysFromFile,
   resolveLocalCalendarFile,
@@ -207,7 +208,11 @@ export async function collectSetupStatusJson(): Promise<SetupStatusSnapshot> {
   const proactiveTickMs = proactiveTickRaw && /^\d+$/u.test(proactiveTickRaw)
     ? Number.parseInt(proactiveTickRaw, 10)
     : 60_000;
-  const proactiveAgentTurn = env.MUSE_PROACTIVE_AGENT_TURN?.trim().toLowerCase() === "true";
+  // Goal 130 — route env flags through the goal-128 parseBoolean
+  // so common admin spellings (`1`, `yes`, `on`, case-insensitive)
+  // work uniformly with the rest of Muse's flag parsing instead of
+  // requiring the exact literal `"true"`.
+  const proactiveAgentTurn = parseBoolean(env.MUSE_PROACTIVE_AGENT_TURN, false);
   const proactiveQuietHours = env.MUSE_PROACTIVE_QUIET_HOURS?.trim()
     || env.MUSE_REMINDER_QUIET_HOURS?.trim();
   const proactiveSidecarFile = env.MUSE_PROACTIVE_SIDECAR_FILE?.trim()
@@ -222,7 +227,7 @@ export async function collectSetupStatusJson(): Promise<SetupStatusSnapshot> {
   const reminderTickMs = reminderTickRaw && /^\d+$/u.test(reminderTickRaw)
     ? Number.parseInt(reminderTickRaw, 10)
     : 60_000;
-  const reminderAgentTurn = env.MUSE_REMINDER_AGENT_TURN?.trim().toLowerCase() === "true";
+  const reminderAgentTurn = parseBoolean(env.MUSE_REMINDER_AGENT_TURN, false);
   const reminderQuietHours = env.MUSE_REMINDER_QUIET_HOURS?.trim();
   const reminderEnabled = Boolean(reminderProvider && reminderDestination);
 
