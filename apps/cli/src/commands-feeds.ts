@@ -21,6 +21,7 @@ import type { Command } from "commander";
 import {
   defaultFeedsFile,
   filterRecentFeedEntries,
+  mergeFeedEntries,
   parseFeedBody,
   readFeedsStore,
   writeFeedsStore,
@@ -58,7 +59,12 @@ function slugifyUrl(url: string): string {
 async function refreshSingleFeed(record: FeedRecord, io: ProgramIO): Promise<FeedRecord> {
   try {
     const body = await loadFeedBody(record.url);
-    const entries = parseFeedBody(body);
+    const incoming = parseFeedBody(body);
+    // Goal 115 — merge incoming with the on-disk archive so entries
+    // that have rolled off the publisher's window survive locally.
+    // dedup by entry.id, newest-first, capped to the default to
+    // bound disk growth.
+    const entries = mergeFeedEntries(record.entries, incoming);
     return { ...record, lastFetchedAt: new Date().toISOString(), entries };
   } catch (cause) {
     io.stderr(`  ${record.id}: ${cause instanceof Error ? cause.message : String(cause)}\n`);

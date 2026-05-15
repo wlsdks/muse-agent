@@ -177,6 +177,59 @@ function readScalar(value: unknown): string | undefined {
 }
 
 /**
+ * Goal 115 — default cap on entries retained per feed. Large
+ * feeds (NYT homepage, github-events firehose) can publish 100+
+ * items per fetch; keeping every historical entry would bloat
+ * `~/.muse/feeds.json` without serving ambient-awareness needs.
+ * 200 entries × ~1KB each ≈ 200KB per feed — generous tail for
+ * "what did this feed publish last week" while bounding worst-case
+ * disk + parse cost.
+ */
+export const DEFAULT_FEED_ENTRIES_CAP = 200;
+
+/**
+ * Goal 115 — merge `incoming` (latest fetch) into `previous` (the
+ * on-disk archive). Old entries that have rolled off the feed's
+ * server-side window survive locally — RSS / Atom servers typically
+ * expose only the most recent N items, so without a merge the local
+ * store would forget anything older than the publisher's window.
+ *
+ * Dedup key is `entry.id` — incoming wins (publishers occasionally
+ * republish with updated title / summary). Sort is newest-first by
+ * `publishedAt` (parseable ISO); entries with missing / unparseable
+ * dates sort to the tail in input order. Final list is sliced to
+ * `cap` (default {@link DEFAULT_FEED_ENTRIES_CAP}).
+ *
+ * Pure — no IO, no `Date.now()` — so the unit test pins every
+ * branch.
+ */
+export function mergeFeedEntries(
+  previous: readonly FeedEntry[],
+  incoming: readonly FeedEntry[],
+  cap: number = DEFAULT_FEED_ENTRIES_CAP
+): readonly FeedEntry[] {
+  const byId = new Map<string, FeedEntry>();
+  for (const entry of previous) {
+    if (entry.id) byId.set(entry.id, entry);
+  }
+  for (const entry of incoming) {
+    if (entry.id) byId.set(entry.id, entry);  // incoming wins on republish
+  }
+  const merged = [...byId.values()].sort((a, b) => {
+    const ta = Date.parse(a.publishedAt);
+    const tb = Date.parse(b.publishedAt);
+    if (!Number.isFinite(ta) && !Number.isFinite(tb)) return 0;
+    if (!Number.isFinite(ta)) return 1;
+    if (!Number.isFinite(tb)) return -1;
+    return tb - ta;
+  });
+  const effectiveCap = Number.isFinite(cap) && cap > 0
+    ? Math.trunc(cap)
+    : DEFAULT_FEED_ENTRIES_CAP;
+  return merged.slice(0, effectiveCap);
+}
+
+/**
  * Goal 092 — pure filter: drop entries whose `publishedAt` is
  * older than `cutoff`. Entries missing or with an unparseable
  * date are kept (no false-negative filtering on RSS feeds that

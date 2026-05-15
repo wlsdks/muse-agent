@@ -4450,6 +4450,46 @@ describe("cli program", () => {
     expect(filterRecentFeedEntries(noDate, cutoff)).toHaveLength(1);
   });
 
+  it("mergeFeedEntries dedupes + retains rolled-off entries + caps growth (goal 115)", async () => {
+    const { mergeFeedEntries, DEFAULT_FEED_ENTRIES_CAP } = await import("../src/feeds-store.js");
+
+    const previous = [
+      { id: "a", title: "Old A", link: "/a", publishedAt: "2026-05-10T12:00:00Z", summary: "old a" },
+      { id: "b", title: "Old B", link: "/b", publishedAt: "2026-05-12T12:00:00Z", summary: "old b" }
+    ];
+    // Incoming: republishes "b" with new title, adds "c", drops "a"
+    // (the typical "rolled off the publisher's window" case).
+    const incoming = [
+      { id: "b", title: "New B", link: "/b", publishedAt: "2026-05-12T12:30:00Z", summary: "new b" },
+      { id: "c", title: "New C", link: "/c", publishedAt: "2026-05-13T08:00:00Z", summary: "new c" }
+    ];
+    const merged = mergeFeedEntries(previous, incoming);
+    // All three IDs survive (a kept locally, b updated, c added).
+    expect(merged.map((e) => e.id).sort()).toEqual(["a", "b", "c"]);
+    // Newest-first sort: c (May 13) > b (May 12 30m) > a (May 10).
+    expect(merged.map((e) => e.id)).toEqual(["c", "b", "a"]);
+    // Incoming wins on republish — title is "New B", not "Old B".
+    expect(merged.find((e) => e.id === "b")?.title).toBe("New B");
+
+    // Entries without publishedAt sort to the tail.
+    const withMissing = mergeFeedEntries(
+      [{ id: "z", title: "Z", link: "/z", publishedAt: "", summary: "" }],
+      incoming
+    );
+    expect(withMissing[withMissing.length - 1]?.id).toBe("z");
+
+    // Cap clips the merged list — default is ~200, custom takes priority.
+    expect(mergeFeedEntries(previous, incoming, 2)).toHaveLength(2);
+    // Invalid caps (0, negative, NaN) fall back to the default.
+    expect(mergeFeedEntries(previous, incoming, 0).length).toBeLessThanOrEqual(DEFAULT_FEED_ENTRIES_CAP);
+    expect(mergeFeedEntries(previous, incoming, -1).length).toBeLessThanOrEqual(DEFAULT_FEED_ENTRIES_CAP);
+    expect(mergeFeedEntries(previous, incoming, Number.NaN).length).toBeLessThanOrEqual(DEFAULT_FEED_ENTRIES_CAP);
+
+    // Empty inputs are safe.
+    expect(mergeFeedEntries([], [])).toEqual([]);
+    expect(mergeFeedEntries([], incoming).map((e) => e.id)).toEqual(["c", "b"]);
+  });
+
   it("rankRecallCandidates merges + sorts notes + episodes by cosine (goal 091)", async () => {
     const { rankRecallCandidates } = await import("../src/commands-recall.js");
     const queryVec = [1, 0, 0, 0];
