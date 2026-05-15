@@ -16,7 +16,7 @@
  */
 
 import type { MuseDatabase } from "@muse/db";
-import type { JsonValue } from "@muse/shared";
+import { redactSecretsInText, type JsonValue } from "@muse/shared";
 import type { Insertable, Kysely } from "kysely";
 import { EMPTY_USER_MODEL, type UserMemory, type UserMemoryStore, type UserModel, type UserModelSlot } from "./index.js";
 
@@ -47,7 +47,12 @@ export const MAX_USER_MEMORY_VALUE_CHARS = 2048;
  * via the persona-expansion path).
  */
 export function sanitizeUserMemoryValue(raw: string): string {
-  const stripped = raw.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/gu, "");
+  // user-memory is re-injected into every prompt via persona
+  // expansion, so a credential in an extracted value would
+  // round-trip into the model and persist long-term — scrub it
+  // at this single write chokepoint.
+  const scrubbed = redactSecretsInText(raw);
+  const stripped = scrubbed.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/gu, "");
   if (stripped.length <= MAX_USER_MEMORY_VALUE_CHARS) {
     return stripped;
   }

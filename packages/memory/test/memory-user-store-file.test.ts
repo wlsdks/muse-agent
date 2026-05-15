@@ -98,6 +98,16 @@ describe("sanitizeUserMemoryValue (direct unit tests)", () => {
     expect(sanitizeUserMemoryValue("title\x9b31mEVIL")).toBe("title31mEVIL");
   });
 
+  it("redacts credential shapes before persisting (goal 182)", async () => {
+    const { sanitizeUserMemoryValue } = await import("../src/index.js");
+    expect(sanitizeUserMemoryValue("deploy token is ghp_abcdefghijklmnopqrstuvwxyzABCDEF"))
+      .not.toContain("ghp_abcdefghijklmnopqrstuvwxyzABCDEF");
+    expect(sanitizeUserMemoryValue("my key sk-proj-abcdefghijklmnopqrstuvwxyz"))
+      .not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz");
+    // Plain prose is untouched.
+    expect(sanitizeUserMemoryValue("prefers dark mode and tea")).toBe("prefers dark mode and tea");
+  });
+
   it("caps oversized values at MAX_USER_MEMORY_VALUE_CHARS", async () => {
     const { sanitizeUserMemoryValue, MAX_USER_MEMORY_VALUE_CHARS } = await import("../src/index.js");
     const big = "x".repeat(MAX_USER_MEMORY_VALUE_CHARS + 100);
