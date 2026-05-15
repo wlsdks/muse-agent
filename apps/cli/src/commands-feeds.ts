@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 
 import type { Command } from "commander";
 
+import { closestCommandName } from "./closest-command.js";
 import {
   defaultFeedsFile,
   filterRecentFeedEntries,
@@ -141,15 +142,22 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
     .action(async (id: string) => {
       const file = defaultFeedsFile();
       const store = await readFeedsStore(file);
-      const before = store.feeds.length;
-      const next = { version: store.version, feeds: store.feeds.filter((f) => f.id !== id) };
-      if (next.feeds.length === before) {
-        io.stderr(`muse feeds remove: no feed with id '${id}'\n`);
+      const trimmed = id.trim();
+      const exists = store.feeds.some((f) => f.id === trimmed);
+      if (!exists) {
+        // Goal 153 — fuzzy-suggest the closest known id when the
+        // user typed `tech-news` for `tech_news`. Reuses the goal-099
+        // Levenshtein helper for consistent typo UX across surfaces.
+        const suggestion = closestCommandName(trimmed, store.feeds.map((f) => f.id));
+        io.stderr(`muse feeds remove: no feed with id '${trimmed}'`);
+        if (suggestion) io.stderr(` — did you mean '${suggestion}'?`);
+        io.stderr(" (run `muse feeds list` to see ids)\n");
         process.exitCode = 1;
         return;
       }
+      const next = { version: store.version, feeds: store.feeds.filter((f) => f.id !== trimmed) };
       await writeFeedsStore(file, next);
-      io.stdout(`Removed feed '${id}'\n`);
+      io.stdout(`Removed feed '${trimmed}'\n`);
     });
 
   feeds
@@ -159,6 +167,23 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
     .action(async (options: { readonly id?: string }) => {
       const file = defaultFeedsFile();
       const store = await readFeedsStore(file);
+      // Goal 153 — when --id is supplied but doesn't match, surface
+      // a fuzzy hint instead of the silent "(no feeds to refresh)"
+      // line. Without the hint a typo (`--id tech-news` for
+      // `tech_news`) looks indistinguishable from a successful
+      // refresh of a feed that happened to have nothing new.
+      if (options.id !== undefined) {
+        const trimmed = options.id.trim();
+        const exists = store.feeds.some((f) => f.id === trimmed);
+        if (!exists) {
+          const suggestion = closestCommandName(trimmed, store.feeds.map((f) => f.id));
+          io.stderr(`muse feeds refresh: no feed with id '${trimmed}'`);
+          if (suggestion) io.stderr(` — did you mean '${suggestion}'?`);
+          io.stderr(" (run `muse feeds list` to see ids)\n");
+          process.exitCode = 1;
+          return;
+        }
+      }
       const targets = options.id ? store.feeds.filter((f) => f.id === options.id) : store.feeds;
       if (targets.length === 0) {
         io.stdout("(no feeds to refresh)\n");
