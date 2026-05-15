@@ -26,6 +26,7 @@
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
+import { sendWithRetry } from "./messaging-retry.js";
 import {
   markFollowupFired,
   readFollowups,
@@ -97,7 +98,12 @@ export async function runDueFollowups(options: RunDueFollowupsOptions): Promise<
         errors.push(`${followup.id}: synthesis returned empty text`);
         continue;
       }
-      await options.registry.send(options.providerId, {
+      // Goal 156 — share the goal-070 / goal-148 / goal-149
+      // retry-with-backoff path. Synthesis above happens exactly
+      // once per followup (retry doesn't re-invoke generate); the
+      // retry only wraps the send call, so a transient 5xx no
+      // longer drops a followup the agent already committed to.
+      await sendWithRetry(options.registry, options.providerId, {
         destination: options.destination,
         text
       });

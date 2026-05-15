@@ -5190,12 +5190,17 @@ describe("runDueFollowups", () => {
       ]
     }), "utf8");
 
+    // Goal 156 — fu_a fails non-retryably (401) so the new shared
+    // retry path doesn't mask the failure. Test intent ("errors
+    // don't abort the loop") preserved; the error class now matches
+    // a realistic permanent-failure shape.
+    const { MessagingProviderError } = await import("@muse/messaging");
     let sendCalls = 0;
     const fakeRegistry = {
       send: async () => {
         sendCalls += 1;
         if (sendCalls === 1) {
-          throw new Error("upstream 503");
+          throw new MessagingProviderError("telegram", "UPSTREAM_FAILED", "upstream 401", 401);
         }
         return { destination: "@me", messageId: "ok", providerId: "telegram" };
       }
@@ -5216,7 +5221,7 @@ describe("runDueFollowups", () => {
     expect(summary.delivered).toBe(1);
     expect(summary.errors).toHaveLength(1);
     expect(summary.errors[0]).toContain("fu_a");
-    expect(summary.errors[0]).toContain("upstream 503");
+    expect(summary.errors[0]).toContain("upstream 401");
 
     const persisted = JSON.parse(readFileSync(file, "utf8")) as {
       followups: Array<{ id: string; status: string }>;
@@ -5302,6 +5307,101 @@ describe("runDueFollowups", () => {
     });
 
     expect(summary).toMatchObject({ delivered: 2, due: 2 });
+  });
+
+  it("retries transient messaging failures with exponential backoff (goal 156)", async () => {
+    const { runDueFollowups } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-followup-retry-"));
+    const file = join(dir, "followups.json");
+    writeFileSync(file, JSON.stringify({
+      followups: [{
+        createdAt: "2026-05-10T00:00:00Z",
+        id: "fu_flaky",
+        scheduledFor: "2026-05-11T07:30:00Z",
+        status: "scheduled",
+        summary: "Standup follow-up",
+        userId: "stark"
+      }]
+    }), "utf8");
+
+    let synthesizeCalls = 0;
+    const attempts: number[] = [];
+    const flakyRegistry = {
+      send: async () => {
+        attempts.push(1);
+        if (attempts.length < 3) {
+          throw new Error("upstream 503");
+        }
+        return { destination: "@me", messageId: "ok", providerId: "telegram" };
+      }
+    };
+    const summary = await runDueFollowups({
+      destination: "@me",
+      file,
+      model: "gemini-2.0-flash",
+      modelProvider: {
+        generate: async () => {
+          synthesizeCalls += 1;
+          return { output: "Following up." };
+        }
+      },
+      now: () => new Date("2026-05-11T08:00:00Z"),
+      providerId: "telegram",
+      registry: flakyRegistry as unknown as Parameters<typeof runDueFollowups>[0]["registry"]
+    });
+    expect(summary.delivered).toBe(1);
+    expect(summary.errors).toEqual([]);
+    expect(attempts.length).toBe(3);
+    // Synthesis runs exactly once even when the send retries — the
+    // retry loop wraps the send call only, not the surrounding
+    // synthesize-then-send step.
+    expect(synthesizeCalls).toBe(1);
+  });
+
+  it("breaks out of the retry loop early on non-retryable messaging errors (goal 156)", async () => {
+    const { runDueFollowups } = await import("../src/index.js");
+    const { MessagingProviderError } = await import("@muse/messaging");
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-followup-non-retry-"));
+    const file = join(dir, "followups.json");
+    writeFileSync(file, JSON.stringify({
+      followups: [{
+        createdAt: "2026-05-10T00:00:00Z",
+        id: "fu_permanent",
+        scheduledFor: "2026-05-11T07:30:00Z",
+        status: "scheduled",
+        summary: "Doomed follow-up",
+        userId: "stark"
+      }]
+    }), "utf8");
+
+    let attempts = 0;
+    const summary = await runDueFollowups({
+      destination: "@me",
+      file,
+      model: "gemini-2.0-flash",
+      modelProvider: { generate: async () => ({ output: "Following up." }) },
+      now: () => new Date("2026-05-11T08:00:00Z"),
+      providerId: "telegram",
+      registry: {
+        send: async () => {
+          attempts += 1;
+          throw new MessagingProviderError(
+            "telegram", "UPSTREAM_FAILED", "401 bad token", 401
+          );
+        }
+      } as unknown as Parameters<typeof runDueFollowups>[0]["registry"]
+    });
+    expect(summary.delivered).toBe(0);
+    expect(summary.errors).toHaveLength(1);
+    expect(summary.errors[0]).toContain("fu_permanent");
+    expect(summary.errors[0]).toContain("401 bad token");
+    expect(attempts).toBe(1);
   });
 });
 
