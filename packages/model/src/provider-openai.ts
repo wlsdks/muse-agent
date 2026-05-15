@@ -24,6 +24,7 @@ import {
   type WebSearchCitation
 } from "./index.js";
 import {
+  createLeadingThinkStripper,
   isJsonObject,
   isRecord,
   parseJson,
@@ -348,6 +349,7 @@ export async function* parseOpenAIStream(
 ): AsyncIterable<ModelEvent> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
+  const stripThink = createLeadingThinkStripper();
   let buffer = "";
   let output = "";
   let responseId = `${providerId}-stream`;
@@ -385,7 +387,10 @@ export async function* parseOpenAIStream(
 
       if (delta.length > 0) {
         output += delta;
-        yield { text: delta, type: "text-delta" };
+        const emit = stripThink(delta);
+        if (emit.length > 0) {
+          yield { text: emit, type: "text-delta" };
+        }
       }
 
       for (const toolCall of readOpenAIStreamToolCallDeltas(parsed)) {
@@ -404,7 +409,7 @@ export async function* parseOpenAIStream(
     response: {
       id: responseId,
       model,
-      output,
+      output: stripLeadingThinkBlock(output),
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined
     },
     type: "done"

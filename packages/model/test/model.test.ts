@@ -11,6 +11,7 @@ import {
   OpenAICompatibleProvider,
   OpenAIProvider,
   OpenRouterProvider,
+  createLeadingThinkStripper,
   parseModelName,
   sanitizeGeminiSchema,
   stripLeadingThinkBlock,
@@ -214,6 +215,39 @@ describe("stripLeadingThinkBlock (goal 172)", () => {
   it("strips only the FIRST block (non-greedy), keeping later content", () => {
     expect(stripLeadingThinkBlock("<think>a</think>answer <think>b</think> tail"))
       .toBe("answer <think>b</think> tail");
+  });
+});
+
+describe("createLeadingThinkStripper (goal 173)", () => {
+  function feed(deltas: readonly string[]): string {
+    const strip = createLeadingThinkStripper();
+    return deltas.map((d) => strip(d)).join("");
+  }
+
+  it("suppresses a leading think block streamed in one chunk", () => {
+    expect(feed(["<think>reasoning</think>\n\nThe answer."])).toBe("The answer.");
+  });
+
+  it("suppresses a think block whose tags are split across chunks", () => {
+    expect(feed(["<th", "ink>\nrea", "soning more", "</thi", "nk>", " answer ", "here"]))
+      .toBe("answer here");
+  });
+
+  it("passes non-think output through verbatim, including a later <think>", () => {
+    expect(feed(["Hello ", "world. ", "Use <think> ", "in XML."]))
+      .toBe("Hello world. Use <think> in XML.");
+  });
+
+  it("preserves leading whitespace when there is no think block", () => {
+    expect(feed(["  ", "\nplain answer"])).toBe("  \nplain answer");
+  });
+
+  it("emits nothing for an unterminated think block (truncated stream)", () => {
+    expect(feed(["<think>", "still reasoning, stream cut"])).toBe("");
+  });
+
+  it("handles the close tag immediately followed by the answer, no whitespace", () => {
+    expect(feed(["<think>x</think>answer"])).toBe("answer");
   });
 });
 

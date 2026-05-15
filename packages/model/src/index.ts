@@ -180,7 +180,7 @@ export interface DiagnosticModelProviderOptions {
 }
 
 export { ModelProviderError, OpenAICompatibleProvider, isRetryableHttpStatus } from "./provider-base.js";
-export { stripLeadingThinkBlock } from "./provider-shared.js";
+export { createLeadingThinkStripper, stripLeadingThinkBlock } from "./provider-shared.js";
 export { DiagnosticModelProvider } from "./adapter-diagnostic.js";
 export { OpenAIProvider, OpenRouterProvider } from "./adapter-openai.js";
 export { OllamaProvider } from "./adapter-ollama.js";

@@ -21,7 +21,7 @@ import {
   localModelCapabilities
 } from "./provider-wire.js";
 import { ModelProviderError, OpenAICompatibleProvider, isRetryableHttpStatus } from "./provider-base.js";
-import { stripLeadingThinkBlock } from "./provider-shared.js";
+import { createLeadingThinkStripper, stripLeadingThinkBlock } from "./provider-shared.js";
 import type {
   ModelEvent,
   ModelInfo,
@@ -128,6 +128,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
+    const stripThink = createLeadingThinkStripper();
     let buf = "";
     let output = "";
     let lastJson: OllamaNativeChatResponse | undefined;
@@ -149,7 +150,10 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         const delta = parsed.message?.content ?? "";
         if (delta) {
           output += delta;
-          yield { text: delta, type: "text-delta" };
+          const emit = stripThink(delta);
+          if (emit.length > 0) {
+            yield { text: emit, type: "text-delta" };
+          }
         }
         // Tool calls usually arrive in the terminal NDJSON line (done:true).
         // Emit them as tool-call events so the agent runtime treats them
@@ -179,7 +183,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     const final: ModelResponse = {
       id: `${this.id}-${Date.now().toString()}`,
       model: lastJson?.model ?? request.model ?? this.nativeDefaultModel ?? "unknown",
-      output,
+      output: stripLeadingThinkBlock(output),
       raw: lastJson,
       ...(lastJson?.message?.tool_calls && lastJson.message.tool_calls.length > 0
         ? {

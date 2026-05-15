@@ -62,6 +62,79 @@ export function stripLeadingThinkBlock(text: string): string {
   return match ? text.slice(match[0].length) : text;
 }
 
+const OPEN_TAG = "<think>";
+const CLOSE_TAG = "</think>";
+
+/**
+ * Streaming counterpart of `stripLeadingThinkBlock`. The
+ * non-stream regex can't run on a token stream, so this is a
+ * tiny state machine: feed each text delta, get back only the
+ * portion safe to emit. It suppresses a single leading
+ * `<think>…</think>` (handling tags split across chunk
+ * boundaries) and then passes everything through verbatim —
+ * a later `<think>` in prose/code is untouched, same contract
+ * as the non-stream helper. Buffering is bounded (≤ tag length
+ * while deciding / closing).
+ */
+export function createLeadingThinkStripper(): (delta: string) => string {
+  let mode: "scan" | "in" | "trim" | "pass" = "scan";
+  let buf = "";
+  return (delta: string): string => {
+    if (mode === "pass") return delta;
+
+    // After the close tag, swallow whitespace until the first
+    // real char — the close + following blank line often span
+    // separate chunks, so the non-stream `\s*` can't be matched
+    // in one pass.
+    if (mode === "trim") {
+      const trimmed = delta.replace(/^\s+/u, "");
+      if (trimmed.length === 0) return "";
+      mode = "pass";
+      return trimmed;
+    }
+
+    buf += delta;
+
+    if (mode === "scan") {
+      const lead = buf.replace(/^\s+/u, "");
+      if (lead.length === 0) return "";
+      if (lead.length < OPEN_TAG.length && OPEN_TAG.startsWith(lead)) {
+        return "";
+      }
+      if (lead.startsWith(OPEN_TAG)) {
+        mode = "in";
+        buf = lead.slice(OPEN_TAG.length);
+      } else {
+        mode = "pass";
+        const out = buf;
+        buf = "";
+        return out;
+      }
+    }
+
+    if (mode === "in") {
+      const close = buf.indexOf(CLOSE_TAG);
+      if (close === -1) {
+        // Drop think content; keep only a tail that might be a
+        // split close tag.
+        buf = buf.slice(Math.max(0, buf.length - (CLOSE_TAG.length - 1)));
+        return "";
+      }
+      const after = buf.slice(close + CLOSE_TAG.length);
+      buf = "";
+      const trimmed = after.replace(/^\s+/u, "");
+      if (trimmed.length > 0) {
+        mode = "pass";
+        return trimmed;
+      }
+      mode = "trim";
+      return "";
+    }
+
+    return "";
+  };
+}
+
 export function readFiniteNumber(value: unknown, key: string): number | undefined {
   return isRecord(value) && typeof value[key] === "number" && Number.isFinite(value[key])
     ? value[key]
