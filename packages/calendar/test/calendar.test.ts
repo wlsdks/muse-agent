@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -209,6 +209,31 @@ describe("FileCalendarCredentialStore", () => {
     await store.remove("gcal");
     expect(await store.load("gcal")).toBeUndefined();
     expect(await store.list()).toEqual([]);
+
+    rmSync(dir, { force: true, recursive: true });
+  });
+
+  it("provider ids colliding with Object.prototype don't false-load or pollute", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-cred-proto-"));
+    const file = join(dir, "credentials.json");
+    const store = new FileCalendarCredentialStore(file);
+
+    // Fresh store (no file): a prototype-named id must be absent,
+    // not a bogus truthy {} from Object.prototype.toString.
+    for (const id of ["toString", "constructor", "hasOwnProperty", "__proto__"]) {
+      expect(await store.load(id)).toBeUndefined();
+      await store.remove(id); // must be a no-op, not throw / mass-rewrite
+    }
+
+    await store.save("google", { clientId: "x", refreshToken: "y" });
+    expect(await store.load("google")).toEqual({ clientId: "x", refreshToken: "y" });
+    expect(await store.load("toString")).toBeUndefined();
+
+    // A hand-edited file with a __proto__ key is contained.
+    writeFileSync(file, `{"version":1,"providers":{"__proto__":{"clientId":"PWNED"},"ok":{"clientId":"fine"}}}`);
+    expect(await store.load("ok")).toEqual({ clientId: "fine" });
+    expect(({} as Record<string, unknown>).clientId).toBeUndefined();
+    expect(await store.list()).toContain("ok");
 
     rmSync(dir, { force: true, recursive: true });
   });

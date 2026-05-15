@@ -70,7 +70,7 @@ export class FileCalendarCredentialStore implements CalendarCredentialStore {
       raw = await fs.readFile(this.file, "utf8");
     } catch (error) {
       if (isFileNotFound(error)) {
-        return { providers: {}, version: 1 };
+        return { providers: emptyProviderMap(), version: 1 };
       }
 
       throw error;
@@ -79,12 +79,16 @@ export class FileCalendarCredentialStore implements CalendarCredentialStore {
     try {
       const parsed = JSON.parse(raw) as Partial<PersistedShape>;
       if (!parsed || typeof parsed !== "object" || !parsed.providers || typeof parsed.providers !== "object") {
-        return { providers: {}, version: 1 };
+        return { providers: emptyProviderMap(), version: 1 };
       }
 
-      return { providers: { ...parsed.providers }, version: 1 };
+      const providers = emptyProviderMap();
+      for (const [id, value] of Object.entries(parsed.providers)) {
+        providers[id] = value as ProviderCredentials;
+      }
+      return { providers, version: 1 };
     } catch {
-      return { providers: {}, version: 1 };
+      return { providers: emptyProviderMap(), version: 1 };
     }
   }
 
@@ -95,6 +99,13 @@ export class FileCalendarCredentialStore implements CalendarCredentialStore {
     await fs.rename(tmp, this.file);
     await fs.chmod(this.file, 0o600).catch(() => undefined);
   }
+}
+
+// Null-prototype so a providerId like `toString` / `__proto__`
+// can't index an inherited Object.prototype member (load would
+// otherwise return a bogus truthy {} and `in` would false-hit).
+function emptyProviderMap(): Record<string, ProviderCredentials> {
+  return Object.create(null) as Record<string, ProviderCredentials>;
 }
 
 function isFileNotFound(error: unknown): boolean {
