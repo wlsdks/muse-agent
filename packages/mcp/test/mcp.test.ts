@@ -1854,6 +1854,11 @@ describe("muse.tasks loopback server", () => {
       title: "Test"
     }) as { error?: string };
     expect(result.error).toContain("dueAt must be an ISO-8601 timestamp or a supported relative phrase");
+    // Actionable: shows accepted EN + KO grammar so the user can
+    // self-correct without reading docs (goal 186).
+    expect(result.error).toContain("tomorrow 9am");
+    expect(result.error).toContain("내일 오후 3시");
+    expect(result.error).toContain("다음 주 월요일");
   });
 
   it("ignores dueAt when omitted (back-compat with pre-dueAt entries)", async () => {
