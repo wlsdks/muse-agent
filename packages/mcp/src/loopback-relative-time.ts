@@ -23,6 +23,13 @@
  * "tomorrow 9am", not just "tomorrow at 9am".
  *   "noon" / "midnight" (suffix to a day phrase) → 12:00 / 00:00
  *
+ * Korean (the user's native input):
+ *   "내일"                  → tomorrow 09:00
+ *   "내일 오후 3시"          → tomorrow 15:00
+ *   "오늘 오전 9시 30분"     → today 09:30
+ *   "모레 정오" / "내일 자정" → +2d 12:00 / tomorrow 00:00
+ *   "오늘 15시"             → today 15:00 (bare 24h hour)
+ *
  * All resolved times use the local timezone for the wall-clock
  * computation, then return an ISO-8601 UTC (`Z`) string. So
  * "tomorrow at 6pm" in Asia/Seoul becomes the corresponding UTC
@@ -53,6 +60,14 @@ export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date
     return undefined;
   }
   const reference = now();
+
+  // Korean is the user's native input language; "내일 오후 3시"
+  // must resolve as readily as "tomorrow 3pm". Tried before the
+  // English patterns since Korean phrases never collide with them.
+  const korean = resolveKoreanRelativePhrase(phrase.trim(), reference);
+  if (korean) {
+    return korean;
+  }
 
   const inMatch = /^in\s+(\d+)\s+(minute|hour|day|week|month)s?$/u.exec(trimmed);
   if (inMatch) {
@@ -150,4 +165,75 @@ function parseTimeOfDay(spec: string | undefined): { hour: number; minute: numbe
     return { hour, minute };
   }
   return "invalid";
+}
+
+const KOREAN_DAY_OFFSET: Record<string, number> = {
+  "오늘": 0,
+  "내일": 1,
+  "모레": 2,
+  "글피": 3
+};
+
+/**
+ * Korean day + time. Forms:
+ *   "내일"                  → tomorrow 09:00
+ *   "내일 오후 3시"          → tomorrow 15:00
+ *   "오늘 오전 9시 30분"     → today 09:30
+ *   "모레 정오" / "내일 자정" → +2d 12:00 / tomorrow 00:00
+ *   "오늘 15시"             → today 15:00 (bare 24h hour)
+ * Returns undefined when the phrase isn't a recognised Korean
+ * shape so the caller falls through to the English patterns.
+ */
+function resolveKoreanRelativePhrase(phrase: string, reference: Date): Date | undefined {
+  const match = /^(오늘|내일|모레|글피)(?:\s+(.+))?$/u.exec(phrase);
+  if (!match) {
+    return undefined;
+  }
+  const offsetDays = KOREAN_DAY_OFFSET[match[1] ?? ""];
+  if (offsetDays === undefined) {
+    return undefined;
+  }
+  const time = parseKoreanTimeOfDay(match[2]);
+  if (time === "invalid") {
+    return undefined;
+  }
+  const target = startOfDay(new Date(reference.getTime() + offsetDays * 86_400_000));
+  target.setHours(time.hour, time.minute, 0, 0);
+  return target;
+}
+
+function parseKoreanTimeOfDay(spec: string | undefined): { hour: number; minute: number } | "invalid" {
+  if (spec === undefined) {
+    return { hour: DEFAULT_HOUR, minute: DEFAULT_MINUTE };
+  }
+  const cleaned = spec.trim();
+  if (cleaned === "정오") {
+    return { hour: 12, minute: 0 };
+  }
+  if (cleaned === "자정") {
+    return { hour: 0, minute: 0 };
+  }
+  const m = /^(오전|오후)?\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?$/u.exec(cleaned);
+  if (!m) {
+    return "invalid";
+  }
+  const meridiem = m[1];
+  const rawHour = Number.parseInt(m[2] ?? "0", 10);
+  const minute = Number.parseInt(m[3] ?? "0", 10);
+  if (minute < 0 || minute > 59) {
+    return "invalid";
+  }
+  if (meridiem === "오후") {
+    if (rawHour < 1 || rawHour > 12) return "invalid";
+    return { hour: rawHour === 12 ? 12 : rawHour + 12, minute };
+  }
+  if (meridiem === "오전") {
+    if (rawHour < 1 || rawHour > 12) return "invalid";
+    return { hour: rawHour === 12 ? 0 : rawHour, minute };
+  }
+  // No 오전/오후 marker → treat as a 24-hour clock ("15시").
+  if (rawHour < 0 || rawHour > 23) {
+    return "invalid";
+  }
+  return { hour: rawHour, minute };
 }

@@ -1994,6 +1994,41 @@ describe("muse.tasks loopback server", () => {
       expect(bareTomorrow?.getHours()).toBe(9);
     });
 
+    it("resolves Korean day + time phrases (goal 160)", async () => {
+      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const ref = () => new Date("2026-05-15T12:00:00Z"); // Friday
+
+      const tomorrowPm3 = resolveRelativeTimePhrase("내일 오후 3시", ref);
+      expect(tomorrowPm3?.getDate()).toBe(16);
+      expect(tomorrowPm3?.getHours()).toBe(15);
+      expect(tomorrowPm3?.getMinutes()).toBe(0);
+
+      const todayAm930 = resolveRelativeTimePhrase("오늘 오전 9시 30분", ref);
+      expect(todayAm930?.getDate()).toBe(15);
+      expect(todayAm930?.getHours()).toBe(9);
+      expect(todayAm930?.getMinutes()).toBe(30);
+
+      const moreNoon = resolveRelativeTimePhrase("모레 정오", ref);
+      expect(moreNoon?.getDate()).toBe(17);
+      expect(moreNoon?.getHours()).toBe(12);
+
+      const tomorrowMidnight = resolveRelativeTimePhrase("내일 자정", ref);
+      expect(tomorrowMidnight?.getDate()).toBe(16);
+      expect(tomorrowMidnight?.getHours()).toBe(0);
+
+      const today15 = resolveRelativeTimePhrase("오늘 15시", ref);
+      expect(today15?.getHours()).toBe(15);
+
+      // Bare day → 09:00 default, matching the English semantics.
+      const bareTomorrow = resolveRelativeTimePhrase("내일", ref);
+      expect(bareTomorrow?.getDate()).toBe(16);
+      expect(bareTomorrow?.getHours()).toBe(9);
+
+      // 오후 12시 → noon; 오전 12시 → midnight.
+      expect(resolveRelativeTimePhrase("오늘 오후 12시", ref)?.getHours()).toBe(12);
+      expect(resolveRelativeTimePhrase("오늘 오전 12시", ref)?.getHours()).toBe(0);
+    });
+
     it("returns undefined for unsupported phrases (caller decides fallback)", async () => {
       const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
       const now = () => new Date("2026-05-10T12:00:00Z");
@@ -2001,6 +2036,10 @@ describe("muse.tasks loopback server", () => {
       expect(resolveRelativeTimePhrase("yesterday", now)).toBeUndefined();
       expect(resolveRelativeTimePhrase("", now)).toBeUndefined();
       expect(resolveRelativeTimePhrase("tomorrow at 25:00", now)).toBeUndefined();
+      // Korean: unsupported day word + out-of-range hour reject.
+      expect(resolveRelativeTimePhrase("어제 오후 3시", now)).toBeUndefined();
+      expect(resolveRelativeTimePhrase("내일 오후 13시", now)).toBeUndefined();
+      expect(resolveRelativeTimePhrase("내일 25시", now)).toBeUndefined();
     });
   });
 
