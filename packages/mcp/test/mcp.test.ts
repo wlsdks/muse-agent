@@ -1981,6 +1981,25 @@ describe("muse.tasks loopback server", () => {
       expect(twelve?.getUTCMonth()).toBe(4);            // back to May
     });
 
+    it("returns undefined (not an Invalid Date) for out-of-range offsets", async () => {
+      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
+      const now = () => new Date("2026-05-10T12:00:00Z");
+      for (const phrase of [
+        "in 9999999999 days",
+        "in 99999999999 weeks",
+        "in 999999999 months",
+        "99999999999일 후",
+        "9999999999개월 후"
+      ]) {
+        expect(resolveRelativeTimePhrase(phrase, now)).toBeUndefined();
+        // The caller must surface the actionable grammar error,
+        // never throw a RangeError from `.toISOString()`.
+        const result = parseTaskDueAt(phrase, now);
+        expect(result).toBeInstanceOf(Error);
+      }
+    });
+
     it("supports time-of-day suffixes (am/pm/HH:MM/noon/midnight)", async () => {
       const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
       const tomorrow6pm = resolveRelativeTimePhrase("tomorrow at 6pm", () => new Date("2026-05-10T12:00:00Z"));

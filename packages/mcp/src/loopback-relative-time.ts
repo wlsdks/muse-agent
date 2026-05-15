@@ -60,6 +60,16 @@ const WEEKDAY_INDEX: Record<string, number> = {
 const DEFAULT_HOUR = 9;
 const DEFAULT_MINUTE = 0;
 
+// A huge offset ("in 9999999999 days", "99999999999일 후") or a
+// month overflow pushes the Date past ±8.64e15 ms → an Invalid
+// Date (NaN time). Returning that lets the caller's
+// `relative.toISOString()` throw an unhandled RangeError; an
+// out-of-range phrase must degrade to the same "not recognized"
+// path every other bad input takes.
+function finiteDate(date: Date | undefined): Date | undefined {
+  return date && Number.isFinite(date.getTime()) ? date : undefined;
+}
+
 export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date | undefined {
   const trimmed = phrase.trim().toLowerCase();
   if (trimmed.length === 0) {
@@ -70,7 +80,7 @@ export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date
   // Korean is the user's native input language; "내일 오후 3시"
   // must resolve as readily as "tomorrow 3pm". Tried before the
   // English patterns since Korean phrases never collide with them.
-  const korean = resolveKoreanRelativePhrase(phrase.trim(), reference);
+  const korean = finiteDate(resolveKoreanRelativePhrase(phrase.trim(), reference));
   if (korean) {
     return korean;
   }
@@ -84,14 +94,14 @@ export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date
     if (unit === "month") {
       const next = new Date(reference);
       next.setMonth(next.getMonth() + amount);
-      return next;
+      return finiteDate(next);
     }
     const offsetMs = unit === "minute" ? amount * 60_000
       : unit === "hour" ? amount * 3_600_000
       : unit === "day" ? amount * 86_400_000
       : unit === "week" ? amount * 7 * 86_400_000
       : 0;
-    return new Date(reference.getTime() + offsetMs);
+    return finiteDate(new Date(reference.getTime() + offsetMs));
   }
 
   const dayPattern = /^(today|tomorrow|next\s+([a-z]+)|([a-z]+))(?:\s+(?:at\s+)?(.+))?$/u;
@@ -128,7 +138,7 @@ export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date
     return undefined;
   }
   targetDay.setHours(timeOfDay.hour, timeOfDay.minute, 0, 0);
-  return targetDay;
+  return finiteDate(targetDay);
 }
 
 function startOfDay(date: Date): Date {
