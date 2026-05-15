@@ -438,14 +438,17 @@ export class MultiAgentOrchestrator {
               return;
             }
             resolved = true;
-            await this.publishWorkerResult(worker.id, result);
+            // Best-effort: a bus publish failure must NOT prevent
+            // resolve() — otherwise resolved=true blocks every
+            // other worker's path too and the race hangs forever.
+            await this.publishWorkerResult(worker.id, result).catch(() => undefined);
             resolve([{ result, status: "completed", workerId: worker.id }]);
           })
           .catch(async (error) => {
             if (resolved) {
               return;
             }
-            await this.publishWorkerFailure(worker.id, error);
+            await this.publishWorkerFailure(worker.id, error).catch(() => undefined);
             failures.push({ error: errorMessage(error), status: "failed", workerId: worker.id });
             pending -= 1;
             if (pending === 0 && !resolved) {

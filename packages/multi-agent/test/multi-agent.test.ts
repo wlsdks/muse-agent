@@ -6,6 +6,27 @@ import {
   SupervisorAgent,
   createWorkerResult
 } from "../src/index.js";
+import type { AgentMessageBus } from "../src/index.js";
+
+const rejectingBus = (): AgentMessageBus => ({
+  publish: async () => { throw new Error("bus down"); },
+  subscribe: () => {},
+  getMessages: () => [],
+  getConversation: () => [],
+  clear: () => {}
+});
+
+async function withHangGuard<T>(p: Promise<T>, label: string): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const guard = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`hung: ${label}`)), 2_000);
+  });
+  try {
+    return await Promise.race([p, guard]);
+  } finally {
+    clearTimeout(timer!);
+  }
+}
 
 describe("SupervisorAgent", () => {
   it("selects the highest confidence worker", async () => {
@@ -187,6 +208,45 @@ describe("MultiAgentOrchestrator", () => {
       orchestrator.run(
         { messages: [{ content: "race fail", role: "user" }], model: "model-1" },
         { mode: "race" }
+      )
+    ).rejects.toThrow(NoAgentWorkerError);
+  });
+
+  it("race mode resolves with the winner even when the message bus publish rejects (no hang)", async () => {
+    const winner = new RuleBasedAgentWorker("winner", "Winner", [], (input) =>
+      createWorkerResult("winner", "won despite bus", input)
+    );
+    const orchestrator = new MultiAgentOrchestrator({
+      idFactory: () => "orchestration-race-bus",
+      messageBus: rejectingBus(),
+      workers: [winner]
+    });
+    const result = await withHangGuard(
+      orchestrator.run(
+        { messages: [{ content: "race", role: "user" }], model: "model-1" },
+        { mode: "race" }
+      ),
+      "race success + rejecting bus"
+    );
+    expect(result.mode).toBe("race");
+    expect(result.results[0]).toMatchObject({ status: "completed", workerId: "winner" });
+  });
+
+  it("race mode still surfaces NoAgentWorkerError when all fail AND the bus rejects (no hang)", async () => {
+    const failer = new RuleBasedAgentWorker("failer", "Failer", [], () => {
+      throw new Error("worker down");
+    });
+    const orchestrator = new MultiAgentOrchestrator({
+      messageBus: rejectingBus(),
+      workers: [failer]
+    });
+    await expect(
+      withHangGuard(
+        orchestrator.run(
+          { messages: [{ content: "x", role: "user" }], model: "model-1" },
+          { mode: "race" }
+        ),
+        "race all-fail + rejecting bus"
       )
     ).rejects.toThrow(NoAgentWorkerError);
   });
