@@ -448,7 +448,8 @@ export async function streamRemoteChat(
   model: string | undefined,
   jsonMode: boolean,
   agentMode: string | undefined,
-  disableWebSearch?: boolean
+  disableWebSearch?: boolean,
+  systemPrompt?: string
 ) {
   const { baseUrl, token } = await readApiOptions(io, command);
   const metadataTools = disableWebSearch ? { web_search: false } : undefined;
@@ -460,7 +461,8 @@ export async function streamRemoteChat(
     body: JSON.stringify(dropUndefined({
       message,
       model,
-      metadata
+      metadata,
+      systemPrompt: systemPrompt && systemPrompt.trim().length > 0 ? systemPrompt.trim() : undefined
     })),
     headers: {
       "content-type": "application/json",

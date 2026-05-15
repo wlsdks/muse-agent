@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
@@ -26,6 +26,19 @@ function captureOutput() {
 }
 
 describe("cli program", () => {
+  // Isolate the active persona from the developer's real
+  // ~/.muse/persona.json — otherwise a non-default persona leaks a
+  // systemPrompt into the exact-body chat assertions below.
+  let personaEnvBackup: string | undefined;
+  beforeEach(() => {
+    personaEnvBackup = process.env.MUSE_PERSONA_FILE;
+    process.env.MUSE_PERSONA_FILE = path.join(tmpdir(), `muse-test-no-persona-${process.pid.toString()}.json`);
+  });
+  afterEach(() => {
+    if (personaEnvBackup === undefined) delete process.env.MUSE_PERSONA_FILE;
+    else process.env.MUSE_PERSONA_FILE = personaEnvBackup;
+  });
+
   it("prints the config path", async () => {
     const { io, output } = captureOutput();
     const program = createProgram(io);
@@ -385,6 +398,74 @@ describe("cli program", () => {
     await expect(readFile(path.join(workspaceDir, ".muse/runs/local-run-1.jsonl"), "utf8"))
       .resolves
       .toContain("\"source\":\"cli.local\"");
+  });
+
+  it("prepends the active persona preamble to the local chat system message (goal 158)", async () => {
+    const { io, output } = captureOutput();
+    const workspaceDir = await mkdtemp(path.join(tmpdir(), "muse-cli-persona-chat-"));
+    const personaFile = path.join(workspaceDir, "persona.json");
+    await writeFile(personaFile, JSON.stringify({ version: 1, activeId: "jarvis", custom: {} }), "utf8");
+    const prevPersonaEnv = process.env.MUSE_PERSONA_FILE;
+    process.env.MUSE_PERSONA_FILE = personaFile;
+    let capturedSystem = "";
+    try {
+      const program = createProgram({
+        ...io,
+        createRuntimeAssembly: () => ({
+          agentRuntime: {
+            run: async (input) => {
+              capturedSystem = input.messages.find((m) => m.role === "system")?.content ?? "";
+              return {
+                response: { id: "r", model: input.model, output: "ok" },
+                runId: "persona-run-1"
+              };
+            },
+            stream: async function* () {}
+          },
+          defaultModel: "test-model"
+        }),
+        workspaceDir
+      });
+      await program.parseAsync(["node", "muse", "chat", "--local", "--no-log", "hi"], { from: "node" });
+    } finally {
+      if (prevPersonaEnv === undefined) delete process.env.MUSE_PERSONA_FILE;
+      else process.env.MUSE_PERSONA_FILE = prevPersonaEnv;
+    }
+    expect(output.join("")).toBe("ok\n");
+    expect(capturedSystem).toContain("Speak as JARVIS");
+    expect(capturedSystem).toContain("Current local context:");
+  });
+
+  it("falls back to now-context-only when the active persona is default (goal 158)", async () => {
+    const { io } = captureOutput();
+    const workspaceDir = await mkdtemp(path.join(tmpdir(), "muse-cli-persona-default-"));
+    const personaFile = path.join(workspaceDir, "persona.json");
+    await writeFile(personaFile, JSON.stringify({ version: 1, activeId: "default", custom: {} }), "utf8");
+    const prevPersonaEnv = process.env.MUSE_PERSONA_FILE;
+    process.env.MUSE_PERSONA_FILE = personaFile;
+    let capturedSystem = "";
+    try {
+      const program = createProgram({
+        ...io,
+        createRuntimeAssembly: () => ({
+          agentRuntime: {
+            run: async (input) => {
+              capturedSystem = input.messages.find((m) => m.role === "system")?.content ?? "";
+              return { response: { id: "r", model: input.model, output: "ok" }, runId: "d-run-1" };
+            },
+            stream: async function* () {}
+          },
+          defaultModel: "test-model"
+        }),
+        workspaceDir
+      });
+      await program.parseAsync(["node", "muse", "chat", "--local", "--no-log", "hi"], { from: "node" });
+    } finally {
+      if (prevPersonaEnv === undefined) delete process.env.MUSE_PERSONA_FILE;
+      else process.env.MUSE_PERSONA_FILE = prevPersonaEnv;
+    }
+    expect(capturedSystem).not.toContain("Speak as JARVIS");
+    expect(capturedSystem).toContain("Current local context:");
   });
 
   it("opens the Ink chat TUI with the active endpoint and config paths", async () => {

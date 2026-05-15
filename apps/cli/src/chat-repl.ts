@@ -32,6 +32,7 @@ import {
   readLastChatHistory
 } from "./chat-history.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
+import { loadActivePersonaPreamble } from "./persona-store.js";
 import { handleSlashCommand, type SlashContext, type SlashDeps } from "./chat-repl-slash.js";
 import {
   apiRequest,
@@ -567,18 +568,16 @@ export async function runLocalChat(
   if (options.disableTools) metadata.maxTools = 0;
   const hasMetadata = Object.keys(metadata).length > 0;
 
-  // Ground the model in `now` even on the non-interactive
-  // `muse chat --local "msg"` path. runLocalChat previously sent
-  // ZERO system content, so questions like "what's today's date?"
-  // got hallucinated answers (e.g. "Friday 2026-05-12" when the
-  // real local now was Wednesday 2026-05-13). Persona/user-memory
-  // loading is intentionally NOT done here — the chat one-shot
-  // path doesn't have userId plumbed, and the most common
-  // hallucination class is the date one. The agent runtime is
-  // free to append its own system prompt; this prefix just
-  // guarantees the date is always present.
+  // System content grounds the model in `now` (date hallucination
+  // guard) and the active persona preamble. The preamble is keyed
+  // only on the persona id, not userId, so it is safe on this
+  // one-shot path unlike the user-memory-folding buildMusePersona.
+  const personaPreamble = (await loadActivePersonaPreamble().catch(() => "")).trim();
+  const systemContent = personaPreamble.length > 0
+    ? `${personaPreamble}\n\n${formatCurrentContextLine()}`
+    : formatCurrentContextLine();
   const messages = [
-    { content: formatCurrentContextLine(), role: "system" as const },
+    { content: systemContent, role: "system" as const },
     ...(options.priorHistory ?? []),
     { content: message, role: "user" as const }
   ];

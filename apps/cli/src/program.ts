@@ -88,6 +88,7 @@ import { registerImportCommand } from "./commands-import.js";
 import { registerFeedsCommand } from "./commands-feeds.js";
 import { registerGlanceCommand } from "./commands-glance.js";
 import { registerPersonaCommand } from "./commands-persona.js";
+import { loadActivePersonaPreamble } from "./persona-store.js";
 import { registerReadCommand } from "./commands-read.js";
 import { registerRecallCommand } from "./commands-recall.js";
 import { registerShowCommand } from "./commands-show.js";
@@ -328,14 +329,22 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
 
       const priorHistory = options.continue && options.local ? await readLastChatHistory() : [];
 
+      // runLocalChat self-loads the persona; the remote paths need
+      // it passed explicitly as systemPrompt. dropUndefined strips
+      // an empty (default-persona) value so the request is unchanged.
+      const personaPreamble = options.local
+        ? ""
+        : (await loadActivePersonaPreamble().catch(() => "")).trim();
+
       const body = options.local
         ? await runLocalChat(io, message, model, agentMode, { disableTools: toolsDisabled, priorHistory })
         : options.stream
-          ? await streamRemoteChat(io, command, message, model, options.json === true, agentMode, options.webSearch === false)
+          ? await streamRemoteChat(io, command, message, model, options.json === true, agentMode, options.webSearch === false, personaPreamble)
         : await apiRequest(io, command, "/api/chat", dropUndefined({
           message,
           model,
-          metadata
+          metadata,
+          systemPrompt: personaPreamble.length > 0 ? personaPreamble : undefined
         }));
 
       if (options.log !== false) {
