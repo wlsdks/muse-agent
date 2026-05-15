@@ -4511,6 +4511,39 @@ describe("cli program", () => {
     expect(resolveActivePersonaPreamble(withOverride)).toBe("OVERRIDDEN");
   });
 
+  it("muse job run --no-background is a recognized option (advertised inline mode works)", async () => {
+    const { io, output } = captureOutput();
+    const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+    program.exitOverride();
+    const prevExit = process.exitCode;
+    process.exitCode = 0;
+    try {
+      // Recognized → empty prompt reaches the usage guard, NOT a
+      // Commander "unknown option" parse error (the old
+      // `.option("--background", …, true)` never created --no-background).
+      await expect(
+        program.parseAsync(["node", "muse", "job", "run", "--no-background", ""], { from: "node" })
+      ).resolves.toBeDefined();
+      const text = output.join("");
+      expect(text).toContain("usage: muse job run");
+      expect(text).not.toContain("unknown option");
+      expect(process.exitCode).toBe(1);
+
+      // Control: a genuinely unknown negated flag still rejects, so
+      // the acceptance above is meaningful. (exitOverride throws a
+      // generic error; the "unknown option" text goes to output.)
+      const { io: io2, output: out2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      program2.exitOverride();
+      await expect(
+        program2.parseAsync(["node", "muse", "job", "run", "--no-bogus", ""], { from: "node" })
+      ).rejects.toThrow();
+      expect(out2.join("")).toMatch(/unknown option/u);
+    } finally {
+      process.exitCode = prevExit;
+    }
+  });
+
   it("persona ids that collide with Object.prototype members don't crash or false-exist", async () => {
     const { readPersonaStore, resolveActivePersonaPreamble } = await import("../src/persona-store.js");
 

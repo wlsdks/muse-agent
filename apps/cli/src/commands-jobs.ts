@@ -1,10 +1,11 @@
 /**
  * `muse job run/status/list/tail` — background long-running tasks.
  *
- * `muse job run --background <prompt>` spawns a detached worker that
- * runs the prompt through the local agent runtime, streaming progress
- * to `~/.muse/jobs/<id>.jsonl`. The parent returns immediately with
- * the job id. `muse job status <id>` (or `tail`) reads the file
+ * `muse job run <prompt>` spawns a detached worker (the default)
+ * that runs the prompt through the local agent runtime, streaming
+ * progress to `~/.muse/jobs/<id>.jsonl`. The parent returns
+ * immediately with the job id; `--no-background` runs it inline
+ * instead. `muse job status <id>` (or `tail`) reads the file
  * back. `muse job list` shows recent jobs.
  *
  * Why this matters for JARVIS-class: real assistants take ownership of
@@ -187,7 +188,7 @@ export function registerJobCommands(program: Command, io: ProgramIO): void {
     .command("run")
     .description("Run a prompt in the background; returns the job id immediately. Output streams to ~/.muse/jobs/<id>.jsonl")
     .argument("<prompt...>", "Free-text prompt")
-    .option("--background", "Detach the worker. Default ON; pass --no-background to run inline.", true)
+    .option("--no-background", "Run the worker inline (stream output through) instead of detaching. Default: detached.")
     .option("--model <tag>", "Model override")
     .option("--user <id>", "User identity (default $MUSE_USER_ID)")
     .option("--persona <slot>", "Persona slot")

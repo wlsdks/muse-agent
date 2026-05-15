@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Background worker that `muse job run --background` detaches.
+ * Background worker that `muse job run` detaches by default.
  * Reads --job-* CLI args, runs the prompt through the local agent
  * runtime, streams progress to a per-job JSONL file, exits.
  *
