@@ -4012,6 +4012,47 @@ describe("runDueProactiveNotices", () => {
     expect(historyRaw).toContain("upstream 503");
   });
 
+  it("breaks out of the retry loop early on non-retryable messaging errors (goal 148)", async () => {
+    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { MessagingProviderError } = await import("@muse/messaging");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-proactive-non-retryable-"));
+    const sidecarFile = join(dir, "proactive-fired.json");
+    const historyFile = join(dir, "proactive-history.json");
+
+    const fixedNow = new Date("2026-05-12T14:55:00Z");
+    const cal = makeFakeCalendarRegistry([
+      { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-401", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
+    ]);
+
+    // 401 → MessagingProviderError with retryable=false. The loop
+    // should record one attempt + bail, not burn the full 3.
+    const attempts: number[] = [];
+    const auth401 = {
+      send: async (_providerId: string, _msg: { destination: string; text: string }) => {
+        attempts.push(1);
+        throw new MessagingProviderError("telegram", "UPSTREAM_FAILED", "Telegram 401: invalid token", 401);
+      }
+    };
+
+    const summary = await runDueProactiveNotices({
+      calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+      destination: "@me",
+      historyFile,
+      messagingRegistry: auth401 as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
+      now: () => fixedNow,
+      providerId: "telegram",
+      sidecarFile
+    });
+    expect(summary.fired).toBe(0);
+    expect(summary.errors.length).toBe(1);
+    // Pre-goal-148 this was 3; now exactly 1 — the loop respects
+    // the goal-134 retryable boolean.
+    expect(attempts.length).toBe(1);
+  });
+
   it("scrubs accidental credentials from delivered notice text (goal 086)", async () => {
     const { runDueProactiveNotices } = await import("../src/index.js");
     const { mkdtempSync, writeFileSync } = await import("node:fs");

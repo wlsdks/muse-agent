@@ -20,7 +20,7 @@ import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 import type { CalendarEvent, CalendarProviderRegistry } from "@muse/calendar";
-import type { MessagingProviderRegistry } from "@muse/messaging";
+import { MessagingProviderError, type MessagingProviderRegistry } from "@muse/messaging";
 import { redactSecretsInText } from "@muse/shared";
 
 /**
@@ -89,6 +89,16 @@ async function sendWithRetry(
       return;
     } catch (cause) {
       lastError = cause;
+      // Goal 148 — honour the goal-134 `MessagingProviderError.retryable`
+      // boolean. Pre-iter the loop burned all three attempts on a
+      // permanent error (401 bad token, 404 missing destination,
+      // INVALID_DESTINATION / INVALID_TEXT validation failures),
+      // delaying the recorded failure by ~1s for no gain and
+      // hiding the real error in the second / third attempt's
+      // backoff. Now a non-retryable error breaks out immediately.
+      if (cause instanceof MessagingProviderError && !cause.retryable) {
+        break;
+      }
     }
   }
   throw lastError;
