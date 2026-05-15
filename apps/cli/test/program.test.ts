@@ -6509,6 +6509,28 @@ describe("cli program", () => {
     }
   });
 
+  it("muse mcp use <typo-preset> suggests the closest valid preset (goal 131)", async () => {
+    // One-edit typo for "filesystem".
+    const { io: io1, output: out1 } = captureOutput();
+    const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+    program1.exitOverride();
+    await expect(program1.parseAsync(["node", "muse", "mcp", "use", "filsystem"], { from: "node" }))
+      .rejects.toBeDefined();
+    expect(out1.join("")).toContain("did you mean 'filesystem'?");
+
+    // Unrelated input — error fires + lists available, no false-positive suggestion.
+    const { io: io2, output: out2 } = captureOutput();
+    const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+    program2.exitOverride();
+    await expect(program2.parseAsync(["node", "muse", "mcp", "use", "totally-unknown-preset"], { from: "node" }))
+      .rejects.toBeDefined();
+    const text2 = out2.join("");
+    expect(text2).toContain("Unknown preset 'totally-unknown-preset'");
+    expect(text2).not.toContain("did you mean");
+    // Available list is still surfaced for guidance.
+    expect(text2).toContain("Available:");
+  });
+
   it("muse routine pluralises 'day' in the sessions summary (goal 129)", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-routine-plural-"));
     const fsp = await import("node:fs/promises");

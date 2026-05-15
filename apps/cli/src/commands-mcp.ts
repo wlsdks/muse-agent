@@ -22,6 +22,7 @@ import {
   resolveExternalMcpConfigFile
 } from "@muse/autoconfigure";
 
+import { closestCommandName } from "./closest-command.js";
 import type { ProgramIO } from "./program.js";
 
 export interface McpHelpers {
@@ -168,8 +169,12 @@ export function registerMcpCommands(program: Command, io: ProgramIO, helpers: Mc
     .action((preset: string, options: McpUseOptions, command) => {
       const recipe = MCP_PRESETS[preset.toLowerCase()];
       if (!recipe) {
+        // Goal 131 — extend the typo-suggestion line (goals 099 /
+        // 100 / 118 / 119 / 124 / 125) into the MCP preset surface.
+        const suggestion = closestCommandName(preset, Object.keys(MCP_PRESETS));
+        const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
         io.stderr(
-          `Unknown preset '${preset}'. Available: ${Object.keys(MCP_PRESETS).join(", ")}\n`
+          `Unknown preset '${preset}'${hint}. Available: ${Object.keys(MCP_PRESETS).join(", ")}\n`
         );
         command.error("Unknown MCP preset", { exitCode: 1 });
         return;
