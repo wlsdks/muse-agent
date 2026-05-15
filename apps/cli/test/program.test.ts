@@ -6509,6 +6509,44 @@ describe("cli program", () => {
     }
   });
 
+  it("muse tasks list rejects --status typos with a closest-match hint (goal 125)", async () => {
+    const { io } = captureOutput();
+    const program = createProgram({ ...io, fetch: async () => { throw new Error("not reached — should reject before fetch"); } });
+    program.exitOverride();
+
+    // One-edit typo for "done" → suggests "done".
+    await expect(program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "tasks", "list", "--status", "doe"],
+      { from: "node" }
+    )).rejects.toThrow(/did you mean 'done'\?/u);
+
+    // Two-edit typo on "all" → suggests "all".
+    const program2 = createProgram({ ...io, fetch: async () => { throw new Error("not reached"); } });
+    program2.exitOverride();
+    await expect(program2.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "tasks", "list", "--status", "al"],
+      { from: "node" }
+    )).rejects.toThrow(/did you mean 'all'\?/u);
+
+    // Unrelated input — error fires + names the valid set, no
+    // false-positive suggestion.
+    const program3 = createProgram({ ...io, fetch: async () => { throw new Error("not reached"); } });
+    program3.exitOverride();
+    await expect(program3.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "tasks", "list", "--status", "totally-unrelated"],
+      { from: "node" }
+    )).rejects.toThrow(/--status must be one of: open, done, all/u);
+
+    // Happy path: a valid value passes validation and the fetch
+    // stub fires. parseAsync resolves to the Command instance —
+    // we just assert it doesn't reject.
+    const program4 = createProgram({ ...io, fetch: async () => new Response(JSON.stringify({ status: "open", tasks: [], total: 0 })) });
+    await expect(program4.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "tasks", "list", "--status", "open"],
+      { from: "node" }
+    )).resolves.toBeDefined();
+  });
+
   it("muse trust revoke / unblock hint when the tool wasn't actually listed (goal 118)", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-trust-typo-"));
     const fsp = await import("node:fs/promises");

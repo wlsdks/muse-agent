@@ -25,6 +25,7 @@ import {
 } from "@muse/mcp";
 import type { Command } from "commander";
 
+import { closestCommandName } from "./closest-command.js";
 import {
   formatProvidersList,
   formatTaskAdded,
@@ -32,6 +33,27 @@ import {
   formatTaskList
 } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
+
+/**
+ * Goal 125 — CLI-side strict validation for `muse tasks list
+ * --status <value>`. The shared `readTaskStatusFilter` is
+ * deliberately lenient (it silently falls back to `"open"` so
+ * the MCP tool tolerates an LLM that omits / mistypes the
+ * field). On the CLI a typo is a real user error — surface it
+ * with the same closest-match hint goals 099 / 100 / 118 / 119 /
+ * 124 use elsewhere instead of pretending the filter worked.
+ */
+const TASK_STATUS_VALUES = ["open", "done", "all"] as const;
+
+function assertTaskStatusInput(raw: string): void {
+  const trimmed = raw.trim().toLowerCase();
+  if (TASK_STATUS_VALUES.includes(trimmed as (typeof TASK_STATUS_VALUES)[number])) {
+    return;
+  }
+  const suggestion = closestCommandName(trimmed, TASK_STATUS_VALUES);
+  const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+  throw new Error(`--status must be one of: ${TASK_STATUS_VALUES.join(", ")} (got '${raw}')${hint}`);
+}
 
 export interface TasksCommandHelpers {
   readonly apiRequest: (
@@ -77,6 +99,11 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
     .option("--local", "Read directly from the local tasks file instead of the API")
     .option("--json", "Print the raw API response instead of the formatted list")
     .action(async (options: { readonly status: string } & SharedOptions, command) => {
+      // Goal 125 — strict --status validation with a typo hint.
+      // Throws before either the local or remote branch dispatches
+      // so the user doesn't get a silently-wrong "open" list when
+      // they typed "doe" / "doneish" / etc.
+      assertTaskStatusInput(options.status);
       let payload: { status: string; tasks: readonly Record<string, unknown>[]; total: number };
       if (options.local) {
         const file = localTasksFile();
