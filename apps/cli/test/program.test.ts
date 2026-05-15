@@ -3957,6 +3957,28 @@ describe("cli program", () => {
     expect(() => resolveLockUntilMs("abc", undefined, now)).toThrow();
   });
 
+  it("formatRemainingDuration renders 'Xh Ym' / 'X min' / '<1 min' (goal 141)", async () => {
+    const { formatRemainingDuration } = await import("../src/commands-session.js");
+    // Sub-1 minute clamps so a near-expired lock doesn't show "0 min".
+    expect(formatRemainingDuration(0)).toBe("<1 min");
+    expect(formatRemainingDuration(0.5)).toBe("<1 min");
+    expect(formatRemainingDuration(-3)).toBe("<1 min");
+    expect(formatRemainingDuration(Number.NaN)).toBe("<1 min");
+    // Plain minutes.
+    expect(formatRemainingDuration(5)).toBe("5 min");
+    expect(formatRemainingDuration(59)).toBe("59 min");
+    // Whole hours.
+    expect(formatRemainingDuration(60)).toBe("1h");
+    expect(formatRemainingDuration(120)).toBe("2h");
+    // Mixed.
+    expect(formatRemainingDuration(75)).toBe("1h 15m");
+    expect(formatRemainingDuration(150)).toBe("2h 30m");
+    expect(formatRemainingDuration(539)).toBe("8h 59m");
+    // Rounding lands on the nearest minute.
+    expect(formatRemainingDuration(59.6)).toBe("1h");
+    expect(formatRemainingDuration(89.4)).toBe("1h 29m");
+  });
+
   it("muse session lock / unlock / status round-trip writes + reads the marker (goal 052)", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-session-"));
     const lockFile = path.join(root, "session-lock.json");

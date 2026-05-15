@@ -46,6 +46,31 @@ function defaultSessionLockFile(): string {
  * millisecond timestamp. The two args sum (so `--hours 1 --minutes 30`
  * = 90 minutes). Default 1 hour. Negative / non-finite → throws.
  */
+/**
+ * Goal 141 — format a minute count the way a human reads a
+ * duration: `5m` → `"5 min"`, `60m` → `"1h"`, `90m` → `"1h 30m"`,
+ * `0m` → `"<1 min"` (so a near-expired lock doesn't display as
+ * `"0 min"`). Pure helper so the unit test pins every branch.
+ *
+ * Negative inputs clamp to `"<1 min"` (the caller shouldn't reach
+ * this with negatives, but defensive).
+ */
+export function formatRemainingDuration(rawMinutes: number): string {
+  if (!Number.isFinite(rawMinutes) || rawMinutes < 1) {
+    return "<1 min";
+  }
+  const total = Math.round(rawMinutes);
+  if (total < 60) {
+    return `${total.toString()} min`;
+  }
+  const hours = Math.trunc(total / 60);
+  const mins = total % 60;
+  if (mins === 0) {
+    return `${hours.toString()}h`;
+  }
+  return `${hours.toString()}h ${mins.toString()}m`;
+}
+
 export function resolveLockUntilMs(rawHours: string | undefined, rawMinutes: string | undefined, nowMs: number): number {
   const hours = rawHours ? Number.parseFloat(rawHours) : 0;
   const minutes = rawMinutes ? Number.parseFloat(rawMinutes) : 0;
@@ -94,9 +119,9 @@ export function registerSessionCommands(program: Command, io: ProgramIO): void {
         io.stdout(`${JSON.stringify(payload, null, 2)}\n`);
         return;
       }
-      const minsRemaining = Math.round((untilMs - nowMs) / 60_000);
+      const minsRemaining = (untilMs - nowMs) / 60_000;
       const reasonClause = payload.reason ? ` (${payload.reason})` : "";
-      io.stdout(`session locked${reasonClause} until ${payload.until} — ~${minsRemaining.toString()} min\n`);
+      io.stdout(`session locked${reasonClause} until ${payload.until} — ${formatRemainingDuration(minsRemaining)}\n`);
       io.stdout(`(proactive notices will resume after that. \`muse session unlock\` to clear.)\n`);
     });
 
@@ -138,11 +163,15 @@ export function registerSessionCommands(program: Command, io: ProgramIO): void {
         io.stdout(exists ? "session unlocked (marker is stale — safe to ignore)\n" : "session unlocked.\n");
         return;
       }
-      const minsRemaining = Math.round((new Date(until).getTime() - nowDate.getTime()) / 60_000);
+      const minsRemainingFloat = (new Date(until).getTime() - nowDate.getTime()) / 60_000;
+      const minsRemaining = Math.round(minsRemainingFloat);
       if (options.json) {
+        // JSON shape unchanged for downstream consumers — humans
+        // get the goal-141 formatted string, scripts get the raw
+        // integer in minutesRemaining.
         io.stdout(`${JSON.stringify({ active: true, file, minutesRemaining: minsRemaining, until }, null, 2)}\n`);
         return;
       }
-      io.stdout(`session locked until ${until} — ~${minsRemaining.toString()} min remaining\n`);
+      io.stdout(`session locked until ${until} — ${formatRemainingDuration(minsRemainingFloat)} remaining\n`);
     });
 }
