@@ -6450,13 +6450,14 @@ describe("cli program", () => {
       expect(tod).toBeDefined();
       expect(tod!.confidence).toBeGreaterThan(0);
 
-      // --min-confidence above 1.0 suppresses everything.
-      const { io: io2, output: out2 } = captureOutput();
+      // Goal 177 — an out-of-range --min-confidence is now
+      // rejected (was: silently fell back to 0 and showed
+      // everything, masking the user's intent).
+      const { io: io2 } = captureOutput();
       const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
-      await program2.parseAsync(["node", "muse", "pattern", "list", "--min-confidence", "1.01", "--json"], { from: "node" });
-      const tight = JSON.parse(out2.join("")) as { total: number };
-      // 1.01 is out of range so it falls back to default 0 — still shows clusters.
-      expect(tight.total).toBeGreaterThan(0);
+      await expect(
+        program2.parseAsync(["node", "muse", "pattern", "list", "--min-confidence", "1.01", "--json"], { from: "node" })
+      ).rejects.toThrow(/--min-confidence must be a number in \[0, 1\]/u);
 
       // --limit caps the slice
       const { io: io3, output: out3 } = captureOutput();

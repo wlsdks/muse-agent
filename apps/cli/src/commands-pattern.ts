@@ -116,17 +116,25 @@ export function registerPatternCommands(program: Command, io: ProgramIO): void {
     });
 }
 
-function parseLimit(raw: string | undefined, fallback: number, cap: number): number {
-  if (!raw) return fallback;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+// Absent flag → fallback. An explicitly-provided bad value
+// rejects (per the strict-numeric line, goals 143/144/155)
+// instead of silently masking the user's intent with the
+// default.
+export function parseLimit(raw: string | undefined, fallback: number, cap: number): number {
+  if (raw === undefined || raw.trim().length === 0) return fallback;
+  const parsed = Number(raw.trim());
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`--limit must be a positive number (got '${raw}')`);
+  }
   return Math.min(cap, Math.trunc(parsed));
 }
 
-function parseConfidence(raw: string | undefined, fallback: number): number {
-  if (!raw) return fallback;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) return fallback;
+export function parseConfidence(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim().length === 0) return fallback;
+  const parsed = Number(raw.trim());
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    throw new Error(`--min-confidence must be a number in [0, 1] (got '${raw}')`);
+  }
   return parsed;
 }
 
