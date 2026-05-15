@@ -106,7 +106,11 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           }
           const startsAt = parseIsoDate(startsAtIso);
           if (!startsAt) {
-            return { error: "startsAtIso must be a valid ISO 8601 timestamp" };
+            return {
+              error:
+                `startsAtIso must be an ISO-8601 timestamp or a supported relative phrase (got ${JSON.stringify(startsAtIso ?? "")}). ` +
+                `Examples: "tomorrow 9am", "in 2 hours", "next monday 6pm", "내일 오후 3시", "3일 후", "다음 주 월요일".`
+            };
           }
           const endsAt = parseIsoDate(endsAtIso) ?? new Date(startsAt.getTime() + 60 * 60_000);
           const allDay = readBoolean(args, "allDay") ?? false;
