@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  embedModelCheck,
   findOllamaModelTag,
   parseNotesIndexEmbedModel,
   type OllamaTagsEntry
@@ -62,5 +63,33 @@ describe("parseNotesIndexEmbedModel (goal 102)", () => {
     expect(parseNotesIndexEmbedModel(JSON.stringify({ model: "  nomic-embed-text  " })))
       .toBe("nomic-embed-text");
     expect(parseNotesIndexEmbedModel(JSON.stringify({ model: "   " }))).toBe("nomic-embed-text");
+  });
+});
+
+describe("embedModelCheck (goal 168)", () => {
+  it("ok + index-aware message when the indexed model is pulled", () => {
+    const v = embedModelCheck("nomic-embed-text", true, 274_000_000);
+    expect(v.status).toBe("ok");
+    expect(v.detail).toContain("RAG over ~/notes works");
+  });
+
+  it("ok + reindex hint when pulled but no index exists yet", () => {
+    const v = embedModelCheck("nomic-embed-text", false, 274_000_000);
+    expect(v.status).toBe("ok");
+    expect(v.detail).toContain("muse notes reindex");
+  });
+
+  it("warn + degrade wording when an index exists but the model is gone", () => {
+    const v = embedModelCheck("mxbai-embed-large", true, undefined);
+    expect(v.status).toBe("warn");
+    expect(v.detail).toContain("ollama pull mxbai-embed-large");
+    expect(v.detail).toContain("degrade");
+  });
+
+  it("warn + unavailable wording when no index and the default isn't pulled", () => {
+    const v = embedModelCheck("nomic-embed-text", false, undefined);
+    expect(v.status).toBe("warn");
+    expect(v.detail).toContain("ollama pull nomic-embed-text");
+    expect(v.detail).toContain("muse ask` unavailable");
   });
 });

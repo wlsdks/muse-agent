@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { mergeModelKeysFromFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
+import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
 import type { ProgramIO } from "./program.js";
 
 export interface DoctorCommandHelpers {
@@ -253,27 +254,18 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
     }
   }
 
-  // Same check for the embedding model — but only when the notes
-  // index exists, so users who never opted into RAG aren't nagged.
+  // Embedding model — RAG over ~/notes is a core JARVIS surface
+  // (`muse ask` / `muse recall`). Check the index's recorded model
+  // when an index exists; otherwise check the default so a user
+  // who hasn't reindexed yet still learns the model is missing
+  // (consistent with the `muse setup local` proactive nudge).
   if (ollamaModels) {
     const notesIndexPath = join(muse_home, "notes-index.json");
-    const embedModel = await readNotesIndexEmbedModel(notesIndexPath);
-    if (embedModel !== undefined) {
-      const match = findOllamaModelTag(ollamaModels, embedModel);
-      if (match) {
-        checks.push({
-          detail: `${embedModel} pulled (${formatBytes(match.size)}) — RAG over ~/notes works`,
-          name: "ollama embed model",
-          status: "ok"
-        });
-      } else {
-        checks.push({
-          detail: `${embedModel} NOT pulled — \`ollama pull ${embedModel}\` (notes RAG will throw on next search)`,
-          name: "ollama embed model",
-          status: "warn"
-        });
-      }
-    }
+    const indexedModel = await readNotesIndexEmbedModel(notesIndexPath);
+    const embedModel = indexedModel ?? DEFAULT_EMBED_MODEL;
+    const match = findOllamaModelTag(ollamaModels, embedModel);
+    const verdict = embedModelCheck(embedModel, indexedModel !== undefined, match?.size);
+    checks.push({ name: "ollama embed model", ...verdict });
   }
 
   // SearXNG (optional — `MUSE_SEARXNG_URL` opt-in). When set, probe
@@ -445,6 +437,34 @@ export function findOllamaModelTag(
   const normalize = (s: string): string => (s.includes(":") ? s : `${s}:latest`);
   const target = normalize(configuredTag.trim());
   return models.find((m) => normalize(m.name) === target);
+}
+
+/**
+ * Verdict for the "ollama embed model" doctor check. `hasIndex`
+ * distinguishes "an index records this model" from "no index yet,
+ * checking the default" so the message is actionable in both
+ * cases. `pulledSizeBytes` is the matched tag size, or undefined
+ * when the model isn't pulled. Pure so it tests directly.
+ */
+export function embedModelCheck(
+  embedModel: string,
+  hasIndex: boolean,
+  pulledSizeBytes: number | undefined
+): { readonly detail: string; readonly status: "ok" | "warn" } {
+  if (pulledSizeBytes !== undefined) {
+    return {
+      detail: hasIndex
+        ? `${embedModel} pulled (${formatBytes(pulledSizeBytes)}) — RAG over ~/notes works`
+        : `${embedModel} pulled (${formatBytes(pulledSizeBytes)}) — notes RAG ready once you run \`muse notes reindex\``,
+      status: "ok"
+    };
+  }
+  return {
+    detail: hasIndex
+      ? `${embedModel} NOT pulled — \`ollama pull ${embedModel}\` (notes RAG will degrade on next search)`
+      : `${embedModel} NOT pulled — \`ollama pull ${embedModel}\` (notes RAG / \`muse ask\` unavailable until then)`,
+    status: "warn"
+  };
 }
 
 /**
