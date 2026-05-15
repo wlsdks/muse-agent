@@ -45,6 +45,18 @@ export interface PersistedEpisode {
   readonly topics?: readonly string[];
 }
 
+// Move a present-but-corrupt store aside so the next upsert
+// starts fresh WITHOUT permanently destroying the user's prior
+// episodic memory. Best-effort; the original bytes survive at
+// `<file>.corrupt-<ts>` for manual recovery.
+async function quarantineCorruptStore(file: string): Promise<void> {
+  try {
+    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
+  } catch {
+    // ignore — read still degrades to empty either way
+  }
+}
+
 export async function readEpisodes(file: string): Promise<readonly PersistedEpisode[]> {
   let raw: string;
   try {
@@ -56,9 +68,11 @@ export async function readEpisodes(file: string): Promise<readonly PersistedEpis
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch {
+    await quarantineCorruptStore(file);
     return [];
   }
   if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { episodes?: unknown }).episodes)) {
+    await quarantineCorruptStore(file);
     return [];
   }
   return (parsed as { episodes: unknown[] }).episodes.flatMap((entry): readonly PersistedEpisode[] =>

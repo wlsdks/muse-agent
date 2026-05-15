@@ -3956,6 +3956,31 @@ describe("corrupt-store quarantine — reminders + followups (goal 190)", () => 
     ]);
     expect((await readFollowups(file)).map((f) => f.id)).toEqual(["fu_new"]);
   });
+
+  it("readEpisodes quarantines a corrupt store so upsert doesn't wipe episodic memory", async () => {
+    const { readEpisodes, upsertEpisode } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync, readdirSync, readFileSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-ep-quarantine-`);
+    const file = `${dir}/episodes.json`;
+    const original = `{"episodes":[{"id":"ep_keep","userId":"stark","startedAt":"2026-01-01T00:00:00Z","endedAt":"2026-01-01T01:00:00Z","summary":"do not lose me"}]} GARBAGE`;
+    writeFileSync(file, original);
+
+    expect(await readEpisodes(file)).toEqual([]);
+    const quar = readdirSync(dir).filter((n) => n.startsWith("episodes.json.corrupt-"));
+    expect(quar).toHaveLength(1);
+    expect(readFileSync(`${dir}/${quar[0]!}`, "utf8")).toBe(original);
+
+    await upsertEpisode(file, {
+      id: "ep_new",
+      userId: "stark",
+      startedAt: "2026-05-16T00:00:00Z",
+      endedAt: "2026-05-16T01:00:00Z",
+      summary: "new session"
+    });
+    expect((await readEpisodes(file)).map((e) => e.id)).toEqual(["ep_new"]);
+    expect(readdirSync(dir).filter((n) => n.startsWith("episodes.json.corrupt-"))).toHaveLength(1);
+  });
 });
 
 describe("reminder-history-store", () => {
