@@ -96,6 +96,42 @@ metadata:
     expect(parsed).toEqual({ description: "", name: "" });
   });
 
+  it("parses top-level `requires:` with a nested object without losing fields (goal 126)", () => {
+    // Pre-goal-126, the `inRequires` exit used `line.trim() === "}"`
+    // which fires at the FIRST inner `}` — so the outer object's
+    // closing `}` was treated as an unrelated frontmatter line and
+    // the surviving `description: ...` got swallowed as JSON noise.
+    const parsed = parseSkillFrontmatter(`name: codex
+requires: {
+  "anyBins": ["codex"],
+  "matrix": { "darwin": { "via": "brew" }, "linux": { "via": "apt" } }
+}
+description: "Codex CLI"`);
+    expect(parsed.requires?.anyBins).toEqual(["codex"]);
+    // Fields below the multi-line requires survive — the brace
+    // balance exits at the TRUE close of the outer object.
+    expect(parsed.description).toBe("Codex CLI");
+    // Nested matrix object survives (was lost pre-goal-126 because
+    // the parser stopped at the first inner `}`).
+    expect((parsed.requires as Record<string, unknown> | undefined)?.matrix)
+      .toEqual({ darwin: { via: "brew" }, linux: { via: "apt" } });
+  });
+
+  it("parses top-level `install:` array with nested entries without losing fields (goal 126)", () => {
+    // Pre-goal-126 the `inInstall` exit fired at `line.trim() === "]"`
+    // — so the inner `["link"]` array closed inInstall prematurely.
+    const parsed = parseSkillFrontmatter(`name: codex
+install: [
+  { "id": "brew", "kind": "brew", "label": "Install codex" },
+  { "id": "alt",  "kind": "node", "label": "npm install codex", "args": ["link"] }
+]
+description: "Codex CLI"`);
+    expect(parsed.install).toHaveLength(2);
+    expect(parsed.install?.[1]?.id).toBe("alt");
+    // Field after the multi-line array survives.
+    expect(parsed.description).toBe("Codex CLI");
+  });
+
   it("exits the metadata block at the closing brace so fields below metadata survive (iter 32)", () => {
     // Pre-iter-32 the `inMetadata` flag flipped on at `metadata:` but
     // had NO exit condition — every subsequent line, including
