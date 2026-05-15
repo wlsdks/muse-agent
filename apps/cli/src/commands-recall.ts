@@ -168,6 +168,32 @@ export function registerRecallCommand(program: Command, io: ProgramIO): void {
         io.stderr("(recall: no episodes-index.json — run `muse episode reindex` to populate)\n");
       }
 
+      // Goal 114 — model-mismatch warning. Cosine similarity between
+      // vectors from two different embedding models is mostly noise
+      // (the spaces don't align), so a `--embed-model X` query against
+      // an index built with `Y` returns garbage ranks with high-
+      // confidence-looking scores. Surface the gap up-front so the
+      // user knows to `muse notes reindex` / `muse episode reindex`
+      // before trusting the hit list.
+      const notesMismatch = notesIndex?.model && notesIndex.model !== embedModel
+        ? notesIndex.model : undefined;
+      const episodeMismatch = episodeIndex?.model && episodeIndex.model !== embedModel
+        ? episodeIndex.model : undefined;
+      if (notesMismatch) {
+        io.stderr(
+          `(recall: notes-index.json was built with '${notesMismatch}' but querying with '${embedModel}' — ` +
+          `cosines across different embedding models are noise. ` +
+          `Rerun \`muse notes reindex --model ${embedModel}\` or pass \`--embed-model ${notesMismatch}\`.)\n`
+        );
+      }
+      if (episodeMismatch) {
+        io.stderr(
+          `(recall: episodes-index.json was built with '${episodeMismatch}' but querying with '${embedModel}' — ` +
+          `same issue as above. ` +
+          `Rerun \`muse episode reindex --model ${embedModel}\` or pass \`--embed-model ${episodeMismatch}\`.)\n`
+        );
+      }
+
       // Resolve query embedding — test hook first, else live embed.
       let queryVec: number[];
       const testVec = maybeReadTestEmbedding();

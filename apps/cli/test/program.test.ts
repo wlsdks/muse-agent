@@ -4484,6 +4484,108 @@ describe("cli program", () => {
     expect(oneHit[0]?.ref).toBe("q3.md");
   });
 
+  it("muse recall warns when the index model mismatches --embed-model (goal 114)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-recall-mismatch-"));
+    const fsp = await import("node:fs/promises");
+    const notesIndexPath = path.join(root, "notes-index.json");
+    const epsIndexPath = path.join(root, "episodes-index.json");
+
+    // Seed both indices with model 'nomic-embed-text'. The query
+    // below will pass --embed-model 'mxbai-embed-large' to force a
+    // mismatch, so the warnings should mention both indices and
+    // suggest the right reindex / fallback flag.
+    await fsp.writeFile(notesIndexPath, JSON.stringify({
+      version: 1,
+      model: "nomic-embed-text",
+      builtAtIso: "2026-05-13T00:00:00Z",
+      files: [{
+        path: "q3.md",
+        mtimeMs: 1,
+        chunks: [{ chunkIndex: 0, text: "Q3 budget memo body", embedding: [1, 0, 0, 0] }]
+      }]
+    }), "utf8");
+    await fsp.writeFile(epsIndexPath, JSON.stringify({
+      version: 1,
+      model: "nomic-embed-text",
+      builtAtIso: "2026-05-13T00:00:00Z",
+      entries: [{
+        id: "ep_a",
+        summary: "Q3 review",
+        embedding: [1, 0, 0, 0]
+      }]
+    }), "utf8");
+
+    const prevNotes = process.env.MUSE_NOTES_INDEX_FILE;
+    const prevEps = process.env.MUSE_EPISODES_INDEX_FILE;
+    const prevQueryEmbedding = process.env.MUSE_RECALL_TEST_QUERY_EMBEDDING;
+    process.env.MUSE_NOTES_INDEX_FILE = notesIndexPath;
+    process.env.MUSE_EPISODES_INDEX_FILE = epsIndexPath;
+    // Test-only escape hatch the recall command already supports —
+    // skip the real Ollama call.
+    process.env.MUSE_RECALL_TEST_QUERY_EMBEDDING = "1,0,0,0";
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+      await program.parseAsync(
+        ["node", "muse", "recall", "Q3", "--embed-model", "mxbai-embed-large"],
+        { from: "node" }
+      );
+      const text = output.join("");
+      // Notes warning carries the offending index model + suggests
+      // both fix paths.
+      expect(text).toMatch(/notes-index\.json was built with 'nomic-embed-text' but querying with 'mxbai-embed-large'/u);
+      expect(text).toMatch(/muse notes reindex --model mxbai-embed-large/u);
+      expect(text).toMatch(/--embed-model nomic-embed-text/u);
+      // Episodes warning mirrors the notes one.
+      expect(text).toMatch(/episodes-index\.json was built with 'nomic-embed-text'/u);
+      expect(text).toMatch(/muse episode reindex --model mxbai-embed-large/u);
+      // Hit list still renders — the warning doesn't gate retrieval.
+      expect(text).toContain("Recall hits for");
+    } finally {
+      if (prevNotes === undefined) delete process.env.MUSE_NOTES_INDEX_FILE;
+      else process.env.MUSE_NOTES_INDEX_FILE = prevNotes;
+      if (prevEps === undefined) delete process.env.MUSE_EPISODES_INDEX_FILE;
+      else process.env.MUSE_EPISODES_INDEX_FILE = prevEps;
+      if (prevQueryEmbedding === undefined) delete process.env.MUSE_RECALL_TEST_QUERY_EMBEDDING;
+      else process.env.MUSE_RECALL_TEST_QUERY_EMBEDDING = prevQueryEmbedding;
+    }
+  });
+
+  it("muse recall stays silent when the index model matches the query model (goal 114)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-recall-match-"));
+    const fsp = await import("node:fs/promises");
+    const notesIndexPath = path.join(root, "notes-index.json");
+    await fsp.writeFile(notesIndexPath, JSON.stringify({
+      version: 1, model: "nomic-embed-text", builtAtIso: "2026-05-13T00:00:00Z",
+      files: [{
+        path: "q3.md", mtimeMs: 1,
+        chunks: [{ chunkIndex: 0, text: "Q3 body", embedding: [1, 0, 0, 0] }]
+      }]
+    }), "utf8");
+
+    const prevNotes = process.env.MUSE_NOTES_INDEX_FILE;
+    const prevQueryEmbedding = process.env.MUSE_RECALL_TEST_QUERY_EMBEDDING;
+    process.env.MUSE_NOTES_INDEX_FILE = notesIndexPath;
+    process.env.MUSE_RECALL_TEST_QUERY_EMBEDDING = "1,0,0,0";
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+      await program.parseAsync(
+        ["node", "muse", "recall", "Q3", "--source", "notes"],
+        { from: "node" }
+      );
+      const text = output.join("");
+      // Default embed-model is `nomic-embed-text` (matches the index)
+      // → no mismatch warning.
+      expect(text).not.toContain("but querying with");
+    } finally {
+      if (prevNotes === undefined) delete process.env.MUSE_NOTES_INDEX_FILE;
+      else process.env.MUSE_NOTES_INDEX_FILE = prevNotes;
+      if (prevQueryEmbedding === undefined) delete process.env.MUSE_RECALL_TEST_QUERY_EMBEDDING;
+      else process.env.MUSE_RECALL_TEST_QUERY_EMBEDDING = prevQueryEmbedding;
+    }
+  });
+
   it("buildEpisodeIndex reuses unchanged entries + re-embeds changed summaries (goal 090)", async () => {
     const { buildEpisodeIndex } = await import("../src/episode-index.js");
     const calls: string[] = [];
