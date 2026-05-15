@@ -67,11 +67,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       method: "POST"
     });
     if (!resp.ok) {
-      throw new ModelProviderError(
-        this.id,
-        `Ollama /api/chat failed with ${resp.status.toString()}: ${(await resp.text().catch(() => "")) || resp.statusText}`,
-        isRetryableHttpStatus(resp.status)
-      );
+      throw await this.buildNativeError(request, resp, "/api/chat");
     }
     const json = await resp.json() as OllamaNativeChatResponse;
     return {
@@ -116,11 +112,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     });
     if (!resp.ok || !resp.body) {
       yield {
-        error: new ModelProviderError(
-          this.id,
-          `Ollama stream failed with ${resp.status.toString()}: ${(await resp.text().catch(() => "")) || resp.statusText}`,
-          isRetryableHttpStatus(resp.status)
-        ),
+        error: await this.buildNativeError(request, resp, "stream"),
         type: "error"
       };
       return;
@@ -212,6 +204,25 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         : {})
     };
     yield { response: final, type: "done" };
+  }
+
+  private async buildNativeError(
+    request: ModelRequest,
+    resp: { status: number; statusText: string; text(): Promise<string> },
+    label: string
+  ): Promise<ModelProviderError> {
+    const bodyText = (await resp.text().catch(() => "")) || resp.statusText;
+    let message = `Ollama ${label} failed with ${resp.status.toString()}: ${bodyText}`;
+    // Name the exact fix for the canonical first-run footgun
+    // (model not pulled), mirroring the embed-model hints in
+    // goals 164 / 167 / 168.
+    if (resp.status === 404 && /not found/iu.test(bodyText)) {
+      const model = (request.model ?? this.nativeDefaultModel ?? "").replace(/^ollama\//u, "");
+      if (model.length > 0) {
+        message += ` — run \`ollama pull ${model}\` (or check the model name).`;
+      }
+    }
+    return new ModelProviderError(this.id, message, isRetryableHttpStatus(resp.status));
   }
 
   private buildNativeChatBody(request: ModelRequest, stream: boolean): Record<string, unknown> {

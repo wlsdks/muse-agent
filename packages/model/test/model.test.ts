@@ -1027,6 +1027,49 @@ describe("OllamaProvider num_ctx (goal 165)", () => {
   });
 });
 
+describe("OllamaProvider model-not-found hint (goal 176)", () => {
+  const notFound: typeof globalThis.fetch = async (url) => {
+    if (String(url).includes("/models")) {
+      return new Response(JSON.stringify({ data: [] }));
+    }
+    return new Response(
+      JSON.stringify({ error: "model 'qwen3:8b' not found, try pulling it first" }),
+      { status: 404, statusText: "Not Found" }
+    );
+  };
+
+  it("appends `ollama pull <model>` to a 404 model-not-found error (generate)", async () => {
+    const provider = new OllamaProvider({ baseUrl: "http://o.test/v1", defaultModel: "qwen3:8b", fetch: notFound, models: ["qwen3:8b"] });
+    const err = await provider.generate({ messages: [{ content: "hi", role: "user" }], model: "ollama/qwen3:8b" })
+      .then(() => undefined, (e: unknown) => e as Error);
+    expect(err?.message).toContain("Ollama /api/chat failed with 404");
+    expect(err?.message).toContain("ollama pull qwen3:8b");
+  });
+
+  it("appends the hint on the streaming path too", async () => {
+    const provider = new OllamaProvider({ baseUrl: "http://o.test/v1", defaultModel: "qwen3:8b", fetch: notFound, models: ["qwen3:8b"] });
+    const events = [];
+    for await (const ev of provider.stream({ messages: [{ content: "hi", role: "user" }], model: "ollama/qwen3:8b" })) {
+      events.push(ev);
+    }
+    const errEvent = events.find((e) => e.type === "error") as { error: Error } | undefined;
+    expect(errEvent?.error.message).toContain("Ollama stream failed with 404");
+    expect(errEvent?.error.message).toContain("ollama pull qwen3:8b");
+  });
+
+  it("does NOT append a pull hint for non-404 / non-not-found failures", async () => {
+    const five: typeof globalThis.fetch = async (url) => {
+      if (String(url).includes("/models")) return new Response(JSON.stringify({ data: [] }));
+      return new Response("upstream exploded", { status: 503, statusText: "Unavailable" });
+    };
+    const provider = new OllamaProvider({ baseUrl: "http://o.test/v1", defaultModel: "qwen3:8b", fetch: five, models: ["qwen3:8b"] });
+    const err = await provider.generate({ messages: [{ content: "hi", role: "user" }], model: "ollama/qwen3:8b" })
+      .then(() => undefined, (e: unknown) => e as Error);
+    expect(err?.message).toContain("503");
+    expect(err?.message).not.toContain("ollama pull");
+  });
+});
+
 /**
  * Ollama's native /api/chat shape — used by OllamaProvider's
  * think:false override. NDJSON streaming, single-JSON non-streaming.
