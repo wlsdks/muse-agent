@@ -10,13 +10,17 @@
  *
  * Supported shapes (case-insensitive):
  *   "tomorrow"                                   → next day at 09:00 local
- *   "tomorrow at 6pm" / "tomorrow at 14:30"      → next day at the given time
- *   "today" / "today at 6pm"                     → today at 09:00 (or given time)
+ *   "tomorrow at 6pm" / "tomorrow 6pm" / "...14:30" → next day at the given time
+ *   "today" / "today 6pm" / "today at 6pm"       → today at 09:00 (or given time)
  *   "in 3 hours" / "in 30 minutes" / "in 2 days" → reference + offset
  *   "in 1 week" / "in 2 weeks"                   → reference + 7N days
  *   "in 1 month" / "in 3 months"                 → calendar-month offset (goal 110)
  *   "next monday" / "next mon"                   → next Monday at 09:00
- *   "next monday at 6pm"                         → next Monday at 18:00
+ *   "next monday at 6pm" / "next monday 6pm"     → next Monday at 18:00
+ *
+ * The `at` keyword is optional: "<day> <time>" works the same as
+ * "<day> at <time>" — a personal assistant should understand
+ * "tomorrow 9am", not just "tomorrow at 9am".
  *   "noon" / "midnight" (suffix to a day phrase) → 12:00 / 00:00
  *
  * All resolved times use the local timezone for the wall-clock
@@ -69,7 +73,7 @@ export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date
     return new Date(reference.getTime() + offsetMs);
   }
 
-  const dayPattern = /^(today|tomorrow|next\s+([a-z]+)|([a-z]+))(?:\s+at\s+(.+))?$/u;
+  const dayPattern = /^(today|tomorrow|next\s+([a-z]+)|([a-z]+))(?:\s+(?:at\s+)?(.+))?$/u;
   const dayMatch = dayPattern.exec(trimmed);
   if (!dayMatch) {
     return undefined;

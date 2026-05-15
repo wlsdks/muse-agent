@@ -1963,6 +1963,37 @@ describe("muse.tasks loopback server", () => {
       expect(tomorrowMidnight?.getHours()).toBe(0);
     });
 
+    it("accepts the time without the 'at' keyword (goal 159)", async () => {
+      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const ref = () => new Date("2026-05-10T12:00:00Z"); // Sunday
+
+      const tomorrow9am = resolveRelativeTimePhrase("tomorrow 9am", ref);
+      expect(tomorrow9am?.getHours()).toBe(9);
+      expect(tomorrow9am?.getMinutes()).toBe(0);
+
+      const today6pm = resolveRelativeTimePhrase("today 6pm", ref);
+      expect(today6pm?.getHours()).toBe(18);
+
+      const tomorrow1430 = resolveRelativeTimePhrase("tomorrow 14:30", ref);
+      expect(tomorrow1430?.getHours()).toBe(14);
+      expect(tomorrow1430?.getMinutes()).toBe(30);
+
+      const nextMon6pm = resolveRelativeTimePhrase("next monday 6pm", ref);
+      expect(nextMon6pm?.getDay()).toBe(1);
+      expect(nextMon6pm?.getHours()).toBe(18);
+
+      const todayNoon = resolveRelativeTimePhrase("today noon", ref);
+      expect(todayNoon?.getHours()).toBe(12);
+
+      // The 'at' form still works unchanged.
+      const stillAt = resolveRelativeTimePhrase("tomorrow at 9am", ref);
+      expect(stillAt?.getHours()).toBe(9);
+
+      // Bare day phrase (no time) still defaults to 09:00.
+      const bareTomorrow = resolveRelativeTimePhrase("tomorrow", ref);
+      expect(bareTomorrow?.getHours()).toBe(9);
+    });
+
     it("returns undefined for unsupported phrases (caller decides fallback)", async () => {
       const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
       const now = () => new Date("2026-05-10T12:00:00Z");
