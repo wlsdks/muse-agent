@@ -147,6 +147,42 @@ export function parseBoundedInt(
   return Math.min(max, Math.trunc(parsed));
 }
 
+export interface AskStreamEvent {
+  readonly type: string;
+  readonly text?: string;
+  readonly error?: { readonly message?: string };
+}
+
+export interface AskStreamResult {
+  readonly answer: string;
+  readonly error?: string;
+}
+
+/**
+ * Drain the chat-only fast-path model stream. A provider `error`
+ * event (Ollama not running, model not pulled — goal 176's
+ * actionable hint, a 5xx) must surface, not be silently dropped
+ * while the command prints a blank answer and exits 0.
+ */
+export async function consumeAskStream(
+  events: AsyncIterable<AskStreamEvent>,
+  onDelta: (text: string) => void,
+  isAborted: () => boolean
+): Promise<AskStreamResult> {
+  let answer = "";
+  for await (const event of events) {
+    if (isAborted()) break;
+    if (event.type === "error") {
+      return { answer, error: event.error?.message ?? "model request failed" };
+    }
+    if (event.type === "text-delta" && typeof event.text === "string") {
+      answer += event.text;
+      onDelta(event.text);
+    }
+  }
+  return { answer };
+}
+
 export function registerAskCommand(program: Command, io: ProgramIO): void {
   program
     .command("ask")
@@ -522,22 +558,28 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // queries that don't need fresh external data.
         // withSigintAbort so Ctrl-C exits 130 instead of leaving
         // the stream pump dangling on the adapter side.
+        let streamError: string | undefined;
         await withSigintAbort(async (signal) => {
-          for await (const event of assembly.modelProvider!.stream({
-            messages: [
-              { content: systemPrompt, role: "system" },
-              { content: query, role: "user" }
-            ],
-            ...(webSearchPolicy ? { metadata: { webSearchPolicy } } : {}),
-            model
-          }) as AsyncIterable<{ type: string; text?: string }>) {
-            if (signal.aborted) break;
-            if (event.type === "text-delta" && typeof event.text === "string") {
-              collectedAnswer += event.text;
-              if (!options.json) io.stdout(event.text);
-            }
-          }
+          const res = await consumeAskStream(
+            assembly.modelProvider!.stream({
+              messages: [
+                { content: systemPrompt, role: "system" },
+                { content: query, role: "user" }
+              ],
+              ...(webSearchPolicy ? { metadata: { webSearchPolicy } } : {}),
+              model
+            }) as AsyncIterable<AskStreamEvent>,
+            (text) => { if (!options.json) io.stdout(text); },
+            () => signal.aborted
+          );
+          collectedAnswer = res.answer;
+          streamError = res.error;
         }, { onSigint: () => { if (!options.json) io.stderr("\n(Ctrl-C — aborting…)\n"); } });
+        if (streamError !== undefined) {
+          io.stderr(`\n(error: ${streamError})\n`);
+          process.exitCode = 1;
+          return;
+        }
       }
 
       if (options.json) {

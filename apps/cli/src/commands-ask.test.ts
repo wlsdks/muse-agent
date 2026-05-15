@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { parseBoundedInt } from "./commands-ask.js";
+import { consumeAskStream, parseBoundedInt, type AskStreamEvent } from "./commands-ask.js";
+
+async function* gen(events: AskStreamEvent[]): AsyncIterable<AskStreamEvent> {
+  for (const e of events) yield e;
+}
 
 describe("parseBoundedInt (goal 178)", () => {
   it("returns the fallback when the flag is absent or blank", () => {
@@ -28,5 +32,60 @@ describe("parseBoundedInt (goal 178)", () => {
     expect(parseBoundedInt("60", "--calendar-days", 1, 30, 7)).toBe(30);
     expect(() => parseBoundedInt("14d", "--calendar-days", 1, 30, 7))
       .toThrow(/--calendar-days must be an integer in \[1, 30\]/u);
+  });
+});
+
+describe("consumeAskStream", () => {
+  it("accumulates text-delta events and forwards each delta", async () => {
+    const seen: string[] = [];
+    const res = await consumeAskStream(
+      gen([
+        { type: "text-delta", text: "Hello" },
+        { type: "text-delta", text: " world" },
+        { type: "done" }
+      ]),
+      (t) => seen.push(t),
+      () => false
+    );
+    expect(res).toEqual({ answer: "Hello world" });
+    expect(seen).toEqual(["Hello", " world"]);
+  });
+
+  it("surfaces a provider error instead of silently dropping it", async () => {
+    const res = await consumeAskStream(
+      gen([
+        { type: "text-delta", text: "partial" },
+        { type: "error", error: { message: "run `ollama pull qwen3:8b`" } }
+      ]),
+      () => {},
+      () => false
+    );
+    expect(res.error).toBe("run `ollama pull qwen3:8b`");
+    expect(res.answer).toBe("partial"); // partial output preserved
+  });
+
+  it("falls back to a generic message when the error carries none", async () => {
+    const res = await consumeAskStream(
+      gen([{ type: "error" }]),
+      () => {},
+      () => false
+    );
+    expect(res.error).toBe("model request failed");
+  });
+
+  it("stops forwarding once aborted", async () => {
+    const seen: string[] = [];
+    let calls = 0;
+    const res = await consumeAskStream(
+      gen([
+        { type: "text-delta", text: "a" },
+        { type: "text-delta", text: "b" }
+      ]),
+      (t) => seen.push(t),
+      () => (calls++ > 0) // aborted from the 2nd iteration on
+    );
+    expect(seen).toEqual(["a"]);
+    expect(res.answer).toBe("a");
+    expect(res.error).toBeUndefined();
   });
 });
