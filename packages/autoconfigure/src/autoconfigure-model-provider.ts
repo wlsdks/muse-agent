@@ -11,7 +11,7 @@ import {
   type ModelProvider
 } from "@muse/model";
 
-import { parseCsv, parseOptionalString } from "./env-parsers.js";
+import { parseCsv, parseInteger, parseOptionalString } from "./env-parsers.js";
 import type { MuseEnvironment } from "./index.js";
 
 /**
@@ -116,7 +116,8 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
       return new OllamaProvider({
         baseUrl,
         defaultModel,
-        models
+        models,
+        numCtx: parseInteger(env.MUSE_OLLAMA_NUM_CTX, 8192)
       });
     case "openai":
       return new OpenAIProvider({

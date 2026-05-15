@@ -143,6 +143,13 @@ export interface OpenRouterProviderOptions extends Omit<OpenAICompatibleProvider
 export interface OllamaProviderOptions extends Omit<OpenAICompatibleProviderOptions, "apiKey" | "baseUrl" | "id"> {
   readonly baseUrl?: string;
   readonly id?: string;
+  /**
+   * Ollama's `num_ctx`. Ollama defaults this low (2048–4096),
+   * which silently truncates Muse's rich prompt (persona +
+   * memory + RAG + tasks + calendar). Defaults to 8192 here;
+   * the autoconfigure layer maps `MUSE_OLLAMA_NUM_CTX`.
+   */
+  readonly numCtx?: number;
 }
 
 export interface AnthropicProviderOptions {

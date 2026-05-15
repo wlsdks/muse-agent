@@ -33,6 +33,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
   private readonly nativeBaseUrl: string;
   private readonly nativeFetch: typeof globalThis.fetch;
   private readonly nativeDefaultModel?: string;
+  private readonly numCtx: number;
 
   constructor(options: OllamaProviderOptions = {}) {
     const baseUrl = options.baseUrl ?? "http://127.0.0.1:11434/v1";
@@ -44,6 +45,9 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     this.nativeDefaultModel = options.defaultModel;
     this.nativeBaseUrl = baseUrl.replace(/\/v1\/?$/, "");
     this.nativeFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+    this.numCtx = options.numCtx !== undefined && Number.isFinite(options.numCtx) && options.numCtx > 0
+      ? Math.trunc(options.numCtx)
+      : 8192;
   }
 
   override async listModels(): Promise<readonly ModelInfo[]> {
@@ -222,6 +226,10 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       })),
       model: modelName,
       options: {
+        // Ollama defaults num_ctx low (2048–4096) and silently
+        // truncates anything over it — Muse's prompt (persona +
+        // memory + RAG + tasks + calendar) routinely exceeds that.
+        num_ctx: this.numCtx,
         ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
         ...(request.maxOutputTokens !== undefined ? { num_predict: request.maxOutputTokens } : {})
       },

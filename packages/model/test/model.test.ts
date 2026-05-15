@@ -906,6 +906,39 @@ describe("live provider smoke gates", () => {
   });
 });
 
+describe("OllamaProvider num_ctx (goal 165)", () => {
+  function captureBodyFetch(): { fetch: typeof globalThis.fetch; bodies: Record<string, unknown>[] } {
+    const bodies: Record<string, unknown>[] = [];
+    const fetch: typeof globalThis.fetch = async (url, init) => {
+      if (String(url).includes("/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "model-test", object: "model" }] }));
+      }
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response(JSON.stringify({ message: { content: "ok", role: "assistant" }, model: "model-test" }));
+    };
+    return { bodies, fetch };
+  }
+
+  it("defaults num_ctx to 8192 so Muse's rich prompt isn't truncated", async () => {
+    const { bodies, fetch } = captureBodyFetch();
+    const provider = new OllamaProvider({ baseUrl: "http://o.test/v1", defaultModel: "model-test", fetch, models: ["model-test"] });
+    await provider.generate({ messages: [{ content: "hi", role: "user" }], model: "ollama/model-test" });
+    expect((bodies[0]?.options as { num_ctx?: number }).num_ctx).toBe(8192);
+  });
+
+  it("honours an explicit numCtx option and ignores non-positive values", async () => {
+    const big = captureBodyFetch();
+    const p1 = new OllamaProvider({ baseUrl: "http://o.test/v1", defaultModel: "model-test", fetch: big.fetch, models: ["model-test"], numCtx: 32768 });
+    await p1.generate({ messages: [{ content: "hi", role: "user" }], model: "ollama/model-test" });
+    expect((big.bodies[0]?.options as { num_ctx?: number }).num_ctx).toBe(32768);
+
+    const bad = captureBodyFetch();
+    const p2 = new OllamaProvider({ baseUrl: "http://o.test/v1", defaultModel: "model-test", fetch: bad.fetch, models: ["model-test"], numCtx: 0 });
+    await p2.generate({ messages: [{ content: "hi", role: "user" }], model: "ollama/model-test" });
+    expect((bad.bodies[0]?.options as { num_ctx?: number }).num_ctx).toBe(8192);
+  });
+});
+
 /**
  * Ollama's native /api/chat shape — used by OllamaProvider's
  * think:false override. NDJSON streaming, single-JSON non-streaming.
