@@ -24,6 +24,7 @@ import { readFile } from "node:fs/promises";
 import { FileUserMemoryStore } from "@muse/memory";
 import type { Command } from "commander";
 
+import { closestCommandName } from "./closest-command.js";
 import { formatMemoryShow } from "./human-formatters.js";
 import { resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
@@ -215,7 +216,17 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
     });
 }
 
-function parseKindSegment(kind: string): "facts" | "preferences" {
+/**
+ * Goal 119 — accept singular / plural forms for both kinds and
+ * surface a closest-match hint on typos. Previously a user typing
+ * `muse memory set preferene name Stark` got a flat "kind must be
+ * 'fact' or 'preference'" — no clue which of the four valid forms
+ * they were closest to. Pairs with the goals 099 / 100 / 114 / 118
+ * typo-suggestion line.
+ */
+export const MEMORY_KIND_FORMS = ["fact", "facts", "preference", "preferences"] as const;
+
+export function parseKindSegment(kind: string): "facts" | "preferences" {
   const trimmed = kind.trim().toLowerCase();
   if (trimmed === "fact" || trimmed === "facts") {
     return "facts";
@@ -223,7 +234,9 @@ function parseKindSegment(kind: string): "facts" | "preferences" {
   if (trimmed === "preference" || trimmed === "preferences") {
     return "preferences";
   }
-  throw new Error("kind must be 'fact' or 'preference'");
+  const suggestion = closestCommandName(trimmed, MEMORY_KIND_FORMS);
+  const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+  throw new Error(`kind must be 'fact' or 'preference' (got '${kind}')${hint}`);
 }
 
 /**

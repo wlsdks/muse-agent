@@ -6451,6 +6451,46 @@ describe("cli program", () => {
     }
   });
 
+  it("parseKindSegment accepts singular + plural and hints on typos (goal 119)", async () => {
+    const { parseKindSegment } = await import("../src/commands-memory.js");
+
+    // Happy path: both singular and plural for both kinds.
+    expect(parseKindSegment("fact")).toBe("facts");
+    expect(parseKindSegment("facts")).toBe("facts");
+    expect(parseKindSegment("preference")).toBe("preferences");
+    expect(parseKindSegment("preferences")).toBe("preferences");
+    // Whitespace + case-insensitive.
+    expect(parseKindSegment("  Fact  ")).toBe("facts");
+
+    // One-edit typo on either kind → error message names the typo
+    // verbatim AND suggests the right form.
+    try {
+      parseKindSegment("facs");
+      throw new Error("expected throw");
+    } catch (cause) {
+      expect((cause as Error).message).toContain("got 'facs'");
+      expect((cause as Error).message).toContain("did you mean 'fact'?");
+    }
+
+    // Two-edit typo on the longer form lands inside the
+    // length-aware cap for the longer candidate.
+    try {
+      parseKindSegment("preferene");
+      throw new Error("expected throw");
+    } catch (cause) {
+      expect((cause as Error).message).toContain("did you mean 'preference'?");
+    }
+
+    // Unrelated input → still throws but no false-positive suggestion.
+    try {
+      parseKindSegment("foobarbaz-nope");
+      throw new Error("expected throw");
+    } catch (cause) {
+      expect((cause as Error).message).toContain("kind must be 'fact' or 'preference'");
+      expect((cause as Error).message).not.toContain("did you mean");
+    }
+  });
+
   it("muse trust revoke / unblock hint when the tool wasn't actually listed (goal 118)", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-trust-typo-"));
     const fsp = await import("node:fs/promises");
