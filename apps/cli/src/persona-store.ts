@@ -1,5 +1,5 @@
 /**
- * Goal 094 — persona template store.
+ * Persona template store.
  *
  * Persona = a system-prompt preamble Muse prepends to every
  * model-bound turn (ask / brief / today / proactive synthesis)
@@ -98,7 +98,10 @@ export async function readPersonaStore(file: string): Promise<PersonaStoreShape>
   const customRaw = (candidate.custom && typeof candidate.custom === "object")
     ? candidate.custom as Record<string, unknown>
     : {};
-  const custom: Record<string, { preamble: string }> = {};
+  // Null-prototype: a hand-edited file with a `__proto__` /
+  // `constructor` key can't mutate a real prototype or leak an
+  // inherited member through later bracket access.
+  const custom: Record<string, { preamble: string }> = Object.create(null) as Record<string, { preamble: string }>;
   for (const [id, value] of Object.entries(customRaw)) {
     if (!value || typeof value !== "object") continue;
     const preamble = (value as { preamble?: unknown }).preamble;
@@ -117,27 +120,32 @@ export async function writePersonaStore(file: string, store: PersonaStoreShape):
 }
 
 /**
- * Goal 094 — return the resolved preamble for the active persona.
- * Order: custom override (when the same id exists under `custom`)
- * → built-in match → empty (default). Pure so the system-prompt
- * builders + tests can call it with an injected `store`.
+ * Resolved preamble for the active persona. Order: custom
+ * override (same id under `custom`) → built-in match → empty
+ * (default). Pure so the system-prompt builders + tests can
+ * call it with an injected `store`.
  *
  * Returns the preamble string; an empty string means "no
  * preamble" (the `default` persona). Caller decides whether to
- * prepend a separator line.
+ * prepend a separator line. Own-property check so an activeId
+ * like `toString` / `__proto__` resolves to undefined instead
+ * of an inherited Object.prototype member (`.preamble.length`
+ * would otherwise throw).
  */
 export function resolveActivePersonaPreamble(store: PersonaStoreShape): string {
-  const custom = store.custom[store.activeId];
+  const custom = Object.hasOwn(store.custom, store.activeId)
+    ? store.custom[store.activeId]
+    : undefined;
   if (custom && custom.preamble.length > 0) return custom.preamble;
   const builtin = BUILTIN_PERSONAS.find((p) => p.id === store.activeId);
   return builtin?.preamble ?? "";
 }
 
 /**
- * Goal 094 — async loader for the system-prompt builders that
- * just want "give me the active preamble". Silent-fail to
- * empty on every IO error so a malformed file can't break the
- * ask / brief / proactive paths.
+ * Async loader for the system-prompt builders that just want
+ * "give me the active preamble". Silent-fail to empty on every
+ * IO error so a malformed file can't break the ask / brief /
+ * proactive paths.
  */
 export async function loadActivePersonaPreamble(file: string = defaultPersonaFile()): Promise<string> {
   try {
@@ -147,10 +155,6 @@ export async function loadActivePersonaPreamble(file: string = defaultPersonaFil
   }
 }
 
-/**
- * Goal 094 — `BUILTIN_IDS` is a `Set`, but the export needs to
- * stay a deep-immutable thing the test can probe by name.
- */
 export function isBuiltinPersonaId(id: string): boolean {
   return BUILTIN_IDS.has(id);
 }

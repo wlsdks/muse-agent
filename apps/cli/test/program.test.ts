@@ -4511,6 +4511,55 @@ describe("cli program", () => {
     expect(resolveActivePersonaPreamble(withOverride)).toBe("OVERRIDDEN");
   });
 
+  it("persona ids that collide with Object.prototype members don't crash or false-exist", async () => {
+    const { readPersonaStore, resolveActivePersonaPreamble } = await import("../src/persona-store.js");
+
+    // resolveActivePersonaPreamble must not read an inherited
+    // member off `custom` (the old `store.custom[id]` returned
+    // Object.prototype.toString → `.preamble.length` threw).
+    for (const id of ["toString", "constructor", "hasOwnProperty", "__proto__"]) {
+      expect(resolveActivePersonaPreamble({ activeId: id, custom: {} })).toBe("");
+    }
+    // A genuine built-in id still resolves.
+    expect(resolveActivePersonaPreamble({ activeId: "jarvis", custom: {} }).toLowerCase())
+      .toContain("sir");
+
+    // A hand-edited file with a `__proto__` custom key is
+    // contained: null-prototype store, no global pollution, and
+    // a sibling persona still resolves.
+    const root = await mkdtemp(path.join(tmpdir(), "muse-persona-proto-"));
+    const file = path.join(root, "persona.json");
+    const fsp = await import("node:fs/promises");
+    await fsp.writeFile(
+      file,
+      `{"activeId":"ok","custom":{"__proto__":{"preamble":"PWNED"},"ok":{"preamble":"fine"}}}`,
+      "utf8"
+    );
+    const store = await readPersonaStore(file);
+    expect(Object.getPrototypeOf(store.custom)).toBeNull();
+    expect(({} as Record<string, unknown>).preamble).toBeUndefined();
+    expect(resolveActivePersonaPreamble(store)).toBe("fine");
+    expect(resolveActivePersonaPreamble({ ...store, activeId: "absent" })).toBe("");
+
+    // CLI: `muse persona use toString` must be rejected, not
+    // silently persisted as a broken activeId.
+    const prev = process.env.MUSE_PERSONA_FILE;
+    process.env.MUSE_PERSONA_FILE = path.join(root, "use.json");
+    const prevExit = process.exitCode;
+    process.exitCode = 0;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+      await program.parseAsync(["node", "muse", "persona", "use", "toString"], { from: "node" });
+      expect(output.join("")).toContain("no persona with id 'toString'");
+      expect(process.exitCode).toBe(1);
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_PERSONA_FILE;
+      else process.env.MUSE_PERSONA_FILE = prev;
+      process.exitCode = prevExit;
+    }
+  });
+
   it("muse persona use <typo-id> suggests the closest valid id and exits 1 (goal 100)", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-persona-use-typo-"));
     const fsp = await import("node:fs/promises");

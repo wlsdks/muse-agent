@@ -1,6 +1,6 @@
 /**
  * `muse persona list / use / show` — system-prompt persona
- * templates (goal 094).
+ * templates.
  */
 
 import type { Command } from "commander";
@@ -17,7 +17,7 @@ import {
 import type { ProgramIO } from "./program.js";
 
 export function registerPersonaCommand(program: Command, io: ProgramIO): void {
-  const persona = program.command("persona").description("System-prompt persona templates (goal 094)");
+  const persona = program.command("persona").description("System-prompt persona templates");
 
   persona
     .command("list")
@@ -52,7 +52,7 @@ export function registerPersonaCommand(program: Command, io: ProgramIO): void {
       const trimmed = id.trim();
       const file = defaultPersonaFile();
       const store = await readPersonaStore(file);
-      const exists = isBuiltinPersonaId(trimmed) || trimmed in store.custom;
+      const exists = isBuiltinPersonaId(trimmed) || Object.hasOwn(store.custom, trimmed);
       if (!exists) {
         const candidates = [
           ...BUILTIN_PERSONAS.map((p) => p.id),
