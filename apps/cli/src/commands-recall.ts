@@ -107,11 +107,17 @@ export function rankRecallCandidates(args: {
     .slice(0, Math.max(1, args.limit));
 }
 
-function clampLimit(raw: string | undefined): number {
-  if (!raw) return 5;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 5;
-  return Math.min(50, parsed);
+// Absent → default 5. A genuine number is truncated + clamped
+// to the 50 cap; a non-numeric / non-positive value (unit slip
+// like `10x`, `abc`, `0`) rejects instead of silently using 5
+// — the strict-numeric line (goals 143/144/155/177/178).
+export function clampLimit(raw: string | undefined): number {
+  if (raw === undefined || raw.trim().length === 0) return 5;
+  const parsed = Number(raw.trim());
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`--limit must be a positive number (got '${raw}')`);
+  }
+  return Math.min(50, Math.trunc(parsed));
 }
 
 /**

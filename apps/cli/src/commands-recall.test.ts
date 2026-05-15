@@ -1,6 +1,28 @@
 import { describe, expect, it } from "vitest";
 
-import { RECALL_SOURCE_VALUES, resolveSource } from "./commands-recall.js";
+import { RECALL_SOURCE_VALUES, clampLimit, resolveSource } from "./commands-recall.js";
+
+describe("clampLimit (goal 179)", () => {
+  it("returns the default 5 when absent or blank", () => {
+    expect(clampLimit(undefined)).toBe(5);
+    expect(clampLimit("")).toBe(5);
+    expect(clampLimit("   ")).toBe(5);
+  });
+
+  it("accepts a genuine number, truncating and clamping to the 50 cap", () => {
+    expect(clampLimit("8")).toBe(8);
+    expect(clampLimit(" 12 ")).toBe(12);
+    expect(clampLimit("3.9")).toBe(3);
+    expect(clampLimit("999")).toBe(50);
+  });
+
+  it("rejects a unit slip / non-numeric / non-positive instead of silently using 5", () => {
+    expect(() => clampLimit("10x")).toThrow(/--limit must be a positive number \(got '10x'\)/u);
+    expect(() => clampLimit("abc")).toThrow(/positive number/u);
+    expect(() => clampLimit("0")).toThrow(/positive number/u);
+    expect(() => clampLimit("-3")).toThrow(/positive number/u);
+  });
+});
 
 describe("resolveSource (goal 157)", () => {
   it("returns the default 'all' when --source is omitted", () => {
