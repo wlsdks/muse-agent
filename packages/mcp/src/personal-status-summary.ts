@@ -167,12 +167,18 @@ export function summarisePatternsFiredRows(rows: readonly unknown[]): PatternsFi
     const row = raw as PatternFiredRow;
     if (typeof row.patternId !== "string") continue;
     total += 1;
-    if (typeof row.firedAtMs === "number" && Number.isFinite(row.firedAtMs) && row.firedAtMs > lastFiredMs) {
+    // A finite but out-of-range ms (corrupt / hand-edited
+    // sidecar) makes an Invalid Date whose toISOString() throws;
+    // reject it here so it can't win the max and poison a valid
+    // sibling row either.
+    if (typeof row.firedAtMs === "number"
+      && Number.isFinite(new Date(row.firedAtMs).getTime())
+      && row.firedAtMs > lastFiredMs) {
       lastFiredMs = row.firedAtMs;
     }
   }
   return {
-    lastFiredAtIso: Number.isFinite(lastFiredMs) ? new Date(lastFiredMs).toISOString() : undefined,
+    lastFiredAtIso: lastFiredMs > Number.NEGATIVE_INFINITY ? new Date(lastFiredMs).toISOString() : undefined,
     total
   };
 }

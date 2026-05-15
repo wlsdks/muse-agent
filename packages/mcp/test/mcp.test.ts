@@ -6572,6 +6572,22 @@ describe("personal-status-summary helpers (direct unit tests)", () => {
     const summary = summarisePatternsFiredRows([]);
     expect(summary).toEqual({ lastFiredAtIso: undefined, total: 0 });
   });
+
+  it("summarisePatternsFiredRows: a finite but out-of-Date-range firedAtMs degrades, never throws", async () => {
+    const { summarisePatternsFiredRows } = await import("../src/index.js");
+    let summary: ReturnType<typeof summarisePatternsFiredRows>;
+    expect(() => {
+      summary = summarisePatternsFiredRows([
+        { patternId: "pat_corrupt", firedAtMs: 1e30 } // finite, but new Date(1e30) is Invalid
+      ]);
+    }).not.toThrow();
+    expect(summary!).toEqual({ lastFiredAtIso: undefined, total: 1 });
+    // A valid row alongside the corrupt one still resolves.
+    expect(summarisePatternsFiredRows([
+      { patternId: "bad", firedAtMs: 1e30 },
+      { patternId: "ok", firedAtMs: 1_800_000_000_000 }
+    ])).toEqual({ lastFiredAtIso: new Date(1_800_000_000_000).toISOString(), total: 2 });
+  });
 });
 
 describe("muse.status loopback server", () => {
