@@ -23,6 +23,7 @@ import {
 } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
+import { consumeAskStream, type AskStreamEvent } from "./commands-ask.js";
 import { resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
@@ -82,17 +83,21 @@ export function registerRememberCommands(program: Command, io: ProgramIO): void 
       const model = options.model ?? assembly.defaultModel!;
       const systemPrompt = pickAutoExtractSystemPrompt(text);
 
-      let raw = "";
-      for await (const event of assembly.modelProvider.stream({
-        messages: [
-          { content: systemPrompt, role: "system" },
-          { content: `User turn:\n${text}\n\nAssistant reply:\n(no reply yet — extract directly from the user's statement)`, role: "user" }
-        ],
-        model
-      }) as AsyncIterable<{ type: string; text?: string }>) {
-        if (event.type === "text-delta" && typeof event.text === "string") {
-          raw += event.text;
-        }
+      const { answer: raw, error: streamError } = await consumeAskStream(
+        assembly.modelProvider.stream({
+          messages: [
+            { content: systemPrompt, role: "system" },
+            { content: `User turn:\n${text}\n\nAssistant reply:\n(no reply yet — extract directly from the user's statement)`, role: "user" }
+          ],
+          model
+        }) as AsyncIterable<AskStreamEvent>,
+        () => {},
+        () => false
+      );
+      if (streamError !== undefined) {
+        io.stderr(`(error: ${streamError})\n`);
+        process.exitCode = 1;
+        return;
       }
       const payload: ExtractionPayload | undefined = extractJsonObject(raw);
       if (!payload) {
