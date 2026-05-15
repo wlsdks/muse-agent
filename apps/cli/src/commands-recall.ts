@@ -20,6 +20,7 @@ import { join } from "node:path";
 
 import type { Command } from "commander";
 
+import { closestCommandName } from "./closest-command.js";
 import { embed, cosineSimilarity } from "./embed.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import type { ProgramIO } from "./program.js";
@@ -113,10 +114,33 @@ function clampLimit(raw: string | undefined): number {
   return Math.min(50, parsed);
 }
 
-function resolveSource(raw: string | undefined): "notes" | "episodes" | "all" {
-  const trimmed = raw?.trim().toLowerCase();
-  if (trimmed === "notes" || trimmed === "episodes") return trimmed;
-  return "all";
+/**
+ * Goal 157 — accepted values for `muse recall --source`. Single
+ * source of truth for both the validator and the fuzzy-suggest
+ * hint. `all` is the default + acts as the no-restriction value.
+ */
+export const RECALL_SOURCE_VALUES = ["all", "notes", "episodes"] as const;
+export type RecallSource = (typeof RECALL_SOURCE_VALUES)[number];
+
+export type RecallSourceResolution =
+  | { readonly kind: "ok"; readonly source: RecallSource }
+  | { readonly kind: "invalid"; readonly input: string };
+
+/**
+ * Goal 157 — case-insensitive validator. Pre-iter an unknown
+ * `--source` silently fell back to `"all"`, masking typos like
+ * `--source note` (singular). Now the caller can surface a
+ * fuzzy-suggest hint via the goal-099 helper instead of running
+ * the wrong scope.
+ */
+export function resolveSource(raw: string | undefined): RecallSourceResolution {
+  if (raw === undefined) return { kind: "ok", source: "all" };
+  const trimmed = raw.trim().toLowerCase();
+  if (trimmed.length === 0) return { kind: "ok", source: "all" };
+  if ((RECALL_SOURCE_VALUES as readonly string[]).includes(trimmed)) {
+    return { kind: "ok", source: trimmed as RecallSource };
+  }
+  return { kind: "invalid", input: raw };
 }
 
 /**
@@ -151,7 +175,18 @@ export function registerRecallCommand(program: Command, io: ProgramIO): void {
         return;
       }
       const limit = clampLimit(options.limit);
-      const source = resolveSource(options.source);
+      // Goal 157 — bail early on an unknown --source so a typo
+      // (e.g. `--source note`) doesn't silently widen to "all".
+      const sourceResolution = resolveSource(options.source);
+      if (sourceResolution.kind === "invalid") {
+        const suggestion = closestCommandName(sourceResolution.input.trim().toLowerCase(), RECALL_SOURCE_VALUES);
+        io.stderr(`muse recall: invalid --source '${sourceResolution.input}'`);
+        if (suggestion) io.stderr(` — did you mean '${suggestion}'?`);
+        io.stderr(` (valid: ${RECALL_SOURCE_VALUES.join(", ")})\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const source = sourceResolution.source;
       const embedModel = options.embedModel?.trim() && options.embedModel.trim().length > 0
         ? options.embedModel.trim()
         : "nomic-embed-text";
