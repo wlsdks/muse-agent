@@ -3915,6 +3915,49 @@ describe("runDueReminders", () => {
   });
 });
 
+describe("corrupt-store quarantine — reminders + followups (goal 190)", () => {
+  it("readReminders quarantines a corrupt file instead of destroying it on next write", async () => {
+    const { readReminders, writeReminders } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync, readdirSync, readFileSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-rem-quarantine-`);
+    const file = `${dir}/reminders.json`;
+    const original = `{"reminders":[{"id":"r_keep","text":"important","status":"pending","createdAt":"2026-01-01T00:00:00Z"}]} GARBAGE`;
+    writeFileSync(file, original);
+
+    expect(await readReminders(file)).toEqual([]);
+    const quar = readdirSync(dir).filter((n) => n.startsWith("reminders.json.corrupt-"));
+    expect(quar).toHaveLength(1);
+    expect(readFileSync(`${dir}/${quar[0]!}`, "utf8")).toBe(original);
+
+    await writeReminders(file, [
+      { id: "r_new", text: "new", dueAt: "2030-01-01T00:00:00Z", status: "pending", createdAt: "2026-05-16T00:00:00Z" }
+    ]);
+    expect((await readReminders(file)).map((r) => r.id)).toEqual(["r_new"]);
+    expect(readdirSync(dir).filter((n) => n.startsWith("reminders.json.corrupt-"))).toHaveLength(1);
+  });
+
+  it("readFollowups quarantines a corrupt file instead of destroying it on next write", async () => {
+    const { readFollowups, writeFollowups } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync, readdirSync, readFileSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-fu-quarantine-`);
+    const file = `${dir}/followups.json`;
+    const original = `{"followups":[{"id":"fu_keep","userId":"stark","summary":"keep","scheduledFor":"2030-01-01T00:00:00Z","status":"scheduled","createdAt":"2026-01-01T00:00:00Z"}]} GARBAGE`;
+    writeFileSync(file, original);
+
+    expect(await readFollowups(file)).toEqual([]);
+    const quar = readdirSync(dir).filter((n) => n.startsWith("followups.json.corrupt-"));
+    expect(quar).toHaveLength(1);
+    expect(readFileSync(`${dir}/${quar[0]!}`, "utf8")).toBe(original);
+
+    await writeFollowups(file, [
+      { id: "fu_new", userId: "stark", summary: "new", scheduledFor: "2030-02-01T00:00:00Z", status: "scheduled", createdAt: "2026-05-16T00:00:00Z" }
+    ]);
+    expect((await readFollowups(file)).map((f) => f.id)).toEqual(["fu_new"]);
+  });
+});
+
 describe("reminder-history-store", () => {
   it("readReminderHistory returns empty for missing or malformed files", async () => {
     const { readReminderHistory } = await import("../src/index.js");

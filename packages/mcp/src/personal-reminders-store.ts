@@ -47,6 +47,18 @@ export interface PersistedReminder {
 
 export type ReminderStatusFilter = "pending" | "fired" | "all" | "due";
 
+// Move a present-but-corrupt store aside so the next write
+// starts fresh WITHOUT permanently destroying the user's prior
+// reminders. Best-effort; the original bytes survive at
+// `<file>.corrupt-<ts>` for manual recovery.
+async function quarantineCorruptStore(file: string): Promise<void> {
+  try {
+    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
+  } catch {
+    // ignore — read still degrades to empty either way
+  }
+}
+
 export async function readReminders(file: string): Promise<readonly PersistedReminder[]> {
   let raw: string;
   try {
@@ -58,9 +70,11 @@ export async function readReminders(file: string): Promise<readonly PersistedRem
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch {
+    await quarantineCorruptStore(file);
     return [];
   }
   if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { reminders?: unknown }).reminders)) {
+    await quarantineCorruptStore(file);
     return [];
   }
   return (parsed as { reminders: unknown[] }).reminders.flatMap((entry): readonly PersistedReminder[] =>

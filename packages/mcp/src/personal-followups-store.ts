@@ -62,6 +62,18 @@ export interface PersistedFollowup {
   readonly cancelReason?: string;
 }
 
+// Move a present-but-corrupt store aside so the next write
+// starts fresh WITHOUT permanently destroying the user's prior
+// followups. Best-effort; the original bytes survive at
+// `<file>.corrupt-<ts>` for manual recovery.
+async function quarantineCorruptStore(file: string): Promise<void> {
+  try {
+    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
+  } catch {
+    // ignore — read still degrades to empty either way
+  }
+}
+
 export async function readFollowups(file: string): Promise<readonly PersistedFollowup[]> {
   let raw: string;
   try {
@@ -73,9 +85,11 @@ export async function readFollowups(file: string): Promise<readonly PersistedFol
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch {
+    await quarantineCorruptStore(file);
     return [];
   }
   if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { followups?: unknown }).followups)) {
+    await quarantineCorruptStore(file);
     return [];
   }
   return (parsed as { followups: unknown[] }).followups.flatMap((entry): readonly PersistedFollowup[] =>
