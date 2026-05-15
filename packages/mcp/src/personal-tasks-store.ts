@@ -47,6 +47,21 @@ export interface PersistedTask {
 
 export type TaskStatusFilter = "open" | "done" | "all";
 
+/**
+ * Move a present-but-corrupt store aside so the next write
+ * starts fresh WITHOUT permanently destroying the user's prior
+ * tasks. Best-effort: a rename failure must not crash the read
+ * path. The original bytes survive at `<file>.corrupt-<ts>` for
+ * manual recovery.
+ */
+async function quarantineCorruptStore(file: string): Promise<void> {
+  try {
+    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
+  } catch {
+    // ignore — read still degrades to empty either way
+  }
+}
+
 export async function readTasks(file: string): Promise<readonly PersistedTask[]> {
   let raw: string;
   try {
@@ -58,9 +73,11 @@ export async function readTasks(file: string): Promise<readonly PersistedTask[]>
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch {
+    await quarantineCorruptStore(file);
     return [];
   }
   if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { tasks?: unknown }).tasks)) {
+    await quarantineCorruptStore(file);
     return [];
   }
   return (parsed as { tasks: unknown[] }).tasks.flatMap((entry): readonly PersistedTask[] =>

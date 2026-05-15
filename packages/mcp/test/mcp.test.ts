@@ -1817,6 +1817,36 @@ describe("muse.tasks loopback server", () => {
     expect(recovered).toMatchObject({ total: 0 });
   });
 
+  it("quarantines a corrupt store instead of silently destroying it on next write (goal 189)", async () => {
+    const { readTasks, writeTasks } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync, readdirSync, readFileSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-tasks-quarantine-`);
+    const file = `${dir}/tasks.json`;
+
+    // Simulate a partial write / crash corruption of a real store.
+    const original = `{"tasks":[{"id":"t_keep","title":"important","status":"open","createdAt":"2026-01-01T00:00:00Z"}]} TRAILING GARBAGE`;
+    writeFileSync(file, original);
+
+    // Read degrades to empty (list still works)...
+    expect(await readTasks(file)).toEqual([]);
+
+    // ...but the original bytes are preserved in a quarantine file.
+    const quarantined = readdirSync(dir).filter((n) => n.startsWith("tasks.json.corrupt-"));
+    expect(quarantined).toHaveLength(1);
+    expect(readFileSync(`${dir}/${quarantined[0]!}`, "utf8")).toBe(original);
+
+    // A subsequent write starts fresh (the live file is gone), so the
+    // new task lands cleanly and the recoverable data is NOT clobbered.
+    await writeTasks(file, [
+      { id: "t_new", title: "new", status: "open", createdAt: "2026-05-16T00:00:00Z" }
+    ]);
+    const after = await readTasks(file);
+    expect(after.map((t) => t.id)).toEqual(["t_new"]);
+    // Quarantine still there for manual recovery.
+    expect(readdirSync(dir).filter((n) => n.startsWith("tasks.json.corrupt-"))).toHaveLength(1);
+  });
+
   it("accepts a dueAt ISO timestamp on add and surfaces it in list / search", async () => {
     const { mkdtempSync } = await import("node:fs");
     const tmpdir = await import("node:os").then((m) => m.tmpdir());
