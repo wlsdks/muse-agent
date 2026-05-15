@@ -357,7 +357,17 @@ export function extractBearerToken(authorization: string | undefined): string | 
     return undefined;
   }
 
-  const [scheme, token] = authorization.split(/\s+/u);
+  // Goal 122 — `split(/\s+/u)` on `"  Bearer abc"` (leading
+  // whitespace) returns `["", "Bearer", "abc"]`, so `scheme`
+  // lands on the empty string and the header is rejected.
+  // Real-world reverse proxies + HTTP libraries occasionally
+  // prepend whitespace; trim first to make the parser
+  // forgiving without changing the structural contract.
+  const trimmed = authorization.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  const [scheme, token] = trimmed.split(/\s+/u);
   return scheme?.toLowerCase() === "bearer" && token ? token : undefined;
 }
 

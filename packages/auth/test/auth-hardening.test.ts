@@ -188,6 +188,23 @@ describe("extractBearerToken", () => {
     expect(extractBearerToken("Bearer")).toBeUndefined();
     expect(extractBearerToken("")).toBeUndefined();
   });
+
+  it("tolerates leading / trailing whitespace + tab separators (goal 122)", () => {
+    // Leading whitespace previously broke the parser — split put
+    // an empty string at index 0 so scheme never matched.
+    expect(extractBearerToken(" Bearer abc")).toBe("abc");
+    expect(extractBearerToken("   Bearer abc")).toBe("abc");
+    // Trailing whitespace is harmless either way; pin the
+    // expected behaviour.
+    expect(extractBearerToken("Bearer abc ")).toBe("abc");
+    expect(extractBearerToken("Bearer abc   ")).toBe("abc");
+    // Tab between scheme and token is valid per RFC 7235's
+    // 1*( OWS / DIGIT ) allowance; \s+ already covered it but
+    // explicit assertion keeps the contract pinned.
+    expect(extractBearerToken("Bearer\tabc")).toBe("abc");
+    // Pure whitespace remains rejected (trimming to "" short-circuits).
+    expect(extractBearerToken("   ")).toBeUndefined();
+  });
 });
 
 describe("normalizeEmail", () => {
