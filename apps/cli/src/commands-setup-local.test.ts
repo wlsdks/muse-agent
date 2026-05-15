@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LOCAL_MODEL_PRESETS, checkPresetRam, pickPreset } from "./commands-setup-local.js";
+import { LOCAL_MODEL_PRESETS, checkPresetRam, isEmbedModelPulled, pickPreset } from "./commands-setup-local.js";
 
 describe("pickPreset", () => {
   it("returns highest-tier preset when nothing pulled (so caller can render pull hint)", () => {
@@ -94,5 +94,21 @@ describe("LOCAL_MODEL_PRESETS", () => {
     for (let i = 1; i < LOCAL_MODEL_PRESETS.length; i += 1) {
       expect(LOCAL_MODEL_PRESETS[i]!.minRamGb).toBeGreaterThan(LOCAL_MODEL_PRESETS[i - 1]!.minRamGb);
     }
+  });
+});
+
+describe("isEmbedModelPulled (goal 167)", () => {
+  it("is false when no embedding model is pulled (chat-only setup)", () => {
+    expect(isEmbedModelPulled(new Set(["qwen3:8b", "qwen3.6:35b-a3b"]))).toBe(false);
+    expect(isEmbedModelPulled(new Set())).toBe(false);
+  });
+
+  it("is true for the bare name or the implicit :latest tag", () => {
+    expect(isEmbedModelPulled(new Set(["qwen3:8b", "nomic-embed-text"]))).toBe(true);
+    expect(isEmbedModelPulled(new Set(["nomic-embed-text:latest"]))).toBe(true);
+  });
+
+  it("does not match a different embedding model (the setup hint only knows the default)", () => {
+    expect(isEmbedModelPulled(new Set(["mxbai-embed-large", "nomic-embed-text-v2"]))).toBe(false);
   });
 });

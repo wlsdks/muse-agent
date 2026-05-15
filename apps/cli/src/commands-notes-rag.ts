@@ -25,7 +25,7 @@ import type { Command } from "commander";
 import { resolveOllamaUrl } from "./ollama-url.js";
 import type { ProgramIO } from "./program.js";
 
-const DEFAULT_EMBED_MODEL = "nomic-embed-text";
+export const DEFAULT_EMBED_MODEL = "nomic-embed-text";
 const DEFAULT_CHUNK_CHARS = 600;
 const DEFAULT_TOP_K = 5;
 

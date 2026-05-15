@@ -21,6 +21,7 @@ import { totalmem } from "node:os";
 import type { Command } from "commander";
 
 import type { ConfigCommandHelpers } from "./commands-config.js";
+import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
 import type { ProgramIO } from "./program.js";
 
 export interface LocalModelPreset {
@@ -183,6 +184,17 @@ export function checkPresetRam(
   };
 }
 
+/**
+ * True when the notes-RAG embedding model is among the pulled
+ * Ollama tags. Treats `<model>` and `<model>:latest` as the same
+ * identity (Ollama's implicit default tag).
+ */
+export function isEmbedModelPulled(installedNames: ReadonlySet<string>): boolean {
+  return [...installedNames].some(
+    (name) => name === DEFAULT_EMBED_MODEL || name === `${DEFAULT_EMBED_MODEL}:latest`
+  );
+}
+
 export function registerSetupLocalCommand(
   program: Command,
   io: ProgramIO,
@@ -248,6 +260,15 @@ export function registerSetupLocalCommand(
       const ramWarning = checkPresetRam(totalmem() / (1024 ** 3), chosen);
       if (ramWarning) {
         io.stdout(`  warn: ${ramWarning.message}\n`);
+      }
+
+      // The chat model alone leaves `muse ask` / `muse recall`
+      // (notes RAG) broken — they need a separate embedding model.
+      // Surface it proactively at setup instead of letting the user
+      // discover it only when ask silently degrades (goal 164).
+      if (!isEmbedModelPulled(installedNames)) {
+        io.stdout(`\n  RAG note: notes/recall grounding needs an embedding model — not pulled.\n`);
+        io.stdout(`    ollama pull ${DEFAULT_EMBED_MODEL}\n`);
       }
 
       if (!alreadyPulled) {
