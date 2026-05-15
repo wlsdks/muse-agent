@@ -91,8 +91,10 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
       {
         description:
           "Create a new calendar event. `startsAtIso` is required; `endsAtIso` defaults to startsAt + 60 minutes. " +
-          "Both fields accept either an ISO-8601 timestamp OR a simple relative phrase: 'tomorrow at 3pm', 'today at 14:30', 'in 2 hours', 'next Friday', 'next Monday at 9am'. " +
-          "Pass the user's natural-language phrase directly — the server resolves it against the current local time. " +
+          "Both fields accept either an ISO-8601 timestamp OR a relative phrase. " +
+          "English: 'tomorrow 3pm', 'today at 14:30', 'in 2 hours', 'next Friday', 'next Monday at 9am'. " +
+          "Korean: '내일 오후 3시', '오늘 14시 30분', '2시간 후', '다음 주 금요일', '다음 주 월요일 오전 9시'. " +
+          "Pass the user's natural-language phrase directly (in their own language) — the server resolves it against the current local time. " +
           "If `providerId` is omitted, the primary (first registered) provider is used.",
         execute: async (args): Promise<JsonObject> => {
           const title = readString(args, "title")?.trim();

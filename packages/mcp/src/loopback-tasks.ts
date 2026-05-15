@@ -64,8 +64,10 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
       {
         description:
           "Append a new task. Required: `title`. Optional: `notes` (free-form text), `tags` (string array), `dueAt`. " +
-          "`dueAt` accepts either an ISO-8601 timestamp OR a simple relative phrase: 'tomorrow', 'tomorrow at 6pm', 'today at 14:30', 'in 3 hours', 'in 2 days', 'next Monday', 'next Monday at 9am'. " +
-          "Pass the user's natural-language phrase directly — the server resolves it against the current local time. " +
+          "`dueAt` accepts either an ISO-8601 timestamp OR a relative phrase. " +
+          "English: 'tomorrow', 'tomorrow 6pm', 'today at 14:30', 'in 3 hours', 'in 2 days', 'next Monday', 'next Monday at 9am'. " +
+          "Korean: '내일', '내일 오후 3시', '오늘 오전 9시 30분', '30분 후', '3일 뒤', '다음 주 월요일', '다음 주 월요일 오후 3시 반'. " +
+          "Pass the user's natural-language phrase directly (in their own language) — the server resolves it against the current local time. " +
           "Returns the created task with its generated id.",
         execute: async (args): Promise<JsonObject> => {
           const title = readString(args, "title")?.trim();

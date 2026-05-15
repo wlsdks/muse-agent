@@ -109,9 +109,10 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
       {
         description:
           "Add a one-shot reminder. `text` is the reminder body. `dueAt` accepts either an ISO-8601 timestamp " +
-          "OR a relative phrase: 'tomorrow', 'tomorrow at 6pm', 'today at 14:30', 'in 3 hours', 'in 2 days', " +
-          "'next Monday', 'next Monday at 9am'. The server resolves the phrase against the current local time, " +
-          "so pass the user's natural-language input directly. Reminders surface in `muse today` once dueAt " +
+          "OR a relative phrase. English: 'tomorrow', 'tomorrow 6pm', 'today at 14:30', 'in 3 hours', 'in 2 days', " +
+          "'next Monday', 'next Monday at 9am'. Korean: '내일', '내일 오후 6시', '30분 후', '3일 뒤', " +
+          "'다음 주 월요일', '다음 주 월요일 오후 3시 반'. The server resolves the phrase against the current local time, " +
+          "so pass the user's natural-language input directly (in their own language). Reminders surface in `muse today` once dueAt " +
           "has passed. " +
           "Optional `via: { providerId, destination }` overrides the firing daemon's default route per reminder " +
           "(\"send THIS one to Slack channel C123 instead of the user's usual Telegram\").",
@@ -153,7 +154,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           additionalProperties: false,
           properties: {
             dueAt: {
-              description: "ISO-8601 timestamp or relative phrase ('tomorrow at 6pm', 'in 3 hours', 'next Monday').",
+              description: "ISO-8601 timestamp or relative phrase — English ('tomorrow 6pm', 'in 3 hours', 'next Monday') or Korean ('내일 오후 6시', '3일 뒤', '다음 주 월요일').",
               type: "string"
             },
             text: { description: "Reminder body shown back to the user when due.", type: "string" },
