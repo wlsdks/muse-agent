@@ -33,6 +33,7 @@ import {
 } from "@muse/mcp";
 import type { Command } from "commander";
 
+import { closestCommandName } from "./closest-command.js";
 import { formatRelativeTime } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
 
@@ -111,7 +112,12 @@ export function registerHistoryCommand(program: Command, io: ProgramIO): void {
     .action(async (options: HistoryOptions) => {
       const kindFilter = options.kind?.trim().toLowerCase();
       if (kindFilter && !ACTIVITY_KINDS.has(kindFilter as ActivityKind)) {
-        throw new Error(`--kind must be one of: reminder, proactive, followup, pattern, episode (got '${kindFilter}')`);
+        // Goal 124 — closest-match hint on typos (joins the goal
+        // 099 / 100 / 118 / 119 typo-suggestion line). ACTIVITY_KINDS
+        // is a Set; spread to an array for the helper.
+        const suggestion = closestCommandName(kindFilter, [...ACTIVITY_KINDS]);
+        const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+        throw new Error(`--kind must be one of: reminder, proactive, followup, pattern, episode (got '${kindFilter}')${hint}`);
       }
       let sinceMs: number | undefined;
       if (options.since) {

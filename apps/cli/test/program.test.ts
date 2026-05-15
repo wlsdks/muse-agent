@@ -2101,6 +2101,24 @@ describe("cli program", () => {
       program5.exitOverride();
       await expect(program5.parseAsync(["node", "muse", "history", "--kind", "bogus", "--json"], { from: "node" }))
         .rejects.toThrow(/--kind must be one of/u);
+
+      // Goal 124 — typo on --kind suggests the closest valid kind.
+      const { io: io6 } = captureOutput();
+      const program6 = createProgram({ ...io6, fetch: async () => { throw new Error("no fetch"); } });
+      program6.exitOverride();
+      await expect(program6.parseAsync(["node", "muse", "history", "--kind", "followups", "--json"], { from: "node" }))
+        .rejects.toThrow(/did you mean 'followup'\?/u);
+      // Unrelated input — error fires, no false-positive suggestion.
+      const { io: io7 } = captureOutput();
+      const program7 = createProgram({ ...io7, fetch: async () => { throw new Error("no fetch"); } });
+      program7.exitOverride();
+      await expect(program7.parseAsync(["node", "muse", "history", "--kind", "zzz", "--json"], { from: "node" }))
+        .rejects.toThrow(/must be one of/u);
+      const { io: io8 } = captureOutput();
+      const program8 = createProgram({ ...io8, fetch: async () => { throw new Error("no fetch"); } });
+      program8.exitOverride();
+      await expect(program8.parseAsync(["node", "muse", "history", "--kind", "zzz", "--json"], { from: "node" }))
+        .rejects.not.toThrow(/did you mean/u);
     } finally {
       const restore = (k: keyof typeof prev, envKey: string): void => {
         if (prev[k] === undefined) delete process.env[envKey];
