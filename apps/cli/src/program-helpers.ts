@@ -177,8 +177,46 @@ export function formatApiErrorResponse(
     );
   }
   const trimmed = body.trim();
+  // The Muse API error envelope is a JSON object carrying a
+  // human-readable `errorMessage` (already credential-scrubbed
+  // server-side, goal 145) plus an `errorCode`. Surfacing those
+  // beats dumping `{"blockReason":null,"content":null,…}`
+  // truncated mid-object into the user's terminal.
+  const structured = extractApiErrorEnvelope(trimmed);
+  if (structured) {
+    const code = structured.code ? ` (${structured.code})` : "";
+    const msg = structured.message.length > 240
+      ? `${structured.message.slice(0, 240)}…`
+      : structured.message;
+    return new Error(`Muse API ${response.status}${code}: ${msg}`);
+  }
   const preview = trimmed.length > 240 ? `${trimmed.slice(0, 240)}…` : trimmed;
   return new Error(`Muse API ${response.status}: ${preview || response.statusText}`);
+}
+
+function extractApiErrorEnvelope(
+  body: string
+): { readonly message: string; readonly code?: string } | undefined {
+  if (body.length === 0 || (body[0] !== "{" && body[0] !== "[")) {
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed)) {
+    return undefined;
+  }
+  const message = typeof parsed.errorMessage === "string" ? parsed.errorMessage.trim() : "";
+  if (message.length === 0) {
+    return undefined;
+  }
+  const code = typeof parsed.errorCode === "string" && parsed.errorCode.trim().length > 0
+    ? parsed.errorCode.trim()
+    : undefined;
+  return code ? { code, message } : { message };
 }
 
 /**

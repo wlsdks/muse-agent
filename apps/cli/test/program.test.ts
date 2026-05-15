@@ -6038,6 +6038,40 @@ describe("cli program", () => {
     expect(err.message).toContain("…");
   });
 
+  it("apiRequest surfaces the Muse error envelope cleanly instead of raw JSON (goal 175)", async () => {
+    const { formatApiErrorResponse } = await import("../src/program-helpers.js");
+    const envelope = JSON.stringify({
+      blockReason: null,
+      content: null,
+      errorCode: "AGENT_RUN_FAILED",
+      errorMessage: "Ollama /api/chat failed with 404: model 'xyz' not found",
+      metadata: {},
+      success: false
+    });
+    const fakeResponse = {
+      status: 500,
+      statusText: "Internal Server Error",
+      headers: { get: (): string | null => "application/json" }
+    };
+    const err = formatApiErrorResponse(fakeResponse, envelope, "http://localhost:3030");
+    expect(err.message).toBe(
+      "Muse API 500 (AGENT_RUN_FAILED): Ollama /api/chat failed with 404: model 'xyz' not found"
+    );
+    expect(err.message).not.toContain("blockReason");
+    expect(err.message).not.toContain("{");
+  });
+
+  it("apiRequest keeps the raw preview for JSON without an errorMessage envelope (goal 175)", async () => {
+    const { formatApiErrorResponse } = await import("../src/program-helpers.js");
+    const fakeResponse = {
+      status: 422,
+      statusText: "Unprocessable Entity",
+      headers: { get: (): string | null => "application/json" }
+    };
+    const err = formatApiErrorResponse(fakeResponse, `{"error":"bad input"}`, "http://localhost:3030");
+    expect(err.message).toBe(`Muse API 422: {"error":"bad input"}`);
+  });
+
   it("apiRequest falls back to statusText when the body is empty", async () => {
     const { formatApiErrorResponse } = await import("../src/program-helpers.js");
     const fakeResponse = {
