@@ -5,7 +5,40 @@ import { join } from "node:path";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { registerFeedsCommand } from "./commands-feeds.js";
+import { registerFeedsCommand, slugifyUrl } from "./commands-feeds.js";
+
+describe("slugifyUrl (goal 185)", () => {
+  it("strips the http(s) / file scheme prefix", () => {
+    expect(slugifyUrl("https://example.com/feed.xml")).toBe("example.com-feed.xml");
+    expect(slugifyUrl("http://example.com/rss")).toBe("example.com-rss");
+    expect(slugifyUrl("file:///tmp/local.atom")).toBe("tmp-local.atom");
+  });
+
+  it("collapses runs of non [A-Za-z0-9._-] into a single dash", () => {
+    expect(slugifyUrl("https://news.example.com/a//b???c")).toBe("news.example.com-a-b-c");
+  });
+
+  it("trims leading/trailing dashes left by sanitisation", () => {
+    expect(slugifyUrl("https://example.com/?q=1")).toBe("example.com-q-1");
+    expect(slugifyUrl("https://%%%/")).toBe("feed");
+  });
+
+  it("caps the slug at 60 chars", () => {
+    const long = `https://example.com/${"path/".repeat(40)}`;
+    expect(slugifyUrl(long).length).toBeLessThanOrEqual(60);
+  });
+
+  it("falls back to 'feed' when stripping leaves nothing", () => {
+    expect(slugifyUrl("https://")).toBe("feed");
+    expect(slugifyUrl("file://")).toBe("feed");
+    expect(slugifyUrl("")).toBe("feed");
+  });
+
+  it("preserves a clean host+path verbatim (dots/dashes/underscores kept)", () => {
+    expect(slugifyUrl("https://my-blog.example.org/feeds_main.rss"))
+      .toBe("my-blog.example.org-feeds_main.rss");
+  });
+});
 
 async function runFeedsCommand(
   args: readonly string[],

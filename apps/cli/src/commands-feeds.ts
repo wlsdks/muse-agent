@@ -49,7 +49,7 @@ export async function loadFeedBody(url: string): Promise<string> {
   return response.text();
 }
 
-function slugifyUrl(url: string): string {
+export function slugifyUrl(url: string): string {
   return url
     .replace(/^https?:\/\//u, "")
     .replace(/^file:\/\//u, "")
