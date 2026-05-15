@@ -17,6 +17,7 @@ import { readFile } from "node:fs/promises";
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
+import { consumeAskStream, type AskStreamEvent } from "./commands-ask.js";
 import type { ProgramIO } from "./program.js";
 import { withSigintAbort } from "./sigint-abort.js";
 
@@ -113,21 +114,27 @@ export function registerReadCommand(program: Command, io: ProgramIO): void {
       }
       const systemPrompt = buildReadAskSystemPrompt(text);
       let answer = "";
+      let streamError: string | undefined;
       await withSigintAbort(async (signal) => {
-        for await (const event of assembly.modelProvider!.stream({
-          messages: [
-            { content: systemPrompt, role: "system" },
-            { content: options.ask!, role: "user" }
-          ],
-          model
-        }) as AsyncIterable<{ type: string; text?: string }>) {
-          if (signal.aborted) break;
-          if (event.type === "text-delta" && typeof event.text === "string") {
-            answer += event.text;
-            if (!options.json) io.stdout(event.text);
-          }
-        }
+        const res = await consumeAskStream(
+          assembly.modelProvider!.stream({
+            messages: [
+              { content: systemPrompt, role: "system" },
+              { content: options.ask!, role: "user" }
+            ],
+            model
+          }) as AsyncIterable<AskStreamEvent>,
+          (text) => { if (!options.json) io.stdout(text); },
+          () => signal.aborted
+        );
+        answer = res.answer;
+        streamError = res.error;
       }, { onSigint: () => { if (!options.json) io.stderr("\n(Ctrl-C — aborting…)\n"); } });
+      if (streamError !== undefined) {
+        io.stderr(`\n(error: ${streamError})\n`);
+        process.exitCode = 1;
+        return;
+      }
 
       if (options.json) {
         io.stdout(`${JSON.stringify({ model, ask: options.ask, answer, pageCount: parsed.pageCount }, null, 2)}\n`);
