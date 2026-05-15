@@ -180,6 +180,25 @@ describe("retry and timeout", () => {
   it("computes bounded retry delays", () => {
     expect(computeRetryDelay(3, { initialDelayMs: 100, maxDelayMs: 250, multiplier: 2 })).toBe(250);
   });
+
+  it("honors the injectable RNG for deterministic jitter", () => {
+    const base = { initialDelayMs: 100, jitterRatio: 0.5 } as const;
+    expect(computeRetryDelay(1, { ...base, random: () => 0 })).toBe(50);
+    expect(computeRetryDelay(1, { ...base, random: () => 0.5 })).toBe(100);
+    expect(computeRetryDelay(1, { ...base, random: () => 1 })).toBe(150);
+  });
+
+  it("keeps maxDelayMs a hard ceiling even with jitter", () => {
+    const delay = computeRetryDelay(5, {
+      initialDelayMs: 100,
+      maxDelayMs: 250,
+      multiplier: 2,
+      jitterRatio: 1,
+      random: () => 1
+    });
+    expect(delay).toBe(250);
+    expect(delay).toBeLessThanOrEqual(250);
+  });
 });
 
 describe("fallback strategies", () => {

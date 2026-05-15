@@ -49,13 +49,13 @@ export interface RetryPolicy {
   readonly maxDelayMs?: number;
   readonly multiplier?: number;
   readonly jitterRatio?: number;
+  readonly random?: () => number;
   readonly retryable?: (error: unknown, attempt: number) => boolean;
 }
 
 export interface RetryOptions extends RetryPolicy {
   readonly name?: string;
   readonly metricsRecorder?: ResilienceMetricsRecorder;
-  readonly random?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
 }
 
@@ -467,8 +467,12 @@ export function computeRetryDelay(attempt: number, options: RetryPolicy = {}): n
     return base;
   }
 
+  const rng = options.random ?? Math.random;
   const jitter = base * jitterRatio;
-  return Math.max(0, base - jitter + Math.random() * jitter * 2);
+  // Clamp to maxDelay: jitter is applied after the cap, so an
+  // unclamped result could exceed maxDelayMs by up to base*ratio
+  // (≈2× with ratio 1) — maxDelayMs must stay a hard ceiling.
+  return Math.min(maxDelay, Math.max(0, base - jitter + rng() * jitter * 2));
 }
 
 export function isCancellationLikeError(error: unknown): boolean {
