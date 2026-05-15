@@ -5021,6 +5021,40 @@ describe("cli program", () => {
     }
   });
 
+  it("muse status surfaces RAG readiness from the notes index (goal 180)", async () => {
+    const { readRagStatus } = await import("../src/commands-status.js");
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-rag-"));
+    const file = path.join(root, "notes-index.json");
+    const fsp = await import("node:fs/promises");
+
+    // Missing file → not indexed.
+    expect(await readRagStatus(file)).toEqual({ indexed: false });
+
+    // Empty files array → not indexed (model recorded but no chunks).
+    await fsp.writeFile(file, JSON.stringify({ version: 1, model: "nomic-embed-text", files: [] }));
+    expect(await readRagStatus(file)).toEqual({ embedModel: "nomic-embed-text", files: 0, indexed: false });
+
+    // Populated index → ready, with the embed model surfaced.
+    await fsp.writeFile(file, JSON.stringify({
+      version: 1, model: "nomic-embed-text",
+      files: [{ path: "a.md", chunks: [] }, { path: "b.md", chunks: [] }]
+    }));
+    expect(await readRagStatus(file)).toEqual({ embedModel: "nomic-embed-text", files: 2, indexed: true });
+
+    // muse status renders the rag line.
+    const prev = process.env.MUSE_NOTES_INDEX_FILE;
+    process.env.MUSE_NOTES_INDEX_FILE = file;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+      await program.parseAsync(["node", "muse", "status", "--user", "stark"], { from: "node" });
+      expect(output.join("")).toContain("rag: ready — notes index (2 file(s), nomic-embed-text)");
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_NOTES_INDEX_FILE;
+      else process.env.MUSE_NOTES_INDEX_FILE = prev;
+    }
+  });
+
   it("formatMetricsSnapshot pretty-prints SLO / drift / token / budget sections (goal 077)", async () => {
     const { formatMetricsSnapshot } = await import("../src/commands-metrics.js");
     // Empty payload → friendly hint.

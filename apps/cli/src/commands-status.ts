@@ -151,6 +151,37 @@ function defaultTokenCostTodayFile(): string {
   return envValue("MUSE_TOKEN_COST_TODAY_FILE") ?? join(homedir(), ".muse", "token-cost-today.json");
 }
 
+function defaultNotesIndexFile(): string {
+  return envValue("MUSE_NOTES_INDEX_FILE") ?? join(homedir(), ".muse", "notes-index.json");
+}
+
+/**
+ * Offline RAG readiness for the dashboard glance. Goals
+ * 164/167/168 made the embed model a first-class health
+ * concern; `muse status` should show whether semantic recall
+ * over notes is actually wired without needing a network probe
+ * — just whether the notes index exists and which embed model
+ * built it. Pure file read (same cost profile as the daily-cost
+ * sidecar); exported for direct test coverage.
+ */
+export async function readRagStatus(
+  path: string
+): Promise<{ readonly indexed: boolean; readonly embedModel?: string; readonly files?: number }> {
+  const parsed = await safeReadJson(path) as
+    | { model?: unknown; files?: unknown }
+    | undefined;
+  if (!parsed || typeof parsed !== "object") {
+    return { indexed: false };
+  }
+  const files = Array.isArray(parsed.files) ? parsed.files.length : 0;
+  const embedModel = typeof parsed.model === "string" && parsed.model.trim().length > 0
+    ? parsed.model.trim()
+    : undefined;
+  return embedModel
+    ? { embedModel, files, indexed: files > 0 }
+    : { files, indexed: files > 0 };
+}
+
 interface TokenCostTodayShape {
   readonly totalUsd?: number;
   readonly totalTokens?: number;
@@ -243,6 +274,7 @@ async function collectStatus(userId: string) {
   const logBytes = await fileSize(logFile);
 
   const tokenCost = await readTokenCostToday(defaultTokenCostTodayFile());
+  const rag = await readRagStatus(defaultNotesIndexFile());
 
   return {
     // Bump only on breaking field renames/removals (not additive
@@ -318,6 +350,7 @@ async function collectStatus(userId: string) {
     patterns: patternsSummary,
     reminders: remindersSummary,
     cost: tokenCost,
+    rag,
     suggestions
   };
 }
@@ -573,6 +606,11 @@ function renderStatus(io: ProgramIO, snap: Awaited<ReturnType<typeof collectStat
         }
         io.stdout("\n");
       }
+      io.stdout(
+        snap.rag.indexed
+          ? `  rag: ready — notes index (${(snap.rag.files ?? 0).toString()} file(s)${snap.rag.embedModel ? `, ${snap.rag.embedModel}` : ""})\n\n`
+          : `  rag: not indexed — run \`muse notes reindex\` for \`muse ask\` / \`muse recall\` grounding\n\n`
+      );
       if (snap.lastNotice) {
         io.stdout(`  last notice: [${snap.lastNotice.firedAtIso ?? "?"}] via ${snap.lastNotice.providerId ?? "?"}\n`);
         if (snap.lastNotice.text) {
