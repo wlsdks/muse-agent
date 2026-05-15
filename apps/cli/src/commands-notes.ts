@@ -55,6 +55,19 @@ async function callLocalTool(name: string, args: Record<string, unknown>): Promi
   return { result: raw };
 }
 
+// Absent → undefined (let the server/tool use its own default).
+// A genuine positive number is truncated; a non-numeric /
+// non-positive value rejects rather than being silently dropped
+// (NaN) or passed through (0 / negative).
+export function parseNotesSearchLimit(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim().length === 0) return undefined;
+  const parsed = Number(raw.trim());
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`--limit must be a positive number (got '${raw}')`);
+  }
+  return Math.trunc(parsed);
+}
+
 export function registerNotesCommands(program: Command, io: ProgramIO, helpers: NotesCommandHelpers): void {
   const notes = program.command("notes").description("Personal notes (filesystem-backed)");
 
@@ -133,20 +146,18 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
       if (query.length === 0) {
         throw new Error("query is required");
       }
+      const limit = parseNotesSearchLimit(options.limit);
       let payload: Record<string, unknown>;
       if (options.local) {
         const args: Record<string, unknown> = { query };
-        if (options.limit && options.limit.length > 0) {
-          const parsed = Number(options.limit);
-          if (Number.isFinite(parsed)) {
-            args.limit = parsed;
-          }
+        if (limit !== undefined) {
+          args.limit = limit;
         }
         payload = await callLocalTool("search", args);
       } else {
         const params = new URLSearchParams({ query });
-        if (options.limit && options.limit.length > 0) {
-          params.set("limit", options.limit);
+        if (limit !== undefined) {
+          params.set("limit", limit.toString());
         }
         payload = (await helpers.apiRequest(io, command, `/api/notes/search?${params.toString()}`)) as Record<string, unknown>;
       }
