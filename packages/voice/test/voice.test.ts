@@ -411,6 +411,50 @@ describe("TextScanWakeWordDetector", () => {
     expect(info.id).toBe("text-scan");
     expect(info.description).toContain("open sesame");
   });
+
+  it("supports alias phrases — first match wins (goal 121)", () => {
+    const detector = new TextScanWakeWordDetector({
+      phrase: "hey muse",
+      aliases: ["ok muse", "muse please"]
+    });
+
+    // Canonical phrase still works.
+    expect(detector.scan("Hey Muse what's up").detected).toBe(true);
+
+    // Each alias triggers independently.
+    expect(detector.scan("OK muse, schedule the demo").detected).toBe(true);
+    expect(detector.scan("OK muse, schedule the demo").residual).toContain("schedule the demo");
+
+    expect(detector.scan("Muse please open the deploy doc").detected).toBe(true);
+    expect(detector.scan("Muse please open the deploy doc").residual).toContain("open the deploy doc");
+
+    // None of the alias forms → no detection.
+    expect(detector.scan("hello there friend").detected).toBe(false);
+
+    // Empty / whitespace aliases drop silently (not a wake on every input).
+    const droppedEmpty = new TextScanWakeWordDetector({
+      phrase: "hey muse",
+      aliases: ["", "   "]
+    });
+    expect(droppedEmpty.scan("hello there").detected).toBe(false);
+
+    // describe() lists all phrases for ergonomic surface.
+    const info = detector.describe();
+    expect(info.description).toContain("hey muse");
+    expect(info.description).toContain("ok muse");
+    expect(info.description).toContain("muse please");
+  });
+
+  it("dedupes aliases that normalise to the same needle (goal 121)", () => {
+    const detector = new TextScanWakeWordDetector({
+      phrase: "hey muse",
+      // Both aliases normalise to "hey muse" — should collapse.
+      aliases: ["Hey, Muse!", "  hey   muse  "]
+    });
+    expect(detector.scan("Hey Muse").detected).toBe(true);
+    // describe() still surfaces all spellings (no dedup on display).
+    expect(detector.describe().description).toContain("Hey, Muse!");
+  });
 });
 
 describe("FakeAudioFrameWakeWordDetector", () => {

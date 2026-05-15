@@ -52,6 +52,16 @@ export interface TextScanWakeWordDetectorOptions {
    * "hey muse". Punctuation around the phrase is tolerated.
    */
   readonly phrase: string;
+  /**
+   * Goal 121 — additional phrases that should also wake the
+   * loop. Lets a user say "Hey Muse" OR "OK Muse" OR a bare
+   * "Muse" without composing multiple detectors. Each alias is
+   * normalised the same way as `phrase`; empty / whitespace-only
+   * entries are dropped silently. First match wins, so callers
+   * should list the most-specific phrases first (a bare "Muse"
+   * before "Hey Muse" would steal the prompt residual).
+   */
+  readonly aliases?: readonly string[];
   readonly id?: string;
 }
 
@@ -65,7 +75,15 @@ export interface TextScanWakeWordDetectorOptions {
 export class TextScanWakeWordDetector implements WakeWordDetector {
   readonly id: string;
   private readonly phrase: string;
-  private readonly needle: string;
+  /**
+   * Goal 121 — needles ordered by caller intent so the first
+   * match wins. `phrase` is always at index 0; aliases follow in
+   * the order the caller supplied. Whitespace-only aliases drop
+   * out so the empty case doesn't degrade to a substring-of-
+   * everything `""` match.
+   */
+  private readonly needles: readonly string[];
+  private readonly phrasesDisplay: readonly string[];
 
   constructor(options: TextScanWakeWordDetectorOptions) {
     const phrase = options.phrase.trim();
@@ -74,14 +92,30 @@ export class TextScanWakeWordDetector implements WakeWordDetector {
     }
     this.id = options.id ?? "text-scan";
     this.phrase = phrase;
-    this.needle = normalise(phrase);
+    const cleanAliases = (options.aliases ?? [])
+      .map((a) => a.trim())
+      .filter((a) => a.length > 0);
+    this.phrasesDisplay = [phrase, ...cleanAliases];
+    // Dedup needles after normalisation so callers can pass an
+    // alias that collapses to the same string as `phrase` without
+    // surprising the matcher.
+    const seen = new Set<string>();
+    const needles: string[] = [];
+    for (const candidate of this.phrasesDisplay) {
+      const n = normalise(candidate);
+      if (n.length === 0 || seen.has(n)) continue;
+      seen.add(n);
+      needles.push(n);
+    }
+    this.needles = needles;
   }
 
   describe(): WakeWordDetectorInfo {
+    const quoted = this.phrasesDisplay.map((p) => `"${p}"`).join(" / ");
     return {
       id: this.id,
       displayName: "Text-scan wake word",
-      description: `Substring match on the transcript for "${this.phrase}" (case-insensitive)`
+      description: `Substring match on the transcript for ${quoted} (case-insensitive)`
     };
   }
 
@@ -90,17 +124,17 @@ export class TextScanWakeWordDetector implements WakeWordDetector {
       return { detected: false };
     }
     const haystack = normalise(text);
-    const matchIndex = haystack.indexOf(this.needle);
-    if (matchIndex < 0) {
-      return { detected: false };
+    for (const needle of this.needles) {
+      if (haystack.indexOf(needle) < 0) continue;
+      // Find the same offset in the original text by re-normalising
+      // prefixes until lengths match. This is O(text length) but the
+      // transcripts we scan are short (single utterance).
+      const tailOriginal = sliceAfterPhraseInOriginal(text, needle);
+      return tailOriginal.length > 0
+        ? { detected: true, residual: tailOriginal }
+        : { detected: true };
     }
-    // Find the same offset in the original text by re-normalising
-    // prefixes until lengths match. This is O(text length) but the
-    // transcripts we scan are short (single utterance).
-    const tailOriginal = sliceAfterPhraseInOriginal(text, this.needle);
-    return tailOriginal.length > 0
-      ? { detected: true, residual: tailOriginal }
-      : { detected: true };
+    return { detected: false };
   }
 }
 
