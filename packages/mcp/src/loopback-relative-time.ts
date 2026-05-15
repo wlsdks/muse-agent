@@ -27,6 +27,7 @@
  *   "내일"                  → tomorrow 09:00
  *   "내일 오후 3시"          → tomorrow 15:00
  *   "오늘 오전 9시 30분"     → today 09:30
+ *   "내일 오후 3시 반"       → tomorrow 15:30 (반 = half past)
  *   "모레 정오" / "내일 자정" → +2d 12:00 / tomorrow 00:00
  *   "오늘 15시"             → today 15:00 (bare 24h hour)
  *   "30분 후" / "3일 뒤"     → reference + offset
@@ -184,6 +185,7 @@ const KOREAN_DAY_OFFSET: Record<string, number> = {
  *   "내일"                  → tomorrow 09:00
  *   "내일 오후 3시"          → tomorrow 15:00
  *   "오늘 오전 9시 30분"     → today 09:30
+ *   "내일 오후 3시 반"       → tomorrow 15:30 (반 = half past)
  *   "모레 정오" / "내일 자정" → +2d 12:00 / tomorrow 00:00
  *   "오늘 15시"             → today 15:00 (bare 24h hour)
  *   "30분 후" / "3일 뒤"     → reference + offset
@@ -297,13 +299,14 @@ function parseKoreanTimeOfDay(spec: string | undefined): { hour: number; minute:
   if (cleaned === "자정") {
     return { hour: 0, minute: 0 };
   }
-  const m = /^(오전|오후)?\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?$/u.exec(cleaned);
+  const m = /^(오전|오후)?\s*(\d{1,2})\s*시(?:\s*(?:(\d{1,2})\s*분|(반)))?$/u.exec(cleaned);
   if (!m) {
     return "invalid";
   }
   const meridiem = m[1];
   const rawHour = Number.parseInt(m[2] ?? "0", 10);
-  const minute = Number.parseInt(m[3] ?? "0", 10);
+  // "반" = half past → :30 ("3시 반" → 03:30, "오후 3시 반" → 15:30).
+  const minute = m[4] ? 30 : Number.parseInt(m[3] ?? "0", 10);
   if (minute < 0 || minute > 59) {
     return "invalid";
   }

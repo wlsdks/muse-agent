@@ -2029,6 +2029,35 @@ describe("muse.tasks loopback server", () => {
       expect(resolveRelativeTimePhrase("오늘 오전 12시", ref)?.getHours()).toBe(0);
     });
 
+    it("resolves the 반 (half-past) shorthand (goal 163)", async () => {
+      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const ref = () => new Date("2026-05-15T12:00:00Z"); // Friday
+
+      const tomorrowPm330 = resolveRelativeTimePhrase("내일 오후 3시 반", ref);
+      expect(tomorrowPm330?.getDate()).toBe(16);
+      expect(tomorrowPm330?.getHours()).toBe(15);
+      expect(tomorrowPm330?.getMinutes()).toBe(30);
+
+      // No space, no meridiem (24h): "오늘 9시반" → 09:30.
+      const today930 = resolveRelativeTimePhrase("오늘 9시반", ref);
+      expect(today930?.getHours()).toBe(9);
+      expect(today930?.getMinutes()).toBe(30);
+
+      // 오전 + 반.
+      const am1130 = resolveRelativeTimePhrase("내일 오전 11시 반", ref);
+      expect(am1130?.getHours()).toBe(11);
+      expect(am1130?.getMinutes()).toBe(30);
+
+      // Weekday + 반 (composes with goal-162 path).
+      const monday6pm30 = resolveRelativeTimePhrase("다음 주 월요일 오후 6시 반", ref);
+      expect(monday6pm30?.getDate()).toBe(18);
+      expect(monday6pm30?.getHours()).toBe(18);
+      expect(monday6pm30?.getMinutes()).toBe(30);
+
+      // Explicit 분 still wins / unaffected.
+      expect(resolveRelativeTimePhrase("오늘 오후 3시 15분", ref)?.getMinutes()).toBe(15);
+    });
+
     it("resolves Korean duration offsets — 후 / 뒤 (goal 161)", async () => {
       const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
       const ref = () => new Date("2026-05-15T12:00:00Z");
