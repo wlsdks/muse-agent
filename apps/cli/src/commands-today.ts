@@ -119,10 +119,14 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
       if (options.saveToNotes && !options.brief) {
         throw new Error("--save-to-notes requires --brief (only the brief narrative is saved)");
       }
+      // Validate once up front (throws on a bad flag, same as the
+      // --speak / --save-to-notes guards above) so a typo is
+      // rejected before any local or remote work.
+      const lookaheadHours = parseLookaheadHours(options.lookaheadHours);
       let briefing: TodayBriefing;
       let usedLocal = options.local === true;
       if (options.local) {
-        briefing = await composeLocalBriefing(parseLookaheadHours(options.lookaheadHours));
+        briefing = await composeLocalBriefing(lookaheadHours);
       } else {
         try {
           briefing = await fetchRemoteBriefing(io, command, helpers, options.lookaheadHours);
@@ -137,7 +141,7 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
           // happening, but never fail the command.
           if (isApiUnreachable(cause)) {
             io.stderr("muse: API not reachable — falling back to local briefing.\n");
-            briefing = await composeLocalBriefing(parseLookaheadHours(options.lookaheadHours));
+            briefing = await composeLocalBriefing(lookaheadHours);
             usedLocal = true;
           } else {
             throw cause;
@@ -515,15 +519,19 @@ async function collectNotesRecursive(
   }
 }
 
-function parseLookaheadHours(raw: string | undefined): number {
-  if (!raw) {
+// Absent → 24. A genuine number is truncated and clamped to
+// the 168h max; a non-numeric / unit-slip / below-1 value
+// rejects with an actionable message instead of silently
+// using 24 — `Number()` not `parseInt` so `48abc` rejects.
+export function parseLookaheadHours(raw: string | undefined): number {
+  if (raw === undefined || raw.trim().length === 0) {
     return 24;
   }
-  const parsed = Number.parseInt(raw, 10);
+  const parsed = Number(raw.trim());
   if (!Number.isFinite(parsed) || parsed < 1) {
-    return 24;
+    throw new Error(`--lookahead-hours must be an integer in [1, 168] (got '${raw}')`);
   }
-  return Math.min(parsed, 24 * 7);
+  return Math.min(Math.trunc(parsed), 24 * 7);
 }
 
 function shortDateLabel(generatedAt: string): string {
