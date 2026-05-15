@@ -33,4 +33,28 @@ describe("PII patterns", () => {
     expect(result.text).toContain("***.***.***.***");
     expect(result.text).toContain("***:****-****-****-****-************");
   });
+
+  it("masks IPv6 addresses in the canonical and ::-compressed forms (goal 120)", () => {
+    // Canonical 8-group form.
+    expect(maskPii("local 2001:0db8:85a3:0000:0000:8a2e:0370:7334 reachable").text)
+      .toContain("[IPV6 MASKED]");
+    // ::-compressed form (middle).
+    expect(maskPii("server 2001:db8::8a2e:370:7334 listening").text)
+      .toContain("[IPV6 MASKED]");
+    // Loopback-style :: prefix.
+    expect(maskPii("ping ::1 worked").text).toContain("[IPV6 MASKED]");
+    // ::-compressed with trailing groups.
+    expect(maskPii("uplink ::ffff:192.0.2.1 forwarded").text)
+      .toContain("[IPV6 MASKED]");
+
+    // IPv6 finding gets counted distinct from IPv4.
+    const result = maskPii("v4 10.0.0.1 v6 2001:db8::1");
+    const names = new Set(result.findings.map((f) => f.name));
+    expect(names.has("ipv4")).toBe(true);
+    expect(names.has("ipv6")).toBe(true);
+
+    // No false-positive: plain English with a colon stays untouched.
+    const plain = maskPii("Q3 budget due: review by Friday");
+    expect(plain.text).toBe("Q3 budget due: review by Friday");
+  });
 });
