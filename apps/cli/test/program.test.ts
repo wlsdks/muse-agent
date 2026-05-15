@@ -5507,6 +5507,55 @@ describe("cli program", () => {
     }
   });
 
+  it("muse search --to-notes scrubs credentials from backend snippets before write (goal 140)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-search-tonotes-redact-"));
+    const fsp = await import("node:fs/promises");
+    const notesDir = path.join(root, "notes");
+    await fsp.mkdir(notesDir, { recursive: true });
+    const originalFetch = globalThis.fetch;
+    const prev = { searxng: process.env.MUSE_SEARXNG_URL, notes: process.env.MUSE_NOTES_DIR };
+    process.env.MUSE_NOTES_DIR = notesDir;
+    delete process.env.MUSE_SEARXNG_URL;
+    try {
+      // Fake DDG backend whose snippet quotes a leaked OpenAI key
+      // AND whose title carries a github PAT shape. The saved note
+      // must NOT carry verbatim secrets.
+      globalThis.fetch = (async (): Promise<Response> => {
+        return new Response(
+          `<a rel="nofollow" class="result__a" href="https://example.com/leak">` +
+          `Leak post: ghp_abcdefghijklmnopqrstuvwxyzABCDEF</a>` +
+          `<a class="result__snippet" href="x">` +
+          `Page demonstrates rotate sk-proj-abcdefghijklmnopqrstuvwxyz workflow</a>`,
+          { status: 200 }
+        );
+      }) as typeof globalThis.fetch;
+
+      const { io } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("api off"); } });
+      await program.parseAsync(
+        ["node", "muse", "search", "key rotation", "--to-notes", "research/keys.md", "--json"],
+        { from: "node" }
+      );
+      const written = await fsp.readFile(path.join(notesDir, "research/keys.md"), "utf8");
+      // Verbatim secrets MUST NOT survive to disk.
+      expect(written).not.toContain("sk-proj-abcdefghijklmnopqrstuvwxyz");
+      expect(written).not.toContain("ghp_abcdefghijklmnopqrstuvwxyzABCDEF");
+      // Redaction markers DO survive.
+      expect(written).toContain("[redacted-openai-key]");
+      expect(written).toContain("[redacted-github-pat]");
+      // Surrounding prose + URL pass through unchanged — URLs are
+      // identifiers, mangling them breaks the note.
+      expect(written).toContain("Page demonstrates rotate ");
+      expect(written).toContain("https://example.com/leak");
+      expect(written).toContain("# Search: key rotation");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (prev.searxng !== undefined) process.env.MUSE_SEARXNG_URL = prev.searxng;
+      if (prev.notes === undefined) delete process.env.MUSE_NOTES_DIR;
+      else process.env.MUSE_NOTES_DIR = prev.notes;
+    }
+  });
+
   it("muse search formatted output strips ANSI / control characters from untrusted backend text", async () => {
     const { stripUntrustedTerminalChars } = await import("../src/commands-search.js");
     // Direct unit checks on the helper:

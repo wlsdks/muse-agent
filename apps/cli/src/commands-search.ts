@@ -16,7 +16,7 @@
  */
 
 import { createSearchMcpServer, createLoopbackMcpConnection, normaliseTimeRange } from "@muse/mcp";
-import { stripUntrustedTerminalChars } from "@muse/shared";
+import { redactSecretsInText, stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -151,9 +151,17 @@ export function registerSearchCommand(program: Command, io: ProgramIO): void {
         ];
         for (let i = 0; i < rows.length; i += 1) {
           const r = rows[i]!;
-          const title = (r.title ?? "").trim() || "(untitled)";
+          // Goal 140 — search results come from external backends
+          // (SearXNG, DuckDuckGo) and the snippet body can quote
+          // credentials from indexed forum posts / API docs. The
+          // saved note may sync to iCloud / Obsidian / Notion / git
+          // (same long-lived-with-third-party-sync surface goal 112
+          // covered for the daily brief), so scrub title + snippet
+          // through the shared helper. URLs stay verbatim — they're
+          // clickable identifiers, mangling them breaks the note.
+          const title = redactSecretsInText((r.title ?? "").trim() || "(untitled)");
           const url = (r.url ?? "").trim();
-          const snippet = (r.snippet ?? "").replace(/\s+/gu, " ").trim();
+          const snippet = redactSecretsInText((r.snippet ?? "").replace(/\s+/gu, " ").trim());
           lines.push(`## ${(i + 1).toString()}. ${title}`);
           if (url.length > 0) lines.push(`<${url}>`);
           if (snippet.length > 0) lines.push("", snippet);
