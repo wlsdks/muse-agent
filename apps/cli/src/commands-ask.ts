@@ -123,6 +123,30 @@ function cosine(a: readonly number[], b: readonly number[]): number {
   return na === 0 || nb === 0 ? 0 : dot / Math.sqrt(na * nb);
 }
 
+/**
+ * Absent flag → fallback. A genuine number is truncated and
+ * clamped to [min, max]. A non-numeric / out-of-low-bound value
+ * (unit slip like `5x`, `abc`, `0`) rejects with a clear
+ * message instead of silently using the default — the
+ * strict-numeric line (goals 143 / 144 / 155 / 177).
+ */
+export function parseBoundedInt(
+  raw: string | undefined,
+  flag: string,
+  min: number,
+  max: number,
+  fallback: number
+): number {
+  if (raw === undefined || raw.trim().length === 0) {
+    return fallback;
+  }
+  const parsed = Number(raw.trim());
+  if (!Number.isFinite(parsed) || parsed < min) {
+    throw new Error(`${flag} must be an integer in [${min.toString()}, ${max.toString()}] (got '${raw}')`);
+  }
+  return Math.min(max, Math.trunc(parsed));
+}
+
 export function registerAskCommand(program: Command, io: ProgramIO): void {
   program
     .command("ask")
@@ -190,7 +214,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         return;
       }
       const userKey = defaultUserKey(options.user, options.persona);
-      const topK = Math.max(1, Math.min(20, Number.parseInt(options.top ?? "3", 10) || 3));
+      const topK = parseBoundedInt(options.top, "--top", 1, 20, 3);
       const embedModel = options.embedModel ?? "nomic-embed-text";
 
       // Auto-stale check + incremental reindex (default on). JARVIS
@@ -321,7 +345,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // get one merged view.
       let upcomingEvents: readonly CalendarEvent[] = [];
       if (options.calendar !== false) {
-        const days = Math.max(1, Math.min(30, Number.parseInt(options.calendarDays ?? "7", 10) || 7));
+        const days = parseBoundedInt(options.calendarDays, "--calendar-days", 1, 30, 7);
         const from = new Date();
         const to = new Date(from.getTime() + days * 24 * 60 * 60 * 1000);
         try {
