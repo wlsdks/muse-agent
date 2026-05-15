@@ -40,6 +40,7 @@ import type { TextToSpeechProvider } from "@muse/voice";
 import type { Command } from "commander";
 
 import { formatLocalDate, formatLocalDateTime as shortDateTimeBrief } from "./human-formatters.js";
+import { loadActivePersonaPreamble } from "./persona-store.js";
 import type { ProgramIO } from "./program.js";
 import { colorize } from "./tty-color.js";
 import {
@@ -247,9 +248,14 @@ async function renderBrief(
   // path keeps the system role separate via agentRuntime.run.
   const remoteMessage = buildTodayBriefUserMessage(briefing);
 
+  // Goal 170 — the morning brief should speak in the active
+  // persona's voice (JARVIS / casual / …), same as `muse chat`
+  // since goal 158. Empty (default persona) → unchanged request.
+  const personaPreamble = (await loadActivePersonaPreamble().catch(() => "")).trim();
+
   if (local) {
     const userBody = `Briefing JSON:\n${JSON.stringify(briefing, null, 2)}\n\nRender this as a short conversational morning brief.`;
-    return runLocalBrief(io, userBody, modelOverride);
+    return runLocalBrief(io, userBody, modelOverride, personaPreamble);
   }
 
   const body: Record<string, unknown> = {
@@ -258,6 +264,9 @@ async function renderBrief(
   };
   if (modelOverride) {
     body.model = modelOverride;
+  }
+  if (personaPreamble.length > 0) {
+    body.systemPrompt = personaPreamble;
   }
   const response = (await helpers.apiRequest(io, command, "/api/chat", body)) as Record<string, unknown>;
   const content = typeof response.content === "string" ? response.content : "";
@@ -292,14 +301,22 @@ async function speakPlain(
   );
 }
 
-async function runLocalBrief(io: ProgramIO, userMessage: string, modelOverride: string | undefined): Promise<string> {
+async function runLocalBrief(
+  io: ProgramIO,
+  userMessage: string,
+  modelOverride: string | undefined,
+  personaPreamble: string
+): Promise<string> {
   const assembly = io.createRuntimeAssembly?.() ?? createMuseRuntimeAssembly();
   if (!assembly.agentRuntime || !(modelOverride ?? assembly.defaultModel)) {
     throw new Error("today --brief --local requires MUSE_MODEL and a configured model provider");
   }
+  const systemContent = personaPreamble.length > 0
+    ? `${personaPreamble}\n\n${BRIEF_SYSTEM_PROMPT}`
+    : BRIEF_SYSTEM_PROMPT;
   const result = await assembly.agentRuntime.run({
     messages: [
-      { content: BRIEF_SYSTEM_PROMPT, role: "system" },
+      { content: systemContent, role: "system" },
       { content: userMessage, role: "user" }
     ],
     model: modelOverride ?? assembly.defaultModel ?? "default"

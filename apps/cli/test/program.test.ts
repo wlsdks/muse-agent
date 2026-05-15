@@ -2625,6 +2625,45 @@ describe("cli program", () => {
     expect(output.join("")).toContain("You have 1 open task: Buy milk.");
   });
 
+  it("today --brief applies the active persona as systemPrompt (goal 170)", async () => {
+    const workspaceDir = await mkdtemp(path.join(tmpdir(), "muse-cli-today-persona-"));
+    const personaFile = path.join(workspaceDir, "persona.json");
+    await writeFile(personaFile, JSON.stringify({ version: 1, activeId: "jarvis", custom: {} }), "utf8");
+    const prevPersonaEnv = process.env.MUSE_PERSONA_FILE;
+    process.env.MUSE_PERSONA_FILE = personaFile;
+    const seenBodies: string[] = [];
+    try {
+      const { io } = captureOutput();
+      const program = createProgram({
+        ...io,
+        fetch: async (url, init) => {
+          const path2 = String(url);
+          if (path2.endsWith("/api/today")) {
+            return new Response(JSON.stringify({
+              generatedAt: "2026-05-10T08:00:00Z", lookaheadHours: 24,
+              tasks: [{ id: "t-1", title: "Buy milk" }], events: [], notes: []
+            }));
+          }
+          if (path2.endsWith("/api/chat")) {
+            if (typeof init?.body === "string") seenBodies.push(init.body);
+            return new Response(JSON.stringify({ content: "Brief, sir.", success: true }));
+          }
+          return new Response("{}");
+        }
+      });
+      await program.parseAsync(
+        ["node", "muse", "--api-url", "http://api.test", "today", "--brief"],
+        { from: "node" }
+      );
+    } finally {
+      if (prevPersonaEnv === undefined) delete process.env.MUSE_PERSONA_FILE;
+      else process.env.MUSE_PERSONA_FILE = prevPersonaEnv;
+    }
+    expect(seenBodies).toHaveLength(1);
+    const sent = JSON.parse(seenBodies[0]!) as { systemPrompt?: string };
+    expect(sent.systemPrompt).toContain("Speak as JARVIS");
+  });
+
   it("today --brief --save-to-notes scrubs credential shapes before notes write (goal 112)", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-today-redact-"));
     const fsp = await import("node:fs/promises");
