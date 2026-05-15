@@ -608,7 +608,7 @@ function renderStatus(io: ProgramIO, snap: Awaited<ReturnType<typeof collectStat
       }
       io.stdout(
         snap.rag.indexed
-          ? `  rag: ready — notes index (${(snap.rag.files ?? 0).toString()} file(s)${snap.rag.embedModel ? `, ${snap.rag.embedModel}` : ""})\n\n`
+          ? `  rag: indexed — ${(snap.rag.files ?? 0).toString()} file(s)${snap.rag.embedModel ? `, ${snap.rag.embedModel}` : ""} (run \`muse doctor\` to confirm the embed model is pulled)\n\n`
           : `  rag: not indexed — run \`muse notes reindex\` for \`muse ask\` / \`muse recall\` grounding\n\n`
       );
       if (snap.lastNotice) {

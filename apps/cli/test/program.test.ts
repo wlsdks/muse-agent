@@ -5074,7 +5074,9 @@ describe("cli program", () => {
       const { io, output } = captureOutput();
       const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
       await program.parseAsync(["node", "muse", "status", "--user", "stark"], { from: "node" });
-      expect(output.join("")).toContain("rag: ready — notes index (2 file(s), nomic-embed-text)");
+      expect(output.join("")).toContain(
+        "rag: indexed — 2 file(s), nomic-embed-text (run `muse doctor` to confirm the embed model is pulled)"
+      );
     } finally {
       if (prev === undefined) delete process.env.MUSE_NOTES_INDEX_FILE;
       else process.env.MUSE_NOTES_INDEX_FILE = prev;
