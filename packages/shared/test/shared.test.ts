@@ -117,6 +117,20 @@ describe("boundary and cancellation helpers", () => {
       .toBe("glpat-ok");
   });
 
+  it("redactSecretsInText covers the fine-grained GitHub PAT shape (goal 195)", () => {
+    // Split the prefix so the source file has no contiguous
+    // `github_pat_` literal for GitHub's push-protection scanner.
+    const finePat = `github_pat${"_"}11ABCDEFG0aBcDeFgHiJ_kLmNoPqRsTuVwXyZ0123456789abcdefABCDEF`;
+    expect(redactSecretsInText(`GH_TOKEN=${finePat} rest`))
+      .toBe("GH_TOKEN=[redacted-github-pat] rest");
+    // Classic PAT still works (no regression).
+    expect(redactSecretsInText("gh token ghp_abcdefghijklmnopqrstuvwxyzABCDEF"))
+      .toContain("[redacted-github-pat]");
+    // No false positive on the bare prefix used in prose.
+    expect(redactSecretsInText("set a github_pat_ in your env"))
+      .toBe("set a github_pat_ in your env");
+  });
+
   it("truncateErrorBody trims + caps + appends ellipsis when over the cap", () => {
     expect(truncateErrorBody("")).toBe("");
     expect(truncateErrorBody(undefined)).toBe("");

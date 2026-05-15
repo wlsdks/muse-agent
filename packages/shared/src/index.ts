@@ -121,6 +121,10 @@ const SECRET_PATTERNS: ReadonlyArray<{ readonly name: string; readonly regex: Re
   { name: "anthropic-key", regex: /sk-ant-[A-Za-z0-9_-]{20,}/gu },
   { name: "openai-key", regex: /sk-(?:proj-)?[A-Za-z0-9_-]{20,}/gu },
   { name: "github-pat", regex: /gh[pousr]_[A-Za-z0-9_]{30,}/gu },
+  // Fine-grained PATs are `github_pat_…`, which the classic
+  // `gh[pousr]_` shape above cannot match — it's now GitHub's
+  // default token format, so a separate pattern is required.
+  { name: "github-pat", regex: /\bgithub_pat_[A-Za-z0-9_]{30,}\b/gu },
   { name: "aws-access-key", regex: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/gu },
   { name: "google-api-key", regex: /\bAIza[0-9A-Za-z_-]{35,}/gu },
   { name: "slack-bot-token", regex: /xox[abprs]-[A-Za-z0-9-]{10,}/gu },
