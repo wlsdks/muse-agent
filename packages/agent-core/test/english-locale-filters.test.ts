@@ -60,6 +60,37 @@ describe("createEnglishGreetingStripResponseFilter", () => {
     const result = await filter.apply(original, baseContext);
     expect(result.output).toBe(original.output);
   });
+
+  it("strips a leading compliance filler (Sure! / Certainly. / Of course! / Got it!)", async () => {
+    for (const [input, expected] of [
+      ["Sure! The capital of France is Paris.", "The capital of France is Paris."],
+      ["Certainly. Here are three options.", "Here are three options."],
+      ["Of course! 42.", "42."],
+      ["Sure thing! Done.", "Done."],
+      ["Got it! Task added.", "Task added."],
+      ["Understood. Proceeding now.", "Proceeding now."]
+    ] as const) {
+      const result = await filter.apply(baseResponse(input), baseContext);
+      expect(result.output).toBe(expected);
+    }
+  });
+
+  it("strips filler then greeting in the same chain", async () => {
+    const result = await filter.apply(baseResponse("Sure! Hi there! Paris."), baseContext);
+    expect(result.output).toBe("Paris.");
+  });
+
+  it("does NOT strip real content that merely starts with a filler word", async () => {
+    for (const input of [
+      "Surely the deadline is Friday.",
+      "Of course not. The Earth is not flat.",
+      "Absolutely fascinating: the result doubled.",
+      "Sure, the answer is Paris."
+    ]) {
+      const result = await filter.apply(baseResponse(input), baseContext);
+      expect(result.output).toBe(input);
+    }
+  });
 });
 
 describe("createEnglishCasualLureStripResponseFilter", () => {

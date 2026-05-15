@@ -46,14 +46,22 @@ export function createGreetingStripResponseFilter(): ResponseFilterStage {
 /**
  * English counterpart to `createGreetingStripResponseFilter` (which is
  * Korean-pattern-only). Strips a single leading greeting like "Hi there!",
- * "Hello!", "Good morning!", "Greetings,". Both filters can run in the same
- * chain — they target disjoint patterns, so neither cancels the other.
+ * "Hello!", "Good morning!", "Greetings,", plus a leading compliance
+ * filler ("Sure!", "Certainly.", "Of course!", "Got it!") that Qwen-class
+ * models emit constantly with reasoning off and that undercuts the terse
+ * JARVIS persona. Both filters can run in the same chain — they target
+ * disjoint patterns, so neither cancels the other.
  */
 export function createEnglishGreetingStripResponseFilter(): ResponseFilterStage {
   const leadingGreetingPattern =
     /^\s*(?:Hi|Hello|Hey|Howdy|Greetings|Hiya)(?:\s+(?:there|all|everyone|team|folks|y'all))?(?:,\s*\w{1,20})?[!?.]\s+/iu;
   const goodTimeOfDayPattern = /^\s*Good\s+(?:morning|afternoon|evening|day|night)(?:\s+\w{1,20})?[!?.]\s+/iu;
   const niceToMeetPattern = /^\s*(?:Nice|Pleased|Good|Glad)\s+to\s+(?:meet|see)\s+you[!?.]\s+/iu;
+  // Only strip when the filler is immediately closed by punctuation +
+  // whitespace + more content, so "Surely…", "Of course not.",
+  // "Absolutely fascinating…" (real content) are never touched.
+  const leadingFillerPattern =
+    /^\s*(?:Sure(?:\s+thing)?|Certainly|Of\s+course|Absolutely|Got\s+it|No\s+problem|Sounds\s+good|Understood|Alright(?:y)?)\s*[!?.]\s+/iu;
 
   return {
     apply: (response: ModelResponse) => {
@@ -62,6 +70,7 @@ export function createEnglishGreetingStripResponseFilter(): ResponseFilterStage 
       }
 
       const output = response.output
+        .replace(leadingFillerPattern, "")
         .replace(leadingGreetingPattern, "")
         .replace(goodTimeOfDayPattern, "")
         .replace(niceToMeetPattern, "")
