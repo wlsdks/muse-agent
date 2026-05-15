@@ -27,6 +27,7 @@ import { dirname, join } from "node:path";
 
 import type { Command } from "commander";
 
+import { closestCommandName } from "./closest-command.js";
 import { resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
@@ -191,10 +192,27 @@ export function registerTrustCommands(program: Command, io: ProgramIO): void {
       const key = options.user
         ? (options.persona ? `${options.user}@${options.persona}` : options.user)
         : defaultUserKey(options.persona);
+      // Goal 118 — peek the pre-state so we can warn when the tool
+      // the user typed wasn't actually in the trusted list. Without
+      // this hint a typo (`muse trust revoke noteon.write`) was a
+      // silent no-op — file state was already what they wanted, but
+      // they'd think the tool got revoked. `wasPresent` keys the
+      // warning + the closest-tool suggestion below.
+      const beforeFile = await readTrustFile(trustPath());
+      const wasPresent = entryFor(beforeFile, key).trustedTools.includes(tool);
       const entry = await mutate(key, (e) => ({
         blockedTools: [...e.blockedTools],
         trustedTools: withoutValue(e.trustedTools, tool)
       }));
+      if (!wasPresent) {
+        const suggestion = closestCommandName(tool, entryFor(beforeFile, key).trustedTools);
+        io.stderr(
+          `muse trust revoke: '${tool}' was not in the trusted list for ${key}` +
+          (suggestion ? ` — did you mean '${suggestion}'?` : "") +
+          ` (run \`muse trust list\` to see the current entries)\n`
+        );
+        return;
+      }
       io.stdout(`Revoked '${tool}' for ${key} (now ${entry.trustedTools.length.toString()} trusted)\n`);
     });
 
@@ -225,10 +243,24 @@ export function registerTrustCommands(program: Command, io: ProgramIO): void {
       const key = options.user
         ? (options.persona ? `${options.user}@${options.persona}` : options.user)
         : defaultUserKey(options.persona);
+      // Goal 118 — same typo-detection as revoke. The unblock surface
+      // is idempotent (removing nothing leaves nothing) but a typo
+      // shouldn't read as silent success.
+      const beforeFile = await readTrustFile(trustPath());
+      const wasPresent = entryFor(beforeFile, key).blockedTools.includes(tool);
       const entry = await mutate(key, (e) => ({
         blockedTools: withoutValue(e.blockedTools, tool),
         trustedTools: [...e.trustedTools]
       }));
+      if (!wasPresent) {
+        const suggestion = closestCommandName(tool, entryFor(beforeFile, key).blockedTools);
+        io.stderr(
+          `muse trust unblock: '${tool}' was not in the blocked list for ${key}` +
+          (suggestion ? ` — did you mean '${suggestion}'?` : "") +
+          ` (run \`muse trust list\` to see the current entries)\n`
+        );
+        return;
+      }
       io.stdout(`Unblocked '${tool}' for ${key} (now ${entry.blockedTools.length.toString()} blocked)\n`);
     });
 }

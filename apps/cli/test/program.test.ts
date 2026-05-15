@@ -6450,4 +6450,69 @@ describe("cli program", () => {
       else delete process.env.MUSE_PERSONA;
     }
   });
+
+  it("muse trust revoke / unblock hint when the tool wasn't actually listed (goal 118)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-trust-typo-"));
+    const fsp = await import("node:fs/promises");
+    const trustFile = path.join(root, "trust.json");
+    // Seed: stark has `muse.notes.write` trusted and `shell.exec`
+    // blocked. The test will revoke a typo'd trusted name and
+    // unblock a typo'd blocked name; both should warn + suggest.
+    // `version: 1` is required by readTrustFile or the parser
+    // falls back to an empty TrustFile.
+    await fsp.writeFile(trustFile, JSON.stringify({
+      version: 1,
+      users: {
+        stark: {
+          trustedTools: ["muse.notes.write", "muse.calendar.list"],
+          blockedTools: ["shell.exec", "browser.close_page"]
+        }
+      }
+    }), "utf8");
+
+    const prevTrustFile = process.env.MUSE_TRUST_FILE;
+    const prevUser = process.env.MUSE_USER_ID;
+    process.env.MUSE_TRUST_FILE = trustFile;
+    process.env.MUSE_USER_ID = "stark";
+    try {
+      // revoke with a one-edit typo → warning names the closest match.
+      const { io: io1, output: out1 } = captureOutput();
+      const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+      await program1.parseAsync(["node", "muse", "trust", "revoke", "muse.notes.writes"], { from: "node" });
+      const text1 = out1.join("");
+      expect(text1).toContain("'muse.notes.writes' was not in the trusted list");
+      expect(text1).toContain("did you mean 'muse.notes.write'?");
+      expect(text1).toContain("muse trust list");
+      // No "Revoked '...'" success line.
+      expect(text1).not.toMatch(/Revoked 'muse\.notes\.writes'/u);
+
+      // unblock with a one-edit typo → same shape.
+      const { io: io2, output: out2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      await program2.parseAsync(["node", "muse", "trust", "unblock", "shell.exe"], { from: "node" });
+      const text2 = out2.join("");
+      expect(text2).toContain("'shell.exe' was not in the blocked list");
+      expect(text2).toContain("did you mean 'shell.exec'?");
+      expect(text2).not.toMatch(/Unblocked 'shell\.exe'/u);
+
+      // Unrelated string → warning fires but no false-positive suggestion.
+      const { io: io3, output: out3 } = captureOutput();
+      const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("no fetch"); } });
+      await program3.parseAsync(["node", "muse", "trust", "revoke", "totally-unrelated-tool-name"], { from: "node" });
+      const text3 = out3.join("");
+      expect(text3).toContain("was not in the trusted list");
+      expect(text3).not.toContain("did you mean");
+
+      // Happy path: real revoke still emits the success line.
+      const { io: io4, output: out4 } = captureOutput();
+      const program4 = createProgram({ ...io4, fetch: async () => { throw new Error("no fetch"); } });
+      await program4.parseAsync(["node", "muse", "trust", "revoke", "muse.notes.write"], { from: "node" });
+      expect(out4.join("")).toMatch(/Revoked 'muse\.notes\.write'/u);
+    } finally {
+      if (prevTrustFile === undefined) delete process.env.MUSE_TRUST_FILE;
+      else process.env.MUSE_TRUST_FILE = prevTrustFile;
+      if (prevUser === undefined) delete process.env.MUSE_USER_ID;
+      else process.env.MUSE_USER_ID = prevUser;
+    }
+  });
 });
