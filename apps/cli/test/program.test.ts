@@ -6509,6 +6509,46 @@ describe("cli program", () => {
     }
   });
 
+  it("muse routine pluralises 'day' in the sessions summary (goal 129)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-routine-plural-"));
+    const fsp = await import("node:fs/promises");
+    const activityFile = path.join(root, "activity.jsonl");
+    const prev = process.env.MUSE_ACTIVITY_FILE;
+    process.env.MUSE_ACTIVITY_FILE = activityFile;
+    try {
+      // Singular: one session on one day → "across 1 day".
+      await fsp.writeFile(activityFile, JSON.stringify({
+        tsIso: "2026-05-13T09:00:00Z",
+        userId: "stark",
+        kind: "repl-start"
+      }) + "\n", "utf8");
+
+      const { io: io1, output: out1 } = captureOutput();
+      const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+      await program1.parseAsync(["node", "muse", "routine", "--user", "stark"], { from: "node" });
+      const text1 = out1.join("");
+      expect(text1).toContain("across 1 day ");
+      expect(text1).not.toContain("day(s)");
+
+      // Plural: three distinct days → "across 3 days".
+      await fsp.writeFile(activityFile, [
+        { tsIso: "2026-05-13T09:00:00Z", userId: "stark", kind: "repl-start" },
+        { tsIso: "2026-05-14T10:00:00Z", userId: "stark", kind: "repl-start" },
+        { tsIso: "2026-05-15T11:00:00Z", userId: "stark", kind: "repl-start" }
+      ].map((row) => JSON.stringify(row)).join("\n") + "\n", "utf8");
+
+      const { io: io2, output: out2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      await program2.parseAsync(["node", "muse", "routine", "--user", "stark"], { from: "node" });
+      const text2 = out2.join("");
+      expect(text2).toContain("across 3 days ");
+      expect(text2).not.toContain("day(s)");
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_ACTIVITY_FILE;
+      else process.env.MUSE_ACTIVITY_FILE = prev;
+    }
+  });
+
   it("muse tasks list rejects --status typos with a closest-match hint (goal 125)", async () => {
     const { io } = captureOutput();
     const program = createProgram({ ...io, fetch: async () => { throw new Error("not reached — should reject before fetch"); } });

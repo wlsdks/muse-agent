@@ -138,7 +138,7 @@ export function humanizeRelativeMs(deltaMs: number): string {
   const days = Math.round(abs / 86_400_000);
   // Goal 123 — proper singular / plural so the [Active Context]
   // line reads "in 1 day" / "in 3 days" instead of the awkward
-  // "in 1 day(s)". Pure cosmetic but it's user-facing prompt
+  // placeholder form. Pure cosmetic but it's user-facing prompt
   // text; consistency matters.
   const dayUnit = days === 1 ? "day" : "days";
   return isPast ? `${days.toString()} ${dayUnit} ago` : `in ${days.toString()} ${dayUnit}`;
