@@ -234,15 +234,30 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         return;
       }
 
-      // Embed query + rank chunks
-      const queryEmbedding = await embed(query, embedModel);
-      const scored = index.files.flatMap((f) => f.chunks.map((chunk) => ({
-        chunk,
-        file: f.path,
-        score: cosine(queryEmbedding, chunk.embedding)
-      })))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, topK);
+      // Embed query + rank chunks. A personal assistant shouldn't
+      // refuse to answer just because the embedding endpoint is
+      // down — degrade to "no notes grounding" and still answer
+      // from tasks + calendar + memory + general knowledge.
+      let scored: Array<{ chunk: IndexChunk; file: string; score: number }> = [];
+      let notesUnavailable = false;
+      try {
+        const queryEmbedding = await embed(query, embedModel);
+        scored = index.files.flatMap((f) => f.chunks.map((chunk) => ({
+          chunk,
+          file: f.path,
+          score: cosine(queryEmbedding, chunk.embedding)
+        })))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, topK);
+      } catch (cause) {
+        notesUnavailable = true;
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        io.stderr(
+          `(notes search unavailable — embedding via '${embedModel}' failed: ${detail}. ` +
+          `Answering without notes context. To restore RAG grounding: ` +
+          `\`ollama pull ${embedModel}\` (and ensure Ollama is running).)\n`
+        );
+      }
 
       // Build assembly + chat-only fast path
       const assembly = createMuseRuntimeAssembly();
@@ -259,9 +274,11 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       const personaTemplatePreamble = await loadActivePersonaPreamble();
 
       // Compose RAG context block
-      const contextBlock = scored.length === 0
-        ? "(no relevant notes found)"
-        : scored.map((r, i) => `<<note ${(i + 1).toString()} — ${r.file} (score ${r.score.toFixed(3)})>>\n${r.chunk.text}\n<<end>>`).join("\n\n");
+      const contextBlock = notesUnavailable
+        ? "(notes search unavailable this turn — answer from the other grounding sources)"
+        : scored.length === 0
+          ? "(no relevant notes found)"
+          : scored.map((r, i) => `<<note ${(i + 1).toString()} — ${r.file} (score ${r.score.toFixed(3)})>>\n${r.chunk.text}\n<<end>>`).join("\n\n");
 
       // Pull open tasks as a second grounding source. Real JARVIS
       // questions ("what should I focus on today?", "what's left
