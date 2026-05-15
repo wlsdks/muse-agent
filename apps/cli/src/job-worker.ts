@@ -13,6 +13,8 @@ import { appendFile } from "node:fs/promises";
 
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 
+import { scrubJobEvent } from "./job-event-scrub.js";
+
 interface ParsedArgs {
   readonly jobId: string;
   readonly jobFile: string;
@@ -40,9 +42,14 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
 }
 
 async function appendEvent(file: string, event: Record<string, unknown>): Promise<void> {
+  // Goal 116 — scrub credential shapes from `prompt` / `text` before
+  // the JSONL write so a leaked sk-/ghp-/etc. in the user's prompt
+  // or the model's output doesn't persist on disk (and can't be
+  // replayed via `muse job tail` / future read paths).
+  const scrubbed = scrubJobEvent(event);
   await appendFile(
     file,
-    `${JSON.stringify({ ...event, tsIso: new Date().toISOString() })}\n`,
+    `${JSON.stringify({ ...scrubbed, tsIso: new Date().toISOString() })}\n`,
     { mode: 0o600 }
   );
 }
