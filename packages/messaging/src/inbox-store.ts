@@ -81,8 +81,12 @@ export async function appendInbound(
   const payload: PersistedShape = { inbox: trimmed, version: 1 };
   const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
   await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  // Inbound message bodies are user data — same 0600 posture as
+  // every other personal store so they aren't world/group
+  // readable on a shared box.
+  await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
+  await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
 async function readPersistedRaw(file: string): Promise<readonly InboundMessage[]> {

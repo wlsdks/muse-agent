@@ -20,7 +20,7 @@ import {
 } from "../src/index.js";
 import { clampInboundLimit, tryParseJson } from "../src/provider-helpers.js";
 import { appendInbound, readInbox } from "../src/inbox-store.js";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -1011,6 +1011,16 @@ describe("inbox-store", () => {
     await appendInbound(file, makeMessage({ messageId: "3", text: "third" }));
     const out = await readInbox(file);
     expect(out.map((m) => m.text)).toEqual(["third", "second", "first"]);
+  });
+
+  it("appendInbound persists inbound bodies with 0600 perms (not world-readable)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-inbox-perm-"));
+    const file = join(root, "inbox.json");
+    await appendInbound(file, makeMessage({ messageId: "1", text: "my bank pin is 1234" }));
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+    // A second append rewrites the file — perms must stay 0600.
+    await appendInbound(file, makeMessage({ messageId: "2", text: "second" }));
+    expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 
   it("appendInbound trims to capacity dropping oldest", async () => {
