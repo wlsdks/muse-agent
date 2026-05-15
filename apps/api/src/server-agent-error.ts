@@ -4,6 +4,7 @@ import {
   PlanExecutionError,
   PlanValidationFailedError
 } from "@muse/agent-core";
+import { redactSecretsInText } from "@muse/shared";
 
 import type { ApiError } from "./server-helpers.js";
 
@@ -63,6 +64,14 @@ export function sendAgentError(
  * Unwrap nested error causes (RetryExhaustedError → ModelProviderError →
  * underlying fetch error) so an operator sees the actual upstream error
  * message instead of the generic retry-exhausted wrapper.
+ *
+ * Goal 145 — upstream provider error bodies sometimes echo the
+ * request payload, which itself may carry a credential (a 401
+ * from OpenAI quoting back the partial `Authorization: Bearer sk-…`
+ * header in its diagnostic message has been observed in the wild).
+ * Run the joined message through `redactSecretsInText` so the
+ * 5xx / 4xx API response that lands in a client / log doesn't
+ * carry the original secret.
  */
 export function unwrapErrorMessage(error: unknown): string {
   if (!(error instanceof Error)) {
@@ -79,7 +88,7 @@ export function unwrapErrorMessage(error: unknown): string {
     current = (current as Error & { readonly cause?: unknown }).cause;
   }
 
-  return segments.join(" — ");
+  return redactSecretsInText(segments.join(" — "));
 }
 
 function chatErrorResponse(
