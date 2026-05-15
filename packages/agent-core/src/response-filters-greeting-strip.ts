@@ -17,6 +17,12 @@ export function createGreetingStripResponseFilter(): ResponseFilterStage {
     /^(안녕하세요|안녕|반가워요|반갑습니다|반갑네요|하이)(?:[,，]?\s*[^\n!?.]{0,25}[님씨])?[!?.]\s*/u;
   const followupGreetingPattern =
     /^(반갑습니다|반가워요|반갑네요|만나서\s*반가워요|만나서\s*반갑습니다|만나서\s*정말\s*반가워요|만나서\s*정말\s*기쁩니다|좋은\s*아침이에요|좋은\s*저녁이에요)[!?.]\s*/u;
+  // Korean counterpart of the English leading-filler strip:
+  // trailing `\s+` requires content after the punctuation, so a
+  // one-word reply ("네.", "물론입니다.") is never nuked and
+  // "물론 그것도 가능합니다" (real content) is never touched.
+  const leadingFillerPattern =
+    /^\s*(?:물론(?:이죠|입니다|이에요|이지요|이야)?|알겠습니다|알겠어요|네|그럼요|당연(?:하죠|합니다|하지요|해요|히)?)\s*[!?.]\s+/u;
 
   return {
     apply: (response: ModelResponse) => {
@@ -25,6 +31,7 @@ export function createGreetingStripResponseFilter(): ResponseFilterStage {
       }
 
       const output = response.output
+        .replace(leadingFillerPattern, "")
         .replace(leadingGreetingPattern, "")
         .replace(followupGreetingPattern, "")
         .trimStart();
