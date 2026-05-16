@@ -44,6 +44,17 @@ describe("createGreetingStripResponseFilter", () => {
     expect(result.output).toBe("파리입니다.");
   });
 
+  it("strips stacked lead-ins regardless of order (reasoning-off models pile them up)", async () => {
+    for (const [input, expected] of [
+      ["물론이죠! 알겠습니다. 파리입니다.", "파리입니다."],
+      ["안녕하세요! 물론이죠! 파리입니다.", "파리입니다."],
+      ["네! 그럼요! 당연하죠! 작업을 추가했습니다.", "작업을 추가했습니다."]
+    ] as const) {
+      const result = await filter.apply(baseResponse(input), baseContext);
+      expect(result.output).toBe(expected);
+    }
+  });
+
   it("does NOT strip real content that merely starts with a filler word", async () => {
     for (const input of [
       "물론 그것도 가능합니다.",

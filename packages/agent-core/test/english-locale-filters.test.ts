@@ -80,6 +80,18 @@ describe("createEnglishGreetingStripResponseFilter", () => {
     expect(result.output).toBe("Paris.");
   });
 
+  it("strips stacked lead-ins regardless of order (reasoning-off models pile them up)", async () => {
+    for (const [input, expected] of [
+      ["Sure! Of course! Paris.", "Paris."],
+      ["Sure! Certainly. Got it! Task added.", "Task added."],
+      ["Hi there! Sure! Paris.", "Paris."],
+      ["Good morning! Of course! Understood. The answer is 42.", "The answer is 42."]
+    ] as const) {
+      const result = await filter.apply(baseResponse(input), baseContext);
+      expect(result.output).toBe(expected);
+    }
+  });
+
   it("does NOT strip real content that merely starts with a filler word", async () => {
     for (const input of [
       "Surely the deadline is Friday.",

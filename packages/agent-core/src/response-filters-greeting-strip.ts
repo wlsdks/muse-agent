@@ -4,6 +4,30 @@ import { withResponseFilterRaw } from "./internals.js";
 import type { ResponseFilterStage } from "./types.js";
 
 /**
+ * Apply the anchored strip patterns repeatedly until the prefix
+ * stops shrinking. Reasoning-off Qwen-class models stack
+ * acknowledgements ("Sure! Of course! …", "Hi there! Got it! …")
+ * and a single anchored `.replace` only removes the first one. The
+ * pass cap bounds worst-case work — a model never stacks anywhere
+ * near this many distinct lead-ins.
+ */
+function stripLeadingNoise(input: string, patterns: readonly RegExp[]): string {
+  let current = input;
+  for (let pass = 0; pass < 5; pass++) {
+    let next = current;
+    for (const pattern of patterns) {
+      next = next.replace(pattern, "");
+    }
+    next = next.trimStart();
+    if (next === current) {
+      break;
+    }
+    current = next;
+  }
+  return current;
+}
+
+/**
  * Greeting-strip response filters.
  *
  * Two factories — Korean and English — extracted from
@@ -30,11 +54,11 @@ export function createGreetingStripResponseFilter(): ResponseFilterStage {
         return response;
       }
 
-      const output = response.output
-        .replace(leadingFillerPattern, "")
-        .replace(leadingGreetingPattern, "")
-        .replace(followupGreetingPattern, "")
-        .trimStart();
+      const output = stripLeadingNoise(response.output, [
+        leadingFillerPattern,
+        leadingGreetingPattern,
+        followupGreetingPattern
+      ]);
 
       if (output === response.output) {
         return response;
@@ -76,12 +100,12 @@ export function createEnglishGreetingStripResponseFilter(): ResponseFilterStage 
         return response;
       }
 
-      const output = response.output
-        .replace(leadingFillerPattern, "")
-        .replace(leadingGreetingPattern, "")
-        .replace(goodTimeOfDayPattern, "")
-        .replace(niceToMeetPattern, "")
-        .trimStart();
+      const output = stripLeadingNoise(response.output, [
+        leadingFillerPattern,
+        leadingGreetingPattern,
+        goodTimeOfDayPattern,
+        niceToMeetPattern
+      ]);
 
       if (output === response.output) {
         return response;
