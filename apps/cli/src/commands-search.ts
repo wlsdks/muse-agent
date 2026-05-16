@@ -191,9 +191,17 @@ export function registerSearchCommand(program: Command, io: ProgramIO): void {
     });
 }
 
-function parseLimit(raw: string | undefined, fallback: number, cap: number): number {
-  if (!raw) return fallback;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+// Absent/blank → fallback. A genuine number is truncated and
+// clamped to cap; a non-numeric / below-1 value rejects with an
+// actionable message instead of silently returning the default
+// (a silently-wrong search result count).
+export function parseLimit(raw: string | undefined, fallback: number, cap: number): number {
+  if (raw === undefined || raw.trim().length === 0) {
+    return fallback;
+  }
+  const parsed = Number(raw.trim());
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    throw new Error(`--limit must be an integer in [1, ${cap.toString()}] (got '${raw}')`);
+  }
   return Math.min(cap, Math.trunc(parsed));
 }
