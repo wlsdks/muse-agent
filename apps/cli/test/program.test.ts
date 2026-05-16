@@ -6285,6 +6285,17 @@ describe("cli program", () => {
     }
   });
 
+  it("setup-model wizard suggests 127.0.0.1 for Ollama, not localhost (goal 273)", async () => {
+    const { SETUP_MODEL_PROVIDER_SPECS } = await import("../src/setup-model.js");
+    const ollama = SETUP_MODEL_PROVIDER_SPECS.find((s) => s.id === "ollama");
+    expect(ollama).toBeDefined();
+    // Must match the runtime canonical default (resolveOllamaUrl):
+    // a localhost hint steers IPv6 hosts into a phantom
+    // "unreachable" since Ollama binds IPv4.
+    expect(ollama?.placeholderHint).toBe("http://127.0.0.1:11434");
+    expect(ollama?.placeholderHint).not.toContain("localhost");
+  });
+
   it("muse doctor --local model env probe reads MUSE_MODEL from ~/.muse/models.json suggestedModel, not just env", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-doctor-models-"));
     const fsp = await import("node:fs/promises");

@@ -86,7 +86,10 @@ export const SETUP_MODEL_PROVIDER_SPECS: readonly SetupModelProviderSpec[] = [
     envKey: "OLLAMA_BASE_URL",
     id: "ollama",
     label: "Ollama (local; not a secret)",
-    placeholderHint: "http://localhost:11434",
+    // 127.0.0.1, not localhost: the runtime resolver defaults to
+    // 127.0.0.1 and Ollama binds IPv4, so a localhost hint steers
+    // IPv6 hosts into a phantom "unreachable".
+    placeholderHint: "http://127.0.0.1:11434",
     secret: false,
     suggestedModel: "ollama/llama3.2"
   },
