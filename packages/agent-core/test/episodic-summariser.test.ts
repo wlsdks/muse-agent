@@ -133,6 +133,29 @@ describe("summariseSession", () => {
     });
   });
 
+  it("uses the LAST `topics:` line when the model restates it (no early truncation)", async () => {
+    const provider = stubProvider({
+      output: [
+        "Discussed the deploy plan.",
+        "topics: deploy",
+        "The user then set Friday as the deadline.",
+        "topics: deploy plan, Friday deadline"
+      ].join("\n")
+    });
+    const result = await summariseSession({
+      model: "stub",
+      modelProvider: provider,
+      turns: [
+        { role: "user", content: "plan the deploy" },
+        { role: "assistant", content: "ok" }
+      ]
+    });
+    // Body keeps everything up to the LAST topics: line (not
+    // truncated at the first), topics come from the last line.
+    expect(result?.summary).toContain("The user then set Friday as the deadline.");
+    expect(result?.topics).toEqual(["deploy plan", "Friday deadline"]);
+  });
+
   it("fails soft (returns undefined) on model error and on empty output", async () => {
     const onError = await summariseSession({
       model: "stub",

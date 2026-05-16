@@ -180,7 +180,15 @@ function parseSummariserOutput(raw: string): SessionSummary | undefined {
   // The `topics:` line is the last one when present; everything else
   // is the summary body. The model occasionally indents or omits the
   // section — we keep going either way.
-  const topicsIndex = lines.findIndex((line) => /^topics:\s*/iu.test(line));
+  // LAST `topics:` line is the boundary (reverse scan rather
+  // than findLastIndex to avoid bumping the TS lib target).
+  let topicsIndex = -1;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    if (/^topics:\s*/iu.test(lines[i]!)) {
+      topicsIndex = i;
+      break;
+    }
+  }
   let body: readonly string[];
   let topics: readonly string[] = [];
   if (topicsIndex >= 0) {
