@@ -213,6 +213,13 @@ function applyMeridiem(hour: number, meridiem: string): number | undefined {
   if (!meridiem) {
     return hour;
   }
+  // With am/pm it's a 12-hour-clock value; anything outside 1..12
+  // ("at 15pm", "at 0am") is contradictory garbage. Reject it so
+  // `hour + 12` can't push setHours() past 24 and silently roll
+  // the followup over to the wrong time the next day.
+  if (hour < 1 || hour > 12) {
+    return undefined;
+  }
   if (meridiem === "am") {
     return hour === 12 ? 0 : hour;
   }

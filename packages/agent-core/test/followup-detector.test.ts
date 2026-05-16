@@ -86,6 +86,19 @@ describe("extractFollowupPromises — English `at HH(:MM)? (am|pm)?`", () => {
     expect(noon?.scheduledFor.getHours()).toBe(12);
     expect(midnight?.scheduledFor.getHours()).toBe(0);
   });
+
+  it("rejects a 12-hour-clock contradiction (`at 15pm`, `at 0am`) instead of rolling to the wrong time", () => {
+    // Pre-fix `15 + 12 = 27` → setHours(27) silently rolled to ~3am
+    // next day. A bare 24h hour (no meridiem) is still accepted.
+    expect(extractFollowupPromises("ping me at 15pm", { now })
+      .filter((p) => p.kind === "today-at")).toHaveLength(0);
+    expect(extractFollowupPromises("at 0am", { now })
+      .filter((p) => p.kind === "today-at")).toHaveLength(0);
+    expect(extractFollowupPromises("at 13pm", { now })
+      .filter((p) => p.kind === "today-at")).toHaveLength(0);
+    const bare24 = extractFollowupPromises("at 20", { now }).find((p) => p.kind === "today-at");
+    expect(bare24?.scheduledFor.getHours()).toBe(20);
+  });
 });
 
 describe("extractFollowupPromises — Korean relative", () => {
