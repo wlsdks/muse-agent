@@ -97,7 +97,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
   }
 
   async generate(request: ModelRequest): Promise<ModelResponse> {
-    const response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
+    const response = await this.fetchOrThrow(`${this.baseUrl}/chat/completions`, {
       body: JSON.stringify(toOpenAIChatRequest(request, this.defaultModel)),
       headers: this.requestHeaders(),
       method: "POST"
@@ -117,11 +117,22 @@ export class OpenAICompatibleProvider implements ModelProvider {
   }
 
   async *stream(request: ModelRequest): AsyncIterable<ModelEvent> {
-    const response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
-      body: JSON.stringify({ ...toOpenAIChatRequest(request, this.defaultModel), stream: true }),
-      headers: this.requestHeaders(),
-      method: "POST"
-    });
+    let response: Response;
+    try {
+      response = await this.fetchOrThrow(`${this.baseUrl}/chat/completions`, {
+        body: JSON.stringify({ ...toOpenAIChatRequest(request, this.defaultModel), stream: true }),
+        headers: this.requestHeaders(),
+        method: "POST"
+      });
+    } catch (cause) {
+      yield {
+        error: cause instanceof ModelProviderError
+          ? cause
+          : new ModelProviderError(this.id, cause instanceof Error ? cause.message : String(cause), true),
+        type: "error"
+      };
+      return;
+    }
 
     if (!response.ok) {
       const body = await response.text().catch(() => "");
@@ -144,6 +155,22 @@ export class OpenAICompatibleProvider implements ModelProvider {
     }
 
     yield* parseOpenAIStream(this.id, request.model, response.body);
+  }
+
+  private async fetchOrThrow(url: string, init: RequestInit): Promise<Response> {
+    try {
+      return await this.fetchImpl(url, init);
+    } catch (cause) {
+      // fetch() rejects with no HTTP status on a connection-level
+      // failure (ECONNREFUSED/ECONNRESET/ETIMEDOUT) — transient
+      // like a 5xx, so retryable rather than a hard agent failure.
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      throw new ModelProviderError(
+        this.id,
+        `OpenAI-compatible request to ${this.baseUrl} failed: ${detail}`,
+        true
+      );
+    }
   }
 
   private requestHeaders(): Record<string, string> {

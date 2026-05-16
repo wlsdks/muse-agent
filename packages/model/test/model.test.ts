@@ -857,6 +857,32 @@ describe("provider adapter contracts", () => {
     ]);
   });
 
+  it("openai-compatible base treats a connection-level fetch rejection as retryable, not a hard fail", async () => {
+    const econn = Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } });
+    const provider = new OpenAICompatibleProvider({
+      baseUrl: "http://compat.example.test/v1",
+      defaultModel: "model-test",
+      fetch: async () => { throw econn; },
+      id: "lmstudio",
+      models: ["model-test"]
+    });
+
+    await expect(provider.generate({ ...contractRequest, model: "lmstudio/model-test" }))
+      .rejects
+      .toMatchObject({ providerId: "lmstudio", retryable: true });
+
+    const events = [];
+    for await (const event of provider.stream({ ...contractRequest, model: "lmstudio/model-test" })) {
+      events.push(event);
+    }
+    expect(events).toEqual([
+      expect.objectContaining({
+        error: expect.objectContaining({ providerId: "lmstudio", retryable: true }),
+        type: "error"
+      })
+    ]);
+  });
+
   it("anthropic maps model metadata, generate, stream, tool calls, and errors", async () => {
     const provider = new AnthropicProvider({
       defaultModel: "claude-test",
