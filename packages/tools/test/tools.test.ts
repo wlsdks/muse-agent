@@ -451,6 +451,12 @@ describe("createMuseTools", () => {
     expect(await tool.execute({ weekday: "blursday" }, { runId: "r" })).toMatchObject({
       error: expect.stringContaining("weekday must be one of")
     });
+
+    // A present-but-malformed `reference` errors rather than silently
+    // resolving "next Monday" from now() (a wrong reminder date).
+    expect(await tool.execute({ weekday: "Monday", reference: "next week" }, { runId: "r" })).toEqual({
+      error: "reference must be a valid ISO-8601 string"
+    });
   });
 
   it("csv_parse handles headers, quoted fields, escaped quotes, CRLF, header:false", async () => {
@@ -759,6 +765,12 @@ describe("createMuseTools", () => {
 
     const invalid = await tool.execute({ at: "not-a-date" }, { runId: "r" });
     expect(invalid).toMatchObject({ error: expect.stringContaining("ISO-8601") });
+
+    // A present-but-malformed `reference` errors instead of silently
+    // anchoring the delta to now() and returning a confident wrong phrase.
+    expect(
+      await tool.execute({ at: "2026-05-07T01:23:45.000Z", reference: "whenever" }, { runId: "r" })
+    ).toEqual({ error: "reference must be a valid ISO-8601 string" });
   });
 
   it("slugify lowercases, dashes runs, drops non-alnum, and obeys maxLength", async () => {

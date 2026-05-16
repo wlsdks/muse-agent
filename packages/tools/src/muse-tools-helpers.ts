@@ -25,3 +25,29 @@ export function readOptionalNumber(args: JsonObject, key: string): number {
   const value = args[key];
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
+
+export type OptionalDate =
+  | { readonly kind: "absent" }
+  | { readonly kind: "invalid" }
+  | { readonly kind: "date"; readonly date: Date };
+
+/**
+ * Distinguishes "field absent" from "field present but unparseable"
+ * for an optional ISO-8601 input. `readRequiredDate` collapses both
+ * to `undefined`, so a tool that defaults a missing reference to
+ * `now()` would silently anchor to the wrong instant when the caller
+ * supplied a malformed (non-empty) value — a wrong answer with no
+ * error. An empty string counts as absent (a model emitting `""`
+ * for an unset optional means "not provided").
+ */
+export function readOptionalDate(args: JsonObject, key: string): OptionalDate {
+  const value = args[key];
+  if (value === undefined || value === null || (typeof value === "string" && value.length === 0)) {
+    return { kind: "absent" };
+  }
+  if (typeof value !== "string") {
+    return { kind: "invalid" };
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? { kind: "invalid" } : { kind: "date", date: parsed };
+}

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { readOptionalNumber, readOptionalString, readRequiredDate } from "./muse-tools-helpers.js";
+import {
+  readOptionalDate,
+  readOptionalNumber,
+  readOptionalString,
+  readRequiredDate
+} from "./muse-tools-helpers.js";
 
 describe("readOptionalString", () => {
   it("returns the string when present and non-empty", () => {
@@ -29,6 +34,23 @@ describe("readRequiredDate", () => {
     expect(readRequiredDate({ at: "" }, "at")).toBeUndefined();
     expect(readRequiredDate({ at: 42 }, "at")).toBeUndefined();
     expect(readRequiredDate({}, "at")).toBeUndefined();
+  });
+});
+
+describe("readOptionalDate", () => {
+  it("returns a date for parseable ISO strings", () => {
+    const r = readOptionalDate({ reference: "2026-05-13T12:00:00Z" }, "reference");
+    expect(r.kind).toBe("date");
+    expect(r.kind === "date" && r.date.toISOString()).toBe("2026-05-13T12:00:00.000Z");
+  });
+  it("treats absent / null / empty-string as absent (not invalid)", () => {
+    expect(readOptionalDate({}, "reference")).toEqual({ kind: "absent" });
+    expect(readOptionalDate({ reference: null }, "reference")).toEqual({ kind: "absent" });
+    expect(readOptionalDate({ reference: "" }, "reference")).toEqual({ kind: "absent" });
+  });
+  it("flags a present-but-unparseable value as invalid", () => {
+    expect(readOptionalDate({ reference: "not a date" }, "reference")).toEqual({ kind: "invalid" });
+    expect(readOptionalDate({ reference: 42 }, "reference")).toEqual({ kind: "invalid" });
   });
 });
 

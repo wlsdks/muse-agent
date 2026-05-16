@@ -2,6 +2,7 @@ import type { JsonObject } from "@muse/shared";
 
 import type { MuseTool } from "./index.js";
 import {
+  readOptionalDate,
   readOptionalNumber,
   readOptionalString,
   readRequiredDate
@@ -165,7 +166,11 @@ export function createTimeRelativeTool(now: () => Date): MuseTool {
       if (!at) {
         return { error: "at must be a valid ISO-8601 string" };
       }
-      const reference = readRequiredDate(args, "reference") ?? now();
+      const ref = readOptionalDate(args, "reference");
+      if (ref.kind === "invalid") {
+        return { error: "reference must be a valid ISO-8601 string" };
+      }
+      const reference = ref.kind === "date" ? ref.date : now();
       const deltaMs = at.getTime() - reference.getTime();
       const direction: "past" | "future" | "now" =
         Math.abs(deltaMs) < 1_000 ? "now" : deltaMs > 0 ? "future" : "past";
@@ -212,7 +217,11 @@ export function createNextWeekdayTool(now: () => Date): MuseTool {
       if (targetIndex < 0) {
         return { error: `weekday must be one of: ${WEEKDAY_NAMES.map((aliases) => aliases[0]).join(", ")}` };
       }
-      const reference = readRequiredDate(args, "reference") ?? now();
+      const ref = readOptionalDate(args, "reference");
+      if (ref.kind === "invalid") {
+        return { error: "reference must be a valid ISO-8601 string" };
+      }
+      const reference = ref.kind === "date" ? ref.date : now();
       const referenceDay = new Date(Date.UTC(
         reference.getUTCFullYear(),
         reference.getUTCMonth(),
