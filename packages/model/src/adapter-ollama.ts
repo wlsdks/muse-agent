@@ -27,6 +27,7 @@ import type {
   ModelInfo,
   ModelRequest,
   ModelResponse,
+  ModelToolCall,
   OllamaProviderOptions
 } from "./index.js";
 
@@ -124,6 +125,9 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     let buf = "";
     let output = "";
     let lastJson: OllamaNativeChatResponse | undefined;
+    const streamedToolCalls: ModelToolCall[] = [];
+    const seenToolKeys = new Set<string>();
+    let toolFallbackIndex = 0;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -147,26 +151,26 @@ export class OllamaProvider extends OpenAICompatibleProvider {
             yield { text: emit, type: "text-delta" };
           }
         }
-        // Tool calls usually arrive in the terminal NDJSON line (done:true).
-        // Emit them as tool-call events so the agent runtime treats them
-        // the same way it does for OpenAI-compat / Anthropic.
-        if (parsed.done && parsed.message?.tool_calls && parsed.message.tool_calls.length > 0) {
-          for (let i = 0; i < parsed.message.tool_calls.length; i += 1) {
-            const tc = parsed.message.tool_calls[i]!;
+        // Ollama streams tool_calls in a chunk that may be `done:false`
+        // (qwen3 does exactly this), with no tool_calls on the terminal
+        // `done:true` line — so capture them from ANY chunk, deduped,
+        // and carry them into the final response too.
+        if (parsed.message?.tool_calls && parsed.message.tool_calls.length > 0) {
+          for (const tc of parsed.message.tool_calls) {
             const rawArgs = typeof tc.function?.arguments === "string"
               ? safeParseToolArgs(tc.function.arguments)
               : (tc.function?.arguments ?? {});
             const args: JsonObject = (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs))
               ? rawArgs as JsonObject
               : {};
-            yield {
-              toolCall: {
-                arguments: args,
-                id: tc.id ?? `tool-${i.toString()}`,
-                name: tc.function?.name ?? "unknown"
-              },
-              type: "tool-call"
-            };
+            const name = tc.function?.name ?? "unknown";
+            const id = tc.id ?? `tool-${(toolFallbackIndex++).toString()}`;
+            const key = tc.id ?? `${name}:${JSON.stringify(args)}`;
+            if (seenToolKeys.has(key)) continue;
+            seenToolKeys.add(key);
+            const toolCall: ModelToolCall = { arguments: args, id, name };
+            streamedToolCalls.push(toolCall);
+            yield { toolCall, type: "tool-call" };
           }
         }
       }
@@ -177,23 +181,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       model: lastJson?.model ?? request.model ?? this.nativeDefaultModel ?? "unknown",
       output: stripLeadingThinkBlock(output),
       raw: lastJson,
-      ...(lastJson?.message?.tool_calls && lastJson.message.tool_calls.length > 0
-        ? {
-            toolCalls: lastJson.message.tool_calls.map((tc, i) => {
-              const rawArgs = typeof tc.function?.arguments === "string"
-                ? safeParseToolArgs(tc.function.arguments)
-                : (tc.function?.arguments ?? {});
-              const args: JsonObject = (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs))
-                ? rawArgs as JsonObject
-                : {};
-              return {
-                arguments: args,
-                id: tc.id ?? `tool-${i.toString()}`,
-                name: tc.function?.name ?? "unknown"
-              };
-            })
-          }
-        : {}),
+      ...(streamedToolCalls.length > 0 ? { toolCalls: streamedToolCalls } : {}),
       ...(lastJson?.eval_count || lastJson?.prompt_eval_count
         ? {
             usage: {

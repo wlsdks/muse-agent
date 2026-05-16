@@ -1002,6 +1002,57 @@ describe("live provider smoke gates", () => {
   });
 });
 
+describe("OllamaProvider streaming tool-call delivered in a done:false chunk", () => {
+  it("emits and finalizes a tool call when tool_calls arrive before the terminal done line", async () => {
+    const fetch: typeof globalThis.fetch = async (url) => {
+      if (String(url).includes("/models")) {
+        return new Response(JSON.stringify({ data: [{ id: "qwen3:8b", object: "model" }] }));
+      }
+      return new Response(new ReadableStream({
+        start(controller) {
+          const enc = new TextEncoder();
+          // Real qwen3:8b shape — tool_calls arrive in a done:false chunk …
+          controller.enqueue(enc.encode(JSON.stringify({
+            done: false,
+            message: {
+              content: "",
+              role: "assistant",
+              tool_calls: [{ function: { arguments: { city: "Paris" }, name: "get_weather" }, id: "call_x" }]
+            },
+            model: "qwen3:8b"
+          }) + "\n"));
+          // … and the terminal done:true line has NO tool_calls.
+          controller.enqueue(enc.encode(JSON.stringify({
+            done: true,
+            eval_count: 3,
+            message: { content: "", role: "assistant" },
+            model: "qwen3:8b",
+            prompt_eval_count: 7
+          }) + "\n"));
+          controller.close();
+        }
+      }));
+    };
+    const provider = new OllamaProvider({
+      baseUrl: "http://o.test/v1",
+      defaultModel: "qwen3:8b",
+      fetch,
+      models: ["qwen3:8b"]
+    });
+    const events: { type: string; toolCall?: unknown; response?: { toolCalls?: unknown } }[] = [];
+    for await (const ev of provider.stream({ messages: [{ content: "weather?", role: "user" }], model: "ollama/qwen3:8b" })) {
+      events.push(ev as (typeof events)[number]);
+    }
+    expect(events.filter((e) => e.type === "tool-call")).toEqual([
+      { toolCall: { arguments: { city: "Paris" }, id: "call_x", name: "get_weather" }, type: "tool-call" }
+    ]);
+    const done = events.find((e) => e.type === "done");
+    expect(done?.response?.toolCalls).toEqual([
+      { arguments: { city: "Paris" }, id: "call_x", name: "get_weather" }
+    ]);
+  });
+});
+
 describe("OllamaProvider num_ctx (goal 165)", () => {
   function captureBodyFetch(): { fetch: typeof globalThis.fetch; bodies: Record<string, unknown>[] } {
     const bodies: Record<string, unknown>[] = [];
