@@ -391,11 +391,15 @@ export class MultiAgentOrchestrator {
       try {
         const result = await worker.run(withSelectedWorker(currentInput, worker.id));
         results.push({ result, status: "completed", workerId: worker.id });
-        await this.publishWorkerResult(worker.id, result);
+        // A bus-publish failure must NOT re-trigger the catch (it
+        // would double-push a `failed` entry for this worker and
+        // corrupt the pipeline input) — only worker.run decides
+        // status. Same stance as runRace.
+        await this.publishWorkerResult(worker.id, result).catch(() => undefined);
         currentInput = addWorkerResultMessage(currentInput, worker.id, result.response.output);
       } catch (error) {
         results.push({ error: errorMessage(error), status: "failed", workerId: worker.id });
-        await this.publishWorkerFailure(worker.id, error);
+        await this.publishWorkerFailure(worker.id, error).catch(() => undefined);
         currentInput = addHandoffMessage(currentInput, worker.id, error);
       }
     }
@@ -407,10 +411,13 @@ export class MultiAgentOrchestrator {
     return Promise.all(workers.map(async (worker): Promise<OrchestrationStepResult> => {
       try {
         const result = await worker.run(withSelectedWorker(input, worker.id));
-        await this.publishWorkerResult(worker.id, result);
+        // A bus-publish failure must not downgrade a succeeded
+        // worker to "failed" or reject the whole Promise.all —
+        // only worker.run decides status. Same stance as runRace.
+        await this.publishWorkerResult(worker.id, result).catch(() => undefined);
         return { result, status: "completed", workerId: worker.id };
       } catch (error) {
-        await this.publishWorkerFailure(worker.id, error);
+        await this.publishWorkerFailure(worker.id, error).catch(() => undefined);
         return { error: errorMessage(error), status: "failed", workerId: worker.id };
       }
     }));

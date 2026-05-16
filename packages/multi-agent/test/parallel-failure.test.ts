@@ -132,4 +132,33 @@ describe("MultiAgentOrchestrator parallel + bus interactions", () => {
     expect(entries[0]?.completedCount).toBe(0);
     expect(entries[0]?.failedCount).toBeGreaterThanOrEqual(1);
   });
+
+  it("a failing bus publish never downgrades a succeeded worker or aborts the run", async () => {
+    class PublishFailingBus extends InMemoryAgentMessageBus {
+      override async publish(): Promise<void> {
+        throw new Error("bus subscriber blew up");
+      }
+    }
+
+    for (const mode of ["parallel", "sequential"] as const) {
+      const orchestrator = new MultiAgentOrchestrator({
+        messageBus: new PublishFailingBus(),
+        workers: [syntheticWorker("alpha", "ok"), syntheticWorker("beta", "ok")]
+      });
+
+      const result = await orchestrator.run(
+        { messages: [{ content: "task", role: "user" }], model: "diagnostic" },
+        { mode }
+      );
+
+      // Both workers ran successfully; the publish throw must not
+      // mark them failed nor duplicate them, and run() must resolve.
+      expect(result.results).toHaveLength(2);
+      expect(result.results.every((step) => step.status === "completed")).toBe(true);
+      expect(result.results.map((step) => step.workerId).sort()).toEqual(["alpha", "beta"]);
+      expect(
+        result.results.find((step) => step.workerId === "alpha")?.result?.response.output
+      ).toBe("alpha-output");
+    }
+  });
 });
