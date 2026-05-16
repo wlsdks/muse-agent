@@ -29,8 +29,13 @@ export async function embed(text: string, model: string, options: EmbedOptions =
     throw new Error(`embeddings ${resp.status.toString()}: ${await resp.text().catch(() => "")}`);
   }
   const body = await resp.json() as { embedding?: number[] };
-  if (!body.embedding || !Array.isArray(body.embedding)) {
-    throw new Error("embedding response missing 'embedding' field");
+  // An empty or non-finite vector (wrong model, empty prompt on
+  // some backends) silently makes cosineSimilarity return 0/NaN
+  // for every hit — garbage RAG ranking with no error. Reject it.
+  if (!Array.isArray(body.embedding)
+    || body.embedding.length === 0
+    || !body.embedding.every((n) => typeof n === "number" && Number.isFinite(n))) {
+    throw new Error("embedding response missing a valid numeric 'embedding' vector");
   }
   return body.embedding;
 }
