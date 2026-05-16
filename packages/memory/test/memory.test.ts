@@ -51,6 +51,22 @@ describe("approximate token estimator", () => {
     expect(computeApproximateTokens("😀😀")).toBe(2);
   });
 
+  it("weights CJK/Korean materially heavier than Latin (protects the budget/compaction trigger)", () => {
+    // Korean is the primary user language; a regression to a
+    // naive English `chars/4` would silently under-count Korean
+    // ~2.7x and defeat the small-context-Qwen compaction trigger.
+    // The tiny "안녕"→1 case above can't catch that (Math.max(1)
+    // floors both), so lock the relative weighting here.
+    const latin90 = computeApproximateTokens("a".repeat(90));
+    const korean90 = computeApproximateTokens("가".repeat(90));
+    expect(latin90).toBe(22);   // floor(90 / 4)
+    expect(korean90).toBe(60);  // floor((90*2 + 1) / 3)
+    expect(korean90).toBeGreaterThan(latin90);
+    expect(korean90).toBeGreaterThan(Math.floor(90 / 4)); // > the naive English heuristic
+    // Mixed script: both classes contribute, CJK dominates.
+    expect(computeApproximateTokens("hello 안녕하세요")).toBe(4);
+  });
+
   it("caches repeated long text estimates behind a bounded hash key", () => {
     const estimator = createApproximateTokenEstimator({ cacheKeyMaxChars: 4, maxEntries: 2, ttlMs: 60_000 });
     const longText = "a".repeat(20);
