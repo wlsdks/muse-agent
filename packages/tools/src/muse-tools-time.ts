@@ -245,7 +245,7 @@ export function createCronForDatetimeTool(): MuseTool {
     definition: {
       description:
         "Converts an ISO-8601 datetime to a cron expression for the scheduler. " +
-        "`mode` controls the recurrence: 'once' (default) returns a yearly-recurring expression at that exact minute/hour/day/month — disable the scheduled job after it fires for true one-shot semantics; 'daily' fires every day at that hour:minute; 'weekly' fires every week on that weekday at that hour:minute; 'monthly' fires every month on that day-of-month at that hour:minute. " +
+        "`mode` controls the recurrence: 'once' (default) returns a yearly-recurring expression at that exact minute/hour/day/month — disable the scheduled job after it fires for true one-shot semantics; 'daily' fires every day at that hour:minute; 'weekly' fires every week on that weekday at that hour:minute; 'monthly' fires every month on that day-of-month at that hour:minute (a day > 28 is skipped in shorter months — the result carries a `warning` then). " +
         "Bridge for natural-language reminders: compose with `time_now` + `time_add` / `next_weekday` / `time_relative` to build the ISO, then pass it here, then call `scheduler_create_job` with the returned cron.",
       inputSchema: {
         additionalProperties: false,
@@ -303,6 +303,19 @@ export function createCronForDatetimeTool(): MuseTool {
         default:
           cron = `${minute} ${hour} ${dayOfMonth} ${month} *`;
           break;
+      }
+
+      // cron-parser skips (never clamps) a day-of-month a month
+      // lacks, so a monthly rule on the 29th–31st silently never
+      // fires in shorter months. Surface it so the agent can warn
+      // the user instead of a reminder vanishing for ~5 months/year.
+      if (mode === "monthly" && dayOfMonth > 28) {
+        return {
+          cron,
+          iso: at.toISOString(),
+          mode,
+          warning: `monthly schedule on day ${dayOfMonth} will not fire in months without that day (e.g. February); use a day <= 28 for a guaranteed monthly run`
+        } satisfies JsonObject;
       }
 
       return { cron, iso: at.toISOString(), mode } satisfies JsonObject;

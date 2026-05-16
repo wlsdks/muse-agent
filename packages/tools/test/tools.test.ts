@@ -603,8 +603,28 @@ describe("createMuseTools", () => {
     const monthly = (await tool.execute(
       { iso: "2026-05-15T22:45:00Z", mode: "monthly" },
       { runId: "r" }
-    )) as { cron: string };
+    )) as { cron: string; warning?: string };
     expect(monthly.cron).toBe("45 22 15 * *");
+    expect(monthly.warning).toBeUndefined();
+
+    // Day-of-month 31 silently never fires in Feb/Apr/Jun/Sep/Nov
+    // under cron-parser (it skips, never clamps) — the result must
+    // carry a warning so the agent can flag it to the user.
+    const monthly31 = (await tool.execute(
+      { iso: "2026-01-31T09:00:00Z", mode: "monthly" },
+      { runId: "r" }
+    )) as { cron: string; warning?: string };
+    expect(monthly31.cron).toBe("0 9 31 * *");
+    expect(monthly31.warning).toContain("31");
+    expect(monthly31.warning).toContain("February");
+
+    // The same date as a one-shot (default 'once') carries no
+    // warning — it fires on the next real occurrence then is disabled.
+    const once31 = (await tool.execute(
+      { iso: "2026-01-31T09:00:00Z" },
+      { runId: "r" }
+    )) as { cron: string; warning?: string };
+    expect(once31.warning).toBeUndefined();
 
     expect(await tool.execute({ iso: "" }, { runId: "r" })).toEqual({ error: "iso is required" });
     expect(await tool.execute({ iso: "not-a-date" }, { runId: "r" })).toMatchObject({
