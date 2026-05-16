@@ -16,6 +16,7 @@
  */
 
 import { clearLastChatHistory } from "./chat-history.js";
+import { consumeAskStream, type AskStreamEvent } from "./commands-ask.js";
 import type { ProgramIO } from "./program.js";
 
 export interface ChatTurnRecord {
@@ -192,15 +193,20 @@ export async function handleSlashCommand(
       }
       try {
         const sysPrompt = deps.autoExtract?.pickSystemPrompt(arg) ?? "Extract user facts as JSON.";
-        let raw = "";
-        for await (const ev of deps.assembly.modelProvider.stream({
-          messages: [
-            { content: sysPrompt, role: "system" },
-            { content: `User turn:\n${arg}\n\nAssistant reply:\n(no reply — extract from the statement)`, role: "user" }
-          ],
-          model: ctx.currentModel ?? deps.assembly.defaultModel ?? "default"
-        })) {
-          if (ev.type === "text-delta" && typeof ev.text === "string") raw += ev.text;
+        const { answer: raw, error: streamError } = await consumeAskStream(
+          deps.assembly.modelProvider.stream({
+            messages: [
+              { content: sysPrompt, role: "system" },
+              { content: `User turn:\n${arg}\n\nAssistant reply:\n(no reply — extract from the statement)`, role: "user" }
+            ],
+            model: ctx.currentModel ?? deps.assembly.defaultModel ?? "default"
+          }) as AsyncIterable<AskStreamEvent>,
+          () => {},
+          () => false
+        );
+        if (streamError !== undefined) {
+          io.stdout(`(error: ${streamError})\n`);
+          return;
         }
         const payload = deps.autoExtract?.extractJsonObject(raw);
         if (!payload || !deps.memoryStore) {
