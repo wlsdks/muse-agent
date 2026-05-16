@@ -10,6 +10,7 @@ import {
   BUILTIN_PERSONAS,
   defaultPersonaFile,
   isBuiltinPersonaId,
+  personaIdIsKnown,
   readPersonaStore,
   resolveActivePersonaPreamble,
   writePersonaStore
@@ -41,6 +42,9 @@ export function registerPersonaCommand(program: Command, io: ProgramIO): void {
       for (const entry of personas) {
         const marker = entry.id === store.activeId ? "*" : " ";
         io.stdout(` ${marker} ${entry.id.padEnd(16)} [${entry.source}]  ${entry.description}\n`);
+      }
+      if (!personaIdIsKnown(store, store.activeId)) {
+        io.stderr(`note: active persona '${store.activeId}' is unknown — not built-in, no custom entry — so it resolves to no preamble. \`muse persona use <id>\` to pick one of the above.\n`);
       }
     });
 
@@ -82,6 +86,12 @@ export function registerPersonaCommand(program: Command, io: ProgramIO): void {
         return;
       }
       io.stdout(`active: ${store.activeId}\n\n`);
-      io.stdout(preamble.length > 0 ? `${preamble}\n` : "(no preamble — the default persona delegates to the user's persona memory)\n");
+      if (preamble.length > 0) {
+        io.stdout(`${preamble}\n`);
+      } else if (personaIdIsKnown(store, store.activeId)) {
+        io.stdout(`(no preamble — '${store.activeId}' contributes no persona text; the user's persona memory carries the tone)\n`);
+      } else {
+        io.stderr(`(active persona '${store.activeId}' is unknown — not a built-in or custom id; it resolves to no preamble. Run \`muse persona list\`.)\n`);
+      }
     });
 }

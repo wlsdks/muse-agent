@@ -4518,6 +4518,7 @@ describe("cli program", () => {
     const {
       BUILTIN_PERSONAS,
       isBuiltinPersonaId,
+      personaIdIsKnown,
       readPersonaStore,
       writePersonaStore,
       resolveActivePersonaPreamble
@@ -4558,6 +4559,50 @@ describe("cli program", () => {
       custom: { ...override.custom, jarvis: { preamble: "OVERRIDDEN" } }
     };
     expect(resolveActivePersonaPreamble(withOverride)).toBe("OVERRIDDEN");
+
+    // personaIdIsKnown: built-in (incl. the empty `default`) + own
+    // custom are known; a dangling/typo'd id is not.
+    expect(personaIdIsKnown(round, "default")).toBe(true);
+    expect(personaIdIsKnown(round, "jarvis")).toBe(true);
+    expect(personaIdIsKnown(round, "tony")).toBe(true);
+    expect(personaIdIsKnown(round, "tony-DELETED")).toBe(false);
+    expect(personaIdIsKnown(round, "__proto__")).toBe(false);
+  });
+
+  it("muse persona show / list flag a dangling active id instead of mislabeling it (goal 242)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-persona-dangling-"));
+    const file = path.join(root, "persona.json");
+    // activeId points at a custom that no longer exists (hand-edited
+    // file / typo) — resolves to "" at runtime, silently, today.
+    await writeFile(file, JSON.stringify({ activeId: "ghost", custom: {} }), "utf8");
+    const prevEnv = process.env.MUSE_PERSONA_FILE;
+    process.env.MUSE_PERSONA_FILE = file;
+    try {
+      const showCap = captureOutput();
+      const showProg = createProgram({ ...showCap.io, fetch: async () => { throw new Error("no fetch"); } });
+      await showProg.parseAsync(["node", "muse", "persona", "show"], { from: "node" });
+      const showText = showCap.output.join("");
+      expect(showText).toContain("active: ghost");
+      expect(showText).toContain("'ghost' is unknown");
+      expect(showText).not.toContain("the default persona delegates");
+
+      const listCap = captureOutput();
+      const listProg = createProgram({ ...listCap.io, fetch: async () => { throw new Error("no fetch"); } });
+      await listProg.parseAsync(["node", "muse", "persona", "list"], { from: "node" });
+      const listText = listCap.output.join("");
+      expect(listText).toContain("active: ghost");
+      expect(listText).toContain("active persona 'ghost' is unknown");
+
+      // A valid active id emits no dangling note.
+      await writeFile(file, JSON.stringify({ activeId: "jarvis", custom: {} }), "utf8");
+      const okCap = captureOutput();
+      const okProg = createProgram({ ...okCap.io, fetch: async () => { throw new Error("no fetch"); } });
+      await okProg.parseAsync(["node", "muse", "persona", "list"], { from: "node" });
+      expect(okCap.output.join("")).not.toContain("is unknown");
+    } finally {
+      if (prevEnv === undefined) delete process.env.MUSE_PERSONA_FILE;
+      else process.env.MUSE_PERSONA_FILE = prevEnv;
+    }
   });
 
   it("muse job run --no-background is a recognized option (advertised inline mode works)", async () => {

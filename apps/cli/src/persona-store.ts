@@ -158,3 +158,14 @@ export async function loadActivePersonaPreamble(file: string = defaultPersonaFil
 export function isBuiltinPersonaId(id: string): boolean {
   return BUILTIN_IDS.has(id);
 }
+
+/**
+ * Whether `id` actually resolves to a real persona entry (a
+ * built-in, or an own custom key). A dangling `activeId` — a
+ * hand-edited file that removed the active custom, or a typo —
+ * returns `false`; `resolveActivePersonaPreamble` then silently
+ * yields "" and the user has no signal without this predicate.
+ */
+export function personaIdIsKnown(store: PersonaStoreShape, id: string): boolean {
+  return isBuiltinPersonaId(id) || Object.hasOwn(store.custom, id);
+}
