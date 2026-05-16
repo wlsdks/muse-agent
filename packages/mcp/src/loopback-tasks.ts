@@ -5,6 +5,7 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 import type { LoopbackMcpServer } from "./loopback.js";
 import { readString, readStringArray, errorMessage } from "./loopback-helpers.js";
 import {
+  compareTasksByDueDate,
   parseTaskDueAt,
   readTasks,
   readTaskStatusFilter,
@@ -43,8 +44,8 @@ export interface TasksMcpServerOptions {
  * Tools:
  *   - `muse.tasks.add({ title, notes?, tags? })` — append a new task
  *     with status="open" and a generated id.
- *   - `muse.tasks.list({ status?: "open"|"done"|"all" })` — newest
- *     first, default status="open".
+ *   - `muse.tasks.list({ status?: "open"|"done"|"all" })` —
+ *     due-soonest first (undated last), default status="open".
  *   - `muse.tasks.complete({ id })` — mark a task done with
  *     completedAt timestamp.
  *   - `muse.tasks.search({ query, status? })` — substring match on
@@ -119,14 +120,14 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
       },
       {
         description:
-          "List tasks newest-first. `status`: \"open\" (default), \"done\", or \"all\". " +
+          "List tasks due-soonest first (undated last). `status`: \"open\" (default), \"done\", or \"all\". " +
           `Returns up to ${maxListEntries} entries.`,
         execute: async (args): Promise<JsonObject> => {
           const status = readTaskStatusFilter(readString(args, "status"));
           const tasks = await readTasks(file);
           const filtered = tasks
             .filter((task) => status === "all" || task.status === status)
-            .sort((left, right) => (right.createdAt ?? "").localeCompare(left.createdAt ?? ""))
+            .sort(compareTasksByDueDate)
             .slice(0, maxListEntries);
           return {
             status,

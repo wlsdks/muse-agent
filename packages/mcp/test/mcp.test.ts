@@ -1825,6 +1825,28 @@ describe("muse.tasks loopback server", () => {
     expect(noMatches).toMatchObject({ total: 0 });
   });
 
+  it("list returns tasks due-soonest first so the agent prioritises correctly (goal 256)", async () => {
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-tasks-order-`);
+    const file = `${dir}/tasks.json`;
+    const soon = new Date(Date.now() + 2 * 3_600_000).toISOString();
+    const far = new Date(Date.now() + 30 * 86_400_000).toISOString();
+    // Imminent deadline created long ago vs a recent far-due task —
+    // createdAt-desc buried t_soon; due-soonest must surface it.
+    writeFileSync(file, JSON.stringify({
+      tasks: [
+        { id: "t_soon", title: "Ship", status: "open", dueAt: soon, createdAt: "2026-04-01T00:00:00Z" },
+        { id: "t_far", title: "Review", status: "open", dueAt: far, createdAt: "2026-05-15T00:00:00Z" },
+        { id: "t_new_undated", title: "Capture", status: "open", createdAt: "2026-05-16T09:00:00Z" },
+        { id: "t_old_undated", title: "Stale", status: "open", createdAt: "2026-03-01T00:00:00Z" }
+      ]
+    }), "utf8");
+    const connection = createLoopbackMcpConnection(createTasksMcpServer({ file }));
+    const listed = await connection.callTool!("list", {}) as { tasks: Array<{ id: string }> };
+    expect(listed.tasks.map((t) => t.id)).toEqual(["t_soon", "t_far", "t_new_undated", "t_old_undated"]);
+  });
+
   it("returns errors for invalid input and missing ids", async () => {
     const { mkdtempSync } = await import("node:fs");
     const tmpdir = await import("node:os").then((m) => m.tmpdir());
