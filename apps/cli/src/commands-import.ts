@@ -67,11 +67,28 @@ async function decryptToTempIfNeeded(bundlePath: string, decryptOptIn: boolean):
 }
 
 /**
+ * A bundle entry is only restored when it is a real file under the
+ * `.muse/` prefix the export command produces. The `.muse/` prefix
+ * alone does NOT confine it: `.muse/../../.ssh/authorized_keys`
+ * starts with `.muse/` yet escapes the target dir, and a `..`-free
+ * top-level entry like `.bashrc` would land straight in `$HOME`.
+ * Both the manifest/collision surface AND the extractor below use
+ * this predicate, and the extractor passes the vetted list to tar
+ * as explicit members — so a hand-rolled tar with extra junk or a
+ * path-traversal entry genuinely cannot write outside `~/.muse`.
+ * Exported for direct test coverage.
+ */
+export function isSafeMuseEntry(entry: string): boolean {
+  if (!entry.startsWith(".muse/") || entry.endsWith("/")) {
+    return false;
+  }
+  return !entry.split("/").some((segment) => segment === "..");
+}
+
+/**
  * Run `tar -tzf <bundle>` and parse the entries the bundle would
- * extract. Only entries under the `.muse/` prefix produced by the
- * export command are returned — anything else is silently ignored
- * so a hand-rolled tar with extra junk can't sneak files into
- * unrelated directories. Exported for direct test coverage of the
+ * extract, keeping only the traversal-safe `.muse/` files (see
+ * `isSafeMuseEntry`). Exported for direct test coverage of the
  * filter logic.
  */
 export async function listMuseImportEntries(bundlePath: string): Promise<readonly string[]> {
@@ -93,7 +110,7 @@ export async function listMuseImportEntries(bundlePath: string): Promise<readonl
   return stdout
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.length > 0 && line.startsWith(".muse/") && !line.endsWith("/"));
+    .filter((line) => line.length > 0 && isSafeMuseEntry(line));
 }
 
 /**
@@ -121,9 +138,24 @@ export async function findImportCollisions(
   return collisions;
 }
 
-async function extractMuseBundle(bundlePath: string, home: string): Promise<void> {
+/**
+ * Extract ONLY the vetted `entries` as explicit tar members. A bare
+ * `tar -xzf bundle -C home` extracts every archive member regardless
+ * of the `.muse/` filter, so a malicious bundle could write `.bashrc`
+ * straight into `$HOME` (no `..` needed) and bypass the collision
+ * prompt entirely. Naming the members confines tar to exactly the
+ * traversal-safe list the collision check and dry-run already
+ * surfaced. Caller guarantees `entries` is non-empty (an empty
+ * member list would make tar fall back to extracting everything).
+ * Exported for direct test coverage.
+ */
+export async function extractMuseBundle(
+  bundlePath: string,
+  home: string,
+  entries: readonly string[]
+): Promise<void> {
   await new Promise<void>((resolveSpawn, reject) => {
-    const child = spawn("tar", ["-xzf", bundlePath, "-C", home], { stdio: ["ignore", "ignore", "pipe"] });
+    const child = spawn("tar", ["-xzf", bundlePath, "-C", home, "--", ...entries], { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
     child.on("error", reject);
@@ -199,7 +231,7 @@ export function registerImportCommand(program: Command, io: ProgramIO): void {
           return;
         }
 
-        await extractMuseBundle(workingBundle, home);
+        await extractMuseBundle(workingBundle, home, entries);
         io.stdout(`Restored ${entries.length.toString()} file(s) into ~/.muse from ${bundlePath}\n`);
         if (collisions.length > 0) {
           io.stdout(`  (${collisions.length.toString()} pre-existing file(s) overwritten via --force)\n`);

@@ -4286,6 +4286,55 @@ describe("cli program", () => {
     expect(collisions).not.toContain("reminders.json");
   });
 
+  it("isSafeMuseEntry rejects path-traversal + non-.muse entries a hostile bundle could carry (goal 238)", async () => {
+    const { isSafeMuseEntry } = await import("../src/commands-import.js");
+    // Legit export entries pass.
+    expect(isSafeMuseEntry(".muse/tasks.json")).toBe(true);
+    expect(isSafeMuseEntry(".muse/notes/2026/a.md")).toBe(true);
+    // `..` only as a substring inside a segment is not a traversal.
+    expect(isSafeMuseEntry(".muse/weird..name/x.json")).toBe(true);
+    // Path traversal: starts with `.muse/` yet escapes the target.
+    expect(isSafeMuseEntry(".muse/../../.ssh/authorized_keys")).toBe(false);
+    expect(isSafeMuseEntry(".muse/notes/../../../etc/cron.d/x")).toBe(false);
+    expect(isSafeMuseEntry(".muse/..")).toBe(false);
+    // `..`-free but outside `.muse/` — lands straight in $HOME.
+    expect(isSafeMuseEntry(".bashrc")).toBe(false);
+    expect(isSafeMuseEntry(".ssh/authorized_keys")).toBe(false);
+    expect(isSafeMuseEntry("/etc/passwd")).toBe(false);
+    // Directory entries are not restored (files only); empty rejects.
+    expect(isSafeMuseEntry(".muse/notes/")).toBe(false);
+    expect(isSafeMuseEntry("")).toBe(false);
+  });
+
+  it("extractMuseBundle restores only the vetted members — a malicious bundle can't escape ~/.muse (goal 238)", async () => {
+    const { extractMuseBundle, listMuseImportEntries } = await import("../src/commands-import.js");
+    const { promisify } = await import("node:util");
+    const { execFile } = await import("node:child_process");
+    const run = promisify(execFile);
+    const fsp = await import("node:fs/promises");
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-import-evil-"));
+    const stage = path.join(root, "stage");
+    await fsp.mkdir(path.join(stage, ".muse"), { recursive: true });
+    await fsp.writeFile(path.join(stage, ".muse", "keep.json"), '{"ok":true}');
+    // A `..`-free escape: a top-level file lands directly in the
+    // extraction target under a blanket `tar -xzf -C home`.
+    await fsp.writeFile(path.join(stage, "pwned.txt"), "owned");
+    const bundle = path.join(root, "evil.tar.gz");
+    await run("tar", ["-czf", bundle, "-C", stage, ".muse/keep.json", "pwned.txt"]);
+
+    // The crafted bundle does carry the escape entry, but the vetted
+    // list filters it out — extraction must honour only that list.
+    const entries = await listMuseImportEntries(bundle);
+    expect(entries).toEqual([".muse/keep.json"]);
+
+    const home = path.join(root, "home");
+    await fsp.mkdir(home, { recursive: true });
+    await extractMuseBundle(bundle, home, entries);
+
+    expect(await fsp.readFile(path.join(home, ".muse", "keep.json"), "utf8")).toBe('{"ok":true}');
+    await expect(fsp.stat(path.join(home, "pwned.txt"))).rejects.toThrow();
+  });
+
   it("rotateJwtState promotes a new current + grace-windows the previous secret (goal 082)", async () => {
     const { rotateJwtState, pruneExpiredPreviousSecrets } = await import("../src/jwt-rotation-store.js");
     const now = new Date("2026-05-14T12:00:00Z");
