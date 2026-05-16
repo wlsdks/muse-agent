@@ -13,6 +13,8 @@
  * across every provider.
  */
 
+import { stripUntrustedTerminalChars } from "@muse/shared";
+
 import type { AgentRunContext, AgentRunInput } from "./types.js";
 import { appendSystemSection } from "./runtime-helpers.js";
 
@@ -137,8 +139,10 @@ function boundedString(value: unknown, max: number): string | undefined {
 function sanitizeInline(value: string): string {
   // Collapse any whitespace run (\n, \r, \t, multiple spaces) to a
   // single space so descriptions render on one line and cannot
-  // inject pseudo-section headers via embedded newlines.
-  return value.replace(/\s+/gu, " ");
+  // inject pseudo-section headers via embedded newlines. Strip
+  // ESC / C0 / C1 / DEL first — they survive the \s+ collapse and
+  // would reach the prompt AND the terminal.
+  return stripUntrustedTerminalChars(value).replace(/\s+/gu, " ");
 }
 
 export function renderAttachmentSection(attachments: readonly AttachmentHint[]): string | undefined {

@@ -12,6 +12,8 @@
  * the small interface and the renderer.
  */
 
+import { stripUntrustedTerminalChars } from "@muse/shared";
+
 import { humanizeRelativeFromIso } from "./time-helpers.js";
 
 export interface InboundSummary {
@@ -120,5 +122,8 @@ function truncate(text: string, max: number): string {
 }
 
 function sanitizeInline(value: string): string {
-  return value.replace(/\s+/gu, " ").trim();
+  // Inbound message text is directly attacker-controllable;
+  // `\s+` collapse alone leaves ESC / C0 / C1 / DEL bytes that
+  // reach the prompt AND the terminal. Strip them first.
+  return stripUntrustedTerminalChars(value).replace(/\s+/gu, " ").trim();
 }
