@@ -386,6 +386,31 @@ function renderSuggestions(io: ProgramIO, suggestions: readonly PatternSuggestio
     );
   }
 }
+/**
+ * Hour-of-day lives on a 24h circle, so a plain numeric median of
+ * `[23, 0, 1]` is ~1 — wrong for a midnight-straddling habit, and
+ * since the ±1 window check is circular the suggestion is then
+ * silently missed. Pick the hour minimising total circular
+ * distance (ties → earliest hour for determinism); for a
+ * non-wrapping cluster this equals the ordinary medoid.
+ */
+function circularMedianHour(hours: readonly number[]): number {
+  let bestHour = 0;
+  let bestCost = Number.POSITIVE_INFINITY;
+  for (let candidate = 0; candidate < 24; candidate += 1) {
+    let cost = 0;
+    for (const hour of hours) {
+      const d = Math.abs(candidate - hour);
+      cost += Math.min(d, 24 - d);
+    }
+    if (cost < bestCost) {
+      bestCost = cost;
+      bestHour = candidate;
+    }
+  }
+  return bestHour;
+}
+
 export function suggestPatternHints(
   fired: readonly unknown[],
   now: Date,
@@ -411,8 +436,7 @@ export function suggestPatternHints(
   const candidates: PatternSuggestion[] = [];
   for (const [patternId, hours] of buckets) {
     if (hours.length < minFirings) continue;
-    const sorted = [...hours].sort((a, b) => a - b);
-    const medianHourUtc = sorted[Math.floor(sorted.length / 2)]!;
+    const medianHourUtc = circularMedianHour(hours);
     const delta = Math.min(
       Math.abs(nowHour - medianHourUtc),
       24 - Math.abs(nowHour - medianHourUtc)

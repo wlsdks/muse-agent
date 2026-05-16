@@ -4514,6 +4514,26 @@ describe("cli program", () => {
     ] as unknown as readonly unknown[], now)).toEqual([]);
   });
 
+  it("suggestPatternHints centres a midnight-straddling habit circularly (goal 254)", async () => {
+    const { suggestPatternHints } = await import("../src/commands-status.js");
+    // Six firings clustered around midnight: 23, 00, 01 UTC.
+    const fired = ["23", "00", "01", "23", "00", "01"].map((hh, i) => ({
+      patternId: "night_journal",
+      firedAtIso: `2026-05-${(10 + i).toString().padStart(2, "0")}T${hh}:0${i.toString()}:00Z`
+    }));
+
+    // Plain numeric median of [23,0,1,23,0,1] is ~1; circular
+    // centre is 00. At 23:50 the user is inside the habit window,
+    // so the hint must surface (delta to 00 = 1, not 22).
+    const lateNight = suggestPatternHints(fired, new Date("2026-05-16T23:50:00Z"));
+    expect(lateNight.map((h) => h.patternId)).toContain("night_journal");
+    const hint = lateNight.find((h) => h.patternId === "night_journal");
+    expect([23, 0, 1]).toContain(hint?.medianHourUtc);
+
+    // Mid-afternoon is well outside the circular window → no hint.
+    expect(suggestPatternHints(fired, new Date("2026-05-16T15:00:00Z"))).toEqual([]);
+  });
+
   it("persona store: read missing → default, switch active, custom preamble overrides built-in (goal 094)", async () => {
     const {
       BUILTIN_PERSONAS,
