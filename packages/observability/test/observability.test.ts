@@ -681,6 +681,22 @@ describe("InMemoryTokenCostQuery", () => {
     });
     expect(rows[0]).toMatchObject({ runId: "run-x", totalCostUsd: expect.closeTo(1.0, 5) });
   });
+
+  it("ranks cost-tied runs by token volume (free local-LLM: every run is $0)", async () => {
+    const sink = new InMemoryTokenUsageSink();
+    await record(sink, { estimatedCostUsd: 0, recordedAt: "2026-05-07T10:00:00.000Z", runId: "small", totalTokens: 120 });
+    await record(sink, { estimatedCostUsd: 0, recordedAt: "2026-05-07T11:00:00.000Z", runId: "huge", totalTokens: 9000 });
+    await record(sink, { estimatedCostUsd: 0, recordedAt: "2026-05-07T12:00:00.000Z", runId: "mid", totalTokens: 3000 });
+
+    const query = new InMemoryTokenCostQuery(sink);
+    const rows = await query.topExpensive({
+      from: new Date("2026-05-07T00:00:00.000Z"),
+      limit: 3,
+      to: new Date("2026-05-08T00:00:00.000Z")
+    });
+
+    expect(rows.map((row) => row.runId)).toEqual(["huge", "mid", "small"]);
+  });
 });
 
 describe("SloAlertEvaluator", () => {

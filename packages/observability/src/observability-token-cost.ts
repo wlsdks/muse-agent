@@ -180,7 +180,11 @@ export class InMemoryTokenCostQuery implements TokenCostQuery {
       }
     }
     return [...groups.values()]
-      .sort((a, b) => b.totalCostUsd - a.totalCostUsd)
+      // Cost-tie fallback to token volume: a Qwen-only / local-LLM
+      // setup has every run at cost 0, which would make this ranking
+      // an arbitrary all-ties order. Token count is the meaningful
+      // proxy for "most expensive" when the dollar cost is free.
+      .sort((a, b) => b.totalCostUsd - a.totalCostUsd || b.totalTokens - a.totalTokens)
       .slice(0, Math.max(0, input.limit));
   }
 }
@@ -268,7 +272,7 @@ export class KyselyTokenCostQuery implements TokenCostQuery {
       FROM metric_token_usage
       WHERE time >= ${input.from} AND time < ${input.to}
       GROUP BY run_id
-      ORDER BY total_cost_usd DESC
+      ORDER BY total_cost_usd DESC, total_tokens DESC
       LIMIT ${limit}
     `.execute(this.db);
 
