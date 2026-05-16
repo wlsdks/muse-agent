@@ -70,29 +70,40 @@ export function trimToolOutput(input: string, options: ToolOutputTrimOptions): T
   }
 
   const hint = (options.hint ?? "").trim();
-  const elidedChars = originalLength - maxChars;
-  // Marker carries: how many chars elided + total original size +
-  // optional hint. Stable wording so downstream tooling can grep.
-  const marker = hint.length > 0
-    ? `\n\n[truncated: ${elidedChars} chars elided of ${originalLength} total — ${hint}]\n\n`
-    : `\n\n[truncated: ${elidedChars} chars elided of ${originalLength} total]\n\n`;
+  // Marker carries: how many original chars are absent from the
+  // retained head+tail + total original size + optional hint. Stable
+  // wording so downstream tooling can grep.
+  const markerFor = (elided: number): string =>
+    hint.length > 0
+      ? `\n\n[truncated: ${elided} chars elided of ${originalLength} total — ${hint}]\n\n`
+      : `\n\n[truncated: ${elided} chars elided of ${originalLength} total]\n\n`;
 
-  // If the marker itself is bigger than the cap (pathological tiny
-  // budget), there's no point head/tail-splitting. Return marker only.
-  if (marker.length >= maxChars) {
+  // Reserve space against the widest the marker can ever be: the
+  // elided count is at most `originalLength` (zero content kept), so
+  // a marker sized with `originalLength` is an upper bound on the
+  // final one. Reserving against it lets us report the EXACT elided
+  // count (computed from the real head/tail below) without the
+  // circular "marker length depends on the number it prints" problem,
+  // and guarantees the output never exceeds `maxChars`.
+  const reservedMarker = markerFor(originalLength);
+
+  // If even the marker can't fit the cap (pathological tiny budget),
+  // there's no point head/tail-splitting. Return marker only.
+  if (reservedMarker.length >= maxChars) {
     return {
-      output: marker.slice(0, maxChars),
+      output: reservedMarker.slice(0, maxChars),
       truncated: true,
       originalLength
     };
   }
 
-  const remaining = maxChars - marker.length;
+  const remaining = maxChars - reservedMarker.length;
   const headRatio = clampRatio(options.headRatio ?? DEFAULT_HEAD_RATIO);
   const headChars = Math.max(0, Math.floor(remaining * headRatio));
   const tailChars = Math.max(0, remaining - headChars);
   const head = input.slice(0, headChars);
   const tail = tailChars > 0 ? input.slice(originalLength - tailChars) : "";
+  const marker = markerFor(originalLength - head.length - tail.length);
   return {
     output: `${head}${marker}${tail}`,
     truncated: true,

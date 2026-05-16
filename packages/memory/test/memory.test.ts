@@ -485,6 +485,26 @@ describe("conversation trimming", () => {
     expect(result.output).not.toContain("MIDDLE-CONTENT");
   });
 
+  it("trimToolOutput reports the EXACT elided char count, not original-minus-cap", () => {
+    // Single repeated char so every retained char is countable: the
+    // marker's "<N> chars elided of <M> total" must be arithmetically
+    // exact (pre-fix it under-reported by the marker's own length,
+    // since it used originalLength - maxChars).
+    const long = "H".repeat(1_000);
+    for (const opts of [{ maxChars: 120 }, { hint: "re-fetch with offset", maxChars: 140 }]) {
+      const result = trimToolOutput(long, opts);
+      const match = result.output.match(/\[truncated: (\d+) chars elided of (\d+) total/u);
+      expect(match).not.toBeNull();
+      const reportedElided = Number(match![1]);
+      const reportedTotal = Number(match![2]);
+      const retained = (result.output.match(/H/gu) ?? []).length;
+      expect(reportedTotal).toBe(1_000);
+      expect(reportedElided).toBe(1_000 - retained);
+      expect(result.output.length).toBeLessThanOrEqual(opts.maxChars);
+      expect(result.originalLength).toBe(1_000);
+    }
+  });
+
   it("trimToolOutput surfaces the optional hint inside the marker", () => {
     const long = "x".repeat(500);
     const result = trimToolOutput(long, {
