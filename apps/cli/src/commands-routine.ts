@@ -25,6 +25,7 @@ import { join } from "node:path";
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
+import { parseBoundedInt } from "./commands-ask.js";
 import type { ProgramIO } from "./program.js";
 
 interface RoutineOptions {
@@ -110,7 +111,7 @@ export function registerRoutineCommand(program: Command, io: ProgramIO): void {
     .option("--apply", "Write the routine as a fact into ~/.muse/user-memory.json (requires --user)")
     .option("--json", "Emit JSON instead of formatted text")
     .action(async (options: RoutineOptions) => {
-      const days = Math.max(1, Number.parseInt(options.days ?? "30", 10) || 30);
+      const days = parseBoundedInt(options.days, "--days", 1, 365, 30);
       const cutoff = Date.now() - days * 86_400_000;
       const file = activityPath();
       const all = await readActivity(file);
