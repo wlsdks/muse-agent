@@ -400,6 +400,32 @@ describe("McpManager", () => {
     expect(await new McpSecurityPolicyProvider(openStore).isServerAllowed("anything")).toBe(true);
   });
 
+  it("connect() denial is terminal — disabled with NO reconnect loop (mirrors register-time denial)", async () => {
+    const store = new InMemoryMcpServerStore();
+    const policyStore = new InMemoryMcpSecurityPolicyStore({
+      initial: { allowedServerNames: ["only-this-one"] }
+    });
+    await store.save({
+      autoConnect: false,
+      config: { command: "node" },
+      name: "stale-server",
+      transportType: "stdio"
+    });
+    const manager = new McpManager(store, {
+      securityPolicyProvider: new McpSecurityPolicyProvider(policyStore)
+    });
+
+    expect(await manager.connect("stale-server")).toBe(false);
+    expect(manager.getStatus("stale-server")).toBe("disabled");
+
+    // A policy-forbidden server must NOT be armed for reconnect — the
+    // allowlist gates connections, it must not retry one it denies.
+    const health = manager.getHealth("stale-server");
+    expect(health.nextReconnectAt).toBeUndefined();
+    expect(health.reconnectAttempts).toBe(0);
+    await expect(manager.reconnectDue()).resolves.toEqual([]);
+  });
+
   it("marks denied or invalid servers without throwing", async () => {
     const store = new InMemoryMcpServerStore();
     const policyStore = new InMemoryMcpSecurityPolicyStore({

@@ -133,9 +133,19 @@ export class McpManager {
   async connect(name: string): Promise<boolean> {
     const server = await this.store.findByName(name);
 
-    if (!server || !(await this.securityPolicyProvider.isServerAllowed(name)) || !this.connector) {
+    if (server && !(await this.securityPolicyProvider.isServerAllowed(name))) {
+      // Allowlist denial is terminal: disabled + unhealthy, NEVER a
+      // reconnect loop. Mirrors register-time denial and the
+      // fingerprint-mismatch branch — the policy gates connections,
+      // it must not retry one it forbids.
+      this.statuses.set(name, "disabled");
+      this.health.set(name, this.createHealthSnapshot(name, "unhealthy", "Server denied by security policy"));
+      return false;
+    }
+
+    if (!server || !this.connector) {
       this.statuses.set(name, server ? "disabled" : "failed");
-      this.scheduleReconnect(name, server ? "Server denied or connector unavailable" : "Server not found");
+      this.scheduleReconnect(name, server ? "Connector unavailable" : "Server not found");
       return false;
     }
 
