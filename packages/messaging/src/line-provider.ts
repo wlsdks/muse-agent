@@ -1,6 +1,6 @@
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
-import { clampInboundLimit, tryParseJson } from "./provider-helpers.js";
+import { clampInboundLimit, clampOutboundText, tryParseJson } from "./provider-helpers.js";
 import type {
   InboundFetchOptions,
   InboundMessage,
@@ -90,10 +90,15 @@ export class LineProvider implements MessagingProvider {
   }
 
   async send(message: OutboundMessage): Promise<OutboundReceipt> {
-    validateOutboundMessage(message);
+    // Clamp before validation so a long brief / answer is delivered
+    // truncated instead of dropped whole by
+    // validateOutboundMessage's length throw (same as the
+    // Telegram / Discord send path).
+    const outboundText = clampOutboundText(message.text);
+    validateOutboundMessage({ ...message, text: outboundText });
     const response = await this.fetchImpl(`${this.baseUrl}/v2/bot/message/push`, {
       body: JSON.stringify({
-        messages: [{ text: message.text, type: "text" }],
+        messages: [{ text: outboundText, type: "text" }],
         to: message.destination
       }),
       headers: {

@@ -467,6 +467,21 @@ describe("SlackProvider", () => {
       message: expect.stringContaining("channel_not_found")
     });
   });
+
+  it("truncates a >4096-char message instead of dropping it on validation", async () => {
+    let sentText = "";
+    const provider = new SlackProvider({
+      fetch: async (_url, init) => {
+        sentText = (JSON.parse(String(init?.body)) as { text: string }).text;
+        return fakeJsonResponse({ channel: "C123", ok: true, ts: "1700000000.000100" });
+      },
+      token: "xoxb-test"
+    });
+    const receipt = await provider.send({ destination: "C123", text: "Z".repeat(5000) });
+    expect(sentText.length).toBe(4096);
+    expect(sentText.endsWith("… [truncated]")).toBe(true);
+    expect(receipt).toMatchObject({ providerId: "slack" });
+  });
 });
 
 describe("slack-after-store", () => {
@@ -626,6 +641,22 @@ describe("LineProvider", () => {
     });
     await expect(provider.send({ destination: "U-1", text: "hi" }))
       .rejects.toMatchObject({ status: 401 });
+  });
+
+  it("truncates a >4096-char message instead of dropping it on validation", async () => {
+    let sentText = "";
+    const provider = new LineProvider({
+      fetch: async (_url, init) => {
+        sentText = (JSON.parse(String(init?.body)) as { messages: { text: string }[] }).messages[0]!.text;
+        return new Response("{}", { status: 200 });
+      },
+      now: () => new Date("2026-05-10T08:00:00Z"),
+      token: "ch-token"
+    });
+    const receipt = await provider.send({ destination: "U-123", text: "Z".repeat(5000) });
+    expect(sentText.length).toBe(4096);
+    expect(sentText.endsWith("… [truncated]")).toBe(true);
+    expect(receipt).toMatchObject({ providerId: "line" });
   });
 });
 

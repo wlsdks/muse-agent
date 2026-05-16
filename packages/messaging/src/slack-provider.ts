@@ -1,6 +1,6 @@
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
-import { clampInboundLimit, tryParseJson } from "./provider-helpers.js";
+import { clampInboundLimit, clampOutboundText, tryParseJson } from "./provider-helpers.js";
 import { readSlackAfter, writeSlackAfter } from "./slack-after-store.js";
 import type {
   InboundFetchOptions,
@@ -188,9 +188,14 @@ export class SlackProvider implements MessagingProvider {
   }
 
   async send(message: OutboundMessage): Promise<OutboundReceipt> {
-    validateOutboundMessage(message);
+    // Clamp before validation so a long message is delivered
+    // truncated instead of dropped whole by
+    // validateOutboundMessage's length throw (same as the
+    // Telegram / Discord send path).
+    const outboundText = clampOutboundText(message.text);
+    validateOutboundMessage({ ...message, text: outboundText });
     const response = await this.fetchImpl(`${this.baseUrl}/chat.postMessage`, {
-      body: JSON.stringify({ channel: message.destination, text: message.text }),
+      body: JSON.stringify({ channel: message.destination, text: outboundText }),
       headers: {
         authorization: `Bearer ${this.token}`,
         "content-type": "application/json; charset=utf-8"
