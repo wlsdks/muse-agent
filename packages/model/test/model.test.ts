@@ -832,6 +832,31 @@ describe("provider adapter contracts", () => {
     });
   }
 
+  it("ollama native path treats a connection-level fetch rejection as retryable, not a hard fail", async () => {
+    const econn = Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } });
+    const provider = new OllamaProvider({
+      baseUrl: "http://127.0.0.1:11434/v1",
+      defaultModel: "qwen3:8b",
+      fetch: async () => { throw econn; },
+      models: ["qwen3:8b"]
+    });
+
+    await expect(provider.generate({ ...contractRequest, model: "ollama/qwen3:8b" }))
+      .rejects
+      .toMatchObject({ providerId: "ollama", retryable: true });
+
+    const events = [];
+    for await (const event of provider.stream({ ...contractRequest, model: "ollama/qwen3:8b" })) {
+      events.push(event);
+    }
+    expect(events).toEqual([
+      expect.objectContaining({
+        error: expect.objectContaining({ providerId: "ollama", retryable: true }),
+        type: "error"
+      })
+    ]);
+  });
+
   it("anthropic maps model metadata, generate, stream, tool calls, and errors", async () => {
     const provider = new AnthropicProvider({
       defaultModel: "claude-test",

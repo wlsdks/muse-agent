@@ -62,7 +62,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
 
   override async generate(request: ModelRequest): Promise<ModelResponse> {
     const body = this.buildNativeChatBody(request, false);
-    const resp = await this.nativeFetch(`${this.nativeBaseUrl}/api/chat`, {
+    const resp = await this.nativeFetchOrThrow(`${this.nativeBaseUrl}/api/chat`, {
       body: JSON.stringify(body),
       headers: { "content-type": "application/json" },
       method: "POST"
@@ -106,11 +106,22 @@ export class OllamaProvider extends OpenAICompatibleProvider {
 
   override async *stream(request: ModelRequest): AsyncIterable<ModelEvent> {
     const body = this.buildNativeChatBody(request, true);
-    const resp = await this.nativeFetch(`${this.nativeBaseUrl}/api/chat`, {
-      body: JSON.stringify(body),
-      headers: { "content-type": "application/json" },
-      method: "POST"
-    });
+    let resp: Response;
+    try {
+      resp = await this.nativeFetchOrThrow(`${this.nativeBaseUrl}/api/chat`, {
+        body: JSON.stringify(body),
+        headers: { "content-type": "application/json" },
+        method: "POST"
+      });
+    } catch (cause) {
+      yield {
+        error: cause instanceof ModelProviderError
+          ? cause
+          : new ModelProviderError(this.id, cause instanceof Error ? cause.message : String(cause), true),
+        type: "error"
+      };
+      return;
+    }
     if (!resp.ok || !resp.body) {
       yield {
         error: await this.buildNativeError(request, resp, "stream"),
@@ -192,6 +203,23 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         : {})
     };
     yield { response: final, type: "done" };
+  }
+
+  private async nativeFetchOrThrow(url: string, init: RequestInit): Promise<Response> {
+    try {
+      return await this.nativeFetch(url, init);
+    } catch (cause) {
+      // fetch() rejects with no HTTP status on a connection-level
+      // failure — Ollama not running, restarting, or evicting a
+      // cold-loaded model. Transient like a 5xx, so retryable
+      // rather than a hard agent failure.
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      throw new ModelProviderError(
+        this.id,
+        `Ollama request to ${this.nativeBaseUrl}/api/chat failed: ${detail} — is Ollama running? (\`ollama serve\`)`,
+        true
+      );
+    }
   }
 
   private async buildNativeError(
