@@ -79,14 +79,20 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       command
     ) => {
       let payload: Record<string, unknown>;
+      // Validate up front so the API path rejects a bad timestamp
+      // with the same actionable error as --local, instead of
+      // forwarding garbage to the server as a silently-wrong window.
+      if (
+        (options.from && Number.isNaN(new Date(options.from).getTime())) ||
+        (options.to && Number.isNaN(new Date(options.to).getTime()))
+      ) {
+        throw new Error("--from / --to must be ISO 8601 timestamps");
+      }
       if (options.local) {
         const from = options.from ? new Date(options.from) : new Date();
         const to = options.to
           ? new Date(options.to)
           : new Date(from.getTime() + 30 * 24 * 3_600_000);
-        if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
-          throw new Error("--from / --to must be ISO 8601 timestamps");
-        }
         const raw = await localCalendarProvider().listEvents({ from, to });
         // The provider speaks `Date` instances; the API serializes them
         // as `startsAtIso`/`endsAtIso`. Normalise to the API shape so

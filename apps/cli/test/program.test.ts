@@ -1130,6 +1130,27 @@ describe("cli program", () => {
     expect(combined).toContain("Standup");
   });
 
+  it("calendar events rejects an unparseable --from in API mode before any request (goal 261)", async () => {
+    const { io } = captureOutput();
+    const requests: string[] = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (url) => {
+        requests.push(String(url));
+        return new Response("{}");
+      }
+    });
+    await expect(
+      program.parseAsync(
+        ["node", "muse", "--api-url", "http://api.test", "calendar", "events", "--from", "not-a-date"],
+        { from: "node" }
+      )
+    ).rejects.toThrow(/--from \/ --to must be ISO 8601 timestamps/u);
+    // The bad input must be caught before any /api/calendar/events
+    // request — same actionable error the --local path already gave.
+    expect(requests.some((u) => u.includes("/api/calendar/events"))).toBe(false);
+  });
+
   it("memory show / set / clear hit the user-memory routes", async () => {
     // Test pins the API user-id to "me" — the historical default
     // when memory commands were single-tenant. The CLI now resolves
