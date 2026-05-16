@@ -126,7 +126,8 @@ import type {
 import type {
   AgentRuntimeOptions,
   AgentRuntimeStreamEvent,
-  ToolApprovalGate
+  ToolApprovalGate,
+  ToolApprovalGateDecision
 } from "./agent-runtime-types.js";
 
 // Public types and option shapes live in ./agent-runtime-types.ts.
@@ -719,12 +720,23 @@ export class AgentRuntime {
 
     if (this.toolApprovalGate) {
       const risk = this.resolveToolRisk(toolCall.name);
-      const decision = await this.toolApprovalGate({
-        risk,
-        runId: context.runId,
-        toolCall,
-        userId: metadataString(context.input.metadata, "userId")
-      });
+      let decision: ToolApprovalGateDecision;
+      try {
+        decision = await this.toolApprovalGate({
+          risk,
+          runId: context.runId,
+          toolCall,
+          userId: metadataString(context.input.metadata, "userId")
+        });
+      } catch (error) {
+        // Fail-close: a throwing gate (e.g. a corrupt
+        // ~/.muse/trust.json, the gate's data source) must BLOCK
+        // the tool, never crash the run or let the call through.
+        decision = {
+          allowed: false,
+          reason: `approval gate error: ${error instanceof Error ? error.message : String(error)}`
+        };
+      }
       if (!decision.allowed) {
         const reason = decision.reason ?? "tool call rejected by approval gate";
         const executed = blockedToolResult(toolCall, `Error: ${reason}`);

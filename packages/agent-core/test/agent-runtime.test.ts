@@ -928,6 +928,49 @@ describe("AgentRuntime", () => {
     expect(result.response.output).toBe("Blocked, fine.");
   });
 
+  it("toolApprovalGate fails closed: a throwing gate blocks the tool, never crashes the run", async () => {
+    const executeTool = vi.fn(() => ({ ok: true }));
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Run a shell command.",
+          inputSchema: { type: "object" },
+          name: "exec_shell",
+          risk: "execute"
+        },
+        execute: executeTool
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        {
+          id: "tool",
+          model: "test-model",
+          output: "Running.",
+          toolCalls: [{ arguments: { cmd: "ls" }, id: "tc-1", name: "exec_shell" }]
+        },
+        { id: "final", model: "test-model", output: "Gate broke, handled." }
+      ]),
+      // Simulates a corrupt ~/.muse/trust.json: the gate throws.
+      toolApprovalGate: () => { throw new Error("trust.json is corrupt"); },
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "do it", role: "user" }],
+      metadata: { localMode: true },
+      model: "provider/model",
+      runId: "run-gate-throw"
+    });
+
+    // Fail-close: the tool never ran and the run completed cleanly
+    // with the blocked result surfaced (pre-fix the throw rejected
+    // the whole run).
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(result.response.output).toBe("Gate broke, handled.");
+  });
+
   it("toolApprovalGate allows the call through when decision is { allowed: true }", async () => {
     const executeTool = vi.fn(() => ({ ok: true }));
     const toolRegistry = new ToolRegistry([
