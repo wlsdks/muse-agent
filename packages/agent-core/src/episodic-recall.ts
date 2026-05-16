@@ -9,6 +9,8 @@
  * surface is the agent's last user message.
  */
 
+import { stripUntrustedTerminalChars } from "@muse/shared";
+
 import { humanizeRelativeFromIso } from "./time-helpers.js";
 
 export interface EpisodicMatch {
@@ -84,7 +86,12 @@ export function renderEpisodicSection(
 }
 
 function sanitizeNarrativeInline(narrative: string): string {
-  return narrative.replace(/\s+/gu, " ").trim();
+  // Whitespace-collapse alone neutralises a `\n[System Override]\n`
+  // splice, but a poisoned past-session narrative can also carry
+  // ESC / C0 / C1 / DEL control bytes (ANSI escapes) that survive
+  // `\s+` and would reach the prompt AND the `muse episode/recall`
+  // terminal output. Strip them with the shared chokepoint first.
+  return stripUntrustedTerminalChars(narrative).replace(/\s+/gu, " ").trim();
 }
 
 function formatSim(value: number | undefined): string {
