@@ -5354,6 +5354,38 @@ describe("runDueProactiveNotices", () => {
     writeFileSync(garbled, "not json", "utf8");
     expect(await readProactiveHistory(garbled)).toEqual([]);
   });
+
+  it("skips an Invalid-Date calendar event instead of crashing the whole tick", async () => {
+    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-proactive-baddate-"));
+    const sidecarFile = join(dir, "proactive-fired.json");
+
+    const fixedNow = new Date("2026-05-12T14:55:00Z");
+    // A malformed feed / hand-edited calendar.json yields an Invalid
+    // Date. It appears BEFORE a valid imminent event — pre-fix the
+    // throw on `.toISOString()` aborted the loop and the valid event
+    // (Standup) was silently lost every tick.
+    const cal = makeFakeCalendarRegistry([
+      { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-bad", startsAt: new Date("not-a-date"), title: "Corrupt" },
+      { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-ok", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
+    ]);
+    const msg = makeFakeMessagingRegistry();
+
+    const summary = await runDueProactiveNotices({
+      calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+      destination: "@me",
+      messagingRegistry: msg.registry as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
+      now: () => fixedNow,
+      providerId: "telegram",
+      sidecarFile
+    });
+
+    expect(summary).toMatchObject({ fired: 1, imminent: 1, errors: [] });
+    expect(msg.sent).toEqual([{ destination: "@me", providerId: "telegram", text: "⏰ Standup in 5 min" }]);
+  });
 });
 
 describe("runDueFollowups", () => {

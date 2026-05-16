@@ -362,6 +362,12 @@ export async function runDueProactiveNotices(
       const events = await options.calendarRegistry.listEvents({ from: nowDate, to: cutoff });
       for (const event of events) {
         if (event.allDay) continue;
+        // A malformed feed / hand-edited ~/.muse/calendar.json yields
+        // an Invalid Date here. NaN range comparisons are all false,
+        // so without this it slips through and `.toISOString()` below
+        // throws — aborting the whole tick (every later imminent item
+        // silently lost). Mirrors the task path's dueAt NaN guard.
+        if (Number.isNaN(event.startsAt.getTime())) continue;
         if (event.startsAt < nowDate || event.startsAt > cutoff) continue;
         if (isCalendarOptedOut(event)) continue;
         imminent.push({
