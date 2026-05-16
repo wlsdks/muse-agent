@@ -89,6 +89,22 @@ describe("JwtTokenProvider edge cases", () => {
     expect(() => new JwtTokenProvider({ jwtSecret: "short" })).toThrow(AuthError);
   });
 
+  it("fails fast on a non-positive / non-finite jwtExpirationMs (silent auth outage otherwise)", () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1_000]) {
+      expect(() => new JwtTokenProvider({ jwtExpirationMs: bad, jwtSecret: strongSecret }))
+        .toThrow(/jwtExpirationMs must be a positive finite number/u);
+    }
+    try {
+      new JwtTokenProvider({ jwtExpirationMs: Number.NaN, jwtSecret: strongSecret });
+    } catch (error) {
+      expect(error).toBeInstanceOf(AuthError);
+      expect((error as AuthError).code).toBe("INVALID_JWT_EXPIRATION");
+    }
+    // A valid positive value still constructs and mints a usable token.
+    const ok = new JwtTokenProvider({ jwtExpirationMs: 60_000, jwtSecret: strongSecret });
+    expect(ok.parseToken(ok.createToken(sampleUser))?.sub).toBe(sampleUser.id);
+  });
+
   it("rejects a token whose payload was tampered after signing", () => {
     const token = jwt.createToken(sampleUser);
     const [h, p, s] = token.split(".");

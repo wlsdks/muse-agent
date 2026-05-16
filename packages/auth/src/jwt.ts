@@ -65,6 +65,16 @@ export class JwtTokenProvider {
 
   constructor(private readonly properties: AuthProperties) {
     this.jwtExpirationMs = properties.jwtExpirationMs ?? defaultJwtExpirationMs;
+    // `?? default` does NOT catch NaN / Infinity / negative / 0 — any
+    // of those silently mints tokens that are instantly invalid or
+    // pre-expired (total auth outage with no diagnostic). Fail fast,
+    // same posture as the secret check below.
+    if (!Number.isFinite(this.jwtExpirationMs) || this.jwtExpirationMs <= 0) {
+      throw new AuthError(
+        "INVALID_JWT_EXPIRATION",
+        "jwtExpirationMs must be a positive finite number of milliseconds"
+      );
+    }
     this.secret = Buffer.from(properties.jwtSecret);
 
     if (this.secret.byteLength < minimumJwtSecretBytes) {
@@ -188,8 +198,8 @@ function isJwtClaims(value: unknown): value is JwtClaims {
     typeof value.sub === "string" &&
     typeof value.jti === "string" &&
     typeof value.email === "string" &&
-    typeof value.iat === "number" &&
-    typeof value.exp === "number"
+    Number.isFinite(value.iat) &&
+    Number.isFinite(value.exp)
   );
 }
 
