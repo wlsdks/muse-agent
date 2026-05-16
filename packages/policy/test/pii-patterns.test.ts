@@ -9,12 +9,30 @@ import {
 } from "../src/index.js";
 
 describe("PII patterns", () => {
-  it("keeps specific patterns before common patterns", () => {
+  it("scans common patterns before the international group (credit-card ⊃ jp-my-number)", () => {
     expect(allPiiPatterns.map((pattern) => pattern.name)).toEqual([
       ...krPiiPatterns.map((pattern) => pattern.name),
-      ...internationalPiiPatterns.map((pattern) => pattern.name),
-      ...commonPiiPatterns.map((pattern) => pattern.name)
+      ...commonPiiPatterns.map((pattern) => pattern.name),
+      ...internationalPiiPatterns.map((pattern) => pattern.name)
     ]);
+  });
+
+  it("masks a space-grouped credit card fully (jp-my-number must not claim its first 12 digits)", () => {
+    const result = maskPii("my card is 1234 5678 9012 3456 ok");
+    expect(result.text).toBe("my card is ****-****-****-**** ok");
+    expect(result.text).not.toContain("3456");
+    const names = result.findings.map((f) => f.name);
+    expect(names).toContain("credit-card");
+    expect(names).not.toContain("jp-my-number");
+
+    // A genuine standalone 12-digit JP My Number is still masked
+    // (the reorder fixed the overlap, it didn't disable the pattern).
+    const jp = maskPii("my number 1234 5678 9012 please");
+    expect(jp.text).toContain("**** **** ****");
+    expect(jp.findings.map((f) => f.name)).toContain("jp-my-number");
+
+    // The fail-close detection guard classifies it correctly too.
+    expect(findPii("1234 5678 9012 3456").map((f) => f.name)).toContain("credit-card");
   });
 
   it("findPii detects zero-width / fullwidth / entity-split PII the raw regex misses", () => {

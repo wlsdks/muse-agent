@@ -89,10 +89,16 @@ export const commonPiiPatterns: readonly PiiPattern[] = [
   }
 ];
 
+// Common patterns precede the international group on purpose: a
+// space-grouped 16-digit `credit-card` strictly contains a valid
+// 12-digit `jp-my-number` match, and `maskPii`/`findPii` apply
+// patterns in order. Scanning the broader card first claims the
+// whole span so the last 4 digits can't leak and the finding is
+// classified as `credit-card`, not `jp-my-number`.
 export const allPiiPatterns: readonly PiiPattern[] = [
   ...krPiiPatterns,
-  ...internationalPiiPatterns,
-  ...commonPiiPatterns
+  ...commonPiiPatterns,
+  ...internationalPiiPatterns
 ];
 
 export function maskPii(text: string, patterns: readonly PiiPattern[] = allPiiPatterns): PiiMaskResult {
