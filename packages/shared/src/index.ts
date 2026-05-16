@@ -43,6 +43,12 @@ export function hmacSha256Hex(input: string | Buffer, secret: string | Buffer): 
 }
 
 export function verifyHmacSha256Hex(input: string | Buffer, signature: string, secret: string | Buffer): boolean {
+  // Fail closed: a missing/non-string signature (an absent HTTP
+  // header reaching here despite the type) must reject, never
+  // throw a 500 from `.startsWith` on a security boundary.
+  if (typeof signature !== "string") {
+    return false;
+  }
   const normalized = signature.startsWith("sha256=") ? signature.slice("sha256=".length) : signature;
 
   if (!/^[0-9a-f]{64}$/iu.test(normalized)) {

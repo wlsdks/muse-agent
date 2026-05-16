@@ -27,6 +27,25 @@ describe("shared crypto helpers", () => {
     expect(verifyHmacSha256Hex("payload", signature, "wrong")).toBe(false);
     expect(verifyHmacSha256Hex("payload", "not-a-hex-signature", "secret")).toBe(false);
   });
+
+  it("fails closed on every malformed signature instead of throwing or accepting", () => {
+    const sig = hmacSha256Hex("payload", "secret"); // 64 lowercase hex
+
+    // Uppercase hex is still valid (the regex is case-insensitive).
+    expect(verifyHmacSha256Hex("payload", sig.toUpperCase(), "secret")).toBe(true);
+    // A tampered but still-64-valid-hex signature is rejected.
+    const tampered = `${sig.slice(0, 63)}${sig[63] === "a" ? "b" : "a"}`;
+    expect(verifyHmacSha256Hex("payload", tampered, "secret")).toBe(false);
+    // Wrong-length hex must reject, NOT crash timingSafeEqual on a
+    // buffer length mismatch.
+    expect(verifyHmacSha256Hex("payload", sig.slice(0, 63), "secret")).toBe(false);
+    expect(verifyHmacSha256Hex("payload", `${sig}ab`, "secret")).toBe(false);
+    expect(verifyHmacSha256Hex("payload", "", "secret")).toBe(false);
+    // A non-string signature (absent header reaching here) fails
+    // closed — no `.startsWith` TypeError on the security boundary.
+    expect(verifyHmacSha256Hex("payload", undefined as unknown as string, "secret")).toBe(false);
+    expect(verifyHmacSha256Hex("payload", 12345 as unknown as string, "secret")).toBe(false);
+  });
 });
 
 describe("boundary and cancellation helpers", () => {
