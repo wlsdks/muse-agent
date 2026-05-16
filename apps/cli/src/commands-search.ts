@@ -146,9 +146,9 @@ export function registerSearchCommand(program: Command, io: ProgramIO): void {
           // Scrub title + snippet — external results can quote
           // credentials and the note may sync to a third party.
           // URLs stay verbatim (mangling breaks the clickable link).
-          const title = redactSecretsInText((r.title ?? "").trim() || "(untitled)");
+          const title = scrubResultText(r.title ?? "") || "(untitled)";
           const url = (r.url ?? "").trim();
-          const snippet = redactSecretsInText((r.snippet ?? "").replace(/\s+/gu, " ").trim());
+          const snippet = scrubResultText(r.snippet ?? "");
           lines.push(`## ${(i + 1).toString()}. ${title}`);
           if (url.length > 0) lines.push(`<${url}>`);
           if (snippet.length > 0) lines.push("", snippet);
@@ -189,6 +189,16 @@ export function registerSearchCommand(program: Command, io: ProgramIO): void {
         io.stdout("\n");
       }
     });
+}
+
+// Scrub an external web-result title/snippet before it is
+// persisted into a markdown note (which feeds RAG and may sync
+// to a third party). Strip ESC / C0 / C1 / DEL, collapse
+// whitespace (so a multi-line title can't splice a fake `##`
+// heading), then redact credential shapes. Parity with the
+// console-display path's stripUntrustedTerminalChars.
+export function scrubResultText(raw: string): string {
+  return redactSecretsInText(stripUntrustedTerminalChars(raw).replace(/\s+/gu, " ").trim());
 }
 
 // Absent/blank → fallback. A genuine number is truncated and
