@@ -1018,6 +1018,65 @@ describe("AgentRuntime", () => {
     expect(result.response.output).toBe("Done.");
   });
 
+  it("maxRunWallclockMs blocks the rest of a multi-call batch once the deadline passes mid-turn", async () => {
+    const executeTool = vi.fn(async () => {
+      await new Promise((r) => setTimeout(r, 60));
+      return "slow-result";
+    });
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Slow tool.",
+          inputSchema: { type: "object" },
+          name: "slow_tool",
+          risk: "read"
+        },
+        execute: executeTool
+      }
+    ]);
+    // Turn 1 emits TWO calls in one response. The first executes
+    // (sleeps 60ms, past the 20ms deadline); the second must be
+    // blocked by the per-call deadline guard, not executed.
+    const provider: ModelProvider = {
+      id: "stub",
+      listModels: async () => [],
+      generate: async (req: ModelRequest) => {
+        const isFirst = req.tools !== undefined && req.tools.length > 0;
+        if (isFirst) {
+          return {
+            id: "tool",
+            model: "test-model",
+            output: "Working...",
+            toolCalls: [
+              { arguments: {}, id: "tc-1", name: "slow_tool" },
+              { arguments: {}, id: "tc-2", name: "slow_tool" }
+            ]
+          };
+        }
+        return { id: "final", model: "test-model", output: "Done." };
+      },
+      stream: async function* () { /* unused */ }
+    };
+    const runtime = createAgentRuntime({
+      maxRunWallclockMs: 20,
+      maxToolCalls: 10,
+      modelProvider: provider,
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "go", role: "user" }],
+      model: "provider/model"
+    });
+
+    // tc-1 ran; tc-2 was blocked mid-batch by the wall-clock guard
+    // (maxToolCalls was 10, so the count limit was not the gate).
+    // The run still completed cleanly — the blocked result kept the
+    // assistant/tool message pairing intact.
+    expect(executeTool).toHaveBeenCalledOnce();
+    expect(result.response.output).toBe("Done.");
+  });
+
   it("filters risky tools before exposing them to the model", async () => {
     const generated: ModelRequest[] = [];
     const toolRegistry = new ToolRegistry([

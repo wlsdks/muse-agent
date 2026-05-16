@@ -151,16 +151,29 @@ export async function executeModelLoop(
     intermediateMessages.push(assistantMessage);
     messages = [...messages, assistantMessage];
 
+    // A batch the model already emitted is honoured even if the
+    // deadline passed during the model call (the established
+    // contract: the deadline disables tools for the *next* turn).
+    // But once the deadline is crossed *while we run this batch*
+    // sequentially — N calls each hitting a slow/hung MCP server —
+    // the remaining calls are skipped so the wall-clock cap is a
+    // real execution bound, not just a between-turn boundary.
+    const batchStartedPastDeadline = deadlineMs !== undefined && Date.now() > deadlineMs;
     for (const toolCall of calls) {
       const remaining = runner.maxToolCalls - toolCallCount;
-      const duplicate = remaining > 0 ? deduplicator.check(toolCall) : undefined;
+      const crossedDeadlineMidBatch = !batchStartedPastDeadline
+        && deadlineMs !== undefined && Date.now() > deadlineMs;
+      const canRun = remaining > 0 && !crossedDeadlineMidBatch;
+      const duplicate = canRun ? deduplicator.check(toolCall) : undefined;
       const executed = duplicate?.duplicate
         ? { result: duplicate.result, toolCall }
-        : remaining > 0
+        : canRun
           ? await runner.executeToolCall(context, toolCall, activeTools ?? [])
-          : blockedToolResult(toolCall, "Error: max tool call limit reached");
+          : blockedToolResult(toolCall, crossedDeadlineMidBatch && remaining > 0
+              ? "Error: run wall-clock deadline reached"
+              : "Error: max tool call limit reached");
 
-      toolCallCount += remaining > 0 ? 1 : 0;
+      toolCallCount += canRun ? 1 : 0;
       deduplicator.record(toolCall, executed.result);
       toolsUsed.push(toolCall.name);
       toolResults.push(executed);
@@ -244,17 +257,23 @@ export async function* executeStreamingModelLoop(
     intermediateMessages.push(assistantMessage);
     messages = [...messages, assistantMessage];
 
+    const batchStartedPastDeadline = deadlineMs !== undefined && Date.now() > deadlineMs;
     for (const toolCall of calls) {
       const remaining = runner.maxToolCalls - toolCallCount;
-      const duplicate = remaining > 0 ? deduplicator.check(toolCall) : undefined;
+      const crossedDeadlineMidBatch = !batchStartedPastDeadline
+        && deadlineMs !== undefined && Date.now() > deadlineMs;
+      const canRun = remaining > 0 && !crossedDeadlineMidBatch;
+      const duplicate = canRun ? deduplicator.check(toolCall) : undefined;
       const executed = duplicate?.duplicate
         ? { result: duplicate.result, toolCall }
-        : remaining > 0
+        : canRun
           ? await runner.executeToolCall(context, toolCall, activeTools ?? [])
-          : blockedToolResult(toolCall, "Error: max tool call limit reached");
+          : blockedToolResult(toolCall, crossedDeadlineMidBatch && remaining > 0
+              ? "Error: run wall-clock deadline reached"
+              : "Error: max tool call limit reached");
 
       yield { runId: context.runId, toolCall, type: "tool-result" };
-      toolCallCount += remaining > 0 ? 1 : 0;
+      toolCallCount += canRun ? 1 : 0;
       deduplicator.record(toolCall, executed.result);
       toolsUsed.push(toolCall.name);
       toolResults.push(executed);
