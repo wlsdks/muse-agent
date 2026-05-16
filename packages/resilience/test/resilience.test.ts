@@ -177,6 +177,18 @@ describe("retry and timeout", () => {
       .rejects.toBeInstanceOf(TimeoutError);
   });
 
+  it("treats a non-finite timeout as no-timeout instead of an instant TimeoutError", async () => {
+    // NaN / Infinity slip past `<= 0` and Node clamps the timer to
+    // ~1ms — the operation must still run to completion, not die.
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      const value = await withTimeout(
+        () => new Promise<string>((resolve) => setTimeout(() => resolve("done"), 15)),
+        bad
+      );
+      expect(value).toBe("done");
+    }
+  });
+
   it("computes bounded retry delays", () => {
     expect(computeRetryDelay(3, { initialDelayMs: 100, maxDelayMs: 250, multiplier: 2 })).toBe(250);
   });

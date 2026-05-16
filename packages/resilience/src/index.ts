@@ -355,7 +355,11 @@ export async function withTimeout<T>(
   timeoutMs: number,
   abortControllerFactory: () => AbortController = () => new AbortController()
 ): Promise<T> {
-  if (timeoutMs <= 0) {
+  // Non-finite slips past `<= 0`: setTimeout(NaN/Infinity) is
+  // clamped by Node to ~1ms, so a mis-configured timeout would
+  // make every call instantly TimeoutError. Treat it as
+  // "no timeout" — the safe, least-surprising default.
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     return operation(abortControllerFactory().signal);
   }
 
