@@ -26,4 +26,13 @@ describe("parseBoundedFlag (proactive daemon cadence flags)", () => {
     expect(() => parseBoundedFlag("-5", "--lead-minutes", 1, 1_440, 10)).toThrow(/got '-5'/u);
     expect(() => parseBoundedFlag("1O", "--lead-minutes", 1, 1_440, 10)).toThrow(/got '1O'/u);
   });
+
+  it("enforces the history `--limit` [1, 500] bounds", () => {
+    expect(parseBoundedFlag(undefined, "--limit", 1, 500, 20)).toBe(20);
+    expect(parseBoundedFlag("50", "--limit", 1, 500, 20)).toBe(50);
+    expect(parseBoundedFlag("99999", "--limit", 1, 500, 20)).toBe(500); // clamp high
+    expect(() => parseBoundedFlag("50abc", "--limit", 1, 500, 20))
+      .toThrow(/--limit must be an integer in \[1, 500\]/u);
+    expect(() => parseBoundedFlag("0", "--limit", 1, 500, 20)).toThrow(/\[1, 500\]/u);
+  });
 });

@@ -107,9 +107,16 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
     .option("--lead-minutes <minutes>", "Override MUSE_PROACTIVE_LEAD_MINUTES for this scan (default 10)")
     .action(async (options: { readonly leadMinutes?: string }, _command) => {
       const e = env();
-      const leadMinutes = options.leadMinutes
-        ? Math.max(1, Number.parseInt(options.leadMinutes, 10) || 10)
-        : Number.parseInt(e.MUSE_PROACTIVE_LEAD_MINUTES?.trim() ?? "10", 10) || 10;
+      // The --lead-minutes flag is strict; an absent flag falls
+      // back to the env default (env keeps its lenient contract —
+      // out of the strict-numeric line's CLI-flag scope).
+      const leadMinutes = parseBoundedFlag(
+        options.leadMinutes,
+        "--lead-minutes",
+        1,
+        1_440,
+        Number.parseInt(e.MUSE_PROACTIVE_LEAD_MINUTES?.trim() ?? "10", 10) || 10
+      );
       const now = new Date();
       const cutoff = new Date(now.getTime() + leadMinutes * 60_000);
 
@@ -578,7 +585,7 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
     .action(async (options: { readonly limit?: string; readonly json?: boolean }) => {
       const e = env();
       const file = resolveProactiveHistoryFile(e);
-      const limit = Math.max(1, Math.min(500, Number.parseInt(options.limit ?? "20", 10) || 20));
+      const limit = parseBoundedFlag(options.limit, "--limit", 1, 500, 20);
       const entries = await readProactiveHistory(file, limit);
       if (options.json) {
         io.stdout(`${JSON.stringify({ entries, total: entries.length }, null, 2)}\n`);
