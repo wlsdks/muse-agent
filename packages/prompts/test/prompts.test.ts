@@ -339,6 +339,36 @@ Report the successful issue lookup, state the pull request lookup failed, and of
     expect(rendered.match(/\[Example 1 - Compare options\]/g)).toHaveLength(1);
   });
 
+  it("disambiguates two exemplars that share a number (bilingual file) instead of collapsing them", async () => {
+    const bilingual = `
+[Example 1 - English compare]
+
+<scenario>User asks: "Compare the search options"</scenario>
+
+<example type="good">English answer body.</example>
+
+[예시 1 - 한국어 비교]
+
+<scenario>사용자 질문: "검색 옵션을 비교"</scenario>
+
+<example type="good">한국어 답변 본문.</example>
+`;
+    const docs = parseExemplarMarkdown(bilingual);
+    expect(docs).toHaveLength(2);
+    // First keeps the stable `exemplar-1` contract; the collision
+    // gets a unique id (not silently merged).
+    expect(docs[0]?.id).toBe("exemplar-1");
+    expect(docs[1]?.id).not.toBe(docs[0]?.id);
+    expect(new Set(docs.map((d) => d.id)).size).toBe(2);
+
+    // Both survive id-dedup in the retriever (pre-fix the second was
+    // dropped as a duplicate id).
+    const retriever = new InMemoryExemplarRetriever(bilingual, { topK: 5 });
+    const rendered = await retriever.retrieveTopK("Compare the 검색 옵션을 비교 options", 5);
+    expect(rendered).toContain("[Example 1 - English compare]");
+    expect(rendered).toContain("[예시 1 - 한국어 비교]");
+  });
+
   it("falls back to full exemplar content when retrieval has no usable match", async () => {
     const fallback = new FullExemplarRetriever("full fallback examples");
     const retriever = new InMemoryExemplarRetriever(exemplarMarkdown, {

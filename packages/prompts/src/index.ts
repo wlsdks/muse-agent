@@ -238,6 +238,7 @@ export function parseExemplarMarkdown(markdown: string): readonly ExemplarDocume
   }
 
   const documents: ExemplarDocument[] = [];
+  const seenIds = new Set<string>();
 
   for (const [position, match] of matches.entries()) {
     if (match.index === undefined) {
@@ -254,9 +255,19 @@ export function parseExemplarMarkdown(markdown: string): readonly ExemplarDocume
       continue;
     }
 
+    // `id` keyed off the human number stays `exemplar-N` for a
+    // well-formed file, but two blocks can legitimately share a
+    // number (a bilingual file with `[Example 1 …]` AND
+    // `[예시 1 …]`). Suffix collisions with the parse position so
+    // the second isn't silently dropped by id-dedup / unreachable
+    // by pinnedIds.
+    const baseId = `exemplar-${index}`;
+    const id = seenIds.has(baseId) ? `${baseId}-${position}` : baseId;
+    seenIds.add(id);
+
     documents.push({
       body: block,
-      id: `exemplar-${index}`,
+      id,
       index,
       scenario,
       title: `[${match[0].slice(1, -1).trim()}]`
