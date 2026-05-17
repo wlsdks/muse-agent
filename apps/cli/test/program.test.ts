@@ -4207,6 +4207,14 @@ describe("cli program", () => {
     expect(distant).toContain("2024");
     // Invalid input returns the original string.
     expect(formatRelativeTime("not-a-date", now)).toBe("not-a-date");
+    // Non-boundary seconds tier still reads in seconds.
+    expect(formatRelativeTime("2026-05-14T11:59:15Z", now)).toBe("45s ago");
+    // Upper-boundary rounding must PROMOTE, never emit an
+    // out-of-range unit count ("60s"/"60m"/"24h").
+    expect(formatRelativeTime("2026-05-14T11:59:00.400Z", now)).toBe("1m ago");   // 59.6s
+    expect(formatRelativeTime("2026-05-14T11:00:18Z", now)).toBe("1h ago");       // 59.7m
+    expect(formatRelativeTime("2026-05-13T12:18:00Z", now)).toBe("1d ago");       // 23.7h
+    expect(formatRelativeTime("2026-05-14T12:00:59.600Z", now)).toBe("in 1m");    // +59.6s
   });
 
   it("muse status --json carries schemaVersion (goal 064)", async () => {

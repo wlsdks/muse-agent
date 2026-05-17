@@ -289,13 +289,17 @@ export function formatRelativeTime(iso: string, now: Date = new Date(), timeZone
   const pick = (n: number, unit: string): string => `${past ? "" : "in "}${n.toString()}${unit}${past ? " ago" : ""}`;
 
   if (absSec < 5) return past ? "just now" : "in a moment";
-  if (absSec < 60) return pick(Math.round(absSec), "s");
-  const absMin = absSec / 60;
-  if (absMin < 60) return pick(Math.round(absMin), "m");
-  const absHr = absMin / 60;
-  if (absHr < 24) return pick(Math.round(absHr), "h");
-  const absDay = absHr / 24;
-  if (absDay < 7) return pick(Math.round(absDay), "d");
+  // Promote on the ROUNDED value, not the raw ratio: 59.6s must
+  // read "1m ago", not "60s ago" (likewise 60m→1h, 24h→1d). A tier
+  // whose rounded count hits its ceiling falls through to the next.
+  const sec = Math.round(absSec);
+  if (sec < 60) return pick(sec, "s");
+  const min = Math.round(absSec / 60);
+  if (min < 60) return pick(min, "m");
+  const hr = Math.round(absSec / 3600);
+  if (hr < 24) return pick(hr, "h");
+  const day = Math.round(absSec / 86400);
+  if (day < 7) return pick(day, "d");
   // > 7 days: defer to the absolute formatter so the table stays
   // readable (we're not going to invent "2 weeks ago" precision
   // when the ISO is right there).
