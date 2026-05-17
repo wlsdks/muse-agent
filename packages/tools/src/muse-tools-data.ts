@@ -12,6 +12,7 @@ import type { MuseTool } from "./index.js";
  */
 
 const MATH_EXPRESSION = /^[\s\d+\-*/().,%]+$/u;
+const MATH_WHITESPACE = /\s/u;
 
 export function createMathEvalTool(): MuseTool {
   return {
@@ -384,7 +385,9 @@ function evaluateArithmetic(expression: string): number {
   }
 
   function skipWhitespace(): void {
-    while (cursor < stripped.length && stripped[cursor] === " ") {
+    // Skip the same \s class MATH_EXPRESSION admits: a tab/newline
+    // accepted by the validator must not then break the parser.
+    while (cursor < stripped.length && MATH_WHITESPACE.test(stripped[cursor] ?? "")) {
       cursor += 1;
     }
   }

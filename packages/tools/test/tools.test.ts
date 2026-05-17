@@ -917,6 +917,21 @@ describe("createMuseTools", () => {
     });
   });
 
+  it("math_eval accepts the full whitespace class the validator admits (tab/newline)", async () => {
+    const tool = getTool("math_eval");
+    // MATH_EXPRESSION admits \s, so a tab/newline-separated
+    // expression must evaluate, not error with "expected number".
+    expect(await tool.execute({ expression: "2 +\t3" }, { runId: "run-1" }))
+      .toMatchObject({ result: 5 });
+    expect(await tool.execute({ expression: "10 *\n2" }, { runId: "run-1" }))
+      .toMatchObject({ result: 20 });
+    expect(await tool.execute({ expression: "  4\t*\t(1 +\n1) " }, { runId: "run-1" }))
+      .toMatchObject({ result: 8 });
+    // Plain-space expressions are unchanged (no regression).
+    expect(await tool.execute({ expression: "7 * 6" }, { runId: "run-1" }))
+      .toMatchObject({ result: 42 });
+  });
+
   it("math_eval rejects characters outside the safe set without invoking eval", async () => {
     const tool = getTool("math_eval");
     expect(await tool.execute({ expression: "1 + globalThis" }, { runId: "run-1" })).toEqual({
