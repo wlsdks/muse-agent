@@ -38,6 +38,7 @@ export {
 } from "./openai-tts.js";
 export {
   PiperTtsProvider,
+  createPiperRunner,
   type PiperRunResult,
   type PiperRunner,
   type PiperTtsProviderOptions

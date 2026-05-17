@@ -53,7 +53,18 @@ export interface PiperTtsProviderOptions {
   readonly modelPath: string;
   /** Test seam. Defaults to `node:child_process.spawn`. */
   readonly runner?: PiperRunner;
+  /**
+   * Hard wall-clock cap for a single spawn. A hung piper (stuck
+   * ONNX voice load, wedged inference) would otherwise hang the
+   * voice-output loop forever — CLAUDE.md: tool loops have
+   * explicit timeouts. Default 120 s (covers cold model load).
+   * Only applies to the built-in spawn runner; an injected
+   * `runner` owns its own lifecycle.
+   */
+  readonly timeoutMs?: number;
 }
+
+const DEFAULT_PIPER_TIMEOUT_MS = 120_000;
 
 /**
  * Local Piper TTS adapter. Spawns `piper -m voice.onnx -f out.wav`,
@@ -78,7 +89,11 @@ export class PiperTtsProvider implements TextToSpeechProvider {
     this.id = options.id ?? "piper";
     this.binaryPath = options.binaryPath ?? "piper";
     this.modelPath = options.modelPath;
-    this.runner = options.runner ?? defaultRunner;
+    const timeoutMs =
+      typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+        ? options.timeoutMs
+        : DEFAULT_PIPER_TIMEOUT_MS;
+    this.runner = options.runner ?? createPiperRunner(timeoutMs);
   }
 
   describe(): TtsProviderInfo {
@@ -149,18 +164,33 @@ export class PiperTtsProvider implements TextToSpeechProvider {
   }
 }
 
-async function defaultRunner(
-  binary: string,
-  args: readonly string[],
-  stdin: string
-): Promise<PiperRunResult> {
-  return new Promise((resolve, reject) => {
+/**
+ * The built-in spawn runner, parameterised by a hard timeout that
+ * SIGKILLs a hung piper and rejects, so the voice-output loop
+ * fails fast instead of hanging forever. Exported for direct
+ * timeout coverage.
+ */
+export function createPiperRunner(timeoutMs: number = DEFAULT_PIPER_TIMEOUT_MS): PiperRunner {
+  return (binary, args, stdin) => new Promise<PiperRunResult>((resolve, reject) => {
     const child = spawn(binary, [...args], { stdio: ["pipe", "ignore", "pipe"] });
     let stderr = "";
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, timeoutMs);
 
     child.stderr?.on("data", (chunk) => { stderr += chunk.toString(); });
-    child.on("error", reject);
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
     child.on("close", (exitCode) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        reject(new Error(`piper timed out after ${timeoutMs.toString()}ms and was killed`));
+        return;
+      }
       resolve({ exitCode, stderr });
     });
 

@@ -13,6 +13,7 @@ import {
   VoiceProviderRegistry,
   VoiceValidationError,
   WhisperCppSttProvider,
+  createPiperRunner,
   createWhisperCppRunner,
   buildGeminiLiveAudioFrame,
   buildGeminiLiveEndTurnFrame,
@@ -299,6 +300,21 @@ describe("WhisperCppSttProvider", () => {
 });
 
 describe("PiperTtsProvider", () => {
+  it("createPiperRunner SIGKILLs a hung process and rejects (no infinite hang)", async () => {
+    const runner = createPiperRunner(120);
+    const start = Date.now();
+    await expect(
+      runner(process.execPath, ["-e", "setInterval(() => {}, 1000)"], "hello")
+    ).rejects.toThrow(/timed out after 120ms and was killed/u);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  it("createPiperRunner resolves normally for a fast-exiting process", async () => {
+    const runner = createPiperRunner(10_000);
+    const result = await runner(process.execPath, ["-e", "process.exit(0)"], "hi");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("requires a modelPath", () => {
     expect(() => new PiperTtsProvider({ modelPath: "", runner: noopPiperRunner() })).toThrow(
       VoiceValidationError
