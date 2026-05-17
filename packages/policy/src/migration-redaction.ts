@@ -1,4 +1,4 @@
-export type RedactionKind = "email" | "url" | "token" | "path" | "private-term";
+export type RedactionKind = "email" | "url" | "token" | "path" | "connection" | "private-term";
 
 export interface RedactionFinding {
   readonly kind: RedactionKind;
@@ -21,6 +21,16 @@ interface RedactionPattern {
 }
 
 const defaultPatterns: readonly RedactionPattern[] = [
+  {
+    // `<scheme>://user:pass@host` — the canonical migration-log
+    // secret (postgres/mysql/redis/mongodb/amqp connection URIs
+    // with an inline password). The http-only `url` rule below
+    // would leave any non-http scheme fully in cleartext. Runs
+    // FIRST so credentials are stripped before the generic rule.
+    kind: "connection",
+    pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^\s/?#@:]*:[^\s/?#@]+@[^\s)"'<>]+/gi,
+    replacement: "[redacted-connection]"
+  },
   {
     kind: "email",
     pattern: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
