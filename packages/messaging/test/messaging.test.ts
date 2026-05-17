@@ -205,6 +205,23 @@ describe("DiscordProvider", () => {
     await provider.send({ destination: "ch-9", text: "short" });
     expect(sentContent).toBe("short");
   });
+
+  it("suppresses all mention resolution so @everyone in text can't ping the server (goal 315)", async () => {
+    let body: { content: string; allowed_mentions?: { parse: readonly string[] } } = { content: "" };
+    const provider = new DiscordProvider({
+      baseUrl: "https://disc.test/api",
+      fetch: async (_url, init) => {
+        body = JSON.parse(String(init?.body)) as typeof body;
+        return fakeJsonResponse({ id: "msg-3" });
+      },
+      token: "BOT123"
+    });
+    await provider.send({ destination: "ch-9", text: "reminder: ping @everyone and <@123> about it" });
+    // Text is sent verbatim (not stripped) …
+    expect(body.content).toBe("reminder: ping @everyone and <@123> about it");
+    // … but Discord is told to resolve no mentions at all.
+    expect(body.allowed_mentions).toEqual({ parse: [] });
+  });
 });
 
 describe("DiscordProvider.fetchInbound", () => {

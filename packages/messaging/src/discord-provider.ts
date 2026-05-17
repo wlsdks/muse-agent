@@ -194,7 +194,11 @@ export class DiscordProvider implements MessagingProvider {
     validateOutboundMessage({ ...message, text: outboundText });
     const url = `${this.baseUrl}/${this.apiVersion}/channels/${encodeURIComponent(message.destination)}/messages`;
     const response = await this.fetchImpl(url, {
-      body: JSON.stringify({ content: outboundText }),
+      // `parse: []` suppresses ALL mention resolution: a literal
+      // `@everyone` / `@here` / `<@id>` in agent output (a quote, a
+      // code snippet) would otherwise ping the whole server. The
+      // text still shows verbatim; it just doesn't notify.
+      body: JSON.stringify({ allowed_mentions: { parse: [] }, content: outboundText }),
       headers: {
         authorization: `Bot ${this.token}`,
         "content-type": "application/json"
