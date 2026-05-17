@@ -11,6 +11,8 @@ import {
   isWorkspaceMutationPrompt,
   planToolExecutionOrder,
   parseRunnerCommandRequest,
+  invokeRustRunner,
+  runnerWatchdogMs,
   shortenToolDescription,
   ToolExecutor,
   ToolRegistry,
@@ -318,6 +320,34 @@ describe("tool utilities", () => {
       toolName: "post_slack_message"
     }));
   });
+});
+
+describe("Rust runner watchdog", () => {
+  it("runnerWatchdogMs = request timeout + grace, or a default when no timeout", () => {
+    expect(runnerWatchdogMs({ command: "x" })).toBe(120_000);
+    expect(runnerWatchdogMs({ command: "x", timeoutMs: 1_000 })).toBe(6_000);
+    expect(runnerWatchdogMs({ command: "x", timeoutMs: 1 })).toBe(5_001);
+  });
+
+  it("SIGKILLs a wedged runner process and resolves timedOut (no infinite hang)", async () => {
+    const { mkdtempSync, writeFileSync, chmodSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-runner-hang-"));
+    const script = join(dir, "hung-runner");
+    // A real executable that never exits and ignores stdin — proves
+    // the TS watchdog actually kills it, not just the test timing out.
+    writeFileSync(script, `#!${process.execPath}\nsetInterval(() => {}, 1000);\n`);
+    chmodSync(script, 0o755);
+
+    const start = Date.now();
+    const result = await invokeRustRunner(script, { command: "noop", timeoutMs: 1 });
+    expect(result.timedOut).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/watchdog and was killed/u);
+    // watchdog = 1 + 5000 grace; killed well before any 15s test cap.
+    expect(Date.now() - start).toBeLessThan(9_000);
+  }, 15_000);
 });
 
 describe("Rust runner tool", () => {

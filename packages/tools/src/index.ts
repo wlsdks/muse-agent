@@ -650,6 +650,7 @@ export {
   createRustRunnerTool,
   invokeRustRunner,
   parseRunnerCommandRequest,
+  runnerWatchdogMs,
   type RunnerCommandRequest,
   type RunnerCommandResponse,
   type RustRunnerToolOptions

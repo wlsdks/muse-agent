@@ -76,6 +76,23 @@ export function createRustRunnerTool(options: RustRunnerToolOptions = {}): MuseT
   };
 }
 
+const RUNNER_WATCHDOG_GRACE_MS = 5_000;
+const DEFAULT_RUNNER_WATCHDOG_MS = 120_000;
+
+/**
+ * TS-side watchdog cap. The command timeout itself is enforced by
+ * the Rust runner (it reports `timedOut`), so the watchdog only
+ * guards against the runner *process* wedging (deadlock, zombie,
+ * never closing stdout). It must outlast the runner's own deadline
+ * by a grace margin so a legitimately long approved command isn't
+ * killed before the runner can enforce + report its timeout.
+ */
+export function runnerWatchdogMs(request: RunnerCommandRequest): number {
+  return request.timeoutMs !== undefined
+    ? request.timeoutMs + RUNNER_WATCHDOG_GRACE_MS
+    : DEFAULT_RUNNER_WATCHDOG_MS;
+}
+
 export async function invokeRustRunner(
   runnerPath: string,
   request: RunnerCommandRequest
@@ -86,11 +103,34 @@ export async function invokeRustRunner(
     });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
+    let settled = false;
+    const settle = (response: RunnerCommandResponse): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(watchdog);
+      resolve(response);
+    };
+
+    const watchdog = setTimeout(() => {
+      const alreadySettled = settled;
+      child.kill("SIGKILL");
+      if (!alreadySettled) {
+        settle({
+          error: `runner process exceeded the ${runnerWatchdogMs(request).toString()}ms watchdog and was killed`,
+          ok: false,
+          status: null,
+          stderr: Buffer.concat(stderr).toString("utf8"),
+          stdout: Buffer.concat(stdout).toString("utf8"),
+          timedOut: true,
+          truncated: false
+        });
+      }
+    }, runnerWatchdogMs(request));
 
     child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
     child.on("error", (error) => {
-      resolve({
+      settle({
         error: error.message,
         ok: false,
         status: null,
@@ -105,11 +145,11 @@ export async function invokeRustRunner(
       const parsed = parseRunnerResponse(output);
 
       if (parsed) {
-        resolve(parsed);
+        settle(parsed);
         return;
       }
 
-      resolve({
+      settle({
         error: "runner returned invalid JSON",
         ok: false,
         status: null,
