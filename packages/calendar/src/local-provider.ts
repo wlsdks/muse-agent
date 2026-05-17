@@ -235,13 +235,23 @@ function applyOptionalArray(
 }
 
 function isPersistedEvent(value: unknown): value is PersistedEvent {
+  // Require startsAt/endsAt to actually PARSE: a hand-edited /
+  // imported calendar.json with `"tomorrow"` or a typo'd date
+  // would otherwise pass the type guard, become an Invalid Date,
+  // and then vanish silently from every listEvents view (NaN
+  // fails the range filter). Drop it here instead — the same
+  // unparseable-event posture CalDAV's parseVEvent uses.
   return Boolean(value)
     && typeof value === "object"
     && typeof (value as PersistedEvent).id === "string"
     && typeof (value as PersistedEvent).title === "string"
-    && typeof (value as PersistedEvent).startsAt === "string"
-    && typeof (value as PersistedEvent).endsAt === "string"
+    && isParsableDateString((value as PersistedEvent).startsAt)
+    && isParsableDateString((value as PersistedEvent).endsAt)
     && typeof (value as PersistedEvent).allDay === "boolean";
+}
+
+function isParsableDateString(value: unknown): value is string {
+  return typeof value === "string" && !Number.isNaN(new Date(value).getTime());
 }
 
 function isFileNotFound(error: unknown): boolean {

@@ -125,6 +125,31 @@ describe("LocalCalendarProvider", () => {
     expect(events).toEqual([]);
   });
 
+  it("drops a persisted event with an unparseable date instead of silently NaN-filtering it", async () => {
+    writeFileSync(join(dir, "calendar.json"), JSON.stringify({
+      events: [
+        {
+          allDay: false,
+          endsAt: "2026-05-15T11:00:00Z",
+          id: "ok-1",
+          startsAt: "2026-05-15T10:00:00Z",
+          title: "Valid"
+        },
+        {
+          allDay: false,
+          endsAt: "later",
+          id: "bad-1",
+          startsAt: "tomorrow",
+          title: "Corrupt"
+        }
+      ]
+    }));
+    const events = await provider.listEvents({ from: new Date(0), to: new Date("2027-01-01T00:00:00Z") });
+    // The corrupt event is excluded at load (consistent with
+    // CalDAV); the valid one is unaffected and the call doesn't throw.
+    expect(events.map((e) => e.id)).toEqual(["ok-1"]);
+  });
+
   it("creates and lists events", async () => {
     const created = await provider.createEvent({
       endsAt: new Date("2026-05-15T11:00:00Z"),
