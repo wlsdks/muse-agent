@@ -73,20 +73,41 @@ end try
 return frontApp & linefeed & frontWindow & linefeed & selectedText
 `;
 
-async function runOsascript(): Promise<string> {
+const GLANCE_OSASCRIPT_TIMEOUT_MS = 30_000;
+
+export async function runOsascript(spawnFn: typeof spawn = spawn): Promise<string> {
   return new Promise<string>((resolve, reject) => {
-    const child = spawn("osascript", ["-e", OSASCRIPT_SOURCE], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawnFn("osascript", ["-e", OSASCRIPT_SOURCE], { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    const finish = (action: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      action();
+    };
+    // Without this watchdog a wedged osascript — an unanswered
+    // Accessibility permission prompt, an unresponsive UI-scripting
+    // target — hangs `muse glance` forever.
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish(() => reject(new Error(
+        `osascript timed out after ${GLANCE_OSASCRIPT_TIMEOUT_MS.toString()}ms and was killed `
+        + "(unanswered Accessibility prompt or a wedged UI-scripting target?)"
+      )));
+    }, GLANCE_OSASCRIPT_TIMEOUT_MS);
     child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
     child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
-    child.on("error", reject);
+    child.on("error", (error) => { finish(() => reject(error)); });
     child.on("close", (code) => {
-      if (code === 0) {
-        resolve(stdout);
-      } else {
-        reject(new Error(`osascript exited ${(code ?? -1).toString()}: ${stderr.trim()}`));
-      }
+      finish(() => {
+        if (code === 0) {
+          resolve(stdout);
+        } else {
+          reject(new Error(`osascript exited ${(code ?? -1).toString()}: ${stderr.trim()}`));
+        }
+      });
     });
   });
 }
