@@ -194,6 +194,17 @@ function parseTimeOfDay(spec: string | undefined): { hour: number; minute: numbe
     }
     return { hour, minute };
   }
+  // Bare hour ("tomorrow at 3", "today 15") — read as a 24h hour,
+  // symmetric with the Korean "15시" form and the HH:MM range.
+  // No am/pm guessing: a user who means 3pm writes "3pm".
+  const bareHourMatch = /^(\d{1,2})$/u.exec(cleaned);
+  if (bareHourMatch) {
+    const hour = Number.parseInt(bareHourMatch[1] ?? "", 10);
+    if (hour < 0 || hour > 23) {
+      return "invalid";
+    }
+    return { hour, minute: 0 };
+  }
   return "invalid";
 }
 

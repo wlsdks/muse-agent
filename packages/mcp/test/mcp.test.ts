@@ -2238,6 +2238,32 @@ describe("muse.tasks loopback server", () => {
       expect(bareTomorrow?.getHours()).toBe(9);
     });
 
+    it("accepts a bare hour as a 24h time, symmetric with Korean 시 and HH:MM", async () => {
+      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const ref = () => new Date("2026-05-10T12:00:00Z"); // Sunday
+
+      const at3 = resolveRelativeTimePhrase("tomorrow at 3", ref);
+      expect(at3?.getHours()).toBe(3);
+      expect(at3?.getMinutes()).toBe(0);
+
+      const at15 = resolveRelativeTimePhrase("tomorrow at 15", ref);
+      expect(at15?.getHours()).toBe(15);
+
+      // 'at'-less form and weekday head both work.
+      const today9 = resolveRelativeTimePhrase("today 9", ref);
+      expect(today9?.getHours()).toBe(9);
+      const mon7 = resolveRelativeTimePhrase("next monday 7", ref);
+      expect(mon7?.getDay()).toBe(1);
+      expect(mon7?.getHours()).toBe(7);
+
+      // Hour 0 = midnight; out-of-range hour stays unrecognized.
+      expect(resolveRelativeTimePhrase("tomorrow at 0", ref)?.getHours()).toBe(0);
+      expect(resolveRelativeTimePhrase("tomorrow at 24", ref)).toBeUndefined();
+
+      // pm/HH:MM forms still take precedence (no regression).
+      expect(resolveRelativeTimePhrase("tomorrow at 3pm", ref)?.getHours()).toBe(15);
+    });
+
     it("resolves Korean day + time phrases (goal 160)", async () => {
       const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
       const ref = () => new Date("2026-05-15T12:00:00Z"); // Friday
