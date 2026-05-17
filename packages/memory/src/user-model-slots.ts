@@ -121,8 +121,8 @@ const DEFAULT_MAX_CHARS = 1_000;
  * the typed slots' richer signal preserved (kind prefix + optional
  * category / recurrence / scope / due / progress decorators).
  *
- * Output format example:
- *   `pref.style=concise; sched.morning=daily 07:00 KST; veto.food=no eggs; goal.muse-v1=ship by Q1 (50%)`
+ * Output format example (vetoes lead — safety constraints first):
+ *   `veto.food=no eggs; pref.style=concise; sched.morning=daily 07:00 KST; goal.muse-v1=ship by Q1 (50%)`
  *
  * Returns `undefined` when the model is empty (no slots in any
  * kind) — same contract as `buildPersonaSnapshot` so callers can
@@ -138,6 +138,16 @@ export function composeUserModelSnapshot(
   let totalCount = 0;
   let elided = 0;
 
+  // Vetoes lead: they are hard safety constraints ("never do X" —
+  // allergies, "don't email my boss"), so the maxChars
+  // right-truncation must drop soft preferences/goals before it
+  // can ever silently elide a veto from the prompt.
+  for (const slot of model.vetoes.slice(0, maxPerKind)) {
+    parts.push(formatVeto(slot));
+    totalCount += 1;
+  }
+  elided += Math.max(0, model.vetoes.length - maxPerKind);
+
   for (const slot of model.preferences.slice(0, maxPerKind)) {
     parts.push(formatPreference(slot));
     totalCount += 1;
@@ -149,12 +159,6 @@ export function composeUserModelSnapshot(
     totalCount += 1;
   }
   elided += Math.max(0, model.schedule.length - maxPerKind);
-
-  for (const slot of model.vetoes.slice(0, maxPerKind)) {
-    parts.push(formatVeto(slot));
-    totalCount += 1;
-  }
-  elided += Math.max(0, model.vetoes.length - maxPerKind);
 
   for (const slot of model.goals.slice(0, maxPerKind)) {
     parts.push(formatGoal(slot));

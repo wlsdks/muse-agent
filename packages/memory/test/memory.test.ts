@@ -681,6 +681,28 @@ describe("composeUserModelSnapshot", () => {
     expect(snapshot).toContain("[5 slots elided]");
   });
 
+  it("keeps a hard veto when chatty preferences overflow maxChars (safety constraints lead)", () => {
+    const snapshot = composeUserModelSnapshot(
+      {
+        ...EMPTY_USER_MODEL,
+        preferences: Array.from({ length: 8 }, (_unused, index) => ({
+          id: `p${index}`,
+          kind: "preference" as const,
+          updatedAt: now,
+          value: "x".repeat(60)
+        })),
+        vetoes: [
+          { id: "no-eggs", kind: "veto", scope: "food", updatedAt: now, value: "do not suggest eggs" }
+        ]
+      },
+      { maxChars: 120, maxPerKind: 100 }
+    );
+    expect(snapshot?.length ?? 0).toBeLessThanOrEqual(120);
+    // The safety veto survives; soft preferences are what gets elided.
+    expect(snapshot).toContain("veto.food.no-eggs=do not suggest eggs");
+    expect(snapshot).toContain("slots elided");
+  });
+
   it("right-truncates with elided-count tail when composed snapshot exceeds maxChars", () => {
     const snapshot = composeUserModelSnapshot(
       {
