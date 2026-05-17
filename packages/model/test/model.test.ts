@@ -1791,3 +1791,37 @@ describe("provider tool-schema contracts (regression for live-LLM bugs)", () => 
     expect(stringified).toContain("additionalProperties");
   });
 });
+
+describe("readFiniteNumber (provider usage-token boundary)", () => {
+  it("returns a finite number (including 0) for a present numeric key", async () => {
+    const { readFiniteNumber } = await import("../src/provider-shared.js");
+    expect(readFiniteNumber({ input_tokens: 1234 }, "input_tokens")).toBe(1234);
+    expect(readFiniteNumber({ output_tokens: 0 }, "output_tokens")).toBe(0);
+    expect(readFiniteNumber({ x: -5 }, "x")).toBe(-5);
+  });
+
+  it("returns undefined for a non-finite value — a malformed provider count can't poison cost/budget", async () => {
+    const { readFiniteNumber } = await import("../src/provider-shared.js");
+    expect(readFiniteNumber({ t: Number.NaN }, "t")).toBeUndefined();
+    expect(readFiniteNumber({ t: Number.POSITIVE_INFINITY }, "t")).toBeUndefined();
+    expect(readFiniteNumber({ t: Number.NEGATIVE_INFINITY }, "t")).toBeUndefined();
+  });
+
+  it("returns undefined for a wrong-typed or absent key", async () => {
+    const { readFiniteNumber } = await import("../src/provider-shared.js");
+    expect(readFiniteNumber({ t: "123" }, "t")).toBeUndefined();   // stringified number
+    expect(readFiniteNumber({ t: null }, "t")).toBeUndefined();
+    expect(readFiniteNumber({ other: 1 }, "t")).toBeUndefined();
+  });
+
+  it("returns undefined for a non-record value (incl. the absent nested-usage case)", async () => {
+    const { readFiniteNumber } = await import("../src/provider-shared.js");
+    // Mirrors provider-openai's `readFiniteNumber(value.prompt_tokens_details, …)`
+    // where the nested usage object is frequently undefined.
+    expect(readFiniteNumber(undefined, "cached_tokens")).toBeUndefined();
+    expect(readFiniteNumber(null, "x")).toBeUndefined();
+    expect(readFiniteNumber("nope", "x")).toBeUndefined();
+    expect(readFiniteNumber(42, "x")).toBeUndefined();
+    expect(readFiniteNumber([1, 2], "0")).toBeUndefined();
+  });
+});
