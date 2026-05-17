@@ -4166,6 +4166,26 @@ describe("corrupt-store quarantine — reminders + followups (goal 190)", () => 
     expect((await readFollowups(file)).map((f) => f.id)).toEqual(["fu_new"]);
   });
 
+  it("readFollowups drops an entry with an unparseable scheduledFor instead of letting it sit un-fireable", async () => {
+    const { readFollowups } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-fu-badtime-`);
+    const file = `${dir}/followups.json`;
+    writeFileSync(file, JSON.stringify({
+      followups: [
+        { id: "fu_ok", userId: "stark", summary: "valid", scheduledFor: "2030-01-01T00:00:00Z", status: "scheduled", createdAt: "2026-05-17T00:00:00Z" },
+        { id: "fu_bad", userId: "stark", summary: "corrupt", scheduledFor: "tomorrow", status: "scheduled", createdAt: "2026-05-17T00:00:00Z" }
+      ]
+    }));
+    // fu_bad is excluded at load: an unparseable scheduledFor makes
+    // the firing loop's `Date.parse(scheduledFor) <= now` NaN, so it
+    // would never fire and sit "scheduled" forever. Dropping it at
+    // the type-guard is consistent + visible (gone everywhere) rather
+    // than silently un-fireable while still listed.
+    expect((await readFollowups(file)).map((f) => f.id)).toEqual(["fu_ok"]);
+  });
+
   it("readEpisodes quarantines a corrupt store so upsert doesn't wipe episodic memory", async () => {
     const { readEpisodes, upsertEpisode } = await import("../src/index.js");
     const { mkdtempSync, writeFileSync, readdirSync, readFileSync } = await import("node:fs");

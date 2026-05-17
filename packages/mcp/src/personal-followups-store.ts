@@ -279,10 +279,19 @@ function isPersistedFollowup(value: unknown): value is PersistedFollowup {
   if (
     typeof candidate.id !== "string" ||
     typeof candidate.userId !== "string" ||
-    typeof candidate.scheduledFor !== "string" ||
     typeof candidate.createdAt !== "string" ||
     typeof candidate.summary !== "string"
   ) {
+    return false;
+  }
+  // scheduledFor must actually PARSE, not merely be a string: the
+  // firing loop selects due entries with `Date.parse(scheduledFor)
+  // <= now`, and an unparseable value yields NaN — `NaN <= now` is
+  // false, so a hand-edited/imported followups.json with a bad
+  // timestamp would never fire and sit "scheduled" forever with no
+  // error. Drop it at load, the posture isPersistedEvent / CalDAV use.
+  if (typeof candidate.scheduledFor !== "string"
+    || !Number.isFinite(Date.parse(candidate.scheduledFor))) {
     return false;
   }
   return candidate.status === "scheduled"
