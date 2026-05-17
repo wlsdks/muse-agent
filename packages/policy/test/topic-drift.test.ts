@@ -37,6 +37,28 @@ describe("topic drift policy", () => {
     });
   });
 
+  it("does not let a short ASCII keyword match inside unrelated words (was a guard bypass)", () => {
+    const opts = { allowedTopics: [{ id: "ml", keywords: ["ai", "rag"] }] };
+    // "ai" is inside email/again; "rag" is inside storage/garage —
+    // raw substring would score this fully on-topic and disable
+    // the drift guard.
+    expect(
+      detectTopicDrift("please email my friend again about the storage garage", opts).allowed
+    ).toBe(false);
+    // Genuine whole-word usage still matches.
+    const onTopic = detectTopicDrift("the AI uses RAG retrieval", opts);
+    expect(onTopic.allowed).toBe(true);
+    expect(onTopic.matchedKeywords).toEqual(["ai", "rag"]);
+  });
+
+  it("keeps CJK substring matching for agglutinated Korean (particles attach without spaces)", () => {
+    expect(
+      detectTopicDrift("우선순위를 정리해줘", {
+        allowedTopics: [{ id: "m", keywords: ["우선순위"] }]
+      }).allowed
+    ).toBe(true);
+  });
+
   it("uses Korean tokens and explicit off-topic allowances", () => {
     expect(
       detectTopicDrift("이관 작업의 다음 우선순위를 정리해줘", {

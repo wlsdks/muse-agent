@@ -77,7 +77,7 @@ function scoreTopic(normalizedText: string, topic: TopicDriftTopic): {
   readonly topic: TopicDriftTopic;
 } {
   const keywords = normalizeKeywords(topic.keywords);
-  const matchedKeywords = keywords.filter((keyword) => normalizedText.includes(keyword));
+  const matchedKeywords = keywords.filter((keyword) => containsKeyword(normalizedText, keyword));
 
   return {
     matchedKeywords,
@@ -87,7 +87,42 @@ function scoreTopic(normalizedText: string, topic: TopicDriftTopic): {
 }
 
 function matchesAnyKeyword(normalizedText: string, keywords: readonly string[]): boolean {
-  return normalizeKeywords(keywords).some((keyword) => normalizedText.includes(keyword));
+  return normalizeKeywords(keywords).some((keyword) => containsKeyword(normalizedText, keyword));
+}
+
+/**
+ * ASCII/Latin keywords must match on word boundaries — a raw
+ * substring lets a short keyword ("ai", "go", "db", "rag") fire
+ * inside unrelated words ("email", "ago", "fragment") and silently
+ * defeat the drift guard. CJK keywords keep substring matching:
+ * Korean (the primary user language) agglutinates particles
+ * without spaces ("우선순위" inside "우선순위를"), where a
+ * word-boundary rule would wrongly miss the stem.
+ */
+function containsKeyword(haystack: string, keyword: string): boolean {
+  if (keyword.length === 0) {
+    return false;
+  }
+  if (hasCjkChar(keyword)) {
+    return haystack.includes(keyword);
+  }
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:$|[^a-z0-9])`, "u").test(haystack);
+}
+
+function hasCjkChar(value: string): boolean {
+  for (const ch of value) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (
+      (cp >= 0x4e00 && cp <= 0x9fff) ||  // CJK Unified Ideographs
+      (cp >= 0xac00 && cp <= 0xd7af) ||  // Hangul Syllables
+      (cp >= 0x3040 && cp <= 0x309f) ||  // Hiragana
+      (cp >= 0x30a0 && cp <= 0x30ff)     // Katakana
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function normalizeKeywords(keywords: readonly string[]): readonly string[] {
