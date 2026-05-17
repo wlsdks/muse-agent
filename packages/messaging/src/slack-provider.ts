@@ -1,3 +1,5 @@
+import { truncateErrorBody } from "@muse/shared";
+
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
 import { clampInboundLimit, clampOutboundText, tryParseJson } from "./provider-helpers.js";
@@ -156,7 +158,7 @@ export class SlackProvider implements MessagingProvider {
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
-        `Slack conversations.history failed: ${parsed?.error ?? (text || response.statusText)}`,
+        `Slack conversations.history failed: ${parsed?.error ?? (truncateErrorBody(text) || response.statusText)}`,
         response.status
       );
     }
@@ -208,7 +210,7 @@ export class SlackProvider implements MessagingProvider {
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
-        `Slack chat.postMessage failed: ${parsed?.error ?? (text || response.statusText)}`,
+        `Slack chat.postMessage failed: ${parsed?.error ?? (truncateErrorBody(text) || response.statusText)}`,
         response.status
       );
     }

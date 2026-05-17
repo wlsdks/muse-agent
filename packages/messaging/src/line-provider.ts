@@ -1,3 +1,5 @@
+import { truncateErrorBody } from "@muse/shared";
+
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
 import { clampInboundLimit, clampOutboundText, tryParseJson } from "./provider-helpers.js";
@@ -113,7 +115,7 @@ export class LineProvider implements MessagingProvider {
       throw new MessagingProviderError(
         this.id,
         "UPSTREAM_FAILED",
-        `LINE pushMessage failed: ${parsed?.message ?? (text || response.statusText)}`,
+        `LINE pushMessage failed: ${parsed?.message ?? (truncateErrorBody(text) || response.statusText)}`,
         response.status
       );
     }

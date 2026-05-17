@@ -539,6 +539,21 @@ describe("SlackProvider", () => {
     });
   });
 
+  it("bounds a huge upstream error body in the thrown message (parity with Telegram/Discord)", async () => {
+    const provider = new SlackProvider({
+      fetch: async () => new Response("X".repeat(5000), { status: 502 }),
+      token: "x"
+    });
+    let caught: unknown;
+    await provider.send({ destination: "C1", text: "hi" }).catch((error: unknown) => { caught = error; });
+    const message = (caught as { message: string }).message;
+    expect(message.startsWith("Slack chat.postMessage failed: ")).toBe(true);
+    expect(message.endsWith("…")).toBe(true);
+    // 240-char cap (DEFAULT_ERROR_BODY_CAP) + short prefix — the raw
+    // 5000-char body must not flow unbounded into the error/logs.
+    expect(message.length).toBeLessThan(300);
+  });
+
   it("truncates a >4096-char message instead of dropping it on validation", async () => {
     let sentText = "";
     const provider = new SlackProvider({
@@ -712,6 +727,20 @@ describe("LineProvider", () => {
     });
     await expect(provider.send({ destination: "U-1", text: "hi" }))
       .rejects.toMatchObject({ status: 401 });
+  });
+
+  it("bounds a huge upstream error body in the thrown message (parity with Telegram/Discord)", async () => {
+    const provider = new LineProvider({
+      fetch: async () => new Response("X".repeat(5000), { status: 502 }),
+      now: () => new Date("2026-05-10T08:00:00Z"),
+      token: "x"
+    });
+    let caught: unknown;
+    await provider.send({ destination: "U-1", text: "hi" }).catch((error: unknown) => { caught = error; });
+    const message = (caught as { message: string }).message;
+    expect(message.startsWith("LINE pushMessage failed: ")).toBe(true);
+    expect(message.endsWith("…")).toBe(true);
+    expect(message.length).toBeLessThan(300);
   });
 
   it("truncates a >4096-char message instead of dropping it on validation", async () => {
