@@ -2291,6 +2291,33 @@ describe("muse.tasks loopback server", () => {
       expect(resolveRelativeTimePhrase("tomorrow at 3pm", ref)?.getHours()).toBe(15);
     });
 
+    it("resolves named day-parts (morning/afternoon/evening/night)", async () => {
+      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const ref = () => new Date("2026-05-10T12:00:00Z"); // Sunday
+
+      const morn = resolveRelativeTimePhrase("tomorrow morning", ref);
+      expect(morn?.getDate()).toBe(11);
+      expect(morn?.getHours()).toBe(9);
+      expect(morn?.getMinutes()).toBe(0);
+
+      expect(resolveRelativeTimePhrase("tomorrow afternoon", ref)?.getHours()).toBe(15);
+      expect(resolveRelativeTimePhrase("today evening", ref)?.getHours()).toBe(18);
+      expect(resolveRelativeTimePhrase("tomorrow night", ref)?.getHours()).toBe(21);
+
+      // Weekday head + day-part, and the explicit 'at' form.
+      const monEve = resolveRelativeTimePhrase("next monday evening", ref);
+      expect(monEve?.getDay()).toBe(1);
+      expect(monEve?.getHours()).toBe(18);
+      expect(resolveRelativeTimePhrase("tomorrow at morning", ref)?.getHours()).toBe(9);
+
+      // noon/midnight still resolve via their dedicated branches.
+      expect(resolveRelativeTimePhrase("tomorrow noon", ref)?.getHours()).toBe(12);
+      expect(resolveRelativeTimePhrase("tomorrow midnight", ref)?.getHours()).toBe(0);
+
+      // An unknown word is still correctly unrecognized.
+      expect(resolveRelativeTimePhrase("tomorrow lunchtime", ref)).toBeUndefined();
+    });
+
     it("resolves Korean day + time phrases (goal 160)", async () => {
       const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
       const ref = () => new Date("2026-05-15T12:00:00Z"); // Friday

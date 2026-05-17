@@ -60,6 +60,13 @@ const WEEKDAY_INDEX: Record<string, number> = {
 const DEFAULT_HOUR = 9;
 const DEFAULT_MINUTE = 0;
 
+const DAY_PART_HOURS: Record<string, number> = {
+  morning: 9,
+  afternoon: 15,
+  evening: 18,
+  night: 21
+};
+
 // A huge offset ("in 9999999999 days", "99999999999일 후") or a
 // month overflow pushes the Date past ±8.64e15 ms → an Invalid
 // Date (NaN time). Returning that lets the caller's
@@ -175,6 +182,12 @@ function parseTimeOfDay(spec: string | undefined): { hour: number; minute: numbe
   }
   if (cleaned === "midnight") {
     return { hour: 0, minute: 0 };
+  }
+  // Conventional day-part hours ("tomorrow morning", "monday
+  // evening"); morning aligns with the bare-day DEFAULT_HOUR.
+  const dayPartHour = DAY_PART_HOURS[cleaned];
+  if (dayPartHour !== undefined) {
+    return { hour: dayPartHour, minute: 0 };
   }
   const ampmMatch = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/u.exec(cleaned);
   if (ampmMatch) {
