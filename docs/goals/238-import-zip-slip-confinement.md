@@ -52,7 +52,7 @@ actual extraction was unconfined.
   `entries.length === 0` early-return guarantees tar always gets at
   least one member (an empty member list would fall back to
   extract-everything).
-- The misleading file/​function comment is rewritten so the stated
+- The misleading file/function comment is rewritten so the stated
   guarantee is the one now actually enforced.
 
 `extractMuseBundle` is exported for direct test coverage (same

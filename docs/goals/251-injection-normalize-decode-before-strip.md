@@ -22,7 +22,7 @@ instructions` — was still the literal ASCII `&#x200b;` when
 `stripZeroWidth` ran (nothing to strip), and was only decoded to
 real U+200B **after** the strip step. The decoded zero-width
 survived into the matched string, splitting the keyword
-(`igno​re`), so `/(ignore|forget|disregard)…/` never matched
+(`igno<U+200B>re`), so `/(ignore|forget|disregard)…/` never matched
 and the role-override injection passed the guard. The same hole
 applied to `&#0;` (NUL) and any zero-width / bidi codepoint that
 can be numeric-entity encoded — a one-character, trivially
@@ -55,7 +55,7 @@ order missed. One expression changed; no pattern or API change.
   instructions") === "ignore all previous instructions"` and that
   `findInjectionPatterns(...)` then reports `role_override`. The
   existing combined-evasion test
-  (`"&#73;gn​оre prëvious" → "Ignore previous"`)
+  (`"&#73;gn<U+200B>оre prëvious" → "Ignore previous"`)
   and every homoglyph / diacritic / multilingual case still pass —
   the reorder preserves all prior normalisation behaviour.
 - `pnpm check` — every workspace green (policy 52, apps/cli 555,
