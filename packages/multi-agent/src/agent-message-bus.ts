@@ -103,7 +103,7 @@ export class InMemoryAgentMessageBus implements AgentMessageBus {
       const bucket = this.subscribers.get(message.targetAgentId);
 
       if (bucket) {
-        await Promise.all(bucket.map((handler) => handler(message)));
+        await Promise.all(bucket.map((handler) => this.deliver(handler, message)));
       }
 
       return;
@@ -115,7 +115,19 @@ export class InMemoryAgentMessageBus implements AgentMessageBus {
       handlers.push(...bucket);
     }
 
-    await Promise.all(handlers.map((handler) => handler(message)));
+    await Promise.all(handlers.map((handler) => this.deliver(handler, message)));
+  }
+
+  // Fail-open fan-out: a subscriber that throws (sync or async) must
+  // not break delivery to the other subscribers or reject publish().
+  // The bus is shared infra — one misbehaving agent handler cannot be
+  // allowed to silently drop messages to every other agent.
+  private async deliver(handler: AgentMessageHandler, message: AgentMessage): Promise<void> {
+    try {
+      await handler(message);
+    } catch {
+      // intentionally swallowed — best-effort delivery
+    }
   }
 
   private evictIfFull(): void {

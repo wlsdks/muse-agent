@@ -33,6 +33,40 @@ describe("InMemoryAgentMessageBus", () => {
     expect(otherReceived).toHaveLength(0);
   });
 
+  it("isolates a throwing subscriber — others still receive, publish() resolves", async () => {
+    const bus = new InMemoryAgentMessageBus();
+    let bSeen = 0;
+    let aLateSeen = 0;
+
+    // Registered FIRST and throws synchronously — pre-fix this broke
+    // the `.map` before Promise.all and dropped every later handler.
+    bus.subscribe("a", () => {
+      throw new Error("bad subscriber");
+    });
+    bus.subscribe("a", () => {
+      aLateSeen += 1; // same-bucket sibling, registered after the thrower
+    });
+    bus.subscribe("b", async () => {
+      await Promise.resolve();
+      throw new Error("bad async subscriber");
+    });
+    bus.subscribe("b", () => {
+      bSeen += 1;
+    });
+
+    await expect(
+      bus.publish({ content: "broadcast", sourceAgentId: "supervisor", timestamp: new Date() })
+    ).resolves.toBeUndefined();
+    expect(aLateSeen).toBe(1);
+    expect(bSeen).toBe(1);
+
+    // Targeted delivery into a bucket whose first handler throws.
+    await expect(
+      bus.publish({ content: "for-a", sourceAgentId: "x", targetAgentId: "a", timestamp: new Date() })
+    ).resolves.toBeUndefined();
+    expect(aLateSeen).toBe(2);
+  });
+
   it("broadcast messages reach every subscriber", async () => {
     const bus = new InMemoryAgentMessageBus();
     let aSeen = 0;
