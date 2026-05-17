@@ -273,7 +273,12 @@ function findWholePhrase(original: string, needle: string): { matched: boolean; 
     if (next !== undefined && !/[\p{P}\p{S}\s]/u.test(next)) {
       continue;
     }
-    return { matched: true, residual: original.slice(i + 1).trim() };
+    // Drop the separator run between the wake phrase and the prompt
+    // ("Hey Muse, what's…" → "what's…"). Same boundary class the
+    // post-phrase check above uses, so a pause comma / dash isn't
+    // fed into the LLM as a leading-punctuation prompt.
+    const residual = original.slice(i + 1).replace(/^[\p{P}\p{S}\s]+/u, "").trim();
+    return { matched: true, residual };
   }
   return { matched: false, residual: "" };
 }

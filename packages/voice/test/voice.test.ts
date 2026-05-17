@@ -414,11 +414,19 @@ describe("TextScanWakeWordDetector", () => {
     expect(result.residual).toBe("what's the weather?");
   });
 
+  it("strips the separator run after the wake phrase from the residual prompt", () => {
+    const detector = new TextScanWakeWordDetector({ phrase: "hey muse" });
+    // The overwhelmingly common natural phrasing — a pause comma
+    // after the wake word — must not leak into the LLM prompt.
+    expect(detector.scan("Hey Muse, what's the weather?").residual).toBe("what's the weather?");
+    expect(detector.scan("Hey Muse... open the door").residual).toBe("open the door");
+  });
+
   it("tolerates extra whitespace + punctuation in the input", () => {
     const detector = new TextScanWakeWordDetector({ phrase: "hey muse" });
     const result = detector.scan("Hey,  Muse — open the deploy doc");
     expect(result.detected).toBe(true);
-    expect(result.residual).toContain("open the deploy doc");
+    expect(result.residual).toBe("open the deploy doc");
   });
 
   it("returns detected without residual when the phrase is at the tail", () => {
@@ -442,7 +450,7 @@ describe("TextScanWakeWordDetector", () => {
     // …but the wake word as its own token still fires, with residual.
     const ok = bare.scan("muse, what's next?");
     expect(ok.detected).toBe(true);
-    expect(ok.residual).toContain("what's next");
+    expect(ok.residual).toBe("what's next?");
     // Multi-word phrase embedded in a longer word ("t[hey muse]ums")
     // no longer false-positives; a real utterance still wakes.
     const hm = new TextScanWakeWordDetector({ phrase: "hey muse" });
