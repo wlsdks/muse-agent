@@ -35,6 +35,7 @@ import {
   HookRegistry,
   ModelRoutingError,
   OutputGuardBlockedError,
+  MAX_PLAN_STEPS,
   parsePlan,
   PlanValidationFailedError,
   StepBudgetTracker,
@@ -305,6 +306,22 @@ describe("PlanExecute helpers", () => {
       expect(
         validatePlan({ availableToolNames: new Set(["a"]), steps: [] })
       ).toEqual({ errors: [], steps: [], valid: true });
+    });
+
+    it("rejects an oversized plan before walking it (degenerate-planner bound)", () => {
+      const mkSteps = (n: number) =>
+        Array.from({ length: n }, (_unused, i) => ({ args: {}, description: `s${i.toString()}`, tool: "a" }));
+
+      const atCap = validatePlan({ availableToolNames: new Set(["a"]), steps: mkSteps(MAX_PLAN_STEPS) });
+      expect(atCap.valid).toBe(true); // boundary: exactly the cap is allowed
+
+      const overCap = validatePlan({
+        availableToolNames: new Set(["a"]),
+        steps: mkSteps(MAX_PLAN_STEPS + 1)
+      });
+      expect(overCap.valid).toBe(false);
+      expect(overCap.errors).toHaveLength(1);
+      expect(overCap.errors[0]?.reason).toContain(`max is ${MAX_PLAN_STEPS.toString()}`);
     });
   });
 

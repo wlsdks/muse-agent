@@ -139,8 +139,25 @@ export interface PlanValidationInput {
  * Empty plans are valid (callers decide whether to short-circuit to a
  * direct answer when the plan is empty).
  */
+export const MAX_PLAN_STEPS = 64;
+
 export function validatePlan(input: PlanValidationInput): PlanValidationResult {
   const errors: PlanValidationError[] = [];
+  // A small local planner can loop / repeat itself; an oversized
+  // plan floods the event stream + `executed[]` memory and burns
+  // O(N) iterations even though real tool calls are already capped
+  // by `runner.maxToolCalls`. Reject early rather than walk it.
+  if (input.steps.length > MAX_PLAN_STEPS) {
+    return {
+      errors: [{
+        reason: `plan has ${input.steps.length.toString()} steps; max is ${MAX_PLAN_STEPS.toString()}`,
+        stepIndex: MAX_PLAN_STEPS,
+        tool: ""
+      }],
+      steps: input.steps,
+      valid: false
+    };
+  }
   for (let index = 0; index < input.steps.length; index += 1) {
     const step = input.steps[index];
     if (!step) {

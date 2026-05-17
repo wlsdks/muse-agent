@@ -155,6 +155,7 @@ export type { AgentCheckpointState } from "./checkpoint.js";
 export { GuardBlockedError, ModelRoutingError, OutputGuardBlockedError } from "./errors.js";
 
 export {
+  MAX_PLAN_STEPS,
   PlanExecutionError,
   PlanValidationFailedError,
   extractJsonArray,
