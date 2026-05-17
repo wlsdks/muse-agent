@@ -46,4 +46,30 @@ describe("extractJsonObject", () => {
     expect(extractJsonObject("not json at all")).toBeUndefined();
     expect(extractJsonObject("[1,2,3]")).toBeUndefined();
   });
+
+  it("takes the model's FINAL object when an empty/schema example precedes the real payload", () => {
+    // Small local models echo the schema or an empty example, THEN
+    // emit the real extraction. Taking the first block discarded it.
+    const out = extractJsonObject(
+      'Example shape:\n{"facts":{},"preferences":{},"vetoes":[],"goals":[]}\n' +
+      'Here is what I found:\n' +
+      '{"facts":{"name":"Stark"},"preferences":{},' +
+      '"vetoes":[{"id":"no-eggs","value":"never suggest eggs"}],"goals":[]}'
+    );
+    expect(out?.facts).toEqual({ name: "Stark" });
+    expect(out?.vetoes).toEqual([{ id: "no-eggs", value: "never suggest eggs" }]);
+  });
+
+  it("skips a trailing non-JSON brace blob and still parses the real payload", () => {
+    const out = extractJsonObject(
+      '{"facts":{"city":"Seoul"}}\nthen some prose with a { broken brace');
+    expect(out?.facts).toEqual({ city: "Seoul" });
+  });
+
+  it("ignores an unbalanced quote in the prose prefix (depth-0 quotes aren't string state)", () => {
+    // A single stray `"` before the JSON used to flip the parser
+    // into string mode and swallow the opening brace → undefined.
+    const out = extractJsonObject('He said "wait, then: {"facts":{"k":"v"}}');
+    expect(out?.facts).toEqual({ k: "v" });
+  });
 });
