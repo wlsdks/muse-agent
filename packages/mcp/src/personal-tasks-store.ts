@@ -154,7 +154,20 @@ export function compareTasksByDueDate(left: PersistedTask, right: PersistedTask)
   const leftDue = left.dueAt;
   const rightDue = right.dueAt;
   if (leftDue && rightDue) {
-    if (leftDue !== rightDue) {
+    // Compare parsed instants, not raw strings: `dueAt` is a
+    // free-form string (imports / hand-edited tasks.json / the MCP
+    // tool need not be canonical), and lexicographic ISO order is
+    // wrong across mixed precision ("…00.500Z" sorts before "…00Z")
+    // and timezone offsets — it would surface the wrong task as
+    // "most urgent". Unparseable values keep the prior deterministic
+    // string order.
+    const leftMs = Date.parse(leftDue);
+    const rightMs = Date.parse(rightDue);
+    if (Number.isFinite(leftMs) && Number.isFinite(rightMs)) {
+      if (leftMs !== rightMs) {
+        return leftMs - rightMs;
+      }
+    } else if (leftDue !== rightDue) {
       return leftDue.localeCompare(rightDue);
     }
   } else if (leftDue) {

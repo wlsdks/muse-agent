@@ -1805,6 +1805,22 @@ describe("compareTasksByDueDate", () => {
     expect(sorted).toEqual(["dated", "undated-new", "undated-old"]);
   });
 
+  it("orders by instant, not raw string (mixed ms precision / timezone offset)", () => {
+    const tasks = [
+      // 09:00:00.500Z — later instant, but string-sorts BEFORE "…00Z".
+      mk("ms-late", "2026-05-14T09:00:00.500Z", "2026-05-13T01:00:00Z"),
+      mk("ms-early", "2026-05-14T09:00:00Z", "2026-05-13T02:00:00Z"),
+      // 18:00+09:00 == 09:00Z — earliest instant, string-sorts LAST.
+      mk("offset-earliest", "2026-05-14T18:00:00+09:00", "2026-05-13T03:00:00Z"),
+      mk("utc-latest", "2026-05-14T12:00:00Z", "2026-05-13T04:00:00Z")
+    ];
+    const sorted = [...tasks].sort(compareTasksByDueDate).map((t) => t.id);
+    // Instants: offset-earliest 09:00:00.000, ms-early 09:00:00.000,
+    // ms-late 09:00:00.500, utc-latest 12:00:00. The two 09:00:00.000
+    // ties fall to createdAt-desc (offset-earliest created later).
+    expect(sorted).toEqual(["offset-earliest", "ms-early", "ms-late", "utc-latest"]);
+  });
+
   it("breaks dueAt ties by newest-created first", () => {
     const tasks = [
       mk("same-due-old", "2026-05-14T00:00:00Z", "2026-05-12T00:00:00Z"),
