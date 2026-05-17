@@ -391,6 +391,7 @@ export {
 // Personal reminders store — passive reminder list shared between
 // the REST routes, the CLI, and `muse today` (both surfaces).
 export {
+  compareRemindersByDueAt,
   filterReminders,
   fireReminder,
   parseReminderDueAt,

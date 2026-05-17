@@ -6,6 +6,7 @@ import { errorMessage, readString } from "./loopback-helpers.js";
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "./loopback.js";
 import { readReminderHistory } from "./personal-reminder-history-store.js";
 import {
+  compareRemindersByDueAt,
   filterReminders,
   fireReminder,
   parseReminderDueAt,
@@ -189,7 +190,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           const reminders = await readReminders(file);
           const filtered = filterReminders(reminders, status, now);
           const sorted = [...filtered]
-            .sort((left, right) => left.dueAt.localeCompare(right.dueAt))
+            .sort(compareRemindersByDueAt)
             .slice(0, maxListEntries);
           return {
             reminders: sorted.map(serializeReminder) as JsonValue,
@@ -230,7 +231,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           const scoped = filterReminders(all, status, now);
           const matches = scoped
             .filter((reminder) => reminder.text.toLowerCase().includes(needle))
-            .sort((left, right) => left.dueAt.localeCompare(right.dueAt))
+            .sort(compareRemindersByDueAt)
             .slice(0, maxListEntries);
           return {
             query,

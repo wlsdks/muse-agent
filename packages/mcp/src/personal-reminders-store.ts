@@ -198,6 +198,30 @@ export function filterReminders(
   return reminders.filter((entry) => entry.status === status);
 }
 
+/**
+ * Soonest-due-first reminder ordering, parallel to
+ * `compareTasksByDueDate`. Compare parsed instants, not raw
+ * strings: `dueAt` is a free-form string (hand-edited
+ * reminders.json / imports / REST need not be canonical) and
+ * lexicographic ISO order is wrong across mixed precision
+ * ("…00.500Z" sorts before "…00Z") and timezone offsets — it
+ * would surface the wrong reminder as most imminent. Equal
+ * instants break to newest-created-first; unparseable values keep
+ * the prior deterministic string order.
+ */
+export function compareRemindersByDueAt(left: PersistedReminder, right: PersistedReminder): number {
+  const leftMs = Date.parse(left.dueAt);
+  const rightMs = Date.parse(right.dueAt);
+  if (Number.isFinite(leftMs) && Number.isFinite(rightMs)) {
+    if (leftMs !== rightMs) {
+      return leftMs - rightMs;
+    }
+  } else if (left.dueAt !== right.dueAt) {
+    return left.dueAt.localeCompare(right.dueAt);
+  }
+  return right.createdAt.localeCompare(left.createdAt);
+}
+
 function isPersistedReminder(value: unknown): value is PersistedReminder {
   if (!value || typeof value !== "object") {
     return false;
