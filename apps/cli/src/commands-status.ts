@@ -719,7 +719,7 @@ export function registerStatusCommand(program: Command, io: ProgramIO): void {
       process.once("SIGINT", sigintHandler);
       try {
         while (!stopped) {
-          io.stdout("[2J[H");
+          io.stdout("\x1b[2J\x1b[H");
           const snap = await collectStatus(userId);
           renderStatus(io, snap);
           if (options.suggestions) renderSuggestions(io, snap.suggestions);
