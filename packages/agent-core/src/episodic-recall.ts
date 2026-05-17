@@ -30,6 +30,13 @@ export interface EpisodicRecallProvider {
 
 const MAX_EPISODIC_CHARS = 1_500;
 
+// `?? default` does NOT catch NaN/Infinity, and `Math.max(n, NaN)`
+// is NaN — a non-finite recall knob would then poison topK
+// (`slice(0, NaN)` → []) so recall silently returns nothing.
+function finiteOr(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
 export function renderEpisodicSection(
   snapshot: EpisodicRecallSnapshot | undefined,
   nowIso?: string
@@ -177,12 +184,12 @@ export class InMemoryEpisodicRecallProvider implements EpisodicRecallProvider {
 
   constructor(options: InMemoryEpisodicRecallProviderOptions = {}) {
     this.episodes = [...(options.episodes ?? [])];
-    this.topK = Math.max(1, options.topK ?? 3);
-    this.minScore = Math.max(0, options.minScore ?? 0.15);
+    this.topK = Math.max(1, finiteOr(options.topK, 3));
+    this.minScore = Math.max(0, finiteOr(options.minScore, 0.15));
     this.allowAnonymousEpisodes = options.allowAnonymousEpisodes ?? false;
-    this.maxQueryChars = Math.max(64, options.maxQueryChars ?? 4_096);
-    this.recencyWeight = Math.max(0, options.recencyWeight ?? DEFAULT_RECENCY_WEIGHT);
-    this.recencyHalfLifeDays = Math.max(0.01, options.recencyHalfLifeDays ?? DEFAULT_RECENCY_HALF_LIFE_DAYS);
+    this.maxQueryChars = Math.max(64, finiteOr(options.maxQueryChars, 4_096));
+    this.recencyWeight = Math.max(0, finiteOr(options.recencyWeight, DEFAULT_RECENCY_WEIGHT));
+    this.recencyHalfLifeDays = Math.max(0.01, finiteOr(options.recencyHalfLifeDays, DEFAULT_RECENCY_HALF_LIFE_DAYS));
     this.now = options.now ?? (() => Date.now());
   }
 
@@ -413,13 +420,13 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
 
   constructor(options: StoreBackedEpisodicRecallProviderOptions) {
     this.store = options.store;
-    this.topK = Math.max(1, options.topK ?? 3);
-    this.minScore = Math.max(0, options.minScore ?? 0.15);
-    this.maxFetched = Math.max(1, options.maxFetched ?? 200);
+    this.topK = Math.max(1, finiteOr(options.topK, 3));
+    this.minScore = Math.max(0, finiteOr(options.minScore, 0.15));
+    this.maxFetched = Math.max(1, finiteOr(options.maxFetched, 200));
     this.allowAnonymousEpisodes = options.allowAnonymousEpisodes ?? false;
-    this.maxQueryChars = Math.max(64, options.maxQueryChars ?? 4_096);
-    this.recencyWeight = Math.max(0, options.recencyWeight ?? DEFAULT_RECENCY_WEIGHT);
-    this.recencyHalfLifeDays = Math.max(0.01, options.recencyHalfLifeDays ?? DEFAULT_RECENCY_HALF_LIFE_DAYS);
+    this.maxQueryChars = Math.max(64, finiteOr(options.maxQueryChars, 4_096));
+    this.recencyWeight = Math.max(0, finiteOr(options.recencyWeight, DEFAULT_RECENCY_WEIGHT));
+    this.recencyHalfLifeDays = Math.max(0.01, finiteOr(options.recencyHalfLifeDays, DEFAULT_RECENCY_HALF_LIFE_DAYS));
     this.now = options.now ?? (() => Date.now());
   }
 

@@ -34,6 +34,28 @@ describe("InMemoryEpisodicRecallProvider", () => {
     expect(snapshot).toBeUndefined();
   });
 
+  it("falls back to defaults for non-finite knobs instead of silently returning nothing", async () => {
+    // Pre-fix: topK NaN → Math.max(1, NaN) = NaN →
+    // scored.slice(0, NaN) → [] → recall silently dead.
+    const nan = new InMemoryEpisodicRecallProvider({
+      episodes: [
+        {
+          createdAtIso: "2026-05-10T00:00:00.000Z",
+          narrative: "Discussed the JARVIS roadmap and active-context design for Muse",
+          sessionId: "s-1"
+        }
+      ],
+      maxQueryChars: Number.NaN,
+      minScore: Number.NaN,
+      recencyHalfLifeDays: Number.NaN,
+      recencyWeight: Number.NaN,
+      topK: Number.NaN
+    });
+    const snapshot = await nan.resolve("Tell me about JARVIS active context");
+    expect(snapshot?.matches.length).toBeGreaterThan(0);
+    expect(snapshot?.matches[0]?.sessionId).toBe("s-1");
+  });
+
   it("filters by userId when episodes are user-scoped", async () => {
     const scoped = new InMemoryEpisodicRecallProvider({
       episodes: [
