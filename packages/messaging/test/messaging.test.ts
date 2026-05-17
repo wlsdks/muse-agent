@@ -10,6 +10,7 @@ import {
   MessagingValidationError,
   SlackProvider,
   TelegramProvider,
+  escapeForTelegramParseMode,
   readDiscordAfter,
   readSlackAfter,
   readTelegramOffset,
@@ -103,6 +104,33 @@ describe("TelegramProvider", () => {
     expect(seenUrl).toBe("https://tg.test/botBOT-TOKEN/sendMessage");
     expect(JSON.parse(seenBody)).toMatchObject({ chat_id: "@me", text: "hi" });
     expect(receipt).toMatchObject({ destination: "@me", messageId: "42", providerId: "telegram" });
+  });
+
+  it("escapes outbound text for the active parse_mode so Telegram doesn't 400 (goal 311)", async () => {
+    let body = "";
+    const provider = new TelegramProvider({
+      baseUrl: "https://tg.test",
+      fetch: async (_url, init) => {
+        body = String(init?.body);
+        return fakeJsonResponse({ ok: true, result: { message_id: 1 } });
+      },
+      parseMode: "MarkdownV2",
+      token: "x"
+    });
+    // A perfectly ordinary reminder — periods, a hyphen, parens,
+    // a bang. Pre-fix Telegram rejects this with 400.
+    await provider.send({ destination: "@me", text: "Meeting at 3 p.m. — follow-up (room A)!" });
+    const sent = JSON.parse(body) as { text: string; parse_mode: string };
+    expect(sent.parse_mode).toBe("MarkdownV2");
+    expect(sent.text).toBe("Meeting at 3 p\\.m\\. — follow\\-up \\(room A\\)\\!");
+  });
+
+  it("escapeForTelegramParseMode escapes per mode and is identity when unset", () => {
+    expect(escapeForTelegramParseMode("a.b-c (d)!", "MarkdownV2")).toBe("a\\.b\\-c \\(d\\)\\!");
+    expect(escapeForTelegramParseMode("a < b & c > d", "HTML")).toBe("a &lt; b &amp; c &gt; d");
+    expect(escapeForTelegramParseMode("a.b-c (d)!", undefined)).toBe("a.b-c (d)!");
+    // Backslash itself is escaped under MarkdownV2 (it is the escape char).
+    expect(escapeForTelegramParseMode("path\\to", "MarkdownV2")).toBe("path\\\\to");
   });
 
   it("throws MessagingProviderError on 401 with description", async () => {

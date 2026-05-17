@@ -182,7 +182,7 @@ export class TelegramProvider implements MessagingProvider {
     const response = await this.fetchImpl(`${this.baseUrl}/bot${this.token}/sendMessage`, {
       body: JSON.stringify({
         chat_id: message.destination,
-        text: outboundText,
+        text: escapeForTelegramParseMode(outboundText, this.parseMode),
         ...(this.parseMode ? { parse_mode: this.parseMode } : {})
       }),
       headers: { "content-type": "application/json" },
@@ -209,6 +209,27 @@ export class TelegramProvider implements MessagingProvider {
       raw: parsed.result
     };
   }
+}
+
+/**
+ * Escape outbound text for the active Telegram `parse_mode`.
+ * Without this, any reserved char (a `.` / `-` / `(` is in nearly
+ * every message) makes Telegram reject `sendMessage` with 400
+ * "can't parse entities", silently dropping the notice. Applied
+ * AFTER clamp+validate; Telegram's 4096 limit counts the parsed
+ * (un-escaped) length, so the backslashes don't push it over.
+ */
+export function escapeForTelegramParseMode(
+  text: string,
+  mode: "MarkdownV2" | "HTML" | undefined
+): string {
+  if (mode === "MarkdownV2") {
+    return text.replace(/[_*[\]()~`>#+\-=|{}.!\\]/gu, "\\$&");
+  }
+  if (mode === "HTML") {
+    return text.replace(/&/gu, "&amp;").replace(/</gu, "&lt;").replace(/>/gu, "&gt;");
+  }
+  return text;
 }
 
 // Re-export so callers don't have to depend on the validate module.
