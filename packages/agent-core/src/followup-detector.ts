@@ -25,6 +25,7 @@
  *   Korean:
  *     - `N분 뒤 | N분 후` → now + N minutes
  *     - `N시간 뒤 | N시간 후` → now + N hours
+ *     - `N일 뒤 | N일 후 | N일 이내` → now + N days
  *     - `내일 (아침|점심|저녁|밤)?` → next day at the configured slot
  *     - `오늘 H시(에)?` → today at that hour
  *
@@ -55,6 +56,7 @@ export interface FollowupPromise {
     | "today-at"
     | "korean-relative-minutes"
     | "korean-relative-hours"
+    | "korean-relative-days"
     | "korean-tomorrow-slot"
     | "korean-today-at";
 }
@@ -141,6 +143,18 @@ export function extractFollowupPromises(
       kind: "korean-relative-hours",
       originalText: match[0] ?? "",
       scheduledFor: new Date(options.now.getTime() + value * 3_600_000)
+    });
+  }
+  // Stricter tail than 분/시간 (require 뒤|후|이내, not a bare 에):
+  // "30일에" is a day-of-month, not "30 days later".
+  for (const match of text.matchAll(/(\d{1,3})\s*일\s*(?:뒤|후|이내(?:에)?)/gu)) {
+    const value = Number.parseInt(match[1] ?? "", 10);
+    if (!Number.isFinite(value) || value <= 0) continue;
+    push({
+      confidence: "high",
+      kind: "korean-relative-days",
+      originalText: match[0] ?? "",
+      scheduledFor: new Date(options.now.getTime() + value * 86_400_000)
     });
   }
 

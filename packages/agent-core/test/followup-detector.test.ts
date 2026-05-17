@@ -115,6 +115,24 @@ describe("extractFollowupPromises — Korean relative", () => {
     expect(result[0]?.scheduledFor.getTime() - now.getTime()).toBe(2 * 3_600_000);
   });
 
+  it("matches `N일 후` / `N일 뒤` / `N일 이내` (was silently dropped)", () => {
+    const after = extractFollowupPromises("3일 후에 확인해서 알려드릴게요.", { now });
+    expect(after).toHaveLength(1);
+    expect(after[0]?.kind).toBe("korean-relative-days");
+    expect(after[0]?.scheduledFor.getTime() - now.getTime()).toBe(3 * 86_400_000);
+
+    expect(extractFollowupPromises("2일 뒤 보고드리겠습니다.", { now })[0]?.kind).toBe("korean-relative-days");
+    const within = extractFollowupPromises("5일 이내에 정리해 드릴게요.", { now })[0];
+    expect(within?.kind).toBe("korean-relative-days");
+    expect(within?.scheduledFor.getTime() - now.getTime()).toBe(5 * 86_400_000);
+  });
+
+  it("does NOT treat a `N일에` day-of-month as a relative-days promise", () => {
+    // "30일에 회의" = "meeting on the 30th", not "in 30 days".
+    const result = extractFollowupPromises("30일에 회의가 잡혀 있습니다.", { now });
+    expect(result.every((p) => p.kind !== "korean-relative-days")).toBe(true);
+  });
+
   it("matches `내일 아침` with morning slot", () => {
     const result = extractFollowupPromises("내일 아침에 다시 봐 드릴게요.", { now });
     expect(result[0]?.kind).toBe("korean-tomorrow-slot");
