@@ -17,6 +17,7 @@
 import { truncateErrorBody } from "@muse/shared";
 
 import { ModelProviderError, OpenAICompatibleProvider, isRetryableHttpStatus } from "./provider-base.js";
+import { parseJson } from "./provider-shared.js";
 import {
   fromOpenAIResponsesResponse,
   parseOpenAIResponsesStream,
@@ -77,7 +78,18 @@ export class OpenAIProvider extends OpenAICompatibleProvider {
       );
     }
 
-    const payload = await response.json();
+    const rawBody = await response.text().catch(() => "");
+    const payload = parseJson(rawBody);
+    if (payload === undefined) {
+      // A non-JSON 200 is a transport anomaly (proxy/portal HTML,
+      // truncated body) — retryable ModelProviderError, not a raw
+      // SyntaxError, so the .retryable contract holds.
+      throw new ModelProviderError(
+        this.id,
+        `OpenAI Responses API response was not valid JSON: ${truncateErrorBody(rawBody) || response.statusText}`,
+        true
+      );
+    }
     return fromOpenAIResponsesResponse(this.id, request.model, payload);
   }
 

@@ -9,6 +9,7 @@
 import { truncateErrorBody } from "@muse/shared";
 
 import { ModelProviderError, isRetryableHttpStatus } from "./provider-base.js";
+import { parseJson } from "./provider-shared.js";
 import {
   fromGeminiResponse,
   geminiModelCapabilities,
@@ -84,7 +85,19 @@ export class GeminiProvider implements ModelProvider {
       );
     }
 
-    return fromGeminiResponse(this.id, model, await response.json());
+    const rawBody = await response.text().catch(() => "");
+    const payload = parseJson(rawBody);
+    if (payload === undefined) {
+      // A non-JSON 200 is a transport anomaly (proxy/portal HTML,
+      // truncated body) — retryable ModelProviderError, not a raw
+      // SyntaxError, so the .retryable contract holds.
+      throw new ModelProviderError(
+        this.id,
+        `Gemini response was not valid JSON: ${truncateErrorBody(rawBody) || response.statusText}`,
+        true
+      );
+    }
+    return fromGeminiResponse(this.id, model, payload);
   }
 
   async *stream(request: ModelRequest): AsyncIterable<ModelEvent> {

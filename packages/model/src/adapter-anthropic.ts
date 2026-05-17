@@ -8,6 +8,7 @@
 import { truncateErrorBody } from "@muse/shared";
 
 import { ModelProviderError, isRetryableHttpStatus } from "./provider-base.js";
+import { parseJson } from "./provider-shared.js";
 import {
   anthropicModelCapabilities,
   fromAnthropicResponse,
@@ -74,7 +75,19 @@ export class AnthropicProvider implements ModelProvider {
       );
     }
 
-    return fromAnthropicResponse(this.id, request.model, await response.json());
+    const rawBody = await response.text().catch(() => "");
+    const payload = parseJson(rawBody);
+    if (payload === undefined) {
+      // A non-JSON 200 is a transport anomaly (proxy/portal HTML,
+      // truncated body) — retryable ModelProviderError, not a raw
+      // SyntaxError, so the .retryable contract holds.
+      throw new ModelProviderError(
+        this.id,
+        `Anthropic response was not valid JSON: ${truncateErrorBody(rawBody) || response.statusText}`,
+        true
+      );
+    }
+    return fromAnthropicResponse(this.id, request.model, payload);
   }
 
   async *stream(request: ModelRequest): AsyncIterable<ModelEvent> {

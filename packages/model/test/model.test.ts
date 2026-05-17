@@ -990,6 +990,54 @@ describe("provider adapter contracts", () => {
       .rejects
       .toMatchObject({ providerId: "gemini", retryable: true });
   });
+
+  it("anthropic wraps a 200-but-non-JSON body as a retryable ModelProviderError", async () => {
+    const htmlBody = `<!DOCTYPE html><html>captive portal</html>${"x".repeat(5000)}`;
+    const provider = new AnthropicProvider({
+      defaultModel: "claude-test",
+      fetch: async () => new Response(htmlBody, { status: 200, headers: { "content-type": "text/html" } }),
+      models: ["claude-test"]
+    });
+    let caught: unknown;
+    await provider.generate({ ...contractRequest, model: "anthropic/claude-test" })
+      .catch((error: unknown) => { caught = error; });
+    expect(caught).toMatchObject({ name: "ModelProviderError", providerId: "anthropic", retryable: true });
+    const message = (caught as { message: string }).message;
+    expect(message).toContain("was not valid JSON");
+    expect(message.length).toBeLessThan(360);
+  });
+
+  it("gemini wraps a 200-but-non-JSON body as a retryable ModelProviderError", async () => {
+    const htmlBody = `<!DOCTYPE html><html>captive portal</html>${"x".repeat(5000)}`;
+    const provider = new GeminiProvider({
+      defaultModel: "gemini-test",
+      fetch: async () => new Response(htmlBody, { status: 200, headers: { "content-type": "text/html" } }),
+      models: ["gemini-test"]
+    });
+    let caught: unknown;
+    await provider.generate({ ...contractRequest, model: "gemini/gemini-test" })
+      .catch((error: unknown) => { caught = error; });
+    expect(caught).toMatchObject({ name: "ModelProviderError", providerId: "gemini", retryable: true });
+    const message = (caught as { message: string }).message;
+    expect(message).toContain("was not valid JSON");
+    expect(message.length).toBeLessThan(360);
+  });
+
+  it("openai responses wraps a 200-but-non-JSON body as a retryable ModelProviderError", async () => {
+    const htmlBody = `<!DOCTYPE html><html>captive portal</html>${"x".repeat(5000)}`;
+    const provider = new OpenAIProvider({
+      defaultModel: "gpt-test",
+      fetch: async () => new Response(htmlBody, { status: 200, headers: { "content-type": "text/html" } }),
+      models: ["gpt-test"]
+    });
+    let caught: unknown;
+    await provider.generate({ ...contractRequest, model: "openai/gpt-test" })
+      .catch((error: unknown) => { caught = error; });
+    expect(caught).toMatchObject({ name: "ModelProviderError", providerId: "openai", retryable: true });
+    const message = (caught as { message: string }).message;
+    expect(message).toContain("was not valid JSON");
+    expect(message.length).toBeLessThan(360);
+  });
 });
 
 describe("live provider smoke gates", () => {
