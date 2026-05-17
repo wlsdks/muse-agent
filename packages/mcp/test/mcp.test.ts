@@ -2145,6 +2145,32 @@ describe("muse.tasks loopback server", () => {
       expect(resolveRelativeTimePhrase("in a few minutes", now)).toBeUndefined();
     });
 
+    it("resolves precise fractional / compound durations (half / quarter / and-a-half)", async () => {
+      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const base = new Date("2026-05-18T09:00:00.000Z");
+      const now = () => base;
+      const mins = (p: string): number | undefined => {
+        const d = resolveRelativeTimePhrase(p, now);
+        return d ? (d.getTime() - base.getTime()) / 60_000 : undefined;
+      };
+
+      expect(mins("in half an hour")).toBe(30);
+      expect(mins("in half a minute")).toBe(0.5);
+      expect(mins("in half a day")).toBe(720);
+      expect(mins("in half a week")).toBe(5040);
+      expect(mins("in a quarter of an hour")).toBe(15);
+      expect(mins("in quarter of an hour")).toBe(15);
+      expect(mins("in three quarters of an hour")).toBe(45);
+      expect(mins("in an hour and a half")).toBe(90);
+      expect(mins("in a day and a half")).toBe(2160);
+      expect(mins("in 2 hours and a half")).toBe(150);
+      // No regression: plain + article forms unchanged; vague stays undefined.
+      expect(mins("in 3 hours")).toBe(180);
+      expect(mins("in an hour")).toBe(60);
+      expect(resolveRelativeTimePhrase("in a few minutes", now)).toBeUndefined();
+      expect(resolveRelativeTimePhrase("in a couple of hours", now)).toBeUndefined();
+    });
+
     it("parses 'in N month(s)' with calendar-month math (goal 110)", async () => {
       const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
       const fixed = new Date("2026-05-10T12:00:00Z");

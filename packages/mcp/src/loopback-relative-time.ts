@@ -72,6 +72,44 @@ const DAY_PART_HOURS: Record<string, number> = {
 // synonym for the night slot. Bare/`this `-prefixed only — a
 // day-headed form like "tomorrow evening" is handled by the
 // dayPattern + parseTimeOfDay path, so the two never overlap.
+const FLAT_UNIT_MS: Record<string, number> = {
+  second: 1000,
+  minute: 60_000,
+  hour: 3_600_000,
+  day: 86_400_000,
+  week: 7 * 86_400_000
+};
+const FRACTION_OF_UNIT =
+  /^in\s+(?:an?\s+)?(half|quarter|three\s+quarters)\s+(?:of\s+)?(?:an?\s+)?(second|minute|hour|day|week)s?$/u;
+const UNIT_AND_A_HALF =
+  /^in\s+(\d+|an?)\s+(second|minute|hour|day|week)s?\s+and\s+a\s+half$/u;
+
+// Precise fractional/compound durations the plain `in N <unit>`
+// pattern can't express: "in half an hour" (30m), "in a quarter
+// of an hour" (15m), "in three quarters of an hour" (45m), "in
+// an hour and a half" (90m), "in 2 days and a half". Exact —
+// every fraction × FLAT_UNIT_MS is an integer ms. Vague
+// quantities ("a few", "a couple") are intentionally NOT here.
+function resolveFractionalDurationMs(phrase: string): number | undefined {
+  const frac = FRACTION_OF_UNIT.exec(phrase);
+  if (frac) {
+    const word = frac[1] ?? "";
+    const unitMs = FLAT_UNIT_MS[frac[2] ?? ""];
+    if (unitMs === undefined) return undefined;
+    const factor = word === "half" ? 0.5 : word === "quarter" ? 0.25 : 0.75;
+    return unitMs * factor;
+  }
+  const compound = UNIT_AND_A_HALF.exec(phrase);
+  if (compound) {
+    const raw = compound[1] ?? "";
+    const qty = raw === "a" || raw === "an" ? 1 : Number.parseInt(raw, 10);
+    const unitMs = FLAT_UNIT_MS[compound[2] ?? ""];
+    if (unitMs === undefined || !Number.isFinite(qty)) return undefined;
+    return unitMs * (qty + 0.5);
+  }
+  return undefined;
+}
+
 function standaloneDayPartHour(phrase: string): number | undefined {
   const key = phrase === "tonight"
     ? "night"
@@ -187,6 +225,11 @@ export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date
       : unit === "week" ? amount * 7 * 86_400_000
       : 0;
     return finiteDate(new Date(reference.getTime() + offsetMs));
+  }
+
+  const fractionalMs = resolveFractionalDurationMs(trimmed);
+  if (fractionalMs !== undefined) {
+    return finiteDate(new Date(reference.getTime() + fractionalMs));
   }
 
   const standaloneHour = standaloneDayPartHour(trimmed);
