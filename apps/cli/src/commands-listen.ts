@@ -59,6 +59,27 @@ export interface ListenHelpers {
   };
 }
 
+/**
+ * Transcribe one ambient clip without ever throwing into the
+ * `while` loop: a transient STT failure (network blip, 5xx,
+ * whisper.cpp hiccup) must resume listening, not crash the
+ * whole continuous wake session. `undefined` → caller skips
+ * this clip. Pure so the resilience contract is unit-testable.
+ */
+export async function safeTranscribe(
+  stt: SpeechToTextProvider,
+  request: { readonly audio: Uint8Array; readonly mimeType: string; readonly language?: string },
+  io: Pick<ProgramIO, "stderr">
+): Promise<string | undefined> {
+  try {
+    const result = await stt.transcribe(request);
+    return result.text.trim();
+  } catch (cause) {
+    io.stderr(`transcription failed (resuming listen): ${cause instanceof Error ? cause.message : String(cause)}\n`);
+    return undefined;
+  }
+}
+
 export function registerListenCommand(program: Command, io: ProgramIO, helpers: ListenHelpers): void {
   program
     .command("listen")
@@ -132,13 +153,12 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
             if (clipAudio.byteLength === 0) {
               continue;
             }
-            const stt = await providers.stt.transcribe({
+            const transcript = await safeTranscribe(providers.stt, {
               audio: new Uint8Array(clipAudio),
               mimeType: "audio/wav",
               ...(options.lang ? { language: options.lang } : {})
-            });
-            const transcript = stt.text.trim();
-            if (transcript.length === 0) {
+            }, io);
+            if (transcript === undefined || transcript.length === 0) {
               continue;
             }
             const scan = detector.scan(transcript);
