@@ -24,6 +24,15 @@ describe("renderAskStreamError", () => {
     expect(r.stdout).toBeUndefined();
     expect(r.stderr).toBe(`\n(error: ${base.error})\n`);
   });
+
+  it("--json with an empty answer (agent threw before producing output) is still a parseable object", () => {
+    // The --with-tools agent path passes answer:"" when
+    // agentRuntime.run() throws before assigning output.
+    const r = renderAskStreamError({ ...base, answer: "", json: true });
+    const parsed = JSON.parse(r.stdout!) as { answer: unknown; error: unknown };
+    expect(parsed.answer).toBe("");
+    expect(parsed.error).toBe(base.error);
+  });
 });
 
 async function* gen(events: AskStreamEvent[]): AsyncIterable<AskStreamEvent> {

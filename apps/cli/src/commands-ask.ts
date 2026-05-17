@@ -568,20 +568,37 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           process.exitCode = 1;
           return;
         }
-        const result = await assembly.agentRuntime.run({
-          messages: [
-            { content: systemPrompt, role: "system" },
-            { content: query, role: "user" }
-          ],
-          metadata: {
-            userId: userKey,
-            ...(options.notesOnly ? { allowedToolNames: [...NOTES_ONLY_TOOL_ALLOWLIST] } : {}),
-            ...(webSearchPolicy ? { webSearchPolicy } : {})
-          },
-          model
-        });
-        collectedAnswer = result.response.output ?? "";
-        toolsUsed = result.toolsUsed ?? [];
+        try {
+          const result = await assembly.agentRuntime.run({
+            messages: [
+              { content: systemPrompt, role: "system" },
+              { content: query, role: "user" }
+            ],
+            metadata: {
+              userId: userKey,
+              ...(options.notesOnly ? { allowedToolNames: [...NOTES_ONLY_TOOL_ALLOWLIST] } : {}),
+              ...(webSearchPolicy ? { webSearchPolicy } : {})
+            },
+            model
+          });
+          collectedAnswer = result.response.output ?? "";
+          toolsUsed = result.toolsUsed ?? [];
+        } catch (cause) {
+          // Same --json contract as the chat-only path: an agent
+          // failure must be a parseable stdout object, not an
+          // uncaught throw that leaves stdout empty.
+          const rendered = renderAskStreamError({
+            answer: collectedAnswer,
+            error: cause instanceof Error ? cause.message : String(cause),
+            json: options.json ?? false,
+            model,
+            query
+          });
+          if (rendered.stdout !== undefined) io.stdout(rendered.stdout);
+          if (rendered.stderr !== undefined) io.stderr(rendered.stderr);
+          process.exitCode = 1;
+          return;
+        }
         if (!options.json) {
           if (toolsUsed.length > 0) {
             io.stderr(`(tools used: ${toolsUsed.join(", ")})\n`);
