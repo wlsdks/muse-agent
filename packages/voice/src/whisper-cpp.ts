@@ -58,7 +58,18 @@ export interface WhisperCppSttProviderOptions {
   readonly modelPath?: string;
   /** Test seam. Defaults to `node:child_process.spawn`. */
   readonly runner?: WhisperCppRunner;
+  /**
+   * Hard wall-clock cap for a single spawn. A hung whisper-cpp
+   * (stuck model load, wedged ffmpeg decode) would otherwise hang
+   * the voice loop forever — CLAUDE.md: tool loops have explicit
+   * timeouts. Default 120 s (generous: covers cold model load).
+   * Only applies to the built-in spawn runner; an injected
+   * `runner` owns its own lifecycle.
+   */
+  readonly timeoutMs?: number;
 }
+
+const DEFAULT_WHISPER_TIMEOUT_MS = 120_000;
 
 /**
  * Local Whisper.cpp adapter. Drops a tmp WAV next to a tmp output
@@ -80,7 +91,11 @@ export class WhisperCppSttProvider implements SpeechToTextProvider {
     this.id = options.id ?? "whisper-cpp";
     this.binaryPath = options.binaryPath ?? "whisper-cpp";
     this.modelPath = options.modelPath ?? defaultModelPath();
-    this.runner = options.runner ?? defaultRunner;
+    const timeoutMs =
+      typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+        ? options.timeoutMs
+        : DEFAULT_WHISPER_TIMEOUT_MS;
+    this.runner = options.runner ?? createWhisperCppRunner(timeoutMs);
   }
 
   describe(): SttProviderInfo {
@@ -167,14 +182,33 @@ function extensionForMime(mime: string): string {
   return "wav";
 }
 
-async function defaultRunner(binary: string, args: readonly string[]): Promise<WhisperCppRunResult> {
-  return new Promise((resolve, reject) => {
+/**
+ * The built-in spawn runner, parameterised by a hard timeout that
+ * SIGKILLs a hung whisper-cpp and rejects, so the voice loop fails
+ * fast instead of hanging forever. Exported for direct timeout
+ * coverage.
+ */
+export function createWhisperCppRunner(timeoutMs: number = DEFAULT_WHISPER_TIMEOUT_MS): WhisperCppRunner {
+  return (binary, args) => new Promise<WhisperCppRunResult>((resolve, reject) => {
     const child = spawn(binary, [...args], { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, timeoutMs);
 
     child.stderr?.on("data", (chunk) => { stderr += chunk.toString(); });
-    child.on("error", reject);
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
     child.on("close", (exitCode) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        reject(new Error(`whisper-cpp timed out after ${timeoutMs.toString()}ms and was killed`));
+        return;
+      }
       resolve({ exitCode, stderr });
     });
   });

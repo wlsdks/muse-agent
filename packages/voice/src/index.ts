@@ -27,6 +27,7 @@ export {
 } from "./openai-whisper.js";
 export {
   WhisperCppSttProvider,
+  createWhisperCppRunner,
   type WhisperCppRunResult,
   type WhisperCppRunner,
   type WhisperCppSttProviderOptions

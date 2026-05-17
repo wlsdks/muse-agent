@@ -13,6 +13,7 @@ import {
   VoiceProviderRegistry,
   VoiceValidationError,
   WhisperCppSttProvider,
+  createWhisperCppRunner,
   buildGeminiLiveAudioFrame,
   buildGeminiLiveEndTurnFrame,
   buildGeminiLiveSetupFrame,
@@ -193,6 +194,23 @@ describe("WhisperCppSttProvider", () => {
     await expect(
       provider.transcribe({ audio: new Uint8Array([1, 2, 3]), mimeType: "" })
     ).rejects.toBeInstanceOf(VoiceValidationError);
+  });
+
+  it("createWhisperCppRunner SIGKILLs a hung process and rejects (no infinite hang)", async () => {
+    const runner = createWhisperCppRunner(120);
+    const start = Date.now();
+    // A real child that never exits on its own — proves the timeout
+    // actually kills it rather than the test just timing out.
+    await expect(
+      runner(process.execPath, ["-e", "setInterval(() => {}, 1000)"])
+    ).rejects.toThrow(/timed out after 120ms and was killed/u);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  it("createWhisperCppRunner resolves normally for a fast-exiting process", async () => {
+    const runner = createWhisperCppRunner(10_000);
+    const result = await runner(process.execPath, ["-e", "process.exit(0)"]);
+    expect(result.exitCode).toBe(0);
   });
 
   it("spawns whisper-cpp with the expected argv and returns the txt body", async () => {
