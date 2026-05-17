@@ -17,10 +17,26 @@ import type {
   MessagingProviderInfo,
   OutboundReceipt
 } from "@muse/messaging";
+import { stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 
 import { formatProvidersList } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
+
+/**
+ * One human-readable inbox line. `text` / `sender` / `source` are
+ * attacker-controlled (anyone who messages the bot) and printed
+ * straight to the terminal, so they get the same ESC/C0/C1/DEL
+ * strip + whitespace-collapse the agent-context inbox applies — a
+ * message must not be able to hijack the terminal.
+ */
+export function formatInboxLine(entry: InboundMessage): string {
+  const clean = (value: string): string =>
+    stripUntrustedTerminalChars(value).replace(/\s+/gu, " ").trim();
+  const sender = entry.sender ? `@${clean(entry.sender)}` : `chat ${clean(entry.source)}`;
+  const time = entry.receivedAtIso.slice(0, 16).replace("T", " ");
+  return `  ${time}  ${sender}: ${clean(entry.text)}`;
+}
 
 export interface MessagingCommandHelpers {
   readonly apiRequest: (
@@ -114,11 +130,7 @@ export function registerMessagingCommands(
         io.stdout(`Inbox (${provider}): (empty)\n`);
         return;
       }
-      const lines = inbound.map((entry) => {
-        const sender = entry.sender ? `@${entry.sender}` : `chat ${entry.source}`;
-        const time = entry.receivedAtIso.slice(0, 16).replace("T", " ");
-        return `  ${time}  ${sender}: ${entry.text}`;
-      });
+      const lines = inbound.map(formatInboxLine);
       io.stdout(`Inbox (${provider}, ${inbound.length}):\n${lines.join("\n")}\n`);
     });
 
