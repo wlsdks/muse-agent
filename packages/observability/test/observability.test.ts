@@ -308,6 +308,9 @@ describe("startup doctor and log export", () => {
           },
           setAttribute: (key: string, value: unknown) => {
             spans.push({ key, value });
+          },
+          setStatus: (status: { readonly code: number; readonly message?: string }) => {
+            spans.push({ status });
           }
         };
         return span;
@@ -327,7 +330,32 @@ describe("startup doctor and log export", () => {
     expect(spans).toContainEqual({ key: "model", value: "test-model" });
     expect(spans).toContainEqual({ key: "run.id", value: "run-1" });
     expect(spans).toContainEqual({ error: "failed" });
+    // OTel ERROR status (code 2) so the span isn't shown as OK.
+    expect(spans).toContainEqual({ status: { code: 2, message: "failed" } });
     expect(spans).toContainEqual(expect.objectContaining({ ended: true, name: "muse.agent.run" }));
+
+    // A successful span records no exception and no ERROR status.
+    const okSpans: unknown[] = [];
+    const okSink = new OpenTelemetryTraceEventSink({
+      startSpan: () => ({
+        end: () => { okSpans.push({ ended: true }); },
+        recordException: () => { okSpans.push({ exception: true }); },
+        setAttribute: () => {},
+        setStatus: (status: { readonly code: number }) => { okSpans.push({ status }); }
+      })
+    });
+    await okSink.record({
+      attributes: { model: "test-model" },
+      endedAt: new Date("2026-05-06T00:00:01.000Z"),
+      name: "muse.agent.run",
+      runId: "run-2",
+      spanId: "span-2",
+      stage: "agent",
+      startedAt: new Date("2026-05-06T00:00:00.000Z")
+    });
+    expect(okSpans).not.toContainEqual(expect.objectContaining({ exception: true }));
+    expect(okSpans.some((s) => typeof s === "object" && s !== null && "status" in s)).toBe(false);
+    expect(okSpans).toContainEqual({ ended: true });
   });
 
   it("exports trace events to a Timescale-compatible writer", async () => {

@@ -117,6 +117,8 @@ export interface PinoCompatibleLogger {
 export interface OpenTelemetrySpanLike {
   setAttribute(key: string, value: string | number | boolean): void;
   recordException?(error: unknown): void;
+  /** OTel `Span.setStatus` — `{ code }` uses SpanStatusCode (ERROR = 2). */
+  setStatus?(status: { readonly code: number; readonly message?: string }): void;
   end(): void;
 }
 

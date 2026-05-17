@@ -152,6 +152,10 @@ export class OpenTelemetryTraceEventSink implements TraceEventSink {
 
     if (typeof event.attributes.error === "string") {
       span.recordException?.(event.attributes.error);
+      // Without an ERROR status (OTel SpanStatusCode.ERROR = 2) the
+      // backend shows the span as OK despite the exception, so
+      // error dashboards / alerting / tail-sampling miss the failure.
+      span.setStatus?.({ code: 2, message: event.attributes.error });
     }
 
     span.end();
