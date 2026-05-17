@@ -482,6 +482,33 @@ describe("resolveJobTimeout", () => {
   });
 });
 
+describe("normalizeScheduledJob maxRetryCount finite guard", () => {
+  const base = {
+    agentPrompt: "Run",
+    cronExpression: "* * * * *",
+    jobType: "agent" as const,
+    name: "Job"
+  };
+  const opts = { id: "job-1", now: () => new Date("2026-05-18T00:00:00.000Z") };
+
+  it("passes a finite maxRetryCount through (incl. 0)", () => {
+    expect(normalizeScheduledJob({ ...base, maxRetryCount: 5 }, opts).maxRetryCount).toBe(5);
+    expect(normalizeScheduledJob({ ...base, maxRetryCount: 0 }, opts).maxRetryCount).toBe(0);
+  });
+
+  it("falls back to the default for absent / non-finite maxRetryCount", () => {
+    // Default applies when omitted (unchanged behaviour).
+    const dflt = normalizeScheduledJob({ ...base }, opts).maxRetryCount;
+    expect(dflt).toBeGreaterThanOrEqual(1);
+    // NaN/Infinity must NOT pass through: Math.max(1, NaN) is NaN,
+    // which makes runWithRetry's `attempt <= attempts` loop never
+    // run so the job silently never dispatches.
+    expect(normalizeScheduledJob({ ...base, maxRetryCount: Number.NaN }, opts).maxRetryCount).toBe(dflt);
+    expect(normalizeScheduledJob({ ...base, maxRetryCount: Number.POSITIVE_INFINITY }, opts).maxRetryCount).toBe(dflt);
+    expect(normalizeScheduledJob({ ...base, maxRetryCount: Number.NEGATIVE_INFINITY }, opts).maxRetryCount).toBe(dflt);
+  });
+});
+
 function createAgentJob(overrides: Partial<ScheduledJob> = {}): ScheduledJob {
   return {
     agentPrompt: "Run",

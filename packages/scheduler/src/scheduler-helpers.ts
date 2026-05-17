@@ -134,6 +134,14 @@ export function normalizeScheduledJob(
   const now = options.now();
   const createdAt = input.createdAt ?? now;
   const updatedAt = input.updatedAt ?? now;
+  // `??` does NOT catch NaN/Infinity: a corrupt persisted
+  // maxRetryCount would make `Math.max(1, NaN)` NaN, so the
+  // `attempt <= attempts` retry loop never runs and the job
+  // silently never dispatches. validateRetryConfig only guards
+  // the create path, not this normalize/load path.
+  const maxRetryCount = typeof input.maxRetryCount === "number" && Number.isFinite(input.maxRetryCount)
+    ? input.maxRetryCount
+    : defaultRetryCount;
 
   return {
     agentMaxToolCalls: input.agentMaxToolCalls ?? undefined,
@@ -150,7 +158,7 @@ export function normalizeScheduledJob(
     lastResult: blankToUndefined(input.lastResult),
     lastRunAt: input.lastRunAt ?? undefined,
     lastStatus: input.lastStatus ?? undefined,
-    maxRetryCount: input.maxRetryCount ?? defaultRetryCount,
+    maxRetryCount,
     mcpServerName: blankToUndefined(input.mcpServerName),
     name: input.name.trim(),
     notificationChannelId: blankToUndefined(input.notificationChannelId),
