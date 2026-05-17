@@ -11,6 +11,7 @@ import {
   SlackProvider,
   TelegramProvider,
   escapeForTelegramParseMode,
+  escapeSlackText,
   readDiscordAfter,
   readSlackAfter,
   readTelegramOffset,
@@ -483,6 +484,31 @@ describe("SlackProvider", () => {
     });
     const receipt = await provider.send({ destination: "C123", text: "hi" });
     expect(receipt).toMatchObject({ destination: "C123", messageId: "1700000000.000100", providerId: "slack" });
+  });
+
+  it("escapes &/</> so Slack mrkdwn can't turn text into links/mentions (goal 312)", async () => {
+    let sentText = "";
+    const provider = new SlackProvider({
+      fetch: async (_url, init) => {
+        sentText = (JSON.parse(String(init?.body)) as { text: string }).text;
+        return fakeJsonResponse({ channel: "C1", ok: true, ts: "1700000000.000100" });
+      },
+      token: "xoxb-test"
+    });
+    // A stray `<!channel>` substring would broadcast-ping the
+    // whole channel; `<http…>` would auto-link; `&` mojibakes.
+    await provider.send({ destination: "C1", text: "see <!channel> & docs at <https://x> when x < y" });
+    expect(sentText).toBe(
+      "see &lt;!channel&gt; &amp; docs at &lt;https://x&gt; when x &lt; y"
+    );
+  });
+
+  it("escapeSlackText escapes exactly &, <, > (ampersand first)", () => {
+    expect(escapeSlackText("a & b < c > d")).toBe("a &amp; b &lt; c &gt; d");
+    // No double-escape: a literal `&lt;` stays one level escaped.
+    expect(escapeSlackText("&lt;")).toBe("&amp;lt;");
+    // mrkdwn formatting chars are NOT escaped (Slack renders them).
+    expect(escapeSlackText("*bold* _it_ ~s~ no change")).toBe("*bold* _it_ ~s~ no change");
   });
 
   it("turns ok:false into MessagingProviderError with the slack error code", async () => {

@@ -195,7 +195,7 @@ export class SlackProvider implements MessagingProvider {
     const outboundText = clampOutboundText(message.text);
     validateOutboundMessage({ ...message, text: outboundText });
     const response = await this.fetchImpl(`${this.baseUrl}/chat.postMessage`, {
-      body: JSON.stringify({ channel: message.destination, text: outboundText }),
+      body: JSON.stringify({ channel: message.destination, text: escapeSlackText(outboundText) }),
       headers: {
         authorization: `Bearer ${this.token}`,
         "content-type": "application/json; charset=utf-8"
@@ -222,6 +222,18 @@ export class SlackProvider implements MessagingProvider {
       raw: parsed
     };
   }
+}
+
+/**
+ * Slack always renders the `text` field as mrkdwn, so `&`, `<`,
+ * `>` are control chars: an unescaped `<…>` is silently parsed as
+ * a link / mention / `<!channel>` broadcast (a stray
+ * channel-wide ping), and `&` mojibakes. Slack's documented rule
+ * is to escape exactly these three (`&` first so `&lt;` isn't
+ * double-escaped); everything else is literal.
+ */
+export function escapeSlackText(text: string): string {
+  return text.replace(/&/gu, "&amp;").replace(/</gu, "&lt;").replace(/>/gu, "&gt;");
 }
 
 /**

@@ -25,7 +25,7 @@ export type {
 
 export { TelegramProvider, escapeForTelegramParseMode, type TelegramProviderOptions } from "./telegram-provider.js";
 export { DiscordProvider, type DiscordProviderOptions } from "./discord-provider.js";
-export { SlackProvider, type SlackProviderOptions } from "./slack-provider.js";
+export { SlackProvider, escapeSlackText, type SlackProviderOptions } from "./slack-provider.js";
 export { LineProvider, type LineProviderOptions } from "./line-provider.js";
 export { LogMessagingProvider, type LogMessagingProviderOptions } from "./log-provider.js";
 export {
