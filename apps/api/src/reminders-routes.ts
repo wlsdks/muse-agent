@@ -15,6 +15,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  compareRemindersByDueAt,
   filterReminders,
   fireReminder,
   parseReminderDueAt,
@@ -52,7 +53,7 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     const status = readReminderStatusFilter((request.query as { readonly status?: string } | undefined)?.status);
     const reminders = await readReminders(remindersFile);
     const filtered = filterReminders(reminders, status, () => new Date());
-    const sorted = [...filtered].sort((left, right) => left.dueAt.localeCompare(right.dueAt));
+    const sorted = [...filtered].sort(compareRemindersByDueAt);
     return { reminders: sorted.map(serializeReminder), status, total: sorted.length };
   });
 
