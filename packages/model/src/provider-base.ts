@@ -19,6 +19,7 @@ import {
   parseOpenAIStream,
   toOpenAIChatRequest
 } from "./provider-wire.js";
+import { parseJson } from "./provider-shared.js";
 import type {
   ModelEvent,
   ModelInfo,
@@ -112,7 +113,19 @@ export class OpenAICompatibleProvider implements ModelProvider {
       );
     }
 
-    const payload = await response.json();
+    const rawBody = await response.text().catch(() => "");
+    const payload = parseJson(rawBody);
+    if (payload === undefined) {
+      // A 200 with a non-JSON body is a transport anomaly (captive
+      // portal / proxy HTML / truncated body) — surface it as a
+      // retryable ModelProviderError so the .retryable contract
+      // holds instead of a raw SyntaxError escaping the provider.
+      throw new ModelProviderError(
+        this.id,
+        `OpenAI-compatible response was not valid JSON: ${truncateErrorBody(rawBody) || response.statusText}`,
+        true
+      );
+    }
     return fromOpenAIChatResponse(this.id, request.model, payload);
   }
 

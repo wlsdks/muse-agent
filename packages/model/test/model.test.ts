@@ -883,6 +883,26 @@ describe("provider adapter contracts", () => {
     ]);
   });
 
+  it("openai-compatible base wraps a 200-but-non-JSON body as a retryable ModelProviderError, not a raw SyntaxError", async () => {
+    const htmlBody = `<!DOCTYPE html><html><body>captive portal login</body></html>${"x".repeat(5000)}`;
+    const provider = new OpenAICompatibleProvider({
+      baseUrl: "http://compat.example.test/v1",
+      defaultModel: "model-test",
+      fetch: async () => new Response(htmlBody, { status: 200, headers: { "content-type": "text/html" } }),
+      id: "lmstudio",
+      models: ["model-test"]
+    });
+
+    let caught: unknown;
+    await provider.generate({ ...contractRequest, model: "lmstudio/model-test" })
+      .catch((error: unknown) => { caught = error; });
+    expect(caught).toMatchObject({ name: "ModelProviderError", providerId: "lmstudio", retryable: true });
+    const message = (caught as { message: string }).message;
+    expect(message).toContain("was not valid JSON");
+    // The raw 5000-char body must not flow unbounded into the error.
+    expect(message.length).toBeLessThan(360);
+  });
+
   it("anthropic maps model metadata, generate, stream, tool calls, and errors", async () => {
     const provider = new AnthropicProvider({
       defaultModel: "claude-test",
