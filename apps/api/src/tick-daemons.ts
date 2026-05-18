@@ -22,8 +22,13 @@ import type { FastifyInstance } from "fastify";
 import type { ServerOptions } from "./server.js";
 import { parseQuietHours, startReminderTick } from "./reminder-tick.js";
 import { startProactiveTick, type InMemoryActivityTracker } from "./proactive-tick.js";
-import { createNotesInvestigator } from "@muse/mcp";
+import {
+  createMessagingObjectiveActuator,
+  createModelObjectiveEvaluator,
+  createNotesInvestigator
+} from "@muse/mcp";
 import { startFollowupTick } from "./followup-tick.js";
+import { startObjectivesTick } from "./objectives-tick.js";
 import { startPatternTick } from "./pattern-tick.js";
 import { startSituationalBriefingTick } from "./situational-briefing-tick.js";
 
@@ -227,6 +232,53 @@ export function startSituationalBriefingDaemonIfConfigured(
   });
   server.addHook("onClose", async () => {
     briefingHandle.stop();
+  });
+}
+
+export function startObjectivesDaemonIfConfigured(
+  env: NodeJS.ProcessEnv,
+  server: FastifyInstance,
+  options: ServerOptions
+): void {
+  const objectivesProvider = env.MUSE_OBJECTIVES_PROVIDER?.trim();
+  const objectivesDestination = env.MUSE_OBJECTIVES_DESTINATION?.trim();
+  if (
+    !objectivesProvider || objectivesProvider.length === 0
+    || !objectivesDestination || objectivesDestination.length === 0
+    || !options.objectivesFile
+    || !options.messaging
+    || !options.messaging.has(objectivesProvider)
+    || !options.modelProvider
+    || !options.defaultModel
+  ) {
+    return;
+  }
+  const tickMsRaw = env.MUSE_OBJECTIVES_TICK_MS ? Number(env.MUSE_OBJECTIVES_TICK_MS) : undefined;
+  const maxPerTickRaw = env.MUSE_OBJECTIVES_MAX_PER_TICK ? Number(env.MUSE_OBJECTIVES_MAX_PER_TICK) : undefined;
+  const objectivesQuietHours = parseQuietHours(env.MUSE_OBJECTIVES_QUIET_HOURS)
+    ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const evaluate = createModelObjectiveEvaluator({
+    model: options.defaultModel,
+    modelProvider: options.modelProvider
+  });
+  const { act, escalate } = createMessagingObjectiveActuator({
+    destination: objectivesDestination,
+    providerId: objectivesProvider,
+    registry: options.messaging
+  });
+  const objectivesHandle = startObjectivesTick({
+    act,
+    errorLogger: (message) => server.log.warn(message),
+    escalate,
+    evaluate,
+    ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
+    logger: (message) => server.log.info(message),
+    ...(maxPerTickRaw !== undefined ? { maxPerTick: maxPerTickRaw } : {}),
+    objectivesFile: options.objectivesFile,
+    ...(objectivesQuietHours ? { quietHours: objectivesQuietHours } : {})
+  });
+  server.addHook("onClose", async () => {
+    objectivesHandle.stop();
   });
 }
 

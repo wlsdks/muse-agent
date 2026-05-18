@@ -387,6 +387,13 @@ export {
   type RunDueSituationalBriefingSummary
 } from "./situational-briefing-loop.js";
 export {
+  createMessagingObjectiveActuator,
+  createModelObjectiveEvaluator,
+  parseObjectiveVerdict,
+  type MessagingObjectiveActuatorOptions,
+  type ModelObjectiveEvaluatorOptions
+} from "./objective-evaluator.js";
+export {
   undoLoggedAction,
   type UndoLoggedActionOptions,
   type UndoLoggedActionResult

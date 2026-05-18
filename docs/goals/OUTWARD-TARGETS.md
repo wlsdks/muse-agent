@@ -335,7 +335,20 @@ server autonomously drives the loop.
     smoke:live-class remainder). Check: env configured → server
     start registers + can stop the objectives daemon; absent ⇒
     not started; the evaluator decides a real objective's
-    condition (integration/smoke:live).
+    condition (integration/smoke:live). — 397 PARTIAL: env-gating
+    + registration + the model-evaluator strict parse + safe
+    fail-soft + the messaging actuator are all SHIPPED &
+    deterministically verified (objectives-daemon.test.ts 4/4,
+    objective-evaluator.test.ts 4/4). But the "evaluator decides a
+    real objective's condition" clause is **[UNVERIFIED-LIVE]**:
+    dog-fooded against the loop's mandated local qwen3:8b it does
+    NOT reliably emit a parseable verdict (empty / endpoint
+    errors), so the evaluator conservatively defers (`unmet`) —
+    safe, never false-acts, but not genuinely deciding. Per the
+    contract this does NOT count toward the metric; parent P9-b2
+    stays `[ ]`. Priority follow-up: make the small-local-model
+    verdict reliable (prompt-hardening / a tool-using agent
+    evaluator / model-capability gating) and clear the tag.
 
 The loop extends this map itself when all are delivered or its
 judgement finds a stronger outward direction. "Nothing to do" is

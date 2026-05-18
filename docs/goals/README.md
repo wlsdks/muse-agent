@@ -43,6 +43,7 @@ delete an open row, never rewrite another goal's status.
 | 394 | [Delegated-autonomy loops run](394-autonomy-loops-run.md)                 | epic / outward | P9-b1 done; P9-b2 split (rider child done) |
 | 395 | [Situational-briefing daemon rider](395-briefing-daemon-rider.md)         | epic / outward | P9-b2 child done (rider) |
 | 396 | [Briefing daemon env-gated](396-briefing-daemon-env-gated.md)             | epic / outward | P9-b2 child done; objectives-daemon child next |
+| 397 | [Objectives daemon + model evaluator](397-objectives-daemon-evaluator.md) | epic / outward | wiring done; live-decision [UNVERIFIED-LIVE] |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
@@ -297,4 +298,14 @@ Append one line when a discovery path is evaluated and deferred:
   autoconfigure + server.ts + integration test. Remaining: the
   objectives daemon env-gated + a concrete agent/LLM
   condition-evaluator — the smoke:live-class (c). Parent still
-  `[ ]`.)
+  `[ ]`.) (PROGRESS 397: (c) env-gating + registration +
+  `createModelObjectiveEvaluator` strict-parse + conservative
+  fail-soft + `createMessagingObjectiveActuator` SHIPPED &
+  deterministically verified — BUT the real-qwen3:8b dog-food
+  showed the small local model does not reliably emit a parseable
+  verdict, so "the evaluator decides a real objective's condition"
+  is **[UNVERIFIED-LIVE]** and parent P9-b2 stays `[ ]`. The
+  evaluator's safe-default means it never false-acts — it just
+  defers — so shipping the wiring is safe; clearing the
+  [UNVERIFIED-LIVE] (reliable small-model verdict) is the priority
+  follow-up.)

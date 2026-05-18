@@ -21,6 +21,7 @@ import { createFileBackedActivityTracker, createInMemoryActivityTracker } from "
 import {
   startFollowupDaemonIfConfigured,
   startPatternDaemonIfConfigured,
+  startObjectivesDaemonIfConfigured,
   startProactiveDaemonIfConfigured,
   startReminderDaemonIfConfigured,
   startSituationalBriefingDaemonIfConfigured
@@ -328,6 +329,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   startFollowupDaemonIfConfigured(env, server, options);
   startPatternDaemonIfConfigured(env, server, options);
   startSituationalBriefingDaemonIfConfigured(env, server, options);
+  startObjectivesDaemonIfConfigured(env, server, options);
 
   // Optional Phase 2.a.3 daemon: poll Telegram every
   // MUSE_TELEGRAM_POLL_INTERVAL_MS (default 30s) and persist each
