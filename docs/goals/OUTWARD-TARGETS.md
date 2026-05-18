@@ -258,6 +258,32 @@ correction is permanent-by-accident with no way to clear it.
   provider input [] (directive no longer injects, by P7-b1's
   proven []-no-op contract) + hasVeto false)
 
+**P8 — Proactive situational briefing (loop-authored, P0–P7 all
+delivered).** P2 proved per-item proactive delivery + anticipatory
+prep. But a JARVIS speaks the *situation*, not N disconnected
+pings: "next 2 hours — 3pm review (doc attached); objective Y is
+blocked and needs you; I'm still watching Z." The outward gap: the
+proactive loop fires one notice per item; it never SYNTHESISES
+imminent calendar/task items + delegated-objective status into one
+coherent heads-up. P8 composes the P2 (imminent) + P5 (objective
+lifecycle) substrate into the situational picture.
+- [ ] A deterministic composer assembles imminent items +
+  delegated-objective status (active = tracked, escalated =
+  flagged "needs you", done/cancelled excluded) into ONE coherent
+  briefing message — not N separate notices; empty context ⇒
+  nothing to say. Check: seeded imminent item + active + escalated
+  objectives → one briefing naming all with correct framing,
+  soonest-first; empty → undefined (integration). — 392
+  (composeSituationalBriefing: soonest-first Upcoming + escalated
+  "Needs you" w/ resolution + active "Still tracking";
+  done/cancelled excluded; undefined when nothing to say; NaN-date
+  dropped; whitespace-collapsed)
+- [ ] The briefing is delivered proactively on the real channel
+  (composing the P2 contract-faithful HTTP-faked delivery path),
+  once per situation-window, deduped. Check: seeded context → one
+  briefing POSTed to the real channel API; a second tick in-window
+  does not re-POST (integration).
+
 The loop extends this map itself when all are delivered or its
 judgement finds a stronger outward direction. "Nothing to do" is
 impossible by construction.

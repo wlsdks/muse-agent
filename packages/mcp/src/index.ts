@@ -377,6 +377,11 @@ export {
   type ActionVeto
 } from "./personal-veto-store.js";
 export {
+  composeSituationalBriefing,
+  type BriefingImminent,
+  type SituationalBriefingInput
+} from "./situational-briefing.js";
+export {
   undoLoggedAction,
   type UndoLoggedActionOptions,
   type UndoLoggedActionResult
