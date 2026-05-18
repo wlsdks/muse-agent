@@ -40,7 +40,8 @@ delete an open row, never rewrite another goal's status.
 | 388 | [Reviewable action log](388-reviewable-action-log.md)                     | epic / outward | done — P6 fully delivered (b1–b2) |
 | 390 | [Learns from correction](390-learns-from-correction.md)                   | epic / outward | done — P7 fully delivered (b1–b2) |
 | 392 | [Proactive situational briefing](392-situational-briefing.md)             | epic / outward | done — P8 fully delivered (b1–b2) |
-| 394 | [Delegated-autonomy loops run](394-autonomy-loops-run.md)                 | epic / outward | P9-b1 done; P9-b2 (daemon-set wiring) next |
+| 394 | [Delegated-autonomy loops run](394-autonomy-loops-run.md)                 | epic / outward | P9-b1 done; P9-b2 split (rider child done) |
+| 395 | [Situational-briefing daemon rider](395-briefing-daemon-rider.md)         | epic / outward | P9-b2 child 1/2 done; env-wiring child next |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
@@ -277,3 +278,16 @@ Append one line when a discovery path is evaluated and deferred:
   bullet reopened. P8 (proactive situational briefing) is
   genuinely delivered end-to-end. **P0–P8 now ALL delivered +
   audited.**
+- P9-b2 env-gated daemon-set wiring + concrete objectives
+  evaluator/actuator — iter (395) — deferred: P9-b2 genuinely
+  bundles (a) the situational-briefing apps/api rider, (b) both
+  riders env-gated + registered in the daemon set
+  (`start…DaemonIfConfigured` + ServerOptions/autoconfigure
+  plumbing + server.ts), (c) a concrete production objectives
+  evaluator/actuator (the LLM-ish, smoke:live-class part). Too
+  coarse for one tight commit, so P9-b2 was split; child (a) —
+  `startSituationalBriefingTick`, the deterministic zero-LLM
+  parallel of the P9-b1 objectives rider — shipped + tested (395).
+  Parent P9-b2 stays `[ ]` until (b)+(c). Honest split, the
+  378-s2 / P5 precedent — no parent flip, no CAPABILITIES line
+  until the parent is met end-to-end.

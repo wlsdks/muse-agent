@@ -1,0 +1,104 @@
+/**
+ * Situational-briefing daemon — wires `runDueSituationalBriefing`
+ * (P8-b2) into apps/api as a `setInterval` rider, the parallel of
+ * `objectives-tick.ts` for the briefing loop. Without it the
+ * synthesised situational picture exists only as a library the
+ * user's running server never drives.
+ *
+ * Deterministic + zero-LLM (the composer is pure; delivery is the
+ * messaging registry). Off unless started. Cadence `intervalMs`
+ * (default 30 min — a briefing is coarser than the per-item
+ * ticks), clamped to [5s, 6h]; single-flight; fail-soft; unref.
+ * `imminent` defaults to `[]` so the daemon briefs delegated-
+ * objective status; calendar-derived imminent is a later
+ * enhancement injected here.
+ */
+
+import {
+  runDueSituationalBriefing,
+  type BriefingImminent
+} from "@muse/mcp";
+import type { MessagingProviderRegistry } from "@muse/messaging";
+
+import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
+
+export interface SituationalBriefingTickOptions {
+  readonly objectivesFile: string;
+  readonly registry: MessagingProviderRegistry;
+  readonly providerId: string;
+  readonly destination: string;
+  readonly sidecarFile: string;
+  readonly imminent?: readonly BriefingImminent[];
+  readonly windowMs?: number;
+  readonly intervalMs?: number;
+  readonly logger?: (message: string) => void;
+  readonly errorLogger?: (message: string) => void;
+  readonly quietHours?: QuietHourRange;
+  readonly now?: () => Date;
+}
+
+const DEFAULT_INTERVAL_MS = 30 * 60_000;
+const MIN_INTERVAL_MS = 5_000;
+const MAX_INTERVAL_MS = 6 * 60 * 60_000;
+
+export interface SituationalBriefingTickHandle {
+  readonly stop: () => void;
+  readonly tickOnce: () => Promise<void>;
+}
+
+export function startSituationalBriefingTick(
+  options: SituationalBriefingTickOptions
+): SituationalBriefingTickHandle {
+  const intervalMs = clampInterval(options.intervalMs ?? DEFAULT_INTERVAL_MS);
+  const now = options.now ?? (() => new Date());
+  let firing = false;
+
+  const tickOnce = async (): Promise<void> => {
+    if (firing) {
+      return;
+    }
+    if (options.quietHours && isQuietHour(now().getHours(), options.quietHours)) {
+      return;
+    }
+    firing = true;
+    try {
+      const summary = await runDueSituationalBriefing({
+        destination: options.destination,
+        imminent: options.imminent ?? [],
+        messagingRegistry: options.registry,
+        now,
+        objectivesFile: options.objectivesFile,
+        providerId: options.providerId,
+        sidecarFile: options.sidecarFile,
+        ...(options.windowMs !== undefined ? { windowMs: options.windowMs } : {})
+      });
+      if (summary.delivered > 0) {
+        options.logger?.(`situational-briefing-tick: delivered via ${options.providerId}`);
+      }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      options.errorLogger?.(`situational-briefing-tick: ${message}`);
+    } finally {
+      firing = false;
+    }
+  };
+
+  const handle = setInterval(() => {
+    void tickOnce();
+  }, intervalMs);
+  if (typeof handle.unref === "function") {
+    handle.unref();
+  }
+
+  return {
+    stop: () => clearInterval(handle),
+    tickOnce
+  };
+}
+
+function clampInterval(raw: number): number {
+  if (!Number.isFinite(raw)) {
+    return DEFAULT_INTERVAL_MS;
+  }
+  return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
+}

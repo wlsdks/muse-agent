@@ -314,7 +314,19 @@ server autonomously drives the loop.
   `startFollowupDaemonIfConfigured`), off by default, with the
   concrete production evaluator/actuator wired. Check: with the
   env configured a real server start registers + can stop the
-  daemons; absent env ⇒ not started (integration).
+  daemons; absent env ⇒ not started (integration). [SPLIT — parent
+  stays `[ ]` until BOTH children met]
+  - [x] The situational-briefing apps/api daemon rider exists
+    (`startSituationalBriefingTick`, the parallel of the P9-b1
+    objectives rider): clamp + single-flight + fail-soft + unref,
+    drives `runDueSituationalBriefing` over a real provider,
+    deduped. — 395 (situational-briefing-tick.ts +
+    situational-briefing-tick.test.ts)
+  - [ ] Both riders env-gated + registered in the apps/api daemon
+    set (`start…DaemonIfConfigured` + ServerOptions plumbing +
+    server.ts wiring), off by default, with the concrete
+    objectives evaluator/actuator. Check: env configured → server
+    start registers + can stop; absent ⇒ not started.
 
 The loop extends this map itself when all are delivered or its
 judgement finds a stronger outward direction. "Nothing to do" is
