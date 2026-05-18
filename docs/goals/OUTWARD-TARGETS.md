@@ -136,8 +136,12 @@ the CAPABILITIES surface-check rule.
   — 380 (runDueProactiveNotices over a real TelegramProvider HTTP
   fake: asserts the Bot API URL + chat_id + notice text, and the
   real dedupe sidecar suppresses a re-POST)
-- [ ] Anticipatory prep ("meeting in 15 min — here's the doc")
-  rides this path (ties to P1).
+- [x] Anticipatory prep ("meeting in 15 min — here's the doc")
+  rides this path (ties to P1). — 380 (real `LocalDirNotesProvider`
+  → `createNotesInvestigator` → `runDueProactiveNotices` → real
+  `TelegramProvider` HTTP: the POST carries both the imminent-item
+  announcement AND the prepped "Related notes: …" doc, decoy
+  excluded)
 
 **P3 — Ambient perception loop** — Audit: only `muse glance`, a
 manual one-shot CLI print, macOS-only, never reaches the agent.

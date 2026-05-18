@@ -33,7 +33,7 @@ delete an open row, never rewrite another goal's status.
 | 375 | [Web UI history panel](375-web-history-panel.md)                        | epic / outward | done             |
 | 377 | [Inbound conversational replies](377-inbound-conversational-replies.md)  | epic / outward | done — P1 fully delivered (b1–b4) |
 | 378 | [Knows-you from real use](378-knows-you-from-real-use.md)                | epic / outward | done — P0 fully delivered (b1–b4) |
-| 380 | [Proactive delivery on a real channel](380-proactive-real-channel.md)     | epic / outward | P2-b1 done; P2-b2 next |
+| 380 | [Proactive delivery on a real channel](380-proactive-real-channel.md)     | epic / outward | done — P2 fully delivered (b1–b2) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

@@ -1,9 +1,14 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, TelegramProvider } from "@muse/messaging";
-import { runDueProactiveNotices, writeTasks } from "@muse/mcp";
+import {
+  LocalDirNotesProvider,
+  createNotesInvestigator,
+  runDueProactiveNotices,
+  writeTasks
+} from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
 function fakeJsonResponse(payload: unknown): Response {
@@ -83,5 +88,49 @@ describe("runDueProactiveNotices — contract-faithful channel delivery", () => 
     });
     expect(second).toMatchObject({ fired: 0, imminent: 1 });
     expect(posts).toHaveLength(1);
+  });
+
+  it("delivers anticipatory prep (the related doc) in the POST when an investigator is wired", async () => {
+    const { sidecarFile, tasksFile } = fixtures();
+    await writeTasks(tasksFile, [{ ...dueSoonTask, title: "Q3 review" }]);
+
+    const notesDir = mkdtempSync(join(tmpdir(), "muse-proactive-notes-"));
+    writeFileSync(join(notesDir, "q3-review-plan.md"), "# Plan\nQ3 review agenda and quarterly metrics\n");
+    writeFileSync(join(notesDir, "groceries.md"), "milk, eggs, bread\n");
+    const notes = new LocalDirNotesProvider({ notesDir });
+
+    const posts: { url: string; body: string }[] = [];
+    const telegram = new TelegramProvider({
+      baseUrl: "https://tg.test",
+      fetch: async (url, init) => {
+        posts.push({ body: String(init?.body), url: String(url) });
+        return fakeJsonResponse({ ok: true, result: { message_id: 12 } });
+      },
+      token: "BOT-TOK"
+    });
+    const messagingRegistry = new MessagingProviderRegistry([telegram]);
+
+    const summary = await runDueProactiveNotices({
+      destination: "555",
+      investigate: createNotesInvestigator((q, l) => notes.search(q, l)),
+      messagingRegistry,
+      now: () => NOW,
+      providerId: "telegram",
+      sidecarFile,
+      tasksFile
+    });
+
+    expect(summary).toMatchObject({ errors: [], fired: 1, imminent: 1 });
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.url).toBe("https://tg.test/botBOT-TOK/sendMessage");
+    const body = JSON.parse(posts[0]!.body) as { chat_id: string; text: string };
+    // The imminent-item announcement AND the anticipatorily prepped
+    // doc both ride the same real-channel POST — "meeting in 15 min
+    // — here's the doc".
+    expect(body.text).toContain("Q3 review");
+    expect(body.text).toContain("due in 5 min");
+    expect(body.text).toContain("Related notes:");
+    expect(body.text).toContain("q3-review-plan.md");
+    expect(body.text).not.toContain("groceries.md");
   });
 });
