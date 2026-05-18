@@ -48,7 +48,7 @@ const defaultPatterns: readonly RedactionPattern[] = [
   },
   {
     kind: "path",
-    pattern: /\/Users\/[^\s)"'<>]+/g,
+    pattern: /\/(?:Users|home|root)\/[^\s)"'<>]+/g,
     replacement: "[redacted-path]"
   }
 ];

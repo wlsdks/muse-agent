@@ -18,6 +18,25 @@ describe("redactMigrationText", () => {
     expect(result.text).toContain("[redacted-path]");
   });
 
+  it("redacts Linux /home and /root paths, not just macOS /Users", () => {
+    const result = redactMigrationText(
+      [
+        "macOS: /Users/bob/private/project",
+        "Linux: /home/jdoe/secret/app.log",
+        "Root: /root/.ssh/id_rsa",
+        "System: /var/log/app.log"
+      ].join("\n")
+    );
+
+    expect(result.text).not.toContain("/home/jdoe");
+    expect(result.text).not.toContain("/root/.ssh");
+    expect(result.text).not.toContain("/Users/bob");
+    // Non-home system paths carry no username/secret — left intact
+    // so the migration log stays diagnosable.
+    expect(result.text).toContain("/var/log/app.log");
+    expect(result.findings).toContainEqual({ count: 3, kind: "path" });
+  });
+
   it("redacts non-http connection URIs with an inline password (the migration-log secret)", () => {
     const result = redactMigrationText(
       [
