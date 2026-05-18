@@ -236,3 +236,23 @@ Append one line when a discovery path is evaluated and deferred:
   real `~/.muse/vetoes.json`. Not required by P7-b1's stated
   integration check; a follow-up like P3-b1's real-osascript
   provider was to its flip.
+  (RESOLVED 391: p7-seam.test.ts in apps/api exercises the real
+  `readVetoes → VetoAvoidanceProvider` adapter through the real
+  createAgentRuntime pipeline — the adapter shape is proven sound;
+  only its server-assembly placement remains, a pure wiring line.)
+- P7 audit — apps/api/test/p7-seam.test.ts — PASS: P7's two
+  CAPABILITIES checks re-run green together (veto-avoidance 5/5,
+  personal-veto-store 5/5). Like P5/P6, P7's bullets ARE a
+  composed lifecycle, but the `mcp ↛ agent-core` boundary forced
+  the isolated tests apart; apps/api depends on BOTH, so the seam
+  test is the one place it composes for real: the REAL `@muse/mcp`
+  veto store, behind the production-shape `readVetoes →
+  VetoAvoidanceProvider` adapter, driven through the REAL
+  `createAgentRuntime` pipeline — no veto → recordVeto surfaces
+  `[Learned Avoidance]` into a live run (b1) → queryVetoes lists
+  it (b2 review) → removeVeto (b2 clear) → a subsequent live run
+  no longer carries the directive (clear genuinely un-does the
+  live injection, not just the proxy the boundary forced). No
+  drift; no bullet reopened. P7 (learns from correction) is
+  genuinely delivered end-to-end. **P0–P7 now ALL delivered +
+  audited.**
