@@ -71,9 +71,13 @@ export function sendMcpError(reply: ReplyLike, error: unknown) {
     });
   }
 
+  // Unexpected (non-McpRegistryError) failure: a raw error
+  // message can leak internals to the network client, so return
+  // a generic message. The typed 409 branch above keeps its
+  // curated, client-safe message.
   return reply.status(500).send({
     code: "MCP_OPERATION_FAILED",
-    message: error instanceof Error ? error.message : "MCP operation failed"
+    message: "MCP operation failed"
   });
 }
 

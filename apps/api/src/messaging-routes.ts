@@ -157,8 +157,11 @@ export function registerMessagingRoutes(server: FastifyInstance, gate: Messaging
           ingestedByProvider: result.ingestedByProvider
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return reply.status(500).send({ code: "MESSAGING_POLL_ALL_FAILED", message });
+        // Log the raw detail server-side; never echo it to the
+        // network client (it can carry provider internals /
+        // ECONNREFUSED hosts / connection URIs).
+        reply.log.error({ err: error }, "messaging poll-all failed");
+        return reply.status(500).send({ code: "MESSAGING_POLL_ALL_FAILED", message: "messaging poll-all failed" });
       }
     });
   }

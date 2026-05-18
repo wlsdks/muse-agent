@@ -189,9 +189,11 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
         runId: orchestration.runId
       };
     } catch (error) {
+      // Server-side log only; the raw message can leak internals.
+      reply.log.error({ err: error }, "multi-agent orchestration failed");
       return reply.status(500).send({
         code: "MULTI_AGENT_ORCHESTRATION_FAILED",
-        message: error instanceof Error ? error.message : "Multi-agent orchestration failed"
+        message: "multi-agent orchestration failed"
       } satisfies ApiError);
     }
   });

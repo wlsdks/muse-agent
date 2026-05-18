@@ -144,11 +144,13 @@ describe("POST /api/messaging/poll", () => {
     expect(called).toBe(1);
   });
 
-  it("POST /api/messaging/poll-all returns 500 when the dispatcher itself throws", async () => {
+  it("POST /api/messaging/poll-all returns a generic 500 without leaking the raw error", async () => {
     const server = buildServer({
       logger: false,
       messaging: buildMessagingRegistryWithStub(),
-      messagingPollAll: async () => { throw new Error("disk full"); }
+      messagingPollAll: async () => {
+        throw new Error("ECONNREFUSED 10.0.0.5:6379 /Users/internal/secret/path");
+      }
     });
     const response = await server.inject({
       method: "POST",
@@ -156,7 +158,10 @@ describe("POST /api/messaging/poll", () => {
       url: "/api/messaging/poll-all"
     });
     expect(response.statusCode).toBe(500);
-    expect(response.json()).toMatchObject({ code: "MESSAGING_POLL_ALL_FAILED", message: "disk full" });
+    expect(response.json()).toEqual({ code: "MESSAGING_POLL_ALL_FAILED", message: "messaging poll-all failed" });
+    // The raw internal detail must never reach the network client.
+    expect(response.body).not.toContain("ECONNREFUSED");
+    expect(response.body).not.toContain("/Users/internal/secret/path");
   });
 
   it("upstream MessagingProviderError becomes 502 with provider details", async () => {
