@@ -30,6 +30,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { closestCommandName } from "./closest-command.js";
+import { createTerminalProactiveSink } from "./proactive-terminal-sink.js";
 import type { ProgramIO } from "./program.js";
 
 export interface ProactiveHelpers {
@@ -337,7 +338,16 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
       } else if (options.ignoreRoutine && activeHourSet) {
         io.stdout(`  quiet-hours: routine known but --ignore-routine set; firing all hours\n`);
       }
-      io.stdout(`  (Ctrl-C to stop)\n\n`);
+      // Attached to a terminal → that terminal is the surface the
+      // user is looking at; render notices there (prompt-safe,
+      // control-byte-stripped) instead of only the messaging log.
+      // Piped / detached / systemd (no TTY) keeps the messaging path.
+      const terminalSink = process.stdout.isTTY === true
+        ? createTerminalProactiveSink({ write: (chunk) => { io.stdout(chunk); } })
+        : undefined;
+      if (terminalSink) {
+        io.stdout(`  delivery: this terminal (messaging is the fallback when detached)\n`);
+      }
 
       let stopped = false;
       const stop = (): void => {
@@ -382,7 +392,11 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
             ...(agentModel ? { agentModel } : {}),
             ...(modelProvider ? { modelProvider } : {}),
             ...(personaPreamble ? { personaPreamble } : {}),
-            ...(modelProvider ? { activitySource: { lastActivityMs: () => Date.now() } } : {}),
+            ...(terminalSink
+              ? { activitySource: { lastActivityMs: () => Date.now() }, terminalSink }
+              : modelProvider
+                ? { activitySource: { lastActivityMs: () => Date.now() } }
+                : {}),
             ...(calendarRegistry.list().length > 0 ? { calendarRegistry } : {}),
             destination,
             historyFile,

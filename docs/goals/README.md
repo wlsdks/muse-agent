@@ -110,7 +110,7 @@ itself via discovery.
 
 | #   | Goal                                                                    | Category       | Status         |
 | --- | ----------------------------------------------------------------------- | -------------- | -------------- |
-| 373 | [Proactive multi-device routing](373-proactive-multi-device-routing.md) | epic / feature | slice 1/3 done |
+| 373 | [Proactive multi-device routing](373-proactive-multi-device-routing.md) | epic / feature | slice 2/3 done |
 | 374 | [`muse ask --notes-only`](374-muse-ask-notes-only.md)                   | feature        | open           |
 | 375 | [Web UI history panel](375-web-history-panel.md)                        | epic / feature | open           |
 | …   | *self-generated via discovery — never ends*                             |                |                |

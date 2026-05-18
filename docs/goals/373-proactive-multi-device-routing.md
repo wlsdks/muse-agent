@@ -38,6 +38,24 @@ presence tracker (Phase D). No new infra, no schema bump.
 
 ## Status
 
+slice 2 done — `apps/cli/src/proactive-terminal-sink.ts`:
+`formatProactiveTerminalNotice` (pure: `\r\x1b[K` prompt-clear
+prefix + `stripUntrustedTerminalChars` on the third-party text +
+trailing `\n`) and `createTerminalProactiveSink({ write,
+redrawPrompt? })` returning the slice-1 `ProactiveNoticeSink`. Wired
+into `muse proactive watch`: when attached to a TTY the notice
+renders into that terminal (prompt-safe, control-byte-stripped) and
+slice-1 routing selects it; piped / detached / systemd (no TTY)
+keeps the messaging path. Unit-tested (prefix/suffix shape, C1 +
+control-byte stripping of hostile text, write+redraw, no-redraw
+foreground case). New user-visible capability: `muse proactive
+watch` in a terminal now surfaces notices inline instead of only via
+the messaging log.
+
+Next iteration must change surface (forward-progress guard: slices
+1+2 were two consecutive proactive-routing iterations). Slice 3
+(stale-presence expiry) resumes after a different-surface iteration.
+
 slice 1 done — presence-aware sink selection wired into the
 proactive firing path. Pure `selectProactiveSink(activitySource,
 hasTerminalSink)` + a minimal `ProactiveNoticeSink` seam +
