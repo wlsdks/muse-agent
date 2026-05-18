@@ -1,5 +1,5 @@
 /**
- * Goal 059 — minimal iCalendar (.ics) parser scoped to what
+ * Minimal iCalendar (.ics) parser scoped to what
  * `muse calendar import <file.ics>` actually consumes. Reads the
  * VEVENT blocks, pulls UID / SUMMARY / DTSTART / DTEND / LOCATION
  * / DESCRIPTION, and ignores everything else (recurrence rules,
@@ -162,10 +162,11 @@ function parseIcsDateValue(raw: string, isDate: boolean): Date | undefined {
   ));
 }
 
+// Single left-to-right pass: an escaped backslash must be consumed
+// as one unit so `\\n` is `\` + literal `n`, not a newline (RFC 5545
+// §3.3.11). A sequential `\n`→newline-then-`\\`→`\` mangles it.
 function unescapeIcsText(value: string): string {
-  return value
-    .replace(/\\n/gu, "\n")
-    .replace(/\\,/gu, ",")
-    .replace(/\\;/gu, ";")
-    .replace(/\\\\/gu, "\\");
+  return value.replace(/\\([\\;,nN])/gu, (_match, ch: string) =>
+    ch === "n" || ch === "N" ? "\n" : ch
+  );
 }
