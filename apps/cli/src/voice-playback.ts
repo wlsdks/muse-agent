@@ -90,19 +90,42 @@ export function loadDefaultTts(): TextToSpeechProvider | undefined {
   return registry?.primaryTts();
 }
 
+export const AUDIO_PLAYER_TIMEOUT_MS = 30_000;
+
+export async function playAudioWithWatchdog(
+  player: string,
+  filePath: string,
+  spawnFn: typeof spawn = spawn
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawnFn(player, [filePath], { stdio: ["ignore", "ignore", "pipe"] });
+    let settled = false;
+    const finish = (action: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      action();
+    };
+    // Without this watchdog a wedged player — a busy CoreAudio /
+    // ALSA device, a stuck process — hangs the calling command
+    // (`muse today --speak`, etc.) forever with no recovery.
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish(() => reject(new Error(
+        `${player} timed out after ${AUDIO_PLAYER_TIMEOUT_MS.toString()}ms and was killed`
+      )));
+    }, AUDIO_PLAYER_TIMEOUT_MS);
+    child.once("error", (error) => { finish(() => reject(error)); });
+    child.once("close", (code) => {
+      finish(() => code === 0
+        ? resolve()
+        : reject(new Error(`${player} exited with code ${code ?? "unknown"}`)));
+    });
+  });
+}
+
 export function defaultSpeakerShells(): SpeakerShells {
   return {
-    playAudio: (filePath) => new Promise<void>((resolve, reject) => {
-      const player = platform === "darwin" ? "afplay" : "aplay";
-      const child = spawn(player, [filePath], { stdio: ["ignore", "ignore", "pipe"] });
-      child.once("error", reject);
-      child.once("close", (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`${player} exited with code ${code ?? "unknown"}`));
-        }
-      });
-    })
+    playAudio: (filePath) => playAudioWithWatchdog(platform === "darwin" ? "afplay" : "aplay", filePath)
   };
 }
