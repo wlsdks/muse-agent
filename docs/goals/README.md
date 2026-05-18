@@ -47,6 +47,7 @@ delete an open row, never rewrite another goal's status.
 | 398 | [Objectives evaluator live-verified](398-objectives-evaluator-live.md)     | epic / outward | done — [UNVERIFIED-LIVE] cleared; P9-b2 flipped |
 | 400 | [Briefing grounded in real tasks](400-briefing-real-imminence.md)         | epic / outward | P8-b3 done (loop-extended bullet) |
 | 401 | [Briefing grounded in calendar too](401-briefing-calendar-imminence.md)   | epic / outward | P8-b4 done (loop-extended bullet) |
+| 402 | [P7 learn-from-correction wired into prod](402-veto-avoidance-prod-wiring.md) | epic / outward | done — deferred P7-b1 adapter resolved |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
@@ -248,6 +249,19 @@ Append one line when a discovery path is evaluated and deferred:
   `readVetoes → VetoAvoidanceProvider` adapter through the real
   createAgentRuntime pipeline — the adapter shape is proven sound;
   only its server-assembly placement remains, a pure wiring line.)
+  (FULLY RESOLVED 402: the wiring line shipped —
+  `buildVetoAvoidanceProvider(env)` (autoconfigure
+  context-engineering-builders, default-on, opt-out
+  `MUSE_VETO_AVOIDANCE=false`, `resolveVetoesFile` →
+  `~/.muse/vetoes.json`) is constructed and passed as
+  `vetoAvoidanceProvider` into the production `createAgentRuntime`.
+  P7's learn-from-correction was confirmed DEAD in production
+  (grep: zero `vetoAvoidanceProvider` refs in apps/api +
+  autoconfigure) and is now LIVE — a recorded veto surfaces
+  `[Learned Avoidance]` into real `/api/chat` runs. Verified by
+  veto-avoidance-provider.test.ts; no parent flip — P7-b1's bullet
+  was already `[x]` on its mandated check, this discharges the
+  deferred production-wiring follow-up like the P9 daemon slices.)
 - P7 audit — apps/api/test/p7-seam.test.ts — PASS: P7's two
   CAPABILITIES checks re-run green together (veto-avoidance 5/5,
   personal-veto-store 5/5). Like P5/P6, P7's bullets ARE a

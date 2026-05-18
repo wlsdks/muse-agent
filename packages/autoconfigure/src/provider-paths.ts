@@ -74,6 +74,10 @@ export function resolveBriefingSidecarFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_BRIEFING_SIDECAR_FILE", "briefing-fired.json");
 }
 
+export function resolveVetoesFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_VETOES_FILE", "vetoes.json");
+}
+
 export function resolveEpisodesFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_EPISODES_FILE", "episodes.json");
 }

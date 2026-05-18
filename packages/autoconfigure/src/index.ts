@@ -140,6 +140,7 @@ import {
   buildTasksRegistry,
   buildTelemetryAggregator,
   buildToolFilter,
+  buildVetoAvoidanceProvider,
   buildVoiceRegistry,
   ensureNotesDir,
   mergeModelKeysFromFile,
@@ -590,6 +591,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     })
   );
   const telemetryAggregator = buildTelemetryAggregator(env);
+  const vetoAvoidanceProvider = buildVetoAvoidanceProvider(env);
   const agentRuntime = modelProvider && defaultModel
     ? createAgentRuntime({
       agentSpecResolver,
@@ -633,6 +635,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       // `buildInboxContextProvider`, `buildToolFilter` for the toggle
       // semantics.
       activeContextProvider,
+      ...(vetoAvoidanceProvider ? { vetoAvoidanceProvider } : {}),
       inboxContextProvider: buildInboxContextProvider(env),
       // Phase 3: store-backed episodic recall. Reuses the same
       // ConversationSummaryStore that conversation-summary persistence

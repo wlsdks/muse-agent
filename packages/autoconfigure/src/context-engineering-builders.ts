@@ -9,10 +9,11 @@ import {
   type ReminderHint,
   type RemindersResolver,
   type TelemetryAggregator,
-  type ToolFilter
+  type ToolFilter,
+  type VetoAvoidanceProvider
 } from "@muse/agent-core";
 import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
-import { readReminders } from "@muse/mcp";
+import { readReminders, readVetoes } from "@muse/mcp";
 import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore } from "@muse/memory";
 import { FileBackedInboxContextProvider, type InboxSourceConfig } from "@muse/messaging";
 
@@ -23,8 +24,10 @@ import {
   resolveMessagingCredentialsFile,
   resolveRemindersFile,
   resolveSlackInboxFile,
-  resolveTelegramInboxFile
+  resolveTelegramInboxFile,
+  resolveVetoesFile
 } from "./provider-paths.js";
+import { parseBoolean } from "./env-parsers.js";
 import { clampPositive, readCredentialsSync, stringField } from "./provider-utils.js";
 
 import type { MuseEnvironment } from "./index.js";
@@ -277,4 +280,25 @@ export function buildTelemetryAggregator(env: MuseEnvironment): TelemetryAggrega
     ? Number.parseInt(capacityRaw, 10)
     : undefined;
   return new InMemoryTelemetryAggregator(capacity !== undefined ? { capacity } : {});
+}
+
+/**
+ * Production wiring for P7's learn-from-correction: adapt the
+ * durable `~/.muse/vetoes.json` store to the agent-runtime's
+ * duck-typed `VetoAvoidanceProvider` so a recorded veto actually
+ * surfaces `[Learned Avoidance]` into real agent runs. Conservative
+ * by construction (zero vetoes ⇒ exact no-op in the transform), so
+ * default-on; opt out with `MUSE_VETO_AVOIDANCE=false`.
+ */
+export function buildVetoAvoidanceProvider(env: MuseEnvironment): VetoAvoidanceProvider | undefined {
+  if (!parseBoolean(env.MUSE_VETO_AVOIDANCE, true)) {
+    return undefined;
+  }
+  const file = resolveVetoesFile(env);
+  return {
+    listVetoes: async (userId: string) =>
+      (await readVetoes(file))
+        .filter((veto) => veto.userId === userId)
+        .map((veto) => ({ objectiveId: veto.objectiveId, reason: veto.reason, scope: veto.scope }))
+  };
 }
