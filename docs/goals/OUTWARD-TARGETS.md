@@ -130,9 +130,12 @@ but cannot converse back. Drive to fully-delivered FIRST.
 well-engineered (dedupe, quiet-hours, Phase-D synth) but EVERY
 firing test injects a fake registry; unit-only, cannot count per
 the CAPABILITIES surface-check rule.
-- [ ] Proactive / followup / reminder daemon delivers to a real
+- [x] Proactive / followup / reminder daemon delivers to a real
   (or contract-faithful HTTP-faked) channel; check asserts the
   message was POSTed to the channel API, not a fake registry.
+  — 380 (runDueProactiveNotices over a real TelegramProvider HTTP
+  fake: asserts the Bot API URL + chat_id + notice text, and the
+  real dedupe sidecar suppresses a re-POST)
 - [ ] Anticipatory prep ("meeting in 15 min — here's the doc")
   rides this path (ties to P1).
 
