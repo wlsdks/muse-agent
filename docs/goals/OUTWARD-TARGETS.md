@@ -82,18 +82,20 @@ lands.**
     later request — already true by design: `applyUserMemory`
     injects all prefs wholesale into the system prompt for any
     userid run (not query-matched), so wording never gates it.
-- [ ] From current context (calendar / inbox / patterns) the agent
+- [x] From current context (calendar / inbox / patterns) the agent
   infers a likely UNSTATED need, autonomously investigates it
   (tool / web / notes), and surfaces the finding unasked. Check:
   seeded context → an investigated, relevant surfacing without
-  being asked (integration/smoke). (Split — parent stays [ ] until
-  both children met; see 378 Decisions.)
+  being asked (integration/smoke). — 378 s5 (both split children
+  met; see 378 Decisions.)
   - [x] Investigate-and-surface mechanism: the proactive loop
     accepts an injected investigator, runs it on the imminent
     item, and appends the finding to the unasked notice (fail-open
     if it throws). — 378 s4
-  - [ ] Production investigator wired (a real notes/tool lookup
-    keyed off the imminent item) so it surfaces real findings.
+  - [x] Production investigator wired: `createNotesInvestigator`
+    over the primary notes provider, wired into the proactive
+    daemon — the notice surfaces "📎 Related notes: …" for the
+    item's topic, unasked. — 378 s5
 - [ ] On an ambiguous / under-specified request the agent asks a
   clarifying question instead of guessing, and offers ("shall I
   X?") when it detects a likely-wanted action. Check: ambiguous

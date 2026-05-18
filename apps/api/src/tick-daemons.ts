@@ -22,6 +22,7 @@ import type { FastifyInstance } from "fastify";
 import type { ServerOptions } from "./server.js";
 import { parseQuietHours, startReminderTick } from "./reminder-tick.js";
 import { startProactiveTick, type InMemoryActivityTracker } from "./proactive-tick.js";
+import { createNotesInvestigator } from "@muse/mcp";
 import { startFollowupTick } from "./followup-tick.js";
 import { startPatternTick } from "./pattern-tick.js";
 
@@ -109,7 +110,16 @@ export function startProactiveDaemonIfConfigured(
     ? Number(env.MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS)
     : undefined;
 
+  // P0-b3: a real notes-backed investigator over the primary notes
+  // provider so the proactive notice surfaces "📎 Related notes: …"
+  // for the imminent item's topic, unasked.
+  const proactiveNotesProvider = options.notesProviderRegistry?.primary();
+  const proactiveInvestigator = proactiveNotesProvider
+    ? createNotesInvestigator((query, limit) => proactiveNotesProvider.search(query, limit))
+    : undefined;
+
   const proactiveHandle = startProactiveTick({
+    ...(proactiveInvestigator ? { investigate: proactiveInvestigator } : {}),
     ...(phaseD.phaseDProactiveOn && phaseD.sharedActivityTracker ? { activitySource: phaseD.sharedActivityTracker } : {}),
     ...(phaseD.phaseDProactiveOn && options.defaultModel ? { agentModel: options.defaultModel } : {}),
     // Prefer modelProvider: synthesis is one-shot text gen and the

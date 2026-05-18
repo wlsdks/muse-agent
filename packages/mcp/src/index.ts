@@ -364,6 +364,7 @@ export {
   type RunDuePatternNoticesSummary
 } from "./pattern-firing-loop.js";
 export { type AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
+export { createNotesInvestigator } from "./notes-investigator.js";
 
 // Episodic memory store — step 1 of docs/design/episodic-memory.md.
 // Pure CRUD over `~/.muse/episodes.json`; later steps add the

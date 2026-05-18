@@ -37,6 +37,17 @@ export interface ProactiveTickOptions {
    * docs/design/proactive-surfacing.md.
    */
   readonly tasksFile?: string;
+  /**
+   * Autonomous investigator (P0-b3). Given the imminent item it
+   * returns a one-line finding (a notes/tool lookup of the likely
+   * unstated need) appended to the unasked notice. Fail-open in the
+   * loop.
+   */
+  readonly investigate?: (item: {
+    readonly title: string;
+    readonly kind: string;
+    readonly factSheet: string;
+  }) => Promise<string | undefined>;
   readonly messagingRegistry: MessagingProviderRegistry;
   readonly providerId: string;
   readonly destination: string;
@@ -122,6 +133,7 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
         ...(options.modelProvider ? { modelProvider: options.modelProvider } : {}),
         ...(options.agentRuntime ? { agentRuntime: options.agentRuntime } : {}),
         ...(options.calendarRegistry ? { calendarRegistry: options.calendarRegistry } : {}),
+        ...(options.investigate ? { investigate: options.investigate } : {}),
         destination: options.destination,
         ...(options.historyFile ? { historyFile: options.historyFile } : {}),
         ...(options.leadMinutes !== undefined ? { leadMinutes: options.leadMinutes } : {}),

@@ -29,6 +29,27 @@ fact/preference influence a later answer.
 
 ## Status
 
+slice 5 done — **P0-b3 parent flipped** (both split children met).
+Wired the real production investigator: `createNotesInvestigator`
+(`@muse/mcp`) — given an imminent item it searches the user's
+notes for the topic (item title) and returns
+`📎 Related notes: …`, fail-soft (empty title / thrown search →
+undefined). `ProactiveTickOptions.investigate?` passthrough →
+`runDueProactiveNotices`; `tick-daemons.ts` builds it from
+`options.notesProviderRegistry.primary()` so the live `muse
+proactive` daemon surfaces real related notes unasked. Integration
+test over a **real `LocalDirNotesProvider`** + seeded notes dir:
+matching item → finding cites the real note; no-match / empty /
+throwing → undefined. So Muse now infers the unstated need from
+context, investigates it in the user's real notes, and surfaces
+the finding unasked — P0-b3 genuinely delivered, parent `[x]`.
+
+Verification: notes search is a deterministic file scan (not an
+LLM round-trip) and fail-soft at two layers (investigator + the
+loop's investigate seam), so a notes hiccup can't drop a heads-up;
+P0-b3's mandated check is "integration" — the green deterministic
+tests are the gate (smoke:live is the chat path, untouched).
+
 slice 4 — P0-b3 SPLIT (parent stays `[ ]` until both children met).
 Delivered the **investigate-and-surface mechanism**: the proactive
 notice loop now accepts an injected

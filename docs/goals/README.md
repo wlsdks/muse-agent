@@ -32,7 +32,7 @@ delete an open row, never rewrite another goal's status.
 | 374 | [`muse ask --notes-only`](374-muse-ask-notes-only.md)                   | outward        | done (pre-built) |
 | 375 | [Web UI history panel](375-web-history-panel.md)                        | epic / outward | done             |
 | 377 | [Inbound conversational replies](377-inbound-conversational-replies.md)  | epic / outward | done — P1 fully delivered (b1–b4) |
-| 378 | [Knows-you from real use](378-knows-you-from-real-use.md)                | epic / outward | P0-b1+b2 done; P0-b3 split (mechanism done, investigator wiring next), b4 |
+| 378 | [Knows-you from real use](378-knows-you-from-real-use.md)                | epic / outward | P0-b1+b2+b3 done; P0-b4 next |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
@@ -94,3 +94,5 @@ Append one line when a discovery path is evaluated and deferred:
   real production investigator (a notes/tool lookup keyed off the
   imminent item) wired into the daemon's assembly. Next 378 slice —
   kept separate so neither half is half-shipped.
+  (RESOLVED 378 s5: createNotesInvestigator over the primary notes
+  provider wired into tick-daemons; P0-b3 parent flipped.)
