@@ -46,6 +46,38 @@ chat IS a Muse session"; that reply loop is the missing piece.
 
 ## Status
 
+slice 5 done — flips OUTWARD-TARGETS new **P1-b4** ("risky actions
+prompt for in-chat approval before executing. Check: approval gate
+exercised over the channel path"). **P1 is now fully delivered
+(b1–b4 all [x]) — Two-way conversation on a real channel.**
+
+- agent-core: `AgentRunInput.toolApprovalGate?` (additive, run-
+  scoped) + the executor prefers `context.input.toolApprovalGate ??
+  this.toolApprovalGate` — a caller can require approval for one
+  run without touching the global gate; existing callers unchanged.
+- `packages/messaging/src/channel-approval-gate.ts`
+  `createChannelApprovalGate`: `read` tools pass; a `write`/
+  `execute` tool is NOT executed — an in-chat approval prompt is
+  POSTed back to the originating channel and the gate fail-closed
+  denies (denies even if the prompt send throws — a risky tool
+  never runs because the notice failed).
+- server.ts: the inbound runner builds a per-message channel gate
+  ({providerId,source}) and passes it via the new run-scoped slot,
+  so a channel-triggered risky tool is gated on the channel path.
+
+Integration test `@muse/messaging` channel-approval-gate.test.ts:
+read → allowed, no POST; execute/write → denied + an approval
+prompt POSTed over a REAL `TelegramProvider`'s HTTP (asserts URL +
+chat_id + text); send-failure → still denied (fail-closed).
+
+Verification note: the gate is deterministic policy consulted
+before tool execution — the `agentRuntime.run` LLM round-trip /
+message shape is unchanged (smoke:live's endpoints are unaffected;
+the agent path was live-verified slice 2). P1-b4's mandated check
+("approval gate exercised over the channel path") is the green
+integration test; the run-scoped-gate plumbing is covered by
+`pnpm check` (agent-core + apps/api 167 green).
+
 slice 4 done — flips OUTWARD-TARGETS new **P1-b3** ("thread context
 carries across turns on the channel — the chat IS a Muse session.
 Check: multi-turn inbound retains context"). New

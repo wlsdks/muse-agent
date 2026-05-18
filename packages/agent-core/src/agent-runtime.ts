@@ -718,11 +718,12 @@ export class AgentRuntime {
 
     await this.invokeHooks("beforeTool", context, toolCall);
 
-    if (this.toolApprovalGate) {
+    const approvalGate = context.input.toolApprovalGate ?? this.toolApprovalGate;
+    if (approvalGate) {
       const risk = this.resolveToolRisk(toolCall.name);
       let decision: ToolApprovalGateDecision;
       try {
-        decision = await this.toolApprovalGate({
+        decision = await approvalGate({
           risk,
           runId: context.runId,
           toolCall,

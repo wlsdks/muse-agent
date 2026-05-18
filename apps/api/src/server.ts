@@ -27,7 +27,7 @@ import {
 import { parseSlackPollChannels, startSlackPollTick } from "./slack-poll-tick.js";
 import { startTelegramPollTick } from "./telegram-poll-tick.js";
 import { startInboundReplyTick } from "./inbound-reply-tick.js";
-import { createThreadedInboundRunner, type InboundAgentRunner } from "@muse/messaging";
+import { createChannelApprovalGate, createThreadedInboundRunner, type InboundAgentRunner } from "@muse/messaging";
 import { DiscordProvider, SlackProvider, TelegramProvider } from "@muse/messaging";
 import { registerSchedulerRoutes } from "./scheduler-routes.js";
 import { registerActiveContextRoutes } from "./active-context-routes.js";
@@ -374,11 +374,17 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   ) {
     const agentRuntime = options.agentRuntime;
     const replyModel = options.defaultModel ?? "default";
+    const inboundRegistry = options.messaging;
     const runner: InboundAgentRunner = createThreadedInboundRunner({
-      run: async ({ messages }) => {
+      run: async ({ messages, providerId, source }) => {
         const result = await agentRuntime.run({
           messages,
-          model: replyModel
+          model: replyModel,
+          toolApprovalGate: createChannelApprovalGate({
+            providerId,
+            registry: inboundRegistry,
+            source
+          })
         } as Parameters<typeof agentRuntime.run>[0]);
         return result.response?.output ?? "";
       },

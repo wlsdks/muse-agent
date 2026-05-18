@@ -29,6 +29,13 @@ export {
 } from "./inbound-threaded-runner.js";
 
 export {
+  createChannelApprovalGate,
+  type ChannelApprovalGate,
+  type ChannelApprovalGateDecision,
+  type ChannelApprovalGateInput
+} from "./channel-approval-gate.js";
+
+export {
   FileMessagingCredentialStore,
   type MessagingCredentialStore,
   type MessagingCredentials

@@ -7,6 +7,7 @@ export interface AgentSpecResolver {
 }
 import type { JsonObject } from "@muse/shared";
 import type { ToolExecutionResult } from "@muse/tools";
+import type { ToolApprovalGate } from "./agent-runtime-types.js";
 
 /**
  * Public runtime interface types for `@muse/agent-core` submodules to share.
@@ -24,6 +25,13 @@ export interface AgentRunInput {
   readonly messages: readonly ModelMessage[];
   readonly runId?: string;
   readonly metadata?: JsonObject;
+  /**
+   * Run-scoped approval gate. When set it takes precedence over the
+   * runtime's constructor gate for THIS run only — lets a caller
+   * (e.g. the inbound-channel reply path) require in-chat approval
+   * for risky tools without changing the global gate.
+   */
+  readonly toolApprovalGate?: ToolApprovalGate;
 }
 
 export interface AgentRunContext {

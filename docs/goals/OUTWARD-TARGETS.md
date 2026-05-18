@@ -101,8 +101,8 @@ but cannot converse back. Drive to fully-delivered FIRST.
 - [x] Thread context carries across turns on the channel (the chat
   IS a Muse session). Check: multi-turn inbound retains context.
   — 377 s4
-- [ ] Risky actions prompt for in-chat approval before executing.
-  Check: approval gate exercised over the channel path.
+- [x] Risky actions prompt for in-chat approval before executing.
+  Check: approval gate exercised over the channel path. — 377 s5
 
 **P2 — Proactive delivery proven on a real channel** — Audit:
 well-engineered (dedupe, quiet-hours, Phase-D synth) but EVERY
