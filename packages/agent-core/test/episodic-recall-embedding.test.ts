@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   EmbeddingEpisodicRecallProvider,
   InMemoryEpisodicRecallProvider,
+  StoreBackedEpisodicRecallProvider,
   type StoredEpisode
 } from "../src/index.js";
 
@@ -63,5 +64,38 @@ describe("P0-b2 — embedding-similarity episodic recall (paraphrase)", () => {
     });
     const snapshot = await provider.resolve("when does my passport expire for the flight");
     expect(snapshot?.matches[0]?.sessionId).toBe("passport");
+  });
+});
+
+describe("P0-b2 — production StoreBackedEpisodicRecallProvider embedding path", () => {
+  const store = {
+    listAll: () =>
+      episodes.map((e) => ({ narrative: e.narrative, sessionId: e.sessionId }))
+  };
+
+  it("uses embedding cosine when an embedder is wired — paraphrase recalls", async () => {
+    const provider = new StoreBackedEpisodicRecallProvider({
+      embed: conceptEmbed,
+      recencyWeight: 0,
+      store
+    });
+    const snapshot = await provider.resolve(PARAPHRASE);
+    expect(snapshot?.matches[0]?.sessionId).toBe("coffee");
+  });
+
+  it("fail-open: a throwing embedder degrades to Jaccard, never breaks recall", async () => {
+    const provider = new StoreBackedEpisodicRecallProvider({
+      embed: () => Promise.reject(new Error("ollama down")),
+      recencyWeight: 0,
+      store
+    });
+    // Jaccard still works for a token-overlapping query (no crash).
+    const snapshot = await provider.resolve("renew the passport before the trip");
+    expect(snapshot?.matches[0]?.sessionId).toBe("passport");
+  });
+
+  it("no embedder → Jaccard (back-compat, paraphrase still misses)", async () => {
+    const provider = new StoreBackedEpisodicRecallProvider({ recencyWeight: 0, store });
+    expect(await provider.resolve(PARAPHRASE)).toBeUndefined();
   });
 });

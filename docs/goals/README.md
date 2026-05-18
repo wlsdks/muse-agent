@@ -32,7 +32,7 @@ delete an open row, never rewrite another goal's status.
 | 374 | [`muse ask --notes-only`](374-muse-ask-notes-only.md)                   | outward        | done (pre-built) |
 | 375 | [Web UI history panel](375-web-history-panel.md)                        | epic / outward | done             |
 | 377 | [Inbound conversational replies](377-inbound-conversational-replies.md)  | epic / outward | done — P1 fully delivered (b1–b4) |
-| 378 | [Knows-you from real use](378-knows-you-from-real-use.md)                | epic / outward | P0-b1 done; P0-b2 split (recall provider done, embedder wiring next) |
+| 378 | [Knows-you from real use](378-knows-you-from-real-use.md)                | epic / outward | P0-b1+b2 done; P0-b3/b4 next |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

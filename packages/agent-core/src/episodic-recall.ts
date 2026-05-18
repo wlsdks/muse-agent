@@ -503,6 +503,15 @@ export interface StoreBackedEpisodicRecallProviderOptions {
   readonly recencyHalfLifeDays?: number;
   /** Injectable clock (test only). */
   readonly now?: () => number;
+  /**
+   * When set, narratives are ranked by cosine similarity to the
+   * query embedding instead of Jaccard token overlap — so a
+   * paraphrase with no shared tokens still recalls the right
+   * memory. Zero-cost local Ollama in production. Fail-open: if the
+   * embedder throws (Ollama down / model missing) this resolve
+   * silently falls back to Jaccard so recall never breaks.
+   */
+  readonly embed?: (text: string) => Promise<readonly number[]>;
 }
 
 /**
@@ -525,9 +534,11 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
   private readonly recencyWeight: number;
   private readonly recencyHalfLifeDays: number;
   private readonly now: () => number;
+  private readonly embed?: (text: string) => Promise<readonly number[]>;
 
   constructor(options: StoreBackedEpisodicRecallProviderOptions) {
     this.store = options.store;
+    this.embed = options.embed;
     this.topK = Math.max(1, finiteOr(options.topK, 3));
     this.minScore = Math.max(0, finiteOr(options.minScore, 0.15));
     this.maxFetched = Math.max(1, finiteOr(options.maxFetched, 200));
@@ -553,13 +564,32 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
     } catch {
       return undefined;
     }
+    // Fail-open: a thrown embedder (Ollama down / model missing)
+    // must degrade to Jaccard, never break recall.
+    let queryVec: readonly number[] | undefined;
+    if (this.embed) {
+      try {
+        queryVec = await this.embed(bounded);
+      } catch {
+        queryVec = undefined;
+      }
+    }
     const nowMs = this.now();
     const scored: EpisodicMatch[] = [];
     for (const summary of summaries) {
       if (!isVisibleToUser(userId, summary.userId, this.allowAnonymousEpisodes)) {
         continue;
       }
-      const baseSim = jaccardSimilarity(queryTokens, tokenSet(summary.narrative));
+      let baseSim: number;
+      if (queryVec) {
+        try {
+          baseSim = cosineSimilarity(queryVec, await this.embed!(summary.narrative));
+        } catch {
+          baseSim = jaccardSimilarity(queryTokens, tokenSet(summary.narrative));
+        }
+      } else {
+        baseSim = jaccardSimilarity(queryTokens, tokenSet(summary.narrative));
+      }
       if (baseSim < this.minScore) {
         continue;
       }

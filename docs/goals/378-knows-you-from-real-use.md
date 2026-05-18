@@ -29,6 +29,28 @@ fact/preference influence a later answer.
 
 ## Status
 
+slice 3 done — **P0-b2 parent flipped** (all split children met).
+`StoreBackedEpisodicRecallProvider` (the production episodic-recall
+provider built by `buildEpisodicRecallProvider`) gained an optional
+`embed`: when set it cosine-ranks narratives instead of Jaccard;
+**fail-open** — a thrown embedder (Ollama down / model not pulled)
+degrades that resolve to Jaccard so recall never breaks. The
+assembly now wires a zero-cost local-Ollama embedder
+(`/api/embeddings`, `nomic-embed-text`, default-on; opt out with
+`MUSE_EPISODIC_RECALL_EMBED=false`) by default. Integration tests
+(deterministic embedder, no network): production StoreBacked
+paraphrase recall works; throwing embedder → Jaccard fallback (no
+crash); no embedder → Jaccard back-compat. So production
+cross-session recall IS embedding-similarity (zero-cost, safe),
+the preference-applied child was already true by design — P0-b2
+genuinely delivered, parent `[x]`.
+
+Verification: the embedder calls Ollama `/api/embeddings` (not the
+chat round-trip; zero-cost local) and is fail-open, so a missing
+Ollama can't break recall; P0-b2's mandated check is "integration"
+— the green deterministic StoreBacked tests are the gate (smoke:live
+is the chat path, untouched).
+
 slice 2 — P0-b2 SPLIT (parent stays `[ ]` until all children met,
 per the contract split rule). Investigation found P0-b2 bundled two
 separable things on a partly-stale premise:

@@ -189,6 +189,30 @@ export function buildInboxContextProvider(env: MuseEnvironment): InboxContextPro
  * pgvector. Default on so newly-shipped users get cross-session
  * memory the moment their first session compacts.
  */
+// Zero-cost local embedder: Ollama `/api/embeddings` (nomic-embed-text
+// by default). Zero-dep (global fetch). Throwing here is fine — the
+// StoreBacked provider treats a thrown embedder as fail-open and
+// degrades that resolve to Jaccard, so recall never breaks if Ollama
+// is down or the model isn't pulled.
+function createOllamaEmbedder(model: string): (text: string) => Promise<readonly number[]> {
+  const base = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/u, "");
+  return async (text: string) => {
+    const resp = await fetch(`${base}/api/embeddings`, {
+      body: JSON.stringify({ model, prompt: text }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    if (!resp.ok) {
+      throw new Error(`embeddings ${resp.status.toString()}`);
+    }
+    const body = (await resp.json()) as { embedding?: unknown };
+    if (!Array.isArray(body.embedding)) {
+      throw new Error("embedding response missing 'embedding'");
+    }
+    return body.embedding as number[];
+  };
+}
+
 export function buildEpisodicRecallProvider(
   env: MuseEnvironment,
   summaryStore: ConversationSummaryStore | undefined
@@ -206,11 +230,17 @@ export function buildEpisodicRecallProvider(
   const minScore = Number.isFinite(minScoreParsed) && minScoreParsed >= 0
     ? minScoreParsed
     : 0.15;
+  // Embedding recall on by default (zero-cost local Ollama;
+  // fail-open to Jaccard if unreachable). Opt out with
+  // MUSE_EPISODIC_RECALL_EMBED=false.
+  const embedEnabled = env.MUSE_EPISODIC_RECALL_EMBED?.trim().toLowerCase() !== "false";
+  const embedModel = env.MUSE_EPISODIC_RECALL_EMBED_MODEL?.trim() || "nomic-embed-text";
   return new StoreBackedEpisodicRecallProvider({
     maxFetched,
     minScore,
     store: summaryStore,
-    topK
+    topK,
+    ...(embedEnabled ? { embed: createOllamaEmbedder(embedModel) } : {})
   });
 }
 
