@@ -162,9 +162,13 @@ manual one-shot CLI print, macOS-only, never reaches the agent.
 required before Muse can be delegated to unsupervised. (User-model
 partials — auto-extract wiring, embedding recall — moved up to P0
 as the "knows-you" foundation.)
-- [ ] Calendar WRITE (create/move/cancel) across Google / CalDAV /
+- [x] Calendar WRITE (create/move/cancel) across Google / CalDAV /
   macOS exercised by a surface check (contract-faithful HTTP fake),
-  not read-only.
+  not read-only. — 384 (calendar-write-contract.test.ts: real
+  providers, only the transport faked — Google create POST/move
+  PATCH/cancel DELETE w/ Bearer+JSON; CalDAV create PUT/move
+  REPORT→PUT/cancel DELETE w/ Basic+ICS; macOS create+cancel over
+  the real osascript spawn asserting the AppleScript)
 - [ ] Voice end-to-end round-trip has an automated check
   (mic→STT→agent→TTS pipeline; STT/TTS mockable, full path).
 

@@ -35,6 +35,7 @@ delete an open row, never rewrite another goal's status.
 | 378 | [Knows-you from real use](378-knows-you-from-real-use.md)                | epic / outward | done — P0 fully delivered (b1–b4) |
 | 380 | [Proactive delivery on a real channel](380-proactive-real-channel.md)     | epic / outward | done — P2 fully delivered (b1–b2) |
 | 382 | [Ambient perception loop](382-ambient-perception.md)                     | epic / outward | done — P3-b1 delivered (live-wired) |
+| 384 | [Calendar WRITE contract check](384-calendar-write-contract.md)           | epic / outward | P4-b1 done; P4-b2 (voice e2e) next |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
