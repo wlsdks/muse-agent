@@ -1,8 +1,28 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 import type { ApiClient } from "./App.js";
 
 type ActivityKind = "reminder" | "proactive" | "followup" | "pattern" | "episode";
+
+const KIND_OPTIONS: readonly (ActivityKind | "all")[] = [
+  "all",
+  "reminder",
+  "proactive",
+  "followup",
+  "pattern",
+  "episode"
+];
+
+const LIMIT_OPTIONS: readonly number[] = [20, 50, 100];
+
+export function buildHistoryQuery(kind: ActivityKind | "all", limit: number): string {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (kind !== "all") {
+    params.set("kind", kind);
+  }
+  return `/api/history?${params.toString()}`;
+}
 
 interface ActivityEntry {
   readonly kind: ActivityKind;
@@ -46,16 +66,38 @@ export function relativeFromNow(iso: string, nowMs: number = Date.now()): string
 }
 
 export function HistoryPanel({ client }: { readonly client: ApiClient }) {
+  const [kind, setKind] = useState<ActivityKind | "all">("all");
+  const [limit, setLimit] = useState<number>(20);
   const history = useQuery({
-    queryFn: () => client.get<HistoryResponse>("/api/history?limit=20"),
-    queryKey: ["history"]
+    queryFn: () => client.get<HistoryResponse>(buildHistoryQuery(kind, limit)),
+    queryKey: ["history", kind, limit]
   });
 
   return (
     <section className="tool-surface compact" aria-label="Activity history">
       <div className="surface-heading">
         <h2>Activity</h2>
-        <span>{history.isLoading ? "Loading" : (history.data?.total ?? 0)}</span>
+        <span className="history-controls">
+          <select
+            aria-label="Filter by kind"
+            value={kind}
+            onChange={(event) => setKind(event.target.value as ActivityKind | "all")}
+          >
+            {KIND_OPTIONS.map((k) => (
+              <option key={k} value={k}>{k}</option>
+            ))}
+          </select>
+          <select
+            aria-label="Max entries"
+            value={limit}
+            onChange={(event) => setLimit(Number(event.target.value))}
+          >
+            {LIMIT_OPTIONS.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+          <span>{history.isLoading ? "Loading" : (history.data?.total ?? 0)}</span>
+        </span>
       </div>
       <ul className="record-list">
         {(history.data?.entries ?? []).slice(0, 12).map((entry, index) => (

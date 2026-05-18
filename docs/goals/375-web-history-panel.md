@@ -35,6 +35,28 @@ activity stream.
 
 ## Status
 
+slice 2 done — kind-filter + limit controls wired to the query
+params. `HistoryPanel` now has `useState` for `kind`
+(all/reminder/proactive/followup/pattern/episode) + `limit`
+(20/50/100); two `<select>`s in the heading; `queryKey` includes
+`[kind, limit]` so the feed refetches on change. Exported pure
+`buildHistoryQuery(kind, limit)` builds the `/api/history` URL
+(omits `kind` for "all"). +3 tests (buildHistoryQuery all/kind
+cases; controls render with options). Legacy goal → exempt from
+the outward test/CAPABILITIES metric per the legacy-grandfather
+rule; verified via `@muse/web` suite + lint + full check +
+smoke:broad (all green). Remaining: slice 3 (mount in `App.tsx`
++ Playwright e2e) — closes the legacy epic.
+
+## Decisions
+
+- `buildHistoryQuery` is an exported pure helper (mirrors slice-1's
+  `relativeFromNow`) so the query-param wiring is deterministically
+  unit-tested without simulating React `onChange` in a static
+  render.
+- No `CAPABILITIES.md` line: 375 is in the immutable legacy set
+  {373,375}; its remaining slices are explicitly metric-exempt.
+
 slice 1 done — `apps/web/src/ui/history-panel.tsx`: `HistoryPanel`
 (tanstack-query `/api/history?limit=20`, style-matched to
 `CalendarEventsPanel` — `tool-surface compact`, `surface-heading`,

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { HistoryPanel, relativeFromNow } from "./history-panel.js";
+import { HistoryPanel, buildHistoryQuery, relativeFromNow } from "./history-panel.js";
 import type { ApiClient } from "./api-client.js";
 
 const fakeClient = {
@@ -17,7 +17,7 @@ function render(seed?: { entries: unknown[]; total: number }): string {
     defaultOptions: { queries: { enabled: false, retry: false } }
   });
   if (seed) {
-    client.setQueryData(["history"], seed);
+    client.setQueryData(["history", "all", 20], seed);
   }
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
@@ -70,5 +70,26 @@ describe("HistoryPanel", () => {
     expect(html).toContain("delivered");
     expect(html).toContain("Submit memo");
     expect(html).toContain("reminder");
+  });
+
+  it("renders the kind-filter and limit-selector controls with their options", () => {
+    const html = render();
+    expect(html).toContain('aria-label="Filter by kind"');
+    expect(html).toContain('aria-label="Max entries"');
+    // "all" is the default-selected kind; React emits selected="".
+    expect(html).toContain('<option value="all" selected="">all</option>');
+    expect(html).toContain('<option value="proactive">proactive</option>');
+    expect(html).toContain('<option value="100">100</option>');
+  });
+});
+
+describe("buildHistoryQuery", () => {
+  it("omits the kind param for 'all' and only sets limit", () => {
+    expect(buildHistoryQuery("all", 20)).toBe("/api/history?limit=20");
+  });
+
+  it("appends the kind param for a specific activity kind", () => {
+    expect(buildHistoryQuery("reminder", 50)).toBe("/api/history?limit=50&kind=reminder");
+    expect(buildHistoryQuery("proactive", 100)).toBe("/api/history?limit=100&kind=proactive");
   });
 });
