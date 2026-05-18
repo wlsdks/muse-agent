@@ -70,6 +70,34 @@ export function extractDueHint(body: string): string | undefined {
   return undefined;
 }
 
+export interface InboxDueResolution {
+  readonly dueAt: string;
+  /**
+   * Set when a due:/마감: line was present but unparseable. The caller
+   * surfaces this so a typo'd hint ("due: next freday") doesn't
+   * silently degrade to the default lead with no feedback.
+   */
+  readonly unparsedHint?: string;
+}
+
+export function resolveInboxDueAt(
+  raw: string,
+  defaultLeadMinutes: number,
+  now: () => Date
+): InboxDueResolution {
+  const fallback = (): string =>
+    new Date(now().getTime() + defaultLeadMinutes * 60_000).toISOString();
+  const hint = extractDueHint(raw);
+  if (hint === undefined) {
+    return { dueAt: fallback() };
+  }
+  const parsed = parseTaskDueAt(hint, now);
+  if (parsed instanceof Error) {
+    return { dueAt: fallback(), unparsedHint: hint };
+  }
+  return { dueAt: parsed };
+}
+
 export function registerWatchFolderCommand(program: Command, io: ProgramIO): void {
   program
     .command("watch-folder")
@@ -173,18 +201,11 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
           // task that participates in done/snooze/dismiss flows.
           if (asTask && tasksFile) {
             try {
-              const hint = extractDueHint(raw);
-              let dueAt: string | undefined;
-              if (hint) {
-                const parsed = parseTaskDueAt(hint, () => new Date());
-                if (parsed instanceof Error) {
-                  dueAt = undefined;
-                } else {
-                  dueAt = parsed;
-                }
-              }
-              if (!dueAt) {
-                dueAt = new Date(Date.now() + defaultLead * 60_000).toISOString();
+              const { dueAt, unparsedHint } = resolveInboxDueAt(raw, defaultLead, () => new Date());
+              if (unparsedHint !== undefined) {
+                io.stderr(
+                  `  due hint ${JSON.stringify(unparsedHint)} not understood — using default +${defaultLead}m\n`
+                );
               }
               const task: PersistedTask = {
                 createdAt: new Date().toISOString(),

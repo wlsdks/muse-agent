@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { extractDueHint } from "./commands-watch-folder.js";
+import { extractDueHint, resolveInboxDueAt } from "./commands-watch-folder.js";
+
+const FIXED_NOW = (): Date => new Date("2026-05-18T09:00:00Z");
 
 describe("extractDueHint (watch-folder --as-task due parsing)", () => {
   it("extracts a hint from a `due:` / `deadline:` / `due -` line (case-insensitive)", () => {
@@ -30,5 +32,36 @@ describe("extractDueHint (watch-folder --as-task due parsing)", () => {
     expect(extractDueHint("due:")).toBeUndefined();
     expect(extractDueHint("just some notes\nno hint here")).toBeUndefined();
     expect(extractDueHint("")).toBeUndefined();
+  });
+});
+
+describe("resolveInboxDueAt (watch-folder --as-task dueAt resolution)", () => {
+  it("uses the parsed hint when the due: line is understood", () => {
+    expect(resolveInboxDueAt("due: next monday", 60, FIXED_NOW)).toEqual({
+      dueAt: "2026-05-25T00:00:00.000Z"
+    });
+    expect(resolveInboxDueAt("마감: 내일", 60, FIXED_NOW)).toEqual({
+      dueAt: "2026-05-19T00:00:00.000Z"
+    });
+  });
+
+  it("surfaces the unparsed hint instead of silently degrading on a typo", () => {
+    expect(resolveInboxDueAt("due: next freday", 60, FIXED_NOW)).toEqual({
+      dueAt: "2026-05-18T10:00:00.000Z",
+      unparsedHint: "next freday"
+    });
+    expect(resolveInboxDueAt("due: zzz qqq", 30, FIXED_NOW)).toEqual({
+      dueAt: "2026-05-18T09:30:00.000Z",
+      unparsedHint: "zzz qqq"
+    });
+  });
+
+  it("falls back to now + defaultLeadMinutes with no hint flagged when absent", () => {
+    expect(resolveInboxDueAt("just notes\nmore notes", 60, FIXED_NOW)).toEqual({
+      dueAt: "2026-05-18T10:00:00.000Z"
+    });
+    expect(resolveInboxDueAt("", 90, FIXED_NOW)).toEqual({
+      dueAt: "2026-05-18T10:30:00.000Z"
+    });
   });
 });
