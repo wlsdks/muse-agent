@@ -25,7 +25,8 @@ import { startProactiveTick, type InMemoryActivityTracker } from "./proactive-ti
 import {
   createMessagingObjectiveActuator,
   createModelObjectiveEvaluator,
-  createNotesInvestigator
+  createNotesInvestigator,
+  deriveBriefingImminent
 } from "@muse/mcp";
 import { startFollowupTick } from "./followup-tick.js";
 import { startObjectivesTick } from "./objectives-tick.js";
@@ -218,9 +219,20 @@ export function startSituationalBriefingDaemonIfConfigured(
   const windowMsRaw = env.MUSE_BRIEFING_WINDOW_MS ? Number(env.MUSE_BRIEFING_WINDOW_MS) : undefined;
   const briefingQuietHours = parseQuietHours(env.MUSE_BRIEFING_QUIET_HOURS)
     ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const leadRaw = env.MUSE_BRIEFING_LEAD_MINUTES ? Number(env.MUSE_BRIEFING_LEAD_MINUTES) : undefined;
+  const tasksFile = options.tasksFile;
   const briefingHandle = startSituationalBriefingTick({
     destination: briefingDestination,
     errorLogger: (message) => server.log.warn(message),
+    ...(tasksFile
+      ? {
+          imminentProvider: (briefingNow: Date) =>
+            deriveBriefingImminent(tasksFile, {
+              now: briefingNow,
+              ...(leadRaw !== undefined ? { leadMinutes: leadRaw } : {})
+            })
+        }
+      : {}),
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     logger: (message) => server.log.info(message),
     objectivesFile: options.objectivesFile,

@@ -287,6 +287,19 @@ lifecycle) substrate into the situational picture.
   chat_id + synthesised briefing text; real last-fired sidecar
   dedupes in-window; nothing-to-say is silent; re-briefs once the
   window elapses)
+- [x] The situational briefing is grounded in the user's REAL
+  imminent personal tasks, not objective-status only — the daemon
+  feeds live due-soon tasks into the briefing's `Upcoming:` so a
+  configured server actually tells the user what is coming up.
+  (Loop-extended bullet: P8-b2's daemon briefed `[]`-imminent; the
+  P8 docs flagged real-imminence as the natural follow-up — this
+  closes that observed half-feature; calendar-derived imminence is
+  a further enhancement.) Check: a seeded imminent task → the
+  delivered briefing's `Upcoming:` names it, alongside objective
+  status (integration). — 400 (deriveBriefingImminent mirrors the
+  proactive task-imminence rule; per-tick imminentProvider in
+  startSituationalBriefingTick; wired in the daemon when tasksFile
+  is set)
 
 **P9 — The delegated-autonomy loops actually RUN (loop-authored,
 P0–P8 all delivered).** P5 (`runDueObjectives`) and P8

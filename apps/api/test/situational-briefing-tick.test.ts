@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, TelegramProvider } from "@muse/messaging";
-import { addObjective, type StandingObjective } from "@muse/mcp";
+import {
+  addObjective,
+  deriveBriefingImminent,
+  writeTasks,
+  type StandingObjective
+} from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
 import { startSituationalBriefingTick } from "../src/situational-briefing-tick.js";
@@ -117,6 +122,43 @@ describe("startSituationalBriefingTick — P9-b2 child: the briefing daemon ride
     try {
       await expect(handle.tickOnce()).resolves.toBeUndefined();
       expect(errors.some((e) => e.includes("situational-briefing-tick"))).toBe(true);
+    } finally {
+      handle.stop();
+    }
+  });
+
+  it("P8-b3: a real imminent task grounds the briefing's Upcoming alongside objective status", async () => {
+    const { objectivesFile, sidecarFile } = fixtures();
+    const tasksFile = join(mkdtempSync(join(tmpdir(), "muse-brief-tasks-")), "tasks.json");
+    await addObjective(objectivesFile, objective());
+    await writeTasks(tasksFile, [
+      {
+        createdAt: "2026-05-19T08:00:00.000Z",
+        dueAt: "2026-05-19T12:30:00.000Z",
+        id: "t1",
+        status: "open",
+        title: "submit the Q3 report"
+      }
+    ]);
+    const posts: { url: string; body: string }[] = [];
+    const handle = startSituationalBriefingTick({
+      destination: "555",
+      imminentProvider: (now) => deriveBriefingImminent(tasksFile, { now }),
+      now: () => NOW,
+      objectivesFile,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([telegram(posts)]),
+      sidecarFile,
+      windowMs: 4 * 60 * 60_000
+    });
+    try {
+      await handle.tickOnce();
+      expect(posts).toHaveLength(1);
+      const text = (JSON.parse(posts[0]!.body) as { text: string }).text;
+      expect(text).toContain("Upcoming:");
+      expect(text).toContain("submit the Q3 report");
+      expect(text).toContain("Still tracking:");
+      expect(text).toContain("watch the deploy until green");
     } finally {
       handle.stop();
     }

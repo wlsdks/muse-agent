@@ -29,6 +29,13 @@ export interface SituationalBriefingTickOptions {
   readonly destination: string;
   readonly sidecarFile: string;
   readonly imminent?: readonly BriefingImminent[];
+  /**
+   * Per-tick imminent source (imminence is time-relative). When
+   * set it overrides the static `imminent`; a thrown provider
+   * fails soft to no imminent items (the objective-status briefing
+   * still goes out).
+   */
+  readonly imminentProvider?: (now: Date) => Promise<readonly BriefingImminent[]>;
   readonly windowMs?: number;
   readonly intervalMs?: number;
   readonly logger?: (message: string) => void;
@@ -62,9 +69,17 @@ export function startSituationalBriefingTick(
     }
     firing = true;
     try {
+      let imminent = options.imminent ?? [];
+      if (options.imminentProvider) {
+        try {
+          imminent = await options.imminentProvider(now());
+        } catch {
+          imminent = [];
+        }
+      }
       const summary = await runDueSituationalBriefing({
         destination: options.destination,
-        imminent: options.imminent ?? [],
+        imminent,
         messagingRegistry: options.registry,
         now,
         objectivesFile: options.objectivesFile,
