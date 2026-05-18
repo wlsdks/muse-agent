@@ -22,6 +22,23 @@ Two qualities define every outward goal:
 - **Instantly responsive & complete** — when addressed, it answers
   now and carries the task to done end-to-end.
 
+## Audited reality — 2026-05-18 (don't rebuild SOLID; CLOSE the gaps)
+
+Evidence audit of the codebase. Read before selecting: do not burn
+iterations re-doing proven ground — the outward work IS the gaps.
+
+**SOLID & live-proven — do NOT rebuild (extend only if a gap needs
+it):** agent run-loop / strict tool-loop / plan-execute, multi-agent
+orchestration, guards + PII/injection fail-close, ToolApprovalGate
+(fail-closed on throw), runner sandbox, local-file + local-calendar
+/ tasks actuation via real-LLM tool calls, episodic-summariser infra.
+
+**The JARVIS gap = actuation breadth + trust-at-the-edges, NOT core
+depth.** Muse is a strong agent you *invoke*; not yet a companion
+that *converses and perceives on its own*. The targets below are
+the audited gaps, ranked by how much each separates Muse from a
+JARVIS you'd depend on daily.
+
 ## Self-directed target map (the loop OWNS and EVOLVES this)
 
 Each `- [ ]` bullet below is one **deliverable unit** — the
@@ -39,40 +56,56 @@ parent stays `[ ]` until ALL children are met (no flipping a
 trivially-met sub-bullet to game the metric). It may NOT relabel
 inward churn as a flip, weaken the outward test, or skip the check.
 
-**P1 — Active messaging assistant** (drive to fully-delivered first)
-- [ ] Proactively message the user on a wired channel when a real
-  trigger fires (reminder / calendar / pattern / follow-up), with
-  the why + a concrete suggested action.
-- [ ] When the user replies in chat, run the full agent loop
-  (tools, multi-step, approvals) and complete the task, replying
-  with the result. The chat IS a Muse session.
-- [ ] Thread context survives across turns and the ~20-min
-  boundary.
-- [ ] Risky actions get an in-chat approval prompt first.
-- [ ] Provider-neutral over the messaging registry (Telegram /
-  Slack / Discord / LINE — whatever is wired).
+**P1 — Two-way conversation on a real channel** — THE gap. Audit:
+*not implemented at all*; every inbound path (telegram-poll,
+channel-poll, LINE webhook) only `appendInbound`s to soft context
+for the next user-initiated `/api/chat`. Muse can message first
+but cannot converse back. Drive to fully-delivered FIRST.
+- [ ] An inbound consumer drains the messaging inbox and invokes
+  the FULL agent runtime (`agentRuntime.run`) per inbound message —
+  not append-to-soft-context. Check: integration inbound→run→reply.
+- [ ] The result is sent back over the same channel via the
+  messaging registry. Check: a `smoke` exercising inbound→reply on
+  one provider (contract-faithful HTTP fake or real) asserting the
+  outbound POST — never a fake registry.
+- [ ] Thread context carries across turns on the channel (the chat
+  IS a Muse session). Check: multi-turn inbound retains context.
+- [ ] Risky actions prompt for in-chat approval before executing.
+  Check: approval gate exercised over the channel path.
 
-**P2 — Calendar / scheduling autonomy**
-- [ ] Read AND write across Local / Google / CalDAV / macOS;
-  create / move / cancel from chat or CLI.
-- [ ] Anticipatory prep ("meeting in 15 min — here's the
-  doc/thread"), surfaced proactively (ties to P1).
+**P2 — Proactive delivery proven on a real channel** — Audit:
+well-engineered (dedupe, quiet-hours, Phase-D synth) but EVERY
+firing test injects a fake registry; unit-only, cannot count per
+the CAPABILITIES surface-check rule.
+- [ ] Proactive / followup / reminder daemon delivers to a real
+  (or contract-faithful HTTP-faked) channel; check asserts the
+  message was POSTed to the channel API, not a fake registry.
+- [ ] Anticipatory prep ("meeting in 15 min — here's the doc")
+  rides this path (ties to P1).
 
-**P3 — Personal knowledge grounding (2nd brain)**
-- [ ] Ingest + index notes / local files / a drive folder; answer
-  grounded with citations.
-- [ ] Act on the knowledge (file, summarise, link, de-dupe) — not
-  just retrieve.
+**P3 — Ambient perception loop** — Audit: only `muse glance`, a
+manual one-shot CLI print, macOS-only, never reaches the agent.
+- [ ] A gated perception daemon periodically snapshots ambient
+  signals (screen / clipboard / active app / notifications) and
+  injects them as run context unasked. Check: an ambient change
+  measurably alters a subsequent agent answer.
 
-**P4 — Device / OS / home ambient awareness**
-- [ ] Perceive screen / clipboard / active app / notifications as
-  context unasked.
-- [ ] Act locally where safe via the runner; ambient hints (ties
-  to P1).
+**P4 — Close the trust-blocking PARTIALs** — audit-identified;
+required before Muse can be delegated to unsupervised.
+- [ ] Calendar WRITE (create/move/cancel) across Google / CalDAV /
+  macOS exercised by a surface check (contract-faithful HTTP fake),
+  not read-only.
+- [ ] Auto-extract wired into the API agent runtime AND on
+  tool-using turns (today: REPL-only, `toolsDisabled`-only).
+- [ ] Recall upgraded from Jaccard token-overlap to embedding
+  similarity (notes RAG already has cosine) so paraphrase recall
+  works. Check: a paraphrase query retrieves the right memory.
+- [ ] Voice end-to-end round-trip has an automated check
+  (mic→STT→agent→TTS pipeline; STT/TTS mockable, full path).
 
-The loop extends this map itself when all targets are fully
-delivered or when its judgement finds a stronger outward
-direction. "Nothing to do" is impossible by construction.
+The loop extends this map itself when all are delivered or its
+judgement finds a stronger outward direction. "Nothing to do" is
+impossible by construction.
 
 <!-- IMMUTABLE-CORE:BEGIN -->
 ## Immutable core (the loop must NEVER edit — honesty machinery)
