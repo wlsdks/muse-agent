@@ -179,10 +179,13 @@ as the "knows-you" foundation.)
 **P5 — Durable delegated objectives (long-horizon agency)** — the
 "trust over time" gap: turns "an agent you invoke" into "a
 assistant you delegate to". A standing objective is not a one-shot.
-- [ ] A user can register a standing objective ("watch for X / keep
+- [x] A user can register a standing objective ("watch for X / keep
   trying Y until Z / tell me when W") that survives process restart
   and the ~20-min boundary as durable state. Check: register →
-  restart → still tracked (integration).
+  restart → still tracked (integration). — 386 (personal-objectives
+  -store: atomic fsync+rename, tolerant/corrupt-quarantine read,
+  idempotent register; integration proves register → fresh read
+  with no shared in-memory = post-restart → still tracked)
 - [ ] It is autonomously re-evaluated on a tick with backoff and
   either fires its action when the condition is met or escalates
   when unmeetable — never silently dropped. Check: condition flips

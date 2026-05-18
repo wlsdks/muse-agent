@@ -328,6 +328,15 @@ export {
   type FollowupStatusFilter,
   type PersistedFollowup
 } from "./personal-followups-store.js";
+export {
+  addObjective,
+  readObjectives,
+  serializeObjective,
+  writeObjectives,
+  type ObjectiveKind,
+  type ObjectiveStatus,
+  type StandingObjective
+} from "./personal-objectives-store.js";
 
 // LLM-fallback budget tracker — step 5 of agent-self-followup.md.
 // Per-day counter so MUSE_FOLLOWUP_LLM_FALLBACK=true can't
