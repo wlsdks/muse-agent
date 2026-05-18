@@ -113,3 +113,18 @@ Append one line when a discovery path is evaluated and deferred:
   investigate-and-surface) re-run green on its own surface (the
   proactive daemon). No drift; no bullet reopened. P0 (knows-you ·
   anticipates · asks) is genuinely delivered end-to-end.
+- P2 audit — apps/api/test/p2-seam.test.ts — PASS: P2's two
+  CAPABILITIES checks pass together (`@muse/api`
+  proactive-notice-delivery.test.ts — bare notice POST + real
+  dedupe [b1]; prepped-doc POST [b2]) AND compose into one
+  non-spammy real-channel flow: with a real `LocalDirNotesProvider`
+  + `createNotesInvestigator` wired into `runDueProactiveNotices`
+  over a real `TelegramProvider` HTTP, tick 1 POSTs the imminent
+  announcement + the prepped "Related notes: …" doc (decoy
+  excluded) to the real Bot API, and ticks 2 & 3 (item still
+  imminent, investigate-appended body differs) produce ZERO
+  re-POSTs — the real dedupe sidecar is item-derived not
+  body-derived, so the composed flow honours the P2 "not noisy"
+  quality bar. No drift; no bullet reopened. P2 (proactive
+  delivery proven on a real channel) is genuinely delivered
+  end-to-end.
