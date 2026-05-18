@@ -252,6 +252,20 @@ export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date
     return finiteDate(day);
   }
 
+  // "day after tomorrow" (+2 days) — English counterpart of the
+  // Korean "모레" the grammar already supports; the bare-`[a-z]+`
+  // dayPattern would otherwise treat "day" as a weekday and fail.
+  const dayAfter = /^(?:the\s+)?day\s+after\s+tomorrow(?:\s+(?:at\s+)?(.+))?$/u.exec(trimmed);
+  if (dayAfter) {
+    const time = parseTimeOfDay(dayAfter[1]);
+    if (time === "invalid") {
+      return undefined;
+    }
+    const target = startOfDay(new Date(reference.getTime() + 2 * 86_400_000));
+    target.setHours(time.hour, time.minute, 0, 0);
+    return finiteDate(target);
+  }
+
   const absoluteDate = finiteDate(resolveAbsoluteMonthDate(trimmed, reference));
   if (absoluteDate) {
     return absoluteDate;

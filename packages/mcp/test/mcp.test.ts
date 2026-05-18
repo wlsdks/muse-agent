@@ -2423,6 +2423,26 @@ describe("muse.tasks loopback server", () => {
       expect(resolveRelativeTimePhrase("tomorrow", ref)?.getDate()).toBe(19);
     });
 
+    it("resolves 'day after tomorrow' (+2 days, English counterpart of 모레)", async () => {
+      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const ref = () => new Date("2026-05-18T12:00:00Z"); // Monday May 18
+
+      const dat = resolveRelativeTimePhrase("day after tomorrow", ref);
+      expect(dat?.getDate()).toBe(20);
+      expect(dat?.getHours()).toBe(9); // bare-day default
+      expect(dat?.getMinutes()).toBe(0);
+
+      expect(resolveRelativeTimePhrase("the day after tomorrow", ref)?.getDate()).toBe(20);
+      const atThree = resolveRelativeTimePhrase("day after tomorrow at 3pm", ref);
+      expect(atThree?.getDate()).toBe(20);
+      expect(atThree?.getHours()).toBe(15);
+      expect(resolveRelativeTimePhrase("Day After Tomorrow at noon", ref)?.getHours()).toBe(12);
+      // Malformed trailing time → undefined (not a silent default).
+      expect(resolveRelativeTimePhrase("day after tomorrow garbage", ref)).toBeUndefined();
+      // No regression: plain "tomorrow" still +1 via dayPattern.
+      expect(resolveRelativeTimePhrase("tomorrow", ref)?.getDate()).toBe(19);
+    });
+
     it("resolves Korean day + time phrases (goal 160)", async () => {
       const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
       const ref = () => new Date("2026-05-15T12:00:00Z"); // Friday
