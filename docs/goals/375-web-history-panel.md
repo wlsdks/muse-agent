@@ -1,6 +1,11 @@
 # 375 — Web UI history panel
 
-Category: epic / feature
+> **LEGACY (pre-OUTWARD-TARGETS).** Remaining slices are exempt
+> from the outward test/metric. Finish them first (one per
+> iteration), then close. This tag never applies to any new goal;
+> the legacy set is exactly {373, 375}.
+
+Category: epic / legacy
 
 (Carried forward from the pre-reset backlog. Backend prerequisite
 `GET /api/history` already shipped; only the UI surface is unbuilt.)
