@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatCitations, formatLocalDate, formatLocalDateTime, formatLocalTime } from "./human-formatters.js";
+import {
+  formatCitations,
+  formatLocalDate,
+  formatLocalDateTime,
+  formatLocalTime,
+  formatRelativeTime
+} from "./human-formatters.js";
 
 describe("formatCitations", () => {
   it("returns empty string when no citations", () => {
@@ -59,5 +65,55 @@ describe("formatLocalDate / formatLocalTime", () => {
   it("returns the input unchanged for unparseable strings", () => {
     expect(formatLocalDate("nope")).toBe("nope");
     expect(formatLocalTime("nope")).toBe("nope");
+  });
+});
+
+describe("formatRelativeTime", () => {
+  const now = new Date("2026-05-18T12:00:00Z");
+  const ago = (sec: number): string => new Date(now.getTime() - sec * 1000).toISOString();
+  const ahead = (sec: number): string => new Date(now.getTime() + sec * 1000).toISOString();
+
+  it("collapses sub-5s deltas to a friendly phrase (both directions)", () => {
+    expect(formatRelativeTime(ago(3), now)).toBe("just now");
+    expect(formatRelativeTime(ahead(3), now)).toBe("in a moment");
+  });
+
+  it("renders past deltas as 'Ns/Nm/Nh/Nd ago'", () => {
+    expect(formatRelativeTime(ago(30), now)).toBe("30s ago");
+    expect(formatRelativeTime(ago(300), now)).toBe("5m ago");
+    expect(formatRelativeTime(ago(2 * 3600), now)).toBe("2h ago");
+    expect(formatRelativeTime(ago(86400), now)).toBe("1d ago");
+  });
+
+  it("renders future deltas with an 'in N…' prefix", () => {
+    expect(formatRelativeTime(ahead(45), now)).toBe("in 45s");
+    expect(formatRelativeTime(ahead(3 * 3600), now)).toBe("in 3h");
+    expect(formatRelativeTime(ahead(2 * 86400), now)).toBe("in 2d");
+  });
+
+  it("promotes on the rounded value at every tier ceiling", () => {
+    expect(formatRelativeTime(ago(59.6), now)).toBe("1m ago");
+    // 90 min rounds (1.5h → 2h) rather than reading "90m ago".
+    expect(formatRelativeTime(ago(90 * 60), now)).toBe("2h ago");
+  });
+
+  it("keeps 'Nd ago' through the full ≤7d window (rounded), not just <7d", () => {
+    // Regression: 6.5–7.0d round to day=7; the contract is
+    // "≤ 7 d → Nd ago", so these must read "7d ago", NOT an
+    // absolute timestamp (every other tier promotes on the round).
+    expect(formatRelativeTime(ago(6.4 * 86400), now)).toBe("6d ago");
+    expect(formatRelativeTime(ago(6.6 * 86400), now)).toBe("7d ago");
+    expect(formatRelativeTime(ago(7.0 * 86400), now)).toBe("7d ago");
+    expect(formatRelativeTime(ago(7.4 * 86400), now)).toBe("7d ago");
+  });
+
+  it("defers to the absolute formatter beyond 7 days", () => {
+    const iso = ago(8 * 86400);
+    expect(formatRelativeTime(iso, now)).toBe(formatLocalDateTime(iso));
+    expect(formatRelativeTime(iso, now)).not.toMatch(/ago$/u);
+  });
+
+  it("returns the raw input for an unparseable timestamp", () => {
+    expect(formatRelativeTime("not-a-date", now)).toBe("not-a-date");
   });
 });

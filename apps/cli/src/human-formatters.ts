@@ -265,7 +265,7 @@ function shortDateTime(iso: string): string {
 }
 
 /**
- * Goal 062 — humanise an ISO timestamp relative to `now`.
+ * Humanise an ISO timestamp relative to `now`.
  *
  *   ≤ 60 s   → "Ns ago"
  *   ≤ 60 min → "Nm ago"
@@ -299,7 +299,7 @@ export function formatRelativeTime(iso: string, now: Date = new Date(), timeZone
   const hr = Math.round(absSec / 3600);
   if (hr < 24) return pick(hr, "h");
   const day = Math.round(absSec / 86400);
-  if (day < 7) return pick(day, "d");
+  if (day <= 7) return pick(day, "d");
   // > 7 days: defer to the absolute formatter so the table stays
   // readable (we're not going to invent "2 weeks ago" precision
   // when the ISO is right there).
