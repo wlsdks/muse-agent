@@ -52,9 +52,27 @@ CalDAV and macOS providers with only the transport faked. P4-b1
 flipped `[ ]`→`[x]`; one CAPABILITIES line appended; README
 backlog row added.
 
-P4-b2 ("voice end-to-end round-trip has an automated check —
-mic→STT→agent→TTS pipeline; STT/TTS mockable, full path") is the
-remaining P4 bullet and stays `[ ]`.
+**P4-b2 done — P4 fully delivered (b1–b2).**
+`apps/cli/src/commands-listen.test.ts` adds a full-path round-trip
+check driving the **real** `registerListenCommand` Phase-C
+push-to-talk action; only the I/O boundaries are faked (a fake
+`spawnRec` ChildProcess emitting canned WAV, STT, TTS, the
+`/api/chat` `apiRequest`, and `playAudio`). It asserts each stage's
+data actually flowed: captured WAV bytes → STT; transcript →
+`/api/chat` as `{message}`; agent reply → TTS; synthesised audio →
+the written file that `playAudio` received. The existing test only
+covered the `safeTranscribe` resilience helper — this is the first
+automated end-to-end voice round-trip. P4-b2 flipped `[ ]`→`[x]`;
+one CAPABILITIES line appended; README backlog row flipped to done.
+
+A `tsc` circular-type error (a self-referential `ReturnType<typeof
+helpers.shells["spawnRec"]>`) surfaced under `pnpm check` though
+vitest's esbuild transpile passed; root-fixed by typing `helpers`
+as the exported `ListenHelpers` and the fake recorder as
+`ChildProcess` — not worked around.
+
+Next iteration: per contract Step 4, the P4 target-completion
+audit (both P4 bullets `[x]`, no `P4 audit —` line yet).
 
 ## Decisions
 
@@ -77,3 +95,13 @@ remaining P4 bullet and stays `[ ]`.
   unchanged production providers; it flips an outward bullet
   because the bullet's deliverable IS "exercised by a surface
   check, not read-only" — the verification is the capability.
+- P4-b2 drives the real `registerListenCommand` action (not a
+  re-implemented pipeline) so the test proves the actual
+  production composition mic→STT→agent→TTS→playback. The
+  `apiRequest` agent call is faked at the established
+  `ListenHelpers` seam, so no real LLM round-trip occurs — the
+  bullet itself prescribes "STT/TTS mockable, full path", so a
+  mocked-boundary integration test is the mandated check (no
+  smoke:live applies).
+- The two P4 bullets shipped as one goal (384) across two slices;
+  this commit is `test(cli)` for the voice slice.

@@ -169,8 +169,12 @@ as the "knows-you" foundation.)
   PATCH/cancel DELETE w/ Bearer+JSON; CalDAV create PUT/move
   REPORT→PUT/cancel DELETE w/ Basic+ICS; macOS create+cancel over
   the real osascript spawn asserting the AppleScript)
-- [ ] Voice end-to-end round-trip has an automated check
+- [x] Voice end-to-end round-trip has an automated check
   (mic→STT→agent→TTS pipeline; STT/TTS mockable, full path).
+  — 384 (commands-listen.test.ts drives the real
+  `registerListenCommand` Phase-C push-to-talk action: faked mic
+  spawn → STT → /api/chat → TTS → playback, asserting each stage's
+  data actually flowed end-to-end)
 
 **P5 — Durable delegated objectives (long-horizon agency)** — the
 "trust over time" gap: turns "an agent you invoke" into "a
