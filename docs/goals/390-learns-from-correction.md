@@ -34,9 +34,15 @@ now-complete P0 (context injection) + P6 (veto store) substrate.
   agent-runtime context pipeline (right after ambient context)
   behind an opt-in `AgentRuntimeOptions.vetoAvoidanceProvider`.
   Verified by `packages/agent-core/test/veto-avoidance.test.ts`.
-- s2 (P7-b2, next): the learned avoidances are reviewable and
-  clearable by the user ("what Muse learned not to do" + clear),
-  so a correction is not permanent-by-accident.
+- s2 (P7-b2, DONE): `queryVetoes` (user-scoped, newest-first
+  review — "what Muse learned not to do") + `removeVeto` (precise
+  one-tap clear; no-op `false` on a missing id) on
+  `personal-veto-store.ts`. Verified by
+  `personal-veto-store.test.ts`: review lists the avoidance →
+  the avoidance-provider input is non-empty → clear → review
+  empty + provider input `[]` (so the directive no longer injects,
+  by P7-b1's proven `[]`-no-op contract) + `hasVeto` false (the
+  consented-action gate no longer blocks either).
 
 ## Verify
 
@@ -76,7 +82,21 @@ covered, and an injection-bearing veto reason is whitespace-
 collapsed so it cannot forge a section. P7-b1 flipped `[ ]`→`[x]`;
 one CAPABILITIES line appended; README backlog row added.
 
-P7-b2 stays `[ ]` (separate bullet, separate slice).
+P7-b2 done. The bullet's check ("review lists active avoidances;
+clear removes it and the directive no longer injects
+(integration)") is delivered: `queryVetoes` is the user-scoped
+newest-first review surface; `removeVeto` is the one-tap clear;
+the integration asserts the exact `VetoAvoidanceProvider` input
+`applyVetoAvoidance` consumes transitions non-empty → `[]` on
+clear (which, by P7-b1's own pinned contract that `[]` ⇒ exact
+no-op, IS "the directive no longer injects"), and `hasVeto` flips
+to false so the consented-action gate no longer blocks either.
+P7-b2 flipped `[ ]`→`[x]`; one CAPABILITIES line appended; README
+backlog row flipped to done.
+
+**P7 fully delivered (b1 surface-into-context · b2 review +
+clear).** With P0–P7 all delivered, the next iteration is — per
+contract Step 4 — the P7 target-completion audit.
 
 ## Decisions
 
@@ -102,3 +122,17 @@ P7-b2 stays `[ ]` (separate bullet, separate slice).
 - `feat(agent-core)`: a new perceivable behaviour (Muse visibly
   stops proposing what it was corrected on), consistent with how
   the clarify / ambient transforms were typed.
+- P7-b2 verifies "the directive no longer injects" across the
+  intentional `mcp ↛ agent-core` dependency boundary by asserting
+  the exact `VetoAvoidanceProvider` input (`readVetoes → filter →
+  map`) transitions non-empty → `[]` on clear. P7-b1's own test
+  pins that `[]` ⇒ exact no-op and non-empty ⇒ the directive — so
+  the composition is faithfully proven without a forbidden
+  cross-package import or standing up the full apps/api adapter
+  (the deferred wiring). This is the correct way to test across a
+  deliberate layering seam, not a fake flag.
+- `removeVeto` returns `false` (no-op) on a missing id rather than
+  throwing: clearing an already-cleared correction must be
+  idempotent — a review UI double-tap or a stale id must not error.
+- s2 is `feat(mcp)` (store review/clear functions); the slice
+  shipped under goal 390 across two slices like the other epics.

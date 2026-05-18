@@ -87,6 +87,37 @@ export async function recordVeto(file: string, veto: ActionVeto): Promise<void> 
 }
 
 /**
+ * Review surface: the learned avoidances the user can see —
+ * "what Muse learned not to do" — newest-first, optionally scoped
+ * to one user. Parallel to `queryActionLog`.
+ */
+export async function queryVetoes(
+  file: string,
+  query: { readonly userId?: string } = {}
+): Promise<readonly ActionVeto[]> {
+  const all = await readVetoes(file);
+  const scoped = query.userId ? all.filter((v) => v.userId === query.userId) : all;
+  return [...scoped].sort((a, b) => b.vetoedAt.localeCompare(a.vetoedAt));
+}
+
+/**
+ * Clear one learned avoidance by id so a correction is not
+ * permanent-by-accident. Returns true when an entry was removed,
+ * false when the id was absent (no-op). After removal `hasVeto`
+ * for that class is false again, so the avoidance directive no
+ * longer injects and the consented-action gate no longer blocks.
+ */
+export async function removeVeto(file: string, id: string): Promise<boolean> {
+  const existing = await readVetoes(file);
+  const next = existing.filter((entry) => entry.id !== id);
+  if (next.length === existing.length) {
+    return false;
+  }
+  await writeVetoes(file, next);
+  return true;
+}
+
+/**
  * Fail-closed-direction veto check: true when ANY veto matches the
  * user, objective AND scope. A read/parse problem degrades to
  * `false` — a veto store that cannot be read must not silently

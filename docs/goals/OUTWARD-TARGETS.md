@@ -248,11 +248,15 @@ correction is permanent-by-accident with no way to clear it.
   VetoAvoidanceProvider; createAgentRuntime integration: recorded
   veto → run carries [Learned Avoidance]; none → no-op; gated/
   fail-open so smoke:live unaffected)
-- [ ] Learned avoidances are reviewable and clearable by the user
+- [x] Learned avoidances are reviewable and clearable by the user
   ("what Muse learned not to do" + clear), so a correction is not
   permanent-by-accident. Check: review lists active avoidances;
   clear removes it and the directive no longer injects
-  (integration).
+  (integration). — 390 (queryVetoes user-scoped newest-first review
+  + removeVeto one-tap clear; integration: review lists →
+  avoidance provider input non-empty → clear → review empty +
+  provider input [] (directive no longer injects, by P7-b1's
+  proven []-no-op contract) + hasVeto false)
 
 The loop extends this map itself when all are delivered or its
 judgement finds a stronger outward direction. "Nothing to do" is

@@ -368,8 +368,10 @@ export {
 } from "./personal-action-log-store.js";
 export {
   hasVeto,
+  queryVetoes,
   readVetoes,
   recordVeto,
+  removeVeto,
   serializeVeto,
   writeVetoes,
   type ActionVeto

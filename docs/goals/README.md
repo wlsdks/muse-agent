@@ -38,7 +38,7 @@ delete an open row, never rewrite another goal's status.
 | 384 | [Calendar WRITE contract check](384-calendar-write-contract.md)           | epic / outward | done — P4 fully delivered (b1–b2) |
 | 386 | [Durable standing objectives](386-durable-standing-objectives.md)         | epic / outward | done — P5 fully delivered (b1–b3) |
 | 388 | [Reviewable action log](388-reviewable-action-log.md)                     | epic / outward | done — P6 fully delivered (b1–b2) |
-| 390 | [Learns from correction](390-learns-from-correction.md)                   | epic / outward | P7-b1 done; P7-b2 (review/clear) next |
+| 390 | [Learns from correction](390-learns-from-correction.md)                   | epic / outward | done — P7 fully delivered (b1–b2) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
