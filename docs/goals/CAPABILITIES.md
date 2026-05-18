@@ -44,3 +44,4 @@ axis ∈ Reach | Anticipation | Autonomy | Presence
 - [Presence] Voice in/out (Whisper / Piper / whisper.cpp) — `muse listen` / `--speak` — voice unit tests
 - [Presence] Cross-session episodic recall surfaced into context — REPL across sessions — episodic-summariser tests
 - [Presence] Proactive notices route to the active terminal and fall back to messaging when it goes stale (no black-hole) — `muse proactive watch` (TTY) then idle past the active-session window — `@muse/mcp` mcp.test.ts "falls back to messaging when terminal presence is stale"
+- [Presence] An inbound consumer drains the messaging inbox and runs the FULL agent runtime per message, replying on the originating channel (not append-to-soft-context) — wired bot inbox with `MUSE_INBOUND_REPLY_ENABLED=1` — `@muse/api` inbound-reply-tick.test.ts "answers each new inbox message via the agent, replies to its source, and is idempotent" (integration inbound→run→reply) — P1-b1

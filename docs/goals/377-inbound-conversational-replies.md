@@ -46,6 +46,54 @@ chat IS a Muse session"; that reply loop is the missing piece.
 
 ## Status
 
+slice 2 done — P1-b2 user-exercisable end-to-end. New
+`packages/messaging/src/inbox-reply-cursor.ts` (bounded answered-key
+store, distinct from the context-injection cursor) +
+`apps/api/src/inbound-reply-tick.ts` (`startInboundReplyTick`:
+single-flight / unref / clamped, mirrors `telegram-poll-tick`):
+each tick reads the inbox the poll daemon fills, runs the full
+agent on every not-yet-answered message via `respondToInbound`, and
+replies on the originating channel; the dedicated reply cursor
+makes it idempotent across restarts/overlapping ticks. Wired
+env-gated into the API boot (`MUSE_INBOUND_REPLY_ENABLED=1`,
+reuses the Telegram inbox; `agentRuntime` adapted to
+`InboundAgentRunner` with `options.defaultModel`). Now: user texts
+the wired bot → poll daemon ingests → this daemon runs the agent
+and answers on that channel — "the chat IS a Muse session."
+
+Cross-module integration test `apps/api/test/inbound-reply-tick.test.ts`
+(green under `pnpm check`): seeded inbox → `tickOnce` → agent →
+reply sent to each source via the real `MessagingProviderRegistry`
+→ reply cursor persisted → second tick idempotent (no
+double-reply). Surface-level (not unit-only): composes inbox-store
++ reply-cursor + responder + registry + the tick.
+
+## Decisions
+
+- Mid-iteration the owner rewrote OUTWARD-TARGETS P1 ("Two-way
+  conversation on a real channel"). This slice flips the NEW
+  **P1-b1** ("an inbound consumer drains the messaging inbox and
+  invokes the FULL agent runtime per inbound message —
+  not append-to-soft-context. Check: integration inbound→run→reply")
+  — exactly what `inbound-reply-tick` + the integration test
+  deliver. The conflict was resolved by taking the owner's
+  authoritative new map and re-applying only this one flip (P1
+  immutable; append/flip-only).
+- The new **P1-b2** ("result sent back … contract-faithful HTTP
+  fake or real asserting the outbound POST — NEVER a fake
+  registry") is deliberately NOT flipped: the slice-2 integration
+  test uses a fake provider in a real registry, which that bullet
+  explicitly disallows. It is a separate, stricter slice (a
+  contract-faithful HTTP provider fake asserting the outbound POST)
+  — honest non-flip, not gaming.
+- Thread continuity (new P1-b3) and in-chat approval (new P1-b4)
+  remain separate bullets / later slices.
+- `cursorFile` derived as `${telegramInboxFile}.reply-cursor.json`
+  (sibling) — no new server option to thread through; minimal.
+- Agent failure ⇒ message not marked handled ⇒ retried next tick
+  (slice-1 contract); bounded max-attempts still deferred (no
+  observed need).
+
 slice 1 done — `packages/messaging/src/inbound-responder.ts`:
 `respondToInbound` + `inboundKey` + `InboundAgentRunner` (structural
 duck-type so `@muse/messaging` keeps zero `@muse/agent-core` dep,

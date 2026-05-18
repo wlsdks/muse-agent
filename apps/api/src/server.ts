@@ -26,6 +26,8 @@ import {
 } from "./tick-daemons.js";
 import { parseSlackPollChannels, startSlackPollTick } from "./slack-poll-tick.js";
 import { startTelegramPollTick } from "./telegram-poll-tick.js";
+import { startInboundReplyTick } from "./inbound-reply-tick.js";
+import type { InboundAgentRunner } from "@muse/messaging";
 import { DiscordProvider, SlackProvider, TelegramProvider } from "@muse/messaging";
 import { registerSchedulerRoutes } from "./scheduler-routes.js";
 import { registerActiveContextRoutes } from "./active-context-routes.js";
@@ -356,6 +358,46 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         pollHandle.stop();
       });
     }
+  }
+
+  // Optional conversational reply daemon (goal 377): answer
+  // not-yet-handled inbox messages by running the full agent and
+  // replying on the originating channel — "the chat IS a Muse
+  // session". Reuses the telegram inbox the poll daemon fills.
+  // Off unless MUSE_INBOUND_REPLY_ENABLED=1.
+  const inboundReplyEnabled = process.env.MUSE_INBOUND_REPLY_ENABLED?.trim() === "1";
+  if (
+    inboundReplyEnabled
+    && options.telegramInboxFile
+    && options.messaging
+    && options.agentRuntime
+  ) {
+    const agentRuntime = options.agentRuntime;
+    const replyModel = options.defaultModel ?? "default";
+    const runner: InboundAgentRunner = {
+      run: async ({ text }) => {
+        const result = await agentRuntime.run({
+          messages: [{ content: text, role: "user" }],
+          model: replyModel
+        } as Parameters<typeof agentRuntime.run>[0]);
+        return result.response?.output ?? "";
+      }
+    };
+    const replyMsRaw = process.env.MUSE_INBOUND_REPLY_INTERVAL_MS
+      ? Number(process.env.MUSE_INBOUND_REPLY_INTERVAL_MS)
+      : undefined;
+    const replyHandle = startInboundReplyTick({
+      cursorFile: `${options.telegramInboxFile}.reply-cursor.json`,
+      errorLogger: (message) => server.log.warn(message),
+      inboxFile: options.telegramInboxFile,
+      ...(replyMsRaw !== undefined ? { intervalMs: replyMsRaw } : {}),
+      logger: (message) => server.log.info(message),
+      registry: options.messaging,
+      runner
+    });
+    server.addHook("onClose", async () => {
+      replyHandle.stop();
+    });
   }
 
   // Optional Phase 2.d.3 daemon: poll a user-configured list of

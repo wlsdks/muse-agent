@@ -90,9 +90,10 @@ work, never shipped as a standalone goal.
 channel-poll, LINE webhook) only `appendInbound`s to soft context
 for the next user-initiated `/api/chat`. Muse can message first
 but cannot converse back. Drive to fully-delivered FIRST.
-- [ ] An inbound consumer drains the messaging inbox and invokes
+- [x] An inbound consumer drains the messaging inbox and invokes
   the FULL agent runtime (`agentRuntime.run`) per inbound message —
   not append-to-soft-context. Check: integration inbound→run→reply.
+  — 377 s2
 - [ ] The result is sent back over the same channel via the
   messaging registry. Check: a `smoke` exercising inbound→reply on
   one provider (contract-faithful HTTP fake or real) asserting the

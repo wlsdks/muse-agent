@@ -31,7 +31,7 @@ delete an open row, never rewrite another goal's status.
 | 373 | [Proactive multi-device routing](373-proactive-multi-device-routing.md) | epic / outward | done             |
 | 374 | [`muse ask --notes-only`](374-muse-ask-notes-only.md)                   | outward        | done (pre-built) |
 | 375 | [Web UI history panel](375-web-history-panel.md)                        | epic / outward | done             |
-| 377 | [Inbound conversational replies](377-inbound-conversational-replies.md)  | epic / outward | slice 1/3 done   |
+| 377 | [Inbound conversational replies](377-inbound-conversational-replies.md)  | epic / outward | slice 2/3 done   |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
@@ -56,3 +56,15 @@ Append one line when a discovery path is evaluated and deferred:
   375 s3 was the `App.test.tsx` MuseConsole render assertion. A
   future outward goal can build the e2e harness if a real failure
   motivates it.
+- smoke:live local-Qwen nondeterminism — iter (377 s2) — observed,
+  not a regression: smoke:live ran real round-trips (owner picker
+  fix works) 10 pass / 3 fail. The 3 (chat strict tool-loop didn't
+  emit `time_now`; native web_search 0 citations / "no web tool";
+  notes.search picked a different note) are small-local-model
+  behaviour on endpoints goal-377 does NOT touch (the inbound
+  daemon is off without `MUSE_INBOUND_REPLY_ENABLED`); the agent
+  path P1-b2 depends on PASSED live (`/api/chat — direct answer`,
+  `plan_execute (live)`). A future Autonomy goal: make these three
+  CAPABILITIES checks robust to local-model variance (prompt
+  hardening / model-capability gating), or tag them
+  `[UNVERIFIED-LIVE]`. Not 377-scope.

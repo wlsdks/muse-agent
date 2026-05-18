@@ -15,6 +15,8 @@ export {
   type RespondToInboundResult
 } from "./inbound-responder.js";
 
+export { appendReplyCursor, readReplyCursor } from "./inbox-reply-cursor.js";
+
 export {
   FileMessagingCredentialStore,
   type MessagingCredentialStore,
