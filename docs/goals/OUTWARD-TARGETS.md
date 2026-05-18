@@ -267,7 +267,7 @@ proactive loop fires one notice per item; it never SYNTHESISES
 imminent calendar/task items + delegated-objective status into one
 coherent heads-up. P8 composes the P2 (imminent) + P5 (objective
 lifecycle) substrate into the situational picture.
-- [ ] A deterministic composer assembles imminent items +
+- [x] A deterministic composer assembles imminent items +
   delegated-objective status (active = tracked, escalated =
   flagged "needs you", done/cancelled excluded) into ONE coherent
   briefing message — not N separate notices; empty context ⇒

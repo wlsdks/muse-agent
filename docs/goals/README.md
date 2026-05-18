@@ -257,3 +257,22 @@ Append one line when a discovery path is evaluated and deferred:
   drift; no bullet reopened. P7 (learns from correction) is
   genuinely delivered end-to-end. **P0–P7 now ALL delivered +
   audited.**
+- P8 audit — packages/mcp/src/p8-seam.test.ts — PASS (with a
+  corrected bookkeeping drift): the audit caught that goal 392 s1
+  appended P8-b1's `— 392` annotation + CAPABILITIES line + README
+  "done" row but never flipped the OUTWARD-TARGETS checkbox
+  (`- [ ]`, while P8-b2 was correctly `- [x]`). The capability was
+  genuinely delivered — situational-briefing.test.ts re-run 5/5
+  green — so this is a metric-glyph drift, exactly what the audit
+  exists to catch; the checkbox was corrected `[ ]`→`[x]` (not a
+  re-deliver, not a REOPEN — the check was always green). Then the
+  audit proper: both P8 piece-checks re-run green together (8/8)
+  and p8-seam.test.ts exercises the whole flow — the full
+  situational picture (soonest-first upcoming + escalated
+  "Needs you" w/ resolution + active "Still tracking", finished
+  excluded) synthesised from the REAL objectives store and
+  delivered intact in ONE POST over a REAL `TelegramProvider`,
+  then deduped in-window by the real sidecar. No further drift; no
+  bullet reopened. P8 (proactive situational briefing) is
+  genuinely delivered end-to-end. **P0–P8 now ALL delivered +
+  audited.**
