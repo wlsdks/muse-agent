@@ -58,12 +58,13 @@ The loop PC must never be put at risk:
 
 ## Status
 
-open — committed: `scripts/dashboard-server.mjs` (127.0.0.1-only,
-routes + escaping verified), `scripts/dashboard-tunnel.sh` (quick
-tunnel + README URL splice, syntax + splice verified), README
-LIVE_URL markers, `pnpm dashboard` / `pnpm dashboard:tunnel`.
-Remaining: slice 1 unit tests, slice 2 loop-operates-the-tunnel +
-rotation commit, slice 3 README.ko explainer. Only prerequisite for
-exposure: the `cloudflared` binary on the loop PC (one
-`brew install cloudflared`, no account) — until then it serves
-locally and the README line stays in its "not exposed yet" state.
+**CLOSED — human-operated infra. NOT loop work; must not reappear
+as a self-generated goal (red-team P3).** The dashboard renders
+live from git and needs no per-iteration upkeep. Shipped:
+`scripts/dashboard-server.mjs` (127.0.0.1-only, routes + escaping
+verified), `scripts/dashboard-tunnel.sh` (quick tunnel + idempotent
+README URL splice, syntax + dry-run verified), README LIVE_URL
+markers, `pnpm dashboard` / `pnpm dashboard:tunnel`. To expose: a
+human runs `brew install cloudflared` once (no account) then
+`pnpm dashboard:tunnel`. The loop never commits LIVE_URL/tunnel/
+dashboard changes as iteration work.

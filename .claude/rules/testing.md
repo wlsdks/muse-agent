@@ -18,11 +18,16 @@ test before HTTP smoke.
    ```bash
    pnpm smoke:broad
    ```
-4. **Live-LLM HTTP smoke** (6 endpoints, real provider):
+4. **Live-LLM HTTP smoke** (real LLM round-trip):
    ```bash
-   GEMINI_API_KEY=… pnpm smoke:live
+   pnpm smoke:live
    ```
-   Auto-skips when no provider key is present.
+   **LOCAL OLLAMA QWEN ONLY by policy** — probes
+   `${OLLAMA_BASE_URL:-http://localhost:11434}` and uses a Qwen
+   model. Cloud APIs (GEMINI/ANTHROPIC/OPENAI) are never used; do
+   not re-add them. Skips only if local Ollama is unreachable, and
+   a skip is **not** a substitute for the round-trip — fixing the
+   environment so it runs is itself priority work.
 5. **Lint gate**:
    ```bash
    pnpm lint

@@ -1,76 +1,143 @@
-# Iteration-loop steering
+# Iteration-loop steering — the authoritative per-iteration contract
 
-This rule governs the autonomous `/loop` (and any scheduled-agent
-equivalent) that works `docs/goals/`. The loop is **self-evolving
-(자가발전): it runs forever, self-generates its own next goal every
-iteration, and never asks a human for work.**
+A fresh, context-free agent fires every ~20 min, reads this file +
+`docs/goals/README.md` + `MEMORY.md`, ships exactly one commit, and
+the loop repeats **forever**. No stop, no halt, no "ask a human",
+no completion. Infinite operation is the invariant; everything
+below is about *direction and honesty*, never about stopping.
 
-The 255–372 run degraded not because it self-generated — that is
-the engine — but because the work circled Muse's own internals. The
-fix is **direction + hygiene**, not a stop button.
+The prior 39h run collapsed into janitorial busywork because the
+judge, the worker, and the rule-author were one context-free agent
+with a green-by-construction scoreboard. These rules deliberately
+move judgment **out of the agent's discretion**.
 
-## The contract
+## Invariants the loop CANNOT touch (P1 — immutable to the loop)
 
-- **Every iteration must expand Muse outward** toward being the
-  user's always-on personal AI assistant that reaches into their
-  real tools and life and acts on their behalf (mission:
-  `project_muse_identity`). Do not use any movie/character name in
-  code, docs, or commits — describe the capability, not a brand.
-- **Outward = grows Reach, Anticipation, Autonomy, or Presence**
-  (full definitions in `docs/goals/README.md`). Inward churn
-  (refactor / re-harden / re-sort / re-format / guard / comment /
-  rename with no outward gain) is **banned**, same tier as cosmetic
-  fixes.
-- **Never stop, never ask a human, never schedule-and-idle.** The
-  loop discovers its own next goal and continues indefinitely.
-- **Source of truth**: `docs/goals/README.md` — the outward bar, the
-  discovery procedure, hygiene, dashboard upkeep. Read it and
-  `MEMORY.md` every iteration before acting.
+In an autonomous iteration the loop MUST NOT, as its goal, edit:
+this file, `docs/goals/README.md` (except: append ≤1 backlog row,
+flip status of goals it touched), the outward definition, the
+banned-shapes list, `docs/goals/CAPABILITIES.md` rules, the
+`MEMORY.md` family, or delete/relax any goal `.md` it did not
+author this iteration. **Changing the contract is a human-only
+action.** A goal whose subject is the loop's own steering,
+backlog format, dashboard, or memory is inward churn — banned. If
+the contract seems wrong, ship an outward goal anyway and leave one
+line in that goal's `## Status`; never rewrite the rules to make
+your own work pass.
 
-## Self-expansion is required
+## What "outward" means — one falsifiable test (P2)
 
-Append the next `NNN` goal via the discovery procedure (mission gap
-→ design-doc gap → dogfood → reach extension → architecture
-leverage). Backlog self-expansion is the mechanism, not a
-violation. There is no terminal state.
+Every goal's `## Why` must answer, concretely:
+> "After this ships, name the new thing **Muse can perceive or do
+> in the USER'S world** that it could not before, and the exact
+> command/surface the user runs to exercise it."
 
-## Backlog hygiene (every iteration)
+If the only beneficiary is the loop, the developer, the dashboard,
+or Muse's own internals → inward churn, banned, regardless of which
+axis (Reach / Anticipation / Autonomy / Presence) is claimed.
+"The user can watch the loop" is NOT Presence. A banned shape
+(control-byte/escaping, defensive guard, re-sort, rename,
+signature-only test) stays banned even inside an outward-labelled
+epic — the slice must deliver the capability itself, not its
+plumbing.
 
-- Keep only the **5 most recently completed** `NNN-*.md`; on the
-  6th completion delete the oldest done file (git keeps history).
-- The `docs/goals/README.md` table = all open goals + last 5 done.
-- Keep the goal directory clean and minimal — a fresh agent must
-  grasp the state in seconds.
+## Banned as a standalone goal (P-research #3 — deterministic)
 
-## Progress dashboard (every iteration)
+Cosmetic guards, non-finite/defensive guards on already-validated
+input with no observed failure, re-sort/re-format, comment /
+dead-import / provenance sweeps, pure renames, tests that only
+restate a signature or pin already-covered logic, lint-only. These
+may only ride *inside* a capability goal, never be the deliverable.
 
-`scripts/dashboard-server.mjs` is a read-only, `127.0.0.1`-only
-HTML view rendered from git + `docs/goals` on each request. The
-loop keeps it meaningful by writing a clear Conventional-Commit
-subject and a human-readable `## Status` line every commit (the
-dashboard surfaces these verbatim). The fixed "Live progress" link
-in the root `README.md` must always remain. Any network exposure
-goes through goal 376's outbound-only Cloudflare-tunnel path —
-never an inbound port, never anything but that one HTML; the loop
-PC must never be put at risk.
+## The per-iteration procedure (run in this order, every fire)
 
-## Forward-progress guard (infinite ≠ churn)
+1. **Health check first (P-research #9).** `git status` must be
+   clean and synced. If dirty/conflicted from an interrupted iter:
+   the iteration's ONLY job is to restore a clean, synced tree —
+   that counts as the iteration. Then run `pnpm check` +
+   `pnpm smoke:broad`; if anything is red, repairing it is this
+   iteration's goal (a real regression is outward-eligible).
+2. **Stagnation scan (P-research #7).** `git log --oneline -8`.
+   If ≥3 of the last commits are janitorial/banned-shape, or the
+   same file/area churned repeatedly, or recent diffs are net-
+   trivial → this iteration is REQUIRED to pick a goal in a
+   different, outward category. Detection forces redirect, never a
+   halt.
+3. **Continuity before novelty (P5).** Read every open goal's
+   `## Status` + `## Decisions` and the `## Rejected` ledger in
+   `docs/goals/README.md`. **You MUST advance the oldest open
+   epic's next undone slice before self-generating any new goal.**
+   A new `NNN` is allowed only when no open epic has an undone
+   slice.
+4. **Goal selection (P-research #1, #2, #12).** The goal must sit
+   at the *capability frontier* — non-trivial (state why) yet
+   finishable as one real commit. It must be behaviourally distinct
+   from the last 8 shipped goals along a *named* axis, and target a
+   capability axis under-represented in the trailing window (spread
+   across integrations / surfaces / providers / reasoning, not the
+   same axis twice).
+5. **Verification function up front (P-research #5).** The goal is
+   not real until you can state: (a) an executable acceptance check,
+   (b) the failing case it closes, (c) that the check fails before
+   and passes after. No executable check ⇒ reject and regenerate.
+6. **Implement, then adversarial self-critique (P-research #6).**
+   After implementing, switch role: as a hostile reviewer whose
+   only job is to prove "this iteration is busywork / fake
+   progress / a banned shape in disguise", attack your own diff.
+   If the attack lands, revise or regenerate before committing.
+7. **Verify for real (P0, P-research #10).** `pnpm check` +
+   `pnpm lint` (0/0) + `pnpm smoke:broad`. For ANY change on the
+   request/response path, `pnpm smoke:live` MUST actually execute a
+   round-trip. **`smoke:live` uses the loop PC's LOCAL OLLAMA QWEN
+   ONLY — never a cloud API (GEMINI/ANTHROPIC/OPENAI); do not set
+   or expect cloud keys.** "smoke:live auto-skips" is a banned
+   justification, same tier as a skipped test. If it skips because
+   local Ollama isn't reachable, making it run (start Ollama/Qwen,
+   fix the picker) is itself the priority outward goal — Autonomy:
+   the loop can verify itself.
+8. **Capability ledger (P6 — the success metric).** Every shipped
+   outward goal MUST append one line to `docs/goals/CAPABILITIES.md`
+   naming a real user-exercisable capability + the exact
+   command/surface + the executable check that proves it. If you
+   cannot add such a line backed by a check, the iteration did NOT
+   clear the bar — it is filler; widen scope. **If the count of
+   executable capability checks has not strictly increased across
+   the last 5 iterations, the next iteration's sole mandate is to
+   add one real capability with its check** — flat capability over
+   5 iters IS the degeneration signal; act on it, never stop.
+9. **Commit.** One Conventional Commit, subject the dashboard can
+   show verbatim. Append outcome to the goal's `## Status` +
+   `## Decisions` (one line per non-obvious choice + why). If a
+   discovery path was evaluated and deferred, add a `## Rejected`
+   ledger line in `docs/goals/README.md` (area, iter, why) so a
+   future fresh agent doesn't re-mine it.
+10. **Continue.** The loop never stops. Backlog table edits are
+    append/flip-only: never reorder, never delete an open goal's
+    row, never rewrite another goal's status (P4 — minimises the
+    merge surface on the shared remote).
 
-- One goal (or one epic slice) per commit; epics do the next
-  undone slice only.
-- ≤2 consecutive iterations on the same capability surface; every
-  3 iterations ship ≥1 new outward capability.
-- If discovery only surfaces banned/inward work, the scope is
-  mined out: **widen scope** (a fresh `docs/design/` area, a new
-  mission capability, a new external reach). Never filler, never
-  stop, never ask.
-- Verification gates non-negotiable: `pnpm check`, `pnpm lint`
-  (0/0), `pnpm smoke:broad`, and `pnpm smoke:live` when a provider
-  key is present. "Passes diagnostic smoke" is not proof.
+## Guaranteed non-stall fallback (P7)
+
+"Nothing permissible" is impossible by construction. If step 4
+yields no outward goal finishable in one commit, the mandated work
+is: **decompose the largest unbuilt `docs/design/*.md` gap (10+
+docs, inexhaustible) into one more tracer-bullet vertical slice and
+ship that slice's smallest end-to-end-real increment** — a working
+vertical slice, never a stub/guard/test-only. A void iteration (no
+functional diff) is a failed iteration: record why in the next
+goal's `## Status` so the human can see a stall the loop couldn't
+resolve — while still shipping the design-doc slice.
+
+## Dashboard is infrastructure, not iteration work (P3)
+
+The dashboard renders from git live; it needs no per-commit edit.
+The loop NEVER commits a README LIVE_URL change, tunnel restart, or
+dashboard tweak as shipped work — those don't clear the bar. Goal
+376 is human-operated infra and must not reappear as self-generated
+work.
 
 ## After-correction protocol
 
-This file is the response to a recurring correction
-(`.claude/rules/commits.md`). If the loop is corrected again on how
-it self-generates, paces, or directs work, tighten this file rather
-than re-explaining per session.
+Only a human-directed change tightens this file. If the loop is
+seen degenerating again, the human adds one concrete prohibition
+here; the loop itself never edits it.

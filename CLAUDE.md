@@ -22,7 +22,7 @@ pnpm check                             # build + test for every workspace
 
 # before claiming "this works" on the full system:
 pnpm smoke:broad                       # 47 HTTP endpoints, diagnostic provider
-GEMINI_API_KEY=… pnpm smoke:live       # 12 endpoints, real LLM round-trip
+pnpm smoke:live                        # real LLM round-trip — LOCAL OLLAMA QWEN ONLY (no cloud APIs)
 
 # before commit (lint gate):
 pnpm lint                              # 0 errors / 0 warnings required

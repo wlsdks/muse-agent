@@ -3,17 +3,19 @@
  * Live-LLM HTTP smoke harness.
  *
  * Runs the same critical-path endpoints as `smoke:broad` (chat, streaming,
- * tool-using chat, plan-execute, multi-agent orchestration) but against a
- * real provider. Skips if no provider key is wired into the environment.
+ * tool-using chat, plan-execute, multi-agent orchestration) against the
+ * REAL local LLM.
  *
- * Picks the first available provider in this order:
- *   1. GEMINI_API_KEY  → gemini/gemini-2.0-flash
- *   2. ANTHROPIC_API_KEY → anthropic/claude-3-5-haiku-20241022
- *   3. OPENAI_API_KEY  → openai/gpt-4o-mini
- *   4. OLLAMA on http://localhost:11434 → ollama/llama3.2 (if reachable)
+ * Policy (deliberate, do not change): the loop PC runs Qwen on Ollama at
+ * zero cost. smoke:live uses LOCAL OLLAMA ONLY — it probes
+ * `${OLLAMA_BASE_URL or http://localhost:11434}/api/tags` and picks a
+ * Qwen model (or MUSE_SMOKE_LIVE_MODEL). Cloud APIs
+ * (GEMINI/ANTHROPIC/OPENAI) are intentionally never used; never re-add
+ * them.
  *
- * Exits 0 with "skipped" when none are available — the broad smoke still
- * proves the runtime works against the diagnostic provider.
+ * Exits 0 with "skipped" only when local Ollama is unreachable — the
+ * broad smoke still proves the runtime works against the diagnostic
+ * provider. A skip is not a substitute for the live round-trip.
  */
 
 import { spawn } from "node:child_process";
@@ -44,11 +46,11 @@ const calendarFile = path.join(calendarSandbox, "calendar.json");
 const credentialsFile = path.join(calendarSandbox, "credentials.json");
 const tasksFile = path.join(calendarSandbox, "tasks.json");
 
-const provider = pickProvider();
+const provider = await pickProvider();
 
 if (!provider) {
   console.log(
-    "smoke:live skipped — no provider key found. Set GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, or run Ollama locally."
+    "smoke:live skipped — local Ollama not reachable. Start Ollama with a Qwen model on the loop PC (OLLAMA_BASE_URL to override; cloud APIs are never used by policy)."
   );
   process.exit(0);
 }
@@ -399,30 +401,36 @@ try {
   process.exitCode = failures > 0 ? 1 : 0;
 }
 
-function pickProvider() {
-  if (process.env.GEMINI_API_KEY) {
-    return {
-      apiKey: process.env.GEMINI_API_KEY,
-      label: "gemini/gemini-2.0-flash",
-      model: "gemini/gemini-2.0-flash",
-      providerId: "gemini"
-    };
-  }
-  if (process.env.ANTHROPIC_API_KEY) {
-    return {
-      apiKey: process.env.ANTHROPIC_API_KEY,
-      label: "anthropic/claude-3-5-haiku-20241022",
-      model: "anthropic/claude-3-5-haiku-20241022",
-      providerId: "anthropic"
-    };
-  }
-  if (process.env.OPENAI_API_KEY) {
-    return {
-      apiKey: process.env.OPENAI_API_KEY,
-      label: "openai/gpt-4o-mini",
-      model: "openai/gpt-4o-mini",
-      providerId: "openai"
-    };
+// Local-Ollama ONLY by deliberate policy. The loop PC runs Qwen on
+// Ollama at zero cost; smoke:live MUST exercise that and nothing
+// else. Cloud provider keys are intentionally NOT consulted here —
+// do not re-add GEMINI/ANTHROPIC/OPENAI branches.
+async function pickProvider() {
+  const ollamaBase = (
+    process.env.OLLAMA_BASE_URL || "http://localhost:11434"
+  ).replace(/\/+$/, "");
+  try {
+    const res = await fetch(`${ollamaBase}/api/tags`, {
+      signal: AbortSignal.timeout(1500)
+    });
+    if (res.ok) {
+      const body = await res.json();
+      const names = (body?.models ?? []).map((m) => m?.name).filter(Boolean);
+      const name =
+        process.env.MUSE_SMOKE_LIVE_MODEL ||
+        names.find((n) => /qwen/i.test(n)) ||
+        names[0];
+      if (name) {
+        return {
+          apiKey: undefined,
+          label: `ollama/${name}`,
+          model: `ollama/${name}`,
+          providerId: "ollama"
+        };
+      }
+    }
+  } catch {
+    // Ollama not reachable — skip (never fall back to a cloud API).
   }
   return undefined;
 }
