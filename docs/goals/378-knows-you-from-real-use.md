@@ -29,6 +29,39 @@ fact/preference influence a later answer.
 
 ## Status
 
+slice 2 — P0-b2 SPLIT (parent stays `[ ]` until all children met,
+per the contract split rule). Investigation found P0-b2 bundled two
+separable things on a partly-stale premise:
+- "notes RAG already has cosine" is **stale** — `loopback-notes.ts`
+  explicitly avoids embeddings ("cheaper than pgvector"); there was
+  **no reusable cosine/embedder primitive** in the repo.
+- "a stored preference applied to a differently-worded later
+  request" is **already true by design**: `applyUserMemory`
+  injects every preference wholesale into the system prompt for any
+  userid run (not query-matched), so wording never gates it —
+  pinning that with a test would be banned already-covered work.
+
+Delivered this slice (the real recall half): `cosineSimilarity` +
+`EmbeddingEpisodicRecallProvider` in `episodic-recall.ts` — an
+async `EpisodicRecallProvider` (the interface already permits
+`Promise`) that ranks narratives by cosine to an injected embedder
+instead of Jaccard token overlap, reusing the same recency /
+threshold / per-user-visibility / topK. Integration test
+`episodic-recall-embedding.test.ts` (deterministic concept
+embedder, no network): a zero-token-overlap **paraphrase** recalls
+the right memory, the Jaccard `InMemoryEpisodicRecallProvider`
+structurally **misses** the same query (score 0 < minScore), and a
+decoy stays correct — proving exactly the gap embedding closes.
+
+No bullet flip / no `CAPABILITIES.md` line this slice (parent
+P0-b2 stays `[ ]`; appending a non-flipping line would be thin —
+honest epic decomposition, like 377 s1). The remaining child =
+wire a zero-cost local-Ollama embedder into the assembly so
+production episodic recall uses this provider (Rejected-ledger
+note added). Right-sized: shipping the verified provider as one
+coherent slice, not over-building the production embedder wiring +
+half-testing it in the same commit.
+
 slice 1 done — flips OUTWARD-TARGETS **P0-b1**. The auto-extract
 hook (`createUserMemoryAutoExtractHook`, `afterComplete` —
 tool-agnostic) was ALREADY wired into the API AgentRuntime via the

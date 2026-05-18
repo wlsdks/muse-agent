@@ -234,6 +234,115 @@ export class InMemoryEpisodicRecallProvider implements EpisodicRecallProvider {
 }
 
 /**
+ * Cosine similarity of two equal-length vectors, in [-1, 1].
+ * Returns 0 for a length mismatch or a zero-norm vector (no
+ * direction → no similarity), so a degenerate embedding can never
+ * score above the recall threshold.
+ */
+export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
+  if (a.length === 0 || a.length !== b.length) {
+    return 0;
+  }
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    const x = a[i] ?? 0;
+    const y = b[i] ?? 0;
+    dot += x * y;
+    na += x * x;
+    nb += y * y;
+  }
+  if (na === 0 || nb === 0) {
+    return 0;
+  }
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+export interface EmbeddingEpisodicRecallProviderOptions {
+  /** Embeds query / narrative text to a vector. Local (zero-cost). */
+  readonly embed: (text: string) => Promise<readonly number[]>;
+  readonly topK?: number;
+  readonly minScore?: number;
+  readonly episodes?: readonly StoredEpisode[];
+  readonly allowAnonymousEpisodes?: boolean;
+  readonly maxQueryChars?: number;
+  readonly recencyWeight?: number;
+  readonly recencyHalfLifeDays?: number;
+  readonly now?: () => number;
+}
+
+/**
+ * Embedding-similarity `EpisodicRecallProvider`: ranks stored
+ * narratives by cosine similarity to the query embedding instead of
+ * Jaccard token overlap, so a paraphrase that shares NO tokens with
+ * the narrative still recalls it (the Jaccard provider scores such a
+ * query 0 and misses it). Same recency boost / threshold / per-user
+ * visibility / topK as `InMemoryEpisodicRecallProvider` — only the
+ * scorer changes. `embed` is injected (local Ollama in production —
+ * zero-cost; a deterministic fake in tests).
+ */
+export class EmbeddingEpisodicRecallProvider implements EpisodicRecallProvider {
+  private readonly embed: (text: string) => Promise<readonly number[]>;
+  private readonly episodes: StoredEpisode[];
+  private readonly topK: number;
+  private readonly minScore: number;
+  private readonly allowAnonymousEpisodes: boolean;
+  private readonly maxQueryChars: number;
+  private readonly recencyWeight: number;
+  private readonly recencyHalfLifeDays: number;
+  private readonly now: () => number;
+
+  constructor(options: EmbeddingEpisodicRecallProviderOptions) {
+    this.embed = options.embed;
+    this.episodes = [...(options.episodes ?? [])];
+    this.topK = Math.max(1, finiteOr(options.topK, 3));
+    this.minScore = Math.max(0, finiteOr(options.minScore, 0.15));
+    this.allowAnonymousEpisodes = options.allowAnonymousEpisodes ?? false;
+    this.maxQueryChars = Math.max(64, finiteOr(options.maxQueryChars, 4_096));
+    this.recencyWeight = Math.max(0, finiteOr(options.recencyWeight, DEFAULT_RECENCY_WEIGHT));
+    this.recencyHalfLifeDays = Math.max(0.01, finiteOr(options.recencyHalfLifeDays, DEFAULT_RECENCY_HALF_LIFE_DAYS));
+    this.now = options.now ?? (() => Date.now());
+  }
+
+  add(episode: StoredEpisode): void {
+    this.episodes.push(episode);
+  }
+
+  async resolve(query: string, userId?: string): Promise<EpisodicRecallSnapshot | undefined> {
+    const bounded = query.length > this.maxQueryChars ? query.slice(0, this.maxQueryChars) : query;
+    if (bounded.trim().length === 0) {
+      return undefined;
+    }
+    const visible = this.episodes.filter((episode) =>
+      isVisibleToUser(userId, episode.userId, this.allowAnonymousEpisodes)
+    );
+    if (visible.length === 0) {
+      return undefined;
+    }
+    const queryVec = await this.embed(bounded);
+    const nowMs = this.now();
+    const scored: EpisodicMatch[] = [];
+    for (const episode of visible) {
+      const baseSim = cosineSimilarity(queryVec, await this.embed(episode.narrative));
+      if (baseSim < this.minScore) {
+        continue;
+      }
+      const recencyBoost = computeRecencyBoost(episode.createdAtIso, nowMs, this.recencyWeight, this.recencyHalfLifeDays);
+      scored.push({
+        createdAtIso: episode.createdAtIso,
+        narrative: episode.narrative,
+        sessionId: episode.sessionId,
+        similarity: baseSim + recencyBoost
+      });
+    }
+    scored.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
+    const top = scored.slice(0, this.topK);
+    return top.length === 0 ? undefined : { matches: top };
+  }
+}
+
+/**
  * Multi-user safety predicate. When a request carries no userId
  * (single-user setup), everything is visible. When a request DOES
  * carry a userId, the episode must either match it OR — when the

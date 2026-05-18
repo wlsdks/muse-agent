@@ -66,10 +66,21 @@ lands.**
   tool-using turns (today REPL-only / `toolsDisabled`-only) so the
   user model grows from real use. Check: a tool-using API turn
   produces a stored memory (integration). — 378 s1
-- [ ] Recall is embedding-similarity (not Jaccard; notes RAG
-  already has cosine) AND a stored preference is actually applied
-  to a later answer. Check: state a preference → differently-worded
-  later request → the answer reflects it (integration).
+- [ ] Recall is embedding-similarity (not Jaccard) AND a stored
+  preference is actually applied to a later answer. Check: state a
+  preference → differently-worded later request → the answer
+  reflects it (integration). (Split — parent stays [ ] until all
+  children met; see 378 Decisions. "notes RAG already has cosine"
+  was stale: `loopback-notes.ts` deliberately avoids embeddings.)
+  - [x] Embedding-similarity episodic-recall provider + cosine —
+    a zero-token-overlap paraphrase recalls the right memory that
+    Jaccard structurally misses. — 378 s2
+  - [ ] Wire a local (zero-cost Ollama) embedder into the assembly
+    so production episodic recall uses the embedding provider.
+  - [x] A stored preference is applied to a differently-worded
+    later request — already true by design: `applyUserMemory`
+    injects all prefs wholesale into the system prompt for any
+    userid run (not query-matched), so wording never gates it.
 - [ ] From current context (calendar / inbox / patterns) the agent
   infers a likely UNSTATED need, autonomously investigates it
   (tool / web / notes), and surfaces the finding unasked. Check:

@@ -73,9 +73,12 @@ export {
   type InboxSnapshot
 } from "./inbox-context.js";
 export {
+  cosineSimilarity,
+  EmbeddingEpisodicRecallProvider,
   InMemoryEpisodicRecallProvider,
   renderEpisodicSection,
   StoreBackedEpisodicRecallProvider,
+  type EmbeddingEpisodicRecallProviderOptions,
   type EpisodicMatch,
   type EpisodicRecallProvider,
   type EpisodicRecallSnapshot,
