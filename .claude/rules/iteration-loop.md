@@ -136,6 +136,21 @@ line. Backlog table append/flip-only.
 
 **Step 11 — Continue.** Never stop.
 
+### Model tier & delegation
+
+Model tier is a **launch setting, not a doc instruction**: the
+iteration agent already runs as whatever model the loop was started
+with — a line here cannot change it. To run iterations on a
+stronger model, set that when launching the loop (ralph-loop /
+claude invocation/config), not in this file.
+
+Default: do the slice **inline** — one slice is sequential, and
+sub-agent fan-out costs ~4–220× tokens and degrades sequential
+work. You MAY spawn (cheaper) sub-agents ONLY for genuinely
+independent, parallel subtasks — e.g. a milestone red-team review,
+or a design-doc gap with independent components — never as a
+per-iteration default.
+
 ### Mechanical counters (so windows are computable)
 
 "Iteration" = a commit whose subject matches
