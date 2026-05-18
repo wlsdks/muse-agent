@@ -46,6 +46,30 @@ chat IS a Muse session"; that reply loop is the missing piece.
 
 ## Status
 
+slice 3 done — flips OUTWARD-TARGETS new **P1-b2** ("the result is
+sent back over the same channel via the messaging registry. Check:
+a smoke exercising inbound→reply on one provider — contract-faithful
+HTTP fake or real — asserting the outbound POST, never a fake
+registry"). New `apps/api/test/inbound-reply-tick.test.ts`
+"delivers the agent reply over a real provider's HTTP send":
+`startInboundReplyTick` drives a real `TelegramProvider` (only its
+`fetch` HTTP boundary faked) inside a real registry; asserts the
+actual outbound POST to `…/bot<token>/sendMessage` carries
+`chat_id` = the inbound source and the agent's reply text. This is
+the first time the inbound→reply path is exercised through a real
+provider's wire-serialisation (slice 2's check used a fake
+provider, which P1-b2 explicitly disallows).
+
+Test-only delivery is correct here: the owner defined P1-b2's
+deliverable AS this contract-faithful verification (slice-2 code
+already produces the reply; P1-b2 demands the non-fake-registry
+HTTP proof). Not banned filler — it exercises a previously
+unverified real surface.
+
+Remaining under P1: new **P1-b3** (thread context across turns /
+the ~20-min boundary) and new **P1-b4** (in-chat approval for risky
+actions) — separate bullets, future slices.
+
 slice 2 done — P1-b2 user-exercisable end-to-end. New
 `packages/messaging/src/inbox-reply-cursor.ts` (bounded answered-key
 store, distinct from the context-injection cursor) +

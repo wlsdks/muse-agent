@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import {
   MessagingProviderRegistry,
+  TelegramProvider,
   appendInbound,
   type InboundAgentRunner,
   type InboundMessage,
@@ -11,6 +12,13 @@ import {
   type OutboundMessage
 } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
+
+function fakeJsonResponse(payload: unknown): Response {
+  return new Response(JSON.stringify(payload), {
+    headers: { "content-type": "application/json" },
+    status: 200
+  });
+}
 
 import { startInboundReplyTick } from "../src/inbound-reply-tick.js";
 
@@ -66,6 +74,43 @@ describe("startInboundReplyTick", () => {
       // Second tick: same inbox, cursor now records both → no double-reply.
       await handle.tickOnce();
       expect(sent).toHaveLength(2);
+    } finally {
+      handle.stop();
+    }
+  });
+
+  it("delivers the agent reply over a real provider's HTTP send — contract-faithful, not a fake registry", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-inbound-reply-http-"));
+    const inboxFile = join(dir, "telegram-inbox.json");
+    const cursorFile = join(dir, "telegram-inbox.json.reply-cursor.json");
+    await appendInbound(inboxFile, message("h1", "555", "summarize my day"));
+
+    let postUrl = "";
+    let postBody = "";
+    // Real TelegramProvider — it builds the real Bot API request;
+    // only the HTTP boundary is faked, so the outbound POST
+    // (URL + chat_id + text) is asserted exactly as the channel
+    // would receive it. NOT a fake registry/provider.
+    const telegram = new TelegramProvider({
+      baseUrl: "https://tg.test",
+      fetch: async (url, init) => {
+        postUrl = String(url);
+        postBody = String(init?.body);
+        return fakeJsonResponse({ ok: true, result: { message_id: 7 } });
+      },
+      token: "BOT-TOK"
+    });
+    const registry = new MessagingProviderRegistry([telegram]);
+    const runner: InboundAgentRunner = { run: async ({ text }) => `done: ${text}` };
+
+    const handle = startInboundReplyTick({ cursorFile, inboxFile, registry, runner });
+    try {
+      await handle.tickOnce();
+
+      expect(postUrl).toBe("https://tg.test/botBOT-TOK/sendMessage");
+      const body = JSON.parse(postBody) as { chat_id: string; text: string };
+      expect(body.chat_id).toBe("555");
+      expect(body.text).toContain("done: summarize my day");
     } finally {
       handle.stop();
     }

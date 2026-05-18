@@ -94,10 +94,10 @@ but cannot converse back. Drive to fully-delivered FIRST.
   the FULL agent runtime (`agentRuntime.run`) per inbound message —
   not append-to-soft-context. Check: integration inbound→run→reply.
   — 377 s2
-- [ ] The result is sent back over the same channel via the
+- [x] The result is sent back over the same channel via the
   messaging registry. Check: a `smoke` exercising inbound→reply on
   one provider (contract-faithful HTTP fake or real) asserting the
-  outbound POST — never a fake registry.
+  outbound POST — never a fake registry. — 377 s3
 - [ ] Thread context carries across turns on the channel (the chat
   IS a Muse session). Check: multi-turn inbound retains context.
 - [ ] Risky actions prompt for in-chat approval before executing.

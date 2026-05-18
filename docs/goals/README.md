@@ -31,7 +31,7 @@ delete an open row, never rewrite another goal's status.
 | 373 | [Proactive multi-device routing](373-proactive-multi-device-routing.md) | epic / outward | done             |
 | 374 | [`muse ask --notes-only`](374-muse-ask-notes-only.md)                   | outward        | done (pre-built) |
 | 375 | [Web UI history panel](375-web-history-panel.md)                        | epic / outward | done             |
-| 377 | [Inbound conversational replies](377-inbound-conversational-replies.md)  | epic / outward | slice 2/3 done   |
+| 377 | [Inbound conversational replies](377-inbound-conversational-replies.md)  | epic / outward | P1-b1+b2 done; P1-b3/b4 next |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
