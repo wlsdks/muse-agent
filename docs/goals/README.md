@@ -34,6 +34,7 @@ delete an open row, never rewrite another goal's status.
 | 377 | [Inbound conversational replies](377-inbound-conversational-replies.md)  | epic / outward | done — P1 fully delivered (b1–b4) |
 | 378 | [Knows-you from real use](378-knows-you-from-real-use.md)                | epic / outward | done — P0 fully delivered (b1–b4) |
 | 380 | [Proactive delivery on a real channel](380-proactive-real-channel.md)     | epic / outward | done — P2 fully delivered (b1–b2) |
+| 382 | [Ambient perception loop](382-ambient-perception.md)                     | epic / outward | P3-b1 mechanism shipped; live-wiring next |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
@@ -128,3 +129,14 @@ Append one line when a discovery path is evaluated and deferred:
   quality bar. No drift; no bullet reopened. P2 (proactive
   delivery proven on a real channel) is genuinely delivered
   end-to-end.
+- P3-b1 production wiring — iter (382) — deferred: the gated
+  perception→run-context injection mechanism (`applyAmbientContext`
+  + `resolveAmbientSnapshot`, fail-open, untrusted-field
+  sanitised, opt-in only) shipped + unit/integration-verified in
+  `@muse/agent-core`. Remaining: wire it into the live
+  agent-runtime context pipeline behind an opt-in option AND a
+  gated osascript-backed perception daemon, then flip P3-b1 with
+  the mandated surface check (an ambient change measurably alters
+  a subsequent agent answer — integration). Next 382 slice — kept
+  separate so neither half is half-shipped (377 s1 / 378 s2,s4
+  no-flip-mechanism precedent).

@@ -73,6 +73,12 @@ export {
   type InboxSnapshot
 } from "./inbox-context.js";
 export { applyClarifyDirective, detectUnderspecifiedRequest } from "./clarify-directive.js";
+export {
+  applyAmbientContext,
+  renderAmbientContextSection,
+  resolveAmbientSnapshot
+} from "./ambient-context.js";
+export type { AmbientSnapshot, AmbientSnapshotProvider } from "./ambient-context.js";
 
 export {
   cosineSimilarity,
