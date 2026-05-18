@@ -209,3 +209,19 @@ Append one line when a discovery path is evaluated and deferred:
   (durable delegated objectives / long-horizon agency) is
   genuinely delivered end-to-end. P0/P1/P2/P3/P4/P5 now all
   delivered + audited.
+- P6 audit — packages/mcp/src/p6-seam.test.ts — PASS: P6's two
+  CAPABILITIES checks re-run green together (action-log /
+  undo-action, 9/9). Like P5, P6's bullets ARE a composed loop
+  (see → undo → teach), so a seam test exercises the whole cycle
+  through the real on-disk stores with every read a fresh call
+  (= a restarted process): an autonomous consented action performs
+  → is logged (b1) → the user reviews it → undo reverses + records
+  a durable veto + logs the undo itself (b2 + b1) → "restart"
+  (veto + log survive) → the same trigger recurs → the durable
+  veto refuses it (no HTTP, objective not falsely completed) → the
+  refusal is logged too → a final query returns the complete
+  durable audit trail [refused, undo, performed] newest-first. No
+  drift; no bullet reopened. P6 (accountability & correction loop)
+  is genuinely delivered end-to-end. **P0–P6 now ALL delivered +
+  audited** — the next iteration self-extends OUTWARD-TARGETS
+  toward the north star (no human authors it).
