@@ -26,7 +26,9 @@ import {
   createMessagingObjectiveActuator,
   createModelObjectiveEvaluator,
   createNotesInvestigator,
-  deriveBriefingImminent
+  deriveBriefingImminent,
+  deriveCalendarBriefingImminent,
+  type BriefingImminent
 } from "@muse/mcp";
 import { startFollowupTick } from "./followup-tick.js";
 import { startObjectivesTick } from "./objectives-tick.js";
@@ -221,18 +223,30 @@ export function startSituationalBriefingDaemonIfConfigured(
     ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
   const leadRaw = env.MUSE_BRIEFING_LEAD_MINUTES ? Number(env.MUSE_BRIEFING_LEAD_MINUTES) : undefined;
   const tasksFile = options.tasksFile;
+  const briefingCalendar = options.calendar;
+  const leadOpt = leadRaw !== undefined ? { leadMinutes: leadRaw } : {};
+  const imminentProvider =
+    tasksFile || briefingCalendar
+      ? async (briefingNow: Date): Promise<readonly BriefingImminent[]> => {
+          const out: BriefingImminent[] = [];
+          if (tasksFile) {
+            out.push(...(await deriveBriefingImminent(tasksFile, { now: briefingNow, ...leadOpt })));
+          }
+          if (briefingCalendar) {
+            out.push(
+              ...(await deriveCalendarBriefingImminent(
+                (range) => briefingCalendar.listEvents(range),
+                { now: briefingNow, ...leadOpt }
+              ))
+            );
+          }
+          return out;
+        }
+      : undefined;
   const briefingHandle = startSituationalBriefingTick({
     destination: briefingDestination,
     errorLogger: (message) => server.log.warn(message),
-    ...(tasksFile
-      ? {
-          imminentProvider: (briefingNow: Date) =>
-            deriveBriefingImminent(tasksFile, {
-              now: briefingNow,
-              ...(leadRaw !== undefined ? { leadMinutes: leadRaw } : {})
-            })
-        }
-      : {}),
+    ...(imminentProvider ? { imminentProvider } : {}),
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     logger: (message) => server.log.info(message),
     objectivesFile: options.objectivesFile,

@@ -17,6 +17,60 @@ import type { BriefingImminent } from "./situational-briefing.js";
 
 const DEFAULT_LEAD_MINUTES = 120;
 
+/** Duck-typed calendar event — the public subset the rule needs. */
+export interface BriefingCalendarEvent {
+  readonly title: string;
+  readonly startsAt: Date;
+  readonly allDay: boolean;
+  readonly notes?: string;
+}
+
+export type BriefingCalendarLister = (range: {
+  readonly from: Date;
+  readonly to: Date;
+}) => Promise<readonly BriefingCalendarEvent[]>;
+
+const NO_PROACTIVE_MARKER = "[no-proactive]";
+
+/**
+ * Calendar counterpart to `deriveBriefingImminent`. Mirrors
+ * `runDueProactiveNotices`'s calendar imminence rule EXACTLY so
+ * the briefing and the proactive daemon never disagree: skip
+ * all-day, skip an unparseable `startsAt`, must fall in
+ * `[now, now+leadMinutes]`, and respect the `[no-proactive]`
+ * opt-out marker (title/notes). Fail-soft: a throwing lister →
+ * `[]` (the objective + task briefing still goes out).
+ */
+export async function deriveCalendarBriefingImminent(
+  lister: BriefingCalendarLister,
+  options: { readonly now: Date; readonly leadMinutes?: number }
+): Promise<readonly BriefingImminent[]> {
+  const lead = typeof options.leadMinutes === "number" && Number.isFinite(options.leadMinutes)
+    ? options.leadMinutes
+    : DEFAULT_LEAD_MINUTES;
+  const from = options.now;
+  const to = new Date(options.now.getTime() + lead * 60_000);
+
+  let events: readonly BriefingCalendarEvent[];
+  try {
+    events = await lister({ from, to });
+  } catch {
+    return [];
+  }
+
+  const imminent: BriefingImminent[] = [];
+  for (const event of events) {
+    if (event.allDay) continue;
+    const startMs = event.startsAt.getTime();
+    if (Number.isNaN(startMs)) continue;
+    if (startMs < from.getTime() || startMs > to.getTime()) continue;
+    if (event.title.toLowerCase().includes(NO_PROACTIVE_MARKER)) continue;
+    if (event.notes && event.notes.toLowerCase().includes(NO_PROACTIVE_MARKER)) continue;
+    imminent.push({ kind: "calendar", startsAt: event.startsAt, title: event.title });
+  }
+  return imminent;
+}
+
 export async function deriveBriefingImminent(
   tasksFile: string,
   options: { readonly now: Date; readonly leadMinutes?: number }

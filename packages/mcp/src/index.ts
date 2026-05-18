@@ -381,7 +381,12 @@ export {
   type BriefingImminent,
   type SituationalBriefingInput
 } from "./situational-briefing.js";
-export { deriveBriefingImminent } from "./briefing-imminent.js";
+export {
+  deriveBriefingImminent,
+  deriveCalendarBriefingImminent,
+  type BriefingCalendarEvent,
+  type BriefingCalendarLister
+} from "./briefing-imminent.js";
 export {
   runDueSituationalBriefing,
   type RunDueSituationalBriefingOptions,

@@ -300,6 +300,17 @@ lifecycle) substrate into the situational picture.
   proactive task-imminence rule; per-tick imminentProvider in
   startSituationalBriefingTick; wired in the daemon when tasksFile
   is set)
+- [x] The briefing's `Upcoming:` also includes the user's REAL
+  imminent calendar events (timed, in-window, `[no-proactive]`
+  respected), unioned with tasks, soonest-first — completing
+  "tells you what is coming up". (Loop-extended: the recorded
+  goal-400 follow-up; `ServerOptions.calendar` already exists so
+  the daemon unions it when configured.) Check: a seeded imminent
+  calendar event → the delivered briefing's `Upcoming:` names it,
+  unioned with a task, soonest-first (integration). — 401
+  (deriveCalendarBriefingImminent mirrors the proactive calendar
+  rule incl. opt-out; the briefing daemon's imminentProvider
+  unions deriveBriefingImminent + deriveCalendarBriefingImminent)
 
 **P9 — The delegated-autonomy loops actually RUN (loop-authored,
 P0–P8 all delivered).** P5 (`runDueObjectives`) and P8

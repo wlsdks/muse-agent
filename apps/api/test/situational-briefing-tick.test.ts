@@ -6,6 +6,7 @@ import { MessagingProviderRegistry, TelegramProvider } from "@muse/messaging";
 import {
   addObjective,
   deriveBriefingImminent,
+  deriveCalendarBriefingImminent,
   writeTasks,
   type StandingObjective
 } from "@muse/mcp";
@@ -159,6 +160,50 @@ describe("startSituationalBriefingTick — P9-b2 child: the briefing daemon ride
       expect(text).toContain("submit the Q3 report");
       expect(text).toContain("Still tracking:");
       expect(text).toContain("watch the deploy until green");
+    } finally {
+      handle.stop();
+    }
+  });
+
+  it("P8-b4: a real imminent calendar event is grounded into the briefing's Upcoming, unioned with tasks", async () => {
+    const { objectivesFile, sidecarFile } = fixtures();
+    const tasksFile = join(mkdtempSync(join(tmpdir(), "muse-brief-cal-tasks-")), "tasks.json");
+    await addObjective(objectivesFile, objective());
+    await writeTasks(tasksFile, [
+      {
+        createdAt: "2026-05-19T08:00:00.000Z",
+        dueAt: "2026-05-19T13:30:00.000Z",
+        id: "t1",
+        status: "open",
+        title: "submit the Q3 report"
+      }
+    ]);
+    const calLister = async () => [
+      { allDay: false, startsAt: new Date("2026-05-19T12:20:00.000Z"), title: "Q3 review meeting" }
+    ];
+    const posts: { url: string; body: string }[] = [];
+    const handle = startSituationalBriefingTick({
+      destination: "555",
+      imminentProvider: async (now) => [
+        ...(await deriveBriefingImminent(tasksFile, { now })),
+        ...(await deriveCalendarBriefingImminent(calLister, { now }))
+      ],
+      now: () => NOW,
+      objectivesFile,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([telegram(posts)]),
+      sidecarFile,
+      windowMs: 4 * 60 * 60_000
+    });
+    try {
+      await handle.tickOnce();
+      expect(posts).toHaveLength(1);
+      const text = (JSON.parse(posts[0]!.body) as { text: string }).text;
+      expect(text).toContain("Upcoming:");
+      // soonest-first: the 12:20 calendar event before the 13:30 task.
+      expect(text.indexOf("Q3 review meeting")).toBeLessThan(text.indexOf("submit the Q3 report"));
+      expect(text).toContain("submit the Q3 report");
+      expect(text).toContain("Still tracking:");
     } finally {
       handle.stop();
     }

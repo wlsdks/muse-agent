@@ -46,6 +46,7 @@ delete an open row, never rewrite another goal's status.
 | 397 | [Objectives daemon + model evaluator](397-objectives-daemon-evaluator.md) | epic / outward | wiring done; [UNVERIFIED-LIVE] cleared by 398 |
 | 398 | [Objectives evaluator live-verified](398-objectives-evaluator-live.md)     | epic / outward | done — [UNVERIFIED-LIVE] cleared; P9-b2 flipped |
 | 400 | [Briefing grounded in real tasks](400-briefing-real-imminence.md)         | epic / outward | P8-b3 done (loop-extended bullet) |
+| 401 | [Briefing grounded in calendar too](401-briefing-calendar-imminence.md)   | epic / outward | P8-b4 done (loop-extended bullet) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
