@@ -358,6 +358,14 @@ export {
   type ConsentedActionRequest,
   type PerformConsentedActionOptions
 } from "./consented-action.js";
+export {
+  appendActionLog,
+  queryActionLog,
+  readActionLog,
+  serializeActionLogEntry,
+  type ActionLogEntry,
+  type ActionResult
+} from "./personal-action-log-store.js";
 
 // LLM-fallback budget tracker — step 5 of agent-self-followup.md.
 // Per-day counter so MUSE_FOLLOWUP_LLM_FALLBACK=true can't

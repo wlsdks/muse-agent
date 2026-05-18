@@ -37,6 +37,7 @@ delete an open row, never rewrite another goal's status.
 | 382 | [Ambient perception loop](382-ambient-perception.md)                     | epic / outward | done — P3-b1 delivered (live-wired) |
 | 384 | [Calendar WRITE contract check](384-calendar-write-contract.md)           | epic / outward | done — P4 fully delivered (b1–b2) |
 | 386 | [Durable standing objectives](386-durable-standing-objectives.md)         | epic / outward | done — P5 fully delivered (b1–b3) |
+| 388 | [Reviewable action log](388-reviewable-action-log.md)                     | epic / outward | P6-b1 done; P6-b2 (undo/veto) next |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

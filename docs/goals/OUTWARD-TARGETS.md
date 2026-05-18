@@ -206,10 +206,13 @@ assistant you delegate to". A standing objective is not a one-shot.
 **P6 — Accountability & correction loop** — trust requires the user
 can see, undo, and teach. Without this, P4/P5 autonomy is not
 safely delegable.
-- [ ] A reviewable action log records every autonomous action
+- [x] A reviewable action log records every autonomous action
   (what / why / when / result), queryable by the user. Check: an
   autonomous action produces a rationale-bearing log entry on the
-  user surface (smoke/integration).
+  user surface (smoke/integration). — 388 (personal-action-log-store,
+  append-only durable; integration: runDueObjectives → consented
+  act → appendActionLog → queryActionLog returns the what/why/when/
+  result entry; refusals logged too)
 - [ ] One-tap undo/veto of a logged action reverses it where
   reversible AND writes a memory veto so that action class does not
   recur. Check: act → undo → reversed + veto recorded → same

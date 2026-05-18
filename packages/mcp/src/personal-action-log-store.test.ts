@@ -1,0 +1,168 @@
+import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { describe, expect, it } from "vitest";
+
+import { performConsentedAction } from "./consented-action.js";
+import { runDueObjectives, type ObjectiveEvaluation } from "./objective-evaluation-loop.js";
+import { recordConsent } from "./personal-consent-store.js";
+import {
+  appendActionLog,
+  queryActionLog,
+  readActionLog,
+  type ActionLogEntry
+} from "./personal-action-log-store.js";
+import { addObjective, readObjectives, type StandingObjective } from "./personal-objectives-store.js";
+
+function tmpDir(): string {
+  return mkdtempSync(join(tmpdir(), "muse-actionlog-"));
+}
+
+function objective(overrides: Partial<StandingObjective> = {}): StandingObjective {
+  return {
+    createdAt: "2026-05-19T10:00:00.000Z",
+    id: "obj_release",
+    kind: "until",
+    spec: "when the release is tagged, open the changelog issue",
+    status: "active",
+    userId: "stark",
+    ...overrides
+  };
+}
+
+const NOW = new Date("2026-05-19T12:00:00.000Z");
+
+describe("personal-action-log-store — P6-b1 reviewable autonomous-action log", () => {
+  it("append-only: prior entries are preserved, even on a duplicate id (the log records attempts)", async () => {
+    const file = join(tmpDir(), "action-log.json");
+    const base: ActionLogEntry = {
+      id: "a1",
+      result: "performed",
+      userId: "stark",
+      what: "open issue",
+      when: "2026-05-19T12:00:00.000Z",
+      why: "release tagged"
+    };
+    await appendActionLog(file, base);
+    await appendActionLog(file, { ...base, id: "a1", when: "2026-05-19T12:05:00.000Z" });
+    expect((await readActionLog(file)).length).toBe(2);
+  });
+
+  it("missing log → empty; corrupt log → empty AND quarantined aside", async () => {
+    expect(await readActionLog(join(tmpdir(), "nope-action-log.json"))).toEqual([]);
+    const file = join(tmpDir(), "action-log.json");
+    writeFileSync(file, "{ not json");
+    expect(await readActionLog(file)).toEqual([]);
+    expect(readdirSync(dirname(file)).some((n) => n.includes("action-log.json.corrupt-"))).toBe(true);
+  });
+
+  it("queryActionLog returns newest-first and scopes to the user", async () => {
+    const file = join(tmpDir(), "action-log.json");
+    await appendActionLog(file, { id: "old", result: "performed", userId: "stark", what: "x", when: "2026-05-19T10:00:00.000Z", why: "r" });
+    await appendActionLog(file, { id: "new", result: "performed", userId: "stark", what: "y", when: "2026-05-19T14:00:00.000Z", why: "r" });
+    await appendActionLog(file, { id: "other", result: "performed", userId: "wintermute", what: "z", when: "2026-05-19T15:00:00.000Z", why: "r" });
+    const mine = await queryActionLog(file, { userId: "stark" });
+    expect(mine.map((e) => e.id)).toEqual(["new", "old"]);
+  });
+
+  it("an autonomous consented action produces a rationale-bearing log entry the user can query", async () => {
+    const dir = tmpDir();
+    const objectivesFile = join(dir, "objectives.json");
+    const consentFile = join(dir, "consents.json");
+    const logFile = join(dir, "action-log.json");
+    await addObjective(objectivesFile, objective());
+    await recordConsent(consentFile, {
+      grantedAt: "2026-05-19T11:00:00.000Z",
+      id: "c1",
+      objectiveId: "obj_release",
+      scope: "github:issues:write",
+      userId: "stark"
+    });
+
+    const summary = await runDueObjectives({
+      act: async (o) => {
+        const url = "https://api.github.test/repos/x/y/issues";
+        const outcome = await performConsentedAction({
+          consentFile,
+          credential: "ghp-scoped",
+          fetchImpl: (async () => new Response(null, { status: 201 })) as unknown as typeof fetch,
+          objectiveId: o.id,
+          request: { url },
+          scope: "github:issues:write",
+          userId: o.userId
+        });
+        await appendActionLog(logFile, {
+          id: `act_${o.id}`,
+          result: outcome.performed ? "performed" : "refused",
+          userId: o.userId,
+          what: `POST ${url}`,
+          when: NOW.toISOString(),
+          why: o.spec,
+          objectiveId: o.id,
+          detail: outcome.performed ? `HTTP ${outcome.status.toString()}` : outcome.reason
+        });
+        if (!outcome.performed) {
+          throw new Error(outcome.reason);
+        }
+      },
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ outcome: "met" }),
+      file: objectivesFile,
+      now: () => NOW
+    });
+
+    expect(summary.fired).toEqual(["obj_release"]);
+    const log = await queryActionLog(logFile, { userId: "stark" });
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({
+      detail: "HTTP 201",
+      objectiveId: "obj_release",
+      result: "performed",
+      what: "POST https://api.github.test/repos/x/y/issues",
+      why: "when the release is tagged, open the changelog issue"
+    });
+    expect((await readObjectives(objectivesFile))[0]?.status).toBe("done");
+  });
+
+  it("a fail-closed refusal is also logged — accountability covers what was NOT done", async () => {
+    const dir = tmpDir();
+    const objectivesFile = join(dir, "objectives.json");
+    const consentFile = join(dir, "consents.json");
+    const logFile = join(dir, "action-log.json");
+    await addObjective(objectivesFile, objective({ id: "obj_noconsent" }));
+
+    await runDueObjectives({
+      act: async (o) => {
+        const outcome = await performConsentedAction({
+          consentFile,
+          credential: "ghp-scoped",
+          fetchImpl: (async () => new Response(null, { status: 200 })) as unknown as typeof fetch,
+          objectiveId: o.id,
+          request: { url: "https://api.github.test/repos/x/y/issues" },
+          scope: "github:issues:write",
+          userId: o.userId
+        });
+        await appendActionLog(logFile, {
+          id: `act_${o.id}`,
+          result: outcome.performed ? "performed" : "refused",
+          userId: o.userId,
+          what: "POST https://api.github.test/repos/x/y/issues",
+          when: NOW.toISOString(),
+          why: o.spec,
+          objectiveId: o.id,
+          detail: outcome.performed ? "ok" : outcome.reason
+        });
+        if (!outcome.performed) {
+          throw new Error(outcome.reason);
+        }
+      },
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ outcome: "met" }),
+      file: objectivesFile,
+      now: () => NOW
+    });
+
+    const log = await queryActionLog(logFile, { userId: "stark" });
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({ result: "refused", detail: "no recorded consent for scope github:issues:write" });
+    expect((await readObjectives(objectivesFile))[0]?.status).toBe("active");
+  });
+});
