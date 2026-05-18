@@ -56,6 +56,35 @@ parent stays `[ ]` until ALL children are met (no flipping a
 trivially-met sub-bullet to game the metric). It may NOT relabel
 inward churn as a flip, weaken the outward test, or skip the check.
 
+**P0 — Knows-you · anticipates · asks** — FOUNDATIONAL: the
+assistant essence. A channel chat (P1) or a proactive ping (P2) is
+hollow if it doesn't know you and what you'd want. **Priority:
+interwoven with P1 (P1 is only the interaction substrate); P0
+precedes P2+. The loop works P0 next once P1's in-flight slice
+lands.**
+- [ ] Auto-extract wired into the API agent runtime AND on
+  tool-using turns (today REPL-only / `toolsDisabled`-only) so the
+  user model grows from real use. Check: a tool-using API turn
+  produces a stored memory (integration).
+- [ ] Recall is embedding-similarity (not Jaccard; notes RAG
+  already has cosine) AND a stored preference is actually applied
+  to a later answer. Check: state a preference → differently-worded
+  later request → the answer reflects it (integration).
+- [ ] From current context (calendar / inbox / patterns) the agent
+  infers a likely UNSTATED need, autonomously investigates it
+  (tool / web / notes), and surfaces the finding unasked. Check:
+  seeded context → an investigated, relevant surfacing without
+  being asked (integration/smoke).
+- [ ] On an ambiguous / under-specified request the agent asks a
+  clarifying question instead of guessing, and offers ("shall I
+  X?") when it detects a likely-wanted action. Check: ambiguous
+  input → a clarifying question, not a hallucinated action
+  (integration).
+
+*Quality bar (not a bullet — not objectively checkable):* the
+anticipation must feel timely and not noisy; graded inside P0/P2
+work, never shipped as a standalone goal.
+
 **P1 — Two-way conversation on a real channel** — THE gap. Audit:
 *not implemented at all*; every inbound path (telegram-poll,
 channel-poll, LINE webhook) only `appendInbound`s to soft context
@@ -91,15 +120,12 @@ manual one-shot CLI print, macOS-only, never reaches the agent.
   measurably alters a subsequent agent answer.
 
 **P4 — Close the trust-blocking PARTIALs** — audit-identified;
-required before Muse can be delegated to unsupervised.
+required before Muse can be delegated to unsupervised. (User-model
+partials — auto-extract wiring, embedding recall — moved up to P0
+as the "knows-you" foundation.)
 - [ ] Calendar WRITE (create/move/cancel) across Google / CalDAV /
   macOS exercised by a surface check (contract-faithful HTTP fake),
   not read-only.
-- [ ] Auto-extract wired into the API agent runtime AND on
-  tool-using turns (today: REPL-only, `toolsDisabled`-only).
-- [ ] Recall upgraded from Jaccard token-overlap to embedding
-  similarity (notes RAG already has cosine) so paraphrase recall
-  works. Check: a paraphrase query retrieves the right memory.
 - [ ] Voice end-to-end round-trip has an automated check
   (mic→STT→agent→TTS pipeline; STT/TTS mockable, full path).
 
