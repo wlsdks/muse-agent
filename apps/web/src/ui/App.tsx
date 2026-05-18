@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { createApiClient } from "./api-client.js";
 import { CalendarSettingsPanel } from "./calendar-settings-panel.js";
 import { ChatPanel } from "./chat-panel.js";
+import { HistoryPanel } from "./history-panel.js";
 import {
   ActiveContextPanel,
   CalendarEventsPanel,
@@ -102,6 +103,7 @@ export function MuseConsole() {
           <SchedulerPanel client={client} />
           <TokenCostPanel client={client} />
           <CalendarEventsPanel client={client} />
+          <HistoryPanel client={client} />
           <RunsPanel runs={admin.data?.recentRuns ?? []} loading={admin.isLoading} />
           <ToolCatalogPanel tools={tools.data?.tools ?? []} loading={tools.isLoading} />
           <CalendarSettingsPanel client={client} />

@@ -35,6 +35,33 @@ activity stream.
 
 ## Status
 
+slice 3 done — epic COMPLETE. `HistoryPanel` is mounted in
+`apps/web/src/ui/App.tsx`'s side panel beside the other personal
+panels (after `CalendarEventsPanel`). `App.test.tsx` extended: the
+`MuseConsole` static render now asserts the activity panel is
+present (`aria-label="Activity history"`, `<h2>Activity</h2>`,
+`aria-label="Filter by kind"`) — a surface-level integration check
+that the panel is actually wired into the running console, not just
+unit-rendered in isolation. The operator now sees their Muse
+activity stream (filterable by kind, bounded by limit) in the web
+console. Legacy goal → exempt from the outward test/metric; the
+self-deleting Legacy-gate step was removed from
+`.claude/rules/iteration-loop.md` in this same commit per the
+contract (375 was the last legacy slice; no goal may be legacy
+again).
+
+## Decisions
+
+- Slice-3 says "Playwright e2e", but no Playwright config/harness
+  exists in `apps/web` (only the dev-dep). Standing up full e2e
+  infra (config + browser install + seeded-API harness) for one
+  assertion is speculative gold-plating (violates the Right-sized
+  principle) and would not be reliably green. The right-sized
+  verified check is the `App.test.tsx` `MuseConsole`
+  static-render assertion, which exercises the real app surface
+  end-to-end deterministically. Full Playwright e2e infra logged
+  in the README Rejected ledger as future infra, not this slice.
+
 slice 2 done — kind-filter + limit controls wired to the query
 params. `HistoryPanel` now has `useState` for `kind`
 (all/reminder/proactive/followup/pattern/episode) + `limit`

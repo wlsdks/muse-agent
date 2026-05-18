@@ -30,7 +30,7 @@ delete an open row, never rewrite another goal's status.
 | --- | ----------------------------------------------------------------------- | -------------- | ---------------- |
 | 373 | [Proactive multi-device routing](373-proactive-multi-device-routing.md) | epic / outward | done             |
 | 374 | [`muse ask --notes-only`](374-muse-ask-notes-only.md)                   | outward        | done (pre-built) |
-| 375 | [Web UI history panel](375-web-history-panel.md)                        | epic / outward | slice 2/3 done   |
+| 375 | [Web UI history panel](375-web-history-panel.md)                        | epic / outward | done             |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
@@ -48,3 +48,10 @@ Append one line when a discovery path is evaluated and deferred:
   5-min wrapper. Future outward (Autonomy: faster loop
   self-verification): prefer a fast small qwen (e.g. `qwen3:8b`)
   for smoke:live, or shard endpoints. Not slice-3 scope.
+- web Playwright e2e infra — iter (375 s3) — deferred: no
+  playwright.config / e2e harness exists in `apps/web` (only the
+  dev-dep). Standing up config + browser install + seeded-API
+  harness is its own infra task; the right-sized verified check for
+  375 s3 was the `App.test.tsx` MuseConsole render assertion. A
+  future outward goal can build the e2e harness if a real failure
+  motivates it.

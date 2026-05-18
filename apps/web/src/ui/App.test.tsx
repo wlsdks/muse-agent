@@ -31,6 +31,13 @@ describe("MuseConsole", () => {
     expect(html).toContain("Orchestrations");
   });
 
+  it("mounts the activity HistoryPanel in the side panel", () => {
+    const html = renderConsole();
+    expect(html).toContain('aria-label="Activity history"');
+    expect(html).toContain("<h2>Activity</h2>");
+    expect(html).toContain('aria-label="Filter by kind"');
+  });
+
   it("renders the Voice panel with a Record button by default", () => {
     const html = renderConsole();
     expect(html).toContain("Voice");

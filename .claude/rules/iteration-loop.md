@@ -72,22 +72,10 @@ from an interrupted iter, restoring a clean tree IS this iteration
 is the WHOLE iteration (commit; done). This precedes everything
 below.
 
-**Step 3 — Legacy gate (suspends Steps 4–7 while active).**
-Ground truth: **373 is closed; only 375 (slices 2–3) remains
-legacy.** While any 375 slice is undone: do exactly its next slice,
-exempt from the outward test and the metric, and **skip Steps 4–7
-and the Step-8 stagnation check entirely**; verify per Step 9;
-commit; done. The iteration that finishes 375's last slice **MUST
-delete this entire "Legacy gate" step in that same commit** — this
-is the ONE part of this file the loop is required to delete; after
-that no goal may ever be "legacy" and the full bar applies with no
-exception.
-
-**Step 4 — Continuity.** (Reached only when no legacy slice is
-open.) Read open goals' `## Status`/`## Decisions` + README's
-Rejected ledger. Advance the oldest open epic's next undone slice
-before any new goal. New `NNN` only when no open epic has an undone
-slice.
+**Step 4 — Continuity.** Read open goals' `## Status`/`## Decisions`
++ README's Rejected ledger. Advance the oldest open epic's next
+undone slice before any new goal. New `NNN` only when no open epic
+has an undone slice.
 
 **Step 5 — Select (outward).** Highest unmet `OUTWARD-TARGETS.md`
 bullet → its next slice, finishable in one commit, non-trivial.
