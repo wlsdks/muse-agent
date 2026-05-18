@@ -72,12 +72,12 @@ from an interrupted iter, restoring a clean tree IS this iteration
 is the WHOLE iteration (commit; done). This precedes everything
 below.
 
-**Step 4 — Continuity.** Read open goals' `## Status`/`## Decisions`
+**Step 3 — Continuity.** Read open goals' `## Status`/`## Decisions`
 + README's Rejected ledger. Advance the oldest open epic's next
 undone slice before any new goal. New `NNN` only when no open epic
 has an undone slice.
 
-**Step 4.5 — Target completion audit (the P→P seam check).**
+**Step 4 — Target completion audit (the P→P seam check).**
 When every bullet of an `OUTWARD-TARGETS.md` target is `[x]` and no
 `P<n> audit —` line exists for it, THIS iteration's sole mandate
 (skip Steps 5–7): (a) re-run together every `CAPABILITIES.md`
