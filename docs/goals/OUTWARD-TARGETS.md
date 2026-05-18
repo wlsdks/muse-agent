@@ -103,6 +103,40 @@ required before Muse can be delegated to unsupervised.
 - [ ] Voice end-to-end round-trip has an automated check
   (mic→STT→agent→TTS pipeline; STT/TTS mockable, full path).
 
+**P5 — Durable delegated objectives (long-horizon agency)** — the
+"trust over time" gap: turns "an agent you invoke" into "a
+assistant you delegate to". A standing objective is not a one-shot.
+- [ ] A user can register a standing objective ("watch for X / keep
+  trying Y until Z / tell me when W") that survives process restart
+  and the ~20-min boundary as durable state. Check: register →
+  restart → still tracked (integration).
+- [ ] It is autonomously re-evaluated on a tick with backoff and
+  either fires its action when the condition is met or escalates
+  when unmeetable — never silently dropped. Check: condition flips
+  → action fires + marked done; unmet → backoff retry (integration).
+- [ ] Acting on an objective uses the user's *scoped* service
+  credentials under recorded consent (the act-as-the-user
+  prerequisite, shared with P4). Check: an objective performs a
+  real (HTTP-faked) external action via a scoped credential with
+  consent recorded.
+
+**P6 — Accountability & correction loop** — trust requires the user
+can see, undo, and teach. Without this, P4/P5 autonomy is not
+safely delegable.
+- [ ] A reviewable action log records every autonomous action
+  (what / why / when / result), queryable by the user. Check: an
+  autonomous action produces a rationale-bearing log entry on the
+  user surface (smoke/integration).
+- [ ] One-tap undo/veto of a logged action reverses it where
+  reversible AND writes a memory veto so that action class does not
+  recur. Check: act → undo → reversed + veto recorded → same
+  trigger no longer auto-acts (integration).
+
+*Quality bar (not a bullet — not objectively surface-checkable):*
+judgement & interruption etiquette (when to act silently vs ask vs
+stay quiet, prioritise, don't be noisy) is graded inside P1/P2
+work, never shipped as a standalone goal.
+
 The loop extends this map itself when all are delivered or its
 judgement finds a stronger outward direction. "Nothing to do" is
 impossible by construction.
