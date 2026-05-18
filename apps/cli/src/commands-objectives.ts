@@ -1,0 +1,112 @@
+/**
+ * `muse objectives` — the user entry point to the standing-objective
+ * delegated-autonomy chain (P5 store → P9 daemon). Local mode over
+ * the shared `~/.muse/objectives.json`, the same file the
+ * objectives daemon ticks, so a CLI-registered objective is picked
+ * up on the next tick with no API server required.
+ */
+
+import { randomUUID } from "node:crypto";
+
+import { resolveObjectivesFile } from "@muse/autoconfigure";
+import {
+  addObjective,
+  patchObjective,
+  readObjectives,
+  type ObjectiveKind,
+  type ObjectiveStatus
+} from "@muse/mcp";
+import type { Command } from "commander";
+
+import { closestCommandName } from "./closest-command.js";
+import type { ProgramIO } from "./program.js";
+
+const KINDS = ["watch", "until", "notify"] as const;
+const STATUS_FILTERS = ["active", "done", "escalated", "cancelled", "all"] as const;
+
+function objectivesFile(): string {
+  return resolveObjectivesFile(process.env as Record<string, string | undefined>);
+}
+
+function assertOneOf(raw: string, allowed: readonly string[], flag: string): void {
+  const v = raw.trim().toLowerCase();
+  if (allowed.includes(v)) {
+    return;
+  }
+  const hint = closestCommandName(v, allowed);
+  throw new Error(`${flag} must be one of: ${allowed.join(", ")} (got '${raw}')${hint ? ` — did you mean '${hint}'?` : ""}`);
+}
+
+export function registerObjectivesCommands(program: Command, io: ProgramIO): void {
+  const objectives = program
+    .command("objectives")
+    .description("Standing objectives Muse pursues autonomously (watch X / until Z / tell me when W)");
+
+  objectives
+    .command("add <spec...>")
+    .description("Register a standing objective")
+    .option("--kind <kind>", `objective kind: ${KINDS.join(" | ")}`, "until")
+    .option("--user <id>", "owner bucket", "local")
+    .action(async (spec: string[], options: { readonly kind: string; readonly user: string }, command: Command) => {
+      try {
+        assertOneOf(options.kind, KINDS, "--kind");
+        const text = spec.join(" ").trim();
+        if (text.length === 0) {
+          throw new Error("objective spec must not be empty");
+        }
+        const id = `obj_${randomUUID()}`;
+        await addObjective(objectivesFile(), {
+          createdAt: new Date().toISOString(),
+          id,
+          kind: options.kind.trim().toLowerCase() as ObjectiveKind,
+          spec: text,
+          status: "active",
+          userId: options.user.trim() || "local"
+        });
+        io.stdout(`Registered objective ${id}: ${text}\n`);
+      } catch (cause) {
+        io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+        command.error("objectives add failed", { exitCode: 1 });
+      }
+    });
+
+  objectives
+    .command("list")
+    .description("List standing objectives")
+    .option("--status <status>", `filter: ${STATUS_FILTERS.join(" | ")}`, "active")
+    .option("--user <id>", "owner bucket", "local")
+    .action(async (options: { readonly status: string; readonly user: string }, command: Command) => {
+      try {
+        assertOneOf(options.status, STATUS_FILTERS, "--status");
+        const filter = options.status.trim().toLowerCase();
+        const all = (await readObjectives(objectivesFile())).filter((o) => o.userId === options.user.trim());
+        const shown = filter === "all" ? all : all.filter((o) => o.status === (filter as ObjectiveStatus));
+        if (shown.length === 0) {
+          io.stdout("No objectives.\n");
+          return;
+        }
+        for (const o of shown) {
+          io.stdout(`${o.id}  [${o.status}/${o.kind}]  ${o.spec}\n`);
+        }
+      } catch (cause) {
+        io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+        command.error("objectives list failed", { exitCode: 1 });
+      }
+    });
+
+  objectives
+    .command("cancel <id>")
+    .description("Cancel a standing objective (it stops being re-evaluated)")
+    .action(async (id: string, _options: unknown, command: Command) => {
+      const patched = await patchObjective(objectivesFile(), id, {
+        resolution: "cancelled via CLI",
+        status: "cancelled"
+      });
+      if (!patched) {
+        io.stderr(`no objective with id '${id}'\n`);
+        command.error("objectives cancel failed", { exitCode: 1 });
+        return;
+      }
+      io.stdout(`Cancelled ${id}\n`);
+    });
+}

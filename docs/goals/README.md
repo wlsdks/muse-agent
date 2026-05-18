@@ -49,6 +49,7 @@ delete an open row, never rewrite another goal's status.
 | 401 | [Briefing grounded in calendar too](401-briefing-calendar-imminence.md)   | epic / outward | P8-b4 done (loop-extended bullet) |
 | 402 | [P7 learn-from-correction wired into prod](402-veto-avoidance-prod-wiring.md) | epic / outward | done — deferred P7-b1 adapter resolved |
 | 403 | [Objective verdict parse hardening](403-objective-verdict-parse-hardening.md) | fix / robustness | done — fenced/think-wrap silent mis-parse fixed |
+| 404 | [`muse objectives` CLI entry point](404-objectives-cli.md)                | epic / outward | done — user can register/list/cancel objectives |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

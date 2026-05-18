@@ -174,6 +174,7 @@ export {
   resolveMessagingCredentialsFile,
   resolveModelKeysFile,
   resolveNotesDir,
+  resolveObjectivesFile,
   resolveRemindersFile,
   resolveDiscordAfterFile,
   resolveDiscordInboxFile,
