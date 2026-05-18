@@ -73,6 +73,40 @@ interface PersistedTask {
  * `aplay`. Skips silently when TTS isn't configured — the brief
  * text already landed on stdout, --speak is just decoration.
  */
+export const BRIEF_AUDIO_PLAYER_TIMEOUT_MS = 30_000;
+
+export async function playAudioFile(
+  player: string,
+  audioFile: string,
+  spawnFn: typeof spawn = spawn
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawnFn(player, [audioFile], { stdio: "ignore" });
+    let settled = false;
+    const finish = (action: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      action();
+    };
+    // Without this watchdog a wedged player — a busy CoreAudio /
+    // ALSA device, a stuck process — hangs `muse brief --speak`
+    // forever with no recovery.
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish(() => reject(new Error(
+        `${player} timed out after ${BRIEF_AUDIO_PLAYER_TIMEOUT_MS.toString()}ms and was killed`
+      )));
+    }, BRIEF_AUDIO_PLAYER_TIMEOUT_MS);
+    child.on("error", (error) => { finish(() => reject(error)); });
+    child.on("close", (code) => {
+      finish(() => code === 0
+        ? resolve()
+        : reject(new Error(`${player} exit ${code?.toString() ?? "null"}`)));
+    });
+  });
+}
+
 async function speakAloud(io: ProgramIO, text: string): Promise<void> {
   if (text.length === 0) return;
   const registry = buildVoiceRegistry(process.env as Record<string, string | undefined>);
@@ -87,11 +121,7 @@ async function speakAloud(io: ProgramIO, text: string): Promise<void> {
     const audioFile = pathJoin(dir, `brief.${result.format}`);
     writeFileSync(audioFile, result.audio);
     const player = platform() === "darwin" ? "afplay" : "aplay";
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn(player, [audioFile], { stdio: "ignore" });
-      child.on("error", reject);
-      child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`${player} exit ${code?.toString() ?? "null"}`)));
-    });
+    await playAudioFile(player, audioFile);
   } catch (cause) {
     io.stderr(`(speak failed: ${cause instanceof Error ? cause.message : String(cause)})\n`);
   }
