@@ -8,6 +8,14 @@ export {
 export { MessagingProviderRegistry } from "./registry.js";
 
 export {
+  inboundKey,
+  respondToInbound,
+  type InboundAgentRunner,
+  type RespondToInboundOptions,
+  type RespondToInboundResult
+} from "./inbound-responder.js";
+
+export {
   FileMessagingCredentialStore,
   type MessagingCredentialStore,
   type MessagingCredentials
