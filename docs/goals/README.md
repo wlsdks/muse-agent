@@ -191,3 +191,20 @@ Append one line when a discovery path is evaluated and deferred:
   pass. No drift; no bullet reopened. P4 (close the trust-blocking
   PARTIALs) is genuinely delivered. P0/P1/P2/P3/P4 now all
   delivered + audited.
+- P5 audit — packages/mcp/src/p5-seam.test.ts — PASS: P5's three
+  CAPABILITIES checks re-run green together (objectives-store /
+  objective-evaluation-loop / consented-action, 18/18). Unlike P4,
+  P5's bullets ARE a composed delegation pipeline, so a seam test
+  exercises the join end-to-end through the real on-disk stores
+  with every read a fresh call (no shared in-memory = a restarted
+  process / the next ~20-min tick): register a durable objective
+  (b1) → restart → tick unmet → exponential backoff PERSISTED →
+  restart (backoff survived) → tick met → the consented
+  scoped-credential real (HTTP-faked) external action fires
+  carrying the Bearer cred (b3) → restart → durably `done`; and
+  the fail-closed consent gate composes with the lifecycle — no
+  consent ⇒ no HTTP, the objective is NOT falsely completed and
+  stays active across a restart. No drift; no bullet reopened. P5
+  (durable delegated objectives / long-horizon agency) is
+  genuinely delivered end-to-end. P0/P1/P2/P3/P4/P5 now all
+  delivered + audited.
