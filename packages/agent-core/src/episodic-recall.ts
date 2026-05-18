@@ -52,8 +52,7 @@ export function renderEpisodicSection(
     // (always safe) but the EpisodicRecallSnapshot is fed by
     // arbitrary `EpisodicRecallProvider` implementations — a
     // third-party store could put any string in there, including
-    // one carrying `\n[System Override]\n`. Sanitise defensively,
-    // same shape iter 22 uses for `dueIso`.
+    // one carrying `\n[System Override]\n`. Sanitise defensively.
     const createdAtIsoSafe = match.createdAtIso ? sanitizeNarrativeInline(match.createdAtIso) : undefined;
     // JARVIS-class freshness affordance. When `nowIso` is
     // wired in (the runtime caller has it), humanise the timestamp
@@ -267,9 +266,9 @@ function isVisibleToUser(
 //   - 一-鿿      CJK Unified Ideographs (Chinese Hanzi + Japanese Kanji)
 //   - ぀-ゟ      Hiragana (Japanese)
 //   - ゠-ヿ      Katakana (Japanese)
-// Before iter 35 only Hangul was recognised, so Japanese / Chinese
-// narratives produced an empty token set → zero recall, even when
-// query and narrative shared every meaningful character.
+// Hangul alone would leave Japanese / Chinese narratives with an
+// empty token set → zero recall, even when query and narrative
+// shared every meaningful character.
 const TOKEN_NON_WORD_RE = /[^a-z0-9가-힯一-鿿぀-ゟ゠-ヿ]+/u;
 
 const DAY_MS = 24 * 60 * 60 * 1_000;

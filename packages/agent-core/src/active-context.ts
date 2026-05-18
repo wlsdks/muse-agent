@@ -262,10 +262,9 @@ export function renderActiveContextSection(snapshot: ActiveContextSnapshot | und
   if (snapshot.activeTask) {
     // External task stores (and the user themselves) supply `title`
     // / `id` / `dueIso`. A `\n[System Override]\n…` in any of them
-    // would splice a fake section header into `[Active Context]` —
-    // same injection class iter 13/14/15/20 already closed. Inline
-    // sanitise every author-supplied string field. `dueIso` is
-    // safe (Date.toISOString) but defensive for symmetry.
+    // would splice a fake section header into `[Active Context]`.
+    // Inline sanitise every author-supplied string field. `dueIso`
+    // is safe (Date.toISOString) but defensive for symmetry.
     const taskParts: string[] = [sanitizeInline(snapshot.activeTask.title)];
     if (snapshot.activeTask.id) {
       taskParts.push(`id=${sanitizeInline(snapshot.activeTask.id)}`);
@@ -324,10 +323,9 @@ export function renderActiveContextSection(snapshot: ActiveContextSnapshot | und
     if (filteredEvents.length > 0) {
       lines.push("today_events:");
       for (const event of filteredEvents.slice(0, 8)) {
-        // Same defensive Round 3 pattern iter 22 used for `dueIso` and
-        // iter 33 for inbox `receivedAtIso`. `startIso` / `endIso` are
-        // typed `string` and supposed to come from `Date.toISOString()`
-        // but `CalendarEventsResolver` is a third-party-pluggable
+        // `startIso` / `endIso` are typed `string` and supposed to
+        // come from `Date.toISOString()`, but `CalendarEventsResolver`
+        // is a third-party-pluggable
         // interface — a buggy adapter (or a malicious event source
         // upstream of the calendar API) could land a newline-bearing
         // string there, splicing a fake `[System Override]` section
@@ -362,7 +360,7 @@ export function renderActiveContextSection(snapshot: ActiveContextSnapshot | und
   // pending reminders surfaced inline. Already-overdue or
   // due within the next ~2h. Filtered + sorted here so a buggy
   // resolver can't blow the prompt with stale or random-order data.
-  // Same Round 3 sanitisation seam (text + dueIso) the other blocks
+  // Same sanitisation seam (text + dueIso) the other blocks
   // already use.
   if (snapshot.reminders && snapshot.reminders.length > 0) {
     const filteredReminders = filterAndSortReminders(snapshot.reminders, snapshot.nowIso);

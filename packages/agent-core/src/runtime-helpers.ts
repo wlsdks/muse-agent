@@ -187,7 +187,7 @@ export function recordContextEngineeringSpanAttributes(span: SpanHandle, metadat
   setNumericAttr(span, "ctx.attachment_count", record["attachmentContextCount"]);
   setBooleanAttr(span, "ctx.skills_catalog_applied", record["skillsCatalogApplied"]);
   setNumericAttr(span, "ctx.skills_catalog_count", record["skillsCatalogCount"]);
-  // Failure flags — iter 19. Each transform stamps `xxxFailed: true`
+  // Each transform stamps `xxxFailed: true`
   // in its fail-open catch block. Surfacing the flag onto the span
   // lets ops distinguish a silently-throwing transform from one
   // that simply wasn't configured. Healthy turns leave these

@@ -61,18 +61,18 @@ export interface ModelLoopRunner {
   readonly metrics: AgentMetrics;
   readonly tokenUsageSink?: TokenUsageSink;
   /**
-   * Per-tool-result character cap (round 161, Context Engineering
-   * step 1.b). When set and an individual tool output exceeds the
-   * cap, the message-bound copy is truncated head+tail with an
+   * Per-tool-result character cap. When set and an individual tool
+   * output exceeds the cap, the message-bound copy is truncated
+   * head+tail with an
    * elision marker. The original `result.output` on the tracked
    * tool result is left unchanged so traces / metrics see the full
    * text. 0 or undefined disables the cap.
    */
   readonly maxToolOutputChars?: number;
   /**
-   * Optional ref store for just-in-time retrieval (round 168,
-   * Context Engineering step 1.d). When set AND `maxToolOutputChars`
-   * triggers a truncation, the full original output is stashed in
+   * Optional ref store for just-in-time retrieval. When set AND
+   * `maxToolOutputChars` triggers a truncation, the full original
+   * output is stashed in
    * the store under a sha256-prefix id and the truncation marker
    * surfaces `ref=<id>` so the agent can call
    * `muse.context.fetch({ ref })` to expand the elided bytes on

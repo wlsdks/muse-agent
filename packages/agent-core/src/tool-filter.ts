@@ -61,12 +61,11 @@ export class DefaultToolFilter implements ToolFilter {
   ): boolean {
     // `inferDomain` returns the domain already lowercased — every
     // downstream comparison (scopeSet, extraKeywords lookup) is then
-    // symmetric. Before iter 25 the heuristics lookup
-    // (`extraKeywords[domain]`) was case-sensitive while the scope
-    // check (`scopeSet.has(domain.toLowerCase())`) was case-insensitive,
-    // so a tool with explicit `domain: "Messaging"` silently lost its
-    // heuristic-keyword path. Centralising the lowercase in inferDomain
-    // closes the asymmetry.
+    // symmetric. Without it the heuristics lookup
+    // (`extraKeywords[domain]`) would be case-sensitive while the
+    // scope check (`scopeSet.has(domain.toLowerCase())`) is
+    // case-insensitive, so a tool with explicit `domain: "Messaging"`
+    // would silently lose its heuristic-keyword path.
     const domain = inferDomain(definition);
     if (!domain || domain === "core") {
       return true;

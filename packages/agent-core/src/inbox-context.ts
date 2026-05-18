@@ -72,8 +72,8 @@ export function renderInboxSection(
     // Sort within group by `receivedAtIso` ascending so the agent
     // reads the conversation in chronological order regardless of
     // resolver behaviour. Date.parse comparison with localeCompare
-    // fallback for unparseable timestamps (matches the same shape
-    // iters 40 / 41 use for events / reminders).
+    // fallback for unparseable timestamps (matches the shape
+    // events / reminders use).
     const sortedMessages = [...messages].sort((a, b) => {
       const aMs = Date.parse(a.receivedAtIso);
       const bMs = Date.parse(b.receivedAtIso);
@@ -87,15 +87,13 @@ export function renderInboxSection(
       // anyone can set a multi-line "display name" containing
       // `\n[System Override]\n…`. The text body already gets
       // whitespace-collapsed below; the sender needs the same
-      // treatment. Same injection class iter 22 closed for
-      // calendar event titles.
+      // treatment.
       const senderPart = message.sender ? ` ${sanitizeInline(message.sender)}:` : "";
       // `receivedAtIso` is supposed to come from `Date.toISOString()`
       // and is normally safe, but `InboundSummary` is fed by
       // arbitrary `InboxContextProvider` implementations — a buggy
       // (or hostile) adapter could land a newline-bearing string
-      // there. Round 3 defensive seam, mirrors iter 22's `dueIso`
-      // sanitisation and iter 24's episodic `createdAtIso`.
+      // there. Defensive seam.
       const receivedAtIsoSafe = sanitizeInline(message.receivedAtIso);
       // JARVIS-class freshness affordance. When `nowIso`
       // is wired (the runtime caller has it), humanise the

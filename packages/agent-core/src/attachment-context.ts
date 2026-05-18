@@ -74,10 +74,10 @@ export function parseAttachmentsFromMetadata(metadata: unknown): readonly Attach
     }
     const record = entry as Record<string, unknown>;
     // EVERY user-supplied string gets the same inline-sanitisation
-    // pass before the bound check. Round 1 only sanitised
-    // `description`, which left a CRLF or `\n[System Override]\n`
-    // injection vector wide open on `name` — the most prominent
-    // field of all. `name` / `mimeType` / `ref` all sit on the
+    // pass before the bound check. Sanitising only `description`
+    // would leave a CRLF or `\n[System Override]\n` injection vector
+    // wide open on `name` — the most prominent field of all.
+    // `name` / `mimeType` / `ref` all sit on the
     // `- name · mime · size · ref=…` header line in
     // `[Attached Files]`, so a literal newline anywhere there can
     // splice a fake section into the prompt.
@@ -92,8 +92,7 @@ export function parseAttachmentsFromMetadata(metadata: unknown): readonly Attach
       ? record.size
       : undefined;
     // \x1f Unit Separator joins so a name / mime containing `:` or
-    // `|` can't accidentally collide with another file's key. Same
-    // separator pattern iter 46 used for the inbox group key.
+    // `|` can't accidentally collide with another file's key.
     const dedupKey = `${name}\x1f${size?.toString() ?? ""}\x1f${mimeType ?? ""}`;
     if (seen.has(dedupKey)) {
       continue;
@@ -160,8 +159,7 @@ export function renderAttachmentSection(attachments: readonly AttachmentHint[]):
     // (third-party integration, in-process test fixture, future
     // code path). Without these guards a pre-built hint carrying
     // literal newlines would splice a fake `[System Override]`
-    // section into `[Attached Files]`. Same Round 3 pattern iters
-    // 22 / 24 / 33 / 34 closed across the other render paths.
+    // section into `[Attached Files]`.
     const parts: string[] = [sanitizeInline(entry.name)];
     if (entry.mimeType) {
       parts.push(sanitizeInline(entry.mimeType));
