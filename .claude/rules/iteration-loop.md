@@ -77,6 +77,22 @@ below.
 undone slice before any new goal. New `NNN` only when no open epic
 has an undone slice.
 
+**Step 4.5 — Target completion audit (the P→P seam check).**
+When every bullet of an `OUTWARD-TARGETS.md` target is `[x]` and no
+`P<n> audit —` line exists for it, THIS iteration's sole mandate
+(skip Steps 5–7): (a) re-run together every `CAPABILITIES.md`
+check that delivered that target's bullets AND exercise the target
+as one end-to-end user flow against the falsifiable test (does the
+whole thing actually work for the user, not just each piece?);
+(b) append `P<n> audit — <commit> — PASS|REOPEN: <one line>` to
+the README Rejected ledger; (c) on drift / pieces that don't
+compose, **REOPEN** the offending bullet(s) `[x]`→`[ ]` with the
+reason — this is the ONLY sanctioned un-flip (it is the audit
+doing its job, not gaming, not a regression). Reopened bullets are
+fixed before any new target. This catches "marked done but went
+sideways" at the seam, cheaply (one iteration per completed
+target, never per slice).
+
 **Step 5 — Select (outward).** Highest unmet `OUTWARD-TARGETS.md`
 bullet → its next slice, finishable in one commit, non-trivial.
 
