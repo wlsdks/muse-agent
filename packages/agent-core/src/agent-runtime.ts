@@ -66,6 +66,8 @@ import {
   resolveAmbientSnapshot as resolveAmbientSnapshotFn
 } from "./ambient-context.js";
 import type { AmbientSnapshotProvider } from "./ambient-context.js";
+import { applyVetoAvoidance as applyVetoAvoidanceFn } from "./veto-avoidance.js";
+import type { VetoAvoidanceProvider } from "./veto-avoidance.js";
 import { applyClarifyDirective as applyClarifyDirectiveFn } from "./clarify-directive.js";
 import type { EpisodicRecallProvider } from "./episodic-recall.js";
 import { ModelRoutingError } from "./errors.js";
@@ -187,6 +189,7 @@ export class AgentRuntime {
   private readonly promptLayerRegistry?: PromptLayerRegistry;
   private readonly activeContextProvider?: ActiveContextProvider;
   private readonly ambientSnapshotProvider?: AmbientSnapshotProvider;
+  private readonly vetoAvoidanceProvider?: VetoAvoidanceProvider;
   private readonly inboxContextProvider?: InboxContextProvider;
   private readonly episodicRecallProvider?: EpisodicRecallProvider;
   private readonly toolFilter?: ToolFilter;
@@ -243,6 +246,7 @@ export class AgentRuntime {
     this.promptLayerRegistry = options.promptLayerRegistry;
     this.activeContextProvider = options.activeContextProvider;
     this.ambientSnapshotProvider = options.ambientSnapshotProvider;
+    this.vetoAvoidanceProvider = options.vetoAvoidanceProvider;
     this.inboxContextProvider = options.inboxContextProvider;
     this.episodicRecallProvider = options.episodicRecallProvider;
     this.toolFilter = options.toolFilter;
@@ -438,7 +442,11 @@ export class AgentRuntime {
       ambientSnapshot,
       ambientEnabled
     );
-    const attachmentAppliedInput = applyAttachmentContextFn({ ...memoryAppliedContext, input: ambientContextInput });
+    const vetoAvoidanceInput = await applyVetoAvoidanceFn(
+      { ...memoryAppliedContext, input: ambientContextInput },
+      this.vetoAvoidanceProvider
+    );
+    const attachmentAppliedInput = applyAttachmentContextFn({ ...memoryAppliedContext, input: vetoAvoidanceInput });
     const skillsAppliedInput = await applySkillsContextFn({ ...memoryAppliedContext, input: attachmentAppliedInput }, this.skillCatalogProvider);
     const activeContextContext: AgentRunContext = { ...memoryAppliedContext, input: skillsAppliedInput };
     const inboxAppliedInput = await applyInboxContextFn(activeContextContext, this.inboxContextProvider);

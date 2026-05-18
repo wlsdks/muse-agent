@@ -39,6 +39,7 @@ import type {
 
 import type { ActiveContextProvider } from "./active-context.js";
 import type { AmbientSnapshotProvider } from "./ambient-context.js";
+import type { VetoAvoidanceProvider } from "./veto-avoidance.js";
 import type { EpisodicRecallProvider } from "./episodic-recall.js";
 import type { HookRegistry } from "./hook-registry.js";
 import type { InboxContextProvider } from "./inbox-context.js";
@@ -131,6 +132,13 @@ export interface AgentRuntimeOptions {
    * Opt-in only — privacy-sensitive, so absence = off; fail-open.
    */
   readonly ambientSnapshotProvider?: AmbientSnapshotProvider;
+  /**
+   * Learns-from-correction: when set, the user's recorded vetoes
+   * are surfaced as a `[Learned Avoidance]` system block so the
+   * agent stops proposing a corrected action class everywhere.
+   * Conservative — zero vetoes ⇒ exact no-op; fail-open.
+   */
+  readonly vetoAvoidanceProvider?: VetoAvoidanceProvider;
   /**
    * Context Engineering Phase 2: surface recent inbound messages
    * (Slack / Discord / Telegram / LINE) as a `[Recent Messages]`

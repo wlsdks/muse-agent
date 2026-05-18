@@ -227,6 +227,33 @@ judgement & interruption etiquette (when to act silently vs ask vs
 stay quiet, prioritise, don't be noisy) is graded inside P1/P2
 work, never shipped as a standalone goal.
 
+**P7 — Learns from correction (loop-authored, P0–P6 all
+delivered).** P6 closed the *mechanical* correction loop: the
+exact vetoed {objective,scope} is refused on recurrence. But a
+JARVIS-grade assistant that is corrected stops *proposing* the
+class everywhere — not just at the one gate — and lets the user
+see and unlearn what it has learned. The outward gap: a recorded
+veto today informs only `performConsentedAction`; it does not
+shape the agent's general reasoning on any other surface, and a
+correction is permanent-by-accident with no way to clear it.
+- [x] A recorded veto is surfaced into agent run context as a
+  learned-avoidance directive so the agent stops PROPOSING that
+  class on any subsequent run (not only the consented-action gate
+  blocking the exact repeat). Conservative + opt-out-safe: no
+  vetoes ⇒ exact no-op (so an un-corrected user / smoke:live is
+  unaffected). Check: vetoes recorded → a later agent run's
+  context carries the avoidance directive; none → no-op
+  (integration). — 390 (applyVetoAvoidance wired live into the
+  agent-runtime context pipeline behind a duck-typed
+  VetoAvoidanceProvider; createAgentRuntime integration: recorded
+  veto → run carries [Learned Avoidance]; none → no-op; gated/
+  fail-open so smoke:live unaffected)
+- [ ] Learned avoidances are reviewable and clearable by the user
+  ("what Muse learned not to do" + clear), so a correction is not
+  permanent-by-accident. Check: review lists active avoidances;
+  clear removes it and the directive no longer injects
+  (integration).
+
 The loop extends this map itself when all are delivered or its
 judgement finds a stronger outward direction. "Nothing to do" is
 impossible by construction.
