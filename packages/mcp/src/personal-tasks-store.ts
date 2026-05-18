@@ -134,7 +134,9 @@ export function parseTaskDueAt(raw: string, now: () => Date): string | Error {
   if (!relative) {
     return new Error(
       `dueAt must be an ISO-8601 timestamp or a supported relative phrase (got ${JSON.stringify(trimmed)}). ` +
-      `Examples: "tomorrow 9am", "in 3 hours", "next monday 6pm", "내일 오후 3시", "3일 후", "다음 주 월요일".`
+      `Examples: "tomorrow 9am", "in 3 hours", "in half an hour", "at 5pm", ` +
+      `"day after tomorrow", "this evening", "next monday 6pm", "May 20", ` +
+      `"Dec 25 at 3pm", "내일 오후 3시", "3일 후", "다음 주 월요일".`
     );
   }
   return relative.toISOString();

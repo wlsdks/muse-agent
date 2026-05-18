@@ -2049,6 +2049,21 @@ describe("muse.tasks loopback server", () => {
     expect(result.error).toContain("tomorrow 9am");
     expect(result.error).toContain("내일 오후 3시");
     expect(result.error).toContain("다음 주 월요일");
+    // The refreshed examples must surface the now-rich grammar.
+    expect(result.error).toContain("in half an hour");
+    expect(result.error).toContain("day after tomorrow");
+    expect(result.error).toContain("May 20");
+    // Invariant: EVERY quoted example after "Examples:" must
+    // actually resolve — the error message is a user contract and
+    // must never advertise a phrasing the grammar can't parse.
+    const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+    const examplesPart = (result.error ?? "").split("Examples:")[1] ?? "";
+    const examples = [...examplesPart.matchAll(/"([^"]+)"/gu)].map((m) => m[1]!);
+    expect(examples.length).toBeGreaterThanOrEqual(10);
+    const now = (): Date => new Date("2026-05-18T09:00:00Z");
+    for (const phrase of examples) {
+      expect(resolveRelativeTimePhrase(phrase, now), `example "${phrase}" must parse`).toBeDefined();
+    }
   });
 
   it("ignores dueAt when omitted (back-compat with pre-dueAt entries)", async () => {
