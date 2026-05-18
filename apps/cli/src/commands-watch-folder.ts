@@ -59,7 +59,7 @@ interface WatchOptions {
  *   due: 2026-05-15T14:00Z
  *   마감: 내일 오후 3시
  */
-function extractDueHint(body: string): string | undefined {
+export function extractDueHint(body: string): string | undefined {
   const lines = body.split("\n").slice(0, 8);
   for (const line of lines) {
     const m = /^\s*(?:due|마감|deadline)\s*[:-]\s*(.+)$/i.exec(line.trim());
