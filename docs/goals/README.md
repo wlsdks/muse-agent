@@ -40,6 +40,7 @@ delete an open row, never rewrite another goal's status.
 | 388 | [Reviewable action log](388-reviewable-action-log.md)                     | epic / outward | done — P6 fully delivered (b1–b2) |
 | 390 | [Learns from correction](390-learns-from-correction.md)                   | epic / outward | done — P7 fully delivered (b1–b2) |
 | 392 | [Proactive situational briefing](392-situational-briefing.md)             | epic / outward | done — P8 fully delivered (b1–b2) |
+| 394 | [Delegated-autonomy loops run](394-autonomy-loops-run.md)                 | epic / outward | P9-b1 done; P9-b2 (daemon-set wiring) next |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

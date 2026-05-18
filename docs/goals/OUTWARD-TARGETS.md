@@ -288,6 +288,34 @@ lifecycle) substrate into the situational picture.
   dedupes in-window; nothing-to-say is silent; re-briefs once the
   window elapses)
 
+**P9 — The delegated-autonomy loops actually RUN (loop-authored,
+P0–P8 all delivered).** P5 (`runDueObjectives`) and P8
+(`runDueSituationalBriefing`) are built, tested and seam-audited —
+but unlike `runDueProactiveNotices` / `runDueFollowups` they have
+NO apps/api daemon: the user's running server never ticks them, so
+the delegated-objective autonomy and the proactive briefing exist
+only as libraries. A JARVIS does these continuously, unasked. The
+outward gap is pure productionisation: a `setInterval` rider
+(mirroring `followup-tick` / `proactive-tick`) so a real running
+server autonomously drives the loop.
+- [x] An apps/api objectives daemon rider drives
+  `runDueObjectives` on a clamped cadence with the same
+  single-flight + fail-soft + unref discipline as the sibling
+  ticks, so a registered standing objective is autonomously
+  re-evaluated by a real running server (not only a manual call).
+  Check: a tick handle fires `runDueObjectives` on a due objective
+  (→ acted + marked done), is single-flight under concurrent
+  ticks, clamps a wild interval, and a throwing evaluator does not
+  crash the rider (integration). — 394 (apps/api objectives-tick.ts
+  rider mirroring followup-tick; objectives-tick.test.ts: due→done,
+  single-flight, fail-soft+survives, wild-interval clamped)
+- [ ] The objectives + situational-briefing daemons are env-gated
+  and started in the apps/api daemon set (parallel to
+  `startFollowupDaemonIfConfigured`), off by default, with the
+  concrete production evaluator/actuator wired. Check: with the
+  env configured a real server start registers + can stop the
+  daemons; absent env ⇒ not started (integration).
+
 The loop extends this map itself when all are delivered or its
 judgement finds a stronger outward direction. "Nothing to do" is
 impossible by construction.
