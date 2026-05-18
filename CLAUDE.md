@@ -21,7 +21,7 @@ pnpm test -- -t "<test name>"          # single test by name
 pnpm check                             # build + test for every workspace
 
 # before claiming "this works" on the full system:
-pnpm smoke:broad                       # 47 HTTP endpoints, diagnostic provider
+pnpm smoke:broad                       # broad HTTP smoke, diagnostic provider (no key)
 pnpm smoke:live                        # real LLM round-trip — LOCAL OLLAMA QWEN ONLY (no cloud APIs)
 
 # before commit (lint gate):

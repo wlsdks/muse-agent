@@ -14,7 +14,7 @@ test before HTTP smoke.
    ```bash
    pnpm check                         # build + test for every workspace
    ```
-3. **Diagnostic-provider HTTP smoke** (49 endpoints, no API key):
+3. **Diagnostic-provider HTTP smoke** (broad endpoint sweep, no API key):
    ```bash
    pnpm smoke:broad
    ```
