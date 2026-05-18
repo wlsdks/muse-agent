@@ -48,6 +48,7 @@ import {
 } from "./provider-paths.js";
 
 export {
+  resolveActionLogFile,
   resolveBriefingSidecarFile,
   resolveCredentialsFile,
   resolveDiscordAfterFile,

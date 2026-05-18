@@ -4,6 +4,7 @@ import { createMuseObservabilitySnapshotProvider } from "@muse/observability";
 import { parseOptionalString } from "./env-parsers.js";
 import {
   mergeModelKeysFromFile,
+  resolveActionLogFile,
   resolveBriefingSidecarFile,
   resolveCredentialsFile,
   resolveDiscordInboxFile,
@@ -136,6 +137,7 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     sessionLockFile: resolveSessionLockFile(env),
     followupsFile: resolveFollowupsFile(env),
     objectivesFile: resolveObjectivesFile(env),
+    actionLogFile: resolveActionLogFile(env),
     briefingSidecarFile: resolveBriefingSidecarFile(env),
     patternsFiredFile: resolvePatternsFiredFile(env),
     episodesFile: resolveEpisodesFile(env),

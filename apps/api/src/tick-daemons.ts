@@ -288,6 +288,7 @@ export function startObjectivesDaemonIfConfigured(
     modelProvider: options.modelProvider
   });
   const { act, escalate } = createMessagingObjectiveActuator({
+    ...(options.actionLogFile ? { actionLogFile: options.actionLogFile } : {}),
     destination: objectivesDestination,
     providerId: objectivesProvider,
     registry: options.messaging

@@ -16,6 +16,7 @@
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { sendWithRetry } from "./messaging-retry.js";
+import { appendActionLog } from "./personal-action-log-store.js";
 import type { ObjectiveEvaluation } from "./objective-evaluation-loop.js";
 import type { StandingObjective } from "./personal-objectives-store.js";
 import type { ProactiveModelProviderLike } from "./proactive-notice-loop.js";
@@ -144,16 +145,58 @@ export interface MessagingObjectiveActuatorOptions {
   readonly registry: MessagingProviderRegistry;
   readonly providerId: string;
   readonly destination: string;
+  /**
+   * When set, every autonomous objective action the daemon takes
+   * is also appended here so it is reviewable (P6 accountability:
+   * "every autonomous action produces a rationale-bearing log
+   * entry"). Best-effort relative to the just-delivered action — a
+   * log-append failure must never crash the daemon, so it is
+   * swallowed; the notification itself already succeeded.
+   */
+  readonly actionLogFile?: string;
+  readonly now?: () => Date;
 }
 
 export function createMessagingObjectiveActuator(options: MessagingObjectiveActuatorOptions): {
   readonly act: (objective: StandingObjective) => Promise<void>;
   readonly escalate: (objective: StandingObjective, reason: string) => Promise<void>;
 } {
+  const now = options.now ?? (() => new Date());
   const send = (text: string): Promise<void> =>
     sendWithRetry(options.registry, options.providerId, { destination: options.destination, text });
+  const record = async (
+    objective: StandingObjective,
+    what: string,
+    detail: string
+  ): Promise<void> => {
+    if (!options.actionLogFile) {
+      return;
+    }
+    const whenIso = now().toISOString();
+    try {
+      await appendActionLog(options.actionLogFile, {
+        detail,
+        id: `act_${objective.id}_${Date.parse(whenIso).toString()}`,
+        objectiveId: objective.id,
+        result: "performed",
+        userId: objective.userId,
+        what,
+        when: whenIso,
+        why: objective.spec
+      });
+    } catch {
+      // accountability is best-effort vs. the delivered action;
+      // never crash the unattended daemon over a log write.
+    }
+  };
   return {
-    act: (objective) => send(`✅ Objective met: ${objective.spec}`),
-    escalate: (objective, reason) => send(`⚠ Objective needs you: ${objective.spec} — ${reason}`)
+    act: async (objective) => {
+      await send(`✅ Objective met: ${objective.spec}`);
+      await record(objective, "objective met — user notified", "messaging notice delivered");
+    },
+    escalate: async (objective, reason) => {
+      await send(`⚠ Objective needs you: ${objective.spec} — ${reason}`);
+      await record(objective, "objective escalated — user notified", reason);
+    }
   };
 }

@@ -146,6 +146,13 @@ export interface ServerOptions {
   readonly objectivesFile?: string;
   readonly briefingSidecarFile?: string;
   /**
+   * Path to the reviewable autonomous-action log (default
+   * ~/.muse/action-log.json). When set, the objectives daemon's
+   * actuator appends a rationale-bearing entry for every
+   * autonomous objective action it takes (P6 accountability).
+   */
+  readonly actionLogFile?: string;
+  /**
    * Path to the pattern-detection cooldown sidecar (default
    * ~/.muse/patterns-fired.json). When set alongside
    * MUSE_PROACTIVE_PATTERN_ENABLED=true + provider/destination

@@ -1,3 +1,7 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { MessagingProviderRegistry, TelegramProvider } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
 
@@ -6,6 +10,7 @@ import {
   createModelObjectiveEvaluator,
   parseObjectiveVerdict
 } from "./objective-evaluator.js";
+import { queryActionLog } from "./personal-action-log-store.js";
 import type { StandingObjective } from "./personal-objectives-store.js";
 
 function objective(overrides: Partial<StandingObjective> = {}): StandingObjective {
@@ -109,5 +114,62 @@ describe("createMessagingObjectiveActuator", () => {
     await escalate(objective({ spec: "ship the release" }), "build red 6x");
     expect(posts[0]).toBe("✅ Objective met: ship the release");
     expect(posts[1]).toBe("⚠ Objective needs you: ship the release — build red 6x");
+  });
+
+  it("when actionLogFile is set, each autonomous action is appended as a reviewable rationale-bearing entry (P6)", async () => {
+    const telegram = new TelegramProvider({
+      baseUrl: "https://tg.test",
+      fetch: async () =>
+        new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), {
+          headers: { "content-type": "application/json" },
+          status: 200
+        }),
+      token: "T"
+    });
+    const actionLogFile = join(mkdtempSync(join(tmpdir(), "muse-obj-act-log-")), "action-log.json");
+    const { act, escalate } = createMessagingObjectiveActuator({
+      actionLogFile,
+      destination: "555",
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([telegram])
+    });
+    await act(objective({ id: "obj_ship", spec: "ship the release", userId: "stark" }));
+    await escalate(objective({ id: "obj_ship", spec: "ship the release", userId: "stark" }), "build red 6x");
+
+    const log = await queryActionLog(actionLogFile, { userId: "stark" });
+    expect(log.map((e) => ({ objectiveId: e.objectiveId, result: e.result, what: e.what, why: e.why }))).toEqual(
+      expect.arrayContaining([
+        { objectiveId: "obj_ship", result: "performed", what: "objective met — user notified", why: "ship the release" },
+        {
+          objectiveId: "obj_ship",
+          result: "performed",
+          what: "objective escalated — user notified",
+          why: "ship the release"
+        }
+      ])
+    );
+    expect(log.find((e) => e.what.includes("escalated"))?.detail).toBe("build red 6x");
+  });
+
+  it("no actionLogFile ⇒ unchanged behaviour (delivery only, nothing logged)", async () => {
+    let posted = false;
+    const telegram = new TelegramProvider({
+      baseUrl: "https://tg.test",
+      fetch: async () => {
+        posted = true;
+        return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }), {
+          headers: { "content-type": "application/json" },
+          status: 200
+        });
+      },
+      token: "T"
+    });
+    const { act } = createMessagingObjectiveActuator({
+      destination: "555",
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([telegram])
+    });
+    await act(objective());
+    expect(posted).toBe(true);
   });
 });
