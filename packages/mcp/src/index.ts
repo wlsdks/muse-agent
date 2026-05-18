@@ -427,6 +427,7 @@ export {
   readProactiveFired,
   readSessionLock,
   runDueProactiveNotices,
+  selectProactiveSink,
   writeProactiveFired,
   writeSessionLock,
   type ProactiveActivitySource,
@@ -434,6 +435,8 @@ export {
   type ProactiveFiredEntry,
   type ProactiveFiredKind,
   type ProactiveModelProviderLike,
+  type ProactiveNoticeSink,
+  type ProactiveSinkChoice,
   type RunDueProactiveNoticesOptions,
   type RunDueProactiveNoticesSummary,
   type SessionLockPayload

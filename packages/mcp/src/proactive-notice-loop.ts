@@ -198,6 +198,39 @@ export interface ProactiveActivitySource {
 }
 
 /**
+ * A delivery target for a proactive notice that is not the
+ * messaging registry — e.g. the terminal session the user is
+ * currently looking at. Slice 2 of goal 373 supplies a concrete
+ * REPL renderer; slice 1 only wires the routing seam.
+ */
+export interface ProactiveNoticeSink {
+  deliver(notice: {
+    readonly text: string;
+    readonly title: string;
+    readonly kind: string;
+  }): Promise<void> | void;
+}
+
+export type ProactiveSinkChoice = "terminal" | "messaging";
+
+/**
+ * Route a proactive notice to the surface the user is looking at:
+ * the terminal sink when one is wired AND the activity source has
+ * seen the user on a local surface, messaging otherwise. Staleness
+ * of that presence (a backgrounded terminal) is goal 373 slice 3 —
+ * here "recorded at all" is sufficient.
+ */
+export function selectProactiveSink(
+  activitySource: ProactiveActivitySource | undefined,
+  hasTerminalSink: boolean
+): ProactiveSinkChoice {
+  if (!hasTerminalSink) {
+    return "messaging";
+  }
+  return activitySource?.lastActivityMs() !== undefined ? "terminal" : "messaging";
+}
+
+/**
  * Structural duck-type of `@muse/agent-core`'s `AgentRuntime.run`.
  * Avoids a cross-package dep (@muse/mcp doesn't import agent-core
  * to dodge the circular path that auto-extract had to dodge too).
@@ -317,6 +350,13 @@ export interface RunDueProactiveNoticesOptions {
    * gating: a session lock blocks both flat and Phase-D notices.
    */
   readonly sessionLockFile?: string;
+  /**
+   * When set AND the activity source reports a recorded local
+   * presence, the notice is delivered through this sink instead of
+   * the messaging registry. Messaging stays the fallback when no
+   * presence is recorded.
+   */
+  readonly terminalSink?: ProactiveNoticeSink;
 }
 
 export interface RunDueProactiveNoticesSummary {
@@ -431,6 +471,7 @@ export async function runDueProactiveNotices(
   // the window. Re-checking per-item would let the window expire
   // mid-tick.
   const phaseDActive = isActiveSessionWindow(nowDate, options);
+  const sinkChoice = selectProactiveSink(options.activitySource, options.terminalSink !== undefined);
 
   for (const item of imminent) {
     const candidate: ProactiveFiredEntry = {
@@ -457,11 +498,15 @@ export async function runDueProactiveNotices(
 
     const firedAtIso = now().toISOString();
     try {
-      await sendWithRetry(
-        options.messagingRegistry,
-        options.providerId,
-        { destination: options.destination, text: noticeText }
-      );
+      if (sinkChoice === "terminal" && options.terminalSink) {
+        await options.terminalSink.deliver({ kind: item.kind, text: noticeText, title: item.title });
+      } else {
+        await sendWithRetry(
+          options.messagingRegistry,
+          options.providerId,
+          { destination: options.destination, text: noticeText }
+        );
+      }
       firedThisRun += 1;
       nextFired = [...nextFired, candidate];
       seen.add(key);
@@ -483,7 +528,7 @@ export async function runDueProactiveNotices(
           firedAtIso,
           itemId: item.id,
           kind: item.kind,
-          providerId: options.providerId,
+          providerId: sinkChoice === "terminal" ? "terminal" : options.providerId,
           startIso: item.startsAt.toISOString(),
           status: "delivered",
           text: noticeText,

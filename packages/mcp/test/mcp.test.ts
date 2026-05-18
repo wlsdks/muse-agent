@@ -5867,6 +5867,79 @@ describe("runDueProactiveNotices", () => {
     expect(summary).toMatchObject({ fired: 1, imminent: 1, errors: [] });
     expect(msg.sent).toEqual([{ destination: "@me", providerId: "telegram", text: "⏰ Standup in 5 min" }]);
   });
+
+  it("selectProactiveSink: terminal only when a sink is wired AND presence is recorded", async () => {
+    const { selectProactiveSink } = await import("../src/index.js");
+    expect(selectProactiveSink({ lastActivityMs: () => 1 }, false)).toBe("messaging");
+    expect(selectProactiveSink({ lastActivityMs: () => 1 }, true)).toBe("terminal");
+    expect(selectProactiveSink({ lastActivityMs: () => undefined }, true)).toBe("messaging");
+    expect(selectProactiveSink(undefined, true)).toBe("messaging");
+  });
+
+  it("routes the notice to the terminal sink (not messaging) when local presence is recorded", async () => {
+    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-proactive-route-"));
+    const sidecarFile = join(dir, "proactive-fired.json");
+
+    const fixedNow = new Date("2026-05-12T14:55:00Z");
+    const cal = makeFakeCalendarRegistry([
+      { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-route", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
+    ]);
+    const msg = makeFakeMessagingRegistry();
+    const delivered: Array<{ kind: string; text: string; title: string }> = [];
+    const terminalSink = { deliver: (n: { kind: string; text: string; title: string }) => { delivered.push(n); } };
+
+    const summary = await runDueProactiveNotices({
+      activitySource: { lastActivityMs: () => fixedNow.getTime() - 30_000 },
+      calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+      destination: "@me",
+      messagingRegistry: msg.registry as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
+      now: () => fixedNow,
+      providerId: "telegram",
+      sidecarFile,
+      terminalSink
+    });
+
+    expect(summary).toMatchObject({ fired: 1, imminent: 1, errors: [] });
+    // Assert the chosen sink actually received the notice — not a
+    // "messaging wasn't called" fall-back assertion.
+    expect(delivered).toEqual([{ kind: "calendar", text: "⏰ Standup in 5 min", title: "Standup" }]);
+    expect(msg.sent).toEqual([]);
+  });
+
+  it("falls back to messaging when a terminal sink is wired but no presence is recorded", async () => {
+    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-proactive-route-fb-"));
+    const sidecarFile = join(dir, "proactive-fired.json");
+
+    const fixedNow = new Date("2026-05-12T14:55:00Z");
+    const cal = makeFakeCalendarRegistry([
+      { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-fb", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
+    ]);
+    const msg = makeFakeMessagingRegistry();
+    const delivered: unknown[] = [];
+    const terminalSink = { deliver: (n: unknown) => { delivered.push(n); } };
+
+    const summary = await runDueProactiveNotices({
+      calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+      destination: "@me",
+      messagingRegistry: msg.registry as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
+      now: () => fixedNow,
+      providerId: "telegram",
+      sidecarFile,
+      terminalSink
+    });
+
+    expect(summary).toMatchObject({ fired: 1, imminent: 1, errors: [] });
+    expect(delivered).toEqual([]);
+    expect(msg.sent).toEqual([{ destination: "@me", providerId: "telegram", text: "⏰ Standup in 5 min" }]);
+  });
 });
 
 describe("runDueFollowups", () => {
