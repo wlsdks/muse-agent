@@ -113,4 +113,42 @@ describe("respondToInbound", () => {
     expect(result.handled).toEqual(["telegram:good"]);
     expect(result.errors).toEqual(["telegram:bad: agent timeout"]);
   });
+
+  it("a transient send failure is NOT marked handled (retried next pass), siblings unaffected", async () => {
+    const sent: OutboundMessage[] = [];
+    const provider: MessagingProvider = {
+      describe: () => ({ configured: true, displayName: "telegram", id: "telegram" as MessagingProvider["id"] }),
+      id: "telegram" as MessagingProvider["id"],
+      send: async (message) => {
+        if (message.destination === "flaky") {
+          throw new Error("429 Too Many Requests");
+        }
+        sent.push(message);
+        return {
+          destination: message.destination,
+          messageId: "telegram-out",
+          providerId: "telegram" as MessagingProvider["id"]
+        };
+      }
+    };
+    const registry = new MessagingProviderRegistry([provider]);
+    const runner: InboundAgentRunner = { run: async ({ text }) => `ok:${text}` };
+
+    const result = await respondToInbound({
+      messages: [
+        inbound({ messageId: "drop", source: "flaky", text: "important question" }),
+        inbound({ messageId: "ok", source: "chat-1", text: "fine" })
+      ],
+      registry,
+      runner
+    });
+
+    // Sibling still replied; the failed-send message is NOT handled,
+    // so the caller retries it next pass instead of losing the
+    // computed answer forever.
+    expect(sent).toEqual([{ destination: "chat-1", text: "ok:fine" }]);
+    expect(result.replied).toBe(1);
+    expect(result.handled).toEqual(["telegram:ok"]);
+    expect(result.errors).toEqual(["telegram:drop: 429 Too Many Requests"]);
+  });
 });

@@ -63,14 +63,21 @@ export async function respondToInbound(
           text: message.text
         })
       ).trim();
-      handled.push(key);
       if (reply.length === 0) {
+        // Agent consumed it and chose to stay silent — done, don't
+        // reprocess; nothing to send.
+        handled.push(key);
         continue;
       }
       await options.registry.send(message.providerId, {
         destination: message.source,
         text: reply
       });
+      // Mark handled ONLY after the reply is actually delivered: a
+      // transient send failure (rate limit / network) must be
+      // retried next pass, not silently swallowed with the answer
+      // lost forever.
+      handled.push(key);
       replied += 1;
     } catch (cause) {
       errors.push(`${key}: ${cause instanceof Error ? cause.message : String(cause)}`);
