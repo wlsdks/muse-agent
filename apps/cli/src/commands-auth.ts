@@ -41,6 +41,20 @@ export interface AuthCommandHelpers {
   readonly writeOutput: (io: ProgramIO, value: unknown, textField?: string) => void;
 }
 
+// `Number.parseFloat` is lenient — "24x" / a unit-slip "2d" / "30m"
+// became 24 / 2 / 30, silently mis-sizing the JWT-secret grace
+// window. Use `Number` so the whole token must be a clean numeric
+// literal; an undefined / empty flag keeps the documented 24h
+// default. Returns undefined for any non-negative-number input so
+// the caller emits the existing clear error.
+export function parseGraceHours(raw: string | undefined): number | undefined {
+  if (!raw) return 24;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return undefined;
+  const n = Number(trimmed);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
 export function registerAuthCommands(program: Command, io: ProgramIO, helpers: AuthCommandHelpers): void {
   const auth = program.command("auth").description("Manage CLI credentials");
 
@@ -94,8 +108,8 @@ export function registerAuthCommands(program: Command, io: ProgramIO, helpers: A
     .option("--json", "Emit the new state as JSON (secrets included — pipe to a file you keep safe)")
     .action(async (options: { readonly graceHours?: string; readonly json?: boolean }) => {
       const file = defaultAuthSecretsFile();
-      const graceHours = options.graceHours ? Number.parseFloat(options.graceHours) : 24;
-      if (!Number.isFinite(graceHours) || graceHours < 0) {
+      const graceHours = parseGraceHours(options.graceHours);
+      if (graceHours === undefined) {
         io.stderr("--grace-hours must be a non-negative number\n");
         process.exitCode = 1;
         return;
