@@ -2254,6 +2254,38 @@ describe("muse.tasks loopback server", () => {
       }
     });
 
+    it("resolves two-unit compound durations ('in 2 hours 30 minutes')", async () => {
+      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const base = new Date("2026-05-18T09:00:00.000Z");
+      const now = () => base;
+      const mins = (p: string): number | undefined => {
+        const d = resolveRelativeTimePhrase(p, now);
+        return d ? (d.getTime() - base.getTime()) / 60_000 : undefined;
+      };
+
+      expect(mins("in 2 hours 30 minutes")).toBe(150);
+      expect(mins("in 1 hour 15 minutes")).toBe(75);
+      expect(mins("in 2 hours and 30 minutes")).toBe(150); // optional "and"
+      expect(mins("in 1 day 6 hours")).toBe(30 * 60);
+      expect(mins("in 1 week 2 days")).toBe(9 * 24 * 60);
+      expect(mins("in 0 hours 45 minutes")).toBe(45);
+
+      // No regression: integer / decimal / word-fraction / compact
+      // / and-a-half paths untouched.
+      expect(mins("in 2 hours")).toBe(120);
+      expect(mins("in 1.5 hours")).toBe(90);
+      expect(mins("in half an hour")).toBe(30);
+      expect(mins("in 2 hours and a half")).toBe(150);
+      expect(mins("in 90 mins")).toBe(90);
+
+      // Correctly rejected: month is not a flat-ms unit (excluded
+      // like every fractional sibling); three+ pairs are a distinct
+      // grammar, not this bounded two-unit slice.
+      for (const bad of ["in 1 month 2 days", "in 2 hours 30 minutes 10 seconds"]) {
+        expect(resolveRelativeTimePhrase(bad, now)).toBeUndefined();
+      }
+    });
+
     it("parses 'in N month(s)' with calendar-month math (goal 110)", async () => {
       const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
       const fixed = new Date("2026-05-10T12:00:00Z");

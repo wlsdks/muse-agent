@@ -97,6 +97,7 @@ delete an open row, never rewrite another goal's status.
 | 449 | [Retryable upstream failure → HTTP 503, not flat 500](449-api-retryable-upstream-503.md) | fix / robustness | done — 448 HTTP-boundary sibling; transient ModelProviderError now 503 UPSTREAM_UNAVAILABLE so clients can back off (mutation-proven) |
 | 450 | [Piper runner survives a child that closes stdin early](450-piper-runner-stdin-epipe-guard.md) | fix / safety | done — unhandled stdin EPIPE (bad model / crash) no longer takes down the whole process; clean SPAWN/EXIT rejection (mutation-proven) |
 | 451 | [truncateErrorBody never leaves a lone surrogate at the cut](451-truncate-error-body-surrogate-guard.md) | fix / robustness | done — 421 sibling; split-astral error body no longer emits invalid UTF-8 into API bodies / chat forwards (mutation-proven) |
+| 452 | [Reminders/tasks accept two-unit compound durations](452-relative-time-two-unit-compound.md) | feat / UX | done — "in 2 hours 30 minutes" / "in 1 day 6 hours" now resolve; fully discharges the 445 deferred compound/decimal discovery (mutation-proven) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
@@ -172,9 +173,11 @@ Append one line when a discovery path is evaluated and deferred:
   genuine (b)-refinement of the existing grammar, not new surface;
   deferred this iter only to avoid same-area churn right after the
   440 due-date fix (Step-8). Next free non-time iteration may take it.
-  (PARTIALLY RESOLVED 445: decimal notation "in 1.5 hours" /
-  "in 2.5 days" delivered + tested. Remaining: compound two-pair
-  "in 2 hours 30 minutes" — a distinct grammar, still deferred.)
+  (RESOLVED: 445 delivered decimal notation "in 1.5 hours" /
+  "in 2.5 days"; 452 delivered two-unit compound
+  "in 2 hours 30 minutes" / "in 1 day 6 hours". Discovery fully
+  discharged — three-or-more-pair chains intentionally out of
+  scope, not a dangling promise.)
 - P0 audit — packages/agent-core/test/p0-seam.test.ts — PASS: P0's
   four CAPABILITIES checks pass together (agent-core 555 incl.
   auto-extract-tool-turn / episodic-recall-embedding /

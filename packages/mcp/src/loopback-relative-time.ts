@@ -85,6 +85,8 @@ const UNIT_AND_A_HALF =
   /^in\s+(\d+|an?)\s+(second|minute|hour|day|week)s?\s+and\s+a\s+half$/u;
 const DECIMAL_OF_UNIT =
   /^in\s+(\d+\.\d+)\s+(second|minute|hour|day|week)s?$/u;
+const TWO_UNIT_COMPOUND =
+  /^in\s+(\d+)\s+(second|minute|hour|day|week)s?\s+(?:and\s+)?(\d+)\s+(second|minute|hour|day|week)s?$/u;
 
 // Precise fractional/compound durations the plain `in N <unit>`
 // pattern can't express: "in half an hour" (30m), "in a quarter
@@ -115,6 +117,17 @@ function resolveFractionalDurationMs(phrase: string): number | undefined {
     const unitMs = FLAT_UNIT_MS[decimal[2] ?? ""];
     if (unitMs === undefined || !Number.isFinite(amount)) return undefined;
     return Math.round(amount * unitMs);
+  }
+  const compoundPair = TWO_UNIT_COMPOUND.exec(phrase);
+  if (compoundPair) {
+    const n1 = Number.parseInt(compoundPair[1] ?? "", 10);
+    const ms1 = FLAT_UNIT_MS[compoundPair[2] ?? ""];
+    const n2 = Number.parseInt(compoundPair[3] ?? "", 10);
+    const ms2 = FLAT_UNIT_MS[compoundPair[4] ?? ""];
+    if (ms1 === undefined || ms2 === undefined || !Number.isFinite(n1) || !Number.isFinite(n2)) {
+      return undefined;
+    }
+    return n1 * ms1 + n2 * ms2;
   }
   return undefined;
 }
