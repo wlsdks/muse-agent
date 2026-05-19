@@ -105,6 +105,7 @@ delete an open row, never rewrite another goal's status.
 | 457 | [Empty keyword can't make an agent spec match every task](457-agent-spec-empty-keyword-no-match-all.md) | fix / correctness | done — 433/441/453 load-path-invariant class; `""` keyword no longer hijacks sub-agent routing at confidence 0.5 (mutation-proven) |
 | 458 | [Direct coverage for the guard-pipeline fail-close/open contract](458-guard-pipeline-failclose-coverage.md) | test / security | done — 407 pipeline-layer sibling; fail-close-on-thrown-guard keystone pinned (was implicit-only; mutation-proven) |
 | 459 | [Corrupt job.timezone can't crash scheduled-job rendering](459-scheduler-datevars-invalid-timezone-fallback.md) | fix / robustness | done — 441 load-path sibling; invalid persisted timezone → UTC fallback, not a RangeError that breaks dispatch (mutation-proven) |
+| 460 | [Direct fail-closed coverage for the autonomous-action consent gate](460-consent-store-failclosed-coverage.md) | test / security | done — 458-class; hasConsent exact-scope/no-broaden + corrupt→false + malformed-filtered pinned (was zero direct coverage; mutation-proven) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
