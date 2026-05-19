@@ -114,15 +114,21 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         ? { destination: viaDestination, providerId: viaProvider }
         : undefined;
 
+      // Validate before dispatch in BOTH modes: `parseReminderDueAt`
+      // is the same grammar the REST route uses, so a bad `<when>`
+      // gets the identical actionable error (with examples) whether
+      // or not `--local` is set — no degraded API error, no wasted
+      // round-trip on input the server would only reject anyway.
+      const resolvedDueAt = parseReminderDueAt(when, () => new Date());
+      if (resolvedDueAt instanceof Error) {
+        throw resolvedDueAt;
+      }
+
       let payload: Record<string, unknown>;
       if (options.local) {
-        const dueAt = parseReminderDueAt(when, () => new Date());
-        if (dueAt instanceof Error) {
-          throw dueAt;
-        }
         const created: PersistedReminder = {
           createdAt: new Date().toISOString(),
-          dueAt,
+          dueAt: resolvedDueAt,
           id: `rem_${randomUUID()}`,
           status: "pending",
           text,

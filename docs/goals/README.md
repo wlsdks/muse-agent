@@ -64,6 +64,7 @@ delete an open row, never rewrite another goal's status.
 | 416 | [Exemplar scoring keeps single-syllable Korean tokens](416-exemplar-korean-single-syllable-tokens.md) | fix / quality | done — Korean 1-syllable query nouns no longer dropped from few-shot scoring |
 | 417 | [Bare Korean time phrase resolves to today](417-bare-korean-time-phrase.md) | fix / consistency | done — `오후 5시`/`정오`/`자정` resolve like `5pm`/`noon`, not error |
 | 418 | [Episodes summary compares parsed instants](418-episodes-summary-instant-compare.md) | fix / consistency | done — `muse status` "last session" no longer wrong on mixed-precision/tz endedAt |
+| 419 | [`muse remind` validates `<when>` before dispatch](419-remind-predispatch-when-validation.md) | fix / UX | done — remote mode fails fast with the actionable error, no doomed round-trip; +command test |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
