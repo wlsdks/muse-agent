@@ -2220,6 +2220,40 @@ describe("muse.tasks loopback server", () => {
       expect(resolveRelativeTimePhrase("in a couple of hours", now)).toBeUndefined();
     });
 
+    it("resolves decimal-notation durations ('in 1.5 hours', 'in 2.5 days')", async () => {
+      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const base = new Date("2026-05-18T09:00:00.000Z");
+      const now = () => base;
+      const mins = (p: string): number | undefined => {
+        const d = resolveRelativeTimePhrase(p, now);
+        return d ? (d.getTime() - base.getTime()) / 60_000 : undefined;
+      };
+
+      expect(mins("in 1.5 hours")).toBe(90);
+      expect(mins("in 0.5 hours")).toBe(30);
+      expect(mins("in 0.25 hours")).toBe(15);
+      expect(mins("in 2.5 days")).toBe(3600);
+      expect(mins("in 1.5 minutes")).toBe(1.5);
+      expect(mins("in 1.5 weeks")).toBe(15120);
+      expect(mins("in 1.5 hour")).toBe(90); // singular unit still valid
+      // Sub-millisecond exactness preserved (Math.round keeps it integer ms).
+      expect(resolveRelativeTimePhrase("in 0.5 seconds", now)?.toISOString())
+        .toBe("2026-05-18T09:00:00.500Z");
+
+      // No regression: integer / word-fraction / compact paths untouched.
+      expect(mins("in 2 hours")).toBe(120);
+      expect(mins("in half an hour")).toBe(30);
+      expect(mins("in 90 mins")).toBe(90);
+
+      // Correctly rejected: fractional calendar months are ill-defined
+      // (month is excluded here exactly as in the word-fraction
+      // resolvers); a missing leading or trailing digit is not a
+      // decimal; unknown units fail.
+      for (const bad of ["in 1.5 months", "in .5 hours", "in 1. hours", "in 1.5 fortnights"]) {
+        expect(resolveRelativeTimePhrase(bad, now)).toBeUndefined();
+      }
+    });
+
     it("parses 'in N month(s)' with calendar-month math (goal 110)", async () => {
       const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
       const fixed = new Date("2026-05-10T12:00:00Z");
