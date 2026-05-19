@@ -75,6 +75,7 @@ delete an open row, never rewrite another goal's status.
 | 427 | [`MUSE_*` path overrides expand a leading `~`](427-resolver-leading-tilde-expansion.md) | fix / robustness | done — `MUSE_*_FILE=~/x` no longer writes state into a literal ./~/ dir |
 | 428 | [Non-finite token cost can't poison the aggregate](428-token-cost-nan-guard.md) | fix / robustness | done — one NaN/Infinity cost no longer turns `muse cost` into NaN + scrambles order |
 | 429 | [Tasks invalid-dueAt error code consistency](429-tasks-dueat-error-code-consistency.md) | fix / consistency | done — PATCH /api/tasks now returns INVALID_TASK_DUE_AT like POST, not BAD_DUE_AT |
+| 430 | [Direct coverage for `uniqueCommandPrefix`](430-uniquecommandprefix-direct-coverage.md) | test / robustness | done — the typo-recovery prefix resolver now has direct unit coverage (was implicit-only) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

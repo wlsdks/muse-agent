@@ -577,7 +577,7 @@ function listAllCommandNames(program: Command): readonly string[] {
  * ("re" → recall/remember/remind) must stay silent rather than
  * guess wrong.
  */
-function uniqueCommandPrefix(input: string, names: readonly string[]): string | undefined {
+export function uniqueCommandPrefix(input: string, names: readonly string[]): string | undefined {
   const prefix = input.trim().toLowerCase();
   if (prefix.length < 2) return undefined;
   const matches = names.filter((name) => name.toLowerCase().startsWith(prefix));

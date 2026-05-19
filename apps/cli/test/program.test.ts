@@ -5,7 +5,7 @@ import path from "node:path";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import { Command } from "commander";
-import { createProgram, defaultConfigPath } from "../src/program.js";
+import { createProgram, defaultConfigPath, uniqueCommandPrefix } from "../src/program.js";
 import { registerListenCommand, type ListenShells } from "../src/commands-listen.js";
 import { formatLocalDateTime } from "../src/human-formatters.js";
 import { appendChatTurn } from "../src/tui.js";
@@ -7833,5 +7833,38 @@ describe("cli program", () => {
       if (prevUser === undefined) delete process.env.MUSE_USER_ID;
       else process.env.MUSE_USER_ID = prevUser;
     }
+  });
+});
+
+describe("uniqueCommandPrefix", () => {
+  const names = ["status", "stats", "tasks", "today", "remind", "recall"];
+
+  it("resolves an unambiguous prefix to the single matching command", () => {
+    expect(uniqueCommandPrefix("rem", names)).toBe("remind");
+    expect(uniqueCommandPrefix("tas", names)).toBe("tasks");
+  });
+
+  it("is case-insensitive", () => {
+    expect(uniqueCommandPrefix("REM", names)).toBe("remind");
+  });
+
+  it("returns undefined for an ambiguous prefix instead of guessing", () => {
+    // "stat" → status AND stats; "t" handled by the length guard.
+    expect(uniqueCommandPrefix("stat", names)).toBeUndefined();
+    expect(uniqueCommandPrefix("re", names)).toBeUndefined(); // remind + recall
+  });
+
+  it("requires at least 2 chars (a 1-char prefix is too weak to disambiguate)", () => {
+    expect(uniqueCommandPrefix("t", names)).toBeUndefined();
+    expect(uniqueCommandPrefix("", names)).toBeUndefined();
+    expect(uniqueCommandPrefix("  ", names)).toBeUndefined();
+  });
+
+  it("returns undefined when nothing starts with the prefix", () => {
+    expect(uniqueCommandPrefix("zzz", names)).toBeUndefined();
+  });
+
+  it("an exact full command name is still a unique prefix of itself", () => {
+    expect(uniqueCommandPrefix("today", names)).toBe("today");
   });
 });
