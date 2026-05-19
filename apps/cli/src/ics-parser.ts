@@ -147,19 +147,32 @@ function parseIcsDateValue(raw: string, isDate: boolean): Date | undefined {
     const year = Number.parseInt(value.slice(0, 4), 10);
     const month = Number.parseInt(value.slice(4, 6), 10);
     const day = Number.parseInt(value.slice(6, 8), 10);
-    return new Date(Date.UTC(year, month - 1, day));
+    const date = new Date(Date.UTC(year, month - 1, day));
+    // Reject an impossible calendar date instead of letting Date.UTC
+    // silently roll it over (20260230 → Mar 2) — a malformed .ics
+    // must not import an event on the wrong day.
+    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+      return undefined;
+    }
+    return date;
   }
   const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/u.exec(value);
   if (!m) return undefined;
   const [, y, mo, d, hh, mm, ss] = m;
-  return new Date(Date.UTC(
-    Number.parseInt(y!, 10),
-    Number.parseInt(mo!, 10) - 1,
-    Number.parseInt(d!, 10),
-    Number.parseInt(hh!, 10),
-    Number.parseInt(mm!, 10),
-    Number.parseInt(ss!, 10)
-  ));
+  const year = Number.parseInt(y!, 10);
+  const month = Number.parseInt(mo!, 10);
+  const day = Number.parseInt(d!, 10);
+  const hour = Number.parseInt(hh!, 10);
+  const minute = Number.parseInt(mm!, 10);
+  const second = Number.parseInt(ss!, 10);
+  const dt = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  if (
+    dt.getUTCFullYear() !== year || dt.getUTCMonth() !== month - 1 || dt.getUTCDate() !== day
+    || dt.getUTCHours() !== hour || dt.getUTCMinutes() !== minute || dt.getUTCSeconds() !== second
+  ) {
+    return undefined;
+  }
+  return dt;
 }
 
 // Single left-to-right pass: an escaped backslash must be consumed

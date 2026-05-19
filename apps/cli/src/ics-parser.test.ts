@@ -71,4 +71,24 @@ describe("parseIcsEvents", () => {
       .toEqual([65, 92, 110, 66, 10, 67]);
     expect(ev?.location).toBe("Rm,5;x");
   });
+
+  it("drops an impossible calendar date instead of silently rolling it over (goal-440 sibling)", () => {
+    // Date.UTC(2026, 1, 30) rolls Feb 30 → Mar 2; an importer must
+    // not put the event on the wrong day. Both forms must reject.
+    for (const dtstart of [
+      "DTSTART;VALUE=DATE:20260230", // Feb 30
+      "DTSTART;VALUE=DATE:20261345", // month 13 / day 45
+      "DTSTART:20260230T120000Z",    // Feb 30, timed
+      "DTSTART:20260118T250000Z",    // hour 25
+      "DTSTART:20260118T006099Z"     // minute 60 / second 99
+    ]) {
+      expect(parseIcsEvents(vevent(["SUMMARY:Bad", dtstart]))).toEqual([]);
+    }
+
+    // No regression: a genuine leap day and an ordinary date still parse.
+    const [leap] = parseIcsEvents(vevent(["SUMMARY:Leap", "DTSTART;VALUE=DATE:20280229"]));
+    expect(leap?.startsAt.toISOString()).toBe("2028-02-29T00:00:00.000Z");
+    const [ok] = parseIcsEvents(vevent(["SUMMARY:OK", "DTSTART:20261231T235959Z"]));
+    expect(ok?.startsAt.toISOString()).toBe("2026-12-31T23:59:59.000Z");
+  });
 });

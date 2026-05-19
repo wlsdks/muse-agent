@@ -112,6 +112,7 @@ delete an open row, never rewrite another goal's status.
 | 464 | [queryActionLog orders by parsed instant, not lexicographic ISO](464-action-log-review-instant-order.md) | fix / correctness | done — 461/418 sibling (the named "Parallel to queryActionLog"); P6 accountability log no longer mis-orders newest action (mutation-proven) |
 | 465 | [Corrupt firedAtMs can't crash the `muse pattern` fired list](465-pattern-fired-list-invalid-date-guard.md) | fix / robustness | done — 453/459 sibling; one Invalid-Date record no longer RangeErrors the whole listing → "(unknown time)" (mutation-proven) |
 | 466 | [filterFresh instant-compare — cross-provider timestamp can't drop an inbound message](466-inbox-filterfresh-instant-compare.md) | fix / correctness | done — 461/464 functional sibling; mixed provider precision/offset no longer silently drops a genuinely-new inbound message (mutation-proven) |
+| 467 | [parseIcsDateValue rejects an impossible calendar date instead of silent rollover](467-ics-parser-impossible-date-reject.md) | fix / correctness | done — 440 ICS-import sibling; a malformed `.ics` impossible date no longer imports a `muse calendar import` event on the wrong day/time (mutation-proven) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
