@@ -4,6 +4,7 @@ import { SchedulerValidationError } from "./scheduler-errors.js";
 import {
   defaultRetryCount,
   defaultTimezone,
+  computeNextRunAt,
   requireText,
   validateCronExpression,
   validateExecutionTimeout,
@@ -35,6 +36,30 @@ describe("validateCronExpression", () => {
   });
   it("throws when cron-parser rejects the value", () => {
     expect(() => validateCronExpression("not a cron")).toThrow(SchedulerValidationError);
+  });
+  it("accepts cron nickname macros the parser+runtime support (consistent with computeNextRunAt)", () => {
+    for (const macro of ["@daily", "@hourly", "@weekly", "@monthly", "@yearly", "@annually"]) {
+      expect(() => validateCronExpression(macro)).not.toThrow();
+      // The runtime that actually schedules the job accepts it too.
+      expect(() =>
+        computeNextRunAt({ cronExpression: macro, timezone: "UTC" }, new Date("2026-05-19T08:00:00Z"))
+      ).not.toThrow();
+    }
+    expect(
+      computeNextRunAt({ cronExpression: "@daily", timezone: "UTC" }, new Date("2026-05-19T08:00:00Z")).toISOString()
+    ).toBe("2026-05-20T00:00:00.000Z");
+  });
+  it("still rejects a macro the pinned runtime can't resolve (validation == computeNextRunAt)", () => {
+    // `@every 5m` and `@midnight` are NOT supported by the pinned
+    // cron-parser (computeNextRunAt throws on both) — validation
+    // must stay consistent and never green-light a cron the
+    // scheduler would then fail to compute a next-run for.
+    for (const bad of ["@every 5m", "@midnight"]) {
+      expect(() => validateCronExpression(bad)).toThrow(SchedulerValidationError);
+      expect(() =>
+        computeNextRunAt({ cronExpression: bad, timezone: "UTC" }, new Date("2026-05-19T08:00:00Z"))
+      ).toThrow();
+    }
   });
 });
 

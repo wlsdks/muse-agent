@@ -47,10 +47,19 @@ export function validateTimezone(timezone: string): void {
 }
 
 export function validateCronExpression(cron: string): void {
-  const fields = cron.trim().split(/\s+/u);
+  const trimmed = cron.trim();
 
-  if (fields.length !== 5 && fields.length !== 6) {
-    throw new SchedulerValidationError(`Invalid cron expression: ${cron}`);
+  // Nickname macros (`@daily`, `@hourly`, …) are a single token,
+  // not 5/6 fields — the field-count gate only makes sense for
+  // standard numeric expressions. Defer macros wholly to the
+  // parser so validation matches computeNextRunAt exactly (it
+  // accepts the macros this parser supports and rejects the ones
+  // it doesn't, e.g. `@every` in the pinned version).
+  if (!trimmed.startsWith("@")) {
+    const fields = trimmed.split(/\s+/u);
+    if (fields.length !== 5 && fields.length !== 6) {
+      throw new SchedulerValidationError(`Invalid cron expression: ${cron}`);
+    }
   }
 
   try {

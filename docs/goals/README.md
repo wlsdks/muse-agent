@@ -58,6 +58,7 @@ delete an open row, never rewrite another goal's status.
 | 410 | [Close named-invisible-entity injection evasion](410-named-invisible-entity-evasion.md) | fix / security | done — `&ZeroWidthSpace;`/`&NoBreak;` no longer evade injection/PII/leakage guards |
 | 411 | [Corrupt-store quarantine for the 2 history audit logs](411-history-store-corrupt-quarantine.md) | fix / data-safety | done — proactive/reminder history now quarantined like their 10 siblings, not destroyed |
 | 412 | [CalDAV ICS line unfolding (RFC 5545)](412-caldav-ics-line-unfolding.md) | fix / robustness | done — folded SUMMARY/LOCATION/DESCRIPTION no longer truncated at octet 75 |
+| 413 | [Cron macro validation consistency](413-cron-macro-validation-consistency.md) | fix / consistency | done — `@daily`/`@hourly`/… now accepted, matching computeNextRunAt |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
