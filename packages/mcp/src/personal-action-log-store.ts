@@ -107,7 +107,23 @@ export async function queryActionLog(
 ): Promise<readonly ActionLogEntry[]> {
   const all = await readActionLog(file);
   const scoped = query.userId ? all.filter((e) => e.userId === query.userId) : all;
-  return [...scoped].sort((a, b) => b.when.localeCompare(a.when));
+  return [...scoped].sort((a, b) => {
+    // Compare parsed instants, not raw ISO strings: lexicographic
+    // order is wrong across mixed precision ("…00.500Z" sorts
+    // before "…01Z") and timezone offsets, which would mis-order
+    // this newest-first accountability surface. Unparseable values
+    // keep a deterministic string order.
+    const aMs = Date.parse(a.when);
+    const bMs = Date.parse(b.when);
+    if (Number.isFinite(aMs) && Number.isFinite(bMs)) {
+      if (aMs !== bMs) {
+        return bMs - aMs;
+      }
+    } else if (a.when !== b.when) {
+      return b.when.localeCompare(a.when);
+    }
+    return 0;
+  });
 }
 
 export function serializeActionLogEntry(entry: ActionLogEntry): JsonObject {

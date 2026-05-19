@@ -65,6 +65,19 @@ describe("personal-action-log-store — P6-b1 reviewable autonomous-action log",
     expect(mine.map((e) => e.id)).toEqual(["new", "old"]);
   });
 
+  it("newest-first is by parsed instant, not lexicographic ISO (mixed precision / offset)", async () => {
+    const file = join(tmpDir(), "action-log.json");
+    // UTC instants: zlate (May20 01:00:01) > xmid (May20 00:00:00.500)
+    // > yold (May20 00:00:00.000). But the strings sort
+    // lexicographically yold > xmid > zlate (the 418/461 footgun:
+    // "…00.500Z" < "…00Z", and the "-05:00" day is "…05-19…").
+    await appendActionLog(file, { id: "xmid", result: "performed", userId: "stark", what: "x", when: "2026-05-20T00:00:00.500Z", why: "r" });
+    await appendActionLog(file, { id: "yold", result: "performed", userId: "stark", what: "y", when: "2026-05-20T00:00:00Z", why: "r" });
+    await appendActionLog(file, { id: "zlate", result: "performed", userId: "stark", what: "z", when: "2026-05-19T20:00:01-05:00", why: "r" });
+    expect((await queryActionLog(file, { userId: "stark" })).map((e) => e.id))
+      .toEqual(["zlate", "xmid", "yold"]);
+  });
+
   it("an autonomous consented action produces a rationale-bearing log entry the user can query", async () => {
     const dir = tmpDir();
     const objectivesFile = join(dir, "objectives.json");

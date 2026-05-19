@@ -109,6 +109,7 @@ delete an open row, never rewrite another goal's status.
 | 461 | [queryVetoes orders by parsed instant, not lexicographic ISO](461-veto-review-instant-order.md) | fix / correctness | done — 418 sibling; veto review surface no longer mis-orders across mixed-precision/offset timestamps (mutation-proven) |
 | 462 | [Direct coverage for the derived-agent-metrics fan-out](462-derived-agent-metrics-fanout-coverage.md) | test / observability | done — 458-class; SLO/drift feed + inner-forward fan-out pinned (was zero direct coverage; mutation-proven) |
 | 463 | [readWebSearchEnvSnapshot rejects a lenient-prefix MAX_USES typo](463-websearch-maxuses-strict-parse.md) | fix / robustness | done — 414/444 sibling; `MUSE_WEB_SEARCH_MAX_USES=5x` no longer shown as valid env-config on muse doctor (mutation-proven) |
+| 464 | [queryActionLog orders by parsed instant, not lexicographic ISO](464-action-log-review-instant-order.md) | fix / correctness | done — 461/418 sibling (the named "Parallel to queryActionLog"); P6 accountability log no longer mis-orders newest action (mutation-proven) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
@@ -172,6 +173,17 @@ Append one line when a discovery path is evaluated and deferred:
   kept separate so neither half is half-shipped.
   (RESOLVED 378 s5: createNotesInvestigator over the primary notes
   provider wired into tick-daemons; P0-b3 parent flipped.)
+- clampPositive lenient-parseInt vs strict parseInteger — iter 464
+  — deferred (NOT a bug): `provider-utils.clampPositive` ("every
+  MUSE_*_LIMIT/CAPACITY/TOPK knob") uses lenient `Number.parseInt`
+  ("5x"→5) while the sibling `env-parsers.parseInteger` (414/444)
+  is strict. Looks like a 463-class sibling, BUT
+  `provider-utils.test.ts` explicitly pins the leniency
+  ("lenient prefix parse", "pins behaviour vs a future Number()
+  refactor") — a deliberate human design decision. Not changed:
+  the loop must not override a deliberate tested choice
+  (no-manufacturing). Revisit only on an explicit human call to
+  unify the two env-int parsers.
 - KyselyLatencyQuery vs InMemory divergence — iter 443 — deferred:
   in-memory `computeDurationMs` clamps negative durations to 0 and
   `matchesLatencyFilter` uses `startsWith`, but the Kysely SQL
