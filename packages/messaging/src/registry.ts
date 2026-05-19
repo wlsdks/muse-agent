@@ -47,7 +47,7 @@ export class MessagingProviderRegistry {
       throw new MessagingProviderError(
         providerId,
         "PROVIDER_NOT_FOUND",
-        `Messaging provider not registered: ${providerId}`
+        `Messaging provider not registered: ${providerId}${registeredHint([...this.providers.keys()])}`
       );
     }
     return provider;
@@ -76,4 +76,8 @@ export class MessagingProviderRegistry {
     }
     return provider.fetchInbound(options);
   }
+}
+
+function registeredHint(ids: readonly string[]): string {
+  return ids.length > 0 ? ` (registered: ${ids.join(", ")})` : " (none registered)";
 }

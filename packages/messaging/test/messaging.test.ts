@@ -1039,6 +1039,19 @@ describe("MessagingProviderRegistry", () => {
     expect(() => registry.require("telegram")).toThrow(MessagingProviderError);
   });
 
+  it("the unknown-id error names the registered providers so a misconfigured daemon is recoverable", () => {
+    const empty = new MessagingProviderRegistry();
+    expect(() => empty.require("telegram")).toThrow(/none registered/u);
+
+    const tg = new TelegramProvider({
+      baseUrl: "https://tg.test",
+      fetch: async () => fakeJsonResponse({ ok: true, result: { message_id: 1 } }),
+      token: "x"
+    });
+    const registry = new MessagingProviderRegistry([tg]);
+    expect(() => registry.require("telgram")).toThrow(/registered: telegram/u);
+  });
+
   it("scrubs credential shapes from outbound text at the dispatch chokepoint (goal 111)", async () => {
     // Capture the text the provider actually sees so the assertion
     // pins the *post-redaction* form, not the pre-call form.

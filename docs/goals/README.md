@@ -118,6 +118,7 @@ delete an open row, never rewrite another goal's status.
 | 470 | [muse auth rotate-jwt --grace-hours strict-parses its value](470-auth-grace-hours-strict-parse.md) | fix / safety | done — 414/444/463/469 sibling on a safety flag; `--grace-hours 2d`/`24x` no longer slips past the existing guard as its numeric prefix → no unintended JWT-secret grace window (mutation-proven; first direct `commands-auth` coverage) |
 | 471 | [muse feeds decodes HTML entities in RSS/Atom titles](471-feeds-html-entity-decoding.md) | fix / UX | done — `htmlEntities:true` on the feed parser; `&rsquo;`/`&#8217;`/`&mdash;`/`&hellip;` no longer shown literally in `muse feeds`; terminal-safety boundary preserved (mutation-proven) |
 | 472 | [voice registry unknown-id error names the registered providers](472-voice-registry-unknown-id-hint.md) | fix / error-UX | done — `requireStt/requireTts` now append `(registered: …)`/`(none registered)` so a typo'd voice providerId via the API is recoverable; error code unchanged (mutation-proven) |
+| 473 | [messaging registry unknown-id error names the registered providers](473-messaging-registry-unknown-id-hint.md) | fix / error-UX | done — goal-472 sibling slice; `MessagingProviderRegistry.require` now hints, so a misconfigured proactive/reminder/objectives/inbound daemon is recoverable; identical wording to 472; code unchanged (mutation-proven) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
@@ -128,14 +129,13 @@ human-operated; see its md.
 Append one line when a discovery path is evaluated and deferred:
 `- <area> — iter <hash> — deferred: <reason>`
 
-- sibling-registry unknown-id dead-end errors — iter 472 — deferred:
-  `@muse/calendar` registry.ts, `@muse/mcp` tasks/notes-providers,
-  `@muse/messaging` registry.ts throw the same hint-less
-  `… not registered: <id>` that goal 472 fixed for `@muse/voice`.
-  Real cross-cutting actionable-error gap; left for a future
-  iteration to keep 472 tight-scope (4 packages in one commit =
-  Step-8 over-broad churn). Apply the goal-472 `registeredHint`
-  pattern per package.
+- sibling-registry unknown-id dead-end errors — iter 472 — deferred
+  (partially discharged by 473): `@muse/calendar` registry.ts and
+  `@muse/mcp` tasks/notes-providers still throw the same hint-less
+  `… not registered: <id>` that goals 472 (`@muse/voice`) and 473
+  (`@muse/messaging`) fixed. Real cross-cutting actionable-error
+  gap; one package per iteration to stay tight-scope. Apply the
+  goal-472/473 `registeredHint` pattern verbatim per package.
 - smoke:live picker model speed — iter a147d939 — deferred: owner's
   Ollama-only picker fix confirmed working (real `/api/chat`
   round-trips, HTTP 200, ~50-60s each); it prefers the largest
