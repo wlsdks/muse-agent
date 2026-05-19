@@ -61,6 +61,7 @@ delete an open row, never rewrite another goal's status.
 | 413 | [Cron macro validation consistency](413-cron-macro-validation-consistency.md) | fix / consistency | done — `@daily`/`@hourly`/… now accepted, matching computeNextRunAt |
 | 414 | [Strict parseInteger env parsing](414-parseinteger-strict-env-parsing.md) | fix / safety | done — typo'd `MUSE_*=16k` falls back instead of silently becoming 16 |
 | 415 | [OpenAI Responses tool-arg object guard](415-openai-responses-toolarg-object-guard.md) | fix / consistency | done — Responses path now `{}`-guards non-object args like the chat+Ollama paths |
+| 416 | [Exemplar scoring keeps single-syllable Korean tokens](416-exemplar-korean-single-syllable-tokens.md) | fix / quality | done — Korean 1-syllable query nouns no longer dropped from few-shot scoring |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

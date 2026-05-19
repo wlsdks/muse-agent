@@ -385,6 +385,29 @@ Report the successful issue lookup, state the pull request lookup failed, and of
     expect(rendered).toContain("[예시 1 - 한국어 비교]");
   });
 
+  it("scores a single-syllable Korean query term (책=book) instead of silently dropping it", async () => {
+    const md = `
+[예시 1 - 책 추천]
+
+<scenario>사용자 질문: "책 추천해줘"</scenario>
+
+<example type="good">좋은 책을 추천합니다.</example>
+
+[예시 2 - 날씨 안내]
+
+<scenario>사용자 질문: "오늘 날씨 어때"</scenario>
+
+<example type="good">오늘 날씨 정보입니다.</example>
+`;
+    const retriever = new InMemoryExemplarRetriever(md, { topK: 1 });
+    // Pre-fix: "책" is length 1 → filtered out → zero query tokens →
+    // no scored match → fallback returns the WHOLE file (both
+    // examples). Post-fix the single Hangul syllable is a real token.
+    const rendered = await retriever.retrieveTopK("책", 1);
+    expect(rendered).toContain("[예시 1 - 책 추천]");
+    expect(rendered).not.toContain("[예시 2 - 날씨 안내]");
+  });
+
   it("falls back to full exemplar content when retrieval has no usable match", async () => {
     const fallback = new FullExemplarRetriever("full fallback examples");
     const retriever = new InMemoryExemplarRetriever(exemplarMarkdown, {

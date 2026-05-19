@@ -533,7 +533,11 @@ function tokenSet(value: string): Set<string> {
       .toLowerCase()
       .split(/[^a-z0-9가-힣]+/u)
       .map((token) => token.trim())
-      .filter((token) => token.length >= 2)
+      // A single ASCII letter/digit is noise, but a single Hangul
+      // syllable is a full content word (물=water, 책=book, 돈=money)
+      // — Korean is a primary user language; dropping it silently
+      // discarded the most salient term from exemplar scoring.
+      .filter((token) => token.length >= 2 || /[가-힣]/u.test(token))
   );
 }
 
