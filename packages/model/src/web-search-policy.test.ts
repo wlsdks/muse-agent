@@ -79,6 +79,26 @@ describe("decideWebSearchPolicy", () => {
     ).toBe(5);
   });
 
+  it("a lenient-prefix MAX_USES typo falls through instead of being silently accepted (goal-463 runtime sibling)", () => {
+    for (const bad of ["3x", "30s", "1e3", "5.9", "12abc", "1_000", "-3", "0", " "]) {
+      expect(
+        decideWebSearchPolicy({
+          model: baseModel,
+          settings: { webSearch: { maxUses: 9 } },
+          env: { MUSE_WEB_SEARCH_MAX_USES: bad }
+        }).maxUses,
+        `"${bad}" must not be accepted as an env budget`
+      ).toBe(9);
+    }
+    expect(
+      decideWebSearchPolicy({
+        model: baseModel,
+        settings: { webSearch: { maxUses: 9 } },
+        env: { MUSE_WEB_SEARCH_MAX_USES: "7" }
+      }).maxUses
+    ).toBe(7);
+  });
+
   it("env MUSE_WEB_SEARCH=on is no-op when nothing else disables", () => {
     const r = decideWebSearchPolicy({
       model: baseModel,

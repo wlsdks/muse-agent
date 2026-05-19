@@ -43,11 +43,22 @@ function resolveMaxUses(
 ): number {
   const envRaw = env.MUSE_WEB_SEARCH_MAX_USES;
   if (envRaw !== undefined) {
-    const n = Number.parseInt(envRaw, 10);
-    if (Number.isFinite(n) && n > 0) return n;
+    const n = strictPositiveInt(envRaw);
+    if (n !== undefined) return n;
   }
   if (typeof settings.maxUses === "number" && settings.maxUses > 0) {
     return settings.maxUses;
   }
   return DEFAULT_MAX_USES;
+}
+
+// Number.parseInt is lenient: a typo'd "3x" or unit-slip "30s"
+// silently became 3 / 30, disagreeing with what `muse doctor`
+// reports as an invalid env value. Require the whole trimmed
+// token to be a plain positive integer instead.
+function strictPositiveInt(raw: string): number | undefined {
+  const trimmed = raw.trim();
+  if (!/^[+-]?\d+$/u.test(trimmed)) return undefined;
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
