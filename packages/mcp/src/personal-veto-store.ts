@@ -97,7 +97,23 @@ export async function queryVetoes(
 ): Promise<readonly ActionVeto[]> {
   const all = await readVetoes(file);
   const scoped = query.userId ? all.filter((v) => v.userId === query.userId) : all;
-  return [...scoped].sort((a, b) => b.vetoedAt.localeCompare(a.vetoedAt));
+  return [...scoped].sort((a, b) => {
+    // Compare parsed instants, not raw ISO strings: lexicographic
+    // order is wrong across mixed precision ("…00.500Z" sorts
+    // before "…01Z") and timezone offsets, which would mis-order
+    // this newest-first review surface. Unparseable values keep a
+    // deterministic string order.
+    const aMs = Date.parse(a.vetoedAt);
+    const bMs = Date.parse(b.vetoedAt);
+    if (Number.isFinite(aMs) && Number.isFinite(bMs)) {
+      if (aMs !== bMs) {
+        return bMs - aMs;
+      }
+    } else if (a.vetoedAt !== b.vetoedAt) {
+      return b.vetoedAt.localeCompare(a.vetoedAt);
+    }
+    return 0;
+  });
 }
 
 /**

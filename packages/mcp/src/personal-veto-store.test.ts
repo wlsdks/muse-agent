@@ -53,6 +53,19 @@ describe("personal-veto-store review + clear — P7-b2", () => {
     expect((await queryVetoes(file)).length).toBe(3);
   });
 
+  it("newest-first is by parsed instant, not lexicographic ISO (mixed precision / offset)", async () => {
+    const file = tmpFile();
+    // UTC instants: zlate (May20 01:00:01) > xmid (May20 00:00:00.500)
+    // > yold (May20 00:00:00.000). But lexicographically the strings
+    // sort yold > xmid > zlate (the "-05:00" day is "…05-19…", and
+    // "…00.500Z" sorts before "…00Z") — the exact 418 footgun.
+    await recordVeto(file, veto({ id: "xmid", vetoedAt: "2026-05-20T00:00:00.500Z" }));
+    await recordVeto(file, veto({ id: "yold", vetoedAt: "2026-05-20T00:00:00Z" }));
+    await recordVeto(file, veto({ id: "zlate", vetoedAt: "2026-05-19T20:00:01-05:00" }));
+    expect((await queryVetoes(file, { userId: "stark" })).map((v) => v.id))
+      .toEqual(["zlate", "xmid", "yold"]);
+  });
+
   it("missing store → empty review (no error)", async () => {
     expect(await queryVetoes(join(tmpdir(), "no-such-vetoes.json"))).toEqual([]);
   });
