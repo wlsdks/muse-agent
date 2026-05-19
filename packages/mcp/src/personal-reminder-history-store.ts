@@ -61,6 +61,19 @@ export async function appendReminderHistory(
   await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
+// Move a present-but-corrupt store aside so the next append
+// starts fresh WITHOUT permanently destroying this audit log.
+// Best-effort; the original bytes survive at `<file>.corrupt-<ts>`
+// for manual recovery — the same posture as the sibling personal
+// stores. A missing file is NOT corruption and is never moved.
+async function quarantineCorruptStore(file: string): Promise<void> {
+  try {
+    await fs.rename(file, `${file}.corrupt-${Date.now().toString()}`);
+  } catch {
+    // ignore — read still degrades to empty either way
+  }
+}
+
 async function readRaw(file: string): Promise<readonly ReminderHistoryEntry[]> {
   let raw: string;
   try {
@@ -72,9 +85,11 @@ async function readRaw(file: string): Promise<readonly ReminderHistoryEntry[]> {
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch {
+    await quarantineCorruptStore(file);
     return [];
   }
   if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { entries?: unknown }).entries)) {
+    await quarantineCorruptStore(file);
     return [];
   }
   return (parsed as { entries: unknown[] }).entries.flatMap((entry): readonly ReminderHistoryEntry[] =>

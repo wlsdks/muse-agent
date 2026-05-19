@@ -4398,7 +4398,7 @@ describe("runDueReminders", () => {
   });
 });
 
-describe("corrupt-store quarantine — reminders + followups (goal 190)", () => {
+describe("corrupt-store quarantine — reminders + followups + history audit logs", () => {
   it("readReminders quarantines a corrupt file instead of destroying it on next write", async () => {
     const { readReminders, writeReminders } = await import("../src/index.js");
     const { mkdtempSync, writeFileSync, readdirSync, readFileSync } = await import("node:fs");
@@ -4438,6 +4438,71 @@ describe("corrupt-store quarantine — reminders + followups (goal 190)", () => 
       { id: "fu_new", userId: "stark", summary: "new", scheduledFor: "2030-02-01T00:00:00Z", status: "scheduled", createdAt: "2026-05-16T00:00:00Z" }
     ]);
     expect((await readFollowups(file)).map((f) => f.id)).toEqual(["fu_new"]);
+  });
+
+  it("readProactiveHistory quarantines a corrupt audit log instead of destroying it on next append", async () => {
+    const { readProactiveHistory, appendProactiveHistory } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync, readdirSync, readFileSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-ph-quarantine-`);
+    const file = `${dir}/proactive-history.json`;
+    const original = `{"version":1,"entries":[{"kind":"task","itemId":"keep"}]} GARBAGE`;
+    writeFileSync(file, original);
+
+    expect(await readProactiveHistory(file)).toEqual([]);
+    const quar = readdirSync(dir).filter((n) => n.startsWith("proactive-history.json.corrupt-"));
+    expect(quar).toHaveLength(1);
+    expect(readFileSync(`${dir}/${quar[0]!}`, "utf8")).toBe(original);
+
+    await appendProactiveHistory(file, {
+      destination: "555",
+      firedAtIso: "2026-05-16T00:00:00Z",
+      itemId: "t1",
+      kind: "task",
+      providerId: "telegram",
+      startIso: "2030-01-01T00:00:00Z",
+      status: "delivered",
+      text: "hi",
+      title: "t"
+    });
+    expect((await readProactiveHistory(file)).map((e) => e.itemId)).toEqual(["t1"]);
+    expect(readdirSync(dir).filter((n) => n.startsWith("proactive-history.json.corrupt-"))).toHaveLength(1);
+  });
+
+  it("readReminderHistory quarantines a corrupt audit log instead of destroying it on next append", async () => {
+    const { readReminderHistory, appendReminderHistory } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync, readdirSync, readFileSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-rh-quarantine-`);
+    const file = `${dir}/reminder-history.json`;
+    const original = `{"version":1,"entries":[{"reminderId":"keep"}]} GARBAGE`;
+    writeFileSync(file, original);
+
+    expect(await readReminderHistory(file)).toEqual([]);
+    const quar = readdirSync(dir).filter((n) => n.startsWith("reminder-history.json.corrupt-"));
+    expect(quar).toHaveLength(1);
+    expect(readFileSync(`${dir}/${quar[0]!}`, "utf8")).toBe(original);
+
+    await appendReminderHistory(file, {
+      destination: "555",
+      firedAtIso: "2026-05-16T00:00:00Z",
+      providerId: "telegram",
+      reminderId: "r1",
+      status: "delivered",
+      text: "hi"
+    });
+    expect((await readReminderHistory(file)).map((e) => e.reminderId)).toEqual(["r1"]);
+    expect(readdirSync(dir).filter((n) => n.startsWith("reminder-history.json.corrupt-"))).toHaveLength(1);
+  });
+
+  it("a MISSING history file is NOT quarantined (absence is not corruption)", async () => {
+    const { readProactiveHistory, readReminderHistory } = await import("../src/index.js");
+    const { mkdtempSync, readdirSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-hist-missing-`);
+    expect(await readProactiveHistory(`${dir}/proactive-history.json`)).toEqual([]);
+    expect(await readReminderHistory(`${dir}/reminder-history.json`)).toEqual([]);
+    expect(readdirSync(dir)).toEqual([]);
   });
 
   it("readFollowups drops an entry with an unparseable scheduledFor instead of letting it sit un-fireable", async () => {
