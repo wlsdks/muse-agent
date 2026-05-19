@@ -92,6 +92,7 @@ delete an open row, never rewrite another goal's status.
 | 444 | [Float env-parsers reject lenient-garbage like parseInteger](444-env-float-parsers-strict.md) | fix / robustness | done — 414 sibling; `0.5x`/`60s`/`0x` float MUSE_* now → fallback not silent-truncate; +first direct coverage (mutation-proven) |
 | 445 | [Reminders/tasks accept decimal relative durations](445-relative-time-decimal-durations.md) | feat / UX | done — "in 1.5 hours" / "in 2.5 days" now resolve (was ERROR); deferred-ledger decimal half delivered (mutation-proven) |
 | 446 | [ToolCallDeduplicator bounds its result cache](446-tool-call-deduplicator-bounded.md) | fix / safety | done — 434 sibling; per-run dedup cache now oldest-first bounded (was unbounded; runaway tool loop memory; mutation-proven) |
+| 447 | [Re-mentioned recent topic keeps its freshest position](447-persona-recent-topics-freshest-dedupe.md) | fix / UX | done — persona continuity: a topic the user just resumed no longer dropped by first-occurrence dedupe + slice(-5) (425/433 class, mutation-proven) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

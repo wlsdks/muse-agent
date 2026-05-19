@@ -148,6 +148,28 @@ describe("buildMusePersona", () => {
     expect(topicLines).toHaveLength(5);
   });
 
+  it("keeps a re-mentioned topic at its freshest position so the recent-5 cut doesn't drop it", () => {
+    // The user worked on "alpha" early, then b..f, then returned to
+    // "alpha" most recently. "alpha" is the freshest and MUST appear;
+    // the stale-first-occurrence dedupe would pin it to the front and
+    // slice(-5) would then discard exactly the topic just resumed.
+    const prompt = buildMusePersona(
+      {
+        facts: { name: "Stark" },
+        preferences: {},
+        recentTopics: ["alpha", "b", "c", "d", "e", "f", "alpha"]
+      },
+      "stark"
+    );
+    expect(prompt).toContain("  - alpha");
+    // 6 distinct topics, cap 5: "b" is now the oldest → dropped.
+    expect(prompt).not.toContain("  - b\n");
+    expect(prompt).toContain("  - c");
+    expect(prompt).toContain("  - f");
+    const topicLines = prompt!.split("\n").filter((l) => l.startsWith("  - ") && !l.includes(":"));
+    expect(topicLines).toEqual(["  - c", "  - d", "  - e", "  - f", "  - alpha"]);
+  });
+
   it("emits the persona block when recentTopics is the only signal (no facts/prefs/etc.)", () => {
     // JARVIS continuity case: user hasn't set name/prefs but has had
     // prior sessions whose topics were auto-extracted. The persona

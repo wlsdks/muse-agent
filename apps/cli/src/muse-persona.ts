@@ -174,11 +174,15 @@ function formatEpisodeDate(iso: string): string {
 function dedupeNonEmpty(values: readonly string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const raw of values) {
-    const value = raw.trim();
+  // Walk newest→oldest so a re-mentioned topic keeps its FRESHEST
+  // position, not its first/stale one — otherwise the caller's
+  // slice(-5) "most recent" cut would drop a topic the user just
+  // returned to merely because they had also touched it earlier.
+  for (let i = values.length - 1; i >= 0; i--) {
+    const value = (values[i] ?? "").trim();
     if (value.length === 0 || seen.has(value)) continue;
     seen.add(value);
     out.push(value);
   }
-  return out;
+  return out.reverse();
 }
