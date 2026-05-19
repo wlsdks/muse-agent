@@ -25,10 +25,21 @@ export function clampOutboundText(text: string, max: number = DEFAULT_OUTBOUND_T
   if (text.length <= max) {
     return text;
   }
+  // `slice` cuts on UTF-16 code units, so a boundary inside an
+  // astral char (emoji / CJK-ext) leaves a lone high surrogate —
+  // invalid UTF-8 that Telegram et al. can 400, dropping the whole
+  // message and defeating the point of truncating. Drop the
+  // orphaned half before appending the marker.
   if (max <= TRUNCATION_MARKER.length) {
-    return text.slice(0, Math.max(0, max));
+    return dropTrailingLoneHighSurrogate(text.slice(0, Math.max(0, max)));
   }
-  return `${text.slice(0, max - TRUNCATION_MARKER.length)}${TRUNCATION_MARKER}`;
+  const head = dropTrailingLoneHighSurrogate(text.slice(0, max - TRUNCATION_MARKER.length));
+  return `${head}${TRUNCATION_MARKER}`;
+}
+
+function dropTrailingLoneHighSurrogate(value: string): string {
+  const last = value.charCodeAt(value.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? value.slice(0, -1) : value;
 }
 
 /**

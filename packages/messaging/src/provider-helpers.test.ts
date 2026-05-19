@@ -26,6 +26,28 @@ describe("clampOutboundText", () => {
     expect(clampOutboundText("abcdef", 3)).toBe("abc");
     expect(clampOutboundText("abcdef", 0)).toBe("");
   });
+
+  it("never emits a lone surrogate when the cut lands inside an astral char (emoji)", () => {
+    const marker = "… [truncated]";
+    // Make the slice boundary fall exactly between 📋's surrogate
+    // pair (U+1F4CB = 📋).
+    const head = "a".repeat(4096 - marker.length - 1);
+    const out = clampOutboundText(`${head}📋${"z".repeat(200)}`, 4096);
+    expect(out.endsWith(marker)).toBe(true);
+    expect(out.length).toBeLessThanOrEqual(4096);
+    // No unpaired high surrogate anywhere — invalid UTF-8 some chat
+    // APIs 400, dropping the whole message.
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u.test(out)).toBe(false);
+    // The half emoji is dropped, not mangled.
+    expect(out.includes("\uD83D")).toBe(false);
+
+    // A complete trailing emoji that fits is preserved intact.
+    const fits = clampOutboundText(`${"b".repeat(10)}📋`, 4096);
+    expect(fits).toBe(`${"b".repeat(10)}📋`);
+
+    // Tight-max branch (max ≤ marker) also can't leave a half pair.
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u.test(clampOutboundText("📋x", 1))).toBe(false);
+  });
 });
 
 describe("clampInboundLimit", () => {
