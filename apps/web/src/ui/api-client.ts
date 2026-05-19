@@ -38,7 +38,7 @@ async function request<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
+    throw new Error(await errorDetail(response));
   }
 
   if (response.status === 204) {
@@ -46,4 +46,21 @@ async function request<T>(
   }
 
   return response.json() as Promise<T>;
+}
+
+// Surface the server's actionable error body (the `errorMessage` /
+// `message` the API returns — e.g. "upstream unavailable, retry")
+// instead of a bare status, which under HTTP/2 is often just the
+// code with an empty statusText.
+async function errorDetail(response: Response): Promise<string> {
+  const status = `${response.status}${response.statusText ? ` ${response.statusText}` : ""}`;
+  try {
+    const body = (await response.json()) as { errorMessage?: unknown; message?: unknown };
+    const candidate = [body.errorMessage, body.message].find(
+      (value): value is string => typeof value === "string" && value.trim().length > 0
+    );
+    return candidate ? `${status}: ${candidate}` : status;
+  } catch {
+    return status;
+  }
 }
