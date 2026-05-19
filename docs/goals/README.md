@@ -86,6 +86,7 @@ delete an open row, never rewrite another goal's status.
 | 438 | [Pin time_add bad-base / non-numeric-offset robustness](438-time-add-robustness-coverage.md) | test / robustness | done — stringified/NaN tool args can't crash the agent's +Nh time math (was implicit) |
 | 439 | [Pin math_eval no-eval sandbox rejection branches](439-math-eval-sandbox-rejection-coverage.md) | test / security | done — trailing-chars keystone + unbalanced-parens + modulo-by-zero + 256-char off-by-one + non-string required guard (was implicit; mutation-proven) |
 | 440 | [Reject impossible calendar due-dates instead of silent rollover](440-due-date-impossible-calendar-reject.md) | fix / robustness | done — `2026-02-30` no longer silently scheduled as Mar 2; tasks+reminders share the keystone fix (probe-demonstrated) |
+| 441 | [computeNextRunAt fails closed on blank/corrupt cron](441-scheduler-compute-next-run-fail-closed.md) | fix / safety | done — blank persisted cron no longer silently fires every minute; compute chokepoint re-asserts validate (336/337 sibling, probe-demonstrated) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
@@ -149,6 +150,12 @@ Append one line when a discovery path is evaluated and deferred:
   kept separate so neither half is half-shipped.
   (RESOLVED 378 s5: createNotesInvestigator over the primary notes
   provider wired into tick-daemons; P0-b3 parent flipped.)
+- relative-time compound/decimal durations — iter 441 — deferred:
+  `resolveRelativeTimePhrase` accepts "in half an hour" but rejects
+  "in 1.5 hours" / "in 2 hours 30 minutes" (probe, iter 440). A
+  genuine (b)-refinement of the existing grammar, not new surface;
+  deferred this iter only to avoid same-area churn right after the
+  440 due-date fix (Step-8). Next free non-time iteration may take it.
 - P0 audit — packages/agent-core/test/p0-seam.test.ts — PASS: P0's
   four CAPABILITIES checks pass together (agent-core 555 incl.
   auto-extract-tool-turn / episodic-recall-embedding /

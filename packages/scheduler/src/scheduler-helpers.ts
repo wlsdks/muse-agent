@@ -130,6 +130,13 @@ export function computeNextRunAt(
   job: Pick<ScheduledJob, "cronExpression" | "timezone">,
   from: Date = new Date()
 ): Date {
+  // The cron-parser is lenient: "" parses as "every minute" and a
+  // 4-field expression as a misread schedule. validateCronExpression
+  // only gates the create/update path — normalize/load does not
+  // re-validate, so a blank or corrupt persisted cron would fire
+  // silently (every minute) instead of failing closed. Re-assert the
+  // strict gate at the single tick chokepoint so accept ⟺ validate.
+  validateCronExpression(job.cronExpression);
   return CronExpressionParser
     .parse(job.cronExpression, { currentDate: from, tz: job.timezone })
     .next()

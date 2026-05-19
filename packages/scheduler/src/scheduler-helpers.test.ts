@@ -63,6 +63,34 @@ describe("validateCronExpression", () => {
   });
 });
 
+describe("computeNextRunAt fails closed on a blank / corrupt cron", () => {
+  const from = new Date("2026-05-19T12:00:00Z");
+
+  it("throws (not silently 'every minute') for blank / whitespace / short-field crons", () => {
+    // The lenient cron-parser turns "" into a fire-every-minute
+    // schedule and a 4-field expression into a misread one.
+    // normalize/load does not re-validate, so the compute
+    // chokepoint must — accept ⟺ validateCronExpression.
+    for (const corrupt of ["", "   ", "\t", "0 8 * *", "0 8 * * * * *"]) {
+      expect(() => validateCronExpression(corrupt)).toThrow(SchedulerValidationError);
+      expect(() =>
+        computeNextRunAt({ cronExpression: corrupt, timezone: "UTC" }, from)
+      ).toThrow(SchedulerValidationError);
+    }
+  });
+
+  it("still computes the next run for every valid cron (no regression)", () => {
+    expect(computeNextRunAt({ cronExpression: "* * * * *", timezone: "UTC" }, from).toISOString())
+      .toBe("2026-05-19T12:01:00.000Z");
+    expect(computeNextRunAt({ cronExpression: "* * * * * *", timezone: "UTC" }, from).toISOString())
+      .toBe("2026-05-19T12:00:01.000Z");
+    expect(computeNextRunAt({ cronExpression: "@daily", timezone: "UTC" }, from).toISOString())
+      .toBe("2026-05-20T00:00:00.000Z");
+    expect(computeNextRunAt({ cronExpression: "0 9 * * 1-5", timezone: "UTC" }, from).toISOString())
+      .toBe("2026-05-20T09:00:00.000Z");
+  });
+});
+
 describe("validateJobName", () => {
   it("accepts a non-blank name", () => {
     expect(() => validateJobName("morning-brief")).not.toThrow();
