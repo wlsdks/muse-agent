@@ -121,6 +121,7 @@ delete an open row, never rewrite another goal's status.
 | 473 | [messaging registry unknown-id error names the registered providers](473-messaging-registry-unknown-id-hint.md) | fix / error-UX | done — goal-472 sibling slice; `MessagingProviderRegistry.require` now hints, so a misconfigured proactive/reminder/objectives/inbound daemon is recoverable; identical wording to 472; code unchanged (mutation-proven) |
 | 474 | [calendar registry unknown-id error names the registered providers](474-calendar-registry-unknown-id-hint.md) | fix / error-UX | done — goal-472/473 sibling slice; `CalendarProviderRegistry.require` now hints, so a misconfigured briefing-daemon / `/api/calendar/*` providerId is recoverable; identical wording to 472/473; code unchanged (mutation-proven) |
 | 475 | [tasks-providers registry unknown-id error names the registered providers](475-tasks-providers-registry-unknown-id-hint.md) | fix / error-UX | done — goal-472/473/474 sibling slice; `TasksProviderRegistry.require` now hints, recoverable across briefing imminence (P8-b3) / accountability log (P6-b1) / `muse tasks`; identical wording; code unchanged (mutation-proven) |
+| 476 | [notes-providers registry unknown-id error names the registered providers](476-notes-providers-registry-unknown-id-hint.md) | fix / error-UX | done — fully discharges the goal-472 sibling slice (5/5); `NotesProviderRegistry.require` now hints, recoverable across `muse recall`/`muse notes`/RAG; identical wording; code unchanged (mutation-proven) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
@@ -131,14 +132,12 @@ human-operated; see its md.
 Append one line when a discovery path is evaluated and deferred:
 `- <area> — iter <hash> — deferred: <reason>`
 
-- sibling-registry unknown-id dead-end errors — iter 472 — deferred
-  (partially discharged by 473/474/475): only `@muse/mcp`
-  **notes-providers** still throws the same hint-less
-  `… not registered: <id>` that goals 472 (`@muse/voice`), 473
-  (`@muse/messaging`), 474 (`@muse/calendar`), and 475
-  (`@muse/mcp` tasks-providers) fixed. One file per iteration to
-  stay tight-scope. Apply the `registeredHint` pattern verbatim
-  to fully discharge the slice.
+- sibling-registry unknown-id dead-end errors — iter 472 — fully
+  discharged by 476: every sibling registry (`@muse/voice`
+  472, `@muse/messaging` 473, `@muse/calendar` 474, `@muse/mcp`
+  tasks-providers 475, `@muse/mcp` notes-providers 476) now
+  appends `registeredHint` and is mutation-proven. No remaining
+  package carries the hint-less dead-end; entry closed.
 - smoke:live picker model speed — iter a147d939 — deferred: owner's
   Ollama-only picker fix confirmed working (real `/api/chat`
   round-trips, HTTP 200, ~50-60s each); it prefers the largest

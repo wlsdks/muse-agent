@@ -2783,6 +2783,14 @@ describe("notes provider abstraction", () => {
     expect(() => registry.require("ghost")).toThrowError(NotesProviderError);
   });
 
+  it("the unknown-id NotesProviderRegistry error names the registered providers so a misconfigured notes id is recoverable", () => {
+    const empty = new NotesProviderRegistry();
+    expect(() => empty.require("apple")).toThrow(/none registered/u);
+
+    const registry = new NotesProviderRegistry([new AppleNotesProvider()]);
+    expect(() => registry.require("aple")).toThrow(/registered: apple/u);
+  });
+
   it("AppleNotesProvider describes itself as a local osascript adapter", () => {
     const apple = new AppleNotesProvider();
     const info = apple.describe();

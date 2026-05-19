@@ -157,10 +157,18 @@ export class NotesProviderRegistry {
   require(providerId: string): NotesProvider {
     const provider = this.providers.get(providerId);
     if (!provider) {
-      throw new NotesProviderError(providerId, "PROVIDER_NOT_FOUND", `Notes provider not registered: ${providerId}`);
+      throw new NotesProviderError(
+        providerId,
+        "PROVIDER_NOT_FOUND",
+        `Notes provider not registered: ${providerId}${registeredHint([...this.providers.keys()])}`
+      );
     }
     return provider;
   }
+}
+
+function registeredHint(ids: readonly string[]): string {
+  return ids.length > 0 ? ` (registered: ${ids.join(", ")})` : " (none registered)";
 }
 
 // Local-dir adapter is in its own file. Re-export so
