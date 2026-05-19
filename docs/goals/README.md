@@ -98,6 +98,7 @@ delete an open row, never rewrite another goal's status.
 | 450 | [Piper runner survives a child that closes stdin early](450-piper-runner-stdin-epipe-guard.md) | fix / safety | done — unhandled stdin EPIPE (bad model / crash) no longer takes down the whole process; clean SPAWN/EXIT rejection (mutation-proven) |
 | 451 | [truncateErrorBody never leaves a lone surrogate at the cut](451-truncate-error-body-surrogate-guard.md) | fix / robustness | done — 421 sibling; split-astral error body no longer emits invalid UTF-8 into API bodies / chat forwards (mutation-proven) |
 | 452 | [Reminders/tasks accept two-unit compound durations](452-relative-time-two-unit-compound.md) | feat / UX | done — "in 2 hours 30 minutes" / "in 1 day 6 hours" now resolve; fully discharges the 445 deferred compound/decimal discovery (mutation-proven) |
+| 453 | [Corrupt persisted timestamp can't 500 the debug-replay list](453-debug-replay-datevalue-invalid-guard.md) | fix / robustness | done — 418/440 class; dateValue Invalid Date no longer RangeErrors GET /api/admin/debug/replay for every row (mutation-proven) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

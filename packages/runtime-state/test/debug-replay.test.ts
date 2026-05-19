@@ -91,4 +91,35 @@ describe("createDebugReplayCaptureInsert + mapDebugReplayCaptureRow", () => {
       userPrompt: "say hi"
     });
   });
+
+  it("a corrupt persisted timestamp degrades to a valid ISO, not a RangeError that 500s the list", () => {
+    // One hand-edited / partially-written row must not throw out of
+    // the mapper — that would crash GET /api/admin/debug/replay for
+    // every capture, not just the bad one.
+    const row = {
+      captured_at: "not-a-date",
+      error_code: "RUN_FAILED",
+      error_message: "boom",
+      expires_at: "",
+      id: "capture-bad",
+      metadata_json: "{}",
+      model_id: "provider/model",
+      tools_attempted: "[]",
+      user_hash: "u",
+      user_prompt: "hi"
+    } as unknown as Parameters<typeof mapDebugReplayCaptureRow>[0];
+
+    const mapped = mapDebugReplayCaptureRow(row) as { capturedAt: string; expiresAt: string; id: string };
+    expect(mapped.id).toBe("capture-bad");
+    // Both timestamps are now parseable ISO strings (not NaN / throw).
+    expect(Number.isNaN(Date.parse(mapped.capturedAt))).toBe(false);
+    expect(Number.isNaN(Date.parse(mapped.expiresAt))).toBe(false);
+
+    // A well-formed timestamp is still passed through unchanged.
+    const ok = mapDebugReplayCaptureRow({
+      ...row,
+      captured_at: "2026-05-09T00:00:00.000Z"
+    } as unknown as Parameters<typeof mapDebugReplayCaptureRow>[0]) as { capturedAt: string };
+    expect(ok.capturedAt).toBe("2026-05-09T00:00:00.000Z");
+  });
 });

@@ -141,7 +141,11 @@ function nullableString(value: unknown): string | null {
 }
 
 function dateValue(value: unknown): Date {
-  return value instanceof Date ? value : new Date(typeof value === "string" ? value : Date.now());
+  const candidate = value instanceof Date ? value : new Date(typeof value === "string" ? value : Date.now());
+  // A corrupt persisted timestamp (hand-edited row, partial write)
+  // would otherwise reach `.toISOString()` and throw a RangeError,
+  // 500-ing the whole debug-replay list because one row is bad.
+  return Number.isNaN(candidate.getTime()) ? new Date() : candidate;
 }
 
 function nullableDate(value: unknown): Date | null {
