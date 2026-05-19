@@ -103,6 +103,7 @@ delete an open row, never rewrite another goal's status.
 | 455 | [markdown_table escapes column NAMES, not just cells](455-markdown-table-header-escaping.md) | fix / consistency | done — 415/432 class; a `|`/newline column key no longer breaks the table header (advertised-but-unenforced escaping; mutation-proven) |
 | 456 | [Web api-client surfaces the server error message](456-web-api-client-surface-error-body.md) | fix / error-UX | done — 449 UI-consumer sibling; console shows server errorMessage not a bare/empty status; +first direct api-client test (mutation-proven) |
 | 457 | [Empty keyword can't make an agent spec match every task](457-agent-spec-empty-keyword-no-match-all.md) | fix / correctness | done — 433/441/453 load-path-invariant class; `""` keyword no longer hijacks sub-agent routing at confidence 0.5 (mutation-proven) |
+| 458 | [Direct coverage for the guard-pipeline fail-close/open contract](458-guard-pipeline-failclose-coverage.md) | test / security | done — 407 pipeline-layer sibling; fail-close-on-thrown-guard keystone pinned (was implicit-only; mutation-proven) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
