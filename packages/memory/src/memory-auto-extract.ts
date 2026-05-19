@@ -491,6 +491,13 @@ function sanitizeSlotArray(
     return [];
   }
   const out: ExtractedSlot[] = [];
+  // Dedupe by id. Facts/preferences are Record-shaped so duplicate
+  // keys collapse for free, but slots arrive as an array — a
+  // reasoning-off model that re-emits a near-duplicate veto/goal
+  // would otherwise consume a `maxCount` slot and silently drop a
+  // DISTINCT later veto/goal from the persona. First valid
+  // occurrence wins.
+  const seenIds = new Set<string>();
   for (const entry of source) {
     if (out.length >= maxCount) {
       break;
@@ -499,13 +506,14 @@ function sanitizeSlotArray(
       continue;
     }
     const id = normalizeKey(typeof entry.id === "string" ? entry.id : "", maxKey);
-    if (!id) {
+    if (!id || seenIds.has(id)) {
       continue;
     }
     const value = sanitizeValue(entry.value, maxValue);
     if (value.length === 0) {
       continue;
     }
+    seenIds.add(id);
     const scope = typeof entry.scope === "string"
       ? normalizeKey(entry.scope, maxKey)
       : undefined;

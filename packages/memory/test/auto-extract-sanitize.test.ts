@@ -123,6 +123,38 @@ describe("auto-extract value sanitisation at store boundary", () => {
     expect(stored?.value).not.toContain("\n");
   });
 
+  it("dedupes slots by id so a re-emitted veto can't eat the cap and drop a distinct one", async () => {
+    const store = new InMemoryUserMemoryStore();
+    const hook = createUserMemoryAutoExtractHook({
+      model: "diagnostic/smoke",
+      modelProvider: makeFakeProvider(
+        JSON.stringify({
+          facts: {},
+          goals: [],
+          preferences: {},
+          // Default maxVetoesPerExchange is 3. Pre-fix, the duplicate
+          // "coffee" consumed two of the three slots, so the distinct
+          // "salt" veto was silently dropped by the cap.
+          vetoes: [
+            { id: "coffee", value: "never suggest coffee" },
+            { id: "coffee", value: "absolutely no coffee" },
+            { id: "sugar", value: "no sugar" },
+            { id: "salt", value: "no added salt" }
+          ]
+        })
+      ),
+      store
+    });
+    await hook.afterComplete!(
+      { input: { messages: [{ content: "diet rules", role: "user" }], metadata: { userId: "stark" } }, runId: "r-1" },
+      { id: "r-1", model: "diagnostic/smoke", output: "noted." }
+    );
+    const vetoes = (await store.findByUserId("stark"))?.userModel?.vetoes ?? [];
+    expect([...vetoes].map((v) => v.id).sort()).toEqual(["coffee", "salt", "sugar"]);
+    // First valid occurrence wins (not the second "coffee").
+    expect(vetoes.find((v) => v.id === "coffee")?.value).toBe("never suggest coffee");
+  });
+
   it("strips ANSI/control bytes from extracted fact + slot values at the store boundary", async () => {
     const ESC = String.fromCharCode(27);
     const C1 = String.fromCharCode(0x9b);

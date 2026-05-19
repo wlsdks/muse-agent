@@ -78,6 +78,7 @@ delete an open row, never rewrite another goal's status.
 | 430 | [Direct coverage for `uniqueCommandPrefix`](430-uniquecommandprefix-direct-coverage.md) | test / robustness | done — the typo-recovery prefix resolver now has direct unit coverage (was implicit-only) |
 | 431 | [Whisper.cpp STT enforces advertised formats](431-whisper-enforce-supported-format.md) | fix / consistency | done — unsupported mime → actionable UNSUPPORTED_FORMAT, not a cryptic whisper exit |
 | 432 | [OpenAI Whisper STT enforces advertised formats](432-openai-whisper-enforce-supported-format.md) | fix / consistency | done — 431 sibling discharged; both STT adapters now uniform |
+| 433 | [Auto-extract dedupes veto/goal slots by id](433-auto-extract-slot-dedup.md) | fix / persona-safety | done — a re-emitted veto no longer eats the cap & drops a distinct one |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
