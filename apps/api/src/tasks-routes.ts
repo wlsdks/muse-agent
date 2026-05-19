@@ -125,7 +125,7 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
     } else if (typeof body.dueAt === "string" && body.dueAt.trim().length > 0) {
       const parsed = parseTaskDueAt(body.dueAt, () => new Date());
       if (parsed instanceof Error) {
-        return reply.status(400).send({ code: "BAD_DUE_AT", message: parsed.message });
+        return reply.status(400).send({ code: "INVALID_TASK_DUE_AT", message: parsed.message });
       }
       dueAt = parsed;
     }

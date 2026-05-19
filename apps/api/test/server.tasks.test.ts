@@ -56,3 +56,36 @@ describe("api server: /api/tasks/providers", () => {
     expect(reply.statusCode).toBe(404);
   });
 });
+
+describe("api server: /api/tasks invalid dueAt uses a consistent error code", () => {
+  it("POST and PATCH both return code INVALID_TASK_DUE_AT for an unparseable dueAt", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-api-tasks-dueat-"));
+    const server = buildServer({ logger: false, tasksFile: join(root, "tasks.json") });
+
+    const postBad = await server.inject({
+      method: "POST",
+      payload: { dueAt: "definitely-not-a-date", title: "x" },
+      url: "/api/tasks"
+    });
+    expect(postBad.statusCode).toBe(400);
+    expect((postBad.json() as { code: string }).code).toBe("INVALID_TASK_DUE_AT");
+
+    const created = await server.inject({
+      method: "POST",
+      payload: { title: "edit me" },
+      url: "/api/tasks"
+    });
+    expect(created.statusCode).toBe(201);
+    const id = (created.json() as { id: string }).id;
+
+    const patchBad = await server.inject({
+      method: "PATCH",
+      payload: { dueAt: "still-not-a-date" },
+      url: `/api/tasks/${id}`
+    });
+    expect(patchBad.statusCode).toBe(400);
+    // Same machine-readable code as POST (was the ad-hoc BAD_DUE_AT,
+    // diverging from the INVALID_<RESOURCE>_DUE_AT convention).
+    expect((patchBad.json() as { code: string }).code).toBe("INVALID_TASK_DUE_AT");
+  });
+});
