@@ -165,12 +165,17 @@ function formatPatternList(matches: readonly PatternMatch[]): string {
   return `${lines.join("\n")}\n`;
 }
 
-function formatFiredList(records: readonly PatternFiredRecord[]): string {
+export function formatFiredList(records: readonly PatternFiredRecord[]): string {
   if (records.length === 0) {
     return "No patterns have fired yet.\n";
   }
   const lines = records.map((record) => {
-    const when = shortDateTime(new Date(record.firedAtMs).toISOString());
+    // A corrupt / partially-written firedAtMs (NaN, missing,
+    // out-of-range) would make `.toISOString()` throw RangeError
+    // and crash the whole listing — one bad record must not hide
+    // every other fired pattern.
+    const d = new Date(record.firedAtMs);
+    const when = Number.isNaN(d.getTime()) ? "(unknown time)" : shortDateTime(d.toISOString());
     return `[${record.patternId.slice(0, 12)}] ${when}`;
   });
   return `${lines.join("\n")}\n`;

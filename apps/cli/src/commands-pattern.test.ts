@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseConfidence, parseLimit } from "./commands-pattern.js";
+import { formatFiredList, parseConfidence, parseLimit } from "./commands-pattern.js";
 
 describe("parseLimit (goal 177)", () => {
   it("returns the fallback when the flag is absent or blank", () => {
@@ -40,5 +40,27 @@ describe("parseConfidence (goal 177)", () => {
     expect(() => parseConfidence("1.5", 0)).toThrow(/\[0, 1\]/u);
     expect(() => parseConfidence("-0.1", 0)).toThrow(/\[0, 1\]/u);
     expect(() => parseConfidence("0.8x", 0)).toThrow(/got '0\.8x'/u);
+  });
+});
+
+describe("formatFiredList — a corrupt firedAtMs can't crash the whole listing", () => {
+  const rec = (patternId: string, firedAtMs: number) =>
+    ({ firedAtMs, patternId } as unknown as Parameters<typeof formatFiredList>[0][number]);
+
+  it("renders a placeholder for a non-finite / out-of-range firedAtMs and still lists the rest", () => {
+    const out = formatFiredList([
+      rec("good-1", Date.UTC(2026, 4, 20, 9, 0, 0)),
+      rec("nan", Number.NaN),
+      rec("huge", 9e15), // beyond the ±8.64e15 Date range
+      rec("good-2", Date.UTC(2026, 4, 21, 10, 30, 0))
+    ]);
+    expect(out).toContain("[good-1]");
+    expect(out).toContain("[good-2]");
+    expect(out.match(/\(unknown time\)/gu)).toHaveLength(2); // nan + huge
+    expect(out).not.toMatch(/\[nan\][^\n]*\d{4}/u); // no real date for the bad one
+  });
+
+  it("empty list is unchanged", () => {
+    expect(formatFiredList([])).toBe("No patterns have fired yet.\n");
   });
 });

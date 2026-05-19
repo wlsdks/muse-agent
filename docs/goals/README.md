@@ -110,6 +110,7 @@ delete an open row, never rewrite another goal's status.
 | 462 | [Direct coverage for the derived-agent-metrics fan-out](462-derived-agent-metrics-fanout-coverage.md) | test / observability | done — 458-class; SLO/drift feed + inner-forward fan-out pinned (was zero direct coverage; mutation-proven) |
 | 463 | [readWebSearchEnvSnapshot rejects a lenient-prefix MAX_USES typo](463-websearch-maxuses-strict-parse.md) | fix / robustness | done — 414/444 sibling; `MUSE_WEB_SEARCH_MAX_USES=5x` no longer shown as valid env-config on muse doctor (mutation-proven) |
 | 464 | [queryActionLog orders by parsed instant, not lexicographic ISO](464-action-log-review-instant-order.md) | fix / correctness | done — 461/418 sibling (the named "Parallel to queryActionLog"); P6 accountability log no longer mis-orders newest action (mutation-proven) |
+| 465 | [Corrupt firedAtMs can't crash the `muse pattern` fired list](465-pattern-fired-list-invalid-date-guard.md) | fix / robustness | done — 453/459 sibling; one Invalid-Date record no longer RangeErrors the whole listing → "(unknown time)" (mutation-proven) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
