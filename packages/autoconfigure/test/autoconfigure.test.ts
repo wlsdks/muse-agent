@@ -872,6 +872,19 @@ describe("autoconfigure", () => {
       MUSE_MODEL_KEYS_FILE: file
     });
     expect(mergedWithModel.MUSE_MODEL).toBe("anthropic/claude-haiku-4-5-20251001");
+
+    // An empty / whitespace-only env value is treated as "unset"
+    // for a key we just resolved from the file — otherwise a
+    // shell that pre-clears OLLAMA_BASE_URL= silently shadows the
+    // configured models.json with "" and the runtime falls back
+    // to localhost.
+    const mergedEmptyEnv = mergeModelKeysFromFile({
+      MUSE_MODEL_KEYS_FILE: file,
+      OLLAMA_BASE_URL: "",
+      OPENAI_API_KEY: "   "
+    });
+    expect(mergedEmptyEnv.OLLAMA_BASE_URL).toBe("http://localhost:11434");
+    expect(mergedEmptyEnv.OPENAI_API_KEY).toBe("from-file-openai");
   });
 
   it("mergeModelKeysFromFile hydrates every OpenAI-compat preset (Groq / DeepSeek / Together / Mistral / Moonshot / Cerebras)", async () => {

@@ -132,12 +132,22 @@ export function mergeModelKeysFromFile(env: MuseEnvironment): MuseEnvironment {
   if (Object.keys(fileKeyForEnv).length === 0) {
     return env;
   }
-  // Env wins: spread file first, env second. MUSE_MODEL only falls
-  // back to the file value when env doesn't already have one.
+  // Env wins on conflict, BUT an empty/whitespace-only env value
+  // for a key we just resolved from the file is treated as "unset"
+  // — otherwise a shell that pre-clears `OLLAMA_BASE_URL=` would
+  // silently shadow the user's configured ~/.muse/models.json with
+  // an empty string and fall back to localhost.
   if (firstSuggestedModel !== undefined) {
     fileKeyForEnv["MUSE_MODEL"] = firstSuggestedModel;
   }
-  return { ...fileKeyForEnv, ...env };
+  const merged: Record<string, string | undefined> = { ...fileKeyForEnv, ...env };
+  for (const key of Object.keys(fileKeyForEnv)) {
+    const envValue = env[key];
+    if (typeof envValue === "string" && envValue.trim().length === 0) {
+      merged[key] = fileKeyForEnv[key];
+    }
+  }
+  return merged;
 }
 
 export { buildCalendarRegistry } from "./registry-builders/calendar.js";
