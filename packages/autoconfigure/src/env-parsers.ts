@@ -13,7 +13,7 @@
  */
 
 /**
- * Goal 128 — align env-var boolean parsing with the goal-127
+ * Env-var boolean parsing, aligned with the
  * `RuntimeSettings.getBoolean` contract:
  *
  *   - whitespace-trimmed + lowercased
@@ -42,12 +42,22 @@ export function parseBoolean(value: string | undefined, fallback: boolean): bool
 }
 
 export function parseInteger(value: string | undefined, fallback: number): number {
-  if (value === undefined || value.trim().length === 0) {
+  if (value === undefined) {
     return fallback;
   }
 
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  // `Number.parseInt` is lenient: it reads leading digits and
+  // ignores trailing garbage, so a typo'd `MUSE_*=60x` silently
+  // became 60 and `16k` became 16 (catastrophic for num_ctx).
+  // The module contract is "invalid input → fallback", so require
+  // the whole trimmed token to be a plain decimal integer.
+  const trimmed = value.trim();
+  if (!/^[+-]?\d+$/u.test(trimmed)) {
+    return fallback;
+  }
+
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 export function parseSloErrorRate(value: string | undefined, fallback: number): number {

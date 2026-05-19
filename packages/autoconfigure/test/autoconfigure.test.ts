@@ -552,6 +552,25 @@ describe("autoconfigure", () => {
     expect(parseInteger("bad", 7)).toBe(7);
   });
 
+  it("parseInteger rejects lenient-garbage env values instead of silently truncating", () => {
+    // The footgun: Number.parseInt('60x') === 60, parseInt('16k')
+    // === 16 — a typo'd MUSE_* would silently mis-configure a
+    // tick interval / num_ctx. The contract is invalid → fallback.
+    expect(parseInteger("60x", 1000)).toBe(1000);
+    expect(parseInteger("16k", 8192)).toBe(8192);
+    expect(parseInteger("10abc", 5)).toBe(5);
+    expect(parseInteger("3.9", 1)).toBe(1);
+    expect(parseInteger("1e3", 10)).toBe(10);
+    expect(parseInteger("0x10", 7)).toBe(7);
+    // Plain decimal integers (incl. surrounding whitespace, sign,
+    // leading zeros) still parse; non-positive / zero → fallback.
+    expect(parseInteger("  5  ", 1)).toBe(5);
+    expect(parseInteger("007", 1)).toBe(7);
+    expect(parseInteger("+12", 1)).toBe(12);
+    expect(parseInteger("-3", 4)).toBe(4);
+    expect(parseInteger("0", 9)).toBe(9);
+  });
+
   it("parseBoolean accepts 'on/off' + falls back on unknown values (goal 128)", () => {
     // Truthy set widened to include `on` for symmetry with the
     // goal-127 RuntimeSettings.getBoolean contract.
