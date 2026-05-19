@@ -194,6 +194,28 @@ describe("template variables", () => {
     expect(renderTemplateVariables("{{date}} {{time}} {{day_of_week}} {{job_name}}", job, job.createdAt))
       .toBe("2026-05-05 10:11:12 Tuesday Daily");
   });
+
+  it("a corrupt / legacy job.timezone falls back to UTC instead of crashing dispatch", () => {
+    // normalizeScheduledJob only trims the timezone (validateTimezone
+    // gates create, not load), so a bad persisted value reaches here.
+    const now = () => new Date("2026-05-05T10:11:12.000Z");
+    const bad = normalizeScheduledJob(
+      { cronExpression: "0 * * * * *", id: "j", mcpServerName: "s", name: "N", timezone: "Not/AZone", toolName: "t" },
+      { id: "j", now }
+    );
+    expect(bad.timezone).toBe("Not/AZone"); // load path passed it through unvalidated
+    // Pre-fix this threw RangeError from Intl.DateTimeFormat.
+    expect(renderTemplateVariables("{{datetime}} {{day_of_week}}", bad, now()))
+      .toBe("2026-05-05 10:11:12 Tuesday"); // rendered in the UTC fallback
+
+    // No regression: a valid non-UTC zone still renders in that zone.
+    const ny = normalizeScheduledJob(
+      { cronExpression: "0 * * * * *", id: "j2", mcpServerName: "s", name: "N", timezone: "America/New_York", toolName: "t" },
+      { id: "j2", now }
+    );
+    expect(renderTemplateVariables("{{date}} {{time}}", ny, now()))
+      .toBe("2026-05-05 06:11:12"); // 10:11 UTC == 06:11 EDT
+  });
 });
 
 describe("ScheduledJobDispatcher", () => {

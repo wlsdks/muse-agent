@@ -377,11 +377,24 @@ export function delay(ms: number): Promise<void> {
   });
 }
 
-function dateParts(date: Date, timeZone: string): {
+function resolveTimeZone(timeZone: string): string {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+    return timeZone;
+  } catch {
+    // validateTimezone only gates the create path; a corrupt /
+    // legacy persisted job.timezone reaching render would throw a
+    // RangeError here and break the scheduled job's dispatch.
+    return defaultTimezone;
+  }
+}
+
+function dateParts(date: Date, rawTimeZone: string): {
   readonly date: string;
   readonly dayOfWeek: string;
   readonly time: string;
 } {
+  const timeZone = resolveTimeZone(rawTimeZone);
   const dateFormatter = new Intl.DateTimeFormat("en-US", {
     day: "2-digit",
     hour: "2-digit",
