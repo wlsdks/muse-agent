@@ -56,6 +56,29 @@ describe("filterFresh", () => {
     const fresh = filterFresh(sampleMessages, {}, 2);
     expect(fresh).toHaveLength(2);
   });
+
+  it("freshness is by parsed instant, not lexicographic ISO (cross-provider precision/offset)", () => {
+    // Cursor written by a second-precision provider; a genuinely
+    // 0.5s-newer message from a millis-precision provider. The
+    // string "…00.500Z" sorts BEFORE "…00Z" ('.' < 'Z'), so a
+    // lexicographic `>` would WRONGLY drop this real new message.
+    const msgs: readonly InboundMessage[] = [
+      { messageId: "newer", providerId: "telegram", receivedAtIso: "2026-05-11T08:00:00.500Z", source: "C1", text: "hi" },
+      { messageId: "older", providerId: "slack", receivedAtIso: "2026-05-11T07:00:00.000Z", source: "C1", text: "old" }
+    ];
+    const fresh = filterFresh(msgs, { C1: "2026-05-11T08:00:00Z" }, 10);
+    expect(fresh.map((m) => m.messageId)).toEqual(["newer"]); // not silently dropped
+
+    // Cross-provider offset ordering: -05:00 day is "…05-10…" but
+    // its instant is the newest; slice(-2) must keep the two
+    // instant-newest, in instant order.
+    const ordered: readonly InboundMessage[] = [
+      { messageId: "a", providerId: "slack", receivedAtIso: "2026-05-11T00:00:00.000Z", source: "X", text: "" },
+      { messageId: "b", providerId: "slack", receivedAtIso: "2026-05-11T00:00:01.000Z", source: "X", text: "" },
+      { messageId: "c", providerId: "discord", receivedAtIso: "2026-05-10T20:00:02-05:00", source: "X", text: "" }
+    ];
+    expect(filterFresh(ordered, {}, 2).map((m) => m.messageId)).toEqual(["b", "c"]);
+  });
 });
 
 describe("FileBackedInboxContextProvider", () => {

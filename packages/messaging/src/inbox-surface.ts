@@ -155,10 +155,35 @@ export function filterFresh(
   cursor: Readonly<Record<string, string>>,
   perProviderLimit: number
 ): readonly InboundMessage[] {
-  const sorted = [...inbox].sort((a, b) => a.receivedAtIso.localeCompare(b.receivedAtIso));
+  // Compare parsed instants, not raw ISO strings. receivedAtIso is
+  // provider-supplied and providers differ in precision/offset
+  // (".000Z" vs "Z" vs "+09:00"), so a lexicographic compare both
+  // mis-orders AND, worse, can decide a genuinely-newer message is
+  // NOT past the cursor — silently dropping a real inbound message.
+  // Unparseable values keep a deterministic string order.
+  const sorted = [...inbox].sort((a, b) => {
+    const am = Date.parse(a.receivedAtIso);
+    const bm = Date.parse(b.receivedAtIso);
+    if (Number.isFinite(am) && Number.isFinite(bm)) {
+      if (am !== bm) {
+        return am - bm;
+      }
+    } else if (a.receivedAtIso !== b.receivedAtIso) {
+      return a.receivedAtIso.localeCompare(b.receivedAtIso);
+    }
+    return 0;
+  });
   const fresh = sorted.filter((message) => {
     const last = cursor[message.source];
-    return !last || message.receivedAtIso > last;
+    if (!last) {
+      return true;
+    }
+    const mm = Date.parse(message.receivedAtIso);
+    const lm = Date.parse(last);
+    if (Number.isFinite(mm) && Number.isFinite(lm)) {
+      return mm > lm;
+    }
+    return message.receivedAtIso > last;
   });
   return fresh.slice(-perProviderLimit);
 }
