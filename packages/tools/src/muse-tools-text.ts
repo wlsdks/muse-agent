@@ -164,7 +164,7 @@ export function createMarkdownTableTool(): MuseTool {
         return { markdown: "" } satisfies JsonObject;
       }
       const lines: string[] = [];
-      lines.push(`| ${columns.join(" | ")} |`);
+      lines.push(`| ${columns.map((column) => formatMarkdownTableCell(column)).join(" | ")} |`);
       lines.push(`| ${columns.map(() => "---").join(" | ")} |`);
       const truncated = Math.max(0, rows.length - MARKDOWN_TABLE_MAX_ROWS);
       const visibleRows = truncated > 0 ? rows.slice(0, MARKDOWN_TABLE_MAX_ROWS) : rows;

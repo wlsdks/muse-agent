@@ -706,6 +706,37 @@ describe("createMuseTools", () => {
     expect(overflow.markdown).toContain("_…5 more rows omitted_");
   });
 
+  it("markdown_table escapes pipes/newlines in COLUMN NAMES, not just cells", async () => {
+    const tool = getTool("markdown_table");
+
+    // A column key containing `|` / newline must not break the
+    // table structure: pre-fix the raw key injected an extra `|`
+    // (and a literal newline) into the header row.
+    const derived = (await tool.execute(
+      { rows: [{ "a|b": 1, "c\nd": 2 }] },
+      { runId: "r" }
+    )) as { markdown: string };
+    expect(derived.markdown).toBe([
+      "| a\\|b | c<br/>d |",
+      "| --- | --- |",
+      "| 1 | 2 |"
+    ].join("\n"));
+
+    // Explicit columns get the same treatment.
+    const explicit = (await tool.execute(
+      { columns: ["x|y"], rows: [{ "x|y": "v" }] },
+      { runId: "r" }
+    )) as { markdown: string };
+    expect(explicit.markdown.split("\n")[0]).toBe("| x\\|y |");
+
+    // No regression: a clean column name is byte-identical.
+    const clean = (await tool.execute(
+      { rows: [{ name: "Al" }] },
+      { runId: "r" }
+    )) as { markdown: string };
+    expect(clean.markdown).toBe(["| name |", "| --- |", "| Al |"].join("\n"));
+  });
+
   it("kv_summarize flattens nested objects + arrays into dot-path key:value lines", async () => {
     const tool = getTool("kv_summarize");
     const flat = (await tool.execute(
