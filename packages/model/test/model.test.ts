@@ -1573,6 +1573,73 @@ function fakeOpenAIResponsesFetch(options: { readonly forceError?: boolean } = {
   };
 }
 
+describe("OpenAI Responses tool-call arguments are object-guarded (consistent with the chat + Ollama paths)", () => {
+  function responsesFetchWithArgs(rawArgs: string, stream: boolean): typeof globalThis.fetch {
+    return async () => {
+      if (stream) {
+        return new Response(new ReadableStream({
+          start(controller) {
+            const enc = new TextEncoder();
+            const send = (o: unknown) => controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`));
+            send({
+              type: "response.output_item.done",
+              item: { type: "function_call", call_id: "call-x", name: "search", arguments: rawArgs }
+            });
+            send({ type: "response.completed", response: { id: "r", model: "model-test", usage: {} } });
+            controller.close();
+          }
+        }));
+      }
+      return new Response(JSON.stringify({
+        id: "r",
+        model: "model-test",
+        output: [{ type: "function_call", call_id: "call-x", name: "search", arguments: rawArgs }],
+        usage: { input_tokens: 1, output_tokens: 1 }
+      }));
+    };
+  }
+
+  const request = { messages: [{ content: "hi", role: "user" as const }], model: "model-test" };
+
+  it("non-object / malformed argument JSON collapses to {} (never an array/primitive/null)", async () => {
+    for (const raw of ["[1,2,3]", "\"just a string\"", "5", "null", "{not valid"]) {
+      const provider = new OpenAIProvider({
+        baseUrl: "https://openai.example.test/v1",
+        defaultModel: "model-test",
+        fetch: responsesFetchWithArgs(raw, false),
+        models: ["model-test"]
+      });
+      const response = await provider.generate(request);
+      expect(response.toolCalls?.[0]?.arguments).toEqual({});
+    }
+  });
+
+  it("a well-formed object argument still parses through (no regression)", async () => {
+    const provider = new OpenAIProvider({
+      baseUrl: "https://openai.example.test/v1",
+      defaultModel: "model-test",
+      fetch: responsesFetchWithArgs("{\"query\":\"muse\"}", false),
+      models: ["model-test"]
+    });
+    const response = await provider.generate(request);
+    expect(response.toolCalls?.[0]?.arguments).toEqual({ query: "muse" });
+  });
+
+  it("the streaming Responses path applies the same object guard", async () => {
+    const provider = new OpenAIProvider({
+      baseUrl: "https://openai.example.test/v1",
+      defaultModel: "model-test",
+      fetch: responsesFetchWithArgs("[1,2,3]", true),
+      models: ["model-test"]
+    });
+    const toolCalls = [];
+    for await (const event of provider.stream(request)) {
+      if (event.type === "tool-call") toolCalls.push(event.toolCall);
+    }
+    expect(toolCalls[0]?.arguments).toEqual({});
+  });
+});
+
 function fakeAnthropicFetch(options: { readonly forceError?: boolean } = {}): typeof globalThis.fetch {
   return async () => {
     if (options.forceError) {

@@ -193,11 +193,7 @@ export function fromOpenAIResponsesResponse(
     if (it.type === "function_call") {
       // Function tool call output item: extract into ModelToolCall
       if (typeof it.name === "string" && typeof it.call_id === "string") {
-        let args: JsonObject = {};
-        try {
-          args = JSON.parse(typeof it.arguments === "string" ? it.arguments : "{}") as JsonObject;
-        } catch { /* leave as empty object */ }
-        toolCalls.push({ id: it.call_id, name: it.name, arguments: args });
+        toolCalls.push({ id: it.call_id, name: it.name, arguments: parseToolArguments(it.arguments) });
       }
       continue;
     }
@@ -298,11 +294,11 @@ export async function* parseOpenAIResponsesStream(
         // Completed function tool call — emit the full tool-call event once arguments are finalised
         const item = evt.item;
         if (typeof item.name === "string" && typeof item.call_id === "string") {
-          let args: JsonObject = {};
-          try {
-            args = JSON.parse(typeof item.arguments === "string" ? item.arguments : "{}") as JsonObject;
-          } catch { /* leave as empty object */ }
-          const toolCall: ModelToolCall = { id: item.call_id, name: item.name, arguments: args };
+          const toolCall: ModelToolCall = {
+            id: item.call_id,
+            name: item.name,
+            arguments: parseToolArguments(item.arguments)
+          };
           toolCalls.push(toolCall);
           yield { type: "tool-call", toolCall };
         }
