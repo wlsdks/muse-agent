@@ -57,6 +57,7 @@ delete an open row, never rewrite another goal's status.
 | 409 | [Fix Atom feed permalink selection](409-atom-feed-permalink-fix.md) | fix / robustness | done — `muse feeds` records the rel=alternate permalink, not the self/feed URL |
 | 410 | [Close named-invisible-entity injection evasion](410-named-invisible-entity-evasion.md) | fix / security | done — `&ZeroWidthSpace;`/`&NoBreak;` no longer evade injection/PII/leakage guards |
 | 411 | [Corrupt-store quarantine for the 2 history audit logs](411-history-store-corrupt-quarantine.md) | fix / data-safety | done — proactive/reminder history now quarantined like their 10 siblings, not destroyed |
+| 412 | [CalDAV ICS line unfolding (RFC 5545)](412-caldav-ics-line-unfolding.md) | fix / robustness | done — folded SUMMARY/LOCATION/DESCRIPTION no longer truncated at octet 75 |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

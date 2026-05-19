@@ -95,6 +95,24 @@ describe("CalDAVCalendarProvider ICS time parsing", () => {
     expect(a?.startsAt.toISOString()).toBe("2026-05-17T00:00:00.000Z");
   });
 
+  it("unfolds RFC 5545 folded SUMMARY / LOCATION / DESCRIPTION instead of truncating at the fold", async () => {
+    // Real CalDAV servers (Google, Nextcloud, Radicale) fold any
+    // content line past 75 octets with CRLF + a single space.
+    const ics =
+      "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:fold-1\r\n" +
+      "SUMMARY:Quarterly planning sync with the platform team and stak\r\n eholders (room B)\r\n" +
+      "LOCATION:Building 4\\, Floor 2\\, the big confe\r\n rence room\r\n" +
+      "DTSTART:20260517T100000Z\r\nDTEND:20260517T110000Z\r\n" +
+      "DESCRIPTION:agenda line one \r\n\tcontinued via a TAB fold too\r\n" +
+      "END:VEVENT\r\nEND:VCALENDAR";
+    const [event] = await providerReturning(ics).listEvents(range);
+    expect(event?.title).toBe("Quarterly planning sync with the platform team and stakeholders (room B)");
+    expect(event?.location).toBe("Building 4, Floor 2, the big conference room");
+    expect(event?.notes).toBe("agenda line one continued via a TAB fold too");
+    // The folded value didn't corrupt the following property.
+    expect(event?.startsAt.toISOString()).toBe("2026-05-17T10:00:00.000Z");
+  });
+
   it("falls back to a floating parse (does not drop the event) on an unknown TZID", async () => {
     const ics = [
       "BEGIN:VEVENT", "UID:bad-tz", "SUMMARY:Bad zone",

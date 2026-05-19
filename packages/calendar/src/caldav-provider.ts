@@ -242,7 +242,17 @@ function parseCalendarQueryResponse(xml: string, providerId: string, baseUrl: st
   });
 }
 
-function parseVEvent(ics: string, providerId: string, fallbackId: string): CalendarEvent | undefined {
+// RFC 5545 §3.1: a content line longer than 75 octets is folded
+// by inserting CRLF + a single space/tab; a parser MUST delete
+// that exact pair before reading properties, or a long
+// SUMMARY/LOCATION/DESCRIPTION is truncated at the fold. Lenient
+// to bare-LF folds — some CalDAV servers omit the CR.
+function unfoldIcs(ics: string): string {
+  return ics.replace(/\r\n[ \t]/gu, "").replace(/\n[ \t]/gu, "");
+}
+
+function parseVEvent(rawIcs: string, providerId: string, fallbackId: string): CalendarEvent | undefined {
+  const ics = unfoldIcs(rawIcs);
   const summary = matchIcs(ics, "SUMMARY");
   const dtstart = matchIcsLine(ics, "DTSTART");
   const dtend = matchIcsLine(ics, "DTEND");
