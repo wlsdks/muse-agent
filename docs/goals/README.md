@@ -113,6 +113,7 @@ delete an open row, never rewrite another goal's status.
 | 465 | [Corrupt firedAtMs can't crash the `muse pattern` fired list](465-pattern-fired-list-invalid-date-guard.md) | fix / robustness | done — 453/459 sibling; one Invalid-Date record no longer RangeErrors the whole listing → "(unknown time)" (mutation-proven) |
 | 466 | [filterFresh instant-compare — cross-provider timestamp can't drop an inbound message](466-inbox-filterfresh-instant-compare.md) | fix / correctness | done — 461/464 functional sibling; mixed provider precision/offset no longer silently drops a genuinely-new inbound message (mutation-proven) |
 | 467 | [parseIcsDateValue rejects an impossible calendar date instead of silent rollover](467-ics-parser-impossible-date-reject.md) | fix / correctness | done — 440 ICS-import sibling; a malformed `.ics` impossible date no longer imports a `muse calendar import` event on the wrong day/time (mutation-proven) |
+| 468 | [chat-REPL slash typo gets a "did you mean" suggestion](468-chat-repl-slash-did-you-mean.md) | feat / cli-ergonomics | done — REPL parity with the top-level CLI's fuzzy hint; reuses the tested `closestCommandName`; no-match output byte-identical (mutation-proven; first direct `handleSlashCommand` coverage) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

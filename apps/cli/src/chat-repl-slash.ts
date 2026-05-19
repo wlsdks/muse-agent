@@ -16,8 +16,26 @@
  */
 
 import { clearLastChatHistory } from "./chat-history.js";
+import { closestCommandName } from "./closest-command.js";
 import { consumeAskStream, type AskStreamEvent } from "./commands-ask.js";
 import type { ProgramIO } from "./program.js";
+
+const SLASH_COMMANDS = [
+  "exit",
+  "quit",
+  "reset",
+  "history",
+  "model",
+  "tools",
+  "fact",
+  "pref",
+  "whoami",
+  "persona",
+  "trust",
+  "remember",
+  "forget",
+  "help"
+] as const;
 
 export interface ChatTurnRecord {
   readonly role: "system" | "user" | "assistant";
@@ -302,7 +320,14 @@ export async function handleSlashCommand(
       io.stdout("  /forget <key>         drop a single fact/pref; /forget --all wipes the persona\n");
       io.stdout("  /help                 this list\n");
       return;
-    default:
-      io.stdout(`(unknown command: /${cmd ?? ""} — try /help)\n`);
+    default: {
+      const typed = cmd ?? "";
+      const suggestion = typed.length > 0 ? closestCommandName(typed, SLASH_COMMANDS) : undefined;
+      if (suggestion) {
+        io.stdout(`(unknown command: /${typed} — did you mean /${suggestion}? try /help for the list)\n`);
+      } else {
+        io.stdout(`(unknown command: /${typed} — try /help)\n`);
+      }
+    }
   }
 }
