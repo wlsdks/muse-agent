@@ -60,6 +60,15 @@ export function createGreetingStripResponseFilter(): ResponseFilterStage {
         followupGreetingPattern
       ]);
 
+      // A reply that is ONLY a greeting/filler must not be stripped
+      // to nothing — the filter removes a preamble, not the whole
+      // turn. An unstripped greeting beats total silence (the
+      // inbound path treats an empty reply as "handled, send
+      // nothing").
+      if (output.trim().length === 0) {
+        return response;
+      }
+
       if (output === response.output) {
         return response;
       }
@@ -106,6 +115,12 @@ export function createEnglishGreetingStripResponseFilter(): ResponseFilterStage 
         goodTimeOfDayPattern,
         niceToMeetPattern
       ]);
+
+      // See the Korean filter: never strip a greeting-only reply
+      // down to an empty turn (silence is worse than the greeting).
+      if (output.trim().length === 0) {
+        return response;
+      }
 
       if (output === response.output) {
         return response;

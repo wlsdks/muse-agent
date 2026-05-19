@@ -71,4 +71,11 @@ describe("createGreetingStripResponseFilter", () => {
     const result = await filter.apply(original, baseContext);
     expect(result.output).toBe(original.output);
   });
+
+  it("does NOT strip a greeting-only / filler-only reply down to empty (silence is worse)", async () => {
+    for (const only of ["안녕하세요!", "반갑습니다!", "네! 물론이죠! "]) {
+      const result = await filter.apply(baseResponse(only), baseContext);
+      expect(result.output).toBe(only);
+    }
+  });
 });

@@ -103,6 +103,13 @@ describe("createEnglishGreetingStripResponseFilter", () => {
       expect(result.output).toBe(input);
     }
   });
+
+  it("does NOT strip a greeting-only / filler-only reply down to empty (silence is worse)", async () => {
+    for (const only of ["Hi there! ", "Good morning! ", "Sure! ", "Of course! "]) {
+      const result = await filter.apply(baseResponse(only), baseContext);
+      expect(result.output).toBe(only);
+    }
+  });
 });
 
 describe("createEnglishCasualLureStripResponseFilter", () => {
