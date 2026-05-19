@@ -23,6 +23,16 @@ import type {
   TokenUsageSink
 } from "./index.js";
 
+// `?? 0` does NOT catch NaN / Infinity. A single corrupt or
+// badly-derived `estimatedCostUsd` (tokens × an undefined rate, a
+// hand-edited "NaN" DB row) would otherwise poison the WHOLE
+// daily / top-expensive / per-session aggregate it sums into AND
+// the cost sort comparator (NaN ⇒ spec-undefined order). Same
+// guard the scheduler / parseInteger / episode summariser use.
+function finiteCostUsd(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 export class InMemoryTokenUsageSink implements QueryableTokenUsageSink {
   readonly #events: TokenUsageRecord[] = [];
 
@@ -107,7 +117,7 @@ export class InMemoryTokenCostQuery implements TokenCostQuery {
       .filter((event) => event.runId.startsWith(runId))
       .map((event) => ({
         completionTokens: event.completionTokens,
-        estimatedCostUsd: event.estimatedCostUsd ?? 0,
+        estimatedCostUsd: finiteCostUsd(event.estimatedCostUsd),
         model: event.model,
         promptTokens: event.promptTokens,
         provider: event.provider,
@@ -141,7 +151,7 @@ export class InMemoryTokenCostQuery implements TokenCostQuery {
         day,
         model: event.model,
         promptTokens: existing.promptTokens + event.promptTokens,
-        totalCostUsd: existing.totalCostUsd + (event.estimatedCostUsd ?? 0),
+        totalCostUsd: existing.totalCostUsd + finiteCostUsd(event.estimatedCostUsd),
         totalTokens: existing.totalTokens + event.totalTokens
       });
     }
@@ -166,7 +176,7 @@ export class InMemoryTokenCostQuery implements TokenCostQuery {
           model: event.model,
           runId: event.runId,
           time: at > existing.time ? at : existing.time,
-          totalCostUsd: existing.totalCostUsd + (event.estimatedCostUsd ?? 0),
+          totalCostUsd: existing.totalCostUsd + finiteCostUsd(event.estimatedCostUsd),
           totalTokens: existing.totalTokens + event.totalTokens
         });
       } else {
@@ -174,7 +184,7 @@ export class InMemoryTokenCostQuery implements TokenCostQuery {
           model: event.model,
           runId: event.runId,
           time: at,
-          totalCostUsd: event.estimatedCostUsd ?? 0,
+          totalCostUsd: finiteCostUsd(event.estimatedCostUsd),
           totalTokens: event.totalTokens
         });
       }
@@ -211,7 +221,7 @@ export class KyselyTokenCostQuery implements TokenCostQuery {
       .execute();
     return rows.map((row) => ({
       completionTokens: Number(row.completion_tokens),
-      estimatedCostUsd: Number(row.estimated_cost_usd ?? 0),
+      estimatedCostUsd: finiteCostUsd(Number(row.estimated_cost_usd ?? 0)),
       model: row.model,
       promptTokens: Number(row.prompt_tokens),
       provider: row.provider,

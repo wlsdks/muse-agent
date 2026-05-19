@@ -73,6 +73,7 @@ delete an open row, never rewrite another goal's status.
 | 425 | [Local date/time flavors don't mangle the fallback](425-local-date-time-fallback-not-mangled.md) | fix / robustness | done — a bad timestamp shows whole, not chopped to "not-a-date"/"strin" |
 | 426 | [Greeting-strip never empties a greeting-only reply](426-greeting-strip-no-empty-reply.md) | fix / UX | done — greeting Muse no longer yields total silence (was stripped to "") |
 | 427 | [`MUSE_*` path overrides expand a leading `~`](427-resolver-leading-tilde-expansion.md) | fix / robustness | done — `MUSE_*_FILE=~/x` no longer writes state into a literal ./~/ dir |
+| 428 | [Non-finite token cost can't poison the aggregate](428-token-cost-nan-guard.md) | fix / robustness | done — one NaN/Infinity cost no longer turns `muse cost` into NaN + scrambles order |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

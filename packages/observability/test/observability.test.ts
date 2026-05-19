@@ -726,6 +726,34 @@ describe("InMemoryTokenCostQuery", () => {
 
     expect(rows.map((row) => row.runId)).toEqual(["huge", "mid", "small"]);
   });
+
+  it("a non-finite estimatedCostUsd contributes 0 instead of poisoning the aggregate", async () => {
+    const sink = new InMemoryTokenUsageSink();
+    await record(sink, { estimatedCostUsd: 0.05, model: "m", recordedAt: "2026-05-07T10:00:00.000Z", runId: "ok" });
+    await record(sink, {
+      estimatedCostUsd: Number.NaN, // corrupt / badly-derived cost
+      model: "m",
+      recordedAt: "2026-05-07T11:00:00.000Z",
+      runId: "bad"
+    });
+    await record(sink, { estimatedCostUsd: 0.03, model: "m", recordedAt: "2026-05-07T12:00:00.000Z", runId: "ok2" });
+
+    const query = new InMemoryTokenCostQuery(sink);
+    const win = { from: new Date("2026-05-07T00:00:00.000Z"), to: new Date("2026-05-08T00:00:00.000Z") };
+
+    const daily = await query.daily(win);
+    // 0.05 + 0(NaN→0) + 0.03 — NOT NaN.
+    expect(daily).toHaveLength(1);
+    expect(daily[0]!.totalCostUsd).toBeCloseTo(0.08, 10);
+
+    const top = await query.topExpensive({ ...win, limit: 3 });
+    expect(top.find((r) => r.runId === "bad")!.totalCostUsd).toBe(0);
+    // Sort order is well-defined (no NaN in the comparator).
+    expect(top.map((r) => r.runId)).toEqual(["ok", "ok2", "bad"]);
+
+    const session = await query.bySession("bad");
+    expect(session[0]!.estimatedCostUsd).toBe(0);
+  });
 });
 
 describe("SloAlertEvaluator", () => {
