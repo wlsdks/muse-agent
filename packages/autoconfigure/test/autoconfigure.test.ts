@@ -57,6 +57,7 @@ import {
   resolveTelegramInboxFile,
   resolveTelegramOffsetFile
 } from "../src/index.js";
+import { parseNonNegativeFloat, parsePositiveFloat, parseSloErrorRate } from "../src/env-parsers.js";
 
 describe("autoconfigure", () => {
   it("assembles default runtime without auth when no secret is configured", async () => {
@@ -572,6 +573,42 @@ describe("autoconfigure", () => {
     expect(parseInteger("+12", 1)).toBe(12);
     expect(parseInteger("-3", 4)).toBe(4);
     expect(parseInteger("0", 9)).toBe(9);
+  });
+
+  it("the float parsers reject lenient-garbage like parseInteger does (goal 414 sibling)", () => {
+    // Number.parseFloat("0.5x") === 0.5, parseFloat("60s") === 60 —
+    // the same unit-slip footgun parseInteger was hardened against.
+    // Invalid input must hit the fallback, not silently take effect.
+    expect(parsePositiveFloat("0.5x", 9)).toBe(9);
+    expect(parsePositiveFloat("60s", 9)).toBe(9);
+    expect(parseNonNegativeFloat("1.5kg", 7)).toBe(7);
+    expect(parseSloErrorRate("0.5x", 0.1)).toBe(0.1);
+    // parseFloat("0x") === 0 would have passed parseNonNegativeFloat's
+    // `>= 0` gate and silently returned 0 instead of the fallback.
+    expect(parseNonNegativeFloat("0x", 4)).toBe(4);
+
+    // No regression: valid floats (whitespace, sign, leading dot,
+    // scientific) still parse exactly as before.
+    expect(parsePositiveFloat("2.5", 1)).toBe(2.5);
+    expect(parsePositiveFloat("  3  ", 1)).toBe(3);
+    expect(parsePositiveFloat(".5", 1)).toBe(0.5);
+    expect(parsePositiveFloat("1e3", 1)).toBe(1000);
+    expect(parseNonNegativeFloat("+2.0", 9)).toBe(2);
+    expect(parseSloErrorRate("0.05", 1)).toBe(0.05);
+    expect(parseNonNegativeFloat("0", 9)).toBe(0); // zero is valid, not fallback
+
+    // Empty / whitespace / undefined → fallback (the empty-string
+    // trap: Number("")===0 must NOT make parseNonNegativeFloat 0).
+    expect(parseNonNegativeFloat("", 7)).toBe(7);
+    expect(parseNonNegativeFloat("   ", 7)).toBe(7);
+    expect(parsePositiveFloat(undefined, 5)).toBe(5);
+
+    // Range / finiteness guards still apply.
+    expect(parseSloErrorRate("1.5", 0.1)).toBe(0.1);
+    expect(parseSloErrorRate("-0.1", 0.1)).toBe(0.1);
+    expect(parseSloErrorRate("Infinity", 0.1)).toBe(0.1);
+    expect(parsePositiveFloat("0", 5)).toBe(5);
+    expect(parseNonNegativeFloat("-0.01", 9)).toBe(9);
   });
 
   it("parseBoolean accepts 'on/off' + falls back on unknown values (goal 128)", () => {

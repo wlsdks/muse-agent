@@ -89,6 +89,7 @@ delete an open row, never rewrite another goal's status.
 | 441 | [computeNextRunAt fails closed on blank/corrupt cron](441-scheduler-compute-next-run-fail-closed.md) | fix / safety | done — blank persisted cron no longer silently fires every minute; compute chokepoint re-asserts validate (336/337 sibling, probe-demonstrated) |
 | 442 | [Pin full Telegram MarkdownV2 reserved-char escaping contract](442-telegram-markdownv2-full-reserved-char-coverage.md) | test / delivery | done — all 18 reserved chars + over-escape + HTML ordering pinned (was 5/18; mutation-proven; silent-400 regression class) |
 | 443 | [Non-finite token count can't poison the token-volume ranking](443-token-cost-nonfinite-token-guard.md) | fix / safety | done — 428 sibling; finiteTokens guards the totalTokens sort key that is primary under Qwen-only/$0 (mutation-proven) |
+| 444 | [Float env-parsers reject lenient-garbage like parseInteger](444-env-float-parsers-strict.md) | fix / robustness | done — 414 sibling; `0.5x`/`60s`/`0x` float MUSE_* now → fallback not silent-truncate; +first direct coverage (mutation-proven) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

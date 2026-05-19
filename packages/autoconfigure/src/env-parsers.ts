@@ -60,8 +60,22 @@ export function parseInteger(value: string | undefined, fallback: number): numbe
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+// Same leniency hazard `parseInteger` was hardened against, for
+// the float parsers: `Number.parseFloat("0.5x")` is `0.5` and
+// `"60s"` is `60`, so a unit-slip / typo'd MUSE_* float silently
+// took effect instead of the fallback. `Number` rejects trailing
+// garbage (→ NaN). The empty/whitespace guard preserves the prior
+// parseFloat("")→NaN→fallback (Number("")===0 would not).
+function strictFloat(value: string): number {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return Number.NaN;
+  }
+  return Number(trimmed);
+}
+
 export function parseSloErrorRate(value: string | undefined, fallback: number): number {
-  const parsed = value === undefined ? Number.NaN : Number.parseFloat(value);
+  const parsed = value === undefined ? Number.NaN : strictFloat(value);
   if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
     return fallback;
   }
@@ -69,7 +83,7 @@ export function parseSloErrorRate(value: string | undefined, fallback: number): 
 }
 
 export function parsePositiveFloat(value: string | undefined, fallback: number): number {
-  const parsed = value === undefined ? Number.NaN : Number.parseFloat(value);
+  const parsed = value === undefined ? Number.NaN : strictFloat(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return fallback;
   }
@@ -77,7 +91,7 @@ export function parsePositiveFloat(value: string | undefined, fallback: number):
 }
 
 export function parseNonNegativeFloat(value: string | undefined, fallback: number): number {
-  const parsed = value === undefined ? Number.NaN : Number.parseFloat(value);
+  const parsed = value === undefined ? Number.NaN : strictFloat(value);
   if (!Number.isFinite(parsed) || parsed < 0) {
     return fallback;
   }
