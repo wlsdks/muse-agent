@@ -197,6 +197,36 @@ describe("autoconfigure", () => {
     ).toBeUndefined();
   });
 
+  it("the Ollama embedder used by the recall provider treats an empty OLLAMA_BASE_URL= as unset (goal-478 sibling)", async () => {
+    const { buildEpisodicRecallProvider } = await import("../src/personal-providers.js");
+    const { InMemoryConversationSummaryStore } = await import("@muse/memory");
+    const captured: string[] = [];
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      captured.push(typeof input === "string" ? input : input.toString());
+      return new Response(JSON.stringify({ embedding: [0.1, 0.2, 0.3] }), { status: 200 });
+    }) as typeof globalThis.fetch;
+    const origEnv = process.env.OLLAMA_BASE_URL;
+    process.env.OLLAMA_BASE_URL = "";
+    try {
+      const store = new InMemoryConversationSummaryStore();
+      store.save({
+        narrative: "We discussed the Q3 budget at length last Tuesday.",
+        sessionId: "s-1",
+        summarizedUpToIndex: 0,
+        userId: "u-1"
+      });
+      const provider = buildEpisodicRecallProvider({}, store)!;
+      await provider.resolve("budget conversation", "u-1");
+      expect(captured.length).toBeGreaterThan(0);
+      expect(captured[0]).toBe("http://127.0.0.1:11434/api/embeddings");
+    } finally {
+      globalThis.fetch = origFetch;
+      if (origEnv === undefined) delete process.env.OLLAMA_BASE_URL;
+      else process.env.OLLAMA_BASE_URL = origEnv;
+    }
+  });
+
   it("assembles auth and API options when JWT secret is configured", () => {
     const options = createApiServerOptions({
       env: {

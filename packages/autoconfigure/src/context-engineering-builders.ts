@@ -198,7 +198,14 @@ export function buildInboxContextProvider(env: MuseEnvironment): InboxContextPro
 // degrades that resolve to Jaccard, so recall never breaks if Ollama
 // is down or the model isn't pulled.
 function createOllamaEmbedder(model: string): (text: string) => Promise<readonly number[]> {
-  const base = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/u, "");
+  // `??` keeps "" (empty is not nullish); a shell that pre-clears
+  // OLLAMA_BASE_URL= would otherwise leave `base` empty and every
+  // /api/embeddings call would hit a malformed relative URL — and
+  // the StoreBacked provider silently degrades to Jaccard on a
+  // thrown embedder. Treat empty / whitespace as "unset" instead,
+  // mirroring `resolveOllamaUrl` and the goal-478 merge fix.
+  const trimmed = process.env.OLLAMA_BASE_URL?.trim();
+  const base = ((trimmed && trimmed.length > 0) ? trimmed : "http://127.0.0.1:11434").replace(/\/+$/u, "");
   return async (text: string) => {
     const resp = await fetch(`${base}/api/embeddings`, {
       body: JSON.stringify({ model, prompt: text }),
