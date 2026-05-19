@@ -70,6 +70,7 @@ delete an open row, never rewrite another goal's status.
 | 422 | [Inbound reply handled only after send succeeds](422-inbound-handled-after-send.md) | fix / robustness | done — a transient send failure no longer silently loses Muse's reply forever |
 | 423 | [Redact Telegram & Discord bot tokens](423-redact-telegram-discord-bot-tokens.md) | fix / security | done — Muse's own channel tokens no longer leak through the channel they control |
 | 424 | [Direct coverage for the calendar credential store](424-calendar-credential-store-direct-coverage.md) | test / security | done — 0o600 + tolerant-read + prototype-safety now pinned (was untested) |
+| 425 | [Local date/time flavors don't mangle the fallback](425-local-date-time-fallback-not-mangled.md) | fix / robustness | done — a bad timestamp shows whole, not chopped to "not-a-date"/"strin" |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

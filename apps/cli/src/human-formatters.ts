@@ -245,9 +245,16 @@ export function formatLocalDateTime(iso: string, timeZone?: string): string {
  * "Today:" headers where a UTC ISO date can be off by one day for
  * users west of GMT or east of the date line.
  */
+// `formatLocalDateTime` passes an unparseable input straight
+// through. A raw passthrough can be ≥10/≥16 chars too, so a
+// length check would slice it into garbage ("not-a-date" /
+// "strin"). Only carve the date/time out of the canonical
+// `YYYY-MM-DD HH:MM` shape; otherwise degrade like the parent.
+const CANONICAL_LOCAL_DATETIME = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/u;
+
 export function formatLocalDate(iso: string, timeZone?: string): string {
   const dateTime = formatLocalDateTime(iso, timeZone);
-  return dateTime.length >= 10 ? dateTime.slice(0, 10) : dateTime;
+  return CANONICAL_LOCAL_DATETIME.test(dateTime) ? dateTime.slice(0, 10) : dateTime;
 }
 
 /**
@@ -257,7 +264,7 @@ export function formatLocalDate(iso: string, timeZone?: string): string {
  */
 export function formatLocalTime(iso: string, timeZone?: string): string {
   const dateTime = formatLocalDateTime(iso, timeZone);
-  return dateTime.length >= 16 ? dateTime.slice(11, 16) : dateTime;
+  return CANONICAL_LOCAL_DATETIME.test(dateTime) ? dateTime.slice(11, 16) : dateTime;
 }
 
 function shortDateTime(iso: string): string {

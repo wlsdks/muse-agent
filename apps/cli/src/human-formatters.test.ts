@@ -62,9 +62,16 @@ describe("formatLocalDate / formatLocalTime", () => {
     expect(formatLocalTime("2026-05-14T06:00:00Z", "UTC")).toBe("06:00");
   });
 
-  it("returns the input unchanged for unparseable strings", () => {
+  it("returns the input unchanged for unparseable strings (short AND long)", () => {
     expect(formatLocalDate("nope")).toBe("nope");
     expect(formatLocalTime("nope")).toBe("nope");
+    // A LONG unparseable string (>= the old slice thresholds) must
+    // pass through whole, not be mangled into "not-a-date" / "strin".
+    expect(formatLocalDate("not-a-date-string-here")).toBe("not-a-date-string-here");
+    expect(formatLocalTime("not-a-date-string-here")).toBe("not-a-date-string-here");
+    // A bare calendar date (no time component) is also not the
+    // canonical shape → returned whole, not sliced to a bogus time.
+    expect(formatLocalTime("2026-05-20")).toBe("2026-05-20");
   });
 });
 
