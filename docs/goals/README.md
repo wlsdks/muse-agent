@@ -107,6 +107,7 @@ delete an open row, never rewrite another goal's status.
 | 459 | [Corrupt job.timezone can't crash scheduled-job rendering](459-scheduler-datevars-invalid-timezone-fallback.md) | fix / robustness | done — 441 load-path sibling; invalid persisted timezone → UTC fallback, not a RangeError that breaks dispatch (mutation-proven) |
 | 460 | [Direct fail-closed coverage for the autonomous-action consent gate](460-consent-store-failclosed-coverage.md) | test / security | done — 458-class; hasConsent exact-scope/no-broaden + corrupt→false + malformed-filtered pinned (was zero direct coverage; mutation-proven) |
 | 461 | [queryVetoes orders by parsed instant, not lexicographic ISO](461-veto-review-instant-order.md) | fix / correctness | done — 418 sibling; veto review surface no longer mis-orders across mixed-precision/offset timestamps (mutation-proven) |
+| 462 | [Direct coverage for the derived-agent-metrics fan-out](462-derived-agent-metrics-fanout-coverage.md) | test / observability | done — 458-class; SLO/drift feed + inner-forward fan-out pinned (was zero direct coverage; mutation-proven) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

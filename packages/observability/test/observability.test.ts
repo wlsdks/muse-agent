@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   createCacheStartupCheck,
+  createDerivedAgentMetrics,
   createMcpStartupCheck,
+  createSloFeedingAgentMetrics,
   createTraceEventInsert,
   InMemoryAgentMetrics,
   createMuseObservabilitySnapshotProvider,
@@ -1261,5 +1263,85 @@ describe("createMuseObservabilitySnapshotProvider", () => {
     const snapshot = await provider.snapshot();
     expect(snapshot.latency).toBeUndefined();
     expect(errors).toHaveLength(1);
+  });
+});
+
+describe("createDerivedAgentMetrics fan-out", () => {
+  function sloSpy() {
+    const latencies: number[] = [];
+    const results: boolean[] = [];
+    const slo = {
+      recordLatency: (ms: number) => latencies.push(ms),
+      recordResult: (ok: boolean) => results.push(ok)
+    } as unknown as SloAlertEvaluator;
+    return { latencies, results, slo };
+  }
+  function driftSpy() {
+    const inputs: number[] = [];
+    const outputs: number[] = [];
+    const drift = {
+      recordInput: (n: number) => inputs.push(n),
+      recordOutput: (n: number) => outputs.push(n)
+    } as unknown as PromptDriftDetector;
+    return { drift, inputs, outputs };
+  }
+  const run = (status: "completed" | "failed", durationMs: number) => ({
+    durationMs,
+    model: "ollama/qwen3:8b",
+    runId: "r",
+    status
+  });
+
+  it("always forwards every method to the inner metrics", async () => {
+    const inner = new InMemoryAgentMetrics();
+    const m = createDerivedAgentMetrics({ inner });
+    m.recordAgentRun(run("completed", 5));
+    m.recordGuardRejection("g", "why", {});
+    m.recordOutputGuardAction("o", "modified", "why", {});
+    m.recordTokenUsage({ inputTokens: 1, outputTokens: 2 }, {});
+    expect(inner.recordedEvents().map((e) => e.type)).toEqual([
+      "agent_run",
+      "guard_rejection",
+      "output_guard_action",
+      "token_usage"
+    ]);
+  });
+
+  it("feeds slo from recordAgentRun (latency + result) and drift from recordTokenUsage", () => {
+    const inner = new InMemoryAgentMetrics();
+    const { latencies, results, slo } = sloSpy();
+    const { drift, inputs, outputs } = driftSpy();
+    const m = createDerivedAgentMetrics({ drift, inner, slo });
+
+    m.recordAgentRun(run("completed", 120));
+    m.recordAgentRun(run("failed", 999));
+    expect(latencies).toEqual([120, 999]);
+    expect(results).toEqual([true, false]);
+
+    m.recordTokenUsage({ inputTokens: 10, outputTokens: 20 }, {});
+    expect(inputs).toEqual([10]);
+    expect(outputs).toEqual([20]);
+    // inner still saw all three.
+    expect(inner.recordedEvents()).toHaveLength(3);
+  });
+
+  it("skips drift for non-number token counts but STILL forwards to inner", () => {
+    const inner = new InMemoryAgentMetrics();
+    const { drift, inputs, outputs } = driftSpy();
+    const m = createDerivedAgentMetrics({ drift, inner });
+    m.recordTokenUsage({ inputTokens: undefined, outputTokens: undefined }, {});
+    expect(inputs).toEqual([]);
+    expect(outputs).toEqual([]);
+    expect(inner.recordedEvents().map((e) => e.type)).toEqual(["token_usage"]);
+  });
+
+  it("createSloFeedingAgentMetrics is the slo-only derived wrapper", () => {
+    const inner = new InMemoryAgentMetrics();
+    const { latencies, results, slo } = sloSpy();
+    const m = createSloFeedingAgentMetrics(slo, inner);
+    m.recordAgentRun(run("completed", 42));
+    expect(latencies).toEqual([42]);
+    expect(results).toEqual([true]);
+    expect(inner.recordedEvents()).toHaveLength(1);
   });
 });
