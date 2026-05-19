@@ -1,3 +1,6 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 import type { MuseDatabase } from "@muse/db";
 import { KyselyAgentSpecRegistry } from "@muse/agent-specs";
@@ -721,6 +724,17 @@ describe("autoconfigure", () => {
     // Empty / whitespace-only override → falls back to default.
     expect(resolveTasksFile({ MUSE_TASKS_FILE: "" }).endsWith("/.muse/tasks.json")).toBe(true);
     expect(resolveTasksFile({ MUSE_TASKS_FILE: "   " }).endsWith("/.muse/tasks.json")).toBe(true);
+
+    // A leading `~` in the override is expanded to the home dir
+    // (systemd / Docker / .env / quoted-shell never expand it, and
+    // Node doesn't either — without this state lands in ./~/).
+    const home = homedir();
+    expect(resolveTasksFile({ MUSE_TASKS_FILE: "~/muse-x.json" })).toBe(join(home, "muse-x.json"));
+    expect(resolveTasksFile({ MUSE_TASKS_FILE: "~/notes/t.json" })).toBe(join(home, "notes/t.json"));
+    expect(resolveNotesDir({ MUSE_NOTES_DIR: "~" })).toBe(home);
+    // A `~` NOT at the start, and `~otheruser`, are left literal.
+    expect(resolveTasksFile({ MUSE_TASKS_FILE: "/data/~bk/t.json" })).toBe("/data/~bk/t.json");
+    expect(resolveTasksFile({ MUSE_TASKS_FILE: "~bob/t.json" })).toBe("~bob/t.json");
 
     // Default path branch — each resolver picks its own filename.
     expect(resolveTasksFile({}).endsWith("/.muse/tasks.json")).toBe(true);

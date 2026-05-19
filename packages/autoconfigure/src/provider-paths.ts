@@ -9,10 +9,27 @@ import type { MuseEnvironment } from "./index.js";
  * Encoding it once keeps each resolver a one-liner and stops
  * copy-paste drift when a new data file joins the set.
  */
+// A `MUSE_*` path override commonly carries a leading `~` (docs
+// show `~/.muse/...`; systemd `Environment=`, Docker `-e`, .env
+// files, and quoted shell assignments do NOT expand it, and Node
+// never does). Without this the value lands literally and state
+// is written into a bogus `./~/` directory. Only the unambiguous
+// current-user forms (`~`, `~/…`) expand; `~otheruser` is left
+// alone.
+function expandLeadingTilde(p: string): string {
+  if (p === "~") {
+    return homedir();
+  }
+  if (p.startsWith("~/") || p.startsWith("~\\")) {
+    return pathJoin(homedir(), p.slice(2));
+  }
+  return p;
+}
+
 function resolveDotMusePath(env: MuseEnvironment, envKey: string, defaultName: string): string {
   const override = env[envKey]?.trim();
   if (override && override.length > 0) {
-    return override;
+    return expandLeadingTilde(override);
   }
   return pathJoin(homedir(), ".muse", defaultName);
 }
