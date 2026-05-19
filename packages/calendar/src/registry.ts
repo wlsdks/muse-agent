@@ -81,7 +81,7 @@ export class CalendarProviderRegistry {
       throw new CalendarProviderError(
         providerId,
         "PROVIDER_NOT_FOUND",
-        `Calendar provider not registered: ${providerId}`
+        `Calendar provider not registered: ${providerId}${registeredHint([...this.providers.keys()])}`
       );
     }
 
@@ -144,4 +144,8 @@ export class CalendarProviderRegistry {
 
     return primary;
   }
+}
+
+function registeredHint(ids: readonly string[]): string {
+  return ids.length > 0 ? ` (registered: ${ids.join(", ")})` : " (none registered)";
 }

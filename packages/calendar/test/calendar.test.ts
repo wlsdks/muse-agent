@@ -305,6 +305,17 @@ describe("CalendarProviderRegistry", () => {
     rmSync(dir, { force: true, recursive: true });
   });
 
+  it("the unknown-id error names the registered providers so a misconfigured calendar id is recoverable", () => {
+    const empty = new CalendarProviderRegistry();
+    expect(() => empty.require("local")).toThrow(/none registered/u);
+
+    const dir = mkdtempSync(join(tmpdir(), "muse-cal-hint-"));
+    const provider = new LocalCalendarProvider({ file: join(dir, "cal.json") });
+    const registry = new CalendarProviderRegistry([provider]);
+    expect(() => registry.require("locale")).toThrow(/registered: local/u);
+    rmSync(dir, { force: true, recursive: true });
+  });
+
   it("falls back to surviving providers when one throws; diagnostics name the failure (goal 071)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-cal-fallback-"));
     const local = new LocalCalendarProvider({ file: join(dir, "cal.json") });
