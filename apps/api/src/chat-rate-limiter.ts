@@ -41,6 +41,10 @@ export interface RateLimitVerdict {
   readonly retryAfterSeconds?: number;
 }
 
+function finiteOr(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
 export class ChatRateLimiter {
   private readonly capacity: number;
   private readonly windowMs: number;
@@ -49,9 +53,15 @@ export class ChatRateLimiter {
   private readonly buckets = new Map<string, Bucket>();
 
   constructor(options: ChatRateLimiterOptions = {}) {
-    this.capacity = Math.max(1, options.capacity ?? 60);
-    this.windowMs = Math.max(1_000, options.windowMs ?? 60_000);
-    this.evictAfterMs = Math.max(this.windowMs, options.evictAfterMs ?? 5 * 60_000);
+    // `??` does NOT catch NaN/Infinity. A non-finite option would
+    // make `tokens >= 1` (NaN) always false → the limiter denies
+    // EVERY request after the first (a self-DoS of /api/chat), or
+    // a NaN refill rate poisons the bucket. Guard finiteness so a
+    // corrupt option falls back to the safe default, not a broken
+    // limiter (same posture as the agent-runtime tool-loop clamp).
+    this.capacity = Math.max(1, finiteOr(options.capacity, 60));
+    this.windowMs = Math.max(1_000, finiteOr(options.windowMs, 60_000));
+    this.evictAfterMs = Math.max(this.windowMs, finiteOr(options.evictAfterMs, 5 * 60_000));
     this.now = options.now ?? (() => Date.now());
   }
 

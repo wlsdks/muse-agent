@@ -92,6 +92,27 @@ describe("POST /api/chat per-IP rate limit (goal 031)", () => {
     expect(denied.retryAfterSeconds).toBeLessThanOrEqual(31);
   });
 
+  it("a non-finite capacity/windowMs falls back to the default instead of breaking the limiter", () => {
+    const now = 0;
+    // Pre-fix: capacity NaN ⇒ tokens NaN ⇒ `NaN >= 1` false ⇒ every
+    // request after the first is DENIED (a self-DoS of /api/chat).
+    const nanCap = new ChatRateLimiter({ capacity: Number.NaN, now: () => now, windowMs: 60_000 });
+    for (let i = 0; i < 30; i += 1) {
+      expect(nanCap.consume("a").allowed).toBe(true); // default 60 ⇒ all allowed
+    }
+    // Infinity is also non-finite ⇒ default (still a real bound).
+    const infCap = new ChatRateLimiter({ capacity: Number.POSITIVE_INFINITY, now: () => now, windowMs: 60_000 });
+    for (let i = 0; i < 60; i += 1) {
+      expect(infCap.consume("b").allowed).toBe(true);
+    }
+    expect(infCap.consume("b").allowed).toBe(false); // bounded at default 60, not unlimited
+    // A NaN windowMs must not poison the refill math.
+    const nanWin = new ChatRateLimiter({ capacity: 2, now: () => now, windowMs: Number.NaN });
+    expect(nanWin.consume("c").allowed).toBe(true);
+    expect(nanWin.consume("c").allowed).toBe(true);
+    expect(nanWin.consume("c").allowed).toBe(false); // bounded normally
+  });
+
   it("clientKeyFromRequest prefers authenticated userId over IP (goal 084)", async () => {
     const { clientKeyFromRequest } = await import("../src/chat-rate-limiter.js");
     // Authenticated → user-namespaced.
