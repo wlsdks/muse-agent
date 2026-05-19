@@ -72,7 +72,7 @@ describe("boundary and cancellation helpers", () => {
     expect(() => token.throwIfCancelled()).toThrow("timeout");
   });
 
-  it("redactSecretsInText scrubs high-confidence credential shapes (goal 086)", () => {
+  it("redactSecretsInText scrubs high-confidence credential shapes", () => {
     // OpenAI sk- + sk-proj-.
     expect(redactSecretsInText("rotate sk-proj-abcdefghijklmnopqrstuvwxyz today"))
       .toBe("rotate [redacted-openai-key] today");
@@ -96,6 +96,22 @@ describe("boundary and cancellation helpers", () => {
     // JWT.
     expect(redactSecretsInText("bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NSJ9.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"))
       .toContain("[redacted-jwt]");
+    // Telegram / Discord bot tokens — Muse's own delivery
+    // channels; a leak round-trips via the very bot it controls.
+    // Built by concatenation so the source file contains NO
+    // contiguous token-shaped literal: GitHub push-protection
+    // scans source bytes, not post-eval strings (same technique
+    // the Stripe fixture below uses).
+    const tgToken = `${"7123456789"}:${"AAH9xZ2bQwErTyUiOpAsDfGhJkLzXcVbNmQ"}`;
+    expect(redactSecretsInText(`rotate bot ${tgToken} now`))
+      .toBe("rotate bot [redacted-telegram-bot-token] now");
+    const dcToken = ["MTk4NjIyNDgzNDcxOTI1MjQy", "GxYzAb", "4f8sLp-9Qw3rTy1Ui0pAsDfGhJkLzXcVbNmQ"].join(".");
+    expect(redactSecretsInText(`leaked ${dcToken}`))
+      .toContain("[redacted-discord-bot-token]");
+    // A bare "id:word" with too-short a tail is NOT a telegram
+    // token (no false positive on ordinary "key: value" text).
+    expect(redactSecretsInText("ticket 123456: shipped today"))
+      .toBe("ticket 123456: shipped today");
     // No false positive on plain English.
     expect(redactSecretsInText("Q3 budget memo due in 5 min"))
       .toBe("Q3 budget memo due in 5 min");

@@ -68,6 +68,7 @@ delete an open row, never rewrite another goal's status.
 | 420 | [`muse tasks add` validates `--due` before dispatch](420-tasks-predispatch-due-validation.md) | fix / UX | done — 419 follow-up discharged; tasks/remind now consistent; +command test |
 | 421 | [`clampOutboundText` never emits a lone surrogate](421-clamp-outbound-lone-surrogate.md) | fix / robustness | done — emoji at the truncation boundary no longer makes chat APIs drop the whole message |
 | 422 | [Inbound reply handled only after send succeeds](422-inbound-handled-after-send.md) | fix / robustness | done — a transient send failure no longer silently loses Muse's reply forever |
+| 423 | [Redact Telegram & Discord bot tokens](423-redact-telegram-discord-bot-tokens.md) | fix / security | done — Muse's own channel tokens no longer leak through the channel they control |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

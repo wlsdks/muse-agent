@@ -147,7 +147,16 @@ const SECRET_PATTERNS: ReadonlyArray<{ readonly name: string; readonly regex: Re
   // Only the modern glpat- shape; legacy GitLab tokens are too
   // low-entropy to redact without false positives.
   { name: "gitlab-pat", regex: /\bglpat-[A-Za-z0-9_-]{20,}\b/gu },
-  { name: "jwt", regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/gu }
+  { name: "jwt", regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/gu },
+  // Muse's own delivery channels: a leaked bot token round-trips
+  // via the very channel it controls (the docstring's threat
+  // model). Telegram: `<botId 6+ digits>:<exactly 35 base64url>`
+  // — distinctive enough to redact without false positives.
+  { name: "telegram-bot-token", regex: /\b\d{6,}:[A-Za-z0-9_-]{35}\b/gu },
+  // Discord bot token: three base64url segments, NOT `eyJ`-prefixed
+  // (the jwt rule above runs first and rewrites real JWTs, so this
+  // only ever sees genuine non-JWT triple-segment tokens).
+  { name: "discord-bot-token", regex: /\b[A-Za-z0-9_-]{23,28}\.[A-Za-z0-9_-]{6,8}\.[A-Za-z0-9_-]{27,}\b/gu }
 ];
 
 /**
