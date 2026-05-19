@@ -115,6 +115,17 @@ export class WhisperCppSttProvider implements SpeechToTextProvider {
     if (!request.mimeType) {
       throw new VoiceValidationError("MISSING_MIME_TYPE", "transcribe() requires mimeType");
     }
+    // Enforce the advertised `describe().supportedFormats` rather
+    // than silently writing an unknown container as `.wav` and
+    // letting whisper-cpp fail with a cryptic exit code. Strip any
+    // `; codecs=…` parameter before matching.
+    const baseMime = request.mimeType.split(";")[0]?.trim().toLowerCase() ?? "";
+    if (!SUPPORTED_FORMATS.includes(baseMime as (typeof SUPPORTED_FORMATS)[number])) {
+      throw new VoiceValidationError(
+        "UNSUPPORTED_FORMAT",
+        `unsupported audio format "${request.mimeType}"; supported: ${SUPPORTED_FORMATS.join(", ")}`
+      );
+    }
 
     const workdir = await mkdtemp(pathJoin(tmpdir(), "muse-whisper-"));
     const inputExt = extensionForMime(request.mimeType);

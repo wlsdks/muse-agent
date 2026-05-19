@@ -197,6 +197,37 @@ describe("WhisperCppSttProvider", () => {
     ).rejects.toBeInstanceOf(VoiceValidationError);
   });
 
+  it("rejects an unsupported audio format with an actionable error, before spawning", async () => {
+    let spawned = false;
+    const provider = new WhisperCppSttProvider({
+      runner: async () => {
+        spawned = true;
+        return { exitCode: 0, stderr: "" };
+      }
+    });
+    await expect(
+      provider.transcribe({ audio: new Uint8Array([1, 2, 3]), mimeType: "audio/x-m4a" })
+    ).rejects.toMatchObject({ code: "UNSUPPORTED_FORMAT", name: "VoiceValidationError" });
+    expect(spawned).toBe(false);
+  });
+
+  it("accepts a supported mime that carries a ;codecs= parameter", async () => {
+    let argv: readonly string[] = [];
+    const provider = new WhisperCppSttProvider({
+      runner: async (_b, args) => {
+        argv = args;
+        await writeFile(`${args[args.indexOf("-of") + 1]}.txt`, "ok");
+        return { exitCode: 0, stderr: "" };
+      }
+    });
+    const res = await provider.transcribe({
+      audio: new Uint8Array([1, 2, 3]),
+      mimeType: "audio/wav; codecs=1"
+    });
+    expect(res.text).toBe("ok");
+    expect(argv).toContain("-otxt");
+  });
+
   it("createWhisperCppRunner SIGKILLs a hung process and rejects (no infinite hang)", async () => {
     const runner = createWhisperCppRunner(120);
     const start = Date.now();

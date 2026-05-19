@@ -76,6 +76,7 @@ delete an open row, never rewrite another goal's status.
 | 428 | [Non-finite token cost can't poison the aggregate](428-token-cost-nan-guard.md) | fix / robustness | done — one NaN/Infinity cost no longer turns `muse cost` into NaN + scrambles order |
 | 429 | [Tasks invalid-dueAt error code consistency](429-tasks-dueat-error-code-consistency.md) | fix / consistency | done — PATCH /api/tasks now returns INVALID_TASK_DUE_AT like POST, not BAD_DUE_AT |
 | 430 | [Direct coverage for `uniqueCommandPrefix`](430-uniquecommandprefix-direct-coverage.md) | test / robustness | done — the typo-recovery prefix resolver now has direct unit coverage (was implicit-only) |
+| 431 | [Whisper.cpp STT enforces advertised formats](431-whisper-enforce-supported-format.md) | fix / consistency | done — unsupported mime → actionable UNSUPPORTED_FORMAT, not a cryptic whisper exit |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
