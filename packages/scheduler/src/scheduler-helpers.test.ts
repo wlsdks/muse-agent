@@ -117,6 +117,11 @@ describe("validateExecutionTimeout", () => {
     expect(() => validateExecutionTimeout(999)).toThrow(SchedulerValidationError);
     expect(() => validateExecutionTimeout(3_600_001)).toThrow(SchedulerValidationError);
   });
+  it("throws for non-finite timeouts (NaN / Infinity / -Infinity) — they slip past raw < / > comparisons", () => {
+    expect(() => validateExecutionTimeout(Number.NaN), "NaN must reject — raw comparisons return false against any number, so the range check would silently pass it through to the runtime").toThrow(SchedulerValidationError);
+    expect(() => validateExecutionTimeout(Number.POSITIVE_INFINITY)).toThrow(SchedulerValidationError);
+    expect(() => validateExecutionTimeout(Number.NEGATIVE_INFINITY)).toThrow(SchedulerValidationError);
+  });
 });
 
 describe("validateRetryConfig", () => {

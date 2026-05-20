@@ -80,7 +80,12 @@ export function validateExecutionTimeout(timeoutMs: number | undefined): void {
     return;
   }
 
-  if (timeoutMs < minExecutionTimeoutMs || timeoutMs > maxExecutionTimeoutMs) {
+  // NaN/Infinity slip past raw `<` / `>` comparisons (they return
+  // false against any number), so the range check below would let
+  // a non-finite timeout through to `resolveJobTimeout`'s runtime
+  // guard. The validate gate is the contract; non-finite is
+  // invalid input here, not "in range".
+  if (!Number.isFinite(timeoutMs) || timeoutMs < minExecutionTimeoutMs || timeoutMs > maxExecutionTimeoutMs) {
     throw new SchedulerValidationError(
       `executionTimeoutMs must be 0 or between ${minExecutionTimeoutMs} and ${maxExecutionTimeoutMs}`
     );
