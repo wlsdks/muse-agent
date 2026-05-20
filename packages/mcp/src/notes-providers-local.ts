@@ -173,7 +173,7 @@ export class LocalDirNotesProvider implements NotesProvider {
             id: rel,
             line: index + 1,
             providerId: this.id,
-            snippet: line.length > 240 ? `${line.slice(0, 240)}...` : line,
+            snippet: line.length > 240 ? `${sliceWithoutLoneSurrogate(line, 240)}...` : line,
             title: rel.split("/").pop() ?? rel
           });
           if (matches.length >= cap) {
@@ -300,4 +300,11 @@ export class LocalDirNotesProvider implements NotesProvider {
   private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
   }
+}
+
+export function sliceWithoutLoneSurrogate(value: string, cap: number): string {
+  const head = value.slice(0, cap);
+  if (head.length === 0) return head;
+  const last = head.charCodeAt(head.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? head.slice(0, -1) : head;
 }
