@@ -50,7 +50,12 @@ export function stringArrayField(value: unknown, fallback: string[]): string[] {
 
 export function coerceStringSet(value: unknown): string[] {
   if (Array.isArray(value)) {
-    return [...new Set(value.filter((item): item is string => typeof item === "string" && item.trim().length > 0))];
+    return [...new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+    )];
   }
 
   return typeof value === "string"

@@ -1,7 +1,7 @@
 import type { FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 
-import { readQueryInteger } from "../src/compat-parsers.js";
+import { coerceStringSet, readQueryInteger } from "../src/compat-parsers.js";
 
 function req(query: Record<string, unknown>): FastifyRequest {
   return { query } as unknown as FastifyRequest;
@@ -28,5 +28,28 @@ describe("readQueryInteger — strict-parses the integer query param", () => {
     expect(readQueryInteger(req({ limit: 20 }), "limit", 30)).toBe(30);
     expect(readQueryInteger(req({ limit: null }), "limit", 30)).toBe(30);
     expect(readQueryInteger(req({ limit: ["20"] }), "limit", 30)).toBe(30);
+  });
+});
+
+describe("coerceStringSet — array path matches the csv path on trim semantics", () => {
+  it("trims + dedups a csv string input", () => {
+    expect(coerceStringSet("alpha, beta ,  alpha ,  ,gamma")).toEqual(["alpha", "beta", "gamma"]);
+  });
+
+  it("returns [] for non-string, non-array input", () => {
+    expect(coerceStringSet(undefined)).toEqual([]);
+    expect(coerceStringSet(null)).toEqual([]);
+    expect(coerceStringSet(42)).toEqual([]);
+    expect(coerceStringSet({})).toEqual([]);
+  });
+
+  it("trims + dedups an array input — symmetric with the csv path", () => {
+    expect(coerceStringSet(["alpha", " beta ", "  alpha  ", " ", "gamma"]))
+      .toEqual(["alpha", "beta", "gamma"]);
+  });
+
+  it("array path drops non-string entries silently", () => {
+    expect(coerceStringSet(["alpha", 42, null, "beta", undefined, "  beta  "]))
+      .toEqual(["alpha", "beta"]);
   });
 });
