@@ -7765,6 +7765,33 @@ describe("cli program", () => {
     )).resolves.toBeDefined();
   });
 
+  it("muse remind list --local resolves dueAt ties by id asc, independent of file-array insertion order", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-remind-tie-"));
+    const remindersFile = path.join(root, "reminders.json");
+    const fsp = await import("node:fs/promises");
+    const prev = process.env.MUSE_REMINDERS_FILE;
+    process.env.MUSE_REMINDERS_FILE = remindersFile;
+    try {
+      const sameDueAt = "2099-01-01T09:00:00.000Z";
+      await fsp.writeFile(remindersFile, JSON.stringify({
+        reminders: [
+          { createdAt: "2026-05-20T00:00:00.000Z", dueAt: sameDueAt, id: "rem_b", status: "pending", text: "B" },
+          { createdAt: "2026-05-20T00:00:00.000Z", dueAt: sameDueAt, id: "rem_a", status: "pending", text: "A" },
+          { createdAt: "2026-05-20T00:00:00.000Z", dueAt: sameDueAt, id: "rem_c", status: "pending", text: "C" }
+        ]
+      }), "utf8");
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("fetch in --local"); } });
+      await program.parseAsync(["node", "muse", "remind", "list", "--local", "--json"], { from: "node" });
+      const listed = JSON.parse(output.join("")) as { reminders: Array<{ id: string }>; total: number };
+      expect(listed.total).toBe(3);
+      expect(listed.reminders.map((r) => r.id), "ties on dueAt resolve by id asc — independent of file-array insertion order").toEqual(["rem_a", "rem_b", "rem_c"]);
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_REMINDERS_FILE;
+      else process.env.MUSE_REMINDERS_FILE = prev;
+    }
+  });
+
   it("muse tasks list rejects --status typos with a closest-match hint (goal 125)", async () => {
     const { io } = captureOutput();
     const program = createProgram({ ...io, fetch: async () => { throw new Error("not reached — should reject before fetch"); } });

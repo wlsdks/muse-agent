@@ -175,7 +175,9 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         const status = readReminderStatusFilter(options.status);
         const reminders = await readReminders(file);
         const filtered = filterReminders(reminders, status, () => new Date());
-        const sorted = [...filtered].sort((left, right) => left.dueAt.localeCompare(right.dueAt));
+        const sorted = [...filtered].sort((left, right) =>
+          left.dueAt.localeCompare(right.dueAt) || left.id.localeCompare(right.id)
+        );
         payload = {
           reminders: sorted.map(serializeReminder) as ReadonlyArray<Record<string, unknown>>,
           status,
