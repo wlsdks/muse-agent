@@ -57,6 +57,20 @@ describe("filterFresh", () => {
     expect(fresh).toHaveLength(2);
   });
 
+  it("ties on parsed instant resolve by messageId asc, independent of file-array insertion order", () => {
+    const sameInstant = "2026-05-11T08:00:00.000Z";
+    const insertedOutOfOrder: readonly InboundMessage[] = [
+      { messageId: "b", providerId: "slack", receivedAtIso: sameInstant, source: "C1", text: "B" },
+      { messageId: "a", providerId: "slack", receivedAtIso: sameInstant, source: "C1", text: "A" },
+      { messageId: "c", providerId: "slack", receivedAtIso: sameInstant, source: "C1", text: "C" }
+    ];
+    const fresh = filterFresh(insertedOutOfOrder, {}, 10);
+    expect(
+      fresh.map((m) => m.messageId),
+      "messages sharing the parsed instant must come back in messageId asc order — independent of file-array insertion order"
+    ).toEqual(["a", "b", "c"]);
+  });
+
   it("freshness is by parsed instant, not lexicographic ISO (cross-provider precision/offset)", () => {
     // Cursor written by a second-precision provider; a genuinely
     // 0.5s-newer message from a millis-precision provider. The

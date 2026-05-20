@@ -171,7 +171,7 @@ export function filterFresh(
     } else if (a.receivedAtIso !== b.receivedAtIso) {
       return a.receivedAtIso.localeCompare(b.receivedAtIso);
     }
-    return 0;
+    return a.messageId.localeCompare(b.messageId);
   });
   const fresh = sorted.filter((message) => {
     const last = cursor[message.source];
