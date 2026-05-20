@@ -54,25 +54,41 @@ export class InMemoryTokenUsageSink implements QueryableTokenUsageSink {
   }
 }
 
+export function buildKyselyTokenInsertValues(event: TokenUsageRecord, now: () => Date = () => new Date()): {
+  readonly completion_tokens: number;
+  readonly estimated_cost_usd: string;
+  readonly model: string;
+  readonly prompt_cached_tokens: number;
+  readonly prompt_tokens: number;
+  readonly provider: string;
+  readonly reasoning_tokens: number;
+  readonly run_id: string;
+  readonly step_type: string;
+  readonly time: Date;
+  readonly total_tokens: number;
+} {
+  return {
+    completion_tokens: finiteTokens(event.completionTokens),
+    estimated_cost_usd: String(finiteCostUsd(event.estimatedCostUsd)),
+    model: event.model,
+    prompt_cached_tokens: finiteTokens(event.promptCachedTokens),
+    prompt_tokens: finiteTokens(event.promptTokens),
+    provider: event.provider,
+    reasoning_tokens: finiteTokens(event.reasoningTokens),
+    run_id: event.runId,
+    step_type: event.stepType ?? "act",
+    time: event.recordedAt ?? now(),
+    total_tokens: finiteTokens(event.totalTokens)
+  };
+}
+
 export class KyselyTokenUsageSink implements TokenUsageSink {
   constructor(private readonly db: Kysely<MuseDatabase>) {}
 
   async record(event: TokenUsageRecord): Promise<void> {
     await this.db
       .insertInto("metric_token_usage")
-      .values({
-        completion_tokens: event.completionTokens,
-        estimated_cost_usd: event.estimatedCostUsd === undefined ? "0" : String(event.estimatedCostUsd),
-        model: event.model,
-        prompt_cached_tokens: event.promptCachedTokens ?? 0,
-        prompt_tokens: event.promptTokens,
-        provider: event.provider,
-        reasoning_tokens: event.reasoningTokens ?? 0,
-        run_id: event.runId,
-        step_type: event.stepType ?? "act",
-        time: event.recordedAt ?? new Date(),
-        total_tokens: event.totalTokens
-      })
+      .values(buildKyselyTokenInsertValues(event))
       .execute();
   }
 }
