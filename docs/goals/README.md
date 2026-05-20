@@ -137,6 +137,7 @@ delete an open row, never rewrite another goal's status.
 | 489 | [readQueryInteger strict-parses integer query params](489-readqueryinteger-strict-parse.md) | fix / correctness | done — goal-463/469/470 sibling on the API surface; `?limit=20x` / `?days=7d` no longer silently honoured as the numeric prefix across admin/compat routes; first direct compat-parsers coverage (mutation-proven) |
 | 490 | [parseMcpSecurityPolicyInput caps allowedStdioCommands parallel to allowedServerNames](490-mcp-security-policy-parallel-cap.md) | fix / safety | done — sibling-asymmetry on the admin/policy input gate; a 501-entry stdio allowlist no longer slips past the parser; first direct mcp-routes-parsers coverage (mutation-proven) |
 | 491 | [direct coverage for parseResponseLocales](491-parse-response-locales-direct-coverage.md) | test / contract | done — 458/477/479/480/485/487 class; `MUSE_RESPONSE_LOCALES` env parser now has fallback / case-fold / dedupe / all-unsupported-fallback coverage; src byte-identical (mutation-proven) |
+| 492 | [direct coverage for inbox-reply-cursor (dedup safety guard)](492-inbox-reply-cursor-direct-coverage.md) | test / safety | done — 458/477/479/480/485/487/491 class; reply-loop double-reply guard now has tolerant-load / no-op-empty / merge / FIFO-bound / 0o600 coverage; MAX_HANDLED slice mutation-proven (src byte-identical) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
