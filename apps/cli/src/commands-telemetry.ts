@@ -69,6 +69,13 @@ interface RecentResponse {
   }>[];
 }
 
+export function formatRecordedAtIso(ms: number): string {
+  if (typeof ms !== "number") return "(invalid)";
+  const date = new Date(ms);
+  if (!Number.isFinite(date.getTime())) return "(invalid)";
+  return date.toISOString();
+}
+
 export function registerTelemetryCommands(program: Command, io: ProgramIO, helpers: TelemetryHelpers): void {
   const telemetry = program.command("telemetry").description("Inspect runtime telemetry (ctx flags / token totals / latency)");
 
@@ -125,8 +132,8 @@ function renderSummary(io: ProgramIO, response: SummaryResponse): void {
     io.stdout("Telemetry enabled but no summary returned.\n");
     return;
   }
-  const windowStart = new Date(summary.windowStartMs).toISOString();
-  const windowEnd = new Date(summary.windowEndMs).toISOString();
+  const windowStart = formatRecordedAtIso(summary.windowStartMs);
+  const windowEnd = formatRecordedAtIso(summary.windowEndMs);
   io.stdout(`Window: ${windowStart} → ${windowEnd}\n`);
   io.stdout(`Total runs: ${summary.totalRuns.toString()}\n`);
   if (summary.latency && summary.latency.count > 0) {
@@ -169,7 +176,7 @@ function renderRecent(io: ProgramIO, response: RecentResponse): void {
     return;
   }
   for (const event of response.events) {
-    const when = new Date(event.recordedAtMs).toISOString();
+    const when = formatRecordedAtIso(event.recordedAtMs);
     const latency = event.latencyMs !== undefined ? `${event.latencyMs.toString()}ms` : "?";
     const tokens = `in=${event.inputTokens ?? "?"} out=${event.outputTokens ?? "?"}`;
     io.stdout(`${when}  ${event.providerId}/${event.model}  latency=${latency}  ${tokens}  run=${event.runId}\n`);
