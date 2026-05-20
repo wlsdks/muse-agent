@@ -82,8 +82,8 @@ export async function deleteSessionTags(options: CompatibilityRouteOptions, sess
   getStateSessionTags().delete(sessionId);
 }
 
-function toSessionTagCompatRecord(tag: SessionTag): CompatRecord {
-  const createdAt = new Date(tag.createdAt).toISOString();
+export function toSessionTagCompatRecord(tag: SessionTag): CompatRecord {
+  const createdAt = safeIsoFromMs(tag.createdAt);
 
   return {
     comment: tag.comment ?? null,
@@ -93,4 +93,13 @@ function toSessionTagCompatRecord(tag: SessionTag): CompatRecord {
     sessionId: tag.sessionId,
     updatedAt: createdAt
   };
+}
+
+const EPOCH_ISO = "1970-01-01T00:00:00.000Z";
+
+export function safeIsoFromMs(ms: number): string {
+  if (typeof ms !== "number") return EPOCH_ISO;
+  const date = new Date(ms);
+  if (!Number.isFinite(date.getTime())) return EPOCH_ISO;
+  return date.toISOString();
 }
