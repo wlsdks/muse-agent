@@ -277,7 +277,8 @@ export async function handleSlashCommand(
         io.stdout(`(usage: /forget <key> | /forget --all)\n`);
         return;
       }
-      if (arg === "--all" || arg === "all") {
+      const sentinel = arg.trim().toLowerCase();
+      if (sentinel === "--all" || sentinel === "all") {
         const dropped = await Promise.resolve(deps.memoryStore.deleteByUserId(ctx.userId));
         ctx.userMemory = undefined;
         io.stdout(dropped ? `(wiped all memory for ${ctx.userId})\n` : `(no memory to wipe)\n`);

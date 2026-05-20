@@ -19,13 +19,13 @@ function harness() {
     toolsDisabled: false,
     history: []
   };
-  const deps = {
+  const deps: SlashDeps = {
     memoryStore: undefined,
     autoExtract: undefined,
     assembly: {},
     readTrust: async () => ({ trustedTools: [], blockedTools: [] }),
     composeUserKey: () => "u"
-  } satisfies SlashDeps;
+  };
   return { ctx, deps, io, text: () => out.join("") };
 }
 
@@ -90,6 +90,49 @@ describe("handleSlashCommand /tools — case-insensitive enum matching", () => {
     expect(h.ctx.toolsDisabled, "unrelated input must NOT silently flip the state").toBe(false);
     expect(h.text()).toContain("currently on");
     expect(h.text()).toContain("usage: /tools on|off");
+  });
+});
+
+describe("handleSlashCommand /forget — wipe-all sentinel is case-insensitive (goal-568 sibling)", () => {
+  function memoryHarness(): ReturnType<typeof harness> & { deleted: string[] } {
+    const base = harness();
+    const deleted: string[] = [];
+    const memoryStore: SlashDeps["memoryStore"] = {
+      async findByUserId() { return undefined; },
+      async upsertFact() { return undefined; },
+      async upsertPreference() { return undefined; },
+      async deleteByUserId(userId) {
+        deleted.push(userId);
+        return true;
+      }
+    };
+    const withStore: SlashDeps = { ...base.deps, memoryStore };
+    return { ...base, deps: withStore, deleted };
+  }
+
+  it("/forget --All wipes when typed mixed-case (pre-fix the case-sensitive sentinel left `--All` as a literal key)", async () => {
+    const h = memoryHarness();
+    await handleSlashCommand("forget", "--All", h.ctx, h.deps, h.io);
+    expect(h.deleted, "mixed-case --All must trigger the wipe-all path").toEqual(["u"]);
+    expect(h.text()).toContain("wiped all memory");
+  });
+
+  it("/forget ALL (no leading dashes) also wipes", async () => {
+    const h = memoryHarness();
+    await handleSlashCommand("forget", "ALL", h.ctx, h.deps, h.io);
+    expect(h.deleted).toEqual(["u"]);
+  });
+
+  it("/forget '  --all  ' trims surrounding whitespace before sentinel match", async () => {
+    const h = memoryHarness();
+    await handleSlashCommand("forget", "  --all  ", h.ctx, h.deps, h.io);
+    expect(h.deleted).toEqual(["u"]);
+  });
+
+  it("/forget some-key does NOT trigger the wipe (case-insensitivity only applies to the meta-sentinel, not real keys)", async () => {
+    const h = memoryHarness();
+    await handleSlashCommand("forget", "some-key", h.ctx, h.deps, h.io);
+    expect(h.deleted, "a real key name must NOT be re-interpreted as the wipe sentinel").toEqual([]);
   });
 });
 
