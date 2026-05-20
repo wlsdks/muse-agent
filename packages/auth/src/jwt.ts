@@ -144,7 +144,9 @@ export class JwtTokenProvider {
 
   extractExpiration(token: string): Date | undefined {
     const claims = this.parseToken(token);
-    return claims ? new Date(claims.exp * 1_000) : undefined;
+    if (!claims) return undefined;
+    const date = new Date(claims.exp * 1_000);
+    return Number.isFinite(date.getTime()) ? date : undefined;
   }
 }
 

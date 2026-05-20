@@ -155,6 +155,27 @@ describe("jwt tokens", () => {
       previousJwtSecrets: ["weak"]
     })).toThrow("Every previousJwtSecret");
   });
+
+  it("extractExpiration returns undefined (not an Invalid Date) when claims.exp * 1000 would overflow the JS Date range", () => {
+    const jwt = new JwtTokenProvider({
+      jwtExpirationMs: 1e16,
+      jwtSecret
+    });
+    const token = jwt.createToken({ email: "u@example.com", id: "u1" });
+    const expiresAt = jwt.extractExpiration(token);
+    expect(expiresAt, "claims.exp around 1e13 → *1000 = 1e16 > Date max (8.64e15) → Invalid Date; the fix returns undefined so callers fall through to their own fallback instead of holding an Invalid Date that crashes on .toISOString()").toBeUndefined();
+  });
+
+  it("extractExpiration returns a clean Date for a normal token", () => {
+    const jwt = new JwtTokenProvider({
+      jwtExpirationMs: 60_000,
+      jwtSecret
+    });
+    const token = jwt.createToken({ email: "u@example.com", id: "u1" });
+    const expiresAt = jwt.extractExpiration(token);
+    expect(expiresAt).toBeInstanceOf(Date);
+    expect(Number.isFinite(expiresAt?.getTime())).toBe(true);
+  });
 });
 
 describe("Auth registration and login", () => {
