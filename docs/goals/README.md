@@ -132,6 +132,7 @@ delete an open row, never rewrite another goal's status.
 | 484 | [muse routine keeps `total / days = avg` consistent when activity.jsonl carries malformed rows](484-routine-sessions-per-day-arithmetic-consistency.md) | fix / correctness | done — distinct class (Step-8 redirect); `computeRoutine` now counts validSessions consistently so a malformed line no longer inflates the displayed average; first direct coverage (mutation-proven) |
 | 485 | [direct coverage for resolveJobTimeout](485-resolve-job-timeout-direct-coverage.md) | test / safety | done — 458/477/479/480 class; scheduler watchdog + lock-TTL safety budget pinned against `??`-doesn't-catch-NaN/Infinity regression; src byte-identical (mutation-proven) |
 | 486 | [muse approval approve/deny adds did-you-mean for typo'd id](486-approval-typo-suggestion.md) | fix / cli-ergonomics | done — goal-468/472 sibling; closes the last id-taking CLI surface without `closestCommandName` recovery (mutation-proven; first direct commands-approval coverage) |
+| 487 | [direct coverage for computeApproximateTokens + estimator cache](487-token-estimator-direct-coverage.md) | test / safety | done — 458/477/479/480/485 class; the budget-oracle every trim/step-budget path queries now has bucket/floor/cache coverage; `Math.max(1, …)` non-zero-billing floor mutation-proven (src byte-identical) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
