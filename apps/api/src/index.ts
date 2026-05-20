@@ -1,8 +1,9 @@
 import { createApiServerOptions, seedExternalMcpServers } from "@muse/autoconfigure";
+import { resolveListenHost, resolveListenPort } from "./listen-config.js";
 import { buildServer } from "./server.js";
 
-const port = Number(process.env.PORT ?? 3030);
-const host = process.env.HOST ?? "127.0.0.1";
+const port = resolveListenPort(process.env.PORT);
+const host = resolveListenHost(process.env.HOST);
 
 const options = createApiServerOptions();
 if (!options.agentRuntime) {

@@ -148,6 +148,7 @@ delete an open row, never rewrite another goal's status.
 | 500 | [sanitizeFollowupSummary drops a lone surrogate at the 160-char cap](500-followup-summary-surrogate-safe.md) | fix / correctness | done — third consumer of the goal-451/499 surrogate-cap class on persisted followup summaries routed to Telegram/Slack/log; mutation-proven |
 | 501 | [sanitizeUserMemoryValue drops a lone surrogate at MAX_USER_MEMORY_VALUE_CHARS](501-user-memory-value-surrogate-safe.md) | fix / correctness | done — fourth consumer of the goal-451/499/500 surrogate-cap class on the persona-expansion chokepoint (every turn re-injects user-memory values into the prompt); mutation-proven |
 | 502 | [MUSE_RATE_LIMIT_CHAT_PER_MINUTE strict-parses the chat rate-limit capacity](502-chat-rate-limit-strict-parse.md) | fix / safety | done — goal-414/444/463/469/470/489 sibling on the API security gate; `60x`/`30s` typo no longer silently installs a wrong rate limit (mutation-proven) |
+| 503 | [apps/api listen config strict-parses PORT + treats empty HOST as unset](503-listen-config-strict-port-host.md) | fix / safety | done — server startup boundary; `PORT=""` no longer ephemeral-binds, `HOST=""` no longer silently exposes on all interfaces (mutation-proven) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
