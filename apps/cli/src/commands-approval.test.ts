@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { registerApprovalCommands } from "./commands-approval.js";
+import { approvalsPath, registerApprovalCommands, trustPath } from "./commands-approval.js";
 
 async function run(approvalsFile: string, trustFile: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
@@ -74,5 +74,44 @@ describe("muse approval — typo-tolerant id resolution (goal-468/472 sibling)",
     expect(r.stderr).toContain("Request 'totallydifferent' not found.");
     expect(r.stderr).not.toContain("did you mean");
     process.exitCode = undefined;
+  });
+});
+
+describe("approvalsPath / trustPath — empty-env-shadow defence (goal-532 sibling)", () => {
+  it("uses the env value when MUSE_APPROVALS_FILE / MUSE_TRUST_FILE is set non-empty", () => {
+    const prevA = process.env.MUSE_APPROVALS_FILE;
+    const prevT = process.env.MUSE_TRUST_FILE;
+    process.env.MUSE_APPROVALS_FILE = "/tmp/custom-pending.jsonl";
+    process.env.MUSE_TRUST_FILE = "/tmp/custom-trust.json";
+    try {
+      expect(approvalsPath()).toBe("/tmp/custom-pending.jsonl");
+      expect(trustPath()).toBe("/tmp/custom-trust.json");
+    } finally {
+      if (prevA === undefined) delete process.env.MUSE_APPROVALS_FILE;
+      else process.env.MUSE_APPROVALS_FILE = prevA;
+      if (prevT === undefined) delete process.env.MUSE_TRUST_FILE;
+      else process.env.MUSE_TRUST_FILE = prevT;
+    }
+  });
+
+  it("falls back to ~/.muse defaults when MUSE_APPROVALS_FILE / MUSE_TRUST_FILE is whitespace-only — does NOT return empty path that would crash fs ops", () => {
+    const prevA = process.env.MUSE_APPROVALS_FILE;
+    const prevT = process.env.MUSE_TRUST_FILE;
+    process.env.MUSE_APPROVALS_FILE = "   ";
+    process.env.MUSE_TRUST_FILE = "";
+    try {
+      const apath = approvalsPath();
+      const tpath = trustPath();
+      expect(apath).toMatch(/\/\.muse\/pending-approvals\.jsonl$/u);
+      expect(apath, "the whitespace-only env value must NOT leak through as the resolved path").not.toBe("");
+      expect(apath).not.toBe("   ");
+      expect(tpath).toMatch(/\/\.muse\/trust\.json$/u);
+      expect(tpath).not.toBe("");
+    } finally {
+      if (prevA === undefined) delete process.env.MUSE_APPROVALS_FILE;
+      else process.env.MUSE_APPROVALS_FILE = prevA;
+      if (prevT === undefined) delete process.env.MUSE_TRUST_FILE;
+      else process.env.MUSE_TRUST_FILE = prevT;
+    }
   });
 });

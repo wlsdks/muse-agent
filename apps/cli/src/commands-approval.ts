@@ -26,7 +26,7 @@ import { dirname, join } from "node:path";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
-import { resolvePersona } from "./program-helpers.js";
+import { firstNonEmpty, resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 import { resolveDefaultUserKey } from "./user-id.js";
 
@@ -41,12 +41,12 @@ interface PendingRequest {
   readonly decidedBy?: string;
 }
 
-function approvalsPath(): string {
-  return process.env.MUSE_APPROVALS_FILE?.trim() ?? join(homedir(), ".muse", "pending-approvals.jsonl");
+export function approvalsPath(): string {
+  return firstNonEmpty(process.env.MUSE_APPROVALS_FILE) ?? join(homedir(), ".muse", "pending-approvals.jsonl");
 }
 
-function trustPath(): string {
-  return process.env.MUSE_TRUST_FILE?.trim() ?? join(homedir(), ".muse", "trust.json");
+export function trustPath(): string {
+  return firstNonEmpty(process.env.MUSE_TRUST_FILE) ?? join(homedir(), ".muse", "trust.json");
 }
 
 async function readApprovals(): Promise<readonly PendingRequest[]> {

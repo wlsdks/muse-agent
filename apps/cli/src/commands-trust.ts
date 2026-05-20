@@ -28,7 +28,7 @@ import { dirname, join } from "node:path";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
-import { resolvePersona } from "./program-helpers.js";
+import { firstNonEmpty, resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 import { resolveDefaultUserKey } from "./user-id.js";
 
@@ -43,7 +43,7 @@ interface TrustFile {
 }
 
 function trustPath(): string {
-  return process.env.MUSE_TRUST_FILE?.trim() ?? join(homedir(), ".muse", "trust.json");
+  return firstNonEmpty(process.env.MUSE_TRUST_FILE) ?? join(homedir(), ".muse", "trust.json");
 }
 
 function emptyFile(): TrustFile {
