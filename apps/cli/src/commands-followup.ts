@@ -60,7 +60,9 @@ export function registerFollowupCommands(program: Command, io: ProgramIO): void 
       const file = localFollowupsFile();
       const all = await readFollowups(file);
       const filtered = filterByStatus(all, status);
-      const sorted = [...filtered].sort((left, right) => left.scheduledFor.localeCompare(right.scheduledFor));
+      const sorted = [...filtered].sort((left, right) =>
+        left.scheduledFor.localeCompare(right.scheduledFor) || left.id.localeCompare(right.id)
+      );
       const payload = {
         followups: sorted.map(serializeFollowup),
         status,

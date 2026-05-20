@@ -403,7 +403,9 @@ async function readDueReminders(
       }
       return due <= horizon.getTime();
     })
-    .sort((left, right) => left.dueAt.localeCompare(right.dueAt))
+    .sort((left, right) =>
+      left.dueAt.localeCompare(right.dueAt) || left.id.localeCompare(right.id)
+    )
     .map((reminder) => {
       const serialized = serializeReminder(reminder);
       return { dueAt: String(serialized.dueAt), id: String(serialized.id), text: String(serialized.text) };
@@ -426,7 +428,9 @@ async function readDueFollowups(
       }
       return when <= horizon.getTime();
     })
-    .sort((left, right) => left.scheduledFor.localeCompare(right.scheduledFor))
+    .sort((left, right) =>
+      left.scheduledFor.localeCompare(right.scheduledFor) || left.id.localeCompare(right.id)
+    )
     .map((followup) => {
       const serialized = serializeFollowup(followup);
       return {

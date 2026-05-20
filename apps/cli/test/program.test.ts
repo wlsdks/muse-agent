@@ -3532,6 +3532,23 @@ describe("cli program", () => {
       const listed3 = JSON.parse(out3.join("")) as { followups: Array<{ id: string }>; total: number };
       expect(listed3.total).toBe(1);
       expect(listed3.followups[0]?.id).toBe("fu_done");
+
+      const tieDir = await mkdtemp(path.join(tmpdir(), "muse-cli-followup-list-tie-"));
+      const tieFile = path.join(tieDir, "followups.json");
+      const sameWhen = "2026-05-11T09:00:00Z";
+      await fsp.writeFile(tieFile, JSON.stringify({
+        followups: [
+          { createdAt: "2026-05-10T00:00:00Z", id: "fu_b", scheduledFor: sameWhen, status: "scheduled", summary: "B", userId: "stark" },
+          { createdAt: "2026-05-10T00:00:00Z", id: "fu_a", scheduledFor: sameWhen, status: "scheduled", summary: "A", userId: "stark" },
+          { createdAt: "2026-05-10T00:00:00Z", id: "fu_c", scheduledFor: sameWhen, status: "scheduled", summary: "C", userId: "stark" }
+        ]
+      }), "utf8");
+      process.env.MUSE_FOLLOWUPS_FILE = tieFile;
+      const { io: ioTie, output: outTie } = captureOutput();
+      const programTie = createProgram({ ...ioTie, fetch: async () => { throw new Error("no fetch"); } });
+      await programTie.parseAsync(["node", "muse", "followup", "list", "--json"], { from: "node" });
+      const listedTie = JSON.parse(outTie.join("")) as { followups: Array<{ id: string }> };
+      expect(listedTie.followups.map((f) => f.id), "ties on scheduledFor resolve by id asc — independent of file-array insertion order").toEqual(["fu_a", "fu_b", "fu_c"]);
     } finally {
       if (prev !== undefined) process.env.MUSE_FOLLOWUPS_FILE = prev;
       else delete process.env.MUSE_FOLLOWUPS_FILE;
