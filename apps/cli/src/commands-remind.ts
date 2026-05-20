@@ -551,7 +551,7 @@ function formatReminderHistory(payload: {
  * renderers print (`rem_0810976`). Refuses to guess when the
  * prefix matches more than one row.
  */
-function resolveLocalReminderId(input: string, all: readonly PersistedReminder[]): string {
+export function resolveLocalReminderId(input: string, all: readonly PersistedReminder[]): string {
   const exact = all.find((reminder) => reminder.id === input);
   if (exact) return exact.id;
   const matches = all.filter((reminder) => reminder.id.startsWith(input));
@@ -559,7 +559,9 @@ function resolveLocalReminderId(input: string, all: readonly PersistedReminder[]
     return matches[0]!.id;
   }
   if (matches.length === 0) {
-    throw new Error(`reminder not found: ${input}`);
+    const suggestion = closestCommandName(input.trim(), all.map((r) => r.id));
+    const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+    throw new Error(`reminder not found: ${input}${hint}`);
   }
   throw new Error(`ambiguous reminder prefix '${input}' matched ${matches.length.toString()} reminders; use a longer id`);
 }

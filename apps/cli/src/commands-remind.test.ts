@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { registerRemindCommands, type RemindCommandHelpers } from "./commands-remind.js";
+import { registerRemindCommands, resolveLocalReminderId, type RemindCommandHelpers } from "./commands-remind.js";
 
 interface ApiCall {
   readonly path: string;
@@ -60,5 +60,35 @@ describe("muse remind add — pre-dispatch <when> validation", () => {
     expect(r.error).toBeDefined();
     expect(r.error).toContain("relative phrase");
     expect(r.apiCalls).toHaveLength(0);
+  });
+});
+
+describe("resolveLocalReminderId — typo-tolerant id resolution (goal-544 sibling)", () => {
+  const reminders = [
+    { id: "rem_abc123def", text: "alpha", dueAt: "2026-05-21T10:00:00Z", createdAt: "2026-05-20T10:00:00Z", status: "pending" as const },
+    { id: "rem_xyz789ghi", text: "beta", dueAt: "2026-05-21T11:00:00Z", createdAt: "2026-05-20T10:00:00Z", status: "pending" as const }
+  ];
+
+  it("returns the exact id when found", () => {
+    expect(resolveLocalReminderId("rem_abc123def", reminders)).toBe("rem_abc123def");
+  });
+
+  it("resolves an unambiguous prefix", () => {
+    expect(resolveLocalReminderId("rem_abc", reminders)).toBe("rem_abc123def");
+  });
+
+  it("rejects an ambiguous prefix with the count + guidance", () => {
+    expect(() => resolveLocalReminderId("rem_", reminders))
+      .toThrow(/ambiguous reminder prefix 'rem_' matched 2 reminders/u);
+  });
+
+  it("suggests the closest existing id on a near-miss typo (one-char swap on the trailing char)", () => {
+    expect(() => resolveLocalReminderId("rem_abc123dex", reminders))
+      .toThrow(/reminder not found: rem_abc123dex — did you mean 'rem_abc123def'/u);
+  });
+
+  it("rejects an unrelated input WITHOUT a guess (no random suggestion noise)", () => {
+    expect(() => resolveLocalReminderId("totallyunrelated", reminders))
+      .toThrow(/reminder not found: totallyunrelated$/u);
   });
 });
