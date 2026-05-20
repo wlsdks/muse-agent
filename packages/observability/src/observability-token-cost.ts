@@ -219,7 +219,14 @@ export class InMemoryTokenCostQuery implements TokenCostQuery {
       // setup has every run at cost 0, which would make this ranking
       // an arbitrary all-ties order. Token count is the meaningful
       // proxy for "most expensive" when the dollar cost is free.
-      .sort((a, b) => b.totalCostUsd - a.totalCostUsd || b.totalTokens - a.totalTokens)
+      // Final runId tiebreaker keeps the order stable across reloads
+      // when two runs share both cost AND token volume (same prompt
+      // template, same model — common on a Qwen-only setup).
+      .sort((a, b) =>
+        b.totalCostUsd - a.totalCostUsd ||
+        b.totalTokens - a.totalTokens ||
+        a.runId.localeCompare(b.runId)
+      )
       .slice(0, Math.max(0, input.limit));
   }
 }

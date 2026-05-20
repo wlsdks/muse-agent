@@ -754,6 +754,25 @@ describe("InMemoryTokenCostQuery", () => {
     expect(rows[0]).toMatchObject({ runId: "run-x", totalCostUsd: expect.closeTo(1.0, 5) });
   });
 
+  it("breaks cost-AND-token ties by runId asc, independent of file-array insertion order (Qwen-only setup: identical prompt template fires twice → tied on both keys)", async () => {
+    const sink = new InMemoryTokenUsageSink();
+    await record(sink, { estimatedCostUsd: 0, recordedAt: "2026-05-07T10:00:00.000Z", runId: "run-b", totalTokens: 1000 });
+    await record(sink, { estimatedCostUsd: 0, recordedAt: "2026-05-07T11:00:00.000Z", runId: "run-a", totalTokens: 1000 });
+    await record(sink, { estimatedCostUsd: 0, recordedAt: "2026-05-07T12:00:00.000Z", runId: "run-c", totalTokens: 1000 });
+
+    const query = new InMemoryTokenCostQuery(sink);
+    const rows = await query.topExpensive({
+      from: new Date("2026-05-07T00:00:00.000Z"),
+      limit: 3,
+      to: new Date("2026-05-08T00:00:00.000Z")
+    });
+
+    expect(
+      rows.map((row) => row.runId),
+      "runs tied on both cost and tokens must come back in runId asc — independent of insertion order"
+    ).toEqual(["run-a", "run-b", "run-c"]);
+  });
+
   it("ranks cost-tied runs by token volume (free local-LLM: every run is $0)", async () => {
     const sink = new InMemoryTokenUsageSink();
     await record(sink, { estimatedCostUsd: 0, recordedAt: "2026-05-07T10:00:00.000Z", runId: "small", totalTokens: 120 });
