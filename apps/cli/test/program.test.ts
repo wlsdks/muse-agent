@@ -7881,6 +7881,45 @@ describe("cli program", () => {
     await expect(program7.parseAsync(["node", "muse", "feeds", "today"], { from: "node" })).resolves.toBeDefined();
   });
 
+  it("muse feeds list --json + muse feeds today --json envelopes carry the `total` field — convention parity with followup / remind / actions / objectives", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-feeds-json-"));
+    const feedsFile = path.join(root, "feeds.json");
+    const fsp = await import("node:fs/promises");
+    const prev = process.env.MUSE_FEEDS_FILE;
+    process.env.MUSE_FEEDS_FILE = feedsFile;
+    try {
+      const now = new Date().toISOString();
+      const recent = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      await fsp.writeFile(feedsFile, JSON.stringify({
+        version: 1,
+        feeds: [
+          { id: "a", url: "https://a.test/feed", name: "A", lastFetchedAt: now, entries: [
+            { id: "e1", title: "T1", link: "https://a.test/1", publishedAt: recent, summary: "" }
+          ] },
+          { id: "b", url: "https://b.test/feed", name: "B", lastFetchedAt: now, entries: [] }
+        ]
+      }), "utf8");
+
+      const { io: io1, output: out1 } = captureOutput();
+      const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+      await program1.parseAsync(["node", "muse", "feeds", "list", "--json"], { from: "node" });
+      const listed = JSON.parse(out1.join("")) as { feeds: Array<{ id: string }>; total: number };
+      expect(listed.total, "feeds list --json must carry `total` (convention parity with goals 552/553)").toBe(2);
+      expect(listed.feeds.map((f) => f.id)).toEqual(["a", "b"]);
+
+      const { io: io2, output: out2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      await program2.parseAsync(["node", "muse", "feeds", "today", "--hours", "2", "--json"], { from: "node" });
+      const today = JSON.parse(out2.join("")) as { entries: Array<{ id: string }>; hours: number; total: number };
+      expect(today.total, "feeds today --json must carry `total` (convention parity)").toBe(1);
+      expect(today.hours).toBe(2);
+      expect(today.entries[0]?.id).toBe("e1");
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_FEEDS_FILE;
+      else process.env.MUSE_FEEDS_FILE = prev;
+    }
+  });
+
   it("muse remind list rejects --status typos with a closest-match hint (goal 137)", async () => {
     const { io } = captureOutput();
 

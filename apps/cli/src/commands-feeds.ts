@@ -147,12 +147,11 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
     .action(async (options: { readonly json?: boolean }) => {
       const store = await readFeedsStore(defaultFeedsFile());
       if (options.json) {
-        io.stdout(`${JSON.stringify({
-          feeds: store.feeds.map((f) => ({
-            id: f.id, url: f.url, name: f.name,
-            lastFetchedAt: f.lastFetchedAt, entries: f.entries.length
-          }))
-        }, null, 2)}\n`);
+        const feeds = store.feeds.map((f) => ({
+          id: f.id, url: f.url, name: f.name,
+          lastFetchedAt: f.lastFetchedAt, entries: f.entries.length
+        }));
+        io.stdout(`${JSON.stringify({ feeds, total: feeds.length }, null, 2)}\n`);
         return;
       }
       if (store.feeds.length === 0) {
@@ -264,7 +263,7 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
         }))
       ).sort(compareFeedEntriesNewestFirst);
       if (options.json) {
-        io.stdout(`${JSON.stringify({ hours, entries: rolled }, null, 2)}\n`);
+        io.stdout(`${JSON.stringify({ entries: rolled, hours, total: rolled.length }, null, 2)}\n`);
         return;
       }
       if (rolled.length === 0) {
