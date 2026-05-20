@@ -57,10 +57,13 @@ function envOr(key: string, fallbackName: string): string {
   return v && v.length > 0 ? v : join(homedir(), ".muse", fallbackName);
 }
 
-function parseLimit(raw: string | undefined, fallback: number, cap: number): number {
-  if (!raw) return fallback;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+export function parseLimit(raw: string | undefined, fallback: number, cap: number): number {
+  if (raw === undefined || raw.trim().length === 0) return fallback;
+  const trimmed = raw.trim();
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`--limit must be a positive number (got '${raw}')`);
+  }
   return Math.min(cap, Math.trunc(parsed));
 }
 
