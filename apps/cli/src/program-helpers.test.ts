@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { defaultConfigPath } from "./program-helpers.js";
+import { defaultConfigPath, firstNonEmpty } from "./program-helpers.js";
 
 describe("defaultConfigPath", () => {
   beforeEach(() => {
@@ -34,5 +34,29 @@ describe("defaultConfigPath", () => {
     } catch (cause) {
       expect((cause as Error).message).toMatch(/Cannot resolve home directory/u);
     }
+  });
+});
+
+describe("firstNonEmpty (readApiOptions / token precedence-chain helper)", () => {
+  it("returns the first non-empty trimmed candidate", () => {
+    expect(firstNonEmpty("a", "b")).toBe("a");
+    expect(firstNonEmpty(undefined, "b")).toBe("b");
+    expect(firstNonEmpty(undefined, undefined, "c")).toBe("c");
+  });
+
+  it("skips empty / whitespace-only / non-string candidates", () => {
+    expect(firstNonEmpty("", "real")).toBe("real");
+    expect(firstNonEmpty("   ", "real")).toBe("real");
+    expect(firstNonEmpty("", "   ", "real")).toBe("real");
+    expect(firstNonEmpty(undefined, "", "real")).toBe("real");
+  });
+
+  it("trims a non-empty candidate before returning it (a padded `--api-url` still works)", () => {
+    expect(firstNonEmpty("  http://localhost:3030  ")).toBe("http://localhost:3030");
+  });
+
+  it("returns undefined when every candidate is empty / whitespace / undefined", () => {
+    expect(firstNonEmpty()).toBeUndefined();
+    expect(firstNonEmpty("", "   ", undefined)).toBeUndefined();
   });
 });

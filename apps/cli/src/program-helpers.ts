@@ -247,6 +247,15 @@ export function friendlyFetchError(baseUrl: string, error: unknown): Error {
   return new Error(`Muse API request failed: ${message}`);
 }
 
+export function firstNonEmpty(...candidates: ReadonlyArray<string | undefined>): string | undefined {
+  for (const c of candidates) {
+    if (typeof c !== "string") continue;
+    const trimmed = c.trim();
+    if (trimmed.length > 0) return trimmed;
+  }
+  return undefined;
+}
+
 export async function readApiOptions(
   io: ProgramIO,
   command: Command,
@@ -254,8 +263,8 @@ export async function readApiOptions(
 ): Promise<ApiOptions> {
   const globalOptions = command.optsWithGlobals() as { readonly apiUrl?: string; readonly token?: string };
   const config = await readConfigStore(io);
-  const baseUrl = globalOptions.apiUrl ?? process.env.MUSE_API_URL ?? config.apiUrl ?? "http://127.0.0.1:3030";
-  const explicitToken = globalOptions.token ?? process.env.MUSE_API_TOKEN;
+  const baseUrl = firstNonEmpty(globalOptions.apiUrl, process.env.MUSE_API_URL, config.apiUrl) ?? "http://127.0.0.1:3030";
+  const explicitToken = firstNonEmpty(globalOptions.token, process.env.MUSE_API_TOKEN);
 
   return {
     baseUrl,
