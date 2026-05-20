@@ -128,7 +128,7 @@ async function walkMarkdown(dir: string): Promise<readonly { path: string; mtime
   return out.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-function cosine(a: readonly number[], b: readonly number[]): number {
+export function cosine(a: readonly number[], b: readonly number[]): number {
   if (a.length !== b.length) return 0;
   let dot = 0, na = 0, nb = 0;
   for (let i = 0; i < a.length; i += 1) {
@@ -136,7 +136,9 @@ function cosine(a: readonly number[], b: readonly number[]): number {
     na += a[i]! * a[i]!;
     nb += b[i]! * b[i]!;
   }
-  return na === 0 || nb === 0 ? 0 : dot / Math.sqrt(na * nb);
+  if (na === 0 || nb === 0) return 0;
+  const result = dot / Math.sqrt(na * nb);
+  return Number.isFinite(result) ? result : 0;
 }
 
 async function loadIndex(path: string): Promise<NotesIndex | undefined> {

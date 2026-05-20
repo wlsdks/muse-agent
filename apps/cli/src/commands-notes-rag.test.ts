@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { isNotesIndexStale, parseRagBoundedInt } from "./commands-notes-rag.js";
+import { cosine, isNotesIndexStale, parseRagBoundedInt } from "./commands-notes-rag.js";
 
 async function writeIndex(indexPath: string, files: { path: string; mtimeMs: number }[]): Promise<void> {
   const payload = {
@@ -83,5 +83,26 @@ describe("parseRagBoundedInt", () => {
     }
     expect(() => parseRagBoundedInt("50", "--chunk-chars", 120, 8000, 600))
       .toThrow(/--chunk-chars must be an integer in \[120, 8000\]/u);
+  });
+});
+
+describe("cosine — degenerate vectors and NaN values", () => {
+  it("returns 0 when lengths differ", () => {
+    expect(cosine([1, 2, 3], [1, 2])).toBe(0);
+  });
+
+  it("returns 0 when either vector is all zeros", () => {
+    expect(cosine([0, 0, 0], [1, 2, 3])).toBe(0);
+    expect(cosine([1, 2, 3], [0, 0, 0])).toBe(0);
+  });
+
+  it("returns a finite cosine for two clean vectors", () => {
+    const result = cosine([1, 0, 0], [1, 0, 0]);
+    expect(result).toBeCloseTo(1, 6);
+  });
+
+  it("returns 0 (not NaN) when either vector contains a NaN — protects the RAG render and sort from `[NaN]` scores", () => {
+    expect(cosine([Number.NaN, 1, 0], [1, 0, 0])).toBe(0);
+    expect(cosine([1, 0, 0], [Number.NaN, 0, 0])).toBe(0);
   });
 });
