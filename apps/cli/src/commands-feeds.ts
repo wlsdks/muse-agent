@@ -107,7 +107,8 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
     .action(async (url: string, options: { readonly id?: string; readonly name?: string }) => {
       const file = defaultFeedsFile();
       const store = await readFeedsStore(file);
-      const id = (options.id ?? slugifyUrl(url)).trim();
+      const trimmedExplicit = options.id?.trim() ?? "";
+      const id = trimmedExplicit.length > 0 ? trimmedExplicit : slugifyUrl(url);
       if (store.feeds.some((f) => f.id === id)) {
         io.stderr(`muse feeds add: id '${id}' already exists. Pass --id <new-alias> or remove the existing entry.\n`);
         process.exitCode = 1;

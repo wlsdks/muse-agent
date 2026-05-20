@@ -174,3 +174,40 @@ describe("muse feeds refresh --id typo hint (goal 153)", () => {
     expect(stderr).toContain("did you mean 'weather'");
   });
 });
+
+describe("muse feeds add --id empty / whitespace fallback", () => {
+  function seedEmptyStore(): string {
+    const dir = mkdtempSync(join(tmpdir(), "muse-feeds-add-"));
+    const file = join(dir, "feeds.json");
+    writeFileSync(file, JSON.stringify({ version: 1, feeds: [] }), "utf8");
+    return file;
+  }
+
+  function writeFeedXml(): string {
+    const xml = `<?xml version="1.0"?><rss version="2.0"><channel><title>x</title><item><title>t</title><link>http://example.com/x</link></item></channel></rss>`;
+    const dir = mkdtempSync(join(tmpdir(), "muse-feed-body-"));
+    const path = join(dir, "feed.xml");
+    writeFileSync(path, xml, "utf8");
+    return path;
+  }
+
+  it("falls back to the slugified URL when --id is whitespace-only (no empty-id feeds in the store)", async () => {
+    const store = seedEmptyStore();
+    const body = writeFeedXml();
+    const url = `file://${body}`;
+    const { exitCode } = await runFeedsCommand(["add", url, "--id", "   "], store);
+    expect(exitCode).toBe(0);
+    const { stdout } = await runFeedsCommand(["list"], store);
+    expect(stdout).not.toMatch(/^\s\t/u);
+    expect(stdout).toContain(slugifyUrl(url));
+  });
+
+  it("uses --id verbatim (trimmed) when non-empty", async () => {
+    const store = seedEmptyStore();
+    const body = writeFeedXml();
+    const { exitCode } = await runFeedsCommand(["add", `file://${body}`, "--id", "  custom-alias  "], store);
+    expect(exitCode).toBe(0);
+    const { stdout } = await runFeedsCommand(["list"], store);
+    expect(stdout).toContain("custom-alias");
+  });
+});
