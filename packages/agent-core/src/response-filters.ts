@@ -71,9 +71,19 @@ export function createMaxLengthResponseFilter(options: { readonly maxLength?: nu
         return response;
       }
 
+      let head = response.output.slice(0, maxLength);
+      // `slice` cuts on UTF-16 units; a boundary inside an astral
+      // char (an emoji or other supplementary-plane code point) would
+      // leave a lone high surrogate — invalid UTF-8 a downstream JSON
+      // body / SSE frame / persistence layer can 400 on or replace
+      // with U+FFFD. Drop the orphan.
+      const last = head.charCodeAt(head.length - 1);
+      if (last >= 0xd800 && last <= 0xdbff) {
+        head = head.slice(0, -1);
+      }
       return {
         ...response,
-        output: `${response.output.slice(0, maxLength)}\n\n[Response truncated]`,
+        output: `${head}\n\n[Response truncated]`,
         raw: {
           ...(isRecord(response.raw) ? response.raw : {}),
           museResponseFilter: {
