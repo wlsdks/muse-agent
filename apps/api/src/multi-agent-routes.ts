@@ -48,7 +48,11 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
     let limit: number | undefined;
 
     if (limitRaw !== undefined) {
-      const parsed = Number.parseInt(limitRaw, 10);
+      // Strict-parse — `Number.parseInt("20x", 10)` returns 20 and
+      // would pass the range check, so a typo'd `?limit=20x` /
+      // unit-slip `?limit=5min` silently masqueraded as valid.
+      const trimmed = limitRaw.trim();
+      const parsed = /^\d+$/u.test(trimmed) ? Number.parseInt(trimmed, 10) : Number.NaN;
       if (!Number.isInteger(parsed) || parsed < 0 || parsed > 1_000) {
         return reply.status(400).send({
           code: "INVALID_LIMIT",
