@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { registerTasksCommands, type TasksCommandHelpers } from "./commands-tasks.js";
+import { registerTasksCommands, resolveLocalTaskId, type TasksCommandHelpers } from "./commands-tasks.js";
 
 interface ApiCall {
   readonly path: string;
@@ -64,5 +64,34 @@ describe("muse tasks add — pre-dispatch --due validation", () => {
     expect(r.error).toBeDefined();
     expect(r.error).toContain("relative phrase");
     expect(r.apiCalls).toHaveLength(0);
+  });
+});
+
+describe("resolveLocalTaskId — typo-tolerant id resolution", () => {
+  const tasks = [
+    { createdAt: "2026-05-19T10:00:00.000Z", id: "task_abc123def", status: "open" as const, title: "alpha" },
+    { createdAt: "2026-05-19T11:00:00.000Z", id: "task_xyz789ghi", status: "open" as const, title: "beta" }
+  ];
+
+  it("returns the exact id when found", () => {
+    expect(resolveLocalTaskId("task_abc123def", tasks)).toBe("task_abc123def");
+  });
+
+  it("resolves an unambiguous prefix to the full id", () => {
+    expect(resolveLocalTaskId("task_abc", tasks)).toBe("task_abc123def");
+  });
+
+  it("rejects an ambiguous prefix with the count + guidance", () => {
+    expect(() => resolveLocalTaskId("task_", tasks)).toThrow(/ambiguous task prefix 'task_' matched 2 tasks/u);
+  });
+
+  it("suggests the closest existing id on a near-miss typo (one-char swap on the trailing char)", () => {
+    expect(() => resolveLocalTaskId("task_abc123dex", tasks))
+      .toThrow(/task not found: task_abc123dex — did you mean 'task_abc123def'/u);
+  });
+
+  it("rejects an unrelated input WITHOUT a guess (no random suggestion noise)", () => {
+    expect(() => resolveLocalTaskId("totallyunrelated", tasks))
+      .toThrow(/task not found: totallyunrelated$/u);
   });
 });

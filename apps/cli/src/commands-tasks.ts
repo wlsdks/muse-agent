@@ -378,7 +378,7 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
  * renderers print (e.g. `task_0810976`). When the input is shorter
  * than a full id and not unique, refuse to guess.
  */
-function resolveLocalTaskId(input: string, all: readonly PersistedTask[]): string {
+export function resolveLocalTaskId(input: string, all: readonly PersistedTask[]): string {
   const exact = all.find((task) => task.id === input);
   if (exact) return exact.id;
   const matches = all.filter((task) => task.id.startsWith(input));
@@ -386,7 +386,9 @@ function resolveLocalTaskId(input: string, all: readonly PersistedTask[]): strin
     return matches[0]!.id;
   }
   if (matches.length === 0) {
-    throw new Error(`task not found: ${input}`);
+    const suggestion = closestCommandName(input.trim(), all.map((t) => t.id));
+    const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+    throw new Error(`task not found: ${input}${hint}`);
   }
   throw new Error(`ambiguous task prefix '${input}' matched ${matches.length.toString()} tasks; use a longer id (full uuid is in the on-disk file or --json output)`);
 }
