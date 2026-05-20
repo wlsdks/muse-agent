@@ -79,7 +79,8 @@ export function registerObjectivesCommands(program: Command, io: ProgramIO): voi
       try {
         assertOneOf(options.status, STATUS_FILTERS, "--status");
         const filter = options.status.trim().toLowerCase();
-        const all = (await readObjectives(objectivesFile())).filter((o) => o.userId === options.user.trim());
+        const ownerBucket = options.user.trim() || "local";
+        const all = (await readObjectives(objectivesFile())).filter((o) => o.userId === ownerBucket);
         const shown = filter === "all" ? all : all.filter((o) => o.status === (filter as ObjectiveStatus));
         if (shown.length === 0) {
           io.stdout("No objectives.\n");

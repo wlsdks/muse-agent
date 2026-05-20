@@ -70,4 +70,12 @@ describe("muse objectives — CLI entry point to the delegated-autonomy chain", 
     expect((await run(file, ["list", "--user", "stark"])).stdout).toContain("stark only");
     expect((await run(file, ["list", "--user", "other"])).stdout).toBe("No objectives.\n");
   });
+
+  it("add and list resolve `--user '   '` to the same fallback bucket (no asymmetry that hides the just-added objective)", async () => {
+    const file = objFile();
+    await run(file, ["add", "trim test", "--user", "   "]);
+    const listed = await run(file, ["list", "--user", "   "]);
+    expect(listed.stdout, "list with the same whitespace --user must show the just-added objective; pre-fix it filtered by literal '' and returned 'No objectives.'").toContain("trim test");
+    expect((await run(file, ["list", "--user", "local"])).stdout).toContain("trim test");
+  });
 });
