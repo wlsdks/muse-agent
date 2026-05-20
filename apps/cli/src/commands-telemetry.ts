@@ -76,6 +76,24 @@ export function formatRecordedAtIso(ms: number): string {
   return date.toISOString();
 }
 
+export function parseTelemetryLimit(raw: string | undefined, fallback = 10): number {
+  if (raw === undefined || raw.trim().length === 0) return fallback;
+  const parsed = Number(raw.trim());
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    throw new Error(`--limit must be an integer >= 1 (got '${raw}')`);
+  }
+  return Math.min(500, Math.trunc(parsed));
+}
+
+export function parseTelemetrySinceMs(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim().length === 0) return undefined;
+  const parsed = Number(raw.trim());
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`--since-ms must be a non-negative integer (got '${raw}')`);
+  }
+  return Math.trunc(parsed);
+}
+
 export function registerTelemetryCommands(program: Command, io: ProgramIO, helpers: TelemetryHelpers): void {
   const telemetry = program.command("telemetry").description("Inspect runtime telemetry (ctx flags / token totals / latency)");
 
@@ -85,7 +103,8 @@ export function registerTelemetryCommands(program: Command, io: ProgramIO, helpe
     .option("--since-ms <ms>", "Window lower bound (UNIX ms timestamp)")
     .option("--json", "Print machine-readable JSON")
     .action(async (options: { readonly sinceMs?: string; readonly json?: boolean }, command: Command) => {
-      const query = options.sinceMs ? `?sinceMs=${encodeURIComponent(options.sinceMs)}` : "";
+      const sinceMs = parseTelemetrySinceMs(options.sinceMs);
+      const query = sinceMs !== undefined ? `?sinceMs=${sinceMs.toString()}` : "";
       const response = await helpers.apiRequest(io, command, `/admin/telemetry/summary${query}`) as SummaryResponse;
       if (options.json) {
         helpers.writeOutput(io, response);
@@ -104,12 +123,12 @@ export function registerTelemetryCommands(program: Command, io: ProgramIO, helpe
       options: { readonly limit?: string; readonly sinceMs?: string; readonly json?: boolean },
       command: Command
     ) => {
+      const limit = parseTelemetryLimit(options.limit);
+      const sinceMs = parseTelemetrySinceMs(options.sinceMs);
       const params = new URLSearchParams();
-      if (options.limit) {
-        params.set("limit", options.limit);
-      }
-      if (options.sinceMs) {
-        params.set("sinceMs", options.sinceMs);
+      params.set("limit", limit.toString());
+      if (sinceMs !== undefined) {
+        params.set("sinceMs", sinceMs.toString());
       }
       const qs = params.toString();
       const path = qs.length > 0 ? `/admin/telemetry/recent?${qs}` : "/admin/telemetry/recent";
