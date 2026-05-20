@@ -5145,6 +5145,40 @@ describe("cli program", () => {
     }
   });
 
+  it("muse persona use --json emits { activeId, previousActiveId } envelope for scripting", async () => {
+    const { readPersonaStore, writePersonaStore } = await import("../src/persona-store.js");
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-persona-use-json-"));
+    const personaFile = path.join(root, "persona.json");
+    await writePersonaStore(personaFile, { activeId: "default", custom: {} });
+    const prev = process.env.MUSE_PERSONA_FILE;
+    process.env.MUSE_PERSONA_FILE = personaFile;
+    const prevExitCode = process.exitCode;
+    process.exitCode = 0;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+      await program.parseAsync(["node", "muse", "persona", "use", "jarvis", "--json"], { from: "node" });
+      const text = output.join("");
+      // The envelope is the only thing on stdout; the legacy "active persona → ..." arrow must NOT also emit.
+      expect(text, "--json mode must NOT emit the human-readable arrow line").not.toContain("→");
+      const parsed = JSON.parse(text) as { activeId: string; previousActiveId: string };
+      expect(parsed.activeId, "envelope must echo the new active id").toBe("jarvis");
+      expect(parsed.previousActiveId, "envelope must echo the prior active id so scripts can audit the transition").toBe("default");
+      expect((await readPersonaStore(personaFile)).activeId).toBe("jarvis");
+      expect(process.exitCode).toBe(0);
+
+      // Sibling: no --json keeps the legacy arrow output.
+      const { io: io2, output: out2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      await program2.parseAsync(["node", "muse", "persona", "use", "default"], { from: "node" });
+      expect(out2.join("")).toContain("active persona → default");
+    } finally {
+      process.exitCode = prevExitCode;
+      if (prev === undefined) delete process.env.MUSE_PERSONA_FILE;
+      else process.env.MUSE_PERSONA_FILE = prev;
+    }
+  });
+
   it("muse persona add <id> <preamble> registers a custom persona reachable by `use` / `show`", async () => {
     const { readPersonaStore } = await import("../src/persona-store.js");
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-persona-add-"));

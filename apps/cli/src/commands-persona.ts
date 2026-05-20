@@ -91,7 +91,8 @@ export function registerPersonaCommand(program: Command, io: ProgramIO): void {
     .command("use")
     .description("Flip the active persona by id (built-in or custom)")
     .argument("<id>", "Persona id")
-    .action(async (id: string) => {
+    .option("--json", "Emit a structured payload instead of the arrow confirmation")
+    .action(async (id: string, options: { readonly json?: boolean }) => {
       const trimmed = id.trim();
       const file = defaultPersonaFile();
       const store = await readPersonaStore(file);
@@ -108,7 +109,12 @@ export function registerPersonaCommand(program: Command, io: ProgramIO): void {
         process.exitCode = 1;
         return;
       }
+      const previousActiveId = store.activeId;
       await writePersonaStore(file, { ...store, activeId: trimmed });
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ activeId: trimmed, previousActiveId }, null, 2)}\n`);
+        return;
+      }
       io.stdout(`active persona → ${trimmed}\n`);
     });
 
