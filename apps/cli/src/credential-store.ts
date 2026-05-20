@@ -39,8 +39,18 @@ interface EncryptedCredentialFile {
   readonly version: 1;
 }
 
-export function defaultCredentialPath(home: string = process.env.HOME ?? homedir()): string {
-  return `${home}/.config/muse/credentials.json`;
+export function defaultCredentialPath(home?: string): string {
+  // A pre-cleared `HOME=` (or a stripped-env case where
+  // `os.homedir()` also returns "") would silently resolve the
+  // credentials store at the filesystem root — fail loud
+  // instead of writing tokens to `/.config/muse/...`.
+  const explicit = typeof home === "string" ? home.trim() : "";
+  if (explicit.length > 0) return `${explicit}/.config/muse/credentials.json`;
+  const envHome = process.env.HOME?.trim();
+  if (envHome && envHome.length > 0) return `${envHome}/.config/muse/credentials.json`;
+  const sysHome = homedir().trim();
+  if (sysHome.length > 0) return `${sysHome}/.config/muse/credentials.json`;
+  throw new Error("Cannot resolve home directory for credentials.json — HOME is empty and os.homedir() returned no value");
 }
 
 export function credentialPath(io: ProgramIO): string {

@@ -140,6 +140,7 @@ delete an open row, never rewrite another goal's status.
 | 492 | [direct coverage for inbox-reply-cursor (dedup safety guard)](492-inbox-reply-cursor-direct-coverage.md) | test / safety | done — 458/477/479/480/485/487/491 class; reply-loop double-reply guard now has tolerant-load / no-op-empty / merge / FIFO-bound / 0o600 coverage; MAX_HANDLED slice mutation-proven (src byte-identical) |
 | 493 | [muse orchestrate run --mode adds did-you-mean for typo](493-orchestrate-mode-typo-suggestion.md) | fix / cli-ergonomics | done — goal-468/472/486 sibling; the last multi-choice argument surface without `closestCommandName` recovery (first direct commands-orchestrate coverage; mutation-proven) |
 | 494 | [muse chat --mode adds did-you-mean for typo](494-chat-agent-mode-typo-suggestion.md) | fix / cli-ergonomics | done — goal-493 sibling; `parseAgentMode` (`react`/`plan_execute`) now hints on a near-miss typo; first direct parseAgentMode coverage (mutation-proven) |
+| 495 | [defaultCredentialPath fails loud on empty HOME=](495-credential-path-empty-home-fail-loud.md) | fix / safety | done — goal-478/481/482/483/488 sibling on the **credentials store**; `HOME=""` no longer writes bearer tokens to `/.config/muse/credentials.json` at the filesystem root — throws with a clear actionable error instead (mutation-proven) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
