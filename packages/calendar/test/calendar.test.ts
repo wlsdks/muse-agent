@@ -325,6 +325,82 @@ describe("LocalCalendarProvider", () => {
     const events = await provider.listEvents({ from: new Date(0), to: new Date(Date.now() + 86_400_000) });
     expect(events).toEqual([]);
   });
+
+  describe("updateEvent — create/update field-clear symmetry", () => {
+    async function createWithExtras(): Promise<{ id: string }> {
+      const e = await provider.createEvent({
+        endsAt: new Date("2026-05-15T11:00:00Z"),
+        startsAt: new Date("2026-05-15T10:00:00Z"),
+        title: "Symmetric",
+        location: "Room A",
+        notes: "kickoff sync",
+        tags: ["work", "meeting"]
+      });
+      return { id: e.id };
+    }
+
+    it("update with location:null clears the field (explicit null is the documented clear)", async () => {
+      const { id } = await createWithExtras();
+      const updated = await provider.updateEvent(id, { location: null });
+      expect(updated.location).toBeUndefined();
+      // Persisted shape mirrors the in-memory shape (no orphan ""/null in JSON).
+      const reread = (await provider.listEvents({
+        from: new Date(0),
+        to: new Date(Date.now() + 86_400_000)
+      }))[0];
+      expect(reread?.location).toBeUndefined();
+    });
+
+    it("update with location:\"\" also clears the field (matches create's empty-string strip)", async () => {
+      const { id } = await createWithExtras();
+      const updated = await provider.updateEvent(id, { location: "" });
+      expect(updated.location, "empty-string update must clear like createEvent's truthy strip").toBeUndefined();
+      // Sanity: createEvent's create-time strip on "" produces an event
+      // with `location` ABSENT — update-to-"" must produce the same.
+      const fresh = await provider.createEvent({
+        endsAt: new Date("2026-05-16T11:00:00Z"),
+        startsAt: new Date("2026-05-16T10:00:00Z"),
+        title: "Empty location at create",
+        location: ""
+      });
+      expect(fresh.location, "createEvent must strip an empty-string location").toBeUndefined();
+    });
+
+    it("update with notes:\"\" clears the field (sibling defect)", async () => {
+      const { id } = await createWithExtras();
+      const updated = await provider.updateEvent(id, { notes: "" });
+      expect(updated.notes).toBeUndefined();
+    });
+
+    it("update with tags:[] clears the field (matches create's empty-array strip)", async () => {
+      const { id } = await createWithExtras();
+      const updated = await provider.updateEvent(id, { tags: [] });
+      expect(updated.tags, "empty-array update must clear like createEvent's length-gated strip").toBeUndefined();
+      // Sibling: createEvent already strips empty tags — verify.
+      const fresh = await provider.createEvent({
+        endsAt: new Date("2026-05-17T11:00:00Z"),
+        startsAt: new Date("2026-05-17T10:00:00Z"),
+        title: "Empty tags at create",
+        tags: []
+      });
+      expect(fresh.tags).toBeUndefined();
+    });
+
+    it("update with omitted fields preserves the existing values", async () => {
+      const { id } = await createWithExtras();
+      const updated = await provider.updateEvent(id, { title: "Retitled" });
+      expect(updated.title).toBe("Retitled");
+      expect(updated.location).toBe("Room A");
+      expect(updated.notes).toBe("kickoff sync");
+      expect(updated.tags).toEqual(["work", "meeting"]);
+    });
+
+    it("update with whitespace-only location:\"   \" passes through unchanged (matches create's truthy-only strip)", async () => {
+      const { id } = await createWithExtras();
+      const updated = await provider.updateEvent(id, { location: "   " });
+      expect(updated.location, "whitespace-only is preserved on both create and update sides").toBe("   ");
+    });
+  });
 });
 
 describe("CalendarProviderRegistry", () => {

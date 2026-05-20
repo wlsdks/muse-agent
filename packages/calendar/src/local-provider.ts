@@ -229,7 +229,15 @@ function applyOptionalString(existing: string | undefined, next: string | null |
   if (next === null) {
     return undefined;
   }
-
+  // `createEvent` strips empty strings via the `input.location ? …` truthy
+  // check, so an empty string never makes it into the persisted shape on
+  // create. Update must match: a caller passing `""` to clear a field
+  // sees the same omit-on-write behavior as create, not a literal "" in
+  // the JSON store. `"   "` (whitespace) is treated the same as create —
+  // a truthy non-empty string passes through unchanged.
+  if (next === "") {
+    return undefined;
+  }
   return next ?? existing;
 }
 
@@ -240,7 +248,9 @@ function applyOptionalArray(
   if (next === null) {
     return undefined;
   }
-
+  if (next !== undefined && next.length === 0) {
+    return undefined;
+  }
   return next ?? existing;
 }
 
