@@ -5574,6 +5574,38 @@ describe("cli program", () => {
     expect(await loadImageAsBase64("data:;base64,QUJD")).toBe("QUJD");
   });
 
+  it("muse vision: formatOllamaVisionFailure surfaces actionable `ollama pull <base>` on 404 but stays generic for other statuses", async () => {
+    const { formatOllamaVisionFailure } = await import("../src/commands-vision.js");
+
+    const notInstalled = formatOllamaVisionFailure({
+      body: '{"error":"model \'llama3.2-vision:latest\' not found, try pulling it first"}',
+      model: "llama3.2-vision:latest",
+      status: 404
+    });
+    expect(notInstalled, "404 must surface the actionable command, not just dump the body").toContain("Pull it with: ollama pull llama3.2-vision");
+    expect(notInstalled).toContain("model 'llama3.2-vision:latest' is not installed");
+    expect(notInstalled, "the raw body still rides along so an operator can debug").toContain("not found, try pulling it first");
+
+    // Tag-less model id passes through as the pull target unchanged.
+    const tagless = formatOllamaVisionFailure({ body: "", model: "llava", status: 404 });
+    expect(tagless).toContain("Pull it with: ollama pull llava");
+
+    // 5xx / non-404 keep the generic message; no pull hint (the
+    // status doesn't imply "model missing").
+    const serverError = formatOllamaVisionFailure({
+      body: "internal error",
+      model: "llama3.2-vision:latest",
+      status: 500
+    });
+    expect(serverError).toContain("muse vision: Ollama 500 — internal error");
+    expect(serverError, "non-404 must NOT pretend the model is missing").not.toContain("Pull it with");
+
+    // 400 — bad request, e.g. image too large. Same generic shape.
+    const badRequest = formatOllamaVisionFailure({ body: "image too big", model: "m", status: 400 });
+    expect(badRequest).toContain("Ollama 400 — image too big");
+    expect(badRequest).not.toContain("Pull it with");
+  });
+
   it("planActivityLogCompaction filters by suffix + age + allow-list (goal 080)", async () => {
     const { planActivityLogCompaction, COMPACTABLE_STORE_BASENAMES } = await import("../src/commands-maintenance.js");
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-compact-"));

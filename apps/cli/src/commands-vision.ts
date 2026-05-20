@@ -94,6 +94,33 @@ export async function loadImageAsBase64(
  * expects. Exported so tests can verify the shape without
  * round-tripping through the CLI runner.
  */
+/**
+ * Format Ollama's failure response for the user. 404 specifically
+ * means "the model isn't installed" — surface the exact
+ * `ollama pull <base>` command instead of just dumping the JSON
+ * body. Other statuses (5xx, network rejects, etc.) keep the
+ * generic shape so the operator sees the raw body for debugging.
+ *
+ * Exported so the test pins the 404-vs-other branching without
+ * having to drive a real Ollama instance.
+ */
+export function formatOllamaVisionFailure(args: {
+  readonly status: number;
+  readonly body: string;
+  readonly model: string;
+}): string {
+  const trimmedBody = args.body.slice(0, 200);
+  if (args.status === 404) {
+    const base = args.model.split(":")[0] ?? args.model;
+    return (
+      `muse vision: Ollama 404 — model '${args.model}' is not installed.\n` +
+      `Pull it with: ollama pull ${base}\n` +
+      (trimmedBody.length > 0 ? `(Ollama response: ${trimmedBody})\n` : "")
+    );
+  }
+  return `muse vision: Ollama ${args.status.toString()} — ${trimmedBody}\n`;
+}
+
 export function buildOllamaVisionBody(args: {
   readonly model: string;
   readonly prompt: string;
@@ -151,7 +178,7 @@ export function registerVisionCommand(program: Command, io: ProgramIO): void {
       }
       if (!response.ok) {
         const body = await response.text().catch(() => "");
-        io.stderr(`muse vision: Ollama ${response.status.toString()} — ${body.slice(0, 200)}\n`);
+        io.stderr(formatOllamaVisionFailure({ body, model, status: response.status }));
         process.exitCode = 1;
         return;
       }
