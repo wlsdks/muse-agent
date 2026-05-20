@@ -125,6 +125,38 @@ describe("InMemoryOrchestrationHistoryStore", () => {
     expect(summary.lastRunAt).toBe(new Date(4_000).toISOString());
     expect(summary.p95DurationMs).toBe(400);
   });
+
+  it("summary() ignores a NaN / Infinity durationMs from a poisoned upstream record — does not propagate to avg / p95 / min / max / byMode averages", () => {
+    const store = new InMemoryOrchestrationHistoryStore();
+    function record(runId: string, durationMs: number, mode: "sequential" | "parallel", status: "completed" | "failed" = "completed"): void {
+      store.record({
+        completedCount: status === "completed" ? 1 : 0,
+        durationMs,
+        failedCount: status === "completed" ? 0 : 1,
+        finishedAt: new Date(),
+        mode,
+        runId,
+        startedAt: new Date(),
+        status,
+        workerCount: 1
+      });
+    }
+    record("a", 100, "sequential");
+    record("nan-row", Number.NaN, "sequential");
+    record("b", 300, "parallel");
+    record("inf-row", Number.POSITIVE_INFINITY, "parallel");
+    const summary = store.summary();
+    expect(summary.totalRuns).toBe(4);
+    expect(Number.isFinite(summary.avgDurationMs), `avgDurationMs (${summary.avgDurationMs.toString()}) must be finite`).toBe(true);
+    expect(summary.avgDurationMs).toBe(200);
+    expect(summary.minDurationMs).toBe(100);
+    expect(summary.maxDurationMs).toBe(300);
+    expect(summary.p95DurationMs).toBe(300);
+    expect(summary.byMode.sequential.avgDurationMs).toBe(100);
+    expect(summary.byMode.sequential.runs).toBe(2);
+    expect(summary.byMode.parallel.avgDurationMs).toBe(300);
+    expect(summary.byMode.parallel.runs).toBe(2);
+  });
 });
 
 describe("MultiAgentOrchestrator history recording", () => {

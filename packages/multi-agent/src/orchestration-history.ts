@@ -119,10 +119,18 @@ export class InMemoryOrchestrationHistoryStore implements OrchestrationHistorySt
     }
 
     const completed = this.entries.filter((entry) => entry.status === "completed").length;
-    const sequential = this.entries.filter((entry) => entry.mode === "sequential");
-    const parallel = this.entries.filter((entry) => entry.mode === "parallel");
-    const race = this.entries.filter((entry) => entry.mode === "race");
-    const sortedDurations = [...this.entries.map((entry) => entry.durationMs)].sort((a, b) => a - b);
+    const byModeAvg = (mode: OrchestrationMode): { readonly runs: number; readonly avgDurationMs: number } => {
+      const modeEntries = this.entries.filter((entry) => entry.mode === mode);
+      const finite = modeEntries.map((entry) => entry.durationMs).filter((ms): ms is number => Number.isFinite(ms));
+      return {
+        avgDurationMs: finite.length === 0 ? 0 : Math.round(finite.reduce((sum, value) => sum + value, 0) / finite.length),
+        runs: modeEntries.length
+      };
+    };
+    const finiteDurations = this.entries
+      .map((entry) => entry.durationMs)
+      .filter((ms): ms is number => Number.isFinite(ms));
+    const sortedDurations = [...finiteDurations].sort((a, b) => a - b);
     const p95Index = Math.min(sortedDurations.length - 1, Math.ceil(0.95 * sortedDurations.length) - 1);
     const totalDuration = sortedDurations.reduce((sum, value) => sum + value, 0);
     const lastRunAt = this.entries
@@ -130,29 +138,11 @@ export class InMemoryOrchestrationHistoryStore implements OrchestrationHistorySt
       .reduce((max, current) => (current > max ? current : max), 0);
 
     return {
-      avgDurationMs: Math.round(totalDuration / sortedDurations.length),
+      avgDurationMs: sortedDurations.length === 0 ? 0 : Math.round(totalDuration / sortedDurations.length),
       byMode: {
-        parallel: {
-          avgDurationMs:
-            parallel.length === 0
-              ? 0
-              : Math.round(parallel.reduce((sum, entry) => sum + entry.durationMs, 0) / parallel.length),
-          runs: parallel.length
-        },
-        race: {
-          avgDurationMs:
-            race.length === 0
-              ? 0
-              : Math.round(race.reduce((sum, entry) => sum + entry.durationMs, 0) / race.length),
-          runs: race.length
-        },
-        sequential: {
-          avgDurationMs:
-            sequential.length === 0
-              ? 0
-              : Math.round(sequential.reduce((sum, entry) => sum + entry.durationMs, 0) / sequential.length),
-          runs: sequential.length
-        }
+        parallel: byModeAvg("parallel"),
+        race: byModeAvg("race"),
+        sequential: byModeAvg("sequential")
       },
       completedRuns: completed,
       failedRuns: this.entries.length - completed,
