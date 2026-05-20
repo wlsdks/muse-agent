@@ -27,6 +27,7 @@ import type { Command } from "commander";
 
 import { resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
+import { resolveDefaultUserKey } from "./user-id.js";
 
 interface PendingRequest {
   readonly id: string;
@@ -81,7 +82,7 @@ async function rewriteApprovals(entries: readonly PendingRequest[]): Promise<voi
 }
 
 function defaultUserKey(persona: string | undefined): string {
-  const base = process.env.MUSE_USER_ID ?? process.env.USER ?? "default";
+  const base = resolveDefaultUserKey();
   const resolved = resolvePersona(persona);
   return resolved ? `${base}@${resolved}` : base;
 }

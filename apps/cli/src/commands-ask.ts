@@ -37,6 +37,7 @@ import { resolvePersona } from "./program-helpers.js";
 import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
 import type { ProgramIO } from "./program.js";
 import { withSigintAbort } from "./sigint-abort.js";
+import { resolveDefaultUserKey } from "./user-id.js";
 
 interface AskOptions {
   readonly user?: string;
@@ -93,7 +94,7 @@ function notesIndexPath(): string {
 }
 
 function defaultUserKey(user: string | undefined, persona: string | undefined): string {
-  const base = user ?? process.env.MUSE_USER_ID ?? process.env.USER ?? "default";
+  const base = resolveDefaultUserKey({ override: user });
   const resolved = resolvePersona(persona);
   return resolved ? `${base}@${resolved}` : base;
 }

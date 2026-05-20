@@ -42,6 +42,7 @@ import {
   writeRunLog
 } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
+import { resolveDefaultUserKey } from "./user-id.js";
 
 export type AgentMode = "react" | "plan_execute";
 
@@ -176,7 +177,7 @@ export async function runChatRepl(
   };
   let currentModel = options.model;
   let toolsDisabled = options.disableTools;
-  const baseUserId = options.userId ?? process.env.MUSE_USER_ID ?? process.env.USER ?? "default";
+  const baseUserId = resolveDefaultUserKey({ override: options.userId });
   // Multi-persona: the on-disk store keys persona slots as
   // `<user>@<persona>` so a single human ("stark") can have a
   // distinct work / home / hobby context with its own facts,

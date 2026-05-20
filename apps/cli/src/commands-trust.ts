@@ -30,6 +30,7 @@ import type { Command } from "commander";
 import { closestCommandName } from "./closest-command.js";
 import { resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
+import { resolveDefaultUserKey } from "./user-id.js";
 
 interface TrustEntry {
   readonly trustedTools: string[];
@@ -70,7 +71,7 @@ async function writeTrustFile(path: string, data: TrustFile): Promise<void> {
 }
 
 function defaultUserKey(persona: string | undefined): string {
-  const base = process.env.MUSE_USER_ID ?? process.env.USER ?? "default";
+  const base = resolveDefaultUserKey();
   const resolved = resolvePersona(persona);
   return resolved ? `${base}@${resolved}` : base;
 }

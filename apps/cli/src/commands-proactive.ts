@@ -32,6 +32,7 @@ import { join } from "node:path";
 import { closestCommandName } from "./closest-command.js";
 import { createTerminalProactiveSink } from "./proactive-terminal-sink.js";
 import type { ProgramIO } from "./program.js";
+import { resolveDefaultUserKey } from "./user-id.js";
 
 export interface ProactiveHelpers {
   /** Test seam — defaults to `process.env`. */
@@ -285,7 +286,7 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
       // "Send Q3 budget memo due in 5 min"). Best-effort — assembly
       // and persona resolution failures fall back to the generic
       // synthesis prompt.
-      const userId = (options.user ?? e.MUSE_USER_ID ?? e.USER ?? "default").trim();
+      const userId = resolveDefaultUserKey({ override: options.user, env: e });
       let personaPreamble: string | undefined;
       let agentModel: string | undefined;
       let modelProvider: Parameters<typeof runDueProactiveNotices>[0]["modelProvider"];
