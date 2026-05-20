@@ -131,17 +131,19 @@ export async function handleSlashCommand(
         io.stdout(`(model → ${arg})\n`);
       }
       return;
-    case "tools":
-      if (arg === "on") {
+    case "tools": {
+      const normalised = arg.trim().toLowerCase();
+      if (normalised === "on") {
         ctx.toolsDisabled = false;
         io.stdout("(tools on)\n");
-      } else if (arg === "off") {
+      } else if (normalised === "off") {
         ctx.toolsDisabled = true;
         io.stdout("(tools off — chat-only fast path)\n");
       } else {
         io.stdout(`(tools currently ${ctx.toolsDisabled ? "off" : "on"}; usage: /tools on|off)\n`);
       }
       return;
+    }
     case "fact":
     case "pref": {
       const eq = arg.indexOf("=");
@@ -181,7 +183,8 @@ export async function handleSlashCommand(
       if (arg.length === 0) {
         io.stdout(`(current persona: ${ctx.currentPersona ?? "(none — base profile)"}; usage: /persona work | /persona home | /persona none)\n`);
       } else {
-        const next = arg === "none" || arg === "off" || arg === "default" ? undefined : arg;
+        const sentinel = arg.trim().toLowerCase();
+        const next = sentinel === "none" || sentinel === "off" || sentinel === "default" ? undefined : arg;
         ctx.currentPersona = next;
         ctx.userId = deps.composeUserKey();
         ctx.userMemory = deps.memoryStore ? await Promise.resolve(deps.memoryStore.findByUserId(ctx.userId)) : undefined;
