@@ -41,8 +41,11 @@ import {
   resolvePersona,
   writeRunLog
 } from "./program-helpers.js";
+import { closestCommandName } from "./closest-command.js";
 import type { ProgramIO } from "./program.js";
 import { resolveDefaultUserKey } from "./user-id.js";
+
+const AGENT_MODES: readonly string[] = ["react", "plan_execute"];
 
 export type AgentMode = "react" | "plan_execute";
 
@@ -604,7 +607,9 @@ export function parseAgentMode(value: string | undefined): AgentMode | undefined
   if (normalized === "react" || normalized === "plan_execute") {
     return normalized;
   }
-  throw new Error(`--mode must be 'react' or 'plan_execute' (got '${value}')`);
+  const suggestion = closestCommandName(normalized, AGENT_MODES);
+  const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+  throw new Error(`--mode must be 'react' or 'plan_execute' (got '${value}')${hint}`);
 }
 
 /**
