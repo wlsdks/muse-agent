@@ -94,6 +94,9 @@ export function parseMcpSecurityPolicyInput(value: unknown): ParseResult<McpSecu
   if (allowedServerNames && allowedServerNames.length > 500) {
     return invalid("INVALID_MCP_SECURITY_POLICY", "allowedServerNames must not exceed 500 entries");
   }
+  if (allowedStdioCommands && allowedStdioCommands.length > 500) {
+    return invalid("INVALID_MCP_SECURITY_POLICY", "allowedStdioCommands must not exceed 500 entries");
+  }
 
   if (
     maxToolOutputLength !== undefined &&
