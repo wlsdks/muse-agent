@@ -22,6 +22,7 @@ import {
 } from "@muse/mcp";
 import type { FastifyInstance } from "fastify";
 
+import { readQueryInteger } from "./compat-parsers.js";
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
 
@@ -43,7 +44,7 @@ export function registerHistoryRoutes(server: FastifyInstance, gate: HistoryRout
       return reply;
     }
 
-    const query = (request.query as { kind?: string; sinceIso?: string; limit?: string } | undefined) ?? {};
+    const query = (request.query as { kind?: string; sinceIso?: string } | undefined) ?? {};
 
     let kind: ActivityKind | undefined;
     if (typeof query.kind === "string" && query.kind.length > 0) {
@@ -67,13 +68,13 @@ export function registerHistoryRoutes(server: FastifyInstance, gate: HistoryRout
       sinceMs = parsed;
     }
 
-    let limit = DEFAULT_LIMIT;
-    if (typeof query.limit === "string" && query.limit.length > 0) {
-      const parsed = Number.parseInt(query.limit, 10);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        limit = Math.min(MAX_LIMIT, parsed);
-      }
-    }
+    // Strict-parse via the shared helper so a `?limit=20x` /
+    // unit-slip `?limit=5min` falls back to the default instead of
+    // silently becoming 20 / 5. Matches the goal-554 CLI convention
+    // and the `readQueryInteger` contract every other compat route
+    // uses.
+    const requested = readQueryInteger(request, "limit", DEFAULT_LIMIT);
+    const limit = requested > 0 ? Math.min(MAX_LIMIT, requested) : DEFAULT_LIMIT;
 
     const entries = await readActivityFeed({
       episodesFile: gate.episodesFile,

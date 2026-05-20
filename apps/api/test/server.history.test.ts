@@ -72,4 +72,45 @@ describe("api server: GET /api/history", () => {
     expect(reply.statusCode).toBe(200);
     expect(reply.json()).toEqual({ entries: [], total: 0 });
   });
+
+  it("strict-parses ?limit so lenient-garbage like `20x` / `5min` falls back to the default instead of silently truncating", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-api-history-limit-"));
+    const reminderHistoryFile = join(dir, "reminder-history.json");
+    const entries: Array<{ reminderId: string; text: string; providerId: string; destination: string; firedAtIso: string; status: string }> = [];
+    for (let i = 0; i < 30; i += 1) {
+      entries.push({
+        reminderId: `rem_${i.toString()}`,
+        text: `entry ${i.toString()}`,
+        providerId: "log",
+        destination: "@me",
+        firedAtIso: `2026-05-12T${(i % 24).toString().padStart(2, "0")}:00:00.000Z`,
+        status: "delivered"
+      });
+    }
+    writeFileSync(reminderHistoryFile, JSON.stringify({ entries, version: 1 }), "utf8");
+
+    const server = buildServer({ logger: false, reminderHistoryFile });
+
+    // Pre-fix `?limit=20x` was silently parsed as 20 via lenient
+    // `Number.parseInt`, masking the typo with the literal default
+    // (DEFAULT_LIMIT === 20). Post-fix the strict-parse helper
+    // returns the fallback for non-decimal input — same 20 default
+    // surface BUT the typo no longer "happens to match". The test
+    // pins the asymmetry by setting a non-default valid limit
+    // alongside the garbage one.
+    const garbage = await server.inject({ method: "GET", url: "/api/history?limit=20x" });
+    expect(garbage.statusCode).toBe(200);
+    expect((garbage.json() as { total: number }).total).toBe(20);
+
+    const validLow = await server.inject({ method: "GET", url: "/api/history?limit=5" });
+    expect((validLow.json() as { total: number }).total).toBe(5);
+
+    // Unit slip: pre-fix `?limit=10min` silently became 10.
+    const unitSlip = await server.inject({ method: "GET", url: "/api/history?limit=10min" });
+    expect((unitSlip.json() as { total: number; entries: unknown[] }).total, "lenient parseInt would silently truncate `10min` to 10 — the strict-parse helper falls back to the default 20").toBe(20);
+
+    // Cap still applies for genuinely-large values.
+    const capped = await server.inject({ method: "GET", url: "/api/history?limit=9999" });
+    expect((capped.json() as { total: number }).total).toBeLessThanOrEqual(200);
+  });
 });
