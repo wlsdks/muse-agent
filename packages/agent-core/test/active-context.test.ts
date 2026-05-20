@@ -576,6 +576,28 @@ describe("DefaultActiveContextProvider", () => {
     expect(snapshot?.routine?.activeHours).toEqual([9, 14, 20]);
   });
 
+  it("drops prefix-typo'd routine hours like '9x' / '14abc' — lenient parseInt silently kept the digit prefix", async () => {
+    const memoryProvider = {
+      async findByUserId() {
+        return {
+          facts: { routine_active_hours: "9x, 14abc, 17pm, 20" },
+          preferences: {},
+          userId: "u1"
+        };
+      }
+    };
+    const provider = new DefaultActiveContextProvider({
+      defaultTimezone: "UTC",
+      now: () => fixedNow,
+      userMemoryProvider: memoryProvider
+    });
+    const snapshot = await provider.resolve({ userId: "u1" });
+    expect(
+      snapshot?.routine?.activeHours,
+      "prefix-typo entries must be dropped — pre-fix parseInt('9x', 10) === 9 silently included them, violating the docstring's 'drops non-integer entries defensively' promise"
+    ).toEqual([20]);
+  });
+
   it("leaves snapshot.routine undefined when no routine facts exist", async () => {
     const memoryProvider = {
       async findByUserId() {

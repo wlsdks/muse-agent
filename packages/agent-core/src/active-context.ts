@@ -433,8 +433,13 @@ function buildRoutineHint(
   const hours: number[] = [];
   if (typeof hoursFact === "string") {
     for (const raw of hoursFact.split(",")) {
-      const n = Number.parseInt(raw.trim(), 10);
-      if (Number.isFinite(n) && n >= 0 && n <= 23) {
+      const trimmed = raw.trim();
+      // Strict-parse: `Number.parseInt("9x", 10) === 9` silently
+      // included prefix-typo'd hours, violating the docstring's
+      // "drops non-integer entries defensively" promise.
+      if (!/^[+-]?\d+$/u.test(trimmed)) continue;
+      const n = Number(trimmed);
+      if (Number.isInteger(n) && n >= 0 && n <= 23) {
         hours.push(n);
       }
     }
