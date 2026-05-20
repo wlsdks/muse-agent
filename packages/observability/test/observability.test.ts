@@ -587,6 +587,47 @@ describe("InMemoryLatencyQuery", () => {
   it("exposes a stable default span name prefix constant", () => {
     expect(LATENCY_DEFAULT_SPAN_NAME_PREFIX).toBe("muse.agent.");
   });
+
+  it("skips spans whose startedAt or endedAt subtraction produces NaN (Invalid Date corruption — does not silently bucket as 0ms)", async () => {
+    const sink = new InMemoryTraceEventSink();
+    const goodStart = new Date("2026-05-07T10:00:00.000Z");
+    const goodEnd = new Date("2026-05-07T10:00:01.000Z");
+    const invalid = new Date(Number.NaN);
+    await sink.record({
+      attributes: {},
+      endedAt: goodEnd,
+      name: "muse.agent.run",
+      runId: "ok",
+      spanId: "span-ok",
+      stage: "agent",
+      startedAt: goodStart
+    });
+    await sink.record({
+      attributes: {},
+      endedAt: invalid,
+      name: "muse.agent.run",
+      runId: "bad-end",
+      spanId: "span-bad-end",
+      stage: "agent",
+      startedAt: goodStart
+    });
+    await sink.record({
+      attributes: {},
+      endedAt: goodEnd,
+      name: "muse.agent.run",
+      runId: "bad-start",
+      spanId: "span-bad-start",
+      stage: "agent",
+      startedAt: invalid
+    });
+    const query = new InMemoryLatencyQuery(sink);
+    const summary = await query.summary({
+      from: new Date("2026-05-07T09:00:00.000Z"),
+      to: new Date("2026-05-07T11:00:00.000Z")
+    });
+    expect(summary.count, "the two NaN-subtraction spans must NOT count toward the latency summary; they are corruption, not 0ms").toBe(1);
+    expect(summary.avgMs).toBe(1_000);
+  });
 });
 
 describe("InMemoryTokenCostQuery", () => {

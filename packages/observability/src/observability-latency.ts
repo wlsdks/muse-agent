@@ -220,6 +220,9 @@ function computeDurationMs(event: TraceEventInput): number | undefined {
     return undefined;
   }
   const duration = event.endedAt.getTime() - event.startedAt.getTime();
+  if (!Number.isFinite(duration)) {
+    return undefined;
+  }
   return duration >= 0 ? duration : 0;
 }
 
