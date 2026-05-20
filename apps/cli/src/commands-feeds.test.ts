@@ -210,4 +210,24 @@ describe("muse feeds add --id empty / whitespace fallback", () => {
     const { stdout } = await runFeedsCommand(["list"], store);
     expect(stdout).toContain("custom-alias");
   });
+
+  it("rejects a whitespace-only URL with an actionable error instead of a confusing fetch failure", async () => {
+    const store = seedEmptyStore();
+    const { stderr, exitCode } = await runFeedsCommand(["add", "   "], store);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("muse feeds add: feed URL must be non-empty");
+    const { stdout } = await runFeedsCommand(["list"], store);
+    expect(stdout).toContain("(no feeds");
+  });
+
+  it("trims a padded URL before fetching + persisting so the store doesn't keep extra whitespace", async () => {
+    const store = seedEmptyStore();
+    const body = writeFeedXml();
+    const { exitCode } = await runFeedsCommand(["add", `  file://${body}  `, "--id", "padded"], store);
+    expect(exitCode).toBe(0);
+    const { stdout } = await runFeedsCommand(["list"], store);
+    expect(stdout).toContain("padded");
+    expect(stdout).toContain(`file://${body}`);
+    expect(stdout).not.toContain(`  file://`);
+  });
 });

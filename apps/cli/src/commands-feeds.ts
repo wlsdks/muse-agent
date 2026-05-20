@@ -105,10 +105,16 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
     .option("--id <alias>", "Stable id (default: slug of URL)")
     .option("--name <name>", "Human-readable name")
     .action(async (url: string, options: { readonly id?: string; readonly name?: string }) => {
+      const trimmedUrl = url.trim();
+      if (trimmedUrl.length === 0) {
+        io.stderr("muse feeds add: feed URL must be non-empty (http(s):// or file://)\n");
+        process.exitCode = 1;
+        return;
+      }
       const file = defaultFeedsFile();
       const store = await readFeedsStore(file);
       const trimmedExplicit = options.id?.trim() ?? "";
-      const id = trimmedExplicit.length > 0 ? trimmedExplicit : slugifyUrl(url);
+      const id = trimmedExplicit.length > 0 ? trimmedExplicit : slugifyUrl(trimmedUrl);
       if (store.feeds.some((f) => f.id === id)) {
         io.stderr(`muse feeds add: id '${id}' already exists. Pass --id <new-alias> or remove the existing entry.\n`);
         process.exitCode = 1;
@@ -116,7 +122,7 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
       }
       let entries: readonly FeedEntry[];
       try {
-        const body = await loadFeedBody(url);
+        const body = await loadFeedBody(trimmedUrl);
         entries = parseFeedBody(body);
       } catch (cause) {
         io.stderr(`muse feeds add: initial fetch failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
@@ -127,7 +133,7 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
         version: store.version,
         feeds: [
           ...store.feeds,
-          { id, url, name: options.name ?? id, lastFetchedAt: new Date().toISOString(), entries }
+          { id, url: trimmedUrl, name: options.name ?? id, lastFetchedAt: new Date().toISOString(), entries }
         ]
       };
       await writeFeedsStore(file, next);
