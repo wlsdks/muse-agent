@@ -131,6 +131,7 @@ delete an open row, never rewrite another goal's status.
 | 483 | [muse doctor stops falsely reporting ~/.muse + mcp.json missing on empty MUSE_HOME=](483-doctor-env-path-empty-shadow.md) | fix / correctness | done — goal-478/481/482 sibling on the diagnostic surface; new `resolveMuseEnvPath` helper closes two `??` empty-shadows so `MUSE_HOME=` no longer makes the doctor lie about an actually-correct setup (mutation-proven) |
 | 484 | [muse routine keeps `total / days = avg` consistent when activity.jsonl carries malformed rows](484-routine-sessions-per-day-arithmetic-consistency.md) | fix / correctness | done — distinct class (Step-8 redirect); `computeRoutine` now counts validSessions consistently so a malformed line no longer inflates the displayed average; first direct coverage (mutation-proven) |
 | 485 | [direct coverage for resolveJobTimeout](485-resolve-job-timeout-direct-coverage.md) | test / safety | done — 458/477/479/480 class; scheduler watchdog + lock-TTL safety budget pinned against `??`-doesn't-catch-NaN/Infinity regression; src byte-identical (mutation-proven) |
+| 486 | [muse approval approve/deny adds did-you-mean for typo'd id](486-approval-typo-suggestion.md) | fix / cli-ergonomics | done — goal-468/472 sibling; closes the last id-taking CLI surface without `closestCommandName` recovery (mutation-proven; first direct commands-approval coverage) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —

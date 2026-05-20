@@ -25,6 +25,7 @@ import { dirname, join } from "node:path";
 
 import type { Command } from "commander";
 
+import { closestCommandName } from "./closest-command.js";
 import { resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 import { resolveDefaultUserKey } from "./user-id.js";
@@ -147,7 +148,9 @@ export function registerApprovalCommands(program: Command, io: ProgramIO): void 
       const all = await readApprovals();
       const target = all.find((e) => e.id === id);
       if (!target) {
-        io.stderr(`Request '${id}' not found.\n`);
+        const suggestion = closestCommandName(id, all.map((e) => e.id));
+        const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+        io.stderr(`Request '${id}' not found.${hint} (run \`muse approval list\` to see pending ids)\n`);
         process.exitCode = 1;
         return;
       }
@@ -196,7 +199,9 @@ export function registerApprovalCommands(program: Command, io: ProgramIO): void 
       const all = await readApprovals();
       const target = all.find((e) => e.id === id);
       if (!target) {
-        io.stderr(`Request '${id}' not found.\n`);
+        const suggestion = closestCommandName(id, all.map((e) => e.id));
+        const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+        io.stderr(`Request '${id}' not found.${hint} (run \`muse approval list\` to see pending ids)\n`);
         process.exitCode = 1;
         return;
       }
