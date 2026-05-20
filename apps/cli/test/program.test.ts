@@ -657,6 +657,41 @@ describe("cli program", () => {
     )).rejects.toThrow(/orchestrate run requires a non-empty message/u);
   });
 
+  it("orchestrate run accepts mixed-case --mode and normalizes it in the POST body so the server sees lowercase", async () => {
+    const { io } = captureOutput();
+    const requests: Array<{ readonly body: string }> = [];
+    const program = createProgram({
+      ...io,
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({ body: typeof init?.body === "string" ? init.body : "" });
+        return new Response(JSON.stringify({ ok: true }));
+      }
+    });
+    // `PARALLEL` was previously rejected as a typo (case-sensitive
+    // includes-check); now it normalizes to `parallel` and rides
+    // into the request body lowercase. Matches the --status /
+    // --kind / --result sibling convention.
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "orchestrate", "run", "--mode", "PARALLEL", "hi"],
+      { from: "node" }
+    );
+    expect(requests).toHaveLength(1);
+    const body = JSON.parse(requests[0]!.body) as { mode: string };
+    expect(
+      body.mode,
+      "mode must be lowercase-normalized in the body so the server doesn't see mixed casing"
+    ).toBe("parallel");
+
+    // Whitespace-padded mixed case also works.
+    requests.length = 0;
+    await program.parseAsync(
+      ["node", "muse", "--api-url", "http://api.test", "orchestrate", "run", "--mode", "  Race  ", "hi"],
+      { from: "node" }
+    );
+    const body2 = JSON.parse(requests[0]!.body) as { mode: string };
+    expect(body2.mode).toBe("race");
+  });
+
   it("orchestrate list / get / stats hit the orchestration history endpoints", async () => {
     const { io } = captureOutput();
     const requests: Array<{ readonly url: string }> = [];

@@ -48,8 +48,14 @@ export function registerOrchestrateCommands(program: Command, io: ProgramIO, hel
       if (message.length === 0) {
         throw new Error("orchestrate run requires a non-empty message");
       }
-      if (!ORCHESTRATE_MODES.includes(options.mode)) {
-        const suggestion = closestCommandName(options.mode, ORCHESTRATE_MODES);
+      // Normalize before the includes-check so `--mode SEQUENTIAL`
+      // doesn't fall into the typo path; matches the sibling CLI
+      // enum gates (--status / --kind / --result). The normalized
+      // value also rides into the request body so the server
+      // doesn't see mixed casing.
+      const mode = options.mode.trim().toLowerCase();
+      if (!ORCHESTRATE_MODES.includes(mode)) {
+        const suggestion = closestCommandName(mode, ORCHESTRATE_MODES);
         const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
         throw new Error(`--mode must be 'sequential', 'parallel', or 'race' (got '${options.mode}')${hint}`);
       }
@@ -61,7 +67,7 @@ export function registerOrchestrateCommands(program: Command, io: ProgramIO, hel
         : parseBoundedInt(options.maxWorkers, "--max-workers", 1, 64, 1);
       writeOutput(io, await apiRequest(io, command, "/api/multi-agent/orchestrate", {
         message,
-        mode: options.mode,
+        mode,
         ...(options.model ? { model: options.model } : {}),
         ...(workerIds && workerIds.length > 0 ? { workerIds } : {}),
         ...(maxWorkers !== undefined ? { maxWorkers } : {})
