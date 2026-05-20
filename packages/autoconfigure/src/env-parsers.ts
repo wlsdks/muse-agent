@@ -57,7 +57,12 @@ export function parseInteger(value: string | undefined, fallback: number): numbe
   }
 
   const parsed = Number(trimmed);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+  // `Number.isInteger` returns true for values that lost precision
+  // in the double-conversion (`"9007199254740993"` becomes 2^53
+  // exactly, silently dropping the +1). `isSafeInteger` rejects
+  // those so the operator's stated fallback wins instead of a
+  // silently-wrong integer.
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 // Same leniency hazard `parseInteger` was hardened against, for

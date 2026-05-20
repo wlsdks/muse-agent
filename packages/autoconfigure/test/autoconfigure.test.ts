@@ -605,6 +605,23 @@ describe("autoconfigure", () => {
     expect(parseInteger("0", 9)).toBe(9);
   });
 
+  it("parseInteger rejects values outside the safe-integer range so a double-precision rounding cannot silently mis-configure runtime numbers", () => {
+    // 2^53 is the boundary; values >= 2^53 + 1 cannot be represented
+    // exactly as a JS Number. Pre-fix, `Number("9007199254740993")`
+    // rounded to 9007199254740992 and `Number.isInteger` returned
+    // true on the rounded value — the operator asked for one value
+    // and silently got another. `Number.isSafeInteger` rejects the
+    // entire range so the stated fallback wins.
+    expect(parseInteger("9007199254740993", 100), "2^53 + 1 lost precision under Number — must fall back").toBe(100);
+    expect(parseInteger("9999999999999999999", 100), "20-digit value rounded to ~1e19 in double — must fall back").toBe(100);
+    // 2^53 (9007199254740992) is just past MAX_SAFE_INTEGER; isSafeInteger rejects it.
+    expect(parseInteger("9007199254740992", 100)).toBe(100);
+    // MAX_SAFE_INTEGER itself (2^53 - 1) is exactly representable — accept it.
+    expect(parseInteger("9007199254740991", 100)).toBe(9007199254740991);
+    // Just-below-boundary classics still pass.
+    expect(parseInteger("1000000", 100)).toBe(1000000);
+  });
+
   it("the float parsers reject lenient-garbage like parseInteger does (goal 414 sibling)", () => {
     // Number.parseFloat("0.5x") === 0.5, parseFloat("60s") === 60 —
     // the same unit-slip footgun parseInteger was hardened against.
