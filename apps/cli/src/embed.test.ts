@@ -21,6 +21,11 @@ describe("cosineSimilarity", () => {
     expect(cosineSimilarity([], [])).toBe(0);
     expect(cosineSimilarity([0, 0], [1, 1])).toBe(0);
   });
+
+  it("returns 0 (not NaN) when either vector contains a NaN element", () => {
+    expect(cosineSimilarity([Number.NaN, 1, 0], [1, 0, 0])).toBe(0);
+    expect(cosineSimilarity([1, 0, 0], [Number.NaN, 0, 0])).toBe(0);
+  });
 });
 
 describe("embed", () => {

@@ -121,7 +121,9 @@ function cosine(a: readonly number[], b: readonly number[]): number {
     na += a[i]! * a[i]!;
     nb += b[i]! * b[i]!;
   }
-  return na === 0 || nb === 0 ? 0 : dot / Math.sqrt(na * nb);
+  if (na === 0 || nb === 0) return 0;
+  const result = dot / Math.sqrt(na * nb);
+  return Number.isFinite(result) ? result : 0;
 }
 
 /**

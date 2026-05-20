@@ -56,5 +56,6 @@ export function cosineSimilarity(a: readonly number[], b: readonly number[]): nu
     nb += b[i]! * b[i]!;
   }
   if (na === 0 || nb === 0) return 0;
-  return dot / Math.sqrt(na * nb);
+  const result = dot / Math.sqrt(na * nb);
+  return Number.isFinite(result) ? result : 0;
 }

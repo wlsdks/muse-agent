@@ -256,7 +256,8 @@ export function cosineSimilarity(a: readonly number[], b: readonly number[]): nu
   if (na === 0 || nb === 0) {
     return 0;
   }
-  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+  const result = dot / (Math.sqrt(na) * Math.sqrt(nb));
+  return Number.isFinite(result) ? result : 0;
 }
 
 export interface EmbeddingEpisodicRecallProviderOptions {
