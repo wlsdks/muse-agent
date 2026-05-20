@@ -176,6 +176,21 @@ describe("jwt tokens", () => {
     expect(expiresAt).toBeInstanceOf(Date);
     expect(Number.isFinite(expiresAt?.getTime())).toBe(true);
   });
+
+  it("Auth.authenticateBearer rejects a token whose exp claim overflows the Date range (instead of returning an Invalid-Date identity)", () => {
+    const jwt = new JwtTokenProvider({
+      jwtExpirationMs: 1e16,
+      jwtSecret
+    });
+    const user = { email: "u@example.com", id: "u1" };
+    const token = jwt.createToken(user);
+    const service = new Auth({
+      authProvider: { authenticate: () => user, getUserById: () => user },
+      jwt
+    });
+    const identity = service.authenticateBearer(token);
+    expect(identity, "exp ≈ 1e13 → *1000 = 1e16 > Date max → Invalid Date; the fix returns undefined instead of leaking an Invalid Date through AuthIdentity.expiresAt").toBeUndefined();
+  });
 });
 
 describe("Auth registration and login", () => {

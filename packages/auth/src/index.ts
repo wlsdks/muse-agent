@@ -227,10 +227,15 @@ export class Auth implements MuseAuth {
       return undefined;
     }
 
+    const expiresAt = new Date(claims.exp * 1_000);
+    if (!Number.isFinite(expiresAt.getTime())) {
+      return undefined;
+    }
+
     return {
       accountId: claims.accountId,
       email: claims.email,
-      expiresAt: new Date(claims.exp * 1_000),
+      expiresAt,
       tokenId: claims.jti,
       userId: claims.sub
     };
@@ -324,10 +329,15 @@ export class AsyncAuth implements MuseAuth {
       return undefined;
     }
 
+    const expiresAt = new Date(claims.exp * 1_000);
+    if (!Number.isFinite(expiresAt.getTime())) {
+      return undefined;
+    }
+
     return {
       accountId: claims.accountId,
       email: claims.email,
-      expiresAt: new Date(claims.exp * 1_000),
+      expiresAt,
       tokenId: claims.jti,
       userId: claims.sub
     };
