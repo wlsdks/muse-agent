@@ -127,10 +127,16 @@ describe("validateExecutionTimeout", () => {
 describe("validateRetryConfig", () => {
   it("accepts retryOnFailure=false regardless of maxRetryCount", () => {
     expect(() => validateRetryConfig(false, 0)).not.toThrow();
+    expect(() => validateRetryConfig(false, Number.NaN), "even NaN slips through when retryOnFailure is false — the field is unused").not.toThrow();
   });
   it("requires maxRetryCount >= 1 when retryOnFailure=true", () => {
     expect(() => validateRetryConfig(true, 1)).not.toThrow();
     expect(() => validateRetryConfig(true, 0)).toThrow(SchedulerValidationError);
+  });
+  it("throws for non-finite maxRetryCount (NaN / Infinity / -Infinity) when retryOnFailure=true — they slip past raw `< 1` comparisons", () => {
+    expect(() => validateRetryConfig(true, Number.NaN), "NaN < 1 is false, so without the finite guard the gate would silently accept a non-finite retry count").toThrow(SchedulerValidationError);
+    expect(() => validateRetryConfig(true, Number.POSITIVE_INFINITY)).toThrow(SchedulerValidationError);
+    expect(() => validateRetryConfig(true, Number.NEGATIVE_INFINITY)).toThrow(SchedulerValidationError);
   });
 });
 

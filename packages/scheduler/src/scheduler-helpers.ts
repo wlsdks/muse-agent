@@ -93,7 +93,14 @@ export function validateExecutionTimeout(timeoutMs: number | undefined): void {
 }
 
 export function validateRetryConfig(retryOnFailure: boolean, maxRetryCount: number): void {
-  if (retryOnFailure && maxRetryCount < 1) {
+  if (!retryOnFailure) {
+    return;
+  }
+  // NaN < 1 / NaN > N both return false, so without the finite
+  // guard a non-finite maxRetryCount slips past the bound check.
+  // `normalizeScheduledJob` catches NaN downstream, but the
+  // validate gate is the contract — accept ⟺ validate.
+  if (!Number.isFinite(maxRetryCount) || maxRetryCount < 1) {
     throw new SchedulerValidationError("maxRetryCount must be at least 1 when retryOnFailure is enabled");
   }
 }
