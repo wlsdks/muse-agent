@@ -6004,6 +6004,32 @@ describe("cli program", () => {
     expect(out3.join("")).toMatch(/only 'bash' and 'zsh' are supported/);
     expect(process.exitCode).toBe(1);
     process.exitCode = 0;
+
+    // One-edit typo for "zsh" suggests "zsh" (closest-command convention).
+    const { io: io4, output: out4 } = captureOutput();
+    const program4 = createProgram({ ...io4, fetch: async () => { throw new Error("no fetch"); } });
+    await program4.parseAsync(["node", "muse", "completion", "zish"], { from: "node" });
+    expect(out4.join(""), "typo on zsh must surface the actionable suggestion").toContain("did you mean 'zsh'?");
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
+
+    // One-edit typo for "bash" suggests "bash".
+    const { io: io5, output: out5 } = captureOutput();
+    const program5 = createProgram({ ...io5, fetch: async () => { throw new Error("no fetch"); } });
+    await program5.parseAsync(["node", "muse", "completion", "bsh"], { from: "node" });
+    expect(out5.join("")).toContain("did you mean 'bash'?");
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
+
+    // Unrelated input gets the listing only — NO false-positive suggestion.
+    const { io: io6, output: out6 } = captureOutput();
+    const program6 = createProgram({ ...io6, fetch: async () => { throw new Error("no fetch"); } });
+    await program6.parseAsync(["node", "muse", "completion", "totally-unrelated"], { from: "node" });
+    const text6 = out6.join("");
+    expect(text6).toContain("only 'bash' and 'zsh' are supported");
+    expect(text6, "unrelated input must NOT pull in a misleading suggestion").not.toContain("did you mean");
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
   });
 
   it("colorize respects NO_COLOR + isTty + force flags (goal 061)", async () => {

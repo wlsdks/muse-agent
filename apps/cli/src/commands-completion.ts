@@ -15,9 +15,11 @@
 
 import type { Command } from "commander";
 
+import { closestCommandName } from "./closest-command.js";
 import type { ProgramIO } from "./program.js";
 
 type SupportedShell = "bash" | "zsh";
+const SUPPORTED_SHELLS: readonly SupportedShell[] = ["bash", "zsh"];
 
 /**
  * Enumerate the program's top-level subcommand names so the
@@ -90,7 +92,9 @@ export function registerCompletionCommand(program: Command, io: ProgramIO): void
     .action((shell: string) => {
       const normalized = shell.trim().toLowerCase() as SupportedShell;
       if (normalized !== "bash" && normalized !== "zsh") {
-        io.stderr(`muse completion: only 'bash' and 'zsh' are supported (got '${shell}')\n`);
+        const suggestion = closestCommandName(normalized, SUPPORTED_SHELLS);
+        const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+        io.stderr(`muse completion: only 'bash' and 'zsh' are supported (got '${shell}')${hint}\n`);
         process.exitCode = 1;
         return;
       }
