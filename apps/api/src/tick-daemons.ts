@@ -16,6 +16,8 @@
  * them too would hide more than it reveals.
  */
 
+import { homedir } from "node:os";
+
 import { parseBoolean } from "@muse/autoconfigure";
 import type { FastifyInstance } from "fastify";
 
@@ -108,8 +110,7 @@ export function startProactiveDaemonIfConfigured(
   const proactiveLeadRaw = env.MUSE_PROACTIVE_LEAD_MINUTES ? Number(env.MUSE_PROACTIVE_LEAD_MINUTES) : undefined;
   const proactiveQuietHours = parseQuietHours(env.MUSE_PROACTIVE_QUIET_HOURS)
     ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
-  const proactiveSidecarFile = env.MUSE_PROACTIVE_SIDECAR_FILE?.trim()
-    || `${process.env.HOME ?? ""}/.muse/proactive-fired.json`;
+  const proactiveSidecarFile = resolveProactiveSidecarFile(env);
 
   // Phase D — agent-initiated turn. Uses the shared activity tracker
   // created by the caller so a single onRequest hook unlocks both
@@ -351,4 +352,14 @@ export function startPatternDaemonIfConfigured(
   server.addHook("onClose", async () => {
     patternHandle.stop();
   });
+}
+
+export function resolveProactiveSidecarFile(env: NodeJS.ProcessEnv): string {
+  const overridden = env.MUSE_PROACTIVE_SIDECAR_FILE?.trim();
+  if (overridden && overridden.length > 0) return overridden;
+  const envHome = process.env.HOME?.trim();
+  if (envHome && envHome.length > 0) return `${envHome}/.muse/proactive-fired.json`;
+  const sysHome = homedir().trim();
+  if (sysHome.length > 0) return `${sysHome}/.muse/proactive-fired.json`;
+  throw new Error("Cannot resolve home directory for proactive sidecar file — set MUSE_PROACTIVE_SIDECAR_FILE or HOME (refusing to default to filesystem root)");
 }

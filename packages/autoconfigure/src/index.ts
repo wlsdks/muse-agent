@@ -820,9 +820,14 @@ interface AutoconfigureJwtRotationState {
 }
 function loadJwtRotationStateSync(env: MuseEnvironment): AutoconfigureJwtRotationState | undefined {
   const overridden = env.MUSE_AUTH_SECRETS_FILE?.trim();
-  const file = overridden && overridden.length > 0
-    ? overridden
-    : `${env.HOME ?? process.env.HOME ?? ""}/.muse/auth-secrets.json`;
+  let file: string;
+  if (overridden && overridden.length > 0) {
+    file = overridden;
+  } else {
+    const envHome = (env.HOME ?? process.env.HOME)?.trim();
+    if (!envHome || envHome.length === 0) return undefined;
+    file = `${envHome}/.muse/auth-secrets.json`;
+  }
   let raw: string;
   try {
     raw = readFileSync(file, "utf8");
