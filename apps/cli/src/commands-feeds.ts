@@ -207,7 +207,10 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
           return;
         }
       }
-      const targets = options.id ? store.feeds.filter((f) => f.id === options.id) : store.feeds;
+      const targetId = options.id?.trim();
+      const targets = targetId && targetId.length > 0
+        ? store.feeds.filter((f) => f.id === targetId)
+        : store.feeds;
       if (targets.length === 0) {
         io.stdout("(no feeds to refresh)\n");
         return;

@@ -173,6 +173,13 @@ describe("muse feeds refresh --id typo hint (goal 153)", () => {
     expect(stderr).toContain("no feed with id 'weater'");
     expect(stderr).toContain("did you mean 'weather'");
   });
+
+  it("--id with whitespace padding routes through the trimmed match (no silent '(no feeds to refresh)' after passing the exists-check)", async () => {
+    const file = seedFeeds(["weather"]);
+    const { stdout } = await runFeedsCommand(["refresh", "--id", "  weather  "], file);
+    expect(stdout, "padded --id must reach refreshSingleFeed and produce a real refresh output, not the empty-target silent no-op").not.toContain("(no feeds to refresh)");
+    expect(stdout).toContain("Refreshed 1 feed(s)");
+  });
 });
 
 describe("muse feeds add --id empty / whitespace fallback", () => {
