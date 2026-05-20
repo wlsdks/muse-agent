@@ -143,7 +143,9 @@ export async function vacuumEpisodes(file: string, maxEntries = DEFAULT_VACUUM_M
   if (existing.length <= cap) {
     return 0;
   }
-  const sorted = [...existing].sort((left, right) => right.endedAt.localeCompare(left.endedAt));
+  const sorted = [...existing].sort((left, right) =>
+    right.endedAt.localeCompare(left.endedAt) || right.id.localeCompare(left.id)
+  );
   const kept = sorted.slice(0, cap);
   await writeEpisodes(file, kept);
   return existing.length - kept.length;

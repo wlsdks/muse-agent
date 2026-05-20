@@ -7087,6 +7087,29 @@ describe("personal-episodes-store", () => {
     expect(kept).toEqual(["ep_4", "ep_5"]);
   });
 
+  it("vacuum is deterministic when episodes share the same endedAt (id tiebreaker — newer id desc)", async () => {
+    const { upsertEpisode, vacuumEpisodes, readEpisodes } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const dir = mkdtempSync(join(tmpdir(), "muse-ep-vacuum-tie-"));
+    const file = join(dir, "episodes.json");
+    const sameEnd = "2026-05-12T22:18:00Z";
+    for (const id of ["ep_a", "ep_b", "ep_c"]) {
+      await upsertEpisode(file, {
+        endedAt: sameEnd,
+        id,
+        startedAt: "2026-05-12T22:00:00Z",
+        summary: `summary ${id}`,
+        userId: "stark"
+      });
+    }
+    expect(await vacuumEpisodes(file, 2)).toBe(1);
+    const keptIds = (await readEpisodes(file)).map((e) => e.id).sort();
+    expect(keptIds, "lexicographically-larger ids win the tiebreaker → ep_b + ep_c kept, ep_a dropped").toEqual(["ep_b", "ep_c"]);
+  });
+
   it("serialize emits topics only when present and non-empty", async () => {
     const { serializeEpisode } = await import("../src/index.js");
     const withTopics = serializeEpisode({
