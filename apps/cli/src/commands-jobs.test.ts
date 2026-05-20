@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { JOB_STATUS_FILTER_VALUES, parseJobListLimit, registerJobCommands, resolveJobStatusFilter } from "./commands-jobs.js";
+import { JOB_STATUS_FILTER_VALUES, jobsDir, parseJobListLimit, registerJobCommands, resolveJobStatusFilter } from "./commands-jobs.js";
 
 describe("parseJobListLimit (goal 184)", () => {
   it("defaults to 20 when blank", () => {
@@ -135,5 +135,32 @@ describe("muse job list --json (goal 152)", () => {
     const payload = JSON.parse(stdout) as { jobs: unknown[]; matched: number };
     expect(payload.jobs).toEqual([]);
     expect(payload.matched).toBe(0);
+  });
+});
+
+describe("jobsDir — MUSE_JOBS_DIR empty-env-shadow defence (goal-532/539 sibling)", () => {
+  it("uses the env value when MUSE_JOBS_DIR is set non-empty", () => {
+    const prev = process.env.MUSE_JOBS_DIR;
+    process.env.MUSE_JOBS_DIR = "/tmp/custom-jobs";
+    try {
+      expect(jobsDir()).toBe("/tmp/custom-jobs");
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_JOBS_DIR;
+      else process.env.MUSE_JOBS_DIR = prev;
+    }
+  });
+
+  it("falls back to ~/.muse/jobs when MUSE_JOBS_DIR is whitespace-only — does NOT return '' that would crash fs ops or write under filesystem root", () => {
+    const prev = process.env.MUSE_JOBS_DIR;
+    process.env.MUSE_JOBS_DIR = "   ";
+    try {
+      const path = jobsDir();
+      expect(path).toMatch(/\/\.muse\/jobs$/u);
+      expect(path, "whitespace-only env must NOT leak through as the resolved path").not.toBe("");
+      expect(path).not.toBe("   ");
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_JOBS_DIR;
+      else process.env.MUSE_JOBS_DIR = prev;
+    }
   });
 });

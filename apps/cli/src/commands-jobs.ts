@@ -32,7 +32,7 @@ import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
 import { resolveJobIdByPrefix } from "./job-id-prefix.js";
-import { resolvePersona } from "./program-helpers.js";
+import { firstNonEmpty, resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
 /**
@@ -72,8 +72,8 @@ export function parseJobListLimit(raw: string | undefined): number {
   return Math.min(200, Math.trunc(parsed));
 }
 
-function jobsDir(): string {
-  return process.env.MUSE_JOBS_DIR?.trim() ?? pathJoin(homedir(), ".muse", "jobs");
+export function jobsDir(): string {
+  return firstNonEmpty(process.env.MUSE_JOBS_DIR) ?? pathJoin(homedir(), ".muse", "jobs");
 }
 
 function jobPath(id: string): string {

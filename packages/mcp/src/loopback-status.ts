@@ -249,7 +249,8 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
   const notesIndexTool: LoopbackMcpToolDefinition = {
     description: "List the Markdown files Muse considers personal notes (under MUSE_NOTES_DIR or ~/.muse/notes/). Returns relative path + size — no contents. Use this as a discovery surface before deciding to embed/search.",
     execute: async (): Promise<JsonObject> => {
-      const dir = process.env.MUSE_NOTES_DIR?.trim() ?? pathJoin(homedir(), ".muse", "notes");
+      const fromEnv = process.env.MUSE_NOTES_DIR?.trim();
+      const dir = fromEnv && fromEnv.length > 0 ? fromEnv : pathJoin(homedir(), ".muse", "notes");
       try {
         const entries = await readdir(dir, { withFileTypes: true });
         const files = entries
