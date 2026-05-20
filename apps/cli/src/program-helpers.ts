@@ -18,6 +18,7 @@
  */
 
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 
 import { isCancel, password, text } from "@clack/prompts";
@@ -55,8 +56,14 @@ export interface RunLogInput {
   readonly source?: "cli.local" | "cli.remote" | "cli.remote.stream";
 }
 
-export function defaultConfigPath(home = process.env.HOME ?? "~"): string {
-  return path.join(home, ".config", "muse", "config.json");
+export function defaultConfigPath(home?: string): string {
+  const explicit = typeof home === "string" ? home.trim() : "";
+  if (explicit.length > 0) return path.join(explicit, ".config", "muse", "config.json");
+  const envHome = process.env.HOME?.trim();
+  if (envHome && envHome.length > 0) return path.join(envHome, ".config", "muse", "config.json");
+  const sysHome = homedir().trim();
+  if (sysHome.length > 0) return path.join(sysHome, ".config", "muse", "config.json");
+  throw new Error("Cannot resolve home directory for config.json — HOME is empty and os.homedir() returned no value");
 }
 
 /**

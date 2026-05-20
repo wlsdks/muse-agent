@@ -150,6 +150,7 @@ delete an open row, never rewrite another goal's status.
 | 502 | [MUSE_RATE_LIMIT_CHAT_PER_MINUTE strict-parses the chat rate-limit capacity](502-chat-rate-limit-strict-parse.md) | fix / safety | done — goal-414/444/463/469/470/489 sibling on the API security gate; `60x`/`30s` typo no longer silently installs a wrong rate limit (mutation-proven) |
 | 503 | [apps/api listen config strict-parses PORT + treats empty HOST as unset](503-listen-config-strict-port-host.md) | fix / safety | done — server startup boundary; `PORT=""` no longer ephemeral-binds, `HOST=""` no longer silently exposes on all interfaces (mutation-proven) |
 | 504 | [direct test coverage for `sendWithRetry` on the messaging firing loops](504-messaging-retry-direct-coverage.md) | test / coverage | done — 458-class direct coverage of the 42-LOC retry helper shared by proactive-notice-loop + reminder-firing-loop; 5 tests pin the 3-attempt ladder, instanceof short-circuit on non-retryable, generic-Error retry (mutation-proven) |
+| 505 | [defaultConfigPath fails loud on empty HOME=](505-default-config-path-fail-loud.md) | fix / safety | done — goal-495 sibling on the CLI's foundational config path resolver (every command reads from it); `HOME=""` no longer silently writes config under CWD, `HOME=undefined` no longer creates a literal `~` directory (mutation-proven; 3 RED on revert) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
