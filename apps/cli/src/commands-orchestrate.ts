@@ -10,8 +10,11 @@
 
 import type { Command } from "commander";
 
+import { closestCommandName } from "./closest-command.js";
 import { parseBoundedInt } from "./commands-ask.js";
 import type { ProgramIO } from "./program.js";
+
+const ORCHESTRATE_MODES: readonly string[] = ["sequential", "parallel", "race"];
 
 export interface OrchestrateHelpers {
   readonly apiRequest: (
@@ -45,8 +48,10 @@ export function registerOrchestrateCommands(program: Command, io: ProgramIO, hel
       if (message.length === 0) {
         throw new Error("orchestrate run requires a non-empty message");
       }
-      if (!["sequential", "parallel", "race"].includes(options.mode)) {
-        throw new Error(`--mode must be 'sequential', 'parallel', or 'race' (got '${options.mode}')`);
+      if (!ORCHESTRATE_MODES.includes(options.mode)) {
+        const suggestion = closestCommandName(options.mode, ORCHESTRATE_MODES);
+        const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+        throw new Error(`--mode must be 'sequential', 'parallel', or 'race' (got '${options.mode}')${hint}`);
       }
       const workerIds = options.workers
         ? options.workers.split(",").map((id) => id.trim()).filter((id) => id.length > 0)

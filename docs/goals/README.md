@@ -138,6 +138,7 @@ delete an open row, never rewrite another goal's status.
 | 490 | [parseMcpSecurityPolicyInput caps allowedStdioCommands parallel to allowedServerNames](490-mcp-security-policy-parallel-cap.md) | fix / safety | done — sibling-asymmetry on the admin/policy input gate; a 501-entry stdio allowlist no longer slips past the parser; first direct mcp-routes-parsers coverage (mutation-proven) |
 | 491 | [direct coverage for parseResponseLocales](491-parse-response-locales-direct-coverage.md) | test / contract | done — 458/477/479/480/485/487 class; `MUSE_RESPONSE_LOCALES` env parser now has fallback / case-fold / dedupe / all-unsupported-fallback coverage; src byte-identical (mutation-proven) |
 | 492 | [direct coverage for inbox-reply-cursor (dedup safety guard)](492-inbox-reply-cursor-direct-coverage.md) | test / safety | done — 458/477/479/480/485/487/491 class; reply-loop double-reply guard now has tolerant-load / no-op-empty / merge / FIFO-bound / 0o600 coverage; MAX_HANDLED slice mutation-proven (src byte-identical) |
+| 493 | [muse orchestrate run --mode adds did-you-mean for typo](493-orchestrate-mode-typo-suggestion.md) | fix / cli-ergonomics | done — goal-468/472/486 sibling; the last multi-choice argument surface without `closestCommandName` recovery (first direct commands-orchestrate coverage; mutation-proven) |
 | …   | *self-generated outward via discovery — never ends*                     |                |                  |
 
 Closed infra (not loop work): 376 progress dashboard + tunnel —
