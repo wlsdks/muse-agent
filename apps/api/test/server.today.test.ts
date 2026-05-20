@@ -64,6 +64,15 @@ describe("api server: GET /api/today", () => {
     expect(tooBig.json()).toMatchObject({ lookaheadHours: 168 });
   });
 
+  it("falls back to the 24h default on a typo / unit-slipped lookaheadHours instead of silently using the digit prefix", async () => {
+    const server = buildServer({ logger: false });
+    for (const bad of ["24x", "12hrs", "5 hours", "abc", "-3", "1.5", "1e3"]) {
+      const reply = await server.inject({ method: "GET", url: `/api/today?lookaheadHours=${encodeURIComponent(bad)}` });
+      expect(reply.statusCode, `${bad} should still 200`).toBe(200);
+      expect(reply.json(), `${bad} should fall back to 24h default`).toMatchObject({ lookaheadHours: 24 });
+    }
+  });
+
   it("surfaces scheduled followups due within the lookahead horizon (skipping fired/cancelled/future-beyond-horizon)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-today-followups-"));
     const followupsFile = join(dir, "followups.json");

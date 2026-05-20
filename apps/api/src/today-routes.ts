@@ -48,6 +48,13 @@ const MAX_LOOKAHEAD_HOURS = 24 * 7;
 const MAX_TASKS = 50;
 const MAX_RECENT_NOTES = 5;
 
+export function parseLookaheadHours(raw: string | undefined): number {
+  if (raw === undefined) return DEFAULT_LOOKAHEAD_HOURS;
+  const trimmed = raw.trim();
+  if (!/^\d+$/u.test(trimmed)) return DEFAULT_LOOKAHEAD_HOURS;
+  return Number(trimmed);
+}
+
 interface TodayRoutesGate {
   readonly authService: ServerOptions["authService"];
   readonly calendar?: CalendarProviderRegistry;
@@ -72,7 +79,7 @@ export function registerTodayRoutes(server: FastifyInstance, gate: TodayRoutesGa
     }
 
     const { lookaheadHours } = (request.query as { lookaheadHours?: string } | undefined) ?? {};
-    const hoursParsed = lookaheadHours ? Number.parseInt(lookaheadHours, 10) : DEFAULT_LOOKAHEAD_HOURS;
+    const hoursParsed = parseLookaheadHours(lookaheadHours);
     const hours = Number.isFinite(hoursParsed) && hoursParsed >= 1
       ? Math.min(hoursParsed, MAX_LOOKAHEAD_HOURS)
       : DEFAULT_LOOKAHEAD_HOURS;
