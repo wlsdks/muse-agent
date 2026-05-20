@@ -75,6 +75,17 @@ describe("muse approval — typo-tolerant id resolution (goal-468/472 sibling)",
     expect(r.stderr).not.toContain("did you mean");
     process.exitCode = undefined;
   });
+
+  it("approval list --json envelope carries `total` (convention parity with goals 552/553/565)", async () => {
+    const { approvals, trust } = pendingFile("req-abc123");
+    process.exitCode = undefined;
+    const r = await run(approvals, trust, ["list", "--user", "u", "--json"]);
+    const parsed = JSON.parse(r.stdout) as { entries: Array<{ id: string }>; total: number; userKey: string };
+    expect(parsed.entries.map((e) => e.id)).toEqual(["req-abc123"]);
+    expect(parsed.total, "list --json must carry `total` — convention parity").toBe(1);
+    expect(parsed.userKey).toBe("u");
+    process.exitCode = undefined;
+  });
 });
 
 describe("approvalsPath / trustPath — empty-env-shadow defence (goal-532 sibling)", () => {

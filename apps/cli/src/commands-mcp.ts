@@ -66,7 +66,7 @@ export function registerMcpCommands(program: Command, io: ProgramIO, helpers: Mc
         throw cause;
       }
       if (options.json) {
-        io.stdout(`${JSON.stringify({ entries, path }, null, 2)}\n`);
+        io.stdout(`${JSON.stringify({ entries, path, total: entries.length }, null, 2)}\n`);
         return;
       }
       io.stdout(`config: ${path}\n`);

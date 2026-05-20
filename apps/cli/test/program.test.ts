@@ -1558,9 +1558,10 @@ describe("cli program", () => {
       const { io, output } = captureOutput();
       const program = createProgram(io);
       await program.parseAsync(["node", "muse", "mcp", "config-show", "--json"], { from: "node" });
-      const parsed = JSON.parse(output.join("")) as { entries: Array<{ name: string }>; path: string };
+      const parsed = JSON.parse(output.join("")) as { entries: Array<{ name: string }>; path: string; total: number };
       expect(parsed.path).toBe(target);
       expect(parsed.entries.map((entry) => entry.name)).toEqual(["fs"]);
+      expect(parsed.total, "mcp config-show --json must carry `total` (convention parity with goals 552/553/565)").toBe(1);
     } finally {
       if (previous === undefined) {
         delete process.env.MUSE_MCP_CONFIG;

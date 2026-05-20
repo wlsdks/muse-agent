@@ -123,7 +123,7 @@ export function registerApprovalCommands(program: Command, io: ProgramIO): void 
       const all = await readApprovals();
       const filtered = all.filter((e) => e.userKey === userKey && (options.all || e.status === "pending"));
       if (options.json) {
-        io.stdout(`${JSON.stringify({ entries: filtered, userKey }, null, 2)}\n`);
+        io.stdout(`${JSON.stringify({ entries: filtered, total: filtered.length, userKey }, null, 2)}\n`);
         return;
       }
       io.stdout(`Approvals for ${userKey} (${filtered.length.toString()}):\n`);
