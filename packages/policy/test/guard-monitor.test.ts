@@ -30,6 +30,24 @@ describe("guard monitor", () => {
       guardId: "InjectionDetection"
     }));
   });
+
+  it("byGuard breaks blockRate-AND-blocked ties by guardId asc, independent of record insertion order", () => {
+    const monitor = new GuardBlockRateMonitor({ windowSize: 10 });
+    // Three guards each see one allowed event — blockRate=0, blocked=0
+    // for all of them. Pre-fix the comparator returned 0 and Map
+    // iteration order (= insertion order) leaked through `[...buckets
+    // .entries()]`, so two fresh guards on opposite ends of the
+    // alphabet could render in record-arrival order.
+    monitor.record({ allowed: true, guardId: "BetaGuard", runId: "r1" });
+    monitor.record({ allowed: true, guardId: "AlphaGuard", runId: "r2" });
+    monitor.record({ allowed: true, guardId: "CharlieGuard", runId: "r3" });
+
+    const ids = monitor.snapshot().byGuard.map((b) => b.guardId);
+    expect(
+      ids,
+      "guards tied on blockRate AND blocked must sort guardId asc — independent of record-arrival order"
+    ).toEqual(["AlphaGuard", "BetaGuard", "CharlieGuard"]);
+  });
 });
 
 describe("canary prompt postprocessor", () => {

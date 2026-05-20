@@ -111,7 +111,11 @@ export class GuardBlockRateMonitor {
         guardId,
         total: bucket.total
       }))
-      .sort((left, right) => right.blockRate - left.blockRate || right.blocked - left.blocked);
+      .sort((left, right) =>
+        right.blockRate - left.blockRate ||
+        right.blocked - left.blocked ||
+        left.guardId.localeCompare(right.guardId)
+      );
   }
 }
 
