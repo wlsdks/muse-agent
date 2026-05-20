@@ -150,23 +150,51 @@ export function registerPersonaCommand(program: Command, io: ProgramIO): void {
 
   persona
     .command("show")
-    .description("Print the active persona's preamble")
+    .description("Print the active persona's preamble (or `--id <id>` to preview any registered persona without activating it)")
+    .option("--id <id>", "Preview this persona instead of the active one — does not switch active")
     .option("--json", "Emit a structured payload")
-    .action(async (options: { readonly json?: boolean }) => {
+    .action(async (options: { readonly id?: string; readonly json?: boolean }) => {
       const file = defaultPersonaFile();
       const store = await readPersonaStore(file);
-      const preamble = resolveActivePersonaPreamble(store);
-      if (options.json) {
-        io.stdout(`${JSON.stringify({ activeId: store.activeId, preamble }, null, 2)}\n`);
+      const requested = options.id?.trim();
+      const previewing = requested !== undefined && requested.length > 0;
+      if (previewing && !personaIdIsKnown(store, requested)) {
+        const candidates = [
+          ...BUILTIN_PERSONAS.map((p) => p.id),
+          ...Object.keys(store.custom)
+        ];
+        const suggestion = closestCommandName(requested, candidates);
+        io.stderr(`muse persona show: no persona with id '${requested}'`);
+        if (suggestion) io.stderr(` — did you mean '${suggestion}'?`);
+        io.stderr(` (run \`muse persona list\` to see the options)\n`);
+        process.exitCode = 1;
         return;
       }
-      io.stdout(`active: ${store.activeId}\n\n`);
+      const targetId = previewing ? requested : store.activeId;
+      // Preview uses the same precedence as the active resolver:
+      // custom override wins over built-in.
+      const preview = previewing
+        ? (Object.hasOwn(store.custom, targetId) && store.custom[targetId]!.preamble.length > 0
+          ? store.custom[targetId]!.preamble
+          : (BUILTIN_PERSONAS.find((p) => p.id === targetId)?.preamble ?? ""))
+        : resolveActivePersonaPreamble(store);
+      const preamble = preview;
+      if (options.json) {
+        io.stdout(`${JSON.stringify({
+          activeId: store.activeId,
+          ...(previewing ? { previewingId: targetId } : {}),
+          preamble
+        }, null, 2)}\n`);
+        return;
+      }
+      const label = previewing ? `preview: ${targetId} (active is ${store.activeId})` : `active: ${targetId}`;
+      io.stdout(`${label}\n\n`);
       if (preamble.length > 0) {
         io.stdout(`${preamble}\n`);
-      } else if (personaIdIsKnown(store, store.activeId)) {
-        io.stdout(`(no preamble — '${store.activeId}' contributes no persona text; the user's persona memory carries the tone)\n`);
+      } else if (personaIdIsKnown(store, targetId)) {
+        io.stdout(`(no preamble — '${targetId}' contributes no persona text; the user's persona memory carries the tone)\n`);
       } else {
-        io.stderr(`(active persona '${store.activeId}' is unknown — not a built-in or custom id; it resolves to no preamble. Run \`muse persona list\`.)\n`);
+        io.stderr(`(active persona '${targetId}' is unknown — not a built-in or custom id; it resolves to no preamble. Run \`muse persona list\`.)\n`);
       }
     });
 }

@@ -4878,6 +4878,71 @@ describe("cli program", () => {
     expect(personaIdIsKnown(round, "__proto__")).toBe(false);
   });
 
+  it("muse persona show --id <id> previews any registered persona without switching active", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-persona-show-preview-"));
+    const file = path.join(root, "persona.json");
+    const { writePersonaStore } = await import("../src/persona-store.js");
+    await writePersonaStore(file, {
+      activeId: "default",
+      custom: { "tony": { preamble: "Sardonic, confident — Tony Stark voice." } }
+    });
+    const prev = process.env.MUSE_PERSONA_FILE;
+    process.env.MUSE_PERSONA_FILE = file;
+    const prevExitCode = process.exitCode;
+    process.exitCode = 0;
+    try {
+      // Preview a built-in — active stays `default` in the store.
+      const { io: ioBuiltin, output: outBuiltin } = captureOutput();
+      const programBuiltin = createProgram({ ...ioBuiltin, fetch: async () => { throw new Error("no fetch"); } });
+      await programBuiltin.parseAsync(["node", "muse", "persona", "show", "--id", "jarvis"], { from: "node" });
+      const builtinText = outBuiltin.join("");
+      expect(builtinText, "preview banner must distinguish from the active label").toContain("preview: jarvis (active is default)");
+      expect(builtinText.toLowerCase()).toContain("sir");
+      expect(process.exitCode).toBe(0);
+
+      // Active in the store is still "default" — preview is non-destructive.
+      const { readPersonaStore } = await import("../src/persona-store.js");
+      const afterPreview = await readPersonaStore(file);
+      expect(afterPreview.activeId, "preview must NOT mutate activeId").toBe("default");
+
+      // Preview a custom — same shape.
+      const { io: ioCustom, output: outCustom } = captureOutput();
+      const programCustom = createProgram({ ...ioCustom, fetch: async () => { throw new Error("no fetch"); } });
+      await programCustom.parseAsync(["node", "muse", "persona", "show", "--id", "tony"], { from: "node" });
+      expect(outCustom.join("")).toContain("Sardonic, confident — Tony Stark voice.");
+
+      // --json envelope carries previewingId when --id is set.
+      const { io: ioJson, output: outJson } = captureOutput();
+      const programJson = createProgram({ ...ioJson, fetch: async () => { throw new Error("no fetch"); } });
+      await programJson.parseAsync(["node", "muse", "persona", "show", "--id", "jarvis", "--json"], { from: "node" });
+      const json = JSON.parse(outJson.join("")) as { activeId: string; previewingId?: string; preamble: string };
+      expect(json.activeId).toBe("default");
+      expect(json.previewingId).toBe("jarvis");
+      expect(json.preamble.toLowerCase()).toContain("sir");
+
+      // Typo on --id surfaces the closest-command suggestion.
+      const { io: ioTypo, output: outTypo } = captureOutput();
+      const programTypo = createProgram({ ...ioTypo, fetch: async () => { throw new Error("no fetch"); } });
+      process.exitCode = 0;
+      await programTypo.parseAsync(["node", "muse", "persona", "show", "--id", "jarvss"], { from: "node" });
+      expect(outTypo.join("")).toContain("no persona with id 'jarvss'");
+      expect(outTypo.join("")).toContain("did you mean 'jarvis'?");
+      expect(process.exitCode).toBe(1);
+
+      // Without --id the existing active-show behavior is unchanged.
+      process.exitCode = 0;
+      const { io: ioActive, output: outActive } = captureOutput();
+      const programActive = createProgram({ ...ioActive, fetch: async () => { throw new Error("no fetch"); } });
+      await programActive.parseAsync(["node", "muse", "persona", "show"], { from: "node" });
+      expect(outActive.join("")).toContain("active: default");
+      expect(outActive.join(""), "no --id ⇒ no preview banner").not.toContain("preview:");
+    } finally {
+      process.exitCode = prevExitCode;
+      if (prev === undefined) delete process.env.MUSE_PERSONA_FILE;
+      else process.env.MUSE_PERSONA_FILE = prev;
+    }
+  });
+
   it("muse persona show / list flag a dangling active id instead of mislabeling it (goal 242)", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-persona-dangling-"));
     const file = path.join(root, "persona.json");
