@@ -244,7 +244,7 @@ export async function maybeCompactLastChatHistory(
     try {
       const parsed = JSON.parse(line) as { role?: string; content?: string };
       const role = parsed.role ?? "?";
-      const content = (parsed.content ?? "").slice(0, 400);
+      const content = capContentForSummary(parsed.content ?? "", 400);
       return `${role}: ${content}`;
     } catch {
       return line;
@@ -290,4 +290,11 @@ export async function maybeCompactLastChatHistory(
 
 function isNodeError(value: unknown): value is NodeJS.ErrnoException {
   return isRecord(value) && typeof (value as { code?: unknown }).code === "string";
+}
+
+export function capContentForSummary(value: string, cap: number): string {
+  const head = value.slice(0, cap);
+  if (head.length === 0) return head;
+  const last = head.charCodeAt(head.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? head.slice(0, -1) : head;
 }
