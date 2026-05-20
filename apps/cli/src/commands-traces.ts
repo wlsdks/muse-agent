@@ -89,7 +89,7 @@ export function registerTracesCommands(program: Command, io: ProgramIO, helpers:
  */
 export function resolveTraceTailIntervalMs(raw: string | undefined): number {
   if (!raw) return 2_000;
-  const parsed = Number.parseFloat(raw);
+  const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) return 2_000;
   const seconds = Math.min(60, Math.max(1, parsed));
   return Math.round(seconds * 1_000);

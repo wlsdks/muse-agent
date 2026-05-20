@@ -159,7 +159,7 @@ export function resolveMuseEnvPath(raw: string | undefined, fallback: string): s
 export function resolveDoctorWatchIntervalMs(raw: string | undefined): number {
   const defaultMs = 5_000;
   if (!raw) return defaultMs;
-  const parsed = Number.parseFloat(raw);
+  const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) return defaultMs;
   const seconds = Math.min(3600, Math.max(1, parsed));
   return Math.round(seconds * 1000);

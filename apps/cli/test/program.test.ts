@@ -5586,6 +5586,9 @@ describe("cli program", () => {
     expect(resolveTraceTailIntervalMs("-1")).toBe(2_000);
     expect(resolveTraceTailIntervalMs("999")).toBe(60_000); // upper clamp
     expect(resolveTraceTailIntervalMs("0.5")).toBe(1_000); // lower clamp to 1s
+    expect(resolveTraceTailIntervalMs("10x")).toBe(2_000);
+    expect(resolveTraceTailIntervalMs("10min")).toBe(2_000);
+    expect(resolveTraceTailIntervalMs("10 seconds")).toBe(2_000);
 
     expect(resolveTraceTailLimit(undefined)).toBe(20);
     expect(resolveTraceTailLimit("50")).toBe(50);
@@ -5684,6 +5687,9 @@ describe("cli program", () => {
     expect(resolveDoctorWatchIntervalMs("2")).toBe(2_000);
     expect(resolveDoctorWatchIntervalMs("0.5")).toBe(1_000); // sub-1s clamps up
     expect(resolveDoctorWatchIntervalMs("99999")).toBe(3_600_000); // upper clamp
+    expect(resolveDoctorWatchIntervalMs("10x")).toBe(5_000);
+    expect(resolveDoctorWatchIntervalMs("10min")).toBe(5_000);
+    expect(resolveDoctorWatchIntervalMs("10 seconds")).toBe(5_000);
   });
 
   it("withSigintAbort threads an AbortSignal + sets exit code 130 on Ctrl-C (goal 067)", async () => {
@@ -5998,6 +6004,9 @@ describe("cli program", () => {
     expect(resolveStatusWatchIntervalMs("not-a-number")).toBe(5_000);
     expect(resolveStatusWatchIntervalMs("0")).toBe(5_000);
     expect(resolveStatusWatchIntervalMs("-3")).toBe(5_000);
+    expect(resolveStatusWatchIntervalMs("10x")).toBe(5_000);
+    expect(resolveStatusWatchIntervalMs("10min")).toBe(5_000);
+    expect(resolveStatusWatchIntervalMs("10 seconds")).toBe(5_000);
     // Clean values pass through.
     expect(resolveStatusWatchIntervalMs("2")).toBe(2_000);
     expect(resolveStatusWatchIntervalMs("0.5")).toBe(1_000);
