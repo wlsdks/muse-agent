@@ -64,6 +64,19 @@ describe("muse objectives — CLI entry point to the delegated-autonomy chain", 
     expect(r.stderr).toContain("no objective with id 'obj_nope'");
   });
 
+  it("cancel suggests the closest existing id on a near-miss typo", async () => {
+    const file = objFile();
+    const adds = await run(file, ["add", "ship the thing"]);
+    expect(adds.exitCode).toBeUndefined();
+    const realId = adds.stdout.match(/(obj_[a-z0-9-]+)/u)?.[1];
+    expect(realId).toMatch(/^obj_[a-z0-9-]+$/u);
+    const typo = `${realId!.slice(0, -1)}x`;
+    const r = await run(file, ["cancel", typo]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain(`no objective with id '${typo}'`);
+    expect(r.stderr).toContain(`did you mean '${realId!}'`);
+  });
+
   it("is user-scoped: a different --user does not see another bucket's objectives", async () => {
     const file = objFile();
     await run(file, ["add", "stark only", "--user", "stark"]);

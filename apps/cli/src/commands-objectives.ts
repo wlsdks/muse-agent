@@ -104,7 +104,10 @@ export function registerObjectivesCommands(program: Command, io: ProgramIO): voi
         status: "cancelled"
       });
       if (!patched) {
-        io.stderr(`no objective with id '${id}'\n`);
+        const known = (await readObjectives(objectivesFile())).map((o) => o.id);
+        const suggestion = closestCommandName(id.trim(), known);
+        const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+        io.stderr(`no objective with id '${id}'${hint}\n`);
         command.error("objectives cancel failed", { exitCode: 1 });
         return;
       }
