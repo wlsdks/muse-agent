@@ -7,7 +7,7 @@ export function validateOutboundMessage(message: OutboundMessage): void {
   if (!message || typeof message.destination !== "string" || message.destination.trim().length === 0) {
     throw new MessagingValidationError("destination", "destination must be a non-empty string");
   }
-  if (typeof message.text !== "string" || message.text.length === 0) {
+  if (typeof message.text !== "string" || message.text.trim().length === 0) {
     throw new MessagingValidationError("text", "text must be a non-empty string");
   }
   if (message.text.length > MAX_TEXT_LENGTH) {

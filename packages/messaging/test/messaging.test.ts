@@ -83,6 +83,18 @@ describe("validateOutboundMessage", () => {
       .toThrow(MessagingValidationError);
   });
 
+  it("rejects whitespace-only text and whitespace-only destination — trim symmetry across both fields", () => {
+    // Pre-fix `text` was bare `.length === 0`-checked, so a `"   "` /
+    // `"\n"` payload flew out to Telegram/Slack/Discord/libnotify as a
+    // blank notification — the recipient sees an empty bubble.
+    expect(() => validateOutboundMessage({ destination: "u", text: "   " }), "text=\"   \" must reject — not silently send a blank notification").toThrow(MessagingValidationError);
+    expect(() => validateOutboundMessage({ destination: "u", text: "\n\t" })).toThrow(MessagingValidationError);
+    // Destination has had the trim check forever; pin it as a sibling assertion so a future regression can't silently revert it.
+    expect(() => validateOutboundMessage({ destination: "   ", text: "hi" })).toThrow(MessagingValidationError);
+    // Genuine content with surrounding whitespace stays allowed.
+    expect(() => validateOutboundMessage({ destination: "u", text: "  hello  " })).not.toThrow();
+  });
+
   it("accepts a normal payload", () => {
     expect(() => validateOutboundMessage({ destination: "u", text: "hi" })).not.toThrow();
   });
