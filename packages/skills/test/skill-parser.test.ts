@@ -170,6 +170,22 @@ describe("parseSkillFile", () => {
     expect(skill.sourceInfo.filePath).toBe(skillPath);
   });
 
+  it("accepts a SKILL.md saved with a UTF-8 BOM (Windows editors / some macOS workflows prepend \\uFEFF and the delimiter would otherwise fail to match)", async () => {
+    // Pre-fix `splitFrontmatter` tested `/^---\s*$/u` against the
+    // first line verbatim. A BOM byte at position 0 left the `---`
+    // at position 1, the regex didn't match, the parser fell back
+    // to "no frontmatter" and `parseSkillFile` threw "missing name"
+    // — even though the file looked correct in every editor.
+    const skillDir = join(workdir, "bom-skill");
+    await mkdir(skillDir);
+    const skillPath = join(skillDir, "SKILL.md");
+    await writeFile(skillPath, `\uFEFF${OPENCLAW_STYLE_SKILL}`, "utf8");
+    const skill = await parseSkillFile(skillPath, { source: "user" });
+    expect(skill.name).toBe("github");
+    expect(skill.description).toContain("Use gh for GitHub");
+    expect(skill.frontmatter.requires?.bins).toEqual(["gh"]);
+  });
+
   it("throws on missing name", async () => {
     const skillPath = join(workdir, "broken.md");
     await writeFile(skillPath, `---

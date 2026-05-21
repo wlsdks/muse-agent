@@ -62,9 +62,10 @@ interface SplitResult {
 }
 
 export function splitFrontmatter(raw: string): SplitResult {
-  const lines = raw.split(/\r?\n/u);
+  const stripped = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+  const lines = stripped.split(/\r?\n/u);
   if (lines.length === 0 || !FRONTMATTER_DELIM.test(lines[0] ?? "")) {
-    return { body: raw, frontmatter: "" };
+    return { body: stripped, frontmatter: "" };
   }
   for (let i = 1; i < lines.length; i++) {
     if (FRONTMATTER_DELIM.test(lines[i] ?? "")) {
