@@ -228,18 +228,10 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
           const voiceReg = buildVoiceRegistry(e);
           const tts = voiceReg?.primaryTts();
           if (tts) {
-            const { mkdtempSync, writeFileSync } = await import("node:fs");
-            const { tmpdir, platform } = await import("node:os");
-            const { join: pathJoin } = await import("node:path");
-            const { playAudioWithWatchdog } = await import("./voice-playback.js");
+            const { synthesizeAndPlay } = await import("./voice-playback.js");
             speakFn = async (text) => {
               try {
-                const result = await tts.synthesize({ text });
-                const dir = mkdtempSync(pathJoin(tmpdir(), "muse-proactive-speak-"));
-                const audioFile = pathJoin(dir, `notice.${result.format}`);
-                writeFileSync(audioFile, result.audio);
-                const player = platform() === "darwin" ? "afplay" : "aplay";
-                await playAudioWithWatchdog(player, audioFile);
+                await synthesizeAndPlay(tts, { text });
               } catch (cause) {
                 io.stderr(`speak failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
               }
