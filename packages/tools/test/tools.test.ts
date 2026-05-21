@@ -917,6 +917,26 @@ describe("createMuseTools", () => {
     });
   });
 
+  it("time_add returns a clean error when a finite-but-huge offset overflows the Date range, instead of throwing RangeError from toISOString", async () => {
+    // `days: 1e20` is finite (so readOptionalNumber's NaN/Infinity
+    // clamp passes it through) but `base.getTime() + 1e20 * 86_400_000`
+    // pushes the result past ±8.64e15 ms, the valid Date range.
+    // `new Date(out-of-range)` yields an Invalid Date; pre-fix
+    // `result.toISOString()` then threw RangeError out of the tool —
+    // an uncaught exception the model would see as a generic failure
+    // instead of a structured tool error it can recover from.
+    const tool = getTool("time_add");
+    const base = "2026-05-07T00:00:00.000Z";
+    const overflowResult = await tool.execute({ base, days: 1e20 }, { runId: "run-1" });
+    expect(overflowResult).toMatchObject({ error: expect.stringContaining("range") });
+    // Negative overflow too — symmetric defense.
+    const underflowResult = await tool.execute({ base, days: -1e20 }, { runId: "run-1" });
+    expect(underflowResult).toMatchObject({ error: expect.stringContaining("range") });
+    // Boundary near the cap still works (positive but inside the range).
+    expect(await tool.execute({ base, days: 1 }, { runId: "run-1" }))
+      .toEqual({ iso: "2026-05-08T00:00:00.000Z", offsetMs: 86_400_000 });
+  });
+
   it("time_add returns a clean error for an unparseable base and never throws on non-numeric offsets", async () => {
     const tool = getTool("time_add");
     // Unparseable base → structured {error}, not a thrown exception.

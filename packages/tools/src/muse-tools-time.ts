@@ -133,6 +133,9 @@ export function createTimeAddTool(): MuseTool {
         readOptionalNumber(args, "hours") * 3_600_000 +
         readOptionalNumber(args, "days") * 86_400_000;
       const result = new Date(base.getTime() + offsetMs);
+      if (Number.isNaN(result.getTime())) {
+        return { error: "computed date is outside the representable range" };
+      }
       return { iso: result.toISOString(), offsetMs } satisfies JsonObject;
     }
   };
