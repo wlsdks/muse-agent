@@ -13,6 +13,7 @@ import {
   parseRunnerCommandRequest,
   invokeRustRunner,
   runnerWatchdogMs,
+  writeRunnerStdin,
   shortenToolDescription,
   ToolExecutor,
   ToolRegistry,
@@ -327,6 +328,41 @@ describe("Rust runner watchdog", () => {
     expect(runnerWatchdogMs({ command: "x" })).toBe(120_000);
     expect(runnerWatchdogMs({ command: "x", timeoutMs: 1_000 })).toBe(6_000);
     expect(runnerWatchdogMs({ command: "x", timeoutMs: 1 })).toBe(5_001);
+  });
+
+  it("writeRunnerStdin registers a stdin `error` listener so an EPIPE from a runner that closed its stdin before consumption doesn't crash the parent — same hazard piper.ts defends against", async () => {
+    // Pre-fix the inline `child.stdin.end(JSON.stringify(...))` had
+    // NO `on("error", ...)` listener. A runner that exited before
+    // reading stdin would close the pipe; the parent's `.end()`
+    // would emit `error` on the Writable, and with no listener Node
+    // surfaces it as an uncaught exception and crashes the whole
+    // process. EventEmitter's contract is "no listener for `error`
+    // throws on emit," so the test pins listener registration by
+    // emitting an error and asserting it doesn't throw.
+    const { PassThrough } = await import("node:stream");
+    const stdin = new PassThrough();
+    const child = { stdin } as unknown as Parameters<typeof writeRunnerStdin>[0];
+
+    writeRunnerStdin(child, { command: "noop" });
+
+    // Pre-fix: no listener → emit throws "Unhandled 'error' event".
+    // Post-fix: the listener absorbs it (the .on call registered the
+    // no-op handler) → emit returns normally.
+    expect(() => stdin.emit("error", new Error("EPIPE simulated"))).not.toThrow();
+
+    // The JSON request still landed on the stdin stream.
+    const buffered: Buffer[] = [];
+    stdin.on("data", (chunk: Buffer) => buffered.push(chunk));
+    // The PassThrough was already ended by writeRunnerStdin, so any
+    // residual data is already buffered. Flush the read side.
+    await new Promise<void>((resolve) => { stdin.once("end", () => resolve()); });
+    const text = Buffer.concat(buffered).toString("utf8");
+    expect(text).toContain(`"command":"noop"`);
+  });
+
+  it("writeRunnerStdin is a no-op when child.stdin is null (spawn failed before stdio attached)", () => {
+    const child = { stdin: null } as unknown as Parameters<typeof writeRunnerStdin>[0];
+    expect(() => writeRunnerStdin(child, { command: "noop" })).not.toThrow();
   });
 
   it("SIGKILLs a wedged runner process and resolves timedOut (no infinite hang)", async () => {

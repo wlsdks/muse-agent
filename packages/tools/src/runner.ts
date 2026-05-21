@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 
 import type { JsonObject } from "@muse/shared";
 
@@ -159,8 +159,23 @@ export async function invokeRustRunner(
         truncated: false
       });
     });
-    child.stdin.end(`${JSON.stringify(request)}\n`);
+    writeRunnerStdin(child, request);
   });
+}
+
+/**
+ * Pipe the JSON request into the runner child's stdin. A runner that exits
+ * before consuming stdin (binary missing, immediate panic, watchdog SIGKILL)
+ * closes the pipe and the parent's `end(...)` then emits an EPIPE error on
+ * the stdin Writable. Without a registered listener the unhandled `error`
+ * crashes the parent Node process — same hazard piper.ts defends against.
+ * Exported for direct test coverage of the error-listener registration.
+ */
+export function writeRunnerStdin(child: ChildProcess, request: RunnerCommandRequest): void {
+  const stdin = child.stdin;
+  if (!stdin) return;
+  stdin.on("error", () => undefined);
+  stdin.end(`${JSON.stringify(request)}\n`);
 }
 
 export function parseRunnerCommandRequest(value: JsonObject): RunnerCommandRequest {

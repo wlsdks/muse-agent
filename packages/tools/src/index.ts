@@ -651,6 +651,7 @@ export {
   invokeRustRunner,
   parseRunnerCommandRequest,
   runnerWatchdogMs,
+  writeRunnerStdin,
   type RunnerCommandRequest,
   type RunnerCommandResponse,
   type RustRunnerToolOptions
