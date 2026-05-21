@@ -23,7 +23,7 @@ import { join as pathJoin, resolve as pathResolve, sep as pathSep } from "node:p
 import { resolveNotesDir } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
-import { resolveOllamaUrl } from "./ollama-url.js";
+import { embed } from "./embed.js";
 import type { ProgramIO } from "./program.js";
 
 export const DEFAULT_EMBED_MODEL = "nomic-embed-text";
@@ -66,22 +66,6 @@ export function defaultIndexPath(): string {
   const sysHome = homedir().trim();
   if (sysHome.length > 0) return pathJoin(sysHome, ".muse", "notes-index.json");
   throw new Error("Cannot resolve home directory for notes-index.json — HOME is empty and os.homedir() returned no value");
-}
-
-async function embed(text: string, model: string): Promise<number[]> {
-  const resp = await fetch(`${resolveOllamaUrl()}/api/embeddings`, {
-    body: JSON.stringify({ model, prompt: text }),
-    headers: { "content-type": "application/json" },
-    method: "POST"
-  });
-  if (!resp.ok) {
-    throw new Error(`embeddings ${resp.status.toString()}: ${await resp.text().catch(() => "")}`);
-  }
-  const body = await resp.json() as { embedding?: number[] };
-  if (!body.embedding || !Array.isArray(body.embedding)) {
-    throw new Error("embedding response missing 'embedding' field");
-  }
-  return body.embedding;
 }
 
 /**

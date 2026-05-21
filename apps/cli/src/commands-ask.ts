@@ -32,7 +32,7 @@ import { readReminders, readTasks, type PersistedReminder, type PersistedTask } 
 import type { Command } from "commander";
 
 import { isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js";
-import { resolveOllamaUrl } from "./ollama-url.js";
+import { embed } from "./embed.js";
 import { resolvePersona } from "./program-helpers.js";
 import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
 import type { ProgramIO } from "./program.js";
@@ -97,20 +97,6 @@ function defaultUserKey(user: string | undefined, persona: string | undefined): 
   const base = resolveDefaultUserKey({ override: user });
   const resolved = resolvePersona(persona);
   return resolved ? `${base}@${resolved}` : base;
-}
-
-async function embed(text: string, model: string): Promise<number[]> {
-  const resp = await fetch(`${resolveOllamaUrl()}/api/embeddings`, {
-    body: JSON.stringify({ model, prompt: text }),
-    headers: { "content-type": "application/json" },
-    method: "POST"
-  });
-  if (!resp.ok) {
-    throw new Error(`embeddings ${resp.status.toString()}: ${await resp.text().catch(() => "")}`);
-  }
-  const body = await resp.json() as { embedding?: number[] };
-  if (!body.embedding) throw new Error("missing embedding");
-  return body.embedding;
 }
 
 function cosine(a: readonly number[], b: readonly number[]): number {
