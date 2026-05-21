@@ -214,6 +214,27 @@ describe("PlanExecute helpers", () => {
         '[{"tool":"a","args":{"items":[1,2,3]},"description":"x"}]'
       );
     });
+
+    it("ignores brackets that appear INSIDE a JSON string literal — a plan whose tool args contain a literal `]` / `[` in a string must not truncate the candidate at the spurious bracket (the bare-bracket scanner pre-fix returned a partial slice that failed JSON.parse downstream, silently dropping a valid plan)", () => {
+      // The "q" value `"find ]"` contains a literal `]`. Pre-fix the
+      // scanner saw it as a closing bracket and returned a
+      // truncated slice `[{"tool":"a","args":{"q":"find ]"`. Post-
+      // fix the inString tracking keeps the bracket counter intact.
+      expect(
+        extractJsonArray('[{"tool":"a","args":{"q":"find ]"},"description":"x"}]')
+      ).toBe('[{"tool":"a","args":{"q":"find ]"},"description":"x"}]');
+
+      // Mirror: opening bracket inside a string.
+      expect(
+        extractJsonArray('[{"tool":"a","args":{"q":"find ["},"description":"y"}]')
+      ).toBe('[{"tool":"a","args":{"q":"find ["},"description":"y"}]');
+
+      // Escaped quotes inside the string must not flip the
+      // inString flag back to false prematurely.
+      expect(
+        extractJsonArray('[{"tool":"a","args":{"q":"say \\"]\\" loudly"},"description":"x"}]')
+      ).toBe('[{"tool":"a","args":{"q":"say \\"]\\" loudly"},"description":"x"}]');
+    });
   });
 
   describe("parsePlan", () => {

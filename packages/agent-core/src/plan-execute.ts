@@ -72,8 +72,25 @@ export function extractJsonArray(text: string): string | null {
     return null;
   }
   let depth = 0;
+  let inString = false;
+  let escape = false;
   for (let index = start; index < text.length; index += 1) {
     const character = text[index];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (character === "\\" && inString) {
+      escape = true;
+      continue;
+    }
+    if (character === "\"") {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
     if (character === "[") {
       depth += 1;
     } else if (character === "]") {
