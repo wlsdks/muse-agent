@@ -8076,6 +8076,36 @@ describe("sensitive store file-mode lock-ins (goal 035)", () => {
     ]);
     expect(statSync(taskFile).mode & 0o777).toBe(0o600);
   });
+
+  it("writeProactiveFired yields mode 0600 — sibling-parity with the other personal stores; ~/.muse/proactive-history.json shows which calendar events / tasks fired when, so a shared-box install must not expose the timeline to other local users (default umask leaves it 0o644)", async () => {
+    if (process.platform === "win32") return;
+    const { mkdtempSync, statSync, chmodSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { writeProactiveFired } = await import("../src/index.js");
+    const dir = mkdtempSync(join(tmpdir(), "muse-proactive-mode-"));
+    const file = join(dir, "proactive-fired.json");
+
+    // First write — proves the writeFile `mode: 0o600` option
+    // applies on file creation.
+    await writeProactiveFired(file, [
+      { kind: "calendar", id: "evt_a", startIso: "2026-05-12T08:00:00.000Z", firedAt: "2026-05-12T08:00:00.000Z" }
+    ]);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+
+    // Tamper to a looser mode (simulating either a pre-existing
+    // file on disk or an external chmod between writes), then
+    // re-write — proves the post-rename `chmod(file, 0o600)`
+    // step actively locks the mode down rather than relying on
+    // the writeFile mode option (which only applies on file
+    // creation, not when rename overwrites an existing target).
+    chmodSync(file, 0o644);
+    await writeProactiveFired(file, [
+      { kind: "calendar", id: "evt_a", startIso: "2026-05-12T08:00:00.000Z", firedAt: "2026-05-12T08:00:00.000Z" },
+      { kind: "task", id: "task_b", startIso: "2026-05-12T09:00:00.000Z", firedAt: "2026-05-12T09:00:00.000Z" }
+    ]);
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+  });
 });
 
 describe("muse.history loopback server", () => {

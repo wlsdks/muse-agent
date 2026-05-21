@@ -150,8 +150,14 @@ export async function writeProactiveFired(file: string, entries: readonly Proact
   const payload = `${JSON.stringify({ fired: trimmed }, null, 2)}\n`;
   const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
   await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(tmp, payload, "utf8");
+  // 0o600: entries reveal which calendar meetings + tasks have
+  // fired when — sensitive user-data sidecar. Sibling personal
+  // stores (calendar / tasks / episodes / credential-store /
+  // inbox-injection-cursor) all use this posture; this was the
+  // missed sibling.
+  await fs.writeFile(tmp, payload, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
+  await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
 function isProactiveFiredEntry(value: unknown): value is ProactiveFiredEntry {
