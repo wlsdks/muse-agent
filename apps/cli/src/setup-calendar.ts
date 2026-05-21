@@ -15,6 +15,7 @@
  *   permission prompt.
  */
 
+import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { homedir } from "node:os";
@@ -234,11 +235,15 @@ interface OAuthCallbackOptions {
   readonly scope: string;
 }
 
+export function generateOAuthState(): string {
+  return randomBytes(16).toString("hex");
+}
+
 async function runOAuthCallbackServer(
   options: OAuthCallbackOptions
 ): Promise<{ readonly code: string; readonly redirectUri: string }> {
   return new Promise((resolve, reject) => {
-    const state = Math.random().toString(36).slice(2, 12);
+    const state = generateOAuthState();
     const server = createServer((req, res) => {
       try {
         const url = new URL(req.url ?? "/", "http://localhost");
