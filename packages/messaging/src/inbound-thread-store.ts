@@ -60,6 +60,8 @@ export async function readThread(file: string, key: string): Promise<readonly Th
   return (await readAll(file))[key] ?? [];
 }
 
+const writeQueues = new Map<string, Promise<unknown>>();
+
 export async function appendThreadTurns(
   file: string,
   key: string,
@@ -68,12 +70,26 @@ export async function appendThreadTurns(
   if (turns.length === 0) {
     return;
   }
+  const prior = writeQueues.get(file) ?? Promise.resolve();
+  const next = prior.then(
+    () => doAppendThreadTurns(file, key, turns),
+    () => doAppendThreadTurns(file, key, turns)
+  );
+  writeQueues.set(file, next.catch(() => undefined));
+  return next;
+}
+
+async function doAppendThreadTurns(
+  file: string,
+  key: string,
+  turns: readonly ThreadTurn[]
+): Promise<void> {
   const all = await readAll(file);
   const merged = [...(all[key] ?? []), ...turns];
   all[key] = merged.slice(Math.max(0, merged.length - MAX_TURNS));
   const payload: PersistedShape = { threads: all, version: 1 };
   await fs.mkdir(dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid.toString()}`;
+  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
   await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
   await fs.rename(tmp, file);
 }

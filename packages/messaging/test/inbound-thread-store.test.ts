@@ -107,4 +107,25 @@ describe("appendThreadTurns — persist + bound + per-channel isolation", () => 
     const mode = statSync(file).mode & 0o777;
     expect(mode).toBe(0o600);
   });
+
+  it("serialises concurrent appendThreadTurns calls per file — two channels arriving at the same instant both land instead of one clobbering the other (pre-fix the unserialised read-modify-write lost the first caller's update when a Telegram inbound and a Discord inbound fired in the same tick)", async () => {
+    const file = freshFile();
+    await Promise.all([
+      appendThreadTurns(file, "tg:c1", [userTurn("hi from A")]),
+      appendThreadTurns(file, "discord:c2", [userTurn("hi from B")])
+    ]);
+    expect(await readThread(file, "tg:c1")).toEqual([{ content: "hi from A", role: "user" }]);
+    expect(await readThread(file, "discord:c2")).toEqual([{ content: "hi from B", role: "user" }]);
+  });
+
+  it("serialises concurrent appendThreadTurns calls to the SAME key — both updates land in order, neither is lost", async () => {
+    const file = freshFile();
+    await Promise.all([
+      appendThreadTurns(file, "tg:c1", [userTurn("first")]),
+      appendThreadTurns(file, "tg:c1", [userTurn("second")])
+    ]);
+    const turns = await readThread(file, "tg:c1");
+    expect(turns).toHaveLength(2);
+    expect(turns.map((t) => t.content).sort()).toEqual(["first", "second"]);
+  });
 });
