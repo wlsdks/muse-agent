@@ -100,6 +100,55 @@ describe("SupervisorAgent", () => {
     expect(neither).toBe(0);
   });
 
+  it("RuleBasedAgentWorker uses word-boundary matching on ASCII keywords so a short keyword like 'ai' / 'go' / 'rag' doesn't fire inside unrelated words ('email' / 'ago' / 'fragment') — pre-fix `text.includes('ai')` was true for any input containing 'email', silently inflating dispatch confidence", () => {
+    const worker = new RuleBasedAgentWorker(
+      "tech",
+      "Tech worker",
+      ["ai", "rag", "go"],
+      async (input) => createWorkerResult("tech", "ok", input)
+    );
+
+    // Substring traps that pre-fix scored false-positives:
+    // "ai" in "email" / "afraid", "rag" in "fragment", "go" in
+    // "ago". Post-fix all three must be 0.
+    const trap = worker.canHandle({
+      messages: [{ content: "the email arrived and i'm afraid the fragment broke long ago", role: "user" }],
+      model: "test"
+    });
+    expect(trap, "substring traps must NOT match — would have been 1.0 pre-fix").toBe(0);
+
+    // Real word matches still score correctly.
+    const realWords = worker.canHandle({
+      messages: [{ content: "let's go for ai with rag pipelines", role: "user" }],
+      model: "test"
+    });
+    expect(realWords).toBe(1);
+
+    // Punctuation around the keyword still counts (commas, dots).
+    const punct = worker.canHandle({
+      messages: [{ content: "ai, then rag.", role: "user" }],
+      model: "test"
+    });
+    expect(punct).toBe(2 / 3);
+  });
+
+  it("RuleBasedAgentWorker keeps substring matching for CJK keywords — Korean agglutinates particles without spaces (`우선순위` inside `우선순위를`), where word-boundary would wrongly miss the stem", () => {
+    const worker = new RuleBasedAgentWorker(
+      "korean",
+      "Korean priority worker",
+      ["우선순위"],
+      async (input) => createWorkerResult("korean", "ok", input)
+    );
+
+    // The keyword is followed by a particle "를"; word-boundary
+    // would reject this, but CJK substring matching catches it.
+    const result = worker.canHandle({
+      messages: [{ content: "이 일의 우선순위를 정해줘", role: "user" }],
+      model: "test"
+    });
+    expect(result).toBe(1);
+  });
+
   it("selects the highest confidence worker", async () => {
     const research = new RuleBasedAgentWorker("research", "Research worker", ["research"], (input) =>
       createWorkerResult("research", "research answer", input)

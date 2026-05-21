@@ -147,7 +147,7 @@ export class RuleBasedAgentWorker implements AgentWorker {
 
   canHandle(input: AgentRunInput): number {
     const text = joinMessages(input.messages).toLowerCase();
-    const matched = this.keywords.filter((keyword) => text.includes(keyword)).length;
+    const matched = this.keywords.filter((keyword) => containsKeywordWithBoundary(text, keyword)).length;
     return this.keywords.length === 0 ? 0 : matched / this.keywords.length;
   }
 
@@ -574,6 +574,39 @@ function addHandoffMessage(input: AgentRunInput, workerId: string, error: unknow
 
 function joinMessages(messages: readonly ModelMessage[]): string {
   return messages.map((message) => message.content).join("\n");
+}
+
+// ASCII/Latin keywords must match on word boundaries — a raw substring
+// lets a short keyword ("ai", "go", "db", "rag") fire inside unrelated
+// words ("email", "ago", "fragment") and silently inflate dispatch
+// confidence. CJK keywords keep substring matching: Korean
+// agglutinates particles without spaces ("우선순위" inside
+// "우선순위를"), where a word-boundary rule would wrongly miss the
+// stem. Same posture as packages/policy/src/topic-drift.ts.
+function containsKeywordWithBoundary(haystack: string, keyword: string): boolean {
+  if (keyword.length === 0) {
+    return false;
+  }
+  if (hasCjkCodePoint(keyword)) {
+    return haystack.includes(keyword);
+  }
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:$|[^a-z0-9])`, "u").test(haystack);
+}
+
+function hasCjkCodePoint(value: string): boolean {
+  for (const ch of value) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (
+      (cp >= 0x4e00 && cp <= 0x9fff) ||
+      (cp >= 0xac00 && cp <= 0xd7af) ||
+      (cp >= 0x3040 && cp <= 0x309f) ||
+      (cp >= 0x30a0 && cp <= 0x30ff)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function buildOrchestrationResponse(
