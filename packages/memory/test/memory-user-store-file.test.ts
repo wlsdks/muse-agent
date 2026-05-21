@@ -73,6 +73,32 @@ describe("FileUserMemoryStore", () => {
     expect(memory?.facts).toEqual({ city: "Seoul" }); // prior "name" lost because file was wiped
   });
 
+  it("serialises concurrent upserts per-file so two writes landing in the same tick both persist instead of the second clobbering the first (pre-fix the unserialised read-modify-write lost the first caller's update when the auto-extract `afterComplete` hook fired while a /remember slash-command was mid-flight)", async () => {
+    const { store } = await newStore();
+    await Promise.all([
+      store.upsertFact("stark", "name", "Tony"),
+      store.upsertPreference("stark", "tone", "concise")
+    ]);
+    const memory = await store.findByUserId("stark");
+    expect(memory?.facts).toEqual({ name: "Tony" });
+    expect(memory?.preferences).toEqual({ tone: "concise" });
+  });
+
+  it("serialises concurrent upserts across DIFFERENT users — `/fact` calls for two users in the same tick both land, neither user's row is dropped", async () => {
+    const { store } = await newStore();
+    await Promise.all([
+      store.upsertFact("stark", "name", "Tony"),
+      store.upsertFact("rhodes", "name", "Rhodey"),
+      store.upsertFact("pepper", "name", "Pepper")
+    ]);
+    const stark = await store.findByUserId("stark");
+    const rhodes = await store.findByUserId("rhodes");
+    const pepper = await store.findByUserId("pepper");
+    expect(stark?.facts).toEqual({ name: "Tony" });
+    expect(rhodes?.facts).toEqual({ name: "Rhodey" });
+    expect(pepper?.facts).toEqual({ name: "Pepper" });
+  });
+
   it("upsertFact / upsertPreference strip ANSI / control bytes from value (defense-in-depth)", async () => {
     const { store } = await newStore();
     // ESC + CSI + BEL + NUL all need to be gone before this value

@@ -82,6 +82,7 @@ function storedToMemory(stored: StoredMemory): UserMemory {
 }
 
 export class FileUserMemoryStore implements UserMemoryStore {
+  private static readonly writeQueues = new Map<string, Promise<unknown>>();
   private readonly file: string;
   private readonly now: () => Date;
 
@@ -118,34 +119,45 @@ export class FileUserMemoryStore implements UserMemoryStore {
   // which is enough for the JARVIS daily-driver path.
 
   async deleteByUserId(userId: string): Promise<boolean> {
-    const data = await this.read();
-    if (!data.users[userId]) {
-      return false;
-    }
-    const { [userId]: _dropped, ...rest } = data.users;
-    await this.write({ ...data, users: rest });
-    return true;
+    return this.serializeWrite(async () => {
+      const data = await this.read();
+      if (!data.users[userId]) {
+        return false;
+      }
+      const { [userId]: _dropped, ...rest } = data.users;
+      await this.write({ ...data, users: rest });
+      return true;
+    });
   }
 
   private async patch(userId: string, mutator: (existing: UserMemory) => UserMemory): Promise<UserMemory> {
-    const data = await this.read();
-    const existingStored = data.users[userId];
-    const baseline: UserMemory = existingStored
-      ? storedToMemory(existingStored)
-      : {
-          facts: {},
-          preferences: {},
-          recentTopics: [],
-          updatedAt: this.now(),
-          userId
-        };
-    const updated: UserMemory = { ...mutator(baseline), updatedAt: this.now() };
-    const next: StoredFile = {
-      ...data,
-      users: { ...data.users, [userId]: memoryToStored(updated) }
-    };
-    await this.write(next);
-    return updated;
+    return this.serializeWrite(async () => {
+      const data = await this.read();
+      const existingStored = data.users[userId];
+      const baseline: UserMemory = existingStored
+        ? storedToMemory(existingStored)
+        : {
+            facts: {},
+            preferences: {},
+            recentTopics: [],
+            updatedAt: this.now(),
+            userId
+          };
+      const updated: UserMemory = { ...mutator(baseline), updatedAt: this.now() };
+      const next: StoredFile = {
+        ...data,
+        users: { ...data.users, [userId]: memoryToStored(updated) }
+      };
+      await this.write(next);
+      return updated;
+    });
+  }
+
+  private async serializeWrite<T>(fn: () => Promise<T>): Promise<T> {
+    const prior = FileUserMemoryStore.writeQueues.get(this.file) ?? Promise.resolve();
+    const next = prior.then(fn, fn);
+    FileUserMemoryStore.writeQueues.set(this.file, next.catch(() => undefined));
+    return next;
   }
 
   private async read(): Promise<StoredFile> {

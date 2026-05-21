@@ -110,7 +110,7 @@ Other related iters not in the recent window:
 - `docs/goals/633-inbox-context-truncate-surrogate-guard.md`:
   - One-line byte-hygiene cleanup. The previous iter's goal
     doc had a literal Zero-Width Joiner (U+200D) inside a
-    `👨‍👩‍👧` family-emoji example. The repo-byte-hygiene
+    `👨U+200D👩U+200D👧` family-emoji example. The repo-byte-hygiene
     test (`packages/shared/test/repo-byte-hygiene.test.ts`)
     rejects raw U+200D in tracked text files — replaced with
     the textual `U+200D` notation, same fix iters 606 etc.
