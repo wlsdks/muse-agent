@@ -123,7 +123,7 @@ export class RuntimeSettings {
     const value = await this.getValue(key);
     const parsed = parseFiniteNumber(value);
 
-    return parsed !== undefined && Number.isInteger(parsed) ? parsed : defaultValue;
+    return parsed !== undefined && Number.isSafeInteger(parsed) ? parsed : defaultValue;
   }
 
   async getJson<T extends JsonValue>(key: string, defaultValue: T): Promise<T> {

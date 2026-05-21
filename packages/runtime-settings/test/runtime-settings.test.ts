@@ -52,6 +52,20 @@ describe("RuntimeSettings", () => {
 
     await expect(service.getInteger("limits.maxTools", 4)).resolves.toBe(12);
     await expect(service.getInteger("limits.decimal", 4)).resolves.toBe(4);
+
+    // Beyond Number.MAX_SAFE_INTEGER the parsed value loses
+    // precision (e.g. "9007199254740993" → 9007199254740992 — silent
+    // off-by-one). Reject the precision-loss value via
+    // Number.isSafeInteger so the caller sees defaultValue instead of
+    // an integer that lies about what the admin typed.
+    await service.set({ key: "limits.huge", type: "number", value: "9007199254740993" });
+    await expect(service.getInteger("limits.huge", 4)).resolves.toBe(4);
+    // Exactly Number.MAX_SAFE_INTEGER is safe.
+    await service.set({ key: "limits.maxSafe", type: "number", value: "9007199254740991" });
+    await expect(service.getInteger("limits.maxSafe", 4)).resolves.toBe(9007199254740991);
+    // Negative beyond −MAX_SAFE_INTEGER also rejected.
+    await service.set({ key: "limits.tinyNeg", type: "number", value: "-9007199254740993" });
+    await expect(service.getInteger("limits.tinyNeg", 4)).resolves.toBe(4);
     await expect(service.getNumber("limits.decimal", 1.5)).resolves.toBe(12.5);
     await expect(service.getNumber("limits.invalid", 1.5)).resolves.toBe(1.5);
     await expect(service.getString("missing", "fallback")).resolves.toBe("fallback");
