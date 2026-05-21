@@ -82,6 +82,9 @@ export function isSafeMuseEntry(entry: string): boolean {
   if (!entry.startsWith(".muse/") || entry.endsWith("/")) {
     return false;
   }
+  if (entry.includes("\\")) {
+    return false;
+  }
   return !entry.split("/").some((segment) => segment === "..");
 }
 

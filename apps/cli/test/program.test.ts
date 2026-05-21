@@ -4700,6 +4700,13 @@ describe("cli program", () => {
     // Directory entries are not restored (files only); empty rejects.
     expect(isSafeMuseEntry(".muse/notes/")).toBe(false);
     expect(isSafeMuseEntry("")).toBe(false);
+    // Backslash-laden traversal: on Windows the path module treats `\`
+    // as a separator and would resolve `.muse/foo\..\..\etc` to outside
+    // the target dir. The split-by-`/` check alone misses this; reject
+    // any entry containing a backslash defensively.
+    expect(isSafeMuseEntry(".muse/foo\\..\\..\\etc/passwd")).toBe(false);
+    expect(isSafeMuseEntry(".muse\\notes\\file.json")).toBe(false);
+    expect(isSafeMuseEntry(".muse/has\\backslash.json")).toBe(false);
   });
 
   it("extractMuseBundle restores only the vetted members — a malicious bundle can't escape ~/.muse (goal 238)", async () => {
