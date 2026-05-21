@@ -192,6 +192,60 @@ describe("MCP security policy", () => {
     expect(isPublicHttpUrl("http://127.0.0.1/mcp")).toBe(false);
     expect(isPublicHttpUrl("http://127.0.0.1/mcp", { allowPrivateAddresses: true })).toBe(true);
   });
+
+  it("rejects bracketed IPv6 addresses from URL.hostname (Node wraps IPv6 in [brackets] — net.isIP rejects them — so without bracket-strip every IPv6 URL slipped past as `public`)", () => {
+    // The fundamental SSRF gap: `new URL("http://[::1]/").hostname` is
+    // `[::1]` (with brackets), and `net.isIP("[::1]")` returns 0, so the
+    // host was classified as "not an IP ⇒ public" — every IPv6 URL
+    // skipped the check.
+    expect(isPrivateOrReservedHost("[::1]")).toBe(true);
+    expect(isPrivateOrReservedHost("[fc00::1]")).toBe(true);
+    expect(isPrivateOrReservedHost("[fe80::1]")).toBe(true);
+    expect(isPublicHttpUrl("http://[::1]/mcp")).toBe(false);
+    expect(isPublicHttpUrl("https://[fc00::1]/mcp")).toBe(false);
+  });
+
+  it("rejects IPv4-mapped IPv6 loopback / private hosts as SSRF (`::ffff:127.0.0.1` is loopback under a v6 disguise — both dotted and Node-canonical hex forms)", () => {
+    // Dotted form (raw user input).
+    expect(isPrivateOrReservedHost("::ffff:127.0.0.1")).toBe(true);
+    expect(isPrivateOrReservedHost("::ffff:10.0.0.1")).toBe(true);
+    expect(isPrivateOrReservedHost("::ffff:192.168.1.1")).toBe(true);
+    expect(isPrivateOrReservedHost("::ffff:172.16.0.1")).toBe(true);
+    expect(isPrivateOrReservedHost("::ffff:169.254.169.254")).toBe(true);
+    expect(isPrivateOrReservedHost("::ffff:224.0.0.1")).toBe(true);
+    expect(isPrivateOrReservedHost("::ffff:0.0.0.0")).toBe(true);
+    expect(isPrivateOrReservedHost("::ffff:8.8.8.8")).toBe(false);
+
+    // Hex-canonical form (what Node URL produces). 127.0.0.1 = 0x7f00:0001.
+    expect(isPrivateOrReservedHost("::ffff:7f00:1")).toBe(true);
+    // 169.254.169.254 (cloud metadata service) = 0xa9fe:a9fe.
+    expect(isPrivateOrReservedHost("::ffff:a9fe:a9fe")).toBe(true);
+    // 8.8.8.8 = 0x0808:0808 — still public.
+    expect(isPrivateOrReservedHost("::ffff:808:808")).toBe(false);
+
+    // End-to-end via URL parsing (Node canonicalises the dotted form
+    // to hex on its own; the v6 URL above hits the hex branch).
+    expect(isPublicHttpUrl("http://[::ffff:127.0.0.1]/mcp")).toBe(false);
+    expect(isPublicHttpUrl("https://[::ffff:192.168.1.5]/mcp")).toBe(false);
+    expect(isPublicHttpUrl("http://[::ffff:169.254.169.254]/latest/meta-data")).toBe(false);
+    expect(isPublicHttpUrl("https://[::ffff:8.8.8.8]/mcp")).toBe(true);
+  });
+
+  it("rejects the IPv6 unspecified address `::` (not a routable destination)", () => {
+    expect(isPrivateOrReservedHost("::")).toBe(true);
+    expect(isPrivateOrReservedHost("[::]")).toBe(true);
+    expect(isPublicHttpUrl("http://[::]/mcp")).toBe(false);
+  });
+
+  it("regression: bare `::1` (loopback) and fc/fd/fe80 prefixes still reject as before", () => {
+    expect(isPrivateOrReservedHost("::1")).toBe(true);
+    expect(isPrivateOrReservedHost("fc00::1")).toBe(true);
+    expect(isPrivateOrReservedHost("fd12:3456:789a::1")).toBe(true);
+    expect(isPrivateOrReservedHost("fe80::1")).toBe(true);
+    // A v6 public address (Cloudflare's public DNS) is allowed.
+    expect(isPrivateOrReservedHost("2606:4700:4700::1111")).toBe(false);
+    expect(isPublicHttpUrl("https://[2606:4700:4700::1111]/mcp")).toBe(true);
+  });
 });
 
 describe("DefaultMcpTransportConnector", () => {

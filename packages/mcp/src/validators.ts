@@ -81,7 +81,11 @@ export function isPrivateOrReservedHost(host: string | undefined): boolean {
     return true;
   }
 
-  const normalized = host.toLowerCase();
+  // Node's `URL.hostname` wraps IPv6 in [brackets]; `net.isIP` rejects
+  // the bracketed form. Strip them so the IP-family branches below see
+  // the canonical address — without this strip every IPv6 URL (even
+  // `[::1]`) slipped past as "not an IP ⇒ public," a real SSRF bypass.
+  const normalized = host.toLowerCase().replace(/^\[(.*)\]$/u, "$1");
 
   if (normalized === "localhost" || normalized.endsWith(".localhost")) {
     return true;
@@ -108,10 +112,35 @@ export function isPrivateOrReservedHost(host: string | undefined): boolean {
     );
   }
 
-  return normalized === "::1" ||
-    normalized.startsWith("fc") ||
+  if (normalized === "::1" || normalized === "::") {
+    return true;
+  }
+
+  // IPv4-mapped IPv6 addresses an IPv4 host through the v6 stack. Raw
+  // user input is the dotted `::ffff:a.b.c.d` form, but Node's URL
+  // parser canonicalises that to a hex-only `::ffff:HHHH:LLLL` form —
+  // both must re-classify via the v4 rules so a loopback / RFC1918 /
+  // 169.254 / 224+ host expressed in v6 syntax is still rejected.
+  const mappedIpv4 = decodeIpv4MappedV6(normalized);
+  if (mappedIpv4 !== undefined) {
+    return isPrivateOrReservedHost(mappedIpv4);
+  }
+
+  return normalized.startsWith("fc") ||
     normalized.startsWith("fd") ||
     normalized.startsWith("fe80");
+}
+
+function decodeIpv4MappedV6(value: string): string | undefined {
+  const dotted = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/u.exec(value);
+  if (dotted) return dotted[1];
+  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/u.exec(value);
+  if (hex) {
+    const high = Number.parseInt(hex[1]!, 16);
+    const low = Number.parseInt(hex[2]!, 16);
+    return `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
+  }
+  return undefined;
 }
 
 export function isPublicHttpUrl(value: string, options: McpServerValidationOptions = {}): boolean {
