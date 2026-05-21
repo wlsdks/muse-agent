@@ -13,7 +13,9 @@ import {
   FileCalendarCredentialStore,
   LocalCalendarProvider,
   MacOsCalendarProvider,
-  isRetryableCalendarStatus
+  isRetryableCalendarStatus,
+  type CalendarEvent,
+  type CalendarProvider
 } from "../src/index.js";
 
 describe("MacOsCalendarProvider osascript spawn timeout", () => {
@@ -460,6 +462,65 @@ describe("CalendarProviderRegistry", () => {
     const registry = new CalendarProviderRegistry([provider]);
     expect(() => registry.require("locale")).toThrow(/registered: local/u);
     rmSync(dir, { force: true, recursive: true });
+  });
+
+  it("listEventsWithDiagnostics applies a deterministic tiebreaker (providerId, then event id) so simultaneous events don't shuffle across runs", async () => {
+    // Pre-fix the sort was `startsAt.getTime()` only — two events
+    // at the same minute (recurring meetings, two providers both
+    // returning the same calendar slot, a back-to-back schedule)
+    // shuffled per Promise.all completion order. A user reading
+    // `muse calendar today` saw different ordering across runs and
+    // any UI snapshot test that pinned a screen-shot was flaky.
+    const shared = new Date("2026-05-15T10:00:00.000Z");
+    const ends = new Date("2026-05-15T11:00:00.000Z");
+    const fixedShape = (id: string, providerId: string, title: string): CalendarEvent => ({
+      allDay: false,
+      endsAt: ends,
+      id,
+      providerId,
+      startsAt: shared,
+      title
+    });
+    function fakeProvider(providerId: string, events: readonly CalendarEvent[]): CalendarProvider {
+      return {
+        createEvent: async () => { throw new Error("not used"); },
+        deleteEvent: async () => { throw new Error("not used"); },
+        describe: () => ({
+          credentials: [],
+          description: "test",
+          displayName: providerId,
+          id: providerId,
+          local: true
+        }),
+        id: providerId,
+        listEvents: async () => events,
+        updateEvent: async () => { throw new Error("not used"); }
+      };
+    }
+    // Register zeta BEFORE alpha so the Promise.all fan-out doesn't
+    // accidentally produce alphabetical order by coincidence.
+    const registry = new CalendarProviderRegistry([
+      fakeProvider("zeta", [
+        fixedShape("z2", "zeta", "Zeta later id"),
+        fixedShape("z1", "zeta", "Zeta earlier id")
+      ]),
+      fakeProvider("alpha", [
+        fixedShape("a1", "alpha", "Alpha single")
+      ])
+    ]);
+
+    const detailed = await registry.listEventsWithDiagnostics({
+      from: new Date(0),
+      to: new Date("2026-06-01T00:00:00Z")
+    });
+    // Tiebreaker order: same startsAt → providerId asc → event id asc.
+    // Expected: alpha/a1, zeta/z1, zeta/z2 — pinned regardless of
+    // registration order or Promise.all completion order.
+    expect(detailed.events.map((event) => `${event.providerId}/${event.id}`)).toEqual([
+      "alpha/a1",
+      "zeta/z1",
+      "zeta/z2"
+    ]);
   });
 
   it("falls back to surviving providers when one throws; diagnostics name the failure (goal 071)", async () => {

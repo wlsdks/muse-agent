@@ -115,7 +115,7 @@ export class CalendarProviderRegistry {
         }
       })
     );
-    const events = buckets.flat().sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime());
+    const events = buckets.flat().sort(compareCalendarEvents);
     return { events, failedProviders };
   }
 
@@ -148,4 +148,12 @@ export class CalendarProviderRegistry {
 
 function registeredHint(ids: readonly string[]): string {
   return ids.length > 0 ? ` (registered: ${ids.join(", ")})` : " (none registered)";
+}
+
+export function compareCalendarEvents(left: CalendarEvent, right: CalendarEvent): number {
+  return (
+    left.startsAt.getTime() - right.startsAt.getTime()
+    || left.providerId.localeCompare(right.providerId)
+    || left.id.localeCompare(right.id)
+  );
 }
