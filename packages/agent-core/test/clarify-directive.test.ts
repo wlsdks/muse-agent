@@ -13,6 +13,26 @@ describe("detectUnderspecifiedRequest", () => {
     }
   });
 
+  it("flags the same contentless imperatives with emphatic punctuation (! and ...) — pre-fix only `.` was accepted as a terminator", () => {
+    // "do it!" carries the same under-specified intent as "do it." or
+    // "do it" — punctuation variants past the verb+object pair should
+    // all hit the clarify-directive path, not be silently let through
+    // as "well-specified" because the regex's `\.?$` rejected `!`.
+    for (const t of [
+      "do it!",
+      "just send it!!",
+      "handle that...",
+      "fix this!",
+      "sort it out!",
+      "take care of it!!",
+      "go ahead!",
+      "please update it.",
+      "Do It!" // also covers case-insensitivity through the existing toLowerCase normaliser
+    ]) {
+      expect(detectUnderspecifiedRequest(t).ambiguous, `"${t}" must be flagged as contentless`).toBe(true);
+    }
+  });
+
   it("does NOT flag a request that names a real object/topic or is empty/long", () => {
     for (const t of [
       "what's on my calendar tomorrow",
@@ -24,6 +44,21 @@ describe("detectUnderspecifiedRequest", () => {
       "please go ahead and reschedule the dentist appointment to next Tuesday afternoon"
     ]) {
       expect(detectUnderspecifiedRequest(t).ambiguous, t).toBe(false);
+    }
+  });
+
+  it("does NOT flag question-marked forms — `do it?` is the user asking Muse to confirm, not commanding", () => {
+    // The `?` terminator is intentionally excluded from the
+    // contentless-imperative regex. A clarify-directive on a question
+    // would be circular ("the user is asking if I should X — let me ask
+    // them if I should X").
+    for (const t of [
+      "do it?",
+      "handle that?",
+      "go ahead?",
+      "just send it?"
+    ]) {
+      expect(detectUnderspecifiedRequest(t).ambiguous, `"${t}" with ? is a question, not a command`).toBe(false);
     }
   });
 });

@@ -10,8 +10,14 @@ import type { AgentRunContext, AgentRunInput } from "./types.js";
  * mean?" on a clear request, so anything with a real object/topic
  * is NOT flagged.
  */
+// Trailing punctuation is `[.!]*` (zero or more periods / exclamation
+// marks): `do it`, `do it.`, `do it!`, `do it!!`, `do it...` are all
+// the same emphatic-contentless-imperative intent. Question mark `?`
+// is intentionally NOT included — `do it?` is the user asking Muse
+// to confirm, not commanding, so a clarify-directive is the wrong
+// response.
 const CONTENTLESS_IMPERATIVE =
-  /^(?:please\s+)?(?:just\s+)?(?:do|handle|fix|finish|send|update|change|cancel|delete|remove|move|reschedule|sort|deal\s+with|take\s+care\s+of|make)\s+(?:it|that|this|them|those|the\s+thing)\.?$|^(?:go\s+ahead|just\s+do\s+it|make\s+it\s+happen|sort\s+it\s+out|take\s+care\s+of\s+it|handle\s+it|do\s+the\s+needful)\.?$/u;
+  /^(?:please\s+)?(?:just\s+)?(?:do|handle|fix|finish|send|update|change|cancel|delete|remove|move|reschedule|sort|deal\s+with|take\s+care\s+of|make)\s+(?:it|that|this|them|those|the\s+thing)[.!]*$|^(?:go\s+ahead|just\s+do\s+it|make\s+it\s+happen|sort\s+it\s+out|take\s+care\s+of\s+it|handle\s+it|do\s+the\s+needful)[.!]*$/u;
 
 export function detectUnderspecifiedRequest(text: string): { readonly ambiguous: boolean; readonly reason?: string } {
   const trimmed = text.trim().toLowerCase();
