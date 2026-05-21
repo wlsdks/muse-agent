@@ -72,6 +72,29 @@ describe("boundary and cancellation helpers", () => {
     expect(() => token.throwIfCancelled()).toThrow("timeout");
   });
 
+  it("cancel() with no reason uses the documented 'Operation cancelled' default — pins the API contract so a regression that drops the default leaves an actionable error message intact", () => {
+    const token = createCancellationToken();
+    token.cancel();
+    expect(token.signal.aborted).toBe(true);
+    expect(() => token.throwIfCancelled()).toThrow("Operation cancelled");
+  });
+
+  it("throwIfCancelled() is a no-op BEFORE any cancel call — a regression that always threw would break every consumer that polls before cancellation", () => {
+    const token = createCancellationToken();
+    expect(token.signal.aborted).toBe(false);
+    expect(() => token.throwIfCancelled()).not.toThrow();
+    // Polling repeatedly stays a no-op until something actually cancels.
+    expect(() => token.throwIfCancelled()).not.toThrow();
+  });
+
+  it("throwIfCancelled() is idempotent after cancel — repeated polls all throw the same error so caller cleanup loops aren't surprised by a one-shot exception", () => {
+    const token = createCancellationToken();
+    token.cancel("deadline");
+    expect(() => token.throwIfCancelled()).toThrow("deadline");
+    expect(() => token.throwIfCancelled()).toThrow("deadline");
+    expect(() => token.throwIfCancelled()).toThrow("deadline");
+  });
+
   it("redactSecretsInText scrubs high-confidence credential shapes", () => {
     // OpenAI sk- + sk-proj-.
     expect(redactSecretsInText("rotate sk-proj-abcdefghijklmnopqrstuvwxyz today"))
