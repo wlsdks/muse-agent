@@ -2,7 +2,7 @@ import { truncateErrorBody } from "@muse/shared";
 
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
-import { clampInboundLimit, clampOutboundText, tryParseJson } from "./provider-helpers.js";
+import { clampInboundLimit, clampOutboundText, fetchWithTimeout, tryParseJson } from "./provider-helpers.js";
 import { readSlackAfter, writeSlackAfter } from "./slack-after-store.js";
 import type {
   InboundFetchOptions,
@@ -36,6 +36,8 @@ export interface SlackProviderOptions {
    * snapshot mode and `source` remains required.
    */
   readonly inboxFile?: string;
+  /** Per-request wall-clock timeout (ms). Default 30s. */
+  readonly timeoutMs?: number;
 }
 
 const DEFAULT_BASE_URL = "https://slack.com/api";
@@ -70,6 +72,7 @@ export class SlackProvider implements MessagingProvider {
   private readonly baseUrl: string;
   private readonly afterFile: string | undefined;
   private readonly inboxFile: string | undefined;
+  private readonly timeoutMs: number | undefined;
 
   constructor(options: SlackProviderOptions) {
     this.token = options.token;
@@ -77,6 +80,7 @@ export class SlackProvider implements MessagingProvider {
     this.baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
     this.afterFile = options.afterFile;
     this.inboxFile = options.inboxFile;
+    this.timeoutMs = options.timeoutMs;
   }
 
   describe(): MessagingProviderInfo {
@@ -144,14 +148,14 @@ export class SlackProvider implements MessagingProvider {
       formParams["oldest"] = cursor;
     }
     const params = new URLSearchParams(formParams);
-    const response = await this.fetchImpl(`${this.baseUrl}/conversations.history`, {
+    const response = await fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/conversations.history`, {
       body: params.toString(),
       headers: {
         authorization: `Bearer ${this.token}`,
         "content-type": "application/x-www-form-urlencoded"
       },
       method: "POST"
-    });
+    }, this.timeoutMs);
     const text = await response.text();
     const parsed = tryParseJson<SlackHistoryResponse>(text);
     if (!response.ok || !parsed?.ok) {
@@ -196,14 +200,14 @@ export class SlackProvider implements MessagingProvider {
     // Telegram / Discord send path).
     const outboundText = clampOutboundText(message.text);
     validateOutboundMessage({ ...message, text: outboundText });
-    const response = await this.fetchImpl(`${this.baseUrl}/chat.postMessage`, {
+    const response = await fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/chat.postMessage`, {
       body: JSON.stringify({ channel: message.destination, text: escapeSlackText(outboundText) }),
       headers: {
         authorization: `Bearer ${this.token}`,
         "content-type": "application/json; charset=utf-8"
       },
       method: "POST"
-    });
+    }, this.timeoutMs);
     const text = await response.text();
     const parsed = tryParseJson<SlackPostMessageResponse>(text);
     if (!response.ok || !parsed?.ok) {

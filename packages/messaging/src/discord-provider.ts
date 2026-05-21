@@ -3,7 +3,7 @@ import { truncateErrorBody } from "@muse/shared";
 import { readDiscordAfter, writeDiscordAfter } from "./discord-after-store.js";
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
-import { clampInboundLimit, clampOutboundText, tryParseJson } from "./provider-helpers.js";
+import { clampInboundLimit, clampOutboundText, fetchWithTimeout, tryParseJson } from "./provider-helpers.js";
 import type {
   InboundFetchOptions,
   InboundMessage,
@@ -39,6 +39,8 @@ export interface DiscordProviderOptions {
    * mode and `source` remains required.
    */
   readonly inboxFile?: string;
+  /** Per-request wall-clock timeout (ms). Default 30s. */
+  readonly timeoutMs?: number;
 }
 
 const DEFAULT_BASE_URL = "https://discord.com/api";
@@ -71,6 +73,7 @@ export class DiscordProvider implements MessagingProvider {
   private readonly apiVersion: string;
   private readonly afterFile: string | undefined;
   private readonly inboxFile: string | undefined;
+  private readonly timeoutMs: number | undefined;
 
   constructor(options: DiscordProviderOptions) {
     this.token = options.token;
@@ -79,6 +82,7 @@ export class DiscordProvider implements MessagingProvider {
     this.apiVersion = options.apiVersion ?? DEFAULT_VERSION;
     this.afterFile = options.afterFile;
     this.inboxFile = options.inboxFile;
+    this.timeoutMs = options.timeoutMs;
   }
 
   describe(): MessagingProviderInfo {
@@ -143,10 +147,10 @@ export class DiscordProvider implements MessagingProvider {
       : undefined;
     const url = `${this.baseUrl}/${this.apiVersion}/channels/${encodeURIComponent(channelId)}/messages?limit=${limit.toString()}`
       + (cursor !== undefined ? `&after=${encodeURIComponent(cursor)}` : "");
-    const response = await this.fetchImpl(url, {
+    const response = await fetchWithTimeout(this.fetchImpl, url, {
       headers: { authorization: `Bot ${this.token}` },
       method: "GET"
-    });
+    }, this.timeoutMs);
     const text = await response.text();
     if (!response.ok) {
       const errorPayload = tryParseJson<DiscordErrorResponse>(text);
@@ -193,7 +197,7 @@ export class DiscordProvider implements MessagingProvider {
     const outboundText = clampOutboundText(message.text, 2000);
     validateOutboundMessage({ ...message, text: outboundText });
     const url = `${this.baseUrl}/${this.apiVersion}/channels/${encodeURIComponent(message.destination)}/messages`;
-    const response = await this.fetchImpl(url, {
+    const response = await fetchWithTimeout(this.fetchImpl, url, {
       // `parse: []` suppresses ALL mention resolution: a literal
       // `@everyone` / `@here` / `<@id>` in agent output (a quote, a
       // code snippet) would otherwise ping the whole server. The
@@ -204,7 +208,7 @@ export class DiscordProvider implements MessagingProvider {
         "content-type": "application/json"
       },
       method: "POST"
-    });
+    }, this.timeoutMs);
     const text = await response.text();
     const parsed = tryParseJson<DiscordMessageResponse>(text);
     if (!response.ok) {

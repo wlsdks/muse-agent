@@ -248,6 +248,21 @@ describe("DiscordProvider", () => {
     expect(sentContent).toBe("short");
   });
 
+  it("times out a stalled send so a wedged Discord API connection can't hang the proactive tick (timeoutMs threaded into fetchWithTimeout)", async () => {
+    const neverResolves: typeof globalThis.fetch = (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = (init as { signal?: AbortSignal } | undefined)?.signal;
+        signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    const provider = new DiscordProvider({
+      baseUrl: "https://disc.test/api",
+      fetch: neverResolves,
+      timeoutMs: 10,
+      token: "BOT123"
+    });
+    await expect(provider.send({ destination: "ch-9", text: "yo" })).rejects.toThrow(/timed out after 10ms/u);
+  });
+
   it("suppresses all mention resolution so @everyone in text can't ping the server (goal 315)", async () => {
     let body: { content: string; allowed_mentions?: { parse: readonly string[] } } = { content: "" };
     const provider = new DiscordProvider({
@@ -551,6 +566,16 @@ describe("SlackProvider", () => {
     });
     const receipt = await provider.send({ destination: "C123", text: "hi" });
     expect(receipt).toMatchObject({ destination: "C123", messageId: "1700000000.000100", providerId: "slack" });
+  });
+
+  it("times out a stalled chat.postMessage so a wedged Slack API connection can't hang the send path (timeoutMs threaded into fetchWithTimeout)", async () => {
+    const neverResolves: typeof globalThis.fetch = (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = (init as { signal?: AbortSignal } | undefined)?.signal;
+        signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    const provider = new SlackProvider({ fetch: neverResolves, timeoutMs: 10, token: "xoxb-test" });
+    await expect(provider.send({ destination: "C123", text: "hi" })).rejects.toThrow(/timed out after 10ms/u);
   });
 
   it("escapes &/</> so Slack mrkdwn can't turn text into links/mentions (goal 312)", async () => {
