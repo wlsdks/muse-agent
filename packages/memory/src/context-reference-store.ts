@@ -60,6 +60,10 @@ export interface InMemoryContextReferenceStoreOptions {
 const DEFAULT_TTL_MS = 30 * 60 * 1_000;
 const DEFAULT_MAX_ENTRIES = 1_000;
 
+function finiteOrDefault(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
 export class InMemoryContextReferenceStore implements ContextReferenceStore {
   private readonly entries = new Map<string, ContextReference>();
   private readonly ttlMs: number;
@@ -67,8 +71,17 @@ export class InMemoryContextReferenceStore implements ContextReferenceStore {
   private readonly now: () => Date;
 
   constructor(options: InMemoryContextReferenceStoreOptions = {}) {
-    this.ttlMs = Math.max(0, options.ttlMs ?? DEFAULT_TTL_MS);
-    this.maxEntries = Math.max(1, options.maxEntries ?? DEFAULT_MAX_ENTRIES);
+    // `??` doesn't catch NaN / Infinity. The downstream `entries.size
+    // <= this.maxEntries` and `now - createdAt >= this.ttlMs` guards
+    // both compare against the option directly: with NaN they short-
+    // circuit (every comparison with NaN is false), which makes a
+    // single corrupt option either silently empty the cache on every
+    // put (maxEntries:NaN — eviction loop never breaks → all keys get
+    // deleted) OR make every entry permanent (ttlMs:NaN — isExpired
+    // returns false forever). Same posture as the response cache's
+    // finite guard.
+    this.ttlMs = Math.max(0, finiteOrDefault(options.ttlMs, DEFAULT_TTL_MS));
+    this.maxEntries = Math.max(1, finiteOrDefault(options.maxEntries, DEFAULT_MAX_ENTRIES));
     this.now = options.now ?? (() => new Date());
   }
 

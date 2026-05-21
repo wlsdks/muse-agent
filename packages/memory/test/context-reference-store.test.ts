@@ -71,4 +71,44 @@ describe("InMemoryContextReferenceStore", () => {
     expect(store.delete("r1")).toBe(false);
     expect(store.get("r1")).toBeUndefined();
   });
+
+  it("constructor finite-guards ttlMs and maxEntries against NaN / Infinity (a corrupt option must not silently break the store)", () => {
+    // Pre-fix: `options.ttlMs ?? DEFAULT_TTL_MS` doesn't catch NaN
+    // (NaN is not nullish), then `Math.max(0, NaN) === NaN`. The
+    // `now - createdAt >= NaN` guard in isExpired returns false
+    // forever — every entry becomes permanent. Same threat on
+    // `maxEntries: NaN`: in evictIfOverCap, `size <= NaN` is false
+    // → enters the eviction code, `overflow = size - NaN = NaN`,
+    // and the `ids.length >= NaN` break condition never trips →
+    // ALL keys get pushed to the deletion list → every put silently
+    // empties the store of every prior entry.
+
+    // ttlMs: NaN must fall to the documented 30-min default — entries
+    // DO expire past the cap, not become permanent.
+    const c = clock(0);
+    const nanTtlStore = new InMemoryContextReferenceStore({ now: c.now, ttlMs: Number.NaN });
+    nanTtlStore.put({ content: "fresh", id: "r1" });
+    c.advance(30 * 60 * 1_000 + 1);
+    expect(nanTtlStore.get("r1"), "ttlMs:NaN must fall to the 30-min default → entry expires past the cap").toBeUndefined();
+
+    // ttlMs: Infinity also falls to the default.
+    const c2 = clock(0);
+    const infTtlStore = new InMemoryContextReferenceStore({ now: c2.now, ttlMs: Number.POSITIVE_INFINITY });
+    infTtlStore.put({ content: "fresh", id: "r2" });
+    c2.advance(30 * 60 * 1_000 + 1);
+    expect(infTtlStore.get("r2")).toBeUndefined();
+
+    // maxEntries: NaN must fall to the 1000 default — multiple puts
+    // accumulate normally instead of the cache being silently emptied
+    // by the broken overflow loop on every put.
+    const c3 = clock(0);
+    const nanMaxStore = new InMemoryContextReferenceStore({ maxEntries: Number.NaN, now: c3.now, ttlMs: 60_000 });
+    nanMaxStore.put({ content: "a", id: "r1" });
+    nanMaxStore.put({ content: "b", id: "r2" });
+    nanMaxStore.put({ content: "c", id: "r3" });
+    expect(
+      nanMaxStore.list().length,
+      "maxEntries:NaN must fall to the default; all three puts should remain (pre-fix the eviction loop drained the store on each put)"
+    ).toBe(3);
+  });
 });
