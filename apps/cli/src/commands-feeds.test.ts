@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_FEED_FETCH_TIMEOUT_MS, formatFeedEntryLines, loadFeedBody, registerFeedsCommand, slugifyUrl } from "./commands-feeds.js";
+import { DEFAULT_FEED_FETCH_TIMEOUT_MS, DEFAULT_FEED_MAX_BODY_BYTES, formatFeedEntryLines, loadFeedBody, registerFeedsCommand, slugifyUrl } from "./commands-feeds.js";
 
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
@@ -306,5 +306,37 @@ describe("loadFeedBody — fetch timeout so a slow-loris / dead RSS server can't
 
   it("exports a sensible 30-second default so callers that don't pass timeoutMs still inherit the cap", () => {
     expect(DEFAULT_FEED_FETCH_TIMEOUT_MS).toBe(30_000);
+  });
+});
+
+describe("loadFeedBody — body size cap so a hostile / runaway RSS server can't stream gigabytes into memory before `muse feeds refresh` notices", () => {
+  it("rejects upfront when the upstream content-length header advertises a body over the cap — saves the streaming read entirely", async () => {
+    const contentLengthLies: typeof globalThis.fetch = () => Promise.resolve(
+      new Response(new ReadableStream({ pull(c) { c.close(); } }), {
+        status: 200,
+        headers: { "content-length": "999999999" }
+      })
+    );
+    await expect(
+      loadFeedBody("https://huge.example.com/feed.xml", { fetchImpl: contentLengthLies, maxBodyBytes: 1024 })
+    ).rejects.toThrow(/declared 999999999 bytes; cap is 1024/u);
+  });
+
+  it("rejects mid-stream when an unknown-length (chunked) body actually exceeds the cap — the per-chunk byte tally aborts the read", async () => {
+    const oversizedFetch: typeof globalThis.fetch = () => Promise.resolve(
+      new Response(new ReadableStream({
+        pull(c) {
+          c.enqueue(new TextEncoder().encode("x".repeat(2_000)));
+          c.close();
+        }
+      }), { status: 200 })
+    );
+    await expect(
+      loadFeedBody("https://chunked.example.com/feed.xml", { fetchImpl: oversizedFetch, maxBodyBytes: 100 })
+    ).rejects.toThrow(/exceeded 100 bytes/u);
+  });
+
+  it("exports a sensible 5-MB default so callers that don't pass maxBodyBytes still inherit the cap", () => {
+    expect(DEFAULT_FEED_MAX_BODY_BYTES).toBe(5 * 1024 * 1024);
   });
 });

@@ -40,10 +40,12 @@ import type { ProgramIO } from "./program.js";
  * network. Exported for direct test coverage.
  */
 export const DEFAULT_FEED_FETCH_TIMEOUT_MS = 30_000;
+export const DEFAULT_FEED_MAX_BODY_BYTES = 5 * 1024 * 1024;
 
 export interface LoadFeedBodyOptions {
   readonly fetchImpl?: typeof globalThis.fetch;
   readonly timeoutMs?: number;
+  readonly maxBodyBytes?: number;
 }
 
 export async function loadFeedBody(url: string, options: LoadFeedBodyOptions = {}): Promise<string> {
@@ -54,23 +56,57 @@ export async function loadFeedBody(url: string, options: LoadFeedBodyOptions = {
   const timeoutMs = Number.isFinite(options.timeoutMs) && (options.timeoutMs ?? 0) > 0
     ? (options.timeoutMs as number)
     : DEFAULT_FEED_FETCH_TIMEOUT_MS;
+  const maxBodyBytes = Number.isFinite(options.maxBodyBytes) && (options.maxBodyBytes ?? 0) > 0
+    ? (options.maxBodyBytes as number)
+    : DEFAULT_FEED_MAX_BODY_BYTES;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  let response: Response;
   try {
-    response = await fetchImpl(url, { signal: controller.signal });
-  } catch (cause) {
-    if (controller.signal.aborted) {
-      throw new Error(`feed fetch ${url} timed out after ${timeoutMs.toString()}ms`, { cause });
+    let response: Response;
+    try {
+      response = await fetchImpl(url, { signal: controller.signal });
+    } catch (cause) {
+      if (controller.signal.aborted) {
+        throw new Error(`feed fetch ${url} timed out after ${timeoutMs.toString()}ms`, { cause });
+      }
+      throw cause;
     }
-    throw cause;
+    if (!response.ok) {
+      throw new Error(`feed fetch ${url} returned ${response.status.toString()}`);
+    }
+    const declared = response.headers.get("content-length");
+    if (declared !== null) {
+      const declaredBytes = Number.parseInt(declared, 10);
+      if (Number.isFinite(declaredBytes) && declaredBytes > maxBodyBytes) {
+        throw new Error(`feed body ${url} declared ${declaredBytes.toString()} bytes; cap is ${maxBodyBytes.toString()}`);
+      }
+    }
+    if (!response.body) {
+      return "";
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let total = 0;
+    let body = "";
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > maxBodyBytes) {
+          await reader.cancel();
+          throw new Error(`feed body ${url} exceeded ${maxBodyBytes.toString()} bytes`);
+        }
+        body += decoder.decode(value, { stream: true });
+      }
+      body += decoder.decode();
+    } finally {
+      try { reader.releaseLock(); } catch { /* released by cancel or natural completion */ }
+    }
+    return body;
   } finally {
     clearTimeout(timer);
   }
-  if (!response.ok) {
-    throw new Error(`feed fetch ${url} returned ${response.status.toString()}`);
-  }
-  return response.text();
 }
 
 export function slugifyUrl(url: string): string {
