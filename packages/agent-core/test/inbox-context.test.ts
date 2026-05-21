@@ -265,4 +265,34 @@ describe("renderInboxSection", () => {
     const rendered = renderInboxSection(snapshot);
     expect(rendered).toMatch(/…/u);
   });
+
+  it("truncating at a UTF-16 surrogate-pair boundary drops the orphaned high surrogate so the rendered prompt / terminal output carries no invalid UTF-16 — attacker-controllable inbound text (Slack/Discord/Telegram) can land an emoji at exactly char position 199 of the 200-char preview cap, and pre-fix the lone high surrogate becomes U+FFFD on the JSON wire", () => {
+    const marker = "📋";
+    expect(marker.length).toBe(2);
+    // 198 ASCII chars puts the emoji's high surrogate at code-unit
+    // index 198 and its low surrogate at 199. truncate(text, 200) does
+    // slice(0, 199) — keeps the high surrogate (index 198) and drops
+    // the low (index 199). Without the guard, the result carries the
+    // orphan high surrogate.
+    const head = "a".repeat(198);
+    const tail = "x".repeat(200);
+    const snapshot: InboxSnapshot = {
+      messages: [
+        {
+          providerId: "slack",
+          receivedAtIso: "2026-05-11T08:00:00.000Z",
+          source: "C1",
+          text: `${head}${marker}${tail}`
+        }
+      ],
+      totalByProvider: { slack: 1 }
+    };
+    const rendered = renderInboxSection(snapshot);
+    expect(rendered).toBeDefined();
+    // No lone high surrogate anywhere in the rendered block.
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u.test(rendered!)).toBe(false);
+    // The orphaned half of the emoji must be dropped, not mangled —
+    // the high surrogate alone (\uD83D) shouldn't appear.
+    expect(rendered!.includes("\uD83D")).toBe(false);
+  });
 });

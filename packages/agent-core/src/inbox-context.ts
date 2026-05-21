@@ -116,7 +116,12 @@ function truncate(text: string, max: number): string {
   if (text.length <= max) {
     return text;
   }
-  return `${text.slice(0, max - 1)}…`;
+  let head = text.slice(0, max - 1);
+  const last = head.charCodeAt(head.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) {
+    head = head.slice(0, -1);
+  }
+  return `${head}…`;
 }
 
 function sanitizeInline(value: string): string {
