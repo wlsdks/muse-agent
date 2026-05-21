@@ -513,7 +513,7 @@ const SUMMARIZER_SYSTEM_PROMPT =
 const SUMMARIZER_MAX_OUTPUT_TOKENS = 256;
 const SUMMARIZER_REQUEST_TIMEOUT_MS = 15_000;
 
-function createWorkerSummarizer(
+export function createWorkerSummarizer(
   modelProvider: ModelProvider | undefined,
   model: string
 ): ((workerId: string, output: string) => Promise<string>) | undefined {
@@ -522,19 +522,26 @@ function createWorkerSummarizer(
   }
   return async (workerId, output) => {
     const userContent = `Sub-agent id: ${workerId}\n\nSub-agent output:\n${output}`;
-    const response = await Promise.race([
-      modelProvider.generate({
-        maxOutputTokens: SUMMARIZER_MAX_OUTPUT_TOKENS,
-        messages: [
-          { content: SUMMARIZER_SYSTEM_PROMPT, role: "system" },
-          { content: userContent, role: "user" }
-        ],
-        model,
-        temperature: 0.2
-      }),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("summarizer timeout")), SUMMARIZER_REQUEST_TIMEOUT_MS))
-    ]);
-    const text = response.output?.trim() ?? "";
-    return text.length > 0 ? text : output;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const response = await Promise.race([
+        modelProvider.generate({
+          maxOutputTokens: SUMMARIZER_MAX_OUTPUT_TOKENS,
+          messages: [
+            { content: SUMMARIZER_SYSTEM_PROMPT, role: "system" },
+            { content: userContent, role: "user" }
+          ],
+          model,
+          temperature: 0.2
+        }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("summarizer timeout")), SUMMARIZER_REQUEST_TIMEOUT_MS);
+        })
+      ]);
+      const text = response.output?.trim() ?? "";
+      return text.length > 0 ? text : output;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   };
 }

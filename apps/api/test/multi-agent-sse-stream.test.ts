@@ -7,7 +7,9 @@ import {
 } from "@muse/multi-agent";
 import { describe, expect, it, vi } from "vitest";
 
-import { toMultiAgentSseStream } from "../src/multi-agent-routes.js";
+import type { ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
+
+import { createWorkerSummarizer, toMultiAgentSseStream } from "../src/multi-agent-routes.js";
 
 function busWithClearSpy() {
   const bus = new InMemoryAgentMessageBus();
@@ -60,5 +62,44 @@ describe("toMultiAgentSseStream unsubscribe lifecycle", () => {
     }
     expect(frames.join("")).toContain("event: done");
     expect(clearSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("createWorkerSummarizer timer hygiene", () => {
+  function stubProvider(output: string): ModelProvider {
+    return {
+      id: "stub",
+      listModels: async () => [],
+      generate: async (_request: ModelRequest): Promise<ModelResponse> => ({ id: "x", model: "x", output }),
+      stream: async function* () { /* not used */ }
+    };
+  }
+
+  it("clears the 15s summarizer timeout when the model response wins the race so no setTimeout dangles in the event loop after each summarizer call — pre-fix the timer handle wasn't stored, so no clearTimeout could fire and every successful summarize leaked a 15s timer", async () => {
+    vi.useFakeTimers();
+    try {
+      const summarizer = createWorkerSummarizer(stubProvider("brief summary"), "model")!;
+      const result = await summarizer("worker-1", "the worker's verbose output");
+      expect(result).toBe("brief summary");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("returns undefined when no modelProvider is wired (legacy contract — no summarizer means no timer)", () => {
+    expect(createWorkerSummarizer(undefined, "model")).toBeUndefined();
+  });
+
+  it("falls back to the raw output when the model returns an empty string — and STILL clears the timer in the finally path", async () => {
+    vi.useFakeTimers();
+    try {
+      const summarizer = createWorkerSummarizer(stubProvider("   "), "model")!;
+      const result = await summarizer("worker-2", "raw output here");
+      expect(result).toBe("raw output here");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
