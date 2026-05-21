@@ -2010,6 +2010,18 @@ describe("compareTasksByDueDate", () => {
     const sorted = [...tasks].sort(compareTasksByDueDate).map((t) => t.id);
     expect(sorted).toEqual(["same-due-new", "same-due-old"]);
   });
+
+  it("falls through to id ASC when dueAt AND createdAt are both equal — bulk-import duplicates and fast successive creates must surface in a deterministic order", () => {
+    const tasks = [
+      mk("zeta", "2026-05-14T00:00:00Z", "2026-05-12T00:00:00Z"),
+      mk("alpha", "2026-05-14T00:00:00Z", "2026-05-12T00:00:00Z"),
+      mk("mu", "2026-05-14T00:00:00Z", "2026-05-12T00:00:00Z")
+    ];
+    expect([...tasks].sort(compareTasksByDueDate).map((t) => t.id))
+      .toEqual(["alpha", "mu", "zeta"]);
+    expect([...tasks].reverse().sort(compareTasksByDueDate).map((t) => t.id))
+      .toEqual(["alpha", "mu", "zeta"]);
+  });
 });
 
 describe("compareRemindersByDueAt", () => {
@@ -2036,6 +2048,18 @@ describe("compareRemindersByDueAt", () => {
       mk("new", "2026-05-14T18:00:00+09:00", "2026-05-13T00:00:00Z")
     ];
     expect([...reminders].sort(compareRemindersByDueAt).map((r) => r.id)).toEqual(["new", "old"]);
+  });
+
+  it("falls through to id ASC when dueAt AND createdAt are both equal — deterministic across input permutations", () => {
+    const reminders = [
+      mk("zeta", "2026-05-14T09:00:00Z", "2026-05-12T00:00:00Z"),
+      mk("alpha", "2026-05-14T09:00:00Z", "2026-05-12T00:00:00Z"),
+      mk("mu", "2026-05-14T09:00:00Z", "2026-05-12T00:00:00Z")
+    ];
+    expect([...reminders].sort(compareRemindersByDueAt).map((r) => r.id))
+      .toEqual(["alpha", "mu", "zeta"]);
+    expect([...reminders].reverse().sort(compareRemindersByDueAt).map((r) => r.id))
+      .toEqual(["alpha", "mu", "zeta"]);
   });
 });
 
@@ -2064,6 +2088,18 @@ describe("compareFollowupsByScheduledFor", () => {
     ];
     expect([...followups].sort(compareFollowupsByScheduledFor).map((f) => f.id))
       .toEqual(["new", "old"]);
+  });
+
+  it("falls through to id ASC when scheduledFor AND createdAt are both equal — deterministic across input permutations", () => {
+    const followups = [
+      mk("zeta", "2026-05-14T09:00:00Z", "2026-05-12T00:00:00Z"),
+      mk("alpha", "2026-05-14T09:00:00Z", "2026-05-12T00:00:00Z"),
+      mk("mu", "2026-05-14T09:00:00Z", "2026-05-12T00:00:00Z")
+    ];
+    expect([...followups].sort(compareFollowupsByScheduledFor).map((f) => f.id))
+      .toEqual(["alpha", "mu", "zeta"]);
+    expect([...followups].reverse().sort(compareFollowupsByScheduledFor).map((f) => f.id))
+      .toEqual(["alpha", "mu", "zeta"]);
   });
 });
 

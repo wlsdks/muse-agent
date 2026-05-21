@@ -189,8 +189,12 @@ export function compareTasksByDueDate(left: PersistedTask, right: PersistedTask)
     return 1;
   }
   // Tie-breaker: most-recently-created first so a fresh quick
-  // capture surfaces above stale undated cruft.
-  return (right.createdAt ?? "").localeCompare(left.createdAt ?? "");
+  // capture surfaces above stale undated cruft. Falls through to
+  // ASC id for a deterministic order when both dueAt AND
+  // createdAt are equal (bulk-import duplicates, fast successive
+  // creates).
+  return (right.createdAt ?? "").localeCompare(left.createdAt ?? "")
+    || left.id.localeCompare(right.id);
 }
 
 function isPersistedTask(value: unknown): value is PersistedTask {

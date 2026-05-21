@@ -219,7 +219,7 @@ export function compareRemindersByDueAt(left: PersistedReminder, right: Persiste
   } else if (left.dueAt !== right.dueAt) {
     return left.dueAt.localeCompare(right.dueAt);
   }
-  return right.createdAt.localeCompare(left.createdAt);
+  return right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id);
 }
 
 function isPersistedReminder(value: unknown): value is PersistedReminder {

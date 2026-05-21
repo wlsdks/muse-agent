@@ -192,7 +192,7 @@ export function compareFollowupsByScheduledFor(
   } else if (left.scheduledFor !== right.scheduledFor) {
     return left.scheduledFor.localeCompare(right.scheduledFor);
   }
-  return right.createdAt.localeCompare(left.createdAt);
+  return right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id);
 }
 
 /**
