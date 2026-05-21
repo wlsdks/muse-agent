@@ -100,6 +100,15 @@ export function registerPersonaCommand(program: Command, io: ProgramIO): void {
     .option("--json", "Emit a structured payload instead of the arrow confirmation")
     .action(async (id: string, options: { readonly json?: boolean }) => {
       const trimmed = id.trim();
+      // Mirrors `muse persona remove` / `muse persona add` empty-id
+      // guard so a `$VAR`-empty shell expansion surfaces a clear
+      // message instead of the auto-generated `no persona with id ''`
+      // that the lookup path produces below.
+      if (trimmed.length === 0) {
+        io.stderr("muse persona use: <id> must not be empty\n");
+        process.exitCode = 1;
+        return;
+      }
       const file = defaultPersonaFile();
       const store = await readPersonaStore(file);
       const exists = isBuiltinPersonaId(trimmed) || Object.hasOwn(store.custom, trimmed);

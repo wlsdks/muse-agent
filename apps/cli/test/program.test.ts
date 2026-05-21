@@ -5145,6 +5145,50 @@ describe("cli program", () => {
     }
   });
 
+  it("muse persona use rejects an empty id with a clear error (matches the persona add/remove empty-id guard, not the misleading 'no persona with id' lookup error)", async () => {
+    // Pre-fix `muse persona use ""` (from a `$VAR`-empty shell
+    // expansion) hit the lookup path and produced the auto-generated
+    // `no persona with id ''` error — a confusing "your id is the
+    // empty string, here are the suggestions" frame. The sibling
+    // commands `add` and `remove` reject empty-id up front with a
+    // clear "<id> must not be empty" message; this aligns `use`.
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-persona-use-empty-"));
+    const fsp = await import("node:fs/promises");
+    const personaFile = path.join(root, "persona.json");
+    await fsp.writeFile(personaFile, JSON.stringify({
+      activeId: "default",
+      custom: {}
+    }), "utf8");
+
+    const prev = process.env.MUSE_PERSONA_FILE;
+    process.env.MUSE_PERSONA_FILE = personaFile;
+    const prevExitCode = process.exitCode;
+    process.exitCode = 0;
+    try {
+      // Empty string: the most common shell-expansion case.
+      const { io: io1, output: out1 } = captureOutput();
+      const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("no fetch"); } });
+      await program1.parseAsync(["node", "muse", "persona", "use", ""], { from: "node" });
+      const text1 = out1.join("");
+      expect(text1).toContain("must not be empty");
+      expect(text1, "must NOT fall through to the lookup error path").not.toContain("no persona with id");
+      expect(process.exitCode).toBe(1);
+
+      // Whitespace-only: same guard via the existing .trim() above.
+      process.exitCode = 0;
+      const { io: io2, output: out2 } = captureOutput();
+      const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });
+      await program2.parseAsync(["node", "muse", "persona", "use", "   "], { from: "node" });
+      const text2 = out2.join("");
+      expect(text2).toContain("must not be empty");
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = prevExitCode;
+      if (prev === undefined) delete process.env.MUSE_PERSONA_FILE;
+      else process.env.MUSE_PERSONA_FILE = prev;
+    }
+  });
+
   it("muse persona use --json emits { activeId, previousActiveId } envelope for scripting", async () => {
     const { readPersonaStore, writePersonaStore } = await import("../src/persona-store.js");
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-persona-use-json-"));
