@@ -439,7 +439,13 @@ export function estimateCostUsd(model: string, inputTokens: number, outputTokens
   const [inputRate, outputRate] =
     modelPricing.find(([prefix]) => normalized.includes(prefix))?.[1] ?? defaultPricing;
 
-  return Math.max(0, inputTokens) * inputRate + Math.max(0, outputTokens) * outputRate;
+  // `Math.max(0, NaN) === NaN`, `Math.max(0, Infinity) === Infinity` —
+  // either slips through and the result poisons the running budget
+  // meter. A single corrupt usage payload from a provider must NOT
+  // make every downstream cost rollup non-finite.
+  const safeInput = Number.isFinite(inputTokens) ? Math.max(0, inputTokens) : 0;
+  const safeOutput = Number.isFinite(outputTokens) ? Math.max(0, outputTokens) : 0;
+  return safeInput * inputRate + safeOutput * outputRate;
 }
 
 export function resolveProvider(model: string): string {

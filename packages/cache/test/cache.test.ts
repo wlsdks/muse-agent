@@ -210,6 +210,27 @@ describe("cache metrics", () => {
     expect(isLocalProvider("gpt-4o")).toBe(false);
     expect(isLocalProvider("anthropic/claude-3-haiku")).toBe(false);
   });
+
+  it("estimateCostUsd clamps non-finite token counts to 0 so a corrupt provider usage payload can't poison the running budget meter", () => {
+    // A provider returning NaN / Infinity for a token count (math
+    // overflow, parse glitch, mocked-test fixture) would otherwise
+    // make `Math.max(0, NaN) === NaN` flow through and the result
+    // turn the cost rollup non-finite. The clamp keeps the cost
+    // finite by treating any non-finite count as 0 for that side.
+    const outputRate = 0.0006 / 1_000;
+    const finiteOutputCost = 1_000 * outputRate;
+    // NaN inputTokens → input contribution drops to 0; output side unchanged.
+    expect(estimateCostUsd("gpt-4o-mini", Number.NaN, 1_000)).toBeCloseTo(finiteOutputCost);
+    // Infinity → same; never returns Infinity.
+    expect(estimateCostUsd("gpt-4o-mini", Number.POSITIVE_INFINITY, 1_000)).toBeCloseTo(finiteOutputCost);
+    // Both sides bad → cost is 0, finite.
+    expect(estimateCostUsd("gpt-4o-mini", Number.NaN, Number.NEGATIVE_INFINITY)).toBe(0);
+    // The result is always finite — the property that load-bearing
+    // for any downstream budget rollup that sums many calls.
+    for (const [a, b] of [[Number.NaN, Number.NaN], [1_000, Number.NaN], [Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]] as const) {
+      expect(Number.isFinite(estimateCostUsd("gpt-4o-mini", a, b)), `cost for (${a.toString()}, ${b.toString()}) must be finite`).toBe(true);
+    }
+  });
 });
 
 describe("prompt caching", () => {
