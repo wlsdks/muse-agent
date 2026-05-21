@@ -122,11 +122,12 @@ export function stripUntrustedTerminalChars(value: string): string {
  */
 const SECRET_PATTERNS: ReadonlyArray<{ readonly name: string; readonly regex: RegExp }> = [
   // PEM-encoded private keys (RSA, DSA, EC, OPENSSH, ENCRYPTED,
-  // bare). Runs FIRST so the entire ASCII-armored block is
-  // redacted as one unit before a sub-pattern (jwt, openai-key,
-  // etc.) can nibble the base64 body. Catastrophic-backtrack
-  // safe: bounded optional algorithm prefix + lazy body match.
-  { name: "private-key", regex: /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]+ )?PRIVATE KEY-----/gu },
+  // bare PKCS#8, PGP "...PRIVATE KEY BLOCK..."). Runs FIRST so
+  // the entire ASCII-armored frame is redacted as one unit
+  // before a sub-pattern (jwt, openai-key, etc.) can nibble the
+  // base64 body. Catastrophic-backtrack safe: bounded optional
+  // algorithm prefix + optional " BLOCK" suffix + lazy body match.
+  { name: "private-key", regex: /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY(?: BLOCK)?-----[\s\S]*?-----END (?:[A-Z]+ )?PRIVATE KEY(?: BLOCK)?-----/gu },
   // `<scheme>://[user]:password@host` — DB / cache / broker
   // connection URIs with an inline password. Runs FIRST so the
   // whole credentialed URI is redacted as one unit before a

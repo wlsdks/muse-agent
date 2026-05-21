@@ -199,6 +199,24 @@ describe("boundary and cancellation helpers", () => {
       .toBe("-----BEGIN PUBLIC KEY-----\nMFkwEwYH\n-----END PUBLIC KEY-----");
   });
 
+  it("redactSecretsInText also scrubs PGP-armored private key BLOCKs (the BLOCK suffix isn't part of the OpenSSH / X.509 PEM family but uses the same `-----BEGIN ... -----` framing) so an accidentally-pasted GPG private key from `gpg --armor --export-secret-keys` doesn't round-trip through delivery surfaces", () => {
+    const pgpKey = [
+      "-----BEGIN PGP PRIVATE KEY BLOCK-----",
+      "Version: GnuPG v2",
+      "",
+      "lQOYBGFakeKeyBlockDataAbcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP",
+      "QRSTUVWXYZ0123456789+/abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP",
+      "=Az9X",
+      "-----END PGP PRIVATE KEY BLOCK-----"
+    ].join("\n");
+    expect(redactSecretsInText(pgpKey)).toBe("[redacted-private-key]");
+    expect(redactSecretsInText(`subject: rotate keys\n${pgpKey}\n--end of mail--`))
+      .toBe("subject: rotate keys\n[redacted-private-key]\n--end of mail--");
+    // PGP PUBLIC KEY BLOCK is NOT sensitive — must not be redacted.
+    const pgpPublic = "-----BEGIN PGP PUBLIC KEY BLOCK-----\nmFkwEwYH\n-----END PGP PUBLIC KEY BLOCK-----";
+    expect(redactSecretsInText(pgpPublic)).toBe(pgpPublic);
+  });
+
   it("redactSecretsInText covers Stripe secret + GitLab PAT shapes (goal 107)", () => {
     // Build the Stripe shapes via concatenation so the source file
     // does NOT contain a contiguous prefix-plus-24-char literal —
