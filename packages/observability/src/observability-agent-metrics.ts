@@ -34,18 +34,34 @@ export class NoOpAgentMetrics implements AgentMetrics {
   recordTokenUsage(): void {}
 }
 
+export interface InMemoryAgentMetricsOptions {
+  /**
+   * FIFO cap on retained events. The InMemory sink is meant for
+   * tests + dev fallback when no DB metrics store is wired, but a
+   * long-running dogfood instance can otherwise leak memory
+   * monotonically. Default 10_000.
+   */
+  readonly maxEntries?: number;
+}
+
 export class InMemoryAgentMetrics implements AgentMetrics {
   private readonly events: RecordedMetricEvent[] = [];
+  private readonly maxEntries: number;
+
+  constructor(options: InMemoryAgentMetricsOptions = {}) {
+    const raw = options.maxEntries ?? 10_000;
+    this.maxEntries = Number.isFinite(raw) && raw > 0 ? Math.max(1, Math.trunc(raw)) : 10_000;
+  }
 
   recordAgentRun(event: AgentRunMetric): void {
-    this.events.push({
+    this.append({
       payload: toJsonObject(event),
       type: "agent_run"
     });
   }
 
   recordGuardRejection(stage: string, reason: string, metadata: JsonObject = {}): void {
-    this.events.push({
+    this.append({
       payload: { metadata, reason, stage },
       type: "guard_rejection"
     });
@@ -57,14 +73,14 @@ export class InMemoryAgentMetrics implements AgentMetrics {
     reason: string,
     metadata: JsonObject = {}
   ): void {
-    this.events.push({
+    this.append({
       payload: { action, metadata, reason, stage },
       type: "output_guard_action"
     });
   }
 
   recordTokenUsage(usage: ModelUsage, metadata: JsonObject = {}): void {
-    this.events.push({
+    this.append({
       payload: { metadata, ...toJsonObject(usage) },
       type: "token_usage"
     });
@@ -75,6 +91,13 @@ export class InMemoryAgentMetrics implements AgentMetrics {
       payload: { ...event.payload },
       type: event.type
     }));
+  }
+
+  private append(event: RecordedMetricEvent): void {
+    this.events.push(event);
+    if (this.events.length > this.maxEntries) {
+      this.events.splice(0, this.events.length - this.maxEntries);
+    }
   }
 }
 

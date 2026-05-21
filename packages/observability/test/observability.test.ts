@@ -207,6 +207,43 @@ describe("agent metrics", () => {
       "token_usage"
     ]);
   });
+
+  it("InMemoryAgentMetrics applies a FIFO maxEntries cap so a long-running dogfood instance with no DB-backed metrics store can't leak unbounded memory by accumulating every recordAgentRun / recordTokenUsage / recordGuardRejection event forever", () => {
+    const metrics = new InMemoryAgentMetrics({ maxEntries: 3 });
+
+    // Push 5 records — 5 > cap=3, so only the LAST 3 survive (FIFO).
+    metrics.recordAgentRun({ durationMs: 1, model: "m", runId: "r-1", status: "completed" });
+    metrics.recordAgentRun({ durationMs: 2, model: "m", runId: "r-2", status: "completed" });
+    metrics.recordAgentRun({ durationMs: 3, model: "m", runId: "r-3", status: "completed" });
+    metrics.recordAgentRun({ durationMs: 4, model: "m", runId: "r-4", status: "completed" });
+    metrics.recordAgentRun({ durationMs: 5, model: "m", runId: "r-5", status: "completed" });
+
+    const recorded = metrics.recordedEvents();
+    expect(recorded.length).toBe(3);
+    expect(recorded.map((e) => (e.payload as { runId?: unknown }).runId)).toEqual(["r-3", "r-4", "r-5"]);
+  });
+
+  it("InMemoryAgentMetrics FIFO cap applies across mixed event types — recordGuardRejection / recordOutputGuardAction / recordTokenUsage all share the same bounded event queue (pre-fix any of the four push sites could leak independently)", () => {
+    const metrics = new InMemoryAgentMetrics({ maxEntries: 2 });
+
+    metrics.recordAgentRun({ durationMs: 1, model: "m", runId: "r-1", status: "completed" });
+    metrics.recordGuardRejection("input", "blocked");
+    metrics.recordOutputGuardAction("output", "modified", "masked");
+    metrics.recordTokenUsage({ inputTokens: 7, outputTokens: 9 });
+
+    const recorded = metrics.recordedEvents();
+    expect(recorded.length).toBe(2);
+    expect(recorded.map((e) => e.type)).toEqual(["output_guard_action", "token_usage"]);
+  });
+
+  it("InMemoryAgentMetrics maxEntries falls back to the 10_000 default when a non-finite / non-positive cap slips through (NaN / Infinity / 0 / negative), so a corrupt config can't disable the cap or produce empty buckets", () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1] as const) {
+      const metrics = new InMemoryAgentMetrics({ maxEntries: bad });
+      // Push a single record — must survive the default cap (>> 1).
+      metrics.recordAgentRun({ durationMs: 1, model: "m", runId: "r-1", status: "completed" });
+      expect(metrics.recordedEvents().length).toBe(1);
+    }
+  });
 });
 
 describe("startup doctor and log export", () => {
