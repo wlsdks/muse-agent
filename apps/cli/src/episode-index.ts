@@ -68,7 +68,21 @@ export async function loadEpisodeIndex(file: string): Promise<EpisodeIndex | und
   const candidate = parsed as Partial<EpisodeIndex>;
   if (candidate.version !== EPISODE_INDEX_SCHEMA_VERSION) return undefined;
   if (typeof candidate.model !== "string" || !Array.isArray(candidate.entries)) return undefined;
-  return candidate as EpisodeIndex;
+  const builtAtIso = typeof candidate.builtAtIso === "string" ? candidate.builtAtIso : "";
+  const entries = candidate.entries.filter(isValidEpisodeIndexEntry);
+  return { version: EPISODE_INDEX_SCHEMA_VERSION, model: candidate.model, builtAtIso, entries };
+}
+
+function isValidEpisodeIndexEntry(raw: unknown): raw is EpisodeIndexEntry {
+  if (!raw || typeof raw !== "object") return false;
+  const e = raw as Partial<EpisodeIndexEntry>;
+  if (typeof e.id !== "string" || e.id.length === 0) return false;
+  if (typeof e.userId !== "string") return false;
+  if (typeof e.summary !== "string") return false;
+  if (typeof e.startedAt !== "string") return false;
+  if (typeof e.endedAt !== "string") return false;
+  if (!Array.isArray(e.embedding)) return false;
+  return e.embedding.every((n) => typeof n === "number" && Number.isFinite(n));
 }
 
 export async function saveEpisodeIndex(file: string, index: EpisodeIndex): Promise<void> {
