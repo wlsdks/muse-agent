@@ -1,6 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { compareFeedEntriesNewestFirst, parseFeedBody } from "./feeds-store.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  FEEDS_STORE_SCHEMA_VERSION,
+  compareFeedEntriesNewestFirst,
+  parseFeedBody,
+  readFeedsStore
+} from "./feeds-store.js";
 
 describe("parseFeedBody — RSS 2.0", () => {
   it("maps channel/item to uniform entries (guid > link > title for id)", () => {
@@ -118,6 +127,80 @@ describe("parseFeedBody — HTML-entity decoding", () => {
       `<rss version="2.0"><channel><item><title>Safe&#27;&#0;Title</title><guid>g3</guid></item></channel></rss>`
     );
     expect(entry!.title).toBe("SafeTitle");
+  });
+});
+
+describe("readFeedsStore — tolerant-read normalises each feed's `entries` to an array so `muse feeds list` can't crash on `feed.entries.length` when the on-disk record omits / corrupts the field (older schema, hand-edit, partial-write recovery)", () => {
+  let dir: string;
+  let file: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "muse-feeds-store-test-"));
+    file = join(dir, "feeds.json");
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("defaults `entries` to [] when the on-disk feed record has no `entries` field at all (hand-registered feed before the first fetch)", async () => {
+    await writeFile(
+      file,
+      JSON.stringify({ version: FEEDS_STORE_SCHEMA_VERSION, feeds: [{ id: "x", url: "https://x/rss", name: "X" }] })
+    );
+    const store = await readFeedsStore(file);
+    expect(store.feeds).toHaveLength(1);
+    expect(store.feeds[0]!.entries).toEqual([]);
+    expect(() => store.feeds[0]!.entries.length).not.toThrow();
+  });
+
+  it("defaults `entries` to [] when the field is present but not an array (corrupt / migrated record)", async () => {
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: FEEDS_STORE_SCHEMA_VERSION,
+        feeds: [
+          { id: "a", url: "https://a/rss", name: "A", entries: null },
+          { id: "b", url: "https://b/rss", name: "B", entries: "not-an-array" },
+          { id: "c", url: "https://c/rss", name: "C", entries: 42 }
+        ]
+      })
+    );
+    const store = await readFeedsStore(file);
+    expect(store.feeds.map((f) => f.entries)).toEqual([[], [], []]);
+  });
+
+  it("defaults `name` to the feed id when the on-disk record has no `name` field, so `muse feeds list` doesn't print the literal 'undefined'", async () => {
+    await writeFile(
+      file,
+      JSON.stringify({ version: FEEDS_STORE_SCHEMA_VERSION, feeds: [{ id: "namelessfeed", url: "https://n/rss" }] })
+    );
+    const store = await readFeedsStore(file);
+    expect(store.feeds[0]!.name).toBe("namelessfeed");
+  });
+
+  it("preserves a well-formed feed verbatim — the normaliser is a no-op when the record is already valid", async () => {
+    await writeFile(
+      file,
+      JSON.stringify({
+        version: FEEDS_STORE_SCHEMA_VERSION,
+        feeds: [{
+          id: "ok",
+          url: "https://ok/rss",
+          name: "Already named",
+          lastFetchedAt: "2026-05-21T10:00:00Z",
+          entries: [{ id: "e1", title: "T", link: "L", publishedAt: "2026-05-21T09:00:00Z", summary: "S" }]
+        }]
+      })
+    );
+    const store = await readFeedsStore(file);
+    expect(store.feeds[0]).toEqual({
+      id: "ok",
+      url: "https://ok/rss",
+      name: "Already named",
+      lastFetchedAt: "2026-05-21T10:00:00Z",
+      entries: [{ id: "e1", title: "T", link: "L", publishedAt: "2026-05-21T09:00:00Z", summary: "S" }]
+    });
   });
 });
 

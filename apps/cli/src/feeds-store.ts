@@ -69,8 +69,18 @@ export async function readFeedsStore(file: string): Promise<FeedsStore> {
   if (candidate.version !== FEEDS_STORE_SCHEMA_VERSION) {
     return { version: FEEDS_STORE_SCHEMA_VERSION, feeds: [] };
   }
-  const feeds = (candidate.feeds ?? []).filter((f) => f && typeof f === "object" && typeof f.id === "string" && typeof f.url === "string");
+  const feeds = (candidate.feeds ?? [])
+    .filter((f) => f && typeof f === "object" && typeof f.id === "string" && typeof f.url === "string")
+    .map((f) => normalizeFeedRecord(f));
   return { version: FEEDS_STORE_SCHEMA_VERSION, feeds };
+}
+
+function normalizeFeedRecord(raw: FeedRecord): FeedRecord {
+  return {
+    ...raw,
+    name: typeof raw.name === "string" && raw.name.length > 0 ? raw.name : raw.id,
+    entries: Array.isArray(raw.entries) ? raw.entries : []
+  };
 }
 
 export async function writeFeedsStore(file: string, store: FeedsStore): Promise<void> {
