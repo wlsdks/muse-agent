@@ -10,21 +10,48 @@
 
 import { resolveOllamaUrl } from "./ollama-url.js";
 
+export const DEFAULT_EMBED_TIMEOUT_MS = 30_000;
+
 export interface EmbedOptions {
   /** Override fetch impl in tests; defaults to `globalThis.fetch`. */
   readonly fetchImpl?: typeof globalThis.fetch;
   /** Override the resolver in tests; defaults to `resolveOllamaUrl()`. */
   readonly baseUrlResolver?: () => string;
+  /**
+   * Hard wall-clock cap on the embeddings POST. Ollama's cold-model
+   * load can wedge a request for minutes; without this every RAG
+   * caller (`muse ask`, `muse notes reindex`, `muse recall`, the
+   * episode-index pipeline) hangs the CLI indefinitely. Default 30s,
+   * same posture goal 636 set for the RSS feed loader. Non-finite
+   * / non-positive values fall back to the default.
+   */
+  readonly timeoutMs?: number;
 }
 
 export async function embed(text: string, model: string, options: EmbedOptions = {}): Promise<number[]> {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const baseUrl = (options.baseUrlResolver ?? resolveOllamaUrl)();
-  const resp = await fetchImpl(`${baseUrl}/api/embeddings`, {
-    body: JSON.stringify({ model, prompt: text }),
-    headers: { "content-type": "application/json" },
-    method: "POST"
-  });
+  const timeoutMs = Number.isFinite(options.timeoutMs) && (options.timeoutMs ?? 0) > 0
+    ? (options.timeoutMs as number)
+    : DEFAULT_EMBED_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let resp: Response;
+  try {
+    resp = await fetchImpl(`${baseUrl}/api/embeddings`, {
+      body: JSON.stringify({ model, prompt: text }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      signal: controller.signal
+    });
+  } catch (cause) {
+    if (controller.signal.aborted) {
+      throw new Error(`embeddings ${baseUrl}/api/embeddings timed out after ${timeoutMs.toString()}ms`, { cause });
+    }
+    throw cause;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!resp.ok) {
     throw new Error(`embeddings ${resp.status.toString()}: ${await resp.text().catch(() => "")}`);
   }
