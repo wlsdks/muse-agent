@@ -2,7 +2,7 @@ import { truncateErrorBody } from "@muse/shared";
 
 import { MessagingProviderError, MessagingValidationError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
-import { clampInboundLimit, clampOutboundText, tryParseJson } from "./provider-helpers.js";
+import { clampInboundLimit, clampOutboundText, fetchWithTimeout, tryParseJson } from "./provider-helpers.js";
 import { readTelegramOffset, writeTelegramOffset } from "./telegram-offset-store.js";
 import type {
   InboundFetchOptions,
@@ -42,6 +42,8 @@ export interface TelegramProviderOptions {
    * path used by CLI inspection.
    */
   readonly inboxFile?: string;
+  /** Per-request wall-clock timeout (ms). Default 30s. */
+  readonly timeoutMs?: number;
 }
 
 const DEFAULT_BASE_URL = "https://api.telegram.org";
@@ -81,6 +83,7 @@ export class TelegramProvider implements MessagingProvider {
   private readonly parseMode: TelegramProviderOptions["parseMode"];
   private readonly offsetFile: string | undefined;
   private readonly inboxFile: string | undefined;
+  private readonly timeoutMs: number | undefined;
 
   constructor(options: TelegramProviderOptions) {
     this.token = options.token;
@@ -89,6 +92,7 @@ export class TelegramProvider implements MessagingProvider {
     this.parseMode = options.parseMode;
     this.offsetFile = options.offsetFile;
     this.inboxFile = options.inboxFile;
+    this.timeoutMs = options.timeoutMs;
   }
 
   describe(): MessagingProviderInfo {
@@ -135,7 +139,7 @@ export class TelegramProvider implements MessagingProvider {
     // the daemon, not this snapshot fetch.
     const url = `${this.baseUrl}/bot${this.token}/getUpdates?limit=${limit.toString()}&timeout=0`
       + (offsetParam !== undefined ? `&offset=${offsetParam.toString()}` : "");
-    const response = await this.fetchImpl(url, { method: "GET" });
+    const response = await fetchWithTimeout(this.fetchImpl, url, { method: "GET" }, this.timeoutMs);
     const text = await response.text();
     const parsed = tryParseJson<TelegramGetUpdatesResponse>(text);
     if (!response.ok || !parsed?.ok) {
@@ -179,7 +183,7 @@ export class TelegramProvider implements MessagingProvider {
     // by validateOutboundMessage's length throw.
     const outboundText = clampOutboundText(message.text);
     validateOutboundMessage({ ...message, text: outboundText });
-    const response = await this.fetchImpl(`${this.baseUrl}/bot${this.token}/sendMessage`, {
+    const response = await fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/bot${this.token}/sendMessage`, {
       body: JSON.stringify({
         chat_id: message.destination,
         text: escapeForTelegramParseMode(outboundText, this.parseMode),
@@ -187,7 +191,7 @@ export class TelegramProvider implements MessagingProvider {
       }),
       headers: { "content-type": "application/json" },
       method: "POST"
-    });
+    }, this.timeoutMs);
     const text = await response.text();
     const parsed = tryParseJson<TelegramSendResponse>(text);
     if (!response.ok || !parsed?.ok) {

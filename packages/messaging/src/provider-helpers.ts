@@ -72,3 +72,36 @@ export function tryParseJson<T>(body: string): T | undefined {
     return undefined;
   }
 }
+
+export const DEFAULT_PROVIDER_FETCH_TIMEOUT_MS = 30_000;
+
+/**
+ * Wrap a provider's HTTP call in an AbortController + wall-clock
+ * timeout so a stalled connection to the Bot API (dead socket, a
+ * network black-hole) can't hang the polling daemon's inbound tick
+ * — or a proactive `send` — forever. Forwards the signal into the
+ * fetch so the abort actively cancels the in-flight request, and
+ * translates the abort into a clear "timed out" error with the
+ * original cause attached. Non-finite / non-positive `timeoutMs`
+ * falls back to the 30s default.
+ */
+export async function fetchWithTimeout(
+  fetchImpl: typeof globalThis.fetch,
+  url: string,
+  init: RequestInit,
+  timeoutMs: number = DEFAULT_PROVIDER_FETCH_TIMEOUT_MS
+): Promise<Response> {
+  const effectiveMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_PROVIDER_FETCH_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), effectiveMs);
+  try {
+    return await fetchImpl(url, { ...init, signal: controller.signal });
+  } catch (cause) {
+    if (controller.signal.aborted) {
+      throw new Error(`request to ${url} timed out after ${effectiveMs.toString()}ms`, { cause });
+    }
+    throw cause;
+  } finally {
+    clearTimeout(timer);
+  }
+}

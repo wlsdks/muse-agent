@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { clampInboundLimit, clampOutboundText, tryParseJson } from "./provider-helpers.js";
+import { DEFAULT_PROVIDER_FETCH_TIMEOUT_MS, clampInboundLimit, clampOutboundText, fetchWithTimeout, tryParseJson } from "./provider-helpers.js";
 
 describe("clampOutboundText", () => {
   it("returns short text unchanged", () => {
@@ -80,5 +80,39 @@ describe("tryParseJson", () => {
   it("returns undefined for invalid JSON (no throw)", () => {
     expect(tryParseJson("not json")).toBeUndefined();
     expect(tryParseJson("{unbalanced")).toBeUndefined();
+  });
+});
+
+describe("fetchWithTimeout — a stalled Bot API connection can't hang the polling daemon's inbound tick or a proactive send forever", () => {
+  it("rejects with a 'timed out' error when the upstream fetch never resolves before the timeout, and forwards the AbortSignal so the connection is actively cancelled", async () => {
+    let receivedSignal: AbortSignal | undefined;
+    const neverResolves: typeof globalThis.fetch = (_input, init) => {
+      receivedSignal = (init as { signal?: AbortSignal } | undefined)?.signal;
+      return new Promise<Response>((_resolve, reject) => {
+        receivedSignal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    };
+    await expect(
+      fetchWithTimeout(neverResolves, "https://api.telegram.org/botX/getUpdates", { method: "GET" }, 10)
+    ).rejects.toThrow(/timed out after 10ms/u);
+    expect(receivedSignal).toBeInstanceOf(AbortSignal);
+    expect(receivedSignal?.aborted).toBe(true);
+  });
+
+  it("returns the response and clears the timer on a fast call — no leaked timer keeps the event loop alive", async () => {
+    const okFetch: typeof globalThis.fetch = () => Promise.resolve(new Response("ok", { status: 200 }));
+    const response = await fetchWithTimeout(okFetch, "https://api.telegram.org/botX/sendMessage", { method: "POST" }, 5_000);
+    expect(response.status).toBe(200);
+  });
+
+  it("re-throws a non-abort fetch error verbatim (network reset before the timeout) — only an actual abort becomes a 'timed out' error", async () => {
+    const failFetch: typeof globalThis.fetch = () => Promise.reject(new Error("ECONNRESET"));
+    await expect(
+      fetchWithTimeout(failFetch, "https://api.telegram.org/botX/getUpdates", { method: "GET" }, 5_000)
+    ).rejects.toThrow(/ECONNRESET/u);
+  });
+
+  it("falls back to the 30s default for a non-finite / non-positive timeout", () => {
+    expect(DEFAULT_PROVIDER_FETCH_TIMEOUT_MS).toBe(30_000);
   });
 });
