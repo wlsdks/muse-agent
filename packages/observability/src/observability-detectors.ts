@@ -306,6 +306,12 @@ export class SloAlertEvaluator {
     if (!Number.isFinite(options.cooldownSeconds) || options.cooldownSeconds < 0) {
       throw new Error("SloAlertEvaluator cooldownSeconds must be non-negative");
     }
+    if (
+      options.minSamples !== undefined
+      && (!Number.isFinite(options.minSamples) || options.minSamples <= 0)
+    ) {
+      throw new Error("SloAlertEvaluator minSamples must be positive");
+    }
     this.#latencyThresholdMs = options.latencyThresholdMs;
     this.#errorRateThreshold = options.errorRateThreshold;
     this.#windowMs = options.windowSeconds * 1000;

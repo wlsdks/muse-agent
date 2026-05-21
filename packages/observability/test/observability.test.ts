@@ -895,6 +895,24 @@ describe("SloAlertEvaluator", () => {
     return { evaluator: evaluatorInstance, now: () => current, setNow };
   }
 
+  it("throws if minSamples is NaN / Infinity / non-positive (matches the sibling PromptDriftDetector contract — pre-fix Math.max(1, NaN) === NaN silently disabled the sample-floor gate and fired alerts on under-populated windows)", () => {
+    const baseOptions = {
+      cooldownSeconds: 60,
+      errorRateThreshold: 0.5,
+      latencyThresholdMs: 1000,
+      windowSeconds: 30
+    };
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1]) {
+      expect(
+        () => new SloAlertEvaluator({ ...baseOptions, minSamples: bad }),
+        `expected throw for minSamples=${bad.toString()}`
+      ).toThrow("SloAlertEvaluator minSamples must be positive");
+    }
+    // undefined → default 5; explicit positive → use as-is. Both pass.
+    expect(() => new SloAlertEvaluator(baseOptions)).not.toThrow();
+    expect(() => new SloAlertEvaluator({ ...baseOptions, minSamples: 10 })).not.toThrow();
+  });
+
   it("returns no violations until min samples are recorded", () => {
     const { evaluator: ev } = evaluator({ minSamples: 5 });
     for (let i = 0; i < 4; i += 1) {
