@@ -9,6 +9,7 @@
  */
 
 import type { AgentSpecResolver } from "@muse/agent-core";
+import { parseBoolean } from "@muse/autoconfigure";
 import { extractBearerToken } from "@muse/auth";
 import type { AgentSpecRegistry } from "@muse/agent-specs";
 import { describeBuiltinLoopbackMcpServers } from "@muse/mcp";
@@ -103,8 +104,21 @@ export function parseChatRateLimitCapacity(raw: string | undefined, fallback = 6
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+/**
+ * `MUSE_RATE_LIMIT_CHAT_DISABLED` accepts every standard truthy
+ * spelling (true / 1 / yes / on, case-insensitive, trimmed). The
+ * pre-fix `=== "true"` check only honored the exact literal — an
+ * operator setting `=1` or `=on` saw rate limiting silently stay
+ * active. Defaults to "not disabled" on undefined / unrecognised
+ * so a typo'd kill switch keeps the limiter enabled (fail-safe
+ * direction for a security-adjacent flag).
+ */
+export function isChatRateLimitDisabled(raw: string | undefined): boolean {
+  return parseBoolean(raw, false);
+}
+
 function buildDefaultChatRateLimiter(): ChatRateLimiter | undefined {
-  if (process.env.MUSE_RATE_LIMIT_CHAT_DISABLED === "true") {
+  if (isChatRateLimitDisabled(process.env.MUSE_RATE_LIMIT_CHAT_DISABLED)) {
     return undefined;
   }
   const capacity = parseChatRateLimitCapacity(process.env.MUSE_RATE_LIMIT_CHAT_PER_MINUTE);
