@@ -15,7 +15,7 @@
  */
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir, hostname, userInfo } from "node:os";
 import path from "node:path";
 
@@ -107,10 +107,19 @@ async function readCredentialStore(io: ProgramIO): Promise<CredentialStore> {
 async function writeCredentialStore(io: ProgramIO, store: CredentialStore): Promise<void> {
   const filePath = credentialPath(io);
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(encryptCredentialPayload(io, JSON.stringify(store)), null, 2)}\n`, {
+  // Atomic tmp+rename: a crash / OS panic / disk-full between
+  // open(O_TRUNC) and write would otherwise leave `credentials.json`
+  // at 0 bytes — JSON.parse "" fails on next read → treated as
+  // no creds → forced re-login. Every other store in the codebase
+  // (telegram-offset / slack-after / discord-after / inbox-store /
+  // inbox-injection-cursor / inbox-reply-cursor) uses this pattern
+  // for exactly this reason; credential-store was the missed site.
+  const tmp = `${filePath}.tmp-${process.pid.toString()}-${randomBytes(8).toString("hex")}`;
+  await writeFile(tmp, `${JSON.stringify(encryptCredentialPayload(io, JSON.stringify(store)), null, 2)}\n`, {
     mode: 0o600
   });
-  await chmod(filePath, 0o600);
+  await rename(tmp, filePath);
+  await chmod(filePath, 0o600).catch(() => undefined);
 }
 
 function encryptCredentialPayload(io: ProgramIO, plaintext: string): EncryptedCredentialFile {
