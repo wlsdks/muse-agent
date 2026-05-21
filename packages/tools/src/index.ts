@@ -647,6 +647,7 @@ export { createMuseTools, type MuseToolFactoryOptions } from "./muse-tools.js";
  * without import-site edits.
  */
 export {
+  attachReadStreamErrorAbsorber,
   createRustRunnerTool,
   invokeRustRunner,
   parseRunnerCommandRequest,

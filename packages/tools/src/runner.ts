@@ -127,6 +127,8 @@ export async function invokeRustRunner(
       }
     }, runnerWatchdogMs(request));
 
+    attachReadStreamErrorAbsorber(child.stdout);
+    attachReadStreamErrorAbsorber(child.stderr);
     child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
     child.on("error", (error) => {
@@ -176,6 +178,18 @@ export function writeRunnerStdin(child: ChildProcess, request: RunnerCommandRequ
   if (!stdin) return;
   stdin.on("error", () => undefined);
   stdin.end(`${JSON.stringify(request)}\n`);
+}
+
+/**
+ * Register a no-op `error` listener on a Readable stream so an OS-level
+ * pipe error (rare but possible — kernel pipe corruption, sandbox
+ * tear-down mid-read) doesn't crash the parent via EventEmitter's
+ * "unhandled error" contract. Symmetric to the stdin write-side
+ * absorber on the runner; the close handler reports the exit code.
+ */
+export function attachReadStreamErrorAbsorber(stream: NodeJS.ReadableStream | null): void {
+  if (!stream) return;
+  stream.on("error", () => undefined);
 }
 
 export function parseRunnerCommandRequest(value: JsonObject): RunnerCommandRequest {

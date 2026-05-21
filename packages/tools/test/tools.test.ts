@@ -7,6 +7,7 @@ import {
   createRustRunnerTool,
   createDefaultToolExposurePolicy,
   createWorkspaceToolRoutingPlan,
+  attachReadStreamErrorAbsorber,
   filterToolsForContext,
   isWorkspaceMutationPrompt,
   planToolExecutionOrder,
@@ -363,6 +364,25 @@ describe("Rust runner watchdog", () => {
   it("writeRunnerStdin is a no-op when child.stdin is null (spawn failed before stdio attached)", () => {
     const child = { stdin: null } as unknown as Parameters<typeof writeRunnerStdin>[0];
     expect(() => writeRunnerStdin(child, { command: "noop" })).not.toThrow();
+  });
+
+  it("attachReadStreamErrorAbsorber registers a no-op `error` listener so an OS-level pipe error (kernel pipe corruption, sandbox tear-down mid-read) on child.stdout / child.stderr doesn't crash the parent — sibling-pattern to the stdin EPIPE absorber, applied to the read side", async () => {
+    const { PassThrough } = await import("node:stream");
+
+    const stdout = new PassThrough();
+    attachReadStreamErrorAbsorber(stdout);
+    // EventEmitter contract: an `error` event with NO listener throws
+    // as uncaught. The absorber registers a listener; the emit must
+    // resolve normally.
+    expect(() => stdout.emit("error", new Error("EPIPE on stdout"))).not.toThrow();
+
+    const stderr = new PassThrough();
+    attachReadStreamErrorAbsorber(stderr);
+    expect(() => stderr.emit("error", new Error("EPIPE on stderr"))).not.toThrow();
+  });
+
+  it("attachReadStreamErrorAbsorber is a no-op when the stream is null (spawn race / pre-stdio-attach call)", () => {
+    expect(() => attachReadStreamErrorAbsorber(null)).not.toThrow();
   });
 
   it("SIGKILLs a wedged runner process and resolves timedOut (no infinite hang)", async () => {
