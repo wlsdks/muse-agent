@@ -46,8 +46,22 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
       return reply;
     }
     const query = request.query as { readonly fromIso?: string; readonly toIso?: string; readonly providerId?: string } | undefined;
-    const from = parseIsoOrDefault(query?.fromIso, new Date());
-    const to = parseIsoOrDefault(query?.toIso, new Date(from.getTime() + 30 * 86_400_000));
+    const fromResult = parseOptionalIsoQueryParam(query?.fromIso);
+    if (fromResult.kind === "invalid") {
+      return reply.status(400).send({
+        code: "INVALID_FROM_ISO",
+        message: `fromIso must be a parseable ISO timestamp (got '${fromResult.raw}')`
+      });
+    }
+    const from = fromResult.kind === "explicit" ? fromResult.date : new Date();
+    const toResult = parseOptionalIsoQueryParam(query?.toIso);
+    if (toResult.kind === "invalid") {
+      return reply.status(400).send({
+        code: "INVALID_TO_ISO",
+        message: `toIso must be a parseable ISO timestamp (got '${toResult.raw}')`
+      });
+    }
+    const to = toResult.kind === "explicit" ? toResult.date : new Date(from.getTime() + 30 * 86_400_000);
     try {
       const events = await gate.registry.listEvents({ from, to }, query?.providerId);
       return {
@@ -109,10 +123,25 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
   });
 }
 
-function parseIsoOrDefault(value: string | undefined, fallback: Date): Date {
-  if (!value) {
-    return fallback;
+export type OptionalIsoQueryResult =
+  | { readonly kind: "absent" }
+  | { readonly kind: "explicit"; readonly date: Date }
+  | { readonly kind: "invalid"; readonly raw: string };
+
+/**
+ * Three-way classification for an optional ISO-string query param.
+ * Distinguishes "absent" (caller didn't supply — fallback) from
+ * "present but unparseable" (typo — 400) so the route can match the
+ * `/api/history?sinceIso` pattern: silent fallback only when the
+ * caller omitted the field, never when they typed something wrong.
+ */
+export function parseOptionalIsoQueryParam(raw: string | undefined): OptionalIsoQueryResult {
+  if (raw === undefined || raw.trim().length === 0) {
+    return { kind: "absent" };
   }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    return { kind: "invalid", raw };
+  }
+  return { date: parsed, kind: "explicit" };
 }
