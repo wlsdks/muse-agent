@@ -429,8 +429,23 @@ function parseScheduledJobType(value: unknown): ScheduledJobType | undefined {
   return normalized === "mcp_tool" ? "mcp_tool" : undefined;
 }
 
-function parseLimit(value: number | string | undefined, fallback = 20, max = 100): number {
-  const parsed = typeof value === "number" ? value : Number.parseInt(value ?? "", 10);
+// `Number.parseInt` is lenient — `parseInt("100x") === 100`, so a
+// typo'd `?limit=100x` / unit-slip `?offset=7d` silently returned
+// the leading digits instead of the fallback. Mirrors goal 625's
+// strict-parse posture on the CLI side: require the WHOLE trimmed
+// token to be a plain decimal integer.
+const STRICT_INT_RE = /^[+-]?\d+$/u;
+
+function strictParseInt(value: number | string | undefined): number {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string") return Number.NaN;
+  const trimmed = value.trim();
+  if (!STRICT_INT_RE.test(trimmed)) return Number.NaN;
+  return Number(trimmed);
+}
+
+export function parseLimit(value: number | string | undefined, fallback = 20, max = 100): number {
+  const parsed = strictParseInt(value);
 
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return fallback;
@@ -439,8 +454,8 @@ function parseLimit(value: number | string | undefined, fallback = 20, max = 100
   return Math.min(max, Math.floor(parsed));
 }
 
-function parseOffset(value: number | string | undefined): number {
-  const parsed = typeof value === "number" ? value : Number.parseInt(value ?? "", 10);
+export function parseOffset(value: number | string | undefined): number {
+  const parsed = strictParseInt(value);
 
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
 }
