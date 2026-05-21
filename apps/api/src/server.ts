@@ -335,7 +335,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // MUSE_TELEGRAM_POLL_INTERVAL_MS (default 30s) and persist each
   // new InboundMessage into telegramInboxFile. Off unless the user
   // sets MUSE_TELEGRAM_POLL_ENABLED=1 — keeps fresh installs quiet.
-  const pollEnabled = process.env.MUSE_TELEGRAM_POLL_ENABLED?.trim() === "1";
+  const pollEnabled = isMuseDaemonEnabled(process.env.MUSE_TELEGRAM_POLL_ENABLED);
   if (
     pollEnabled
     && options.telegramInboxFile
@@ -369,7 +369,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // replying on the originating channel — "the chat IS a Muse
   // session". Reuses the telegram inbox the poll daemon fills.
   // Off unless MUSE_INBOUND_REPLY_ENABLED=1.
-  const inboundReplyEnabled = process.env.MUSE_INBOUND_REPLY_ENABLED?.trim() === "1";
+  const inboundReplyEnabled = isMuseDaemonEnabled(process.env.MUSE_INBOUND_REPLY_ENABLED);
   if (
     inboundReplyEnabled
     && options.telegramInboxFile
@@ -420,7 +420,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // Slack channels (MUSE_SLACK_POLL_CHANNELS=C0123,C0456) every
   // MUSE_SLACK_POLL_INTERVAL_MS (default 30s) and persist each new
   // message into slackInboxFile. Off unless MUSE_SLACK_POLL_ENABLED=1.
-  const slackPollEnabled = process.env.MUSE_SLACK_POLL_ENABLED?.trim() === "1";
+  const slackPollEnabled = isMuseDaemonEnabled(process.env.MUSE_SLACK_POLL_ENABLED);
   const slackChannels = parseSlackPollChannels(process.env.MUSE_SLACK_POLL_CHANNELS);
   if (
     slackPollEnabled
@@ -453,7 +453,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // MUSE_DISCORD_POLL_INTERVAL_MS (default 30s) and persist each
   // new message into discordInboxFile. Off unless the user sets
   // MUSE_DISCORD_POLL_ENABLED=1.
-  const discordPollEnabled = process.env.MUSE_DISCORD_POLL_ENABLED?.trim() === "1";
+  const discordPollEnabled = isMuseDaemonEnabled(process.env.MUSE_DISCORD_POLL_ENABLED);
   const discordChannels = parseDiscordPollChannels(process.env.MUSE_DISCORD_POLL_CHANNELS);
   if (
     discordPollEnabled
@@ -482,4 +482,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   }
 
   return server;
+}
+
+export function isMuseDaemonEnabled(envValue: string | undefined): boolean {
+  return parseBoolean(envValue, false);
 }
