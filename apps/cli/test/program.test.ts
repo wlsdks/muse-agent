@@ -2018,7 +2018,10 @@ describe("cli program", () => {
     expect(ttsCalls[0]?.text).toContain("안녕하세요");
     expect(ttsCalls[0]?.voice).toBe("alloy");
     expect(playedFiles).toHaveLength(1);
-    expect(playedFiles[0]?.endsWith("reply.mp3")).toBe(true);
+    // synthesizeAndPlay writes the synth output into a mkdtemp dir it
+    // cleans up afterward; the basename is its internal detail, the
+    // .mp3 extension reflects the requested format.
+    expect(playedFiles[0]?.endsWith(".mp3")).toBe(true);
     const out = output.join("");
     expect(out).toContain("You: 오늘 날씨 어때?");
     expect(out).toContain("Muse: 안녕하세요");

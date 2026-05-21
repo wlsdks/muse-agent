@@ -16,9 +16,6 @@
  */
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { mkdtempSync, writeFileSync, unlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join as pathJoin } from "node:path";
 import { platform } from "node:process";
 
 import { buildVoiceRegistry } from "@muse/autoconfigure";
@@ -31,7 +28,7 @@ import type { Command } from "commander";
 
 import { parseBoundedInt } from "./commands-ask.js";
 import type { ProgramIO } from "./program.js";
-import { parseAudioFormat } from "./voice-playback.js";
+import { parseAudioFormat, synthesizeAndPlay } from "./voice-playback.js";
 
 export interface ListenShells {
   /** Returns the absolute path to a binary on PATH, or undefined when missing. */
@@ -111,23 +108,15 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
         };
         const reply = chatResponse.content?.trim() ?? "(no reply)";
         io.stdout(`Muse: ${reply}\n`);
-        const tts = await providers.tts!.synthesize({
-          text: reply,
-          ...(options.voice ? { voice: options.voice } : {}),
-          ...(options.format ? { format: parseAudioFormat(options.format) } : {})
-        });
-        const dir = mkdtempSync(pathJoin(tmpdir(), "muse-listen-"));
-        const audioFile = pathJoin(dir, `reply.${tts.format}`);
-        writeFileSync(audioFile, tts.audio);
-        try {
-          await shells.playAudio(audioFile);
-        } finally {
-          try {
-            unlinkSync(audioFile);
-          } catch {
-            // best-effort cleanup
-          }
-        }
+        await synthesizeAndPlay(
+          providers.tts!,
+          {
+            text: reply,
+            ...(options.voice ? { voice: options.voice } : {}),
+            ...(options.format ? { format: parseAudioFormat(options.format) } : {})
+          },
+          shells
+        );
       };
 
       // Phase F.1 — wake-word ambient mode.
