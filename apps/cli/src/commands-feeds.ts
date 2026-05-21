@@ -39,11 +39,34 @@ import type { ProgramIO } from "./program.js";
  * dogfood can plant a fixture and exercise the parser without
  * network. Exported for direct test coverage.
  */
-export async function loadFeedBody(url: string): Promise<string> {
+export const DEFAULT_FEED_FETCH_TIMEOUT_MS = 30_000;
+
+export interface LoadFeedBodyOptions {
+  readonly fetchImpl?: typeof globalThis.fetch;
+  readonly timeoutMs?: number;
+}
+
+export async function loadFeedBody(url: string, options: LoadFeedBodyOptions = {}): Promise<string> {
   if (url.startsWith("file://")) {
     return readFile(fileURLToPath(url), "utf8");
   }
-  const response = await fetch(url);
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const timeoutMs = Number.isFinite(options.timeoutMs) && (options.timeoutMs ?? 0) > 0
+    ? (options.timeoutMs as number)
+    : DEFAULT_FEED_FETCH_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+  try {
+    response = await fetchImpl(url, { signal: controller.signal });
+  } catch (cause) {
+    if (controller.signal.aborted) {
+      throw new Error(`feed fetch ${url} timed out after ${timeoutMs.toString()}ms`, { cause });
+    }
+    throw cause;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!response.ok) {
     throw new Error(`feed fetch ${url} returned ${response.status.toString()}`);
   }

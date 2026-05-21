@@ -113,7 +113,7 @@ defect, same fix pattern.
       lose to the other.
 - `docs/goals/634-run-history-sort-tiebreaker.md`:
   - Byte-hygiene cleanup — the previous iter's goal doc
-    re-mentioned the same `👨‍👩‍👧` family emoji that goal
+    re-mentioned the same `👨U+200D👩U+200D👧` family emoji that goal
     633's doc had. The U+200D Zero-Width Joiner survived to
     that doc; repo-byte-hygiene test caught it during this
     iter's `pnpm check`. Replaced with textual `U+200D`

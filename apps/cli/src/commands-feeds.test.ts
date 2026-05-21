@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { formatFeedEntryLines, registerFeedsCommand, slugifyUrl } from "./commands-feeds.js";
+import { DEFAULT_FEED_FETCH_TIMEOUT_MS, formatFeedEntryLines, loadFeedBody, registerFeedsCommand, slugifyUrl } from "./commands-feeds.js";
 
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
@@ -262,5 +262,49 @@ describe("muse feeds add --id empty / whitespace fallback", () => {
     expect(stdout).toContain("padded");
     expect(stdout).toContain(`file://${body}`);
     expect(stdout).not.toContain(`  file://`);
+  });
+});
+
+describe("loadFeedBody — fetch timeout so a slow-loris / dead RSS server can't hang `muse feeds refresh` forever", () => {
+  it("rejects with a 'timed out after Nms' error when the upstream fetch never resolves before the configured timeout", async () => {
+    const neverResolves: typeof globalThis.fetch = (_input, init) => {
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = (init as { signal?: AbortSignal } | undefined)?.signal;
+        signal?.addEventListener("abort", () => {
+          reject(new DOMException("aborted", "AbortError"));
+        });
+      });
+    };
+    await expect(
+      loadFeedBody("https://slow.example.com/feed.xml", { fetchImpl: neverResolves, timeoutMs: 10 })
+    ).rejects.toThrow(/timed out after 10ms/u);
+  });
+
+  it("passes the AbortSignal through to the fetch impl so the upstream connection is actively cancelled, not just abandoned", async () => {
+    let receivedSignal: AbortSignal | undefined;
+    const captureSignal: typeof globalThis.fetch = (_input, init) => {
+      receivedSignal = (init as { signal?: AbortSignal } | undefined)?.signal;
+      return new Promise<Response>((_resolve, reject) => {
+        receivedSignal?.addEventListener("abort", () => {
+          reject(new DOMException("aborted", "AbortError"));
+        });
+      });
+    };
+    await expect(
+      loadFeedBody("https://slow.example.com/feed.xml", { fetchImpl: captureSignal, timeoutMs: 5 })
+    ).rejects.toThrow(/timed out/u);
+    expect(receivedSignal).toBeInstanceOf(AbortSignal);
+    expect(receivedSignal?.aborted).toBe(true);
+  });
+
+  it("returns the body and clears the timer on a successful fetch — no leaked timer keeping the event loop alive", async () => {
+    const okFetch: typeof globalThis.fetch = () =>
+      Promise.resolve(new Response("<rss><channel><item><title>x</title></item></channel></rss>", { status: 200 }));
+    const result = await loadFeedBody("https://ok.example.com/feed.xml", { fetchImpl: okFetch, timeoutMs: 5_000 });
+    expect(result).toContain("<rss>");
+  });
+
+  it("exports a sensible 30-second default so callers that don't pass timeoutMs still inherit the cap", () => {
+    expect(DEFAULT_FEED_FETCH_TIMEOUT_MS).toBe(30_000);
   });
 });
