@@ -32,6 +32,71 @@ describe("InMemoryDebugReplayCaptureStore", () => {
     expect(clamped).toHaveLength(1);
   });
 
+  it("lists newest-first (DESC by capturedAt) to match the Kysely path's `ORDER BY captured_at DESC`", async () => {
+    // Pre-fix in-memory returned Map insertion order (oldest first),
+    // diverging from production Kysely. Tests relying on the in-memory
+    // store therefore saw the wrong ordering vs `/api/admin/debug/replay`.
+    const store = new InMemoryDebugReplayCaptureStore();
+    // Insert in chronological order so insertion-order ≠ DESC order.
+    await store.saveDebugReplayCapture({
+      capturedAt: "2026-05-19T08:00:00.000Z",
+      id: "oldest",
+      userPrompt: "a"
+    });
+    await store.saveDebugReplayCapture({
+      capturedAt: "2026-05-20T12:00:00.000Z",
+      id: "middle",
+      userPrompt: "b"
+    });
+    await store.saveDebugReplayCapture({
+      capturedAt: "2026-05-21T09:00:00.000Z",
+      id: "newest",
+      userPrompt: "c"
+    });
+
+    const all = await store.listDebugReplayCaptures(10);
+    expect(all.map((entry) => entry.id), "newest first across the full window").toEqual([
+      "newest",
+      "middle",
+      "oldest"
+    ]);
+
+    // Limit honours the DESC order — clamped result is the newest N,
+    // NOT the oldest N (the pre-fix Map-iteration bug).
+    const top1 = await store.listDebugReplayCaptures(1);
+    expect(top1.map((entry) => entry.id), "limit=1 must return the NEWEST capture, not the oldest").toEqual(["newest"]);
+  });
+
+  it("two captures with the same capturedAt sort by id ASC (deterministic, stable across runs)", async () => {
+    const store = new InMemoryDebugReplayCaptureStore();
+    const sameInstant = "2026-05-21T09:00:00.000Z";
+    // Insert in REVERSE id order so the result can prove the comparator
+    // is sorting (not just preserving insertion order).
+    await store.saveDebugReplayCapture({ capturedAt: sameInstant, id: "z-second", userPrompt: "z" });
+    await store.saveDebugReplayCapture({ capturedAt: sameInstant, id: "a-first", userPrompt: "a" });
+
+    const all = await store.listDebugReplayCaptures(10);
+    expect(all.map((entry) => entry.id)).toEqual(["a-first", "z-second"]);
+  });
+
+  it("captures with no capturedAt sink below those with a valid timestamp; same-no-timestamp ties fall to id ASC", async () => {
+    const store = new InMemoryDebugReplayCaptureStore();
+    // The pre-fix in-memory store accepted records without `capturedAt`
+    // (existing tests in this file do exactly that — line 25-26 just
+    // save `{ id, userPrompt }`). The new comparator must keep them
+    // listable, but rank them below any capture that has a real time.
+    await store.saveDebugReplayCapture({ id: "z-no-time", userPrompt: "x" });
+    await store.saveDebugReplayCapture({
+      capturedAt: "2026-05-19T08:00:00.000Z",
+      id: "real-time",
+      userPrompt: "y"
+    });
+    await store.saveDebugReplayCapture({ id: "a-no-time", userPrompt: "x" });
+
+    const all = await store.listDebugReplayCaptures(10);
+    expect(all.map((entry) => entry.id)).toEqual(["real-time", "a-no-time", "z-no-time"]);
+  });
+
   it("purges expired captures and reports the count", async () => {
     const store = new InMemoryDebugReplayCaptureStore();
     await store.saveDebugReplayCapture({

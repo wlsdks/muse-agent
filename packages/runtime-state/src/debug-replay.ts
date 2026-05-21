@@ -27,7 +27,14 @@ export class InMemoryDebugReplayCaptureStore implements DebugReplayCaptureStore 
   }
 
   async listDebugReplayCaptures(limit = 50): Promise<readonly JsonObject[]> {
-    return [...this.captures.values()].slice(0, Math.max(0, limit));
+    // Kysely path orders by captured_at DESC (newest first); the
+    // pre-fix in-memory path returned Map iteration order (oldest
+    // first), so tests using this store saw a different ordering than
+    // production. Sort by parsed capturedAt DESC with an id ASC
+    // tiebreaker so two captures at the same instant come out in a
+    // deterministic, stable order across runs.
+    const sorted = [...this.captures.values()].sort(compareDebugReplayByCapturedAtDesc);
+    return sorted.slice(0, Math.max(0, limit));
   }
 
   async getDebugReplayCapture(id: string): Promise<JsonObject | undefined> {
@@ -119,6 +126,25 @@ export function mapDebugReplayCaptureRow(
     userHash: row.user_hash ?? null,
     userPrompt: row.user_prompt
   };
+}
+
+function compareDebugReplayByCapturedAtDesc(a: JsonObject, b: JsonObject): number {
+  const ta = parseTimestampMs(a.capturedAt);
+  const tb = parseTimestampMs(b.capturedAt);
+  if (ta !== tb) return tb - ta;
+  return stringValue(a.id).localeCompare(stringValue(b.id));
+}
+
+function parseTimestampMs(value: unknown): number {
+  if (value instanceof Date) {
+    const t = value.getTime();
+    return Number.isFinite(t) ? t : Number.NEGATIVE_INFINITY;
+  }
+  if (typeof value === "string") {
+    const t = Date.parse(value);
+    return Number.isFinite(t) ? t : Number.NEGATIVE_INFINITY;
+  }
+  return Number.NEGATIVE_INFINITY;
 }
 
 function withIdentity(record: JsonObject, prefix: string): JsonObject & { readonly id: string } {
