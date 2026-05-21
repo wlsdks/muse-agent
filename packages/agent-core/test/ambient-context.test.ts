@@ -52,6 +52,42 @@ describe("renderAmbientContextSection — an ambient change measurably alters th
     expect(b).not.toContain("ambient-context.ts");
   });
 
+  it("bounds each ambient field at a generous-but-finite cap so a multi-MB clipboard paste / selected text can't inflate the system prompt unboundedly", () => {
+    // Pre-fix `sanitizeInline` had NO per-field char cap — a user
+    // who copied a 5 MB code file into the clipboard (or selected
+    // an entire long document) would balloon the [Ambient Context]
+    // block by that much, displacing every other system section
+    // and risking a context-window blow-up. The sibling
+    // attachment-context.ts caps each text field at a sensible
+    // budget; this is the parallel guard.
+    const hugeClipboard = "x".repeat(10_000);
+    const hugeSelected = "y".repeat(5_000);
+    const hugeApp = "A".repeat(2_000);
+    const rendered = renderAmbientContextSection({
+      app: hugeApp,
+      clipboard: hugeClipboard,
+      selected: hugeSelected
+    });
+    expect(rendered).toBeDefined();
+    const total = (rendered as string).length;
+    // The rendered block should be substantially smaller than the
+    // raw input (10_000 + 5_000 + 2_000 = 17_000 chars). With the
+    // caps (256 / 2048 / 2048) the block is ~4_500 chars max.
+    expect(
+      total,
+      `rendered length ${total.toString()} must be under the raw-input total — caps must clamp each field`
+    ).toBeLessThan(10_000);
+    // The truncation marker is present (single-char ellipsis on
+    // the longest fields).
+    expect(rendered).toContain("…");
+    // Short fields are still rendered verbatim — bounding doesn't
+    // mangle normal-sized values.
+    const shortRendered = renderAmbientContextSection({ app: "Code", window: "ambient-context.ts" });
+    expect(shortRendered).toContain("app: Code");
+    expect(shortRendered).toContain("window: ambient-context.ts");
+    expect(shortRendered).not.toContain("…");
+  });
+
   it("sanitises an injection-bearing field (no spliced fake section, no control bytes)", () => {
     const esc = String.fromCharCode(0x1b);
     const del = String.fromCharCode(0x7f);

@@ -23,25 +23,43 @@ export interface AmbientSnapshotProvider {
   snapshot(): Awaitable<AmbientSnapshot | undefined>;
 }
 
-function sanitizeInline(value: string): string {
-  return stripUntrustedTerminalChars(value).replace(/\s+/gu, " ").trim();
+// app / window are short identifiers (binary name, terminal title);
+// selected / clipboard / notifications can carry substantive
+// content the user is reading or just pasted. Caps are deliberately
+// generous for normal use, sharp enough to bound a pathological
+// case (a multi-MB clipboard paste) from inflating the system
+// prompt — same posture attachment-context.ts uses on its own
+// per-field text inputs.
+const MAX_APP_CHARS = 256;
+const MAX_WINDOW_CHARS = 256;
+const MAX_SELECTED_CHARS = 2048;
+const MAX_CLIPBOARD_CHARS = 2048;
+const MAX_NOTIFICATIONS_CHARS = 2048;
+
+function sanitizeAndBound(raw: string, max: number): string {
+  // Pre-slice to 2*max BEFORE the regex pass so a multi-MB
+  // clipboard doesn't burn whole-string CPU just to be truncated
+  // to a few KB afterwards. Same shape as attachment-context.ts.
+  const limited = raw.length > max * 2 ? raw.slice(0, max * 2) : raw;
+  const sanitized = stripUntrustedTerminalChars(limited).replace(/\s+/gu, " ").trim();
+  return sanitized.length > max ? `${sanitized.slice(0, max - 1)}…` : sanitized;
 }
 
 export function renderAmbientContextSection(snapshot: AmbientSnapshot | undefined): string | undefined {
   if (!snapshot) {
     return undefined;
   }
-  const fields: [string, string | undefined][] = [
-    ["app", snapshot.app],
-    ["window", snapshot.window],
-    ["selected", snapshot.selected],
-    ["clipboard", snapshot.clipboard],
-    ["notifications", snapshot.notifications]
+  const fields: [string, string | undefined, number][] = [
+    ["app", snapshot.app, MAX_APP_CHARS],
+    ["window", snapshot.window, MAX_WINDOW_CHARS],
+    ["selected", snapshot.selected, MAX_SELECTED_CHARS],
+    ["clipboard", snapshot.clipboard, MAX_CLIPBOARD_CHARS],
+    ["notifications", snapshot.notifications, MAX_NOTIFICATIONS_CHARS]
   ];
   const lines = ["[Ambient Context]"];
-  for (const [key, raw] of fields) {
+  for (const [key, raw, max] of fields) {
     if (raw === undefined) continue;
-    const value = sanitizeInline(raw);
+    const value = sanitizeAndBound(raw, max);
     if (value.length === 0) continue;
     lines.push(`${key}: ${value}`);
   }
