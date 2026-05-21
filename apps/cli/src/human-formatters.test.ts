@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatBytes,
   formatCitations,
   formatLocalDate,
   formatLocalDateTime,
@@ -122,5 +123,32 @@ describe("formatRelativeTime", () => {
 
   it("returns the raw input for an unparseable timestamp", () => {
     expect(formatRelativeTime("not-a-date", now)).toBe("not-a-date");
+  });
+});
+
+describe("formatBytes — promotes through B/KB/MB/GB so a multi-GB note doesn't render as '1536.0MB', and guards non-finite / negative values that slipped past a `typeof === 'number'` filter", () => {
+  it("promotes to GB at 1024^3 and above — a 1.5GB notes file shows '1.5GB', not '1536.0MB' (the pre-fix MB-bottoms-out symptom)", () => {
+    expect(formatBytes(1.5 * 1024 * 1024 * 1024)).toBe("1.5GB");
+    expect(formatBytes(1024 * 1024 * 1024)).toBe("1.0GB");
+    expect(formatBytes(5 * 1024 * 1024 * 1024)).toBe("5.0GB");
+  });
+
+  it("keeps the B / KB / MB tiers exactly as before for sub-GB inputs (regression pin on the goal 627-era cap)", () => {
+    expect(formatBytes(0)).toBe("0B");
+    expect(formatBytes(512)).toBe("512B");
+    expect(formatBytes(1024)).toBe("1.0KB");
+    expect(formatBytes(1024 * 1024)).toBe("1.0MB");
+    expect(formatBytes(500 * 1024 * 1024)).toBe("500.0MB");
+  });
+
+  it("returns 'size unknown' for non-finite inputs (NaN / Infinity) — pre-fix `formatNoteSaved({sizeBytes: NaN})` rendered the literal 'NaNMB' on stdout", () => {
+    expect(formatBytes(Number.NaN)).toBe("size unknown");
+    expect(formatBytes(Number.POSITIVE_INFINITY)).toBe("size unknown");
+    expect(formatBytes(Number.NEGATIVE_INFINITY)).toBe("size unknown");
+  });
+
+  it("returns 'size unknown' for negative inputs — fs.stat can't produce them but a stored size with a sign-bit flip would slip past `typeof === 'number'`", () => {
+    expect(formatBytes(-1)).toBe("size unknown");
+    expect(formatBytes(-1024 * 1024)).toBe("size unknown");
   });
 });
