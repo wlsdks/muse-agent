@@ -430,6 +430,10 @@ export {
   type SendEmailWithApprovalOptions
 } from "./email-send.js";
 export {
+  createEmailSendTool,
+  type EmailSendToolDeps
+} from "./email-tool.js";
+export {
   performWebActionWithApproval,
   type PerformWebActionWithApprovalOptions,
   type WebActionApprovalDecision,

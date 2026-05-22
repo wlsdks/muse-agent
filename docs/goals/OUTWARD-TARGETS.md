@@ -553,14 +553,22 @@ seam IS the gate; absent confirm ⇒ no effect; recipient resolved via
 `resolveContact`, never guessed; action-logged. (`@muse/tools` is
 zero-IO, so these are MCP-bridged / runtime-registered tools, not the
 ambient bundle.)
-- [ ] The agent invokes ONE gated actuator (email send) as a tool
+- [x] The agent invokes ONE gated actuator (email send) as a tool
   inside an agent run: a turn asking to email a known contact drafts
   the message, the recipient resolves via `resolveContact`, the
   fail-closed approval gate fires, and only on confirm does the
   (HTTP-faked) send go — deny / timeout / ambiguous-recipient ⇒ NO
   send. Check: an agent run with the tool registered → tool-call →
   gate → confirm fires / absent ⇒ no external effect (integration,
-  contract-faithful, never a fake registry).
+  contract-faithful, never a fake registry). — 706
+  (`createEmailSendTool` (@muse/mcp): an `email_send` execute-risk
+  agent tool whose execute reuses the proven `sendEmailWithApproval`
+  (resolve → fail-closed gate → real `GmailEmailProvider.send` →
+  action-log). apps/api p17-email-tool-agent-seam.test.ts drives a
+  REAL `createAgentRuntime` run: the model emits an `email_send`
+  tool-call → CONFIRM fires one real Gmail send (Bearer, HTTP faked) /
+  DENY / ambiguous-recipient ⇒ NO send. Mutation-proven. Wiring the
+  gate to a live channel/CLI confirm in production is a follow-up.)
 
 The loop extends this map itself when all are delivered or its
 judgement finds a stronger outward direction. "Nothing to do" is
