@@ -6,7 +6,7 @@ import {
   SupervisorAgent,
   createWorkerResult
 } from "../src/index.js";
-import type { AgentMessageBus } from "../src/index.js";
+import type { AgentMessageBus, AgentWorker } from "../src/index.js";
 
 const rejectingBus = (): AgentMessageBus => ({
   publish: async () => { throw new Error("bus down"); },
@@ -494,6 +494,44 @@ describe("MultiAgentOrchestrator", () => {
 
     expect(result.response.output.length).toBeLessThan(500);
     expect(result.response.output).toContain("agent verbose output trimmed by orchestrator fan-in");
+  });
+
+  it("dispatches each worker on its own model override and runs an override-less worker on the run default — workers execute on different local models in one run (P10 s1)", async () => {
+    const tieredWorker = (id: string, model?: string): AgentWorker => ({
+      id,
+      description: id,
+      ...(model ? { model } : {}),
+      canHandle: () => 1,
+      run: async (input) => createWorkerResult(id, `ran on ${input.model}`, input)
+    });
+
+    const orchestrator = new MultiAgentOrchestrator({
+      idFactory: () => "orch-tiered-1",
+      workers: [
+        tieredWorker("fast", "ollama/qwen3:1.7b"),
+        tieredWorker("heavy", "ollama/qwen3:8b"),
+        tieredWorker("plain")
+      ]
+    });
+
+    const result = await orchestrator.run(
+      { messages: [{ content: "split work", role: "user" }], model: "ollama/qwen3:4b" },
+      { mode: "parallel" }
+    );
+
+    const modelById = Object.fromEntries(
+      result.results.map((step) => [step.workerId, step.result?.response.model])
+    );
+    // Each override-carrying worker executed on its declared local model.
+    expect(modelById.fast).toBe("ollama/qwen3:1.7b");
+    expect(modelById.heavy).toBe("ollama/qwen3:8b");
+    // The two tiers are genuinely distinct models within the one run.
+    expect(modelById.fast).not.toBe(modelById.heavy);
+    // A worker WITHOUT an override runs on the run-default model — single-model behaviour unchanged.
+    expect(modelById.plain).toBe("ollama/qwen3:4b");
+    // The overridden model reached the worker body, not just the result envelope.
+    expect(result.results.find((step) => step.workerId === "fast")?.result?.response.output)
+      .toBe("ran on ollama/qwen3:1.7b");
   });
 });
 

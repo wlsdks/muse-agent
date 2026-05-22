@@ -384,12 +384,15 @@ explicit via `muse orchestrate`, capacity-aware, and `smoke:live`
 proven (today it is diagnostic-only). Single-user / local-Ollama is
 the design point — arbitration is one machine's model residency,
 not multi-tenant fair-share.
-- [ ] A worker can run a model distinct from the run default
+- [x] A worker can run a model distinct from the run default
   (per-worker model / `tier: fast|heavy` on the dispatch path,
   resolved via `~/.muse/models.json`); absent ⇒ today's
   single-model behaviour byte-identical. Check: one orchestration
   run whose workers demonstrably executed on different local models
-  (integration). — 680 s1
+  (integration). — 680 s1 (goal 681: `AgentWorker.model` optional
+  override applied by the orchestrator dispatch via
+  `withSelectedWorker`; absent ⇒ byte-identical. `models.json`
+  tier→model resolution + CLI/`muse ask` wiring stay s2+/s4+.)
 - [ ] A deterministic tier classifier routes simple lookups to the
   fast model and reasoning to the high-capability model, defaulting
   to heavy when unsure (never silently downgrade reasoning), AND a

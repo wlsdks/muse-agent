@@ -18,6 +18,14 @@ export { InMemoryOrchestrationHistoryStore } from "./orchestration-history.js";
 export interface AgentWorker {
   readonly id: string;
   readonly description: string;
+  /**
+   * Optional per-worker model override. When set, the orchestrator
+   * dispatches this worker with `input.model` replaced by this value,
+   * so a fast model can take a lookup while a high-capability model
+   * takes the reasoning in the same run. Absent ⇒ the worker runs on
+   * the run-default `input.model` (single-model behaviour unchanged).
+   */
+  readonly model?: string;
   canHandle(input: AgentRunInput): number;
   run(input: AgentRunInput): Promise<AgentRunResult>;
 }
@@ -111,7 +119,8 @@ export class RuntimeAgentWorker implements AgentWorker {
     readonly id: string,
     readonly description: string,
     private readonly runtime: AgentRuntime,
-    private readonly matcher: (input: AgentRunInput) => number
+    private readonly matcher: (input: AgentRunInput) => number,
+    readonly model?: string
   ) {}
 
   canHandle(input: AgentRunInput): number {
@@ -399,7 +408,7 @@ export class MultiAgentOrchestrator {
 
     for (const worker of workers) {
       try {
-        const result = await worker.run(withSelectedWorker(currentInput, worker.id));
+        const result = await worker.run(withSelectedWorker(currentInput, worker));
         results.push({ result, status: "completed", workerId: worker.id });
         // A bus-publish failure must NOT re-trigger the catch (it
         // would double-push a `failed` entry for this worker and
@@ -420,7 +429,7 @@ export class MultiAgentOrchestrator {
   private async runParallel(input: AgentRunInput, workers: readonly AgentWorker[]): Promise<readonly OrchestrationStepResult[]> {
     return Promise.all(workers.map(async (worker): Promise<OrchestrationStepResult> => {
       try {
-        const result = await worker.run(withSelectedWorker(input, worker.id));
+        const result = await worker.run(withSelectedWorker(input, worker));
         // A bus-publish failure must not downgrade a succeeded
         // worker to "failed" or reject the whole Promise.all —
         // only worker.run decides status. Same stance as runRace.
@@ -449,7 +458,7 @@ export class MultiAgentOrchestrator {
       const failures: OrchestrationStepResult[] = [];
 
       for (const worker of workers) {
-        void worker.run(withSelectedWorker(input, worker.id))
+        void worker.run(withSelectedWorker(input, worker))
           .then(async (result) => {
             if (resolved) {
               return;
@@ -538,12 +547,13 @@ export function createWorkerResult(
   };
 }
 
-function withSelectedWorker(input: AgentRunInput, workerId: string): AgentRunInput {
+function withSelectedWorker(input: AgentRunInput, worker: AgentWorker): AgentRunInput {
   return {
     ...input,
+    ...(worker.model ? { model: worker.model } : {}),
     metadata: {
       ...input.metadata,
-      selectedAgentId: workerId
+      selectedAgentId: worker.id
     }
   };
 }
