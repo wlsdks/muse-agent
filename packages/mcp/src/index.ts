@@ -281,6 +281,17 @@ export {
   type ChromeDevToolsMcpOptions
 } from "./chrome-devtools-mcp.js";
 
+export {
+  deriveAmbientNotices,
+  runAmbientNoticeTick,
+  type AmbientNotice,
+  type AmbientNoticeRule,
+  type AmbientSignal,
+  type AmbientSignalSource,
+  type RunAmbientNoticeTickOptions,
+  type RunAmbientNoticeTickSummary
+} from "./ambient-notice-loop.js";
+
 // Notes provider abstraction. LocalDir, Apple Notes (osascript), and
 // Notion (api.notion.com) are all real adapters. The `muse.notes-multi`
 // MCP server in `loopback-notes-registry.ts` routes between them via

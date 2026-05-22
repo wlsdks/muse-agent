@@ -685,10 +685,14 @@ was proven ONCE; a JARVIS you depend on survives real-world failure.
   smart-home) are follow-on slices.
 
 **P20 — Deepen the thin axes (Perception + Knowledge).**
-- [ ] Continuous perception: an ambient signal (active window /
+- [x] Continuous perception: an ambient signal (active window /
   screen / location) feeds a proactive notice without an explicit
   invoke. Check: a simulated ambient signal drives a real proactive
-  delivery end-to-end.
+  delivery end-to-end. — 756 (`deriveAmbientNotices` rule matcher +
+  `runAmbientNoticeTick`: a simulated active-window signal delivers a
+  notice through the real `ProactiveNoticeSink`, fire-once dedupe,
+  fail-soft; mutation-proven. OS active-window source + daemon
+  registration are production-wiring follow-on.)
 - [x] Knowledge grounding: the agent answers from a MULTI-document
   personal corpus (RAG over notes + ingested docs) and cites which
   source — beyond today's single-doc PDF ingest. — 754 (engine:
