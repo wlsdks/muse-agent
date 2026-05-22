@@ -63,4 +63,14 @@ describe("muse orchestrate run — mode validation", () => {
     expect(h.captured.requests).toHaveLength(1);
     expect(h.captured.requests[0]!.body).toMatchObject({ workerIds: ["alpha", "beta"] });
   });
+
+  it("--tiered sends tiered: true; omitting it sends no tiered field", async () => {
+    const tiered = harness();
+    await tiered.run(["run", "hello", "--tiered"]);
+    expect(tiered.captured.requests[0]!.body).toMatchObject({ tiered: true });
+
+    const plain = harness();
+    await plain.run(["run", "hello"]);
+    expect(plain.captured.requests[0]!.body).not.toHaveProperty("tiered");
+  });
 });

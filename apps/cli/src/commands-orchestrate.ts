@@ -39,9 +39,13 @@ export function registerOrchestrateCommands(program: Command, io: ProgramIO, hel
     .option("--workers <ids>", "Comma-separated worker IDs to constrain")
     .option("--max-workers <n>", "Maximum number of workers to engage")
     .option("--model <model>", "Model name override")
+    .option(
+      "--tiered",
+      "Run each worker on a fast or high-capability local model chosen from its role (lookup → fast, reasoning → heavy). Tier models come from MUSE_FAST_MODEL / MUSE_HEAVY_MODEL on the server (each defaults to the run model). Off by default."
+    )
     .action(async (
       messageParts: readonly string[],
-      options: { readonly maxWorkers?: string; readonly mode: string; readonly model?: string; readonly workers?: string },
+      options: { readonly maxWorkers?: string; readonly mode: string; readonly model?: string; readonly workers?: string; readonly tiered?: boolean },
       command
     ) => {
       const message = messageParts.join(" ").trim();
@@ -70,7 +74,8 @@ export function registerOrchestrateCommands(program: Command, io: ProgramIO, hel
         mode,
         ...(options.model ? { model: options.model } : {}),
         ...(workerIds && workerIds.length > 0 ? { workerIds } : {}),
-        ...(maxWorkers !== undefined ? { maxWorkers } : {})
+        ...(maxWorkers !== undefined ? { maxWorkers } : {}),
+        ...(options.tiered ? { tiered: true } : {})
       }));
     });
 

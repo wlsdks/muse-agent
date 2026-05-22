@@ -411,11 +411,13 @@ not multi-tenant fair-share.
   `muse orchestrate --tiered` — proven by a `smoke:live` round-trip
   whose workers ran on two distinct local Qwen tiers and whose
   low-capacity path collapsed to one. — 680 s4+s5
-  (goal 683 delivered the `muse ask --tiered` half: `routeAskTierModel`
-  + the `--tiered` flag, off by default, integration-tested by driving
-  the real command. STILL OPEN before this flips: `muse orchestrate
-  --tiered` explicit surface AND the `smoke:live` two-tier round-trip /
-  low-capacity collapse on the live surface.)
+  (goal 683 delivered the `muse ask --tiered` half; goal 685 delivered
+  the `muse orchestrate --tiered` explicit surface — each worker runs on
+  the tier model classified from its spec role, response surfaces the
+  per-worker model, integration + `smoke:broad` green. STILL OPEN before
+  this flips: the `smoke:live` round-trip proving two workers ran on two
+  distinct real Qwen tiers AND the low-capacity collapse on the live
+  surface — both surfaces are now wired, only the live proof remains.)
 
 **P11–P16 — Actuator breadth (human-authored 2026-05-22).** The
 cognition layer (memory / anticipation / consent / correction /

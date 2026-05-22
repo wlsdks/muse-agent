@@ -2,6 +2,7 @@ import { Readable } from "node:stream";
 import type { AgentRunInput, AgentRuntime } from "@muse/agent-core";
 import type { AgentSpec, AgentSpecRegistry } from "@muse/agent-specs";
 import {
+  classifyTier,
   InMemoryAgentMessageBus,
   InMemoryOrchestrationHistoryStore,
   MultiAgentOrchestrator,
@@ -9,7 +10,8 @@ import {
   type AgentWorker,
   type MultiAgentOrchestrationResult,
   type OrchestrationHistoryStore,
-  type OrchestrationMode
+  type OrchestrationMode,
+  type TierModels
 } from "@muse/multi-agent";
 import type { ModelMessage, ModelProvider } from "@muse/model";
 import type { JsonObject } from "@muse/shared";
@@ -36,6 +38,7 @@ interface OrchestrateBody {
   readonly maxWorkers?: number;
   readonly maxOutputCharsPerWorker?: number;
   readonly summarize?: boolean;
+  readonly tiered?: boolean;
 }
 
 type ParseResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: ApiError };
@@ -155,12 +158,15 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
     }
 
     const messageBus = new InMemoryAgentMessageBus();
-    const workers: AgentWorker[] = selected.map((spec) => createSpecWorker(spec, options.agentRuntime!));
-    const orchestrator = new MultiAgentOrchestrator({ historyStore, messageBus, workers });
     const input: AgentRunInput = {
       messages: [{ content: parsed.value.message, role: "user" }],
       model: parsed.value.model ?? options.defaultModel ?? "default"
     };
+    const tierModels = parsed.value.tiered
+      ? resolveOrchestrateTierModels(input.model, process.env)
+      : undefined;
+    const workers: AgentWorker[] = buildSpecWorkers(selected, options.agentRuntime!, tierModels);
+    const orchestrator = new MultiAgentOrchestrator({ historyStore, messageBus, workers });
 
     const summarizer = parsed.value.summarize === true
       ? createWorkerSummarizer(options.modelProvider, input.model)
@@ -187,7 +193,7 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
         results: orchestration.results.map((step) => ({
           status: step.status,
           workerId: step.workerId,
-          ...(step.result ? { output: step.result.response.output } : {}),
+          ...(step.result ? { model: step.result.response.model, output: step.result.response.output } : {}),
           ...(step.error ? { error: step.error } : {})
         })),
         runId: orchestration.runId
@@ -232,12 +238,15 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
     }
 
     const messageBus = new InMemoryAgentMessageBus();
-    const workers: AgentWorker[] = selected.map((spec) => createSpecWorker(spec, options.agentRuntime!));
-    const orchestrator = new MultiAgentOrchestrator({ historyStore, messageBus, workers });
     const input: AgentRunInput = {
       messages: [{ content: parsed.value.message, role: "user" }],
       model: parsed.value.model ?? options.defaultModel ?? "default"
     };
+    const tierModels = parsed.value.tiered
+      ? resolveOrchestrateTierModels(input.model, process.env)
+      : undefined;
+    const workers: AgentWorker[] = buildSpecWorkers(selected, options.agentRuntime!, tierModels);
+    const orchestrator = new MultiAgentOrchestrator({ historyStore, messageBus, workers });
     const summarizer = parsed.value.summarize === true
       ? createWorkerSummarizer(options.modelProvider, input.model)
       : undefined;
@@ -366,11 +375,41 @@ function sseData(value: string): string {
   return value.split(/\r?\n/u).map((line) => (line.length > 0 ? line : " ")).join("\ndata: ");
 }
 
-function createSpecWorker(spec: AgentSpec, runtime: AgentRuntime): AgentWorker {
+export function resolveOrchestrateTierModels(defaultModel: string, env: NodeJS.ProcessEnv): TierModels {
+  const fast = env.MUSE_FAST_MODEL?.trim();
+  const heavy = env.MUSE_HEAVY_MODEL?.trim();
+  return {
+    fast: fast && fast.length > 0 ? fast : defaultModel,
+    heavy: heavy && heavy.length > 0 ? heavy : defaultModel
+  };
+}
+
+// Tiered orchestration classifies each worker by its spec's role
+// (`description`) — a "look up / fetch" worker takes the fast model, an
+// "analyze / plan" worker the heavy one — so one run spreads across
+// both local tiers. Default-heavy (classifyTier) never downgrades an
+// unrecognised role. Per-spec explicit tier (persisted on AgentSpec) is
+// a future refinement.
+export function buildSpecWorkers(
+  specs: readonly AgentSpec[],
+  runtime: AgentRuntime,
+  tierModels?: TierModels
+): AgentWorker[] {
+  return specs.map((spec) => {
+    if (!tierModels) {
+      return createSpecWorker(spec, runtime);
+    }
+    const model = classifyTier(spec.description) === "fast" ? tierModels.fast : tierModels.heavy;
+    return createSpecWorker(spec, runtime, model);
+  });
+}
+
+function createSpecWorker(spec: AgentSpec, runtime: AgentRuntime, model?: string): AgentWorker {
   return {
     canHandle: () => 1,
     description: spec.description,
     id: spec.name,
+    ...(model ? { model } : {}),
     async run(input) {
       const messages = spec.systemPrompt ? prependSystem(input.messages, spec.systemPrompt) : input.messages;
 
@@ -453,6 +492,13 @@ function parseOrchestrateBody(value: unknown): ParseResult<OrchestrateBody> {
     return invalid("INVALID_ORCHESTRATE_REQUEST", "summarize must be a boolean");
   }
 
+  let tiered: boolean | undefined;
+  if (typeof body.tiered === "boolean") {
+    tiered = body.tiered;
+  } else if (body.tiered !== undefined) {
+    return invalid("INVALID_ORCHESTRATE_REQUEST", "tiered must be a boolean");
+  }
+
   return {
     ok: true,
     value: {
@@ -462,7 +508,8 @@ function parseOrchestrateBody(value: unknown): ParseResult<OrchestrateBody> {
       ...(workerIds ? { workerIds } : {}),
       ...(maxWorkers !== undefined ? { maxWorkers } : {}),
       ...(maxOutputCharsPerWorker !== undefined ? { maxOutputCharsPerWorker } : {}),
-      ...(summarize !== undefined ? { summarize } : {})
+      ...(summarize !== undefined ? { summarize } : {}),
+      ...(tiered !== undefined ? { tiered } : {})
     }
   };
 }
