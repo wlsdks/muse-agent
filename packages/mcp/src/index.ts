@@ -282,6 +282,12 @@ export {
 } from "./chrome-devtools-mcp.js";
 
 export {
+  detectWatchTrigger,
+  type WatchRule,
+  type WatchTrigger
+} from "./web-watch.js";
+
+export {
   createAmbientNoticeRunner,
   deriveAmbientNotices,
   FileAmbientSignalSource,

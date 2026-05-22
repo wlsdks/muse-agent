@@ -703,6 +703,20 @@ was proven ONCE; a JARVIS you depend on survives real-world failure.
   over a REAL temp-dir notes store answers grounded AND cites
   `notes/health.md`, mutation-proven).
 
+**P21 — Web-watch (loop-authored 2026-05-23).** "Monitor this page
+and ping me when X" — composes the delivered Chrome perception (P18)
+with proactive notices (P2/P20). Read-only perception only; no
+autonomous action (a watch never SUBMITS anything — outbound-safety).
+- [ ] A page-change watch fires a proactive notice on a rising-edge
+  condition (a term appears / disappears, or content changes vs the
+  last snapshot) and does NOT re-fire while the condition persists.
+  Check: a watch tick over a contract-faithful page-snapshot sequence
+  (via the Chrome DevTools MCP read tool) delivers exactly one notice
+  on the edge, none while steady. (Slice 1 delivered — 776:
+  `detectWatchTrigger` edge-triggered detector, mutation-proven; the
+  wired watch-tick — snapshot via MCP + detector + notice delivery —
+  flips the bullet.)
+
 <!-- IMMUTABLE-CORE:BEGIN -->
 ## Immutable core (the loop must NEVER edit — honesty machinery)
 
