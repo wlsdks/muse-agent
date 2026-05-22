@@ -50,6 +50,7 @@ import {
 export {
   resolveActionLogFile,
   resolveBriefingSidecarFile,
+  resolveContactsFile,
   resolveCredentialsFile,
   resolveDiscordAfterFile,
   resolveDiscordInboxFile,

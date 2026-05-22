@@ -103,6 +103,10 @@ export function resolveEpisodesFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_EPISODES_FILE", "episodes.json");
 }
 
+export function resolveContactsFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_CONTACTS_FILE", "contacts.json");
+}
+
 export function resolvePatternsFiredFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_PATTERNS_FIRED_FILE", "patterns-fired.json");
 }

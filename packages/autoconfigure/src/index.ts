@@ -165,6 +165,7 @@ export {
   buildToolFilter,
   buildVoiceRegistry,
   mergeModelKeysFromFile,
+  resolveContactsFile,
   resolveEpisodesFile,
   resolveFollowupsFile,
   resolvePatternsFiredFile,

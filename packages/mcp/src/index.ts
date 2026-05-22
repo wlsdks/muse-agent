@@ -402,6 +402,18 @@ export {
   type WeatherProvider
 } from "./weather.js";
 export {
+  addContact,
+  contactIdentifier,
+  queryContacts,
+  readContacts,
+  removeContact,
+  resolveContact,
+  serializeContact,
+  writeContacts,
+  type Contact,
+  type ContactResolution
+} from "./personal-contacts-store.js";
+export {
   createMessagingObjectiveActuator,
   createModelObjectiveEvaluator,
   parseObjectiveVerdict,

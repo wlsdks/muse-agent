@@ -470,11 +470,17 @@ grounding for anticipation.
 
 **P13 — Contacts / people graph.** A JARVIS knows who people are;
 also the recipient-resolution backbone for P11/P15 outbound safety.
-- [ ] A contacts provider resolves a name → identifier (email /
+- [x] A contacts provider resolves a name → identifier (email /
   handle) so "email Bob" resolves unambiguously, and an
   ambiguous/unknown person triggers a clarifying question instead of
   a guessed recipient. Check: known contact resolves; ambiguous →
-  clarify, never a guessed address (integration).
+  clarify, never a guessed address (integration). — 691
+  (`~/.muse/contacts.json` store + pure `resolveContact` —
+  resolved/ambiguous/unknown, exact-before-substring, never guesses on
+  ambiguity — + `muse contacts add|list|resolve`; `resolve` reports the
+  ambiguous candidates / not-found on a non-zero exit, never a single
+  guessed recipient. The recipient-resolution backbone for P11-send /
+  P15 outbound safety.)
 
 **P14 — Document understanding (PDF / office, beyond markdown
 notes).**
