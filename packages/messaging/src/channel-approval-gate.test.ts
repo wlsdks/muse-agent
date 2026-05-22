@@ -38,6 +38,10 @@ describe("createChannelApprovalGate", () => {
     expect(posted.text).toContain("Q3 numbers");
     // The bulk/sensitive body must NOT be echoed into the chat transcript.
     expect(posted.text).not.toContain("Long body");
+    // Honest affordance: the prompt must not promise that a reply runs
+    // the tool (no approve-completion round-trip exists yet).
+    expect(posted.text).toContain("NOT executed");
+    expect(posted.text.toLowerCase()).not.toContain("reply to approve");
   });
 
   it("stays fail-closed when posting the approval prompt throws", async () => {

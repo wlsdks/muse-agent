@@ -91,7 +91,7 @@ describe("P1 seam — two-way channel conversation composes end-to-end", () => {
       ]);
       expect(posts.every((p) => p.body.chat_id === "555")).toBe(true);
       expect(posts[0]?.body.text).toContain("Noted, Sam.");
-      expect(posts[1]?.body.text).toContain("Approval needed");
+      expect(posts[1]?.body.text).toContain("NOT executed");
       expect(posts[1]?.body.text).toContain("tasks.delete");
       expect(posts[2]?.body.text).toContain("Blocked");
 

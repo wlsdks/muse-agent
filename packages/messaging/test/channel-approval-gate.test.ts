@@ -54,7 +54,8 @@ describe("createChannelApprovalGate — approval gate exercised over the channel
     const sent = JSON.parse(body) as { chat_id: string; text: string };
     expect(sent.chat_id).toBe("555");
     expect(sent.text).toContain("tasks.delete");
-    expect(sent.text).toContain("Approval needed");
+    expect(sent.text).toContain("NOT executed");
+    expect(sent.text).toContain("explicit approval");
   });
 
   it("fail-closed: a send failure still denies the risky tool", async () => {

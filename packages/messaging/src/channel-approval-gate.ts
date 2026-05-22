@@ -105,9 +105,9 @@ export function createChannelApprovalGate(options: {
       }
     }
     const text =
-      `🔒 Approval needed: Muse wants to run "${toolCall.name}" (${risk})`
+      `🔒 Muse wanted to run "${toolCall.name}" (${risk})`
       + (draft ? ` — ${draft}` : "")
-      + ". It was NOT executed — reply to approve before it can run.";
+      + ". It was NOT executed — Muse won't run a state-changing action from a chat message on its own. It needs your explicit approval and has been logged for your review.";
     try {
       await options.registry.send(options.providerId, { destination: options.source, text });
     } catch {
