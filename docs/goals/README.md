@@ -630,3 +630,21 @@ Append one line when a discovery path is evaluated and deferred:
   no bullet reopened. P10 (tiered local-model orchestration) is
   genuinely delivered end-to-end. (P11–P16 audits pending — one per
   iteration per Step 4.)
+- P11 audit — apps/cli/src/p11-email-contacts-seam.test.ts — PASS:
+  P11's two bullets (read/triage/summarise + briefing-feed; gated
+  send) ARE composed, not disconnected. All piece-checks re-run green
+  TOGETHER: `@muse/mcp` 20/20 (email-provider read + summarizeInbox /
+  unreadBriefingLine, email-send fail-closed gate, situational-briefing
+  -loop unread-inbox grounding), `@muse/cli` 11/11 (commands-inbox,
+  commands-email, commands-contacts surfaces). The two composition
+  seams: (1) inbox-unread → P8 briefing already composes in
+  situational-briefing-loop.test.ts (real EmailProvider →
+  `unreadBriefingLine` → delivered brief over a real TelegramProvider);
+  (2) contacts → gated send had no end-to-end home — added
+  p11-seam: `muse contacts add Bob` then `muse email send --to Bob`
+  over the SAME `~/.muse/contacts.json` resolves + fires on confirm,
+  and TWO same-name contacts ⇒ ambiguous, NO send (never-guess holds
+  end-to-end through the real CLI commands + the real store +
+  `resolveContact` + the fail-closed `sendEmailWithApproval` gate). No
+  drift; no bullet reopened. P11 (email read + briefing + gated send)
+  is genuinely delivered end-to-end.
