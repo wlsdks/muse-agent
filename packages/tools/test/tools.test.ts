@@ -762,6 +762,17 @@ describe("createMuseTools", () => {
     expect(overflow.markdown).toContain("_…5 more rows omitted_");
   });
 
+  it("markdown_table renders a nested object/array cell as compact JSON, not [object Object]", async () => {
+    const tool = getTool("markdown_table");
+    const out = (await tool.execute(
+      { rows: [{ name: "home", coords: { lat: 1, lng: 2 }, tags: ["a", "b"] }] },
+      { runId: "r" }
+    )) as { markdown: string };
+    expect(out.markdown).toContain('{"lat":1,"lng":2}');
+    expect(out.markdown).toContain('["a","b"]');
+    expect(out.markdown).not.toContain("[object Object]");
+  });
+
   it("markdown_table escapes pipes/newlines in COLUMN NAMES, not just cells", async () => {
     const tool = getTool("markdown_table");
 

@@ -122,7 +122,7 @@ export function createMarkdownTableTool(): MuseTool {
       description:
         "Renders an array of plain JSON objects as a GitHub-flavored markdown table. " +
         "Columns default to the union of keys from the first 50 rows in first-appearance order; pass `columns` to constrain or reorder them. " +
-        "Cell values render via String(); pipes and newlines in cells are escaped (`\\|` and `<br/>`). Empty input returns an empty table header. " +
+        "Primitive cells render via String(); a nested object/array cell renders as compact JSON (not '[object Object]'). Pipes and newlines in cells are escaped (`\\|` and `<br/>`). Empty input returns an empty table header. " +
         "Capped at 200 rows; the rest are dropped with a trailing `_…N more rows omitted_` line.",
       inputSchema: {
         additionalProperties: false,
@@ -272,5 +272,9 @@ function formatMarkdownTableCell(value: unknown): string {
   if (value === null || value === undefined) {
     return "";
   }
-  return String(value).replace(/\|/gu, "\\|").replace(/\r?\n/gu, "<br/>");
+  // A nested object/array cell via String() becomes "[object Object]"
+  // (or a comma-joined array that loses structure) — useless in a table
+  // the model shows the user. Render it as compact JSON instead.
+  const rendered = typeof value === "object" ? (JSON.stringify(value) ?? "") : String(value);
+  return rendered.replace(/\|/gu, "\\|").replace(/\r?\n/gu, "<br/>");
 }
