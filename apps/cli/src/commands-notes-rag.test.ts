@@ -3,7 +3,31 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { cosine, defaultIndexPath, isNotesIndexStale, parseRagBoundedInt } from "./commands-notes-rag.js";
+import { cosine, defaultIndexPath, extractDocumentText, isNotesIndexStale, parseRagBoundedInt, reindexNotes } from "./commands-notes-rag.js";
+
+// Minimal hand-built PDF with one extractable text line — enough for
+// pdf-parse to recover the body without a binary fixture file.
+function minimalPdf(text: string): Buffer {
+  const pdf =
+    "%PDF-1.4\n" +
+    "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
+    "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
+    "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n" +
+    `4 0 obj<</Length ${(text.length + 30).toString()}>>stream\n` +
+    `BT /F1 24 Tf 72 700 Td (${text}) Tj ET\n` +
+    "endstream endobj\n" +
+    "5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n" +
+    "trailer<</Root 1 0 R>>\n%%EOF";
+  return Buffer.from(pdf, "latin1");
+}
+
+function fakeEmbedFetch(): typeof globalThis.fetch {
+  return (async (_url: string | URL, init?: { body?: string }) => {
+    const prompt = String(JSON.parse(String(init?.body ?? "{}")).prompt ?? "").toLowerCase();
+    const embedding = prompt.includes("budget") ? [1, 0, 0] : [0, 1, 0];
+    return new Response(JSON.stringify({ embedding }), { status: 200 });
+  }) as unknown as typeof globalThis.fetch;
+}
 
 async function writeIndex(indexPath: string, files: { path: string; mtimeMs: number }[]): Promise<void> {
   const payload = {
@@ -104,6 +128,53 @@ describe("cosine — degenerate vectors and NaN values", () => {
   it("returns 0 (not NaN) when either vector contains a NaN — protects the RAG render and sort from `[NaN]` scores", () => {
     expect(cosine([Number.NaN, 1, 0], [1, 0, 0])).toBe(0);
     expect(cosine([1, 0, 0], [Number.NaN, 0, 0])).toBe(0);
+  });
+});
+
+describe("extractDocumentText", () => {
+  it("extracts text from a PDF and reads markdown/txt verbatim", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "muse-doc-extract-"));
+    await writeFile(join(dir, "memo.pdf"), minimalPdf("Quarterly budget memo body"));
+    await writeFile(join(dir, "note.md"), "plain markdown body", "utf8");
+    const extracted = await extractDocumentText(join(dir, "memo.pdf"));
+    expect(extracted).toContain("Quarterly budget memo body");
+    // Proves it is pdf-parse output, not the raw bytes (which would
+    // still contain the parenthesised text but also PDF structure).
+    expect(extracted).not.toContain("endobj");
+    expect(extracted).not.toContain("%PDF");
+    expect(await extractDocumentText(join(dir, "note.md"))).toBe("plain markdown body");
+  });
+});
+
+describe("reindexNotes ingests PDFs alongside markdown (P14)", () => {
+  it("indexes a PDF's extracted text and ranks it above a decoy for a matching query", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "muse-doc-rag-"));
+    await writeFile(join(dir, "memo.pdf"), minimalPdf("Quarterly budget memo body"));
+    await writeFile(join(dir, "decoy.md"), "grocery shopping list: milk, eggs", "utf8");
+    const indexPath = join(dir, "index.json");
+
+    const summary = await reindexNotes({
+      dir,
+      fetchImpl: fakeEmbedFetch(),
+      force: true,
+      indexPath,
+      model: "nomic-embed-text"
+    });
+    expect(summary.embedded).toBe(2);
+
+    // The PDF's extracted text is in the index, not lost.
+    const pdfChunks = summary.index.files.flatMap((f) => f.chunks).filter((c) => c.file.endsWith("memo.pdf"));
+    expect(pdfChunks.some((c) => c.text.includes("Quarterly budget memo body"))).toBe(true);
+    // Indexed the EXTRACTED text, not the raw PDF bytes.
+    expect(pdfChunks.every((c) => !c.text.includes("endobj"))).toBe(true);
+
+    // Retrieval over the index: a "budget" query ranks the PDF chunk top, decoy excluded.
+    const queryEmbedding = [1, 0, 0];
+    const ranked = summary.index.files
+      .flatMap((f) => f.chunks.map((c) => ({ file: c.file, score: cosine(queryEmbedding, c.embedding) })))
+      .sort((a, b) => b.score - a.score);
+    expect(ranked[0]?.file.endsWith("memo.pdf")).toBe(true);
+    expect(ranked[0]!.score).toBeGreaterThan(ranked[ranked.length - 1]!.score);
   });
 });
 

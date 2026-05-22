@@ -23,11 +23,25 @@ import { join as pathJoin, resolve as pathResolve, sep as pathSep } from "node:p
 import { resolveNotesDir } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
+import { parsePdfBuffer } from "./commands-read.js";
 import { embed } from "./embed.js";
 import type { ProgramIO } from "./program.js";
 
 export const DEFAULT_EMBED_MODEL = "nomic-embed-text";
 const DEFAULT_CHUNK_CHARS = 600;
+
+/**
+ * Read a note source to plain text. PDFs go through `pdf-parse` (the
+ * same path as `muse read`) so a PDF dropped in the notes dir is
+ * indexed + retrievable like a markdown note; everything else is read
+ * as UTF-8.
+ */
+export async function extractDocumentText(path: string): Promise<string> {
+  if (/\.pdf$/iu.test(path)) {
+    return (await parsePdfBuffer(await readFile(path))).text;
+  }
+  return readFile(path, "utf8");
+}
 const DEFAULT_TOP_K = 5;
 
 interface IndexChunk {
@@ -107,7 +121,7 @@ async function walkMarkdown(dir: string): Promise<readonly { path: string; mtime
       if (entry.name.startsWith(".")) continue;
       if (entry.isDirectory()) {
         stack.push(full);
-      } else if (entry.isFile() && /\.(md|markdown|txt)$/i.test(entry.name)) {
+      } else if (entry.isFile() && /\.(md|markdown|txt|pdf)$/i.test(entry.name)) {
         const s = await stat(full);
         out.push({ mtimeMs: s.mtimeMs, path: full });
       }
@@ -191,6 +205,8 @@ export async function reindexNotes(
     readonly force?: boolean;
     readonly indexPath?: string;
     readonly onProgress?: (line: string) => void;
+    /** Override the embeddings fetch in tests; defaults to global fetch. */
+    readonly fetchImpl?: typeof globalThis.fetch;
   }
 ): Promise<ReindexSummary> {
   const chunkChars = Math.max(120, options.chunkChars ?? DEFAULT_CHUNK_CHARS);
@@ -212,7 +228,7 @@ export async function reindexNotes(
     }
     let body: string;
     try {
-      body = await readFile(path, "utf8");
+      body = await extractDocumentText(path);
     } catch {
       failed += 1;
       continue;
@@ -221,7 +237,7 @@ export async function reindexNotes(
     const out: IndexChunk[] = [];
     for (let i = 0; i < chunks.length; i += 1) {
       try {
-        const embedding = await embed(chunks[i]!, options.model);
+        const embedding = await embed(chunks[i]!, options.model, options.fetchImpl ? { fetchImpl: options.fetchImpl } : {});
         out.push({ chunkIndex: i, embedding, file: path, text: chunks[i]! });
       } catch (cause) {
         options.onProgress?.(`embed failed for ${path} chunk ${i.toString()}: ${cause instanceof Error ? cause.message : String(cause)}`);
