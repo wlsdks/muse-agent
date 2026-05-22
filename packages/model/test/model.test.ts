@@ -1370,6 +1370,38 @@ describe("OllamaProvider model-not-found hint (goal 176)", () => {
   });
 });
 
+describe("OllamaProvider mid-stream error line", () => {
+  it("surfaces an `{error}` NDJSON line (200 then mid-generation failure) as an error event and stops, not a silently truncated answer", async () => {
+    const ndjson =
+      `${JSON.stringify({ message: { content: "Thinking" }, model: "qwen3:8b" })}\n` +
+      `${JSON.stringify({ error: "model runner has crashed: out of memory" })}\n` +
+      `${JSON.stringify({ done: true, eval_count: 9, message: { content: " more" } })}\n`;
+    const fetch: typeof globalThis.fetch = async (url) => {
+      if (String(url).includes("/models")) return new Response(JSON.stringify({ data: [] }));
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(ndjson));
+            controller.close();
+          }
+        }),
+        { status: 200 }
+      );
+    };
+    const provider = new OllamaProvider({ baseUrl: "http://o.test/v1", defaultModel: "qwen3:8b", fetch, models: ["qwen3:8b"] });
+    const events = [];
+    for await (const ev of provider.stream({ messages: [{ content: "hi", role: "user" }], model: "ollama/qwen3:8b" })) {
+      events.push(ev);
+    }
+    const errEvent = events.find((e) => e.type === "error") as { error: Error & { retryable?: boolean } } | undefined;
+    expect(errEvent?.error.message).toContain("out of memory");
+    expect(errEvent?.error.retryable).toBe(true);
+    // The post-error `done:true` line must NOT have produced a done
+    // event — the stream stops at the error.
+    expect(events.some((e) => e.type === "done")).toBe(false);
+  });
+});
+
 describe("OllamaProvider native 200-but-non-JSON body", () => {
   it("wraps a 200 non-JSON /api/chat body as a retryable ModelProviderError, not a raw SyntaxError", async () => {
     const htmlBody = `<!DOCTYPE html><html>captive portal</html>${"x".repeat(5000)}`;

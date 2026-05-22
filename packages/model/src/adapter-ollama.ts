@@ -147,9 +147,11 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     const stripThink = createLeadingThinkStripper();
+    const providerId = this.id;
     let buf = "";
     let output = "";
     let lastJson: OllamaNativeChatResponse | undefined;
+    let streamError: ModelProviderError | undefined;
     const streamedToolCalls: ModelToolCall[] = [];
     const seenToolKeys = new Set<string>();
     let toolFallbackIndex = 0;
@@ -159,6 +161,16 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       try {
         parsed = JSON.parse(line) as OllamaNativeChatResponse;
       } catch { return; }
+      // Once Ollama has sent 200 + headers, a mid-generation failure
+      // (OOM, context overflow, model eviction under load) arrives as
+      // an `{"error": "..."}` NDJSON line, not an HTTP status. Without
+      // this it parses to a message-less chunk and is silently dropped,
+      // leaving the user a truncated answer with no error. Surface it.
+      if (typeof parsed.error === "string" && parsed.error.trim().length > 0) {
+        streamError = new ModelProviderError(providerId, `Ollama /api/chat stream error: ${parsed.error}`, true);
+        yield { error: streamError, type: "error" };
+        return;
+      }
       lastJson = parsed;
       const delta = parsed.message?.content ?? "";
       if (delta) {
@@ -203,6 +215,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         buf = buf.slice(i + 1);
         if (!line) continue;
         yield* handleLine(line);
+        if (streamError) return;
       }
     }
 
@@ -215,6 +228,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     for (const raw of buf.split("\n")) {
       const line = raw.trim();
       if (line) yield* handleLine(line);
+      if (streamError) return;
     }
 
     const final: ModelResponse = {
@@ -325,6 +339,7 @@ interface OllamaNativeChatResponse {
   readonly eval_count?: number;
   readonly prompt_eval_count?: number;
   readonly done?: boolean;
+  readonly error?: string;
 }
 
 function safeParseToolArgs(raw: string): unknown {
