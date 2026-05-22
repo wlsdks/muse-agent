@@ -37,6 +37,31 @@ interface SharedOptions {
   readonly json?: boolean;
 }
 
+/**
+ * Reduce-based min/max over a number array. `Math.min(...arr)` /
+ * `Math.max(...arr)` spread every element as a call argument and
+ * RangeError ("Maximum call stack size exceeded") once the array
+ * exceeds the engine's argument-count limit (~65k-125k) — a large
+ * `.ics` import (a multi-year calendar export) can hit that. The
+ * reduce never spreads. Callers guard against the empty array;
+ * the `Infinity` seeds are the documented empty-input fallback.
+ */
+export function minOfNumbers(values: readonly number[]): number {
+  let min = Infinity;
+  for (const value of values) {
+    if (value < min) min = value;
+  }
+  return min;
+}
+
+export function maxOfNumbers(values: readonly number[]): number {
+  let max = -Infinity;
+  for (const value of values) {
+    if (value > max) max = value;
+  }
+  return max;
+}
+
 function localCalendarProvider(): LocalCalendarProvider {
   const file = resolveLocalCalendarFile(process.env as Record<string, string | undefined>);
   return new LocalCalendarProvider({ file });
@@ -225,8 +250,8 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       // existing rows by (title, startsAt-ms). Cheap enough at the
       // single-user scale this importer targets.
       const startsAtMs = parsed.map((e) => e.startsAt.getTime());
-      const rangeFrom = new Date(Math.min(...startsAtMs));
-      const rangeTo = new Date(Math.max(...parsed.map((e) => e.endsAt.getTime())) + 24 * 60 * 60 * 1000);
+      const rangeFrom = new Date(minOfNumbers(startsAtMs));
+      const rangeTo = new Date(maxOfNumbers(parsed.map((e) => e.endsAt.getTime())) + 24 * 60 * 60 * 1000);
       const existing = options.allowDuplicates
         ? []
         : await provider.listEvents({ from: rangeFrom, to: rangeTo });
