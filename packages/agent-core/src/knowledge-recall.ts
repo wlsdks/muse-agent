@@ -129,6 +129,38 @@ export function chunkText(text: string, maxChars: number): string[] {
   return chunks;
 }
 
+/**
+ * Memoize an embedder by input text so repeated chunks (a corpus is
+ * mostly stable across queries) are embedded ONCE, not on every
+ * `knowledge_search` call — the responsiveness fix for embedding the
+ * whole personal corpus per query. The cached value is the Promise
+ * (so concurrent calls dedupe); a rejected embed is evicted so a
+ * transient Ollama failure isn't cached forever. Bounded FIFO.
+ */
+export function createCachingEmbedder(
+  embed: (text: string) => Promise<readonly number[]>,
+  options: { readonly maxEntries?: number } = {}
+): (text: string) => Promise<readonly number[]> {
+  const maxEntries = Math.max(1, Math.trunc(finiteOr(options.maxEntries, 4_096)));
+  const cache = new Map<string, Promise<readonly number[]>>();
+  return (text: string) => {
+    const hit = cache.get(text);
+    if (hit) {
+      return hit;
+    }
+    const pending = Promise.resolve().then(() => embed(text));
+    pending.catch(() => cache.delete(text));
+    cache.set(text, pending);
+    if (cache.size > maxEntries) {
+      const oldest = cache.keys().next().value;
+      if (oldest !== undefined) {
+        cache.delete(oldest);
+      }
+    }
+    return pending;
+  };
+}
+
 export interface KnowledgeSearchToolOptions {
   readonly corpus: readonly KnowledgeChunk[];
   readonly embed: (text: string) => Promise<readonly number[]>;

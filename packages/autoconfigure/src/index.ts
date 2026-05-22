@@ -1,6 +1,7 @@
 import { CalendarProviderRegistry } from "@muse/calendar";
 import {
   createAgentRuntime,
+  createCachingEmbedder,
   createFollowupCaptureHook,
   extractFollowupPromisesLlm,
   InMemoryAgentInitiatedNoticeBroker,
@@ -546,7 +547,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     const embedModel = env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text";
     const tasksProvider = tasksRegistry?.primary();
     return [createNotesKnowledgeSearchTool({
-      embed: createOllamaEmbedder(embedModel),
+      embed: createCachingEmbedder(createOllamaEmbedder(embedModel)),
       notesProvider,
       ...(tasksProvider ? { tasksProvider } : {}),
       ...(calendarRegistry ? { calendarSource: calendarRegistry } : {}),

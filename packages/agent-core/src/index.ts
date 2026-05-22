@@ -99,6 +99,7 @@ export {
 } from "./episodic-recall.js";
 export {
   chunkText,
+  createCachingEmbedder,
   createKnowledgeSearchTool,
   rankKnowledgeChunks,
   renderKnowledgeMatches,
