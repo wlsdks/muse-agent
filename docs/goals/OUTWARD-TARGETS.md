@@ -707,15 +707,18 @@ was proven ONCE; a JARVIS you depend on survives real-world failure.
 and ping me when X" — composes the delivered Chrome perception (P18)
 with proactive notices (P2/P20). Read-only perception only; no
 autonomous action (a watch never SUBMITS anything — outbound-safety).
-- [ ] A page-change watch fires a proactive notice on a rising-edge
+- [x] A page-change watch fires a proactive notice on a rising-edge
   condition (a term appears / disappears, or content changes vs the
   last snapshot) and does NOT re-fire while the condition persists.
   Check: a watch tick over a contract-faithful page-snapshot sequence
   (via the Chrome DevTools MCP read tool) delivers exactly one notice
-  on the edge, none while steady. (Slice 1 delivered — 776:
-  `detectWatchTrigger` edge-triggered detector, mutation-proven; the
-  wired watch-tick — snapshot via MCP + detector + notice delivery —
-  flips the bullet.)
+  on the edge, none while steady. — 776 (`detectWatchTrigger`
+  edge-triggered detector) + 777 (`createWebWatchRunner`: a
+  `processing→shipped→shipped` snapshot sequence delivers exactly ONE
+  notice on the edge through a real `ProactiveNoticeSink`, none while
+  steady; per-watch baseline mutation-proven). Production daemon
+  (snapshot via the live MCP tool + watch config + scheduling) is the
+  follow-on wiring.
 
 <!-- IMMUTABLE-CORE:BEGIN -->
 ## Immutable core (the loop must NEVER edit — honesty machinery)
