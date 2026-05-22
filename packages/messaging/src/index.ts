@@ -32,7 +32,8 @@ export {
   createChannelApprovalGate,
   type ChannelApprovalGate,
   type ChannelApprovalGateDecision,
-  type ChannelApprovalGateInput
+  type ChannelApprovalGateInput,
+  type ChannelApprovalRefusal
 } from "./channel-approval-gate.js";
 
 export {

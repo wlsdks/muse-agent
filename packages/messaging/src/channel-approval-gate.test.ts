@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createChannelApprovalGate, summarizeToolDraft } from "./channel-approval-gate.js";
+import { createChannelApprovalGate, summarizeToolDraft, type ChannelApprovalRefusal } from "./channel-approval-gate.js";
 import type { MessagingProviderRegistry } from "./registry.js";
 
 function fakeRegistry(send: (providerId: string, message: { destination: string; text: string }) => Promise<void>) {
@@ -48,6 +48,36 @@ describe("createChannelApprovalGate", () => {
     const decision = await gate(gateInput("web_action", "execute", { url: "http://x.test/book" }));
     expect(decision.allowed).toBe(false);
     expect(registry.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("records a refused risky tool (tool/risk/draft/userId) for the action trail; not for read tools", async () => {
+    const registry = fakeRegistry(async () => {});
+    const recordRefusal = vi.fn(async (_refusal: ChannelApprovalRefusal) => {});
+    const gate = createChannelApprovalGate({ providerId: "telegram", recordRefusal, registry, source: "42" });
+
+    await gate(gateInput("muse.search", "read"));
+    expect(recordRefusal).not.toHaveBeenCalled();
+
+    await gate(gateInput("email_send", "execute", { body: "secret", subject: "Q3", to: "bob@example.com" }));
+    expect(recordRefusal).toHaveBeenCalledTimes(1);
+    expect(recordRefusal.mock.calls[0]![0]).toEqual({
+      draft: 'to bob@example.com, subject "Q3"',
+      risk: "execute",
+      tool: "email_send",
+      userId: "tg:42"
+    });
+  });
+
+  it("stays fail-closed when the refusal recorder throws (a wedged disk can't let a risky tool through)", async () => {
+    const registry = fakeRegistry(async () => {});
+    const recordRefusal = vi.fn(async () => {
+      throw new Error("disk full");
+    });
+    const gate = createChannelApprovalGate({ providerId: "telegram", recordRefusal, registry, source: "42" });
+    const decision = await gate(gateInput("web_action", "execute", { url: "http://x.test/book" }));
+    expect(decision.allowed).toBe(false);
+    expect(recordRefusal).toHaveBeenCalledTimes(1);
+    expect(registry.send).toHaveBeenCalledTimes(1); // still posts the prompt
   });
 });
 

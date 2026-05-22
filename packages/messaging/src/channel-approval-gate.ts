@@ -61,23 +61,49 @@ export type ChannelApprovalGate = (
 ) => Promise<ChannelApprovalGateDecision>;
 
 /**
+ * A risky tool the gate refused — handed to `recordRefusal` so the
+ * caller can log it (outbound-safety: a refused action must leave a
+ * rationale-bearing trail). The gate stays free of any action-log
+ * dependency; the caller owns where this is recorded.
+ */
+export interface ChannelApprovalRefusal {
+  readonly tool: string;
+  readonly risk: "write" | "execute";
+  readonly draft: string;
+  readonly userId?: string;
+}
+
+/**
  * Approval gate for tools triggered by an inbound channel message.
  * `read` tools pass untouched. A `write` / `execute` (risky) tool
  * is NOT executed: an in-chat approval prompt is posted back to the
  * originating channel and the gate denies this turn. Fail-closed —
  * if posting the prompt throws, the risky tool is still denied
  * (never let it through because the notice failed to send).
+ *
+ * When `recordRefusal` is supplied, each refused risky tool is handed
+ * to it (fail-soft — a throwing recorder never flips the deny), so the
+ * action log shows what the agent was blocked on per outbound-safety.
  */
 export function createChannelApprovalGate(options: {
   readonly registry: MessagingProviderRegistry;
   readonly providerId: string;
   readonly source: string;
+  readonly recordRefusal?: (refusal: ChannelApprovalRefusal) => Promise<void>;
 }): ChannelApprovalGate {
-  return async ({ toolCall, risk }) => {
+  return async ({ toolCall, risk, userId }) => {
     if (risk === "read") {
       return { allowed: true };
     }
     const draft = summarizeToolDraft(toolCall.name, toolCall.arguments);
+    if (options.recordRefusal) {
+      try {
+        await options.recordRefusal({ draft, risk, tool: toolCall.name, ...(userId ? { userId } : {}) });
+      } catch {
+        // Recording the refusal must never change the fail-closed
+        // decision — a wedged disk can't let a risky tool through.
+      }
+    }
     const text =
       `🔒 Approval needed: Muse wants to run "${toolCall.name}" (${risk})`
       + (draft ? ` — ${draft}` : "")

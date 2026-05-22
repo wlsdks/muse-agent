@@ -601,6 +601,20 @@ ambient bundle.)
   agent run where the model emits a `web_action` call → CONFIRM fires
   one recorded request / DENY ⇒ 0. Mutation-proven: a gate that
   ignores the confirm makes the DENY test fire.)
+- [x] REMOTE surface, audit half: when an inbound channel message
+  (Telegram/etc.) makes the agent attempt a risky tool, the fail-closed
+  channel-approval gate now RECORDS the refusal to the action log
+  (visible via `muse actions`) — every action, sent or refused, leaves
+  a rationale-bearing trail per outbound-safety. This is the audit
+  foundation; the approve-completion round-trip ("reply yes → re-run
+  the tool") is the remaining REMOTE half, still `[ ]` below. — 719
+  (`recordRefusal` hook on `createChannelApprovalGate`, wired in
+  apps/api via `createChannelRefusalRecorder` → `appendActionLog`;
+  fail-soft; @muse/messaging stays @muse/mcp-free. Mutation-proven.)
+- [ ] REMOTE surface, completion half: an inbound channel reply that
+  approves a pending refusal re-runs the exact gated tool (the
+  approve-completion round-trip), so a real Telegram/chat conversation
+  can actually trigger a gated actuator end-to-end. Not yet built.
 
 The loop extends this map itself when all are delivered or its
 judgement finds a stronger outward direction. "Nothing to do" is

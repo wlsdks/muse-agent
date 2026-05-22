@@ -3,7 +3,7 @@ import {
   RuleBasedAgentSpecResolver
 } from "@muse/agent-specs";
 import { extractBearerToken } from "@muse/auth";
-import { parseBoolean } from "@muse/autoconfigure";
+import { parseBoolean, resolveActionLogFile } from "@muse/autoconfigure";
 import { InMemoryRuntimeSettingsStore, RuntimeSettings } from "@muse/runtime-settings";
 import Fastify, { type FastifyInstance } from "fastify";
 import { registerAdminRoutes } from "./admin-routes.js";
@@ -30,6 +30,8 @@ import { parseSlackPollChannels, startSlackPollTick } from "./slack-poll-tick.js
 import { startTelegramPollTick } from "./telegram-poll-tick.js";
 import { startInboundReplyTick } from "./inbound-reply-tick.js";
 import { createChannelApprovalGate, createThreadedInboundRunner, type InboundAgentRunner } from "@muse/messaging";
+
+import { createChannelRefusalRecorder } from "./channel-refusal-recorder.js";
 import { DiscordProvider, SlackProvider, TelegramProvider } from "@muse/messaging";
 import { registerSchedulerRoutes } from "./scheduler-routes.js";
 import { registerActiveContextRoutes } from "./active-context-routes.js";
@@ -391,6 +393,11 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
           model: replyModel,
           toolApprovalGate: createChannelApprovalGate({
             providerId,
+            recordRefusal: createChannelRefusalRecorder({
+              actionLogFile: resolveActionLogFile(env),
+              providerId,
+              source
+            }),
             registry: inboundRegistry,
             source
           })
