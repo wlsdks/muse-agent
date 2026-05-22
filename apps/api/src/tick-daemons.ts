@@ -36,6 +36,7 @@ import {
   LocalDirNotesProvider,
   LocalFileTasksProvider,
   OpenMeteoWeatherProvider,
+  homeWatchesFromConfig,
   parseAmbientNoticeRules,
   queryContacts,
   webWatchesFromConfig,
@@ -473,6 +474,46 @@ export function startWebWatchDaemonIfConfigured(
   }
   const tickMsRaw = env.MUSE_WEB_WATCH_TICK_MS ? Number(env.MUSE_WEB_WATCH_TICK_MS) : undefined;
   const quietHours = parseQuietHours(env.MUSE_WEB_WATCH_QUIET_HOURS) ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const handle = startWebWatchTick({
+    destination,
+    errorLogger: (message) => server.log.warn(message),
+    logger: (message) => server.log.info(message),
+    providerId,
+    registry: options.messaging,
+    watches,
+    ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
+    ...(quietHours ? { quietHours } : {})
+  });
+  server.addHook("onClose", async () => {
+    handle.stop();
+  });
+}
+
+export function startHomeWatchDaemonIfConfigured(
+  env: NodeJS.ProcessEnv,
+  server: FastifyInstance,
+  options: ServerOptions
+): void {
+  const enabled = parseBoolean(env.MUSE_HOME_WATCH_ENABLED, false);
+  const providerId = env.MUSE_HOME_WATCH_PROVIDER?.trim();
+  const destination = env.MUSE_HOME_WATCH_DESTINATION?.trim();
+  const baseUrl = env.MUSE_HOMEASSISTANT_URL?.trim();
+  const token = env.MUSE_HOMEASSISTANT_TOKEN?.trim();
+  const watches = baseUrl && token
+    ? homeWatchesFromConfig(env.MUSE_HOME_WATCH_CONFIG ?? "", { baseUrl, token })
+    : [];
+  if (
+    !enabled
+    || !providerId || providerId.length === 0
+    || !destination || destination.length === 0
+    || watches.length === 0
+    || !options.messaging
+    || !options.messaging.has(providerId)
+  ) {
+    return;
+  }
+  const tickMsRaw = env.MUSE_HOME_WATCH_TICK_MS ? Number(env.MUSE_HOME_WATCH_TICK_MS) : undefined;
+  const quietHours = parseQuietHours(env.MUSE_HOME_WATCH_QUIET_HOURS) ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
   const handle = startWebWatchTick({
     destination,
     errorLogger: (message) => server.log.warn(message),

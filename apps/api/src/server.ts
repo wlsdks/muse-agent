@@ -26,6 +26,7 @@ import {
   startPatternDaemonIfConfigured,
   startObjectivesDaemonIfConfigured,
   startProactiveDaemonIfConfigured,
+  startHomeWatchDaemonIfConfigured,
   startReminderDaemonIfConfigured,
   startSituationalBriefingDaemonIfConfigured,
   startWebWatchDaemonIfConfigured
@@ -340,6 +341,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   startObjectivesDaemonIfConfigured(env, server, options);
   startAmbientDaemonIfConfigured(env, server, options);
   startWebWatchDaemonIfConfigured(env, server, options);
+  startHomeWatchDaemonIfConfigured(env, server, options);
 
   // Optional Phase 2.a.3 daemon: poll Telegram every
   // MUSE_TELEGRAM_POLL_INTERVAL_MS (default 30s) and persist each
