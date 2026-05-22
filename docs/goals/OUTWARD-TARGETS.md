@@ -652,15 +652,15 @@ Integrate the open-source **Chrome DevTools MCP**
 (`ChromeDevTools/chrome-devtools-mcp`, Apache-2.0), attached to the
 user's running Chrome over the remote-debugging port, under the MCP
 allowlist. Read / perceive first; acting is gated.
-- [ ] Read-first: the agent opens / inspects a real URL in the
+- [x] Read-first: the agent opens / inspects a real URL in the
   attached Chrome via the MCP tool and answers a question grounded in
   the LIVE page content (not a cached search snippet). Check:
   integration/live driving the MCP tool end-to-end against a
-  contract-faithful page fixture. (Slice 1 delivered — 750: the
-  `createChromeDevToolsMcpServer()` connector + `take_snapshot`
-  projected to the agent tool surface returns grounded content,
-  contract-faithful; bullet flips when an agent-RUN grounded answer
-  is proven.)
+  contract-faithful page fixture. — 750 (connector +
+  `createChromeDevToolsMcpServer()` + `take_snapshot` tool projection)
+  + 751 (agent-RUN end-to-end: `AgentRuntime.run()` invokes the
+  projected tool and grounds its answer in the live snapshot;
+  mutation-proven against the real forward path).
 - [ ] A state-changing web action (fill + submit a form) under the
   user's session is approval-gated + draft-first per
   `outbound-safety.md` — deny / timeout / ambiguous-target produces
