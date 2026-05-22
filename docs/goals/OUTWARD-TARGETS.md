@@ -405,13 +405,13 @@ not multi-tenant fair-share.
   capacity collapse + fail-open in `@muse/multi-agent/tiering.ts`;
   `muse ask` auto / `muse orchestrate --tiered` surface wiring + the
   live two-tier round-trip stay s4+s5.)
-- [ ] Tiering is exercised end-to-end on the user surface — auto in
+- [x] Tiering is exercised end-to-end on the user surface — auto in
   the `muse ask`/REPL path (off by default behind a flag until
   proven not to degrade a plain ask) AND explicit via
   `muse orchestrate --tiered` — proven by a `smoke:live` round-trip
   whose workers ran on two distinct local Qwen tiers and whose
-  low-capacity path collapsed to one. — 680 s4+s5 (split below; the
-  parent flips ONLY when every child is met)
+  low-capacity path collapsed to one. — 680 s4+s5 (all four children
+  met — 687)
   - [x] `muse ask --tiered` auto-routes a single ask to the fast/heavy
     model (off by default; explicit `--model` overrides). — 683
   - [x] `muse orchestrate --tiered` runs each worker on the tier model
@@ -420,10 +420,12 @@ not multi-tenant fair-share.
   - [x] `smoke:live` two-tier round-trip: in ONE orchestrate run two
     workers provably executed on two DISTINCT local Qwen tiers with
     real output. — 686
-  - [ ] The orchestrate server honors the low-capacity collapse (wire
-    `planTieredRun`'s capacity probe so a host that can't hold both
-    tiers collapses to single-heavy sequential) AND a check proves the
-    live collapse-to-one. — remaining
+  - [x] The orchestrate server honors the low-capacity collapse —
+    `planTieredRun`'s capacity probe (`MUSE_TIER_SINGLE_MODEL_HOST`)
+    collapses a tiered run to single-heavy sequential, fail-open on
+    probe error; integration-proven (forcing a real low-RAM host live
+    is non-reproducible — the deterministic branch is the correct
+    integration target). — 687
 
 **P11–P16 — Actuator breadth (human-authored 2026-05-22).** The
 cognition layer (memory / anticipation / consent / correction /

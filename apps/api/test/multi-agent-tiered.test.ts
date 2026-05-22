@@ -3,7 +3,7 @@ import type { AgentSpec } from "@muse/agent-specs";
 import { MultiAgentOrchestrator } from "@muse/multi-agent";
 import { describe, expect, it } from "vitest";
 
-import { buildSpecWorkers, resolveOrchestrateTierModels } from "../src/multi-agent-routes.js";
+import { buildTieredOrchestration, resolveOrchestrateTierModels, resolveTierCapacityProbe } from "../src/multi-agent-routes.js";
 
 function spec(name: string, description: string): AgentSpec {
   return {
@@ -31,6 +31,20 @@ const echoRuntime: AgentRuntime = {
 
 const MODELS = { fast: "ollama/qwen3:8b", heavy: "ollama/qwen3.6:35b-a3b" } as const;
 
+const SPECS = [
+  spec("researcher", "Look up facts and definitions quickly"),
+  spec("analyst", "Analyze the trade-offs and reason about the design")
+];
+
+async function modelsOf(workers: { id: string; run: (i: AgentRunInput) => Promise<AgentRunResult> }[]): Promise<Record<string, string | undefined>> {
+  const orchestrator = new MultiAgentOrchestrator({ workers });
+  const result = await orchestrator.run(
+    { messages: [{ content: "go", role: "user" }], model: "ollama/qwen3:8b" },
+    { mode: "parallel" }
+  );
+  return Object.fromEntries(result.results.map((s) => [s.workerId, s.result?.response.model]));
+}
+
 describe("resolveOrchestrateTierModels", () => {
   it("falls back to the default model for any tier env unset or blank", () => {
     expect(resolveOrchestrateTierModels("def", {})).toEqual({ fast: "def", heavy: "def" });
@@ -44,45 +58,47 @@ describe("resolveOrchestrateTierModels", () => {
   });
 });
 
-describe("buildSpecWorkers tiering", () => {
-  const specs = [
-    spec("researcher", "Look up facts and definitions quickly"),
-    spec("analyst", "Analyze the trade-offs and reason about the design")
-  ];
-
-  it("without tier models, dispatches every worker on the run-default model (unchanged behaviour)", async () => {
-    const workers = buildSpecWorkers(specs, echoRuntime);
-    const orchestrator = new MultiAgentOrchestrator({ workers });
-    const result = await orchestrator.run(
-      { messages: [{ content: "go", role: "user" }], model: "ollama/qwen3:8b" },
-      { mode: "parallel" }
-    );
-    const byId = Object.fromEntries(result.results.map((s) => [s.workerId, s.result?.response.model]));
-    expect(byId.researcher).toBe("ollama/qwen3:8b");
-    expect(byId.analyst).toBe("ollama/qwen3:8b");
+describe("resolveTierCapacityProbe", () => {
+  it("reports both-tiers-fit by default", () => {
+    expect(resolveTierCapacityProbe({})()).toBe(true);
   });
 
-  it("with tier models, each worker runs on the model classified from its role — two tiers in one run", async () => {
-    const workers = buildSpecWorkers(specs, echoRuntime, MODELS);
-    const orchestrator = new MultiAgentOrchestrator({ workers });
-    const result = await orchestrator.run(
-      { messages: [{ content: "go", role: "user" }], model: "ollama/qwen3:8b" },
-      { mode: "parallel" }
-    );
-    const byId = Object.fromEntries(result.results.map((s) => [s.workerId, s.result?.response.model]));
-    // "Look up …" → fast; "Analyze …" → heavy.
+  it("reports single-model-host (collapse) when MUSE_TIER_SINGLE_MODEL_HOST is truthy", () => {
+    expect(resolveTierCapacityProbe({ MUSE_TIER_SINGLE_MODEL_HOST: "1" })()).toBe(false);
+    expect(resolveTierCapacityProbe({ MUSE_TIER_SINGLE_MODEL_HOST: "true" })()).toBe(false);
+    expect(resolveTierCapacityProbe({ MUSE_TIER_SINGLE_MODEL_HOST: "yes" })()).toBe(false);
+    expect(resolveTierCapacityProbe({ MUSE_TIER_SINGLE_MODEL_HOST: "0" })()).toBe(true);
+  });
+});
+
+describe("buildTieredOrchestration", () => {
+  it("when the host holds both tiers, each worker runs on the model classified from its role — two tiers in one run", async () => {
+    const { workers, collapsedToHeavy } = await buildTieredOrchestration(SPECS, echoRuntime, MODELS, () => true);
+    expect(collapsedToHeavy).toBe(false);
+    const byId = await modelsOf(workers);
     expect(byId.researcher).toBe("ollama/qwen3:8b");
     expect(byId.analyst).toBe("ollama/qwen3.6:35b-a3b");
     expect(byId.researcher).not.toBe(byId.analyst);
   });
 
-  it("defaults an unrecognised role to the heavy tier (never silently downgrades)", async () => {
-    const workers = buildSpecWorkers([spec("scribe", "writes things down")], echoRuntime, MODELS);
-    const orchestrator = new MultiAgentOrchestrator({ workers });
-    const result = await orchestrator.run(
-      { messages: [{ content: "go", role: "user" }], model: "ollama/qwen3:8b" },
-      { mode: "parallel" }
+  it("when the host CANNOT hold both tiers, the run collapses to the single heavy model", async () => {
+    const { workers, collapsedToHeavy } = await buildTieredOrchestration(SPECS, echoRuntime, MODELS, () => false);
+    expect(collapsedToHeavy).toBe(true);
+    const byId = await modelsOf(workers);
+    expect(byId.researcher).toBe("ollama/qwen3.6:35b-a3b");
+    expect(byId.analyst).toBe("ollama/qwen3.6:35b-a3b");
+  });
+
+  it("fails open to single-heavy when the capacity probe throws", async () => {
+    const { workers, collapsedToHeavy } = await buildTieredOrchestration(
+      SPECS,
+      echoRuntime,
+      MODELS,
+      () => { throw new Error("probe down"); }
     );
-    expect(result.results[0]?.result?.response.model).toBe("ollama/qwen3.6:35b-a3b");
+    expect(collapsedToHeavy).toBe(true);
+    const byId = await modelsOf(workers);
+    expect(byId.researcher).toBe("ollama/qwen3.6:35b-a3b");
+    expect(byId.analyst).toBe("ollama/qwen3.6:35b-a3b");
   });
 });

@@ -2,10 +2,10 @@ import { Readable } from "node:stream";
 import type { AgentRunInput, AgentRuntime } from "@muse/agent-core";
 import type { AgentSpec, AgentSpecRegistry } from "@muse/agent-specs";
 import {
-  classifyTier,
   InMemoryAgentMessageBus,
   InMemoryOrchestrationHistoryStore,
   MultiAgentOrchestrator,
+  planTieredRun,
   type AgentMessage,
   type AgentWorker,
   type MultiAgentOrchestrationResult,
@@ -162,10 +162,22 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
       messages: [{ content: parsed.value.message, role: "user" }],
       model: parsed.value.model ?? options.defaultModel ?? "default"
     };
-    const tierModels = parsed.value.tiered
-      ? resolveOrchestrateTierModels(input.model, process.env)
-      : undefined;
-    const workers: AgentWorker[] = buildSpecWorkers(selected, options.agentRuntime!, tierModels);
+    let workers: AgentWorker[];
+    let effectiveMode = parsed.value.mode;
+    if (parsed.value.tiered) {
+      const tiered = await buildTieredOrchestration(
+        selected,
+        options.agentRuntime!,
+        resolveOrchestrateTierModels(input.model, process.env),
+        resolveTierCapacityProbe(process.env)
+      );
+      workers = tiered.workers;
+      if (tiered.collapsedToHeavy) {
+        effectiveMode = "sequential";
+      }
+    } else {
+      workers = selected.map((spec) => createSpecWorker(spec, options.agentRuntime!));
+    }
     const orchestrator = new MultiAgentOrchestrator({ historyStore, messageBus, workers });
 
     const summarizer = parsed.value.summarize === true
@@ -174,7 +186,7 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
 
     try {
       const orchestration = await orchestrator.run(input, {
-        ...(parsed.value.mode ? { mode: parsed.value.mode } : {}),
+        ...(effectiveMode ? { mode: effectiveMode } : {}),
         ...(parsed.value.maxWorkers !== undefined ? { maxWorkers: parsed.value.maxWorkers } : {}),
         ...(parsed.value.maxOutputCharsPerWorker !== undefined
           ? { maxOutputCharsPerWorker: parsed.value.maxOutputCharsPerWorker }
@@ -242,16 +254,28 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
       messages: [{ content: parsed.value.message, role: "user" }],
       model: parsed.value.model ?? options.defaultModel ?? "default"
     };
-    const tierModels = parsed.value.tiered
-      ? resolveOrchestrateTierModels(input.model, process.env)
-      : undefined;
-    const workers: AgentWorker[] = buildSpecWorkers(selected, options.agentRuntime!, tierModels);
+    let workers: AgentWorker[];
+    let effectiveMode = parsed.value.mode;
+    if (parsed.value.tiered) {
+      const tiered = await buildTieredOrchestration(
+        selected,
+        options.agentRuntime!,
+        resolveOrchestrateTierModels(input.model, process.env),
+        resolveTierCapacityProbe(process.env)
+      );
+      workers = tiered.workers;
+      if (tiered.collapsedToHeavy) {
+        effectiveMode = "sequential";
+      }
+    } else {
+      workers = selected.map((spec) => createSpecWorker(spec, options.agentRuntime!));
+    }
     const orchestrator = new MultiAgentOrchestrator({ historyStore, messageBus, workers });
     const summarizer = parsed.value.summarize === true
       ? createWorkerSummarizer(options.modelProvider, input.model)
       : undefined;
     const orchestrationOptions = {
-      ...(parsed.value.mode ? { mode: parsed.value.mode } : {}),
+      ...(effectiveMode ? { mode: effectiveMode } : {}),
       ...(parsed.value.maxWorkers !== undefined ? { maxWorkers: parsed.value.maxWorkers } : {}),
       ...(parsed.value.maxOutputCharsPerWorker !== undefined
         ? { maxOutputCharsPerWorker: parsed.value.maxOutputCharsPerWorker }
@@ -264,7 +288,7 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
     reply.header("x-accel-buffering", "no");
 
     return reply.send(
-      Readable.from(toMultiAgentSseStream({ messageBus, orchestrator, input, options: orchestrationOptions, mode: parsed.value.mode ?? "sequential" }))
+      Readable.from(toMultiAgentSseStream({ messageBus, orchestrator, input, options: orchestrationOptions, mode: effectiveMode ?? "sequential" }))
     );
   });
 }
@@ -385,23 +409,45 @@ export function resolveOrchestrateTierModels(defaultModel: string, env: NodeJS.P
 }
 
 // Tiered orchestration classifies each worker by its spec's role
-// (`description`) — a "look up / fetch" worker takes the fast model, an
-// "analyze / plan" worker the heavy one — so one run spreads across
-// both local tiers. Default-heavy (classifyTier) never downgrades an
-// unrecognised role. Per-spec explicit tier (persisted on AgentSpec) is
-// a future refinement.
-export function buildSpecWorkers(
+// A host that declares it can hold only one model at a time
+// (`MUSE_TIER_SINGLE_MODEL_HOST` truthy) makes the capacity probe
+// report `false`, so `planTieredRun` collapses a tiered run to the
+// single heavy model sequentially instead of thrashing two large
+// models. Default (unset) ⇒ both tiers may run.
+export function resolveTierCapacityProbe(env: NodeJS.ProcessEnv): () => boolean {
+  const single = env.MUSE_TIER_SINGLE_MODEL_HOST?.trim().toLowerCase();
+  const canHoldBoth = !(single === "1" || single === "true" || single === "yes");
+  return () => canHoldBoth;
+}
+
+export interface TieredOrchestration {
+  readonly workers: AgentWorker[];
+  readonly collapsedToHeavy: boolean;
+}
+
+// Tiered orchestration runs each worker on the model `planTieredRun`
+// assigns from its spec role (`description`): a "look up / fetch" worker
+// takes the fast model, an "analyze / plan" worker the heavy one — so
+// one run spreads across both local tiers. When the capacity probe says
+// the host can't hold both (or throws), the plan collapses every worker
+// to the single heavy model (the caller then forces sequential mode).
+// Default-heavy classification never downgrades an unrecognised role.
+export async function buildTieredOrchestration(
   specs: readonly AgentSpec[],
   runtime: AgentRuntime,
-  tierModels?: TierModels
-): AgentWorker[] {
-  return specs.map((spec) => {
-    if (!tierModels) {
-      return createSpecWorker(spec, runtime);
-    }
-    const model = classifyTier(spec.description) === "fast" ? tierModels.fast : tierModels.heavy;
-    return createSpecWorker(spec, runtime, model);
+  tierModels: TierModels,
+  canHoldBothTiers: () => boolean | Promise<boolean>
+): Promise<TieredOrchestration> {
+  const plan = await planTieredRun({
+    canHoldBothTiers,
+    models: tierModels,
+    tasks: specs.map((spec) => ({ id: spec.name, text: spec.description }))
   });
+  const modelByName = new Map(plan.assignments.map((assignment) => [assignment.id, assignment.model]));
+  return {
+    collapsedToHeavy: plan.collapsedToHeavy,
+    workers: specs.map((spec) => createSpecWorker(spec, runtime, modelByName.get(spec.name)))
+  };
 }
 
 function createSpecWorker(spec: AgentSpec, runtime: AgentRuntime, model?: string): AgentWorker {
