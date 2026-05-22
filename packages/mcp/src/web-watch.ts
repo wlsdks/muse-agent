@@ -29,6 +29,15 @@ export interface WatchRule {
    * an invalid regex fails open to the whole text.
    */
   readonly extract?: string;
+  /**
+   * Fire when the number parsed from the (extracted) region NEWLY drops
+   * below this threshold — the price-drop alert ("ping me when it's
+   * under $40"). Edge-triggered: fires once when it crosses below, not
+   * every poll while it stays below. No parseable number → no fire.
+   */
+  readonly below?: number;
+  /** Mirror of `below` — fire when the parsed number NEWLY exceeds this. */
+  readonly above?: number;
 }
 
 export interface WatchTrigger {
@@ -55,6 +64,15 @@ function applyExtract(text: string, pattern: string | undefined): string {
     return "";
   }
   return match[1] ?? match[0];
+}
+
+function parseWatchNumber(text: string): number | undefined {
+  const match = /-?\d[\d,]*(?:\.\d+)?/.exec(text);
+  if (match === null) {
+    return undefined;
+  }
+  const value = Number(match[0].replace(/,/g, ""));
+  return Number.isFinite(value) ? value : undefined;
 }
 
 /**
@@ -84,6 +102,26 @@ export function detectWatchTrigger(
     const presentBefore = previous !== undefined && includesText(previous, rule.disappears, caseInsensitive);
     if (presentBefore && !presentNow) {
       return { reason: `gone: ${rule.disappears}`, triggered: true };
+    }
+  }
+
+  if (rule.below !== undefined) {
+    const valueNow = parseWatchNumber(current);
+    const valueBefore = previous === undefined ? undefined : parseWatchNumber(previous);
+    const belowNow = valueNow !== undefined && valueNow < rule.below;
+    const belowBefore = valueBefore !== undefined && valueBefore < rule.below;
+    if (belowNow && !belowBefore) {
+      return { reason: `below ${rule.below.toString()}: ${valueNow!.toString()}`, triggered: true };
+    }
+  }
+
+  if (rule.above !== undefined) {
+    const valueNow = parseWatchNumber(current);
+    const valueBefore = previous === undefined ? undefined : parseWatchNumber(previous);
+    const aboveNow = valueNow !== undefined && valueNow > rule.above;
+    const aboveBefore = valueBefore !== undefined && valueBefore > rule.above;
+    if (aboveNow && !aboveBefore) {
+      return { reason: `above ${rule.above.toString()}: ${valueNow!.toString()}`, triggered: true };
     }
   }
 
@@ -181,7 +219,8 @@ export function createHttpSnapshot(
  * Parse a JSON array of web-watch specs from config and build runnable
  * `WebWatch`es with HTTP snapshot sources. Each entry needs a
  * non-empty `id` + `url`, string `title`/`message`, and a `rule` with
- * at least one condition (`appears` / `disappears` / `onAnyChange`).
+ * at least one condition (`appears` / `disappears` / `onAnyChange` /
+ * numeric `below` / `above`).
  * Fail-open: malformed JSON / non-array / an invalid entry is skipped.
  */
 export function webWatchesFromConfig(
@@ -213,7 +252,7 @@ export function webWatchesFromConfig(
       continue;
     }
     const ruleObj = e.rule as Record<string, unknown>;
-    const rule: { appears?: string; disappears?: string; extract?: string; onAnyChange?: boolean; caseInsensitive?: boolean } = {};
+    const rule: { appears?: string; disappears?: string; extract?: string; onAnyChange?: boolean; caseInsensitive?: boolean; below?: number; above?: number } = {};
     for (const field of RULE_FIELDS) {
       if (typeof ruleObj[field] === "string" && (ruleObj[field] as string).length > 0) {
         rule[field] = ruleObj[field] as string;
@@ -225,7 +264,16 @@ export function webWatchesFromConfig(
     if (ruleObj.caseInsensitive === false) {
       rule.caseInsensitive = false;
     }
-    if (rule.appears === undefined && rule.disappears === undefined && rule.onAnyChange !== true) {
+    if (typeof ruleObj.below === "number" && Number.isFinite(ruleObj.below)) {
+      rule.below = ruleObj.below;
+    }
+    if (typeof ruleObj.above === "number" && Number.isFinite(ruleObj.above)) {
+      rule.above = ruleObj.above;
+    }
+    if (
+      rule.appears === undefined && rule.disappears === undefined
+      && rule.onAnyChange !== true && rule.below === undefined && rule.above === undefined
+    ) {
       continue;
     }
     out.push({
