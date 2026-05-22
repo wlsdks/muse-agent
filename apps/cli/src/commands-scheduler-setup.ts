@@ -141,7 +141,7 @@ export function registerSchedulerCommands(program: Command, io: ProgramIO, helpe
       }
       const upcoming = merged
         .filter((e) => typeof e.when === "string" && e.when.length > 0)
-        .sort((a, b) => (a.when ?? "").localeCompare(b.when ?? ""))
+        .sort(comparePreviewEntriesByWhen)
         .slice(0, limit);
       if (options.json) {
         writeOutput(io, { entries: upcoming, total: upcoming.length });
@@ -172,10 +172,30 @@ interface PendingReminderRow {
   readonly dueAt?: string;
 }
 
-interface PreviewEntry {
+export interface PreviewEntry {
   readonly when?: string;
   readonly kind: "job" | "reminder";
   readonly label: string;
+}
+
+// Order the merged jobs+reminders preview by PARSED INSTANT, not raw
+// ISO string: `when` mixes a reminder's free-form dueAt (mixed
+// precision / timezone offset — hand-edited, imported) with a job's
+// nextRunAt, so a lexicographic compare mis-orders (`…-05:00` later
+// than `…Z` sorts first) and the `.slice(limit)` could then drop a
+// genuinely-sooner item. Unparseable values keep a deterministic
+// string order; ties break by label.
+export function comparePreviewEntriesByWhen(a: PreviewEntry, b: PreviewEntry): number {
+  const am = Date.parse(a.when ?? "");
+  const bm = Date.parse(b.when ?? "");
+  if (Number.isFinite(am) && Number.isFinite(bm)) {
+    if (am !== bm) {
+      return am - bm;
+    }
+  } else if ((a.when ?? "") !== (b.when ?? "")) {
+    return (a.when ?? "").localeCompare(b.when ?? "");
+  }
+  return a.label.localeCompare(b.label);
 }
 
 export function registerSetupCommands(program: Command, io: ProgramIO): void {
