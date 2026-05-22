@@ -694,3 +694,19 @@ Append one line when a discovery path is evaluated and deferred:
   grounded-answer chain works. No drift; no bullet reopened. No new
   seam test (the deterministic retrieval check + the live grounded
   answer already compose the chain end-to-end).
+- P15 audit — @muse/mcp web-action.test.ts + @muse/cli
+  commands-web-action.test.ts — PASS: P15 (gated agentic web action)
+  composes; the fail-closed gate is contract-faithful. Piece-checks
+  re-run green TOGETHER: `@muse/mcp` web-action 4/4
+  (`performWebActionWithApproval`: CONFIRM → exactly one real request
+  carrying the method+body + `performed` log; DENY / gate-throw /
+  never-autonomous → 0 HTTP; records the actual request, never a fake
+  flag), `@muse/cli` commands-web-action 2/2 (`muse web-action`
+  confirm → done; deny → no HTTP, exit 1). The surface → orchestration
+  → gate → HTTP chain composes in commands-web-action.test.ts (real
+  command, injected gate, recording fetch); the gate semantics are
+  proven contract-faithfully in web-action. The bullet's own falsifiable
+  test (action → gate → only on confirm fires; absent ⇒ no external
+  effect) IS the contract-faithful HTTP-fake check — no live external
+  POST (that would violate the local/free + safety stance). No drift;
+  no bullet reopened. No new seam test (both layers already compose).
