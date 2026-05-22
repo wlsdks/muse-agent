@@ -41,6 +41,7 @@ import {
   isFollowupLlmBudgetExhausted,
   readFollowupLlmBudget,
   createLoopbackMcpMuseTools,
+  queryContacts,
   upsertFollowup,
   type LoopbackMcpServer,
   type McpManager,
@@ -146,6 +147,7 @@ import {
   buildVoiceRegistry,
   ensureNotesDir,
   mergeModelKeysFromFile,
+  resolveContactsFile,
   resolveEpisodesFile,
   resolveFollowupLlmBudgetFile,
   resolveFollowupsFile,
@@ -547,7 +549,8 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       embed: createOllamaEmbedder(embedModel),
       notesProvider,
       ...(tasksProvider ? { tasksProvider } : {}),
-      ...(calendarRegistry ? { calendarSource: calendarRegistry } : {})
+      ...(calendarRegistry ? { calendarSource: calendarRegistry } : {}),
+      contactsSource: { list: () => queryContacts(resolveContactsFile(env)) }
     })];
   })();
 

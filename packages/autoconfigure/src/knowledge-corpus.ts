@@ -36,12 +36,26 @@ export interface CalendarEventSource {
   listEvents(range: { readonly from: Date; readonly to: Date }): Promise<readonly CalendarEventLike[]> | readonly CalendarEventLike[];
 }
 
+export interface ContactLike {
+  readonly id: string;
+  readonly name: string;
+  readonly email?: string;
+  readonly handle?: string;
+  readonly aliases?: readonly string[];
+}
+
+export interface ContactsSource {
+  list(): Promise<readonly ContactLike[]> | readonly ContactLike[];
+}
+
 export interface AssembleKnowledgeCorpusOptions {
   readonly notesProvider?: NotesProvider;
   /** Open tasks become corpus chunks sourced `task/<id>` — the user's todos hold key facts. */
   readonly tasksProvider?: TasksProvider;
   /** Recent + upcoming events become corpus chunks sourced `event/<id>`. */
   readonly calendarSource?: CalendarEventSource;
+  /** Contacts become corpus chunks sourced `contact/<id>`. */
+  readonly contactsSource?: ContactsSource;
   readonly extraChunks?: readonly KnowledgeChunk[];
   /** Cap notes pulled into the corpus. Default 200. */
   readonly maxNotes?: number;
@@ -134,6 +148,26 @@ export async function assembleKnowledgeCorpus(
     }
   }
 
+  if (options.contactsSource) {
+    let contacts: readonly ContactLike[];
+    try {
+      contacts = await options.contactsSource.list();
+    } catch {
+      contacts = [];
+    }
+    for (const contact of contacts) {
+      const parts = [contact.name];
+      if (contact.email) parts.push(`<${contact.email}>`);
+      if (contact.handle) parts.push(`(${contact.handle})`);
+      if (contact.aliases && contact.aliases.length > 0) parts.push(`— also: ${contact.aliases.join(", ")}`);
+      const text = parts.join(" ").trim();
+      if (text.length === 0) {
+        continue;
+      }
+      chunks.push({ source: `contact/${contact.id}`, text });
+    }
+  }
+
   if (options.extraChunks?.length) {
     chunks.push(...options.extraChunks);
   }
@@ -145,6 +179,7 @@ export interface NotesKnowledgeSearchToolOptions {
   readonly notesProvider?: NotesProvider;
   readonly tasksProvider?: TasksProvider;
   readonly calendarSource?: CalendarEventSource;
+  readonly contactsSource?: ContactsSource;
   readonly embed: (text: string) => Promise<readonly number[]>;
   readonly topK?: number;
   readonly maxNotes?: number;
@@ -177,6 +212,7 @@ export function createNotesKnowledgeSearchTool(options: NotesKnowledgeSearchTool
         ...(options.notesProvider ? { notesProvider: options.notesProvider } : {}),
         ...(options.tasksProvider ? { tasksProvider: options.tasksProvider } : {}),
         ...(options.calendarSource ? { calendarSource: options.calendarSource } : {}),
+        ...(options.contactsSource ? { contactsSource: options.contactsSource } : {}),
         ...(options.extraChunks ? { extraChunks: options.extraChunks } : {}),
         ...(options.maxNotes !== undefined ? { maxNotes: options.maxNotes } : {}),
         ...(options.maxCharsPerNote !== undefined ? { maxCharsPerNote: options.maxCharsPerNote } : {})
