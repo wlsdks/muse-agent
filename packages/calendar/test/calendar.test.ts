@@ -11,6 +11,7 @@ import {
   CalendarProviderRegistry,
   CalendarValidationError,
   FileCalendarCredentialStore,
+  GoogleCalendarProvider,
   LocalCalendarProvider,
   MacOsCalendarProvider,
   isRetryableCalendarStatus,
@@ -150,6 +151,49 @@ describe("CalDAVCalendarProvider ICS time parsing", () => {
     const [event] = await providerReturning(ics).listEvents(range);
     expect(event?.title).toBe("Bad zone");
     expect(Number.isNaN(event?.startsAt.getTime() ?? Number.NaN)).toBe(false);
+  });
+});
+
+describe("GoogleCalendarProvider READ — toEvent parses timed vs all-day events (contract-faithful HTTP fake)", () => {
+  function providerReturning(items: unknown[]): GoogleCalendarProvider {
+    return new GoogleCalendarProvider({
+      clientId: "cid",
+      clientSecret: "csecret",
+      fetchImpl: (async (url: string) => {
+        if (String(url) === "https://oauth2.googleapis.com/token") {
+          return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600 }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ items }), { status: 200 });
+      }) as unknown as typeof fetch,
+      refreshToken: "rtok"
+    });
+  }
+  const range = { from: new Date("2026-05-01T00:00:00Z"), to: new Date("2026-06-01T00:00:00Z") };
+
+  it("parses a timed event by its real dateTime instant (offset-aware), allDay=false", async () => {
+    const [event] = await providerReturning([
+      { id: "g-timed", summary: "Standup", start: { dateTime: "2026-05-18T09:00:00-05:00" }, end: { dateTime: "2026-05-18T09:30:00-05:00" } }
+    ]).listEvents(range);
+    expect(event?.allDay).toBe(false);
+    expect(event?.startsAt.toISOString()).toBe("2026-05-18T14:00:00.000Z"); // -05:00 → UTC
+    expect(event?.endsAt.toISOString()).toBe("2026-05-18T14:30:00.000Z");
+    expect(event?.title).toBe("Standup");
+  });
+
+  it("flags an all-day event (start.date, no dateTime) and reads the exclusive end date", async () => {
+    const [event] = await providerReturning([
+      { id: "g-allday", summary: "Conference", start: { date: "2026-05-20" }, end: { date: "2026-05-21" } }
+    ]).listEvents(range);
+    expect(event?.allDay).toBe(true);
+    expect(event?.startsAt.toISOString()).toBe("2026-05-20T00:00:00.000Z");
+    expect(event?.endsAt.toISOString()).toBe("2026-05-21T00:00:00.000Z");
+  });
+
+  it("falls back to '(untitled)' when summary is missing", async () => {
+    const [event] = await providerReturning([
+      { id: "g-x", start: { dateTime: "2026-05-18T09:00:00Z" }, end: { dateTime: "2026-05-18T10:00:00Z" } }
+    ]).listEvents(range);
+    expect(event?.title).toBe("(untitled)");
   });
 });
 
