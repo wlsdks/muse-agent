@@ -514,6 +514,38 @@ describe("OpenAICompatibleProvider", () => {
     ]);
   });
 
+  it("surfaces a mid-stream `{error}` SSE chunk as an error event and stops (not a silently truncated answer)", async () => {
+    const provider = new OpenAICompatibleProvider({
+      baseUrl: "https://llm.example.test/v1",
+      defaultModel: "gpt-test",
+      fetch: async () => new Response(new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder();
+          controller.enqueue(encoder.encode(
+            "data: {\"id\":\"c\",\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n"
+          ));
+          controller.enqueue(encoder.encode(
+            "data: {\"error\":{\"message\":\"context length exceeded\",\"type\":\"invalid_request_error\"}}\n\n"
+          ));
+          controller.enqueue(encoder.encode(
+            "data: {\"id\":\"c\",\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"content\":\" more\"}}]}\n\n"
+          ));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        }
+      }))
+    });
+    const events = [];
+    for await (const event of provider.stream({ messages: [], model: "gpt-test" })) {
+      events.push(event);
+    }
+    const errEvent = events.find((e) => e.type === "error") as { error: Error & { retryable?: boolean } } | undefined;
+    expect(errEvent?.error.message).toContain("context length exceeded");
+    expect(errEvent?.error.retryable).toBe(true);
+    // The post-error chunk + [DONE] must NOT produce a done event.
+    expect(events.some((e) => e.type === "done")).toBe(false);
+  });
+
   it("streams server-sent event tool call deltas into model events", async () => {
     const provider = new OpenAICompatibleProvider({
       baseUrl: "https://llm.example.test/v1",

@@ -376,6 +376,18 @@ export async function* parseOpenAIStream(
         continue;
       }
 
+      // A streaming error chunk (`{"error": {...}}`) emitted after the
+      // 200 — OpenRouter / vLLM / OpenAI surface mid-generation failures
+      // this way — would otherwise be read as a delta-less chunk and
+      // silently dropped, ending the stream with a truncated/empty
+      // answer and no error. Surface it and stop (mirrors the native
+      // Ollama stream's mid-stream error handling).
+      const streamError = readOpenAIStreamError(parsed);
+      if (streamError !== undefined) {
+        yield { error: new ModelProviderError(providerId, streamError, true), type: "error" };
+        return;
+      }
+
       responseId = typeof parsed.id === "string" ? parsed.id : responseId;
       model = typeof parsed.model === "string" ? parsed.model : model;
 
@@ -410,6 +422,20 @@ export async function* parseOpenAIStream(
     },
     type: "done"
   };
+}
+
+function readOpenAIStreamError(payload: Record<string, unknown>): string | undefined {
+  const err = payload.error;
+  if (typeof err === "string") {
+    return err.trim().length > 0 ? `OpenAI-compatible stream error: ${err.trim()}` : undefined;
+  }
+  if (isRecord(err)) {
+    const message = typeof err.message === "string" && err.message.trim().length > 0
+      ? err.message.trim()
+      : JSON.stringify(err);
+    return `OpenAI-compatible stream error: ${message}`;
+  }
+  return undefined;
 }
 
 function readSseData(event: string): string | undefined {
