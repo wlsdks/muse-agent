@@ -31,6 +31,8 @@ import { join, resolve as pathResolve } from "node:path";
 
 import type { CalendarEvent, CalendarProviderRegistry } from "@muse/calendar";
 import {
+  compareFollowupsByScheduledFor,
+  compareRemindersByDueAt,
   readFollowups,
   readReminders,
   serializeFollowup,
@@ -132,7 +134,11 @@ async function readDueReminders(
     return due <= horizon.getTime();
   });
   return surfaced
-    .sort((left, right) => left.dueAt.localeCompare(right.dueAt) || left.id.localeCompare(right.id))
+    // Parsed instants, not lexicographic: a mixed-precision / offset
+    // dueAt would otherwise mis-order the briefing (same canonical
+    // comparator `muse reminders` + `muse today --local` use).
+    .slice()
+    .sort(compareRemindersByDueAt)
     .map(serializeReminder);
 }
 
@@ -161,7 +167,8 @@ async function readDueFollowups(
     return when <= horizon.getTime();
   });
   return surfaced
-    .sort((left, right) => left.scheduledFor.localeCompare(right.scheduledFor) || left.id.localeCompare(right.id))
+    .slice()
+    .sort(compareFollowupsByScheduledFor)
     .map(serializeFollowup);
 }
 

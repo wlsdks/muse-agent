@@ -2,10 +2,10 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { writeReminders, type PersistedReminder } from "@muse/mcp";
+import { writeFollowups, writeReminders, type PersistedFollowup, type PersistedReminder } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
-import { formatEvents, parseLookaheadHours, readDueReminders } from "./commands-today.js";
+import { formatEvents, parseLookaheadHours, readDueFollowups, readDueReminders } from "./commands-today.js";
 
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
@@ -82,6 +82,24 @@ describe("readDueReminders ordering — by parsed instant, not lexicographic due
       reminder({ dueAt: "2026-05-23T01:00:00Z", id: "b", text: "earlier" })
     ]);
     const due = await readDueReminders(f, new Date("2026-06-01T00:00:00Z"));
+    expect(due.map((r) => r.id)).toEqual(["b", "a"]);
+  });
+})
+
+describe("readDueFollowups ordering — by parsed instant, not lexicographic scheduledFor", () => {
+  function file(): string {
+    return join(mkdtempSync(join(tmpdir(), "muse-today-fu-")), "followups.json");
+  }
+  function followup(overrides: Partial<PersistedFollowup>): PersistedFollowup {
+    return { createdAt: "2026-05-22T00:00:00.000Z", id: "f", scheduledFor: "2026-05-22T12:00:00.000Z", status: "scheduled" as const, summary: "x", userId: "stark", ...overrides };
+  }
+  it("orders a timezone-offset scheduledFor by its real instant", async () => {
+    const f = file();
+    await writeFollowups(f, [
+      followup({ id: "a", scheduledFor: "2026-05-22T23:00:00-05:00", summary: "later" }), // 05-23 04:00Z
+      followup({ id: "b", scheduledFor: "2026-05-23T01:00:00Z", summary: "earlier" })
+    ]);
+    const due = await readDueFollowups(f, new Date("2026-06-01T00:00:00Z"));
     expect(due.map((r) => r.id)).toEqual(["b", "a"]);
   });
 })

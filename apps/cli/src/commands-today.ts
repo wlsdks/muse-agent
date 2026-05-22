@@ -23,6 +23,7 @@ import {
 } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
 import {
+  compareFollowupsByScheduledFor,
   compareRemindersByDueAt,
   compareTasksByDueDate,
   readFollowups,
@@ -417,7 +418,7 @@ export async function readDueReminders(
     });
 }
 
-async function readDueFollowups(
+export async function readDueFollowups(
   file: string,
   horizon: Date
 ): Promise<readonly { id: string; summary: string; scheduledFor: string }[]> {
@@ -433,9 +434,8 @@ async function readDueFollowups(
       }
       return when <= horizon.getTime();
     })
-    .sort((left, right) =>
-      left.scheduledFor.localeCompare(right.scheduledFor) || left.id.localeCompare(right.id)
-    )
+    .slice()
+    .sort(compareFollowupsByScheduledFor)
     .map((followup) => {
       const serialized = serializeFollowup(followup);
       return {

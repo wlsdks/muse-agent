@@ -116,6 +116,33 @@ describe("api server: GET /api/today", () => {
     expect(body.followups[0]?.summary).toBe("Send Q3 memo");
   });
 
+  it("orders reminders + followups by parsed instant, not lexicographic timestamp (timezone-offset case)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-today-order-"));
+    const remindersFile = join(dir, "reminders.json");
+    const followupsFile = join(dir, "followups.json");
+    // Both overdue (surfaced regardless of the test clock). a's instant
+    // is LATER than b's, but a's raw string sorts BEFORE b's — a
+    // lexicographic sort would invert them.
+    writeFileSync(remindersFile, JSON.stringify({
+      reminders: [
+        { id: "r_a", text: "later", dueAt: "2026-01-23T20:00:00-05:00", status: "pending", createdAt: "2026-01-01T00:00:00Z" }, // 01-24 01:00Z
+        { id: "r_b", text: "earlier", dueAt: "2026-01-24T00:00:00Z", status: "pending", createdAt: "2026-01-01T00:00:00Z" }
+      ]
+    }), "utf8");
+    writeFileSync(followupsFile, JSON.stringify({
+      followups: [
+        { id: "f_a", userId: "stark", scheduledFor: "2026-01-23T20:00:00-05:00", status: "scheduled", summary: "later", createdAt: "2026-01-01T00:00:00Z" },
+        { id: "f_b", userId: "stark", scheduledFor: "2026-01-24T00:00:00Z", status: "scheduled", summary: "earlier", createdAt: "2026-01-01T00:00:00Z" }
+      ]
+    }), "utf8");
+    const server = buildServer({ followupsFile, logger: false, remindersFile });
+    const reply = await server.inject({ method: "GET", url: "/api/today?lookaheadHours=168" });
+    expect(reply.statusCode).toBe(200);
+    const body = reply.json() as { reminders: Array<{ id: string }>; followups: Array<{ id: string }> };
+    expect(body.reminders.map((r) => r.id)).toEqual(["r_b", "r_a"]);
+    expect(body.followups.map((f) => f.id)).toEqual(["f_b", "f_a"]);
+  });
+
   it("returns undefined sections when nothing is configured", async () => {
     const server = buildServer({ logger: false });
     const reply = await server.inject({ method: "GET", url: "/api/today" });
