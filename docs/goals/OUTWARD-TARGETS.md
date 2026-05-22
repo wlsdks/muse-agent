@@ -511,10 +511,16 @@ notes).**
 **P15 — Web actions beyond search (gated).** Search exists; ACTING
 on the web (forms, bookings) does not — execute-tier, governed by
 `outbound-safety.md`.
-- [ ] An agentic web action (submit / book) is approval-gated +
+- [x] An agentic web action (submit / book) is approval-gated +
   consent-recorded and never autonomous; absent consent ⇒ blocked,
   fail-closed. Check: action → approval/consent gate → only on
   confirm does it proceed; absent ⇒ no external effect (integration).
+  — 697 (`performWebActionWithApproval`: fail-closed approval gate
+  (deny / gate-throw ⇒ NO HTTP) → injected-transport request →
+  action-logged performed/refused/failed; `muse web-action` surface.
+  Contract-faithful integration (records the real request shape, never
+  a fake flag); mutation-proven (dropping the deny guard makes a denied
+  action fire). Banking/payments explicitly out of scope.)
 
 **P16 — Lifestyle actuators (opt-in umbrella, lower priority).**
 Smart-home / music / health-data — each behind the same

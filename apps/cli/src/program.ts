@@ -111,6 +111,7 @@ import { registerContactsCommands } from "./commands-contacts.js";
 import { registerEmailCommands } from "./commands-email.js";
 import { registerInboxCommand } from "./commands-inbox.js";
 import { registerObjectivesCommands } from "./commands-objectives.js";
+import { registerWebActionCommands } from "./commands-web-action.js";
 import { registerSpecsCommands } from "./commands-specs.js";
 import { registerTasksCommands } from "./commands-tasks.js";
 import { registerTelemetryCommands } from "./commands-telemetry.js";
@@ -517,6 +518,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerContactsCommands(program, io);
   registerInboxCommand(program, io);
   registerEmailCommands(program, io);
+  registerWebActionCommands(program, io);
   registerRunsCommands(program, io, { apiRequest, writeOutput });
   registerDoctorCommand(program, io, { apiRequest, writeOutput });
   registerCostCommands(program, io, { apiRequest, writeOutput });

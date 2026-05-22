@@ -430,6 +430,14 @@ export {
   type SendEmailWithApprovalOptions
 } from "./email-send.js";
 export {
+  performWebActionWithApproval,
+  type PerformWebActionWithApprovalOptions,
+  type WebActionApprovalDecision,
+  type WebActionApprovalGate,
+  type WebActionOutcome,
+  type WebActionRequest
+} from "./web-action.js";
+export {
   createMessagingObjectiveActuator,
   createModelObjectiveEvaluator,
   parseObjectiveVerdict,
