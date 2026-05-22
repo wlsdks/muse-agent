@@ -218,7 +218,8 @@ export function startFollowupDaemonIfConfigured(
  */
 function buildKnowledgeEnricherIfEnabled(
   env: NodeJS.ProcessEnv,
-  options: ServerOptions
+  options: ServerOptions,
+  enrichOptions: { readonly excludeSourcePrefixes?: readonly string[] } = {}
 ): ((query: string) => Promise<string | undefined>) | undefined {
   if (!parseBoolean(env.MUSE_BRIEFING_RELATED_KNOWLEDGE_ENABLED, false)) {
     return undefined;
@@ -228,7 +229,8 @@ function buildKnowledgeEnricherIfEnabled(
     ...(options.notesDir ? { notesProvider: new LocalDirNotesProvider({ notesDir: options.notesDir }) } : {}),
     ...(options.tasksFile ? { tasksProvider: new LocalFileTasksProvider({ file: options.tasksFile }) } : {}),
     ...(options.calendar ? { calendarSource: options.calendar } : {}),
-    contactsSource: { list: () => queryContacts(resolveContactsFile(env)) }
+    contactsSource: { list: () => queryContacts(resolveContactsFile(env)) },
+    ...(enrichOptions.excludeSourcePrefixes ? { excludeSourcePrefixes: enrichOptions.excludeSourcePrefixes } : {})
   });
 }
 
@@ -283,7 +285,10 @@ export function startSituationalBriefingDaemonIfConfigured(
   const emailOpt = gmailToken && gmailToken.length > 0
     ? { emailProvider: new GmailEmailProvider(gmailToken) }
     : {};
-  const briefingEnricher = buildKnowledgeEnricherIfEnabled(env, options);
+  // The brief already lists the imminent calendar/task under Upcoming —
+  // exclude those source types so "Related" adds genuine context
+  // (notes / contacts), not an echo of what's already shown.
+  const briefingEnricher = buildKnowledgeEnricherIfEnabled(env, options, { excludeSourcePrefixes: ["event/", "task/"] });
   const relatedOpt = briefingEnricher ? { relatedKnowledge: briefingEnricher } : {};
   const briefingHandle = startSituationalBriefingTick({
     destination: briefingDestination,

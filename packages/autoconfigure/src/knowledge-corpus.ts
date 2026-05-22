@@ -183,6 +183,13 @@ export interface KnowledgeEnricherOptions {
   readonly embed: (text: string) => Promise<readonly number[]>;
   /** Minimum similarity for a "related" hit. Default 0.2 — surfaced unasked, so keep it relevant. */
   readonly minScore?: number;
+  /**
+   * Source prefixes to NOT surface (e.g. `["event/", "task/"]` for the
+   * briefing, whose Upcoming already lists the imminent calendar /
+   * task — surfacing it again as "Related" is a redundant echo). The
+   * top non-excluded match is returned instead.
+   */
+  readonly excludeSourcePrefixes?: readonly string[];
 }
 
 /**
@@ -206,10 +213,11 @@ export function createKnowledgeEnricher(options: KnowledgeEnricherOptions): (que
     });
     const matches = await rankKnowledgeChunks(query, corpus, {
       embed: options.embed,
-      topK: 1,
+      topK: 5,
       ...(options.minScore !== undefined ? { minScore: options.minScore } : { minScore: 0.2 })
     });
-    const top = matches[0];
+    const excluded = options.excludeSourcePrefixes ?? [];
+    const top = matches.find((match) => !excluded.some((prefix) => match.source.startsWith(prefix)));
     return top ? `[${top.source}] ${top.text.replace(/\s+/gu, " ").trim()}` : undefined;
   };
 }
