@@ -46,6 +46,13 @@ export interface SituationalBriefingInput {
    * Proactively surfaces what the user needs to KNOW for what's next.
    */
   readonly related?: string;
+  /**
+   * Optional pre-resolved home-alert line ("Front door is unlocked").
+   * Supplementary, same posture as weather/inbox: it rides an
+   * otherwise-non-empty briefing and never triggers one alone — and
+   * carries ONLY noteworthy states, never "everything's normal".
+   */
+  readonly home?: string;
 }
 
 function clean(value: string): string {
@@ -84,6 +91,11 @@ export function composeSituationalBriefing(input: SituationalBriefingInput): str
   const inbox = input.inbox ? clean(input.inbox) : "";
   if (inbox.length > 0) {
     lines.push(`Inbox: ${inbox}`);
+  }
+
+  const home = input.home ? clean(input.home) : "";
+  if (home.length > 0) {
+    lines.push(`Home: ${home}`);
   }
 
   if (upcoming.length > 0) {

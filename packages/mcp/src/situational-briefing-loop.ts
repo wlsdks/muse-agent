@@ -58,6 +58,13 @@ export interface RunDueSituationalBriefingOptions {
    * lookup omits the line, never breaks the brief.
    */
   readonly relatedKnowledge?: (query: string) => Promise<string | undefined> | string | undefined;
+  /**
+   * Optional home-alert resolver. When set AND the briefing already has
+   * something to say, it surfaces noteworthy home states (a door left
+   * unlocked) as a supplementary line. Same posture as weather/inbox;
+   * fail-soft: a thrown / empty lookup omits the line.
+   */
+  readonly homeAlert?: () => Promise<string | undefined> | string | undefined;
 }
 
 export interface RunDueSituationalBriefingSummary {
@@ -115,6 +122,17 @@ async function resolveRelatedLine(
   }
 }
 
+async function resolveHomeAlertSafely(
+  resolve: () => Promise<string | undefined> | string | undefined
+): Promise<string | undefined> {
+  try {
+    const line = await resolve();
+    return line && line.trim().length > 0 ? line : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function runDueSituationalBriefing(
   options: RunDueSituationalBriefingOptions
 ): Promise<RunDueSituationalBriefingSummary> {
@@ -141,13 +159,17 @@ export async function runDueSituationalBriefing(
   const related = hasContent && options.relatedKnowledge && options.imminent.length > 0
     ? await resolveRelatedLine(options.relatedKnowledge, options.imminent)
     : undefined;
+  const home = hasContent && options.homeAlert
+    ? await resolveHomeAlertSafely(options.homeAlert)
+    : undefined;
   const text = composeSituationalBriefing({
     imminent: options.imminent,
     now: nowDate,
     objectives,
     ...(weather ? { weather } : {}),
     ...(inbox ? { inbox } : {}),
-    ...(related ? { related } : {})
+    ...(related ? { related } : {}),
+    ...(home ? { home } : {})
   });
   if (!text) {
     return { delivered: 0, reason: "nothing-to-say" };

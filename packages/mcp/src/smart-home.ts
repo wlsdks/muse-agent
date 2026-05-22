@@ -121,6 +121,52 @@ export function createHomeStateSnapshot(query: HomeStateQuery): () => Promise<st
   };
 }
 
+export interface HomeAlertCheck {
+  readonly entityId: string;
+  readonly label: string;
+  /** States worth surfacing in a briefing (e.g. ["unlocked", "open"]). */
+  readonly alertStates: readonly string[];
+}
+
+export interface HomeAlertConnection {
+  readonly baseUrl: string;
+  readonly token: string;
+  readonly fetchImpl?: typeof globalThis.fetch;
+  readonly retryOptions?: RetryOptions;
+}
+
+/**
+ * Read each configured entity and surface ONLY the ones in a
+ * noteworthy state (door unlocked, window open) as a one-line briefing
+ * fragment — "Front door is unlocked; Garage is open". Returns
+ * `undefined` when nothing is noteworthy (or every read fails), so the
+ * briefing stays quiet rather than narrating "everything's normal".
+ * A per-entity read failure is skipped, never thrown.
+ */
+export async function resolveHomeAlertLine(
+  connection: HomeAlertConnection,
+  checks: readonly HomeAlertCheck[]
+): Promise<string | undefined> {
+  const alerts: string[] = [];
+  for (const check of checks) {
+    const state = await readHomeAssistantState({
+      baseUrl: connection.baseUrl,
+      entityId: check.entityId,
+      token: connection.token,
+      ...(connection.fetchImpl ? { fetchImpl: connection.fetchImpl } : {}),
+      ...(connection.retryOptions ? { retryOptions: connection.retryOptions } : {})
+    });
+    if (state === undefined) {
+      continue;
+    }
+    const current = state.state.toLowerCase();
+    if (check.alertStates.some((s) => s.toLowerCase() === current)) {
+      alerts.push(`${check.label} is ${state.state}`);
+    }
+  }
+  return alerts.length > 0 ? alerts.join("; ") : undefined;
+}
+
 export interface PerformHomeActionWithApprovalOptions extends HomeAssistantServiceCall {
   readonly approvalGate: WebActionApprovalGate;
   readonly fetchImpl: typeof fetch;
