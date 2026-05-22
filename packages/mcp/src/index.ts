@@ -442,6 +442,10 @@ export {
   type WebActionRequest
 } from "./web-action.js";
 export {
+  createWebActionTool,
+  type WebActionToolDeps
+} from "./web-action-tool.js";
+export {
   buildHomeAssistantServiceCall,
   performHomeActionWithApproval,
   type HomeAssistantServiceCall,
