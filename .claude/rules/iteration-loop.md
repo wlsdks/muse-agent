@@ -1,6 +1,6 @@
 # Iteration-loop contract
 
-A fresh, context-free agent fires every ~20 min, ships one commit,
+A fresh, context-free agent fires every ~10 min, ships one commit,
 repeats **forever**.
 
 **Always-read core: this file + `docs/goals/CAPABILITIES.md`.** The
@@ -58,6 +58,42 @@ Direction is otherwise yours: you are the intelligence — choose and
 evolve the outward direction in `OUTWARD-TARGETS.md` toward its
 north star using best-practice judgement; record why in the goal's
 `## Decisions`.
+
+## Current human-directed focus (2026-05-23)
+
+The self-authored P0–P17 map is delivered. The human set the next
+phase: **expansion AND hardening, together, gated by continuous
+live verification.**
+
+- **Expand** the thin axes (Perception, Knowledge, Reach) and the
+  actuator surface — new user-facing capability, not polish.
+- **Harden** the "one-of-each" actuators into daily-reliable
+  integrations: a proven-once actuator that breaks on a real-world
+  failure mode (rate-limit, transient 5xx, retry, malformed
+  third-party response) is a USER-FACING reliability defect —
+  closing it is outward, not inward churn.
+- **Verify every slice for real before moving on.** Mock / fixture
+  data (incl. mock documents, recorded HTTP fixtures) MAY be created
+  to exercise a capability whose real third-party service or
+  credential isn't available — but the check MUST drive the real
+  code path against a contract-faithful fake (per
+  `outbound-safety.md`), NEVER a stubbed registry or a
+  happy-path-only assertion. A capability you cannot exercise
+  end-to-end is not done.
+
+### External tools (open-source only)
+
+Integrating an open-source MCP server / tool is allowed when it is
+permissively licensed (Apache-2.0 / MIT), runs locally, and adds NO
+paid dependency or cloud API key. Web/browser control: drive the
+user's REAL logged-in Chrome via **Chrome DevTools MCP**
+(`ChromeDevTools/chrome-devtools-mcp`, Apache-2.0) attached over the
+remote-debugging port — register it under
+`McpSecurityPolicy.allowedServerNames` and reach it through the
+existing `McpManager`. Read / perceive is the default; any
+state-changing web action (submit / book / post / message) under the
+user's authenticated identity stays fail-close + draft-first per
+`outbound-safety.md`, and banking / payments remain out of scope.
 
 ---
 

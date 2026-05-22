@@ -636,6 +636,51 @@ The loop extends this map itself when all are delivered or its
 judgement finds a stronger outward direction. "Nothing to do" is
 impossible by construction.
 
+## Next horizon — human-directed (2026-05-23): expand + harden, live-verified
+
+The self-authored P0–P17 map is fully delivered. The human set the
+direction: keep shipping OUTWARD capability while turning the
+"one-of-each" proofs into daily-dependable integrations. Every slice
+is proven by a real, surface-level check — mock / fixture data MAY
+exercise it, but the real code path must run against a
+contract-faithful fake, never a stubbed registry or a
+happy-path-only assertion.
+
+**P18 — Web control of the user's REAL logged-in Chrome.** Search
+exists; Muse can't yet perceive or act on an arbitrary live web page.
+Integrate the open-source **Chrome DevTools MCP**
+(`ChromeDevTools/chrome-devtools-mcp`, Apache-2.0), attached to the
+user's running Chrome over the remote-debugging port, under the MCP
+allowlist. Read / perceive first; acting is gated.
+- [ ] Read-first: the agent opens / inspects a real URL in the
+  attached Chrome via the MCP tool and answers a question grounded in
+  the LIVE page content (not a cached search snippet). Check:
+  integration/live driving the MCP tool end-to-end against a
+  contract-faithful page fixture.
+- [ ] A state-changing web action (fill + submit a form) under the
+  user's session is approval-gated + draft-first per
+  `outbound-safety.md` — deny / timeout / ambiguous-target produces
+  NO external effect (contract-faithful fake). Banking / payments
+  stay out of scope.
+
+**P19 — Daily-hardening of the one-of-each actuators.** Each
+actuator (email, web action, contacts, weather/location, smart-home)
+was proven ONCE; a JARVIS you depend on survives real-world failure.
+- [ ] One actuator detects + recovers from a real failure mode
+  (rate-limit / transient 5xx / retry-with-backoff / malformed
+  response) instead of crashing the run or silently dropping —
+  proven by a contract-faithful fake exercising that exact path.
+  (Repeat per actuator as separate slices.)
+
+**P20 — Deepen the thin axes (Perception + Knowledge).**
+- [ ] Continuous perception: an ambient signal (active window /
+  screen / location) feeds a proactive notice without an explicit
+  invoke. Check: a simulated ambient signal drives a real proactive
+  delivery end-to-end.
+- [ ] Knowledge grounding: the agent answers from a MULTI-document
+  personal corpus (RAG over notes + ingested docs) and cites which
+  source — beyond today's single-doc PDF ingest.
+
 <!-- IMMUTABLE-CORE:BEGIN -->
 ## Immutable core (the loop must NEVER edit — honesty machinery)
 
