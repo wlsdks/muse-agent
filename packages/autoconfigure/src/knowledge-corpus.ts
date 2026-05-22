@@ -18,16 +18,43 @@ import type { MuseTool } from "@muse/tools";
  * read is skipped, never thrown — a partial corpus still grounds an
  * answer.
  */
+/**
+ * Minimal structural shape of a calendar source — the
+ * `CalendarProviderRegistry` and any single `CalendarProvider`
+ * satisfy it. Only the recent+upcoming window is pulled into the
+ * corpus so ancient / far-future events don't add noise.
+ */
+export interface CalendarEventLike {
+  readonly id: string;
+  readonly title: string;
+  readonly startsAt: Date;
+  readonly location?: string;
+  readonly notes?: string;
+}
+
+export interface CalendarEventSource {
+  listEvents(range: { readonly from: Date; readonly to: Date }): Promise<readonly CalendarEventLike[]> | readonly CalendarEventLike[];
+}
+
 export interface AssembleKnowledgeCorpusOptions {
   readonly notesProvider?: NotesProvider;
   /** Open tasks become corpus chunks sourced `task/<id>` — the user's todos hold key facts. */
   readonly tasksProvider?: TasksProvider;
+  /** Recent + upcoming events become corpus chunks sourced `event/<id>`. */
+  readonly calendarSource?: CalendarEventSource;
   readonly extraChunks?: readonly KnowledgeChunk[];
   /** Cap notes pulled into the corpus. Default 200. */
   readonly maxNotes?: number;
   /** Truncate each note body to bound prompt/CPU cost. Default 4000. */
   readonly maxCharsPerNote?: number;
+  /** Calendar window: days back / days ahead. Defaults 7 / 30. */
+  readonly calendarDaysBack?: number;
+  readonly calendarDaysAhead?: number;
+  /** Injectable clock for the calendar window (test only). */
+  readonly now?: () => number;
 }
+
+const DAY_MS = 86_400_000;
 
 function finiteOr(value: number | undefined, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -83,6 +110,30 @@ export async function assembleKnowledgeCorpus(
     }
   }
 
+  if (options.calendarSource) {
+    const nowMs = options.now ? options.now() : Date.now();
+    const daysBack = Math.max(0, finiteOr(options.calendarDaysBack, 7));
+    const daysAhead = Math.max(0, finiteOr(options.calendarDaysAhead, 30));
+    let events: readonly CalendarEventLike[];
+    try {
+      events = await options.calendarSource.listEvents({
+        from: new Date(nowMs - daysBack * DAY_MS),
+        to: new Date(nowMs + daysAhead * DAY_MS)
+      });
+    } catch {
+      events = [];
+    }
+    for (const event of events) {
+      const date = Number.isFinite(event.startsAt?.getTime?.()) ? event.startsAt.toISOString().slice(0, 10) : undefined;
+      const head = `${event.title}${event.location ? ` @ ${event.location}` : ""}${date ? ` on ${date}` : ""}`;
+      const text = event.notes && event.notes.trim().length > 0 ? `${head}\n\n${event.notes}` : head;
+      if (text.trim().length === 0) {
+        continue;
+      }
+      chunks.push({ source: `event/${event.id}`, text: text.length > maxChars ? text.slice(0, maxChars) : text });
+    }
+  }
+
   if (options.extraChunks?.length) {
     chunks.push(...options.extraChunks);
   }
@@ -93,6 +144,7 @@ export async function assembleKnowledgeCorpus(
 export interface NotesKnowledgeSearchToolOptions {
   readonly notesProvider?: NotesProvider;
   readonly tasksProvider?: TasksProvider;
+  readonly calendarSource?: CalendarEventSource;
   readonly embed: (text: string) => Promise<readonly number[]>;
   readonly topK?: number;
   readonly maxNotes?: number;
@@ -124,6 +176,7 @@ export function createNotesKnowledgeSearchTool(options: NotesKnowledgeSearchTool
       const corpus = await assembleKnowledgeCorpus({
         ...(options.notesProvider ? { notesProvider: options.notesProvider } : {}),
         ...(options.tasksProvider ? { tasksProvider: options.tasksProvider } : {}),
+        ...(options.calendarSource ? { calendarSource: options.calendarSource } : {}),
         ...(options.extraChunks ? { extraChunks: options.extraChunks } : {}),
         ...(options.maxNotes !== undefined ? { maxNotes: options.maxNotes } : {}),
         ...(options.maxCharsPerNote !== undefined ? { maxCharsPerNote: options.maxCharsPerNote } : {})

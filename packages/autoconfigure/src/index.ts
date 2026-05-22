@@ -546,7 +546,8 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     return [createNotesKnowledgeSearchTool({
       embed: createOllamaEmbedder(embedModel),
       notesProvider,
-      ...(tasksProvider ? { tasksProvider } : {})
+      ...(tasksProvider ? { tasksProvider } : {}),
+      ...(calendarRegistry ? { calendarSource: calendarRegistry } : {})
     })];
   })();
 
