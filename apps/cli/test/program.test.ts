@@ -5261,6 +5261,14 @@ describe("cli program", () => {
     expect(resolveActivePersonaPreamble(store)).toBe("fine");
     expect(resolveActivePersonaPreamble({ ...store, activeId: "absent" })).toBe("");
 
+    // An empty-string custom preamble is treated as "not set": it falls
+    // through to the built-in for a built-in id (so a blank override
+    // can't silently strip JARVIS's voice), and to "" for a custom-only
+    // id. The `.length > 0` guard, otherwise untested.
+    expect(resolveActivePersonaPreamble({ activeId: "jarvis", custom: { jarvis: { preamble: "" } } }).toLowerCase())
+      .toContain("sir");
+    expect(resolveActivePersonaPreamble({ activeId: "blank", custom: { blank: { preamble: "" } } })).toBe("");
+
     // CLI: `muse persona use toString` must be rejected, not
     // silently persisted as a broken activeId.
     const prev = process.env.MUSE_PERSONA_FILE;
