@@ -1,4 +1,4 @@
-import { rankKnowledgeChunks, renderKnowledgeMatches, type KnowledgeChunk } from "@muse/agent-core";
+import { chunkText, rankKnowledgeChunks, renderKnowledgeMatches, type KnowledgeChunk } from "@muse/agent-core";
 import type { NotesProvider } from "@muse/mcp";
 import type { MuseTool } from "@muse/tools";
 
@@ -55,7 +55,13 @@ export async function assembleKnowledgeCorpus(
       if (!body) {
         continue;
       }
-      chunks.push({ source: `notes/${entry.id}`, text: body.length > maxChars ? body.slice(0, maxChars) : body });
+      // Chunk long notes / ingested docs so a passage past the first
+      // `maxChars` is still retrievable + citable, instead of truncated
+      // away. A short note stays one chunk sourced `notes/<id>`.
+      const pieces = chunkText(body, maxChars);
+      pieces.forEach((piece, index) => {
+        chunks.push({ source: pieces.length > 1 ? `notes/${entry.id}#${(index + 1).toString()}` : `notes/${entry.id}`, text: piece });
+      });
     }
   }
 

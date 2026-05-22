@@ -98,6 +98,7 @@ export {
   type SummaryListSource
 } from "./episodic-recall.js";
 export {
+  chunkText,
   createKnowledgeSearchTool,
   rankKnowledgeChunks,
   renderKnowledgeMatches,

@@ -84,6 +84,51 @@ export function renderKnowledgeMatches(matches: readonly KnowledgeMatch[]): stri
   return lines.join("\n");
 }
 
+/**
+ * Split `text` into passages of at most `maxChars`, preferring
+ * paragraph boundaries (blank lines) so a chunk stays coherent. A
+ * single paragraph longer than `maxChars` is hard-split. Returns []
+ * for empty input; a short text returns one chunk. This is what lets
+ * a long note / ingested document be retrieved + cited PASSAGE-by-
+ * passage instead of truncated to its first `maxChars`.
+ */
+export function chunkText(text: string, maxChars: number): string[] {
+  const trimmed = text.trim();
+  const limit = Number.isFinite(maxChars) ? Math.max(1, Math.trunc(maxChars)) : 4_000;
+  if (trimmed.length === 0) {
+    return [];
+  }
+  if (trimmed.length <= limit) {
+    return [trimmed];
+  }
+  const paragraphs = trimmed.split(/\n{2,}/u).map((p) => p.trim()).filter((p) => p.length > 0);
+  const chunks: string[] = [];
+  let current = "";
+  for (const paragraph of paragraphs) {
+    if (paragraph.length > limit) {
+      if (current.length > 0) {
+        chunks.push(current);
+        current = "";
+      }
+      for (let i = 0; i < paragraph.length; i += limit) {
+        chunks.push(paragraph.slice(i, i + limit));
+      }
+      continue;
+    }
+    const candidate = current.length > 0 ? `${current}\n\n${paragraph}` : paragraph;
+    if (candidate.length > limit) {
+      chunks.push(current);
+      current = paragraph;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+  return chunks;
+}
+
 export interface KnowledgeSearchToolOptions {
   readonly corpus: readonly KnowledgeChunk[];
   readonly embed: (text: string) => Promise<readonly number[]>;
