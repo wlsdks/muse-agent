@@ -8,6 +8,7 @@
  * Pure string logic — no deps; the polling tick (snapshot via the
  * MCP tool + deliver a proactive notice) wires this in.
  */
+import { fetchWithRetry, type RetryOptions } from "./http-retry.js";
 import type { ProactiveNoticeSink } from "./proactive-notice-loop.js";
 
 export interface WatchRule {
@@ -118,4 +119,94 @@ export function createWebWatchRunner(options: {
       return { delivered };
     }
   };
+}
+
+const RULE_FIELDS = ["appears", "disappears"] as const;
+
+/**
+ * Snapshot source for a PUBLIC web page: an HTTP GET (retry-hardened
+ * for transient 429/5xx). Non-intrusive — unlike driving the user's
+ * logged-in browser, it doesn't hijack their active tab. Returns the
+ * body text, or `undefined` on a permanent failure (the runner then
+ * skips that watch without losing its baseline). Authenticated pages
+ * are a later Chrome-DevTools-MCP source.
+ */
+export function createHttpSnapshot(
+  url: string,
+  options: { readonly fetchImpl?: typeof globalThis.fetch; readonly retryOptions?: RetryOptions } = {}
+): () => Promise<string | undefined> {
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  return async () => {
+    try {
+      const response = await fetchWithRetry(fetchImpl, url, options.retryOptions ?? {});
+      if (!response.ok) {
+        return undefined;
+      }
+      return await response.text();
+    } catch {
+      return undefined;
+    }
+  };
+}
+
+/**
+ * Parse a JSON array of web-watch specs from config and build runnable
+ * `WebWatch`es with HTTP snapshot sources. Each entry needs a
+ * non-empty `id` + `url`, string `title`/`message`, and a `rule` with
+ * at least one condition (`appears` / `disappears` / `onAnyChange`).
+ * Fail-open: malformed JSON / non-array / an invalid entry is skipped.
+ */
+export function webWatchesFromConfig(
+  raw: string,
+  options: { readonly fetchImpl?: typeof globalThis.fetch; readonly retryOptions?: RetryOptions } = {}
+): WebWatch[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  const out: WebWatch[] = [];
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+    const e = entry as Record<string, unknown>;
+    if (typeof e.id !== "string" || e.id.length === 0 || typeof e.url !== "string" || e.url.length === 0) {
+      continue;
+    }
+    if (typeof e.title !== "string" || typeof e.message !== "string") {
+      continue;
+    }
+    if (!e.rule || typeof e.rule !== "object" || Array.isArray(e.rule)) {
+      continue;
+    }
+    const ruleObj = e.rule as Record<string, unknown>;
+    const rule: { appears?: string; disappears?: string; onAnyChange?: boolean; caseInsensitive?: boolean } = {};
+    for (const field of RULE_FIELDS) {
+      if (typeof ruleObj[field] === "string" && (ruleObj[field] as string).length > 0) {
+        rule[field] = ruleObj[field] as string;
+      }
+    }
+    if (ruleObj.onAnyChange === true) {
+      rule.onAnyChange = true;
+    }
+    if (ruleObj.caseInsensitive === false) {
+      rule.caseInsensitive = false;
+    }
+    if (rule.appears === undefined && rule.disappears === undefined && rule.onAnyChange !== true) {
+      continue;
+    }
+    out.push({
+      id: e.id,
+      message: e.message,
+      rule,
+      snapshot: createHttpSnapshot(e.url, options),
+      title: e.title
+    });
+  }
+  return out;
 }
