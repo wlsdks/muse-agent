@@ -8,6 +8,7 @@ import {
   computeNextRunAt,
   maxRetryCountCeiling,
   normalizeScheduledJobExecution,
+  renderTemplateVariables,
   requireText,
   resolveJobTimeout,
   validateCronExpression,
@@ -209,6 +210,43 @@ describe("resolveJobTimeout — defends against a corrupt persisted executionTim
     expect(resolveJobTimeout(baseJob({ executionTimeoutMs: Number.POSITIVE_INFINITY }), 60_000)).toBe(60_000);
     expect(resolveJobTimeout(baseJob({ executionTimeoutMs: -1 }), 60_000)).toBe(60_000);
     expect(resolveJobTimeout(baseJob({ executionTimeoutMs: 0 }), 60_000)).toBe(60_000);
+  });
+});
+
+describe("renderTemplateVariables — time rendering at midnight (h23, not the h24 '24:00:00' quirk)", () => {
+  const job = (overrides: Partial<ScheduledJob> = {}): ScheduledJob => ({
+    cronExpression: "0 0 * * *",
+    createdAt: new Date("2026-05-20T00:00:00Z"),
+    enabled: true,
+    id: "j-mid",
+    jobType: "agent",
+    maxRetryCount: 3,
+    name: "Midnight digest",
+    retryOnFailure: false,
+    tags: [],
+    timezone: "UTC",
+    toolArguments: {},
+    updatedAt: new Date("2026-05-20T00:00:00Z"),
+    ...overrides
+  });
+
+  it("renders midnight {{time}} as 00:00:00, not 24:00:00 (hour12:false maps to h24)", () => {
+    const midnight = new Date("2026-05-22T00:00:00Z");
+    expect(renderTemplateVariables("at {{time}}", job(), midnight)).toBe("at 00:00:00");
+    expect(renderTemplateVariables("{{datetime}}", job(), midnight)).toBe("2026-05-22 00:00:00");
+  });
+
+  it("renders a midday time unchanged, and substitutes date / job fields", () => {
+    const midday = new Date("2026-05-22T13:05:09Z");
+    expect(renderTemplateVariables("{{date}} {{time}} — {{job_name}}", job(), midday))
+      .toBe("2026-05-22 13:05:09 — Midnight digest");
+  });
+
+  it("honours the job timezone so midnight is local, still 00 not 24", () => {
+    // 2026-05-22T15:00:00Z == 2026-05-23T00:00:00 in Asia/Seoul (UTC+9).
+    const localMidnight = new Date("2026-05-22T15:00:00Z");
+    expect(renderTemplateVariables("{{datetime}}", job({ timezone: "Asia/Seoul" }), localMidnight))
+      .toBe("2026-05-23 00:00:00");
   });
 });
 

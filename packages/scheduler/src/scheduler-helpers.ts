@@ -415,7 +415,9 @@ function dateParts(date: Date, rawTimeZone: string): {
   const dateFormatter = new Intl.DateTimeFormat("en-US", {
     day: "2-digit",
     hour: "2-digit",
-    hour12: false,
+    // h23, not hour12:false — the latter maps to the h24 cycle and
+    // renders midnight as "24" (so {{time}} becomes "24:00:00").
+    hourCycle: "h23",
     minute: "2-digit",
     month: "2-digit",
     second: "2-digit",
