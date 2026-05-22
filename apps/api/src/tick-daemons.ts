@@ -210,6 +210,28 @@ export function startFollowupDaemonIfConfigured(
   });
 }
 
+/**
+ * Build the shared knowledge enricher (unified live corpus + cached
+ * Ollama embed) used by BOTH proactive channels — the scheduled
+ * briefing's `relatedKnowledge` and the real-time ambient notice's
+ * `enrich`. Off unless `MUSE_BRIEFING_RELATED_KNOWLEDGE_ENABLED=true`.
+ */
+function buildKnowledgeEnricherIfEnabled(
+  env: NodeJS.ProcessEnv,
+  options: ServerOptions
+): ((query: string) => Promise<string | undefined>) | undefined {
+  if (!parseBoolean(env.MUSE_BRIEFING_RELATED_KNOWLEDGE_ENABLED, false)) {
+    return undefined;
+  }
+  return createKnowledgeEnricher({
+    embed: createCachingEmbedder(createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text")),
+    ...(options.notesDir ? { notesProvider: new LocalDirNotesProvider({ notesDir: options.notesDir }) } : {}),
+    ...(options.tasksFile ? { tasksProvider: new LocalFileTasksProvider({ file: options.tasksFile }) } : {}),
+    ...(options.calendar ? { calendarSource: options.calendar } : {}),
+    contactsSource: { list: () => queryContacts(resolveContactsFile(env)) }
+  });
+}
+
 export function startSituationalBriefingDaemonIfConfigured(
   env: NodeJS.ProcessEnv,
   server: FastifyInstance,
@@ -261,17 +283,8 @@ export function startSituationalBriefingDaemonIfConfigured(
   const emailOpt = gmailToken && gmailToken.length > 0
     ? { emailProvider: new GmailEmailProvider(gmailToken) }
     : {};
-  const relatedOpt = parseBoolean(env.MUSE_BRIEFING_RELATED_KNOWLEDGE_ENABLED, false)
-    ? {
-        relatedKnowledge: createKnowledgeEnricher({
-          embed: createCachingEmbedder(createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text")),
-          ...(options.notesDir ? { notesProvider: new LocalDirNotesProvider({ notesDir: options.notesDir }) } : {}),
-          ...(options.tasksFile ? { tasksProvider: new LocalFileTasksProvider({ file: options.tasksFile }) } : {}),
-          ...(briefingCalendar ? { calendarSource: briefingCalendar } : {}),
-          contactsSource: { list: () => queryContacts(resolveContactsFile(env)) }
-        })
-      }
-    : {};
+  const briefingEnricher = buildKnowledgeEnricherIfEnabled(env, options);
+  const relatedOpt = briefingEnricher ? { relatedKnowledge: briefingEnricher } : {};
   const briefingHandle = startSituationalBriefingTick({
     destination: briefingDestination,
     errorLogger: (message) => server.log.warn(message),
@@ -414,6 +427,7 @@ export function startAmbientDaemonIfConfigured(
   const file = resolveAmbientSignalFile(env);
   const tickMsRaw = env.MUSE_AMBIENT_TICK_MS ? Number(env.MUSE_AMBIENT_TICK_MS) : undefined;
   const quietHours = parseQuietHours(env.MUSE_AMBIENT_QUIET_HOURS) ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const enrich = buildKnowledgeEnricherIfEnabled(env, options);
   const handle = startAmbientTick({
     destination,
     errorLogger: (message) => server.log.warn(message),
@@ -422,6 +436,7 @@ export function startAmbientDaemonIfConfigured(
     registry: options.messaging,
     rules,
     source: new FileAmbientSignalSource(file),
+    ...(enrich ? { enrich } : {}),
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     ...(quietHours ? { quietHours } : {})
   });

@@ -213,6 +213,14 @@ export function createAmbientNoticeRunner(options: {
   readonly source: AmbientSignalSource;
   readonly rules: readonly AmbientNoticeRule[];
   readonly sink: ProactiveNoticeSink;
+  /**
+   * Optional knowledge enricher. When set, a firing notice appends a
+   * "Related: …" line for what the user already wrote about what
+   * they're looking at — keyed on the ambient signal (window / app /
+   * selection). Called once per tick (only when something fires);
+   * fail-soft.
+   */
+  readonly enrich?: (query: string) => Promise<string | undefined> | string | undefined;
 }): AmbientNoticeRunner {
   let lastMatchedIds = new Set<string>();
   return {
@@ -225,12 +233,22 @@ export function createAmbientNoticeRunner(options: {
       }
       const matched = deriveAmbientNotices(signal, options.rules);
       const matchedIds = new Set(matched.map((notice) => notice.ruleId));
-      const newlyFired: string[] = [];
-      for (const notice of matched) {
-        if (lastMatchedIds.has(notice.ruleId)) {
-          continue;
+      const toFire = matched.filter((notice) => !lastMatchedIds.has(notice.ruleId));
+      let related: string | undefined;
+      if (toFire.length > 0 && options.enrich && signal) {
+        const query = (signal.window ?? signal.app ?? signal.selected ?? "").trim();
+        if (query.length > 0) {
+          try {
+            related = await options.enrich(query);
+          } catch {
+            related = undefined;
+          }
         }
-        await options.sink.deliver({ kind: notice.kind, text: notice.text, title: notice.title });
+      }
+      const newlyFired: string[] = [];
+      for (const notice of toFire) {
+        const text = related && related.trim().length > 0 ? `${notice.text} — Related: ${related}` : notice.text;
+        await options.sink.deliver({ kind: notice.kind, text, title: notice.title });
         newlyFired.push(notice.ruleId);
       }
       lastMatchedIds = matchedIds;

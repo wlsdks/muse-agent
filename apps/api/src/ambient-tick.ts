@@ -27,6 +27,8 @@ export interface AmbientTickOptions {
   readonly destination: string;
   readonly intervalMs?: number;
   readonly quietHours?: QuietHourRange;
+  /** Optional knowledge enricher: a firing notice gains a related-knowledge line. */
+  readonly enrich?: (query: string) => Promise<string | undefined> | string | undefined;
   readonly logger?: (message: string) => void;
   readonly errorLogger?: (message: string) => void;
   readonly now?: () => Date;
@@ -52,7 +54,12 @@ export function startAmbientTick(options: AmbientTickOptions): AmbientTickHandle
       });
     }
   };
-  const runner = createAmbientNoticeRunner({ rules: options.rules, sink, source: options.source });
+  const runner = createAmbientNoticeRunner({
+    rules: options.rules,
+    sink,
+    source: options.source,
+    ...(options.enrich ? { enrich: options.enrich } : {})
+  });
   let firing = false;
 
   const tickOnce = async (): Promise<void> => {
