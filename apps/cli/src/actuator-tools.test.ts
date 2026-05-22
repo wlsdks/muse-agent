@@ -7,7 +7,7 @@ import type { ModelProvider, ModelResponse } from "@muse/model";
 import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";
 
-import { buildActuatorTools } from "./actuator-tools.js";
+import { buildActuatorTools, formatActuatorBanner, summarizeActuators } from "./actuator-tools.js";
 import type { ProgramIO } from "./program.js";
 
 function fakeIo(): ProgramIO {
@@ -89,6 +89,52 @@ describe("buildActuatorTools — env-driven actuator selection", () => {
     for (const tool of tools) {
       expect(tool.definition.risk).toBe("execute");
     }
+  });
+});
+
+describe("summarizeActuators — armed-state visibility + config hints", () => {
+  it("arms only web_action with no provider env, with hints for the rest", () => {
+    const summary = summarizeActuators(env());
+    expect(summary.armed).toEqual(["web_action"]);
+    expect(summary.unavailable.map((u) => u.name).sort()).toEqual(["email_send", "home_action"]);
+    expect(summary.unavailable.find((u) => u.name === "email_send")?.hint).toContain("MUSE_GMAIL_TOKEN");
+    expect(summary.unavailable.find((u) => u.name === "home_action")?.hint).toContain("MUSE_HOMEASSISTANT_URL");
+  });
+
+  it("arms all three when every provider env is set", () => {
+    const summary = summarizeActuators(
+      env({ MUSE_GMAIL_TOKEN: "tok", MUSE_HOMEASSISTANT_TOKEN: "ha", MUSE_HOMEASSISTANT_URL: "http://ha.local:8123" })
+    );
+    expect([...summary.armed].sort()).toEqual(["email_send", "home_action", "web_action"]);
+    expect(summary.unavailable).toEqual([]);
+  });
+
+  it("requires BOTH Home Assistant vars to arm home_action", () => {
+    const summary = summarizeActuators(env({ MUSE_HOMEASSISTANT_URL: "http://ha.local:8123" }));
+    expect(summary.armed).not.toContain("home_action");
+  });
+
+  it("the armed set always equals the names buildActuatorTools actually constructs (no drift)", () => {
+    for (const overrides of [
+      {},
+      { MUSE_GMAIL_TOKEN: "tok" },
+      { MUSE_HOMEASSISTANT_TOKEN: "ha", MUSE_HOMEASSISTANT_URL: "http://ha.local:8123" },
+      { MUSE_GMAIL_TOKEN: "tok", MUSE_HOMEASSISTANT_TOKEN: "ha", MUSE_HOMEASSISTANT_URL: "http://ha.local:8123" }
+    ]) {
+      const e = env(overrides);
+      const built = buildActuatorTools({ confirmAction: async () => true, env: e, io: fakeIo(), userId: "stark" })
+        .map((t) => t.definition.name)
+        .sort();
+      expect([...summarizeActuators(e).armed].sort()).toEqual(built);
+    }
+  });
+
+  it("formats a confirm-safety banner plus one hint line per unavailable actuator", () => {
+    const banner = formatActuatorBanner(summarizeActuators(env()));
+    expect(banner).toContain("actuators armed: web_action");
+    expect(banner).toContain("fires only on your confirm");
+    expect(banner).toContain("actuator unavailable: email_send — set MUSE_GMAIL_TOKEN");
+    expect(banner.endsWith("\n")).toBe(true);
   });
 });
 

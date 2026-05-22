@@ -26,6 +26,46 @@ import { confirm, isCancel } from "@clack/prompts";
 
 import type { ProgramIO } from "./program.js";
 
+export interface ActuatorSummary {
+  readonly armed: readonly string[];
+  readonly unavailable: readonly { readonly name: string; readonly hint: string }[];
+}
+
+/**
+ * Which actuators `--actuators` arms for a given env, and how to arm
+ * the rest. Kept in lockstep with `buildActuatorTools` (a test asserts
+ * the armed set equals the built tool names) so the banner never claims
+ * a capability the agent can't actually use.
+ */
+export function summarizeActuators(env: MuseEnvironment): ActuatorSummary {
+  const armed: string[] = ["web_action"];
+  const unavailable: { name: string; hint: string }[] = [];
+
+  if (env.MUSE_GMAIL_TOKEN?.trim()) {
+    armed.push("email_send");
+  } else {
+    unavailable.push({ hint: "set MUSE_GMAIL_TOKEN", name: "email_send" });
+  }
+
+  if (env.MUSE_HOMEASSISTANT_URL?.trim() && env.MUSE_HOMEASSISTANT_TOKEN?.trim()) {
+    armed.push("home_action");
+  } else {
+    unavailable.push({ hint: "set MUSE_HOMEASSISTANT_URL + MUSE_HOMEASSISTANT_TOKEN", name: "home_action" });
+  }
+
+  return { armed, unavailable };
+}
+
+export function formatActuatorBanner(summary: ActuatorSummary): string {
+  const lines = [
+    `(actuators armed: ${summary.armed.join(", ")} — every action shows the exact draft and fires only on your confirm)`
+  ];
+  for (const { name, hint } of summary.unavailable) {
+    lines.push(`(actuator unavailable: ${name} — ${hint})`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 export interface ActuatorToolsDeps {
   readonly env: MuseEnvironment;
   readonly io: ProgramIO;

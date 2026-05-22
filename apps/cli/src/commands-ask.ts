@@ -27,6 +27,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveNotesDir, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
+import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
 import { readReminders, readTasks, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { classifyTier, type ModelTier } from "@muse/multi-agent";
@@ -390,13 +391,13 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       if (options.actuators === true && options.withTools !== true) {
         io.stderr("(--actuators has no effect without --with-tools)\n");
       }
-      const extraTools = useActuators
-        ? (await import("./actuator-tools.js")).buildActuatorTools({
-            env: process.env as MuseEnvironment,
-            io,
-            userId: userKey
-          })
-        : undefined;
+      let extraTools: MuseTool[] | undefined;
+      if (useActuators) {
+        const actuatorMod = await import("./actuator-tools.js");
+        const actuatorEnv = process.env as MuseEnvironment;
+        io.stderr(actuatorMod.formatActuatorBanner(actuatorMod.summarizeActuators(actuatorEnv)));
+        extraTools = actuatorMod.buildActuatorTools({ env: actuatorEnv, io, userId: userKey });
+      }
       const assembly = createMuseRuntimeAssembly(extraTools ? { extraTools } : {});
       if (!assembly.modelProvider || !(options.model ?? assembly.defaultModel)) {
         io.stderr("muse ask requires a configured model. Set MUSE_MODEL or pass --model.\n");
