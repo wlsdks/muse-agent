@@ -4939,6 +4939,33 @@ describe("cli program", () => {
     expect(detectInlineImageSupport({} as NodeJS.ProcessEnv)).toBe(false);
   });
 
+  it("muse show rejects a 0-byte file with a clear error instead of emitting an empty inline sequence", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-show-empty-"));
+    const fsp = await import("node:fs/promises");
+    const emptyPath = path.join(root, "empty.png");
+    await fsp.writeFile(emptyPath, Buffer.alloc(0));
+
+    const prevExit = process.exitCode;
+    const prevTerm = process.env.TERM_PROGRAM;
+    // iTerm so the inline path would otherwise emit the OSC-1337 bytes.
+    process.env.TERM_PROGRAM = "iTerm.app";
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram(io);
+      process.exitCode = 0;
+      await program.parseAsync(["node", "muse", "show", emptyPath], { from: "node" });
+      const text = output.join("");
+      expect(text).toContain("is empty (0 bytes)");
+      // No inline-image escape sequence must have been emitted.
+      expect(text).not.toContain("\x1b]1337;File=inline=1");
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = prevExit;
+      if (prevTerm === undefined) delete process.env.TERM_PROGRAM;
+      else process.env.TERM_PROGRAM = prevTerm;
+    }
+  });
+
   it("suggestPatternHints surfaces patterns whose median hour matches now (goal 095)", async () => {
     const { suggestPatternHints } = await import("../src/commands-status.js");
     const now = new Date("2026-05-15T09:00:00Z"); // 09 UTC

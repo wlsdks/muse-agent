@@ -101,6 +101,15 @@ export function registerShowCommand(program: Command, io: ProgramIO): void {
         process.exitCode = 1;
         return;
       }
+      // A 0-byte file (e.g. a truncated / failed download) reads fine
+      // but would emit an empty inline-image sequence — a silent no-op
+      // on iTerm/WezTerm — or have the OS viewer "open" nothing. Fail
+      // with a clear message instead.
+      if (imageBytes.length === 0) {
+        io.stderr(`muse show: ${filePath} is empty (0 bytes) — nothing to render.\n`);
+        process.exitCode = 1;
+        return;
+      }
       const inlineCapable = detectInlineImageSupport(process.env);
       if (inlineCapable || options.inlineOnly) {
         const sequence = buildIterm2InlineImageSequence({
