@@ -556,6 +556,49 @@ describe("McpManager", () => {
     expect(manager.getStatus("local")).toBe("connected");
   });
 
+  it("grows reconnect backoff across REPEATED failures and goes terminal at maxAttempts (no infinite fastest-interval retry)", async () => {
+    let nowMs = 1_767_228_800_000;
+    const connector = {
+      // Connect resolves, but listTools always rejects → every connect attempt fails.
+      connect: vi.fn().mockResolvedValue({
+        close: vi.fn(),
+        listTools: vi.fn().mockRejectedValue(new Error("still down"))
+      } as McpConnection)
+    };
+    const manager = new McpManager(new InMemoryMcpServerStore(), {
+      connector,
+      now: () => new Date(nowMs),
+      reconnect: { initialDelayMs: 100, maxAttempts: 3 }
+    });
+    await manager.register({ config: { command: "node" }, name: "local", transportType: "stdio" });
+
+    // Initial failure → attempts 1, next due at +100ms (initial * 2^0).
+    await expect(manager.connect("local")).resolves.toBe(false);
+    expect(manager.getHealth("local")).toMatchObject({ reconnectAttempts: 1 });
+    const firstDue = manager.getHealth("local").nextReconnectAt?.getTime();
+    expect(firstDue).toBe(nowMs + 100);
+
+    // Second failure must grow attempts to 2 and the delay to 200ms (2^1) —
+    // the bug reset attempts to 1 here, pinning the delay at 100ms forever.
+    nowMs = firstDue!;
+    await manager.reconnectDue();
+    expect(manager.getHealth("local")).toMatchObject({ reconnectAttempts: 2 });
+    expect(manager.getHealth("local").nextReconnectAt?.getTime()).toBe(nowMs + 200);
+
+    // Third failure → attempts 3, delay 400ms (2^2).
+    nowMs = manager.getHealth("local").nextReconnectAt!.getTime();
+    await manager.reconnectDue();
+    expect(manager.getHealth("local")).toMatchObject({ reconnectAttempts: 3 });
+    expect(manager.getHealth("local").nextReconnectAt?.getTime()).toBe(nowMs + 400);
+
+    // Fourth failure exceeds maxAttempts(3) → terminal, no further reconnect armed.
+    nowMs = manager.getHealth("local").nextReconnectAt!.getTime();
+    await manager.reconnectDue();
+    expect(manager.getHealth("local").reconnectAttempts).toBe(4);
+    expect(manager.getHealth("local").nextReconnectAt).toBeUndefined();
+    await expect(manager.reconnectDue()).resolves.toEqual([]);
+  });
+
   it("reports local preflight diagnostics before live MCP execution", async () => {
     const policyStore = new InMemoryMcpSecurityPolicyStore({
       initial: {

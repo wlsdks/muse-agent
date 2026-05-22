@@ -296,11 +296,17 @@ export class McpManager {
   }
 
   async reconnect(name: string): Promise<boolean> {
+    // Carry the accumulated attempt count into the interim snapshot.
+    // Without it, a failed reconnect's scheduleReconnect would read 0
+    // and reset attempts to 1 every cycle — so the exponential backoff
+    // never grows past initialDelayMs and maxAttempts is never reached
+    // (a dead server retries forever at the fastest interval).
+    const priorAttempts = this.health.get(name)?.reconnectAttempts ?? 0;
     if (this.connections.has(name)) {
       await this.disconnect(name);
     }
 
-    this.health.set(name, this.createHealthSnapshot(name, "unknown"));
+    this.health.set(name, this.createHealthSnapshot(name, "unknown", undefined, priorAttempts));
     return this.connect(name);
   }
 
