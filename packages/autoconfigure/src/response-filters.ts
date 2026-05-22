@@ -30,7 +30,7 @@ import {
 import { parseBoolean, parseCsv, parseInteger, parseOptionalString } from "./env-parsers.js";
 import type { MuseEnvironment } from "./index.js";
 
-function responseLocales(env: MuseEnvironment): ReadonlySet<"ko" | "en"> {
+export function responseLocales(env: MuseEnvironment): ReadonlySet<"ko" | "en"> {
   const raw = parseCsv(env.MUSE_RESPONSE_LOCALES) ?? ["ko", "en"];
   const result = new Set<"ko" | "en">();
   for (const entry of raw) {
@@ -38,6 +38,15 @@ function responseLocales(env: MuseEnvironment): ReadonlySet<"ko" | "en"> {
     if (lower === "ko" || lower === "en") {
       result.add(lower);
     }
+  }
+  // A set value with no RECOGNIZED locale (a typo like "english", or an
+  // unsupported "fr") would otherwise yield an empty set and silently
+  // disable every locale-gated filter (casual-lure + greeting strip) and
+  // flip the redaction default to Korean. Treat "no recognizable locale"
+  // like "unset" — fall back to both — so a config typo never quietly
+  // turns safety/quality filters off.
+  if (result.size === 0) {
+    return new Set(["ko", "en"]);
   }
   return result;
 }
