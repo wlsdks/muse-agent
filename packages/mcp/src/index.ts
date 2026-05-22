@@ -418,8 +418,17 @@ export {
   summarizeInbox,
   unreadBriefingLine,
   type EmailProvider,
+  type EmailSender,
   type EmailSummary
 } from "./email-provider.js";
+export {
+  sendEmailWithApproval,
+  type ApprovalDecision,
+  type EmailApprovalGate,
+  type EmailDraft,
+  type SendEmailOutcome,
+  type SendEmailWithApprovalOptions
+} from "./email-send.js";
 export {
   createMessagingObjectiveActuator,
   createModelObjectiveEvaluator,

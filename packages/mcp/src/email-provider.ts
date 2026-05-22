@@ -28,16 +28,48 @@ export interface EmailProvider {
   listRecent(limit: number): Promise<readonly EmailSummary[]>;
 }
 
+/**
+ * Outbound send, kept a separate interface so a read-only provider /
+ * the gated-send orchestration depend only on what they use. The
+ * actual send is ALWAYS gated upstream by `sendEmailWithApproval` —
+ * this is just the transport.
+ */
+export interface EmailSender {
+  sendEmail(to: string, subject: string, body: string): Promise<void>;
+}
+
 function header(headers: ReadonlyArray<Record<string, unknown>>, name: string): string {
   const match = headers.find((h) => typeof h.name === "string" && h.name.toLowerCase() === name.toLowerCase());
   return match && typeof match.value === "string" ? match.value : "";
 }
 
-export class GmailEmailProvider implements EmailProvider {
+export class GmailEmailProvider implements EmailProvider, EmailSender {
   constructor(
     private readonly accessToken: string,
     private readonly fetchImpl: typeof globalThis.fetch = globalThis.fetch
   ) {}
+
+  async sendEmail(to: string, subject: string, body: string): Promise<void> {
+    const mime = [
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      "Content-Type: text/plain; charset=\"UTF-8\"",
+      "",
+      body
+    ].join("\r\n");
+    const raw = Buffer.from(mime, "utf8").toString("base64url");
+    const response = await this.fetchImpl(`${GMAIL_BASE}/messages/send`, {
+      body: JSON.stringify({ raw }),
+      headers: { authorization: `Bearer ${this.accessToken}`, "content-type": "application/json" },
+      method: "POST"
+    });
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(`Gmail auth rejected (${response.status.toString()}) — token missing/expired or lacks gmail.send scope`);
+    }
+    if (!response.ok) {
+      throw new Error(`Gmail send failed (${response.status.toString()})`);
+    }
+  }
 
   private async get(url: string): Promise<Record<string, unknown>> {
     const response = await this.fetchImpl(url, { headers: { authorization: `Bearer ${this.accessToken}` } });

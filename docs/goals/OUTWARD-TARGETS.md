@@ -453,13 +453,19 @@ send is draft-first and gated.
   unread-inbox digest (contract-faithful over the real TelegramProvider,
   `MUSE_GMAIL_TOKEN`-gated, supplementary — never triggers a brief
   alone). A guided OAuth token flow remains for live use.)
-- [ ] Send / reply obeys `outbound-safety.md` — a message to a third
+- [x] Send / reply obeys `outbound-safety.md` — a message to a third
   party is never sent without the user confirming the exact drafted
   content; recipient resolved or the agent asks; fail-closed; sent
   content action-logged. Check: send attempt → approval prompt
   carrying the draft → only on explicit confirm does the HTTP-faked
   send fire; deny / timeout / ambiguous-recipient ⇒ no send
-  (integration, contract-faithful, never a fake registry).
+  (integration, contract-faithful, never a fake registry). — 696
+  (`sendEmailWithApproval`: resolveContact (ambiguous/unknown/no-email
+  ⇒ NO send + clarify) → draft → fail-closed approval gate (deny /
+  gate-throw ⇒ NO send) → `GmailEmailProvider.send` (real Gmail REST
+  over a faked fetch) → action-logged performed/refused; `muse email
+  send` surface. Mutation-proven: dropping the deny guard makes a
+  denied send fire. Live use needs a real Gmail OAuth token.)
 
 **P12 — Real-world context: weather + location (read-only).** Cheap
 grounding for anticipation.
