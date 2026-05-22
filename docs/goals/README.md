@@ -663,3 +663,19 @@ Append one line when a discovery path is evaluated and deferred:
   Francisco" → "fog 10C" — the real geocode → forecast → format chain
   works. No drift; no bullet reopened. No new seam test (both surfaces
   already compose; a redundant test would be inward churn).
+- P13 audit — @muse/mcp personal-contacts-store.test.ts + @muse/cli
+  commands-contacts.test.ts + (consumption seam) p11-email-contacts
+  -seam.test.ts + LIVE `muse contacts` — PASS: P13's resolver is the
+  recipient-resolution backbone for outbound safety. Piece-checks
+  re-run green TOGETHER: `@muse/mcp` 7/7 (store round-trip +
+  `resolveContact` resolved / by-alias / exact-over-substring /
+  ambiguous / unknown / empty), `@muse/cli` 6/6 (commands-contacts
+  add/list/resolve + the p11 consumption seam). The consumption seam
+  (a contact → gated email recipient, never-guess) already composes in
+  p11-email-contacts-seam.test.ts (goal 700). END-TO-END live flow
+  re-run this audit (real `~/.muse/contacts.json`): `muse contacts add
+  Bob --alias Bobby` → resolve by name AND alias → "bob@example.com";
+  a SECOND "Bob" → resolve is AMBIGUOUS, lists both candidates (never a
+  guessed address); unknown → not-found. The never-guess rule holds
+  live. No drift; no bullet reopened. No new seam test (the resolver's
+  piece-checks + the existing p11 consumption seam cover it).
