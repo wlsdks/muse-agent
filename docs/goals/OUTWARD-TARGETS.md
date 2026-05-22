@@ -611,10 +611,21 @@ ambient bundle.)
   (`recordRefusal` hook on `createChannelApprovalGate`, wired in
   apps/api via `createChannelRefusalRecorder` → `appendActionLog`;
   fail-soft; @muse/messaging stays @muse/mcp-free. Mutation-proven.)
-- [ ] REMOTE surface, completion half: an inbound channel reply that
-  approves a pending refusal re-runs the exact gated tool (the
-  approve-completion round-trip), so a real Telegram/chat conversation
-  can actually trigger a gated actuator end-to-end. Not yet built.
+- [x] REMOTE surface, completion via CLI: `muse approvals approve <id>`
+  re-runs a pending refusal's exact gated tool — reusing the proven
+  actuator orchestration (709 `buildActuatorTools`) with a clack confirm
+  showing the draft, then clearing the entry on success (replay-guard).
+  So a channel-triggered action the gate refused can be completed
+  end-to-end (review on CLI → approve → it fires). — 728 (worklist
+  substrate) + 729 (`approvePendingApproval`: confirm→runs+clears /
+  deny→stays / unknown/expired→not-found / non-actuator→no-tool;
+  replay-guard mutation-proven).
+- [ ] REMOTE surface, in-CHAT auto-completion: an inbound channel REPLY
+  ("yes"/"approve") to the draft-bearing prompt re-runs the pending tool
+  WITHOUT leaving the chat — so the whole loop happens in Telegram/chat.
+  The CLI-approve path above covers completion; this is the more-
+  automated in-channel variant (needs an `isApprovalReply` detector +
+  inbound-runner wiring + re-execution-without-re-gating). Not yet built.
 
 The loop extends this map itself when all are delivered or its
 judgement finds a stronger outward direction. "Nothing to do" is

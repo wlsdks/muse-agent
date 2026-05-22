@@ -10,9 +10,60 @@
 
 import { resolvePendingApprovalsFile } from "@muse/autoconfigure";
 import { clearPendingApproval, listPendingApprovals, type PendingApproval } from "@muse/messaging";
+import type { JsonObject } from "@muse/shared";
 import type { Command } from "commander";
 
+import { buildActuatorTools } from "./actuator-tools.js";
 import type { ProgramIO } from "./program.js";
+
+export interface ApproveResult {
+  readonly status: "ran" | "declined" | "not-found" | "no-tool";
+  readonly tool?: string;
+  readonly detail?: string;
+}
+
+/**
+ * Re-run a pending channel approval's gated tool through the same proven
+ * actuator orchestration (with a confirm gate), then clear it on success
+ * so a second approve can't re-fire (replay-guard). Pure-ish: the tool
+ * builder's `confirmAction` / `fetchImpl` are injectable for tests.
+ */
+export async function approvePendingApproval(opts: {
+  readonly pendingFile: string;
+  readonly id: string;
+  readonly env: Record<string, string | undefined>;
+  readonly io: ProgramIO;
+  readonly confirmAction?: (message: string) => Promise<boolean>;
+  readonly fetchImpl?: typeof fetch;
+  readonly now?: () => Date;
+}): Promise<ApproveResult> {
+  const id = opts.id.trim();
+  const pending = await listPendingApprovals(opts.pendingFile, opts.now);
+  const entry = pending.find((e) => e.id === id);
+  if (!entry) {
+    return { status: "not-found" };
+  }
+  const tools = buildActuatorTools({
+    env: opts.env,
+    io: opts.io,
+    userId: entry.userId ?? `${entry.providerId}:${entry.source}`,
+    ...(opts.confirmAction ? { confirmAction: opts.confirmAction } : {}),
+    ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {})
+  });
+  const tool = tools.find((t) => t.definition.name === entry.tool);
+  if (!tool) {
+    return { status: "no-tool", tool: entry.tool };
+  }
+  const result = (await tool.execute(entry.arguments as JsonObject, { runId: `approve-${entry.id}` })) as Record<string, unknown>;
+  const ran = result["sent"] === true || result["performed"] === true;
+  if (ran) {
+    // Replay-guard: only a successful run clears the pending entry; a
+    // declined confirm leaves it so the user can approve later.
+    await clearPendingApproval(opts.pendingFile, entry.id, opts.now);
+    return { status: "ran", tool: entry.tool };
+  }
+  return { status: "declined", tool: entry.tool, ...(typeof result["reason"] === "string" ? { detail: result["reason"] } : {}) };
+}
 
 function pendingFile(): string {
   return resolvePendingApprovalsFile(process.env as Record<string, string | undefined>);
@@ -44,6 +95,35 @@ export function registerApprovalsCommands(program: Command, io: ProgramIO): void
       }
       for (const entry of pending) {
         io.stdout(`${formatPending(entry)}\n`);
+      }
+    });
+
+  approvals
+    .command("approve")
+    .description("Approve a pending channel action by id — re-runs its gated tool after you confirm the exact draft, then dismisses it")
+    .argument("<id>", "Pending approval id (from `muse approvals list`)")
+    .action(async (id: string, _options, command: Command) => {
+      const result = await approvePendingApproval({
+        env: process.env as Record<string, string | undefined>,
+        id,
+        io,
+        pendingFile: pendingFile()
+      });
+      switch (result.status) {
+        case "ran":
+          io.stdout(`Ran ${result.tool ?? "action"} and dismissed the pending approval.\n`);
+          return;
+        case "declined":
+          io.stderr(`Not run${result.detail ? ` (${result.detail})` : ""} — still pending.\n`);
+          command.error("approvals approve declined", { exitCode: 1 });
+          return;
+        case "no-tool":
+          io.stderr(`Cannot re-run '${result.tool ?? "?"}' from approvals — not a known actuator, or its provider isn't configured.\n`);
+          command.error("approvals approve failed", { exitCode: 1 });
+          return;
+        default:
+          io.stderr(`No pending approval with id '${id.trim()}' (it may have expired).\n`);
+          command.error("approvals approve failed", { exitCode: 1 });
       }
     });
 

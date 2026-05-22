@@ -2,11 +2,40 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { recordPendingApproval, type PendingApproval } from "@muse/messaging";
+import { listPendingApprovals, recordPendingApproval, type PendingApproval } from "@muse/messaging";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { registerApprovalsCommands } from "./commands-approvals.js";
+import { approvePendingApproval, registerApprovalsCommands } from "./commands-approvals.js";
+import type { ProgramIO } from "./program.js";
+
+function fakeIo(): ProgramIO {
+  return { stderr: () => {}, stdout: () => {} };
+}
+
+function recordingFetch(): { fetchImpl: typeof fetch; calls: string[] } {
+  const calls: string[] = [];
+  const fetchImpl = (async (url: string | URL) => {
+    calls.push(String(url));
+    return new Response("{}", { status: 200 });
+  }) as unknown as typeof fetch;
+  return { calls, fetchImpl };
+}
+
+function webEntry(overrides: Partial<PendingApproval> = {}): PendingApproval {
+  return {
+    arguments: { summary: "Book a table", url: "http://x.test/book" },
+    createdAt: new Date().toISOString(),
+    draft: "POST http://x.test/book",
+    expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    id: "w1",
+    providerId: "telegram",
+    risk: "execute",
+    source: "42",
+    tool: "web_action",
+    ...overrides
+  };
+}
 
 async function run(file: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
@@ -88,5 +117,57 @@ describe("muse approvals", () => {
     const payload = JSON.parse(r.stdout) as { total: number; pending: PendingApproval[] };
     expect(payload.total).toBe(1);
     expect(payload.pending[0]?.id).toBe("j1");
+  });
+});
+
+describe("approvePendingApproval — re-run completion", () => {
+  const env = {} as Record<string, string | undefined>;
+
+  it("CONFIRM: re-runs the gated tool (one request fires) and clears it (replay-guard)", async () => {
+    const f = file();
+    await recordPendingApproval(f, webEntry({ id: "go" }));
+    const { fetchImpl, calls } = recordingFetch();
+    const result = await approvePendingApproval({
+      confirmAction: async () => true,
+      env,
+      fetchImpl,
+      id: "go",
+      io: fakeIo(),
+      pendingFile: f
+    });
+    expect(result.status).toBe("ran");
+    expect(calls).toEqual(["http://x.test/book"]);
+    // Cleared → a second approve can't re-fire.
+    expect(await listPendingApprovals(f)).toHaveLength(0);
+    const replay = await approvePendingApproval({ confirmAction: async () => true, env, fetchImpl, id: "go", io: fakeIo(), pendingFile: f });
+    expect(replay.status).toBe("not-found");
+    expect(calls).toHaveLength(1); // no second request
+  });
+
+  it("DENY at the confirm: no request fires and the entry stays pending", async () => {
+    const f = file();
+    await recordPendingApproval(f, webEntry({ id: "no" }));
+    const { fetchImpl, calls } = recordingFetch();
+    const result = await approvePendingApproval({ confirmAction: async () => false, env, fetchImpl, id: "no", io: fakeIo(), pendingFile: f });
+    expect(result.status).toBe("declined");
+    expect(calls).toHaveLength(0);
+    expect((await listPendingApprovals(f)).map((e) => e.id)).toEqual(["no"]); // still pending
+  });
+
+  it("unknown / expired id → not-found, nothing fired", async () => {
+    const f = file();
+    await recordPendingApproval(f, webEntry({ expiresAt: "2020-01-01T00:00:00.000Z", id: "stale" }));
+    const { fetchImpl, calls } = recordingFetch();
+    expect((await approvePendingApproval({ confirmAction: async () => true, env, fetchImpl, id: "ghost", io: fakeIo(), pendingFile: f })).status).toBe("not-found");
+    expect((await approvePendingApproval({ confirmAction: async () => true, env, fetchImpl, id: "stale", io: fakeIo(), pendingFile: f })).status).toBe("not-found");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("a pending entry for a non-actuator tool → no-tool, not cleared", async () => {
+    const f = file();
+    await recordPendingApproval(f, webEntry({ id: "x", tool: "muse.notes.save" }));
+    const result = await approvePendingApproval({ confirmAction: async () => true, env, id: "x", io: fakeIo(), pendingFile: f });
+    expect(result.status).toBe("no-tool");
+    expect((await listPendingApprovals(f)).map((e) => e.id)).toEqual(["x"]);
   });
 });
