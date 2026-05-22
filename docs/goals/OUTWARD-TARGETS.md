@@ -691,7 +691,12 @@ was proven ONCE; a JARVIS you depend on survives real-world failure.
   delivery end-to-end.
 - [ ] Knowledge grounding: the agent answers from a MULTI-document
   personal corpus (RAG over notes + ingested docs) and cites which
-  source — beyond today's single-doc PDF ingest.
+  source — beyond today's single-doc PDF ingest. (Slice 1 delivered —
+  754: `rankKnowledgeChunks` multi-source cosine RAG +
+  `renderKnowledgeMatches` source-citation + `knowledge_search` tool;
+  agent-run e2e answers grounded AND cites the right source over a
+  contract-faithful 2-source corpus, mutation-proven. Bullet flips
+  when the corpus is assembled from the LIVE notes + doc stores.)
 
 <!-- IMMUTABLE-CORE:BEGIN -->
 ## Immutable core (the loop must NEVER edit — honesty machinery)

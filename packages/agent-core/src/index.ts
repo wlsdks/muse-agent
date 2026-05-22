@@ -98,6 +98,15 @@ export {
   type SummaryListSource
 } from "./episodic-recall.js";
 export {
+  createKnowledgeSearchTool,
+  rankKnowledgeChunks,
+  renderKnowledgeMatches,
+  type KnowledgeChunk,
+  type KnowledgeMatch,
+  type KnowledgeSearchToolOptions,
+  type RankKnowledgeOptions
+} from "./knowledge-recall.js";
+export {
   extractCurrentSessionTurns,
   redactSecrets,
   summariseSession,
