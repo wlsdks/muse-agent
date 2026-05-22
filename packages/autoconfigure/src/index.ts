@@ -740,6 +740,11 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
 
 export { createApiServerOptions } from "./api-server-options.js";
 
+export {
+  assembleKnowledgeCorpus,
+  type AssembleKnowledgeCorpusOptions
+} from "./knowledge-corpus.js";
+
 export function requireEnv(env: MuseEnvironment, key: string): string {
   const value = env[key]?.trim();
 
