@@ -583,6 +583,24 @@ ambient bundle.)
   Mutation-proven. All three actuators (email, web, smart-home) are now
   gated agent tools; wiring them into a live agent surface with a real
   channel/CLI confirm gate is the next P17 step.)
+- [x] The gated actuators are reachable from a LIVE agent surface: a
+  real `muse ask --with-tools --actuators` turn exposes email_send /
+  web_action / home_action to the model, each carrying a clack confirm
+  as its fail-closed gate — the conversation can trigger them and
+  nothing fires without explicit confirmation. Off by default; opt-in
+  per invocation; providers resolve from env. Check: the actuator tools
+  are env-selected + the gate threads end-to-end through a REAL
+  `createAgentRuntime` run (confirm fires the request / deny ⇒ none).
+  — 709 (`buildActuatorTools` (apps/cli) builds the configured actuator
+  MuseTools with clack-confirm gates; `createMuseRuntimeAssembly`
+  gained an `extraTools` injection so the CLI feeds them into the
+  shared runtime registry without putting interactive gates in the
+  headless assembly; `muse ask` sets `localMode` only under
+  `--actuators` so no other execute-risk surface is newly exposed.
+  apps/cli actuator-tools.test.ts: env→toolset selection + a REAL
+  agent run where the model emits a `web_action` call → CONFIRM fires
+  one recorded request / DENY ⇒ 0. Mutation-proven: a gate that
+  ignores the confirm makes the DENY test fire.)
 
 The loop extends this map itself when all are delivered or its
 judgement finds a stronger outward direction. "Nothing to do" is

@@ -98,6 +98,19 @@ describe("autoconfigure", () => {
     expect(assembly.voice).toBeUndefined();
   });
 
+  it("merges caller-supplied extraTools into the runtime registry", () => {
+    const probe = {
+      definition: { description: "probe", inputSchema: { properties: {}, type: "object" as const }, name: "probe_extra_tool", risk: "read" as const },
+      execute: () => ({ ok: true })
+    };
+    const without = createMuseRuntimeAssembly({ env: {} });
+    expect(without.toolRegistry.get("probe_extra_tool")).toBeUndefined();
+
+    const withExtra = createMuseRuntimeAssembly({ env: {}, extraTools: [probe] });
+    expect(withExtra.toolRegistry.get("probe_extra_tool")).toBeDefined();
+    expect(withExtra.toolRegistry.list().map((tool) => tool.definition.name)).toContain("probe_extra_tool");
+  });
+
   it("registers OpenAI voice providers from the standard OPENAI_API_KEY env var", () => {
     // Most personal users set OPENAI_API_KEY once for the OpenAI SDK
     // convention. Voice should pick that up automatically without

@@ -339,6 +339,14 @@ export interface MuseRuntimeAssembly {
 export interface ApiServerAssemblyOptions {
   readonly db?: Kysely<MuseDatabase>;
   readonly env?: MuseEnvironment;
+  /**
+   * Caller-supplied tools merged into the runtime registry. The CLI
+   * uses this to inject surface-specific tools it builds with its own
+   * confirmation gate (e.g. the `--actuators` email/web/home tools,
+   * each carrying a clack confirm) — tools that must NOT live in the
+   * shared, headless assembly because their gate is interactive.
+   */
+  readonly extraTools?: readonly MuseTool[];
 }
 
 export class ConfigurationError extends Error {
@@ -543,6 +551,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => statusLoopbackTools,
     () => runnerTools,
     () => skillTools,
+    () => options.extraTools ?? [],
     () => mcp.manager.toMuseTools(),
     () => schedulerHandle.current ? createSchedulerTools(schedulerHandle.current) : []
   ]);

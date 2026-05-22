@@ -113,6 +113,9 @@ importers:
       '@muse/messaging':
         specifier: workspace:*
         version: link:../../packages/messaging
+      '@muse/model':
+        specifier: workspace:*
+        version: link:../../packages/model
       '@muse/multi-agent':
         specifier: workspace:*
         version: link:../../packages/multi-agent
@@ -122,6 +125,9 @@ importers:
       '@muse/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@muse/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
       '@muse/voice':
         specifier: workspace:*
         version: link:../../packages/voice

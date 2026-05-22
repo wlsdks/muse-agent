@@ -26,7 +26,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveNotesDir, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
+import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveNotesDir, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { CalendarEvent } from "@muse/calendar";
 import { readReminders, readTasks, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { classifyTier, type ModelTier } from "@muse/multi-agent";
@@ -53,6 +53,7 @@ interface AskOptions {
   readonly reminders?: boolean;
   readonly json?: boolean;
   readonly withTools?: boolean;
+  readonly actuators?: boolean;
   readonly tiered?: boolean;
   /**
    * Goal 047 — clamps the answer to notes + local-memory grounding
@@ -267,6 +268,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       "Run through the agent runtime so the model can call MCP tools (muse.search, muse.notes.*, muse.tasks.*, etc.). Default off — the chat-only fast path streams ~2x faster but can't fetch fresh web data."
     )
     .option(
+      "--actuators",
+      "With --with-tools, expose the gated state-changing actuators (email_send, web_action, home_action) so the conversation can trigger them. Each action shows the exact draft and fires only after you confirm. Off by default; providers resolve from env (MUSE_GMAIL_TOKEN, MUSE_HOMEASSISTANT_URL/TOKEN)."
+    )
+    .option(
       "--notes-only",
       "Clamp grounding to local notes + memory only — disables native web_search on every provider path and, when combined with --with-tools, allowlists the agent runtime to muse.notes / muse.notes-multi / muse.context only."
     )
@@ -377,8 +382,22 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         );
       }
 
-      // Build assembly + chat-only fast path
-      const assembly = createMuseRuntimeAssembly();
+      // Build assembly + chat-only fast path. `--actuators` (only
+      // meaningful with --with-tools) injects the gated state-changing
+      // actuator tools, each carrying a clack confirm as its
+      // fail-closed gate.
+      const useActuators = options.actuators === true && options.withTools === true;
+      if (options.actuators === true && options.withTools !== true) {
+        io.stderr("(--actuators has no effect without --with-tools)\n");
+      }
+      const extraTools = useActuators
+        ? (await import("./actuator-tools.js")).buildActuatorTools({
+            env: process.env as MuseEnvironment,
+            io,
+            userId: userKey
+          })
+        : undefined;
+      const assembly = createMuseRuntimeAssembly(extraTools ? { extraTools } : {});
       if (!assembly.modelProvider || !(options.model ?? assembly.defaultModel)) {
         io.stderr("muse ask requires a configured model. Set MUSE_MODEL or pass --model.\n");
         process.exitCode = 2;
@@ -605,6 +624,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             ],
             metadata: {
               userId: userKey,
+              ...(useActuators ? { localMode: true } : {}),
               ...(options.notesOnly ? { allowedToolNames: [...NOTES_ONLY_TOOL_ALLOWLIST] } : {}),
               ...(webSearchPolicy ? { webSearchPolicy } : {})
             },
