@@ -66,24 +66,30 @@ export interface QuietHourRange {
 }
 
 /**
- * Parse `MUSE_REMINDER_QUIET_HOURS` of the form `<startHour>-<endHour>`,
- * each `0..23`. Returns `undefined` for malformed input so the daemon
- * falls back to "always allowed to fire" rather than crash.
+ * Parse `MUSE_REMINDER_QUIET_HOURS` of the form `<start>-<end>`. Each
+ * side is an hour `0..23`, optionally with a `:MM` (`0..59`) suffix —
+ * so the natural `22:00-07:00` works as well as the bare `22-7`.
+ * The window is hour-granular: an explicit `:MM` is validated but the
+ * window rounds down to the hour (e.g. `22:30` → start of hour 22), so
+ * a clock-precise window is intentionally not supported. Returns
+ * `undefined` for malformed input so the daemon falls back to "always
+ * allowed to fire" rather than silently disabling itself on a typo —
+ * previously the common `22:00-07:00` form was rejected, which turned
+ * quiet hours OFF without warning.
  */
 export function parseQuietHours(raw: string | undefined): QuietHourRange | undefined {
   if (!raw) {
     return undefined;
   }
-  const match = raw.trim().match(/^(\d{1,2})-(\d{1,2})$/u);
+  const match = raw.trim().match(/^(\d{1,2})(?::(\d{2}))?-(\d{1,2})(?::(\d{2}))?$/u);
   if (!match) {
     return undefined;
   }
   const startHour = Number.parseInt(match[1]!, 10);
-  const endHour = Number.parseInt(match[2]!, 10);
-  if (!Number.isFinite(startHour) || !Number.isFinite(endHour)) {
-    return undefined;
-  }
-  if (startHour < 0 || startHour > 23 || endHour < 0 || endHour > 23) {
+  const startMinute = match[2] !== undefined ? Number.parseInt(match[2], 10) : 0;
+  const endHour = Number.parseInt(match[3]!, 10);
+  const endMinute = match[4] !== undefined ? Number.parseInt(match[4], 10) : 0;
+  if (startHour > 23 || endHour > 23 || startMinute > 59 || endMinute > 59) {
     return undefined;
   }
   if (startHour === endHour) {

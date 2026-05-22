@@ -38,6 +38,19 @@ describe("parseQuietHours", () => {
     expect(parseQuietHours("22-06")).toEqual({ endHour: 6, startHour: 22 });
   });
 
+  it("accepts the natural HH:MM form (hour-granular: minutes are validated then rounded down to the hour)", () => {
+    // The footgun this closes: the common `22:00-07:00` used to be
+    // rejected, silently turning quiet hours OFF.
+    expect(parseQuietHours("22:00-07:00")).toEqual({ endHour: 7, startHour: 22 });
+    expect(parseQuietHours("23:30-06:15")).toEqual({ endHour: 6, startHour: 23 });
+    expect(parseQuietHours("9:05-17:45")).toEqual({ endHour: 17, startHour: 9 });
+  });
+
+  it("rejects an HH:MM with out-of-range minutes rather than misparsing it", () => {
+    expect(parseQuietHours("22:60-07:00")).toBeUndefined();
+    expect(parseQuietHours("22:5-7")).toBeUndefined(); // minutes must be two digits
+  });
+
   it("returns undefined for malformed / out-of-range / empty", () => {
     expect(parseQuietHours(undefined)).toBeUndefined();
     expect(parseQuietHours("")).toBeUndefined();
@@ -45,6 +58,7 @@ describe("parseQuietHours", () => {
     expect(parseQuietHours("24-7")).toBeUndefined();
     expect(parseQuietHours("-1-7")).toBeUndefined();
     expect(parseQuietHours("7-7")).toBeUndefined(); // ambiguous
+    expect(parseQuietHours("22:00-22:30")).toBeUndefined(); // same hour → ambiguous under hour-granular windows
   });
 });
 
