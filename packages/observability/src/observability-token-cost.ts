@@ -287,7 +287,7 @@ export class KyselyTokenCostQuery implements TokenCostQuery {
       FROM metric_token_usage
       WHERE time >= ${window.from} AND time < ${window.to}
       GROUP BY DATE(time), model
-      ORDER BY day DESC, total_cost_usd DESC
+      ORDER BY day DESC, total_cost_usd DESC, model ASC
     `.execute(this.db);
 
     return rows.rows.map((row) => ({
@@ -318,7 +318,7 @@ export class KyselyTokenCostQuery implements TokenCostQuery {
       FROM metric_token_usage
       WHERE time >= ${input.from} AND time < ${input.to}
       GROUP BY run_id
-      ORDER BY total_cost_usd DESC, total_tokens DESC
+      ORDER BY total_cost_usd DESC, total_tokens DESC, run_id ASC
       LIMIT ${limit}
     `.execute(this.db);
 
