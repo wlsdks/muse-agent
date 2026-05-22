@@ -623,9 +623,14 @@ ambient bundle.)
 - [ ] REMOTE surface, in-CHAT auto-completion: an inbound channel REPLY
   ("yes"/"approve") to the draft-bearing prompt re-runs the pending tool
   WITHOUT leaving the chat — so the whole loop happens in Telegram/chat.
-  The CLI-approve path above covers completion; this is the more-
-  automated in-channel variant (needs an `isApprovalReply` detector +
-  inbound-runner wiring + re-execution-without-re-gating). Not yet built.
+  PARTIAL (730): the inbound runner now DETECTS an approval reply
+  (`isApprovalReply`) + finds the scoped pending action and ACKs it with
+  the `muse approvals approve <id>` command (bridging to the CLI
+  completion) — but does NOT yet auto-execute in-chat. The remaining
+  work is re-executing the gated tool server-side on the reply, which
+  needs the actuator orchestration registered in the API agent runtime
+  (today only `muse ask --actuators` / the CLI registers it). Stays `[ ]`
+  until a reply genuinely fires the tool end-to-end.
 
 The loop extends this map itself when all are delivered or its
 judgement finds a stronger outward direction. "Nothing to do" is

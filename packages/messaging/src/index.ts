@@ -45,6 +45,8 @@ export {
   type PendingApproval
 } from "./pending-approval-store.js";
 
+export { isApprovalReply } from "./is-approval-reply.js";
+
 export {
   FileMessagingCredentialStore,
   type MessagingCredentialStore,

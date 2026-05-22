@@ -33,6 +33,7 @@ import { createChannelApprovalGate, createThreadedInboundRunner, type InboundAge
 
 import { createChannelPendingRecorder } from "./channel-pending-recorder.js";
 import { createChannelRefusalRecorder } from "./channel-refusal-recorder.js";
+import { handleInboundApprovalReply } from "./inbound-approval-handler.js";
 import { DiscordProvider, SlackProvider, TelegramProvider } from "@muse/messaging";
 import { registerSchedulerRoutes } from "./scheduler-routes.js";
 import { registerActiveContextRoutes } from "./active-context-routes.js";
@@ -384,6 +385,19 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const inboundRegistry = options.messaging;
     const runner: InboundAgentRunner = createThreadedInboundRunner({
       run: async ({ messages, providerId, source }) => {
+        // A bare "yes" approving a pending channel refusal gets a
+        // deterministic ack pointing at `muse approvals approve` rather
+        // than a confused agent turn on the word "yes".
+        const latestUserText = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+        const approvalAck = await handleInboundApprovalReply({
+          pendingFile: resolvePendingApprovalsFile(env),
+          providerId,
+          source,
+          text: latestUserText
+        });
+        if (approvalAck !== undefined) {
+          return approvalAck;
+        }
         const result = await agentRuntime.run({
           messages,
           // The channel identity is the user-memory scope for this
