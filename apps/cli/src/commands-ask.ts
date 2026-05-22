@@ -29,6 +29,7 @@ import { join } from "node:path";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveNotesDir, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
 import type { CalendarEvent } from "@muse/calendar";
 import { readReminders, readTasks, type PersistedReminder, type PersistedTask } from "@muse/mcp";
+import { classifyTier, type ModelTier } from "@muse/multi-agent";
 import type { Command } from "commander";
 
 import { isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js";
@@ -52,6 +53,7 @@ interface AskOptions {
   readonly reminders?: boolean;
   readonly json?: boolean;
   readonly withTools?: boolean;
+  readonly tiered?: boolean;
   /**
    * Goal 047 — clamps the answer to notes + local-memory grounding
    * only. Disables native web_search on every provider path and,
@@ -70,6 +72,33 @@ interface AskOptions {
  * everything else stay off.
  */
 export const NOTES_ONLY_TOOL_ALLOWLIST = ["muse.notes", "muse.notes-multi", "muse.context"] as const;
+
+export interface AskTierModels {
+  readonly fast: string;
+  readonly heavy: string;
+}
+
+// Tier models come from env (parallel to MUSE_MODEL / MUSE_VISION_MODEL);
+// either unset falls back to the configured default model, so --tiered
+// with no tier env still answers (on the default for both tiers).
+export function resolveAskTierModels(defaultModel: string, env: NodeJS.ProcessEnv): AskTierModels {
+  const fast = env.MUSE_FAST_MODEL?.trim();
+  const heavy = env.MUSE_HEAVY_MODEL?.trim();
+  return {
+    fast: fast && fast.length > 0 ? fast : defaultModel,
+    heavy: heavy && heavy.length > 0 ? heavy : defaultModel
+  };
+}
+
+export function routeAskTierModel(
+  query: string,
+  defaultModel: string,
+  env: NodeJS.ProcessEnv
+): { readonly model: string; readonly tier: ModelTier } {
+  const tier = classifyTier(query);
+  const models = resolveAskTierModels(defaultModel, env);
+  return { model: tier === "fast" ? models.fast : models.heavy, tier };
+}
 
 interface IndexChunk {
   readonly file: string;
@@ -241,6 +270,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       "--notes-only",
       "Clamp grounding to local notes + memory only — disables native web_search on every provider path and, when combined with --with-tools, allowlists the agent runtime to muse.notes / muse.notes-multi / muse.context only."
     )
+    .option(
+      "--tiered",
+      "Route this ask to a fast or high-capability model by classifying the question (lookups → fast, reasoning → heavy; defaults to heavy when unsure). Tier models come from MUSE_FAST_MODEL / MUSE_HEAVY_MODEL (each defaults to the configured model). An explicit --model overrides tiering. Off by default."
+    )
     .action(async (queryParts: readonly string[], options: AskOptions) => {
       const argQuery = queryParts.join(" ").trim();
       const piped = await (io.readPipedStdin ?? readPipedStdin)();
@@ -351,7 +384,14 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         process.exitCode = 2;
         return;
       }
-      const model = options.model ?? assembly.defaultModel!;
+      const baseModel = options.model ?? assembly.defaultModel!;
+      const tierRoute = options.tiered && options.model === undefined
+        ? routeAskTierModel(query, baseModel, process.env)
+        : undefined;
+      const model = tierRoute?.model ?? baseModel;
+      if (tierRoute) {
+        io.stderr(`(tier: ${tierRoute.tier} → ${model})\n`);
+      }
 
       const userMemory = await Promise.resolve(assembly.userMemoryStore.findByUserId(userKey));
       const personaPrompt = userMemory ? buildMusePersona(userMemory, userKey) : undefined;

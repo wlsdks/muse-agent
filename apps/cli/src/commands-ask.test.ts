@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { consumeAskStream, parseBoundedInt, renderAskStreamError, type AskStreamEvent } from "./commands-ask.js";
+import { consumeAskStream, parseBoundedInt, renderAskStreamError, resolveAskTierModels, routeAskTierModel, type AskStreamEvent } from "./commands-ask.js";
 
 describe("renderAskStreamError", () => {
   const base = { answer: "partial ", error: "Ollama request failed — is Ollama running? (`ollama serve`)", model: "ollama/qwen3:8b", query: "hi" };
@@ -38,6 +38,43 @@ describe("renderAskStreamError", () => {
 async function* gen(events: AskStreamEvent[]): AsyncIterable<AskStreamEvent> {
   for (const e of events) yield e;
 }
+
+describe("resolveAskTierModels / routeAskTierModel", () => {
+  it("falls back to the default model for any tier env that is unset or blank", () => {
+    expect(resolveAskTierModels("ollama/qwen3:8b", {})).toEqual({
+      fast: "ollama/qwen3:8b",
+      heavy: "ollama/qwen3:8b"
+    });
+    expect(resolveAskTierModels("ollama/qwen3:8b", { MUSE_FAST_MODEL: "  ", MUSE_HEAVY_MODEL: "" })).toEqual({
+      fast: "ollama/qwen3:8b",
+      heavy: "ollama/qwen3:8b"
+    });
+  });
+
+  it("uses the tier env models when present, trimming whitespace", () => {
+    expect(resolveAskTierModels("def", { MUSE_FAST_MODEL: " ollama/qwen3:8b ", MUSE_HEAVY_MODEL: "ollama/qwen3.6:35b-a3b" })).toEqual({
+      fast: "ollama/qwen3:8b",
+      heavy: "ollama/qwen3.6:35b-a3b"
+    });
+  });
+
+  it("routes a lookup query to the fast tier model and a reasoning query to the heavy tier model", () => {
+    const env = { MUSE_FAST_MODEL: "ollama/qwen3:8b", MUSE_HEAVY_MODEL: "ollama/qwen3.6:35b-a3b" };
+    expect(routeAskTierModel("what is the capital of France", "def", env)).toEqual({
+      model: "ollama/qwen3:8b",
+      tier: "fast"
+    });
+    expect(routeAskTierModel("analyze the trade-offs between two designs", "def", env)).toEqual({
+      model: "ollama/qwen3.6:35b-a3b",
+      tier: "heavy"
+    });
+  });
+
+  it("defaults an ambiguous query to the heavy tier — never silently downgrades reasoning", () => {
+    const env = { MUSE_FAST_MODEL: "ollama/qwen3:8b", MUSE_HEAVY_MODEL: "ollama/qwen3.6:35b-a3b" };
+    expect(routeAskTierModel("the numbers and what they mean for us", "def", env).tier).toBe("heavy");
+  });
+});
 
 describe("parseBoundedInt (goal 178)", () => {
   it("returns the fallback when the flag is absent or blank", () => {

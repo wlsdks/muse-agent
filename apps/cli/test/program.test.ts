@@ -3862,6 +3862,71 @@ describe("cli program", () => {
     }
   });
 
+  it("muse ask --tiered routes the question to the fast vs heavy model and surfaces the chosen tier", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-ask-tiered-"));
+    const fsp = await import("node:fs/promises");
+    const { NOTES_INDEX_SCHEMA_VERSION } = await import("../src/commands-notes-rag.js");
+    const notesDir = path.join(root, "notes");
+    const indexPath = path.join(root, ".muse", "notes-index.json");
+    await fsp.mkdir(notesDir, { recursive: true });
+    await fsp.mkdir(path.join(root, ".muse"), { recursive: true });
+    // Index model matches the default embed model so the guard passes;
+    // empty files means no chunks (embedding the query then fails over
+    // the throwing fetch and degrades to "no notes context").
+    await fsp.writeFile(indexPath, JSON.stringify({
+      builtAtIso: "2026-05-22T00:00:00.000Z",
+      files: [],
+      model: "nomic-embed-text",
+      version: NOTES_INDEX_SCHEMA_VERSION
+    }), "utf8");
+
+    const saved = {
+      HOME: process.env.HOME,
+      MUSE_NOTES_DIR: process.env.MUSE_NOTES_DIR,
+      MUSE_MODEL: process.env.MUSE_MODEL,
+      MUSE_FAST_MODEL: process.env.MUSE_FAST_MODEL,
+      MUSE_HEAVY_MODEL: process.env.MUSE_HEAVY_MODEL,
+      OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL
+    };
+    process.env.HOME = root;
+    process.env.MUSE_NOTES_DIR = notesDir;
+    process.env.MUSE_MODEL = "ollama/qwen3:8b";
+    process.env.MUSE_FAST_MODEL = "ollama/qwen3:8b";
+    process.env.MUSE_HEAVY_MODEL = "ollama/qwen3.6:35b-a3b";
+    // Point the model provider at an unreachable Ollama so the chat call
+    // fails fast (ECONNREFUSED) AFTER the tier note is printed — the test
+    // asserts the routing decision, not a real model round-trip.
+    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:1";
+    const prevExit = process.exitCode;
+    try {
+      const reasoning = captureOutput();
+      const program1 = createProgram({ ...reasoning.io, fetch: async () => { throw new Error("no api"); } });
+      process.exitCode = 0;
+      await program1.parseAsync(
+        ["node", "muse", "ask", "analyze", "the", "trade-offs", "between", "two", "designs",
+          "--tiered", "--no-tasks", "--no-calendar", "--no-reminders"],
+        { from: "node" }
+      );
+      expect(reasoning.output.join("")).toContain("(tier: heavy → ollama/qwen3.6:35b-a3b)");
+
+      const lookup = captureOutput();
+      const program2 = createProgram({ ...lookup.io, fetch: async () => { throw new Error("no api"); } });
+      process.exitCode = 0;
+      await program2.parseAsync(
+        ["node", "muse", "ask", "what", "is", "the", "capital", "of", "France",
+          "--tiered", "--no-tasks", "--no-calendar", "--no-reminders"],
+        { from: "node" }
+      );
+      expect(lookup.output.join("")).toContain("(tier: fast → ollama/qwen3:8b)");
+    } finally {
+      process.exitCode = prevExit;
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  }, 20_000);
+
   it("appendLastChatTurn redacts credential shapes before persisting to disk (goal 108)", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-chat-redact-"));
     const fsp = await import("node:fs/promises");

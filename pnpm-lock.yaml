@@ -113,6 +113,9 @@ importers:
       '@muse/messaging':
         specifier: workspace:*
         version: link:../../packages/messaging
+      '@muse/multi-agent':
+        specifier: workspace:*
+        version: link:../../packages/multi-agent
       '@muse/prompts':
         specifier: workspace:*
         version: link:../../packages/prompts

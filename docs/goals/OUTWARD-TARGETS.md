@@ -411,6 +411,11 @@ not multi-tenant fair-share.
   `muse orchestrate --tiered` — proven by a `smoke:live` round-trip
   whose workers ran on two distinct local Qwen tiers and whose
   low-capacity path collapsed to one. — 680 s4+s5
+  (goal 683 delivered the `muse ask --tiered` half: `routeAskTierModel`
+  + the `--tiered` flag, off by default, integration-tested by driving
+  the real command. STILL OPEN before this flips: `muse orchestrate
+  --tiered` explicit surface AND the `smoke:live` two-tier round-trip /
+  low-capacity collapse on the live surface.)
 
 The loop extends this map itself when all are delivered or its
 judgement finds a stronger outward direction. "Nothing to do" is
