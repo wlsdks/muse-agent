@@ -84,11 +84,20 @@ export function defaultIndexPath(): string {
 
 /**
  * Paragraph-ish chunking — split by blank lines, then pack into
- * <= CHUNK_CHARS so each chunk is a coherent embedding target.
+ * <= chunkChars so each chunk is a coherent embedding target.
  * Tiny enough that re-chunking on schema change is cheap.
+ *
+ * A single paragraph longer than `chunkChars` (a wall of text, a code
+ * block, a minified blob) is hard-wrapped first, so NO chunk exceeds
+ * `chunkChars` — an oversized chunk would overflow the embedding
+ * model's context and be silently truncated, dropping retrieval recall
+ * for everything past the cutoff.
  */
-function chunkText(text: string, chunkChars: number): string[] {
-  const paras = text.split(/\n\s*\n/).map((p) => p.trim()).filter((p) => p.length > 0);
+export function chunkText(text: string, chunkChars: number): string[] {
+  const paras = text
+    .split(/\n\s*\n/)
+    .flatMap((p) => hardWrap(p.trim(), chunkChars))
+    .filter((p) => p.length > 0);
   const chunks: string[] = [];
   let buf = "";
   for (const para of paras) {
@@ -103,6 +112,31 @@ function chunkText(text: string, chunkChars: number): string[] {
   }
   if (buf.length > 0) chunks.push(buf);
   return chunks;
+}
+
+/**
+ * Break a paragraph longer than `max` into <= `max`-char pieces,
+ * preferring the last whitespace in the window so words aren't cut
+ * mid-token; an unbreakable run (e.g. a long URL or base64 blob) is
+ * cut hard at `max`. Paragraphs already within `max` pass through.
+ */
+function hardWrap(paragraph: string, max: number): string[] {
+  if (paragraph.length <= max) {
+    return paragraph.length > 0 ? [paragraph] : [];
+  }
+  const pieces: string[] = [];
+  let rest = paragraph;
+  while (rest.length > max) {
+    const window = rest.slice(0, max);
+    const ws = Math.max(window.lastIndexOf(" "), window.lastIndexOf("\n"), window.lastIndexOf("\t"));
+    const cut = ws >= Math.floor(max * 0.6) ? ws : max;
+    pieces.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  if (rest.length > 0) {
+    pieces.push(rest);
+  }
+  return pieces.filter((p) => p.length > 0);
 }
 
 async function walkMarkdown(dir: string): Promise<readonly { path: string; mtimeMs: number }[]> {

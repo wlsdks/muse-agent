@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { cosine, defaultIndexPath, extractDocumentText, isNotesIndexStale, parseRagBoundedInt, reindexNotes } from "./commands-notes-rag.js";
+import { chunkText, cosine, defaultIndexPath, extractDocumentText, isNotesIndexStale, parseRagBoundedInt, reindexNotes } from "./commands-notes-rag.js";
 
 // Minimal hand-built PDF with one extractable text line — enough for
 // pdf-parse to recover the body without a binary fixture file.
@@ -107,6 +107,40 @@ describe("parseRagBoundedInt", () => {
     }
     expect(() => parseRagBoundedInt("50", "--chunk-chars", 120, 8000, 600))
       .toThrow(/--chunk-chars must be an integer in \[120, 8000\]/u);
+  });
+});
+
+describe("chunkText — paragraph packing + oversized-paragraph hard-wrap", () => {
+  it("packs small paragraphs together and keeps them within chunkChars", () => {
+    const chunks = chunkText("alpha\n\nbeta\n\ngamma", 100);
+    expect(chunks).toEqual(["alpha\n\nbeta\n\ngamma"]);
+    expect(chunks.every((c) => c.length <= 100)).toBe(true);
+  });
+
+  it("splits a single paragraph longer than chunkChars at a word boundary, never exceeding chunkChars", () => {
+    const para = Array.from({ length: 60 }, (_, i) => `word${i.toString()}`).join(" ");
+    expect(para.length).toBeGreaterThan(120);
+    const chunks = chunkText(para, 50);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const c of chunks) {
+      expect(c.length).toBeLessThanOrEqual(50);
+      expect(c).not.toMatch(/^word\d*\S$|\Sword$/u); // not cut mid-word at the seam
+    }
+    // No content lost (modulo the whitespace collapsed at seams).
+    expect(chunks.join(" ").replace(/\s+/gu, " ")).toBe(para);
+  });
+
+  it("hard-cuts an unbreakable run (no whitespace) so a long token can't blow past chunkChars", () => {
+    const blob = "x".repeat(500); // e.g. a base64 / minified blob
+    const chunks = chunkText(blob, 80);
+    expect(chunks.length).toBe(Math.ceil(500 / 80));
+    expect(chunks.every((c) => c.length <= 80)).toBe(true);
+    expect(chunks.join("")).toBe(blob);
+  });
+
+  it("returns no chunks for empty / whitespace-only text", () => {
+    expect(chunkText("", 100)).toEqual([]);
+    expect(chunkText("   \n\n  \t ", 100)).toEqual([]);
   });
 });
 
