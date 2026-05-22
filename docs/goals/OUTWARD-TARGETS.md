@@ -484,17 +484,17 @@ also the recipient-resolution backbone for P11/P15 outbound safety.
 
 **P14 — Document understanding (PDF / office, beyond markdown
 notes).**
-- [ ] The agent ingests a real PDF/office document and answers
+- [x] The agent ingests a real PDF/office document and answers
   grounded questions / summarises it, citing the source. Check: a
   real document → a grounded answer citing it; a decoy excluded
-  (integration). (goal 088 shipped `muse read <pdf> --ask` —
-  single-doc grounded, citing, out-of-doc content refused; goal 692
-  wired PDF extraction into the notes RAG so a PDF dropped in the
-  notes dir is indexed + retrieved with a DECOY document excluded
-  (integration-proven via deterministic embeddings). STILL OPEN to
-  flip: the live `muse ask`-over-a-PDF-corpus grounded-citing answer
-  end-to-end — blocked only by no local `nomic-embed-text` embed
-  model on the loop PC. `office`/.docx remains a future source type.)
+  (integration). — 088 + 692 + 693 (088 `muse read <pdf> --ask`
+  single-doc grounding; 692 wired PDF extraction into the notes RAG
+  (decoy-excluded retrieval, deterministic integration test); 693
+  added the `smoke:live` check "muse ask grounds an answer in a real
+  PDF and excludes a decoy" — real PDF reindexed with nomic-embed-text,
+  `muse ask` via real qwen3:8b answers grounded in the PDF's figure
+  with the PDF top-ranked (0.84) and the decoy excluded (0.38).
+  `office`/.docx remains a future additive source type.)
 
 **P15 — Web actions beyond search (gated).** Search exists; ACTING
 on the web (forms, bookings) does not — execute-tier, governed by

@@ -18,8 +18,8 @@
  * provider. A skip is not a substitute for the live round-trip.
  */
 
-import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -446,6 +446,42 @@ try {
         "expected each tiered worker to produce real output");
     });
   }
+
+  await record("muse ask grounds an answer in a real PDF and excludes a decoy (P14)", async () => {
+    const cliEntry = `${rootDir}/apps/cli/dist/index.js`;
+    if (!existsSync(cliEntry)) {
+      skip("CLI not built (run `pnpm --filter @muse/cli build`); PDF-RAG check needs the compiled CLI");
+    }
+    if (!(await ollamaHasModel("nomic-embed-text"))) {
+      skip("no local nomic-embed-text model; PDF RAG needs an embed model (`ollama pull nomic-embed-text`)");
+    }
+    const ragHome = mkdtempSync(path.join(os.tmpdir(), "muse-live-pdfrag-"));
+    const ragNotes = path.join(ragHome, "notes");
+    mkdirSync(ragNotes, { recursive: true });
+    // Minimal hand-built PDF with a distinctive fact + an unrelated decoy.
+    const pdf = "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n4 0 obj<</Length 90>>stream\nBT /F1 18 Tf 72 700 Td (The Q3 marketing budget is 47000 dollars allocated to events.) Tj ET\nendstream endobj\n5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF";
+    writeFileSync(path.join(ragNotes, "budget.pdf"), Buffer.from(pdf, "latin1"));
+    writeFileSync(path.join(ragNotes, "decoy.md"), "My favorite recipe is pancakes with maple syrup.\n", "utf8");
+    const cliEnv = { ...env, HOME: ragHome, MUSE_NOTES_DIR: ragNotes };
+    const reindex = spawnSync("node", [cliEntry, "notes", "reindex"], { encoding: "utf8", env: cliEnv, timeout: 120_000 });
+    assert(reindex.status === 0, `reindex failed (${reindex.status}): ${reindex.stderr}`);
+    const ask = spawnSync(
+      "node",
+      [cliEntry, "ask", "What is the Q3 marketing budget?", "--json", "--no-tasks", "--no-calendar", "--no-reminders"],
+      { encoding: "utf8", env: cliEnv, timeout: 180_000 }
+    );
+    rmSync(ragHome, { force: true, recursive: true });
+    assert(ask.status === 0, `ask failed (${ask.status}): ${ask.stderr}`);
+    const payload = JSON.parse(ask.stdout);
+    const chunks = payload.grounded?.noteChunks ?? [];
+    assert(chunks.length > 0, `expected grounded note chunks, got ${JSON.stringify(payload.grounded)}`);
+    // The PDF outranks the decoy (decoy excluded from the top).
+    const top = [...chunks].sort((a, b) => b.score - a.score)[0];
+    assert(String(top.file).endsWith("budget.pdf"), `expected the PDF to be the top grounded chunk, got ${top.file}`);
+    assert(String(top.text).includes("47000"), `expected the PDF's extracted text in the top chunk, got: ${String(top.text).slice(0, 120)}`);
+    // The model's answer is grounded in the PDF's number.
+    assert(/47[,.]?000|47\s?000/u.test(String(payload.answer)), `expected the answer grounded in the PDF budget figure, got: ${String(payload.answer).slice(0, 200)}`);
+  });
 } catch (error) {
   failures += 1;
   checks.push({ error: error instanceof Error ? error.message : String(error), name: "bootstrap", status: "fail" });
@@ -502,6 +538,20 @@ async function pickTierModels(fastModel) {
     return heavy ? { fast: fastModel, heavy } : undefined;
   } catch {
     return undefined;
+  }
+}
+
+async function ollamaHasModel(needle) {
+  const ollamaBase = (process.env.OLLAMA_BASE_URL || "http://localhost:11434").replace(/\/+$/, "");
+  try {
+    const res = await fetch(`${ollamaBase}/api/tags`, { signal: AbortSignal.timeout(1500) });
+    if (!res.ok) {
+      return false;
+    }
+    const body = await res.json();
+    return (body?.models ?? []).some((m) => typeof m?.name === "string" && m.name.includes(needle));
+  } catch {
+    return false;
   }
 }
 
