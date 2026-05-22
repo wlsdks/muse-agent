@@ -79,4 +79,35 @@ describe("sanitizeSourceBlocks", () => {
       removed: true
     });
   });
+
+  it("strips a Korean empty-source block (출처: 없음) — Muse is Korean-first; a Qwen 출처 fallback must be recognised like the English Sources: None", () => {
+    expect(sanitizeSourceBlocks("답변입니다.\n\n출처: 없음")).toEqual({
+      content: "답변입니다.",
+      reason: "empty_source_block",
+      removed: true
+    });
+    expect(sanitizeSourceBlocks("답변입니다.\n\n출처:\n- 확인된 출처 없음")).toEqual({
+      content: "답변입니다.",
+      reason: "empty_source_block",
+      removed: true
+    });
+    expect(sanitizeSourceBlocks("답변입니다.\n\n참고 자료: 해당 없음")).toEqual({
+      content: "답변입니다.",
+      reason: "empty_source_block",
+      removed: true
+    });
+  });
+
+  it("strips a Korean linked-source block (출처 heading + URL list)", () => {
+    expect(sanitizeSourceBlocks("답변.\n\n출처:\n- https://ko.wikipedia.org/wiki/x")).toEqual({
+      content: "답변.",
+      reason: "linked_source_block",
+      removed: true
+    });
+  });
+
+  it("does NOT strip a legitimate Korean 참고: prose note (no URL, not an empty-fallback) — the classifier gates removal", () => {
+    const input = "본문입니다.\n\n참고: 이 내용은 추정이며 확정이 아닙니다.";
+    expect(sanitizeSourceBlocks(input)).toEqual({ content: input, removed: false });
+  });
 });

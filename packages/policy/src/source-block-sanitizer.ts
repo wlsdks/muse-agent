@@ -91,7 +91,12 @@ function hasSourceEvidence(line: string): boolean {
   return /https?:\/\/\S+/iu.test(line) || /\b(doi|arxiv):\S+/iu.test(line);
 }
 
-const sourceHeadingPattern = /^\s{0,3}(?:sources?|references?)\s*:\s*(?<rest>.*)$/iu;
+// Korean source headings (출처 / 참고 / 참고 자료 / 근거) sit alongside
+// the English ones — Muse is Korean-first, so a Qwen response's
+// trailing "출처: 없음" must be recognised the same as "Sources: None".
+// The block classifier still gates removal, so a legitimate "참고:"
+// prose note (no URL, not an empty-fallback) is never stripped.
+const sourceHeadingPattern = /^\s{0,3}(?:sources?|references?|출처|참고\s*자료|참고|근거)\s*[:：]\s*(?<rest>.*)$/iu;
 const sourceListPrefixPattern = /^\s*(?:[-*+]|\d+[.)]|\[\d+\])\s+/u;
 const sourceListLinePattern = /^\s*(?:[-*+]|\d+[.)]|\[\d+\])\s+\S+/u;
 const sourceReferenceLinePattern = /^\s*\[\d+\]:\s+\S+/u;
@@ -104,5 +109,10 @@ const emptySourceFallbackPatterns = [
   /^no verified sources?\.?$/iu,
   /^sources? unavailable\.?$/iu,
   /^no sources? available\.?$/iu,
-  /^the available sources? do not answer this\.?$/iu
+  /^the available sources? do not answer this\.?$/iu,
+  /^없음\.?$/u,
+  /^해당\s*없음\.?$/u,
+  /^출처\s*없음\.?$/u,
+  /^확인된?\s*출처(?:가|는)?\s*없(?:음|습니다)\.?$/u,
+  /^참고\s*자료\s*없음\.?$/u
 ] as const;
