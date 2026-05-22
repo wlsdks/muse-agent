@@ -787,3 +787,22 @@ Append one line when a discovery path is evaluated and deferred:
   smoke:live deferred — no request/response path changed since the
   retarget, so no live round-trip to re-run. No drift; no bullet
   reopened. **P18–P20 complete + audited.**
+- P21 audit — apps/api p21-seam.test.ts — PASS: P21 (web-watch,
+  "monitor this page and ping me when X") composes end-to-end for the
+  user. The seam threads the user's literal `MUSE_WEB_WATCH_CONFIG`
+  string through the FULL chain — `webWatchesFromConfig` parse →
+  `createHttpSnapshot` HTTP-GET (778) → `detectWatchTrigger` (776) →
+  `createWebWatchRunner` baseline (777) → `startWebWatchTick` daemon
+  sink (779) → a real `MessagingProviderRegistry` — over a
+  contract-faithful page transitioning `processing → shipped →
+  shipped`: the user is pinged EXACTLY ONCE on the rising edge with
+  their configured title+message, none while steady; and the SAME env
+  registers the production daemon (disabled/empty → not). Composition
+  mutation-proven: breaking the daemon sink's `title: text` render →
+  the seam's text assertions fail. Piece-checks re-run green TOGETHER:
+  @muse/mcp web-watch + web-watch-runner + web-watch-config 13/13,
+  apps/api web-watch-tick 4/4, p21-seam 2/2. Read-only watch (never
+  submits — outbound-safety holds). No drift; no bullet reopened.
+  Follow-on (not reopened scope): the authenticated-page snapshot
+  source (Chrome-DevTools-MCP background page) for watches behind a
+  login. **P21 complete + audited.**
