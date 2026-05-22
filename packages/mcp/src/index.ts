@@ -283,6 +283,8 @@ export {
 
 export {
   deriveAmbientNotices,
+  FileAmbientSignalSource,
+  parseAmbientNoticeRules,
   runAmbientNoticeTick,
   type AmbientNotice,
   type AmbientNoticeRule,

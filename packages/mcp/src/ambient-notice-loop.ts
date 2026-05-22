@@ -1,4 +1,13 @@
+import { readFile } from "node:fs/promises";
+
 import type { ProactiveNoticeSink } from "./proactive-notice-loop.js";
+
+const SIGNAL_FIELDS = ["app", "window", "selected", "clipboard", "notifications"] as const;
+
+function stringField(obj: Record<string, unknown>, key: string): string | undefined {
+  const value = obj[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
 
 /**
  * Ambient-signal → proactive notice (P20 perception). A tick reads a
@@ -78,6 +87,89 @@ export function deriveAmbientNotices(
     if (matched) {
       out.push({ kind: "ambient", ruleId: rule.id, text: rule.message, title: rule.title });
     }
+  }
+  return out;
+}
+
+/**
+ * Reads the user's ambient signal from a JSON file (e.g.
+ * `~/.muse/ambient.json`) that an external OS helper writes — a
+ * launchd/cron one-liner can dump the frontmost app / window title
+ * there with zero native dependency. Fail-open: a missing / malformed
+ * / empty file yields `undefined` (no notice), never throws.
+ */
+export class FileAmbientSignalSource implements AmbientSignalSource {
+  constructor(private readonly file: string) {}
+
+  async snapshot(): Promise<AmbientSignal | undefined> {
+    let raw: string;
+    try {
+      raw = await readFile(this.file, "utf8");
+    } catch {
+      return undefined;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return undefined;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return undefined;
+    }
+    const obj = parsed as Record<string, unknown>;
+    const signal: Record<string, string> = {};
+    for (const field of SIGNAL_FIELDS) {
+      const value = stringField(obj, field);
+      if (value !== undefined) {
+        signal[field] = value;
+      }
+    }
+    return Object.keys(signal).length > 0 ? signal : undefined;
+  }
+}
+
+/**
+ * Parse a JSON array of ambient-notice rules from a config string.
+ * Each rule needs a non-empty `id`, string `title`/`message`, and at
+ * least one `match` field — a rule with no patterns is dropped (it
+ * would otherwise fire on everything). Fail-open: malformed JSON / a
+ * non-array / an invalid entry is skipped, never throws.
+ */
+export function parseAmbientNoticeRules(raw: string): AmbientNoticeRule[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  const out: AmbientNoticeRule[] = [];
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+    const e = entry as Record<string, unknown>;
+    if (typeof e.id !== "string" || e.id.length === 0 || typeof e.title !== "string" || typeof e.message !== "string") {
+      continue;
+    }
+    if (!e.match || typeof e.match !== "object" || Array.isArray(e.match)) {
+      continue;
+    }
+    const matchObj = e.match as Record<string, unknown>;
+    const match: Record<string, string> = {};
+    for (const field of SIGNAL_FIELDS) {
+      const value = stringField(matchObj, field);
+      if (value !== undefined) {
+        match[field] = value;
+      }
+    }
+    if (Object.keys(match).length === 0) {
+      continue;
+    }
+    out.push({ id: e.id, match, message: e.message, title: e.title });
   }
   return out;
 }
