@@ -198,6 +198,20 @@ describe("SupervisorAgent", () => {
   it("requires at least one worker", () => {
     expect(() => new SupervisorAgent({ workers: [] })).toThrow(NoAgentWorkerError);
   });
+
+  it("breaks a confidence tie by worker id ASC so dispatch is deterministic regardless of the workers[] order — two equally-confident workers must route to the same one every run", () => {
+    const zebra = new RuleBasedAgentWorker("zebra", "Zebra", ["task"], (input) =>
+      createWorkerResult("zebra", "z", input)
+    );
+    const alpha = new RuleBasedAgentWorker("alpha", "Alpha", ["task"], (input) =>
+      createWorkerResult("alpha", "a", input)
+    );
+    const input = { messages: [{ content: "task", role: "user" as const }], model: "m" };
+    // Both match the single keyword "task" → identical confidence.
+    // The tie must resolve to "alpha" (id ASC) for BOTH orderings.
+    expect(new SupervisorAgent({ workers: [zebra, alpha] }).selectWorker(input).to).toBe("alpha");
+    expect(new SupervisorAgent({ workers: [alpha, zebra] }).selectWorker(input).to).toBe("alpha");
+  });
 });
 
 describe("MultiAgentOrchestrator", () => {

@@ -182,7 +182,7 @@ export class SupervisorAgent {
         confidence: clamp(worker.canHandle(input), 0, 1),
         worker
       }))
-      .sort((left, right) => right.confidence - left.confidence);
+      .sort((left, right) => right.confidence - left.confidence || left.worker.id.localeCompare(right.worker.id));
     const best = ranked[0];
 
     if (best && best.confidence >= this.minConfidence) {
