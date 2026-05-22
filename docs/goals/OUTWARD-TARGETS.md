@@ -656,7 +656,11 @@ allowlist. Read / perceive first; acting is gated.
   attached Chrome via the MCP tool and answers a question grounded in
   the LIVE page content (not a cached search snippet). Check:
   integration/live driving the MCP tool end-to-end against a
-  contract-faithful page fixture.
+  contract-faithful page fixture. (Slice 1 delivered — 750: the
+  `createChromeDevToolsMcpServer()` connector + `take_snapshot`
+  projected to the agent tool surface returns grounded content,
+  contract-faithful; bullet flips when an agent-RUN grounded answer
+  is proven.)
 - [ ] A state-changing web action (fill + submit a form) under the
   user's session is approval-gated + draft-first per
   `outbound-safety.md` — deny / timeout / ambiguous-target produces

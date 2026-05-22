@@ -273,6 +273,12 @@ export {
 
 export { normaliseTimeRange } from "./loopback-search.js";
 
+export {
+  CHROME_DEVTOOLS_MCP_SERVER_NAME,
+  createChromeDevToolsMcpServer,
+  type ChromeDevToolsMcpOptions
+} from "./chrome-devtools-mcp.js";
+
 // Notes provider abstraction. LocalDir, Apple Notes (osascript), and
 // Notion (api.notion.com) are all real adapters. The `muse.notes-multi`
 // MCP server in `loopback-notes-registry.ts` routes between them via
