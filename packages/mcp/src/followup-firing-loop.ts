@@ -76,7 +76,13 @@ No emojis, no markdown, no lists, no JSON. Plain text only.`;
 
 export async function runDueFollowups(options: RunDueFollowupsOptions): Promise<RunDueFollowupsSummary> {
   const now = options.now ?? (() => new Date());
-  const max = Math.max(1, options.maxPerTick ?? DEFAULT_MAX_PER_TICK);
+  // `??` does NOT catch NaN/Infinity: a non-numeric env knob
+  // (MUSE_FOLLOWUP_MAX_PER_TICK="5x" → Number(...) → NaN) would make
+  // `Math.max(1, NaN)` → NaN, and `.slice(0, NaN)` drops every due
+  // followup — silently firing zero forever. Fall back to the default
+  // for non-finite values, matching the scheduler's clampInterval guard.
+  const requested = Number.isFinite(options.maxPerTick) ? Math.trunc(options.maxPerTick!) : DEFAULT_MAX_PER_TICK;
+  const max = Math.max(1, requested);
   const all = await readFollowups(options.file);
   const cutoffMs = now().getTime();
   const due = all

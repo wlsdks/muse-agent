@@ -63,8 +63,13 @@ const DEFAULT_BACKOFF_MAX_MS = 6 * 60 * 60_000;
 
 export async function runDueObjectives(options: RunDueObjectivesOptions): Promise<RunDueObjectivesSummary> {
   const now = options.now ?? (() => new Date());
-  const max = Math.max(1, options.maxPerTick ?? DEFAULT_MAX_PER_TICK);
-  const maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
+  // `??` does NOT catch NaN/Infinity: a non-numeric env knob
+  // (MUSE_OBJECTIVES_MAX_PER_TICK="5x" → Number(...) → NaN) would make
+  // `Math.max(1, NaN)` → NaN, and `.slice(0, NaN)` drops every due
+  // objective — silently evaluating zero forever. Fall back to the
+  // default for non-finite values, matching the scheduler's guard.
+  const max = Math.max(1, Number.isFinite(options.maxPerTick) ? Math.trunc(options.maxPerTick!) : DEFAULT_MAX_PER_TICK);
+  const maxAttempts = Math.max(1, Number.isFinite(options.maxAttempts) ? Math.trunc(options.maxAttempts!) : DEFAULT_MAX_ATTEMPTS);
   const base = options.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS;
   const cap = options.backoffMaxMs ?? DEFAULT_BACKOFF_MAX_MS;
 

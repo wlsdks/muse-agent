@@ -6814,6 +6814,42 @@ describe("runDueFollowups", () => {
     expect(summary).toMatchObject({ delivered: 2, due: 2 });
   });
 
+  it("a non-finite maxPerTick (NaN from a typo'd env knob) falls back to the default, not silently zero", async () => {
+    const { runDueFollowups } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const dir = mkdtempSync(join(tmpdir(), "muse-followup-nan-"));
+    const file = join(dir, "followups.json");
+    writeFileSync(file, JSON.stringify({
+      followups: [1, 2, 3].map((n) => ({
+        createdAt: "2026-05-10T00:00:00Z",
+        id: `fu_${n.toString()}`,
+        scheduledFor: "2026-05-11T07:00:00Z",
+        status: "scheduled",
+        summary: `Promise ${n.toString()}`,
+        userId: "stark"
+      }))
+    }), "utf8");
+
+    const summary = await runDueFollowups({
+      destination: "@me",
+      file,
+      maxPerTick: Number.NaN,
+      model: "ollama/qwen3:8b",
+      modelProvider: { generate: async () => ({ output: "Following up." }) },
+      now: () => new Date("2026-05-11T08:00:00Z"),
+      providerId: "telegram",
+      registry: {
+        send: async () => ({ destination: "@me", messageId: "ok", providerId: "telegram" })
+      } as unknown as Parameters<typeof runDueFollowups>[0]["registry"]
+    });
+
+    // NaN → default cap (5), so all 3 due followups fire — not zero.
+    expect(summary).toMatchObject({ delivered: 3, due: 3 });
+  });
+
   it("retries transient messaging failures with exponential backoff (goal 156)", async () => {
     const { runDueFollowups } = await import("../src/index.js");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
