@@ -608,3 +608,25 @@ Append one line when a discovery path is evaluated and deferred:
   derivers; `@muse/api` 11/11 tick+daemon+new-seam). No drift; no
   bullet reopened — the production code was correct, only
   unguarded; it is now guarded.
+- P10 audit — apps/api/test/multi-agent-tiered.test.ts +
+  scripts/smoke-live-llm.mjs "muse ask grounds … PDF" sibling
+  "--tiered (live)" — PASS: P10's five slices ARE a composed chain,
+  not five disconnected pieces. All piece-checks re-run green
+  TOGETHER: `@muse/multi-agent` 60/60 (s1 `AgentWorker.model`
+  dispatch + s2 `classifyTier` + s3 `planTieredRun` collapse/
+  fail-open), `@muse/api` multi-agent-tiered 7/7 (s4 orchestrate:
+  `buildTieredOrchestration` → `planTieredRun` → per-worker model →
+  real `MultiAgentOrchestrator` dispatch; + `resolveTierCapacityProbe`
+  collapse), `@muse/cli` 21/21 (s4 `routeAskTierModel` + the
+  `--tiered` flags) + program.test.ts `muse ask --tiered` 1/1,
+  `pnpm check` exit-0. The END-TO-END user flow is the s5
+  `smoke:live` check: ONE `muse orchestrate --tiered` run executed two
+  workers on two DISTINCT real local Qwen tiers (fast=qwen3:8b,
+  heavy=qwen3.6:35b-a3b) — re-ran green this audit. The composition
+  seam (`buildTieredOrchestration`: spec role → classify → plan →
+  capacity-collapse → `AgentWorker.model` → orchestrator) is the
+  server's exact production path, tested whole in multi-agent-tiered;
+  the live check proves the CLI→server→two-real-models flow. No drift;
+  no bullet reopened. P10 (tiered local-model orchestration) is
+  genuinely delivered end-to-end. (P11–P16 audits pending — one per
+  iteration per Step 4.)
