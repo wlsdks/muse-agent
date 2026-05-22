@@ -104,6 +104,16 @@ export async function performWebActionWithApproval(
   } finally {
     clearTimeout(timer);
   }
+  // A non-2xx means the third party REJECTED the action — the booking
+  // didn't go through, the form wasn't accepted. Reporting that as
+  // `performed` would be a false success the user acts on; classify it
+  // as failed (with the status) instead. No retry — a retried POST can
+  // double-act (outbound-safety).
+  if (!response.ok) {
+    const detail = `server rejected (HTTP ${response.status.toString()})`;
+    await log("failed", detail);
+    return { detail, performed: false, reason: "failed" };
+  }
   await log("performed", `HTTP ${response.status.toString()}`);
   return { performed: true, status: response.status };
 }

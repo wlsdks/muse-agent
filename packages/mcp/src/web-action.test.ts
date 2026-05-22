@@ -40,6 +40,26 @@ describe("performWebActionWithApproval — outbound-safety contract", () => {
     expect((await readActionLog(actionLogFile))[0]).toMatchObject({ result: "performed" });
   });
 
+  it("server rejection (non-2xx): reports failed, NOT a false `performed` success, logged failed", async () => {
+    const { fetchImpl, calls } = recordingFetch(500);
+    const actionLogFile = logFile();
+    const outcome = await performWebActionWithApproval({
+      actionLogFile, approvalGate: approve, fetchImpl, request, summary: "Book a table, 7pm", userId: "stark"
+    });
+    expect(outcome).toMatchObject({ performed: false, reason: "failed" });
+    expect((outcome as { detail: string }).detail).toContain("HTTP 500");
+    expect(calls).toHaveLength(1); // the request DID fire — but it was rejected, never retried
+    expect((await readActionLog(actionLogFile))[0]).toMatchObject({ result: "failed" });
+  });
+
+  it("a 403 (forbidden) is also a rejection, not performed", async () => {
+    const { fetchImpl } = recordingFetch(403);
+    const outcome = await performWebActionWithApproval({
+      actionLogFile: logFile(), approvalGate: approve, fetchImpl, request, summary: "Book", userId: "stark"
+    });
+    expect(outcome.performed).toBe(false);
+  });
+
   it("DENY: no HTTP fires, refusal logged", async () => {
     const { fetchImpl, calls } = recordingFetch();
     const actionLogFile = logFile();
