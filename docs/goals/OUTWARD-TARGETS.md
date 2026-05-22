@@ -410,14 +410,20 @@ not multi-tenant fair-share.
   proven not to degrade a plain ask) AND explicit via
   `muse orchestrate --tiered` — proven by a `smoke:live` round-trip
   whose workers ran on two distinct local Qwen tiers and whose
-  low-capacity path collapsed to one. — 680 s4+s5
-  (goal 683 delivered the `muse ask --tiered` half; goal 685 delivered
-  the `muse orchestrate --tiered` explicit surface — each worker runs on
-  the tier model classified from its spec role, response surfaces the
-  per-worker model, integration + `smoke:broad` green. STILL OPEN before
-  this flips: the `smoke:live` round-trip proving two workers ran on two
-  distinct real Qwen tiers AND the low-capacity collapse on the live
-  surface — both surfaces are now wired, only the live proof remains.)
+  low-capacity path collapsed to one. — 680 s4+s5 (split below; the
+  parent flips ONLY when every child is met)
+  - [x] `muse ask --tiered` auto-routes a single ask to the fast/heavy
+    model (off by default; explicit `--model` overrides). — 683
+  - [x] `muse orchestrate --tiered` runs each worker on the tier model
+    classified from its spec role; response surfaces the per-worker
+    model. — 685
+  - [x] `smoke:live` two-tier round-trip: in ONE orchestrate run two
+    workers provably executed on two DISTINCT local Qwen tiers with
+    real output. — 686
+  - [ ] The orchestrate server honors the low-capacity collapse (wire
+    `planTieredRun`'s capacity probe so a host that can't hold both
+    tiers collapses to single-heavy sequential) AND a check proves the
+    live collapse-to-one. — remaining
 
 **P11–P16 — Actuator breadth (human-authored 2026-05-22).** The
 cognition layer (memory / anticipation / consent / correction /

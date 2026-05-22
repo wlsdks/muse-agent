@@ -57,6 +57,11 @@ if (!provider) {
 
 console.log(`smoke:live — using ${provider.label}`);
 
+const tierModels = await pickTierModels(provider.model);
+if (tierModels) {
+  console.log(`smoke:live — tiered orchestrate enabled: fast=${tierModels.fast} heavy=${tierModels.heavy}`);
+}
+
 const env = {
   ...process.env,
   MUSE_CALENDAR_FILE: calendarFile,
@@ -67,6 +72,7 @@ const env = {
   MUSE_NOTES_DIR: notesDir,
   MUSE_TASKS_FILE: tasksFile,
   PORT: String(port),
+  ...(tierModels ? { MUSE_FAST_MODEL: tierModels.fast, MUSE_HEAVY_MODEL: tierModels.heavy } : {}),
   ...(provider.apiKey ? { MUSE_MODEL_API_KEY: provider.apiKey } : {})
 };
 
@@ -372,6 +378,52 @@ try {
     assert(body.conversation.length === 2 && body.conversation.every((m) => m.content.length > 0),
       "expected 2 non-empty conversation messages");
   });
+
+  if (tierModels) {
+    await record("POST /api/multi-agent/orchestrate --tiered (live) — two workers run on two distinct local Qwen tiers", async () => {
+      const specs = [
+        { name: "live-lookup", description: "Look up facts and definitions quickly" },
+        { name: "live-analyst", description: "Analyze the trade-offs and reason about the design" }
+      ];
+      for (const spec of specs) {
+        const seed = await fetch(`${baseUrl}/api/admin/agent-specs`, {
+          body: JSON.stringify({
+            description: spec.description,
+            enabled: true,
+            keywords: ["task"],
+            mode: "react",
+            name: spec.name,
+            systemPrompt: `You are ${spec.name}. Reply with only the digit.`,
+            toolNames: []
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST"
+        });
+        assert(seed.status === 200 || seed.status === 201, `expected 200/201 seeding ${spec.name}, got ${seed.status}`);
+      }
+      const response = await fetch(`${baseUrl}/api/multi-agent/orchestrate`, {
+        body: JSON.stringify({
+          message: "What is 2+2? Reply with just the digit.",
+          mode: "parallel",
+          tiered: true,
+          workerIds: ["live-lookup", "live-analyst"]
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST"
+      });
+      const body = await response.json();
+      assert(response.status === 200, `expected 200, got ${response.status}: ${JSON.stringify(body)}`);
+      assert(Array.isArray(body.results) && body.results.length === 2, "expected 2 results");
+      assert(body.results.every((step) => step.status === "completed"), `expected both completed, got ${JSON.stringify(body.results)}`);
+      const models = body.results.map((step) => step.model);
+      assert(models.every((m) => typeof m === "string" && m.length > 0), `expected each result to carry a model, got ${JSON.stringify(models)}`);
+      // The whole point of P10: ONE run, the two workers executed on two
+      // DIFFERENT local models (lookup → fast tier, analyst → heavy tier).
+      assert(models[0] !== models[1], `expected two distinct tier models in one run, both were ${JSON.stringify(models)}`);
+      assert(body.results.every((step) => typeof step.output === "string" && step.output.length > 0),
+        "expected each tiered worker to produce real output");
+    });
+  }
 } catch (error) {
   failures += 1;
   checks.push({ error: error instanceof Error ? error.message : String(error), name: "bootstrap", status: "fail" });
@@ -405,6 +457,29 @@ try {
 // Ollama at zero cost; smoke:live MUST exercise that and nothing
 // else. Cloud provider keys are intentionally NOT consulted here —
 // do not re-add GEMINI/ANTHROPIC/OPENAI branches.
+// Two distinct local Qwen tiers for the `--tiered` orchestrate check.
+// `fast` reuses the already-picked (warm) provider model; `heavy` is any
+// OTHER local qwen. Returns undefined when fewer than two distinct qwen
+// models exist — the tiered live check is then skipped (not failed).
+async function pickTierModels(fastModel) {
+  const ollamaBase = (process.env.OLLAMA_BASE_URL || "http://localhost:11434").replace(/\/+$/, "");
+  try {
+    const res = await fetch(`${ollamaBase}/api/tags`, { signal: AbortSignal.timeout(1500) });
+    if (!res.ok) {
+      return undefined;
+    }
+    const body = await res.json();
+    const qwens = (body?.models ?? [])
+      .map((m) => m?.name)
+      .filter((n) => typeof n === "string" && /qwen/i.test(n))
+      .map((n) => `ollama/${n}`);
+    const heavy = qwens.find((m) => m !== fastModel);
+    return heavy ? { fast: fastModel, heavy } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function pickProvider() {
   const ollamaBase = (
     process.env.OLLAMA_BASE_URL || "http://localhost:11434"
