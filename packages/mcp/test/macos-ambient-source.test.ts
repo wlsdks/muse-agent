@@ -30,7 +30,7 @@ describe("MacOsActiveWindowSource — snapshot over an injected osascript runner
     expect(await source.snapshot()).toEqual({ app: "Slack", window: "#general" });
   });
 
-  it("a failing/​throwing osascript run → undefined, never throws", async () => {
+  it("a failing or throwing osascript run yields undefined, never throws", async () => {
     const thrower = new MacOsActiveWindowSource({ run: async () => { throw new Error("not authorized for Accessibility"); } });
     expect(await thrower.snapshot()).toBeUndefined();
     const empty = new MacOsActiveWindowSource({ run: async () => undefined });
