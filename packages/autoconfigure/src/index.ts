@@ -42,6 +42,7 @@ import {
   isFollowupLlmBudgetExhausted,
   readFollowupLlmBudget,
   createLoopbackMcpMuseTools,
+  GmailEmailProvider,
   queryContacts,
   upsertFollowup,
   withChromeDevToolsRisk,
@@ -550,11 +551,14 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     }
     const embedModel = env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text";
     const tasksProvider = tasksRegistry?.primary();
+    const gmailToken = env.MUSE_GMAIL_TOKEN?.trim();
+    const emailSource = gmailToken ? new GmailEmailProvider(gmailToken) : undefined;
     return [createNotesKnowledgeSearchTool({
       embed: createCachingEmbedder(createOllamaEmbedder(embedModel)),
       notesProvider,
       ...(tasksProvider ? { tasksProvider } : {}),
       ...(calendarRegistry ? { calendarSource: calendarRegistry } : {}),
+      ...(emailSource ? { emailSource } : {}),
       contactsSource: { list: () => queryContacts(resolveContactsFile(env)) }
     })];
   })();

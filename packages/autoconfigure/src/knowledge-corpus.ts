@@ -48,6 +48,18 @@ export interface ContactsSource {
   list(): Promise<readonly ContactLike[]> | readonly ContactLike[];
 }
 
+export interface EmailMessageLike {
+  readonly id: string;
+  readonly from: string;
+  readonly subject: string;
+  readonly snippet: string;
+  readonly date?: string;
+}
+
+export interface EmailMessageSource {
+  listRecent(limit: number): Promise<readonly EmailMessageLike[]> | readonly EmailMessageLike[];
+}
+
 export interface AssembleKnowledgeCorpusOptions {
   readonly notesProvider?: NotesProvider;
   /** Open tasks become corpus chunks sourced `task/<id>` — the user's todos hold key facts. */
@@ -56,6 +68,8 @@ export interface AssembleKnowledgeCorpusOptions {
   readonly calendarSource?: CalendarEventSource;
   /** Contacts become corpus chunks sourced `contact/<id>`. */
   readonly contactsSource?: ContactsSource;
+  /** Recent emails become corpus chunks sourced `email/<id>` — "what did X mail me about Y". */
+  readonly emailSource?: EmailMessageSource;
   readonly extraChunks?: readonly KnowledgeChunk[];
   /** Cap notes pulled into the corpus. Default 200. */
   readonly maxNotes?: number;
@@ -64,6 +78,8 @@ export interface AssembleKnowledgeCorpusOptions {
   /** Calendar window: days back / days ahead. Defaults 7 / 30. */
   readonly calendarDaysBack?: number;
   readonly calendarDaysAhead?: number;
+  /** Cap recent emails pulled into the corpus. Default 25. */
+  readonly maxEmails?: number;
   /** Injectable clock for the calendar window (test only). */
   readonly now?: () => number;
 }
@@ -168,6 +184,24 @@ export async function assembleKnowledgeCorpus(
     }
   }
 
+  if (options.emailSource) {
+    const maxEmails = Math.max(1, Math.trunc(finiteOr(options.maxEmails, 25)));
+    let emails: readonly EmailMessageLike[];
+    try {
+      emails = await options.emailSource.listRecent(maxEmails);
+    } catch {
+      emails = [];
+    }
+    for (const email of emails.slice(0, maxEmails)) {
+      const header = email.date ? `From ${email.from} — ${email.subject} (${email.date})` : `From ${email.from} — ${email.subject}`;
+      const text = `${header}\n${email.snippet}`.trim();
+      if (text.length === 0) {
+        continue;
+      }
+      chunks.push({ source: `email/${email.id}`, text: text.length > maxChars ? text.slice(0, maxChars) : text });
+    }
+  }
+
   if (options.extraChunks?.length) {
     chunks.push(...options.extraChunks);
   }
@@ -180,6 +214,7 @@ export interface KnowledgeEnricherOptions {
   readonly tasksProvider?: TasksProvider;
   readonly calendarSource?: CalendarEventSource;
   readonly contactsSource?: ContactsSource;
+  readonly emailSource?: EmailMessageSource;
   readonly embed: (text: string) => Promise<readonly number[]>;
   /** Minimum similarity for a "related" hit. Default 0.2 — surfaced unasked, so keep it relevant. */
   readonly minScore?: number;
@@ -209,7 +244,8 @@ export function createKnowledgeEnricher(options: KnowledgeEnricherOptions): (que
       ...(options.notesProvider ? { notesProvider: options.notesProvider } : {}),
       ...(options.tasksProvider ? { tasksProvider: options.tasksProvider } : {}),
       ...(options.calendarSource ? { calendarSource: options.calendarSource } : {}),
-      ...(options.contactsSource ? { contactsSource: options.contactsSource } : {})
+      ...(options.contactsSource ? { contactsSource: options.contactsSource } : {}),
+      ...(options.emailSource ? { emailSource: options.emailSource } : {})
     });
     const matches = await rankKnowledgeChunks(query, corpus, {
       embed: options.embed,
@@ -227,10 +263,12 @@ export interface NotesKnowledgeSearchToolOptions {
   readonly tasksProvider?: TasksProvider;
   readonly calendarSource?: CalendarEventSource;
   readonly contactsSource?: ContactsSource;
+  readonly emailSource?: EmailMessageSource;
   readonly embed: (text: string) => Promise<readonly number[]>;
   readonly topK?: number;
   readonly maxNotes?: number;
   readonly maxCharsPerNote?: number;
+  readonly maxEmails?: number;
   readonly extraChunks?: readonly KnowledgeChunk[];
 }
 
@@ -260,9 +298,11 @@ export function createNotesKnowledgeSearchTool(options: NotesKnowledgeSearchTool
         ...(options.tasksProvider ? { tasksProvider: options.tasksProvider } : {}),
         ...(options.calendarSource ? { calendarSource: options.calendarSource } : {}),
         ...(options.contactsSource ? { contactsSource: options.contactsSource } : {}),
+        ...(options.emailSource ? { emailSource: options.emailSource } : {}),
         ...(options.extraChunks ? { extraChunks: options.extraChunks } : {}),
         ...(options.maxNotes !== undefined ? { maxNotes: options.maxNotes } : {}),
-        ...(options.maxCharsPerNote !== undefined ? { maxCharsPerNote: options.maxCharsPerNote } : {})
+        ...(options.maxCharsPerNote !== undefined ? { maxCharsPerNote: options.maxCharsPerNote } : {}),
+        ...(options.maxEmails !== undefined ? { maxEmails: options.maxEmails } : {})
       });
       const matches = await rankKnowledgeChunks(query, corpus, {
         embed: options.embed,
