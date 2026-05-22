@@ -198,17 +198,30 @@ function extractRequiresInstall(
   if (!metadata) {
     return {};
   }
+  // Muse wins per-field; fall through to openclaw for any field the
+  // muse block omits. Returning on the first object-valued block
+  // would let a present-but-empty `muse: {}` (or one carrying only
+  // `install`) mask openclaw's `requires` — silently dropping a
+  // skill's binary-requirement gating.
+  let requires: unknown;
+  let install: unknown;
   for (const vendor of ["muse", "openclaw"]) {
     const block = metadata[vendor];
-    if (block && typeof block === "object") {
-      const record = block as Record<string, unknown>;
-      return {
-        ...(record.requires ? { requires: record.requires } : {}),
-        ...(record.install ? { install: record.install } : {})
-      };
+    if (!block || typeof block !== "object") {
+      continue;
+    }
+    const record = block as Record<string, unknown>;
+    if (requires === undefined && record.requires) {
+      requires = record.requires;
+    }
+    if (install === undefined && record.install) {
+      install = record.install;
     }
   }
-  return {};
+  return {
+    ...(requires !== undefined ? { requires } : {}),
+    ...(install !== undefined ? { install } : {})
+  };
 }
 
 function stripQuotes(value: string): string {

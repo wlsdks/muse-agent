@@ -91,6 +91,42 @@ metadata:
     expect(parsed.install?.[0]?.kind).toBe("node");
   });
 
+  it("does not let an empty muse block mask openclaw's requires/install", () => {
+    const parsed = parseSkillFrontmatter(`name: github
+description: "gh for GitHub"
+metadata:
+  {
+    "muse": {},
+    "openclaw": { "requires": { "bins": ["gh"] }, "install": [{ "id": "brew", "kind": "brew", "label": "Install gh" }] }
+  }`);
+    expect(parsed.requires?.bins).toEqual(["gh"]);
+    expect(parsed.install?.[0]?.kind).toBe("brew");
+  });
+
+  it("falls through to openclaw per-field — muse install + openclaw requires both survive", () => {
+    const parsed = parseSkillFrontmatter(`name: github
+description: "gh for GitHub"
+metadata:
+  {
+    "muse": { "install": [{ "id": "node", "kind": "node", "label": "npm" }] },
+    "openclaw": { "requires": { "bins": ["gh"] } }
+  }`);
+    expect(parsed.requires?.bins).toEqual(["gh"]);
+    expect(parsed.install?.[0]?.kind).toBe("node");
+  });
+
+  it("muse wins per-field when both vendors define requires", () => {
+    const parsed = parseSkillFrontmatter(`name: codex
+description: "Codex CLI"
+metadata:
+  {
+    "muse": { "requires": { "anyBins": ["codex"] } },
+    "openclaw": { "requires": { "bins": ["gh"] } }
+  }`);
+    expect(parsed.requires?.anyBins).toEqual(["codex"]);
+    expect(parsed.requires?.bins).toBeUndefined();
+  });
+
   it("tolerates empty frontmatter", () => {
     const parsed = parseSkillFrontmatter("");
     expect(parsed).toEqual({ description: "", name: "" });
