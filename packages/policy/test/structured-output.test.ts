@@ -53,6 +53,22 @@ describe("normalizeStructuredOutput", () => {
     });
   });
 
+  it("recovers the valid object after a non-JSON bracketed preamble (skips the bad first block)", () => {
+    const result = normalizeStructuredOutput("see [details below]: {\"ok\":true}", "json");
+    expect(result).toEqual({
+      content: "{\n  \"ok\": true\n}",
+      normalized: true
+    });
+  });
+
+  it("still prefers the FIRST balanced block when it is itself valid (does not skip past a good early value)", () => {
+    const result = normalizeStructuredOutput("Items: [1,2,3] then {\"n\":1}", "json");
+    expect(result).toEqual({
+      content: "[\n  1,\n  2,\n  3\n]",
+      normalized: true
+    });
+  });
+
   it("fails open when JSON is invalid", () => {
     const result = normalizeStructuredOutput("{\"ok\":", "json");
 

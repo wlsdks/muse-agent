@@ -18,24 +18,27 @@ export function normalizeStructuredOutput(
 }
 
 function normalizeJsonOutput(content: string): StructuredOutputNormalizationResult {
-  const candidate = extractJsonCandidate(stripMarkdownFence(content));
-
-  if (!candidate) {
-    return { content, error: "No JSON object or array found", normalized: false };
+  const stripped = stripMarkdownFence(content);
+  let lastError: string | undefined;
+  // Try each balanced block in order, returning the first that PARSES.
+  // A small model may emit a non-JSON bracketed preamble before the
+  // real value ("see [details below]: {…}"); taking only the
+  // first-opener block would forfeit the valid JSON that follows.
+  for (const candidate of jsonCandidates(stripped)) {
+    try {
+      return {
+        content: JSON.stringify(JSON.parse(candidate), null, 2),
+        normalized: true
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : "Invalid JSON";
+    }
   }
-
-  try {
-    return {
-      content: JSON.stringify(JSON.parse(candidate), null, 2),
-      normalized: true
-    };
-  } catch (error) {
-    return {
-      content,
-      error: error instanceof Error ? error.message : "Invalid JSON",
-      normalized: false
-    };
-  }
+  return {
+    content,
+    error: lastError ?? "No JSON object or array found",
+    normalized: false
+  };
 }
 
 function normalizeYamlOutput(content: string): StructuredOutputNormalizationResult {
@@ -57,28 +60,24 @@ function stripMarkdownFence(content: string): string {
   return match?.groups?.body ?? trimmed;
 }
 
-function extractJsonCandidate(content: string): string | undefined {
+// Yield each balanced JSON block in first-appearance order — one per
+// `{`/`[` opener. The first *balanced* value from an opener (not
+// first-opener → last-closer) avoids engulfing trailing prose, and
+// yielding successive openers lets the caller skip a non-JSON
+// bracketed preamble and recover the valid value after it.
+function* jsonCandidates(content: string): Generator<string> {
   const trimmed = content.trim();
-
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    return trimmed;
+  let cursor = 0;
+  while (cursor < trimmed.length) {
+    const ch = trimmed[cursor];
+    if (ch === "{" || ch === "[") {
+      const block = firstBalancedJsonBlock(trimmed, cursor);
+      if (block !== undefined) {
+        yield block;
+      }
+    }
+    cursor += 1;
   }
-
-  const objectIndex = trimmed.indexOf("{");
-  const arrayIndex = trimmed.indexOf("[");
-  const start = [objectIndex, arrayIndex]
-    .filter((index) => index >= 0)
-    .sort((left, right) => left - right)[0];
-
-  if (start === undefined) {
-    return undefined;
-  }
-
-  // First *balanced* value from the opener, not first-opener →
-  // last-closer: a small model trailing an example/note (e.g.
-  // `{...} note: {...}`) made the crude span engulf prose and
-  // fail to parse, silently rejecting a valid structured answer.
-  return firstBalancedJsonBlock(trimmed, start);
 }
 
 function firstBalancedJsonBlock(input: string, start: number): string | undefined {
