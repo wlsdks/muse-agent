@@ -105,6 +105,22 @@ export async function readHomeAssistantState(query: HomeStateQuery): Promise<Hom
   return { attributes, entityId: query.entityId, state: obj.state };
 }
 
+/**
+ * Adapt a Home Assistant entity into the web-watch snapshot contract:
+ * a `() => Promise<string | undefined>` that returns the entity's
+ * current `state` string (e.g. "locked", "21.4"). Lets the proven
+ * web-watch runner/detector monitor a home sensor exactly as it
+ * monitors a web page — "ping me if the door is unlocked / the freezer
+ * rises above -15". Returns `undefined` (skip, keep baseline) when the
+ * read fails.
+ */
+export function createHomeStateSnapshot(query: HomeStateQuery): () => Promise<string | undefined> {
+  return async () => {
+    const state = await readHomeAssistantState(query);
+    return state?.state;
+  };
+}
+
 export interface PerformHomeActionWithApprovalOptions extends HomeAssistantServiceCall {
   readonly approvalGate: WebActionApprovalGate;
   readonly fetchImpl: typeof fetch;

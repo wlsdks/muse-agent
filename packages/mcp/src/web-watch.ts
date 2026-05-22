@@ -248,32 +248,8 @@ export function webWatchesFromConfig(
     if (typeof e.title !== "string" || typeof e.message !== "string") {
       continue;
     }
-    if (!e.rule || typeof e.rule !== "object" || Array.isArray(e.rule)) {
-      continue;
-    }
-    const ruleObj = e.rule as Record<string, unknown>;
-    const rule: { appears?: string; disappears?: string; extract?: string; onAnyChange?: boolean; caseInsensitive?: boolean; below?: number; above?: number } = {};
-    for (const field of RULE_FIELDS) {
-      if (typeof ruleObj[field] === "string" && (ruleObj[field] as string).length > 0) {
-        rule[field] = ruleObj[field] as string;
-      }
-    }
-    if (ruleObj.onAnyChange === true) {
-      rule.onAnyChange = true;
-    }
-    if (ruleObj.caseInsensitive === false) {
-      rule.caseInsensitive = false;
-    }
-    if (typeof ruleObj.below === "number" && Number.isFinite(ruleObj.below)) {
-      rule.below = ruleObj.below;
-    }
-    if (typeof ruleObj.above === "number" && Number.isFinite(ruleObj.above)) {
-      rule.above = ruleObj.above;
-    }
-    if (
-      rule.appears === undefined && rule.disappears === undefined
-      && rule.onAnyChange !== true && rule.below === undefined && rule.above === undefined
-    ) {
+    const rule = parseWatchRule(e.rule);
+    if (rule === undefined) {
       continue;
     }
     out.push({
@@ -285,4 +261,44 @@ export function webWatchesFromConfig(
     });
   }
   return out;
+}
+
+/**
+ * Parse a `WatchRule` from untrusted config. Returns `undefined` when
+ * the value isn't an object or carries NO firing condition (`appears` /
+ * `disappears` / `onAnyChange` / numeric `below` / `above`) — `extract`
+ * and `caseInsensitive` are modifiers, not conditions. Shared by every
+ * watch source (web pages, Home Assistant entities) so their rule
+ * semantics can't drift.
+ */
+export function parseWatchRule(raw: unknown): WatchRule | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+  const ruleObj = raw as Record<string, unknown>;
+  const rule: { appears?: string; disappears?: string; extract?: string; onAnyChange?: boolean; caseInsensitive?: boolean; below?: number; above?: number } = {};
+  for (const field of RULE_FIELDS) {
+    if (typeof ruleObj[field] === "string" && (ruleObj[field] as string).length > 0) {
+      rule[field] = ruleObj[field] as string;
+    }
+  }
+  if (ruleObj.onAnyChange === true) {
+    rule.onAnyChange = true;
+  }
+  if (ruleObj.caseInsensitive === false) {
+    rule.caseInsensitive = false;
+  }
+  if (typeof ruleObj.below === "number" && Number.isFinite(ruleObj.below)) {
+    rule.below = ruleObj.below;
+  }
+  if (typeof ruleObj.above === "number" && Number.isFinite(ruleObj.above)) {
+    rule.above = ruleObj.above;
+  }
+  if (
+    rule.appears === undefined && rule.disappears === undefined
+    && rule.onAnyChange !== true && rule.below === undefined && rule.above === undefined
+  ) {
+    return undefined;
+  }
+  return rule;
 }

@@ -285,12 +285,17 @@ export {
   createHttpSnapshot,
   createWebWatchRunner,
   detectWatchTrigger,
+  parseWatchRule,
   webWatchesFromConfig,
   type WatchRule,
   type WatchTrigger,
   type WebWatch,
   type WebWatchRunner
 } from "./web-watch.js";
+export {
+  homeWatchesFromConfig,
+  type HomeWatchConnection
+} from "./home-watch.js";
 
 export {
   createAmbientNoticeRunner,
@@ -481,6 +486,7 @@ export {
 } from "./web-action-tool.js";
 export {
   buildHomeAssistantServiceCall,
+  createHomeStateSnapshot,
   performHomeActionWithApproval,
   readHomeAssistantState,
   type HomeAssistantServiceCall,
