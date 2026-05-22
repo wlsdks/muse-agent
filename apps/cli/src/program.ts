@@ -109,6 +109,7 @@ import { registerWebhookCommand } from "./commands-webhook.js";
 import { registerActionsCommands } from "./commands-actions.js";
 import { registerContactsCommands } from "./commands-contacts.js";
 import { registerEmailCommands } from "./commands-email.js";
+import { registerHomeCommands } from "./commands-home.js";
 import { registerInboxCommand } from "./commands-inbox.js";
 import { registerObjectivesCommands } from "./commands-objectives.js";
 import { registerWebActionCommands } from "./commands-web-action.js";
@@ -519,6 +520,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerInboxCommand(program, io);
   registerEmailCommands(program, io);
   registerWebActionCommands(program, io);
+  registerHomeCommands(program, io);
   registerRunsCommands(program, io, { apiRequest, writeOutput });
   registerDoctorCommand(program, io, { apiRequest, writeOutput });
   registerCostCommands(program, io, { apiRequest, writeOutput });

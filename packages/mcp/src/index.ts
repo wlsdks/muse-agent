@@ -438,6 +438,12 @@ export {
   type WebActionRequest
 } from "./web-action.js";
 export {
+  buildHomeAssistantServiceCall,
+  performHomeActionWithApproval,
+  type HomeAssistantServiceCall,
+  type PerformHomeActionWithApprovalOptions
+} from "./smart-home.js";
+export {
   createMessagingObjectiveActuator,
   createModelObjectiveEvaluator,
   parseObjectiveVerdict,

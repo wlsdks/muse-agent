@@ -528,10 +528,17 @@ provider+consent pattern; any state-changing or outbound action is
 gated per `outbound-safety.md`. **Banking / financial-account
 access, payments and money movement are OUT OF SCOPE — never built
 (see `outbound-safety.md`).** Split per-actuator when picked.
-- [ ] One opt-in lifestyle provider (e.g. smart-home or music) lands
+- [x] One opt-in lifestyle provider (e.g. smart-home or music) lands
   end-to-end with every state-changing action approval-gated; absent
   approval ⇒ no effect. Check: a state-changing action → gate → only
-  on confirm does it fire (integration).
+  on confirm does it fire (integration). — 698 (opt-in Home Assistant
+  smart-home: `buildHomeAssistantServiceCall` + `performHomeAction
+  WithApproval` route every service call through the fail-closed
+  `performWebActionWithApproval` gate; `muse home call
+  <domain.service>` surface, opt-in via MUSE_HOMEASSISTANT_URL/TOKEN.
+  CONFIRM → one real HA service POST (Bearer + entity_id body);
+  DENY/absent ⇒ NO call. Contract-faithful + mutation-proven. Local
+  REST, no SDK/dep. Banking/payments out of scope.)
 
 The loop extends this map itself when all are delivered or its
 judgement finds a stronger outward direction. "Nothing to do" is
