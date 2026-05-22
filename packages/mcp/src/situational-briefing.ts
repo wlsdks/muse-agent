@@ -38,6 +38,14 @@ export interface SituationalBriefingInput {
    * otherwise-non-empty briefing and never triggers one alone.
    */
   readonly inbox?: string;
+  /**
+   * Optional pre-resolved "related knowledge" line — a note/task the
+   * user already wrote that bears on the top upcoming item ("prep:
+   * bring the Q3 deck"). Supplementary, same posture as weather/inbox:
+   * it rides an otherwise-non-empty briefing, never triggers one.
+   * Proactively surfaces what the user needs to KNOW for what's next.
+   */
+  readonly related?: string;
 }
 
 function clean(value: string): string {
@@ -85,6 +93,11 @@ export function composeSituationalBriefing(input: SituationalBriefingInput): str
       const when = mins === 0 ? "now" : `in ${mins.toString()} min`;
       lines.push(`- ${when}: ${clean(item.title)}`);
     }
+  }
+
+  const related = input.related ? clean(input.related) : "";
+  if (related.length > 0) {
+    lines.push(`Related: ${related}`);
   }
 
   if (escalated.length > 0) {

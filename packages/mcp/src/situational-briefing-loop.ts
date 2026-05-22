@@ -50,6 +50,14 @@ export interface RunDueSituationalBriefingOptions {
    */
   readonly emailProvider?: EmailProvider;
   readonly emailLimit?: number;
+  /**
+   * Optional knowledge enricher. When set AND the briefing has an
+   * imminent item, it is called with the top item's title to surface
+   * a related note/task the user already wrote ("prep: bring the Q3
+   * deck") as a supplementary line. Fail-soft: a thrown / empty
+   * lookup omits the line, never breaks the brief.
+   */
+  readonly relatedKnowledge?: (query: string) => Promise<string | undefined> | string | undefined;
 }
 
 export interface RunDueSituationalBriefingSummary {
@@ -89,6 +97,24 @@ async function resolveInboxLine(provider: EmailProvider, limit?: number): Promis
   }
 }
 
+async function resolveRelatedLine(
+  enrich: (query: string) => Promise<string | undefined> | string | undefined,
+  imminent: readonly BriefingImminent[]
+): Promise<string | undefined> {
+  const top = [...imminent]
+    .filter((item) => !Number.isNaN(item.startsAt.getTime()))
+    .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())[0];
+  if (!top) {
+    return undefined;
+  }
+  try {
+    const line = await enrich(top.title);
+    return line && line.trim().length > 0 ? line : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function runDueSituationalBriefing(
   options: RunDueSituationalBriefingOptions
 ): Promise<RunDueSituationalBriefingSummary> {
@@ -112,12 +138,16 @@ export async function runDueSituationalBriefing(
   const inbox = hasContent && options.emailProvider
     ? await resolveInboxLine(options.emailProvider, options.emailLimit)
     : undefined;
+  const related = hasContent && options.relatedKnowledge && options.imminent.length > 0
+    ? await resolveRelatedLine(options.relatedKnowledge, options.imminent)
+    : undefined;
   const text = composeSituationalBriefing({
     imminent: options.imminent,
     now: nowDate,
     objectives,
     ...(weather ? { weather } : {}),
-    ...(inbox ? { inbox } : {})
+    ...(inbox ? { inbox } : {}),
+    ...(related ? { related } : {})
   });
   if (!text) {
     return { delivered: 0, reason: "nothing-to-say" };
