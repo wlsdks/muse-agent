@@ -20,6 +20,15 @@ export interface WatchRule {
   readonly onAnyChange?: boolean;
   /** Case-insensitive substring matching. Default true. */
   readonly caseInsensitive?: boolean;
+  /**
+   * Narrow the snapshot to the region of interest before matching — a
+   * regex applied to BOTH snapshots; capture group 1 if present, else
+   * the whole match. Real pages carry noise (ads, timestamps) that
+   * would make `onAnyChange` fire every poll; an `extract` of e.g.
+   * `Status: (\w+)` watches only that value. No match → empty region;
+   * an invalid regex fails open to the whole text.
+   */
+  readonly extract?: string;
 }
 
 export interface WatchTrigger {
@@ -29,6 +38,23 @@ export interface WatchTrigger {
 
 function includesText(haystack: string, needle: string, caseInsensitive: boolean): boolean {
   return caseInsensitive ? haystack.toLowerCase().includes(needle.toLowerCase()) : haystack.includes(needle);
+}
+
+function applyExtract(text: string, pattern: string | undefined): string {
+  if (pattern === undefined || pattern.length === 0) {
+    return text;
+  }
+  let re: RegExp;
+  try {
+    re = new RegExp(pattern);
+  } catch {
+    return text;
+  }
+  const match = re.exec(text);
+  if (match === null) {
+    return "";
+  }
+  return match[1] ?? match[0];
 }
 
 /**
@@ -42,24 +68,26 @@ export function detectWatchTrigger(
   rule: WatchRule
 ): WatchTrigger {
   const caseInsensitive = rule.caseInsensitive !== false;
+  const current = applyExtract(currentText, rule.extract);
+  const previous = previousText === undefined ? undefined : applyExtract(previousText, rule.extract);
 
   if (rule.appears !== undefined && rule.appears.length > 0) {
-    const presentNow = includesText(currentText, rule.appears, caseInsensitive);
-    const presentBefore = previousText !== undefined && includesText(previousText, rule.appears, caseInsensitive);
+    const presentNow = includesText(current, rule.appears, caseInsensitive);
+    const presentBefore = previous !== undefined && includesText(previous, rule.appears, caseInsensitive);
     if (presentNow && !presentBefore) {
       return { reason: `appeared: ${rule.appears}`, triggered: true };
     }
   }
 
   if (rule.disappears !== undefined && rule.disappears.length > 0) {
-    const presentNow = includesText(currentText, rule.disappears, caseInsensitive);
-    const presentBefore = previousText !== undefined && includesText(previousText, rule.disappears, caseInsensitive);
+    const presentNow = includesText(current, rule.disappears, caseInsensitive);
+    const presentBefore = previous !== undefined && includesText(previous, rule.disappears, caseInsensitive);
     if (presentBefore && !presentNow) {
       return { reason: `gone: ${rule.disappears}`, triggered: true };
     }
   }
 
-  if (rule.onAnyChange === true && previousText !== undefined && previousText !== currentText) {
+  if (rule.onAnyChange === true && previous !== undefined && previous !== current) {
     return { reason: "content changed", triggered: true };
   }
 
@@ -121,7 +149,7 @@ export function createWebWatchRunner(options: {
   };
 }
 
-const RULE_FIELDS = ["appears", "disappears"] as const;
+const RULE_FIELDS = ["appears", "disappears", "extract"] as const;
 
 /**
  * Snapshot source for a PUBLIC web page: an HTTP GET (retry-hardened
@@ -185,7 +213,7 @@ export function webWatchesFromConfig(
       continue;
     }
     const ruleObj = e.rule as Record<string, unknown>;
-    const rule: { appears?: string; disappears?: string; onAnyChange?: boolean; caseInsensitive?: boolean } = {};
+    const rule: { appears?: string; disappears?: string; extract?: string; onAnyChange?: boolean; caseInsensitive?: boolean } = {};
     for (const field of RULE_FIELDS) {
       if (typeof ruleObj[field] === "string" && (ruleObj[field] as string).length > 0) {
         rule[field] = ruleObj[field] as string;
