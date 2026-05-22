@@ -59,6 +59,7 @@ import {
 } from "../src/index.js";
 import { parseNonNegativeFloat, parsePositiveFloat, parseSloErrorRate } from "../src/env-parsers.js";
 import { resolveWorkspaceSkillsDir } from "../src/provider-paths.js";
+import { createPersonalToolExposurePolicy } from "../src/runtime-wiring.js";
 
 describe("autoconfigure", () => {
   it("assembles default runtime without auth when no secret is configured", async () => {
@@ -109,6 +110,33 @@ describe("autoconfigure", () => {
     const withExtra = createMuseRuntimeAssembly({ env: {}, extraTools: [probe] });
     expect(withExtra.toolRegistry.get("probe_extra_tool")).toBeDefined();
     expect(withExtra.toolRegistry.list().map((tool) => tool.definition.name)).toContain("probe_extra_tool");
+  });
+
+  it("exposes an execute-risk extraTool actuator to the model only under localMode and only when relevant", () => {
+    const env = { MUSE_MODEL: "ollama/qwen3:8b", OLLAMA_BASE_URL: "http://127.0.0.1:11434" };
+    const emailActuator = {
+      definition: {
+        description: "Send an email to one of the user's contacts.",
+        domain: "messaging" as const,
+        inputSchema: { additionalProperties: false, properties: {}, type: "object" as const },
+        keywords: ["email", "send", "reply", "mail"],
+        name: "email_send",
+        risk: "execute" as const
+      },
+      execute: () => ({ sent: false })
+    };
+    const assembly = createMuseRuntimeAssembly({ env, extraTools: [emailActuator] });
+    const policy = createPersonalToolExposurePolicy(env);
+    const exposed = (ctx: { localMode: boolean; prompt: string }) =>
+      assembly.toolRegistry.planForContext(ctx, policy).tools.some((tool) => tool.definition.name === "email_send");
+
+    // The `muse ask --with-tools --actuators` path sets localMode; a
+    // natural actuation prompt must reach the actuator…
+    expect(exposed({ localMode: true, prompt: "email Bob the Q3 summary" })).toBe(true);
+    // …without --actuators (no localMode) it stays hidden (fail-safe)…
+    expect(exposed({ localMode: false, prompt: "email Bob the Q3 summary" })).toBe(false);
+    // …and relevance gating keeps it off unrelated turns.
+    expect(exposed({ localMode: true, prompt: "what is the capital of France" })).toBe(false);
   });
 
   it("registers OpenAI voice providers from the standard OPENAI_API_KEY env var", () => {

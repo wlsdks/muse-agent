@@ -725,3 +725,22 @@ Append one line when a discovery path is evaluated and deferred:
   bullet reopened. **P11–P16 (the human-authored actuator-breadth map)
   is now ALL delivered + audited; P0–P16 complete + audited.** The loop
   extended the map (P17 — conversational actuation) per OUTWARD-TARGETS.
+- P17 audit — apps/api p17-{email,web-action,home-action}-tool-agent-seam.test.ts
+  + @muse/cli actuator-tools.test.ts + @muse/autoconfigure
+  autoconfigure.test.ts — PASS: P17 (conversational actuation)
+  composes end-to-end. Piece-checks re-run green TOGETHER: the three
+  apps/api seam tests (706/707/708) each drive a REAL `createAgentRuntime`
+  run where the model emits email_send / web_action / home_action →
+  CONFIRM fires one real send/request/HA-POST, DENY/ambiguous ⇒ 0; the
+  @muse/cli actuator-tools 6/6 (env→toolset selection; every actuator
+  execute-risk; a REAL agent run web_action CONFIRM→1 / DENY→0,
+  mutation-proven). Audited the previously-UNCOVERED composition seam —
+  `createMuseRuntimeAssembly({extraTools})` → personal exposure policy →
+  `planForContext` — and locked it: an execute-risk actuator injected via
+  `extraTools` is exposed to the model ONLY under `localMode` (the
+  `muse ask --with-tools --actuators` path) AND only when relevant to the
+  prompt; without `--actuators` (no localMode) it stays hidden (fail-safe).
+  The build-tools → assembly registry → exposure-policy → gated-execute
+  chain composes as one `muse ask --with-tools --actuators` user flow; no
+  live LLM call (deterministic provider; HTTP-faked). No drift; no bullet
+  reopened. **P0–P17 complete + audited.**
