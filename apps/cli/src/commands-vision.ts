@@ -92,6 +92,16 @@ export async function loadImageAsBase64(
     if (!response.ok) {
       throw new Error(`fetch ${trimmed} returned ${response.status.toString()}`);
     }
+    // A 200 HTML error / login / paywall page would otherwise be
+    // base64-encoded and handed to the vision model as "image bytes" —
+    // silent garbage. Reject clearly-textual responses; allow image/*,
+    // octet-stream, or an absent type (some image hosts omit it).
+    const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
+    if (/^(?:text\/|application\/(?:json|xml|xhtml\+xml))/u.test(contentType)) {
+      throw new Error(
+        `URL returned '${contentType}' (not an image) — Muse vision needs image bytes; check the link points directly at an image file`
+      );
+    }
     const buf = Buffer.from(await response.arrayBuffer());
     return buf.toString("base64");
   }
