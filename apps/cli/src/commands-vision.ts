@@ -74,7 +74,18 @@ export async function loadImageAsBase64(
         "a non-base64 (URL-encoded / SVG / text) data URL is not a supported vision image"
       );
     }
-    return trimmed.slice(comma + 1);
+    // The `;base64` marker only describes the declared encoding — the
+    // payload can still be empty or non-base64 (an SVG/`<svg…>`, a
+    // `%`-escaped string). Passing that through as "base64" silently
+    // feeds the vision model garbage. Validate the charset (whitespace
+    // tolerated, as data URLs may wrap) before returning.
+    const payload = trimmed.slice(comma + 1).replace(/\s+/gu, "");
+    if (payload.length === 0 || !/^[A-Za-z0-9+/]*={0,2}$/u.test(payload)) {
+      throw new Error(
+        "data: URL base64 payload is empty or not valid base64 — expected image bytes after the comma"
+      );
+    }
+    return payload;
   }
   if (/^https?:\/\//iu.test(trimmed)) {
     const response = await fetchImpl(trimmed);

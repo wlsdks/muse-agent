@@ -5973,6 +5973,18 @@ describe("cli program", () => {
       .rejects.toThrow(/must be base64-encoded/u);
     // A bare-mediatype-less base64 data URL still passes through.
     expect(await loadImageAsBase64("data:;base64,QUJD")).toBe("QUJD");
+
+    // A `;base64`-DECLARED payload that isn't actually base64 (an SVG
+    // body, a %-escaped string, empty) is rejected with a clear error
+    // rather than passed through as garbage to the vision model.
+    await expect(loadImageAsBase64("data:image/png;base64,<svg/>"))
+      .rejects.toThrow(/not valid base64/u);
+    await expect(loadImageAsBase64("data:image/png;base64,%3Csvg%3E"))
+      .rejects.toThrow(/not valid base64/u);
+    await expect(loadImageAsBase64("data:image/png;base64,"))
+      .rejects.toThrow(/empty or not valid base64/u);
+    // Whitespace-wrapped valid base64 is tolerated (data URLs may wrap).
+    expect(await loadImageAsBase64("data:image/png;base64,QUJD\n  REVG")).toBe("QUJDREVG");
   });
 
   it("muse vision: formatOllamaVisionFailure surfaces actionable `ollama pull <base>` on 404 but stays generic for other statuses", async () => {
