@@ -460,7 +460,12 @@ grounding for anticipation.
 - [ ] A weather/location provider grounds answers and the proactive
   briefing ("rain at 3pm — leave early"). Check: seeded location →
   the briefing/answer reflects the real (HTTP-faked) forecast
-  (integration).
+  (integration). (goal 688 delivered the provider + a DIRECT user
+  surface: `WeatherProvider` / `OpenMeteoWeatherProvider` (free, no
+  key) + `muse weather <location>` whose answer reflects the forecast,
+  integration-tested + live-schema-validated. STILL OPEN to flip:
+  grounding the AGENT's free-form answers (a weather tool) AND/OR the
+  proactive briefing with the forecast.)
 
 **P13 — Contacts / people graph.** A JARVIS knows who people are;
 also the recipient-resolution backbone for P11/P15 outbound safety.
