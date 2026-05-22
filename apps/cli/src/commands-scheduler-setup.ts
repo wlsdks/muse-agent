@@ -403,6 +403,16 @@ async function renderSetupStatus(): Promise<string> {
     pushNext(rm.nextStep);
   }
 
+  // actuators (gated state-changing tools, opt-in via `muse ask --actuators`)
+  const act = snap.actuators;
+  const mark = (ready: boolean): string => (ready ? "✓" : "✗");
+  push(
+    act.status,
+    "actuators",
+    `email ${mark(act.email)}, web ${mark(act.web)}, home ${mark(act.home)}`
+  );
+  pushNext(act.nextStep);
+
   lines.push("");
   lines.push("Wizards:");
   lines.push("  muse setup wizard      — end-to-end onboarding (model → calendar → messaging)");

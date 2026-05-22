@@ -94,12 +94,45 @@ export interface SetupStatusSnapshot {
     readonly quietHours?: string;
     readonly nextStep?: string;
   };
+  readonly actuators: ActuatorReadinessSnapshot;
 }
 
 export interface WebSearchEnvSnapshot {
   readonly enabled: boolean;
   readonly maxUses: number;
   readonly source: "default" | "env";
+}
+
+export interface ActuatorReadinessSnapshot {
+  readonly status: "ok" | "info";
+  /** MUSE_GMAIL_TOKEN present → email_send can be armed. */
+  readonly email: boolean;
+  /** Always available — the generic gated web action needs no provider env. */
+  readonly web: boolean;
+  /** Both MUSE_HOMEASSISTANT_URL + MUSE_HOMEASSISTANT_TOKEN present. */
+  readonly home: boolean;
+  readonly nextStep?: string;
+}
+
+export function readActuatorReadiness(env: Readonly<Record<string, string | undefined>>): ActuatorReadinessSnapshot {
+  const email = Boolean(env.MUSE_GMAIL_TOKEN?.trim());
+  const home = Boolean(env.MUSE_HOMEASSISTANT_URL?.trim() && env.MUSE_HOMEASSISTANT_TOKEN?.trim());
+  const hints: string[] = [];
+  if (!email) {
+    hints.push("set MUSE_GMAIL_TOKEN for email_send");
+  }
+  if (!home) {
+    hints.push("set MUSE_HOMEASSISTANT_URL + MUSE_HOMEASSISTANT_TOKEN for home_action");
+  }
+  return {
+    email,
+    home,
+    status: email || home ? "ok" : "info",
+    web: true,
+    ...(hints.length > 0
+      ? { nextStep: `Actuators are opt-in via \`muse ask --with-tools --actuators\`. ${hints.join("; ")}` }
+      : {})
+  };
 }
 
 const WEB_SEARCH_DEFAULTS: WebSearchEnvSnapshot = {
@@ -337,7 +370,8 @@ export async function collectSetupStatusJson(): Promise<SetupStatusSnapshot> {
       ...(reminderEnabled
         ? {}
         : { nextStep: "Set MUSE_REMINDER_DEFAULT_PROVIDER + MUSE_REMINDER_DEFAULT_DESTINATION to enable the reminder firing daemon" })
-    }
+    },
+    actuators: readActuatorReadiness(env)
   };
 }
 

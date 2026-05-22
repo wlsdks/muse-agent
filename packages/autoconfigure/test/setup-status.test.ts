@@ -1,9 +1,43 @@
 import { describe, expect, it } from "vitest";
 
 import { resolveDefaultModel } from "../src/autoconfigure-model-provider.js";
-import { readModelKeyState, readWebSearchEnvSnapshot } from "../src/setup-status.js";
+import { readActuatorReadiness, readModelKeyState, readWebSearchEnvSnapshot } from "../src/setup-status.js";
 
 const MISSING_KEYS_FILE = "/dev/null/no-such-keys.json";
+
+describe("readActuatorReadiness", () => {
+  it("reports web always-on, email/home off, status info + hints when no provider env is set", () => {
+    const snap = readActuatorReadiness({});
+    expect(snap).toMatchObject({ email: false, home: false, status: "info", web: true });
+    expect(snap.nextStep).toContain("MUSE_GMAIL_TOKEN");
+    expect(snap.nextStep).toContain("MUSE_HOMEASSISTANT_URL");
+    expect(snap.nextStep).toContain("--actuators");
+  });
+
+  it("flips email + status to ok when MUSE_GMAIL_TOKEN is set, still hinting the missing home actuator", () => {
+    const snap = readActuatorReadiness({ MUSE_GMAIL_TOKEN: "tok" });
+    expect(snap).toMatchObject({ email: true, home: false, status: "ok" });
+    expect(snap.nextStep).toContain("MUSE_HOMEASSISTANT_URL");
+    expect(snap.nextStep).not.toContain("MUSE_GMAIL_TOKEN");
+  });
+
+  it("requires BOTH Home Assistant vars to mark home ready", () => {
+    expect(readActuatorReadiness({ MUSE_HOMEASSISTANT_URL: "http://ha.local:8123" }).home).toBe(false);
+    expect(
+      readActuatorReadiness({ MUSE_HOMEASSISTANT_TOKEN: "ha", MUSE_HOMEASSISTANT_URL: "http://ha.local:8123" }).home
+    ).toBe(true);
+  });
+
+  it("drops the nextStep entirely once every provider-backed actuator is configured", () => {
+    const snap = readActuatorReadiness({
+      MUSE_GMAIL_TOKEN: "tok",
+      MUSE_HOMEASSISTANT_TOKEN: "ha",
+      MUSE_HOMEASSISTANT_URL: "http://ha.local:8123"
+    });
+    expect(snap).toMatchObject({ email: true, home: true, status: "ok", web: true });
+    expect(snap.nextStep).toBeUndefined();
+  });
+});
 
 describe("readWebSearchEnvSnapshot", () => {
   it("returns enabled=true, maxUses=5, source=default when no env vars set", () => {
