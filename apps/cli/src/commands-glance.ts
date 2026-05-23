@@ -31,11 +31,15 @@ export interface GlanceSnapshot {
  * `{ app, window, selected }` triple. Pure so the unit test can
  * pin every corner without touching the real shell.
  *
- * Expected raw shape (three newline-separated lines, in order):
- *   <app name>\n<window title>\n<selected text>
+ * Expected raw shape (app + window on their own lines, then the
+ * selected text — which may itself span multiple lines):
+ *   <app name>\n<window title>\n<selected text…>
  *
- * Missing window title / selected text show as the literal string
- * "missing value" from AppleScript; we normalise those to empty.
+ * The selected text is everything from the third line onward (a
+ * multi-line paragraph selection is common); whitespace-collapsing in
+ * `norm` flattens it to one terminal-safe line. Missing window title /
+ * selected text show as the literal AppleScript "missing value", which
+ * we normalise to empty.
  */
 export function parseOsascriptGlance(raw: string): GlanceSnapshot {
   const lines = raw.split(/\r?\n/u);
@@ -52,7 +56,7 @@ export function parseOsascriptGlance(raw: string): GlanceSnapshot {
   return {
     app: norm(lines[0]),
     window: norm(lines[1]),
-    selected: norm(lines[2])
+    selected: norm(lines.slice(2).join("\n"))
   };
 }
 

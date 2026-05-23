@@ -45,6 +45,16 @@ describe("parseOsascriptGlance", () => {
     });
   });
 
+  it("keeps a multi-line selection whole (everything from line 3 on), not just its first line", () => {
+    // A paragraph selection is common — osascript returns it verbatim
+    // after app+window, so the selected text spans several lines.
+    expect(parseOsascriptGlance("Safari\nDocs\nfirst line\nsecond line\nthird")).toEqual({
+      app: "Safari",
+      selected: "first line second line third",
+      window: "Docs"
+    });
+  });
+
   it("strips untrusted terminal control sequences from window/selected", () => {
     const esc = String.fromCharCode(27);
     const out = parseOsascriptGlance(`App\n${esc}[31mred${esc}[0m title\n${esc}]0;evil`);
