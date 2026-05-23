@@ -21,6 +21,7 @@ import { join } from "node:path";
 import { mergeModelKeysFromFile, resolveDefaultModel } from "@muse/autoconfigure";
 import {
   readFollowups,
+  readObjectives,
   readReminders,
   summariseEpisodesRows,
   summariseFollowupsRows,
@@ -120,6 +121,55 @@ function defaultProactiveHistoryFile(): string {
 
 function defaultFollowupsFile(): string {
   return envValue("MUSE_FOLLOWUPS_FILE") ?? join(homedir(), ".muse", "followups.json");
+}
+
+function defaultObjectivesFile(): string {
+  return envValue("MUSE_OBJECTIVES_FILE") ?? join(homedir(), ".muse", "objectives.json");
+}
+
+interface ObjectivesSummary {
+  readonly total: number;
+  readonly active: number;
+  readonly escalated: number;
+  readonly done: number;
+  readonly cancelled: number;
+  /** The first escalated objective's spec — the needs-you signal worth surfacing. */
+  readonly escalatedSample?: string;
+}
+
+/**
+ * Summarise standing objectives for the dashboard. `escalated` is the
+ * high-value signal — a delegated objective that hit a wall and needs
+ * the user — so its spec is surfaced. User-scoped like the other
+ * dashboard stores.
+ */
+function summariseObjectivesRows(
+  rows: readonly { readonly userId?: string; readonly status?: string; readonly spec?: string }[],
+  userId: string
+): ObjectivesSummary {
+  let total = 0;
+  let active = 0;
+  let escalated = 0;
+  let done = 0;
+  let cancelled = 0;
+  let escalatedSample: string | undefined;
+  for (const row of rows) {
+    if (typeof row.userId !== "string" || row.userId !== userId) continue;
+    total += 1;
+    if (row.status === "active") {
+      active += 1;
+    } else if (row.status === "escalated") {
+      escalated += 1;
+      if (escalatedSample === undefined && typeof row.spec === "string" && row.spec.length > 0) {
+        escalatedSample = row.spec;
+      }
+    } else if (row.status === "done") {
+      done += 1;
+    } else if (row.status === "cancelled") {
+      cancelled += 1;
+    }
+  }
+  return { active, cancelled, done, escalated, total, ...(escalatedSample ? { escalatedSample } : {}) };
 }
 
 function defaultEpisodesFile(): string {
@@ -270,6 +320,9 @@ async function collectStatus(userId: string) {
   const reminders = await readReminders(defaultRemindersFile()).catch(() => [] as const);
   const remindersSummary = summariseRemindersRows(reminders, now);
 
+  const objectives = await readObjectives(defaultObjectivesFile()).catch(() => [] as const);
+  const objectivesSummary = summariseObjectivesRows(objectives, userId);
+
   const logTail = await readLogTail(logFile, 1);
   const logBytes = await fileSize(logFile);
 
@@ -346,6 +399,7 @@ async function collectStatus(userId: string) {
       activeDays: routineDays
     },
     followups: followupsByStatus,
+    objectives: objectivesSummary,
     episodes: episodesSummary,
     patterns: patternsSummary,
     reminders: remindersSummary,
@@ -593,6 +647,13 @@ function renderStatus(io: ProgramIO, snap: Awaited<ReturnType<typeof collectStat
             ? ` — ${snap.followups.nextScheduledSummary.slice(0, 80)}`
             : "";
           io.stdout(`    next: ${snap.followups.nextScheduledFor}${summary}\n`);
+        }
+        io.stdout("\n");
+      }
+      if (snap.objectives.total > 0) {
+        io.stdout(`  objectives: ${snap.objectives.active.toString()} active, ${snap.objectives.escalated.toString()} escalated, ${snap.objectives.done.toString()} done, ${snap.objectives.cancelled.toString()} cancelled\n`);
+        if (snap.objectives.escalatedSample) {
+          io.stdout(`    ⚠ needs you: ${snap.objectives.escalatedSample.slice(0, 80)}\n`);
         }
         io.stdout("\n");
       }

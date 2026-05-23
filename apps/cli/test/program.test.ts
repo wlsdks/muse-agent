@@ -7212,6 +7212,41 @@ describe("cli program", () => {
     }
   });
 
+  it("muse status surfaces standing-objective counts + the escalated needs-you signal", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-status-obj-"));
+    const fsp = await import("node:fs/promises");
+    const userId = "stark";
+    const objectivesFile = path.join(root, "objectives.json");
+    await fsp.writeFile(objectivesFile, JSON.stringify({
+      objectives: [
+        { id: "obj_a", userId, createdAt: "2026-05-12T00:00:00Z", spec: "watch the build until green", kind: "until", status: "active" },
+        { id: "obj_b", userId, createdAt: "2026-05-12T00:00:00Z", spec: "ship the Q3 memo — blocked on sign-off", kind: "until", status: "escalated" },
+        { id: "obj_c", userId, createdAt: "2026-05-11T00:00:00Z", spec: "old done one", kind: "notify", status: "done" },
+        { id: "obj_d", userId, createdAt: "2026-05-10T00:00:00Z", spec: "dropped one", kind: "watch", status: "cancelled" },
+        // Different userId — must NOT count.
+        { id: "obj_other", userId: "rhodey", createdAt: "2026-05-12T00:00:00Z", spec: "other user", kind: "until", status: "active" }
+      ]
+    }), "utf8");
+
+    const prev = process.env.MUSE_OBJECTIVES_FILE;
+    process.env.MUSE_OBJECTIVES_FILE = objectivesFile;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+      await program.parseAsync(["node", "muse", "status", "--user", userId, "--json"], { from: "node" });
+      const snap = JSON.parse(output.join("")) as {
+        objectives: { active: number; escalated: number; done: number; cancelled: number; total: number; escalatedSample?: string };
+      };
+      // rhodey's active objective is dropped by the userId filter.
+      expect(snap.objectives).toMatchObject({ active: 1, escalated: 1, done: 1, cancelled: 1, total: 4 });
+      // The escalated objective's spec is surfaced as the needs-you signal.
+      expect(snap.objectives.escalatedSample).toBe("ship the Q3 memo — blocked on sign-off");
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_OBJECTIVES_FILE;
+      else process.env.MUSE_OBJECTIVES_FILE = prev;
+    }
+  });
+
   it("muse status surfaces followup + episode + pattern counts when the stores carry data", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-status-tracks-"));
     const fsp = await import("node:fs/promises");
