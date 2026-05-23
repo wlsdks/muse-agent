@@ -51,4 +51,19 @@ describe("muse export — bundles every user-data store, not just some", () => {
     expect(DEFAULT_EXPORT_FILES).toContain("calendar.json");
     expect(DEFAULT_EXPORT_FILES).toContain("messaging.json");
   });
+
+  it("bundles the episode index alongside its notes-index sibling (recall survives restore without an Ollama re-embed)", async () => {
+    expect(DEFAULT_EXPORT_FILES).toContain("episodes-index.json");
+    dir = mkdtempSync(join(tmpdir(), "muse-export-epidx-"));
+    const museDir = join(dir, ".muse");
+    mkdirSync(museDir, { recursive: true });
+    // Both semantic indices carry embeddings that are expensive to
+    // recompute and NOT auto-rebuilt on read — backing up only one
+    // leaves the other's recall broken on restore.
+    writeFileSync(join(museDir, "notes-index.json"), "{}", "utf8");
+    writeFileSync(join(museDir, "episodes-index.json"), "{}", "utf8");
+    const out = await buildMuseExport({ museDir, notesDir: join(museDir, "notes"), outputPath: join(dir, "backup.tar.gz") });
+    expect(out.files).toContain("notes-index.json");
+    expect(out.files).toContain("episodes-index.json");
+  });
 });

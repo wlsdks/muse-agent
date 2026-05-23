@@ -62,6 +62,7 @@ export const DEFAULT_EXPORT_FILES: readonly string[] = [
   "discord-inbox.json",
   "slack-inbox.json",
   "notes-index.json",
+  "episodes-index.json",
   "trust.json",
   "config.json"
 ];
