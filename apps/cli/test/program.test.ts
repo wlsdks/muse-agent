@@ -6164,6 +6164,50 @@ describe("cli program", () => {
     expect(oldOnly.map((e) => path.basename(e.source))).toEqual(["proactive-history.json.1"]);
   });
 
+  it("planActivityPrune keeps lines within the window, drops older + undateable ones", async () => {
+    const { planActivityPrune } = await import("../src/commands-maintenance.js");
+    const nowMs = Date.parse("2026-05-24T12:00:00Z");
+    const recent = `{"kind":"chat","userId":"stark","tsIso":"2026-05-24T09:00:00Z"}`;
+    const old = `{"kind":"chat","userId":"stark","tsIso":"2026-01-01T09:00:00Z"}`;
+    const undateable = `{"kind":"chat","userId":"stark"}`;
+    const malformed = `not json at all`;
+    const plan = planActivityPrune([recent, old, undateable, malformed, ""], nowMs, 30);
+    // Only the in-window line survives; old + undateable + malformed dropped; blank ignored.
+    expect(plan.keptLines).toEqual([recent]);
+    expect(plan.kept).toBe(1);
+    expect(plan.dropped).toBe(3);
+  });
+
+  it("muse maintenance prune-activity rewrites activity.jsonl to the retention window (and --dry-run doesn't)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-prune-"));
+    const fsp = await import("node:fs/promises");
+    const file = path.join(root, "activity.jsonl");
+    const recent = `{"kind":"chat","userId":"stark","tsIso":"${new Date().toISOString()}"}`;
+    const old = `{"kind":"chat","userId":"stark","tsIso":"2020-01-01T00:00:00Z"}`;
+    await fsp.writeFile(file, `${old}\n${recent}\n${old}\n`, "utf8");
+
+    const prev = process.env.MUSE_ACTIVITY_FILE;
+    process.env.MUSE_ACTIVITY_FILE = file;
+    try {
+      // --dry-run reports but leaves the file untouched.
+      const dry = captureOutput();
+      const p1 = createProgram({ ...dry.io, fetch: async () => { throw new Error("no fetch"); } });
+      await p1.parseAsync(["node", "muse", "maintenance", "prune-activity", "--keep-days", "30", "--dry-run"], { from: "node" });
+      expect(dry.output.join("")).toContain("would drop 2 of 3");
+      expect((await fsp.readFile(file, "utf8")).split("\n").filter((l) => l.length > 0)).toHaveLength(3);
+
+      // Real run rewrites to just the in-window line.
+      const real = captureOutput();
+      const p2 = createProgram({ ...real.io, fetch: async () => { throw new Error("no fetch"); } });
+      await p2.parseAsync(["node", "muse", "maintenance", "prune-activity", "--keep-days", "30"], { from: "node" });
+      expect(real.output.join("")).toContain("Pruned 2 line(s); kept 1");
+      const after = (await fsp.readFile(file, "utf8")).split("\n").filter((l) => l.length > 0);
+      expect(after).toEqual([recent]);
+    } finally {
+      if (prev === undefined) { delete process.env.MUSE_ACTIVITY_FILE; } else { process.env.MUSE_ACTIVITY_FILE = prev; }
+    }
+  });
+
   it("muse status surfaces today's token-cost rollup from the sidecar JSON (goal 078)", async () => {
     const { readTokenCostToday } = await import("../src/commands-status.js");
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-cost-"));

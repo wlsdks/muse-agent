@@ -19,7 +19,7 @@
  */
 
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, readdir, stat, unlink } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -27,6 +27,8 @@ import { createGzip } from "node:zlib";
 
 import type { Command } from "commander";
 
+import { parseBoundedInt } from "./commands-ask.js";
+import { activityPath } from "./commands-routine.js";
 import type { ProgramIO } from "./program.js";
 
 /**
@@ -109,6 +111,42 @@ async function gzCompact(source: string, destination: string): Promise<void> {
   await rename(tmp, destination);
 }
 
+export interface ActivityPrunePlan {
+  readonly keptLines: readonly string[];
+  readonly kept: number;
+  readonly dropped: number;
+}
+
+/**
+ * Plan a retention prune of `activity.jsonl`: keep lines whose `tsIso`
+ * parses AND falls within the last `keepDays`; drop older lines plus
+ * undateable / malformed ones (they feed no consumer — `readActivity`
+ * already skips them, so retaining them would just bloat the file the
+ * prune exists to bound). Pure over the raw lines so the rewrite is
+ * testable without touching disk. Exported for direct coverage.
+ */
+export function planActivityPrune(lines: readonly string[], nowMs: number, keepDays: number): ActivityPrunePlan {
+  const cutoffMs = nowMs - Math.max(0, keepDays) * 24 * 60 * 60 * 1000;
+  const keptLines: string[] = [];
+  let dropped = 0;
+  for (const line of lines) {
+    if (line.trim().length === 0) continue;
+    let ts = Number.NaN;
+    try {
+      const parsed = JSON.parse(line) as { tsIso?: unknown };
+      if (parsed && typeof parsed === "object" && typeof parsed.tsIso === "string") {
+        ts = Date.parse(parsed.tsIso);
+      }
+    } catch { /* malformed → undateable → dropped */ }
+    if (Number.isFinite(ts) && ts >= cutoffMs) {
+      keptLines.push(line);
+    } else {
+      dropped += 1;
+    }
+  }
+  return { dropped, kept: keptLines.length, keptLines };
+}
+
 export function registerMaintenanceCommand(program: Command, io: ProgramIO): void {
   const maintenance = program.command("maintenance").description("Housekeeping for ~/.muse archives");
 
@@ -171,5 +209,50 @@ export function registerMaintenanceCommand(program: Command, io: ProgramIO): voi
       } else {
         io.stdout(`Compacted ${compacted.toString()} / ${plan.length.toString()} archive(s) into ${archiveDir}\n`);
       }
+    });
+
+  maintenance
+    .command("prune-activity")
+    .description("Trim ~/.muse/activity.jsonl to the last N days — it's append-only (one line per chat/ask/status) and otherwise grows unbounded")
+    .option("--keep-days <n>", "Retention window in days (default 365 — matches `muse routine`'s max lookback)", "365")
+    .option("--dry-run", "Report how many lines would be dropped without rewriting the file")
+    .option("--json", "Emit a structured summary instead of a formatted line")
+    .action(async (options: { readonly keepDays?: string; readonly dryRun?: boolean; readonly json?: boolean }) => {
+      const keepDays = parseBoundedInt(options.keepDays, "--keep-days", 1, 3650, 365);
+      const file = activityPath();
+      let raw: string;
+      try {
+        raw = await readFile(file, "utf8");
+      } catch (cause) {
+        if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
+          io.stdout(options.json
+            ? `${JSON.stringify({ dropped: 0, file, kept: 0 }, null, 2)}\n`
+            : `(no activity log at ${file} yet)\n`);
+          return;
+        }
+        throw cause;
+      }
+      const plan = planActivityPrune(raw.split("\n"), Date.now(), keepDays);
+      const total = plan.kept + plan.dropped;
+      if (options.dryRun) {
+        io.stdout(options.json
+          ? `${JSON.stringify({ dropped: plan.dropped, dryRun: true, keepDays, kept: plan.kept }, null, 2)}\n`
+          : `would drop ${plan.dropped.toString()} of ${total.toString()} line(s), keep ${plan.kept.toString()} (last ${keepDays.toString()}d)\n`);
+        return;
+      }
+      if (plan.dropped === 0) {
+        io.stdout(options.json
+          ? `${JSON.stringify({ dropped: 0, keepDays, kept: plan.kept }, null, 2)}\n`
+          : `Nothing to prune — all ${plan.kept.toString()} line(s) are within ${keepDays.toString()}d.\n`);
+        return;
+      }
+      // Atomic rewrite (tmp + rename, 0o600 — matching appendActivity).
+      const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
+      const body = plan.keptLines.length > 0 ? `${plan.keptLines.join("\n")}\n` : "";
+      await writeFile(tmp, body, { encoding: "utf8", mode: 0o600 });
+      await rename(tmp, file);
+      io.stdout(options.json
+        ? `${JSON.stringify({ dropped: plan.dropped, keepDays, kept: plan.kept }, null, 2)}\n`
+        : `Pruned ${plan.dropped.toString()} line(s); kept ${plan.kept.toString()} (last ${keepDays.toString()}d) in ${file}\n`);
     });
 }
