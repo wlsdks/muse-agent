@@ -81,7 +81,7 @@ describe("withChromeDevToolsRisk", () => {
     execute: async () => "ok"
   });
 
-  it("re-stamps chrome-devtools tools by classifier and leaves other tools untouched", () => {
+  it("re-stamps the curated chrome-devtools tools by classifier, drops non-curated ones, leaves others untouched", () => {
     const out = withChromeDevToolsRisk([
       tool("chrome-devtools.fill_form", "read"),
       tool("chrome-devtools.take_snapshot", "read"),
@@ -91,7 +91,8 @@ describe("withChromeDevToolsRisk", () => {
     const byName = new Map(out.map((entry) => [entry.definition.name, entry.definition.risk]));
     expect(byName.get("chrome-devtools.fill_form")).toBe("write");
     expect(byName.get("chrome-devtools.take_snapshot")).toBe("read");
-    expect(byName.get("chrome-devtools.evaluate_script")).toBe("execute");
+    // evaluate_script is a web-developer tool — curated OUT of the agent catalog.
+    expect(byName.has("chrome-devtools.evaluate_script")).toBe(false);
     expect(byName.get("notes.search")).toBe("read");
   });
 

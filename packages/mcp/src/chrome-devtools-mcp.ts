@@ -91,28 +91,53 @@ export function chromeDevToolsToolRisk(toolName: string): ToolRisk {
 }
 
 /**
- * Re-stamp Chrome DevTools MCP tools projected by
+ * The daily-driver Chrome surface a JARVIS actually needs: perceive the
+ * page + basic navigate / click / fill. Chrome DevTools MCP advertises
+ * ~26 tools, but exposing all of them stamps every one domain `"web"`,
+ * so a single browser prompt floods the local model's catalog with 26
+ * choices and wrecks one-shot selection (`tool-calling.md` rule 1: ≤
+ * ~5-7 per turn). The web-developer surface — performance tracing,
+ * memory snapshots, lighthouse, console / network internals, emulate /
+ * resize — is out of a daily assistant's scope, so it's curated out of
+ * the agent catalog. Bare tool names (the part after the server prefix).
+ */
+export const CHROME_DAILY_DRIVER_TOOLS: ReadonlySet<string> = new Set([
+  "take_snapshot",
+  "take_screenshot",
+  "navigate_page",
+  "list_pages",
+  "wait_for",
+  "click",
+  "fill_form"
+]);
+
+/**
+ * Project the agent-facing Chrome DevTools tools from
  * `McpManager.toMuseTools()`:
  *
+ *  - CURATE to {@link CHROME_DAILY_DRIVER_TOOLS} — drop the
+ *    web-developer tools so the exposed web set stays small enough for
+ *    one-shot selection on the local model.
  *  - RISK via {@link chromeDevToolsToolRisk}, so the AgentRuntime's
  *    `toolApprovalGate` fires fail-close on a state-changing browser
  *    action (the external server's "read" default would otherwise let
  *    a `fill_form` / `click` through ungated).
- *  - DOMAIN `"web"`, so the relevance filter only advertises the ~30
- *    browser tools on a web/browser prompt. Without a domain an
- *    externally-projected MCP tool is "always-on" and floods every
- *    prompt's catalog, wrecking one-shot tool selection on the local
- *    model (`tool-calling.md` rule 1).
+ *  - DOMAIN `"web"`, so the relevance filter only advertises browser
+ *    tools on a web/browser prompt (an un-domained external MCP tool is
+ *    "always-on" and floods every prompt's catalog).
  *
  * Non-Chrome tools pass through untouched.
  */
 export function withChromeDevToolsRisk(tools: readonly MuseTool[]): MuseTool[] {
   const prefix = `${CHROME_DEVTOOLS_MCP_SERVER_NAME}.`;
-  return tools.map((tool) => {
+  return tools.flatMap((tool): MuseTool[] => {
     if (!tool.definition.name.startsWith(prefix)) {
-      return tool;
+      return [tool];
     }
-    const risk = chromeDevToolsToolRisk(tool.definition.name.slice(prefix.length));
-    return { ...tool, definition: { ...tool.definition, domain: "web", risk } };
+    const bare = tool.definition.name.slice(prefix.length);
+    if (!CHROME_DAILY_DRIVER_TOOLS.has(bare)) {
+      return [];
+    }
+    return [{ ...tool, definition: { ...tool.definition, domain: "web", risk: chromeDevToolsToolRisk(bare) } }];
   });
 }
