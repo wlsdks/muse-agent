@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   classifyMcpServersField,
+  classifyWebWatchConfig,
   embedModelCheck,
   findOllamaModelTag,
   parseNotesIndexEmbedModel,
@@ -134,6 +135,50 @@ describe("classifyMcpServersField — surface mcp.json shape problems instead of
     expect(classifyMcpServersField([])).toMatchObject({ status: "fail" });
     expect(classifyMcpServersField("not-an-object")).toMatchObject({ status: "fail" });
     expect(classifyMcpServersField(42)).toMatchObject({ status: "fail" });
+  });
+});
+
+describe("classifyWebWatchConfig — surface silently-dropped web-watch entries instead of a quiet no-op", () => {
+  const valid = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, url: "https://x.test", title: "t", message: "m", rule: { appears: "foo" }, ...extra
+  });
+
+  it("returns undefined when unset or an empty array (nothing to report)", () => {
+    expect(classifyWebWatchConfig(undefined)).toBeUndefined();
+    expect(classifyWebWatchConfig("")).toBeUndefined();
+    expect(classifyWebWatchConfig("   ")).toBeUndefined();
+    expect(classifyWebWatchConfig("[]")).toBeUndefined();
+  });
+
+  it("reports 'ok' with the count when every entry is valid", () => {
+    expect(classifyWebWatchConfig(JSON.stringify([valid("a"), valid("b")])))
+      .toMatchObject({ status: "ok", detail: expect.stringContaining("2 page-watch") });
+  });
+
+  it("counts a chrome-source entry as valid (not dropped for lack of a live browser here)", () => {
+    expect(classifyWebWatchConfig(JSON.stringify([valid("a", { source: "chrome", rule: { onAnyChange: true } })])))
+      .toMatchObject({ status: "ok", detail: expect.stringContaining("1 page-watch") });
+  });
+
+  it("warns and quantifies the drop when some entries are invalid", () => {
+    const config = JSON.stringify([
+      valid("a"),
+      { id: "b", title: "t", message: "m", rule: { appears: "x" } }, // missing url
+      { id: "c", url: "https://y.test", title: "t", message: "m", rule: {} } // rule has no condition
+    ]);
+    expect(classifyWebWatchConfig(config))
+      .toMatchObject({ status: "warn", detail: expect.stringContaining("2 of 3 web-watch entries are invalid") });
+  });
+
+  it("uses singular phrasing for a single dropped entry", () => {
+    const config = JSON.stringify([valid("a"), { id: "b", title: "t", message: "m", rule: { appears: "x" } }]);
+    expect(classifyWebWatchConfig(config))
+      .toMatchObject({ status: "warn", detail: expect.stringContaining("1 of 2 web-watch entry is invalid") });
+  });
+
+  it("warns when set but not valid JSON, or not a JSON array", () => {
+    expect(classifyWebWatchConfig("{not json")).toMatchObject({ status: "warn", detail: expect.stringContaining("not valid JSON") });
+    expect(classifyWebWatchConfig('{"id":"a"}')).toMatchObject({ status: "warn", detail: expect.stringContaining("must be a JSON array") });
   });
 });
 

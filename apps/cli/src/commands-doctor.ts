@@ -16,6 +16,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { mergeModelKeysFromFile } from "@muse/autoconfigure";
+import { webWatchesFromConfig } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
@@ -171,6 +172,45 @@ export function classifyMcpServersField(parsed: unknown): {
   }
   const count = parsed.servers.length;
   return { detail: `${count.toString()} server(s) registered`, status: count > 0 ? "ok" : "warn" };
+}
+
+/**
+ * Validate `MUSE_WEB_WATCH_CONFIG` (the "monitor this page, ping me
+ * when X" JSON array). The daemon parses it FAIL-OPEN — a malformed
+ * entry is silently dropped, so a user with one typo'd watch gets no
+ * notice AND no error, the classic "why isn't it firing?" trap. This
+ * surfaces the silent drop. Drives the REAL `webWatchesFromConfig`
+ * parser (a no-op Chrome connection so `source: "chrome"` entries
+ * count as valid rather than being dropped for lack of a live browser
+ * here) so the count can't drift from what the daemon actually builds.
+ * Returns `undefined` when unset / an empty array — nothing to report.
+ */
+export function classifyWebWatchConfig(raw: string | undefined): {
+  readonly status: "ok" | "warn" | "fail";
+  readonly detail: string;
+} | undefined {
+  const trimmed = (raw ?? "").trim();
+  if (trimmed.length === 0) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { detail: "MUSE_WEB_WATCH_CONFIG is set but not valid JSON — no pages are being watched", status: "warn" };
+  }
+  if (!Array.isArray(parsed)) {
+    return { detail: "MUSE_WEB_WATCH_CONFIG must be a JSON array — no pages are being watched", status: "warn" };
+  }
+  const total = parsed.length;
+  if (total === 0) return undefined;
+  const valid = webWatchesFromConfig(trimmed, { chromeConnection: { callTool: async () => undefined } }).length;
+  if (valid === total) {
+    return { detail: `${valid.toString()} page-watch(es) configured`, status: "ok" };
+  }
+  const dropped = total - valid;
+  return {
+    detail: `${dropped.toString()} of ${total.toString()} web-watch ${dropped === 1 ? "entry is" : "entries are"} invalid and skipped — check id/url/title/message/rule`,
+    status: "warn"
+  };
 }
 
 export function resolveDoctorWatchIntervalMs(raw: string | undefined): number {
@@ -396,6 +436,12 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
     checks.push({ detail: `${total.toString()} task(s) total`, name: "tasks store", status: "ok" });
   } catch {
     checks.push({ detail: "no tasks.json yet (will be created on first add)", name: "tasks store", status: "ok" });
+  }
+
+  // web-watch config — only reported when actually configured.
+  const webWatchVerdict = classifyWebWatchConfig(process.env.MUSE_WEB_WATCH_CONFIG);
+  if (webWatchVerdict) {
+    checks.push({ name: "web-watch config", ...webWatchVerdict });
   }
 
   const worst = checks.reduce<"ok" | "warn" | "fail">((acc, c) => {
