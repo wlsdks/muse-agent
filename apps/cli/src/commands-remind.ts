@@ -514,8 +514,9 @@ function formatReminderList(payload: { reminders: ReadonlyArray<Record<string, u
     const id = String(reminder.id ?? "");
     const dueAt = String(reminder.dueAt ?? "");
     const text = String(reminder.text ?? "");
+    const repeats = typeof reminder.recurrence === "string" ? ` (repeats ${reminder.recurrence})` : "";
     const fired = reminder.status === "fired" ? " (fired)" : "";
-    return `  - [${id.slice(0, 12)}] ${shortDateTime(dueAt)}  ${text}${fired}`;
+    return `  - [${id.slice(0, 12)}] ${shortDateTime(dueAt)}  ${text}${repeats}${fired}`;
   });
   return `Reminders (${payload.reminders.length} ${payload.status}):\n${lines.join("\n")}\n`;
 }

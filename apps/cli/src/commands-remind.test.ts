@@ -96,6 +96,17 @@ describe("muse remind add --repeat — recurring reminders", () => {
     expect(stored).toHaveLength(1);
     expect(stored[0]).toMatchObject({ recurrence: "daily", status: "pending", text: "water the plants" });
   });
+
+  it("`list` surfaces that a reminder repeats (not indistinguishable from a one-shot)", async () => {
+    const f = join(mkdtempSync(join(tmpdir(), "muse-rem-list-")), "reminders.json");
+    process.env.MUSE_REMINDERS_FILE = f;
+    await runRemind(["--local", "2026-12-25T09:00:00Z", "standup", "--repeat", "weekly"]);
+    await runRemind(["--local", "2026-12-26T09:00:00Z", "one-off errand"]);
+    const list = await runRemind(["list", "--local"]);
+    expect(list.stdout).toContain("standup (repeats weekly)");
+    // a one-shot carries no repeats suffix
+    expect(list.stdout).toMatch(/one-off errand(?! \(repeats)/u);
+  });
 });
 
 describe("muse remind list --local — ordering by parsed instant, not lexicographic dueAt", () => {
