@@ -56,6 +56,8 @@ export interface NotionTasksProviderOptions {
   readonly notionVersion?: string;
   /** `fetch` override for tests. Defaults to the global. */
   readonly fetchImpl?: NotionFetch;
+  /** Retry-with-backoff for transient 429/5xx on idempotent reads. */
+  readonly retry?: { readonly retries?: number; readonly baseDelayMs?: number; readonly sleep?: (ms: number) => Promise<void> };
 }
 
 const NOTION_DEFAULT_ENDPOINT = "https://api.notion.com/v1";
@@ -77,6 +79,9 @@ export class NotionTasksProvider implements TasksProvider {
   private readonly endpoint: string;
   private readonly notionVersion: string;
   private readonly fetchImpl: NotionFetch;
+  private readonly retries: number;
+  private readonly baseDelayMs: number;
+  private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(options: NotionTasksProviderOptions) {
     if (!options.token || options.token.trim().length === 0) {
@@ -98,6 +103,9 @@ export class NotionTasksProvider implements TasksProvider {
     if (!this.fetchImpl) {
       throw new TasksValidationError("NO_FETCH", "global fetch unavailable; pass fetchImpl");
     }
+    this.retries = Number.isFinite(options.retry?.retries) ? Math.max(0, Math.trunc(options.retry!.retries!)) : 2;
+    this.baseDelayMs = Number.isFinite(options.retry?.baseDelayMs) ? Math.max(0, options.retry!.baseDelayMs!) : 250;
+    this.sleep = options.retry?.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   }
 
   describe(): TasksProviderInfo {
@@ -120,7 +128,7 @@ export class NotionTasksProvider implements TasksProvider {
       if (status !== "all") {
         requestBody.filter = this.statusFilter(status);
       }
-      const body = await this.request("POST", `/databases/${this.databaseId}/query`, requestBody);
+      const body = await this.request("POST", `/databases/${this.databaseId}/query`, requestBody, true);
       const results = isRecordArray(body, "results");
       for (const result of results) {
         const task = this.parseTask(result);
@@ -187,7 +195,7 @@ export class NotionTasksProvider implements TasksProvider {
       filter: { property: "object", value: "page" },
       page_size: cap,
       query: trimmed
-    });
+    }, true);
     const results = isRecordArray(body, "results");
     return results.flatMap((result): readonly TaskSearchHit[] => {
       const parent = (result as { parent?: { database_id?: string } }).parent;
@@ -248,7 +256,8 @@ export class NotionTasksProvider implements TasksProvider {
   private async request(
     method: "GET" | "POST" | "PATCH" | "DELETE",
     path: string,
-    body: unknown
+    body: unknown,
+    retriable = false
   ): Promise<unknown> {
     const url = `${this.endpoint}${path}`;
     const init: RequestInit = {
@@ -260,38 +269,55 @@ export class NotionTasksProvider implements TasksProvider {
       method,
       ...(body !== undefined ? { body: JSON.stringify(body) } : {})
     };
-    let response: Response;
-    try {
-      response = await this.fetchImpl(url, init);
-    } catch (cause) {
-      throw new TasksProviderError(
-        this.id,
-        "FETCH_FAILED",
-        `Notion request failed: ${cause instanceof Error ? cause.message : String(cause)}`
-      );
-    }
-    if (!response.ok) {
-      const detail = await safeReadText(response);
-      const code = mapNotionStatus(response.status);
-      throw new TasksProviderError(
-        this.id,
-        code,
-        `Notion ${method} ${path} → ${response.status}: ${detail.slice(0, 200)}`
-      );
-    }
-    if (response.status === 204) {
-      return {};
-    }
-    try {
-      return await response.json();
-    } catch (cause) {
-      throw new TasksProviderError(
-        this.id,
-        "NOTION_BAD_JSON",
-        `Notion response was not JSON: ${cause instanceof Error ? cause.message : String(cause)}`
-      );
+    // Retry transient 429 (Notion rate-limit) / 5xx on idempotent reads
+    // only — a retried create/update could duplicate or double-apply.
+    const maxRetries = retriable ? this.retries : 0;
+    for (let attempt = 0; ; attempt += 1) {
+      let response: Response;
+      try {
+        response = await this.fetchImpl(url, init);
+      } catch (cause) {
+        if (attempt < maxRetries) {
+          await this.sleep(this.baseDelayMs * 2 ** attempt);
+          continue;
+        }
+        throw new TasksProviderError(
+          this.id,
+          "FETCH_FAILED",
+          `Notion request failed: ${cause instanceof Error ? cause.message : String(cause)}`
+        );
+      }
+      if (!response.ok) {
+        if (attempt < maxRetries && isTransientNotionStatus(response.status)) {
+          await this.sleep(this.baseDelayMs * 2 ** attempt);
+          continue;
+        }
+        const detail = await safeReadText(response);
+        const code = mapNotionStatus(response.status);
+        throw new TasksProviderError(
+          this.id,
+          code,
+          `Notion ${method} ${path} → ${response.status}: ${detail.slice(0, 200)}`
+        );
+      }
+      if (response.status === 204) {
+        return {};
+      }
+      try {
+        return await response.json();
+      } catch (cause) {
+        throw new TasksProviderError(
+          this.id,
+          "NOTION_BAD_JSON",
+          `Notion response was not JSON: ${cause instanceof Error ? cause.message : String(cause)}`
+        );
+      }
     }
   }
+}
+
+function isTransientNotionStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status <= 599);
 }
 
 function mapNotionStatus(status: number): string {
