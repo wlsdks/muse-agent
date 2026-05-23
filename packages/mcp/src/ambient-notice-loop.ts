@@ -246,13 +246,30 @@ export function createAmbientNoticeRunner(options: {
         }
       }
       const newlyFired: string[] = [];
+      // Carry forward already-fired rules that are STILL matching (they
+      // stay deduped); a rule no longer matched is dropped so it re-arms.
+      const nextMatched = new Set<string>();
+      for (const id of matchedIds) {
+        if (lastMatchedIds.has(id)) {
+          nextMatched.add(id);
+        }
+      }
       for (const notice of toFire) {
         const text = related && related.trim().length > 0 ? `${notice.text} — Related: ${related}` : notice.text;
-        await options.sink.deliver({ kind: notice.kind, text, title: notice.title });
-        newlyFired.push(notice.ruleId);
+        try {
+          await options.sink.deliver({ kind: notice.kind, text, title: notice.title });
+          newlyFired.push(notice.ruleId);
+          // Mark fired ONLY after a successful send: a failed delivery
+          // leaves the rule OUT so it re-fires next tick instead of being
+          // lost, and an already-sent sibling stays in so it never
+          // duplicates. Other notices still go out (per-notice catch).
+          nextMatched.add(notice.ruleId);
+        } catch {
+          // delivery failed for this notice; the rest still fire
+        }
       }
-      lastMatchedIds = matchedIds;
-      return { delivered: newlyFired.length, firedRuleIds: [...matchedIds] };
+      lastMatchedIds = nextMatched;
+      return { delivered: newlyFired.length, firedRuleIds: [...nextMatched] };
     }
   };
 }
