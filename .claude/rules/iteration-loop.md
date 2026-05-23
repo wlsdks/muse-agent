@@ -81,6 +81,19 @@ live verification.**
   happy-path-only assertion. A capability you cannot exercise
   end-to-end is not done.
 
+### Capability delivery: MCP server OR built-in tool (human-directed 2026-05-23)
+
+A capability does NOT have to be an MCP server. Declaring it as a
+**built-in agent tool** (a `MuseTool` in `@muse/mcp` / wired through
+the autoconfigure tool registry, e.g. `home_state`, `knowledge_search`,
+`web_action`) is equally valid — and is the BETTER choice when it is
+simpler, has no external process, or is more valuable in-process. Pick
+whichever delivers the most value for the slice: reach for an MCP
+server when integrating an existing external one (e.g. Chrome
+DevTools); reach for an in-process `MuseTool` when the logic is ours.
+Same gates either way (risk classification, fail-close for
+state-changing actions, `outbound-safety.md`).
+
 ### External tools (open-source only)
 
 Integrating an open-source MCP server / tool is allowed when it is
