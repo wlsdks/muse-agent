@@ -1,11 +1,17 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { LocalCalendarProvider } from "@muse/calendar";
 import { Command } from "commander";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   eventsToAvailability,
   formatAvailability,
   maxOfNumbers,
   minOfNumbers,
+  parseEventStart,
   registerCalendarCommands,
   type CalendarCommandHelpers
 } from "./commands-calendar.js";
@@ -119,5 +125,84 @@ describe("muse calendar free — free/busy over a window (API path, contract-fai
   it("rejects a non-numeric --min-minutes before computing", async () => {
     const r = await runCalendarFree([...window, "--min-minutes", "lots"], []);
     expect(r.error).toContain("--min-minutes must be a number");
+  });
+});
+
+describe("parseEventStart — --at parsing for muse calendar add", () => {
+  it("parses an ISO-8601 timestamp", () => {
+    const d = parseEventStart("2026-05-30T15:00:00");
+    expect(d?.toISOString().slice(0, 16)).toBe(new Date("2026-05-30T15:00:00").toISOString().slice(0, 16));
+  });
+  it("parses a relative phrase to a future instant", () => {
+    const now = () => new Date("2026-05-20T09:00:00");
+    const d = parseEventStart("tomorrow", now);
+    expect(d).toBeDefined();
+    expect(d!.getTime()).toBeGreaterThan(now().getTime());
+  });
+  it("returns undefined for an unparseable value", () => {
+    expect(parseEventStart("not-a-time")).toBeUndefined();
+  });
+});
+
+describe("muse calendar add — create a local event from the terminal", () => {
+  let dir: string;
+  let prevFile: string | undefined;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "muse-cal-add-"));
+    prevFile = process.env.MUSE_CALENDAR_FILE;
+    process.env.MUSE_CALENDAR_FILE = join(dir, "calendar.json");
+  });
+  afterEach(() => {
+    if (prevFile === undefined) delete process.env.MUSE_CALENDAR_FILE;
+    else process.env.MUSE_CALENDAR_FILE = prevFile;
+  });
+
+  async function runAdd(args: string[]): Promise<{ error?: string; stdout: string[] }> {
+    const stdout: string[] = [];
+    const io = { stderr: () => {}, stdout: (line: string) => stdout.push(line) };
+    const helpers: CalendarCommandHelpers = { apiRequest: async () => ({}), writeOutput: (_io, v) => stdout.push(JSON.stringify(v)) };
+    let error: string | undefined;
+    try {
+      const program = new Command();
+      program.exitOverride();
+      registerCalendarCommands(program, io, helpers);
+      await program.parseAsync(["node", "muse", "calendar", "add", ...args]);
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : String(cause);
+    }
+    return { error, stdout };
+  }
+
+  it("writes the event to the local calendar file (readable back by the provider)", async () => {
+    const r = await runAdd(["Dentist", "appointment", "--at", "2026-05-30T15:00:00"]);
+    expect(r.error).toBeUndefined();
+    expect(r.stdout.join("")).toContain("Created: Dentist appointment");
+    const events = await new LocalCalendarProvider({ file: process.env.MUSE_CALENDAR_FILE! }).listEvents({
+      from: new Date("2026-05-30T00:00:00"),
+      to: new Date("2026-05-31T00:00:00")
+    });
+    expect(events.map((e) => e.title)).toContain("Dentist appointment");
+    const created = events.find((e) => e.title === "Dentist appointment")!;
+    expect(created.endsAt.getTime() - created.startsAt.getTime()).toBe(60 * 60_000); // default 60 min
+  });
+
+  it("--for sets the duration", async () => {
+    await runAdd(["Standup", "--at", "2026-05-30T09:00:00", "--for", "15"]);
+    const events = await new LocalCalendarProvider({ file: process.env.MUSE_CALENDAR_FILE! }).listEvents({
+      from: new Date("2026-05-30T00:00:00"),
+      to: new Date("2026-05-31T00:00:00")
+    });
+    const standup = events.find((e) => e.title === "Standup")!;
+    expect(standup.endsAt.getTime() - standup.startsAt.getTime()).toBe(15 * 60_000);
+  });
+
+  it("rejects an unparseable --at with an actionable error (no event written)", async () => {
+    const r = await runAdd(["Thing", "--at", "whenever"]);
+    expect(r.error).toContain("ISO-8601");
+    const events = await new LocalCalendarProvider({ file: process.env.MUSE_CALENDAR_FILE! }).listEvents({
+      from: new Date("2000-01-01"),
+      to: new Date("2100-01-01")
+    });
+    expect(events).toHaveLength(0);
   });
 });

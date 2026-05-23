@@ -15,7 +15,7 @@ import { readFile } from "node:fs/promises";
 
 import { resolveLocalCalendarFile } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
-import { computeAvailability, type AvailabilityEventLike, type AvailabilityResult } from "@muse/mcp";
+import { computeAvailability, resolveRelativeTimePhrase, type AvailabilityEventLike, type AvailabilityResult } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { formatCalendarEvents, formatProvidersList } from "./human-formatters.js";
@@ -66,6 +66,15 @@ export function maxOfNumbers(values: readonly number[]): number {
 function localCalendarProvider(): LocalCalendarProvider {
   const file = resolveLocalCalendarFile(process.env as Record<string, string | undefined>);
   return new LocalCalendarProvider({ file });
+}
+
+/** Parse a `--at` value: an ISO-8601 timestamp OR a relative phrase ('tomorrow 3pm'). Returns undefined when neither. */
+export function parseEventStart(raw: string, now: () => Date = () => new Date()): Date | undefined {
+  if (/^\d{4}-\d{2}-\d{2}/u.test(raw)) {
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+  return resolveRelativeTimePhrase(raw, now);
 }
 
 function pad2(n: number): string {
@@ -241,6 +250,46 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         return;
       }
       io.stdout(formatAvailability(result, { from, to }));
+    });
+
+  calendar
+    .command("add")
+    .description("Create an event in your LOCAL calendar. --at takes ISO-8601 or a phrase ('tomorrow 3pm', '내일 오후 3시').")
+    .argument("<title...>", "Event title (joined by spaces)")
+    .requiredOption("--at <when>", "Start time — ISO-8601 or a relative phrase")
+    .option("--for <minutes>", "Duration in minutes (default 60)")
+    .option("--location <where>", "Where the event is, e.g. 'Room 4'")
+    .option("--json", "Print the created event as JSON")
+    .action(async (
+      titleParts: readonly string[],
+      options: { readonly at: string; readonly for?: string; readonly location?: string; readonly json?: boolean }
+    ) => {
+      const title = titleParts.join(" ").trim();
+      if (title.length === 0) {
+        throw new Error("muse calendar add: a non-empty title is required");
+      }
+      const startsAt = parseEventStart(options.at);
+      if (!startsAt) {
+        throw new Error(`--at must be an ISO-8601 timestamp or a relative phrase ('tomorrow 3pm', 'in 2 hours'), got '${options.at}'`);
+      }
+      const minutes = options.for !== undefined ? Number(options.for) : 60;
+      if (!Number.isFinite(minutes) || minutes <= 0) {
+        throw new Error("--for must be a positive number of minutes");
+      }
+      const endsAt = new Date(startsAt.getTime() + Math.trunc(minutes) * 60_000);
+      const event = await localCalendarProvider().createEvent({
+        endsAt,
+        startsAt,
+        title,
+        ...(options.location ? { location: options.location } : {})
+      });
+      if (options.json) {
+        helpers.writeOutput(io, {
+          event: { endsAtIso: event.endsAt.toISOString(), id: event.id, startsAtIso: event.startsAt.toISOString(), title: event.title }
+        });
+        return;
+      }
+      io.stdout(`Created: ${event.title} — ${event.startsAt.toISOString()} → ${event.endsAt.toISOString()}\n`);
     });
 
   const registerQuickRange = (name: string, description: string, computeRange: () => { from: Date; to: Date }): void => {
