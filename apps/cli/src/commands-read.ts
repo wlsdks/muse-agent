@@ -87,6 +87,32 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<PdfParsed> {
   return { text: result.text ?? "", pageCount };
 }
 
+/** A file is treated as PDF by its `.pdf` extension OR a `%PDF-` magic header. */
+export function isPdfDocument(filePath: string, buffer: Buffer): boolean {
+  return filePath.toLowerCase().endsWith(".pdf") || buffer.subarray(0, 5).toString("latin1") === "%PDF-";
+}
+
+/** A NUL byte in the first 8KB marks a binary file (jpg/png/zip/…) — not readable text. */
+export function isLikelyBinary(buffer: Buffer): boolean {
+  return buffer.subarray(0, 8192).includes(0);
+}
+
+/**
+ * Extract text from a local document: a PDF via pdf-parse, otherwise a
+ * UTF-8 text file (`.txt` / `.md` / `.log` / `.csv` / transcript — one
+ * "page"). Throws on a binary non-PDF so `muse read photo.jpg` reports
+ * clearly instead of dumping garbage. Exported for testing.
+ */
+export async function extractDocumentText(filePath: string, buffer: Buffer): Promise<PdfParsed> {
+  if (isPdfDocument(filePath, buffer)) {
+    return parsePdfBuffer(buffer);
+  }
+  if (isLikelyBinary(buffer)) {
+    throw new Error(`'${basename(filePath)}' looks binary — muse read handles PDFs and text files (.txt/.md/.log/.csv).`);
+  }
+  return { pageCount: 1, text: buffer.toString("utf8") };
+}
+
 /**
  * Goal 088 — system prompt the `--ask` path uses. Pure so a test
  * can assert it stays grounded ("answer FROM the document, say
@@ -107,8 +133,8 @@ export function buildReadAskSystemPrompt(documentText: string): string {
 export function registerReadCommand(program: Command, io: ProgramIO): void {
   program
     .command("read")
-    .description("Read a local PDF; optionally answer a question grounded in its text")
-    .argument("<path>", "Path to a .pdf file")
+    .description("Read a local PDF or text file (.txt/.md/.log/.csv); optionally answer a question grounded in its text")
+    .argument("<path>", "Path to a .pdf or text file")
     .option("--ask <question>", "Stream an LLM answer grounded in the PDF text")
     .option("--model <id>", "Model override for --ask (defaults to MUSE_MODEL)")
     .option("--json", "Emit a structured payload instead of plain text")
@@ -124,9 +150,9 @@ export function registerReadCommand(program: Command, io: ProgramIO): void {
       }
       let parsed: PdfParsed;
       try {
-        parsed = await parsePdfBuffer(buffer);
+        parsed = await extractDocumentText(filePath, buffer);
       } catch (cause) {
-        io.stderr(`muse read: pdf-parse failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`muse read: could not read document: ${cause instanceof Error ? cause.message : String(cause)}\n`);
         process.exitCode = 1;
         return;
       }
