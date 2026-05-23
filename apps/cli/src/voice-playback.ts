@@ -16,6 +16,7 @@ import { join as pathJoin } from "node:path";
 import { platform } from "node:process";
 
 import { buildVoiceRegistry } from "@muse/autoconfigure";
+import { stripUntrustedTerminalChars, truncateErrorBody } from "@muse/shared";
 import type { TextToSpeechProvider } from "@muse/voice";
 
 import { closestCommandName } from "./closest-command.js";
@@ -106,6 +107,17 @@ export async function playAudioWithWatchdog(
       clearTimeout(timer);
       action();
     };
+    // Drain stderr: the pipe must be consumed or a chatty player
+    // can wedge once its OS buffer fills, AND the captured text is
+    // the only clue WHY playback failed ("No such device") — without
+    // it the user sees a bare exit code. Bounded so a pathological
+    // player can't grow this without limit.
+    let stderr = "";
+    if (child.stderr) {
+      child.stderr.on("data", (chunk: Buffer) => {
+        if (stderr.length < 4096) stderr += chunk.toString("utf8");
+      });
+    }
     // Without this watchdog a wedged player — a busy CoreAudio /
     // ALSA device, a stuck process — hangs the calling command
     // (`muse today --speak`, etc.) forever with no recovery.
@@ -117,9 +129,16 @@ export async function playAudioWithWatchdog(
     }, AUDIO_PLAYER_TIMEOUT_MS);
     child.once("error", (error) => { finish(() => reject(error)); });
     child.once("close", (code) => {
-      finish(() => code === 0
-        ? resolve()
-        : reject(new Error(`${player} exited with code ${code ?? "unknown"}`)));
+      finish(() => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        const detail = truncateErrorBody(stripUntrustedTerminalChars(stderr).trim(), 240);
+        reject(new Error(
+          `${player} exited with code ${code ?? "unknown"}${detail ? `: ${detail}` : ""}`
+        ));
+      });
     });
   });
 }

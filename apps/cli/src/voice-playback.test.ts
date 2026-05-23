@@ -17,10 +17,12 @@ import {
 interface FakeChild extends EventEmitter {
   kill: (signal?: string) => boolean;
   killedWith?: string;
+  stderr: EventEmitter;
 }
 
 function makeFakeSpawn(): { spawnFn: typeof spawn; child: FakeChild } {
   const child = new EventEmitter() as FakeChild;
+  child.stderr = new EventEmitter();
   child.kill = (signal?: string): boolean => {
     child.killedWith = signal ?? "SIGTERM";
     return true;
@@ -72,6 +74,17 @@ describe("playAudioWithWatchdog (shared --speak player watchdog)", () => {
     const promise = playAudioWithWatchdog("aplay", "/tmp/out.wav", spawnFn);
     child.emit("close", 4);
     await expect(promise).rejects.toThrow(/aplay exited with code 4/u);
+  });
+
+  it("includes the player's stderr in the failure so the user sees WHY playback failed, sanitised", async () => {
+    const { child, spawnFn } = makeFakeSpawn();
+    const promise = playAudioWithWatchdog("aplay", "/tmp/out.wav", spawnFn);
+    // A real ALSA failure writes the reason to stderr; include an
+    // ESC byte to prove the message is terminal-sanitised on the way out.
+    child.stderr.emit("data", Buffer.from("ALSA lib: \x1b[31mNo such device\x1b[0m\n"));
+    child.emit("close", 1);
+    await expect(promise).rejects.toThrow(/aplay exited with code 1: ALSA lib: \[31mNo such device/u);
+    await expect(promise).rejects.not.toThrow(/\x1b/u);
   });
 
   it("rejects on a spawn error (player not installed)", async () => {
