@@ -6,9 +6,40 @@ import {
   formatLocalDate,
   formatLocalDateTime,
   formatLocalTime,
+  formatMemoryShow,
   formatRelativeTime,
   formatTaskList
 } from "./human-formatters.js";
+
+describe("formatMemoryShow — splits veto:/goal: preferences into their own headings (audit parity with the persona block)", () => {
+  it("renders vetoes and goals under distinct headings with the prefix stripped, leaving plain prefs", () => {
+    const out = formatMemoryShow({
+      userId: "stark",
+      facts: { name: "Stark" },
+      preferences: {
+        tone: "brief",
+        "veto:coffee": "never suggest coffee",
+        "goal:fitness": "run 3x a week"
+      }
+    });
+    expect(out).toContain("Preferences:");
+    expect(out).toContain("tone: brief");
+    expect(out).toContain("Vetoes (never suggest):");
+    expect(out).toContain("coffee: never suggest coffee");
+    expect(out).toContain("Goals:");
+    expect(out).toContain("fitness: run 3x a week");
+    // The raw prefixes must NOT leak into the rendered output.
+    expect(out).not.toContain("veto:coffee");
+    expect(out).not.toContain("goal:fitness");
+  });
+
+  it("omits the Vetoes / Goals headings entirely when there are none", () => {
+    const out = formatMemoryShow({ userId: "stark", preferences: { tone: "brief" } });
+    expect(out).toContain("Preferences:");
+    expect(out).not.toContain("Vetoes");
+    expect(out).not.toContain("Goals:");
+  });
+});
 
 describe("formatTaskList — surfaces the urgent flag", () => {
   it("marks an urgent task with ⚠ and leaves a normal task unmarked", () => {

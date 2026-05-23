@@ -173,7 +173,27 @@ export function formatMemoryShow(record: HumanMemoryRecord | undefined | null): 
   }
   const lines: string[] = [`User memory${record.userId ? ` (${record.userId})` : ""}:`];
   appendKeyValueSection(lines, "Facts", record.facts);
-  appendKeyValueSection(lines, "Preferences", record.preferences);
+  // Split preferences the way the persona block does: `veto:` and
+  // `goal:` are not ordinary prefs — they're "never suggest this" and
+  // "steer toward this". Lumping them under one raw-prefixed
+  // "Preferences" heading meant the user couldn't audit what Muse will
+  // REFUSE. Render each under its own heading with the prefix stripped.
+  const prefEntries = record.preferences ? normalizeKeyValue(record.preferences) : [];
+  const plainPrefs: { key: string; value: string }[] = [];
+  const vetoes: { key: string; value: string }[] = [];
+  const goals: { key: string; value: string }[] = [];
+  for (const entry of prefEntries) {
+    if (entry.key.startsWith("veto:")) {
+      vetoes.push({ key: entry.key.slice(5), value: entry.value });
+    } else if (entry.key.startsWith("goal:")) {
+      goals.push({ key: entry.key.slice(5), value: entry.value });
+    } else {
+      plainPrefs.push(entry);
+    }
+  }
+  appendKeyValueSection(lines, "Preferences", plainPrefs);
+  appendKeyValueSection(lines, "Vetoes (never suggest)", vetoes);
+  appendKeyValueSection(lines, "Goals", goals);
   if (record.recentTopics && record.recentTopics.length > 0) {
     lines.push("  Recent topics:");
     for (const topic of record.recentTopics) {
