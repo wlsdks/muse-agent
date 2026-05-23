@@ -10,6 +10,7 @@
 
 import { resolveContactsFile } from "@muse/autoconfigure";
 import { extractEmailAddress, GmailEmailProvider, queryContacts, summarizeInbox, type EmailMessage, type EmailProvider, type EmailReader, type EmailSummary } from "@muse/mcp";
+import { stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 
 import { parseBoundedInt } from "./commands-ask.js";
@@ -20,11 +21,24 @@ interface InboxOptions {
   readonly json?: boolean;
 }
 
+/**
+ * A sender / subject / date is wholly attacker-controlled — anyone can
+ * email you a header carrying raw ESC / C0 / C1 / DEL bytes — and these
+ * land straight on the terminal via `muse inbox`. Strip the control
+ * bytes and collapse whitespace to one line, the same boundary
+ * treatment the feeds / search surfaces apply to untrusted text. (The
+ * `--json` path is unaffected: `JSON.stringify` already escapes control
+ * bytes to `\uXXXX`.)
+ */
+function cleanInboxField(value: string): string {
+  return stripUntrustedTerminalChars(value).replace(/\s+/gu, " ").trim();
+}
+
 /** One inbox listing line: `●` unread, trailing `★` when the sender is a known contact. */
 export function formatInboxLine(message: EmailSummary, known: boolean): string {
   const mark = message.unread ? "●" : " ";
   const star = known ? " ★" : "";
-  return `${mark} ${message.from || "(unknown)"} — ${message.subject || "(no subject)"}${star}`;
+  return `${mark} ${cleanInboxField(message.from) || "(unknown)"} — ${cleanInboxField(message.subject) || "(no subject)"}${star}`;
 }
 
 /** Short id shown in the listing and accepted (as a prefix) by `muse inbox <id>`. */
@@ -35,13 +49,19 @@ export function shortMessageId(id: string): string {
 /** Full read-out of one email — headers then the plain-text body. Pure so a test can pin it without HTTP. */
 export function formatEmailMessage(message: EmailMessage): string {
   const lines = [
-    `From:    ${message.from || "(unknown)"}`,
-    `Subject: ${message.subject || "(no subject)"}`
+    `From:    ${cleanInboxField(message.from) || "(unknown)"}`,
+    `Subject: ${cleanInboxField(message.subject) || "(no subject)"}`
   ];
-  if (message.date) {
-    lines.push(`Date:    ${message.date}`);
+  const date = cleanInboxField(message.date ?? "");
+  if (date) {
+    lines.push(`Date:    ${date}`);
   }
-  lines.push("", message.body.trim().length > 0 ? message.body.trim() : "(no text body)");
+  // Strip ESC / C0 / C1 / DEL from the body but KEEP newlines + tabs
+  // (stripUntrustedTerminalChars preserves \n and \t) so a multi-line
+  // plain-text email stays readable — a hostile body still can't emit a
+  // terminal-hijacking escape sequence.
+  const body = stripUntrustedTerminalChars(message.body).trim();
+  lines.push("", body.length > 0 ? body : "(no text body)");
   return lines.join("\n");
 }
 

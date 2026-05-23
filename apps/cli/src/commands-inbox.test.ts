@@ -163,3 +163,55 @@ describe("muse inbox — people-first marker", () => {
     expect(known("anyone <x@y.com>")).toBe(false);
   });
 });
+
+describe("muse inbox — strips terminal-control sequences from attacker-controlled email fields", () => {
+  const ESC = String.fromCharCode(27);
+  const BEL = String.fromCharCode(7);
+
+  function hasTerminalControl(s: string): boolean {
+    for (let i = 0; i < s.length; i += 1) {
+      const c = s.charCodeAt(i);
+      // Allow \t (0x09) and \n (0x0a); flag every other C0 / C1 / DEL.
+      if (c === 0x09 || c === 0x0a) continue;
+      if (c <= 0x08 || (c >= 0x0b && c <= 0x1f) || c === 0x7f || (c >= 0x80 && c <= 0x9f)) return true;
+    }
+    return false;
+  }
+
+  it("formatInboxLine neutralises ESC in a hostile From / Subject but keeps the visible text", () => {
+    const hostile: EmailSummary = {
+      from: `${ESC}[2J${ESC}]0;pwned${BEL}Mallory <m@evil.test>`,
+      id: "m1",
+      snippet: "",
+      subject: `${ESC}[31mURGENT wire transfer`,
+      unread: true
+    };
+    const line = formatInboxLine(hostile, false);
+    expect(hasTerminalControl(line), line).toBe(false);
+    expect(line).toContain("Mallory <m@evil.test>");
+    expect(line).toContain("URGENT wire transfer");
+  });
+
+  it("formatEmailMessage neutralises ESC in headers AND body, but preserves body newlines", () => {
+    const hostile: EmailMessage = {
+      body: `line one${ESC}[2Kclobber\nline two`,
+      date: `today${ESC}[0m`,
+      from: `${ESC}]0;hijack${BEL}A <a@x.com>`,
+      id: "m1",
+      subject: `hi${ESC}[5m`
+    };
+    const out = formatEmailMessage(hostile);
+    expect(hasTerminalControl(out), out).toBe(false);
+    expect(out).toContain("A <a@x.com>");
+    // The ESC byte is gone (so `[2K` is now inert literal text, not a
+    // cursor command); the body's legitimate newline survives so a
+    // multi-line email stays readable.
+    expect(out).toContain("clobber\nline two");
+    expect(out).not.toContain(ESC);
+  });
+
+  it("leaves a clean message untouched (no regression)", () => {
+    const m: EmailMessage = { body: "  hello  ", date: "today", from: "A <a@x.com>", id: "m1", subject: "hi" };
+    expect(formatEmailMessage(m)).toBe("From:    A <a@x.com>\nSubject: hi\nDate:    today\n\nhello");
+  });
+});
