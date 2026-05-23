@@ -1,12 +1,12 @@
 /**
- * Goal 066 — `muse completion <shell>` emits a static shell
- * completion script for bash / zsh. The script knows the
- * top-level subcommand names; subcommand-specific completions
- * (flags, choice values) are intentionally out of scope — the
- * vast majority of value comes from "tab-complete the verb",
- * and richer completions need shell-specific deeper integration
- * (`_arguments` for zsh, `complete -W` for bash) which adds
- * significant code with diminishing returns.
+ * `muse completion <shell>` emits a shell completion script for
+ * bash / zsh. It completes the top-level verb AND the second-level
+ * subcommand for groups that have one (`muse calendar <tab>` →
+ * `add delete edit events show`). Flag/value completion stays out
+ * of scope — it needs per-shell `_arguments` machinery with sharply
+ * diminishing returns. Both levels are enumerated live from the
+ * command tree, so a new command or subcommand appears with no edit
+ * here.
  *
  * Usage:
  *   muse completion bash >> ~/.bashrc
@@ -35,12 +35,45 @@ export function collectTopLevelCommandNames(program: Command): readonly string[]
 }
 
 /**
- * Goal 066 — render the bash completion script for the given
- * command names. Pure function so the unit test can assert
- * the structural shape without running through the CLI.
+ * Map each top-level command that owns subcommands to its sorted
+ * subcommand names. Commands with no children are omitted entirely
+ * so the rendered script only branches where there's something to
+ * complete. Enumerated from the live tree (`cmd.commands`) so an
+ * added subcommand appears automatically. Exported for direct
+ * unit-test coverage.
  */
-export function renderBashCompletion(commandNames: readonly string[]): string {
+export function collectSubcommandMap(program: Command): ReadonlyMap<string, readonly string[]> {
+  const map = new Map<string, readonly string[]>();
+  for (const cmd of program.commands) {
+    const parent = cmd.name();
+    if (typeof parent !== "string" || parent.length === 0) continue;
+    const subs = cmd.commands
+      .map((sub) => sub.name())
+      .filter((name) => typeof name === "string" && name.length > 0)
+      .sort();
+    if (subs.length > 0) {
+      map.set(parent, subs);
+    }
+  }
+  return map;
+}
+
+/**
+ * Render the bash completion script. Completes the top-level verb at
+ * word 1 and, at word 2, the subcommands of whichever group was
+ * typed (via a `case` on `${COMP_WORDS[1]}`). Pure function so the
+ * unit test can assert the structural shape without running the CLI.
+ */
+export function renderBashCompletion(
+  commandNames: readonly string[],
+  subcommands: ReadonlyMap<string, readonly string[]> = new Map()
+): string {
   const subs = commandNames.join(" ");
+  const caseArms: string[] = [];
+  for (const parent of [...subcommands.keys()].sort()) {
+    const children = subcommands.get(parent)!.join(" ");
+    caseArms.push(`        ${parent}) COMPREPLY=( $(compgen -W "${children}" -- "$cur") );;`);
+  }
   return [
     "# muse bash completion",
     "# Source from ~/.bashrc:  source <(muse completion bash)",
@@ -49,6 +82,11 @@ export function renderBashCompletion(commandNames: readonly string[]): string {
     `  local subs="${subs}"`,
     "  if [ \"$COMP_CWORD\" -eq 1 ]; then",
     "    COMPREPLY=( $(compgen -W \"$subs\" -- \"$cur\") )",
+    "  elif [ \"$COMP_CWORD\" -eq 2 ]; then",
+    "    case \"${COMP_WORDS[1]}\" in",
+    ...caseArms,
+    "        *) COMPREPLY=() ;;",
+    "    esac",
     "  else",
     "    COMPREPLY=()",
     "  fi",
@@ -60,12 +98,20 @@ export function renderBashCompletion(commandNames: readonly string[]): string {
 }
 
 /**
- * Goal 066 — render the zsh completion script. Uses `_describe`
- * so the user sees the verb list with no per-verb annotations
- * (kept intentionally minimal — see header comment).
+ * Render the zsh completion script. `_describe` lists the verbs at
+ * word 2; at word 3 a `case` on `${words[2]}` describes the typed
+ * group's subcommands. Per-verb annotations stay out of scope.
  */
-export function renderZshCompletion(commandNames: readonly string[]): string {
+export function renderZshCompletion(
+  commandNames: readonly string[],
+  subcommands: ReadonlyMap<string, readonly string[]> = new Map()
+): string {
   const lines = commandNames.map((name) => `    '${name}'`).join("\n");
+  const caseArms: string[] = [];
+  for (const parent of [...subcommands.keys()].sort()) {
+    const children = subcommands.get(parent)!.map((name) => `'${name}'`).join(" ");
+    caseArms.push(`      ${parent}) local -a sc; sc=(${children}); _describe -t commands '${parent} subcommand' sc ;;`);
+  }
   return [
     "#compdef muse",
     "# muse zsh completion",
@@ -77,6 +123,10 @@ export function renderZshCompletion(commandNames: readonly string[]): string {
     "  )",
     "  if (( CURRENT == 2 )); then",
     "    _describe -t commands 'muse command' subs",
+    "  elif (( CURRENT == 3 )); then",
+    "    case \"${words[2]}\" in",
+    ...caseArms,
+    "    esac",
     "  fi",
     "}",
     "_muse \"$@\"",
@@ -99,9 +149,10 @@ export function registerCompletionCommand(program: Command, io: ProgramIO): void
         return;
       }
       const names = collectTopLevelCommandNames(program).filter((name) => name !== "completion");
+      const subcommands = collectSubcommandMap(program);
       const script = normalized === "bash"
-        ? renderBashCompletion(names)
-        : renderZshCompletion(names);
+        ? renderBashCompletion(names, subcommands)
+        : renderZshCompletion(names, subcommands);
       io.stdout(script);
     });
 }
