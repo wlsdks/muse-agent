@@ -10,7 +10,7 @@
  * disambiguation list.
  *
  * Probe order:
- *   reminders → followups → episodes → patterns-fired →
+ *   reminders → followups → objectives → episodes → patterns-fired →
  *   proactive-history → tasks
  *
  * Pure-read; no LLM, no model invocation. Goal 012.
@@ -22,6 +22,7 @@ import { join } from "node:path";
 
 import {
   readFollowups,
+  readObjectives,
   readProactiveHistory,
   readReminders,
   readTasks
@@ -41,7 +42,7 @@ interface OpenOptions {
 }
 
 interface Hit {
-  readonly kind: "reminder" | "followup" | "episode" | "pattern" | "proactive" | "task";
+  readonly kind: "reminder" | "followup" | "objective" | "episode" | "pattern" | "proactive" | "task";
   readonly id: string;
   readonly record: Record<string, unknown>;
 }
@@ -71,6 +72,11 @@ async function scanAll(prefix: string): Promise<readonly Hit[]> {
   // Followups
   for (const f of await readFollowups(envOr("MUSE_FOLLOWUPS_FILE", "followups.json")).catch(() => [])) {
     if (f.id.startsWith(prefix)) hits.push({ kind: "followup", id: f.id, record: f as unknown as Record<string, unknown> });
+  }
+
+  // Objectives (standing delegated-autonomy items — `obj_<uuid>`)
+  for (const o of await readObjectives(envOr("MUSE_OBJECTIVES_FILE", "objectives.json")).catch(() => [])) {
+    if (o.id.startsWith(prefix)) hits.push({ kind: "objective", id: o.id, record: o as unknown as Record<string, unknown> });
   }
 
   // Episodes
