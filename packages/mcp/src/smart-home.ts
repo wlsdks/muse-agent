@@ -128,6 +128,43 @@ export interface HomeAlertCheck {
   readonly alertStates: readonly string[];
 }
 
+/**
+ * Parse a JSON array of home-alert checks from config. Each entry needs
+ * a non-empty `entityId` + `label` and a non-empty `alertStates`
+ * string array. Fail-open: malformed JSON / non-array / an invalid
+ * entry is skipped.
+ */
+export function parseHomeAlertChecks(raw: string): HomeAlertCheck[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  const out: HomeAlertCheck[] = [];
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+    const e = entry as Record<string, unknown>;
+    if (typeof e.entityId !== "string" || e.entityId.length === 0 || typeof e.label !== "string" || e.label.length === 0) {
+      continue;
+    }
+    if (!Array.isArray(e.alertStates)) {
+      continue;
+    }
+    const alertStates = e.alertStates.filter((s): s is string => typeof s === "string" && s.length > 0);
+    if (alertStates.length === 0) {
+      continue;
+    }
+    out.push({ alertStates, entityId: e.entityId, label: e.label });
+  }
+  return out;
+}
+
 export interface HomeAlertConnection {
   readonly baseUrl: string;
   readonly token: string;

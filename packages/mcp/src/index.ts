@@ -493,6 +493,7 @@ export {
   buildHomeAssistantServiceCall,
   createHomeStateSnapshot,
   performHomeActionWithApproval,
+  parseHomeAlertChecks,
   readHomeAssistantState,
   resolveHomeAlertLine,
   type HomeAlertCheck,

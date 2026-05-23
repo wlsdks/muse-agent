@@ -38,6 +38,8 @@ import {
   LocalFileTasksProvider,
   OpenMeteoWeatherProvider,
   homeWatchesFromConfig,
+  parseHomeAlertChecks,
+  resolveHomeAlertLine,
   parseAmbientNoticeRules,
   queryContacts,
   webWatchesFromConfig,
@@ -294,6 +296,12 @@ export function startSituationalBriefingDaemonIfConfigured(
   // (notes / contacts), not an echo of what's already shown.
   const briefingEnricher = buildKnowledgeEnricherIfEnabled(env, options, { excludeSourcePrefixes: ["event/", "task/"] });
   const relatedOpt = briefingEnricher ? { relatedKnowledge: briefingEnricher } : {};
+  const haBaseUrl = env.MUSE_HOMEASSISTANT_URL?.trim();
+  const haToken = env.MUSE_HOMEASSISTANT_TOKEN?.trim();
+  const homeChecks = parseHomeAlertChecks(env.MUSE_BRIEFING_HOME_ALERTS ?? "");
+  const homeAlertOpt = haBaseUrl && haToken && homeChecks.length > 0
+    ? { homeAlert: () => resolveHomeAlertLine({ baseUrl: haBaseUrl, token: haToken }, homeChecks) }
+    : {};
   const briefingHandle = startSituationalBriefingTick({
     destination: briefingDestination,
     errorLogger: (message) => server.log.warn(message),
@@ -308,6 +316,7 @@ export function startSituationalBriefingDaemonIfConfigured(
     ...weatherOpt,
     ...emailOpt,
     ...relatedOpt,
+    ...homeAlertOpt,
     ...(windowMsRaw !== undefined ? { windowMs: windowMsRaw } : {})
   });
   server.addHook("onClose", async () => {
