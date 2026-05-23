@@ -9,7 +9,7 @@
  * (config / auth / chat / TUI).
  */
 
-import { collectSetupStatusJson } from "@muse/autoconfigure";
+import { collectSetupStatusJson, type SetupStatusSnapshot } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
 import { runCalendarSetup } from "./setup-calendar.js";
@@ -288,6 +288,18 @@ async function renderSetupStatus(): Promise<string> {
   // Without this, the text renderer drifts from the structured
   // shape every time someone touches a wizard wording.
   const snap = await collectSetupStatusJson();
+  return `${formatSetupStatusLines(snap).join("\n")}\n`;
+}
+
+/**
+ * Pure snapshot → text-line renderer. Exported for direct coverage:
+ * the async collector reads global env + the filesystem, so the line
+ * shaping (and the per-section `nextStep` surfacing) is only testable
+ * once separated from IO. Every section renders its `nextStep` when
+ * present — including an `ok` row that still carries advisory guidance
+ * (e.g. voice resolved but `MUSE_VOICE_TTS=piper` fell back).
+ */
+export function formatSetupStatusLines(snap: SetupStatusSnapshot): string[] {
   const lines: string[] = ["Muse setup status:"];
 
   // Pretty-print the [ok] / [todo] / [info] prefix the existing
@@ -363,8 +375,11 @@ async function renderSetupStatus(): Promise<string> {
     push("ok", "voice", `stt=${snap.voice.sttBackend}, tts=${snap.voice.ttsBackend}`);
   } else {
     push("info", "voice", "no provider wired");
-    pushNext(snap.voice.nextStep);
   }
+  // Advisory even on an `ok` row: a resolved-but-fell-back config
+  // (MUSE_VOICE_TTS=piper without MUSE_PIPER_VOICE → paid OpenAI) sets
+  // a nextStep with status:ok; surface it instead of swallowing it.
+  pushNext(snap.voice.nextStep);
 
   // messaging
   if (snap.messaging.status === "ok") {
@@ -442,7 +457,7 @@ async function renderSetupStatus(): Promise<string> {
   lines.push("  muse mcp config-add    — register an external MCP server");
   lines.push("  muse proactive test    — push a one-line test notice through MUSE_PROACTIVE_PROVIDER");
   lines.push("  muse proactive scan    — dry-run the lead-minutes window across calendar + tasks");
-  return `${lines.join("\n")}\n`;
+  return lines;
 }
 
 function formatBytes(bytes: number): string {
