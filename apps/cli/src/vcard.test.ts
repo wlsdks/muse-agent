@@ -1,6 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeVCardBirthday, parseVCards } from "./vcard.js";
+import { contactsToVcf, normalizeVCardBirthday, parseVCards } from "./vcard.js";
+
+describe("contactsToVcf — round-trips through parseVCards", () => {
+  it("serialises contacts to vCard and re-parses to the same fields", () => {
+    const contacts = [
+      { aliases: ["Janey"], birthday: "1990-12-25", email: "jane@acme.com", name: "Jane Doe", phone: "+1 415 555 0102" },
+      { name: "Bob", phone: "+1 555 0199" }
+    ];
+    const round = parseVCards(contactsToVcf(contacts));
+    expect(round).toHaveLength(2);
+    expect(round[0]).toMatchObject({ aliases: ["Janey"], birthday: "1990-12-25", email: "jane@acme.com", name: "Jane Doe", phone: "+1 415 555 0102" });
+    expect(round[1]).toMatchObject({ name: "Bob", phone: "+1 555 0199" });
+  });
+
+  it("skips a nameless contact and emits empty for none", () => {
+    expect(contactsToVcf([{ email: "x@y.com", name: "  " }])).toBe("");
+    expect(contactsToVcf([])).toBe("");
+  });
+});
 
 const VCF = `BEGIN:VCARD
 VERSION:3.0

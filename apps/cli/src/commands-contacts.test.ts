@@ -75,6 +75,21 @@ END:VCARD
     expect(second.stdout).toContain("Imported 0 contacts");
     expect((await queryContacts(file)).length).toBe(2);
   });
+
+  it("export → re-import round-trips the contacts", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-vcf-rt-"));
+    const file = join(dir, "contacts.json");
+    const out = join(dir, "out.vcf");
+    writeFileSync(join(dir, "a.vcf"), VCF, "utf8");
+    await run(file, ["import", join(dir, "a.vcf")]); // 2 reachable contacts
+    const exp = await run(file, ["export", out]);
+    expect(exp.stdout).toContain("Exported 2 contacts");
+    // Re-import the export into a FRESH store → same 2 contacts.
+    const file2 = join(dir, "contacts2.json");
+    await run(file2, ["import", out]);
+    const reimported = await queryContacts(file2);
+    expect(reimported.map((c) => c.name).sort()).toEqual(["Bob Smith", "Jane Doe"]);
+  });
 });
 
 describe("muse contacts — people graph + recipient resolution", () => {

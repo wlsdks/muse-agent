@@ -146,6 +146,30 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
     });
 
   contacts
+    .command("export")
+    .description("Export your contacts to a vCard (.vcf) — backup or move them to another app")
+    .argument("[file]", "Write the vCard to this path (omit to print to stdout)")
+    .action(async (file: string | undefined, _options: Record<string, never>) => {
+      const all = await queryContacts(contactsFile());
+      const { contactsToVcf } = await import("./vcard.js");
+      const vcf = contactsToVcf(all);
+      const target = file?.trim();
+      if (!target) {
+        io.stdout(vcf.length > 0 ? vcf : "(no contacts to export)\n");
+        return;
+      }
+      const { writeFile } = await import("node:fs/promises");
+      try {
+        await writeFile(target, vcf, "utf8");
+      } catch (cause) {
+        io.stderr(`muse contacts export: cannot write ${target}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      io.stdout(`Exported ${all.length.toString()} contact${all.length === 1 ? "" : "s"} to ${target}\n`);
+    });
+
+  contacts
     .command("birthdays")
     .description("Upcoming birthdays, soonest first")
     .option("--within <days>", "Look-ahead window in days (default 30)")

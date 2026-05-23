@@ -15,6 +15,47 @@ export interface ParsedVCard {
   readonly aliases?: readonly string[];
 }
 
+/** Fields a vCard carries out of a contact (parsing yields the same shape). */
+export interface VCardContact {
+  readonly name: string;
+  readonly email?: string;
+  readonly phone?: string;
+  readonly birthday?: string;
+  readonly aliases?: readonly string[];
+}
+
+/**
+ * Serialise contacts to a vCard 3.0 (.vcf) document — the inverse of
+ * {@link parseVCards}, so an export round-trips back through import.
+ * A contact with an empty name is skipped (FN is required).
+ */
+export function contactsToVcf(contacts: readonly VCardContact[]): string {
+  const blocks: string[] = [];
+  for (const contact of contacts) {
+    const name = contact.name.trim();
+    if (name.length === 0) {
+      continue;
+    }
+    const lines = ["BEGIN:VCARD", "VERSION:3.0", `FN:${name}`];
+    if (contact.email) {
+      lines.push(`EMAIL:${contact.email}`);
+    }
+    if (contact.phone) {
+      lines.push(`TEL:${contact.phone}`);
+    }
+    if (contact.birthday) {
+      lines.push(`BDAY:${contact.birthday}`);
+    }
+    const aliases = (contact.aliases ?? []).filter((a) => a.trim().length > 0);
+    if (aliases.length > 0) {
+      lines.push(`NICKNAME:${aliases.join(",")}`);
+    }
+    lines.push("END:VCARD");
+    blocks.push(lines.join("\n"));
+  }
+  return blocks.length > 0 ? `${blocks.join("\n")}\n` : "";
+}
+
 /** vCard line unfolding: a leading space/tab continues the previous line (RFC 6350 §3.2). */
 function unfold(text: string): string[] {
   const out: string[] = [];
