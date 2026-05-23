@@ -225,6 +225,38 @@ export function createHttpSnapshot(
   };
 }
 
+/** Minimal Chrome DevTools MCP connection seam — `callTool` is all a snapshot needs. */
+export interface ChromeSnapshotConnection {
+  callTool(toolName: string, args: Record<string, unknown>): Promise<unknown>;
+}
+
+/**
+ * Snapshot source that reads a page through the user's REAL logged-in
+ * Chrome via the Chrome DevTools MCP connection: navigate the attached
+ * tab to `url`, then `take_snapshot` its text. This is what lets a
+ * watch monitor a page behind the user's session (an order status, a
+ * private dashboard, a logged-in ticket) that a plain HTTP GET can't
+ * see. UNLIKE {@link createHttpSnapshot} it drives the real browser
+ * tab — use it only when the page genuinely requires the authenticated
+ * session. Read-only: navigate + snapshot, never a state-changing
+ * action. Returns the page text, or `undefined` on any failure (the
+ * runner then skips that watch without losing its baseline).
+ */
+export function createChromeSnapshot(
+  connection: ChromeSnapshotConnection,
+  url: string
+): () => Promise<string | undefined> {
+  return async () => {
+    try {
+      await connection.callTool("navigate_page", { url });
+      const result = await connection.callTool("take_snapshot", {});
+      return typeof result === "string" && result.trim().length > 0 ? result : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+}
+
 function parseHeaders(raw: unknown): Record<string, string> | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return undefined;
@@ -248,7 +280,12 @@ function parseHeaders(raw: unknown): Record<string, string> | undefined {
  */
 export function webWatchesFromConfig(
   raw: string,
-  options: { readonly fetchImpl?: typeof globalThis.fetch; readonly retryOptions?: RetryOptions } = {}
+  options: {
+    readonly fetchImpl?: typeof globalThis.fetch;
+    readonly retryOptions?: RetryOptions;
+    /** When set, an entry with `"source": "chrome"` reads via the user's logged-in Chrome instead of HTTP. */
+    readonly chromeConnection?: ChromeSnapshotConnection;
+  } = {}
 ): WebWatch[] {
   let parsed: unknown;
   try {
@@ -275,12 +312,26 @@ export function webWatchesFromConfig(
     if (rule === undefined) {
       continue;
     }
+    const useChrome = e.source === "chrome";
+    if (useChrome && !options.chromeConnection) {
+      // A chrome-source watch needs a live connection to drive — skip
+      // it (rather than silently downgrade to HTTP, which can't see the
+      // authenticated page the user asked to watch).
+      continue;
+    }
     const headers = parseHeaders(e.headers);
+    const httpOptions = {
+      ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+      ...(options.retryOptions ? { retryOptions: options.retryOptions } : {}),
+      ...(headers ? { headers } : {})
+    };
     out.push({
       id: e.id,
       message: e.message,
       rule,
-      snapshot: createHttpSnapshot(e.url, headers ? { ...options, headers } : options),
+      snapshot: useChrome
+        ? createChromeSnapshot(options.chromeConnection!, e.url)
+        : createHttpSnapshot(e.url, httpOptions),
       title: e.title
     });
   }

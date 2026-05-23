@@ -282,11 +282,13 @@ export {
 } from "./chrome-devtools-mcp.js";
 
 export {
+  createChromeSnapshot,
   createHttpSnapshot,
   createWebWatchRunner,
   detectWatchTrigger,
   parseWatchRule,
   webWatchesFromConfig,
+  type ChromeSnapshotConnection,
   type WatchRule,
   type WatchTrigger,
   type WebWatch,

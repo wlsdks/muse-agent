@@ -719,9 +719,15 @@ autonomous action (a watch never SUBMITS anything — outbound-safety).
   edge-triggered detector) + 777 (`createWebWatchRunner`: a
   `processing→shipped→shipped` snapshot sequence delivers exactly ONE
   notice on the edge through a real `ProactiveNoticeSink`, none while
-  steady; per-watch baseline mutation-proven). Production daemon
-  (snapshot via the live MCP tool + watch config + scheduling) is the
-  follow-on wiring.
+  steady; per-watch baseline mutation-proven). + 826 (`createChromeSnapshot`
+  reads a page through the user's logged-in Chrome via the Chrome
+  DevTools MCP `navigate_page`+`take_snapshot` seam, and
+  `webWatchesFromConfig` builds `source:"chrome"` watches — so a watch
+  can monitor an AUTHENTICATED page a plain HTTP GET can't see; end-to-end
+  edge-trigger proven against a contract-faithful fake connection). The
+  daemon CONNECTING Chrome at startup + threading the connection into the
+  config is the remaining follow-on wiring (scheduling daemon already
+  ships).
 
 <!-- IMMUTABLE-CORE:BEGIN -->
 ## Immutable core (the loop must NEVER edit — honesty machinery)
