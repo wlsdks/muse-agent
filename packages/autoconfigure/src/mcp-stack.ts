@@ -60,8 +60,22 @@ export function assembleMcpStack(
       ...(browserUrl && browserUrl.length > 0 ? { browserUrl } : {})
     }));
   }
+  const configuredAllowedServers = parseCsv(env.MUSE_MCP_ALLOWED_SERVERS);
+  // An explicit Chrome enable must not be silently denied by an
+  // unrelated strict allowlist. A non-empty allowlist is strict
+  // (undefined / empty = allow-all), so if the user pinned other servers
+  // AND turned Chrome on, honor that intent by allowing chrome-devtools
+  // too. An empty/absent allowlist is left untouched — adding to it would
+  // flip allow-all into a 1-entry strict list that blocks everything else.
+  const allowedServerNames =
+    parseBoolean(env.MUSE_CHROME_DEVTOOLS_ENABLED, false)
+    && configuredAllowedServers
+    && configuredAllowedServers.length > 0
+    && !configuredAllowedServers.includes(CHROME_DEVTOOLS_MCP_SERVER_NAME)
+      ? [...configuredAllowedServers, CHROME_DEVTOOLS_MCP_SERVER_NAME]
+      : configuredAllowedServers;
   const initialPolicy = {
-    allowedServerNames: parseCsv(env.MUSE_MCP_ALLOWED_SERVERS),
+    allowedServerNames,
     allowedStdioCommands: parseCsv(env.MUSE_MCP_ALLOWED_STDIO_COMMANDS),
     maxToolOutputLength: parseInteger(env.MUSE_MCP_MAX_TOOL_OUTPUT_LENGTH, 50_000)
   };

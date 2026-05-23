@@ -33,3 +33,28 @@ describe("assembleMcpStack — turnkey chrome-devtools auto-registration", () =>
     expect(chromeEntry(baseEnv)).toBeUndefined();
   });
 });
+
+describe("assembleMcpStack — an explicit Chrome enable is not silently denied by a strict allowlist", () => {
+  function allowed(env: MuseEnvironment, name: string): Promise<boolean> {
+    return assembleMcpStack(env, undefined).securityPolicyProvider.isServerAllowed(name);
+  }
+
+  it("a strict allowlist of OTHER servers + chrome enabled still allows chrome-devtools", async () => {
+    const env = { ...baseEnv, MUSE_CHROME_DEVTOOLS_ENABLED: "true", MUSE_MCP_ALLOWED_SERVERS: "filesystem,github" } as MuseEnvironment;
+    expect(await allowed(env, CHROME_DEVTOOLS_MCP_SERVER_NAME)).toBe(true);
+    // …without weakening the allowlist for the user's other servers.
+    expect(await allowed(env, "filesystem")).toBe(true);
+    expect(await allowed(env, "some-random-server")).toBe(false);
+  });
+
+  it("an EMPTY allowlist stays allow-all (chrome enable must not flip it into a 1-entry strict list)", async () => {
+    const env = { ...baseEnv, MUSE_CHROME_DEVTOOLS_ENABLED: "true" } as MuseEnvironment;
+    expect(await allowed(env, CHROME_DEVTOOLS_MCP_SERVER_NAME)).toBe(true);
+    expect(await allowed(env, "anything-else")).toBe(true);
+  });
+
+  it("does NOT auto-allow chrome when it is not enabled (respects the user's strict allowlist)", async () => {
+    const env = { ...baseEnv, MUSE_MCP_ALLOWED_SERVERS: "filesystem" } as MuseEnvironment;
+    expect(await allowed(env, CHROME_DEVTOOLS_MCP_SERVER_NAME)).toBe(false);
+  });
+});
