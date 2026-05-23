@@ -34,6 +34,7 @@ import {
 } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
+import { sendWithRetry } from "./messaging-retry.js";
 import { isPatternOnCooldown, readPatternsFired, recordPatternFired } from "./personal-patterns-fired-store.js";
 import type { AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
 
@@ -91,7 +92,7 @@ export async function runDuePatternNotices(options: RunDuePatternNoticesOptions)
       continue;
     }
     try {
-      await options.registry.send(options.providerId, {
+      await sendWithRetry(options.registry, options.providerId, {
         destination: options.destination,
         text: match.suggestion
       });
