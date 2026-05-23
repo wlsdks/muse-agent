@@ -25,6 +25,7 @@ export interface ConfigCommandHelpers {
   readonly readConfigStore: (io: ProgramIO) => Promise<MuseCliConfigShape>;
   readonly writeConfigStore: (io: ProgramIO, config: MuseCliConfigShape) => Promise<void>;
   readonly setConfigValue: (config: MuseCliConfigShape, key: string, value: string) => MuseCliConfigShape;
+  readonly unsetConfigValue: (config: MuseCliConfigShape, key: string) => { readonly config: MuseCliConfigShape; readonly wasSet: boolean };
   readonly writeOutput: (io: ProgramIO, value: unknown, textField?: string) => void;
 }
 
@@ -62,5 +63,21 @@ export function registerConfigCommands(program: Command, io: ProgramIO, helpers:
         return;
       }
       io.stdout(`Set ${key}\n`);
+    });
+
+  config
+    .command("unset")
+    .description("Clear a CLI config value (reverts to the built-in default)")
+    .argument("<key>", "Config key: apiUrl or defaultModel")
+    .option("--json", "Emit a structured payload instead of the human-readable confirmation")
+    .action(async (key: string, options: { readonly json?: boolean }) => {
+      const current = await helpers.readConfigStore(io);
+      const { config: next, wasSet } = helpers.unsetConfigValue(current, key);
+      await helpers.writeConfigStore(io, next);
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ key, wasSet }, null, 2)}\n`);
+        return;
+      }
+      io.stdout(wasSet ? `Unset ${key}\n` : `${key} was not set\n`);
     });
 }

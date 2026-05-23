@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
 import { registerConfigCommands, type MuseCliConfigShape } from "./commands-config.js";
+import { unsetConfigValue } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
 function buildHarness() {
@@ -21,6 +22,7 @@ function buildHarness() {
       if (key !== "apiUrl" && key !== "defaultModel") throw new Error(`Unsupported config key '${key}'`);
       return { ...config, [key]: value.trim() };
     },
+    unsetConfigValue,
     writeOutput: (_io: ProgramIO, value: unknown): void => {
       stdout.push(`${JSON.stringify(value)}\n`);
     }
@@ -66,5 +68,36 @@ describe("muse config set --json", () => {
       { from: "node" }
     );
     expect(h.stdout.join("")).toBe("Set apiUrl\n");
+  });
+});
+
+describe("muse config unset — set's inverse, clears a value back to the default", () => {
+  it("set then unset removes the key from the store and confirms", async () => {
+    const h = buildHarness();
+    const program = new Command();
+    registerConfigCommands(program, h.io, h.helpers);
+    await program.parseAsync(["node", "muse", "config", "set", "apiUrl", "http://api.test"], { from: "node" });
+    await program.parseAsync(["node", "muse", "config", "unset", "apiUrl"], { from: "node" });
+    expect(h.peek().apiUrl).toBeUndefined();
+    expect(h.stdout.join("")).toContain("Unset apiUrl");
+  });
+
+  it("unset of a never-set key reports `was not set` (no false success)", async () => {
+    const h = buildHarness();
+    const program = new Command();
+    registerConfigCommands(program, h.io, h.helpers);
+    await program.parseAsync(["node", "muse", "config", "unset", "defaultModel"], { from: "node" });
+    expect(h.stdout.join("")).toContain("defaultModel was not set");
+  });
+
+  it("--json emits a { key, wasSet } envelope", async () => {
+    const h = buildHarness();
+    const program = new Command();
+    registerConfigCommands(program, h.io, h.helpers);
+    await program.parseAsync(["node", "muse", "config", "set", "defaultModel", "qwen3:8b"], { from: "node" });
+    await program.parseAsync(["node", "muse", "config", "unset", "defaultModel", "--json"], { from: "node" });
+    const out = h.stdout.join("");
+    const parsed = JSON.parse(out.slice(out.indexOf("{"))) as { key: string; wasSet: boolean };
+    expect(parsed).toEqual({ key: "defaultModel", wasSet: true });
   });
 });

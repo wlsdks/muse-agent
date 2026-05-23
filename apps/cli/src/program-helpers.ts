@@ -326,6 +326,28 @@ export function setConfigValue(config: MuseCliConfig, key: string, value: string
   throw new Error(`Unsupported config key '${key}' (expected one of: ${SUPPORTED_CONFIG_KEYS.join(", ")})${hint}`);
 }
 
+/**
+ * Clear a config key so it reverts to the built-in default (e.g. drop
+ * a wrong `apiUrl` to fall back to the local server) — `set`'s missing
+ * inverse, without hand-editing the JSON. Same key validation as
+ * `setConfigValue`; `wasSet` lets the caller distinguish a real clear
+ * from a no-op so it can say "x was not set" instead of a false
+ * "cleared".
+ */
+export function unsetConfigValue(
+  config: MuseCliConfig,
+  key: string
+): { readonly config: MuseCliConfig; readonly wasSet: boolean } {
+  if (key !== "apiUrl" && key !== "defaultModel") {
+    const suggestion = closestCommandName(key, SUPPORTED_CONFIG_KEYS);
+    const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+    throw new Error(`Unsupported config key '${key}' (expected one of: ${SUPPORTED_CONFIG_KEYS.join(", ")})${hint}`);
+  }
+  const wasSet = config[key] !== undefined;
+  const { [key]: _removed, ...rest } = config;
+  return { config: rest, wasSet };
+}
+
 export function isNodeError(value: unknown): value is NodeJS.ErrnoException {
   return value instanceof Error && "code" in value;
 }

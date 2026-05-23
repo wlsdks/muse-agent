@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { defaultConfigPath, firstNonEmpty, setConfigValue } from "./program-helpers.js";
+import { defaultConfigPath, firstNonEmpty, setConfigValue, unsetConfigValue } from "./program-helpers.js";
 
 describe("defaultConfigPath", () => {
   beforeEach(() => {
@@ -78,5 +78,24 @@ describe("setConfigValue", () => {
 
   it("rejects an unknown key WITHOUT a guess when nothing is close (no random suggestion)", () => {
     expect(() => setConfigValue({}, "totallydifferent", "x")).toThrow(/Unsupported config key 'totallydifferent'.*expected one of: apiUrl, defaultModel\)$/u);
+  });
+});
+
+describe("unsetConfigValue — set's missing inverse (revert a key to the built-in default)", () => {
+  it("clears a set key and reports wasSet=true, leaving the other key intact", () => {
+    const r = unsetConfigValue({ apiUrl: "http://remote:3030", defaultModel: "qwen3:8b" }, "apiUrl");
+    expect(r.wasSet).toBe(true);
+    expect(r.config).toEqual({ defaultModel: "qwen3:8b" });
+    expect("apiUrl" in r.config).toBe(false);
+  });
+
+  it("is a no-op (wasSet=false) when the key was never set — so the caller can say 'was not set'", () => {
+    const r = unsetConfigValue({ defaultModel: "qwen3:8b" }, "apiUrl");
+    expect(r.wasSet).toBe(false);
+    expect(r.config).toEqual({ defaultModel: "qwen3:8b" });
+  });
+
+  it("rejects an unknown key with the same `did you mean` hint as set", () => {
+    expect(() => unsetConfigValue({}, "apirurl")).toThrow(/Unsupported config key 'apirurl'.*did you mean 'apiUrl'/u);
   });
 });

@@ -27,6 +27,7 @@ import {
   resolveAuthToken,
   setConfigValue,
   streamRemoteChat,
+  unsetConfigValue,
   writeConfigStore,
   writeOutput,
   writeRunLog
@@ -207,7 +208,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       io.stdout(`${configPath(io)}\n`);
     });
 
-  registerConfigCommands(program, io, { readConfigStore, setConfigValue, writeConfigStore, writeOutput });
+  registerConfigCommands(program, io, { readConfigStore, setConfigValue, unsetConfigValue, writeConfigStore, writeOutput });
 
   program
     .command("spec")
