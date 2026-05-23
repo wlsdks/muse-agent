@@ -50,11 +50,61 @@ interface ServeOptions {
   readonly asTask?: boolean;
 }
 
-interface NotifyBody {
+export interface NotifyBody {
   readonly title?: string;
   readonly text?: string;
   readonly body?: string;
   readonly dueAt?: string;
+}
+
+/**
+ * Resolve a webhook `dueAt` hint. Mirrors watch-folder's
+ * `resolveInboxDueAt` philosophy: a present-but-unparseable value is
+ * surfaced as `unparsed` rather than silently dropped, so a caller
+ * that sends `dueAt: "next freday"` learns the task was created
+ * without a due date instead of getting a 202 and a dueless task.
+ */
+export function resolveWebhookDueAt(
+  rawDueAt: string | undefined,
+  now: () => Date
+): { readonly dueAt?: string; readonly unparsed?: string } {
+  if (typeof rawDueAt !== "string" || rawDueAt.trim().length === 0) return {};
+  const parsed = parseTaskDueAt(rawDueAt, now);
+  return parsed instanceof Error ? { unparsed: rawDueAt } : { dueAt: parsed };
+}
+
+export type WebhookNotify =
+  | { readonly ok: false }
+  | {
+      readonly ok: true;
+      readonly title: string;
+      readonly text: string;
+      readonly notice: string;
+      readonly dueAt?: string;
+      readonly dueAtUnparsed?: string;
+    };
+
+/**
+ * Normalise a parsed notify payload into the title / notice / task
+ * fields the handler needs. Pure so every shape (JSON vs plain text,
+ * empty body, oversized title/text, good vs typo'd dueAt) is testable
+ * without spinning up the HTTP server. `ok:false` means an empty body
+ * (the handler answers 400).
+ */
+export function buildWebhookNotify(payload: NotifyBody, now: () => Date): WebhookNotify {
+  const title = (payload.title ?? "Webhook").toString().slice(0, 200);
+  const text = (payload.text ?? payload.body ?? "").toString().slice(0, 1024);
+  if (text.trim().length === 0) return { ok: false };
+  const notice = `📥 ${title}: ${text.slice(0, 240)}${text.length > 240 ? "…" : ""}`;
+  const due = resolveWebhookDueAt(payload.dueAt, now);
+  return {
+    notice,
+    ok: true,
+    text,
+    title,
+    ...(due.dueAt ? { dueAt: due.dueAt } : {}),
+    ...(due.unparsed ? { dueAtUnparsed: due.unparsed } : {})
+  };
 }
 
 function readBody(req: import("node:http").IncomingMessage, maxBytes = 64 * 1024): Promise<string> {
@@ -136,25 +186,19 @@ export function registerWebhookCommand(program: Command, io: ProgramIO): void {
             payload = { text: rawBody };
           }
 
-          const title = (payload.title ?? "Webhook").toString().slice(0, 200);
-          const text = (payload.text ?? payload.body ?? "").toString().slice(0, 1024);
-          if (text.trim().length === 0) {
+          const built = buildWebhookNotify(payload, () => new Date());
+          if (!built.ok) {
             res.writeHead(400, { "content-type": "text/plain" });
             res.end("Empty body — provide `text` (or POST plain-text payload).\n");
             return;
           }
-
-          const notice = `📥 ${title}: ${text.slice(0, 240)}${text.length > 240 ? "…" : ""}`;
+          const { title, text, notice, dueAt, dueAtUnparsed } = built;
           await registry.send(provider, { destination, text: notice });
 
           let taskId: string | undefined;
           if (asTask && tasksFile) {
-            let dueAt: string | undefined;
-            if (payload.dueAt) {
-              const parsed = parseTaskDueAt(payload.dueAt, () => new Date());
-              if (!(parsed instanceof Error)) {
-                dueAt = parsed;
-              }
+            if (dueAtUnparsed !== undefined) {
+              io.stderr(`  dueAt ${JSON.stringify(dueAtUnparsed)} not understood — task created without a due date\n`);
             }
             const task: PersistedTask = {
               createdAt: new Date().toISOString(),
@@ -184,7 +228,12 @@ export function registerWebhookCommand(program: Command, io: ProgramIO): void {
 
           io.stdout(`[${new Date().toISOString()}] fired "${title}" → ${provider}/${destination}${taskId ? ` (task ${taskId})` : ""}\n`);
           res.writeHead(202, { "content-type": "application/json" });
-          res.end(JSON.stringify({ delivered: true, taskId: taskId ?? null, title }));
+          res.end(JSON.stringify({
+            delivered: true,
+            taskId: taskId ?? null,
+            title,
+            ...(asTask && dueAtUnparsed !== undefined ? { dueAtIgnored: dueAtUnparsed } : {})
+          }));
         } catch (cause) {
           io.stderr(`handler error: ${cause instanceof Error ? cause.message : String(cause)}\n`);
           res.writeHead(500, { "content-type": "text/plain" });
