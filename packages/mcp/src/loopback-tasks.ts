@@ -65,7 +65,8 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
     tools: [
       {
         description:
-          "Append a new task. Required: `title`. Optional: `notes` (free-form text), `tags` (string array), `dueAt`. " +
+          "Append a new task. Required: `title`. Optional: `notes` (free-form text), `tags` (string array), `dueAt`, `urgent`. " +
+          "Set `urgent: true` for a high-priority task the proactive watcher fires even during the user's quiet hours (e.g. 'pay rent today'). " +
           "`dueAt` accepts either an ISO-8601 timestamp OR a relative phrase. " +
           "English: 'tomorrow', 'tomorrow 6pm', 'today at 14:30', 'in 3 hours', 'in 2 days', 'next Monday', 'next Monday at 9am'. " +
           "Korean: '내일', '내일 오후 3시', '오늘 오전 9시 30분', '30분 후', '3일 뒤', '다음 주 월요일', '다음 주 월요일 오후 3시 반'. " +
@@ -78,6 +79,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           }
           const notes = readString(args, "notes") ?? undefined;
           const tags = readStringArray(args, "tags") ?? undefined;
+          const urgent = args["urgent"] === true;
           const dueAtRaw = readString(args, "dueAt")?.trim();
           let dueAt: string | undefined;
           if (dueAtRaw && dueAtRaw.length > 0) {
@@ -95,7 +97,8 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
             title,
             ...(notes ? { notes } : {}),
             ...(dueAt ? { dueAt } : {}),
-            ...(tags && tags.length > 0 ? { tags } : {})
+            ...(tags && tags.length > 0 ? { tags } : {}),
+            ...(urgent ? { urgent: true } : {})
           };
           try {
             await writeTasks(file, [...tasks, created]);
@@ -110,7 +113,8 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
             dueAt: { description: "Optional ISO-8601 due timestamp (e.g. 2026-05-15T18:00:00Z).", type: "string" },
             notes: { description: "Optional free-text details for the task.", type: "string" },
             tags: { description: "Optional labels for the task.", items: { type: "string" }, type: "array" },
-            title: { description: "What the task is, e.g. 'Buy milk' or 'Email the Q3 deck'.", type: "string" }
+            title: { description: "What the task is, e.g. 'Buy milk' or 'Email the Q3 deck'.", type: "string" },
+            urgent: { description: "Set true for a high-priority task fired even during the user's quiet hours, e.g. 'pay rent today'. Omit for a normal task.", type: "boolean" }
           },
           required: ["title"],
           type: "object"

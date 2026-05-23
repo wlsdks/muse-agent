@@ -2206,6 +2206,27 @@ describe("muse.tasks loopback server", () => {
     expect(noMatches).toMatchObject({ total: 0 });
   });
 
+  it("add accepts urgent:true and round-trips it through list (CRUD parity with `muse tasks add --urgent`)", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-tasks-urgent-`);
+    let counter = 0;
+    const idFactory = () => `task_${++counter}`;
+    const connection = createLoopbackMcpConnection(createTasksMcpServer({ file: `${dir}/tasks.json`, idFactory }));
+
+    const urgent = await connection.callTool!("add", { title: "Pay rent today", urgent: true });
+    expect(urgent).toMatchObject({ task: { id: "task_1", title: "Pay rent today", urgent: true } });
+
+    // A normal add (urgent omitted) must NOT carry the flag.
+    const normal = await connection.callTool!("add", { title: "Water the plants" });
+    expect((normal.task as { urgent?: boolean }).urgent).toBeUndefined();
+
+    // The flag survives the store round-trip into list output.
+    const all = await connection.callTool!("list", { status: "all" }) as { tasks: { id: string; urgent?: boolean }[] };
+    expect(all.tasks.find((t) => t.id === "task_1")?.urgent).toBe(true);
+    expect(all.tasks.find((t) => t.id === "task_2")?.urgent).toBeUndefined();
+  });
+
   it("list returns tasks due-soonest first so the agent prioritises correctly (goal 256)", async () => {
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const tmpdir = await import("node:os").then((m) => m.tmpdir());
