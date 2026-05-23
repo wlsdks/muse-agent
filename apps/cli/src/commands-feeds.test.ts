@@ -137,6 +137,39 @@ function seedFeeds(ids: readonly string[]): string {
   return file;
 }
 
+const RSS_FIXTURE = `<?xml version="1.0"?><rss version="2.0"><channel><title>Fix</title>
+<item><title>Hello</title><link>https://x.example/1</link><guid>g1</guid><pubDate>2026-05-20T00:00:00Z</pubDate></item>
+</channel></rss>`;
+
+/**
+ * Seed feeds whose URLs are deterministic `file://` paths — a real
+ * fixture for `good: true`, a non-existent path for `good: false` (so
+ * loadFeedBody's readFile rejects and refreshSingleFeed reports a
+ * failure). Offline + deterministic: no network, unlike the
+ * https://example.com seed above.
+ */
+function seedFileFeeds(specs: readonly { readonly id: string; readonly good: boolean }[]): string {
+  const dir = mkdtempSync(join(tmpdir(), "muse-feeds-refresh-"));
+  const fixture = join(dir, "fixture.xml");
+  writeFileSync(fixture, RSS_FIXTURE, "utf8");
+  const file = join(dir, "feeds.json");
+  writeFileSync(
+    file,
+    JSON.stringify({
+      version: 1,
+      feeds: specs.map(({ id, good }) => ({
+        id,
+        url: good ? `file://${fixture}` : `file://${join(dir, "does-not-exist.xml")}`,
+        name: id,
+        lastFetchedAt: "2026-05-15T00:00:00Z",
+        entries: []
+      }))
+    }),
+    "utf8"
+  );
+  return file;
+}
+
 describe("muse feeds remove typo hint (goal 153)", () => {
   it("fuzzy-suggests the closest known id when the input mistypes", async () => {
     const file = seedFeeds(["tech_news", "weather", "hn-front"]);
@@ -175,10 +208,45 @@ describe("muse feeds refresh --id typo hint (goal 153)", () => {
   });
 
   it("--id with whitespace padding routes through the trimmed match (no silent '(no feeds to refresh)' after passing the exists-check)", async () => {
-    const file = seedFeeds(["weather"]);
+    // file:// fixture → deterministic offline success (the old
+    // https://example.com seed made a real network call that could hang
+    // past the test timeout — the known flake).
+    const file = seedFileFeeds([{ good: true, id: "weather" }]);
     const { stdout } = await runFeedsCommand(["refresh", "--id", "  weather  "], file);
     expect(stdout, "padded --id must reach refreshSingleFeed and produce a real refresh output, not the empty-target silent no-op").not.toContain("(no feeds to refresh)");
     expect(stdout).toContain("Refreshed 1 feed(s)");
+  });
+});
+
+describe("muse feeds refresh — the summary count reflects feeds actually re-fetched, not attempted", () => {
+  it("a fully-failed refresh reports 0-of-N + exits non-zero (not a misleading 'Refreshed N feed(s)')", async () => {
+    const file = seedFileFeeds([{ good: false, id: "down" }]);
+    const { stdout, stderr, exitCode } = await runFeedsCommand(["refresh"], file);
+    expect(stdout).toContain("Refreshed 0 of 1 feed(s) (1 failed");
+    expect(stdout).not.toContain("Refreshed 1 feed(s)");
+    expect(stderr).toContain("down:"); // the per-feed failure line
+    expect(exitCode).toBe(1);
+  });
+
+  it("a partial failure reports the honest count and stays exit 0 (fail-soft)", async () => {
+    const file = seedFileFeeds([
+      { good: true, id: "ok-feed" },
+      { good: false, id: "down-feed" }
+    ]);
+    const { stdout, exitCode } = await runFeedsCommand(["refresh"], file);
+    expect(stdout).toContain("Refreshed 1 of 2 feed(s) (1 failed");
+    expect(exitCode).toBe(0);
+  });
+
+  it("an all-success refresh keeps the plain 'Refreshed N feed(s)' message", async () => {
+    const file = seedFileFeeds([
+      { good: true, id: "a" },
+      { good: true, id: "b" }
+    ]);
+    const { stdout, exitCode } = await runFeedsCommand(["refresh"], file);
+    expect(stdout).toContain("Refreshed 2 feed(s)");
+    expect(stdout).not.toContain("of 2");
+    expect(exitCode).toBe(0);
   });
 });
 

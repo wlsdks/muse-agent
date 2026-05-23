@@ -161,17 +161,17 @@ export function formatFeedEntryLines(entry: {
   return lines;
 }
 
-async function refreshSingleFeed(record: FeedRecord, io: ProgramIO): Promise<FeedRecord> {
+async function refreshSingleFeed(record: FeedRecord, io: ProgramIO): Promise<{ readonly record: FeedRecord; readonly ok: boolean }> {
   try {
     const body = await loadFeedBody(record.url);
     const incoming = parseFeedBody(body);
     // Merge with the on-disk archive so entries that rolled off
     // the publisher's window survive locally (deduped, capped).
     const entries = mergeFeedEntries(record.entries, incoming);
-    return { ...record, lastFetchedAt: new Date().toISOString(), entries };
+    return { ok: true, record: { ...record, lastFetchedAt: new Date().toISOString(), entries } };
   } catch (cause) {
     io.stderr(`  ${record.id}: ${formatErrorForTerminal(cause)}\n`);
-    return record;
+    return { ok: false, record };
   }
 }
 
@@ -303,15 +303,30 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
         return;
       }
       const refreshed: FeedRecord[] = [];
+      let succeeded = 0;
       for (const feed of store.feeds) {
         if (targets.includes(feed)) {
-          refreshed.push(await refreshSingleFeed(feed, io));
+          const result = await refreshSingleFeed(feed, io);
+          refreshed.push(result.record);
+          if (result.ok) succeeded += 1;
         } else {
           refreshed.push(feed);
         }
       }
       await writeFeedsStore(file, { version: store.version, feeds: refreshed });
-      io.stdout(`Refreshed ${targets.length.toString()} feed(s)\n`);
+      // Report the count actually re-fetched, not the count attempted — a
+      // fail-soft refresh where every feed is down (404 / timeout) must not
+      // print "Refreshed N feed(s)" as if it succeeded while `today` stays
+      // empty. A total failure also exits non-zero so a script notices.
+      if (succeeded === targets.length) {
+        io.stdout(`Refreshed ${targets.length.toString()} feed(s)\n`);
+      } else {
+        const failed = targets.length - succeeded;
+        io.stdout(`Refreshed ${succeeded.toString()} of ${targets.length.toString()} feed(s) (${failed.toString()} failed — see errors above)\n`);
+        if (succeeded === 0) {
+          process.exitCode = 1;
+        }
+      }
     });
 
   feeds
