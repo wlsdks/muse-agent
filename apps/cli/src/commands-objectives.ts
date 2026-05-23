@@ -38,6 +38,35 @@ function assertOneOf(raw: string, allowed: readonly string[], flag: string): voi
   throw new Error(`${flag} must be one of: ${allowed.join(", ")} (got '${raw}')${hint ? ` — did you mean '${hint}'?` : ""}`);
 }
 
+type ResolvedObjectiveId =
+  | { readonly kind: "match"; readonly id: string }
+  | { readonly kind: "ambiguous"; readonly count: number; readonly preview: string }
+  | { readonly kind: "none" };
+
+/**
+ * Resolve an objective id from an exact id OR an unambiguous prefix —
+ * so a user cancels with the short head of `obj_<uuid>` instead of
+ * pasting the whole thing, matching `muse followup` / `muse calendar`.
+ * Exact match wins; otherwise a single prefix match resolves; an empty
+ * input or >1 prefix match never silently picks one.
+ */
+function resolveObjectiveId(input: string, all: readonly { readonly id: string }[]): ResolvedObjectiveId {
+  if (input.length === 0) {
+    return { kind: "none" };
+  }
+  if (all.some((o) => o.id === input)) {
+    return { id: input, kind: "match" };
+  }
+  const matches = all.filter((o) => o.id.startsWith(input));
+  if (matches.length === 0) {
+    return { kind: "none" };
+  }
+  if (matches.length > 1) {
+    return { count: matches.length, kind: "ambiguous", preview: matches.slice(0, 5).map((o) => o.id.slice(0, 16)).join(", ") };
+  }
+  return { id: matches[0]!.id, kind: "match" };
+}
+
 export function registerObjectivesCommands(program: Command, io: ProgramIO): void {
   const objectives = program
     .command("objectives")
@@ -111,18 +140,29 @@ export function registerObjectivesCommands(program: Command, io: ProgramIO): voi
     .command("cancel <id>")
     .description("Cancel a standing objective (it stops being re-evaluated)")
     .action(async (id: string, _options: unknown, command: Command) => {
-      const patched = await patchObjective(objectivesFile(), id, {
-        resolution: "cancelled via CLI",
-        status: "cancelled"
-      });
-      if (!patched) {
-        const known = (await readObjectives(objectivesFile())).map((o) => o.id);
-        const suggestion = closestCommandName(id.trim(), known);
+      const all = await readObjectives(objectivesFile());
+      const resolved = resolveObjectiveId(id.trim(), all);
+      if (resolved.kind === "ambiguous") {
+        io.stderr(`ambiguous objective id '${id}' — matches ${resolved.count.toString()} (${resolved.preview}…)\n`);
+        command.error("objectives cancel failed", { exitCode: 1 });
+        return;
+      }
+      if (resolved.kind === "none") {
+        const suggestion = closestCommandName(id.trim(), all.map((o) => o.id));
         const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
         io.stderr(`no objective with id '${id}'${hint}\n`);
         command.error("objectives cancel failed", { exitCode: 1 });
         return;
       }
-      io.stdout(`Cancelled ${id}\n`);
+      const patched = await patchObjective(objectivesFile(), resolved.id, {
+        resolution: "cancelled via CLI",
+        status: "cancelled"
+      });
+      if (!patched) {
+        io.stderr(`no objective with id '${id}'\n`);
+        command.error("objectives cancel failed", { exitCode: 1 });
+        return;
+      }
+      io.stdout(`Cancelled ${resolved.id}\n`);
     });
 }

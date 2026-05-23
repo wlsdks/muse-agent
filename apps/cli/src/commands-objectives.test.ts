@@ -64,6 +64,32 @@ describe("muse objectives — CLI entry point to the delegated-autonomy chain", 
     expect(r.stderr).toContain("no objective with id 'obj_nope'");
   });
 
+  it("cancel accepts an unambiguous id prefix (no need to paste the whole obj_<uuid>)", async () => {
+    const file = objFile();
+    const added = await run(file, ["add", "watch the build until green"]);
+    const fullId = added.stdout.match(/(obj_[a-z0-9-]+)/u)?.[1];
+    expect(fullId).toMatch(/^obj_[a-z0-9-]+$/u);
+    const prefix = fullId!.slice(0, 12); // "obj_" + first 8 of the uuid — unique with one objective
+    const cancelled = await run(file, ["cancel", prefix]);
+    expect(cancelled.exitCode).toBeUndefined();
+    // Reports the FULL resolved id, and the store reflects the cancel.
+    expect(cancelled.stdout).toBe(`Cancelled ${fullId!}\n`);
+    expect((await run(file, ["list", "--status", "all"])).stdout).toContain("[cancelled/until]");
+  });
+
+  it("cancel refuses an ambiguous prefix — matches >1, cancels nothing", async () => {
+    const file = objFile();
+    await run(file, ["add", "first objective"]);
+    await run(file, ["add", "second objective"]);
+    // "obj_" is a prefix of every generated id.
+    const r = await run(file, ["cancel", "obj_"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("ambiguous objective id 'obj_' — matches 2");
+    // Neither was cancelled — both still active.
+    const active = await run(file, ["list", "--json"]);
+    expect(JSON.parse(active.stdout).total).toBe(2);
+  });
+
   it("cancel suggests the closest existing id on a near-miss typo", async () => {
     const file = objFile();
     const adds = await run(file, ["add", "ship the thing"]);
