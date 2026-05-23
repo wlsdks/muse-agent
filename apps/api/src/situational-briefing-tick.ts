@@ -46,6 +46,8 @@ export interface SituationalBriefingTickOptions {
   readonly weatherLocation?: string;
   /** Optional inbox grounding: a non-empty briefing gains an unread digest. */
   readonly emailProvider?: EmailProvider;
+  /** Optional predicate flagging an unread sender as a known contact, so the inbox line surfaces people-you-know first. */
+  readonly inboxKnownSender?: (from: string) => boolean;
   /** Optional knowledge enricher: a non-empty briefing gains a related-note line for the top imminent item. */
   readonly relatedKnowledge?: (query: string) => Promise<string | undefined> | string | undefined;
   /** Optional home-alert resolver: a non-empty briefing gains a line flagging noteworthy home states (door unlocked). */
@@ -109,6 +111,7 @@ export function startSituationalBriefingTick(
           ? { weatherLocation: options.weatherLocation, weatherProvider: options.weatherProvider }
           : {}),
         ...(options.emailProvider ? { emailProvider: options.emailProvider } : {}),
+        ...(options.inboxKnownSender ? { inboxKnownSender: options.inboxKnownSender } : {}),
         ...(options.relatedKnowledge ? { relatedKnowledge: options.relatedKnowledge } : {}),
         ...(options.homeAlert ? { homeAlert: options.homeAlert } : {}),
         ...(options.birthdayLine ? { birthdayLine: options.birthdayLine } : {}),

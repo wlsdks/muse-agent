@@ -493,6 +493,7 @@ export {
   type UpcomingBirthday
 } from "./personal-contacts-store.js";
 export {
+  extractEmailAddress,
   extractPlainTextBody,
   GmailAuthError,
   GmailEmailProvider,

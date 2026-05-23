@@ -248,13 +248,30 @@ export function summarizeInbox(messages: readonly EmailSummary[]): string {
  * `undefined` when nothing is unread (so the briefing stays quiet
  * about a clean inbox). Names a few unread subjects so the brief is
  * actionable ("reply to X"), not just a count.
+ *
+ * With `isKnownSender`, unread from people the user KNOWS (a resolved
+ * contact) is surfaced FIRST and flagged "★" — a JARVIS triages the
+ * inbox by who's writing, not feed order, so the named few are the
+ * ones you'd actually want to reply to rather than newsletters.
  */
-export function unreadBriefingLine(messages: readonly EmailSummary[]): string | undefined {
+export function unreadBriefingLine(
+  messages: readonly EmailSummary[],
+  options: { readonly isKnownSender?: (from: string) => boolean } = {}
+): string | undefined {
   const unread = messages.filter((m) => m.unread);
   if (unread.length === 0) {
     return undefined;
   }
-  const named = unread.slice(0, 3).map((m) => `“${m.subject || "(no subject)"}” (${senderName(m.from)})`);
+  const known = options.isKnownSender;
+  // V8's Array.sort is stable, so same-priority messages keep their
+  // original (newest-first) order; only the known/unknown split moves.
+  const ordered = known
+    ? [...unread].sort((a, b) => Number(known(b.from)) - Number(known(a.from)))
+    : unread;
+  const named = ordered.slice(0, 3).map((m) => {
+    const star = known && known(m.from) ? "★ " : "";
+    return `${star}“${m.subject || "(no subject)"}” (${senderName(m.from)})`;
+  });
   const more = unread.length > named.length ? `, +${(unread.length - named.length).toString()} more` : "";
   return `${unread.length.toString()} unread — ${named.join(", ")}${more}`;
 }
@@ -264,4 +281,17 @@ function senderName(from: string): string {
   const match = /^\s*"?([^"<]*?)"?\s*</u.exec(from);
   const name = match?.[1]?.trim();
   return name && name.length > 0 ? name : (from.trim() || "unknown");
+}
+
+/**
+ * Pull the bare email address out of a `From` header — "Alice
+ * <a@x.com>" → "a@x.com", "bob@y.com" → "bob@y.com" — lowercased, or
+ * `undefined` when none is present. Lets a caller match an unread
+ * sender against the contacts graph.
+ */
+export function extractEmailAddress(from: string): string | undefined {
+  const angled = /<([^>]+)>/u.exec(from);
+  const candidate = angled?.[1] ?? from;
+  const addr = /([^\s<>]+@[^\s<>]+)/u.exec(candidate);
+  return addr?.[1]?.trim().toLowerCase();
 }

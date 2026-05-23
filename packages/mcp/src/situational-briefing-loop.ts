@@ -51,6 +51,12 @@ export interface RunDueSituationalBriefingOptions {
   readonly emailProvider?: EmailProvider;
   readonly emailLimit?: number;
   /**
+   * Optional predicate marking an unread sender as a known contact, so
+   * the inbox line surfaces mail from people you KNOW first (flagged
+   * "★"). Fail-soft alongside the rest of the inbox resolution.
+   */
+  readonly inboxKnownSender?: (from: string) => boolean;
+  /**
    * Optional knowledge enricher. When set AND the briefing has an
    * imminent item, it is called with the top item's title to surface
    * a related note/task the user already wrote ("prep: bring the Q3
@@ -113,9 +119,16 @@ async function writeLastFiredAt(file: string, iso: string): Promise<void> {
   await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
-async function resolveInboxLine(provider: EmailProvider, limit?: number): Promise<string | undefined> {
+async function resolveInboxLine(
+  provider: EmailProvider,
+  limit?: number,
+  isKnownSender?: (from: string) => boolean
+): Promise<string | undefined> {
   try {
-    return unreadBriefingLine(await provider.listRecent(limit && limit > 0 ? limit : 10));
+    return unreadBriefingLine(
+      await provider.listRecent(limit && limit > 0 ? limit : 10),
+      isKnownSender ? { isKnownSender } : {}
+    );
   } catch {
     return undefined;
   }
@@ -171,7 +184,7 @@ export async function runDueSituationalBriefing(
   // Same posture as weather: only sense the inbox when there is
   // already something to brief; a lookup error omits the line.
   const inbox = hasContent && options.emailProvider
-    ? await resolveInboxLine(options.emailProvider, options.emailLimit)
+    ? await resolveInboxLine(options.emailProvider, options.emailLimit, options.inboxKnownSender)
     : undefined;
   const related = hasContent && options.relatedKnowledge && options.imminent.length > 0
     ? await resolveRelatedLine(options.relatedKnowledge, options.imminent)

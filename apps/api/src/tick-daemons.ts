@@ -33,6 +33,7 @@ import {
   deriveCalendarBriefingImminent,
   FileAmbientSignalSource,
   MacOsActiveWindowSource,
+  extractEmailAddress,
   GmailEmailProvider,
   LocalDirNotesProvider,
   LocalFileTasksProvider,
@@ -296,6 +297,26 @@ export function startSituationalBriefingDaemonIfConfigured(
   const emailOpt = gmailToken && gmailToken.length > 0
     ? { emailProvider: new GmailEmailProvider(gmailToken) }
     : {};
+  // Snapshot the contacts' addresses once at daemon start so the inbox
+  // brief surfaces mail from people you know first. A predicate that
+  // re-read the file per sender would hammer disk; a daemon restart
+  // refreshes the snapshot.
+  let knownContactEmails = new Set<string>();
+  if (gmailToken && gmailToken.length > 0) {
+    void queryContacts(resolveContactsFile(env))
+      .then((contacts) => {
+        knownContactEmails = new Set(contacts.flatMap((c) => (c.email ? [c.email.toLowerCase()] : [])));
+      })
+      .catch(() => undefined);
+  }
+  const inboxKnownSenderOpt = gmailToken && gmailToken.length > 0
+    ? {
+        inboxKnownSender: (from: string): boolean => {
+          const email = extractEmailAddress(from);
+          return email !== undefined && knownContactEmails.has(email);
+        }
+      }
+    : {};
   // The brief already lists the imminent calendar/task under Upcoming —
   // exclude those source types so "Related" adds genuine context
   // (notes / contacts), not an echo of what's already shown.
@@ -340,6 +361,7 @@ export function startSituationalBriefingDaemonIfConfigured(
     sidecarFile: options.briefingSidecarFile,
     ...weatherOpt,
     ...emailOpt,
+    ...inboxKnownSenderOpt,
     ...relatedOpt,
     ...homeAlertOpt,
     ...birthdayOpt,
