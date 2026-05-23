@@ -84,6 +84,23 @@ export function resolveUpcomingBirthdays(
   return out.sort((a, b) => a.daysUntil - b.daysUntil || a.contact.name.localeCompare(b.contact.name));
 }
 
+/**
+ * One-line briefing fragment for upcoming birthdays — "Sarah today;
+ * Bob tomorrow; Ann in 3 days" — or `undefined` when there are none, so
+ * the brief stays quiet rather than printing an empty line.
+ */
+export function formatBirthdayBriefLine(upcoming: readonly UpcomingBirthday[]): string | undefined {
+  if (upcoming.length === 0) {
+    return undefined;
+  }
+  return upcoming
+    .map(({ contact, daysUntil }) => {
+      const when = daysUntil === 0 ? "today" : daysUntil === 1 ? "tomorrow" : `in ${daysUntil.toString()} days`;
+      return `${contact.name} ${when}`;
+    })
+    .join("; ");
+}
+
 export type ContactResolution =
   | { readonly status: "resolved"; readonly contact: Contact }
   | { readonly status: "ambiguous"; readonly matches: readonly Contact[] }

@@ -53,6 +53,12 @@ export interface SituationalBriefingInput {
    * carries ONLY noteworthy states, never "everything's normal".
    */
   readonly home?: string;
+  /**
+   * Optional pre-resolved upcoming-birthdays line ("Sarah today; Bob in
+   * 3 days"). Supplementary, same posture as weather/inbox/home: rides
+   * an otherwise-non-empty briefing and never triggers one alone.
+   */
+  readonly birthdays?: string;
 }
 
 function clean(value: string): string {
@@ -96,6 +102,11 @@ export function composeSituationalBriefing(input: SituationalBriefingInput): str
   const home = input.home ? clean(input.home) : "";
   if (home.length > 0) {
     lines.push(`Home: ${home}`);
+  }
+
+  const birthdays = input.birthdays ? clean(input.birthdays) : "";
+  if (birthdays.length > 0) {
+    lines.push(`Birthdays: ${birthdays}`);
   }
 
   if (upcoming.length > 0) {

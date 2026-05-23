@@ -41,7 +41,9 @@ import {
   parseHomeAlertChecks,
   resolveHomeAlertLine,
   parseAmbientNoticeRules,
+  formatBirthdayBriefLine,
   queryContacts,
+  resolveUpcomingBirthdays,
   webWatchesFromConfig,
   type BriefingImminent
 } from "@muse/mcp";
@@ -302,6 +304,12 @@ export function startSituationalBriefingDaemonIfConfigured(
   const homeAlertOpt = haBaseUrl && haToken && homeChecks.length > 0
     ? { homeAlert: () => resolveHomeAlertLine({ baseUrl: haBaseUrl, token: haToken }, homeChecks) }
     : {};
+  const birthdayDaysRaw = env.MUSE_BRIEFING_BIRTHDAY_DAYS ? Number(env.MUSE_BRIEFING_BIRTHDAY_DAYS) : undefined;
+  const birthdayDays = Number.isFinite(birthdayDaysRaw) ? (birthdayDaysRaw as number) : 7;
+  const birthdayOpt = {
+    birthdayLine: async () =>
+      formatBirthdayBriefLine(resolveUpcomingBirthdays(await queryContacts(resolveContactsFile(env)), { withinDays: birthdayDays }))
+  };
   const briefingHandle = startSituationalBriefingTick({
     destination: briefingDestination,
     errorLogger: (message) => server.log.warn(message),
@@ -317,6 +325,7 @@ export function startSituationalBriefingDaemonIfConfigured(
     ...emailOpt,
     ...relatedOpt,
     ...homeAlertOpt,
+    ...birthdayOpt,
     ...(windowMsRaw !== undefined ? { windowMs: windowMsRaw } : {})
   });
   server.addHook("onClose", async () => {

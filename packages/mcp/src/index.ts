@@ -452,6 +452,7 @@ export {
 export {
   addContact,
   contactIdentifier,
+  formatBirthdayBriefLine,
   queryContacts,
   readContacts,
   removeContact,

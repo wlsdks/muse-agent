@@ -65,6 +65,12 @@ export interface RunDueSituationalBriefingOptions {
    * fail-soft: a thrown / empty lookup omits the line.
    */
   readonly homeAlert?: () => Promise<string | undefined> | string | undefined;
+  /**
+   * Optional upcoming-birthdays resolver. When set AND the briefing has
+   * content, surfaces a "Sarah today; Bob in 3 days" line. Fail-soft;
+   * empty / thrown lookup omits the line.
+   */
+  readonly birthdayLine?: () => Promise<string | undefined> | string | undefined;
 }
 
 export interface RunDueSituationalBriefingSummary {
@@ -122,7 +128,7 @@ async function resolveRelatedLine(
   }
 }
 
-async function resolveHomeAlertSafely(
+async function resolveLineSafely(
   resolve: () => Promise<string | undefined> | string | undefined
 ): Promise<string | undefined> {
   try {
@@ -160,7 +166,10 @@ export async function runDueSituationalBriefing(
     ? await resolveRelatedLine(options.relatedKnowledge, options.imminent)
     : undefined;
   const home = hasContent && options.homeAlert
-    ? await resolveHomeAlertSafely(options.homeAlert)
+    ? await resolveLineSafely(options.homeAlert)
+    : undefined;
+  const birthdays = hasContent && options.birthdayLine
+    ? await resolveLineSafely(options.birthdayLine)
     : undefined;
   const text = composeSituationalBriefing({
     imminent: options.imminent,
@@ -169,7 +178,8 @@ export async function runDueSituationalBriefing(
     ...(weather ? { weather } : {}),
     ...(inbox ? { inbox } : {}),
     ...(related ? { related } : {}),
-    ...(home ? { home } : {})
+    ...(home ? { home } : {}),
+    ...(birthdays ? { birthdays } : {})
   });
   if (!text) {
     return { delivered: 0, reason: "nothing-to-say" };
