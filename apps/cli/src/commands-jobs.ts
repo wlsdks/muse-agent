@@ -21,7 +21,7 @@
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { appendFile, readFile } from "node:fs/promises";
+import { appendFile, readFile, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname as pathDirname, join as pathJoin } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -361,6 +361,36 @@ export function registerJobCommands(program: Command, io: ProgramIO): void {
       const interval = setInterval(() => { void tick(); }, 500);
       process.on("SIGINT", () => { clearInterval(interval); process.exit(0); });
       await new Promise(() => { /* hold */ });
+    });
+
+  job
+    .command("delete <id>")
+    .description("Delete a finished job's record (~/.muse/jobs/<id>.jsonl). Refuses a still-running job unless --force.")
+    .option("--force", "Delete even when the job still appears to be running (orphans the worker's output)")
+    .option("--json", "Emit a structured payload")
+    .action(async (id: string, options: { readonly force?: boolean; readonly json?: boolean }) => {
+      const resolved = resolveOrReportJobId(io, id, "muse job delete");
+      if (resolved === undefined) return;
+      const file = jobPath(resolved);
+      const summary = jobSummary(await readJobLines(file));
+      // A running job's worker is still appending to this file — deleting
+      // it mid-run orphans the output (the next append silently recreates
+      // a partial file). Refuse unless the user insists.
+      if (summary.status === "running" && options.force !== true) {
+        io.stderr(`muse job delete: job ${resolved} still appears to be running — pass --force to delete anyway.\n`);
+        process.exitCode = 1;
+        return;
+      }
+      try {
+        await unlink(file);
+      } catch (cause) {
+        io.stderr(`muse job delete: failed to remove ${file}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      io.stdout(options.json
+        ? `${JSON.stringify({ deleted: true, id: resolved, status: summary.status }, null, 2)}\n`
+        : `Deleted job ${resolved} (${summary.status}).\n`);
     });
 
   // job append helper exposed for the worker child process.

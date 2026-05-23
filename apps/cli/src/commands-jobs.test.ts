@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -162,5 +162,50 @@ describe("jobsDir — MUSE_JOBS_DIR empty-env-shadow defence (goal-532/539 sibli
       if (prev === undefined) delete process.env.MUSE_JOBS_DIR;
       else process.env.MUSE_JOBS_DIR = prev;
     }
+  });
+});
+
+describe("muse job delete", () => {
+  function seed(dir: string, id: string, events: ReadonlyArray<Record<string, unknown>>): void {
+    writeFileSync(join(dir, `${id}.jsonl`), events.map((ev) => JSON.stringify(ev)).join("\n"), "utf8");
+  }
+  async function runJob(args: readonly string[], dir: string): Promise<{ stdout: string; stderr: string }> {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const io = { stdout: (m: string) => stdout.push(m), stderr: (m: string) => stderr.push(m) };
+    const prev = process.env.MUSE_JOBS_DIR;
+    process.env.MUSE_JOBS_DIR = dir;
+    try {
+      const program = new Command();
+      registerJobCommands(program, io);
+      await program.parseAsync(["node", "muse", "job", ...args]);
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_JOBS_DIR;
+      else process.env.MUSE_JOBS_DIR = prev;
+    }
+    return { stderr: stderr.join(""), stdout: stdout.join("") };
+  }
+
+  it("removes a finished job's file (resolving an unambiguous prefix)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-job-del-"));
+    seed(dir, "job_2026-05-15T10-00-00_done0001", [
+      { prompt: "research", tsIso: "2026-05-15T10:00:00Z", type: "started" },
+      { tsIso: "2026-05-15T10:01:00Z", type: "done" }
+    ]);
+    const r = await runJob(["delete", "job_2026-05-15T10-00-00_done"], dir);
+    expect(r.stdout).toContain("Deleted job job_2026-05-15T10-00-00_done0001 (done)");
+    expect(existsSync(join(dir, "job_2026-05-15T10-00-00_done0001.jsonl"))).toBe(false);
+  });
+
+  it("refuses a still-running job without --force, deletes it with --force", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-job-del-run-"));
+    const id = "job_2026-05-15T11-00-00_runn0002";
+    seed(dir, id, [{ prompt: "draft", tsIso: "2026-05-15T11:00:00Z", type: "started" }]);
+    const refused = await runJob(["delete", id], dir);
+    expect(refused.stderr).toContain("still appears to be running");
+    expect(existsSync(join(dir, `${id}.jsonl`))).toBe(true);
+    const forced = await runJob(["delete", id, "--force"], dir);
+    expect(forced.stdout).toContain(`Deleted job ${id} (running)`);
+    expect(existsSync(join(dir, `${id}.jsonl`))).toBe(false);
   });
 });
