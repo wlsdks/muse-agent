@@ -157,6 +157,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           type: "object"
         },
         domain: "tasks",
+        keywords: ["due", "overdue", "deadline", "마감"],
         name: "list",
         risk: "read"
       },
