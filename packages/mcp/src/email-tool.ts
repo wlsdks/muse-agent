@@ -207,7 +207,15 @@ export function createEmailReadMessageTool(deps: EmailReadMessageToolDeps): Muse
       if (id.length === 0) {
         return { found: false, reason: "id is required (from email_recent)" };
       }
-      const message = await deps.reader.getMessage(id);
+      let message;
+      try {
+        message = await deps.reader.getMessage(id);
+      } catch (cause) {
+        // A permanent auth failure (expired/missing token) propagates from
+        // getMessage — surface it so the agent reports "re-auth" rather than
+        // a misleading "no message with that id".
+        return { found: false, id, reason: cause instanceof Error ? cause.message : String(cause) };
+      }
       if (message === undefined) {
         return { found: false, id, reason: "no message with that id (or the inbox was unreachable)" };
       }

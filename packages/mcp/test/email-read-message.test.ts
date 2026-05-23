@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { GmailEmailProvider, createEmailReadMessageTool, extractPlainTextBody } from "../src/index.js";
+import { GmailAuthError, GmailEmailProvider, createEmailReadMessageTool, extractPlainTextBody } from "../src/index.js";
 
 function b64url(text: string): string {
   return Buffer.from(text, "utf8").toString("base64url");
@@ -61,5 +61,19 @@ describe("GmailEmailProvider.getMessage + read_email tool", () => {
     const out = await tool.execute({ id: "m1" }) as { found: boolean; body?: string };
     expect(out).toMatchObject({ found: true, body: "The full project plan is attached." });
     expect(await tool.execute({ id: "" })).toMatchObject({ found: false });
+  });
+
+  it("getMessage propagates GmailAuthError on 401 (a permanent credential failure is not hidden as 'not found')", async () => {
+    const provider = new GmailEmailProvider("tok", gmailFetch(401, {}), { baseDelayMs: 0, retries: 0, sleep: async () => {} });
+    await expect(provider.getMessage("m1")).rejects.toBeInstanceOf(GmailAuthError);
+  });
+
+  it("read_email surfaces the auth failure as the reason, not a misleading 'no message with that id'", async () => {
+    const provider = new GmailEmailProvider("tok", gmailFetch(401, {}), { baseDelayMs: 0, retries: 0, sleep: async () => {} });
+    const tool = createEmailReadMessageTool({ reader: provider });
+    const out = await tool.execute({ id: "m1" }) as { found: boolean; reason?: string };
+    expect(out.found).toBe(false);
+    expect(out.reason).toContain("auth rejected");
+    expect(out.reason).not.toContain("no message with that id");
   });
 });

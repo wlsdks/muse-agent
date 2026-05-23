@@ -208,7 +208,14 @@ export class GmailEmailProvider implements EmailProvider, EmailSender, EmailRead
     let msg: Record<string, unknown>;
     try {
       msg = await this.get(`${GMAIL_BASE}/messages/${encodeURIComponent(id.trim())}?format=full`);
-    } catch {
+    } catch (cause) {
+      // A bad credential is permanent and affects every read — surface it
+      // (matching listRecent), so the caller reports "re-auth" rather than
+      // a misleading "message not found". A transient failure / malformed
+      // body for this one message degrades to undefined.
+      if (cause instanceof GmailAuthError) {
+        throw cause;
+      }
       return undefined;
     }
     const payload = (msg.payload ?? {}) as { headers?: ReadonlyArray<Record<string, unknown>> };

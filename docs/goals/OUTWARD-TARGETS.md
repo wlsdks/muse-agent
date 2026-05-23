@@ -693,7 +693,12 @@ was proven ONCE; a JARVIS you depend on survives real-world failure.
   actually asked for instead of its own 250ms backoff, clamped to
   `maxRetryAfterMs` so an hour-long value can't freeze the turn;
   `parseRetryAfterMs` RFC-7231 delta-seconds | HTTP-date, junk-rejecting;
-  mutation-proven). Next actuators (web/contacts) are follow-on slices.
+  mutation-proven). + 910 (email: `getMessage` now re-throws a permanent
+  `GmailAuthError` instead of swallowing it as `undefined`, so the
+  agent-facing `read_email` tool reports "auth rejected — re-auth" on an
+  expired token instead of a misleading "no such message"; cross-method
+  parity with `listRecent`; mutation-proven). Next actuators
+  (web/contacts) are follow-on slices.
 
 **P20 — Deepen the thin axes (Perception + Knowledge).**
 - [x] Continuous perception: an ambient signal (active window /
