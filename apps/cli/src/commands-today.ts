@@ -65,7 +65,7 @@ const MAX_NOTES_WALK_DEPTH = 8;
 interface TodayBriefing {
   readonly generatedAt: string;
   readonly lookaheadHours: number;
-  readonly tasks?: readonly { readonly id: string; readonly title: string }[];
+  readonly tasks?: readonly { readonly id: string; readonly title: string; readonly dueAt?: string }[];
   readonly events?: readonly { readonly id: string; readonly title: string; readonly startsAtIso: string }[];
   readonly notes?: readonly string[];
   readonly reminders?: readonly { readonly id: string; readonly text: string; readonly dueAt: string }[];
@@ -204,7 +204,7 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
       io.stdout(`Today (${shortDateLabel(briefing.generatedAt)}, next ${briefing.lookaheadHours}h${usedLocal ? ", local" : ""})\n`);
       io.stdout(formatReminders(briefing.reminders, briefing.generatedAt));
       io.stdout(formatFollowups(briefing.followups, briefing.generatedAt));
-      io.stdout(formatTasks(briefing.tasks));
+      io.stdout(formatTasks(briefing.tasks, briefingNow(briefing)));
       io.stdout(formatEvents(briefing.events));
       io.stdout(formatNotes(briefing.notes));
       io.stdout(formatEmptyStateHints(briefing));
@@ -472,7 +472,11 @@ async function readOpenTasks(tasksFile: string): Promise<readonly { id: string; 
     .slice(0, 50)
     .map((task) => {
       const serialized = serializeTask(task);
-      return { id: String(serialized.id), title: String(serialized.title) };
+      return {
+        id: String(serialized.id),
+        title: String(serialized.title),
+        ...(serialized.dueAt ? { dueAt: String(serialized.dueAt) } : {})
+      };
     });
 }
 
@@ -589,14 +593,49 @@ function formatFollowups(
   return `\n${colorize(`Followups (${followups.length.toString()}):`, "bold")}\n${lines.join("\n")}\n`;
 }
 
-function formatTasks(tasks: readonly { readonly id: string; readonly title: string }[] | undefined): string {
+/**
+ * Relative due tag for a task in the daily view — " (overdue)" /
+ * " (today)" / " (tomorrow)" / " (in N days)", or "" when undated /
+ * unparseable. Calendar-day diff (local midnights) so a dueAt later
+ * today still reads "today". Lets `muse today` show urgency instead of
+ * a flat list of titles.
+ */
+function briefingNow(briefing: TodayBriefing): Date {
+  const ms = Date.parse(briefing.generatedAt);
+  return Number.isFinite(ms) ? new Date(ms) : new Date();
+}
+
+export function relativeDueTag(dueAtIso: string | undefined, now: Date): string {
+  if (!dueAtIso) {
+    return "";
+  }
+  const ms = Date.parse(dueAtIso);
+  if (!Number.isFinite(ms)) {
+    return "";
+  }
+  const due = new Date(ms);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dayDiff = Math.round((new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime() - today.getTime()) / 86_400_000);
+  if (dayDiff < 0) {
+    return " (overdue)";
+  }
+  if (dayDiff === 0) {
+    return " (today)";
+  }
+  if (dayDiff === 1) {
+    return " (tomorrow)";
+  }
+  return ` (in ${dayDiff.toString()} days)`;
+}
+
+export function formatTasks(tasks: readonly { readonly id: string; readonly title: string; readonly dueAt?: string }[] | undefined, now: Date): string {
   if (!tasks) {
     return "\nTasks: (not configured)\n";
   }
   if (tasks.length === 0) {
     return "\nTasks: (none open)\n";
   }
-  const lines = tasks.map((task) => `  - [${task.id.slice(0, 12)}] ${task.title}`);
+  const lines = tasks.map((task) => `  - [${task.id.slice(0, 12)}] ${task.title}${relativeDueTag(task.dueAt, now)}`);
   return `\nTasks (${tasks.length} open):\n${lines.join("\n")}\n`;
 }
 

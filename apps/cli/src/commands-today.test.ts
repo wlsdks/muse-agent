@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { writeFollowups, writeReminders, type PersistedFollowup, type PersistedReminder } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
-import { formatEvents, parseLookaheadHours, readDueFollowups, readDueReminders } from "./commands-today.js";
+import { formatEvents, formatTasks, parseLookaheadHours, readDueFollowups, readDueReminders, relativeDueTag } from "./commands-today.js";
 
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
@@ -37,6 +37,37 @@ describe("formatEvents terminal-injection hardening (goal 346/347 sibling — ca
       .toBe("\nUpcoming (1):\n  - 09:30 — Standup\n");
     expect(formatEvents(undefined)).toBe("\nUpcoming: (calendar not configured)\n");
     expect(formatEvents([])).toBe("\nUpcoming: (no calendar events in window)\n");
+  });
+});
+
+describe("relativeDueTag — urgency tag for muse today tasks", () => {
+  const now = new Date(2026, 4, 20, 9, 0); // May 20 2026
+  const at = (d: number) => new Date(2026, 4, d, 12, 0).toISOString();
+  it("tags overdue / today / tomorrow / future relative to today", () => {
+    expect(relativeDueTag(at(18), now)).toBe(" (overdue)");
+    expect(relativeDueTag(at(20), now)).toBe(" (today)");
+    expect(relativeDueTag(at(21), now)).toBe(" (tomorrow)");
+    expect(relativeDueTag(at(25), now)).toBe(" (in 5 days)");
+  });
+  it("a due time LATER today still reads (today), not tomorrow", () => {
+    expect(relativeDueTag(new Date(2026, 4, 20, 23, 30).toISOString(), now)).toBe(" (today)");
+  });
+  it("undated / unparseable → no tag", () => {
+    expect(relativeDueTag(undefined, now)).toBe("");
+    expect(relativeDueTag("not-a-date", now)).toBe("");
+  });
+});
+
+describe("formatTasks — daily view shows each task's urgency", () => {
+  const now = new Date(2026, 4, 20, 9, 0);
+  it("renders the due tag alongside the title", () => {
+    const out = formatTasks([
+      { dueAt: new Date(2026, 4, 18, 9, 0).toISOString(), id: "t1abc", title: "Pay rent" },
+      { id: "t2def", title: "Someday idea" }
+    ], now);
+    expect(out).toContain("Pay rent (overdue)");
+    expect(out).toContain("Someday idea\n"); // undated → bare title, no tag
+    expect(out).not.toContain("Someday idea (");
   });
 });
 
