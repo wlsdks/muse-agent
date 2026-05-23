@@ -171,6 +171,46 @@ export function readWebSearchEnvSnapshot(env: Readonly<Record<string, string | u
 }
 
 /**
+ * Resolve the voice section the same way autoconfigure's
+ * `buildVoiceRegistry` does, so `muse doctor` / setup --json report the
+ * backend that will actually run. Pure (env-injected) for direct unit
+ * coverage. Carries an explicit `nextStep` when `MUSE_VOICE_TTS=piper`
+ * was chosen but `MUSE_PIPER_VOICE` is unset — that combination
+ * silently falls back to paid OpenAI TTS (or none), which a user
+ * deliberately picking local/zero-cost speech must be told about.
+ */
+export function resolveVoiceStatus(
+  env: Readonly<Record<string, string | undefined>>
+): SetupStatusSnapshot["voice"] {
+  const voiceFromBase = Boolean(env.OPENAI_API_KEY?.trim());
+  const voiceFromMuse = Boolean(env.MUSE_VOICE_OPENAI_API_KEY?.trim());
+  const source: SetupStatusSnapshot["voice"]["source"] = voiceFromMuse
+    ? "muse_voice_openai_api_key"
+    : voiceFromBase ? "openai_api_key" : "none";
+  const sttChoice = env.MUSE_VOICE_STT?.trim().toLowerCase();
+  const ttsChoice = env.MUSE_VOICE_TTS?.trim().toLowerCase();
+  const hasPiperVoice = Boolean(env.MUSE_PIPER_VOICE?.trim());
+  const sttBackend: SetupStatusSnapshot["voice"]["sttBackend"] =
+    sttChoice === "whisper-cpp" ? "whisper-cpp" : source !== "none" ? "openai-whisper" : "none";
+  const ttsBackend: SetupStatusSnapshot["voice"]["ttsBackend"] =
+    ttsChoice === "piper" && hasPiperVoice ? "piper" : source !== "none" ? "openai-tts" : "none";
+  const bothNone = sttBackend === "none" && ttsBackend === "none";
+  let nextStep: string | undefined;
+  if (bothNone) {
+    nextStep = "Run `muse setup model` and pick OpenAI, or export MUSE_VOICE_OPENAI_API_KEY, or set MUSE_VOICE_STT=whisper-cpp / MUSE_VOICE_TTS=piper + MUSE_PIPER_VOICE for local-only";
+  } else if (ttsChoice === "piper" && !hasPiperVoice) {
+    nextStep = `MUSE_VOICE_TTS=piper needs MUSE_PIPER_VOICE (path to a .onnx voice file); without it TTS fell back to ${ttsBackend}. Set MUSE_PIPER_VOICE for local, zero-cost speech.`;
+  }
+  return {
+    source,
+    sttBackend,
+    status: bothNone ? "info" : "ok",
+    ttsBackend,
+    ...(nextStep ? { nextStep } : {})
+  };
+}
+
+/**
  * Capture a fresh snapshot of the user's setup state. Both surfaces
  * (CLI --json, REST /api/setup/status) call this with no arguments;
  * the env-merge mirrors autoconfigure's runtime boot so the snapshot
@@ -202,22 +242,7 @@ export async function collectSetupStatusJson(): Promise<SetupStatusSnapshot> {
   const tasksFile = resolveTasksFile(env);
   const tasksCount = await readTaskCount(tasksFile);
 
-  const voiceFromBase = Boolean(env.OPENAI_API_KEY?.trim());
-  const voiceFromMuse = Boolean(env.MUSE_VOICE_OPENAI_API_KEY?.trim());
-  const voiceSource: "openai_api_key" | "muse_voice_openai_api_key" | "none" = voiceFromMuse
-    ? "muse_voice_openai_api_key"
-    : voiceFromBase ? "openai_api_key" : "none";
-  const voiceSttChoice = env.MUSE_VOICE_STT?.trim().toLowerCase();
-  const voiceTtsChoice = env.MUSE_VOICE_TTS?.trim().toLowerCase();
-  const hasPiperVoice = Boolean(env.MUSE_PIPER_VOICE?.trim());
-  const sttBackend: "openai-whisper" | "whisper-cpp" | "none" =
-    voiceSttChoice === "whisper-cpp"
-      ? "whisper-cpp"
-      : voiceSource !== "none" ? "openai-whisper" : "none";
-  const ttsBackend: "openai-tts" | "piper" | "none" =
-    voiceTtsChoice === "piper" && hasPiperVoice
-      ? "piper"
-      : voiceSource !== "none" ? "openai-tts" : "none";
+  const voiceStatus = resolveVoiceStatus(env);
 
   const messagingFile = resolveMessagingCredentialsFile(env);
   const messagingHits = await readMessagingProviderState(messagingFile, env);
@@ -324,15 +349,7 @@ export async function collectSetupStatusJson(): Promise<SetupStatusSnapshot> {
         ? { nextStep: "Tasks file materialises on first `muse task add`" }
         : {})
     },
-    voice: {
-      source: voiceSource,
-      sttBackend,
-      status: sttBackend === "none" && ttsBackend === "none" ? "info" : "ok",
-      ttsBackend,
-      ...(sttBackend === "none" && ttsBackend === "none"
-        ? { nextStep: "Run `muse setup model` and pick OpenAI, or export MUSE_VOICE_OPENAI_API_KEY, or set MUSE_VOICE_STT=whisper-cpp / MUSE_VOICE_TTS=piper + MUSE_PIPER_VOICE for local-only" }
-        : {})
-    },
+    voice: voiceStatus,
     webSearch: {
       ...readWebSearchEnvSnapshot(env),
       status: "ok" as const

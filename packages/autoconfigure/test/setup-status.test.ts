@@ -1,9 +1,37 @@
 import { describe, expect, it } from "vitest";
 
 import { resolveDefaultModel } from "../src/autoconfigure-model-provider.js";
-import { readActuatorReadiness, readModelKeyState, readWebSearchEnvSnapshot } from "../src/setup-status.js";
+import { readActuatorReadiness, readModelKeyState, readWebSearchEnvSnapshot, resolveVoiceStatus } from "../src/setup-status.js";
 
 const MISSING_KEYS_FILE = "/dev/null/no-such-keys.json";
+
+describe("resolveVoiceStatus", () => {
+  it("piper requested but MUSE_PIPER_VOICE unset → warns it silently fell back to paid OpenAI TTS", () => {
+    const v = resolveVoiceStatus({ MUSE_VOICE_TTS: "piper", OPENAI_API_KEY: "sk-test" });
+    // Effective backend is the paid fallback, NOT what the user asked for.
+    expect(v.ttsBackend).toBe("openai-tts");
+    expect(v.nextStep).toContain("MUSE_PIPER_VOICE");
+    expect(v.nextStep).toContain("fell back to openai-tts");
+  });
+
+  it("piper requested WITH MUSE_PIPER_VOICE → local backend, no fallback warning", () => {
+    const v = resolveVoiceStatus({ MUSE_VOICE_TTS: "piper", MUSE_PIPER_VOICE: "/voices/en.onnx" });
+    expect(v.ttsBackend).toBe("piper");
+    expect(v.nextStep).toBeUndefined();
+  });
+
+  it("nothing configured → status info + the full setup hint", () => {
+    const v = resolveVoiceStatus({});
+    expect(v).toMatchObject({ source: "none", sttBackend: "none", status: "info", ttsBackend: "none" });
+    expect(v.nextStep).toContain("MUSE_VOICE_STT=whisper-cpp");
+  });
+
+  it("openai key only → both openai backends, no warning", () => {
+    const v = resolveVoiceStatus({ MUSE_VOICE_OPENAI_API_KEY: "sk-x" });
+    expect(v).toMatchObject({ source: "muse_voice_openai_api_key", sttBackend: "openai-whisper", status: "ok", ttsBackend: "openai-tts" });
+    expect(v.nextStep).toBeUndefined();
+  });
+});
 
 describe("readActuatorReadiness", () => {
   it("reports web always-on, email/home off, status info + hints when no provider env is set", () => {
