@@ -55,6 +55,7 @@ import {
   createWeatherTool,
   GmailEmailProvider,
   queryContacts,
+  readFollowups,
   readReminders,
   upsertFollowup,
   withChromeDevToolsRisk,
@@ -576,6 +577,11 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
         list: async () => (await readReminders(resolveRemindersFile(env)))
           .filter((reminder) => reminder.status === "pending")
           .map((reminder) => ({ dueAt: reminder.dueAt, id: reminder.id, text: reminder.text }))
+      },
+      followupsSource: {
+        list: async () => (await readFollowups(resolveFollowupsFile(env)))
+          .filter((followup) => followup.status === "scheduled")
+          .map((followup) => ({ id: followup.id, summary: followup.summary }))
       }
     })];
   })();

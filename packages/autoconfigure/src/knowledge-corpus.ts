@@ -71,6 +71,16 @@ export interface RemindersSource {
   list(): Promise<readonly ReminderLike[]> | readonly ReminderLike[];
 }
 
+export interface FollowupLike {
+  readonly id: string;
+  readonly summary: string;
+}
+
+export interface FollowupsSource {
+  /** Scheduled (still-pending) followups only — fired/cancelled ones aren't live context. */
+  list(): Promise<readonly FollowupLike[]> | readonly FollowupLike[];
+}
+
 export interface AssembleKnowledgeCorpusOptions {
   readonly notesProvider?: NotesProvider;
   /** Open tasks become corpus chunks sourced `task/<id>` — the user's todos hold key facts. */
@@ -83,6 +93,8 @@ export interface AssembleKnowledgeCorpusOptions {
   readonly emailSource?: EmailMessageSource;
   /** Pending reminders become corpus chunks sourced `reminder/<text>` — "the dentist reminder". */
   readonly remindersSource?: RemindersSource;
+  /** Scheduled followups become corpus chunks sourced `followup/<summary>` — the agent's own "check on X". */
+  readonly followupsSource?: FollowupsSource;
   readonly extraChunks?: readonly KnowledgeChunk[];
   /** Cap notes pulled into the corpus. Default 200. */
   readonly maxNotes?: number;
@@ -244,6 +256,22 @@ export async function assembleKnowledgeCorpus(
     }
   }
 
+  if (options.followupsSource) {
+    let followups: readonly FollowupLike[];
+    try {
+      followups = await options.followupsSource.list();
+    } catch {
+      followups = [];
+    }
+    for (const followup of followups) {
+      if (followup.summary.trim().length === 0) {
+        continue;
+      }
+      const text = followup.summary.length > maxChars ? followup.summary.slice(0, maxChars) : followup.summary;
+      chunks.push({ source: labelSource("followup", followup.summary, followup.id), text });
+    }
+  }
+
   if (options.extraChunks?.length) {
     chunks.push(...options.extraChunks);
   }
@@ -307,6 +335,7 @@ export interface NotesKnowledgeSearchToolOptions {
   readonly contactsSource?: ContactsSource;
   readonly emailSource?: EmailMessageSource;
   readonly remindersSource?: RemindersSource;
+  readonly followupsSource?: FollowupsSource;
   readonly embed: (text: string) => Promise<readonly number[]>;
   readonly topK?: number;
   readonly maxNotes?: number;
@@ -349,6 +378,7 @@ export function createNotesKnowledgeSearchTool(options: NotesKnowledgeSearchTool
         ...(options.contactsSource ? { contactsSource: options.contactsSource } : {}),
         ...(options.emailSource ? { emailSource: options.emailSource } : {}),
         ...(options.remindersSource ? { remindersSource: options.remindersSource } : {}),
+        ...(options.followupsSource ? { followupsSource: options.followupsSource } : {}),
         ...(options.extraChunks ? { extraChunks: options.extraChunks } : {}),
         ...(options.maxNotes !== undefined ? { maxNotes: options.maxNotes } : {}),
         ...(options.maxCharsPerNote !== undefined ? { maxCharsPerNote: options.maxCharsPerNote } : {}),
