@@ -59,7 +59,7 @@ export interface ToolIdempotencyStore {
 }
 
 export interface ToolDescriptionIssue {
-  readonly code: "missing_description" | "missing_input_schema" | "ambiguous_risk" | "duplicate_name" | "unknown_dependency";
+  readonly code: "missing_description" | "missing_input_schema" | "ambiguous_risk" | "duplicate_name" | "unknown_dependency" | "undescribed_parameter";
   readonly message: string;
   readonly toolName: string;
 }
@@ -329,6 +329,19 @@ export function validateToolDefinitions(tools: readonly MuseTool[]): readonly To
         message: `Tool '${definition.name}' must expose an object input schema`,
         toolName: definition.name
       });
+    } else if (isRecord(definition.inputSchema.properties)) {
+      // tool-calling.md rule 3: every parameter the local model fills
+      // needs a concrete description, or it guesses the argument.
+      for (const [param, schema] of Object.entries(definition.inputSchema.properties)) {
+        const description = isRecord(schema) ? schema.description : undefined;
+        if (typeof description !== "string" || description.trim().length === 0) {
+          issues.push({
+            code: "undescribed_parameter",
+            message: `Tool '${definition.name}' parameter '${param}' needs a description (an example helps the local model fill it)`,
+            toolName: definition.name
+          });
+        }
+      }
     }
 
     if (!["read", "write", "execute"].includes(definition.risk)) {

@@ -175,9 +175,15 @@ export interface KnowledgeSearchToolOptions {
 export function createKnowledgeSearchTool(options: KnowledgeSearchToolOptions): MuseTool {
   return {
     definition: {
-      description: "Search the user's personal knowledge corpus (notes + ingested documents). Returns matching passages, each labelled with its [source] — cite the source you use.",
+      description: "Search the user's personal knowledge corpus (notes + ingested documents). Returns matching passages, each labelled with its [source] — cite the source you use. Use when the user asks about something they may have written down or saved; do not use for general knowledge or live web data.",
       inputSchema: {
-        properties: { query: { type: "string" } },
+        additionalProperties: false,
+        properties: {
+          query: {
+            description: "What to look up, in natural language — e.g. 'my health insurance policy number' or 'notes from the Q3 launch'.",
+            type: "string"
+          }
+        },
         required: ["query"],
         type: "object"
       },

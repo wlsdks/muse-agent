@@ -1,4 +1,4 @@
-import { ToolRegistry } from "@muse/tools";
+import { ToolRegistry, validateToolDefinitions } from "@muse/tools";
 import type { ModelProvider } from "@muse/model";
 import { describe, expect, it } from "vitest";
 
@@ -23,6 +23,15 @@ const CORPUS: readonly KnowledgeChunk[] = [
   { source: "notes/old.md", text: "peanut butter recipe" },
   { source: "docs/insurance.pdf", text: "The home insurance policy number is HOME-99812." }
 ];
+
+describe("createKnowledgeSearchTool — definition meets the one-shot tool-calling bar", () => {
+  it("its query parameter is described (validateToolDefinitions clean)", () => {
+    const tool = createKnowledgeSearchTool({ corpus: CORPUS, embed });
+    expect(validateToolDefinitions([tool])).toEqual([]);
+    const props = (tool.definition.inputSchema as { properties: Record<string, { description?: string }> }).properties;
+    expect(props.query.description ?? "").toContain("e.g.");
+  });
+});
 
 describe("rankKnowledgeChunks", () => {
   it("ranks multi-source chunks by similarity, keeps the source, drops sub-threshold passages", async () => {

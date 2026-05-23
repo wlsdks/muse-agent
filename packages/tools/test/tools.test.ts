@@ -184,6 +184,30 @@ describe("tool utilities", () => {
     ]);
   });
 
+  it("flags an object-schema parameter that has no description (tool-calling.md rule 3)", () => {
+    const undescribed: MuseTool = {
+      definition: {
+        description: "A tool whose query parameter the model must fill.",
+        inputSchema: { properties: { query: { type: "string" } }, required: ["query"], type: "object" },
+        name: "needs_param_desc",
+        risk: "read"
+      },
+      execute: () => "unused"
+    };
+    const issues = validateToolDefinitions([undescribed]);
+    expect(issues.map((i) => i.code)).toContain("undescribed_parameter");
+    expect(issues.find((i) => i.code === "undescribed_parameter")?.message).toContain("query");
+
+    const described: MuseTool = {
+      ...undescribed,
+      definition: {
+        ...undescribed.definition,
+        inputSchema: { properties: { query: { description: "What to look up, e.g. 'flight times'.", type: "string" } }, required: ["query"], type: "object" }
+      }
+    };
+    expect(validateToolDefinitions([described])).toEqual([]);
+  });
+
   it("plans tool execution with declared dependencies first", () => {
     const authenticate: MuseTool = {
       definition: {
