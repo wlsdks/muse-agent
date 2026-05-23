@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  classifyHomeAlertsConfig,
   classifyMcpServersField,
   classifyWebWatchConfig,
   embedModelCheck,
@@ -179,6 +180,45 @@ describe("classifyWebWatchConfig — surface silently-dropped web-watch entries 
   it("warns when set but not valid JSON, or not a JSON array", () => {
     expect(classifyWebWatchConfig("{not json")).toMatchObject({ status: "warn", detail: expect.stringContaining("not valid JSON") });
     expect(classifyWebWatchConfig('{"id":"a"}')).toMatchObject({ status: "warn", detail: expect.stringContaining("must be a JSON array") });
+  });
+});
+
+describe("classifyHomeAlertsConfig — surface silently-dropped home-alert entries (symmetric to web-watch)", () => {
+  const valid = (entityId: string, extra: Record<string, unknown> = {}) => ({
+    entityId, label: "Front door", alertStates: ["unlocked", "open"], ...extra
+  });
+
+  it("returns undefined when unset or an empty array (nothing to report)", () => {
+    expect(classifyHomeAlertsConfig(undefined)).toBeUndefined();
+    expect(classifyHomeAlertsConfig("")).toBeUndefined();
+    expect(classifyHomeAlertsConfig("   ")).toBeUndefined();
+    expect(classifyHomeAlertsConfig("[]")).toBeUndefined();
+  });
+
+  it("reports 'ok' with the count when every entry is valid", () => {
+    expect(classifyHomeAlertsConfig(JSON.stringify([valid("lock.front"), valid("cover.garage")])))
+      .toMatchObject({ status: "ok", detail: expect.stringContaining("2 home-alert") });
+  });
+
+  it("warns and quantifies the drop when some entries are invalid", () => {
+    const config = JSON.stringify([
+      valid("lock.front"),
+      { label: "no entity", alertStates: ["open"] }, // missing entityId
+      { entityId: "sensor.x", label: "no states", alertStates: [] } // empty alertStates
+    ]);
+    expect(classifyHomeAlertsConfig(config))
+      .toMatchObject({ status: "warn", detail: expect.stringContaining("2 of 3 home-alert entries are invalid") });
+  });
+
+  it("uses singular phrasing for a single dropped entry", () => {
+    const config = JSON.stringify([valid("lock.front"), { label: "bad", alertStates: ["open"] }]);
+    expect(classifyHomeAlertsConfig(config))
+      .toMatchObject({ status: "warn", detail: expect.stringContaining("1 of 2 home-alert entry is invalid") });
+  });
+
+  it("warns when set but not valid JSON, or not a JSON array", () => {
+    expect(classifyHomeAlertsConfig("{not json")).toMatchObject({ status: "warn", detail: expect.stringContaining("not valid JSON") });
+    expect(classifyHomeAlertsConfig('{"entityId":"x"}')).toMatchObject({ status: "warn", detail: expect.stringContaining("must be a JSON array") });
   });
 });
 

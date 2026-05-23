@@ -16,7 +16,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { mergeModelKeysFromFile } from "@muse/autoconfigure";
-import { webWatchesFromConfig } from "@muse/mcp";
+import { parseHomeAlertChecks, webWatchesFromConfig } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
@@ -209,6 +209,44 @@ export function classifyWebWatchConfig(raw: string | undefined): {
   const dropped = total - valid;
   return {
     detail: `${dropped.toString()} of ${total.toString()} web-watch ${dropped === 1 ? "entry is" : "entries are"} invalid and skipped — check id/url/title/message/rule`,
+    status: "warn"
+  };
+}
+
+/**
+ * Validate `MUSE_BRIEFING_HOME_ALERTS` (the "surface a home sensor in
+ * my briefing when it's in an alert state" JSON array). Like the
+ * web-watch config it's parsed FAIL-OPEN, so a typo'd entry (missing
+ * entityId/label, an empty alertStates) is silently dropped and the
+ * alert never appears in the briefing with no error. This surfaces the
+ * silent drop. Drives the REAL `@muse/mcp` `parseHomeAlertChecks` so
+ * the count can't drift from what the briefing daemon builds. Returns
+ * `undefined` when unset / an empty array — nothing to report.
+ */
+export function classifyHomeAlertsConfig(raw: string | undefined): {
+  readonly status: "ok" | "warn" | "fail";
+  readonly detail: string;
+} | undefined {
+  const trimmed = (raw ?? "").trim();
+  if (trimmed.length === 0) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { detail: "MUSE_BRIEFING_HOME_ALERTS is set but not valid JSON — no home alerts in the briefing", status: "warn" };
+  }
+  if (!Array.isArray(parsed)) {
+    return { detail: "MUSE_BRIEFING_HOME_ALERTS must be a JSON array — no home alerts in the briefing", status: "warn" };
+  }
+  const total = parsed.length;
+  if (total === 0) return undefined;
+  const valid = parseHomeAlertChecks(trimmed).length;
+  if (valid === total) {
+    return { detail: `${valid.toString()} home-alert(s) configured`, status: "ok" };
+  }
+  const dropped = total - valid;
+  return {
+    detail: `${dropped.toString()} of ${total.toString()} home-alert ${dropped === 1 ? "entry is" : "entries are"} invalid and skipped — check entityId/label/alertStates`,
     status: "warn"
   };
 }
@@ -442,6 +480,12 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   const webWatchVerdict = classifyWebWatchConfig(process.env.MUSE_WEB_WATCH_CONFIG);
   if (webWatchVerdict) {
     checks.push({ name: "web-watch config", ...webWatchVerdict });
+  }
+
+  // home-alerts config — only reported when actually configured.
+  const homeAlertsVerdict = classifyHomeAlertsConfig(process.env.MUSE_BRIEFING_HOME_ALERTS);
+  if (homeAlertsVerdict) {
+    checks.push({ name: "home-alerts config", ...homeAlertsVerdict });
   }
 
   const worst = checks.reduce<"ok" | "warn" | "fail">((acc, c) => {
