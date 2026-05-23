@@ -91,3 +91,23 @@ describe("muse home state — read-only surface", () => {
     expect(r.exitCode).toBe(1);
   });
 });
+
+describe("muse home entities — discovery surface", () => {
+  it("lists entities and filters by --domain", async () => {
+    const body = JSON.stringify([
+      { attributes: {}, entity_id: "lock.front_door", state: "locked" },
+      { attributes: {}, entity_id: "light.living_room", state: "on" }
+    ]);
+    const { fetchImpl, calls } = stateFetch(200, body);
+    const r = await run(["entities", "--domain", "lock"], { fetchImpl });
+    expect(calls[0]).toBe("http://ha.local:8123/api/states");
+    expect(r.output).toContain("lock.front_door: locked");
+    expect(r.output).not.toContain("light.living_room");
+  });
+
+  it("reports none when the entity list is empty / unreachable", async () => {
+    const { fetchImpl } = stateFetch(500, "boom");
+    const r = await run(["entities"], { fetchImpl });
+    expect(r.output).toContain("No entities found");
+  });
+});

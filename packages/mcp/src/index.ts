@@ -499,6 +499,7 @@ export {
 export {
   buildHomeAssistantServiceCall,
   createHomeStateSnapshot,
+  listHomeAssistantStates,
   performHomeActionWithApproval,
   parseHomeAlertChecks,
   readHomeAssistantState,
@@ -506,12 +507,14 @@ export {
   type HomeAlertCheck,
   type HomeAlertConnection,
   type HomeAssistantServiceCall,
+  type HomeEntitiesQuery,
   type HomeState,
   type HomeStateQuery,
   type PerformHomeActionWithApprovalOptions
 } from "./smart-home.js";
 export {
   createHomeActionTool,
+  createHomeEntitiesTool,
   createHomeStateTool,
   type HomeActionToolDeps,
   type HomeStateToolDeps

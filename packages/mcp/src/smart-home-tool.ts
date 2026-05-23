@@ -11,7 +11,7 @@
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
-import { performHomeActionWithApproval, readHomeAssistantState } from "./smart-home.js";
+import { listHomeAssistantStates, performHomeActionWithApproval, readHomeAssistantState } from "./smart-home.js";
 import type { RetryOptions } from "./http-retry.js";
 import type { WebActionApprovalGate } from "./web-action.js";
 
@@ -114,6 +114,40 @@ export function createHomeStateTool(deps: HomeStateToolDeps): MuseTool {
         return { entity: entityId, found: false, reason: "no state returned (unknown entity or Home Assistant unreachable)" };
       }
       return { attributes: state.attributes as JsonObject, entity: state.entityId, found: true, state: state.state };
+    }
+  };
+}
+
+export function createHomeEntitiesTool(deps: HomeStateToolDeps): MuseTool {
+  return {
+    definition: {
+      description:
+        "List the user's Home Assistant entities (id + current state) so you can discover what devices exist and find the exact entity_id to read with home_state or control with home_action. Read-only. Optionally filter to one domain like 'light' or 'lock'.",
+      domain: "system",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          domain: { description: "Optional device type to filter to, e.g. 'light', 'lock', 'sensor' (omit for all).", type: "string" }
+        },
+        type: "object"
+      },
+      keywords: ["home", "smart-home", "devices", "entities", "list", "discover", "homeassistant"],
+      name: "home_entities",
+      risk: "read"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const domain = typeof args["domain"] === "string" ? args["domain"].trim() : undefined;
+      const entities = await listHomeAssistantStates({
+        baseUrl: deps.baseUrl,
+        token: deps.token,
+        ...(domain ? { domain } : {}),
+        ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
+        ...(deps.retryOptions ? { retryOptions: deps.retryOptions } : {})
+      });
+      return {
+        count: entities.length,
+        entities: entities.map((e) => ({ entity: e.entityId, state: e.state })) as JsonObject[]
+      };
     }
   };
 }

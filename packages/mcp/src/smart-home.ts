@@ -105,6 +105,68 @@ export async function readHomeAssistantState(query: HomeStateQuery): Promise<Hom
   return { attributes, entityId: query.entityId, state: obj.state };
 }
 
+export interface HomeEntitiesQuery {
+  readonly baseUrl: string;
+  readonly token: string;
+  readonly fetchImpl?: typeof globalThis.fetch;
+  readonly retryOptions?: RetryOptions;
+  /** Optional domain filter, e.g. "light" / "lock" — only entities whose id starts with `<domain>.`. */
+  readonly domain?: string;
+}
+
+/**
+ * Discover Home Assistant entities (GET `/api/states`) so the agent can
+ * answer "what devices do I have?" and find the entity ids that
+ * `home_state` / `home_action` need. Read-only + retry-hardened.
+ * Optional `domain` filters to one type (`light.`, `lock.`, …). Returns
+ * `[]` — never throws — on failure or a malformed body.
+ */
+export async function listHomeAssistantStates(query: HomeEntitiesQuery): Promise<HomeState[]> {
+  const base = query.baseUrl.replace(/\/+$/u, "");
+  const fetchImpl = query.fetchImpl ?? globalThis.fetch;
+  let response: Response;
+  try {
+    response = await fetchWithRetry(fetchImpl, `${base}/api/states`, {
+      ...(query.retryOptions ?? {}),
+      init: { headers: { authorization: `Bearer ${query.token}` } }
+    });
+  } catch {
+    return [];
+  }
+  if (!response.ok) {
+    return [];
+  }
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(body)) {
+    return [];
+  }
+  const domain = query.domain?.replace(/\.$/u, "").trim();
+  const prefix = domain && domain.length > 0 ? `${domain}.` : undefined;
+  const out: HomeState[] = [];
+  for (const item of body) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+    const o = item as Record<string, unknown>;
+    if (typeof o.entity_id !== "string" || typeof o.state !== "string") {
+      continue;
+    }
+    if (prefix && !o.entity_id.startsWith(prefix)) {
+      continue;
+    }
+    const attributes = o.attributes && typeof o.attributes === "object" && !Array.isArray(o.attributes)
+      ? o.attributes as Record<string, unknown>
+      : {};
+    out.push({ attributes, entityId: o.entity_id, state: o.state });
+  }
+  return out;
+}
+
 /**
  * Adapt a Home Assistant entity into the web-watch snapshot contract:
  * a `() => Promise<string | undefined>` that returns the entity's

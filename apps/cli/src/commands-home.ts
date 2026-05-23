@@ -7,7 +7,7 @@
  */
 
 import { resolveActionLogFile } from "@muse/autoconfigure";
-import { performHomeActionWithApproval, readHomeAssistantState, type WebActionApprovalGate } from "@muse/mcp";
+import { listHomeAssistantStates, performHomeActionWithApproval, readHomeAssistantState, type WebActionApprovalGate } from "@muse/mcp";
 import { confirm, isCancel } from "@clack/prompts";
 import type { Command } from "commander";
 
@@ -115,5 +115,32 @@ export function registerHomeCommands(program: Command, io: ProgramIO, deps: Home
       }
       const friendly = typeof state.attributes["friendly_name"] === "string" ? ` (${state.attributes["friendly_name"] as string})` : "";
       io.stdout(`${state.entityId}${friendly}: ${state.state}\n`);
+    });
+
+  home
+    .command("entities")
+    .description("List Home Assistant entities (discover device ids to read/control), optionally filtered by domain")
+    .option("--domain <domain>", "Filter to one device type, e.g. 'light' / 'lock' / 'sensor'")
+    .action(async (options: { domain?: string }) => {
+      const baseUrl = deps.baseUrl ?? process.env.MUSE_HOMEASSISTANT_URL?.trim();
+      const token = deps.token ?? process.env.MUSE_HOMEASSISTANT_TOKEN?.trim();
+      if (!baseUrl || !token) {
+        io.stderr("muse home: set MUSE_HOMEASSISTANT_URL and MUSE_HOMEASSISTANT_TOKEN (a Home Assistant long-lived access token).\n");
+        process.exitCode = 1;
+        return;
+      }
+      const entities = await listHomeAssistantStates({
+        baseUrl,
+        token,
+        ...(options.domain ? { domain: options.domain } : {}),
+        ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {})
+      });
+      if (entities.length === 0) {
+        io.stdout(`No entities found${options.domain ? ` for domain '${options.domain}'` : ""} (or Home Assistant unreachable).\n`);
+        return;
+      }
+      for (const entity of entities) {
+        io.stdout(`${entity.entityId}: ${entity.state}\n`);
+      }
     });
 }
