@@ -45,6 +45,7 @@ import { redactSecretsInText, stripUntrustedTerminalChars } from "@muse/shared";
 import type { TextToSpeechProvider } from "@muse/voice";
 import type { Command } from "commander";
 
+import { compareFeedEntriesNewestFirst, defaultFeedsFile, filterRecentFeedEntries, readFeedsStore } from "./feeds-store.js";
 import { formatLocalDate, formatLocalDateTime as shortDateTimeBrief } from "./human-formatters.js";
 import { loadActivePersonaPreamble } from "./persona-store.js";
 import type { ProgramIO } from "./program.js";
@@ -74,6 +75,7 @@ interface TodayBriefing {
   readonly notes?: readonly string[];
   readonly reminders?: readonly { readonly id: string; readonly text: string; readonly dueAt: string }[];
   readonly followups?: readonly { readonly id: string; readonly summary: string; readonly scheduledFor: string }[];
+  readonly headlines?: readonly { readonly feedId: string; readonly title: string; readonly link: string; readonly publishedAt: string }[];
 }
 
 export interface TodayCommandHelpers {
@@ -161,6 +163,15 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
         briefing = { ...briefing, weather: weatherLine };
       }
 
+      // Recent feed headlines are resolved CLIENT-side from the local
+      // feeds store and merged here — same pattern as weather — so the
+      // brief surfaces the user's ambient world-state on BOTH the local
+      // and remote paths (the API daemon doesn't compose feeds).
+      const headlines = await resolveTodayFeedHeadlines(process.env as Record<string, string | undefined>, lookaheadHours);
+      if (headlines && headlines.length > 0) {
+        briefing = { ...briefing, headlines };
+      }
+
       if (options.brief) {
         const prose = await renderBrief(io, command, helpers, briefing, usedLocal, options.model);
         if (options.json) {
@@ -217,6 +228,7 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
       io.stdout(formatTasks(briefing.tasks, briefingNow(briefing)));
       io.stdout(formatEvents(briefing.events));
       io.stdout(formatNotes(briefing.notes));
+      io.stdout(formatHeadlines(briefing.headlines));
       io.stdout(formatEmptyStateHints(briefing));
     });
 }
@@ -236,7 +248,8 @@ function formatEmptyStateHints(briefing: TodayBriefing): string {
     || (briefing.events?.length ?? 0) > 0
     || (briefing.notes?.length ?? 0) > 0
     || (briefing.reminders?.length ?? 0) > 0
-    || (briefing.followups?.length ?? 0) > 0;
+    || (briefing.followups?.length ?? 0) > 0
+    || (briefing.headlines?.length ?? 0) > 0;
   if (hasContent) {
     return "";
   }
@@ -638,6 +651,50 @@ export function formatWeatherLine(weather: string | undefined): string {
     return "";
   }
   return `\nWeather: ${weather.trim()}\n`;
+}
+
+export const DEFAULT_TODAY_HEADLINES_CAP = 5;
+
+/**
+ * Recent feed headlines for the brief: entries published within the
+ * lookahead window (mirrors `muse feeds today`), newest-first, capped.
+ * Read client-side from the local feeds store — fail-soft (a missing /
+ * unreadable store yields `undefined`, so the brief just omits the
+ * section rather than failing). `cap` keeps the brief concise.
+ */
+export async function resolveTodayFeedHeadlines(
+  env: Record<string, string | undefined>,
+  lookaheadHours: number,
+  cap: number = DEFAULT_TODAY_HEADLINES_CAP
+): Promise<readonly { readonly feedId: string; readonly title: string; readonly link: string; readonly publishedAt: string }[] | undefined> {
+  const hours = Number.isFinite(lookaheadHours) && lookaheadHours > 0 ? lookaheadHours : 24;
+  const effectiveCap = Number.isFinite(cap) && cap > 0 ? Math.trunc(cap) : DEFAULT_TODAY_HEADLINES_CAP;
+  const cutoff = new Date(Date.now() - hours * 3_600_000);
+  let store;
+  try {
+    store = await readFeedsStore(env.MUSE_FEEDS_FILE?.trim() || defaultFeedsFile());
+  } catch {
+    return undefined;
+  }
+  const recent = store.feeds
+    .flatMap((feed) => filterRecentFeedEntries(feed.entries, cutoff).map((entry) => ({ entry, feedId: feed.id })))
+    .sort((a, b) => compareFeedEntriesNewestFirst(a.entry, b.entry))
+    .slice(0, effectiveCap)
+    .map(({ entry, feedId }) => ({ feedId, link: entry.link, publishedAt: entry.publishedAt, title: entry.title }));
+  return recent.length > 0 ? recent : undefined;
+}
+
+export function formatHeadlines(
+  headlines: readonly { readonly feedId: string; readonly title: string; readonly publishedAt: string }[] | undefined
+): string {
+  if (!headlines || headlines.length === 0) {
+    return "";
+  }
+  // Feed titles are third-party-controlled — strip ESC/C0/C1/DEL like
+  // the inbox / feeds / search surfaces before printing to the terminal.
+  const clean = (value: string): string => stripUntrustedTerminalChars(value).replace(/\s+/gu, " ").trim();
+  const lines = headlines.map((h) => `  - [${clean(h.feedId)}] ${clean(h.title)}`);
+  return `\nHeadlines (${headlines.length.toString()}):\n${lines.join("\n")}\n`;
 }
 
 export function relativeDueTag(dueAtIso: string | undefined, now: Date): string {

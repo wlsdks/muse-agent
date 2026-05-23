@@ -1,11 +1,11 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { writeFollowups, writeReminders, type PersistedFollowup, type PersistedReminder } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
-import { formatEvents, formatTasks, formatWeatherLine, parseLookaheadHours, readDueFollowups, readDueReminders, relativeDueTag, resolveTodayWeatherLine } from "./commands-today.js";
+import { formatEvents, formatHeadlines, formatTasks, formatWeatherLine, parseLookaheadHours, readDueFollowups, readDueReminders, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today.js";
 
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
@@ -156,5 +156,67 @@ describe("readDueFollowups ordering — by parsed instant, not lexicographic sch
     ]);
     const due = await readDueFollowups(f, new Date("2026-06-01T00:00:00Z"));
     expect(due.map((r) => r.id)).toEqual(["b", "a"]);
+  });
+})
+
+function seedFeedsFile(entries: ReadonlyArray<{ feedId: string; id: string; title: string; publishedAt: string }>): string {
+  const dir = mkdtempSync(join(tmpdir(), "muse-today-feeds-"));
+  const file = join(dir, "feeds.json");
+  const byFeed = new Map<string, { id: string; url: string; name: string; entries: unknown[] }>();
+  for (const e of entries) {
+    if (!byFeed.has(e.feedId)) {
+      byFeed.set(e.feedId, { entries: [], id: e.feedId, name: e.feedId, url: `https://example.com/${e.feedId}.xml` });
+    }
+    byFeed.get(e.feedId)!.entries.push({ id: e.id, link: `https://x.example/${e.id}`, publishedAt: e.publishedAt, summary: "", title: e.title });
+  }
+  writeFileSync(file, JSON.stringify({ feeds: [...byFeed.values()], version: 1 }), "utf8");
+  return file;
+}
+
+describe("resolveTodayFeedHeadlines — recent feed headlines merged into the brief", () => {
+  const recentIso = new Date(Date.now() - 2 * 3_600_000).toISOString(); // 2h ago
+  const olderIso = new Date(Date.now() - 2 * 24 * 3_600_000).toISOString(); // 48h ago
+
+  it("returns only entries within the lookahead window, newest-first across feeds", async () => {
+    const file = seedFeedsFile([
+      { feedId: "tech", id: "t1", title: "Fresh tech", publishedAt: recentIso },
+      { feedId: "tech", id: "t0", title: "Stale tech", publishedAt: olderIso },
+      { feedId: "news", id: "n1", title: "Fresh news", publishedAt: new Date(Date.now() - 1 * 3_600_000).toISOString() }
+    ]);
+    const headlines = await resolveTodayFeedHeadlines({ MUSE_FEEDS_FILE: file }, 24);
+    const titles = (headlines ?? []).map((h) => h.title);
+    expect(titles).toEqual(["Fresh news", "Fresh tech"]); // newest-first; stale excluded
+  });
+
+  it("caps the number of headlines", async () => {
+    const entries = Array.from({ length: 10 }, (_v, i) => ({
+      feedId: "f", id: `e${i.toString()}`, title: `H${i.toString()}`,
+      publishedAt: new Date(Date.now() - (i + 1) * 60_000).toISOString()
+    }));
+    const file = seedFeedsFile(entries);
+    const headlines = await resolveTodayFeedHeadlines({ MUSE_FEEDS_FILE: file }, 24, 3);
+    expect(headlines).toHaveLength(3);
+  });
+
+  it("is fail-soft: a missing store yields undefined (brief omits the section)", async () => {
+    const headlines = await resolveTodayFeedHeadlines({ MUSE_FEEDS_FILE: "/no/such/dir/feeds.json" }, 24);
+    expect(headlines).toBeUndefined();
+  });
+});
+
+describe("formatHeadlines", () => {
+  it("renders a section and strips terminal-control bytes from a hostile feed title", () => {
+    const out = formatHeadlines([
+      { feedId: "news", title: `${ESC}[2J${ESC}]0;pwn${BEL}Breaking thing`, publishedAt: "2026-05-24T00:00:00Z" }
+    ]);
+    expect(hasTerminalControl(out)).toBe(false);
+    expect(out).toContain("Breaking thing");
+    expect(out).toContain("[news]");
+    expect(out).toContain("Headlines (1)");
+  });
+
+  it("returns empty string for undefined / empty (brief stays quiet)", () => {
+    expect(formatHeadlines(undefined)).toBe("");
+    expect(formatHeadlines([])).toBe("");
   });
 })
