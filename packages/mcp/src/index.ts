@@ -486,6 +486,7 @@ export {
   type EmailMessage,
   type EmailProvider,
   type EmailReader,
+  type EmailSearcher,
   type EmailSender,
   type EmailSummary
 } from "./email-provider.js";
@@ -500,9 +501,11 @@ export {
 export {
   createEmailReadMessageTool,
   createEmailReadTool,
+  createEmailSearchTool,
   createEmailSendTool,
   type EmailReadMessageToolDeps,
   type EmailReadToolDeps,
+  type EmailSearchToolDeps,
   type EmailSendToolDeps
 } from "./email-tool.js";
 export {

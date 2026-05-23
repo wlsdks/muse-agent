@@ -14,7 +14,7 @@
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
-import type { EmailProvider, EmailReader, EmailSender } from "./email-provider.js";
+import type { EmailProvider, EmailReader, EmailSearcher, EmailSender } from "./email-provider.js";
 import { sendEmailWithApproval, type EmailApprovalGate } from "./email-send.js";
 import type { Contact } from "./personal-contacts-store.js";
 
@@ -86,7 +86,7 @@ export function createEmailReadTool(deps: EmailReadToolDeps): MuseTool {
   return {
     definition: {
       description:
-        "List the user's recent inbox messages (sender, subject, unread flag, snippet). Use when the user asks about their email / inbox / unread / whether someone wrote. Read-only — never sends anything.",
+        "List the user's LATEST inbox messages (sender, subject, unread flag, snippet). Use for 'what's in my inbox / any new email / unread'. Use ONLY when there are NO search terms — if the user names a sender, subject word, or keyword to look for ('the email from the bank', 'emails about the trip'), use `search_email` instead. Read-only — never sends anything.",
       domain: "messaging",
       inputSchema: {
         additionalProperties: false,
@@ -122,6 +122,59 @@ export function createEmailReadTool(deps: EmailReadToolDeps): MuseTool {
           unread: m.unread,
           ...(m.snippet ? { snippet: m.snippet } : {})
         })) as JsonObject[]
+      };
+    }
+  };
+}
+
+export interface EmailSearchToolDeps {
+  readonly searcher: EmailSearcher;
+}
+
+export function createEmailSearchTool(deps: EmailSearchToolDeps): MuseTool {
+  return {
+    definition: {
+      description:
+        "Find inbox messages MATCHING a query — a sender, subject word, or keyword the user named ('the email from the bank', 'emails about the Paris trip', 'invoice from Acme'). Returns the matches (sender, subject, unread flag, snippet, id). Use this whenever the user is looking for SPECIFIC mail; for just the latest messages with no search terms, use `email_recent`. Read-only — never sends anything.",
+      domain: "messaging",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          limit: { description: "How many matches to fetch (1–50, default 10).", type: "number" },
+          query: { description: "What to look for — sender, subject word, or keyword, e.g. 'from:bank statement' or 'Paris trip'.", type: "string" }
+        },
+        required: ["query"],
+        type: "object"
+      },
+      keywords: ["email", "emails", "search", "find", "from", "about", "mail", "mails", "이메일", "메일", "찾아"],
+      name: "search_email",
+      risk: "read"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const query = typeof args["query"] === "string" ? args["query"].trim() : "";
+      if (query.length === 0) {
+        return { count: 0, error: "search_email requires a non-empty 'query'", messages: [] };
+      }
+      const limitArg = args["limit"];
+      const limit = typeof limitArg === "number" && Number.isFinite(limitArg)
+        ? Math.max(1, Math.min(50, Math.trunc(limitArg)))
+        : 10;
+      let messages;
+      try {
+        messages = await deps.searcher.search(query, limit);
+      } catch (cause) {
+        return { count: 0, error: cause instanceof Error ? cause.message : String(cause), messages: [] };
+      }
+      return {
+        count: messages.length,
+        messages: messages.map((m) => ({
+          from: m.from,
+          id: m.id,
+          subject: m.subject,
+          unread: m.unread,
+          ...(m.snippet ? { snippet: m.snippet } : {})
+        })) as JsonObject[],
+        query
       };
     }
   };

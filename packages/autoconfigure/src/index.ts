@@ -46,6 +46,7 @@ import {
   createContactsFindTool,
   createContactsRemoveTool,
   createEmailReadMessageTool,
+  createEmailSearchTool,
   removeContact,
   createEmailReadTool,
   createHomeEntitiesTool,
@@ -596,7 +597,11 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       return [];
     }
     const provider = new GmailEmailProvider(gmailToken);
-    return [createEmailReadTool({ provider }), createEmailReadMessageTool({ reader: provider })];
+    return [
+      createEmailReadTool({ provider }),
+      createEmailReadMessageTool({ reader: provider }),
+      createEmailSearchTool({ searcher: provider })
+    ];
   })();
 
   const { skillRegistryPromise, skillTools } = createSkillRuntime(env);

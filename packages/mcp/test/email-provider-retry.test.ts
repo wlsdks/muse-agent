@@ -87,6 +87,44 @@ describe("GmailEmailProvider — read path is retry-hardened", () => {
   });
 });
 
+describe("GmailEmailProvider — search", () => {
+  it("sends the query as Gmail's q= param and returns the matches", async () => {
+    let listUrl = "";
+    const fetchImpl = (async (url: string) => {
+      if (url.includes("/messages?")) {
+        listUrl = url;
+        return json({ messages: [{ id: "m1" }] });
+      }
+      return json({ labelIds: ["INBOX"], payload: { headers: [{ name: "From", value: "bank@x.com" }, { name: "Subject", value: "Your statement" }] }, snippet: "stmt" });
+    }) as unknown as typeof globalThis.fetch;
+    const provider = new GmailEmailProvider("token", fetchImpl, noWait);
+    const matches = await provider.search("from:bank statement", 5);
+    expect(listUrl).toContain("q=from%3Abank%20statement");
+    expect(listUrl).not.toContain("labelIds=INBOX");
+    expect(matches.map((m) => m.subject)).toEqual(["Your statement"]);
+  });
+
+  it("returns [] for a blank query without any HTTP", async () => {
+    const fetchImpl = vi.fn(async () => json({})) as unknown as typeof globalThis.fetch;
+    const provider = new GmailEmailProvider("token", fetchImpl, noWait);
+    expect(await provider.search("   ", 5)).toEqual([]);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("inherits per-message resilience — one bad match does not drop the rest", async () => {
+    const msg = (subject: string) =>
+      json({ labelIds: ["INBOX"], payload: { headers: [{ name: "Subject", value: subject }] }, snippet: "" });
+    const fetchImpl = (async (url: string) => {
+      if (url.includes("/messages?")) return json({ messages: [{ id: "m1" }, { id: "m2" }] });
+      if (url.includes("m2")) return new Response("<html>err</html>", { status: 200 });
+      return msg("Match");
+    }) as unknown as typeof globalThis.fetch;
+    const provider = new GmailEmailProvider("token", fetchImpl, noWait);
+    const matches = await provider.search("trip", 5);
+    expect(matches.map((m) => m.subject)).toEqual(["Match"]);
+  });
+});
+
 describe("GmailEmailProvider — sendEmail is NEVER retried (no double-send)", () => {
   it("a transient 503 on send throws immediately, fetch called exactly once", async () => {
     const fetchImpl = vi.fn(async () => status(503)) as unknown as typeof globalThis.fetch;

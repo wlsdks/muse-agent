@@ -39,6 +39,11 @@ export interface EmailProvider {
   listRecent(limit: number): Promise<readonly EmailSummary[]>;
 }
 
+/** Search the mailbox by a query (sender / subject / keywords) — separate so a searcher depends only on what it uses. */
+export interface EmailSearcher {
+  search(query: string, limit: number): Promise<readonly EmailSummary[]>;
+}
+
 /** Read one message's full body — separate so a reader depends only on what it uses. */
 export interface EmailReader {
   getMessage(id: string): Promise<EmailMessage | undefined>;
@@ -84,6 +89,16 @@ function header(headers: ReadonlyArray<Record<string, unknown>>, name: string): 
   return match && typeof match.value === "string" ? match.value : "";
 }
 
+function clampLimit(limit: number): number {
+  return Number.isInteger(limit) && limit > 0 ? Math.min(limit, 50) : 10;
+}
+
+function messageIds(list: Record<string, unknown>): string[] {
+  return Array.isArray(list.messages)
+    ? (list.messages as Array<Record<string, unknown>>).flatMap((m) => (typeof m.id === "string" ? [m.id] : []))
+    : [];
+}
+
 /**
  * A permanent Gmail credential failure (401/403) — token missing,
  * expired, or lacking scope. Distinct from a transient blip so the
@@ -92,7 +107,7 @@ function header(headers: ReadonlyArray<Record<string, unknown>>, name: string): 
  */
 export class GmailAuthError extends Error {}
 
-export class GmailEmailProvider implements EmailProvider, EmailSender, EmailReader {
+export class GmailEmailProvider implements EmailProvider, EmailSender, EmailReader, EmailSearcher {
   constructor(
     private readonly accessToken: string,
     private readonly fetchImpl: typeof globalThis.fetch = globalThis.fetch,
@@ -139,11 +154,22 @@ export class GmailEmailProvider implements EmailProvider, EmailSender, EmailRead
   }
 
   async listRecent(limit: number): Promise<readonly EmailSummary[]> {
-    const max = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 50) : 10;
+    const max = clampLimit(limit);
     const list = await this.get(`${GMAIL_BASE}/messages?maxResults=${max.toString()}&labelIds=INBOX`);
-    const ids = Array.isArray(list.messages)
-      ? (list.messages as Array<Record<string, unknown>>).flatMap((m) => (typeof m.id === "string" ? [m.id] : []))
-      : [];
+    return this.summariesForIds(messageIds(list));
+  }
+
+  async search(query: string, limit: number): Promise<readonly EmailSummary[]> {
+    const q = query.trim();
+    if (q.length === 0) {
+      return [];
+    }
+    const max = clampLimit(limit);
+    const list = await this.get(`${GMAIL_BASE}/messages?maxResults=${max.toString()}&q=${encodeURIComponent(q)}`);
+    return this.summariesForIds(messageIds(list));
+  }
+
+  private async summariesForIds(ids: readonly string[]): Promise<EmailSummary[]> {
     const out: EmailSummary[] = [];
     for (const id of ids) {
       const params = "format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date";
