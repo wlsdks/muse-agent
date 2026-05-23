@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { writeFollowups, writeReminders, type PersistedFollowup, type PersistedReminder } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
-import { formatEvents, formatTasks, parseLookaheadHours, readDueFollowups, readDueReminders, relativeDueTag } from "./commands-today.js";
+import { formatEvents, formatTasks, formatWeatherLine, parseLookaheadHours, readDueFollowups, readDueReminders, relativeDueTag, resolveTodayWeatherLine } from "./commands-today.js";
 
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
@@ -68,6 +68,30 @@ describe("formatTasks — daily view shows each task's urgency", () => {
     expect(out).toContain("Pay rent (overdue)");
     expect(out).toContain("Someday idea\n"); // undated → bare title, no tag
     expect(out).not.toContain("Someday idea (");
+  });
+});
+
+describe("muse today — weather line", () => {
+  const fakeProvider = {
+    geocode: async () => ({ latitude: 37.57, longitude: 126.98, name: "Seoul" }),
+    currentWeather: async () => ({ code: 0, condition: "clear sky", temperatureC: 21 })
+  };
+
+  it("formatWeatherLine renders a Weather: line, or empty when absent", () => {
+    expect(formatWeatherLine("Seoul: clear sky, 21°C")).toBe("\nWeather: Seoul: clear sky, 21°C\n");
+    expect(formatWeatherLine(undefined)).toBe("");
+    expect(formatWeatherLine("   ")).toBe("");
+  });
+
+  it("resolveTodayWeatherLine fetches for the configured home location", async () => {
+    const line = await resolveTodayWeatherLine({ MUSE_WEATHER_LOCATION: "Seoul" }, fakeProvider);
+    expect(line).toContain("Seoul");
+    expect(line).toContain("clear sky");
+  });
+
+  it("returns undefined when no home location is configured (no weather line)", async () => {
+    expect(await resolveTodayWeatherLine({}, fakeProvider)).toBeUndefined();
+    expect(await resolveTodayWeatherLine({ MUSE_WEATHER_LOCATION: "   " }, fakeProvider)).toBeUndefined();
   });
 });
 

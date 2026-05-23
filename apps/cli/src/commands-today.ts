@@ -26,13 +26,16 @@ import {
   compareFollowupsByScheduledFor,
   compareRemindersByDueAt,
   compareTasksByDueDate,
+  OpenMeteoWeatherProvider,
   readFollowups,
   readReminders,
   readTasks,
+  resolveWeatherLine,
   serializeFollowup,
   serializeReminder,
   serializeTask,
-  type PersistedTask
+  type PersistedTask,
+  type WeatherProvider
 } from "@muse/mcp";
 import {
   TODAY_BRIEF_SYSTEM_PROMPT as BRIEF_SYSTEM_PROMPT,
@@ -64,6 +67,7 @@ const MAX_NOTES_WALK_DEPTH = 8;
 
 interface TodayBriefing {
   readonly generatedAt: string;
+  readonly weather?: string;
   readonly lookaheadHours: number;
   readonly tasks?: readonly { readonly id: string; readonly title: string; readonly dueAt?: string }[];
   readonly events?: readonly { readonly id: string; readonly title: string; readonly startsAtIso: string }[];
@@ -152,6 +156,11 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
         }
       }
 
+      const weatherLine = await resolveTodayWeatherLine(process.env as Record<string, string | undefined>);
+      if (weatherLine) {
+        briefing = { ...briefing, weather: weatherLine };
+      }
+
       if (options.brief) {
         const prose = await renderBrief(io, command, helpers, briefing, usedLocal, options.model);
         if (options.json) {
@@ -202,6 +211,7 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
       }
 
       io.stdout(`Today (${shortDateLabel(briefing.generatedAt)}, next ${briefing.lookaheadHours}h${usedLocal ? ", local" : ""})\n`);
+      io.stdout(formatWeatherLine(briefing.weather));
       io.stdout(formatReminders(briefing.reminders, briefing.generatedAt));
       io.stdout(formatFollowups(briefing.followups, briefing.generatedAt));
       io.stdout(formatTasks(briefing.tasks, briefingNow(briefing)));
@@ -603,6 +613,31 @@ function formatFollowups(
 function briefingNow(briefing: TodayBriefing): Date {
   const ms = Date.parse(briefing.generatedAt);
   return Number.isFinite(ms) ? new Date(ms) : new Date();
+}
+
+/**
+ * Current-weather line for `muse today` — keyed on MUSE_WEATHER_LOCATION
+ * (the user's home, goal 813). Fetched by the CLI itself (Open-Meteo, no
+ * key) so it shows in BOTH local and remote modes without a server
+ * change. Fail-soft: no location configured, or a lookup failure, →
+ * undefined (no weather line), never breaks the briefing.
+ */
+export async function resolveTodayWeatherLine(
+  env: Record<string, string | undefined>,
+  provider?: WeatherProvider
+): Promise<string | undefined> {
+  const location = env.MUSE_WEATHER_LOCATION?.trim();
+  if (!location || location.length === 0) {
+    return undefined;
+  }
+  return resolveWeatherLine(provider ?? new OpenMeteoWeatherProvider(), location);
+}
+
+export function formatWeatherLine(weather: string | undefined): string {
+  if (!weather || weather.trim().length === 0) {
+    return "";
+  }
+  return `\nWeather: ${weather.trim()}\n`;
 }
 
 export function relativeDueTag(dueAtIso: string | undefined, now: Date): string {
