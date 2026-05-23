@@ -16,6 +16,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
+import { isRetriableStatus } from "@muse/mcp";
 import { formatErrorForTerminal, stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 
@@ -46,6 +47,12 @@ export interface LoadFeedBodyOptions {
   readonly fetchImpl?: typeof globalThis.fetch;
   readonly timeoutMs?: number;
   readonly maxBodyBytes?: number;
+  /** Extra attempts after the first on a transient 429/5xx. Default 2. */
+  readonly retries?: number;
+  /** First backoff in ms; doubles each retry. Default 250. */
+  readonly baseDelayMs?: number;
+  /** Injectable delay so tests don't wait on real timers. */
+  readonly sleep?: (ms: number) => Promise<void>;
 }
 
 export async function loadFeedBody(url: string, options: LoadFeedBodyOptions = {}): Promise<string> {
@@ -59,17 +66,31 @@ export async function loadFeedBody(url: string, options: LoadFeedBodyOptions = {
   const maxBodyBytes = Number.isFinite(options.maxBodyBytes) && (options.maxBodyBytes ?? 0) > 0
     ? (options.maxBodyBytes as number)
     : DEFAULT_FEED_MAX_BODY_BYTES;
+  // Retry a transient 429/5xx (a feed server hiccup) with backoff,
+  // bounded by the single wall-clock timeout below — the same posture
+  // the weather/calendar/email read actuators use. An abort (timeout)
+  // or network throw fails fast (no retry); the !ok throw catches a
+  // 4xx or an exhausted 5xx.
+  const retries = Number.isFinite(options.retries) ? Math.max(0, Math.trunc(options.retries as number)) : 2;
+  const baseDelayMs = Number.isFinite(options.baseDelayMs) ? Math.max(0, options.baseDelayMs as number) : 250;
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     let response: Response;
-    try {
-      response = await fetchImpl(url, { signal: controller.signal });
-    } catch (cause) {
-      if (controller.signal.aborted) {
-        throw new Error(`feed fetch ${url} timed out after ${timeoutMs.toString()}ms`, { cause });
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        response = await fetchImpl(url, { signal: controller.signal });
+      } catch (cause) {
+        if (controller.signal.aborted) {
+          throw new Error(`feed fetch ${url} timed out after ${timeoutMs.toString()}ms`, { cause });
+        }
+        throw cause;
       }
-      throw cause;
+      if (response.ok || !isRetriableStatus(response.status) || attempt >= retries) {
+        break;
+      }
+      await sleep(baseDelayMs * 2 ** attempt);
     }
     if (!response.ok) {
       throw new Error(`feed fetch ${url} returned ${response.status.toString()}`);

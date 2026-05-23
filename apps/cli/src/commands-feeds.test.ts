@@ -307,6 +307,33 @@ describe("loadFeedBody — fetch timeout so a slow-loris / dead RSS server can't
   it("exports a sensible 30-second default so callers that don't pass timeoutMs still inherit the cap", () => {
     expect(DEFAULT_FEED_FETCH_TIMEOUT_MS).toBe(30_000);
   });
+
+  it("retries a transient 503 then succeeds (a feed-server hiccup self-heals within the run)", async () => {
+    let calls = 0;
+    const flaky: typeof globalThis.fetch = () => {
+      calls += 1;
+      return Promise.resolve(calls === 1
+        ? new Response("err", { status: 503 })
+        : new Response("<rss><channel><item><title>ok</title></item></channel></rss>", { status: 200 }));
+    };
+    const result = await loadFeedBody("https://flaky.example.com/feed.xml", { fetchImpl: flaky, sleep: async () => {} });
+    expect(calls).toBe(2);
+    expect(result).toContain("<rss>");
+  });
+
+  it("a persistent 503 throws after exhausting retries; a 404 fails fast (no retry)", async () => {
+    let five = 0;
+    const always503: typeof globalThis.fetch = () => { five += 1; return Promise.resolve(new Response("e", { status: 503 })); };
+    await expect(loadFeedBody("https://down.example.com/feed.xml", { fetchImpl: always503, retries: 2, sleep: async () => {} }))
+      .rejects.toThrow("returned 503");
+    expect(five).toBe(3); // first + 2 retries
+
+    let four = 0;
+    const fourOhFour: typeof globalThis.fetch = () => { four += 1; return Promise.resolve(new Response("nope", { status: 404 })); };
+    await expect(loadFeedBody("https://gone.example.com/feed.xml", { fetchImpl: fourOhFour, sleep: async () => {} }))
+      .rejects.toThrow("returned 404");
+    expect(four).toBe(1); // 4xx is permanent — no retry
+  });
 });
 
 describe("loadFeedBody — body size cap so a hostile / runaway RSS server can't stream gigabytes into memory before `muse feeds refresh` notices", () => {

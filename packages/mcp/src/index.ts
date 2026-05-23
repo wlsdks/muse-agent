@@ -461,6 +461,11 @@ export {
   type RunDueSituationalBriefingSummary
 } from "./situational-briefing-loop.js";
 export {
+  fetchWithRetry,
+  isRetriableStatus,
+  type RetryOptions
+} from "./http-retry.js";
+export {
   describeWeatherCode,
   formatDailyForecast,
   formatRainHeadsUp,
