@@ -152,7 +152,8 @@ export const DEFAULT_DOMAIN_KEYWORDS: Readonly<Record<string, readonly string[]>
   messaging: ["slack", "discord", "telegram", "line", "메시지", "채널", "dm", "message", "messages"],
   notes: ["note", "notes", "memo", "memos", "wiki", "doc", "docs", "document", "노트", "메모", "문서", "위키"],
   system: ["설정", "config", "setting", "version", "버전"],
-  tasks: ["task", "tasks", "todo", "todos", "reminder", "reminders", "할일", "태스크", "리마인더"]
+  tasks: ["task", "tasks", "todo", "todos", "reminder", "reminders", "할일", "태스크", "리마인더"],
+  web: ["browser", "chrome", "tab", "tabs", "webpage", "web page", "website", "page", "url", "navigate", "click", "scroll", "screenshot", "브라우저", "페이지", "탭", "웹"]
 });
 
 /**

@@ -91,12 +91,20 @@ export function chromeDevToolsToolRisk(toolName: string): ToolRisk {
 }
 
 /**
- * Re-stamp the risk of Chrome DevTools MCP tools projected by
- * `McpManager.toMuseTools()` using {@link chromeDevToolsToolRisk}, so
- * the AgentRuntime's `toolApprovalGate` fires fail-close on a
- * state-changing browser action (the external server's "read"
- * default would otherwise let a `fill_form` / `click` through
- * ungated). Non-Chrome tools pass through untouched.
+ * Re-stamp Chrome DevTools MCP tools projected by
+ * `McpManager.toMuseTools()`:
+ *
+ *  - RISK via {@link chromeDevToolsToolRisk}, so the AgentRuntime's
+ *    `toolApprovalGate` fires fail-close on a state-changing browser
+ *    action (the external server's "read" default would otherwise let
+ *    a `fill_form` / `click` through ungated).
+ *  - DOMAIN `"web"`, so the relevance filter only advertises the ~30
+ *    browser tools on a web/browser prompt. Without a domain an
+ *    externally-projected MCP tool is "always-on" and floods every
+ *    prompt's catalog, wrecking one-shot tool selection on the local
+ *    model (`tool-calling.md` rule 1).
+ *
+ * Non-Chrome tools pass through untouched.
  */
 export function withChromeDevToolsRisk(tools: readonly MuseTool[]): MuseTool[] {
   const prefix = `${CHROME_DEVTOOLS_MCP_SERVER_NAME}.`;
@@ -105,9 +113,6 @@ export function withChromeDevToolsRisk(tools: readonly MuseTool[]): MuseTool[] {
       return tool;
     }
     const risk = chromeDevToolsToolRisk(tool.definition.name.slice(prefix.length));
-    if (risk === tool.definition.risk) {
-      return tool;
-    }
-    return { ...tool, definition: { ...tool.definition, risk } };
+    return { ...tool, definition: { ...tool.definition, domain: "web", risk } };
   });
 }

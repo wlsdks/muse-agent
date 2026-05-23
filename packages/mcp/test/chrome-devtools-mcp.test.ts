@@ -94,6 +94,13 @@ describe("withChromeDevToolsRisk", () => {
     expect(byName.get("chrome-devtools.evaluate_script")).toBe("execute");
     expect(byName.get("notes.search")).toBe("read");
   });
+
+  it("stamps domain 'web' on chrome tools (so the relevance filter gates them) and leaves others", () => {
+    const out = withChromeDevToolsRisk([tool("chrome-devtools.take_snapshot", "read"), tool("notes.search", "read")]);
+    const byName = new Map(out.map((e) => [e.definition.name, e.definition.domain]));
+    expect(byName.get("chrome-devtools.take_snapshot")).toBe("web");
+    expect(byName.get("notes.search")).toBeUndefined();
+  });
 });
 
 describe("Chrome DevTools MCP — end-to-end perception via the manager (contract-faithful fake)", () => {
