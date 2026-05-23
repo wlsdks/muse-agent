@@ -2,18 +2,18 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { writeContacts, type Contact, type EmailProvider, type EmailSummary } from "@muse/mcp";
+import { writeContacts, type Contact, type EmailMessage, type EmailProvider, type EmailReader, type EmailSummary } from "@muse/mcp";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { buildInboxKnownSender, formatInboxLine, registerInboxCommand } from "./commands-inbox.js";
+import { buildInboxKnownSender, formatEmailMessage, formatInboxLine, registerInboxCommand } from "./commands-inbox.js";
 
 const INBOX: EmailSummary[] = [
   { from: "Alice <a@x.com>", id: "m1", snippet: "draft", subject: "Q3 plan", unread: true },
   { from: "Bob <b@y.com>", id: "m2", snippet: "noon", subject: "lunch?", unread: false }
 ];
 
-function run(args: string[], provider?: EmailProvider) {
+function run(args: string[], provider?: EmailProvider & Partial<EmailReader>) {
   const output: string[] = [];
   const io = { stderr: (m: string) => output.push(m), stdout: (m: string) => output.push(m) };
   const program = new Command();
@@ -31,6 +31,13 @@ describe("muse inbox", () => {
     expect(text).toContain("2 messages, 1 unread");
     expect(text).toContain("● Alice <a@x.com> — Q3 plan");
     expect(text).toContain("  Bob <b@y.com> — lunch?");
+  });
+
+  it("shows a short id per line so a message can be read by id", async () => {
+    const provider: EmailProvider = { listRecent: async () => INBOX };
+    const { output, run: done } = run([], provider);
+    await done;
+    expect(output.join("")).toContain("[m1] ● Alice <a@x.com> — Q3 plan");
   });
 
   it("--json emits the structured summaries", async () => {
@@ -62,6 +69,61 @@ describe("muse inbox", () => {
     expect(process.exitCode).toBe(1);
     process.exitCode = prevExit;
     if (prevTok !== undefined) process.env.MUSE_GMAIL_TOKEN = prevTok;
+  });
+});
+
+describe("muse inbox <id> — read one message's full body", () => {
+  const READER: EmailProvider & EmailReader = {
+    listRecent: async () => INBOX,
+    getMessage: async (id) => id === "m2"
+      ? { body: "Lunch at noon?\n\n- Bob", date: "Mon, 1 Jun 2026 09:00:00", from: "Bob <b@y.com>", id: "m2", subject: "lunch?" }
+      : undefined
+  };
+
+  it("resolves the short id, prints From/Subject/Date and the plain-text body", async () => {
+    const { output, run: done } = run(["m2"], READER);
+    await done;
+    const text = output.join("");
+    expect(text).toContain("From:    Bob <b@y.com>");
+    expect(text).toContain("Subject: lunch?");
+    expect(text).toContain("Date:    Mon, 1 Jun 2026 09:00:00");
+    expect(text).toContain("Lunch at noon?");
+  });
+
+  it("--json emits the full message object", async () => {
+    const { output, run: done } = run(["m2", "--json"], READER);
+    await done;
+    expect(JSON.parse(output.join(""))).toMatchObject({ body: "Lunch at noon?\n\n- Bob", id: "m2", subject: "lunch?" });
+  });
+
+  it("an unknown id exits 1 without reading anything", async () => {
+    const prevExit = process.exitCode;
+    process.exitCode = 0;
+    const { output, run: done } = run(["nope"], READER);
+    await done;
+    expect(output.join("")).toContain("no message in your recent inbox matches id 'nope'");
+    expect(process.exitCode).toBe(1);
+    process.exitCode = prevExit;
+  });
+
+  it("a provider that can't read a single message exits 1 with a clear message", async () => {
+    const prevExit = process.exitCode;
+    process.exitCode = 0;
+    const listOnly: EmailProvider = { listRecent: async () => INBOX };
+    const { output, run: done } = run(["m2"], listOnly);
+    await done;
+    expect(output.join("")).toContain("can't read a single message");
+    expect(process.exitCode).toBe(1);
+    process.exitCode = prevExit;
+  });
+});
+
+describe("formatEmailMessage", () => {
+  it("renders headers + body, and falls back when the body is empty", () => {
+    const m: EmailMessage = { body: "  hello  ", date: "today", from: "A <a@x.com>", id: "m1", subject: "hi" };
+    expect(formatEmailMessage(m)).toBe("From:    A <a@x.com>\nSubject: hi\nDate:    today\n\nhello");
+    expect(formatEmailMessage({ body: "", from: "A", id: "m1", subject: "hi" })).toContain("(no text body)");
+    expect(formatEmailMessage({ body: "x", from: "A", id: "m1", subject: "hi" })).not.toContain("Date:");
   });
 });
 
