@@ -57,6 +57,8 @@ export interface NotionNotesProviderOptions {
   readonly notionVersion?: string;
   /** `fetch` override for tests. Defaults to the global. */
   readonly fetchImpl?: NotionFetch;
+  /** Retry-with-backoff for transient 429/5xx on idempotent reads. */
+  readonly retry?: { readonly retries?: number; readonly baseDelayMs?: number; readonly sleep?: (ms: number) => Promise<void> };
 }
 
 const NOTION_DEFAULT_ENDPOINT = "https://api.notion.com/v1";
@@ -73,6 +75,9 @@ export class NotionNotesProvider implements NotesProvider {
   private readonly endpoint: string;
   private readonly notionVersion: string;
   private readonly fetchImpl: NotionFetch;
+  private readonly retries: number;
+  private readonly baseDelayMs: number;
+  private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(options: NotionNotesProviderOptions) {
     if (!options.token || options.token.trim().length === 0) {
@@ -88,6 +93,9 @@ export class NotionNotesProvider implements NotesProvider {
     if (!this.fetchImpl) {
       throw new NotesValidationError("NO_FETCH", "global fetch unavailable; pass fetchImpl");
     }
+    this.retries = Number.isFinite(options.retry?.retries) ? Math.max(0, Math.trunc(options.retry!.retries!)) : 2;
+    this.baseDelayMs = Number.isFinite(options.retry?.baseDelayMs) ? Math.max(0, options.retry!.baseDelayMs!) : 250;
+    this.sleep = options.retry?.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   }
 
   describe(): NotesProviderInfo {
@@ -114,7 +122,7 @@ export class NotionNotesProvider implements NotesProvider {
       if (cursor) {
         requestBody.start_cursor = cursor;
       }
-      const body = await this.request("POST", `/databases/${databaseId}/query`, requestBody);
+      const body = await this.request("POST", `/databases/${databaseId}/query`, requestBody, true);
       const results = isRecordArray(body, "results");
       for (const result of results) {
         const entry = parsePageSummary(result, this.id, this.titleProperty);
@@ -138,7 +146,7 @@ export class NotionNotesProvider implements NotesProvider {
     }
     let page: unknown;
     try {
-      page = await this.request("GET", `/pages/${id}`, undefined);
+      page = await this.request("GET", `/pages/${id}`, undefined, true);
     } catch (error) {
       if (error instanceof NotesProviderError && error.code === "NOTION_NOT_FOUND") {
         return undefined;
@@ -171,7 +179,7 @@ export class NotionNotesProvider implements NotesProvider {
       filter: { property: "object", value: "page" },
       page_size: cap,
       query: trimmed
-    });
+    }, true);
     const results = isRecordArray(body, "results");
     return results.flatMap((result): readonly NotesSearchHit[] => {
       const summary = parsePageSummary(result, this.id, this.titleProperty);
@@ -265,7 +273,7 @@ export class NotionNotesProvider implements NotesProvider {
       const url = cursor
         ? `/blocks/${pageId}/children?page_size=100&start_cursor=${encodeURIComponent(cursor)}`
         : `/blocks/${pageId}/children?page_size=100`;
-      const body = await this.request("GET", url, undefined);
+      const body = await this.request("GET", url, undefined, true);
       const results = isRecordArray(body, "results");
       for (const result of results) {
         all.push(result);
@@ -298,7 +306,12 @@ export class NotionNotesProvider implements NotesProvider {
     });
   }
 
-  private async request(method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body: unknown): Promise<unknown> {
+  private async request(
+    method: "GET" | "POST" | "PATCH" | "DELETE",
+    path: string,
+    body: unknown,
+    retriable = false
+  ): Promise<unknown> {
     const url = `${this.endpoint}${path}`;
     const init: RequestInit = {
       headers: {
@@ -309,32 +322,49 @@ export class NotionNotesProvider implements NotesProvider {
       method,
       ...(body !== undefined ? { body: JSON.stringify(body) } : {})
     };
-    let response: Response;
-    try {
-      response = await this.fetchImpl(url, init);
-    } catch (cause) {
-      throw new NotesProviderError(this.id, "FETCH_FAILED", `Notion request failed: ${cause instanceof Error ? cause.message : String(cause)}`);
-    }
-    if (!response.ok) {
-      const detail = await safeReadText(response);
-      const code = mapNotionStatus(response.status);
-      // Forward status so callers get err.retryable for free.
-      throw new NotesProviderError(
-        this.id,
-        code,
-        `Notion ${method} ${path} → ${response.status}: ${detail.slice(0, 200)}`,
-        response.status
-      );
-    }
-    if (response.status === 204) {
-      return {};
-    }
-    try {
-      return await response.json();
-    } catch (cause) {
-      throw new NotesProviderError(this.id, "NOTION_BAD_JSON", `Notion response was not JSON: ${cause instanceof Error ? cause.message : String(cause)}`);
+    // Retry transient 429 (Notion rate-limit) / 5xx on idempotent reads
+    // only — a retried create/append could duplicate a page/block.
+    const maxRetries = retriable ? this.retries : 0;
+    for (let attempt = 0; ; attempt += 1) {
+      let response: Response;
+      try {
+        response = await this.fetchImpl(url, init);
+      } catch (cause) {
+        if (attempt < maxRetries) {
+          await this.sleep(this.baseDelayMs * 2 ** attempt);
+          continue;
+        }
+        throw new NotesProviderError(this.id, "FETCH_FAILED", `Notion request failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+      }
+      if (!response.ok) {
+        if (attempt < maxRetries && isTransientNotionStatus(response.status)) {
+          await this.sleep(this.baseDelayMs * 2 ** attempt);
+          continue;
+        }
+        const detail = await safeReadText(response);
+        const code = mapNotionStatus(response.status);
+        // Forward status so callers get err.retryable for free.
+        throw new NotesProviderError(
+          this.id,
+          code,
+          `Notion ${method} ${path} → ${response.status}: ${detail.slice(0, 200)}`,
+          response.status
+        );
+      }
+      if (response.status === 204) {
+        return {};
+      }
+      try {
+        return await response.json();
+      } catch (cause) {
+        throw new NotesProviderError(this.id, "NOTION_BAD_JSON", `Notion response was not JSON: ${cause instanceof Error ? cause.message : String(cause)}`);
+      }
     }
   }
+}
+
+function isTransientNotionStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status <= 599);
 }
 
 function mapNotionStatus(status: number): string {
