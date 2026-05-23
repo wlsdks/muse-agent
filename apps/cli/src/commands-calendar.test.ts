@@ -13,8 +13,25 @@ import {
   minOfNumbers,
   parseEventStart,
   registerCalendarCommands,
+  resolveEventIdMatch,
   type CalendarCommandHelpers
 } from "./commands-calendar.js";
+
+describe("resolveEventIdMatch — exact wins, else unique prefix, else ambiguous/none", () => {
+  const events = [{ id: "abc12345xyz" }, { id: "abc99999" }, { id: "def00000" }];
+  it("returns the exact match even when it's also a prefix of others", () => {
+    expect(resolveEventIdMatch([{ id: "abc" }, { id: "abcd" }], "abc")).toMatchObject({ kind: "match", event: { id: "abc" } });
+  });
+  it("resolves a unique prefix", () => {
+    expect(resolveEventIdMatch(events, "def")).toMatchObject({ kind: "match", event: { id: "def00000" } });
+  });
+  it("reports ambiguous when a prefix matches several", () => {
+    expect(resolveEventIdMatch(events, "abc")).toMatchObject({ kind: "ambiguous", count: 2 });
+  });
+  it("reports none when nothing matches", () => {
+    expect(resolveEventIdMatch(events, "zzz")).toEqual({ kind: "none" });
+  });
+});
 
 describe("minOfNumbers / maxOfNumbers — reduce-based min/max so a large `.ics` import range computation can't RangeError on `Math.min(...arr)` spread", () => {
   it("returns the min / max of a small array", () => {
@@ -265,5 +282,44 @@ describe("muse calendar delete — cancel a local event by id", () => {
     process.exitCode = prevExit;
     const left = await new LocalCalendarProvider({ file }).listEvents({ from: new Date("2000-01-01"), to: new Date("2100-01-01") });
     expect(left).toHaveLength(1);
+  });
+
+  it("--at reschedules and preserves the original duration", async () => {
+    const file = process.env.MUSE_CALENDAR_FILE!;
+    const created = await new LocalCalendarProvider({ file }).createEvent({
+      endsAt: new Date("2026-05-30T16:00:00"), startsAt: new Date("2026-05-30T15:00:00"), title: "Dentist"
+    }); // 60 min
+    const r = await run(["edit", created.id.slice(0, 8), "--at", "2026-05-30T17:00:00"]);
+    expect(r.error).toBeUndefined();
+    expect(r.out).toContain("Updated: Dentist");
+    const events = await new LocalCalendarProvider({ file }).listEvents({ from: new Date("2000-01-01"), to: new Date("2100-01-01") });
+    const e = events.find((ev) => ev.id === created.id)!;
+    expect(e.startsAt.toISOString()).toBe(new Date("2026-05-30T17:00:00").toISOString());
+    expect(e.endsAt.getTime() - e.startsAt.getTime()).toBe(60 * 60_000); // duration preserved
+  });
+
+  it("--title renames; --for changes duration", async () => {
+    const file = process.env.MUSE_CALENDAR_FILE!;
+    const created = await new LocalCalendarProvider({ file }).createEvent({
+      endsAt: new Date("2026-05-30T16:00:00"), startsAt: new Date("2026-05-30T15:00:00"), title: "Old"
+    });
+    await run(["edit", created.id.slice(0, 8), "--title", "New name", "--for", "30"]);
+    const events = await new LocalCalendarProvider({ file }).listEvents({ from: new Date("2000-01-01"), to: new Date("2100-01-01") });
+    const e = events.find((ev) => ev.id === created.id)!;
+    expect(e.title).toBe("New name");
+    expect(e.endsAt.getTime() - e.startsAt.getTime()).toBe(30 * 60_000);
+  });
+
+  it("edit with no fields errors and an unknown id exits 1", async () => {
+    const file = process.env.MUSE_CALENDAR_FILE!;
+    const created = await new LocalCalendarProvider({ file }).createEvent({
+      endsAt: new Date("2026-05-30T16:00:00"), startsAt: new Date("2026-05-30T15:00:00"), title: "Keep"
+    });
+    expect((await run(["edit", created.id.slice(0, 8)])).error).toContain("at least one of");
+    const prevExit = process.exitCode;
+    process.exitCode = 0;
+    expect((await run(["edit", "no-such", "--title", "x"])).out).toContain("no event matches id");
+    expect(process.exitCode).toBe(1);
+    process.exitCode = prevExit;
   });
 });

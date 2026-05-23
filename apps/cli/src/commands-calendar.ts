@@ -14,7 +14,7 @@
 import { readFile } from "node:fs/promises";
 
 import { resolveLocalCalendarFile } from "@muse/autoconfigure";
-import { LocalCalendarProvider } from "@muse/calendar";
+import { LocalCalendarProvider, type CalendarEvent } from "@muse/calendar";
 import { computeAvailability, resolveRelativeTimePhrase, type AvailabilityEventLike, type AvailabilityResult } from "@muse/mcp";
 import type { Command } from "commander";
 
@@ -66,6 +66,33 @@ export function maxOfNumbers(values: readonly number[]): number {
 function localCalendarProvider(): LocalCalendarProvider {
   const file = resolveLocalCalendarFile(process.env as Record<string, string | undefined>);
   return new LocalCalendarProvider({ file });
+}
+
+/** Events across a wide (±10y) window — enough to resolve any realistic personal event by id. */
+function listLocalEventsWide(provider: LocalCalendarProvider): Promise<readonly CalendarEvent[]> {
+  const now = Date.now();
+  return Promise.resolve(provider.listEvents({ from: new Date(now - 3650 * 86_400_000), to: new Date(now + 3650 * 86_400_000) }));
+}
+
+/**
+ * Resolve a user-supplied event id (the short `[id]` from the listing, or
+ * a full id) to one event: exact match wins, else a UNIQUE id-prefix.
+ * Reports `ambiguous` (multiple prefix matches) or `none` rather than
+ * guessing — so `delete` / `edit` never act on the wrong event.
+ */
+export function resolveEventIdMatch<T extends { readonly id: string }>(
+  events: readonly T[],
+  target: string
+): { readonly kind: "match"; readonly event: T } | { readonly kind: "ambiguous"; readonly count: number } | { readonly kind: "none" } {
+  const exact = events.find((event) => event.id === target);
+  if (exact) {
+    return { event: exact, kind: "match" };
+  }
+  const prefix = events.filter((event) => event.id.startsWith(target));
+  if (prefix.length === 1) {
+    return { event: prefix[0]!, kind: "match" };
+  }
+  return prefix.length > 1 ? { count: prefix.length, kind: "ambiguous" } : { kind: "none" };
 }
 
 /** Parse a `--at` value: an ISO-8601 timestamp OR a relative phrase ('tomorrow 3pm'). Returns undefined when neither. */
@@ -303,27 +330,87 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         throw new Error("muse calendar delete: an event id is required");
       }
       const provider = localCalendarProvider();
-      const now = Date.now();
-      const events = await provider.listEvents({
-        from: new Date(now - 3650 * 86_400_000),
-        to: new Date(now + 3650 * 86_400_000)
-      });
-      const exact = events.find((event) => event.id === target);
-      const prefixMatches = events.filter((event) => event.id.startsWith(target));
-      const match = exact ?? (prefixMatches.length === 1 ? prefixMatches[0] : undefined);
-      if (!match) {
-        io.stderr(prefixMatches.length > 1
-          ? `muse calendar delete: '${target}' is ambiguous (${prefixMatches.length.toString()} events) — use a longer id\n`
+      const resolved = resolveEventIdMatch(await listLocalEventsWide(provider), target);
+      if (resolved.kind !== "match") {
+        io.stderr(resolved.kind === "ambiguous"
+          ? `muse calendar delete: '${target}' is ambiguous (${resolved.count.toString()} events) — use a longer id\n`
           : `muse calendar delete: no event matches id '${target}'\n`);
         process.exitCode = 1;
         return;
       }
+      const match = resolved.event;
       await provider.deleteEvent(match.id);
       if (options.json) {
         helpers.writeOutput(io, { deleted: true, id: match.id, title: match.title });
         return;
       }
       io.stdout(`Cancelled: ${match.title} — ${match.startsAt.toISOString()}\n`);
+    });
+
+  calendar
+    .command("edit")
+    .description("Reschedule / rename an event in your LOCAL calendar by id (the [id] from `muse calendar events`)")
+    .argument("<id>", "Event id — the short [id] from the listing, or a full id")
+    .option("--at <when>", "New start — ISO-8601 or a phrase ('tomorrow 3pm'); duration preserved unless --for is given")
+    .option("--for <minutes>", "New duration in minutes")
+    .option("--title <text...>", "New title")
+    .option("--location <where>", "New location")
+    .option("--json", "Print the updated event as JSON")
+    .action(async (
+      idArg: string,
+      options: { readonly at?: string; readonly for?: string; readonly title?: string | readonly string[]; readonly location?: string; readonly json?: boolean }
+    ) => {
+      const target = idArg.trim();
+      if (target.length === 0) {
+        throw new Error("muse calendar edit: an event id is required");
+      }
+      const nextTitle = Array.isArray(options.title) ? options.title.join(" ").trim() : (typeof options.title === "string" ? options.title.trim() : undefined);
+      if (options.at === undefined && options.for === undefined && !nextTitle && options.location === undefined) {
+        throw new Error("muse calendar edit needs at least one of --at / --for / --title / --location");
+      }
+      const provider = localCalendarProvider();
+      const resolved = resolveEventIdMatch(await listLocalEventsWide(provider), target);
+      if (resolved.kind !== "match") {
+        io.stderr(resolved.kind === "ambiguous"
+          ? `muse calendar edit: '${target}' is ambiguous (${resolved.count.toString()} events) — use a longer id\n`
+          : `muse calendar edit: no event matches id '${target}'\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const match = resolved.event;
+      const update: { title?: string; startsAt?: Date; endsAt?: Date; location?: string } = {};
+      if (options.at !== undefined) {
+        const startsAt = parseEventStart(options.at);
+        if (!startsAt) {
+          throw new Error(`--at must be an ISO-8601 timestamp or a relative phrase ('tomorrow 3pm'), got '${options.at}'`);
+        }
+        update.startsAt = startsAt;
+      }
+      if (options.at !== undefined || options.for !== undefined) {
+        const start = update.startsAt ?? match.startsAt;
+        const durationMs = options.for !== undefined
+          ? (() => {
+              const m = Number(options.for);
+              if (!Number.isFinite(m) || m <= 0) {
+                throw new Error("--for must be a positive number of minutes");
+              }
+              return Math.trunc(m) * 60_000;
+            })()
+          : match.endsAt.getTime() - match.startsAt.getTime();
+        update.endsAt = new Date(start.getTime() + durationMs);
+      }
+      if (nextTitle) {
+        update.title = nextTitle;
+      }
+      if (options.location !== undefined) {
+        update.location = options.location;
+      }
+      const updated = await provider.updateEvent(match.id, update);
+      if (options.json) {
+        helpers.writeOutput(io, { event: { endsAtIso: updated.endsAt.toISOString(), id: updated.id, startsAtIso: updated.startsAt.toISOString(), title: updated.title } });
+        return;
+      }
+      io.stdout(`Updated: ${updated.title} — ${updated.startsAt.toISOString()} → ${updated.endsAt.toISOString()}\n`);
     });
 
   const registerQuickRange = (name: string, description: string, computeRange: () => { from: Date; to: Date }): void => {
