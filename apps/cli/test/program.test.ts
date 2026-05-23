@@ -5807,6 +5807,10 @@ describe("cli program", () => {
     const fsp = await import("node:fs/promises");
     const notesIndexPath = path.join(root, "notes-index.json");
     const epsIndexPath = path.join(root, "episodes-index.json");
+    // The note must exist on disk — recall drops index entries for
+    // notes deleted/moved since the last reindex (goal 864).
+    const notePath = path.join(root, "q3.md");
+    await fsp.writeFile(notePath, "Q3 budget memo body", "utf8");
 
     // Seed both indices with model 'nomic-embed-text'. The query
     // below will pass --embed-model 'mxbai-embed-large' to force a
@@ -5817,7 +5821,7 @@ describe("cli program", () => {
       model: "nomic-embed-text",
       builtAtIso: "2026-05-13T00:00:00Z",
       files: [{
-        path: "q3.md",
+        path: notePath,
         mtimeMs: 1,
         chunks: [{ chunkIndex: 0, text: "Q3 budget memo body", embedding: [1, 0, 0, 0] }]
       }]

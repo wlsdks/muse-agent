@@ -14,6 +14,7 @@
  * who has notes but not episodes still gets notes results.
  */
 
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -111,6 +112,21 @@ export function rankRecallCandidates(args: {
 // to the 50 cap; a non-numeric / non-positive value (unit slip
 // like `10x`, `abc`, `0`) rejects instead of silently using 5
 // — the strict-numeric line (goals 143/144/155/177/178).
+/**
+ * Drop indexed note files that no longer exist on disk. The
+ * notes-index is a pre-built cache (`muse notes reindex`); a note
+ * deleted (`muse notes delete`) or moved since the last reindex is
+ * still in the index, so recall would surface a note that's gone —
+ * wrong, and a "deleted means deleted" surprise. `exists` is injected
+ * so the filter is testable without touching the real filesystem.
+ */
+export function filterLiveNoteIndexFiles<T extends { readonly path: string }>(
+  files: readonly T[],
+  exists: (path: string) => boolean
+): T[] {
+  return files.filter((file) => exists(file.path));
+}
+
 export function clampLimit(raw: string | undefined): number {
   if (raw === undefined || raw.trim().length === 0) return 5;
   const parsed = Number(raw.trim());
@@ -249,8 +265,10 @@ export function registerRecallCommand(program: Command, io: ProgramIO): void {
         }
       }
 
-      // Flatten chunks.
-      const noteChunks = (notesIndex?.files ?? []).flatMap((file) =>
+      // Flatten chunks — but skip notes deleted / moved since the last
+      // reindex so a removed note never resurfaces in recall.
+      const liveFiles = filterLiveNoteIndexFiles(notesIndex?.files ?? [], existsSync);
+      const noteChunks = liveFiles.flatMap((file) =>
         (file.chunks ?? []).map((chunk) => ({
           path: file.path,
           text: chunk.text,

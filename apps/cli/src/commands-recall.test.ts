@@ -1,6 +1,27 @@
 import { describe, expect, it } from "vitest";
 
-import { RECALL_SOURCE_VALUES, clampLimit, resolveSource } from "./commands-recall.js";
+import { RECALL_SOURCE_VALUES, clampLimit, filterLiveNoteIndexFiles, resolveSource } from "./commands-recall.js";
+
+describe("filterLiveNoteIndexFiles — a deleted/moved note never resurfaces in recall", () => {
+  const files = [
+    { path: "/notes/keep.md", chunks: [] },
+    { path: "/notes/deleted.md", chunks: [] },
+    { path: "/notes/also-keep.md", chunks: [] }
+  ];
+
+  it("drops index entries whose note file no longer exists on disk", () => {
+    const live = filterLiveNoteIndexFiles(files, (p) => p !== "/notes/deleted.md");
+    expect(live.map((f) => f.path)).toEqual(["/notes/keep.md", "/notes/also-keep.md"]);
+  });
+
+  it("keeps everything when all files still exist", () => {
+    expect(filterLiveNoteIndexFiles(files, () => true)).toHaveLength(3);
+  });
+
+  it("drops everything when the notes dir is gone", () => {
+    expect(filterLiveNoteIndexFiles(files, () => false)).toHaveLength(0);
+  });
+});
 
 describe("clampLimit (goal 179)", () => {
   it("returns the default 5 when absent or blank", () => {
