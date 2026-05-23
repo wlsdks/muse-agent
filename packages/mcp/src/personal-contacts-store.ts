@@ -223,9 +223,29 @@ function stripLeadingAt(value: string): string {
   return value.replace(/^@/u, "");
 }
 
+/**
+ * Match two phone numbers by their digits, tolerating format
+ * differences ('+1 415-555-0101' vs '(415) 555-0101' vs '4155550101').
+ * Requires ≥7 digits on both sides so a short / digit-light query can't
+ * collide, and accepts a suffix match so a stored local number resolves
+ * a query that carries a country-code prefix (and vice versa).
+ */
+function phoneMatches(a: string, b: string): boolean {
+  const da = a.replace(/\D/gu, "");
+  const db = b.replace(/\D/gu, "");
+  if (da.length < 7 || db.length < 7) {
+    return false;
+  }
+  return da === db || da.endsWith(db) || db.endsWith(da);
+}
+
 function matchesExact(contact: Contact, q: string): boolean {
   return contact.name.toLowerCase() === q
     || (contact.aliases?.some((alias) => alias.toLowerCase() === q) ?? false)
+    // A phone number is an unambiguous identifier too — "who is
+    // +1 415-555-0101?" (an inbound caller / texter) must resolve the
+    // contact, matched by digits so formatting differences don't miss.
+    || (contact.phone !== undefined && phoneMatches(contact.phone, q))
     // A full email address / handle is an unambiguous identifier — "email
     // bob@acme.com" / "who is @bobby?" must resolve the matching contact,
     // not fall through to unknown. Handle compares with a leading "@"
