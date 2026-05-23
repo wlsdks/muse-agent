@@ -11,6 +11,7 @@
 
 import {
   createAmbientNoticeRunner,
+  sendWithRetry,
   type AmbientNoticeRule,
   type AmbientSignalSource,
   type ProactiveNoticeSink
@@ -48,7 +49,7 @@ export function startAmbientTick(options: AmbientTickOptions): AmbientTickHandle
   const now = options.now ?? (() => new Date());
   const sink: ProactiveNoticeSink = {
     deliver: async (notice) => {
-      await options.registry.send(options.providerId, {
+      await sendWithRetry(options.registry, options.providerId, {
         destination: options.destination,
         text: `${notice.title}: ${notice.text}`
       });

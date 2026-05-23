@@ -8,7 +8,7 @@
  * Off by default; the daemon-config gate lives in `tick-daemons.ts`.
  */
 
-import { createWebWatchRunner, type ProactiveNoticeSink, type WebWatch } from "@muse/mcp";
+import { createWebWatchRunner, sendWithRetry, type ProactiveNoticeSink, type WebWatch } from "@muse/mcp";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
@@ -39,7 +39,7 @@ export function startWebWatchTick(options: WebWatchTickOptions): WebWatchTickHan
   const now = options.now ?? (() => new Date());
   const sink: ProactiveNoticeSink = {
     deliver: async (notice) => {
-      await options.registry.send(options.providerId, {
+      await sendWithRetry(options.registry, options.providerId, {
         destination: options.destination,
         text: `${notice.title}: ${notice.text}`
       });
