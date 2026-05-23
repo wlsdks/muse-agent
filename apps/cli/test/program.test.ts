@@ -4987,6 +4987,31 @@ describe("cli program", () => {
     }
   });
 
+  it("muse show rejects a non-image local file instead of emitting a broken inline sequence", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-show-txt-"));
+    const fsp = await import("node:fs/promises");
+    const txtPath = path.join(root, "notes.png"); // .png extension but text bytes
+    await fsp.writeFile(txtPath, "just some notes, definitely not an image\n");
+
+    const prevExit = process.exitCode;
+    const prevTerm = process.env.TERM_PROGRAM;
+    process.env.TERM_PROGRAM = "iTerm.app"; // inline path would otherwise emit OSC-1337
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram(io);
+      process.exitCode = 0;
+      await program.parseAsync(["node", "muse", "show", txtPath], { from: "node" });
+      const text = output.join("");
+      expect(text).toContain("doesn't look like an image");
+      expect(text).not.toContain("\x1b]1337;File=inline=1");
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = prevExit;
+      if (prevTerm === undefined) delete process.env.TERM_PROGRAM;
+      else process.env.TERM_PROGRAM = prevTerm;
+    }
+  });
+
   it("suggestPatternHints surfaces patterns whose median hour matches now (goal 095)", async () => {
     const { suggestPatternHints } = await import("../src/commands-status.js");
     const now = new Date("2026-05-15T09:00:00Z"); // 09 UTC

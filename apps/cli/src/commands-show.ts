@@ -18,6 +18,7 @@ import { basename } from "node:path";
 
 import type { Command } from "commander";
 
+import { looksLikeImage } from "./commands-vision.js";
 import type { ProgramIO } from "./program.js";
 
 interface ShowOptions {
@@ -122,6 +123,14 @@ export function registerShowCommand(program: Command, io: ProgramIO): void {
       // with a clear message instead.
       if (imageBytes.length === 0) {
         io.stderr(`muse show: ${filePath} is empty (0 bytes) — nothing to render.\n`);
+        process.exitCode = 1;
+        return;
+      }
+      // Reject a non-image file before emitting an inline-image sequence
+      // (a broken-image glyph on iTerm/WezTerm) or handing a text/PDF to
+      // the OS image viewer — same magic-byte guard `muse vision` uses.
+      if (!looksLikeImage(imageBytes)) {
+        io.stderr(`muse show: ${filePath} doesn't look like an image (PNG/JPEG/GIF/WebP/BMP/HEIC) — muse show renders images, not text/PDF/other files.\n`);
         process.exitCode = 1;
         return;
       }
