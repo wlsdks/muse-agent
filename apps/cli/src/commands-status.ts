@@ -214,6 +214,7 @@ interface PersistedTask {
   readonly title: string;
   readonly status: string;
   readonly dueAt?: string;
+  readonly urgent?: boolean;
 }
 
 interface ProactiveHistoryEntry {
@@ -328,7 +329,7 @@ async function collectStatus(userId: string) {
     tasks: {
       file: tasksFile,
       totalOpen: allTasks.filter((task) => task.status === "open").length,
-      due24h: due24h.map((task) => ({ id: task.id, title: task.title, dueAt: task.dueAt }))
+      due24h: due24h.map((task) => ({ id: task.id, title: task.title, dueAt: task.dueAt, urgent: task.urgent === true }))
     },
     lastNotice: lastNotice
       ? {
@@ -593,7 +594,7 @@ function renderStatus(io: ProgramIO, snap: Awaited<ReturnType<typeof collectStat
       io.stdout("\n");
       io.stdout(`  tasks: ${snap.tasks.totalOpen.toString()} open, ${snap.tasks.due24h.length.toString()} due in 24 h\n`);
       for (const task of snap.tasks.due24h.slice(0, 5)) {
-        io.stdout(`    · ${task.title} (${task.dueAt ?? "no due"})\n`);
+        io.stdout(`    · ${task.urgent ? "⚠ " : ""}${task.title} (${task.dueAt ?? "no due"})\n`);
       }
       io.stdout("\n");
       if (snap.followups.total > 0) {

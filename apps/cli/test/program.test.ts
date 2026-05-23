@@ -7295,6 +7295,45 @@ describe("cli program", () => {
     }
   });
 
+  it("muse status marks an urgent due-soon task with ⚠ (parity with tasks list / today / the muse.status tool)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-status-urgent-"));
+    const fsp = await import("node:fs/promises");
+    const tasksFile = path.join(root, "tasks.json");
+    const soon = new Date(Date.now() + 60 * 60_000).toISOString();
+    await fsp.writeFile(tasksFile, JSON.stringify({
+      tasks: [
+        { id: "tsk_urgent", title: "Pay rent", status: "open", dueAt: soon, urgent: true, createdAt: "2026-05-12T00:00:00Z" },
+        { id: "tsk_normal", title: "Water plants", status: "open", dueAt: soon, createdAt: "2026-05-12T00:00:00Z" }
+      ]
+    }), "utf8");
+
+    const prev = process.env.MUSE_TASKS_FILE;
+    process.env.MUSE_TASKS_FILE = tasksFile;
+    try {
+      // JSON: the urgent flag rides the due24h entries.
+      const j = captureOutput();
+      const pj = createProgram({ ...j.io, fetch: async () => { throw new Error("no fetch"); } });
+      await pj.parseAsync(["node", "muse", "status", "--json"], { from: "node" });
+      const snap = JSON.parse(j.output.join("")) as { tasks: { due24h: Array<{ title: string; urgent?: boolean }> } };
+      const urgent = snap.tasks.due24h.find((t) => t.title === "Pay rent");
+      const normal = snap.tasks.due24h.find((t) => t.title === "Water plants");
+      expect(urgent?.urgent).toBe(true);
+      expect(normal?.urgent).toBe(false);
+
+      // Text: ⚠ prepends the urgent task, not the normal one.
+      const t = captureOutput();
+      const pt = createProgram({ ...t.io, fetch: async () => { throw new Error("no fetch"); } });
+      await pt.parseAsync(["node", "muse", "status"], { from: "node" });
+      const out = t.output.join("");
+      expect(out).toContain("⚠ Pay rent");
+      // The normal task has the bullet directly before its title — no ⚠.
+      expect(out).toContain("· Water plants");
+      expect(out).not.toContain("⚠ Water plants");
+    } finally {
+      if (prev === undefined) { delete process.env.MUSE_TASKS_FILE; } else { process.env.MUSE_TASKS_FILE = prev; }
+    }
+  });
+
   it("muse status surfaces standing-objective counts + the escalated needs-you signal", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-status-obj-"));
     const fsp = await import("node:fs/promises");
