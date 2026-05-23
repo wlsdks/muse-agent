@@ -697,8 +697,14 @@ was proven ONCE; a JARVIS you depend on survives real-world failure.
   `GmailAuthError` instead of swallowing it as `undefined`, so the
   agent-facing `read_email` tool reports "auth rejected — re-auth" on an
   expired token instead of a misleading "no such message"; cross-method
-  parity with `listRecent`; mutation-proven). Next actuators
-  (web/contacts) are follow-on slices.
+  parity with `listRecent`; mutation-proven). + 923 (web search:
+  `muse.search` routes both its SearXNG + DuckDuckGo backends through
+  the shared `fetchWithRetry`, so a transient 429 / 5xx / network reject
+  on the idempotent GET retries-with-backoff (Retry-After honoured)
+  instead of dropping the search on one blip; the state-changing
+  web-action POST still deliberately never retries; real `tool.execute`
+  vs a contract-faithful sequenced fake, mutation-proven). Next actuator
+  (contacts) is a follow-on slice.
 
 **P20 — Deepen the thin axes (Perception + Knowledge).**
 - [x] Continuous perception: an ambient signal (active window /

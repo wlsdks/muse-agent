@@ -1,5 +1,6 @@
 import { stripUntrustedTerminalChars, type JsonObject, type JsonValue } from "@muse/shared";
 
+import { fetchWithRetry, type RetryOptions } from "./http-retry.js";
 import type { LoopbackMcpServer } from "./loopback.js";
 import { buildJsonToolSchema, readString } from "./loopback-helpers.js";
 
@@ -56,6 +57,15 @@ export interface SearchMcpServerOptions {
    * `searxngUrl` is unset.
    */
   readonly searxngEngines?: string;
+  /**
+   * Retry-with-backoff tuning for the (idempotent GET) search fetches —
+   * a transient 429 / 5xx / network reject on the DDG or SearXNG read is
+   * retried instead of failing the search outright (P19 actuator
+   * hardening). Safe because search is read-only; the state-changing
+   * web-action path deliberately never retries. Tests inject
+   * `{ baseDelayMs: 0, sleep: async () => {} }` to avoid real waits.
+   */
+  readonly retryOptions?: RetryOptions;
 }
 
 const DEFAULT_ENDPOINT = "https://html.duckduckgo.com/html/";
@@ -71,6 +81,7 @@ export function createSearchMcpServer(options: SearchMcpServerOptions = {}): Loo
   const timeoutMs = options.timeoutMs ?? 8_000;
   const endpoint = options.endpoint ?? DEFAULT_ENDPOINT;
   const fetchImpl = options.fetch ?? globalThis.fetch;
+  const retryOptions = options.retryOptions ?? {};
   const searxngUrl = options.searxngUrl?.trim().replace(/\/+$/u, "");
 
   const backendDescription = searxngUrl
@@ -104,6 +115,7 @@ export function createSearchMcpServer(options: SearchMcpServerOptions = {}): Loo
               fetchImpl,
               maxResults,
               query,
+              retryOptions,
               searxngUrl,
               timeoutMs,
               ...(timeRange ? { timeRange } : {})
@@ -122,9 +134,6 @@ export function createSearchMcpServer(options: SearchMcpServerOptions = {}): Loo
 
           // Path 2 — DuckDuckGo HTML fallback (or sole backend when
           // searxngUrl is unset).
-          const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), timeoutMs);
-          let html: string;
           // DuckDuckGo's df= date filter wants single letters.
           const ddgDf = timeRange === "day"
             ? "d"
@@ -137,30 +146,41 @@ export function createSearchMcpServer(options: SearchMcpServerOptions = {}): Loo
                   : undefined;
           const ddgQs = new URLSearchParams({ q: query });
           if (ddgDf) ddgQs.set("df", ddgDf);
+          // Idempotent GET → retry a transient 429 / 5xx / network reject
+          // with backoff (Retry-After honoured) before giving up, instead
+          // of failing the whole search on a momentary blip.
+          let response: Response;
           try {
-            const response = await fetchImpl(`${endpoint}?${ddgQs.toString()}`, {
-              headers: {
-                "accept": "text/html",
-                "user-agent": "muse-search-loopback/1.0"
-              },
-              signal: controller.signal
-            });
-            if (!response.ok) {
-              if (response.status === 429) {
-                return {
-                  error: "search backend rate-limited (429) — back off for a minute, or self-host SearXNG (see docs/setup-local-llm.md)",
-                  rateLimited: true,
-                  status: 429
-                };
+            response = await fetchWithRetry(fetchImpl, `${endpoint}?${ddgQs.toString()}`, {
+              timeoutMs,
+              ...retryOptions,
+              init: {
+                headers: {
+                  "accept": "text/html",
+                  "user-agent": "muse-search-loopback/1.0"
+                }
               }
-              return { error: `search backend responded ${response.status.toString()}`, status: response.status };
+            });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            return { error: `search failed: ${message}` };
+          }
+          if (!response.ok) {
+            if (response.status === 429) {
+              return {
+                error: "search backend rate-limited (429) — back off for a minute, or self-host SearXNG (see docs/setup-local-llm.md)",
+                rateLimited: true,
+                status: 429
+              };
             }
+            return { error: `search backend responded ${response.status.toString()}`, status: response.status };
+          }
+          let html: string;
+          try {
             html = await response.text();
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             return { error: `search failed: ${message}` };
-          } finally {
-            clearTimeout(timer);
           }
           const parsed = parseDuckDuckGoHtml(html, maxResults);
           if (parsed.length === 0) {
@@ -207,6 +227,7 @@ interface QuerySearxngArgs {
   readonly timeoutMs: number;
   readonly fetchImpl: typeof globalThis.fetch;
   readonly engines: string | undefined;
+  readonly retryOptions: RetryOptions;
   readonly timeRange?: "day" | "week" | "month" | "year";
 }
 
@@ -224,22 +245,30 @@ interface SearxngResultRow {
  * with zero hits (also falls back so the user isn't left empty-handed).
  */
 async function querySearxng(args: QuerySearxngArgs): Promise<readonly SearchResult[] | undefined> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), args.timeoutMs);
   const params = new URLSearchParams({ format: "json", q: args.query });
   if (args.engines) params.set("engines", args.engines);
   if (args.timeRange) params.set("time_range", args.timeRange);
+  let response: Response;
   try {
-    const response = await args.fetchImpl(`${args.searxngUrl}/search?${params.toString()}`, {
-      headers: {
-        "accept": "application/json",
-        "user-agent": "muse-search-loopback/1.0"
-      },
-      signal: controller.signal
+    // Idempotent GET → retry a transient 429 / 5xx / network reject with
+    // backoff before abandoning the preferred backend for the DDG fallback.
+    response = await fetchWithRetry(args.fetchImpl, `${args.searxngUrl}/search?${params.toString()}`, {
+      timeoutMs: args.timeoutMs,
+      ...args.retryOptions,
+      init: {
+        headers: {
+          "accept": "application/json",
+          "user-agent": "muse-search-loopback/1.0"
+        }
+      }
     });
-    if (!response.ok) {
-      return undefined;
-    }
+  } catch {
+    return undefined;
+  }
+  if (!response.ok) {
+    return undefined;
+  }
+  try {
     const payload = await response.json() as unknown;
     if (!payload || typeof payload !== "object") return undefined;
     const rows = (payload as { results?: unknown }).results;
@@ -258,8 +287,6 @@ async function querySearxng(args: QuerySearxngArgs): Promise<readonly SearchResu
     return out;
   } catch {
     return undefined;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
