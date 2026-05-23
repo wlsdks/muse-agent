@@ -147,6 +147,7 @@ import { createMessagingPollDispatchers } from "./messaging-poll-dispatchers.js"
 import { createSkillRuntime } from "./skills-runtime.js";
 import { buildLoopbackTools } from "./loopback-tools.js";
 import { createOllamaEmbedder } from "./context-engineering-builders.js";
+import { readFeedKnowledgeEntries } from "./feeds-knowledge-source.js";
 import { createNotesKnowledgeSearchTool } from "./knowledge-corpus.js";
 
 import {
@@ -166,6 +167,7 @@ import {
   mergeModelKeysFromFile,
   resolveContactsFile,
   resolveEpisodesFile,
+  resolveFeedsFile,
   resolveFollowupLlmBudgetFile,
   resolveFollowupsFile,
   resolveNotesDir,
@@ -582,6 +584,9 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
         list: async () => (await readFollowups(resolveFollowupsFile(env)))
           .filter((followup) => followup.status === "scheduled")
           .map((followup) => ({ id: followup.id, summary: followup.summary }))
+      },
+      feedsSource: {
+        recentEntries: (limit) => readFeedKnowledgeEntries(resolveFeedsFile(env), limit)
       }
     })];
   })();
@@ -841,9 +846,15 @@ export {
   createKnowledgeEnricher,
   createNotesKnowledgeSearchTool,
   type AssembleKnowledgeCorpusOptions,
+  type FeedEntryLike,
+  type FeedsKnowledgeSource,
   type KnowledgeEnricherOptions,
   type NotesKnowledgeSearchToolOptions
 } from "./knowledge-corpus.js";
+
+export { readFeedKnowledgeEntries } from "./feeds-knowledge-source.js";
+
+export { resolveFeedsFile } from "./personal-providers.js";
 
 export function requireEnv(env: MuseEnvironment, key: string): string {
   const value = env[key]?.trim();

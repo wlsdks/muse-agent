@@ -81,6 +81,20 @@ export interface FollowupsSource {
   list(): Promise<readonly FollowupLike[]> | readonly FollowupLike[];
 }
 
+export interface FeedEntryLike {
+  readonly id: string;
+  readonly title: string;
+  readonly summary: string;
+  readonly publishedAt?: string;
+  /** Human-readable feed name, e.g. "Hacker News" — prefixed into the chunk so a citation says which feed. */
+  readonly feedName?: string;
+}
+
+export interface FeedsKnowledgeSource {
+  /** Most-recent watched feed entries across all feeds, newest first. */
+  recentEntries(limit: number): Promise<readonly FeedEntryLike[]> | readonly FeedEntryLike[];
+}
+
 export interface AssembleKnowledgeCorpusOptions {
   readonly notesProvider?: NotesProvider;
   /** Open tasks become corpus chunks sourced `task/<id>` — the user's todos hold key facts. */
@@ -95,6 +109,8 @@ export interface AssembleKnowledgeCorpusOptions {
   readonly remindersSource?: RemindersSource;
   /** Scheduled followups become corpus chunks sourced `followup/<summary>` — the agent's own "check on X". */
   readonly followupsSource?: FollowupsSource;
+  /** Recent watched RSS/Atom feed entries become corpus chunks sourced `feed/<title>` — "any news about X?". */
+  readonly feedsSource?: FeedsKnowledgeSource;
   readonly extraChunks?: readonly KnowledgeChunk[];
   /** Cap notes pulled into the corpus. Default 200. */
   readonly maxNotes?: number;
@@ -105,6 +121,8 @@ export interface AssembleKnowledgeCorpusOptions {
   readonly calendarDaysAhead?: number;
   /** Cap recent emails pulled into the corpus. Default 25. */
   readonly maxEmails?: number;
+  /** Cap recent feed entries pulled into the corpus. Default 50. */
+  readonly maxFeedEntries?: number;
   /** Injectable clock for the calendar window (test only). */
   readonly now?: () => number;
 }
@@ -272,6 +290,25 @@ export async function assembleKnowledgeCorpus(
     }
   }
 
+  if (options.feedsSource) {
+    const maxFeedEntries = Math.max(1, Math.trunc(finiteOr(options.maxFeedEntries, 50)));
+    let entries: readonly FeedEntryLike[];
+    try {
+      entries = await options.feedsSource.recentEntries(maxFeedEntries);
+    } catch {
+      entries = [];
+    }
+    for (const entry of entries.slice(0, maxFeedEntries)) {
+      const titled = entry.feedName ? `${entry.feedName}: ${entry.title}` : entry.title;
+      const header = entry.publishedAt ? `${titled} (${entry.publishedAt})` : titled;
+      const text = `${header}\n${entry.summary}`.trim();
+      if (text.length === 0) {
+        continue;
+      }
+      chunks.push({ source: labelSource("feed", entry.title || entry.feedName, entry.id), text: text.length > maxChars ? text.slice(0, maxChars) : text });
+    }
+  }
+
   if (options.extraChunks?.length) {
     chunks.push(...options.extraChunks);
   }
@@ -336,11 +373,13 @@ export interface NotesKnowledgeSearchToolOptions {
   readonly emailSource?: EmailMessageSource;
   readonly remindersSource?: RemindersSource;
   readonly followupsSource?: FollowupsSource;
+  readonly feedsSource?: FeedsKnowledgeSource;
   readonly embed: (text: string) => Promise<readonly number[]>;
   readonly topK?: number;
   readonly maxNotes?: number;
   readonly maxCharsPerNote?: number;
   readonly maxEmails?: number;
+  readonly maxFeedEntries?: number;
   readonly extraChunks?: readonly KnowledgeChunk[];
 }
 
@@ -379,10 +418,12 @@ export function createNotesKnowledgeSearchTool(options: NotesKnowledgeSearchTool
         ...(options.emailSource ? { emailSource: options.emailSource } : {}),
         ...(options.remindersSource ? { remindersSource: options.remindersSource } : {}),
         ...(options.followupsSource ? { followupsSource: options.followupsSource } : {}),
+        ...(options.feedsSource ? { feedsSource: options.feedsSource } : {}),
         ...(options.extraChunks ? { extraChunks: options.extraChunks } : {}),
         ...(options.maxNotes !== undefined ? { maxNotes: options.maxNotes } : {}),
         ...(options.maxCharsPerNote !== undefined ? { maxCharsPerNote: options.maxCharsPerNote } : {}),
-        ...(options.maxEmails !== undefined ? { maxEmails: options.maxEmails } : {})
+        ...(options.maxEmails !== undefined ? { maxEmails: options.maxEmails } : {}),
+        ...(options.maxFeedEntries !== undefined ? { maxFeedEntries: options.maxFeedEntries } : {})
       });
       const matches = await rankKnowledgeChunks(query, corpus, {
         embed: options.embed,
