@@ -480,6 +480,12 @@ export {
   type WeatherToolDeps
 } from "./weather-tool.js";
 export {
+  createWorldTimeTool,
+  formatTimeInZone,
+  resolveTimezone,
+  type WorldTimeToolDeps
+} from "./world-time.js";
+export {
   createContactsAddTool,
   createContactsFindTool,
   createContactsRemoveTool,
