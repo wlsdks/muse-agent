@@ -1,7 +1,8 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { queryContacts } from "@muse/mcp";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
@@ -32,6 +33,49 @@ async function run(file: string, args: string[]): Promise<{ stdout: string; stde
 function contactsFile(): string {
   return join(mkdtempSync(join(tmpdir(), "muse-cli-contacts-")), "contacts.json");
 }
+
+describe("muse contacts import — bulk-load a vCard into the real store", () => {
+  const VCF = `BEGIN:VCARD
+VERSION:3.0
+FN:Jane Doe
+EMAIL:jane@acme.com
+TEL:+1 415 555 0102
+BDAY:1990-12-25
+END:VCARD
+BEGIN:VCARD
+FN:Bob Smith
+TEL:+1 555 0199
+END:VCARD
+BEGIN:VCARD
+FN:No Way To Reach
+END:VCARD
+`;
+
+  it("imports reachable cards (name + email/phone), skips bare labels, persists to the store", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-vcf-"));
+    const file = join(dir, "contacts.json");
+    const vcf = join(dir, "addressbook.vcf");
+    writeFileSync(vcf, VCF, "utf8");
+    const r = await run(file, ["import", vcf]);
+    expect(r.stdout).toContain("Imported 2 contacts");
+    expect(r.stdout).toContain("skipped 1");
+    const stored = await queryContacts(file);
+    expect(stored.map((c) => c.name).sort()).toEqual(["Bob Smith", "Jane Doe"]);
+    const jane = stored.find((c) => c.name === "Jane Doe")!;
+    expect(jane).toMatchObject({ birthday: "1990-12-25", email: "jane@acme.com", phone: "+1 415 555 0102" });
+  });
+
+  it("de-dupes by email on re-import (no pile-up)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-vcf-dup-"));
+    const file = join(dir, "contacts.json");
+    const vcf = join(dir, "a.vcf");
+    writeFileSync(vcf, VCF, "utf8");
+    await run(file, ["import", vcf]);
+    const second = await run(file, ["import", vcf]);
+    expect(second.stdout).toContain("Imported 0 contacts");
+    expect((await queryContacts(file)).length).toBe(2);
+  });
+});
 
 describe("muse contacts — people graph + recipient resolution", () => {
   it("add → list → resolve reflects through the real ~/.muse/contacts.json store", async () => {

@@ -83,6 +83,69 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
     });
 
   contacts
+    .command("import")
+    .description("Bulk-import contacts from a vCard (.vcf) file — your exported address book")
+    .argument("<file>", "Path to a .vcf file (one or many vCards)")
+    .option("--json", "Emit a structured summary instead of a human line")
+    .action(async (file: string, options: { readonly json?: boolean }) => {
+      const { readFile } = await import("node:fs/promises");
+      let text: string;
+      try {
+        text = await readFile(file, "utf8");
+      } catch (cause) {
+        io.stderr(`muse contacts import: cannot read ${file}: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const { parseVCards } = await import("./vcard.js");
+      const cards = parseVCards(text);
+      const existing = await queryContacts(contactsFile());
+      const seenEmails = new Set(existing.flatMap((c) => (c.email ? [c.email.toLowerCase()] : [])));
+      const seenPhones = new Set(existing.flatMap((c) => (c.phone ? [c.phone] : [])));
+      let imported = 0;
+      let skipped = 0;
+      for (const card of cards) {
+        const email = card.email?.trim();
+        const phone = card.phone?.trim();
+        // Reachable = a name plus at least one way to reach them; a
+        // vCard with neither email nor phone is a bare label, skip it.
+        if (card.name.trim().length === 0 || (!email && !phone)) {
+          skipped += 1;
+          continue;
+        }
+        // De-dupe by email OR phone so re-importing the same export
+        // doesn't pile up (a phone-only card has no email to key on).
+        if ((email && seenEmails.has(email.toLowerCase())) || (phone && seenPhones.has(phone))) {
+          skipped += 1;
+          continue;
+        }
+        const birthday = card.birthday && BIRTHDAY_RE.test(card.birthday) ? card.birthday : undefined;
+        const aliases = (card.aliases ?? []).map((a) => a.trim()).filter((a) => a.length > 0);
+        const contact: Contact = {
+          id: createRunId("contact"),
+          name: card.name.trim(),
+          ...(email ? { email } : {}),
+          ...(phone ? { phone } : {}),
+          ...(aliases.length > 0 ? { aliases } : {}),
+          ...(birthday ? { birthday } : {})
+        };
+        await addContact(contactsFile(), contact);
+        if (email) {
+          seenEmails.add(email.toLowerCase());
+        }
+        if (phone) {
+          seenPhones.add(phone);
+        }
+        imported += 1;
+      }
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ imported, skipped, total: cards.length })}\n`);
+        return;
+      }
+      io.stdout(`Imported ${imported.toString()} contact${imported === 1 ? "" : "s"} from ${file}${skipped > 0 ? ` (skipped ${skipped.toString()} without a name+email/phone or already present)` : ""}\n`);
+    });
+
+  contacts
     .command("birthdays")
     .description("Upcoming birthdays, soonest first")
     .option("--within <days>", "Look-ahead window in days (default 30)")
