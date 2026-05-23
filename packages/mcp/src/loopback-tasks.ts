@@ -107,9 +107,9 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           additionalProperties: false,
           properties: {
             dueAt: { description: "Optional ISO-8601 due timestamp (e.g. 2026-05-15T18:00:00Z).", type: "string" },
-            notes: { type: "string" },
-            tags: { items: { type: "string" }, type: "array" },
-            title: { type: "string" }
+            notes: { description: "Optional free-text details for the task.", type: "string" },
+            tags: { description: "Optional labels for the task.", items: { type: "string" }, type: "array" },
+            title: { description: "What the task is, e.g. 'Buy milk' or 'Email the Q3 deck'.", type: "string" }
           },
           required: ["title"],
           type: "object"
@@ -138,7 +138,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
         inputSchema: {
           additionalProperties: false,
           properties: {
-            status: { enum: ["open", "done", "all"], type: "string" }
+            status: { description: "Which tasks to list: 'open' (default), 'done', or 'all'.", enum: ["open", "done", "all"], type: "string" }
           },
           type: "object"
         },
@@ -175,7 +175,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
         inputSchema: {
           additionalProperties: false,
           properties: {
-            id: { type: "string" }
+            id: { description: "The task's id, from `list` or `search`.", type: "string" }
           },
           required: ["id"],
           type: "object"
@@ -217,8 +217,8 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
         inputSchema: {
           additionalProperties: false,
           properties: {
-            query: { type: "string" },
-            status: { enum: ["open", "done", "all"], type: "string" }
+            query: { description: "Text to find in task titles/notes, e.g. 'milk' or 'Q3'.", type: "string" },
+            status: { description: "Which tasks to search: 'open' (default), 'done', or 'all'.", enum: ["open", "done", "all"], type: "string" }
           },
           required: ["query"],
           type: "object"

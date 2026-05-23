@@ -88,8 +88,8 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
         inputSchema: {
           additionalProperties: false,
           properties: {
-            providerId: { type: "string" },
-            status: { enum: ["open", "done", "all"], type: "string" }
+            providerId: { description: "Tasks provider id (default: all registered providers).", type: "string" },
+            status: { description: "Which tasks to list: 'open' (default), 'done', or 'all'.", enum: ["open", "done", "all"], type: "string" }
           },
           type: "object"
         },
@@ -126,10 +126,10 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
         inputSchema: {
           additionalProperties: false,
           properties: {
-            notes: { type: "string" },
-            providerId: { type: "string" },
-            tags: { items: { type: "string" }, type: "array" },
-            title: { type: "string" }
+            notes: { description: "Optional free-text details for the task.", type: "string" },
+            providerId: { description: "Tasks provider id to add into (from `providers`).", type: "string" },
+            tags: { description: "Optional labels for the task.", items: { type: "string" }, type: "array" },
+            title: { description: "What the task is, e.g. 'Buy milk' or 'Email the Q3 deck'.", type: "string" }
           },
           required: ["providerId", "title"],
           type: "object"
@@ -158,8 +158,8 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
         inputSchema: {
           additionalProperties: false,
           properties: {
-            id: { type: "string" },
-            providerId: { type: "string" }
+            id: { description: "The task's id, from `list` or `search`.", type: "string" },
+            providerId: { description: "Tasks provider id the task belongs to.", type: "string" }
           },
           required: ["providerId", "id"],
           type: "object"
@@ -204,9 +204,9 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
         inputSchema: {
           additionalProperties: false,
           properties: {
-            limit: { type: "number" },
-            providerId: { type: "string" },
-            query: { type: "string" }
+            limit: { description: "Max results to return (default 20).", type: "number" },
+            providerId: { description: "Tasks provider id (default: search all providers).", type: "string" },
+            query: { description: "Text to find in task titles/notes, e.g. 'milk' or 'Q3'.", type: "string" }
           },
           required: ["query"],
           type: "object"

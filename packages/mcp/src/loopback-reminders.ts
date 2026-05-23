@@ -201,7 +201,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
         inputSchema: {
           additionalProperties: false,
           properties: {
-            status: { enum: ["pending", "fired", "all", "due"], type: "string" }
+            status: { description: "Filter: 'pending' (not yet fired), 'fired', 'due' (now), or 'all'.", enum: ["pending", "fired", "all", "due"], type: "string" }
           },
           type: "object"
         },
@@ -244,7 +244,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           additionalProperties: false,
           properties: {
             query: { description: "Substring to grep for (case-insensitive).", type: "string" },
-            status: { enum: ["pending", "fired", "all", "due"], type: "string" }
+            status: { description: "Filter: 'pending' (not yet fired), 'fired', 'due' (now), or 'all'.", enum: ["pending", "fired", "all", "due"], type: "string" }
           },
           required: ["query"],
           type: "object"
@@ -304,7 +304,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
               description: "New due time. Same grammar as `add` (ISO or relative phrase). Omit for a 10-minute snooze.",
               type: "string"
             },
-            id: { type: "string" }
+            id: { description: "The reminder's id, from `due` / `history` / `search`.", type: "string" }
           },
           required: ["id"],
           type: "object"
@@ -355,7 +355,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
               description: "Optional ISO-8601 timestamp; defaults to now.",
               type: "string"
             },
-            id: { type: "string" }
+            id: { description: "The reminder's id, from `due` / `history` / `search`.", type: "string" }
           },
           required: ["id"],
           type: "object"
@@ -386,7 +386,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
         inputSchema: {
           additionalProperties: false,
           properties: {
-            id: { type: "string" }
+            id: { description: "The reminder's id, from `due` / `history` / `search`.", type: "string" }
           },
           required: ["id"],
           type: "object"
