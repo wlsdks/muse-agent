@@ -614,7 +614,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => knowledgeSearchTools,
     () => homeReadTools,
     () => emailReadTools,
-    () => [createWeatherTool()],
+    () => [createWeatherTool(env.MUSE_WEATHER_LOCATION?.trim() ? { defaultLocation: env.MUSE_WEATHER_LOCATION.trim() } : {})],
     () => [createContactsFindTool({ contacts: () => queryContacts(resolveContactsFile(env)) })],
     () => options.extraTools ?? [],
     () => withChromeDevToolsRisk(mcp.manager.toMuseTools()),

@@ -41,4 +41,27 @@ describe("createWeatherTool — on-demand weather perception", () => {
     expect((props.location.description ?? "").length).toBeGreaterThan(0);
     expect(props.location.description ?? "").toContain("e.g.");
   });
+
+  it("with a defaultLocation, a no-arg call uses the configured home + location is not required", async () => {
+    const tool = createWeatherTool({ defaultLocation: "Seoul", provider: provider() });
+    const schema = tool.definition.inputSchema as { required?: string[]; properties: Record<string, { description?: string }> };
+    expect(schema.required).toBeUndefined(); // location optional when a home default exists
+    expect(schema.properties.location.description).toContain("Seoul");
+    const out = await tool.execute({}) as { found: boolean; location?: string; weather?: string };
+    expect(out.found).toBe(true);
+    expect(out.location).toBe("Seoul");
+    expect(out.weather).toContain("Seoul");
+  });
+
+  it("an explicit location still overrides the default", async () => {
+    const tool = createWeatherTool({ defaultLocation: "Seoul", provider: provider({ geocode: { results: [{ latitude: 51.5, longitude: -0.1, name: "London", timezone: "Europe/London" }] } }) });
+    const out = await tool.execute({ location: "London" }) as { location?: string };
+    expect(out.location).toBe("London");
+  });
+
+  it("without a defaultLocation, location stays required and a no-arg call is found:false", async () => {
+    const tool = createWeatherTool({ provider: provider() });
+    expect((tool.definition.inputSchema as { required?: string[] }).required).toEqual(["location"]);
+    expect(await tool.execute({})).toMatchObject({ found: false });
+  });
 });
