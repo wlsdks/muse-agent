@@ -6,6 +6,7 @@ import type {
 } from "@muse/calendar";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
+import { computeAvailability } from "./calendar-availability.js";
 import { readBoolean, readString, readStringArray, errorMessage } from "./loopback-helpers.js";
 import type { LoopbackMcpServer } from "./loopback.js";
 import { resolveRelativeTimePhrase } from "./loopback-relative-time.js";
@@ -86,6 +87,63 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
         },
         domain: "calendar",
         name: "list",
+        risk: "read"
+      },
+      {
+        description:
+          "Check whether the user is FREE or BUSY in a time window and list the open gaps. " +
+          "Use for 'am I free at 3pm?', 'do I have time this afternoon?', 'find a 30-minute gap tomorrow'. " +
+          "`fromIso` is required; `toIso` defaults to fromIso + 60 minutes. Both accept an ISO-8601 timestamp OR a relative phrase " +
+          "('tomorrow 3pm', '내일 오후 3시', 'in 2 hours'). `minMinutes` keeps only free gaps at least that long. " +
+          "Returns `fullyFree`, the `busy` events overlapping the window, and the `free` gaps. " +
+          "Do NOT use to LIST everything scheduled (use `list`) or to CREATE an event (use `add`).",
+        execute: async (args): Promise<JsonObject> => {
+          const from = parseIsoDate(readString(args, "fromIso"));
+          if (!from) {
+            return {
+              error:
+                `fromIso must be an ISO-8601 timestamp or a supported relative phrase (got ${JSON.stringify(readString(args, "fromIso") ?? "")}). ` +
+                `Examples: "tomorrow 3pm", "in 2 hours", "내일 오후 3시".`
+            };
+          }
+          const to = parseIsoDate(readString(args, "toIso")) ?? new Date(from.getTime() + 60 * 60_000);
+          const minRaw = (args as Record<string, unknown>)["minMinutes"];
+          const minMinutes = typeof minRaw === "number" && Number.isFinite(minRaw) ? minRaw : undefined;
+          const providerId = readString(args, "providerId");
+          try {
+            const events = await registry.listEvents({ from, to }, providerId);
+            const result = computeAvailability(events, { from, to }, minMinutes !== undefined ? { minFreeMinutes: minMinutes } : {});
+            return {
+              busy: result.busy.map((block) => ({
+                endsAtIso: block.endsAt.toISOString(),
+                startsAtIso: block.startsAt.toISOString(),
+                titles: [...block.titles]
+              })) as JsonValue,
+              free: result.free.map((slot) => ({
+                endsAtIso: slot.endsAt.toISOString(),
+                startsAtIso: slot.startsAt.toISOString()
+              })) as JsonValue,
+              fullyFree: result.fullyFree,
+              windowFromIso: from.toISOString(),
+              windowToIso: to.toISOString()
+            };
+          } catch (error) {
+            return { error: errorMessage(error) };
+          }
+        },
+        inputSchema: {
+          additionalProperties: false,
+          properties: {
+            fromIso: { description: "Window start — ISO-8601 OR a natural phrase like 'tomorrow 3pm' / '내일 오후 3시'.", type: "string" },
+            minMinutes: { description: "Only return free gaps at least this many minutes long, e.g. 30.", type: "number" },
+            providerId: { description: "Specific calendar provider id (default: all).", type: "string" },
+            toIso: { description: "Window end — ISO-8601 or a relative phrase; defaults to fromIso + 60 minutes.", type: "string" }
+          },
+          required: ["fromIso"],
+          type: "object"
+        },
+        domain: "calendar",
+        name: "availability",
         risk: "read"
       },
       {

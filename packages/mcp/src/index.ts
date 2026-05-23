@@ -243,6 +243,13 @@ export {
 } from "./server-stores.js";
 
 export {
+  computeAvailability,
+  type AvailabilityResult,
+  type AvailabilityEventLike,
+  type BusyBlock,
+  type FreeSlot
+} from "./calendar-availability.js";
+export {
   createCryptoMcpServer,
   createDefaultLoopbackMcpServers,
   createCalendarMcpServer,
