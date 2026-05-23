@@ -119,9 +119,10 @@ export function registerHomeCommands(program: Command, io: ProgramIO, deps: Home
 
   home
     .command("entities")
-    .description("List Home Assistant entities (discover device ids to read/control), optionally filtered by domain")
+    .description("List Home Assistant entities (discover device ids to read/control), optionally filtered by domain and/or state")
     .option("--domain <domain>", "Filter to one device type, e.g. 'light' / 'lock' / 'sensor'")
-    .action(async (options: { domain?: string }) => {
+    .option("--state <state>", "Only entities in this state (case-insensitive), e.g. 'on' / 'unlocked' / 'open' — 'what's left on?'")
+    .action(async (options: { domain?: string; state?: string }) => {
       const baseUrl = deps.baseUrl ?? process.env.MUSE_HOMEASSISTANT_URL?.trim();
       const token = deps.token ?? process.env.MUSE_HOMEASSISTANT_TOKEN?.trim();
       if (!baseUrl || !token) {
@@ -129,14 +130,19 @@ export function registerHomeCommands(program: Command, io: ProgramIO, deps: Home
         process.exitCode = 1;
         return;
       }
-      const entities = await listHomeAssistantStates({
+      const all = await listHomeAssistantStates({
         baseUrl,
         token,
         ...(options.domain ? { domain: options.domain } : {}),
         ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {})
       });
+      const stateFilter = options.state?.trim().toLowerCase();
+      const entities = stateFilter && stateFilter.length > 0
+        ? all.filter((entity) => entity.state.toLowerCase() === stateFilter)
+        : all;
       if (entities.length === 0) {
-        io.stdout(`No entities found${options.domain ? ` for domain '${options.domain}'` : ""} (or Home Assistant unreachable).\n`);
+        const what = [options.domain ? `domain '${options.domain}'` : "", stateFilter ? `state '${stateFilter}'` : ""].filter((s) => s.length > 0).join(" + ");
+        io.stdout(`No entities found${what ? ` for ${what}` : ""} (or Home Assistant unreachable).\n`);
         return;
       }
       for (const entity of entities) {

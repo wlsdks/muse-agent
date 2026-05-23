@@ -111,3 +111,40 @@ describe("muse home entities — discovery surface", () => {
     expect(r.output).toContain("No entities found");
   });
 });
+
+function statesFetch(states: unknown[]): typeof fetch {
+  return (async (url: string | URL) => {
+    if (String(url).includes("/api/states")) {
+      return new Response(JSON.stringify(states), { status: 200 });
+    }
+    return new Response("{}", { status: 200 });
+  }) as unknown as typeof fetch;
+}
+
+describe("muse home entities — --state filter (what's left on?)", () => {
+  const STATES = [
+    { attributes: {}, entity_id: "light.living_room", state: "on" },
+    { attributes: {}, entity_id: "light.bedroom", state: "off" },
+    { attributes: {}, entity_id: "lock.front_door", state: "locked" }
+  ];
+
+  it("--state ON returns only on-state entities (case-insensitive)", async () => {
+    const { output } = await run(["entities", "--state", "ON"], { fetchImpl: statesFetch(STATES) });
+    expect(output).toContain("light.living_room: on");
+    expect(output).not.toContain("light.bedroom");
+    expect(output).not.toContain("lock.front_door");
+  });
+
+  it("without --state, lists every entity (unchanged behaviour)", async () => {
+    const { output } = await run(["entities"], { fetchImpl: statesFetch(STATES) });
+    expect(output).toContain("light.living_room: on");
+    expect(output).toContain("light.bedroom: off");
+    expect(output).toContain("lock.front_door: locked");
+  });
+
+  it("--state unlocked → none when the only lock is locked", async () => {
+    const { output } = await run(["entities", "--state", "unlocked"], { fetchImpl: statesFetch(STATES) });
+    expect(output).toContain("No entities found");
+    expect(output).toContain("state 'unlocked'");
+  });
+});
