@@ -38,7 +38,7 @@ export function createWebActionTool(deps: WebActionToolDeps): MuseTool {
         required: ["summary", "url"],
         type: "object"
       },
-      keywords: ["web", "submit", "book", "form", "action"],
+      keywords: ["web", "submit", "book", "form", "action", "post", "reserve", "rsvp", "apply", "register", "subscribe", "예약", "신청"],
       name: "web_action",
       risk: "execute"
     },
