@@ -194,17 +194,27 @@ const RULE_FIELDS = ["appears", "disappears", "extract"] as const;
  * for transient 429/5xx). Non-intrusive — unlike driving the user's
  * logged-in browser, it doesn't hijack their active tab. Returns the
  * body text, or `undefined` on a permanent failure (the runner then
- * skips that watch without losing its baseline). Authenticated pages
- * are a later Chrome-DevTools-MCP source.
+ * skips that watch without losing its baseline). Optional `headers`
+ * (a copied Cookie / Authorization) let it watch a page behind the
+ * user's session — non-intrusive, no browser hijack.
  */
 export function createHttpSnapshot(
   url: string,
-  options: { readonly fetchImpl?: typeof globalThis.fetch; readonly retryOptions?: RetryOptions } = {}
+  options: { readonly fetchImpl?: typeof globalThis.fetch; readonly retryOptions?: RetryOptions; readonly headers?: Record<string, string> } = {}
 ): () => Promise<string | undefined> {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const retryOptions: RetryOptions = options.headers
+    ? {
+        ...(options.retryOptions ?? {}),
+        init: {
+          ...(options.retryOptions?.init ?? {}),
+          headers: { ...(options.retryOptions?.init?.headers as Record<string, string> | undefined), ...options.headers }
+        }
+      }
+    : options.retryOptions ?? {};
   return async () => {
     try {
-      const response = await fetchWithRetry(fetchImpl, url, options.retryOptions ?? {});
+      const response = await fetchWithRetry(fetchImpl, url, retryOptions);
       if (!response.ok) {
         return undefined;
       }
@@ -213,6 +223,19 @@ export function createHttpSnapshot(
       return undefined;
     }
   };
+}
+
+function parseHeaders(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "string" && key.length > 0) {
+      out[key] = value;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**
@@ -252,11 +275,12 @@ export function webWatchesFromConfig(
     if (rule === undefined) {
       continue;
     }
+    const headers = parseHeaders(e.headers);
     out.push({
       id: e.id,
       message: e.message,
       rule,
-      snapshot: createHttpSnapshot(e.url, options),
+      snapshot: createHttpSnapshot(e.url, headers ? { ...options, headers } : options),
       title: e.title
     });
   }
