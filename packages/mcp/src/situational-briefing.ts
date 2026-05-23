@@ -9,6 +9,7 @@
  * only decides WHAT the briefing says given the current context.
  */
 
+import { computeAvailability, type AvailabilityEventLike } from "./calendar-availability.js";
 import type { StandingObjective } from "./personal-objectives-store.js";
 
 /**
@@ -64,6 +65,51 @@ export interface SituationalBriefingInput {
    * (today)"). Supplementary, same posture as the others.
    */
   readonly tasksDue?: string;
+  /**
+   * Optional pre-resolved "shape of the day" free/busy line ("free
+   * 12:00–13:00, after 16:00" / "booked solid the rest of today").
+   * Supplementary, same posture as the others — rides an
+   * otherwise-non-empty briefing, never triggers one alone.
+   */
+  readonly availability?: string;
+}
+
+function pad2(n: number): string {
+  return n.toString().padStart(2, "0");
+}
+
+/**
+ * One-line free/busy summary for the REST of today (`now` →
+ * `dayEndHour`:00 local, default 22), composing {@link
+ * computeAvailability}. Returns `undefined` when there's nothing to say
+ * — no commitments left today, or `now` is already past the day's
+ * end-hour — so the briefing stays quiet (a supplementary line, never a
+ * trigger). "booked solid the rest of today" when no gap remains; else
+ * "free <gaps>", a trailing gap to day-end rendered "after HH:MM".
+ */
+export function resolveDayShapeLine(
+  events: readonly AvailabilityEventLike[],
+  options: { readonly now?: Date; readonly dayEndHour?: number } = {}
+): string | undefined {
+  const now = options.now ?? new Date();
+  const endHour = Number.isFinite(options.dayEndHour) ? Math.max(1, Math.min(24, Math.trunc(options.dayEndHour as number))) : 22;
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), endHour, 0, 0, 0);
+  if (end.getTime() <= now.getTime()) {
+    return undefined;
+  }
+  const result = computeAvailability(events, { from: now, to: end });
+  if (result.busy.length === 0) {
+    return undefined;
+  }
+  if (result.free.length === 0) {
+    return "booked solid the rest of today";
+  }
+  const slots = result.free.map((slot) =>
+    slot.endsAt.getTime() >= end.getTime()
+      ? `after ${pad2(slot.startsAt.getHours())}:${pad2(slot.startsAt.getMinutes())}`
+      : `${pad2(slot.startsAt.getHours())}:${pad2(slot.startsAt.getMinutes())}–${pad2(slot.endsAt.getHours())}:${pad2(slot.endsAt.getMinutes())}`
+  );
+  return `free ${slots.join(", ")}`;
 }
 
 function clean(value: string): string {
@@ -117,6 +163,11 @@ export function composeSituationalBriefing(input: SituationalBriefingInput): str
   const tasksDue = input.tasksDue ? clean(input.tasksDue) : "";
   if (tasksDue.length > 0) {
     lines.push(`Due: ${tasksDue}`);
+  }
+
+  const availability = input.availability ? clean(input.availability) : "";
+  if (availability.length > 0) {
+    lines.push(`Schedule: ${availability}`);
   }
 
   if (upcoming.length > 0) {

@@ -40,6 +40,7 @@ import {
   homeWatchesFromConfig,
   parseHomeAlertChecks,
   readTasks,
+  resolveDayShapeLine,
   resolveHomeAlertLine,
   resolveTasksDueLine,
   parseAmbientNoticeRules,
@@ -317,6 +318,15 @@ export function startSituationalBriefingDaemonIfConfigured(
   const tasksDueOpt = tasksFile
     ? { tasksDueLine: async () => resolveTasksDueLine(await readTasks(tasksFile), { withinDays: taskDueDays }) }
     : {};
+  const availabilityOpt = briefingCalendar
+    ? {
+        availabilityLine: async () => {
+          const briefNow = new Date();
+          const dayEnd = new Date(briefNow.getFullYear(), briefNow.getMonth(), briefNow.getDate(), 23, 59, 59, 999);
+          return resolveDayShapeLine(await briefingCalendar.listEvents({ from: briefNow, to: dayEnd }), { now: briefNow });
+        }
+      }
+    : {};
   const briefingHandle = startSituationalBriefingTick({
     destination: briefingDestination,
     errorLogger: (message) => server.log.warn(message),
@@ -334,6 +344,7 @@ export function startSituationalBriefingDaemonIfConfigured(
     ...homeAlertOpt,
     ...birthdayOpt,
     ...tasksDueOpt,
+    ...availabilityOpt,
     ...(windowMsRaw !== undefined ? { windowMs: windowMsRaw } : {})
   });
   server.addHook("onClose", async () => {

@@ -435,6 +435,7 @@ export {
 } from "./personal-veto-store.js";
 export {
   composeSituationalBriefing,
+  resolveDayShapeLine,
   type BriefingImminent,
   type SituationalBriefingInput
 } from "./situational-briefing.js";

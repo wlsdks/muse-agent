@@ -76,6 +76,12 @@ export interface RunDueSituationalBriefingOptions {
    * surfaces a "Buy milk (overdue); Pay rent (today)" line. Fail-soft.
    */
   readonly tasksDueLine?: () => Promise<string | undefined> | string | undefined;
+  /**
+   * Optional "shape of the day" free/busy resolver. When set AND the
+   * briefing has content, surfaces a "free after 16:00" / "booked solid
+   * the rest of today" line. Fail-soft.
+   */
+  readonly availabilityLine?: () => Promise<string | undefined> | string | undefined;
 }
 
 export interface RunDueSituationalBriefingSummary {
@@ -179,6 +185,9 @@ export async function runDueSituationalBriefing(
   const tasksDue = hasContent && options.tasksDueLine
     ? await resolveLineSafely(options.tasksDueLine)
     : undefined;
+  const availability = hasContent && options.availabilityLine
+    ? await resolveLineSafely(options.availabilityLine)
+    : undefined;
   const text = composeSituationalBriefing({
     imminent: options.imminent,
     now: nowDate,
@@ -188,7 +197,8 @@ export async function runDueSituationalBriefing(
     ...(related ? { related } : {}),
     ...(home ? { home } : {}),
     ...(birthdays ? { birthdays } : {}),
-    ...(tasksDue ? { tasksDue } : {})
+    ...(tasksDue ? { tasksDue } : {}),
+    ...(availability ? { availability } : {})
   });
   if (!text) {
     return { delivered: 0, reason: "nothing-to-say" };

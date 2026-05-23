@@ -54,6 +54,8 @@ export interface SituationalBriefingTickOptions {
   readonly birthdayLine?: () => Promise<string | undefined> | string | undefined;
   /** Optional due-tasks resolver: a non-empty briefing gains a "Buy milk (overdue); Pay rent (today)" line. */
   readonly tasksDueLine?: () => Promise<string | undefined> | string | undefined;
+  /** Optional "shape of the day" resolver: a non-empty briefing gains a "free after 16:00" line. */
+  readonly availabilityLine?: () => Promise<string | undefined> | string | undefined;
   readonly windowMs?: number;
   readonly intervalMs?: number;
   readonly logger?: (message: string) => void;
@@ -111,6 +113,7 @@ export function startSituationalBriefingTick(
         ...(options.homeAlert ? { homeAlert: options.homeAlert } : {}),
         ...(options.birthdayLine ? { birthdayLine: options.birthdayLine } : {}),
         ...(options.tasksDueLine ? { tasksDueLine: options.tasksDueLine } : {}),
+        ...(options.availabilityLine ? { availabilityLine: options.availabilityLine } : {}),
         ...(options.windowMs !== undefined ? { windowMs: options.windowMs } : {})
       });
       if (summary.delivered > 0) {
