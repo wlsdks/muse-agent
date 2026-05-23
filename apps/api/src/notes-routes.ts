@@ -145,6 +145,18 @@ export function registerNotesRoutes(server: FastifyInstance, gate: NotesRoutesGa
     return sendToolResult(reply, result);
   });
 
+  server.delete("/api/notes", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
+      return reply;
+    }
+    const { path } = (request.query as { path?: string } | undefined) ?? {};
+    if (!path) {
+      return reply.status(400).send({ error: "path is required" });
+    }
+    const result = await callTool("delete", { path });
+    return sendToolResult(reply, result);
+  });
+
   server.get("/api/notes/providers", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) {
       return reply;

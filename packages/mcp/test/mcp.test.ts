@@ -1504,10 +1504,11 @@ describe("muse.notes loopback server (filesystem-backed)", () => {
     expect(await conn.callTool!("read", { path: "" })).toEqual({ error: "path must not be empty" });
   });
 
-  it("registers as 5 Muse tools (list/read/search/save/append) with correct risk levels", () => {
+  it("registers as 6 Muse tools (list/read/search/save/append/delete) with correct risk levels", () => {
     const tools = createLoopbackMcpMuseTools(createNotesMcpServer({ notesDir: tmpRoot }));
     expect(tools.map((t) => t.definition.name).sort()).toEqual([
       "muse.notes.append",
+      "muse.notes.delete",
       "muse.notes.list",
       "muse.notes.read",
       "muse.notes.save",
@@ -1519,6 +1520,7 @@ describe("muse.notes loopback server (filesystem-backed)", () => {
     expect(byName.get("muse.notes.search")).toBe("read");
     expect(byName.get("muse.notes.save")).toBe("write");
     expect(byName.get("muse.notes.append")).toBe("write");
+    expect(byName.get("muse.notes.delete")).toBe("write");
   });
 
   it("muse.notes.search mode=llm-judge rejects without modelProvider; returns mode field in substring path", async () => {

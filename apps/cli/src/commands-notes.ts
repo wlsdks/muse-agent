@@ -230,4 +230,31 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
       }
       io.stdout(formatNoteAppended(payload as unknown as Parameters<typeof formatNoteAppended>[0]));
     });
+
+  notes
+    .command("delete")
+    .description("Delete a note so it stops surfacing in search / knowledge (--local skips the API)")
+    .argument("<path>", "Note path relative to the notes root")
+    .option("--local", "Delete directly in the local notes directory instead of the API")
+    .option("--json", "Print the raw response instead of a short confirmation")
+    .action(async (notePath: string, options: SharedOptions, command) => {
+      let payload: Record<string, unknown>;
+      if (options.local) {
+        payload = await callLocalTool("delete", { path: notePath });
+      } else {
+        payload = (await helpers.apiRequest(io, command, `/api/notes?path=${encodeURIComponent(notePath)}`, undefined, "DELETE")) as Record<string, unknown>;
+      }
+      if (typeof payload.error === "string") {
+        io.stderr(`muse notes delete: ${payload.error}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      if (options.json) {
+        helpers.writeOutput(io, payload);
+        return;
+      }
+      io.stdout(payload.deleted === true
+        ? `Deleted ${String(payload.path ?? notePath)}\n`
+        : `No note found at ${String(payload.path ?? notePath)}\n`);
+    });
 }

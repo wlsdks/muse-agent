@@ -131,6 +131,26 @@ export class LocalDirNotesProvider implements NotesProvider {
     };
   }
 
+  async delete(id: string): Promise<boolean> {
+    const { promises: fs } = await import("node:fs");
+    const { resolve, sep } = await import("node:path");
+    const safe = this.resolveSafe(id, resolve, sep);
+    if (typeof safe === "string") {
+      throw new NotesValidationError("INVALID_PATH", safe);
+    }
+    let stat: { isDirectory(): boolean };
+    try {
+      stat = await fs.stat(safe.absolute);
+    } catch {
+      return false;
+    }
+    if (stat.isDirectory()) {
+      throw new NotesValidationError("PATH_IS_DIRECTORY", "path is a directory, not a file");
+    }
+    await fs.unlink(safe.absolute);
+    return true;
+  }
+
   async search(query: string, limit: number): Promise<readonly NotesSearchHit[]> {
     const { promises: fs } = await import("node:fs");
     const { resolve, sep } = await import("node:path");

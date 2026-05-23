@@ -76,6 +76,14 @@ export interface NotesProvider {
   search(query: string, limit: number): Promise<readonly NotesSearchHit[]>;
   save(input: NotesSaveInput): Promise<NotesContent>;
   append(input: NotesAppendInput): Promise<NotesContent>;
+  /**
+   * Remove a note by id. Returns `true` when a note was deleted,
+   * `false` when none matched the id. Optional — a provider that
+   * can't delete (or hasn't implemented it) leaves it undefined, and
+   * the caller reports "delete not supported" rather than failing
+   * silently.
+   */
+  delete?(id: string): Promise<boolean>;
 }
 
 export class NotesValidationError extends Error {

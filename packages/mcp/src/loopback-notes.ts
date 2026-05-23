@@ -5,6 +5,7 @@ import {
   readFile as nodeReadFile,
   readdir as nodeReaddir,
   stat as nodeStat,
+  unlink as nodeUnlink,
   writeFile as nodeWriteFile
 } from "node:fs/promises";
 import { resolve as nodePathResolve, sep as nodePathSep } from "node:path";
@@ -423,6 +424,46 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
         },
         domain: "notes",
         name: "append",
+        risk: "write"
+      },
+      {
+        description:
+          "Delete a note at `path`. Use to remove an outdated / wrong / no-longer-needed note so it stops surfacing in search and knowledge. Returns deleted:false when no note matches the path (not an error). Removes one file — not a directory.",
+        execute: async (args): Promise<JsonObject> => {
+          const path = readString(args, "path");
+          if (path === undefined) {
+            return { error: "path is required" };
+          }
+          const safe = resolveSafe(path);
+          if (typeof safe === "string") {
+            return { error: safe };
+          }
+          let stat: Awaited<ReturnType<typeof nodeStat>>;
+          try {
+            stat = await nodeStat(safe.absolute);
+          } catch {
+            return { deleted: false, path: safe.relative };
+          }
+          if (stat.isDirectory()) {
+            return { error: "path is a directory, not a note file" };
+          }
+          try {
+            await nodeUnlink(safe.absolute);
+          } catch (error) {
+            return { error: `cannot delete note: ${error instanceof Error ? error.message : String(error)}` };
+          }
+          return { deleted: true, path: safe.relative } satisfies JsonObject;
+        },
+        inputSchema: {
+          additionalProperties: false,
+          properties: {
+            path: { description: "Note path relative to the notes directory, e.g. 'meeting-notes.md'.", type: "string" }
+          },
+          required: ["path"],
+          type: "object"
+        },
+        domain: "notes",
+        name: "delete",
         risk: "write"
       }
     ]
