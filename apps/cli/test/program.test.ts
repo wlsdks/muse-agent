@@ -7295,6 +7295,32 @@ describe("cli program", () => {
     }
   });
 
+  it("muse status surfaces an active session DND lock (so a paused-notices user isn't confused)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-status-dnd-"));
+    const fsp = await import("node:fs/promises");
+    const lockFile = path.join(root, "session-lock.json");
+    const until = new Date(Date.now() + 2 * 60 * 60_000).toISOString();
+    await fsp.writeFile(lockFile, JSON.stringify({ until, reason: "deep work" }), "utf8");
+
+    const prev = process.env.MUSE_SESSION_LOCK_FILE;
+    process.env.MUSE_SESSION_LOCK_FILE = lockFile;
+    try {
+      const j = captureOutput();
+      const pj = createProgram({ ...j.io, fetch: async () => { throw new Error("no fetch"); } });
+      await pj.parseAsync(["node", "muse", "status", "--json"], { from: "node" });
+      const snap = JSON.parse(j.output.join("")) as { session: { dnd: boolean; until?: string } };
+      expect(snap.session.dnd).toBe(true);
+      expect(snap.session.until).toBe(until);
+
+      const t = captureOutput();
+      const pt = createProgram({ ...t.io, fetch: async () => { throw new Error("no fetch"); } });
+      await pt.parseAsync(["node", "muse", "status"], { from: "node" });
+      expect(t.output.join("")).toContain("(DND) proactive notices paused");
+    } finally {
+      if (prev === undefined) { delete process.env.MUSE_SESSION_LOCK_FILE; } else { process.env.MUSE_SESSION_LOCK_FILE = prev; }
+    }
+  });
+
   it("muse status marks an urgent due-soon task with ⚠ (parity with tasks list / today / the muse.status tool)", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-status-urgent-"));
     const fsp = await import("node:fs/promises");

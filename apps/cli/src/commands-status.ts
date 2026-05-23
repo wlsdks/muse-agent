@@ -23,6 +23,7 @@ import {
   readFollowups,
   readObjectives,
   readReminders,
+  readSessionLock,
   summariseEpisodesRows,
   summariseFollowupsRows,
   summariseObjectivesRows,
@@ -142,6 +143,10 @@ function defaultRemindersFile(): string {
 
 function defaultLogFile(): string {
   return envValue("MUSE_MESSAGING_LOG_FILE") ?? join(homedir(), ".muse", "notifications.log");
+}
+
+function defaultSessionLockFile(): string {
+  return envValue("MUSE_SESSION_LOCK_FILE") ?? join(homedir(), ".muse", "session-lock.json");
 }
 
 /**
@@ -280,6 +285,11 @@ async function collectStatus(userId: string) {
   const objectives = await readObjectives(defaultObjectivesFile()).catch(() => [] as const);
   const objectivesSummary = summariseObjectivesRows(objectives, userId);
 
+  // Do-Not-Disturb: the proactive loop skips firing while a session
+  // lock is active, so the dashboard must surface it — else a user
+  // who locked DND glances here, sees no notices, and is confused.
+  const sessionLockUntil = await readSessionLock(defaultSessionLockFile(), new Date()).catch(() => undefined);
+
   const logTail = await readLogTail(logFile, 1);
   const logBytes = await fileSize(logFile);
 
@@ -360,6 +370,7 @@ async function collectStatus(userId: string) {
     episodes: episodesSummary,
     patterns: patternsSummary,
     reminders: remindersSummary,
+    session: { dnd: sessionLockUntil !== undefined, ...(sessionLockUntil ? { until: sessionLockUntil } : {}) },
     cost: tokenCost,
     rag,
     suggestions
@@ -592,6 +603,9 @@ function renderStatus(io: ProgramIO, snap: Awaited<ReturnType<typeof collectStat
         io.stdout(`    providers: 0 configured — set GEMINI_API_KEY / ANTHROPIC_API_KEY / etc. or run muse setup model\n`);
       }
       io.stdout("\n");
+      if (snap.session.dnd) {
+        io.stdout(`  (DND) proactive notices paused${snap.session.until ? ` until ${snap.session.until}` : ""} — \`muse session unlock\` to resume\n\n`);
+      }
       io.stdout(`  tasks: ${snap.tasks.totalOpen.toString()} open, ${snap.tasks.due24h.length.toString()} due in 24 h\n`);
       for (const task of snap.tasks.due24h.slice(0, 5)) {
         io.stdout(`    · ${task.urgent ? "⚠ " : ""}${task.title} (${task.dueAt ?? "no due"})\n`);
