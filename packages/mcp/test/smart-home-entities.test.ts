@@ -58,4 +58,24 @@ describe("createHomeEntitiesTool — read-only discovery tool", () => {
     expect(out.count).toBe(1);
     expect(out.entities[0]!.entity).toBe("lock.front_door");
   });
+
+  it("the `state` filter answers 'what's ON?' — returns only matching-state entities", async () => {
+    const { fetchImpl } = recordingFetch([{ body: STATES, status: 200 }]);
+    const out = await createHomeEntitiesTool({ baseUrl: "http://ha.local", fetchImpl, token: "t" })
+      .execute({ state: "ON" }) as { count: number; entities: Array<{ entity: string; state: string }> };
+    expect(out.count).toBe(1); // case-insensitive: "ON" matches "on"
+    expect(out.entities[0]!.entity).toBe("light.living_room");
+  });
+
+  it("combines domain + state ('is the front door unlocked?' → none when it's locked)", async () => {
+    const { fetchImpl } = recordingFetch([{ body: STATES, status: 200 }]);
+    const tool = createHomeEntitiesTool({ baseUrl: "http://ha.local", fetchImpl, token: "t" });
+    const locked = await tool.execute({ domain: "lock", state: "unlocked" }) as { count: number };
+    expect(locked.count).toBe(0); // the only lock is "locked"
+  });
+
+  it("declares the `state` parameter", () => {
+    const tool = createHomeEntitiesTool({ baseUrl: "http://ha.local", token: "t" });
+    expect(tool.definition.inputSchema.properties).toHaveProperty("state");
+  });
 });

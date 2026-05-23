@@ -122,28 +122,33 @@ export function createHomeEntitiesTool(deps: HomeStateToolDeps): MuseTool {
   return {
     definition: {
       description:
-        "List the user's Home Assistant entities (id + current state) so you can discover what devices exist and find the exact entity_id to read with home_state or control with home_action. Read-only. Optionally filter to one domain like 'light' or 'lock'.",
+        "List the user's Home Assistant entities (id + current state) to discover what devices exist and find the exact entity_id for home_state / home_action. Read-only. Optionally filter to one `domain` ('light'/'lock'/'sensor') AND/OR a `state` — pass `state` to answer 'what lights are ON?' ('light'+'on') or 'is anything unlocked / left open?' ('unlocked'/'open').",
       domain: "home",
       inputSchema: {
         additionalProperties: false,
         properties: {
-          domain: { description: "Optional device type to filter to, e.g. 'light', 'lock', 'sensor' (omit for all).", type: "string" }
+          domain: { description: "Optional device type to filter to, e.g. 'light', 'lock', 'sensor' (omit for all).", type: "string" },
+          state: { description: "Optional current-state filter (case-insensitive), e.g. 'on', 'unlocked', 'open' — returns only entities in that state.", type: "string" }
         },
         type: "object"
       },
-      keywords: ["home", "smart-home", "devices", "entities", "list", "discover", "homeassistant"],
+      keywords: ["home", "smart-home", "devices", "entities", "list", "discover", "on", "off", "unlocked", "open", "homeassistant"],
       name: "home_entities",
       risk: "read"
     },
     execute: async (args): Promise<JsonObject> => {
       const domain = typeof args["domain"] === "string" ? args["domain"].trim() : undefined;
-      const entities = await listHomeAssistantStates({
+      const stateFilter = typeof args["state"] === "string" ? args["state"].trim().toLowerCase() : undefined;
+      const all = await listHomeAssistantStates({
         baseUrl: deps.baseUrl,
         token: deps.token,
         ...(domain ? { domain } : {}),
         ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
         ...(deps.retryOptions ? { retryOptions: deps.retryOptions } : {})
       });
+      const entities = stateFilter && stateFilter.length > 0
+        ? all.filter((e) => e.state.toLowerCase() === stateFilter)
+        : all;
       return {
         count: entities.length,
         entities: entities.map((e) => ({ entity: e.entityId, state: e.state })) as JsonObject[]
