@@ -94,6 +94,16 @@ DevTools); reach for an in-process `MuseTool` when the logic is ours.
 Same gates either way (risk classification, fail-close for
 state-changing actions, `outbound-safety.md`).
 
+**What matters most is that the local model actually CALLS the right
+tool in ONE shot.** Muse runs local Qwen (reasoning=false), not an
+expensive model — extra reasoning rounds are slower AND less reliable.
+Every tool (MCP or built-in) MUST follow
+[`tool-calling.md`](tool-calling.md): ≤~5–7 exposed per turn,
+unambiguous single-purpose names, rich `required`-bearing schemas with
+concrete-example descriptions, a "use when / not when" line, and a
+`smoke:live` round-trip asserting the model SELECTS it (a handler the
+model never picks is not delivered).
+
 ### External tools (open-source only)
 
 Integrating an open-source MCP server / tool is allowed when it is

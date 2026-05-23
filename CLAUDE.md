@@ -59,6 +59,7 @@ For depth, read the matching file under `.claude/rules/`:
 - [`commits.md`](.claude/rules/commits.md) — Conventional Commits + push policy + after-correction protocol.
 - [`code-style.md`](.claude/rules/code-style.md) — ESLint gate, naming, comment policy, dead-import rule.
 - [`outbound-safety.md`](.claude/rules/outbound-safety.md) — fail-close gate for any send/act toward a third party; banking out of scope.
+- [`tool-calling.md`](.claude/rules/tool-calling.md) — the local Qwen must pick the right tool in ONE shot: small tool sets, unambiguous names, rich schemas, verify selection with `smoke:live`.
 
 ## Cross-session memory
 
