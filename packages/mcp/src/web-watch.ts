@@ -172,14 +172,24 @@ export function createWebWatchRunner(options: {
           continue;
         }
         const trigger = detectWatchTrigger(previous.get(watch.id), current, watch.rule);
-        previous.set(watch.id, current);
-        if (trigger.triggered) {
+        if (!trigger.triggered) {
+          previous.set(watch.id, current);
+          continue;
+        }
+        try {
           await options.sink.deliver({
             kind: "web-watch",
             text: trigger.reason ? `${watch.message} (${trigger.reason})` : watch.message,
             title: watch.title
           });
+          // Advance the baseline ONLY after a successful send. If delivery
+          // fails (a messaging blip, retries exhausted), the edge must
+          // NOT be consumed — leaving the old baseline re-fires it next
+          // tick rather than silently losing the notice forever.
+          previous.set(watch.id, current);
           delivered += 1;
+        } catch {
+          // This watch's notice didn't go out; other watches still run.
         }
       }
       return { delivered };

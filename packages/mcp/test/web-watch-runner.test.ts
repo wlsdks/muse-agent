@@ -37,3 +37,44 @@ describe("createWebWatchRunner — edge-triggered polling", () => {
     expect(delivered).toHaveLength(1);
   });
 });
+
+describe("createWebWatchRunner — delivery-failure resilience", () => {
+  function watch(id: string, snap: () => string): WebWatch {
+    return { id, message: `${id} shipped`, rule: { appears: "shipped" }, snapshot: snap, title: id };
+  }
+
+  it("a transient delivery failure does NOT consume the edge — the notice re-fires next tick", async () => {
+    let calls = 0;
+    const sink: ProactiveNoticeSink = {
+      deliver: () => {
+        calls += 1;
+        if (calls === 1) {
+          throw new Error("messaging down");
+        }
+      }
+    };
+    const runner = createWebWatchRunner({ sink, watches: [watch("order", () => "Status: shipped")] });
+    expect((await runner.tick()).delivered).toBe(0); // edge fires, deliver THROWS → not counted, baseline not advanced
+    expect((await runner.tick()).delivered).toBe(1); // baseline still un-advanced → edge re-fires, deliver succeeds
+    expect(calls).toBe(2);
+  });
+
+  it("one watch's delivery failure does not abort the other watches' delivery this tick", async () => {
+    const okDelivered: string[] = [];
+    const sink: ProactiveNoticeSink = {
+      deliver: (notice) => {
+        if (notice.title === "bad") {
+          throw new Error("send failed");
+        }
+        okDelivered.push(notice.title);
+      }
+    };
+    const runner = createWebWatchRunner({
+      sink,
+      watches: [watch("bad", () => "Status: shipped"), watch("good", () => "Status: shipped")]
+    });
+    const summary = await runner.tick();
+    expect(summary.delivered).toBe(1); // only "good" counted
+    expect(okDelivered).toEqual(["good"]); // "good" delivered despite "bad" throwing first
+  });
+});
