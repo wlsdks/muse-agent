@@ -19,6 +19,21 @@ export interface RunsCommandHelpers {
   readonly writeOutput: (io: ProgramIO, value: unknown, textField?: string) => void;
 }
 
+/**
+ * Validate + canonicalise the `--before` filter for the bulk delete.
+ * Returns a full ISO timestamp when the input parses, `undefined`
+ * otherwise. Guards against shipping a malformed value (`yesterday`,
+ * a typo) to the irreversible bulk-DELETE endpoint, where the server's
+ * `startedAt <= Invalid Date` would silently match nothing — the user
+ * thinks they pruned history but didn't.
+ */
+export function normalizeBeforeTimestamp(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return undefined;
+  const ms = Date.parse(trimmed);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
+}
+
 export function registerRunsCommands(program: Command, io: ProgramIO, helpers: RunsCommandHelpers): void {
   const runs = program.command("runs").description("Inspect recent agent run history");
 
@@ -59,8 +74,17 @@ export function registerRunsCommands(program: Command, io: ProgramIO, helpers: R
         process.exitCode = 1;
         return;
       }
-      const path = options.before
-        ? `/api/admin/runs?before=${encodeURIComponent(options.before)}`
+      let beforeIso: string | undefined;
+      if (options.before) {
+        beforeIso = normalizeBeforeTimestamp(options.before);
+        if (beforeIso === undefined) {
+          io.stderr(`muse runs delete: --before must be a valid timestamp (e.g. 2026-05-20 or 2026-05-20T14:00:00Z); got '${options.before}'\n`);
+          process.exitCode = 1;
+          return;
+        }
+      }
+      const path = beforeIso
+        ? `/api/admin/runs?before=${encodeURIComponent(beforeIso)}`
         : `/api/admin/runs/${encodeURIComponent(runId!)}`;
       helpers.writeOutput(io, await helpers.apiRequest(io, command, path, undefined, "DELETE"));
     });
