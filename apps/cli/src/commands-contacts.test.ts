@@ -69,11 +69,22 @@ describe("muse contacts — people graph + recipient resolution", () => {
     expect(r.exitCode).toBe(1);
   });
 
-  it("add requires at least one of --email / --handle so a contact is resolvable", async () => {
+  it("add requires at least one of --email / --handle / --phone so a contact is reachable", async () => {
     const file = contactsFile();
     const r = await run(file, ["add", "Dave"]);
-    expect(r.stderr).toContain("provide at least one of --email / --handle");
+    expect(r.stderr).toContain("provide at least one of --email / --handle / --phone");
     expect(r.exitCode).toBe(1);
+  });
+
+  it("add --phone persists a phone-only contact and `list` shows the number", async () => {
+    const file = contactsFile();
+    const added = await run(file, ["add", "Mom", "--phone", "+1 415 555 0101"]);
+    expect(added.exitCode).toBeUndefined();
+    expect(added.stdout).toContain("Mom — +1 415 555 0101");
+
+    const listed = await run(file, ["list"]);
+    expect(listed.stdout).toContain("Mom — +1 415 555 0101");
+    expect(listed.stdout).not.toContain("(no email/handle/phone)");
   });
 
   it("add --birthday persists through the store and `birthdays` lists it", async () => {

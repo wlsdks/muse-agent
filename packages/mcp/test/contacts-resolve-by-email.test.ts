@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveContact, type Contact } from "../src/index.js";
+import { resolveContact, serializeContact, type Contact } from "../src/index.js";
 
 const C1: Contact = { email: "bob@acme.com", handle: "@bobby", id: "c1", name: "Bob Acme" };
 const C2: Contact = { email: "bob@other.com", id: "c2", name: "Bob Other" };
@@ -38,5 +38,16 @@ describe("resolveContact — resolve by email / handle, not just name", () => {
   it("name resolution is unchanged — a partial name still resolves / disambiguates", () => {
     expect(resolveContact(ALL, "carol").status).toBe("resolved");
     expect(resolveContact(ALL, "bob").status).toBe("ambiguous"); // both Bobs by name
+  });
+});
+
+describe("serializeContact — includes phone when present", () => {
+  it("emits a stored phone number", () => {
+    expect(serializeContact({ id: "c5", name: "Mom", phone: "+1 415 555 0101" }))
+      .toMatchObject({ id: "c5", name: "Mom", phone: "+1 415 555 0101" });
+  });
+
+  it("omits phone when the contact has none", () => {
+    expect(serializeContact(C1)).not.toHaveProperty("phone");
   });
 });

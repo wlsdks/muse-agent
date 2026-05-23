@@ -6,7 +6,8 @@ const PEOPLE: Contact[] = [
   { birthday: "12-25", email: "bob@acme.com", id: "c1", name: "Bob Acme" },
   { handle: "@jane", id: "c2", name: "Jane Doe" },
   { email: "bobby1@x.com", id: "c3", name: "Bobby One" },
-  { email: "bobby2@x.com", id: "c4", name: "Bobby Two" }
+  { email: "bobby2@x.com", id: "c4", name: "Bobby Two" },
+  { id: "c5", name: "Mom", phone: "+1 415 555 0101" }
 ];
 
 function tool(people: Contact[] = PEOPLE) {
@@ -20,6 +21,10 @@ describe("createContactsFindTool — look up a person", () => {
     expect(await tool().execute({ name: "Jane Doe" })).toMatchObject({ found: true, handle: "@jane" });
     // A contact without a birthday simply omits it.
     expect(await tool().execute({ name: "Jane Doe" })).not.toHaveProperty("birthday");
+  });
+
+  it("returns a contact's phone number when looked up by name ('what's mom's number?')", async () => {
+    expect(await tool().execute({ name: "Mom" })).toMatchObject({ found: true, name: "Mom", phone: "+1 415 555 0101" });
   });
 
   it("returns the candidates (never a guess) for an ambiguous name", async () => {
@@ -49,7 +54,14 @@ describe("createContactsAddTool — capture a person", () => {
     expect(saved[0]).toMatchObject({ birthday: "12-25", email: "bob@x.com", id: "c-fixed", name: "Bob" });
   });
 
-  it("requires a name and at least one of email/handle (never saves an unreachable contact)", async () => {
+  it("saves a phone-only contact ('mom's number is …') — phone is a reachable channel", async () => {
+    const { saved, tool } = addTool();
+    const out = await tool.execute({ name: "Mom", phone: "415-555-0101" });
+    expect(out).toMatchObject({ added: true, name: "Mom" });
+    expect(saved[0]).toMatchObject({ id: "c-fixed", name: "Mom", phone: "415-555-0101" });
+  });
+
+  it("requires a name and at least one of email/handle/phone (never saves an unreachable contact)", async () => {
     const { saved, tool } = addTool();
     expect(await tool.execute({ name: "" })).toMatchObject({ added: false });
     expect(await tool.execute({ name: "Dave" })).toMatchObject({ added: false });

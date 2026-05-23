@@ -21,14 +21,17 @@ function contactsFile(): string {
 }
 
 function describeContact(contact: Contact): string {
-  const id = contactIdentifier(contact);
   const aliases = contact.aliases && contact.aliases.length > 0 ? ` (aka ${contact.aliases.join(", ")})` : "";
-  return `${contact.name}${aliases}${id ? ` — ${id}` : " — (no email/handle)"}`;
+  const reach = [contactIdentifier(contact), contact.phone]
+    .filter((v): v is string => typeof v === "string" && v.length > 0)
+    .join(" · ");
+  return `${contact.name}${aliases}${reach ? ` — ${reach}` : " — (no email/handle/phone)"}`;
 }
 
 interface AddOptions {
   readonly email?: string;
   readonly handle?: string;
+  readonly phone?: string;
   readonly alias?: readonly string[];
   readonly birthday?: string;
 }
@@ -44,17 +47,18 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
     .argument("<name...>", "Contact name")
     .option("--email <email>", "Email address")
     .option("--handle <handle>", "Chat handle (e.g. @alice)")
+    .option("--phone <phone>", "Phone number (e.g. +1 415 555 0101)")
     .option("--alias <alias...>", "Alternate names this contact resolves from")
     .option("--birthday <date>", "Birthday as MM-DD or YYYY-MM-DD (for `muse contacts birthdays`)")
     .action(async (nameParts: readonly string[], options: AddOptions) => {
       const name = nameParts.join(" ").trim();
       if (name.length === 0) {
-        io.stderr("usage: muse contacts add <name> [--email <e>] [--handle <h>] [--alias <a...>] [--birthday <MM-DD>]\n");
+        io.stderr("usage: muse contacts add <name> [--email <e>] [--handle <h>] [--phone <p>] [--alias <a...>] [--birthday <MM-DD>]\n");
         process.exitCode = 1;
         return;
       }
-      if (!options.email && !options.handle) {
-        io.stderr("muse contacts add: provide at least one of --email / --handle so the contact can be resolved to a recipient.\n");
+      if (!options.email && !options.handle && !options.phone) {
+        io.stderr("muse contacts add: provide at least one of --email / --handle / --phone so the contact can be reached.\n");
         process.exitCode = 1;
         return;
       }
@@ -70,6 +74,7 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
         name,
         ...(options.email ? { email: options.email.trim() } : {}),
         ...(options.handle ? { handle: options.handle.trim() } : {}),
+        ...(options.phone ? { phone: options.phone.trim() } : {}),
         ...(aliases.length > 0 ? { aliases } : {}),
         ...(birthday && birthday.length > 0 ? { birthday } : {})
       };

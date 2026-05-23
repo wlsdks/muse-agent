@@ -24,6 +24,8 @@ export interface Contact {
   readonly name: string;
   readonly email?: string;
   readonly handle?: string;
+  /** Phone number as the user typed it, e.g. `+1 415 555 0101` — stored verbatim, not reformatted. */
+  readonly phone?: string;
   readonly aliases?: readonly string[];
   /** Birthday as `MM-DD` or `YYYY-MM-DD`. Year (if given) is ignored for the recurring reminder. */
   readonly birthday?: string;
@@ -211,6 +213,7 @@ export function serializeContact(contact: Contact): JsonObject {
     name: contact.name,
     ...(contact.email ? { email: contact.email } : {}),
     ...(contact.handle ? { handle: contact.handle } : {}),
+    ...(contact.phone ? { phone: contact.phone } : {}),
     ...(contact.aliases && contact.aliases.length > 0 ? { aliases: [...contact.aliases] } : {}),
     ...(contact.birthday ? { birthday: contact.birthday } : {})
   };
