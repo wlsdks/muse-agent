@@ -41,6 +41,8 @@ import {
   incrementFollowupLlmBudget,
   isFollowupLlmBudgetExhausted,
   readFollowupLlmBudget,
+  addContact,
+  createContactsAddTool,
   createContactsFindTool,
   createEmailReadTool,
   createHomeEntitiesTool,
@@ -615,7 +617,10 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => homeReadTools,
     () => emailReadTools,
     () => [createWeatherTool(env.MUSE_WEATHER_LOCATION?.trim() ? { defaultLocation: env.MUSE_WEATHER_LOCATION.trim() } : {})],
-    () => [createContactsFindTool({ contacts: () => queryContacts(resolveContactsFile(env)) })],
+    () => [
+      createContactsFindTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),
+      createContactsAddTool({ save: (contact) => addContact(resolveContactsFile(env), contact) })
+    ],
     () => options.extraTools ?? [],
     () => withChromeDevToolsRisk(mcp.manager.toMuseTools()),
     () => schedulerHandle.current ? createSchedulerTools(schedulerHandle.current) : []

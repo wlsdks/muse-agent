@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createContactsFindTool, type Contact } from "../src/index.js";
+import { createContactsAddTool, createContactsFindTool, type Contact } from "../src/index.js";
 
 const PEOPLE: Contact[] = [
   { birthday: "12-25", email: "bob@acme.com", id: "c1", name: "Bob Acme" },
@@ -32,5 +32,33 @@ describe("createContactsFindTool — look up a person", () => {
   it("returns found:false for an unknown name and for an empty name (no guess)", async () => {
     expect(await tool().execute({ name: "Carol" })).toMatchObject({ found: false });
     expect(await tool().execute({ name: "  " })).toMatchObject({ found: false });
+  });
+});
+
+describe("createContactsAddTool — capture a person", () => {
+  function addTool() {
+    const saved: Contact[] = [];
+    return { saved, tool: createContactsAddTool({ idFactory: () => "c-fixed", save: async (c) => { saved.push(c); } }) };
+  }
+
+  it("is risk:write and saves a contact with name + email (+ optional birthday)", async () => {
+    const { saved, tool } = addTool();
+    expect(tool.definition.risk).toBe("write");
+    const out = await tool.execute({ birthday: "12-25", email: "bob@x.com", name: "Bob" });
+    expect(out).toMatchObject({ added: true, name: "Bob" });
+    expect(saved[0]).toMatchObject({ birthday: "12-25", email: "bob@x.com", id: "c-fixed", name: "Bob" });
+  });
+
+  it("requires a name and at least one of email/handle (never saves an unreachable contact)", async () => {
+    const { saved, tool } = addTool();
+    expect(await tool.execute({ name: "" })).toMatchObject({ added: false });
+    expect(await tool.execute({ name: "Dave" })).toMatchObject({ added: false });
+    expect(saved).toHaveLength(0);
+  });
+
+  it("rejects a malformed birthday", async () => {
+    const { saved, tool } = addTool();
+    expect(await tool.execute({ birthday: "Dec 25", email: "x@y.com", name: "X" })).toMatchObject({ added: false });
+    expect(saved).toHaveLength(0);
   });
 });

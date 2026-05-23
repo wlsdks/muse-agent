@@ -455,7 +455,9 @@ export {
   type WeatherToolDeps
 } from "./weather-tool.js";
 export {
+  createContactsAddTool,
   createContactsFindTool,
+  type ContactsAddToolDeps,
   type ContactsFindToolDeps
 } from "./contacts-tool.js";
 export {
