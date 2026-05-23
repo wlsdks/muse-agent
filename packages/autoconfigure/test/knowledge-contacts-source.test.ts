@@ -35,6 +35,14 @@ describe("assembleKnowledgeCorpus — contacts as a corpus source", () => {
     expect(chunk!.text).toContain("bob@acme.com");
     expect(chunk!.text).toContain("Bobby");
   });
+
+  it("includes a contact's phone in the chunk so knowledge_search can answer 'do I have a number for X' (853 seam)", async () => {
+    await addContact(file, { id: "c2", name: "Mom", phone: "+1 415 555 0101" });
+    const corpus = await assembleKnowledgeCorpus({ contactsSource: source });
+    const chunk = corpus.find((c) => c.source === "contact/Mom");
+    expect(chunk).toBeDefined();
+    expect(chunk!.text).toContain("phone +1 415 555 0101");
+  });
 });
 
 describe("knowledge_search spans contacts — finds + cites a person", () => {

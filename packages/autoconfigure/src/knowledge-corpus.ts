@@ -41,6 +41,7 @@ export interface ContactLike {
   readonly name: string;
   readonly email?: string;
   readonly handle?: string;
+  readonly phone?: string;
   readonly aliases?: readonly string[];
 }
 
@@ -231,6 +232,7 @@ export async function assembleKnowledgeCorpus(
       const parts = [contact.name];
       if (contact.email) parts.push(`<${contact.email}>`);
       if (contact.handle) parts.push(`(${contact.handle})`);
+      if (contact.phone) parts.push(`phone ${contact.phone}`);
       if (contact.aliases && contact.aliases.length > 0) parts.push(`— also: ${contact.aliases.join(", ")}`);
       const text = parts.join(" ").trim();
       if (text.length === 0) {
