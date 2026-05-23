@@ -41,6 +41,7 @@ import {
   incrementFollowupLlmBudget,
   isFollowupLlmBudgetExhausted,
   readFollowupLlmBudget,
+  createEmailReadTool,
   createHomeEntitiesTool,
   createHomeStateTool,
   createLoopbackMcpMuseTools,
@@ -581,6 +582,13 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     ];
   })();
 
+  // Email READ tool (email_recent) — perception, read-only. Opt-in via
+  // the Gmail token (the same gate the email knowledge source uses).
+  const emailReadTools: MuseTool[] = (() => {
+    const gmailToken = env.MUSE_GMAIL_TOKEN?.trim();
+    return gmailToken ? [createEmailReadTool({ provider: new GmailEmailProvider(gmailToken) })] : [];
+  })();
+
   const { skillRegistryPromise, skillTools } = createSkillRuntime(env);
 
   const toolRegistry = new DynamicToolRegistry([
@@ -604,6 +612,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => skillTools,
     () => knowledgeSearchTools,
     () => homeReadTools,
+    () => emailReadTools,
     () => [createWeatherTool()],
     () => options.extraTools ?? [],
     () => withChromeDevToolsRisk(mcp.manager.toMuseTools()),

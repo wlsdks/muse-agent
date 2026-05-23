@@ -14,7 +14,7 @@
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
-import type { EmailSender } from "./email-provider.js";
+import type { EmailProvider, EmailSender } from "./email-provider.js";
 import { sendEmailWithApproval, type EmailApprovalGate } from "./email-send.js";
 import type { Contact } from "./personal-contacts-store.js";
 
@@ -73,6 +73,54 @@ export function createEmailSendTool(deps: EmailSendToolDeps): MuseTool {
         ...(outcome.reason === "ambiguous-recipient" && outcome.candidates
           ? { candidates: outcome.candidates.map((c) => c.name) }
           : {})
+      };
+    }
+  };
+}
+
+export interface EmailReadToolDeps {
+  readonly provider: EmailProvider;
+}
+
+export function createEmailReadTool(deps: EmailReadToolDeps): MuseTool {
+  return {
+    definition: {
+      description:
+        "List the user's recent inbox messages (sender, subject, unread flag, snippet). Use when the user asks about their email / inbox / unread / whether someone wrote. Read-only — never sends anything.",
+      domain: "messaging",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          limit: { description: "How many recent messages to fetch (1–50, default 10).", type: "number" },
+          unreadOnly: { description: "When true, return only unread messages.", type: "boolean" }
+        },
+        type: "object"
+      },
+      keywords: ["email", "inbox", "unread", "mail", "messages", "read"],
+      name: "email_recent",
+      risk: "read"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const limitArg = args["limit"];
+      const limit = typeof limitArg === "number" && Number.isFinite(limitArg)
+        ? Math.max(1, Math.min(50, Math.trunc(limitArg)))
+        : 10;
+      const unreadOnly = args["unreadOnly"] === true;
+      let messages;
+      try {
+        messages = await deps.provider.listRecent(limit);
+      } catch (cause) {
+        return { error: cause instanceof Error ? cause.message : String(cause), messages: [] };
+      }
+      const filtered = unreadOnly ? messages.filter((m) => m.unread) : messages;
+      return {
+        count: filtered.length,
+        messages: filtered.map((m) => ({
+          from: m.from,
+          subject: m.subject,
+          unread: m.unread,
+          ...(m.snippet ? { snippet: m.snippet } : {})
+        })) as JsonObject[]
       };
     }
   };

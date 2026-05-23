@@ -485,7 +485,9 @@ export {
   type SendEmailWithApprovalOptions
 } from "./email-send.js";
 export {
+  createEmailReadTool,
   createEmailSendTool,
+  type EmailReadToolDeps,
   type EmailSendToolDeps
 } from "./email-tool.js";
 export {
