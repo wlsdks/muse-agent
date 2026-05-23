@@ -48,11 +48,23 @@ export interface RainOutlookOptions {
   readonly minProbabilityPct?: number;
 }
 
+export interface DailyForecast {
+  /** Local calendar date, YYYY-MM-DD. */
+  readonly dateIso: string;
+  readonly code: number;
+  readonly condition: string;
+  readonly tempMaxC: number;
+  readonly tempMinC: number;
+  readonly precipitationProbabilityMaxPct?: number;
+}
+
 export interface WeatherProvider {
   geocode(query: string): Promise<GeocodedLocation | undefined>;
   currentWeather(location: GeocodedLocation): Promise<CurrentWeather>;
   /** Next notable-rain hour within the horizon, or undefined if dry. Optional. */
   rainOutlook?(location: GeocodedLocation, options?: RainOutlookOptions): Promise<RainOutlook | undefined>;
+  /** Daily forecast for the next `days` calendar days (today first). Optional. */
+  dailyForecast?(location: GeocodedLocation, options?: { readonly days?: number }): Promise<DailyForecast[]>;
 }
 
 // WMO weather interpretation codes (open-meteo `weather_code`). Only the
@@ -203,6 +215,59 @@ export class OpenMeteoWeatherProvider implements WeatherProvider {
     }
     return undefined;
   }
+
+  async dailyForecast(location: GeocodedLocation, options: { readonly days?: number } = {}): Promise<DailyForecast[]> {
+    const days = Number.isFinite(options.days) ? Math.max(1, Math.min(16, Math.trunc(options.days as number))) : 7;
+    const params = new URLSearchParams({
+      daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+      forecast_days: days.toString(),
+      latitude: location.latitude.toString(),
+      longitude: location.longitude.toString(),
+      timezone: location.timezone ?? "auto"
+    });
+    const response = await fetchWithRetry(this.fetchImpl, `${FORECAST_URL}?${params.toString()}`, this.retryOptions);
+    if (!response.ok) {
+      throw new Error(`forecast failed (${response.status.toString()})`);
+    }
+    const body = await response.json() as {
+      daily?: { time?: unknown[]; weather_code?: unknown[]; temperature_2m_max?: unknown[]; temperature_2m_min?: unknown[]; precipitation_probability_max?: unknown[] };
+    };
+    const times = body.daily?.time ?? [];
+    const codes = body.daily?.weather_code ?? [];
+    const maxes = body.daily?.temperature_2m_max ?? [];
+    const mins = body.daily?.temperature_2m_min ?? [];
+    const probs = body.daily?.precipitation_probability_max ?? [];
+    const out: DailyForecast[] = [];
+    for (let i = 0; i < times.length; i += 1) {
+      const dateIso = times[i];
+      const tempMaxC = numberOrUndefined(maxes[i]);
+      const tempMinC = numberOrUndefined(mins[i]);
+      if (typeof dateIso !== "string" || tempMaxC === undefined || tempMinC === undefined) {
+        continue;
+      }
+      const code = numberOrUndefined(codes[i]) ?? 0;
+      const prob = numberOrUndefined(probs[i]);
+      out.push({
+        code,
+        condition: describeWeatherCode(code),
+        dateIso,
+        tempMaxC,
+        tempMinC,
+        ...(prob !== undefined ? { precipitationProbabilityMaxPct: prob } : {})
+      });
+    }
+    return out;
+  }
+}
+
+/**
+ * One-line forecast for a day — "2026-05-25: moderate rain, 14–21°C,
+ * rain 70%". Pure so the tool / a test can render it without HTTP.
+ */
+export function formatDailyForecast(day: DailyForecast): string {
+  const range = `${Math.round(day.tempMinC).toString()}–${Math.round(day.tempMaxC).toString()}°C`;
+  const rain = day.precipitationProbabilityMaxPct !== undefined ? `, rain ${day.precipitationProbabilityMaxPct.toString()}%` : "";
+  return `${day.dateIso}: ${day.condition}, ${range}${rain}`;
 }
 
 /**
@@ -213,6 +278,37 @@ export function formatRainHeadsUp(outlook: RainOutlook): string {
   const hhmm = /T(\d{2}:\d{2})/u.exec(outlook.atIso)?.[1] ?? outlook.atIso;
   const pct = outlook.probabilityPct !== undefined ? `, ${outlook.probabilityPct.toString()}%` : "";
   return `rain likely ~${hhmm} (${outlook.condition}${pct})`;
+}
+
+/**
+ * Resolve a place + a target calendar date (YYYY-MM-DD) to a one-line
+ * forecast string for that day, or `undefined` if the place can't be
+ * found / the day is past the forecast horizon / the lookup fails.
+ * Fail-soft like {@link resolveWeatherLine}.
+ */
+export async function resolveForecastLine(
+  provider: WeatherProvider,
+  query: string,
+  targetDateIso: string
+): Promise<string | undefined> {
+  if (!provider.dailyForecast) {
+    return undefined;
+  }
+  try {
+    const location = await provider.geocode(query);
+    if (!location) {
+      return undefined;
+    }
+    const days = await provider.dailyForecast(location, { days: 16 });
+    const match = days.find((day) => day.dateIso === targetDateIso);
+    if (!match) {
+      return undefined;
+    }
+    const place = location.country ? `${location.name}, ${location.country}` : location.name;
+    return `${place} — ${formatDailyForecast(match)}`;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

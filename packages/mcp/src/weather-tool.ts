@@ -9,36 +9,57 @@
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
-import { OpenMeteoWeatherProvider, resolveWeatherLine, type WeatherProvider } from "./weather.js";
+import { resolveRelativeTimePhrase } from "./loopback-relative-time.js";
+import { OpenMeteoWeatherProvider, resolveForecastLine, resolveWeatherLine, type WeatherProvider } from "./weather.js";
 
 export interface WeatherToolDeps {
   readonly provider?: WeatherProvider;
   /** Default location for a bare "what's the weather?" — the user's configured home. */
   readonly defaultLocation?: string;
+  readonly now?: () => Date;
+}
+
+function localDateIso(date: Date): string {
+  const y = date.getFullYear().toString().padStart(4, "0");
+  const m = (date.getMonth() + 1).toString().padStart(2, "0");
+  const d = date.getDate().toString().padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/** Resolve a `when` phrase ("tomorrow", "Saturday", "2026-05-30") to a local YYYY-MM-DD, or undefined. */
+function resolveTargetDateIso(when: string, now: () => Date): string | undefined {
+  if (/^\d{4}-\d{2}-\d{2}/u.test(when)) {
+    return when.slice(0, 10);
+  }
+  const resolved = resolveRelativeTimePhrase(when, now);
+  return resolved ? localDateIso(resolved) : undefined;
 }
 
 export function createWeatherTool(deps: WeatherToolDeps = {}): MuseTool {
   const provider = deps.provider ?? new OpenMeteoWeatherProvider();
   const defaultLocation = deps.defaultLocation?.trim();
-  const locationDesc = defaultLocation && defaultLocation.length > 0
-    ? `Place name, e.g. 'Seoul' or 'London, UK'. Omit for the user's home (${defaultLocation}).`
+  const now = deps.now ?? (() => new Date());
+  const hasDefault = Boolean(defaultLocation && defaultLocation.length > 0);
+  const locationDesc = hasDefault
+    ? `Place name, e.g. 'Seoul' or 'London, UK'. Omit for the user's home (${defaultLocation!}).`
     : "Place name to look up, e.g. 'Seoul' or 'London, UK'.";
   return {
     definition: {
-      description: defaultLocation && defaultLocation.length > 0
-        ? "Get the current weather (and a rain heads-up). Omit `location` for the user's home location; pass a place for elsewhere. Use when the user asks about the weather, temperature, or whether it will rain. Read-only."
-        : "Get the current weather (and a rain heads-up) for a place. Use when the user asks about the weather, temperature, or whether it will rain; do not use for general facts or forecasts beyond today. Read-only.",
+      description: hasDefault
+        ? "Get the weather for the user's home (omit `location`) or a place. Without `when` it's the current weather + rain heads-up; pass `when` ('tomorrow', 'Saturday', a date) for that upcoming day's forecast (up to ~16 days). Use for weather / temperature / will-it-rain. Read-only."
+        : "Get the weather for a place. Without `when` it's the current weather + rain heads-up; pass `when` ('tomorrow', 'Saturday', a date) for that upcoming day's forecast (up to ~16 days). Use for weather / temperature / will-it-rain. Read-only.",
       domain: "system",
       inputSchema: {
         additionalProperties: false,
         properties: {
-          location: { description: locationDesc, type: "string" }
+          location: { description: locationDesc, type: "string" },
+          when: { description: "An upcoming day to forecast, e.g. 'tomorrow', 'Saturday', '2026-05-30'. Omit for the current weather.", type: "string" }
         },
         // location is required ONLY when no home default is configured.
-        ...(defaultLocation && defaultLocation.length > 0 ? {} : { required: ["location"] }),
+        ...(hasDefault ? {} : { required: ["location"] }),
         type: "object"
       },
-      keywords: ["weather", "temperature", "rain", "raining", "forecast", "umbrella", "sunny", "cloudy", "snow", "snowing", "humid", "windy", "날씨", "비", "기온"],
+      keywords: ["weather", "temperature", "rain", "raining", "forecast", "umbrella", "sunny", "cloudy", "snow", "snowing", "humid", "windy", "tomorrow", "weekend", "날씨", "비", "기온", "내일", "주말"],
       name: "weather",
       risk: "read"
     },
@@ -47,6 +68,17 @@ export function createWeatherTool(deps: WeatherToolDeps = {}): MuseTool {
       const location = requested.length > 0 ? requested : (defaultLocation ?? "");
       if (location.length === 0) {
         return { found: false, reason: "location is required (e.g. Seoul) — no home location is configured" };
+      }
+      const when = typeof args["when"] === "string" ? args["when"].trim() : "";
+      if (when.length > 0) {
+        const targetDateIso = resolveTargetDateIso(when, now);
+        if (!targetDateIso) {
+          return { found: false, location, reason: `couldn't understand the day '${when}' — try 'tomorrow', 'Saturday', or a date like 2026-05-30` };
+        }
+        const forecast = await resolveForecastLine(provider, location, targetDateIso);
+        return forecast
+          ? { date: targetDateIso, forecast, found: true, location }
+          : { date: targetDateIso, found: false, location, reason: "no forecast for that day (past, or beyond the ~16-day horizon), or the lookup failed" };
       }
       const line = await resolveWeatherLine(provider, location);
       return line

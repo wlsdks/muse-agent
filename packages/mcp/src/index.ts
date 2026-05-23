@@ -449,11 +449,14 @@ export {
 } from "./situational-briefing-loop.js";
 export {
   describeWeatherCode,
+  formatDailyForecast,
   formatRainHeadsUp,
   formatWeather,
   OpenMeteoWeatherProvider,
+  resolveForecastLine,
   resolveWeatherLine,
   type CurrentWeather,
+  type DailyForecast,
   type GeocodedLocation,
   type RainOutlook,
   type RainOutlookOptions,
