@@ -138,7 +138,8 @@ export function formatCalendarEvents(
       const end = endTime ? `–${endTime}` : "";
       const where = event.location ? `  @ ${event.location}` : "";
       const provider = event.providerId ? ` (${event.providerId})` : "";
-      lines.push(`  ${time}${end}  ${event.title}${where}${provider}`);
+      const id = event.id ? `[${event.id.slice(0, 8)}] ` : "";
+      lines.push(`  ${id}${time}${end}  ${event.title}${where}${provider}`);
     }
   }
   return `${lines.join("\n")}\n`;

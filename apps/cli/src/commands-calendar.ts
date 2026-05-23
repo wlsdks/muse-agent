@@ -292,6 +292,40 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       io.stdout(`Created: ${event.title} — ${event.startsAt.toISOString()} → ${event.endsAt.toISOString()}\n`);
     });
 
+  calendar
+    .command("delete")
+    .description("Cancel/remove an event from your LOCAL calendar by id (the [id] shown in `muse calendar events`)")
+    .argument("<id>", "Event id — the short [id] from the listing, or a full id")
+    .option("--json", "Print the result as JSON")
+    .action(async (idArg: string, options: { readonly json?: boolean }) => {
+      const target = idArg.trim();
+      if (target.length === 0) {
+        throw new Error("muse calendar delete: an event id is required");
+      }
+      const provider = localCalendarProvider();
+      const now = Date.now();
+      const events = await provider.listEvents({
+        from: new Date(now - 3650 * 86_400_000),
+        to: new Date(now + 3650 * 86_400_000)
+      });
+      const exact = events.find((event) => event.id === target);
+      const prefixMatches = events.filter((event) => event.id.startsWith(target));
+      const match = exact ?? (prefixMatches.length === 1 ? prefixMatches[0] : undefined);
+      if (!match) {
+        io.stderr(prefixMatches.length > 1
+          ? `muse calendar delete: '${target}' is ambiguous (${prefixMatches.length.toString()} events) — use a longer id\n`
+          : `muse calendar delete: no event matches id '${target}'\n`);
+        process.exitCode = 1;
+        return;
+      }
+      await provider.deleteEvent(match.id);
+      if (options.json) {
+        helpers.writeOutput(io, { deleted: true, id: match.id, title: match.title });
+        return;
+      }
+      io.stdout(`Cancelled: ${match.title} — ${match.startsAt.toISOString()}\n`);
+    });
+
   const registerQuickRange = (name: string, description: string, computeRange: () => { from: Date; to: Date }): void => {
     calendar
       .command(name)

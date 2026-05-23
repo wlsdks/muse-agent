@@ -206,3 +206,64 @@ describe("muse calendar add — create a local event from the terminal", () => {
     expect(events).toHaveLength(0);
   });
 });
+
+describe("muse calendar delete — cancel a local event by id", () => {
+  let dir: string;
+  let prevFile: string | undefined;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "muse-cal-del-"));
+    prevFile = process.env.MUSE_CALENDAR_FILE;
+    process.env.MUSE_CALENDAR_FILE = join(dir, "calendar.json");
+  });
+  afterEach(() => {
+    if (prevFile === undefined) delete process.env.MUSE_CALENDAR_FILE;
+    else process.env.MUSE_CALENDAR_FILE = prevFile;
+  });
+
+  async function run(args: string[]): Promise<{ error?: string; out: string }> {
+    const out: string[] = [];
+    const io = { stderr: (m: string) => out.push(m), stdout: (m: string) => out.push(m) };
+    const helpers: CalendarCommandHelpers = { apiRequest: async () => ({}), writeOutput: (_io, v) => out.push(JSON.stringify(v)) };
+    let error: string | undefined;
+    try {
+      const program = new Command();
+      program.exitOverride();
+      registerCalendarCommands(program, io, helpers);
+      await program.parseAsync(["node", "muse", "calendar", ...args]);
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : String(cause);
+    }
+    return { error, out: out.join("") };
+  }
+
+  it("deletes an event resolved by short-id prefix, gone from the store afterwards", async () => {
+    const file = process.env.MUSE_CALENDAR_FILE!;
+    const created = await new LocalCalendarProvider({ file }).createEvent({
+      endsAt: new Date("2026-05-30T16:00:00"), startsAt: new Date("2026-05-30T15:00:00"), title: "Dentist"
+    });
+    const prevExit = process.exitCode;
+    process.exitCode = 0;
+    const r = await run(["delete", created.id.slice(0, 8)]);
+    expect(r.error).toBeUndefined();
+    expect(r.out).toContain("Cancelled: Dentist");
+    expect(process.exitCode ?? 0).toBe(0);
+    process.exitCode = prevExit;
+    const left = await new LocalCalendarProvider({ file }).listEvents({ from: new Date("2000-01-01"), to: new Date("2100-01-01") });
+    expect(left).toHaveLength(0);
+  });
+
+  it("an unknown id exits 1 and deletes nothing", async () => {
+    const file = process.env.MUSE_CALENDAR_FILE!;
+    await new LocalCalendarProvider({ file }).createEvent({
+      endsAt: new Date("2026-05-30T16:00:00"), startsAt: new Date("2026-05-30T15:00:00"), title: "Keep"
+    });
+    const prevExit = process.exitCode;
+    process.exitCode = 0;
+    const r = await run(["delete", "nope-no-such-id"]);
+    expect(r.out).toContain("no event matches id");
+    expect(process.exitCode).toBe(1);
+    process.exitCode = prevExit;
+    const left = await new LocalCalendarProvider({ file }).listEvents({ from: new Date("2000-01-01"), to: new Date("2100-01-01") });
+    expect(left).toHaveLength(1);
+  });
+});
