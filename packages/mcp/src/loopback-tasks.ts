@@ -9,6 +9,7 @@ import {
   parseTaskDueAt,
   readTasks,
   readTaskStatusFilter,
+  selectTasksDueWithin,
   serializeTask,
   writeTasks,
   type PersistedTask
@@ -121,10 +122,22 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
       {
         description:
           "List tasks due-soonest first (undated last). `status`: \"open\" (default), \"done\", or \"all\". " +
+          "Pass `dueWithinDays` to answer 'what's due today / this week?' — it returns ONLY open tasks due within that many days, OVERDUE included, soonest first (0 = today + overdue, 7 = this week). " +
           `Returns up to ${maxListEntries} entries.`,
         execute: async (args): Promise<JsonObject> => {
-          const status = readTaskStatusFilter(readString(args, "status"));
           const tasks = await readTasks(file);
+          const dueRaw = (args as Record<string, unknown>)["dueWithinDays"];
+          if (typeof dueRaw === "number" && Number.isFinite(dueRaw)) {
+            const due = selectTasksDueWithin(tasks, { now: now(), withinDays: dueRaw })
+              .map((entry) => entry.task)
+              .slice(0, maxListEntries);
+            return {
+              dueWithinDays: Math.max(0, Math.trunc(dueRaw)),
+              tasks: due.map(serializeTask) as JsonValue,
+              total: due.length
+            };
+          }
+          const status = readTaskStatusFilter(readString(args, "status"));
           const filtered = tasks
             .filter((task) => status === "all" || task.status === status)
             .sort(compareTasksByDueDate)
@@ -138,7 +151,8 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
         inputSchema: {
           additionalProperties: false,
           properties: {
-            status: { description: "Which tasks to list: 'open' (default), 'done', or 'all'.", enum: ["open", "done", "all"], type: "string" }
+            dueWithinDays: { description: "Only OPEN tasks due within this many days (overdue included), e.g. 0 = today + overdue, 7 = this week. Omit to list by status.", type: "number" },
+            status: { description: "Which tasks to list: 'open' (default), 'done', or 'all'. Ignored when dueWithinDays is set.", enum: ["open", "done", "all"], type: "string" }
           },
           type: "object"
         },

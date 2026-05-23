@@ -357,8 +357,10 @@ export {
   readTasks,
   readTaskStatusFilter,
   resolveTasksDueLine,
+  selectTasksDueWithin,
   serializeTask,
   writeTasks,
+  type DueTask,
   type PersistedTask,
   type TaskStatusFilter
 } from "./personal-tasks-store.js";

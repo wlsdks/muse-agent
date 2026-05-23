@@ -120,14 +120,26 @@ export function readTaskStatusFilter(value: string | undefined): TaskStatusFilte
  * Returns `undefined` when nothing is due in the window so the brief
  * stays quiet. A task with no / unparseable `dueAt` is skipped.
  */
-export function resolveTasksDueLine(
+export interface DueTask {
+  readonly task: PersistedTask;
+  /** Calendar-day offset of the due date from today (negative = overdue). */
+  readonly dayDiff: number;
+}
+
+/**
+ * Open tasks with a `dueAt` whose due date is within `withinDays`
+ * calendar days of today (overdue included — a negative dayDiff),
+ * sorted soonest/most-overdue first. The shared due-window selector so
+ * the briefing line and the on-demand `list` due filter agree exactly.
+ */
+export function selectTasksDueWithin(
   tasks: readonly PersistedTask[],
   options: { readonly now?: Date; readonly withinDays?: number } = {}
-): string | undefined {
+): DueTask[] {
   const now = options.now ?? new Date();
   const withinDays = Number.isFinite(options.withinDays) ? Math.max(0, Math.trunc(options.withinDays as number)) : 1;
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const due: { task: PersistedTask; dayDiff: number }[] = [];
+  const due: DueTask[] = [];
   for (const task of tasks) {
     if (task.status !== "open" || !task.dueAt) {
       continue;
@@ -143,10 +155,18 @@ export function resolveTasksDueLine(
     }
     due.push({ dayDiff, task });
   }
+  due.sort((a, b) => a.dayDiff - b.dayDiff || a.task.title.localeCompare(b.task.title));
+  return due;
+}
+
+export function resolveTasksDueLine(
+  tasks: readonly PersistedTask[],
+  options: { readonly now?: Date; readonly withinDays?: number } = {}
+): string | undefined {
+  const due = selectTasksDueWithin(tasks, options);
   if (due.length === 0) {
     return undefined;
   }
-  due.sort((a, b) => a.dayDiff - b.dayDiff || a.task.title.localeCompare(b.task.title));
   return due
     .map(({ task, dayDiff }) => {
       const when = dayDiff < 0 ? "overdue" : dayDiff === 0 ? "today" : dayDiff === 1 ? "tomorrow" : `in ${dayDiff.toString()} days`;
