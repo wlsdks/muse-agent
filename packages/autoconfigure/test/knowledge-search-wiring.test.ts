@@ -39,6 +39,19 @@ describe("createNotesKnowledgeSearchTool — lazy search over the live notes sto
   });
 });
 
+describe("knowledge_search description — selectable for the breadth it actually spans", () => {
+  it("names the news/feeds it now covers and drops the misleading 'live web data' steer", () => {
+    const desc = createNotesKnowledgeSearchTool({ embed }).definition.description;
+    // The corpus spans feeds (855) + email/calendar/etc — the description
+    // must surface that so the local model selects it for "any news about X".
+    expect(desc).toContain("feeds");
+    expect(desc).toContain("news");
+    expect(desc).not.toContain("live web data");
+    // …while still keeping the genuine boundary against opening a new web page.
+    expect(desc.toLowerCase()).toContain("web page");
+  });
+});
+
 describe("createMuseRuntimeAssembly — knowledge_search reachability gating", () => {
   it("exposes knowledge_search in the tool registry when MUSE_KNOWLEDGE_SEARCH_ENABLED=true", () => {
     const assembly = createMuseRuntimeAssembly({ env: { MUSE_KNOWLEDGE_SEARCH_ENABLED: "true", MUSE_NOTES_DIR: notesDir } });

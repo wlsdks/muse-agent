@@ -393,12 +393,12 @@ export interface NotesKnowledgeSearchToolOptions {
 export function createNotesKnowledgeSearchTool(options: NotesKnowledgeSearchToolOptions): MuseTool {
   return {
     definition: {
-      description: "Search the user's personal notes (and ingested documents) for relevant passages. Returns each passage labelled with its [source] — cite the source you use. Use when the user asks about something they may have written down or saved; do not use for general knowledge or live web data.",
+      description: "Search everything the user has saved or subscribed to — their notes, ingested documents, tasks, calendar, contacts, recent emails, reminders, follow-ups, and the news/RSS feeds they watch — and return matching passages, each labelled with its [source] (cite the source you use). Use when the user asks what they know, have saved, or have heard about something, including 'any news about X' from their feeds. Do not use to open a NEW web page, or for general world facts the user never saved — answer those yourself.",
       inputSchema: {
         additionalProperties: false,
         properties: {
           query: {
-            description: "What to look up, in natural language — e.g. 'my health insurance policy number' or 'notes from the Q3 launch'.",
+            description: "What to look up, in natural language — e.g. 'my health insurance policy number', 'any news about the merger', or 'what did Sam email me about the launch'.",
             type: "string"
           }
         },
