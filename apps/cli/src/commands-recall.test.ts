@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { RECALL_SOURCE_VALUES, clampLimit, filterLiveNoteIndexFiles, resolveSource } from "./commands-recall.js";
+import { RECALL_SOURCE_VALUES, clampLimit, filterLiveEpisodeEntries, filterLiveNoteIndexFiles, resolveSource } from "./commands-recall.js";
+
+describe("filterLiveEpisodeEntries — a removed episode never resurfaces in recall", () => {
+  const entries = [{ id: "ep_a" }, { id: "ep_b" }, { id: "ep_c" }];
+
+  it("keeps only episodes still in the live store", () => {
+    const live = filterLiveEpisodeEntries(entries, new Set(["ep_a", "ep_c"]));
+    expect(live.map((e) => e.id)).toEqual(["ep_a", "ep_c"]);
+  });
+
+  it("drops everything when the store is empty (index fully stale)", () => {
+    expect(filterLiveEpisodeEntries(entries, new Set())).toHaveLength(0);
+  });
+
+  it("keeps everything when all ids are live", () => {
+    expect(filterLiveEpisodeEntries(entries, new Set(["ep_a", "ep_b", "ep_c"]))).toHaveLength(3);
+  });
+});
 
 describe("filterLiveNoteIndexFiles — a deleted/moved note never resurfaces in recall", () => {
   const files = [

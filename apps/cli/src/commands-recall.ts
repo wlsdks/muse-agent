@@ -19,6 +19,8 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { resolveEpisodesFile } from "@muse/autoconfigure";
+import { readEpisodes } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -125,6 +127,21 @@ export function filterLiveNoteIndexFiles<T extends { readonly path: string }>(
   exists: (path: string) => boolean
 ): T[] {
   return files.filter((file) => exists(file.path));
+}
+
+/**
+ * Drop indexed episodes no longer in the live episode store. Like the
+ * notes filter, the episodes-index is a pre-built cache (`muse episode
+ * reindex`); an episode dropped by `muse episode remove` since the last
+ * reindex is still in the index, so recall would surface a removed
+ * episode's summary — wrong, and a "removed means removed" surprise.
+ * `liveIds` is the set of ids still in the store (injected for testing).
+ */
+export function filterLiveEpisodeEntries<T extends { readonly id: string }>(
+  entries: readonly T[],
+  liveIds: ReadonlySet<string>
+): T[] {
+  return entries.filter((entry) => liveIds.has(entry.id));
 }
 
 export function clampLimit(raw: string | undefined): number {
@@ -275,11 +292,20 @@ export function registerRecallCommand(program: Command, io: ProgramIO): void {
           embedding: chunk.embedding
         }))
       );
-      const episodeEntries = (episodeIndex?.entries ?? []).map((entry) => ({
+      let episodeEntries = (episodeIndex?.entries ?? []).map((entry) => ({
         id: entry.id,
         summary: entry.summary,
         embedding: entry.embedding
       }));
+      // Skip episodes removed since the last reindex so a dropped
+      // episode never resurfaces in recall (parallel to the notes
+      // filter — completes the 864 staleness fix for the episode source).
+      if (episodeEntries.length > 0) {
+        const liveIds = new Set(
+          (await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>))).map((episode) => episode.id)
+        );
+        episodeEntries = filterLiveEpisodeEntries(episodeEntries, liveIds);
+      }
 
       const hits = rankRecallCandidates({ queryVec, noteChunks, episodeEntries, limit, source });
 
