@@ -136,33 +136,62 @@ export function registerObjectivesCommands(program: Command, io: ProgramIO): voi
       }
     });
 
+  // Shared resolve-then-patch for the terminal transitions (cancel /
+  // done): both take an id-or-unambiguous-prefix, flip the status,
+  // and record a CLI resolution. Keeps the two verbs identical except
+  // for the target status + wording.
+  const transitionObjective = async (
+    id: string,
+    command: Command,
+    target: { readonly status: ObjectiveStatus; readonly resolution: string; readonly failLabel: string; readonly okWord: string }
+  ): Promise<void> => {
+    const all = await readObjectives(objectivesFile());
+    const resolved = resolveObjectiveId(id.trim(), all);
+    if (resolved.kind === "ambiguous") {
+      io.stderr(`ambiguous objective id '${id}' — matches ${resolved.count.toString()} (${resolved.preview}…)\n`);
+      command.error(target.failLabel, { exitCode: 1 });
+      return;
+    }
+    if (resolved.kind === "none") {
+      const suggestion = closestCommandName(id.trim(), all.map((o) => o.id));
+      const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+      io.stderr(`no objective with id '${id}'${hint}\n`);
+      command.error(target.failLabel, { exitCode: 1 });
+      return;
+    }
+    const patched = await patchObjective(objectivesFile(), resolved.id, {
+      resolution: target.resolution,
+      status: target.status
+    });
+    if (!patched) {
+      io.stderr(`no objective with id '${id}'\n`);
+      command.error(target.failLabel, { exitCode: 1 });
+      return;
+    }
+    io.stdout(`${target.okWord} ${resolved.id}\n`);
+  };
+
   objectives
     .command("cancel <id>")
-    .description("Cancel a standing objective (it stops being re-evaluated)")
+    .description("Cancel a standing objective (it stops being re-evaluated — you gave up on it)")
     .action(async (id: string, _options: unknown, command: Command) => {
-      const all = await readObjectives(objectivesFile());
-      const resolved = resolveObjectiveId(id.trim(), all);
-      if (resolved.kind === "ambiguous") {
-        io.stderr(`ambiguous objective id '${id}' — matches ${resolved.count.toString()} (${resolved.preview}…)\n`);
-        command.error("objectives cancel failed", { exitCode: 1 });
-        return;
-      }
-      if (resolved.kind === "none") {
-        const suggestion = closestCommandName(id.trim(), all.map((o) => o.id));
-        const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
-        io.stderr(`no objective with id '${id}'${hint}\n`);
-        command.error("objectives cancel failed", { exitCode: 1 });
-        return;
-      }
-      const patched = await patchObjective(objectivesFile(), resolved.id, {
+      await transitionObjective(id, command, {
+        failLabel: "objectives cancel failed",
+        okWord: "Cancelled",
         resolution: "cancelled via CLI",
         status: "cancelled"
       });
-      if (!patched) {
-        io.stderr(`no objective with id '${id}'\n`);
-        command.error("objectives cancel failed", { exitCode: 1 });
-        return;
-      }
-      io.stdout(`Cancelled ${resolved.id}\n`);
+    });
+
+  objectives
+    .command("done <id>")
+    .description("Mark a standing objective accomplished (distinct from cancel — you achieved it)")
+    .action(async (id: string, _options: unknown, command: Command) => {
+      await transitionObjective(id, command, {
+        failLabel: "objectives done failed",
+        okWord: "Marked done",
+        resolution: "completed via CLI",
+        status: "done"
+      });
     });
 }

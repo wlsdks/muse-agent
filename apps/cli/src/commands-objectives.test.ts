@@ -103,6 +103,33 @@ describe("muse objectives — CLI entry point to the delegated-autonomy chain", 
     expect(r.stderr).toContain(`did you mean '${realId!}'`);
   });
 
+  it("done marks an objective accomplished — distinct from cancel (status 'done', not 'cancelled')", async () => {
+    const file = objFile();
+    const added = await run(file, ["add", "ship the Q3 memo", "--kind", "until"]);
+    const id = added.stdout.match(/(obj_[a-z0-9-]+)/u)?.[1];
+    expect(id).toMatch(/^obj_[a-z0-9-]+$/u);
+    const done = await run(file, ["done", id!]);
+    expect(done.exitCode).toBeUndefined();
+    expect(done.stdout).toBe(`Marked done ${id!}\n`);
+    // It records as done, NOT cancelled (the accountability distinction).
+    const all = await run(file, ["list", "--status", "all", "--json"]);
+    const parsed = JSON.parse(all.stdout) as { objectives: Array<{ status: string }> };
+    expect(parsed.objectives[0]?.status).toBe("done");
+    expect((await run(file, ["list", "--status", "done"])).stdout).toContain("[done/until]");
+  });
+
+  it("done accepts an unambiguous prefix and reports a missing id cleanly", async () => {
+    const file = objFile();
+    const added = await run(file, ["add", "review the deploy"]);
+    const id = added.stdout.match(/(obj_[a-z0-9-]+)/u)?.[1];
+    const byPrefix = await run(file, ["done", id!.slice(0, 12)]);
+    expect(byPrefix.exitCode).toBeUndefined();
+    expect(byPrefix.stdout).toBe(`Marked done ${id!}\n`);
+    const missing = await run(objFile(), ["done", "obj_nope"]);
+    expect(missing.exitCode).toBe(1);
+    expect(missing.stderr).toContain("no objective with id 'obj_nope'");
+  });
+
   it("is user-scoped: a different --user does not see another bucket's objectives", async () => {
     const file = objFile();
     await run(file, ["add", "stark only", "--user", "stark"]);
