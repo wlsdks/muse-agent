@@ -44,6 +44,7 @@ import {
   addContact,
   createContactsAddTool,
   createContactsFindTool,
+  createEmailReadMessageTool,
   createEmailReadTool,
   createHomeEntitiesTool,
   createHomeStateTool,
@@ -589,7 +590,11 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   // the Gmail token (the same gate the email knowledge source uses).
   const emailReadTools: MuseTool[] = (() => {
     const gmailToken = env.MUSE_GMAIL_TOKEN?.trim();
-    return gmailToken ? [createEmailReadTool({ provider: new GmailEmailProvider(gmailToken) })] : [];
+    if (!gmailToken) {
+      return [];
+    }
+    const provider = new GmailEmailProvider(gmailToken);
+    return [createEmailReadTool({ provider }), createEmailReadMessageTool({ reader: provider })];
   })();
 
   const { skillRegistryPromise, skillTools } = createSkillRuntime(env);

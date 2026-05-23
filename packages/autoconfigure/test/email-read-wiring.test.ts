@@ -10,7 +10,15 @@ describe("createMuseRuntimeAssembly — email_recent read tool reachability gati
     expect(tool!.definition.risk).toBe("read");
   });
 
-  it("does NOT expose email_recent without the Gmail token (opt-in)", () => {
-    expect(createMuseRuntimeAssembly({ env: {} }).toolRegistry.get("email_recent")).toBeUndefined();
+  it("exposes read_email (full-body) alongside email_recent when MUSE_GMAIL_TOKEN is set", () => {
+    const tool = createMuseRuntimeAssembly({ env: { MUSE_GMAIL_TOKEN: "tok" } }).toolRegistry.get("read_email");
+    expect(tool).toBeDefined();
+    expect(tool!.definition.risk).toBe("read");
+  });
+
+  it("does NOT expose email_recent / read_email without the Gmail token (opt-in)", () => {
+    const assembly = createMuseRuntimeAssembly({ env: {} });
+    expect(assembly.toolRegistry.get("email_recent")).toBeUndefined();
+    expect(assembly.toolRegistry.get("read_email")).toBeUndefined();
   });
 });

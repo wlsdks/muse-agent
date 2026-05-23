@@ -25,9 +25,48 @@ export interface EmailSummary {
   readonly unread: boolean;
 }
 
+export interface EmailMessage {
+  readonly id: string;
+  readonly from: string;
+  readonly subject: string;
+  readonly date?: string;
+  /** Plain-text body (extracted from the MIME payload; snippet fallback). */
+  readonly body: string;
+}
+
 export interface EmailProvider {
   /** Most-recent inbox messages, newest first (provider order). */
   listRecent(limit: number): Promise<readonly EmailSummary[]>;
+}
+
+/** Read one message's full body — separate so a reader depends only on what it uses. */
+export interface EmailReader {
+  getMessage(id: string): Promise<EmailMessage | undefined>;
+}
+
+/**
+ * Pull the plain-text body out of a Gmail message payload: a direct
+ * `text/plain` body, else the first `text/plain` part (recursing into
+ * multipart). Returns "" when there's no plain-text part (the caller
+ * falls back to the snippet). Pure — no network.
+ */
+export function extractPlainTextBody(payload: unknown): string {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+  const p = payload as { mimeType?: unknown; body?: { data?: unknown }; parts?: unknown };
+  if (p.mimeType === "text/plain" && typeof p.body?.data === "string") {
+    return Buffer.from(p.body.data, "base64url").toString("utf8");
+  }
+  if (Array.isArray(p.parts)) {
+    for (const part of p.parts) {
+      const text = extractPlainTextBody(part);
+      if (text.length > 0) {
+        return text;
+      }
+    }
+  }
+  return "";
 }
 
 /**
@@ -45,7 +84,7 @@ function header(headers: ReadonlyArray<Record<string, unknown>>, name: string): 
   return match && typeof match.value === "string" ? match.value : "";
 }
 
-export class GmailEmailProvider implements EmailProvider, EmailSender {
+export class GmailEmailProvider implements EmailProvider, EmailSender, EmailReader {
   constructor(
     private readonly accessToken: string,
     private readonly fetchImpl: typeof globalThis.fetch = globalThis.fetch,
@@ -115,6 +154,29 @@ export class GmailEmailProvider implements EmailProvider, EmailSender {
       });
     }
     return out;
+  }
+
+  async getMessage(id: string): Promise<EmailMessage | undefined> {
+    if (!id || id.trim().length === 0) {
+      return undefined;
+    }
+    let msg: Record<string, unknown>;
+    try {
+      msg = await this.get(`${GMAIL_BASE}/messages/${encodeURIComponent(id.trim())}?format=full`);
+    } catch {
+      return undefined;
+    }
+    const payload = (msg.payload ?? {}) as { headers?: ReadonlyArray<Record<string, unknown>> };
+    const headers = Array.isArray(payload.headers) ? payload.headers : [];
+    const dateHeader = header(headers, "Date");
+    const body = extractPlainTextBody(payload) || (typeof msg.snippet === "string" ? msg.snippet : "");
+    return {
+      body,
+      from: header(headers, "From"),
+      id: id.trim(),
+      subject: header(headers, "Subject"),
+      ...(dateHeader ? { date: dateHeader } : {})
+    };
   }
 }
 

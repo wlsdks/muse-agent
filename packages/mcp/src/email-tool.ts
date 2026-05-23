@@ -14,7 +14,7 @@
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
-import type { EmailProvider, EmailSender } from "./email-provider.js";
+import type { EmailProvider, EmailReader, EmailSender } from "./email-provider.js";
 import { sendEmailWithApproval, type EmailApprovalGate } from "./email-send.js";
 import type { Contact } from "./personal-contacts-store.js";
 
@@ -117,10 +117,54 @@ export function createEmailReadTool(deps: EmailReadToolDeps): MuseTool {
         count: filtered.length,
         messages: filtered.map((m) => ({
           from: m.from,
+          id: m.id,
           subject: m.subject,
           unread: m.unread,
           ...(m.snippet ? { snippet: m.snippet } : {})
         })) as JsonObject[]
+      };
+    }
+  };
+}
+
+export interface EmailReadMessageToolDeps {
+  readonly reader: EmailReader;
+}
+
+export function createEmailReadMessageTool(deps: EmailReadMessageToolDeps): MuseTool {
+  return {
+    definition: {
+      description:
+        "Read the FULL text of one inbox message by its id. Use after `email_recent` (which returns each message's id) when the user wants the whole email, not just the snippet. Read-only.",
+      domain: "messaging",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          id: { description: "The message id from a prior `email_recent` result.", type: "string" }
+        },
+        required: ["id"],
+        type: "object"
+      },
+      keywords: ["email", "read", "open", "full", "message", "body"],
+      name: "read_email",
+      risk: "read"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const id = typeof args["id"] === "string" ? args["id"].trim() : "";
+      if (id.length === 0) {
+        return { found: false, reason: "id is required (from email_recent)" };
+      }
+      const message = await deps.reader.getMessage(id);
+      if (message === undefined) {
+        return { found: false, id, reason: "no message with that id (or the inbox was unreachable)" };
+      }
+      return {
+        body: message.body,
+        found: true,
+        from: message.from,
+        id: message.id,
+        subject: message.subject,
+        ...(message.date ? { date: message.date } : {})
       };
     }
   };

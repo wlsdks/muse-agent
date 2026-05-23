@@ -476,10 +476,13 @@ export {
   type UpcomingBirthday
 } from "./personal-contacts-store.js";
 export {
+  extractPlainTextBody,
   GmailEmailProvider,
   summarizeInbox,
   unreadBriefingLine,
+  type EmailMessage,
   type EmailProvider,
+  type EmailReader,
   type EmailSender,
   type EmailSummary
 } from "./email-provider.js";
@@ -492,8 +495,10 @@ export {
   type SendEmailWithApprovalOptions
 } from "./email-send.js";
 export {
+  createEmailReadMessageTool,
   createEmailReadTool,
   createEmailSendTool,
+  type EmailReadMessageToolDeps,
   type EmailReadToolDeps,
   type EmailSendToolDeps
 } from "./email-tool.js";
