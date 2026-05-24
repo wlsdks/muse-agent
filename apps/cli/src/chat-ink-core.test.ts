@@ -10,6 +10,7 @@ import {
   friendlyError,
   buildRecap,
   chatToolApprovalGate,
+  firstOpenToday,
   formatJobsList,
   formatMemoryView,
   formatRecallHits,
@@ -291,5 +292,15 @@ describe("formatJobsList", () => {
   });
   it("empty-state line when no jobs", () => {
     expect(formatJobsList([])).toMatch(/No background jobs yet/);
+  });
+});
+
+describe("firstOpenToday", () => {
+  it("true on a new/absent date, false when already briefed today", () => {
+    expect(firstOpenToday(undefined, "2026-05-25")).toBe(true);
+    expect(firstOpenToday("", "2026-05-25")).toBe(true);
+    expect(firstOpenToday("2026-05-24", "2026-05-25")).toBe(true);
+    expect(firstOpenToday("2026-05-25", "2026-05-25")).toBe(false);
+    expect(firstOpenToday(" 2026-05-25 ", "2026-05-25")).toBe(false);
   });
 });

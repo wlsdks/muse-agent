@@ -28,6 +28,7 @@ import {
   cursorCoords,
   emptyInput,
   extractAttachmentPaths,
+  firstOpenToday,
   formatJobsList,
   formatMemoryView,
   formatRecallHits,
@@ -156,6 +157,7 @@ export function MuseChatApp(props: {
   readonly onReset: () => void;
   readonly proactiveCheck?: () => Promise<readonly ProactiveItem[]>;
   readonly jobCompletions?: () => Promise<readonly ProactiveItem[]>;
+  readonly recapRole?: "system" | "command";
   readonly memorySnapshot: () => Promise<MemorySnapshot | undefined>;
   readonly forgetMemory: (key: string) => Promise<boolean>;
   readonly recallSearch: (query: string) => Promise<string>;
@@ -167,7 +169,7 @@ export function MuseChatApp(props: {
   const app = useApp();
   const { setCursorPosition } = useCursor();
   const [turns, setTurns] = useState<readonly DisplayTurn[]>(
-    props.recap ? [{ role: "system", text: props.recap }] : []
+    props.recap ? [{ role: props.recapRole ?? "system", text: props.recap }] : []
   );
   const [inputState, setInputState] = useState<InputState>(emptyInput);
   const [streaming, setStreaming] = useState("");
@@ -834,7 +836,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // Launch recap — "where we left off": the most recent episode summary plus
   // open-commitment counts. Only when resuming a continuous session; fail-soft
   // to no recap if any store is missing/unreadable.
-  const recap = continueHistory
+  const oneLineRecap = continueHistory
     ? await (async (): Promise<string> => {
         const [episodes, tasks, followups] = await Promise.all([
           readEpisodes(resolveEpisodesFile(process.env)).catch(() => []),
@@ -849,6 +851,29 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
         });
       })().catch(() => "")
     : "";
+
+  // First open of the day → greet with the FULL morning briefing instead of the
+  // one-line recap (JARVIS opening the day). A YYYY-MM-DD marker in ~/.muse
+  // gates it to once per day; same-day reopens fall back to the recap line.
+  let recap = oneLineRecap;
+  let recapRole: "system" | "command" = "system";
+  if (continueHistory) {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const briefMarkerFile = join(homedir(), ".muse", "last-brief-date");
+    let lastBrief: string | undefined;
+    try { lastBrief = await fsReadFile(briefMarkerFile, "utf8"); } catch { lastBrief = undefined; }
+    if (firstOpenToday(lastBrief, todayStr)) {
+      const brief = await buildLocalTodayText(process.env, parseLookaheadHours(undefined)).catch(() => "");
+      if (brief) {
+        recap = `♪ good morning\n\n${brief}`;
+        recapRole = "command";
+        try {
+          await mkdir(join(homedir(), ".muse"), { recursive: true });
+          await writeFile(briefMarkerFile, todayStr, "utf8");
+        } catch { /* best-effort; a failed marker just re-briefs next open */ }
+      }
+    }
+  }
 
   // Skills: each is a `~/.muse/skills/<name>/SKILL.md` (claude-style). Their
   // instructions are injected into the system prompt so the local model can
@@ -918,7 +943,8 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     startJob,
     jobsOverview,
     jobCompletions,
-    recap
+    recap,
+    recapRole
   }), {
     exitOnCtrlC: false,
     kittyKeyboard: { flags: ["disambiguateEscapeCodes"], mode: "enabled" }

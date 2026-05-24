@@ -523,3 +523,12 @@ export function formatJobsList(jobs: readonly JobListItem[]): string {
   }
   return lines.join("\n");
 }
+
+/**
+ * True when the chat is being opened for the first time on `today` (the
+ * stored marker holds a different / no date), so the launch shows the full
+ * morning briefing instead of the one-line recap. Dates are `YYYY-MM-DD`.
+ */
+export function firstOpenToday(lastBriefDate: string | undefined, today: string): boolean {
+  return (lastBriefDate?.trim() ?? "") !== today;
+}
