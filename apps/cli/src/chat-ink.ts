@@ -369,8 +369,12 @@ export function MuseChatApp(props: {
       if (slash.cmd === "remember") {
         const parsed = parseRememberArg(slash.arg);
         if (!parsed) { note("Tell me what to remember — /remember <key>=<value> (e.g. /remember city=Seoul)."); return; }
+        const prior = (await props.memorySnapshot())?.facts[parsed.key];
         const ok = await props.rememberFact(parsed.key, parsed.value);
-        note(ok ? `✓ Remembered ${parsed.key}: ${parsed.value}` : "Couldn't save that — memory isn't available.");
+        if (!ok) { note("Couldn't save that — memory isn't available."); return; }
+        note(prior !== undefined && prior !== parsed.value
+          ? `✓ Updated ${parsed.key}: ${prior} → ${parsed.value}`
+          : `✓ Remembered ${parsed.key}: ${parsed.value}`);
         return;
       }
       if (slash.cmd === "pref") {

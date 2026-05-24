@@ -114,6 +114,18 @@ describe("MuseChatApp render — slash command echo + output", () => {
     expect(saved).toEqual({ key: "reply_style", value: "concise" });
   });
 
+  it("/remember shows a visible supersede when overwriting an existing fact", async () => {
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
+      memorySnapshot: async () => ({ facts: { city: "Seoul" }, preferences: {}, recentTopics: [] }),
+      rememberFact: async () => true
+    })));
+    await tick();
+    stdin.write("/remember city=Busan"); await tick(); stdin.write("\r"); await tick(140);
+    const frame = lastFrame() ?? "";
+    unmount();
+    expect(frame).toContain("✓ Updated city: Seoul → Busan");
+  });
+
   it("renders the launch brief as an opening turn when recap is set", async () => {
     const { lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
       recap: "♪ good morning\n\nToday (next 24h)",
