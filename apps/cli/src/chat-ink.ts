@@ -40,14 +40,14 @@ import { resolveDefaultUserKey } from "./user-id.js";
 const h = React.createElement;
 
 const SLASH_COMMANDS: readonly { readonly cmd: string; readonly desc: string }[] = [
-  { cmd: "help", desc: "명령어 도움말 보기" },
-  { cmd: "new", desc: "새 대화 시작 (맥락 비우기)" },
-  { cmd: "clear", desc: "화면 지우기 (맥락 유지)" },
-  { cmd: "model", desc: "현재 모델 확인" },
-  { cmd: "agents", desc: "정의된 에이전트 목록" },
-  { cmd: "agent", desc: "에이전트 전환 — /agent <이름> (default 로 해제)" },
-  { cmd: "skills", desc: "설치된 스킬 목록 + 추가 방법" },
-  { cmd: "exit", desc: "Muse 종료 (ctrl-c)" }
+  { cmd: "help", desc: "show command help" },
+  { cmd: "new", desc: "new conversation (clear context)" },
+  { cmd: "clear", desc: "clear the screen (keep context)" },
+  { cmd: "model", desc: "show the current model" },
+  { cmd: "agents", desc: "list defined agents" },
+  { cmd: "agent", desc: "switch agent — /agent <name> (default to clear)" },
+  { cmd: "skills", desc: "list installed skills + how to add" },
+  { cmd: "exit", desc: "quit Muse (ctrl-c)" }
 ];
 
 // Box geometry: left border (1) + paddingX (1) + the "› " prompt (2).
@@ -152,16 +152,16 @@ export function MuseChatApp(props: {
         historyRef.current = [];
         setTurns([]);
         props.onReset();
-        note("새 대화를 시작했어요 — 이전 맥락을 비웠습니다.");
+        note("Started a new conversation — earlier context cleared.");
         return;
       }
-      if (slash.cmd === "model") { note(`현재 모델: ${props.model}`); return; }
+      if (slash.cmd === "model") { note(`Current model: ${props.model}`); return; }
       if (slash.cmd === "agents") {
         if (props.agents.length === 0) {
-          note(`정의된 에이전트가 없어요. \`muse agents add <이름>\` 로 만들고 \`/agent <이름>\` 으로 전환하세요.`);
+          note("No agents yet. Create one with `muse agents add <name>`, then switch with `/agent <name>`.");
         } else {
-          const active = activeAgent ? ` (현재: ${activeAgent.name})` : "";
-          note(`에이전트${active}: ` + props.agents.map((a) => `${a.name} — ${a.description}`).join(" · ") + " · 전환: /agent <이름>");
+          const active = activeAgent ? ` (active: ${activeAgent.name})` : "";
+          note(`Agents${active}: ` + props.agents.map((a) => `${a.name} — ${a.description}`).join(" · ") + " · switch: /agent <name>");
         }
         return;
       }
@@ -169,31 +169,31 @@ export function MuseChatApp(props: {
         const target = slash.arg.trim();
         if (target.length === 0 || target === "default" || target === "off") {
           setActiveAgent(undefined);
-          note("기본 Muse로 돌아왔어요.");
+          note("Back to the default Muse.");
           return;
         }
         const found = props.agents.find((a) => a.name.toLowerCase() === target.toLowerCase());
         if (!found) {
-          note(`'${target}' 에이전트를 못 찾았어요. /agents 로 목록을 보세요.`);
+          note(`No agent named '${target}'. Run /agents to see the list.`);
           return;
         }
         setActiveAgent(found);
-        note(`'${found.name}' 에이전트로 전환했어요 — ${found.description}`);
+        note(`Switched to '${found.name}' — ${found.description}`);
         return;
       }
       if (slash.cmd === "skills") {
         if (props.skills.length === 0) {
-          note(`설치된 스킬이 없어요. ${props.skillsDir}/<이름>/SKILL.md 를 추가하거나 \`muse skills add <이름>\` 로 만들 수 있어요.`);
+          note(`No skills yet. Add ${props.skillsDir}/<name>/SKILL.md, or run \`muse skills add <name>\`.`);
         } else {
-          note(`설치된 스킬 (${props.skills.length}): ` + props.skills.map((s) => `${s.name} — ${s.description}`).join(" · ") + ` · 추가: ${props.skillsDir}/`);
+          note(`Skills (${props.skills.length}): ` + props.skills.map((s) => `${s.name} — ${s.description}`).join(" · ") + ` · add: ${props.skillsDir}/`);
         }
         return;
       }
       if (slash.cmd === "help") {
-        note("명령어: " + SLASH_COMMANDS.map((c) => `/${c.cmd}`).join(" · ") + " · 그냥 입력하면 대화합니다.");
+        note("Commands: " + SLASH_COMMANDS.map((c) => `/${c.cmd}`).join(" · ") + " · just type to chat.");
         return;
       }
-      note(`알 수 없는 명령어: /${slash.cmd}`);
+      note(`Unknown command: /${slash.cmd}`);
       return;
     }
 
@@ -329,7 +329,7 @@ export function MuseChatApp(props: {
     return h(Box, { flexDirection: "column" }, transcript);
   }
 
-  const placeholder = "무엇이든 물어보세요";
+  const placeholder = "Ask me anything";
   const lines = inputState.value.length > 0 ? inputState.value.split("\n") : [""];
 
   return h(Box, { flexDirection: "column" },
@@ -356,7 +356,7 @@ export function MuseChatApp(props: {
               h(Text, { color: on ? "cyan" : "gray" }, `${on ? "▸ " : "  "}/${command.cmd}`),
               h(Text, { dimColor: !on }, `  — ${command.desc}`));
           }),
-          h(Text, { dimColor: true }, "  ↑↓ 선택 · Tab 자동완성 · ⏎ 실행"))
+          h(Text, { dimColor: true }, "  ↑↓ select · Tab complete · ⏎ run"))
       : null,
     // Agent-name picker while typing `/agent <partial>`.
     agentMenu.length > 0
@@ -368,13 +368,13 @@ export function MuseChatApp(props: {
               h(Text, { color: on ? "yellow" : "gray" }, `${on ? "▸ " : "  "}${name}`),
               h(Text, { dimColor: !on }, def ? `  — ${def.description}` : ""));
           }),
-          h(Text, { dimColor: true }, "  ↑↓ 선택 · Tab 자동완성 · ⏎ 전환"))
+          h(Text, { dimColor: true }, "  ↑↓ select · Tab complete · ⏎ switch"))
       : null,
     // Breathing room above the hint, plus the two-press ctrl-c affordance.
     h(Box, { marginTop: 1 },
       ctrlCArmed
-        ? h(Text, { color: "yellow" }, "한 번 더 ctrl-c 를 누르면 종료돼요")
-        : h(Text, { dimColor: true }, "⏎ 전송 · shift+⏎ 줄바꿈 · /help · ctrl-c×2 종료")),
+        ? h(Text, { color: "yellow" }, "Press ctrl-c again to quit")
+        : h(Text, { dimColor: true }, "⏎ send · shift+⏎ newline · /help · ctrl-c×2 quit")),
     // HUD: persistent status — model, proactive (speaks-first) mode, skills.
     h(Box, null,
       h(Text, { color: "magenta" }, "♪ "),
@@ -444,7 +444,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
 
   const banner = renderMuseBanner({
     status: `model: ${model}`,
-    hint: "새 대화를 시작하세요 — 이전 맥락은 기억하고 있어요."
+    hint: "Start chatting — I remember the earlier context."
   }).replace(/^\n+|\n+$/gu, "");
   // Enable the kitty keyboard protocol so the terminal disambiguates
   // modified keys (Shift+Enter → a distinct event Ink reports as

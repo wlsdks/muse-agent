@@ -40,16 +40,16 @@ export function relativeWhen(dueAtIso: string | undefined, nowMs: number): strin
   const due = Date.parse(dueAtIso);
   if (!Number.isFinite(due)) return "";
   const diffMin = Math.round((due - nowMs) / 60_000);
-  if (diffMin <= 0 && diffMin > -5) return "지금";
-  if (diffMin < 0) return "지났어요";
-  if (diffMin < 60) return `${diffMin}분 후`;
+  if (diffMin <= 0 && diffMin > -5) return "now";
+  if (diffMin < 0) return "overdue";
+  if (diffMin < 60) return `in ${diffMin}m`;
   const hours = Math.round(diffMin / 60);
-  if (hours < 24) return `${hours}시간 후`;
-  return `${Math.round(hours / 24)}일 후`;
+  if (hours < 24) return `in ${hours}h`;
+  return `in ${Math.round(hours / 24)}d`;
 }
 
 /** The line Muse speaks when it raises an item first. */
 export function proactiveNoticeText(item: ProactiveItem, whenLabel: string): string {
   const when = whenLabel.length > 0 ? ` (${whenLabel})` : "";
-  return `📌 ${item.text}${when} — 미리 챙길까요?`;
+  return `📌 ${item.text}${when} — want a hand?`;
 }

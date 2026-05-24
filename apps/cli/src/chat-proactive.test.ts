@@ -28,17 +28,17 @@ describe("pickUnseen", () => {
 
 describe("relativeWhen", () => {
   it("phrases minutes / hours / now / past", () => {
-    expect(relativeWhen(iso(30), now)).toBe("30분 후");
-    expect(relativeWhen(iso(120), now)).toBe("2시간 후");
-    expect(relativeWhen(iso(0), now)).toBe("지금");
-    expect(relativeWhen(iso(-30), now)).toBe("지났어요");
+    expect(relativeWhen(iso(30), now)).toBe("in 30m");
+    expect(relativeWhen(iso(120), now)).toBe("in 2h");
+    expect(relativeWhen(iso(0), now)).toBe("now");
+    expect(relativeWhen(iso(-30), now)).toBe("overdue");
     expect(relativeWhen(undefined, now)).toBe("");
   });
 });
 
 describe("proactiveNoticeText", () => {
   it("renders a friendly first-speak line", () => {
-    expect(proactiveNoticeText({ id: "1", text: "치과 예약" }, "30분 후")).toBe("📌 치과 예약 (30분 후) — 미리 챙길까요?");
-    expect(proactiveNoticeText({ id: "1", text: "치과 예약" }, "")).toBe("📌 치과 예약 — 미리 챙길까요?");
+    expect(proactiveNoticeText({ id: "1", text: "Dentist" }, "in 30m")).toBe("📌 Dentist (in 30m) — want a hand?");
+    expect(proactiveNoticeText({ id: "1", text: "Dentist" }, "")).toBe("📌 Dentist — want a hand?");
   });
 });

@@ -8,7 +8,7 @@ describe("renderMuseBanner", () => {
     // The figlet-style wordmark closing row is a stable anchor.
     expect(out).toContain("|_|  |_|\\___/|___/___|");
     expect(out).toContain("♪ ♫ ♬");
-    expect(out).toContain("음악의 여신처럼 — 당신의 AI conductor");
+    expect(out).toContain("the muse of every craft — your AI conductor");
     // Leading + trailing blank lines so the prompt has room.
     expect(out.startsWith("\n")).toBe(true);
     expect(out.endsWith("\n")).toBe(true);

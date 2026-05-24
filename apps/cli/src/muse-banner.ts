@@ -33,7 +33,7 @@ export function renderMuseBanner(options: MuseBannerOptions = {}): string {
 
   const notes = tint("♪ ♫ ♬", "cyan");
   const wordmark = WORDMARK.map((line) => tint(line, "cyan"));
-  const tagline = tint("음악의 여신처럼 — 당신의 AI conductor", "dim");
+  const tagline = tint("the muse of every craft — your AI conductor", "dim");
   const rule = tint("─".repeat(46), "cyan");
 
   const lines: string[] = [
