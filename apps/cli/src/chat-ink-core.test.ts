@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildTurnMessages,
+  chatHelp,
   cursorCoords,
   displayWidth,
   emptyInput,
@@ -105,6 +106,17 @@ describe("extractAttachmentPaths", () => {
     expect(extractAttachmentPaths("@a.md again @a.md")).toEqual(["a.md"]);
     expect(extractAttachmentPaths("no files here")).toEqual([]);
     expect(extractAttachmentPaths("@/abs/path/file.log please")).toEqual(["/abs/path/file.log"]);
+  });
+});
+
+describe("chatHelp", () => {
+  it("lists commands with no topic, gives a blurb for a known topic, errors for unknown", () => {
+    const idx = chatHelp("", ["help", "tools", "exit"]);
+    expect(idx).toContain("/help");
+    expect(idx).toContain("/tools");
+    expect(chatHelp("tools", [])).toContain("run tools in chat");
+    expect(chatHelp("file", [])).toContain("@file");
+    expect(chatHelp("nope", [])).toMatch(/No help for 'nope'/);
   });
 });
 

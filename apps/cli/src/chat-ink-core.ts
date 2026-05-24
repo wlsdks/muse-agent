@@ -237,6 +237,25 @@ export function friendlyError(raw: string): string {
   return raw;
 }
 
+const HELP_TOPICS: Readonly<Record<string, string>> = {
+  agents: "Agents — your own sub-agents. Define `~/.muse/agents/<name>/AGENT.md` (or `muse agents add <name>`). `/agents` lists them, `/agent <name>` switches (its prompt drives replies), `/agent default` clears.",
+  file: "@file — reference files in a message (e.g. `summarize @notes/plan.md @./todo.txt`) and Muse attaches their contents to the turn.",
+  keys: "Keys — Enter: send · Shift/Alt+Enter: newline · ↑↓: input history · Ctrl+W/U: delete word/line · Ctrl+A/E: line start/end · Esc: stop a reply · Ctrl-C ×2: quit.",
+  model: "/model — switch the session model. Type `/model ` for a picker (↑↓ select, Tab/Enter switch). Same-provider models only for now.",
+  skills: "Skills — drop `~/.muse/skills/<name>/SKILL.md` (or `muse skills add <name>`). Loaded skills are injected so Muse follows the relevant one. `/skills` lists them.",
+  tools: "/tools — run tools in chat: time, calendar, notes, weather, and LOCAL writes (tasks/notes/calendar). Third-party outbound (email/web/home) stays blocked for safety."
+};
+
+/** In-chat help: a command index, or a detailed blurb for one topic. */
+export function chatHelp(topic: string, commandNames: readonly string[]): string {
+  const t = topic.trim().toLowerCase();
+  if (t.length === 0) {
+    return `Commands: ${commandNames.map((c) => `/${c}`).join(" · ")}\n` +
+      `Tips: @file to attach · ↑↓ for history · /help <topic> — ${Object.keys(HELP_TOPICS).join(", ")}`;
+  }
+  return HELP_TOPICS[t] ?? `No help for '${t}'. Topics: ${Object.keys(HELP_TOPICS).join(", ")}`;
+}
+
 export interface MarkdownBlock {
   readonly type: "code" | "text";
   readonly lang?: string;

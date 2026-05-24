@@ -21,6 +21,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { appendLastChatTurn, clearLastChatHistory, readLastChatHistory } from "./chat-history.js";
 import {
   buildTurnMessages,
+  chatHelp,
   cursorCoords,
   emptyInput,
   extractAttachmentPaths,
@@ -288,7 +289,7 @@ export function MuseChatApp(props: {
         return;
       }
       if (slash.cmd === "help") {
-        note("Commands: " + SLASH_COMMANDS.map((c) => `/${c.cmd}`).join(" · ") + " · just type to chat.");
+        note(chatHelp(slash.arg, SLASH_COMMANDS.map((c) => c.cmd)));
         return;
       }
       note(`Unknown command: /${slash.cmd}`);
