@@ -22,6 +22,7 @@ import {
   type ChatTurnMessage,
   type InkKeyEvent
 } from "./chat-ink-core.js";
+import { renderMuseBanner } from "./muse-banner.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
 import { resolvePersona } from "./program-helpers.js";
 import { resolveDefaultUserKey } from "./user-id.js";
@@ -187,7 +188,10 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     void appendLastChatTurn({ message: user, response: assistant }).catch(() => undefined);
   };
 
-  const banner = `♪ ♫ ♬  Muse · ${model}\n새 대화를 시작하세요 — 이전 맥락은 기억하고 있어요.`;
+  const banner = renderMuseBanner({
+    status: `model: ${model}`,
+    hint: "새 대화를 시작하세요 — 이전 맥락은 기억하고 있어요."
+  }).replace(/^\n+|\n+$/gu, "");
   const instance = render(h(MuseChatApp, { banner, history, onCommit, personaPrompt, stream }));
   await instance.waitUntilExit();
 }
