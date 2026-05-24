@@ -225,7 +225,7 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
       io.stdout(formatWeatherLine(briefing.weather));
       io.stdout(formatReminders(briefing.reminders, briefing.generatedAt));
       io.stdout(formatFollowups(briefing.followups, briefing.generatedAt));
-      io.stdout(formatTasks(briefing.tasks, briefingNow(briefing)));
+      io.stdout(formatTasks(briefing.tasks, briefingNow(briefing), briefing.lookaheadHours));
       io.stdout(formatEvents(briefing.events));
       io.stdout(formatNotes(briefing.notes));
       io.stdout(formatHeadlines(briefing.headlines));
@@ -720,15 +720,36 @@ export function relativeDueTag(dueAtIso: string | undefined, now: Date): string 
   return ` (in ${dayDiff.toString()} days)`;
 }
 
-export function formatTasks(tasks: readonly { readonly id: string; readonly title: string; readonly dueAt?: string }[] | undefined, now: Date): string {
+export function formatTasks(
+  tasks: readonly { readonly id: string; readonly title: string; readonly dueAt?: string }[] | undefined,
+  now: Date,
+  lookaheadHours = 24
+): string {
   if (!tasks) {
     return "\nTasks: (not configured)\n";
   }
   if (tasks.length === 0) {
     return "\nTasks: (none open)\n";
   }
-  const lines = tasks.map((task) => `  - [${task.id.slice(0, 12)}] ${task.title}${relativeDueTag(task.dueAt, now)}`);
-  return `\nTasks (${tasks.length} open):\n${lines.join("\n")}\n`;
+  const horizon = now.getTime() + lookaheadHours * 3_600_000;
+  // Imminent = dated AND due within the window (overdue included — it is the
+  // most pressing). Undated or far-future tasks are the long tail: in the
+  // morning brief they are noise, so collapse them to a count + a pointer to
+  // the full list rather than dumping every open task.
+  const imminent = tasks.filter((task) => {
+    if (!task.dueAt) {
+      return false;
+    }
+    const due = Date.parse(task.dueAt);
+    return Number.isFinite(due) && due <= horizon;
+  });
+  const remaining = tasks.length - imminent.length;
+  const moreLine = remaining > 0 ? `\n  +${remaining} more open (use \`muse tasks list\`)` : "";
+  if (imminent.length === 0) {
+    return `\nTasks: ${tasks.length} open, none due within ${lookaheadHours}h (use \`muse tasks list\`)\n`;
+  }
+  const lines = imminent.map((task) => `  - [${task.id.slice(0, 12)}] ${task.title}${relativeDueTag(task.dueAt, now)}`);
+  return `\nTasks due ≤${lookaheadHours}h (${imminent.length}):\n${lines.join("\n")}${moreLine}\n`;
 }
 
 export function formatEvents(events: readonly { readonly id: string; readonly title: string; readonly startsAtIso: string }[] | undefined): string {

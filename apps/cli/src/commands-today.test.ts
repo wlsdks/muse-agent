@@ -58,16 +58,44 @@ describe("relativeDueTag — urgency tag for muse today tasks", () => {
   });
 });
 
-describe("formatTasks — daily view shows each task's urgency", () => {
+describe("formatTasks — daily brief leads with imminent, collapses the long tail", () => {
   const now = new Date(2026, 4, 20, 9, 0);
-  it("renders the due tag alongside the title", () => {
+  it("shows tasks due within the window with their tag and collapses the rest", () => {
     const out = formatTasks([
       { dueAt: new Date(2026, 4, 18, 9, 0).toISOString(), id: "t1abc", title: "Pay rent" },
-      { id: "t2def", title: "Someday idea" }
-    ], now);
-    expect(out).toContain("Pay rent (overdue)");
-    expect(out).toContain("Someday idea\n"); // undated → bare title, no tag
-    expect(out).not.toContain("Someday idea (");
+      { dueAt: new Date(2026, 4, 20, 18, 0).toISOString(), id: "t2def", title: "Call plumber" },
+      { dueAt: new Date(2026, 8, 1, 9, 0).toISOString(), id: "t3ghi", title: "Far future task" },
+      { id: "t4jkl", title: "Someday idea" }
+    ], now, 24);
+    expect(out).toContain("Tasks due ≤24h (2):");
+    expect(out).toContain("Pay rent (overdue)"); // overdue counts as imminent
+    expect(out).toContain("Call plumber (today)");
+    // The far-future and the undated task are the long tail — collapsed, not dumped.
+    expect(out).not.toContain("Far future task");
+    expect(out).not.toContain("Someday idea");
+    expect(out).toContain("+2 more open (use `muse tasks list`)");
+  });
+
+  it("omits the '+N more' line when every open task is imminent", () => {
+    const out = formatTasks([
+      { dueAt: new Date(2026, 4, 20, 12, 0).toISOString(), id: "t1abc", title: "Lunch prep" }
+    ], now, 24);
+    expect(out).toContain("Tasks due ≤24h (1):");
+    expect(out).not.toContain("more open");
+  });
+
+  it("summarises to one line when nothing is due within the window", () => {
+    const out = formatTasks([
+      { dueAt: new Date(2026, 8, 1, 9, 0).toISOString(), id: "t3ghi", title: "Far future task" },
+      { id: "t4jkl", title: "Someday idea" }
+    ], now, 24);
+    expect(out).toContain("Tasks: 2 open, none due within 24h (use `muse tasks list`)");
+    expect(out).not.toContain("Far future task");
+  });
+
+  it("none open / not configured states unchanged", () => {
+    expect(formatTasks([], now, 24)).toContain("(none open)");
+    expect(formatTasks(undefined, now, 24)).toContain("(not configured)");
   });
 });
 
