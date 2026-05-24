@@ -377,3 +377,19 @@ describe("resolveForgetKey", () => {
     expect(resolveForgetKey(keys, "weather")).toEqual({ kind: "none" });
   });
 });
+
+describe("formatMemoryView — episodic memory line", () => {
+  it("surfaces past-session count + most-recent date when episodes exist", () => {
+    const out = formatMemoryView({ facts: { name: "Jinan" }, preferences: {}, recentTopics: [] }, { count: 7, lastAt: "2026-05-24T11:00:00.000Z" });
+    expect(out).toContain("Past sessions remembered: 7 (most recent 2026-05-24)");
+    expect(out).toContain("/recall");
+  });
+  it("episodes alone (no facts/prefs) still render, not the empty state", () => {
+    const out = formatMemoryView({ facts: {}, preferences: {}, recentTopics: [] }, { count: 3 });
+    expect(out).toContain("Past sessions remembered: 3");
+    expect(out).not.toMatch(/haven't remembered/);
+  });
+  it("no episodes → no past-sessions line", () => {
+    expect(formatMemoryView({ facts: { name: "x" }, preferences: {}, recentTopics: [] })).not.toContain("Past sessions");
+  });
+});

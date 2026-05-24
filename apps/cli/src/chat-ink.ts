@@ -171,6 +171,7 @@ export function MuseChatApp(props: {
   readonly recapRole?: "system" | "command";
   readonly inputHistorySeed?: readonly string[];
   readonly onInput?: (value: string) => void;
+  readonly episodeInfo?: { readonly count: number; readonly lastAt?: string };
   readonly memorySnapshot: () => Promise<MemorySnapshot | undefined>;
   readonly forgetMemory: (key: string) => Promise<boolean>;
   readonly rememberFact: (key: string, value: string) => Promise<boolean>;
@@ -367,7 +368,7 @@ export function MuseChatApp(props: {
         return;
       }
       if (slash.cmd === "memory") {
-        note(formatMemoryView(await props.memorySnapshot()));
+        note(formatMemoryView(await props.memorySnapshot(), props.episodeInfo));
         return;
       }
       if (slash.cmd === "remember") {
@@ -1116,7 +1117,8 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     recap,
     recapRole,
     inputHistorySeed,
-    onInput: (value: string) => { void appendInputHistory(value); }
+    onInput: (value: string) => { void appendInputHistory(value); },
+    ...(personaEpisodes.length > 0 ? { episodeInfo: { count: personaEpisodes.length, ...(personaEpisodes[0]?.endedAt ? { lastAt: personaEpisodes[0].endedAt } : {}) } } : {})
   }), {
     exitOnCtrlC: false,
     kittyKeyboard: { flags: ["disambiguateEscapeCodes"], mode: "enabled" }

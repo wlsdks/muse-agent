@@ -455,11 +455,15 @@ export interface MemorySnapshot {
  * lines. Returns an empty-state line when nothing is stored yet so the
  * command always answers. UI strings are English (open-source surface).
  */
-export function formatMemoryView(memory: MemorySnapshot | undefined): string {
+export function formatMemoryView(
+  memory: MemorySnapshot | undefined,
+  episodes?: { readonly count: number; readonly lastAt?: string }
+): string {
   const factKeys = memory ? Object.keys(memory.facts) : [];
   const prefKeys = memory ? Object.keys(memory.preferences) : [];
   const topics = memory?.recentTopics ?? [];
-  if (factKeys.length === 0 && prefKeys.length === 0 && topics.length === 0) {
+  const epCount = episodes?.count ?? 0;
+  if (factKeys.length === 0 && prefKeys.length === 0 && topics.length === 0 && epCount === 0) {
     return "I haven't remembered anything about you yet.";
   }
   const lines: string[] = ["What I remember about you:"];
@@ -472,6 +476,10 @@ export function formatMemoryView(memory: MemorySnapshot | undefined): string {
     for (const key of prefKeys) lines.push(`    ${key}: ${memory!.preferences[key]}`);
   }
   if (topics.length > 0) lines.push(`  Recent topics: ${topics.join(", ")}`);
+  if (epCount > 0) {
+    const when = episodes?.lastAt ? ` (most recent ${episodes.lastAt.slice(0, 10)})` : "";
+    lines.push(`  Past sessions remembered: ${epCount}${when} — search them with /recall`);
+  }
   lines.push("Type /forget <key> to drop one.");
   return lines.join("\n");
 }
