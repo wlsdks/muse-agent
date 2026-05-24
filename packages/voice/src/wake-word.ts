@@ -53,7 +53,7 @@ export interface TextScanWakeWordDetectorOptions {
    */
   readonly phrase: string;
   /**
-   * Goal 121 — additional phrases that should also wake the
+   * Additional phrases that should also wake the
    * loop. Lets a user say "Hey Muse" OR "OK Muse" OR a bare
    * "Muse" without composing multiple detectors. Each alias is
    * normalised the same way as `phrase`; empty / whitespace-only
@@ -76,7 +76,7 @@ export class TextScanWakeWordDetector implements WakeWordDetector {
   readonly id: string;
   private readonly phrase: string;
   /**
-   * Goal 121 — needles ordered by caller intent so the first
+   * Needles ordered by caller intent so the first
    * match wins. `phrase` is always at index 0; aliases follow in
    * the order the caller supplied. Whitespace-only aliases drop
    * out so the empty case doesn't degrade to a substring-of-

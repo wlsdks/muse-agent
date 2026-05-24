@@ -67,7 +67,7 @@ export function resolveProactiveHistoryFile(env: MuseEnvironment): string {
 }
 
 /**
- * Goal 052 — `~/.muse/session-lock.json` by default; overridable
+ * `~/.muse/session-lock.json` by default; overridable
  * via `MUSE_SESSION_LOCK_FILE` (tests use a tempdir to avoid
  * touching the user's real home).
  */

@@ -76,14 +76,14 @@ export interface UserMemoryAutoExtractOptions {
    */
   readonly extractionTimeoutMs?: number;
   /**
-   * Goal 073 — minimum interval between extractions per user
+   * Minimum interval between extractions per user
    * (milliseconds). When a turn fires inside the cooldown
    * window for that user, the extraction is skipped silently
    * (fail-open). Default 60_000 (1/min). 0 disables throttling.
    */
   readonly extractionCooldownMs?: number;
   /**
-   * Goal 073 — injectable clock for deterministic tests. The
+   * Injectable clock for deterministic tests. The
    * throttle compares `now()` against the per-user last-fire
    * timestamp; without this, tests have to wait real seconds
    * to see the cooldown elapse.

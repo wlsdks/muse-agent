@@ -120,7 +120,7 @@ export function extractFollowupPromises(
     // Sanity-bound the horizon: a regex like `in 9999 days` would
     // otherwise queue a follow-up ~27 years out that never
     // meaningfully fires. Parity with the LLM detector's
-    // LLM_FOLLOWUP_FUTURE_HORIZON_MS (goal 650).
+    // LLM_FOLLOWUP_FUTURE_HORIZON_MS.
     if (ts > options.now.getTime() + RULE_FOLLOWUP_FUTURE_HORIZON_MS) return;
     const minuteKey = Math.floor(ts / 60_000);
     if (seenMinute.has(minuteKey)) return;

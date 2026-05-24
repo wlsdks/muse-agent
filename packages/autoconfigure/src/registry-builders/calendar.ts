@@ -2,9 +2,9 @@
  * Calendar-registry builder — env + ~/.muse/calendar-credentials.json
  * → `CalendarProviderRegistry` with the personal-JARVIS subset
  * (local / gcal / caldav / macos). Lifted from
- * `personal-providers.ts` (goal 041) following the same pattern as
- * the messaging builder (goal 007), so the registry-builders folder
- * stays the natural home for these env → registry constructors.
+ * `personal-providers.ts` following the same pattern as the
+ * messaging builder, so the registry-builders folder stays the
+ * natural home for these env → registry constructors.
  */
 
 import {

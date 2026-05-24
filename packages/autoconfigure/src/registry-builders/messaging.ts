@@ -2,9 +2,8 @@
  * Messaging-registry builder — env + ~/.muse/messaging.json
  * tokens → MessagingProviderRegistry with the personal-JARVIS
  * subset (telegram / discord / slack / line / log / macos
- * notification). Lifted from `personal-providers.ts` (goal 007)
- * to keep the registry-builders leaf and the central wiring file
- * focused.
+ * notification). Lifted from `personal-providers.ts` to keep the
+ * registry-builders leaf and the central wiring file focused.
  */
 
 import {

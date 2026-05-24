@@ -42,7 +42,7 @@ export class ModelProviderError extends Error {
 }
 
 /**
- * Goal 106 — classify an HTTP status from a provider as retryable.
+ * Classify an HTTP status from a provider as retryable.
  *
  *   - 5xx: server-side failure, almost always transient.
  *   - 429: Too Many Requests / rate limit. Every major LLM

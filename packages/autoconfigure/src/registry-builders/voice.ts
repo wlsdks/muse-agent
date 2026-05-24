@@ -2,8 +2,8 @@
  * Voice-registry builder — env → `VoiceProviderRegistry` with the
  * personal-JARVIS subset: OpenAI Whisper (STT) + OpenAI TTS, with
  * optional local fallbacks (Whisper.cpp + Piper). Lifted from
- * `personal-providers.ts` (goal 042) following the same pattern as
- * goal 007 (messaging) and 041 (calendar).
+ * `personal-providers.ts` following the same pattern as the
+ * messaging and calendar builders.
  *
  * Returns `undefined` when nothing is registered so the
  * `/api/voice/*` routes stay absent (404) by default — that

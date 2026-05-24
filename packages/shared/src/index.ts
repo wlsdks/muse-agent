@@ -73,7 +73,7 @@ export function formatBoundaryViolation(violation: BoundaryViolation): string {
 /**
  * Default cap for `truncateErrorBody`. Chosen to keep a one-line
  * preview readable on a 200-column terminal even when prefixed
- * with provider id + status. Goal 002.
+ * with provider id + status.
  */
 export const DEFAULT_ERROR_BODY_CAP = 240;
 
@@ -98,8 +98,8 @@ export const DEFAULT_ERROR_BODY_CAP = 240;
  *
  * Anywhere Muse hands tool output / search results / model deltas
  * straight to the user's stdout or a downstream display, this is
- * the single sanitizer to use. Goal 003 lifted the helper out of
- * the CLI-only `commands-search.ts` so the SSE consumer +
+ * the single sanitizer to use. The helper lives here rather than
+ * in the CLI-only `commands-search.ts` so the SSE consumer +
  * messaging providers + any future surface share one
  * implementation.
  */
@@ -108,7 +108,7 @@ export function stripUntrustedTerminalChars(value: string): string {
 }
 
 /**
- * Goal 086 — high-confidence secret-shape patterns. Each entry
+ * High-confidence secret-shape patterns. Each entry
  * names the family + the regex that catches the bytes. The
  * matches are replaced with `[redacted-<family>]` so an operator
  * reading a proactive-notice log line still sees WHICH kind of
@@ -171,7 +171,7 @@ const SECRET_PATTERNS: ReadonlyArray<{ readonly name: string; readonly regex: Re
 ];
 
 /**
- * Goal 086 — strip high-confidence credential shapes from a text
+ * Strip high-confidence credential shapes from a text
  * payload. Used pre-delivery on proactive notices so a credential
  * that accidentally landed in a task title (`"rotate API key
  * sk-proj-..."`) doesn't round-trip back via Telegram / Slack.

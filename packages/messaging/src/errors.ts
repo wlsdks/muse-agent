@@ -6,10 +6,10 @@ export type MessagingErrorCode =
   | "UPSTREAM_FAILED";
 
 /**
- * Goal 134 — classify an HTTP status from a messaging provider
- * as retryable. Mirrors `isRetryableHttpStatus` from `@muse/model`
- * (goal 106) so the resilience layer sees the same shape across
- * LLM providers and chat-out providers:
+ * Classify an HTTP status from a messaging provider as retryable.
+ * Mirrors `isRetryableHttpStatus` from `@muse/model` so the
+ * resilience layer sees the same shape across LLM providers and
+ * chat-out providers:
  *
  *   - 5xx: server-side failure, transient.
  *   - 429: rate limit. Telegram / Discord / Slack / LINE all
@@ -31,7 +31,7 @@ export class MessagingProviderError extends Error {
   readonly code: MessagingErrorCode;
   readonly status?: number;
   /**
-   * Goal 134 — `true` when the underlying HTTP status was a
+   * `true` when the underlying HTTP status was a
    * 5xx or a 429 (rate limit). Always `false` for the
    * non-HTTP codes (PROVIDER_NOT_FOUND, INVALID_DESTINATION,
    * INVALID_TEXT) — those are caller errors, not transient.

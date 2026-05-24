@@ -2,9 +2,9 @@
  * Personal-domain provider builders + env-driven path resolvers.
  *
  * Lifted out of `packages/autoconfigure/src/index.ts` (1,255 LOC,
- * the largest source file in the repo after the round 139-142 mcp
- * splits) so the JARVIS-personal wiring — Notes / Tasks / Calendar
- * / Voice — lives in its own focused module.
+ * the largest source file in the repo after the mcp splits) so the
+ * JARVIS-personal wiring — Notes / Tasks / Calendar / Voice — lives
+ * in its own focused module.
  *
  * What's here:
  *   - Default-path resolvers for the personal-domain trio's local
@@ -14,10 +14,9 @@
  *     Notes MCP server has a directory to land into
  *
  * Registry builders live under `./registry-builders/`:
- * `buildMessagingRegistry` (goal 007), `buildCalendarRegistry`
- * (goal 041), `buildVoiceRegistry` (goal 042). The functions are
- * re-exported from this module so existing `index.ts` call sites
- * stay byte-identical.
+ * `buildMessagingRegistry`, `buildCalendarRegistry`,
+ * `buildVoiceRegistry`. The functions are re-exported from this
+ * module so existing `index.ts` call sites stay byte-identical.
  *
  * The shape of `MuseEnvironment` stays in `index.ts`; this module
  * imports it back as a type-only consumer.
@@ -184,8 +183,8 @@ export function ensureNotesDir(notesDir: string): void {
  *   - MUSE_SLACK_BOT_TOKEN  (xoxb-...) (env) or providers.slack.token      (file)
  *   - MUSE_LINE_CHANNEL_ACCESS_TOKEN   (env) or providers.line.token       (file)
  */
-// `buildMessagingRegistry` lives in `./registry-builders/messaging.ts`
-// (goal 007). Re-exported so external call-sites stay byte-identical.
+// `buildMessagingRegistry` lives in `./registry-builders/messaging.ts`.
+// Re-exported so external call-sites stay byte-identical.
 export { buildMessagingRegistry } from "./registry-builders/messaging.js";
 
 // Suppress unused-import warning when only the type is referenced.

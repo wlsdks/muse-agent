@@ -7,8 +7,8 @@
  * on non-Linux hosts so the messaging registry skips it cleanly
  * when running on macOS / Windows / WSL-without-libnotify.
  *
- * Goal 093 — adds Linux to the credential-free messaging surface
- * Muse had only on macOS before this. Together they cover the
+ * Adds Linux to the credential-free messaging surface
+ * Muse had only on macOS before. Together they cover the
  * "JARVIS without setting up a chat bot" surface on both OSes.
  */
 
@@ -153,7 +153,7 @@ export class LinuxLibnotifyProvider implements MessagingProvider {
 }
 
 /**
- * Goal 093 — pure argv builder. Exported so the unit test pins
+ * Pure argv builder. Exported so the unit test pins
  * the exact notify-send command-line without having to spawn it.
  *
  * Shape:

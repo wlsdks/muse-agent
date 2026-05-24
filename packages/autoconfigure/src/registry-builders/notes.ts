@@ -2,7 +2,8 @@
  * Notes-registry builder — env + ~/.muse/credentials.json →
  * `NotesProviderRegistry` with the personal-JARVIS subset (local
  * filesystem / Apple Notes / Notion). Lifted from
- * `personal-providers.ts` (goal 043) following goals 007 / 041 / 042.
+ * `personal-providers.ts` following the messaging / calendar /
+ * voice builders.
  *
  * Env (resolution order):
  *   - `MUSE_NOTES_PROVIDERS` — comma-separated subset of

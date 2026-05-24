@@ -9,7 +9,7 @@ import type {
 } from "./types.js";
 
 /**
- * Goal 071 — diagnostic snapshot returned by
+ * Diagnostic snapshot returned by
  * `listEventsWithDiagnostics`. Lets callers see which providers
  * fell back (typically a remote Google / CalDAV failure that
  * the registry silently swallowed for the simple `listEvents`
@@ -22,7 +22,7 @@ export interface CalendarListEventsDiagnostics {
 
 export interface CalendarProviderRegistryOptions {
   /**
-   * Goal 071 — optional callback invoked once per failed
+   * Optional callback invoked once per failed
    * provider on `listEvents`. The registry already swallows the
    * error so other providers (notably the local file) still
    * yield events; this hook lets a daemon log "(gcal failed —
@@ -96,7 +96,7 @@ export class CalendarProviderRegistry {
   }
 
   /**
-   * Goal 071 — same fan-out as `listEvents` but returns a richer
+   * Same fan-out as `listEvents` but returns a richer
    * payload that names which providers failed. Useful for daemons
    * that want to log "(gcal failed — falling back to local)"
    * instead of silently dropping the upstream error.

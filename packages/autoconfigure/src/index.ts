@@ -943,7 +943,7 @@ export function createLoopbackMcpToolsFromEnv(env: MuseEnvironment): readonly Mu
 }
 
 /**
- * Goal 082 — synchronous, fail-open reader for the JWT rotation
+ * Synchronous, fail-open reader for the JWT rotation
  * state file (`~/.muse/auth-secrets.json` by default; overridable
  * via `MUSE_AUTH_SECRETS_FILE`). Any read / parse / shape error
  * returns `undefined` so the auth service silently falls through

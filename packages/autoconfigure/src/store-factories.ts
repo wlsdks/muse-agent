@@ -1,8 +1,8 @@
 /**
  * Db-or-in-memory store factory helpers.
  *
- * Lifted out of `packages/autoconfigure/src/index.ts` (round 144,
- * after split out the personal-domain providers) so the
+ * Lifted out of `packages/autoconfigure/src/index.ts` (after
+ * splitting out the personal-domain providers) so the
  * cluster of `db ? new KyselyXStore(db) : new InMemoryXStore(env)`
  * factories — 14 stores + the tracing pipeline — lives in its own
  * focused module. Each helper does the same thing structurally:

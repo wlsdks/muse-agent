@@ -206,8 +206,8 @@ export interface ProactiveActivitySource {
 /**
  * A delivery target for a proactive notice that is not the
  * messaging registry — e.g. the terminal session the user is
- * currently looking at. Slice 2 of goal 373 supplies a concrete
- * REPL renderer; slice 1 only wires the routing seam.
+ * currently looking at. This seam only wires the routing; the
+ * concrete REPL renderer is supplied separately.
  */
 export interface ProactiveNoticeSink {
   deliver(notice: {
@@ -223,7 +223,7 @@ export type ProactiveSinkChoice = "terminal" | "messaging";
  * Route a proactive notice to the surface the user is looking at:
  * the terminal sink when one is wired AND the activity source has
  * seen the user on a local surface, messaging otherwise. Staleness
- * of that presence (a backgrounded terminal) is goal 373 slice 3 —
+ * of that presence (a backgrounded terminal) is handled elsewhere;
  * here "recorded at all" is sufficient.
  */
 export function selectProactiveSink(

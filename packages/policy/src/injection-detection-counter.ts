@@ -1,5 +1,5 @@
 /**
- * Goal 085 — per-family counter store for prompt-injection
+ * Per-family counter store for prompt-injection
  * detections. The guard records every firing pattern's name (NOT
  * the raw input — that's a user secret); dashboards / structured
  * logs scrape the snapshot so operators can see "history-

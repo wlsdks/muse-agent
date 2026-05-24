@@ -25,14 +25,14 @@ export interface MonthlyBudgetSnapshot {
   readonly limitUsd: number;
   readonly status: MonthlyBudgetStatus;
   /**
-   * Goal 113 — limit - totalCostUsd, clamped to 0 (can't go
+   * limit - totalCostUsd, clamped to 0 (can't go
    * negative once exceeded). Only set when a positive
    * `limitUsd` is configured; omitted for unlimited budgets so
    * a consumer can't accidentally render "remaining: $-12.34".
    */
   readonly remainingUsd?: number;
   /**
-   * Goal 113 — `totalCostUsd / limitUsd * 100`, clamped to
+   * `totalCostUsd / limitUsd * 100`, clamped to
    * [0, 100]. Same omission rule as `remainingUsd`: undefined
    * when `limitUsd <= 0` to avoid divide-by-zero artefacts.
    * Surfaced so the status dashboard renders a single

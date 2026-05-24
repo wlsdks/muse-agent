@@ -416,7 +416,7 @@ export function resolveIdentityScope(metadata: JsonObject): string {
 }
 
 /**
- * Goal 117 — provider ids whose marginal inference cost is $0
+ * Provider ids whose marginal inference cost is $0
  * (the model runs on the user's machine, no per-token billing).
  * `estimateCostUsd` short-circuits to 0 for these so the budget
  * meter / token-cost rollup don't manufacture phantom spend when

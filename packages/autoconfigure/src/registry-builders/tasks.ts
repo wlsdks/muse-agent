@@ -1,8 +1,8 @@
 /**
  * Tasks-registry builder — env → `TasksProviderRegistry` with the
  * personal-JARVIS subset (local file / Apple Reminders / Notion).
- * Lifted from `personal-providers.ts` (goal 044) following
- * goals 007 / 041 / 042 / 043.
+ * Lifted from `personal-providers.ts` following the messaging /
+ * calendar / voice / notes builders.
  *
  * Env (resolution order):
  *   - `MUSE_TASKS_PROVIDERS` — comma-separated subset of

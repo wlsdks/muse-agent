@@ -9,9 +9,9 @@ export class CalendarValidationError extends Error {
 }
 
 /**
- * Goal 135 — classify an HTTP status from a calendar provider
- * (CalDAV / Google) as retryable. Mirrors the goal-106 /
- * goal-134 model + messaging contract.
+ * Classify an HTTP status from a calendar provider
+ * (CalDAV / Google) as retryable. Mirrors the model + messaging
+ * contract.
  *
  *   - 5xx: server-side failure, almost always transient.
  *   - 429: rate limit. Google Calendar's burst quota answers
@@ -34,7 +34,7 @@ export class CalendarProviderError extends Error {
   readonly code: string;
   readonly cause?: unknown;
   /**
-   * Goal 135 — `true` when the underlying HTTP status was a
+   * `true` when the underlying HTTP status was a
    * 5xx or a 429. Optional `status` parameter on the constructor
    * carries the raw HTTP code; legacy call sites that don't pass
    * status land on `retryable: false` (safe default — local /
