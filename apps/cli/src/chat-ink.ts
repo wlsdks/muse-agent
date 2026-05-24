@@ -126,7 +126,7 @@ export interface RunChatInkOptions {
 }
 
 interface DisplayTurn {
-  readonly role: "user" | "assistant" | "system" | "proactive";
+  readonly role: "user" | "assistant" | "system" | "proactive" | "command";
   readonly text: string;
 }
 
@@ -240,18 +240,22 @@ export function MuseChatApp(props: {
 
     const slash = parseSlashCommand(message);
     if (slash) {
-      // Command feedback shows in the bottom area (transient), not the
-      // scrolling transcript — like claude / codex.
-      const note = (text: string): void => setCommandNotice(text);
+      // Echo the command into the transcript (so it's clear WHAT ran) and
+      // render its result there too — persistent + properly formatted, not a
+      // transient bottom line that truncated multi-line output like /memory.
+      const note = (text: string): void => setTurns((prev) => [...prev, { role: "command", text }]);
+      const progress = (text: string): void => setCommandNotice(text);
+      // Commands that wipe or leave the screen don't echo (nothing to keep).
       if (slash.cmd === "exit" || slash.cmd === "quit") { setExiting(true); return; }
       if (slash.cmd === "clear") { setTurns([]); return; }
       if (slash.cmd === "new") {
         historyRef.current = [];
         setTurns([]);
         props.onReset();
-        note("Started a new conversation — earlier context cleared.");
+        setCommandNotice("Started a new conversation — earlier context cleared.");
         return;
       }
+      setTurns((prev) => [...prev, { role: "user", text: message }]);
       if (slash.cmd === "model") {
         const target = slash.arg.trim();
         if (target.length === 0) {
@@ -299,7 +303,7 @@ export function MuseChatApp(props: {
         const next = !toolsOn;
         setToolsOn(next);
         note(next
-          ? "Tools ON — read + local writes (notes/tasks/calendar). Outbound (email/web/home) stays blocked for safety."
+          ? "Tools ON — reads run silently; writes/actions (notes, tasks, email/web/home) ask for your y/n first."
           : "Tools OFF — plain chat (faster).");
         return;
       }
@@ -324,8 +328,9 @@ export function MuseChatApp(props: {
         return;
       }
       if (slash.cmd === "recall") {
-        note("Searching memory…");
+        progress("Searching memory…");
         note(await props.recallSearch(slash.arg));
+        setCommandNotice(undefined);
         return;
       }
       if (slash.cmd === "job") {
@@ -336,8 +341,9 @@ export function MuseChatApp(props: {
         return;
       }
       if (slash.cmd === "jobs") {
-        note("Checking jobs…");
+        progress("Checking jobs…");
         note(formatJobsList(await props.jobsOverview()));
+        setCommandNotice(undefined);
         return;
       }
       if (slash.cmd === "forget") {
@@ -525,6 +531,11 @@ export function MuseChatApp(props: {
         // Muse opening the conversation — stands out from normal answers.
         return h(Box, { key: index, marginBottom: 1, marginTop: 1, paddingLeft: 2 },
           h(Text, { bold: true, color: "magenta" }, turn.text));
+      }
+      if (turn.role === "command") {
+        // Slash-command output — readable normal-weight text (not the muted
+        // system grey), indented under its `› /cmd` echo.
+        return h(Box, { key: index, marginBottom: 1, paddingLeft: 2 }, h(Text, null, turn.text));
       }
       // System notes stay as a plain dim line; assistant answers render with
       // light markdown (code/headers/inline). Both sit indented from the wall.
