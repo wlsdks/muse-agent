@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { imminentItems, pickUnseen, proactiveNoticeText, relativeWhen } from "./chat-proactive.js";
+import { imminentItems, jobCompletionItems, jobDoneNoticeText, pickUnseen, proactiveNoticeText, relativeWhen } from "./chat-proactive.js";
 
 const now = Date.UTC(2026, 4, 24, 12, 0, 0);
 const iso = (minFromNow: number): string => new Date(now + minFromNow * 60_000).toISOString();
@@ -40,5 +40,27 @@ describe("proactiveNoticeText", () => {
   it("renders a friendly first-speak line", () => {
     expect(proactiveNoticeText({ id: "1", text: "Dentist" }, "in 30m")).toBe("📌 Dentist (in 30m) — want a hand?");
     expect(proactiveNoticeText({ id: "1", text: "Dentist" }, "")).toBe("📌 Dentist — want a hand?");
+  });
+});
+
+describe("jobDoneNoticeText", () => {
+  it("phrases done (with result) and error distinctly", () => {
+    expect(jobDoneNoticeText({ id: "j1", status: "done", prompt: "research X", finalText: "found  it" }))
+      .toBe("✓ Background job done: research X — found it");
+    expect(jobDoneNoticeText({ id: "j2", status: "error", prompt: "bad task" }))
+      .toBe("✗ Background job failed: bad task");
+  });
+});
+
+describe("jobCompletionItems", () => {
+  const since = "2026-05-24T12:00:00.000Z";
+  it("keeps only done/error jobs finished after `since`, pre-phrased with a job: id", () => {
+    const items = jobCompletionItems([
+      { id: "old", status: "done", prompt: "old", finishedAt: "2026-05-24T11:00:00.000Z" },
+      { id: "fresh", status: "done", prompt: "fresh", finalText: "ok", finishedAt: "2026-05-24T12:05:00.000Z" },
+      { id: "running", status: "running", prompt: "go" }
+    ], since);
+    expect(items.map((i) => i.id)).toEqual(["job:fresh"]);
+    expect(items[0]?.text).toBe("✓ Background job done: fresh — ok");
   });
 });

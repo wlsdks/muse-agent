@@ -50,7 +50,7 @@ import { loadAgents, resolveAgentsDir, type AgentDef } from "./commands-agents.j
 import { searchRecall } from "./commands-recall.js";
 import { listRecentJobIds, readJobSummary, startBackgroundJob } from "./commands-jobs.js";
 import { readDueFollowups, readDueReminders } from "./commands-today.js";
-import { imminentItems, pickUnseen, proactiveNoticeText, relativeWhen, type ProactiveItem } from "./chat-proactive.js";
+import { imminentItems, jobCompletionItems, pickUnseen, proactiveNoticeText, relativeWhen, type ProactiveItem } from "./chat-proactive.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
 import { resolvePersona } from "./program-helpers.js";
 import { resolveDefaultUserKey } from "./user-id.js";
@@ -154,6 +154,7 @@ export function MuseChatApp(props: {
   readonly onCommit: (user: string, assistant: string) => void;
   readonly onReset: () => void;
   readonly proactiveCheck?: () => Promise<readonly ProactiveItem[]>;
+  readonly jobCompletions?: () => Promise<readonly ProactiveItem[]>;
   readonly memorySnapshot: () => Promise<MemorySnapshot | undefined>;
   readonly forgetMemory: (key: string) => Promise<boolean>;
   readonly recallSearch: (query: string) => Promise<string>;
@@ -213,19 +214,25 @@ export function MuseChatApp(props: {
   idleRef.current = !busy && !exiting;
   useEffect(() => {
     const check = props.proactiveCheck;
-    if (!check) return undefined;
+    const jobsDone = props.jobCompletions;
+    if (!check && !jobsDone) return undefined;
     let active = true;
     const tick = async (): Promise<void> => {
       if (!idleRef.current) return;
-      const items = await check().catch(() => [] as readonly ProactiveItem[]);
-      if (!active) return;
       const now = Date.now();
+      const items = check ? await check().catch(() => [] as readonly ProactiveItem[]) : [];
+      // Background jobs that finished since the chat opened are surfaced once
+      // each (their own pre-phrased line), not via the reminder time-window.
+      const completed = jobsDone ? await jobsDone().catch(() => [] as readonly ProactiveItem[]) : [];
+      if (!active) return;
       const unseen = pickUnseen(imminentItems(items, now, PROACTIVE_LEAD_MS), seenRef.current);
-      if (unseen.length === 0) return;
-      for (const item of unseen) seenRef.current.add(item.id);
+      const unseenJobs = pickUnseen(completed, seenRef.current);
+      if (unseen.length === 0 && unseenJobs.length === 0) return;
+      for (const item of [...unseen, ...unseenJobs]) seenRef.current.add(item.id);
       setTurns((prev) => [
         ...prev,
-        ...unseen.map((item) => ({ role: "proactive" as const, text: proactiveNoticeText(item, relativeWhen(item.dueAt, now)) }))
+        ...unseen.map((item) => ({ role: "proactive" as const, text: proactiveNoticeText(item, relativeWhen(item.dueAt, now)) })),
+        ...unseenJobs.map((item) => ({ role: "proactive" as const, text: item.text }))
       ]);
     };
     const first = setTimeout(() => { void tick(); }, 1500);
@@ -798,6 +805,18 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
         ...(s.finalText ? { finalText: s.finalText } : {})
       }));
   };
+  // Muse speaks up when a job started this session finishes. `chatStartedIso`
+  // stops jobs that completed before launch from announcing on the first poll.
+  const chatStartedIso = new Date().toISOString();
+  const jobCompletions = async (): Promise<readonly ProactiveItem[]> => {
+    const summaries = await Promise.all(listRecentJobIds(20).map((id) => readJobSummary(id)));
+    return jobCompletionItems(
+      summaries
+        .filter((s): s is NonNullable<typeof s> => Boolean(s))
+        .map((s) => ({ id: s.id, status: s.status, finishedAt: s.finishedAt, prompt: s.prompt, finalText: s.finalText })),
+      chatStartedIso
+    );
+  };
 
   // Launch recap — "where we left off": the most recent episode summary plus
   // open-commitment counts. Only when resuming a continuous session; fail-soft
@@ -884,6 +903,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     recallSearch,
     startJob,
     jobsOverview,
+    jobCompletions,
     recap
   }), {
     exitOnCtrlC: false,

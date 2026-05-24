@@ -53,3 +53,32 @@ export function proactiveNoticeText(item: ProactiveItem, whenLabel: string): str
   const when = whenLabel.length > 0 ? ` (${whenLabel})` : "";
   return `📌 ${item.text}${when} — want a hand?`;
 }
+
+export interface JobDoneInput {
+  readonly id: string;
+  readonly status: string;
+  readonly prompt?: string;
+  readonly finalText?: string;
+  readonly finishedAt?: string;
+}
+
+/** The line Muse speaks unprompted when a background job finishes. */
+export function jobDoneNoticeText(job: JobDoneInput): string {
+  const label = (job.prompt ?? job.id).replace(/\s+/gu, " ").trim().slice(0, 50);
+  if (job.status === "error") return `✗ Background job failed: ${label}`;
+  const result = job.finalText ? ` — ${job.finalText.replace(/\s+/gu, " ").trim().slice(0, 80)}` : "";
+  return `✓ Background job done: ${label}${result}`;
+}
+
+/**
+ * Background jobs that finished AFTER the chat opened (`sinceIso`), as
+ * pre-phrased proactive items. Unlike reminders, a completion isn't time-
+ * windowed — it surfaces once, whenever the poll next notices it; `sinceIso`
+ * stops every previously-finished job from announcing on the first tick, and
+ * the caller's seen-set dedupes the rest.
+ */
+export function jobCompletionItems(jobs: readonly JobDoneInput[], sinceIso: string): ProactiveItem[] {
+  return jobs
+    .filter((job) => (job.status === "done" || job.status === "error") && job.finishedAt !== undefined && job.finishedAt > sinceIso)
+    .map((job) => ({ id: `job:${job.id}`, text: jobDoneNoticeText(job), ...(job.finishedAt ? { dueAt: job.finishedAt } : {}) }));
+}
