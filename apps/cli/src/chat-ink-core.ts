@@ -232,6 +232,14 @@ export function matchSlashCommands(value: string, commands: readonly SlashComman
   return commands.filter((command) => command.cmd.startsWith(query));
 }
 
+/** Agent-name completions while typing `/agent <partial>`. */
+export function matchAgentNames(value: string, names: readonly string[]): readonly string[] {
+  const match = /^\/agent\s+(.*)$/u.exec(value);
+  if (!match) return [];
+  const partial = (match[1] ?? "").toLowerCase();
+  return names.filter((name) => name.toLowerCase().startsWith(partial));
+}
+
 export interface ParsedSlash {
   readonly cmd: string;
   readonly arg: string;

@@ -5,6 +5,7 @@ import {
   cursorCoords,
   displayWidth,
   emptyInput,
+  matchAgentNames,
   matchSlashCommands,
   parseSlashCommand,
   reduceInput,
@@ -90,6 +91,17 @@ describe("matchSlashCommands", () => {
   it("closes (no matches) once a space follows the command", () => {
     expect(matchSlashCommands("/clear ", cmds)).toEqual([]);
     expect(matchSlashCommands("/model gpt", cmds)).toEqual([]);
+  });
+});
+
+describe("matchAgentNames", () => {
+  const names = ["researcher", "reviewer", "coder"];
+  it("completes only after '/agent ' and narrows by prefix", () => {
+    expect(matchAgentNames("/agent", names)).toEqual([]); // no space yet
+    expect(matchAgentNames("/agent ", names)).toEqual(names); // all
+    expect(matchAgentNames("/agent re", names)).toEqual(["researcher", "reviewer"]);
+    expect(matchAgentNames("/agent cod", names)).toEqual(["coder"]);
+    expect(matchAgentNames("hello", names)).toEqual([]);
   });
 });
 

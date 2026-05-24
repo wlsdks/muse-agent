@@ -21,6 +21,7 @@ import {
   buildTurnMessages,
   cursorCoords,
   emptyInput,
+  matchAgentNames,
   matchSlashCommands,
   parseSlashCommand,
   reduceInput,
@@ -227,7 +228,10 @@ export function MuseChatApp(props: {
   }, [app, props, activeAgent]);
 
   const slashMenu = matchSlashCommands(inputState.value, SLASH_COMMANDS);
-  const slashSel = slashMenu.length > 0 ? Math.min(slashIndex, slashMenu.length - 1) : 0;
+  const agentMenu = slashMenu.length === 0 ? matchAgentNames(inputState.value, props.agents.map((a) => a.name)) : [];
+  const menuLen = slashMenu.length > 0 ? slashMenu.length : agentMenu.length;
+  const menuSel = menuLen > 0 ? Math.min(slashIndex, menuLen - 1) : 0;
+  const slashSel = menuSel;
 
   useInput((rawInput: string, key: InkKeyEvent) => {
     // Ctrl-C: two presses to quit (even mid-stream). First press clears the
@@ -244,14 +248,16 @@ export function MuseChatApp(props: {
     if (busy || exiting) return;
     if (ctrlCArmed) setCtrlCArmed(false); // any other key disarms
 
-    // When the slash menu is open, ↑/↓ move the selection and Tab completes
-    // the highlighted command instead of editing text.
-    if (slashMenu.length > 0) {
-      if (key.upArrow) { setSlashIndex(Math.max(0, slashSel - 1)); return; }
-      if (key.downArrow) { setSlashIndex(Math.min(slashMenu.length - 1, slashSel + 1)); return; }
+    // When a picker (slash commands, or agent names after `/agent `) is open,
+    // ↑/↓ move the selection and Tab completes the highlighted item.
+    if (menuLen > 0) {
+      if (key.upArrow) { setSlashIndex(Math.max(0, menuSel - 1)); return; }
+      if (key.downArrow) { setSlashIndex(Math.min(menuLen - 1, menuSel + 1)); return; }
       if (key.tab) {
-        const chosen = slashMenu[slashSel]?.cmd ?? "";
-        setInputState({ cursor: chosen.length + 2, value: `/${chosen} ` });
+        const completed = slashMenu.length > 0
+          ? `/${slashMenu[menuSel]?.cmd ?? ""} `
+          : `/agent ${agentMenu[menuSel] ?? ""}`;
+        setInputState({ cursor: [...completed].length, value: completed });
         setSlashIndex(0);
         return;
       }
@@ -351,6 +357,18 @@ export function MuseChatApp(props: {
               h(Text, { dimColor: !on }, `  — ${command.desc}`));
           }),
           h(Text, { dimColor: true }, "  ↑↓ 선택 · Tab 자동완성 · ⏎ 실행"))
+      : null,
+    // Agent-name picker while typing `/agent <partial>`.
+    agentMenu.length > 0
+      ? h(Box, { flexDirection: "column", marginTop: 1, paddingLeft: 2 },
+          ...agentMenu.map((name, i) => {
+            const on = i === menuSel;
+            const def = props.agents.find((a) => a.name === name);
+            return h(Box, { key: name },
+              h(Text, { color: on ? "yellow" : "gray" }, `${on ? "▸ " : "  "}${name}`),
+              h(Text, { dimColor: !on }, def ? `  — ${def.description}` : ""));
+          }),
+          h(Text, { dimColor: true }, "  ↑↓ 선택 · Tab 자동완성 · ⏎ 전환"))
       : null,
     // Breathing room above the hint, plus the two-press ctrl-c affordance.
     h(Box, { marginTop: 1 },
