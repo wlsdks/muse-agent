@@ -44,7 +44,7 @@ const HELP = [
 ].join("\n");
 
 export function MuseChatApp(props: {
-  readonly seed: readonly DisplayTurn[];
+  readonly history: readonly ChatTurnMessage[];
   readonly model: string;
   readonly userId: string;
   readonly personaPrompt: () => string | undefined;
@@ -52,14 +52,15 @@ export function MuseChatApp(props: {
   readonly onCommit: (user: string, assistant: string) => void;
 }): React.ReactElement {
   const app = useApp();
-  const [turns, setTurns] = useState<readonly DisplayTurn[]>(props.seed);
+  // The visible transcript starts empty — like `claude`, opening a
+  // session shows a clean screen, NOT a replay of prior turns. Prior
+  // context still reaches the model via historyRef so Muse remembers.
+  const [turns, setTurns] = useState<readonly DisplayTurn[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | undefined>();
-  // History fed to the model — kept in a ref so a mid-stream re-render
-  // doesn't reset it. Seeded from the same turns shown on screen.
-  const historyRef = useRef<ChatTurnMessage[]>(props.seed.map((t) => ({ content: t.text, role: t.role })));
+  const historyRef = useRef<ChatTurnMessage[]>([...props.history]);
 
   const submit = useCallback(async (raw: string) => {
     const message = raw.trim();
@@ -110,6 +111,7 @@ export function MuseChatApp(props: {
   });
 
   const placeholder = "무엇이든 물어보세요 — 예: 오늘 일정 정리해줘";
+  const idle = turns.length === 0 && !busy && streaming.length === 0;
   return h(Box, { flexDirection: "column" },
     h(Static, {
       children: (item: unknown, index: number) => {
@@ -120,6 +122,9 @@ export function MuseChatApp(props: {
       },
       items: [...turns]
     }),
+    idle
+      ? h(Box, { marginBottom: 1 }, h(Text, { dimColor: true }, "새 대화를 시작하세요 — 이전 맥락은 기억하고 있어요."))
+      : null,
     busy || streaming.length > 0
       ? h(Box, { flexDirection: "column", marginBottom: 1 },
           h(Text, { bold: true, color: "cyan" }, "muse"),
@@ -127,9 +132,10 @@ export function MuseChatApp(props: {
       : null,
     notice ? h(Box, { marginBottom: 1 }, h(Text, { dimColor: true }, notice)) : null,
     h(Box, { borderColor: busy ? "gray" : "cyan", borderStyle: "round", paddingX: 1 },
-      input.length > 0
-        ? h(Text, null, `› ${input}`)
-        : h(Text, { dimColor: true }, `› ${placeholder}`)),
+      h(Text, null, "› "),
+      h(Text, null, input),
+      h(Text, { color: "cyan" }, "▌"),
+      input.length === 0 ? h(Text, { dimColor: true }, ` ${placeholder}`) : null),
     h(Text, { dimColor: true }, "⏎ 전송 · /help · ctrl-c 종료")
   );
 }
@@ -160,10 +166,14 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const userMemory = memoryStore ? await Promise.resolve(memoryStore.findByUserId(userId)) : undefined;
   const personaPrompt = (): string | undefined => (userMemory ? buildMusePersona(userMemory, userId) : undefined);
 
+  // Load prior turns for MODEL memory only — they are not shown on
+  // screen (the transcript opens clean). Cap to the most recent turns
+  // so a long history never bloats the prompt.
   const seedLines = continueHistory ? await readLastChatHistory().catch(() => []) : [];
-  const seed: DisplayTurn[] = seedLines
+  const history: ChatTurnMessage[] = seedLines
     .filter((l) => l.role === "user" || l.role === "assistant")
-    .map((l) => ({ role: l.role as "user" | "assistant", text: l.content }));
+    .map((l) => ({ content: l.content, role: l.role as "user" | "assistant" }))
+    .slice(-20);
 
   const provider = assembly.modelProvider;
   const stream = (messages: readonly ChatTurnMessage[]): AsyncIterable<{ type: string; text?: string; error?: unknown }> =>
@@ -173,6 +183,6 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     void appendLastChatTurn({ message: user, response: assistant }).catch(() => undefined);
   };
 
-  const instance = render(h(MuseChatApp, { model, onCommit, personaPrompt, seed, stream, userId }));
+  const instance = render(h(MuseChatApp, { history, model, onCommit, personaPrompt, stream, userId }));
   await instance.waitUntilExit();
 }
