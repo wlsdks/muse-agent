@@ -345,6 +345,11 @@ export async function runChatRepl(
     while (active) {
       let line: string;
       try {
+        // A full-width rule above the prompt frames the input area like
+        // `claude` / `codex` — the only box edge readline can own while
+        // keeping the real cursor (and CJK IME) on the prompt line. A
+        // true 4-sided box needs a TUI, which breaks CJK composition.
+        io.stdout(colorize("─".repeat(Math.min(process.stdout.columns ?? 60, 80)), "dim") + "\n");
         line = await rl.question(colorize("› ", "cyan"));
       } catch {
         break;
