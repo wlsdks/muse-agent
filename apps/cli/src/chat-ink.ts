@@ -10,10 +10,13 @@
  */
 
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
+import { loadSkillsFromDirectory, type Skill } from "@muse/skills";
 import { Box, Static, Text, render, useApp, useCursor, useInput } from "ink";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { appendLastChatTurn, readLastChatHistory } from "./chat-history.js";
+import { appendLastChatTurn, clearLastChatHistory, readLastChatHistory } from "./chat-history.js";
 import {
   buildTurnMessages,
   cursorCoords,
@@ -34,7 +37,10 @@ const h = React.createElement;
 
 const SLASH_COMMANDS: readonly { readonly cmd: string; readonly desc: string }[] = [
   { cmd: "help", desc: "명령어 도움말 보기" },
-  { cmd: "clear", desc: "대화 화면 지우기" },
+  { cmd: "new", desc: "새 대화 시작 (맥락 비우기)" },
+  { cmd: "clear", desc: "화면 지우기 (맥락 유지)" },
+  { cmd: "model", desc: "현재 모델 확인" },
+  { cmd: "skills", desc: "설치된 스킬 목록 + 추가 방법" },
   { cmd: "exit", desc: "Muse 종료 (ctrl-c)" }
 ];
 
@@ -54,12 +60,22 @@ interface DisplayTurn {
   readonly text: string;
 }
 
+export interface SkillInfo {
+  readonly name: string;
+  readonly description: string;
+}
+
 export function MuseChatApp(props: {
   readonly banner: string;
   readonly history: readonly ChatTurnMessage[];
+  readonly model: string;
+  readonly skills: readonly SkillInfo[];
+  readonly skillsDir: string;
+  readonly skillsPrompt: string;
   readonly personaPrompt: () => string | undefined;
   readonly stream: (messages: readonly ChatTurnMessage[]) => AsyncIterable<{ type: string; text?: string; error?: unknown }>;
   readonly onCommit: (user: string, assistant: string) => void;
+  readonly onReset: () => void;
 }): React.ReactElement {
   const app = useApp();
   const { setCursorPosition } = useCursor();
@@ -68,6 +84,7 @@ export function MuseChatApp(props: {
   const [streaming, setStreaming] = useState("");
   const [busy, setBusy] = useState(false);
   const [exiting, setExiting] = useState(false);
+  const [slashIndex, setSlashIndex] = useState(0);
   const historyRef = useRef<ChatTurnMessage[]>([...props.history]);
 
   // Clean teardown: re-render once with the cursor released and the input
@@ -83,20 +100,38 @@ export function MuseChatApp(props: {
 
     const slash = parseSlashCommand(message);
     if (slash) {
+      const note = (text: string): void => setTurns((prev) => [...prev, { role: "system", text }]);
       if (slash.cmd === "exit" || slash.cmd === "quit") { setExiting(true); return; }
       if (slash.cmd === "clear") { setTurns([]); return; }
-      if (slash.cmd === "help") {
-        setTurns((prev) => [...prev, { role: "system", text: "commands: /help · /clear · /exit (ctrl-c). 그냥 입력하면 대화합니다." }]);
+      if (slash.cmd === "new") {
+        historyRef.current = [];
+        setTurns([]);
+        props.onReset();
+        note("새 대화를 시작했어요 — 이전 맥락을 비웠습니다.");
         return;
       }
-      setTurns((prev) => [...prev, { role: "system", text: `unknown command: /${slash.cmd}` }]);
+      if (slash.cmd === "model") { note(`현재 모델: ${props.model}`); return; }
+      if (slash.cmd === "skills") {
+        if (props.skills.length === 0) {
+          note(`설치된 스킬이 없어요. ${props.skillsDir}/<이름>/SKILL.md 를 추가하거나 \`muse skills add <이름>\` 로 만들 수 있어요.`);
+        } else {
+          note(`설치된 스킬 (${props.skills.length}): ` + props.skills.map((s) => `${s.name} — ${s.description}`).join(" · ") + ` · 추가: ${props.skillsDir}/`);
+        }
+        return;
+      }
+      if (slash.cmd === "help") {
+        note("명령어: " + SLASH_COMMANDS.map((c) => `/${c.cmd}`).join(" · ") + " · 그냥 입력하면 대화합니다.");
+        return;
+      }
+      note(`알 수 없는 명령어: /${slash.cmd}`);
       return;
     }
 
     setTurns((prev) => [...prev, { role: "user", text: message }]);
     setBusy(true);
     setStreaming("");
-    const messages = buildTurnMessages(props.personaPrompt() ?? formatCurrentContextLine(), historyRef.current, message);
+    const system = (props.personaPrompt() ?? formatCurrentContextLine()) + props.skillsPrompt;
+    const messages = buildTurnMessages(system, historyRef.current, message);
     let accumulated = "";
     try {
       for await (const event of props.stream(messages)) {
@@ -120,13 +155,29 @@ export function MuseChatApp(props: {
     props.onCommit(message, accumulated);
   }, [app, props]);
 
+  const slashMenu = matchSlashCommands(inputState.value, SLASH_COMMANDS);
+  const slashSel = slashMenu.length > 0 ? Math.min(slashIndex, slashMenu.length - 1) : 0;
+
   useInput((rawInput: string, key: InkKeyEvent) => {
     if (busy || exiting) return;
     if (key.ctrl && rawInput === "c") { setExiting(true); return; }
+    // When the slash menu is open, ↑/↓ move the selection and Tab completes
+    // the highlighted command instead of editing text.
+    if (slashMenu.length > 0) {
+      if (key.upArrow) { setSlashIndex(Math.max(0, slashSel - 1)); return; }
+      if (key.downArrow) { setSlashIndex(Math.min(slashMenu.length - 1, slashSel + 1)); return; }
+      if (key.tab) {
+        const chosen = slashMenu[slashSel]?.cmd ?? "";
+        setInputState({ cursor: chosen.length + 2, value: `/${chosen} ` });
+        setSlashIndex(0);
+        return;
+      }
+    }
     const result = reduceInput(inputState, rawInput, key);
     if (result.submit) {
       const value = inputState.value;
       setInputState(emptyInput);
+      setSlashIndex(0);
       void submit(value);
       return;
     }
@@ -168,7 +219,6 @@ export function MuseChatApp(props: {
 
   const placeholder = "무엇이든 물어보세요";
   const lines = inputState.value.length > 0 ? inputState.value.split("\n") : [""];
-  const slashMatches = matchSlashCommands(inputState.value, SLASH_COMMANDS);
 
   return h(Box, { flexDirection: "column" },
     transcript,
@@ -185,12 +235,16 @@ export function MuseChatApp(props: {
         inputState.value.length === 0
           ? h(Text, { dimColor: true }, placeholder)
           : h(Text, null, ln)))),
-    // Slash-command menu: typing `/` lists the matching commands.
-    slashMatches.length > 0
+    // Slash-command menu: ↑/↓ select, Tab completes, Enter runs.
+    slashMenu.length > 0
       ? h(Box, { flexDirection: "column", paddingLeft: 2 },
-          ...slashMatches.map((command) => h(Box, { key: command.cmd },
-            h(Text, { color: "cyan" }, `/${command.cmd}`),
-            h(Text, { dimColor: true }, `  — ${command.desc}`))))
+          ...slashMenu.map((command, i) => {
+            const on = i === slashSel;
+            return h(Box, { key: command.cmd },
+              h(Text, { color: on ? "cyan" : "gray" }, `${on ? "▸ " : "  "}/${command.cmd}`),
+              h(Text, { dimColor: !on }, `  — ${command.desc}`));
+          }),
+          h(Text, { dimColor: true }, "  ↑↓ 선택 · Tab 자동완성 · ⏎ 실행"))
       : null,
     h(Text, { dimColor: true }, "⏎ 전송 · shift+⏎ 줄바꿈 · /help · ctrl-c 종료")
   );
@@ -235,6 +289,17 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const onCommit = (user: string, assistant: string): void => {
     void appendLastChatTurn({ message: user, response: assistant }).catch(() => undefined);
   };
+  const onReset = (): void => {
+    void clearLastChatHistory().catch(() => undefined);
+  };
+
+  // Skills: each is a `~/.muse/skills/<name>/SKILL.md` (claude-style). Their
+  // instructions are injected into the system prompt so the local model can
+  // follow the relevant one. Add a skill = drop a folder there.
+  const skillsDir = process.env.MUSE_SKILLS_DIR?.trim() || join(homedir(), ".muse", "skills");
+  const skills = await loadSkillsFromDirectory(skillsDir, "user").catch(() => [] as readonly Skill[]);
+  const skillsPrompt = buildSkillsPrompt(skills);
+  const skillInfos = skills.map((s) => ({ description: s.description, name: s.name }));
 
   const banner = renderMuseBanner({
     status: `model: ${model}`,
@@ -245,8 +310,26 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // key.shift+return). Without it, legacy terminals send Shift+Enter as a
   // bare CR, indistinguishable from Enter. Supporting terminals (Ghostty/
   // cmux, iTerm2, kitty, WezTerm) opt in; others ignore the sequence.
-  const instance = render(h(MuseChatApp, { banner, history, onCommit, personaPrompt, stream }), {
+  const instance = render(h(MuseChatApp, {
+    banner,
+    history,
+    model,
+    onCommit,
+    onReset,
+    personaPrompt,
+    skills: skillInfos,
+    skillsDir,
+    skillsPrompt,
+    stream
+  }), {
     kittyKeyboard: { flags: ["disambiguateEscapeCodes"], mode: "enabled" }
   });
   await instance.waitUntilExit();
+}
+
+/** Inject each skill's instructions so the local model can follow them. */
+function buildSkillsPrompt(skills: readonly Skill[]): string {
+  if (skills.length === 0) return "";
+  const blocks = skills.map((skill) => `### ${skill.name}\n${skill.description}\n${skill.body.slice(0, 600).trim()}`);
+  return `\n\n## Skills — follow the most relevant one when the user's request matches its purpose.\n${blocks.join("\n\n")}`;
 }

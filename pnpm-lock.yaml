@@ -125,6 +125,9 @@ importers:
       '@muse/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@muse/skills':
+        specifier: workspace:*
+        version: link:../../packages/skills
       '@muse/tools':
         specifier: workspace:*
         version: link:../../packages/tools

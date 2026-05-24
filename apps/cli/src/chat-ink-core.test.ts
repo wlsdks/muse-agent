@@ -87,6 +87,10 @@ describe("matchSlashCommands", () => {
     expect(matchSlashCommands("/e", cmds).map((c) => c.cmd)).toEqual(["exit"]);
     expect(matchSlashCommands("/zzz", cmds)).toEqual([]);
   });
+  it("closes (no matches) once a space follows the command", () => {
+    expect(matchSlashCommands("/clear ", cmds)).toEqual([]);
+    expect(matchSlashCommands("/model gpt", cmds)).toEqual([]);
+  });
 });
 
 describe("parseSlashCommand", () => {

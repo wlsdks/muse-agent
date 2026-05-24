@@ -26,6 +26,7 @@
     "@muse/multi-agent": "workspace:*",
     "@muse/prompts": "workspace:*",
     "@muse/shared": "workspace:*",
+    "@muse/skills": "workspace:*",
     "@muse/tools": "workspace:*",
     "@muse/voice": "workspace:*",
     "commander": "^14.0.3",

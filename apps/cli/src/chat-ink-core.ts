@@ -225,7 +225,10 @@ export interface SlashCommand {
  */
 export function matchSlashCommands(value: string, commands: readonly SlashCommand[]): readonly SlashCommand[] {
   if (!value.startsWith("/")) return [];
-  const query = (value.slice(1).toLowerCase().split(/\s+/u)[0] ?? "");
+  // Once a space is typed the command name is settled (the user is on to
+  // its argument), so close the menu.
+  if (/\s/u.test(value)) return [];
+  const query = value.slice(1).toLowerCase();
   return commands.filter((command) => command.cmd.startsWith(query));
 }
 
