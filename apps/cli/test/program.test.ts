@@ -31,13 +31,21 @@ describe("cli program", () => {
   // ~/.muse/persona.json — otherwise a non-default persona leaks a
   // systemPrompt into the exact-body chat assertions below.
   let personaEnvBackup: string | undefined;
-  beforeEach(() => {
+  // Likewise isolate HOME so the developer's real ~/.config/muse/config.json
+  // (e.g. a `defaultModel`) doesn't leak a `model` field into the request-body
+  // assertions below. Tests that need a real config set `configDir` explicitly.
+  let homeEnvBackup: string | undefined;
+  beforeEach(async () => {
     personaEnvBackup = process.env.MUSE_PERSONA_FILE;
     process.env.MUSE_PERSONA_FILE = path.join(tmpdir(), `muse-test-no-persona-${process.pid.toString()}.json`);
+    homeEnvBackup = process.env.HOME;
+    process.env.HOME = await mkdtemp(path.join(tmpdir(), "muse-test-home-"));
   });
   afterEach(() => {
     if (personaEnvBackup === undefined) delete process.env.MUSE_PERSONA_FILE;
     else process.env.MUSE_PERSONA_FILE = personaEnvBackup;
+    if (homeEnvBackup === undefined) delete process.env.HOME;
+    else process.env.HOME = homeEnvBackup;
   });
 
   it("prints the config path", async () => {
