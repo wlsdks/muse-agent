@@ -37,7 +37,6 @@ import {
   parseAgentMode,
   readPipedStdin,
   resolveChatMessage,
-  runChatRepl,
   runLocalChat
 } from "./chat-repl.js";
 
@@ -308,14 +307,17 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
         await clearLastChatHistory();
       }
       if (options.interactive) {
-        if (!options.local) {
-          throw new Error("--interactive requires --local (REPL goes through the local runtime; remote streaming REPL is a future iteration)");
+        // The interactive surface is the Ink chat (same as a bare `muse`); the
+        // old readline REPL has been retired.
+        if (!process.stdin.isTTY || !process.stdout.isTTY) {
+          throw new Error("--interactive needs an interactive terminal (TTY)");
         }
-        const cliConfigForRepl = await readConfigStore(io);
-        await runChatRepl(io, {
-          continueHistory: options.continue ?? false,
-          disableTools: options.tools === false,
-          model: options.model ?? cliConfigForRepl.defaultModel
+        const cliConfigForChat = await readConfigStore(io);
+        const chatModel = options.model ?? cliConfigForChat.defaultModel;
+        const { runChatInk } = await import("./chat-ink.js");
+        await runChatInk({
+          continueHistory: options.continue !== false,
+          ...(chatModel ? { model: chatModel } : {})
         });
         return;
       }
@@ -391,32 +393,6 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
           }
         }
       }
-    });
-
-  // `muse repl` — one-keystroke shortcut for the JARVIS daily-driver
-  // surface. Equivalent to:
-  //   muse chat -i --local --no-tools --continue --model $MUSE_MODEL
-  // i.e. continuous conversation, local runtime, no tool-registry
-  // overhead, picks up prior turns from ~/.muse/last-chat.jsonl.
-  // The full `muse chat -i ...` form stays available for fine-grained
-  // control; this is for "just talk to me".
-  program
-    .command("repl")
-    .description("One-keystroke shortcut: continuous local REPL with memory, no tool registry overhead")
-    .option("--model <model>", "Override the model (default MUSE_MODEL or CLI config defaultModel)")
-    .option("--tools", "Enable the tool registry (default off for speed)")
-    .option("--no-continue", "Start a fresh conversation instead of resuming ~/.muse/last-chat.jsonl")
-    .option("--user <id>", "User identity for persistent memory (default $MUSE_USER_ID or $USER)")
-    .option("--persona <slot>", "Persona slot (work / home / hobby / …); same user can hold multiple distinct personas")
-    .action(async (options: { readonly model?: string; readonly tools?: boolean; readonly continue?: boolean; readonly user?: string; readonly persona?: string }) => {
-      const cliConfig = await readConfigStore(io);
-      await runChatRepl(io, {
-        continueHistory: options.continue !== false,
-        disableTools: options.tools !== true,
-        model: options.model ?? cliConfig.defaultModel,
-        ...(options.user ? { userId: options.user } : {}),
-        ...(options.persona ? { persona: options.persona } : {})
-      });
     });
 
   registerAuthCommands(program, io, {

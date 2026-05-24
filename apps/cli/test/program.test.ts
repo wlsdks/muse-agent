@@ -4420,32 +4420,6 @@ describe("cli program", () => {
     }
   });
 
-  it("resolveReplHistoryCap honours the env var + falls back to 2000 on invalid input (goal 034)", async () => {
-    const { resolveReplHistoryCap } = await import("../src/chat-repl.js");
-    expect(resolveReplHistoryCap(undefined)).toBe(2000);
-    expect(resolveReplHistoryCap("")).toBe(2000);
-    expect(resolveReplHistoryCap("not-a-number")).toBe(2000);
-    expect(resolveReplHistoryCap("0")).toBe(2000);
-    expect(resolveReplHistoryCap("-5")).toBe(2000);
-    expect(resolveReplHistoryCap("100")).toBe(100);
-    expect(resolveReplHistoryCap("9999")).toBe(9999);
-  });
-
-  it("resolveReplHistoryCap strict-rejects lenient-prefix typos / unit slips — pre-fix `Number.parseInt('100x', 10) === 100` silently honoured a typo'd suffix as if it were a valid cap", async () => {
-    const { resolveReplHistoryCap } = await import("../src/chat-repl.js");
-    // Lenient `parseInt` accepted the digit prefix and dropped the
-    // suffix; strict parse must reject anything past clean digits.
-    for (const bad of ["100x", "5min", "9999abc", "1.5", "1e3", "0x10", " 100 x", "Infinity"]) {
-      expect(
-        resolveReplHistoryCap(bad),
-        `"${bad}" must fall back to the documented default, not silently accept a digit prefix`
-      ).toBe(2000);
-    }
-    // Whitespace-padded clean integers still parse correctly.
-    expect(resolveReplHistoryCap("  100  ")).toBe(100);
-    expect(resolveReplHistoryCap("+250")).toBe(250);
-  });
-
   it("HISTORY_KIND_ICONS surfaces one ASCII glyph per kind for quick scanning (goal 063)", async () => {
     const { HISTORY_KIND_ICONS } = await import("../src/commands-history.js");
     // Every documented kind has a glyph.
