@@ -134,18 +134,22 @@ export function MuseChatApp(props: {
       children: (item: unknown, index: number) => {
         if (index === 0) return h(Text, { key: "banner" }, props.banner);
         const turn = item as DisplayTurn;
-        const label = turn.role === "user" ? "you" : turn.role === "assistant" ? "muse" : "·";
-        const color = turn.role === "user" ? "green" : turn.role === "assistant" ? "cyan" : "gray";
-        return h(Box, { flexDirection: "column", key: index, marginBottom: 1 },
-          h(Text, { bold: turn.role !== "system", color }, label),
+        if (turn.role === "user") {
+          // The user's message stays as a snapshot — the same `› ` prompt
+          // they typed it into (codex / claude style), not a "you:" label.
+          return h(Box, { key: index, marginBottom: 1, marginTop: 1 },
+            h(Text, { color: "cyan" }, "› "),
+            h(Text, { color: "cyan" }, turn.text));
+        }
+        // Assistant + system answers sit indented from the left wall.
+        return h(Box, { key: index, marginBottom: 1, paddingLeft: 2 },
           h(Text, { dimColor: turn.role === "system" }, turn.text));
       },
       items: [props.banner, ...turns]
     }),
-    // While replying, show the streaming answer ABOVE the box.
+    // While replying, show the streaming answer ABOVE the box, indented.
     busy
-      ? h(Box, { flexDirection: "column", marginBottom: 1 },
-          h(Text, { bold: true, color: "cyan" }, "muse"),
+      ? h(Box, { marginBottom: 1, paddingLeft: 2 },
           h(Text, null, streaming.length > 0 ? streaming : "…"))
       : null,
     // The input BOX. When idle it is the first dynamic block, so its
@@ -204,6 +208,13 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     status: `model: ${model}`,
     hint: "새 대화를 시작하세요 — 이전 맥락은 기억하고 있어요."
   }).replace(/^\n+|\n+$/gu, "");
-  const instance = render(h(MuseChatApp, { banner, history, onCommit, personaPrompt, stream }));
+  // Enable the kitty keyboard protocol so the terminal disambiguates
+  // modified keys (Shift+Enter → a distinct event Ink reports as
+  // key.shift+return). Without it, legacy terminals send Shift+Enter as a
+  // bare CR, indistinguishable from Enter. Supporting terminals (Ghostty/
+  // cmux, iTerm2, kitty, WezTerm) opt in; others ignore the sequence.
+  const instance = render(h(MuseChatApp, { banner, history, onCommit, personaPrompt, stream }), {
+    kittyKeyboard: { flags: ["disambiguateEscapeCodes"], mode: "enabled" }
+  });
   await instance.waitUntilExit();
 }
