@@ -554,14 +554,15 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     const attempted = typeof unknownSubcommand === "string" ? unknownSubcommand.trim() : "";
     if (attempted.length === 0) {
       // Like `claude`: a bare `muse` in an interactive terminal drops
-      // straight into the chat REPL. Piped / non-TTY invocations keep the
-      // help banner so scripts and `muse | cat` stay predictable.
+      // straight into the Ink chat (bordered input box + streaming
+      // transcript). Piped / non-TTY invocations keep the help banner so
+      // scripts and `muse | cat` stay predictable.
       if (process.stdin.isTTY && process.stdout.isTTY) {
         const cliConfig = await readConfigStore(io);
-        await runChatRepl(io, {
+        const { runChatInk } = await import("./chat-ink.js");
+        await runChatInk({
           continueHistory: true,
-          disableTools: true,
-          model: cliConfig.defaultModel
+          ...(cliConfig.defaultModel ? { model: cliConfig.defaultModel } : {})
         });
         return;
       }
