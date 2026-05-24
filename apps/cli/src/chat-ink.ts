@@ -32,6 +32,7 @@ import {
   formatJobsList,
   formatMemoryView,
   formatRecallHits,
+  formatTrust,
   friendlyError,
   matchAgentNames,
   matchModelNames,
@@ -50,6 +51,7 @@ import {
 import { renderMuseBanner } from "./muse-banner.js";
 import { loadAgents, resolveAgentsDir, type AgentDef } from "./commands-agents.js";
 import { searchRecall } from "./commands-recall.js";
+import { readTrust } from "./commands-trust.js";
 import { listRecentJobIds, readJobSummary, startBackgroundJob } from "./commands-jobs.js";
 import { buildLocalTodayText, parseLookaheadHours, readDueFollowups, readDueReminders } from "./commands-today.js";
 import { imminentItems, jobCompletionItems, pickUnseen, proactiveNoticeText, relativeWhen, type ProactiveItem } from "./chat-proactive.js";
@@ -73,8 +75,12 @@ const SLASH_COMMANDS: readonly { readonly cmd: string; readonly desc: string }[]
   { cmd: "jobs", desc: "show recent background jobs + status" },
   { cmd: "memory", desc: "show what Muse remembers about you" },
   { cmd: "remember", desc: "teach a fact — /remember <key>=<value>" },
+  { cmd: "pref", desc: "set a preference — /pref <key>=<value>" },
   { cmd: "recall", desc: "search past notes + episodes — /recall <query>" },
-  { cmd: "forget", desc: "forget one thing — /forget <key>" },
+  { cmd: "forget", desc: "forget one thing — /forget <key> (or --all)" },
+  { cmd: "trust", desc: "show this user's trusted + blocked tools" },
+  { cmd: "persona", desc: "show the active persona slot" },
+  { cmd: "history", desc: "how many turns are in context" },
   { cmd: "save", desc: "save the last reply to a note file" },
   { cmd: "copy", desc: "copy the last reply to the clipboard" },
   { cmd: "cost", desc: "show this session's token usage" },
@@ -163,6 +169,10 @@ export function MuseChatApp(props: {
   readonly memorySnapshot: () => Promise<MemorySnapshot | undefined>;
   readonly forgetMemory: (key: string) => Promise<boolean>;
   readonly rememberFact: (key: string, value: string) => Promise<boolean>;
+  readonly setPreference: (key: string, value: string) => Promise<boolean>;
+  readonly wipeMemory: () => Promise<boolean>;
+  readonly trustInfo: () => Promise<{ trusted: readonly string[]; blocked: readonly string[] }>;
+  readonly persona?: string;
   readonly recallSearch: (query: string) => Promise<string>;
   readonly todayBrief: () => Promise<string>;
   readonly startJob: (prompt: string) => string;
@@ -362,6 +372,28 @@ export function MuseChatApp(props: {
         note(ok ? `✓ Remembered ${parsed.key}: ${parsed.value}` : "Couldn't save that — memory isn't available.");
         return;
       }
+      if (slash.cmd === "pref") {
+        const parsed = parseRememberArg(slash.arg);
+        if (!parsed) { note("Set a preference — /pref <key>=<value> (e.g. /pref reply_style=concise)."); return; }
+        const ok = await props.setPreference(parsed.key, parsed.value);
+        note(ok ? `✓ Preference ${parsed.key}: ${parsed.value}` : "Couldn't save that — memory isn't available.");
+        return;
+      }
+      if (slash.cmd === "trust") {
+        const t = await props.trustInfo();
+        note(formatTrust(t.trusted, t.blocked));
+        return;
+      }
+      if (slash.cmd === "persona") {
+        note(props.persona
+          ? `Active persona: ${props.persona}. Each persona keeps its own memory; switch by relaunching: muse --persona <slot>.`
+          : "No persona (base profile). Start one with: muse --persona <slot> (e.g. work / home).");
+        return;
+      }
+      if (slash.cmd === "history") {
+        note(`${historyRef.current.length} turns in this conversation. /new starts fresh; /clear just clears the screen.`);
+        return;
+      }
       if (slash.cmd === "recall") {
         progress("Searching memory…");
         note(await props.recallSearch(slash.arg));
@@ -383,7 +415,12 @@ export function MuseChatApp(props: {
       }
       if (slash.cmd === "forget") {
         const key = slash.arg.trim();
-        if (key.length === 0) { note("Tell me what to forget — /forget <key> (see /memory for the keys)."); return; }
+        if (key.length === 0) { note("Tell me what to forget — /forget <key>, or /forget --all to wipe everything."); return; }
+        if (key === "--all" || key.toLowerCase() === "all") {
+          const wiped = await props.wipeMemory();
+          note(wiped ? "✓ Wiped everything I remembered about you." : "Nothing to wipe.");
+          return;
+        }
         const ok = await props.forgetMemory(key);
         note(ok ? `✓ Forgot "${key}".` : `Nothing remembered under "${key}" — check /memory for the exact key.`);
         return;
@@ -829,6 +866,34 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
       return false;
     }
   };
+  const setPreference = async (key: string, value: string): Promise<boolean> => {
+    if (!memoryStore) return false;
+    try {
+      await Promise.resolve(memoryStore.upsertPreference(userId, key, value));
+      await refreshMemory();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const wipeMemory = async (): Promise<boolean> => {
+    if (!memoryStore) return false;
+    try {
+      const dropped = await Promise.resolve(memoryStore.deleteByUserId(userId));
+      await refreshMemory();
+      return dropped;
+    } catch {
+      return false;
+    }
+  };
+  const trustInfo = async (): Promise<{ trusted: readonly string[]; blocked: readonly string[] }> => {
+    try {
+      const t = await readTrust(userId);
+      return { blocked: t.blockedTools, trusted: t.trustedTools };
+    } catch {
+      return { blocked: [], trusted: [] };
+    }
+  };
 
   // /recall — semantic search across the notes + episode indices. Reuses the
   // same pipeline as `muse recall`; fail-soft to a hint when Ollama is down or
@@ -992,6 +1057,10 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     memorySnapshot,
     forgetMemory,
     rememberFact,
+    setPreference,
+    wipeMemory,
+    trustInfo,
+    ...(personaSlot ? { persona: personaSlot } : {}),
     recallSearch,
     todayBrief,
     startJob,

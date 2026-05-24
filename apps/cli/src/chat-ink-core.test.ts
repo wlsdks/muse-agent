@@ -14,6 +14,7 @@ import {
   formatJobsList,
   formatMemoryView,
   formatRecallHits,
+  formatTrust,
   matchAgentNames,
   matchModelNames,
   parseInlineSpans,
@@ -333,5 +334,14 @@ describe("firstOpenToday", () => {
     expect(firstOpenToday("2026-05-24", "2026-05-25")).toBe(true);
     expect(firstOpenToday("2026-05-25", "2026-05-25")).toBe(false);
     expect(firstOpenToday(" 2026-05-25 ", "2026-05-25")).toBe(false);
+  });
+});
+
+describe("formatTrust", () => {
+  it("renders sorted trusted/blocked lists with counts + empty states", () => {
+    expect(formatTrust(["web_action", "email_send"], [])).toBe(
+      "Trusted tools (2): email_send, web_action\nBlocked tools (0): (none)"
+    );
+    expect(formatTrust([], ["home_action"])).toContain("Blocked tools (1): home_action");
   });
 });

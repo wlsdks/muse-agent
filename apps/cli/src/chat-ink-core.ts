@@ -554,3 +554,11 @@ export function formatJobsList(jobs: readonly JobListItem[]): string {
 export function firstOpenToday(lastBriefDate: string | undefined, today: string): boolean {
   return (lastBriefDate?.trim() ?? "") !== today;
 }
+
+/** Render `/trust` — the user's trusted + blocked tool lists (read-only view). */
+export function formatTrust(trusted: readonly string[], blocked: readonly string[]): string {
+  return [
+    `Trusted tools (${trusted.length}): ${trusted.length > 0 ? [...trusted].sort().join(", ") : "(none)"}`,
+    `Blocked tools (${blocked.length}): ${blocked.length > 0 ? [...blocked].sort().join(", ") : "(none)"}`
+  ].join("\n");
+}

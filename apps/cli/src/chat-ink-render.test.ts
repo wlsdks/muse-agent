@@ -33,6 +33,9 @@ function makeProps(overrides: Record<string, unknown> = {}): Parameters<typeof M
     memorySnapshot: async () => ({ facts: { user_name: "jinan" }, preferences: {}, recentTopics: [] }),
     forgetMemory: async () => true,
     rememberFact: async () => true,
+    setPreference: async () => true,
+    wipeMemory: async () => true,
+    trustInfo: async () => ({ trusted: [], blocked: [] }),
     recallSearch: async () => "no hits",
     todayBrief: async () => "Today (next 24h)\nTasks: (none open)",
     startJob: () => "job_test",
@@ -95,6 +98,20 @@ describe("MuseChatApp render — slash command echo + output", () => {
     expect(frame).toContain("› /remember city=Seoul");
     expect(frame).toContain("✓ Remembered city: Seoul");
     expect(saved).toEqual({ key: "city", value: "Seoul" });
+  });
+
+  it("/pref sets a preference (echo + confirmation)", async () => {
+    let saved: { key: string; value: string } | undefined;
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
+      setPreference: async (key: string, value: string) => { saved = { key, value }; return true; }
+    })));
+    await tick();
+    stdin.write("/pref reply_style=concise"); await tick(); stdin.write("\r"); await tick(120);
+    const frame = lastFrame() ?? "";
+    unmount();
+    expect(frame).toContain("› /pref reply_style=concise");
+    expect(frame).toContain("✓ Preference reply_style: concise");
+    expect(saved).toEqual({ key: "reply_style", value: "concise" });
   });
 
   it("renders the launch brief as an opening turn when recap is set", async () => {
