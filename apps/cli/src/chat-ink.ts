@@ -19,7 +19,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { appendLastChatTurn, clearLastChatHistory, readLastChatHistory } from "./chat-history.js";
+import { appendActivity, appendLastChatTurn, appendSessionBoundary, clearLastChatHistory, maybeCompactLastChatHistory, readLastChatHistory } from "./chat-history.js";
 import {
   buildRecap,
   buildTurnMessages,
@@ -750,13 +750,37 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const refreshMemory = async (): Promise<void> => {
     if (memoryStore) memoryHolder.current = await Promise.resolve(memoryStore.findByUserId(userId));
   };
-  const personaPrompt = (): string | undefined => (memoryHolder.current ? buildMusePersona(memoryHolder.current, userId) : undefined);
+  // Episodic memory in the persona: the most recent episodes for this user
+  // ride into the system prompt so Muse recalls past sessions, not just the
+  // last-chat tail. Best-effort (missing/corrupt episodes file → none).
+  const personaEpisodes = await loadPersonaEpisodes(userId).catch(() => []);
+  const personaPrompt = (): string | undefined =>
+    memoryHolder.current ? buildMusePersona({ ...memoryHolder.current, episodes: personaEpisodes }, userId) : undefined;
+
+  // Long-session compaction: if last-chat.jsonl has grown past the threshold,
+  // summarise the old turns into one line before seeding — so a multi-day
+  // continuous relationship doesn't blow the context window ("doesn't forget;
+  // it abstracts"). Best-effort; falls through on any failure.
+  if (continueHistory && assembly.modelProvider) {
+    try {
+      await maybeCompactLastChatHistory(
+        assembly.modelProvider as Parameters<typeof maybeCompactLastChatHistory>[0],
+        model
+      );
+    } catch { /* compaction is best-effort */ }
+  }
 
   const seedLines = continueHistory ? await readLastChatHistory().catch(() => []) : [];
   const history: ChatTurnMessage[] = seedLines
     .filter((l) => l.role === "user" || l.role === "assistant")
     .map((l) => ({ content: l.content, role: l.role as "user" | "assistant" }))
     .slice(-20);
+
+  // Mark the session start: an activity event (routine learning) + a boundary
+  // sentinel in last-chat.jsonl. The boundary tells the end-of-session episode
+  // extractor which turns belong to THIS session (read on exit, below).
+  await appendActivity({ kind: "repl-start", userId }).catch(() => undefined);
+  await appendSessionBoundary({ tsIso: new Date().toISOString(), userId }).catch(() => undefined);
 
   const provider = assembly.modelProvider;
   type ChatStream = AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
@@ -1073,6 +1097,41 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     kittyKeyboard: { flags: ["disambiguateEscapeCodes"], mode: "enabled" }
   });
   await instance.waitUntilExit();
+
+  // End-of-session episode: summarise the just-finished conversation (turns
+  // since the boundary written at boot) into ~/.muse/episodes.json so /recall
+  // and the launch recap keep growing from interactive use. Opt-in
+  // (MUSE_EPISODIC_MEMORY_ENABLED, checked inside) + fail-soft, so a flaky
+  // model or filesystem never blocks exit. Needs a generate-capable provider.
+  if (assembly.modelProvider && "generate" in assembly.modelProvider) {
+    const { captureEndOfSessionEpisode } = await import("./chat-end-session.js");
+    await captureEndOfSessionEpisode({
+      model,
+      modelProvider: assembly.modelProvider as Parameters<typeof captureEndOfSessionEpisode>[0]["modelProvider"],
+      userId
+    }).catch(() => undefined);
+  }
+}
+
+/**
+ * Most-recent episodes for a user, newest-first + capped, shaped for the
+ * persona block (so past sessions ride into the system prompt). Best-effort.
+ */
+async function loadPersonaEpisodes(
+  userId: string
+): Promise<readonly { readonly endedAt: string; readonly summary: string; readonly topics?: readonly string[] }[]> {
+  const all = await readEpisodes(resolveEpisodesFile(process.env));
+  const capRaw = Number(process.env.MUSE_EPISODIC_MEMORY_MAX_ENTRIES);
+  const cap = Number.isFinite(capRaw) && capRaw > 0 ? Math.trunc(capRaw) : 20;
+  return all
+    .filter((entry) => entry.userId === userId)
+    .sort((left, right) => right.endedAt.localeCompare(left.endedAt))
+    .slice(0, cap)
+    .map((entry) => ({
+      endedAt: entry.endedAt,
+      summary: entry.summary,
+      ...(entry.topics && entry.topics.length > 0 ? { topics: entry.topics } : {})
+    }));
 }
 
 /** Inject each skill's instructions so the local model can follow them. */
