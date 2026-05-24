@@ -15,6 +15,7 @@ import {
   formatMemoryView,
   formatRecallHits,
   formatTrust,
+  greetingName,
   matchAgentNames,
   matchModelNames,
   parseInlineSpans,
@@ -343,5 +344,16 @@ describe("formatTrust", () => {
       "Trusted tools (2): email_send, web_action\nBlocked tools (0): (none)"
     );
     expect(formatTrust([], ["home_action"])).toContain("Blocked tools (1): home_action");
+  });
+});
+
+describe("greetingName", () => {
+  it("pulls the first name from common fact keys, else undefined", () => {
+    expect(greetingName({ name: "Jinan Kim" })).toBe("Jinan");
+    expect(greetingName({ user_name: "stark" })).toBe("stark");
+    expect(greetingName({ first_name: "Tony" })).toBe("Tony");
+    expect(greetingName({ city: "Seoul" })).toBeUndefined();
+    expect(greetingName({})).toBeUndefined();
+    expect(greetingName(undefined)).toBeUndefined();
   });
 });

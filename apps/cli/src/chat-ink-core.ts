@@ -562,3 +562,18 @@ export function formatTrust(trusted: readonly string[], blocked: readonly string
     `Blocked tools (${blocked.length}): ${blocked.length > 0 ? [...blocked].sort().join(", ") : "(none)"}`
   ].join("\n");
 }
+
+/**
+ * The first name to greet the user by, pulled from remembered facts
+ * (name / user_name / first_name / preferred_name). Returns the first token
+ * only, terminal-control stripped, or undefined when nothing usable is stored
+ * — so the morning greeting personalises ("good morning, Jinan") only when
+ * Muse actually knows a name.
+ */
+export function greetingName(facts: Readonly<Record<string, string>> | undefined): string | undefined {
+  if (!facts) return undefined;
+  const raw = (facts.name ?? facts.user_name ?? facts.first_name ?? facts.preferred_name ?? "").trim();
+  if (raw.length === 0) return undefined;
+  const first = stripUntrustedTerminalChars(raw).replace(/\s+/gu, " ").trim().split(" ")[0] ?? "";
+  return first.length > 0 ? first.slice(0, 40) : undefined;
+}

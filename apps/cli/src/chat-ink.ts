@@ -30,6 +30,7 @@ import {
   extractAttachmentPaths,
   firstOpenToday,
   formatJobsList,
+  greetingName,
   formatMemoryView,
   formatRecallHits,
   formatTrust,
@@ -1007,7 +1008,8 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     if (firstOpenToday(lastBrief, todayStr)) {
       const brief = await buildLocalTodayText(process.env, parseLookaheadHours(undefined)).catch(() => "");
       if (brief) {
-        recap = `♪ good morning\n\n${brief}`;
+        const who = greetingName(memoryHolder.current?.facts);
+        recap = `♪ good morning${who ? `, ${who}` : ""}\n\n${brief}`;
         recapRole = "command";
         try {
           await mkdir(join(homedir(), ".muse"), { recursive: true });
