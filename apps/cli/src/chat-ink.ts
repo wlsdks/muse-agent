@@ -69,6 +69,7 @@ export function MuseChatApp(props: {
   readonly banner: string;
   readonly history: readonly ChatTurnMessage[];
   readonly model: string;
+  readonly proactiveOn: boolean;
   readonly skills: readonly SkillInfo[];
   readonly skillsDir: string;
   readonly skillsPrompt: string;
@@ -246,7 +247,14 @@ export function MuseChatApp(props: {
           }),
           h(Text, { dimColor: true }, "  ↑↓ 선택 · Tab 자동완성 · ⏎ 실행"))
       : null,
-    h(Text, { dimColor: true }, "⏎ 전송 · shift+⏎ 줄바꿈 · /help · ctrl-c 종료")
+    h(Text, { dimColor: true }, "⏎ 전송 · shift+⏎ 줄바꿈 · /help · ctrl-c 종료"),
+    // HUD: persistent status — model, proactive (speaks-first) mode, skills.
+    h(Box, null,
+      h(Text, { color: "magenta" }, "♪ "),
+      h(Text, { color: "cyan" }, props.model),
+      h(Text, { dimColor: true }, "  ·  proactive "),
+      h(Text, { color: props.proactiveOn ? "green" : "gray" }, props.proactiveOn ? "on" : "off"),
+      h(Text, { dimColor: true }, `  ·  skills ${props.skills.length.toString()}`))
   );
 }
 
@@ -310,6 +318,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // key.shift+return). Without it, legacy terminals send Shift+Enter as a
   // bare CR, indistinguishable from Enter. Supporting terminals (Ghostty/
   // cmux, iTerm2, kitty, WezTerm) opt in; others ignore the sequence.
+  const proactiveOn = Boolean(process.env.MUSE_PROACTIVE_PROVIDER?.trim() && process.env.MUSE_PROACTIVE_DESTINATION?.trim());
   const instance = render(h(MuseChatApp, {
     banner,
     history,
@@ -317,6 +326,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     onCommit,
     onReset,
     personaPrompt,
+    proactiveOn,
     skills: skillInfos,
     skillsDir,
     skillsPrompt,
