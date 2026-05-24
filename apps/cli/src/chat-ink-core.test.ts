@@ -9,6 +9,8 @@ import {
   friendlyError,
   matchAgentNames,
   matchModelNames,
+  parseInlineSpans,
+  parseMarkdownBlocks,
   matchSlashCommands,
   parseSlashCommand,
   reduceInput,
@@ -103,6 +105,28 @@ describe("extractAttachmentPaths", () => {
     expect(extractAttachmentPaths("@a.md again @a.md")).toEqual(["a.md"]);
     expect(extractAttachmentPaths("no files here")).toEqual([]);
     expect(extractAttachmentPaths("@/abs/path/file.log please")).toEqual(["/abs/path/file.log"]);
+  });
+});
+
+describe("parseMarkdownBlocks", () => {
+  it("separates fenced code from prose and captures the language", () => {
+    const blocks = parseMarkdownBlocks("before\n```ts\nconst x = 1;\n```\nafter");
+    expect(blocks.map((b) => b.type)).toEqual(["text", "code", "text"]);
+    expect(blocks[1]).toEqual({ lang: "ts", lines: ["const x = 1;"], type: "code" });
+    expect(blocks[0]?.lines).toEqual(["before"]);
+    expect(blocks[2]?.lines).toEqual(["after"]);
+  });
+  it("plain text is a single text block", () => {
+    expect(parseMarkdownBlocks("just words")).toEqual([{ lines: ["just words"], type: "text" }]);
+  });
+});
+
+describe("parseInlineSpans", () => {
+  it("splits bold and inline code, keeps plain runs", () => {
+    expect(parseInlineSpans("a **b** c `d` e")).toEqual([
+      { text: "a " }, { bold: true, text: "b" }, { text: " c " }, { code: true, text: "d" }, { text: " e" }
+    ]);
+    expect(parseInlineSpans("plain")).toEqual([{ text: "plain" }]);
   });
 });
 

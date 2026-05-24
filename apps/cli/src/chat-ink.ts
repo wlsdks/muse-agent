@@ -27,6 +27,8 @@ import {
   matchAgentNames,
   matchModelNames,
   matchSlashCommands,
+  parseInlineSpans,
+  parseMarkdownBlocks,
   parseSlashCommand,
   reduceInput,
   type ChatTurnMessage,
@@ -57,6 +59,27 @@ const SLASH_COMMANDS: readonly { readonly cmd: string; readonly desc: string }[]
 
 function formatTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString();
+}
+
+/** Render a completed assistant message with light markdown: fenced code
+ * (green), headers (bold cyan), inline `code` (yellow) and **bold**. */
+export function renderMarkdown(text: string): React.ReactElement {
+  const blocks = parseMarkdownBlocks(text);
+  return h(Box, { flexDirection: "column" },
+    ...blocks.map((block, bi) => {
+      if (block.type === "code") {
+        return h(Box, { borderColor: "gray", borderLeft: true, borderRight: false, borderTop: false, borderBottom: false, borderStyle: "round", flexDirection: "column", key: `c${bi.toString()}`, paddingLeft: 1 },
+          ...block.lines.map((ln, li) => h(Text, { color: "green", key: li.toString() }, ln.length > 0 ? ln : " ")));
+      }
+      return h(Box, { flexDirection: "column", key: `t${bi.toString()}` },
+        ...block.lines.map((line, li) => {
+          const header = /^(#{1,6})\s+(.*)$/u.exec(line);
+          if (header) return h(Text, { bold: true, color: "cyan", key: li.toString() }, header[2] ?? "");
+          const spans = parseInlineSpans(line);
+          return h(Text, { key: li.toString() }, ...spans.map((s, si) =>
+            h(Text, { bold: s.bold === true, color: s.code === true ? "yellow" : undefined, key: si.toString() }, s.text)));
+        }));
+    }));
 }
 
 // Box geometry: left border (1) + paddingX (1) + the "› " prompt (2).
@@ -392,9 +415,10 @@ export function MuseChatApp(props: {
         return h(Box, { key: index, marginBottom: 1, marginTop: 1, paddingLeft: 2 },
           h(Text, { bold: true, color: "magenta" }, turn.text));
       }
-      // Assistant + system answers sit indented from the left wall.
+      // System notes stay as a plain dim line; assistant answers render with
+      // light markdown (code/headers/inline). Both sit indented from the wall.
       return h(Box, { key: index, marginBottom: 1, paddingLeft: 2 },
-        h(Text, { dimColor: turn.role === "system" }, turn.text));
+        turn.role === "system" ? h(Text, { dimColor: true }, turn.text) : renderMarkdown(turn.text));
     },
     items: [props.banner, ...turns]
   });
