@@ -554,15 +554,20 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     const attempted = typeof unknownSubcommand === "string" ? unknownSubcommand.trim() : "";
     if (attempted.length === 0) {
       // Like `claude`: a bare `muse` in an interactive terminal drops
-      // straight into the Ink chat (bordered input box + streaming
-      // transcript). Piped / non-TTY invocations keep the help banner so
-      // scripts and `muse | cat` stay predictable.
+      // straight into the chat REPL. We use the terminal-native readline
+      // input (not an Ink-rendered box) on purpose: Ink captures keys in
+      // raw mode and bypasses the terminal's IME composition buffer, which
+      // makes CJK (Korean) compose below the prompt — a known, still-open
+      // issue in claude-code and gemini-cli alike. readline keeps the real
+      // cursor on the prompt line, so Korean composes in place.
+      // Piped / non-TTY invocations keep the help banner so scripts and
+      // `muse | cat` stay predictable.
       if (process.stdin.isTTY && process.stdout.isTTY) {
         const cliConfig = await readConfigStore(io);
-        const { runChatInk } = await import("./chat-ink.js");
-        await runChatInk({
+        await runChatRepl(io, {
           continueHistory: true,
-          ...(cliConfig.defaultModel ? { model: cliConfig.defaultModel } : {})
+          disableTools: true,
+          model: cliConfig.defaultModel
         });
         return;
       }

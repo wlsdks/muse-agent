@@ -32,6 +32,7 @@ import {
   readLastChatHistory
 } from "./chat-history.js";
 import { renderMuseBanner } from "./muse-banner.js";
+import { colorize } from "./tty-color.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
 import { loadActivePersonaPreamble } from "./persona-store.js";
 import { handleSlashCommand, type SlashContext, type SlashDeps } from "./chat-repl-slash.js";
@@ -344,7 +345,7 @@ export async function runChatRepl(
     while (active) {
       let line: string;
       try {
-        line = await rl.question("you> ");
+        line = await rl.question(colorize("› ", "cyan"));
       } catch {
         break;
       }
@@ -393,7 +394,7 @@ export async function runChatRepl(
           ...history,
           { content: trimmed, role: "user" as const }
         ];
-        io.stdout("muse> ");
+        io.stdout(colorize("muse ", "cyan"));
         let accumulated = "";
         if (toolsDisabled && assembly.modelProvider) {
           // Chat-only fast path: stream tokens directly from the
