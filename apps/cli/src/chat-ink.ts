@@ -11,7 +11,7 @@
 
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import { Box, Static, Text, render, useApp, useCursor, useInput } from "ink";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 
 import { appendLastChatTurn, readLastChatHistory } from "./chat-history.js";
 import {
@@ -58,18 +58,6 @@ export function MuseChatApp(props: {
   const [streaming, setStreaming] = useState("");
   const [busy, setBusy] = useState(false);
   const historyRef = useRef<ChatTurnMessage[]>([...props.history]);
-
-  // Place the real cursor inside the box (claude/codex feel) so a CJK IME
-  // composes there. Idle layout: box is the first dynamic block, so its
-  // input row is y=1. While the model is replying the layout shifts, so
-  // hide the cursor (undefined) until we are idle again.
-  useEffect(() => {
-    if (busy) {
-      setCursorPosition(undefined);
-      return;
-    }
-    setCursorPosition({ x: INPUT_COL_OFFSET + displayWidth(input), y: 1 });
-  }, [busy, input, setCursorPosition]);
 
   const submit = useCallback(async (raw: string) => {
     const message = raw.trim();
@@ -121,6 +109,14 @@ export function MuseChatApp(props: {
     if (key.return) { const line = input; setInput(""); void submit(line); return; }
     setInput((buf) => editInputBuffer(buf, rawInput, key));
   });
+
+  // Place the REAL terminal cursor at the input column INSIDE the box so a
+  // CJK IME composes there (same technique as the official Ink cursor-ime
+  // example and claude-code). Called in the render body — `useCursor` stores
+  // it in a ref and applies it during commit via useInsertionEffect, so a
+  // post-commit useEffect would lag a frame and reset the cursor. Idle: the
+  // box is the first dynamic block, input row at y=1. Busy: hide it.
+  setCursorPosition(busy ? undefined : { x: INPUT_COL_OFFSET + displayWidth(input), y: 1 });
 
   const placeholder = "무엇이든 물어보세요";
   return h(Box, { flexDirection: "column" },
