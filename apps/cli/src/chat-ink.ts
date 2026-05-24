@@ -29,6 +29,7 @@ import {
   type InputState
 } from "./chat-ink-core.js";
 import { renderMuseBanner } from "./muse-banner.js";
+import { loadAgents, resolveAgentsDir, type AgentDef } from "./commands-agents.js";
 import { readDueFollowups, readDueReminders } from "./commands-today.js";
 import { imminentItems, pickUnseen, proactiveNoticeText, relativeWhen, type ProactiveItem } from "./chat-proactive.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
@@ -42,6 +43,8 @@ const SLASH_COMMANDS: readonly { readonly cmd: string; readonly desc: string }[]
   { cmd: "new", desc: "새 대화 시작 (맥락 비우기)" },
   { cmd: "clear", desc: "화면 지우기 (맥락 유지)" },
   { cmd: "model", desc: "현재 모델 확인" },
+  { cmd: "agents", desc: "정의된 에이전트 목록" },
+  { cmd: "agent", desc: "에이전트 전환 — /agent <이름> (default 로 해제)" },
   { cmd: "skills", desc: "설치된 스킬 목록 + 추가 방법" },
   { cmd: "exit", desc: "Muse 종료 (ctrl-c)" }
 ];
@@ -75,6 +78,7 @@ export interface SkillInfo {
 export function MuseChatApp(props: {
   readonly banner: string;
   readonly history: readonly ChatTurnMessage[];
+  readonly agents: readonly AgentDef[];
   readonly model: string;
   readonly proactiveOn: boolean;
   readonly skills: readonly SkillInfo[];
@@ -94,6 +98,7 @@ export function MuseChatApp(props: {
   const [busy, setBusy] = useState(false);
   const [exiting, setExiting] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
+  const [activeAgent, setActiveAgent] = useState<AgentDef | undefined>(undefined);
   const historyRef = useRef<ChatTurnMessage[]>([...props.history]);
 
   // Clean teardown: re-render once with the cursor released and the input
@@ -147,6 +152,31 @@ export function MuseChatApp(props: {
         return;
       }
       if (slash.cmd === "model") { note(`현재 모델: ${props.model}`); return; }
+      if (slash.cmd === "agents") {
+        if (props.agents.length === 0) {
+          note(`정의된 에이전트가 없어요. \`muse agents add <이름>\` 로 만들고 \`/agent <이름>\` 으로 전환하세요.`);
+        } else {
+          const active = activeAgent ? ` (현재: ${activeAgent.name})` : "";
+          note(`에이전트${active}: ` + props.agents.map((a) => `${a.name} — ${a.description}`).join(" · ") + " · 전환: /agent <이름>");
+        }
+        return;
+      }
+      if (slash.cmd === "agent") {
+        const target = slash.arg.trim();
+        if (target.length === 0 || target === "default" || target === "off") {
+          setActiveAgent(undefined);
+          note("기본 Muse로 돌아왔어요.");
+          return;
+        }
+        const found = props.agents.find((a) => a.name.toLowerCase() === target.toLowerCase());
+        if (!found) {
+          note(`'${target}' 에이전트를 못 찾았어요. /agents 로 목록을 보세요.`);
+          return;
+        }
+        setActiveAgent(found);
+        note(`'${found.name}' 에이전트로 전환했어요 — ${found.description}`);
+        return;
+      }
       if (slash.cmd === "skills") {
         if (props.skills.length === 0) {
           note(`설치된 스킬이 없어요. ${props.skillsDir}/<이름>/SKILL.md 를 추가하거나 \`muse skills add <이름>\` 로 만들 수 있어요.`);
@@ -166,7 +196,9 @@ export function MuseChatApp(props: {
     setTurns((prev) => [...prev, { role: "user", text: message }]);
     setBusy(true);
     setStreaming("");
-    const system = (props.personaPrompt() ?? formatCurrentContextLine()) + props.skillsPrompt;
+    const base = props.personaPrompt() ?? formatCurrentContextLine();
+    const agentPrefix = activeAgent ? `${activeAgent.prompt}\n\n` : "";
+    const system = agentPrefix + base + props.skillsPrompt;
     const messages = buildTurnMessages(system, historyRef.current, message);
     let accumulated = "";
     try {
@@ -189,7 +221,7 @@ export function MuseChatApp(props: {
     setStreaming("");
     setBusy(false);
     props.onCommit(message, accumulated);
-  }, [app, props]);
+  }, [app, props, activeAgent]);
 
   const slashMenu = matchSlashCommands(inputState.value, SLASH_COMMANDS);
   const slashSel = slashMenu.length > 0 ? Math.min(slashIndex, slashMenu.length - 1) : 0;
@@ -294,6 +326,8 @@ export function MuseChatApp(props: {
       h(Text, { color: "cyan" }, props.model),
       h(Text, { dimColor: true }, "  ·  proactive "),
       h(Text, { color: props.proactiveOn ? "green" : "gray" }, props.proactiveOn ? "on" : "off"),
+      h(Text, { dimColor: true }, `  ·  agent `),
+      h(Text, { color: activeAgent ? "yellow" : "gray" }, activeAgent ? activeAgent.name : "default"),
       h(Text, { dimColor: true }, `  ·  skills ${props.skills.length.toString()}`))
   );
 }
@@ -349,6 +383,10 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const skillsPrompt = buildSkillsPrompt(skills);
   const skillInfos = skills.map((s) => ({ description: s.description, name: s.name }));
 
+  // Manually-defined agents (`~/.muse/agents/<name>/AGENT.md`). `/agent <name>`
+  // switches the active one in chat; its body becomes the system prompt.
+  const agents = await loadAgents(resolveAgentsDir(process.env)).catch(() => [] as readonly AgentDef[]);
+
   const banner = renderMuseBanner({
     status: `model: ${model}`,
     hint: "새 대화를 시작하세요 — 이전 맥락은 기억하고 있어요."
@@ -377,6 +415,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     ];
   };
   const instance = render(h(MuseChatApp, {
+    agents,
     banner,
     history,
     model,
