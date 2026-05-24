@@ -474,3 +474,25 @@ export function buildRecap(input: {
   if (open.length > 0) parts.push(`${open.join(", ")} waiting`);
   return parts.length > 0 ? `Where we left off: ${parts.join(" · ")}` : "";
 }
+
+export interface RecallHitView {
+  readonly source: string;
+  readonly ref: string;
+  readonly score: number;
+  readonly snippet: string;
+}
+
+/**
+ * Render `/recall` hits for the chat: a header plus one indented
+ * source/ref/score line and a clipped snippet per hit. Empty-state line
+ * when nothing matched so the command always answers.
+ */
+export function formatRecallHits(query: string, hits: readonly RecallHitView[]): string {
+  if (hits.length === 0) return `No memories matched "${query}". Try \`muse notes reindex\` / \`muse episode reindex\`.`;
+  const lines: string[] = [`Recall for "${query}":`];
+  for (const hit of hits) {
+    lines.push(`  [${hit.source}] ${hit.ref} (${hit.score.toFixed(2)})`);
+    lines.push(`    ${hit.snippet.replace(/\s+/gu, " ").trim().slice(0, 140)}`);
+  }
+  return lines.join("\n");
+}

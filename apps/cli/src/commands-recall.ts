@@ -197,6 +197,73 @@ function maybeReadTestEmbedding(): number[] | undefined {
   return parsed;
 }
 
+/**
+ * The recall search pipeline shared by `muse recall` and the in-chat
+ * `/recall`: load both indices (soft-fail per source), resolve the query
+ * embedding (test hook → live embed; throws if embedding fails), drop
+ * notes/episodes gone stale since the last reindex, then rank the union.
+ * Per-source diagnostics (missing index, embed-model mismatch) are surfaced
+ * through `onWarn` so each caller renders them in its own channel.
+ */
+export async function searchRecall(opts: {
+  readonly query: string;
+  readonly source: RecallSource;
+  readonly limit: number;
+  readonly embedModel: string;
+  readonly env?: Record<string, string | undefined>;
+  readonly onWarn?: (message: string) => void;
+}): Promise<readonly RecallHit[]> {
+  const { query, source, limit, embedModel } = opts;
+  const env = opts.env ?? (process.env as Record<string, string | undefined>);
+  const warn = opts.onWarn ?? ((): void => undefined);
+
+  const [notesIndex, episodeIndex] = await Promise.all([
+    source === "episodes" ? Promise.resolve(undefined) : loadNotesIndex(defaultNotesIndexFile()),
+    source === "notes" ? Promise.resolve(undefined) : loadEpisodeIndex(defaultEpisodeIndexFile())
+  ]);
+  if (source !== "episodes" && !notesIndex) {
+    warn("(recall: no notes-index.json — run `muse notes reindex` to populate)\n");
+  }
+  if (source !== "notes" && !episodeIndex) {
+    warn("(recall: no episodes-index.json — run `muse episode reindex` to populate)\n");
+  }
+  const notesMismatch = notesIndex?.model && notesIndex.model !== embedModel ? notesIndex.model : undefined;
+  const episodeMismatch = episodeIndex?.model && episodeIndex.model !== embedModel ? episodeIndex.model : undefined;
+  if (notesMismatch) {
+    warn(
+      `(recall: notes-index.json was built with '${notesMismatch}' but querying with '${embedModel}' — ` +
+      `cosines across different embedding models are noise. ` +
+      `Rerun \`muse notes reindex --model ${embedModel}\` or pass \`--embed-model ${notesMismatch}\`.)\n`
+    );
+  }
+  if (episodeMismatch) {
+    warn(
+      `(recall: episodes-index.json was built with '${episodeMismatch}' but querying with '${embedModel}' — ` +
+      `same issue as above. ` +
+      `Rerun \`muse episode reindex --model ${embedModel}\` or pass \`--embed-model ${episodeMismatch}\`.)\n`
+    );
+  }
+
+  const testVec = maybeReadTestEmbedding();
+  const queryVec = testVec ?? await embed(query, embedModel);
+
+  const liveFiles = filterLiveNoteIndexFiles(notesIndex?.files ?? [], existsSync);
+  const noteChunks = liveFiles.flatMap((file) =>
+    (file.chunks ?? []).map((chunk) => ({ path: file.path, text: chunk.text, embedding: chunk.embedding }))
+  );
+  let episodeEntries = (episodeIndex?.entries ?? []).map((entry) => ({
+    id: entry.id,
+    summary: entry.summary,
+    embedding: entry.embedding
+  }));
+  if (episodeEntries.length > 0) {
+    const liveIds = new Set((await readEpisodes(resolveEpisodesFile(env))).map((episode) => episode.id));
+    episodeEntries = filterLiveEpisodeEntries(episodeEntries, liveIds);
+  }
+
+  return rankRecallCandidates({ queryVec, noteChunks, episodeEntries, limit, source });
+}
+
 export function registerRecallCommand(program: Command, io: ProgramIO): void {
   program
     .command("recall")
@@ -230,84 +297,17 @@ export function registerRecallCommand(program: Command, io: ProgramIO): void {
         ? options.embedModel.trim()
         : "nomic-embed-text";
 
-      // Load indices (soft-fail per source).
-      const [notesIndex, episodeIndex] = await Promise.all([
-        source === "episodes" ? Promise.resolve(undefined) : loadNotesIndex(defaultNotesIndexFile()),
-        source === "notes" ? Promise.resolve(undefined) : loadEpisodeIndex(defaultEpisodeIndexFile())
-      ]);
-      if (source !== "episodes" && !notesIndex) {
-        io.stderr("(recall: no notes-index.json — run `muse notes reindex` to populate)\n");
-      }
-      if (source !== "notes" && !episodeIndex) {
-        io.stderr("(recall: no episodes-index.json — run `muse episode reindex` to populate)\n");
-      }
-
-      // Cosines across two embedding models are noise (the spaces
-      // don't align) — warn so the user reindexes before trusting
-      // confident-looking but garbage ranks.
-      const notesMismatch = notesIndex?.model && notesIndex.model !== embedModel
-        ? notesIndex.model : undefined;
-      const episodeMismatch = episodeIndex?.model && episodeIndex.model !== embedModel
-        ? episodeIndex.model : undefined;
-      if (notesMismatch) {
+      let hits: readonly RecallHit[];
+      try {
+        hits = await searchRecall({ query, source, limit, embedModel, env: process.env as Record<string, string | undefined>, onWarn: io.stderr });
+      } catch (cause) {
         io.stderr(
-          `(recall: notes-index.json was built with '${notesMismatch}' but querying with '${embedModel}' — ` +
-          `cosines across different embedding models are noise. ` +
-          `Rerun \`muse notes reindex --model ${embedModel}\` or pass \`--embed-model ${notesMismatch}\`.)\n`
+          `muse recall: embedding failed — is Ollama running with '${embedModel}' pulled? ` +
+          `(underlying: ${cause instanceof Error ? cause.message : String(cause)})\n`
         );
+        process.exitCode = 1;
+        return;
       }
-      if (episodeMismatch) {
-        io.stderr(
-          `(recall: episodes-index.json was built with '${episodeMismatch}' but querying with '${embedModel}' — ` +
-          `same issue as above. ` +
-          `Rerun \`muse episode reindex --model ${embedModel}\` or pass \`--embed-model ${episodeMismatch}\`.)\n`
-        );
-      }
-
-      // Resolve query embedding — test hook first, else live embed.
-      let queryVec: number[];
-      const testVec = maybeReadTestEmbedding();
-      if (testVec) {
-        queryVec = testVec;
-      } else {
-        try {
-          queryVec = await embed(query, embedModel);
-        } catch (cause) {
-          io.stderr(
-            `muse recall: embedding failed — is Ollama running with '${embedModel}' pulled? ` +
-            `(underlying: ${cause instanceof Error ? cause.message : String(cause)})\n`
-          );
-          process.exitCode = 1;
-          return;
-        }
-      }
-
-      // Flatten chunks — but skip notes deleted / moved since the last
-      // reindex so a removed note never resurfaces in recall.
-      const liveFiles = filterLiveNoteIndexFiles(notesIndex?.files ?? [], existsSync);
-      const noteChunks = liveFiles.flatMap((file) =>
-        (file.chunks ?? []).map((chunk) => ({
-          path: file.path,
-          text: chunk.text,
-          embedding: chunk.embedding
-        }))
-      );
-      let episodeEntries = (episodeIndex?.entries ?? []).map((entry) => ({
-        id: entry.id,
-        summary: entry.summary,
-        embedding: entry.embedding
-      }));
-      // Skip episodes removed since the last reindex so a dropped
-      // episode never resurfaces in recall (parallel to the notes
-      // filter — completes the 864 staleness fix for the episode source).
-      if (episodeEntries.length > 0) {
-        const liveIds = new Set(
-          (await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>))).map((episode) => episode.id)
-        );
-        episodeEntries = filterLiveEpisodeEntries(episodeEntries, liveIds);
-      }
-
-      const hits = rankRecallCandidates({ queryVec, noteChunks, episodeEntries, limit, source });
 
       if (options.json) {
         io.stdout(`${JSON.stringify({ query, source, hits }, null, 2)}\n`);

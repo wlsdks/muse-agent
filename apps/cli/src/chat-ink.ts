@@ -29,6 +29,7 @@ import {
   emptyInput,
   extractAttachmentPaths,
   formatMemoryView,
+  formatRecallHits,
   friendlyError,
   matchAgentNames,
   matchModelNames,
@@ -44,6 +45,7 @@ import {
 } from "./chat-ink-core.js";
 import { renderMuseBanner } from "./muse-banner.js";
 import { loadAgents, resolveAgentsDir, type AgentDef } from "./commands-agents.js";
+import { searchRecall } from "./commands-recall.js";
 import { readDueFollowups, readDueReminders } from "./commands-today.js";
 import { imminentItems, pickUnseen, proactiveNoticeText, relativeWhen, type ProactiveItem } from "./chat-proactive.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
@@ -62,6 +64,7 @@ const SLASH_COMMANDS: readonly { readonly cmd: string; readonly desc: string }[]
   { cmd: "skills", desc: "list installed skills + how to add" },
   { cmd: "tools", desc: "toggle tools (reads run; writes/actions ask first)" },
   { cmd: "memory", desc: "show what Muse remembers about you" },
+  { cmd: "recall", desc: "search past notes + episodes — /recall <query>" },
   { cmd: "forget", desc: "forget one thing — /forget <key>" },
   { cmd: "save", desc: "save the last reply to a note file" },
   { cmd: "copy", desc: "copy the last reply to the clipboard" },
@@ -148,6 +151,7 @@ export function MuseChatApp(props: {
   readonly proactiveCheck?: () => Promise<readonly ProactiveItem[]>;
   readonly memorySnapshot: () => Promise<MemorySnapshot | undefined>;
   readonly forgetMemory: (key: string) => Promise<boolean>;
+  readonly recallSearch: (query: string) => Promise<string>;
   readonly recap: string;
 }): React.ReactElement {
   const app = useApp();
@@ -310,6 +314,11 @@ export function MuseChatApp(props: {
       }
       if (slash.cmd === "memory") {
         note(formatMemoryView(await props.memorySnapshot()));
+        return;
+      }
+      if (slash.cmd === "recall") {
+        note("Searching memory…");
+        note(await props.recallSearch(slash.arg));
         return;
       }
       if (slash.cmd === "forget") {
@@ -725,6 +734,23 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const forgetMemory = async (key: string): Promise<boolean> =>
     memoryStore?.forget ? Promise.resolve(memoryStore.forget(userId, key)) : false;
 
+  // /recall — semantic search across the notes + episode indices. Reuses the
+  // same pipeline as `muse recall`; fail-soft to a hint when Ollama is down or
+  // no index has been built (the embed call throws / hits come back empty).
+  const recallSearch = async (query: string): Promise<string> => {
+    const q = query.trim();
+    if (q.length === 0) return "What should I recall? — /recall <query>";
+    const embedModel = process.env.MUSE_RECALL_EMBED_MODEL?.trim() || "nomic-embed-text";
+    try {
+      const warnings: string[] = [];
+      const hits = await searchRecall({ query: q, source: "all", limit: 5, embedModel, env: process.env, onWarn: (m) => warnings.push(m.trim()) });
+      const body = formatRecallHits(q, hits);
+      return hits.length === 0 && warnings.length > 0 ? `${body}\n${warnings.join("\n")}` : body;
+    } catch {
+      return "Recall needs Ollama running + an index — try `muse notes reindex` / `muse episode reindex`.";
+    }
+  };
+
   // Launch recap — "where we left off": the most recent episode summary plus
   // open-commitment counts. Only when resuming a continuous session; fail-soft
   // to no recap if any store is missing/unreadable.
@@ -807,6 +833,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     streamWithTools,
     memorySnapshot,
     forgetMemory,
+    recallSearch,
     recap
   }), {
     exitOnCtrlC: false,

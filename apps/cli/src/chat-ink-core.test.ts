@@ -11,6 +11,7 @@ import {
   buildRecap,
   chatToolApprovalGate,
   formatMemoryView,
+  formatRecallHits,
   matchAgentNames,
   matchModelNames,
   parseInlineSpans,
@@ -260,5 +261,19 @@ describe("buildRecap", () => {
   });
   it("clips a very long episode summary", () => {
     expect(buildRecap({ lastEpisode: "x".repeat(200) })).toMatch(/^Where we left off: x{80}…$/u);
+  });
+});
+
+describe("formatRecallHits", () => {
+  it("renders source/ref/score + clipped snippet per hit", () => {
+    const out = formatRecallHits("approval", [
+      { source: "episodes", ref: "e1", score: 0.8123, snippet: "Shipped\n the  gate" }
+    ]);
+    expect(out).toContain('Recall for "approval":');
+    expect(out).toContain("  [episodes] e1 (0.81)");
+    expect(out).toContain("    Shipped the gate");
+  });
+  it("gives an empty-state hint when nothing matched", () => {
+    expect(formatRecallHits("xyz", [])).toMatch(/No memories matched "xyz"/);
   });
 });
