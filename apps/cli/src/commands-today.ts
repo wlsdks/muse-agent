@@ -221,16 +221,43 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
         return;
       }
 
-      io.stdout(`Today (${shortDateLabel(briefing.generatedAt)}, next ${briefing.lookaheadHours}h${usedLocal ? ", local" : ""})\n`);
-      io.stdout(formatWeatherLine(briefing.weather));
-      io.stdout(formatReminders(briefing.reminders, briefing.generatedAt));
-      io.stdout(formatFollowups(briefing.followups, briefing.generatedAt));
-      io.stdout(formatTasks(briefing.tasks, briefingNow(briefing), briefing.lookaheadHours));
-      io.stdout(formatEvents(briefing.events));
-      io.stdout(formatNotes(briefing.notes));
-      io.stdout(formatHeadlines(briefing.headlines));
-      io.stdout(formatEmptyStateHints(briefing));
+      io.stdout(formatTodayBrief(briefing, usedLocal));
     });
+}
+
+/**
+ * Render a composed briefing as the formatted text block (header + every
+ * section + empty-state hints). Shared by `muse today` and the in-chat
+ * `/today` so both render identically. Each section helper already carries
+ * its own trailing newline.
+ */
+export function formatTodayBrief(briefing: TodayBriefing, local: boolean): string {
+  return (
+    `Today (${shortDateLabel(briefing.generatedAt)}, next ${briefing.lookaheadHours}h${local ? ", local" : ""})\n`
+    + formatWeatherLine(briefing.weather)
+    + formatReminders(briefing.reminders, briefing.generatedAt)
+    + formatFollowups(briefing.followups, briefing.generatedAt)
+    + formatTasks(briefing.tasks, briefingNow(briefing), briefing.lookaheadHours)
+    + formatEvents(briefing.events)
+    + formatNotes(briefing.notes)
+    + formatHeadlines(briefing.headlines)
+    + formatEmptyStateHints(briefing)
+  );
+}
+
+/**
+ * Compose the morning briefing from the LOCAL on-disk sources (tasks, events,
+ * notes, reminders, follow-ups) plus weather + feed headlines, and return the
+ * formatted text. The in-chat `/today` path — no API daemon, no model — so a
+ * small local model never has to chain four tool calls to answer "what's today".
+ */
+export async function buildLocalTodayText(env: Record<string, string | undefined>, lookaheadHours: number): Promise<string> {
+  let briefing = await composeLocalBriefing(lookaheadHours);
+  const weather = await resolveTodayWeatherLine(env);
+  if (weather) briefing = { ...briefing, weather };
+  const headlines = await resolveTodayFeedHeadlines(env, lookaheadHours);
+  if (headlines && headlines.length > 0) briefing = { ...briefing, headlines };
+  return formatTodayBrief(briefing, true).trimEnd();
 }
 
 /**

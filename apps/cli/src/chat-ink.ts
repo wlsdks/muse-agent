@@ -49,7 +49,7 @@ import { renderMuseBanner } from "./muse-banner.js";
 import { loadAgents, resolveAgentsDir, type AgentDef } from "./commands-agents.js";
 import { searchRecall } from "./commands-recall.js";
 import { listRecentJobIds, readJobSummary, startBackgroundJob } from "./commands-jobs.js";
-import { readDueFollowups, readDueReminders } from "./commands-today.js";
+import { buildLocalTodayText, parseLookaheadHours, readDueFollowups, readDueReminders } from "./commands-today.js";
 import { imminentItems, jobCompletionItems, pickUnseen, proactiveNoticeText, relativeWhen, type ProactiveItem } from "./chat-proactive.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
 import { resolvePersona } from "./program-helpers.js";
@@ -65,6 +65,7 @@ const SLASH_COMMANDS: readonly { readonly cmd: string; readonly desc: string }[]
   { cmd: "agents", desc: "list defined agents" },
   { cmd: "agent", desc: "switch agent — /agent <name> (default to clear)" },
   { cmd: "skills", desc: "list installed skills + how to add" },
+  { cmd: "today", desc: "morning briefing — tasks, calendar, weather, headlines" },
   { cmd: "tools", desc: "toggle tools (reads run; writes/actions ask first)" },
   { cmd: "job", desc: "run a long task in the background — /job <prompt>" },
   { cmd: "jobs", desc: "show recent background jobs + status" },
@@ -158,6 +159,7 @@ export function MuseChatApp(props: {
   readonly memorySnapshot: () => Promise<MemorySnapshot | undefined>;
   readonly forgetMemory: (key: string) => Promise<boolean>;
   readonly recallSearch: (query: string) => Promise<string>;
+  readonly todayBrief: () => Promise<string>;
   readonly startJob: (prompt: string) => string;
   readonly jobsOverview: () => Promise<readonly JobListItem[]>;
   readonly recap: string;
@@ -328,6 +330,12 @@ export function MuseChatApp(props: {
       }
       if (slash.cmd === "cost") {
         note(sessionTokens > 0 ? `This session: ${formatTokens(sessionTokens)} tokens (local model = $0).` : "No tokens used yet this session.");
+        return;
+      }
+      if (slash.cmd === "today") {
+        progress("Composing today's briefing…");
+        note(await props.todayBrief());
+        setCommandNotice(undefined);
         return;
       }
       if (slash.cmd === "memory") {
@@ -788,6 +796,11 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     }
   };
 
+  // /today — the morning briefing composed locally (tasks/events/weather/
+  // headlines/reminders) so the small model never chains four tool calls.
+  const todayBrief = (): Promise<string> =>
+    buildLocalTodayText(process.env, parseLookaheadHours(undefined)).catch(() => "Couldn't compose today's briefing.");
+
   // /job — fire off a long-running task in a detached worker (same machinery
   // as `muse job run`) so the user keeps chatting; /jobs reads recent statuses.
   const startJob = (prompt: string): string => startBackgroundJob(prompt, {
@@ -901,6 +914,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     memorySnapshot,
     forgetMemory,
     recallSearch,
+    todayBrief,
     startJob,
     jobsOverview,
     jobCompletions,

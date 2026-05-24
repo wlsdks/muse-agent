@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { writeFollowups, writeReminders, type PersistedFollowup, type PersistedReminder } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
-import { formatEvents, formatHeadlines, formatTasks, formatWeatherLine, parseLookaheadHours, readDueFollowups, readDueReminders, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today.js";
+import { formatEvents, formatHeadlines, formatTasks, formatTodayBrief, formatWeatherLine, parseLookaheadHours, readDueFollowups, readDueReminders, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today.js";
 
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
@@ -248,3 +248,25 @@ describe("formatHeadlines", () => {
     expect(formatHeadlines([])).toBe("");
   });
 })
+
+describe("formatTodayBrief", () => {
+  it("composes header + populated sections into one text block", () => {
+    const out = formatTodayBrief({
+      generatedAt: "2026-05-25T08:00:00.000Z",
+      lookaheadHours: 24,
+      weather: "18°C, light rain",
+      tasks: [{ id: "t1", title: "pay rent", dueAt: "2026-05-25T18:00:00.000Z" }],
+      events: [{ id: "e1", title: "1:1 with Alex", startsAtIso: "2026-05-25T14:00:00.000Z" }]
+    }, true);
+    expect(out).toContain("Today (");
+    expect(out).toContain(", local)");
+    expect(out).toContain("18°C, light rain");
+    expect(out).toContain("pay rent");
+    expect(out).toContain("1:1 with Alex");
+  });
+  it("an all-empty briefing falls back to onboarding hints", () => {
+    const out = formatTodayBrief({ generatedAt: "2026-05-25T08:00:00.000Z", lookaheadHours: 24 }, true);
+    expect(out).toContain("Today (");
+    expect(out).toMatch(/fresh start/i);
+  });
+});
