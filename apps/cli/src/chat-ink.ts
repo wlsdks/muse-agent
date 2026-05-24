@@ -101,6 +101,7 @@ export function MuseChatApp(props: {
   const [slashIndex, setSlashIndex] = useState(0);
   const [activeAgent, setActiveAgent] = useState<AgentDef | undefined>(undefined);
   const [ctrlCArmed, setCtrlCArmed] = useState(false);
+  const [commandNotice, setCommandNotice] = useState<string | undefined>(undefined);
   const [histPos, setHistPos] = useState(-1);
   const inputHistoryRef = useRef<string[]>([]);
   const historyRef = useRef<ChatTurnMessage[]>([...props.history]);
@@ -142,10 +143,13 @@ export function MuseChatApp(props: {
   const submit = useCallback(async (raw: string) => {
     const message = raw.trim();
     if (message.length === 0) return;
+    setCommandNotice(undefined); // clear the previous command result
 
     const slash = parseSlashCommand(message);
     if (slash) {
-      const note = (text: string): void => setTurns((prev) => [...prev, { role: "system", text }]);
+      // Command feedback shows in the bottom area (transient), not the
+      // scrolling transcript — like claude / codex.
+      const note = (text: string): void => setCommandNotice(text);
       if (slash.cmd === "exit" || slash.cmd === "quit") { setExiting(true); return; }
       if (slash.cmd === "clear") { setTurns([]); return; }
       if (slash.cmd === "new") {
@@ -370,6 +374,11 @@ export function MuseChatApp(props: {
           }),
           h(Text, { dimColor: true }, "  ↑↓ select · Tab complete · ⏎ switch"))
       : null,
+    // Command feedback (from a slash command) shows here in the bottom area,
+    // transient — cleared on the next input.
+    commandNotice
+      ? h(Box, { marginTop: 1, paddingLeft: 2 }, h(Text, { color: "cyan" }, commandNotice))
+      : null,
     // Breathing room above the hint, plus the two-press ctrl-c affordance.
     h(Box, { marginTop: 1 },
       ctrlCArmed
@@ -442,10 +451,8 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // switches the active one in chat; its body becomes the system prompt.
   const agents = await loadAgents(resolveAgentsDir(process.env)).catch(() => [] as readonly AgentDef[]);
 
-  const banner = renderMuseBanner({
-    status: `model: ${model}`,
-    hint: "Start chatting — I remember the earlier context."
-  }).replace(/^\n+|\n+$/gu, "");
+  // Just the art + tagline — the model and status live in the bottom HUD.
+  const banner = renderMuseBanner().replace(/^\n+|\n+$/gu, "");
   // Enable the kitty keyboard protocol so the terminal disambiguates
   // modified keys (Shift+Enter → a distinct event Ink reports as
   // key.shift+return). Without it, legacy terminals send Shift+Enter as a
