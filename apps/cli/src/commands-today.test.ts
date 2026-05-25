@@ -5,9 +5,36 @@ import { join } from "node:path";
 import { writeFollowups, writeReminders, type PersistedFollowup, type PersistedReminder } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
-import { formatEvents, formatHeadlines, formatTasks, formatTodayBrief, formatWeatherLine, parseLookaheadHours, readDueFollowups, readDueReminders, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today.js";
+import { formatConnectionsSection, formatEvents, formatHeadlines, formatTasks, formatTodayBrief, formatWeatherLine, parseLookaheadHours, pickConnectionQuery, readDueFollowups, readDueReminders, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today.js";
 
 const ESC = String.fromCharCode(27);
+
+describe("pickConnectionQuery — build a recall query from today's most concrete items", () => {
+  it("joins task + event titles (tasks first), capped, ignores empties", () => {
+    const q = pickConnectionQuery({
+      events: [{ title: "Vendor sync" }],
+      tasks: [{ title: "Ship the Q3 deck" }, { title: "  " }]
+    });
+    expect(q).toContain("Ship the Q3 deck");
+    expect(q).toContain("Vendor sync");
+  });
+  it("returns empty string when there are no tasks or events", () => {
+    expect(pickConnectionQuery({})).toBe("");
+  });
+});
+
+describe("formatConnectionsSection — render the proactive 'Related in your brain' block", () => {
+  it("renders source-labelled hits, or nothing when empty", () => {
+    expect(formatConnectionsSection([])).toBe("");
+    const out = formatConnectionsSection([
+      { ref: "projects/ssl.md", score: 0.7, snippet: "renew certs quarterly", source: "notes" },
+      { ref: "ep1", score: 0.6, snippet: "discussed TLS rotation", source: "episodes" }
+    ]);
+    expect(out).toContain("Related in your brain");
+    expect(out).toContain("ssl.md");
+    expect(out).toContain("[episodes]");
+  });
+});
 const BEL = String.fromCharCode(7);
 
 function hasTerminalControl(s: string): boolean {

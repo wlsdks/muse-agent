@@ -11,6 +11,8 @@
  */
 
 import { promises as fs } from "node:fs";
+import { homedir } from "node:os";
+import { readFile as fsReadFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
 
 import {
@@ -45,6 +47,9 @@ import { redactSecretsInText, stripUntrustedTerminalChars } from "@muse/shared";
 import type { TextToSpeechProvider } from "@muse/voice";
 import type { Command } from "commander";
 
+import { rankRecallCandidates, type RecallHit } from "./commands-recall.js";
+import { embed } from "./embed.js";
+import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import { compareFeedEntriesNewestFirst, defaultFeedsFile, filterRecentFeedEntries, readFeedsStore } from "./feeds-store.js";
 import { formatLocalDate, formatLocalDateTime as shortDateTimeBrief } from "./human-formatters.js";
 import { loadActivePersonaPreamble } from "./persona-store.js";
@@ -108,12 +113,14 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
     .option("--audio-voice <name>", "TTS voice id (provider-specific, e.g. 'alloy' for OpenAI)")
     .option("--audio-format <type>", "TTS output format: mp3 | wav | opus | aac | flac (default mp3)")
     .option("--save-to-notes <path>", "Persist the --brief narrative to a markdown note (relative to MUSE_NOTES_DIR). Requires --brief.")
+    .option("--connect", "Surface related past notes/sessions for today's items (second-brain connection)")
     .action(async (
       options: {
         readonly json?: boolean;
         readonly lookaheadHours?: string;
         readonly local?: boolean;
         readonly brief?: boolean;
+        readonly connect?: boolean;
         readonly model?: string;
         readonly speak?: boolean;
         readonly audioVoice?: string;
@@ -172,12 +179,24 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
         briefing = { ...briefing, headlines };
       }
 
+      // SB/proactive: related past knowledge for today's items (opt-in). One
+      // search, reused by both output paths; fail-soft — never blocks the brief.
+      let connectionsSection = "";
+      if (options.connect && !options.json) {
+        try {
+          const hits = await findTodayConnections(pickConnectionQuery(briefing));
+          connectionsSection = formatConnectionsSection(hits);
+        } catch {
+          // a down embedding endpoint / missing index must not fail the brief
+        }
+      }
+
       if (options.brief) {
         const prose = await renderBrief(io, command, helpers, briefing, usedLocal, options.model);
         if (options.json) {
           helpers.writeOutput(io, { ...briefing, brief: prose });
         } else {
-          io.stdout(`${prose.trim()}\n`);
+          io.stdout(`${prose.trim()}\n${connectionsSection}`);
         }
         if (options.speak) {
           await speakPlain(io, helpers.shells, prose, options.audioVoice, parseAudioFormat(options.audioFormat));
@@ -221,7 +240,7 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
         return;
       }
 
-      io.stdout(formatTodayBrief(briefing, usedLocal));
+      io.stdout(`${formatTodayBrief(briefing, usedLocal)}${connectionsSection}`);
     });
 }
 
@@ -243,6 +262,56 @@ export function formatTodayBrief(briefing: TodayBriefing, local: boolean): strin
     + formatHeadlines(briefing.headlines)
     + formatEmptyStateHints(briefing)
   );
+}
+
+/**
+ * SB/proactive: build a recall query from today's most concrete items (task +
+ * event titles, tasks first) so the briefing can surface related past knowledge.
+ * Pure — empty when there's nothing concrete to connect from.
+ */
+export function pickConnectionQuery(briefing: {
+  readonly tasks?: readonly { readonly title: string }[];
+  readonly events?: readonly { readonly title: string }[];
+}): string {
+  return [
+    ...(briefing.tasks ?? []).map((t) => t.title),
+    ...(briefing.events ?? []).map((e) => e.title)
+  ]
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .slice(0, 5)
+    .join("; ");
+}
+
+/** Render the proactive "Related in your brain" block (empty when no hits). */
+export function formatConnectionsSection(hits: readonly RecallHit[]): string {
+  if (hits.length === 0) {
+    return "";
+  }
+  const lines = hits.map((h) => `  [${h.source}] ${h.ref.split("/").pop() ?? h.ref} — ${h.snippet.replace(/\s+/gu, " ").trim().slice(0, 80)}`);
+  return `\n💡 Related in your brain:\n${lines.join("\n")}\n`;
+}
+
+/** Search the notes + episode indices for knowledge related to today's items. */
+async function findTodayConnections(query: string, embedModel = "nomic-embed-text"): Promise<readonly RecallHit[]> {
+  if (query.trim().length === 0) {
+    return [];
+  }
+  interface NotesIdx { readonly model: string; readonly files: ReadonlyArray<{ readonly path: string; readonly chunks: ReadonlyArray<{ readonly text: string; readonly embedding: readonly number[] }> }> }
+  let notesIndex: NotesIdx | undefined;
+  try {
+    notesIndex = JSON.parse(await fsReadFile(join(homedir(), ".muse", "notes-index.json"), "utf8")) as NotesIdx;
+  } catch {
+    notesIndex = undefined;
+  }
+  if (!notesIndex || notesIndex.model !== embedModel) {
+    return [];
+  }
+  const noteChunks = notesIndex.files.flatMap((f) => f.chunks.map((c) => ({ embedding: c.embedding, path: f.path, text: c.text })));
+  const epIndex = await loadEpisodeIndex(defaultEpisodeIndexFile());
+  const episodeEntries = epIndex && epIndex.model === embedModel ? epIndex.entries : [];
+  const queryVec = await embed(query, embedModel);
+  return rankRecallCandidates({ episodeEntries, limit: 3, noteChunks, queryVec, source: "all" }).filter((h) => h.score >= 0.5);
 }
 
 /**
