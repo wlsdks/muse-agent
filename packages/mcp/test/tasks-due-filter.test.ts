@@ -72,3 +72,15 @@ describe("muse.tasks list — dueWithinDays filter", () => {
     expect(out.total).toBe(TASKS.length); // every task, no due filtering
   });
 });
+
+describe("tasks `list` tool keywords — list-intent reaches the tool, not just due-intent", () => {
+  it("carries list-intent words (so '할 일 목록' / 'show my task list' relevance-match) plus the due words", () => {
+    const server = createTasksMcpServer({ file: "/tmp/unused-tasks.json" });
+    const list = server.tools.find((t) => t.name === "list");
+    const kw = list?.keywords ?? [];
+    // the bug: only due/마감 words → a plain list intent was blocked irrelevant.
+    for (const w of ["list", "tasks", "todo", "할 일", "목록"]) expect(kw).toContain(w);
+    // and the due-window words are still there for the dueWithinDays path.
+    for (const w of ["due", "overdue", "마감"]) expect(kw).toContain(w);
+  });
+});

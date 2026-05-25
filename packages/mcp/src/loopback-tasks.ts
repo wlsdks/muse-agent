@@ -161,7 +161,11 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           type: "object"
         },
         domain: "tasks",
-        keywords: ["due", "overdue", "deadline", "마감"],
+        // List-intent words first (the dominant use — "show my tasks/list"),
+        // then the dueWithinDays-filter words. Without the list words a plain
+        // "할 일 목록 보여줘" missed this tool and only the keyword-less
+        // `search` surfaced, which the model didn't map to a list intent.
+        keywords: ["list", "tasks", "task", "todo", "to-do", "할일", "할 일", "목록", "투두", "due", "overdue", "deadline", "마감"],
         name: "list",
         risk: "read"
       },
