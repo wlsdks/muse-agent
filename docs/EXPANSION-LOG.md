@@ -60,6 +60,7 @@
 | 42 | `eecc53a2` | local eval harness — one scored suite (pnpm eval) | quality infra | **baseline 6/6 live qwen** |
 | 43 | `b8b6034e` | cooperative run interrupt via AbortSignal | runtime pattern | unit (aborted → no model/tool) |
 | 44 | `bc5736ee` | rehydrate re-runnable input from checkpoint (durable resume) | runtime pattern | unit (round-trip) |
+| 45 | `55e828dd` | close eval-surfaced task keyword gaps (KO 할 일 / EN to-do) + diverse tool battery | quality · eval-driven | unit + **battery found it** |
 
 ### 10-item evaluated backlog — DELIVERED (slices 36-44)
 
@@ -270,6 +271,16 @@ REOPEN. Kept the script as a composite regression check.
   domain with no keyword set). → **Lesson:** when auditing a multi-stage path,
   reproduce EVERY stage (here: planForContext → toolFilter); a measurement that
   skips a stage can both invent work and mask the true defect.
+
+### Next direction (eval-driven): namespaced tool granularity for the local model
+
+The diverse tool battery (verify-tool-battery.mjs) confirmed clean single-purpose
+tools (weather, home_state, remember_fact) are selected reliably, but even when
+the many `muse.<domain>.*` variants are EXPOSED, qwen3:8b under-selects among
+them (e.g. "show my to-do list" → no call despite muse.tasks.* being available).
+Per tool-calling.md (≤5-7 unambiguous single-purpose names), the next direction
+is consolidating/renaming the namespaced per-domain tool families into fewer,
+clearer tools (or a per-domain router) so the local model picks in one shot.
 
 ## Reusable patterns (carry these forward)
 
