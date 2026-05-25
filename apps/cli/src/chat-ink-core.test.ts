@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildTurnMessages,
+  type ChatTurnMessage,
   resolveChatHistoryWindow,
   chatHelp,
   cursorCoords,
@@ -96,7 +97,7 @@ describe("buildTurnMessages", () => {
     expect(out[out.length - 1]).toEqual({ content: "q", role: "user" });
   });
   it("windows history to the last N messages, keeping system + current message", () => {
-    const history = Array.from({ length: 10 }, (_, i) => ({ content: `m${i}`, role: (i % 2 === 0 ? "user" : "assistant") as const }));
+    const history = Array.from({ length: 10 }, (_, i): ChatTurnMessage => ({ content: `m${i}`, role: i % 2 === 0 ? "user" : "assistant" }));
     const out = buildTurnMessages("sys", history, "now", 4);
     expect(out[0]).toEqual({ content: "sys", role: "system" });
     expect(out[out.length - 1]).toEqual({ content: "now", role: "user" });

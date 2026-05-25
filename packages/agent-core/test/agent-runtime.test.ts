@@ -947,6 +947,73 @@ describe("AgentRuntime", () => {
     ]);
   });
 
+  it("blocks a tool call missing a REQUIRED argument before the executor runs, and tells the model what's missing", async () => {
+    const executeTool = vi.fn(() => ({ ok: true }));
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Act on a smart-home entity.",
+          inputSchema: { type: "object", properties: { entity: { type: "string" }, service: { type: "string" } }, required: ["entity", "service"] },
+          name: "home_action",
+          risk: "read"
+        },
+        execute: executeTool
+      }
+    ]);
+    const captured: { result: { status?: string; output?: unknown }; toolCall: { id: string } }[] = [];
+    const runtime = createAgentRuntime({
+      hooks: [{ afterTool: (_ctx, toolCall, result) => { captured.push({ result: result as { status?: string; output?: unknown }, toolCall }); }, id: "cap" }],
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        // Model omits the required `service` arg.
+        { id: "tool", model: "test-model", output: "Acting.", toolCalls: [{ arguments: { entity: "light.living_room" }, id: "tc-1", name: "home_action" }] },
+        { id: "final", model: "test-model", output: "Done." }
+      ]),
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "turn off the light", role: "user" }],
+      model: "provider/model",
+      runId: "run-missing-arg"
+    });
+
+    // The bad call NEVER reached execute, and the run still completed.
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(result.response.output).toBe("Done.");
+    // The model was told exactly which argument was missing so it can re-call.
+    const blocked = captured.find((e) => e.toolCall.id === "tc-1");
+    expect(blocked?.result.status).toBe("blocked");
+    expect(String(blocked?.result.output)).toContain("missing required argument");
+    expect(String(blocked?.result.output)).toContain("service");
+  });
+
+  it("executes normally when all required arguments are present", async () => {
+    const executeTool = vi.fn(() => ({ ok: true }));
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Act on a smart-home entity.",
+          inputSchema: { type: "object", properties: { entity: { type: "string" }, service: { type: "string" } }, required: ["entity", "service"] },
+          name: "home_action",
+          risk: "read"
+        },
+        execute: executeTool
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        { id: "tool", model: "test-model", output: "Acting.", toolCalls: [{ arguments: { entity: "light.living_room", service: "light.turn_off" }, id: "tc-1", name: "home_action" }] },
+        { id: "final", model: "test-model", output: "Done." }
+      ]),
+      toolRegistry
+    });
+
+    await runtime.run({ messages: [{ content: "turn off the light", role: "user" }], model: "provider/model", runId: "run-valid-arg" });
+    expect(executeTool).toHaveBeenCalledOnce();
+  });
+
   it("toolApprovalGate can block an execute-risk call before the executor runs", async () => {
     const executeTool = vi.fn(() => ({ ok: true }));
     const gateCalls: { name: string; risk: string }[] = [];

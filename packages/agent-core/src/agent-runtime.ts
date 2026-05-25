@@ -43,6 +43,7 @@ import {
   ToolExecutor,
   ToolRegistry,
   toModelTool,
+  validateRequiredToolArguments,
   type ToolExecutionResult,
   type ToolExposurePolicy
 } from "@muse/tools";
@@ -781,6 +782,21 @@ export class AgentRuntime {
         await this.invokeHooks("afterTool", context, executed);
         return executed;
       }
+    }
+
+    // Deterministic arg validation (tool-calling.md): a missing required
+    // argument would crash/misbehave in execute(). Return the missing list so
+    // the model re-calls correctly (bounded by maxToolCalls) — never execute
+    // with bad args.
+    const exposed = activeTools.find((tool) => tool.name === toolCall.name);
+    const argCheck = validateRequiredToolArguments(exposed?.inputSchema, toolCall.arguments);
+    if (!argCheck.ok) {
+      const executed = blockedToolResult(
+        toolCall,
+        `Error: missing required argument(s) for ${toolCall.name}: ${argCheck.missing.join(", ")}. Call it again with those argument(s).`
+      );
+      await this.invokeHooks("afterTool", context, executed);
+      return executed;
     }
 
     if (!this.toolExecutor) {

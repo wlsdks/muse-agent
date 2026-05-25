@@ -7,6 +7,7 @@ import {
   createRustRunnerTool,
   createDefaultToolExposurePolicy,
   createWorkspaceToolRoutingPlan,
+  validateRequiredToolArguments,
   attachReadStreamErrorAbsorber,
   filterToolsForContext,
   isWorkspaceMutationPrompt,
@@ -276,6 +277,19 @@ describe("tool utilities", () => {
       code: "irrelevant_to_prompt",
       toolName: "post_slack_message"
     }));
+  });
+
+  it("validateRequiredToolArguments flags missing required args, passes complete/extra/no-schema", () => {
+    const schema = { type: "object", properties: { entity: { type: "string" }, service: { type: "string" } }, required: ["entity", "service"] };
+    expect(validateRequiredToolArguments(schema, { entity: "light.x", service: "turn_off" })).toEqual({ ok: true, missing: [] });
+    expect(validateRequiredToolArguments(schema, { entity: "light.x" })).toEqual({ ok: false, missing: ["service"] });
+    expect(validateRequiredToolArguments(schema, { entity: null, service: undefined })).toEqual({ ok: false, missing: ["entity", "service"] });
+    // extra args are fine; only `required` is enforced
+    expect(validateRequiredToolArguments(schema, { entity: "x", service: "y", extra: 1 }).ok).toBe(true);
+    // no object schema / no required → no constraint
+    expect(validateRequiredToolArguments(undefined, {}).ok).toBe(true);
+    expect(validateRequiredToolArguments({ type: "object", properties: {} }, {}).ok).toBe(true);
+    expect(validateRequiredToolArguments({ type: "string" }, {}).ok).toBe(true);
   });
 
   it("matches keywords on WORD boundaries, not substrings (no 'search'∈'research' distractor)", () => {

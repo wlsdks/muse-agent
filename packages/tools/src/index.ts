@@ -259,6 +259,31 @@ export function createDefaultToolExposurePolicy(options: DefaultToolExposurePoli
   return new DefaultToolExposurePolicy(options);
 }
 
+export interface ToolArgumentValidation {
+  readonly ok: boolean;
+  readonly missing: readonly string[];
+}
+
+/**
+ * Deterministic pre-execute check of a model's tool arguments against the
+ * tool's input schema. Enforces ONLY the schema's `required` list — the
+ * highest-value, lowest-false-reject rule: a missing required argument would
+ * otherwise reach the tool's `execute()` as `undefined` and crash or
+ * misbehave (a top small-model failure mode). Anything else (extra props,
+ * loose types) passes; the runtime returns the missing list to the model so it
+ * re-calls correctly. A schema that isn't an object schema with a `required`
+ * array imposes no constraint.
+ */
+export function validateRequiredToolArguments(inputSchema: JsonValue | undefined, args: JsonObject): ToolArgumentValidation {
+  if (!isRecord(inputSchema) || inputSchema.type !== "object" || !Array.isArray(inputSchema.required)) {
+    return { missing: [], ok: true };
+  }
+  const missing = inputSchema.required.filter(
+    (name): name is string => typeof name === "string" && (args[name] === undefined || args[name] === null)
+  );
+  return { missing, ok: missing.length === 0 };
+}
+
 export function filterToolsForContext(
   tools: readonly MuseTool[],
   context: ToolExposureContext = {},
