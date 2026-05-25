@@ -489,3 +489,30 @@ ANCHORED `^…<think>…` stripper in provider-shared (single position), the
 `unwrapToolData` BEGIN/END marker regex (lazy with required terminator),
 and the `https?://[^\s]+` URL extractors. Only the global `<think>` strip was
 quadratic.
+
+### Finding 009 — corrupt user-memory.json crashed every run (FIXED)
+
+**Where:** `packages/memory/src/memory-user-store-file.ts` — `FileUserMemoryStore.read()`.
+The read did `JSON.parse(raw)` inside a catch that only handled ENOENT and
+**rethrew everything else**. A corrupt/truncated `user-memory.json` therefore
+threw on `findByUserId`, which runs on EVERY chat (user memory is injected
+into the system prompt) — one bad byte bricks the assistant until the file
+is hand-fixed. Every personal store already degrades gracefully (quarantine
++ empty); this one didn't.
+
+Reproduced: `findByUserId` on `{"version":1,"users":{` → SyntaxError.
+
+**Fix:** separate the read-error path (ENOENT → empty, real IO error → throw)
+from the parse path; on JSON.parse failure, quarantine the file
+(`*.corrupt-<ts>`) and return empty — matching the personal stores. A
+subsequent write recovers cleanly. New tests: corrupt → no throw + recovers +
+quarantine present; non-object payload → empty. memory 195 passed; lint clean.
+
+### Persistence audit — other observations (not fixed, lower severity)
+- JSONL reads (chat-history) already skip malformed lines; run-logs are
+  write-only telemetry — append non-atomicity is tolerated on read.
+- `tasks.json`, `reminders.json`, `followup-llm-budget.json` use tmp+rename
+  WITHOUT an `fsync` before rename, while followups/objectives/contacts/
+  action-log DO fsync. tmp+rename is already crash-safe for process death;
+  the missing fsync only widens a power-loss/fs-crash window. Minor
+  consistency gap, documented for a future sweep.

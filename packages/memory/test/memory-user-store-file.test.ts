@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, unlink } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -213,5 +213,28 @@ describe("sanitizeUserMemoryValue (direct unit tests)", () => {
     const { sanitizeUserMemoryValue } = await import("../src/index.js");
     expect(sanitizeUserMemoryValue("간결한 한국어 응답을 선호함")).toBe("간결한 한국어 응답을 선호함");
     expect(sanitizeUserMemoryValue("plain ascii — 42 chars")).toBe("plain ascii — 42 chars");
+  });
+});
+
+describe("FileUserMemoryStore — corrupt-file resilience (no crash on every run)", () => {
+  it("degrades to empty + quarantines a corrupt file instead of throwing", async () => {
+    const { dir, file, store } = await newStore();
+    await writeFile(file, '{"version":1,"users":{'); // truncated JSON
+
+    // user memory is read on every run for prompt injection — must not throw
+    await expect(store.findByUserId("u1")).resolves.toBeUndefined();
+
+    // the corrupt file is moved aside, and a subsequent write recovers cleanly
+    await store.upsertFact("u1", "name", "Stark");
+    expect((await store.findByUserId("u1"))?.facts).toEqual({ name: "Stark" });
+
+    const entries = await readdir(dir);
+    expect(entries.some((n) => n.includes(".corrupt-"))).toBe(true);
+  });
+
+  it("degrades to empty on a non-object / wrong-version payload", async () => {
+    const { file, store } = await newStore();
+    await writeFile(file, '"just a string"');
+    await expect(store.findByUserId("u1")).resolves.toBeUndefined();
   });
 });

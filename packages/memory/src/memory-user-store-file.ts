@@ -189,22 +189,40 @@ export class FileUserMemoryStore implements UserMemoryStore {
   }
 
   private async read(): Promise<StoredFile> {
+    let raw: string;
     try {
-      const raw = await readFile(this.file, "utf8");
-      const parsed = JSON.parse(raw) as unknown;
-      if (!parsed || typeof parsed !== "object") {
-        return emptyFile();
-      }
-      const root = parsed as { version?: number; users?: Record<string, StoredMemory> };
-      if (root.version !== 1 || !root.users) {
-        return emptyFile();
-      }
-      return { users: root.users, version: 1 };
+      raw = await readFile(this.file, "utf8");
     } catch (cause) {
       if (cause instanceof Error && (cause as NodeJS.ErrnoException).code === "ENOENT") {
         return emptyFile();
       }
       throw cause;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      // A corrupt user-memory.json would otherwise crash EVERY run — the
+      // store is read to inject memory into the system prompt. Quarantine
+      // the bad file and degrade to empty, matching the personal stores.
+      await this.quarantineCorrupt();
+      return emptyFile();
+    }
+    if (!parsed || typeof parsed !== "object") {
+      return emptyFile();
+    }
+    const root = parsed as { version?: number; users?: Record<string, StoredMemory> };
+    if (root.version !== 1 || !root.users) {
+      return emptyFile();
+    }
+    return { users: root.users, version: 1 };
+  }
+
+  private async quarantineCorrupt(): Promise<void> {
+    try {
+      await rename(this.file, `${this.file}.corrupt-${Date.now().toString()}`);
+    } catch {
+      // best-effort — read degrades to empty either way
     }
   }
 
