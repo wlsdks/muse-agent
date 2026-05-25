@@ -240,3 +240,27 @@ describe("defaultIndexPath — empty-HOME fall-through (goal-547 sibling)", () =
     }
   });
 });
+
+describe("reindexNotes — an embedding failure is counted, not reported as success", () => {
+  it("a file whose chunks all fail to embed counts as `failed`, not `embedded`, and isn't stored empty", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "muse-reindex-fail-"));
+    await writeFile(join(dir, "note.md"), "some content to embed", "utf8");
+    const failingFetch = (async () => new Response("model not found", { status: 404 })) as unknown as typeof globalThis.fetch;
+
+    const summary = await reindexNotes({
+      dir,
+      fetchImpl: failingFetch,
+      force: true,
+      indexPath: join(dir, "index.json"),
+      model: "nomic-embed-text"
+    });
+
+    // The bug: it reported `embedded: 1, failed: 0` and saved a chunk-less file.
+    expect(summary.embedded).toBe(0);
+    expect(summary.failed).toBeGreaterThanOrEqual(1);
+    // A file with zero successfully-embedded chunks must not be stored as a
+    // hollow "indexed" entry that silently returns no recall hits.
+    const stored = summary.index.files.find((f) => f.path.endsWith("note.md"));
+    expect(stored?.chunks.length ?? 0).toBe(0);
+  });
+});

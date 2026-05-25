@@ -277,9 +277,22 @@ export async function reindexNotes(
         options.onProgress?.(`embed failed for ${path} chunk ${i.toString()}: ${cause instanceof Error ? cause.message : String(cause)}`);
       }
     }
+    // A file with no successfully-embedded chunks is NOT "embedded" — count it
+    // as failed and don't store a hollow entry (which would report false
+    // success and then return zero recall hits). Carry forward any prior good
+    // index entry for this file so a transient embed outage doesn't wipe it.
+    if (out.length === 0) {
+      failed += 1;
+      const priorEntry = known.get(path);
+      if (priorEntry) {
+        next.push(priorEntry);
+      }
+      options.onProgress?.(`✗ ${path} (embedding failed — kept ${priorEntry ? "previous index entry" : "nothing"})`);
+      continue;
+    }
     next.push({ chunks: out, mtimeMs, path });
     embedded += 1;
-    options.onProgress?.(`+ ${path} (${chunks.length.toString()} chunk${chunks.length === 1 ? "" : "s"})`);
+    options.onProgress?.(`+ ${path} (${out.length.toString()}/${chunks.length.toString()} chunk${chunks.length === 1 ? "" : "s"} embedded)`);
   }
   const index: NotesIndex = {
     builtAtIso: new Date().toISOString(),
@@ -394,6 +407,15 @@ export function registerNotesRagCommands(program: Command, io: ProgramIO): void 
         onProgress: (line) => io.stdout(`  ${line}\n`)
       });
       io.stdout(`\nDone. ${summary.embedded.toString()} embedded, ${summary.skipped.toString()} cached, ${summary.failed.toString()} failed. ${summary.totalChunks.toString()} chunks total in ${summary.indexPath}\n`);
+      if (summary.failed > 0) {
+        io.stderr(
+          `(${summary.failed.toString()} file(s) failed to embed — is Ollama running with '${model}' pulled? ` +
+          `Run \`ollama pull ${model}\` and re-run \`muse notes reindex\`. RAG over those notes is unavailable until then.)\n`
+        );
+        if (summary.embedded === 0) {
+          process.exitCode = 1;
+        }
+      }
     });
 
   notes
