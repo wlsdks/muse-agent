@@ -687,6 +687,7 @@ const workspaceHints = [
   "todo",
   "to-do",
   "reminder",
+  "remind",
   "note",
   "notes",
   "event",
@@ -747,7 +748,11 @@ const koreanMutationHints = [
   "추가해",
   "삭제해",
   "제거해",
-  "변환해"
+  "변환해",
+  "저장해",
+  "저장",
+  "기록해",
+  "예약해"
 ] as const;
 
 const readOnlyLookupExceptions = ["unassigned", "미할당"] as const;
@@ -802,6 +807,7 @@ const mutationTargetHints = [
   "todo",
   "to-do",
   "reminder",
+  "remind",
   "note",
   "notes",
   "event",

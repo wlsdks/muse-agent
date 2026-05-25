@@ -202,6 +202,8 @@ describe("tool utilities", () => {
     expect(isWorkspaceMutationPrompt("set a reminder for 6pm")).toBe(true);
     expect(isWorkspaceMutationPrompt("schedule a meeting tomorrow")).toBe(true);
     expect(isWorkspaceMutationPrompt("할 일 추가해줘")).toBe(true);
+    expect(isWorkspaceMutationPrompt("remind me to call mom at 6pm")).toBe(true); // "remind" verb + target
+    expect(isWorkspaceMutationPrompt("메모 저장해줘: 우유 사기")).toBe(true);        // KO save-a-note
     expect(isWorkspaceMutationPrompt("show my tasks")).toBe(false);     // read, not write
     expect(isWorkspaceMutationPrompt("change the topic please")).toBe(false); // mutation verb but no target
     expect(isWorkspaceMutationPrompt("what's the weather?")).toBe(false);
