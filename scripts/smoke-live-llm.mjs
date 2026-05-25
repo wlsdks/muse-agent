@@ -626,17 +626,12 @@ async function pickTierModels(fastModel) {
       .map((m) => m?.name)
       .filter((n) => typeof n === "string" && /qwen/i.test(n))
       .map((n) => `ollama/${n}`);
-    // Auto-detection grabs ANY other local qwen as the heavy tier — which on
-    // a machine that also has a very large qwen (e.g. a 24GB MoE) makes
-    // smoke:live unrunnable (the heavy model never warms up in time). An
-    // explicit MUSE_SMOKE_LIVE_HEAVY_MODEL override pins the heavy tier; when
-    // it equals the fast model (or no distinct model exists) the tiered check
-    // is skipped — not failed — so the rest of the live round-trip still runs.
-    const overrideHeavy = process.env.MUSE_SMOKE_LIVE_HEAVY_MODEL?.trim();
-    const heavy = overrideHeavy
-      ? (overrideHeavy.startsWith("ollama/") ? overrideHeavy : `ollama/${overrideHeavy}`)
-      : qwens.find((m) => m !== fastModel);
-    return heavy && heavy !== fastModel ? { fast: fastModel, heavy } : undefined;
+    // The heavy tier is the smallest OTHER qwen; if only a giant one exists
+    // (e.g. a 35B MoE alongside the fast 8B) the tiered check is skipped — not
+    // failed — so a single-small-model host runs the rest of the suite instead
+    // of stalling on a heavy cold load. MUSE_SMOKE_LIVE_HEAVY_MODEL overrides.
+    const heavy = chooseHeavyTier(fastModel, qwens, process.env.MUSE_SMOKE_LIVE_HEAVY_MODEL?.trim());
+    return heavy ? { fast: fastModel, heavy } : undefined;
   } catch {
     return undefined;
   }
@@ -662,6 +657,31 @@ async function ollamaHasModel(needle) {
 // gate actually COMPLETES on modest hardware instead of stalling on a 30B+
 // cold load — the reason smoke:live kept timing out. Unparsable size loses to
 // any sized model. Falls back to the first model when no qwen is present.
+export function qwenParamSize(name) {
+  const tag = name.includes(":") ? name.slice(name.indexOf(":") + 1) : name;
+  const match = tag.match(/(\d+(?:\.\d+)?)b/i);
+  return match ? Number.parseFloat(match[1]) : Number.POSITIVE_INFINITY;
+}
+
+// Heavy tiers at/above this parameter count cold-load too slowly to complete
+// smoke:live in-window; the --tiered check is skipped rather than stalling the
+// whole suite (an explicit MUSE_SMOKE_LIVE_HEAVY_MODEL override bypasses this).
+// Inlined (not a module const) so it's available during top-level evaluation,
+// where pickTierModels runs before this point in the file.
+export function chooseHeavyTier(fastModel, qwens, overrideHeavy) {
+  if (overrideHeavy) {
+    const pinned = overrideHeavy.startsWith("ollama/") ? overrideHeavy : `ollama/${overrideHeavy}`;
+    return pinned !== fastModel ? pinned : undefined;
+  }
+  const heavy = qwens
+    .filter((m) => m !== fastModel)
+    .sort((a, b) => qwenParamSize(a) - qwenParamSize(b))[0];
+  if (!heavy || qwenParamSize(heavy) >= 20) {
+    return undefined; // only a giant distinct qwen available → skip tiered
+  }
+  return heavy;
+}
+
 export function selectSmokeLiveModel(names, override) {
   if (override) {
     return override;
@@ -670,12 +690,7 @@ export function selectSmokeLiveModel(names, override) {
   if (qwens.length === 0) {
     return names[0];
   }
-  const paramSize = (n) => {
-    const tag = n.includes(":") ? n.slice(n.indexOf(":") + 1) : n;
-    const match = tag.match(/(\d+(?:\.\d+)?)b/i);
-    return match ? Number.parseFloat(match[1]) : Number.POSITIVE_INFINITY;
-  };
-  return [...qwens].sort((a, b) => paramSize(a) - paramSize(b) || a.localeCompare(b))[0];
+  return [...qwens].sort((a, b) => qwenParamSize(a) - qwenParamSize(b) || a.localeCompare(b))[0];
 }
 
 async function pickProvider() {
