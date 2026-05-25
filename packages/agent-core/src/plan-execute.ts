@@ -16,6 +16,25 @@ export interface PlanStep {
   readonly description: string;
 }
 
+/**
+ * JSON Schema for the plan (native structured output where supported → the
+ * local model is constrained to a `{tool,args,description}[]` array, not
+ * free text scanned by extractJsonArray). `tool` is the only hard requirement;
+ * args/description default in toPlanSteps. extractJsonArray stays the fallback.
+ */
+export const PLAN_RESPONSE_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      tool: { type: "string" },
+      args: { type: "object" },
+      description: { type: "string" }
+    },
+    required: ["tool"]
+  }
+} as const;
+
 export interface PlanValidationError {
   readonly stepIndex: number;
   readonly tool: string;

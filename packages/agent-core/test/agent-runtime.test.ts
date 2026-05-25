@@ -2834,6 +2834,10 @@ describe("AgentRuntime PlanExecute mode", () => {
     expect(requests).toHaveLength(2);
     const planningRequest = requests[0];
     expect(planningRequest?.tools).toEqual([]);
+    // The plan request now carries the native structured-output schema (a
+    // {tool,args,description}[] array) so a structured provider is constrained
+    // to a valid plan; parsePlan/extractJsonArray stays the fallback.
+    expect(planningRequest?.responseFormat).toMatchObject({ type: "array", items: { type: "object", required: ["tool"] } });
     expect(planningRequest?.messages.some((message) => message.role === "system" && message.content.includes("[Role]"))).toBe(true);
     const synthesisRequest = requests[1];
     expect(synthesisRequest?.tools).toEqual([]);

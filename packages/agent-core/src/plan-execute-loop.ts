@@ -9,6 +9,7 @@
  */
 
 import { buildPlanningSystemPrompt } from "@muse/prompts";
+import type { JsonObject } from "@muse/shared";
 import type {
   ModelProvider,
   ModelRequest,
@@ -21,6 +22,7 @@ import {
   PlanExecutionError,
   PlanValidationFailedError,
   parsePlan,
+  PLAN_RESPONSE_SCHEMA,
   renderPlanResultSummary,
   renderToolDescriptionsForPlanning,
   systemMessageContent,
@@ -216,6 +218,9 @@ async function generatePlan(
       { content: planningPrompt, role: "system" },
       { content: userPrompt, role: "user" }
     ],
+    // Constrain the plan to the schema where the provider supports it (Ollama);
+    // parsePlan/extractJsonArray below stays the fallback for others.
+    responseFormat: PLAN_RESPONSE_SCHEMA as unknown as JsonObject,
     tools: []
   };
 
