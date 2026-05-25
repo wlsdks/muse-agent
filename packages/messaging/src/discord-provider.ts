@@ -3,7 +3,7 @@ import { truncateErrorBody } from "@muse/shared";
 import { readDiscordAfter, writeDiscordAfter } from "./discord-after-store.js";
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
-import { clampInboundLimit, clampOutboundText, fetchWithTimeout, tryParseJson } from "./provider-helpers.js";
+import { clampInboundLimit, clampOutboundText, fetchReadWithRetry, fetchWithTimeout, tryParseJson } from "./provider-helpers.js";
 import type {
   InboundFetchOptions,
   InboundMessage,
@@ -147,10 +147,10 @@ export class DiscordProvider implements MessagingProvider {
       : undefined;
     const url = `${this.baseUrl}/${this.apiVersion}/channels/${encodeURIComponent(channelId)}/messages?limit=${limit.toString()}`
       + (cursor !== undefined ? `&after=${encodeURIComponent(cursor)}` : "");
-    const response = await fetchWithTimeout(this.fetchImpl, url, {
+    const response = await fetchReadWithRetry(this.fetchImpl, url, {
       headers: { authorization: `Bot ${this.token}` },
       method: "GET"
-    }, this.timeoutMs);
+    }, { timeoutMs: this.timeoutMs });
     const text = await response.text();
     if (!response.ok) {
       const errorPayload = tryParseJson<DiscordErrorResponse>(text);

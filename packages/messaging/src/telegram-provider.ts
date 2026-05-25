@@ -2,7 +2,7 @@ import { truncateErrorBody } from "@muse/shared";
 
 import { MessagingProviderError, MessagingValidationError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
-import { clampInboundLimit, clampOutboundText, fetchWithTimeout, tryParseJson } from "./provider-helpers.js";
+import { clampInboundLimit, clampOutboundText, fetchReadWithRetry, fetchWithTimeout, tryParseJson } from "./provider-helpers.js";
 import { readTelegramOffset, writeTelegramOffset } from "./telegram-offset-store.js";
 import type {
   InboundFetchOptions,
@@ -139,7 +139,7 @@ export class TelegramProvider implements MessagingProvider {
     // the daemon, not this snapshot fetch.
     const url = `${this.baseUrl}/bot${this.token}/getUpdates?limit=${limit.toString()}&timeout=0`
       + (offsetParam !== undefined ? `&offset=${offsetParam.toString()}` : "");
-    const response = await fetchWithTimeout(this.fetchImpl, url, { method: "GET" }, this.timeoutMs);
+    const response = await fetchReadWithRetry(this.fetchImpl, url, { method: "GET" }, { timeoutMs: this.timeoutMs });
     const text = await response.text();
     const parsed = tryParseJson<TelegramGetUpdatesResponse>(text);
     if (!response.ok || !parsed?.ok) {

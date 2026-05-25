@@ -8,6 +8,8 @@
  * module only owns the cross-cutting numeric/parsing primitives.
  */
 
+import { isRetryableMessagingStatus } from "./errors.js";
+
 const MAX_INBOUND_LIMIT = 100;
 const DEFAULT_INBOUND_LIMIT = 20;
 
@@ -104,4 +106,57 @@ export async function fetchWithTimeout(
   } finally {
     clearTimeout(timer);
   }
+}
+
+export interface ReadRetryOptions {
+  /** Total attempts incl. the first (default 3). */
+  readonly maxAttempts?: number;
+  /** Linear backoff base; delay = baseDelayMs * attempt (default 200). */
+  readonly baseDelayMs?: number;
+  readonly timeoutMs?: number;
+  /** Injectable for tests. */
+  readonly sleep?: (ms: number) => Promise<void>;
+}
+
+function parseRetryAfterSeconds(header: string | null): number | undefined {
+  if (!header) {
+    return undefined;
+  }
+  const secs = Number(header.trim());
+  return Number.isFinite(secs) && secs >= 0 ? secs * 1000 : undefined;
+}
+
+/**
+ * Retry an **idempotent** read (inbound poll / getUpdates) over the
+ * timed fetch, on a transient 429/5xx or a network error, honouring
+ * Retry-After. NEVER use this for `send()` — re-sending is not
+ * idempotent and could deliver a message twice (the same reason
+ * `GmailEmailProvider.sendEmail` deliberately does not retry).
+ */
+export async function fetchReadWithRetry(
+  fetchImpl: typeof globalThis.fetch,
+  url: string,
+  init: RequestInit,
+  options: ReadRetryOptions = {}
+): Promise<Response> {
+  const maxAttempts = Math.max(1, options.maxAttempts ?? 3);
+  const baseDelayMs = options.baseDelayMs ?? 200;
+  const sleep = options.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(fetchImpl, url, init, options.timeoutMs);
+      if (response.ok || !isRetryableMessagingStatus(response.status) || attempt === maxAttempts) {
+        return response;
+      }
+      await sleep(parseRetryAfterSeconds(response.headers.get("retry-after")) ?? baseDelayMs * attempt);
+    } catch (cause) {
+      lastError = cause;
+      if (attempt === maxAttempts) {
+        throw cause;
+      }
+      await sleep(baseDelayMs * attempt);
+    }
+  }
+  throw lastError ?? new Error("fetchReadWithRetry: exhausted without a response");
 }

@@ -2,7 +2,7 @@ import { truncateErrorBody } from "@muse/shared";
 
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
-import { clampInboundLimit, clampOutboundText, fetchWithTimeout, tryParseJson } from "./provider-helpers.js";
+import { clampInboundLimit, clampOutboundText, fetchReadWithRetry, fetchWithTimeout, tryParseJson } from "./provider-helpers.js";
 import { readSlackAfter, writeSlackAfter } from "./slack-after-store.js";
 import type {
   InboundFetchOptions,
@@ -148,14 +148,14 @@ export class SlackProvider implements MessagingProvider {
       formParams["oldest"] = cursor;
     }
     const params = new URLSearchParams(formParams);
-    const response = await fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/conversations.history`, {
+    const response = await fetchReadWithRetry(this.fetchImpl, `${this.baseUrl}/conversations.history`, {
       body: params.toString(),
       headers: {
         authorization: `Bearer ${this.token}`,
         "content-type": "application/x-www-form-urlencoded"
       },
       method: "POST"
-    }, this.timeoutMs);
+    }, { timeoutMs: this.timeoutMs });
     const text = await response.text();
     const parsed = tryParseJson<SlackHistoryResponse>(text);
     if (!response.ok || !parsed?.ok) {
