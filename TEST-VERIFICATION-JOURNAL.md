@@ -455,3 +455,37 @@ An independent hostile review of the 6 code fixes returned SHIP-WITH-NITS
 
 LOW nits (Korean verb-coverage gaps, arbitrary depth constants) left as-is —
 documented, fail-open/graceful.
+
+---
+
+## Round 2 (post-merge follow-ups)
+
+### Finding 007 — timezone/date is process-local: correct for the CLI, latent on a non-KST server (VERIFIED, deferred — not a minimal fix)
+
+All day-boundary logic (`getDate()`/`getHours()` in commands-today, personal-tasks-store, situational-briefing, followup-detector, the once-per-day budget key) uses **process-local** time. A `timezone` user-preference exists but only drives `Intl.DateTimeFormat` DISPLAY, not computation.
+
+Empirically: at 2026-05-12T23:00Z (= 08:00 KST on the 13th), `getDate()`-based day = `2026-05-13` under `TZ=Asia/Seoul` (this machine's actual TZ) and `2026-05-12` under `TZ=UTC`. So on the **user's own KST machine (the primary CLI surface) it is CORRECT**; the bug only appears if Muse runs on a host whose TZ ≠ the user's (e.g. a UTC server). A real fix means threading an explicit user timezone through ~8 day-boundary functions (signature changes across packages) — a feature-sized change, out of scope for a minimal bug fix. Documented; not changed. (Honest call: do not manufacture a risky refactor for a not-a-bug-in-practice case.)
+
+### Finding 008 — O(n²) `<think>` strip in the exported objective verdict parser (FIXED)
+
+**Where:** `packages/mcp/src/objective-evaluator.ts` — `parseObjectiveVerdict`.
+The global lazy regex `/<think>[\s\S]*?<\/think>/giu` is O(n²) on input with
+many unclosed `<think>` tags: each open triggers a forward scan that never
+finds a close. Measured: 80k opens → 9.5 s; 320k → would be ~150 s. The
+internal caller caps model output at 120 tokens (so not reachable as a DoS
+today), but the function is **exported** and documented for untrusted,
+reasoning-wrapped model text, so the quadratic is a latent hazard.
+
+**Fix:** replaced the regex with a single linear `stripThinkBlocks` pass
+(indexOf-based, case-insensitive, unclosed-open keeps the rest, non-overlapping
+pairs) — behaviour-preserving. 320k unclosed opens now 6 ms (was ~150 s).
+New tests assert behaviour preservation + <1 s on 200k opens. mcp 799 passed;
+lint clean.
+
+### ReDoS sweep result
+Probed the other regexes over untrusted text — all linear: casual-lure-strip
+`{2,}$` bullet patterns (line-bounded alternatives, 144 KB → 0–1 ms), the
+ANCHORED `^…<think>…` stripper in provider-shared (single position), the
+`unwrapToolData` BEGIN/END marker regex (lazy with required terminator),
+and the `https?://[^\s]+` URL extractors. Only the global `<think>` strip was
+quadratic.

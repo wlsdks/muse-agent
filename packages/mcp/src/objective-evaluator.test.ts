@@ -173,3 +173,20 @@ describe("createMessagingObjectiveActuator", () => {
     expect(posted).toBe(true);
   });
 });
+
+describe("parseObjectiveVerdict — <think> stripping is linear (no ReDoS)", () => {
+  it("strips complete blocks, case-insensitively, and keeps an unclosed tail", () => {
+    expect(parseObjectiveVerdict('<think>reasoning</think>{"outcome":"met"}').outcome).toBe("met");
+    expect(parseObjectiveVerdict('<Think>x</THINK>{"outcome":"met"}').outcome).toBe("met");
+    // unclosed <think> must not swallow the JSON that follows
+    expect(parseObjectiveVerdict('<think>no close {"outcome":"met"}').outcome).toBe("met");
+    expect(parseObjectiveVerdict('<think>a</think>mid<think>b</think>{"outcome":"unmeetable"}').outcome).toBe("unmeetable");
+  });
+
+  it("does not blow up on many unclosed <think> tags (was O(n²))", () => {
+    const start = Date.now();
+    const verdict = parseObjectiveVerdict("<think>".repeat(200_000));
+    expect(Date.now() - start).toBeLessThan(1000);
+    expect(verdict.outcome).toBe("unmet"); // conservative default, no JSON present
+  });
+});

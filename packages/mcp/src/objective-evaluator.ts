@@ -115,9 +115,32 @@ function balancedJsonCandidates(text: string): string[] {
  * the conservative `unmet` safe default (never crash, never a
  * false `met`/`unmeetable`).
  */
+// Replace each complete <think>…</think> block with a space. A global lazy
+// regex (`/<think>[\s\S]*?<\/think>/g`) is O(n²) on input with many unclosed
+// `<think>` tags — each open triggers a full forward scan that never finds a
+// close — which a repetition-degenerate model can produce. This single linear
+// pass preserves the regex's behaviour (case-insensitive, unclosed open keeps
+// the rest verbatim, non-overlapping pairs).
+function stripThinkBlocks(text: string): string {
+  const lower = text.toLowerCase();
+  let result = "";
+  let index = 0;
+  for (;;) {
+    const open = lower.indexOf("<think>", index);
+    if (open < 0) {
+      return result + text.slice(index);
+    }
+    const close = lower.indexOf("</think>", open + "<think>".length);
+    if (close < 0) {
+      return result + text.slice(index);
+    }
+    result += `${text.slice(index, open)} `;
+    index = close + "</think>".length;
+  }
+}
+
 export function parseObjectiveVerdict(raw: string): ObjectiveEvaluation {
-  const cleaned = raw
-    .replace(/<think>[\s\S]*?<\/think>/giu, " ")
+  const cleaned = stripThinkBlocks(raw)
     .replace(/```[a-zA-Z]*\n?|```/gu, " ");
   let verdict: ObjectiveEvaluation = { outcome: "unmet" };
   for (const candidate of balancedJsonCandidates(cleaned)) {
