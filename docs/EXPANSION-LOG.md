@@ -69,6 +69,7 @@
 | 51 | `f7f4fe33` | deterministic tool-exposure regression guard (eval FAST) | quality infra | 23/23 + eval 3/3 |
 | 52 | `d211357a` | expand live tool battery across domains + wire into eval | quality · eval-driven | **live qwen 12/12** |
 | 53 | `aa9cf95e` | Korean keyword relevance — match agglutinated token by substring | quality · eval-driven · i18n | unit + sweep 25/25 |
+| 54 | `712c3120` | resolve "this <weekday>" dates + arg-quality battery | quality · eval-driven · args | unit + **arg battery found it** |
 
 ### 10-item evaluated backlog — DELIVERED (slices 36-44)
 
@@ -279,6 +280,17 @@ REOPEN. Kept the script as a composite regression check.
   domain with no keyword set). → **Lesson:** when auditing a multi-stage path,
   reproduce EVERY stage (here: planForContext → toolFilter); a measurement that
   skips a stage can both invent work and mask the true defect.
+
+### Next direction (set): tool-ARGUMENT quality
+
+Selection is solid; the next layer is whether the model FILLS args correctly. A
+live arg battery (verify-tool-args.mjs, captures gate args then denies) shows
+core args (title/text/content) fill well and the tools resolve relative dates by
+design — but found "this friday" unresolved (slice 54) and that the model
+sometimes HALLUCINATES optional args (reminders `via` with a fake destination,
+calendar `location`/`notes`). Remaining arg-quality candidates: guard/ignore
+hallucinated action-relevant optional args (esp. a delivery `via` the user never
+gave); broaden date-phrase coverage as the battery finds more.
 
 ### Eval-thread synthesis (slices 45-52): the tool surface, hardened by data
 
