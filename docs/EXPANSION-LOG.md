@@ -46,6 +46,20 @@
 | 28 | `8404db68` | bound active chat history window (Context-Folding) | efficiency · model-path | unit + **live qwen3:8b 2/2 (forget/recall)** |
 | 29 | `669d6757` | validate required tool args before execute (deterministic repair) | reliability · model-path | unit + agent-core integration + live |
 | 30 | `d1b81f7c` | lossless tool-arg type coercion before execute | reliability · model-path | unit + agent-core integration + live |
+| 31 | `810e396a` | add missing "memory" domain keywords → episode/pattern tools reachable | reliability · model-path | unit + **live qwen selects episode.search** |
+
+### Efficiency audit correction + a real bug it surfaced (slice 31)
+
+The slice-26-28 audit first measured tool exposure WITHOUT the agent-runtime
+toolFilter and reported "~28 tools/turn, big unrealized lever." Re-measuring WITH
+toolFilter showed the truth: real exposure is **~6-8 of 79** (planForContext
+relevance → toolFilter domain gating) — already within ≤5-7, so the planned
+keyword-coverage sweep was NOT necessary. But the re-measure found a genuine
+defect: `domain: "memory"` tools (episode/pattern, 9) had no keyword set in
+DEFAULT_DOMAIN_KEYWORDS → gated behind a nonexistent list → NEVER exposed. Added
+the set; live qwen now selects episode.search on a recall prompt. Lesson: measure
+the FULL pipeline before concluding — a partial measurement nearly drove an
+unnecessary 48-tool sweep and hid the real one-line bug.
 
 ### Reliability from 2026 research — deterministic tool-call repair (slices 29-30)
 
@@ -198,6 +212,15 @@ REOPEN. Kept the script as a composite regression check.
   `pnpm --filter <pkg> build` (tsc) is the real gate, and `pnpm check` runs it
   across the monorepo. Don't use `as const` on an expression — annotate the
   binding instead.
+
+- **Measure the FULL pipeline before concluding (slice 31).** An efficiency
+  audit that ran `createWorkspaceToolRoutingPlan` alone showed ~28 tools/turn and
+  a "big unrealized lever"; the real runtime also applies `DefaultToolFilter`
+  (domain gating) AFTER it → actual exposure ~6-8. The partial measurement nearly
+  drove an unnecessary 48-tool keyword sweep AND hid the real one-line bug (a
+  domain with no keyword set). → **Lesson:** when auditing a multi-stage path,
+  reproduce EVERY stage (here: planForContext → toolFilter); a measurement that
+  skips a stage can both invent work and mask the true defect.
 
 ## Reusable patterns (carry these forward)
 
