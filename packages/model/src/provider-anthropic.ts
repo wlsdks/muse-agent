@@ -55,7 +55,25 @@ export function toAnthropicRequest(
   };
 }
 
-function toAnthropicMessage(message: ModelMessage) {
+export function toAnthropicMessage(message: ModelMessage) {
+  // Vision: serialize user-message image attachments into Anthropic image
+  // blocks (base64 source, or a url source). Without this branch the
+  // attachments are silently dropped (the reason vision was declared false).
+  if (message.role === "user" && message.attachments && message.attachments.length > 0) {
+    const content: Array<Record<string, unknown>> = [];
+    if (message.content && message.content.length > 0) {
+      content.push({ text: message.content, type: "text" });
+    }
+    for (const attachment of message.attachments) {
+      if (attachment.dataBase64) {
+        content.push({ source: { data: attachment.dataBase64, media_type: attachment.mimeType, type: "base64" }, type: "image" });
+      } else if (attachment.url) {
+        content.push({ source: { type: "url", url: attachment.url }, type: "image" });
+      }
+    }
+    return { content, role: "user" };
+  }
+
   if (message.role === "tool") {
     return {
       content: [{
@@ -184,10 +202,9 @@ export function anthropicModelCapabilities(modelId: string): ModelCapabilities {
     maxInputTokens: 200_000,
     promptCaching: true,
     reasoning: modelId.includes("opus") || modelId.includes("sonnet"),
-    structuredOutput: false,
-    // Attachments are not serialized to Anthropic image blocks yet
-    // (toAnthropicMessage drops them); declaring true would silently
-    // discard images callers send after checking this flag.
-    vision: false
+    structuredOutput: false
+    // vision: inherited true from defaultRemoteModelCapabilities — now
+    // honoured, since toAnthropicMessage serializes image attachments into
+    // Anthropic image blocks (base64 / url source).
   };
 }
