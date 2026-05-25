@@ -65,6 +65,8 @@
 | 47 | `5c5e29b0` | mutation-intent vocab covers personal writes (add task / set reminder) | quality · eval-driven | **live qwen picks tasks.add** + unit |
 | 48 | `fa76a4e0` | reach notes/reminders write tools (KO 저장해, verb 'remind') | quality · eval-driven | unit + deterministic exposure |
 | 49 | `7a485b99` | swallow stdin EPIPE on failed osascript spawn (Apple flake) | verification integrity | pnpm check exit-0 (was false-red) |
+| 50 | `61e8ec62` | close 4 more reachability gaps (bare 추가 / 리마인드 / inbox) | quality · eval-driven | sweep 23/23 + unit |
+| 51 | `f7f4fe33` | deterministic tool-exposure regression guard (eval FAST) | quality infra | 23/23 + eval 3/3 |
 
 ### 10-item evaluated backlog — DELIVERED (slices 36-44)
 
