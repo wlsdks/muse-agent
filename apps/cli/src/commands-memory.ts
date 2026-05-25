@@ -66,6 +66,37 @@ interface MemoryCommonOptions {
   readonly json?: boolean;
 }
 
+export interface MemorySearchHit {
+  readonly source: "fact" | "preference";
+  readonly key: string;
+  readonly value: string;
+}
+
+/**
+ * Substring-search remembered facts & preferences by key OR value
+ * (case-insensitive). Facts are listed before preferences. Pure — the
+ * command layer loads the maps and renders the hits.
+ */
+export function searchMemoryEntries(
+  facts: Readonly<Record<string, string>>,
+  preferences: Readonly<Record<string, string>>,
+  query: string
+): MemorySearchHit[] {
+  const needle = query.trim().toLowerCase();
+  if (needle.length === 0) {
+    return [];
+  }
+  const match = (k: string, v: string): boolean => k.toLowerCase().includes(needle) || v.toLowerCase().includes(needle);
+  const hits: MemorySearchHit[] = [];
+  for (const [key, value] of Object.entries(facts)) {
+    if (match(key, value)) hits.push({ key, source: "fact", value });
+  }
+  for (const [key, value] of Object.entries(preferences)) {
+    if (match(key, value)) hits.push({ key, source: "preference", value });
+  }
+  return hits;
+}
+
 export function registerMemoryCommands(program: Command, io: ProgramIO, helpers: MemoryCommandHelpers): void {
   const memory = program.command("memory").description("Personal user-memory facts / preferences");
 
@@ -110,6 +141,32 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
       }
       const merged = { userId, ...(payload ?? {}) };
       io.stdout(formatMemoryShow(merged as unknown as Parameters<typeof formatMemoryShow>[0]));
+    });
+
+  memory
+    .command("search")
+    .description("Search remembered facts & preferences by key or value")
+    .argument("<query...>", "Text to search for, e.g. `muse memory search city`")
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …)")
+    .option("--json", "Print the raw hits instead of the formatted list")
+    .action(async (parts: string[], options: MemoryCommonOptions) => {
+      const userId = resolveMemoryUserId(options.user, options.persona);
+      const store = new FileUserMemoryStore();
+      const record = await store.findByUserId(userId);
+      const hits = searchMemoryEntries(record?.facts ?? {}, record?.preferences ?? {}, parts.join(" "));
+      if (options.json) {
+        helpers.writeOutput(io, hits);
+        return;
+      }
+      if (hits.length === 0) {
+        io.stdout(`(no memory entries match "${parts.join(" ").trim()}")\n`);
+        return;
+      }
+      io.stdout(`Memory matches for "${parts.join(" ").trim()}" (${hits.length.toString()}):\n`);
+      for (const h of hits) {
+        io.stdout(`  [${h.source}] ${h.key}: ${h.value}\n`);
+      }
     });
 
   memory
