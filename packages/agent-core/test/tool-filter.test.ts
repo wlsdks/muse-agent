@@ -31,6 +31,17 @@ describe("DefaultToolFilter", () => {
     expect(kept.map((t) => t.definition.name)).not.toContain("muse.calendar.upcoming");
   });
 
+  it("surfaces the tasks domain for the SPACED Korean '할 일' (not just '할일')", () => {
+    const taskTool = tool({ description: "list tasks", domain: "tasks", inputSchema: {}, name: "muse.tasks.search", risk: "read" });
+    // Users write "할 일" with a space; the eval battery caught that the
+    // no-space "할일" keyword missed it (Korean keywords match by substring).
+    expect(filter.filter([taskTool], { userMessage: "내 할 일 목록 보여줘" }).map((t) => t.definition.name)).toEqual(["muse.tasks.search"]);
+    expect(filter.filter([taskTool], { userMessage: "내 할일 정리" }).map((t) => t.definition.name)).toEqual(["muse.tasks.search"]);
+    // and the hyphenated English "to-do" (the bare "todo" keyword missed it)
+    expect(filter.filter([taskTool], { userMessage: "show my to-do list" }).map((t) => t.definition.name)).toEqual(["muse.tasks.search"]);
+    expect(filter.filter([taskTool], { userMessage: "오늘 날씨" })).toEqual([]);
+  });
+
   it("scope hints override keyword matching", () => {
     const kept = filter.filter(tools, { scopeHints: ["calendar"], userMessage: "hi" });
     expect(kept.map((t) => t.definition.name)).toContain("muse.calendar.upcoming");
