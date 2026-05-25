@@ -98,13 +98,11 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
       },
       {
         description:
-          "Append a new task to the named `providerId`. Required: `title`. Optional: `notes`, `tags`. " +
+          "Add a new task. Required: `title`. Optional: `notes`, `tags`, and `providerId` to " +
+          "target a specific backend (from `providers`); omit `providerId` to use your primary list. " +
           "Returns the created task with its provider-scoped id.",
         execute: async (args): Promise<JsonObject> => {
           const providerId = readString(args, "providerId");
-          if (!providerId) {
-            return { error: "providerId is required" };
-          }
           const title = readString(args, "title")?.trim();
           if (!title) {
             return { error: "title is required" };
@@ -117,7 +115,7 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
             ...(tags && tags.length > 0 ? { tags } : {})
           };
           try {
-            const created = await registry.require(providerId).add(input);
+            const created = await registry.requireOrPrimary(providerId).add(input);
             return { task: serializeTask(created) as JsonValue };
           } catch (error) {
             return errorBody(error);
@@ -127,11 +125,11 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
           additionalProperties: false,
           properties: {
             notes: { description: "Optional free-text details for the task.", type: "string" },
-            providerId: { description: "Tasks provider id to add into (from `providers`).", type: "string" },
+            providerId: { description: "Tasks provider id to add into, from `providers` (default: your primary list).", type: "string" },
             tags: { description: "Optional labels for the task.", items: { type: "string" }, type: "array" },
             title: { description: "What the task is, e.g. 'Buy milk' or 'Email the Q3 deck'.", type: "string" }
           },
-          required: ["providerId", "title"],
+          required: ["title"],
           type: "object"
         },
         name: "add",

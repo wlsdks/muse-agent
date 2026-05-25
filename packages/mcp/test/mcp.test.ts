@@ -3511,6 +3511,25 @@ describe("createNotesRegistryMcpServer", () => {
     expect(appended.note.body).toContain("second");
   });
 
+  it("save creates on the primary provider for a fabricated 'default' / omitted providerId, but still requires a real id to UPDATE", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const root = mkdtempSync(`${tmpdir}/muse-notes-multi-sentinel-`);
+    const local = new LocalDirNotesProvider({ notesDir: root });
+    const registry = new NotesProviderRegistry([local]);
+    const conn = createLoopbackMcpConnection(createNotesRegistryMcpServer({ registry }));
+
+    const viaSentinel = await conn.callTool!("save", { body: "a\n", providerId: "default", title: "one.md" }) as { note?: { id: string }; error?: string };
+    expect(viaSentinel.error).toBeUndefined();
+    expect(viaSentinel.note?.id).toBe("one.md");
+
+    const omitted = await conn.callTool!("save", { body: "b\n", title: "two.md" }) as { note?: { id: string }; error?: string };
+    expect(omitted.note?.id).toBe("two.md");
+
+    const updateNoProvider = await conn.callTool!("save", { body: "c\n", id: "one.md", title: "one.md" }) as { error?: string };
+    expect(updateNoProvider.error).toContain("providerId is required to update");
+  });
+
   it("surfaces NotesProviderError with code in the tool response", async () => {
     const registry = new NotesProviderRegistry([new AppleNotesProvider()]);
     const conn = createLoopbackMcpConnection(createNotesRegistryMcpServer({ registry }));
@@ -3742,6 +3761,31 @@ describe("tasks provider abstraction", () => {
       .toMatchObject({ error: expect.stringContaining("id") });
     expect(await conn.callTool!("search", { providerId: "apple-reminders" }))
       .toMatchObject({ error: expect.stringContaining("query") });
+  });
+
+  it("add routes a fabricated 'default' providerId (and an omitted one) to the primary provider", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const join = await import("node:path").then((m) => m.join);
+    const root = mkdtempSync(`${tmpdir}/muse-tasks-multi-sentinel-`);
+    let counter = 0;
+    const local = new LocalFileTasksProvider({
+      file: join(root, "tasks.json"),
+      idFactory: () => `task-${++counter}`,
+      now: () => new Date(2026, 0, 1, 12, 0, 0)
+    });
+    const registry = new TasksProviderRegistry([local]);
+    const conn = createLoopbackMcpConnection(createTasksRegistryMcpServer({ registry }));
+
+    const viaSentinel = await conn.callTool!("add", { providerId: "default", title: "Buy milk" }) as { task?: { providerId: string; title: string }; error?: string };
+    expect(viaSentinel.error).toBeUndefined();
+    expect(viaSentinel.task).toMatchObject({ providerId: "local", title: "Buy milk" });
+
+    const omitted = await conn.callTool!("add", { title: "Walk the dog" }) as { task?: { providerId: string } };
+    expect(omitted.task?.providerId).toBe("local");
+
+    const unknown = await conn.callTool!("add", { providerId: "notion", title: "x" }) as { code?: string; error?: string };
+    expect(unknown.code).toBe("PROVIDER_NOT_FOUND");
   });
 
   it("NotionTasksProvider rejects empty token + empty databaseId at construction", () => {

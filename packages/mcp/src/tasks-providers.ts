@@ -27,6 +27,8 @@
  *     `completedAt` timestamp.
  */
 
+import { isPrimarySentinel } from "./provider-routing.js";
+
 export interface Task {
   readonly id: string;
   readonly providerId: string;
@@ -129,6 +131,18 @@ export class TasksProviderRegistry {
       );
     }
     return provider;
+  }
+
+  requireOrPrimary(providerId: string | undefined): TasksProvider {
+    const trimmed = providerId?.trim();
+    if (trimmed && !isPrimarySentinel(trimmed)) {
+      return this.require(trimmed);
+    }
+    const primary = this.primary();
+    if (!primary) {
+      throw new TasksProviderError("", "NO_PROVIDERS", "No tasks provider is registered");
+    }
+    return primary;
   }
 }
 

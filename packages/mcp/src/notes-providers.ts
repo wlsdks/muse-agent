@@ -21,6 +21,8 @@
  *     failures. Validation errors throw `NotesValidationError`.
  */
 
+import { isPrimarySentinel } from "./provider-routing.js";
+
 export interface NotesEntry {
   readonly id: string;
   readonly providerId: string;
@@ -172,6 +174,18 @@ export class NotesProviderRegistry {
       );
     }
     return provider;
+  }
+
+  requireOrPrimary(providerId: string | undefined): NotesProvider {
+    const trimmed = providerId?.trim();
+    if (trimmed && !isPrimarySentinel(trimmed)) {
+      return this.require(trimmed);
+    }
+    const primary = this.primary();
+    if (!primary) {
+      throw new NotesProviderError("", "NO_PROVIDERS", "No notes provider is registered");
+    }
+    return primary;
   }
 }
 

@@ -176,13 +176,11 @@ export function createNotesRegistryMcpServer(options: NotesRegistryMcpServerOpti
       },
       {
         description:
-          "Save a note via the registry. With `id`, updates the existing note (set `overwrite: true` to replace body). " +
-          "Without `id`, creates a new note. `providerId` is required.",
+          "Save a note via the registry. With `id`, updates the existing note (set `overwrite: true` to replace body) — " +
+          "`providerId` is required there to name which backend holds it. Without `id`, creates a new note; omit " +
+          "`providerId` to use your primary notes provider.",
         execute: async (args): Promise<JsonObject> => {
           const providerId = readString(args, "providerId");
-          if (!providerId) {
-            return { error: "providerId is required" };
-          }
           const title = readString(args, "title")?.trim();
           const body = readString(args, "body");
           if (!title) {
@@ -192,6 +190,9 @@ export function createNotesRegistryMcpServer(options: NotesRegistryMcpServerOpti
             return { error: "body is required" };
           }
           const id = readString(args, "id");
+          if (id && !providerId) {
+            return { error: "providerId is required to update an existing note" };
+          }
           const folder = readString(args, "folder");
           const overwrite = args["overwrite"] === true;
           const input: NotesSaveInput = {
@@ -202,7 +203,8 @@ export function createNotesRegistryMcpServer(options: NotesRegistryMcpServerOpti
             ...(overwrite ? { overwrite } : {})
           };
           try {
-            const saved = await registry.require(providerId).save(input);
+            const provider = id ? registry.require(providerId as string) : registry.requireOrPrimary(providerId);
+            const saved = await provider.save(input);
             return { note: serializeContent(saved) as JsonValue };
           } catch (error) {
             return errorBody(error);
@@ -215,10 +217,10 @@ export function createNotesRegistryMcpServer(options: NotesRegistryMcpServerOpti
             folder: { description: "Folder / notebook to save into, e.g. 'journal'.", type: "string" },
             id: { description: "Existing note id to update; omit to create a new note.", type: "string" },
             overwrite: { description: "True to replace an existing note's body instead of erroring.", type: "boolean" },
-            providerId: { description: "Notes provider id (default: the primary provider).", type: "string" },
+            providerId: { description: "Notes provider id; required only when updating by `id` (default on create: your primary provider).", type: "string" },
             title: { description: "Note title, e.g. 'Meeting notes 2026-05-23'.", type: "string" }
           },
-          required: ["providerId", "title", "body"],
+          required: ["title", "body"],
           type: "object"
         },
         name: "save",
