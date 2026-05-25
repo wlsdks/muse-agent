@@ -50,6 +50,7 @@
 | 32 | `545ebb3e` | ModelRequest.responseFormat → native structured output (Ollama `format`) | reliability · model-path | unit + **live qwen schema-valid JSON** |
 | 33 | `c644ce9c` | reflection uses native structured output (guaranteed JSON) | reliability · model-path | unit + **live battery 3/3** |
 | 34 | `1d902216` | auto-memory extraction uses native structured output | reliability · model-path | unit + **live battery 9/9** |
+| 35 | `e48ed1a5` | runtime auto-extract hook uses native structured output | reliability · model-path | unit + pnpm check |
 
 ### Modern direction: native structured output (constrained decoding) — epic in progress
 
@@ -60,9 +61,13 @@ structured output — `structuredOutput` was a DECLARED-but-unwired capability;
 every JSON path emitted free text + parse-and-hoped (extractJsonObject). Slice 32
 wired ModelRequest.responseFormat → Ollama native `format` (JSON Schema =
 constrained decoding, guaranteed-valid JSON); slice 33 adopted it in reflection.
-Slice 34 adopted it in auto-memory too (both daily-driver JSON paths now
-guaranteed on Ollama). NEXT (lower priority — cloud, fallback already safe):
-OpenAI Responses `text.format` json_schema; Anthropic stays parser+validator.
+Slice 34 adopted it in chat auto-memory, slice 35 in the runtime auto-extract
+hook — all three local-model JSON paths (reflection + both auto-memory paths)
+now constrained on Ollama. Epic COMPLETE for the local-first goal. Cloud
+structured output (OpenAI Responses / Anthropic) is deliberately NOT wired: the
+target is a local open-source model (qwen), cloud stays safe via the parser
+fallback — wiring paid-LLM-only features would be off-goal. (See the
+project-local-first memory note.)
 
 ### Internal runtime optimizations already in place (inventory, for reference)
 prompt-budget + step-budget (bound prompt/steps), tool-call-deduplicator,
