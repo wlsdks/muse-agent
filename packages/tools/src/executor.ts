@@ -72,14 +72,36 @@ export class ToolExecutor {
   }
 
   private failed(request: ToolCallRequest, error: string): ToolExecutionResult {
+    // Turn a raw failure into a guided hint so the model's bounded retry is
+    // informed, not blind (Repairing Tool Calls via Reflection, arXiv:2510.17874).
+    const hint = toolErrorHint(error);
     return {
       error,
       id: request.id,
       name: request.name,
-      output: error,
+      output: hint ? `${error}\n(hint: ${hint})` : error,
       status: "failed"
     };
   }
+}
+
+/**
+ * Map a tool failure to an actionable retry hint, or undefined when none fits.
+ * Deterministic (no model): auth failures won't recover on retry, transient /
+ * network / rate-limit may, a not-found needs the identifier rechecked.
+ */
+export function toolErrorHint(error: string): string | undefined {
+  const e = error.toLowerCase();
+  if (/\b(401|403)\b|unauthor|forbidden|invalid (api )?key|auth\w*\s*error|auth(entication)?\s+(failed|rejected)|(token|session|credential|key)\s*(is\s+)?expired|expired\s+(token|session|credential)|re-?auth/u.test(e)) {
+    return "this looks like an auth failure — retrying won't help; tell the user to re-authenticate.";
+  }
+  if (/\b(429|502|503|504)\b|timeout|timed out|econnrefused|enotfound|etimedout|network|fetch failed|rate.?limit|temporarily unavailable/u.test(e)) {
+    return "this looks transient (network/rate-limit) — you may retry once, otherwise tell the user the service is briefly unavailable.";
+  }
+  if (/\b404\b|not found|no such|does not exist|unknown (id|entity|resource)/u.test(e)) {
+    return "the target wasn't found — re-check the identifier/argument before retrying.";
+  }
+  return undefined;
 }
 
 function readIdempotencyKey(request: ToolCallRequest): string | undefined {

@@ -7,6 +7,7 @@ import {
   createRustRunnerTool,
   createDefaultToolExposurePolicy,
   coerceToolArguments,
+  toolErrorHint,
   createWorkspaceToolRoutingPlan,
   validateRequiredToolArguments,
   attachReadStreamErrorAbsorber,
@@ -61,6 +62,29 @@ describe("ToolRegistry", () => {
 
   it("rejects duplicate names", () => {
     expect(() => new ToolRegistry([readTool, readTool])).toThrow(ToolRegistryError);
+  });
+});
+
+describe("toolErrorHint", () => {
+  it("classifies auth / transient / not-found failures, and leaves the rest hint-less", () => {
+    expect(toolErrorHint("Error: 401 Unauthorized")).toMatch(/re-authenticate/);
+    expect(toolErrorHint("GmailAuthError: token expired")).toMatch(/re-authenticate/);
+    expect(toolErrorHint("Error: ETIMEDOUT connecting to host")).toMatch(/transient/);
+    expect(toolErrorHint("HTTP 503 Service Unavailable")).toMatch(/transient/);
+    expect(toolErrorHint("Error: 404 not found")).toMatch(/wasn't found/);
+    expect(toolErrorHint("Error: something weird happened")).toBeUndefined();
+  });
+
+  it("a throwing tool's failure carries the guided hint in its output", async () => {
+    const boom: MuseTool = {
+      definition: { description: "boom", inputSchema: { type: "object" }, name: "boom", risk: "read" },
+      execute: () => { throw new Error("503 Service Unavailable"); }
+    };
+    const executor = new ToolExecutor({ registry: new ToolRegistry([boom]) });
+    const result = await executor.execute({ arguments: {}, context: { runId: "r" }, id: "c", name: "boom" });
+    expect(result.status).toBe("failed");
+    expect(String(result.output)).toContain("(hint:");
+    expect(String(result.output)).toMatch(/transient/);
   });
 });
 

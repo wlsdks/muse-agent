@@ -793,7 +793,7 @@ export {
   type RustRunnerToolOptions
 } from "./runner.js";
 
-export { ToolExecutor } from "./executor.js";
+export { ToolExecutor, toolErrorHint } from "./executor.js";
 
 export {
   createSkillListTool,
