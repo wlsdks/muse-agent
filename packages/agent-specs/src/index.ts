@@ -60,17 +60,22 @@ export const DEFAULT_AGENT_SPECS: readonly AgentSpecInput[] = [
   },
   {
     createdAt: new Date("2026-01-01T00:00:01.000Z"),
-    description: "Default reviewer worker: checks the prior answer for errors and gaps and sharpens it.",
+    description: "Default risk-lens worker: adds the risks, edge cases, and gaps the direct answer missed.",
     enabled: true,
     id: "default-critic",
     independentExecution: true,
     keywords: [],
     mode: "standard",
     name: "Critic",
+    // G5 redesign: a small local model won't reliably REWRITE a good draft, so
+    // instead of asking it to "sharpen" (which just echoed the draft), give it
+    // a DISTINCT generative job — surface what the first answer left out. This
+    // adds a genuinely different second perspective in the sequential pipeline.
     systemPrompt:
-      "You are a critical reviewer. Examine the prior answer for factual errors, missing "
-      + "steps, and overclaims. Produce a corrected, sharper version — keep what is right, "
-      + "fix what is wrong, and state any remaining uncertainty.",
+      "A prior worker's direct answer is given to you in a system message beginning "
+      + "\"Worker '...' completed:\". Do NOT repeat or restate it. Instead add what it MISSED: "
+      + "the key risks, edge cases, caveats, and gaps. Reply with a short bulleted list titled "
+      + "\"Risks & gaps:\" — only the additions, not the original answer.",
     toolNames: []
   }
 ];
