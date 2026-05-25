@@ -56,6 +56,13 @@ export function formatCurrentContextLine(now: Date = new Date()): string {
   return `Current local context: ${dateStr} ${timeStr} ${dayOfWeek} (${tz}).`;
 }
 
+/** Max facts / plain-preferences rendered into the persona (env override,
+ * default 40, floor 1). Bounds the per-turn system-prompt size as memory grows. */
+export function personaEntryCap(): number {
+  const raw = Number(process.env.MUSE_PERSONA_MAX_ENTRIES);
+  return Number.isFinite(raw) && raw >= 1 ? Math.trunc(raw) : 40;
+}
+
 export function buildMusePersona(
   memory: JarvisPersonaMemory,
   userId: string,
@@ -84,6 +91,15 @@ export function buildMusePersona(
   // filter here drops entries with an empty summary so a half-formed
   // upstream blob can't print a "  - 2026-05-13: " line with no body.
   const episodes = (memory.episodes ?? []).filter((entry) => entry.summary.trim().length > 0);
+  // Bound the persona so a long-lived memory (auto-extract appends facts every
+  // session) can't grow the per-turn system prompt without limit on local Qwen.
+  // Keep the freshest N (tail — auto-extract appends chronologically); vetoes/
+  // goals stay uncapped (few + safety-critical), topics/episodes capped already.
+  const maxEntries = personaEntryCap();
+  const factsShown = facts.length > maxEntries ? facts.slice(-maxEntries) : facts;
+  const factsDropped = facts.length - factsShown.length;
+  const prefsShown = plainPrefs.length > maxEntries ? plainPrefs.slice(-maxEntries) : plainPrefs;
+  const prefsDropped = plainPrefs.length - prefsShown.length;
   if (
     facts.length === 0
     && plainPrefs.length === 0
@@ -111,12 +127,14 @@ export function buildMusePersona(
   if (facts.length > 0) {
     lines.push("");
     lines.push("Facts the user has shared:");
-    for (const [key, value] of facts) lines.push(`  - ${key}: ${value}`);
+    for (const [key, value] of factsShown) lines.push(`  - ${key}: ${value}`);
+    if (factsDropped > 0) lines.push(`  - …(+${factsDropped} older facts not shown)`);
   }
   if (plainPrefs.length > 0) {
     lines.push("");
     lines.push("Preferences:");
-    for (const [key, value] of plainPrefs) lines.push(`  - ${key}: ${value}`);
+    for (const [key, value] of prefsShown) lines.push(`  - ${key}: ${value}`);
+    if (prefsDropped > 0) lines.push(`  - …(+${prefsDropped} older preferences not shown)`);
   }
   if (vetoes.length > 0) {
     lines.push("");

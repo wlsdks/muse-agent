@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
+import { buildMusePersona, formatCurrentContextLine, personaEntryCap } from "./muse-persona.js";
 
 describe("formatCurrentContextLine", () => {
   it("emits a single 'Current local context: YYYY-MM-DD HH:MM Weekday (TZ).' line", () => {
@@ -279,5 +279,50 @@ describe("buildMusePersona", () => {
     // Untagged entry stays clean — no empty `[]` suffix.
     expect(prompt).toContain("  - 2026-05-11: No tags here.");
     expect(prompt).not.toContain("No tags here. [");
+  });
+});
+
+describe("buildMusePersona — persona size cap (performance)", () => {
+  const manyFacts = (n: number): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (let i = 0; i < n; i += 1) out[`fact${i}`] = `value${i}`;
+    return out;
+  };
+
+  it("renders all facts when under the cap, no truncation note", () => {
+    const out = buildMusePersona({ facts: { city: "Busan", name: "Jinan" }, preferences: {} }, "u") ?? "";
+    expect(out).toContain("name: Jinan");
+    expect(out).not.toContain("older facts not shown");
+  });
+
+  it("caps to the freshest N (tail) and notes the dropped count", () => {
+    const out = buildMusePersona({ facts: manyFacts(100), preferences: {} }, "u") ?? "";
+    const cap = personaEntryCap();
+    expect(out).toContain(`(+${100 - cap} older facts not shown)`);
+    expect(out).toContain("fact99: value99"); // newest kept
+    expect(out).not.toContain("fact0: value0"); // oldest dropped
+    expect(out.split("\n").filter((l) => /^ {2}- fact\d+:/u.test(l)).length).toBe(cap);
+  });
+
+  it("honours MUSE_PERSONA_MAX_ENTRIES", () => {
+    const prev = process.env.MUSE_PERSONA_MAX_ENTRIES;
+    process.env.MUSE_PERSONA_MAX_ENTRIES = "5";
+    try {
+      expect(personaEntryCap()).toBe(5);
+      const out = buildMusePersona({ facts: manyFacts(12), preferences: {} }, "u") ?? "";
+      expect(out).toContain("(+7 older facts not shown)");
+      expect(out.split("\n").filter((l) => /^ {2}- fact\d+:/u.test(l)).length).toBe(5);
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_PERSONA_MAX_ENTRIES;
+      else process.env.MUSE_PERSONA_MAX_ENTRIES = prev;
+    }
+  });
+
+  it("does NOT cap vetoes (safety-critical, kept whole)", () => {
+    const preferences: Record<string, string> = {};
+    for (let i = 0; i < 60; i += 1) preferences[`veto:v${i}`] = `no${i}`;
+    const out = buildMusePersona({ facts: {}, preferences }, "u") ?? "";
+    expect(out).toContain("v0: no0");
+    expect(out).toContain("v59: no59");
   });
 });
