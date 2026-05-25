@@ -99,9 +99,14 @@ diagnostic provider.
    `isApiUnreachable` (shared helper in `program-helpers.ts`), matching
    `today`/`status`. TDD: `commands-api-fallback.test.ts` (tasks + remind);
    notes/memory reuse the same wrapper over their existing `--local` readers.
-4. **Backfill tests.** **Partly done** — `InMemorySkillRegistry` now covered
-   (`skill-registry.test.ts`). The 18 untested CLI commands remain open (bulk,
-   mechanical — a follow-up sweep).
+4. **Backfill tests.** **Largely done** — `InMemorySkillRegistry`
+   (`skill-registry.test.ts`) plus genuine behavior tests for the logic-bearing
+   untested CLI commands: `import.isSafeMuseEntry` (path-traversal safety),
+   `session` duration/lock parsing, `maintenance` prune planners, `show` terminal
+   encoding, `trust.groupToolsByDomain`. The remaining untested commands
+   (`analytics`/`cost`/`latency`/`metrics`/`voice`/`setup-voice`/`specs`/`tools-admin`)
+   are thin API-formatter wrappers with no exported pure logic — dedicated tests
+   would be low-signal; left as-is.
 5. **README 42→51.** **✅ DONE** — also corrected the stale `~789`→`~4,460` test
    count.
 
