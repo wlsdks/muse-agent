@@ -72,8 +72,7 @@ describe("MuseChatApp render — slash command echo + output", () => {
     stdin.write("/memory");
     await tick();
     stdin.write("\r");
-    await tick(120);
-    const frame = lastFrame() ?? "";
+    const frame = await waitForFrame(lastFrame, ["› /memory", "What I remember about you", "user_name: jinan"]);
     unmount();
     expect(frame).toContain("› /memory"); // the echo of what was typed
     expect(frame).toContain("What I remember about you"); // the command result, in-transcript
@@ -95,11 +94,12 @@ describe("MuseChatApp render — slash command echo + output", () => {
     const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({ streamWithTools })));
     await tick();
     stdin.write("/tools"); await tick(); stdin.write("\r"); await tick(80); // enable tools
-    stdin.write("email bob"); await tick(); stdin.write("\r"); await tick(120);
-    const gated = lastFrame() ?? "";
+    stdin.write("email bob"); await tick(); stdin.write("\r");
+    const gated = await waitForFrame(lastFrame, ["Outbound action — email_send", "to: bob@x.com"]);
     expect(gated).toContain("Outbound action — email_send");
     expect(gated).toContain("to: bob@x.com");
-    stdin.write("y"); await tick(150); // approve
+    stdin.write("y"); // approve
+    for (let i = 0; i < 100 && decision === undefined; i += 1) await tick(20);
     unmount();
     expect(decision).toBe(true);
   });
@@ -110,8 +110,8 @@ describe("MuseChatApp render — slash command echo + output", () => {
       rememberFact: async (key: string, value: string) => { saved = { key, value }; return true; }
     })));
     await tick();
-    stdin.write("/remember city=Seoul"); await tick(); stdin.write("\r"); await tick(120);
-    const frame = lastFrame() ?? "";
+    stdin.write("/remember city=Seoul"); await tick(); stdin.write("\r");
+    const frame = await waitForFrame(lastFrame, ["› /remember city=Seoul", "✓ Remembered city: Seoul"]);
     unmount();
     expect(frame).toContain("› /remember city=Seoul");
     expect(frame).toContain("✓ Remembered city: Seoul");
@@ -124,8 +124,8 @@ describe("MuseChatApp render — slash command echo + output", () => {
       setPreference: async (key: string, value: string) => { saved = { key, value }; return true; }
     })));
     await tick();
-    stdin.write("/pref reply_style=concise"); await tick(); stdin.write("\r"); await tick(120);
-    const frame = lastFrame() ?? "";
+    stdin.write("/pref reply_style=concise"); await tick(); stdin.write("\r");
+    const frame = await waitForFrame(lastFrame, ["› /pref reply_style=concise", "✓ Preference reply_style: concise"]);
     unmount();
     expect(frame).toContain("› /pref reply_style=concise");
     expect(frame).toContain("✓ Preference reply_style: concise");
@@ -138,8 +138,8 @@ describe("MuseChatApp render — slash command echo + output", () => {
       rememberFact: async () => true
     })));
     await tick();
-    stdin.write("/remember city=Busan"); await tick(); stdin.write("\r"); await tick(140);
-    const frame = lastFrame() ?? "";
+    stdin.write("/remember city=Busan"); await tick(); stdin.write("\r");
+    const frame = await waitForFrame(lastFrame, ["✓ Updated city: Seoul → Busan"]);
     unmount();
     expect(frame).toContain("✓ Updated city: Seoul → Busan");
   });
@@ -152,15 +152,15 @@ describe("MuseChatApp render — slash command echo + output", () => {
     });
     // unique substring "name" → user_name
     const a = render(React.createElement(MuseChatApp, props));
-    await tick(); a.stdin.write("/forget name"); await tick(); a.stdin.write("\r"); await tick(140);
-    expect(a.lastFrame() ?? "").toContain('✓ Forgot "user_name".');
+    await tick(); a.stdin.write("/forget name"); await tick(); a.stdin.write("\r");
+    expect(await waitForFrame(a.lastFrame, ['✓ Forgot "user_name".'])).toContain('✓ Forgot "user_name".');
     a.unmount();
     expect(forgotten).toEqual(["user_name"]);
     // ambiguous "cit" → matches city + work_city, no exact → asks, forgets nothing
     forgotten.length = 0;
     const b = render(React.createElement(MuseChatApp, props));
-    await tick(); b.stdin.write("/forget cit"); await tick(); b.stdin.write("\r"); await tick(140);
-    const fb = b.lastFrame() ?? "";
+    await tick(); b.stdin.write("/forget cit"); await tick(); b.stdin.write("\r");
+    const fb = await waitForFrame(b.lastFrame, ["matches 2", "Be more specific"]);
     b.unmount();
     expect(fb).toContain("matches 2");
     expect(fb).toContain("Be more specific");
@@ -173,8 +173,7 @@ describe("MuseChatApp render — slash command echo + output", () => {
     })));
     await tick();
     stdin.write("\u001B[A"); // up arrow
-    await tick(80);
-    const frame = lastFrame() ?? "";
+    const frame = await waitForFrame(lastFrame, ["what's due today?"]);
     unmount();
     expect(frame).toContain("what's due today?");
   });
@@ -184,8 +183,8 @@ describe("MuseChatApp render — slash command echo + output", () => {
       autoLearn: async () => "📝 remembered: home_city = Busan (/forget <key> to undo)"
     })));
     await tick();
-    stdin.write("by the way I live in Busan"); await tick(); stdin.write("\r"); await tick(160);
-    const frame = lastFrame() ?? "";
+    stdin.write("by the way I live in Busan"); await tick(); stdin.write("\r");
+    const frame = await waitForFrame(lastFrame, ["📝 remembered: home_city = Busan"]);
     unmount();
     expect(frame).toContain("📝 remembered: home_city = Busan");
   });
@@ -198,8 +197,8 @@ describe("MuseChatApp render — slash command echo + output", () => {
         { id: "r2", text: "Pay rent", dueAt: due }
       ]
     })));
-    await tick(1900); // let the idle proactive tick fire (first at ~1500ms)
-    const frame = lastFrame() ?? "";
+    // The idle proactive tick first fires at ~1500ms; poll up to 3s for it.
+    const frame = await waitForFrame(lastFrame, ["📌 2 things need you:", "Dentist", "Pay rent"], 3000);
     unmount();
     expect(frame).toContain("📌 2 things need you:");
     expect(frame).toContain("Dentist");
@@ -211,8 +210,7 @@ describe("MuseChatApp render — slash command echo + output", () => {
       recap: "♪ good morning\n\nToday (next 24h)",
       recapRole: "command"
     })));
-    await tick(80);
-    const frame = lastFrame() ?? "";
+    const frame = await waitForFrame(lastFrame, ["good morning", "Today (next 24h)"]);
     unmount();
     expect(frame).toContain("good morning");
     expect(frame).toContain("Today (next 24h)");
@@ -274,8 +272,8 @@ describe("MuseChatApp render — plain chat + editing", () => {
       onCommit: (user: string, assistant: string) => { committed = { user, assistant }; }
     })));
     await tick();
-    stdin.write("hi muse"); await tick(); stdin.write("\r"); await tick(160);
-    const frame = lastFrame() ?? "";
+    stdin.write("hi muse"); await tick(); stdin.write("\r");
+    const frame = await waitForFrame(lastFrame, ["› hi muse", "Hello there."]);
     unmount();
     expect(frame).toContain("› hi muse");
     expect(frame).toContain("Hello there.");
@@ -288,8 +286,8 @@ describe("MuseChatApp render — plain chat + editing", () => {
     // is the acknowledgement line.
     const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps()));
     await tick();
-    stdin.write("/new"); await tick(); stdin.write("\r"); await tick(120);
-    const frame = lastFrame() ?? "";
+    stdin.write("/new"); await tick(); stdin.write("\r");
+    const frame = await waitForFrame(lastFrame, ["Started a new conversation"]);
     unmount();
     expect(frame).toContain("Started a new conversation");
   });

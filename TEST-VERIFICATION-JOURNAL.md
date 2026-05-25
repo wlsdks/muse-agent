@@ -1051,3 +1051,14 @@ command output (esp. /memory loading user memory) wasn't in the frame within
 20ms until all needles appear or a 2s bound (fast when idle, robust under
 load). Timing-only; assertions unchanged. Full sweep now green: apps/cli 1158
 passed, 26 pkgs / 4567 passed, lint 0/0, rust 6/6, eval:tools 24/24.
+
+## Round 16 — preemptively poll-ify the rest of chat-ink-render (flaky-class prevention)
+
+Round 15 fixed the one demonstrated flake; this converts the remaining
+fixed-`tick(N)`-then-assert blocks in the same file (echo, approval box,
+/remember, /pref, supersede, /forget ×2, ↑-recall, auto-learn, proactive,
+launch brief, plain-chat, /new) to `waitForFrame` polling. Same async-render
+contention class — fast when idle, robust under the full-suite load — so the
+whole file is now flake-resistant, not just the one case that happened to fail.
+Mid-flow setup ticks (e.g. enabling /tools before typing) are left as-is.
+Isolated 36/36 ×2; full sweep green (apps/cli 1158, 26 pkgs / 4568, lint 0/0).
