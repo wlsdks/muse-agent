@@ -626,8 +626,17 @@ async function pickTierModels(fastModel) {
       .map((m) => m?.name)
       .filter((n) => typeof n === "string" && /qwen/i.test(n))
       .map((n) => `ollama/${n}`);
-    const heavy = qwens.find((m) => m !== fastModel);
-    return heavy ? { fast: fastModel, heavy } : undefined;
+    // Auto-detection grabs ANY other local qwen as the heavy tier — which on
+    // a machine that also has a very large qwen (e.g. a 24GB MoE) makes
+    // smoke:live unrunnable (the heavy model never warms up in time). An
+    // explicit MUSE_SMOKE_LIVE_HEAVY_MODEL override pins the heavy tier; when
+    // it equals the fast model (or no distinct model exists) the tiered check
+    // is skipped — not failed — so the rest of the live round-trip still runs.
+    const overrideHeavy = process.env.MUSE_SMOKE_LIVE_HEAVY_MODEL?.trim();
+    const heavy = overrideHeavy
+      ? (overrideHeavy.startsWith("ollama/") ? overrideHeavy : `ollama/${overrideHeavy}`)
+      : qwens.find((m) => m !== fastModel);
+    return heavy && heavy !== fastModel ? { fast: fastModel, heavy } : undefined;
   } catch {
     return undefined;
   }
