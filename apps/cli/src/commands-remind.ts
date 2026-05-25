@@ -38,6 +38,7 @@ import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
 import { formatLocalDateTime as shortDateTime } from "./human-formatters.js";
+import { isApiUnreachable } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
 /**
@@ -181,21 +182,33 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       // Throws before dispatch so a typo'd --status doesn't return
       // a silently-wrong "pending" list.
       assertReminderStatusInput(options.status);
-      let payload: { reminders: ReadonlyArray<Record<string, unknown>>; status: string; total: number };
-      if (options.local) {
+      type ReminderListPayload = { reminders: ReadonlyArray<Record<string, unknown>>; status: string; total: number };
+      const readLocalReminders = async (): Promise<ReminderListPayload> => {
         const file = localRemindersFile();
         const status = readReminderStatusFilter(options.status);
         const reminders = await readReminders(file);
         const filtered = filterReminders(reminders, status, () => new Date());
         const sorted = [...filtered].sort(compareRemindersByDueAt);
-        payload = {
+        return {
           reminders: sorted.map(serializeReminder) as ReadonlyArray<Record<string, unknown>>,
           status,
           total: sorted.length
         };
+      };
+      let payload: ReminderListPayload;
+      if (options.local) {
+        payload = await readLocalReminders();
       } else {
         const path = `/api/reminders?status=${encodeURIComponent(options.status)}`;
-        payload = (await helpers.apiRequest(io, command, path)) as typeof payload;
+        try {
+          payload = (await helpers.apiRequest(io, command, path)) as ReminderListPayload;
+        } catch (cause) {
+          if (!isApiUnreachable(cause)) {
+            throw cause;
+          }
+          io.stderr("muse: API not reachable — reading reminders from the local store.\n");
+          payload = await readLocalReminders();
+        }
       }
       if (options.json) {
         helpers.writeOutput(io, payload);

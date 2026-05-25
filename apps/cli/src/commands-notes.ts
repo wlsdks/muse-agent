@@ -19,6 +19,7 @@ import {
   formatNotesList,
   formatProvidersList
 } from "./human-formatters.js";
+import { isApiUnreachable } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
 export interface NotesCommandHelpers {
@@ -92,15 +93,24 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
     .option("--local", "Read directly from the local notes directory instead of the API")
     .option("--json", "Print the raw API response instead of the formatted list")
     .action(async (options: { readonly subdir?: string } & SharedOptions, command) => {
+      const readLocalList = (): Promise<Record<string, unknown>> =>
+        callLocalTool("list", options.subdir ? { subdir: options.subdir } : {});
       let payload: Record<string, unknown>;
       if (options.local) {
-        const args: Record<string, unknown> = options.subdir ? { subdir: options.subdir } : {};
-        payload = await callLocalTool("list", args);
+        payload = await readLocalList();
       } else {
         const path = options.subdir
           ? `/api/notes/list?subdir=${encodeURIComponent(options.subdir)}`
           : "/api/notes/list";
-        payload = (await helpers.apiRequest(io, command, path)) as Record<string, unknown>;
+        try {
+          payload = (await helpers.apiRequest(io, command, path)) as Record<string, unknown>;
+        } catch (cause) {
+          if (!isApiUnreachable(cause)) {
+            throw cause;
+          }
+          io.stderr("muse: API not reachable — reading notes from the local directory.\n");
+          payload = await readLocalList();
+        }
       }
       if (options.json) {
         helpers.writeOutput(io, payload);

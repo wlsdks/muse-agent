@@ -26,7 +26,7 @@ import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
 import { formatMemoryShow } from "./human-formatters.js";
-import { resolvePersona } from "./program-helpers.js";
+import { isApiUnreachable, resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
 function envValue(key: string): string | undefined {
@@ -78,11 +78,10 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
     .option("--json", "Print the raw response instead of the formatted summary")
     .action(async (options: MemoryCommonOptions, command) => {
       const userId = resolveMemoryUserId(options.user, options.persona);
-      let payload: Record<string, unknown> | undefined;
-      if (options.local) {
+      const readLocalMemory = async (): Promise<Record<string, unknown>> => {
         const store = new FileUserMemoryStore();
         const memoryRecord = await store.findByUserId(userId);
-        payload = memoryRecord
+        return memoryRecord
           ? {
               facts: memoryRecord.facts,
               preferences: memoryRecord.preferences,
@@ -90,8 +89,20 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
               updatedAt: memoryRecord.updatedAt.toISOString()
             }
           : { facts: {}, preferences: {}, recentTopics: [] };
+      };
+      let payload: Record<string, unknown> | undefined;
+      if (options.local) {
+        payload = await readLocalMemory();
       } else {
-        payload = (await helpers.apiRequest(io, command, `/api/user-memory/${userId}`)) as Record<string, unknown> | undefined;
+        try {
+          payload = (await helpers.apiRequest(io, command, `/api/user-memory/${userId}`)) as Record<string, unknown> | undefined;
+        } catch (cause) {
+          if (!isApiUnreachable(cause)) {
+            throw cause;
+          }
+          io.stderr("muse: API not reachable — reading memory from the local store.\n");
+          payload = await readLocalMemory();
+        }
       }
       if (options.json) {
         helpers.writeOutput(io, payload ?? {});

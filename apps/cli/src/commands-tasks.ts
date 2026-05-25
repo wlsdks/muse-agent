@@ -25,6 +25,8 @@ import {
 } from "@muse/mcp";
 import type { Command } from "commander";
 
+import { isApiUnreachable } from "./program-helpers.js";
+
 import { closestCommandName } from "./closest-command.js";
 import {
   formatProvidersList,
@@ -103,18 +105,30 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
       // Throws before dispatch so a typo'd --status doesn't return
       // a silently-wrong "open" list.
       assertTaskStatusInput(options.status);
-      let payload: { status: string; tasks: readonly Record<string, unknown>[]; total: number };
-      if (options.local) {
+      type TaskListPayload = { status: string; tasks: readonly Record<string, unknown>[]; total: number };
+      const readLocalTasks = async (): Promise<TaskListPayload> => {
         const file = localTasksFile();
         const status = readTaskStatusFilter(options.status);
         const all = await readTasks(file);
         const filtered = all
           .filter((task) => status === "all" || task.status === status)
           .sort(compareTasksByDueDate);
-        payload = { status, tasks: filtered.map(serializeTask), total: filtered.length };
+        return { status, tasks: filtered.map(serializeTask), total: filtered.length };
+      };
+      let payload: TaskListPayload;
+      if (options.local) {
+        payload = await readLocalTasks();
       } else {
         const path = `/api/tasks?status=${encodeURIComponent(options.status)}`;
-        payload = (await helpers.apiRequest(io, command, path)) as typeof payload;
+        try {
+          payload = (await helpers.apiRequest(io, command, path)) as TaskListPayload;
+        } catch (cause) {
+          if (!isApiUnreachable(cause)) {
+            throw cause;
+          }
+          io.stderr("muse: API not reachable — reading tasks from the local store.\n");
+          payload = await readLocalTasks();
+        }
       }
       const query = options.search?.trim();
       if (query) {

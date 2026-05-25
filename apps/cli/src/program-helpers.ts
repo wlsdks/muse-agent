@@ -352,6 +352,19 @@ export function isNodeError(value: unknown): value is NodeJS.ErrnoException {
   return value instanceof Error && "code" in value;
 }
 
+/**
+ * True when an apiRequest failure means the local API daemon isn't up
+ * (so a read command can fall back to the on-disk stores instead of
+ * hard-failing). Matches the friendly messages `friendlyFetchError`
+ * raises for ECONNREFUSED / ENOTFOUND.
+ */
+export function isApiUnreachable(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.message.includes("Muse API not reachable") || error.message.includes("Muse API host unresolved");
+}
+
 export async function* readSseEvents(response: Response): AsyncIterable<SseEvent> {
   let buffer = "";
 
