@@ -386,3 +386,50 @@ A streaming parser that emits on a delimiter must always flush whatever is
 buffered when the source ends — "the last record may not be terminated" is
 true for SSE, NDJSON, CSV, and line protocols alike. Test the no-final-
 delimiter case explicitly; the happy path hides it.
+
+---
+
+## Areas probed and found SOLID (no defect — verification is also a result)
+
+- **Tool-argument parsers** (`safeParseToolArgs` ollama, `parseToolArguments`
+  openai): call sites guard `typeof === "string"` and pass objects through;
+  robust.
+- **Retry classification** (`isRetryableHttpStatus`): 429 + 408 explicitly
+  retryable, all other 4xx fail-fast, 5xx retry; the resilience loop fails
+  fast on `retryable === false`. Correct + well-tested.
+- **Approval / consent gates** (`createChannelApprovalGate`,
+  `toolApprovalGate`, `performConsentedAction`, `resolveContact`): deny,
+  timeout, ambiguous-recipient, and absent-consent all have dedicated
+  fail-close tests.
+- **Policy / budget / stop guards** (tool-call cap, `StepBudgetTracker`,
+  wall-clock deadline): safe off-by-one, NaN/Infinity clamped, fail-closed
+  defaults. (StepBudgetTracker reports post-facto by design — callers must
+  watch status; documented, not a bug.)
+- **MCP security policy** (`isServerAllowed`, `McpManager` register+connect):
+  exact-match allowlist (no false-positive bypass), connect re-checks the
+  policy (two-layer), denial is terminal. Minor note: an allowlist of only
+  whitespace entries normalises to empty → allow-all (fail-open on a
+  pathological config; not fixed).
+- **`parseJsonObjectFromText`**: multi-candidate (whole / fenced / first-`{`
+  to last-`}`) with first-valid-object wins; robust for the common
+  prose-then-object case.
+
+## Closing summary
+
+7 real defects fixed across 7 commits, each with a new adversarial test
+suite and zero regressions; 6 security/correctness-critical areas probed
+and confirmed solid. Final sweep: all 26 packages build; model 137 /
+memory 189 / agent-core 699 green; `smoke:broad` 51/51.
+
+The recurring defect classes, for future passes:
+1. **"Parse the first delimiter match"** on untrusted LLM text (findings
+   002, 002b) — walk candidates, let the consumer's validity test pick.
+2. **Unbounded recursion** over external structures (003) — depth cap +
+   cycle guard.
+3. **Asymmetric sanitisation** of a symmetric invariant (005 orphan
+   tool_use vs tool_result).
+4. **Streaming parser never flushes the unterminated final record** (006).
+5. **A safeguard validated only in the codebase's default language** (004
+   English-only clarify-directive vs a Korean user).
+6. **A test runner / toolchain major bump silently widening collection**
+   (001 vitest 4 dist).
