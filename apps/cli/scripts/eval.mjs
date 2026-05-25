@@ -25,7 +25,8 @@ const CHECKS = [
   { name: "structured output (schema-valid JSON)", script: "verify-structured-output.mjs", args: [], tier: "live" },
   { name: "memory safety + abstention", script: "verify-memory-safety.mjs", args: [], tier: "live" },
   { name: "reflection synthesis (grounded + neg)", script: "verify-reflection.mjs", args: [], tier: "live" },
-  { name: "tool battery (domains × EN/KO × casual)", script: "verify-tool-battery.mjs", args: [], tier: "live" }
+  { name: "tool battery (domains × EN/KO × casual)", script: "verify-tool-battery.mjs", args: [], tier: "live" },
+  { name: "tool-arg quality (key args filled, no fabricated via)", script: "verify-tool-args.mjs", args: [], tier: "live" }
 ];
 
 function run(check) {

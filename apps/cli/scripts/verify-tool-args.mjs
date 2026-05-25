@@ -42,7 +42,10 @@ async function callArgs(prompt) {
 // check(args) → true when the key args are sensibly filled.
 const cases = [
   { prompt: "add a task to buy milk tomorrow", tool: "muse.tasks.add", check: (a) => /milk/i.test(String(a.title ?? "")) },
-  { prompt: "remind me to call mom at 6pm", tool: "muse.reminders.add", check: (a) => /mom|call/i.test(String(a.text ?? "")) && Boolean(a.dueAt) },
+  // reminders.add: text + dueAt filled, and NO fabricated `via` (slice 55 removed
+  // it from the schema; native structured output should keep the model from
+  // inventing a delivery destination).
+  { prompt: "remind me to call mom at 6pm", tool: "muse.reminders.add", check: (a) => /mom|call/i.test(String(a.text ?? "")) && Boolean(a.dueAt) && a.via === undefined },
   { prompt: "add a meeting with Sam this friday at 3pm", tool: "muse.calendar.add", check: (a) => String(a.title ?? "").length > 0 && Boolean(a.startsAtIso) },
   { prompt: "save a note that the standup moved to friday", tool: "muse.notes.save", check: (a) => /friday|standup|moved/i.test(String(a.content ?? "")) && String(a.path ?? "").length > 0 }
 ];
