@@ -21,11 +21,12 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import {
+  type FactSupersession,
   type UserMemory,
   type UserMemoryStore,
   type UserModel
 } from "./index.js";
-import { mergeRecordTouchLast, sanitizeUserMemoryValue } from "./memory-user-store.js";
+import { appendFactHistory, collectFactSupersessions, mergeRecordTouchLast, sanitizeUserMemoryValue } from "./memory-user-store.js";
 
 export interface FileUserMemoryStoreOptions {
   /**
@@ -47,6 +48,7 @@ type StoredMemory = {
   readonly recentTopics: readonly string[];
   readonly updatedAt: string;
   readonly userModel?: UserModel;
+  readonly factHistory?: readonly { readonly key: string; readonly previousValue: string; readonly replacedAt: string }[];
 };
 
 type StoredFile = { readonly version: 1; readonly users: Record<string, StoredMemory> };
@@ -66,7 +68,10 @@ function memoryToStored(memory: UserMemory): StoredMemory {
     recentTopics: [...memory.recentTopics],
     updatedAt: memory.updatedAt.toISOString(),
     userId: memory.userId,
-    ...(memory.userModel ? { userModel: memory.userModel } : {})
+    ...(memory.userModel ? { userModel: memory.userModel } : {}),
+    ...(memory.factHistory
+      ? { factHistory: memory.factHistory.map((entry) => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: entry.replacedAt.toISOString() })) }
+      : {})
   };
 }
 
@@ -77,7 +82,10 @@ function storedToMemory(stored: StoredMemory): UserMemory {
     recentTopics: [...stored.recentTopics],
     updatedAt: new Date(stored.updatedAt),
     userId: stored.userId,
-    ...(stored.userModel ? { userModel: stored.userModel } : {})
+    ...(stored.userModel ? { userModel: stored.userModel } : {}),
+    ...(stored.factHistory
+      ? { factHistory: stored.factHistory.map((entry): FactSupersession => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: new Date(entry.replacedAt) })) }
+      : {})
   };
 }
 
@@ -99,10 +107,17 @@ export class FileUserMemoryStore implements UserMemoryStore {
 
   async upsertFact(userId: string, key: string, value: string): Promise<UserMemory> {
     const safe = sanitizeUserMemoryValue(value);
-    return this.patch(userId, (existing) => ({
-      ...existing,
-      facts: mergeRecordTouchLast(existing.facts, { [key]: safe })
-    }));
+    return this.patch(userId, (existing) => {
+      const factHistory = appendFactHistory(
+        existing.factHistory,
+        collectFactSupersessions(existing.facts, { [key]: safe }, this.now())
+      );
+      return {
+        ...existing,
+        facts: mergeRecordTouchLast(existing.facts, { [key]: safe }),
+        ...(factHistory ? { factHistory } : {})
+      };
+    });
   }
 
   async upsertPreference(userId: string, key: string, value: string): Promise<UserMemory> {

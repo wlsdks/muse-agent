@@ -271,12 +271,31 @@ export interface KyselyTaskMemoryStoreOptions {
   readonly retentionMs?: number;
 }
 
+/**
+ * One superseded fact value, retained when `upsertFact` overwrites an
+ * existing key with a DIFFERENT value — so Muse keeps temporal depth
+ * ("you moved from Busan to Seoul on …") instead of silently dropping
+ * the prior value. Bounded by `MAX_FACT_HISTORY_ENTRIES`.
+ */
+export interface FactSupersession {
+  readonly key: string;
+  readonly previousValue: string;
+  readonly replacedAt: Date;
+}
+
 export interface UserMemory {
   readonly userId: string;
   readonly facts: Readonly<Record<string, string>>;
   readonly preferences: Readonly<Record<string, string>>;
   readonly recentTopics: readonly string[];
   readonly updatedAt: Date;
+  /**
+   * Append-only log of overwritten fact values (newest last, capped).
+   * Optional for the same reason as `userModel`: the Kysely store has
+   * no column for it yet, so the server path leaves it absent while
+   * the file + in-memory daily-driver stores populate it.
+   */
+  readonly factHistory?: readonly FactSupersession[];
   /**
    * Typed user-model slots (Context Engineering 1.c, rounds 162-164).
    * Optional so legacy callers and the Kysely store (which doesn't

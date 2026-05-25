@@ -448,6 +448,20 @@ export interface MemorySnapshot {
   readonly facts: Readonly<Record<string, string>>;
   readonly preferences: Readonly<Record<string, string>>;
   readonly recentTopics: readonly string[];
+  readonly factHistory?: readonly { readonly key: string; readonly previousValue: string; readonly replacedAt: string }[];
+}
+
+/** The most-recent prior value for `key` from the supersession log, or undefined. */
+export function latestPriorValue(
+  factHistory: MemorySnapshot["factHistory"],
+  key: string
+): { readonly previousValue: string; readonly replacedAt: string } | undefined {
+  if (!factHistory) return undefined;
+  for (let i = factHistory.length - 1; i >= 0; i--) {
+    const entry = factHistory[i];
+    if (entry && entry.key === key) return { previousValue: entry.previousValue, replacedAt: entry.replacedAt };
+  }
+  return undefined;
 }
 
 /**
@@ -469,7 +483,13 @@ export function formatMemoryView(
   const lines: string[] = ["What I remember about you:"];
   if (factKeys.length > 0) {
     lines.push("  Facts:");
-    for (const key of factKeys) lines.push(`    ${key}: ${memory!.facts[key]}`);
+    for (const key of factKeys) {
+      const prior = latestPriorValue(memory!.factHistory, key);
+      const wasSuffix = prior
+        ? ` (was ${stripUntrustedTerminalChars(prior.previousValue)} until ${prior.replacedAt.slice(0, 10)})`
+        : "";
+      lines.push(`    ${key}: ${memory!.facts[key]}${wasSuffix}`);
+    }
   }
   if (prefKeys.length > 0) {
     lines.push("  Preferences:");

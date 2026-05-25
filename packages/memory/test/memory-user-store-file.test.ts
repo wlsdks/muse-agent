@@ -60,6 +60,27 @@ describe("FileUserMemoryStore", () => {
     expect(memory?.facts.a).toBe("1-again");
   });
 
+  it("retains a fact's prior value in factHistory when overwritten with a different value", async () => {
+    const { file, store } = await newStore();
+    await store.upsertFact("stark", "home_city", "Busan");
+    await store.upsertFact("stark", "home_city", "Seoul");
+
+    const reread = new FileUserMemoryStore({ file });
+    const memory = await reread.findByUserId("stark");
+    expect(memory?.facts.home_city).toBe("Seoul");
+    expect(memory?.factHistory).toEqual([
+      { key: "home_city", previousValue: "Busan", replacedAt: new Date("2026-05-12T10:00:00Z") }
+    ]);
+  });
+
+  it("does not log history for a brand-new key or an unchanged re-confirmation", async () => {
+    const { store } = await newStore();
+    await store.upsertFact("stark", "home_city", "Seoul");
+    await store.upsertFact("stark", "home_city", "Seoul");
+    const memory = await store.findByUserId("stark");
+    expect(memory?.factHistory).toBeUndefined();
+  });
+
   it("multi-user isolation — facts for one userId don't leak to another", async () => {
     const { store } = await newStore();
     await store.upsertFact("stark", "name", "Stark");

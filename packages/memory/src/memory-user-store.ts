@@ -18,7 +18,7 @@
 import type { MuseDatabase } from "@muse/db";
 import { redactSecretsInText, type JsonValue } from "@muse/shared";
 import type { Insertable, Kysely } from "kysely";
-import { EMPTY_USER_MODEL, type UserMemory, type UserMemoryStore, type UserModel, type UserModelSlot } from "./index.js";
+import { EMPTY_USER_MODEL, type FactSupersession, type UserMemory, type UserMemoryStore, type UserModel, type UserModelSlot } from "./index.js";
 
 type UserMemoryRow = Record<string, unknown>;
 type UserMemoryInsert = Insertable<MuseDatabase["user_memories"]>;
@@ -77,6 +77,40 @@ export function sanitizeUserMemoryValue(raw: string): string {
  * would drop a fact the user just re-stated merely because its key was
  * inserted long ago. Touch-last makes the tail genuinely most-recently-used.
  */
+/** Cap on retained fact-supersession entries (newest kept). Bounds the
+ * file/in-memory daily-driver store so a fact toggled many times can't
+ * grow the history without limit. */
+export const MAX_FACT_HISTORY_ENTRIES = 50;
+
+/**
+ * The prior values overwritten when `patchFacts` changes already-known keys
+ * to a DIFFERENT value. New keys and unchanged re-confirms yield nothing —
+ * only a genuine value change is a supersession worth keeping.
+ */
+export function collectFactSupersessions(
+  existingFacts: Readonly<Record<string, string>>,
+  patchFacts: Readonly<Record<string, string>>,
+  now: Date
+): FactSupersession[] {
+  const out: FactSupersession[] = [];
+  for (const [key, nextValue] of Object.entries(patchFacts)) {
+    const prior = existingFacts[key];
+    if (prior !== undefined && prior !== nextValue) {
+      out.push({ key, previousValue: prior, replacedAt: now });
+    }
+  }
+  return out;
+}
+
+/** Append new supersessions to the prior log, newest last, capped. */
+export function appendFactHistory(
+  existing: readonly FactSupersession[] | undefined,
+  additions: readonly FactSupersession[]
+): readonly FactSupersession[] | undefined {
+  if (additions.length === 0) return existing;
+  return [...(existing ?? []), ...additions].slice(-MAX_FACT_HISTORY_ENTRIES);
+}
+
 export function mergeRecordTouchLast(
   existing: Readonly<Record<string, string>>,
   patch: Readonly<Record<string, string>>
@@ -141,13 +175,19 @@ export class InMemoryUserMemoryStore implements UserMemoryStore {
     }
   ): UserMemory {
     const existing = this.memories.get(userId);
+    const now = new Date();
+    const factHistory = appendFactHistory(
+      existing?.factHistory,
+      collectFactSupersessions(existing?.facts ?? {}, patch.facts ?? {}, now)
+    );
     const updated: UserMemory = {
       facts: mergeRecordTouchLast(existing?.facts ?? {}, patch.facts ?? {}),
       preferences: mergeRecordTouchLast(existing?.preferences ?? {}, patch.preferences ?? {}),
       recentTopics: existing?.recentTopics ?? [],
-      updatedAt: new Date(),
+      updatedAt: now,
       userId,
-      ...(patch.userModel ? { userModel: patch.userModel } : (existing?.userModel ? { userModel: existing.userModel } : {}))
+      ...(patch.userModel ? { userModel: patch.userModel } : (existing?.userModel ? { userModel: existing.userModel } : {})),
+      ...(factHistory ? { factHistory } : {})
     };
 
     this.memories.set(userId, updated);
@@ -389,7 +429,8 @@ function cloneUserMemory(memory: UserMemory | undefined): UserMemory | undefined
       recentTopics: [...memory.recentTopics],
       updatedAt: memory.updatedAt,
       userId: memory.userId,
-      ...(memory.userModel ? { userModel: cloneUserModel(memory.userModel) } : {})
+      ...(memory.userModel ? { userModel: cloneUserModel(memory.userModel) } : {}),
+      ...(memory.factHistory ? { factHistory: memory.factHistory.map((entry) => ({ ...entry })) } : {})
     }
     : undefined;
 }

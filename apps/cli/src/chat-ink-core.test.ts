@@ -283,6 +283,28 @@ describe("formatMemoryView", () => {
     expect(formatMemoryView(undefined)).toMatch(/haven't remembered anything/);
     expect(formatMemoryView({ facts: {}, preferences: {}, recentTopics: [] })).toMatch(/haven't remembered/);
   });
+  it("shows a fact's superseded prior value (temporal depth) with the change date", () => {
+    const out = formatMemoryView({
+      facts: { home_city: "Seoul" },
+      preferences: {},
+      recentTopics: [],
+      factHistory: [{ key: "home_city", previousValue: "Busan", replacedAt: "2026-05-12T10:00:00.000Z" }]
+    });
+    expect(out).toContain("    home_city: Seoul (was Busan until 2026-05-12)");
+  });
+  it("shows only the MOST RECENT prior when a fact changed twice", () => {
+    const out = formatMemoryView({
+      facts: { job: "pilot" },
+      preferences: {},
+      recentTopics: [],
+      factHistory: [
+        { key: "job", previousValue: "student", replacedAt: "2026-01-01T00:00:00.000Z" },
+        { key: "job", previousValue: "engineer", replacedAt: "2026-05-20T00:00:00.000Z" }
+      ]
+    });
+    expect(out).toContain("    job: pilot (was engineer until 2026-05-20)");
+    expect(out).not.toContain("student");
+  });
 });
 
 describe("buildRecap", () => {

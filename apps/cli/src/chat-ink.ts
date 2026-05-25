@@ -927,7 +927,16 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     if (!memoryStore) return undefined;
     try {
       const m = await Promise.resolve(memoryStore.findByUserId(userId));
-      return m ? { facts: m.facts, preferences: m.preferences, recentTopics: m.recentTopics } : undefined;
+      return m
+        ? {
+          facts: m.facts,
+          preferences: m.preferences,
+          recentTopics: m.recentTopics,
+          ...(m.factHistory
+            ? { factHistory: m.factHistory.map((e) => ({ key: e.key, previousValue: e.previousValue, replacedAt: e.replacedAt.toISOString() })) }
+            : {})
+        }
+        : undefined;
     } catch {
       return undefined;
     }
