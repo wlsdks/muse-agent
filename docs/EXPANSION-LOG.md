@@ -86,6 +86,20 @@
   cleanup loses nothing recoverable. Commit a worktree's untracked-but-wanted
   artifacts onto its branch FIRST, then `remove --force`.
 
+- **3 mcp stdio tests "Connection closed" — a cwd-dependent fixture, exposed
+  by the dist-exclude fix (slice 14 follow-on).** The fixtures spawn
+  `node -e <inline ESM>` that bare-imports `@modelcontextprotocol/sdk`. pnpm
+  keeps that dep only under `packages/mcp/node_modules` (not root-hoisted), and
+  the vitest worker's cwd is the repo ROOT — so the child couldn't resolve the
+  SDK, exited at ~47ms, and the client reported "Connection closed". The 47ms
+  (far under the 5s timeout) was the tell: instant death = spawn/resolve
+  failure, not a timeout. → **Lesson:** an stdio MCP fixture that bare-imports a
+  package MUST pin `cwd` to where that package resolves; never rely on the
+  runner's cwd. Reproduce the spawned child standalone (`node -e …` from the
+  worker's actual cwd) to see the real ERR_MODULE_NOT_FOUND the SDK masks as
+  "Connection closed". Product code was correct — it already honours
+  `config.cwd`; only the fixture omitted it.
+
 ## Reusable patterns (carry these forward)
 
 - **Small-model structured extraction:** OUTPUT-ONLY-JSON + concrete examples +
