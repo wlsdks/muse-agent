@@ -47,6 +47,19 @@ describe("FileUserMemoryStore", () => {
     expect(memory?.preferences).toEqual({});
   });
 
+  it("re-confirming an existing fact moves it to the tail (so the persona's freshest-N cap keeps it)", async () => {
+    const { file, store } = await newStore();
+    await store.upsertFact("stark", "a", "1");
+    await store.upsertFact("stark", "b", "2");
+    await store.upsertFact("stark", "c", "3");
+    await store.upsertFact("stark", "a", "1-again");
+
+    const reread = new FileUserMemoryStore({ file });
+    const memory = await reread.findByUserId("stark");
+    expect(Object.keys(memory?.facts ?? {})).toEqual(["b", "c", "a"]);
+    expect(memory?.facts.a).toBe("1-again");
+  });
+
   it("multi-user isolation — facts for one userId don't leak to another", async () => {
     const { store } = await newStore();
     await store.upsertFact("stark", "name", "Stark");

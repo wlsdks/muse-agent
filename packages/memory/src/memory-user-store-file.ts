@@ -25,7 +25,7 @@ import {
   type UserMemoryStore,
   type UserModel
 } from "./index.js";
-import { sanitizeUserMemoryValue } from "./memory-user-store.js";
+import { mergeRecordTouchLast, sanitizeUserMemoryValue } from "./memory-user-store.js";
 
 export interface FileUserMemoryStoreOptions {
   /**
@@ -101,7 +101,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
     const safe = sanitizeUserMemoryValue(value);
     return this.patch(userId, (existing) => ({
       ...existing,
-      facts: { ...existing.facts, [key]: safe }
+      facts: mergeRecordTouchLast(existing.facts, { [key]: safe })
     }));
   }
 
@@ -109,7 +109,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
     const safe = sanitizeUserMemoryValue(value);
     return this.patch(userId, (existing) => ({
       ...existing,
-      preferences: { ...existing.preferences, [key]: safe }
+      preferences: mergeRecordTouchLast(existing.preferences, { [key]: safe })
     }));
   }
 

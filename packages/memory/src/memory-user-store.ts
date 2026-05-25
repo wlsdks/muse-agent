@@ -69,6 +69,26 @@ export function sanitizeUserMemoryValue(raw: string): string {
   return head;
 }
 
+/**
+ * Merge `patch` into `existing` so any key the patch touches (re-confirmed
+ * OR new) lands at the END of the returned record, untouched keys keeping
+ * their original order. A plain `{ ...existing, ...patch }` updates an
+ * existing key IN PLACE — so the persona builder's "freshest N (tail)" cap
+ * would drop a fact the user just re-stated merely because its key was
+ * inserted long ago. Touch-last makes the tail genuinely most-recently-used.
+ */
+export function mergeRecordTouchLast(
+  existing: Readonly<Record<string, string>>,
+  patch: Readonly<Record<string, string>>
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(existing)) {
+    if (!(key in patch)) result[key] = value;
+  }
+  for (const [key, value] of Object.entries(patch)) result[key] = value;
+  return result;
+}
+
 export class InMemoryUserMemoryStore implements UserMemoryStore {
   private readonly memories = new Map<string, UserMemory>();
 
@@ -122,8 +142,8 @@ export class InMemoryUserMemoryStore implements UserMemoryStore {
   ): UserMemory {
     const existing = this.memories.get(userId);
     const updated: UserMemory = {
-      facts: { ...(existing?.facts ?? {}), ...(patch.facts ?? {}) },
-      preferences: { ...(existing?.preferences ?? {}), ...(patch.preferences ?? {}) },
+      facts: mergeRecordTouchLast(existing?.facts ?? {}, patch.facts ?? {}),
+      preferences: mergeRecordTouchLast(existing?.preferences ?? {}, patch.preferences ?? {}),
       recentTopics: existing?.recentTopics ?? [],
       updatedAt: new Date(),
       userId,
@@ -146,7 +166,7 @@ export class KyselyUserMemoryStore implements UserMemoryStore {
   async upsertFact(userId: string, key: string, value: string): Promise<UserMemory> {
     const existing = await this.findByUserId(userId);
     return this.save({
-      facts: { ...(existing?.facts ?? {}), [key]: sanitizeUserMemoryValue(value) },
+      facts: mergeRecordTouchLast(existing?.facts ?? {}, { [key]: sanitizeUserMemoryValue(value) }),
       preferences: existing?.preferences ?? {},
       recentTopics: existing?.recentTopics ?? [],
       updatedAt: new Date(),
@@ -159,7 +179,7 @@ export class KyselyUserMemoryStore implements UserMemoryStore {
     const existing = await this.findByUserId(userId);
     return this.save({
       facts: existing?.facts ?? {},
-      preferences: { ...(existing?.preferences ?? {}), [key]: sanitizeUserMemoryValue(value) },
+      preferences: mergeRecordTouchLast(existing?.preferences ?? {}, { [key]: sanitizeUserMemoryValue(value) }),
       recentTopics: existing?.recentTopics ?? [],
       updatedAt: new Date(),
       userId,
