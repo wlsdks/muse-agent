@@ -72,6 +72,7 @@
 | 54 | `712c3120` | resolve "this <weekday>" dates + arg-quality battery | quality · eval-driven · args | unit + **arg battery found it** |
 | 55 | `2e49aa7e` | drop model-fabricated reminder `via` (mis-route guard) | security · eval-driven · args | unit + pnpm check |
 | 56 | `dc8720b2` | harden arg battery (no-via) + wire into eval LIVE | quality infra · args | **live 4/4 + eval** |
+| 57 | `64d396f6` | tolerate model-fabricated calendar `providerId` sentinel (mis-route guard) | reliability · args | unit 58/58 (real provider) |
 
 ### 10-item evaluated backlog — DELIVERED (slices 36-44)
 
