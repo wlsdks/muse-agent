@@ -22,6 +22,13 @@ describe("DEFAULT_AGENT_SPECS", () => {
     expect(generalist!.createdAt!.getTime()).toBeLessThan(critic!.createdAt!.getTime());
   });
 
+  it("the Critic adds risks/gaps as a DISTINCT perspective, not a rewrite of the draft (G5 redesign)", () => {
+    const prompt = DEFAULT_AGENT_SPECS.find((s) => s.id === "default-critic")?.systemPrompt ?? "";
+    expect(prompt).toMatch(/risk|edge case|gap|caveat/i);
+    expect(prompt).toMatch(/not\s+repeat|do not repeat/i);
+    expect(prompt).not.toMatch(/sharper version|corrected/i); // the old echo-prone framing is gone
+  });
+
   it("seeds an InMemoryAgentSpecRegistry so orchestration has enabled workers", async () => {
     const registry = new InMemoryAgentSpecRegistry(DEFAULT_AGENT_SPECS);
     expect((await registry.listEnabled()).length).toBe(2);
