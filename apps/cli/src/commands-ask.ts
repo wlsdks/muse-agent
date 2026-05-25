@@ -36,6 +36,7 @@ import type { Command } from "commander";
 import { cosine, isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js";
 import { embed } from "./embed.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
+import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
 import { resolvePersona } from "./program-helpers.js";
 import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
 import type { ProgramIO } from "./program.js";
@@ -59,6 +60,25 @@ export function rankEpisodeHits(
     .map((ep) => ({ id: ep.id, score: cosine(queryVec, ep.embedding), summary: ep.summary }))
     .sort((a, b) => b.score - a.score)
     .slice(0, topK);
+}
+
+/**
+ * SB-1/G2: the most-recent watched-feed headlines across ALL feeds, newest
+ * first, capped at `limit`. Feeds are time-ordered world-state (not embedded),
+ * so we surface recent items directly — the second brain reaches your
+ * subscribed knowledge ("what's new in X?"). Pure; unparseable dates sort last.
+ */
+export function recentFeedHeadlines(
+  feeds: ReadonlyArray<{ readonly name: string; readonly entries: ReadonlyArray<{ readonly title: string; readonly publishedAt: string; readonly summary: string }> }>,
+  limit: number
+): Array<{ feedName: string; title: string; publishedAt: string; summary: string }> {
+  if (limit <= 0) {
+    return [];
+  }
+  return feeds
+    .flatMap((feed) => feed.entries.map((e) => ({ feedName: feed.name, publishedAt: e.publishedAt, summary: e.summary, title: e.title })))
+    .sort((a, b) => (Date.parse(b.publishedAt) || 0) - (Date.parse(a.publishedAt) || 0))
+    .slice(0, limit);
 }
 
 interface AskOptions {
@@ -411,6 +431,22 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           .map((e, i) => `<<session ${(i + 1).toString()} — ${e.id} (score ${e.score.toFixed(3)})>>\n${e.summary}\n<<end>>`)
           .join("\n\n");
 
+      // SB-1/G2: recent watched-feed headlines as world-state knowledge, so
+      // "what's new in X?" reaches the user's subscribed feeds. Time-ordered
+      // (not embedded); capped to keep the prompt tight. Optional + fail-soft.
+      let feedHeadlines: Array<{ feedName: string; title: string; publishedAt: string; summary: string }> = [];
+      try {
+        const store = await readFeedsStore(defaultFeedsFile());
+        feedHeadlines = recentFeedHeadlines(store.feeds, 8);
+      } catch {
+        // feeds store missing / unreadable — grounding still works
+      }
+      const feedBlock = feedHeadlines.length === 0
+        ? "(no recent feed headlines)"
+        : feedHeadlines
+          .map((h, i) => `<<feed ${(i + 1).toString()} — ${h.feedName} (${h.publishedAt})>>\n${h.title}${h.summary ? `\n${h.summary}` : ""}\n<<end>>`)
+          .join("\n\n");
+
       // Build assembly + chat-only fast path. `--actuators` (only
       // meaningful with --with-tools) injects the gated state-changing
       // actuator tools, each carrying a clack confirm as its
@@ -567,7 +603,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         formatCurrentContextLine(),
         "",
         "You are Muse, the user's JARVIS-style personal AI conductor.",
-        "Answer the user's question USING ONLY the notes, open tasks, upcoming events, pending reminders, and past session summaries provided below as context.",
+        "Answer the user's question USING ONLY the notes, open tasks, upcoming events, pending reminders, past session summaries, and recent feed headlines provided below as context.",
         "If none of the provided context contains enough information, say so directly — do not invent facts.",
         "Reply in the user's preferred language (from persona prefs).",
         "Keep it concise — 2–4 sentences unless the question explicitly needs more.",
@@ -582,6 +618,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         "  - for events:    [event: Standup]",
         "  - for reminders: [reminder: pick up milk]",
         "  - for past sessions: [session: reviewed the API contract]",
+        "  - for feed headlines: [feed: Hacker News]",
         "Use only the filename (not the full path or score) when citing a note.",
         "",
         "=== USER NOTES (top relevant chunks) ===",
@@ -602,7 +639,11 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         "",
         "=== PAST SESSION SUMMARIES (your prior conversations) ===",
         episodeBlock,
-        "=== END PAST SESSIONS ==="
+        "=== END PAST SESSIONS ===",
+        "",
+        "=== RECENT FEED HEADLINES (your watched RSS/Atom feeds, newest first) ===",
+        feedBlock,
+        "=== END FEED HEADLINES ==="
       ].join("\n");
 
       // Show citation header before streaming the answer so the user
@@ -622,6 +663,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       }
       if (episodeHits.length > 0) {
         groundedParts.push(`${episodeHits.length.toString()} past session(s)`);
+      }
+      if (feedHeadlines.length > 0) {
+        groundedParts.push(`${feedHeadlines.length.toString()} feed headline(s)`);
       }
       // Grounding diagnostic goes to stderr so `muse ask "?" > answer.txt`
       // and `| jq` style pipelines get a clean stdout. Same convention
