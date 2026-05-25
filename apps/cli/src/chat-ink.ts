@@ -794,7 +794,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const personaEpisodes = await loadPersonaEpisodes(userId).catch(() => []);
   const recurringThreads = recurringEpisodeThreads(personaEpisodes);
   const personaPrompt = (): string | undefined =>
-    memoryHolder.current ? buildMusePersona({ ...memoryHolder.current, episodes: personaEpisodes }, userId) : undefined;
+    memoryHolder.current ? buildMusePersona({ ...memoryHolder.current, episodes: personaEpisodes, recurringThreads }, userId) : undefined;
 
   // Long-session compaction: if last-chat.jsonl has grown past the threshold,
   // summarise the old turns into one line before seeding — so a multi-day

@@ -34,6 +34,13 @@ interface JarvisPersonaMemory {
    * model at minimal prompt cost; the dated history lives in /memory.
    */
   readonly factHistory?: readonly { readonly key: string; readonly previousValue: string }[];
+  /**
+   * Topics the user has returned to across multiple sessions (deterministically
+   * detected, newest-weighted). Surfaced as a compact line so the model can
+   * reference an ongoing thread mid-conversation, not just in /memory or
+   * /reflect. Caller caps the count; kept short to protect prompt size.
+   */
+  readonly recurringThreads?: readonly { readonly topic: string; readonly sessions: number }[];
 }
 
 /**
@@ -108,6 +115,7 @@ export function buildMusePersona(
   const factsDropped = facts.length - factsShown.length;
   const prefsShown = plainPrefs.length > maxEntries ? plainPrefs.slice(-maxEntries) : plainPrefs;
   const prefsDropped = plainPrefs.length - prefsShown.length;
+  const recurringThreads = (memory.recurringThreads ?? []).filter((thread) => thread.topic.trim().length > 0).slice(0, 3);
   if (
     facts.length === 0
     && plainPrefs.length === 0
@@ -115,6 +123,7 @@ export function buildMusePersona(
     && goals.length === 0
     && recentTopics.length === 0
     && episodes.length === 0
+    && recurringThreads.length === 0
   ) {
     return undefined;
   }
@@ -169,6 +178,15 @@ export function buildMusePersona(
     lines.push("");
     lines.push("Recent topics the user has been working on:");
     for (const topic of recentTopics) lines.push(`  - ${topic}`);
+  }
+  if (recurringThreads.length > 0) {
+    // Cross-session reflection in the persona: a thread the user keeps
+    // returning to is worth proactively referencing ("still on the Q3
+    // budget?"). One compact line; the deterministic detection + the
+    // count live upstream (recurringEpisodeThreads).
+    const phrased = recurringThreads.map((thread) => `${thread.topic} (${thread.sessions} sessions)`);
+    lines.push("");
+    lines.push(`Threads the user keeps returning to across sessions: ${phrased.join(", ")}.`);
   }
   if (episodes.length > 0) {
     // Episodic memory pairs with recentTopics — topics give breadth

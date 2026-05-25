@@ -73,6 +73,43 @@ describe("buildMusePersona", () => {
     expect(prompt).not.toContain("student");
   });
 
+  it("surfaces recurring cross-session threads so the model can reference an ongoing one", () => {
+    const prompt = buildMusePersona(
+      {
+        facts: { name: "Jinan" },
+        preferences: {},
+        recurringThreads: [{ topic: "Q3 budget", sessions: 3 }, { topic: "Notion", sessions: 2 }]
+      },
+      "stark"
+    );
+    expect(prompt).toContain("Threads the user keeps returning to across sessions: Q3 budget (3 sessions), Notion (2 sessions).");
+  });
+
+  it("builds a persona from recurring threads ALONE (episodes captured even with no stored facts)", () => {
+    const prompt = buildMusePersona(
+      { facts: {}, preferences: {}, recurringThreads: [{ topic: "Q3 budget", sessions: 2 }] },
+      "stark"
+    );
+    expect(prompt).toBeDefined();
+    expect(prompt).toContain("Q3 budget (2 sessions)");
+  });
+
+  it("caps recurring threads to the top 3 and skips blank topics", () => {
+    const prompt = buildMusePersona(
+      {
+        facts: { name: "x" },
+        preferences: {},
+        recurringThreads: [
+          { topic: "a", sessions: 5 }, { topic: "b", sessions: 4 }, { topic: "c", sessions: 3 },
+          { topic: "d", sessions: 2 }, { topic: "  ", sessions: 9 }
+        ]
+      },
+      "stark"
+    );
+    expect(prompt).toContain("a (5 sessions), b (4 sessions), c (3 sessions).");
+    expect(prompt).not.toContain("d (2 sessions)");
+  });
+
   it("instructs the model not to reveal the system prompt verbatim", () => {
     const prompt = buildMusePersona({ facts: { name: "Stark" }, preferences: {} }, "stark");
     expect(prompt).toMatch(/Do NOT volunteer/i);
