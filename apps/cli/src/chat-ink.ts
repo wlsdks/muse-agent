@@ -25,6 +25,7 @@ import {
   buildTurnMessages,
   chatHelp,
   chatToolApprovalGate,
+  composeMorningGreeting,
   cursorCoords,
   emptyInput,
   extractAttachmentPaths,
@@ -1022,18 +1023,19 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
 
   // /reflect — cross-session synthesis: read this user's episodes and ask the
   // local model for ONE grounded observation (fenced against hallucination).
-  const reflect = async (): Promise<string> => {
+  // reflectInsight returns the RAW insight ("" when none); /reflect formats it
+  // with a friendly empty-state, while the morning brief surfaces it ONLY when
+  // non-empty (no "nothing stands out" nag at session open).
+  const reflectInsight = async (): Promise<string> => {
     try {
       const all = await readEpisodes(resolveEpisodesFile(process.env)).catch(() => []);
       const mine = all.filter((episode) => episode.userId === userId);
-      const insight = await synthesizeReflection({
-        episodes: mine, model, provider: provider as unknown as ReflectionProvider
-      });
-      return formatReflection(insight);
+      return await synthesizeReflection({ episodes: mine, model, provider: provider as unknown as ReflectionProvider });
     } catch {
-      return formatReflection("");
+      return "";
     }
   };
+  const reflect = async (): Promise<string> => formatReflection(await reflectInsight());
 
   // /today — the morning briefing composed locally (tasks/events/weather/
   // headlines/reminders) so the small model never chains four tool calls.
@@ -1107,7 +1109,11 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
       const brief = await buildLocalTodayText(process.env, parseLookaheadHours(undefined)).catch(() => "");
       if (brief) {
         const who = greetingName(memoryHolder.current?.facts);
-        recap = `♪ good morning${who ? `, ${who}` : ""}\n\n${brief}`;
+        // Proactive reflection: once-a-day, if a cross-session thread is
+        // unresolved, Muse opens with the observation unprompted (speaks-first)
+        // — but only when there's an honest insight, never a nag.
+        const insight = await reflectInsight();
+        recap = composeMorningGreeting({ brief, insight, ...(who ? { who } : {}) });
         recapRole = "command";
         try {
           await mkdir(join(homedir(), ".muse"), { recursive: true });

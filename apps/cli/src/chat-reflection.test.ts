@@ -50,7 +50,7 @@ describe("synthesizeReflection — fence + grounding", () => {
   });
 
   it("strips terminal-control bytes from the model's insight (JSON-escaped ESC)", async () => {
-    // The model emits a JSON-valid  escape; once parsed it's a real ESC
+    // The model emits a JSON-valid  escape; once parsed it's a real ESC
     // byte the sanitiser must drop before it reaches the terminal.
     const out = await synthesizeReflection({
       episodes: eps(3),

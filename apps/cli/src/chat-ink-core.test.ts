@@ -12,6 +12,7 @@ import {
   chatToolApprovalGate,
   firstOpenToday,
   formatJobsList,
+  composeMorningGreeting,
   formatMemoryView,
   recurringEpisodeThreads,
   formatRecallHits,
@@ -358,6 +359,26 @@ describe("formatMemoryView — recurring threads (reflection)", () => {
     );
     expect(out).not.toMatch(/haven't remembered/);
     expect(out).toContain("Q3 budget (2 sessions)");
+  });
+});
+
+describe("composeMorningGreeting (proactive reflection at session open)", () => {
+  it("appends the reflection line only when there's an insight", () => {
+    const withInsight = composeMorningGreeting({ who: "Jinan", brief: "Tasks: 2 open", insight: "You keep returning to the Q3 budget." });
+    expect(withInsight).toBe("♪ good morning, Jinan\n\nTasks: 2 open\n\n🪞 You keep returning to the Q3 budget.");
+  });
+  it("omits the reflection line (no nag) when the insight is empty/blank", () => {
+    expect(composeMorningGreeting({ who: "Jinan", brief: "Tasks: 2 open", insight: "" })).toBe("♪ good morning, Jinan\n\nTasks: 2 open");
+    expect(composeMorningGreeting({ brief: "b", insight: "   " })).toBe("♪ good morning\n\nb");
+  });
+  it("greets without a name when none is known", () => {
+    expect(composeMorningGreeting({ brief: "b" })).toBe("♪ good morning\n\nb");
+  });
+  it("strips terminal-control bytes from the insight", () => {
+    const out = composeMorningGreeting({ brief: "b", insight: `hi${String.fromCharCode(27)}[31m there` });
+    expect(out).not.toContain(String.fromCharCode(27));
+    expect(out).toContain("🪞 hi");
+    expect(out).toContain("there");
   });
 });
 

@@ -451,6 +451,23 @@ export interface MemorySnapshot {
   readonly factHistory?: readonly { readonly key: string; readonly previousValue: string; readonly replacedAt: string }[];
 }
 
+/**
+ * The once-a-day session-open greeting: morning brief, plus a proactive
+ * reflection line ONLY when there's an honest cross-session insight (empty →
+ * no nag). Kept pure so the speaks-first composition is unit-testable apart
+ * from the file/model I/O that resolves the brief + insight.
+ */
+export function composeMorningGreeting(opts: {
+  readonly who?: string;
+  readonly brief: string;
+  readonly insight?: string;
+}): string {
+  const greeting = `♪ good morning${opts.who && opts.who.length > 0 ? `, ${opts.who}` : ""}`;
+  const insight = (opts.insight ?? "").trim();
+  const reflection = insight.length > 0 ? `\n\n🪞 ${stripUntrustedTerminalChars(insight)}` : "";
+  return `${greeting}\n\n${opts.brief}${reflection}`;
+}
+
 export interface RecurringThread {
   readonly topic: string;
   readonly sessions: number;
