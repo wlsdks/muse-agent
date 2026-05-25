@@ -28,6 +28,8 @@
 | 11 | `cda18f85` | auto-memory ignores questions/tasks + patterns doc | memory · hardening | **9/9 live battery** |
 | 12 | `76452c1c` | bound persona size (cap facts/prefs) | performance | unit (persona cap) |
 | 13 | `32a5211f` | group simultaneous proactive notices (not noisy) | proactive | unit + render |
+| 14 | `cfc4dd31` | exclude stale dist test copies from vitest (verification integrity) | hardening | **844→0 dist dupes, 3× green** |
+| 15 | `736db083` | re-confirmed facts move to tail so persona cap keeps them | memory · performance | unit (key-order) |
 
 ## Failures → learnings
 
@@ -64,6 +66,25 @@
   EN/KO + negatives battery caught it; the happy-path checks didn't. → **Lesson:**
   add explicit negatives to the prompt ("only DECLARATIVE self-statements; do
   NOT infer from questions/requests" + a weather + a task example). Re-ran → 9/9.
+
+- **The "voice flake" was never a flake — vitest 4 dropped `**/dist/**` from
+  its default exclude (risk-resolution).** Every `src`-colocated `*.test.ts`
+  compiled into `dist/` was collected TWICE (apps/cli: 844 src + 844 dist), so
+  each test ran against possibly-stale compiled code, and the doubled parallel
+  /tmp load made the voice-playback cleanup tests time out (the recurring "4
+  failed" I kept dismissing). Worse: a fixed bug could "fail" via a stale dist
+  copy and a broken src could "pass" — green on outdated code. → **Lesson:** a
+  recurring "flake" with a stable count is a signal, not noise — investigate it.
+  A major test-runner bump can silently widen what gets *collected*; any
+  monorepo compiling tests into an output dir needs an explicit `dist` exclude.
+  Fix found pre-documented in a parallel agent's worktree (Finding 001);
+  salvaged the config files + TMPDIR-isolation rather than re-deriving.
+- **A removed git worktree keeps its branch (risk cleanup).** Two stale agent
+  worktrees under `.claude/worktrees/` added duplicate tsconfig roots that had
+  broken `pnpm lint` (1814 parse errors). → **Lesson:** `git worktree remove`
+  deletes only the working dir; commits stay reachable on the branch, so
+  cleanup loses nothing recoverable. Commit a worktree's untracked-but-wanted
+  artifacts onto its branch FIRST, then `remove --force`.
 
 ## Reusable patterns (carry these forward)
 
