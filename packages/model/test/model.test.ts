@@ -1357,6 +1357,19 @@ describe("OllamaProvider num_ctx (goal 165)", () => {
     await p2.generate({ messages: [{ content: "hi", role: "user" }], model: "ollama/model-test" });
     expect((bad.bodies[0]?.options as { num_ctx?: number }).num_ctx).toBe(8192);
   });
+
+  it("forwards responseFormat to Ollama's native `format` (structured output), and omits it otherwise", async () => {
+    const schema = { type: "object", properties: { city: { type: "string" } }, required: ["city"] };
+    const on = captureBodyFetch();
+    const p1 = new OllamaProvider({ baseUrl: "http://o.test/v1", defaultModel: "model-test", fetch: on.fetch, models: ["model-test"] });
+    await p1.generate({ messages: [{ content: "hi", role: "user" }], model: "ollama/model-test", responseFormat: schema });
+    expect(on.bodies[0]?.format).toEqual(schema);
+
+    const off = captureBodyFetch();
+    const p2 = new OllamaProvider({ baseUrl: "http://o.test/v1", defaultModel: "model-test", fetch: off.fetch, models: ["model-test"] });
+    await p2.generate({ messages: [{ content: "hi", role: "user" }], model: "ollama/model-test" });
+    expect(off.bodies[0]).not.toHaveProperty("format");
+  });
 });
 
 describe("OllamaProvider model-not-found hint (goal 176)", () => {

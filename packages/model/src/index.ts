@@ -83,6 +83,14 @@ export interface ModelRequest {
   readonly temperature?: number;
   readonly maxOutputTokens?: number;
   readonly metadata?: JsonObject;
+  /**
+   * JSON Schema the model output MUST conform to — native structured output
+   * (constrained decoding), not parse-and-hope. Adapters of providers that
+   * declare `structuredOutput` translate it to the wire format (Ollama
+   * `format`, OpenAI `response_format: json_schema`); providers without the
+   * capability ignore it and the caller falls back to a parser + validator.
+   */
+  readonly responseFormat?: JsonObject;
 }
 
 export interface WebSearchCitation {

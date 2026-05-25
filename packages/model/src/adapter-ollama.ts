@@ -314,6 +314,10 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       // emission for Qwen 3.5+ thinking models. Non-thinking models
       // ignore the field; cost is zero.
       think: false,
+      // Native structured output: Ollama's `format` takes a JSON Schema and
+      // constrains decoding to it — guaranteed schema-valid JSON, not
+      // parse-and-hope. Sent only when the caller requested it.
+      ...(request.responseFormat ? { format: request.responseFormat } : {}),
       ...(request.tools && request.tools.length > 0
         ? {
             tools: request.tools.map((t) => ({
