@@ -38,6 +38,7 @@ interface OrchestrateBody {
   readonly maxWorkers?: number;
   readonly maxOutputCharsPerWorker?: number;
   readonly summarize?: boolean;
+  readonly synthesize?: boolean;
   readonly tiered?: boolean;
 }
 
@@ -183,6 +184,9 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
     const summarizer = parsed.value.summarize === true
       ? createWorkerSummarizer(options.modelProvider, input.model)
       : undefined;
+    const synthesizer = parsed.value.synthesize === true
+      ? createWorkerSynthesizer(options.modelProvider, input.model)
+      : undefined;
 
     try {
       const orchestration = await orchestrator.run(input, {
@@ -191,7 +195,8 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
         ...(parsed.value.maxOutputCharsPerWorker !== undefined
           ? { maxOutputCharsPerWorker: parsed.value.maxOutputCharsPerWorker }
           : {}),
-        ...(summarizer ? { summarizeWorkerOutput: summarizer } : {})
+        ...(summarizer ? { summarizeWorkerOutput: summarizer } : {}),
+        ...(synthesizer ? { synthesizeFinalAnswer: synthesizer } : {})
       });
 
       return {
@@ -274,13 +279,17 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
     const summarizer = parsed.value.summarize === true
       ? createWorkerSummarizer(options.modelProvider, input.model)
       : undefined;
+    const synthesizer = parsed.value.synthesize === true
+      ? createWorkerSynthesizer(options.modelProvider, input.model)
+      : undefined;
     const orchestrationOptions = {
       ...(effectiveMode ? { mode: effectiveMode } : {}),
       ...(parsed.value.maxWorkers !== undefined ? { maxWorkers: parsed.value.maxWorkers } : {}),
       ...(parsed.value.maxOutputCharsPerWorker !== undefined
         ? { maxOutputCharsPerWorker: parsed.value.maxOutputCharsPerWorker }
         : {}),
-      ...(summarizer ? { summarizeWorkerOutput: summarizer } : {})
+      ...(summarizer ? { summarizeWorkerOutput: summarizer } : {}),
+      ...(synthesizer ? { synthesizeFinalAnswer: synthesizer } : {})
     };
 
     reply.header("content-type", "text/event-stream; charset=utf-8");
@@ -550,6 +559,13 @@ function parseOrchestrateBody(value: unknown): ParseResult<OrchestrateBody> {
     return invalid("INVALID_ORCHESTRATE_REQUEST", "summarize must be a boolean");
   }
 
+  let synthesize: boolean | undefined;
+  if (typeof body.synthesize === "boolean") {
+    synthesize = body.synthesize;
+  } else if (body.synthesize !== undefined) {
+    return invalid("INVALID_ORCHESTRATE_REQUEST", "synthesize must be a boolean");
+  }
+
   let tiered: boolean | undefined;
   if (typeof body.tiered === "boolean") {
     tiered = body.tiered;
@@ -567,6 +583,7 @@ function parseOrchestrateBody(value: unknown): ParseResult<OrchestrateBody> {
       ...(maxWorkers !== undefined ? { maxWorkers } : {}),
       ...(maxOutputCharsPerWorker !== undefined ? { maxOutputCharsPerWorker } : {}),
       ...(summarize !== undefined ? { summarize } : {}),
+      ...(synthesize !== undefined ? { synthesize } : {}),
       ...(tiered !== undefined ? { tiered } : {})
     }
   };
@@ -645,6 +662,43 @@ export function createWorkerSummarizer(
       ]);
       const text = response.output?.trim() ?? "";
       return text.length > 0 ? text : output;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  };
+}
+
+const SYNTHESIZER_SYSTEM_PROMPT =
+  "You are the final synthesizer for a multi-agent orchestrator. You are given each sub-agent's output (e.g. a direct answer plus a risks/gaps review). Fuse them into ONE coherent answer for the user: lead with the answer, then fold in the most important risks/caveats. Resolve overlaps, drop the per-agent headers, and do not invent facts beyond what the sub-agents provided. Output the final answer text only — no preamble, no '## agent' markers.";
+const SYNTHESIZER_MAX_OUTPUT_TOKENS = 512;
+const SYNTHESIZER_REQUEST_TIMEOUT_MS = 20_000;
+
+export function createWorkerSynthesizer(
+  modelProvider: ModelProvider | undefined,
+  model: string
+): ((parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) => Promise<string>) | undefined {
+  if (!modelProvider) {
+    return undefined;
+  }
+  return async (parts) => {
+    const userContent = parts.map((p) => `### ${p.workerId}\n${p.output}`).join("\n\n");
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const response = await Promise.race([
+        modelProvider.generate({
+          maxOutputTokens: SYNTHESIZER_MAX_OUTPUT_TOKENS,
+          messages: [
+            { content: SYNTHESIZER_SYSTEM_PROMPT, role: "system" },
+            { content: userContent, role: "user" }
+          ],
+          model,
+          temperature: 0.3
+        }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("synthesizer timeout")), SYNTHESIZER_REQUEST_TIMEOUT_MS);
+        })
+      ]);
+      return response.output?.trim() ?? "";
     } finally {
       if (timer !== undefined) clearTimeout(timer);
     }

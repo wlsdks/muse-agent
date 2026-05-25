@@ -99,6 +99,15 @@ export interface OrchestrationRunOptions {
    * configured `ModelProvider`.
    */
   readonly summarizeWorkerOutput?: (workerId: string, output: string) => Promise<string>;
+  /**
+   * When set, the completed workers' outputs are fused into ONE coherent
+   * final answer (e.g. the direct answer + the Critic's risks merged), instead
+   * of the `## <worker>` concatenation. Receives each completed worker's
+   * `{ workerId, output }` in execution order. Caller-provided so this package
+   * stays model-agnostic; fail-soft — if it throws or returns empty, the
+   * orchestration falls back to the concatenation (never loses the answer).
+   */
+  readonly synthesizeFinalAnswer?: (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) => Promise<string>;
 }
 
 export interface MultiAgentOrchestrationResult {
@@ -384,7 +393,8 @@ export class MultiAgentOrchestrator {
         input.model,
         results,
         options.maxOutputCharsPerWorker,
-        options.summarizeWorkerOutput
+        options.summarizeWorkerOutput,
+        options.synthesizeFinalAnswer
       ),
       results,
       runId
@@ -633,7 +643,8 @@ async function buildOrchestrationResponse(
   model: string,
   results: readonly OrchestrationStepResult[],
   maxOutputCharsPerWorker: number | undefined,
-  summarizeWorkerOutput: ((workerId: string, output: string) => Promise<string>) | undefined
+  summarizeWorkerOutput: ((workerId: string, output: string) => Promise<string>) | undefined,
+  synthesizeFinalAnswer?: (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) => Promise<string>
 ): Promise<AgentRunResult["response"]> {
   const cap = maxOutputCharsPerWorker && maxOutputCharsPerWorker > 0 ? maxOutputCharsPerWorker : undefined;
   const projected = await Promise.all(results.map(async (result) => {
@@ -646,11 +657,32 @@ async function buildOrchestrationResponse(
       : raw;
     return `## ${result.workerId}\n${capWorkerOutput(result.workerId, summarized, cap)}`;
   }));
+  const concatenated = projected.join("\n\n");
+
+  // Optional final-answer synthesis: fuse the completed workers into ONE
+  // coherent answer. Fail-soft — a throwing / empty synthesizer keeps the
+  // concatenation, so the orchestration never loses its output.
+  let output = concatenated;
+  if (synthesizeFinalAnswer) {
+    const completedParts = results
+      .filter((r) => r.status === "completed")
+      .map((r) => ({ output: r.result?.response.output ?? "", workerId: r.workerId }));
+    if (completedParts.length > 0) {
+      try {
+        const synthesized = await synthesizeFinalAnswer(completedParts);
+        if (typeof synthesized === "string" && synthesized.trim().length > 0) {
+          output = synthesized;
+        }
+      } catch {
+        // keep the concatenation
+      }
+    }
+  }
 
   return {
     id: createRunId("multi_agent_response"),
     model,
-    output: projected.join("\n\n"),
+    output,
     raw: {
       runId,
       workers: results.map((result) => ({
