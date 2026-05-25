@@ -8,12 +8,17 @@ document → re-verify.
 
 ---
 
-## EXECUTIVE SUMMARY (13 rounds)
+## EXECUTIVE SUMMARY (17 rounds — CONCLUDED)
 
-**16 real defects found by adversarial testing and fixed** (each with a new
+**19 real defects found by adversarial testing and fixed** (each with a new
 regression test, all merged to `main`), plus a reusable tool-selection
 reliability harness. Coverage spans every layer: TS core, web frontend, Rust
 sandbox, a live local-Qwen round-trip, and the verification tooling itself.
+
+Final state: repo green across repeated full sweeps — 26 packages / 4576 tests,
+lint 0/0, rust runner 6/6, `eval:tools` 24/24. The bug-hunt, flaky-test, and
+robustness phases are exhausted; the one remaining substantive item (a
+non-process-TZ timezone fix) is feature-sized and deferred to the owner.
 
 ### Fixes (by layer)
 | # | Defect | Area |
@@ -31,7 +36,14 @@ sandbox, a live local-Qwen round-trip, and the verification tooling itself.
 | 013 | `webSearch.maxUses` was backend-honored but had no web control (missing setting) | web |
 | 014 | Rust runner deadlocked on >64KB output (pipes not drained) → false timeout | crates/runner |
 | 015 | `time_relative`/`time_diff` confusable; sharpened "use when / not when" descriptions | tools |
-| 016 | `parseInteger` rejected an explicit `0`; added `parseNonNegativeInteger` (fail-open for disable-via-0 settings) | autoconfigure |
+| 016 | `parseInteger` rejected an explicit `0`; added `parseNonNegativeInteger` (`=0` now disables the LLM-followup budget) | autoconfigure |
+| 017 | `extractVerifiedSources` emitted each citation URL twice (field + string scan) | agent-core |
+| 018 | `chat-ink-render` slash-command tests flaked under load (fixed wait → `waitForFrame` poll) | cli (tests) |
+| 019 | `messaging-webhooks` LINE-gating test timed out under load (full `buildServer` > 5s → 20s timeout) | api (tests) |
+
+Also closed two documented follow-ups: the 3 personal stores now `fsync` before
+rename, and the URL-dedup above. Deliberately left to the owner: `MUSE_CACHE_TTL_MS`
+/ `MUSE_MCP_RECONNECT_MAX_ATTEMPTS` 0-semantics, and the timezone fix.
 
 ### New verification asset
 `pnpm eval:tools` — a golden tool-SELECTION reliability gate (3 scenarios, 24
