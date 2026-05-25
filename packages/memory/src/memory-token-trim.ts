@@ -123,6 +123,7 @@ export function trimConversationMessages(
   totalTokens -= ensureBoundaryIntegrity(messages, tokens);
   totalTokens = trimToolHistory(messages, tokens, totalTokens, trimTarget);
   totalTokens -= removeOrphanToolResponses(messages, tokens);
+  totalTokens -= removeUnansweredToolCalls(messages, tokens, estimator, messageStructureOverhead);
 
   const droppedCount = beforeCount - messages.length;
   const summaryInserted =
@@ -408,6 +409,62 @@ function removeOrphanToolResponses(messages: ConversationMessage[], tokens: numb
     }
 
     removedTokens += removeAt(messages, tokens, index, 1);
+  }
+
+  return removedTokens;
+}
+
+// Symmetric counterpart to removeOrphanToolResponses: an assistant
+// tool_use whose result is missing is a provider 400 (Anthropic/OpenAI
+// both reject a tool_use / tool_calls entry with no matching tool result).
+// trimConversationMessages is the last sanitiser before the provider, so
+// it must guarantee valid output even if history is partial (e.g. a tool
+// turn interrupted mid-flight, or persisted state from a crash). Runs
+// AFTER removeOrphanToolResponses, so every following tool message is
+// already one of this assistant's own calls; strip any call id left
+// unanswered, and drop the message if that leaves it empty.
+function removeUnansweredToolCalls(
+  messages: ConversationMessage[],
+  tokens: number[],
+  estimator: TokenEstimator,
+  messageStructureOverhead: number
+): number {
+  let removedTokens = 0;
+  let index = 0;
+
+  while (index < messages.length) {
+    const message = messages[index];
+    if (message?.role !== "assistant" || !hasToolCalls(message)) {
+      index++;
+      continue;
+    }
+
+    const answered = new Set<string>();
+    for (let probe = index + 1; probe < messages.length && messages[probe]?.role === "tool"; probe++) {
+      const toolCallId = messages[probe]?.toolCallId;
+      if (toolCallId) answered.add(toolCallId);
+    }
+
+    const keptCalls = (message.toolCalls ?? []).filter((toolCall) => answered.has(toolCall.id));
+    if (keptCalls.length === (message.toolCalls?.length ?? 0)) {
+      index++;
+      continue;
+    }
+
+    if (keptCalls.length === 0 && message.content.trim().length === 0) {
+      removedTokens += removeAt(messages, tokens, index, 1);
+      continue;
+    }
+
+    const repaired: ConversationMessage =
+      keptCalls.length === 0
+        ? { ...message, toolCalls: undefined }
+        : { ...message, toolCalls: keptCalls };
+    const newTokens = estimateMessageTokens(repaired, estimator, messageStructureOverhead);
+    removedTokens += (tokens[index] ?? 0) - newTokens;
+    messages[index] = repaired;
+    tokens[index] = newTokens;
+    index++;
   }
 
   return removedTokens;

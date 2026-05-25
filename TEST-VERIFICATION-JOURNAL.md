@@ -289,3 +289,55 @@ A safeguard validated only in the codebase's default language is half a
 safeguard. For a single-user assistant, "what language does the actual
 user type in?" is part of the threat model — checked against the user
 profile, not the test fixtures.
+
+---
+
+## Finding 005 — context trimmer sanitised orphan tool_results but forwarded orphan tool_uses (provider 400)
+
+**Severity:** medium (a hard provider 400 that breaks every subsequent
+request in a session until budget eventually trims the bad message;
+on the request-building path; aligned with the human-directed "harden
+real-world failure modes" focus)
+**Where:** `packages/memory/src/memory-token-trim.ts` —
+`trimConversationMessages` (called at `agent-runtime.ts:649`, the last
+step before the provider request).
+
+### How it was observed
+Reading the trim passes, I saw `removeOrphanToolResponses` cleans tool
+RESULTS with no matching assistant tool_use, but nothing cleaned the
+reverse. I wrote a property probe: generate conversations, trim at many
+budgets, and validate the output (every assistant tool-call id answered
+by a following tool message; every tool message preceded by a matching
+tool-call). Result: trimming never *creates* an orphan from well-formed
+input, BUT it passes an orphan tool_use straight through when the INPUT
+already had one (a partial / interrupted tool turn). Anthropic and OpenAI
+both 400 on a tool_use / tool_calls entry with no matching tool_result.
+
+### Why the input can be partial
+A tool turn interrupted mid-flight, an error after only some of a
+multi-tool call's results were appended, or persisted history from a
+crash — any of these leaves an assistant tool_use without its result.
+Because the trimmer is the last sanitiser before the provider, it should
+guarantee a valid sequence regardless of input, exactly as it already
+does for orphan results.
+
+### Fix
+Added `removeUnansweredToolCalls`, the symmetric counterpart, run right
+after `removeOrphanToolResponses`: for each assistant tool_use it strips
+any call id not answered by a following tool message; if that empties the
+tool-calls and the message has no text, the message is dropped; otherwise
+the answered calls (and the text) are kept and the message's token
+estimate is recomputed.
+
+### Verified
+Property probe across 7 scenarios × 8 budgets: ALL outputs now orphan-free
+(well-formed exchanges untouched). New suite
+`memory-orphan-tool-use.test.ts` (4 cases). Full memory suite 189 passed
+(+4; existing pairing tests intact); agent-core (the consumer) 699 passed;
+lint clean.
+
+### Pattern learned
+A sanitiser that cleans one direction of a symmetric invariant almost
+always needs the other direction too. "We remove orphan results" should
+have immediately prompted "what removes orphan calls?" — the asymmetry
+itself was the smell.
