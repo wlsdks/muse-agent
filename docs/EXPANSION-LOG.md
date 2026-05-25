@@ -45,6 +45,17 @@
 | 27 | `9dd92587` | per-turn skill body injection (ITR — minimal prompt fragments) | efficiency · model-path | unit + **live qwen3:8b 2/2 (follow+withhold)** |
 | 28 | `8404db68` | bound active chat history window (Context-Folding) | efficiency · model-path | unit + **live qwen3:8b 2/2 (forget/recall)** |
 | 29 | `669d6757` | validate required tool args before execute (deterministic repair) | reliability · model-path | unit + agent-core integration + live |
+| 30 | `d1b81f7c` | lossless tool-arg type coercion before execute | reliability · model-path | unit + agent-core integration + live |
+
+### Reliability from 2026 research — deterministic tool-call repair (slices 29-30)
+
+Structured Reflection (arXiv:2509.18847): formatting/type errors invalidate
+otherwise-correct tool calls. Self-Verification Dilemma (arXiv:2602.03485):
+small models lose accuracy + tokens from HEAVY self-checking. So the repair is
+DETERMINISTIC + cheap, not an LLM verification loop: required-arg validation
+(29) returns the missing list so the model re-calls; lossless type coercion (30)
+fixes "5"→5 / "true"→true / 42→"42" against the declared schema type, ambiguous
+cases left untouched. Both at the executeToolCall seam, before execute.
 
 ### Efficiency from 2026 research — tool-selection (ITR, arXiv:2602.17046)
 
