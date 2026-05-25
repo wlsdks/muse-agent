@@ -26,6 +26,7 @@
 | 9 | `2506d4a0` | background auto-memory (learn facts without "remember") | memory · model-path | unit + **fast qwen3:8b extraction** |
 | 10 | `37a84e61` | show auto-learned facts in chat (trust + undo) | memory · CLI | unit + render |
 | 11 | `cda18f85` | auto-memory ignores questions/tasks + patterns doc | memory · hardening | **9/9 live battery** |
+| 12 | `76452c1c` | bound persona size (cap facts/prefs) | performance | unit (persona cap) |
 
 ## Failures → learnings
 
