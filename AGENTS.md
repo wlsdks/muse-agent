@@ -29,7 +29,7 @@ provider-specific code is kept at the edges.
 | CLI | commander + Ink TUI + clack-prompts wizards |
 | Local runner | Rust separate process (`crates/runner`) |
 | Model layer | `packages/model` ModelProvider adapters |
-| Provider adapters | OpenAI (Responses API), Anthropic, Gemini, OpenRouter, Ollama + OpenAI-compat presets (Groq, DeepSeek, Together, Mistral, Moonshot) |
+| Provider adapters | OpenAI (Responses API), Anthropic, Gemini, OpenRouter, Ollama + OpenAI-compat presets (Groq, DeepSeek, Together, Mistral, Moonshot, Cerebras). "LM Studio" = the OpenAI-compatible adapter pointed at a local `baseUrl` (no dedicated class/preset). |
 | Calendar adapters | Local file, Google Calendar, CalDAV (iCloud / Fastmail / Proton), macOS Calendar.app |
 | Observability | OpenTelemetry + pino + persisted trace events |
 | Tests | Vitest + Playwright + Testcontainers |

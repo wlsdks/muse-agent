@@ -64,7 +64,7 @@ For depth, read the matching file under `.claude/rules/`:
 ## Cross-session memory
 
 Auto-memory persists at
-`~/.claude/projects/-Users-stark-ai-Muse/memory/MEMORY.md` —
+`~/.claude/projects/-Users-jinan-side-project-Muse/memory/MEMORY.md` —
 a one-line index pointing to user / feedback / project / reference
 notes built up over iterations. Read `MEMORY.md` first; it tells you
 which detail files (`feedback_loop_behavior.md`,

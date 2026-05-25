@@ -29,11 +29,15 @@ build, and your data stays local by default. Under the hood:
   never a vendor SDK directly.
 - **Tool & MCP first.** Tools are first-class — read, write, or
   execute — with explicit risk levels, approval gates, and
-  deterministic loop limits. Eight built-in loopback servers
-  (`muse.time`, `muse.text`, `muse.math`, `muse.json`, `muse.url`,
-  `muse.crypto`, `muse.diff`, `muse.regex`) plus the personal trio
-  (`muse.notes`, `muse.tasks`, `muse.calendar`) ship in-process;
-  external servers connect over stdio / SSE / streamable-HTTP.
+  deterministic loop limits. ~23 in-process `muse.*` servers ship
+  built-in: eight pure-utility ones (`muse.time`, `muse.text`,
+  `muse.math`, `muse.json`, `muse.url`, `muse.crypto`, `muse.diff`,
+  `muse.regex`) plus the personal-domain set (`muse.notes`,
+  `muse.tasks`, `muse.calendar`, `muse.reminders`, `muse.episode`,
+  `muse.history`, `muse.status`, `muse.search`, `muse.fetch`,
+  `muse.fs`, `muse.pattern`, `muse.proactive`, `muse.followup`,
+  `muse.messaging`, `muse.context`); external servers connect over
+  stdio / SSE / streamable-HTTP.
 - **Personal-domain primitives.** Markdown notes, calendar events
   across 4 providers (Local file, Google Calendar, CalDAV, macOS
   Calendar.app), and a todo list — all stored locally by default,
@@ -46,6 +50,31 @@ build, and your data stays local by default. Under the hood:
   fail-open, and security lives in code (not in prompt instructions).
   Tool output is untrusted until sanitised. Risky local execution
   flows through a separate Rust runner (`crates/runner`).
+
+## What Muse will not do (boundaries)
+
+These are deliberate product boundaries, enforced in code — not TODOs:
+
+- **No money movement.** Muse never connects to bank / brokerage
+  accounts, initiates payments, or moves money. The blast radius is
+  irreversible for a single-user assistant; this is a permanent
+  boundary, not a deferral (see
+  [`outbound-safety.md`](.claude/rules/outbound-safety.md)).
+- **No autonomous third-party sends.** Anything that transmits to
+  another person (email, chat, message, web form / booking) is
+  **draft-first and you confirm the exact content** before it leaves.
+  The approval gate is fail-closed: deny / timeout / ambiguous
+  recipient ⇒ nothing is sent. *(Known gap: the `muse.messaging.send`
+  MCP tool path is not yet on this gate — see
+  [`docs/audit/2026-05-25-feature-usecase-audit.md`](docs/audit/2026-05-25-feature-usecase-audit.md)
+  F-1; treat it as unsafe for autonomous use until fixed.)*
+- **Single user, single environment.** No multi-tenant accounts, no
+  shared workspace, no RBAC. Identity is your local `$USER`.
+- **Vision input is provider-limited.** Image attachments are
+  serialized only on the OpenAI Chat-Completions path,
+  OpenAI-compatible / OpenRouter, and Gemini. They are **not** sent on
+  Anthropic (capability declared but unwired) or local Ollama, and not
+  on the OpenAI Responses path. See the vision matrix in the audit doc.
 
 ## Architecture at a glance
 
@@ -207,15 +236,19 @@ Tests are the only form of verification. The repo ships these gates:
 ```bash
 pnpm check                                      # build + test for every workspace (~789 tests)
 pnpm smoke:broad                                # 42 HTTP endpoints, diagnostic provider
-pnpm smoke:live                                 # 12 HTTP endpoints, real LLM (auto-skips without key)
+pnpm smoke:live                                 # real LLM round-trip — LOCAL OLLAMA QWEN ONLY (auto-skips if Ollama is unreachable)
 ```
 
-`smoke:live` runs against the first available `*_API_KEY`
-(`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) and
-asserts the model→tool→model loop end-to-end across direct chat,
-streaming SSE, plan-execute, input guards, multi-agent
-orchestration, `muse.notes.search`, `muse.tasks.add`, and
-`muse.calendar.add`.
+`smoke:live` (`scripts/smoke-live-llm.mjs`) is **local Ollama Qwen only
+by deliberate policy** — it probes `${OLLAMA_BASE_URL:-http://localhost:11434}`,
+picks a Qwen model (or `MUSE_SMOKE_LIVE_MODEL`), and asserts the
+model→tool→model loop end-to-end across direct chat, streaming SSE,
+plan-execute, input guards, multi-agent orchestration,
+`muse.notes.search`, `muse.tasks.add`, and `muse.calendar.add`. Cloud
+provider keys are intentionally never consulted; it skips only when local
+Ollama is unreachable. (A separate, unwired
+`scripts/smoke-live-all-providers.mjs` exists for ad-hoc cloud-key probing
+and is **not** what `pnpm smoke:live` runs.)
 
 ## Provider configuration
 
