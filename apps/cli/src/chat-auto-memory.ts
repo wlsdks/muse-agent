@@ -33,8 +33,21 @@ export interface AutoMemoryProvider {
     readonly messages: readonly { readonly role: "system" | "user" | "assistant"; readonly content: string }[];
     readonly temperature?: number;
     readonly maxOutputTokens?: number;
+    readonly responseFormat?: Record<string, unknown>;
   }): Promise<{ readonly output?: string }>;
 }
+
+/** Schema the extraction is constrained to (native structured output): two
+ * string→string maps. Empty maps mean "nothing durable was stated". */
+const AUTO_EXTRACT_SCHEMA = {
+  type: "object",
+  properties: {
+    facts: { type: "object", additionalProperties: { type: "string" } },
+    preferences: { type: "object", additionalProperties: { type: "string" } }
+  },
+  required: ["facts", "preferences"],
+  additionalProperties: false
+} as const;
 
 /** Cooldown gate — don't run the extra extraction call more than once per gap. */
 export function shouldAutoExtract(lastMs: number | undefined, nowMs: number, minGapMs = 45_000): boolean {
@@ -63,6 +76,9 @@ export async function extractMemoryFromTurn(opts: {
         { content: `User: ${user}\nAssistant: ${assistant}`, role: "user" }
       ],
       model: opts.model,
+      // Constrain to the {facts,preferences} schema where supported (Ollama);
+      // extractJsonObject below stays as the fallback for providers that ignore it.
+      responseFormat: AUTO_EXTRACT_SCHEMA,
       temperature: 0
     });
     if (!response.output) return empty;
