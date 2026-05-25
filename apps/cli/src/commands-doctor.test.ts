@@ -6,10 +6,28 @@ import {
   classifyWebWatchConfig,
   embedModelCheck,
   findOllamaModelTag,
+  notesIndexHealth,
   parseNotesIndexEmbedModel,
   resolveMuseEnvPath,
   type OllamaTagsEntry
 } from "./commands-doctor.js";
+
+describe("notesIndexHealth — does doctor see whether the second brain is searchable", () => {
+  it("warns when no index exists yet (recall/ask/today --connect return nothing)", () => {
+    const v = notesIndexHealth({ exists: false, stale: false });
+    expect(v.status).toBe("warn");
+    expect(v.detail).toMatch(/reindex/i);
+  });
+  it("warns when the index is stale (notes changed since last reindex)", () => {
+    const v = notesIndexHealth({ exists: true, stale: true });
+    expect(v.status).toBe("warn");
+    expect(v.detail).toMatch(/stale|reindex/i);
+  });
+  it("ok when the index exists and is fresh", () => {
+    const v = notesIndexHealth({ exists: true, stale: false });
+    expect(v.status).toBe("ok");
+  });
+});
 
 describe("findOllamaModelTag (goal 101)", () => {
   const models: readonly OllamaTagsEntry[] = [

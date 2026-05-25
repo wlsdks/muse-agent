@@ -11,15 +11,15 @@
  * able to introspect itself.
  */
 
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { mergeModelKeysFromFile } from "@muse/autoconfigure";
+import { mergeModelKeysFromFile, resolveNotesDir } from "@muse/autoconfigure";
 import { parseHomeAlertChecks, webWatchesFromConfig } from "@muse/mcp";
 import type { Command } from "commander";
 
-import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
+import { DEFAULT_EMBED_MODEL, isNotesIndexStale } from "./commands-notes-rag.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
 import type { ProgramIO } from "./program.js";
 
@@ -380,6 +380,23 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
     checks.push({ name: "ollama embed model", ...verdict });
   }
 
+  // Notes index health — independent of Ollama: is the second brain actually
+  // searchable right now? (recall / ask / `today --connect` return nothing if
+  // the index was never built or has gone stale since notes changed.)
+  {
+    const notesIndexPath = join(muse_home, "notes-index.json");
+    const exists = existsSync(notesIndexPath);
+    let stale = false;
+    if (exists) {
+      try {
+        stale = await isNotesIndexStale(resolveNotesDir(process.env as Record<string, string | undefined>), notesIndexPath);
+      } catch {
+        stale = false;
+      }
+    }
+    checks.push({ name: "notes index", ...notesIndexHealth({ exists, stale }) });
+  }
+
   // SearXNG (optional — `MUSE_SEARXNG_URL` opt-in). When set, probe
   // both reachability (`/healthz`) AND the JSON-format path that
   // `muse.search` actually uses — a SearXNG instance with the
@@ -570,6 +587,21 @@ export function findOllamaModelTag(
  * cases. `pulledSizeBytes` is the matched tag size, or undefined
  * when the model isn't pulled. Pure so it tests directly.
  */
+/**
+ * Whether the notes RAG index is actually searchable: present + fresh. A
+ * pulled embed model isn't enough — recall / ask / `today --connect` all return
+ * nothing if the index was never built or has gone stale since notes changed.
+ */
+export function notesIndexHealth(state: { readonly exists: boolean; readonly stale: boolean }): { readonly detail: string; readonly status: "ok" | "warn" } {
+  if (!state.exists) {
+    return { detail: "no notes index yet — run `muse notes reindex` so recall / ask / `today --connect` can find your notes", status: "warn" };
+  }
+  if (state.stale) {
+    return { detail: "notes index is stale (notes changed since last build) — run `muse notes reindex` to refresh", status: "warn" };
+  }
+  return { detail: "notes index present and fresh — recall / ask are searchable", status: "ok" };
+}
+
 export function embedModelCheck(
   embedModel: string,
   hasIndex: boolean,
