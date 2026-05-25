@@ -61,6 +61,7 @@
 | 43 | `b8b6034e` | cooperative run interrupt via AbortSignal | runtime pattern | unit (aborted → no model/tool) |
 | 44 | `bc5736ee` | rehydrate re-runnable input from checkpoint (durable resume) | runtime pattern | unit (round-trip) |
 | 45 | `55e828dd` | close eval-surfaced task keyword gaps (KO 할 일 / EN to-do) + diverse tool battery | quality · eval-driven | unit + **battery found it** |
+| 46 | `d754d700` | fix tasks `list` tool keywords (list-intent, not only due) → model selects it | quality · eval-driven | **live qwen picks tasks.list** + unit |
 
 ### 10-item evaluated backlog — DELIVERED (slices 36-44)
 
