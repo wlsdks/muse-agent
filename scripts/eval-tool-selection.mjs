@@ -81,6 +81,32 @@ async function buildRealScenario() {
   }
 }
 
+// Stress the confusable real time tools: all 6 exposed together. time_relative
+// vs time_diff overlap (relative-to-now vs two-timestamp), so each carries a
+// "use when / not when" line — this scenario guards that disambiguation.
+async function buildTimeToolsScenario() {
+  try {
+    const time = await import("../packages/tools/dist/muse-tools-time.js");
+    const now = () => new Date();
+    const instances = [
+      time.createTimeNowTool(now), time.createTimeDiffTool(), time.createTimeAddTool(),
+      time.createTimeRelativeTool(now), time.createNextWeekdayTool(now), time.createCronForDatetimeTool()
+    ];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const cases = [
+      { prompt: "What time is it now?", expectTool: "time_now", note: "now" },
+      { prompt: "How many hours between 9am and 5:30pm today?", expectTool: "time_diff", note: "two-timestamp diff" },
+      { prompt: "What is 3 days after 2026-05-26?", expectTool: "time_add", note: "add" },
+      { prompt: "How long ago was 2026-05-01 from now?", expectTool: "time_relative", note: "relative-to-now (NOT time_diff)" },
+      { prompt: "When is the next Friday?", expectTool: "next_weekday", note: "weekday" },
+      { prompt: "Give me a cron expression for 2026-12-25 08:00.", expectTool: "cron_for_datetime", note: "cron" }
+    ];
+    return { label: "real-time-tools (confusable set)", tools, cases };
+  } catch (error) {
+    return { label: "real-time-tools", skip: `@muse/tools not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 async function ollamaReachable() {
   try {
     const res = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(1500) });
@@ -113,7 +139,8 @@ async function main() {
   const provider = new OllamaProvider({ defaultModel: MODEL });
   const scenarios = [
     { label: "synthetic", tools: SYNTHETIC_TOOLS, cases: SYNTHETIC_CASES },
-    await buildRealScenario()
+    await buildRealScenario(),
+    await buildTimeToolsScenario()
   ];
 
   let total = 0;

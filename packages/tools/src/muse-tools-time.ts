@@ -71,7 +71,8 @@ export function createTimeDiffTool(): MuseTool {
     definition: {
       description:
         "Computes the signed duration between two ISO-8601 timestamps. Returns milliseconds plus a humanized string. " +
-        "Negative durations indicate `to` precedes `from`.",
+        "Negative durations indicate `to` precedes `from`. " +
+        "Use when you have TWO explicit timestamps to compare; for 'how long ago / until' relative to NOW, use time_relative instead.",
       inputSchema: {
         additionalProperties: false,
         properties: {
@@ -146,7 +147,8 @@ export function createTimeRelativeTool(now: () => Date): MuseTool {
     definition: {
       description:
         "Given an ISO-8601 timestamp `at`, returns a humanized relative phrase ('in 2h', '3d ago', 'just now'), the signed millisecond delta, and a direction ('past' | 'future' | 'now'). " +
-        "An optional `reference` ISO timestamp pins the comparison point; otherwise the current clock is used. Useful for surfacing 'when' answers without a follow-up calculation.",
+        "An optional `reference` ISO timestamp pins the comparison point; otherwise the current clock is used. Useful for surfacing 'when' answers without a follow-up calculation. " +
+        "Use when comparing ONE timestamp to now (or a reference) — 'how long ago was X', 'how long until Y'; do NOT use when comparing two explicit timestamps — use time_diff.",
       inputSchema: {
         additionalProperties: false,
         properties: {

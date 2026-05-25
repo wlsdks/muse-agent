@@ -842,3 +842,27 @@ both @muse/model and @muse/tools.
 real tools are one-shot selectable, including the time_now-vs-time_diff
 disambiguation that tool-calling.md flags as the #1 wrong-selection risk. No
 tool-design defect found; the production tool surface is verified selectable.
+
+### Finding 015 — time_relative / time_diff were confusable; sharpened descriptions (FIXED)
+
+Exposing Muse's 6 real time tools together (a confusability stress per
+tool-calling.md rule 2), the model picked `time_diff` for "How long ago was
+2026-05-01 from now?" — it should be `time_relative`. The two overlap
+(time_relative is time_diff with one side = now) and neither description told
+the model when NOT to use it.
+
+**Fix:** added "use when / not when" lines (tool-calling.md mandates them):
+time_diff → "use when you have TWO explicit timestamps; for 'how long ago/until'
+relative to NOW use time_relative"; time_relative → "use when comparing ONE
+timestamp to now; do NOT use for two explicit timestamps — use time_diff."
+Behaviour-only-additive (no schema/API change). After the fix the 6-tool probe
+went 5/6 → **6/6**; tools tests 128 passed.
+
+### Round 11 — eval:tools gains the confusable real-time-tools scenario + becomes a documented gate
+
+Added a third harness scenario exposing all 6 real time tools, with the
+time_relative-vs-time_diff disambiguation as a pinned case (regression guard
+for finding 015). Full run **24/24 (100%)** (synthetic 12 + real 6 + time 6).
+Documented `pnpm eval:tools` as verification gate #5 in `.claude/rules/testing.md`
+(run after touching tool names/descriptions/schemas, projection, or the Ollama
+adapter).

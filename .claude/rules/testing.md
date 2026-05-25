@@ -28,7 +28,20 @@ test before HTTP smoke.
    not re-add them. Skips only if local Ollama is unreachable, and
    a skip is **not** a substitute for the round-trip — fixing the
    environment so it runs is itself priority work.
-5. **Lint gate**:
+5. **Tool-selection reliability gate** (local-Qwen one-shot tool choice):
+   ```bash
+   pnpm eval:tools
+   ```
+   A golden dataset (synthetic capabilities + Muse's REAL built-in
+   tools + the confusable time-tool set) run straight against the
+   local model and scored against a threshold (85% default). This is
+   the lean, repeatable check for `tool-calling.md`'s first-class
+   concern — the model picking the right tool in ONE shot — between
+   static schema tests and the heavy `smoke:live`. **LOCAL OLLAMA
+   ONLY**; skips (exit 0) when Ollama is unreachable. Run it after
+   touching tool names/descriptions/schemas, the projection layer, or
+   the Ollama adapter.
+6. **Lint gate**:
    ```bash
    pnpm lint
    ```
