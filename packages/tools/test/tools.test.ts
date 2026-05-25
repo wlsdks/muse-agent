@@ -278,6 +278,42 @@ describe("tool utilities", () => {
     }));
   });
 
+  it("matches keywords on WORD boundaries, not substrings (no 'search'∈'research' distractor)", () => {
+    const searchTool: MuseTool = {
+      definition: { description: "Search the web.", inputSchema: { type: "object" }, keywords: ["search"], name: "web_search", risk: "read" },
+      execute: () => "ok"
+    };
+    // "research" contains the substring "search" but is a different word — the
+    // old substring filter wrongly exposed web_search here (a distractor).
+    const blockedPlan = createWorkspaceToolRoutingPlan([searchTool], { prompt: "Can you research the housing market?" });
+    expect(blockedPlan.exposedToolNames).toEqual([]);
+    expect(blockedPlan.blocked).toContainEqual(expect.objectContaining({ code: "irrelevant_to_prompt", toolName: "web_search" }));
+
+    // A real whole-word hit still exposes it.
+    const exposedPlan = createWorkspaceToolRoutingPlan([searchTool], { prompt: "search for a good ramen place" });
+    expect(exposedPlan.exposedToolNames).toEqual(["web_search"]);
+  });
+
+  it("tolerates a short inflectional suffix (plural/-ed) so 'lights' still hits keyword 'light'", () => {
+    const homeTool: MuseTool = {
+      definition: { description: "Control a smart-home device.", inputSchema: { type: "object" }, keywords: ["light", "lock"], name: "home_action", risk: "read" },
+      execute: () => "ok"
+    };
+    expect(createWorkspaceToolRoutingPlan([homeTool], { prompt: "turn off the living room lights" }).exposedToolNames).toEqual(["home_action"]);
+    expect(createWorkspaceToolRoutingPlan([homeTool], { prompt: "are the doors locked?" }).exposedToolNames).toEqual(["home_action"]);
+    // but a long compound that merely starts the same is NOT a match
+    expect(createWorkspaceToolRoutingPlan([homeTool], { prompt: "finish my homework" }).exposedToolNames).toEqual([]);
+  });
+
+  it("matches a multi-word keyword only when all its words are present", () => {
+    const rentTool: MuseTool = {
+      definition: { description: "Track a bill.", inputSchema: { type: "object" }, keywords: ["pay rent"], name: "track_bill", risk: "read" },
+      execute: () => "ok"
+    };
+    expect(createWorkspaceToolRoutingPlan([rentTool], { prompt: "remind me to pay the rent friday" }).exposedToolNames).toEqual(["track_bill"]);
+    expect(createWorkspaceToolRoutingPlan([rentTool], { prompt: "what should I pay attention to?" }).exposedToolNames).toEqual([]);
+  });
+
   it("filters risky and irrelevant tools before model exposure", () => {
     const executeTool: MuseTool = {
       definition: {

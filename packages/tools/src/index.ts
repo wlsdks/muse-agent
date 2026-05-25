@@ -170,6 +170,9 @@ export class DefaultToolExposurePolicy implements ToolExposurePolicy {
     const allowed = stringSet(context.allowedToolNames);
     const forbidden = stringSet(context.forbiddenToolNames);
     const prompt = context.prompt?.trim() ?? "";
+    // Tokenize the prompt ONCE (not per tool / per comparison) so keyword
+    // relevance is word-boundary aware without an O(tools²·promptLen) cost.
+    const promptTokens = tokenizePrompt(prompt);
     const recentCounts = countStrings(context.recentToolNames ?? []);
     const blocked: ToolExposureBlock[] = [];
     const selected: MuseTool[] = [];
@@ -180,6 +183,7 @@ export class DefaultToolExposurePolicy implements ToolExposurePolicy {
         context,
         forbidden,
         prompt,
+        promptTokens,
         recentCounts
       });
 
@@ -190,7 +194,7 @@ export class DefaultToolExposurePolicy implements ToolExposurePolicy {
       }
     }
 
-    const sorted = selected.sort(compareToolExposurePriority(prompt));
+    const sorted = selected.sort(compareToolExposurePriority(promptTokens));
     const limit = context.maxTools === undefined ? sorted.length : Math.max(0, Math.trunc(context.maxTools));
 
     if (sorted.length > limit) {
@@ -214,6 +218,7 @@ export class DefaultToolExposurePolicy implements ToolExposurePolicy {
     readonly context: ToolExposureContext;
     readonly forbidden: ReadonlySet<string>;
     readonly prompt: string;
+    readonly promptTokens: ReadonlySet<string>;
     readonly recentCounts: ReadonlyMap<string, number>;
   }): ToolExposureBlock | undefined {
     const name = tool.definition.name;
@@ -242,7 +247,7 @@ export class DefaultToolExposurePolicy implements ToolExposurePolicy {
       return blockTool(name, "write_without_mutation_intent", `Tool '${name}' requires a clear workspace mutation intent`);
     }
 
-    if (!isToolRelevantToPrompt(tool, input.prompt)) {
+    if (!isToolRelevantToPrompt(tool, input.promptTokens)) {
       return blockTool(name, "irrelevant_to_prompt", `Tool '${name}' does not match the current prompt`);
     }
 
@@ -479,18 +484,61 @@ function countStrings(values: readonly string[]): ReadonlyMap<string, number> {
   return counts;
 }
 
-function isToolRelevantToPrompt(tool: MuseTool, prompt: string): boolean {
+/**
+ * Lowercased whole-word tokens of a prompt (Unicode letters/digits; splits on
+ * everything else). Word-boundary matching against these avoids the substring
+ * false-positives that exposed irrelevant tools as distractors — e.g. keyword
+ * "search" no longer matches "research", "ask" no longer matches "task".
+ * Fewer distractors = better one-shot tool selection on the local model
+ * (ITR, arXiv:2602.17046: expose the minimal relevant subset per turn).
+ */
+function tokenizePrompt(text: string): Set<string> {
+  const tokens = new Set<string>();
+  for (const token of text.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
+    if (token.length > 0) tokens.add(token);
+  }
+  return tokens;
+}
+
+/**
+ * A prompt token matches a keyword word on an exact hit, or when the token is
+ * the word plus a short inflectional suffix (plural / -ed / -ing): "lights"
+ * matches "light", "locked" matches "lock". The match is anchored at the WORD
+ * START and the suffix is capped, so "research" still never matches "search"
+ * and "homework" never matches "home". Words under 4 chars require an exact
+ * hit (so "on"/"off" don't prefix-match "online"/"office").
+ */
+function tokenMatchesKeywordWord(token: string, word: string): boolean {
+  if (token === word) return true;
+  return word.length >= 4 && token.startsWith(word) && token.length - word.length <= 3;
+}
+
+/**
+ * A keyword matches when every word in it hits some prompt token — single-word
+ * keywords need one hit, multi-word keywords ("pay rent") need all their words.
+ */
+function keywordMatchesPromptTokens(keyword: string, promptTokens: ReadonlySet<string>): boolean {
+  const words = keyword.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((word) => word.length > 0);
+  if (words.length === 0) return false;
+  return words.every((word) => {
+    for (const token of promptTokens) {
+      if (tokenMatchesKeywordWord(token, word)) return true;
+    }
+    return false;
+  });
+}
+
+function isToolRelevantToPrompt(tool: MuseTool, promptTokens: ReadonlySet<string>): boolean {
   const keywords = tool.definition.keywords ?? [];
 
-  if (keywords.length === 0 || prompt.trim().length === 0) {
+  if (keywords.length === 0 || promptTokens.size === 0) {
     return true;
   }
 
-  const normalized = prompt.toLowerCase();
-  return keywords.some((keyword) => normalized.includes(keyword.toLowerCase()));
+  return keywords.some((keyword) => keywordMatchesPromptTokens(keyword, promptTokens));
 }
 
-function compareToolExposurePriority(prompt: string): (left: MuseTool, right: MuseTool) => number {
+function compareToolExposurePriority(promptTokens: ReadonlySet<string>): (left: MuseTool, right: MuseTool) => number {
   return (left, right) => {
     const risk = riskPriority(left.definition.risk) - riskPriority(right.definition.risk);
 
@@ -498,7 +546,7 @@ function compareToolExposurePriority(prompt: string): (left: MuseTool, right: Mu
       return risk;
     }
 
-    const relevance = relevanceScore(right, prompt) - relevanceScore(left, prompt);
+    const relevance = relevanceScore(right, promptTokens) - relevanceScore(left, promptTokens);
 
     if (relevance !== 0) {
       return relevance;
@@ -520,14 +568,13 @@ function riskPriority(risk: ToolRisk): number {
   return 2;
 }
 
-function relevanceScore(tool: MuseTool, prompt: string): number {
-  if (prompt.trim().length === 0) {
+function relevanceScore(tool: MuseTool, promptTokens: ReadonlySet<string>): number {
+  if (promptTokens.size === 0) {
     return 0;
   }
 
-  const normalized = prompt.toLowerCase();
   return (tool.definition.keywords ?? [])
-    .filter((keyword) => normalized.includes(keyword.toLowerCase()))
+    .filter((keyword) => keywordMatchesPromptTokens(keyword, promptTokens))
     .length;
 }
 
