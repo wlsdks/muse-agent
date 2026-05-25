@@ -36,6 +36,7 @@
 | 19 | `92649588` | /memory reflects recurring cross-session threads (deterministic) | memory depth · reflection | unit (rank + render) |
 | 20 | `2d28d155` | /reflect — grounded LLM synthesis across sessions (fenced vs hallucination) | memory depth · model-path | **live qwen3:8b 3/3 (EN+KO+neg)** |
 | 21 | `8263ede3` | proactively open with a reflection once/day (speaks-first) | memory depth · proactive | unit (greeting) + live battery 3/3 |
+| 22 | `2f1eb38c` | surface recurring threads in the persona (model references them) | memory depth · model-path | unit + **live qwen3:8b 2/2 (grounded+neg)** |
 
 ## Failures → learnings
 
@@ -115,6 +116,16 @@
   an escape-illustrating comment — write the bytes as `\xNN` / `\uNNNN` /
   `String.fromCharCode`. perl `-CSD -pe 's/[\x00-\x08\x0b-\x1f\x7f]//g'` strips
   an already-landed control byte.
+
+- **A live "negative control" can FAIL on the TEST, not the feature (slice 22).**
+  Checking "no persona data → no fabrication" first failed: qwen named "Q3
+  budget" with no threads in the persona. Two test flaws, not a defect: (a) the
+  question was LEADING ("What topic do I keep coming back to?") — it presupposes
+  one exists, so a compliant small model invents an answer; (b) both calls
+  shared one `userId`, so the runtime's per-user memory/auto-extract bled the
+  first (grounded) answer into the second. → **Lesson:** for a no-fabrication
+  control, ask a NON-leading question that permits "I don't know", and use a
+  DISTINCT userId per live call so runtime memory can't bleed. Fixed → 2/2 PASS.
 
 ## Reusable patterns (carry these forward)
 
