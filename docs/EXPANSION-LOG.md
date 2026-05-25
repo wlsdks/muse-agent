@@ -41,6 +41,15 @@
 
 | 24 | `79cde1ed` | proactively surface imminent calendar events in chat | proactive perception | unit + flow |
 | 25 | `e130fba9` | audit: proactive surface composes (sources + dedup + grouping) | proactive · audit | 14/14 compose |
+| 26 | `fb85136f` | word-boundary tool relevance (ITR — fewer distractors) | efficiency · model-path | pnpm check green + live selection |
+
+### Efficiency from 2026 research — tool-selection (ITR, arXiv:2602.17046)
+
+ITR's finding: the biggest one-shot-selection lever on a small model is exposing
+only the minimally-relevant tool subset (it reports −95% per-step tokens, +32%
+routing). Muse already filters by keyword relevance but on raw SUBSTRING, so
+"search"∈"research" leaked distractors. Slice 26 moved to word-boundary matching
+with a short inflectional-suffix tolerance (lights⊃light, but research∌search).
 
 ### Proactive-perception axis — calendar in the speaks-first tick
 
@@ -145,6 +154,16 @@ REOPEN. Kept the script as a composite regression check.
   first (grounded) answer into the second. → **Lesson:** for a no-fabrication
   control, ask a NON-leading question that permits "I don't know", and use a
   DISTINCT userId per live call so runtime memory can't bleed. Fixed → 2/2 PASS.
+
+- **Tightening a fuzzy matcher cuts BOTH false positives and true positives
+  (slice 26).** Swapping substring→exact-token relevance killed the
+  "search∈research" distractor but ALSO blocked home_action on "turn off the
+  lights" (keyword "light" ≠ token "lights") — `pnpm check` caught it in the
+  apps/api P17 seam, not the narrow tools test. → **Lesson:** precision and
+  recall move together; a word-boundary matcher needs an explicit
+  inflectional-suffix tolerance (start-anchored, length-capped) to keep plurals.
+  And for a packages/tools (shared-core) change, run `pnpm check` — the consuming
+  package's agent-seam test exposes selection regressions the unit test can't.
 
 ## Reusable patterns (carry these forward)
 
