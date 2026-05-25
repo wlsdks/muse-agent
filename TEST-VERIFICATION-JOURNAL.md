@@ -1,10 +1,73 @@
 # Test-Verification Journal
 
-A separate branch (`worktree-test-verification`) whose sole job is to
-hammer the existing Muse codebase with tests, learn from every failure,
-and record the *patterns* behind defects — not to ship product features.
+A separate branch whose sole job is to hammer the existing Muse codebase
+with tests, learn from every failure, and record the *patterns* behind
+defects — not to ship product features.
 Method: observe → reproduce deterministically → root-cause → fix or
 document → re-verify.
+
+---
+
+## EXECUTIVE SUMMARY (13 rounds)
+
+**16 real defects found by adversarial testing and fixed** (each with a new
+regression test, all merged to `main`), plus a reusable tool-selection
+reliability harness. Coverage spans every layer: TS core, web frontend, Rust
+sandbox, a live local-Qwen round-trip, and the verification tooling itself.
+
+### Fixes (by layer)
+| # | Defect | Area |
+|---|--------|------|
+| 001 | vitest 4 dropped `**/dist/**` → every src-colocated test double-ran against STALE compiled copies | test infra |
+| 002 / 002b | plan + followup parsers anchored on the first `[`, losing the JSON when prose/markdown brackets preceded it | agent-core |
+| 003 | `sanitizeGeminiSchema` + tool-output recursion overflowed on deep/circular input | model / agent-core |
+| 004 | clarify-directive (outbound-safety safeguard) was English-only; user types Korean | agent-core |
+| 005 | trimmer forwarded an orphan tool_use (no matching result) → provider 400 | memory |
+| 006 | OpenAI SSE parsers dropped the final event with no trailing `\n\n` (compat backends) | model |
+| 008 | objective-evaluator `<think>` strip was O(n²) on unclosed tags | mcp |
+| 009 | a corrupt `user-memory.json` crashed every run (only store that didn't degrade) | memory |
+| 011 | credential re-login crashed after the per-host key changed (hostname change) | cli |
+| 012 | `DynamicToolRegistry` emitted a DUPLICATE tool name on a built-in/dynamic collision → provider 400 | autoconfigure |
+| 013 | `webSearch.maxUses` was backend-honored but had no web control (missing setting) | web |
+| 014 | Rust runner deadlocked on >64KB output (pipes not drained) → false timeout | crates/runner |
+| 015 | `time_relative`/`time_diff` confusable; sharpened "use when / not when" descriptions | tools |
+| 016 | `parseInteger` rejected an explicit `0`; added `parseNonNegativeInteger` (fail-open for disable-via-0 settings) | autoconfigure |
+
+### New verification asset
+`pnpm eval:tools` — a golden tool-SELECTION reliability gate (3 scenarios, 24
+cases: synthetic capabilities + Muse's real built-in tools + the confusable
+time-tool set; negative no-tool cases; `MUSE_EVAL_REPEAT` stability mode).
+Documented as a gate in `testing.md` + `tool-calling.md`. It FOUND finding 015.
+
+### Verified SOLID (probed, no defect)
+approval/consent gates (deny/timeout fail-close) · retry classification
+(429/408 retryable) · policy/budget/stop guards · MCP security allowlist ·
+JWT (timingSafeEqual + alg pin) · AES-256-GCM credential store · scheduler
+concurrency (distributed lock, per-delivery persist) · cache LRU/TTL + pattern
+matcher · API input validation + multipart parser · `resolveRelativeTimePhrase`
+date math · runner shell-less exec boundary · provider tool-call parsing
+(unified shape per adapter) · the repo-wide `Number(env)` idiom (consumer
+clamps, no busy-loop fail-open).
+
+### Open items for the product owner (documented, not unilaterally changed)
+- **finding 016 migration**: settings where `0` means disable/unlimited
+  (`MUSE_FOLLOWUP_LLM_BUDGET_PER_DAY`, `MUSE_CACHE_TTL_MS`,
+  `MUSE_MCP_RECONNECT_MAX_ATTEMPTS`) should adopt `parseNonNegativeInteger`.
+- **Timezone (finding 007)**: day-boundary logic is process-local — correct on
+  the user's KST machine, latent on a non-KST server; a real fix threads a user
+  TZ through ~8 functions (feature-sized).
+- **fsync consistency**: tasks/reminders/budget stores tmp+rename without
+  `fsync` (others fsync) — power-loss-window only.
+- **`extractVerifiedSources`** emits each URL twice (de-dup is a product call).
+
+### Recurring defect classes (for future passes)
+parse-the-first-delimiter on untrusted LLM text · unbounded recursion/regex ·
+asymmetric sanitisation of a symmetric invariant · crash-on-corrupt-load ·
+streaming parser never flushes the unterminated final record · duplicate-at-a-
+provider-boundary · recovery-path crash · pipe-buffer deadlock · config
+fail-open (explicit-0 / NaN).
+
+---
 
 Baseline: branch cut from committed `main` HEAD `7afb8135` (the active
 dev agent's uncommitted WIP on `main` is deliberately excluded — an
