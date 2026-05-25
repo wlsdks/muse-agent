@@ -9,7 +9,8 @@
  * Render-free logic lives in `chat-ink-core.ts` and is unit-tested.
  */
 
-import { createMuseRuntimeAssembly, resolveEpisodesFile, resolveFollowupsFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
+import { createMuseRuntimeAssembly, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
+import { LocalCalendarProvider } from "@muse/calendar";
 import { readEpisodes, readFollowups, readTasks } from "@muse/mcp";
 import { loadSkillsFromDirectory, type Skill } from "@muse/skills";
 import { Box, Static, Text, render, useApp, useCursor, useInput } from "ink";
@@ -62,7 +63,7 @@ import { extractMemoryFromTurn, formatLearnedSummary, shouldAutoExtract, type Au
 import { formatReflection, synthesizeReflection, type ReflectionProvider } from "./chat-reflection.js";
 import { listRecentJobIds, readJobSummary, startBackgroundJob } from "./commands-jobs.js";
 import { buildLocalTodayText, parseLookaheadHours, readDueFollowups, readDueReminders } from "./commands-today.js";
-import { dueTaskItems, groupProactiveNotice, imminentItems, jobCompletionItems, pickUnseen, type ProactiveItem } from "./chat-proactive.js";
+import { calendarEventItems, dueTaskItems, groupProactiveNotice, imminentItems, jobCompletionItems, pickUnseen, type ProactiveItem } from "./chat-proactive.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
 import { resolvePersona } from "./program-helpers.js";
 import { resolveDefaultUserKey } from "./user-id.js";
@@ -1154,17 +1155,24 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // surfaces the same items inside the live chat.)
   const remindersFile = resolveRemindersFile(process.env);
   const followupsFile = resolveFollowupsFile(process.env);
+  const calendarFile = resolveLocalCalendarFile(process.env);
   const proactiveCheck = async (): Promise<readonly ProactiveItem[]> => {
-    const horizon = new Date(Date.now() + PROACTIVE_LEAD_MS);
-    const [reminders, followups, tasks] = await Promise.all([
+    const now = new Date();
+    const horizon = new Date(now.getTime() + PROACTIVE_LEAD_MS);
+    const [reminders, followups, tasks, events] = await Promise.all([
       readDueReminders(remindersFile, horizon).catch(() => []),
       readDueFollowups(followupsFile, horizon).catch(() => []),
-      readTasks(resolveTasksFile(process.env)).catch(() => [])
+      readTasks(resolveTasksFile(process.env)).catch(() => []),
+      new LocalCalendarProvider({ file: calendarFile }).listEvents({ from: now, to: horizon }).catch(() => [])
     ]);
     return [
       ...reminders.map((r) => ({ dueAt: r.dueAt, id: r.id, text: r.text })),
       ...followups.map((f) => ({ dueAt: f.scheduledFor, id: f.id, text: f.summary })),
-      ...dueTaskItems(tasks, horizon.getTime())
+      ...dueTaskItems(tasks, horizon.getTime()),
+      ...calendarEventItems(
+        events.map((e) => ({ id: e.id, startsAtIso: e.startsAt.toISOString(), title: e.title })),
+        horizon.getTime()
+      )
     ];
   };
   const instance = render(h(MuseChatApp, {

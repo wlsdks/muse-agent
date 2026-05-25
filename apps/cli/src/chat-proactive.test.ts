@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { dueTaskItems, groupProactiveNotice, imminentItems, jobCompletionItems, jobDoneNoticeText, pickUnseen, proactiveNoticeText, relativeWhen } from "./chat-proactive.js";
+import { calendarEventItems, dueTaskItems, groupProactiveNotice, imminentItems, jobCompletionItems, jobDoneNoticeText, pickUnseen, proactiveNoticeText, relativeWhen } from "./chat-proactive.js";
 
 const now = Date.UTC(2026, 4, 24, 12, 0, 0);
 const iso = (minFromNow: number): string => new Date(now + minFromNow * 60_000).toISOString();
@@ -78,6 +78,26 @@ describe("dueTaskItems", () => {
     expect(items.map((i) => i.id)).toEqual(["task:t1"]);
     expect(items[0]?.text).toBe("Task due: pay rent");
     expect(items[0]?.dueAt).toBe(iso(-30));
+  });
+});
+
+describe("calendarEventItems", () => {
+  const horizon = Date.UTC(2026, 4, 25, 12, 0, 0);
+  const iso = (minFromHorizon: number): string => new Date(horizon + minFromHorizon * 60_000).toISOString();
+  it("keeps events starting at/before the horizon, as event: proactive items", () => {
+    const items = calendarEventItems([
+      { id: "e1", title: "Standup", startsAtIso: iso(-15) },
+      { id: "e2", title: "Later sync", startsAtIso: iso(120) },
+      { id: "e3", title: "bad date", startsAtIso: "not-a-date" }
+    ], horizon);
+    expect(items.map((i) => i.id)).toEqual(["event:e1"]);
+    expect(items[0]?.text).toBe("Calendar: Standup");
+    expect(items[0]?.dueAt).toBe(iso(-15));
+  });
+  it("flows through imminentItems + groupProactiveNotice as one notice with a relative time", () => {
+    const items = calendarEventItems([{ id: "e1", title: "Standup", startsAtIso: iso(15) }], horizon + 30 * 60_000);
+    const grouped = groupProactiveNotice(items, horizon);
+    expect(grouped).toBe("📌 Calendar: Standup (in 15m) — want a hand?");
   });
 });
 

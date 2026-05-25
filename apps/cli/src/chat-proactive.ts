@@ -90,6 +90,28 @@ export function dueTaskItems(tasks: readonly DueTaskInput[], horizonMs: number):
     .map((task) => ({ id: `task:${task.id}`, text: `Task due: ${task.title}`, ...(task.dueAt ? { dueAt: task.dueAt } : {}) }));
 }
 
+export interface CalendarEventInput {
+  readonly id: string;
+  readonly title: string;
+  readonly startsAtIso: string;
+}
+
+/**
+ * Imminent calendar events as proactive items — so Muse nudges "Standup (in
+ * 15m)" the way it surfaces reminders/tasks (JARVIS schedule awareness). Events
+ * starting at or before `horizonMs` with a parseable start qualify; the caller's
+ * `imminentItems` window then bounds how early/late they fire (same path as
+ * reminders). The render layer strips untrusted bytes from the title.
+ */
+export function calendarEventItems(events: readonly CalendarEventInput[], horizonMs: number): ProactiveItem[] {
+  return events
+    .filter((event) => {
+      const startsAt = Date.parse(event.startsAtIso);
+      return Number.isFinite(startsAt) && startsAt <= horizonMs;
+    })
+    .map((event) => ({ id: `event:${event.id}`, text: `Calendar: ${event.title}`, dueAt: event.startsAtIso }));
+}
+
 export interface JobDoneInput {
   readonly id: string;
   readonly status: string;
