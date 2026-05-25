@@ -866,3 +866,22 @@ for finding 015). Full run **24/24 (100%)** (synthetic 12 + real 6 + time 6).
 Documented `pnpm eval:tools` as verification gate #5 in `.claude/rules/testing.md`
 (run after touching tool names/descriptions/schemas, projection, or the Ollama
 adapter).
+
+### Round 12 — eval:tools reliability mode + real-tool confusability sweep
+
+- **Confusability sweep (broad real data/text tools)**: exposed 8 real
+  @muse/tools (math_eval, hash_text, csv_parse, base64, text_stats, slugify,
+  kv_summarize, markdown_table) and probed each. 8/9 — the one miss was the
+  model answering a trivial word count directly instead of calling text_stats
+  (not a mis-selection). No confusable overlap like the time tools; the
+  data/text descriptions are well-disambiguated. (time_relative/time_diff,
+  fixed in 015, remains the only real overlap found.)
+- **Provider tool-call conformance (G3)**: verified ALREADY covered — each
+  adapter (anthropic tool_use, gemini functionCall, openai-responses
+  function_call, openai-compatible/ollama tool_calls) has a tool-call parse
+  test asserting the unified ModelToolCall shape in model.test.ts. No
+  redundant wrapper added (would be churn).
+- **eval:tools MUSE_EVAL_REPEAT mode**: runs each case N times and passes only
+  if every run passes — surfaces flaky/borderline selections a single run
+  hides. The stochastic-model reliability gate the research recommends.
+  Verified REPEAT=2 → 24/24 stable.

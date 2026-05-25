@@ -19,8 +19,9 @@
  * LOCAL OLLAMA ONLY. Skips (exit 0) when Ollama is unreachable. temperature=0
  * for reproducibility; reports a reliability score against a threshold.
  *
- *   pnpm eval:tools                 # qwen3:8b by default
+ *   pnpm eval:tools                       # qwen3:8b by default
  *   MUSE_EVAL_MODEL=qwen3:8b MUSE_EVAL_THRESHOLD=0.85 pnpm eval:tools
+ *   MUSE_EVAL_REPEAT=5 pnpm eval:tools    # run each case 5x; pass only if all pass
  */
 
 import { OllamaProvider } from "../packages/model/dist/index.js";
@@ -28,6 +29,10 @@ import { OllamaProvider } from "../packages/model/dist/index.js";
 const MODEL = process.env.MUSE_EVAL_MODEL ?? "qwen3:8b";
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 const THRESHOLD = Number(process.env.MUSE_EVAL_THRESHOLD ?? "0.85");
+// The model is stochastic; one pass isn't proof of reliability. MUSE_EVAL_REPEAT
+// runs each case N times and counts it as passed only if EVERY run passes —
+// surfacing flaky/borderline selections that a single run would hide.
+const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT ?? "1")));
 
 const SYNTHETIC_TOOLS = [
   { name: "get_weather", description: "Get the current weather for a city. Use when the user asks about weather; do not use otherwise.", inputSchema: { type: "object", properties: { city: { type: "string", description: "City name, e.g. 'Seoul'" } }, required: ["city"] } },
@@ -150,15 +155,23 @@ async function main() {
     console.log(`\n[${scenario.label}] ${scenario.cases.length} cases (tools: ${scenario.tools.map((t) => t.name).join(", ")})`);
     for (const testCase of scenario.cases) {
       total += 1;
-      let result;
-      try {
-        const response = await provider.generate({ model: MODEL, messages: [{ role: "user", content: testCase.prompt }], tools: scenario.tools, temperature: 0, maxOutputTokens: 160 });
-        result = evaluate(testCase, response.toolCalls ?? []);
-      } catch (error) {
-        result = { ok: false, detail: `threw: ${error instanceof Error ? error.message : String(error)}` };
+      let runsPassed = 0;
+      let lastDetail = "";
+      for (let run = 0; run < REPEAT; run += 1) {
+        let result;
+        try {
+          const response = await provider.generate({ model: MODEL, messages: [{ role: "user", content: testCase.prompt }], tools: scenario.tools, temperature: 0, maxOutputTokens: 160 });
+          result = evaluate(testCase, response.toolCalls ?? []);
+        } catch (error) {
+          result = { ok: false, detail: `threw: ${error instanceof Error ? error.message : String(error)}` };
+        }
+        if (result.ok) runsPassed += 1;
+        lastDetail = result.detail;
       }
-      if (result.ok) passed += 1;
-      console.log(`  ${result.ok ? "PASS" : "FAIL"}  [${testCase.note}] ${result.detail}`);
+      const ok = runsPassed === REPEAT; // strict: every run must pass
+      if (ok) passed += 1;
+      const stability = REPEAT > 1 ? ` [${runsPassed}/${REPEAT} runs]` : "";
+      console.log(`  ${ok ? "PASS" : "FAIL"}${stability}  [${testCase.note}] ${lastDetail}`);
     }
   }
 
