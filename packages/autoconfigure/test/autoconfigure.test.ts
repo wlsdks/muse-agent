@@ -57,7 +57,7 @@ import {
   resolveTelegramInboxFile,
   resolveTelegramOffsetFile
 } from "../src/index.js";
-import { parseNonNegativeFloat, parsePositiveFloat, parseSloErrorRate } from "../src/env-parsers.js";
+import { parseNonNegativeFloat, parseNonNegativeInteger, parsePositiveFloat, parseSloErrorRate } from "../src/env-parsers.js";
 import { resolveWorkspaceSkillsDir } from "../src/provider-paths.js";
 import { createPersonalToolExposurePolicy } from "../src/runtime-wiring.js";
 
@@ -645,6 +645,19 @@ describe("autoconfigure", () => {
     expect(parseInteger("+12", 1)).toBe(12);
     expect(parseInteger("-3", 4)).toBe(4);
     expect(parseInteger("0", 9)).toBe(9);
+  });
+
+  it("parseNonNegativeInteger honours an explicit 0 (the >=0 integer variant parseInteger lacked)", () => {
+    // parseInteger rejects 0 → fallback, so a deliberate MUSE_*=0 (disable /
+    // no-budget / unlimited) silently kept the non-zero default. This variant
+    // honours 0 while keeping the same strict parsing as parseInteger.
+    expect(parseNonNegativeInteger("0", 20)).toBe(0);
+    expect(parseNonNegativeInteger("5", 1)).toBe(5);
+    expect(parseNonNegativeInteger("-3", 4)).toBe(4); // negatives still fall back
+    expect(parseNonNegativeInteger("60x", 7)).toBe(7); // same lenient-garbage rejection
+    expect(parseNonNegativeInteger("1e3", 7)).toBe(7);
+    expect(parseNonNegativeInteger(undefined, 9)).toBe(9);
+    expect(parseNonNegativeInteger("9007199254740993", 1)).toBe(1); // unsafe-integer → fallback
   });
 
   it("parseInteger rejects values outside the safe-integer range so a double-precision rounding cannot silently mis-configure runtime numbers", () => {

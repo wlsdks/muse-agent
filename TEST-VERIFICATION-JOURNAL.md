@@ -885,3 +885,21 @@ adapter).
   if every run passes — surfaces flaky/borderline selections a single run
   hides. The stochastic-model reliability gate the research recommends.
   Verified REPEAT=2 → 24/24 stable.
+
+### Finding 016 — parseInteger rejects an explicit 0 (no >=0 integer variant); added parseNonNegativeInteger
+
+The float env-parsers distinguish `parsePositiveFloat` (> 0) from
+`parseNonNegativeFloat` (>= 0), but the integer side had only `parseInteger`,
+which requires `parsed > 0`. So every integer env var used the >0 parser, and
+a deliberate `MUSE_*=0` was silently replaced by the non-zero fallback — a
+fail-open surprise for settings where 0 means disable/unlimited:
+- `MUSE_FOLLOWUP_LLM_BUDGET_PER_DAY=0` (disable LLM followups) → kept default 20.
+- `MUSE_CACHE_TTL_MS=0` (never-expire, which the cache treats as ttl=0) → kept 1h.
+- `MUSE_MCP_RECONNECT_MAX_ATTEMPTS=0` (don't reconnect) → kept 3.
+
+**Action (safe, additive):** added `parseNonNegativeInteger` (>= 0, same strict
+parsing) + tests, restoring symmetry with the float parsers. Did NOT migrate
+the ~20 production call sites — whether each setting should accept 0 is a
+per-setting product decision (and some need downstream "0 = disable" handling),
+so that's flagged for the owner. The primitive now exists; the listed settings
+are the highest-value candidates to adopt it. autoconfigure 262 passed; lint clean.

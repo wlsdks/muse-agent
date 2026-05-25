@@ -84,6 +84,27 @@ export function parseInteger(value: string | undefined, fallback: number): numbe
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+/**
+ * Like `parseInteger` but accepts a non-negative integer — i.e. honours an
+ * explicit `0`. The float parsers distinguish `parsePositiveFloat` (> 0) from
+ * `parseNonNegativeFloat` (>= 0); the integer side lacked the >= 0 variant, so
+ * every caller used the > 0 `parseInteger`. That silently turned a deliberate
+ * `MUSE_*=0` (disable / unlimited / no-budget) into the non-zero fallback — a
+ * fail-open surprise (e.g. setting a per-day budget to 0 to disable it kept
+ * the default). Use this for any setting where 0 is a meaningful value.
+ */
+export function parseNonNegativeInteger(value: string | undefined, fallback: number): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  const trimmed = value.trim();
+  if (!/^[+-]?\d+$/u.test(trimmed)) {
+    return fallback;
+  }
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 // Same leniency hazard `parseInteger` was hardened against, for
 // the float parsers: `Number.parseFloat("0.5x")` is `0.5` and
 // `"60s"` is `60`, so a unit-slip / typo'd MUSE_* float silently
