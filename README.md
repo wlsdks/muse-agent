@@ -64,10 +64,11 @@ These are deliberate product boundaries, enforced in code — not TODOs:
   another person (email, chat, message, web form / booking) is
   **draft-first and you confirm the exact content** before it leaves.
   The approval gate is fail-closed: deny / timeout / ambiguous
-  recipient ⇒ nothing is sent. *(Known gap: the `muse.messaging.send`
-  MCP tool path is not yet on this gate — see
+  recipient ⇒ nothing is sent. Messaging sends (`muse.messaging.send`)
+  are gated by the runtime approval gate in the shipping CLI / API
+  paths and now also self-record every send to the action log (see
   [`docs/audit/2026-05-25-feature-usecase-audit.md`](docs/audit/2026-05-25-feature-usecase-audit.md)
-  F-1; treat it as unsafe for autonomous use until fixed.)*
+  F-1).
 - **Single user, single environment.** No multi-tenant accounts, no
   shared workspace, no RBAC. Identity is your local `$USER`.
 - **Vision input is provider-limited.** Image attachments are

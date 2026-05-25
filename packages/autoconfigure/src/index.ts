@@ -168,6 +168,7 @@ import {
   buildVoiceRegistry,
   ensureNotesDir,
   mergeModelKeysFromFile,
+  resolveActionLogFile,
   resolveContactsFile,
   resolveEpisodesFile,
   resolveFeedsFile,
@@ -527,6 +528,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   // owns the env-gate + LLM-judge-opt-in logic that used to live
   // inline as 95 LOC of repeated scaffolding.
   const loopback = buildLoopbackTools({
+    actionLogFile: resolveActionLogFile(env),
     calendarRegistry,
     defaultModel,
     env,
@@ -543,7 +545,8 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     reminderHistoryFile,
     remindersFile,
     tasksFile,
-    tasksRegistry
+    tasksRegistry,
+    userId: env.MUSE_USER_ID ?? "user"
   });
   const notesLoopbackTools = loopback.notes;
   const notesRegistryLoopbackTools = loopback.notesRegistry;

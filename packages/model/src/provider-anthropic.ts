@@ -184,6 +184,10 @@ export function anthropicModelCapabilities(modelId: string): ModelCapabilities {
     maxInputTokens: 200_000,
     promptCaching: true,
     reasoning: modelId.includes("opus") || modelId.includes("sonnet"),
-    structuredOutput: false
+    structuredOutput: false,
+    // Attachments are not serialized to Anthropic image blocks yet
+    // (toAnthropicMessage drops them); declaring true would silently
+    // discard images callers send after checking this flag.
+    vision: false
   };
 }

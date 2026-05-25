@@ -62,6 +62,9 @@ export interface LoopbackToolsDeps {
     readonly errors: readonly { readonly providerId: string; readonly message: string }[];
   }>) | undefined;
   readonly pollNow: ((providerId: string, source?: string) => Promise<{ ingested: number }>) | undefined;
+  // Outbound-safety: lets `muse.messaging.send` action-log every send.
+  readonly actionLogFile: string;
+  readonly userId: string;
 }
 
 export interface LoopbackToolsBundle {
@@ -121,9 +124,11 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
   // errors with "no providers configured".
   const messaging = deps.messagingRegistry.list().length > 0 && deps.pollAll && deps.pollNow
     ? createLoopbackMcpMuseTools(createMessagingMcpServer({
+        actionLogFile: deps.actionLogFile,
         pollAll: deps.pollAll,
         pollNow: deps.pollNow,
-        registry: deps.messagingRegistry
+        registry: deps.messagingRegistry,
+        userId: deps.userId
       }))
     : [];
 

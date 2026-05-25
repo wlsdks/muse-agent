@@ -1,0 +1,119 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import type { OutboundReceipt } from "@muse/messaging";
+import { describe, expect, it } from "vitest";
+
+import { sendMessageWithApproval, type MessageApprovalGate } from "./message-send.js";
+import { readActionLog } from "./personal-action-log-store.js";
+
+interface SentRecord {
+  readonly providerId: string;
+  readonly destination: string;
+  readonly text: string;
+}
+
+// Contract-faithful fake of the registry transport boundary: records
+// every send so a test asserts the message actually left (or didn't),
+// never a fake "did it" flag. Optionally throws to model a 5xx.
+function fakeRegistry(throwOnSend = false): {
+  registry: { send(providerId: string, message: { destination: string; text: string }): Promise<OutboundReceipt> };
+  sends: SentRecord[];
+} {
+  const sends: SentRecord[] = [];
+  return {
+    registry: {
+      send: async (providerId, message): Promise<OutboundReceipt> => {
+        if (throwOnSend) {
+          throw new Error("upstream 503");
+        }
+        sends.push({ destination: message.destination, providerId, text: message.text });
+        return { destination: message.destination, messageId: "msg_1", providerId: providerId as OutboundReceipt["providerId"] };
+      }
+    },
+    sends
+  };
+}
+
+const deny: MessageApprovalGate = () => ({ approved: false, reason: "user declined" });
+const throwingGate: MessageApprovalGate = () => {
+  throw new Error("approval prompt undeliverable");
+};
+
+function logFile(): string {
+  return join(mkdtempSync(join(tmpdir(), "muse-msg-send-")), "action-log.json");
+}
+
+describe("sendMessageWithApproval — outbound-safety contract", () => {
+  it("CONFIRM: with no self-gate (runtime gate is the confirmation) the send fires once and logs `performed`", async () => {
+    const { registry, sends } = fakeRegistry();
+    const file = logFile();
+    const outcome = await sendMessageWithApproval({
+      actionLogFile: file,
+      destination: "@stark",
+      providerId: "telegram",
+      registry,
+      text: "deploy finished",
+      userId: "stark"
+    });
+    expect(outcome).toEqual({ destination: "@stark", messageId: "msg_1", sent: true });
+    expect(sends).toEqual([{ destination: "@stark", providerId: "telegram", text: "deploy finished" }]);
+    const log = await readActionLog(file);
+    expect(log[0]).toMatchObject({ result: "performed", userId: "stark" });
+    expect(log[0]!.what).toContain("telegram");
+  });
+
+  it("DENY: an injected gate that denies blocks the send entirely and logs `refused`", async () => {
+    const { registry, sends } = fakeRegistry();
+    const file = logFile();
+    const outcome = await sendMessageWithApproval({
+      actionLogFile: file,
+      approvalGate: deny,
+      destination: "@stark",
+      providerId: "telegram",
+      registry,
+      text: "deploy finished",
+      userId: "stark"
+    });
+    expect(outcome).toMatchObject({ reason: "denied", sent: false });
+    expect(sends).toHaveLength(0);
+    const log = await readActionLog(file);
+    expect(log[0]).toMatchObject({ result: "refused" });
+  });
+
+  it("TIMEOUT: a gate that throws is fail-closed — no send, logged `refused`", async () => {
+    const { registry, sends } = fakeRegistry();
+    const file = logFile();
+    const outcome = await sendMessageWithApproval({
+      actionLogFile: file,
+      approvalGate: throwingGate,
+      destination: "@stark",
+      providerId: "telegram",
+      registry,
+      text: "deploy finished",
+      userId: "stark"
+    });
+    expect(outcome).toMatchObject({ reason: "denied", sent: false });
+    expect(sends).toHaveLength(0);
+    const log = await readActionLog(file);
+    expect(log[0]).toMatchObject({ result: "refused" });
+  });
+
+  it("SEND-FAILED: a transport error is logged `failed` and reported, never a false success", async () => {
+    const { registry, sends } = fakeRegistry(true);
+    const file = logFile();
+    const outcome = await sendMessageWithApproval({
+      actionLogFile: file,
+      destination: "@stark",
+      providerId: "telegram",
+      registry,
+      text: "deploy finished",
+      userId: "stark"
+    });
+    expect(outcome).toMatchObject({ reason: "send-failed", sent: false });
+    expect(sends).toHaveLength(0);
+    const log = await readActionLog(file);
+    expect(log[0]).toMatchObject({ result: "failed" });
+  });
+});

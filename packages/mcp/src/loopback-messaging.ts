@@ -7,6 +7,7 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { errorMessage, readString } from "./loopback-helpers.js";
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "./loopback.js";
+import { sendMessageWithApproval, type MessageApprovalGate } from "./message-send.js";
 
 /**
  * `muse.messaging` loopback MCP server.
@@ -69,10 +70,20 @@ export interface MessagingMcpServerOptions {
   readonly registry: MessagingProviderRegistry;
   readonly pollNow?: PollNowDispatcher;
   readonly pollAll?: PollAllDispatcher;
+  /**
+   * When both `actionLogFile` and `userId` are supplied, the `send`
+   * tool routes through `sendMessageWithApproval` so every outbound
+   * message is recorded (outbound-safety Rule 4) and an optional
+   * `approvalGate` adds draft-first defense-in-depth. Omitted in
+   * lightweight test/MCP-only paths, which keep the direct send.
+   */
+  readonly actionLogFile?: string;
+  readonly userId?: string;
+  readonly approvalGate?: MessageApprovalGate;
 }
 
 export function createMessagingMcpServer(options: MessagingMcpServerOptions): LoopbackMcpServer {
-  const { registry, pollNow, pollAll } = options;
+  const { registry, pollNow, pollAll, actionLogFile, userId, approvalGate } = options;
 
   const pollAllTool: LoopbackMcpToolDefinition[] = pollAll ? [{
     description:
@@ -260,6 +271,24 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
           }
           if (text === undefined || text.length === 0) {
             return { error: "text is required" };
+          }
+          // Outbound-safety: when wired with an action log, record every
+          // send (and honour an optional draft-first gate) instead of
+          // transmitting silently — the gap this tool had vs email_send.
+          if (actionLogFile && userId) {
+            const outcome = await sendMessageWithApproval({
+              actionLogFile,
+              destination,
+              providerId,
+              registry,
+              text,
+              userId,
+              ...(approvalGate ? { approvalGate } : {})
+            });
+            if (outcome.sent) {
+              return { destination: outcome.destination, messageId: outcome.messageId, providerId };
+            }
+            return { error: outcome.detail, ...(outcome.reason === "denied" ? { refused: true } : {}) };
           }
           try {
             const receipt = await registry.send(providerId, { destination, text });
