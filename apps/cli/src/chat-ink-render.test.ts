@@ -47,6 +47,24 @@ function makeProps(overrides: Record<string, unknown> = {}): Parameters<typeof M
 
 const tick = (ms = 60): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+// Ink renders asynchronously, so a fixed post-Enter wait flakes under load
+// (the command output may not be in the frame yet → false miss). Poll the
+// frame until every needle is present or a bounded timeout — fast when idle,
+// robust under the full-suite parallel contention.
+async function waitForFrame(
+  lastFrame: () => string | undefined,
+  needles: readonly string[],
+  timeoutMs = 2000
+): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  let frame = lastFrame() ?? "";
+  while (Date.now() < deadline && !needles.every((needle) => frame.includes(needle))) {
+    await new Promise((r) => setTimeout(r, 20));
+    frame = lastFrame() ?? "";
+  }
+  return frame;
+}
+
 describe("MuseChatApp render — slash command echo + output", () => {
   it("echoes the typed command and shows its result in the transcript", async () => {
     const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps()));
@@ -235,8 +253,8 @@ describe("MuseChatApp render — every slash command responds", () => {
     it(`${c.input} → ${c.contains[0] ?? ""}`, async () => {
       const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps()));
       await tick();
-      stdin.write(c.input); await tick(); stdin.write("\r"); await tick(140);
-      const frame = lastFrame() ?? "";
+      stdin.write(c.input); await tick(); stdin.write("\r");
+      const frame = await waitForFrame(lastFrame, c.contains);
       unmount();
       for (const needle of c.contains) expect(frame, `"${c.input}" frame missing: ${needle}`).toContain(needle);
     });

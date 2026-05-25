@@ -1036,3 +1036,18 @@ Closed the documented URL-duplication: `extractVerifiedSources` pushed each
 url twice (field match with the real title + generic string scan with a
 url-derived title). Added `dedupeByUrl` keeping the first (better-titled) hit.
 agent-core 709 passed; lint clean.
+
+## Round 15 — finding 018: flaky chat-ink-render slash-command test (fixed)
+
+The full-suite sweep intermittently failed `chat-ink-render.test.ts > /memory`
+(the whole file ran ~25s under load). Isolation: 36/36 green, 3/3 — a
+contention flake (finding-001 class), not my regression (apps/cli untouched by
+this work). Root cause: the slash-command loop waited a FIXED `tick(140)` after
+Enter, then asserted; Ink renders async, so under full-suite parallel load the
+command output (esp. /memory loading user memory) wasn't in the frame within
+140ms → false miss.
+
+**Fix:** replaced the fixed wait with `waitForFrame` — poll `lastFrame()` every
+20ms until all needles appear or a 2s bound (fast when idle, robust under
+load). Timing-only; assertions unchanged. Full sweep now green: apps/cli 1158
+passed, 26 pkgs / 4567 passed, lint 0/0, rust 6/6, eval:tools 24/24.
