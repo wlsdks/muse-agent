@@ -74,6 +74,7 @@
 | 56 | `dc8720b2` | harden arg battery (no-via) + wire into eval LIVE | quality infra · args | **live 4/4 + eval** |
 | 57 | `64d396f6` | tolerate model-fabricated calendar `providerId` sentinel (mis-route guard) | reliability · args | unit 58/58 (real provider) |
 | 58 | `6075dded` | same sentinel tolerance on notes/tasks create (messaging stays strict) | reliability · args | mcp 806/806 |
+| 59 | `90b0de8f` | NEW axis — `muse.web.read` reads any public URL as clean text (SSRF-guarded, default-on) | perception · web | mcp 820/820 + exposure 28/28 + **battery 13/13 live** |
 
 ### 10-item evaluated backlog — DELIVERED (slices 36-44)
 
