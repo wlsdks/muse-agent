@@ -21,6 +21,10 @@ const CHAT_AUTO_EXTRACT_SYSTEM =
   "Output ONLY a JSON object, no prose: {\"facts\":{\"<snake_key>\":\"<value>\"},\"preferences\":{\"<snake_key>\":\"<value>\"}}. " +
   "Put a FACT when the user states where they live, their name, job, diet, or people/things in their life (e.g. {\"home_city\":\"Busan\"}). " +
   "Put a PREFERENCE for how they like replies/behavior (e.g. {\"reply_length\":\"short\"}). " +
+  "ONLY extract from a DECLARATIVE statement the user makes about THEMSELVES. " +
+  "Do NOT infer from questions, requests, or topics they merely mention — e.g. " +
+  "\"What's the weather in Busan?\" → {\"facts\":{},\"preferences\":{}} (they did NOT say they live in Busan); " +
+  "\"Remind me to call mom\" → {\"facts\":{},\"preferences\":{}} (a task, not a durable fact). " +
   "If the user stated nothing durable about themselves, return {\"facts\":{},\"preferences\":{}}. Never invent.";
 
 export interface AutoMemoryProvider {

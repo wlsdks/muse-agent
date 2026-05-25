@@ -56,6 +56,32 @@
   vegetarian / "2+2?"→empty) then extracted reliably. Shipped that prompt in
   chat-auto-memory.ts. Confirms the iterate-fast method: the live MISS, not the
   unit test, found the real gap.
+- **Auto-memory stored a fact from a QUESTION (slice 11 diverse battery).**
+  "What's the weather in Busan?" → wrongly stored `home_city: Busan`. The 9-case
+  EN/KO + negatives battery caught it; the happy-path checks didn't. → **Lesson:**
+  add explicit negatives to the prompt ("only DECLARATIVE self-statements; do
+  NOT infer from questions/requests" + a weather + a task example). Re-ran → 9/9.
+
+## Reusable patterns (carry these forward)
+
+- **Small-model structured extraction:** OUTPUT-ONLY-JSON + concrete examples +
+  explicit NEGATIVE examples. qwen3:8b then complies in one shot; vague prompts
+  return empty or over-extract. (chat-auto-memory `CHAT_AUTO_EXTRACT_SYSTEM`.)
+- **Fast > exhaustive for a single proof:** one local-qwen3:8b round (~1 min)
+  beats a full `smoke:live` sweep (the 35b sweep stalled). Build a tiny
+  parameterized verifier per concern (`verify-tool-selection.mjs`,
+  `verify-auto-memory.mjs`); include EN+KO and negatives. Reserve full
+  `smoke:live` for broad regression.
+- **Live diverse checks catch what unit tests miss:** unit tests (fake provider)
+  passed while the real model over-extracted. A model-path change needs a
+  real-model battery, not just unit coverage.
+- **Interactive UI is verifiable:** drive `useInput → submit → frame` with
+  ink-testing-library (`chat-ink-render.test.ts`) — no PTY needed.
+- **Keep model-heavy side effects OFF the reply path:** the runtime's
+  afterComplete hook is awaited (blocks). For chat, run extraction in the
+  background, cooldown-gated, so the streamed reply stays snappy.
+- **Surface autonomous actions for trust:** when the agent learns/acts on its
+  own, show it + offer one-tap undo ("📝 remembered: … /forget <key>").
 
 ## Open / next experiments
 
