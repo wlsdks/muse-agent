@@ -85,10 +85,25 @@ function formatCountSummary(count: number, locale: ToolEvidenceLocale): string {
   return `총 ${count}건 발견.`;
 }
 
-function collectVerifiedSources(value: unknown, toolName: string, sources: VerifiedSource[]): void {
+// Tool output is untrusted (CLAUDE.md). A buggy or hostile MCP server can
+// return arbitrarily deep JSON; without a bound the recursive walk below
+// blows the call stack (RangeError ~5000 levels) and crashes evidence
+// extraction. Legitimate result payloads nest only a handful of levels, so
+// cap the descent and ignore anything past it rather than throwing.
+const MAX_TOOL_OUTPUT_DEPTH = 64;
+
+function collectVerifiedSources(
+  value: unknown,
+  toolName: string,
+  sources: VerifiedSource[],
+  depth = 0
+): void {
+  if (depth > MAX_TOOL_OUTPUT_DEPTH) {
+    return;
+  }
   if (Array.isArray(value)) {
     for (const item of value) {
-      collectVerifiedSources(item, toolName, sources);
+      collectVerifiedSources(item, toolName, sources, depth + 1);
     }
     return;
   }
@@ -113,18 +128,18 @@ function collectVerifiedSources(value: unknown, toolName: string, sources: Verif
       continue;
     }
 
-    collectVerifiedSources(item, toolName, sources);
+    collectVerifiedSources(item, toolName, sources, depth + 1);
   }
 }
 
-function parseToolOutputJson(output: string): unknown | undefined {
+function parseToolOutputJson(output: string, depth = 0): unknown | undefined {
   const unwrapped = unwrapToolData(output);
 
   try {
     const parsed: unknown = JSON.parse(unwrapped);
 
-    if (isRecord(parsed) && typeof parsed.result === "string") {
-      const nested = parseToolOutputJson(parsed.result);
+    if (depth < MAX_TOOL_OUTPUT_DEPTH && isRecord(parsed) && typeof parsed.result === "string") {
+      const nested = parseToolOutputJson(parsed.result, depth + 1);
       return nested ?? parsed;
     }
 

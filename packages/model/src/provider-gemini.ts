@@ -83,13 +83,29 @@ export function toGeminiRequest(
  * combinator forms `oneOf`/`anyOf`/`allOf` at the parameters root. The stripped
  * schema is recursive — `properties.{key}` and `items` are sanitised in turn.
  */
+// A tool schema is an in-memory object that may be deeply nested or even
+// self-referential (recursive types expanded into a cyclic object). The
+// recursion below would otherwise blow the call stack (RangeError) on
+// either, poisoning the whole generate request. Cap depth and detect
+// cycles, returning a harmless empty schema past the limit.
+const MAX_SCHEMA_DEPTH = 100;
+
 export function sanitizeGeminiSchema(schema: unknown): unknown {
+  return sanitizeGeminiSchemaInner(schema, 0, new WeakSet<object>());
+}
+
+function sanitizeGeminiSchemaInner(schema: unknown, depth: number, seen: WeakSet<object>): unknown {
   if (!schema || typeof schema !== "object") {
     return schema;
   }
 
+  if (depth > MAX_SCHEMA_DEPTH || seen.has(schema)) {
+    return {};
+  }
+  seen.add(schema);
+
   if (Array.isArray(schema)) {
-    return schema.map((entry) => sanitizeGeminiSchema(entry));
+    return schema.map((entry) => sanitizeGeminiSchemaInner(entry, depth + 1, seen));
   }
 
   const stripped = new Set([
@@ -112,15 +128,15 @@ export function sanitizeGeminiSchema(schema: unknown): unknown {
     if (key === "properties" && value && typeof value === "object") {
       const nested: Record<string, unknown> = {};
       for (const [propertyKey, propertyValue] of Object.entries(value as Record<string, unknown>)) {
-        nested[propertyKey] = sanitizeGeminiSchema(propertyValue);
+        nested[propertyKey] = sanitizeGeminiSchemaInner(propertyValue, depth + 1, seen);
       }
       result[key] = nested;
       continue;
     }
     if (key === "items" || key === "oneOf" || key === "anyOf" || key === "allOf") {
       result[key] = Array.isArray(value)
-        ? value.map((entry) => sanitizeGeminiSchema(entry))
-        : sanitizeGeminiSchema(value);
+        ? value.map((entry) => sanitizeGeminiSchemaInner(entry, depth + 1, seen))
+        : sanitizeGeminiSchemaInner(value, depth + 1, seen);
       continue;
     }
     result[key] = value;

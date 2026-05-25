@@ -199,3 +199,52 @@ promise.
 A defect found by reasoning about a *class* (not a single line) should
 trigger a sweep for siblings. Here the sweep found a second, worse
 instance and justified consolidating both onto one tested implementation.
+
+---
+
+## Finding 003 — unbounded recursion on untrusted/external structures (two sites)
+
+**Severity:** medium (DoS-shaped: a single pathological input crashes a
+whole request; `tool-output` side is on the CLAUDE.md "tool output is
+untrusted, tool loops have explicit limits" path)
+
+Continuing the "sweep the class, not the line" method, I attacked the
+recursive transforms with deep + circular inputs:
+
+| function | site | deep-nesting | circular |
+|----------|------|--------------|----------|
+| `sanitizeGeminiSchema` | `packages/model/src/provider-gemini.ts` | RangeError @ ~60k | RangeError |
+| `extractVerifiedSources` → `collectVerifiedSources` / `parseToolOutputJson` | `packages/agent-core/src/tool-output-evidence.ts` | RangeError @ ~5000 | n/a (JSON.parse can't cycle) |
+
+`sanitizeGeminiSchema` runs on tool inputSchemas (in-memory objects that
+*can* be cyclic via recursive types) — a cycle or deep schema threw
+RangeError and poisoned the entire Gemini `generate` request.
+`extractVerifiedSources` runs on raw tool output, which CLAUDE.md
+explicitly calls untrusted; a ~50 KB deeply-nested JSON payload (≈5000
+levels) from a buggy/hostile MCP server crashed evidence extraction.
+
+**Fix:**
+- `sanitizeGeminiSchema`: depth cap (100) + `WeakSet` cycle detection,
+  returning an empty `{}` schema past the limit (Gemini accepts it).
+- `tool-output-evidence`: depth cap (64) threaded through
+  `collectVerifiedSources` and the `.result`-string recursion in
+  `parseToolOutputJson`; content past the cap is ignored, not thrown on.
+
+**Verified:** model 133 passed (+4), agent-core 693 passed (+3); deep
+(200k) and circular inputs no longer throw and stay JSON-serializable;
+normal schemas still strip rejected keywords; shallow tool sources still
+extracted. lint clean. New suites: `gemini-schema-recursion.test.ts`,
+`tool-output-recursion.test.ts`.
+
+### Side observation (logged, NOT fixed — out of scope)
+`extractVerifiedSources` emits each cited URL **twice** — once from the
+`url`/`webUrl`/`href` field (real title) and once from the generic
+string-value scan (url-derived title). Duplicate citations are a quality
+nit, but de-duping is a product decision other code may lean on, so it's
+recorded here rather than changed under a recursion-safety commit.
+
+### Pattern learned
+Every recursive descent over input you don't fully control needs a depth
+bound; over an *object graph* (not a freshly-parsed JSON tree) it also
+needs cycle detection. "It's just a schema / just tool output" is exactly
+where the unbounded assumption hides.
