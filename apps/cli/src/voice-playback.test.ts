@@ -1,9 +1,11 @@
 import { EventEmitter } from "node:events";
 import type { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join as pathJoin } from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   AUDIO_FORMATS,
@@ -116,9 +118,30 @@ describe("playAudioWithWatchdog (shared --speak player watchdog)", () => {
 });
 
 describe("synthesizeAndPlay — `mkdtemp` cleanup so a long-running `muse listen` / `muse today --brief --speak` daemon can't leak an empty /tmp/muse-speak-XXXX directory on every TTS play (pre-fix only the file inside was unlinked; the directory itself stayed forever)", () => {
+  // synthesizeAndPlay calls `mkdtempSync(join(os.tmpdir(), "muse-speak-"))`,
+  // and os.tmpdir() reads $TMPDIR on each call. Point it at a private dir
+  // per test so the before/after diff sees ONLY this test's directories —
+  // never a muse-speak-* created concurrently by another worker in the
+  // shared /tmp (the prior version diffed the real shared tmp and timed
+  // out / false-leaked under parallel load).
+  let isolatedTmp: string;
+  let savedTmpdir: string | undefined;
+
+  beforeEach(() => {
+    isolatedTmp = mkdtempSync(pathJoin(tmpdir(), "muse-speak-test-root-"));
+    savedTmpdir = process.env.TMPDIR;
+    process.env.TMPDIR = isolatedTmp;
+  });
+
+  afterEach(() => {
+    if (savedTmpdir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = savedTmpdir;
+    rmSync(isolatedTmp, { recursive: true, force: true });
+  });
+
   async function listMuseSpeakTmpDirs(): Promise<readonly string[]> {
     try {
-      const entries = await readdir(tmpdir());
+      const entries = await readdir(isolatedTmp);
       return entries.filter((name) => name.startsWith("muse-speak-")).sort();
     } catch {
       return [];
