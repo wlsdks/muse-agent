@@ -777,3 +777,37 @@ Result: the request/response path and the local-model tool-calling premise are
 confirmed LIVE, not just by unit tests. The fixes that touched this path (SSE
 parser, plan parsing, tool projection, gemini sanitiser) compose with a real
 qwen3:8b round-trip.
+
+---
+
+## Round 8 — research-informed gap: a tool-selection reliability harness (NEW)
+
+User direction: the harness matters — research what tests we actually need.
+Web research on testing LLM agent runtimes (2025) converged on: agents are
+stochastic, so the recommended gate is a **lean golden dataset** of
+(prompt → expected tool) cases run against the real model and scored, with
+explicit **negative cases** (greetings → no tool) and the known tool-calling
+failure modes (wrong tool, missing/incorrect params, eager invocation).
+
+Mapped to Muse: tool-calling.md's first-class concern ("the local Qwen picks
+the right tool in ONE shot") was only covered statically (schemas/projection)
+and by the heavy, CPU-bound smoke:live. The missing middle layer is exactly
+that golden tool-SELECTION gate.
+
+### Added: `scripts/eval-tool-selection.mjs` + `pnpm eval:tools`
+A lean, repeatable, LOCAL-OLLAMA-ONLY harness: a small golden dataset (9 cases
+— EN+KO weather/reminder, web-search, math-not-web-search, and EN+KO
+greeting/thanks → NO tool) run straight against `OllamaProvider.generate`
+(temperature 0), scored against a reliability threshold (85% default), and
+skipped (exit 0) when Ollama is unreachable. Negative cases pin the
+no-eager-invocation rule; Korean cases pin the user's actual language.
+
+**Result (qwen3:8b): 9/9 (100%)** — every positive case selected the right
+tool with the right args in one shot, every greeting/thanks correctly made NO
+call. Confirms tool-calling.md's premise holds with the real model, and gives
+Muse a reusable reliability gate (the systematic version of round-7's one-off
+probe) rather than a one-time check.
+
+Sources (research): Turing College "Evaluating AI Agents 2025"; IBM Research
+"Evaluating LLM-based Agents (IJCAI 2025)"; Confident AI "Test Cases, Goldens,
+and Datasets"; arXiv 2507.21504 "Evaluation and Benchmarking of LLM Agents".
