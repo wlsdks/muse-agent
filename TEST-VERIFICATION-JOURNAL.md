@@ -78,3 +78,31 @@ A major-version bump of the test runner can silently widen what gets
 relies on the runner's default exclude is exposed. Repo-wide guard:
 every package that emits compiled tests needs an explicit `dist` exclude
 (or must stop emitting test files into the build output).
+
+### Repo-wide scope + stale-dist evidence
+Most packages keep tests in a top-level `test/` dir (build tsconfig is
+`include: ["src/**/*.ts"]`, so `test/` is never compiled — those run
+once). Only `src`-colocated test files get compiled into `dist` and
+double-collected. Packages with `src`-colocated tests: agent-core,
+autoconfigure, mcp, messaging, model, scheduler, tools (+ apps/cli,
+which colocates ALL 81 in `src`). Same `dist`-exclude config added to
+all of them.
+
+Test-count drop once the stale `dist` copies stop running (baseline →
+fixed, both with `dist` present):
+
+| package      | before | after | stale dupes removed |
+|--------------|--------|-------|---------------------|
+| apps/cli     | 1898   | 1067  | 831 |
+| mcp          | 957    | 792   | 165 |
+| tools        | 185    | 123   | 62  |
+| model        | 180    | 134   | 46  |
+| scheduler    | 99     | 62    | 37  |
+| messaging    | 232    | 197   | 35  |
+| autoconfigure| 269    | 256   | 13  |
+| agent-core   | 692    | 672   | 20  |
+
+The removed counts are **not** a clean 50% of each suite — proof the
+`dist` copies were compiled from an *older* `src` with different test
+counts. The runner was reporting green on outdated code: a real
+verification-integrity defect, repo-wide, masked as "more tests pass."
