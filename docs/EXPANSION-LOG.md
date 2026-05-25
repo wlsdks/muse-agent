@@ -39,6 +39,15 @@
 | 22 | `2f1eb38c` | surface recurring threads in the persona (model references them) | memory depth · model-path | unit + **live qwen3:8b 2/2 (grounded+neg)** |
 | 23 | (audit) | memory-depth axis end-to-end composition audit | memory depth · audit | **live qwen3:8b 7/7 compose** |
 
+| 24 | `79cde1ed` | proactively surface imminent calendar events in chat | proactive perception | unit + flow |
+| 25 | `e130fba9` | audit: proactive surface composes (sources + dedup + grouping) | proactive · audit | 14/14 compose |
+
+### Proactive-perception axis — calendar in the speaks-first tick
+
+Muse now nudges imminent calendar events ("📌 Calendar: Standup (in 15m)"),
+grouped with reminders/tasks/followups into one notice; jobs stay separate;
+seen-set dedups. Audit (slice 25) confirms all sources compose without spam.
+
 ### Memory-depth axis audit — PASS (slices 17–22, qwen3:8b)
 
 `verify-memory-depth-audit.mjs` drives the whole axis as ONE user flow
