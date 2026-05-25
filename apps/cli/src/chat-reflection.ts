@@ -37,8 +37,18 @@ export interface ReflectionProvider {
     readonly messages: readonly { readonly role: "system" | "user" | "assistant"; readonly content: string }[];
     readonly temperature?: number;
     readonly maxOutputTokens?: number;
+    readonly responseFormat?: Record<string, unknown>;
   }): Promise<{ readonly output?: string }>;
 }
+
+/** Schema the reflection output is constrained to (native structured output);
+ * `""` is a valid insight = "no honest cross-session pattern". */
+const REFLECTION_SCHEMA = {
+  type: "object",
+  properties: { insight: { type: "string" } },
+  required: ["insight"],
+  additionalProperties: false
+} as const;
 
 /** Minimum distinct sessions before a reflection is worth attempting — below
  * this there is no cross-session material and the model would only guess. */
@@ -85,6 +95,10 @@ export async function synthesizeReflection(opts: {
         { content: buildReflectionInput(episodes, threads), role: "user" }
       ],
       model: opts.model,
+      // Native structured output where supported → guaranteed {"insight": …}
+      // JSON; extractJsonObject below stays as the fallback for providers that
+      // ignore responseFormat (no structuredOutput capability).
+      responseFormat: REFLECTION_SCHEMA,
       temperature: 0
     });
     if (!response.output) return "";
