@@ -51,6 +51,7 @@
 | 33 | `c644ce9c` | reflection uses native structured output (guaranteed JSON) | reliability · model-path | unit + **live battery 3/3** |
 | 34 | `1d902216` | auto-memory extraction uses native structured output | reliability · model-path | unit + **live battery 9/9** |
 | 35 | `e48ed1a5` | runtime auto-extract hook uses native structured output | reliability · model-path | unit + pnpm check |
+| 36 | `9f723f38` | plan-execute uses native structured output (last local JSON path) | reliability · model-path | unit + **live qwen valid plan array** |
 
 ### Modern direction: native structured output (constrained decoding) — epic in progress
 
