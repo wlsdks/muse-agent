@@ -47,6 +47,20 @@
 | 29 | `669d6757` | validate required tool args before execute (deterministic repair) | reliability · model-path | unit + agent-core integration + live |
 | 30 | `d1b81f7c` | lossless tool-arg type coercion before execute | reliability · model-path | unit + agent-core integration + live |
 | 31 | `810e396a` | add missing "memory" domain keywords → episode/pattern tools reachable | reliability · model-path | unit + **live qwen selects episode.search** |
+| 32 | `545ebb3e` | ModelRequest.responseFormat → native structured output (Ollama `format`) | reliability · model-path | unit + **live qwen schema-valid JSON** |
+| 33 | `c644ce9c` | reflection uses native structured output (guaranteed JSON) | reliability · model-path | unit + **live battery 3/3** |
+
+### Modern direction: native structured output (constrained decoding) — epic in progress
+
+Direction set after a capability inventory: Muse already has nearly every modern
+agent primitive in-house (guards, plan-execute, multi-agent, episodic, checkpoint,
+tracing, hooks, output filters, tool-arg repair). The clearest old→modern gap was
+structured output — `structuredOutput` was a DECLARED-but-unwired capability;
+every JSON path emitted free text + parse-and-hoped (extractJsonObject). Slice 32
+wired ModelRequest.responseFormat → Ollama native `format` (JSON Schema =
+constrained decoding, guaranteed-valid JSON); slice 33 adopted it in reflection.
+NEXT: OpenAI response_format + Anthropic parser fallback + a shared
+requestStructuredJson seam so every JSON call site is guaranteed-or-validated.
 
 ### Efficiency audit correction + a real bug it surfaced (slice 31)
 
