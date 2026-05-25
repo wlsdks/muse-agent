@@ -433,3 +433,25 @@ The recurring defect classes, for future passes:
    English-only clarify-directive vs a Korean user).
 6. **A test runner / toolchain major bump silently widening collection**
    (001 vitest 4 dist).
+
+---
+
+## Review pass (independent) — 2 MED issues found & fixed before merge
+
+An independent hostile review of the 6 code fixes returned SHIP-WITH-NITS
+(no blockers). Two MED issues were fixed before merge:
+
+- **Scanner O(n²) on repetition-degenerate output.** `iterateJsonArrayCandidates`
+  re-scanned to EOF from each unbalanced `[`, so a model stuck emitting `[`
+  blocked the event loop (~1.5s for 20 KB). Added a total scan-character
+  budget (`MAX_SCAN_CHARS = 1_000_000`); realistic output is far under it,
+  pathological input now stops instead of hanging. Regression tests:
+  200 000-`[` returns null in <2 s; a plan after stray brackets still found.
+- **Orphan-result asymmetry.** `removeUnansweredToolCalls` matched answers
+  by `toolCallId` only, while its sibling `removeOrphanToolResponses` matches
+  positionally when `toolCallId` is absent — so an id-less tool message could
+  be kept by one pass and orphaned by the other. Reused `consumeToolResponse`
+  so both passes agree. Regression test: id-less tool result stays paired.
+
+LOW nits (Korean verb-coverage gaps, arbitrary depth constants) left as-is —
+documented, fail-open/graceful.

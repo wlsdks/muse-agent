@@ -439,13 +439,18 @@ function removeUnansweredToolCalls(
       continue;
     }
 
-    const answered = new Set<string>();
+    // Match answers exactly the way removeOrphanToolResponses does — by id,
+    // or POSITIONALLY when a tool message carries no toolCallId — so the two
+    // passes agree. A divergence here (treating an id-less-but-positionally-
+    // matched answer as unanswered) would drop the assistant and re-create
+    // the orphan tool_result this pass exists to prevent.
+    const pending = (message.toolCalls ?? []).map((toolCall) => toolCall.id);
     for (let probe = index + 1; probe < messages.length && messages[probe]?.role === "tool"; probe++) {
-      const toolCallId = messages[probe]?.toolCallId;
-      if (toolCallId) answered.add(toolCallId);
+      consumeToolResponse(messages[probe] as ConversationMessage, pending);
     }
+    const unanswered = new Set(pending);
 
-    const keptCalls = (message.toolCalls ?? []).filter((toolCall) => answered.has(toolCall.id));
+    const keptCalls = (message.toolCalls ?? []).filter((toolCall) => !unanswered.has(toolCall.id));
     if (keptCalls.length === (message.toolCalls?.length ?? 0)) {
       index++;
       continue;

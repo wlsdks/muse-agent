@@ -64,6 +64,29 @@ describe("trimConversationMessages — never forwards an orphan tool_use", () =>
     expect(out.messages.some((m) => m.role === "assistant")).toBe(false);
   });
 
+  it("treats a tool result with no toolCallId as a positional answer (matches removeOrphanToolResponses)", () => {
+    // toolCallId is optional; removeOrphanToolResponses matches such a tool
+    // message positionally and keeps it. removeUnansweredToolCalls must agree,
+    // or it would drop the assistant and leave that tool result orphaned.
+    const idless: ConversationMessage = { content: "result", role: "tool" };
+    const out = trimConversationMessages(
+      [user("keep"), assistantToolCalls("", ["a"]), idless, user("latest")],
+      { estimator: lengthEstimator, maxContextWindowTokens: 1000, outputReserveTokens: 0 }
+    );
+    // Both passes agree (keep both), so no tool result is left without its
+    // preceding tool_use. The assistant survives with its call intact, and
+    // every tool message is immediately preceded by an assistant.
+    const roles = out.messages.map((m) => m.role);
+    const asstIdx = out.messages.findIndex((m) => m.role === "assistant");
+    expect(asstIdx).toBeGreaterThanOrEqual(0);
+    expect(out.messages[asstIdx]?.toolCalls?.length).toBe(1);
+    for (let i = 0; i < out.messages.length; i += 1) {
+      if (out.messages[i]?.role === "tool") {
+        expect(roles[i - 1]).toBe("assistant");
+      }
+    }
+  });
+
   it("leaves a well-formed multi-tool exchange completely intact", () => {
     const input = [user("old"), assistantToolCalls("", ["a", "b"]), toolFor("a"), toolFor("b"), user("latest")];
     const out = trimConversationMessages(input, {

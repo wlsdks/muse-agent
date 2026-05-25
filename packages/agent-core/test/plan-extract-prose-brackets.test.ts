@@ -46,6 +46,19 @@ describe("parsePlan — prose/array preambles must not eat the real plan", () =>
     ]);
   });
 
+  it("stays fast on repetition-degenerate output (many unbalanced brackets) — no O(n²) hang", () => {
+    // A local model stuck repeating `[` must not block the event loop for
+    // seconds. With the scan budget this returns quickly; without it this
+    // test would exceed vitest's timeout.
+    const start = Date.now();
+    expect(parsePlan("[".repeat(200_000))).toBeNull();
+    expect(Date.now() - start).toBeLessThan(2000);
+  });
+
+  it("still finds a valid plan that follows a few stray unbalanced brackets", () => {
+    expect(parsePlan(`oops [ [ [ then the plan: ${VALID_PLAN}`)).toEqual(PARSED_PLAN);
+  });
+
   it("known narrow limit: a plan-SHAPED array in prose before the real plan wins", () => {
     // Only an array that already validates as a plan can shadow the real
     // one. This is the irreducible ambiguity (which plan did the model

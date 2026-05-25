@@ -57,14 +57,27 @@ function balancedArrayEnd(text: string, start: number): number {
  * resumes PAST each balanced span so a span's interior (e.g. a nested
  * `args:[]`) is never mistaken for a separate top-level array.
  */
+// Each unbalanced `[` makes balancedArrayEnd scan to end-of-string, and the
+// next `[` re-scans — O(n²) on repetition-degenerate model output (e.g. a
+// local model emitting thousands of `[`). Bound the total characters the
+// balance scan may visit; realistic plan/detector output (a few KB, a
+// handful of stray brackets) stays far under this, while a pathological
+// blob stops scanning instead of blocking the event loop.
+const MAX_SCAN_CHARS = 1_000_000;
+
 export function* iterateJsonArrayCandidates(text: string): Generator<JsonArrayCandidate> {
   let searchFrom = 0;
+  let scanned = 0;
   for (;;) {
     const start = text.indexOf("[", searchFrom);
     if (start < 0) {
       return;
     }
     const end = balancedArrayEnd(text, start);
+    scanned += (end < 0 ? text.length : end) - start;
+    if (scanned > MAX_SCAN_CHARS) {
+      return;
+    }
     if (end < 0) {
       searchFrom = start + 1;
       continue;
