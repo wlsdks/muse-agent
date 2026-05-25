@@ -5,12 +5,30 @@ import {
   classifyMcpServersField,
   classifyWebWatchConfig,
   embedModelCheck,
+  episodeIndexHealth,
   findOllamaModelTag,
   notesIndexHealth,
   parseNotesIndexEmbedModel,
   resolveMuseEnvPath,
   type OllamaTagsEntry
 } from "./commands-doctor.js";
+
+describe("episodeIndexHealth — are past sessions searchable by recall / today --connect", () => {
+  it("ok (silent-friendly) when there are no episodes captured yet", () => {
+    expect(episodeIndexHealth({ episodeCount: 0, indexedCount: 0 }).status).toBe("ok");
+  });
+  it("warns when episodes exist but none are indexed", () => {
+    const v = episodeIndexHealth({ episodeCount: 5, indexedCount: 0 });
+    expect(v.status).toBe("warn");
+    expect(v.detail).toMatch(/episode reindex/i);
+  });
+  it("warns when the index lags behind captured episodes", () => {
+    expect(episodeIndexHealth({ episodeCount: 5, indexedCount: 2 }).status).toBe("warn");
+  });
+  it("ok when every episode is indexed", () => {
+    expect(episodeIndexHealth({ episodeCount: 5, indexedCount: 5 }).status).toBe("ok");
+  });
+});
 
 describe("notesIndexHealth — does doctor see whether the second brain is searchable", () => {
   it("warns when no index exists yet (recall/ask/today --connect return nothing)", () => {

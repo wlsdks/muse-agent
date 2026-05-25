@@ -15,11 +15,12 @@ import { existsSync, promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { mergeModelKeysFromFile, resolveNotesDir } from "@muse/autoconfigure";
-import { parseHomeAlertChecks, webWatchesFromConfig } from "@muse/mcp";
+import { mergeModelKeysFromFile, resolveEpisodesFile, resolveNotesDir } from "@muse/autoconfigure";
+import { parseHomeAlertChecks, readEpisodes, webWatchesFromConfig } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { DEFAULT_EMBED_MODEL, isNotesIndexStale } from "./commands-notes-rag.js";
+import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
 import type { ProgramIO } from "./program.js";
 
@@ -397,6 +398,19 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
     checks.push({ name: "notes index", ...notesIndexHealth({ exists, stale }) });
   }
 
+  // Episode index health — the other half of the second brain: are past
+  // sessions searchable? (recall episodes / `today --connect`).
+  {
+    try {
+      const episodeCount = (await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>))).length;
+      const index = await loadEpisodeIndex(defaultEpisodeIndexFile());
+      const indexedCount = index?.entries.length ?? 0;
+      checks.push({ name: "episode index", ...episodeIndexHealth({ episodeCount, indexedCount }) });
+    } catch {
+      // a missing/unreadable store is the "no episodes yet" case — skip quietly
+    }
+  }
+
   // SearXNG (optional — `MUSE_SEARXNG_URL` opt-in). When set, probe
   // both reachability (`/healthz`) AND the JSON-format path that
   // `muse.search` actually uses — a SearXNG instance with the
@@ -600,6 +614,24 @@ export function notesIndexHealth(state: { readonly exists: boolean; readonly sta
     return { detail: "notes index is stale (notes changed since last build) — run `muse notes reindex` to refresh", status: "warn" };
   }
   return { detail: "notes index present and fresh — recall / ask are searchable", status: "ok" };
+}
+
+/**
+ * Whether captured past sessions are searchable (recall episodes / `today
+ * --connect`). No episodes yet is fine; episodes present but un- or
+ * under-indexed means the second brain can't reach prior conversations.
+ */
+export function episodeIndexHealth(state: { readonly episodeCount: number; readonly indexedCount: number }): { readonly detail: string; readonly status: "ok" | "warn" } {
+  if (state.episodeCount === 0) {
+    return { detail: "no past sessions captured yet — episodic memory builds up as you use the REPL", status: "ok" };
+  }
+  if (state.indexedCount === 0) {
+    return { detail: `${state.episodeCount.toString()} past session(s) not indexed — run \`muse episode reindex\` so recall / \`today --connect\` can reach them`, status: "warn" };
+  }
+  if (state.indexedCount < state.episodeCount) {
+    return { detail: `episode index lags (${state.indexedCount.toString()}/${state.episodeCount.toString()} indexed) — run \`muse episode reindex\` to catch up`, status: "warn" };
+  }
+  return { detail: `${state.indexedCount.toString()} past session(s) indexed — searchable via recall / \`today --connect\``, status: "ok" };
 }
 
 export function embedModelCheck(
