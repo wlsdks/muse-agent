@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   createAgentCheckpointState,
   decodeCheckpointMessages,
-  encodeCheckpointMessages
+  encodeCheckpointMessages,
+  resumeRunInputFromCheckpoint
 } from "../src/checkpoint.js";
 import { ModelRoutingError } from "../src/errors.js";
 
@@ -125,5 +126,28 @@ describe("decodeCheckpointMessages — every malformed shape throws ModelRouting
     // role is the load-bearing index for fast filtering and must match.
     const assistantPayload = encodePayload({ content: "hi", role: "assistant" });
     expect(() => decodeCheckpointMessages([`v1|user|${assistantPayload}`])).toThrow(ModelRoutingError);
+  });
+});
+
+describe("resumeRunInputFromCheckpoint — durable resume", () => {
+  it("rehydrates a re-runnable input (messages + model + metadata) from a checkpoint", () => {
+    const state = createAgentCheckpointState({
+      messages: sampleMessages,
+      metadata: { userId: "jinan" },
+      model: "ollama/qwen3:8b",
+      phase: "tool-loop"
+    });
+    const input = resumeRunInputFromCheckpoint(state, { runId: "resumed-1" });
+    expect(input.model).toBe("ollama/qwen3:8b");
+    expect(input.metadata).toEqual({ userId: "jinan" });
+    expect(input.runId).toBe("resumed-1");
+    // the saved conversation (incl. completed tool results) is replayed verbatim
+    expect(input.messages).toEqual(decodeCheckpointMessages(state.encodedMessages));
+    expect(input.messages).toEqual(sampleMessages);
+  });
+
+  it("omits metadata when the checkpoint had none", () => {
+    const state = createAgentCheckpointState({ messages: sampleMessages, model: "m", phase: "p" });
+    expect(resumeRunInputFromCheckpoint(state).metadata).toBeUndefined();
   });
 });

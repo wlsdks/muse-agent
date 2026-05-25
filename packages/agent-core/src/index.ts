@@ -172,7 +172,8 @@ export {
 export {
   createAgentCheckpointState,
   decodeCheckpointMessages,
-  encodeCheckpointMessages
+  encodeCheckpointMessages,
+  resumeRunInputFromCheckpoint
 } from "./checkpoint.js";
 export type { AgentCheckpointState } from "./checkpoint.js";
 

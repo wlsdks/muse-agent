@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import type { ModelMessage } from "@muse/model";
 import type { JsonObject } from "@muse/shared";
 import { ModelRoutingError } from "./errors.js";
+import type { AgentRunInput } from "./types.js";
 
 /**
  * Checkpoint state types and message codec.
@@ -34,6 +35,26 @@ export function createAgentCheckpointState(input: {
     model: input.model,
     output: input.output ?? null,
     phase: input.phase
+  };
+}
+
+/**
+ * Rehydrate a re-runnable `AgentRunInput` from a persisted checkpoint — durable
+ * resume. The checkpoint already holds the messages-so-far (including completed
+ * tool results), so re-running continues where the interrupted/crashed run left
+ * off rather than restarting; already-done tools aren't re-executed because
+ * their results are in the replayed messages. Pure (decode + assemble); the
+ * caller (CLI / job worker) then calls `runtime.run(input)`.
+ */
+export function resumeRunInputFromCheckpoint(
+  state: AgentCheckpointState,
+  overrides: Partial<Pick<AgentRunInput, "runId" | "signal" | "toolApprovalGate">> = {}
+): AgentRunInput {
+  return {
+    messages: decodeCheckpointMessages(state.encodedMessages),
+    model: state.model,
+    ...(state.metadata ? { metadata: state.metadata } : {}),
+    ...overrides
   };
 }
 
