@@ -65,7 +65,12 @@ underlying code.
 - **Verify the model actually SELECTS it**: a `smoke:live` (local
   Qwen) round-trip that asserts the tool was called with the right
   args — not a unit test of the handler alone. A handler that works
-  but is never selected is not delivered.
+  but is never selected is not delivered. The lean, repeatable gate
+  for this is `pnpm eval:tools` (a golden prompt→expected-tool dataset
+  incl. negative no-tool cases and the confusable real-tool sets) —
+  add a case there when you ship a tool, and run it (with
+  `MUSE_EVAL_REPEAT` for stochastic confidence) after touching any
+  tool name/description/schema.
 
 ## Sources
 

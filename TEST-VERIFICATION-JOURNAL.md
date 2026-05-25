@@ -903,3 +903,21 @@ the ~20 production call sites — whether each setting should accept 0 is a
 per-setting product decision (and some need downstream "0 = disable" handling),
 so that's flagged for the owner. The primitive now exists; the listed settings
 are the highest-value candidates to adopt it. autoconfigure 262 passed; lint clean.
+
+### Round 12 close — strategy doc + final certification
+
+- **tool-calling.md** now points its "verify the model SELECTS it" checklist
+  item at `pnpm eval:tools` (the lean golden gate) alongside smoke:live — add
+  a case when shipping a tool, run with MUSE_EVAL_REPEAT for stochastic
+  confidence.
+- **Final certification:** 26 TS packages / 4546 tests passed / 0 failures;
+  lint 0/0; rust runner 6/6; eval:tools 24/24. Repo green with all 16 fixes.
+
+## Self-directed 10-goal round summary
+G1 merge round-11 ✓ · G3 provider tool-call conformance (verified already
+covered, no churn) ✓ · confusability sweep of real data/text tools (clean,
+8/9) ✓ · eval:tools MUSE_EVAL_REPEAT reliability mode ✓ · finding 015 fix
+(time_relative/time_diff descriptions) shipped earlier ✓ · finding 016
+(parseNonNegativeInteger; explicit-0 fail-open) ✓ · tool-calling.md → eval:tools
+pointer ✓ · final full certification ✓. LLM-as-judge intentionally deferred
+(local-only judge = self-judging bias; honest non-fit, not built).
