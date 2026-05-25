@@ -203,14 +203,29 @@ export interface ChatTurnMessage {
   readonly content: string;
 }
 
+/** Active-context window (Context-Folding, arXiv:2510.11967): the max number
+ * of prior user/assistant messages sent to the model per turn. Bounds per-turn
+ * prompt size so a long companion session can't grow latency/cost until it
+ * overruns the local model's context. Full history is still persisted on disk
+ * + held for episode capture; only the model's working set is capped. */
+export function resolveChatHistoryWindow(env: Record<string, string | undefined>): number {
+  const raw = Number(env.MUSE_CHAT_HISTORY_WINDOW);
+  return Number.isFinite(raw) && raw >= 0 ? Math.trunc(raw) : 40;
+}
+
 export function buildTurnMessages(
   systemContent: string,
   history: readonly ChatTurnMessage[],
-  userMessage: string
+  userMessage: string,
+  maxHistoryMessages?: number
 ): ChatTurnMessage[] {
+  const conversation = history.filter((m) => m.role === "user" || m.role === "assistant");
+  const windowed = maxHistoryMessages !== undefined && maxHistoryMessages >= 0 && conversation.length > maxHistoryMessages
+    ? conversation.slice(-maxHistoryMessages)
+    : conversation;
   return [
     { content: systemContent, role: "system" },
-    ...history.filter((m) => m.role === "user" || m.role === "assistant"),
+    ...windowed,
     { content: userMessage, role: "user" }
   ];
 }

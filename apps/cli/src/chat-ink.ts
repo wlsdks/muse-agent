@@ -41,6 +41,7 @@ import {
   matchAgentNames,
   matchModelNames,
   matchSlashCommands,
+  resolveChatHistoryWindow,
   parseInlineSpans,
   parseMarkdownBlocks,
   parseRememberArg,
@@ -166,6 +167,7 @@ export function MuseChatApp(props: {
   readonly skills: readonly SkillInfo[];
   readonly skillsDir: string;
   readonly skillsPromptFor: (prompt: string) => string;
+  readonly historyWindow?: number;
   readonly personaPrompt: () => string | undefined;
   readonly stream: (messages: readonly ChatTurnMessage[], model: string) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
   readonly streamWithTools: (messages: readonly ChatTurnMessage[], model: string, requestApproval: (toolName: string, detail: string, kind: "outbound" | "tool") => Promise<boolean>) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
@@ -488,7 +490,7 @@ export function MuseChatApp(props: {
     const base = props.personaPrompt() ?? formatCurrentContextLine();
     const agentPrefix = activeAgent ? `${activeAgent.prompt}\n\n` : "";
     const system = agentPrefix + base + props.skillsPromptFor(message);
-    const messages = buildTurnMessages(system, historyRef.current, message + attachmentBlock);
+    const messages = buildTurnMessages(system, historyRef.current, message + attachmentBlock, props.historyWindow);
     let accumulated = "";
     let turnTokens = 0;
     const iter = toolsOn
@@ -1194,6 +1196,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     skills: skillInfos,
     skillsDir,
     skillsPromptFor,
+    historyWindow: resolveChatHistoryWindow(process.env),
     stream,
     streamWithTools,
     memorySnapshot,

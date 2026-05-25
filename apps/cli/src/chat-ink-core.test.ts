@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildTurnMessages,
+  resolveChatHistoryWindow,
   chatHelp,
   cursorCoords,
   displayWidth,
@@ -93,6 +94,29 @@ describe("buildTurnMessages", () => {
     const out = buildTurnMessages("sys", [{ content: "hi", role: "user" }], "q");
     expect(out[0]).toEqual({ content: "sys", role: "system" });
     expect(out[out.length - 1]).toEqual({ content: "q", role: "user" });
+  });
+  it("windows history to the last N messages, keeping system + current message", () => {
+    const history = Array.from({ length: 10 }, (_, i) => ({ content: `m${i}`, role: (i % 2 === 0 ? "user" : "assistant") as const }));
+    const out = buildTurnMessages("sys", history, "now", 4);
+    expect(out[0]).toEqual({ content: "sys", role: "system" });
+    expect(out[out.length - 1]).toEqual({ content: "now", role: "user" });
+    // middle = last 4 of history (m6..m9)
+    expect(out.slice(1, -1).map((m) => m.content)).toEqual(["m6", "m7", "m8", "m9"]);
+  });
+  it("is a no-op when history is at or under the window (or window undefined)", () => {
+    const history = [{ content: "a", role: "user" as const }, { content: "b", role: "assistant" as const }];
+    expect(buildTurnMessages("s", history, "q", 5).slice(1, -1).map((m) => m.content)).toEqual(["a", "b"]);
+    expect(buildTurnMessages("s", history, "q").slice(1, -1).map((m) => m.content)).toEqual(["a", "b"]);
+  });
+});
+
+describe("resolveChatHistoryWindow", () => {
+  it("defaults to 40, honors a valid override, ignores junk/negative", () => {
+    expect(resolveChatHistoryWindow({})).toBe(40);
+    expect(resolveChatHistoryWindow({ MUSE_CHAT_HISTORY_WINDOW: "12" })).toBe(12);
+    expect(resolveChatHistoryWindow({ MUSE_CHAT_HISTORY_WINDOW: "0" })).toBe(0);
+    expect(resolveChatHistoryWindow({ MUSE_CHAT_HISTORY_WINDOW: "-5" })).toBe(40);
+    expect(resolveChatHistoryWindow({ MUSE_CHAT_HISTORY_WINDOW: "abc" })).toBe(40);
   });
 });
 
