@@ -35,6 +35,7 @@
 | 18 | `bd3b3ad0` | surface fact's prior in persona so the model recalls it | memory depth · model-path | **live qwen3:8b PASS + neg control** |
 | 19 | `92649588` | /memory reflects recurring cross-session threads (deterministic) | memory depth · reflection | unit (rank + render) |
 | 20 | `2d28d155` | /reflect — grounded LLM synthesis across sessions (fenced vs hallucination) | memory depth · model-path | **live qwen3:8b 3/3 (EN+KO+neg)** |
+| 21 | `8263ede3` | proactively open with a reflection once/day (speaks-first) | memory depth · proactive | unit (greeting) + live battery 3/3 |
 
 ## Failures → learnings
 
@@ -104,6 +105,16 @@
   worker's actual cwd) to see the real ERR_MODULE_NOT_FOUND the SDK masks as
   "Connection closed". Product code was correct — it already honours
   `config.cwd`; only the fixture omitted it.
+
+- **byte-hygiene passes VACUOUSLY for an untracked new file (slice 20→21).** A
+  raw ESC byte slipped into a comment in a brand-new test file; the slice-20
+  gate ran `pnpm` byte-hygiene BEFORE `git add`, and that test scans
+  `git ls-files` — so the untracked file wasn't checked and the byte rode into
+  the commit, only failing once the file was tracked. → **Lesson:** for a NEW
+  file, run byte-hygiene AFTER `git add` (or stage first), and never hand-type
+  an escape-illustrating comment — write the bytes as `\xNN` / `\uNNNN` /
+  `String.fromCharCode`. perl `-CSD -pe 's/[\x00-\x08\x0b-\x1f\x7f]//g'` strips
+  an already-landed control byte.
 
 ## Reusable patterns (carry these forward)
 
