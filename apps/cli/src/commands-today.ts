@@ -10,7 +10,7 @@
  * `~/.muse/calendar.json`.
  */
 
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
@@ -21,6 +21,7 @@ import {
   resolveLocalCalendarFile,
   resolveNotesDir,
   resolveRemindersFile,
+  resolveEpisodesFile,
   resolveTasksFile
 } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
@@ -37,6 +38,7 @@ import {
   serializeReminder,
   serializeTask,
   type PersistedTask,
+  readEpisodes,
   type WeatherProvider
 } from "@muse/mcp";
 import {
@@ -47,7 +49,7 @@ import { redactSecretsInText, stripUntrustedTerminalChars } from "@muse/shared";
 import type { TextToSpeechProvider } from "@muse/voice";
 import type { Command } from "commander";
 
-import { rankRecallCandidates, type RecallHit } from "./commands-recall.js";
+import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles, rankRecallCandidates, type RecallHit } from "./commands-recall.js";
 import { embed } from "./embed.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import { compareFeedEntriesNewestFirst, defaultFeedsFile, filterRecentFeedEntries, readFeedsStore } from "./feeds-store.js";
@@ -307,9 +309,17 @@ async function findTodayConnections(query: string, embedModel = "nomic-embed-tex
   if (!notesIndex || notesIndex.model !== embedModel) {
     return [];
   }
-  const noteChunks = notesIndex.files.flatMap((f) => f.chunks.map((c) => ({ embedding: c.embedding, path: f.path, text: c.text })));
+  // Drop index entries whose source was deleted/vacuumed since the last
+  // reindex — otherwise `today --connect` surfaces "ghost" notes/sessions that
+  // no longer exist (recall already guards this; today must match).
+  const liveFiles = filterLiveNoteIndexFiles(notesIndex.files, existsSync);
+  const noteChunks = liveFiles.flatMap((f) => f.chunks.map((c) => ({ embedding: c.embedding, path: f.path, text: c.text })));
   const epIndex = await loadEpisodeIndex(defaultEpisodeIndexFile());
-  const episodeEntries = epIndex && epIndex.model === embedModel ? epIndex.entries : [];
+  let episodeEntries = epIndex && epIndex.model === embedModel ? epIndex.entries : [];
+  if (episodeEntries.length > 0) {
+    const liveIds = new Set((await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>))).map((e) => e.id));
+    episodeEntries = filterLiveEpisodeEntries(episodeEntries, liveIds);
+  }
   const queryVec = await embed(query, embedModel);
   return rankRecallCandidates({ episodeEntries, limit: 3, noteChunks, queryVec, source: "all" }).filter((h) => h.score >= 0.5);
 }
