@@ -36,6 +36,19 @@ describe("DefaultToolFilter", () => {
     expect(kept.map((t) => t.definition.name)).toContain("muse.calendar.upcoming");
   });
 
+  it("surfaces memory-domain tools (episode/pattern) only on a recall-intent prompt", () => {
+    const memTools = [
+      tool({ description: "Search past sessions", domain: "memory", inputSchema: {}, name: "muse.episode.search", risk: "read" }),
+      tool({ description: "List detected patterns", domain: "memory", inputSchema: {}, name: "muse.pattern.list", risk: "read" })
+    ];
+    // Before the "memory" keyword set existed these were gated behind a
+    // nonexistent list → NEVER exposed. Now a recall prompt reaches them…
+    const onRecall = filter.filter(memTools, { userMessage: "what did we discuss last session?" }).map((t) => t.definition.name);
+    expect(onRecall).toEqual(["muse.episode.search", "muse.pattern.list"]);
+    // …and an unrelated prompt does not (no per-turn noise).
+    expect(filter.filter(memTools, { userMessage: "what's the weather in Busan?" })).toEqual([]);
+  });
+
   it("rejects single-character keywords that would match every prompt", () => {
     // A tool author who writes `keywords: ["a"]` would otherwise
     // pull this messaging tool into every English prompt — every

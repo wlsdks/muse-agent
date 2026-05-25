@@ -149,6 +149,10 @@ function isMatchableKeyword(keyword: unknown): keyword is string {
 export const DEFAULT_DOMAIN_KEYWORDS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   calendar: ["calendar", "schedule", "meeting", "meetings", "event", "events", "appointment", "appointments", "agenda", "캘린더", "일정", "회의", "약속"],
   home: ["home", "light", "lights", "lamp", "door", "lock", "locked", "unlock", "unlocked", "garage", "thermostat", "sensor", "device", "devices", "smart home", "조명", "불", "문", "잠금", "온도", "센서"],
+  // Episodic + pattern tools carry `domain: "memory"`; without this set they
+  // were gated behind a keyword list that didn't exist → NEVER exposed, so the
+  // model could never recall a past session or list a detected pattern.
+  memory: ["episode", "episodes", "session", "sessions", "history", "past", "previously", "recall", "conversation", "conversations", "pattern", "patterns", "habit", "habits", "routine", "routines", "세션", "기록", "지난", "예전", "과거", "대화", "패턴", "습관", "루틴"],
   messaging: ["slack", "discord", "telegram", "line", "메시지", "채널", "dm", "message", "messages"],
   notes: ["note", "notes", "memo", "memos", "wiki", "doc", "docs", "document", "노트", "메모", "문서", "위키"],
   system: ["설정", "config", "setting", "version", "버전"],
