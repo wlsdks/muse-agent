@@ -44,6 +44,7 @@
 | 26 | `fb85136f` | word-boundary tool relevance (ITR — fewer distractors) | efficiency · model-path | pnpm check green + live selection |
 | 27 | `9dd92587` | per-turn skill body injection (ITR — minimal prompt fragments) | efficiency · model-path | unit + **live qwen3:8b 2/2 (follow+withhold)** |
 | 28 | `8404db68` | bound active chat history window (Context-Folding) | efficiency · model-path | unit + **live qwen3:8b 2/2 (forget/recall)** |
+| 29 | `669d6757` | validate required tool args before execute (deterministic repair) | reliability · model-path | unit + agent-core integration + live |
 
 ### Efficiency from 2026 research — tool-selection (ITR, arXiv:2602.17046)
 
@@ -177,6 +178,15 @@ REOPEN. Kept the script as a composite regression check.
   inflectional-suffix tolerance (start-anchored, length-capped) to keep plurals.
   And for a packages/tools (shared-core) change, run `pnpm check` — the consuming
   package's agent-seam test exposes selection regressions the unit test can't.
+
+- **`tsc` catches what vitest's esbuild silently transpiles (slice 28→29).** A
+  `(ternary) as const` in a test passed `vitest run` (esbuild strips types
+  without checking) but `tsc -p` (the build, run by `pnpm check`) rejected it
+  (TS1355) — so the prior commit shipped a type error the package build would
+  fail on. → **Lesson:** vitest green ≠ type-correct; for a typed change,
+  `pnpm --filter <pkg> build` (tsc) is the real gate, and `pnpm check` runs it
+  across the monorepo. Don't use `as const` on an expression — annotate the
+  binding instead.
 
 ## Reusable patterns (carry these forward)
 
