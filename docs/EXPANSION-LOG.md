@@ -37,6 +37,16 @@
 | 20 | `2d28d155` | /reflect — grounded LLM synthesis across sessions (fenced vs hallucination) | memory depth · model-path | **live qwen3:8b 3/3 (EN+KO+neg)** |
 | 21 | `8263ede3` | proactively open with a reflection once/day (speaks-first) | memory depth · proactive | unit (greeting) + live battery 3/3 |
 | 22 | `2f1eb38c` | surface recurring threads in the persona (model references them) | memory depth · model-path | unit + **live qwen3:8b 2/2 (grounded+neg)** |
+| 23 | (audit) | memory-depth axis end-to-end composition audit | memory depth · audit | **live qwen3:8b 7/7 compose** |
+
+### Memory-depth axis audit — PASS (slices 17–22, qwen3:8b)
+
+`verify-memory-depth-audit.mjs` drives the whole axis as ONE user flow
+(supersession store → recurring threads → persona folds prior+threads →
+one qwen turn composes BOTH → /reflect insight → /memory view) — 7/7 PASS.
+The model answered in a single turn: *"You previously lived in Busan, and
+the topic you keep returning to is the Q3 budget."* The pieces compose; no
+REOPEN. Kept the script as a composite regression check.
 
 ## Failures → learnings
 
