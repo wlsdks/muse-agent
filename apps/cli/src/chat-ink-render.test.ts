@@ -161,6 +161,17 @@ describe("MuseChatApp render — slash command echo + output", () => {
     expect(frame).toContain("what's due today?");
   });
 
+  it("surfaces an auto-learned memory notice after a turn", async () => {
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
+      autoLearn: async () => "📝 remembered: home_city = Busan (/forget <key> to undo)"
+    })));
+    await tick();
+    stdin.write("by the way I live in Busan"); await tick(); stdin.write("\r"); await tick(160);
+    const frame = lastFrame() ?? "";
+    unmount();
+    expect(frame).toContain("📝 remembered: home_city = Busan");
+  });
+
   it("renders the launch brief as an opening turn when recap is set", async () => {
     const { lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
       recap: "♪ good morning\n\nToday (next 24h)",

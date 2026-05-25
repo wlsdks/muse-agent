@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractMemoryFromTurn, shouldAutoExtract, type AutoMemoryProvider } from "./chat-auto-memory.js";
+import { extractMemoryFromTurn, formatLearnedSummary, shouldAutoExtract, type AutoMemoryProvider } from "./chat-auto-memory.js";
 
 describe("shouldAutoExtract (cooldown)", () => {
   it("fires when never run, holds within the gap, fires again after it", () => {
@@ -34,5 +34,13 @@ describe("extractMemoryFromTurn", () => {
       model: "m", user: "I'm Jinan", assistant: "ok"
     });
     expect(out.facts).toEqual({ name: "Jinan" });
+  });
+});
+
+describe("formatLearnedSummary", () => {
+  it("renders a one-line notice with facts + prefs, undefined when empty", () => {
+    expect(formatLearnedSummary({ home_city: "Busan" }, { reply_length: "short" }))
+      .toBe("📝 remembered: home_city = Busan · reply_length = short (/forget <key> to undo)");
+    expect(formatLearnedSummary({}, {})).toBeUndefined();
   });
 });

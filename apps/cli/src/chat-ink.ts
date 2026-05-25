@@ -55,7 +55,7 @@ import { loadAgents, resolveAgentsDir, type AgentDef } from "./commands-agents.j
 import { searchRecall } from "./commands-recall.js";
 import { readTrust } from "./commands-trust.js";
 import { appendInputHistory, loadInputHistory } from "./chat-input-history.js";
-import { extractMemoryFromTurn, shouldAutoExtract, type AutoMemoryProvider } from "./chat-auto-memory.js";
+import { extractMemoryFromTurn, formatLearnedSummary, shouldAutoExtract, type AutoMemoryProvider } from "./chat-auto-memory.js";
 import { listRecentJobIds, readJobSummary, startBackgroundJob } from "./commands-jobs.js";
 import { buildLocalTodayText, parseLookaheadHours, readDueFollowups, readDueReminders } from "./commands-today.js";
 import { dueTaskItems, imminentItems, jobCompletionItems, pickUnseen, proactiveNoticeText, relativeWhen, type ProactiveItem } from "./chat-proactive.js";
@@ -166,6 +166,7 @@ export function MuseChatApp(props: {
   readonly saveText: (text: string) => Promise<string | undefined>;
   readonly copyToClipboard: (text: string) => Promise<boolean>;
   readonly onCommit: (user: string, assistant: string) => void;
+  readonly autoLearn?: (user: string, assistant: string) => Promise<string | undefined>;
   readonly onReset: () => void;
   readonly proactiveCheck?: () => Promise<readonly ProactiveItem[]>;
   readonly jobCompletions?: () => Promise<readonly ProactiveItem[]>;
@@ -507,6 +508,10 @@ export function MuseChatApp(props: {
     setBusy(false);
     if (!accumulated.startsWith("⚠") && accumulated !== "(interrupted)") lastAnswerRef.current = accumulated;
     props.onCommit(message, accumulated);
+    // Background auto-memory: surface anything Muse learned so the user sees it.
+    void props.autoLearn?.(message, accumulated)
+      .then((summary) => { if (summary) setTurns((prev) => [...prev, { role: "system", text: summary }]); })
+      .catch(() => undefined);
   }, [app, props, activeAgent, currentModel, sessionTokens, toolsOn, requestApproval]);
 
   const slashMenu = matchSlashCommands(inputState.value, SLASH_COMMANDS);
@@ -872,34 +877,42 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     });
   };
 
+  const onCommit = (user: string, assistant: string): void => {
+    void appendLastChatTurn({ message: user, response: assistant }).catch(() => undefined);
+  };
+
   // Background auto-memory: after a turn, quietly learn durable facts the user
-  // stated in passing — no "remember this" needed. Fire-and-forget + cooldown
-  // so the snappy reply path isn't slowed. Opt out with MUSE_USER_MEMORY_AUTO_EXTRACT=false.
+  // stated in passing — no "remember this" needed. Cooldown-gated so the snappy
+  // reply path isn't slowed; returns a short summary of what was newly stored so
+  // the chat can surface it (the user sees it + can /forget). Opt out with
+  // MUSE_USER_MEMORY_AUTO_EXTRACT=false.
   const autoMemoryEnabled = memoryStore !== undefined
     && process.env.MUSE_USER_MEMORY_AUTO_EXTRACT?.trim().toLowerCase() !== "false"
     && "generate" in provider;
   const lastExtract = { current: undefined as number | undefined };
-  const onCommit = (user: string, assistant: string): void => {
-    void appendLastChatTurn({ message: user, response: assistant }).catch(() => undefined);
-    if (!autoMemoryEnabled || assistant.trim().length === 0) return;
+  const autoLearn = async (user: string, assistant: string): Promise<string | undefined> => {
+    if (!autoMemoryEnabled || assistant.trim().length === 0) return undefined;
     const now = Date.now();
-    if (!shouldAutoExtract(lastExtract.current, now)) return;
+    if (!shouldAutoExtract(lastExtract.current, now)) return undefined;
     lastExtract.current = now;
-    void (async () => {
-      try {
-        const { facts, preferences } = await extractMemoryFromTurn({
-          assistant, model, provider: provider as unknown as AutoMemoryProvider, user
-        });
-        let wrote = false;
-        for (const [key, value] of Object.entries(facts).slice(0, 5)) {
-          await Promise.resolve(memoryStore!.upsertFact(userId, key, value)); wrote = true;
-        }
-        for (const [key, value] of Object.entries(preferences).slice(0, 5)) {
-          await Promise.resolve(memoryStore!.upsertPreference(userId, key, value)); wrote = true;
-        }
-        if (wrote) await refreshMemory();
-      } catch { /* best-effort — auto-memory never disrupts the chat */ }
-    })();
+    try {
+      const { facts, preferences } = await extractMemoryFromTurn({
+        assistant, model, provider: provider as unknown as AutoMemoryProvider, user
+      });
+      const wroteFacts: Record<string, string> = {};
+      const wrotePrefs: Record<string, string> = {};
+      for (const [key, value] of Object.entries(facts).slice(0, 5)) {
+        await Promise.resolve(memoryStore!.upsertFact(userId, key, value)); wroteFacts[key] = value;
+      }
+      for (const [key, value] of Object.entries(preferences).slice(0, 5)) {
+        await Promise.resolve(memoryStore!.upsertPreference(userId, key, value)); wrotePrefs[key] = value;
+      }
+      const summary = formatLearnedSummary(wroteFacts, wrotePrefs);
+      if (summary) await refreshMemory();
+      return summary;
+    } catch {
+      return undefined;
+    }
   };
   const onReset = (): void => {
     void clearLastChatHistory().catch(() => undefined);
@@ -1117,6 +1130,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     model,
     models,
     onCommit,
+    autoLearn,
     onReset,
     personaPrompt,
     proactiveCheck,

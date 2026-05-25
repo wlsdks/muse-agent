@@ -76,3 +76,17 @@ export async function extractMemoryFromTurn(opts: {
     return empty;
   }
 }
+
+/**
+ * One-line, terminal-safe summary of what auto-memory just learned, for a
+ * subtle in-chat notice so the user SEES what Muse stored (and can /forget it).
+ * Returns undefined when nothing was learned.
+ */
+export function formatLearnedSummary(
+  facts: Readonly<Record<string, string>>,
+  preferences: Readonly<Record<string, string>>
+): string | undefined {
+  const parts = [...Object.entries(facts), ...Object.entries(preferences)]
+    .map(([key, value]) => `${key} = ${value.replace(/\s+/gu, " ").trim().slice(0, 40)}`);
+  return parts.length > 0 ? `📝 remembered: ${parts.join(" · ")} (/forget <key> to undo)` : undefined;
+}
