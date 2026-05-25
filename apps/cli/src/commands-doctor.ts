@@ -411,6 +411,10 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
     }
   }
 
+  // Outbound messengers (Telegram/Discord/Slack/LINE) — opt-in; surface which
+  // are wired so the user knows why `muse messaging send` has/has no target.
+  checks.push({ name: "messaging", ...messagingConfigCheck(process.env as Record<string, string | undefined>) });
+
   // SearXNG (optional — `MUSE_SEARXNG_URL` opt-in). When set, probe
   // both reachability (`/healthz`) AND the JSON-format path that
   // `muse.search` actually uses — a SearXNG instance with the
@@ -606,6 +610,24 @@ export function findOllamaModelTag(
  * pulled embed model isn't enough — recall / ask / `today --connect` all return
  * nothing if the index was never built or has gone stale since notes changed.
  */
+/**
+ * Which outbound messengers are wired (Telegram/Discord/Slack/LINE), by their
+ * provider tokens. Messaging is opt-in, so none configured is ok — this just
+ * makes the wired set visible (e.g. why `muse messaging send` has no target).
+ */
+export function messagingConfigCheck(env: Record<string, string | undefined>): { readonly detail: string; readonly status: "ok" } {
+  const set = (v: string | undefined): boolean => typeof v === "string" && v.trim().length > 0;
+  const providers = [
+    ["telegram", env.MUSE_TELEGRAM_BOT_TOKEN],
+    ["discord", env.MUSE_DISCORD_BOT_TOKEN],
+    ["slack", env.MUSE_SLACK_BOT_TOKEN],
+    ["line", env.MUSE_LINE_CHANNEL_ACCESS_TOKEN]
+  ].filter(([, token]) => set(token)).map(([name]) => name);
+  return providers.length === 0
+    ? { detail: "no messaging provider configured (opt-in — set MUSE_{TELEGRAM,DISCORD,SLACK}_BOT_TOKEN / MUSE_LINE_CHANNEL_ACCESS_TOKEN to enable)", status: "ok" }
+    : { detail: `${providers.length.toString()} messenger(s) wired: ${providers.join(", ")}`, status: "ok" };
+}
+
 export function notesIndexHealth(state: { readonly exists: boolean; readonly stale: boolean }): { readonly detail: string; readonly status: "ok" | "warn" } {
   if (!state.exists) {
     return { detail: "no notes index yet — run `muse notes reindex` so recall / ask / `today --connect` can find your notes", status: "warn" };
