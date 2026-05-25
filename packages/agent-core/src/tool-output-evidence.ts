@@ -35,7 +35,24 @@ export function extractVerifiedSources(toolName: string, output: string): readon
   const sources: VerifiedSource[] = [];
   collectVerifiedSources(parsed, toolName, sources);
 
-  return sources;
+  // A record like `{ url, title }` yields the SAME url twice — once from the
+  // `url` field (with the real title) and once from the generic string scan
+  // (url-derived title). De-dupe by url, keeping the first hit (the field
+  // match, with the better title, is collected first).
+  return dedupeByUrl(sources);
+}
+
+function dedupeByUrl(sources: readonly VerifiedSource[]): readonly VerifiedSource[] {
+  const seen = new Set<string>();
+  const unique: VerifiedSource[] = [];
+  for (const source of sources) {
+    if (seen.has(source.url)) {
+      continue;
+    }
+    seen.add(source.url);
+    unique.push(source);
+  }
+  return unique;
 }
 
 export function extractToolInsights(

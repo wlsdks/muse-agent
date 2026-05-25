@@ -49,16 +49,22 @@ date math · runner shell-less exec boundary · provider tool-call parsing
 (unified shape per adapter) · the repo-wide `Number(env)` idiom (consumer
 clamps, no busy-loop fail-open).
 
-### Open items for the product owner (documented, not unilaterally changed)
-- **finding 016 migration**: settings where `0` means disable/unlimited
-  (`MUSE_FOLLOWUP_LLM_BUDGET_PER_DAY`, `MUSE_CACHE_TTL_MS`,
-  `MUSE_MCP_RECONNECT_MAX_ATTEMPTS`) should adopt `parseNonNegativeInteger`.
-- **Timezone (finding 007)**: day-boundary logic is process-local — correct on
-  the user's KST machine, latent on a non-KST server; a real fix threads a user
-  TZ through ~8 functions (feature-sized).
-- **fsync consistency**: tasks/reminders/budget stores tmp+rename without
-  `fsync` (others fsync) — power-loss-window only.
-- **`extractVerifiedSources`** emits each URL twice (de-dup is a product call).
+### Open items — status after round 14
+- **finding 016 migration**: ✅ DONE for `MUSE_FOLLOWUP_LLM_BUDGET_PER_DAY`
+  (=0 now disables). Deliberately NOT migrated: `MUSE_CACHE_TTL_MS` (0 =
+  never-expire vs disable is ambiguous) and `MUSE_MCP_RECONNECT_MAX_ATTEMPTS`
+  (downstream `positiveInteger` re-normalizes 0). — owner call if they want
+  those.
+- **fsync consistency**: ✅ DONE — tasks/reminders/budget stores now fsync.
+- **`extractVerifiedSources` URL dedup**: ✅ DONE (de-dupe by url, keep the
+  real title).
+- **Timezone (finding 007)**: STILL OPEN — day-boundary logic is process-local;
+  correct on the user's KST machine, latent on a non-KST server. A real fix
+  threads a user TZ through ~8 functions (feature-sized, deferred).
+- **Full `smoke:live`**: hardware-bound (CPU too slow for the full suite); the
+  live round-trip + tool selection are verified via the targeted probe +
+  `eval:tools`. **LLM-as-judge**: deferred — Muse is local-only, so the judge
+  would be the same weak model (self-judging bias).
 
 ### Recurring defect classes (for future passes)
 parse-the-first-delimiter on untrusted LLM text · unbounded recursion/regex ·
@@ -1023,3 +1029,10 @@ pointer ✓ · final full certification ✓. LLM-as-judge intentionally deferred
   writeFile → sync → close → rename), matching followups/objectives/contacts/
   action-log — closing the power-loss window where a rename could commit a
   not-yet-flushed tmp file. autoconfigure 262 / mcp 799 passed; lint clean.
+
+## Round 14 — finding 017: extractVerifiedSources de-dupes URLs
+
+Closed the documented URL-duplication: `extractVerifiedSources` pushed each
+url twice (field match with the real title + generic string scan with a
+url-derived title). Added `dedupeByUrl` keeping the first (better-titled) hit.
+agent-core 709 passed; lint clean.

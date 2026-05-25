@@ -33,14 +33,20 @@ describe("tool-output-evidence — recursion safety on deep untrusted JSON", () 
       ]
     });
     const sources = extractVerifiedSources("web_search", output);
-    // (extractVerifiedSources emits each URL more than once — once from the
-    // `url` field, once from the generic string scan; that pre-existing
-    // duplication is out of scope here. This test only proves the depth cap
-    // doesn't drop shallow, legitimate sources.)
-    const urls = new Set(sources.map((s) => s.url));
-    expect(urls).toEqual(new Set([
-      "https://a.example.com/page",
-      "https://b.example.com/page"
-    ]));
+    // De-duped by url (finding from round 12, fixed round 14): each url
+    // appears ONCE, keeping the real `title` field (not the url-derived one).
+    expect(sources).toEqual([
+      { title: "Doc A", toolName: "web_search", url: "https://a.example.com/page" },
+      { title: "Doc B", toolName: "web_search", url: "https://b.example.com/page" }
+    ]);
+  });
+
+  it("de-dupes a url emitted by both the field match and the generic scan", () => {
+    const sources = extractVerifiedSources(
+      "web_search",
+      JSON.stringify({ results: [{ title: "Doc A", url: "https://a.example.com/p" }] })
+    );
+    expect(sources).toHaveLength(1);
+    expect(sources[0]).toEqual({ title: "Doc A", toolName: "web_search", url: "https://a.example.com/p" });
   });
 });
