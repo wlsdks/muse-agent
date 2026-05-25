@@ -4,7 +4,48 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { EPISODE_INDEX_SCHEMA_VERSION, loadEpisodeIndex } from "./episode-index.js";
+import { buildEpisodeIndex, EPISODE_INDEX_SCHEMA_VERSION, loadEpisodeIndex, type EpisodeIndex } from "./episode-index.js";
+
+const ep = (id: string, summary: string) => ({
+  id, userId: "u", startedAt: "2026-05-25T10:00:00Z", endedAt: "2026-05-25T10:30:00Z", summary
+});
+function countingEmbed() {
+  let calls = 0;
+  return { calls: () => calls, embedFn: async (): Promise<number[]> => { calls += 1; return [calls, 0, 0]; } };
+}
+const NOW = "2026-05-26T00:00:00Z";
+const prevIndex = (entries: EpisodeIndex["entries"]): EpisodeIndex => ({ builtAtIso: "x", entries, model: "m", version: EPISODE_INDEX_SCHEMA_VERSION });
+
+describe("buildEpisodeIndex", () => {
+  it("drops an episode deleted from source — the index holds only current episodes (no orphan)", async () => {
+    const previous = prevIndex([{ ...ep("gone", "deleted"), embedding: [9, 9, 9] }]);
+    const { embedFn } = countingEmbed();
+    const { index } = await buildEpisodeIndex({ embedFn, episodes: [ep("e1", "kept")], model: "m", nowIso: NOW, previous });
+    expect(index.entries.map((e) => e.id)).toEqual(["e1"]);
+  });
+
+  it("reuses a prior embedding when id+summary are unchanged (no re-embed)", async () => {
+    const previous = prevIndex([{ ...ep("e1", "same"), embedding: [7, 7, 7] }]);
+    const { embedFn, calls } = countingEmbed();
+    const { index, embedded, skipped } = await buildEpisodeIndex({ embedFn, episodes: [ep("e1", "same")], model: "m", nowIso: NOW, previous });
+    expect([embedded, skipped, calls()]).toEqual([0, 1, 0]);
+    expect(index.entries[0]!.embedding).toEqual([7, 7, 7]);
+  });
+
+  it("re-embeds when the summary changed for the same id", async () => {
+    const previous = prevIndex([{ ...ep("e1", "old"), embedding: [7, 7, 7] }]);
+    const { embedFn, calls } = countingEmbed();
+    const { embedded, skipped } = await buildEpisodeIndex({ embedFn, episodes: [ep("e1", "new")], model: "m", nowIso: NOW, previous });
+    expect([embedded, skipped, calls()]).toEqual([1, 0, 1]);
+  });
+
+  it("force re-embeds everything, ignoring the prior index", async () => {
+    const previous = prevIndex([{ ...ep("e1", "same"), embedding: [7, 7, 7] }]);
+    const { embedFn, calls } = countingEmbed();
+    const { embedded } = await buildEpisodeIndex({ embedFn, episodes: [ep("e1", "same")], force: true, model: "m", nowIso: NOW, previous });
+    expect([embedded, calls()]).toEqual([1, 1]);
+  });
+});
 
 describe("loadEpisodeIndex — per-entry validation drops corrupt episode rows so a hand-edited / migrated ~/.muse/episodes-index.json can't crash `muse recall`'s cosineSimilarity on entry.embedding (the pre-fix `Cannot read properties of null (reading 'length')` symptom)", () => {
   let dir: string;
