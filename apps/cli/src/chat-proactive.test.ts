@@ -101,6 +101,45 @@ describe("calendarEventItems", () => {
   });
 });
 
+describe("proactive surface composition — the speaks-first tick pipeline (audit)", () => {
+  const now = Date.UTC(2026, 4, 25, 12, 0, 0);
+  const lead = 30 * 60_000;
+  const at = (m: number): string => new Date(now + m * 60_000).toISOString();
+  it("reminders + followups + tasks + calendar fold into ONE grouped notice, and the seen-set dedups a second tick", () => {
+    const all = [
+      { id: "r1", text: "Call mom", dueAt: at(10) },
+      { id: "f1", text: "Reply to Sam", dueAt: at(20) },
+      ...dueTaskItems([{ id: "t1", title: "pay rent", status: "open", dueAt: at(5) }], now + lead),
+      ...calendarEventItems([{ id: "e1", title: "Standup", startsAtIso: at(15) }], now + lead)
+    ];
+    const seen = new Set<string>();
+    const unseen = pickUnseen(imminentItems(all, now, lead), seen);
+    expect(unseen).toHaveLength(4);
+    const grouped = groupProactiveNotice(unseen, now);
+    expect(grouped).toContain("4 things need you");
+    for (const needle of ["Call mom", "Reply to Sam", "Task due: pay rent", "Calendar: Standup"]) {
+      expect(grouped).toContain(needle);
+    }
+    // Second tick after marking them seen → nothing re-surfaces (no spam).
+    for (const item of unseen) seen.add(item.id);
+    expect(pickUnseen(imminentItems(all, now, lead), seen)).toHaveLength(0);
+  });
+  it("out-of-window items are withheld until they enter the lead window", () => {
+    const all = [
+      { id: "soon", text: "Soon", dueAt: at(10) },
+      { id: "later", text: "Later", dueAt: at(180) }
+    ];
+    const unseen = pickUnseen(imminentItems(all, now, lead), new Set());
+    expect(unseen.map((i) => i.id)).toEqual(["soon"]);
+  });
+  it("finished jobs surface on their OWN pre-phrased line, not folded into the group", () => {
+    const jobs = jobCompletionItems([{ id: "j1", status: "done", prompt: "build report", finishedAt: at(-1) }], at(-100));
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.text).toContain("Background job done");
+    expect(jobs[0]?.id).toBe("job:j1");
+  });
+});
+
 describe("groupProactiveNotice", () => {
   const now = Date.UTC(2026, 4, 25, 12, 0, 0);
   const iso = (m: number): string => new Date(now + m * 60_000).toISOString();
