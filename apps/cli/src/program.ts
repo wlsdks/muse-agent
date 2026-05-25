@@ -102,6 +102,7 @@ import { registerMetricsCommands } from "./commands-metrics.js";
 import { registerSessionCommands } from "./commands-session.js";
 import { registerJobCommands } from "./commands-jobs.js";
 import { registerNotesRagCommands } from "./commands-notes-rag.js";
+import { registerNoteCommand } from "./commands-note.js";
 import { registerRememberCommands } from "./commands-remember.js";
 import { registerStatusCommand } from "./commands-status.js";
 import { registerRoutineCommand } from "./commands-routine.js";
@@ -490,6 +491,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerReadCommand(program, io);
   registerGlanceCommand(program, io);
   registerRecallCommand(program, io);
+  registerNoteCommand(program, io);
   registerFeedsCommand(program, io);
   registerPersonaCommand(program, io);
   registerWatchFolderCommand(program, io);
