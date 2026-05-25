@@ -42,6 +42,7 @@
 | 24 | `79cde1ed` | proactively surface imminent calendar events in chat | proactive perception | unit + flow |
 | 25 | `e130fba9` | audit: proactive surface composes (sources + dedup + grouping) | proactive · audit | 14/14 compose |
 | 26 | `fb85136f` | word-boundary tool relevance (ITR — fewer distractors) | efficiency · model-path | pnpm check green + live selection |
+| 27 | `9dd92587` | per-turn skill body injection (ITR — minimal prompt fragments) | efficiency · model-path | unit + **live qwen3:8b 2/2 (follow+withhold)** |
 
 ### Efficiency from 2026 research — tool-selection (ITR, arXiv:2602.17046)
 
@@ -50,6 +51,11 @@ only the minimally-relevant tool subset (it reports −95% per-step tokens, +32%
 routing). Muse already filters by keyword relevance but on raw SUBSTRING, so
 "search"∈"research" leaked distractors. Slice 26 moved to word-boundary matching
 with a short inflectional-suffix tolerance (lights⊃light, but research∌search).
+Slice 27 applied ITR's OTHER half — minimal system-prompt fragments: skill bodies
+are now injected only for the skill relevant to the current turn (others stay a
+one-line index), live-proven to still be followed when relevant and withheld
+(not hallucinated) when not. Both halves are deterministic retrieval — no extra
+model call, pure token/latency savings on the local model.
 
 ### Proactive-perception axis — calendar in the speaks-first tick
 
