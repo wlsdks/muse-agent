@@ -4455,7 +4455,7 @@ describe("muse.reminders loopback server", () => {
     expect(pendingOnly).toMatchObject({ status: "pending", total: 2 });
   });
 
-  it("add accepts an optional via override and serializes it back on response", async () => {
+  it("add IGNORES a model-supplied via (the chat model can't ground a delivery destination — it fabricates one)", async () => {
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -4467,26 +4467,15 @@ describe("muse.reminders loopback server", () => {
     });
     const connection = createLoopbackMcpConnection(server);
 
+    // A via passed by the model is dropped — the reminder is created on the
+    // user's configured default route, not a model-invented destination.
     const ok = await connection.callTool!("add", {
       dueAt: "2026-05-11T09:00:00Z",
       text: "Deploy alert",
-      via: { destination: "C123", providerId: "slack" }
+      via: { destination: "1234567890", providerId: "telegram" }
     });
-    expect(ok).toMatchObject({
-      reminder: {
-        id: "rem_via_1",
-        text: "Deploy alert",
-        via: { destination: "C123", providerId: "slack" }
-      }
-    });
-
-    // Validation: missing destination → clean error before the file is touched.
-    const bad = await connection.callTool!("add", {
-      dueAt: "2026-05-11T09:00:00Z",
-      text: "x",
-      via: { providerId: "slack" }
-    });
-    expect(bad).toMatchObject({ error: expect.stringContaining("via.providerId and via.destination") });
+    expect(ok).toMatchObject({ reminder: { id: "rem_via_1", text: "Deploy alert" } });
+    expect((ok as { reminder: Record<string, unknown> }).reminder).not.toHaveProperty("via");
   });
 
   it("fire flips a pending reminder to status='fired' with a timestamp", async () => {

@@ -10,7 +10,6 @@ import {
   filterReminders,
   fireReminder,
   parseReminderDueAt,
-  parseReminderVia,
   readReminders,
   readReminderStatusFilter,
   serializeReminder,
@@ -117,8 +116,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           "so pass the user's natural-language input directly (in their own language). Reminders surface in `muse today` once dueAt " +
           "has passed. " +
           "Optional `recurrence`: 'daily' or 'weekly' makes it repeat (re-arms to the next occurrence each time it fires) — use for 'every day' / 'every Monday'; omit for a one-time reminder. " +
-          "Optional `via: { providerId, destination }` overrides the firing daemon's default route per reminder " +
-          "(\"send THIS one to Slack channel C123 instead of the user's usual Telegram\").",
+          "Reminders fire on the user's configured channel.",
         execute: async (args): Promise<JsonObject> => {
           const text = readString(args, "text")?.trim();
           if (!text) {
@@ -137,11 +135,11 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             return { error: "recurrence must be 'daily' or 'weekly'" };
           }
           const recurrence = recurrenceRaw as ReminderRecurrence | undefined;
-          const viaResult = parseReminderVia(args["via"]);
-          if (viaResult instanceof Error) {
-            return { error: viaResult.message };
-          }
-          const via = viaResult;
+          // `via` is deliberately NOT model-settable: the chat model can't ground
+          // a delivery destination and was observed FABRICATING one (a made-up
+          // telegram chat id), which would mis-route the reminder. Reminders fire
+          // on the user's configured default route; per-reminder overrides stay a
+          // programmatic-only path (parseReminderVia + the store field).
           const reminders = await readReminders(file);
           const created: PersistedReminder = {
             createdAt: now().toISOString(),
@@ -149,8 +147,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             id: idFactory(),
             status: "pending",
             text,
-            ...(recurrence ? { recurrence } : {}),
-            ...(via ? { via } : {})
+            ...(recurrence ? { recurrence } : {})
           };
           try {
             await writeReminders(file, [...reminders, created]);
@@ -171,19 +168,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
               enum: ["daily", "weekly"],
               type: "string"
             },
-            text: { description: "Reminder body shown back to the user when due.", type: "string" },
-            via: {
-              additionalProperties: false,
-              description:
-                "Optional per-reminder routing override. Both fields required when set. " +
-                "When omitted, the firing daemon's default provider/destination is used.",
-              properties: {
-                destination: { description: "Platform-native chat / channel / user id.", type: "string" },
-                providerId: { description: "telegram | discord | slack | line", type: "string" }
-              },
-              required: ["providerId", "destination"],
-              type: "object"
-            }
+            text: { description: "Reminder body shown back to the user when due.", type: "string" }
           },
           required: ["text", "dueAt"],
           type: "object"
