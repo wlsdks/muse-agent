@@ -22,18 +22,20 @@
  * Zero recurring cost — all local.
  */
 
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveNotesDir, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveEpisodesFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
-import { readReminders, readTasks, type PersistedReminder, type PersistedTask } from "@muse/mcp";
+import { readEpisodes, readReminders, readTasks, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { classifyTier, type ModelTier } from "@muse/multi-agent";
 import type { Command } from "commander";
 
 import { cosine, isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js";
+import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles } from "./commands-recall.js";
 import { embed } from "./embed.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
@@ -393,7 +395,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       let queryVec: number[] | undefined;
       try {
         queryVec = await embed(query, embedModel);
-        scored = index.files.flatMap((f) => f.chunks.map((chunk) => ({
+        // Skip index entries whose note file was deleted since the last
+        // reindex — otherwise `ask` grounds on (and cites) a note that no
+        // longer exists. recall / today --connect already guard this.
+        scored = filterLiveNoteIndexFiles(index.files, existsSync).flatMap((f) => f.chunks.map((chunk) => ({
           chunk,
           file: f.path,
           score: cosine(queryVec!, chunk.embedding)
@@ -419,7 +424,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         try {
           const epIndex = await loadEpisodeIndex(defaultEpisodeIndexFile());
           if (epIndex && epIndex.model === embedModel && epIndex.entries.length > 0) {
-            episodeHits = rankEpisodeHits(queryVec, epIndex.entries, topK);
+            // Drop episodes vacuumed/deleted from the source since indexing.
+            const liveIds = new Set((await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>))).map((e) => e.id));
+            episodeHits = rankEpisodeHits(queryVec, filterLiveEpisodeEntries(epIndex.entries, liveIds), topK);
           }
         } catch {
           // episodes index missing / unreadable — grounding still works
