@@ -30,6 +30,7 @@ import type {
 } from "@muse/model";
 
 import type { FollowupPromise } from "./followup-detector.js";
+import { iterateJsonArrayCandidates } from "./json-array-scan.js";
 
 export interface ExtractFollowupPromisesLlmOptions {
   readonly modelProvider: ModelProvider;
@@ -107,19 +108,20 @@ interface RawLlmPromise {
 }
 
 function parseLlmDetectorOutput(raw: string, now: Date): readonly FollowupPromise[] {
-  const jsonBody = extractJsonArrayBody(raw);
-  if (jsonBody === undefined) {
-    return [];
+  // Walk every JSON-array candidate and return the first that yields at
+  // least one valid promise, so prose brackets in the preamble (and `]`
+  // inside a promise's text, which the old first-`[` scanner mis-closed on)
+  // can't drop the real array.
+  for (const candidate of iterateJsonArrayCandidates(raw)) {
+    const promises = promisesFromArray(candidate.value, now);
+    if (promises.length > 0) {
+      return promises;
+    }
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonBody) as unknown;
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(parsed)) {
-    return [];
-  }
+  return [];
+}
+
+function promisesFromArray(parsed: readonly unknown[], now: Date): readonly FollowupPromise[] {
   const nowMs = now.getTime();
   const minScheduledMs = nowMs - LLM_FOLLOWUP_PAST_TOLERANCE_MS;
   const maxScheduledMs = nowMs + LLM_FOLLOWUP_FUTURE_HORIZON_MS;
@@ -151,28 +153,6 @@ function parseLlmDetectorOutput(raw: string, now: Date): readonly FollowupPromis
     });
   }
   return out;
-}
-
-/**
- * The model occasionally wraps the array in prose ("Here are the
- * promises: [...]") or trailing commentary. Pull the FIRST balanced
- * `[ … ]` chunk so a small wrap doesn't kill the parse.
- */
-function extractJsonArrayBody(raw: string): string | undefined {
-  const first = raw.indexOf("[");
-  if (first < 0) return undefined;
-  let depth = 0;
-  for (let i = first; i < raw.length; i += 1) {
-    const ch = raw[i];
-    if (ch === "[") depth += 1;
-    else if (ch === "]") {
-      depth -= 1;
-      if (depth === 0) {
-        return raw.slice(first, i + 1);
-      }
-    }
-  }
-  return undefined;
 }
 
 function normaliseLlmKind(raw: unknown): FollowupPromise["kind"] {

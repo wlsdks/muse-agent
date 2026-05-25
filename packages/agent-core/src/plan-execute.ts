@@ -1,6 +1,8 @@
 import type { ModelMessage, ModelTool } from "@muse/model";
 import type { JsonObject } from "@muse/shared";
 
+import { extractFirstJsonArray, iterateJsonArrayCandidates } from "./json-array-scan.js";
+
 /**
  * Plan-Execute primitives: types, parsing, validation, and the typed errors
  * the PlanExecute strategy raises. Extracted from the agent-core monolith so
@@ -62,101 +64,12 @@ export class PlanExecutionError extends Error {
 }
 
 /**
- * Returns the substring of the first balanced `[ … ]` span in `text` that
- * actually parses as JSON, or `null` if none can be located. Surrounding
- * prose is tolerated; nested arrays inside step `args` are preserved.
- *
- * Anchoring on the literal first `[` is not enough: the local planner
- * routinely prefixes its JSON with prose that contains a bracket —
- * markdown checkboxes (`- [x] step`), ranges (`steps [1-3]:`), citations.
- * A bracket span that fails to parse is skipped and the scan resumes at
- * the next `[`, so a stray bracket in the preamble can no longer swallow
- * a valid trailing plan (which manifested as a silent PLAN_GENERATION_FAILED).
+ * Returns the substring of the first balanced `[ … ]` span that parses as a
+ * JSON array, or `null`. See `json-array-scan` for why anchoring on the
+ * literal first `[` is unsafe against the local model's prose.
  */
 export function extractJsonArray(text: string): string | null {
-  for (const candidate of iterateJsonArrayCandidates(text)) {
-    return candidate.text;
-  }
-  return null;
-}
-
-interface JsonArrayCandidate {
-  readonly text: string;
-  readonly value: readonly unknown[];
-}
-
-/**
- * Yields every balanced `[ … ]` span in `text`, in order, that parses as a
- * JSON array — skipping bracket spans that aren't valid JSON. Lets callers
- * walk past prose brackets (`[x]`, `[1-3]`) AND past valid-but-irrelevant
- * arrays (`[2]`, `["a","b"]`) until they find the array shaped the way they
- * need, rather than committing to the literal first `[`.
- */
-function* iterateJsonArrayCandidates(text: string): Generator<JsonArrayCandidate> {
-  let searchFrom = 0;
-  for (;;) {
-    const start = text.indexOf("[", searchFrom);
-    if (start < 0) {
-      return;
-    }
-    const end = balancedArrayEnd(text, start);
-    if (end < 0) {
-      // `[` never closes — the real array may still follow it, so step
-      // one char forward rather than giving up.
-      searchFrom = start + 1;
-      continue;
-    }
-    const candidate = text.slice(start, end + 1);
-    try {
-      const value: unknown = JSON.parse(candidate);
-      if (Array.isArray(value)) {
-        yield { text: candidate, value };
-      }
-    } catch {
-      // not valid JSON — fall through to the next top-level `[`
-    }
-    // Resume PAST this balanced span: its interior (e.g. a nested `args:[]`)
-    // is part of THIS candidate, not a separate top-level array.
-    searchFrom = end + 1;
-  }
-}
-
-/**
- * Index of the `]` that balances the `[` at `start`, or `-1` if the span
- * never closes. Brackets inside JSON strings (and their escapes) are
- * ignored so a `]` in step text can't close the array early.
- */
-function balancedArrayEnd(text: string, start: number): number {
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-  for (let index = start; index < text.length; index += 1) {
-    const character = text[index];
-    if (escape) {
-      escape = false;
-      continue;
-    }
-    if (character === "\\" && inString) {
-      escape = true;
-      continue;
-    }
-    if (character === "\"") {
-      inString = !inString;
-      continue;
-    }
-    if (inString) {
-      continue;
-    }
-    if (character === "[") {
-      depth += 1;
-    } else if (character === "]") {
-      depth -= 1;
-      if (depth === 0) {
-        return index;
-      }
-    }
-  }
-  return -1;
+  return extractFirstJsonArray(text);
 }
 
 /**

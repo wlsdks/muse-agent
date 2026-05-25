@@ -168,3 +168,34 @@ in prose before the real plan can still shadow it.
 and let the *consumer's* validity test pick, instead of committing to
 the first lexical hit. And every retry/repair scan must advance past
 what it already consumed, or it re-mines the interior.
+
+---
+
+## Finding 002b — same bug, second site: followup LLM detector
+
+**Severity:** medium (soft feature — `confidence: "low"`, rule detector is
+the gold standard — but a real correctness gap on untrusted model text)
+**Where:** `packages/agent-core/src/followup-llm-detector.ts` —
+`extractJsonArrayBody`.
+
+Acting on Finding 002's "pattern learned," I checked the sibling parser
+and it had the **same** first-`[` anchoring bug — plus a worse one: it
+scanned brackets with **no JSON-string awareness**, so a `]` inside a
+promise's `originalText` (e.g. `"meet [boss] at 3pm] sharp"`) closed the
+array early and dropped every followup. Reproduced via the public API
+with a stub `ModelProvider` (4 cases, 3 red).
+
+**Fix:** extracted the robust scanner into a shared
+`src/json-array-scan.ts` (`iterateJsonArrayCandidates`,
+`extractFirstJsonArray`, string-aware `balancedArrayEnd`) and pointed
+BOTH `plan-execute` and the followup detector at it — one correct
+implementation instead of two subtly-different fragile ones. The followup
+parser now walks candidates and returns the first array yielding ≥1 valid
+promise.
+
+**Verified:** agent-core build clean; 690 passed (+4); lint clean.
+
+### Pattern reinforced
+A defect found by reasoning about a *class* (not a single line) should
+trigger a sweep for siblings. Here the sweep found a second, worse
+instance and justified consolidating both onto one tested implementation.
