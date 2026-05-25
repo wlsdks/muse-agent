@@ -19,9 +19,13 @@ Every commit must clear, before you claim it:
 
 1. `pnpm lint` → 0 errors / 0 warnings.
 2. Narrowest useful test for the touched package (`pnpm --filter @muse/<pkg> test`).
-3. **Request/response-path change → `pnpm smoke:live`** — a real round-trip on
-   **LOCAL OLLAMA QWEN ONLY** (`qwen3:8b`). Never a cloud API. If Ollama is
-   down, fixing that is the turn's work.
+3. **Request/response-path change → a real local-Qwen round-trip.** For a
+   single tool-selection proof, use the FAST check —
+   `node apps/cli/scripts/verify-tool-selection.mjs "<prompt>" <tool>` (one
+   `qwen3:8b` round, ~1 min, exit 0/1). Reserve the full `pnpm smoke:live`
+   sweep for broad regression. **LOCAL OLLAMA QWEN ONLY** — never a cloud API;
+   never the slow 35b for a single check (it stalls — see EXPANSION-LOG.md). If
+   Ollama is down, fixing that is the turn's work.
 4. **Interactive chat change → an `ink-testing-library` render test** (see
    `apps/cli/src/chat-ink-render.test.ts`) that drives the keystroke→frame path.
 5. Repo byte-hygiene stays green; no `// Goal NNN` / round / iteration markers
