@@ -43,6 +43,7 @@
 | 25 | `e130fba9` | audit: proactive surface composes (sources + dedup + grouping) | proactive · audit | 14/14 compose |
 | 26 | `fb85136f` | word-boundary tool relevance (ITR — fewer distractors) | efficiency · model-path | pnpm check green + live selection |
 | 27 | `9dd92587` | per-turn skill body injection (ITR — minimal prompt fragments) | efficiency · model-path | unit + **live qwen3:8b 2/2 (follow+withhold)** |
+| 28 | `8404db68` | bound active chat history window (Context-Folding) | efficiency · model-path | unit + **live qwen3:8b 2/2 (forget/recall)** |
 
 ### Efficiency from 2026 research — tool-selection (ITR, arXiv:2602.17046)
 
@@ -56,6 +57,12 @@ are now injected only for the skill relevant to the current turn (others stay a
 one-line index), live-proven to still be followed when relevant and withheld
 (not hallucinated) when not. Both halves are deterministic retrieval — no extra
 model call, pure token/latency savings on the local model.
+Slice 28 added the third efficiency lever (Context-Folding, arXiv:2510.11967):
+the chat windows its active history to the last N turns (default 40) so a long
+session can't grow the per-turn prompt unbounded — live-proven the window
+genuinely bounds what the model sees (early fact forgotten under a tiny window,
+recalled under a large one). Full transcript still persisted; only the working
+set is capped.
 
 ### Proactive-perception axis — calendar in the speaks-first tick
 
