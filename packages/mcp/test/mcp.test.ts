@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 import type { MuseDatabase } from "@muse/db";
 import {
   DummyDriver,
@@ -68,6 +70,14 @@ import {
   validateStdioCommand,
   type McpConnection
 } from "../src/index.js";
+
+// The stdio fixtures below spawn `node -e <inline ESM>` that bare-imports
+// `@modelcontextprotocol/sdk`. pnpm keeps that dep only under this package's
+// node_modules (not hoisted to the repo root), and the vitest worker's cwd is
+// the repo root — so without an explicit cwd the child can't resolve the SDK,
+// exits immediately, and the client sees "Connection closed". Spawn it from
+// the package dir where the SDK resolves.
+const MCP_PACKAGE_DIR = fileURLToPath(new URL("..", import.meta.url));
 
 describe("InMemoryMcpServerStore", () => {
   it("saves, updates, lists, and deletes MCP servers", () => {
@@ -269,7 +279,8 @@ describe("DefaultMcpTransportConnector", () => {
         autoConnect: false,
         config: {
           args: ["--input-type=module", "-e", serverCode],
-          command: "node"
+          command: "node",
+          cwd: MCP_PACKAGE_DIR
         },
         createdAt: new Date(),
         id: "server-1",
@@ -316,7 +327,8 @@ describe("DefaultMcpTransportConnector", () => {
         autoConnect: false,
         config: {
           args: ["--input-type=module", "-e", serverCode],
-          command: "node"
+          command: "node",
+          cwd: MCP_PACKAGE_DIR
         },
         createdAt: new Date(),
         id: "server-roots",
@@ -360,7 +372,8 @@ describe("DefaultMcpTransportConnector", () => {
         autoConnect: false,
         config: {
           args: ["--input-type=module", "-e", serverCode],
-          command: "node"
+          command: "node",
+          cwd: MCP_PACKAGE_DIR
         },
         createdAt: new Date(),
         id: "server-empty",
