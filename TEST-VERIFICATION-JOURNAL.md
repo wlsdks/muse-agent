@@ -811,3 +811,18 @@ probe) rather than a one-time check.
 Sources (research): Turing College "Evaluating AI Agents 2025"; IBM Research
 "Evaluating LLM-based Agents (IJCAI 2025)"; Confident AI "Test Cases, Goldens,
 and Datasets"; arXiv 2507.21504 "Evaluation and Benchmarking of LLM Agents".
+
+### Round 9 — extend the golden set with the research's named failure modes
+
+Grew `eval-tool-selection.mjs` from 9 → 12 cases, adding the failure modes the
+research flagged: (a) **no-fitting-tool** — a pure-generation request ("write a
+two-line poem") must NOT force an irrelevant tool; (b) **indirect intent** —
+"I'm in Seoul, do I need an umbrella later?" → get_weather(Seoul); (c)
+**keyword trap** — "Quick, remind me — what's 25% of 480?" must go to
+`calculate`, NOT `set_reminder`, despite the word "remind" (tool-calling.md:
+homonyms are the #1 wrong-selection cause).
+
+**Result (qwen3:8b): 12/12 (100%)** — the local model selects by intent, not
+keywords: the poem drew no tool, the umbrella question resolved to weather, and
+the "remind"-worded math question correctly chose calculate. The reliability
+gate now exercises happy-path, negatives, and the three named failure modes.

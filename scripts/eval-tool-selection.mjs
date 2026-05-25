@@ -58,7 +58,12 @@ const CASES = [
   { prompt: "오후 3시에 회의 준비하라고 알려줘.", expectTool: "set_reminder", note: "KO reminder" },
   { prompt: "안녕! 오늘 기분 어때?", expectNoTool: true, note: "KO greeting → NO tool (no eager invocation)" },
   { prompt: "Thanks, that was really helpful!", expectNoTool: true, note: "EN thanks → NO tool" },
-  { prompt: "고마워, 덕분에 잘됐어.", expectNoTool: true, note: "KO thanks → NO tool" }
+  { prompt: "고마워, 덕분에 잘됐어.", expectNoTool: true, note: "KO thanks → NO tool" },
+  // Research's named failure modes: don't force an irrelevant tool, read
+  // INTENT not keywords, resolve indirect requests.
+  { prompt: "Write a short two-line poem about the autumn sky.", expectNoTool: true, note: "EN pure generation → NO tool (none fits)" },
+  { prompt: "I'm in Seoul — do I need an umbrella later today?", expectTool: "get_weather", argIncludes: /seoul/i, note: "EN indirect weather intent" },
+  { prompt: "Quick, remind me — what's 25% of 480?", expectTool: "calculate", note: "EN keyword trap: 'remind' word but it's math → calculate, not set_reminder" }
 ];
 
 async function ollamaReachable() {
