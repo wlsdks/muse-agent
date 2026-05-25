@@ -921,3 +921,25 @@ covered, no churn) ✓ · confusability sweep of real data/text tools (clean,
 (parseNonNegativeInteger; explicit-0 fail-open) ✓ · tool-calling.md → eval:tools
 pointer ✓ · final full certification ✓. LLM-as-judge intentionally deferred
 (local-only judge = self-judging bias; honest non-fit, not built).
+
+---
+
+## Round 13 — config-parsing fail-open sweep (clean) + missing-param layering
+
+- **Config-parsing fail-open sweep** (the finding-016 class, repo-wide): audited
+  every ad-hoc `Number(env.X)` outside the hardened autoconfigure env-parsers
+  (~25 sites in tick-daemons + CLI cap/window parsers). ALL are defended at the
+  consumer: every tick daemon clamps its interval (`clampInterval`/isFinite →
+  default, so a typo'd `MUSE_*_TICK_MS=60x` → NaN → default, NOT a 0ms busy
+  loop), and the CLI caps use `Number.isFinite(raw) && raw >= N ? trunc : def`.
+  Consistent, mature idiom — no fail-open found. (finding 016's parseInteger-0
+  asymmetry remains the only one.)
+- **Missing-required-param — correctly layered, not a selection concern.**
+  Probed "Remind me to call Sam" (no time): with ONLY set_reminder exposed the
+  model asks for the time; under a larger tool set it fires set_reminder
+  eagerly (context-dependent). Either way set_reminder is the RIGHT tool — the
+  missing `when` is caught by the runtime's required-arg gate (agent-runtime:
+  "blocks a tool call missing a REQUIRED argument before the executor runs",
+  already tested), NOT by the model declining. Removed two mis-framed
+  expectNoTool golden cases (selection ≠ param-completeness) and documented the
+  layered defense inline. eval:tools back to 24/24.

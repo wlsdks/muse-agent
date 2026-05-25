@@ -55,6 +55,14 @@ const SYNTHETIC_CASES = [
   { prompt: "I'm in Seoul — do I need an umbrella later today?", expectTool: "get_weather", argIncludes: /seoul/i, note: "EN indirect weather intent" },
   { prompt: "Quick, remind me — what's 25% of 480?", expectTool: "calculate", note: "EN keyword trap: 'remind' word but it's math → calculate" }
 ];
+// NOTE: the missing-required-param failure mode (e.g. "Remind me to call Sam"
+// with no time) is NOT asserted here — it's a PARAM-completeness concern, not
+// a SELECTION one. set_reminder is the correct tool for a reminder; whether a
+// call missing its required `when` should proceed is handled by the runtime's
+// required-arg gate (agent-runtime: "blocks a tool call missing a REQUIRED
+// argument before the executor runs"), already unit-tested. (Observed: the
+// model asks for the time when only set_reminder is exposed, but fires eagerly
+// under a larger tool set — the runtime gate, not the model, is the defense.)
 
 // Muse's ACTUAL built-in tools — proves production names/descriptions are
 // selectable. Includes the confusable time_now vs time_diff pair on purpose.
