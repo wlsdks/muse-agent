@@ -241,8 +241,8 @@ Or via env vars (`MUSE_CALENDAR_PROVIDERS=local,gcal`,
 | `muse.calendar` Google | `scaffold` | OAuth refresh-token flow + REST v3; needs user-issued OAuth client to exercise live |
 | `muse.calendar` CalDAV | `scaffold` | REPORT/PUT/DELETE iCalendar; needs iCloud / Fastmail / Proton app-password to exercise live |
 | `muse.calendar` macOS | `scaffold` | osascript wrapper; first call triggers system permission prompt |
-| `NotesProvider` Apple | `stub` | Interface defined; throws NOT_IMPLEMENTED until osascript adapter lands |
-| `NotesProvider` Notion | `stub` | Interface defined; throws NOT_IMPLEMENTED until api.notion.com adapter lands |
+| `NotesProvider` Apple | `scaffold` | osascript (Notes.app) adapter implemented; needs macOS to exercise live (first call triggers a permission prompt) |
+| `NotesProvider` Notion | `live` (unit) | api.notion.com/v1 adapter implemented — list/read/search/save/append + 429 retry / 401 fail-fast / write-not-retried; needs a user token to exercise against the real API |
 
 ## Verification
 
