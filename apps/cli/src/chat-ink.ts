@@ -55,6 +55,7 @@ import { loadAgents, resolveAgentsDir, type AgentDef } from "./commands-agents.j
 import { searchRecall } from "./commands-recall.js";
 import { readTrust } from "./commands-trust.js";
 import { appendInputHistory, loadInputHistory } from "./chat-input-history.js";
+import { extractMemoryFromTurn, shouldAutoExtract, type AutoMemoryProvider } from "./chat-auto-memory.js";
 import { listRecentJobIds, readJobSummary, startBackgroundJob } from "./commands-jobs.js";
 import { buildLocalTodayText, parseLookaheadHours, readDueFollowups, readDueReminders } from "./commands-today.js";
 import { dueTaskItems, imminentItems, jobCompletionItems, pickUnseen, proactiveNoticeText, relativeWhen, type ProactiveItem } from "./chat-proactive.js";
@@ -871,8 +872,34 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     });
   };
 
+  // Background auto-memory: after a turn, quietly learn durable facts the user
+  // stated in passing — no "remember this" needed. Fire-and-forget + cooldown
+  // so the snappy reply path isn't slowed. Opt out with MUSE_USER_MEMORY_AUTO_EXTRACT=false.
+  const autoMemoryEnabled = memoryStore !== undefined
+    && process.env.MUSE_USER_MEMORY_AUTO_EXTRACT?.trim().toLowerCase() !== "false"
+    && "generate" in provider;
+  const lastExtract = { current: undefined as number | undefined };
   const onCommit = (user: string, assistant: string): void => {
     void appendLastChatTurn({ message: user, response: assistant }).catch(() => undefined);
+    if (!autoMemoryEnabled || assistant.trim().length === 0) return;
+    const now = Date.now();
+    if (!shouldAutoExtract(lastExtract.current, now)) return;
+    lastExtract.current = now;
+    void (async () => {
+      try {
+        const { facts, preferences } = await extractMemoryFromTurn({
+          assistant, model, provider: provider as unknown as AutoMemoryProvider, user
+        });
+        let wrote = false;
+        for (const [key, value] of Object.entries(facts).slice(0, 5)) {
+          await Promise.resolve(memoryStore!.upsertFact(userId, key, value)); wrote = true;
+        }
+        for (const [key, value] of Object.entries(preferences).slice(0, 5)) {
+          await Promise.resolve(memoryStore!.upsertPreference(userId, key, value)); wrote = true;
+        }
+        if (wrote) await refreshMemory();
+      } catch { /* best-effort — auto-memory never disrupts the chat */ }
+    })();
   };
   const onReset = (): void => {
     void clearLastChatHistory().catch(() => undefined);

@@ -22,6 +22,8 @@
 | 5 | `b02033ef` | persistent ↑/↓ input history | CLI | unit + render |
 | 6 | `37bb4032` | `/memory` surfaces episodic count | memory | unit |
 | 7 | `8e111ebf` | `remember_fact` agent tool (NL memory) | memory · model-path | unit + **fast qwen3:8b selection** |
+| 8 | `7afb8135` | fast tool-selection verifier + build journal | tooling | self-test PASS |
+| 9 | `7a22824c` | background auto-memory (learn facts without "remember") | memory · model-path | unit + **fast qwen3:8b extraction** |
 
 ## Failures → learnings
 
@@ -44,6 +46,15 @@
 - **Stale `dist/` test copies (earlier cleanup).** `tsc` doesn't delete outputs
   for removed sources; vitest then ran a stale dist test. → **Lesson:** `rm`
   orphaned `dist/*` after deleting a source file, then re-run.
+- **Auto-extract returned EMPTY on qwen3:8b (slice 9).** The shared
+  `pickAutoExtractSystemPrompt` produced valid-but-empty JSON for clear facts
+  ("I live in Busan and prefer short answers") — the model was too conservative,
+  and the earlier hook success was partly luck. The JSON parser was fine. →
+  **Lesson:** the small local model needs a SHARPER, example-bearing
+  output-only-JSON prompt. A 4-case fast check (Busan+short / name+job /
+  vegetarian / "2+2?"→empty) then extracted reliably. Shipped that prompt in
+  chat-auto-memory.ts. Confirms the iterate-fast method: the live MISS, not the
+  unit test, found the real gap.
 
 ## Open / next experiments
 
