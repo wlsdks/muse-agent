@@ -585,6 +585,14 @@ function tokenizePrompt(text: string): Set<string> {
  */
 function tokenMatchesKeywordWord(token: string, word: string): boolean {
   if (token === word) return true;
+  // Agglutinative scripts (Korean/CJK) attach particles to the stem, so the
+  // keyword is a substring of one token: "마감" inside "마감인". Match by
+  // containment for non-ASCII words (the original substring behaviour the
+  // word-boundary rewrite regressed). ASCII keeps the word-boundary + short-
+  // suffix rule so "research" never matches "search".
+  if (/[^\u0000-\u007f]/u.test(word)) {
+    return token.includes(word);
+  }
   return word.length >= 4 && token.startsWith(word) && token.length - word.length <= 3;
 }
 

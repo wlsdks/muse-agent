@@ -38,6 +38,7 @@ const cases = [
   ["show my tasks", "muse.tasks.list"], ["할 일 목록", "muse.tasks.list"],
   ["add a task buy milk", "muse.tasks.add"], ["할 일 추가: 우유 사기", "muse.tasks.add"],
   ["mark the report task done", "muse.tasks.complete"],
+  ["오늘 마감인 일", "muse.tasks.list"], ["what's due today", "muse.tasks.list"],
   ["what did we discuss last session", "muse.episode"], ["지난 세션 뭐였지", "muse.episode"],
   ["check my inbox", "muse.messaging.inbox"], ["받은 메일 확인", "muse.messaging.inbox"]
 ];

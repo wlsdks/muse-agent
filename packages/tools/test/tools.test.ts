@@ -384,6 +384,19 @@ describe("tool utilities", () => {
     expect(createWorkspaceToolRoutingPlan([homeTool], { prompt: "finish my homework" }).exposedToolNames).toEqual([]);
   });
 
+  it("matches a Korean keyword as a substring of an agglutinated token (마감 in 마감인)", () => {
+    const dueTool: MuseTool = {
+      definition: { description: "list due tasks", inputSchema: { type: "object" }, keywords: ["마감", "deadline"], name: "due_tasks", risk: "read" },
+      execute: () => "ok"
+    };
+    // Korean attaches particles to the stem; word-boundary token matching
+    // (the English rule) missed "마감" inside "마감인" — substring is correct here.
+    expect(createWorkspaceToolRoutingPlan([dueTool], { prompt: "오늘 마감인 일" }).exposedToolNames).toEqual(["due_tasks"]);
+    expect(createWorkspaceToolRoutingPlan([dueTool], { prompt: "마감까지 남은 거" }).exposedToolNames).toEqual(["due_tasks"]);
+    // unrelated Korean prompt does not match
+    expect(createWorkspaceToolRoutingPlan([dueTool], { prompt: "오늘 날씨 어때" }).exposedToolNames).toEqual([]);
+  });
+
   it("matches a multi-word keyword only when all its words are present", () => {
     const rentTool: MuseTool = {
       definition: { description: "Track a bill.", inputSchema: { type: "object" }, keywords: ["pay rent"], name: "track_bill", risk: "read" },
