@@ -42,6 +42,13 @@ describe("DefaultToolFilter", () => {
     expect(filter.filter([taskTool], { userMessage: "오늘 날씨" })).toEqual([]);
   });
 
+  it("surfaces messaging for 'inbox'/'email' (not only slack/메시지)", () => {
+    const inbox = tool({ description: "read inbox", domain: "messaging", inputSchema: {}, name: "muse.messaging.inbox", risk: "read" });
+    expect(filter.filter([inbox], { userMessage: "check my inbox" }).map((t) => t.definition.name)).toEqual(["muse.messaging.inbox"]);
+    expect(filter.filter([inbox], { userMessage: "받은 메일 확인" }).map((t) => t.definition.name)).toEqual(["muse.messaging.inbox"]);
+    expect(filter.filter([inbox], { userMessage: "what's the weather" })).toEqual([]);
+  });
+
   it("scope hints override keyword matching", () => {
     const kept = filter.filter(tools, { scopeHints: ["calendar"], userMessage: "hi" });
     expect(kept.map((t) => t.definition.name)).toContain("muse.calendar.upcoming");

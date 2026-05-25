@@ -702,7 +702,8 @@ const workspaceHints = [
   "일정",
   "약속",
   "회의",
-  "리마인더"
+  "리마인더",
+  "리마인드"
 ] as const;
 
 const mutationPatterns = [
@@ -746,13 +747,15 @@ const koreanMutationHints = [
   "코멘트해",
   "댓글 달",
   "추가해",
+  "추가",
   "삭제해",
   "제거해",
   "변환해",
   "저장해",
   "저장",
   "기록해",
-  "예약해"
+  "예약해",
+  "리마인드"
 ] as const;
 
 const readOnlyLookupExceptions = ["unassigned", "미할당"] as const;
@@ -821,7 +824,8 @@ const mutationTargetHints = [
   "일정",
   "약속",
   "회의",
-  "리마인더"
+  "리마인더",
+  "리마인드"
 ] as const;
 
 const mutationTargetPatterns = [/\bpr\b/u] as const;
