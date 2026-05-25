@@ -68,6 +68,7 @@
 | 50 | `61e8ec62` | close 4 more reachability gaps (bare 추가 / 리마인드 / inbox) | quality · eval-driven | sweep 23/23 + unit |
 | 51 | `f7f4fe33` | deterministic tool-exposure regression guard (eval FAST) | quality infra | 23/23 + eval 3/3 |
 | 52 | `d211357a` | expand live tool battery across domains + wire into eval | quality · eval-driven | **live qwen 12/12** |
+| 53 | `aa9cf95e` | Korean keyword relevance — match agglutinated token by substring | quality · eval-driven · i18n | unit + sweep 25/25 |
 
 ### 10-item evaluated backlog — DELIVERED (slices 36-44)
 
