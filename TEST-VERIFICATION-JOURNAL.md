@@ -106,3 +106,65 @@ The removed counts are **not** a clean 50% of each suite — proof the
 `dist` copies were compiled from an *older* `src` with different test
 counts. The runner was reporting green on outdated code: a real
 verification-integrity defect, repo-wide, masked as "more tests pass."
+
+---
+
+## Finding 002 — prose brackets before a JSON plan silently lose the whole plan
+
+**Severity:** medium-high (silent `PLAN_GENERATION_FAILED`; directly
+degrades local-Qwen tool-calling reliability — a first-class concern per
+`tool-calling.md`)
+**Where:** `packages/agent-core/src/plan-execute.ts` —
+`extractJsonArray` / `parsePlan`. No dedicated test file existed; the
+only coverage was a few happy-path cases in `agent-runtime.test.ts`.
+
+### How it was observed
+While scanning for untrusted-text parsers, `extractJsonArray` anchored
+on the *literal* first `[` (`text.indexOf("[")`). The runtime model is
+local Qwen, which routinely emits prose before its JSON. Probed five
+realistic preambles against the built code:
+
+| model preamble                         | extracted | plan |
+|----------------------------------------|-----------|------|
+| `here is the plan for steps [1-3]:`    | `[1-3]`   | **null** |
+| `I will do [0,5) then:`                | `null`    | **null** |
+| `- [x] step one` (markdown checkbox)   | `[x]`     | **null** |
+| `Per the docs [2], plan:`              | `[2]`     | **null** |
+| `tags: ["a","b"] then <plan>`          | `["a","b"]` | **null** |
+
+Every one of these silently dropped a perfectly valid trailing plan.
+
+### Root cause
+Committing to the first `[` is fragile against the exact output the
+local planner produces. Markdown task lists, numeric ranges, citations,
+and example arrays all put a `[` in the preamble.
+
+### Fix (and two failures that taught the final shape)
+1. First attempt — "return the first balanced span that is *valid
+   JSON*." Failed two new tests: a markdown `- [ ]` is a valid **empty**
+   JSON array and a citation `[2]` is a valid **1-element** array, so
+   they still won.
+2. Final — `parsePlan` now walks **every** top-level JSON-array
+   candidate (`iterateJsonArrayCandidates`) and returns the first
+   NON-EMPTY array whose every entry is a valid step; a lone empty array
+   is still the valid empty plan, but an empty `[ ]` in prose no longer
+   shadows a real plan. `extractJsonArray` keeps the lower-level "first
+   valid JSON array" contract.
+3. Third failure — an existing test (`args:[]` ⇒ null) regressed because
+   the candidate scanner resumed at `start+1` and descended into the
+   array's **interior**, picking up the nested `args:[]` as a bogus
+   empty-plan candidate. Fixed by resuming past the balanced span
+   (`end+1`) so only top-level arrays are candidates.
+
+### Verified
+New adversarial suite `plan-extract-prose-brackets.test.ts` (14 cases)
+green; full agent-core suite 686 passed (was 672, +14); lint clean.
+Irreducible limit pinned by a test: only a *plan-shaped* array appearing
+in prose before the real plan can still shadow it.
+
+### Pattern learned
+"Parse the first match of a delimiter" is a trap for untrusted LLM text
+— the model's natural prose collides with the delimiter. Walk candidates
+and let the *consumer's* validity test pick, instead of committing to
+the first lexical hit. And every retry/repair scan must advance past
+what it already consumed, or it re-mines the interior.
