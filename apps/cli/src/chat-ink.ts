@@ -13,6 +13,7 @@ import { createMuseRuntimeAssembly, resolveEpisodesFile, resolveFollowupsFile, r
 import { LocalCalendarProvider } from "@muse/calendar";
 import { readEpisodes, readFollowups, readTasks } from "@muse/mcp";
 import { loadSkillsFromDirectory, type Skill } from "@muse/skills";
+import { buildSkillsPrompt } from "./chat-skills.js";
 import { Box, Static, Text, render, useApp, useCursor, useInput } from "ink";
 import { spawn } from "node:child_process";
 import { mkdir, readFile as fsReadFile, writeFile } from "node:fs/promises";
@@ -164,7 +165,7 @@ export function MuseChatApp(props: {
   readonly proactiveOn: boolean;
   readonly skills: readonly SkillInfo[];
   readonly skillsDir: string;
-  readonly skillsPrompt: string;
+  readonly skillsPromptFor: (prompt: string) => string;
   readonly personaPrompt: () => string | undefined;
   readonly stream: (messages: readonly ChatTurnMessage[], model: string) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
   readonly streamWithTools: (messages: readonly ChatTurnMessage[], model: string, requestApproval: (toolName: string, detail: string, kind: "outbound" | "tool") => Promise<boolean>) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
@@ -486,7 +487,7 @@ export function MuseChatApp(props: {
 
     const base = props.personaPrompt() ?? formatCurrentContextLine();
     const agentPrefix = activeAgent ? `${activeAgent.prompt}\n\n` : "";
-    const system = agentPrefix + base + props.skillsPrompt;
+    const system = agentPrefix + base + props.skillsPromptFor(message);
     const messages = buildTurnMessages(system, historyRef.current, message + attachmentBlock);
     let accumulated = "";
     let turnTokens = 0;
@@ -1129,7 +1130,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // follow the relevant one. Add a skill = drop a folder there.
   const skillsDir = process.env.MUSE_SKILLS_DIR?.trim() || join(homedir(), ".muse", "skills");
   const skills = await loadSkillsFromDirectory(skillsDir, "user").catch(() => [] as readonly Skill[]);
-  const skillsPrompt = buildSkillsPrompt(skills);
+  const skillsPromptFor = (prompt: string): string => buildSkillsPrompt(skills, prompt);
   const skillInfos = skills.map((s) => ({ description: s.description, name: s.name }));
 
   // Manually-defined agents (`~/.muse/agents/<name>/AGENT.md`). `/agent <name>`
@@ -1192,7 +1193,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     proactiveOn,
     skills: skillInfos,
     skillsDir,
-    skillsPrompt,
+    skillsPromptFor,
     stream,
     streamWithTools,
     memorySnapshot,
@@ -1254,11 +1255,4 @@ async function loadPersonaEpisodes(
       summary: entry.summary,
       ...(entry.topics && entry.topics.length > 0 ? { topics: entry.topics } : {})
     }));
-}
-
-/** Inject each skill's instructions so the local model can follow them. */
-function buildSkillsPrompt(skills: readonly Skill[]): string {
-  if (skills.length === 0) return "";
-  const blocks = skills.map((skill) => `### ${skill.name}\n${skill.description}\n${skill.body.slice(0, 600).trim()}`);
-  return `\n\n## Skills — follow the most relevant one when the user's request matches its purpose.\n${blocks.join("\n\n")}`;
 }

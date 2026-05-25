@@ -21,7 +21,7 @@ function makeProps(overrides: Record<string, unknown> = {}): Parameters<typeof M
     proactiveOn: false,
     skills: [{ name: "summarize", description: "summarize text" }],
     skillsDir: "/tmp/skills",
-    skillsPrompt: "",
+    skillsPromptFor: () => "",
     personaPrompt: () => undefined,
     stream: () => empty(),
     streamWithTools: () => empty(),
