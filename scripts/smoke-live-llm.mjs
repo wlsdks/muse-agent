@@ -656,6 +656,28 @@ async function ollamaHasModel(needle) {
   }
 }
 
+// Among the local Ollama models, choose which one smoke:live drives. An
+// explicit MUSE_SMOKE_LIVE_MODEL wins. Otherwise prefer the SMALLEST qwen by
+// parameter count (e.g. "qwen3:8b" → 8, "qwen3.6:35b-a3b" → 35) so the live
+// gate actually COMPLETES on modest hardware instead of stalling on a 30B+
+// cold load — the reason smoke:live kept timing out. Unparsable size loses to
+// any sized model. Falls back to the first model when no qwen is present.
+export function selectSmokeLiveModel(names, override) {
+  if (override) {
+    return override;
+  }
+  const qwens = names.filter((n) => /qwen/i.test(n));
+  if (qwens.length === 0) {
+    return names[0];
+  }
+  const paramSize = (n) => {
+    const tag = n.includes(":") ? n.slice(n.indexOf(":") + 1) : n;
+    const match = tag.match(/(\d+(?:\.\d+)?)b/i);
+    return match ? Number.parseFloat(match[1]) : Number.POSITIVE_INFINITY;
+  };
+  return [...qwens].sort((a, b) => paramSize(a) - paramSize(b) || a.localeCompare(b))[0];
+}
+
 async function pickProvider() {
   const ollamaBase = (
     process.env.OLLAMA_BASE_URL || "http://localhost:11434"
@@ -667,10 +689,7 @@ async function pickProvider() {
     if (res.ok) {
       const body = await res.json();
       const names = (body?.models ?? []).map((m) => m?.name).filter(Boolean);
-      const name =
-        process.env.MUSE_SMOKE_LIVE_MODEL ||
-        names.find((n) => /qwen/i.test(n)) ||
-        names[0];
+      const name = selectSmokeLiveModel(names, process.env.MUSE_SMOKE_LIVE_MODEL);
       if (name) {
         return {
           apiKey: undefined,
