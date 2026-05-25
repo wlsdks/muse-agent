@@ -5,6 +5,7 @@
  * is that capture costs nothing: one command, no filename, no manual reindex.
  */
 
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -13,6 +14,9 @@ import { createNotesMcpServer } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js";
+import { rankRecallCandidates, type RecallHit } from "./commands-recall.js";
+import { embed } from "./embed.js";
+import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import type { ProgramIO } from "./program.js";
 
 function pad(n: number): string {
@@ -31,6 +35,46 @@ export function formatCaptureLine(text: string, now: Date): string {
 
 function notesIndexPath(): string {
   return join(homedir(), ".muse", "notes-index.json");
+}
+
+/**
+ * SB-3: from ranked recall hits for the fresh capture, pick the related PRIOR
+ * knowledge to surface — drop the self note (the capture just indexed), drop
+ * weak matches below `minScore`, keep the top `limit`. Pure; hits arrive
+ * pre-sorted by the ranker.
+ */
+export function selectConnections(
+  hits: readonly RecallHit[],
+  selfRef: string,
+  minScore: number,
+  limit: number
+): RecallHit[] {
+  return hits
+    .filter((h) => h.ref !== selfRef && !h.ref.endsWith(`/${selfRef}`) && !h.ref.endsWith(selfRef) && h.score >= minScore)
+    .slice(0, Math.max(0, limit));
+}
+
+interface NotesIndexShape {
+  readonly model: string;
+  readonly files: ReadonlyArray<{ readonly path: string; readonly chunks: ReadonlyArray<{ readonly text: string; readonly embedding: readonly number[] }> }>;
+}
+
+/** Rank the fresh capture against the on-disk notes + episode indices. */
+async function findConnections(captureText: string, embedModel: string): Promise<readonly RecallHit[]> {
+  let notesIndex: NotesIndexShape | undefined;
+  try {
+    notesIndex = JSON.parse(await readFile(notesIndexPath(), "utf8")) as NotesIndexShape;
+  } catch {
+    notesIndex = undefined;
+  }
+  if (!notesIndex || notesIndex.model !== embedModel) {
+    return [];
+  }
+  const noteChunks = notesIndex.files.flatMap((f) => f.chunks.map((c) => ({ embedding: c.embedding, path: f.path, text: c.text })));
+  const epIndex = await loadEpisodeIndex(defaultEpisodeIndexFile());
+  const episodeEntries = epIndex && epIndex.model === embedModel ? epIndex.entries : [];
+  const queryVec = await embed(captureText, embedModel);
+  return rankRecallCandidates({ episodeEntries, limit: 6, noteChunks, queryVec, source: "all" });
 }
 
 export function registerNoteCommand(program: Command, io: ProgramIO): void {
@@ -79,5 +123,23 @@ export function registerNoteCommand(program: Command, io: ProgramIO): void {
         io.stderr(`(auto-index skipped — ${cause instanceof Error ? cause.message : String(cause)}; run \`muse notes reindex\` later)\n`);
       }
       io.stdout(`captured → ${path}${indexed ? " (indexed)" : ""}\n`);
+
+      // SB-3 (proactive connection): surface related PRIOR knowledge for the
+      // thought just captured — the second brain connects new input to old
+      // without being asked. A bonus; never fails the capture.
+      if (indexed) {
+        try {
+          const hits = await findConnections(text, options.embedModel ?? "nomic-embed-text");
+          const connections = selectConnections(hits, path, 0.5, 2);
+          if (connections.length > 0) {
+            io.stdout("💡 Related in your brain:\n");
+            for (const c of connections) {
+              io.stdout(`  [${c.source}] ${c.ref.split("/").pop() ?? c.ref} — ${c.snippet.replace(/\s+/gu, " ").trim().slice(0, 80)}\n`);
+            }
+          }
+        } catch {
+          // connections are a bonus — a down embed endpoint must not fail capture
+        }
+      }
     });
 }

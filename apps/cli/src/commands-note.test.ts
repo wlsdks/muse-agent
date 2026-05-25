@@ -1,6 +1,22 @@
 import { describe, expect, it } from "vitest";
 
-import { dailyInboxNotePath, formatCaptureLine } from "./commands-note.js";
+import { dailyInboxNotePath, formatCaptureLine, selectConnections } from "./commands-note.js";
+
+describe("selectConnections — SB-3: proactively connect a fresh capture to past knowledge", () => {
+  const hits = [
+    { ref: "inbox/2026-05-25.md", score: 0.99, snippet: "the just-captured line", source: "notes" as const },
+    { ref: "projects/ssl.md", score: 0.72, snippet: "renew prod certs every quarter", source: "notes" as const },
+    { ref: "ep1", score: 0.55, snippet: "discussed TLS rotation", source: "episodes" as const },
+    { ref: "random.md", score: 0.2, snippet: "unrelated grocery note", source: "notes" as const }
+  ];
+  it("excludes the self note, drops below-threshold, returns top-N prior matches", () => {
+    const out = selectConnections(hits, "inbox/2026-05-25.md", 0.5, 2);
+    expect(out.map((h) => h.ref)).toEqual(["projects/ssl.md", "ep1"]);
+  });
+  it("returns nothing when only the self note matches", () => {
+    expect(selectConnections([hits[0]!], "inbox/2026-05-25.md", 0.5, 2)).toEqual([]);
+  });
+});
 
 describe("dailyInboxNotePath — frictionless capture auto-routes to a daily inbox note", () => {
   it("routes to inbox/YYYY-MM-DD.md by the local date", () => {
