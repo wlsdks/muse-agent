@@ -67,6 +67,7 @@
 | 49 | `7a485b99` | swallow stdin EPIPE on failed osascript spawn (Apple flake) | verification integrity | pnpm check exit-0 (was false-red) |
 | 50 | `61e8ec62` | close 4 more reachability gaps (bare 추가 / 리마인드 / inbox) | quality · eval-driven | sweep 23/23 + unit |
 | 51 | `f7f4fe33` | deterministic tool-exposure regression guard (eval FAST) | quality infra | 23/23 + eval 3/3 |
+| 52 | `d211357a` | expand live tool battery across domains + wire into eval | quality · eval-driven | **live qwen 12/12** |
 
 ### 10-item evaluated backlog — DELIVERED (slices 36-44)
 
@@ -277,6 +278,17 @@ REOPEN. Kept the script as a composite regression check.
   domain with no keyword set). → **Lesson:** when auditing a multi-stage path,
   reproduce EVERY stage (here: planForContext → toolFilter); a measurement that
   skips a stage can both invent work and mask the true defect.
+
+### Eval-thread synthesis (slices 45-52): the tool surface, hardened by data
+
+Driving a diverse battery + deterministic sweep against the local model surfaced
+a cluster of real reachability bugs, all fixed: KO/EN keyword gaps (할 일 / to-do
+/ inbox), a wrongly-keyworded list tool (due-only → list-intent), and — twice —
+ENTERPRISE-LEFTOVER vocabulary in the mutation-intent gate (issue/ticket/PR) that
+blocked every personal write (add task / set reminder / 메모 저장). Pattern: after
+the personal pivot, audit any remaining enterprise vocab/heuristic against real
+personal prompts. Locked in by `pnpm eval` — a deterministic 23-case exposure
+guard (FAST) + a 12-case live selection battery (LIVE), both green.
 
 ### Next direction (eval-driven): namespaced tool granularity for the local model
 
