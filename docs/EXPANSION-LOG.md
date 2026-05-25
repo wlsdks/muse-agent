@@ -23,7 +23,7 @@
 | 6 | `37bb4032` | `/memory` surfaces episodic count | memory | unit |
 | 7 | `8e111ebf` | `remember_fact` agent tool (NL memory) | memory · model-path | unit + **fast qwen3:8b selection** |
 | 8 | `7afb8135` | fast tool-selection verifier + build journal | tooling | self-test PASS |
-| 9 | `7a22824c` | background auto-memory (learn facts without "remember") | memory · model-path | unit + **fast qwen3:8b extraction** |
+| 9 | `2506d4a0` | background auto-memory (learn facts without "remember") | memory · model-path | unit + **fast qwen3:8b extraction** |
 
 ## Failures → learnings
 
