@@ -701,3 +701,44 @@ clean.
   (no path traversal / proto-pollution), atomic write, 0o600.
 - Minor non-setting gap (not fixed): `GET /api/proactive/history` (read-only
   diagnostic log) has no web view — a missing VIEW, not a missing setting.
+
+---
+
+## Round 6 — crates/runner (Rust security sandbox)
+
+Installed the Rust toolchain (brew install rust → cargo 1.95) since it was
+absent. `cargo build` + `cargo test` green (4 pre-existing tests). Audited the
+sandbox boundary.
+
+### Finding 014 — runner deadlocks on >pipe-buffer output → false timeout (FIXED)
+
+`crates/runner/src/main.rs` `run_request` polled `child.try_wait()` but did
+NOT read stdout/stderr until after the child exited. A child that writes more
+than the OS pipe buffer (~64 KB) before exiting blocks on the full pipe, never
+exits, and is killed at the timeout — so a fast, successful command that just
+emits a lot of output is falsely reported `timed_out: true, ok: false` and
+stalls for the full timeout (30 s default).
+
+Reproduced via the built binary: a `head -c 200000 … | tr` (≈200 KB, exits in
+ms) returned `ok:false, timedOut:true` after the timeout. (The bug also
+doubled as accidental memory protection — `wait_with_output` buffered the
+whole stream unbounded, so the fix must also cap.)
+
+**Fix:** drain stdout and stderr on dedicated threads (`spawn_drainer`) so the
+child never blocks on a full pipe; each drainer keeps at most
+`max_output_bytes` and keeps reading-and-discarding past the cap (bounded
+memory AND no deadlock). The main thread still enforces the timeout/kill.
+After fix the same repro returns `ok:true, timedOut:false, 200 KB` instantly.
+New tests: `append_capped` cap helper, a 200 KB no-deadlock regression, and a
+cap-without-blocking case. cargo test 6 passed; clippy clean.
+
+### Runner boundary verified SOLID
+- **No shell** — `Command::new(name).args(argv)`, so no shell-injection; args
+  are real argv, not a concatenated command string.
+- **Path-execution blocked** — rejects a command containing `/` or `\` (must
+  be a bare executable name resolved via PATH).
+- **Env sanitised** — `env_clear()` then only PATH + keys matching
+  `[A-Z0-9_]+` are passed through (lowercase like `Path` can't override).
+- **stdin null**, **timeout + kill**, **output capped**. The isolation
+  primitive is sound; WHAT may run is gated by the TS layer + outbound-safety,
+  not here (by design).

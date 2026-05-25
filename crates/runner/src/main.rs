@@ -97,59 +97,97 @@ fn run_request(request: RunnerRequest) -> RunnerResponse {
         Ok(child) => child,
         Err(error) => return error_response(&format!("failed to spawn command: {error}")),
     };
-    let started = Instant::now();
 
-    loop {
+    // Drain stdout/stderr on dedicated threads so the child can never block
+    // writing to a full OS pipe buffer (~64 KB). Without this, any command
+    // that emits more than the pipe buffer before exiting deadlocks: it
+    // blocks on write, never exits, and is falsely reported as `timedOut`
+    // and killed. Each drainer keeps at most `max_output_bytes` and keeps
+    // reading-and-discarding past the cap, so memory stays bounded AND the
+    // pipe never fills.
+    let stdout_drainer = spawn_drainer(child.stdout.take(), max_output_bytes);
+    let stderr_drainer = spawn_drainer(child.stderr.take(), max_output_bytes);
+
+    let started = Instant::now();
+    let mut timed_out = false;
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(_status)) => {
-                return collect_output(child, false, max_output_bytes);
-            }
+            Ok(Some(status)) => break Some(status),
             Ok(None) if started.elapsed() >= timeout => {
                 let _ = child.kill();
-                return collect_output(child, true, max_output_bytes);
+                timed_out = true;
+                break None;
             }
             Ok(None) => thread::sleep(Duration::from_millis(10)),
             Err(error) => {
                 let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_drainer.join();
+                let _ = stderr_drainer.join();
                 return error_response(&format!("failed while waiting for command: {error}"));
             }
         }
-    }
-}
-
-fn collect_output(
-    child: std::process::Child,
-    timed_out: bool,
-    max_output_bytes: usize,
-) -> RunnerResponse {
-    match child.wait_with_output() {
-        Ok(output) => {
-            let (stdout, stdout_truncated) = truncate_utf8(output.stdout, max_output_bytes);
-            let (stderr, stderr_truncated) = truncate_utf8(output.stderr, max_output_bytes);
-
-            RunnerResponse {
-                ok: output.status.success() && !timed_out,
-                status: output.status.code(),
-                stdout,
-                stderr,
-                timed_out,
-                truncated: stdout_truncated || stderr_truncated,
-                error: None,
-            }
-        }
-        Err(error) => error_response(&format!("failed to collect command output: {error}")),
-    }
-}
-
-fn truncate_utf8(bytes: Vec<u8>, max_output_bytes: usize) -> (String, bool) {
-    let truncated = bytes.len() > max_output_bytes;
-    let slice = if truncated {
-        &bytes[..max_output_bytes]
-    } else {
-        &bytes
     };
 
-    (String::from_utf8_lossy(slice).into_owned(), truncated)
+    // Reap the (possibly killed) child so its pipe write-ends close and the
+    // drainer threads see EOF and finish.
+    let _ = child.wait();
+    let (stdout, stdout_truncated) = stdout_drainer.join().unwrap_or_else(|_| (String::new(), false));
+    let (stderr, stderr_truncated) = stderr_drainer.join().unwrap_or_else(|_| (String::new(), false));
+
+    RunnerResponse {
+        ok: status.map(|status| status.success()).unwrap_or(false) && !timed_out,
+        status: status.and_then(|status| status.code()),
+        stdout,
+        stderr,
+        timed_out,
+        truncated: stdout_truncated || stderr_truncated,
+        error: None,
+    }
+}
+
+/// Read a child pipe to EOF on its own thread, retaining at most
+/// `max_output_bytes` and discarding the rest (while still draining so the
+/// child never blocks on a full pipe). Returns the kept text and whether
+/// anything was dropped.
+fn spawn_drainer<R: Read + Send + 'static>(
+    pipe: Option<R>,
+    max_output_bytes: usize,
+) -> thread::JoinHandle<(String, bool)> {
+    thread::spawn(move || {
+        let mut kept: Vec<u8> = Vec::new();
+        let mut truncated = false;
+        if let Some(mut pipe) = pipe {
+            let mut buffer = [0u8; 8192];
+            loop {
+                match pipe.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(read) => {
+                        truncated = append_capped(&mut kept, &buffer[..read], max_output_bytes) || truncated;
+                    }
+                    Err(_) => break,
+                }
+            }
+        }
+        (String::from_utf8_lossy(&kept).into_owned(), truncated)
+    })
+}
+
+/// Append `chunk` to `kept` up to `max_output_bytes`. Returns `true` if any
+/// bytes were dropped (kept was already at/over the cap, or the chunk
+/// overflowed it).
+fn append_capped(kept: &mut Vec<u8>, chunk: &[u8], max_output_bytes: usize) -> bool {
+    if kept.len() >= max_output_bytes {
+        return !chunk.is_empty();
+    }
+    let room = max_output_bytes - kept.len();
+    if chunk.len() <= room {
+        kept.extend_from_slice(chunk);
+        false
+    } else {
+        kept.extend_from_slice(&chunk[..room]);
+        true
+    }
 }
 
 fn is_safe_env_key(key: &str) -> bool {
@@ -209,11 +247,55 @@ mod tests {
     }
 
     #[test]
-    fn truncates_output_at_the_configured_limit() {
-        let (value, truncated) = truncate_utf8(b"abcdef".to_vec(), 3);
+    fn append_capped_keeps_up_to_the_limit_and_flags_overflow() {
+        let mut kept = Vec::new();
+        assert!(!append_capped(&mut kept, b"abc", 3));
+        assert_eq!(kept, b"abc");
+        // already at cap: any further bytes are dropped
+        assert!(append_capped(&mut kept, b"d", 3));
+        assert_eq!(kept, b"abc");
 
-        assert_eq!(value, "abc");
-        assert!(truncated);
+        let mut partial = Vec::new();
+        assert!(append_capped(&mut partial, b"abcdef", 3));
+        assert_eq!(partial, b"abc");
+    }
+
+    #[test]
+    fn large_output_does_not_deadlock_or_falsely_time_out() {
+        // The child writes ~200 KB — far past the OS pipe buffer — then exits.
+        // With concurrent pipe draining this completes near-instantly; the
+        // pre-fix poll-only loop blocked until the timeout and reported a
+        // false `timed_out`. A generous 10s timeout proves we don't rely on it.
+        let response = run_request(RunnerRequest {
+            command: "bash".to_string(),
+            args: vec!["-c".to_string(), "head -c 200000 /dev/zero | tr '\\0' a".to_string()],
+            cwd: None,
+            env: BTreeMap::new(),
+            timeout_ms: Some(10_000),
+            max_output_bytes: Some(1_000_000),
+        });
+
+        assert!(!response.timed_out, "large output must not be killed as a timeout");
+        assert!(response.ok, "a command that exits 0 must report ok");
+        assert_eq!(response.stdout.len(), 200_000);
+        assert!(!response.truncated);
+    }
+
+    #[test]
+    fn caps_output_without_blocking_when_it_exceeds_max_bytes() {
+        let response = run_request(RunnerRequest {
+            command: "bash".to_string(),
+            args: vec!["-c".to_string(), "head -c 200000 /dev/zero | tr '\\0' a".to_string()],
+            cwd: None,
+            env: BTreeMap::new(),
+            timeout_ms: Some(10_000),
+            max_output_bytes: Some(1024),
+        });
+
+        assert!(!response.timed_out);
+        assert!(response.ok);
+        assert_eq!(response.stdout.len(), 1024, "output is capped at max_output_bytes");
+        assert!(response.truncated);
     }
 
     #[test]
