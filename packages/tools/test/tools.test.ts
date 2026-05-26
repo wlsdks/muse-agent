@@ -642,7 +642,7 @@ describe("createMuseTools", () => {
       "kv_summarize",
       "markdown_table",
       "math_eval",
-      "next_weekday",
+      "next_weekday_date",
       "regex_extract",
       "slugify",
       "text_stats",
@@ -657,8 +657,8 @@ describe("createMuseTools", () => {
     }
   });
 
-  it("next_weekday resolves a weekday to the next strict-future ISO date", async () => {
-    const tool = getTool("next_weekday");
+  it("next_weekday_date resolves a weekday to the next strict-future ISO date", async () => {
+    const tool = getTool("next_weekday_date");
 
     // 2026-05-07 is a Thursday → next Monday is 2026-05-11
     const monday = (await tool.execute(

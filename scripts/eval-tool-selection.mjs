@@ -108,11 +108,11 @@ async function buildTimeToolsScenario() {
     const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
     const cases = [
       { prompt: "What time is it now?", expectTool: "time_now", note: "now" },
-      { prompt: "What day of the week is it right now in Seoul?", expectTool: "time_now", note: "current weekday → time_now, NOT next_weekday" },
+      { prompt: "What day of the week is it right now in Seoul?", expectTool: "time_now", note: "current weekday → time_now, NOT next_weekday_date" },
       { prompt: "How many hours between 9am and 5:30pm today?", expectTool: "time_diff", note: "two-timestamp diff" },
       { prompt: "What is 3 days after 2026-05-26?", expectTool: "time_add", note: "add" },
       { prompt: "How long ago was 2026-05-01 from now?", expectTool: "time_relative", note: "relative-to-now (NOT time_diff)" },
-      { prompt: "When is the next Friday?", expectTool: "next_weekday", note: "future named weekday → next_weekday, NOT time_now" },
+      { prompt: "When is the next Friday?", expectTool: "next_weekday_date", note: "future named weekday → next_weekday_date, NOT time_now" },
       { prompt: "Give me a cron expression for 2026-12-25 08:00.", expectTool: "cron_for_datetime", note: "cron" }
     ];
     return { label: "real-time-tools (confusable set)", tools, cases };

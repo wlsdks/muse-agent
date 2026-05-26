@@ -73,7 +73,7 @@ describe("time_relative", () => {
   });
 });
 
-describe("next_weekday", () => {
+describe("next_weekday_date", () => {
   it("resolves the strictly-next occurrence (full name + abbreviation, case-insensitive)", () => {
     // reference Thu 2026-01-15
     expect(call(createNextWeekdayTool(NOW), { weekday: "friday" })["iso"]).toBe("2026-01-16");

@@ -263,7 +263,7 @@ try {
     const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
     const assembly = createMuseRuntimeAssembly({ env: { MUSE_TOOLS_ENABLED: "true" } });
     const names = assembly.toolRegistry.list().map((tool) => tool.definition.name);
-    for (const required of ["time_now", "time_diff", "time_add", "time_relative", "next_weekday", "text_stats", "math_eval", "json_query", "slugify", "url_parts", "regex_extract", "kv_summarize", "markdown_table", "hash_text", "csv_parse", "base64", "cron_for_datetime"]) {
+    for (const required of ["time_now", "time_diff", "time_add", "time_relative", "next_weekday_date", "text_stats", "math_eval", "json_query", "slugify", "url_parts", "regex_extract", "kv_summarize", "markdown_table", "hash_text", "csv_parse", "base64", "cron_for_datetime"]) {
       assert(names.includes(required), `expected tool registry to include ${required}, got ${names.join(", ")}`);
     }
   });

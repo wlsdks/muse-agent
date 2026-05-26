@@ -22,7 +22,7 @@ export function createTimeNowTool(now: () => Date): MuseTool {
       description:
         "Returns the CURRENT wall-clock instant right now: ISO-8601 UTC, epoch milliseconds, the current day-of-week (e.g. 'Tuesday'), and the resolved IANA timezone. " +
         "Use when the user asks what the time, date, or day-of-week IS RIGHT NOW or today (e.g. 'what time is it', 'what day is it today in Seoul', \"what's today's date\"). " +
-        "Do NOT use to find the date of a FUTURE named weekday ('when is next Monday') — that is next_weekday.",
+        "Do NOT use to find the date of a FUTURE named weekday ('when is next Monday') — that is next_weekday_date.",
       inputSchema: {
         additionalProperties: false,
         properties: {
@@ -212,8 +212,8 @@ export function createNextWeekdayTool(now: () => Date): MuseTool {
         type: "object"
       },
       domain: "core",
-      keywords: ["calendar", "schedule", "weekday", "next"],
-      name: "next_weekday",
+      keywords: ["calendar", "schedule", "date", "upcoming", "future"],
+      name: "next_weekday_date",
       risk: "read"
     },
     execute: (args): JsonObject => {
@@ -254,7 +254,7 @@ export function createCronForDatetimeTool(): MuseTool {
       description:
         "Converts an ISO-8601 datetime to a cron expression for the scheduler. " +
         "`mode` controls the recurrence: 'once' (default) returns a yearly-recurring expression at that exact minute/hour/day/month — disable the scheduled job after it fires for true one-shot semantics; 'daily' fires every day at that hour:minute; 'weekly' fires every week on that weekday at that hour:minute; 'monthly' fires every month on that day-of-month at that hour:minute (a day > 28 is skipped in shorter months — the result carries a `warning` then). " +
-        "Bridge for natural-language reminders: compose with `time_now` + `time_add` / `next_weekday` / `time_relative` to build the ISO, then pass it here, then call `scheduler_create_job` with the returned cron.",
+        "Bridge for natural-language reminders: compose with `time_now` + `time_add` / `next_weekday_date` / `time_relative` to build the ISO, then pass it here, then call `scheduler_create_job` with the returned cron.",
       inputSchema: {
         additionalProperties: false,
         properties: {
