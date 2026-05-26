@@ -14,6 +14,7 @@ import { LocalCalendarProvider } from "@muse/calendar";
 import { readEpisodes, readFollowups, readTasks } from "@muse/mcp";
 import { loadSkillsFromDirectory, type Skill } from "@muse/skills";
 import { buildSkillsPrompt } from "./chat-skills.js";
+import { selectPersonaEpisodes } from "./episode-selection.js";
 import { Box, Static, Text, render, useApp, useCursor, useInput } from "ink";
 import { spawn } from "node:child_process";
 import { mkdir, readFile as fsReadFile, writeFile } from "node:fs/promises";
@@ -1249,13 +1250,10 @@ async function loadPersonaEpisodes(
   const all = await readEpisodes(resolveEpisodesFile(process.env));
   const capRaw = Number(process.env.MUSE_EPISODIC_MEMORY_MAX_ENTRIES);
   const cap = Number.isFinite(capRaw) && capRaw > 0 ? Math.trunc(capRaw) : 20;
-  return all
-    .filter((entry) => entry.userId === userId)
-    .sort((left, right) => right.endedAt.localeCompare(left.endedAt))
-    .slice(0, cap)
-    .map((entry) => ({
-      endedAt: entry.endedAt,
-      summary: entry.summary,
-      ...(entry.topics && entry.topics.length > 0 ? { topics: entry.topics } : {})
-    }));
+  const mine = all.filter((entry) => entry.userId === userId);
+  return selectPersonaEpisodes(mine, cap).map((entry) => ({
+    endedAt: entry.endedAt,
+    summary: entry.summary,
+    ...(entry.topics && entry.topics.length > 0 ? { topics: entry.topics } : {})
+  }));
 }

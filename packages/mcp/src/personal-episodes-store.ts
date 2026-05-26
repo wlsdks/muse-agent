@@ -43,6 +43,12 @@ export interface PersistedEpisode {
   readonly summary: string;
   /** Topic labels extracted from the session. Optional — older entries may lack this field. */
   readonly topics?: readonly string[];
+  /**
+   * Write-time importance (1–10, Generative-Agents style) assigned by the
+   * summariser. Used to keep a pivotal session in the persona even when a
+   * recency cap would otherwise drop it. Optional — older entries lack it.
+   */
+  readonly importance?: number;
 }
 
 // Move a present-but-corrupt store aside so the next upsert
@@ -98,6 +104,9 @@ export function serializeEpisode(episode: PersistedEpisode): JsonObject {
     userId: episode.userId,
     ...(episode.topics && episode.topics.length > 0
       ? { topics: episode.topics as unknown as JsonValue }
+      : {}),
+    ...(typeof episode.importance === "number" && Number.isFinite(episode.importance)
+      ? { importance: episode.importance }
       : {})
   };
 }
@@ -176,6 +185,9 @@ function isPersistedEpisode(value: unknown): value is PersistedEpisode {
   if (candidate.topics !== undefined) {
     if (!Array.isArray(candidate.topics)) return false;
     if (!candidate.topics.every((topic) => typeof topic === "string")) return false;
+  }
+  if (candidate.importance !== undefined && typeof candidate.importance !== "number") {
+    return false;
   }
   return true;
 }

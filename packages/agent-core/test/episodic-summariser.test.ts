@@ -25,6 +25,48 @@ function stubProvider(generated: { readonly output: string } | Error): ModelProv
   };
 }
 
+describe("summariseSession importance parsing", () => {
+  const turns: SessionTurnLine[] = [
+    { role: "user", content: "Let's lock the Q3 budget at 40k." },
+    { role: "assistant", content: "Locked. I'll prep the memo." }
+  ];
+
+  it("parses an importance line and keeps it out of the summary body", async () => {
+    const provider = stubProvider({
+      output: "Locked the Q3 budget at 40k; memo to follow.\ntopics: Q3 budget\nimportance: 8"
+    });
+    const result = await summariseSession({ turns, modelProvider: provider, model: "stub" });
+    expect(result?.importance).toBe(8);
+    expect(result?.summary).not.toMatch(/importance/i);
+    expect(result?.topics).toEqual(["Q3 budget"]);
+  });
+
+  it("clamps out-of-range importance into 1..10", async () => {
+    const high = await summariseSession({
+      turns,
+      model: "stub",
+      modelProvider: stubProvider({ output: "Body.\ntopics: x\nimportance: 99" })
+    });
+    const low = await summariseSession({
+      turns,
+      model: "stub",
+      modelProvider: stubProvider({ output: "Body.\ntopics: x\nimportance: 0" })
+    });
+    expect(high?.importance).toBe(10);
+    expect(low?.importance).toBe(1);
+  });
+
+  it("omits importance when the model emits no parseable line", async () => {
+    const result = await summariseSession({
+      turns,
+      model: "stub",
+      modelProvider: stubProvider({ output: "Body without a score.\ntopics: x" })
+    });
+    expect(result?.importance).toBeUndefined();
+    expect(result?.summary).toBe("Body without a score.");
+  });
+});
+
 describe("extractCurrentSessionTurns", () => {
   it("returns undefined when no boundaries have been written", () => {
     const lines: SessionTurnLine[] = [

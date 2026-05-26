@@ -101,6 +101,12 @@ export function redactSecrets(text: string): string {
 export interface SessionSummary {
   readonly summary: string;
   readonly topics: readonly string[];
+  /**
+   * Write-time importance (1–10, Generative-Agents style). Omitted when
+   * the model emits no parseable `importance:` line — recall then applies
+   * no importance boost for this episode.
+   */
+  readonly importance?: number;
 }
 
 export interface SummariseSessionOptions {
@@ -128,8 +134,11 @@ Drop pleasantries, greetings, meta-chatter about the assistant
 itself. Redact any secrets, tokens, or API keys that survived
 the upstream scrubber. After the paragraph, on a NEW LINE, emit
 "topics: " followed by 1–3 short noun-phrase tags separated by
-commas (e.g. "topics: Q3 budget memo, Notion drafting"). No
-emojis, no markdown, no JSON.`;
+commas (e.g. "topics: Q3 budget memo, Notion drafting"). Then, on a
+NEW LINE, emit "importance: N" where N is an integer 1–10 rating how
+important this session is to remember long-term: 10 = a pivotal
+decision, commitment, or fact worth recalling for months; 1 = idle
+small talk. No emojis, no markdown, no JSON.`;
 
 /**
  * Run the summariser. Returns `undefined` on any failure — model
@@ -199,9 +208,27 @@ function parseSummariserOutput(raw: string): SessionSummary | undefined {
   } else {
     body = lines;
   }
+  // The `importance:` line (model emits it after `topics:`) is parsed
+  // independently and dropped from the summary body wherever it lands.
+  const importanceLineRe = /^importance:\s*/iu;
+  let importance: number | undefined;
+  let importanceIndex = -1;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    if (importanceLineRe.test(lines[i]!)) {
+      importanceIndex = i;
+      const parsed = Number.parseInt(lines[i]!.replace(importanceLineRe, "").trim(), 10);
+      if (Number.isFinite(parsed)) {
+        importance = Math.min(10, Math.max(1, parsed));
+      }
+      break;
+    }
+  }
+  if (importanceIndex >= 0) {
+    body = body.filter((_, idx) => idx !== importanceIndex);
+  }
   const summary = body.join(" ").trim();
   if (summary.length === 0) {
     return undefined;
   }
-  return { summary, topics };
+  return importance === undefined ? { summary, topics } : { summary, topics, importance };
 }

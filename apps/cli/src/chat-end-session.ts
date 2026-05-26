@@ -143,6 +143,7 @@ export async function captureEndOfSessionEpisode(options: CaptureEndOfSessionOpt
     startedAt: range.startedAt,
     summary: redactSecretsInText(summary.summary),
     ...(scrubbedTopics.length > 0 ? { topics: scrubbedTopics } : {}),
+    ...(summary.importance !== undefined ? { importance: summary.importance } : {}),
     userId: ownerId
   };
 
