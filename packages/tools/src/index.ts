@@ -872,3 +872,16 @@ export {
   type SkillRegistryView,
   type SkillRunOptions
 } from "./muse-tools-skills.js";
+
+export {
+  normalizeToolName,
+  extractCandidateNames,
+  tallyPeakedness,
+  recommendRename,
+  formatCalibrationReport,
+  type PeakednessRow,
+  type RenameCandidate,
+  type RenameDecisionInput,
+  type RenameDecision,
+  type CalibrationResult
+} from "./tool-name-calibration.js";
