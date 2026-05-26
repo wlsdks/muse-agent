@@ -348,6 +348,7 @@ export {
   KyselyUserMemoryStore,
   mapUserMemoryRow,
   MAX_USER_MEMORY_VALUE_CHARS,
+  normalizeMemoryKey,
   sanitizeUserMemoryValue
 } from "./memory-user-store.js";
 

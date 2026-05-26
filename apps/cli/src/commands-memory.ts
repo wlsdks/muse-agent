@@ -21,7 +21,7 @@
 
 import { readFile } from "node:fs/promises";
 
-import { FileUserMemoryStore } from "@muse/memory";
+import { FileUserMemoryStore, normalizeMemoryKey } from "@muse/memory";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -97,6 +97,57 @@ export function searchMemoryEntries(
   return hits;
 }
 
+export interface FactTimelineEntry {
+  readonly key: string;
+  readonly current?: string;
+  readonly since?: string;
+  readonly previous: ReadonlyArray<{ readonly value: string; readonly until: string }>;
+}
+
+/**
+ * Build the validity timeline for remembered facts (Zep, arXiv 2501.13956:
+ * supersede-don't-delete). Each key shows its CURRENT value, when it took
+ * effect (`since` = the last supersession), and the chain of prior values
+ * each valid `until` it was replaced (newest-first). With no `keyFilter`,
+ * only keys that actually CHANGED are returned (a flat never-changed fact has
+ * no story to tell); with a `keyFilter`, that one key is always returned
+ * (current value + any history). A key present only in history (the fact was
+ * later forgotten) is included with `current` undefined.
+ */
+export function buildFactTimeline(
+  facts: Readonly<Record<string, string>>,
+  factHistory: readonly { readonly key: string; readonly previousValue: string; readonly replacedAt: Date }[] | undefined,
+  keyFilter?: string
+): FactTimelineEntry[] {
+  const wanted = keyFilter ? normalizeMemoryKey(keyFilter) : undefined;
+  const byKey = new Map<string, { readonly previousValue: string; readonly replacedAt: Date }[]>();
+  for (const entry of factHistory ?? []) {
+    if (wanted && entry.key !== wanted) continue;
+    const list = byKey.get(entry.key) ?? [];
+    list.push({ previousValue: entry.previousValue, replacedAt: entry.replacedAt });
+    byKey.set(entry.key, list);
+  }
+  const keys = new Set<string>(byKey.keys());
+  if (wanted) keys.add(wanted);
+  const out: FactTimelineEntry[] = [];
+  for (const key of keys) {
+    const history = (byKey.get(key) ?? [])
+      .slice()
+      .sort((a, b) => a.replacedAt.getTime() - b.replacedAt.getTime());
+    const since = history.length > 0 ? history[history.length - 1]!.replacedAt.toISOString() : undefined;
+    const previous = history
+      .map((h) => ({ value: h.previousValue, until: h.replacedAt.toISOString() }))
+      .reverse();
+    out.push({
+      key,
+      ...(key in facts ? { current: facts[key] } : {}),
+      ...(since ? { since } : {}),
+      previous
+    });
+  }
+  return out.sort((a, b) => a.key.localeCompare(b.key));
+}
+
 export function registerMemoryCommands(program: Command, io: ProgramIO, helpers: MemoryCommandHelpers): void {
   const memory = program.command("memory").description("Personal user-memory facts / preferences");
 
@@ -166,6 +217,38 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
       io.stdout(`Memory matches for "${parts.join(" ").trim()}" (${hits.length.toString()}):\n`);
       for (const h of hits) {
         io.stdout(`  [${h.source}] ${h.key}: ${h.value}\n`);
+      }
+    });
+
+  memory
+    .command("history")
+    .description("Show how a remembered fact changed over time (what it used to be + when)")
+    .argument("[key]", "Fact key to trace, e.g. `muse memory history home_city`; omit to list every changed fact")
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …)")
+    .option("--json", "Print the raw timeline instead of the formatted view")
+    .action(async (key: string | undefined, options: MemoryCommonOptions) => {
+      const userId = resolveMemoryUserId(options.user, options.persona);
+      const store = new FileUserMemoryStore();
+      const record = await store.findByUserId(userId);
+      const timeline = buildFactTimeline(record?.facts ?? {}, record?.factHistory, key);
+      if (options.json) {
+        helpers.writeOutput(io, timeline);
+        return;
+      }
+      if (timeline.length === 0) {
+        io.stdout(key
+          ? `(no history for "${key}" — it has never changed, or isn't remembered)\n`
+          : "(no remembered fact has changed yet)\n");
+        return;
+      }
+      for (const entry of timeline) {
+        const current = entry.current === undefined ? "(no longer remembered)" : entry.current;
+        const since = entry.since ? ` (since ${entry.since})` : "";
+        io.stdout(`${entry.key}: ${current}${since}\n`);
+        for (const prev of entry.previous) {
+          io.stdout(`  ↳ was "${prev.value}" until ${prev.until}\n`);
+        }
       }
     });
 
