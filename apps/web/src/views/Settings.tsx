@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { AsyncBlock, Badge, Button, Card } from "../components/ui.js";
+import { useI18n } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { ModelsResponse } from "../api/types.js";
@@ -26,6 +27,7 @@ export function SettingsView({
   token?: string;
   onSave?: (url: string, token: string) => void;
 }) {
+  const { lang, setLang, t } = useI18n();
   const [url, setUrl] = useState(apiUrl);
   const [tok, setTok] = useState(token);
 
@@ -48,36 +50,54 @@ export function SettingsView({
 
   return (
     <div className="content-narrow">
-      <p className="eyebrow">System</p>
-      <h1 className="page-title">Settings</h1>
+      <p className="eyebrow">{t("group.system")}</p>
+      <h1 className="page-title">{t("settings.title")}</h1>
 
-      <Card title="Connection" className="lifted">
+      <Card title={t("settings.connection")} className="lifted">
         <div style={{ display: "grid", gap: 12 }}>
           <div>
-            <label className="field-label">API server URL</label>
+            <label className="field-label">{t("settings.apiUrl")}</label>
             <input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://127.0.0.1:3030" />
           </div>
           <div>
-            <label className="field-label">Bearer token (optional)</label>
-            <input className="input" value={tok} onChange={(e) => setTok(e.target.value)} placeholder="leave empty for local" />
+            <label className="field-label">{t("settings.token")}</label>
+            <input className="input" value={tok} onChange={(e) => setTok(e.target.value)} placeholder={t("settings.tokenPlaceholder")} />
           </div>
           <div>
             <Button variant="primary" onClick={() => onSave?.(url.trim(), tok.trim())}>
-              Save & reconnect
+              {t("common.save")}
             </Button>
           </div>
         </div>
       </Card>
 
       <div style={{ marginTop: 16 }}>
-        <Card title="Active model">
+        <Card title={t("settings.language")}>
+          <div className="row" style={{ borderBottom: "none" }}>
+            <div className="row-main">
+              <div className="row-title">{lang === "ko" ? "한국어" : "English"}</div>
+            </div>
+            <div className="lang-toggle">
+              <button className={lang === "en" ? "active" : ""} onClick={() => setLang("en")}>
+                English
+              </button>
+              <button className={lang === "ko" ? "active" : ""} onClick={() => setLang("ko")}>
+                한국어
+              </button>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <div style={{ marginTop: 16 }}>
+        <Card title={t("settings.activeModel")}>
           <AsyncBlock loading={models.isLoading} error={models.error}>
             <div className="row">
               <div className="row-main">
                 <div className="row-title mono">
                   {(setup.data?.model?.muse_model as string) ?? models.data?.active ?? "—"}
                 </div>
-                <div className="row-meta">{(models.data?.models?.length ?? 0)} models available</div>
+                <div className="row-meta">{t("settings.modelsAvailable", { n: models.data?.models?.length ?? 0 })}</div>
               </div>
               <Badge tone="accent" dot={false}>
                 local
@@ -88,7 +108,7 @@ export function SettingsView({
       </div>
 
       <div style={{ marginTop: 16 }}>
-        <Card title="Setup status">
+        <Card title={t("settings.setupStatus")}>
           <AsyncBlock loading={setup.isLoading} error={setup.error} empty={setupRows.length === 0}>
             {setupRows.map(([name, section]) => (
               <div className="row" key={name}>
@@ -97,7 +117,9 @@ export function SettingsView({
                     {name}
                   </div>
                 </div>
-                <Badge tone={sectionOk(section) ? "ok" : "neutral"}>{sectionOk(section) ? "ready" : "not set"}</Badge>
+                <Badge tone={sectionOk(section) ? "ok" : "neutral"}>
+                  {sectionOk(section) ? t("settings.ready") : t("settings.notSet")}
+                </Badge>
               </div>
             ))}
           </AsyncBlock>
@@ -105,7 +127,7 @@ export function SettingsView({
       </div>
 
       <p className="subtle" style={{ marginTop: 24, fontSize: 12 }}>
-        Design system derived from Linear via VoltAgent/awesome-design-md (MIT). See apps/web/design/DESIGN.md.
+        {t("settings.credit")}
       </p>
     </div>
   );

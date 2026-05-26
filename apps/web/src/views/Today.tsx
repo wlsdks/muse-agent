@@ -1,30 +1,33 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { AsyncBlock, Card, Stat } from "../components/ui.js";
+import { useI18n } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
+import type { StringKey, Translate } from "../i18n/index.js";
 import type { ProactiveHistoryResponse, TodayBriefingResponse } from "../api/types.js";
 
-function greeting(): string {
+function greetingKey(): StringKey {
   const h = new Date().getHours();
-  if (h < 5) return "Still up";
-  if (h < 12) return "Good morning";
-  if (h < 18) return "Good afternoon";
-  return "Good evening";
+  if (h < 5) return "today.greeting.lateNight";
+  if (h < 12) return "today.greeting.morning";
+  if (h < 18) return "today.greeting.afternoon";
+  return "today.greeting.evening";
 }
 
-function timeUntil(iso: string): string {
+function timeUntil(iso: string, t: Translate): string {
   const ms = new Date(iso).getTime() - Date.now();
   if (Number.isNaN(ms)) return "";
-  if (ms < 0) return "now";
+  if (ms < 0) return t("rel.now");
   const min = Math.round(ms / 60_000);
-  if (min < 60) return `in ${min}m`;
+  if (min < 60) return t("rel.inMinutes", { n: min });
   const hr = Math.round(min / 60);
-  if (hr < 24) return `in ${hr}h`;
-  return `in ${Math.round(hr / 24)}d`;
+  if (hr < 24) return t("rel.inHours", { n: hr });
+  return t("rel.inDays", { n: Math.round(hr / 24) });
 }
 
 export function TodayView({ client }: { client: ApiClient }) {
+  const { locale, t } = useI18n();
   const brief = useQuery({
     queryFn: () => client.get<TodayBriefingResponse>("/api/today"),
     queryKey: ["today", client.baseUrl]
@@ -42,47 +45,46 @@ export function TodayView({ client }: { client: ApiClient }) {
 
   return (
     <div className="content-narrow">
-      <p className="eyebrow">Today</p>
-      <h1 className="page-title">{greeting()}, Stark</h1>
+      <p className="eyebrow">{t("nav.today")}</p>
+      <h1 className="page-title">{t("today.greetingLine", { greeting: t(greetingKey()) })}</h1>
       <p className="muted" style={{ marginTop: 4 }}>
-        {tasks.length} open {tasks.length === 1 ? "task" : "tasks"} · {events.length}{" "}
-        {events.length === 1 ? "event" : "events"} ahead · {reminders.length} reminders
+        {t("today.summary", { events: events.length, reminders: reminders.length, tasks: tasks.length })}
       </p>
 
       <div className="grid grid-3" style={{ margin: "24px 0" }}>
         <Card>
-          <Stat value={tasks.length} label="Open tasks" />
+          <Stat value={tasks.length} label={t("today.openTasks")} />
         </Card>
         <Card>
-          <Stat value={events.length} label="Upcoming events" />
+          <Stat value={events.length} label={t("today.upcomingEvents")} />
         </Card>
         <Card>
-          <Stat value={reminders.length} label="Pending reminders" />
+          <Stat value={reminders.length} label={t("today.pendingReminders")} />
         </Card>
       </div>
 
       <div className="grid grid-2">
-        <Card title="Tasks" count={tasks.length}>
+        <Card title={t("today.tasks")} count={tasks.length}>
           <AsyncBlock loading={brief.isLoading} error={brief.error} empty={tasks.length === 0}>
-            {tasks.slice(0, 6).map((t) => (
-              <div className="row" key={t.id}>
+            {tasks.slice(0, 6).map((task) => (
+              <div className="row" key={task.id}>
                 <div className="row-main">
-                  <div className="row-title">{t.title}</div>
+                  <div className="row-title">{task.title}</div>
                 </div>
               </div>
             ))}
           </AsyncBlock>
         </Card>
 
-        <Card title="Calendar" count={events.length}>
+        <Card title={t("today.calendar")} count={events.length}>
           <AsyncBlock loading={brief.isLoading} error={brief.error} empty={events.length === 0}>
             {events.slice(0, 6).map((e) => (
               <div className="row" key={e.id}>
                 <div className="row-main">
                   <div className="row-title">{e.title}</div>
-                  <div className="row-meta">{new Date(e.startsAtIso).toLocaleString()}</div>
+                  <div className="row-meta">{new Date(e.startsAtIso).toLocaleString(locale)}</div>
                 </div>
-                <span className="subtle mono">{timeUntil(e.startsAtIso)}</span>
+                <span className="subtle mono">{timeUntil(e.startsAtIso, t)}</span>
               </div>
             ))}
           </AsyncBlock>
@@ -90,14 +92,14 @@ export function TodayView({ client }: { client: ApiClient }) {
       </div>
 
       <div style={{ marginTop: 16 }}>
-        <Card title="Reminders" count={reminders.length}>
+        <Card title={t("today.reminders")} count={reminders.length}>
           <AsyncBlock loading={brief.isLoading} error={brief.error} empty={reminders.length === 0}>
             {reminders.slice(0, 6).map((r) => (
               <div className="row" key={r.id}>
                 <div className="row-main">
                   <div className="row-title">{r.text}</div>
                 </div>
-                <span className="subtle mono">{timeUntil(r.dueAt)}</span>
+                <span className="subtle mono">{timeUntil(r.dueAt, t)}</span>
               </div>
             ))}
           </AsyncBlock>
@@ -106,12 +108,12 @@ export function TodayView({ client }: { client: ApiClient }) {
 
       {noticeList.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <Card title="Proactive notices" count={noticeList.length}>
+          <Card title={t("today.proactive")} count={noticeList.length}>
             <div className="notice-feed">
               {noticeList.slice(0, 5).map((n, i) => (
                 <div className="notice" key={n.id ?? i}>
-                  <div className="notice-text">{n.message ?? n.text ?? "(notice)"}</div>
-                  {n.createdAt && <div className="notice-time">{new Date(n.createdAt).toLocaleString()}</div>}
+                  <div className="notice-text">{n.message ?? n.text ?? "—"}</div>
+                  {n.createdAt && <div className="notice-time">{new Date(n.createdAt).toLocaleString(locale)}</div>}
                 </div>
               ))}
             </div>

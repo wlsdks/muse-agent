@@ -1,3 +1,5 @@
+import { useI18n } from "../i18n/index.js";
+
 import type { ReactNode } from "react";
 
 export function Card({
@@ -105,6 +107,7 @@ export function AsyncBlock({
   empty?: boolean;
   children: ReactNode;
 }) {
+  const { t } = useI18n();
   if (loading) {
     return (
       <div className="empty">
@@ -113,10 +116,10 @@ export function AsyncBlock({
     );
   }
   if (error) {
-    return <Empty>{error instanceof Error ? error.message : "Failed to load"}</Empty>;
+    return <Empty>{error instanceof Error ? error.message : t("common.loadFailed")}</Empty>;
   }
   if (empty) {
-    return <Empty>Nothing here yet.</Empty>;
+    return <Empty>{t("common.empty")}</Empty>;
   }
   return <>{children}</>;
 }

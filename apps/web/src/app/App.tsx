@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 
 import { createApiClient } from "../api/client.js";
 import { Badge, Icon } from "../components/ui.js";
+import { I18nProvider, useI18n } from "../i18n/index.js";
 import { ActivityView } from "../views/Activity.js";
 import { CalendarView } from "../views/Calendar.js";
 import { ChatView } from "../views/Chat.js";
@@ -15,6 +16,7 @@ import { ToolsView } from "../views/Tools.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { HealthResponse, TasksResponse } from "../api/types.js";
+import type { Lang, StringKey } from "../i18n/index.js";
 import type { ComponentType } from "react";
 
 const queryClient = new QueryClient({
@@ -22,32 +24,37 @@ const queryClient = new QueryClient({
 });
 
 type ViewId = "today" | "chat" | "tasks" | "calendar" | "reminders" | "notes" | "activity" | "tools" | "settings";
+type GroupKey = "group.workspace" | "group.knowledge" | "group.system";
 
 interface NavEntry {
   readonly id: ViewId;
-  readonly label: string;
+  readonly labelKey: StringKey;
   readonly icon: ComponentType<{ className?: string }>;
-  readonly group: "Workspace" | "Knowledge" | "System";
+  readonly group: GroupKey;
   readonly Component: ComponentType<{ client: ApiClient }>;
 }
 
 const NAV: readonly NavEntry[] = [
-  { Component: TodayView, group: "Workspace", icon: Icon.home, id: "today", label: "Today" },
-  { Component: ChatView, group: "Workspace", icon: Icon.chat, id: "chat", label: "Chat" },
-  { Component: TasksView, group: "Workspace", icon: Icon.task, id: "tasks", label: "Tasks" },
-  { Component: CalendarView, group: "Workspace", icon: Icon.calendar, id: "calendar", label: "Calendar" },
-  { Component: RemindersView, group: "Workspace", icon: Icon.bell, id: "reminders", label: "Reminders" },
-  { Component: NotesView, group: "Knowledge", icon: Icon.note, id: "notes", label: "Notes" },
-  { Component: ActivityView, group: "Knowledge", icon: Icon.activity, id: "activity", label: "Activity" },
-  { Component: ToolsView, group: "System", icon: Icon.tool, id: "tools", label: "Tools" },
-  { Component: SettingsView, group: "System", icon: Icon.settings, id: "settings", label: "Settings" }
+  { Component: TodayView, group: "group.workspace", icon: Icon.home, id: "today", labelKey: "nav.today" },
+  { Component: ChatView, group: "group.workspace", icon: Icon.chat, id: "chat", labelKey: "nav.chat" },
+  { Component: TasksView, group: "group.workspace", icon: Icon.task, id: "tasks", labelKey: "nav.tasks" },
+  { Component: CalendarView, group: "group.workspace", icon: Icon.calendar, id: "calendar", labelKey: "nav.calendar" },
+  { Component: RemindersView, group: "group.workspace", icon: Icon.bell, id: "reminders", labelKey: "nav.reminders" },
+  { Component: NotesView, group: "group.knowledge", icon: Icon.note, id: "notes", labelKey: "nav.notes" },
+  { Component: ActivityView, group: "group.knowledge", icon: Icon.activity, id: "activity", labelKey: "nav.activity" },
+  { Component: ToolsView, group: "group.system", icon: Icon.tool, id: "tools", labelKey: "nav.tools" },
+  { Component: SettingsView, group: "group.system", icon: Icon.settings, id: "settings", labelKey: "nav.settings" }
 ];
+
+const GROUPS: readonly GroupKey[] = ["group.workspace", "group.knowledge", "group.system"];
 
 export function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <Console />
-    </QueryClientProvider>
+    <I18nProvider>
+      <QueryClientProvider client={queryClient}>
+        <Console />
+      </QueryClientProvider>
+    </I18nProvider>
   );
 }
 
@@ -60,6 +67,7 @@ function readSetting(key: string, fallback: string): string {
 }
 
 function Console() {
+  const { lang, setLang, t } = useI18n();
   const [apiUrl, setApiUrl] = useState(() => readSetting("muse.apiUrl", "http://127.0.0.1:3030"));
   const [token, setToken] = useState(() => readSetting("muse.token", ""));
   const [view, setView] = useState<ViewId>("today");
@@ -91,7 +99,6 @@ function Console() {
     void health.refetch();
   };
 
-  const groups = ["Workspace", "Knowledge", "System"] as const;
   const connected = health.data?.status === "ok";
 
   return (
@@ -101,13 +108,13 @@ function Console() {
           <div className="brand-mark">M</div>
           <div>
             <div className="brand-name">Muse</div>
-            <div className="brand-sub">AI Conductor</div>
+            <div className="brand-sub">{t("brand.sub")}</div>
           </div>
         </div>
 
-        {groups.map((group) => (
+        {GROUPS.map((group) => (
           <div key={group}>
-            <div className="nav-group-label">{group}</div>
+            <div className="nav-group-label">{t(group)}</div>
             {NAV.filter((n) => n.group === group).map((n) => {
               const NavIcon = n.icon;
               return (
@@ -117,7 +124,7 @@ function Console() {
                   onClick={() => setView(n.id)}
                 >
                   <NavIcon />
-                  <span>{n.label}</span>
+                  <span>{t(n.labelKey)}</span>
                   {n.id === "tasks" && (openTasks.data?.total ?? 0) > 0 && (
                     <span className="nav-badge">{openTasks.data?.total}</span>
                   )}
@@ -128,15 +135,16 @@ function Console() {
         ))}
 
         <div className="sidebar-foot">
+          <LangToggle lang={lang} onChange={setLang} />
           <Badge tone={connected ? "ok" : health.isLoading ? "neutral" : "err"}>
-            {connected ? "Connected" : health.isLoading ? "Connecting" : "Offline"}
+            {connected ? t("status.connected") : health.isLoading ? t("status.connecting") : t("status.offline")}
           </Badge>
         </div>
       </aside>
 
       <main className="main">
         <header className="topbar">
-          <h2>{active.label}</h2>
+          <h2>{t(active.labelKey)}</h2>
           <span className="spacer" />
           <span className="mono subtle">{apiUrl.replace(/^https?:\/\//, "")}</span>
         </header>
@@ -148,6 +156,19 @@ function Console() {
           )}
         </section>
       </main>
+    </div>
+  );
+}
+
+function LangToggle({ lang, onChange }: { lang: Lang; onChange: (lang: Lang) => void }) {
+  return (
+    <div className="lang-toggle" role="group" aria-label="Language">
+      <button className={lang === "en" ? "active" : ""} onClick={() => onChange("en")}>
+        EN
+      </button>
+      <button className={lang === "ko" ? "active" : ""} onClick={() => onChange("ko")}>
+        한
+      </button>
     </div>
   );
 }

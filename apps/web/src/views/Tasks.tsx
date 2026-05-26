@@ -2,11 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { AsyncBlock, Button, Card, Icon } from "../components/ui.js";
+import { useI18n } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { TaskRow, TasksResponse } from "../api/types.js";
 
 export function TasksView({ client }: { client: ApiClient }) {
+  const { t } = useI18n();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<"open" | "done" | "all">("open");
   const [title, setTitle] = useState("");
@@ -42,13 +44,13 @@ export function TasksView({ client }: { client: ApiClient }) {
 
   return (
     <div className="content-narrow">
-      <p className="eyebrow">Workspace</p>
-      <h1 className="page-title">Tasks</h1>
+      <p className="eyebrow">{t("group.workspace")}</p>
+      <h1 className="page-title">{t("tasks.title")}</h1>
 
       <div style={{ display: "flex", gap: 8, margin: "16px 0" }}>
         <input
           className="input"
-          placeholder="Add a task and press Enter…"
+          placeholder={t("tasks.placeholder")}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => {
@@ -58,44 +60,44 @@ export function TasksView({ client }: { client: ApiClient }) {
           }}
         />
         <Button variant="primary" disabled={!title.trim() || add.isPending} onClick={() => add.mutate(title.trim())}>
-          <Icon.plus className="nav-icon" /> Add
+          <Icon.plus className="nav-icon" /> {t("common.add")}
         </Button>
       </div>
 
       <Card
-        title="Your tasks"
+        title={t("tasks.yourTasks")}
         count={tasks.data?.total ?? 0}
         action={
           <div style={{ display: "flex", gap: 4 }}>
             {(["open", "done", "all"] as const).map((f) => (
               <Button key={f} variant={filter === f ? "secondary" : "ghost"} size="sm" onClick={() => setFilter(f)}>
-                {f}
+                {t(`filter.${f}`)}
               </Button>
             ))}
           </div>
         }
       >
         <AsyncBlock loading={tasks.isLoading} error={tasks.error} empty={list.length === 0}>
-          {list.map((t) => (
-            <div className="row" key={t.id}>
-              {t.status === "open" ? (
-                <button className="checkbox" title="Complete" onClick={() => complete.mutate(t.id)} />
+          {list.map((task) => (
+            <div className="row" key={task.id}>
+              {task.status === "open" ? (
+                <button className="checkbox" title={t("tasks.complete")} onClick={() => complete.mutate(task.id)} />
               ) : (
-                <button className="checkbox" title="Done" disabled>
+                <button className="checkbox" title={t("filter.done")} disabled>
                   <Icon.check className="nav-icon" />
                 </button>
               )}
               <div className="row-main">
                 <div
                   className="row-title"
-                  style={t.status === "done" ? { color: "var(--ink-tertiary)", textDecoration: "line-through" } : undefined}
+                  style={task.status === "done" ? { color: "var(--ink-tertiary)", textDecoration: "line-through" } : undefined}
                 >
-                  {t.title}
+                  {task.title}
                 </div>
-                <div className="row-meta">{new Date(t.createdAt).toLocaleDateString()}</div>
+                <div className="row-meta">{new Date(task.createdAt).toLocaleDateString()}</div>
               </div>
               <div className="row-actions">
-                <Button variant="ghost" size="sm" onClick={() => remove.mutate(t.id)} title="Delete">
+                <Button variant="ghost" size="sm" onClick={() => remove.mutate(task.id)} title={t("common.delete")}>
                   <Icon.trash className="nav-icon" />
                 </Button>
               </div>

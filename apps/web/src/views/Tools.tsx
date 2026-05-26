@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { AsyncBlock, Badge, Card } from "../components/ui.js";
+import { useI18n } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { ToolCatalogEntry, ToolCatalogResponse } from "../api/types.js";
@@ -13,6 +14,7 @@ function riskTone(risk: ToolCatalogEntry["risk"]): "ok" | "warn" | "err" {
 }
 
 export function ToolsView({ client }: { client: ApiClient }) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const tools = useQuery({
     queryFn: () => client.get<ToolCatalogResponse>("/api/tools"),
@@ -26,16 +28,16 @@ export function ToolsView({ client }: { client: ApiClient }) {
 
   return (
     <div className="content-narrow">
-      <p className="eyebrow">System</p>
-      <h1 className="page-title">Tools</h1>
+      <p className="eyebrow">{t("group.system")}</p>
+      <h1 className="page-title">{t("tools.title")}</h1>
       <p className="muted" style={{ marginTop: 4 }}>
-        The capabilities Muse can call. {tools.data?.total ?? 0} registered.
+        {t("tools.subtitle", { n: tools.data?.total ?? 0 })}
       </p>
 
       <input
         className="input"
         style={{ margin: "16px 0" }}
-        placeholder="Filter tools…"
+        placeholder={t("tools.filterPlaceholder")}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />

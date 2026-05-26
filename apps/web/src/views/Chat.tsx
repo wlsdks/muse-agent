@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 
 import { useChatStream } from "../api/useChatStream.js";
 import { Button, Icon } from "../components/ui.js";
+import { useI18n } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
 
 export function ChatView({ client }: { client: ApiClient }) {
+  const { t } = useI18n();
   const { activeTool, pending, reset, send, turns } = useChatStream(client.baseUrl, readToken());
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -35,8 +37,8 @@ export function ChatView({ client }: { client: ApiClient }) {
         <div className="chat-thread">
           {turns.length === 0 && (
             <div className="empty" style={{ marginTop: 80 }}>
-              <div style={{ color: "var(--ink-muted)", fontSize: 18, marginBottom: 6 }}>Ask Muse anything</div>
-              <div>It can check your tasks, calendar, notes, the web, and more.</div>
+              <div style={{ color: "var(--ink-muted)", fontSize: 18, marginBottom: 6 }}>{t("chat.askAnything")}</div>
+              <div>{t("chat.askSub")}</div>
             </div>
           )}
           {turns.map((t, i) => (
@@ -70,7 +72,7 @@ export function ChatView({ client }: { client: ApiClient }) {
               <div className="avatar">M</div>
               <div className="bubble">
                 <span className="tool-chip">
-                  <span className="spinner" /> calling {activeTool}…
+                  <span className="spinner" /> {t("chat.calling", { tool: activeTool })}
                 </span>
               </div>
             </div>
@@ -84,17 +86,17 @@ export function ChatView({ client }: { client: ApiClient }) {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Message Muse…  (Enter to send, Shift+Enter for newline)"
+            placeholder={t("chat.placeholder")}
             rows={1}
           />
-          <Button variant="primary" onClick={submit} disabled={pending || !draft.trim()} title="Send">
+          <Button variant="primary" onClick={submit} disabled={pending || !draft.trim()} title={t("common.send")}>
             <Icon.send className="nav-icon" />
           </Button>
         </div>
         {turns.length > 0 && (
           <div style={{ maxWidth: 760, margin: "8px auto 0", textAlign: "right" }}>
             <Button variant="ghost" size="sm" onClick={reset}>
-              Clear conversation
+              {t("chat.clear")}
             </Button>
           </div>
         )}

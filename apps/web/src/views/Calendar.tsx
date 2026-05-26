@@ -1,20 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { AsyncBlock, Badge, Card } from "../components/ui.js";
+import { useI18n } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
+import type { Translate } from "../i18n/index.js";
 import type { CalendarEventsResponse } from "../api/types.js";
 
-function dayLabel(iso: string): string {
+function dayLabel(iso: string, t: Translate, locale: string): string {
   const d = new Date(iso);
   const today = new Date();
   const tomorrow = new Date(today.getTime() + 86_400_000);
-  if (d.toDateString() === today.toDateString()) return "Today";
-  if (d.toDateString() === tomorrow.toDateString()) return "Tomorrow";
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", weekday: "short" });
+  if (d.toDateString() === today.toDateString()) return t("calendar.today");
+  if (d.toDateString() === tomorrow.toDateString()) return t("calendar.tomorrow");
+  return d.toLocaleDateString(locale, { day: "numeric", month: "short", weekday: "short" });
 }
 
 export function CalendarView({ client }: { client: ApiClient }) {
+  const { locale, t } = useI18n();
   const events = useQuery({
     queryFn: () => client.get<CalendarEventsResponse>("/api/calendar/events"),
     queryKey: ["calendar", client.baseUrl]
@@ -26,14 +29,14 @@ export function CalendarView({ client }: { client: ApiClient }) {
 
   const byDay = new Map<string, typeof list>();
   for (const e of list) {
-    const k = dayLabel(e.startsAtIso);
+    const k = dayLabel(e.startsAtIso, t, locale);
     byDay.set(k, [...(byDay.get(k) ?? []), e]);
   }
 
   return (
     <div className="content-narrow">
-      <p className="eyebrow">Workspace</p>
-      <h1 className="page-title">Calendar</h1>
+      <p className="eyebrow">{t("group.workspace")}</p>
+      <h1 className="page-title">{t("calendar.title")}</h1>
 
       <div style={{ marginTop: 16 }}>
         <AsyncBlock loading={events.isLoading} error={events.error} empty={list.length === 0}>
@@ -46,8 +49,8 @@ export function CalendarView({ client }: { client: ApiClient }) {
                       <div className="row-title">{e.title}</div>
                       <div className="row-meta">
                         {e.allDay
-                          ? "All day"
-                          : `${new Date(e.startsAtIso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} – ${new Date(e.endsAtIso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
+                          ? t("calendar.allDay")
+                          : `${new Date(e.startsAtIso).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })} – ${new Date(e.endsAtIso).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}`}
                         {e.location ? ` · ${e.location}` : ""}
                       </div>
                     </div>

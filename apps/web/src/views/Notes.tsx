@@ -2,11 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { AsyncBlock, Button, Card, Empty } from "../components/ui.js";
+import { useI18n } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { NotesListResponse, NotesReadResponse, NotesSearchResponse } from "../api/types.js";
 
 export function NotesView({ client }: { client: ApiClient }) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState<string | null>(null);
 
@@ -30,19 +32,19 @@ export function NotesView({ client }: { client: ApiClient }) {
 
   return (
     <div className="content-narrow">
-      <p className="eyebrow">Knowledge</p>
-      <h1 className="page-title">Notes</h1>
+      <p className="eyebrow">{t("group.knowledge")}</p>
+      <h1 className="page-title">{t("notes.title")}</h1>
 
       <input
         className="input"
         style={{ margin: "16px 0" }}
-        placeholder="Search across all notes…"
+        placeholder={t("notes.searchPlaceholder")}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
 
       <div className="grid grid-2">
-        <Card title={searching ? "Search results" : "Files"} count={searching ? search.data?.hits.length ?? 0 : files.length}>
+        <Card title={searching ? t("notes.results") : t("notes.files")} count={searching ? search.data?.hits.length ?? 0 : files.length}>
           {searching ? (
             <AsyncBlock loading={search.isLoading} error={search.error} empty={(search.data?.hits.length ?? 0) === 0}>
               {(search.data?.hits ?? []).map((h, i) => (
@@ -81,11 +83,11 @@ export function NotesView({ client }: { client: ApiClient }) {
         </Card>
 
         <Card
-          title={active ?? "Reader"}
-          action={active ? <Button variant="ghost" size="sm" onClick={() => setActive(null)}>Close</Button> : undefined}
+          title={active ?? t("notes.reader")}
+          action={active ? <Button variant="ghost" size="sm" onClick={() => setActive(null)}>{t("common.close")}</Button> : undefined}
         >
           {!active ? (
-            <Empty>Select a note to read it.</Empty>
+            <Empty>{t("notes.selectNote")}</Empty>
           ) : (
             <AsyncBlock loading={reading.isLoading} error={reading.error}>
               <pre

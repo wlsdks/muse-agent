@@ -212,6 +212,36 @@ button {
 .sidebar-foot {
   margin-top: auto;
   padding-top: var(--s-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-sm);
+}
+
+.lang-toggle {
+  display: inline-flex;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  padding: 2px;
+}
+.lang-toggle button {
+  border: none;
+  background: transparent;
+  color: var(--ink-subtle);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.lang-toggle button:hover {
+  color: var(--ink-muted);
+}
+.lang-toggle button.active {
+  background: var(--surface-3);
+  color: var(--ink);
 }
 
 /* ── Main column ─────────────────────────────────────────── */

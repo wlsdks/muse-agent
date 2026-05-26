@@ -2,11 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { AsyncBlock, Button, Card, Icon } from "../components/ui.js";
+import { useI18n } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { ReminderRow, RemindersResponse } from "../api/types.js";
 
 export function RemindersView({ client }: { client: ApiClient }) {
+  const { locale, t } = useI18n();
   const qc = useQueryClient();
   const [text, setText] = useState("");
   const [dueAt, setDueAt] = useState("");
@@ -39,17 +41,17 @@ export function RemindersView({ client }: { client: ApiClient }) {
 
   return (
     <div className="content-narrow">
-      <p className="eyebrow">Workspace</p>
-      <h1 className="page-title">Reminders</h1>
+      <p className="eyebrow">{t("group.workspace")}</p>
+      <h1 className="page-title">{t("reminders.title")}</h1>
 
-      <Card title="New reminder" className="lifted">
+      <Card title={t("reminders.new")} className="lifted">
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 220px auto", alignItems: "end" }}>
           <div>
-            <label className="field-label">What</label>
-            <input className="input" placeholder="Call the dentist" value={text} onChange={(e) => setText(e.target.value)} />
+            <label className="field-label">{t("reminders.what")}</label>
+            <input className="input" placeholder={t("reminders.whatPlaceholder")} value={text} onChange={(e) => setText(e.target.value)} />
           </div>
           <div>
-            <label className="field-label">When</label>
+            <label className="field-label">{t("reminders.when")}</label>
             <input
               className="input"
               type="datetime-local"
@@ -62,26 +64,26 @@ export function RemindersView({ client }: { client: ApiClient }) {
             disabled={!canAdd || add.isPending}
             onClick={() => add.mutate({ dueAt: new Date(dueAt).toISOString(), text: text.trim() })}
           >
-            <Icon.plus className="nav-icon" /> Add
+            <Icon.plus className="nav-icon" /> {t("common.add")}
           </Button>
         </div>
       </Card>
 
       <div style={{ marginTop: 16 }}>
-        <Card title="Pending" count={reminders.data?.total ?? 0}>
+        <Card title={t("reminders.pending")} count={reminders.data?.total ?? 0}>
           <AsyncBlock loading={reminders.isLoading} error={reminders.error} empty={list.length === 0}>
             {list.map((r) => (
               <div className="row" key={r.id}>
                 <Icon.bell className="nav-icon" />
                 <div className="row-main">
                   <div className="row-title">{r.text}</div>
-                  <div className="row-meta">{new Date(r.dueAt).toLocaleString()}</div>
+                  <div className="row-meta">{new Date(r.dueAt).toLocaleString(locale)}</div>
                 </div>
                 <div className="row-actions">
                   <Button variant="ghost" size="sm" onClick={() => snooze.mutate(r.id)}>
-                    Snooze 30m
+                    {t("common.snooze30")}
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => remove.mutate(r.id)} title="Delete">
+                  <Button variant="ghost" size="sm" onClick={() => remove.mutate(r.id)} title={t("common.delete")}>
                     <Icon.trash className="nav-icon" />
                   </Button>
                 </div>
