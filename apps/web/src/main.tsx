@@ -1,11 +1,12 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./ui/App.js";
-import "./ui/styles.css";
+
+import { App } from "./app/App.js";
+
+import "./theme.css";
 
 createRoot(document.getElementById("root") as HTMLElement).render(
   <StrictMode>
     <App />
   </StrictMode>
 );
-

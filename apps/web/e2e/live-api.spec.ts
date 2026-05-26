@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 const liveApiUrl = "http://127.0.0.1:3001";
 
-test("operator console talks to a live diagnostic API", async ({ page }) => {
+test("console talks to a live diagnostic API", async ({ page }) => {
   await page.addInitScript((apiUrl) => {
     window.localStorage.setItem("muse.apiUrl", apiUrl);
     window.localStorage.removeItem("muse.token");
@@ -10,13 +10,12 @@ test("operator console talks to a live diagnostic API", async ({ page }) => {
 
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { exact: true, name: "Muse" })).toBeVisible();
-  await expect(page.getByLabel("Runtime status")).toContainText("ok");
+  await expect(page.getByText("AI Conductor")).toBeVisible();
+  await expect(page.getByText("Connected")).toBeVisible();
 
-  await page
-    .getByPlaceholder("Compare two product directions, clarify tradeoffs, or choose a next step.")
-    .fill("diagnostic web smoke");
-  await page.getByRole("button", { name: "Run" }).click();
+  await page.getByRole("button", { name: "Chat" }).click();
+  await page.getByPlaceholder(/Message Muse/).fill("diagnostic web smoke");
+  await page.getByTitle("Send").click();
 
-  await expect(page.locator(".chat-output")).toContainText("Diagnostic response");
+  await expect(page.locator(".msg.assistant .bubble").last()).toContainText(/Diagnostic/i);
 });
