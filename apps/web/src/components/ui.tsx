@@ -194,5 +194,7 @@ export const Icon = {
     ),
   volume: (p: IconProps) => base(p, <path d="M4 9v6h4l5 4V5L8 9zM16 9a3 3 0 0 1 0 6M18.5 7a6 6 0 0 1 0 10" />),
   chart: (p: IconProps) => base(p, <path d="M4 20V4M4 20h16M8 16v-5M12 16V8M16 16v-3" />),
-  shield: (p: IconProps) => base(p, <path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z" />)
+  shield: (p: IconProps) => base(p, <path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z" />),
+  brain: (p: IconProps) =>
+    base(p, <path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-1 5 3 3 0 0 0 2 4 3 3 0 0 0 5 1V4a2 2 0 0 0-3 0M15 4a3 3 0 0 1 3 3 3 3 0 0 1 1 5 3 3 0 0 1-2 4 3 3 0 0 1-5 1" />)
 };

@@ -228,3 +228,10 @@ export interface VetoesResponse {
   readonly vetoes: readonly VetoRow[];
   readonly total: number;
 }
+
+export interface UserMemoryResponse {
+  readonly facts?: Record<string, string>;
+  readonly preferences?: Record<string, string>;
+  readonly recentTopics?: readonly string[];
+  readonly updatedAt?: string;
+}

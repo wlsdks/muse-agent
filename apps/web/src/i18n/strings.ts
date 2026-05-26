@@ -19,6 +19,7 @@ const en = {
   "nav.calendar": "Calendar",
   "nav.reminders": "Reminders",
   "nav.notes": "Notes",
+  "nav.memory": "Memory",
   "nav.activity": "Activity",
   "nav.autonomy": "Autonomy",
   "nav.dashboard": "Dashboard",
@@ -133,6 +134,12 @@ const en = {
 
   "notice.title": "Muse",
 
+  "memory.subtitle": "What Muse has learned about you. Updated",
+  "memory.userId": "User",
+  "memory.facts": "Facts",
+  "memory.preferences": "Preferences",
+  "memory.recentTopics": "Recent topics",
+
   "auto.subtitle": "What Muse does on its own — and the trail it leaves.",
   "auto.tab.actions": "Action log",
   "auto.tab.objectives": "Objectives",
@@ -172,6 +179,7 @@ const ko: Strings = {
   "nav.calendar": "캘린더",
   "nav.reminders": "리마인더",
   "nav.notes": "노트",
+  "nav.memory": "메모리",
   "nav.activity": "활동",
   "nav.autonomy": "자율성",
   "nav.dashboard": "대시보드",
@@ -285,6 +293,12 @@ const ko: Strings = {
   "cmd.navigate": "이동",
 
   "notice.title": "Muse",
+
+  "memory.subtitle": "Muse가 당신에 대해 학습한 것. 업데이트",
+  "memory.userId": "사용자",
+  "memory.facts": "사실",
+  "memory.preferences": "선호",
+  "memory.recentTopics": "최근 주제",
 
   "auto.subtitle": "Muse가 스스로 하는 일과 그 기록.",
   "auto.tab.actions": "액션 로그",
