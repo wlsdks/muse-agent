@@ -30,6 +30,8 @@ export interface EpisodeIndexEntry {
   readonly startedAt: string;
   readonly endedAt: string;
   readonly embedding: number[];
+  /** Write-time importance (1–10) carried from the episode for recall ranking. */
+  readonly importance?: number;
 }
 
 export interface EpisodeIndex {
@@ -82,6 +84,7 @@ function isValidEpisodeIndexEntry(raw: unknown): raw is EpisodeIndexEntry {
   if (typeof e.startedAt !== "string") return false;
   if (typeof e.endedAt !== "string") return false;
   if (!Array.isArray(e.embedding)) return false;
+  if (e.importance !== undefined && typeof e.importance !== "number") return false;
   return e.embedding.every((n) => typeof n === "number" && Number.isFinite(n));
 }
 
@@ -131,7 +134,9 @@ export async function buildEpisodeIndex(args: {
   for (const ep of args.episodes) {
     const prior = reusable.get(ep.id);
     if (prior && prior.summary === ep.summary) {
-      entries.push(prior);
+      // Reuse the embedding (no re-embed) but refresh importance from the
+      // episode in case it was (re-)scored since the last index build.
+      entries.push(ep.importance !== undefined ? { ...prior, importance: ep.importance } : prior);
       skipped += 1;
       continue;
     }
@@ -142,7 +147,8 @@ export async function buildEpisodeIndex(args: {
       summary: ep.summary,
       startedAt: ep.startedAt,
       endedAt: ep.endedAt,
-      embedding
+      embedding,
+      ...(ep.importance !== undefined ? { importance: ep.importance } : {})
     });
     embedded += 1;
   }

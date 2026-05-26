@@ -50,16 +50,27 @@ import { resolveDefaultUserKey } from "./user-id.js";
  * grounds on the user's own history, not just notes. Pure + cosine-based;
  * caller supplies the already-embedded query vector. Top-K, descending score.
  */
+const EPISODE_IMPORTANCE_WEIGHT = 0.15;
+
 export function rankEpisodeHits(
   queryVec: readonly number[],
-  episodes: ReadonlyArray<{ readonly id: string; readonly summary: string; readonly embedding: readonly number[] }>,
+  episodes: ReadonlyArray<{ readonly id: string; readonly summary: string; readonly embedding: readonly number[]; readonly importance?: number }>,
   topK: number
 ): Array<{ id: string; summary: string; score: number }> {
   if (topK <= 0) {
     return [];
   }
+  // Rank by embedding relevance plus a bounded importance bump (Generative
+  // Agents, arXiv 2304.03442: importance is a retrieval axis). An episode with
+  // no score adds 0, so an unscored corpus ranks exactly by cosine as before.
   return episodes
-    .map((ep) => ({ id: ep.id, score: cosine(queryVec, ep.embedding), summary: ep.summary }))
+    .map((ep) => {
+      const importance = typeof ep.importance === "number" && Number.isFinite(ep.importance)
+        ? Math.min(10, Math.max(1, ep.importance))
+        : 0;
+      const importanceBump = importance === 0 ? 0 : EPISODE_IMPORTANCE_WEIGHT * (importance / 10);
+      return { id: ep.id, score: cosine(queryVec, ep.embedding) + importanceBump, summary: ep.summary };
+    })
     .sort((a, b) => b.score - a.score)
     .slice(0, topK);
 }
