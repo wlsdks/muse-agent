@@ -8,7 +8,17 @@ import { writeFollowups, writeObjectives } from "@muse/mcp";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { buildLaunchAgentPlist, DaemonStopSignal, registerDaemonCommands, runDaemonLoop, type DaemonHelpers } from "./commands-daemon.js";
+import type { MuseTool } from "@muse/tools";
+
+import { buildLaunchAgentPlist, chromeSnapshotConnectionFromTools, DaemonStopSignal, registerDaemonCommands, runDaemonLoop, type DaemonHelpers } from "./commands-daemon.js";
+
+function fakeChromeTools(snapshotText: string): MuseTool[] {
+  const mk = (name: string, result: string): MuseTool => ({
+    definition: { description: "", inputSchema: {}, name: `chrome-devtools.${name}`, risk: "read" },
+    execute: async () => result
+  } as unknown as MuseTool);
+  return [mk("navigate_page", "ok"), mk("take_snapshot", snapshotText)];
+}
 
 function capturingProvider(sent: OutboundMessage[]): MessagingProvider {
   return {
@@ -514,5 +524,36 @@ describe("buildLaunchAgentPlist — resident daemon via launchd", () => {
     });
     expect(xml).toContain("echo a &amp;&amp; echo &lt;b&gt;");
     expect(xml).not.toContain("echo a && echo <b>");
+  });
+});
+
+describe("chromeSnapshotConnectionFromTools — adapt MCP tools into a web-watch Chrome connection", () => {
+  it("forwards callTool to the chrome-devtools.<name> MuseTool's execute", async () => {
+    const conn = chromeSnapshotConnectionFromTools(fakeChromeTools("Order: SHIPPED"));
+    await conn.callTool("navigate_page", { url: "https://x.example" });
+    const snap = await conn.callTool("take_snapshot", {});
+    expect(snap).toBe("Order: SHIPPED");
+  });
+
+  it("throws for a tool the connected server does not expose", async () => {
+    const conn = chromeSnapshotConnectionFromTools([]);
+    await expect(conn.callTool("take_snapshot", {})).rejects.toThrow(/not available/);
+  });
+
+  it("drives a daemon source:chrome watch end-to-end through the adapter", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_WEB_WATCH_CONFIG: JSON.stringify([
+      { id: "w1", url: "https://orders.example/1", title: "Order", message: "Your order shipped", source: "chrome", rule: { appears: "SHIPPED" } }
+    ]) };
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+    const chromeConnection = chromeSnapshotConnectionFromTools(fakeChromeTools("Order status: SHIPPED"));
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { chromeConnection, env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toMatch(/web-watch: delivered 1/);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.text).toContain("order shipped");
   });
 });

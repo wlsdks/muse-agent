@@ -115,11 +115,16 @@ prove startup→delivery end-to-end. Pick the highest undone bullet.
   connection the chrome watch is skipped fail-soft and the daemon
   stays up. Proven by a contract-faithful fake connection — see
   `apps/cli/src/commands-daemon.test.ts`.
-- [ ] **P22-3b real Chrome connection at daemon startup.** Build the
-  Chrome DevTools MCP connection from the MCP stack (McpManager) at
-  `muse daemon` startup when enabled, so chrome-source watches work in
-  production (not just under an injected fake). Check: integration —
-  startup connect best-effort; Chrome-unavailable stays fail-soft.
+- [x] **P22-3b real Chrome connection at daemon startup.** When
+  `MUSE_CHROME_DEVTOOLS_ENABLED`, `muse daemon` builds the connection
+  from the runtime assembly's `McpManager` (connect chrome-devtools →
+  adapt `toMuseTools()` into a `ChromeSnapshotConnection` via
+  `chromeSnapshotConnectionFromTools`), best-effort + fail-soft
+  (disabled / connect-refused → `undefined` → chrome watches skip,
+  daemon stays up). The adapter is contract-faithfully tested
+  (adapts tools → drives a daemon chrome-watch edge-fire e2e); the
+  literal browser handshake is verified manually, not in CI — see
+  `apps/cli/src/commands-daemon.test.ts`.
 - [x] **P22-4a `muse daemon --status` readiness report.** Prints which
   of the five ticks are enabled for the current config (proactive
   always; followup/objectives on a resolved model; ambient on

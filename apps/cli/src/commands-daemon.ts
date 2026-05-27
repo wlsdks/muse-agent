@@ -35,11 +35,13 @@ import {
   runDueObjectives,
   runDueProactiveNotices,
   webWatchesFromConfig,
+  CHROME_DEVTOOLS_MCP_SERVER_NAME,
   type AmbientNoticeRunner,
   type ChromeSnapshotConnection,
   type ProactiveNoticeSink,
   type WebWatchRunner
 } from "@muse/mcp";
+import type { MuseTool } from "@muse/tools";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -247,6 +249,44 @@ ${args}
 `;
 }
 
+// Adapt the MCP stack's projected Chrome DevTools tools into the
+// `ChromeSnapshotConnection` (just `callTool`) that web-watch needs.
+// `take_snapshot` / `navigate_page` map to the `chrome-devtools.*`
+// MuseTools' execute.
+export function chromeSnapshotConnectionFromTools(tools: readonly MuseTool[]): ChromeSnapshotConnection {
+  const byName = new Map(tools.map((tool) => [tool.definition.name, tool]));
+  return {
+    callTool: async (toolName, args) => {
+      const tool = byName.get(`${CHROME_DEVTOOLS_MCP_SERVER_NAME}.${toolName}`);
+      if (!tool) {
+        throw new Error(`chrome-devtools tool '${toolName}' is not available`);
+      }
+      // The projected MCP tool ignores the context; web-watch is read-only.
+      return tool.execute(args as unknown as Parameters<MuseTool["execute"]>[0], { runId: "muse-daemon-web-watch" });
+    }
+  };
+}
+
+// Best-effort real Chrome connection at daemon startup: only when
+// MUSE_CHROME_DEVTOOLS_ENABLED (assembleMcpStack auto-registers the
+// chrome-devtools server then), connect it and adapt its tools. Any
+// failure (Chrome not on the debug port, connect refused) yields
+// `undefined` so chrome-source watches skip fail-soft and the daemon
+// stays up. The real browser handshake is verified manually, not in CI.
+async function defaultChromeConnection(env: NodeJS.ProcessEnv): Promise<ChromeSnapshotConnection | undefined> {
+  if (!parseBoolean(env.MUSE_CHROME_DEVTOOLS_ENABLED, false)) return undefined;
+  try {
+    const { createMuseRuntimeAssembly } = await import("@muse/autoconfigure");
+    const { manager } = createMuseRuntimeAssembly().mcp;
+    await manager.initializeFromStore();
+    const connected = await manager.connect(CHROME_DEVTOOLS_MCP_SERVER_NAME);
+    if (!connected) return undefined;
+    return chromeSnapshotConnectionFromTools(manager.toMuseTools());
+  } catch {
+    return undefined;
+  }
+}
+
 function resolveLaunchAgentFile(env: NodeJS.ProcessEnv): string {
   const explicit = env.MUSE_DAEMON_PLIST_FILE?.trim();
   if (explicit && explicit.length > 0) return explicit;
@@ -388,9 +428,10 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const webWatchRaw = e.MUSE_WEB_WATCH_CONFIG?.trim();
       let webWatchRunner: WebWatchRunner | undefined;
       if (webWatchRaw) {
+        const chromeConnection = helpers.chromeConnection ?? await defaultChromeConnection(e);
         const watches = webWatchesFromConfig(webWatchRaw, {
           ...(helpers.fetchImpl ? { fetchImpl: helpers.fetchImpl } : {}),
-          ...(helpers.chromeConnection ? { chromeConnection: helpers.chromeConnection } : {})
+          ...(chromeConnection ? { chromeConnection } : {})
         });
         if (watches.length > 0) {
           webWatchRunner = createWebWatchRunner({ sink: noticeSink, watches });
