@@ -90,11 +90,16 @@ prove startup→delivery end-to-end. Pick the highest undone bullet.
   trigger over an injected fetch delivers a notice to a
   contract-faithful sink (skipped cleanly when no
   `MUSE_WEB_WATCH_CONFIG`) — see `apps/cli/src/commands-daemon.test.ts`.
-- [ ] **P22-1e objectives tick + SIGINT clean-shutdown smoke.** Fold
-  the objectives evaluation tick into the same `muse daemon` process,
-  and prove the foreground loop stops cleanly on a stop signal. Check:
-  CLI smoke — an objectives tick fires against a contract-faithful
-  sink; the foreground loop runs N ticks then exits 0 on stop.
+- [x] **P22-1e objectives tick folded into the launcher.** `muse daemon
+  --once` now also re-evaluates standing objectives and notifies on
+  "met" — all FIVE ticks (proactive + followup + ambient + web-watch +
+  objectives) run in one process. A MET objective notifies via a
+  contract-faithful sink (skipped cleanly when no model) — see
+  `apps/cli/src/commands-daemon.test.ts`.
+- [ ] **P22-1f SIGINT clean-shutdown smoke.** Prove the `muse daemon`
+  foreground loop stops cleanly on a stop signal (runs N ticks then
+  exits 0, no orphaned timer). Check: CLI smoke over an injectable
+  sleep + stop seam. This closes P22-1 (the launcher).
 - [ ] **P22-2 macOS active-window perception feeds the running
   daemon.** Wire `MacOsActiveWindowSource` into the launcher so a
   real OS signal drives a proactive notice on a tick. Check:

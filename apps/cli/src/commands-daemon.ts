@@ -17,16 +17,20 @@ import {
   buildCalendarRegistry,
   buildMessagingRegistry,
   resolveFollowupsFile,
+  resolveObjectivesFile,
   resolveProactiveHistoryFile,
   resolveTasksFile
 } from "@muse/autoconfigure";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import {
   createAmbientNoticeRunner,
+  createMessagingObjectiveActuator,
+  createModelObjectiveEvaluator,
   createWebWatchRunner,
   FileAmbientSignalSource,
   parseAmbientNoticeRules,
   runDueFollowups,
+  runDueObjectives,
   runDueProactiveNotices,
   webWatchesFromConfig,
   type AmbientNoticeRunner,
@@ -173,6 +177,16 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         }
       }
 
+      // Standing objectives re-evaluate via the model and notify on the
+      // same channel when met. Needs a model — skipped without one.
+      const objectivesFile = resolveObjectivesFile(e);
+      const objectivesActuator = followupModel
+        ? createMessagingObjectiveActuator({ destination, providerId: provider, registry: messagingRegistry })
+        : undefined;
+      const objectivesEvaluate = followupModel
+        ? createModelObjectiveEvaluator({ model: followupModel.model, modelProvider: followupModel.modelProvider })
+        : undefined;
+
       const proactiveTick = async (): Promise<void> => {
         const summary = await runDueProactiveNotices({
           ...(calendarRegistry.list().length > 0 ? { calendarRegistry } : {}),
@@ -237,11 +251,34 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout(`[${new Date().toISOString()}] web-watch: delivered ${summary.delivered.toString()}\n`);
       };
 
+      const objectivesTick = async (): Promise<void> => {
+        if (!objectivesEvaluate || !objectivesActuator) {
+          io.stdout(`[${new Date().toISOString()}] objectives: skipped (no model resolved)\n`);
+          return;
+        }
+        const summary = await runDueObjectives({
+          act: objectivesActuator.act,
+          escalate: objectivesActuator.escalate,
+          evaluate: objectivesEvaluate,
+          file: objectivesFile
+        });
+        const tag = `[${new Date().toISOString()}]`;
+        io.stdout(`${tag} objectives: ${summary.fired.length.toString()} fired, ${summary.escalated.length.toString()} escalated of ${summary.due.toString()} due`);
+        if (summary.errors.length > 0) {
+          io.stdout(`, ${summary.errors.length.toString()} error(s)`);
+          for (const error of summary.errors) {
+            io.stdout(`\n  ! ${error}`);
+          }
+        }
+        io.stdout("\n");
+      };
+
       const runTick = async (): Promise<void> => {
         await proactiveTick();
         await followupTick();
         await ambientTick();
         await webWatchTick();
+        await objectivesTick();
       };
 
       io.stdout(`muse daemon — provider=${provider}, destination=${destination}, lead ${leadMinutes.toString()} min\n`);

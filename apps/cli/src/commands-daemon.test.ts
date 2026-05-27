@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { writeFollowups } from "@muse/mcp";
+import { writeFollowups, writeObjectives } from "@muse/mcp";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
@@ -63,6 +63,7 @@ function tmpEnv(): NodeJS.ProcessEnv {
   return {
     MUSE_AMBIENT_FILE: join(dir, "ambient.json"),
     MUSE_FOLLOWUPS_FILE: join(dir, "followups.json"),
+    MUSE_OBJECTIVES_FILE: join(dir, "objectives.json"),
     MUSE_PROACTIVE_HISTORY_FILE: join(dir, "history.json"),
     MUSE_PROACTIVE_SIDECAR_FILE: join(dir, "fired.json"),
     MUSE_TASKS_FILE: join(dir, "tasks.json")
@@ -181,6 +182,42 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
 
     expect(res.stdout).toContain("web-watch: skipped (no config)");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("--once fires a MET standing objective through the same launcher + sink", async () => {
+    const env = tmpEnv();
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    await writeObjectives(env.MUSE_OBJECTIVES_FILE!, [
+      { attempts: 0, createdAt: "2026-01-01T00:00:00Z", id: "obj1", kind: "watch", spec: "ping me when the build is green", status: "active", userId: "stark" }
+    ]);
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+    const metModel: DaemonHelpers["resolveFollowupModel"] = async () => ({
+      model: "test-model",
+      modelProvider: { generate: async () => ({ output: '{"outcome":"met"}' }) } as never
+    });
+
+    const res = await runDaemon(
+      ["--once", "--provider", "telegram", "--destination", "555"],
+      { env, registry, resolveFollowupModel: metModel }
+    );
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toMatch(/objectives: 1 fired/);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.text).toContain("Objective met: ping me when the build is green");
+  });
+
+  it("objectives tick is skipped when no model resolves (hermetic default)", async () => {
+    const env = tmpEnv();
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.stdout).toContain("objectives: skipped (no model resolved)");
     expect(sent).toHaveLength(0);
   });
 
