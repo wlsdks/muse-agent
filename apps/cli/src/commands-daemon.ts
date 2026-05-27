@@ -20,6 +20,7 @@ import {
   resolveFollowupsFile,
   resolveObjectivesFile,
   resolveProactiveHistoryFile,
+  resolveRemindersFile,
   resolveTasksFile
 } from "@muse/autoconfigure";
 import type { MessagingProviderRegistry } from "@muse/messaging";
@@ -35,6 +36,7 @@ import {
   runDueFollowups,
   runDueObjectives,
   runDueProactiveNotices,
+  runDueReminders,
   webWatchesFromConfig,
   CHROME_DEVTOOLS_MCP_SERVER_NAME,
   type AmbientNoticeRunner,
@@ -399,6 +401,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         ? e.MUSE_PROACTIVE_SIDECAR_FILE.trim()
         : join(homedir(), ".muse", "proactive-fired.json");
       const followupsFile = resolveFollowupsFile(e);
+      const remindersFile = resolveRemindersFile(e);
       const followupModel = await (helpers.resolveFollowupModel ?? defaultFollowupModel)(e);
 
       // Shared sink: every perception tick (ambient, web-watch) routes
@@ -498,6 +501,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       if (options.status) {
         io.stdout(`muse daemon — readiness (provider=${provider}, destination=${destination}):\n`);
         io.stdout(`  proactive:  enabled\n`);
+        io.stdout(`  reminders:  enabled\n`);
         io.stdout(`  followup:   ${followupModel ? "enabled" : "disabled (no model resolved)"}\n`);
         io.stdout(`  ambient:    ${ambientRunner ? "enabled" : "disabled (set MUSE_AMBIENT_RULES)"}\n`);
         io.stdout(`  web-watch:  ${webWatchRunner ? "enabled" : "disabled (set MUSE_WEB_WATCH_CONFIG)"}\n`);
@@ -519,6 +523,24 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         });
         const tag = `[${new Date().toISOString()}]`;
         io.stdout(`${tag} proactive: fired ${summary.fired.toString()}/${summary.imminent.toString()} imminent`);
+        if (summary.errors.length > 0) {
+          io.stdout(`, ${summary.errors.length.toString()} error(s)`);
+          for (const error of summary.errors) {
+            io.stdout(`\n  ! ${error}`);
+          }
+        }
+        io.stdout("\n");
+      };
+
+      const remindersTick = async (): Promise<void> => {
+        const summary = await runDueReminders({
+          destination,
+          file: remindersFile,
+          providerId: provider,
+          registry: messagingRegistry
+        });
+        const tag = `[${new Date().toISOString()}]`;
+        io.stdout(`${tag} reminders: fired ${summary.delivered.toString()}/${summary.due.toString()} due`);
         if (summary.errors.length > 0) {
           io.stdout(`, ${summary.errors.length.toString()} error(s)`);
           for (const error of summary.errors) {
@@ -603,6 +625,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
 
       const runTick = async (): Promise<void> => {
         await proactiveTick();
+        await remindersTick();
         await followupTick();
         await ambientTick();
         await webWatchTick();

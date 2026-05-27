@@ -77,6 +77,13 @@ so the user's resident Muse perceives more of their world.
   home (outbound-safety). Proven by a contract-faithful CLI smoke (a HA
   `/api/states` snapshot fires the notice; skipped without config) and
   surfaced in `--status` — `apps/cli/src/commands-daemon.test.ts`.
+- [x] **P26-2 Due-reminders tick in the launcher.** The daemon fires
+  due reminders (`runDueReminders`, always-on like proactive — no model
+  needed) so the resident process covers the full proactive set
+  (proactive · reminders · followup · ambient · web-watch · objectives ·
+  home-watch = 7 ticks). Proven: a due pending reminder is delivered to
+  a contract-faithful sink, a future one isn't; reported by `--status`
+  — `apps/cli/src/commands-daemon.test.ts`.
 
 ## Delivered — P25 (ambient context fusion: Perception × Knowledge)
 

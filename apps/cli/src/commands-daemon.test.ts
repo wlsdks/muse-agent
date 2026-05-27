@@ -81,6 +81,7 @@ function tmpEnv(): NodeJS.ProcessEnv {
     MUSE_OBJECTIVES_FILE: join(dir, "objectives.json"),
     MUSE_PROACTIVE_HISTORY_FILE: join(dir, "history.json"),
     MUSE_PROACTIVE_SIDECAR_FILE: join(dir, "fired.json"),
+    MUSE_REMINDERS_FILE: join(dir, "reminders.json"),
     MUSE_TASKS_FILE: join(dir, "tasks.json")
   };
 }
@@ -120,6 +121,26 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(res.exitCode).toBeUndefined();
     expect(res.stdout).toMatch(/proactive: fired 0\/0 imminent/);
     expect(sent).toHaveLength(0);
+  });
+
+  it("--once also fires a DUE reminder through the same launcher + sink", async () => {
+    const env = tmpEnv();
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    writeFileSync(env.MUSE_REMINDERS_FILE!, JSON.stringify({
+      reminders: [
+        { id: "rem1", text: "Take the bread out of the oven", status: "pending", dueAt: "1970-01-01T00:00:00Z", createdAt: "2026-01-01T00:00:00Z" },
+        { id: "rem2", text: "Pay rent", status: "pending", dueAt: "2030-01-01T00:00:00Z", createdAt: "2026-01-01T00:00:00Z" }
+      ]
+    }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toMatch(/reminders: fired 1\/1 due/);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.text).toContain("Take the bread out of the oven");
   });
 
   it("--once also fires a DUE followup through the same launcher + sink", async () => {
