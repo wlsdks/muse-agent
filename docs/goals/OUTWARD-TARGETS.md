@@ -120,11 +120,15 @@ prove startup→delivery end-to-end. Pick the highest undone bullet.
   `muse daemon` startup when enabled, so chrome-source watches work in
   production (not just under an injected fake). Check: integration —
   startup connect best-effort; Chrome-unavailable stays fail-soft.
-- [ ] **P22-4 One-shot config UX.** `muse daemon init` / `muse
-  daemon status` write + validate the daemon config (provider,
-  destination, ambient rules, watches) to the config path, removing
-  the need to hand-set ~15 env vars; `status` shows what is enabled
-  and the last tick. Check: CLI smoke round-trips a written config
+- [x] **P22-4a `muse daemon --status` readiness report.** Prints which
+  of the five ticks are enabled for the current config (proactive
+  always; followup/objectives on a resolved model; ambient on
+  `MUSE_AMBIENT_RULES`; web-watch on `MUSE_WEB_WATCH_CONFIG`) and
+  exits without ticking — see `apps/cli/src/commands-daemon.test.ts`.
+- [ ] **P22-4b `muse daemon init` config file.** Write + validate the
+  daemon config (provider, destination, ambient rules, watches) to the
+  config path and have the launcher load it, removing the need to
+  hand-set ~15 env vars. Check: CLI smoke round-trips a written config
   and the launcher consumes it.
 - [ ] **P22-5 Full startup→delivery e2e gate.** A smoke /
   integration that starts the full daemon and proves a notice flows

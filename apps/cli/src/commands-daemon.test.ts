@@ -278,6 +278,42 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("--status reports proactive enabled and the rest disabled on a bare config", async () => {
+    const env = tmpEnv();
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toContain("proactive:  enabled");
+    expect(res.stdout).toContain("followup:   disabled");
+    expect(res.stdout).toContain("ambient:    disabled");
+    expect(res.stdout).toContain("web-watch:  disabled");
+    expect(res.stdout).toContain("objectives: disabled");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("--status reports each tick enabled when its config is present", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(),
+      MUSE_AMBIENT_RULES: JSON.stringify([{ id: "r", title: "t", message: "m", match: { app: "X" } }]),
+      MUSE_WEB_WATCH_CONFIG: JSON.stringify([{ id: "w", url: "https://x.example", title: "t", message: "m", rule: { appears: "Y" } }])
+    };
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemon(
+      ["--status", "--provider", "telegram", "--destination", "555"],
+      { env, registry, resolveFollowupModel: async () => fakeFollowupModel() }
+    );
+
+    expect(res.stdout).toContain("followup:   enabled");
+    expect(res.stdout).toContain("ambient:    enabled");
+    expect(res.stdout).toContain("web-watch:  enabled");
+    expect(res.stdout).toContain("objectives: enabled");
+    expect(sent).toHaveLength(0);
+  });
+
   it("an unknown provider fails closed — exits non-zero and sends nothing", async () => {
     const env = tmpEnv();
     writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");

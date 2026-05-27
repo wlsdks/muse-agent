@@ -173,12 +173,14 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
     .command("daemon")
     .description("Run Muse's background daemon (proactive notices) in one process. --once runs a single tick and exits.")
     .option("--once", "Run exactly one tick of each enabled daemon, then exit")
+    .option("--status", "Print which daemon ticks are enabled for the current config, then exit")
     .option("--interval <seconds>", "Tick interval in seconds (default 60)", "60")
     .option("--lead-minutes <minutes>", "Imminent-window lead in minutes (default 10)", "10")
     .option("--provider <id>", "Messaging provider id (default MUSE_PROACTIVE_PROVIDER, else 'log')")
     .option("--destination <id>", "Messaging destination — chat/channel id or log tag (default MUSE_PROACTIVE_DESTINATION or '@me')")
     .action(async (options: {
       readonly once?: boolean;
+      readonly status?: boolean;
       readonly interval: string;
       readonly leadMinutes: string;
       readonly provider?: string;
@@ -281,6 +283,16 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const objectivesEvaluate = followupModel
         ? createModelObjectiveEvaluator({ model: followupModel.model, modelProvider: followupModel.modelProvider })
         : undefined;
+
+      if (options.status) {
+        io.stdout(`muse daemon — readiness (provider=${provider}, destination=${destination}):\n`);
+        io.stdout(`  proactive:  enabled\n`);
+        io.stdout(`  followup:   ${followupModel ? "enabled" : "disabled (no model resolved)"}\n`);
+        io.stdout(`  ambient:    ${ambientRunner ? "enabled" : "disabled (set MUSE_AMBIENT_RULES)"}\n`);
+        io.stdout(`  web-watch:  ${webWatchRunner ? "enabled" : "disabled (set MUSE_WEB_WATCH_CONFIG)"}\n`);
+        io.stdout(`  objectives: ${objectivesEvaluate && objectivesActuator ? "enabled" : "disabled (no model resolved)"}\n`);
+        return;
+      }
 
       const proactiveTick = async (): Promise<void> => {
         const summary = await runDueProactiveNotices({
