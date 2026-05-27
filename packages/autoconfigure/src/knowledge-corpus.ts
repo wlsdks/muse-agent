@@ -455,6 +455,7 @@ export function createKnowledgeEnricher(options: KnowledgeEnricherOptions): (que
     });
     const matches = await rankKnowledgeChunks(query, corpus, {
       embed: options.embed,
+      hybrid: true,
       topK: 5,
       ...(options.minScore !== undefined ? { minScore: options.minScore } : { minScore: 0.2 })
     });
@@ -534,6 +535,7 @@ export function createNotesKnowledgeSearchTool(options: NotesKnowledgeSearchTool
       });
       const matches = await rankKnowledgeChunks(query, corpus, {
         embed: options.embed,
+        hybrid: true,
         ...(options.topK !== undefined ? { topK: options.topK } : {})
       });
       return renderKnowledgeMatches(matches);

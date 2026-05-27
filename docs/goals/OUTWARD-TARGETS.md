@@ -76,10 +76,13 @@ codes) while staying local + deterministic.
   corpus whose exact-keyword chunk has zero cosine is dropped by pure
   cosine but recalled by hybrid — `packages/agent-core/test/knowledge-recall-agent.test.ts`.
   No new dep, deterministic, local.
-- [ ] **P23-2 Hybrid in the corpus-search callers.** Route the
-  `knowledge-corpus.ts` search paths (`muse` knowledge surfaces beyond
-  the agent tool) through the hybrid ranker too. Check: a corpus-search
-  smoke recalls an exact-keyword chunk pure cosine drops.
+- [x] **P23-2 Hybrid in the corpus-search callers.** The
+  `knowledge-corpus.ts` search paths — the situational-briefing
+  `createKnowledgeEnricher` and the `createNotesKnowledgeSearchTool`
+  corpus search — now rank via the hybrid path too. A zero-cosine
+  exact-keyword chunk is recalled by the corpus-search tool; the
+  lexical scorer drops stopwords so a decoy sharing only "my"/"is" is
+  NOT falsely recalled — `packages/autoconfigure/test/knowledge-recall-sources.test.ts`.
 
 ## Delivered — P22 (the daemon runs for real on this Mac)
 

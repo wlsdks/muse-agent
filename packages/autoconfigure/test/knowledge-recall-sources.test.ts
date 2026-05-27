@@ -82,6 +82,23 @@ describe("knowledge_search spans episodes + user-memory (SB-1 unified recall)", 
     expect(result).not.toContain("tabby");
   });
 
+  it("recalls an exact-keyword chunk pure cosine would drop (P23-2 hybrid wired into corpus search)", async () => {
+    // The embed VOCAB has none of "tkt"/"5512", so the ticket chunk has
+    // zero cosine — pure cosine would never surface it. Hybrid RRF
+    // recalls it via the exact-token lexical overlap.
+    const tool = createNotesKnowledgeSearchTool({
+      embed,
+      extraChunks: [
+        { source: "note/decoy", text: "acme renewal planning notes" },
+        { source: "note/ticket", text: "TKT-5512 is resolved and closed" }
+      ],
+      topK: 5
+    });
+    const result = String(await tool.execute({ query: "acme ticket TKT-5512" }, { runId: "r1" }));
+    expect(result).toContain("[note/ticket]");
+    expect(result).toContain("TKT-5512");
+  });
+
   it("answers from a past session summary and cites episode/<when>", async () => {
     const episodesSource: EpisodesKnowledgeSource = {
       recentEpisodes: () => [{ id: "e1", summary: "Plan to handle the Acme renewal by Friday.", when: "2026-05-20" }]
