@@ -608,3 +608,11 @@ Append one line when a discovery path is evaluated and deferred:
   no bullet reopened. (Note: the audit run used provider=log — local,
   no third-party send — and read the real ~/.muse/followups.json, a
   benign local delivery.)
+- P23 audit — f5fdf210 — PASS: both P23 check files re-run together
+  green (agent-core knowledge-recall-agent 7/7 + autoconfigure
+  knowledge-recall-sources 7/7) AND exercised as ONE end-to-end flow
+  with REAL Ollama embeddings (not the fake): knowledge_search over a
+  corpus with a semantic decoy + an exact-token chunk ("TKT-5512")
+  recalled the exact-token chunk AND ranked it first under
+  nomic-embed-text + hybrid RRF. Engine (P23-1) + corpus wiring (P23-2)
+  compose; no drift, no bullet reopened.
