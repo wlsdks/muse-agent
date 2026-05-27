@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   eventsToAvailability,
   formatAvailability,
+  formatConflicts,
   maxOfNumbers,
   minOfNumbers,
   parseEventStart,
@@ -89,6 +90,78 @@ describe("formatAvailability — human free/busy summary", () => {
     }, win);
     expect(out).toContain("Busy: 10:00–11:00 Standup");
     expect(out).toContain("Free: 09:00–10:00, 11:00–17:00");
+  });
+});
+
+describe("formatConflicts — double-booking summary", () => {
+  it("reports no conflicts cleanly", () => {
+    expect(formatConflicts([])).toContain("No double-booked events");
+  });
+  it("lists each overlapping pair with the overlap span", () => {
+    const out = formatConflicts([{
+      a: { title: "Review", startsAt: new Date("2026-05-25T15:00:00"), endsAt: new Date("2026-05-25T16:00:00") },
+      b: { title: "Call", startsAt: new Date("2026-05-25T15:30:00"), endsAt: new Date("2026-05-25T16:30:00") },
+      overlapStartsAt: new Date("2026-05-25T15:30:00"),
+      overlapEndsAt: new Date("2026-05-25T16:00:00")
+    }]);
+    expect(out).toContain("1 double-booking");
+    expect(out).toContain('"Review"');
+    expect(out).toContain('overlaps "Call"');
+    expect(out).toContain("15:30–16:00");
+  });
+});
+
+async function runCalendarConflicts(args: string[], events: Array<Record<string, unknown>>): Promise<{
+  readonly error?: string;
+  readonly json?: unknown;
+  readonly stdout: string[];
+  readonly apiPaths: string[];
+}> {
+  const stdout: string[] = [];
+  const apiPaths: string[] = [];
+  let json: unknown;
+  const io = { stderr: () => {}, stdout: (line: string) => stdout.push(line) };
+  const helpers: CalendarCommandHelpers = {
+    apiRequest: async (_io, _command, path) => { apiPaths.push(path); return { events }; },
+    writeOutput: (_io, value) => { json = value; }
+  };
+  let error: string | undefined;
+  try {
+    const program = new Command();
+    program.exitOverride();
+    registerCalendarCommands(program, io, helpers);
+    await program.parseAsync(["node", "muse", "calendar", "conflicts", ...args]);
+  } catch (cause) {
+    error = cause instanceof Error ? cause.message : String(cause);
+  }
+  return { apiPaths, error, json, stdout };
+}
+
+describe("muse calendar conflicts — double-booking over a window (API path, contract-faithful events seam)", () => {
+  const window = ["--from", "2026-05-25T09:00:00Z", "--to", "2026-05-25T23:00:00Z"];
+
+  it("flags an overlapping pair from the fetched events (--json)", async () => {
+    const r = await runCalendarConflicts([...window, "--json"], [
+      { endsAtIso: "2026-05-25T16:00:00Z", startsAtIso: "2026-05-25T15:00:00Z", title: "Review" },
+      { endsAtIso: "2026-05-25T16:30:00Z", startsAtIso: "2026-05-25T15:30:00Z", title: "Call" }
+    ]);
+    expect(r.error).toBeUndefined();
+    expect(r.apiPaths[0]).toContain("/api/calendar/events?");
+    expect(r.json).toHaveLength(1);
+  });
+
+  it("reports no double-bookings when events don't overlap", async () => {
+    const r = await runCalendarConflicts(window, [
+      { endsAtIso: "2026-05-25T10:00:00Z", startsAtIso: "2026-05-25T09:00:00Z", title: "A" },
+      { endsAtIso: "2026-05-25T12:00:00Z", startsAtIso: "2026-05-25T11:00:00Z", title: "B" }
+    ]);
+    expect(r.error).toBeUndefined();
+    expect(r.stdout.join("\n")).toContain("No double-booked events");
+  });
+
+  it("rejects a non-ISO --from before fetching", async () => {
+    const r = await runCalendarConflicts(["--from", "nope"], []);
+    expect(r.error).toContain("--from / --to must be ISO 8601 timestamps");
   });
 });
 
