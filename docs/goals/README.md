@@ -684,3 +684,10 @@ Append one line when a discovery path is evaluated and deferred:
   printed the readiness lines plus a "sources:" block with the resolved
   config/tasks/reminders/objectives paths (rooted at the run's HOME).
   Debuggability composes; no drift, no bullet reopened.
+- regression sweep (30th feat-iter) — iter 830458a9 — PASS: `pnpm
+  check` green across every workspace (agent-core 722, mcp 837,
+  cli 1328, api 327, autoconfigure 283, tools 158, scheduler 62,
+  multi-agent 63, observability 80, resilience 21, runtime-state 26,
+  runtime-settings 11, policy, … — 0 fail), lint 0/0. No regression
+  after P26–P30 (home-watch, reminders, briefing, edge-loading,
+  --print, --status sources/autostart).
