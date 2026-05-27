@@ -631,3 +631,12 @@ Append one line when a discovery path is evaluated and deferred:
   honestly-documented P24-2 finding (real-paraphrase dedup is
   best-effort, not guaranteed) — claims match reality, no drift, no
   bullet reopened.
+- P25 audit — 9daf0fe3 — PASS: P25 check re-run green
+  (commands-daemon 29/29) AND exercised end-to-end through the BUILT
+  CLI with real Ollama + real notes: `muse daemon --once`
+  (MUSE_BRIEFING_RELATED_KNOWLEDGE_ENABLED, app=Notes ambient signal,
+  notes dir holding q3-budget.md + a parking decoy) delivered to the
+  log sink: "Heads up: You opened Notes — Related: [notes/q3-budget.md]
+  The Q3 budget memo is due Friday …" — the full chain (ambient
+  perception → real hybrid+MMR enricher → the right real note →
+  enriched notice) composes. No drift, no bullet reopened.
