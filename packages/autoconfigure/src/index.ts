@@ -67,6 +67,8 @@ import {
 } from "@muse/mcp";
 import {
   createUserMemoryAutoExtractHook,
+  defaultBeliefProvenanceFile,
+  FileBeliefProvenanceStore,
   extractJsonObject,
   InMemoryContextReferenceStore,
   pickAutoExtractSystemPrompt,
@@ -685,7 +687,10 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       ? [createUserMemoryAutoExtractHook({
         model: env.MUSE_USER_MEMORY_AUTO_EXTRACT_MODEL ?? defaultModel,
         modelProvider,
-        store: userMemoryStore
+        store: userMemoryStore,
+        ...(parseBoolean(env.MUSE_BELIEF_PROVENANCE, true)
+          ? { provenanceStore: new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()) }
+          : {})
       }) as HookStage]
       : []),
     ...(parseBoolean(env.MUSE_FOLLOWUP_CAPTURE_ENABLED, true)

@@ -21,7 +21,7 @@
 
 import { readFile } from "node:fs/promises";
 
-import { FileUserMemoryStore, normalizeMemoryKey } from "@muse/memory";
+import { defaultBeliefProvenanceFile, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey } from "@muse/memory";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -148,6 +148,29 @@ export function buildFactTimeline(
   return out.sort((a, b) => a.key.localeCompare(b.key));
 }
 
+/**
+ * Render `muse memory why <key>` from the newest-first provenance records the
+ * store returned. Uses the latest (records[0]); a forgotten/untracked key
+ * yields a friendly note. Pure for testability.
+ */
+export function formatBeliefWhy(
+  records: ReadonlyArray<{ readonly kind: string; readonly key: string; readonly value: string; readonly learnedAt: string; readonly evidenceExcerpt?: string; readonly sessionId?: string }>,
+  key: string
+): string {
+  const latest = records[0];
+  if (!latest) {
+    return `(no recorded provenance for "${key}" — learned before provenance tracking, or not remembered)\n`;
+  }
+  const lines = [`${latest.kind} ${latest.key} = ${latest.value} — learned ${latest.learnedAt}`];
+  if (latest.evidenceExcerpt) {
+    lines.push(`  ↳ from your message: "${latest.evidenceExcerpt}"`);
+  }
+  if (latest.sessionId) {
+    lines.push(`  ↳ session ${latest.sessionId}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 export function registerMemoryCommands(program: Command, io: ProgramIO, helpers: MemoryCommandHelpers): void {
   const memory = program.command("memory").description("Personal user-memory facts / preferences");
 
@@ -250,6 +273,24 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
           io.stdout(`  ↳ was "${prev.value}" until ${prev.until}\n`);
         }
       }
+    });
+
+  memory
+    .command("why")
+    .description("Show WHY Muse remembers a fact — when + which conversation it was learned from")
+    .argument("<key>", "Fact / preference key, e.g. `muse memory why home_city`")
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …)")
+    .option("--json", "Print the raw provenance records instead of the formatted view")
+    .action(async (key: string, options: MemoryCommonOptions) => {
+      const userId = resolveMemoryUserId(options.user, options.persona);
+      const store = new FileBeliefProvenanceStore(defaultBeliefProvenanceFile());
+      const records = await store.query(userId, normalizeMemoryKey(key));
+      if (options.json) {
+        helpers.writeOutput(io, records);
+        return;
+      }
+      io.stdout(formatBeliefWhy(records, key));
     });
 
   memory

@@ -352,6 +352,16 @@ export {
   sanitizeUserMemoryValue
 } from "./memory-user-store.js";
 
+export {
+  defaultBeliefProvenanceFile,
+  FileBeliefProvenanceStore,
+  MAX_BELIEF_PROVENANCE_ENTRIES,
+  readBeliefProvenance,
+  writeBeliefProvenance,
+  type BeliefProvenance,
+  type BeliefProvenanceStore
+} from "./belief-provenance-store.js";
+
 // File-backed UserMemoryStore — the JARVIS-class persistent layer for
 // the daily-driver path that doesn't run Postgres. `~/.muse/user-memory.json`
 // keyed by userId.

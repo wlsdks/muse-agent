@@ -16,13 +16,25 @@
  */
 
 import type { ModelMessage, ModelProvider, ModelResponse } from "@muse/model";
-import { stripUntrustedTerminalChars, type JsonObject } from "@muse/shared";
+import { redactSecretsInText, stripUntrustedTerminalChars, type JsonObject } from "@muse/shared";
 
+import type { BeliefProvenance, BeliefProvenanceStore } from "./belief-provenance-store.js";
+import { normalizeMemoryKey } from "./memory-user-store.js";
 import type {
   UserGoalSlot,
   UserMemoryStore,
   UserVetoSlot
 } from "./index.js";
+
+/** Character cap on the user-message snippet stored as belief evidence. */
+const PROVENANCE_EXCERPT_MAX = 160;
+
+interface ProvenanceContext {
+  readonly store: BeliefProvenanceStore;
+  readonly sessionId?: string;
+  readonly evidenceExcerpt?: string;
+  readonly now: () => number;
+}
 
 // Structural duck-type of @muse/agent-core's HookStage / AgentRunContext.
 // We avoid importing from agent-core because agent-core depends on
@@ -48,6 +60,13 @@ export interface UserMemoryAutoExtractOptions {
   readonly store: UserMemoryStore;
   readonly modelProvider: ModelProvider;
   readonly model: string;
+  /**
+   * Optional belief-provenance store (Hindsight evidence pointer). When
+   * wired, each auto-extracted fact/preference records where it was learned
+   * (when / session / a user-message excerpt). Fail-open: a provenance write
+   * failure never blocks the memory write; absent ⇒ exact no-op.
+   */
+  readonly provenanceStore?: BeliefProvenanceStore;
   readonly maxFactsPerExchange?: number;
   readonly maxPreferencesPerExchange?: number;
   readonly maxVetoesPerExchange?: number;
@@ -214,6 +233,17 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
         if (!payload) {
           return;
         }
+        const provenance: ProvenanceContext | undefined = options.provenanceStore
+          ? {
+              store: options.provenanceStore,
+              now,
+              ...(readSessionId(context) ? { sessionId: readSessionId(context) } : {}),
+              evidenceExcerpt: redactSecretsInText(stripUntrustedTerminalChars(userPrompt))
+                .replace(/\s+/gu, " ")
+                .trim()
+                .slice(0, PROVENANCE_EXCERPT_MAX)
+            }
+          : undefined;
         await persist(options.store, userId, payload, {
           maxFacts,
           maxGoals,
@@ -221,7 +251,7 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
           maxPreferences,
           maxValue,
           maxVetoes
-        });
+        }, provenance);
       } catch {
         // fail-open — including the timeout path. The next run
         // is not blocked.
@@ -257,6 +287,11 @@ async function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promis
 
 function readUserId(context: AgentRunContextView): string | undefined {
   const candidate = context.input.metadata?.userId;
+  return typeof candidate === "string" && candidate.trim().length > 0 ? candidate : undefined;
+}
+
+function readSessionId(context: AgentRunContextView): string | undefined {
+  const candidate = context.input.metadata?.sessionId;
   return typeof candidate === "string" && candidate.trim().length > 0 ? candidate : undefined;
 }
 
@@ -423,7 +458,8 @@ async function persist(
   store: UserMemoryStore,
   userId: string,
   payload: ExtractionPayload,
-  limits: PersistLimits
+  limits: PersistLimits,
+  provenance?: ProvenanceContext
 ): Promise<void> {
   const factEntries = sanitizeEntries(payload.facts, limits.maxFacts, limits.maxKey, limits.maxValue);
   const preferenceEntries = sanitizeEntries(
@@ -451,11 +487,30 @@ async function persist(
   // fail-open, and partial success across 16 writes is preferable
   // to all-or-nothing on the first failure.
   const writes: Promise<void>[] = [];
+  // Provenance entries are COLLECTED and written in one batch after the
+  // memory writes — recording them as concurrent per-key writes would race
+  // on the shared provenance file (last write wins).
+  const learnedAt = provenance ? new Date(provenance.now()).toISOString() : "";
+  const provenanceEntries: BeliefProvenance[] = [];
+  const collectProvenance = (kind: "fact" | "preference", key: string, value: string): void => {
+    if (!provenance) return;
+    provenanceEntries.push({
+      userId,
+      key: normalizeMemoryKey(key),
+      kind,
+      value,
+      learnedAt,
+      ...(provenance.sessionId ? { sessionId: provenance.sessionId } : {}),
+      ...(provenance.evidenceExcerpt ? { evidenceExcerpt: provenance.evidenceExcerpt } : {})
+    });
+  };
   for (const [key, value] of factEntries) {
     writes.push(safeWrite(store.upsertFact(userId, key, value)));
+    collectProvenance("fact", key, value);
   }
   for (const [key, value] of preferenceEntries) {
     writes.push(safeWrite(store.upsertPreference(userId, key, value)));
+    collectProvenance("preference", key, value);
   }
   // Typed-slot writes are skipped silently when the store doesn't
   // support upsertUserModelSlot (an optional method on
@@ -485,6 +540,9 @@ async function persist(
     }
   }
   await Promise.all(writes);
+  if (provenance && provenanceEntries.length > 0) {
+    await safeWrite(provenance.store.recordMany(provenanceEntries));
+  }
 }
 
 /**
