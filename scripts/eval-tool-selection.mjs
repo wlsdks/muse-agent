@@ -121,6 +121,42 @@ async function buildTimeToolsScenario() {
   }
 }
 
+// Muse's REAL actuator + perception tools (@muse/mcp + @muse/autoconfigure)
+// exposed as ONE confusable set — the local model must discriminate
+// state-changing web actions vs smart-home services vs inbox search vs
+// personal-knowledge search vs weather in one shot. These definitions were
+// shipped while Ollama was down (their CAPABILITIES lines tagged
+// [UNVERIFIED-LIVE]); this scenario is the live selection proof. Built with
+// stub deps because only `.definition` (name/description/inputSchema) is read —
+// `execute` (which is what the deps feed) is never called here.
+async function buildActuatorScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const ac = await import("../packages/autoconfigure/dist/index.js");
+    const instances = [
+      mcp.createWebActionTool({ fetchImpl: fetch, approvalGate: {}, actionLogFile: "/tmp/eval-actuator.json", userId: "eval" }),
+      mcp.createHomeActionTool({ baseUrl: "http://localhost", token: "eval", approvalGate: {}, actionLogFile: "/tmp/eval-actuator.json", userId: "eval" }),
+      mcp.createEmailSearchTool({ searcher: { search: async () => [] } }),
+      mcp.createWeatherTool({}),
+      ac.createNotesKnowledgeSearchTool({})
+    ];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "Post a comment on the project forum thread saying the build works now.", expectTool: "web_action", note: "post → web_action (231)" },
+      { prompt: "Reserve a table for two at 7pm tomorrow on the restaurant's booking page.", expectTool: "web_action", note: "reserve → web_action (231)" },
+      { prompt: "Activate the bedtime scene.", expectTool: "home_action", note: "scene → home_action (223)" },
+      { prompt: "Run my good night routine.", expectTool: "home_action", note: "routine/script → home_action (223)" },
+      { prompt: "Find the email from the bank about my statement.", expectTool: "search_email", note: "inbox search → search_email, NOT knowledge_search (199)" },
+      { prompt: "Any news about the Mars mission from the feeds I follow?", expectTool: "knowledge_search", note: "feeds news → knowledge_search, NOT web/search_email (229/230)" },
+      { prompt: "Will it rain on Saturday?", expectTool: "weather", argIncludes: /sat/i, note: "upcoming-day forecast → weather with when=Saturday (202)" }
+    ];
+    return { label: "actuator-tools (confusable set)", tools, cases: cases.filter((c) => byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "actuator-tools", skip: `@muse/mcp or @muse/autoconfigure not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 async function ollamaReachable() {
   try {
     const res = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(1500) });
@@ -154,7 +190,8 @@ async function main() {
   const scenarios = [
     { label: "synthetic", tools: SYNTHETIC_TOOLS, cases: SYNTHETIC_CASES },
     await buildRealScenario(),
-    await buildTimeToolsScenario()
+    await buildTimeToolsScenario(),
+    await buildActuatorScenario()
   ];
 
   let total = 0;
