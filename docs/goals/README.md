@@ -667,3 +667,9 @@ Append one line when a discovery path is evaluated and deferred:
   report") and the objective status ("- watch the deploy until green")
   in a single digest. Birthday (P27-2) and calendar (P27-3) inclusion
   are each pinned by their slice smoke. No drift, no bullet reopened.
+- P28 audit — adc15e7c — PASS: P28 check re-run green (knowledge-recall
+  9/9) AND exercised end-to-end at the knowledge_search tool surface —
+  a 4-chunk corpus ranked s1>s2>s3>s4 rendered in edge-loaded order
+  "s1 s3 s4 s2" (best s1 first so citation is preserved; 2nd-best s2 at
+  the far edge; order differs from pure relevance). Edge-loading
+  composes through the real tool; no drift, no bullet reopened.
