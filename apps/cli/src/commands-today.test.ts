@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { writeFollowups, writeReminders, type PersistedFollowup, type PersistedReminder } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
-import { formatConnectionsSection, formatEvents, formatHeadlines, formatTasks, formatTodayBrief, formatWeatherLine, parseLookaheadHours, pickConnectionQuery, readDueFollowups, readDueReminders, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today.js";
+import { formatConnectionsSection, formatEvents, formatHeadlines, formatTasks, formatTodayBrief, formatTodayConflicts, formatWeatherLine, parseLookaheadHours, pickConnectionQuery, readDueFollowups, readDueReminders, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today.js";
 
 const ESC = String.fromCharCode(27);
 
@@ -275,6 +275,43 @@ describe("formatHeadlines", () => {
     expect(formatHeadlines([])).toBe("");
   });
 })
+
+describe("formatTodayConflicts — proactive double-booking warning in the brief", () => {
+  it("warns when two timed events overlap", () => {
+    const out = formatTodayConflicts([
+      { title: "Review", startsAtIso: "2026-05-27T15:00:00.000Z", endsAtIso: "2026-05-27T16:00:00.000Z" },
+      { title: "Call", startsAtIso: "2026-05-27T15:30:00.000Z", endsAtIso: "2026-05-27T16:30:00.000Z" }
+    ]);
+    expect(out).toContain("Double-booked (1)");
+    expect(out).toContain('"Review" overlaps "Call"');
+    expect(out).toContain("15:30–16:00 UTC");
+  });
+
+  it("is silent when events don't overlap, are back-to-back, or lack end times", () => {
+    expect(formatTodayConflicts([
+      { title: "A", startsAtIso: "2026-05-27T09:00:00.000Z", endsAtIso: "2026-05-27T10:00:00.000Z" },
+      { title: "B", startsAtIso: "2026-05-27T10:00:00.000Z", endsAtIso: "2026-05-27T11:00:00.000Z" }
+    ])).toBe("");
+    // No end times (e.g. a remote briefing) ⇒ no warning, never throws.
+    expect(formatTodayConflicts([
+      { title: "X", startsAtIso: "2026-05-27T15:00:00.000Z" },
+      { title: "Y", startsAtIso: "2026-05-27T15:30:00.000Z" }
+    ])).toBe("");
+    expect(formatTodayConflicts(undefined)).toBe("");
+  });
+
+  it("rides into the full brief output when events conflict", () => {
+    const out = formatTodayBrief({
+      generatedAt: "2026-05-27T08:00:00.000Z",
+      lookaheadHours: 24,
+      events: [
+        { id: "a", title: "Review", startsAtIso: "2026-05-27T15:00:00.000Z", endsAtIso: "2026-05-27T16:00:00.000Z" },
+        { id: "b", title: "Call", startsAtIso: "2026-05-27T15:30:00.000Z", endsAtIso: "2026-05-27T16:30:00.000Z" }
+      ]
+    }, true);
+    expect(out).toContain("Double-booked");
+  });
+});
 
 describe("formatTodayBrief", () => {
   it("composes header + populated sections into one text block", () => {
