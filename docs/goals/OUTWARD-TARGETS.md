@@ -64,9 +64,23 @@ turn; never half-shipped.
 
 ## Active target
 
-**P28 — Position retrieved context for the local model.** After hybrid
-recall (P23) + MMR diversity (P24), order the passages the model
-actually reads so it uses them well.
+**P29 — Watch the resident daemon work.** A user running `muse daemon`
+in the foreground should see what it's doing, not just trust the
+channel — Presence/observability for the always-on process.
+
+- [x] **P29-1 `muse daemon --print` echoes deliveries to stdout.** A
+  send-also-prints Proxy over the messaging registry echoes every
+  delivered notice (from ANY tick) to stdout while still delivering to
+  the channel, so the foreground daemon is observable inline. Proven:
+  with `--print` the delivered notice text appears in stdout, without
+  it only the tick summary, channel delivery unaffected — see
+  `apps/cli/src/commands-daemon.test.ts`.
+
+## Delivered — P28 (position retrieved context for the local model)
+
+knowledge_search edge-loads the top-K (Lost in the Middle) so the most
+relevant passages sit at the context edges. Audited PASS (README
+ledger, `P28 audit`).
 
 - [x] **P28-1 Edge-load knowledge_search results (Lost in the Middle).**
   Both `knowledge_search` surfaces reorder the top-K via

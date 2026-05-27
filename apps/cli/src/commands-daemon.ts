@@ -341,6 +341,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
     .command("daemon")
     .description("Run Muse's background daemon (proactive notices) in one process. --once runs a single tick and exits.")
     .option("--once", "Run exactly one tick of each enabled daemon, then exit")
+    .option("--print", "Also echo every delivered notice to stdout (watch the daemon work in the foreground)")
     .option("--status", "Print which daemon ticks are enabled for the current config, then exit")
     .option("--init", "Write the resolved provider + destination to the daemon config file, then exit")
     .option("--install", "Write a macOS LaunchAgent plist so the daemon survives logout/reboot, then exit")
@@ -350,6 +351,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
     .option("--destination <id>", "Messaging destination — chat/channel id or log tag (default MUSE_PROACTIVE_DESTINATION or '@me')")
     .action(async (options: {
       readonly once?: boolean;
+      readonly print?: boolean;
       readonly status?: boolean;
       readonly init?: boolean;
       readonly install?: boolean;
@@ -394,15 +396,32 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         return;
       }
 
-      const messagingRegistry = makeMessaging(e);
-      if (!messagingRegistry.has(provider)) {
-        const known = messagingRegistry.list().map((p) => p.id);
+      const baseMessagingRegistry = makeMessaging(e);
+      if (!baseMessagingRegistry.has(provider)) {
+        const known = baseMessagingRegistry.list().map((p) => p.id);
         const suggestion = closestCommandName(provider, known);
         const hint = suggestion ? ` — did you mean --provider ${suggestion}?` : "";
         io.stderr(`Provider '${provider}' is not registered${hint}. Try --provider log (always available).\n`);
         process.exitCode = 1;
         return;
       }
+      // --print echoes every delivered notice to stdout too, so a
+      // user running `muse daemon` in the foreground watches it work
+      // inline — JARVIS speaking in the room, not only to the channel.
+      const messagingRegistry: MessagingProviderRegistry = options.print
+        ? new Proxy(baseMessagingRegistry, {
+            get(target, prop, receiver) {
+              if (prop === "send") {
+                return async (providerId: string, message: { destination: string; text: string }) => {
+                  const result = await target.send(providerId, message);
+                  io.stdout(`  📨 ${message.destination}: ${message.text}\n`);
+                  return result;
+                };
+              }
+              return Reflect.get(target, prop, receiver);
+            }
+          })
+        : baseMessagingRegistry;
 
       const calendarRegistry = buildCalendarRegistry(e);
       const tasksFile = resolveTasksFile(e);

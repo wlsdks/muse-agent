@@ -581,6 +581,38 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("--print echoes every delivered notice to stdout AND still delivers to the channel", async () => {
+    const env = tmpEnv();
+    const dueSoon = new Date(Date.now() + 5 * 60_000).toISOString();
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({
+      tasks: [{ id: "t1", title: "Echoed memo", status: "open", dueAt: dueSoon, createdAt: "2026-01-01T00:00:00Z" }]
+    }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemon(["--once", "--print", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toContain("📨 555:");
+    expect(res.stdout).toContain("Echoed memo");
+    expect(sent).toHaveLength(1); // the channel still received it
+  });
+
+  it("without --print the delivered notice is NOT echoed to stdout (only the tick summary)", async () => {
+    const env = tmpEnv();
+    const dueSoon = new Date(Date.now() + 5 * 60_000).toISOString();
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({
+      tasks: [{ id: "t1", title: "Quiet memo", status: "open", dueAt: dueSoon, createdAt: "2026-01-01T00:00:00Z" }]
+    }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.stdout).not.toContain("📨");
+    expect(sent).toHaveLength(1);
+  });
+
   it("an unknown provider fails closed — exits non-zero and sends nothing", async () => {
     const env = tmpEnv();
     writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
