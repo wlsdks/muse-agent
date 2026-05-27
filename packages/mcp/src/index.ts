@@ -706,6 +706,7 @@ export {
   readSessionLock,
   runDueProactiveNotices,
   selectProactiveSink,
+  sortImminentByStart,
   writeProactiveFired,
   writeSessionLock,
   type ProactiveActivitySource,

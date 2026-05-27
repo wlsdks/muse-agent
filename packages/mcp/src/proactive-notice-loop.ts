@@ -173,6 +173,27 @@ function firedKey(entry: { readonly kind: string; readonly id: string; readonly 
   return `${entry.kind} ${entry.id} ${entry.startIso}`;
 }
 
+/**
+ * Order imminent items soonest-first so the most time-critical one
+ * interrupts first (Proactive Agent, arXiv 2410.12361: prioritise WHAT to
+ * surface). Items are collected per-source (calendar, then tasks), so without
+ * this a task due in 2 min could fire after a calendar event 9 min out purely
+ * by insertion order. Stable: equal start times keep their collection order.
+ * Non-finite / missing start times sort last (deterministic, never NaN-poison).
+ */
+export function sortImminentByStart<T extends { readonly startsAt: Date }>(items: readonly T[]): T[] {
+  return [...items].sort((a, b) => {
+    const aMs = a.startsAt instanceof Date ? a.startsAt.getTime() : Number.NaN;
+    const bMs = b.startsAt instanceof Date ? b.startsAt.getTime() : Number.NaN;
+    const aOk = Number.isFinite(aMs);
+    const bOk = Number.isFinite(bMs);
+    if (aOk && bOk) return aMs - bMs;
+    if (aOk) return -1;
+    if (bOk) return 1;
+    return 0;
+  });
+}
+
 interface ImminentItem {
   readonly kind: ProactiveFiredKind;
   readonly id: string;
@@ -512,7 +533,7 @@ export async function runDueProactiveNotices(
     { maxAgeMs: terminalPresenceMaxAgeMs, nowMs: nowDate.getTime() }
   );
 
-  for (const item of imminent) {
+  for (const item of sortImminentByStart(imminent)) {
     const candidate: ProactiveFiredEntry = {
       firedAt: now().toISOString(),
       id: item.id,
