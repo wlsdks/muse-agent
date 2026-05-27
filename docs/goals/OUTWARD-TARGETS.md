@@ -68,12 +68,18 @@ turn; never half-shipped.
 proven-once pieces into one launchable, observable process and
 prove startup→delivery end-to-end. Pick the highest undone bullet.
 
-- [ ] **P22-1 `muse daemon` launcher.** One user-facing CLI command
-  starts all configured ticks (proactive · followup · objectives ·
-  ambient · web-watch) in a single shared agent-core process.
-  Check: CLI smoke — the command boots, registers each ENABLED
-  tick, one tick fires against a contract-faithful fake sink and
-  delivers, a DISABLED tick is skipped, SIGINT shuts down cleanly.
+- [x] **P22-1a `muse daemon --once` proactive seam.** A user-facing
+  CLI command launches the proactive tick in one process and returns
+  after a single tick (the testable launcher seam, no infinite loop).
+  Delivered + verified by a contract-faithful CLI smoke: an imminent
+  task is delivered to a capturing messaging sink, a quiet tick sends
+  nothing, an unknown provider fails closed (no send) — see
+  `apps/cli/src/commands-daemon.test.ts`.
+- [ ] **P22-1b full multi-tick launcher.** The same `muse daemon`
+  process runs the remaining ticks (followup · objectives · ambient ·
+  web-watch) on a shared interval with SIGINT clean shutdown. Check:
+  CLI smoke — each ENABLED tick fires once against a contract-faithful
+  sink, a DISABLED tick is skipped, SIGINT stops the loop cleanly.
 - [ ] **P22-2 macOS active-window perception feeds the running
   daemon.** Wire `MacOsActiveWindowSource` into the launcher so a
   real OS signal drives a proactive notice on a tick. Check:
