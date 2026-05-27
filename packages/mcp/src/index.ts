@@ -624,6 +624,7 @@ export {
 export {
   createMessagingObjectiveActuator,
   createModelObjectiveEvaluator,
+  createProposingObjectiveActuator,
   parseObjectiveVerdict,
   type MessagingObjectiveActuatorOptions,
   type ModelObjectiveEvaluatorOptions

@@ -81,12 +81,14 @@ JARVIS frontier — "acting" — done strictly per `outbound-safety.md`.
   re-approve→no double-send; decline→no send+refused; failure→pending)
   and `apps/cli/src/commands-propose.test.ts` (list/approve/decline
   surface). No autonomous send anywhere.
-- [ ] **P31-2 Producer: the daemon proposes.** Wire a daemon/objective
-  trigger to call `proposeMessageAction` when it detects something
-  actionable (e.g. a calendar conflict → propose a reschedule note), so
-  proposals actually arrive for the user to confirm. Check: a daemon
-  tick over a contract-faithful fixture creates a pending proposal
-  (and still sends nothing until confirmed).
+- [x] **P31-2 Producer: the daemon proposes.** A draft-first objective
+  actuator (`createProposingObjectiveActuator`) makes a met standing
+  objective PROPOSE its message instead of sending it; the daemon uses
+  it when `MUSE_OBJECTIVES_PROPOSE` is set (default off → unchanged
+  auto-send). Proven: `muse daemon --once` with propose-mode + a met
+  objective creates a pending proposed action and sends NOTHING —
+  `apps/cli/src/commands-daemon.test.ts`. **P31 complete: the full
+  perceive→propose→confirm→act loop, with no autonomous send.**
 
 ## Delivered — P30 (make the daemon debuggable)
 

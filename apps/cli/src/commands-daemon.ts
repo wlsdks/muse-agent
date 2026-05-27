@@ -29,6 +29,7 @@ import {
   createAmbientNoticeRunner,
   createMessagingObjectiveActuator,
   createModelObjectiveEvaluator,
+  createProposingObjectiveActuator,
   createWebWatchRunner,
   deriveBriefingImminent,
   deriveCalendarBriefingImminent,
@@ -523,9 +524,17 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       // Standing objectives re-evaluate via the model and notify on the
       // same channel when met. Needs a model — skipped without one.
       const objectivesFile = resolveObjectivesFile(e);
-      const objectivesActuator = followupModel
-        ? createMessagingObjectiveActuator({ destination, providerId: provider, registry: messagingRegistry })
-        : undefined;
+      // Draft-first mode (MUSE_OBJECTIVES_PROPOSE): a met objective
+      // PROPOSES its message for the user to confirm (`muse propose`)
+      // instead of the daemon sending it autonomously.
+      const proposedActionsFile = e.MUSE_PROPOSED_ACTIONS_FILE?.trim()?.length
+        ? e.MUSE_PROPOSED_ACTIONS_FILE.trim()
+        : join(homedir(), ".muse", "proposed-actions.json");
+      const objectivesActuator = !followupModel
+        ? undefined
+        : parseBoolean(e.MUSE_OBJECTIVES_PROPOSE, false)
+          ? createProposingObjectiveActuator({ destination, providerId: provider, proposedActionsFile })
+          : createMessagingObjectiveActuator({ destination, providerId: provider, registry: messagingRegistry });
       const objectivesEvaluate = followupModel
         ? createModelObjectiveEvaluator({ model: followupModel.model, modelProvider: followupModel.modelProvider })
         : undefined;

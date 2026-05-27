@@ -19,6 +19,7 @@ import { sendWithRetry } from "./messaging-retry.js";
 import { appendActionLog } from "./personal-action-log-store.js";
 import type { ObjectiveEvaluation } from "./objective-evaluation-loop.js";
 import type { StandingObjective } from "./personal-objectives-store.js";
+import { proposeMessageAction } from "./personal-proposed-action-store.js";
 import type { ProactiveModelProviderLike } from "./proactive-notice-loop.js";
 
 const SYSTEM_PROMPT =
@@ -220,6 +221,46 @@ export function createMessagingObjectiveActuator(options: MessagingObjectiveActu
     escalate: async (objective, reason) => {
       await send(`⚠ Objective needs you: ${objective.spec} — ${reason}`);
       await record(objective, "objective escalated — user notified", reason);
+    }
+  };
+}
+
+/**
+ * Draft-first objective actuator (outbound-safety): instead of sending
+ * the "objective met" / escalation message itself, it PROPOSES the
+ * message — persisting a pending proposed action the user confirms via
+ * `muse propose approve`. Nothing leaves the machine on the daemon's
+ * own judgement. Use this when an objective's notification should be
+ * reviewed before it goes out (e.g. to a third party).
+ */
+export function createProposingObjectiveActuator(options: {
+  readonly proposedActionsFile: string;
+  readonly providerId: string;
+  readonly destination: string;
+}): {
+  readonly act: (objective: StandingObjective) => Promise<void>;
+  readonly escalate: (objective: StandingObjective, reason: string) => Promise<void>;
+} {
+  return {
+    act: async (objective) => {
+      await proposeMessageAction(options.proposedActionsFile, {
+        destination: options.destination,
+        providerId: options.providerId,
+        reason: `standing objective ${objective.id} met`,
+        summary: `Objective met: ${objective.spec}`,
+        text: `✅ Objective met: ${objective.spec}`,
+        userId: objective.userId
+      });
+    },
+    escalate: async (objective, reason) => {
+      await proposeMessageAction(options.proposedActionsFile, {
+        destination: options.destination,
+        providerId: options.providerId,
+        reason,
+        summary: `Objective needs you: ${objective.spec}`,
+        text: `⚠ Objective needs you: ${objective.spec} — ${reason}`,
+        userId: objective.userId
+      });
     }
   };
 }

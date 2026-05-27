@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { writeFollowups, writeObjectives } from "@muse/mcp";
+import { readProposedActions, writeFollowups, writeObjectives } from "@muse/mcp";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
@@ -84,6 +84,7 @@ function tmpEnv(): NodeJS.ProcessEnv {
     MUSE_OBJECTIVES_FILE: join(dir, "objectives.json"),
     MUSE_PROACTIVE_HISTORY_FILE: join(dir, "history.json"),
     MUSE_PROACTIVE_SIDECAR_FILE: join(dir, "fired.json"),
+    MUSE_PROPOSED_ACTIONS_FILE: join(dir, "proposed.json"),
     MUSE_REMINDERS_FILE: join(dir, "reminders.json"),
     MUSE_TASKS_FILE: join(dir, "tasks.json")
   };
@@ -355,6 +356,34 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(res.stdout).toMatch(/objectives: 1 fired/);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.text).toContain("Objective met: ping me when the build is green");
+  });
+
+  it("--once with MUSE_OBJECTIVES_PROPOSE proposes a met objective instead of sending it", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_OBJECTIVES_PROPOSE: "true" };
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    await writeObjectives(env.MUSE_OBJECTIVES_FILE!, [
+      { attempts: 0, createdAt: "2026-01-01T00:00:00Z", id: "obj1", kind: "watch", spec: "ping me when the build is green", status: "active", userId: "stark" }
+    ]);
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+    const metModel: DaemonHelpers["resolveFollowupModel"] = async () => ({
+      model: "test-model",
+      modelProvider: { generate: async () => ({ output: '{"outcome":"met"}' }) } as never
+    });
+
+    const res = await runDaemon(
+      ["--once", "--provider", "telegram", "--destination", "555"],
+      { env, registry, resolveFollowupModel: metModel }
+    );
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toMatch(/objectives: 1 fired/);
+    // draft-first: NOTHING was sent — a proposal is waiting for confirmation
+    expect(sent).toHaveLength(0);
+    const proposals = await readProposedActions(env.MUSE_PROPOSED_ACTIONS_FILE!);
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]!.status).toBe("pending");
+    expect(proposals[0]!.text).toContain("ping me when the build is green");
   });
 
   it("objectives tick is skipped when no model resolves (hermetic default)", async () => {
