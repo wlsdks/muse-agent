@@ -596,3 +596,15 @@ Append one line when a discovery path is evaluated and deferred:
   [UNVERIFIED-LIVE] for this sweep; restoring a fast smoke:live
   (shard endpoints / per-request timeout) stays the deferred Autonomy
   follow-up.
+- P22 audit — ea4d4af9 — PASS: all 13 P22 bullets re-verified together
+  (commands-daemon.test.ts 28/28 green) AND exercised as ONE real
+  end-to-end user flow against the BUILT CLI (apps/cli/dist):
+  `muse daemon --init --provider log` wrote daemon.json →
+  `muse daemon --status` (no flags) read "log" back and reported
+  proactive/followup/objectives enabled → `muse daemon --install`
+  wrote a plist that passed `plutil -lint: OK` → `muse daemon --once`
+  fired the imminent task (proactive 1/1) with all five ticks running
+  and a clean `daemon --once complete`. The pieces compose; no drift,
+  no bullet reopened. (Note: the audit run used provider=log — local,
+  no third-party send — and read the real ~/.muse/followups.json, a
+  benign local delivery.)
