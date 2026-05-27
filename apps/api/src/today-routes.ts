@@ -97,7 +97,7 @@ export function registerTodayRoutes(server: FastifyInstance, gate: TodayRoutesGa
     ]);
 
     return {
-      events,
+      events: events ? events.map(serializeTodayEvent) : undefined,
       followups,
       generatedAt: now.toISOString(),
       lookaheadHours: hours,
@@ -106,6 +106,29 @@ export function registerTodayRoutes(server: FastifyInstance, gate: TodayRoutesGa
       tasks
     };
   });
+}
+
+/**
+ * Map a calendar event to the briefing's wire shape the CLI consumes
+ * (`startsAtIso` / `endsAtIso`, not raw `startsAt`/`endsAt` Dates). Without
+ * this the CLI — which reads `event.startsAtIso` — saw `undefined` and the
+ * `muse today` events render threw; carrying `endsAtIso` also lets the brief's
+ * double-booking warning fire on the remote path, not just `--local`.
+ */
+function serializeTodayEvent(event: CalendarEvent): {
+  readonly id: string;
+  readonly title: string;
+  readonly startsAtIso: string;
+  readonly endsAtIso: string;
+  readonly allDay: boolean;
+} {
+  return {
+    allDay: event.allDay,
+    endsAtIso: event.endsAt.toISOString(),
+    id: event.id,
+    startsAtIso: event.startsAt.toISOString(),
+    title: event.title
+  };
 }
 
 /**

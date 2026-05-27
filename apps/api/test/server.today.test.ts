@@ -38,7 +38,7 @@ describe("api server: GET /api/today", () => {
     const reply = await server.inject({ method: "GET", url: "/api/today?lookaheadHours=2" });
     expect(reply.statusCode).toBe(200);
     const body = reply.json() as {
-      events: { id: string; title: string }[];
+      events: { id: string; title: string; startsAtIso: string; endsAtIso: string }[];
       generatedAt: string;
       lookaheadHours: number;
       notes: string[];
@@ -48,7 +48,12 @@ describe("api server: GET /api/today", () => {
     expect(body.lookaheadHours).toBe(2);
     expect(typeof body.generatedAt).toBe("string");
     expect(body.tasks.map((task) => task.id)).toEqual(["t-new", "t-mid"]);
-    expect(body.events.some((entry) => entry.id === event.id)).toBe(true);
+    const seededEvent = body.events.find((entry) => entry.id === event.id);
+    expect(seededEvent).toBeDefined();
+    // Contract: the CLI reads startsAtIso/endsAtIso (not raw startsAt/endsAt) —
+    // these MUST be ISO strings or `muse today`'s events render throws.
+    expect(typeof seededEvent?.startsAtIso).toBe("string");
+    expect(typeof seededEvent?.endsAtIso).toBe("string");
     expect(body.notes).toEqual(expect.arrayContaining(["diary.md", "shopping.md"]));
   });
 
