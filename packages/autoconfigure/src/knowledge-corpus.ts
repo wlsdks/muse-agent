@@ -106,6 +106,34 @@ export interface FeedsKnowledgeSource {
   recentEntries(limit: number): Promise<readonly FeedEntryLike[]> | readonly FeedEntryLike[];
 }
 
+export interface EpisodeSummaryLike {
+  /** Stable id — the citation fallback when there's no date. */
+  readonly id: string;
+  /** When the session happened, surfaced in the citation, e.g. "2026-05-20". */
+  readonly when?: string;
+  /** The summarised session text. */
+  readonly summary: string;
+}
+
+export interface EpisodesKnowledgeSource {
+  /** Most-recent cross-session summaries, newest first. */
+  recentEpisodes(limit: number): Promise<readonly EpisodeSummaryLike[]> | readonly EpisodeSummaryLike[];
+}
+
+export interface UserMemoryFactLike {
+  /** Stable key for the fact/preference, e.g. "dentist" — used in the citation. */
+  readonly key: string;
+  /** The remembered value. */
+  readonly value: string;
+  /** "fact" | "preference" | … — surfaced so a citation reads `memory/preference:tone`. */
+  readonly kind?: string;
+}
+
+export interface UserMemoryKnowledgeSource {
+  /** The user's auto-extracted + manually-saved facts/preferences. */
+  facts(): Promise<readonly UserMemoryFactLike[]> | readonly UserMemoryFactLike[];
+}
+
 export interface AssembleKnowledgeCorpusOptions {
   readonly notesProvider?: NotesProvider;
   /** Open tasks become corpus chunks sourced `task/<id>` — the user's todos hold key facts. */
@@ -124,6 +152,10 @@ export interface AssembleKnowledgeCorpusOptions {
   readonly objectivesSource?: ObjectivesSource;
   /** Recent watched RSS/Atom feed entries become corpus chunks sourced `feed/<title>` — "any news about X?". */
   readonly feedsSource?: FeedsKnowledgeSource;
+  /** Past cross-session summaries become corpus chunks sourced `episode/<when>` — "what did we discuss about X before?". */
+  readonly episodesSource?: EpisodesKnowledgeSource;
+  /** The user's remembered facts/preferences become corpus chunks sourced `memory/<key>` — "what have I told Muse about myself?". */
+  readonly userMemorySource?: UserMemoryKnowledgeSource;
   readonly extraChunks?: readonly KnowledgeChunk[];
   /** Cap notes pulled into the corpus. Default 200. */
   readonly maxNotes?: number;
@@ -136,6 +168,8 @@ export interface AssembleKnowledgeCorpusOptions {
   readonly maxEmails?: number;
   /** Cap recent feed entries pulled into the corpus. Default 50. */
   readonly maxFeedEntries?: number;
+  /** Cap recent session summaries pulled into the corpus. Default 50. */
+  readonly maxEpisodes?: number;
   /** Injectable clock for the calendar window (test only). */
   readonly now?: () => number;
 }
@@ -339,6 +373,41 @@ export async function assembleKnowledgeCorpus(
     }
   }
 
+  if (options.episodesSource) {
+    const maxEpisodes = Math.max(1, Math.trunc(finiteOr(options.maxEpisodes, 50)));
+    let episodes: readonly EpisodeSummaryLike[];
+    try {
+      episodes = await options.episodesSource.recentEpisodes(maxEpisodes);
+    } catch {
+      episodes = [];
+    }
+    for (const episode of episodes.slice(0, maxEpisodes)) {
+      const summary = episode.summary.trim();
+      if (summary.length === 0) {
+        continue;
+      }
+      const text = episode.when ? `(${episode.when}) ${summary}` : summary;
+      chunks.push({ source: labelSource("episode", episode.when, episode.id), text: text.length > maxChars ? text.slice(0, maxChars) : text });
+    }
+  }
+
+  if (options.userMemorySource) {
+    let facts: readonly UserMemoryFactLike[];
+    try {
+      facts = await options.userMemorySource.facts();
+    } catch {
+      facts = [];
+    }
+    for (const fact of facts) {
+      const value = fact.value.trim();
+      if (value.length === 0) {
+        continue;
+      }
+      const text = `${fact.key}: ${value}`;
+      chunks.push({ source: labelSource("memory", fact.kind ? `${fact.kind}:${fact.key}` : fact.key, fact.key), text: text.length > maxChars ? text.slice(0, maxChars) : text });
+    }
+  }
+
   if (options.extraChunks?.length) {
     chunks.push(...options.extraChunks);
   }
@@ -405,12 +474,15 @@ export interface NotesKnowledgeSearchToolOptions {
   readonly followupsSource?: FollowupsSource;
   readonly objectivesSource?: ObjectivesSource;
   readonly feedsSource?: FeedsKnowledgeSource;
+  readonly episodesSource?: EpisodesKnowledgeSource;
+  readonly userMemorySource?: UserMemoryKnowledgeSource;
   readonly embed: (text: string) => Promise<readonly number[]>;
   readonly topK?: number;
   readonly maxNotes?: number;
   readonly maxCharsPerNote?: number;
   readonly maxEmails?: number;
   readonly maxFeedEntries?: number;
+  readonly maxEpisodes?: number;
   readonly extraChunks?: readonly KnowledgeChunk[];
 }
 
@@ -424,7 +496,7 @@ export interface NotesKnowledgeSearchToolOptions {
 export function createNotesKnowledgeSearchTool(options: NotesKnowledgeSearchToolOptions): MuseTool {
   return {
     definition: {
-      description: "Search everything the user has saved or subscribed to — their notes, ingested documents, tasks, calendar, contacts, recent emails, reminders, follow-ups, standing objectives, and the news/RSS feeds they watch — and return matching passages, each labelled with its [source] (cite the source you use). Use when the user asks what they know, have saved, or have heard about something, including 'any news about X' from their feeds. Do not use to open a NEW web page, or for general world facts the user never saved — answer those yourself.",
+      description: "Search EVERYTHING the user has ever told Muse or saved — their notes, ingested documents, tasks, calendar, contacts, recent emails, reminders, follow-ups, standing objectives, watched news/RSS feeds, PAST CONVERSATIONS (earlier sessions), and the facts/preferences Muse has remembered about them — and return matching passages, each labelled with its [source] (cite the source you use). Use when the user asks what they know, have saved, have heard about, what they told you before, or what you remember about them ('what did we discuss about X', 'what do you know about my Y', 'any news about Z'). Do not use to open a NEW web page, or for general world facts the user never saved — answer those yourself.",
       inputSchema: {
         additionalProperties: false,
         properties: {
@@ -451,11 +523,14 @@ export function createNotesKnowledgeSearchTool(options: NotesKnowledgeSearchTool
         ...(options.followupsSource ? { followupsSource: options.followupsSource } : {}),
         ...(options.objectivesSource ? { objectivesSource: options.objectivesSource } : {}),
         ...(options.feedsSource ? { feedsSource: options.feedsSource } : {}),
+        ...(options.episodesSource ? { episodesSource: options.episodesSource } : {}),
+        ...(options.userMemorySource ? { userMemorySource: options.userMemorySource } : {}),
         ...(options.extraChunks ? { extraChunks: options.extraChunks } : {}),
         ...(options.maxNotes !== undefined ? { maxNotes: options.maxNotes } : {}),
         ...(options.maxCharsPerNote !== undefined ? { maxCharsPerNote: options.maxCharsPerNote } : {}),
         ...(options.maxEmails !== undefined ? { maxEmails: options.maxEmails } : {}),
-        ...(options.maxFeedEntries !== undefined ? { maxFeedEntries: options.maxFeedEntries } : {})
+        ...(options.maxFeedEntries !== undefined ? { maxFeedEntries: options.maxFeedEntries } : {}),
+        ...(options.maxEpisodes !== undefined ? { maxEpisodes: options.maxEpisodes } : {})
       });
       const matches = await rankKnowledgeChunks(query, corpus, {
         embed: options.embed,
