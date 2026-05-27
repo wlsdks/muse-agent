@@ -673,3 +673,9 @@ Append one line when a discovery path is evaluated and deferred:
   "s1 s3 s4 s2" (best s1 first so citation is preserved; 2nd-best s2 at
   the far edge; order differs from pure relevance). Edge-loading
   composes through the real tool; no drift, no bullet reopened.
+- P29 audit — 99f34ee3 — PASS: P29 check re-run green (commands-daemon
+  38/38) AND exercised through the BUILT CLI — `muse daemon --once
+  --print` echoed the delivered proactive notice to stdout
+  ("📨 @me: 📋 P29 audit echo due in 5 min") alongside the tick
+  summary, clean exit. Foreground observability composes; no drift, no
+  bullet reopened.
