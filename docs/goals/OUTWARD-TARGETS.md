@@ -23,9 +23,12 @@ P0–P21 are delivered (archived in `archive/TARGETS-P0-P21.md`;
 their capability ledger in `archive/CAPABILITIES-through-2026-05-27.md`).
 Muse's daemons exist but live only inside the `apps/api` server,
 env-gated — they do NOT run as a real background process on the
-user's Mac. **This session's single theme: make the proactive /
-perception daemons actually RUN on this Mac as one user-launched
-process, and prove end-to-end that a notice really fires.**
+user's Mac. **This session pursues two sanctioned directions, the
+loop choosing the highest-value one per iteration: (A) make the
+proactive / perception daemons actually RUN on this Mac as one
+user-launched process and prove end-to-end a notice really fires
+(target P22); (B) apply good capabilities from freely-usable open
+research under the guardrails below.**
 
 Every slice is proven by a real, surface-level check (CLI smoke /
 integration / `smoke:live`) driving the real code path against a
@@ -33,6 +36,31 @@ contract-faithful fake — never a stubbed registry, never a
 happy-path-only assertion (`outbound-safety.md`). Proactive notices
 go to the user's OWN channel (low-risk path); web-watch is
 read-only — no autonomous third-party send.
+
+## Applying open research (human-directed 2026-05-28)
+
+The loop MAY adopt a capability from a paper when ALL hold; when in
+doubt, SKIP:
+
+- **Freely usable.** The paper is openly readable AND nothing
+  restricts implementing its idea — open method, no patent / licence
+  bar on use. A restricted or patent-encumbered technique is out.
+- **Local-first.** No new paid dependency, no cloud API key; runs on
+  the local Qwen / Ollama; deterministic where it can be.
+- **Cited in the CODE.** A one-line WHY comment names the paper + id
+  at the implementation site (e.g.
+  `// importance-modulated decay (FadeMem, arXiv 2601.18642)`) — an
+  allowed WHY comment per `code-style.md` — AND the `CAPABILITIES.md`
+  line names it too.
+- **Verified, effect measured.** Ships as a normal slice with a
+  green surface-level check; where feasible the check MEASURES the
+  paper's claimed effect, not just that the code runs. A research
+  idea with no runnable check is not delivered.
+
+Sizing (both directions): a slice too large for one ~10-min commit
+is DECOMPOSED across iterations — one end-to-end vertical increment
+each, per `iteration-loop.md`. Never crammed into one oversized
+turn; never half-shipped.
 
 ## Active target
 
