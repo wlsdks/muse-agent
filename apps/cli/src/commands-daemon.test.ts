@@ -339,6 +339,70 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(sent[0]!.destination).toBe("555");
   });
 
+  it("--once full daemon: all five ticks deliver end-to-end in one run", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(),
+      MUSE_AMBIENT_RULES: JSON.stringify([{ id: "r", title: "Heads up", message: "You're in Slack", match: { app: "Slack" } }]),
+      MUSE_WEB_WATCH_CONFIG: JSON.stringify([{ id: "w", url: "https://x.example", title: "Stock", message: "the item is sold out", rule: { appears: "SOLD OUT" } }])
+    };
+    const dueSoon = new Date(Date.now() + 5 * 60_000).toISOString();
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({
+      tasks: [{ id: "t1", title: "Ship the memo", status: "open", dueAt: dueSoon, createdAt: "2026-01-01T00:00:00Z" }]
+    }), "utf8");
+    writeFileSync(env.MUSE_AMBIENT_FILE!, JSON.stringify({ app: "Slack", window: "general" }), "utf8");
+    await writeFollowups(env.MUSE_FOLLOWUPS_FILE!, [
+      { createdAt: "2026-01-01T00:00:00Z", id: "fu1", scheduledFor: "2026-01-02T00:00:00Z", status: "scheduled", summary: "Check the memo", userId: "stark" }
+    ]);
+    await writeObjectives(env.MUSE_OBJECTIVES_FILE!, [
+      { attempts: 0, createdAt: "2026-01-01T00:00:00Z", id: "obj1", kind: "watch", spec: "ping when the build goes green", status: "active", userId: "stark" }
+    ]);
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+    // One model serves both followup synthesis (prose) and the objectives
+    // verdict (JSON) — branch on the evaluator prompt's "outcome" token.
+    const smartModel: DaemonHelpers["resolveFollowupModel"] = async () => ({
+      model: "test-model",
+      modelProvider: { generate: async (req: { messages?: unknown }) => {
+        const blob = JSON.stringify(req.messages ?? "");
+        return blob.includes("outcome") ? { output: '{"outcome":"met"}' } : { output: "Quick follow-up on the memo." };
+      } } as never
+    });
+    const fetchImpl = (async () => new Response("Status: SOLD OUT", { status: 200 })) as unknown as typeof globalThis.fetch;
+
+    const res = await runDaemon(
+      ["--once", "--provider", "telegram", "--destination", "555"],
+      { env, fetchImpl, registry, resolveFollowupModel: smartModel }
+    );
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toMatch(/proactive: fired 1\/1/);
+    expect(res.stdout).toMatch(/followup: fired 1\/1/);
+    expect(res.stdout).toMatch(/ambient: delivered 1/);
+    expect(res.stdout).toMatch(/web-watch: delivered 1/);
+    expect(res.stdout).toMatch(/objectives: 1 fired/);
+    expect(sent).toHaveLength(5);
+  });
+
+  it("--once: a denied/timed-out send produces NO delivery and the daemon stays up (outbound-safety)", async () => {
+    const env = tmpEnv();
+    const dueSoon = new Date(Date.now() + 5 * 60_000).toISOString();
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({
+      tasks: [{ id: "t1", title: "Memo", status: "open", dueAt: dueSoon, createdAt: "2026-01-01T00:00:00Z" }]
+    }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const denyingProvider: MessagingProvider = {
+      describe: () => ({ description: "t", displayName: "T", id: "telegram" }),
+      id: "telegram",
+      async send(): Promise<OutboundReceipt> { throw new Error("send timed out"); }
+    };
+    const registry = new MessagingProviderRegistry([denyingProvider]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toMatch(/proactive: fired 0\/1 imminent, 1 error/);
+    expect(sent).toHaveLength(0);
+  });
+
   it("an unknown provider fails closed — exits non-zero and sends nothing", async () => {
     const env = tmpEnv();
     writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");

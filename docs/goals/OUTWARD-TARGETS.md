@@ -133,11 +133,13 @@ prove startup→delivery end-to-end. Pick the highest undone bullet.
   (init writes → a later run with no flag/env reads + delivers) — see
   `apps/cli/src/commands-daemon.test.ts`. (Ambient-rules/watches in the
   config file remain a follow-on; provider/destination are the core.)
-- [ ] **P22-5 Full startup→delivery e2e gate.** A smoke /
-  integration that starts the full daemon and proves a notice flows
-  end-to-end to a contract-faithful channel fake — including that
-  deny / timeout produces NO send (`outbound-safety.md`). Check:
-  that smoke id, green.
+- [x] **P22-5 Full startup→delivery e2e gate.** A CLI smoke runs the
+  full daemon with ALL five ticks enabled in one `--once` and proves
+  each delivers to a contract-faithful sink (5 sends); a separate
+  smoke proves a denied / timed-out provider send yields ZERO delivery
+  (not marked fired — sidecar unpoisoned, history "failed"), the
+  daemon stays up, no phantom send (`outbound-safety.md`) — see
+  `apps/cli/src/commands-daemon.test.ts`.
 - [ ] **P22-6 (only if time remains) launchd survival.** `muse
   daemon install` writes a valid LaunchAgent plist so the daemon
   survives logout/reboot. Check: the plist is generated and valid;
