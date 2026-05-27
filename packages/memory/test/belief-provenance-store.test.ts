@@ -46,6 +46,14 @@ describe("FileBeliefProvenanceStore", () => {
     expect(mine.every((e) => e.userId === "u1")).toBe(true);
   });
 
+  it("round-trips the source field", async () => {
+    const store = new FileBeliefProvenanceStore(file);
+    await store.record(entry({ key: "a", source: "user" }));
+    await store.record(entry({ key: "b", source: "auto" }));
+    expect((await store.query("u1", "a"))[0]?.source).toBe("user");
+    expect((await store.query("u1", "b"))[0]?.source).toBe("auto");
+  });
+
   it("filters by key", async () => {
     const store = new FileBeliefProvenanceStore(file);
     await store.record(entry({ key: "home_city", value: "Seoul" }));

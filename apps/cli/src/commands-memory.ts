@@ -154,15 +154,17 @@ export function buildFactTimeline(
  * yields a friendly note. Pure for testability.
  */
 export function formatBeliefWhy(
-  records: ReadonlyArray<{ readonly kind: string; readonly key: string; readonly value: string; readonly learnedAt: string; readonly evidenceExcerpt?: string; readonly sessionId?: string }>,
+  records: ReadonlyArray<{ readonly kind: string; readonly key: string; readonly value: string; readonly learnedAt: string; readonly evidenceExcerpt?: string; readonly sessionId?: string; readonly source?: "auto" | "user" }>,
   key: string
 ): string {
   const latest = records[0];
   if (!latest) {
     return `(no recorded provenance for "${key}" — learned before provenance tracking, or not remembered)\n`;
   }
-  const lines = [`${latest.kind} ${latest.key} = ${latest.value} — learned ${latest.learnedAt}`];
-  if (latest.evidenceExcerpt) {
+  const verb = latest.source === "user" ? "you set this directly" : "learned";
+  const lines = [`${latest.kind} ${latest.key} = ${latest.value} — ${verb} ${latest.learnedAt}`];
+  // The evidence excerpt only exists for inferred (auto) beliefs.
+  if (latest.source !== "user" && latest.evidenceExcerpt) {
     lines.push(`  ↳ from your message: "${latest.evidenceExcerpt}"`);
   }
   if (latest.sessionId) {
@@ -317,6 +319,20 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
         const updated = segment === "facts"
           ? await store.upsertFact(userId, key, value)
           : await store.upsertPreference(userId, key, value);
+        // Record user-provenance: a direct `set` is a user-stated truth, not
+        // an inference. Fail-open — a provenance write never blocks the set.
+        try {
+          await new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()).record({
+            userId,
+            key: normalizeMemoryKey(key),
+            kind: segment === "facts" ? "fact" : "preference",
+            value,
+            learnedAt: new Date().toISOString(),
+            source: "user"
+          });
+        } catch {
+          // provenance is best-effort; the memory write already succeeded
+        }
         if (options.json) {
           helpers.writeOutput(io, {
             facts: updated.facts,

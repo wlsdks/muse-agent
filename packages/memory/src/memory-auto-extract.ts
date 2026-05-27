@@ -500,6 +500,7 @@ async function persist(
       kind,
       value,
       learnedAt,
+      source: "auto",
       ...(provenance.sessionId ? { sessionId: provenance.sessionId } : {}),
       ...(provenance.evidenceExcerpt ? { evidenceExcerpt: provenance.evidenceExcerpt } : {})
     });

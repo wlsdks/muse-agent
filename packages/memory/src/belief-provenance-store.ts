@@ -30,6 +30,14 @@ export interface BeliefProvenance {
   readonly sessionId?: string;
   /** Sanitized, bounded snippet of the user message that triggered the belief. */
   readonly evidenceExcerpt?: string;
+  /**
+   * How the belief entered memory: `"auto"` = Muse inferred it from a
+   * conversation (auto-extract); `"user"` = the user stated/corrected it
+   * directly (`muse memory set`). Absent ⇒ treated as `"auto"` (legacy
+   * entries predate this field). The evidence↔inference distinction
+   * (Hindsight): a user-stated truth outranks an inference.
+   */
+  readonly source?: "auto" | "user";
 }
 
 export interface BeliefProvenanceStore {
@@ -138,5 +146,6 @@ function isBeliefProvenance(value: unknown): value is BeliefProvenance {
   if (typeof e.learnedAt !== "string" || e.learnedAt.length === 0) return false;
   if (e.sessionId !== undefined && typeof e.sessionId !== "string") return false;
   if (e.evidenceExcerpt !== undefined && typeof e.evidenceExcerpt !== "string") return false;
+  if (e.source !== undefined && e.source !== "auto" && e.source !== "user") return false;
   return true;
 }

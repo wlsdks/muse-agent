@@ -22,6 +22,14 @@ describe("formatBeliefWhy", () => {
     expect(out).not.toContain("session");
   });
 
+  it("phrases a user-set belief as 'you set this directly' and omits the auto-only excerpt", () => {
+    const out = formatBeliefWhy([
+      { kind: "fact", key: "home_city", value: "Seoul", learnedAt: "2026-05-27T00:00:00.000Z", source: "user", evidenceExcerpt: "ignored for user source" }
+    ], "home_city");
+    expect(out).toContain("you set this directly 2026-05-27T00:00:00.000Z");
+    expect(out).not.toContain("from your message");
+  });
+
   it("returns a friendly note when there is no provenance", () => {
     const out = formatBeliefWhy([], "mystery");
     expect(out).toContain("no recorded provenance for \"mystery\"");

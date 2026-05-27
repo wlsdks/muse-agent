@@ -56,6 +56,7 @@ describe("auto-extract belief provenance", () => {
 
     const fact = await provenanceStore.query("u1", "home_city");
     expect(fact[0]?.kind).toBe("fact");
+    expect(fact[0]?.source).toBe("auto");
     expect(fact[0]?.value).toBe("Seoul");
     expect(fact[0]?.sessionId).toBe("sess-9");
     expect(fact[0]?.evidenceExcerpt).toContain("Seoul");
