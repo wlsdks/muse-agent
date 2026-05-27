@@ -691,3 +691,19 @@ Append one line when a discovery path is evaluated and deferred:
   runtime-settings 11, policy, … — 0 fail), lint 0/0. No regression
   after P26–P30 (home-watch, reminders, briefing, edge-loading,
   --print, --status sources/autostart).
+- SESSION CLOSE — 2026-05-28, ~7h / 41 iterations (loop ffa3d51a,
+  this Claude session). Delivered + audited 9 outward targets P22–P30:
+  P22 the daemon runs for real on this Mac (one `muse daemon`: 7 ticks
+  — proactive·reminders·followup·ambient·web-watch·objectives·home-watch
+  — + clean SIGINT shutdown + --init/--status/--install + launchd);
+  P23 hybrid RRF retrieval; P24 MMR diversity; P25 ambient×knowledge
+  ("Related" note from the user's real notes); P26 home-watch +
+  reminders ticks; P27 the daily situational briefing in the daemon
+  (objectives + tasks/calendar imminent + birthdays + related note);
+  P28 Lost-in-the-Middle edge-loading; P29 --print foreground
+  observability; P30 --status sources + autostart. Three research
+  papers applied + cited in code (RRF 2009, MMR 1998, LitM 2307.03172),
+  each live-measured (incl. the honest MMR-on-real-paraphrases limit).
+  3 regression sweeps PASS (one repaired a raw-NUL byte). Every target
+  audited end-to-end against the built CLI + real Ollama. Loop stopped
+  here per the ~7h instruction; resume with `/loop 10m <iteration>`.
