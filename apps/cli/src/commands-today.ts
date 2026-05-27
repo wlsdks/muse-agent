@@ -39,6 +39,7 @@ import {
   serializeTask,
   type PersistedTask,
   readEpisodes,
+  detectCalendarConflicts,
   type WeatherProvider
 } from "@muse/mcp";
 import {
@@ -78,7 +79,7 @@ interface TodayBriefing {
   readonly weather?: string;
   readonly lookaheadHours: number;
   readonly tasks?: readonly { readonly id: string; readonly title: string; readonly dueAt?: string }[];
-  readonly events?: readonly { readonly id: string; readonly title: string; readonly startsAtIso: string }[];
+  readonly events?: readonly { readonly id: string; readonly title: string; readonly startsAtIso: string; readonly endsAtIso?: string }[];
   readonly notes?: readonly string[];
   readonly reminders?: readonly { readonly id: string; readonly text: string; readonly dueAt: string }[];
   readonly followups?: readonly { readonly id: string; readonly summary: string; readonly scheduledFor: string }[];
@@ -260,6 +261,7 @@ export function formatTodayBrief(briefing: TodayBriefing, local: boolean): strin
     + formatFollowups(briefing.followups, briefing.generatedAt)
     + formatTasks(briefing.tasks, briefingNow(briefing), briefing.lookaheadHours)
     + formatEvents(briefing.events)
+    + formatTodayConflicts(briefing.events)
     + formatNotes(briefing.notes)
     + formatHeadlines(briefing.headlines)
     + formatEmptyStateHints(briefing)
@@ -579,12 +581,13 @@ async function readLocalEvents(
   file: string,
   from: Date,
   to: Date
-): Promise<readonly { id: string; title: string; startsAtIso: string }[]> {
+): Promise<readonly { id: string; title: string; startsAtIso: string; endsAtIso: string }[]> {
   const provider = new LocalCalendarProvider({ file });
   const events = await provider.listEvents({ from, to });
   return events.map((event) => ({
     id: event.id,
     startsAtIso: event.startsAt.toISOString(),
+    endsAtIso: event.endsAt.toISOString(),
     title: event.title
   }));
 }
@@ -856,6 +859,31 @@ export function formatTasks(
   }
   const lines = imminent.map((task) => `  - [${task.id.slice(0, 12)}] ${task.title}${relativeDueTag(task.dueAt, now)}`);
   return `\nTasks due ≤${lookaheadHours}h (${imminent.length}):\n${lines.join("\n")}${moreLine}\n`;
+}
+
+/**
+ * Proactive double-booking warning for the morning briefing: flag events that
+ * overlap in time so the user is told "you're scheduled twice at once" without
+ * having to run `muse calendar conflicts`. Only events carrying both start AND
+ * end times participate (the local briefing provides them; a remote briefing
+ * whose events lack endsAtIso simply yields no warning). Empty when none.
+ */
+export function formatTodayConflicts(
+  events: readonly { readonly title: string; readonly startsAtIso: string; readonly endsAtIso?: string }[] | undefined
+): string {
+  const timed = (events ?? []).flatMap((e) =>
+    e.endsAtIso ? [{ title: e.title, startsAt: new Date(e.startsAtIso), endsAt: new Date(e.endsAtIso) }] : []
+  );
+  const conflicts = detectCalendarConflicts(timed);
+  if (conflicts.length === 0) {
+    return "";
+  }
+  const lines = conflicts.map((c) => {
+    const a = stripUntrustedTerminalChars(c.a.title).replace(/\s+/gu, " ").trim();
+    const b = stripUntrustedTerminalChars(c.b.title).replace(/\s+/gu, " ").trim();
+    return `  - "${a}" overlaps "${b}" (${c.overlapStartsAt.toISOString().slice(11, 16)}–${c.overlapEndsAt.toISOString().slice(11, 16)} UTC)`;
+  });
+  return `\n⚠️  Double-booked (${conflicts.length.toString()}):\n${lines.join("\n")}\n`;
 }
 
 export function formatEvents(events: readonly { readonly id: string; readonly title: string; readonly startsAtIso: string }[] | undefined): string {
