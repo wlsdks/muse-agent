@@ -130,6 +130,33 @@ export function normalizeMemoryKey(key: string): string {
   return normalized.length > 0 ? normalized : key.trim();
 }
 
+export type MemoryOperation = "add" | "update" | "noop" | "delete";
+
+// Tokens an extractor emits when it found NO value for a key — storing them
+// verbatim pollutes memory with "unknown"/"none" facts, so they map to DELETE
+// (drop the key) rather than UPDATE. Bilingual (Muse runs KO + EN).
+const RETRACTION_TOKENS = new Set(["", "none", "n/a", "na", "null", "nil", "unknown", "없음", "모름", "해당없음"]);
+
+/**
+ * Classify what a freshly-extracted value should do to the existing memory for
+ * a key (Mem0, arXiv 2504.19413: an explicit ADD/UPDATE/DELETE/NOOP decision
+ * per candidate fact instead of a blind overwrite). Deterministic — runs over
+ * the extractor's already-produced output, no extra model call:
+ *   - DELETE: the value is a no-value/retraction token → drop the key.
+ *   - ADD:    no existing value for the key.
+ *   - NOOP:   the value re-confirms what's already stored (skip the write).
+ *   - UPDATE: a genuinely different value → supersede.
+ */
+export function classifyMemoryOperation(existing: string | undefined, incoming: string): MemoryOperation {
+  if (RETRACTION_TOKENS.has(incoming.trim().toLowerCase())) {
+    return "delete";
+  }
+  if (existing === undefined) {
+    return "add";
+  }
+  return existing.trim() === incoming.trim() ? "noop" : "update";
+}
+
 export function mergeRecordTouchLast(
   existing: Readonly<Record<string, string>>,
   patch: Readonly<Record<string, string>>

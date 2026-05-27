@@ -346,10 +346,12 @@ export {
   createUserMemoryInsert,
   InMemoryUserMemoryStore,
   KyselyUserMemoryStore,
+  classifyMemoryOperation,
   mapUserMemoryRow,
   MAX_USER_MEMORY_VALUE_CHARS,
   normalizeMemoryKey,
-  sanitizeUserMemoryValue
+  sanitizeUserMemoryValue,
+  type MemoryOperation
 } from "./memory-user-store.js";
 
 export {

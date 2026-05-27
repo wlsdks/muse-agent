@@ -19,7 +19,7 @@ import type { ModelMessage, ModelProvider, ModelResponse } from "@muse/model";
 import { redactSecretsInText, stripUntrustedTerminalChars, type JsonObject } from "@muse/shared";
 
 import type { BeliefProvenance, BeliefProvenanceStore } from "./belief-provenance-store.js";
-import { normalizeMemoryKey } from "./memory-user-store.js";
+import { classifyMemoryOperation, normalizeMemoryKey } from "./memory-user-store.js";
 import type {
   UserGoalSlot,
   UserMemoryStore,
@@ -505,13 +505,29 @@ async function persist(
       ...(provenance.evidenceExcerpt ? { evidenceExcerpt: provenance.evidenceExcerpt } : {})
     });
   };
+  // Mem0 (arXiv 2504.19413): classify each candidate against existing memory
+  // (ADD/UPDATE/NOOP/DELETE) instead of blind-upserting — NOOP skips the
+  // redundant write + provenance on a re-confirmation, DELETE drops a key the
+  // extractor reported as a no-value/retraction token rather than storing junk.
+  const existing = await Promise.resolve(store.findByUserId(userId)).catch(() => undefined);
+  const forget = store.forget?.bind(store);
+  const applyOp = (kind: "fact" | "preference", key: string, value: string, current: string | undefined): void => {
+    const op = classifyMemoryOperation(current, value);
+    if (op === "noop") {
+      return;
+    }
+    if (op === "delete") {
+      if (forget) writes.push(safeWrite(Promise.resolve(forget(userId, key))));
+      return;
+    }
+    writes.push(safeWrite(kind === "fact" ? store.upsertFact(userId, key, value) : store.upsertPreference(userId, key, value)));
+    collectProvenance(kind, key, value);
+  };
   for (const [key, value] of factEntries) {
-    writes.push(safeWrite(store.upsertFact(userId, key, value)));
-    collectProvenance("fact", key, value);
+    applyOp("fact", key, value, existing?.facts?.[normalizeMemoryKey(key)]);
   }
   for (const [key, value] of preferenceEntries) {
-    writes.push(safeWrite(store.upsertPreference(userId, key, value)));
-    collectProvenance("preference", key, value);
+    applyOp("preference", key, value, existing?.preferences?.[normalizeMemoryKey(key)]);
   }
   // Typed-slot writes are skipped silently when the store doesn't
   // support upsertUserModelSlot (an optional method on
