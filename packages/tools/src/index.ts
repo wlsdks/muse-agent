@@ -885,3 +885,8 @@ export {
   type RenameDecision,
   type CalibrationResult
 } from "./tool-name-calibration.js";
+
+export {
+  parseNaturalLanguageToolSelection,
+  type NlToolSelection
+} from "./nl-tool-selection.js";
