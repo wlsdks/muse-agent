@@ -453,6 +453,15 @@ export {
   type ActionVeto
 } from "./personal-veto-store.js";
 export {
+  MAX_PLAYBOOK_ENTRIES,
+  queryPlaybook,
+  readPlaybook,
+  recordPlaybookStrategy,
+  removePlaybookStrategy,
+  writePlaybook,
+  type PlaybookEntry
+} from "./personal-playbook-store.js";
+export {
   composeSituationalBriefing,
   resolveDayShapeLine,
   type BriefingImminent,

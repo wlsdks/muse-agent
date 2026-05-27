@@ -10,10 +10,11 @@ import {
   type RemindersResolver,
   type TelemetryAggregator,
   type ToolFilter,
-  type VetoAvoidanceProvider
+  type VetoAvoidanceProvider,
+  type PlaybookProvider
 } from "@muse/agent-core";
 import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
-import { readReminders, readVetoes } from "@muse/mcp";
+import { readReminders, readVetoes, queryPlaybook } from "@muse/mcp";
 import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore } from "@muse/memory";
 import { FileBackedInboxContextProvider, type InboxSourceConfig } from "@muse/messaging";
 
@@ -25,7 +26,8 @@ import {
   resolveRemindersFile,
   resolveSlackInboxFile,
   resolveTelegramInboxFile,
-  resolveVetoesFile
+  resolveVetoesFile,
+  resolvePlaybookFile
 } from "./provider-paths.js";
 import { parseBoolean } from "./env-parsers.js";
 import { clampPositive, readCredentialsSync, stringField } from "./provider-utils.js";
@@ -307,5 +309,23 @@ export function buildVetoAvoidanceProvider(env: MuseEnvironment): VetoAvoidanceP
       (await readVetoes(file))
         .filter((veto) => veto.userId === userId)
         .map((veto) => ({ objectiveId: veto.objectiveId, reason: veto.reason, scope: veto.scope }))
+  };
+}
+
+/**
+ * Production wiring for ACE (arXiv 2510.04618): adapt the durable
+ * `~/.muse/playbook.json` learned-strategy store to the agent-runtime's
+ * duck-typed `PlaybookProvider` so a recorded strategy surfaces
+ * `[Learned Strategies]` into real agent runs. Conservative (zero strategies
+ * ⇒ exact no-op), default-on; opt out with `MUSE_PLAYBOOK=false`.
+ */
+export function buildPlaybookProvider(env: MuseEnvironment): PlaybookProvider | undefined {
+  if (!parseBoolean(env.MUSE_PLAYBOOK, true)) {
+    return undefined;
+  }
+  const file = resolvePlaybookFile(env);
+  return {
+    listStrategies: async (userId: string) =>
+      (await queryPlaybook(file, userId)).map((entry) => ({ tag: entry.tag, text: entry.text }))
   };
 }

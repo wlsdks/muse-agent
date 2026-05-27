@@ -77,6 +77,7 @@ export {
   resolveTelegramOffsetFile,
   resolveUserSkillsDir,
   resolveVetoesFile,
+  resolvePlaybookFile,
   resolveWorkspaceSkillsDir
 } from "./provider-paths.js";
 
@@ -202,7 +203,8 @@ export {
   buildInboxContextProvider,
   buildTelemetryAggregator,
   buildToolFilter,
-  buildVetoAvoidanceProvider
+  buildVetoAvoidanceProvider,
+  buildPlaybookProvider
 } from "./context-engineering-builders.js";
 
 /**

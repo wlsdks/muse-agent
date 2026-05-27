@@ -40,6 +40,7 @@ import type {
 import type { ActiveContextProvider } from "./active-context.js";
 import type { AmbientSnapshotProvider } from "./ambient-context.js";
 import type { VetoAvoidanceProvider } from "./veto-avoidance.js";
+import type { PlaybookProvider } from "./playbook.js";
 import type { EpisodicRecallProvider } from "./episodic-recall.js";
 import type { HookRegistry } from "./hook-registry.js";
 import type { InboxContextProvider } from "./inbox-context.js";
@@ -139,6 +140,12 @@ export interface AgentRuntimeOptions {
    * Conservative — zero vetoes ⇒ exact no-op; fail-open.
    */
   readonly vetoAvoidanceProvider?: VetoAvoidanceProvider;
+  /**
+   * Learned-strategy playbook (ACE, arXiv 2510.04618): positive how-to
+   * deltas from past feedback, injected as `[Learned Strategies]`.
+   * Conservative — zero strategies ⇒ exact no-op; fail-open.
+   */
+  readonly playbookProvider?: PlaybookProvider;
   /**
    * Context Engineering Phase 2: surface recent inbound messages
    * (Slack / Discord / Telegram / LINE) as a `[Recent Messages]`

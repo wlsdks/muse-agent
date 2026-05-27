@@ -99,6 +99,10 @@ export function resolveVetoesFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_VETOES_FILE", "vetoes.json");
 }
 
+export function resolvePlaybookFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_PLAYBOOK_FILE", "playbook.json");
+}
+
 export function resolveActionLogFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_ACTION_LOG_FILE", "action-log.json");
 }

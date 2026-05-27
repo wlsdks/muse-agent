@@ -163,6 +163,7 @@ import {
   buildTelemetryAggregator,
   buildToolFilter,
   buildVetoAvoidanceProvider,
+  buildPlaybookProvider,
   buildVoiceRegistry,
   ensureNotesDir,
   mergeModelKeysFromFile,
@@ -215,7 +216,8 @@ export {
   resolveTasksFile,
   resolveTelegramInboxFile,
   resolveTelegramOffsetFile,
-  resolveVetoesFile
+  resolveVetoesFile,
+  resolvePlaybookFile
 } from "./personal-providers.js";
 import {
   createConversationSummaryStore,
@@ -736,6 +738,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   );
   const telemetryAggregator = buildTelemetryAggregator(env);
   const vetoAvoidanceProvider = buildVetoAvoidanceProvider(env);
+  const playbookProvider = buildPlaybookProvider(env);
   const agentRuntime = modelProvider && defaultModel
     ? createAgentRuntime({
       agentSpecResolver,
@@ -780,6 +783,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       // semantics.
       activeContextProvider,
       ...(vetoAvoidanceProvider ? { vetoAvoidanceProvider } : {}),
+      ...(playbookProvider ? { playbookProvider } : {}),
       inboxContextProvider: buildInboxContextProvider(env),
       // Phase 3: store-backed episodic recall. Reuses the same
       // ConversationSummaryStore that conversation-summary persistence

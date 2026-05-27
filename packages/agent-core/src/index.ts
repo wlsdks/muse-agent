@@ -81,6 +81,8 @@ export {
 export type { AmbientSnapshot, AmbientSnapshotProvider } from "./ambient-context.js";
 export { applyVetoAvoidance, renderVetoAvoidanceSection } from "./veto-avoidance.js";
 export type { LearnedVeto, VetoAvoidanceProvider } from "./veto-avoidance.js";
+export { applyPlaybook, renderPlaybookSection } from "./playbook.js";
+export type { PlaybookStrategy, PlaybookProvider } from "./playbook.js";
 
 export {
   cosineSimilarity,
