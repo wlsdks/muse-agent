@@ -64,9 +64,28 @@ turn; never half-shipped.
 
 ## Active target
 
-**P24 — Knowledge grounding quality.** Hybrid recall (P23) pulls more
-candidates; make the top-K the agent actually sees diverse and
-non-redundant so its limited context isn't wasted on paraphrases.
+**P25 — Ambient context fusion (Perception × Knowledge).** When Muse
+notices what the user is looking at (ambient tick), enrich the notice
+with what the user ALREADY wrote about it — the JARVIS move of
+volunteering relevant context unasked.
+
+- [x] **P25-1 Ambient notices carry a "Related:" line.** The daemon's
+  ambient runner accepts a knowledge enricher; a fired ambient notice
+  is enriched with a `— Related: …` line keyed on the active
+  window/app. Proven by a contract-faithful CLI smoke: an injected
+  enricher's line rides the delivered ambient notice; absent → plain
+  notice — `apps/cli/src/commands-daemon.test.ts`.
+- [ ] **P25-2 Real enricher from the user's corpus.** Build the
+  enricher at daemon startup from `createKnowledgeEnricher` (notes +
+  Ollama embed, hybrid+MMR) so the Related line is the user's real
+  notes, not just an injected fake. Check: live — an ambient fire
+  surfaces a real note about the active window.
+
+## Delivered — P24 (Knowledge grounding quality: MMR)
+
+Diversified knowledge_search top-K with MMR (best-effort on real
+paraphrases; deterministic on exact duplicates). Audited PASS
+(README ledger, `P24 audit`).
 
 - [x] **P24-1 MMR diversification.** `rankKnowledgeChunks` gains an
   opt-in `diversify` path applying Maximal Marginal Relevance

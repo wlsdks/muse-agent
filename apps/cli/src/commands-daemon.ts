@@ -80,6 +80,12 @@ export interface DaemonHelpers {
    * daemon stays up. Tests inject a contract-faithful fake.
    */
   readonly chromeConnection?: ChromeSnapshotConnection;
+  /**
+   * Knowledge enricher for the ambient tick — given what the user is
+   * looking at, returns a "Related: …" line from their own notes so an
+   * ambient notice carries relevant context. Absent → no enrichment.
+   */
+  readonly knowledgeEnrich?: (query: string) => Promise<string | undefined> | string | undefined;
 }
 
 // Followups REQUIRE a model to synthesize their message. The real
@@ -418,7 +424,8 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           ambientRunner = createAmbientNoticeRunner({
             rules: ambientRules,
             sink: noticeSink,
-            source: ambientSource
+            source: ambientSource,
+            ...(helpers.knowledgeEnrich ? { enrich: helpers.knowledgeEnrich } : {})
           });
         }
       }

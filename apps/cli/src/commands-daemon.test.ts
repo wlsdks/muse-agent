@@ -42,7 +42,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -58,6 +58,7 @@ async function runDaemon(
       ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
       ...(opts.ambientMacosRun ? { ambientMacosRun: opts.ambientMacosRun } : {}),
       ...(opts.chromeConnection ? { chromeConnection: opts.chromeConnection } : {}),
+      ...(opts.knowledgeEnrich ? { knowledgeEnrich: opts.knowledgeEnrich } : {}),
       // Default: followup tick disabled (no model) so proactive cases stay hermetic.
       resolveFollowupModel: opts.resolveFollowupModel ?? (async () => undefined)
     });
@@ -176,6 +177,26 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(res.stdout).toMatch(/ambient: delivered 1/);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.text).toContain("You're in Slack");
+  });
+
+  it("--once enriches a fired ambient notice with a Related line from the user's knowledge", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_AMBIENT_RULES: JSON.stringify([
+      { id: "focus_slack", title: "Heads up", message: "You're in Slack", match: { app: "Slack" } }
+    ]) };
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    writeFileSync(env.MUSE_AMBIENT_FILE!, JSON.stringify({ app: "Slack", window: "Q3 budget channel" }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+    // Stands in for createKnowledgeEnricher — the daemon just needs the seam.
+    const knowledgeEnrich = async (query: string) => `you noted the Q3 memo is due Friday (cue: ${query})`;
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, knowledgeEnrich, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toMatch(/ambient: delivered 1/);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.text).toContain("You're in Slack");
+    expect(sent[0]!.text).toContain("Related: you noted the Q3 memo is due Friday");
   });
 
   it("ambient tick is skipped when no rules are configured (hermetic default)", async () => {
