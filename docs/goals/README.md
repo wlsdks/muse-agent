@@ -622,3 +622,12 @@ Append one line when a discovery path is evaluated and deferred:
   MMR kept as a best-effort diversity nudge (deterministic on exact
   duplicates). Reliable paraphrase-dedup would need a cosine-threshold
   near-dup collapse, not MMR — not pursued (low value vs. complexity).
+- P24 audit — 15f01486 — PASS: P24 check re-run green
+  (knowledge-recall-agent 8/8: cosine + hybrid + MMR) AND exercised
+  end-to-end with REAL Ollama embeddings — one knowledge_search call
+  composed hybrid recall (P23) + MMR diversify (P24): it recalled the
+  exact token "TKT-7781" and returned topK without error. The two
+  budget paraphrases both appearing at topK=3 matches the
+  honestly-documented P24-2 finding (real-paraphrase dedup is
+  best-effort, not guaranteed) — claims match reality, no drift, no
+  bullet reopened.
