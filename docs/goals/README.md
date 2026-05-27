@@ -585,3 +585,14 @@ Append one line when a discovery path is evaluated and deferred:
   Follow-on (not reopened scope): the authenticated-page snapshot
   source (Chrome-DevTools-MCP background page) for watches behind a
   login. **P21 complete + audited.**
+- regression sweep (10th feat-iter) — iter f7acef7b..HEAD — PASS:
+  every CAPABILITIES-line check green via `pnpm check` (runtime-state
+  26 · tools 158 · agent-core 719 · mcp 837 · multi-agent 63 ·
+  scheduler 62 · autoconfigure 282 · api 327 · cli 1307 — ~3.8k
+  tests, 0 fail). No regression. The broad `smoke:live` gate is NOT a
+  per-line check and remains the known-slow deferred item (a147d939):
+  ~50-60 s/round-trip × multi-endpoint exceeds the wrapper window;
+  confirmed still returns 200s, not a code regression. Tagged
+  [UNVERIFIED-LIVE] for this sweep; restoring a fast smoke:live
+  (shard endpoints / per-request timeout) stays the deferred Autonomy
+  follow-up.
