@@ -143,6 +143,7 @@ import { createMessagingPollDispatchers } from "./messaging-poll-dispatchers.js"
 import { createSkillRuntime } from "./skills-runtime.js";
 import { buildLoopbackTools } from "./loopback-tools.js";
 import { createOllamaEmbedder } from "./context-engineering-builders.js";
+import { readEpisodeKnowledgeEntries } from "./episodes-knowledge-source.js";
 import { readFeedKnowledgeEntries } from "./feeds-knowledge-source.js";
 import { createNotesKnowledgeSearchTool } from "./knowledge-corpus.js";
 
@@ -601,6 +602,9 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       },
       feedsSource: {
         recentEntries: (limit) => readFeedKnowledgeEntries(resolveFeedsFile(env), limit)
+      },
+      episodesSource: {
+        recentEpisodes: (limit) => readEpisodeKnowledgeEntries(episodesFile, env.MUSE_USER_ID ?? "user", limit)
       }
     })];
   })();
