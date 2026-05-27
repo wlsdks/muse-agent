@@ -84,10 +84,13 @@ your day" JARVIS moment.
   (`queryContacts` → `resolveUpcomingBirthdays` → `formatBirthdayBriefLine`).
   Proven: a contact whose birthday is today appears in the delivered
   brief — `apps/cli/src/commands-daemon.test.ts`.
-- [ ] **P27-3 Briefing covers calendar events.** Add
-  `deriveCalendarBriefingImminent` to the daemon brief's imminent via a
-  `BriefingCalendarLister` adapter over the calendar registry, matching
-  the apps/api brief. Check: a calendar event appears in the brief.
+- [x] **P27-3 Briefing covers calendar events.** The daemon brief now
+  merges `deriveCalendarBriefingImminent` over the calendar registry's
+  `listEvents` into its imminent set, so an imminent calendar event
+  appears in the brief alongside tasks. Proven: an event 5 min out is
+  surfaced in the delivered brief — `apps/cli/src/commands-daemon.test.ts`.
+  **P27 complete: the resident daemon's brief covers objectives,
+  imminent tasks + calendar, birthdays, and a related note.**
 
 ## Delivered — P26 (widen the daemon's perception reach)
 

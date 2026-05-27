@@ -31,6 +31,7 @@ import {
   createModelObjectiveEvaluator,
   createWebWatchRunner,
   deriveBriefingImminent,
+  deriveCalendarBriefingImminent,
   FileAmbientSignalSource,
   formatBirthdayBriefLine,
   homeWatchesFromConfig,
@@ -46,6 +47,7 @@ import {
   webWatchesFromConfig,
   CHROME_DEVTOOLS_MCP_SERVER_NAME,
   type AmbientNoticeRunner,
+  type BriefingCalendarLister,
   type ChromeSnapshotConnection,
   type ProactiveNoticeSink,
   type WebWatchRunner
@@ -95,6 +97,8 @@ export interface DaemonHelpers {
    * ambient notice carries relevant context. Absent → no enrichment.
    */
   readonly knowledgeEnrich?: (query: string) => Promise<string | undefined> | string | undefined;
+  /** Test seam — inject the calendar lister the briefing's imminent uses. */
+  readonly briefingCalendarLister?: BriefingCalendarLister;
 }
 
 // Followups REQUIRE a model to synthesize their message. The real
@@ -646,6 +650,13 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         try {
           imminent = await deriveBriefingImminent(tasksFile, { leadMinutes, now });
         } catch { /* fail-soft — brief objective status only */ }
+        const calendarLister = helpers.briefingCalendarLister
+          ?? (calendarRegistry.list().length > 0 ? (range: Parameters<BriefingCalendarLister>[0]) => calendarRegistry.listEvents(range) : undefined);
+        if (calendarLister) {
+          try {
+            imminent = [...imminent, ...(await deriveCalendarBriefingImminent(calendarLister, { leadMinutes, now }))];
+          } catch { /* fail-soft — calendar unavailable */ }
+        }
         const summary = await runDueSituationalBriefing({
           birthdayLine: async () => {
             try {

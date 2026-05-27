@@ -42,7 +42,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -59,6 +59,7 @@ async function runDaemon(
       ...(opts.ambientMacosRun ? { ambientMacosRun: opts.ambientMacosRun } : {}),
       ...(opts.chromeConnection ? { chromeConnection: opts.chromeConnection } : {}),
       ...(opts.knowledgeEnrich ? { knowledgeEnrich: opts.knowledgeEnrich } : {}),
+      ...(opts.briefingCalendarLister ? { briefingCalendarLister: opts.briefingCalendarLister } : {}),
       // Default: followup tick disabled (no model) so proactive cases stay hermetic.
       resolveFollowupModel: opts.resolveFollowupModel ?? (async () => undefined)
     });
@@ -549,6 +550,23 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(res.stdout).toMatch(/briefing: delivered/);
     // only the briefing mentions a birthday — the proactive notice is about the task
     expect(sent.some((m) => m.text.includes("Zelda"))).toBe(true);
+  });
+
+  it("--once briefing surfaces an imminent calendar event", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_BRIEFING_ENABLED: "true" };
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+    // Contract-faithful calendar lister: one event 5 min out (within the lead window).
+    const briefingCalendarLister: NonNullable<DaemonHelpers["briefingCalendarLister"]> = async () => [
+      { allDay: false, startsAt: new Date(Date.now() + 5 * 60_000), title: "Standup with the team" }
+    ];
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { briefingCalendarLister, env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toMatch(/briefing: delivered/);
+    expect(sent.some((m) => m.text.includes("Standup with the team"))).toBe(true);
   });
 
   it("briefing tick is skipped when MUSE_BRIEFING_ENABLED is unset (hermetic default)", async () => {
