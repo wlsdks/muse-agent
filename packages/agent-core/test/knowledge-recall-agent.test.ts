@@ -55,6 +55,28 @@ describe("rankKnowledgeChunks", () => {
     expect(hybrid.map((m) => m.source)).toContain("answer.md");
   });
 
+  it("MMR diversifies top-K so a near-duplicate doesn't crowd out a distinct relevant passage (Carbonell & Goldstein 1998)", async () => {
+    const vocab = ["x", "y", "z"];
+    const termEmbed = async (text: string): Promise<readonly number[]> => {
+      const lower = text.toLowerCase();
+      return vocab.map((term) => (lower.includes(term) ? 1 : 0));
+    };
+    // dupeA/dupeB embed identically ([1,1,0]); distinct is [0,0,1] —
+    // lower relevance to "x y z" but orthogonal to the dupes.
+    const corpus: readonly KnowledgeChunk[] = [
+      { source: "dupeA.md", text: "x y" },
+      { source: "dupeB.md", text: "x y" },
+      { source: "distinct.md", text: "z" }
+    ];
+
+    const plain = await rankKnowledgeChunks("x y z", corpus, { embed: termEmbed, topK: 2 });
+    expect(plain.map((m) => m.source)).toEqual(["dupeA.md", "dupeB.md"]);
+
+    const diverse = await rankKnowledgeChunks("x y z", corpus, { diversify: true, embed: termEmbed, mmrLambda: 0.5, topK: 2 });
+    expect(diverse.map((m) => m.source)).toContain("distinct.md");
+    expect(diverse.map((m) => m.source)).not.toContain("dupeB.md");
+  });
+
   it("ranks multi-source chunks by similarity, keeps the source, drops sub-threshold passages", async () => {
     const matches = await rankKnowledgeChunks("allergic to peanuts", CORPUS, { embed });
     expect(matches.map((m) => m.source)).toEqual(["notes/health.md", "notes/old.md"]);

@@ -64,9 +64,28 @@ turn; never half-shipped.
 
 ## Active target
 
-**P23 — Deepen Knowledge retrieval.** Beyond single-vector cosine
-RAG, make recall robust to exact rare tokens (names, IDs, error
-codes) while staying local + deterministic.
+**P24 — Knowledge grounding quality.** Hybrid recall (P23) pulls more
+candidates; make the top-K the agent actually sees diverse and
+non-redundant so its limited context isn't wasted on paraphrases.
+
+- [x] **P24-1 MMR diversification.** `rankKnowledgeChunks` gains an
+  opt-in `diversify` path applying Maximal Marginal Relevance
+  (Carbonell & Goldstein, SIGIR 1998) over the ranked candidates —
+  `λ·relevance − (1−λ)·max-similarity-to-picked` — so a near-duplicate
+  passage doesn't crowd out a distinct relevant one. Both
+  `knowledge_search` surfaces use it. Proven: plain top-2 returns two
+  near-duplicates; MMR returns one duplicate + the distinct passage —
+  `packages/agent-core/test/knowledge-recall-agent.test.ts`. No dep,
+  deterministic, local.
+- [ ] **P24-2 Tune/verify MMR on the real corpus.** Confirm the λ
+  default + diversification help on a real multi-source corpus with
+  Ollama embeddings (live), not just a fake — and adjust λ if needed.
+
+## Delivered — P23 (deepen Knowledge retrieval: hybrid RRF)
+
+Cosine RAG fused with lexical keyword overlap via RRF across the
+agent tool + corpus-search surfaces, recalling exact rare tokens the
+embedding misses. Audited PASS (README ledger, `P23 audit`).
 
 - [x] **P23-1 Hybrid (RRF) knowledge retrieval.** `rankKnowledgeChunks`
   gains an opt-in `hybrid` path fusing the cosine ranking with a

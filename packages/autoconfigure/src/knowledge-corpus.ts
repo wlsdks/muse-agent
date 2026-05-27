@@ -534,6 +534,7 @@ export function createNotesKnowledgeSearchTool(options: NotesKnowledgeSearchTool
         ...(options.maxEpisodes !== undefined ? { maxEpisodes: options.maxEpisodes } : {})
       });
       const matches = await rankKnowledgeChunks(query, corpus, {
+        diversify: true,
         embed: options.embed,
         hybrid: true,
         ...(options.topK !== undefined ? { topK: options.topK } : {})
