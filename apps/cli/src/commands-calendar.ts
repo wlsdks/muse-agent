@@ -15,7 +15,7 @@ import { readFile } from "node:fs/promises";
 
 import { resolveLocalCalendarFile } from "@muse/autoconfigure";
 import { LocalCalendarProvider, type CalendarEvent } from "@muse/calendar";
-import { computeAvailability, resolveRelativeTimePhrase, type AvailabilityEventLike, type AvailabilityResult } from "@muse/mcp";
+import { computeAvailability, detectCalendarConflicts, resolveRelativeTimePhrase, type AvailabilityEventLike, type AvailabilityResult, type CalendarConflict } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { formatCalendarEvents, formatProvidersList } from "./human-formatters.js";
@@ -135,6 +135,17 @@ export function formatAvailability(result: AvailabilityResult, window: { readonl
     ? result.free.map((slot) => `${hhmm(slot.startsAt)}–${hhmm(slot.endsAt)}`).join(", ")
     : "none";
   return `Busy: ${busy}\nFree: ${free}`;
+}
+
+export function formatConflicts(conflicts: readonly CalendarConflict[]): string {
+  if (conflicts.length === 0) {
+    return "No double-booked events. ✓\n";
+  }
+  const lines = [`⚠️  ${conflicts.length.toString()} double-booking${conflicts.length === 1 ? "" : "s"}:`];
+  for (const c of conflicts) {
+    lines.push(`  "${c.a.title}" (${hhmm(c.a.startsAt)}–${hhmm(c.a.endsAt)}) overlaps "${c.b.title}" (${hhmm(c.b.startsAt)}–${hhmm(c.b.endsAt)}) at ${hhmm(c.overlapStartsAt)}–${hhmm(c.overlapEndsAt)}`);
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 export function registerCalendarCommands(program: Command, io: ProgramIO, helpers: CalendarCommandHelpers): void {
@@ -277,6 +288,54 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         return;
       }
       io.stdout(formatAvailability(result, { from, to }));
+    });
+
+  calendar
+    .command("conflicts")
+    .description("Flag double-booked events — overlapping items in a window. Defaults: now → +30 days.")
+    .option("--from <iso>", "ISO 8601 window start (default: now)")
+    .option("--to <iso>", "ISO 8601 window end (default: from + 30 days)")
+    .option("--provider <id>", "Specific provider id (default: all)")
+    .option("--local", "Read directly from the local calendar file instead of the API")
+    .option("--json", "Print the raw conflicts instead of the formatted summary")
+    .action(async (
+      options: { readonly from?: string; readonly to?: string; readonly provider?: string } & SharedOptions,
+      command
+    ) => {
+      if (
+        (options.from && Number.isNaN(new Date(options.from).getTime())) ||
+        (options.to && Number.isNaN(new Date(options.to).getTime()))
+      ) {
+        throw new Error("--from / --to must be ISO 8601 timestamps");
+      }
+      const from = options.from ? new Date(options.from) : new Date();
+      const to = options.to ? new Date(options.to) : new Date(from.getTime() + 30 * 86_400_000);
+      let rows: Array<Record<string, unknown>>;
+      if (options.local) {
+        const raw = await localCalendarProvider().listEvents({ from, to });
+        rows = raw.map((event) => ({
+          allDay: event.allDay,
+          endsAtIso: event.endsAt.toISOString(),
+          startsAtIso: event.startsAt.toISOString(),
+          title: event.title
+        }));
+      } else {
+        const params = new URLSearchParams({ fromIso: from.toISOString(), toIso: to.toISOString() });
+        if (options.provider) params.set("providerId", options.provider);
+        const payload = (await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`)) as { events?: Array<Record<string, unknown>> };
+        rows = Array.isArray(payload.events) ? payload.events : [];
+      }
+      const conflicts = detectCalendarConflicts(eventsToAvailability(rows));
+      if (options.json) {
+        helpers.writeOutput(io, conflicts.map((c) => ({
+          a: { endsAtIso: c.a.endsAt.toISOString(), startsAtIso: c.a.startsAt.toISOString(), title: c.a.title },
+          b: { endsAtIso: c.b.endsAt.toISOString(), startsAtIso: c.b.startsAt.toISOString(), title: c.b.title },
+          overlapEndsAtIso: c.overlapEndsAt.toISOString(),
+          overlapStartsAtIso: c.overlapStartsAt.toISOString()
+        })));
+        return;
+      }
+      io.stdout(formatConflicts(conflicts));
     });
 
   calendar

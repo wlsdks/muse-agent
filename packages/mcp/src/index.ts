@@ -260,6 +260,11 @@ export {
   type FreeSlot
 } from "./calendar-availability.js";
 export {
+  detectCalendarConflicts,
+  type CalendarConflict,
+  type ConflictEventLike
+} from "./calendar-conflicts.js";
+export {
   createCryptoMcpServer,
   createDefaultLoopbackMcpServers,
   createCalendarMcpServer,
