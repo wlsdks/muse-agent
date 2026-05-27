@@ -41,12 +41,12 @@ interface ForgetOptions {
   readonly force?: boolean;
 }
 
-function envValue(key: string): string | undefined {
+export function envValue(key: string): string | undefined {
   const v = process.env[key]?.trim();
   return v && v.length > 0 ? v : undefined;
 }
 
-function composeKey(user: string | undefined, persona: string | undefined): string {
+export function composeKey(user: string | undefined, persona: string | undefined): string {
   const base = user ?? envValue("MUSE_USER_ID") ?? envValue("USER") ?? "default";
   const resolved = resolvePersona(persona);
   return resolved ? `${base}@${resolved}` : base;
