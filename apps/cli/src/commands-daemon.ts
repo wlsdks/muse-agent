@@ -203,6 +203,57 @@ function writeDaemonConfig(file: string, config: DaemonConfig): void {
   writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
 
+const LAUNCH_AGENT_LABEL = "com.muse.daemon";
+
+function xmlEscape(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+// A macOS LaunchAgent plist that keeps `muse daemon` resident: it
+// starts at login (RunAtLoad) and is restarted if it exits
+// (KeepAlive), so the daemon survives logout / reboot.
+export function buildLaunchAgentPlist(opts: {
+  readonly label: string;
+  readonly programArguments: readonly string[];
+  readonly stdoutPath: string;
+  readonly stderrPath: string;
+}): string {
+  const args = opts.programArguments
+    .map((arg) => `    <string>${xmlEscape(arg)}</string>`)
+    .join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${xmlEscape(opts.label)}</string>
+  <key>ProgramArguments</key>
+  <array>
+${args}
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${xmlEscape(opts.stdoutPath)}</string>
+  <key>StandardErrorPath</key>
+  <string>${xmlEscape(opts.stderrPath)}</string>
+</dict>
+</plist>
+`;
+}
+
+function resolveLaunchAgentFile(env: NodeJS.ProcessEnv): string {
+  const explicit = env.MUSE_DAEMON_PLIST_FILE?.trim();
+  if (explicit && explicit.length > 0) return explicit;
+  const home = env.HOME?.trim()?.length ? env.HOME.trim() : homedir();
+  return join(home, "Library", "LaunchAgents", `${LAUNCH_AGENT_LABEL}.plist`);
+}
+
 export function registerDaemonCommands(program: Command, io: ProgramIO, helpers: DaemonHelpers = {}): void {
   const env = () => helpers.env?.() ?? process.env;
   const makeMessaging = helpers.buildMessagingRegistry ?? ((e: NodeJS.ProcessEnv) => buildMessagingRegistry(e));
@@ -213,6 +264,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
     .option("--once", "Run exactly one tick of each enabled daemon, then exit")
     .option("--status", "Print which daemon ticks are enabled for the current config, then exit")
     .option("--init", "Write the resolved provider + destination to the daemon config file, then exit")
+    .option("--install", "Write a macOS LaunchAgent plist so the daemon survives logout/reboot, then exit")
     .option("--interval <seconds>", "Tick interval in seconds (default 60)", "60")
     .option("--lead-minutes <minutes>", "Imminent-window lead in minutes (default 10)", "10")
     .option("--provider <id>", "Messaging provider id (default MUSE_PROACTIVE_PROVIDER, else 'log')")
@@ -221,6 +273,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       readonly once?: boolean;
       readonly status?: boolean;
       readonly init?: boolean;
+      readonly install?: boolean;
       readonly interval: string;
       readonly leadMinutes: string;
       readonly provider?: string;
@@ -240,6 +293,25 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       if (options.init) {
         writeDaemonConfig(configFile, { destination, provider });
         io.stdout(`muse daemon config written to ${configFile}\n  provider=${provider}, destination=${destination}\n`);
+        return;
+      }
+
+      if (options.install) {
+        const plistFile = resolveLaunchAgentFile(e);
+        const home = e.HOME?.trim()?.length ? e.HOME.trim() : homedir();
+        const logDir = join(home, ".muse", "logs");
+        // argv[1] is the muse CLI entry at runtime; node + that path
+        // gives launchd an absolute, login-shell-independent command.
+        const cliEntry = process.argv[1] ?? "muse";
+        const plist = buildLaunchAgentPlist({
+          label: LAUNCH_AGENT_LABEL,
+          programArguments: [process.execPath, cliEntry, "daemon"],
+          stderrPath: join(logDir, "daemon.err.log"),
+          stdoutPath: join(logDir, "daemon.out.log")
+        });
+        mkdirSync(dirname(plistFile), { recursive: true });
+        writeFileSync(plistFile, plist, "utf8");
+        io.stdout(`muse daemon LaunchAgent written to ${plistFile}\n  load it with:  launchctl load -w ${plistFile}\n  logs: ${logDir}\n`);
         return;
       }
 

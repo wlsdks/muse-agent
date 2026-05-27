@@ -1,4 +1,5 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,7 +8,7 @@ import { writeFollowups, writeObjectives } from "@muse/mcp";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { DaemonStopSignal, registerDaemonCommands, runDaemonLoop, type DaemonHelpers } from "./commands-daemon.js";
+import { buildLaunchAgentPlist, DaemonStopSignal, registerDaemonCommands, runDaemonLoop, type DaemonHelpers } from "./commands-daemon.js";
 
 function capturingProvider(sent: OutboundMessage[]): MessagingProvider {
   return {
@@ -403,6 +404,25 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("--install writes a valid LaunchAgent plist at the configured path", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-install-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemon(["--install", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toContain("LaunchAgent written");
+    expect(res.stdout).toContain("launchctl load -w");
+    expect(existsSync(plistFile)).toBe(true);
+    expect(sent).toHaveLength(0);
+    if (process.platform === "darwin") {
+      expect(() => execFileSync("plutil", ["-lint", plistFile], { encoding: "utf8" })).not.toThrow();
+    }
+  });
+
   it("an unknown provider fails closed — exits non-zero and sends nothing", async () => {
     const env = tmpEnv();
     writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
@@ -461,5 +481,38 @@ describe("runDaemonLoop — foreground loop shuts down cleanly on a stop signal"
     signal.stop();
     await pending;
     expect(Date.now() - started).toBeLessThan(1_000);
+  });
+});
+
+describe("buildLaunchAgentPlist — resident daemon via launchd", () => {
+  it("produces a plutil-valid plist that runs at load, keeps alive, and invokes `daemon`", () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-plist-"));
+    const file = join(dir, "com.muse.daemon.plist");
+    const xml = buildLaunchAgentPlist({
+      label: "com.muse.daemon",
+      programArguments: ["/usr/local/bin/node", "/opt/muse/cli.js", "daemon"],
+      stderrPath: join(dir, "err.log"),
+      stdoutPath: join(dir, "out.log")
+    });
+    writeFileSync(file, xml, "utf8");
+
+    expect(xml).toContain("<string>com.muse.daemon</string>");
+    expect(xml).toContain("<key>RunAtLoad</key>");
+    expect(xml).toContain("<key>KeepAlive</key>");
+    expect(xml).toContain("<string>daemon</string>");
+    if (process.platform === "darwin") {
+      expect(() => execFileSync("plutil", ["-lint", file], { encoding: "utf8" })).not.toThrow();
+    }
+  });
+
+  it("xml-escapes a path containing reserved characters", () => {
+    const xml = buildLaunchAgentPlist({
+      label: "com.muse.daemon",
+      programArguments: ["/bin/sh", "-c", "echo a && echo <b>"],
+      stderrPath: "/tmp/err.log",
+      stdoutPath: "/tmp/out.log"
+    });
+    expect(xml).toContain("echo a &amp;&amp; echo &lt;b&gt;");
+    expect(xml).not.toContain("echo a && echo <b>");
   });
 });

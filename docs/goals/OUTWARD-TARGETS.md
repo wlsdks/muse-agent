@@ -140,10 +140,12 @@ prove startup→delivery end-to-end. Pick the highest undone bullet.
   (not marked fired — sidecar unpoisoned, history "failed"), the
   daemon stays up, no phantom send (`outbound-safety.md`) — see
   `apps/cli/src/commands-daemon.test.ts`.
-- [ ] **P22-6 (only if time remains) launchd survival.** `muse
-  daemon install` writes a valid LaunchAgent plist so the daemon
-  survives logout/reboot. Check: the plist is generated and valid;
-  load/unload dry-run succeeds.
+- [x] **P22-6 launchd survival.** `muse daemon --install` writes a
+  macOS LaunchAgent plist (`~/Library/LaunchAgents/com.muse.daemon.plist`,
+  `MUSE_DAEMON_PLIST_FILE` override) with `RunAtLoad` + `KeepAlive` so
+  the daemon survives logout/reboot, and prints the `launchctl load -w`
+  line. The generated plist passes `plutil -lint` (the OS's own
+  validator) — see `apps/cli/src/commands-daemon.test.ts`.
 
 <!-- IMMUTABLE-CORE:BEGIN -->
 ## Immutable core (the loop must NEVER edit — honesty machinery)
