@@ -248,7 +248,7 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
     });
 }
 
-async function captureWavForSeconds(shells: ListenShells, seconds: number): Promise<Buffer> {
+export async function captureWavForSeconds(shells: ListenShells, seconds: number): Promise<Buffer> {
   const recording = shells.spawnRec(["-q", "-r", "16000", "-c", "1", "-t", "wav", "-"]);
   const chunks: Buffer[] = [];
   recording.stdout?.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -275,7 +275,7 @@ interface ListenOptions {
   readonly clipSeconds?: string;
 }
 
-function defaultShells(): ListenShells {
+export function defaultShells(): ListenShells {
   return {
     playAudio: (filePath) => new Promise<void>((resolve, reject) => {
       const player = platform === "darwin" ? "afplay" : "aplay";
@@ -310,7 +310,7 @@ function defaultShells(): ListenShells {
   };
 }
 
-function defaultBuildVoiceProviders(): { stt?: SpeechToTextProvider; tts?: TextToSpeechProvider } {
+export function defaultBuildVoiceProviders(): { stt?: SpeechToTextProvider; tts?: TextToSpeechProvider } {
   const registry = buildVoiceRegistry(process.env);
   if (!registry) {
     return {};

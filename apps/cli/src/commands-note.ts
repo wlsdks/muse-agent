@@ -11,13 +11,16 @@ import { join } from "node:path";
 
 import { resolveNotesDir } from "@muse/autoconfigure";
 import { createNotesMcpServer } from "@muse/mcp";
+import type { SpeechToTextProvider } from "@muse/voice";
 import type { Command } from "commander";
 
 import { isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js";
 import { rankRecallCandidates, type RecallHit } from "./commands-recall.js";
 import { embed } from "./embed.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
+import { defaultBuildVoiceProviders, defaultShells, type ListenShells } from "./commands-listen.js";
 import type { ProgramIO } from "./program.js";
+import { captureVoiceText } from "./voice-capture.js";
 
 function pad(n: number): string {
   return n.toString().padStart(2, "0");
@@ -96,21 +99,51 @@ async function findConnections(captureText: string, embedModel: string): Promise
   return rankRecallCandidates({ episodeEntries, limit: 6, noteChunks, queryVec, source: "all" });
 }
 
-export function registerNoteCommand(program: Command, io: ProgramIO): void {
+export interface NoteCommandHelpers {
+  /** Injection seam for tests: STT provider + mic shells used by `--voice`. */
+  readonly buildVoiceProviders?: () => { readonly stt?: SpeechToTextProvider };
+  readonly shells?: ListenShells;
+}
+
+export function registerNoteCommand(program: Command, io: ProgramIO, helpers: NoteCommandHelpers = {}): void {
   program
     .command("note")
-    .description("Frictionless capture: append a one-line thought to today's inbox note and auto-index it (pass text or pipe via stdin, e.g. `pbpaste | muse note`)")
-    .argument("[text...]", "The thought to capture, e.g. `muse note buy milk after the dentist` — omit to read from a stdin pipe")
+    .description("Frictionless capture: append a one-line thought to today's inbox note and auto-index it (pass text, pipe via stdin `pbpaste | muse note`, or speak it with --voice)")
+    .argument("[text...]", "The thought to capture, e.g. `muse note buy milk after the dentist` — omit to read from a stdin pipe or use --voice")
     .option("--embed-model <tag>", "Embedding model for the auto-index", "nomic-embed-text")
-    .action(async (parts: string[], options: { readonly embedModel?: string }) => {
+    .option("--voice", "Speak the thought: record a short mic clip and transcribe it via the configured STT")
+    .option("--clip-seconds <n>", "Seconds to record with --voice (default 6, clamped 1–30)", "6")
+    .option("--lang <code>", "STT language hint for --voice, e.g. 'ko'")
+    .action(async (parts: string[], options: { readonly embedModel?: string; readonly voice?: boolean; readonly clipSeconds?: string; readonly lang?: string }) => {
       const argText = parts.join(" ").trim();
-      // No inline text → read a piped stdin (clipboard/pipe capture). A TTY
-      // with no args is just an empty invocation, not a pipe to wait on.
-      const text = argText.length > 0
-        ? argText
-        : (process.stdin.isTTY ? "" : (await readAllStdin(process.stdin)).trim());
+      let text: string;
+      if (options.voice) {
+        const providers = (helpers.buildVoiceProviders ?? defaultBuildVoiceProviders)();
+        if (!providers.stt) {
+          io.stderr("muse note --voice: no STT provider configured (run `muse setup voice`)\n");
+          process.exitCode = 1;
+          return;
+        }
+        const clipSeconds = Math.min(30, Math.max(1, Math.trunc(Number(options.clipSeconds) || 6)));
+        io.stderr(`(listening ${clipSeconds.toString()}s — speak your thought…)\n`);
+        text = (await captureVoiceText(
+          { clipSeconds, shells: helpers.shells ?? defaultShells(), stt: providers.stt, ...(options.lang ? { language: options.lang } : {}) },
+          io
+        )) ?? "";
+        if (text.length === 0) {
+          io.stderr("muse note --voice: nothing captured (no speech / transcription failed)\n");
+          process.exitCode = 1;
+          return;
+        }
+      } else {
+        // No inline text → read a piped stdin (clipboard/pipe capture). A TTY
+        // with no args is just an empty invocation, not a pipe to wait on.
+        text = argText.length > 0
+          ? argText
+          : (process.stdin.isTTY ? "" : (await readAllStdin(process.stdin)).trim());
+      }
       if (text.length === 0) {
-        io.stderr("muse note: nothing to capture (pass text or pipe it via stdin)\n");
+        io.stderr("muse note: nothing to capture (pass text, pipe via stdin, or use --voice)\n");
         process.exitCode = 1;
         return;
       }
