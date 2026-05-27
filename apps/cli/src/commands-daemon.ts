@@ -53,7 +53,7 @@ import {
   type WebWatchRunner
 } from "@muse/mcp";
 import type { MuseTool } from "@muse/tools";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -548,6 +548,11 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout(`  reminders:  ${remindersFile}\n`);
         io.stdout(`  followups:  ${followupsFile}\n`);
         io.stdout(`  objectives: ${objectivesFile}\n`);
+        // Will it come back after a reboot? (P22-6 launchd install)
+        const plistFile = resolveLaunchAgentFile(e);
+        io.stdout(existsSync(plistFile)
+          ? `autostart:    installed (${plistFile})\n`
+          : `autostart:    not installed (run \`muse daemon --install\`)\n`);
         return;
       }
 

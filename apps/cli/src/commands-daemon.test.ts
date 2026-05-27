@@ -385,6 +385,26 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("--status reports launchd autostart state (installed vs not)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-autostart-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const notInstalled = await runDaemon(
+      ["--status", "--provider", "telegram", "--destination", "555"],
+      { env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile }, registry }
+    );
+    expect(notInstalled.stdout).toMatch(/autostart:\s+not installed/);
+
+    writeFileSync(plistFile, "<plist/>", "utf8");
+    const installed = await runDaemon(
+      ["--status", "--provider", "telegram", "--destination", "555"],
+      { env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile }, registry }
+    );
+    expect(installed.stdout).toMatch(/autostart:\s+installed/);
+  });
+
   it("--status reports the resolved source paths (debuggability)", async () => {
     const env = tmpEnv();
     const sent: OutboundMessage[] = [];

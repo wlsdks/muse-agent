@@ -74,6 +74,11 @@ reading source.
   first thing to check when a tick reads a different file than the user
   thinks. Proven: `--status` output contains the resolved task /
   reminder / objective paths — see `apps/cli/src/commands-daemon.test.ts`.
+- [x] **P30-2 `--status` reports launchd autostart state.** It now also
+  reports whether the LaunchAgent plist (P22-6) is installed — i.e.
+  whether the daemon will come back after a reboot — with the path or a
+  `run muse daemon --install` hint. Proven: no plist → "not installed",
+  plist present → "installed" — see `apps/cli/src/commands-daemon.test.ts`.
 
 ## Delivered — P29 (watch the resident daemon work)
 
