@@ -64,11 +64,25 @@ turn; never half-shipped.
 
 ## Active target
 
-**P27 — The daily briefing runs in the resident daemon.** The
-situational briefing (objective status + imminent tasks + a related
-note) was an `apps/api`-only daemon; bring it into `muse daemon` so the
-user's resident Muse delivers the digest too — the flagship "here's
-your day" JARVIS moment.
+**P28 — Position retrieved context for the local model.** After hybrid
+recall (P23) + MMR diversity (P24), order the passages the model
+actually reads so it uses them well.
+
+- [x] **P28-1 Edge-load knowledge_search results (Lost in the Middle).**
+  Both `knowledge_search` surfaces reorder the top-K via
+  `edgeLoadByRelevance` so the most relevant passages sit at the
+  context edges (first + last) and the weakest in the middle, because
+  models attend best to the start/end of context (Liu et al. 2023,
+  "Lost in the Middle", arXiv 2307.03172). The top match stays first so
+  citation is unaffected. Proven: best-first `[a,b,c,d,e]` →
+  `[a,c,e,d,b]` — `packages/agent-core/test/knowledge-recall-agent.test.ts`.
+  Deterministic, no dep, local.
+
+## Delivered — P27 (the daily briefing runs in the resident daemon)
+
+`muse daemon` (opt-in) delivers the situational brief: objective
+status + imminent tasks & calendar + birthdays + a related note.
+Audited PASS (README ledger, `P27 audit`).
 
 - [x] **P27-1 Briefing tick in the launcher.** `muse daemon` runs the
   situational briefing (opt-in `MUSE_BRIEFING_ENABLED`), composing

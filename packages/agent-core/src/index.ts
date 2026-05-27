@@ -103,6 +103,7 @@ export {
   chunkText,
   createCachingEmbedder,
   createKnowledgeSearchTool,
+  edgeLoadByRelevance,
   rankKnowledgeChunks,
   renderKnowledgeMatches,
   type KnowledgeChunk,

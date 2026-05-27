@@ -1,4 +1,4 @@
-import { chunkText, rankKnowledgeChunks, renderKnowledgeMatches, type KnowledgeChunk } from "@muse/agent-core";
+import { chunkText, edgeLoadByRelevance, rankKnowledgeChunks, renderKnowledgeMatches, type KnowledgeChunk } from "@muse/agent-core";
 import type { NotesProvider, TasksProvider } from "@muse/mcp";
 import type { MuseTool } from "@muse/tools";
 
@@ -539,7 +539,7 @@ export function createNotesKnowledgeSearchTool(options: NotesKnowledgeSearchTool
         hybrid: true,
         ...(options.topK !== undefined ? { topK: options.topK } : {})
       });
-      return renderKnowledgeMatches(matches);
+      return renderKnowledgeMatches(edgeLoadByRelevance(matches));
     }
   };
 }

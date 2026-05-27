@@ -226,6 +226,30 @@ export async function rankKnowledgeChunks(
  * its `[source]` and instructed to cite it. The labelling is what
  * lets a grounded answer attribute its claim to the right document.
  */
+/**
+ * Reorder relevance-ranked items so the MOST relevant sit at the
+ * edges of the list (first + last) and the least relevant in the
+ * middle, because language models attend best to the start and end of
+ * their context and worst to the middle (Liu et al. 2023, "Lost in the
+ * Middle: How Language Models Use Long Contexts", arXiv 2307.03172).
+ * Input must be sorted best-first. Deterministic, no deps.
+ */
+export function edgeLoadByRelevance<T>(ranked: readonly T[]): T[] {
+  const out = new Array<T>(ranked.length);
+  let front = 0;
+  let back = ranked.length - 1;
+  ranked.forEach((item, index) => {
+    if (index % 2 === 0) {
+      out[front] = item;
+      front += 1;
+    } else {
+      out[back] = item;
+      back -= 1;
+    }
+  });
+  return out;
+}
+
 export function renderKnowledgeMatches(matches: readonly KnowledgeMatch[]): string {
   if (matches.length === 0) {
     return "No matching passages found in the personal corpus.";
@@ -351,7 +375,7 @@ export function createKnowledgeSearchTool(options: KnowledgeSearchToolOptions): 
         hybrid: true,
         ...(options.topK !== undefined ? { topK: options.topK } : {})
       });
-      return renderKnowledgeMatches(matches);
+      return renderKnowledgeMatches(edgeLoadByRelevance(matches));
     }
   };
 }

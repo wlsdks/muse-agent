@@ -5,10 +5,21 @@ import { describe, expect, it } from "vitest";
 import {
   createAgentRuntime,
   createKnowledgeSearchTool,
+  edgeLoadByRelevance,
   rankKnowledgeChunks,
   renderKnowledgeMatches,
   type KnowledgeChunk
 } from "../src/index.js";
+
+describe("edgeLoadByRelevance — Lost-in-the-Middle context positioning (Liu et al. 2023)", () => {
+  it("places the most relevant at the edges (first + last), least in the middle", () => {
+    // best-first [a,b,c,d,e] → a first, b last, the weakest (e) buried mid
+    expect(edgeLoadByRelevance(["a", "b", "c", "d", "e"])).toEqual(["a", "c", "e", "d", "b"]);
+    expect(edgeLoadByRelevance(["a", "b"])).toEqual(["a", "b"]);
+    expect(edgeLoadByRelevance(["a"])).toEqual(["a"]);
+    expect(edgeLoadByRelevance([])).toEqual([]);
+  });
+});
 
 // Deterministic local "embedding": presence of each vocab term. Stands
 // in for Ollama's embedder — the REAL cosine-ranking code path runs.
