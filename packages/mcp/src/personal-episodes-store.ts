@@ -146,7 +146,69 @@ export async function clearEpisodes(file: string): Promise<void> {
  * — call it from a scheduler tick or the end-of-session hook
  * after upsert.
  */
-export async function vacuumEpisodes(file: string, maxEntries = DEFAULT_VACUUM_MAX_ENTRIES): Promise<number> {
+export interface EpisodeRetentionOptions {
+  /** Base half-life in days for an unscored episode. Default 30. */
+  readonly halfLifeDays?: number;
+  /** How much importance EXTENDS the half-life: effective = base·(1 + w·imp/10). Default 2 (importance 10 ⇒ 3× slower fade). */
+  readonly importanceWeight?: number;
+}
+
+const DEFAULT_RETENTION_HALF_LIFE_DAYS = 30;
+const DEFAULT_RETENTION_IMPORTANCE_WEIGHT = 2;
+
+/**
+ * Retention score in (0, 1] (FadeMem, arXiv 2601.18642: biologically-inspired
+ * forgetting — adaptive decay modulated by importance so salient memories
+ * resist fading). `retention = exp(-ageDays / effectiveHalfLife)` where
+ * `effectiveHalfLife = halfLifeDays · (1 + importanceWeight · importance/10)`,
+ * so a high-importance episode decays slower. An episode with NO importance
+ * uses the base half-life — making retention monotonic in age, so forgetting
+ * stays purely chronological (back-compatible) until importance is present.
+ * Unparseable `endedAt` ⇒ 0 (forgotten first, deterministically).
+ */
+export function computeEpisodeRetention(
+  episode: Pick<PersistedEpisode, "endedAt" | "importance">,
+  nowMs: number,
+  options: EpisodeRetentionOptions = {}
+): number {
+  const endedMs = Date.parse(episode.endedAt);
+  if (!Number.isFinite(endedMs)) {
+    return 0;
+  }
+  const halfLifeDays = Math.max(0.01, options.halfLifeDays ?? DEFAULT_RETENTION_HALF_LIFE_DAYS);
+  const importanceWeight = Math.max(0, options.importanceWeight ?? DEFAULT_RETENTION_IMPORTANCE_WEIGHT);
+  const importance = typeof episode.importance === "number" && Number.isFinite(episode.importance)
+    ? Math.min(10, Math.max(1, episode.importance))
+    : 0;
+  const effectiveHalfLife = halfLifeDays * (1 + importanceWeight * (importance / 10));
+  const ageDays = (nowMs - endedMs) / 86_400_000;
+  return Math.exp(-ageDays / effectiveHalfLife);
+}
+
+/**
+ * Keep the `cap` highest-RETENTION episodes (FadeMem importance-modulated
+ * forgetting), newest-then-id as the deterministic tie-break — so an important
+ * old session survives a trivial recent one, while an unscored corpus is pruned
+ * purely by recency exactly as before.
+ */
+export function selectRetainedEpisodes(
+  episodes: readonly PersistedEpisode[],
+  cap: number,
+  nowMs: number,
+  options: EpisodeRetentionOptions = {}
+): readonly PersistedEpisode[] {
+  return [...episodes]
+    .map((episode) => ({ episode, retention: computeEpisodeRetention(episode, nowMs, options) }))
+    .sort((a, b) =>
+      b.retention - a.retention
+      || b.episode.endedAt.localeCompare(a.episode.endedAt)
+      || b.episode.id.localeCompare(a.episode.id)
+    )
+    .slice(0, cap)
+    .map((entry) => entry.episode);
+}
+
+export async function vacuumEpisodes(file: string, maxEntries = DEFAULT_VACUUM_MAX_ENTRIES, nowMs: number = Date.now()): Promise<number> {
   // NaN slips past `Math.max(1, Math.trunc(NaN)) === NaN`, then
   // `existing.length <= NaN` is false, then `slice(0, NaN)` returns
   // `[]`, then `writeEpisodes(file, [])` WIPES THE ENTIRE FILE.
@@ -159,10 +221,7 @@ export async function vacuumEpisodes(file: string, maxEntries = DEFAULT_VACUUM_M
   if (existing.length <= cap) {
     return 0;
   }
-  const sorted = [...existing].sort((left, right) =>
-    right.endedAt.localeCompare(left.endedAt) || right.id.localeCompare(left.id)
-  );
-  const kept = sorted.slice(0, cap);
+  const kept = selectRetainedEpisodes(existing, cap, nowMs);
   await writeEpisodes(file, kept);
   return existing.length - kept.length;
 }

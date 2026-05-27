@@ -652,12 +652,15 @@ export { createNotesInvestigator } from "./notes-investigator.js";
 // persona surfacing, and `muse episode` CLI.
 export {
   clearEpisodes,
+  computeEpisodeRetention,
   readEpisodes,
   removeEpisode,
+  selectRetainedEpisodes,
   serializeEpisode,
   upsertEpisode,
   vacuumEpisodes,
   writeEpisodes,
+  type EpisodeRetentionOptions,
   type PersistedEpisode
 } from "./personal-episodes-store.js";
 
