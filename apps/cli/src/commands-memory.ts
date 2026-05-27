@@ -296,6 +296,21 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
     });
 
   memory
+    .command("forget")
+    .description("Forget ONE remembered fact/preference by key (vs `clear`, which wipes everything)")
+    .argument("<key>", "Memory key to drop, e.g. `muse memory forget home_city`")
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …)")
+    .action(async (key: string, options: MemoryCommonOptions) => {
+      const userId = resolveMemoryUserId(options.user, options.persona);
+      const store = new FileUserMemoryStore();
+      const removed = await store.forget(userId, key);
+      io.stdout(removed
+        ? `Forgot "${normalizeMemoryKey(key)}" (user=${userId})\n`
+        : `(nothing remembered under "${key}" — already forgotten or never stored)\n`);
+    });
+
+  memory
     .command("set")
     .description("Store a fact or preference key/value entry")
     .argument("<kind>", "Entry kind: 'fact' or 'preference'")
