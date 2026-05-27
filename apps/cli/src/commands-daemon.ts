@@ -16,6 +16,7 @@ import type { Command } from "commander";
 import {
   buildCalendarRegistry,
   buildMessagingRegistry,
+  parseBoolean,
   resolveFollowupsFile,
   resolveObjectivesFile,
   resolveProactiveHistoryFile,
@@ -28,6 +29,7 @@ import {
   createModelObjectiveEvaluator,
   createWebWatchRunner,
   FileAmbientSignalSource,
+  MacOsActiveWindowSource,
   parseAmbientNoticeRules,
   runDueFollowups,
   runDueObjectives,
@@ -66,6 +68,8 @@ export interface DaemonHelpers {
   readonly resolveFollowupModel?: (env: NodeJS.ProcessEnv) => Promise<FollowupModel | undefined>;
   /** Test seam — inject the fetch the web-watch tick snapshots with. */
   readonly fetchImpl?: typeof globalThis.fetch;
+  /** Test seam — inject the osascript runner for the macOS ambient source. */
+  readonly ambientMacosRun?: (script: string) => Promise<string | undefined>;
 }
 
 // Followups REQUIRE a model to synthesize their message. The real
@@ -221,13 +225,28 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           ambientRules = [];
         }
         if (ambientRules.length > 0) {
-          const ambientFile = e.MUSE_AMBIENT_FILE?.trim()?.length
-            ? e.MUSE_AMBIENT_FILE.trim()
-            : join(homedir(), ".muse", "ambient.json");
+          // Real macOS active-window perception when opted in on darwin
+          // (or whenever a test injects the osascript runner); otherwise
+          // the file source an external OS helper writes.
+          const useMacos = e.MUSE_AMBIENT_SOURCE?.trim() === "macos"
+            && (helpers.ambientMacosRun !== undefined || process.platform === "darwin");
+          let ambientSource;
+          if (useMacos) {
+            ambientSource = new MacOsActiveWindowSource({
+              includeClipboard: parseBoolean(e.MUSE_AMBIENT_CLIPBOARD, false),
+              ...(helpers.ambientMacosRun ? { run: helpers.ambientMacosRun } : {})
+            });
+            io.stdout(`  ambient source: macOS active window\n`);
+          } else {
+            const ambientFile = e.MUSE_AMBIENT_FILE?.trim()?.length
+              ? e.MUSE_AMBIENT_FILE.trim()
+              : join(homedir(), ".muse", "ambient.json");
+            ambientSource = new FileAmbientSignalSource(ambientFile);
+          }
           ambientRunner = createAmbientNoticeRunner({
             rules: ambientRules,
             sink: noticeSink,
-            source: new FileAmbientSignalSource(ambientFile)
+            source: ambientSource
           });
         }
       }

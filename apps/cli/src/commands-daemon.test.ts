@@ -31,7 +31,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -45,6 +45,7 @@ async function runDaemon(
       buildMessagingRegistry: () => opts.registry,
       env: () => opts.env,
       ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
+      ...(opts.ambientMacosRun ? { ambientMacosRun: opts.ambientMacosRun } : {}),
       // Default: followup tick disabled (no model) so proactive cases stay hermetic.
       resolveFollowupModel: opts.resolveFollowupModel ?? (async () => undefined)
     });
@@ -139,6 +140,26 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
 
     expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toMatch(/ambient: delivered 1/);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.text).toContain("You're in Slack");
+  });
+
+  it("--once drives the REAL macOS active-window source when MUSE_AMBIENT_SOURCE=macos", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_AMBIENT_SOURCE: "macos", MUSE_AMBIENT_RULES: JSON.stringify([
+      { id: "focus_slack", title: "Heads up", message: "You're in Slack", match: { app: "Slack" } }
+    ]) };
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    // Contract-faithful osascript: line 1 = frontmost app, line 2 = window title.
+    const res = await runDaemon(
+      ["--once", "--provider", "telegram", "--destination", "555"],
+      { ambientMacosRun: async () => "Slack\ngeneral", env, registry }
+    );
+
+    expect(res.stdout).toContain("ambient source: macOS active window");
     expect(res.stdout).toMatch(/ambient: delivered 1/);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.text).toContain("You're in Slack");

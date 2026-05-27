@@ -102,12 +102,13 @@ prove startup→delivery end-to-end. Pick the highest undone bullet.
   waiting out the interval; survives a throwing tick; no `process.exit`)
   — `runDaemonLoop` suite in `apps/cli/src/commands-daemon.test.ts`.
   **P22-1 (the launcher) is complete: all five ticks + clean shutdown.**
-- [ ] **P22-2 macOS active-window perception feeds the running
-  daemon.** Wire `MacOsActiveWindowSource` into the launcher so a
-  real OS signal drives a proactive notice on a tick. Check:
-  integration — a contract-faithful osascript-source signal drives
-  exactly one notice on a rule match through the real
-  `ProactiveNoticeSink`; fire-once dedupe holds.
+- [x] **P22-2 macOS active-window perception feeds the running
+  daemon.** `muse daemon` now selects `MacOsActiveWindowSource` for
+  its ambient tick when `MUSE_AMBIENT_SOURCE=macos` (darwin, or
+  whenever a test injects the osascript runner). A contract-faithful
+  osascript signal (`"Slack\ngeneral"`) drives exactly one notice on a
+  matching rule through the real sink — see
+  `apps/cli/src/commands-daemon.test.ts`.
 - [ ] **P22-3 Chrome connects at daemon startup + threads into
   chrome-source web-watches** (the P21 follow-on). Check:
   integration — daemon startup establishes the Chrome DevTools MCP
