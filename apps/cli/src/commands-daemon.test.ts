@@ -77,6 +77,7 @@ function tmpEnv(): NodeJS.ProcessEnv {
   return {
     MUSE_AMBIENT_FILE: join(dir, "ambient.json"),
     MUSE_BRIEFING_SIDECAR_FILE: join(dir, "briefing-fired.json"),
+    MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
     MUSE_DAEMON_CONFIG_FILE: join(dir, "daemon.json"),
     MUSE_FOLLOWUPS_FILE: join(dir, "followups.json"),
     MUSE_OBJECTIVES_FILE: join(dir, "objectives.json"),
@@ -525,6 +526,29 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(res.stdout).toMatch(/briefing: delivered/);
     // proactive notice + the briefing digest both went out
     expect(sent.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("--once briefing names an upcoming birthday from the user's contacts", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_BRIEFING_ENABLED: "true" };
+    const dueSoon = new Date(Date.now() + 5 * 60_000).toISOString();
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({
+      tasks: [{ id: "t1", title: "Ship it", status: "open", dueAt: dueSoon, createdAt: "2026-01-01T00:00:00Z" }]
+    }), "utf8");
+    // A contact whose birthday is TODAY → the brief's Birthdays line names them.
+    const today = new Date();
+    const mmdd = `${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    writeFileSync(env.MUSE_CONTACTS_FILE!, JSON.stringify({
+      contacts: [{ id: "c1", name: "Zelda", birthday: mmdd }]
+    }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toMatch(/briefing: delivered/);
+    // only the briefing mentions a birthday — the proactive notice is about the task
+    expect(sent.some((m) => m.text.includes("Zelda"))).toBe(true);
   });
 
   it("briefing tick is skipped when MUSE_BRIEFING_ENABLED is unset (hermetic default)", async () => {

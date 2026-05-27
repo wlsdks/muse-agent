@@ -79,10 +79,15 @@ your day" JARVIS moment.
   skipped without the flag) and surfaced in `--status` — see
   `apps/cli/src/commands-daemon.test.ts`. No model required — the brief
   composes deterministically from structured data.
-- [ ] **P27-2 Briefing covers calendar + birthdays.** Extend the
-  daemon brief's imminent to calendar events (`deriveCalendarBriefingImminent`)
-  and add the birthday line from contacts, matching the apps/api brief.
-  Check: a calendar event + an upcoming birthday appear in the brief.
+- [x] **P27-2 Briefing names upcoming birthdays.** The daemon brief now
+  passes a `birthdayLine` from the user's contacts
+  (`queryContacts` → `resolveUpcomingBirthdays` → `formatBirthdayBriefLine`).
+  Proven: a contact whose birthday is today appears in the delivered
+  brief — `apps/cli/src/commands-daemon.test.ts`.
+- [ ] **P27-3 Briefing covers calendar events.** Add
+  `deriveCalendarBriefingImminent` to the daemon brief's imminent via a
+  `BriefingCalendarLister` adapter over the calendar registry, matching
+  the apps/api brief. Check: a calendar event appears in the brief.
 
 ## Delivered — P26 (widen the daemon's perception reach)
 

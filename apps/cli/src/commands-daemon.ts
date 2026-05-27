@@ -17,6 +17,7 @@ import {
   buildCalendarRegistry,
   buildMessagingRegistry,
   parseBoolean,
+  resolveContactsFile,
   resolveFollowupsFile,
   resolveObjectivesFile,
   resolveProactiveHistoryFile,
@@ -31,9 +32,12 @@ import {
   createWebWatchRunner,
   deriveBriefingImminent,
   FileAmbientSignalSource,
+  formatBirthdayBriefLine,
   homeWatchesFromConfig,
   MacOsActiveWindowSource,
   parseAmbientNoticeRules,
+  queryContacts,
+  resolveUpcomingBirthdays,
   runDueFollowups,
   runDueObjectives,
   runDueProactiveNotices,
@@ -643,6 +647,14 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           imminent = await deriveBriefingImminent(tasksFile, { leadMinutes, now });
         } catch { /* fail-soft — brief objective status only */ }
         const summary = await runDueSituationalBriefing({
+          birthdayLine: async () => {
+            try {
+              const contacts = await queryContacts(resolveContactsFile(e));
+              return formatBirthdayBriefLine(resolveUpcomingBirthdays(contacts, { now, withinDays: 7 }));
+            } catch {
+              return undefined;
+            }
+          },
           destination,
           imminent,
           messagingRegistry,
