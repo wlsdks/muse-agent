@@ -27,7 +27,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { reorderForLongContext, selectByMmr } from "@muse/agent-core";
+import { renderPlaybookSection, reorderForLongContext, selectByMmr } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveEpisodesFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
@@ -35,7 +35,6 @@ import { readEpisodes, readReminders, readTasks, type PersistedReminder, type Pe
 import { classifyTier, type ModelTier } from "@muse/multi-agent";
 import type { Command } from "commander";
 
-import { readCorrections, renderCorrectionsBlock, resolveCorrectionsFile } from "./commands-feedback.js";
 import { cosine, isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js";
 import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles, type RecallHit } from "./commands-recall.js";
 import { formatConnectionsSection } from "./commands-today.js";
@@ -304,6 +303,16 @@ export interface AskStreamEvent {
 export interface AskStreamResult {
   readonly answer: string;
   readonly error?: string;
+}
+
+/**
+ * Prepend the ACE `[Learned Strategies]` block (when present) to the
+ * chat-only fast-path system prompt, so the default `muse ask` applies
+ * learned feedback that otherwise only reaches the --with-tools agent
+ * runtime. Empty / absent block ⇒ the prompt is unchanged.
+ */
+export function composeChatSystemContent(systemPrompt: string, playbookSection: string | undefined): string {
+  return playbookSection && playbookSection.trim().length > 0 ? `${playbookSection}\n\n${systemPrompt}` : systemPrompt;
 }
 
 /**
@@ -733,20 +742,26 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           .map((r, i) => `<<reminder ${(i + 1).toString()} — ${r.id} (due ${r.dueAt})>>\n${r.text}\n<<end>>`)
           .join("\n\n");
 
-      // Phase 2 (runtime self-tuning): inject the user's recorded
-      // corrections as a high-priority directive so past feedback shapes
-      // this answer (Reflexion). Fail-soft; absent file ⇒ no block.
-      let correctionsBlock: string | undefined;
+      // Phase 2 (runtime self-tuning): the ACE playbook's [Learned
+      // Strategies] reach the agent-runtime (--with-tools) path via the
+      // runtime's playbookProvider, but NOT this chat-only fast path. Pull
+      // them in for the chat-only stream below so past feedback shapes the
+      // default `muse ask` answer too. Fail-soft; zero strategies ⇒ no block.
+      let playbookSection: string | undefined;
       try {
-        correctionsBlock = renderCorrectionsBlock(await readCorrections(resolveCorrectionsFile(process.env as Record<string, string | undefined>)));
+        const { queryPlaybook } = await import("@muse/mcp");
+        const { resolvePlaybookFile } = await import("@muse/autoconfigure");
+        playbookSection = renderPlaybookSection(
+          (await queryPlaybook(resolvePlaybookFile(process.env as Record<string, string | undefined>), userKey))
+            .map((entry) => ({ tag: entry.tag, text: entry.text }))
+        );
       } catch {
-        correctionsBlock = undefined;
+        playbookSection = undefined;
       }
 
       const systemPrompt = [
         ...(personaTemplatePreamble.length > 0 ? [personaTemplatePreamble, ""] : []),
         ...(personaPrompt ? [personaPrompt, ""] : []),
-        ...(correctionsBlock ? [correctionsBlock, ""] : []),
         // Date/time line is ALWAYS present, even with no persona —
         // questions like "anything due today?" / "is the dentist
         // tomorrow?" require the model to know `now`, regardless of
@@ -900,7 +915,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           const res = await consumeAskStream(
             assembly.modelProvider!.stream({
               messages: [
-                { content: systemPrompt, role: "system" },
+                { content: composeChatSystemContent(systemPrompt, playbookSection), role: "system" },
                 { content: query, role: "user" }
               ],
               ...(webSearchPolicy ? { metadata: { webSearchPolicy } } : {}),
