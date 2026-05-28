@@ -76,6 +76,54 @@ describe("startAmbientTick — delivers a matched ambient notice through the mes
   });
 });
 
+describe("startAmbientTick — SB-3 knowledge trigger fires over the channel with NO rules", () => {
+  it("the active window title connecting to the corpus edge-fires a recall notice", async () => {
+    await writeFile(file, JSON.stringify({ app: "Notion", window: "Q3 budget — Notion" }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const handle = startAmbientTick({
+      destination: "555",
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      rules: [],
+      source: new FileAmbientSignalSource(file),
+      knowledgeTrigger: {
+        enrich: (query) => query.toLowerCase().includes("q3 budget")
+          ? "[notes/finance.md] Q3 ad spend capped at 12k"
+          : undefined
+      }
+    });
+    try {
+      await handle.tickOnce();
+      await handle.tickOnce(); // same window → edge-deduped, no second send
+    } finally {
+      handle.stop();
+    }
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.destination).toBe("555");
+    expect(sent[0]!.text).toContain("Q3 ad spend capped at 12k");
+    expect(sent[0]!.text).toContain("second brain");
+  });
+
+  it("a window title that connects to nothing stays silent", async () => {
+    await writeFile(file, JSON.stringify({ window: "Spotify" }), "utf8");
+    const sent: OutboundMessage[] = [];
+    const handle = startAmbientTick({
+      destination: "555",
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      rules: [],
+      source: new FileAmbientSignalSource(file),
+      knowledgeTrigger: { enrich: () => undefined }
+    });
+    try {
+      await handle.tickOnce();
+    } finally {
+      handle.stop();
+    }
+    expect(sent).toHaveLength(0);
+  });
+});
+
 function fakeServer() {
   const hooks: { name: string; fn: () => unknown }[] = [];
   return {
@@ -104,5 +152,25 @@ describe("startAmbientDaemonIfConfigured — env-gated registration", () => {
     startAmbientDaemonIfConfigured({} as NodeJS.ProcessEnv, server as never, options);
     startAmbientDaemonIfConfigured({ ...env, MUSE_AMBIENT_RULES: "[]" } as NodeJS.ProcessEnv, server as never, options);
     expect(hooks).toHaveLength(0);
+  });
+
+  it("no rules but knowledge trigger enabled ⇒ started (SB-3); the flag alone without the enricher ⇒ NOT started", () => {
+    const triggerEnv = {
+      ...env,
+      MUSE_AMBIENT_RULES: "[]",
+      MUSE_AMBIENT_KNOWLEDGE_TRIGGER: "true"
+    } as unknown as NodeJS.ProcessEnv;
+
+    const flagOnly = fakeServer();
+    startAmbientDaemonIfConfigured(triggerEnv, flagOnly.server as never, options);
+    expect(flagOnly.hooks).toHaveLength(0); // MUSE_BRIEFING_RELATED_KNOWLEDGE_ENABLED off ⇒ no enricher ⇒ no trigger
+
+    const withEnricher = fakeServer();
+    startAmbientDaemonIfConfigured(
+      { ...triggerEnv, MUSE_BRIEFING_RELATED_KNOWLEDGE_ENABLED: "true" } as NodeJS.ProcessEnv,
+      withEnricher.server as never,
+      options
+    );
+    expect(withEnricher.hooks.filter((h) => h.name === "onClose")).toHaveLength(1);
   });
 });

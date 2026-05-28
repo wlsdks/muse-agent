@@ -467,11 +467,13 @@ export function startPatternDaemonIfConfigured(
 }
 
 /**
- * P20 perception daemon. Off by default; activates when
+ * P20 / SB-3 perception daemon. Off by default; activates when
  * `MUSE_AMBIENT_ENABLED=true`, a messaging provider + destination are
- * set + registered, and `MUSE_AMBIENT_RULES` parses to ≥1 rule. Reads
- * the ambient signal from `MUSE_AMBIENT_FILE` (default
- * `~/.muse/ambient.json`) each tick and edge-fires proactive notices.
+ * set + registered, AND there is something to fire from: either
+ * `MUSE_AMBIENT_RULES` parses to ≥1 rule, OR the knowledge trigger is on
+ * (`MUSE_AMBIENT_KNOWLEDGE_TRIGGER=true` with the shared enricher
+ * enabled). Reads the ambient signal each tick (live macOS window or the
+ * `MUSE_AMBIENT_FILE` JSON) and edge-fires proactive notices.
  */
 export function startAmbientDaemonIfConfigured(
   env: NodeJS.ProcessEnv,
@@ -482,11 +484,19 @@ export function startAmbientDaemonIfConfigured(
   const providerId = env.MUSE_AMBIENT_PROVIDER?.trim();
   const destination = env.MUSE_AMBIENT_DESTINATION?.trim();
   const rules = parseAmbientNoticeRules(env.MUSE_AMBIENT_RULES ?? "");
+  const enrich = buildKnowledgeEnricherIfEnabled(env, options);
+  // SB-3 knowledge trigger: the active window title alone surfaces a
+  // recall notice with NO pre-authored rule. Needs the shared enricher
+  // (gated by MUSE_BRIEFING_RELATED_KNOWLEDGE_ENABLED), so absent that it
+  // stays off even when the flag is set.
+  const knowledgeTrigger = parseBoolean(env.MUSE_AMBIENT_KNOWLEDGE_TRIGGER, false) && enrich
+    ? { enrich }
+    : undefined;
   if (
     !enabled
     || !providerId || providerId.length === 0
     || !destination || destination.length === 0
-    || rules.length === 0
+    || (rules.length === 0 && !knowledgeTrigger)
     || !options.messaging
     || !options.messaging.has(providerId)
   ) {
@@ -494,7 +504,6 @@ export function startAmbientDaemonIfConfigured(
   }
   const tickMsRaw = env.MUSE_AMBIENT_TICK_MS ? Number(env.MUSE_AMBIENT_TICK_MS) : undefined;
   const quietHours = parseQuietHours(env.MUSE_AMBIENT_QUIET_HOURS) ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
-  const enrich = buildKnowledgeEnricherIfEnabled(env, options);
   // Live macOS active-window perception (no helper writing the file)
   // when opted in on darwin; otherwise the file source.
   const source = env.MUSE_AMBIENT_SOURCE?.trim() === "macos" && process.platform === "darwin"
@@ -509,6 +518,7 @@ export function startAmbientDaemonIfConfigured(
     rules,
     source,
     ...(enrich ? { enrich } : {}),
+    ...(knowledgeTrigger ? { knowledgeTrigger } : {}),
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     ...(quietHours ? { quietHours } : {})
   });
