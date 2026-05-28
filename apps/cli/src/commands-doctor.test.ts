@@ -7,6 +7,7 @@ import {
   embedModelCheck,
   episodeIndexHealth,
   findOllamaModelTag,
+  localOnlyCheck,
   notesIndexHealth,
   parseNotesIndexEmbedModel,
   resolveMuseEnvPath,
@@ -274,5 +275,32 @@ describe("resolveMuseEnvPath (goal-478/481/482 sibling, doctor surface)", () => 
   it("treats an empty / whitespace-only env value as unset (the bug 482 fixed for userId, here for doctor paths)", () => {
     expect(resolveMuseEnvPath("", "/home/u/.muse")).toBe("/home/u/.muse");
     expect(resolveMuseEnvPath("   ", "/home/u/.muse")).toBe("/home/u/.muse");
+  });
+});
+
+describe("localOnlyCheck — local-only / no-cloud-egress posture", () => {
+  it("ON + a local model ⇒ ok, egress blocked", () => {
+    const check = localOnlyCheck({ MUSE_LOCAL_ONLY: "true", MUSE_MODEL: "ollama/llama3.2" });
+    expect(check.status).toBe("ok");
+    expect(check.detail).toContain("blocked");
+  });
+
+  it("ON + a cloud model ⇒ fail with the runtime's own reason (previews the boot refusal)", () => {
+    const check = localOnlyCheck({ MUSE_LOCAL_ONLY: "true", GEMINI_API_KEY: "k" });
+    expect(check.status).toBe("fail");
+    expect(check.detail).toContain("MUSE_LOCAL_ONLY");
+  });
+
+  it("OFF + cloud credentials present ⇒ warn that egress is possible", () => {
+    const check = localOnlyCheck({ OPENAI_API_KEY: "k" });
+    expect(check.status).toBe("warn");
+    expect(check.detail).toContain("OPENAI_API_KEY");
+    expect(check.detail).toContain("MUSE_LOCAL_ONLY=true");
+  });
+
+  it("OFF + no cloud credentials ⇒ ok (nothing to leak)", () => {
+    const check = localOnlyCheck({ MUSE_MODEL: "ollama/llama3.2" });
+    expect(check.status).toBe("ok");
+    expect(check.detail).toContain("off");
   });
 });
