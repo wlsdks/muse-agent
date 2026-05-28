@@ -78,6 +78,7 @@ export {
   resolveUserSkillsDir,
   resolveVetoesFile,
   resolvePlaybookFile,
+  resolvePlanCacheFile,
   resolveWorkspaceSkillsDir
 } from "./provider-paths.js";
 
@@ -204,7 +205,8 @@ export {
   buildTelemetryAggregator,
   buildToolFilter,
   buildVetoAvoidanceProvider,
-  buildPlaybookProvider
+  buildPlaybookProvider,
+  buildPlanCacheProvider
 } from "./context-engineering-builders.js";
 
 /**

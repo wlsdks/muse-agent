@@ -167,6 +167,13 @@ export interface PlanningPromptInput {
   readonly userPrompt: string;
   readonly toolDescriptions: string;
   readonly basePrompt?: string;
+  /**
+   * A worked plan from a similar PAST request, injected as a few-shot
+   * exemplar so a small local model produces a better one-shot plan
+   * (Agentic Plan Caching, arXiv 2506.14852 — reuse past plan structure).
+   * Pre-rendered by the caller; omitted ⇒ no exemplar section.
+   */
+  readonly priorPlanExemplar?: string;
 }
 
 export function buildPlanningSystemPrompt(input: PlanningPromptInput): string {
@@ -209,6 +216,14 @@ export function buildPlanningSystemPrompt(input: PlanningPromptInput): string {
   segments.push("3. 동일 도구를 다른 인자로 여러 번 호출할 수 있습니다.");
   segments.push("4. 각 단계의 args는 해당 도구의 입력 스키마에 맞춰야 합니다.");
   segments.push("5. 응답은 [ 로 시작하고 ] 로 끝나야 합니다.");
+  if (input.priorPlanExemplar && input.priorPlanExemplar.trim().length > 0) {
+    segments.push("");
+    segments.push("[Similar Past Plan]");
+    segments.push("이전에 비슷한 요청을 아래 계획으로 처리했습니다. 구조가 맞으면 참고하되,");
+    segments.push("현재 요청에 맞게 도구와 인자를 반드시 다시 맞추세요 (그대로 복사 금지).");
+    segments.push(input.priorPlanExemplar.trim());
+  }
+
   segments.push("");
   segments.push("[User Request]");
   segments.push(input.userPrompt);

@@ -35,6 +35,7 @@ import type { AgentMetrics, MuseTracer, TokenUsageSink } from "@muse/observabili
 import { renderToolResults } from "@muse/prompts";
 
 import { applyCitationSanitisation, recordTokenUsageEvent } from "./model-invocation.js";
+import type { PlanCacheProvider } from "./plan-cache.js";
 import { appendSystemSection, recordUsageSpanAttributes } from "./runtime-helpers.js";
 import {
   blockedToolResult,
@@ -48,6 +49,8 @@ import type { AgentRunContext } from "./types.js";
 
 export interface ModelLoopRunner {
   readonly maxToolCalls: number;
+  /** Plan-template cache (Agentic Plan Caching) — used only by the plan-execute path. */
+  readonly planCacheProvider?: PlanCacheProvider;
   /**
    * Wall-clock cap, in ms, for a single run's tool-loop. Counts
    * from the start of `executeModelLoop` / `executeStreamingModelLoop`.

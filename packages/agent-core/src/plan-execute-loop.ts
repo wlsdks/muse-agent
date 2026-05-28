@@ -29,7 +29,8 @@ import {
   validatePlan,
   type PlanStep
 } from "./plan-execute.js";
-import { latestUserPrompt } from "./runtime-helpers.js";
+import { renderPlanExemplar, type PlanCacheProvider } from "./plan-cache.js";
+import { latestUserPrompt, metadataString } from "./runtime-helpers.js";
 import {
   blockedToolResult,
   planExecuteIntermediateMessages,
@@ -41,6 +42,8 @@ import type { AgentRunContext } from "./types.js";
 
 export interface PlanExecuteRunner {
   readonly maxToolCalls: number;
+  /** Optional plan-template cache (Agentic Plan Caching) — injects a similar past plan as a planning exemplar and records successful plans. */
+  readonly planCacheProvider?: PlanCacheProvider;
   generateWithTracing(
     context: AgentRunContext,
     provider: ModelProvider,
@@ -88,8 +91,9 @@ export async function* streamPlanExecute(
   const userPrompt = latestUserPrompt(request.messages);
   const tools = request.tools ?? [];
   const toolDescriptions = renderToolDescriptionsForPlanning(tools);
+  const userId = metadataString(context.input.metadata, "userId");
 
-  const plan = await generatePlan(runner, context, provider, request, userPrompt, toolDescriptions);
+  const plan = await generatePlan(runner, context, provider, request, userPrompt, toolDescriptions, userId);
   if (plan === null) {
     throw new PlanExecutionError("PLAN_GENERATION_FAILED", "Plan generation parsing failed");
   }
@@ -191,6 +195,18 @@ export async function* streamPlanExecute(
     executed
   );
 
+  // Agentic Plan Caching (arXiv 2506.14852): record the plan that just
+  // executed so a similar future request can reuse it as a planning exemplar.
+  // Reached only after at least one step succeeded (all-failed throws above).
+  // Fail-open — a cache write must never break the run.
+  if (runner.planCacheProvider && userId && plan.length > 0) {
+    try {
+      await runner.planCacheProvider.recordPlan(userId, userPrompt, plan);
+    } catch {
+      // ignore — caching is best-effort
+    }
+  }
+
   return {
     finalResponse,
     intermediateMessages: planExecuteIntermediateMessages(plan, executed),
@@ -205,11 +221,27 @@ async function generatePlan(
   provider: ModelProvider,
   request: ModelRequest,
   userPrompt: string,
-  toolDescriptions: string
+  toolDescriptions: string,
+  userId: string | undefined
 ): Promise<readonly PlanStep[] | null> {
+  // Agentic Plan Caching (arXiv 2506.14852): inject a similar past plan as a
+  // few-shot exemplar so the small local model plans better in one shot.
+  // Fail-open — a cache miss/error just means no exemplar.
+  let priorPlanExemplar: string | undefined;
+  if (runner.planCacheProvider && userId) {
+    try {
+      const similar = await runner.planCacheProvider.findSimilarPlan(userId, userPrompt);
+      if (similar) {
+        priorPlanExemplar = renderPlanExemplar(similar);
+      }
+    } catch {
+      priorPlanExemplar = undefined;
+    }
+  }
   const planningPrompt = buildPlanningSystemPrompt({
     toolDescriptions,
-    userPrompt
+    userPrompt,
+    ...(priorPlanExemplar ? { priorPlanExemplar } : {})
   });
 
   const planRequest: ModelRequest = {

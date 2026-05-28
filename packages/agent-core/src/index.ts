@@ -208,6 +208,8 @@ export {
   type PlanValidationResult,
   type StepExecutionResult
 } from "./plan-execute.js";
+export { renderPlanExemplar, selectPlanExemplar } from "./plan-cache.js";
+export type { CachedPlan, PlanCacheProvider, SelectPlanExemplarOptions } from "./plan-cache.js";
 
 export { HookRegistry } from "./hook-registry.js";
 

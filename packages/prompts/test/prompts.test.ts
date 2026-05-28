@@ -258,6 +258,22 @@ describe("buildPlanningSystemPrompt", () => {
     });
     expect(result.startsWith("[Role]")).toBe(true);
   });
+
+  it("injects a [Similar Past Plan] exemplar before the user request (Agentic Plan Caching, arXiv 2506.14852)", () => {
+    const result = buildPlanningSystemPrompt({
+      priorPlanExemplar: "PRIOR_PLAN_EXEMPLAR_MARKER",
+      toolDescriptions: "- a",
+      userPrompt: "do thing"
+    });
+    expect(result).toContain("[Similar Past Plan]");
+    expect(result).toContain("PRIOR_PLAN_EXEMPLAR_MARKER");
+    expect(result.indexOf("PRIOR_PLAN_EXEMPLAR_MARKER")).toBeLessThan(result.indexOf("[User Request]"));
+  });
+
+  it("omits the exemplar section when not provided (unchanged)", () => {
+    const result = buildPlanningSystemPrompt({ toolDescriptions: "- a", userPrompt: "do thing" });
+    expect(result).not.toContain("[Similar Past Plan]");
+  });
 });
 
 describe("today-brief prompt", () => {

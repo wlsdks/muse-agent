@@ -481,6 +481,15 @@ export {
   type PlaybookEntry
 } from "./personal-playbook-store.js";
 export {
+  MAX_PLAN_CACHE_ENTRIES,
+  queryPlanCache,
+  readPlanCache,
+  recordPlanTemplate,
+  writePlanCache,
+  type PlanCacheEntry,
+  type PlanCacheStep
+} from "./personal-plan-cache-store.js";
+export {
   composeSituationalBriefing,
   resolveDayShapeLine,
   type BriefingImminent,

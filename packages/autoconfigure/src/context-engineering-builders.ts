@@ -1,11 +1,15 @@
+import { randomUUID } from "node:crypto";
+
 import {
   DefaultActiveContextProvider,
   DefaultToolFilter,
   InMemoryTelemetryAggregator,
   StoreBackedEpisodicRecallProvider,
+  selectPlanExemplar,
   type ActiveContextProvider,
   type EpisodicRecallProvider,
   type InboxContextProvider,
+  type PlanCacheProvider,
   type ReminderHint,
   type RemindersResolver,
   type TelemetryAggregator,
@@ -14,7 +18,8 @@ import {
   type PlaybookProvider
 } from "@muse/agent-core";
 import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
-import { readReminders, readVetoes, queryPlaybook } from "@muse/mcp";
+import type { JsonObject } from "@muse/shared";
+import { readReminders, readVetoes, queryPlaybook, queryPlanCache, recordPlanTemplate } from "@muse/mcp";
 import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore } from "@muse/memory";
 import { FileBackedInboxContextProvider, type InboxSourceConfig } from "@muse/messaging";
 
@@ -27,7 +32,8 @@ import {
   resolveSlackInboxFile,
   resolveTelegramInboxFile,
   resolveVetoesFile,
-  resolvePlaybookFile
+  resolvePlaybookFile,
+  resolvePlanCacheFile
 } from "./provider-paths.js";
 import { parseBoolean } from "./env-parsers.js";
 import { clampPositive, readCredentialsSync, stringField } from "./provider-utils.js";
@@ -327,5 +333,39 @@ export function buildPlaybookProvider(env: MuseEnvironment): PlaybookProvider | 
   return {
     listStrategies: async (userId: string) =>
       (await queryPlaybook(file, userId)).map((entry) => ({ tag: entry.tag, text: entry.text }))
+  };
+}
+
+/**
+ * Production wiring for Agentic Plan Caching (arXiv 2506.14852): adapt the
+ * durable `~/.muse/plan-cache.json` plan-template store to the agent-runtime's
+ * duck-typed `PlanCacheProvider`. On a plan-execute run it injects the most
+ * similar past plan as a planning few-shot exemplar (better one-shot plans on
+ * the small local model) and records the executed plan. Conservative (no match
+ * ⇒ no exemplar), default-on; opt out with `MUSE_PLAN_CACHE=false`.
+ */
+export function buildPlanCacheProvider(env: MuseEnvironment): PlanCacheProvider | undefined {
+  if (!parseBoolean(env.MUSE_PLAN_CACHE, true)) {
+    return undefined;
+  }
+  const file = resolvePlanCacheFile(env);
+  return {
+    findSimilarPlan: async (userId, prompt) => {
+      const entries = (await queryPlanCache(file, userId)).map((entry) => ({
+        prompt: entry.prompt,
+        // Store args are JSON-sourced; narrow Record<string,unknown> → JsonObject at the boundary.
+        steps: entry.steps.map((step) => ({ args: step.args as JsonObject, description: step.description, tool: step.tool }))
+      }));
+      return selectPlanExemplar(entries, prompt);
+    },
+    recordPlan: async (userId, prompt, steps) => {
+      await recordPlanTemplate(file, {
+        createdAt: new Date().toISOString(),
+        id: `pc_${randomUUID()}`,
+        prompt,
+        steps: steps.map((step) => ({ args: step.args, description: step.description, tool: step.tool })),
+        userId
+      });
+    }
   };
 }

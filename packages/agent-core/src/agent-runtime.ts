@@ -72,6 +72,7 @@ import { applyVetoAvoidance as applyVetoAvoidanceFn } from "./veto-avoidance.js"
 import type { VetoAvoidanceProvider } from "./veto-avoidance.js";
 import { applyPlaybook as applyPlaybookFn } from "./playbook.js";
 import type { PlaybookProvider } from "./playbook.js";
+import type { PlanCacheProvider } from "./plan-cache.js";
 import { applyClarifyDirective as applyClarifyDirectiveFn } from "./clarify-directive.js";
 import type { EpisodicRecallProvider } from "./episodic-recall.js";
 import { ModelRoutingError } from "./errors.js";
@@ -205,6 +206,7 @@ export class AgentRuntime {
   private readonly ambientSnapshotProvider?: AmbientSnapshotProvider;
   private readonly vetoAvoidanceProvider?: VetoAvoidanceProvider;
   private readonly playbookProvider?: PlaybookProvider;
+  private readonly planCacheProvider?: PlanCacheProvider;
   private readonly inboxContextProvider?: InboxContextProvider;
   private readonly episodicRecallProvider?: EpisodicRecallProvider;
   private readonly toolFilter?: ToolFilter;
@@ -266,6 +268,7 @@ export class AgentRuntime {
     this.ambientSnapshotProvider = options.ambientSnapshotProvider;
     this.vetoAvoidanceProvider = options.vetoAvoidanceProvider;
     this.playbookProvider = options.playbookProvider;
+    this.planCacheProvider = options.planCacheProvider;
     this.inboxContextProvider = options.inboxContextProvider;
     this.episodicRecallProvider = options.episodicRecallProvider;
     this.toolFilter = options.toolFilter;
@@ -745,6 +748,7 @@ export class AgentRuntime {
       maxRunWallclockMs: this.maxRunWallclockMs,
       maxToolCalls: this.maxToolCalls,
       maxToolOutputChars: this.maxToolOutputChars,
+      ...(this.planCacheProvider ? { planCacheProvider: this.planCacheProvider } : {}),
       ...(this.contextReferenceStore ? { contextReferenceStore: this.contextReferenceStore } : {}),
       metrics: this.metrics,
       tokenUsageSink: this.tokenUsageSink,
