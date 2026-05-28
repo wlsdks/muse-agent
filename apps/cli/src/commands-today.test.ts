@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { writeFollowups, writeReminders, type PersistedFollowup, type PersistedReminder } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
-import { formatConnectionsSection, formatEvents, formatHeadlines, formatRevisitSection, formatStaleTasksSection, formatTasks, formatTodayBrief, formatTodayConflicts, formatWeatherLine, parseLookaheadHours, pickConnectionQuery, readDueFollowups, readDueReminders, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine, selectStaleTasks } from "./commands-today.js";
+import { formatConnectionsSection, formatEpisodeRevisitLine, formatEvents, formatHeadlines, formatRevisitSection, formatStaleTasksSection, formatTasks, formatTodayBrief, formatTodayConflicts, formatWeatherLine, parseLookaheadHours, pickConnectionQuery, readDueFollowups, readDueReminders, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine, selectEpisodeToRevisit, selectStaleTasks } from "./commands-today.js";
 
 const ESC = String.fromCharCode(27);
 
@@ -75,6 +75,36 @@ describe("formatStaleTasksSection — proactive GTD nudge block in today", () =>
     const out = formatStaleTasksSection([{ id: "1", title: "renew the domain", ageDays: 42.7 }]);
     expect(out).toContain("Open a while — still relevant?");
     expect(out).toContain("[42d] renew the domain");
+  });
+});
+
+describe("selectEpisodeToRevisit — 'remember when' past-session resurfacing", () => {
+  const NOW = Date.parse("2026-05-28T00:00:00Z");
+  const daysAgo = (n: number): string => new Date(NOW - n * 86_400_000).toISOString();
+  const ep = (summary: string, endedDaysAgo: number) => ({ summary, endedAt: daysAgo(endedDaysAgo) });
+
+  it("returns the due episode with the largest interval crossed (oldest memory)", () => {
+    const got = selectEpisodeToRevisit([
+      ep("recent chat", 3), // due @3
+      ep("not due", 5),
+      ep("old decision", 90) // due @90 — preferred (largest interval)
+    ], NOW);
+    expect(got?.summary).toBe("old decision");
+    expect(got?.intervalDays).toBe(90);
+  });
+
+  it("returns undefined when no episode's age lands on an interval", () => {
+    expect(selectEpisodeToRevisit([ep("a", 2), ep("b", 5), ep("c", 100)], NOW)).toBeUndefined();
+  });
+
+  it("skips unparseable endedAt", () => {
+    expect(selectEpisodeToRevisit([{ summary: "bad", endedAt: "nope" }], NOW)).toBeUndefined();
+  });
+
+  it("formats a one-line '💭 N days ago' resurface, or nothing", () => {
+    expect(formatEpisodeRevisitLine(undefined)).toBe("");
+    const line = formatEpisodeRevisitLine({ summary: "decided to\n  cut the Q3 budget", intervalDays: 7, ageDays: 7.4 });
+    expect(line).toContain("💭 7 days ago: decided to cut the Q3 budget");
   });
 });
 

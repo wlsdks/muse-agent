@@ -51,6 +51,7 @@ import type { TextToSpeechProvider } from "@muse/voice";
 import type { Command } from "commander";
 
 import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles, rankRecallCandidates, type RecallHit } from "./commands-recall.js";
+import { revisitDueInterval } from "./commands-notes-rag.js";
 import { embed } from "./embed.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import { compareFeedEntriesNewestFirst, defaultFeedsFile, filterRecentFeedEntries, readFeedsStore } from "./feeds-store.js";
@@ -223,12 +224,24 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
         }
       }
 
+      // "Remember when": one past session whose age crossed a spaced-revisit
+      // interval today. CLI-side, default-on, silent when none, --json-skipped.
+      let episodeRevisitLine = "";
+      if (!options.json) {
+        try {
+          const episodes = await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>));
+          episodeRevisitLine = formatEpisodeRevisitLine(selectEpisodeToRevisit(episodes, Date.now()));
+        } catch {
+          // unreadable episodes file must not fail the brief
+        }
+      }
+
       if (options.brief) {
         const prose = await renderBrief(io, command, helpers, briefing, usedLocal, options.model);
         if (options.json) {
           helpers.writeOutput(io, { ...briefing, brief: prose });
         } else {
-          io.stdout(`${prose.trim()}\n${connectionsSection}${revisitSection}${staleTasksSection}`);
+          io.stdout(`${prose.trim()}\n${connectionsSection}${revisitSection}${staleTasksSection}${episodeRevisitLine}`);
         }
         if (options.speak) {
           await speakPlain(io, helpers.shells, prose, options.audioVoice, parseAudioFormat(options.audioFormat));
@@ -272,7 +285,7 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
         return;
       }
 
-      io.stdout(`${formatTodayBrief(briefing, usedLocal)}${connectionsSection}${revisitSection}${staleTasksSection}`);
+      io.stdout(`${formatTodayBrief(briefing, usedLocal)}${connectionsSection}${revisitSection}${staleTasksSection}${episodeRevisitLine}`);
     });
 }
 
@@ -366,6 +379,46 @@ export function selectStaleTasks(
     })
     .sort((a, b) => b.ageDays - a.ageDays)
     .slice(0, STALE_TASK_MAX);
+}
+
+export interface DueEpisode {
+  readonly summary: string;
+  readonly intervalDays: number;
+  readonly ageDays: number;
+}
+
+/**
+ * The single most evocative past session due for a spaced revisit today —
+ * an episode whose age (by endedAt) crossed a review interval, the
+ * "remember when" half of the spacing effect applied to conversations
+ * (the same schedule notes use). Picks the largest interval crossed
+ * (oldest memory), most-recent endedAt as the tiebreak. Undefined when
+ * none is due. Unparseable endedAt is skipped.
+ */
+export function selectEpisodeToRevisit(
+  episodes: readonly { readonly summary: string; readonly endedAt: string }[],
+  nowMs: number
+): DueEpisode | undefined {
+  const due = episodes.flatMap((ep) => {
+    const ended = Date.parse(ep.endedAt);
+    if (!Number.isFinite(ended)) {
+      return [];
+    }
+    const ageDays = (nowMs - ended) / 86_400_000;
+    const intervalDays = revisitDueInterval(ageDays);
+    return intervalDays === undefined ? [] : [{ ageDays, intervalDays, summary: ep.summary }];
+  });
+  due.sort((a, b) => b.intervalDays - a.intervalDays || a.ageDays - b.ageDays);
+  return due[0];
+}
+
+/** Render the one-line "💭 N days ago" past-session resurface (empty when none). */
+export function formatEpisodeRevisitLine(episode: DueEpisode | undefined): string {
+  if (!episode) {
+    return "";
+  }
+  const oneLine = episode.summary.replace(/\s+/gu, " ").trim().slice(0, 100);
+  return `\n💭 ${Math.floor(episode.ageDays).toString()} days ago: ${oneLine}\n`;
 }
 
 /** Render the proactive "Open a while — still relevant?" nudge (empty when none). */
