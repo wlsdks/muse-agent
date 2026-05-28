@@ -321,9 +321,10 @@ export function chunkText(text: string, maxChars: number, overlapChars: number =
  * the previous one, so a fact spanning a chunk boundary appears whole
  * in chunk i. Prefers to start the tail at a word boundary so it
  * doesn't begin mid-token. A 0/negative/no-op `overlap` returns the
- * input unchanged.
+ * input unchanged. Exported so other chunkers (the CLI notes-index
+ * builder) apply the SAME overlapping window without reimplementing it.
  */
-function applyOverlap(chunks: readonly string[], overlap: number): string[] {
+export function applyOverlap(chunks: readonly string[], overlap: number): string[] {
   const n = Number.isFinite(overlap) ? Math.max(0, Math.trunc(overlap)) : 0;
   if (n === 0 || chunks.length <= 1) {
     return [...chunks];

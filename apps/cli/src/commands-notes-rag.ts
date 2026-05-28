@@ -20,6 +20,7 @@ import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join as pathJoin, resolve as pathResolve, sep as pathSep } from "node:path";
 
+import { applyOverlap } from "@muse/agent-core";
 import { resolveNotesDir } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
@@ -93,7 +94,7 @@ export function defaultIndexPath(): string {
  * model's context and be silently truncated, dropping retrieval recall
  * for everything past the cutoff.
  */
-export function chunkText(text: string, chunkChars: number): string[] {
+export function chunkText(text: string, chunkChars: number, overlapChars: number = 0): string[] {
   const paras = text
     .split(/\n\s*\n/)
     .flatMap((p) => hardWrap(p.trim(), chunkChars))
@@ -111,7 +112,11 @@ export function chunkText(text: string, chunkChars: number): string[] {
     }
   }
   if (buf.length > 0) chunks.push(buf);
-  return chunks;
+  // Overlapping window (default 0 = back-compat): keep a fact straddling a
+  // chunk boundary whole in chunk i so the notes-index `muse ask` reads
+  // stays retrievable across boundaries. Reuses the shared applyOverlap so
+  // both chunkers (this + the knowledge corpus) behave identically.
+  return applyOverlap(chunks, overlapChars);
 }
 
 /**
@@ -267,7 +272,8 @@ export async function reindexNotes(
       failed += 1;
       continue;
     }
-    const chunks = chunkText(body, chunkChars);
+    const overlap = Math.min(200, Math.max(0, Math.floor(chunkChars / 20)));
+    const chunks = chunkText(body, chunkChars, overlap);
     const out: IndexChunk[] = [];
     for (let i = 0; i < chunks.length; i += 1) {
       try {

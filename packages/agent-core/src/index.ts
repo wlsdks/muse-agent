@@ -100,6 +100,7 @@ export {
   type SummaryListSource
 } from "./episodic-recall.js";
 export {
+  applyOverlap,
   chunkText,
   createCachingEmbedder,
   createKnowledgeSearchTool,

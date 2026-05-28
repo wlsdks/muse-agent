@@ -142,6 +142,19 @@ describe("chunkText — paragraph packing + oversized-paragraph hard-wrap", () =
     expect(chunkText("", 100)).toEqual([]);
     expect(chunkText("   \n\n  \t ", 100)).toEqual([]);
   });
+
+  it("default (no overlap arg) is byte-identical to the prior behaviour — back-compat", () => {
+    const text = ["alpha\n\nbeta\n\ngamma", "x".repeat(500), Array.from({ length: 60 }, (_v, i) => `w${i.toString()}`).join(" ")].join("\n\n");
+    expect(chunkText(text, 80)).toEqual(chunkText(text, 80, 0));
+  });
+
+  it("overlap keeps the two halves of a boundary-spanning fact in one chunk (notes-index recall)", () => {
+    const head = `${"alpha ".repeat(8).trim()} RECONCILE`;
+    const tail = `budget cap ${"beta ".repeat(8).trim()}`;
+    const text = `${head}\n\n${tail}`;
+    expect(chunkText(text, 60).some((c) => c.includes("RECONCILE") && c.includes("budget cap"))).toBe(false);
+    expect(chunkText(text, 60, 25).some((c) => c.includes("RECONCILE") && c.includes("budget cap"))).toBe(true);
+  });
 });
 
 describe("cosine — degenerate vectors and NaN values", () => {
