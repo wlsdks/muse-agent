@@ -144,6 +144,49 @@ function hardWrap(paragraph: string, max: number): string[] {
   return pieces.filter((p) => p.length > 0);
 }
 
+/**
+ * Expanding review intervals (days) for spaced revisiting — the spacing
+ * effect (Ebbinghaus 1885, "Über das Gedächtnis") operationalised as a
+ * Leitner-style expanding schedule: a note resurfaces as its age first
+ * crosses each interval, fighting the forgetting curve.
+ */
+export const REVISIT_INTERVALS_DAYS = [1, 3, 7, 16, 35, 90, 180] as const;
+
+/**
+ * The review interval a note's age (in days) lands on TODAY, or undefined
+ * when it isn't due. Day-granular: due when `floor(ageDays)` equals an
+ * interval, so a daily `muse notes review` surfaces each note once per
+ * interval. Negative / non-finite age ⇒ not due.
+ */
+export function revisitDueInterval(ageDays: number): number | undefined {
+  if (!Number.isFinite(ageDays) || ageDays < 0) {
+    return undefined;
+  }
+  const day = Math.floor(ageDays);
+  return REVISIT_INTERVALS_DAYS.find((interval) => interval === day);
+}
+
+export interface RevisitCandidate {
+  readonly path: string;
+  readonly ageDays: number;
+}
+
+export interface RevisitDue {
+  readonly path: string;
+  readonly intervalDays: number;
+  readonly ageDays: number;
+}
+
+/** Notes due for a spaced revisit today, soonest-interval first (path tiebreak). */
+export function selectNotesForRevisit(notes: readonly RevisitCandidate[]): RevisitDue[] {
+  return notes
+    .flatMap((note) => {
+      const intervalDays = revisitDueInterval(note.ageDays);
+      return intervalDays === undefined ? [] : [{ ageDays: note.ageDays, intervalDays, path: note.path }];
+    })
+    .sort((a, b) => a.intervalDays - b.intervalDays || a.path.localeCompare(b.path));
+}
+
 async function walkMarkdown(dir: string): Promise<readonly { path: string; mtimeMs: number }[]> {
   const out: { path: string; mtimeMs: number }[] = [];
   const stack: string[] = [dir];
@@ -508,6 +551,31 @@ export function registerNotesRagCommands(program: Command, io: ProgramIO): void 
         io.stdout(`  ${(i + 1).toString()}. [${r.score.toFixed(3)}] ${r.file}#${r.chunk.chunkIndex.toString()}\n`);
         const snippet = r.chunk.text.length > 200 ? `${r.chunk.text.slice(0, 197)}…` : r.chunk.text;
         io.stdout(`     ${snippet.split("\n").join(" ").trim()}\n\n`);
+      }
+    });
+
+  notes
+    .command("review")
+    .description("Resurface notes due for a spaced revisit — the spacing effect (Ebbinghaus) / Leitner expanding intervals (1,3,7,16,35,90,180 days) bring an old note back before you forget it. Read-only, deterministic (uses file mtime; no Ollama).")
+    .option("--dir <path>", "Notes directory (default MUSE_NOTES_DIR or ~/.muse/notes)")
+    .option("--json", "Print JSON instead of formatted text")
+    .action(async (options: { readonly dir?: string; readonly json?: boolean }) => {
+      const dir = options.dir ?? resolveNotesDir(process.env as Record<string, string | undefined>);
+      const now = Date.now();
+      const files = await walkMarkdown(dir);
+      const due = selectNotesForRevisit(files.map((f) => ({ ageDays: (now - f.mtimeMs) / 86_400_000, path: f.path })));
+
+      if (options.json) {
+        io.stdout(`${JSON.stringify(due, null, 2)}\n`);
+        return;
+      }
+      if (due.length === 0) {
+        io.stdout("No notes are due for a spaced revisit today.\n");
+        return;
+      }
+      io.stdout("📒 Worth revisiting (spaced review):\n");
+      for (const item of due) {
+        io.stdout(`  [${item.intervalDays.toString()}d] ${item.path} — last touched ${Math.floor(item.ageDays).toString()}d ago\n`);
       }
     });
 }
