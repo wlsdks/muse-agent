@@ -12,9 +12,11 @@ import { mkdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import { loadSkillsFromDirectory } from "@muse/skills";
 import type { Command } from "commander";
 
+import { authorSkillsFromSession } from "./chat-author-skills.js";
 import type { ProgramIO } from "./program.js";
 
 export function resolveSkillsDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -67,6 +69,31 @@ export function registerSkillsCommands(program: Command, io: ProgramIO): void {
     .description("Print the skills directory")
     .action(() => {
       io.stdout(`${resolveSkillsDir()}\n`);
+    });
+
+  skills
+    .command("author")
+    .description("Author reusable skills from procedural corrections you made in your last chat session")
+    .option("--model <id>", "Model to author with (default the configured model)")
+    .action(async (options: { readonly model?: string }) => {
+      const assembly = createMuseRuntimeAssembly();
+      const model = options.model ?? assembly.defaultModel;
+      if (!assembly.modelProvider || !model) {
+        io.stdout("skills author needs a model provider — run `muse setup` or set MUSE_MODEL\n");
+        return;
+      }
+      const result = await authorSkillsFromSession({
+        model,
+        modelProvider: assembly.modelProvider as Parameters<typeof authorSkillsFromSession>[0]["modelProvider"]
+      });
+      if (result.status === "authored") {
+        io.stdout(`Authored ${result.skills.length.toString()} skill${result.skills.length === 1 ? "" : "s"} from your last session:\n`);
+        for (const name of result.skills) {
+          io.stdout(`  - ${name}\n`);
+        }
+        return;
+      }
+      io.stdout(`(nothing authored: ${result.reason})\n`);
     });
 
   skills

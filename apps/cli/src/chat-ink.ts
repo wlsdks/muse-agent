@@ -1249,6 +1249,22 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
         userId
       }).catch(() => undefined);
     }
+
+    // End-of-session skill authoring: turn a procedural correction into a
+    // reusable, execute-gated SKILL.md (picked up next session). Opt-in +
+    // fail-soft so a flaky model never blocks exit.
+    if (parseBoolean(process.env.MUSE_SKILL_AUTHOR_ENABLED, false)) {
+      const { authorSkillsFromSession } = await import("./chat-author-skills.js");
+      const result = await authorSkillsFromSession({
+        model,
+        modelProvider: assembly.modelProvider as Parameters<typeof authorSkillsFromSession>[0]["modelProvider"]
+      }).catch(() => undefined);
+      if (result?.status === "authored") {
+        for (const name of result.skills) {
+          process.stderr.write(`💾 Learned skill: ${name}\n`);
+        }
+      }
+    }
   }
 }
 
