@@ -15,7 +15,7 @@ import { existsSync, promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { mergeModelKeysFromFile, resolveEpisodesFile, resolveNotesDir } from "@muse/autoconfigure";
+import { createModelProvider, mergeModelKeysFromFile, resolveEpisodesFile, resolveNotesDir } from "@muse/autoconfigure";
 import { parseHomeAlertChecks, readEpisodes, webWatchesFromConfig } from "@muse/mcp";
 import type { Command } from "commander";
 
@@ -261,10 +261,35 @@ export function resolveDoctorWatchIntervalMs(raw: string | undefined): number {
   return Math.round(seconds * 1000);
 }
 
-interface LocalCheck {
+export interface LocalCheck {
   readonly name: string;
   readonly status: "ok" | "warn" | "fail";
   readonly detail: string;
+}
+
+/**
+ * Report the local-only / no-cloud-egress posture. When MUSE_LOCAL_ONLY
+ * is on, this runs the SAME fail-close the runtime does (createModelProvider
+ * throws on a cloud target) so doctor previews the boot outcome: ok when
+ * the model is local, fail with the exact reason when it isn't. When off,
+ * it warns if cloud credentials are present (egress is possible) so the
+ * user knows the guarantee is not in force.
+ */
+export function localOnlyCheck(env: Record<string, string | undefined>): LocalCheck {
+  const localOnly = /^(true|1|yes|on)$/iu.test((env.MUSE_LOCAL_ONLY ?? "").trim());
+  if (localOnly) {
+    try {
+      createModelProvider(env);
+      return { detail: "🔒 on — cloud LLM + voice egress blocked (fail-closed to local)", name: "local-only", status: "ok" };
+    } catch (cause) {
+      return { detail: cause instanceof Error ? cause.message : "cloud provider selected under local-only", name: "local-only", status: "fail" };
+    }
+  }
+  const cloudKey = ["GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"]
+    .find((k) => (env[k] ?? "").trim().length > 0);
+  return cloudKey
+    ? { detail: `off — cloud egress possible (${cloudKey} set); set MUSE_LOCAL_ONLY=true to enforce`, name: "local-only", status: "warn" }
+    : { detail: "off (no cloud credentials configured)", name: "local-only", status: "ok" };
 }
 
 interface LocalDoctorReport {
@@ -299,6 +324,8 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
       checks.push({ detail: "no MUSE_MODEL / provider key — chat/ask/brief will fail", name: "model env", status: "fail" });
     }
   }
+
+  checks.push(localOnlyCheck(env));
 
   // ~/.muse layout
   const muse_home = resolveMuseEnvPath(process.env.MUSE_HOME, join(homedir(), ".muse"));
