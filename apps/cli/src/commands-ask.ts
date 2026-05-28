@@ -52,25 +52,52 @@ import { resolveDefaultUserKey } from "./user-id.js";
  * caller supplies the already-embedded query vector. Top-K, descending score.
  */
 const EPISODE_IMPORTANCE_WEIGHT = 0.15;
+const EPISODE_RECENCY_WEIGHT = 0.15;
+const EPISODE_RECENCY_HALF_LIFE_DAYS = 7;
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * Recency component of the Generative Agents retrieval score (arXiv
+ * 2304.03442): an exponential decay over the episode's age, 1.0 for a
+ * just-ended session and halving every `EPISODE_RECENCY_HALF_LIFE_DAYS`.
+ * Returns 0 when there's no usable timestamp (backward-compatible: an
+ * episode with no `endedAt` adds no recency bump). A future timestamp is
+ * clamped to age 0 so a skewed clock can't inflate the score past 1.
+ */
+function episodeRecencyScore(endedAt: string | undefined, nowMs: number): number {
+  if (!endedAt) {
+    return 0;
+  }
+  const t = Date.parse(endedAt);
+  if (!Number.isFinite(t)) {
+    return 0;
+  }
+  const ageDays = Math.max(0, (nowMs - t) / MS_PER_DAY);
+  return Math.pow(0.5, ageDays / EPISODE_RECENCY_HALF_LIFE_DAYS);
+}
 
 export function rankEpisodeHits(
   queryVec: readonly number[],
-  episodes: ReadonlyArray<{ readonly id: string; readonly summary: string; readonly embedding: readonly number[]; readonly importance?: number }>,
-  topK: number
+  episodes: ReadonlyArray<{ readonly id: string; readonly summary: string; readonly embedding: readonly number[]; readonly importance?: number; readonly endedAt?: string }>,
+  topK: number,
+  nowMs: number = Date.now()
 ): Array<{ id: string; summary: string; score: number }> {
   if (topK <= 0) {
     return [];
   }
-  // Rank by embedding relevance plus a bounded importance bump (Generative
-  // Agents, arXiv 2304.03442: importance is a retrieval axis). An episode with
-  // no score adds 0, so an unscored corpus ranks exactly by cosine as before.
+  // Generative Agents (arXiv 2304.03442) ranks memories by relevance +
+  // importance + RECENCY. Relevance is the cosine; importance and recency are
+  // small bounded ADDITIVE bumps, so among similar-relevance episodes the more
+  // important / more recent one wins, while an unscored, timestamp-less corpus
+  // still ranks exactly by cosine as before (both bumps are 0).
   return episodes
     .map((ep) => {
       const importance = typeof ep.importance === "number" && Number.isFinite(ep.importance)
         ? Math.min(10, Math.max(1, ep.importance))
         : 0;
       const importanceBump = importance === 0 ? 0 : EPISODE_IMPORTANCE_WEIGHT * (importance / 10);
-      return { id: ep.id, score: cosine(queryVec, ep.embedding) + importanceBump, summary: ep.summary };
+      const recencyBump = EPISODE_RECENCY_WEIGHT * episodeRecencyScore(ep.endedAt, nowMs);
+      return { id: ep.id, score: cosine(queryVec, ep.embedding) + importanceBump + recencyBump, summary: ep.summary };
     })
     .sort((a, b) => b.score - a.score)
     .slice(0, topK);
