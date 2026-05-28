@@ -68,3 +68,7 @@ Thumbs.db
 
 # self-eval fitness log — local trend, rebuildable; not committed (avoids parallel-loop churn)
 docs/self-eval-scoreboard.json
+
+# local code-intelligence index + parallel-loop worktrees (never commit)
+.codegraph/
+.claude/worktrees/

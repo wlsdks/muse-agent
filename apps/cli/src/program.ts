@@ -95,7 +95,6 @@ import { registerPersonaCommand } from "./commands-persona.js";
 import { loadActivePersonaPreamble } from "./persona-store.js";
 import { registerReadCommand } from "./commands-read.js";
 import { registerRecallCommand } from "./commands-recall.js";
-import { registerFeedbackCommand } from "./commands-feedback.js";
 import { registerShowCommand } from "./commands-show.js";
 import { registerVisionCommand } from "./commands-vision.js";
 import { registerTimeCommand } from "./timezone.js";
@@ -469,7 +468,6 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerFollowupCommands(program, io);
   registerEpisodeCommands(program, io);
   registerPatternCommands(program, io);
-  registerFeedbackCommand(program, io);
   registerSearchCommand(program, io);
   registerHistoryCommand(program, io);
   registerOpenCommand(program, io);
