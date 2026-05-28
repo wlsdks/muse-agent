@@ -118,7 +118,30 @@ export class AuthoredSkillStore {
     const slug = slugifySkillName(name);
     const filePath = join(this.dir, slug, "SKILL.md");
     await writeFileAtomic(filePath, serializeAuthoredSkill({ ...draft, name }, this.now().toISOString()));
-    return { action: "create", skill: await this.reload(name) };
+    const created = await this.reload(name);
+    await this.enforceCap();
+    return { action: "create", skill: created };
+  }
+
+  private authoredAt(skill: Skill): number {
+    const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
+    const raw = muse["authoredAt"];
+    const at = typeof raw === "string" ? Date.parse(raw) : Number.NaN;
+    return Number.isFinite(at) ? at : 0;
+  }
+
+  private async enforceCap(): Promise<void> {
+    const skills = await this.listAuthored();
+    if (skills.length <= this.maxSkills) return;
+    const ordered = [...skills].sort((a, b) => this.authoredAt(a) - this.authoredAt(b)); // oldest first
+    const overflow = ordered.slice(0, ordered.length - this.maxSkills);
+    for (const s of overflow) {
+      const folder = s.sourceInfo.baseDir;
+      const base = folder.split(/[\\/]/u).pop() ?? "skill";
+      const dest = join(this.dir, ".archive", base);
+      await fs.mkdir(dirname(dest), { recursive: true });
+      await fs.rename(folder, dest).catch(() => undefined); // never delete
+    }
   }
 
   private dedupeName(name: string): string {

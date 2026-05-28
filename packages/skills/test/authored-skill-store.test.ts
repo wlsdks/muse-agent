@@ -80,3 +80,30 @@ describe("AuthoredSkillStore — dedup", () => {
     expect(again.action).toBe("skip");
   });
 });
+
+describe("AuthoredSkillStore — cap & collisions", () => {
+  it("archives the oldest when over cap, never deletes", async () => {
+    const dir = tmpDir();
+    let t = 0;
+    const store = new AuthoredSkillStore({
+      dir,
+      maxSkills: 2,
+      now: () => new Date(1_700_000_000_000 + (t += 1000))
+    });
+    await store.writeOrPatch({ name: "one", description: "alpha topic", body: "1" });
+    await store.writeOrPatch({ name: "two", description: "beta topic", body: "2" });
+    await store.writeOrPatch({ name: "three", description: "gamma topic", body: "3" });
+    const live = await store.listAuthored();
+    expect(live.map((s) => s.name).sort()).toEqual(["three", "two"]);
+    const { readdir } = await import("node:fs/promises");
+    const archived = await readdir(join(dir, ".archive")).catch(() => [] as string[]);
+    expect(archived).toContain("one");
+  });
+
+  it("suffixes a name that collides with a non-authored skill", async () => {
+    const dir = tmpDir();
+    const store = new AuthoredSkillStore({ dir, existingNames: () => ["pdf"] });
+    const res = await store.writeOrPatch({ name: "pdf", description: "x", body: "b" });
+    expect(res.skill.name).toBe("pdf-learned");
+  });
+});
