@@ -56,6 +56,33 @@ export interface AmbientNotice {
   readonly kind: string;
 }
 
+/**
+ * Knowledge-TRIGGERED ambient notice (SB-3 proactive connection). Where
+ * `AmbientNoticeRule` needs the user to pre-author a match pattern, this
+ * fires purely because the thing on screen connects to something the
+ * user already wrote — no rule required. The `enrich` callback returns a
+ * related-knowledge line (or `undefined` when nothing connects above its
+ * own relevance threshold); the runner edge-fires it through the sink.
+ */
+export interface KnowledgeAmbientTrigger {
+  readonly enrich: (query: string) => Promise<string | undefined> | string | undefined;
+  /** Notice title; sink renders `${title}: ${related}`. Default below. */
+  readonly title?: string;
+}
+
+const DEFAULT_KNOWLEDGE_TRIGGER_TITLE = "💡 From your second brain";
+
+/**
+ * The query used to look the active context up against the user's
+ * knowledge corpus: the active WINDOW TITLE only. Deliberately
+ * conservative — the app name alone is too coarse to connect on, and
+ * selected text / clipboard are sensitive, so neither is used here. An
+ * empty result (no window title) suppresses the knowledge trigger.
+ */
+export function knowledgeAmbientQuery(signal: AmbientSignal | undefined): string {
+  return (signal?.window ?? "").trim();
+}
+
 const MATCH_FIELDS = ["app", "window", "selected", "clipboard", "notifications"] as const;
 
 /**
@@ -221,8 +248,19 @@ export function createAmbientNoticeRunner(options: {
    * fail-soft.
    */
   readonly enrich?: (query: string) => Promise<string | undefined> | string | undefined;
+  /**
+   * Optional knowledge TRIGGER (SB-3). When set, the active window
+   * title is looked up against the knowledge corpus EVERY tick; a
+   * strong-enough connection edge-fires a standalone notice with no
+   * pre-authored rule. Edge-triggered: the same connection does not
+   * re-fire while it keeps surfacing, and re-arms once it clears (the
+   * context changes or stops connecting). Independent of `enrich`,
+   * which only decorates rule-fired notices.
+   */
+  readonly knowledgeTrigger?: KnowledgeAmbientTrigger;
 }): AmbientNoticeRunner {
   let lastMatchedIds = new Set<string>();
+  let lastKnowledgeKey: string | undefined;
   return {
     async tick(): Promise<RunAmbientNoticeTickSummary> {
       let signal: AmbientSignal | undefined;
@@ -269,7 +307,44 @@ export function createAmbientNoticeRunner(options: {
         }
       }
       lastMatchedIds = nextMatched;
-      return { delivered: newlyFired.length, firedRuleIds: [...nextMatched] };
+
+      let knowledgeDelivered = 0;
+      if (options.knowledgeTrigger) {
+        const query = knowledgeAmbientQuery(signal);
+        let related: string | undefined;
+        if (query.length > 0) {
+          try {
+            related = (await options.knowledgeTrigger.enrich(query))?.trim();
+          } catch {
+            related = undefined;
+          }
+        }
+        if (related && related.length > 0) {
+          // Edge-trigger keyed on the surfaced connection: the same memory
+          // does not re-fire while it keeps surfacing for the current
+          // context; a different connection (or the same after a gap) fires.
+          if (related !== lastKnowledgeKey) {
+            try {
+              await options.sink.deliver({
+                kind: "ambient",
+                text: related,
+                title: options.knowledgeTrigger.title ?? DEFAULT_KNOWLEDGE_TRIGGER_TITLE
+              });
+              knowledgeDelivered = 1;
+              // Mark deduped only after a successful send: a failed delivery
+              // leaves it un-keyed so it re-fires next tick (mirrors the rule path).
+              lastKnowledgeKey = related;
+            } catch {
+              // delivery failed; do not consume the edge
+            }
+          }
+        } else {
+          // No connection this tick → re-arm so a later connection fires.
+          lastKnowledgeKey = undefined;
+        }
+      }
+
+      return { delivered: newlyFired.length + knowledgeDelivered, firedRuleIds: [...nextMatched] };
     }
   };
 }

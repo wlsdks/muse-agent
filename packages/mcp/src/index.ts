@@ -324,6 +324,7 @@ export {
   createAmbientNoticeRunner,
   deriveAmbientNotices,
   FileAmbientSignalSource,
+  knowledgeAmbientQuery,
   parseAmbientNoticeRules,
   runAmbientNoticeTick,
   type AmbientNotice,
@@ -331,6 +332,7 @@ export {
   type AmbientNoticeRule,
   type AmbientSignal,
   type AmbientSignalSource,
+  type KnowledgeAmbientTrigger,
   type RunAmbientNoticeTickOptions,
   type RunAmbientNoticeTickSummary
 } from "./ambient-notice-loop.js";

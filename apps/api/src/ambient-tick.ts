@@ -14,6 +14,7 @@ import {
   sendWithRetry,
   type AmbientNoticeRule,
   type AmbientSignalSource,
+  type KnowledgeAmbientTrigger,
   type ProactiveNoticeSink
 } from "@muse/mcp";
 import type { MessagingProviderRegistry } from "@muse/messaging";
@@ -30,6 +31,8 @@ export interface AmbientTickOptions {
   readonly quietHours?: QuietHourRange;
   /** Optional knowledge enricher: a firing notice gains a related-knowledge line. */
   readonly enrich?: (query: string) => Promise<string | undefined> | string | undefined;
+  /** Optional SB-3 knowledge trigger: the active window title alone edge-fires a recall notice with no rule. */
+  readonly knowledgeTrigger?: KnowledgeAmbientTrigger;
   readonly logger?: (message: string) => void;
   readonly errorLogger?: (message: string) => void;
   readonly now?: () => Date;
@@ -59,7 +62,8 @@ export function startAmbientTick(options: AmbientTickOptions): AmbientTickHandle
     rules: options.rules,
     sink,
     source: options.source,
-    ...(options.enrich ? { enrich: options.enrich } : {})
+    ...(options.enrich ? { enrich: options.enrich } : {}),
+    ...(options.knowledgeTrigger ? { knowledgeTrigger: options.knowledgeTrigger } : {})
   });
   let firing = false;
 
