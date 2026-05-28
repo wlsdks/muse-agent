@@ -106,6 +106,7 @@ export {
   edgeLoadByRelevance,
   rankKnowledgeChunks,
   renderKnowledgeMatches,
+  selectByMmr,
   type KnowledgeChunk,
   type KnowledgeMatch,
   type KnowledgeSearchToolOptions,

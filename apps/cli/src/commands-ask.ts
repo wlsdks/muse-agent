@@ -27,6 +27,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { selectByMmr } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveEpisodesFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
@@ -221,6 +222,36 @@ interface IndexChunk {
 interface FileEntry {
   readonly path: string;
   readonly chunks: readonly IndexChunk[];
+}
+
+interface ScoredChunk {
+  readonly chunk: IndexChunk;
+  readonly file: string;
+  readonly score: number;
+}
+
+const ASK_MMR_LAMBDA = 0.7;
+
+/**
+ * Pick the top-K note chunks to ground on with Maximal Marginal Relevance
+ * (Carbonell & Goldstein, SIGIR 1998) instead of pure cosine. On a small
+ * local context window, three near-duplicate chunks (the same fact echoed
+ * across daily-inbox notes) crowd out diverse grounding; MMR penalises a
+ * candidate that merely repeats an already-picked one. Reuses the shared
+ * `selectByMmr`. When there's nothing to trim (candidates ≤ K) it's just
+ * the cosine sort, so behaviour only changes when diversification matters.
+ */
+export function diversifyAskChunks(candidates: readonly ScoredChunk[], topK: number, lambda = ASK_MMR_LAMBDA): ScoredChunk[] {
+  const sorted = [...candidates].sort((a, b) => b.score - a.score);
+  if (topK <= 0 || sorted.length <= topK) {
+    return sorted.slice(0, Math.max(0, topK));
+  }
+  const order = selectByMmr(
+    sorted.map((c, i) => ({ key: String(i), relevance: c.score, embedding: c.chunk.embedding })),
+    lambda,
+    topK
+  );
+  return order.map((k) => sorted[Number(k)]!);
 }
 
 interface NotesIndex {
@@ -469,13 +500,15 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // Skip index entries whose note file was deleted since the last
         // reindex — otherwise `ask` grounds on (and cites) a note that no
         // longer exists. recall / today --connect already guard this.
-        scored = filterLiveNoteIndexFiles(index.files, existsSync).flatMap((f) => f.chunks.map((chunk) => ({
+        const allScored = filterLiveNoteIndexFiles(index.files, existsSync).flatMap((f) => f.chunks.map((chunk) => ({
           chunk,
           file: f.path,
           score: cosine(queryVec!, chunk.embedding)
-        })))
-          .sort((a, b) => b.score - a.score)
-          .slice(0, topK);
+        })));
+        // MMR over the candidates (not a plain top-K cosine slice) so the
+        // grounding fed to the small local model is diverse, not three
+        // near-duplicate chunks of the same note.
+        scored = diversifyAskChunks(allScored, topK);
       } catch (cause) {
         notesUnavailable = true;
         const detail = cause instanceof Error ? cause.message : String(cause);
