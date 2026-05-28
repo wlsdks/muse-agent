@@ -81,7 +81,7 @@ export class FileMessagingCredentialStore implements MessagingCredentialStore {
       raw = await fs.readFile(this.file, "utf8");
     } catch (error) {
       if (isFileNotFound(error)) {
-        return { providers: {}, version: 1 };
+        return { providers: emptyProviderMap(), version: 1 };
       }
       throw error;
     }
@@ -89,14 +89,18 @@ export class FileMessagingCredentialStore implements MessagingCredentialStore {
     try {
       parsed = JSON.parse(raw);
     } catch {
-      return { providers: {}, version: 1 };
+      return { providers: emptyProviderMap(), version: 1 };
     }
     parsed = decodeMaybeEncryptedCredentialsJson(parsed, this.env); // THROWS fail-closed on a wrong key
     const shape = parsed as Partial<PersistedShape>;
     if (!shape || typeof shape !== "object" || !shape.providers || typeof shape.providers !== "object") {
-      return { providers: {}, version: 1 };
+      return { providers: emptyProviderMap(), version: 1 };
     }
-    return { providers: { ...shape.providers }, version: 1 };
+    const providers = emptyProviderMap();
+    for (const [id, value] of Object.entries(shape.providers)) {
+      providers[id] = value as MessagingCredentials;
+    }
+    return { providers, version: 1 };
   }
 
   /**
@@ -126,4 +130,12 @@ export class FileMessagingCredentialStore implements MessagingCredentialStore {
 
 function isFileNotFound(error: unknown): boolean {
   return Boolean(error) && typeof error === "object" && (error as { code?: string }).code === "ENOENT";
+}
+
+// Null-prototype so a providerId like `toString` / `__proto__` /
+// `constructor` can't index an inherited Object.prototype member —
+// otherwise `load` returns a bogus truthy value and `remove`'s `in`
+// check false-hits. Mirrors FileCalendarCredentialStore.
+function emptyProviderMap(): Record<string, MessagingCredentials> {
+  return Object.create(null) as Record<string, MessagingCredentials>;
 }

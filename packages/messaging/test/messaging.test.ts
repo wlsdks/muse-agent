@@ -1408,4 +1408,23 @@ describe("FileMessagingCredentialStore", () => {
     const mode = statSync(file).mode & 0o777;
     if (process.platform !== "win32") expect(mode).toBe(0o600);
   });
+
+  it("is prototype-safe: a providerId like __proto__ / toString never false-hits Object.prototype", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-msg-creds-proto-"));
+    const store = new FileMessagingCredentialStore(join(root, "messaging.json"));
+    // Fresh store: these must be undefined, NOT a bogus inherited {} — the
+    // providers map is null-prototype so an Object.prototype member name
+    // can't be indexed (regression: a plain {} returned {} here).
+    expect(await store.load("__proto__")).toBeUndefined();
+    expect(await store.load("toString")).toBeUndefined();
+    expect(await store.load("constructor")).toBeUndefined();
+    // Survives the persisted-reparse path and round-trips as an ordinary key
+    // without polluting siblings.
+    await store.save("telegram", { token: "real" });
+    expect(await store.load("toString")).toBeUndefined();
+    await store.save("__proto__", { token: "x" });
+    expect(await store.load("__proto__")).toEqual({ token: "x" });
+    expect(await store.load("toString")).toBeUndefined();
+    expect(await store.list()).toEqual(["__proto__", "telegram"]);
+  });
 });
