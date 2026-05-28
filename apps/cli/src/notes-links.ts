@@ -87,6 +87,46 @@ export function noteLinkView(graph: NoteLinkGraph, noteId: string): NoteLinkView
   return { backlinks, outbound };
 }
 
+/**
+ * 1-hop graph expansion (GraphRAG, Edge et al. 2024): the notes that the
+ * given result notes link to — resolved to real note ids, deduped, and
+ * excluding the results themselves — so link structure surfaces related
+ * notes the embedding ranking missed. `resultRefs` are note ids/paths,
+ * matched to graph nodes by link key (basename stem). Unresolved targets
+ * are skipped; capped at `limit`.
+ */
+export function linkedFromResults(resultRefs: readonly string[], graph: NoteLinkGraph, limit: number): string[] {
+  const cap = Number.isFinite(limit) && limit > 0 ? Math.trunc(limit) : 0;
+  if (cap === 0) {
+    return [];
+  }
+  const resultKeys = new Set(resultRefs.map((ref) => noteLinkKey(ref)));
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const ref of resultRefs) {
+    const nodeId = graph.keyToId.get(noteLinkKey(ref));
+    if (!nodeId) {
+      continue;
+    }
+    for (const target of graph.outbound.get(nodeId) ?? []) {
+      const resolvedId = graph.keyToId.get(target.toLowerCase());
+      if (!resolvedId) {
+        continue;
+      }
+      const key = noteLinkKey(resolvedId);
+      if (resultKeys.has(key) || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      out.push(resolvedId);
+      if (out.length >= cap) {
+        return out;
+      }
+    }
+  }
+  return out;
+}
+
 export interface NoteGraphAudit {
   /** Note ids with no inbound AND no outbound links — disconnected islands. */
   readonly orphans: readonly string[];

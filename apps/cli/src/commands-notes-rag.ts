@@ -430,8 +430,8 @@ export function parseRagBoundedInt(
   return Math.min(max, Math.trunc(parsed));
 }
 
-/** Read every note body via the local provider and build the wiki-link graph. Shared by `notes links` + `notes graph`. */
-async function loadNoteLinkGraph(dir: string): Promise<import("./notes-links.js").NoteLinkGraph> {
+/** Read every note body via the local provider and build the wiki-link graph. Shared by `notes links` / `notes graph` / `recall --expand`. */
+export async function loadNoteLinkGraph(dir: string): Promise<import("./notes-links.js").NoteLinkGraph> {
   const { LocalDirNotesProvider } = await import("@muse/mcp");
   const { buildNoteLinkGraph } = await import("./notes-links.js");
   const provider = new LocalDirNotesProvider({ notesDir: dir });

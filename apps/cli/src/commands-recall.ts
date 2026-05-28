@@ -34,6 +34,7 @@ interface RecallOptions {
   readonly source?: string;
   readonly embedModel?: string;
   readonly json?: boolean;
+  readonly expand?: boolean;
 }
 
 export interface RecallHit {
@@ -307,6 +308,7 @@ export function registerRecallCommand(program: Command, io: ProgramIO): void {
     .option("--source <id>", "Restrict to one store: notes | episodes | all (default all)")
     .option("--embed-model <tag>", "Embedding model (default 'nomic-embed-text')")
     .option("--json", "Emit a structured payload")
+    .option("--expand", "Also surface notes the top results link to (1-hop [[wiki-links]]) — graph-augmented recall (GraphRAG)")
     .action(async (queryRaw: string, options: RecallOptions) => {
       const query = queryRaw.trim();
       if (query.length === 0) {
@@ -355,6 +357,27 @@ export function registerRecallCommand(program: Command, io: ProgramIO): void {
       for (const hit of hits) {
         io.stdout(`  [${hit.source}] ${hit.ref} (score ${hit.score.toFixed(3)})\n`);
         io.stdout(`    ${hit.snippet.replace(/\s+/gu, " ").trim().slice(0, 140)}\n\n`);
+      }
+
+      // Graph-augmented recall: notes the top results link to (1-hop),
+      // surfacing structure the embedding ranking misses. Fail-soft.
+      if (options.expand) {
+        try {
+          const { loadNoteLinkGraph } = await import("./commands-notes-rag.js");
+          const { linkedFromResults } = await import("./notes-links.js");
+          const { resolveNotesDir } = await import("@muse/autoconfigure");
+          const noteRefs = hits.filter((h) => h.source === "notes").map((h) => h.ref);
+          const graph = await loadNoteLinkGraph(resolveNotesDir(process.env as Record<string, string | undefined>));
+          const linked = linkedFromResults(noteRefs, graph, limit);
+          if (linked.length > 0) {
+            io.stdout("🔗 Linked from results (via [[wiki-links]]):\n");
+            for (const id of linked) {
+              io.stdout(`  - ${id}\n`);
+            }
+          }
+        } catch {
+          // a missing notes dir / unreadable note must not fail recall
+        }
       }
     });
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { auditNoteGraph, buildNoteLinkGraph, extractWikiLinks, noteLinkKey, noteLinkView, resolveNoteId } from "./notes-links.js";
+import { auditNoteGraph, buildNoteLinkGraph, extractWikiLinks, linkedFromResults, noteLinkKey, noteLinkView, resolveNoteId } from "./notes-links.js";
 
 describe("extractWikiLinks", () => {
   it("pulls [[targets]], stripping |alias and #section, deduped order-preserving", () => {
@@ -81,5 +81,34 @@ describe("auditNoteGraph — orphans + broken links (Zettelkasten hygiene)", () 
       { id: "leaf.md", body: "no outbound links" }
     ]);
     expect(auditNoteGraph(graph).orphans).toEqual([]); // leaf has a backlink
+  });
+});
+
+describe("linkedFromResults — 1-hop graph expansion (GraphRAG)", () => {
+  const graph = buildNoteLinkGraph([
+    { id: "a.md", body: "see [[b]] and [[c]] and [[ghost]]" },
+    { id: "b.md", body: "see [[d]]" },
+    { id: "c.md", body: "leaf" },
+    { id: "d.md", body: "leaf" }
+  ]);
+
+  it("surfaces notes the results link to, resolved, excluding the results themselves", () => {
+    // result = a.md → links b, c (and ghost, unresolved → skipped)
+    expect(linkedFromResults(["a.md"], graph, 10)).toEqual(["b.md", "c.md"]);
+  });
+
+  it("dedupes and excludes notes already in the result set", () => {
+    // results a + b; a links b,c,ghost; b links d. b is a result → excluded; ghost unresolved.
+    expect(linkedFromResults(["a.md", "b.md"], graph, 10)).toEqual(["c.md", "d.md"]);
+  });
+
+  it("respects the cap and handles unknown / non-note refs", () => {
+    expect(linkedFromResults(["a.md"], graph, 1)).toEqual(["b.md"]);
+    expect(linkedFromResults(["nonexistent.md"], graph, 10)).toEqual([]);
+    expect(linkedFromResults(["a.md"], graph, 0)).toEqual([]);
+  });
+
+  it("matches results by basename stem (recall refs may be absolute paths)", () => {
+    expect(linkedFromResults(["/abs/path/to/a.md"], graph, 10)).toEqual(["b.md", "c.md"]);
   });
 });
