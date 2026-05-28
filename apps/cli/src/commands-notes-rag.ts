@@ -187,6 +187,15 @@ export function selectNotesForRevisit(notes: readonly RevisitCandidate[]): Revis
     .sort((a, b) => a.intervalDays - b.intervalDays || a.path.localeCompare(b.path));
 }
 
+/**
+ * Walk the notes dir and return the notes due for a spaced revisit today.
+ * Shared by `muse notes review` and the `muse today` briefing so both
+ * surface the same set. Fail-soft: an unreadable dir yields []. */
+export async function collectDueRevisits(dir: string, nowMs: number = Date.now()): Promise<RevisitDue[]> {
+  const files = await walkMarkdown(dir);
+  return selectNotesForRevisit(files.map((file) => ({ ageDays: (nowMs - file.mtimeMs) / 86_400_000, path: file.path })));
+}
+
 async function walkMarkdown(dir: string): Promise<readonly { path: string; mtimeMs: number }[]> {
   const out: { path: string; mtimeMs: number }[] = [];
   const stack: string[] = [dir];
@@ -561,9 +570,7 @@ export function registerNotesRagCommands(program: Command, io: ProgramIO): void 
     .option("--json", "Print JSON instead of formatted text")
     .action(async (options: { readonly dir?: string; readonly json?: boolean }) => {
       const dir = options.dir ?? resolveNotesDir(process.env as Record<string, string | undefined>);
-      const now = Date.now();
-      const files = await walkMarkdown(dir);
-      const due = selectNotesForRevisit(files.map((f) => ({ ageDays: (now - f.mtimeMs) / 86_400_000, path: f.path })));
+      const due = await collectDueRevisits(dir);
 
       if (options.json) {
         io.stdout(`${JSON.stringify(due, null, 2)}\n`);

@@ -194,12 +194,28 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
         }
       }
 
+      // Proactive spaced-revisit: surface notes whose age crossed a review
+      // interval today (spacing effect). CLI-side like --connect, default-on
+      // but silent when nothing's due; never blocks the brief. Skipped under
+      // --json (the structured payload comes from the API briefing shape).
+      let revisitSection = "";
+      if (!options.json) {
+        try {
+          const { collectDueRevisits } = await import("./commands-notes-rag.js");
+          const { resolveNotesDir } = await import("@muse/autoconfigure");
+          const due = await collectDueRevisits(resolveNotesDir(process.env as Record<string, string | undefined>));
+          revisitSection = formatRevisitSection(due);
+        } catch {
+          // unreadable notes dir must not fail the brief
+        }
+      }
+
       if (options.brief) {
         const prose = await renderBrief(io, command, helpers, briefing, usedLocal, options.model);
         if (options.json) {
           helpers.writeOutput(io, { ...briefing, brief: prose });
         } else {
-          io.stdout(`${prose.trim()}\n${connectionsSection}`);
+          io.stdout(`${prose.trim()}\n${connectionsSection}${revisitSection}`);
         }
         if (options.speak) {
           await speakPlain(io, helpers.shells, prose, options.audioVoice, parseAudioFormat(options.audioFormat));
@@ -243,7 +259,7 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
         return;
       }
 
-      io.stdout(`${formatTodayBrief(briefing, usedLocal)}${connectionsSection}`);
+      io.stdout(`${formatTodayBrief(briefing, usedLocal)}${connectionsSection}${revisitSection}`);
     });
 }
 
@@ -285,6 +301,20 @@ export function pickConnectionQuery(briefing: {
     .filter((s) => s.length > 0)
     .slice(0, 5)
     .join("; ");
+}
+
+/**
+ * Render the proactive "Worth revisiting" block — notes whose age landed
+ * on a spaced-review interval today (spacing effect / Leitner). Empty when
+ * nothing's due, so most days it stays silent. Shows the filename + the
+ * interval it crossed.
+ */
+export function formatRevisitSection(due: readonly { readonly path: string; readonly intervalDays: number }[]): string {
+  if (due.length === 0) {
+    return "";
+  }
+  const lines = due.map((d) => `  [${d.intervalDays.toString()}d] ${d.path.split("/").pop() ?? d.path}`);
+  return `\n📒 Worth revisiting (spaced review):\n${lines.join("\n")}\n`;
 }
 
 /** Render the proactive "Related in your brain" block (empty when no hits). */

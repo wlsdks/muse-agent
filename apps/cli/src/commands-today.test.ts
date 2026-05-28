@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { writeFollowups, writeReminders, type PersistedFollowup, type PersistedReminder } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
-import { formatConnectionsSection, formatEvents, formatHeadlines, formatTasks, formatTodayBrief, formatTodayConflicts, formatWeatherLine, parseLookaheadHours, pickConnectionQuery, readDueFollowups, readDueReminders, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today.js";
+import { formatConnectionsSection, formatEvents, formatHeadlines, formatRevisitSection, formatTasks, formatTodayBrief, formatTodayConflicts, formatWeatherLine, parseLookaheadHours, pickConnectionQuery, readDueFollowups, readDueReminders, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today.js";
 
 const ESC = String.fromCharCode(27);
 
@@ -33,6 +33,22 @@ describe("formatConnectionsSection — render the proactive 'Related in your bra
     expect(out).toContain("Related in your brain");
     expect(out).toContain("ssl.md");
     expect(out).toContain("[episodes]");
+  });
+});
+
+describe("formatRevisitSection — proactive spaced-revisit block in today", () => {
+  it("is empty when nothing is due (silent most days)", () => {
+    expect(formatRevisitSection([])).toBe("");
+  });
+  it("renders due notes with their interval, filename only", () => {
+    const out = formatRevisitSection([
+      { path: "notes/inbox/q3-budget.md", intervalDays: 7 },
+      { path: "onboarding.md", intervalDays: 35 }
+    ]);
+    expect(out).toContain("Worth revisiting");
+    expect(out).toContain("[7d] q3-budget.md");
+    expect(out).toContain("[35d] onboarding.md");
+    expect(out).not.toContain("notes/inbox/"); // filename only, not the path
   });
 });
 const BEL = String.fromCharCode(7);
