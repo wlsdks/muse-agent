@@ -42,6 +42,23 @@ Each model declares its capabilities so the runtime can route safely:
 - Retry classification: `ModelProviderError.retryable` is the source of truth.
   4xx (model-not-found, bad key) MUST fail fast. 5xx and unknown errors MAY retry.
 
+## Local-only mode (no cloud egress)
+
+`MUSE_LOCAL_ONLY=true` is the privacy/security posture for running Muse
+strictly on local open-source models — nothing may reach a third-party
+cloud LLM/voice API. Deterministic, fail-close (`local-only-policy.ts`):
+
+- `classifyProviderLocality(providerId, effectiveBaseUrl)` is the source
+  of truth. Local = `ollama` / `lmstudio` / `diagnostic` on a loopback
+  host, or an `openai-compatible` endpoint pointed at localhost. Cloud =
+  any cloud-id provider (`openai`/`anthropic`/`gemini`/`openrouter`) OR an
+  off-box host — a REMOTE Ollama/LM-Studio host counts as egress.
+- The model router (`createModelProvider`) throws `LocalOnlyViolationError`
+  (loud, not a silent disable) before instantiating a cloud provider.
+- The voice registry ignores an OpenAI key under local-only, so cloud
+  STT/TTS never registers (mic audio cannot silently go to OpenAI).
+- `muse doctor` reports the posture; embeddings are already localhost-only.
+
 ## What's allowed inside adapters
 
 - Vendor SDK provider packages MAY be used inside `packages/model/src/adapters/<name>.ts`.
