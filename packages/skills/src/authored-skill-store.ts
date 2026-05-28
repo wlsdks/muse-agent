@@ -33,6 +33,7 @@ export interface AuthoredSkillStoreOptions {
 }
 
 export const DEFAULT_MAX_AUTHORED_SKILLS = 30;
+const PATCH_SIMILARITY_THRESHOLD = 0.6;
 
 export function slugifySkillName(name: string): string {
   const slug = name.trim().toLowerCase().replace(/\s+/gu, "-").replace(/[^a-z0-9-]+/gu, "");
@@ -53,6 +54,11 @@ function defaultSimilarity(a: string, b: string): number {
   let inter = 0;
   for (const x of sa) if (sb.has(x)) inter += 1;
   return inter / (sa.size + sb.size - inter);
+}
+
+/** Neutralise the authoredAt timestamp so an unchanged re-write is idempotent. */
+function stripAuthoredAt(text: string): string {
+  return text.replace(/"authoredAt":"[^"]*"/u, '"authoredAt":""').trim();
 }
 
 async function writeFileAtomic(filePath: string, text: string): Promise<void> {
@@ -89,6 +95,25 @@ export class AuthoredSkillStore {
   }
 
   async writeOrPatch(draft: SkillDraft): Promise<{ action: AuthorAction; skill: Skill }> {
+    const authored = await this.listAuthored();
+    const match = authored.find(
+      (s) =>
+        s.name === draft.name ||
+        this.similarity(`${s.name} ${s.description}`, `${draft.name} ${draft.description}`) >=
+          PATCH_SIMILARITY_THRESHOLD
+    );
+    if (match) {
+      const text = serializeAuthoredSkill(
+        { name: match.name, description: draft.description, body: draft.body },
+        this.now().toISOString()
+      );
+      const existing = await fs.readFile(match.sourceInfo.filePath, "utf8").catch(() => "");
+      if (stripAuthoredAt(existing) === stripAuthoredAt(text)) {
+        return { action: "skip", skill: match };
+      }
+      await writeFileAtomic(match.sourceInfo.filePath, text);
+      return { action: "patch", skill: await this.reload(match.name) };
+    }
     const name = this.dedupeName(draft.name);
     const slug = slugifySkillName(name);
     const filePath = join(this.dir, slug, "SKILL.md");

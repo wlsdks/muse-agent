@@ -49,3 +49,34 @@ describe("AuthoredSkillStore — create + execute-gate", () => {
     expect(text.trimEnd().endsWith("B")).toBe(true);
   });
 });
+
+describe("AuthoredSkillStore — dedup", () => {
+  it("patches an existing similar skill instead of duplicating", async () => {
+    const dir = tmpDir();
+    const store = new AuthoredSkillStore({ dir });
+    const first = await store.writeOrPatch({
+      name: "summarise-with-bullets",
+      description: "Use when the user asks for a summary; produce bullet points not prose.",
+      body: "old body"
+    });
+    const second = await store.writeOrPatch({
+      name: "summarise-with-bullets",
+      description: "Use when the user asks for a summary; produce bullet points not prose.",
+      body: "new improved body"
+    });
+    expect(second.action).toBe("patch");
+    expect(await store.listAuthored()).toHaveLength(1);
+    expect(second.skill.body).toContain("new improved body");
+    expect(first.skill.sourceInfo.filePath).toBe(second.skill.sourceInfo.filePath);
+  });
+
+  it("skips a byte-identical re-write (idempotent)", async () => {
+    const dir = tmpDir();
+    const now = (): Date => new Date("2026-05-29T00:00:00Z");
+    const store = new AuthoredSkillStore({ dir, now });
+    const draft = { name: "a", description: "d", body: "B" };
+    await store.writeOrPatch(draft);
+    const again = await store.writeOrPatch(draft);
+    expect(again.action).toBe("skip");
+  });
+});
