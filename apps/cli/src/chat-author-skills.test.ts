@@ -5,7 +5,10 @@ import { join } from "node:path";
 import type { ModelProvider } from "@muse/model";
 import { describe, expect, it } from "vitest";
 
+import { buildSkillRegistry } from "@muse/autoconfigure";
+
 import { authorSkillsFromSession } from "./chat-author-skills.js";
+import { selectRelevantSkills } from "./chat-skills.js";
 
 const stub = (output: string): ModelProvider => ({
   id: "stub",
@@ -73,5 +76,34 @@ describe("authorSkillsFromSession", () => {
       }
     });
     expect(res.status).toBe("skipped");
+  });
+
+  it("end-to-end: an authored skill is loaded next session and selected on a similar request", async () => {
+    const base = mkdtempSync(join(tmpdir(), "muse-auth-e2e-"));
+    const authoredDir = join(base, "authored");
+    const userDir = join(base, "user");
+
+    const authoring = await authorSkillsFromSession({
+      model: "m",
+      modelProvider: stub(draftOutput),
+      authoredDir,
+      readBoundaries: async () => boundaries,
+      readLines: async () => correctedSession
+    });
+    expect(authoring.status).toBe("authored");
+
+    // Next session: the registry loader picks up the authored dir.
+    const registry = await buildSkillRegistry({
+      MUSE_SKILLS_DIR: userDir,
+      MUSE_AUTHORED_SKILLS_DIR: authoredDir
+    } as unknown as Parameters<typeof buildSkillRegistry>[0]);
+    const all = registry!.list();
+    expect(all.map((s) => s.name)).toContain("export-then-attach");
+
+    // A similar request surfaces it; an unrelated one does not.
+    const relevant = selectRelevantSkills(all, "send my quarterly report to my manager as a document");
+    expect(relevant.map((s) => s.name)).toContain("export-then-attach");
+    const irrelevant = selectRelevantSkills(all, "what is the weather today");
+    expect(irrelevant.map((s) => s.name)).not.toContain("export-then-attach");
   });
 });

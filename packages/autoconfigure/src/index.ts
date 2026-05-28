@@ -186,6 +186,7 @@ import {
 export {
   buildActiveContextProvider,
   buildCalendarRegistry,
+  buildSkillRegistry,
   buildEpisodicRecallProvider,
   buildInboxContextProvider,
   buildMessagingRegistry,
