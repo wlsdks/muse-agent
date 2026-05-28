@@ -254,6 +254,29 @@ export function diversifyAskChunks(candidates: readonly ScoredChunk[], topK: num
   return order.map((k) => sorted[Number(k)]!);
 }
 
+/**
+ * Reorder grounding chunks so the most relevant sit at the START and END
+ * of the context block and the least relevant in the MIDDLE — "Lost in
+ * the Middle" (Liu et al. 2023, arXiv:2307.03172): decoder LLMs attend
+ * most to the head and tail of a context and under-use the middle, which
+ * bites hardest on a small local model with a tight window. Pure: ranks
+ * by score desc, then places ranks 1,3,5… from the front and 2,4,6… from
+ * the back, so rank 1 leads, rank 2 trails, and the weakest land centre.
+ */
+export function reorderForLongContext<T extends { readonly score: number }>(items: readonly T[]): T[] {
+  const sorted = [...items].sort((a, b) => b.score - a.score);
+  const front: T[] = [];
+  const back: T[] = [];
+  sorted.forEach((item, i) => {
+    if (i % 2 === 0) {
+      front.push(item);
+    } else {
+      back.push(item);
+    }
+  });
+  return [...front, ...back.reverse()];
+}
+
 interface NotesIndex {
   readonly version: 1;
   readonly model: string;
@@ -620,12 +643,15 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       const { loadActivePersonaPreamble } = await import("./persona-store.js");
       const personaTemplatePreamble = await loadActivePersonaPreamble();
 
-      // Compose RAG context block
+      // Compose RAG context block. Edge-place the chunks (most relevant at
+      // the start + end, least in the middle) per "Lost in the Middle" so the
+      // small local model actually attends to the strongest grounding.
+      const contextChunks = reorderForLongContext(scored);
       const contextBlock = notesUnavailable
         ? "(notes search unavailable this turn — answer from the other grounding sources)"
-        : scored.length === 0
+        : contextChunks.length === 0
           ? "(no relevant notes found)"
-          : scored.map((r, i) => `<<note ${(i + 1).toString()} — ${r.file} (score ${r.score.toFixed(3)})>>\n${r.chunk.text}\n<<end>>`).join("\n\n");
+          : contextChunks.map((r, i) => `<<note ${(i + 1).toString()} — ${r.file} (score ${r.score.toFixed(3)})>>\n${r.chunk.text}\n<<end>>`).join("\n\n");
 
       // Pull open tasks as a second grounding source. Real JARVIS
       // questions ("what should I focus on today?", "what's left
