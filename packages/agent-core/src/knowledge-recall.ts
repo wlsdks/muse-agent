@@ -268,8 +268,18 @@ export function renderKnowledgeMatches(matches: readonly KnowledgeMatch[]): stri
  * for empty input; a short text returns one chunk. This is what lets
  * a long note / ingested document be retrieved + cited PASSAGE-by-
  * passage instead of truncated to its first `maxChars`.
+ *
+ * `overlapChars` (optional, default 0 = no overlap, back-compat) adds
+ * an OVERLAPPING WINDOW between consecutive chunks: the tail of chunk
+ * i-1 is prepended to chunk i, so a fact straddling a boundary appears
+ * WHOLE in at least one chunk and stays retrievable. Standard RAG /
+ * dense-retrieval chunking practice (Karpukhin et al. 2020, "Dense
+ * Passage Retrieval", arXiv:2004.04906, uses overlapping 100-word
+ * passages). The overlap is added to chunks i ≥ 1, so they may
+ * slightly exceed `maxChars` — embedding models tolerate this; the
+ * limit is a soft target.
  */
-export function chunkText(text: string, maxChars: number): string[] {
+export function chunkText(text: string, maxChars: number, overlapChars: number = 0): string[] {
   const trimmed = text.trim();
   const limit = Number.isFinite(maxChars) ? Math.max(1, Math.trunc(maxChars)) : 4_000;
   if (trimmed.length === 0) {
@@ -303,7 +313,43 @@ export function chunkText(text: string, maxChars: number): string[] {
   if (current.length > 0) {
     chunks.push(current);
   }
-  return chunks;
+  return applyOverlap(chunks, overlapChars);
+}
+
+/**
+ * Post-process: prepend each chunk (after the first) with the tail of
+ * the previous one, so a fact spanning a chunk boundary appears whole
+ * in chunk i. Prefers to start the tail at a word boundary so it
+ * doesn't begin mid-token. A 0/negative/no-op `overlap` returns the
+ * input unchanged.
+ */
+function applyOverlap(chunks: readonly string[], overlap: number): string[] {
+  const n = Number.isFinite(overlap) ? Math.max(0, Math.trunc(overlap)) : 0;
+  if (n === 0 || chunks.length <= 1) {
+    return [...chunks];
+  }
+  const out: string[] = [chunks[0] ?? ""];
+  for (let i = 1; i < chunks.length; i += 1) {
+    const tail = overlapTail(chunks[i - 1] ?? "", n);
+    out.push(tail.length > 0 ? `${tail}\n\n${chunks[i] ?? ""}` : chunks[i] ?? "");
+  }
+  return out;
+}
+
+function overlapTail(chunk: string, overlap: number): string {
+  if (chunk.length === 0) {
+    return "";
+  }
+  const effective = Math.min(overlap, chunk.length);
+  const tail = chunk.slice(-effective);
+  // Start the tail at the first whitespace inside it so we don't begin
+  // mid-token; if none lies in the front of the tail, return it raw
+  // (better to keep the boundary context than to drop it entirely).
+  const m = /\s+/u.exec(tail);
+  if (m && m.index < Math.floor(effective * 0.3)) {
+    return tail.slice(m.index + m[0].length);
+  }
+  return tail;
 }
 
 /**

@@ -219,8 +219,11 @@ export async function assembleKnowledgeCorpus(
       }
       // Chunk long notes / ingested docs so a passage past the first
       // `maxChars` is still retrievable + citable, instead of truncated
-      // away. A short note stays one chunk sourced `notes/<id>`.
-      const pieces = chunkText(body, maxChars);
+      // away. A short note stays one chunk sourced `notes/<id>`. The
+      // overlap (DPR-style sliding window, capped at ~5% of the chunk)
+      // keeps a fact that straddles a chunk boundary whole in chunk i.
+      const overlap = Math.min(200, Math.max(0, Math.floor(maxChars / 20)));
+      const pieces = chunkText(body, maxChars, overlap);
       pieces.forEach((piece, index) => {
         chunks.push({ source: pieces.length > 1 ? `notes/${entry.id}#${(index + 1).toString()}` : `notes/${entry.id}`, text: piece });
       });
