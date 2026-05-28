@@ -1,4 +1,4 @@
-import { chunkText, edgeLoadByRelevance, rankKnowledgeChunks, renderKnowledgeMatches, type KnowledgeChunk } from "@muse/agent-core";
+import { chunkText, classifyRetrievalConfidence, edgeLoadByRelevance, rankKnowledgeChunks, renderKnowledgeMatches, type KnowledgeChunk } from "@muse/agent-core";
 import type { NotesProvider, TasksProvider } from "@muse/mcp";
 import type { MuseTool } from "@muse/tools";
 
@@ -487,7 +487,13 @@ export function createKnowledgeEnricher(options: KnowledgeEnricherOptions): (que
     });
     const excluded = options.excludeSourcePrefixes ?? [];
     const top = matches.find((match) => !excluded.some((prefix) => match.source.startsWith(prefix)));
-    return top ? `[${top.source}] ${top.text.replace(/\s+/gu, " ").trim()}` : undefined;
+    // CRAG (arXiv 2401.15884): only surface a "Related:" line on CONFIDENT
+    // grounding — a weak (ambiguous) match shouldn't ride into an ambient
+    // notice as if it were relevant.
+    if (!top || classifyRetrievalConfidence([top]) !== "confident") {
+      return undefined;
+    }
+    return `[${top.source}] ${top.text.replace(/\s+/gu, " ").trim()}`;
   };
 }
 

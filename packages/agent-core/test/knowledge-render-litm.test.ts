@@ -22,7 +22,7 @@ describe("renderKnowledgeMatches — Lost-in-the-Middle edge placement (Liu et a
   });
 
   it("still renders the header and one line per match", () => {
-    const out = renderKnowledgeMatches([m("only", 0.5)]);
+    const out = renderKnowledgeMatches([m("only", 0.7)]); // 0.7 ≥ confident bar → citation header
     expect(out).toContain("Relevant passages");
     expect(out.split("\n")).toHaveLength(2);
   });

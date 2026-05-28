@@ -79,10 +79,18 @@ fallback.
 - `knowledge-recall-sources.test.ts` (autoconfigure): enricher returns
   undefined when only weak (ambiguous) matches exist; a strong match
   still yields the Related line.
-- **Live calibration**: with nomic-embed, measure top cosine for a
-  clearly-relevant query vs a weakly-related one over a real corpus and
-  set `confidentAt` so the relevant case is `confident` and the weak
-  case is `ambiguous`. Record the chosen value (P24-2-style honesty).
+- **Live calibration (done) — honest finding.** Measured on real
+  nomic-embed-text. Realistic personal corpus: query "what did I say
+  about the Q3 budget?" → relevant note **0.61**, personal distractors
+  (dentist / gift / car-insurance) **0.44–0.51**. So `confidentAt =
+  0.55` splits them. BUT nomic's cosine space is COMPRESSED: even an
+  unrelated encyclopedic fact ("capital of France is Paris") scored
+  ~0.54, and Muse embeds raw text (no `search_query:` / `search_document:`
+  prefixes). So this is a **best-effort** low-confidence flag — it
+  correctly down-frames weak PERSONAL grounding, but it is NOT a hard
+  relevant/irrelevant separator and absolute thresholding is fragile
+  (same honesty class as the P24-2 MMR "best-effort nudge"). Default
+  `0.55`; tune via the function option if a corpus needs it.
 - Gates: `pnpm --filter @muse/agent-core test`, autoconfigure test,
   `pnpm lint`.
 

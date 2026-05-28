@@ -3,6 +3,7 @@ import type { ModelProvider } from "@muse/model";
 import { describe, expect, it } from "vitest";
 
 import {
+  classifyRetrievalConfidence,
   createAgentRuntime,
   createKnowledgeSearchTool,
   edgeLoadByRelevance,
@@ -104,6 +105,44 @@ describe("rankKnowledgeChunks", () => {
   });
 });
 
+describe("classifyRetrievalConfidence — CRAG verdict (arXiv 2401.15884)", () => {
+  const m = (cosine: number) => ({ cosine, score: 0.02, source: "s", text: "t" });
+
+  it("none when there are no matches", () => {
+    expect(classifyRetrievalConfidence([])).toBe("none");
+  });
+
+  it("confident when the top cosine clears the bar", () => {
+    expect(classifyRetrievalConfidence([m(0.6), m(0.2)])).toBe("confident");
+  });
+
+  it("ambiguous when the top cosine is present but below the confident bar", () => {
+    expect(classifyRetrievalConfidence([m(0.2)])).toBe("ambiguous");
+  });
+
+  it("honours a custom confidentAt", () => {
+    expect(classifyRetrievalConfidence([m(0.6)], { confidentAt: 0.8 })).toBe("ambiguous");
+  });
+
+  it("falls back to the score when cosine is absent (cosine-path back-compat)", () => {
+    expect(classifyRetrievalConfidence([{ score: 0.6, source: "s", text: "t" }])).toBe("confident");
+  });
+});
+
+describe("rankKnowledgeChunks surfaces the absolute cosine separately from the (RRF) score", () => {
+  it("cosine path: cosine equals the score (both are the cosine)", async () => {
+    const matches = await rankKnowledgeChunks("allergic to peanuts", CORPUS, { embed, topK: 1 });
+    expect(matches[0]!.cosine).toBeCloseTo(matches[0]!.score, 5);
+    expect(matches[0]!.cosine!).toBeGreaterThan(0.5);
+  });
+
+  it("hybrid path: cosine is the real similarity, score is the small RRF value", async () => {
+    const matches = await rankKnowledgeChunks("allergic to peanuts", CORPUS, { embed, hybrid: true, topK: 1 });
+    expect(matches[0]!.cosine!).toBeGreaterThan(0.5);
+    expect(matches[0]!.score).toBeLessThan(0.1);
+  });
+});
+
 describe("renderKnowledgeMatches", () => {
   it("labels each passage with its [source] for citation", async () => {
     const matches = await rankKnowledgeChunks("allergic to peanuts", CORPUS, { embed, topK: 1 });
@@ -114,6 +153,18 @@ describe("renderKnowledgeMatches", () => {
 
   it("says so when nothing matches (no fabricated source)", () => {
     expect(renderKnowledgeMatches([])).toContain("No matching passages");
+  });
+
+  it("frames a weak (ambiguous) match as LOW confidence, not citable (CRAG 2401.15884)", () => {
+    const out = renderKnowledgeMatches([{ cosine: 0.2, score: 0.02, source: "notes/x.md", text: "loosely related" }]);
+    expect(out).toContain("LOW confidence");
+    expect(out).not.toContain("cite the [source]");
+    expect(out).toContain("[notes/x.md]");
+  });
+
+  it("keeps the citation framing for a confident match", () => {
+    const out = renderKnowledgeMatches([{ cosine: 0.7, score: 0.5, source: "notes/x.md", text: "strong match" }]);
+    expect(out).toContain("cite the [source]");
   });
 });
 

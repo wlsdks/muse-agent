@@ -20,7 +20,10 @@ function calendarSource(events: readonly CalendarEventLike[]): CalendarEventSour
 let notesDir: string;
 beforeEach(async () => {
   notesDir = await mkdtemp(join(tmpdir(), "muse-enrich-ex-"));
-  await writeFile(join(notesDir, "acme.md"), "Acme prep: bring the Q3 deck.", "utf8");
+  // Confident note (shares acme+strategy, not "meeting") so the CRAG gate
+  // surfaces it, while the exact-match event still ranks #1 without exclusion —
+  // this test exercises exclusion ROUTING, not the weak-match threshold.
+  await writeFile(join(notesDir, "acme.md"), "Acme strategy deck prep.", "utf8");
 });
 afterEach(async () => {
   await rm(notesDir, { force: true, recursive: true });

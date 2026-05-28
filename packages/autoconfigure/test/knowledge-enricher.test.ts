@@ -34,6 +34,13 @@ describe("createKnowledgeEnricher", () => {
     expect(await enrich("weather forecast for tomorrow")).toBeUndefined();
   });
 
+  it("returns undefined for an ambiguous (weak) match — CRAG confidence gate (2401.15884)", async () => {
+    const enrich = createKnowledgeEnricher({ embed, notesProvider: new LocalDirNotesProvider({ notesDir }) });
+    // "acme standup" shares only "acme" with the note → cosine ~0.41, above the
+    // floor but below the confident bar → weak grounding, not surfaced as Related.
+    expect(await enrich("acme standup")).toBeUndefined();
+  });
+
   it("returns undefined for an empty query", async () => {
     const enrich = createKnowledgeEnricher({ embed, notesProvider: new LocalDirNotesProvider({ notesDir }) });
     expect(await enrich("   ")).toBeUndefined();

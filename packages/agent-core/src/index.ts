@@ -109,6 +109,7 @@ export {
 export {
   applyOverlap,
   chunkText,
+  classifyRetrievalConfidence,
   createCachingEmbedder,
   createKnowledgeSearchTool,
   edgeLoadByRelevance,
@@ -119,7 +120,8 @@ export {
   type KnowledgeChunk,
   type KnowledgeMatch,
   type KnowledgeSearchToolOptions,
-  type RankKnowledgeOptions
+  type RankKnowledgeOptions,
+  type RetrievalConfidence
 } from "./knowledge-recall.js";
 export {
   extractCurrentSessionTurns,

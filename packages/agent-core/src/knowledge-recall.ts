@@ -25,7 +25,10 @@ export interface KnowledgeChunk {
 export interface KnowledgeMatch {
   readonly source: string;
   readonly text: string;
+  /** Ranking score. In hybrid mode this is the RRF-fused (rank-based) value, NOT an absolute relevance. */
   readonly score: number;
+  /** Absolute cosine similarity to the query — the signal for retrieval-confidence grading (CRAG). */
+  readonly cosine?: number;
 }
 
 export interface RankKnowledgeOptions {
@@ -185,7 +188,7 @@ export async function rankKnowledgeChunks(
     eligible.sort((a, b) => (fused.get(b) ?? 0) - (fused.get(a) ?? 0));
     const toMatch = (k: string): KnowledgeMatch => {
       const chunk = byKey.get(k)!;
-      return { score: fused.get(k) ?? 0, source: chunk.source, text: chunk.text };
+      return { cosine: cosByKey.get(k) ?? 0, score: fused.get(k) ?? 0, source: chunk.source, text: chunk.text };
     };
     if (options.diversify === true && eligible.length > topK) {
       const lambda = Math.min(1, Math.max(0, finiteOr(options.mmrLambda, 0.5)));
@@ -206,7 +209,7 @@ export async function rankKnowledgeChunks(
     if (score < minScore) {
       continue;
     }
-    scored.push({ embedding, match: { score, source: chunk.source, text: chunk.text } });
+    scored.push({ embedding, match: { cosine: score, score, source: chunk.source, text: chunk.text } });
   }
   if (options.diversify === true && scored.length > topK) {
     const lambda = Math.min(1, Math.max(0, finiteOr(options.mmrLambda, 0.7)));
@@ -250,11 +253,44 @@ export function edgeLoadByRelevance<T>(ranked: readonly T[]): T[] {
   return out;
 }
 
-export function renderKnowledgeMatches(matches: readonly KnowledgeMatch[]): string {
+export type RetrievalConfidence = "confident" | "ambiguous" | "none";
+
+// Default top-cosine bar for "confident". Calibrated live on nomic-embed-text:
+// a clearly-relevant personal note scored ~0.61 while personal distractors
+// scored ~0.44–0.51, so 0.55 splits them. BEST-EFFORT only — nomic's cosine
+// space is compressed (even unrelated encyclopedic text can score ~0.54), so
+// this flags weak personal grounding, it is NOT a hard relevant/irrelevant cut.
+const DEFAULT_CONFIDENT_AT = 0.55;
+
+/**
+ * CRAG (arXiv 2401.15884): a lightweight retrieval evaluator grades whether
+ * the retrieved evidence is trustworthy. Deterministic local version — the
+ * verdict comes from the TOP match's ABSOLUTE cosine (not the RRF score):
+ * `confident` ≥ `confidentAt`, `ambiguous` when some match is present but
+ * weak, `none` when nothing was retrieved. The caller frames/gates by it so a
+ * weak match isn't presented to the small model as something to cite.
+ */
+export function classifyRetrievalConfidence(
+  matches: readonly KnowledgeMatch[],
+  options?: { readonly confidentAt?: number }
+): RetrievalConfidence {
+  if (matches.length === 0) {
+    return "none";
+  }
+  const confidentAt = finiteOr(options?.confidentAt, DEFAULT_CONFIDENT_AT);
+  const top = Math.max(...matches.map((match) => match.cosine ?? match.score));
+  return top >= confidentAt ? "confident" : "ambiguous";
+}
+
+export function renderKnowledgeMatches(matches: readonly KnowledgeMatch[], options?: { readonly confidentAt?: number }): string {
   if (matches.length === 0) {
     return "No matching passages found in the personal corpus.";
   }
-  const lines = ["Relevant passages — cite the [source] you use:"];
+  const verdict = classifyRetrievalConfidence(matches, options);
+  const header = verdict === "ambiguous"
+    ? "Possibly-related passages (LOW confidence — verify before relying; do not cite as established fact):"
+    : "Relevant passages — cite the [source] you use:";
+  const lines = [header];
   // Edge-place the passages (strongest at the head + tail, weakest in the
   // middle) so the local model attends to the best grounding — same
   // "Lost in the Middle" reorder `muse ask` applies to its notes block.
