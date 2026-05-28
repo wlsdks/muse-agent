@@ -564,6 +564,54 @@ export function registerNotesRagCommands(program: Command, io: ProgramIO): void 
     });
 
   notes
+    .command("links")
+    .description("Show a note's [[wiki-links]] and its backlinks (notes that link to it) — Zettelkasten-style networked notes. Read-only, deterministic.")
+    .argument("<query>", "Note id or name, e.g. 'health' or 'inbox/2026-05-01.md'")
+    .option("--dir <path>", "Notes directory (default MUSE_NOTES_DIR or ~/.muse/notes)")
+    .option("--json", "Print JSON instead of formatted text")
+    .action(async (query: string, options: { readonly dir?: string; readonly json?: boolean }) => {
+      const { LocalDirNotesProvider } = await import("@muse/mcp");
+      const { buildNoteLinkGraph, noteLinkView, resolveNoteId } = await import("./notes-links.js");
+      const dir = options.dir ?? resolveNotesDir(process.env as Record<string, string | undefined>);
+      const provider = new LocalDirNotesProvider({ notesDir: dir });
+      const entries = await provider.list();
+      const docs: { id: string; body: string }[] = [];
+      for (const entry of entries) {
+        const read = await provider.read(entry.id);
+        if (read?.body) {
+          docs.push({ body: read.body, id: entry.id });
+        }
+      }
+      const graph = buildNoteLinkGraph(docs);
+      const noteId = resolveNoteId(graph, query);
+      if (!noteId) {
+        io.stderr(`No note matching '${query}' in ${dir}.\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const view = noteLinkView(graph, noteId);
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ note: noteId, ...view }, null, 2)}\n`);
+        return;
+      }
+      io.stdout(`Links for ${noteId}:\n`);
+      if (view.outbound.length === 0) {
+        io.stdout("  → (no outbound [[links]])\n");
+      } else {
+        for (const link of view.outbound) {
+          io.stdout(`  → ${link.target}${link.resolvedId ? ` (${link.resolvedId})` : " (unresolved)"}\n`);
+        }
+      }
+      if (view.backlinks.length === 0) {
+        io.stdout("  ← (no backlinks)\n");
+      } else {
+        for (const source of view.backlinks) {
+          io.stdout(`  ← ${source}\n`);
+        }
+      }
+    });
+
+  notes
     .command("review")
     .description("Resurface notes due for a spaced revisit — the spacing effect (Ebbinghaus) / Leitner expanding intervals (1,3,7,16,35,90,180 days) bring an old note back before you forget it. Read-only, deterministic (uses file mtime; no Ollama).")
     .option("--dir <path>", "Notes directory (default MUSE_NOTES_DIR or ~/.muse/notes)")
