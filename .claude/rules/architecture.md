@@ -58,6 +58,11 @@ cloud LLM/voice API. Deterministic, fail-close (`local-only-policy.ts`):
 - The voice registry ignores an OpenAI key under local-only, so cloud
   STT/TTS never registers (mic audio cannot silently go to OpenAI).
 - `muse doctor` reports the posture; embeddings are already localhost-only.
+- **Image input needs no separate guard**: there is no standalone vision
+  provider. `muse vision` is Ollama-local by design, agent-run attachments
+  are text-only, and image bytes only leave via a cloud provider's adapter
+  — which the model-router gate already forbids under local-only. So the
+  provider gate transitively closes vision egress; don't add a second one.
 
 ## What's allowed inside adapters
 
