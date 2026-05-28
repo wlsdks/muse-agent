@@ -19,6 +19,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { selectByMmr } from "@muse/agent-core";
 import { resolveEpisodesFile } from "@muse/autoconfigure";
 import { readEpisodes } from "@muse/mcp";
 import type { Command } from "commander";
@@ -80,6 +81,7 @@ async function loadNotesIndex(file: string): Promise<NotesIndexShape | undefined
  * the hybrid score. Small so semantics dominate but an exact keyword hit breaks
  * ties / surfaces a lexically-obvious match the embedding under-ranks. */
 const RECALL_LEX_WEIGHT = 0.2;
+const RECALL_MMR_LAMBDA = 0.7;
 
 function recallContentTokens(text: string): Set<string> {
   const out = new Set<string>();
@@ -114,21 +116,34 @@ export function rankRecallCandidates(args: {
   const queryTokens = recallContentTokens(args.queryText ?? "");
   const combined = (vec: readonly number[], text: string): number =>
     cosineSimilarity(args.queryVec, vec) + RECALL_LEX_WEIGHT * lexicalOverlap(queryTokens, text);
-  const hits: RecallHit[] = [];
+  const scored: { readonly hit: RecallHit; readonly embedding: readonly number[] }[] = [];
   if (args.source !== "episodes") {
     for (const chunk of args.noteChunks) {
-      hits.push({ source: "notes", ref: chunk.path, score: combined(chunk.embedding, chunk.text), snippet: chunk.text.slice(0, 200) });
+      scored.push({ embedding: chunk.embedding, hit: { score: combined(chunk.embedding, chunk.text), ref: chunk.path, snippet: chunk.text.slice(0, 200), source: "notes" } });
     }
   }
   if (args.source !== "notes") {
     for (const ep of args.episodeEntries) {
-      hits.push({ source: "episodes", ref: ep.id, score: combined(ep.embedding, ep.summary), snippet: ep.summary.slice(0, 200) });
+      scored.push({ embedding: ep.embedding, hit: { score: combined(ep.embedding, ep.summary), ref: ep.id, snippet: ep.summary.slice(0, 200), source: "episodes" } });
     }
   }
-  return hits
-    .filter((h) => h.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, Math.max(1, args.limit));
+  const limit = Math.max(1, args.limit);
+  const positive = scored.filter((s) => s.hit.score > 0).sort((a, b) => b.hit.score - a.hit.score);
+  // Diversify the returned set with MMR (Carbonell & Goldstein, SIGIR 1998) so
+  // recall / `today --connect` don't surface several near-duplicate passages.
+  // Each hit KEEPS its cosine+lexical score (downstream gates like today's
+  // `>= 0.5` stay valid — MMR changes WHICH passages return, not their score),
+  // and the top pick is still the most relevant, so a single-best query is
+  // unaffected. Only engages when there's more than `limit` to choose from.
+  if (positive.length <= limit) {
+    return positive.map((s) => s.hit);
+  }
+  const order = selectByMmr(
+    positive.map((s, i) => ({ embedding: s.embedding, key: String(i), relevance: s.hit.score })),
+    RECALL_MMR_LAMBDA,
+    limit
+  );
+  return order.map((k) => positive[Number(k)]!.hit);
 }
 
 // Absent → default 5. A genuine number is truncated + clamped
