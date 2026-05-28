@@ -44,7 +44,7 @@ export interface SkillFrontmatter {
   readonly metadata?: Readonly<Record<string, unknown>>;
 }
 
-export type SkillSource = "user" | "workspace" | "bundled" | "remote";
+export type SkillSource = "user" | "workspace" | "bundled" | "remote" | "authored";
 
 export interface SkillSourceInfo {
   readonly source: SkillSource;

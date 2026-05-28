@@ -39,3 +39,13 @@ export {
   InMemorySkillRegistry,
   type SkillRegistry
 } from "./skill-registry.js";
+
+export {
+  AuthoredSkillStore,
+  serializeAuthoredSkill,
+  slugifySkillName,
+  DEFAULT_MAX_AUTHORED_SKILLS,
+  type SkillDraft,
+  type AuthorAction,
+  type AuthoredSkillStoreOptions
+} from "./authored-skill-store.js";
