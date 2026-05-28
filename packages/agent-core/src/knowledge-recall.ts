@@ -255,10 +255,36 @@ export function renderKnowledgeMatches(matches: readonly KnowledgeMatch[]): stri
     return "No matching passages found in the personal corpus.";
   }
   const lines = ["Relevant passages — cite the [source] you use:"];
-  for (const match of matches) {
+  // Edge-place the passages (strongest at the head + tail, weakest in the
+  // middle) so the local model attends to the best grounding — same
+  // "Lost in the Middle" reorder `muse ask` applies to its notes block.
+  for (const match of reorderForLongContext(matches)) {
     lines.push(`— [${match.source}] ${match.text}`);
   }
   return lines.join("\n");
+}
+
+/**
+ * Reorder passages so the most relevant sit at the START and END and the
+ * weakest land in the MIDDLE — "Lost in the Middle" (Liu et al. 2023,
+ * arXiv:2307.03172): decoder LLMs attend most to a context's head and
+ * tail and under-use the middle, which bites hardest on a small local
+ * model. Pure: ranks by score desc, then places ranks 1,3,5… from the
+ * front and 2,4,6… from the back. Shared by `muse ask` and
+ * `renderKnowledgeMatches` so both surfaces reorder identically.
+ */
+export function reorderForLongContext<T extends { readonly score: number }>(items: readonly T[]): T[] {
+  const sorted = [...items].sort((a, b) => b.score - a.score);
+  const front: T[] = [];
+  const back: T[] = [];
+  sorted.forEach((item, i) => {
+    if (i % 2 === 0) {
+      front.push(item);
+    } else {
+      back.push(item);
+    }
+  });
+  return [...front, ...back.reverse()];
 }
 
 /**

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { reorderForLongContext } from "./commands-ask.js";
+import { reorderForLongContext } from "@muse/agent-core";
 
 const item = (id: string, score: number) => ({ id, score });
 

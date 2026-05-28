@@ -27,7 +27,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { selectByMmr } from "@muse/agent-core";
+import { reorderForLongContext, selectByMmr } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveEpisodesFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
@@ -254,28 +254,6 @@ export function diversifyAskChunks(candidates: readonly ScoredChunk[], topK: num
   return order.map((k) => sorted[Number(k)]!);
 }
 
-/**
- * Reorder grounding chunks so the most relevant sit at the START and END
- * of the context block and the least relevant in the MIDDLE — "Lost in
- * the Middle" (Liu et al. 2023, arXiv:2307.03172): decoder LLMs attend
- * most to the head and tail of a context and under-use the middle, which
- * bites hardest on a small local model with a tight window. Pure: ranks
- * by score desc, then places ranks 1,3,5… from the front and 2,4,6… from
- * the back, so rank 1 leads, rank 2 trails, and the weakest land centre.
- */
-export function reorderForLongContext<T extends { readonly score: number }>(items: readonly T[]): T[] {
-  const sorted = [...items].sort((a, b) => b.score - a.score);
-  const front: T[] = [];
-  const back: T[] = [];
-  sorted.forEach((item, i) => {
-    if (i % 2 === 0) {
-      front.push(item);
-    } else {
-      back.push(item);
-    }
-  });
-  return [...front, ...back.reverse()];
-}
 
 interface NotesIndex {
   readonly version: 1;
