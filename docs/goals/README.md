@@ -730,3 +730,11 @@ Append one line when a discovery path is evaluated and deferred:
   could sharpen web_action's "do not use for" description toward
   concrete-target-only and re-probe. The 5 LANDED traps (comment/gratitude/
   venting/small-talk) are STABLE no-tool.
+- LIVE-LLM regression sweep — iter 21ebd606 — PASS: after the recent
+  eval-tool-selection negative-trap additions + the eval-plan-quality
+  battery + its eval:agent gating, re-ran BOTH live aggregates on local
+  qwen3:8b. `eval:agent` 5/5 green (tool-selection / judge / adversarial /
+  shadow-trial / plan-quality) and `eval:self-improving` 8/8 green
+  (pattern-suggestion / preference-inference / skill+playbook merge /
+  background-review ×2 / cited-recall / proactive-recall-gate) — 13 live
+  LLM batteries, no regression. The agent-eval surface is intact.
