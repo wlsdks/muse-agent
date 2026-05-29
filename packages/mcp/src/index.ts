@@ -692,6 +692,7 @@ export {
   clearEpisodes,
   computeEpisodeRetention,
   readEpisodes,
+  recurringThemes,
   removeEpisode,
   selectRetainedEpisodes,
   serializeEpisode,
@@ -699,6 +700,7 @@ export {
   vacuumEpisodes,
   writeEpisodes,
   type EpisodeRetentionOptions,
+  type EpisodeTheme,
   type PersistedEpisode
 } from "./personal-episodes-store.js";
 

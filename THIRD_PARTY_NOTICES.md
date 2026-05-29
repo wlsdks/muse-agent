@@ -65,10 +65,14 @@ SOFTWARE.
 **What Muse learned from it (pattern, not code):** the SKILL.md skill format
 (frontmatter + markdown body) — Muse's `@muse/skills` contract already mirrors
 the OpenClaw / Anthropic field names so authors can lift a SKILL.md between
-ecosystems. Patterns flagged for future Muse slices: sleep/"dreaming" memory
-consolidation (short→long promotion with a weighted score), the correction→
-pending-skill *skill-workshop* pipeline (security-scan + approval gate), and
-open-loop / commitment extraction for proactive follow-up.
+ecosystems. The memory-consolidation idea (surfacing what recurs across
+sessions rather than recalling a single one) informed Muse's deterministic
+`recurringThemes()` / `muse episode themes`
+(`packages/mcp/src/personal-episodes-store.ts`). Patterns flagged for future
+Muse slices: the rest of sleep/"dreaming" memory consolidation (short→long
+promotion with a weighted score), the correction→pending-skill
+*skill-workshop* pipeline (security-scan + approval gate), and open-loop /
+commitment extraction for proactive follow-up.
 
 ```
 MIT License

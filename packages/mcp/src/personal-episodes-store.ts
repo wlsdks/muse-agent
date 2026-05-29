@@ -208,6 +208,58 @@ export function selectRetainedEpisodes(
     .map((entry) => entry.episode);
 }
 
+export interface EpisodeTheme {
+  /** The topic label, in the casing of its first occurrence. */
+  readonly topic: string;
+  /** How many distinct episodes carry this topic. */
+  readonly count: number;
+  /** endedAt of the most recent episode carrying it. */
+  readonly lastSeen: string;
+}
+
+/**
+ * Reflect across the episode bank: surface the topics that RECUR over
+ * multiple sessions (count >= minCount), most-frequent first. A
+ * consolidation/reflection over stored memory rather than a single-episode
+ * recall — it answers "what keeps coming up across my history". Pure: no
+ * I/O, no model call. Topics are matched case-insensitively and counted once
+ * per episode; blanks and topic-less episodes are ignored.
+ *
+ * Concept adapted from OpenClaw's memory-consolidation idea (surfacing what
+ * recurs across sessions, MIT) — deterministic reimplementation for Muse, no
+ * code copied. See THIRD_PARTY_NOTICES.md.
+ */
+export function recurringThemes(
+  episodes: readonly PersistedEpisode[],
+  options: { readonly minCount?: number; readonly limit?: number } = {}
+): readonly EpisodeTheme[] {
+  const minCount = Math.max(2, Math.trunc(options.minCount ?? 2));
+  const limit = Math.max(1, Math.trunc(options.limit ?? 10));
+  const byKey = new Map<string, { count: number; lastSeen: string; display: string }>();
+  for (const episode of episodes) {
+    const seenInEpisode = new Set<string>();
+    for (const raw of episode.topics ?? []) {
+      const topic = raw.trim();
+      if (topic.length === 0) continue;
+      const key = topic.toLowerCase();
+      if (seenInEpisode.has(key)) continue;
+      seenInEpisode.add(key);
+      const entry = byKey.get(key);
+      if (entry) {
+        entry.count += 1;
+        if (episode.endedAt > entry.lastSeen) entry.lastSeen = episode.endedAt;
+      } else {
+        byKey.set(key, { count: 1, lastSeen: episode.endedAt, display: topic });
+      }
+    }
+  }
+  return [...byKey.values()]
+    .filter((entry) => entry.count >= minCount)
+    .sort((a, b) => b.count - a.count || b.lastSeen.localeCompare(a.lastSeen) || a.display.localeCompare(b.display))
+    .slice(0, limit)
+    .map((entry) => ({ topic: entry.display, count: entry.count, lastSeen: entry.lastSeen }));
+}
+
 export async function vacuumEpisodes(file: string, maxEntries = DEFAULT_VACUUM_MAX_ENTRIES, nowMs: number = Date.now()): Promise<number> {
   // NaN slips past `Math.max(1, Math.trunc(NaN)) === NaN`, then
   // `existing.length <= NaN` is false, then `slice(0, NaN)` returns

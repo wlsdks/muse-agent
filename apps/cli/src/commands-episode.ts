@@ -18,6 +18,7 @@
 import {
   clearEpisodes,
   readEpisodes,
+  recurringThemes,
   removeEpisode,
   serializeEpisode,
   type PersistedEpisode
@@ -182,6 +183,34 @@ export function registerEpisodeCommands(program: Command, io: ProgramIO): void {
         return;
       }
       io.stdout(`Cleared ${before.length.toString()} episode(s)\n`);
+    });
+
+  episode
+    .command("themes")
+    .description("Topics recurring across multiple past sessions — a reflection over episodic memory")
+    .option("--user <userId>", "Filter to a single user. Default: every entry in the file.")
+    .option("--min-count <n>", "Min sessions a topic must appear in (default 2)")
+    .option("--limit <n>", "Max themes to show (default 10, cap 100)")
+    .option("--json", "Print the raw payload instead of the formatted list")
+    .action(async (options: { readonly user?: string; readonly minCount?: string; readonly limit?: string } & SharedOptions) => {
+      const minCount = parseLimit(options.minCount, 2, 100);
+      const limit = parseLimit(options.limit, 10, 100);
+      const userFilter = options.user?.trim();
+      const all = await readEpisodes(localEpisodesFile());
+      const scoped = userFilter ? all.filter((entry) => entry.userId === userFilter) : all;
+      const themes = recurringThemes(scoped, { minCount, limit });
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ themes, total: themes.length, ...(userFilter ? { userId: userFilter } : {}) }, null, 2)}\n`);
+        return;
+      }
+      if (themes.length === 0) {
+        io.stdout(`No topic recurs across ${minCount.toString()}+ sessions yet.\n`);
+        return;
+      }
+      io.stdout(`Recurring themes (${themes.length.toString()}):\n`);
+      for (const theme of themes) {
+        io.stdout(`  ${theme.count.toString()}×  ${theme.topic}  (last: ${shortDateTime(theme.lastSeen)})\n`);
+      }
     });
 
   // Mirrors the notes-index pipeline so `muse recall` shares one
