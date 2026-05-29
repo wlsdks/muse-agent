@@ -309,6 +309,7 @@ export {
 
 export {
   createChromeSnapshot,
+  createFileSnapshot,
   createHttpSnapshot,
   createWebWatchRunner,
   detectWatchTrigger,
