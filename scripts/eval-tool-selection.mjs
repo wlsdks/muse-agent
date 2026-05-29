@@ -157,9 +157,17 @@ async function buildActuatorScenario() {
       { prompt: "Run my good night routine.", expectTool: "home_action", requireArgs: ["service"], note: "routine/script → home_action (223)" },
       { prompt: "Find the email from the bank about my statement.", expectTool: "search_email", requireArgs: ["query"], note: "inbox search → search_email, NOT knowledge_search (199)" },
       { prompt: "Any news about the Mars mission from the feeds I follow?", expectTool: "knowledge_search", requireArgs: ["query"], note: "feeds news → knowledge_search, NOT web/search_email (229/230)" },
-      { prompt: "Will it rain on Saturday?", expectTool: "weather", argIncludes: /sat/i, requireArgs: ["location"], note: "upcoming-day forecast → weather with when=Saturday (202)" }
+      { prompt: "Will it rain on Saturday?", expectTool: "weather", argIncludes: /sat/i, requireArgs: ["location"], note: "upcoming-day forecast → weather with when=Saturday (202)" },
+      // Negative eager-invocation traps on the STATE-CHANGING/perception set — a
+      // false positive here is the worst failure (it acts/searches unbidden).
+      // Each pre-verified STABLE 3/3 against qwen3:8b before landing.
+      { prompt: "요즘 스마트홈 기기들 진짜 좋아졌더라.", expectNoTool: true, note: "KO comment ABOUT smart-home gear, not a command → NO home_action" },
+      { prompt: "Thanks for booking that table earlier — it worked out great!", expectNoTool: true, note: "EN gratitude for a PAST action → NO web_action" },
+      { prompt: "메일함이 너무 지저분해서 언젠가 정리해야 하는데.", expectNoTool: true, note: "KO venting about the inbox, no search request → NO search_email" },
+      { prompt: "The weather's been so unpredictable lately, hasn't it?", expectNoTool: true, note: "EN weather small-talk, not a forecast request → NO weather" },
+      { prompt: "이 날씨 앱 디자인 깔끔해서 마음에 들어.", expectNoTool: true, note: "KO comment about a weather APP's UI → NO weather" }
     ];
-    return { label: "actuator-tools (confusable set)", tools, cases: cases.filter((c) => byName.has(c.expectTool)) };
+    return { label: "actuator-tools (confusable set)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {
     return { label: "actuator-tools", skip: `@muse/mcp or @muse/autoconfigure not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
   }

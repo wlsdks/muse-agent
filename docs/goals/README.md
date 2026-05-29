@@ -716,3 +716,13 @@ Append one line when a discovery path is evaluated and deferred:
   proposed-action stores already hardened (randomUUID tmp + per-file
   mutation queue). Likely the recall-hit store needs the same atomic-append
   fix; a future iteration should reproduce under load and harden it.
+- qwen3:8b eager web_action on booking MUSINGS — iter (eval:tools negative
+  traps) — finding: a booking *musing* with no concrete page ("I should
+  really book a table somewhere this weekend." / "이번 주말엔 어디 예약 하고
+  싶다.") makes qwen3:8b fire web_action 2-3/3 times (NOT a no-tool). So those
+  two negative traps were NOT landed (they'd fail the gate). A real
+  eager-invocation weakness on speculative intent — the draft-first approval
+  gate (outbound-safety) is the deterministic backstop, but a future slice
+  could sharpen web_action's "do not use for" description toward
+  concrete-target-only and re-probe. The 5 LANDED traps (comment/gratitude/
+  venting/small-talk) are STABLE no-tool.

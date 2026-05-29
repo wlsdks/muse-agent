@@ -74,6 +74,11 @@ of agent test is worth the most*.
     NOT added: presence is the meaningful no-op guard; pinning exact values on a
     stochastic model is brittle and lower-value. `argIncludes` already covers the
     few deterministic ones (seoul, sat). Consider A effectively complete.
+  - [x] negative eager-invocation traps on the STATE-CHANGING actuator set (5
+    no-tool cases: smart-home comment / past-booking gratitude / inbox venting /
+    weather small-talk / weather-app-UI comment) — the dual of ToolCorrectness
+    that proves the model does NOT fire a state-changing tool on a musing.
+    eval:tools 44/44 @ REPEAT=2; each STABLE 3/3.
 - **B. Task-completion / terminal-state eval (τ-bench style)** — a small
   scenario set where, after a real run against the diagnostic/local provider +
   contract-faithful tool fakes, we assert the **resulting state** (the note got

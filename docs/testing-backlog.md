@@ -164,8 +164,14 @@ the generic layers below because they test what makes Muse an *agent*.
 - [ ] **`smoke:live` full completion.** Now that it streams (commit `6fd24d36`),
   run it to the end once with a generous timeout; confirm the slow tail
   (multi-agent orchestrate + CLI knowledge) is green, and append the result.
-- [ ] **`eval:tools` set growth.** Extend the actuator + time confusable sets and
+- [~] **`eval:tools` set growth.** Extend the actuator + time confusable sets and
   add more KO/adversarial cases (each pre-verified STABLE 3/3 before landing).
+  - [x] 5 negative eager-invocation traps on the STATE-CHANGING/perception
+    actuator set (a false positive there acts/searches unbidden — the worst
+    failure): KO smart-home comment, EN gratitude for a past booking, KO inbox
+    venting, EN weather small-talk, KO weather-app-UI comment → all NO tool. The
+    actuator scenario filter now keeps expectNoTool cases. eval:tools 44/44 (100%)
+    @ REPEAT=2 on qwen3:8b; each pre-verified STABLE 3/3.
 
 ## P4 — generative & data-layer
 
