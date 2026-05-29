@@ -121,6 +121,40 @@ export const toolScorers = {
   },
 };
 
+/**
+ * LLM-as-judge (GEval) scorer factory — the SUBJECTIVE-quality tier, reserved
+ * for what deterministic code can't grade (tone, refusal, on-topic, language).
+ * Strict single-word PASS/FAIL verdict, temperature 0; the suite's `repeat`
+ * provides stochastic stability. The case carries `{ rubric, expectVerdict }`
+ * ("PASS"|"FAIL"); the scorer asks the judge model whether `output` satisfies
+ * the rubric and passes when the verdict matches the expectation.
+ *
+ * @param {{ generate: (req:any)=>Promise<{output?:string}> }} provider
+ * @param {string} model
+ */
+export function llmJudge(provider, model) {
+  const system =
+    "You are a strict evaluator. Given a RUBRIC and an OUTPUT, decide if the OUTPUT satisfies the RUBRIC. "
+    + "Respond with EXACTLY one word on the first line: PASS or FAIL. Then one short reason line. Do not output anything else.";
+  return async (output, testCase) => {
+    const expect = (testCase.expectVerdict ?? "PASS").toUpperCase();
+    const response = await provider.generate({
+      maxOutputTokens: 120,
+      messages: [
+        { content: system, role: "system" },
+        { content: `RUBRIC: ${testCase.rubric}\n\nOUTPUT:\n${typeof output === "string" ? output : JSON.stringify(output)}`, role: "user" },
+      ],
+      model,
+      temperature: 0,
+    });
+    const text = (response.output ?? "").trim();
+    const verdict = /^\s*pass\b/iu.test(text) ? "PASS" : /^\s*fail\b/iu.test(text) ? "FAIL" : "?";
+    return verdict === expect
+      ? { ok: true, detail: `judge ${verdict} (expected ${expect})` }
+      : { ok: false, detail: `judge ${verdict}, expected ${expect} — ${text.split("\n").slice(0, 2).join(" / ")}` };
+  };
+}
+
 /** AND a list of `{ok,detail}` scorers; first failure's detail wins, else the last detail. */
 export function combineScorers(...fns) {
   return async (observed, testCase, scenario) => {

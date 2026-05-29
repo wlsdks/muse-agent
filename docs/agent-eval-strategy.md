@@ -99,9 +99,14 @@ of agent test is worth the most*.
   - [ ] Remaining: trajectory of the real plan_execute path through the
     assembly (plan_generated → tool → synthesis_started → done events), and a
     step-efficiency check that penalises a redundant re-call of the same tool.
-- **D. LLM-as-judge (GEval-style) harness** — a reusable judge (local Qwen,
-  temp 0, repeat-for-stability) scoring open-ended outputs against a plain-
-  English rubric, for things exact-match can't grade (summaries, drafts).
+- [x] **D. LLM-as-judge (GEval-style) harness** — DONE: `llmJudge(provider,
+  model)` added to `eval-harness.mjs` — the subjective-quality scorer tier
+  (strict single-word PASS/FAIL verdict, temp 0, suite `repeat` for stability;
+  case carries `{ rubric, expectVerdict }`). Proven by `eval:judge` (new
+  `scripts/eval-judge.mjs` + npm script): a meta-eval that the judge ITSELF is
+  reliable on clear-cut cases (refusal/language/correctness/on-topic) — 8/8
+  (100%) @ REPEAT=2 against qwen3:8b. Other batteries can now drop in
+  `score: llmJudge(...)` for open-ended outputs code can't grade.
 - **E. Adversarial eval battery** — promote prompt-injection / jailbreak /
   unsafe-tool-use from unit guards into a scored live battery (must-refuse set),
   mirroring the eager-invocation negatives already in `eval:tools`.
