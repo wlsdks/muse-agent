@@ -269,3 +269,42 @@ describe("AuthoredSkillStore — curate", () => {
     expect(await storeCurate.listAuthored()).toHaveLength(1);
   });
 });
+
+describe("AuthoredSkillStore — consolidate (umbrella merge, archive-never-delete)", () => {
+  async function seedCluster(dir: string): Promise<AuthoredSkillStore> {
+    const store = new AuthoredSkillStore({ dir });
+    await store.writeOrPatch({ name: "summarise-email", description: "Use when summarising an email thread", body: "read; 3 bullets" });
+    await store.writeOrPatch({ name: "summarise-doc", description: "Use when summarising a document", body: "skim; bullets" });
+    await store.writeOrPatch({ name: "summarise-notes", description: "Use when summarising meeting notes", body: "scan; bullets" });
+    await store.writeOrPatch({ name: "book-flight", description: "Use when booking a flight ticket", body: "search; confirm" });
+    return store;
+  }
+
+  it("merges a cohering cluster into an umbrella and archives the originals; leaves the odd one out", async () => {
+    const dir = tmpDir();
+    const store = await seedCluster(dir);
+    const merge = async (cluster: readonly { name: string }[]) =>
+      cluster.every((s) => s.name.startsWith("summarise"))
+        ? { name: "summarise", description: "Use when summarising any content", body: "## Steps\n1. read 2. bullets" }
+        : undefined;
+    const plan = await store.consolidate(merge, { threshold: 0.4 });
+    expect(plan.some((p) => p.umbrella === "summarise")).toBe(true);
+
+    const live = (await store.listAuthored()).map((s) => s.name).sort();
+    expect(live).toContain("summarise");
+    expect(live).toContain("book-flight");
+    expect(live).not.toContain("summarise-email"); // archived, not live
+    const { readdir } = await import("node:fs/promises");
+    const archived = await readdir(join(dir, ".archive")).catch(() => [] as string[]);
+    expect(archived).toContain("summarise-email"); // archived, not deleted
+  });
+
+  it("dry-run reports the plan and mutates nothing", async () => {
+    const dir = tmpDir();
+    const store = await seedCluster(dir);
+    const before = (await store.listAuthored()).map((s) => s.name).sort();
+    const plan = await store.consolidate(async () => ({ name: "summarise", description: "Use when summarising", body: "x" }), { threshold: 0.4, dryRun: true });
+    expect(plan.length).toBeGreaterThan(0);
+    expect((await store.listAuthored()).map((s) => s.name).sort()).toEqual(before); // unchanged
+  });
+});

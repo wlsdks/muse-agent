@@ -229,6 +229,59 @@ export class AuthoredSkillStore {
     return archived;
   }
 
+  /**
+   * Consolidate overlapping authored skills into umbrellas (the curator
+   * merge, after Hermes). Clusters authored skills by name+description
+   * similarity (>= threshold); each cluster of >= minClusterSize is handed to
+   * the injected `merge` (an LLM merger, kept out of this package so it stays
+   * model-free) — if it returns an umbrella, the originals are ARCHIVED (never
+   * deleted) and the umbrella written. `dryRun` reports the plan and mutates
+   * nothing. Returns one entry per consolidated cluster.
+   */
+  async consolidate(
+    merge: (cluster: readonly SkillDraft[]) => Promise<SkillDraft | undefined>,
+    options: { readonly threshold?: number; readonly minClusterSize?: number; readonly dryRun?: boolean } = {}
+  ): Promise<readonly { readonly umbrella: string; readonly merged: readonly string[] }[]> {
+    const threshold = typeof options.threshold === "number" && options.threshold > 0 ? options.threshold : 0.5;
+    const minSize = Math.max(2, Math.trunc(options.minClusterSize ?? 2));
+    const skills = await this.listAuthored();
+    const clusters = this.clusterBySimilarity(skills, threshold).filter((c) => c.length >= minSize);
+    const out: { umbrella: string; merged: readonly string[] }[] = [];
+    for (const cluster of clusters) {
+      const umbrella = await merge(cluster.map((s) => ({ body: s.body, description: s.description, name: s.name })));
+      if (!umbrella) continue; // cluster didn't cohere — leave the skills alone
+      if (options.dryRun) {
+        out.push({ merged: cluster.map((s) => s.name), umbrella: umbrella.name });
+        continue;
+      }
+      // Archive originals FIRST so the subsequent umbrella write can't
+      // similarity-match (and accidentally patch) one of them.
+      for (const s of cluster) await this.archiveSkill(s);
+      const { skill } = await this.writeOrPatch(umbrella);
+      out.push({ merged: cluster.map((s) => s.name), umbrella: skill.name });
+    }
+    return out;
+  }
+
+  private clusterBySimilarity(skills: readonly Skill[], threshold: number): readonly (readonly Skill[])[] {
+    const clustered = new Set<string>();
+    const clusters: Skill[][] = [];
+    for (const seed of skills) {
+      if (clustered.has(seed.name)) continue;
+      const cluster = [seed];
+      clustered.add(seed.name);
+      for (const other of skills) {
+        if (clustered.has(other.name)) continue;
+        if (this.similarity(`${seed.name} ${seed.description}`, `${other.name} ${other.description}`) >= threshold) {
+          cluster.push(other);
+          clustered.add(other.name);
+        }
+      }
+      clusters.push(cluster);
+    }
+    return clusters;
+  }
+
   private authoredAt(skill: Skill): number {
     const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
     const raw = muse["authoredAt"];

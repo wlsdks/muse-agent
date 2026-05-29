@@ -35,6 +35,11 @@ Hermes' Honcho dialectic user model (a peer card that accrues over observed
 conversation) informed Muse's typed UserModel accrual — `muse user model`
 slots + behavior-inferred preferences (`packages/agent-core/src/preference-inference.ts`,
 `apps/cli/src/commands-user.ts`) — reimplemented deterministically, no code copied.
+Hermes' curator *umbrella consolidation* (folding narrow agent-created skills
+into class-level umbrellas) informed Muse's `mergeSkillsIntoUmbrella` /
+`AuthoredSkillStore.consolidate` / `muse skills consolidate`
+(`packages/agent-core/src/skill-merge.ts`, `packages/skills/src/authored-skill-store.ts`)
+— one local-model merge with archive-never-delete, no code copied.
 
 ```
 MIT License

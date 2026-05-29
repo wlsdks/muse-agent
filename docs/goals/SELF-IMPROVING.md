@@ -85,12 +85,15 @@ Building blocks already in the tree (reuse, don't rebuild): `commitment-detector
 
 ## P2 — ① Consolidating Curator (the deferred Approach C)
 
-- [ ] **1a — Consolidate authored skills into umbrellas.** A background/idle
-  (or `muse skills consolidate`) review that MERGES overlapping authored skills
-  into a class-level umbrella (improve description, archive originals — never
-  delete), after Hermes' curator. One local-Qwen review over the authored set.
-  Useful-check (live, positive+negative): 4-5 narrow related skills → 1 coherent
-  umbrella; unrelated skills → untouched.
+- [x] **1a — Consolidate authored skills into umbrellas.** `muse skills
+  consolidate` (preview by default, `--apply` to do it): clusters authored
+  skills by name+description similarity, hands each cohering cluster to a
+  local-Qwen merger (`mergeSkillsIntoUmbrella`, agent-core) that returns one
+  umbrella or NONE, then ARCHIVES the originals (never deletes) and writes the
+  umbrella. Originals archived BEFORE the umbrella write so it can't
+  similarity-patch one of them. Live battery `verify-skill-merge.mjs` on
+  qwen3:8b: 3 related summarise-* skills → coherent umbrella (positive);
+  unrelated skills → NONE, no force-merge (negative). — done 2026-05-29
 - [ ] **1b — Consolidate playbook strategies.** Same for near-duplicate learned
   `[Learned Strategies]` — merge/generalise, dedup. Useful-check: redundant
   strategies collapse; distinct ones stay.

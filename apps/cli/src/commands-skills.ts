@@ -144,6 +144,42 @@ export function registerSkillsCommands(program: Command, io: ProgramIO): void {
     });
 
   skills
+    .command("consolidate")
+    .description("Merge overlapping agent-authored skills into umbrellas (preview by default; --apply to do it; originals archived, never deleted)")
+    .option("--threshold <n>", "Name+description similarity to cluster (0..1, default 0.5)")
+    .option("--apply", "Actually merge (default: dry-run preview)")
+    .option("--model <id>", "Model to merge with (default the configured model)")
+    .action(async (options: { readonly threshold?: string; readonly apply?: boolean; readonly model?: string }) => {
+      const threshold = options.threshold === undefined ? 0.5 : Number(options.threshold);
+      if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1) {
+        io.stderr("error: --threshold must be a number in (0, 1].\n");
+        process.exitCode = 1;
+        return;
+      }
+      const assembly = createMuseRuntimeAssembly();
+      const model = options.model ?? assembly.defaultModel;
+      if (!assembly.modelProvider || !model) {
+        io.stdout("consolidate needs a model provider — run `muse setup` or set MUSE_MODEL.\n");
+        return;
+      }
+      const { mergeSkillsIntoUmbrella } = await import("@muse/agent-core");
+      const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() });
+      const merge = (cluster: Parameters<typeof mergeSkillsIntoUmbrella>[0]) =>
+        mergeSkillsIntoUmbrella(cluster, {
+          model,
+          modelProvider: assembly.modelProvider as Parameters<typeof mergeSkillsIntoUmbrella>[1]["modelProvider"]
+        });
+      const plan = await store.consolidate(merge, { threshold, dryRun: options.apply !== true });
+      if (plan.length === 0) {
+        io.stdout("No authored skills cohere into an umbrella — nothing to consolidate.\n");
+        return;
+      }
+      io.stdout(`${options.apply ? "Consolidated" : "Would consolidate"} ${plan.length.toString()} cluster(s):\n`);
+      for (const entry of plan) io.stdout(`  ${entry.merged.join(" + ")}  →  ${entry.umbrella}\n`);
+      if (!options.apply) io.stdout("\nRun with --apply to merge (originals archived to .archive/, never deleted).\n");
+    });
+
+  skills
     .command("add <name>")
     .description("Scaffold a new skill folder with a SKILL.md template")
     .option("--description <text>", "One-line description of the skill")
