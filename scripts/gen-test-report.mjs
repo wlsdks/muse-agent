@@ -67,6 +67,10 @@ async function commits() {
   return out;
 }
 
+// Build first: a stale dist (e.g. right after merging main) makes
+// cross-package imports run against old code and reports phantom
+// failures. The suite must run against fresh output.
+await run("pnpm", ["build"], 420_000);
 const suiteOutput = await run("pnpm", ["-r", "--stream", "test"], 300_000);
 const packages = parsePackages(suiteOutput);
 const history = await commits();
