@@ -17,6 +17,7 @@
  */
 
 import { homedir } from "node:os";
+import { join } from "node:path";
 
 import { createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, resolveContactsFile } from "@muse/autoconfigure";
 import { createCachingEmbedder } from "@muse/agent-core";
@@ -24,7 +25,13 @@ import type { FastifyInstance } from "fastify";
 
 import type { ServerOptions } from "./server.js";
 import { parseQuietHours, startReminderTick } from "./reminder-tick.js";
-import { startProactiveTick, type InMemoryActivityTracker } from "./proactive-tick.js";
+import {
+  createFileBackedActivityTracker,
+  createInMemoryActivityTracker,
+  startProactiveTick,
+  type InMemoryActivityTracker
+} from "./proactive-tick.js";
+import { startConsolidateTick } from "./consolidate-tick.js";
 import {
   createMessagingObjectiveActuator,
   createModelObjectiveEvaluator,
@@ -463,6 +470,65 @@ export function startPatternDaemonIfConfigured(
   });
   server.addHook("onClose", async () => {
     patternHandle.stop();
+  });
+}
+
+/**
+ * N1c — idle-gated curator daemon. Off by default; activates when
+ * `MUSE_SKILL_CONSOLIDATE_IDLE_ENABLED=true` AND a model provider + default
+ * model are wired (the umbrella merge is a local-Qwen call). Folds overlapping
+ * authored skills into umbrellas autonomously while the user is idle, instead
+ * of only at chat session-end. The idle signal reuses the shared activity
+ * tracker when phaseD already runs one; otherwise it stands up its own (+ an
+ * onRequest hook) so "idle" reflects real /api/chat traffic regardless.
+ */
+export function startConsolidateDaemonIfConfigured(
+  env: NodeJS.ProcessEnv,
+  server: FastifyInstance,
+  options: ServerOptions,
+  phaseD: PhaseDActivityWiring
+): void {
+  if (
+    !parseBoolean(env.MUSE_SKILL_CONSOLIDATE_IDLE_ENABLED, false)
+    || !options.modelProvider
+    || !options.defaultModel
+  ) {
+    return;
+  }
+  let source = phaseD.sharedActivityTracker;
+  if (!source) {
+    const presenceFile = env.MUSE_PROACTIVE_PRESENCE_FILE?.trim();
+    const tracker = presenceFile && presenceFile.length > 0
+      ? createFileBackedActivityTracker({ file: presenceFile })
+      : createInMemoryActivityTracker();
+    server.addHook("onRequest", async (request) => {
+      const path = (request as { readonly url?: string }).url ?? "";
+      if (path.startsWith("/api/chat") || path === "/chat" || path === "/chat/stream") {
+        tracker.record();
+      }
+    });
+    source = tracker;
+  }
+  const activitySource = source;
+  const authoredSkillsDir = env.MUSE_AUTHORED_SKILLS_DIR?.trim()
+    || join(homedir(), ".muse", "skills", "authored");
+  const idleMsRaw = env.MUSE_SKILL_CONSOLIDATE_IDLE_MS ? Number(env.MUSE_SKILL_CONSOLIDATE_IDLE_MS) : undefined;
+  const tickMsRaw = env.MUSE_SKILL_CONSOLIDATE_TICK_MS ? Number(env.MUSE_SKILL_CONSOLIDATE_TICK_MS) : undefined;
+  const consolidateQuietHours = parseQuietHours(env.MUSE_SKILL_CONSOLIDATE_QUIET_HOURS)
+    ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const consolidateHandle = startConsolidateTick({
+    authoredSkillsDir,
+    errorLogger: (message) => server.log.warn(message),
+    lastActivityMs: () => activitySource.lastActivityMs(),
+    logger: (message) => server.log.info(message),
+    model: options.defaultModel,
+    modelProvider: options.modelProvider,
+    ...(idleMsRaw !== undefined ? { idleThresholdMs: idleMsRaw } : {}),
+    ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
+    ...(consolidateQuietHours ? { quietHours: consolidateQuietHours } : {})
+  });
+  server.addHook("onClose", async () => {
+    consolidateHandle.stop();
   });
 }
 

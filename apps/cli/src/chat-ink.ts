@@ -1307,6 +1307,30 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
         process.stderr.write(`🧹 Consolidated ${m.merged.length.toString()} skills → ${m.umbrella}\n`);
       }
     }
+
+    // End-of-session commitment check-in auto-scan: detect open-loops the user
+    // voiced this session and schedule due-windowed check-ins the daemon
+    // delivers — so Muse speaks first WITHOUT a manual `muse checkins scan`.
+    // Opt-in + fail-soft. Deterministic (no model).
+    if (parseBoolean(process.env.MUSE_CHECKINS_AUTOSCAN_ENABLED, false)) {
+      const { scanSessionCheckins } = await import("./commands-checkins.js");
+      const scheduled = await scanSessionCheckins().catch(() => []);
+      for (const c of scheduled) {
+        process.stderr.write(`📌 Check-in scheduled: ${c.question}\n`);
+      }
+    }
+
+    // End-of-session preference auto-infer: learn stable preferences from the
+    // corrections the user made this session and fold them into the typed user
+    // model — so Muse learns WITHOUT a manual `muse user model infer`.
+    // Opt-in + fail-soft. LLM path (local model); never fabricates (NONE-aware).
+    if (parseBoolean(process.env.MUSE_PREFERENCE_AUTOINFER_ENABLED, false)) {
+      const { inferSessionPreferences } = await import("./commands-user.js");
+      const result = await inferSessionPreferences().catch(() => ({ added: [] as readonly string[], status: "no-model" as const }));
+      for (const p of result.added) {
+        process.stderr.write(`🧠 Learned preference: ${p}\n`);
+      }
+    }
   }
 }
 

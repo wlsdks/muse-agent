@@ -12,8 +12,74 @@ import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import { FileUserMemoryStore, type UserModelSlot } from "@muse/memory";
 import type { Command } from "commander";
 
-import { readLastChatHistory } from "./chat-history.js";
+import { readLastChatHistory, type LastChatLine } from "./chat-history.js";
 import type { ProgramIO } from "./program.js";
+
+type InferModelProvider = Parameters<typeof inferPreferenceFromCorrection>[1]["modelProvider"];
+
+interface UserModelSlotWriter {
+  upsertUserModelSlot(userId: string, slot: UserModelSlot): Promise<unknown>;
+}
+
+export interface InferSessionPreferencesResult {
+  readonly added: readonly string[];
+  readonly status: "ok" | "no-corrections" | "no-model";
+}
+
+/**
+ * Detect corrections in the last chat, infer the stable preference behind each
+ * (local model), and upsert them into the typed user model (superseding by
+ * category). Returns what was added + a status so callers can message
+ * precisely. Shared by `muse user model infer` and the session-end
+ * auto-infer trigger so both behave identically. Seams default to the real
+ * chat reader / runtime model / store.
+ */
+export async function inferSessionPreferences(
+  options: {
+    readonly model?: string;
+    readonly modelProvider?: InferModelProvider;
+    readonly readHistory?: () => Promise<readonly LastChatLine[]>;
+    readonly store?: UserModelSlotWriter;
+    readonly userId?: string;
+    readonly now?: () => Date;
+  } = {}
+): Promise<InferSessionPreferencesResult> {
+  const readHistory = options.readHistory ?? readLastChatHistory;
+  const lines = await readHistory().catch(() => []);
+  const exchanges = detectCorrections(lines);
+  if (exchanges.length === 0) return { added: [], status: "no-corrections" };
+
+  let modelProvider = options.modelProvider;
+  let model = options.model;
+  if (!modelProvider || !model) {
+    const assembly = createMuseRuntimeAssembly();
+    modelProvider = modelProvider ?? (assembly.modelProvider as InferModelProvider | undefined);
+    model = model ?? assembly.defaultModel;
+  }
+  if (!modelProvider || !model) return { added: [], status: "no-model" };
+
+  const store = options.store ?? new FileUserMemoryStore();
+  const userId = options.userId ?? resolveUserId();
+  const added: string[] = [];
+  for (const exchange of exchanges) {
+    const pref = await inferPreferenceFromCorrection(exchange, { model, modelProvider });
+    if (!pref) continue;
+    // Supersede by category: a new style/format preference replaces the prior
+    // one of the same category (id `pref-<category>`), so a changed mind
+    // updates instead of piling up contradictions.
+    const id = pref.category ? `pref-${pref.category}` : slugifySlotId(pref.value);
+    await store.upsertUserModelSlot(userId, {
+      id,
+      kind: "preference",
+      value: pref.value,
+      confidence: pref.confidence,
+      updatedAt: options.now ? options.now() : new Date(),
+      ...(pref.category ? { category: pref.category } : {})
+    });
+    added.push(`${pref.value}${pref.category ? ` (${pref.category})` : ""}`);
+  }
+  return { added, status: "ok" };
+}
 
 const KINDS = ["preference", "schedule", "veto", "goal"] as const;
 type SlotKind = (typeof KINDS)[number];
@@ -116,49 +182,23 @@ export function registerUserCommands(program: Command, io: ProgramIO): void {
     .option("--model <id>", "Model to infer with (default the configured model)")
     .option("--json", "Print the inferred preferences")
     .action(async (options: { readonly model?: string; readonly json?: boolean }) => {
-      const lines = await readLastChatHistory().catch(() => []);
-      const exchanges = detectCorrections(lines);
-      if (exchanges.length === 0) {
+      const result = await inferSessionPreferences(options.model !== undefined ? { model: options.model } : {});
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ inferred: result.added, total: result.added.length }, null, 2)}\n`);
+        return;
+      }
+      if (result.status === "no-corrections") {
         io.stdout("No corrections in your last chat to infer a preference from.\n");
         return;
       }
-      const assembly = createMuseRuntimeAssembly();
-      const model = options.model ?? assembly.defaultModel;
-      if (!assembly.modelProvider || !model) {
+      if (result.status === "no-model") {
         io.stdout("infer needs a model provider — run `muse setup` or set MUSE_MODEL.\n");
         return;
       }
-      const store = new FileUserMemoryStore();
-      const userId = resolveUserId();
-      const added: string[] = [];
-      for (const exchange of exchanges) {
-        const pref = await inferPreferenceFromCorrection(exchange, {
-          model,
-          modelProvider: assembly.modelProvider as Parameters<typeof inferPreferenceFromCorrection>[1]["modelProvider"]
-        });
-        if (!pref) continue;
-        // Supersede by category: a new style/format preference replaces the
-        // prior one of the same category (id `pref-<category>`), so a changed
-        // mind updates instead of piling up contradictions.
-        const id = pref.category ? `pref-${pref.category}` : slugifySlotId(pref.value);
-        await store.upsertUserModelSlot(userId, {
-          id,
-          kind: "preference",
-          value: pref.value,
-          confidence: pref.confidence,
-          updatedAt: new Date(),
-          ...(pref.category ? { category: pref.category } : {})
-        });
-        added.push(`${pref.value}${pref.category ? ` (${pref.category})` : ""}`);
-      }
-      if (options.json) {
-        io.stdout(`${JSON.stringify({ inferred: added, total: added.length }, null, 2)}\n`);
-        return;
-      }
       io.stdout(
-        added.length === 0
+        result.added.length === 0
           ? "No durable preference inferred (the corrections were one-off fixes).\n"
-          : `Inferred ${added.length.toString()} preference(s) into your user model:\n${added.map((a) => `  - ${a}`).join("\n")}\n`
+          : `Inferred ${result.added.length.toString()} preference(s) into your user model:\n${result.added.map((a) => `  - ${a}`).join("\n")}\n`
       );
     });
 
