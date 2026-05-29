@@ -6,7 +6,7 @@ import { createModelProvider } from "../src/autoconfigure-model-provider.js";
 
 describe("createModelProvider — OpenAI-compatible presets", () => {
   it("groq routes through OpenAICompatibleProvider with the Groq base URL", () => {
-    const provider = createModelProvider({
+    const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false",
       GROQ_API_KEY: "grq-test",
       MUSE_MODEL: "groq/llama-3.1-70b-versatile",
       MUSE_MODEL_PROVIDER_ID: "groq"
@@ -16,7 +16,7 @@ describe("createModelProvider — OpenAI-compatible presets", () => {
   });
 
   it("deepseek routes through OpenAICompatibleProvider with the DeepSeek base URL", () => {
-    const provider = createModelProvider({
+    const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false",
       DEEPSEEK_API_KEY: "ds-test",
       MUSE_MODEL: "deepseek/deepseek-chat",
       MUSE_MODEL_PROVIDER_ID: "deepseek"
@@ -26,7 +26,7 @@ describe("createModelProvider — OpenAI-compatible presets", () => {
   });
 
   it("together routes through OpenAICompatibleProvider with the Together base URL", () => {
-    const provider = createModelProvider({
+    const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false",
       TOGETHER_API_KEY: "tg-test",
       MUSE_MODEL: "together/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
       MUSE_MODEL_PROVIDER_ID: "together"
@@ -36,7 +36,7 @@ describe("createModelProvider — OpenAI-compatible presets", () => {
   });
 
   it("MUSE_MODEL_API_KEY overrides provider-specific keys", () => {
-    const provider = createModelProvider({
+    const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false",
       GROQ_API_KEY: "wrong",
       MUSE_MODEL: "groq/llama-3.1-70b-versatile",
       MUSE_MODEL_API_KEY: "correct",
@@ -47,7 +47,7 @@ describe("createModelProvider — OpenAI-compatible presets", () => {
   });
 
   it("MUSE_MODEL_BASE_URL overrides the default preset base URL", () => {
-    const provider = createModelProvider({
+    const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false",
       GROQ_API_KEY: "grq",
       MUSE_MODEL: "groq/llama-3.1-70b-versatile",
       MUSE_MODEL_BASE_URL: "https://internal.proxy/openai/v1",
@@ -58,7 +58,7 @@ describe("createModelProvider — OpenAI-compatible presets", () => {
   });
 
   it("mistral derives provider from prefix and returns a usable provider with only MISTRAL_API_KEY", () => {
-    const provider = createModelProvider({
+    const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false",
       MISTRAL_API_KEY: "ms-test",
       MUSE_MODEL: "mistral-small-latest"
     });
@@ -67,7 +67,7 @@ describe("createModelProvider — OpenAI-compatible presets", () => {
   });
 
   it("moonshot derives provider from prefix and returns a usable provider with only MOONSHOT_API_KEY", () => {
-    const provider = createModelProvider({
+    const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false",
       MOONSHOT_API_KEY: "moon-test",
       MUSE_MODEL: "moonshot-v1-8k"
     });
@@ -76,43 +76,43 @@ describe("createModelProvider — OpenAI-compatible presets", () => {
   });
 
   it("autoconfigures Groq when only GROQ_API_KEY is set (no MUSE_MODEL)", () => {
-    const provider = createModelProvider({ GROQ_API_KEY: "grq" });
+    const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false", GROQ_API_KEY: "grq" });
     expect(provider).toBeInstanceOf(OpenAICompatibleProvider);
     expect(provider?.id).toBe("groq");
   });
 
   it("autoconfigures DeepSeek when only DEEPSEEK_API_KEY is set", () => {
-    const provider = createModelProvider({ DEEPSEEK_API_KEY: "ds" });
+    const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false", DEEPSEEK_API_KEY: "ds" });
     expect(provider).toBeInstanceOf(OpenAICompatibleProvider);
     expect(provider?.id).toBe("deepseek");
   });
 
   it("autoconfigures Together when only TOGETHER_API_KEY is set", () => {
-    const provider = createModelProvider({ TOGETHER_API_KEY: "tg" });
+    const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false", TOGETHER_API_KEY: "tg" });
     expect(provider).toBeInstanceOf(OpenAICompatibleProvider);
     expect(provider?.id).toBe("together");
   });
 
   it("autoconfigures Mistral when only MISTRAL_API_KEY is set", () => {
-    const provider = createModelProvider({ MISTRAL_API_KEY: "ms" });
+    const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false", MISTRAL_API_KEY: "ms" });
     expect(provider).toBeInstanceOf(OpenAICompatibleProvider);
     expect(provider?.id).toBe("mistral");
   });
 
   it("autoconfigures Moonshot when only MOONSHOT_API_KEY is set", () => {
-    const provider = createModelProvider({ MOONSHOT_API_KEY: "mn" });
+    const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false", MOONSHOT_API_KEY: "mn" });
     expect(provider).toBeInstanceOf(OpenAICompatibleProvider);
     expect(provider?.id).toBe("moonshot");
   });
 
   it("autoconfigures Cerebras when only CEREBRAS_API_KEY is set", () => {
-    const provider = createModelProvider({ CEREBRAS_API_KEY: "cs" });
+    const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false", CEREBRAS_API_KEY: "cs" });
     expect(provider).toBeInstanceOf(OpenAICompatibleProvider);
     expect(provider?.id).toBe("cerebras");
   });
 
   it("autoconfigures Ollama when only OLLAMA_BASE_URL is set", () => {
-    const provider = createModelProvider({ OLLAMA_BASE_URL: "http://localhost:11434" });
+    const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false", OLLAMA_BASE_URL: "http://localhost:11434" });
     expect(provider?.id).toBe("ollama");
   });
 });
@@ -128,7 +128,9 @@ describe("createModelProvider — Ollama base URL is honoured", () => {
       return new Response(JSON.stringify({ message: { content: "ok" }, model: "m" }), { status: 200 });
     }) as typeof globalThis.fetch;
     try {
-      const provider = createModelProvider(env);
+      // A REMOTE ollama host is egress, so testing remote URL routing requires
+      // opting out of the default local-only gate (unless the env already set it).
+      const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false", ...env });
       expect(provider?.id).toBe("ollama");
       await provider?.generate({ messages: [{ content: "hi", role: "user" }], model: "ollama/llama3.2" });
     } finally {

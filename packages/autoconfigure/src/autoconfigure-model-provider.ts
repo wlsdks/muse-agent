@@ -112,7 +112,10 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
   // Local-only / no-cloud-egress: fail CLOSED (and loud) before any
   // cloud provider is instantiated. Silently disabling the runtime would
   // hide the privacy violation the user asked to be protected from.
-  if (parseBoolean(env.MUSE_LOCAL_ONLY, false)) {
+  // DEFAULT ON: Muse is local-by-construction ("Tell it everything. It can't
+  // tell anyone." — the README identity). A cloud provider is an explicit
+  // opt-out via MUSE_LOCAL_ONLY=false that forfeits the zero-egress guarantee.
+  if (parseBoolean(env.MUSE_LOCAL_ONLY, true)) {
     const effectiveBaseUrl = providerId === "ollama"
       ? (baseUrl ?? normalizeOllamaBaseUrl(env.OLLAMA_BASE_URL))
       : OPENAI_COMPAT_PRESETS[providerId]

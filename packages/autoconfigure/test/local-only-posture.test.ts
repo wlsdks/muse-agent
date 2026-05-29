@@ -15,16 +15,22 @@ describe("evaluateLocalOnlyPosture — single source of truth for doctor + setup
     expect(p.detail).toContain("MUSE_LOCAL_ONLY");
   });
 
-  it("OFF + cloud credentials ⇒ warn that egress is possible", () => {
-    const p = evaluateLocalOnlyPosture({ OPENAI_API_KEY: "k" });
+  it("explicit OFF (opt-out) + cloud credentials ⇒ warn that egress is possible", () => {
+    const p = evaluateLocalOnlyPosture({ MUSE_LOCAL_ONLY: "false", OPENAI_API_KEY: "k" });
     expect(p).toMatchObject({ enabled: false, status: "warn" });
     expect(p.detail).toContain("OPENAI_API_KEY");
-    expect(p.detail).toContain("MUSE_LOCAL_ONLY=true");
+    expect(p.detail).toContain("opt-out");
   });
 
-  it("OFF + no cloud credentials ⇒ ok (nothing to leak)", () => {
-    const p = evaluateLocalOnlyPosture({ MUSE_MODEL: "ollama/llama3.2" });
+  it("explicit OFF (opt-out) + no cloud credentials ⇒ ok (nothing to leak)", () => {
+    const p = evaluateLocalOnlyPosture({ MUSE_LOCAL_ONLY: "false", MUSE_MODEL: "ollama/llama3.2" });
     expect(p).toMatchObject({ enabled: false, status: "ok" });
     expect(p.detail).toContain("off");
+  });
+
+  it("DEFAULT (unset) ⇒ local-only is ON, egress blocked", () => {
+    const p = evaluateLocalOnlyPosture({ MUSE_MODEL: "ollama/llama3.2" });
+    expect(p).toMatchObject({ enabled: true, status: "ok" });
+    expect(p.detail).toContain("default");
   });
 });

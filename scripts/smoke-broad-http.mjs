@@ -926,7 +926,9 @@ try {
     // verify the consumer's stream carried the event before we
     // close the request.
     const { createMuseRuntimeAssembly } = await import(`${rootDir}/packages/autoconfigure/dist/index.js`);
-    const directAssembly = createMuseRuntimeAssembly();
+    // Hermetic env: pin the local diagnostic provider so this never picks up an
+    // ambient cloud key from the machine (default local-only would refuse it).
+    const directAssembly = createMuseRuntimeAssembly({ env: { MUSE_MODEL: "diagnostic/smoke", MUSE_MODEL_PROVIDER_ID: "diagnostic" } });
     // The smoke harness already started the server with its OWN
     // assembly above; we cannot reach that broker from here without
     // a fresh in-process fetch race. So this case asserts the route

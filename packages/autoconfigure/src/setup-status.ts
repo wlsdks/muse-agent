@@ -116,21 +116,23 @@ export interface LocalOnlyStatusSnapshot {
 const CLOUD_CREDENTIAL_ENV_KEYS = ["GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"] as const;
 
 export function evaluateLocalOnlyPosture(env: Readonly<Record<string, string | undefined>>): LocalOnlyStatusSnapshot {
-  const enabled = parseBoolean(env.MUSE_LOCAL_ONLY, false);
+  // Local-only is the DEFAULT (Muse is local-by-construction); a cloud
+  // provider requires an explicit MUSE_LOCAL_ONLY=false opt-out.
+  const enabled = parseBoolean(env.MUSE_LOCAL_ONLY, true);
   if (enabled) {
     try {
       // Runs the SAME fail-close the runtime does at boot, so the report
       // and the actual startup outcome can never diverge.
       createModelProvider(env);
-      return { detail: "🔒 on — cloud LLM + voice egress blocked (fail-closed to local)", enabled, status: "ok" };
+      return { detail: "🔒 on (default) — cloud LLM + voice egress blocked (fail-closed to local)", enabled, status: "ok" };
     } catch (cause) {
       return { detail: cause instanceof Error ? cause.message : "cloud provider selected under local-only", enabled, status: "fail" };
     }
   }
   const cloudKey = CLOUD_CREDENTIAL_ENV_KEYS.find((k) => (env[k] ?? "").trim().length > 0);
   return cloudKey
-    ? { detail: `off — cloud egress possible (${cloudKey} set); set MUSE_LOCAL_ONLY=true to enforce`, enabled, status: "warn" }
-    : { detail: "off (no cloud credentials configured)", enabled, status: "ok" };
+    ? { detail: `⚠️ OFF by explicit opt-out — cloud egress possible (${cloudKey} set); unset MUSE_LOCAL_ONLY to restore the zero-egress guarantee`, enabled, status: "warn" }
+    : { detail: "off by explicit opt-out (no cloud credentials configured)", enabled, status: "ok" };
 }
 
 export interface WebSearchEnvSnapshot {

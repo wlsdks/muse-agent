@@ -143,7 +143,8 @@ describe("autoconfigure", () => {
     // Most personal users set OPENAI_API_KEY once for the OpenAI SDK
     // convention. Voice should pick that up automatically without
     // needing a Muse-specific name.
-    const assembly = createMuseRuntimeAssembly({ env: { OPENAI_API_KEY: "sk-test" } });
+    // Cloud voice requires opting out of the default local-only gate.
+    const assembly = createMuseRuntimeAssembly({ env: { MUSE_LOCAL_ONLY: "false", OPENAI_API_KEY: "sk-test" } });
     expect(assembly.voice).toBeTruthy();
     expect(assembly.voice?.primaryStt()?.id).toBe("openai-whisper");
     expect(assembly.voice?.primaryTts()?.id).toBe("openai-tts");
@@ -155,6 +156,7 @@ describe("autoconfigure", () => {
     // for voice. The Muse-specific override wins.
     const assembly = createMuseRuntimeAssembly({
       env: {
+        MUSE_LOCAL_ONLY: "false",
         MUSE_VOICE_OPENAI_API_KEY: "sk-voice",
         OPENAI_API_KEY: "sk-chat"
       }
@@ -354,6 +356,7 @@ describe("autoconfigure", () => {
   it("assembles AgentRuntime when an OpenAI-compatible model endpoint is configured", () => {
     const assembly = createMuseRuntimeAssembly({
       env: {
+        MUSE_LOCAL_ONLY: "false", // remote OpenAI-compatible endpoint = cloud egress
         MUSE_MODEL: "provider/model-a",
         MUSE_MODEL_BASE_URL: "https://llm.example.test/v1"
       }
@@ -600,12 +603,14 @@ describe("autoconfigure", () => {
     const anthropic = createMuseRuntimeAssembly({
       env: {
         ANTHROPIC_API_KEY: "key",
+        MUSE_LOCAL_ONLY: "false", // cloud providers require opting out of the default local-only gate
         MUSE_MODEL: "anthropic/claude-test"
       }
     });
     const gemini = createMuseRuntimeAssembly({
       env: {
         GEMINI_API_KEY: "key",
+        MUSE_LOCAL_ONLY: "false",
         MUSE_MODEL: "gemini/gemini-test"
       }
     });
@@ -929,7 +934,8 @@ describe("autoconfigure", () => {
   });
 
   it("createMuseRuntimeAssembly wires agentRuntime when only an API key is in env (no MUSE_MODEL)", () => {
-    const assembly = createMuseRuntimeAssembly({ env: { GEMINI_API_KEY: "fake-key-for-test" } });
+    // A cloud key infers a cloud default model, so this opts out of local-only.
+    const assembly = createMuseRuntimeAssembly({ env: { GEMINI_API_KEY: "fake-key-for-test", MUSE_LOCAL_ONLY: "false" } });
     expect(assembly.agentRuntime).toBeDefined();
     expect(assembly.defaultModel).toBe("gemini/gemini-2.0-flash");
   });

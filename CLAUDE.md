@@ -1,8 +1,15 @@
 # Muse
 
-Muse is a provider-neutral, JARVIS-style AI conductor. The runtime
-orchestrates any LLM, any tool, any MCP server — without hard-wiring
-a vendor SDK into core code.
+**Identity (the one line): "Tell it everything. It can't tell anyone."**
+Muse is the AI assistant that's *actually yours* — answers from your own
+notes/files with the source quoted, says "I'm not sure" instead of making
+things up, and runs ENTIRELY on a local model with `MUSE_LOCAL_ONLY` ON BY
+DEFAULT (cloud egress refused in code; explicit opt-out forfeits the
+guarantee). Local-by-construction is the product, not a setting. Wedge =
+confidence-gated cited recall; proactivity is the earned north star
+(`docs/strategy/identity.md`). Provider/MCP-neutral under the hood, but local
+is the default it ships and defends — never make a cloud vendor the runtime
+owner, never hard-wire a vendor SDK into core code.
 
 This file is the **contract** every Claude Code agent reads first.
 Keep it under 100 lines. Anything longer goes in `.claude/rules/*.md`.
