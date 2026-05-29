@@ -9,10 +9,15 @@ describe("evaluateLocalOnlyPosture — single source of truth for doctor + setup
     expect(p.detail).toContain("blocked");
   });
 
-  it("ON + a cloud model ⇒ fail with the runtime's own refusal reason", () => {
-    const p = evaluateLocalOnlyPosture({ MUSE_LOCAL_ONLY: "true", GEMINI_API_KEY: "k" });
+  it("ON + an EXPLICIT cloud model ⇒ fail with the runtime's own refusal reason", () => {
+    const p = evaluateLocalOnlyPosture({ MUSE_LOCAL_ONLY: "true", MUSE_MODEL: "gemini/gemini-2.0-flash", GEMINI_API_KEY: "k" });
     expect(p).toMatchObject({ enabled: true, status: "fail" });
     expect(p.detail).toContain("MUSE_LOCAL_ONLY");
+  });
+
+  it("ON + an ambient cloud key but NO explicit model ⇒ ok (default resolves local, nothing leaks)", () => {
+    const p = evaluateLocalOnlyPosture({ MUSE_LOCAL_ONLY: "true", GEMINI_API_KEY: "k" });
+    expect(p).toMatchObject({ enabled: true, status: "ok" });
   });
 
   it("explicit OFF (opt-out) + cloud credentials ⇒ warn that egress is possible", () => {

@@ -17,22 +17,31 @@ import { parseBoolean, parseCsv, parseInteger, parseOptionalString } from "./env
 import type { MuseEnvironment } from "./index.js";
 
 /**
+/** The zero-config local model for a local-first install (Ollama + Qwen). */
+export const LOCAL_FIRST_DEFAULT_MODEL = "ollama/qwen3:8b";
+
+/**
  * Resolve the default model identifier the runtime should use.
  *
  * Priority: explicit `MUSE_MODEL` (or `MUSE_DEFAULT_MODEL`) wins.
- * Otherwise infer from whichever provider API key is in env, in
- * preference order: GEMINI / GOOGLE → OPENAI → ANTHROPIC → OPENROUTER.
- * Returns undefined when no signal at all is available — the runtime
- * stays disabled and the boot script logs a clear warning.
  *
- * Personal-JARVIS UX: a user who exports `GEMINI_API_KEY` once and
- * runs `node apps/api/dist/index.js` should get a working `/api/chat`
- * endpoint without setting any further env.
+ * LOCAL-FIRST: when local-only is on (the default posture), the zero-config
+ * default is the LOCAL model — never a cloud one. This is the whole product
+ * stance ("runs entirely on your machine") AND it fixes a real trap: inferring
+ * a cloud model from an ambient `GEMINI_API_KEY`/`OPENAI_API_KEY` would then be
+ * REFUSED by the local-only gate, so zero-config broke on any box that happened
+ * to carry a cloud key. Cloud-credential inference (GEMINI → OPENAI → ANTHROPIC
+ * → OPENROUTER → local) applies ONLY when the user explicitly opts out via
+ * `MUSE_LOCAL_ONLY=false`. Returns undefined only in the opted-out case with no
+ * signal at all.
  */
 export function resolveDefaultModel(env: MuseEnvironment): string | undefined {
   const explicit = parseOptionalString(env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL);
   if (explicit) {
     return explicit;
+  }
+  if (parseBoolean(env.MUSE_LOCAL_ONLY, true)) {
+    return LOCAL_FIRST_DEFAULT_MODEL;
   }
   return inferDefaultModelFromCredentials(env);
 }

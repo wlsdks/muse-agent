@@ -55,6 +55,12 @@ cloud LLM/voice API. Deterministic, fail-close (`local-only-policy.ts`):
   off-box host — a REMOTE Ollama/LM-Studio host counts as egress.
 - The model router (`createModelProvider`) throws `LocalOnlyViolationError`
   (loud, not a silent disable) before instantiating a cloud provider.
+- **Local-first default model.** When local-only is on (the default),
+  `resolveDefaultModel` returns the local model (`ollama/qwen3:8b`) and
+  IGNORES ambient cloud keys — cloud-credential inference (GEMINI → OPENAI →
+  …) applies ONLY under an explicit `MUSE_LOCAL_ONLY=false`. Without this a
+  stray `GEMINI_API_KEY` would make the zero-config default a cloud model that
+  the gate then refuses, breaking first-run on any box carrying a cloud key.
 - The voice registry ignores an OpenAI key under local-only, so cloud
   STT/TTS never registers (mic audio cannot silently go to OpenAI).
 - `muse doctor` reports the posture; embeddings are already localhost-only.

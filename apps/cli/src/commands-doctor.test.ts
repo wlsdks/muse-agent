@@ -285,10 +285,15 @@ describe("localOnlyCheck — local-only / no-cloud-egress posture", () => {
     expect(check.detail).toContain("blocked");
   });
 
-  it("ON + a cloud model ⇒ fail with the runtime's own reason (previews the boot refusal)", () => {
-    const check = localOnlyCheck({ MUSE_LOCAL_ONLY: "true", GEMINI_API_KEY: "k" });
+  it("ON + an EXPLICIT cloud model ⇒ fail with the runtime's own reason (previews the boot refusal)", () => {
+    const check = localOnlyCheck({ MUSE_LOCAL_ONLY: "true", MUSE_MODEL: "gemini/gemini-2.0-flash", GEMINI_API_KEY: "k" });
     expect(check.status).toBe("fail");
     expect(check.detail).toContain("MUSE_LOCAL_ONLY");
+  });
+
+  it("ON + an ambient cloud key but NO explicit model ⇒ ok (default resolves local)", () => {
+    const check = localOnlyCheck({ MUSE_LOCAL_ONLY: "true", GEMINI_API_KEY: "k" });
+    expect(check.status).toBe("ok");
   });
 
   it("explicit OFF (opt-out) + cloud credentials present ⇒ warn that egress is possible", () => {
