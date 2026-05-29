@@ -107,13 +107,29 @@ describe("proactive-trust-ledger — persistence", () => {
     expect(isSourceAvoided(read, "calendar", "evt-7")).toBe(true);
   });
 
-  it("recordOutcome on a never-surfaced source appends a remembered pre-veto", async () => {
+  it("recordOutcome on a never-surfaced source remembers the veto but does NOT inflate precision", async () => {
     const res = await recordOutcome(file, "task:t-3", "vetoed", 4_000);
     expect(res.matched).toBe(false);
     const read = await readTrustLedger(file);
     expect(read).toHaveLength(1);
-    expect(read[0]).toMatchObject({ kind: "task", outcome: "vetoed", sourceKey: "task:t-3" });
+    expect(read[0]).toMatchObject({ kind: "task", outcome: "vetoed", recordedWithoutSurface: true, sourceKey: "task:t-3" });
+    // Learned avoidance still picks it up...
     expect(avoidedSourceKeys(read).has("task:t-3")).toBe(true);
+    // ...but it is NOT counted as a surfaced notice (no fabricated denominator).
+    const score = computeTrustScore(read);
+    expect(score.surfaced).toBe(0);
+    expect(score.vetoed).toBe(0);
+    expect(score.precision).toBeNull();
+  });
+
+  it("a pre-veto does not dilute precision of a real surface", async () => {
+    await appendSurfaced(file, { id: "real", kind: "task", surfacedAtMs: 1_000, title: "Real" });
+    await recordOutcome(file, "task:real", "kept", 2_000);
+    await recordOutcome(file, "calendar:never-shown", "vetoed", 3_000); // pre-veto
+    const score = computeTrustScore(await readTrustLedger(file));
+    expect(score.surfaced).toBe(1); // only the real surface
+    expect(score.kept).toBe(1);
+    expect(score.precision).toBe(1); // not dragged down by the pre-veto
   });
 
   it("round-trips a written ledger losslessly", async () => {

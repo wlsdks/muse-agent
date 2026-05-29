@@ -41,19 +41,29 @@ const OUTCOME_MARK: Record<ProactiveOutcome | "none", string> = {
 export function renderTrustScoreboard(entries: readonly TrustLedgerEntry[], limit = 12): string {
   const score = computeTrustScore(entries);
   const lines = ["Muse — proactive trust scoreboard\n"];
+  const mutedAhead = entries.filter((e) => e.recordedWithoutSurface === true && e.outcome === "vetoed");
   if (score.precision === null) {
     lines.push("  No proactive notices yet — nothing surfaced, nothing to score.");
     lines.push("  Once Muse surfaces a due item, it's logged here and you can keep or veto it.");
+    if (mutedAhead.length > 0) {
+      lines.push(`\n  Muted ahead of time (never surfaced): ${mutedAhead.map((e) => e.sourceKey).join(", ")}`);
+    }
     return lines.join("\n");
   }
   const pct = Math.round(score.precision * 100);
   lines.push(`  Surfaced: ${score.surfaced.toString()}   Kept: ${score.kept.toString()}   Acted: ${score.acted.toString()}   Vetoed: ${score.vetoed.toString()}`);
   lines.push(`  Precision: ${pct.toString()}% — of what Muse said unasked, you didn't reject ${pct.toString()}%.\n`);
   lines.push("Recent (most recent first):");
-  const recent = [...entries].sort((a, b) => b.surfacedAtMs - a.surfacedAtMs).slice(0, limit);
+  const surfaces = entries.filter((e) => e.recordedWithoutSurface !== true);
+  const recent = [...surfaces].sort((a, b) => b.surfacedAtMs - a.surfacedAtMs).slice(0, limit);
   for (const e of recent) {
     const mark = OUTCOME_MARK[e.outcome ?? "none"].padEnd(9);
     lines.push(`  ${mark} ${e.sourceKey.padEnd(22)} ${fmtTime(e.surfacedAtMs)}  ${e.title}`);
+  }
+  // Pre-emptively muted sources never surfaced — shown separately so they
+  // don't masquerade as surfaced notices in the precision view.
+  if (mutedAhead.length > 0) {
+    lines.push(`\nMuted ahead of time (never surfaced): ${mutedAhead.map((e) => e.sourceKey).join(", ")}`);
   }
   lines.push("\nSilence a source you don't want:  muse proactive veto <source>");
   lines.push("Mark one useful:                  muse proactive keep <source>");

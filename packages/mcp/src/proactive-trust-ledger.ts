@@ -39,6 +39,14 @@ export interface TrustLedgerEntry {
    */
   readonly outcome?: ProactiveOutcome;
   readonly outcomeAtMs?: number;
+  /**
+   * True when this entry was created by a pre-emptive veto/keep on a source
+   * Muse never actually surfaced (a `muse proactive veto <id>` for something
+   * not yet seen). It records the user's avoidance but is NOT a real surface,
+   * so it is excluded from the precision math — otherwise vetoing a never-shown
+   * source would corrupt the very "what Muse surfaced vs. what you kept" metric.
+   */
+  readonly recordedWithoutSurface?: boolean;
 }
 
 export interface TrustScore {
@@ -72,6 +80,7 @@ function isTrustLedgerEntry(value: unknown): value is TrustLedgerEntry {
     && typeof entry.surfacedAtMs === "number"
     && Number.isFinite(entry.surfacedAtMs)
     && (entry.outcome === undefined || entry.outcome === "acted" || entry.outcome === "kept" || entry.outcome === "vetoed")
+    && (entry.recordedWithoutSurface === undefined || typeof entry.recordedWithoutSurface === "boolean")
   );
 }
 
@@ -150,21 +159,24 @@ export async function recordOutcome(
   const [kind = key] = key.split(":");
   await writeTrustLedger(file, [
     ...existing,
-    { kind, outcome, outcomeAtMs: atMs, sourceKey: key, surfacedAtMs: atMs, title: key }
+    { kind, outcome, outcomeAtMs: atMs, recordedWithoutSurface: true, sourceKey: key, surfacedAtMs: atMs, title: key }
   ]);
   return { matched: false, title: key };
 }
 
 export function computeTrustScore(entries: readonly TrustLedgerEntry[]): TrustScore {
+  // Pre-emptive veto/keep on a never-surfaced source is learned avoidance, not
+  // a surface — exclude it so it can't inflate the precision denominator.
+  const surfaces = entries.filter((entry) => entry.recordedWithoutSurface !== true);
   let acted = 0;
   let kept = 0;
   let vetoed = 0;
-  for (const entry of entries) {
+  for (const entry of surfaces) {
     if (entry.outcome === "acted") acted += 1;
     else if (entry.outcome === "kept") kept += 1;
     else if (entry.outcome === "vetoed") vetoed += 1;
   }
-  const surfaced = entries.length;
+  const surfaced = surfaces.length;
   return {
     acted,
     kept,
