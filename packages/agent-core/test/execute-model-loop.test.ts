@@ -91,6 +91,46 @@ describe("executeModelLoop", () => {
     expect(result.finalResponse.output).toBe("(run interrupted)");
   });
 
+  // Trajectory / step-efficiency (agent-eval gap C, DeepEval PlanAdherence +
+  // StepEfficiency): assert the ORDERED spans of a multi-step run and that the
+  // loop runs exactly the requested tools, once each, with no redundant calls.
+  describe("trajectory & step-efficiency", () => {
+    it("preserves the ordered model->tool->model->tool->synthesis trajectory across two tools", async () => {
+      const ran: string[] = [];
+      const result = await executeModelLoop(
+        runner({ ran, turns: [resp("", [call("a", "alpha")]), resp("", [call("b", "beta")]), resp("final answer")] }),
+        context(),
+        provider,
+        request(),
+      );
+      expect(result.toolsUsed).toEqual(["alpha", "beta"]);
+      expect(result.intermediateMessages.map((m) => m.role)).toEqual(["assistant", "tool", "assistant", "tool"]);
+      expect(result.toolResults.map((r) => r.result.status)).toEqual(["ok", "ok"]);
+      expect(result.finalResponse.output).toBe("final answer");
+    });
+
+    it("runs exactly the requested tools (once each, in order) — no redundant or dropped calls", async () => {
+      const ran: string[] = [];
+      const result = await executeModelLoop(
+        runner({ ran, turns: [resp("", [call("a", "alpha")]), resp("", [call("b", "beta")]), resp("done")] }),
+        context(),
+        provider,
+        request(),
+      );
+      // step-efficiency: the executed-tool sequence equals the planned one
+      expect(ran).toEqual(["alpha", "beta"]);
+      expect(result.toolResults).toHaveLength(2);
+    });
+
+    it("takes the zero-tool trajectory when the model answers directly (most efficient path)", async () => {
+      const ran: string[] = [];
+      const result = await executeModelLoop(runner({ ran, turns: [resp("direct answer")] }), context(), provider, request());
+      expect(ran).toEqual([]);
+      expect(result.toolsUsed).toEqual([]);
+      expect(result.intermediateMessages).toHaveLength(0);
+    });
+  });
+
   // Failure-injection: the loop composes invoke + tool-exec; these lock how an
   // UNEXPECTED throw from either propagates (the run wrapper turns it into a
   // failed run; here we assert the loop itself rejects and doesn't swallow it).
