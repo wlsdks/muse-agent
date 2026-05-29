@@ -238,7 +238,8 @@ export function friendlyFetchError(baseUrl: string, error: unknown): Error {
   const code = cause && typeof cause.code === "string" ? cause.code : undefined;
   if (code === "ECONNREFUSED") {
     return new Error(
-      `Muse API not reachable at ${baseUrl} — start it with \`pnpm --filter @muse/api dev\` or set --api-url.`
+      `Muse API not reachable at ${baseUrl}. Re-run with --local to run on your machine ` +
+      `(no server needed — most commands support it), or start the Muse API server, or set --api-url.`
     );
   }
   if (code === "ENOTFOUND") {
