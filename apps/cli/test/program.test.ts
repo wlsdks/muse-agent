@@ -6979,6 +6979,27 @@ describe("cli program", () => {
     }
   });
 
+  it("muse doctor (no flag) falls back to the local probe when the API is unreachable", async () => {
+    const prevModel = process.env.MUSE_MODEL;
+    process.env.MUSE_MODEL = "ollama/qwen3:8b";
+    try {
+      const { io, output } = captureOutput();
+      // ECONNREFUSED-shaped error → friendlyFetchError → isApiUnreachable → fallback.
+      const program = createProgram({
+        ...io,
+        fetch: async () => { throw Object.assign(new Error("fetch failed"), { cause: { code: "ECONNREFUSED" } }); }
+      });
+      await program.parseAsync(["node", "muse", "doctor"], { from: "node" });
+      const text = output.join("");
+      expect(text).toContain("running the local health check instead");
+      expect(text).toContain("local-only");
+    } finally {
+      if (prevModel === undefined) delete process.env.MUSE_MODEL;
+      else process.env.MUSE_MODEL = prevModel;
+      process.exitCode = 0;
+    }
+  });
+
   it("muse search --site <domain> prepends site:<domain> to the query (goal 017)", async () => {
     const originalFetch = globalThis.fetch;
     const prev = process.env.MUSE_SEARXNG_URL;

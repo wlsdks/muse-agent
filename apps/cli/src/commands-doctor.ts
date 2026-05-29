@@ -22,6 +22,7 @@ import type { Command } from "commander";
 import { DEFAULT_EMBED_MODEL, isNotesIndexStale } from "./commands-notes-rag.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
+import { isApiUnreachable } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
 export interface DoctorCommandHelpers {
@@ -69,18 +70,34 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
       },
       command: Command
     ) => {
+      const renderLocal = async (): Promise<"ok" | "warn" | "fail"> => {
+        const report = await runLocalDoctor();
+        if (options.json || options.full) {
+          helpers.writeOutput(io, report);
+        } else {
+          io.stdout(formatLocalDoctor(report));
+        }
+        return report.worst;
+      };
+
       const runOnce = async (): Promise<"ok" | "warn" | "fail" | "remote"> => {
         if (options.local) {
-          const report = await runLocalDoctor();
-          if (options.json || options.full) {
-            helpers.writeOutput(io, report);
-          } else {
-            io.stdout(formatLocalDoctor(report));
-          }
-          return report.worst;
+          return renderLocal();
         }
         const path = options.full ? "/api/admin/doctor" : "/api/admin/doctor/summary";
-        const response = await helpers.apiRequest(io, command, path);
+        let response: unknown;
+        try {
+          response = await helpers.apiRequest(io, command, path);
+        } catch (error) {
+          // Local-first: a CLI-only user has no API daemon running, so the
+          // default doctor must not dead-end. Fall back to the local probe
+          // (read-only diagnostics) exactly as the read commands do.
+          if (isApiUnreachable(error)) {
+            io.stderr("muse: API not reachable — running the local health check instead (muse doctor --local).\n");
+            return renderLocal();
+          }
+          throw error;
+        }
         if (options.full || options.json) {
           helpers.writeOutput(io, response);
           return "remote";
@@ -100,8 +117,10 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
 
       if (!options.watch) {
         const worst = await runOnce();
-        // Exit code for CI: 0 for ok+warn (non-fatal), 1 for fail.
-        if (options.local && worst === "fail") {
+        // Exit code for CI: 0 for ok+warn (non-fatal), 1 for fail. Covers both
+        // --local and the API-unreachable local fallback (the remote summary
+        // path returns "remote", never "fail").
+        if (worst === "fail") {
           process.exitCode = 1;
         }
         return;
