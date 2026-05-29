@@ -223,13 +223,19 @@ the generic layers below because they test what makes Muse an *agent*.
     per-file mutation queue: 25 same-key concurrent recalls now total 25 hits
     (was 1), 25 distinct keys all preserved, per-file isolated, 0 crash.
     recall-hits-store.test.ts +3, full `pnpm check` green. Closes the flake.
-  - [ ] Remaining (LOWER stakes — flag as a deliberate shared-helper effort, not
-    per-store churn): the non-critical read-modify-write stores (objectives /
-    episodes / playbook / reminders / tasks / proactive-history / belief-
-    provenance, etc.) share the latent race; cursor/offset stores only risk the
-    tmp-collision crash, not loss. Best done as ONE shared atomic-append helper
-    (server-only util) migrated across stores, not N copy-paste fixes. inbound
-    dedup + single-flight daemon race tests also open.
+  - [x] Shared helper extracted (the recommended approach, not N copy-paste
+    fixes): `atomic-file-store.ts` — `atomicWriteFile` (randomUUID tmp + fsync +
+    rename + 0o600) and `withFileMutationQueue` (per-file read-modify-write
+    serialisation, parallel across files, error doesn't wedge). 8 direct unit
+    tests. First migration: personal-objectives-store (user-facing — a lost
+    standing objective is an intent the daemon never acts on): addObjective +
+    patchObjective now serialised, 20 concurrent registrations all preserved
+    (was last-writer-wins), 20 concurrent patches all applied, 0 crash.
+  - [ ] Remaining: migrate the other ~16 read-modify-write stores
+    (reminders / tasks / followups / playbook / episodes / proactive-history /
+    veto / consent / contacts / patterns-fired / plan-cache / …) onto the shared
+    helper — now a cheap one-each adoption. inbound dedup + single-flight daemon
+    race tests also open.
 
 ## P5 — surface & contract
 

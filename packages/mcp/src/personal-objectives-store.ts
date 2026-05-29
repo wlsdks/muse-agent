@@ -18,9 +18,10 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
+
+import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
 export type ObjectiveKind = "watch" | "until" | "notify";
 export type ObjectiveStatus = "active" | "done" | "escalated" | "cancelled";
@@ -82,21 +83,9 @@ export async function readObjectives(file: string): Promise<readonly StandingObj
 }
 
 export async function writeObjectives(file: string, objectives: readonly StandingObjective[]): Promise<void> {
-  const payload = `${JSON.stringify({ objectives }, null, 2)}\n`;
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  // fsync before rename: a crash can otherwise commit the rename
-  // pointing at a zero-length / partial file (metadata and data
-  // journal separately).
-  const handle = await fs.open(tmp, "w", 0o600);
-  try {
-    await handle.writeFile(payload, "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  // Atomic, fsync'd, owner-only write via the shared primitive (randomUUID tmp →
+  // no same-ms rename-collision crash).
+  await atomicWriteFile(file, `${JSON.stringify({ objectives }, null, 2)}\n`);
 }
 
 /**
@@ -106,9 +95,14 @@ export async function writeObjectives(file: string, objectives: readonly Standin
  * updates its spec/status without duplicating).
  */
 export async function addObjective(file: string, objective: StandingObjective): Promise<void> {
-  const existing = await readObjectives(file);
-  const filtered = existing.filter((entry) => entry.id !== objective.id);
-  await writeObjectives(file, [...filtered, objective]);
+  // Serialise the read-modify-write: two concurrent registrations must not each
+  // read the same snapshot and clobber one another (a lost objective = a
+  // standing intent the daemon never acts on).
+  await withFileMutationQueue(file, async () => {
+    const existing = await readObjectives(file);
+    const filtered = existing.filter((entry) => entry.id !== objective.id);
+    await writeObjectives(file, [...filtered, objective]);
+  });
 }
 
 /**
@@ -123,14 +117,16 @@ export async function patchObjective(
   id: string,
   patch: Partial<Omit<StandingObjective, "id">>
 ): Promise<StandingObjective | undefined> {
-  const existing = await readObjectives(file);
-  const target = existing.find((entry) => entry.id === id);
-  if (!target) {
-    return undefined;
-  }
-  const patched: StandingObjective = { ...target, ...patch, id: target.id };
-  await writeObjectives(file, existing.map((entry) => (entry.id === id ? patched : entry)));
-  return patched;
+  return withFileMutationQueue(file, async () => {
+    const existing = await readObjectives(file);
+    const target = existing.find((entry) => entry.id === id);
+    if (!target) {
+      return undefined;
+    }
+    const patched: StandingObjective = { ...target, ...patch, id: target.id };
+    await writeObjectives(file, existing.map((entry) => (entry.id === id ? patched : entry)));
+    return patched;
+  });
 }
 
 export function serializeObjective(objective: StandingObjective): JsonObject {

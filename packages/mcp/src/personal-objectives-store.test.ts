@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addObjective,
+  patchObjective,
   readObjectives,
   serializeObjective,
   writeObjectives,
@@ -95,5 +96,29 @@ describe("personal-objectives-store — P5-b1 durable standing objectives", () =
     const [loaded] = await readObjectives(file);
     expect(loaded).toEqual(withOptionals);
     expect(serializeObjective(withOptionals)).toMatchObject({ attempts: 2, id: "obj_1" });
+  });
+
+  // Concurrency (backlog Concurrency item — now on the shared atomic-file
+  // helper): addObjective / patchObjective are read-modify-write. Before the
+  // per-file mutation queue, concurrent registrations each read the same
+  // snapshot and clobbered one another — a lost standing objective is an intent
+  // the daemon never acts on (user-facing). These assert lossless, crash-free.
+  describe("concurrent registration + patching", () => {
+    it("preserves ALL objectives when distinct ones are registered concurrently (no lost-update)", async () => {
+      const file = tmpFile();
+      await Promise.all(Array.from({ length: 20 }, (_unused, i) => addObjective(file, fixture({ id: `o${i.toString()}` }))));
+      const all = await readObjectives(file);
+      expect(all).toHaveLength(20); // not last-writer-wins (would be 1)
+      expect(new Set(all.map((o) => o.id)).size).toBe(20);
+    });
+
+    it("applies every concurrent status patch on distinct ids (no crash, none dropped)", async () => {
+      const file = tmpFile();
+      await Promise.all(Array.from({ length: 20 }, (_unused, i) => addObjective(file, fixture({ id: `o${i.toString()}` }))));
+      await Promise.all((await readObjectives(file)).map((o) => patchObjective(file, o.id, { status: "done" })));
+      const all = await readObjectives(file);
+      expect(all).toHaveLength(20);
+      expect(all.every((o) => o.status === "done")).toBe(true);
+    });
   });
 });
