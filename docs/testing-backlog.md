@@ -27,26 +27,26 @@ state eval, LLM-as-judge) + how hermes-agent (constraint gates on every variant)
 and OpenClaw (dreaming shadow-trial before promotion) do it. These rank ABOVE
 the generic layers below because they test what makes Muse an *agent*.
 
-- [ ] **A. ArgumentCorrectness battery** — `eval:tools` asserts the tool *name*;
+- [x] **A. ArgumentCorrectness battery** — `eval:tools` asserts the tool *name*;
   add a graded per-case check that the *arguments* are right (required present +
   values plausible). Cheapest high-value extension of the existing harness.
-- [ ] **B. Task-completion / terminal-state eval (τ-bench style)** — after a real
+- [x] **B. Task-completion / terminal-state eval (τ-bench style)** — after a real
   run (diagnostic/local provider + contract-faithful tool fakes), assert the
   RESULTING STATE (note written / task added / approval recorded), not the path.
-- [ ] **C. Trajectory / step assertions** — ordered spans of a plan_execute /
+- [x] **C. Trajectory / step assertions** — ordered spans of a plan_execute /
   tool-loop run (plan → tool → synthesis) + adherence + step-efficiency.
-- [ ] **D. LLM-as-judge (GEval) harness** — reusable local-Qwen judge (temp 0,
+- [x] **D. LLM-as-judge (GEval) harness** — reusable local-Qwen judge (temp 0,
   repeat) scoring open-ended outputs (summaries/drafts) vs a plain-English rubric.
-- [ ] **E. Adversarial eval battery** — prompt-injection / jailbreak / unsafe-
+- [x] **E. Adversarial eval battery** — prompt-injection / jailbreak / unsafe-
   tool-use as a scored must-refuse live battery (mirrors the eager-invocation
   negatives already in `eval:tools`).
 - [x] **F. Constraint gates on self-authored skills (hermes-style)** — DONE (skill-review.ts size gate, wired into authoring producers). gate each
   session-authored skill on size (≤15 KB), tool-desc length, and a parse/lint
   check before it is loadable.
-- [ ] **G. Shadow-trial for memory/playbook promotion (OpenClaw-style)** — a
+- [x] **G. Shadow-trial for memory/playbook promotion (OpenClaw-style)** — a
   report-only baseline-vs-candidate judge (verdict/reason/risk) before a distilled
   strategy or promoted memory goes live, kept separate from the live store.
-- [ ] **H. CI gating** — extend `self-eval` so a tool-selection / task-completion
+- [x] **H. CI gating** — extend `self-eval` so a tool-selection / task-completion
   / adversarial regression FAILS the run, not just logs.
 
 ## P1 — assertion quality & failure modes (highest value: do these first)
@@ -90,10 +90,15 @@ the generic layers below because they test what makes Muse an *agent*.
   fail-closed gate → action logged. Plus the deny / timeout / ambiguous-recipient
   paths produce NO external effect (outbound-safety acceptance, contract-faithful
   HTTP fake).
-- [ ] **Route integration (boot the server).** The `apps/api/src/*-routes.ts`
+- [~] **Route integration (boot the server).** The `apps/api/src/*-routes.ts`
   groups are registered but unexercised by direct tests (notes/tasks/reminders/
   messaging/voice/proactive/active-context/accountability/session/admin-*). Boot
   the Fastify app per group and assert status + body for the happy + 4xx paths.
+  - [x] accountability route group (server.accountability.test.ts): /api/actions
+    (newest-first), /api/objectives, /api/vetoes read-only + /api/contacts CRUD
+    (POST persists, GET reflects, DELETE removes, 400 no-name). Most groups
+    (notes/tasks/reminders/active-context/voice/today/setup/admin/chat) already
+    have server.*.test.ts; remaining untested: proactive + the *-compat routes.
 
 ## P3 — live LLM verification (Ollama up on this PC — USE it)
 
