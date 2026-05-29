@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { appendInbound, readInbox } from "../src/inbox-store.js";
-import { type PendingApproval, readPendingApprovals, recordPendingApproval } from "../src/pending-approval-store.js";
+import { clearPendingApproval, type PendingApproval, readPendingApprovals, recordPendingApproval } from "../src/pending-approval-store.js";
 import type { InboundMessage } from "../src/types.js";
 
 let dir: string;
@@ -45,20 +45,33 @@ describe("recordPendingApproval under concurrency — no crash / corruption (tmp
     tool: "email_send",
   });
 
-  it("never crashes with an ENOENT tmp-rename race when many records fire at once", async () => {
-    // Regression: the tmp file was `${pid}-${Date.now()}`, so two writes in the
-    // same millisecond collided and one rename consumed the other's tmp -> ENOENT.
-    // A random-uuid tmp suffix fixes the crash (there is no write-queue here).
+  it("preserves EVERY record when many fire at once (per-file write-queue, lossless)", async () => {
+    // Regression history: (1) the tmp file was `${pid}-${Date.now()}` so same-ms
+    // writes collided -> ENOENT crash; (2) even fixed, the read-modify-write was
+    // last-writer-wins and silently dropped records. A per-file mutation queue
+    // serialises the whole op, so a refused action's pending approval is never
+    // lost.
     const file = join(dir, "pending.json");
     const results = await Promise.allSettled(Array.from({ length: 25 }, (_v, i) => recordPendingApproval(file, approval(i))));
     expect(results.filter((r) => r.status === "rejected")).toHaveLength(0);
-    // and the file is always left valid + readable (no torn/partial write)
-    const stored = await readPendingApprovals(file);
-    expect(Array.isArray(stored)).toBe(true);
-    expect(stored.length).toBeGreaterThanOrEqual(1);
-    // NOTE: this store has no write-queue, so concurrent read-modify-write is
-    // last-writer-wins (count may be < N). That is acceptable for the low-
-    // frequency single-user approval path; the crash was the real defect.
+    expect((await readPendingApprovals(file)).map((p) => p.id).sort()).toEqual(Array.from({ length: 25 }, (_v, i) => `p${i}`).sort());
+  });
+
+  it("serialises concurrent clears + records correctly (cleared gone, new kept)", async () => {
+    const file = join(dir, "mixed.json");
+    for (let i = 0; i < 10; i += 1) await recordPendingApproval(file, approval(i));
+    await Promise.all([
+      clearPendingApproval(file, "p0"),
+      clearPendingApproval(file, "p1"),
+      recordPendingApproval(file, approval(100)),
+      clearPendingApproval(file, "p2"),
+    ]);
+    const ids = (await readPendingApprovals(file)).map((p) => p.id);
+    expect(ids).not.toContain("p0");
+    expect(ids).not.toContain("p1");
+    expect(ids).not.toContain("p2");
+    expect(ids).toContain("p100");
+    expect(ids).toHaveLength(8); // 10 - 3 cleared + 1 added
   });
 
   it("persists every record when calls are sequential (await each)", async () => {

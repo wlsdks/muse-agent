@@ -124,9 +124,13 @@ the generic layers below because they test what makes Muse an *agent*.
     `${pid}-${Date.now()}` → same-ms collision) — fixed with a random-uuid tmp
     suffix. Store now never crashes/corrupts under concurrency (last-writer-wins
     remains, documented). store-concurrency.test.ts (4 tests), full check green.
-  - [ ] Remaining: serialize pending-approval writes (write-queue, like inbox)
-    to also eliminate the last-writer-wins loss; inbound dedup + single-flight
-    daemon race tests.
+  - [x] Lossless serialization: a per-file mutation queue now serialises the
+    whole read-modify-write of recordPendingApproval + clearPendingApproval, so
+    25 concurrent records preserve ALL 25 (was last-writer-wins) and mixed
+    concurrent clear+record resolves correctly. No more silent loss of a refused
+    action's pending approval.
+  - [ ] Remaining: inbound dedup + single-flight daemon race tests; apply the
+    same queue audit to other read-modify-write file stores.
 
 ## P5 — surface & contract
 
