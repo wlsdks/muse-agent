@@ -91,6 +91,36 @@ describe("executeModelLoop", () => {
     expect(result.finalResponse.output).toBe("(run interrupted)");
   });
 
+  // Runaway guard (agent-eval / backlog P1): the wall-clock deadline cuts the
+  // loop short — once exceeded, the next turn is offered NO tools (so the model
+  // synthesizes a clean answer instead of asking for one we'd refuse), even if
+  // every turn keeps requesting a tool. Honours CLAUDE.md's "explicit limits".
+  it("stops calling tools once maxRunWallclockMs is exceeded (in-flight tool finishes, loop then cuts)", async () => {
+    const toolsPerTurn: number[] = [];
+    let turn = 0;
+    const loop = {
+      executeToolCall: async (_ctx: AgentRunContext, toolCall: ModelToolCall): Promise<ExecutedToolResult> => {
+        await new Promise((resolve) => setTimeout(resolve, 5)); // push past the 1ms deadline
+        return { result: { id: toolCall.id, name: toolCall.name, output: "ran", status: "ok" }, toolCall };
+      },
+      generateWithTracing: async (_ctx: AgentRunContext, _provider: unknown, req: ModelRequest) => {
+        toolsPerTurn.push((req.tools ?? []).length);
+        turn += 1;
+        return resp(`turn${turn}`, [call(`t${turn}`, "echo")]); // every turn WANTS a tool
+      },
+      maxRunWallclockMs: 1,
+      maxToolCalls: 5,
+    } as unknown as ModelLoopRunner;
+
+    const result = await executeModelLoop(loop, context(), provider, request());
+    // turn 1 ran with tools (deadline not yet passed); a later turn got none
+    expect(toolsPerTurn[0]).toBeGreaterThan(0);
+    expect(toolsPerTurn[toolsPerTurn.length - 1]).toBe(0);
+    // only the in-flight tool ran — the wall-clock cut the loop before another
+    expect(result.toolsUsed).toEqual(["echo"]);
+    expect(result.toolResults).toHaveLength(1);
+  });
+
   // Trajectory / step-efficiency (agent-eval gap C, DeepEval PlanAdherence +
   // StepEfficiency): assert the ORDERED spans of a multi-step run and that the
   // loop runs exactly the requested tools, once each, with no redundant calls.

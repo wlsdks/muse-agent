@@ -75,9 +75,12 @@ the generic layers below because they test what makes Muse an *agent*.
   - [ ] Remaining: the same run() path under a 429/503/timeout/malformed
     provider exercising retry → fallback → circuit-breaker open, and a streaming
     mid-stream `{error}` surfaced as an error event end-to-end.
-- [ ] **Tool-loop limits & runaway guards.** maxToolCalls, maxRunWallclockMs,
+- [x] **Tool-loop limits & runaway guards.** maxToolCalls, maxRunWallclockMs,
   maxToolOutputChars, tool-output recursion — exercise each cap end-to-end with a
   fake tool that tries to exceed it; assert the loop stops deterministically.
+  (maxToolCalls + recursion: execute-model-loop.test.ts; maxToolOutputChars:
+  cap-tool-output.test.ts; maxRunWallclockMs: execute-model-loop.test.ts —
+  deadline cuts the loop, in-flight tool finishes, next turn gets no tools.)
 
 ## P2 — end-to-end flows (compose the pieces, not the units)
 
