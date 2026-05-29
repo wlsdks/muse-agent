@@ -75,9 +75,12 @@ the generic layers below because they test what makes Muse an *agent*.
   - [ ] Remaining: the same run() path under a 429/503/timeout/malformed
     provider exercising retry → fallback → circuit-breaker open, and a streaming
     mid-stream `{error}` surfaced as an error event end-to-end.
-- [ ] **Tool-loop limits & runaway guards.** maxToolCalls, maxRunWallclockMs,
+- [x] **Tool-loop limits & runaway guards.** maxToolCalls, maxRunWallclockMs,
   maxToolOutputChars, tool-output recursion — exercise each cap end-to-end with a
   fake tool that tries to exceed it; assert the loop stops deterministically.
+  (maxToolCalls + recursion: execute-model-loop.test.ts; maxToolOutputChars:
+  cap-tool-output.test.ts; maxRunWallclockMs: execute-model-loop.test.ts —
+  deadline cuts the loop, in-flight tool finishes, next turn gets no tools.)
 
 ## P2 — end-to-end flows (compose the pieces, not the units)
 
@@ -166,7 +169,8 @@ the generic layers below because they test what makes Muse an *agent*.
     prompt that shapes Qwen's plan output) pinned via toMatchInlineSnapshot +
     structural invariants. planning-prompt-snapshot.test.ts. (Was 0 snapshot
     tests in the repo.)
-  - [ ] Remaining: buildSystemPrompt (persona) snapshot; the Ollama Hermes
+  - [x] buildSystemPrompt section-assembly snapshot (system-prompt-snapshot.test.ts): base → Response Format → cache boundary → memory/retrieved/tool sections, order + boundary placement pinned.
+  - [ ] Remaining: the Ollama Hermes
     tool-call wire body (buildNativeChatBody) is already shape-asserted in
     adapter-ollama.test.ts — DONE — adapter-ollama.test.ts pins the exact native /api/chat body for a tool-using request.
 - [ ] **CLI command-parser + run-path smoke.** The untested commander
