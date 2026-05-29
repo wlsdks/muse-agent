@@ -123,6 +123,14 @@ of agent test is worth the most*.
     synthesising, the empty-plan direct-answer trajectory (no step spans), and a
     DeepEval-style StepEfficiency metric that flags a redundant re-call of the
     same (tool, args) — plan-execute-trajectory.test.ts, agent-core 1006 pass.
+  - [x] PlanQuality LIVE battery (the one DeepEval dimension not yet measured on
+    the model): `eval:plan-quality` (scripts/eval-plan-quality.mjs) drives the
+    REAL planning prompt (buildPlanningSystemPrompt) for multi-step goals on
+    qwen3:8b, parses with parsePlan, and scores the plan VALID (available tools)
+    ∧ COMPLETE (covers the required tools) ∧ ORDERED (dependency subsequence) ∧
+    EFFICIENT (no redundant repeat / padding). 4/4 (100%) @ REPEAT=2. (Finding:
+    a too-small maxOutputTokens truncates the plan JSON mid-array → unparseable;
+    the battery uses 700 so a 2-step plan never cuts off.)
 - [x] **D. LLM-as-judge (GEval-style) harness** — DONE: `llmJudge(provider,
   model)` added to `eval-harness.mjs` — the subjective-quality scorer tier
   (strict single-word PASS/FAIL verdict, temp 0, suite `repeat` for stability;
