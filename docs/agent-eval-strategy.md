@@ -79,6 +79,15 @@ of agent test is worth the most*.
   contract-faithful tool fakes, we assert the **resulting state** (the note got
   written, the task got added, the approval got recorded) rather than the path.
   This is the missing "did it actually accomplish the goal" layer.
+  - [x] First harness (this commit): real `executeModelLoop` + real `ToolExecutor`
+    over a real state-mutating tool (actual fs writes), asserting WORLD STATE not
+    trajectory — goal accomplished (note persisted + success), **exactly-once**
+    mutation under a repeated idempotency-keyed call, no mutation when the model
+    answers directly, and no mutation when the tool fails (run still completes).
+    terminal-state-task-completion.test.ts, agent-core 973 pass.
+  - [ ] Remaining: extend to a real Muse built-in store tool (tasks/notes
+    provider) and to the plan_execute path; ideally a steerable diagnostic so the
+    full assembly drives a mutating tool end-to-end.
 - **C. Trajectory / step assertions on multi-step runs** — assert the ordered
   spans of a plan_execute / tool-loop run (plan generated → tool called →
   synthesis), incl. adherence + step-efficiency (no redundant calls).
