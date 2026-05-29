@@ -153,10 +153,17 @@ the generic layers below because they test what makes Muse an *agent*.
 
 ## P5 — surface & contract
 
-- [ ] **Prompt / tool-protocol snapshot tests.** Snapshot the rendered persona /
+- [~] **Prompt / tool-protocol snapshot tests.** Snapshot the rendered persona /
   system prompt and the Hermes tool-call wire format so an accidental prompt edit
   is caught (CLAUDE.md: "Snapshot-test prompt text and tool protocols when
   behavior matters").
+  - [x] First snapshot: buildPlanningSystemPrompt (the behavior-critical planner
+    prompt that shapes Qwen's plan output) pinned via toMatchInlineSnapshot +
+    structural invariants. planning-prompt-snapshot.test.ts. (Was 0 snapshot
+    tests in the repo.)
+  - [ ] Remaining: buildSystemPrompt (persona) snapshot; the Ollama Hermes
+    tool-call wire body (buildNativeChatBody) is already shape-asserted in
+    adapter-ollama.test.ts — consider a pinned snapshot there too.
 - [ ] **CLI command-parser + run-path smoke.** The untested commander
   registrations (commands-analytics/cost/latency/persona/voice/specs/tools-admin)
   — parse args + assert the action wiring via the CLI smoke harness.
