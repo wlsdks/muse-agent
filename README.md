@@ -1,9 +1,11 @@
 # Muse
 
-A personal AI assistant that learns you over time, anticipates what
-you'll need, and gets things done on your behalf — speaking up first
-when it matters, answering instantly when you ask. It runs on your
-machine, with your choice of model, and your data stays local.
+> **Tell it everything. It can't tell anyone.**
+
+Your AI assistant that answers from your own notes and files — quotes the
+exact source, says "I'm not sure" instead of making things up, and runs
+entirely on your machine. Nothing ever leaves it. That's not a setting;
+it's enforced in the code.
 
 [한국어 README →](README.ko.md)
 
@@ -11,17 +13,24 @@ machine, with your choice of model, and your data stays local.
 
 ## What Muse is
 
-Muse is meant to be the assistant you actually delegate to: it
-builds a picture of you from real use, notices what you'd want
-before you ask, looks into it, and either does it or checks with
-you first. It reaches you where you are — chat, voice, the
-terminal — and acts through your real tools: calendar, notes,
-tasks, messaging, the web, your machine.
+Muse is the AI assistant that's **actually yours**. Point it at the
+notes, files, and mail you'd never paste into ChatGPT — it answers from
+**your own** corpus with the exact passage quoted, and the part that earns
+your trust is what it does when it *isn't* sure: a deterministic confidence
+gate (not the model's guess) flags weak matches as "verify before relying"
+and says "no matching passages" rather than confabulate. It learns only you,
+grows more *you* over time, and acts through your real tools — calendar,
+notes, tasks, messaging, the web — always draft-first, never an autonomous
+send.
 
-And you own all of it. Any LLM (local Ollama/Qwen or any cloud
-provider), any tool, any MCP server; the same runtime drives the
-CLI, the API, and the web UI, so nothing is tied to a vendor or a
-build, and your data stays local by default. Under the hood:
+And it runs **entirely on your own machine**. By default Muse uses a local
+open-source model (qwen3:8b via Ollama, or any HuggingFace weights you run
+locally) and **refuses cloud egress in code** — `MUSE_LOCAL_ONLY` is on by
+default, so the runtime won't even start against a cloud provider unless you
+explicitly opt out (and forfeit the guarantee). Not your agent on someone
+else's cloud. Actually yours. The same runtime drives the CLI, the API, and
+the web UI — the model-neutral core can still reach any provider when you
+opt out, but local is the default it ships and defends. Under the hood:
 
 - **Model-neutral core.** OpenAI, Anthropic, Google Gemini, OpenRouter,
   Ollama, LM Studio, and any OpenAI-compatible endpoint live behind a

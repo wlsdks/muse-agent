@@ -70,7 +70,8 @@ describe("LocalOnlyViolationError", () => {
     expect(err.baseUrl).toBe("https://generativelanguage.googleapis.com");
     expect(err.message).toContain("MUSE_LOCAL_ONLY");
     expect(err.message).toContain("gemini");
-    expect(err.message).toContain("ollama/llama3.2");
+    expect(err.message).toContain("ollama/qwen3:8b");
+    expect(err.message).toContain("local-only by default");
     expect(err).toBeInstanceOf(Error);
   });
 });
