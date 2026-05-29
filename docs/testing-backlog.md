@@ -170,6 +170,10 @@ the generic layers below because they test what makes Muse an *agent*.
   (multi-agent orchestrate + CLI knowledge) is green, and append the result.
 - [~] **`eval:tools` set growth.** Extend the actuator + time confusable sets and
   add more KO/adversarial cases (each pre-verified STABLE 3/3 before landing).
+  - [x] 4 negative eager-invocation traps on the TIME confusable set (it had
+    zero negatives): KO/EN musings with time/weekday WORDS ('금요일'/'Friday'/
+    time idioms) that request no computation → NO tool. eval:tools 48/48 (100%)
+    @ REPEAT=2; each STABLE 3/3.
   - [x] 5 negative eager-invocation traps on the STATE-CHANGING/perception
     actuator set (a false positive there acts/searches unbidden — the worst
     failure): KO smart-home comment, EN gratitude for a past booking, KO inbox
