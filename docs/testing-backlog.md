@@ -95,10 +95,19 @@ the generic layers below because they test what makes Muse an *agent*.
 
 ## P2 — end-to-end flows (compose the pieces, not the units)
 
-- [ ] **Full agent run e2e (diagnostic provider).** message → model loop → tool
+- [~] **Full agent run e2e (diagnostic provider).** message → model loop → tool
   call → tool result → synth, blocking AND streaming, asserting the whole chain
   (only ~6 e2e files today; expand the matrix: plan_execute, react, tool-error
   recovery, guard-block mid-run).
+  - [x] plan_execute through the WHOLE AgentRuntime (not just streamPlanExecute):
+    the REAL steerable DiagnosticModelProvider generates the plan + a REAL
+    fs-mutating tool runs, exercising prepareInvocation → plan-execute streaming →
+    finalizeInvocation. stream() asserts the runtime event sequence
+    (plan-generated → executing → result → synthesis-started → text-delta → done)
+    + plan adherence + terminal world state; run() asserts the same goal +
+    a persisted `completed` run record. agent-run-plan-execute-e2e.test.ts (1016).
+  - [ ] Remaining: the default tool-loop (react) path e2e + a guard-block-mid-run
+    and a tool-error-recovery variant, blocking AND streaming.
 - [x] **Approval-gate round-trip e2e.** A risky tool refused → pending-approval
   recorded → inbound "yes" reply → `runActuatorByName` re-runs through the
   fail-closed gate → action logged. Plus the deny / timeout / ambiguous-recipient
