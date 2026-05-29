@@ -26,6 +26,11 @@ and its "prefer a procedure → skill, a preference → playbook" split are insp
 by this design. Hermes' progressive-disclosure skill catalog also informed
 Muse's pre-existing `chat-skills.ts` exposure.
 
+Additionally, Hermes' *curator* lifecycle — tracking `lastUsedAt` on
+agent-created skills to eventually archive stale ones — informed Muse's
+`AuthoredSkillStore.recordUsage()` and the `muse skills authored` command
+(`packages/skills/src/authored-skill-store.ts`, `apps/cli/src/commands-skills.ts`).
+
 ```
 MIT License
 

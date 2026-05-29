@@ -40,8 +40,10 @@ export function slugifySkillName(name: string): string {
   return slug.length > 0 ? slug.slice(0, 64) : "skill";
 }
 
-export function serializeAuthoredSkill(draft: SkillDraft, authoredAt: string): string {
-  const metadata = JSON.stringify({ muse: { authored: true, authoredAt } });
+export function serializeAuthoredSkill(draft: SkillDraft, authoredAt: string, lastUsedAt?: string): string {
+  const muse: Record<string, unknown> = { authored: true, authoredAt };
+  if (lastUsedAt) muse.lastUsedAt = lastUsedAt;
+  const metadata = JSON.stringify({ muse });
   return `---\nname: ${draft.name}\ndescription: ${draft.description}\nmetadata: ${metadata}\n---\n\n${draft.body.trim()}\n`;
 }
 
@@ -56,9 +58,12 @@ function defaultSimilarity(a: string, b: string): number {
   return inter / (sa.size + sb.size - inter);
 }
 
-/** Neutralise the authoredAt timestamp so an unchanged re-write is idempotent. */
-function stripAuthoredAt(text: string): string {
-  return text.replace(/"authoredAt":"[^"]*"/u, '"authoredAt":""').trim();
+/** Neutralise volatile timestamps so an unchanged content re-write is idempotent. */
+function stripTimestamps(text: string): string {
+  return text
+    .replace(/"authoredAt":"[^"]*"/u, '"authoredAt":""')
+    .replace(/"lastUsedAt":"[^"]*"/u, '"lastUsedAt":""')
+    .trim();
 }
 
 async function writeFileAtomic(filePath: string, text: string): Promise<void> {
@@ -108,7 +113,7 @@ export class AuthoredSkillStore {
         this.now().toISOString()
       );
       const existing = await fs.readFile(match.sourceInfo.filePath, "utf8").catch(() => "");
-      if (stripAuthoredAt(existing) === stripAuthoredAt(text)) {
+      if (stripTimestamps(existing) === stripTimestamps(text)) {
         return { action: "skip", skill: match };
       }
       await writeFileAtomic(match.sourceInfo.filePath, text);
@@ -121,6 +126,44 @@ export class AuthoredSkillStore {
     const created = await this.reload(name);
     await this.enforceCap();
     return { action: "create", skill: created };
+  }
+
+  /**
+   * Record that this authored skill was used at the current time. Updates
+   * lastUsedAt in the skill's on-disk metadata. Throttled: skips if the
+   * skill was already recorded within 60 seconds (avoids per-turn disk
+   * churn for long conversations where the same skill stays relevant).
+   * Returns true if the file was updated, false if skill not found or
+   * throttled. Fail-soft: never throws.
+   *
+   * Pattern adapted from Hermes Agent's curator lifecycle (MIT) — reimplemented for Muse.
+   */
+  async recordUsage(name: string): Promise<boolean> {
+    try {
+      const authored = await this.listAuthored();
+      const skill = authored.find((s) => s.name === name);
+      if (!skill) return false;
+
+      const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
+      const lastUsedAt = typeof muse.lastUsedAt === "string" ? muse.lastUsedAt : undefined;
+      const now = this.now();
+
+      if (lastUsedAt) {
+        const elapsed = now.getTime() - Date.parse(lastUsedAt);
+        if (Number.isFinite(elapsed) && elapsed < 60_000) return false;
+      }
+
+      const authoredAt = typeof muse.authoredAt === "string" ? muse.authoredAt : "";
+      const text = serializeAuthoredSkill(
+        { name: skill.name, description: skill.description, body: skill.body },
+        authoredAt,
+        now.toISOString()
+      );
+      await writeFileAtomic(skill.sourceInfo.filePath, text);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private authoredAt(skill: Skill): number {

@@ -64,11 +64,20 @@ export function selectRelevantSkills(
 /**
  * The skills system-prompt block for one turn: the relevant skills carry their
  * full body, the rest are name+description index lines only. `prompt` omitted
- * (or no match) → all index-only.
+ * (or no match) → all index-only. `onSelected` fires for each skill whose
+ * body is injected this turn — callers use it to record usage.
  */
-export function buildSkillsPrompt(skills: readonly Skill[], prompt = ""): string {
+export function buildSkillsPrompt(
+  skills: readonly Skill[],
+  prompt = "",
+  onSelected?: (skill: Skill) => void
+): string {
   if (skills.length === 0) return "";
-  const relevant = new Set(selectRelevantSkills(skills, prompt).map((skill) => skill.name));
+  const selectedSkills = selectRelevantSkills(skills, prompt);
+  const relevant = new Set(selectedSkills.map((skill) => skill.name));
+  if (onSelected) {
+    for (const skill of selectedSkills) onSelected(skill);
+  }
   const blocks = skills.map((skill) => {
     const head = `### ${skill.name}\n${skill.description}`;
     return relevant.has(skill.name) ? `${head}\n${skill.body.slice(0, SKILL_BODY_CHARS).trim()}` : head;

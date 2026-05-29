@@ -12,7 +12,7 @@
 import { createMuseRuntimeAssembly, parseBoolean, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
 import { readEpisodes, readFollowups, readTasks } from "@muse/mcp";
-import { loadSkillsFromDirectory, type Skill } from "@muse/skills";
+import { AuthoredSkillStore, loadSkillsFromDirectory, type Skill } from "@muse/skills";
 import { buildSkillsPrompt } from "./chat-skills.js";
 import { selectPersonaEpisodes } from "./episode-selection.js";
 import { Box, Static, Text, render, useApp, useCursor, useInput } from "ink";
@@ -1132,8 +1132,22 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // instructions are injected into the system prompt so the local model can
   // follow the relevant one. Add a skill = drop a folder there.
   const skillsDir = process.env.MUSE_SKILLS_DIR?.trim() || join(homedir(), ".muse", "skills");
-  const skills = await loadSkillsFromDirectory(skillsDir, "user").catch(() => [] as readonly Skill[]);
-  const skillsPromptFor = (prompt: string): string => buildSkillsPrompt(skills, prompt);
+  const authoredSkillsDir =
+    process.env.MUSE_AUTHORED_SKILLS_DIR?.trim() || join(homedir(), ".muse", "skills", "authored");
+  const userSkills = await loadSkillsFromDirectory(skillsDir, "user").catch(() => [] as readonly Skill[]);
+  const authoredSkills = await loadSkillsFromDirectory(authoredSkillsDir, "authored").catch(
+    () => [] as readonly Skill[]
+  );
+  // User skills override authored on name collision (authored = lowest precedence, mirrors buildSkillRegistry)
+  const skillMap = new Map<string, Skill>();
+  for (const s of authoredSkills) skillMap.set(s.name, s);
+  for (const s of userSkills) skillMap.set(s.name, s);
+  const skills = [...skillMap.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const authoredStore = new AuthoredSkillStore({ dir: authoredSkillsDir });
+  const skillsPromptFor = (prompt: string): string =>
+    buildSkillsPrompt(skills, prompt, (skill) => {
+      if (skill.sourceInfo.source === "authored") void authoredStore.recordUsage(skill.name);
+    });
   const skillInfos = skills.map((s) => ({ description: s.description, name: s.name }));
 
   // Manually-defined agents (`~/.muse/agents/<name>/AGENT.md`). `/agent <name>`

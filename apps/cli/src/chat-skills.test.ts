@@ -49,4 +49,16 @@ describe("buildSkillsPrompt — per-turn ITR exposure", () => {
   it("empty skill set → empty string", () => {
     expect(buildSkillsPrompt([], "anything")).toBe("");
   });
+
+  it("fires onSelected for each body-injected skill, not for index-only ones", () => {
+    const fired: string[] = [];
+    buildSkillsPrompt([blog, refactor], "draft a blog post", (s) => fired.push(s.name));
+    expect(fired).toEqual(["blog-writer"]);
+  });
+
+  it("fires onSelected for nothing when no skill matches", () => {
+    const fired: string[] = [];
+    buildSkillsPrompt([blog, refactor], "what is the weather today", (s) => fired.push(s.name));
+    expect(fired).toEqual([]);
+  });
 });

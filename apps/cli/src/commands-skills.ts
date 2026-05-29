@@ -13,7 +13,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
-import { loadSkillsFromDirectory } from "@muse/skills";
+import { AuthoredSkillStore, loadSkillsFromDirectory } from "@muse/skills";
 import type { Command } from "commander";
 
 import { authorSkillsFromSession } from "./chat-author-skills.js";
@@ -21,6 +21,10 @@ import type { ProgramIO } from "./program.js";
 
 export function resolveSkillsDir(env: NodeJS.ProcessEnv = process.env): string {
   return env.MUSE_SKILLS_DIR?.trim() || join(homedir(), ".muse", "skills");
+}
+
+export function resolveAuthoredSkillsDir(env: NodeJS.ProcessEnv = process.env): string {
+  return env.MUSE_AUTHORED_SKILLS_DIR?.trim() || join(homedir(), ".muse", "skills", "authored");
 }
 
 /** The starter SKILL.md a fresh `muse skills add <name>` writes. */
@@ -94,6 +98,27 @@ export function registerSkillsCommands(program: Command, io: ProgramIO): void {
         return;
       }
       io.stdout(`(nothing authored: ${result.reason})\n`);
+    });
+
+  skills
+    .command("authored")
+    .description("List agent-authored skills with usage dates (written by `muse skills author`)")
+    .action(async () => {
+      const dir = resolveAuthoredSkillsDir();
+      const store = new AuthoredSkillStore({ dir });
+      const authored = await store.listAuthored().catch(() => []);
+      if (authored.length === 0) {
+        io.stdout(`No authored skills yet. Run \`muse skills author\` after a chat session (dir: ${dir}).\n`);
+        return;
+      }
+      io.stdout(`Authored skills (${authored.length.toString()}) in ${dir}:\n`);
+      for (const skill of authored) {
+        const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
+        const authoredAt = typeof muse.authoredAt === "string" ? muse.authoredAt.slice(0, 10) : "unknown";
+        const lastUsedAt = typeof muse.lastUsedAt === "string" ? muse.lastUsedAt.slice(0, 10) : "never";
+        io.stdout(`  - ${skill.name} — ${skill.description}\n`);
+        io.stdout(`    authored: ${authoredAt}  last used: ${lastUsedAt}\n`);
+      }
     });
 
   skills

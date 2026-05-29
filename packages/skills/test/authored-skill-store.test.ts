@@ -48,6 +48,15 @@ describe("AuthoredSkillStore — create + execute-gate", () => {
     expect(text).toContain('metadata: {"muse":{"authored":true,"authoredAt":"2026-05-29T00:00:00Z"}}');
     expect(text.trimEnd().endsWith("B")).toBe(true);
   });
+
+  it("serializeAuthoredSkill includes lastUsedAt when provided", () => {
+    const text = serializeAuthoredSkill(
+      { name: "n", description: "d", body: "B" },
+      "2026-05-29T00:00:00Z",
+      "2026-05-29T12:00:00Z"
+    );
+    expect(text).toContain('"lastUsedAt":"2026-05-29T12:00:00Z"');
+  });
 });
 
 describe("AuthoredSkillStore — dedup", () => {
@@ -105,5 +114,66 @@ describe("AuthoredSkillStore — cap & collisions", () => {
     const store = new AuthoredSkillStore({ dir, existingNames: () => ["pdf"] });
     const res = await store.writeOrPatch({ name: "pdf", description: "x", body: "b" });
     expect(res.skill.name).toBe("pdf-learned");
+  });
+});
+
+describe("AuthoredSkillStore — recordUsage", () => {
+  it("stamps lastUsedAt on an authored skill", async () => {
+    const dir = tmpDir();
+    const store = new AuthoredSkillStore({ dir, now: () => new Date("2026-05-29T00:00:00Z") });
+    await store.writeOrPatch({ name: "bullet-summary", description: "Use for summaries", body: "steps" });
+
+    const storeAt = new AuthoredSkillStore({ dir, now: () => new Date("2026-05-29T10:00:00Z") });
+    const updated = await storeAt.recordUsage("bullet-summary");
+    expect(updated).toBe(true);
+
+    const [skill] = await storeAt.listAuthored();
+    const muse = skill?.frontmatter.metadata?.["muse"] as Record<string, unknown> | undefined;
+    expect(muse?.lastUsedAt).toBe("2026-05-29T10:00:00.000Z");
+    expect(muse?.authoredAt).toBe("2026-05-29T00:00:00.000Z");
+  });
+
+  it("returns false for a skill that does not exist", async () => {
+    const dir = tmpDir();
+    const store = new AuthoredSkillStore({ dir });
+    expect(await store.recordUsage("nonexistent")).toBe(false);
+  });
+
+  it("throttles: skips a second recordUsage within 60 seconds", async () => {
+    const dir = tmpDir();
+    const t0 = new Date("2026-05-29T10:00:00Z");
+    const store0 = new AuthoredSkillStore({ dir, now: () => new Date("2026-05-29T00:00:00Z") });
+    await store0.writeOrPatch({ name: "throttle-test", description: "d", body: "b" });
+
+    const store1 = new AuthoredSkillStore({ dir, now: () => t0 });
+    await store1.recordUsage("throttle-test");
+
+    const t1 = new Date(t0.getTime() + 30_000);
+    const store2 = new AuthoredSkillStore({ dir, now: () => t1 });
+    const skipped = await store2.recordUsage("throttle-test");
+    expect(skipped).toBe(false);
+
+    const [skill] = await store2.listAuthored();
+    const muse = skill?.frontmatter.metadata?.["muse"] as Record<string, unknown> | undefined;
+    expect(muse?.lastUsedAt).toBe(t0.toISOString());
+  });
+
+  it("does NOT throttle after 60 seconds", async () => {
+    const dir = tmpDir();
+    const t0 = new Date("2026-05-29T10:00:00Z");
+    const store0 = new AuthoredSkillStore({ dir, now: () => new Date("2026-05-29T00:00:00Z") });
+    await store0.writeOrPatch({ name: "expire-test", description: "d", body: "b" });
+
+    const store1 = new AuthoredSkillStore({ dir, now: () => t0 });
+    await store1.recordUsage("expire-test");
+
+    const t1 = new Date(t0.getTime() + 61_000);
+    const store2 = new AuthoredSkillStore({ dir, now: () => t1 });
+    const updated = await store2.recordUsage("expire-test");
+    expect(updated).toBe(true);
+
+    const [skill] = await store2.listAuthored();
+    const muse = skill?.frontmatter.metadata?.["muse"] as Record<string, unknown> | undefined;
+    expect(muse?.lastUsedAt).toBe(t1.toISOString());
   });
 });
