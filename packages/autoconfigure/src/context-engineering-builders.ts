@@ -6,12 +6,15 @@ import {
   InMemoryTelemetryAggregator,
   StoreBackedEpisodicRecallProvider,
   createBackgroundReviewHook,
+  detectCorrections,
   detectUserCommitments,
+  inferPreferenceFromCorrection,
   selectPlanExemplar,
   type ActiveContextProvider,
   type BackgroundReviewInput,
   type EpisodicRecallProvider,
   type HookStage,
+  type SessionTurnLine,
   type InboxContextProvider,
   type PlanCacheProvider,
   type ReminderHint,
@@ -24,7 +27,7 @@ import {
 import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
 import type { JsonObject } from "@muse/shared";
 import { appendCheckins, readCheckins, readReminders, readVetoes, queryPlaybook, queryPlanCache, recordPlanTemplate, recordRecallHits, scheduleCheckins, type PersistedCheckin } from "@muse/mcp";
-import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore } from "@muse/memory";
+import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore, UserModelSlot } from "@muse/memory";
 import { FileBackedInboxContextProvider, type InboxSourceConfig } from "@muse/messaging";
 
 import {
@@ -333,6 +336,44 @@ export async function scanCommitmentsFromTurns(
   return fresh;
 }
 
+/**
+ * Infer stable preferences from corrections in the turn → upsert into the typed
+ * user model (superseding by category). The package-level core of the CLI's
+ * `inferSessionPreferences`, so the server/daemon learns the user's style too.
+ * One local-model call per detected correction; NONE-aware (parseInferredPreference
+ * rejects vacuous traits + requires a category), so it never fabricates a
+ * preference. Returns `"value (category)"` for each preference learned.
+ */
+export async function inferPreferencesFromTurns(
+  turns: readonly SessionTurnLine[],
+  options: {
+    readonly model: string;
+    readonly modelProvider: Parameters<typeof inferPreferenceFromCorrection>[1]["modelProvider"];
+    readonly store: { upsertUserModelSlot?: (userId: string, slot: UserModelSlot) => unknown };
+    readonly userId: string;
+    readonly now?: () => Date;
+  }
+): Promise<readonly string[]> {
+  const upsert = options.store.upsertUserModelSlot;
+  if (!upsert) return [];
+  const exchanges = detectCorrections(turns);
+  const added: string[] = [];
+  for (const exchange of exchanges) {
+    const pref = await inferPreferenceFromCorrection(exchange, { model: options.model, modelProvider: options.modelProvider });
+    if (!pref || !pref.category) continue; // parseInferredPreference guarantees a category when it returns one
+    await upsert(options.userId, {
+      category: pref.category,
+      confidence: pref.confidence,
+      id: `pref-${pref.category}`, // supersede by category — a changed mind updates, not piles up
+      kind: "preference",
+      updatedAt: (options.now ?? ((): Date => new Date()))(),
+      value: pref.value
+    });
+    added.push(`${pref.value} (${pref.category})`);
+  }
+  return added;
+}
+
 export interface BackgroundReviewArms {
   readonly autoExtractHook?: HookStage | undefined;
   /**
@@ -349,6 +390,13 @@ export interface BackgroundReviewArms {
    * low-risk: draft-first delivery to the user's own channel). Absent ⇒ no-op.
    */
   readonly reviewCommitments?: (input: BackgroundReviewInput) => Promise<void>;
+  /**
+   * Preference arm — infer stable style/format/workflow preferences from
+   * corrections and fold them into the typed user model. Runs on the
+   * turn-count trigger (memory channel). Built by the caller (needs model +
+   * store). Absent ⇒ no-op.
+   */
+  readonly reviewPreferences?: (input: BackgroundReviewInput) => Promise<void>;
 }
 
 export function buildBackgroundReviewHooks(
@@ -367,6 +415,9 @@ export function buildBackgroundReviewHooks(
     }
     if (input.reviewMemory && arms.reviewCommitments) {
       await arms.reviewCommitments(input);
+    }
+    if (input.reviewMemory && arms.reviewPreferences) {
+      await arms.reviewPreferences(input);
     }
     if (input.reviewSkill && arms.reviewSkill) {
       await arms.reviewSkill(input);

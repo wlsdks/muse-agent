@@ -173,7 +173,11 @@ STAY as on-demand surfaces.
    package-level core of the CLI's `scanSessionCheckins`) also runs on the
    turn-count trigger — deterministic open-loop → check-in, so the
    server/daemon (no session-end) now captures voiced commitments too.
-   Preference-infer still pending (LLM; same apps/cli→package move).
+   The PREFERENCE arm (`inferPreferencesFromTurns`, package-level core of the
+   CLI's `inferSessionPreferences`) also runs on the turn-count trigger:
+   corrections → typed user-model preferences (NONE-aware), so the server
+   learns the user's style. Memory arm COMPLETE (auto-extract + check-ins +
+   preferences, all surfaces).
 3. **[DONE — skill authoring] Route skill arm** (tool-iteration). New
    store-injected `reviewSkillsFromTurns` (@muse/agent-core) reused by the
    engine; autoconfigure builds the skill-arm callback over the turn's LIVE
