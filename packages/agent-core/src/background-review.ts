@@ -22,6 +22,8 @@
  * is routed in (slices 2–3 fold Muse's existing distillers under it).
  */
 
+import type { ModelResponse } from "@muse/model";
+
 import type { AgentRunContext, HookStage } from "./types.js";
 
 export interface ReviewCounters {
@@ -94,6 +96,7 @@ export function createInMemoryReviewCounterStore(): ReviewCounterStore {
 
 export interface BackgroundReviewInput {
   readonly context: AgentRunContext;
+  readonly response: ModelResponse;
   readonly userId: string;
   readonly reviewMemory: boolean;
   readonly reviewSkill: boolean;
@@ -140,7 +143,7 @@ export function createBackgroundReviewHook(options: BackgroundReviewHookOptions 
       const userId = readUserId(context, options.defaultUserId);
       if (userId) counters.increment(userId, { iters: 1 });
     },
-    afterComplete(context) {
+    afterComplete(context, response) {
       // The user already has their answer here. Everything below is post-hoc
       // learning that must NOT block or change the turn.
       const userId = readUserId(context, options.defaultUserId);
@@ -152,7 +155,7 @@ export function createBackgroundReviewHook(options: BackgroundReviewHookOptions 
       counters.reset(userId, { iters: decision.reviewSkill, turns: decision.reviewMemory });
       // Fire-and-forget: do NOT await — the turn returns immediately.
       void Promise.resolve()
-        .then(() => runReview({ context, reviewMemory: decision.reviewMemory, reviewSkill: decision.reviewSkill, userId }))
+        .then(() => runReview({ context, response, reviewMemory: decision.reviewMemory, reviewSkill: decision.reviewSkill, userId }))
         .catch((error) => options.onError?.(error));
     }
   };

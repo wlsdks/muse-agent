@@ -162,13 +162,15 @@ STAY as on-demand surfaces.
 
 ## 6. Incremental build plan (each slice verifiable)
 
-1. **Counters + engine skeleton.** `createBackgroundReviewHook` with
-   `afterTool`/`afterComplete` counting + trigger logic + a counter store;
-   wired but routing to a no-op. Unit-test the trigger math (turn-count fires
-   every N; iter-count accrues across turns & fires on hard tasks; reset on
-   fire). No behaviour change (master switch off).
-2. **Route memory arm** (turn-count): fold auto-extract + preference-infer +
-   check-in-scan under it. Unit + `eval:self-improving` green.
+1. **[DONE] Counters + engine skeleton.** `createBackgroundReviewHook` with
+   `afterTool`/`afterComplete` counting + trigger logic + a counter store.
+   Unit-tested; inert (no-op runReview, unwired). No behaviour change.
+2. **[DONE — auto-extract] Route memory arm** (turn-count). `buildBackgroundReviewHooks`
+   (autoconfigure) wires the engine behind `MUSE_BACKGROUND_REVIEW_ENABLED`
+   (default off): when on, auto-extract runs on the turn-count trigger across
+   EVERY surface, replacing the standalone per-turn hook. Preference-infer +
+   check-in-scan still pending — they live in apps/cli and must move into a
+   package before the engine (a package) can call them (slice 2b/3).
 3. **Route skill arm** (tool-iteration): fold skill authoring + playbook
    distill under it; verify the iter trigger fires on a multi-tool task via a
    runtime integration test. `eval:self-improving` green.

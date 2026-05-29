@@ -5,9 +5,12 @@ import {
   DefaultToolFilter,
   InMemoryTelemetryAggregator,
   StoreBackedEpisodicRecallProvider,
+  createBackgroundReviewHook,
   selectPlanExemplar,
   type ActiveContextProvider,
+  type BackgroundReviewInput,
   type EpisodicRecallProvider,
+  type HookStage,
   type InboxContextProvider,
   type PlanCacheProvider,
   type ReminderHint,
@@ -36,7 +39,7 @@ import {
   resolvePlaybookFile,
   resolvePlanCacheFile
 } from "./provider-paths.js";
-import { parseBoolean } from "./env-parsers.js";
+import { parseBoolean, parseInteger } from "./env-parsers.js";
 import { clampPositive, readCredentialsSync, stringField } from "./provider-utils.js";
 
 import type { MuseEnvironment } from "./index.js";
@@ -289,6 +292,38 @@ export function withRecallHitRecording(
       return snapshot;
     }
   };
+}
+
+/**
+ * Background-review engine wiring (slice 2). Decides the MEMORY-learning hooks.
+ *
+ * - Default (`MUSE_BACKGROUND_REVIEW_ENABLED` unset/false): the standalone
+ *   per-turn auto-extract hook, exactly as before — zero behaviour change.
+ * - Enabled: the background-review engine OWNS the memory cadence. Auto-extract
+ *   runs on the engine's TURN-COUNT trigger (every N turns, Hermes-style)
+ *   instead of every turn, and on EVERY surface (the engine is a runtime hook,
+ *   so the server gets it too). The skill arm is a later slice — the engine's
+ *   `reviewSkill` decision is currently a no-op here.
+ *
+ * The auto-extract hook is reused AS the memory distiller (we call its
+ * `afterComplete`), so no auto-extract logic is duplicated.
+ */
+export function buildBackgroundReviewHooks(
+  env: MuseEnvironment,
+  autoExtractHook: HookStage | undefined
+): readonly HookStage[] {
+  if (!parseBoolean(env.MUSE_BACKGROUND_REVIEW_ENABLED, false)) {
+    return autoExtractHook ? [autoExtractHook] : [];
+  }
+  const memoryEveryTurns = parseInteger(env.MUSE_BACKGROUND_REVIEW_MEMORY_TURNS, 3);
+  const skillEveryIters = parseInteger(env.MUSE_BACKGROUND_REVIEW_SKILL_ITERS, 10);
+  const runReview = async (input: BackgroundReviewInput): Promise<void> => {
+    if (input.reviewMemory && autoExtractHook?.afterComplete) {
+      await autoExtractHook.afterComplete(input.context, input.response);
+    }
+    // input.reviewSkill arm (skill authoring + playbook distill) — next slice.
+  };
+  return [createBackgroundReviewHook({ memoryEveryTurns, runReview, skillEveryIters })];
 }
 
 /**

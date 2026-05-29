@@ -144,7 +144,7 @@ import { createResponseFilters } from "./response-filters.js";
 import { createMessagingPollDispatchers } from "./messaging-poll-dispatchers.js";
 import { createSkillRuntime } from "./skills-runtime.js";
 import { buildLoopbackTools } from "./loopback-tools.js";
-import { createOllamaEmbedder } from "./context-engineering-builders.js";
+import { buildBackgroundReviewHooks, createOllamaEmbedder } from "./context-engineering-builders.js";
 import { readEpisodeKnowledgeEntries } from "./episodes-knowledge-source.js";
 import { readFeedKnowledgeEntries } from "./feeds-knowledge-source.js";
 import { createUserMemoryKnowledgeSource } from "./user-memory-knowledge-source.js";
@@ -690,18 +690,22 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => withChromeDevToolsRisk(mcp.manager.toMuseTools()),
     () => schedulerHandle.current ? createSchedulerTools(schedulerHandle.current) : []
   ]);
+  const autoExtractHook: HookStage | undefined = parseBoolean(env.MUSE_USER_MEMORY_AUTO_EXTRACT, true) && modelProvider && defaultModel
+    ? createUserMemoryAutoExtractHook({
+      model: env.MUSE_USER_MEMORY_AUTO_EXTRACT_MODEL ?? defaultModel,
+      modelProvider,
+      store: userMemoryStore,
+      ...(parseBoolean(env.MUSE_BELIEF_PROVENANCE, true)
+        ? { provenanceStore: new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()) }
+        : {})
+    }) as HookStage
+    : undefined;
   const runtimeHooks = [
     ...createDefaultRuntimeHooks(env),
-    ...(parseBoolean(env.MUSE_USER_MEMORY_AUTO_EXTRACT, true) && modelProvider && defaultModel
-      ? [createUserMemoryAutoExtractHook({
-        model: env.MUSE_USER_MEMORY_AUTO_EXTRACT_MODEL ?? defaultModel,
-        modelProvider,
-        store: userMemoryStore,
-        ...(parseBoolean(env.MUSE_BELIEF_PROVENANCE, true)
-          ? { provenanceStore: new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()) }
-          : {})
-      }) as HookStage]
-      : []),
+    // Memory-learning hooks: either the standalone per-turn auto-extract
+    // (default) or, behind MUSE_BACKGROUND_REVIEW_ENABLED, the background-review
+    // engine that runs it on a turn-count trigger across every surface.
+    ...buildBackgroundReviewHooks(env, autoExtractHook),
     ...(parseBoolean(env.MUSE_FOLLOWUP_CAPTURE_ENABLED, true)
       ? [createFollowupCaptureHook({
         persist: async (captured: CapturedFollowup) => {
