@@ -70,9 +70,11 @@ sessions rather than recalling a single one) informed Muse's deterministic
 `recurringThemes()` / `muse episode themes`
 (`packages/mcp/src/personal-episodes-store.ts`). Patterns flagged for future
 Muse slices: the rest of sleep/"dreaming" memory consolidation (short→long
-promotion with a weighted score), the correction→pending-skill
-*skill-workshop* pipeline (security-scan + approval gate), and open-loop /
-commitment extraction for proactive follow-up.
+promotion with a weighted score) and the correction→pending-skill
+*skill-workshop* pipeline (security-scan + approval gate). Its open-loop /
+commitment-extraction idea informed Muse's deterministic
+`detectUserCommitments()` / `muse commitments scan`
+(`packages/agent-core/src/commitment-detector.ts`).
 
 ```
 MIT License
