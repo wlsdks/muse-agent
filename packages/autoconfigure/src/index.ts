@@ -198,6 +198,7 @@ export {
   resolveEpisodesFile,
   resolveFollowupsFile,
   resolvePatternsFiredFile,
+  resolveRecallHitsFile,
   resolveInboxInjectionCursorFile,
   resolveLineInboxFile,
   resolveLocalCalendarFile,

@@ -179,8 +179,17 @@ next phase is making the JARVIS run them ON ITS OWN, then deepening.
   4 cli `runUserModelReview` tests (list/confirm/reject via injected store);
   pnpm check EXIT 0 (memory 20 / agent-core 72 / cli 123), lint 0/0.
   Deterministic (no model call) → no live battery.
-- [ ] **N5 (P2) — Weighted memory promotion (OpenClaw "dreaming" part not yet
-  done).** Promote frequently-recalled memories into the always-on persona by
-  recall-usefulness (relevance-weighted), beyond episode themes/consolidate.
+- [x] **N5 (P2) — Weighted memory promotion (OpenClaw "dreaming").** [this
+  commit] Two-half loop: (observe) `withRecallHitRecording` decorates the
+  episodic-recall provider so every surfaced session records a hit + its
+  narrative to `recall-hits.json` (mcp `recordRecallHits`, fail-soft, no recall
+  behaviour change); (promote) `muse memory promote` runs the pure
+  `selectPromotableMemories` (hits damped by recency, 21-day half-life, ≥minHits
+  + ≥minScore) and writes the top summaries into the always-on persona as
+  idempotent `recalled-N` facts. Promotes by DEMONSTRATED usefulness, not
+  narrative theme like consolidate. Verified: mcp store 4 + memory scorer 4 +
+  autoconfigure decorator 2 + cli promote 7 tests; pnpm check EXIT 0
+  (mcp 101 / memory 21 / autoconfigure 54 / cli 123), lint 0/0, smoke:broad
+  51/0 (recall path unbroken). OpenClaw dreaming (MIT) — THIRD_PARTY_NOTICES.
 - [ ] **N6 (P2) — `pnpm eval:self-improving` gate.** Run all 4 live batteries
   as one regression gate so the LLM slices can't silently rot.

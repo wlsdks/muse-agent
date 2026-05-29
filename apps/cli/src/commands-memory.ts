@@ -21,7 +21,9 @@
 
 import { readFile } from "node:fs/promises";
 
-import { defaultBeliefProvenanceFile, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey } from "@muse/memory";
+import { defaultBeliefProvenanceFile, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, selectPromotableMemories } from "@muse/memory";
+import { resolveRecallHitsFile } from "@muse/autoconfigure";
+import { readRecallHits, type RecallHitRecord } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -437,6 +439,94 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
       await helpers.apiRequest(io, command, `/api/user-memory/${userId}`, undefined, "DELETE");
       io.stdout("Cleared user memory\n");
     });
+
+  memory
+    .command("promote")
+    .description("Dreaming: promote your most recall-useful past sessions into the always-on persona (frequently-recalled memories)")
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …); falls back to MUSE_PERSONA env")
+    .option("--min-hits <n>", "Minimum recall hits to be eligible (default 3)")
+    .option("--max <n>", "Max memories to promote (default 3)")
+    .option("--json", "Print the raw payload")
+    .action(async (options: MemoryCommonOptions & { readonly minHits?: string; readonly max?: string }) => {
+      const userId = resolveMemoryUserId(options.user, options.persona);
+      const result = await promoteRecalledMemories({
+        store: new FileUserMemoryStore(),
+        userId,
+        readHits: () => readRecallHits(resolveRecallHitsFile(process.env)),
+        ...(options.minHits !== undefined ? { minHits: Number(options.minHits) } : {}),
+        ...(options.max !== undefined ? { maxPromoted: Number(options.max) } : {})
+      });
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ promoted: result.promoted, total: result.promoted.length }, null, 2)}\n`);
+        return;
+      }
+      if (result.promoted.length === 0) {
+        io.stdout("Nothing to promote yet — no past session has been recalled often enough.\n");
+        return;
+      }
+      io.stdout(`Promoted ${result.promoted.length.toString()} frequently-recalled memor${result.promoted.length === 1 ? "y" : "ies"} into your always-on persona:\n`);
+      for (const p of result.promoted) {
+        io.stdout(`  • ${p.summary}  (recalled ${p.hits.toString()}×)\n`);
+      }
+    });
+}
+
+interface PromoteMemoriesStore {
+  findByUserId(userId: string): Promise<{ readonly facts: Record<string, string> } | undefined>;
+  upsertFact(userId: string, key: string, value: string): Promise<unknown>;
+  forget(userId: string, key: string): Promise<unknown> | unknown;
+}
+
+export interface PromoteMemoriesResult {
+  readonly promoted: readonly { readonly key: string; readonly hits: number; readonly summary: string }[];
+}
+
+const PROMOTED_FACT_PREFIX = "recalled-";
+
+/**
+ * Dreaming pass: read recall-hit records, select the most recall-useful
+ * memories (`selectPromotableMemories`), and write their summaries into the
+ * always-on persona as `recalled-N` facts (which the persona renderer already
+ * surfaces). Idempotent — clears the prior `recalled-*` facts first so a memory
+ * that's no longer top-ranked drops out instead of accumulating. Store is
+ * injected so it's testable without a real `~/.muse` file.
+ */
+export async function promoteRecalledMemories(options: {
+  readonly store: PromoteMemoriesStore;
+  readonly userId: string;
+  readonly readHits: () => Promise<readonly RecallHitRecord[]>;
+  readonly now?: () => Date;
+  readonly minHits?: number;
+  readonly maxPromoted?: number;
+}): Promise<PromoteMemoriesResult> {
+  const nowMs = (options.now ? options.now() : new Date()).getTime();
+  const hits = await options.readHits().catch(() => []);
+  const promotable = selectPromotableMemories(hits, {
+    nowMs,
+    ...(options.minHits !== undefined ? { minHits: options.minHits } : {}),
+    ...(options.maxPromoted !== undefined ? { maxPromoted: options.maxPromoted } : {})
+  });
+
+  // Clear prior promoted facts so promotion is idempotent (today's top set
+  // fully replaces yesterday's — a faded-out memory doesn't linger).
+  const current = await options.store.findByUserId(options.userId).catch(() => undefined);
+  for (const key of Object.keys(current?.facts ?? {})) {
+    if (key.startsWith(PROMOTED_FACT_PREFIX)) {
+      await options.store.forget(options.userId, key);
+    }
+  }
+
+  const summaryByKey = new Map(hits.map((record) => [record.key, record.summary]));
+  const promoted: { key: string; hits: number; summary: string }[] = [];
+  let index = 1;
+  for (const memory of promotable) {
+    const summary = summaryByKey.get(memory.key)?.trim() || `past session ${memory.key}`;
+    await options.store.upsertFact(options.userId, `${PROMOTED_FACT_PREFIX}${index.toString()}`, summary);
+    promoted.push({ hits: memory.hits, key: memory.key, summary });
+    index += 1;
+  }
+  return { promoted };
 }
 
 /**

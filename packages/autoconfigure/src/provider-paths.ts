@@ -127,6 +127,10 @@ export function resolvePatternsFiredFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_PATTERNS_FIRED_FILE", "patterns-fired.json");
 }
 
+export function resolveRecallHitsFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_RECALL_HITS_FILE", "recall-hits.json");
+}
+
 export function resolveLineInboxFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_LINE_INBOX_FILE", "line-inbox.json");
 }

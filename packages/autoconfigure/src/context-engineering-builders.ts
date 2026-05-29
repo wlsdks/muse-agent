@@ -19,7 +19,7 @@ import {
 } from "@muse/agent-core";
 import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
 import type { JsonObject } from "@muse/shared";
-import { readReminders, readVetoes, queryPlaybook, queryPlanCache, recordPlanTemplate } from "@muse/mcp";
+import { readReminders, readVetoes, queryPlaybook, queryPlanCache, recordPlanTemplate, recordRecallHits } from "@muse/mcp";
 import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore } from "@muse/memory";
 import { FileBackedInboxContextProvider, type InboxSourceConfig } from "@muse/messaging";
 
@@ -28,6 +28,7 @@ import {
   resolveInboxInjectionCursorFile,
   resolveLineInboxFile,
   resolveMessagingCredentialsFile,
+  resolveRecallHitsFile,
   resolveRemindersFile,
   resolveSlackInboxFile,
   resolveTelegramInboxFile,
@@ -253,13 +254,41 @@ export function buildEpisodicRecallProvider(
   // MUSE_EPISODIC_RECALL_EMBED=false.
   const embedEnabled = env.MUSE_EPISODIC_RECALL_EMBED?.trim().toLowerCase() !== "false";
   const embedModel = env.MUSE_EPISODIC_RECALL_EMBED_MODEL?.trim() || "nomic-embed-text";
-  return new StoreBackedEpisodicRecallProvider({
+  const provider = new StoreBackedEpisodicRecallProvider({
     maxFetched,
     minScore,
     store: summaryStore,
     topK,
     ...(embedEnabled ? { embed: createOllamaEmbedder(embedModel) } : {})
   });
+  // Weighted-promotion "observe" half (N5): record a recall hit for every
+  // session this surfaces, so the dreaming pass can later promote the
+  // most-recall-useful memories into the always-on persona. Fail-soft — a
+  // hit-store write must never break recall.
+  return withRecallHitRecording(provider, resolveRecallHitsFile(env));
+}
+
+/**
+ * Decorate an episodic-recall provider so each `resolve` records a recall hit
+ * for every surfaced session id. Pure passthrough of the snapshot; the hit
+ * write is best-effort and never blocks or throws into the recall path.
+ */
+export function withRecallHitRecording(
+  provider: EpisodicRecallProvider,
+  hitsFile: string
+): EpisodicRecallProvider {
+  return {
+    async resolve(query: string, userId?: string) {
+      const snapshot = await provider.resolve(query, userId);
+      const entries = (snapshot?.matches ?? [])
+        .filter((match) => typeof match.sessionId === "string" && match.sessionId.length > 0)
+        .map((match) => ({ key: match.sessionId, summary: match.narrative }));
+      if (entries.length > 0) {
+        void recordRecallHits(hitsFile, entries, Date.now()).catch(() => undefined);
+      }
+      return snapshot;
+    }
+  };
 }
 
 /**

@@ -690,6 +690,14 @@ export {
   type PatternFiredRecord
 } from "./personal-patterns-fired-store.js";
 
+export {
+  readRecallHits,
+  recordRecallHits,
+  writeRecallHits,
+  type RecallHitInput,
+  type RecallHitRecord
+} from "./personal-recall-hits-store.js";
+
 // Pattern-detection firing engine — wiring half of step 4. The
 // `apps/api/src/pattern-tick.ts` setInterval rider drives this on
 // MUSE_PROACTIVE_PATTERN_TICK_MS; the engine itself is pure data
