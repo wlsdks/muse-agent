@@ -102,10 +102,14 @@ Building blocks already in the tree (reuse, don't rebuild): `commitment-detector
   `clusterByTextSimilarity`. Live battery `verify-playbook-merge.mjs` on
   qwen3:8b: redundant summarise strategies → one merged (positive); distinct
   strategies → NONE, never collapsed (negative). — done 2026-05-29
-- [ ] **1c — Idle/session-end trigger + dry-run + rollback.** Wire the curator
-  to run idle-gated (or at session end behind a flag), with a dry-run preview
-  and archive-restore. Useful-check: dry-run shows the plan and mutates nothing;
-  apply consolidates + is restorable.
+- [x] **1c — Session-end trigger + dry-run + rollback.** Trigger: session-end
+  auto-consolidate behind `MUSE_SKILL_CONSOLIDATE_ENABLED` (default off,
+  fail-soft — mirrors the skill-author/distill hooks). Dry-run: `muse skills
+  consolidate` previews by default (1a). Rollback: `AuthoredSkillStore.restore`
+  + `muse skills restore <name>` revives an archived skill (refuses to clobber
+  a live slot), `muse skills archived` lists them. Useful: dry-run mutates
+  nothing; apply archives (never deletes) + is restorable (proven). P2 ① epic
+  complete — and with it ALL THREE FRONTIERS (③ ② ①). — done 2026-05-29
 
 ---
 

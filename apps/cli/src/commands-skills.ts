@@ -180,6 +180,32 @@ export function registerSkillsCommands(program: Command, io: ProgramIO): void {
     });
 
   skills
+    .command("archived")
+    .description("List archived authored skills (from curate/consolidate) — restorable")
+    .action(async () => {
+      const names = await new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() }).listArchived();
+      if (names.length === 0) {
+        io.stdout("No archived authored skills.\n");
+        return;
+      }
+      io.stdout(`Archived authored skills (${names.length.toString()}) — restore with \`muse skills restore <name>\`:\n`);
+      for (const name of names) io.stdout(`  - ${name}\n`);
+    });
+
+  skills
+    .command("restore <name>")
+    .description("Restore an archived authored skill back to active (curate/consolidate rollback)")
+    .action(async (name: string) => {
+      const ok = await new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() }).restore(name);
+      if (!ok) {
+        io.stderr(`Could not restore '${name}' (not archived, or a live skill already holds that slot).\n`);
+        process.exitCode = 1;
+        return;
+      }
+      io.stdout(`Restored '${name}' to active authored skills.\n`);
+    });
+
+  skills
     .command("add <name>")
     .description("Scaffold a new skill folder with a SKILL.md template")
     .option("--description <text>", "One-line description of the skill")

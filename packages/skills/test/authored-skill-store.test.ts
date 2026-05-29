@@ -308,3 +308,21 @@ describe("AuthoredSkillStore — consolidate (umbrella merge, archive-never-dele
     expect((await store.listAuthored()).map((s) => s.name).sort()).toEqual(before); // unchanged
   });
 });
+
+describe("AuthoredSkillStore — restore (curate/consolidate rollback)", () => {
+  it("restores an archived skill to active; refuses for a non-archived name", async () => {
+    const dir = tmpDir();
+    let t = 0;
+    const store = new AuthoredSkillStore({ dir, maxSkills: 1, now: () => new Date(1_700_000_000_000 + (t += 1000)) });
+    await store.writeOrPatch({ name: "one", description: "alpha topic", body: "1" });
+    await store.writeOrPatch({ name: "two", description: "beta topic", body: "2" }); // cap → "one" archived
+    expect(await store.listArchived()).toContain("one");
+    expect((await store.listAuthored()).map((s) => s.name)).not.toContain("one");
+
+    expect(await store.restore("one")).toBe(true);
+    expect((await store.listAuthored()).map((s) => s.name)).toContain("one");
+    expect(await store.listArchived()).not.toContain("one");
+
+    expect(await store.restore("never-archived")).toBe(false);
+  });
+});

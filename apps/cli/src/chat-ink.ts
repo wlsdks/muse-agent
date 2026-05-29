@@ -1285,6 +1285,28 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
         }
       }
     }
+
+    // End-of-session curator: fold overlapping authored skills into umbrellas
+    // (originals archived, never deleted; restorable via `muse skills
+    // restore`). Opt-in + fail-soft so a flaky model never blocks exit.
+    if (parseBoolean(process.env.MUSE_SKILL_CONSOLIDATE_ENABLED, false)) {
+      const { AuthoredSkillStore } = await import("@muse/skills");
+      const { resolveAuthoredSkillsDir } = await import("./commands-skills.js");
+      const { mergeSkillsIntoUmbrella } = await import("@muse/agent-core");
+      const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() });
+      const merged = await store
+        .consolidate(
+          (cluster) => mergeSkillsIntoUmbrella(cluster, {
+            model,
+            modelProvider: assembly.modelProvider as Parameters<typeof mergeSkillsIntoUmbrella>[1]["modelProvider"]
+          }),
+          {}
+        )
+        .catch(() => [] as readonly { umbrella: string; merged: readonly string[] }[]);
+      for (const m of merged) {
+        process.stderr.write(`🧹 Consolidated ${m.merged.length.toString()} skills → ${m.umbrella}\n`);
+      }
+    }
   }
 }
 

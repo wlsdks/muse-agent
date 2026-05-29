@@ -282,6 +282,29 @@ export class AuthoredSkillStore {
     return clusters;
   }
 
+  /** Archived skill folder names (under `.archive/`) — what `restore` can revive. */
+  async listArchived(): Promise<readonly string[]> {
+    return fs.readdir(join(this.dir, ".archive")).catch(() => [] as string[]);
+  }
+
+  /**
+   * Restore an archived skill (curate/consolidate rollback): move
+   * `.archive/<slug>` back to active. Refuses if a live skill already occupies
+   * the slot (returns false) — never clobbers. Returns true on success.
+   */
+  async restore(name: string): Promise<boolean> {
+    const slug = slugifySkillName(name);
+    const src = join(this.dir, ".archive", slug);
+    const dest = join(this.dir, slug);
+    try {
+      await fs.access(dest);
+      return false; // a live skill already holds this slot
+    } catch {
+      // slot free — proceed
+    }
+    return fs.rename(src, dest).then(() => true).catch(() => false);
+  }
+
   private authoredAt(skill: Skill): number {
     const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
     const raw = muse["authoredAt"];
