@@ -416,3 +416,43 @@ describe("muse calendar delete — cancel a local event by id", () => {
     process.exitCode = prevExit;
   });
 });
+
+describe("muse calendar export — iCalendar (.ics) over the API events seam", () => {
+  async function runExport(args: string[], events: Array<Record<string, unknown>>): Promise<{ readonly stdout: string; readonly apiPaths: string[]; readonly error?: string }> {
+    const stdout: string[] = [];
+    const apiPaths: string[] = [];
+    const io = { stderr: () => {}, stdout: (line: string) => stdout.push(line) };
+    const helpers: CalendarCommandHelpers = {
+      apiRequest: async (_io, _command, path) => { apiPaths.push(path); return { events }; },
+      writeOutput: () => {}
+    };
+    let error: string | undefined;
+    try {
+      const program = new Command();
+      program.exitOverride();
+      registerCalendarCommands(program, io, helpers);
+      await program.parseAsync(["node", "muse", "calendar", "export", ...args]);
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : String(cause);
+    }
+    return { apiPaths, error, stdout: stdout.join("") };
+  }
+
+  it("emits a VCALENDAR with a VEVENT per fetched event", async () => {
+    const r = await runExport(["--from", "2026-06-01T00:00:00Z", "--to", "2026-06-02T00:00:00Z"], [
+      { id: "e1", title: "Standup", startsAtIso: "2026-06-01T09:00:00Z", endsAtIso: "2026-06-01T09:30:00Z", location: "Zoom" }
+    ]);
+    expect(r.error).toBeUndefined();
+    expect(r.apiPaths[0]).toContain("/api/calendar/events?");
+    expect(r.stdout).toContain("BEGIN:VCALENDAR");
+    expect(r.stdout).toContain("SUMMARY:Standup");
+    expect(r.stdout).toContain("DTSTART:20260601T090000Z");
+    expect(r.stdout).toContain("LOCATION:Zoom");
+  });
+
+  it("rejects a malformed --from before fetching", async () => {
+    const r = await runExport(["--from", "not-a-date"], []);
+    expect(r.error).toMatch(/ISO 8601/u);
+    expect(r.apiPaths).toEqual([]);
+  });
+});

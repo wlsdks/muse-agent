@@ -11,10 +11,10 @@
  * assembly.
  */
 
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
 import { resolveLocalCalendarFile } from "@muse/autoconfigure";
-import { LocalCalendarProvider, type CalendarEvent } from "@muse/calendar";
+import { eventsToIcs, LocalCalendarProvider, type CalendarEvent, type IcsEvent } from "@muse/calendar";
 import { computeAvailability, detectCalendarConflicts, resolveRelativeTimePhrase, type AvailabilityEventLike, type AvailabilityResult, type CalendarConflict } from "@muse/mcp";
 import type { Command } from "commander";
 
@@ -236,6 +236,56 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         return;
       }
       io.stdout(formatCalendarEvents(payload as unknown as Parameters<typeof formatCalendarEvents>[0]));
+    });
+
+  calendar
+    .command("export")
+    .description("Export events to iCalendar (.ics) — to --out <file> or stdout, for any calendar app")
+    .option("--from <iso>", "ISO 8601 start (default: now)")
+    .option("--to <iso>", "ISO 8601 end (default: now + 365 days)")
+    .option("--provider <id>", "Specific provider id (default: all)")
+    .option("--out <file>", "Write the .ics to this path (default: stdout)")
+    .option("--local", "Read directly from the local calendar file instead of the API")
+    .action(async (
+      options: { readonly from?: string; readonly to?: string; readonly provider?: string; readonly out?: string; readonly local?: boolean },
+      command
+    ) => {
+      if (
+        (options.from && Number.isNaN(new Date(options.from).getTime())) ||
+        (options.to && Number.isNaN(new Date(options.to).getTime()))
+      ) {
+        throw new Error("--from / --to must be ISO 8601 timestamps");
+      }
+      let events: readonly IcsEvent[];
+      if (options.local) {
+        const from = options.from ? new Date(options.from) : new Date();
+        const to = options.to ? new Date(options.to) : new Date(from.getTime() + 365 * 24 * 3_600_000);
+        events = await localCalendarProvider().listEvents({ from, to });
+      } else {
+        const params = new URLSearchParams();
+        if (options.from) params.set("fromIso", options.from);
+        if (options.to) params.set("toIso", options.to);
+        if (options.provider) params.set("providerId", options.provider);
+        const query = params.toString();
+        const path = query.length > 0 ? `/api/calendar/events?${query}` : "/api/calendar/events";
+        const payload = (await helpers.apiRequest(io, command, path)) as { readonly events?: readonly Record<string, unknown>[] };
+        events = (payload.events ?? []).map((raw) => ({
+          id: typeof raw.id === "string" ? raw.id : "",
+          title: typeof raw.title === "string" ? raw.title : "(untitled)",
+          startsAt: new Date(String(raw.startsAtIso ?? raw.startsAt)),
+          endsAt: new Date(String(raw.endsAtIso ?? raw.endsAt)),
+          ...(raw.allDay === true ? { allDay: true } : {}),
+          ...(typeof raw.location === "string" ? { location: raw.location } : {}),
+          ...(typeof raw.notes === "string" ? { notes: raw.notes } : {})
+        }));
+      }
+      const ics = eventsToIcs(events);
+      if (options.out) {
+        await writeFile(options.out, ics, "utf8");
+        io.stdout(`Exported ${events.length.toString()} event(s) to ${options.out}\n`);
+        return;
+      }
+      io.stdout(ics);
     });
 
   calendar
