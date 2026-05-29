@@ -349,8 +349,17 @@ the generic layers below because they test what makes Muse an *agent*.
     surfaced is a JSON-array SUBSTRING of the input; each iterate candidate's
     `.value` equals `JSON.parse(.text)`; extractFirst is exactly the first
     candidate (or null). json-array-scan.test.ts +2.
-  - [ ] Remaining: fuzz gemini-live-protocol (the last named external-input
-    validator).
+  - [x] parseGeminiLiveServerFrame — parses UNTRUSTED Gemini Live websocket
+    frames; contract is "throws nothing — malformed JSON / unexpected shapes →
+    an error event or []". Property fuzz over a ~170-input corpus (raw non-JSON,
+    wrong-typed serverContent/modelTurn/parts/inlineData, woven malformed JSON):
+    never throws, every surfaced event is a well-typed LiveVoiceEvent
+    (text-delta / audio-delta / turn-complete / error), and malformed JSON always
+    yields exactly one error event. gemini-live-protocol.test.ts +2 (voice 93).
+    **The hand-rolled external-input-validator fuzz set is complete** (env-parsers,
+    isLoopbackUrl, runner-request, web-search-policy, json-array-scan,
+    gemini-live-protocol); fast-check would add generator breadth but needs the
+    lockfile (human approval).
 
 ---
 
