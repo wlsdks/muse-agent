@@ -59,6 +59,61 @@ const userReq = (over: Partial<ModelRequest> = {}): ModelRequest => ({
 });
 
 describe("OllamaProvider — native /api/chat request wire shape", () => {
+  // Tool-protocol snapshot (CLAUDE.md "snapshot tool protocols when behavior
+  // matters"): pin the EXACT native /api/chat body Muse sends Ollama for a
+  // tool-using request. The local Qwen parses this wire shape, so an accidental
+  // drift (a renamed field, a dropped `think:false`, a changed tools shape)
+  // would silently break local tool-calling — caught here, not in production.
+  it("emits the exact native request body for a tool-using request", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
+    await p.generate(
+      userReq({
+        maxOutputTokens: 50,
+        messages: [{ content: "weather in Seoul?", role: "user" }],
+        temperature: 0.4,
+        tools: [{ description: "Get weather", inputSchema: { properties: { city: { type: "string" } }, required: ["city"], type: "object" }, name: "get_weather" }],
+      }),
+    );
+    expect(lastBody()).toMatchInlineSnapshot(`
+      {
+        "messages": [
+          {
+            "content": "weather in Seoul?",
+            "role": "user",
+          },
+        ],
+        "model": "qwen3:8b",
+        "options": {
+          "num_ctx": 8192,
+          "num_predict": 50,
+          "temperature": 0.4,
+        },
+        "stream": false,
+        "think": false,
+        "tools": [
+          {
+            "function": {
+              "description": "Get weather",
+              "name": "get_weather",
+              "parameters": {
+                "properties": {
+                  "city": {
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "city",
+                ],
+                "type": "object",
+              },
+            },
+            "type": "function",
+          },
+        ],
+      }
+    `);
+  });
+
   it("targets /api/chat, strips the ollama/ model prefix, and always sends think:false", async () => {
     const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
     await p.generate(userReq());

@@ -68,9 +68,13 @@ the generic layers below because they test what makes Muse an *agent*.
     throw rejects; a later-turn throw rejects after the requested tool already
     ran; an unexpected `executeToolCall` throw propagates (NOT captured as a
     status:"error" tool result). 5→8 tests in execute-model-loop.test.ts.
-  - [ ] Remaining: `AgentRuntime.run` end-to-end under a 429/503/timeout/
-    malformed provider (retry → fallback → circuit-breaker open) and a
-    streaming mid-stream `{error}` surfaced as an error event.
+  - [x] `AgentRuntime.run` end-to-end failure: a provider whose generate()
+    throws persists a FAILED run record (handleRunError), fires the onError
+    hook with the Error, and rethrows — never silently completes/swallows.
+    (agent-runtime.test.ts, run-level composition.)
+  - [ ] Remaining: the same run() path under a 429/503/timeout/malformed
+    provider exercising retry → fallback → circuit-breaker open, and a streaming
+    mid-stream `{error}` surfaced as an error event end-to-end.
 - [ ] **Tool-loop limits & runaway guards.** maxToolCalls, maxRunWallclockMs,
   maxToolOutputChars, tool-output recursion — exercise each cap end-to-end with a
   fake tool that tries to exceed it; assert the loop stops deterministically.
@@ -149,10 +153,17 @@ the generic layers below because they test what makes Muse an *agent*.
 
 ## P5 — surface & contract
 
-- [ ] **Prompt / tool-protocol snapshot tests.** Snapshot the rendered persona /
+- [~] **Prompt / tool-protocol snapshot tests.** Snapshot the rendered persona /
   system prompt and the Hermes tool-call wire format so an accidental prompt edit
   is caught (CLAUDE.md: "Snapshot-test prompt text and tool protocols when
   behavior matters").
+  - [x] First snapshot: buildPlanningSystemPrompt (the behavior-critical planner
+    prompt that shapes Qwen's plan output) pinned via toMatchInlineSnapshot +
+    structural invariants. planning-prompt-snapshot.test.ts. (Was 0 snapshot
+    tests in the repo.)
+  - [ ] Remaining: buildSystemPrompt (persona) snapshot; the Ollama Hermes
+    tool-call wire body (buildNativeChatBody) is already shape-asserted in
+    adapter-ollama.test.ts — DONE — adapter-ollama.test.ts pins the exact native /api/chat body for a tool-using request.
 - [ ] **CLI command-parser + run-path smoke.** The untested commander
   registrations (commands-analytics/cost/latency/persona/voice/specs/tools-admin)
   — parse args + assert the action wiring via the CLI smoke harness.

@@ -809,6 +809,34 @@ describe("AgentRuntime", () => {
     expect(afterComplete).toHaveBeenCalledOnce();
   });
 
+  // Failure-injection at the RUN level (agent-eval / backlog P1): a provider
+  // whose generate() throws must persist a FAILED run record, fire onError, and
+  // rethrow — never silently complete or swallow the error. (handleRunError
+  // composition; the pieces are unit-tested, this is the end-to-end run path.)
+  it("persists a failed run, fires onError, and rethrows when the provider throws", async () => {
+    const historyStore = new InMemoryAgentRunHistoryStore();
+    const onError = vi.fn();
+    const throwingProvider: ModelProvider = {
+      ...createProvider(),
+      async generate() {
+        throw new Error("provider exploded");
+      },
+    };
+    const runtime = createAgentRuntime({
+      historyStore,
+      hooks: [{ id: "err-spy", onError }],
+      modelProvider: throwingProvider,
+    });
+
+    await expect(
+      runtime.run({ messages: [{ content: "hi", role: "user" }], model: "provider/model", runId: "run-fail" }),
+    ).rejects.toThrow("provider exploded");
+
+    expect(historyStore.findRun("run-fail")).toMatchObject({ status: "failed" });
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError.mock.calls[0]?.[1]).toBeInstanceOf(Error);
+  });
+
   it("uses registered hooks and records hook traces without blocking the run", async () => {
     const beforeStart = vi.fn();
     const hookTraceStore = new InMemoryHookTraceStore({
