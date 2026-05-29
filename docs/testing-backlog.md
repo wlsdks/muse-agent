@@ -129,8 +129,16 @@ the generic layers below because they test what makes Muse an *agent*.
     25 concurrent records preserve ALL 25 (was last-writer-wins) and mixed
     concurrent clear+record resolves correctly. No more silent loss of a refused
     action's pending approval.
-  - [ ] Remaining: inbound dedup + single-flight daemon race tests; apply the
-    same queue audit to other read-modify-write file stores.
+  - [x] Store-audit slice 2: audited all `${pid}-${Date.now()}`-tmp stores
+    (~30) for the same race. Fixed `personal-action-log-store` (the immutable
+    accountability trail, outbound-safety rule 4) — 25 concurrent appends were
+    19/20 CRASHING + losing ~all; now per-file append queue + random-uuid tmp =
+    0 crash, all 25 preserved, order kept. action-log-concurrency.test.ts.
+  - [ ] Remaining: the other read-modify-write append stores still share the
+    latent race (proposed-action / objectives / episodes / playbook / reminders
+    / tasks / proactive-history / belief-provenance, etc.); cursor/offset stores
+    only risk the tmp-collision crash, not loss. inbound dedup + single-flight
+    daemon race tests. Consider a shared atomic-append helper to DRY the fix.
 
 ## P5 — surface & contract
 
