@@ -39,7 +39,11 @@ const AGENT_MODES: readonly string[] = ["react", "plan_execute"];
 
 export type AgentMode = "react" | "plan_execute";
 
-export async function resolveChatMessage(io: ProgramIO, messageParts: readonly string[]): Promise<string> {
+export async function resolveChatMessage(
+  io: ProgramIO,
+  messageParts: readonly string[],
+  interactiveAllowed: boolean = Boolean(process.stdin.isTTY && process.stdout.isTTY)
+): Promise<string> {
   const message = messageParts.join(" ").trim();
   const piped = await (io.readPipedStdin ?? readPipedStdin)();
 
@@ -56,6 +60,17 @@ export async function resolveChatMessage(io: ProgramIO, messageParts: readonly s
   }
   if (piped.length > 0) {
     return piped;
+  }
+
+  // No args + no piped input. The interactive @clack prompt is only valid on a
+  // real TTY — under non-TTY/EOF stdin it half-renders, hides the cursor with a
+  // `\e[?25l` escape, and exits unhelpfully (a piped/scripted caller is left
+  // with a hidden cursor). Fail with a clear, actionable message instead.
+  if (!interactiveAllowed) {
+    throw new Error(
+      "muse chat: no message provided. Pass one (`muse chat \"…\"`), pipe it in " +
+      "(`echo \"…\" | muse chat`), or run in an interactive terminal."
+    );
   }
 
   return promptText(io, {

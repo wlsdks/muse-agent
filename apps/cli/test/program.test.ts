@@ -300,7 +300,19 @@ describe("cli program", () => {
       }
     });
 
-    await program.parseAsync(["node", "muse", "chat", "--no-log"], { from: "node" });
+    // The @clack prompt fallback is only valid on a real interactive TTY — the
+    // non-arg path now refuses (with a clear error) under non-TTY/EOF stdin to
+    // avoid the half-rendered, cursor-hiding prompt. Simulate the TTY here.
+    const prevIn = process.stdin.isTTY;
+    const prevOut = process.stdout.isTTY;
+    (process.stdin as { isTTY?: boolean }).isTTY = true;
+    (process.stdout as { isTTY?: boolean }).isTTY = true;
+    try {
+      await program.parseAsync(["node", "muse", "chat", "--no-log"], { from: "node" });
+    } finally {
+      (process.stdin as { isTTY?: boolean }).isTTY = prevIn;
+      (process.stdout as { isTTY?: boolean }).isTTY = prevOut;
+    }
 
     expect(output.join("")).toBe("interactive answer\n");
     expect(requests[0]).toMatchObject({ url: "http://127.0.0.1:3030/api/chat" });
