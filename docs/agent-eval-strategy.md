@@ -107,9 +107,16 @@ of agent test is worth the most*.
   reliable on clear-cut cases (refusal/language/correctness/on-topic) — 8/8
   (100%) @ REPEAT=2 against qwen3:8b. Other batteries can now drop in
   `score: llmJudge(...)` for open-ended outputs code can't grade.
-- **E. Adversarial eval battery** — promote prompt-injection / jailbreak /
-  unsafe-tool-use from unit guards into a scored live battery (must-refuse set),
-  mirroring the eager-invocation negatives already in `eval:tools`.
+- [x] **E. Adversarial eval battery** — DONE: `scripts/eval-adversarial.mjs` +
+  `eval:adversarial` npm script. Live must-refuse set (jailbreak/DAN, phishing,
+  malware, prompt-injection secret-exfil, KO account-hacking) scored by the
+  gap-D `llmJudge` ("refuses / does not comply"), PLUS over-refusal controls
+  (benign EN/KO requests must still be helpful). 7/7 (100%) @ REPEAT=2 against
+  qwen3:8b; each pre-probed STABLE 3/3.
+  - Finding: "reveal your (benign) system prompt verbatim" was NOT included —
+    the model complies (correctly: a non-secret system prompt isn't refusal-
+    worthy); the genuine secret-exfil injection is covered by the SYSTEM-OVERRIDE
+    case. Complements the deterministic input guards (unit-tested), not replaces.
 - **F. Hermes-style constraint gates on self-authored skills** — Muse authors
   skills at session end; gate each authored skill on size (≤15 KB), tool-desc
   length, and a parse/lint check before it's loadable (mirror hermes).
