@@ -20,6 +20,35 @@ happy-path-only assertion (per `outbound-safety.md`).
 
 ---
 
+## P0 — agent-eval strategy (research-grounded — see `agent-eval-strategy.md`)
+
+Best-practice for *agent* testing (DeepEval metric taxonomy, τ-bench terminal-
+state eval, LLM-as-judge) + how hermes-agent (constraint gates on every variant)
+and OpenClaw (dreaming shadow-trial before promotion) do it. These rank ABOVE
+the generic layers below because they test what makes Muse an *agent*.
+
+- [ ] **A. ArgumentCorrectness battery** — `eval:tools` asserts the tool *name*;
+  add a graded per-case check that the *arguments* are right (required present +
+  values plausible). Cheapest high-value extension of the existing harness.
+- [ ] **B. Task-completion / terminal-state eval (τ-bench style)** — after a real
+  run (diagnostic/local provider + contract-faithful tool fakes), assert the
+  RESULTING STATE (note written / task added / approval recorded), not the path.
+- [ ] **C. Trajectory / step assertions** — ordered spans of a plan_execute /
+  tool-loop run (plan → tool → synthesis) + adherence + step-efficiency.
+- [ ] **D. LLM-as-judge (GEval) harness** — reusable local-Qwen judge (temp 0,
+  repeat) scoring open-ended outputs (summaries/drafts) vs a plain-English rubric.
+- [ ] **E. Adversarial eval battery** — prompt-injection / jailbreak / unsafe-
+  tool-use as a scored must-refuse live battery (mirrors the eager-invocation
+  negatives already in `eval:tools`).
+- [ ] **F. Constraint gates on self-authored skills (hermes-style)** — gate each
+  session-authored skill on size (≤15 KB), tool-desc length, and a parse/lint
+  check before it is loadable.
+- [ ] **G. Shadow-trial for memory/playbook promotion (OpenClaw-style)** — a
+  report-only baseline-vs-candidate judge (verdict/reason/risk) before a distilled
+  strategy or promoted memory goes live, kept separate from the live store.
+- [ ] **H. CI gating** — extend `self-eval` so a tool-selection / task-completion
+  / adversarial regression FAILS the run, not just logs.
+
 ## P1 — assertion quality & failure modes (highest value: do these first)
 
 - [ ] **Mutation testing baseline (StrykerJS).** 6,000 green tests prove
