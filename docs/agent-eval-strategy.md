@@ -91,6 +91,14 @@ of agent test is worth the most*.
 - **C. Trajectory / step assertions on multi-step runs** — assert the ordered
   spans of a plan_execute / tool-loop run (plan generated → tool called →
   synthesis), incl. adherence + step-efficiency (no redundant calls).
+  - [x] executeModelLoop trajectory + step-efficiency (this commit): a 2-tool
+    run preserves the ordered model→tool→model→tool→synthesis trajectory
+    (toolsUsed + intermediateMessages role sequence + toolResults order); the
+    loop runs exactly the requested tools once each in order (no redundant/
+    dropped calls); a direct answer takes the zero-tool trajectory. 8→11 tests.
+  - [ ] Remaining: trajectory of the real plan_execute path through the
+    assembly (plan_generated → tool → synthesis_started → done events), and a
+    step-efficiency check that penalises a redundant re-call of the same tool.
 - **D. LLM-as-judge (GEval-style) harness** — a reusable judge (local Qwen,
   temp 0, repeat-for-stability) scoring open-ended outputs against a plain-
   English rubric, for things exact-match can't grade (summaries, drafts).
