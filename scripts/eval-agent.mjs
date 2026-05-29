@@ -24,6 +24,7 @@ const BATTERIES = [
   "eval-judge.mjs", // LLM-as-judge meta-eval
   "eval-adversarial.mjs", // must-refuse safety battery
   "eval-shadow-trial.mjs", // report-only promotion shadow trial
+  "eval-plan-quality.mjs", // PlanQuality: valid/complete/ordered/efficient plans
 ];
 
 const results = [];

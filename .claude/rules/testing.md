@@ -59,8 +59,9 @@ test before HTTP smoke.
    ```
    Runs `eval:tools` (tool selection + ArgumentCorrectness),
    `eval:judge` (LLM-as-judge meta-eval), `eval:adversarial`
-   (must-refuse safety + over-refusal controls), and
-   `eval:shadow-trial` (report-only promotion review) in one pass and
+   (must-refuse safety + over-refusal controls), `eval:shadow-trial`
+   (report-only promotion review), and `eval:plan-quality` (PlanQuality:
+   valid/complete/ordered/efficient multi-step plans) in one pass and
    fails if ANY regresses — the agent-eval CI gate per
    `docs/agent-eval-strategy.md`. All run on `scripts/eval-harness.mjs`
    (runEvalSuite + scorers + llmJudge + runShadowTrial). **LOCAL OLLAMA

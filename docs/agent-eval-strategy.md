@@ -123,6 +123,18 @@ of agent test is worth the most*.
     synthesising, the empty-plan direct-answer trajectory (no step spans), and a
     DeepEval-style StepEfficiency metric that flags a redundant re-call of the
     same (tool, args) — plan-execute-trajectory.test.ts, agent-core 1006 pass.
+  - [x] PlanQuality LIVE battery (the one DeepEval dimension not yet measured on
+    the model): `eval:plan-quality` (scripts/eval-plan-quality.mjs) drives the
+    REAL planning prompt (buildPlanningSystemPrompt) for multi-step goals on
+    qwen3:8b, parses with parsePlan, and scores the plan VALID (available tools)
+    ∧ COMPLETE (covers the required tools) ∧ ORDERED (dependency subsequence) ∧
+    EFFICIENT (no redundant repeat / padding). 8/8 (100%) @ REPEAT=2 — incl. a
+    3-step dependency chain (web_search → calculate → set_reminder), a KO 2-step
+    goal, a single-tool goal (no padding), and a pure-generation goal whose
+    correct plan is EMPTY (over-tooling = a tool on a poem fails). (Finding:
+    a too-small maxOutputTokens truncates the plan JSON mid-array → unparseable;
+    the battery uses 700+ so a multi-step plan never cuts off.) Gated in
+    `eval:agent`.
 - [x] **D. LLM-as-judge (GEval-style) harness** — DONE: `llmJudge(provider,
   model)` added to `eval-harness.mjs` — the subjective-quality scorer tier
   (strict single-word PASS/FAIL verdict, temp 0, suite `repeat` for stability;
@@ -160,10 +172,11 @@ of agent test is worth the most*.
     path so an actual promotion consults it (still report-only / advisory).
 - [x] **H. CI gating** — DONE: `scripts/eval-agent.mjs` + `eval:agent` npm
   script run ALL harness-based batteries (eval-tool-selection / eval-judge /
-  eval-adversarial / eval-shadow-trial = 58 live cases) as ONE gate and exit 1
-  if ANY regresses (mirrors `eval:self-improving`). Batteries spawned as
+  eval-adversarial / eval-shadow-trial / eval-plan-quality) as ONE gate and exit
+  1 if ANY regresses (mirrors `eval:self-improving`). Batteries spawned as
   children so one failure can't abort the rest; LOCAL-OLLAMA-ONLY, each skips
-  cleanly when Ollama is down. Verified live: 4/4 batteries green. Registered in
+  cleanly when Ollama is down. Verified live: 5/5 batteries green (the new
+  PlanQuality battery is now regression-gated, not just runnable). Registered in
   `.claude/rules/testing.md`.
 
 > **Status: agent-eval gaps A–H all delivered.** The harness

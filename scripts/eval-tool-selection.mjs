@@ -121,7 +121,13 @@ async function buildTimeToolsScenario() {
       { prompt: "What is 3 days after 2026-05-26?", expectTool: "time_add", requireArgs: ["base"], note: "add" },
       { prompt: "How long ago was 2026-05-01 from now?", expectTool: "time_relative", requireArgs: ["at"], note: "relative-to-now (NOT time_diff)" },
       { prompt: "When is the next Friday?", expectTool: "next_weekday_date", requireArgs: ["weekday"], note: "future named weekday → next_weekday_date, NOT time_now" },
-      { prompt: "Give me a cron expression for 2026-12-25 08:00.", expectTool: "cron_for_datetime", requireArgs: ["iso"], note: "cron" }
+      { prompt: "Give me a cron expression for 2026-12-25 08:00.", expectTool: "cron_for_datetime", requireArgs: ["iso"], note: "cron" },
+      // Negative eager-invocation traps — time/weekday WORDS in a musing that
+      // requests no computation (the dual of selection). Each STABLE 3/3 on qwen3:8b.
+      { prompt: "시간 참 빨리 간다, 벌써 금요일이네.", expectNoTool: true, note: "KO musing; '금요일' is a keyword trap, not a next_weekday_date request → NO tool" },
+      { prompt: "What a beautiful Friday morning, isn't it?", expectNoTool: true, note: "EN small-talk; 'Friday' is not a date computation → NO tool" },
+      { prompt: "오늘 정말 긴 하루였어.", expectNoTool: true, note: "KO comment about the day, no time query → NO tool" },
+      { prompt: "Time really does fly when you're having fun.", expectNoTool: true, note: "EN idiom about time, no computation → NO tool" }
     ];
     return { label: "real-time-tools (confusable set)", tools, cases };
   } catch (error) {
