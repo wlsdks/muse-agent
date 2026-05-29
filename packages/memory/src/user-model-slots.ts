@@ -96,6 +96,38 @@ export const EMPTY_USER_MODEL: UserModel = {
   vetoes: []
 };
 
+function replaceById<T extends { readonly id: string }>(slots: readonly T[], slot: T): readonly T[] {
+  return [...slots.filter((existing) => existing.id !== slot.id), slot];
+}
+
+/**
+ * Upsert a typed slot into the user model — replace-by-id within the slot's
+ * kind array, append if new. Pure (returns a new model). The accrual
+ * primitive behind manual `muse user model add` and the auto-extractor.
+ */
+export function upsertUserModelSlot(model: UserModel, slot: UserModelSlot): UserModel {
+  switch (slot.kind) {
+    case "preference":
+      return { ...model, preferences: replaceById(model.preferences, slot) };
+    case "schedule":
+      return { ...model, schedule: replaceById(model.schedule, slot) };
+    case "veto":
+      return { ...model, vetoes: replaceById(model.vetoes, slot) };
+    case "goal":
+      return { ...model, goals: replaceById(model.goals, slot) };
+  }
+}
+
+/** Remove a slot by id from whichever kind holds it. Pure. */
+export function removeUserModelSlot(model: UserModel, id: string): UserModel {
+  return {
+    goals: model.goals.filter((slot) => slot.id !== id),
+    preferences: model.preferences.filter((slot) => slot.id !== id),
+    schedule: model.schedule.filter((slot) => slot.id !== id),
+    vetoes: model.vetoes.filter((slot) => slot.id !== id)
+  };
+}
+
 export interface UserModelComposeOptions {
   /**
    * Per-slot-type cap. Each of the four arrays is sliced to this

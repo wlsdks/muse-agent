@@ -425,6 +425,8 @@ export {
 export {
   EMPTY_USER_MODEL,
   composeUserModelSnapshot,
+  removeUserModelSlot,
+  upsertUserModelSlot,
   type UserGoalSlot,
   type UserModel,
   type UserModelComposeOptions,

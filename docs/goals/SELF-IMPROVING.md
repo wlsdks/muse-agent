@@ -51,12 +51,17 @@ Building blocks already in the tree (reuse, don't rebuild): `commitment-detector
 
 ## P1 — ② Know the user better (typed USER MODEL + inferred preferences)
 
-- [ ] **2a — Typed persistent UserModel.** A structured, provenance-+confidence
-  bearing model (identity, preferences, communication style, recurring
-  patterns) persisted and injected into the persona — distinct from the flat
-  user-memory fact list. Refines (supersede, don't duplicate) over sessions.
-  Useful-check: a taught fact + an observed preference both appear in the model
-  and the next-session persona.
+- [x] **2a — Typed persistent UserModel.** The typed slot model
+  (preference/schedule/veto/goal, confidence+updatedAt) was fully plumbed —
+  composed into the persona by `composeUserModelSnapshot`, round-tripped by
+  FileUserMemoryStore — but UNFILLABLE (the write path was "intentionally
+  omitted"). Added the local-first write path: pure `upsertUserModelSlot`
+  (replace-by-id) / `removeUserModelSlot` + the store mutators + `muse user
+  model add/list/remove`. A saved slot now persists and renders in the next
+  session's persona. Useful: store round-trip → findByUserId returns the slot →
+  composeUserModelSnapshot emits it (proven). — done 2026-05-29
+  (P0 ③ audit — checkins+pattern+dismiss all wired into the daemon runTick;
+  full `pnpm check` green across their suites together — PASS, no drift.)
 - [ ] **2b — Behavior-inferred preferences (not just explicit "remember").**
   One local-Qwen distill over corrections/behavior → a preference with
   confidence, written to the UserModel; a contradiction supersedes (with

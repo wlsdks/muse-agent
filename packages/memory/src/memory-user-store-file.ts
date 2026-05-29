@@ -21,10 +21,14 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import {
+  EMPTY_USER_MODEL,
+  removeUserModelSlot as removeSlot,
+  upsertUserModelSlot as upsertSlot,
   type FactSupersession,
   type UserMemory,
   type UserMemoryStore,
-  type UserModel
+  type UserModel,
+  type UserModelSlot
 } from "./index.js";
 import { appendFactHistory, collectFactSupersessions, mergeRecordTouchLast, normalizeMemoryKey, sanitizeUserMemoryValue } from "./memory-user-store.js";
 
@@ -130,10 +134,23 @@ export class FileUserMemoryStore implements UserMemoryStore {
     }));
   }
 
-  // upsertUserModelSlot is intentionally omitted — typed-slot writes
-  // are routed through the in-memory or Kysely stores when available.
-  // The file store only owns the legacy facts + preferences shape,
-  // which is enough for the JARVIS daily-driver path.
+  // Typed user-model slots — the local-first write path. The slots
+  // round-trip through this file store already; these add the missing
+  // mutators so the local JARVIS can actually accrue a typed model
+  // (preferences / schedule / vetoes / goals) that the persona renders.
+  async upsertUserModelSlot(userId: string, slot: UserModelSlot): Promise<UserMemory> {
+    return this.patch(userId, (existing) => ({
+      ...existing,
+      userModel: upsertSlot(existing.userModel ?? EMPTY_USER_MODEL, slot)
+    }));
+  }
+
+  async removeUserModelSlot(userId: string, id: string): Promise<UserMemory> {
+    return this.patch(userId, (existing) => ({
+      ...existing,
+      userModel: removeSlot(existing.userModel ?? EMPTY_USER_MODEL, id)
+    }));
+  }
 
   async forget(userId: string, rawKey: string): Promise<boolean> {
     const existing = await this.findByUserId(userId);
