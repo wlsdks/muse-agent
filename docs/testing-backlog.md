@@ -264,9 +264,11 @@ the generic layers below because they test what makes Muse an *agent*.
   - [ ] Remaining: the Ollama Hermes
     tool-call wire body (buildNativeChatBody) is already shape-asserted in
     adapter-ollama.test.ts — DONE — adapter-ollama.test.ts pins the exact native /api/chat body for a tool-using request.
-- [~] **CLI command-parser + run-path smoke.** The untested commander
+- [x] **CLI command-parser + run-path smoke.** The untested commander
   registrations (commands-analytics/cost/latency/persona/voice/specs/tools-admin)
-  — parse args + assert the action wiring via the CLI smoke harness.
+  — parse args + assert the action wiring via the CLI smoke harness. ALL SEVEN
+  now covered (cost/latency/analytics/specs/voice/tools via inject-fake-helpers;
+  persona via MUSE_PERSONA_FILE + injected stdin round-trip).
   - [x] `muse cost` (the richest path-builder of the group): parses daily/top/for
     and asserts the EXACT /api/admin/token-cost/* path the parser routes to —
     query-string assembly from --days/--limit (both/either/neither), and
@@ -285,8 +287,24 @@ the generic layers below because they test what makes Muse an *agent*.
     prompt into a POST body and rejects an all-whitespace prompt (no request
     fires); unknown subcommand + missing <name> are parse errors.
     commands-specs.test.ts +6 (cli 1509).
-  - [ ] Remaining: commands-persona / voice / tools-admin (same
-    inject-fake-helpers harness).
+  - [x] `muse voice` (providers + the rich tts path): providers → GET
+    /api/voice/providers; tts shapes the POST body from the joined+trimmed text +
+    options (voice/provider keys only when given), calls the injectable io.fetch,
+    writes the BINARY audio response to --out (asserted on a tmp file) and prints
+    the byte/format/provider line; an all-whitespace text is rejected before any
+    fetch; a non-ok API status surfaces as an error with nothing written; missing
+    required --out is a parse error. commands-voice.test.ts +6 (cli 1515).
+  - [x] `muse tools` (tool-usage observability: stats / accuracy / calls /
+    ranking): each subcommand routes to its fixed /api/admin/tools|tool-calls
+    path and hands the result to writeOutput; unknown subcommand is a parse
+    error. commands-tools-admin.test.ts +5 (cli 1520).
+  - [x] `muse persona` (add/use/remove/show round-trip on a real store file via
+    MUSE_PERSONA_FILE + injected readPipedStdin): add persists an inline or
+    piped-stdin preamble; built-in-id collision + empty preamble are rejected
+    (nothing written); use flips activeId + suggests on an unknown id; remove
+    deletes a custom + resets active→default when it was active, and refuses a
+    built-in; show returns the active/previewed preamble. commands-persona.test.ts
+    +7 (cli 1527). **The CLI command-parser sweep is complete.**
 - [~] **Config / schema validation fuzz.** Zod (or comparable) config + external-
   input validators against adversarial inputs (wrong types, extra keys, unicode,
   huge values) — assert they reject cleanly, never throw raw.
@@ -324,8 +342,15 @@ the generic layers below because they test what makes Muse an *agent*.
     malformed budget (Infinity/NaN/float/0/neg/garbage) can't leak an
     unbounded/NaN allowance; a falsy MUSE_WEB_SEARCH (any case/whitespace) is an
     ABSOLUTE kill switch that override=true cannot re-enable. web-search-policy.test.ts +2.
-  - [ ] Remaining: fuzz the other external-input validators (JSON-repair /
-    extractJsonArray, gemini-live-protocol).
+  - [x] json-array-scan (extractFirstJsonArray / iterateJsonArrayCandidates) —
+    the scanner that pulls a JSON array out of UNTRUSTED local-model plan/detector
+    text. Property fuzz over a ~307-input LCG corpus (stray brackets, `]`-in-string,
+    escapes, markdown `- [x]`, citations, prose, emoji): never throws; anything
+    surfaced is a JSON-array SUBSTRING of the input; each iterate candidate's
+    `.value` equals `JSON.parse(.text)`; extractFirst is exactly the first
+    candidate (or null). json-array-scan.test.ts +2.
+  - [ ] Remaining: fuzz gemini-live-protocol (the last named external-input
+    validator).
 
 ---
 
