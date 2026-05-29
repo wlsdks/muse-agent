@@ -42,22 +42,22 @@ const SYNTHETIC_TOOLS = [
 ];
 
 const SYNTHETIC_CASES = [
-  { prompt: "What's the weather in Seoul right now?", expectTool: "get_weather", argIncludes: /seoul/i, note: "EN weather" },
-  { prompt: "서울 날씨 어때?", expectTool: "get_weather", argIncludes: /seoul|서울/i, note: "KO weather (user's language)" },
-  { prompt: "Search the web for the latest TypeScript release notes.", expectTool: "web_search", note: "EN web search" },
-  { prompt: "What is 18 times 7?", expectTool: "calculate", note: "EN math (must NOT pick web_search)" },
-  { prompt: "Remind me at 3pm to call Sam about the invoice.", expectTool: "set_reminder", note: "EN reminder" },
-  { prompt: "오후 3시에 회의 준비하라고 알려줘.", expectTool: "set_reminder", note: "KO reminder" },
+  { prompt: "What's the weather in Seoul right now?", expectTool: "get_weather", argIncludes: /seoul/i, requireArgs: ["city"], note: "EN weather" },
+  { prompt: "서울 날씨 어때?", expectTool: "get_weather", argIncludes: /seoul|서울/i, requireArgs: ["city"], note: "KO weather (user's language)" },
+  { prompt: "Search the web for the latest TypeScript release notes.", expectTool: "web_search", requireArgs: ["query"], note: "EN web search" },
+  { prompt: "What is 18 times 7?", expectTool: "calculate", requireArgs: ["expression"], note: "EN math (must NOT pick web_search)" },
+  { prompt: "Remind me at 3pm to call Sam about the invoice.", expectTool: "set_reminder", requireArgs: ["text", "when"], note: "EN reminder" },
+  { prompt: "오후 3시에 회의 준비하라고 알려줘.", expectTool: "set_reminder", requireArgs: ["text", "when"], note: "KO reminder" },
   { prompt: "안녕! 오늘 기분 어때?", expectNoTool: true, note: "KO greeting → NO tool (no eager invocation)" },
   { prompt: "Thanks, that was really helpful!", expectNoTool: true, note: "EN thanks → NO tool" },
   { prompt: "고마워, 덕분에 잘됐어.", expectNoTool: true, note: "KO thanks → NO tool" },
   { prompt: "Write a short two-line poem about the autumn sky.", expectNoTool: true, note: "EN pure generation → NO tool (none fits)" },
-  { prompt: "I'm in Seoul — do I need an umbrella later today?", expectTool: "get_weather", argIncludes: /seoul/i, note: "EN indirect weather intent" },
-  { prompt: "Quick, remind me — what's 25% of 480?", expectTool: "calculate", note: "EN keyword trap: 'remind' word but it's math → calculate" },
-  { prompt: "타입스크립트 최신 버전을 웹에서 검색해줘.", expectTool: "web_search", note: "KO web search (user's language)" },
-  { prompt: "온라인에서 환율 좀 찾아봐줘.", expectTool: "web_search", note: "KO indirect web-search intent" },
-  { prompt: "18 곱하기 7은 얼마야?", expectTool: "calculate", note: "KO math" },
-  { prompt: "장바구니 합계가 23000원 더하기 4500원인데 총 얼마야?", expectTool: "calculate", note: "KO word-problem math (must NOT pick web_search)" },
+  { prompt: "I'm in Seoul — do I need an umbrella later today?", expectTool: "get_weather", argIncludes: /seoul/i, requireArgs: ["city"], note: "EN indirect weather intent" },
+  { prompt: "Quick, remind me — what's 25% of 480?", expectTool: "calculate", requireArgs: ["expression"], note: "EN keyword trap: 'remind' word but it's math → calculate" },
+  { prompt: "타입스크립트 최신 버전을 웹에서 검색해줘.", expectTool: "web_search", requireArgs: ["query"], note: "KO web search (user's language)" },
+  { prompt: "온라인에서 환율 좀 찾아봐줘.", expectTool: "web_search", requireArgs: ["query"], note: "KO indirect web-search intent" },
+  { prompt: "18 곱하기 7은 얼마야?", expectTool: "calculate", requireArgs: ["expression"], note: "KO math" },
+  { prompt: "장바구니 합계가 23000원 더하기 4500원인데 총 얼마야?", expectTool: "calculate", requireArgs: ["expression"], note: "KO word-problem math (must NOT pick web_search)" },
   { prompt: "어제 세금 계산하느라 진이 다 빠졌어.", expectNoTool: true, note: "KO keyword trap: '계산' but venting, no math request → NO tool" },
   { prompt: "I love how clean this weather app's design is.", expectNoTool: true, note: "EN keyword trap: 'weather' about a UI, not a forecast → NO tool" },
   { prompt: "날씨 얘기는 그만하고 다른 얘기 하자.", expectNoTool: true, note: "KO keyword trap: '날씨' but declining the topic → NO tool" }
@@ -86,12 +86,12 @@ async function buildRealScenario() {
     const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
     const byName = new Set(tools.map((t) => t.name));
     const cases = [
-      { prompt: "What is 144 divided by 12?", expectTool: "math_eval", note: "real math" },
-      { prompt: "Turn 'My Great Article Title!' into a URL slug.", expectTool: "slugify", note: "real slug" },
-      { prompt: "How many words and characters are in 'the quick brown fox'?", expectTool: "text_stats", note: "real count" },
-      { prompt: "Give me the SHA-256 hash of the text 'hello'.", expectTool: "hash_text", note: "real hash" },
+      { prompt: "What is 144 divided by 12?", expectTool: "math_eval", requireArgs: ["expression"], note: "real math" },
+      { prompt: "Turn 'My Great Article Title!' into a URL slug.", expectTool: "slugify", requireArgs: ["text"], note: "real slug" },
+      { prompt: "How many words and characters are in 'the quick brown fox'?", expectTool: "text_stats", requireArgs: ["text"], note: "real count" },
+      { prompt: "Give me the SHA-256 hash of the text 'hello'.", expectTool: "hash_text", requireArgs: ["text"], note: "real hash" },
       { prompt: "What's the current date and time?", expectTool: "time_now", note: "real time-now (vs time_diff)" },
-      { prompt: "How many days are between 2026-05-01 and 2026-06-15?", expectTool: "time_diff", note: "real time-diff (vs time_now)" }
+      { prompt: "How many days are between 2026-05-01 and 2026-06-15?", expectTool: "time_diff", requireArgs: ["from", "to"], note: "real time-diff (vs time_now)" }
     ];
     // Only keep cases whose expected tool actually exists in the built set
     // (guards against a renamed factory silently passing).
@@ -184,6 +184,18 @@ function evaluate(testCase, toolCalls) {
   if (call.name !== testCase.expectTool) return { ok: false, detail: `picked ${call.name}, wanted ${testCase.expectTool}` };
   if (testCase.argIncludes && !testCase.argIncludes.test(JSON.stringify(call.arguments ?? {}))) {
     return { ok: false, detail: `args ${JSON.stringify(call.arguments)} miss ${testCase.argIncludes}` };
+  }
+  // ArgumentCorrectness (DeepEval metric): picking the right tool isn't enough —
+  // its REQUIRED args must be present + non-empty, else the call is a no-op the
+  // runtime would reject. Graded per-case on top of selection.
+  if (testCase.requireArgs) {
+    const args = call.arguments ?? {};
+    const missing = testCase.requireArgs.filter(
+      (k) => args[k] === undefined || args[k] === null || (typeof args[k] === "string" && args[k].trim().length === 0)
+    );
+    if (missing.length > 0) {
+      return { ok: false, detail: `missing/empty required arg(s) [${missing.join(", ")}] in ${JSON.stringify(args)}` };
+    }
   }
   return { ok: true, detail: `${call.name}(${JSON.stringify(call.arguments ?? {})})` };
 }

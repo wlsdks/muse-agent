@@ -62,6 +62,14 @@ of agent test is worth the most*.
   *arguments* are right (not just the tool name): a graded check per case
   (required args present, values plausible). Cheapest high-value gap on top of
   the existing `eval:tools` harness.
+  - [x] required-arg presence layer (this commit): `evaluate()` now takes a
+    per-case `requireArgs` and fails the case if any required arg is missing/
+    empty; annotated the synthetic + real-tool cases (city/query/expression/
+    text+when, math_eval/slugify/text_stats/hash_text/time_diff). Live
+    eval:tools 39/39 @ REPEAT=2.
+  - [ ] Remaining: value-plausibility grading (beyond presence) for the
+    actuator/time confusable sets (web_action url, home_action service+entity,
+    time_add base+days, cron iso) once their arg shapes are pinned.
 - **B. Task-completion / terminal-state eval (τ-bench style)** — a small
   scenario set where, after a real run against the diagnostic/local provider +
   contract-faithful tool fakes, we assert the **resulting state** (the note got
