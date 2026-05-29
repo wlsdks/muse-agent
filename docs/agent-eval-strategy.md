@@ -62,14 +62,18 @@ of agent test is worth the most*.
   *arguments* are right (not just the tool name): a graded check per case
   (required args present, values plausible). Cheapest high-value gap on top of
   the existing `eval:tools` harness.
-  - [x] required-arg presence layer (this commit): `evaluate()` now takes a
-    per-case `requireArgs` and fails the case if any required arg is missing/
-    empty; annotated the synthetic + real-tool cases (city/query/expression/
-    text+when, math_eval/slugify/text_stats/hash_text/time_diff). Live
-    eval:tools 39/39 @ REPEAT=2.
-  - [ ] Remaining: value-plausibility grading (beyond presence) for the
-    actuator/time confusable sets (web_action url, home_action service+entity,
-    time_add base+days, cron iso) once their arg shapes are pinned.
+  - [x] required-arg presence layer — DONE across ALL four sets (synthetic,
+    real-tools, time confusable, actuator confusable): `evaluate()` takes a
+    per-case `requireArgs` and fails on any missing/empty required arg.
+    requireArgs pinned to each tool's actual schema `required` array
+    (web_action summary+url, home_action service, search_email/knowledge_search
+    query, weather location, time_diff from+to, time_add base, time_relative at,
+    next_weekday_date weekday, cron_for_datetime iso, + synthetic/real set).
+    Live eval:tools 39/39 @ REPEAT=2 against qwen3:8b.
+  - value-plausibility grading (exact-value regex beyond presence) deliberately
+    NOT added: presence is the meaningful no-op guard; pinning exact values on a
+    stochastic model is brittle and lower-value. `argIncludes` already covers the
+    few deterministic ones (seoul, sat). Consider A effectively complete.
 - **B. Task-completion / terminal-state eval (τ-bench style)** — a small
   scenario set where, after a real run against the diagnostic/local provider +
   contract-faithful tool fakes, we assert the **resulting state** (the note got
