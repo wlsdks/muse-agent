@@ -1417,6 +1417,38 @@ describe("muse.fetch loopback server", () => {
     // the test would hang until vitest's own 5_000ms test timeout.
     expect(elapsed, `body read must abort within the bounded window; took ${elapsed.toString()}ms`).toBeLessThan(2_000);
   });
+
+  it("retries a transient 503 then succeeds (idempotent read), and fails fast on a permanent 404", async () => {
+    let flakyCalls = 0;
+    const flaky = (async () => {
+      flakyCalls += 1;
+      return flakyCalls === 1
+        ? new Response("busy", { status: 503 })
+        : new Response("recovered", { status: 200, headers: { "content-type": "text/plain" } });
+    }) as unknown as typeof globalThis.fetch;
+    const server = createFetchMcpServer({
+      allowedHosts: ["api.example.test"],
+      fetch: flaky,
+      retryOptions: { sleep: async () => {} }
+    });
+    const ok = await createLoopbackMcpConnection(server).callTool!("get", { url: "https://api.example.test/data" });
+    expect(ok).toMatchObject({ status: 200, body: "recovered" });
+    expect(flakyCalls, "a transient 503 must be retried").toBe(2);
+
+    let notFoundCalls = 0;
+    const permanent = (async () => {
+      notFoundCalls += 1;
+      return new Response("nope", { status: 404 });
+    }) as unknown as typeof globalThis.fetch;
+    const server2 = createFetchMcpServer({
+      allowedHosts: ["api.example.test"],
+      fetch: permanent,
+      retryOptions: { sleep: async () => {} }
+    });
+    const notFound = await createLoopbackMcpConnection(server2).callTool!("get", { url: "https://api.example.test/missing" });
+    expect(notFound).toMatchObject({ status: 404 });
+    expect(notFoundCalls, "a permanent 404 must NOT be retried").toBe(1);
+  });
 });
 
 describe("muse.notes loopback server (filesystem-backed)", () => {

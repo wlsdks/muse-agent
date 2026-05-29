@@ -1,5 +1,6 @@
 import type { JsonObject, JsonValue } from "@muse/shared";
 
+import { fetchWithRetry, type RetryOptions } from "./http-retry.js";
 import type { LoopbackMcpServer } from "./loopback.js";
 import { readString, readJsonObject } from "./loopback-helpers.js";
 
@@ -27,6 +28,13 @@ export interface FetchMcpServerOptions {
   readonly timeoutMs?: number;
   /** Optional fetch impl override (used in tests). */
   readonly fetch?: typeof globalThis.fetch;
+  /**
+   * Retry-with-backoff for transient failures (429 / 5xx / network reject),
+   * shared with the web-watch poller so both surfaces survive the same
+   * blips. GET/HEAD are idempotent reads, so a retry can't double-act.
+   * Default: 2 retries (see http-retry). `retries: 0` disables it.
+   */
+  readonly retryOptions?: Pick<RetryOptions, "retries" | "baseDelayMs" | "sleep" | "maxRetryAfterMs">;
 }
 
 /**
@@ -42,6 +50,7 @@ export function createFetchMcpServer(options: FetchMcpServerOptions): LoopbackMc
   const maxBodyBytes = options.maxBodyBytes ?? 65_536;
   const timeoutMs = options.timeoutMs ?? 5_000;
   const fetchImpl = options.fetch ?? globalThis.fetch;
+  const retryOptions = options.retryOptions ?? {};
 
   function checkAllowed(rawUrl: string): { readonly allowed: true; readonly url: URL } | { readonly allowed: false; readonly error: string } {
     let parsed: URL;
@@ -128,7 +137,15 @@ export function createFetchMcpServer(options: FetchMcpServerOptions): LoopbackMc
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetchImpl(url.toString(), { ...init, redirect: "error", signal: controller.signal });
+      // fetchWithRetry layers transient-failure retry (429/5xx/network) on
+      // top; timeoutMs:0 leaves OUR controller authoritative across the
+      // request AND the body read (the spanning-timeout contract above),
+      // while our signal still aborts an in-flight attempt.
+      const response = await fetchWithRetry(fetchImpl, url.toString(), {
+        ...retryOptions,
+        timeoutMs: 0,
+        init: { ...init, redirect: "error", signal: controller.signal }
+      });
       if (!readBody) {
         return { body: undefined, headers: response.headers, status: response.status, truncated: false };
       }
