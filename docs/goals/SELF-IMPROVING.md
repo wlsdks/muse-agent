@@ -117,3 +117,38 @@ Building blocks already in the tree (reuse, don't rebuild): `commitment-detector
 When every bullet of an epic is `[x]`, the next tick re-runs that epic's checks
 together AND exercises it as one end-to-end user flow (does the whole thing
 actually help the user, not just each piece?). REOPEN any bullet that drifted.
+
+---
+
+## ALL THREE FRONTIERS COMPLETE (2026-05-29)
+9 slices shipped + verified (pnpm check 27-pkg EXIT 0, lint 0/0, 4 live
+qwen3:8b batteries, smoke:live 22/0/1, smoke:broad 51/0) and pushed to
+origin/main (`15b6add2`). What works: ③ checkins/suggest/dismiss · ② user
+model write+infer+persona · ① skills/playbook consolidate + rollback.
+
+## NEXT BACKLOG (P3+ — extracted after completion)
+
+Theme: the frontiers WORK but mostly via MANUAL commands + opt-in flags. The
+next phase is making the JARVIS run them ON ITS OWN, then deepening.
+
+- [ ] **N1 (P0) — Make it automatic (no manual command).** Wire session-end
+  auto-scan for commitment check-ins (3a-auto) + auto-`infer` preferences, and
+  an IDLE-gated curator consolidate (vs the current session-end flag), all
+  default-off + fail-soft. The "speaks first / learns on its own" promise needs
+  these to fire without `muse checkins scan` / `user model infer` / `skills
+  consolidate`. Verify: a session with a commitment+correction → next daemon
+  tick delivers the check-in AND the inferred preference shows in the model.
+- [ ] **N2 (P0) — ③/② end-to-end daemon audit.** One real daemon tick test
+  that exercises check-in delivery + pattern suggestion together (composition,
+  quiet-hours, dedup) — proves the pieces compose, not just unit-pass.
+- [ ] **N3 (P1) — Surface proactive output IN-CHAT.** The in-chat idle poll
+  should also surface due check-ins + pattern suggestions (today they go to the
+  daemon's messaging channel only), so a user living in `muse` chat sees them.
+- [ ] **N4 (P1) — UserModel confidence decay / re-confirm.** Inferred prefs
+  should fade or ask to re-confirm over time; add Honcho-style ONE clarifying
+  question for a low-confidence inferred preference before trusting it.
+- [ ] **N5 (P2) — Weighted memory promotion (OpenClaw "dreaming" part not yet
+  done).** Promote frequently-recalled memories into the always-on persona by
+  recall-usefulness (relevance-weighted), beyond episode themes/consolidate.
+- [ ] **N6 (P2) — `pnpm eval:self-improving` gate.** Run all 4 live batteries
+  as one regression gate so the LLM slices can't silently rot.
