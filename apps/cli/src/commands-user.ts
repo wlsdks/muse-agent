@@ -9,7 +9,7 @@
 
 import { detectCorrections, inferPreferenceFromCorrection } from "@muse/agent-core";
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
-import { FileUserMemoryStore, type UserModelSlot } from "@muse/memory";
+import { FileUserMemoryStore, selectReconfirmableSlots, type UserModel, type UserModelSlot } from "@muse/memory";
 import type { Command } from "commander";
 
 import { readLastChatHistory, type LastChatLine } from "./chat-history.js";
@@ -209,4 +209,103 @@ export function registerUserCommands(program: Command, io: ProgramIO): void {
       await new FileUserMemoryStore().removeUserModelSlot(resolveUserId(), id.trim());
       io.stdout(`Removed slot [${id.trim()}]\n`);
     });
+
+  model
+    .command("review")
+    .description("Re-confirm faded inferred preferences (decayed below trust): confirm to keep, reject to drop")
+    .option("--confirm <id>", "Confirm a faded slot — re-assert it (confidence cleared, trusted again)")
+    .option("--reject <id>", "Reject a faded slot — remove it from your model")
+    .option("--json", "Print the raw payload")
+    .action(async (options: { readonly confirm?: string; readonly reject?: string; readonly json?: boolean }) => {
+      const result = await runUserModelReview(new FileUserMemoryStore(), resolveUserId(), {
+        ...(options.confirm !== undefined ? { confirm: options.confirm } : {}),
+        ...(options.reject !== undefined ? { reject: options.reject } : {})
+      });
+      if (options.json) {
+        io.stdout(`${JSON.stringify(reviewJson(result), null, 2)}\n`);
+        return;
+      }
+      if (result.action === "reject") {
+        io.stdout(`Rejected — removed faded slot [${result.rejected!}].\n`);
+        return;
+      }
+      if (result.action === "confirm") {
+        io.stdout(result.confirmed
+          ? `Confirmed [${result.confirmed.id}] — re-asserted "${result.confirmed.value}"; it won't fade.\n`
+          : `No slot [${result.confirmTarget ?? ""}] to confirm.\n`);
+        return;
+      }
+      const faded = result.reconfirmable ?? [];
+      if (faded.length === 0) {
+        io.stdout("Nothing to re-confirm — no inferred preference has faded below trust.\n");
+        return;
+      }
+      io.stdout(`I inferred these a while ago and I'm no longer sure they still hold — confirm or reject each:\n`);
+      for (const { slot, effectiveConfidence } of faded) {
+        io.stdout(`  • [${slot.id}] ${slot.value}  (${slot.kind}, confidence faded to ${Math.round(effectiveConfidence * 100).toString()}%)\n`);
+      }
+      io.stdout(`Keep one: \`muse user model review --confirm <id>\`   ·   drop one: \`--reject <id>\`\n`);
+    });
+}
+
+interface UserModelReviewStore {
+  findByUserId(userId: string): Promise<{ readonly userModel?: UserModel } | undefined>;
+  upsertUserModelSlot(userId: string, slot: UserModelSlot): Promise<unknown>;
+  removeUserModelSlot(userId: string, id: string): Promise<unknown>;
+}
+
+export interface UserModelReviewResult {
+  readonly action: "list" | "confirm" | "reject";
+  readonly reconfirmable?: readonly { readonly slot: UserModelSlot; readonly effectiveConfidence: number }[];
+  readonly confirmed?: UserModelSlot;
+  readonly confirmTarget?: string;
+  readonly rejected?: string;
+}
+
+/** Find a slot by id across all four kinds. */
+function findSlotById(model: UserModel, id: string): UserModelSlot | undefined {
+  return [...model.preferences, ...model.schedule, ...model.vetoes, ...model.goals].find((slot) => slot.id === id);
+}
+
+/**
+ * The re-confirm engine behind `muse user model review`. No flags → list the
+ * inferred slots that have faded below trust (`selectReconfirmableSlots`).
+ * `--reject` drops a slot; `--confirm` re-asserts it (clears its confidence so
+ * it stops decaying + bumps `updatedAt` — the user vouched for it). Store is
+ * injected so it's testable without a real `~/.muse` file.
+ */
+export async function runUserModelReview(
+  store: UserModelReviewStore,
+  userId: string,
+  options: { readonly confirm?: string; readonly reject?: string; readonly now?: () => Date } = {}
+): Promise<UserModelReviewResult> {
+  const now = options.now ?? ((): Date => new Date());
+  if (options.reject !== undefined) {
+    const id = options.reject.trim();
+    await store.removeUserModelSlot(userId, id);
+    return { action: "reject", rejected: id };
+  }
+  if (options.confirm !== undefined) {
+    const id = options.confirm.trim();
+    const snap = await store.findByUserId(userId);
+    const slot = snap?.userModel ? findSlotById(snap.userModel, id) : undefined;
+    if (!slot) return { action: "confirm", confirmTarget: id };
+    const { confidence: _wasInferred, ...rest } = slot;
+    const asserted = { ...rest, updatedAt: now() } as UserModelSlot;
+    await store.upsertUserModelSlot(userId, asserted);
+    return { action: "confirm", confirmed: asserted };
+  }
+  const snap = await store.findByUserId(userId);
+  const reconfirmable = snap?.userModel ? selectReconfirmableSlots(snap.userModel, { now: now() }) : [];
+  return { action: "list", reconfirmable };
+}
+
+function reviewJson(result: UserModelReviewResult): Record<string, unknown> {
+  if (result.action === "reject") return { rejected: result.rejected };
+  if (result.action === "confirm") return { confirmed: result.confirmed ? result.confirmed.id : null };
+  const faded = result.reconfirmable ?? [];
+  return {
+    reconfirmable: faded.map((f) => ({ effectiveConfidence: Number(f.effectiveConfidence.toFixed(3)), id: f.slot.id, kind: f.slot.kind, value: f.slot.value })),
+    total: faded.length
+  };
 }

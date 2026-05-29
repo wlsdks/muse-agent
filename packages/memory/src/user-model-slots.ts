@@ -100,6 +100,69 @@ function replaceById<T extends { readonly id: string }>(slots: readonly T[], slo
   return [...slots.filter((existing) => existing.id !== slot.id), slot];
 }
 
+const DAY_MS = 24 * 60 * 60_000;
+/** Half-life for inferred-preference confidence decay. 30 days → a 0.8 fades to 0.4 after a month. */
+export const DEFAULT_CONFIDENCE_HALF_LIFE_DAYS = 30;
+/** Default effective-confidence threshold below which an inferred slot wants re-confirmation. */
+export const DEFAULT_RECONFIRM_BELOW = 0.35;
+
+/**
+ * Effective (decayed) confidence of a slot, right now.
+ *
+ * A slot with NO stored confidence is an ASSERTED fact (the user typed it via
+ * `muse user model add` without `--confidence`) — it never decays, so it
+ * returns 1. A slot WITH a stored confidence is INFERRED (the auto-extractor
+ * populated it): its trust fades exponentially with age,
+ * `confidence · 2^(-ageDays / halfLifeDays)`, so a behaviour Muse guessed
+ * months ago stops dominating the persona unless it keeps being reinforced
+ * (each fresh upsert resets `updatedAt`). Future timestamps clamp to age 0.
+ */
+export function effectiveConfidence(
+  confidence: number | undefined,
+  updatedAt: Date,
+  now: Date,
+  halfLifeDays: number = DEFAULT_CONFIDENCE_HALF_LIFE_DAYS
+): number {
+  if (confidence === undefined || !Number.isFinite(confidence)) return 1;
+  const stored = Math.max(0, Math.min(1, confidence));
+  const half = Number.isFinite(halfLifeDays) && halfLifeDays > 0 ? halfLifeDays : DEFAULT_CONFIDENCE_HALF_LIFE_DAYS;
+  const ageDays = Math.max(0, (now.getTime() - updatedAt.getTime()) / DAY_MS);
+  return stored * Math.pow(2, -ageDays / half);
+}
+
+export interface ReconfirmOptions {
+  readonly now: Date;
+  /** Effective-confidence threshold; inferred slots below it are returned. Default 0.35. */
+  readonly reconfirmBelow?: number;
+  readonly halfLifeDays?: number;
+}
+
+/**
+ * Inferred slots (those carrying a stored confidence) whose effective
+ * confidence has decayed below the re-confirm threshold — i.e. things Muse
+ * once guessed about the user that have gone stale and should be confirmed or
+ * dropped rather than silently trusted forever. Asserted slots (no stored
+ * confidence) are never returned. Each carries its `effectiveConfidence` so a
+ * surface can show "how faded". Sorted most-faded first.
+ */
+export function selectReconfirmableSlots(
+  model: UserModel,
+  options: ReconfirmOptions
+): readonly { readonly slot: UserModelSlot; readonly effectiveConfidence: number }[] {
+  const below = Number.isFinite(options.reconfirmBelow) ? options.reconfirmBelow! : DEFAULT_RECONFIRM_BELOW;
+  const all: readonly UserModelSlot[] = [
+    ...model.preferences,
+    ...model.schedule,
+    ...model.vetoes,
+    ...model.goals
+  ];
+  return all
+    .filter((slot) => slot.confidence !== undefined && Number.isFinite(slot.confidence))
+    .map((slot) => ({ effectiveConfidence: effectiveConfidence(slot.confidence, slot.updatedAt, options.now, options.halfLifeDays), slot }))
+    .filter((entry) => entry.effectiveConfidence < below)
+    .sort((left, right) => left.effectiveConfidence - right.effectiveConfidence);
+}
+
 /**
  * Upsert a typed slot into the user model — replace-by-id within the slot's
  * kind array, append if new. Pure (returns a new model). The accrual
@@ -141,6 +204,17 @@ export interface UserModelComposeOptions {
    * with a `… [N slots elided]` marker. Defaults to 1_000.
    */
   readonly maxChars?: number;
+  /**
+   * When set with `confidenceFloor > 0`, INFERRED slots (those carrying a
+   * stored confidence) whose effective confidence — decayed by age via
+   * `effectiveConfidence` — has fallen below the floor are dropped before
+   * composition, so a stale guess stops polluting the persona. Asserted slots
+   * (no stored confidence) and vetoes (safety constraints) are never
+   * decay-dropped. Omit `now` to disable decay entirely (back-compat).
+   */
+  readonly now?: Date;
+  readonly confidenceFloor?: number;
+  readonly halfLifeDays?: number;
 }
 
 const DEFAULT_MAX_PER_KIND = 5;
@@ -170,33 +244,48 @@ export function composeUserModelSnapshot(
   let totalCount = 0;
   let elided = 0;
 
+  // Decay gate: when `now` + a positive floor are supplied, an INFERRED slot
+  // (carrying a stored confidence) whose effective confidence has faded below
+  // the floor is dropped. Asserted slots (no confidence) always survive; the
+  // caller passes vetoes through unfiltered (safety) — see below.
+  const floor = options.now && Number.isFinite(options.confidenceFloor) ? Math.max(0, options.confidenceFloor!) : 0;
+  const now = options.now;
+  const keepByConfidence = (slot: UserModelSlot): boolean => {
+    if (floor <= 0 || !now || slot.confidence === undefined) return true;
+    return effectiveConfidence(slot.confidence, slot.updatedAt, now, options.halfLifeDays) >= floor;
+  };
+
   // Vetoes lead: they are hard safety constraints ("never do X" —
   // allergies, "don't email my boss"), so the maxChars
   // right-truncation must drop soft preferences/goals before it
-  // can ever silently elide a veto from the prompt.
+  // can ever silently elide a veto from the prompt. They are also never
+  // decay-dropped: a stale "don't" is far safer kept than silently lost.
   for (const slot of model.vetoes.slice(0, maxPerKind)) {
     parts.push(formatVeto(slot));
     totalCount += 1;
   }
   elided += Math.max(0, model.vetoes.length - maxPerKind);
 
-  for (const slot of model.preferences.slice(0, maxPerKind)) {
+  const livePreferences = model.preferences.filter(keepByConfidence);
+  for (const slot of livePreferences.slice(0, maxPerKind)) {
     parts.push(formatPreference(slot));
     totalCount += 1;
   }
-  elided += Math.max(0, model.preferences.length - maxPerKind);
+  elided += Math.max(0, livePreferences.length - maxPerKind);
 
-  for (const slot of model.schedule.slice(0, maxPerKind)) {
+  const liveSchedule = model.schedule.filter(keepByConfidence);
+  for (const slot of liveSchedule.slice(0, maxPerKind)) {
     parts.push(formatSchedule(slot));
     totalCount += 1;
   }
-  elided += Math.max(0, model.schedule.length - maxPerKind);
+  elided += Math.max(0, liveSchedule.length - maxPerKind);
 
-  for (const slot of model.goals.slice(0, maxPerKind)) {
+  const liveGoals = model.goals.filter(keepByConfidence);
+  for (const slot of liveGoals.slice(0, maxPerKind)) {
     parts.push(formatGoal(slot));
     totalCount += 1;
   }
-  elided += Math.max(0, model.goals.length - maxPerKind);
+  elided += Math.max(0, liveGoals.length - maxPerKind);
 
   if (totalCount === 0) {
     return undefined;

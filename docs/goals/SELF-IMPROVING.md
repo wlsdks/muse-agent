@@ -166,9 +166,19 @@ next phase is making the JARVIS run them ON ITS OWN, then deepening.
   when asked, check-ins always surface. Verified: chat-proactive unit tests +
   a real Ink-render test asserting both a check-in and a pattern line land in
   the transcript; full apps/cli suite 1439/1439, lint 0/0.
-- [ ] **N4 (P1) — UserModel confidence decay / re-confirm.** Inferred prefs
-  should fade or ask to re-confirm over time; add Honcho-style ONE clarifying
-  question for a low-confidence inferred preference before trusting it.
+- [x] **N4 (P1) — UserModel confidence decay / re-confirm.** [this commit]
+  Inferred slots now fade: `effectiveConfidence` decays stored confidence by
+  age (30-day half-life); `composeUserModelSnapshot` gained a `now` +
+  `confidenceFloor` gate that drops faded inferred slots from the persona
+  (asserted slots + vetoes immune), wired into both persona-render paths in
+  agent-core. Honcho-style re-confirm: `muse user model review` lists slots
+  faded below trust (`selectReconfirmableSlots`), `--confirm <id>` re-asserts
+  (clears confidence so it stops decaying + bumps updatedAt), `--reject <id>`
+  drops it — Muse asks once instead of trusting an old guess forever. Verified:
+  6 memory decay tests (decay math, reconfirm selection, compose drop/keep) +
+  4 cli `runUserModelReview` tests (list/confirm/reject via injected store);
+  pnpm check EXIT 0 (memory 20 / agent-core 72 / cli 123), lint 0/0.
+  Deterministic (no model call) → no live battery.
 - [ ] **N5 (P2) — Weighted memory promotion (OpenClaw "dreaming" part not yet
   done).** Promote frequently-recalled memories into the always-on persona by
   recall-usefulness (relevance-weighted), beyond episode themes/consolidate.

@@ -327,7 +327,11 @@ export function renderUserMemorySection(memory: UserMemorySnapshot, maxEntries: 
   // into the COMPACTION snapshot (buildPersonaSnapshot) — invisible on a normal
   // turn. Surface it here too so the always-on persona section actually uses
   // it, not just after a trim.
-  const typed = memory.userModel ? composeUserModelSnapshotFn(memory.userModel, { maxPerKind: maxEntries }) : undefined;
+  // Decay-gate inferred slots: a guess Muse made long ago that hasn't been
+  // reinforced fades out of the persona (asserted facts + vetoes are immune).
+  const typed = memory.userModel
+    ? composeUserModelSnapshotFn(memory.userModel, { confidenceFloor: 0.2, maxPerKind: maxEntries, now: new Date() })
+    : undefined;
   if (factEntries.length === 0 && preferenceEntries.length === 0 && (memory.recentTopics?.length ?? 0) === 0 && !typed) {
     return undefined;
   }
@@ -387,7 +391,7 @@ export function buildPersonaSnapshot(memory: UserMemorySnapshot, maxEntries: num
   // composeUserModelSnapshot returns undefined for empty models,
   // so this is a no-op when no slots are set.
   if (memory.userModel) {
-    const typed = composeUserModelSnapshotFn(memory.userModel, { maxPerKind: maxEntries });
+    const typed = composeUserModelSnapshotFn(memory.userModel, { confidenceFloor: 0.2, maxPerKind: maxEntries, now: new Date() });
     if (typed) {
       parts.push(typed);
     }

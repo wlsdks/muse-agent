@@ -2,7 +2,7 @@ import type { UserModelSlot } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
 import { describe, expect, it } from "vitest";
 
-import { buildUserModelSlot, inferSessionPreferences, slugifySlotId } from "./commands-user.js";
+import { buildUserModelSlot, inferSessionPreferences, runUserModelReview, slugifySlotId } from "./commands-user.js";
 
 const NOW = new Date("2026-05-01T00:00:00Z");
 
@@ -79,5 +79,62 @@ describe("inferSessionPreferences — detect → infer → upsert (glue; model b
     });
     expect(result).toEqual({ added: [], status: "no-corrections" });
     expect(called).toBe(false);
+  });
+});
+
+describe("runUserModelReview — re-confirm faded inferred slots (store injected)", () => {
+  const daysAgo = (d: number): Date => new Date(NOW.getTime() - d * 24 * 60 * 60_000);
+  function fakeStore(slots: readonly UserModelSlot[]) {
+    const calls = { upserts: [] as UserModelSlot[], removes: [] as string[] };
+    const model = {
+      goals: slots.filter((s) => s.kind === "goal"),
+      preferences: slots.filter((s) => s.kind === "preference"),
+      schedule: slots.filter((s) => s.kind === "schedule"),
+      vetoes: slots.filter((s) => s.kind === "veto")
+    };
+    return {
+      calls,
+      store: {
+        findByUserId: async () => ({ userModel: model }),
+        removeUserModelSlot: async (_u: string, id: string) => { calls.removes.push(id); },
+        upsertUserModelSlot: async (_u: string, slot: UserModelSlot) => { calls.upserts.push(slot); }
+      }
+    };
+  }
+
+  it("lists only faded inferred slots (no action)", async () => {
+    const { store } = fakeStore([
+      { confidence: 0.8, id: "stale", kind: "preference", updatedAt: daysAgo(90), value: "dark mode" },
+      { id: "asserted", kind: "preference", updatedAt: daysAgo(90), value: "concise" }
+    ]);
+    const res = await runUserModelReview(store, "stark", { now: () => NOW });
+    expect(res.action).toBe("list");
+    expect(res.reconfirmable?.map((r) => r.slot.id)).toEqual(["stale"]);
+  });
+
+  it("--confirm re-asserts the slot (confidence cleared, updatedAt bumped)", async () => {
+    const { store, calls } = fakeStore([
+      { confidence: 0.8, id: "stale", kind: "preference", category: "style", updatedAt: daysAgo(90), value: "dark mode" }
+    ]);
+    const res = await runUserModelReview(store, "stark", { confirm: "stale", now: () => NOW });
+    expect(res.action).toBe("confirm");
+    expect(calls.upserts).toHaveLength(1);
+    expect(calls.upserts[0]).toMatchObject({ id: "stale", kind: "preference", category: "style", value: "dark mode", updatedAt: NOW });
+    expect("confidence" in calls.upserts[0]!).toBe(false); // asserted now → won't decay
+  });
+
+  it("--confirm on a missing id touches nothing", async () => {
+    const { store, calls } = fakeStore([]);
+    const res = await runUserModelReview(store, "stark", { confirm: "ghost", now: () => NOW });
+    expect(res).toMatchObject({ action: "confirm", confirmTarget: "ghost" });
+    expect(res.confirmed).toBeUndefined();
+    expect(calls.upserts).toHaveLength(0);
+  });
+
+  it("--reject removes the slot", async () => {
+    const { store, calls } = fakeStore([{ confidence: 0.2, id: "stale", kind: "preference", updatedAt: daysAgo(90), value: "x" }]);
+    const res = await runUserModelReview(store, "stark", { reject: "stale" });
+    expect(res).toEqual({ action: "reject", rejected: "stale" });
+    expect(calls.removes).toEqual(["stale"]);
   });
 });

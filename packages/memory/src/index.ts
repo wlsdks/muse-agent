@@ -423,10 +423,15 @@ export {
 // `Record<string,string>` facts/preferences. Persistence + runtime
 // wiring lands in subsequent iters.
 export {
+  DEFAULT_CONFIDENCE_HALF_LIFE_DAYS,
+  DEFAULT_RECONFIRM_BELOW,
   EMPTY_USER_MODEL,
   composeUserModelSnapshot,
+  effectiveConfidence,
   removeUserModelSlot,
+  selectReconfirmableSlots,
   upsertUserModelSlot,
+  type ReconfirmOptions,
   type UserGoalSlot,
   type UserModel,
   type UserModelComposeOptions,
