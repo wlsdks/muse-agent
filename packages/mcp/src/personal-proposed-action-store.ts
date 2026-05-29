@@ -12,6 +12,7 @@
  * (tmp + fsync + rename), tolerant read, corrupt store quarantined.
  */
 
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
@@ -106,7 +107,10 @@ export async function readProposedActions(file: string): Promise<ProposedAction[
 
 export async function writeProposedActions(file: string, proposals: readonly ProposedAction[]): Promise<void> {
   const payload = `${JSON.stringify({ proposals }, null, 2)}\n`;
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
+  // random-uuid tmp: a `${pid}-${Date.now()}` name collides between two same-ms
+  // concurrent writers → ENOENT rename. The mutation queue below serialises the
+  // read-modify-write callers so a proposed/patched action is never lost.
+  const tmp = `${file}.tmp-${process.pid.toString()}-${randomUUID()}`;
   await fs.mkdir(dirname(file), { recursive: true });
   const handle = await fs.open(tmp, "w", 0o600);
   try {
@@ -155,9 +159,22 @@ export async function proposeMessageAction(
     text: input.text,
     userId: input.userId
   };
-  const existing = await readProposedActions(file);
-  await writeProposedActions(file, [...existing, proposal]);
+  await serializeProposedWrite(file, async () => {
+    const existing = await readProposedActions(file);
+    await writeProposedActions(file, [...existing, proposal]);
+  });
   return proposal;
+}
+
+// Per-file mutation queue: propose + patch are read-modify-write, so two
+// concurrent calls would otherwise clobber each other (a draft-first proposal
+// or an approve/decline status patch silently lost). Serialise the whole op.
+const proposedWriteQueues = new Map<string, Promise<unknown>>();
+function serializeProposedWrite<T>(file: string, op: () => Promise<T>): Promise<T> {
+  const prior = proposedWriteQueues.get(file) ?? Promise.resolve();
+  const next = prior.then(op, op);
+  proposedWriteQueues.set(file, next.then(() => undefined, () => undefined));
+  return next;
 }
 
 export async function patchProposedActionStatus(
@@ -166,9 +183,11 @@ export async function patchProposedActionStatus(
   status: ProposedActionStatus,
   resolvedAt: string
 ): Promise<void> {
-  const all = await readProposedActions(file);
-  await writeProposedActions(
-    file,
-    all.map((p) => (p.id === id ? { ...p, resolvedAt, status } : p))
-  );
+  await serializeProposedWrite(file, async () => {
+    const all = await readProposedActions(file);
+    await writeProposedActions(
+      file,
+      all.map((p) => (p.id === id ? { ...p, resolvedAt, status } : p))
+    );
+  });
 }

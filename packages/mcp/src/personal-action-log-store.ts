@@ -14,6 +14,7 @@
  * aside (never destroyed).
  */
 
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
@@ -72,7 +73,11 @@ export async function readActionLog(file: string): Promise<readonly ActionLogEnt
 
 async function writeActionLog(file: string, entries: readonly ActionLogEntry[]): Promise<void> {
   const payload = `${JSON.stringify({ entries }, null, 2)}\n`;
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
+  // Unique per in-flight write: a `${pid}-${Date.now()}` tmp collides between
+  // two same-ms concurrent writers and one rename consumes the other's tmp →
+  // ENOENT. randomUUID guarantees uniqueness; serializeAppend below also
+  // serialises the read-modify-write so no entry is lost.
+  const tmp = `${file}.tmp-${process.pid.toString()}-${randomUUID()}`;
   await fs.mkdir(dirname(file), { recursive: true });
   const handle = await fs.open(tmp, "w", 0o600);
   try {
@@ -91,9 +96,20 @@ async function writeActionLog(file: string, entries: readonly ActionLogEntry[]):
  * A duplicate `id` is still appended — the log records attempts,
  * it does not deduplicate them.
  */
+// Per-file queue: the audit log is the accountability trail, so a concurrent
+// append (multi-channel actions / daemons) must NOT lose an entry to a
+// last-writer-wins read-modify-write. Serialise the whole append per file.
+const appendQueues = new Map<string, Promise<unknown>>();
+
 export async function appendActionLog(file: string, entry: ActionLogEntry): Promise<void> {
-  const existing = await readActionLog(file);
-  await writeActionLog(file, [...existing, entry]);
+  const prior = appendQueues.get(file) ?? Promise.resolve();
+  const op = async (): Promise<void> => {
+    const existing = await readActionLog(file);
+    await writeActionLog(file, [...existing, entry]);
+  };
+  const next = prior.then(op, op);
+  appendQueues.set(file, next.then(() => undefined, () => undefined));
+  return next;
 }
 
 /**

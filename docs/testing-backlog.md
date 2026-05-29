@@ -124,9 +124,28 @@ the generic layers below because they test what makes Muse an *agent*.
     `${pid}-${Date.now()}` → same-ms collision) — fixed with a random-uuid tmp
     suffix. Store now never crashes/corrupts under concurrency (last-writer-wins
     remains, documented). store-concurrency.test.ts (4 tests), full check green.
-  - [ ] Remaining: serialize pending-approval writes (write-queue, like inbox)
-    to also eliminate the last-writer-wins loss; inbound dedup + single-flight
-    daemon race tests.
+  - [x] Lossless serialization: a per-file mutation queue now serialises the
+    whole read-modify-write of recordPendingApproval + clearPendingApproval, so
+    25 concurrent records preserve ALL 25 (was last-writer-wins) and mixed
+    concurrent clear+record resolves correctly. No more silent loss of a refused
+    action's pending approval.
+  - [x] Store-audit slice 2: audited all `${pid}-${Date.now()}`-tmp stores
+    (~30) for the same race. Fixed `personal-action-log-store` (the immutable
+    accountability trail, outbound-safety rule 4) — 25 concurrent appends were
+    19/20 CRASHING + losing ~all; now per-file append queue + random-uuid tmp =
+    0 crash, all 25 preserved, order kept. action-log-concurrency.test.ts.
+  - [x] Store-audit slice 3: fixed proposed-action store (draft-first outbound
+    proposals) — concurrent patch crashed 7/8 + clobbered; now 0-crash, all 8
+    status patches applied + 12 concurrent proposes preserved. **The outbound-
+    safety + audit critical trio is now concurrency-safe: pending-approval,
+    action-log, proposed-action.**
+  - [ ] Remaining (LOWER stakes — flag as a deliberate shared-helper effort, not
+    per-store churn): the non-critical read-modify-write stores (objectives /
+    episodes / playbook / reminders / tasks / proactive-history / belief-
+    provenance, etc.) share the latent race; cursor/offset stores only risk the
+    tmp-collision crash, not loss. Best done as ONE shared atomic-append helper
+    (server-only util) migrated across stores, not N copy-paste fixes. inbound
+    dedup + single-flight daemon race tests also open.
 
 ## P5 — surface & contract
 

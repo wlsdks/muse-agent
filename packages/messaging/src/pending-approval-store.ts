@@ -105,18 +105,33 @@ async function writePendingApprovals(file: string, pending: readonly PendingAppr
   await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
+// Per-file mutation queue: record/clear are read-modify-write, so two
+// concurrent calls would otherwise both read the same `existing` and the second
+// write would clobber the first (last-writer-wins, a silently dropped pending
+// approval — i.e. a refused action lost). Serialising the WHOLE op per file
+// makes the store lossless under concurrency, mirroring the inbox write-queue.
+const mutationQueues = new Map<string, Promise<unknown>>();
+function serializePerFile<T>(file: string, op: () => Promise<T>): Promise<T> {
+  const prior = mutationQueues.get(file) ?? Promise.resolve();
+  const next = prior.then(op, op);
+  mutationQueues.set(file, next.then(() => undefined, () => undefined));
+  return next;
+}
+
 /**
  * Append a pending approval, capped to the most recent
  * `PENDING_APPROVAL_MAX_ENTRIES` so a chatty refused channel can't grow
- * the file without bound.
+ * the file without bound. Serialised per file (lossless under concurrency).
  */
 export async function recordPendingApproval(file: string, entry: PendingApproval): Promise<void> {
-  const existing = await readPendingApprovals(file);
-  const combined = [...existing, entry];
-  const capped = combined.length > PENDING_APPROVAL_MAX_ENTRIES
-    ? combined.slice(combined.length - PENDING_APPROVAL_MAX_ENTRIES)
-    : combined;
-  await writePendingApprovals(file, capped);
+  await serializePerFile(file, async () => {
+    const existing = await readPendingApprovals(file);
+    const combined = [...existing, entry];
+    const capped = combined.length > PENDING_APPROVAL_MAX_ENTRIES
+      ? combined.slice(combined.length - PENDING_APPROVAL_MAX_ENTRIES)
+      : combined;
+    await writePendingApprovals(file, capped);
+  });
 }
 
 /**
@@ -151,12 +166,14 @@ export async function listPendingApprovals(
  * expired entries while rewriting, keeping the file lean.
  */
 export async function clearPendingApproval(file: string, id: string, now: () => Date = () => new Date()): Promise<boolean> {
-  const existing = await readPendingApprovals(file);
-  const cutoff = now().getTime();
-  const kept = existing.filter((entry) => entry.id !== id && Date.parse(entry.expiresAt) > cutoff);
-  if (kept.length === existing.length) {
-    return false;
-  }
-  await writePendingApprovals(file, kept);
-  return true;
+  return serializePerFile(file, async () => {
+    const existing = await readPendingApprovals(file);
+    const cutoff = now().getTime();
+    const kept = existing.filter((entry) => entry.id !== id && Date.parse(entry.expiresAt) > cutoff);
+    if (kept.length === existing.length) {
+      return false;
+    }
+    await writePendingApprovals(file, kept);
+    return true;
+  });
 }
