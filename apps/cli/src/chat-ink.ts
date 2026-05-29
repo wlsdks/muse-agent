@@ -22,6 +22,8 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
+import { detectUserCommitments } from "@muse/agent-core";
+
 import { appendActivity, appendLastChatTurn, appendSessionBoundary, clearLastChatHistory, maybeCompactLastChatHistory, readLastChatHistory } from "./chat-history.js";
 import {
   buildRecap,
@@ -1092,10 +1094,14 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
           readFollowups(resolveFollowupsFile(process.env)).catch(() => [])
         ]);
         const latest = [...episodes].sort((a, b) => a.endedAt.localeCompare(b.endedAt)).at(-1);
+        const openCommitments = detectUserCommitments(
+          seedLines.filter((line) => line.role === "user").map((line) => line.content)
+        ).length;
         return buildRecap({
           ...(latest ? { lastEpisode: latest.summary } : {}),
           pendingTasks: tasks.filter((t) => t.status === "open").length,
-          pendingFollowups: followups.filter((f) => f.status === "scheduled").length
+          pendingFollowups: followups.filter((f) => f.status === "scheduled").length,
+          openCommitments
         });
       })().catch(() => "")
     : "";
