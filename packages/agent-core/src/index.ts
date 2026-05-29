@@ -60,6 +60,18 @@ export {
   type FollowupCaptureHookOptions
 } from "./followup-capture-hook.js";
 export {
+  BACKGROUND_REVIEW_HOOK_ID,
+  createBackgroundReviewHook,
+  createInMemoryReviewCounterStore,
+  evaluateReviewTriggers,
+  type BackgroundReviewHookOptions,
+  type BackgroundReviewInput,
+  type ReviewCounters,
+  type ReviewCounterStore,
+  type ReviewDecision,
+  type ReviewTriggerConfig
+} from "./background-review.js";
+export {
   extractFollowupPromisesLlm,
   type ExtractFollowupPromisesLlmOptions
 } from "./followup-llm-detector.js";

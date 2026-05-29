@@ -40,6 +40,13 @@ into class-level umbrellas) informed Muse's `mergeSkillsIntoUmbrella` /
 `AuthoredSkillStore.consolidate` / `muse skills consolidate`
 (`packages/agent-core/src/skill-merge.ts`, `packages/skills/src/authored-skill-store.ts`)
 — one local-model merge with archive-never-delete, no code copied.
+Finally, Hermes' `agent/background_review.py` — delivering the answer THEN
+running a separate review gated by TWO triggers (turn-count → memory,
+tool-iteration-count → skills, so "hard tasks teach") — is the idea behind
+Muse's background-review engine (`packages/agent-core/src/background-review.ts`):
+reimplemented on Muse's own `HookStage` seam (`afterTool` counts iterations,
+`afterComplete` fires the review fire-and-forget), orchestrating Muse's existing
+deterministic distillers, no Hermes code copied.
 
 ```
 MIT License
