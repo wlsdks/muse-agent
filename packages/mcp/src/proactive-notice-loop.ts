@@ -42,6 +42,7 @@ export interface AgentInitiatedNoticeBrokerLike {
 
 import { appendProactiveHistory } from "./personal-proactive-history-store.js";
 import { readTasks, type PersistedTask } from "./personal-tasks-store.js";
+import { appendSurfaced, avoidedSourceKeys, readTrustLedger, sourceKey, withinDailyCap, type TrustLedgerEntry } from "./proactive-trust-ledger.js";
 
 export type ProactiveFiredKind = "calendar" | "task";
 
@@ -409,6 +410,21 @@ export interface RunDueProactiveNoticesOptions {
    * presence is recorded.
    */
   readonly terminalSink?: ProactiveNoticeSink;
+  /**
+   * Trust-instrumentation sidecar (`~/.muse/proactive-trust.json`).
+   * When set, every delivered notice is recorded here for the precision
+   * scoreboard, and a source the user has vetoed (`muse trust veto …`)
+   * is silenced — learned avoidance, so proactivity earns its place.
+   * Fail-open: a ledger read/write error never blocks a delivery.
+   */
+  readonly trustLedgerFile?: string;
+  /**
+   * Cap on how many notices may surface in a trailing 24h window
+   * (counted from the trust ledger). Opt-in — unset / non-positive
+   * leaves surfacing uncapped (legacy behaviour). Requires
+   * `trustLedgerFile`.
+   */
+  readonly dailyCap?: number;
 }
 
 export interface RunDueProactiveNoticesSummary {
@@ -517,6 +533,18 @@ export async function runDueProactiveNotices(
   let firedThisRun = 0;
   let nextFired: readonly ProactiveFiredEntry[] = fired;
 
+  // Trust instrumentation (Phase 2): learned avoidance + daily cap.
+  // Fail-open — a corrupt/unreadable ledger never gags the daemon.
+  const trustLedger = options.trustLedgerFile
+    ? await readTrustLedger(options.trustLedgerFile).catch(() => [])
+    : [];
+  const avoided = avoidedSourceKeys(trustLedger);
+  const capEnabled = options.trustLedgerFile !== undefined
+    && typeof options.dailyCap === "number"
+    && Number.isFinite(options.dailyCap)
+    && options.dailyCap > 0;
+  const ledgerForCap: TrustLedgerEntry[] = [...trustLedger];
+
   // Phase D — decide once whether the active-session window allows
   // agent-synthesized notices for this tick. All three pieces must
   // be wired AND the activity tracker must report something within
@@ -543,6 +571,15 @@ export async function runDueProactiveNotices(
     const key = firedKey(candidate);
     if (seen.has(key)) {
       continue;
+    }
+    // Learned avoidance — the user vetoed this source; never re-surface it.
+    if (avoided.has(sourceKey(item.kind, item.id))) {
+      continue;
+    }
+    // Daily cap — once the trailing-24h budget is spent, stop surfacing
+    // for this tick so a burst of triggers can't flood the user.
+    if (capEnabled && !withinDailyCap(ledgerForCap, nowDate.getTime(), options.dailyCap!)) {
+      break;
     }
 
     let rawNoticeText = phaseDActive
@@ -588,6 +625,18 @@ export async function runDueProactiveNotices(
       firedThisRun += 1;
       nextFired = [...nextFired, candidate];
       seen.add(key);
+      // Trust ledger (Phase 2): record the delivered surface for the
+      // precision scoreboard + count it against the daily cap. Fail-open.
+      if (options.trustLedgerFile) {
+        const surfacedAtMs = nowDate.getTime();
+        ledgerForCap.push({ kind: item.kind, sourceKey: sourceKey(item.kind, item.id), surfacedAtMs, title: item.title });
+        try {
+          await appendSurfaced(options.trustLedgerFile, { id: item.id, kind: item.kind, surfacedAtMs, title: item.title });
+        } catch (cause) {
+          const message = cause instanceof Error ? cause.message : String(cause);
+          errors.push(`trust ledger write failed: ${message}`);
+        }
+      }
       // Phase D broker fan-out: publish the same notice so live
       // chat-stream subscribers see it inline. Always alongside the
       // messaging-sink delivery — not a replacement. Fail-soft per

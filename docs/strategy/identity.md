@@ -115,13 +115,27 @@ The slogan "It can't tell anyone… enforced in the code" is literally true.
    the pain corpus (chat-export + .mbox ingest), the headline command embodies
    the gate (`muse ask` CRAG), and a guided onboarding walks a new user to the
    first cited answer.
-2. **Trust instrumentation** — log every surfaced/recalled item's deterministic
-   trigger + a one-tap veto; track precision; quiet-hours + caps.
-3. **Proactivity (the north star)** — turn the SAME deterministic-retrieval +
-   confidence-gate machinery proactive: a deterministic trigger (due date,
-   calendar conflict, matched commitment) runs a confidence-gated recall and
-   surfaces ONLY when confident, draft-first per `outbound-safety.md`.
-   Proactivity is *earned* once the gate has proven it can stay quiet.
+2. **Trust instrumentation** — DONE. Every delivered proactive notice is
+   recorded to `~/.muse/proactive-trust.json` (`proactive-trust-ledger.ts`); a
+   one-command veto (`muse proactive veto <source>`) silences that source
+   forever (learned avoidance); `muse proactive scoreboard` shows the precision
+   (non-vetoed fraction of what Muse surfaced unasked); a 24h `dailyCap`
+   (`MUSE_PROACTIVE_DAILY_CAP`) bounds bursts. Wired into the real loop +
+   daemon (CLI + API). Verified: 10 ledger unit tests + 3 contract-faithful
+   loop tests (record / vetoed-source-silenced / cap) + 2 scoreboard render
+   tests + a live veto→scoreboard round-trip.
+3. **Proactivity (the north star)** — DONE. The SAME deterministic CRAG gate
+   that makes cited recall trustworthy now makes proactivity quiet:
+   `decideProactiveRecall` / `createConfidenceGatedInvestigator`
+   (`proactive-recall-gate.ts`) recall over the user's corpus on a deterministic
+   trigger and append a cited "📎 Related in your notes — [source]" finding ONLY
+   when confident; a weak/empty recall STAYS SILENT (never a guess). Wired into
+   the local daemon over the pre-embedded notes index
+   (`createIndexedProactiveInvestigator`, query-only re-embed per tick). State-
+   changing third-party sends remain draft-first per `outbound-safety.md`.
+   Proactivity is *earned*: the gate is live-proven (verify-proactive-recall-gate
+   battery in the eval gate) to surface a cited finding in-corpus and stay silent
+   off-topic; 8 gate unit tests + 4 indexed-investigator tests.
 
 ## What must be true (the bets)
 

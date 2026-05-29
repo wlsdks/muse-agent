@@ -1,0 +1,127 @@
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  appendSurfaced,
+  avoidedSourceKeys,
+  computeTrustScore,
+  isSourceAvoided,
+  readTrustLedger,
+  recordOutcome,
+  sourceKey,
+  withinDailyCap,
+  type TrustLedgerEntry
+} from "./proactive-trust-ledger.js";
+
+const surfaced = (over: Partial<TrustLedgerEntry> = {}): TrustLedgerEntry => ({
+  kind: "calendar",
+  sourceKey: "calendar:evt-1",
+  surfacedAtMs: 1_000,
+  title: "Standup",
+  ...over
+});
+
+describe("proactive-trust-ledger — pure scoring", () => {
+  it("sourceKey is the kind:id avoidance unit", () => {
+    expect(sourceKey("task", "t-9")).toBe("task:t-9");
+  });
+
+  it("precision is the non-vetoed fraction; null with no signal", () => {
+    expect(computeTrustScore([]).precision).toBeNull();
+    const score = computeTrustScore([
+      surfaced({ outcome: "kept" }),
+      surfaced({ outcome: "acted" }),
+      surfaced({ outcome: "vetoed" }),
+      surfaced() // unrated still counts as not-annoying
+    ]);
+    expect(score).toMatchObject({ acted: 1, kept: 1, rated: 3, surfaced: 4, vetoed: 1 });
+    expect(score.precision).toBeCloseTo(0.75, 5);
+  });
+
+  it("avoidedSourceKeys / isSourceAvoided reflect only vetoes (learned avoidance)", () => {
+    const entries = [
+      surfaced({ kind: "calendar", outcome: "vetoed", sourceKey: "calendar:evt-1" }),
+      surfaced({ kind: "task", outcome: "kept", sourceKey: "task:t-2" })
+    ];
+    expect([...avoidedSourceKeys(entries)]).toEqual(["calendar:evt-1"]);
+    expect(isSourceAvoided(entries, "calendar", "evt-1")).toBe(true);
+    expect(isSourceAvoided(entries, "task", "t-2")).toBe(false);
+  });
+
+  it("withinDailyCap counts only surfaces inside the trailing window", () => {
+    const now = 10 * 60 * 60 * 1_000;
+    const entries = [
+      surfaced({ surfacedAtMs: now - 1_000 }),
+      surfaced({ surfacedAtMs: now - 2_000 }),
+      surfaced({ surfacedAtMs: now - 48 * 60 * 60 * 1_000 }) // older than 24h → not counted
+    ];
+    expect(withinDailyCap(entries, now, 3)).toBe(true); // 2 recent < 3
+    expect(withinDailyCap(entries, now, 2)).toBe(false); // 2 recent, cap 2 → at limit
+    expect(withinDailyCap(entries, now, 0)).toBe(false); // cap 0 disables
+  });
+});
+
+describe("proactive-trust-ledger — persistence", () => {
+  let dir: string;
+  let file: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "muse-trust-"));
+    file = join(dir, "proactive-trust.json");
+  });
+  afterEach(async () => {
+    await rm(dir, { force: true, recursive: true });
+  });
+
+  it("missing / corrupt / wrong-shape file reads as empty", async () => {
+    expect(await readTrustLedger(file)).toEqual([]);
+    await writeFile(file, "{ not json", "utf8");
+    expect(await readTrustLedger(file)).toEqual([]);
+    await writeFile(file, JSON.stringify({ surfaced: "nope" }), "utf8");
+    expect(await readTrustLedger(file)).toEqual([]);
+  });
+
+  it("drops corrupt rows but keeps valid ones", async () => {
+    await writeFile(file, JSON.stringify({ surfaced: [surfaced(), { bad: true }, 42] }), "utf8");
+    const read = await readTrustLedger(file);
+    expect(read).toHaveLength(1);
+    expect(read[0]!.sourceKey).toBe("calendar:evt-1");
+  });
+
+  it("appendSurfaced records the kind:id source", async () => {
+    await appendSurfaced(file, { id: "evt-7", kind: "calendar", surfacedAtMs: 5_000, title: "Review" });
+    const read = await readTrustLedger(file);
+    expect(read).toHaveLength(1);
+    expect(read[0]).toMatchObject({ kind: "calendar", sourceKey: "calendar:evt-7", title: "Review" });
+    expect(read[0]!.outcome).toBeUndefined();
+  });
+
+  it("recordOutcome rates the most-recent unrated surface for the source", async () => {
+    await appendSurfaced(file, { id: "evt-7", kind: "calendar", surfacedAtMs: 5_000, title: "Review" });
+    const res = await recordOutcome(file, "calendar:evt-7", "vetoed", 9_000);
+    expect(res).toEqual({ matched: true, title: "Review" });
+    const read = await readTrustLedger(file);
+    expect(read[0]).toMatchObject({ outcome: "vetoed", outcomeAtMs: 9_000 });
+    expect(isSourceAvoided(read, "calendar", "evt-7")).toBe(true);
+  });
+
+  it("recordOutcome on a never-surfaced source appends a remembered pre-veto", async () => {
+    const res = await recordOutcome(file, "task:t-3", "vetoed", 4_000);
+    expect(res.matched).toBe(false);
+    const read = await readTrustLedger(file);
+    expect(read).toHaveLength(1);
+    expect(read[0]).toMatchObject({ kind: "task", outcome: "vetoed", sourceKey: "task:t-3" });
+    expect(avoidedSourceKeys(read).has("task:t-3")).toBe(true);
+  });
+
+  it("round-trips a written ledger losslessly", async () => {
+    await appendSurfaced(file, { id: "a", kind: "task", surfacedAtMs: 1, title: "A" });
+    await appendSurfaced(file, { id: "b", kind: "calendar", surfacedAtMs: 2, title: "B" });
+    await recordOutcome(file, "task:a", "kept", 3);
+    const raw = JSON.parse(await readFile(file, "utf8")) as { surfaced: unknown[] };
+    expect(raw.surfaced).toHaveLength(2);
+    expect(computeTrustScore(await readTrustLedger(file)).precision).toBe(1);
+  });
+});

@@ -31,7 +31,8 @@ const BATTERIES = [
   { axis: "① self-improve", file: "apps/cli/scripts/verify-playbook-merge.mjs", name: "playbook-merge" },
   { axis: "① self-improve", file: "apps/cli/scripts/verify-background-review.mjs", name: "background-review" },
   { axis: "①②③ engine e2e", file: "apps/cli/scripts/verify-background-review-e2e.mjs", name: "background-review-e2e" },
-  { axis: "★ WEDGE: cited recall", file: "apps/cli/scripts/verify-cited-recall.mjs", name: "cited-recall" }
+  { axis: "★ WEDGE: cited recall", file: "apps/cli/scripts/verify-cited-recall.mjs", name: "cited-recall" },
+  { axis: "★ NORTH STAR: gated proactive recall", file: "apps/cli/scripts/verify-proactive-recall-gate.mjs", name: "proactive-recall-gate" }
 ];
 
 async function ollamaReachable() {

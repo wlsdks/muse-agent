@@ -69,6 +69,7 @@ import { dirname, join } from "node:path";
 import { checkinsFile } from "./commands-checkins.js";
 import { closestCommandName } from "./closest-command.js";
 import { parseBoundedFlag } from "./commands-proactive.js";
+import { createIndexedProactiveInvestigator } from "./proactive-notes-recall.js";
 import type { ProgramIO } from "./program.js";
 
 type FollowupModel = {
@@ -439,6 +440,11 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const sidecarFile = e.MUSE_PROACTIVE_SIDECAR_FILE?.trim()?.length
         ? e.MUSE_PROACTIVE_SIDECAR_FILE.trim()
         : join(homedir(), ".muse", "proactive-fired.json");
+      const trustLedgerFile = e.MUSE_PROACTIVE_TRUST_FILE?.trim()?.length
+        ? e.MUSE_PROACTIVE_TRUST_FILE.trim()
+        : join(homedir(), ".muse", "proactive-trust.json");
+      const dailyCapRaw = e.MUSE_PROACTIVE_DAILY_CAP ? Number(e.MUSE_PROACTIVE_DAILY_CAP) : 0;
+      const dailyCap = Number.isFinite(dailyCapRaw) && dailyCapRaw > 0 ? Math.trunc(dailyCapRaw) : 0;
       const followupsFile = resolveFollowupsFile(e);
       const remindersFile = resolveRemindersFile(e);
       const followupModel = await (helpers.resolveFollowupModel ?? defaultFollowupModel)(e);
@@ -587,16 +593,20 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         return;
       }
 
+      const proactiveInvestigator = createIndexedProactiveInvestigator();
       const proactiveTick = async (): Promise<void> => {
         const summary = await runDueProactiveNotices({
           ...(calendarRegistry.list().length > 0 ? { calendarRegistry } : {}),
           destination,
           historyFile,
+          investigate: proactiveInvestigator,
           leadMinutes,
           messagingRegistry,
           providerId: provider,
           sidecarFile,
-          tasksFile
+          tasksFile,
+          trustLedgerFile,
+          ...(dailyCap > 0 ? { dailyCap } : {})
         });
         const tag = `[${new Date().toISOString()}]`;
         io.stdout(`${tag} proactive: fired ${summary.fired.toString()}/${summary.imminent.toString()} imminent`);

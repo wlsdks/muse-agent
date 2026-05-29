@@ -711,6 +711,20 @@ export {
 export { type AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
 export { createNotesInvestigator } from "./notes-investigator.js";
 
+export {
+  appendSurfaced,
+  avoidedSourceKeys,
+  computeTrustScore,
+  isSourceAvoided,
+  readTrustLedger,
+  recordOutcome,
+  sourceKey,
+  withinDailyCap,
+  type ProactiveOutcome,
+  type TrustLedgerEntry,
+  type TrustScore
+} from "./proactive-trust-ledger.js";
+
 // Episodic memory store — step 1 of docs/design/episodic-memory.md.
 // Pure CRUD over `~/.muse/episodes.json`; later steps add the
 // session-boundary sentinel, end-of-session summariser hook,

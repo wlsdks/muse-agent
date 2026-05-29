@@ -149,6 +149,12 @@ export {
   type RetrievalConfidence
 } from "./knowledge-recall.js";
 export {
+  createConfidenceGatedInvestigator,
+  decideProactiveRecall,
+  type ConfidenceGatedInvestigatorDeps,
+  type ProactiveRecallDecision
+} from "./proactive-recall-gate.js";
+export {
   extractCurrentSessionTurns,
   redactSecrets,
   summariseSession,
