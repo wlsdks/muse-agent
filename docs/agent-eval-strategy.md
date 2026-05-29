@@ -168,8 +168,20 @@ of agent test is worth the most*.
   nothing). `scripts/eval-shadow-trial.mjs` + `eval:shadow-trial` prove the
   verdict on clear-cut candidates (helpful pref → PROMOTE; secret/unconfirmed
   over-claim → HOLD): 4/4 (100%) @ REPEAT=2, each pre-probed STABLE 3/3.
-  - [ ] Remaining: wire the trial in front of the real distill/recall-promotion
-    path so an actual promotion consults it (still report-only / advisory).
+  - [x] Promotion-SELECTION logic edge-hardened (the deterministic
+    `selectPromotableMemories` / `scoreRecallHit` that decides which recalled
+    memories graduate into the always-on persona): recency-weighted scoring
+    floors non-finite/negative hits and defaults a non-positive half-life; the
+    default minScore guard excludes a cleared-floor-but-decayed memory (minScore:0
+    re-includes); minHits/maxPromoted clamp to >=1 + truncate; non-finite-hit
+    records are filtered; strict score-desc cap order. recall-promotion.test.ts
+    10→15. (A wrongly-promoted memory pollutes the persona; a wrongly-excluded one
+    is lost from it — so the selection guards matter even though the LLM
+    shadow-trial below is separate.)
+  - [ ] Remaining (deferred — product feature, not test-hardening): wire the LLM
+    shadow-trial in front of the real promotion path so an actual promotion
+    consults it (advisory). Adds an LLM call to a hot path — a human-directed
+    product decision, out of scope for the autonomous hardening loop.
 - [x] **H. CI gating** — DONE: `scripts/eval-agent.mjs` + `eval:agent` npm
   script run ALL harness-based batteries (eval-tool-selection / eval-judge /
   eval-adversarial / eval-shadow-trial / eval-plan-quality) as ONE gate and exit
