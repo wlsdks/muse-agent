@@ -109,9 +109,15 @@ of agent test is worth the most*.
     (toolsUsed + intermediateMessages role sequence + toolResults order); the
     loop runs exactly the requested tools once each in order (no redundant/
     dropped calls); a direct answer takes the zero-tool trajectory. 8→11 tests.
-  - [ ] Remaining: trajectory of the real plan_execute path through the
-    assembly (plan_generated → tool → synthesis_started → done events), and a
-    step-efficiency check that penalises a redundant re-call of the same tool.
+  - [x] Real plan_execute assembly trajectory + step-efficiency: drains
+    `streamPlanExecute` with the REAL DiagnosticModelProvider (steered) + REAL
+    ToolExecutor and asserts the ORDERED span sequence (plan-generated →
+    per-step executing/result → synthesis-started), plan ADHERENCE (the
+    plan-generated event's tools == executed, in order), a mixed-outcome run
+    (success then fail) marking the right result span unsuccessful yet still
+    synthesising, the empty-plan direct-answer trajectory (no step spans), and a
+    DeepEval-style StepEfficiency metric that flags a redundant re-call of the
+    same (tool, args) — plan-execute-trajectory.test.ts, agent-core 1006 pass.
 - [x] **D. LLM-as-judge (GEval-style) harness** — DONE: `llmJudge(provider,
   model)` added to `eval-harness.mjs` — the subjective-quality scorer tier
   (strict single-word PASS/FAIL verdict, temp 0, suite `repeat` for stability;
