@@ -15,6 +15,7 @@
  * tolerant read, atomic write, corrupt file quarantined aside.
  */
 
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
@@ -87,7 +88,11 @@ export async function readPendingApprovals(file: string): Promise<readonly Pendi
 
 async function writePendingApprovals(file: string, pending: readonly PendingApproval[]): Promise<void> {
   await fs.mkdir(dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
+  // The tmp name MUST be unique per in-flight write: two concurrent writes in
+  // the same millisecond+pid would otherwise pick the same tmp path, and one
+  // rename consumes the other's tmp → ENOENT. A random uuid guarantees
+  // uniqueness (there is no write-queue serialising callers here).
+  const tmp = `${file}.tmp-${process.pid.toString()}-${randomUUID()}`;
   const payload = `${JSON.stringify({ pending }, null, 2)}\n`;
   const handle = await fs.open(tmp, "w");
   try {

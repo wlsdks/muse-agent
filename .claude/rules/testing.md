@@ -53,7 +53,21 @@ test before HTTP smoke.
    unreachable (a skip is not a pass). Run it after touching any of
    those LLM paths (pattern synthesis, preference inference, skill /
    playbook merge) or their prompts.
-7. **Lint gate**:
+7. **Agent-eval gate** (the harness-based agent batteries as one):
+   ```bash
+   pnpm eval:agent
+   ```
+   Runs `eval:tools` (tool selection + ArgumentCorrectness),
+   `eval:judge` (LLM-as-judge meta-eval), `eval:adversarial`
+   (must-refuse safety + over-refusal controls), and
+   `eval:shadow-trial` (report-only promotion review) in one pass and
+   fails if ANY regresses — the agent-eval CI gate per
+   `docs/agent-eval-strategy.md`. All run on `scripts/eval-harness.mjs`
+   (runEvalSuite + scorers + llmJudge + runShadowTrial). **LOCAL OLLAMA
+   ONLY**; each battery skips (exit 0) when Ollama is unreachable. Run
+   after touching tool names/descriptions/schemas, the eval harness, or
+   any battery's cases.
+8. **Lint gate**:
    ```bash
    pnpm lint
    ```

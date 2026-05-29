@@ -40,6 +40,7 @@
     "eval:judge": "pnpm --filter @muse/model build && node scripts/eval-judge.mjs",
     "eval:adversarial": "pnpm --filter @muse/model build && node scripts/eval-adversarial.mjs",
     "eval:shadow-trial": "pnpm --filter @muse/model build && node scripts/eval-shadow-trial.mjs",
+    "eval:agent": "pnpm --filter @muse/model build && pnpm --filter @muse/tools build && node scripts/eval-agent.mjs",
     "eval:self-improving": "pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-self-improving.mjs",
     "demo": "pnpm --filter @muse/autoconfigure build && pnpm --filter @muse/mcp build && pnpm --filter @muse/messaging build && node scripts/demo.mjs",
     "dogfood:auto-extract": "pnpm --filter @muse/api build && pnpm --filter @muse/autoconfigure build && node scripts/dogfood-auto-extract.mjs",

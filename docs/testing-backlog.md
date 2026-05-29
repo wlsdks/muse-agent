@@ -115,9 +115,18 @@ the generic layers below because they test what makes Muse an *agent*.
   PG. The Kysely stores (runs, messages, tool-calls, approvals, checkpoints,
   traces) should have query-behavior tests against a real container, not just the
   in-memory store.
-- [ ] **Concurrency / races.** Atomic tmp+rename stores under concurrent writers,
+- [~] **Concurrency / races.** Atomic tmp+rename stores under concurrent writers,
   pending-approval cap under races, inbound dedup, single-flight daemons —
   interleave operations and assert no lost/duplicated/corrupt state.
+  - [x] First slice + a real bug FOUND & FIXED: appendInbound (write-queue)
+    preserves every record under 25 racing appends and isolates per-file;
+    recordPendingApproval CRASHED with an ENOENT tmp-rename race (tmp name was
+    `${pid}-${Date.now()}` → same-ms collision) — fixed with a random-uuid tmp
+    suffix. Store now never crashes/corrupts under concurrency (last-writer-wins
+    remains, documented). store-concurrency.test.ts (4 tests), full check green.
+  - [ ] Remaining: serialize pending-approval writes (write-queue, like inbox)
+    to also eliminate the last-writer-wins loss; inbound dedup + single-flight
+    daemon race tests.
 
 ## P5 — surface & contract
 
