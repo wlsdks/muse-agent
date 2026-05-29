@@ -40,7 +40,7 @@ the generic layers below because they test what makes Muse an *agent*.
 - [ ] **E. Adversarial eval battery** — prompt-injection / jailbreak / unsafe-
   tool-use as a scored must-refuse live battery (mirrors the eager-invocation
   negatives already in `eval:tools`).
-- [ ] **F. Constraint gates on self-authored skills (hermes-style)** — gate each
+- [x] **F. Constraint gates on self-authored skills (hermes-style)** — DONE (skill-review.ts size gate, wired into authoring producers). gate each
   session-authored skill on size (≤15 KB), tool-desc length, and a parse/lint
   check before it is loadable.
 - [ ] **G. Shadow-trial for memory/playbook promotion (OpenClaw-style)** — a

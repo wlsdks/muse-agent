@@ -87,7 +87,7 @@ export async function draftSkillFromSignal(
   } catch {
     return null;
   }
-  return parseSkillDraft(output);
+  return parseConstrainedSkillDraft(output);
 }
 
 export interface ReviewSkillsOptions extends DraftSkillOptions {
@@ -150,4 +150,35 @@ export function parseSkillDraft(raw: string): SkillDraft | null {
   const body = bodyMatch?.[1]?.trim();
   if (!name || !description || !body) return null;
   return { body, description, name };
+}
+
+// Hermes-agent-style constraint gates on a self-authored skill before it
+// becomes loadable: a runaway body bloats the context every future session,
+// and an over-long description crowds the one-shot tool-selection prompt
+// (tool-calling.md). Reject (don't truncate) so a bad draft is simply not
+// recorded, mirroring hermes' "skill <= 15 KB, tool-desc <= 500 chars" gate.
+const MAX_SKILL_BODY_BYTES = 15 * 1024;
+const MAX_SKILL_DESCRIPTION_CHARS = 500;
+const MAX_SKILL_NAME_CHARS = 80;
+
+export function skillDraftConstraintViolations(draft: SkillDraft): readonly string[] {
+  const violations: string[] = [];
+  const bodyBytes = Buffer.byteLength(draft.body, "utf8");
+  if (bodyBytes > MAX_SKILL_BODY_BYTES) {
+    violations.push(`body ${bodyBytes.toString()}B exceeds ${MAX_SKILL_BODY_BYTES.toString()}B`);
+  }
+  if (draft.description.length > MAX_SKILL_DESCRIPTION_CHARS) {
+    violations.push(`description ${draft.description.length.toString()} chars exceeds ${MAX_SKILL_DESCRIPTION_CHARS.toString()}`);
+  }
+  if (draft.name.length > MAX_SKILL_NAME_CHARS) {
+    violations.push(`name ${draft.name.length.toString()} chars exceeds ${MAX_SKILL_NAME_CHARS.toString()}`);
+  }
+  return violations;
+}
+
+/** Parse a draft AND enforce the constraint gate — null if unparseable or over-limit. */
+export function parseConstrainedSkillDraft(raw: string): SkillDraft | null {
+  const draft = parseSkillDraft(raw);
+  if (!draft) return null;
+  return skillDraftConstraintViolations(draft).length === 0 ? draft : null;
 }

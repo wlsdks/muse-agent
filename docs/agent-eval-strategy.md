@@ -117,9 +117,13 @@ of agent test is worth the most*.
     the model complies (correctly: a non-secret system prompt isn't refusal-
     worthy); the genuine secret-exfil injection is covered by the SYSTEM-OVERRIDE
     case. Complements the deterministic input guards (unit-tested), not replaces.
-- **F. Hermes-style constraint gates on self-authored skills** — Muse authors
-  skills at session end; gate each authored skill on size (≤15 KB), tool-desc
-  length, and a parse/lint check before it's loadable (mirror hermes).
+- [x] **F. Hermes-style constraint gates on self-authored skills** — DONE:
+  `skillDraftConstraintViolations(draft)` + `parseConstrainedSkillDraft(raw)`
+  (skill-review.ts) enforce body ≤15 KB (UTF-8 bytes), description ≤500 chars,
+  name ≤80 chars on top of the parse check; WIRED into both authoring producers
+  (`draftSkillFromSignal`, `mergeSkillsIntoUmbrella`) so an over-limit draft is
+  rejected (null/undefined), never recorded — mirrors hermes' skill/tool-desc
+  size gate. 11 tests + full `pnpm check` green (6118).
 - **G. OpenClaw-style shadow-trial for memory/playbook promotion** — before a
   distilled strategy / promoted memory goes live, a report-only baseline-vs-
   candidate judge with verdict/reason/risk, kept separate from the live store.

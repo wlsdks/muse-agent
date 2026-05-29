@@ -13,7 +13,7 @@
 import type { ModelMessage, ModelProvider, ModelRequest } from "@muse/model";
 import { redactSecretsInText } from "@muse/shared";
 
-import { parseSkillDraft, type SkillDraft } from "./skill-review.js";
+import { parseConstrainedSkillDraft, type SkillDraft } from "./skill-review.js";
 
 export interface MergeSkillsOptions {
   readonly modelProvider: Pick<ModelProvider, "generate">;
@@ -65,5 +65,5 @@ export async function mergeSkillsIntoUmbrella(
   } catch {
     return undefined;
   }
-  return parseSkillDraft(output) ?? undefined;
+  return parseConstrainedSkillDraft(output) ?? undefined;
 }
