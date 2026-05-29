@@ -57,6 +57,7 @@ import { registerMcpCommands } from "./commands-mcp.js";
 import { registerAgentsCommands } from "./commands-agents.js";
 import { registerDaemonCommands } from "./commands-daemon.js";
 import { registerIngestCommand } from "./chat-export-ingest.js";
+import { registerOnboardCommand } from "./commands-onboard.js";
 import { registerProactiveCommands } from "./commands-proactive.js";
 import { registerProposeCommands } from "./commands-propose.js";
 import { registerSkillsCommands } from "./commands-skills.js";
@@ -422,6 +423,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerSkillsCommands(program, io);
   registerAgentsCommands(program, io);
   registerIngestCommand(program, io);
+  registerOnboardCommand(program, io);
 
   registerSpecsCommands(program, io, { apiRequest, writeOutput });
 

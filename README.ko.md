@@ -6,6 +6,10 @@
 "잘 모르겠어"라고 말한다. 전부 네 기기 안에서만 돌아가고, 한 글자도
 밖으로 안 나간다 — 약속이 아니라 코드로 막아뒀다.
 
+**빠른 시작:** `muse onboard` 가 설치 직후부터 첫 인용 답변까지 **다음 한
+명령씩** 안내한다 (노트 폴더를 가리키거나, ChatGPT/Claude export·`.mbox`를
+`muse ingest` 한 뒤 `muse ask --notes-only "…"`).
+
 [English README →](README.md)
 
 ## Muse가 무엇인가

@@ -7,6 +7,11 @@ exact source, says "I'm not sure" instead of making things up, and runs
 entirely on your machine. Nothing ever leaves it. That's not a setting;
 it's enforced in the code.
 
+**Quickstart:** `muse onboard` walks you — one command at a time — from a
+fresh install to your first private, cited answer (point it at a notes
+folder, or `muse ingest` a ChatGPT/Claude export or an `.mbox`, then
+`muse ask --notes-only "…"`).
+
 [한국어 README →](README.ko.md)
 
 <!--LIVE_URL-->📊 **Live progress:** _not exposed yet — start it with `pnpm dashboard:tunnel` (needs the `cloudflared` binary; no account). The loop writes the current public URL on this line and refreshes it when it rotates. Locally any time: `node scripts/dashboard-server.mjs` → <http://127.0.0.1:8787> (read-only, 127.0.0.1-only)._<!--/LIVE_URL-->

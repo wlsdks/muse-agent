@@ -106,8 +106,15 @@ The slogan "It can't tell anyone… enforced in the code" is literally true.
      told NOT to cite it as fact (+ a "⚠ LOW confidence — verify" banner). The
      headline command now embodies "says I'm not sure instead of making things
      up," not just `knowledge_search`.
-   - [NEXT] Make `muse ask --notes-only` the surfaced default UX + a guided
-     onboarding (install + Ollama + first reindex one-command).
+   - [DONE — onboarding] `muse onboard` is the guided front door: a pure,
+     tested `computeOnboarding` checks readiness (Ollama → chat model → embed
+     model → corpus → index) and prints the SINGLE next command until
+     `muse ask` returns a cited answer. README leads with it. Verified by 6
+     unit tests + a live run (all-green → "Ready, ask your own machine").
+   Phase 1 COMPLETE: the wedge is live-proven (cited recall + refusal), eats
+   the pain corpus (chat-export + .mbox ingest), the headline command embodies
+   the gate (`muse ask` CRAG), and a guided onboarding walks a new user to the
+   first cited answer.
 2. **Trust instrumentation** — log every surfaced/recalled item's deterministic
    trigger + a one-tap veto; track precision; quiet-hours + caps.
 3. **Proactivity (the north star)** — turn the SAME deterministic-retrieval +
