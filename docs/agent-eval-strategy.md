@@ -128,9 +128,13 @@ of agent test is worth the most*.
     REAL planning prompt (buildPlanningSystemPrompt) for multi-step goals on
     qwen3:8b, parses with parsePlan, and scores the plan VALID (available tools)
     ∧ COMPLETE (covers the required tools) ∧ ORDERED (dependency subsequence) ∧
-    EFFICIENT (no redundant repeat / padding). 4/4 (100%) @ REPEAT=2. (Finding:
+    EFFICIENT (no redundant repeat / padding). 8/8 (100%) @ REPEAT=2 — incl. a
+    3-step dependency chain (web_search → calculate → set_reminder), a KO 2-step
+    goal, a single-tool goal (no padding), and a pure-generation goal whose
+    correct plan is EMPTY (over-tooling = a tool on a poem fails). (Finding:
     a too-small maxOutputTokens truncates the plan JSON mid-array → unparseable;
-    the battery uses 700 so a 2-step plan never cuts off.)
+    the battery uses 700+ so a multi-step plan never cuts off.) Gated in
+    `eval:agent`.
 - [x] **D. LLM-as-judge (GEval-style) harness** — DONE: `llmJudge(provider,
   model)` added to `eval-harness.mjs` — the subjective-quality scorer tier
   (strict single-word PASS/FAIL verdict, temp 0, suite `repeat` for stability;

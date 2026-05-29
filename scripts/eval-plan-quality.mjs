@@ -42,7 +42,11 @@ const CASES = [
   { prompt: "Check the weather in Seoul, then set a reminder at 8am to bring an umbrella.", expect: ["get_weather", "set_reminder"], note: "weather → reminder (EN)" },
   { prompt: "Look up the weather in Tokyo, then remind me at 7pm to pack accordingly.", expect: ["get_weather", "set_reminder"], note: "weather → reminder (EN, paraphrase)" },
   { prompt: "Find the population of France online, then calculate 12% of it.", expect: ["web_search", "calculate"], note: "web_search → calculate (dependency order)" },
-  { prompt: "What's the weather in Busan? Also remind me tomorrow at 9am to water the plants.", expect: ["get_weather", "set_reminder"], note: "weather + reminder (compound)" }
+  { prompt: "What's the weather in Busan? Also remind me tomorrow at 9am to water the plants.", expect: ["get_weather", "set_reminder"], note: "weather + reminder (compound)" },
+  { prompt: "Search the web for Tokyo's current temperature in Celsius, calculate the Fahrenheit equivalent, then remind me at 6pm of the result.", expect: ["web_search", "calculate", "set_reminder"], note: "3-step dependency chain (web_search → calculate → set_reminder)" },
+  { prompt: "서울 날씨 확인하고, 오후 6시에 우산 챙기라고 알려줘.", expect: ["get_weather", "set_reminder"], note: "KO 2-step (weather → reminder)" },
+  { prompt: "What is 18% of 240?", expect: ["calculate"], note: "single-tool goal — no padding (exactly calculate)" },
+  { prompt: "Write me a short two-line poem about the autumn sky.", expect: [], note: "pure generation — the plan must be EMPTY (no over-tooling)" }
 ];
 
 async function ollamaReachable() {
@@ -73,7 +77,10 @@ function scorePlanQuality(plan, testCase) {
     if (seen.has(key)) return { ok: false, detail: `redundant repeat of ${s.tool}` };
     seen.add(key);
   }
-  if (plan.length > testCase.expect.length + 1) return { ok: false, detail: `padded: ${plan.length} steps for a ${testCase.expect.length}-tool goal` };
+  // Padding bound: a tool goal may carry ONE optional helper step; a pure-
+  // generation goal (expect: []) must plan ZERO tools — any tool is over-tooling.
+  const padAllowance = testCase.expect.length === 0 ? 0 : 1;
+  if (plan.length > testCase.expect.length + padAllowance) return { ok: false, detail: `over-tooled: ${plan.length} steps for a ${testCase.expect.length}-tool goal (${JSON.stringify(tools)})` };
   // ORDERED — the required tools appear in dependency order (subsequence match)
   let idx = 0;
   for (const t of tools) {
