@@ -27,7 +27,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, selectByMmr } from "@muse/agent-core";
+import { classifyRetrievalConfidence, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, selectByMmr, type RetrievalConfidence } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveEpisodesFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
@@ -252,6 +252,29 @@ export function diversifyAskChunks(candidates: readonly ScoredChunk[], topK: num
     topK
   );
   return order.map((k) => sorted[Number(k)]!);
+}
+
+/**
+ * CRAG confidence gate for `muse ask`'s notes grounding — the headline-surface
+ * embodiment of Muse's identity ("says I'm not sure instead of making things
+ * up"). The chunk score IS the absolute cosine, so we grade the top match: a
+ * CONFIDENT hit is framed for citation; a merely AMBIGUOUS (weak near-miss) set
+ * is flagged LOW-confidence so the small model is told NOT to cite it as fact;
+ * `none` keeps the plain header (the "no relevant notes" block already shows).
+ * Pure + exported for direct unit coverage.
+ */
+export function notesGroundingFraming(scored: readonly ScoredChunk[]): { readonly verdict: RetrievalConfidence; readonly header: string; readonly guidance?: string } {
+  const verdict = scored.length === 0
+    ? "none"
+    : classifyRetrievalConfidence(scored.map((s) => ({ cosine: s.score, score: s.score, source: s.file, text: s.chunk.text })));
+  if (verdict === "ambiguous") {
+    return {
+      guidance: "The USER NOTES below are only WEAK matches (low retrieval confidence). Do NOT present them as established fact; if they do not clearly answer the question, say you are not sure rather than cite a weak match.",
+      header: "=== USER NOTES (LOW confidence — weak matches; verify, do not cite as fact) ===",
+      verdict
+    };
+  }
+  return { header: "=== USER NOTES (top relevant chunks) ===", verdict };
 }
 
 
@@ -654,6 +677,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // the start + end, least in the middle) per "Lost in the Middle" so the
       // small local model actually attends to the strongest grounding.
       const contextChunks = reorderForLongContext(scored);
+      // CRAG: grade the notes' retrieval confidence so a weak near-miss isn't
+      // presented to the small model as something to cite as fact.
+      const notesFraming = notesGroundingFraming(scored);
       const contextBlock = notesUnavailable
         ? "(notes search unavailable this turn — answer from the other grounding sources)"
         : contextChunks.length === 0
@@ -795,6 +821,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         "You are Muse, the user's JARVIS-style personal AI conductor.",
         "Answer the user's question USING ONLY the notes, open tasks, upcoming events, pending reminders, past session summaries, and recent feed headlines provided below as context.",
         "If none of the provided context contains enough information, say so directly — do not invent facts.",
+        ...(notesFraming.guidance ? [notesFraming.guidance] : []),
         "Reply in the user's preferred language (from persona prefs).",
         "Keep it concise — 2–4 sentences unless the question explicitly needs more.",
         "Do NOT include the raw '<<note N — ...>>' / '<<task N>>' / '<<event N>>' / '<<reminder N>>' wrapper markers in your answer; speak naturally.",
@@ -811,7 +838,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         "  - for feed headlines: [feed: Hacker News]",
         "Use only the filename (not the full path or score) when citing a note.",
         "",
-        "=== USER NOTES (top relevant chunks) ===",
+        notesFraming.header,
         contextBlock,
         "=== END NOTES ===",
         "",
@@ -840,7 +867,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // sees what's being grounded against, then the model output.
       const groundedParts: string[] = [];
       if (scored.length > 0) {
-        groundedParts.push(`${scored.length.toString()} note chunk(s) — ${scored.map((r) => r.file.split("/").pop()).join(", ")}`);
+        const conf = notesFraming.verdict === "ambiguous" ? " ⚠ LOW confidence — verify, may not be in your notes" : "";
+        groundedParts.push(`${scored.length.toString()} note chunk(s) — ${scored.map((r) => r.file.split("/").pop()).join(", ")}${conf}`);
       }
       if (openTasks.length > 0) {
         groundedParts.push(`${openTasks.length.toString()} open task(s)`);
