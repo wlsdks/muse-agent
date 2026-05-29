@@ -8,12 +8,13 @@
  */
 
 import { queryContacts, readReminders, readTasks } from "@muse/mcp";
-import { resolveContactsFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
+import { resolveContactsFile, resolveLocalCalendarFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
+import { LocalCalendarProvider, type CalendarEvent } from "@muse/calendar";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
 
-export type FindDomain = "task" | "reminder" | "contact";
+export type FindDomain = "task" | "reminder" | "contact" | "event";
 
 export interface FindHit {
   readonly domain: FindDomain;
@@ -34,6 +35,7 @@ export interface FindSources {
     readonly phone?: string;
     readonly aliases?: readonly string[];
   }[];
+  readonly events?: readonly { readonly id: string; readonly title?: string; readonly notes?: string }[];
 }
 
 /**
@@ -65,15 +67,30 @@ export function findAcrossDomains(sources: FindSources, query: string): readonly
       hits.push({ domain: "contact", id: contact.id, label: contact.name ?? "" });
     }
   }
+  for (const event of sources.events ?? []) {
+    if (has(event.title) || has(event.notes)) {
+      hits.push({
+        domain: "event",
+        id: event.id,
+        label: event.title ?? "(untitled)",
+        ...(has(event.notes) && !has(event.title) ? { context: event.notes } : {})
+      });
+    }
+  }
   return hits;
 }
 
-const DOMAIN_LABELS: Record<FindDomain, string> = { task: "Tasks", reminder: "Reminders", contact: "Contacts" };
+const DOMAIN_LABELS: Record<FindDomain, string> = {
+  task: "Tasks",
+  reminder: "Reminders",
+  contact: "Contacts",
+  event: "Calendar"
+};
 
 export function registerFindCommand(program: Command, io: ProgramIO): void {
   program
     .command("find")
-    .description("Search your tasks, reminders, and contacts for a term (local substring). Notes → `muse notes search`; memory → `muse recall`.")
+    .description("Search your tasks, reminders, contacts, and calendar for a term (local substring). Notes → `muse notes search`; memory → `muse recall`.")
     .argument("<query...>", "Text to look for, e.g. 'dentist' (joined by spaces)")
     .option("--json", "Print the raw hits instead of the grouped list")
     .action(async (parts: readonly string[], options: { readonly json?: boolean }) => {
@@ -82,12 +99,19 @@ export function registerFindCommand(program: Command, io: ProgramIO): void {
         throw new Error("find needs a query, e.g. `muse find dentist`");
       }
       const env = process.env as Record<string, string | undefined>;
-      const [tasks, reminders, contacts] = await Promise.all([
+      const now = Date.now();
+      const readLocalEvents = async (): Promise<readonly CalendarEvent[]> =>
+        new LocalCalendarProvider({ file: resolveLocalCalendarFile(env) }).listEvents({
+          from: new Date(now - 365 * 86_400_000),
+          to: new Date(now + 365 * 86_400_000)
+        });
+      const [tasks, reminders, contacts, events] = await Promise.all([
         readTasks(resolveTasksFile(env)).catch(() => []),
         readReminders(resolveRemindersFile(env)).catch(() => []),
-        queryContacts(resolveContactsFile(env)).catch(() => [])
+        queryContacts(resolveContactsFile(env)).catch(() => []),
+        readLocalEvents().catch(() => [])
       ]);
-      const hits = findAcrossDomains({ contacts, reminders, tasks }, query);
+      const hits = findAcrossDomains({ contacts, events, reminders, tasks }, query);
       if (options.json) {
         io.stdout(`${JSON.stringify({ hits, query, total: hits.length }, null, 2)}\n`);
         return;
@@ -97,7 +121,7 @@ export function registerFindCommand(program: Command, io: ProgramIO): void {
         return;
       }
       io.stdout(`Found ${hits.length.toString()} match(es) for "${query}":\n`);
-      for (const domain of ["task", "reminder", "contact"] as const) {
+      for (const domain of ["task", "reminder", "contact", "event"] as const) {
         const group = hits.filter((hit) => hit.domain === domain);
         if (group.length === 0) continue;
         io.stdout(`  ${DOMAIN_LABELS[domain]}:\n`);

@@ -13,12 +13,16 @@ describe("findAcrossDomains — substring across tasks/reminders/contacts", () =
       { id: "c1", name: "Dr. Dentist", email: "doc@clinic.test" },
       { id: "c2", name: "Bob", aliases: ["dentist guy"] },
       { id: "c3", name: "Alice" }
+    ],
+    events: [
+      { id: "ev1", title: "Dentist checkup", notes: "bring insurance card" },
+      { id: "ev2", title: "Team sync" }
     ]
   };
 
-  it("matches across all three domains, case-insensitively", () => {
+  it("matches across all four domains, case-insensitively", () => {
     const hits = findAcrossDomains(sources, "DENTIST");
-    expect(hits.map((h) => `${h.domain}:${h.id}`)).toEqual(["task:t1", "reminder:r1", "contact:c1", "contact:c2"]);
+    expect(hits.map((h) => `${h.domain}:${h.id}`)).toEqual(["task:t1", "reminder:r1", "contact:c1", "contact:c2", "event:ev1"]);
   });
 
   it("surfaces the matched notes as context when the title didn't match", () => {
