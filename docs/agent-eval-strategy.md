@@ -85,9 +85,14 @@ of agent test is worth the most*.
     mutation under a repeated idempotency-keyed call, no mutation when the model
     answers directly, and no mutation when the tool fails (run still completes).
     terminal-state-task-completion.test.ts, agent-core 973 pass.
-  - [ ] Remaining: extend to a real Muse built-in store tool (tasks/notes
-    provider) and to the plan_execute path; ideally a steerable diagnostic so the
-    full assembly drives a mutating tool end-to-end.
+  - [x] Real built-in store tool: remember_fact driven through the REAL
+    ToolExecutor over a contract-faithful RememberFactStore asserts the world
+    state (fact vs preference routing, snake_case slug normalization, per-user
+    isolation) AND that an invalid call (missing value / non-alnum key) mutates
+    NOTHING — the τ-bench no-partial-side-effect property on a production tool.
+    packages/mcp/test/remember-fact-terminal-state.test.ts (6 tests).
+  - [ ] Remaining: a steerable diagnostic so the FULL assembly drives a mutating
+    tool end-to-end (today the diagnostic only plans the read-only time_now).
 - **C. Trajectory / step assertions on multi-step runs** — assert the ordered
   spans of a plan_execute / tool-loop run (plan generated → tool called →
   synthesis), incl. adherence + step-efficiency (no redundant calls).
