@@ -238,11 +238,17 @@ the generic layers below because they test what makes Muse an *agent*.
     preserved (was last-writer-wins → 1) + each still individually checkable by
     the fail-closed gate, 15 concurrent re-grants of one id converge to a single
     record. +2 tests.
-  - [ ] Remaining: migrate the other ~15 read-modify-write stores
+  - [x] Migration 3 — personal-veto-store (outbound-safety reversibility: a
+    learned-avoidance the agent must not forget). recordVeto + removeVeto now
+    serialised + atomicWriteFile: 20 concurrent distinct vetoes all preserved
+    (still avoidance-checkable), 10 concurrent removes drop exactly the targeted
+    ones. +2 tests. **The outbound-safety store trio consent+veto+the
+    audit/approval stores is now concurrency-safe.**
+  - [ ] Remaining: migrate the other ~14 read-modify-write stores
     (reminders / tasks / followups / playbook / episodes / proactive-history /
-    veto / contacts / patterns-fired / plan-cache / …) onto the shared helper —
-    a cheap one-each adoption (veto is the next safety-relevant one). inbound
-    dedup + single-flight daemon race tests also open.
+    contacts / patterns-fired / plan-cache / …) onto the shared helper —
+    a cheap one-each adoption. inbound dedup + single-flight daemon race tests
+    also open.
 
 ## P5 — surface & contract
 

@@ -17,9 +17,10 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
+
+import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
 export interface ActionVeto {
   readonly id: string;
@@ -62,18 +63,9 @@ export async function readVetoes(file: string): Promise<readonly ActionVeto[]> {
 }
 
 export async function writeVetoes(file: string, vetoes: readonly ActionVeto[]): Promise<void> {
-  const payload = `${JSON.stringify({ vetoes }, null, 2)}\n`;
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  const handle = await fs.open(tmp, "w", 0o600);
-  try {
-    await handle.writeFile(payload, "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  // Atomic, fsync'd, owner-only write via the shared primitive (randomUUID tmp →
+  // no same-ms rename-collision crash).
+  await atomicWriteFile(file, `${JSON.stringify({ vetoes }, null, 2)}\n`);
 }
 
 /**
@@ -81,9 +73,14 @@ export async function writeVetoes(file: string, vetoes: readonly ActionVeto[]): 
  * REPLACES (updating the reason/timestamp without duplicating).
  */
 export async function recordVeto(file: string, veto: ActionVeto): Promise<void> {
-  const existing = await readVetoes(file);
-  const filtered = existing.filter((entry) => entry.id !== veto.id);
-  await writeVetoes(file, [...filtered, veto]);
+  // Serialise the read-modify-write: a lost veto = a learned-avoidance the agent
+  // forgets, so it re-attempts an action the user already refused (outbound-
+  // safety reversibility / veto). Concurrent records must not clobber.
+  await withFileMutationQueue(file, async () => {
+    const existing = await readVetoes(file);
+    const filtered = existing.filter((entry) => entry.id !== veto.id);
+    await writeVetoes(file, [...filtered, veto]);
+  });
 }
 
 /**
@@ -124,13 +121,15 @@ export async function queryVetoes(
  * longer injects and the consented-action gate no longer blocks.
  */
 export async function removeVeto(file: string, id: string): Promise<boolean> {
-  const existing = await readVetoes(file);
-  const next = existing.filter((entry) => entry.id !== id);
-  if (next.length === existing.length) {
-    return false;
-  }
-  await writeVetoes(file, next);
-  return true;
+  return withFileMutationQueue(file, async () => {
+    const existing = await readVetoes(file);
+    const next = existing.filter((entry) => entry.id !== id);
+    if (next.length === existing.length) {
+      return false;
+    }
+    await writeVetoes(file, next);
+    return true;
+  });
 }
 
 /**

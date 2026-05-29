@@ -107,4 +107,29 @@ describe("personal-veto-store review + clear — P7-b2", () => {
     expect(await removeVeto(file, "v1")).toBe(true);
     expect((await queryVetoes(file, { userId: "stark" })).map((v) => v.id)).toEqual(["v2"]);
   });
+
+  // Concurrency (shared atomic-file helper migration): recordVeto / removeVeto
+  // are read-modify-write. A lost veto = a learned-avoidance the agent forgets,
+  // so it re-attempts an action the user already refused (outbound-safety
+  // reversibility). These assert lossless, crash-free concurrent record+remove.
+  describe("concurrent record + remove", () => {
+    it("preserves EVERY distinct veto recorded concurrently (no last-writer-wins loss)", async () => {
+      const file = tmpFile();
+      await Promise.all(Array.from({ length: 20 }, (_unused, i) =>
+        recordVeto(file, veto({ id: `v${i.toString()}`, objectiveId: `obj_${i.toString()}` }))));
+      expect(await readVetoes(file)).toHaveLength(20);
+      // the avoidance still fires for each recorded class (fail-closed gate sees them)
+      expect(await hasVeto(file, { objectiveId: "obj_9", scope: "github:issues:write", userId: "stark" })).toBe(true);
+    });
+
+    it("concurrent removes drop exactly the targeted vetoes, leaving the rest intact", async () => {
+      const file = tmpFile();
+      await Promise.all(Array.from({ length: 20 }, (_unused, i) =>
+        recordVeto(file, veto({ id: `v${i.toString()}`, objectiveId: `obj_${i.toString()}` }))));
+      await Promise.all(Array.from({ length: 10 }, (_unused, i) => removeVeto(file, `v${i.toString()}`)));
+      const remaining = await readVetoes(file);
+      expect(remaining).toHaveLength(10);
+      expect(remaining.every((v) => Number(v.id.slice(1)) >= 10)).toBe(true);
+    });
+  });
 });
