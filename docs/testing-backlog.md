@@ -57,7 +57,7 @@ the generic layers below because they test what makes Muse an *agent*.
   file the surviving-mutant hotspots as follow-up. NOTE: adds a devDep + config —
   needs human OK for the lockfile change before committing tooling; until then,
   do it as a throwaway local measurement and record the score here.
-- [~] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
+- [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
   fallback policy, circuit-breaker open, and that a partial stream surfaces an
@@ -80,8 +80,12 @@ the generic layers below because they test what makes Muse an *agent*.
     exhausted-retry invocation is ONE breaker failure so the breaker opens and the
     next call short-circuits WITHOUT touching the provider. model-invocation.test.ts
     +5 (1011 pass). Pre-verified attempt/short-circuit counts via dist.
-  - [ ] Remaining: a streaming mid-stream `{error}` surfaced as an error event
-    end-to-end (the stream() path, distinct from invokeModel's generate seam).
+  - [x] Streaming mid-stream `{error}`: executeStreamingModelLoop SURFACES the
+    error as an error event to the consumer (after the partial text-deltas it had
+    already yielded — no silent truncation) AND records it on the tracing span
+    (setError), THEN throws the same error instance — never reaching a false
+    `done`. execute-streaming-model-loop.test.ts +3 (1014 pass). Pre-verified via
+    dist that the error event is yielded before the throw.
 - [x] **Tool-loop limits & runaway guards.** maxToolCalls, maxRunWallclockMs,
   maxToolOutputChars, tool-output recursion — exercise each cap end-to-end with a
   fake tool that tries to exceed it; assert the loop stops deterministically.
