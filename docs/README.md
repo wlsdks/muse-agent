@@ -17,6 +17,7 @@ Muse 문서는 "필요한 것만, 짧게, 잘 분리해서" 유지합니다. 처
 | **[SYSTEM-MAP.md](SYSTEM-MAP.md)** | Muse 기능을 한눈에 보는 구조 지도 (말로만, 빠른 파악용) | 기획·개발 모두 / 처음 보는 사람 |
 | **[FEATURES.md](FEATURES.md)** | 기능별 상세 정의 (사용자 입장에서 무엇을 어떻게) | 기획·설계 의사결정 |
 | **[strategy/identity.md](strategy/identity.md)** | 제품 정체성·전략·북극성 ("왜 Muse인가") | 방향 결정 |
+| **[privacy-and-data.md](privacy-and-data.md)** | 내 데이터는 어디 있고 무엇이 절대 안 나가나 (프라이버시 요약) | 도입 전 확인하는 사람 |
 
 ## 직접 돌려보려면
 
