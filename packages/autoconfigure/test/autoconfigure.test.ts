@@ -67,12 +67,16 @@ describe("autoconfigure", () => {
 
     expect(assembly.authService).toBeUndefined();
     expect(assembly.requireAuth).toBe(false);
-    expect(assembly.agentRuntime).toBeUndefined();
+    // Local-first: with zero config (and local-only on by default) the runtime
+    // resolves the local Ollama default model, so a working agentRuntime IS
+    // assembled — no cloud key, no env needed.
+    expect(assembly.agentRuntime).toBeTruthy();
     expect(assembly.mcp.manager.getToolCatalog()).toEqual([]);
     expect(assembly.cache.responseCache.size()).toBe(0);
     expect(assembly.observability.metrics.recordedEvents()).toEqual([]);
     expect(assembly.observability.followupSuggestionStore.aggregateStats().totalImpressions).toBe(0);
-    expect(assembly.resilience.circuitBreakerRegistry.names()).toEqual([]);
+    // The local-first default provider registers its own generate breaker.
+    expect(assembly.resilience.circuitBreakerRegistry.names()).toEqual(["model.generate"]);
     expect(assembly.scheduler.store.list()).toEqual([]);
     expect(assembly.scheduler.service).toBeTruthy();
     expect(assembly.toolRegistry.list().map((tool) => tool.definition.name)).toEqual(expect.arrayContaining([
@@ -913,22 +917,34 @@ describe("autoconfigure", () => {
       .toBe("anthropic/claude-haiku-4-5-20251001");
   });
 
-  it("resolveDefaultModel infers from credentials when MUSE_MODEL is unset", () => {
-    expect(resolveDefaultModel({ GEMINI_API_KEY: "x" })).toBe("gemini/gemini-2.0-flash");
-    expect(resolveDefaultModel({ GOOGLE_API_KEY: "x" })).toBe("gemini/gemini-2.0-flash");
-    expect(resolveDefaultModel({ OPENAI_API_KEY: "x" })).toBe("openai/gpt-4o-mini");
-    expect(resolveDefaultModel({ ANTHROPIC_API_KEY: "x" })).toBe("anthropic/claude-haiku-4-5-20251001");
-    expect(resolveDefaultModel({ OPENROUTER_API_KEY: "x" }))
+  it("resolveDefaultModel is LOCAL-first by default — ignores ambient cloud keys under local-only", () => {
+    // The whole product stance: local-only is on by default, so the
+    // zero-config default is the local model even if a cloud key is in env
+    // (which the local-only gate would refuse anyway). Cloud inference is
+    // gated behind an explicit MUSE_LOCAL_ONLY=false opt-out.
+    expect(resolveDefaultModel({})).toBe("ollama/qwen3:8b");
+    expect(resolveDefaultModel({ GEMINI_API_KEY: "x" })).toBe("ollama/qwen3:8b");
+    expect(resolveDefaultModel({ OPENAI_API_KEY: "x" })).toBe("ollama/qwen3:8b");
+  });
+
+  it("resolveDefaultModel infers from credentials only when local-only is opted out", () => {
+    const off = { MUSE_LOCAL_ONLY: "false" } as const;
+    expect(resolveDefaultModel({ ...off, GEMINI_API_KEY: "x" })).toBe("gemini/gemini-2.0-flash");
+    expect(resolveDefaultModel({ ...off, GOOGLE_API_KEY: "x" })).toBe("gemini/gemini-2.0-flash");
+    expect(resolveDefaultModel({ ...off, OPENAI_API_KEY: "x" })).toBe("openai/gpt-4o-mini");
+    expect(resolveDefaultModel({ ...off, ANTHROPIC_API_KEY: "x" })).toBe("anthropic/claude-haiku-4-5-20251001");
+    expect(resolveDefaultModel({ ...off, OPENROUTER_API_KEY: "x" }))
       .toBe("openrouter/google/gemini-2.0-flash-001");
   });
 
-  it("resolveDefaultModel returns undefined when no model + no credentials present", () => {
-    expect(resolveDefaultModel({})).toBeUndefined();
+  it("resolveDefaultModel returns undefined only when opted out with no credentials", () => {
+    expect(resolveDefaultModel({ MUSE_LOCAL_ONLY: "false" })).toBeUndefined();
   });
 
-  it("resolveDefaultModel prefers GEMINI over OPENAI when both keys are present", () => {
+  it("resolveDefaultModel prefers GEMINI over OPENAI when both keys are present (opted out)", () => {
     expect(resolveDefaultModel({
       GEMINI_API_KEY: "g",
+      MUSE_LOCAL_ONLY: "false",
       OPENAI_API_KEY: "o"
     })).toBe("gemini/gemini-2.0-flash");
   });

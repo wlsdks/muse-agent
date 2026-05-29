@@ -7635,7 +7635,8 @@ describe("cli program", () => {
       openai: process.env.OPENAI_API_KEY,
       openrouter: process.env.OPENROUTER_API_KEY,
       ollama: process.env.OLLAMA_BASE_URL,
-      modelKeysFile: process.env.MUSE_MODEL_KEYS_FILE
+      modelKeysFile: process.env.MUSE_MODEL_KEYS_FILE,
+      localOnly: process.env.MUSE_LOCAL_ONLY
     };
     // Block the real ~/.muse/models.json overlay so the wizard
     // can't leak into the env-only case.
@@ -7646,6 +7647,9 @@ describe("cli program", () => {
     delete process.env.OPENAI_API_KEY;
     delete process.env.OPENROUTER_API_KEY;
     delete process.env.OLLAMA_BASE_URL;
+    // This case tests CLOUD-key inference, which is gated behind the
+    // local-only opt-out (local-first ignores ambient cloud keys by default).
+    process.env.MUSE_LOCAL_ONLY = "false";
     process.env.MUSE_MODEL_KEYS_FILE = path.join(await mkdtemp(path.join(tmpdir(), "muse-status-modelinf-")), "missing.json");
     try {
       // 1) GEMINI_API_KEY only → inferred gemini/gemini-2.0-flash.
@@ -7694,6 +7698,7 @@ describe("cli program", () => {
       restore("openrouter", "OPENROUTER_API_KEY");
       restore("ollama", "OLLAMA_BASE_URL");
       restore("modelKeysFile", "MUSE_MODEL_KEYS_FILE");
+      restore("localOnly", "MUSE_LOCAL_ONLY");
     }
   });
 
