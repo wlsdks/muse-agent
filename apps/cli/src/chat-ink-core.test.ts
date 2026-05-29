@@ -413,6 +413,12 @@ describe("buildRecap", () => {
       .toBe("Where we left off: Shipped the approval gate · 2 tasks, 1 follow-up waiting");
     expect(buildRecap({ pendingTasks: 1 })).toBe("Where we left off: 1 task waiting");
   });
+  it("surfaces voiced-but-untracked open loops, distinct from tracked items", () => {
+    expect(buildRecap({ openCommitments: 2 })).toBe("Where we left off: 2 loose ends you mentioned");
+    expect(buildRecap({ lastEpisode: "X", pendingTasks: 1, openCommitments: 1 }))
+      .toBe("Where we left off: X · 1 task waiting · 1 loose end you mentioned");
+    expect(buildRecap({ openCommitments: 0 })).toBe("");
+  });
   it("returns empty string for a brand-new relationship", () => {
     expect(buildRecap({})).toBe("");
     expect(buildRecap({ pendingTasks: 0, pendingFollowups: 0 })).toBe("");

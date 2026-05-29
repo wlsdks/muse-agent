@@ -12,6 +12,7 @@ import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { FileSystemSkillLoader } from "./skill-loader.js";
+import { parseSkillFile } from "./skill-parser.js";
 import type { Skill } from "./skill-contract.js";
 
 export interface SkillDraft {
@@ -20,7 +21,42 @@ export interface SkillDraft {
   readonly body: string;
 }
 
-export type AuthorAction = "create" | "patch" | "skip";
+export type AuthorAction = "create" | "patch" | "skip" | "quarantined";
+
+export interface SkillRiskScan {
+  readonly flagged: boolean;
+  readonly reasons: readonly string[];
+}
+
+/**
+ * Defense-in-depth for AUTO-authored skill bodies: they are distilled by the
+ * local model from corrections that can echo UNTRUSTED tool output, then
+ * auto-injected into later prompts. A poisoned body could carry a persistent
+ * prompt-injection or a copy-paste-dangerous command. High-precision patterns
+ * only — a normal procedural skill won't match — so a flag is a real signal,
+ * not noise. The store quarantines a flagged body instead of activating it.
+ *
+ * Pattern adapted from OpenClaw's skill-workshop scan-before-activate (MIT) —
+ * deterministic reimplementation for Muse, no code copied. See THIRD_PARTY_NOTICES.md.
+ */
+const SKILL_RISK_PATTERNS: readonly { readonly label: string; readonly re: RegExp }[] = [
+  { label: "prompt-injection", re: /\bignore\s+(?:all\s+|any\s+|the\s+)?(?:previous|prior|earlier|above)\s+(?:instructions?|prompts?)\b/iu },
+  { label: "prompt-injection", re: /\bdisregard\s+(?:the\s+)?(?:above|prior|previous|earlier|system)\b/iu },
+  { label: "prompt-injection", re: /\b(?:reveal|print|repeat|leak|show)\s+(?:me\s+)?(?:the\s+|your\s+)?system\s+prompt\b/iu },
+  { label: "dangerous-shell", re: /\brm\s+-rf\b/iu },
+  { label: "dangerous-shell", re: /\b(?:curl|wget)\b[^\n|]*\|\s*(?:sh|bash|zsh)\b/iu },
+  { label: "dangerous-shell", re: /:\s*\(\s*\)\s*\{[^}]*\|[^}]*&\s*\}\s*;/u },
+  { label: "embedded-secret", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----/u },
+  { label: "embedded-secret", re: /\bAKIA[0-9A-Z]{16}\b/u }
+];
+
+export function scanSkillBodyForRisks(body: string): SkillRiskScan {
+  const reasons: string[] = [];
+  for (const { label, re } of SKILL_RISK_PATTERNS) {
+    if (re.test(body) && !reasons.includes(label)) reasons.push(label);
+  }
+  return { flagged: reasons.length > 0, reasons };
+}
 
 export interface AuthoredSkillStoreOptions {
   readonly dir: string;
@@ -99,7 +135,13 @@ export class AuthoredSkillStore {
     return new FileSystemSkillLoader({ roots: [{ path: this.dir, source: "authored" }] }).loadAll();
   }
 
-  async writeOrPatch(draft: SkillDraft): Promise<{ action: AuthorAction; skill: Skill }> {
+  async writeOrPatch(draft: SkillDraft): Promise<{ action: AuthorAction; skill: Skill; reasons?: readonly string[] }> {
+    const scan = scanSkillBodyForRisks(draft.body);
+    if (scan.flagged) {
+      const filePath = join(this.dir, ".quarantine", slugifySkillName(draft.name), "SKILL.md");
+      await writeFileAtomic(filePath, serializeAuthoredSkill(draft, this.now().toISOString()));
+      return { action: "quarantined", reasons: scan.reasons, skill: await parseSkillFile(filePath, { source: "authored" }) };
+    }
     const authored = await this.listAuthored();
     const match = authored.find(
       (s) =>
@@ -166,6 +208,27 @@ export class AuthoredSkillStore {
     }
   }
 
+  /**
+   * Archive authored skills idle longer than maxIdleDays — last used (or
+   * authored, when never used) before the cutoff. Archive-never-delete via
+   * the same .archive/ rename as the cap. Returns the names archived; a
+   * non-positive window is a no-op. Keeps the learned-skill set relevant so
+   * the local model isn't choosing among stale skills (tool-calling.md).
+   *
+   * Pattern adapted from Hermes Agent's curator lifecycle — last_used_at
+   * feeding stale → auto-archive transitions (MIT) — reimplemented for Muse.
+   */
+  async curate(maxIdleDays: number): Promise<readonly string[]> {
+    if (!(maxIdleDays > 0)) return [];
+    const cutoff = this.now().getTime() - maxIdleDays * 24 * 60 * 60 * 1000;
+    const archived: string[] = [];
+    for (const s of await this.listAuthored()) {
+      if (this.lastActiveAt(s) >= cutoff) continue;
+      if (await this.archiveSkill(s)) archived.push(s.name);
+    }
+    return archived;
+  }
+
   private authoredAt(skill: Skill): number {
     const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
     const raw = muse["authoredAt"];
@@ -173,18 +236,26 @@ export class AuthoredSkillStore {
     return Number.isFinite(at) ? at : 0;
   }
 
+  private lastActiveAt(skill: Skill): number {
+    const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
+    const raw = muse["lastUsedAt"];
+    const used = typeof raw === "string" ? Date.parse(raw) : Number.NaN;
+    return Number.isFinite(used) ? used : this.authoredAt(skill);
+  }
+
+  private async archiveSkill(skill: Skill): Promise<boolean> {
+    const folder = skill.sourceInfo.baseDir;
+    const base = folder.split(/[\\/]/u).pop() ?? "skill";
+    const dest = join(this.dir, ".archive", base);
+    await fs.mkdir(dirname(dest), { recursive: true });
+    return fs.rename(folder, dest).then(() => true).catch(() => false); // never delete
+  }
+
   private async enforceCap(): Promise<void> {
     const skills = await this.listAuthored();
     if (skills.length <= this.maxSkills) return;
     const ordered = [...skills].sort((a, b) => this.authoredAt(a) - this.authoredAt(b)); // oldest first
-    const overflow = ordered.slice(0, ordered.length - this.maxSkills);
-    for (const s of overflow) {
-      const folder = s.sourceInfo.baseDir;
-      const base = folder.split(/[\\/]/u).pop() ?? "skill";
-      const dest = join(this.dir, ".archive", base);
-      await fs.mkdir(dirname(dest), { recursive: true });
-      await fs.rename(folder, dest).catch(() => undefined); // never delete
-    }
+    for (const s of ordered.slice(0, ordered.length - this.maxSkills)) await this.archiveSkill(s);
   }
 
   private dedupeName(name: string): string {

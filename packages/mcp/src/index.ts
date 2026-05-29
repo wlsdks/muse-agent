@@ -298,6 +298,8 @@ export { normaliseTimeRange } from "./loopback-search.js";
 export { createWebReadMcpServer, type WebReadMcpServerOptions } from "./loopback-web-read.js";
 export { extractReadableText, type ReadableResult } from "./web-readable.js";
 export { assertPublicHttpUrl, isPrivateAddress, isPrivateIPv4, isPrivateIPv6, type HostLookup, type UrlGuardResult } from "./web-url-guard.js";
+export { fetchReadableUrl, type FetchReadableUrlOptions, type FetchReadableUrlResult } from "./fetch-readable-url.js";
+export { gateProactiveNoticeSink, isQuietHour, parseQuietHours, type QuietHourRange } from "./quiet-hours.js";
 
 export {
   CHROME_DEVTOOLS_MCP_SERVER_NAME,
@@ -309,6 +311,7 @@ export {
 
 export {
   createChromeSnapshot,
+  createFileSnapshot,
   createHttpSnapshot,
   createWebWatchRunner,
   detectWatchTrigger,
@@ -691,14 +694,18 @@ export { createNotesInvestigator } from "./notes-investigator.js";
 export {
   clearEpisodes,
   computeEpisodeRetention,
+  planEpisodeConsolidation,
   readEpisodes,
+  recurringThemes,
   removeEpisode,
   selectRetainedEpisodes,
   serializeEpisode,
   upsertEpisode,
   vacuumEpisodes,
   writeEpisodes,
+  type EpisodeConsolidation,
   type EpisodeRetentionOptions,
+  type EpisodeTheme,
   type PersistedEpisode
 } from "./personal-episodes-store.js";
 

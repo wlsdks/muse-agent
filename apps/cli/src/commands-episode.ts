@@ -17,12 +17,16 @@
 
 import {
   clearEpisodes,
+  planEpisodeConsolidation,
   readEpisodes,
+  recurringThemes,
   removeEpisode,
   serializeEpisode,
+  writeEpisodes,
   type PersistedEpisode
 } from "@muse/mcp";
 import { resolveEpisodesFile } from "@muse/autoconfigure";
+import { copyFile } from "node:fs/promises";
 import type { Command } from "commander";
 
 import { embed } from "./embed.js";
@@ -182,6 +186,73 @@ export function registerEpisodeCommands(program: Command, io: ProgramIO): void {
         return;
       }
       io.stdout(`Cleared ${before.length.toString()} episode(s)\n`);
+    });
+
+  episode
+    .command("themes")
+    .description("Topics recurring across multiple past sessions — a reflection over episodic memory")
+    .option("--user <userId>", "Filter to a single user. Default: every entry in the file.")
+    .option("--min-count <n>", "Min sessions a topic must appear in (default 2)")
+    .option("--limit <n>", "Max themes to show (default 10, cap 100)")
+    .option("--json", "Print the raw payload instead of the formatted list")
+    .action(async (options: { readonly user?: string; readonly minCount?: string; readonly limit?: string } & SharedOptions) => {
+      const minCount = parseLimit(options.minCount, 2, 100);
+      const limit = parseLimit(options.limit, 10, 100);
+      const userFilter = options.user?.trim();
+      const all = await readEpisodes(localEpisodesFile());
+      const scoped = userFilter ? all.filter((entry) => entry.userId === userFilter) : all;
+      const themes = recurringThemes(scoped, { minCount, limit });
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ themes, total: themes.length, ...(userFilter ? { userId: userFilter } : {}) }, null, 2)}\n`);
+        return;
+      }
+      if (themes.length === 0) {
+        io.stdout(`No topic recurs across ${minCount.toString()}+ sessions yet.\n`);
+        return;
+      }
+      io.stdout(`Recurring themes (${themes.length.toString()}):\n`);
+      for (const theme of themes) {
+        io.stdout(`  ${theme.count.toString()}×  ${theme.topic}  (last: ${shortDateTime(theme.lastSeen)})\n`);
+      }
+    });
+
+  episode
+    .command("consolidate")
+    .description("Find near-duplicate past sessions; --apply archives the redundant ones (keeps the richer)")
+    .option("--threshold <n>", "Summary similarity 0..1 to treat as duplicate (default 0.85)")
+    .option("--user <userId>", "Filter to a single user")
+    .option("--apply", "Remove the archived duplicates (a .bak backup is written first)")
+    .option("--json", "Print the raw plan instead of the formatted list")
+    .action(async (options: { readonly threshold?: string; readonly user?: string; readonly apply?: boolean } & SharedOptions) => {
+      const threshold = options.threshold === undefined ? 0.85 : Number(options.threshold);
+      if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1) {
+        throw new Error(`--threshold must be a number in (0, 1] (got '${options.threshold ?? ""}')`);
+      }
+      const file = localEpisodesFile();
+      const all = await readEpisodes(file);
+      const userFilter = options.user?.trim();
+      const scoped = userFilter ? all.filter((entry) => entry.userId === userFilter) : all;
+      const plan = planEpisodeConsolidation(scoped, { threshold });
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ applied: Boolean(options.apply), plan }, null, 2)}\n`);
+        return;
+      }
+      if (plan.length === 0) {
+        io.stdout(`No near-duplicate episodes at threshold ${threshold.toString()}.\n`);
+        return;
+      }
+      io.stdout(`${plan.length.toString()} near-duplicate episode(s):\n`);
+      for (const pair of plan) {
+        io.stdout(`  keep [${pair.kept.slice(0, 8)}]  ←  archive [${pair.archived.slice(0, 8)}]  (sim ${pair.similarity.toString()})\n`);
+      }
+      if (!options.apply) {
+        io.stdout(`\nRun with --apply to remove the archived ones (a backup is written to ${file}.bak first).\n`);
+        return;
+      }
+      const drop = new Set(plan.map((pair) => pair.archived));
+      await copyFile(file, `${file}.bak`).catch(() => undefined);
+      await writeEpisodes(file, all.filter((entry) => !drop.has(entry.id)));
+      io.stdout(`\nArchived ${drop.size.toString()} duplicate(s). Backup: ${file}.bak\n`);
     });
 
   // Mirrors the notes-index pipeline so `muse recall` shares one

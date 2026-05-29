@@ -35,7 +35,9 @@ import {
   deriveCalendarBriefingImminent,
   FileAmbientSignalSource,
   formatBirthdayBriefLine,
+  gateProactiveNoticeSink,
   homeWatchesFromConfig,
+  parseQuietHours,
   MacOsActiveWindowSource,
   parseAmbientNoticeRules,
   queryContacts,
@@ -434,9 +436,9 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const remindersFile = resolveRemindersFile(e);
       const followupModel = await (helpers.resolveFollowupModel ?? defaultFollowupModel)(e);
 
-      // Shared sink: every perception tick (ambient, web-watch) routes
-      // its notice to the same messaging destination as proactive.
-      const noticeSink: ProactiveNoticeSink = {
+      // Shared sink: every perception tick (ambient, web-watch, home-watch)
+      // routes its notice to the same messaging destination as proactive.
+      const rawNoticeSink: ProactiveNoticeSink = {
         deliver: async (notice) => {
           await messagingRegistry.send(provider, {
             destination,
@@ -444,6 +446,19 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           });
         }
       };
+      // Quiet hours (do-not-disturb): suppress ambient/awareness chatter
+      // during the window so the resident daemon doesn't ping at 3am. Only
+      // gates this sink (ambient/web-watch/home-watch) — user-scheduled
+      // reminders/follow-ups fire on their own path and are unaffected, so an
+      // urgent "pay rent today" reminder still comes through. Same window
+      // parser the API ticks use.
+      const quietHours = parseQuietHours(e.MUSE_PROACTIVE_QUIET_HOURS?.trim() || e.MUSE_REMINDER_QUIET_HOURS?.trim());
+      const noticeSink: ProactiveNoticeSink = gateProactiveNoticeSink(rawNoticeSink, {
+        ...(quietHours ? { quietHours } : {}),
+        onSuppress: options.print
+          ? (notice): void => io.stdout(`  🌙 quiet hours — held: ${notice.title}\n`)
+          : undefined
+      });
 
       // Shared knowledge enricher (ambient "Related" line + briefing
       // related-note) — resolved once, reused by both ticks.

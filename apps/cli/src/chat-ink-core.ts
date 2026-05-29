@@ -592,6 +592,8 @@ export function buildRecap(input: {
   readonly lastEpisode?: string;
   readonly pendingTasks?: number;
   readonly pendingFollowups?: number;
+  /** Untracked open loops the user voiced last session (detectUserCommitments). */
+  readonly openCommitments?: number;
 }): string {
   const parts: string[] = [];
   const summary = input.lastEpisode?.replace(/\s+/gu, " ").trim();
@@ -600,6 +602,11 @@ export function buildRecap(input: {
   if ((input.pendingTasks ?? 0) > 0) open.push(`${input.pendingTasks} task${input.pendingTasks === 1 ? "" : "s"}`);
   if ((input.pendingFollowups ?? 0) > 0) open.push(`${input.pendingFollowups} follow-up${input.pendingFollowups === 1 ? "" : "s"}`);
   if (open.length > 0) parts.push(`${open.join(", ")} waiting`);
+  // Distinct from "waiting" (tracked tasks/follow-ups): these were only
+  // SAID, never written down — a nudge to formalise them. `muse commitments
+  // scan` lists them.
+  const commitments = input.openCommitments ?? 0;
+  if (commitments > 0) parts.push(`${commitments} loose end${commitments === 1 ? "" : "s"} you mentioned`);
   return parts.length > 0 ? `Where we left off: ${parts.join(" · ")}` : "";
 }
 

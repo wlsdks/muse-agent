@@ -6,7 +6,25 @@ import { writeTasks, type PersistedTask } from "@muse/mcp";
 import { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { filterTasksBySearch, registerTasksCommands, resolveLocalTaskId, type TasksCommandHelpers } from "./commands-tasks.js";
+import { filterTasksBySearch, filterTasksByTag, registerTasksCommands, resolveLocalTaskId, type TasksCommandHelpers } from "./commands-tasks.js";
+
+describe("filterTasksByTag — keep only tasks carrying a tag (case-insensitive)", () => {
+  const tasks = [
+    { title: "Pay rent", tags: ["home", "Finance"] },
+    { title: "Ship PR", tags: ["work"] },
+    { title: "No tags" }
+  ];
+  it("matches the tag case-insensitively", () => {
+    expect(filterTasksByTag(tasks, "finance").map((t) => t.title)).toEqual(["Pay rent"]);
+    expect(filterTasksByTag(tasks, "WORK").map((t) => t.title)).toEqual(["Ship PR"]);
+  });
+  it("returns all on a blank tag, none on a no-match or tagless set", () => {
+    expect(filterTasksByTag(tasks, "  ")).toHaveLength(3);
+    expect(filterTasksByTag(tasks, "nope")).toHaveLength(0);
+    const tagless: Array<{ title: string; tags?: string[] }> = [{ title: "x" }];
+    expect(filterTasksByTag(tagless, "home")).toHaveLength(0);
+  });
+});
 
 describe("filterTasksBySearch — find a task by title or notes (case-insensitive)", () => {
   const tasks = [

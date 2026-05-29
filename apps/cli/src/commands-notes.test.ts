@@ -5,8 +5,65 @@ import { join } from "node:path";
 import { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { parseNotesSearchLimit, registerNotesCommands, type NotesCommandHelpers } from "./commands-notes.js";
+import { readFileSync } from "node:fs";
+
+import { parseNotesSearchLimit, resolveIngestNotePath, resolveUrlNotePath, registerNotesCommands, type NotesCommandHelpers } from "./commands-notes.js";
 import type { ProgramIO } from "./program.js";
+
+describe("resolveIngestNotePath", () => {
+  it("derives a .md note name from the file basename", () => {
+    expect(resolveIngestNotePath("/tmp/reports/q3.txt")).toBe("q3.md");
+    expect(resolveIngestNotePath("/a/b/notes.md")).toBe("notes.md");
+    expect(resolveIngestNotePath("/a/README")).toBe("README.md");
+  });
+  it("honours an explicit --path override", () => {
+    expect(resolveIngestNotePath("/tmp/q3.txt", "archive/q3-2026.md")).toBe("archive/q3-2026.md");
+    expect(resolveIngestNotePath("/tmp/q3.txt", "   ")).toBe("q3.md");
+  });
+});
+
+describe("resolveUrlNotePath", () => {
+  it("slugs the host + path into a .md name, dropping www", () => {
+    expect(resolveUrlNotePath("https://www.example.com/blog/post")).toBe("example.com-blog-post.md");
+    expect(resolveUrlNotePath("https://news.site.org/")).toBe("news.site.org.md");
+  });
+  it("honours an explicit --path override", () => {
+    expect(resolveUrlNotePath("https://x.test/y", "reading/x.md")).toBe("reading/x.md");
+  });
+});
+
+describe("muse notes ingest --local — pull a local file into the notes corpus", () => {
+  const prev = process.env.MUSE_NOTES_DIR;
+  afterEach(() => {
+    if (prev === undefined) delete process.env.MUSE_NOTES_DIR;
+    else process.env.MUSE_NOTES_DIR = prev;
+  });
+
+  async function run(args: string[]): Promise<string> {
+    const out: string[] = [];
+    const io: ProgramIO = { stderr: (m: string) => out.push(m), stdout: (m: string) => out.push(m) };
+    const helpers: NotesCommandHelpers = {
+      apiRequest: async () => { throw new Error("apiRequest must not be called in --local mode"); },
+      writeOutput: (wio, value) => wio.stdout(`${JSON.stringify(value)}\n`)
+    };
+    const program = new Command();
+    program.exitOverride();
+    registerNotesCommands(program, io, helpers);
+    await program.parseAsync(["node", "muse", "notes", ...args]);
+    return out.join("");
+  }
+
+  it("writes the file's content as a .md note under the notes root", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-cli-notes-ingest-"));
+    process.env.MUSE_NOTES_DIR = dir;
+    const src = join(mkdtempSync(join(tmpdir(), "muse-src-")), "meeting.txt");
+    writeFileSync(src, "Q3 planning notes: ship the recap.", "utf8");
+
+    await run(["ingest", "--local", src]);
+    expect(existsSync(join(dir, "meeting.md"))).toBe(true);
+    expect(readFileSync(join(dir, "meeting.md"), "utf8")).toContain("ship the recap");
+  });
+});
 
 describe("muse notes delete --local — prune a note from the local store", () => {
   const prev = process.env.MUSE_NOTES_DIR;

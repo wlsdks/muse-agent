@@ -8,6 +8,8 @@
  * Pure string logic — no deps; the polling tick (snapshot via the
  * MCP tool + deliver a proactive notice) wires this in.
  */
+import { promises as fs } from "node:fs";
+
 import { fetchWithRetry, type RetryOptions } from "./http-retry.js";
 import type { ProactiveNoticeSink } from "./proactive-notice-loop.js";
 
@@ -235,6 +237,29 @@ export function createHttpSnapshot(
   };
 }
 
+/**
+ * Snapshot source for a LOCAL file: read its UTF-8 text. Lets a watch
+ * monitor a log or file on disk ("ping me when ERROR appears in app.log",
+ * "tell me when this file changes") through the same edge-triggered runner
+ * as web/chrome watches. Returns the text, or `undefined` when the file is
+ * missing/unreadable (the runner then skips that watch without losing its
+ * baseline). The path comes from the user's OWN watch config, so no
+ * allowlist is needed (unlike the SSRF-bounded HTTP fetcher). Read-only.
+ *
+ * Local-file/log monitoring parallels the competitors' watch/monitor skills
+ * (Hermes/OpenClaw), reusing Muse's own web-watch runner — no third-party
+ * code reimplemented.
+ */
+export function createFileSnapshot(path: string): () => Promise<string | undefined> {
+  return async () => {
+    try {
+      return await fs.readFile(path, "utf8");
+    } catch {
+      return undefined;
+    }
+  };
+}
+
 /** Minimal Chrome DevTools MCP connection seam — `callTool` is all a snapshot needs. */
 export interface ChromeSnapshotConnection {
   callTool(toolName: string, args: Record<string, unknown>): Promise<unknown>;
@@ -281,11 +306,12 @@ function parseHeaders(raw: unknown): Record<string, string> | undefined {
 }
 
 /**
- * Parse a JSON array of web-watch specs from config and build runnable
- * `WebWatch`es with HTTP snapshot sources. Each entry needs a
- * non-empty `id` + `url`, string `title`/`message`, and a `rule` with
- * at least one condition (`appears` / `disappears` / `onAnyChange` /
- * numeric `below` / `above`).
+ * Parse a JSON array of watch specs from config and build runnable
+ * `WebWatch`es. Each entry needs a non-empty `id`, string
+ * `title`/`message`, a `rule` with at least one condition (`appears` /
+ * `disappears` / `onAnyChange` / numeric `below` / `above`), and a
+ * locator that depends on `source`: a `"file"` entry needs a local
+ * `path`; `"chrome"` and the default HTTP source need a `url`.
  * Fail-open: malformed JSON / non-array / an invalid entry is skipped.
  */
 export function webWatchesFromConfig(
@@ -312,7 +338,11 @@ export function webWatchesFromConfig(
       continue;
     }
     const e = entry as Record<string, unknown>;
-    if (typeof e.id !== "string" || e.id.length === 0 || typeof e.url !== "string" || e.url.length === 0) {
+    // The locator field depends on the source: a file watch points at a local
+    // PATH, web/chrome watches at a URL.
+    const source = e.source === "file" ? "file" : e.source === "chrome" ? "chrome" : "http";
+    const locator = source === "file" ? e.path : e.url;
+    if (typeof e.id !== "string" || e.id.length === 0 || typeof locator !== "string" || locator.length === 0) {
       continue;
     }
     if (typeof e.title !== "string" || typeof e.message !== "string") {
@@ -322,8 +352,7 @@ export function webWatchesFromConfig(
     if (rule === undefined) {
       continue;
     }
-    const useChrome = e.source === "chrome";
-    if (useChrome && !options.chromeConnection) {
+    if (source === "chrome" && !options.chromeConnection) {
       // A chrome-source watch needs a live connection to drive — skip
       // it (rather than silently downgrade to HTTP, which can't see the
       // authenticated page the user asked to watch).
@@ -339,9 +368,12 @@ export function webWatchesFromConfig(
       id: e.id,
       message: e.message,
       rule,
-      snapshot: useChrome
-        ? createChromeSnapshot(options.chromeConnection!, e.url)
-        : createHttpSnapshot(e.url, httpOptions),
+      snapshot:
+        source === "file"
+          ? createFileSnapshot(locator)
+          : source === "chrome"
+            ? createChromeSnapshot(options.chromeConnection!, locator)
+            : createHttpSnapshot(locator, httpOptions),
       title: e.title
     });
   }

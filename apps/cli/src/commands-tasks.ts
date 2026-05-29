@@ -99,9 +99,10 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
     .description("List tasks newest-first, filter by status (--local skips the API)")
     .option("--status <status>", "Status filter: open (default), done, or all", "open")
     .option("--search <text>", "Only tasks whose title or notes contains this text (case-insensitive)")
+    .option("--tag <label>", "Only tasks carrying this tag (case-insensitive)")
     .option("--local", "Read directly from the local tasks file instead of the API")
     .option("--json", "Print the raw API response instead of the formatted list")
-    .action(async (options: { readonly status: string; readonly search?: string } & SharedOptions, command) => {
+    .action(async (options: { readonly status: string; readonly search?: string; readonly tag?: string } & SharedOptions, command) => {
       // Throws before dispatch so a typo'd --status doesn't return
       // a silently-wrong "open" list.
       assertTaskStatusInput(options.status);
@@ -133,6 +134,11 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
       const query = options.search?.trim();
       if (query) {
         const matched = filterTasksBySearch(payload.tasks, query);
+        payload = { ...payload, tasks: matched, total: matched.length };
+      }
+      const tag = options.tag?.trim();
+      if (tag) {
+        const matched = filterTasksByTag(payload.tasks, tag);
         payload = { ...payload, tasks: matched, total: matched.length };
       }
       if (options.json) {
@@ -404,6 +410,17 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
  * serialized task records (title / notes are the searchable text), so
  * it works the same for the local file and the API payload.
  */
+/** Keep only tasks carrying `tag` (case-insensitive exact label match). */
+export function filterTasksByTag<T extends { readonly tags?: unknown }>(tasks: readonly T[], tag: string): T[] {
+  const want = tag.trim().toLowerCase();
+  if (want.length === 0) {
+    return [...tasks];
+  }
+  return tasks.filter(
+    (task) => Array.isArray(task.tags) && task.tags.some((t) => typeof t === "string" && t.toLowerCase() === want)
+  );
+}
+
 export function filterTasksBySearch<T extends { readonly title?: unknown; readonly notes?: unknown }>(
   tasks: readonly T[],
   query: string

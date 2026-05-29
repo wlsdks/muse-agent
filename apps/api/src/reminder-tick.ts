@@ -17,9 +17,12 @@
  */
 
 import {
+  isQuietHour,
+  parseQuietHours,
   runDueReminders,
   type ProactiveActivitySource,
-  type ProactiveAgentRuntimeLike
+  type ProactiveAgentRuntimeLike,
+  type QuietHourRange
 } from "@muse/mcp";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
@@ -60,54 +63,11 @@ export interface ReminderTickOptions {
   readonly activeSessionWindowMs?: number;
 }
 
-export interface QuietHourRange {
-  readonly startHour: number;
-  readonly endHour: number;
-}
-
-/**
- * Parse `MUSE_REMINDER_QUIET_HOURS` of the form `<start>-<end>`. Each
- * side is an hour `0..23`, optionally with a `:MM` (`0..59`) suffix —
- * so the natural `22:00-07:00` works as well as the bare `22-7`.
- * The window is hour-granular: an explicit `:MM` is validated but the
- * window rounds down to the hour (e.g. `22:30` → start of hour 22), so
- * a clock-precise window is intentionally not supported. Returns
- * `undefined` for malformed input so the daemon falls back to "always
- * allowed to fire" rather than silently disabling itself on a typo —
- * previously the common `22:00-07:00` form was rejected, which turned
- * quiet hours OFF without warning.
- */
-export function parseQuietHours(raw: string | undefined): QuietHourRange | undefined {
-  if (!raw) {
-    return undefined;
-  }
-  const match = raw.trim().match(/^(\d{1,2})(?::(\d{2}))?-(\d{1,2})(?::(\d{2}))?$/u);
-  if (!match) {
-    return undefined;
-  }
-  const startHour = Number.parseInt(match[1]!, 10);
-  const startMinute = match[2] !== undefined ? Number.parseInt(match[2], 10) : 0;
-  const endHour = Number.parseInt(match[3]!, 10);
-  const endMinute = match[4] !== undefined ? Number.parseInt(match[4], 10) : 0;
-  if (startHour > 23 || endHour > 23 || startMinute > 59 || endMinute > 59) {
-    return undefined;
-  }
-  if (startHour === endHour) {
-    return undefined; // empty / always-quiet would be ambiguous; treat as off.
-  }
-  return { endHour, startHour };
-}
-
-/**
- * Inclusive start, exclusive end. Wraps across midnight when
- * `startHour > endHour` (the common case: 23–7 means 23,0,1…6).
- */
-export function isQuietHour(currentHour: number, range: QuietHourRange): boolean {
-  if (range.startHour < range.endHour) {
-    return currentHour >= range.startHour && currentHour < range.endHour;
-  }
-  return currentHour >= range.startHour || currentHour < range.endHour;
-}
+// Quiet-hours parsing/checking now lives in @muse/mcp so the CLI daemon and
+// the API ticks share one window implementation; re-exported so the existing
+// `./reminder-tick.js` import sites (pattern-tick, proactive-tick,
+// situational-briefing-tick, web-watch-tick) keep working unchanged.
+export { isQuietHour, parseQuietHours, type QuietHourRange };
 
 const DEFAULT_INTERVAL_MS = 60_000;
 const MIN_INTERVAL_MS = 5_000;

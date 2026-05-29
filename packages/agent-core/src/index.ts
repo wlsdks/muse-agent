@@ -48,6 +48,12 @@ export {
   type FollowupPromise
 } from "./followup-detector.js";
 export {
+  detectUserCommitments,
+  type CommitmentKind,
+  type DetectUserCommitmentsOptions,
+  type UserCommitment
+} from "./commitment-detector.js";
+export {
   createFollowupCaptureHook,
   sanitizeFollowupSummary,
   type CapturedFollowup,
