@@ -7,6 +7,8 @@
  * envelope for scripting.
  */
 
+import { readFile } from "node:fs/promises";
+
 import { resolveNotesDir } from "@muse/autoconfigure";
 import { createNotesMcpServer } from "@muse/mcp";
 import type { Command } from "commander";
@@ -67,6 +69,18 @@ export function parseNotesSearchLimit(raw: string | undefined): number | undefin
     throw new Error(`--limit must be a positive number (got '${raw}')`);
   }
   return Math.trunc(parsed);
+}
+
+/**
+ * Note path for an ingested file: an explicit `--path` wins; otherwise the
+ * file's basename with a `.md` extension (so the result is searchable — the
+ * notes corpus indexes `.md`). e.g. `/tmp/reports/q3.txt` → `q3.md`.
+ */
+export function resolveIngestNotePath(filePath: string, override?: string): string {
+  if (override !== undefined && override.trim().length > 0) return override.trim();
+  const base = filePath.split(/[\\/]/u).pop() ?? "note";
+  const stem = base.replace(/\.[^.]+$/u, "") || "note";
+  return `${stem}.md`;
 }
 
 export function registerNotesCommands(program: Command, io: ProgramIO, helpers: NotesCommandHelpers): void {
@@ -205,6 +219,38 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
         if (options.overwrite === true) {
           body.overwrite = true;
         }
+        payload = (await helpers.apiRequest(io, command, "/api/notes/save", body, "POST")) as Record<string, unknown>;
+      }
+      if (options.json) {
+        helpers.writeOutput(io, payload);
+        return;
+      }
+      io.stdout(formatNoteSaved(payload as unknown as Parameters<typeof formatNoteSaved>[0]));
+    });
+
+  notes
+    .command("ingest")
+    .description("Ingest a local text/markdown file into the notes corpus as a searchable .md note")
+    .argument("<file>", "Path to a local UTF-8 text file, e.g. './meeting.txt'")
+    .option("--path <notePath>", "Note path under the notes root (default: the file's basename as .md)")
+    .option("--overwrite", "Replace an existing note in place")
+    .option("--local", "Write directly to the local notes directory instead of the API")
+    .option("--json", "Print the raw response instead of a short confirmation")
+    .action(async (
+      file: string,
+      options: { readonly path?: string; readonly overwrite?: boolean } & SharedOptions,
+      command
+    ) => {
+      const content = await readFile(file, "utf8");
+      const notePath = resolveIngestNotePath(file, options.path);
+      let payload: Record<string, unknown>;
+      if (options.local) {
+        const args: Record<string, unknown> = { content, path: notePath };
+        if (options.overwrite === true) args.overwrite = true;
+        payload = await callLocalTool("save", args);
+      } else {
+        const body: Record<string, unknown> = { content, path: notePath };
+        if (options.overwrite === true) body.overwrite = true;
         payload = (await helpers.apiRequest(io, command, "/api/notes/save", body, "POST")) as Record<string, unknown>;
       }
       if (options.json) {
