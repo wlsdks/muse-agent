@@ -1,12 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { readProposedActions, writeFollowups, writeObjectives } from "@muse/mcp";
+import { buildCheckinQuestion, readProposedActions, writeCheckins, writeFollowups, writeObjectives, type PersistedCheckin } from "@muse/mcp";
 import { Command } from "commander";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MuseTool } from "@muse/tools";
 
@@ -798,5 +799,124 @@ describe("chromeSnapshotConnectionFromTools — adapt MCP tools into a web-watch
     expect(res.stdout).toMatch(/web-watch: delivered 1/);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.text).toContain("order shipped");
+  });
+});
+
+// N2 — ③/② end-to-end daemon audit: prove the autonomous pieces COMPOSE in one
+// real `--once` tick (check-in delivery + pattern suggestion together), and that
+// quiet-hours and dedup hold across the composed daemon — not just per-unit.
+describe("muse daemon — N2 audit: check-ins + pattern suggestion compose in ONE tick", () => {
+  // aggregateActivitySignals reads process.env.HOME (the daemon's pattern tick
+  // forwards no signal paths), so the note fixture must live under a stubbed
+  // HOME. The check-in / patterns-fired files are pinned via explicit env.
+  let home: string;
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function n2Env(): NodeJS.ProcessEnv {
+    home = mkdtempSync(join(tmpdir(), "muse-n2-home-"));
+    vi.stubEnv("HOME", home);
+    return {
+      ...tmpEnv(),
+      MUSE_CHECKINS_FILE: join(home, "checkins.json"),
+      MUSE_PATTERNS_FIRED_FILE: join(home, "patterns-fired.json")
+    };
+  }
+
+  // 5 weekly journal notes at exactly now − 7·k days: each lands on today's
+  // weekday + hour, so the detected weekly slot == "now" regardless of when the
+  // test runs (real clock — the daemon exposes no `now` seam). → one fireable.
+  async function seedWeeklyNotePattern(): Promise<void> {
+    const journal = join(home, ".muse", "notes", "journal");
+    await mkdir(journal, { recursive: true });
+    const nowMs = Date.now();
+    for (let k = 1; k <= 5; k += 1) {
+      const file = join(journal, `entry-${k.toString()}.md`);
+      await writeFile(file, `journal ${k.toString()}`, "utf8");
+      const when = new Date(nowMs - k * 7 * 86_400_000);
+      await utimes(file, when, when);
+    }
+  }
+
+  async function seedDueCheckin(env: NodeJS.ProcessEnv): Promise<string> {
+    const commitment = "email Bob about the Q3 report";
+    const past = new Date(Date.now() - 60 * 60_000).toISOString();
+    const checkin: PersistedCheckin = {
+      commitment,
+      createdAt: past,
+      dueAtIso: past,
+      id: "ci-1",
+      question: buildCheckinQuestion(commitment),
+      sourceKey: commitment.toLowerCase(),
+      status: "scheduled",
+      userId: "stark"
+    };
+    await writeCheckins(env.MUSE_CHECKINS_FILE!, [checkin]);
+    return checkin.question;
+  }
+
+  // Quiet-hours window that contains the current local hour (inclusive start).
+  function quietWindowCoveringNow(): string {
+    const h = new Date().getHours();
+    return `${h.toString()}-${((h + 1) % 24).toString()}`;
+  }
+
+  it("one --once tick delivers BOTH a due check-in AND a pattern suggestion to the same sink", async () => {
+    const env = n2Env();
+    await seedWeeklyNotePattern();
+    const question = await seedDueCheckin(env);
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemon(
+      ["--once", "--provider", "telegram", "--destination", "555"],
+      { env, registry, resolveFollowupModel: async () => fakeFollowupModel() }
+    );
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toMatch(/checkins: fired 1\/1 due/);
+    expect(res.stdout).toMatch(/pattern: delivered 1\/1 fireable/);
+    expect(sent).toHaveLength(2);
+    expect(sent.every((m) => m.destination === "555")).toBe(true);
+    expect(sent.map((m) => m.text)).toContain(question);
+    // The other message is the pattern suggestion — distinct from the check-in.
+    expect(sent.filter((m) => m.text !== question)).toHaveLength(1);
+  });
+
+  it("quiet hours hold BOTH the check-in and the pattern in the composed tick — no send", async () => {
+    const env: NodeJS.ProcessEnv = { ...n2Env(), MUSE_PROACTIVE_QUIET_HOURS: quietWindowCoveringNow() };
+    await seedWeeklyNotePattern();
+    await seedDueCheckin(env);
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemon(
+      ["--once", "--provider", "telegram", "--destination", "555"],
+      { env, registry, resolveFollowupModel: async () => fakeFollowupModel() }
+    );
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toMatch(/checkins: fired 0\/0 due/);
+    expect(res.stdout).toMatch(/pattern: held \(quiet hours\)/);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("dedup: a second --once tick re-delivers neither the check-in nor the pattern", async () => {
+    const env = n2Env();
+    await seedWeeklyNotePattern();
+    await seedDueCheckin(env);
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+    const args = ["--once", "--provider", "telegram", "--destination", "555"];
+    const opts = { env, registry, resolveFollowupModel: async () => fakeFollowupModel() };
+
+    await runDaemon(args, opts);
+    expect(sent).toHaveLength(2); // first tick: check-in + pattern
+
+    const res2 = await runDaemon(args, opts);
+    expect(res2.stdout).toMatch(/checkins: fired 0\/0 due/);
+    expect(res2.stdout).toMatch(/pattern: delivered 0\/0 fireable/);
+    expect(sent).toHaveLength(2); // second tick: nothing new — both deduped
   });
 });

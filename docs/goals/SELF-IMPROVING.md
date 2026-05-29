@@ -146,9 +146,15 @@ next phase is making the JARVIS run them ON ITS OWN, then deepening.
   (`startConsolidateTick` in apps/api, idle/quiet-hours/fail-soft unit-tested
   10/10, daemon composes via pnpm check, merge round-trip re-verified by
   verify-skill-merge.mjs on qwen3:8b 2/2).
-- [ ] **N2 (P0) — ③/② end-to-end daemon audit.** One real daemon tick test
-  that exercises check-in delivery + pattern suggestion together (composition,
-  quiet-hours, dedup) — proves the pieces compose, not just unit-pass.
+- [x] **N2 (P0) — ③/② end-to-end daemon audit.** [this commit] Drove the REAL
+  `muse daemon --once` through `registerDaemonCommands` with a contract-faithful
+  capturing messaging registry (3 cases in commands-daemon.test.ts): (1) ONE
+  tick delivers BOTH a due check-in AND a composed pattern suggestion to the
+  same sink — the pieces compose, not just unit-pass; (2) quiet-hours holds
+  both in the composed tick (no send); (3) dedup — a second tick re-delivers
+  neither (check-in status flip + patterns-fired cooldown). Audit finding
+  (noted, not a bug): the daemon's pattern tick forwards no signal paths, so it
+  reads `process.env.HOME` for activity signals (the test stubs HOME).
 - [ ] **N3 (P1) — Surface proactive output IN-CHAT.** The in-chat idle poll
   should also surface due check-ins + pattern suggestions (today they go to the
   daemon's messaging channel only), so a user living in `muse` chat sees them.
