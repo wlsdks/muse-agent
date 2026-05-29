@@ -20,6 +20,7 @@
 import { createOllamaEmbedder } from "@muse/autoconfigure";
 import { classifyRetrievalConfidence, rankKnowledgeChunks, renderKnowledgeMatches } from "@muse/agent-core";
 import { ingestChatExport } from "../dist/chat-export-ingest.js";
+import { ingestMbox } from "../dist/mbox-ingest.js";
 
 const embedModel = process.argv[2] ?? "nomic-embed-text";
 const baseUrl = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
@@ -64,10 +65,23 @@ const ingested = ingestChatExport([
 ]);
 for (const conv of ingested) corpus.push({ source: `ingested/${conv.slug}.md`, text: conv.markdown });
 
+// And an .mbox email run through the REAL mail ingester → citable too.
+const mail = ingestMbox([
+  "From contractor@build.co Mon Apr 6 10:00:00 2026",
+  "From: Contractor <contractor@build.co>",
+  "To: me@home.com",
+  "Subject: Kitchen remodel quote",
+  "Date: Mon, 06 Apr 2026 10:00:00 +0000",
+  "",
+  "The kitchen remodel quote is 12,400,000 KRW, including cabinets and the island; start date May 4."
+].join("\n"));
+for (const m of mail) corpus.push({ source: `ingested/${m.slug}.md`, text: m.markdown });
+
 const cases = [
   { name: "IN-CORPUS → confident, cite the source", kind: "confident", query: "when does my home insurance renew?", needles: ["cite the [source]", "policy-2025.pdf", "2026-09-14"] },
   { name: "IN-CORPUS → confident, distinct fact", kind: "confident", query: "who owns the launch deck?", needles: ["cite the [source]", "meeting-q3.md"] },
   { name: "INGESTED chat → citable (pile-ingester reach)", kind: "confident", query: "how did I fix the VPN handshake timeout?", needles: ["cite the [source]", "ingested/vpn-setup.md", "MTU"] },
+  { name: "INGESTED email → citable (.mbox reach)", kind: "confident", query: "how much was the kitchen remodel quote?", needles: ["cite the [source]", "ingested/kitchen-remodel-quote.md", "12,400,000"] },
   { name: "OUT-OF-CORPUS → REFUSES (low-confidence or no-match, never confabulates)", kind: "refuse", query: "what is the boiling point of mercury in kelvin?" }
 ];
 
