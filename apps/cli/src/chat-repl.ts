@@ -18,6 +18,8 @@
  *     `muse traces` too).
  */
 
+import type { Readable } from "node:stream";
+
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
@@ -62,23 +64,68 @@ export async function resolveChatMessage(io: ProgramIO, messageParts: readonly s
   });
 }
 
-export async function readPipedStdin(): Promise<string> {
-  // Skip when stdin is a TTY — interactive shells leave stdin attached
-  // even when no one's typing; reading it would block forever.
-  //
-  // Note: Node sets `process.stdin.isTTY` to `true` for a terminal and
-  // leaves it `undefined` when stdin is redirected. So the guard has
-  // to be a truthy check; `!== false` would treat `undefined` as
-  // "still a TTY" and miss the pipe case.
-  if (process.stdin.isTTY) {
+export interface ReadPipedStdinOptions {
+  /**
+   * How long to wait for the FIRST byte before giving up and returning "".
+   * Real pipes / redirects (`cat f | muse`, `muse < f`) deliver data or EOF
+   * within milliseconds; only a non-TTY stdin that never sends data AND never
+   * closes (a headless supervisor, an inherited-open fd, the autonomous loop)
+   * needs this escape hatch. Default 200ms — invisible to interactive use.
+   */
+  readonly firstByteTimeoutMs?: number;
+  /** Injectable stream for tests; defaults to `process.stdin`. */
+  readonly stream?: Readable & { isTTY?: boolean };
+}
+
+/**
+ * Read piped stdin, or "" when there is none.
+ *
+ * Skips a TTY (interactive shells leave stdin attached even when no one is
+ * typing). Node sets `isTTY` to `true` for a terminal and leaves it
+ * `undefined` when stdin is redirected, so the guard is a truthy check.
+ *
+ * The hard part is a non-TTY stdin that never delivers data AND never EOFs —
+ * a headless supervisor, an inherited-open fd, the autonomous loop. A plain
+ * `for await (…stdin)` blocks on it forever (this was the long-standing
+ * "`muse ask` hangs before its first result" stall). So we wait only briefly
+ * for the FIRST byte; once any data arrives we read to EOF with no timeout, so
+ * large piped input is never truncated.
+ */
+export async function readPipedStdin(options: ReadPipedStdinOptions = {}): Promise<string> {
+  const stream = options.stream ?? process.stdin;
+  if (stream.isTTY) {
     return "";
   }
-  let raw = "";
-  process.stdin.setEncoding("utf8");
-  for await (const chunk of process.stdin) {
-    raw += chunk;
-  }
-  return raw.trim();
+  const firstByteTimeoutMs = options.firstByteTimeoutMs ?? 200;
+  stream.setEncoding("utf8");
+  return await new Promise<string>((resolve) => {
+    let raw = "";
+    let gotData = false;
+    let done = false;
+    const onData = (chunk: string | Buffer): void => {
+      gotData = true;
+      raw += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    };
+    const finish = (): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      stream.off("data", onData);
+      stream.off("end", finish);
+      stream.off("error", finish);
+      stream.pause();
+      resolve(raw.trim());
+    };
+    // Only the FIRST byte is time-bounded: if nothing has arrived we bail,
+    // but once data is flowing we wait for the real EOF.
+    const timer = setTimeout(() => {
+      if (!gotData) finish();
+    }, firstByteTimeoutMs);
+    stream.on("data", onData);
+    stream.once("end", finish);
+    stream.once("error", finish);
+    stream.resume();
+  });
 }
 
 export function createTuiChatSubmitter(
