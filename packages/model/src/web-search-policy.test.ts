@@ -159,4 +159,55 @@ describe("decideWebSearchPolicy", () => {
       expect(r.enabled, `MUSE_WEB_SEARCH="${value}" must not flip the policy`).toBe(true);
     }
   });
+
+  // Property fuzz (backlog P5 config-fuzz) over the full combinatorial space of
+  // settings × override × env spellings × adversarial maxUses. The example tests
+  // pin specific cases; these assert the output-shape invariants ALWAYS hold and
+  // the operator kill-switch is absolute, so a malformed budget can't leak an
+  // unbounded/NaN search allowance and an env-off can't be overridden.
+  describe("property fuzz", () => {
+    const enabledOpts = [undefined, true, false];
+    const overrideOpts = [undefined, true, false] as const;
+    const maxUsesOpts: unknown[] = [undefined, 1, 5, 3.5, 0, -5, Number.NaN, Infinity, -Infinity, "10", null, {}];
+    const envWebSearch = [undefined, "true", "false", "on", "off", "1", "0", "garbage", "  ", "TRUE", " Off "];
+    const envMaxUses = [undefined, "10", "0", "-3", "3.5", "30s", "Infinity", "999999999999999999999", "x"];
+
+    it("never throws and always returns { enabled: boolean, maxUses: positive integer } across the corpus", () => {
+      for (const en of enabledOpts) {
+        for (const ov of overrideOpts) {
+          for (const mu of maxUsesOpts) {
+            for (const ews of envWebSearch) {
+              for (const emu of envMaxUses) {
+                const args = {
+                  model: baseModel,
+                  settings: { webSearch: { ...(en !== undefined ? { enabled: en } : {}), maxUses: mu as number } },
+                  ...(ov !== undefined ? { override: ov } : {}),
+                  env: { ...(ews !== undefined ? { MUSE_WEB_SEARCH: ews } : {}), ...(emu !== undefined ? { MUSE_WEB_SEARCH_MAX_USES: emu } : {}) },
+                };
+                let policy: ReturnType<typeof decideWebSearchPolicy> | undefined;
+                expect(() => { policy = decideWebSearchPolicy(args); }).not.toThrow();
+                expect(typeof policy!.enabled).toBe("boolean");
+                expect(Number.isInteger(policy!.maxUses) && policy!.maxUses > 0,
+                  `maxUses must be a positive integer (got ${String(policy!.maxUses)})`).toBe(true);
+              }
+            }
+          }
+        }
+      }
+    });
+
+    it("a falsy MUSE_WEB_SEARCH spelling (any case/whitespace) is an ABSOLUTE kill switch — override=true cannot re-enable", () => {
+      for (const spell of ["false", "0", "no", "off", "FALSE", "  Off  ", "\tNO\n", "On".replace("On", "off")]) {
+        for (const ov of [undefined, true, false] as const) {
+          const r = decideWebSearchPolicy({
+            model: baseModel,
+            settings: { webSearch: { enabled: true } },
+            ...(ov !== undefined ? { override: ov } : {}),
+            env: { MUSE_WEB_SEARCH: spell },
+          });
+          expect(r.enabled, `${JSON.stringify(spell)} + override=${String(ov)}`).toBe(false);
+        }
+      }
+    });
+  });
 });

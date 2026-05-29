@@ -297,8 +297,15 @@ the generic layers below because they test what makes Muse an *agent*.
     values; byte/timeout caps positive integers) — never a raw crash; a hostile
     __proto__/constructor key never pollutes Object.prototype; mixed-type
     args/env are filtered to string entries (no coercion). tools.test.ts +3.
-  - [ ] Remaining: fuzz the other external-input validators (web-search-policy,
-    JSON-repair, gemini-live-protocol).
+  - [x] decideWebSearchPolicy — the env+settings gate for whether web search
+    (egress) is allowed + its use budget. Combinatorial fuzz (settings × override
+    × env spelling × adversarial maxUses, ~13k combos) proves: never throws;
+    output is ALWAYS { enabled: boolean, maxUses: positive integer } so a
+    malformed budget (Infinity/NaN/float/0/neg/garbage) can't leak an
+    unbounded/NaN allowance; a falsy MUSE_WEB_SEARCH (any case/whitespace) is an
+    ABSOLUTE kill switch that override=true cannot re-enable. web-search-policy.test.ts +2.
+  - [ ] Remaining: fuzz the other external-input validators (JSON-repair /
+    extractJsonArray, gemini-live-protocol).
 
 ---
 
