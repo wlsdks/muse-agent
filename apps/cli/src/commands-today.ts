@@ -516,6 +516,42 @@ function formatEmptyStateHints(briefing: TodayBriefing): string {
 }
 
 
+/**
+ * Replace every ISO timestamp in the briefing with a PRE-FORMATTED local
+ * clock string before it reaches the model. The local 8B mis-converts raw
+ * ISO/offset timestamps (it narrated a 15:00 task as "6 AM"); handing it the
+ * already-correct local time (the same string the structured `today` prints)
+ * turns the model's job into copy-not-compute. Same principle as the cited-
+ * recall fix: never make the small model do the arithmetic.
+ */
+function humanizeBriefingForModel(briefing: TodayBriefing): Record<string, unknown> {
+  const now = new Date();
+  return {
+    ...briefing,
+    ...(briefing.tasks ? {
+      tasks: briefing.tasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        ...(t.dueAt ? { due: `${shortDateTimeBrief(t.dueAt)}${relativeDueTag(t.dueAt, now)}` } : {})
+      }))
+    } : {}),
+    ...(briefing.events ? {
+      events: briefing.events.map((e) => ({
+        id: e.id,
+        title: e.title,
+        starts: shortDateTimeBrief(e.startsAtIso),
+        ...(e.endsAtIso ? { ends: shortDateTimeBrief(e.endsAtIso) } : {})
+      }))
+    } : {}),
+    ...(briefing.reminders ? {
+      reminders: briefing.reminders.map((r) => ({ id: r.id, text: r.text, due: shortDateTimeBrief(r.dueAt) }))
+    } : {}),
+    ...(briefing.followups ? {
+      followups: briefing.followups.map((f) => ({ id: f.id, summary: f.summary, due: shortDateTimeBrief(f.scheduledFor) }))
+    } : {})
+  };
+}
+
 async function renderBrief(
   io: ProgramIO,
   command: Command,
@@ -524,10 +560,13 @@ async function renderBrief(
   local: boolean,
   modelOverride: string | undefined
 ): Promise<string> {
+  // Hand the model pre-formatted local times (see humanizeBriefingForModel) so
+  // it never mis-converts a raw ISO timestamp.
+  const modelBriefing = humanizeBriefingForModel(briefing);
   // /api/chat doesn't take a system message, so the prompt is folded
   // into the single user message via the shared builder. The local
   // path keeps the system role separate via agentRuntime.run.
-  const remoteMessage = buildTodayBriefUserMessage(briefing);
+  const remoteMessage = buildTodayBriefUserMessage(modelBriefing);
 
   // The morning brief should speak in the active persona's voice
   // (JARVIS / casual / …), same as `muse chat`. Empty (default
@@ -535,7 +574,7 @@ async function renderBrief(
   const personaPreamble = (await loadActivePersonaPreamble().catch(() => "")).trim();
 
   if (local) {
-    const userBody = `Briefing JSON:\n${JSON.stringify(briefing, null, 2)}\n\nRender this as a short conversational morning brief.`;
+    const userBody = `Briefing JSON:\n${JSON.stringify(modelBriefing, null, 2)}\n\nRender this as a short conversational morning brief.`;
     return runLocalBrief(io, userBody, modelOverride, personaPreamble);
   }
 

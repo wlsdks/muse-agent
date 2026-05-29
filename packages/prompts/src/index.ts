@@ -96,7 +96,10 @@ export const TODAY_BRIEF_SYSTEM_PROMPT =
   "any pending reminders by count (call out overdue ones explicitly), any followups the agent owes today " +
   "(call those out as 'you said you would …' since they came from the user's own commitments), " +
   "and one recent note if relevant. " +
-  "Be warm but concise — no bullet lists, no headers. Match the user's locale.";
+  "Be warm but concise — no bullet lists, no headers. Match the user's locale. " +
+  "All times in the JSON are ALREADY formatted as the user's local clock time (e.g. a `due` of " +
+  "'2026-05-19 15:00 (today)') — state them exactly as given; never convert, shift, recompute, or " +
+  "reinterpret a time, and never invent one that is not in the JSON.";
 
 /**
  * Compose the user-message body that pairs the system prompt above
