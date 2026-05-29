@@ -41,7 +41,19 @@ test before HTTP smoke.
    ONLY**; skips (exit 0) when Ollama is unreachable. Run it after
    touching tool names/descriptions/schemas, the projection layer, or
    the Ollama adapter.
-6. **Lint gate**:
+6. **Self-improving regression gate** (the 4 LLM live batteries as one):
+   ```bash
+   pnpm eval:self-improving
+   ```
+   Runs `verify-pattern-suggestion` (③), `verify-preference-inference`
+   (②), `verify-skill-merge` + `verify-playbook-merge` (①) against the
+   local Qwen in one pass and fails if ANY regresses — so the
+   self-improving slices can't silently rot between individual battery
+   runs. **LOCAL OLLAMA ONLY**; skips (exit 0) when Ollama is
+   unreachable (a skip is not a pass). Run it after touching any of
+   those LLM paths (pattern synthesis, preference inference, skill /
+   playbook merge) or their prompts.
+7. **Lint gate**:
    ```bash
    pnpm lint
    ```

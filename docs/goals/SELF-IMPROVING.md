@@ -191,5 +191,12 @@ next phase is making the JARVIS run them ON ITS OWN, then deepening.
   autoconfigure decorator 2 + cli promote 7 tests; pnpm check EXIT 0
   (mcp 101 / memory 21 / autoconfigure 54 / cli 123), lint 0/0, smoke:broad
   51/0 (recall path unbroken). OpenClaw dreaming (MIT) — THIRD_PARTY_NOTICES.
-- [ ] **N6 (P2) — `pnpm eval:self-improving` gate.** Run all 4 live batteries
-  as one regression gate so the LLM slices can't silently rot.
+- [x] **N6 (P2) — `pnpm eval:self-improving` gate.** [this commit]
+  `scripts/eval-self-improving.mjs` runs all 4 live batteries
+  (verify-pattern-suggestion ③, verify-preference-inference ②,
+  verify-skill-merge + verify-playbook-merge ①) in one pass, surfacing the
+  failing battery's tail; exit 1 on ANY failure (regression-first), exit 0
+  with a SKIP when local Ollama is unreachable (skip ≠ pass). Wired as
+  `pnpm eval:self-improving` (builds the autoconfigure dep-closure first).
+  Verified live: 4/4 PASS exit 0; the unreachable-Ollama skip path exits 0;
+  lint 0/0. Documented as gate 6 in `.claude/rules/testing.md`.
