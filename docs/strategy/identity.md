@@ -89,10 +89,14 @@ The slogan "It can't tell anyone… enforced in the code" is literally true.
      calibration "what must be true" is verified live (real hits ~0.70 separate
      cleanly from off-topic ~0.42). (Drives the functions directly, sidestepping
      the smoke:live API stall on the loop PC.)
-   - [NEXT] Make `muse ask --notes-only` the headline CLI surface (UX) and
-     widen the ingestible corpus — an .mbox / exported-chat-history
-     pile-ingester so Muse eats the data that causes the pain, not just a
-     folder you already organized.
+   - [DONE — chat exports] `muse ingest <file>` eats the scattered pain corpus:
+     it converts an exported ChatGPT/Claude `conversations.json` into markdown
+     notes the existing `muse notes reindex` + cited-recall pipeline picks up
+     unchanged. Pure tolerant parsers (apps/cli/src/chat-export-ingest.ts, 6
+     unit tests); the export→ingest→citable chain is proven live in
+     `verify-cited-recall.mjs` (an ingested Claude chat cites at cosine ~0.81).
+   - [NEXT] An .mbox / exported-mail ingester (the biggest beachhead pain), and
+     making `muse ask --notes-only` the headline CLI surface (UX).
 2. **Trust instrumentation** — log every surfaced/recalled item's deterministic
    trigger + a one-tap veto; track precision; quiet-hours + caps.
 3. **Proactivity (the north star)** — turn the SAME deterministic-retrieval +

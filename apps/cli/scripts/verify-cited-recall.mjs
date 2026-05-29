@@ -19,6 +19,7 @@
  */
 import { createOllamaEmbedder } from "@muse/autoconfigure";
 import { classifyRetrievalConfidence, rankKnowledgeChunks, renderKnowledgeMatches } from "@muse/agent-core";
+import { ingestChatExport } from "../dist/chat-export-ingest.js";
 
 const embedModel = process.argv[2] ?? "nomic-embed-text";
 const baseUrl = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
@@ -53,9 +54,20 @@ const corpus = [
   { source: "doctor.md", text: "Dentist said the 6-month cleaning is due; rebook window opens the first week of June." }
 ];
 
+// Pile-ingester reach: an exported Claude chat, run through the REAL ingester,
+// becomes a corpus chunk — proving "ingested chat → citable recall" end-to-end.
+const ingested = ingestChatExport([
+  { name: "VPN setup", chat_messages: [
+    { sender: "human", text: "how did I fix the office VPN handshake timeout?" },
+    { sender: "assistant", text: "Set MTU to 1380 on the wg0 interface and restart wireguard — that cleared the handshake timeout." }
+  ] }
+]);
+for (const conv of ingested) corpus.push({ source: `ingested/${conv.slug}.md`, text: conv.markdown });
+
 const cases = [
   { name: "IN-CORPUS → confident, cite the source", kind: "confident", query: "when does my home insurance renew?", needles: ["cite the [source]", "policy-2025.pdf", "2026-09-14"] },
   { name: "IN-CORPUS → confident, distinct fact", kind: "confident", query: "who owns the launch deck?", needles: ["cite the [source]", "meeting-q3.md"] },
+  { name: "INGESTED chat → citable (pile-ingester reach)", kind: "confident", query: "how did I fix the VPN handshake timeout?", needles: ["cite the [source]", "ingested/vpn-setup.md", "MTU"] },
   { name: "OUT-OF-CORPUS → REFUSES (low-confidence or no-match, never confabulates)", kind: "refuse", query: "what is the boiling point of mercury in kelvin?" }
 ];
 
