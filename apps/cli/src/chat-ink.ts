@@ -1307,6 +1307,18 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
         process.stderr.write(`🧹 Consolidated ${m.merged.length.toString()} skills → ${m.umbrella}\n`);
       }
     }
+
+    // End-of-session commitment check-in auto-scan: detect open-loops the user
+    // voiced this session and schedule due-windowed check-ins the daemon
+    // delivers — so Muse speaks first WITHOUT a manual `muse checkins scan`.
+    // Opt-in + fail-soft. Deterministic (no model).
+    if (parseBoolean(process.env.MUSE_CHECKINS_AUTOSCAN_ENABLED, false)) {
+      const { scanSessionCheckins } = await import("./commands-checkins.js");
+      const scheduled = await scanSessionCheckins().catch(() => []);
+      for (const c of scheduled) {
+        process.stderr.write(`📌 Check-in scheduled: ${c.question}\n`);
+      }
+    }
   }
 }
 

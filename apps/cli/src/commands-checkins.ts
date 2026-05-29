@@ -7,7 +7,7 @@
  */
 
 import { detectUserCommitments } from "@muse/agent-core";
-import { appendCheckins, readCheckins, scheduleCheckins } from "@muse/mcp";
+import { appendCheckins, readCheckins, scheduleCheckins, type PersistedCheckin } from "@muse/mcp";
 import type { Command } from "commander";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -18,6 +18,40 @@ import type { ProgramIO } from "./program.js";
 
 export function checkinsFile(env: NodeJS.ProcessEnv = process.env): string {
   return env.MUSE_CHECKINS_FILE?.trim() || join(homedir(), ".muse", "checkins.json");
+}
+
+/**
+ * Read recent chat, detect the user's open-loop commitments, and schedule
+ * due-windowed check-ins (deduped + per-day capped). Returns the NEW
+ * check-ins. Shared by `muse checkins scan` and the session-end auto-scan so
+ * both behave identically.
+ */
+export async function scanSessionCheckins(
+  options: {
+    readonly slotHour?: number;
+    readonly maxPerDay?: number;
+    /** Test seams — default to the real chat-history reader / store path / clock. */
+    readonly readHistory?: () => Promise<readonly { readonly role: string; readonly content: string }[]>;
+    readonly file?: string;
+    readonly userId?: string;
+    readonly now?: () => Date;
+  } = {}
+): Promise<readonly PersistedCheckin[]> {
+  const readHistory = options.readHistory ?? readLastChatHistory;
+  const history = await readHistory().catch(() => []);
+  const userTurns = history.filter((line) => line.role === "user").map((line) => line.content);
+  const commitments = detectUserCommitments(userTurns).map((c) => c.text);
+  const file = options.file ?? checkinsFile();
+  const existing = await readCheckins(file).catch(() => []);
+  const fresh = scheduleCheckins(commitments, {
+    existing,
+    now: options.now ? options.now() : new Date(),
+    userId: options.userId ?? resolveUserId(),
+    ...(options.slotHour !== undefined ? { slotHour: options.slotHour } : {}),
+    ...(options.maxPerDay !== undefined ? { maxPerDay: options.maxPerDay } : {})
+  });
+  await appendCheckins(file, fresh);
+  return fresh;
 }
 
 function resolveUserId(env: NodeJS.ProcessEnv = process.env): string {
@@ -36,19 +70,10 @@ export function registerCheckinsCommands(program: Command, io: ProgramIO): void 
     .option("--max-per-day <n>", "Max new check-ins per day (default 3)")
     .option("--json", "Print the raw payload")
     .action(async (options: { readonly slotHour?: string; readonly maxPerDay?: string; readonly json?: boolean }) => {
-      const history = await readLastChatHistory().catch(() => []);
-      const userTurns = history.filter((line) => line.role === "user").map((line) => line.content);
-      const commitments = detectUserCommitments(userTurns).map((c) => c.text);
-      const file = checkinsFile();
-      const existing = await readCheckins(file).catch(() => []);
-      const fresh = scheduleCheckins(commitments, {
-        existing,
-        now: new Date(),
-        userId: resolveUserId(),
+      const fresh = await scanSessionCheckins({
         ...(options.slotHour !== undefined ? { slotHour: Number(options.slotHour) } : {}),
         ...(options.maxPerDay !== undefined ? { maxPerDay: Number(options.maxPerDay) } : {})
       });
-      await appendCheckins(file, fresh);
       if (options.json) {
         io.stdout(`${JSON.stringify({ scheduled: fresh, total: fresh.length }, null, 2)}\n`);
         return;

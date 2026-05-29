@@ -138,6 +138,10 @@ next phase is making the JARVIS run them ON ITS OWN, then deepening.
   these to fire without `muse checkins scan` / `user model infer` / `skills
   consolidate`. Verify: a session with a commitment+correction → next daemon
   tick delivers the check-in AND the inferred preference shows in the model.
+  PROGRESS: N1a done 2026-05-29 — session-end auto-scan check-ins behind
+  `MUSE_CHECKINS_AUTOSCAN_ENABLED` (`scanSessionCheckins` extracted + tested,
+  wired into chat-ink session-end). N1b (auto-infer prefs) + N1c (idle-gated
+  consolidate) pending before the bullet flips.
 - [ ] **N2 (P0) — ③/② end-to-end daemon audit.** One real daemon tick test
   that exercises check-in delivery + pattern suggestion together (composition,
   quiet-hours, dedup) — proves the pieces compose, not just unit-pass.
