@@ -274,8 +274,13 @@ the generic layers below because they test what makes Muse an *agent*.
     inject extra query params (percent-encoded, not smuggled). Also: apiRequest
     result is handed to writeOutput; unknown subcommand + missing required arg
     are parse errors. commands-cost.test.ts +7 (cli 1496). Fake helpers, no network.
-  - [ ] Remaining: commands-analytics / latency / persona / voice / specs /
-    tools-admin (same inject-fake-helpers harness).
+  - [x] `muse latency` + `muse analytics` (the sibling observability groups):
+    summary/timeseries + failures/latency-distribution route to the exact
+    /api/admin/metrics/latency/* + /api/admin/conversation-analytics/* paths;
+    --days is percent-encoded (no param injection); apiRequest result → writeOutput;
+    unknown subcommand is a parse error. commands-observability.test.ts +7 (cli 1503).
+  - [ ] Remaining: commands-persona / voice / specs / tools-admin (same
+    inject-fake-helpers harness).
 - [~] **Config / schema validation fuzz.** Zod (or comparable) config + external-
   input validators against adversarial inputs (wrong types, extra keys, unicode,
   huge values) — assert they reject cleanly, never throw raw.
