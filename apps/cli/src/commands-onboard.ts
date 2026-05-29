@@ -160,5 +160,6 @@ export function registerOnboardCommand(program: Command, io: ProgramIO): void {
       io.stdout(report.ready
         ? `\n✅ Ready. Ask your own machine:\n   $ ${report.nextCommand}\n`
         : `\n👉 Next: ${report.nextTitle}\n   $ ${report.nextCommand}\n`);
+      io.stdout("\nVerify your setup any time (models, local-only posture, index):\n   $ muse doctor --local\n");
     });
 }
