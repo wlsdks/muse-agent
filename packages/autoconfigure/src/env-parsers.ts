@@ -109,11 +109,16 @@ export function parseNonNegativeInteger(value: string | undefined, fallback: num
 // the float parsers: `Number.parseFloat("0.5x")` is `0.5` and
 // `"60s"` is `60`, so a unit-slip / typo'd MUSE_* float silently
 // took effect instead of the fallback. `Number` rejects trailing
-// garbage (→ NaN). The empty/whitespace guard preserves the prior
-// parseFloat("")→NaN→fallback (Number("")===0 would not).
+// garbage (→ NaN) but still DECODES hex/octal/binary prefixes
+// (`Number("0x10")===16`), so a typo'd `MUSE_*=0x1` silently became
+// 1 — the same silent-coercion bug, just via a different notation.
+// Gate on a decimal-float pattern (sign, optional fraction, optional
+// exponent) so only base-10 floats pass; everything else maps to the
+// fallback, matching `parseInteger`'s regex contract.
+const DECIMAL_FLOAT_PATTERN = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/u;
 function strictFloat(value: string): number {
   const trimmed = value.trim();
-  if (trimmed.length === 0) {
+  if (!DECIMAL_FLOAT_PATTERN.test(trimmed)) {
     return Number.NaN;
   }
   return Number(trimmed);
