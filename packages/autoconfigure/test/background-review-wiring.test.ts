@@ -22,32 +22,19 @@ function spyAutoExtract() {
 }
 
 describe("buildBackgroundReviewHooks", () => {
-  it("default (flag off) → the standalone auto-extract hook, unchanged", () => {
-    const { hook } = spyAutoExtract();
-    expect(buildBackgroundReviewHooks({}, { autoExtractHook: hook })).toEqual([hook]);
-    expect(buildBackgroundReviewHooks({}, {})).toEqual([]); // no model → no hook
+  it("is purely additive: off → [] (auto-extract is the caller's separate every-turn hook)", () => {
+    expect(buildBackgroundReviewHooks({}, {})).toEqual([]);
+    expect(buildBackgroundReviewHooks({}, { reviewCommitments: async () => undefined })).toEqual([]); // off → still nothing
   });
 
-  it("flag on → ONE engine hook (not the raw auto-extract), routing memory on the turn-count trigger", async () => {
-    const { calls, hook } = spyAutoExtract();
-    const env = { MUSE_BACKGROUND_REVIEW_ENABLED: "true", MUSE_BACKGROUND_REVIEW_MEMORY_TURNS: "2", MUSE_BACKGROUND_REVIEW_SKILL_ITERS: "999" };
-    const hooks = buildBackgroundReviewHooks(env, { autoExtractHook: hook });
+  it("flag on → ONE engine hook; it does NOT call any auto-extract (that stays separate)", async () => {
+    const { calls } = spyAutoExtract();
+    const env = { MUSE_BACKGROUND_REVIEW_ENABLED: "true", MUSE_BACKGROUND_REVIEW_MEMORY_TURNS: "1" };
+    const hooks = buildBackgroundReviewHooks(env, {});
     expect(hooks).toHaveLength(1);
-    expect(hooks[0]!.id).not.toBe("auto-extract"); // it's the engine, which OWNS the cadence
-
-    await hooks[0]!.afterComplete!(ctx, res); // turn 1 → below threshold, no extract
+    await hooks[0]!.afterComplete!(ctx, res);
     await flush();
-    expect(calls).toEqual([]);
-    await hooks[0]!.afterComplete!(ctx, res); // turn 2 → memory fires → auto-extract runs once
-    await flush();
-    expect(calls).toEqual(["extract"]);
-  });
-
-  it("flag on with no auto-extract hook still yields the engine (memory arm just no-ops)", async () => {
-    const hooks = buildBackgroundReviewHooks({ MUSE_BACKGROUND_REVIEW_ENABLED: "1", MUSE_BACKGROUND_REVIEW_MEMORY_TURNS: "1" }, {});
-    expect(hooks).toHaveLength(1);
-    expect(() => hooks[0]!.afterComplete!(ctx, res)).not.toThrow(); // sync, non-blocking
-    await flush();
+    expect(calls).toEqual([]); // engine never touches auto-extract
   });
 
   it("fires the SKILL arm on the tool-iteration trigger (hard tasks teach)", async () => {

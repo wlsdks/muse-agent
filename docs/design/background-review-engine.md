@@ -165,11 +165,14 @@ STAY as on-demand surfaces.
 1. **[DONE] Counters + engine skeleton.** `createBackgroundReviewHook` with
    `afterTool`/`afterComplete` counting + trigger logic + a counter store.
    Unit-tested; inert (no-op runReview, unwired). No behaviour change.
-2. **[DONE — auto-extract + check-ins] Route memory arm** (turn-count).
-   `buildBackgroundReviewHooks` (autoconfigure) wires the engine behind
-   `MUSE_BACKGROUND_REVIEW_ENABLED` (default off): when on, auto-extract runs on
-   the turn-count trigger across EVERY surface, replacing the standalone
-   per-turn hook. The COMMITMENT arm (`scanCommitmentsFromTurns`, the
+2. **[DONE — memory arm] Additive engine, every-turn auto-extract preserved.**
+   `buildBackgroundReviewHooks` (autoconfigure) adds the engine behind
+   `MUSE_BACKGROUND_REVIEW_ENABLED` (default off) as a PURELY ADDITIVE hook —
+   it does NOT touch auto-extract. (FIX, found by the e2e watch: an earlier cut
+   gated auto-extract to "every N turns", but auto-extract reads only the
+   LATEST exchange, so that LOST facts stated on intervening turns. Auto-extract
+   now stays its own every-turn hook; the engine only adds the window-scanning
+   arms.) The COMMITMENT arm (`scanCommitmentsFromTurns`, the
    package-level core of the CLI's `scanSessionCheckins`) also runs on the
    turn-count trigger — deterministic open-loop → check-in, so the
    server/daemon (no session-end) now captures voiced commitments too.
