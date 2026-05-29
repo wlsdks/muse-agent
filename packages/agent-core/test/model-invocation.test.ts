@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DefaultCircuitBreaker, type FallbackStrategy, type RetryOptions } from "@muse/resilience";
-import type { ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
+import { ModelProviderError, type ModelProvider, type ModelRequest, type ModelResponse } from "@muse/model";
 import { InMemoryAgentMetrics, InMemoryMuseTracer, InMemoryTokenUsageSink } from "@muse/observability";
 import { invokeModel, recordTokenUsageEvent } from "../src/model-invocation.js";
 
@@ -133,6 +133,88 @@ describe("invokeModel", () => {
       runId: "run-mi-5",
       tracer: new InMemoryMuseTracer()
     })).rejects.toThrow();
+  });
+});
+
+// Failure-injection / chaos on the run() model-call seam (backlog P1 — the
+// "harden the actuators against real-world failure modes" half of the human's
+// directive). The existing tests above prove each resilience layer in isolation
+// with a bare `{retryable:true}` flag; these prove the real CLASSIFICATION
+// (4xx fail-fast vs 429/503/transient retry, via isRetryableProviderError +
+// ModelProviderError.retryable) AND the COMPOSITION the architecture promises:
+// retry → fallback → circuit-breaker, in one chain.
+describe("invokeModel — failure injection (retry classification + retry→fallback→breaker)", () => {
+  const base = (extra: Partial<Parameters<typeof invokeModel>[0]>): Parameters<typeof invokeModel>[0] => ({
+    metrics: new InMemoryAgentMetrics(),
+    provider: provider(async () => ({ id: "x", model: "m", output: "ok" })),
+    request: baseRequest(),
+    runId: "fi",
+    tracer: new InMemoryMuseTracer(),
+    ...extra,
+  });
+
+  it("4xx fails FAST — a non-retryable ModelProviderError is not retried even with maxAttempts:3", async () => {
+    let attempts = 0;
+    await expect(invokeModel(base({
+      provider: provider(async () => { attempts += 1; throw new ModelProviderError("p", "404 model not found", false); }),
+      retry: { initialDelayMs: 1, maxAttempts: 3 },
+    }))).rejects.toBeInstanceOf(ModelProviderError);
+    expect(attempts).toBe(1); // burned no retry budget on a permanent error
+  });
+
+  it("429 rate-limit IS retried (retryable=true) and succeeds within maxAttempts", async () => {
+    let attempts = 0;
+    const result = await invokeModel(base({
+      provider: provider(async () => {
+        attempts += 1;
+        if (attempts < 3) throw new ModelProviderError("p", "429 rate limited", true);
+        return { id: "ok", model: "m", output: "recovered after 429" };
+      }),
+      retry: { initialDelayMs: 1, maxAttempts: 3 },
+    }));
+    expect(attempts).toBe(3);
+    expect(result.output).toBe("recovered after 429");
+  });
+
+  it("a malformed/unknown error (e.g. JSON parse failure) is treated as transient and retried", async () => {
+    let attempts = 0;
+    const result = await invokeModel(base({
+      provider: provider(async () => {
+        attempts += 1;
+        if (attempts < 2) throw new SyntaxError("Unexpected token < in JSON at position 0");
+        return { id: "ok", model: "m", output: "recovered" };
+      }),
+      retry: { initialDelayMs: 1, maxAttempts: 3 },
+    }));
+    expect(attempts).toBe(2);
+    expect(result.output).toBe("recovered");
+  });
+
+  it("retry EXHAUSTED on a persistent 503 → the fallback strategy rescues the turn", async () => {
+    let attempts = 0;
+    const fallback: FallbackStrategy = { execute: async () => ({ id: "fb", model: "fallback/model", output: "fallback answer" }) };
+    const result = await invokeModel(base({
+      fallbackStrategy: fallback,
+      provider: provider(async () => { attempts += 1; throw new ModelProviderError("p", "503 service unavailable", true); }),
+      retry: { initialDelayMs: 1, maxAttempts: 3 },
+    }));
+    expect(attempts).toBe(3); // every retry attempt was spent before falling back
+    expect(result.output).toBe("fallback answer");
+  });
+
+  it("retry→breaker: each exhausted-retry invocation is ONE breaker failure; the breaker opens and short-circuits without calling the provider", async () => {
+    const breaker = new DefaultCircuitBreaker({ failureThreshold: 2, resetTimeoutMs: 60_000 });
+    let providerCalls = 0;
+    const failing = provider(async () => { providerCalls += 1; throw new ModelProviderError("p", "503", true); });
+    const invoke = () => invokeModel(base({ circuitBreaker: breaker, provider: failing, retry: { initialDelayMs: 1, maxAttempts: 2 } }));
+
+    await invoke().catch(() => undefined);
+    await invoke().catch(() => undefined);
+    expect(breaker.state()).toBe("open");
+    const callsBeforeBlocked = providerCalls; // 2 invocations × 2 attempts = 4
+
+    await expect(invoke()).rejects.toThrow();
+    expect(providerCalls).toBe(callsBeforeBlocked); // open breaker short-circuited — provider untouched
   });
 });
 
