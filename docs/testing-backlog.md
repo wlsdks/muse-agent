@@ -279,7 +279,13 @@ the generic layers below because they test what makes Muse an *agent*.
     /api/admin/metrics/latency/* + /api/admin/conversation-analytics/* paths;
     --days is percent-encoded (no param injection); apiRequest result → writeOutput;
     unknown subcommand is a parse error. commands-observability.test.ts +7 (cli 1503).
-  - [ ] Remaining: commands-persona / voice / specs / tools-admin (same
+  - [x] `muse specs` (agent-spec registry: list / get / resolve): list → GET
+    /agent-specs; get encodes the name (a hostile `../admin/secrets` →
+    `..%2Fadmin%2Fsecrets`, no path traversal); resolve joins+trims the variadic
+    prompt into a POST body and rejects an all-whitespace prompt (no request
+    fires); unknown subcommand + missing <name> are parse errors.
+    commands-specs.test.ts +6 (cli 1509).
+  - [ ] Remaining: commands-persona / voice / tools-admin (same
     inject-fake-helpers harness).
 - [~] **Config / schema validation fuzz.** Zod (or comparable) config + external-
   input validators against adversarial inputs (wrong types, extra keys, unicode,
