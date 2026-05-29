@@ -280,8 +280,17 @@ the generic layers below because they test what makes Muse an *agent*.
     non-empty-trimmed-or-undefined; trailing-garbage/hex/unit-suffix tokens map
     to fallback (never silently coerced). env-parsers.test.ts +8 (autoconfigure
     436). (Confirmed int-vs-float precision contract differs by design.)
+  - [x] isLoopbackUrl / classifyProviderLocality — the local-only EGRESS
+    boundary (a misclassification = silent cloud egress the user asked to be
+    protected from). Adversarial corpus proves the one-directional security
+    invariant: string-appearance tricks (credentials/userinfo `localhost@evil.com`,
+    subdomain `127.0.0.1.evil.com`, loopback token in path/query/fragment) are
+    NEVER local; LAN/public/integer-IP-to-public hosts are NOT loopback; yet
+    canonicalised loopback (integer/hex/octal IPv4 → 127.x) IS still recognised;
+    cloud-id stays cloud even with a localhost URL; never throws on a 250-input
+    generated junk corpus. local-only-policy.test.ts +4 (model 293).
   - [ ] Remaining: fuzz the other external-input validators (runner command
-    request, web-search-policy, isLoopbackUrl, JSON-repair, gemini-live-protocol).
+    request, web-search-policy, JSON-repair, gemini-live-protocol).
 
 ---
 
