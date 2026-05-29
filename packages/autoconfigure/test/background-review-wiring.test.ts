@@ -17,14 +17,14 @@ function spyAutoExtract() {
 describe("buildBackgroundReviewHooks", () => {
   it("default (flag off) → the standalone auto-extract hook, unchanged", () => {
     const { hook } = spyAutoExtract();
-    expect(buildBackgroundReviewHooks({}, hook)).toEqual([hook]);
-    expect(buildBackgroundReviewHooks({}, undefined)).toEqual([]); // no model → no hook
+    expect(buildBackgroundReviewHooks({}, { autoExtractHook: hook })).toEqual([hook]);
+    expect(buildBackgroundReviewHooks({}, {})).toEqual([]); // no model → no hook
   });
 
   it("flag on → ONE engine hook (not the raw auto-extract), routing memory on the turn-count trigger", async () => {
     const { calls, hook } = spyAutoExtract();
     const env = { MUSE_BACKGROUND_REVIEW_ENABLED: "true", MUSE_BACKGROUND_REVIEW_MEMORY_TURNS: "2", MUSE_BACKGROUND_REVIEW_SKILL_ITERS: "999" };
-    const hooks = buildBackgroundReviewHooks(env, hook);
+    const hooks = buildBackgroundReviewHooks(env, { autoExtractHook: hook });
     expect(hooks).toHaveLength(1);
     expect(hooks[0]!.id).not.toBe("auto-extract"); // it's the engine, which OWNS the cadence
 
@@ -37,9 +37,21 @@ describe("buildBackgroundReviewHooks", () => {
   });
 
   it("flag on with no auto-extract hook still yields the engine (memory arm just no-ops)", async () => {
-    const hooks = buildBackgroundReviewHooks({ MUSE_BACKGROUND_REVIEW_ENABLED: "1", MUSE_BACKGROUND_REVIEW_MEMORY_TURNS: "1" }, undefined);
+    const hooks = buildBackgroundReviewHooks({ MUSE_BACKGROUND_REVIEW_ENABLED: "1", MUSE_BACKGROUND_REVIEW_MEMORY_TURNS: "1" }, {});
     expect(hooks).toHaveLength(1);
     expect(() => hooks[0]!.afterComplete!(ctx, res)).not.toThrow(); // sync, non-blocking
     await flush();
+  });
+
+  it("fires the SKILL arm on the tool-iteration trigger (hard tasks teach)", async () => {
+    const skillCalls: string[] = [];
+    const env = { MUSE_BACKGROUND_REVIEW_ENABLED: "1", MUSE_BACKGROUND_REVIEW_MEMORY_TURNS: "999", MUSE_BACKGROUND_REVIEW_SKILL_ITERS: "2" };
+    const hooks = buildBackgroundReviewHooks(env, { reviewSkill: async () => { skillCalls.push("skill"); } });
+    // two tool iterations (a "hard" task) then complete → skill trigger fires
+    hooks[0]!.afterTool!(ctx, {} as never, {} as never);
+    hooks[0]!.afterTool!(ctx, {} as never, {} as never);
+    hooks[0]!.afterComplete!(ctx, res);
+    await flush();
+    expect(skillCalls).toEqual(["skill"]);
   });
 });

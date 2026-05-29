@@ -111,10 +111,10 @@ export type {
   DistillStrategyOptions
 } from "./correction-distiller.js";
 
-export { detectSkillCandidates, draftSkillFromSignal } from "./skill-review.js";
+export { detectSkillCandidates, draftSkillFromSignal, reviewSkillsFromTurns } from "./skill-review.js";
 export { mergeSkillsIntoUmbrella, type MergeSkillsOptions } from "./skill-merge.js";
 export { clusterByTextSimilarity, mergePlaybookStrategies, type MergePlaybookOptions } from "./playbook-merge.js";
-export type { SkillReviewSignal, SkillDraft, DetectSkillCandidatesOptions, DraftSkillOptions } from "./skill-review.js";
+export type { SkillReviewSignal, SkillDraft, DetectSkillCandidatesOptions, DraftSkillOptions, ReviewSkillsOptions, ReviewSkillsResult } from "./skill-review.js";
 
 export {
   cosineSimilarity,

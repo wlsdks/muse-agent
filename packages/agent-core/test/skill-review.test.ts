@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { detectSkillCandidates, draftSkillFromSignal, type SkillReviewSignal } from "../src/skill-review.js";
+import { detectSkillCandidates, draftSkillFromSignal, reviewSkillsFromTurns, type SkillReviewSignal } from "../src/skill-review.js";
 import type { SessionTurnLine } from "../src/episodic-summariser.js";
 
 const turn = (role: "user" | "assistant", content: string): SessionTurnLine => ({ content, role });
@@ -79,5 +79,39 @@ describe("draftSkillFromSignal", () => {
       }
     };
     expect(await draftSkillFromSignal(correctionSignal, { model: "qwen", modelProvider: provider as never })).toBeNull();
+  });
+});
+
+describe("reviewSkillsFromTurns — detect → draft → write (engine skill arm)", () => {
+  const hardTurns: SessionTurnLine[] = [
+    turn("user", "send the report to my manager"),
+    turn("assistant", "I attached the .docx."),
+    turn("user", "no, that's not what I asked — always export to PDF first, then attach")
+  ];
+  const SKILL = "name: export-then-attach\ndescription: Use when sending a document\nbody:\n1. export to PDF\n2. attach the PDF";
+
+  it("authors a skill when a procedural correction drafts one and the writer creates it", async () => {
+    const written: string[] = [];
+    const result = await reviewSkillsFromTurns(hardTurns, {
+      model: "qwen",
+      modelProvider: fakeProvider(SKILL) as never,
+      writeDraft: async (draft) => { written.push(draft.name); return { action: "create", name: draft.name }; }
+    });
+    expect(result.authored).toEqual(["export-then-attach (create)"]);
+    expect(written).toEqual(["export-then-attach"]);
+  });
+
+  it("authors nothing on a NONE draft and on a quarantined/skip write", async () => {
+    const none = await reviewSkillsFromTurns(hardTurns, { model: "q", modelProvider: fakeProvider("NONE") as never, writeDraft: async () => ({ action: "create", name: "x" }) });
+    expect(none.authored).toEqual([]);
+    const quarantined = await reviewSkillsFromTurns(hardTurns, { model: "q", modelProvider: fakeProvider(SKILL) as never, writeDraft: async () => ({ action: "quarantined", name: "export-then-attach" }) });
+    expect(quarantined.authored).toEqual([]); // quarantine is not active → not authored
+  });
+
+  it("authors nothing when there is no correction (trivial turn)", async () => {
+    const result = await reviewSkillsFromTurns([turn("user", "hi"), turn("assistant", "hello")], {
+      model: "q", modelProvider: fakeProvider(SKILL) as never, writeDraft: async () => ({ action: "create", name: "x" })
+    });
+    expect(result.authored).toEqual([]);
   });
 });

@@ -171,9 +171,18 @@ STAY as on-demand surfaces.
    EVERY surface, replacing the standalone per-turn hook. Preference-infer +
    check-in-scan still pending — they live in apps/cli and must move into a
    package before the engine (a package) can call them (slice 2b/3).
-3. **Route skill arm** (tool-iteration): fold skill authoring + playbook
-   distill under it; verify the iter trigger fires on a multi-tool task via a
-   runtime integration test. `eval:self-improving` green.
+3. **[DONE — skill authoring] Route skill arm** (tool-iteration). New
+   store-injected `reviewSkillsFromTurns` (@muse/agent-core) reused by the
+   engine; autoconfigure builds the skill-arm callback over the turn's LIVE
+   conversation (`context.input.messages`) → `AuthoredSkillStore.writeOrPatch`,
+   gated by its OWN flag `MUSE_BACKGROUND_REVIEW_SKILL_ARM` (D2: careful
+   rollout) on top of the engine switch. PROVEN on real qwen
+   (`verify-background-review.mjs`, in the `eval:self-improving` gate): a
+   procedural correction authors a reusable skill end-to-end; a no-correction
+   turn authors nothing. KNOWN limit (logged, informational): a small model
+   sometimes authors a narrow skill from a style-only preference — benign
+   (risk-scanned + consolidate folds it). Playbook distill under the skill arm
+   still pending.
 4. **Retire the CLI session-end blocks** behind the master switch; one
    migration note; smoke:broad + a CLI session-end regression test.
 5. **Name the idle curator arm** (doc + a thin `reviewIdle` alias to N1c) — no

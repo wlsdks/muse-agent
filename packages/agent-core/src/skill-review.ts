@@ -90,6 +90,51 @@ export async function draftSkillFromSignal(
   return parseSkillDraft(output);
 }
 
+export interface ReviewSkillsOptions extends DraftSkillOptions {
+  readonly maxCandidates?: number;
+  /**
+   * Persist a drafted skill. Returns the ACTIVE action (`create`/`patch`) +
+   * the stored name, or `undefined` when the write was a skip / quarantine /
+   * failure (those don't count as authored). Injected so this module stays
+   * store-free — the caller wires `AuthoredSkillStore.writeOrPatch`, whose
+   * risk-scan can quarantine a poisoned draft instead of activating it.
+   */
+  readonly writeDraft: (draft: SkillDraft) => Promise<{ readonly action: string; readonly name: string } | undefined>;
+}
+
+export interface ReviewSkillsResult {
+  /** `"<name> (<action>)"` for each skill that became active this review. */
+  readonly authored: readonly string[];
+}
+
+/**
+ * The reusable skill-review pass: detect procedural corrections in the given
+ * turns, draft a skill per candidate (one local-model call each), and persist
+ * via the injected writer. Used by the background-review engine (live
+ * conversation turns) and available to the CLI session-end path. Fail-soft per
+ * skill — one bad write never loses the rest.
+ */
+export async function reviewSkillsFromTurns(
+  turns: readonly SessionTurnLine[],
+  options: ReviewSkillsOptions
+): Promise<ReviewSkillsResult> {
+  const signals = detectSkillCandidates(turns, { maxCandidates: options.maxCandidates ?? 2 });
+  const authored: string[] = [];
+  for (const signal of signals) {
+    const draft = await draftSkillFromSignal(signal, options);
+    if (!draft) continue;
+    try {
+      const written = await options.writeDraft(draft);
+      if (written && (written.action === "create" || written.action === "patch")) {
+        authored.push(`${written.name} (${written.action})`);
+      }
+    } catch {
+      // fail-soft per skill
+    }
+  }
+  return { authored };
+}
+
 export function parseSkillDraft(raw: string): SkillDraft | null {
   const trimmed = raw.trim();
   if (trimmed.length === 0 || /^NONE\b/u.test(trimmed)) return null;

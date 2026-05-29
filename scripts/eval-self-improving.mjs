@@ -28,7 +28,8 @@ const BATTERIES = [
   { axis: "③ proactive", file: "apps/cli/scripts/verify-pattern-suggestion.mjs", name: "pattern-suggestion" },
   { axis: "② personalization", file: "apps/cli/scripts/verify-preference-inference.mjs", name: "preference-inference" },
   { axis: "① self-improve", file: "apps/cli/scripts/verify-skill-merge.mjs", name: "skill-merge" },
-  { axis: "① self-improve", file: "apps/cli/scripts/verify-playbook-merge.mjs", name: "playbook-merge" }
+  { axis: "① self-improve", file: "apps/cli/scripts/verify-playbook-merge.mjs", name: "playbook-merge" },
+  { axis: "① self-improve", file: "apps/cli/scripts/verify-background-review.mjs", name: "background-review" }
 ];
 
 async function ollamaReachable() {

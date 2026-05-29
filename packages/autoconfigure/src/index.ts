@@ -5,11 +5,14 @@ import {
   createFollowupCaptureHook,
   extractFollowupPromisesLlm,
   InMemoryAgentInitiatedNoticeBroker,
+  reviewSkillsFromTurns,
   type ActiveContextProvider,
   type AgentInitiatedNoticeBroker,
   type AgentRuntime,
+  type BackgroundReviewInput,
   type CapturedFollowup,
-  type HookStage
+  type HookStage,
+  type SessionTurnLine
 } from "@muse/agent-core";
 import {
   DEFAULT_AGENT_SPECS,
@@ -150,6 +153,7 @@ import { readFeedKnowledgeEntries } from "./feeds-knowledge-source.js";
 import { createUserMemoryKnowledgeSource } from "./user-memory-knowledge-source.js";
 import { resolveDefaultUserId } from "./user-id.js";
 import { createNotesKnowledgeSearchTool } from "./knowledge-corpus.js";
+import { AuthoredSkillStore } from "@muse/skills";
 
 import {
   buildActiveContextProvider,
@@ -169,6 +173,7 @@ import {
   ensureNotesDir,
   mergeModelKeysFromFile,
   resolveActionLogFile,
+  resolveAuthoredSkillsDir,
   resolveContactsFile,
   resolveEpisodesFile,
   resolveFeedsFile,
@@ -700,12 +705,39 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
         : {})
     }) as HookStage
     : undefined;
+  // Skill arm of the background-review engine ("hard tasks teach"): when the
+  // tool-iteration trigger fires, author a reusable skill from the turn's LIVE
+  // conversation. Gated by its OWN flag on top of the engine switch — it writes
+  // the skill library unattended (the store's risk-scan quarantines a poisoned
+  // draft rather than activating it), so it stays opt-in for a careful rollout.
+  const skillArmOn = parseBoolean(env.MUSE_BACKGROUND_REVIEW_ENABLED, false)
+    && parseBoolean(env.MUSE_BACKGROUND_REVIEW_SKILL_ARM, false)
+    && Boolean(modelProvider) && Boolean(defaultModel);
+  const reviewSkillArm = skillArmOn && modelProvider && defaultModel
+    ? async (input: BackgroundReviewInput): Promise<void> => {
+      const turns: SessionTurnLine[] = input.context.input.messages
+        .filter((m): m is { readonly role: "user" | "assistant"; readonly content: string } =>
+          (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+        .map((m) => ({ content: m.content, role: m.role }));
+      if (turns.length === 0) return;
+      const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir(env) });
+      await reviewSkillsFromTurns(turns, {
+        model: defaultModel,
+        modelProvider,
+        writeDraft: async (draft) => {
+          const { action, skill } = await store.writeOrPatch(draft);
+          return { action, name: skill.name };
+        }
+      });
+    }
+    : undefined;
   const runtimeHooks = [
     ...createDefaultRuntimeHooks(env),
     // Memory-learning hooks: either the standalone per-turn auto-extract
     // (default) or, behind MUSE_BACKGROUND_REVIEW_ENABLED, the background-review
-    // engine that runs it on a turn-count trigger across every surface.
-    ...buildBackgroundReviewHooks(env, autoExtractHook),
+    // engine that runs it on a turn-count trigger across every surface (+ the
+    // skill arm on the tool-iteration trigger when MUSE_BACKGROUND_REVIEW_SKILL_ARM).
+    ...buildBackgroundReviewHooks(env, { autoExtractHook, ...(reviewSkillArm ? { reviewSkill: reviewSkillArm } : {}) }),
     ...(parseBoolean(env.MUSE_FOLLOWUP_CAPTURE_ENABLED, true)
       ? [createFollowupCaptureHook({
         persist: async (captured: CapturedFollowup) => {

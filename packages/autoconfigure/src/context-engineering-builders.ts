@@ -308,10 +308,23 @@ export function withRecallHitRecording(
  * The auto-extract hook is reused AS the memory distiller (we call its
  * `afterComplete`), so no auto-extract logic is duplicated.
  */
+export interface BackgroundReviewArms {
+  readonly autoExtractHook?: HookStage | undefined;
+  /**
+   * Skill arm — author a reusable skill from the turn's conversation when the
+   * tool-iteration trigger fires ("hard tasks teach"). Built by the caller
+   * (it needs the model + skill store) and gated separately
+   * (`MUSE_BACKGROUND_REVIEW_SKILL_ARM`) since it writes the skill library
+   * unattended; absent ⇒ the skill trigger is a no-op.
+   */
+  readonly reviewSkill?: (input: BackgroundReviewInput) => Promise<void>;
+}
+
 export function buildBackgroundReviewHooks(
   env: MuseEnvironment,
-  autoExtractHook: HookStage | undefined
+  arms: BackgroundReviewArms
 ): readonly HookStage[] {
+  const autoExtractHook = arms.autoExtractHook;
   if (!parseBoolean(env.MUSE_BACKGROUND_REVIEW_ENABLED, false)) {
     return autoExtractHook ? [autoExtractHook] : [];
   }
@@ -321,7 +334,9 @@ export function buildBackgroundReviewHooks(
     if (input.reviewMemory && autoExtractHook?.afterComplete) {
       await autoExtractHook.afterComplete(input.context, input.response);
     }
-    // input.reviewSkill arm (skill authoring + playbook distill) — next slice.
+    if (input.reviewSkill && arms.reviewSkill) {
+      await arms.reviewSkill(input);
+    }
   };
   return [createBackgroundReviewHook({ memoryEveryTurns, runReview, skillEveryIters })];
 }
