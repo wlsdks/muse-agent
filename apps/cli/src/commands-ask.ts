@@ -25,7 +25,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 
 import { classifyRetrievalConfidence, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, selectByMmr, type RetrievalConfidence } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveEpisodesFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
@@ -684,7 +684,16 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         ? "(notes search unavailable this turn — answer from the other grounding sources)"
         : contextChunks.length === 0
           ? "(no relevant notes found)"
-          : contextChunks.map((r, i) => `<<note ${(i + 1).toString()} — ${r.file} (score ${r.score.toFixed(3)})>>\n${r.chunk.text}\n<<end>>`).join("\n\n");
+          // The trailing `cite as: [from FILE]` is a COPY-READY token: a
+          // small local model (qwen3:8b) parrots placeholders ("FILENAME")
+          // and even fake example paths verbatim, so don't ask it to
+          // substitute — hand it the exact real bracket to copy. The source
+          // is shown relative to the notes dir (clean + locatable), not the
+          // absolute path.
+          : contextChunks.map((r, i) => {
+            const src = isAbsolute(r.file) ? relative(notesDir, r.file) : r.file;
+            return `<<note ${(i + 1).toString()} — ${src}>>\n${r.chunk.text}\ncite as: [from ${src}]\n<<end>>`;
+          }).join("\n\n");
 
       // Pull open tasks as a second grounding source. Real JARVIS
       // questions ("what should I focus on today?", "what's left
@@ -825,18 +834,19 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         "Reply in the user's preferred language (from persona prefs).",
         "Keep it concise — 2–4 sentences unless the question explicitly needs more.",
         "Do NOT include the raw '<<note N — ...>>' / '<<task N>>' / '<<event N>>' / '<<reminder N>>' wrapper markers in your answer; speak naturally.",
-        // Smaller models (2B Qwen, etc.) echo angle-bracket placeholders
-        // literally — a `<file>` placeholder ended up in user-visible
-        // output. Show the substitution worked example so the model
-        // copies the SHAPE, not the placeholder name.
-        "Cite sources inline by substituting the actual value (NEVER keep angle-bracket placeholders):",
-        "  - for notes:     [from journal/2026-05-12.md]",
-        "  - for tasks:     [task: Q3 budget memo]",
-        "  - for events:    [event: Standup]",
-        "  - for reminders: [reminder: pick up milk]",
-        "  - for past sessions: [session: reviewed the API contract]",
-        "  - for feed headlines: [feed: Hacker News]",
-        "Use only the filename (not the full path or score) when citing a note.",
+        // A small local model (qwen3:8b) PARROTS a concrete example
+        // citation verbatim — earlier this prompt showed
+        // `[from journal/2026-05-12.md]` / `[feed: Hacker News]` as
+        // examples and the model cited those exact fake sources
+        // regardless of the real corpus, fabricating the one thing the
+        // wedge promises is verifiable. So: NO concrete example values.
+        // Anchor every citation to the marker of the passage actually
+        // used, use ALL-CAPS placeholders (explicitly "never output the
+        // placeholder word"), and hard-forbid citing any source not
+        // shown in a marker below.
+        "When a fact comes from a note, END that sentence with that note's `cite as:` token, copied VERBATIM — the whole bracket exactly as printed under the passage, the name unchanged.",
+        "For other context, cite by the name shown in its marker: a task as [task: its title], an event as [event: its title], a reminder as [reminder: its text], a past session as [session: short summary], a feed headline as [feed: the feed name].",
+        "CRITICAL: cite ONLY a source shown in the context below — copy an existing `cite as:` token, or a name shown in a marker. NEVER invent or guess a filename, feed, task, or event. If the answer is not in any passage below, cite nothing and say you are not sure.",
         "",
         notesFraming.header,
         contextBlock,
