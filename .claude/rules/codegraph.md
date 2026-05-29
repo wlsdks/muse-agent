@@ -31,6 +31,31 @@ specific detail CodeGraph didn't cover.
 A direct CodeGraph answer is a handful of calls; a grep/read exploration
 is dozens.
 
+### The grep guard — a binary trigger (this is the rule that keeps slipping)
+
+The "prefer CodeGraph" rule above is easy to nod at and then break in the
+moment. So make it mechanical. **Before you type `Grep` / `grep` / `rg`
+or open a file with `Read` *to find something*, answer one question:**
+
+> Am I searching for a **NAME** (a function / class / type / const /
+> method / interface identifier) or for **LITERAL TEXT** (a log string,
+> an env-var name, a comment, a JSON key, a config value)?
+
+- **NAME → `codegraph_search "<name>"` FIRST. Always. No exceptions.**
+  It returns kind + location + signature in one sub-ms call. Need the
+  body too? `codegraph_node` / `codegraph_explore` — not `Read`.
+- **LITERAL TEXT → grep is correct.** That is the *only* thing grep wins
+  at here.
+
+Smell test: **if your search query is an identifier you'd autocomplete
+in an IDE, it belonged in `codegraph_search`.** `selectFireablePatterns`,
+`resolvePatternsFiredFile`, `mergeSkillsIntoUmbrella`, "where is helper
+X exported" — all NAMES, all `codegraph_search`. `PROACTIVE_POLL_MS`'s
+*value*, an env-var string, a Korean doc line — LITERAL, grep is fine.
+
+`Read` is for a file you are about to **edit** (or one CodeGraph couldn't
+fully surface), never for discovering where a symbol lives.
+
 ## If `.codegraph/` does NOT exist
 
 At the start of a session, ask the user if they'd like to initialize
