@@ -29,12 +29,12 @@ afterEach(async () => {
 const readNotes = async (): Promise<readonly { text: string }[] | "absent"> =>
   fs.readFile(noteFile, "utf8").then((raw) => JSON.parse(raw) as { text: string }[]).catch(() => "absent" as const);
 
-const saveNoteTool = (opts: { throws?: boolean } = {}): MuseTool => ({
+const saveNoteTool = (opts: { throws?: boolean; risk?: "read" | "write" | "execute" } = {}): MuseTool => ({
   definition: {
     description: "Persist a note to the user's store.",
     inputSchema: { properties: { text: { type: "string" } }, required: ["text"], type: "object" },
     name: "save_note",
-    risk: "read",
+    risk: opts.risk ?? "read",
   },
   execute: async (args) => {
     if (opts.throws) throw new Error("disk full");
@@ -113,5 +113,36 @@ describe("agent run e2e — react tool-loop through AgentRuntime.stream() (real 
     expect(doneEvent.type).toBe("done"); // run completed, did not crash
     expect(doneEvent.response.output).toBe("I couldn't save that — the disk is full.");
     expect(await readNotes()).toBe("absent"); // failed tool left NO side effect
+  });
+
+  it("GUARD-BLOCK MID-RUN: a toolApprovalGate denial inside the loop blocks the tool, surfaces a tool-result, and mutates nothing", async () => {
+    const gateCalls: { name: string; risk: string }[] = [];
+    const runtime = createAgentRuntime({
+      maxToolCalls: 2,
+      modelProvider: streamingProvider([
+        { id: "t", model: "m", output: "", toolCalls: [{ arguments: { text: "buy milk" }, id: "tc1", name: "save_note" }] },
+        { id: "f", model: "m", output: "I can't do that without approval." },
+      ]),
+      toolApprovalGate: ({ toolCall, risk }) => {
+        gateCalls.push({ name: toolCall.name, risk });
+        return { allowed: false, reason: "save_note not in trust list" };
+      },
+      toolRegistry: new ToolRegistry([saveNoteTool({ risk: "execute" })]),
+    });
+
+    const events = await collect(runtime.stream({
+      // localMode exposes the execute-risk tool to the model; the GATE enforces trust within that surface
+      messages: [{ content: "save: buy milk", role: "user" }],
+      metadata: { localMode: true },
+      model: "provider/model",
+      runId: "run-react-gated",
+    }));
+
+    expect(gateCalls).toEqual([{ name: "save_note", risk: "execute" }]); // the gate was consulted mid-loop
+    expect(events.some((e) => e.type === "tool-result")).toBe(true); // the block is surfaced as a tool-result, not a crash
+    const doneEvent = events.at(-1) as Extract<AgentRuntimeStreamEvent, { type: "done" }>;
+    expect(doneEvent.type).toBe("done");
+    expect(doneEvent.response.output).toBe("I can't do that without approval.");
+    expect(await readNotes()).toBe("absent"); // the gated tool NEVER ran — no side effect
   });
 });

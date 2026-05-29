@@ -95,7 +95,7 @@ the generic layers below because they test what makes Muse an *agent*.
 
 ## P2 — end-to-end flows (compose the pieces, not the units)
 
-- [~] **Full agent run e2e (diagnostic provider).** message → model loop → tool
+- [x] **Full agent run e2e (diagnostic provider).** message → model loop → tool
   call → tool result → synth, blocking AND streaming, asserting the whole chain
   (only ~6 e2e files today; expand the matrix: plan_execute, react, tool-error
   recovery, guard-block mid-run).
@@ -111,8 +111,12 @@ the generic layers below because they test what makes Muse an *agent*.
     persists the note (terminal world state); TOOL-ERROR RECOVERY — a throwing
     tool surfaces a tool-result, the model synthesises a graceful answer, the run
     completes (not crash) and NOTHING is mutated. agent-run-react-stream-e2e.test.ts.
-  - [ ] Remaining: a guard-block-MID-RUN variant (a tool-exposure / approval gate
-    denying a call inside the streaming loop, asserting the surfaced events).
+  - [x] guard-block MID-RUN (streaming): a toolApprovalGate denial inside the
+    loop blocks an execute-risk tool — the gate is consulted, the block is
+    surfaced as a tool-result (not a crash), the model synthesises a "can't
+    without approval" answer, the run completes, and the gated tool NEVER ran
+    (no side effect). agent-run-react-stream-e2e.test.ts. The full-agent-run
+    matrix (plan_execute / react / tool-error recovery / guard-block) is closed.
 - [x] **Approval-gate round-trip e2e.** A risky tool refused → pending-approval
   recorded → inbound "yes" reply → `runActuatorByName` re-runs through the
   fail-closed gate → action logged. Plus the deny / timeout / ambiguous-recipient
