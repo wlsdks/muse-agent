@@ -25,6 +25,7 @@
  */
 
 import { OllamaProvider } from "../packages/model/dist/index.js";
+import { combineScorers, runEvalSuite, toolScorers } from "./eval-harness.mjs";
 
 const MODEL = process.env.MUSE_EVAL_MODEL ?? "qwen3:8b";
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
@@ -116,11 +117,11 @@ async function buildTimeToolsScenario() {
     const cases = [
       { prompt: "What time is it now?", expectTool: "time_now", note: "now" },
       { prompt: "What day of the week is it right now in Seoul?", expectTool: "time_now", note: "current weekday → time_now, NOT next_weekday_date" },
-      { prompt: "How many hours between 9am and 5:30pm today?", expectTool: "time_diff", note: "two-timestamp diff" },
-      { prompt: "What is 3 days after 2026-05-26?", expectTool: "time_add", note: "add" },
-      { prompt: "How long ago was 2026-05-01 from now?", expectTool: "time_relative", note: "relative-to-now (NOT time_diff)" },
-      { prompt: "When is the next Friday?", expectTool: "next_weekday_date", note: "future named weekday → next_weekday_date, NOT time_now" },
-      { prompt: "Give me a cron expression for 2026-12-25 08:00.", expectTool: "cron_for_datetime", note: "cron" }
+      { prompt: "How many hours between 9am and 5:30pm today?", expectTool: "time_diff", requireArgs: ["from", "to"], note: "two-timestamp diff" },
+      { prompt: "What is 3 days after 2026-05-26?", expectTool: "time_add", requireArgs: ["base"], note: "add" },
+      { prompt: "How long ago was 2026-05-01 from now?", expectTool: "time_relative", requireArgs: ["at"], note: "relative-to-now (NOT time_diff)" },
+      { prompt: "When is the next Friday?", expectTool: "next_weekday_date", requireArgs: ["weekday"], note: "future named weekday → next_weekday_date, NOT time_now" },
+      { prompt: "Give me a cron expression for 2026-12-25 08:00.", expectTool: "cron_for_datetime", requireArgs: ["iso"], note: "cron" }
     ];
     return { label: "real-time-tools (confusable set)", tools, cases };
   } catch (error) {
@@ -150,13 +151,13 @@ async function buildActuatorScenario() {
     const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
     const byName = new Set(tools.map((t) => t.name));
     const cases = [
-      { prompt: "Post a comment on the project forum thread saying the build works now.", expectTool: "web_action", note: "post → web_action (231)" },
-      { prompt: "Reserve a table for two at 7pm tomorrow on the restaurant's booking page.", expectTool: "web_action", note: "reserve → web_action (231)" },
-      { prompt: "Activate the bedtime scene.", expectTool: "home_action", note: "scene → home_action (223)" },
-      { prompt: "Run my good night routine.", expectTool: "home_action", note: "routine/script → home_action (223)" },
-      { prompt: "Find the email from the bank about my statement.", expectTool: "search_email", note: "inbox search → search_email, NOT knowledge_search (199)" },
-      { prompt: "Any news about the Mars mission from the feeds I follow?", expectTool: "knowledge_search", note: "feeds news → knowledge_search, NOT web/search_email (229/230)" },
-      { prompt: "Will it rain on Saturday?", expectTool: "weather", argIncludes: /sat/i, note: "upcoming-day forecast → weather with when=Saturday (202)" }
+      { prompt: "Post a comment on the project forum thread saying the build works now.", expectTool: "web_action", requireArgs: ["summary", "url"], note: "post → web_action (231)" },
+      { prompt: "Reserve a table for two at 7pm tomorrow on the restaurant's booking page.", expectTool: "web_action", requireArgs: ["summary", "url"], note: "reserve → web_action (231)" },
+      { prompt: "Activate the bedtime scene.", expectTool: "home_action", requireArgs: ["service"], note: "scene → home_action (223)" },
+      { prompt: "Run my good night routine.", expectTool: "home_action", requireArgs: ["service"], note: "routine/script → home_action (223)" },
+      { prompt: "Find the email from the bank about my statement.", expectTool: "search_email", requireArgs: ["query"], note: "inbox search → search_email, NOT knowledge_search (199)" },
+      { prompt: "Any news about the Mars mission from the feeds I follow?", expectTool: "knowledge_search", requireArgs: ["query"], note: "feeds news → knowledge_search, NOT web/search_email (229/230)" },
+      { prompt: "Will it rain on Saturday?", expectTool: "weather", argIncludes: /sat/i, requireArgs: ["location"], note: "upcoming-day forecast → weather with when=Saturday (202)" }
     ];
     return { label: "actuator-tools (confusable set)", tools, cases: cases.filter((c) => byName.has(c.expectTool)) };
   } catch (error) {
@@ -175,29 +176,16 @@ async function ollamaReachable() {
   }
 }
 
-function evaluate(testCase, toolCalls) {
-  if (testCase.expectNoTool) {
-    return toolCalls.length === 0 ? { ok: true, detail: "no tool (correct)" } : { ok: false, detail: `eager call: ${toolCalls.map((c) => c.name).join(",")}` };
-  }
-  const call = toolCalls[0];
-  if (!call) return { ok: false, detail: "no tool selected (expected one)" };
-  if (call.name !== testCase.expectTool) return { ok: false, detail: `picked ${call.name}, wanted ${testCase.expectTool}` };
-  if (testCase.argIncludes && !testCase.argIncludes.test(JSON.stringify(call.arguments ?? {}))) {
-    return { ok: false, detail: `args ${JSON.stringify(call.arguments)} miss ${testCase.argIncludes}` };
-  }
-  // ArgumentCorrectness (DeepEval metric): picking the right tool isn't enough —
-  // its REQUIRED args must be present + non-empty, else the call is a no-op the
-  // runtime would reject. Graded per-case on top of selection.
-  if (testCase.requireArgs) {
-    const args = call.arguments ?? {};
-    const missing = testCase.requireArgs.filter(
-      (k) => args[k] === undefined || args[k] === null || (typeof args[k] === "string" && args[k].trim().length === 0)
-    );
-    if (missing.length > 0) {
-      return { ok: false, detail: `missing/empty required arg(s) [${missing.join(", ")}] in ${JSON.stringify(args)}` };
-    }
-  }
-  return { ok: true, detail: `${call.name}(${JSON.stringify(call.arguments ?? {})})` };
+// Build a deterministic scorer for one case from the declarative fields, using
+// the shared harness scorers: a no-tool case asserts no eager invocation; a
+// tool case ANDs selection + (optional) arg-value match + ArgumentCorrectness
+// (required args present). This is the "code-based scorer first" tier.
+function caseScorer(testCase) {
+  if (testCase.expectNoTool) return toolScorers.noTool();
+  const checks = [toolScorers.selected(testCase.expectTool)];
+  if (testCase.argIncludes) checks.push(toolScorers.argMatches(testCase.argIncludes));
+  if (testCase.requireArgs) checks.push(toolScorers.argsPresent(testCase.requireArgs));
+  return combineScorers(...checks);
 }
 
 async function main() {
@@ -213,40 +201,14 @@ async function main() {
     await buildActuatorScenario()
   ];
 
-  let total = 0;
-  let passed = 0;
-  for (const scenario of scenarios) {
-    if (scenario.skip) { console.log(`\n[${scenario.label}] SKIP — ${scenario.skip}`); continue; }
-    console.log(`\n[${scenario.label}] ${scenario.cases.length} cases (tools: ${scenario.tools.map((t) => t.name).join(", ")})`);
-    for (const testCase of scenario.cases) {
-      total += 1;
-      let runsPassed = 0;
-      let lastDetail = "";
-      for (let run = 0; run < REPEAT; run += 1) {
-        let result;
-        try {
-          const response = await provider.generate({ model: MODEL, messages: [{ role: "user", content: testCase.prompt }], tools: scenario.tools, temperature: 0, maxOutputTokens: 160 });
-          result = evaluate(testCase, response.toolCalls ?? []);
-        } catch (error) {
-          result = { ok: false, detail: `threw: ${error instanceof Error ? error.message : String(error)}` };
-        }
-        if (result.ok) runsPassed += 1;
-        lastDetail = result.detail;
-      }
-      const ok = runsPassed === REPEAT; // strict: every run must pass
-      if (ok) passed += 1;
-      const stability = REPEAT > 1 ? ` [${runsPassed}/${REPEAT} runs]` : "";
-      console.log(`  ${ok ? "PASS" : "FAIL"}${stability}  [${testCase.note}] ${lastDetail}`);
-    }
-  }
+  // Solver: elicit the model's one-shot tool selection for a case's prompt.
+  const solve = async (testCase, scenario) =>
+    (await provider.generate({ model: MODEL, messages: [{ role: "user", content: testCase.prompt }], tools: scenario.tools, temperature: 0, maxOutputTokens: 160 })).toolCalls ?? [];
+  // Scorer: deterministic per-case (selection + args), via the shared harness.
+  const score = (toolCalls, testCase) => caseScorer(testCase)(toolCalls);
 
-  const rate = total === 0 ? 0 : passed / total;
-  console.log(`\n--- ${passed}/${total} (${(rate * 100).toFixed(0)}%) ; threshold ${(THRESHOLD * 100).toFixed(0)}%`);
-  if (total === 0 || rate < THRESHOLD) {
-    console.error(`eval:tools FAILED — tool-selection reliability ${(rate * 100).toFixed(0)}% below ${(THRESHOLD * 100).toFixed(0)}%`);
-    process.exit(1);
-  }
-  console.log("eval:tools PASSED");
+  const { gate } = await runEvalSuite({ name: "eval:tools", repeat: REPEAT, scenarios, score, solve, threshold: THRESHOLD });
+  if (!gate) process.exit(1);
 }
 
 await main();

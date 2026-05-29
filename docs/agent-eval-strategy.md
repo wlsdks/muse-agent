@@ -62,22 +62,43 @@ of agent test is worth the most*.
   *arguments* are right (not just the tool name): a graded check per case
   (required args present, values plausible). Cheapest high-value gap on top of
   the existing `eval:tools` harness.
-  - [x] required-arg presence layer (this commit): `evaluate()` now takes a
-    per-case `requireArgs` and fails the case if any required arg is missing/
-    empty; annotated the synthetic + real-tool cases (city/query/expression/
-    text+when, math_eval/slugify/text_stats/hash_text/time_diff). Live
-    eval:tools 39/39 @ REPEAT=2.
-  - [ ] Remaining: value-plausibility grading (beyond presence) for the
-    actuator/time confusable sets (web_action url, home_action service+entity,
-    time_add base+days, cron iso) once their arg shapes are pinned.
+  - [x] required-arg presence layer — DONE across ALL four sets (synthetic,
+    real-tools, time confusable, actuator confusable): `evaluate()` takes a
+    per-case `requireArgs` and fails on any missing/empty required arg.
+    requireArgs pinned to each tool's actual schema `required` array
+    (web_action summary+url, home_action service, search_email/knowledge_search
+    query, weather location, time_diff from+to, time_add base, time_relative at,
+    next_weekday_date weekday, cron_for_datetime iso, + synthetic/real set).
+    Live eval:tools 39/39 @ REPEAT=2 against qwen3:8b.
+  - value-plausibility grading (exact-value regex beyond presence) deliberately
+    NOT added: presence is the meaningful no-op guard; pinning exact values on a
+    stochastic model is brittle and lower-value. `argIncludes` already covers the
+    few deterministic ones (seoul, sat). Consider A effectively complete.
 - **B. Task-completion / terminal-state eval (τ-bench style)** — a small
   scenario set where, after a real run against the diagnostic/local provider +
   contract-faithful tool fakes, we assert the **resulting state** (the note got
   written, the task got added, the approval got recorded) rather than the path.
   This is the missing "did it actually accomplish the goal" layer.
+  - [x] First harness (this commit): real `executeModelLoop` + real `ToolExecutor`
+    over a real state-mutating tool (actual fs writes), asserting WORLD STATE not
+    trajectory — goal accomplished (note persisted + success), **exactly-once**
+    mutation under a repeated idempotency-keyed call, no mutation when the model
+    answers directly, and no mutation when the tool fails (run still completes).
+    terminal-state-task-completion.test.ts, agent-core 973 pass.
+  - [ ] Remaining: extend to a real Muse built-in store tool (tasks/notes
+    provider) and to the plan_execute path; ideally a steerable diagnostic so the
+    full assembly drives a mutating tool end-to-end.
 - **C. Trajectory / step assertions on multi-step runs** — assert the ordered
   spans of a plan_execute / tool-loop run (plan generated → tool called →
   synthesis), incl. adherence + step-efficiency (no redundant calls).
+  - [x] executeModelLoop trajectory + step-efficiency (this commit): a 2-tool
+    run preserves the ordered model→tool→model→tool→synthesis trajectory
+    (toolsUsed + intermediateMessages role sequence + toolResults order); the
+    loop runs exactly the requested tools once each in order (no redundant/
+    dropped calls); a direct answer takes the zero-tool trajectory. 8→11 tests.
+  - [ ] Remaining: trajectory of the real plan_execute path through the
+    assembly (plan_generated → tool → synthesis_started → done events), and a
+    step-efficiency check that penalises a redundant re-call of the same tool.
 - **D. LLM-as-judge (GEval-style) harness** — a reusable judge (local Qwen,
   temp 0, repeat-for-stability) scoring open-ended outputs against a plain-
   English rubric, for things exact-match can't grade (summaries, drafts).
@@ -92,6 +113,25 @@ of agent test is worth the most*.
   candidate judge with verdict/reason/risk, kept separate from the live store.
 - **H. CI gating** — make the eval batteries a real gate (extend `self-eval`)
   so a tool-selection / task-completion regression fails the run, not just logs.
+
+## The harness (`scripts/eval-harness.mjs`)
+
+Batteries run on a shared, dependency-free engine shaped after the converged
+2026 best practice (Inspect AI's dataset/solver/scorer/task primitives;
+Braintrust + promptfoo "deterministic code-based scorers first, LLM-judge only
+for subjective qualities"; Hamel Husain "evals gate development, not vibes"):
+
+- `runEvalSuite({ name, scenarios, solve, score, repeat, threshold })` — the
+  reusable run/repeat(strict-all-pass)/threshold/report engine. Returns
+  `{ gate, passed, rate, total }`; the caller decides exit. Usable as a CLI gate
+  AND inline.
+- `toolScorers` (`noTool` / `selected` / `argMatches` / `argsPresent`) +
+  `combineScorers(...)` — deterministic, composable code-based scorers; an
+  LLM-as-judge scorer is just an async fn returning the same `{ ok, detail }`.
+
+First consumer: `eval:tools` was refactored onto it (behaviour-preserving, live
+39/39 @ threshold 85%). New batteries (task-completion, adversarial, LLM-judge)
+should declare scenarios + a solver + scorers rather than re-implement the loop.
 
 ## Loop rule
 
