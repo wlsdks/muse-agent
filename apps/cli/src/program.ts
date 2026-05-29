@@ -76,6 +76,7 @@ import { registerRemindCommands } from "./commands-remind.js";
 import { registerFollowupCommands } from "./commands-followup.js";
 import { registerEpisodeCommands } from "./commands-episode.js";
 import { registerCommitmentsCommands } from "./commands-commitments.js";
+import { registerCheckinsCommands } from "./commands-checkins.js";
 import { registerPatternCommands } from "./commands-pattern.js";
 import { registerSearchCommand } from "./commands-search.js";
 import { registerFindCommand } from "./commands-find.js";
@@ -470,6 +471,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerFollowupCommands(program, io);
   registerEpisodeCommands(program, io);
   registerCommitmentsCommands(program, io);
+  registerCheckinsCommands(program, io);
   registerPatternCommands(program, io);
   registerSearchCommand(program, io);
   registerFindCommand(program, io);

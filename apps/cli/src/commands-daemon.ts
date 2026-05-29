@@ -42,6 +42,7 @@ import {
   parseAmbientNoticeRules,
   queryContacts,
   resolveUpcomingBirthdays,
+  runDueCheckins,
   runDueFollowups,
   runDueObjectives,
   runDueProactiveNotices,
@@ -60,6 +61,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { checkinsFile } from "./commands-checkins.js";
 import { closestCommandName } from "./closest-command.js";
 import { parseBoundedFlag } from "./commands-proactive.js";
 import type { ProgramIO } from "./program.js";
@@ -644,6 +646,23 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout("\n");
       };
 
+      const checkinsTick = async (): Promise<void> => {
+        const summary = await runDueCheckins({
+          destination,
+          file: checkinsFile(e),
+          providerId: provider,
+          registry: messagingRegistry,
+          ...(quietHours ? { quietHours } : {})
+        });
+        const tag = `[${new Date().toISOString()}]`;
+        io.stdout(`${tag} checkins: fired ${summary.delivered.toString()}/${summary.due.toString()} due`);
+        if (summary.errors.length > 0) {
+          io.stdout(`, ${summary.errors.length.toString()} error(s)`);
+          for (const error of summary.errors) io.stdout(`\n  ! ${error}`);
+        }
+        io.stdout("\n");
+      };
+
       const ambientTick = async (): Promise<void> => {
         if (!ambientRunner) {
           io.stdout(`[${new Date().toISOString()}] ambient: skipped (no rules)\n`);
@@ -740,6 +759,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         await proactiveTick();
         await remindersTick();
         await followupTick();
+        await checkinsTick();
         await ambientTick();
         await webWatchTick();
         await objectivesTick();

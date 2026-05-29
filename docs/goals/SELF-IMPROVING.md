@@ -24,12 +24,14 @@ Building blocks already in the tree (reuse, don't rebuild): `commitment-detector
 
 ## P0 — ③ Speak first with USEFUL suggestions (greenfield; neither competitor does this)
 
-- [ ] **3a — Due-windowed commitment check-ins.** Turn a detected open-loop
-  commitment (`detectUserCommitments`) into a scheduled, due-windowed proactive
-  check-in the daemon delivers ("어제 면접 어땠어요?"), rate-limited
-  (max/day), quiet-hours-aware, dedup'd, draft-first. Useful-check: a real
-  "I have an interview tomorrow" → one check-in next day; a non-commitment →
-  none.
+- [x] **3a — Due-windowed commitment check-ins.** `muse checkins scan` detects
+  open-loops (`detectUserCommitments`) → schedules next-day, deduped,
+  per-day-capped check-ins; the daemon's `checkinsTick` delivers due ones
+  (templated, deterministic — can't fabricate), quiet-hours-aware, to the
+  user's own channel. `muse checkins list` shows them. Useful: scheduleCheckins
+  delivers a check-in for a real commitment + dedup/cap/not-due/quiet-hours all
+  hold (positive+negative proven deterministically). FOLLOW-UP (3a-auto): wire
+  session-end auto-scan so it speaks first without a manual `scan`. — done 2026-05-29
 - [ ] **3b — Behavior → proactive suggestion.** From recurring signals
   (tasks/episodes/activity patterns) generate a concrete suggestion
   ("월요일마다 X 하시던데 먼저 해둘까요?") — one local-Qwen synthesis, draft-first
