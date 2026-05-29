@@ -131,6 +131,10 @@ export function resolveRecallHitsFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_RECALL_HITS_FILE", "recall-hits.json");
 }
 
+export function resolveCheckinsFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_CHECKINS_FILE", "checkins.json");
+}
+
 export function resolveLineInboxFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_LINE_INBOX_FILE", "line-inbox.json");
 }

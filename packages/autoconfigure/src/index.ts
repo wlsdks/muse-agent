@@ -147,7 +147,7 @@ import { createResponseFilters } from "./response-filters.js";
 import { createMessagingPollDispatchers } from "./messaging-poll-dispatchers.js";
 import { createSkillRuntime } from "./skills-runtime.js";
 import { buildLoopbackTools } from "./loopback-tools.js";
-import { buildBackgroundReviewHooks, createOllamaEmbedder } from "./context-engineering-builders.js";
+import { buildBackgroundReviewHooks, createOllamaEmbedder, inferPreferencesFromTurns, scanCommitmentsFromTurns } from "./context-engineering-builders.js";
 import { readEpisodeKnowledgeEntries } from "./episodes-knowledge-source.js";
 import { readFeedKnowledgeEntries } from "./feeds-knowledge-source.js";
 import { createUserMemoryKnowledgeSource } from "./user-memory-knowledge-source.js";
@@ -174,6 +174,7 @@ import {
   mergeModelKeysFromFile,
   resolveActionLogFile,
   resolveAuthoredSkillsDir,
+  resolveCheckinsFile,
   resolveContactsFile,
   resolveEpisodesFile,
   resolveFeedsFile,
@@ -731,13 +732,45 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       });
     }
     : undefined;
+  // Commitment arm: when the engine is on, every surface (incl. the
+  // server/daemon, which has no session-end) captures open-loops the user
+  // voices and schedules the proactive check-in — deterministic + draft-first,
+  // so it rides the engine switch without a separate flag.
+  const reviewCommitmentsArm = parseBoolean(env.MUSE_BACKGROUND_REVIEW_ENABLED, false)
+    ? async (input: BackgroundReviewInput): Promise<void> => {
+      const userTurns = input.context.input.messages
+        .filter((m): m is { readonly role: "user"; readonly content: string } => m.role === "user" && typeof m.content === "string")
+        .map((m) => m.content);
+      if (userTurns.length === 0) return;
+      await scanCommitmentsFromTurns(userTurns, { file: resolveCheckinsFile(env), userId: input.userId });
+    }
+    : undefined;
+  // Preference arm: infer style/format/workflow preferences from corrections
+  // → the typed user model, on the memory trigger across every surface (the
+  // server learns the user's style too, not just CLI session-end). NONE-aware.
+  const reviewPreferencesArm = parseBoolean(env.MUSE_BACKGROUND_REVIEW_ENABLED, false) && modelProvider && defaultModel
+    ? async (input: BackgroundReviewInput): Promise<void> => {
+      const turns: SessionTurnLine[] = input.context.input.messages
+        .filter((m): m is { readonly role: "user" | "assistant"; readonly content: string } =>
+          (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+        .map((m) => ({ content: m.content, role: m.role }));
+      if (turns.length === 0) return;
+      await inferPreferencesFromTurns(turns, { model: defaultModel, modelProvider, store: userMemoryStore, userId: input.userId });
+    }
+    : undefined;
   const runtimeHooks = [
     ...createDefaultRuntimeHooks(env),
     // Memory-learning hooks: either the standalone per-turn auto-extract
     // (default) or, behind MUSE_BACKGROUND_REVIEW_ENABLED, the background-review
     // engine that runs it on a turn-count trigger across every surface (+ the
-    // skill arm on the tool-iteration trigger when MUSE_BACKGROUND_REVIEW_SKILL_ARM).
-    ...buildBackgroundReviewHooks(env, { autoExtractHook, ...(reviewSkillArm ? { reviewSkill: reviewSkillArm } : {}) }),
+    // commitment arm on the same trigger, + the skill arm on the tool-iteration
+    // trigger when MUSE_BACKGROUND_REVIEW_SKILL_ARM).
+    ...buildBackgroundReviewHooks(env, {
+      autoExtractHook,
+      ...(reviewCommitmentsArm ? { reviewCommitments: reviewCommitmentsArm } : {}),
+      ...(reviewPreferencesArm ? { reviewPreferences: reviewPreferencesArm } : {}),
+      ...(reviewSkillArm ? { reviewSkill: reviewSkillArm } : {})
+    }),
     ...(parseBoolean(env.MUSE_FOLLOWUP_CAPTURE_ENABLED, true)
       ? [createFollowupCaptureHook({
         persist: async (captured: CapturedFollowup) => {

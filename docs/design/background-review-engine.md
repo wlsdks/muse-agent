@@ -165,12 +165,19 @@ STAY as on-demand surfaces.
 1. **[DONE] Counters + engine skeleton.** `createBackgroundReviewHook` with
    `afterTool`/`afterComplete` counting + trigger logic + a counter store.
    Unit-tested; inert (no-op runReview, unwired). No behaviour change.
-2. **[DONE — auto-extract] Route memory arm** (turn-count). `buildBackgroundReviewHooks`
-   (autoconfigure) wires the engine behind `MUSE_BACKGROUND_REVIEW_ENABLED`
-   (default off): when on, auto-extract runs on the turn-count trigger across
-   EVERY surface, replacing the standalone per-turn hook. Preference-infer +
-   check-in-scan still pending — they live in apps/cli and must move into a
-   package before the engine (a package) can call them (slice 2b/3).
+2. **[DONE — auto-extract + check-ins] Route memory arm** (turn-count).
+   `buildBackgroundReviewHooks` (autoconfigure) wires the engine behind
+   `MUSE_BACKGROUND_REVIEW_ENABLED` (default off): when on, auto-extract runs on
+   the turn-count trigger across EVERY surface, replacing the standalone
+   per-turn hook. The COMMITMENT arm (`scanCommitmentsFromTurns`, the
+   package-level core of the CLI's `scanSessionCheckins`) also runs on the
+   turn-count trigger — deterministic open-loop → check-in, so the
+   server/daemon (no session-end) now captures voiced commitments too.
+   The PREFERENCE arm (`inferPreferencesFromTurns`, package-level core of the
+   CLI's `inferSessionPreferences`) also runs on the turn-count trigger:
+   corrections → typed user-model preferences (NONE-aware), so the server
+   learns the user's style. Memory arm COMPLETE (auto-extract + check-ins +
+   preferences, all surfaces).
 3. **[DONE — skill authoring] Route skill arm** (tool-iteration). New
    store-injected `reviewSkillsFromTurns` (@muse/agent-core) reused by the
    engine; autoconfigure builds the skill-arm callback over the turn's LIVE

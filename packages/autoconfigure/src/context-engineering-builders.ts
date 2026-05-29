@@ -6,11 +6,15 @@ import {
   InMemoryTelemetryAggregator,
   StoreBackedEpisodicRecallProvider,
   createBackgroundReviewHook,
+  detectCorrections,
+  detectUserCommitments,
+  inferPreferenceFromCorrection,
   selectPlanExemplar,
   type ActiveContextProvider,
   type BackgroundReviewInput,
   type EpisodicRecallProvider,
   type HookStage,
+  type SessionTurnLine,
   type InboxContextProvider,
   type PlanCacheProvider,
   type ReminderHint,
@@ -22,8 +26,8 @@ import {
 } from "@muse/agent-core";
 import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
 import type { JsonObject } from "@muse/shared";
-import { readReminders, readVetoes, queryPlaybook, queryPlanCache, recordPlanTemplate, recordRecallHits } from "@muse/mcp";
-import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore } from "@muse/memory";
+import { appendCheckins, readCheckins, readReminders, readVetoes, queryPlaybook, queryPlanCache, recordPlanTemplate, recordRecallHits, scheduleCheckins, type PersistedCheckin } from "@muse/mcp";
+import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore, UserModelSlot } from "@muse/memory";
 import { FileBackedInboxContextProvider, type InboxSourceConfig } from "@muse/messaging";
 
 import {
@@ -308,6 +312,68 @@ export function withRecallHitRecording(
  * The auto-extract hook is reused AS the memory distiller (we call its
  * `afterComplete`), so no auto-extract logic is duplicated.
  */
+/**
+ * Deterministic commitment → check-in scan over the turn's user messages — the
+ * package-level core of the CLI's `scanSessionCheckins`, so the SERVER / daemon
+ * (which has no session-end) also captures open-loops the user voices and
+ * schedules the proactive check-in. No model: `detectUserCommitments` is a rule
+ * pass and `scheduleCheckins` is deterministic (deduped, per-day capped,
+ * quiet-hours applied at delivery). Returns the newly-scheduled check-ins.
+ */
+export async function scanCommitmentsFromTurns(
+  userTurns: readonly string[],
+  options: { readonly file: string; readonly userId: string; readonly now?: () => Date }
+): Promise<readonly PersistedCheckin[]> {
+  const commitments = detectUserCommitments(userTurns).map((c) => c.text);
+  if (commitments.length === 0) return [];
+  const existing = await readCheckins(options.file).catch(() => []);
+  const fresh = scheduleCheckins(commitments, {
+    existing,
+    now: (options.now ?? ((): Date => new Date()))(),
+    userId: options.userId
+  });
+  await appendCheckins(options.file, fresh);
+  return fresh;
+}
+
+/**
+ * Infer stable preferences from corrections in the turn → upsert into the typed
+ * user model (superseding by category). The package-level core of the CLI's
+ * `inferSessionPreferences`, so the server/daemon learns the user's style too.
+ * One local-model call per detected correction; NONE-aware (parseInferredPreference
+ * rejects vacuous traits + requires a category), so it never fabricates a
+ * preference. Returns `"value (category)"` for each preference learned.
+ */
+export async function inferPreferencesFromTurns(
+  turns: readonly SessionTurnLine[],
+  options: {
+    readonly model: string;
+    readonly modelProvider: Parameters<typeof inferPreferenceFromCorrection>[1]["modelProvider"];
+    readonly store: { upsertUserModelSlot?: (userId: string, slot: UserModelSlot) => unknown };
+    readonly userId: string;
+    readonly now?: () => Date;
+  }
+): Promise<readonly string[]> {
+  const upsert = options.store.upsertUserModelSlot;
+  if (!upsert) return [];
+  const exchanges = detectCorrections(turns);
+  const added: string[] = [];
+  for (const exchange of exchanges) {
+    const pref = await inferPreferenceFromCorrection(exchange, { model: options.model, modelProvider: options.modelProvider });
+    if (!pref || !pref.category) continue; // parseInferredPreference guarantees a category when it returns one
+    await upsert(options.userId, {
+      category: pref.category,
+      confidence: pref.confidence,
+      id: `pref-${pref.category}`, // supersede by category — a changed mind updates, not piles up
+      kind: "preference",
+      updatedAt: (options.now ?? ((): Date => new Date()))(),
+      value: pref.value
+    });
+    added.push(`${pref.value} (${pref.category})`);
+  }
+  return added;
+}
+
 export interface BackgroundReviewArms {
   readonly autoExtractHook?: HookStage | undefined;
   /**
@@ -318,6 +384,19 @@ export interface BackgroundReviewArms {
    * unattended; absent ⇒ the skill trigger is a no-op.
    */
   readonly reviewSkill?: (input: BackgroundReviewInput) => Promise<void>;
+  /**
+   * Commitment arm — scan the turn for open-loops → schedule check-ins. Runs on
+   * the same turn-count trigger as the memory arm (it's deterministic +
+   * low-risk: draft-first delivery to the user's own channel). Absent ⇒ no-op.
+   */
+  readonly reviewCommitments?: (input: BackgroundReviewInput) => Promise<void>;
+  /**
+   * Preference arm — infer stable style/format/workflow preferences from
+   * corrections and fold them into the typed user model. Runs on the
+   * turn-count trigger (memory channel). Built by the caller (needs model +
+   * store). Absent ⇒ no-op.
+   */
+  readonly reviewPreferences?: (input: BackgroundReviewInput) => Promise<void>;
 }
 
 export function buildBackgroundReviewHooks(
@@ -333,6 +412,12 @@ export function buildBackgroundReviewHooks(
   const runReview = async (input: BackgroundReviewInput): Promise<void> => {
     if (input.reviewMemory && autoExtractHook?.afterComplete) {
       await autoExtractHook.afterComplete(input.context, input.response);
+    }
+    if (input.reviewMemory && arms.reviewCommitments) {
+      await arms.reviewCommitments(input);
+    }
+    if (input.reviewMemory && arms.reviewPreferences) {
+      await arms.reviewPreferences(input);
     }
     if (input.reviewSkill && arms.reviewSkill) {
       await arms.reviewSkill(input);
