@@ -73,7 +73,9 @@ export async function authorSkillsFromSession(options: AuthorSkillsOptions): Pro
     }
     try {
       const { action, skill } = await store.writeOrPatch(draft);
-      if (action !== "skip") {
+      // Only create/patch become active learned skills; "skip" is a no-op and
+      // "quarantined" was flagged risky and parked in .quarantine, never active.
+      if (action === "create" || action === "patch") {
         authored.push(`${skill.name} (${action})`);
       }
     } catch {

@@ -70,8 +70,11 @@ sessions rather than recalling a single one) informed Muse's deterministic
 `recurringThemes()` / `muse episode themes`
 (`packages/mcp/src/personal-episodes-store.ts`). Patterns flagged for future
 Muse slices: the rest of sleep/"dreaming" memory consolidation (short→long
-promotion with a weighted score) and the correction→pending-skill
-*skill-workshop* pipeline (security-scan + approval gate). Its open-loop /
+promotion with a weighted score). Its *skill-workshop* scan-before-activate
+idea informed Muse's deterministic `scanSkillBodyForRisks()` — auto-authored
+skill bodies flagged for prompt-injection / dangerous-shell / embedded-secrets
+are quarantined instead of activated
+(`packages/skills/src/authored-skill-store.ts`). Its open-loop /
 commitment-extraction idea informed Muse's deterministic
 `detectUserCommitments()` / `muse commitments scan`
 (`packages/agent-core/src/commitment-detector.ts`).

@@ -42,10 +42,12 @@ export {
 
 export {
   AuthoredSkillStore,
+  scanSkillBodyForRisks,
   serializeAuthoredSkill,
   slugifySkillName,
   DEFAULT_MAX_AUTHORED_SKILLS,
   type SkillDraft,
+  type SkillRiskScan,
   type AuthorAction,
   type AuthoredSkillStoreOptions
 } from "./authored-skill-store.js";
