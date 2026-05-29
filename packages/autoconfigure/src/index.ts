@@ -205,6 +205,7 @@ export {
   resolveFollowupsFile,
   resolvePatternsFiredFile,
   resolveRecallHitsFile,
+  resolveCheckinsFile,
   resolveInboxInjectionCursorFile,
   resolveLineInboxFile,
   resolveLocalCalendarFile,
@@ -760,13 +761,15 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     : undefined;
   const runtimeHooks = [
     ...createDefaultRuntimeHooks(env),
-    // Memory-learning hooks: either the standalone per-turn auto-extract
-    // (default) or, behind MUSE_BACKGROUND_REVIEW_ENABLED, the background-review
-    // engine that runs it on a turn-count trigger across every surface (+ the
-    // commitment arm on the same trigger, + the skill arm on the tool-iteration
-    // trigger when MUSE_BACKGROUND_REVIEW_SKILL_ARM).
+    // Auto-extract stays an EVERY-TURN hook (it reads only the latest exchange,
+    // so it must see every turn) — unchanged behaviour, all surfaces.
+    ...(autoExtractHook ? [autoExtractHook] : []),
+    // The background-review engine ADDS the new window-scanning / tool-iteration
+    // arms behind MUSE_BACKGROUND_REVIEW_ENABLED (default off): commitment +
+    // preference on the turn-count trigger, skill authoring on the tool-iteration
+    // trigger (the latter also behind MUSE_BACKGROUND_REVIEW_SKILL_ARM). Purely
+    // additive — it never touches auto-extract.
     ...buildBackgroundReviewHooks(env, {
-      autoExtractHook,
       ...(reviewCommitmentsArm ? { reviewCommitments: reviewCommitmentsArm } : {}),
       ...(reviewPreferencesArm ? { reviewPreferences: reviewPreferencesArm } : {}),
       ...(reviewSkillArm ? { reviewSkill: reviewSkillArm } : {})

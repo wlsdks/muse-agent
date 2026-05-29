@@ -375,7 +375,6 @@ export async function inferPreferencesFromTurns(
 }
 
 export interface BackgroundReviewArms {
-  readonly autoExtractHook?: HookStage | undefined;
   /**
    * Skill arm — author a reusable skill from the turn's conversation when the
    * tool-iteration trigger fires ("hard tasks teach"). Built by the caller
@@ -385,34 +384,40 @@ export interface BackgroundReviewArms {
    */
   readonly reviewSkill?: (input: BackgroundReviewInput) => Promise<void>;
   /**
-   * Commitment arm — scan the turn for open-loops → schedule check-ins. Runs on
-   * the same turn-count trigger as the memory arm (it's deterministic +
-   * low-risk: draft-first delivery to the user's own channel). Absent ⇒ no-op.
+   * Commitment arm — scan the turn's window for open-loops → schedule
+   * check-ins. Runs on the turn-count (memory) trigger; deterministic +
+   * low-risk (draft-first delivery to the user's own channel). Absent ⇒ no-op.
    */
   readonly reviewCommitments?: (input: BackgroundReviewInput) => Promise<void>;
   /**
    * Preference arm — infer stable style/format/workflow preferences from
-   * corrections and fold them into the typed user model. Runs on the
-   * turn-count trigger (memory channel). Built by the caller (needs model +
-   * store). Absent ⇒ no-op.
+   * corrections in the window and fold them into the typed user model. Runs on
+   * the turn-count (memory) trigger. Built by the caller. Absent ⇒ no-op.
    */
   readonly reviewPreferences?: (input: BackgroundReviewInput) => Promise<void>;
 }
 
+/**
+ * The engine hook for the ADDITIVE review arms (commitment / preference /
+ * skill). It deliberately does NOT touch per-turn auto-extract: auto-extract
+ * reads only the LATEST exchange, so gating it to "every N turns" would lose
+ * facts stated on the intervening turns. Auto-extract therefore stays its own
+ * every-turn hook (the caller adds it unconditionally); this engine only ADDS
+ * the new, window-scanning / tool-iteration arms — so enabling it is purely
+ * additive and never regresses memory capture.
+ *
+ * Returns `[]` when the engine is off (nothing added).
+ */
 export function buildBackgroundReviewHooks(
   env: MuseEnvironment,
   arms: BackgroundReviewArms
 ): readonly HookStage[] {
-  const autoExtractHook = arms.autoExtractHook;
   if (!parseBoolean(env.MUSE_BACKGROUND_REVIEW_ENABLED, false)) {
-    return autoExtractHook ? [autoExtractHook] : [];
+    return [];
   }
   const memoryEveryTurns = parseInteger(env.MUSE_BACKGROUND_REVIEW_MEMORY_TURNS, 3);
   const skillEveryIters = parseInteger(env.MUSE_BACKGROUND_REVIEW_SKILL_ITERS, 10);
   const runReview = async (input: BackgroundReviewInput): Promise<void> => {
-    if (input.reviewMemory && autoExtractHook?.afterComplete) {
-      await autoExtractHook.afterComplete(input.context, input.response);
-    }
     if (input.reviewMemory && arms.reviewCommitments) {
       await arms.reviewCommitments(input);
     }
