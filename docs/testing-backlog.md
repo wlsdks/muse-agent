@@ -156,11 +156,15 @@ the generic layers below because they test what makes Muse an *agent*.
 
 ## P3 — live LLM verification (Ollama up on this PC — USE it)
 
-- [ ] **`eval:tools:nl` baseline.** Never run by the loop. Run it, record the
-  score, add cases for any weak natural-language selection.
-- [ ] **`eval:self-improving` baseline.** The 4 LLM batteries (pattern-suggestion,
-  preference-inference, skill/playbook merge). Never run by the loop. Run, record,
-  shore up regressions.
+- [x] **`eval:tools:nl` baseline.** Run on qwen3:8b (this iter): native 7/7
+  (100%) AND NL-protocol 7/7 (100%) across the time-tool confusable set — the
+  text/Hermes tool protocol selects as reliably as native here, no weak NL spot
+  to shore up. Baseline recorded; re-run after touching the NL tool protocol.
+- [x] **`eval:self-improving` baseline.** Run on qwen3:8b (this iter): 8/8 live
+  batteries GREEN — pattern-suggestion (③), preference-inference (②), skill-merge
+  + playbook-merge (①), background-review + background-review-e2e (① engine),
+  cited-recall (★ wedge), proactive-recall-gate (★ north star). No regression to
+  shore up; this is the live-green baseline the loop had never captured.
 - [ ] **`smoke:live` full completion.** Now that it streams (commit `6fd24d36`),
   run it to the end once with a generous timeout; confirm the slow tail
   (multi-agent orchestrate + CLI knowledge) is green, and append the result.
