@@ -93,8 +93,12 @@ export async function draftSkillFromSignal(
 export function parseSkillDraft(raw: string): SkillDraft | null {
   const trimmed = raw.trim();
   if (trimmed.length === 0 || /^NONE\b/u.test(trimmed)) return null;
-  const nameMatch = /^name:\s*(.+)$/imu.exec(trimmed);
-  const descMatch = /^description:\s*(.+)$/imu.exec(trimmed);
+  // Horizontal whitespace only (not `\s`) between the label and its
+  // value: a blank `name:`/`description:` value must read as missing,
+  // not let `\s*` cross the newline and absorb the next field's line
+  // as the value (a silently mislabeled draft).
+  const nameMatch = /^name:[^\S\n]*(.+)$/imu.exec(trimmed);
+  const descMatch = /^description:[^\S\n]*(.+)$/imu.exec(trimmed);
   const bodyMatch = /^body:\s*\n?([\s\S]+)$/imu.exec(trimmed);
   const name = nameMatch?.[1]?.trim();
   const description = descMatch?.[1]?.trim();
