@@ -62,12 +62,17 @@ Building blocks already in the tree (reuse, don't rebuild): `commitment-detector
   composeUserModelSnapshot emits it (proven). — done 2026-05-29
   (P0 ③ audit — checkins+pattern+dismiss all wired into the daemon runTick;
   full `pnpm check` green across their suites together — PASS, no drift.)
-- [ ] **2b — Behavior-inferred preferences (not just explicit "remember").**
-  One local-Qwen distill over corrections/behavior → a preference with
-  confidence, written to the UserModel; a contradiction supersedes (with
-  validity) rather than blindly appending. Useful-check (live, positive+negative):
-  a real behavioral signal → a correct inferred preference; ambiguous/no signal
-  → nothing inferred (no fabricated trait).
+- [x] **2b — Behavior-inferred preferences (not just explicit "remember").**
+  `muse user model infer` reads last-chat corrections (`detectCorrections`) →
+  one local-Qwen `inferPreferenceFromCorrection` → a persona-level preference
+  slot (category-keyed id `pref-<category>` so a changed mind SUPERSEDES, not
+  duplicates) written via 2a's upsert. Distinct from the playbook distiller
+  (task recipe) — this is WHO the user is. Live battery
+  `verify-preference-inference.mjs` on qwen3:8b: EN+KO style corrections →
+  grounded preferences (positive); a one-off factual fix → NONE (negative).
+  HARDENING: the live negative case caught the model fabricating "prefers
+  accurate information"; added a deterministic vacuous-trait guard
+  (accuracy/correctness cluster + required category) so it can't. — done 2026-05-29
 - [ ] **2c — UserModel surfaced + correctable.** `muse user model` (show) +
   the persona uses it; the user can correct/forget an inferred trait. Useful-check:
   correct an inferred trait → it updates, doesn't reappear.

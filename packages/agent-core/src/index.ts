@@ -91,6 +91,7 @@ export { applyPlaybook, rankPlaybookStrategies, renderPlaybookSection, strategyT
 export type { PlaybookStrategy, PlaybookProvider, RankPlaybookOptions } from "./playbook.js";
 export { detectCorrections, distillStrategyFromCorrection } from "./correction-distiller.js";
 export { synthesizePatternSuggestion, type PatternSuggestionInput, type SynthesizePatternSuggestionOptions } from "./pattern-suggestion.js";
+export { inferPreferenceFromCorrection, parseInferredPreference, type InferredPreference, type InferPreferenceOptions } from "./preference-inference.js";
 export type {
   CorrectionExchange,
   DetectCorrectionsOptions,

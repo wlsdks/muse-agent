@@ -31,6 +31,10 @@ agent-created skills to eventually archive stale ones — informed Muse's
 `AuthoredSkillStore.recordUsage()`/`.curate()` and the `muse skills authored`
 / `muse skills curate` commands
 (`packages/skills/src/authored-skill-store.ts`, `apps/cli/src/commands-skills.ts`).
+Hermes' Honcho dialectic user model (a peer card that accrues over observed
+conversation) informed Muse's typed UserModel accrual — `muse user model`
+slots + behavior-inferred preferences (`packages/agent-core/src/preference-inference.ts`,
+`apps/cli/src/commands-user.ts`) — reimplemented deterministically, no code copied.
 
 ```
 MIT License

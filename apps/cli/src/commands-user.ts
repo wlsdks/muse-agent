@@ -7,9 +7,12 @@
  * slots from behavior. Backed by FileUserMemoryStore (same ~/.muse store).
  */
 
+import { detectCorrections, inferPreferenceFromCorrection } from "@muse/agent-core";
+import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import { FileUserMemoryStore, type UserModelSlot } from "@muse/memory";
 import type { Command } from "commander";
 
+import { readLastChatHistory } from "./chat-history.js";
 import type { ProgramIO } from "./program.js";
 
 const KINDS = ["preference", "schedule", "veto", "goal"] as const;
@@ -105,6 +108,58 @@ export function registerUserCommands(program: Command, io: ProgramIO): void {
       section("Schedule", um.schedule);
       section("Vetoes", um.vetoes);
       section("Goals", um.goals);
+    });
+
+  model
+    .command("infer")
+    .description("Infer stable preferences from corrections in your last chat and add them (behavior-inferred)")
+    .option("--model <id>", "Model to infer with (default the configured model)")
+    .option("--json", "Print the inferred preferences")
+    .action(async (options: { readonly model?: string; readonly json?: boolean }) => {
+      const lines = await readLastChatHistory().catch(() => []);
+      const exchanges = detectCorrections(lines);
+      if (exchanges.length === 0) {
+        io.stdout("No corrections in your last chat to infer a preference from.\n");
+        return;
+      }
+      const assembly = createMuseRuntimeAssembly();
+      const model = options.model ?? assembly.defaultModel;
+      if (!assembly.modelProvider || !model) {
+        io.stdout("infer needs a model provider — run `muse setup` or set MUSE_MODEL.\n");
+        return;
+      }
+      const store = new FileUserMemoryStore();
+      const userId = resolveUserId();
+      const added: string[] = [];
+      for (const exchange of exchanges) {
+        const pref = await inferPreferenceFromCorrection(exchange, {
+          model,
+          modelProvider: assembly.modelProvider as Parameters<typeof inferPreferenceFromCorrection>[1]["modelProvider"]
+        });
+        if (!pref) continue;
+        // Supersede by category: a new style/format preference replaces the
+        // prior one of the same category (id `pref-<category>`), so a changed
+        // mind updates instead of piling up contradictions.
+        const id = pref.category ? `pref-${pref.category}` : slugifySlotId(pref.value);
+        await store.upsertUserModelSlot(userId, {
+          id,
+          kind: "preference",
+          value: pref.value,
+          confidence: pref.confidence,
+          updatedAt: new Date(),
+          ...(pref.category ? { category: pref.category } : {})
+        });
+        added.push(`${pref.value}${pref.category ? ` (${pref.category})` : ""}`);
+      }
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ inferred: added, total: added.length }, null, 2)}\n`);
+        return;
+      }
+      io.stdout(
+        added.length === 0
+          ? "No durable preference inferred (the corrections were one-off fixes).\n"
+          : `Inferred ${added.length.toString()} preference(s) into your user model:\n${added.map((a) => `  - ${a}`).join("\n")}\n`
+      );
     });
 
   model
