@@ -152,36 +152,68 @@ export function ingestChatExport(parsed: unknown): readonly IngestedConversation
 export function registerIngestCommand(program: Command, io: ProgramIO): void {
   program
     .command("ingest <file>")
-    .description("Ingest an exported AI chat history (ChatGPT/Claude conversations.json) into your notes corpus")
+    .description("Ingest an exported AI chat history (ChatGPT/Claude conversations.json) or an .mbox mail archive into your notes corpus")
     .option("--out <dir>", "Destination notes subdir (default: <notes>/ingested)")
     .action(async (file: string, options: { readonly out?: string }) => {
-      let parsed: unknown;
+      let raw: string;
       try {
-        parsed = JSON.parse(await readFile(file, "utf8"));
+        raw = await readFile(file, "utf8");
       } catch (cause) {
-        io.stderr(`Could not read/parse '${file}' as JSON: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(`Could not read '${file}': ${cause instanceof Error ? cause.message : String(cause)}\n`);
         process.exitCode = 1;
         return;
       }
-      const kind = detectChatExport(parsed);
-      if (!kind) {
-        io.stderr("Unrecognized export — expected a ChatGPT or Claude `conversations.json` (an array of conversations).\n");
-        process.exitCode = 1;
-        return;
+
+      // Mail archive (.mbox / content starts with a "From " separator) vs an
+      // exported chat-history JSON. Lazy-import the mbox parser so the chat
+      // path doesn't pay for it.
+      let kind: string;
+      let conversations: readonly IngestedConversation[];
+      if (/\.mbox$/iu.test(file)) {
+        const { ingestMbox } = await import("./mbox-ingest.js");
+        kind = "mbox";
+        conversations = ingestMbox(raw);
+      } else {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          // Not JSON — last chance: maybe it's an mbox without the extension.
+          const { looksLikeMbox, ingestMbox } = await import("./mbox-ingest.js");
+          if (looksLikeMbox(raw)) {
+            const mail = ingestMbox(raw);
+            if (mail.length > 0) { await writeIngested(io, mail, "mbox", options.out); return; }
+          }
+          io.stderr(`Could not parse '${file}' as JSON (chat export) — and it isn't a recognizable .mbox either.\n`);
+          process.exitCode = 1;
+          return;
+        }
+        const detected = detectChatExport(parsed);
+        if (!detected) {
+          io.stderr("Unrecognized export — expected a ChatGPT/Claude `conversations.json` (array of conversations) or an .mbox mail archive.\n");
+          process.exitCode = 1;
+          return;
+        }
+        kind = detected;
+        conversations = ingestChatExport(parsed);
       }
-      const conversations = ingestChatExport(parsed);
       if (conversations.length === 0) {
-        io.stdout(`Detected a ${kind} export, but found no conversations with text to ingest.\n`);
+        io.stdout(`Detected a ${kind} export, but found nothing with text to ingest.\n`);
         return;
       }
-      const dir = options.out?.trim() || join(resolveNotesDir(process.env), "ingested");
-      await mkdir(dir, { recursive: true });
-      for (const conv of conversations) {
-        await writeFile(join(dir, `${conv.slug}.md`), conv.markdown, "utf8");
-      }
-      io.stdout(
-        `Ingested ${conversations.length.toString()} ${kind} conversation(s) → ${dir}\n`
-        + "Run `muse notes reindex` to make them searchable, then `muse ask --notes-only \"…\"`.\n"
-      );
+      await writeIngested(io, conversations, kind, options.out);
     });
+}
+
+async function writeIngested(io: ProgramIO, conversations: readonly IngestedConversation[], kind: string, out: string | undefined): Promise<void> {
+  const dir = out?.trim() || join(resolveNotesDir(process.env), "ingested");
+  await mkdir(dir, { recursive: true });
+  for (const conv of conversations) {
+    await writeFile(join(dir, `${conv.slug}.md`), conv.markdown, "utf8");
+  }
+  const noun = kind === "mbox" ? "email(s)" : "conversation(s)";
+  io.stdout(
+    `Ingested ${conversations.length.toString()} ${kind} ${noun} → ${dir}\n`
+    + "Run `muse notes reindex` to make them searchable, then `muse ask --notes-only \"…\"`.\n"
+  );
 }

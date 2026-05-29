@@ -95,8 +95,19 @@ The slogan "It can't tell anyone… enforced in the code" is literally true.
      unchanged. Pure tolerant parsers (apps/cli/src/chat-export-ingest.ts, 6
      unit tests); the export→ingest→citable chain is proven live in
      `verify-cited-recall.mjs` (an ingested Claude chat cites at cosine ~0.81).
-   - [NEXT] An .mbox / exported-mail ingester (the biggest beachhead pain), and
-     making `muse ask --notes-only` the headline CLI surface (UX).
+   - [DONE — .mbox mail] `muse ingest` now also eats an `.mbox` mail archive
+     (lean dependency-free parser: split → headers → text/plain body, QP/base64
+     decoded, multipart text part picked, HTML stripped, RFC-2047 subjects) →
+     markdown notes. The email→ingest→citable chain is proven live in
+     verify-cited-recall.mjs (an ingested email cites at cosine ~0.82).
+   - [DONE — ask gate] `muse ask` now applies the CRAG confidence gate to its
+     notes grounding (`notesGroundingFraming`): a CONFIDENT hit is framed for
+     citation; a WEAK near-miss set is flagged LOW-confidence and the model is
+     told NOT to cite it as fact (+ a "⚠ LOW confidence — verify" banner). The
+     headline command now embodies "says I'm not sure instead of making things
+     up," not just `knowledge_search`.
+   - [NEXT] Make `muse ask --notes-only` the surfaced default UX + a guided
+     onboarding (install + Ollama + first reindex one-command).
 2. **Trust instrumentation** — log every surfaced/recalled item's deterministic
    trigger + a one-tap veto; track precision; quiet-hours + caps.
 3. **Proactivity (the north star)** — turn the SAME deterministic-retrieval +
