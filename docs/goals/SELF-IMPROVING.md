@@ -131,20 +131,21 @@ model write+infer+persona · ① skills/playbook consolidate + rollback.
 Theme: the frontiers WORK but mostly via MANUAL commands + opt-in flags. The
 next phase is making the JARVIS run them ON ITS OWN, then deepening.
 
-- [ ] **N1 (P0) — Make it automatic (no manual command).** Wire session-end
-  auto-scan for commitment check-ins (3a-auto) + auto-`infer` preferences, and
-  an IDLE-gated curator consolidate (vs the current session-end flag), all
-  default-off + fail-soft. The "speaks first / learns on its own" promise needs
-  these to fire without `muse checkins scan` / `user model infer` / `skills
-  consolidate`. Verify: a session with a commitment+correction → next daemon
-  tick delivers the check-in AND the inferred preference shows in the model.
-  PROGRESS: N1a done 2026-05-29 — session-end auto-scan check-ins behind
-  `MUSE_CHECKINS_AUTOSCAN_ENABLED` (`scanSessionCheckins` extracted + tested,
-  wired into chat-ink session-end). N1b done 2026-05-29 — session-end
-  auto-infer prefs behind `MUSE_PREFERENCE_AUTOINFER_ENABLED`
-  (`inferSessionPreferences` extracted + glue-tested, model round-trip
-  re-verified by verify-preference-inference.mjs on qwen3:8b). N1c
-  (idle-gated curator consolidate) pending before the bullet flips.
+- [x] **N1 (P0) — Make it automatic (no manual command).** [a47e68a3 + this]
+  Wired session-end auto-scan for commitment check-ins (3a-auto) +
+  auto-`infer` preferences, and an IDLE-gated curator consolidate daemon (vs
+  the session-end flag), all default-off + fail-soft. The "speaks first /
+  learns on its own" promise now fires without `muse checkins scan` /
+  `user model infer` / `skills consolidate`.
+  N1a — session-end auto-scan check-ins behind `MUSE_CHECKINS_AUTOSCAN_ENABLED`
+  (`scanSessionCheckins`, deterministic, glue-tested pos+neg).
+  N1b — session-end auto-infer prefs behind `MUSE_PREFERENCE_AUTOINFER_ENABLED`
+  (`inferSessionPreferences`, glue-tested, model round-trip re-verified by
+  verify-preference-inference.mjs on qwen3:8b 3/3).
+  N1c — idle-gated curator daemon behind `MUSE_SKILL_CONSOLIDATE_IDLE_ENABLED`
+  (`startConsolidateTick` in apps/api, idle/quiet-hours/fail-soft unit-tested
+  10/10, daemon composes via pnpm check, merge round-trip re-verified by
+  verify-skill-merge.mjs on qwen3:8b 2/2).
 - [ ] **N2 (P0) — ③/② end-to-end daemon audit.** One real daemon tick test
   that exercises check-in delivery + pattern suggestion together (composition,
   quiet-hours, dedup) — proves the pieces compose, not just unit-pass.

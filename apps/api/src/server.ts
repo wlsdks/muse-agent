@@ -29,6 +29,7 @@ import { parseDiscordPollChannels, startDiscordPollTick } from "./discord-poll-t
 import { createFileBackedActivityTracker, createInMemoryActivityTracker } from "./proactive-tick.js";
 import {
   startAmbientDaemonIfConfigured,
+  startConsolidateDaemonIfConfigured,
   startFollowupDaemonIfConfigured,
   startPatternDaemonIfConfigured,
   startObjectivesDaemonIfConfigured,
@@ -357,6 +358,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   startProactiveDaemonIfConfigured(env, server, options, phaseDWiring);
   startFollowupDaemonIfConfigured(env, server, options);
   startPatternDaemonIfConfigured(env, server, options);
+  startConsolidateDaemonIfConfigured(env, server, options, phaseDWiring);
   startSituationalBriefingDaemonIfConfigured(env, server, options);
   startObjectivesDaemonIfConfigured(env, server, options);
   startAmbientDaemonIfConfigured(env, server, options);

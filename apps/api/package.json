@@ -28,6 +28,7 @@
     "@muse/runtime-state": "workspace:*",
     "@muse/scheduler": "workspace:*",
     "@muse/shared": "workspace:*",
+    "@muse/skills": "workspace:*",
     "@muse/tools": "workspace:*",
     "@muse/voice": "workspace:*",
     "fastify": "^5.8.5"
