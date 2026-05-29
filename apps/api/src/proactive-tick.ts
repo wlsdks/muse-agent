@@ -97,6 +97,14 @@ export interface ProactiveTickOptions {
    * the tick reports `sessionLockedUntil` and skips firing.
    */
   readonly sessionLockFile?: string;
+  /**
+   * Trust-instrumentation sidecar (`~/.muse/proactive-trust.json`).
+   * Records every delivered notice for the precision scoreboard and
+   * silences user-vetoed sources (learned avoidance). Phase 2.
+   */
+  readonly trustLedgerFile?: string;
+  /** 24h surfacing cap (opt-in; requires trustLedgerFile). */
+  readonly dailyCap?: number;
   /** Injectable clock for tests; default is `() => new Date()`. */
   readonly now?: () => Date;
 }
@@ -142,7 +150,9 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
         providerId: options.providerId,
         ...(options.sessionLockFile ? { sessionLockFile: options.sessionLockFile } : {}),
         sidecarFile: options.sidecarFile,
-        ...(options.tasksFile ? { tasksFile: options.tasksFile } : {})
+        ...(options.tasksFile ? { tasksFile: options.tasksFile } : {}),
+        ...(options.trustLedgerFile ? { trustLedgerFile: options.trustLedgerFile } : {}),
+        ...(options.dailyCap !== undefined && options.dailyCap > 0 ? { dailyCap: options.dailyCap } : {})
       });
       if (summary.sessionLockedUntil) {
         // One log per tick — audit trail without user spam.

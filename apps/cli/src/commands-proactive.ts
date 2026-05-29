@@ -30,6 +30,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { closestCommandName } from "./closest-command.js";
+import { registerProactiveTrustSubcommands } from "./commands-proactive-trust.js";
+import { createIndexedProactiveInvestigator } from "./proactive-notes-recall.js";
 import { createTerminalProactiveSink } from "./proactive-terminal-sink.js";
 import type { ProgramIO } from "./program.js";
 import { resolveDefaultUserKey } from "./user-id.js";
@@ -67,6 +69,8 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
   const proactive = program
     .command("proactive")
     .description("Proactive surfacing utilities (test / scan against MUSE_PROACTIVE_* env)");
+
+  registerProactiveTrustSubcommands(proactive, io);
 
   proactive
     .command("test")
@@ -271,6 +275,11 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
       const sidecarFile = e.MUSE_PROACTIVE_SIDECAR_FILE?.trim()?.length
         ? e.MUSE_PROACTIVE_SIDECAR_FILE.trim()
         : join(homedir(), ".muse", "proactive-fired.json");
+      const trustLedgerFile = e.MUSE_PROACTIVE_TRUST_FILE?.trim()?.length
+        ? e.MUSE_PROACTIVE_TRUST_FILE.trim()
+        : join(homedir(), ".muse", "proactive-trust.json");
+      const dailyCap = parseBoundedFlag(e.MUSE_PROACTIVE_DAILY_CAP, "MUSE_PROACTIVE_DAILY_CAP", 0, 1_000, 0);
+      const proactiveInvestigator = createIndexedProactiveInvestigator();
 
       // Pull the persona for the configured user so Phase D synthesis
       // addresses the user by name + honours language/style prefs
@@ -393,11 +402,14 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
             ...(calendarRegistry.list().length > 0 ? { calendarRegistry } : {}),
             destination,
             historyFile,
+            investigate: proactiveInvestigator,
             leadMinutes,
             messagingRegistry: effectiveMessagingRegistry,
             providerId: provider,
             sidecarFile,
-            tasksFile
+            tasksFile,
+            trustLedgerFile,
+            ...(dailyCap > 0 ? { dailyCap } : {})
           });
           const tag = `[${startedAt.toISOString()}]`;
           if (summary.fired > 0 || summary.errors.length > 0) {

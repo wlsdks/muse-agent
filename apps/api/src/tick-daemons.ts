@@ -139,6 +139,10 @@ export function startProactiveDaemonIfConfigured(
   const proactiveQuietHours = parseQuietHours(env.MUSE_PROACTIVE_QUIET_HOURS)
     ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
   const proactiveSidecarFile = resolveProactiveSidecarFile(env);
+  const proactiveDailyCapRaw = env.MUSE_PROACTIVE_DAILY_CAP ? Number(env.MUSE_PROACTIVE_DAILY_CAP) : 0;
+  const proactiveDailyCap = Number.isFinite(proactiveDailyCapRaw) && proactiveDailyCapRaw > 0
+    ? Math.trunc(proactiveDailyCapRaw)
+    : 0;
 
   // Phase D — agent-initiated turn. Uses the shared activity tracker
   // created by the caller so a single onRequest hook unlocks both
@@ -182,7 +186,9 @@ export function startProactiveDaemonIfConfigured(
     providerId: proactiveProvider,
     ...(proactiveQuietHours ? { quietHours: proactiveQuietHours } : {}),
     ...(options.sessionLockFile ? { sessionLockFile: options.sessionLockFile } : {}),
-    sidecarFile: proactiveSidecarFile
+    sidecarFile: proactiveSidecarFile,
+    trustLedgerFile: resolveProactiveTrustFile(env),
+    ...(proactiveDailyCap > 0 ? { dailyCap: proactiveDailyCap } : {})
   });
   server.addHook("onClose", async () => {
     proactiveHandle.stop();
@@ -687,4 +693,14 @@ export function resolveProactiveSidecarFile(env: NodeJS.ProcessEnv): string {
   const sysHome = homedir().trim();
   if (sysHome.length > 0) return `${sysHome}/.muse/proactive-fired.json`;
   throw new Error("Cannot resolve home directory for proactive sidecar file — set MUSE_PROACTIVE_SIDECAR_FILE or HOME (refusing to default to filesystem root)");
+}
+
+export function resolveProactiveTrustFile(env: NodeJS.ProcessEnv): string {
+  const overridden = env.MUSE_PROACTIVE_TRUST_FILE?.trim();
+  if (overridden && overridden.length > 0) return overridden;
+  const envHome = process.env.HOME?.trim();
+  if (envHome && envHome.length > 0) return `${envHome}/.muse/proactive-trust.json`;
+  const sysHome = homedir().trim();
+  if (sysHome.length > 0) return `${sysHome}/.muse/proactive-trust.json`;
+  throw new Error("Cannot resolve home directory for proactive trust file — set MUSE_PROACTIVE_TRUST_FILE or HOME (refusing to default to filesystem root)");
 }
