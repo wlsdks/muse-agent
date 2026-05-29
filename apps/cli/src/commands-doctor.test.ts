@@ -291,16 +291,22 @@ describe("localOnlyCheck — local-only / no-cloud-egress posture", () => {
     expect(check.detail).toContain("MUSE_LOCAL_ONLY");
   });
 
-  it("OFF + cloud credentials present ⇒ warn that egress is possible", () => {
-    const check = localOnlyCheck({ OPENAI_API_KEY: "k" });
+  it("explicit OFF (opt-out) + cloud credentials present ⇒ warn that egress is possible", () => {
+    const check = localOnlyCheck({ MUSE_LOCAL_ONLY: "false", OPENAI_API_KEY: "k" });
     expect(check.status).toBe("warn");
     expect(check.detail).toContain("OPENAI_API_KEY");
-    expect(check.detail).toContain("MUSE_LOCAL_ONLY=true");
+    expect(check.detail).toContain("opt-out");
   });
 
-  it("OFF + no cloud credentials ⇒ ok (nothing to leak)", () => {
-    const check = localOnlyCheck({ MUSE_MODEL: "ollama/llama3.2" });
+  it("explicit OFF (opt-out) + no cloud credentials ⇒ ok (nothing to leak)", () => {
+    const check = localOnlyCheck({ MUSE_LOCAL_ONLY: "false", MUSE_MODEL: "ollama/llama3.2" });
     expect(check.status).toBe("ok");
     expect(check.detail).toContain("off");
+  });
+
+  it("DEFAULT (unset MUSE_LOCAL_ONLY) ⇒ local-only ON, egress blocked", () => {
+    const check = localOnlyCheck({ MUSE_MODEL: "ollama/llama3.2" });
+    expect(check.status).toBe("ok");
+    expect(check.detail).toContain("default");
   });
 });

@@ -3,11 +3,17 @@ import { describe, expect, it } from "vitest";
 import { buildVoiceRegistry } from "../src/registry-builders/voice.js";
 
 describe("buildVoiceRegistry — MUSE_LOCAL_ONLY closes cloud audio egress", () => {
-  it("an OpenAI key alone registers cloud STT+TTS WITHOUT local-only (control)", () => {
-    const registry = buildVoiceRegistry({ OPENAI_API_KEY: "k" });
+  it("an OpenAI key registers cloud STT+TTS only with the explicit local-only opt-out (control)", () => {
+    // local-only is the DEFAULT now, so cloud voice requires MUSE_LOCAL_ONLY=false.
+    const registry = buildVoiceRegistry({ MUSE_LOCAL_ONLY: "false", OPENAI_API_KEY: "k" });
     expect(registry).toBeDefined();
     expect(registry?.primaryStt()?.id).toBe("openai-whisper");
     expect(registry?.primaryTts()?.id).toBe("openai-tts");
+  });
+
+  it("an OpenAI key alone under the DEFAULT (no flag) ⇒ no cloud voice registers", () => {
+    const registry = buildVoiceRegistry({ OPENAI_API_KEY: "k" });
+    expect(registry).toBeUndefined(); // default local-only suppresses cloud STT/TTS
   });
 
   it("local-only + OpenAI key ONLY ⇒ no surface (undefined) — audio never leaves the box", () => {

@@ -81,10 +81,12 @@ export class LocalOnlyViolationError extends Error {
 
   constructor(providerId: string, baseUrl?: string) {
     super(
-      `MUSE_LOCAL_ONLY is enabled, but the selected model targets the cloud provider `
+      `Muse runs local-only by default (nothing leaves your machine — enforced here in code), `
+      + `but the selected model targets the cloud provider `
       + `'${providerId}'${baseUrl ? ` (${baseUrl})` : ""}. `
-      + `Point Muse at a local model (e.g. MUSE_MODEL=ollama/llama3.2, or a localhost `
-      + `OpenAI-compatible MUSE_MODEL_BASE_URL) or unset MUSE_LOCAL_ONLY.`
+      + `Point Muse at a local model (e.g. MUSE_MODEL=ollama/qwen3:8b, or a localhost `
+      + `OpenAI-compatible MUSE_MODEL_BASE_URL) — or set MUSE_LOCAL_ONLY=false to use the `
+      + `cloud provider, which forfeits the zero-egress privacy guarantee.`
     );
     this.name = "LocalOnlyViolationError";
     this.providerId = providerId;
