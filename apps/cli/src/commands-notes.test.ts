@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { readFileSync } from "node:fs";
 
-import { parseNotesSearchLimit, resolveIngestNotePath, registerNotesCommands, type NotesCommandHelpers } from "./commands-notes.js";
+import { parseNotesSearchLimit, resolveIngestNotePath, resolveUrlNotePath, registerNotesCommands, type NotesCommandHelpers } from "./commands-notes.js";
 import type { ProgramIO } from "./program.js";
 
 describe("resolveIngestNotePath", () => {
@@ -19,6 +19,16 @@ describe("resolveIngestNotePath", () => {
   it("honours an explicit --path override", () => {
     expect(resolveIngestNotePath("/tmp/q3.txt", "archive/q3-2026.md")).toBe("archive/q3-2026.md");
     expect(resolveIngestNotePath("/tmp/q3.txt", "   ")).toBe("q3.md");
+  });
+});
+
+describe("resolveUrlNotePath", () => {
+  it("slugs the host + path into a .md name, dropping www", () => {
+    expect(resolveUrlNotePath("https://www.example.com/blog/post")).toBe("example.com-blog-post.md");
+    expect(resolveUrlNotePath("https://news.site.org/")).toBe("news.site.org.md");
+  });
+  it("honours an explicit --path override", () => {
+    expect(resolveUrlNotePath("https://x.test/y", "reading/x.md")).toBe("reading/x.md");
   });
 });
 
