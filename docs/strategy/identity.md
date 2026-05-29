@@ -79,11 +79,20 @@ The slogan "It can't tell anyone… enforced in the code" is literally true.
 
 ## Phasing (build toward the identity; fine if not all built yet)
 
-1. **Wedge live (`muse ask --notes-only` / `knowledge_search`)** — make cited,
-   confidence-gated recall the headline surface; widen the ingestible corpus
-   (an .mbox / exported-chat-history pile-ingester) so Muse eats the data that
-   causes the pain. A `smoke:live` gate asserting the LOW-confidence/no-match
-   banner fires (the refusal is a tested first-class feature).
+1. **Wedge live (`muse ask --notes-only` / `knowledge_search`).**
+   - [DONE] The refusal is now a TESTED first-class feature: `verify-cited-recall.mjs`
+     drives the real path (rankKnowledgeChunks → classifyRetrievalConfidence →
+     renderKnowledgeMatches) on LOCAL Ollama embeddings (nomic-embed-text) and
+     is in the `eval:self-improving` gate — in-corpus → confident "cite the
+     [source]" (cosine ~0.70); out-of-corpus → the LOW-confidence/no-match
+     banner (cosine ~0.42, below the ~0.61 bar), never confabulation. The
+     calibration "what must be true" is verified live (real hits ~0.70 separate
+     cleanly from off-topic ~0.42). (Drives the functions directly, sidestepping
+     the smoke:live API stall on the loop PC.)
+   - [NEXT] Make `muse ask --notes-only` the headline CLI surface (UX) and
+     widen the ingestible corpus — an .mbox / exported-chat-history
+     pile-ingester so Muse eats the data that causes the pain, not just a
+     folder you already organized.
 2. **Trust instrumentation** — log every surfaced/recalled item's deterministic
    trigger + a one-tap veto; track precision; quiet-hours + caps.
 3. **Proactivity (the north star)** — turn the SAME deterministic-retrieval +
