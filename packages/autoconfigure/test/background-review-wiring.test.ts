@@ -1,8 +1,13 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import type { AgentRunContext, HookStage } from "@muse/agent-core";
+import { readCheckins } from "@muse/mcp";
 import type { ModelResponse } from "@muse/model";
 import { describe, expect, it } from "vitest";
 
-import { buildBackgroundReviewHooks } from "../src/context-engineering-builders.js";
+import { buildBackgroundReviewHooks, scanCommitmentsFromTurns } from "../src/context-engineering-builders.js";
 
 const ctx = { input: { messages: [], metadata: { userId: "stark" }, model: "m" }, runId: "r", startedAt: new Date("2026-05-01T00:00:00Z") } as unknown as AgentRunContext;
 const res = { id: "x", model: "m", output: "ok" } as ModelResponse;
@@ -53,5 +58,30 @@ describe("buildBackgroundReviewHooks", () => {
     hooks[0]!.afterComplete!(ctx, res);
     await flush();
     expect(skillCalls).toEqual(["skill"]);
+  });
+
+  it("fires the COMMITMENT arm on the memory (turn-count) trigger", async () => {
+    const calls: string[] = [];
+    const env = { MUSE_BACKGROUND_REVIEW_ENABLED: "1", MUSE_BACKGROUND_REVIEW_MEMORY_TURNS: "1" };
+    const hooks = buildBackgroundReviewHooks(env, { reviewCommitments: async () => { calls.push("commit"); } });
+    hooks[0]!.afterComplete!(ctx, res);
+    await flush();
+    expect(calls).toEqual(["commit"]);
+  });
+});
+
+describe("scanCommitmentsFromTurns — deterministic open-loop → check-in (server gets it too)", () => {
+  it("schedules a check-in for a voiced commitment and persists it; a no-commitment turn schedules none", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "muse-bgr-checkin-")), "checkins.json");
+    const fresh = await scanCommitmentsFromTurns(
+      ["I need to email Bob about the Q3 report tomorrow", "thanks"],
+      { file, now: () => new Date("2026-05-01T09:00:00Z"), userId: "stark" }
+    );
+    expect(fresh).toHaveLength(1);
+    expect(fresh[0]!.question).toContain("email Bob");
+    expect((await readCheckins(file)).map((c) => c.status)).toEqual(["scheduled"]);
+
+    const none = await scanCommitmentsFromTurns(["what time is it?"], { file, userId: "stark" });
+    expect(none).toEqual([]);
   });
 });

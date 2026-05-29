@@ -6,6 +6,7 @@ import {
   InMemoryTelemetryAggregator,
   StoreBackedEpisodicRecallProvider,
   createBackgroundReviewHook,
+  detectUserCommitments,
   selectPlanExemplar,
   type ActiveContextProvider,
   type BackgroundReviewInput,
@@ -22,7 +23,7 @@ import {
 } from "@muse/agent-core";
 import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
 import type { JsonObject } from "@muse/shared";
-import { readReminders, readVetoes, queryPlaybook, queryPlanCache, recordPlanTemplate, recordRecallHits } from "@muse/mcp";
+import { appendCheckins, readCheckins, readReminders, readVetoes, queryPlaybook, queryPlanCache, recordPlanTemplate, recordRecallHits, scheduleCheckins, type PersistedCheckin } from "@muse/mcp";
 import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore } from "@muse/memory";
 import { FileBackedInboxContextProvider, type InboxSourceConfig } from "@muse/messaging";
 
@@ -308,6 +309,30 @@ export function withRecallHitRecording(
  * The auto-extract hook is reused AS the memory distiller (we call its
  * `afterComplete`), so no auto-extract logic is duplicated.
  */
+/**
+ * Deterministic commitment → check-in scan over the turn's user messages — the
+ * package-level core of the CLI's `scanSessionCheckins`, so the SERVER / daemon
+ * (which has no session-end) also captures open-loops the user voices and
+ * schedules the proactive check-in. No model: `detectUserCommitments` is a rule
+ * pass and `scheduleCheckins` is deterministic (deduped, per-day capped,
+ * quiet-hours applied at delivery). Returns the newly-scheduled check-ins.
+ */
+export async function scanCommitmentsFromTurns(
+  userTurns: readonly string[],
+  options: { readonly file: string; readonly userId: string; readonly now?: () => Date }
+): Promise<readonly PersistedCheckin[]> {
+  const commitments = detectUserCommitments(userTurns).map((c) => c.text);
+  if (commitments.length === 0) return [];
+  const existing = await readCheckins(options.file).catch(() => []);
+  const fresh = scheduleCheckins(commitments, {
+    existing,
+    now: (options.now ?? ((): Date => new Date()))(),
+    userId: options.userId
+  });
+  await appendCheckins(options.file, fresh);
+  return fresh;
+}
+
 export interface BackgroundReviewArms {
   readonly autoExtractHook?: HookStage | undefined;
   /**
@@ -318,6 +343,12 @@ export interface BackgroundReviewArms {
    * unattended; absent ⇒ the skill trigger is a no-op.
    */
   readonly reviewSkill?: (input: BackgroundReviewInput) => Promise<void>;
+  /**
+   * Commitment arm — scan the turn for open-loops → schedule check-ins. Runs on
+   * the same turn-count trigger as the memory arm (it's deterministic +
+   * low-risk: draft-first delivery to the user's own channel). Absent ⇒ no-op.
+   */
+  readonly reviewCommitments?: (input: BackgroundReviewInput) => Promise<void>;
 }
 
 export function buildBackgroundReviewHooks(
@@ -333,6 +364,9 @@ export function buildBackgroundReviewHooks(
   const runReview = async (input: BackgroundReviewInput): Promise<void> => {
     if (input.reviewMemory && autoExtractHook?.afterComplete) {
       await autoExtractHook.afterComplete(input.context, input.response);
+    }
+    if (input.reviewMemory && arms.reviewCommitments) {
+      await arms.reviewCommitments(input);
     }
     if (input.reviewSkill && arms.reviewSkill) {
       await arms.reviewSkill(input);

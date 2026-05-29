@@ -63,6 +63,7 @@ export {
   resolveInboxInjectionCursorFile,
   resolvePatternsFiredFile,
   resolveRecallHitsFile,
+  resolveCheckinsFile,
   resolveLineInboxFile,
   resolveLocalCalendarFile,
   resolveMessagingCredentialsFile,
