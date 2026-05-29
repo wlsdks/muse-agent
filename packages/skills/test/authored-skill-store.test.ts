@@ -177,3 +177,53 @@ describe("AuthoredSkillStore — recordUsage", () => {
     expect(muse?.lastUsedAt).toBe(t1.toISOString());
   });
 });
+
+describe("AuthoredSkillStore — curate", () => {
+  it("archives a skill unused past the idle window, never deletes", async () => {
+    const dir = tmpDir();
+    const store0 = new AuthoredSkillStore({ dir, now: () => new Date("2026-05-01T00:00:00Z") });
+    await store0.writeOrPatch({ name: "stale-skill", description: "alpha", body: "1" });
+    const storeUse = new AuthoredSkillStore({ dir, now: () => new Date("2026-05-02T00:00:00Z") });
+    await storeUse.recordUsage("stale-skill");
+
+    const storeCurate = new AuthoredSkillStore({ dir, now: () => new Date("2026-06-11T00:00:00Z") });
+    const archived = await storeCurate.curate(30);
+    expect(archived).toEqual(["stale-skill"]);
+    expect(await storeCurate.listAuthored()).toHaveLength(0);
+
+    const { readdir } = await import("node:fs/promises");
+    const inArchive = await readdir(join(dir, ".archive")).catch(() => [] as string[]);
+    expect(inArchive).toContain("stale-skill");
+  });
+
+  it("keeps a skill used within the idle window", async () => {
+    const dir = tmpDir();
+    const store0 = new AuthoredSkillStore({ dir, now: () => new Date("2026-05-01T00:00:00Z") });
+    await store0.writeOrPatch({ name: "fresh-skill", description: "beta", body: "2" });
+    const storeUse = new AuthoredSkillStore({ dir, now: () => new Date("2026-06-10T00:00:00Z") });
+    await storeUse.recordUsage("fresh-skill");
+
+    const storeCurate = new AuthoredSkillStore({ dir, now: () => new Date("2026-06-11T00:00:00Z") });
+    expect(await storeCurate.curate(30)).toEqual([]);
+    expect(await storeCurate.listAuthored()).toHaveLength(1);
+  });
+
+  it("falls back to authoredAt for a never-used skill", async () => {
+    const dir = tmpDir();
+    const store0 = new AuthoredSkillStore({ dir, now: () => new Date("2026-05-01T00:00:00Z") });
+    await store0.writeOrPatch({ name: "never-used", description: "gamma", body: "3" });
+
+    const storeCurate = new AuthoredSkillStore({ dir, now: () => new Date("2026-06-11T00:00:00Z") });
+    expect(await storeCurate.curate(30)).toEqual(["never-used"]);
+  });
+
+  it("does nothing for a non-positive idle window", async () => {
+    const dir = tmpDir();
+    const store0 = new AuthoredSkillStore({ dir, now: () => new Date("2026-05-01T00:00:00Z") });
+    await store0.writeOrPatch({ name: "keep", description: "d", body: "b" });
+
+    const storeCurate = new AuthoredSkillStore({ dir, now: () => new Date("2026-12-01T00:00:00Z") });
+    expect(await storeCurate.curate(0)).toEqual([]);
+    expect(await storeCurate.listAuthored()).toHaveLength(1);
+  });
+});

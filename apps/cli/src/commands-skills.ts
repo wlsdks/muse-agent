@@ -122,6 +122,28 @@ export function registerSkillsCommands(program: Command, io: ProgramIO): void {
     });
 
   skills
+    .command("curate")
+    .description("Archive agent-authored skills not used within the idle window (never deletes)")
+    .option("--max-idle-days <n>", "Archive authored skills idle longer than this many days", "90")
+    .action(async (options: { readonly maxIdleDays?: string }) => {
+      const days = Number(options.maxIdleDays ?? "90");
+      if (!Number.isFinite(days) || days <= 0) {
+        io.stderr("error: --max-idle-days must be a positive number.\n");
+        process.exitCode = 1;
+        return;
+      }
+      const dir = resolveAuthoredSkillsDir();
+      const store = new AuthoredSkillStore({ dir });
+      const archived = await store.curate(days).catch(() => [] as readonly string[]);
+      if (archived.length === 0) {
+        io.stdout(`No authored skills idle beyond ${days.toString()} days — nothing archived.\n`);
+        return;
+      }
+      io.stdout(`Archived ${archived.length.toString()} stale authored skill(s) to ${join(dir, ".archive")} (not deleted):\n`);
+      for (const name of archived) io.stdout(`  - ${name}\n`);
+    });
+
+  skills
     .command("add <name>")
     .description("Scaffold a new skill folder with a SKILL.md template")
     .option("--description <text>", "One-line description of the skill")

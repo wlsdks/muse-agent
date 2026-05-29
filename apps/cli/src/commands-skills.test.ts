@@ -1,11 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSkillScaffold, isSafeSkillName, resolveSkillsDir } from "./commands-skills.js";
+import {
+  buildSkillScaffold,
+  isSafeSkillName,
+  resolveAuthoredSkillsDir,
+  resolveSkillsDir
+} from "./commands-skills.js";
 
 describe("resolveSkillsDir", () => {
   it("honours MUSE_SKILLS_DIR, else defaults under ~/.muse/skills", () => {
     expect(resolveSkillsDir({ MUSE_SKILLS_DIR: "/tmp/s" } as NodeJS.ProcessEnv)).toBe("/tmp/s");
     expect(resolveSkillsDir({} as NodeJS.ProcessEnv).endsWith("/.muse/skills")).toBe(true);
+  });
+});
+
+describe("resolveAuthoredSkillsDir", () => {
+  it("honours MUSE_AUTHORED_SKILLS_DIR, else defaults under ~/.muse/skills/authored", () => {
+    expect(resolveAuthoredSkillsDir({ MUSE_AUTHORED_SKILLS_DIR: "/tmp/a" } as NodeJS.ProcessEnv)).toBe("/tmp/a");
+    expect(resolveAuthoredSkillsDir({} as NodeJS.ProcessEnv).endsWith("/.muse/skills/authored")).toBe(true);
   });
 });
 

@@ -166,6 +166,27 @@ export class AuthoredSkillStore {
     }
   }
 
+  /**
+   * Archive authored skills idle longer than maxIdleDays — last used (or
+   * authored, when never used) before the cutoff. Archive-never-delete via
+   * the same .archive/ rename as the cap. Returns the names archived; a
+   * non-positive window is a no-op. Keeps the learned-skill set relevant so
+   * the local model isn't choosing among stale skills (tool-calling.md).
+   *
+   * Pattern adapted from Hermes Agent's curator lifecycle — last_used_at
+   * feeding stale → auto-archive transitions (MIT) — reimplemented for Muse.
+   */
+  async curate(maxIdleDays: number): Promise<readonly string[]> {
+    if (!(maxIdleDays > 0)) return [];
+    const cutoff = this.now().getTime() - maxIdleDays * 24 * 60 * 60 * 1000;
+    const archived: string[] = [];
+    for (const s of await this.listAuthored()) {
+      if (this.lastActiveAt(s) >= cutoff) continue;
+      if (await this.archiveSkill(s)) archived.push(s.name);
+    }
+    return archived;
+  }
+
   private authoredAt(skill: Skill): number {
     const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
     const raw = muse["authoredAt"];
@@ -173,18 +194,26 @@ export class AuthoredSkillStore {
     return Number.isFinite(at) ? at : 0;
   }
 
+  private lastActiveAt(skill: Skill): number {
+    const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
+    const raw = muse["lastUsedAt"];
+    const used = typeof raw === "string" ? Date.parse(raw) : Number.NaN;
+    return Number.isFinite(used) ? used : this.authoredAt(skill);
+  }
+
+  private async archiveSkill(skill: Skill): Promise<boolean> {
+    const folder = skill.sourceInfo.baseDir;
+    const base = folder.split(/[\\/]/u).pop() ?? "skill";
+    const dest = join(this.dir, ".archive", base);
+    await fs.mkdir(dirname(dest), { recursive: true });
+    return fs.rename(folder, dest).then(() => true).catch(() => false); // never delete
+  }
+
   private async enforceCap(): Promise<void> {
     const skills = await this.listAuthored();
     if (skills.length <= this.maxSkills) return;
     const ordered = [...skills].sort((a, b) => this.authoredAt(a) - this.authoredAt(b)); // oldest first
-    const overflow = ordered.slice(0, ordered.length - this.maxSkills);
-    for (const s of overflow) {
-      const folder = s.sourceInfo.baseDir;
-      const base = folder.split(/[\\/]/u).pop() ?? "skill";
-      const dest = join(this.dir, ".archive", base);
-      await fs.mkdir(dirname(dest), { recursive: true });
-      await fs.rename(folder, dest).catch(() => undefined); // never delete
-    }
+    for (const s of ordered.slice(0, ordered.length - this.maxSkills)) await this.archiveSkill(s);
   }
 
   private dedupeName(name: string): string {

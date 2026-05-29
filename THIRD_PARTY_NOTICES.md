@@ -28,7 +28,8 @@ Muse's pre-existing `chat-skills.ts` exposure.
 
 Additionally, Hermes' *curator* lifecycle — tracking `lastUsedAt` on
 agent-created skills to eventually archive stale ones — informed Muse's
-`AuthoredSkillStore.recordUsage()` and the `muse skills authored` command
+`AuthoredSkillStore.recordUsage()`/`.curate()` and the `muse skills authored`
+/ `muse skills curate` commands
 (`packages/skills/src/authored-skill-store.ts`, `apps/cli/src/commands-skills.ts`).
 
 ```
