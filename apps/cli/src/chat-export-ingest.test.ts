@@ -37,6 +37,14 @@ describe("detectChatExport", () => {
     expect(detectChatExport([{ foo: 1 }])).toBeUndefined();
     expect(detectChatExport({ not: "an array" })).toBeUndefined();
   });
+
+  it("accepts the `{ conversations: [...] }` object-wrapper shape (common ChatGPT export)", () => {
+    expect(detectChatExport({ conversations: chatgptExport })).toBe("chatgpt");
+    expect(detectChatExport({ conversations: claudeExport })).toBe("claude");
+    const ingested = ingestChatExport({ conversations: chatgptExport });
+    expect(ingested).toHaveLength(1);
+    expect(ingested[0]!.markdown).toContain("Jin owns the deck");
+  });
 });
 
 describe("ingestChatExport — ChatGPT", () => {

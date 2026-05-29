@@ -35,6 +35,15 @@ interface Turn {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const asArray = (v: unknown): readonly unknown[] => (Array.isArray(v) ? v : []);
+
+// ChatGPT/Claude exports come either as a bare top-level array OR wrapped as
+// `{ "conversations": [ … ] }` (the shape the official ChatGPT export and many
+// tools emit). Accept both so a user isn't forced to hand-unwrap their export.
+const asConversationsArray = (v: unknown): readonly unknown[] => {
+  if (Array.isArray(v)) return v;
+  if (isRecord(v) && Array.isArray(v.conversations)) return v.conversations;
+  return [];
+};
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
 export function slugifyTitle(title: string, fallback: string): string {
@@ -49,7 +58,7 @@ function isoFromEpochSeconds(value: unknown): string | undefined {
 
 /** Detect which export shape `parsed` is (an array of conversations), else undefined. */
 export function detectChatExport(parsed: unknown): ChatExportKind | undefined {
-  const items = asArray(parsed);
+  const items = asConversationsArray(parsed);
   if (items.length === 0) return undefined;
   const sample = items.find(isRecord);
   if (!sample) return undefined;
@@ -133,7 +142,7 @@ function buildConversation(title: string, createdIso: string | undefined, turns:
 export function ingestChatExport(parsed: unknown): readonly IngestedConversation[] {
   const kind = detectChatExport(parsed);
   if (!kind) return [];
-  const items = asArray(parsed);
+  const items = asConversationsArray(parsed);
   const out: IngestedConversation[] = [];
   items.forEach((conv, i) => {
     if (!isRecord(conv)) return;
