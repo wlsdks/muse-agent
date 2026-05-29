@@ -53,7 +53,14 @@ const SYNTHETIC_CASES = [
   { prompt: "고마워, 덕분에 잘됐어.", expectNoTool: true, note: "KO thanks → NO tool" },
   { prompt: "Write a short two-line poem about the autumn sky.", expectNoTool: true, note: "EN pure generation → NO tool (none fits)" },
   { prompt: "I'm in Seoul — do I need an umbrella later today?", expectTool: "get_weather", argIncludes: /seoul/i, note: "EN indirect weather intent" },
-  { prompt: "Quick, remind me — what's 25% of 480?", expectTool: "calculate", note: "EN keyword trap: 'remind' word but it's math → calculate" }
+  { prompt: "Quick, remind me — what's 25% of 480?", expectTool: "calculate", note: "EN keyword trap: 'remind' word but it's math → calculate" },
+  { prompt: "타입스크립트 최신 버전을 웹에서 검색해줘.", expectTool: "web_search", note: "KO web search (user's language)" },
+  { prompt: "온라인에서 환율 좀 찾아봐줘.", expectTool: "web_search", note: "KO indirect web-search intent" },
+  { prompt: "18 곱하기 7은 얼마야?", expectTool: "calculate", note: "KO math" },
+  { prompt: "장바구니 합계가 23000원 더하기 4500원인데 총 얼마야?", expectTool: "calculate", note: "KO word-problem math (must NOT pick web_search)" },
+  { prompt: "어제 세금 계산하느라 진이 다 빠졌어.", expectNoTool: true, note: "KO keyword trap: '계산' but venting, no math request → NO tool" },
+  { prompt: "I love how clean this weather app's design is.", expectNoTool: true, note: "EN keyword trap: 'weather' about a UI, not a forecast → NO tool" },
+  { prompt: "날씨 얘기는 그만하고 다른 얘기 하자.", expectNoTool: true, note: "KO keyword trap: '날씨' but declining the topic → NO tool" }
 ];
 // NOTE: the missing-required-param failure mode (e.g. "Remind me to call Sam"
 // with no time) is NOT asserted here — it's a PARAM-completeness concern, not
