@@ -31,3 +31,36 @@ describe("reflectionsToStore", () => {
     expect(rows).toEqual([{ createdAtMs: 5_000, id: "id-1", insight: "X", sourceIds: ["e1", "e2"], supportCount: 2 }]);
   });
 });
+
+describe("shouldRunReflection — slow-cadence throttle", () => {
+  it("runs when never run, and only after the interval elapses", async () => {
+    const { shouldRunReflection } = await import("./commands-reflections.js");
+    expect(shouldRunReflection(undefined, 1_000, 5_000)).toBe(true);
+    expect(shouldRunReflection(1_000, 4_000, 5_000)).toBe(false); // 3s < 5s
+    expect(shouldRunReflection(1_000, 6_000, 5_000)).toBe(true); // 5s elapsed
+  });
+});
+
+describe("runReflectionPass", () => {
+  it("synthesises + persists grounded reflections; <2 inputs is a no-op (no model call)", async () => {
+    const { runReflectionPass } = await import("./commands-reflections.js");
+    const { mkdtemp, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "muse-rpass-"));
+    const file = join(dir, "reflections.json");
+    try {
+      let calls = 0;
+      const mp = { generate: async () => { calls += 1; return { output: '[{"insight":"You debug networking a lot","sources":["e1","e2","e3"]}]' }; } } as never;
+      expect(await runReflectionPass([{ id: "e1", text: "x" }], { model: "m", modelProvider: mp, reflectionsFile: file })).toBe(0); // <2 → skip
+      expect(calls).toBe(0);
+      const added = await runReflectionPass(
+        [{ id: "e1", text: "vpn" }, { id: "e2", text: "mtu" }, { id: "e3", text: "wireguard" }],
+        { genId: () => "rid", model: "m", modelProvider: mp, now: () => 1, reflectionsFile: file }
+      );
+      expect(added).toBe(1);
+    } finally {
+      await rm(dir, { force: true, recursive: true });
+    }
+  });
+});

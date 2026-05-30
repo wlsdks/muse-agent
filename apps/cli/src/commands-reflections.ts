@@ -10,7 +10,8 @@ import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { synthesizeReflections, type Reflection } from "@muse/agent-core";
+import { synthesizeReflections, type Reflection, type ReflectionInput } from "@muse/agent-core";
+import type { ModelProvider } from "@muse/model";
 import { createMuseRuntimeAssembly, resolveEpisodesFile } from "@muse/autoconfigure";
 import {
   addReflections,
@@ -24,9 +25,41 @@ import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
 
-function reflectionsFile(): string {
+export function resolveReflectionsFile(): string {
   return process.env.MUSE_REFLECTIONS_FILE?.trim() || join(homedir(), ".muse", "reflections.json");
 }
+
+export interface ReflectionPassOptions {
+  readonly reflectionsFile: string;
+  readonly model: string;
+  readonly modelProvider: Pick<ModelProvider, "generate">;
+  readonly now?: () => number;
+  readonly genId?: () => string;
+}
+
+/**
+ * Synthesise grounded reflections from the given episode inputs and persist the
+ * new ones (deduped). Returns how many were added. Shared by `muse reflections
+ * refresh` and the daemon idle pass.
+ */
+export async function runReflectionPass(inputs: readonly ReflectionInput[], options: ReflectionPassOptions): Promise<number> {
+  const usable = inputs.filter((i) => i.id.length > 0 && i.text.trim().length > 0);
+  if (usable.length < 2) return 0;
+  const fresh = await synthesizeReflections(usable, { model: options.model, modelProvider: options.modelProvider });
+  return addReflections(
+    options.reflectionsFile,
+    reflectionsToStore(fresh, options.now?.() ?? Date.now(), options.genId ?? (() => randomUUID()))
+  );
+}
+
+/** True when a reflection pass is due (never run, or `intervalMs` has elapsed). */
+export function shouldRunReflection(lastRunMs: number | undefined, nowMs: number, intervalMs: number): boolean {
+  if (lastRunMs === undefined) return true;
+  return nowMs - lastRunMs >= intervalMs;
+}
+
+/** Default idle reflection cadence — 6h (the daemon "dreams" a few times a day, not every tick). */
+export const DEFAULT_REFLECTION_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 
 export function renderReflections(entries: readonly StoredReflection[]): string {
   const sorted = listReflections(entries);
@@ -58,7 +91,7 @@ export function registerReflectionsCommand(program: Command, io: ProgramIO): voi
     .description("Grounded insights Muse has formed about you from past sessions (each cites its sources)")
     .option("--json", "Print the raw reflections")
     .action(async (options: { readonly json?: boolean }) => {
-      const entries = await readReflections(reflectionsFile());
+      const entries = await readReflections(resolveReflectionsFile());
       if (options.json) {
         io.stdout(`${JSON.stringify(listReflections(entries), null, 2)}\n`);
         return;
@@ -80,15 +113,12 @@ export function registerReflectionsCommand(program: Command, io: ProgramIO): voi
       }
       const limit = Math.max(2, Math.trunc(Number.parseInt(options.limit, 10) || 30));
       const episodes = (await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>))).slice(-limit);
-      const inputs = episodes
-        .map((e) => ({ id: e.id, text: e.summary }))
-        .filter((e) => e.id.length > 0 && e.text.trim().length > 0);
-      if (inputs.length < 2) {
+      const inputs = episodes.map((ep) => ({ id: ep.id, text: ep.summary }));
+      if (inputs.filter((i) => i.text.trim().length > 0).length < 2) {
         io.stdout("Not enough past sessions to reflect over yet — keep using Muse and try again.\n");
         return;
       }
-      const fresh = await synthesizeReflections(inputs, { model, modelProvider: assembly.modelProvider });
-      const added = await addReflections(reflectionsFile(), reflectionsToStore(fresh, Date.now(), () => randomUUID()));
+      const added = await runReflectionPass(inputs, { model, modelProvider: assembly.modelProvider, reflectionsFile: resolveReflectionsFile() });
       io.stdout(added > 0
         ? `🌙 Added ${added.toString()} new reflection(s). See them: muse reflections\n`
         : "No new grounded reflections this pass (nothing recurring across your sessions, or already noted).\n");
