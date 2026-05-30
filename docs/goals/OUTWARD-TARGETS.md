@@ -84,9 +84,13 @@ true for self-knowledge, which no cloud "dreaming" can match.
   in `eval:self-improving`): a recurring networking theme across 3 episodes is
   synthesised and grounded in the right real ids, and the grounding invariant
   holds for every reflection.
-- [ ] **P32-2 Wire reflections into the idle daemon + persist them.** Run the
-  pass over recent episodes during daemon idle, store grounded reflections, and
-  surface them (recall / a `muse reflections` surface), each with its sources.
+- [x] **P32-2 Persist + surface grounded reflections.** `reflections-store`
+  (atomic, dedup on the normalised insight) + `muse reflections [refresh]`:
+  `refresh` runs `synthesizeReflections` over recent episodes and stores the
+  grounded ones; `muse reflections` lists each insight WITH the real episode ids
+  it came from. Verified live: 5 seeded episodes → 2 grounded reflections (the 3
+  networking episodes grouped + cited as ep-101/102/103; the 2 admin ones as
+  ep-104/105). 4 store + 3 cli tests. (Next P32-3: auto-run during daemon idle.)
 
 ## Delivered — P31 (Muse acts on the world, gated draft-first)
 

@@ -735,6 +735,14 @@ export {
   type SwarmQuarantineEntry
 } from "./swarm-quarantine-store.js";
 
+export {
+  addReflections,
+  listReflections,
+  readReflections,
+  type NewReflection,
+  type StoredReflection
+} from "./reflections-store.js";
+
 // Episodic memory store — step 1 of docs/design/episodic-memory.md.
 // Pure CRUD over `~/.muse/episodes.json`; later steps add the
 // session-boundary sentinel, end-of-session summariser hook,
