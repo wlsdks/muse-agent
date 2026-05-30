@@ -155,6 +155,14 @@ export {
   type ProactiveRecallDecision
 } from "./proactive-recall-gate.js";
 export {
+  buildReflectionUserMessage,
+  parseReflections,
+  synthesizeReflections,
+  type Reflection,
+  type ReflectionInput,
+  type SynthesizeReflectionsOptions
+} from "./reflection-synthesis.js";
+export {
   extractCurrentSessionTurns,
   redactSecrets,
   summariseSession,

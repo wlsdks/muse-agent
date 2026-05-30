@@ -64,10 +64,35 @@ turn; never half-shipped.
 
 ## Active target
 
-**P31 — Muse acts on the world (gated, draft-first).** Close the
-perceive→propose→confirm→act loop: an autonomous trigger PROPOSES a
-state-changing action; nothing leaves until the user confirms it. The
-JARVIS frontier — "acting" — done strictly per `outbound-safety.md`.
+**P32 — Grounded "dreaming" (idle memory consolidation that can't make
+things up).** Adopt the offline reflection competitors lean on (OpenClaw's
+"dreaming"; Generative Agents reflection, arXiv:2304.03442) in Muse's honest,
+local key: while idle, synthesise recent episodes/notes into a few higher-level
+insights about the user — and keep ONLY insights GROUNDED in real sources (each
+cites the episode/note ids it came from; an invented source is stripped, an
+under-supported insight dropped). Muse dreams about your life; every insight
+points back to where it came from — the identity ("can't make things up") made
+true for self-knowledge, which no cloud "dreaming" can match.
+
+- [x] **P32-1 Grounded reflection synthesis (core + honesty guard).**
+  `synthesizeReflections` (agent-core) turns recent `{id,text}` items into
+  reflections via the LOCAL model; `parseReflections` deterministically strips
+  any cited source id that isn't a real input and drops a reflection below
+  `minSupport` distinct sources — the model cannot ground an insight in a source
+  the user doesn't have. 11 unit tests (strips invented ids, minSupport, dedupe,
+  junk-tolerant JSON) + a LIVE qwen3:8b battery (`verify-reflection-synthesis`,
+  in `eval:self-improving`): a recurring networking theme across 3 episodes is
+  synthesised and grounded in the right real ids, and the grounding invariant
+  holds for every reflection.
+- [ ] **P32-2 Wire reflections into the idle daemon + persist them.** Run the
+  pass over recent episodes during daemon idle, store grounded reflections, and
+  surface them (recall / a `muse reflections` surface), each with its sources.
+
+## Delivered — P31 (Muse acts on the world, gated draft-first)
+
+Closed the perceive→propose→confirm→act loop: an autonomous trigger PROPOSES a
+state-changing action; nothing leaves until the user confirms it. The JARVIS
+frontier — "acting" — done strictly per `outbound-safety.md`.
 
 - [x] **P31-1 Proposed-action confirm-to-execute (engine + `muse
   propose`).** A `proposed-action` store + `proposeMessageAction`
