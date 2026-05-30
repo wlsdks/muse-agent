@@ -81,6 +81,10 @@ describe("csv_parse", () => {
     expect(run(csv, { text: "a,b\r\n1,2" })).toEqual({ headers: ["a", "b"], rows: [{ a: "1", b: "2" }] });
     expect(run(csv, { text: "" })).toEqual({ rows: [] });
   });
+
+  it("rejects text over the 200k character bound (DoS guard) — mutation-surfaced gap", () => {
+    expect(run(csv, { text: "a,".repeat(120_000) })).toEqual({ error: "text must be ≤ 200000 characters" });
+  });
 });
 
 describe("base64", () => {
@@ -99,5 +103,16 @@ describe("base64", () => {
   it("rejects an unknown mode and non-base64 input", () => {
     expect(run(b64, { mode: "x", text: "y" })).toEqual({ error: "mode must be 'encode' or 'decode'" });
     expect(run(b64, { mode: "decode", text: "!!!!" })).toEqual({ error: "input is not valid base64" });
+  });
+
+  it("round-trips a URL-safe value that needs padding restored on decode (exercises padBase64) — mutation-surfaced gap", () => {
+    // "hi" → standard "aGk=" → url-safe "aGk" (padding stripped). Decoding must
+    // re-pad (length % 4 === 3 → add one "=") before Buffer can parse it.
+    expect(run(b64, { mode: "encode", text: "hi", urlSafe: true })).toEqual({ encoded: "aGk" });
+    expect(run(b64, { mode: "decode", text: "aGk", urlSafe: true })).toEqual({ decoded: "hi" });
+  });
+
+  it("rejects text over the 500k character bound (DoS guard) — mutation-surfaced gap", () => {
+    expect(run(b64, { mode: "encode", text: "x".repeat(500_001) })).toEqual({ error: "text must be ≤ 500000 characters" });
   });
 });
