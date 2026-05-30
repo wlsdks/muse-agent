@@ -31,7 +31,9 @@ import { classifyRetrievalConfidence, rankPlaybookStrategies, renderPlaybookSect
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveEpisodesFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
-import { readEpisodes, readReminders, readTasks, type PersistedReminder, type PersistedTask } from "@muse/mcp";
+import { listReflections, readEpisodes, readReflections, readReminders, readTasks, type PersistedReminder, type PersistedTask } from "@muse/mcp";
+
+import { resolveReflectionsFile } from "./commands-reflections.js";
 import { classifyTier, type ModelTier } from "@muse/multi-agent";
 import type { Command } from "commander";
 
@@ -638,6 +640,15 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           .map((h, i) => `<<feed ${(i + 1).toString()} — ${h.feedName} (${h.publishedAt})>>\n${h.title}${h.summary ? `\n${h.summary}` : ""}\n<<end>>`)
           .join("\n\n");
 
+      // Dreaming closes the loop: the user's own grounded reflections (the
+      // higher-level model Muse built of them) inform the answer. Insight text
+      // only — already grounded; no-op when there are none. Fail-soft.
+      let reflectionLines: string[] = [];
+      try {
+        reflectionLines = listReflections(await readReflections(resolveReflectionsFile())).slice(0, 5).map((r) => `- ${r.insight}`);
+      } catch { /* no reflections — grounding still works */ }
+      const reflectionBlock = reflectionLines.length === 0 ? "(none yet)" : reflectionLines.join("\n");
+
       // Build assembly + chat-only fast path. `--actuators` (only
       // meaningful with --with-tools) injects the gated state-changing
       // actuator tools, each carrying a clack confirm as its
@@ -870,7 +881,11 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         "",
         "=== RECENT FEED HEADLINES (your watched RSS/Atom feeds, newest first) ===",
         feedBlock,
-        "=== END FEED HEADLINES ==="
+        "=== END FEED HEADLINES ===",
+        "",
+        "=== WHAT MUSE HAS NOTICED ABOUT YOU (high-level, from past sessions) ===",
+        reflectionBlock,
+        "=== END NOTICED ==="
       ].join("\n");
 
       // Show citation header before streaming the answer so the user
