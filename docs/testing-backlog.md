@@ -418,6 +418,15 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] buildLoopbackTools gating (untested) — the assembly seam deciding WHICH
+  in-process tools the local model sees (tool-calling.md: keep the set tight, no
+  always-erroring tools). loopback-tools.test.ts exercises the real assembly with
+  real registries + tmp paths: minimal deps expose the always-on groups +
+  notes/tasks (default-on) but OMIT calendar/messaging/notesRegistry/tasksRegistry;
+  MUSE_NOTES_ENABLED/MUSE_TASKS_ENABLED=false drop those groups; calendar appears
+  only with a registered provider; messaging only with a provider AND both poll
+  fns (else it'd be an always-erroring tool); the multi-provider registry
+  surfaces only at ≥2 providers. autoconfigure 441 pass.
 - [x] Token-usage / cost-analytics primitives (untested) — the agent
   cost-accounting surface (DeepEval cost dimension). observability-token-cost.test.ts:
   InMemoryTokenUsageSink clones on record+list (caller can't mutate stored state);
