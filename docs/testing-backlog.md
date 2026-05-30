@@ -192,6 +192,19 @@ the generic layers below because they test what makes Muse an *agent*.
       cited, source-labelled passages ("cite the [source]" + docs/insurance.pdf +
       the policy number), and an empty / non-string query degrades to the no-match
       banner (never throws / fabricates). agent-core 1080→1082.
+  - ELEVENTH MEASUREMENT (throwaway, reused install, NOT committed): `policy/
+    pii-patterns.ts` = **52.76%** — another security detector dominated by
+    un-asserted patterns. Only us-ssn / credit-card / jp-my-number / ipv4 / ipv6
+    were positively asserted; the KOREAN classes (kr-national-id 주민번호 /
+    kr-phone / kr-driver-license / kr-passport — the user's MOST sensitive PII)
+    plus email and iban had no detection assertion, so a regex regression would
+    silently stop redacting them. Added per-class detection assertions for all
+    four KR classes + email + iban + a benign-Korean control, and a maskPii test
+    proving a KR national-id + email are actually REDACTED (not just detected).
+    policy 110→112.
+    - Verified-not-a-gap (artifact): the knowledge-recall `applyOverlap` 394-397
+      NoCoverage was a Stryker per-test attribution artifact — apply-overlap.test.ts
+      already covers the stitch loop thoroughly; no redundant test added.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
