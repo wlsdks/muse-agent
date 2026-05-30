@@ -515,6 +515,11 @@ the generic layers below because they test what makes Muse an *agent*.
   epochMillisOrNull (number/Date/ISO → ms, else null); toJsonObject (drops
   function/undefined values); stringMapField (string→string only); readQueryBoolean;
   compatEnumString (trim+upper); chunkText (2000-char chunks, empty→[""]). api 522 pass.
+- [x] parseLookaheadHours (untested) — today-routes-parse.test.ts: the /today
+  briefing's strict lookahead parser returns the 24h default for undefined /
+  decimal / unit-slip / blank (no lenient truncation), else passes a plain
+  non-negative integer through (positivity + MAX clamp live downstream in the
+  handler). api 747 pass; build typecheck green.
 - [x] Daemon state-file resolvers (untested) — tick-daemons-resolve.test.ts:
   resolveAmbientSignalFile / resolveProactiveTrustFile honor an explicit
   MUSE_*_FILE override first, else $HOME/.muse/<file>, else the OS home dir —
