@@ -15,6 +15,12 @@
 
 Korean: **"다 털어놔도 되는 AI."**
 
+> **The FUNCTIONAL edge (what makes Muse worth using, beyond local/private):
+> "Muse shows its work" — one deterministic grounding gate under every surface,
+> continuously measured. This document is the *positioning*;
+> [`the-edge.md`](the-edge.md) is the *functional differentiator* the loop
+> strengthens and verifies each iteration.**
+
 ## The axis: OWNERSHIP / trust (not "proactivity", not bare "privacy")
 
 The differentiator is **TRUST = (private by construction) × (honest — won't
