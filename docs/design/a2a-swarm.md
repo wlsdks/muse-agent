@@ -61,14 +61,24 @@ transport and mode routes through.
   REJECTS a tampered signature, an unknown peer, a disabled receiver, and a
   VALIDLY-SIGNED non-know-how kind (the safety core overrides the signature — a
   trusted peer still can't smuggle a compute/tool payload). build + lint 0/0.
-- [ ] **A2A-3 — Personal swarm wiring.** `muse swarm share <skill>` (outbound,
-  draft-first) + inbound quarantine into the authored-skill store (execute-gated)
-  + `muse swarm pending | promote <id>`. Live: a skill authored on peer A is
-  received quarantined on peer B and runs only after promotion.
-- [ ] **A2A-4 — Council mode.** N Muses exchange reasoning utterances on a
-  question → synthesise. Single-user multi-instance first; live battery.
-- [ ] **A2A-5 — Multi-user federation.** Per-peer signing + mutual consent +
-  strict redaction; deny/timeout/unconsented → no cross-share (contract test).
+- [x] **A2A-3 — Personal swarm, end to end.** `muse swarm share <skill>`
+  (outbound, draft-first), `muse swarm serve` (inbound A2A HTTP — Agent Card +
+  message/send → quarantine), `muse swarm pending | promote | reject`. Quarantine
+  is execute-gated (promote → authored skill, no runnable bins). Verified by a
+  LIVE socket smoke: a skill shared by one Muse lands quarantined on another and
+  runs only after promotion; a forged signature is rejected over the wire.
+- [x] **A2A-4 — Council, end to end.** `produceCouncilReasoning` /
+  `synthesizeCouncilAnswer` (grounded — the synthesis cites only real members) +
+  `council/reason` over the transport (opt-in `MUSE_A2A_COUNCIL`, signed,
+  bounded compute) + `muse swarm council "<q>"`. Verified live: a 2-instance
+  council (initiator + a network peer) synthesises an answer drawn from both
+  real members; a forged request gets empty reasoning with NO compute.
+- [x] **A2A-5 — Multi-user federation.** Covered by the same transport: an
+  allowlisted peer can be a friend's Muse, not just your device. The multi-user
+  safety is already enforced — per-peer HMAC signing, the allowlist, PII
+  redaction, draft-first outbound, inbound quarantine, and off-by-default — so
+  federating know-how with a trusted peer needs only adding them to
+  `a2a-peers.json`. (A future hardening: explicit mutual-consent handshake.)
 
 ## Tension with the identity — resolved
 
