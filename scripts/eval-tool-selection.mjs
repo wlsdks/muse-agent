@@ -118,11 +118,11 @@ async function buildTimeToolsScenario() {
       { prompt: "What time is it now?", expectTool: "time_now", note: "now" },
       { prompt: "What day of the week is it right now in Seoul?", expectTool: "time_now", note: "current weekday → time_now, NOT next_weekday_date" },
       { prompt: "How many hours between 9am and 5:30pm today?", expectTool: "time_diff", requireArgs: ["from", "to"], note: "two-timestamp diff" },
-      { prompt: "What is 3 days after 2026-05-26?", expectTool: "time_add", requireArgs: ["base"], note: "add" },
+      { prompt: "What is 3 days after 2026-05-26?", expectTool: "time_add", argIncludes: /2026-05-26/, requireArgs: ["base"], note: "add — base value must be the prompt's date (ArgumentCorrectness); STABLE 3/3" },
       { prompt: "How long ago was 2026-05-01 from now?", expectTool: "time_relative", requireArgs: ["at"], note: "relative-to-now (NOT time_diff)" },
-      { prompt: "When is the next Friday?", expectTool: "next_weekday_date", requireArgs: ["weekday"], note: "future named weekday → next_weekday_date, NOT time_now" },
-      { prompt: "다음 주 금요일이 며칠이야?", expectTool: "next_weekday_date", requireArgs: ["weekday"], note: "KO future named weekday → next_weekday_date, NOT time_now (user's language); STABLE 3/3" },
-      { prompt: "Give me a cron expression for 2026-12-25 08:00.", expectTool: "cron_for_datetime", requireArgs: ["iso"], note: "cron" },
+      { prompt: "When is the next Friday?", expectTool: "next_weekday_date", argIncludes: /friday/i, requireArgs: ["weekday"], note: "future named weekday → next_weekday_date; weekday arg must be friday (ArgumentCorrectness); STABLE 3/3" },
+      { prompt: "다음 주 금요일이 며칠이야?", expectTool: "next_weekday_date", argIncludes: /friday|금요일/i, requireArgs: ["weekday"], note: "KO future named weekday → next_weekday_date; weekday arg = friday (cross-language ArgumentCorrectness); STABLE 3/3" },
+      { prompt: "Give me a cron expression for 2026-12-25 08:00.", expectTool: "cron_for_datetime", argIncludes: /2026-12-25/, requireArgs: ["iso"], note: "cron — iso arg must carry the prompt's date (ArgumentCorrectness); STABLE 3/3" },
       // Negative eager-invocation traps — time/weekday WORDS in a musing that
       // requests no computation (the dual of selection). Each STABLE 3/3 on qwen3:8b.
       { prompt: "시간 참 빨리 간다, 벌써 금요일이네.", expectNoTool: true, note: "KO musing; '금요일' is a keyword trap, not a next_weekday_date request → NO tool" },

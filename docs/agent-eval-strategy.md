@@ -70,10 +70,15 @@ of agent test is worth the most*.
     query, weather location, time_diff from+to, time_add base, time_relative at,
     next_weekday_date weekday, cron_for_datetime iso, + synthetic/real set).
     Live eval:tools 39/39 @ REPEAT=2 against qwen3:8b.
-  - value-plausibility grading (exact-value regex beyond presence) deliberately
-    NOT added: presence is the meaningful no-op guard; pinning exact values on a
-    stochastic model is brittle and lower-value. `argIncludes` already covers the
-    few deterministic ones (seoul, sat). Consider A effectively complete.
+  - [x] value-correctness grading on the DETERMINISTIC, prompt-derived args
+    (`argIncludes` regex over the args JSON): a literal copied straight out of the
+    prompt is NOT brittle on a stochastic model — it is either echoed or it is a
+    real bug. Extended beyond seoul/sat to the time confusable set: time_add base
+    must carry the prompt's date (2026-05-26), cron_for_datetime iso the prompt's
+    date (2026-12-25), and next_weekday_date weekday = friday in BOTH EN and KO
+    (다음 주 금요일 → friday, cross-language ArgumentCorrectness). Each STABLE 3/3.
+    Exact-value pinning on model-INVENTED args (a computed duration, a synthesised
+    cron field) is still deliberately omitted as brittle. A effectively complete.
   - [x] negative eager-invocation traps on the STATE-CHANGING actuator set (5
     no-tool cases: smart-home comment / past-booking gratitude / inbox venting /
     weather small-talk / weather-app-UI comment) — the dual of ToolCorrectness
