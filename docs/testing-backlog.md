@@ -515,6 +515,13 @@ the generic layers below because they test what makes Muse an *agent*.
   epochMillisOrNull (number/Date/ISO → ms, else null); toJsonObject (drops
   function/undefined values); stringMapField (string→string only); readQueryBoolean;
   compatEnumString (trim+upper); chunkText (2000-char chunks, empty→[""]). api 522 pass.
+- [x] Multipart parser + SSE line-framer (untested) — server-multipart-sse.test.ts:
+  parseMultipartBody separates text fields from files (base64-encodes file bytes,
+  defaults content-type), accepts a quoted boundary + a header-array content type,
+  and throws when no boundary is present (the chat-upload input boundary); sseData
+  splits CRLF/CR/LF each into a new data: segment and emits a single space for an
+  empty line (so a bare CR in model output can't truncate the SSE stream). api 731
+  pass; build typecheck green.
 - [x] Generic server input-utils (untested) — the shape/coercion foundation every
   API parser builds on. server-input-utils.test.ts: isJsonValue recursive validation
   (rejects functions + non-finite numbers, accepts nested), isJsonObject; optional*
