@@ -105,6 +105,26 @@ describe("fetchReadWithRetry", () => {
     expect(slept).toEqual([2000]); // 2 seconds, not the 200ms base
   });
 
+  it("falls back to linear backoff when Retry-After is INVALID (negative / non-numeric / missing)", async () => {
+    // A buggy or hostile server can send `Retry-After: -5` or `abc`; the parser
+    // must yield undefined (secs >= 0 + isFinite) so the retry uses baseDelayMs *
+    // attempt instead of a negative / NaN delay — never trusting the bad header.
+    const probe = async (retryAfter: string | null): Promise<readonly number[]> => {
+      let calls = 0;
+      const slept: number[] = [];
+      const flaky: typeof fetch = (async () => {
+        calls += 1;
+        const headers = retryAfter !== null ? { "retry-after": retryAfter } : {};
+        return calls < 2 ? new Response("e", { headers, status: 429 }) : new Response("ok", { status: 200 });
+      }) as unknown as typeof fetch;
+      await fetchReadWithRetry(flaky, "http://x", {}, { baseDelayMs: 50, sleep: async (ms) => { slept.push(ms); } });
+      return slept;
+    };
+    expect(await probe("-5")).toEqual([50]);   // negative → ignored, linear backoff
+    expect(await probe("abc")).toEqual([50]);  // non-numeric → ignored
+    expect(await probe(null)).toEqual([50]);   // header absent → linear backoff
+  });
+
   it("returns a non-retryable 4xx immediately without retrying", async () => {
     let calls = 0;
     const notFound: typeof fetch = (async () => { calls += 1; return new Response("nf", { status: 404 }); }) as unknown as typeof fetch;

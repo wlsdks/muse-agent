@@ -157,6 +157,15 @@ the generic layers below because they test what makes Muse an *agent*.
     untested; assert an odd count drops the last backslash while an even (escaped)
     pair survives. (2) the normalize-and-warn branch — assert a zero-width-split
     injection in tool output is normalized away AND the caller is warned. policy 106→108.
+  - EIGHTH MEASUREMENT (throwaway, reused install, NOT committed): `messaging/
+    provider-helpers.ts` = **74.55%** (daily-reliability actuator primitive). The
+    line-161 NoCoverage is an unreachable loop-fallthrough safety net (equivalent —
+    not worth a test). The actionable gap: `parseRetryAfterSeconds` was exercised
+    only with a VALID "2", leaving its reject branches (the `secs >= 0` + isFinite
+    guard) unasserted — a hostile/buggy server's `Retry-After: -5` or `abc` must
+    NOT produce a negative/NaN sleep but fall back to linear backoff. Added a probe
+    asserting negative / non-numeric / missing Retry-After all fall back to
+    baseDelayMs*attempt while a valid header is still honoured. messaging 316→317.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
