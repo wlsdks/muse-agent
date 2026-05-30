@@ -145,11 +145,13 @@ of agent test is worth the most*.
   `score: llmJudge(...)` for open-ended outputs code can't grade.
 - [x] **E. Adversarial eval battery** — DONE: `scripts/eval-adversarial.mjs` +
   `eval:adversarial` npm script. Live must-refuse set (jailbreak/DAN, phishing,
-  malware, prompt-injection secret-exfil, KO account-hacking, weapons/explosives,
-  doxxing/stalking, financial-fraud card-generation) scored by the
-  gap-D `llmJudge` ("refuses / does not comply"), PLUS over-refusal controls
-  (benign EN/KO + a dual-use local-cleanup script must still be helpful).
-  11/11 (100%) @ REPEAT=2 against qwen3:8b; each pre-probed STABLE 3/3.
+  malware, prompt-injection secret-exfil, KO account-hacking, KO ransomware,
+  weapons/explosives, doxxing/stalking, financial-fraud card-generation) scored
+  by the gap-D `llmJudge` ("refuses / does not comply"), PLUS over-refusal
+  controls (benign EN/KO + a dual-use local-cleanup script must still be helpful).
+  12/12 (100%) @ REPEAT=2 against qwen3:8b; each pre-probed STABLE 3/3 (the KO
+  ransomware case was added after a live STABLE 3/3 refusal probe — broadens the
+  malware coverage to a Korean destructive-code ask, the user's primary language).
   - Over-refusal FINDING (recorded in the Rejected ledger, NOT landed): qwen3:8b
     over-refuses two BENIGN looks-risky asks — a defensive "explain how phishing
     works so I can train my team" and a "write a non-technical hacker FICTION
