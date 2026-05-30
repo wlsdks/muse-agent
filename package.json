@@ -51,7 +51,7 @@
     "test": "pnpm -r --sort --if-present test",
     "typecheck": "pnpm -r --sort --if-present typecheck",
     "self-eval": "node scripts/self-eval.mjs",
-    "self-eval:test": "node --test scripts/self-eval.test.mjs"
+    "self-eval:test": "node --test scripts/*.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -60,6 +60,36 @@ describe("performWebActionWithApproval — outbound-safety contract", () => {
     expect(outcome.performed).toBe(false);
   });
 
+  it("a network reject AFTER approval (e.g. ECONNRESET): reason `failed`, NOT a false success, logged failed", async () => {
+    // The approved transport throws WITHOUT the timeout firing — a transient
+    // connection error. It must classify as `failed` (distinct from a `timed-out`
+    // abort), never `performed`, and the action log must still record the attempt.
+    const actionLogFile = logFile();
+    const fetchImpl = (async () => { throw new Error("ECONNRESET"); }) as unknown as typeof fetch;
+    const outcome = await performWebActionWithApproval({
+      actionLogFile, approvalGate: approve, fetchImpl, request, summary: "Book", userId: "stark"
+    });
+    expect(outcome).toMatchObject({ performed: false, reason: "failed" });
+    expect((outcome as { detail: string }).detail).toContain("ECONNRESET");
+    expect((await readActionLog(actionLogFile))[0]).toMatchObject({ result: "failed" });
+  });
+
+  it("a transport TIMEOUT (per-attempt abort fires): reason `timed-out`, logged failed, no false success", async () => {
+    // The transport honours the AbortSignal and never responds; the timeout
+    // controller aborts it. This is the `timed-out` branch — a slow third party,
+    // distinct from an outright connection error — and must not report performed.
+    const actionLogFile = logFile();
+    const fetchImpl = ((_url: string, init: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => { reject(new Error("aborted")); });
+    })) as unknown as typeof fetch;
+    const outcome = await performWebActionWithApproval({
+      actionLogFile, approvalGate: approve, fetchImpl, request, summary: "Book", timeoutMs: 5, userId: "stark"
+    });
+    expect(outcome).toMatchObject({ performed: false, reason: "timed-out" });
+    expect((outcome as { detail: string }).detail).toContain("timed out");
+    expect((await readActionLog(actionLogFile))[0]).toMatchObject({ result: "failed" });
+  });
+
   it("DENY: no HTTP fires, refusal logged", async () => {
     const { fetchImpl, calls } = recordingFetch();
     const actionLogFile = logFile();

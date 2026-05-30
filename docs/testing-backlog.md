@@ -851,6 +851,32 @@ the generic layers below because they test what makes Muse an *agent*.
   Retry-After, returns a non-retryable 4xx immediately, and re-throws a network
   error after maxAttempts — NEVER used for send() (double-delivery). All via
   injected fetch + sleep (no real network). messaging 316 pass.
+- [x] Weather actuator outage resilience (TOOL level) — the http-retry primitive
+  was well-tested but `createWeatherTool.execute` itself was only proven on
+  happy/not-found, not on an upstream outage. A tool that THROWS on a transient
+  failure breaks the agent's tool loop (USER-FACING per the harden-actuators
+  focus). Added 4 cases driving the REAL OpenMeteoWeatherProvider + fetchWithRetry
+  against a persistently-failing fetch: a 503 with retries exhausted, a network
+  reject, and a 200-with-malformed-(non-JSON)-body all degrade the current-weather
+  path to found:false (never reject); the forecast path (`when` set) does the same
+  on a persistent 5xx while still echoing the date. mcp suite 1108→1112 pass.
+- [x] State-changing actuator (web_action / home_action shared path) — the two
+  THROW branches were uncovered. web-action.test.ts proved CONFIRM / non-2xx→failed
+  / 403 / DENY / fail-closed-gate, but `performWebActionWithApproval`'s
+  `reason: aborted ? "timed-out" : "failed"` distinction was only half-tested
+  (non-2xx → failed). Added a network REJECT after approval (fetch throws
+  ECONNRESET, signal NOT aborted → reason `failed`) and a transport TIMEOUT (the
+  fetch honours the AbortSignal, the per-attempt controller fires → reason
+  `timed-out`). Both assert NOT a false `performed` success AND that the action
+  log still records `failed` (outbound-safety rule 4 — every outcome recorded).
+  mcp suite 1112→1114 pass.
+- [x] home_action TOOL-level failure projection — the shared path was covered, but
+  `createHomeActionTool.execute`'s OWN mapping (outcome → { performed:false, reason,
+  detail }) on a failed call was untested at the projection the AGENT invokes. Added
+  a 5xx-from-HA case: the tool surfaces performed:false + reason "failed" + a detail
+  (never a false performed on a state-changing lock/scene call) and logs failed.
+  Completes state-changing-actuator reliability at every level (shared web-action
+  path + home_action tool + weather read tool + home_state read fns). mcp 1114→1115.
 - [x] Prompt-injection detection — multilingual + privacy categories (the
   existing injection-patterns test covered English normalization + goal-033
   patterns; the Korean/CJK/Spanish and privacy patterns were undetected-in-test).

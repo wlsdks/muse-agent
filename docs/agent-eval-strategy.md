@@ -257,6 +257,18 @@ First consumer: `eval:tools` was refactored onto it (behaviour-preserving, live
 39/39 @ threshold 85%). New batteries (task-completion, adversarial, LLM-judge)
 should declare scenarios + a solver + scorers rather than re-implement the loop.
 
+**Harness self-test** (`scripts/eval-harness.test.mjs`, run by `pnpm
+self-eval:test` via `node --test scripts/*.test.mjs`): the engine that decides
+every battery's PASS/FAIL had ZERO coverage — a bug in its scoring / verdict
+parsing / gate math would silently corrupt all five live batteries. 13 node:test
+cases (no Ollama; the llmJudge / shadowTrial paths use a contract-faithful fake
+provider returning canned text, exercising the REAL regex parsing) pin: every
+`toolScorers` member incl. the whitespace-blank/`null` arg-miss + numeric-zero
+present edges; `combineScorers` first-failure precedence + vacuous-empty; the
+strict `^pass\b` / `verdict:\s*promote` parsing with garbage → "?" (never a
+silent PASS/PROMOTE); and `runEvalSuite` gate=rate≥threshold, STRICT all-runs
+repeat, caught-throw-as-fail, skip-excluded-from-tally, and total-0 → gate false.
+
 ## Loop rule
 
 Each fire, advance the highest-priority open item from **A→H above** (or the
