@@ -515,6 +515,11 @@ the generic layers below because they test what makes Muse an *agent*.
   epochMillisOrNull (number/Date/ISO → ms, else null); toJsonObject (drops
   function/undefined values); stringMapField (string→string only); readQueryBoolean;
   compatEnumString (trim+upper); chunkText (2000-char chunks, empty→[""]). api 522 pass.
+- [x] Daemon state-file resolvers (untested) — tick-daemons-resolve.test.ts:
+  resolveAmbientSignalFile / resolveProactiveTrustFile honor an explicit
+  MUSE_*_FILE override first, else $HOME/.muse/<file>, else the OS home dir —
+  and NEVER the filesystem root (the safety refusal that keeps .muse/*.json from
+  scattering at "/"). api 743 pass; build typecheck green.
 - [x] Worker synthesizer (untested) — the swarm fan-in. multi-agent-synthesizer.test.ts:
   createWorkerSynthesizer returns undefined with no model provider; with one it
   labels each part by workerId ("### <id>\n<output>"), calls the synthesis prompt
