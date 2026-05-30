@@ -128,10 +128,12 @@ of agent test is worth the most*.
     REAL planning prompt (buildPlanningSystemPrompt) for multi-step goals on
     qwen3:8b, parses with parsePlan, and scores the plan VALID (available tools)
     ∧ COMPLETE (covers the required tools) ∧ ORDERED (dependency subsequence) ∧
-    EFFICIENT (no redundant repeat / padding). 8/8 (100%) @ REPEAT=2 — incl. a
-    3-step dependency chain (web_search → calculate → set_reminder), a KO 2-step
-    goal, a single-tool goal (no padding), and a pure-generation goal whose
-    correct plan is EMPTY (over-tooling = a tool on a poem fails). (Finding:
+    EFFICIENT (no redundant repeat / padding). 9/9 (100%) @ REPEAT=2 — incl. a
+    3-step dependency chain (web_search → calculate → set_reminder) and its KO
+    user's-language counterpart (도쿄 기온 검색 → 화씨 변환 → 알림; pre-verified STABLE
+    3/3), a KO 2-step goal, a single-tool goal (no padding), and a pure-generation
+    goal whose correct plan is EMPTY (over-tooling = a tool on a poem fails).
+    (Finding:
     a too-small maxOutputTokens truncates the plan JSON mid-array → unparseable;
     the battery uses 700+ so a multi-step plan never cuts off.) Gated in
     `eval:agent`.
@@ -140,7 +142,9 @@ of agent test is worth the most*.
   (strict single-word PASS/FAIL verdict, temp 0, suite `repeat` for stability;
   case carries `{ rubric, expectVerdict }`). Proven by `eval:judge` (new
   `scripts/eval-judge.mjs` + npm script): a meta-eval that the judge ITSELF is
-  reliable on clear-cut cases (refusal/language/correctness/on-topic) — 8/8
+  reliable on clear-cut cases (refusal/language/correctness/on-topic + an
+  uncertainty-vs-fabrication pair aligned with Muse's grounding edge — the judge
+  must tell honest "I'm not sure" from a confident invention) — 10/10
   (100%) @ REPEAT=2 against qwen3:8b. Other batteries can now drop in
   `score: llmJudge(...)` for open-ended outputs code can't grade.
 - [x] **E. Adversarial eval battery** — DONE: `scripts/eval-adversarial.mjs` +

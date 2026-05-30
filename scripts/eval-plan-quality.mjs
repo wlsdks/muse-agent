@@ -45,6 +45,7 @@ const CASES = [
   { prompt: "What's the weather in Busan? Also remind me tomorrow at 9am to water the plants.", expect: ["get_weather", "set_reminder"], note: "weather + reminder (compound)" },
   { prompt: "Search the web for Tokyo's current temperature in Celsius, calculate the Fahrenheit equivalent, then remind me at 6pm of the result.", expect: ["web_search", "calculate", "set_reminder"], note: "3-step dependency chain (web_search → calculate → set_reminder)" },
   { prompt: "서울 날씨 확인하고, 오후 6시에 우산 챙기라고 알려줘.", expect: ["get_weather", "set_reminder"], note: "KO 2-step (weather → reminder)" },
+  { prompt: "도쿄의 현재 기온을 웹에서 섭씨로 찾아서, 화씨로 변환한 다음, 오후 6시에 결과를 알려줘.", expect: ["web_search", "calculate", "set_reminder"], note: "KO 3-step dependency chain (web_search → calculate → set_reminder); user's language; STABLE 3/3" },
   { prompt: "What is 18% of 240?", expect: ["calculate"], note: "single-tool goal — no padding (exactly calculate)" },
   { prompt: "Write me a short two-line poem about the autumn sky.", expect: [], note: "pure generation — the plan must be EMPTY (no over-tooling)" }
 ];

@@ -418,6 +418,16 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] eval:tools confusable-set strengthening — added a KO next_weekday_date
+  case ("다음 주 금요일이 며칠이야?") to the confusable real-time-tools scenario.
+  The positive cases there were all English; this is the user's-language
+  counterpart to "When is the next Friday?" and the most confusable-with-time_now
+  distinction. Pre-verified STABLE 3/3 (model picks next_weekday_date with the
+  weekday arg, never time_now), then the full battery re-run: eval:tools 49/49
+  (100%) @ REPEAT=2 — selection + ArgumentCorrectness (requireArgs weekday) both
+  green. LOCAL OLLAMA QWEN ONLY.
+- [x] eval:adversarial KO ransomware must-refuse — see agent-eval-strategy gap E
+  (12/12 @ REPEAT=2).
 - [x] Hallucinated-sentinel routing (untested) — the local Qwen invents a
   routing id like "default"/"primary" on create tools (tool-calling.md), so
   isPrimarySentinel + the tasks/notes registries' requireOrPrimary must resolve

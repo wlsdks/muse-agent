@@ -121,6 +121,7 @@ async function buildTimeToolsScenario() {
       { prompt: "What is 3 days after 2026-05-26?", expectTool: "time_add", requireArgs: ["base"], note: "add" },
       { prompt: "How long ago was 2026-05-01 from now?", expectTool: "time_relative", requireArgs: ["at"], note: "relative-to-now (NOT time_diff)" },
       { prompt: "When is the next Friday?", expectTool: "next_weekday_date", requireArgs: ["weekday"], note: "future named weekday → next_weekday_date, NOT time_now" },
+      { prompt: "다음 주 금요일이 며칠이야?", expectTool: "next_weekday_date", requireArgs: ["weekday"], note: "KO future named weekday → next_weekday_date, NOT time_now (user's language); STABLE 3/3" },
       { prompt: "Give me a cron expression for 2026-12-25 08:00.", expectTool: "cron_for_datetime", requireArgs: ["iso"], note: "cron" },
       // Negative eager-invocation traps — time/weekday WORDS in a musing that
       // requests no computation (the dual of selection). Each STABLE 3/3 on qwen3:8b.
