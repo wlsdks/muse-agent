@@ -11,10 +11,11 @@
 
 import { createMuseRuntimeAssembly, parseBoolean, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
-import { readCheckins, readEpisodes, readFollowups, readPatternsFired, readTasks } from "@muse/mcp";
+import { isSkillAvoided, readCheckins, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks } from "@muse/mcp";
 import { aggregateActivitySignals, selectFireablePatterns } from "@muse/memory";
 import { AuthoredSkillStore, loadSkillsFromDirectory, type Skill } from "@muse/skills";
 import { buildSkillsPrompt } from "./chat-skills.js";
+import { resolveSkillRewardsFile } from "./commands-skills.js";
 import { selectPersonaEpisodes } from "./episode-selection.js";
 import { Box, Static, Text, render, useApp, useCursor, useInput } from "ink";
 import { spawn } from "node:child_process";
@@ -1162,10 +1163,20 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   for (const s of userSkills) skillMap.set(s.name, s);
   const skills = [...skillMap.values()].sort((a, b) => a.name.localeCompare(b.name));
   const authoredStore = new AuthoredSkillStore({ dir: authoredSkillsDir });
+  // RL over skills: a skill corrected into the avoid floor (from prior sessions)
+  // is dropped from this session's prompt entirely. Loaded once at start.
+  const skillRewards = await readSkillRewards(resolveSkillRewardsFile(process.env)).catch(
+    () => ({}) as Record<string, number>
+  );
   const skillsPromptFor = (prompt: string): string =>
-    buildSkillsPrompt(skills, prompt, (skill) => {
-      if (skill.sourceInfo.source === "authored") void authoredStore.recordUsage(skill.name);
-    });
+    buildSkillsPrompt(
+      skills,
+      prompt,
+      (skill) => {
+        if (skill.sourceInfo.source === "authored") void authoredStore.recordUsage(skill.name);
+      },
+      (name) => isSkillAvoided(skillRewards[name])
+    );
   const skillInfos = skills.map((s) => ({ description: s.description, name: s.name }));
 
   // Manually-defined agents (`~/.muse/agents/<name>/AGENT.md`). `/agent <name>`
@@ -1312,7 +1323,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     // reusable, execute-gated SKILL.md (picked up next session). Opt-in +
     // fail-soft so a flaky model never blocks exit.
     if (parseBoolean(process.env.MUSE_SKILL_AUTHOR_ENABLED, false)) {
-      const { authorSkillsFromSession } = await import("./chat-author-skills.js");
+      const { authorSkillsFromSession, applySkillRewardsFromSession } = await import("./chat-author-skills.js");
       const result = await authorSkillsFromSession({
         model,
         modelProvider: assembly.modelProvider as Parameters<typeof authorSkillsFromSession>[0]["modelProvider"]
@@ -1322,6 +1333,13 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
           process.stderr.write(`💾 Learned skill: ${name}\n`);
         }
       }
+      // RL over skills: decay the skill that applied to a corrected request,
+      // reinforce one for an approved request (deterministic + fail-soft).
+      const reward = await applySkillRewardsFromSession({
+        rewardsFile: resolveSkillRewardsFile(process.env)
+      }).catch(() => undefined);
+      for (const d of reward?.decayed ?? []) process.stderr.write(`↓ skill reward: ${d.name} (${d.reward.toString()})\n`);
+      for (const r of reward?.reinforced ?? []) process.stderr.write(`↑ skill reward: ${r.name} (+${r.reward.toString()})\n`);
     }
 
     // End-of-session curator: fold overlapping authored skills into umbrellas

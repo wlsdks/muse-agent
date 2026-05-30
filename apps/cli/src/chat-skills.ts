@@ -41,11 +41,13 @@ function tokenHits(token: string, target: string): boolean {
 export function selectRelevantSkills(
   skills: readonly Skill[],
   prompt: string,
-  max: number = DEFAULT_MAX_BODIES
+  max: number = DEFAULT_MAX_BODIES,
+  isAvoided?: (name: string) => boolean
 ): Skill[] {
   const promptTokens = contentTokens(prompt);
   if (promptTokens.size === 0) return [];
   const scored = skills
+    .filter((skill) => !isAvoided?.(skill.name)) // RL avoidance: a corrected-into-the-floor skill is not applied
     .map((skill) => {
       const skillTokens = contentTokens(`${skill.name} ${skill.description}`);
       let score = 0;
@@ -65,20 +67,24 @@ export function selectRelevantSkills(
  * The skills system-prompt block for one turn: the relevant skills carry their
  * full body, the rest are name+description index lines only. `prompt` omitted
  * (or no match) → all index-only. `onSelected` fires for each skill whose
- * body is injected this turn — callers use it to record usage.
+ * body is injected this turn — callers use it to record usage. `isAvoided`
+ * (the RL signal) drops a repeatedly-corrected skill from the prompt entirely —
+ * no body, not even an index line — so the model stops applying it.
  */
 export function buildSkillsPrompt(
   skills: readonly Skill[],
   prompt = "",
-  onSelected?: (skill: Skill) => void
+  onSelected?: (skill: Skill) => void,
+  isAvoided?: (name: string) => boolean
 ): string {
-  if (skills.length === 0) return "";
-  const selectedSkills = selectRelevantSkills(skills, prompt);
+  const eligible = isAvoided ? skills.filter((skill) => !isAvoided(skill.name)) : skills;
+  if (eligible.length === 0) return "";
+  const selectedSkills = selectRelevantSkills(eligible, prompt);
   const relevant = new Set(selectedSkills.map((skill) => skill.name));
   if (onSelected) {
     for (const skill of selectedSkills) onSelected(skill);
   }
-  const blocks = skills.map((skill) => {
+  const blocks = eligible.map((skill) => {
     const head = `### ${skill.name}\n${skill.description}`;
     return relevant.has(skill.name) ? `${head}\n${skill.body.slice(0, SKILL_BODY_CHARS).trim()}` : head;
   });

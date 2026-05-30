@@ -501,6 +501,14 @@ export {
   type PlaybookEntry
 } from "./personal-playbook-store.js";
 export {
+  adjustSkillReward,
+  isSkillAvoided,
+  readSkillRewards,
+  SKILL_AVOID_BELOW,
+  SKILL_REWARD_MAX,
+  SKILL_REWARD_MIN
+} from "./skill-rewards-store.js";
+export {
   MAX_PLAN_CACHE_ENTRIES,
   queryPlanCache,
   readPlanCache,

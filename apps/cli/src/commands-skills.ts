@@ -13,6 +13,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
+import { isSkillAvoided, readSkillRewards } from "@muse/mcp";
 import { AuthoredSkillStore, loadSkillsFromDirectory } from "@muse/skills";
 import type { Command } from "commander";
 
@@ -25,6 +26,11 @@ export function resolveSkillsDir(env: NodeJS.ProcessEnv = process.env): string {
 
 export function resolveAuthoredSkillsDir(env: NodeJS.ProcessEnv = process.env): string {
   return env.MUSE_AUTHORED_SKILLS_DIR?.trim() || join(homedir(), ".muse", "skills", "authored");
+}
+
+/** The skill-reward sidecar (RL over skills) — name→reward, separate from each SKILL.md. */
+export function resolveSkillRewardsFile(env: NodeJS.ProcessEnv = process.env): string {
+  return env.MUSE_SKILL_REWARDS_FILE?.trim() || join(homedir(), ".muse", "skill-rewards.json");
 }
 
 /** The starter SKILL.md a fresh `muse skills add <name>` writes. */
@@ -111,13 +117,18 @@ export function registerSkillsCommands(program: Command, io: ProgramIO): void {
         io.stdout(`No authored skills yet. Run \`muse skills author\` after a chat session (dir: ${dir}).\n`);
         return;
       }
+      const rewards = await readSkillRewards(resolveSkillRewardsFile()).catch(() => ({} as Record<string, number>));
       io.stdout(`Authored skills (${authored.length.toString()}) in ${dir}:\n`);
       for (const skill of authored) {
         const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
         const authoredAt = typeof muse.authoredAt === "string" ? muse.authoredAt.slice(0, 10) : "unknown";
         const lastUsedAt = typeof muse.lastUsedAt === "string" ? muse.lastUsedAt.slice(0, 10) : "never";
+        const reward = rewards[skill.name];
+        const rewardLine = typeof reward === "number" && reward !== 0
+          ? `  reward: ${reward > 0 ? "+" : ""}${reward.toString()}${isSkillAvoided(reward) ? " · avoided (not applied)" : ""}`
+          : "";
         io.stdout(`  - ${skill.name} — ${skill.description}\n`);
-        io.stdout(`    authored: ${authoredAt}  last used: ${lastUsedAt}\n`);
+        io.stdout(`    authored: ${authoredAt}  last used: ${lastUsedAt}${rewardLine}\n`);
       }
     });
 

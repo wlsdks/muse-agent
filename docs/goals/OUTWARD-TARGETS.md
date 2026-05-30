@@ -108,9 +108,22 @@ Direction set 2026-05-31 by 진안 ("강화학습이 중요해").
   approval can lift it back. Verified: rank-exclusion tests (dropped even at bank
   ≤ topK; −3 still injects; all-avoided → empty) + `isAvoidedStrategy` boundary,
   and LIVE through the built CLI (the avoided marker + the −4 strategy excluded
-  from a 2-strategy bank). agent-core 1072 / cli 1548 green, lint 0/0. (Next
-  P33-4: injection-tracking for precise credit assignment instead of the
-  text-similarity heuristic; P33-5: extend the reward loop to authored skills.)
+  from a 2-strategy bank). agent-core 1072 / cli 1548 green, lint 0/0.
+- [x] **P33-4 Extend the reward loop to authored skills.** RL now spans a
+  SECOND memory type: a skill the user keeps correcting stops being applied,
+  one they approve earns standing. A sidecar `skill-rewards.json` (name→reward,
+  kept out of each SKILL.md so a decay never rewrites the body) + `adjustSkillReward`
+  (clamped, mutation-queued); at session end `applySkillRewardsFromSession`
+  credit-assigns each correction/approval to the authored skill the live prompt
+  WOULD apply — via the SAME `selectRelevantSkills` — and decays/reinforces it;
+  `buildSkillsPrompt` drops an avoided skill (reward ≤ −4) from the per-turn
+  prompt entirely; `muse skills authored` shows reward + "· avoided". Verified:
+  store + selection-avoidance + decay/reinforce tests, and LIVE through the
+  built CLI (the avoided marker + a −4 skill excluded from a matching prompt).
+  mcp 1112 / cli 1553 green, lint 0/0. (Next P33-5: positive reinforcement is
+  in for skills too; remaining — injection-tracking for precise credit instead
+  of the selection heuristic, and reward-weighted ordering for skills, not just
+  avoidance.)
 
 **P32 — Grounded "dreaming" (idle memory consolidation that can't make
 things up).** Adopt the offline reflection competitors lean on (OpenClaw's
