@@ -418,6 +418,15 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Google Calendar v3 provider (untested) — a daily-reliability actuator over
+  OAuth, driven through the injected fetchImpl with a contract-faithful fake that
+  routes the token endpoint and the calendar API separately. google-provider.test.ts:
+  mints an access token then GETs with Bearer auth + a time-range query, mapping
+  timed (dateTime) and all-day (date) items incl. untitled fallback + htmlLink→url;
+  CACHES the token across calls (one mint); OAUTH_<status> on a failed refresh and
+  OAUTH_INVALID_RESPONSE on a missing access_token; RETRIES a transient 503 on the
+  idempotent GET; createEvent POSTs the mapped body, a 500 on a write is NOT
+  retried (double-create guard), deleteEvent treats 204 as void. calendar 101 pass.
 - [x] CalDAV provider (untested) — a daily-reliability actuator, driven through
   the injected fetchImpl with a contract-faithful HTTP fake (real multistatus XML
   / ICS, real method+header+body assertions). caldav-provider.test.ts: listEvents
