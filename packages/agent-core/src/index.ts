@@ -163,6 +163,17 @@ export {
   type SynthesizeReflectionsOptions
 } from "./reflection-synthesis.js";
 export {
+  A2ASafetyError,
+  classifyInbound,
+  isA2AEnabled,
+  prepareOutbound,
+  type A2AEnvelope,
+  type A2AOutbound,
+  type A2APayloadKind,
+  type InboundDecision,
+  type InboundDisposition
+} from "./a2a-safety.js";
+export {
   extractCurrentSessionTurns,
   redactSecrets,
   summariseSession,
