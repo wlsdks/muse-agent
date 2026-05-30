@@ -11,9 +11,9 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { isA2AEnabled, prepareOutbound } from "@muse/agent-core";
+import { isA2AEnabled, prepareOutbound, produceCouncilReasoning } from "@muse/agent-core";
 import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, sendToPeer } from "@muse/a2a";
-import { resolveAuthoredSkillsDir } from "@muse/autoconfigure";
+import { createMuseRuntimeAssembly, resolveAuthoredSkillsDir } from "@muse/autoconfigure";
 import {
   addToQuarantine,
   listPending,
@@ -206,11 +206,24 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
       }
       const config = await loadPeerConfig(peersFile());
       const card = buildMuseAgentCard({ url: `http://${options.host}:${port.toString()}/a2a` });
+      // Council participation is a SECOND opt-in: a council request triggers a
+      // bounded, tool-free, PII-redacted reasoning step (no corpus, no execution).
+      const councilOn = ["true", "1", "yes", "on"].includes((env.MUSE_A2A_COUNCIL ?? "").trim().toLowerCase());
+      let councilReason: ((question: string) => Promise<string>) | undefined;
+      if (councilOn) {
+        const assembly = createMuseRuntimeAssembly();
+        const model = assembly.defaultModel;
+        if (assembly.modelProvider && model) {
+          councilReason = (question) => produceCouncilReasoning(question, { model, modelProvider: assembly.modelProvider! });
+        }
+      }
       const handler = createA2AHandler({
         agentCard: card,
         deposit: (input) => addToQuarantine(quarantineFile(), input).then(() => undefined),
         env,
-        registry: config.registry
+        registry: config.registry,
+        selfPeerId: config.selfId,
+        ...(councilReason ? { councilReason } : {})
       });
       const server = createServer((req, res) => {
         const chunks: Buffer[] = [];
