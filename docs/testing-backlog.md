@@ -418,6 +418,14 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] User-memory access gate + store helpers (untested) — the PRIVACY boundary
+  behind "it can't tell anyone". compat-user-memory-store.test.ts: canAccessUserMemory
+  denies empty/anonymous outright; allows any real user when auth is DISABLED
+  (personal default); with auth ENABLED allows only the caller's OWN memory and
+  DENIES another user's (and denies when no identity resolves); updateUserMemory
+  routes facts→upsertFact / preferences→upsertPreference (trimmed) and 400s an
+  empty key/value; toUserMemoryResponse normalizes a Date updatedAt to ISO.
+  api 617 pass; build typecheck green.
 - [x] Admin dashboard summary (untested) — compat-dashboard.test.ts drives
   dashboardSummary through fully-faked stores: scheduler attention counts
   (disabled jobs excluded from failed/agent; attentionBacklog = running+failed),
