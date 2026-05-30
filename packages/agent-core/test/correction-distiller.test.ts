@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   type CorrectionExchange,
+  detectApprovals,
   detectCorrections,
   distillStrategyFromCorrection,
   type SessionTurnLine
@@ -284,5 +285,52 @@ describe("distillStrategyFromCorrection — corrected exchange → one generaliz
       expect(transcript).toBe("assistant answered: ans\nuser corrected: 틀렸어");
       expect(transcript).not.toContain("user asked:");
     });
+  });
+});
+
+describe("detectApprovals — the POSITIVE reward signal (RL reinforce; precision-first)", () => {
+  const detectOne = (phrase: string) => detectApprovals([t("user", "req"), t("assistant", "ans"), t("user", phrase)]);
+
+  it("detects unambiguous EN + KO endorsements", () => {
+    for (const phrase of [
+      "perfect, thanks",
+      "that's exactly what I wanted",
+      "exactly right",
+      "nailed it",
+      "spot on",
+      "love it",
+      "that works perfectly",
+      "완벽해 고마워",
+      "딱 좋아",
+      "바로 그거야",
+      "그게 맞아",
+      "정확해",
+      "마음에 들어"
+    ]) {
+      expect(detectOne(phrase), phrase).toHaveLength(1);
+    }
+  });
+
+  it("does NOT fire on bare acknowledgement (precision-first: no reward inflation)", () => {
+    for (const phrase of ["ok", "okay", "thanks", "good", "좋아", "고마워", "알겠어", "응", "sure"]) {
+      expect(detectOne(phrase), phrase).toHaveLength(0);
+    }
+  });
+
+  it("requires the assistant→user pairing and backfills the request", () => {
+    expect(detectApprovals([t("user", "q"), t("user", "perfect")])).toHaveLength(0); // no assistant before
+    const out = detectApprovals([t("user", "REQ"), t("assistant", "A"), t("user", "perfect")]);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.request).toBe("REQ");
+    expect(out[0]!.approval).toBe("perfect");
+  });
+
+  it("caps at maxExchanges", () => {
+    const turns = [
+      t("user", "q1"), t("assistant", "a1"), t("user", "perfect"),
+      t("assistant", "a2"), t("user", "nailed it"),
+      t("assistant", "a3"), t("user", "spot on")
+    ];
+    expect(detectApprovals(turns, { maxExchanges: 2 })).toHaveLength(2);
   });
 });

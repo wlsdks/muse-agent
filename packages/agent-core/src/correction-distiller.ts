@@ -79,6 +79,73 @@ export function detectCorrections(
   return found;
 }
 
+export interface ApprovalExchange {
+  /** The assistant turn the user endorsed. */
+  readonly priorAnswer: string;
+  /** The user turn that endorsed it. */
+  readonly approval: string;
+  /** The user's original request before the approved answer, when present. */
+  readonly request?: string;
+}
+
+// Precision-first mirror of CORRECTION_PATTERNS: each is an UNAMBIGUOUS "you
+// got it right", so a false positive can't inflate a junk strategy's reward.
+// Bare "ok"/"thanks"/"good"/"좋아" are excluded — they acknowledge, they don't
+// endorse.
+const APPROVAL_PATTERNS: readonly RegExp[] = [
+  /\bperfect\b/iu,
+  /\bthat'?s\s+(it|perfect|exactly\s+(it|right|what\s+i\s+wanted))\b/iu,
+  /\bexactly\s+(right|what\s+i\s+(wanted|needed|asked))/iu,
+  /\bspot[\s-]?on\b/iu,
+  /\bnailed\s+it\b/iu,
+  /\b(love|loved)\s+it\b/iu,
+  /\bjust\s+what\s+i\s+(wanted|needed|asked\s+for)\b/iu,
+  /\bworks\s+(perfectly|great)\b/iu,
+  /완벽(해|하|네|합니다|히)/u,
+  /딱\s*(좋|이[야네]|맞)/u,
+  /바로\s*그거/u,
+  /(그게|그거)\s*맞아/u,
+  /정확(해|히)/u,
+  /훌륭(해|하|합니다)/u,
+  /최고(야|네|예요|입니다)/u,
+  /마음에\s*(들어|듭니다|든다)/u
+];
+
+function isApprovalTurn(text: string): boolean {
+  return APPROVAL_PATTERNS.some((re) => re.test(text));
+}
+
+/**
+ * Mirror of detectCorrections for the POSITIVE reward signal: a user turn that
+ * explicitly endorses the assistant's prior answer. Drives the RL REINFORCE
+ * step (the counterpart to correction-driven decay) — the strategy that
+ * applied to the approved request earns standing.
+ */
+export function detectApprovals(
+  turns: readonly SessionTurnLine[],
+  options?: DetectCorrectionsOptions
+): readonly ApprovalExchange[] {
+  const max = Math.max(1, Math.trunc(options?.maxExchanges ?? 2));
+  const found: ApprovalExchange[] = [];
+  for (let index = 1; index < turns.length; index += 1) {
+    const turn = turns[index]!;
+    const prior = turns[index - 1]!;
+    if (turn.role !== "user" || prior.role !== "assistant" || !isApprovalTurn(turn.content)) {
+      continue;
+    }
+    const request = index >= 2 && turns[index - 2]!.role === "user" ? turns[index - 2]!.content : undefined;
+    found.push({
+      approval: turn.content,
+      priorAnswer: prior.content,
+      ...(request ? { request } : {})
+    });
+    if (found.length >= max) {
+      break;
+    }
+  }
+  return found;
+}
+
 export interface DistilledStrategy {
   readonly text: string;
   readonly tag?: string;

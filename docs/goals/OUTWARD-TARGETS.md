@@ -85,9 +85,20 @@ Direction set 2026-05-31 by 진안 ("강화학습이 중요해").
   what it decayed. Verified: agent-core reward-rank + clamp tests, mcp
   adjust/clamp/back-compat tests, the distill decay test, `pnpm check` green, and
   LIVE through the built CLI (`playbook list` renders ⟨reward⟩; a −4 strategy is
-  deranked below an equally-relevant peer). (Next P33-2: reinforce-on-clean-use +
-  injection-tracking for precise credit assignment; P33-3: extend reward to
-  authored skills.)
+  deranked below an equally-relevant peer).
+- [x] **P33-2 Bidirectional reward — reinforce on explicit approval.** The
+  positive half of the loop: `detectApprovals` (agent-core, precision-first
+  EN+KO mirror of `detectCorrections` — fires on "perfect"/"exactly right"/
+  "완벽해"/"딱 좋아", never bare "ok"/"thanks"/"좋아"/"고마워") feeds a session-end
+  REINFORCE that credit-assigns each approval to the most-similar existing
+  strategy and lifts its reward (+1), the mirror of correction-decay and once
+  per strategy per session. So the bank learns from "you got it right" too, not
+  just absence-of-negative. `muse playbook distill` reports both ↑ reinforced and
+  ↓ decayed. Verified: detectApprovals detector tests (13 endorsements fire, 9
+  bare-acknowledgements don't) + the cli reinforce test (an approval lifts the
+  applied strategy to +1, unrelated untouched); agent-core 1068 / cli 1548 green,
+  lint 0/0. (Next P33-3: injection-tracking for precise credit assignment instead
+  of the text-similarity heuristic; P33-4: extend the reward loop to authored skills.)
 
 **P32 — Grounded "dreaming" (idle memory consolidation that can't make
 things up).** Adopt the offline reflection competitors lean on (OpenClaw's

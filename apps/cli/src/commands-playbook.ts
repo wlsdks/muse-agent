@@ -154,8 +154,14 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
         modelProvider: assembly.modelProvider as Parameters<typeof distillSessionCorrections>[0]["modelProvider"],
         userId
       });
+      if (result.reinforced.length > 0) {
+        io.stdout(`Reinforced ${result.reinforced.length.toString()} strateg${result.reinforced.length === 1 ? "y" : "ies"} you approved (they rise in ranking):\n`);
+        for (const r of result.reinforced) {
+          io.stdout(`  ↑ (reward ${r.reward > 0 ? "+" : ""}${r.reward.toString()}) ${r.text}\n`);
+        }
+      }
       if (result.decayed.length > 0) {
-        io.stdout(`Decayed ${result.decayed.length.toString()} strateg${result.decayed.length === 1 ? "y" : "ies"} a correction implicated (reinforcement: they sink in ranking):\n`);
+        io.stdout(`Decayed ${result.decayed.length.toString()} strateg${result.decayed.length === 1 ? "y" : "ies"} a correction implicated (they sink in ranking):\n`);
         for (const d of result.decayed) {
           io.stdout(`  ↓ (reward ${d.reward > 0 ? "+" : ""}${d.reward.toString()}) ${d.text}\n`);
         }
