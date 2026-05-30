@@ -266,10 +266,18 @@ the generic layers below because they test what makes Muse an *agent*.
     unserialised appendSurfaced/recordOutcome; now atomicWriteFile (durable) +
     withFileMutationQueue. 20 concurrent surfaces all preserved, 20 concurrent
     outcomes each match their own surface (precision stays 1, not corrupted). +2.
+  - [x] Inbound dedup race — inbox-reply-cursor (the "answered" cursor whose
+    whole job is "an overlapping tick never double-replies"). Had BOTH the
+    unserialised read-merge-write (a lost key = a message answered TWICE) AND a
+    `${file}.tmp-${pid}` tmp with NO uniquifier (two same-process concurrent
+    writers shared the identical tmp path → collision). Fixed with a per-file
+    mutation queue + randomUUID tmp: 25 overlapping ticks marking distinct
+    messages all preserved (no double-reply), 30 racing same-key writes converge
+    to 1, 0 crash. inbox-reply-cursor.test.ts +2 (messaging 294).
   - [ ] Remaining: migrate the other ~10 read-modify-write stores
     (reminders / tasks / episodes / proactive-history / patterns-fired /
-    plan-cache / …) onto the shared helper — a cheap one-each adoption. inbound
-    dedup + single-flight daemon race tests also open.
+    plan-cache / …) onto the shared helper — a cheap one-each adoption.
+    single-flight daemon race test still open.
 
 ## P5 — surface & contract
 

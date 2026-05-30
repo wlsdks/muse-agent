@@ -74,3 +74,27 @@ describe("appendReplyCursor — persist + bound", () => {
     expect(mode).toBe(0o600);
   });
 });
+
+// Concurrency — this cursor's whole job is "an overlapping tick never
+// double-replies". A lost key under a race means a message gets answered
+// TWICE. Before the per-file queue + randomUUID tmp, the read-merge-write
+// clobbered and the `${file}.tmp-${pid}` (no uniquifier) collided in-process.
+describe("appendReplyCursor — concurrent ticks never lose an answered key", () => {
+  it("preserves EVERY key when overlapping ticks each mark a distinct message answered", async () => {
+    const file = freshFile();
+    await Promise.all(Array.from({ length: 25 }, (_unused, i) => appendReplyCursor(file, [`telegram:m${i.toString()}`])));
+    const set = await readReplyCursor(file);
+    expect(set.size).toBe(25); // not last-writer-wins (would drop most) → no double-reply
+    expect(set.has("telegram:m12")).toBe(true);
+  });
+
+  it("does not crash when concurrent writers race the tmp file (randomUUID tmp, no shared path)", async () => {
+    const file = freshFile();
+    // same key from many ticks at once — the old shared `${file}.tmp-${pid}`
+    // path made two in-flight renames collide; the uuid tmp makes each unique.
+    await Promise.all(Array.from({ length: 30 }, () => appendReplyCursor(file, ["telegram:dup"])));
+    const set = await readReplyCursor(file);
+    expect(set.size).toBe(1);
+    expect(set.has("telegram:dup")).toBe(true);
+  });
+});
