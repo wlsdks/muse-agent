@@ -47,7 +47,8 @@ const CASES = [
   { prompt: "서울 날씨 확인하고, 오후 6시에 우산 챙기라고 알려줘.", expect: ["get_weather", "set_reminder"], note: "KO 2-step (weather → reminder)" },
   { prompt: "도쿄의 현재 기온을 웹에서 섭씨로 찾아서, 화씨로 변환한 다음, 오후 6시에 결과를 알려줘.", expect: ["web_search", "calculate", "set_reminder"], note: "KO 3-step dependency chain (web_search → calculate → set_reminder); user's language; STABLE 3/3" },
   { prompt: "What is 18% of 240?", expect: ["calculate"], note: "single-tool goal — no padding (exactly calculate)" },
-  { prompt: "Write me a short two-line poem about the autumn sky.", expect: [], note: "pure generation — the plan must be EMPTY (no over-tooling)" }
+  { prompt: "Write me a short two-line poem about the autumn sky.", expect: [], note: "pure generation — the plan must be EMPTY (no over-tooling)" },
+  { prompt: "가을 하늘에 대한 짧은 두 줄짜리 시를 써줘.", expect: [], note: "KO pure generation — the plan must be EMPTY (no over-tooling in the user's language); STABLE 3/3" }
 ];
 
 async function ollamaReachable() {

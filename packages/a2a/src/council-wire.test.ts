@@ -29,6 +29,20 @@ describe("council-wire — sign / parse / verify", () => {
     expect(verifyCouncilRequest("phone", "rent or buy?", sig, "other")).toBe(false);
     expect(verifyCouncilRequest("phone", "rent or buy?", undefined, SHARED)).toBe(false);
   });
+
+  it("verify rejects malformed signatures without throwing — length-mismatch, non-hex, and a forged peer id", () => {
+    const sig = signCouncilRequest("phone", "rent or buy?", SHARED);
+    // A short / wrong-length signature must return false, NOT throw —
+    // timingSafeEqual throws on unequal-length buffers, so the length guard
+    // before it is load-bearing crash-safety on an untrusted peer header.
+    expect(verifyCouncilRequest("phone", "rent or buy?", "abc123", SHARED)).toBe(false);
+    // A same-length but non-hex signature exercises the decode/compare catch.
+    expect(verifyCouncilRequest("phone", "rent or buy?", "z".repeat(sig.length), SHARED)).toBe(false);
+    // The signature binds the SENDER identity: a valid signature for "phone"
+    // must not authenticate a request claiming to come from "laptop"
+    // (a peer cannot impersonate another).
+    expect(verifyCouncilRequest("laptop", "rent or buy?", sig, SHARED)).toBe(false);
+  });
 });
 
 describe("handler council branch — bounded reasoning, opt-in", () => {

@@ -87,6 +87,14 @@ describe("receiveFromPeer — verify signature, then quarantine | reject (never 
     expect(d.reason).toMatch(/signature/i);
   });
 
+  it("rejects an UNPARSEABLE body without throwing (a garbage POST from a peer)", () => {
+    // A malformed JSON body must be a clean reject, not a crash — the receiver
+    // parses untrusted bytes off the wire before any allowlist/signature check.
+    const d = receiveFromPeer({ env: ON, rawBody: "{not valid json", registry: receiverRegistry, signature: validSig });
+    expect(d).toMatchObject({ disposition: "reject" });
+    expect(d.reason).toMatch(/unparseable/i);
+  });
+
   it("rejects an A2A body with no know-how DataPart", () => {
     const d = receiveFromPeer({ env: ON, rawBody: JSON.stringify({ jsonrpc: "2.0", method: "message/send", params: { message: { parts: [{ kind: "text", text: "hi" }] } } }), registry: receiverRegistry, signature: validSig });
     expect(d).toMatchObject({ disposition: "reject" });

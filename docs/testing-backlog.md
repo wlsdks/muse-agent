@@ -911,6 +911,29 @@ the generic layers below because they test what makes Muse an *agent*.
   UNKNOWN jobId return a clean { result: "Job not found: <id>" } instead of
   throwing (a throw would break the tool loop and lose the turn). Pre-verified
   against dist. scheduler 81→83 pass.
+- [x] email_send post-approval transport failure (highest-risk actuator) — the
+  outbound-safety contract test covered CONFIRM / DENY / gate-error / ambiguous /
+  unknown / handle-only recipient, but NOT a transport that fails AFTER the user
+  approved. Added: an approved send whose Gmail API returns 5xx yields
+  { sent:false, reason:"send-failed" } (never a false sent the user would trust),
+  is attempted EXACTLY ONCE (no retry → no double-delivery of a message to a
+  human), and records `failed` in the action log (outbound-safety rule 4).
+  Pre-verified against dist. mcp 1115→1116 pass.
+- [x] a2a council-request signature verification — crash-safety + auth-binding
+  rejection edges. verifyCouncilRequest tested good/tampered-question/wrong-secret/
+  undefined, but not: a LENGTH-MISMATCH signature (timingSafeEqual THROWS on
+  unequal-length buffers, so the length guard before it is load-bearing
+  crash-safety on an untrusted peer's `x-muse-a2a-signature` header), a same-length
+  NON-HEX signature (the decode/compare catch), and a FORGED peer id (a signature
+  valid for "phone" must not authenticate a request claiming to be "laptop" — the
+  signature binds the sender identity, so a peer can't impersonate another). All
+  return false, none throw. Pre-verified against dist. a2a 78→79 pass.
+- [x] a2a receiveFromPeer unparseable-body reject — the inbound gate's reject
+  branches were covered (tampered / no-know-how / unknown-peer / non-know-how /
+  disabled) except the FIRST one a hostile peer hits: a malformed JSON body. The
+  receiver parses untrusted bytes off the wire before any allowlist/signature
+  check, so a garbage POST must be a clean { disposition:"reject", reason:
+  "unparseable A2A body" }, never a thrown crash. Pre-verified against dist. a2a 79→81.
 - [x] Prompt-injection detection — multilingual + privacy categories (the
   existing injection-patterns test covered English normalization + goal-033
   patterns; the Korean/CJK/Spanish and privacy patterns were undetected-in-test).

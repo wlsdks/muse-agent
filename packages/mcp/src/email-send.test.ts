@@ -114,4 +114,19 @@ describe("sendEmailWithApproval — outbound-safety contract", () => {
     expect(outcome).toMatchObject({ reason: "no-identifier", sent: false });
     expect(sends).toHaveLength(0);
   });
+
+  it("APPROVED but the transport rejects (Gmail 5xx): reason `send-failed`, NOT a false `sent`, attempted ONCE (no double-send), logged failed", async () => {
+    // The user confirmed, but the send API failed. Reporting sent:true would tell
+    // the user a message left when it didn't; retrying could double-deliver a
+    // message to a human. The outcome must be sent:false/send-failed, the send
+    // attempted exactly once, and the failure recorded (outbound-safety rule 4).
+    let attempts = 0;
+    const fetchImpl = (async () => { attempts += 1; return new Response("err", { status: 500 }); }) as unknown as typeof globalThis.fetch;
+    const sender = new GmailEmailProvider("tok", fetchImpl);
+    const opts = baseOpts({ approvalGate: approve, recipientQuery: "Alice", sender });
+    const outcome = await sendEmailWithApproval(opts);
+    expect(outcome).toMatchObject({ reason: "send-failed", sent: false });
+    expect(attempts).toBe(1);
+    expect((await readActionLog(opts.actionLogFile))[0]).toMatchObject({ result: "failed" });
+  });
 });

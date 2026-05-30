@@ -133,11 +133,13 @@ of agent test is worth the most*.
     REAL planning prompt (buildPlanningSystemPrompt) for multi-step goals on
     qwen3:8b, parses with parsePlan, and scores the plan VALID (available tools)
     ∧ COMPLETE (covers the required tools) ∧ ORDERED (dependency subsequence) ∧
-    EFFICIENT (no redundant repeat / padding). 9/9 (100%) @ REPEAT=2 — incl. a
+    EFFICIENT (no redundant repeat / padding). 10/10 (100%) @ REPEAT=2 — incl. a
     3-step dependency chain (web_search → calculate → set_reminder) and its KO
     user's-language counterpart (도쿄 기온 검색 → 화씨 변환 → 알림; pre-verified STABLE
     3/3), a KO 2-step goal, a single-tool goal (no padding), and a pure-generation
-    goal whose correct plan is EMPTY (over-tooling = a tool on a poem fails).
+    goal whose correct plan is EMPTY (over-tooling = a tool on a poem fails) in
+    BOTH EN and KO (가을 하늘 시 → empty plan; the planner must not over-tool a
+    creative request in the user's language either; pre-verified STABLE 3/3).
     (Finding:
     a too-small maxOutputTokens truncates the plan JSON mid-array → unparseable;
     the battery uses 700+ so a multi-step plan never cuts off.) Gated in
