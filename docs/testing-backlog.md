@@ -418,6 +418,16 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Hallucinated-sentinel routing (untested) — the local Qwen invents a
+  routing id like "default"/"primary" on create tools (tool-calling.md), so
+  isPrimarySentinel + the tasks/notes registries' requireOrPrimary must resolve
+  those (and blank/undefined) to the PRIMARY provider while a concrete UNKNOWN id
+  still errors (no silent write to the wrong store). provider-routing.test.ts:
+  isPrimarySentinel matches default/primary case+whitespace-insensitively, false
+  for a concrete id and for blank (blank handled separately by the falsy check);
+  TasksProviderRegistry + NotesProviderRegistry requireOrPrimary route
+  sentinel/blank/undefined → primary, concrete known → that, concrete unknown →
+  PROVIDER_NOT_FOUND, empty → NO_PROVIDERS. mcp 1104 pass.
 - [x] Skills runtime (untested) — createSkillRuntime wires the muse.skills.*
   tools to an ASYNC disk scan. skills-runtime.test.ts: the three tools
   (list/read/run) appear when enabled; the load-bearing LAZY cache — the list
