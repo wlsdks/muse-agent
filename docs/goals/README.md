@@ -38,6 +38,14 @@ Append new rows below; the table starts fresh from this reset.
 Append one line when a discovery path is evaluated and deferred:
 `- <area> — iter <hash> — deferred: <reason>`
 
+- calendar registry sync-throw on Promise-typed methods — iter c9fe9b4e — deferred:
+  CalendarProviderRegistry.createEvent/updateEvent/deleteEvent are typed
+  `Promise<…>` but throw SYNCHRONOUSLY on the require()/requireOrPrimary() path
+  (they return the provider's promise; the resolution check throws first), so a
+  caller using `.catch()` would miss a PROVIDER_NOT_FOUND/NO_PROVIDERS. A real
+  footgun but NO observed failure (all current callers pass valid ids); making
+  them `async` is a behavior change (sync-throw → async-reject) that's speculative
+  per the inward-churn rule. registry.test.ts asserts the real sync-throw contract.
 - sibling-registry unknown-id dead-end errors — iter 472 — fully
   discharged by 476: every sibling registry (`@muse/voice`
   472, `@muse/messaging` 473, `@muse/calendar` 474, `@muse/mcp`
