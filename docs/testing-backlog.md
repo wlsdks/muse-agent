@@ -205,6 +205,14 @@ the generic layers below because they test what makes Muse an *agent*.
     - Verified-not-a-gap (artifact): the knowledge-recall `applyOverlap` 394-397
       NoCoverage was a Stryker per-test attribution artifact — apply-overlap.test.ts
       already covers the stitch loop thoroughly; no redundant test added.
+  - TWELFTH MEASUREMENT (throwaway, reused install, NOT committed): `policy/
+    adversarial-red-team.ts` = **52.52%** with 11 NoCoverage. createPatternGuard +
+    parseAttacks are directly tested, but every AdversarialRedTeam class test
+    injects an explicit `guard:`, so the constructor's
+    `guard ?? createPatternGuard(sharedInjectionPatterns)` DEFAULT was never run.
+    Added an execute() test with NO guard option, confirming a real injection is
+    blocked with the SHARED pattern's own label (role_override) — proof the default
+    wired the production patterns, not a stub. policy 112→113.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
