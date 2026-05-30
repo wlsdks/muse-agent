@@ -59,6 +59,7 @@ import { registerDaemonCommands } from "./commands-daemon.js";
 import { registerIngestCommand } from "./chat-export-ingest.js";
 import { registerOnboardCommand } from "./commands-onboard.js";
 import { registerProactiveCommands } from "./commands-proactive.js";
+import { registerSwarmCommands } from "./commands-swarm.js";
 import { registerProposeCommands } from "./commands-propose.js";
 import { registerSkillsCommands } from "./commands-skills.js";
 import { registerOrchestrateCommands } from "./commands-orchestrate.js";
@@ -418,6 +419,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerListenCommand(program, io, { apiRequest });
   registerMcpCommands(program, io, { apiRequest, writeOutput });
   registerProactiveCommands(program, io);
+  registerSwarmCommands(program, io);
   registerProposeCommands(program, io);
   registerDaemonCommands(program, io);
   registerSkillsCommands(program, io);

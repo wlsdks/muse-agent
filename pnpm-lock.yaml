@@ -101,6 +101,9 @@ importers:
       '@clack/prompts':
         specifier: ^1.5.0
         version: 1.5.0
+      '@muse/a2a':
+        specifier: workspace:*
+        version: link:../../packages/a2a
       '@muse/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core

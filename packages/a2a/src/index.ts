@@ -26,3 +26,8 @@ export {
   type SendResult,
   type SendToPeerOptions
 } from "./transport.js";
+export {
+  receiveAndQuarantine,
+  type QuarantineDepositInput,
+  type ReceiveAndQuarantineOptions
+} from "./receive-quarantine.js";

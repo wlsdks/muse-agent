@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.5.0",
+    "@muse/a2a": "workspace:*",
     "@muse/agent-core": "workspace:*",
     "@muse/autoconfigure": "workspace:*",
     "@muse/calendar": "workspace:*",
