@@ -164,7 +164,10 @@ async function buildActuatorScenario() {
       { prompt: "Run my good night routine.", expectTool: "home_action", requireArgs: ["service"], note: "routine/script → home_action (223)" },
       { prompt: "거실 불 꺼줘.", expectTool: "home_action", requireArgs: ["service"], note: "KO smart-home COMMAND → home_action (user's language; the positive counterpart to the KO 'good gear' musing trap); STABLE 3/3" },
       { prompt: "Find the email from the bank about my statement.", expectTool: "search_email", requireArgs: ["query"], note: "inbox search → search_email, NOT knowledge_search (199)" },
+      { prompt: "은행에서 온 명세서 메일 좀 찾아줘.", expectTool: "search_email", requireArgs: ["query"], note: "KO inbox search → search_email (user's language; the positive counterpart to the KO inbox-venting trap); STABLE 3/3" },
       { prompt: "Any news about the Mars mission from the feeds I follow?", expectTool: "knowledge_search", requireArgs: ["query"], note: "feeds news → knowledge_search, NOT web/search_email (229/230)" },
+      { prompt: "내가 구독한 피드에 화성 미션 관련 소식 있어?", expectTool: "knowledge_search", requireArgs: ["query"], note: "KO feeds news → knowledge_search, NOT search_email (user's language); STABLE 3/3" },
+      { prompt: "회사 포럼 스레드에 빌드 이제 된다고 댓글 남겨줘: https://forum.example.com/t/42", expectTool: "web_action", requireArgs: ["summary", "url"], note: "KO post-to-web → web_action (user's language; state-changing actuator positive); STABLE 3/3" },
       { prompt: "Will it rain on Saturday?", expectTool: "weather", argIncludes: /sat/i, requireArgs: ["location"], note: "upcoming-day forecast → weather with when=Saturday (202)" },
       // Negative eager-invocation traps on the STATE-CHANGING/perception set — a
       // false positive here is the worst failure (it acts/searches unbidden).
