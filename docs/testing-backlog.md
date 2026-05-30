@@ -418,6 +418,19 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Token-usage / cost-analytics primitives (untested) — the agent
+  cost-accounting surface (DeepEval cost dimension). observability-token-cost.test.ts:
+  InMemoryTokenUsageSink clones on record+list (caller can't mutate stored state);
+  buildKyselyTokenInsertValues maps fields + coerces NaN/Infinity cost+tokens to 0
+  + defaults stepType "act" / time now(); InMemoryTokenCostQuery bySession
+  (runId-PREFIX, time-asc), daily (per day|model aggregation within [from,to),
+  excludes a record AT `to`), topExpensive (per-runId sum, cost-desc→token-desc
+  ranking + limit); the load-bearing NaN/Infinity-poison resistance (a corrupt
+  row contributes 0, never poisons the sum or the comparator — matters under the
+  Qwen-only / $0 mandate where ranking falls through to token volume);
+  createBudgetTrackingTokenUsageSink fans each cost into the tracker (undefined→0)
+  and preserves the queryable passthrough. Kysely query deferred to testcontainers;
+  the shared row builder is covered. observability 123 pass.
 - [x] macOS Calendar.app provider (untested) — completes the calendar actuator
   trilogy (caldav/google/macos). It spawns osascript; the real runScript path is
   exercised through a contract-faithful FAKE osascript binary (a tiny shell
