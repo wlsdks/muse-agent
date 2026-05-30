@@ -467,6 +467,13 @@ the generic layers below because they test what makes Muse an *agent*.
   capped at 5, count-desc); dailyUsage (per-UTC-day cost+runs, date-asc);
   latencyDistribution (0-1s/1-5s/5-30s/30s+ buckets + missing-timestamp→unknown).
   api 503 pass.
+- [x] ★ swarm council-synthesis single-member no-pad — added a scenario to
+  verify-council: a SINGLE-member council must credit exactly that one real
+  member; the synthesiser must NOT pad the contributor list with invented
+  co-contributors to look like a fuller council (the swarm grounding analog of
+  "can't invent a council member"). The original tested grounding only on the
+  3-member case. Pre-verified STABLE 3/3 (contributors == ["phone"]); battery
+  ALL PASS on qwen3:8b. LOCAL OLLAMA ONLY.
 - [x] ★ dreaming reflection-synthesis thin-input honesty — added a second
   scenario to verify-reflection-synthesis: across UNRELATED one-off episodes (no
   strong recurring theme), EVERY returned reflection must STILL satisfy the
