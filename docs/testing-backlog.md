@@ -418,6 +418,13 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Skills runtime (untested) — createSkillRuntime wires the muse.skills.*
+  tools to an ASYNC disk scan. skills-runtime.test.ts: the three tools
+  (list/read/run) appear when enabled; the load-bearing LAZY cache — the list
+  tool returns [] while the scan is pending (no throw/block) then surfaces the
+  scanned skill once skillRegistryPromise resolves; MUSE_SKILLS_ENABLED=false →
+  no tools + undefined registry. Both skills dirs pinned to tmp so the real
+  ~/.muse/skills is never scanned. autoconfigure 450 pass.
 - [x] Messaging poll dispatchers (untested) — the agent's "check Telegram now"
   pull + the daemon's pollAll fan-out (daily reliability). messaging-poll-dispatchers.test.ts
   drives the real dispatcher with REAL providers (injected fetch) + tmp inbox:
