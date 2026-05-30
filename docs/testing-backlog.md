@@ -175,6 +175,17 @@ the generic layers below because they test what makes Muse an *agent*.
     untested. (2) `trimTrailingBlankLines` — a removable block followed by trailing
     blank lines must still classify + strip; asserted an empty-fallback block with
     3 trailing blanks is still removed. policy 108→110.
+  - TENTH MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    knowledge-recall.ts` = **65.09%** with 14 NoCoverage — the WEDGE recall ranker.
+    The biggest NoCoverage cluster (193-200) is the MMR diversify branch INSIDE the
+    HYBRID (cosine+lexical fused) ranker: the existing MMR test covers only the
+    non-hybrid path, and the hybrid+diversify combination is exercised solely by
+    the LIVE cited-recall battery (invisible to the vitest Stryker run). Pinned it
+    in a unit test: with hybrid+diversify the near-duplicate (dupeB) is still
+    dropped for the distinct passage, while hybrid WITHOUT diversify keeps both
+    dupes. (Remaining NoCoverage — overlapTail chunk-stitching, the
+    createKnowledgeSearchTool execute — are smaller follow-ups.) agent-core stable
+    at 1080 (assertions added to the existing MMR test).
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,

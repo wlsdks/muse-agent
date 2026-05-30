@@ -89,6 +89,16 @@ describe("rankKnowledgeChunks", () => {
     const diverse = await rankKnowledgeChunks("x y z", corpus, { diversify: true, embed: termEmbed, topK: 2 });
     expect(diverse.map((m) => m.source)).toContain("distinct.md");
     expect(diverse.map((m) => m.source)).not.toContain("dupeB.md");
+
+    // The HYBRID (cosine+lexical fused) ranker has its OWN MMR branch — exercised
+    // only by the live cited-recall battery, never a unit test. Pin it: with
+    // hybrid+diversify the near-duplicate is still dropped for the distinct
+    // passage, whereas hybrid WITHOUT diversify keeps both dupes.
+    const hybridDiverse = await rankKnowledgeChunks("x y z", corpus, { diversify: true, embed: termEmbed, hybrid: true, topK: 2 });
+    expect(hybridDiverse.map((m) => m.source)).toContain("distinct.md");
+    expect(hybridDiverse.map((m) => m.source)).not.toContain("dupeB.md");
+    const hybridPlain = await rankKnowledgeChunks("x y z", corpus, { embed: termEmbed, hybrid: true, topK: 2 });
+    expect(hybridPlain.map((m) => m.source)).toEqual(["dupeA.md", "dupeB.md"]);
   });
 
   it("ranks multi-source chunks by similarity, keeps the source, drops sub-threshold passages", async () => {
