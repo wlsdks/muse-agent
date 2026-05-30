@@ -180,7 +180,8 @@ of agent test is worth the most*.
   false/unsafe claim). REPORT-ONLY by construction (no store handle, writes
   nothing). `scripts/eval-shadow-trial.mjs` + `eval:shadow-trial` prove the
   verdict on clear-cut candidates (helpful pref → PROMOTE; secret/unconfirmed
-  over-claim → HOLD): 4/4 (100%) @ REPEAT=2, each pre-probed STABLE 3/3.
+  over-claim → HOLD; a candidate that FABRICATES a detail absent from the memory
+  → HOLD, the grounding-edge case): 5/5 (100%) @ REPEAT=2, each pre-probed STABLE 3/3.
   - [x] Promotion-SELECTION logic edge-hardened (the deterministic
     `selectPromotableMemories` / `scoreRecallHit` that decides which recalled
     memories graduate into the always-on persona): recency-weighted scoring
