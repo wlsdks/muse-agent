@@ -78,10 +78,10 @@ const mail = ingestMbox([
 for (const m of mail) corpus.push({ source: `ingested/${m.slug}.md`, text: m.markdown });
 
 const cases = [
-  { name: "IN-CORPUS → confident, cite the source", kind: "confident", query: "when does my home insurance renew?", needles: ["cite the [source]", "policy-2025.pdf", "2026-09-14"] },
-  { name: "IN-CORPUS → confident, distinct fact", kind: "confident", query: "who owns the launch deck?", needles: ["cite the [source]", "meeting-q3.md"] },
-  { name: "INGESTED chat → citable (pile-ingester reach)", kind: "confident", query: "how did I fix the VPN handshake timeout?", needles: ["cite the [source]", "ingested/vpn-setup.md", "MTU"] },
-  { name: "INGESTED email → citable (.mbox reach)", kind: "confident", query: "how much was the kitchen remodel quote?", needles: ["cite the [source]", "ingested/kitchen-remodel-quote.md", "12,400,000"] },
+  { name: "IN-CORPUS → confident, cite the source", kind: "confident", query: "when does my home insurance renew?", topSource: "policy-2025.pdf", needles: ["cite the [source]", "policy-2025.pdf", "2026-09-14"] },
+  { name: "IN-CORPUS → confident, distinct fact", kind: "confident", query: "who owns the launch deck?", topSource: "meeting-q3.md", needles: ["cite the [source]", "meeting-q3.md"] },
+  { name: "INGESTED chat → citable (pile-ingester reach)", kind: "confident", query: "how did I fix the VPN handshake timeout?", topSource: "ingested/vpn-setup.md", needles: ["cite the [source]", "ingested/vpn-setup.md", "MTU"] },
+  { name: "INGESTED email → citable (.mbox reach)", kind: "confident", query: "how much was the kitchen remodel quote?", topSource: "ingested/kitchen-remodel-quote.md", needles: ["cite the [source]", "ingested/kitchen-remodel-quote.md", "12,400,000"] },
   { name: "OUT-OF-CORPUS → REFUSES (low-confidence or no-match, never confabulates)", kind: "refuse", query: "what is the boiling point of mercury in kelvin?" },
   // A PERSONAL-topic near-miss the corpus genuinely lacks: "monthly rent" is the
   // kind of thing the corpus COULD hold but doesn't, so the gate must refuse
@@ -96,7 +96,13 @@ for (const c of cases) {
   const rendered = renderKnowledgeMatches(matches);
   let ok;
   if (c.kind === "confident") {
-    ok = verdict === "confident" && c.needles.every((n) => rendered.includes(n));
+    // The needles prove the right source is PRESENT; topSource proves it is
+    // ranked FIRST — "the source quoted" means the CORRECT one leads, not an
+    // adjacent doc that merely shares vocabulary. A ranking regression that
+    // demoted the right source below a neighbour would pass needles but fail
+    // here, so this is the load-bearing WEDGE assertion.
+    ok = verdict === "confident" && c.needles.every((n) => rendered.includes(n))
+      && matches[0]?.source === c.topSource;
   } else {
     // The refusal: NOT presented as a citable fact. Either "none" (no match) or
     // "ambiguous" (low-confidence banner) — but never the confident "cite" header.
