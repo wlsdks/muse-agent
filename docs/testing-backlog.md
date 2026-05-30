@@ -860,6 +860,16 @@ the generic layers below because they test what makes Muse an *agent*.
   reject, and a 200-with-malformed-(non-JSON)-body all degrade the current-weather
   path to found:false (never reject); the forecast path (`when` set) does the same
   on a persistent 5xx while still echoing the date. mcp suite 1108→1112 pass.
+- [x] State-changing actuator (web_action / home_action shared path) — the two
+  THROW branches were uncovered. web-action.test.ts proved CONFIRM / non-2xx→failed
+  / 403 / DENY / fail-closed-gate, but `performWebActionWithApproval`'s
+  `reason: aborted ? "timed-out" : "failed"` distinction was only half-tested
+  (non-2xx → failed). Added a network REJECT after approval (fetch throws
+  ECONNRESET, signal NOT aborted → reason `failed`) and a transport TIMEOUT (the
+  fetch honours the AbortSignal, the per-attempt controller fires → reason
+  `timed-out`). Both assert NOT a false `performed` success AND that the action
+  log still records `failed` (outbound-safety rule 4 — every outcome recorded).
+  mcp suite 1112→1114 pass.
 - [x] Prompt-injection detection — multilingual + privacy categories (the
   existing injection-patterns test covered English normalization + goal-033
   patterns; the Korean/CJK/Spanish and privacy patterns were undetected-in-test).
