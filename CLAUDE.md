@@ -5,8 +5,15 @@ Muse is the AI assistant that's *actually yours* — answers from your own
 notes/files with the source quoted, says "I'm not sure" instead of making
 things up, and runs ENTIRELY on a local model with `MUSE_LOCAL_ONLY` ON BY
 DEFAULT (cloud egress refused in code; explicit opt-out forfeits the
-guarantee). Local-by-construction is the product, not a setting. Wedge =
-confidence-gated cited recall; proactivity is the earned north star
+guarantee). Local-by-construction is the floor, not the pitch.
+**The FUNCTIONAL edge — "Muse shows its work": one deterministic grounding +
+citation gate under EVERY surface (recall, proactivity, reflection) so every
+claim cites a real source, weak grounding becomes "I'm not sure", and an
+un-groundable claim is dropped by code — fabrication rate = 0 is a release
+gate (`docs/strategy/the-edge.md`).** Each iteration must STRENGTHEN this edge
+(gate a new surface / harden an existing one) AND PROVE it (a live battery in
+`eval:self-improving` asserting the invariant; grounded-surface count never
+drops). Wedge = confidence-gated cited recall; proactivity = earned north star
 (`docs/strategy/identity.md`). Provider/MCP-neutral under the hood, but local
 is the default it ships and defends — never make a cloud vendor the runtime
 owner, never hard-wire a vendor SDK into core code.

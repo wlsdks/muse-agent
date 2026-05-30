@@ -12,6 +12,22 @@ fresh install to your first private, cited answer (point it at a notes
 folder, or `muse ingest` a ChatGPT/Claude export or an `.mbox`, then
 `muse ask --notes-only "…"`).
 
+## The edge: Muse shows its work — for everything
+
+Running locally is the *floor*, not the pitch. The functional reason to use
+Muse is this: **every answer, every proactive nudge, and every insight it
+forms about you cites the real source it came from — and a deterministic gate
+makes "confidently wrong" impossible by code.** Weak grounding becomes
+"I'm not sure," never a guess. A citation that can't point to something you
+actually have is dropped, not bluffed.
+
+Hermes self-improves but can confabulate; OpenClaw "dreams" but its dreams
+aren't grounded. Muse is the only one that is **proactive *and* self-learning
+*and* incapable of making things up** — and it measures that continuously
+(fabrication rate = 0 is a release gate). The same grounding gate governs
+recall, proactivity, and reflection; every surface Muse gains plugs into it.
+Full rationale: [`docs/strategy/the-edge.md`](docs/strategy/the-edge.md).
+
 [한국어 README →](README.ko.md)
 
 <!--LIVE_URL-->📊 **Live progress:** _not exposed yet — start it with `pnpm dashboard:tunnel` (needs the `cloudflared` binary; no account). The loop writes the current public URL on this line and refreshes it when it rotates. Locally any time: `node scripts/dashboard-server.mjs` → <http://127.0.0.1:8787> (read-only, 127.0.0.1-only)._<!--/LIVE_URL-->

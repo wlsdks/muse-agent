@@ -10,6 +10,21 @@
 명령씩** 안내한다 (노트 폴더를 가리키거나, ChatGPT/Claude export·`.mbox`를
 `muse ingest` 한 뒤 `muse ask --notes-only "…"`).
 
+## 차별점: Muse는 근거를 보여준다 — 모든 것에 대해
+
+로컬 구동은 *기본값*이지 핵심이 아니다. Muse를 써야 하는 *기능적* 이유는
+이것이다: **모든 답변, 모든 능동 알림, 그리고 너에 대해 형성하는 모든 통찰이
+실제 출처를 인용하고 — 결정론적 게이트가 "확신에 찬 오답"을 코드로 불가능하게
+만든다.** 약한 근거는 추측이 아니라 "잘 모르겠어"가 되고, 실제로 가진 것을 댈
+수 없는 인용은 지어내는 대신 버려진다.
+
+hermes는 자기발전하지만 지어낼 수 있고, openclaw는 dreaming하지만 그 꿈은
+grounded 아니다. **Muse만 — 능동적이고 자기학습하면서도 단 한 글자도
+지어내지 않고, 모든 걸 검증 가능하다** — 그리고 이를 계속 측정한다(fabrication
+rate = 0이 릴리스 게이트). 같은 grounding 게이트가 회상·능동성·reflection을
+관장하며, Muse가 얻는 모든 표면이 여기 꽂힌다.
+전체 근거: [`docs/strategy/the-edge.md`](docs/strategy/the-edge.md).
+
 [English README →](README.md)
 
 ## Muse가 무엇인가
