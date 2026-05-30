@@ -418,6 +418,12 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Compat model-registry helpers (untested) — compat-models.test.ts:
+  parseAgentMode (standard/plan_execute/react case+whitespace-insensitive, else
+  undefined incl. non-string), agentModeResponse (plan_execute→PLAN_EXECUTE, else
+  upper, undefined→REACT), listSessionModels (provider models as
+  providerId/modelId with the default flagged; defaultModel fallback chain
+  configured → first model → ""). api 595 pass; build typecheck green.
 - [x] Compat response-shape helpers (untested) — compat-responses.test.ts:
   clampLimit ([1,200] pagination clamp), prefixValidationDetails (dot-prefix
   every field key), invalid() ParseResult constructor, errorResponse /
