@@ -75,6 +75,22 @@ const SYNTHESIS_SYSTEM_PROMPT =
   "where contributors lists the member [id]s whose reasoning you actually used. " +
   "Never invent a member id that is not provided. No prose outside the JSON.";
 
+/**
+ * Build the round-2+ debate question for one member — the original question plus
+ * a digest of the OTHER members' reasoning, asking it to refine its view in light
+ * of theirs (Multiagent Debate, Du et al. 2023, arXiv:2305.14325: agents that see
+ * and respond to each other's reasoning across rounds reach better-supported
+ * answers). Returns the original question unchanged when no other members spoke.
+ */
+export function buildDebateQuestion(question: string, ownPeerId: string, utterances: readonly CouncilUtterance[]): string {
+  const others = utterances.filter((u) => u.peerId !== ownPeerId && u.reasoning.trim().length > 0);
+  if (others.length === 0) return question;
+  const digest = others.map((u) => `[${u.peerId}] ${u.reasoning.replace(/\s+/gu, " ").trim()}`).join("\n");
+  return `${question}\n\nOther council members reasoned:\n${digest}\n\n` +
+    "Refine YOUR reasoning in light of theirs — agree, push back, or sharpen it. " +
+    "2-4 sentences, plain text, no personal data.";
+}
+
 /** Render the council reasoning as an `[id] reasoning` list for the synthesiser. */
 export function buildCouncilPrompt(question: string, utterances: readonly CouncilUtterance[]): string {
   const lines = utterances.map((u) => `[${u.peerId}] ${u.reasoning.replace(/\s+/gu, " ").trim()}`);

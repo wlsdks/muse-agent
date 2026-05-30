@@ -35,6 +35,24 @@ describe("loadPeerConfig", () => {
     expect(config.peers.map((p) => p.id)).toEqual(["ok"]);
   });
 
+  it("resolves a peer secret from secretEnv (keeps it OUT of the plaintext file)", async () => {
+    await writeFile(file, JSON.stringify({
+      peers: [
+        { id: "alice", secretEnv: "MUSE_PEER_ALICE", url: "https://alice/a2a" },
+        { id: "noenv", secretEnv: "MUSE_PEER_MISSING", url: "https://x/a2a" } // env unset → dropped
+      ],
+      selfId: "me"
+    }), "utf8");
+    const config = await loadPeerConfig(file, { MUSE_PEER_ALICE: "alice-secret" });
+    expect(config.peers.map((p) => p.id)).toEqual(["alice"]); // noenv dropped (no secret resolved)
+    expect(config.peers[0]!.secret).toBe("alice-secret");
+  });
+
+  it("prefers an inline secret over secretEnv when both are present", async () => {
+    await writeFile(file, JSON.stringify({ selfId: "me", peers: [{ id: "p", secret: "inline", secretEnv: "X", url: "u" }] }), "utf8");
+    expect((await loadPeerConfig(file, { X: "from-env" })).peers[0]!.secret).toBe("inline");
+  });
+
   it("missing / malformed file → empty config (nothing sends or is accepted)", async () => {
     expect(await loadPeerConfig(file)).toMatchObject({ selfId: "", peers: [] });
     await writeFile(file, "{ not json", "utf8");

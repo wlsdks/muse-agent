@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { isA2AEnabled, prepareOutbound, produceCouncilReasoning, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance } from "@muse/agent-core";
+import { buildDebateQuestion, isA2AEnabled, prepareOutbound, produceCouncilReasoning, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance } from "@muse/agent-core";
 import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, requestCouncilReasoning, sendToPeer, type A2APeer } from "@muse/a2a";
 import { createMuseRuntimeAssembly, resolveAuthoredSkillsDir } from "@muse/autoconfigure";
 import {
@@ -293,7 +293,8 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
   swarm
     .command("council <question>")
     .description("Ask your swarm peers to reason about a question and synthesise an answer (data-light — only reasoning crosses)")
-    .action(async (question: string) => {
+    .option("--rounds <n>", "Debate rounds — members refine after seeing each other's reasoning (Multiagent Debate; default 1)", "1")
+    .action(async (question: string, options: { readonly rounds: string }) => {
       const env = process.env;
       if (!isA2AEnabled(env)) {
         io.stderr("muse swarm council: the swarm is off — set MUSE_A2A_ENABLED=true to opt in.\n");
@@ -314,13 +315,24 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         return;
       }
       const modelProvider = assembly.modelProvider;
-      io.stdout(`🏛  Convening the council (${config.peers.length.toString()} peer(s))…\n`);
-      const utterances = await gatherCouncil(question, {
+      const rounds = Math.max(1, Math.min(3, Math.trunc(Number.parseInt(options.rounds, 10) || 1)));
+      io.stdout(`🏛  Convening the council (${config.peers.length.toString()} peer(s)${rounds > 1 ? `, ${rounds.toString()} debate rounds` : ""})…\n`);
+      let utterances = await gatherCouncil(question, {
         ownReasoning: () => produceCouncilReasoning(question, { model, modelProvider }),
         peers: config.peers,
         requestReasoning: (peer, q) => requestCouncilReasoning({ env, fetchImpl: io.fetch ?? globalThis.fetch, fromPeerId: config.selfId, peer, question: q }),
         selfId: config.selfId
       });
+      // Debate rounds: each member refines after seeing the others' reasoning.
+      for (let round = 2; round <= rounds && utterances.length > 1; round += 1) {
+        const prior = utterances;
+        utterances = await gatherCouncil(question, {
+          ownReasoning: () => produceCouncilReasoning(buildDebateQuestion(question, config.selfId.length > 0 ? config.selfId : "me", prior), { model, modelProvider }),
+          peers: config.peers,
+          requestReasoning: (peer, q) => requestCouncilReasoning({ env, fetchImpl: io.fetch ?? globalThis.fetch, fromPeerId: config.selfId, peer, question: buildDebateQuestion(q, peer.id, prior) }),
+          selfId: config.selfId
+        });
+      }
       if (utterances.length === 0) {
         io.stdout("No council members responded (peers offline or council disabled on them).\n");
         return;
