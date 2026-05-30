@@ -47,10 +47,17 @@ Across every grounded surface:
 |---|---|---|
 | **Recall** — `muse ask` / `knowledge_search` | `classifyRetrievalConfidence` + copy-ready `cite as:` tokens | `verify-cited-recall` |
 | **Proactivity** — daemon nudges | `decideProactiveRecall` (surface only when confident; cite the note) | `verify-proactive-recall-gate` |
-| **Reflection ("dreaming")** — idle insights about you | `parseReflections` strips invented source ids, drops under-supported | `verify-reflection-synthesis` |
+| **Reflection ("dreaming")** — idle insights about you (`muse reflections`, daemon-auto) | `parseReflections` strips invented source ids, drops under-supported | `verify-reflection-synthesis` |
+| **Swarm council** — peers reason about a question (`muse swarm council`) | `parseCouncilAnswer` cites only real council members, never invents one | `verify-council` |
 
 Each new surface Muse gains MUST plug into the same gate and ship a live
-battery asserting the invariant. That is how the edge widens.
+battery asserting the invariant. That is how the edge widens — it now spans four
+surfaces, all green in the fitness gate.
+
+The edge has a companion pillar: the **A2A swarm** (`docs/design/a2a-swarm.md`) —
+a network of private agents that federate KNOW-HOW, never data, with the same
+"grounded, can't make things up" discipline (a council's synthesis cites only
+real members; a received skill lands inert until you promote it).
 
 ## The reinforcement + verification loop (the core)
 
