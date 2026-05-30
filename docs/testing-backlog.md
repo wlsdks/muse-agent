@@ -418,6 +418,37 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] User-memory auto-extract PARSE/route helpers (untested) — extractJsonObject
+  is the untrusted-boundary parser turning a small local model's raw output into
+  the structured ExtractionPayload that drives memory writes.
+  memory-auto-extract-parse.test.ts: direct JSON; ```json / bare ``` fence strip;
+  takes the LAST parseable block when the model echoes the schema/example FIRST
+  (else the real extraction is silently discarded); recovers JSON embedded in
+  prose; string-aware brace balance (a brace inside a value doesn't break it);
+  undefined for empty / non-JSON / a top-level array; pickAutoExtractSystemPrompt
+  routes KO at ≥30% Hangul else EN (empty + mixed-below-threshold → EN).
+  memory 274 pass.
+- [x] Typed user-model slots (untested) — the persistent structured model of
+  who the user is (preferences/schedule/vetoes/goals), core to "it's actually
+  yours". user-model-slots.test.ts: effectiveConfidence decay (asserted=no
+  confidence→1 forever; inferred 0.8→0.4 over one half-life; clamp [0,1];
+  future-ts→age 0; non-positive half-life→default); upsert replace-by-id +
+  purity; remove-by-id across kinds; selectReconfirmableSlots (only faded
+  inferred slots, most-faded first, never asserted/veto); composeUserModelSnapshot
+  (empty→undefined, vetoes-first format with decorators, and the decay-gate that
+  drops a faded inferred preference but KEEPS the veto + asserted slots).
+  memory 266 pass.
+- [x] Conversation-trim DEFAULT (temporal) budget contract (the existing
+  token-trim test covered only compactionStrategy="importance"; the default-path
+  budget math + triggeredBy three-state + summary + tool-pair integrity were
+  untested). token-trim-budget.test.ts: estimateConversationTokens 0-for-empty /
+  positive; under-budget → no-op + triggeredBy "none"; hard limit (budget ≤ 0)
+  keeps ONLY the last user message; over-budget drops old history + lands within
+  budget ("hard_limit"); a PROACTIVE working-budget trim fires under the hard cap
+  ("working_budget"); a [Conversation summary] system message inserts once the
+  dropped count meets the threshold; an orphaned tool message (no preceding tool
+  call) is removed (pair integrity). This is the context-window manager — a wrong
+  trim drops the needed message or blows the model budget. memory 256 pass.
 - [x] Messaging-provider reliability primitives (the daily-reliability seams —
   the human-directed "harden actuators against rate-limit / 5xx / retry /
   timeout" focus — were untested). provider-helpers.test.ts: clampOutboundText
