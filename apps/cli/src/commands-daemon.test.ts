@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { buildCheckinQuestion, readProposedActions, writeCheckins, writeFollowups, writeObjectives, type PersistedCheckin } from "@muse/mcp";
+import { buildCheckinQuestion, readProposedActions, readReflections, writeCheckins, writeEpisodes, writeFollowups, writeObjectives, type PersistedCheckin, type PersistedEpisode } from "@muse/mcp";
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -918,5 +918,64 @@ describe("muse daemon — N2 audit: check-ins + pattern suggestion compose in ON
     expect(res2.stdout).toMatch(/checkins: fired 0\/0 due/);
     expect(res2.stdout).toMatch(/pattern: delivered 0\/0 fireable/);
     expect(sent).toHaveLength(2); // second tick: nothing new — both deduped
+  });
+});
+
+// A model that returns reflection JSON citing the seeded episode ids — only the
+// model's TEXT is faked; the real synthesizeReflections → addReflections → store
+// path runs, so this proves the daemon actually dreams, not a stubbed registry.
+function fakeReflectionModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonHelpers["resolveFollowupModel"]>>>> {
+  return {
+    model: "test-model",
+    modelProvider: { generate: async () => ({ output: '[{"insight":"You troubleshoot home networking often","sources":["e1","e2","e3"]}]' }) } as never
+  };
+}
+
+async function seedDreamEpisodes(file: string): Promise<void> {
+  const ep = (id: string, summary: string): PersistedEpisode => ({
+    endedAt: "2026-05-20T10:00:00Z", id, startedAt: "2026-05-20T09:00:00Z", summary, userId: "local"
+  });
+  await writeEpisodes(file, [
+    ep("e1", "Fixed the office VPN handshake by setting MTU 1380 on wg0."),
+    ep("e2", "Debugged wireguard keepalive dropping behind the home router."),
+    ep("e3", "Tuned the LAN DNS so the NAS resolves locally.")
+  ]);
+}
+
+describe("muse daemon — grounded dreaming tick (P32-3)", () => {
+  it("auto-synthesises + persists a GROUNDED reflection while idle when enabled", async () => {
+    const env = tmpEnv();
+    const dir = mkdtempSync(join(tmpdir(), "muse-dream-"));
+    env.MUSE_EPISODES_FILE = join(dir, "episodes.json");
+    env.MUSE_REFLECTIONS_FILE = join(dir, "reflections.json");
+    env.MUSE_REFLECTION_ENABLED = "true";
+    await seedDreamEpisodes(env.MUSE_EPISODES_FILE);
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], {
+      env, registry, resolveFollowupModel: async () => fakeReflectionModel()
+    });
+
+    expect(res.stdout).toMatch(/reflections: \+1/);
+    const stored = await readReflections(env.MUSE_REFLECTIONS_FILE);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]!.insight).toContain("networking");
+    expect([...stored[0]!.sourceIds].sort()).toEqual(["e1", "e2", "e3"]); // grounded only in real episodes
+  });
+
+  it("does NOTHING when MUSE_REFLECTION_ENABLED is unset (gate is real — off by default)", async () => {
+    const env = tmpEnv();
+    const dir = mkdtempSync(join(tmpdir(), "muse-dream-off-"));
+    env.MUSE_EPISODES_FILE = join(dir, "episodes.json");
+    env.MUSE_REFLECTIONS_FILE = join(dir, "reflections.json");
+    await seedDreamEpisodes(env.MUSE_EPISODES_FILE);
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], {
+      env, registry, resolveFollowupModel: async () => fakeReflectionModel()
+    });
+
+    expect(res.stdout).not.toContain("reflections:");
+    expect(await readReflections(env.MUSE_REFLECTIONS_FILE)).toHaveLength(0);
   });
 });

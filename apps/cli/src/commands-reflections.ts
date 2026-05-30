@@ -25,8 +25,8 @@ import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
 
-export function resolveReflectionsFile(): string {
-  return process.env.MUSE_REFLECTIONS_FILE?.trim() || join(homedir(), ".muse", "reflections.json");
+export function resolveReflectionsFile(env: Record<string, string | undefined> = process.env): string {
+  return env.MUSE_REFLECTIONS_FILE?.trim() || join(homedir(), ".muse", "reflections.json");
 }
 
 export interface ReflectionPassOptions {
