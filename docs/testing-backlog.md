@@ -418,6 +418,17 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] macOS Calendar.app provider (untested) — completes the calendar actuator
+  trilogy (caldav/google/macos). It spawns osascript; the real runScript path is
+  exercised through a contract-faithful FAKE osascript binary (a tiny shell
+  script the provider actually spawns) emitting the documented tab-separated
+  output / exit / stderr. macos-provider.test.ts: parses tab-separated lines
+  (allDay from the 6th field, optional location) + skips malformed/NaN-date
+  lines; error classification — EVENT_PERMISSION (TCC denial), EVENT_NOT_FOUND,
+  EXIT_<code> with stderr tail; the wall-clock TIMEOUT kills a wedged script
+  (OSASCRIPT_TIMEOUT, promptly — not after the sleep); OSASCRIPT_FAILED on an
+  unspawnable binary; createEvent returns the printed uid; updateEvent with no
+  fields → EMPTY_UPDATE before spawning. calendar 110 pass.
 - [x] Google Calendar v3 provider (untested) — a daily-reliability actuator over
   OAuth, driven through the injected fetchImpl with a contract-faithful fake that
   routes the token endpoint and the calendar API separately. google-provider.test.ts:
