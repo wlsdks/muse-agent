@@ -870,6 +870,13 @@ the generic layers below because they test what makes Muse an *agent*.
   `timed-out`). Both assert NOT a false `performed` success AND that the action
   log still records `failed` (outbound-safety rule 4 — every outcome recorded).
   mcp suite 1112→1114 pass.
+- [x] home_action TOOL-level failure projection — the shared path was covered, but
+  `createHomeActionTool.execute`'s OWN mapping (outcome → { performed:false, reason,
+  detail }) on a failed call was untested at the projection the AGENT invokes. Added
+  a 5xx-from-HA case: the tool surfaces performed:false + reason "failed" + a detail
+  (never a false performed on a state-changing lock/scene call) and logs failed.
+  Completes state-changing-actuator reliability at every level (shared web-action
+  path + home_action tool + weather read tool + home_state read fns). mcp 1114→1115.
 - [x] Prompt-injection detection — multilingual + privacy categories (the
   existing injection-patterns test covered English normalization + goal-033
   patterns; the Korean/CJK/Spanish and privacy patterns were undetected-in-test).

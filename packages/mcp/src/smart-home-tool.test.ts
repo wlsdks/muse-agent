@@ -62,4 +62,18 @@ describe("createHomeActionTool", () => {
     expect(out.performed).toBe(false);
     expect(calls).toHaveLength(0);
   });
+
+  it("HA rejects the approved call (5xx) → the TOOL surfaces performed:false + reason/detail, logged failed", async () => {
+    // The agent invokes this tool, not the shared helper — so the tools own
+    // failure projection (outcome → { performed:false, reason, detail }) must
+    // report the failure, never a false performed success, on a state-changing call.
+    const fetchImpl = (async () => new Response("boom", { status: 502 })) as unknown as typeof fetch;
+    const actionLogFile = logFile();
+    const out = await createHomeActionTool(deps(approve, fetchImpl, actionLogFile))
+      .execute({ entity: "lock.front_door", service: "lock.lock" }, ctx) as Record<string, unknown>;
+    expect(out.performed).toBe(false);
+    expect(out.reason).toBe("failed");
+    expect(typeof out.detail).toBe("string");
+    expect((await readActionLog(actionLogFile))[0]).toMatchObject({ result: "failed" });
+  });
 });
