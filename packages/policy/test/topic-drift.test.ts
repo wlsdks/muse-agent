@@ -37,6 +37,17 @@ describe("topic drift policy", () => {
     });
   });
 
+  it("fails OPEN when no usable topic is configured — drift is a soft policy, not a blanket block", () => {
+    // Topic-drift must never block everything just because the caller passed no
+    // topics (or only blank-id ones, which are filtered out). An empty/whitespace
+    // prompt is likewise allowed. A regression flipping these guards would refuse
+    // every conversation that runs without a configured topic list.
+    const allowAll = { allowed: true, bestScore: 1, matchedKeywords: [], matchedTopicId: null };
+    expect(detectTopicDrift("anything at all", { allowedTopics: [] })).toEqual(allowAll);
+    expect(detectTopicDrift("anything at all", { allowedTopics: [{ id: "  ", keywords: ["x"] }] })).toEqual(allowAll);
+    expect(detectTopicDrift("   ", { allowedTopics: [{ id: "muse", keywords: ["rag"] }] })).toEqual(allowAll);
+  });
+
   it("does not let a short ASCII keyword match inside unrelated words (was a guard bypass)", () => {
     const opts = { allowedTopics: [{ id: "ml", keywords: ["ai", "rag"] }] };
     // "ai" is inside email/again; "rag" is inside storage/garage —

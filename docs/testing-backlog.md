@@ -971,6 +971,13 @@ the generic layers below because they test what makes Muse an *agent*.
   pass. Added a fixed-estimator case pinning total==budget → triggeredBy 'none',
   removedCount 0, kept whole; plus a one-token-over case proving the boundary
   isn't inert. Pre-verified against dist. memory 281→282 pass.
+- [x] detectTopicDrift fail-open guard (mutation-informed) — the suite tested
+  overlap-allows and drift-blocks but not the early-return fail-open at line 32:
+  no configured topics, only blank-id topics (filtered out), or empty/whitespace
+  text must ALL return allowed (drift is a soft policy, not a blanket block). A
+  regression flipping the `=== 0` / `||` guard would refuse every conversation
+  run without a topic list. Added the three fail-open cases asserting the exact
+  allow-all shape. Pre-verified against dist. policy 99→100 pass.
 - [x] Prompt-injection detection — multilingual + privacy categories (the
   existing injection-patterns test covered English normalization + goal-033
   patterns; the Korean/CJK/Spanish and privacy patterns were undetected-in-test).
