@@ -851,6 +851,15 @@ the generic layers below because they test what makes Muse an *agent*.
   Retry-After, returns a non-retryable 4xx immediately, and re-throws a network
   error after maxAttempts — NEVER used for send() (double-delivery). All via
   injected fetch + sleep (no real network). messaging 316 pass.
+- [x] Weather actuator outage resilience (TOOL level) — the http-retry primitive
+  was well-tested but `createWeatherTool.execute` itself was only proven on
+  happy/not-found, not on an upstream outage. A tool that THROWS on a transient
+  failure breaks the agent's tool loop (USER-FACING per the harden-actuators
+  focus). Added 4 cases driving the REAL OpenMeteoWeatherProvider + fetchWithRetry
+  against a persistently-failing fetch: a 503 with retries exhausted, a network
+  reject, and a 200-with-malformed-(non-JSON)-body all degrade the current-weather
+  path to found:false (never reject); the forecast path (`when` set) does the same
+  on a persistent 5xx while still echoing the date. mcp suite 1108→1112 pass.
 - [x] Prompt-injection detection — multilingual + privacy categories (the
   existing injection-patterns test covered English normalization + goal-033
   patterns; the Korean/CJK/Spanish and privacy patterns were undetected-in-test).
