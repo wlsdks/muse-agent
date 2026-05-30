@@ -32,3 +32,10 @@ export {
   type QuarantineDepositInput,
   type ReceiveAndQuarantineOptions
 } from "./receive-quarantine.js";
+export {
+  AGENT_CARD_PATH,
+  createA2AHandler,
+  type A2AHandlerOptions,
+  type A2ARequest,
+  type A2AResponse
+} from "./handler.js";

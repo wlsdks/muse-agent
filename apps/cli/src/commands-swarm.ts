@@ -6,14 +6,16 @@
  * the user-facing half of the personal swarm's "inbound is inert" guarantee.
  */
 
+import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { isA2AEnabled, prepareOutbound } from "@muse/agent-core";
-import { loadPeerConfig, sendToPeer } from "@muse/a2a";
+import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, sendToPeer } from "@muse/a2a";
 import { resolveAuthoredSkillsDir } from "@muse/autoconfigure";
 import {
+  addToQuarantine,
   listPending,
   readQuarantine,
   setQuarantineStatus,
@@ -182,6 +184,59 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
       io.stdout(result.ok
         ? `✅ Shared '${skillName}' → ${peer.id} (HTTP ${result.status.toString()}).\n`
         : `⚠ Send to ${peer.id} returned HTTP ${result.status.toString()}.\n`);
+    });
+
+  swarm
+    .command("serve")
+    .description("Run an inbound A2A endpoint so peers can share know-how with you (Agent Card + message/send → quarantine). Off unless MUSE_A2A_ENABLED.")
+    .option("--host <host>", "Bind host — 127.0.0.1 (default) for same-machine, your LAN IP for other devices", "127.0.0.1")
+    .option("--port <port>", "Bind port (default 4111)", "4111")
+    .action(async (options: { readonly host: string; readonly port: string }) => {
+      const env = process.env;
+      if (!isA2AEnabled(env)) {
+        io.stderr("muse swarm serve: the swarm is off — set MUSE_A2A_ENABLED=true to opt in.\n");
+        process.exitCode = 1;
+        return;
+      }
+      const port = Number.parseInt(options.port, 10);
+      if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+        io.stderr(`muse swarm serve: invalid --port '${options.port}'.\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const config = await loadPeerConfig(peersFile());
+      const card = buildMuseAgentCard({ url: `http://${options.host}:${port.toString()}/a2a` });
+      const handler = createA2AHandler({
+        agentCard: card,
+        deposit: (input) => addToQuarantine(quarantineFile(), input).then(() => undefined),
+        env,
+        registry: config.registry
+      });
+      const server = createServer((req, res) => {
+        const chunks: Buffer[] = [];
+        req.on("data", (c: Buffer) => chunks.push(c));
+        req.on("end", () => {
+          void handler({
+            body: Buffer.concat(chunks).toString("utf8"),
+            headers: req.headers as Record<string, string | undefined>,
+            method: req.method ?? "GET",
+            path: req.url ?? "/"
+          }).then((r) => {
+            res.writeHead(r.status, { "content-type": r.contentType });
+            res.end(r.body);
+          });
+        });
+      });
+      await new Promise<void>((resolve) => {
+        server.listen(port, options.host, () => {
+          io.stdout(
+            `muse swarm: inbound A2A on http://${options.host}:${port.toString()}  (Agent Card: ${AGENT_CARD_PATH})\n` +
+            `  allowlisted peers: ${config.peers.map((p) => p.id).join(", ") || "(none — add them to ~/.muse/a2a-peers.json)"}\n` +
+            `  inbound is inert: know-how is quarantined for review, never executed. Ctrl-C to stop.\n`
+          );
+        });
+        process.once("SIGINT", () => { server.close(); resolve(); });
+      });
     });
 
   swarm
