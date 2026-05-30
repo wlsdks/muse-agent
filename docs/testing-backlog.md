@@ -515,6 +515,13 @@ the generic layers below because they test what makes Muse an *agent*.
   epochMillisOrNull (number/Date/ISO → ms, else null); toJsonObject (drops
   function/undefined values); stringMapField (string→string only); readQueryBoolean;
   compatEnumString (trim+upper); chunkText (2000-char chunks, empty→[""]). api 522 pass.
+- [x] A2A envelope signing (untested) — the security gate that rejects a
+  tampered/forged peer message before the safety core sees it. signing.test.ts:
+  signEnvelope is deterministic + verifies; verifySignature rejects a tampered
+  field, a forged from-id, a wrong secret, and a malformed signature (wrong
+  length / non-hex / empty) WITHOUT throwing (length guard + try/catch around
+  timingSafeEqual); canonicalizeEnvelope is invariant to object key ordering and
+  changes when any safety-relevant field changes. a2a 78 pass; build typecheck green.
 - [x] parseLookaheadHours (untested) — today-routes-parse.test.ts: the /today
   briefing's strict lookahead parser returns the 24h default for undefined /
   decimal / unit-slip / blank (no lenient truncation), else passes a plain
