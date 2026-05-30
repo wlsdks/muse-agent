@@ -418,6 +418,15 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Compat session-tag store (untested) — store-delegation + file-state
+  fallback + pure mappers. compat-session-tag-store.test.ts: safeIsoFromMs
+  (finite ms → ISO; NaN/Infinity/non-number → epoch — the corrupt-timestamp
+  guard); toSessionTagCompatRecord (comment ?? null, createdAt == updatedAt);
+  the configured-store path delegates create (auth user as createdBy) / list
+  (mapped) / delete (store's boolean) / deleteBySession; the no-store fallback
+  round-trips create→list→delete through the in-process state (unique sessionId
+  to avoid shared-Map collisions). api 571 pass; build typecheck green (ran
+  `pnpm --filter @muse/api build` per the vitest-no-typecheck lesson).
 - [x] MCP admin-proxy pure helpers (untested) — security-relevant. compat-mcp-proxy.test.ts:
   swaggerSourcePath URL-encodes the source name (a "../../admin?x=1" payload is
   neutralized — no path-traversal/query injection); readAdminUrl accepts only
