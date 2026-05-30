@@ -8,8 +8,40 @@ import { AuthoredSkillStore } from "@muse/skills";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { buildSwarmSkillDraft, registerSwarmCommands, renderPending, renderShareDraft } from "./commands-swarm.js";
+import { buildSwarmSkillDraft, gatherCouncil, registerSwarmCommands, renderCouncilResult, renderPending, renderShareDraft } from "./commands-swarm.js";
 import type { ProgramIO } from "./program.js";
+
+describe("gatherCouncil + renderCouncilResult", () => {
+  const peer = (id: string) => ({ id, secret: "s", url: `https://${id}/a2a` });
+
+  it("collects own reasoning + each responding peer, dropping non-responders", async () => {
+    const utterances = await gatherCouncil("rent or buy?", {
+      ownReasoning: async () => "my own take",
+      peers: [peer("phone"), peer("server"), peer("offline")],
+      requestReasoning: async (p) => (p.id === "offline" ? null : `${p.id} says buy`),
+      selfId: "laptop"
+    });
+    expect(utterances.map((u) => u.peerId)).toEqual(["laptop", "phone", "server"]); // self first, offline dropped
+    expect(utterances[0]!.reasoning).toBe("my own take");
+  });
+
+  it("uses 'me' when selfId is unset, and skips an empty own reasoning", async () => {
+    const u1 = await gatherCouncil("q", { ownReasoning: async () => "   ", peers: [peer("phone")], requestReasoning: async () => "x", selfId: "" });
+    expect(u1.map((u) => u.peerId)).toEqual(["phone"]); // empty own dropped
+    const u2 = await gatherCouncil("q", { ownReasoning: async () => "mine", peers: [], requestReasoning: async () => null, selfId: "" });
+    expect(u2[0]!.peerId).toBe("me");
+  });
+
+  it("renders the answer + contributors, and a graceful message on null", () => {
+    const us = [{ peerId: "laptop", reasoning: "a" }, { peerId: "phone", reasoning: "b" }];
+    const out = renderCouncilResult("rent or buy?", us, { answer: "Rent for flexibility.", contributors: ["laptop", "phone"] });
+    expect(out).toContain("Council on: rent or buy?");
+    expect(out).toContain("2 member(s) weighed in: laptop, phone");
+    expect(out).toContain("Rent for flexibility.");
+    expect(out).toContain("drawn from: laptop, phone");
+    expect(renderCouncilResult("q", us, null)).toContain("couldn't synthesise");
+  });
+});
 
 const SHARED = "swarm-secret";
 const ON = { MUSE_A2A_ENABLED: "true" } as const;

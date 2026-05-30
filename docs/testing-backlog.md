@@ -418,6 +418,28 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Calendar provider registry (untested) — fan-out + routing. registry.test.ts:
+  register/list/describe/has/primary; require → PROVIDER_NOT_FOUND with a
+  registered-ids hint; listEvents fan-out concatenates + sorts (default) vs
+  single-provider scope; FAIL-SOFT (a failing remote provider is swallowed so
+  local still yields, surfaced via diagnostics + onProviderError once per call);
+  the HALLUCINATED-SENTINEL routing (the local Qwen's "default"/"primary"/blank/
+  undefined → primary, a concrete unknown id still errors); NO_PROVIDERS; update/
+  delete routing; compareCalendarEvents (startsAt → providerId → id). NOTE (noted
+  footgun, NOT fixed — no observed failure): createEvent/update/deleteEvent are
+  Promise-typed but throw SYNCHRONOUSLY on the require() path, so a caller using
+  `.catch()` wouldn't catch a PROVIDER_NOT_FOUND — tests assert the real sync-throw
+  contract. calendar 84 pass.
+- [x] Conversation-summary store (untested) — the persistence of the compaction
+  context the agent relies on across a long session. conversation-summary-store.test.ts:
+  InMemory CRUD + normalize (trim narrative/userId, floor index, blank userId→
+  undefined), createdAt preserved on re-save / updatedAt advanced, delete returns
+  existence, listAll sorts updatedAt-desc + userId filter + limit clamp; and the
+  pure createConversationSummaryInsert→mapConversationSummaryRow round-trip
+  (structured-fact serialize/deserialize with trimmed key/value + ISO extractedAt,
+  unknown category coerced to GENERAL, a JSON-string facts_json column parsed).
+  The Kysely SQL upsert is deferred to the testcontainers Postgres item; the row
+  builder it shares IS covered. memory 281 pass.
 - [x] User-memory auto-extract PARSE/route helpers (untested) — extractJsonObject
   is the untrusted-boundary parser turning a small local model's raw output into
   the structured ExtractionPayload that drives memory writes.

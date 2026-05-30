@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 
 import { A2A_SIGNATURE_HEADER } from "./transport.js";
 import type { A2AAgentCard } from "./agent-card.js";
+import { parseCouncilRequest, verifyCouncilRequest, type CouncilResponse } from "./council-wire.js";
 import type { PeerRegistry } from "./peer-registry.js";
 import { receiveAndQuarantine, type QuarantineDepositInput } from "./receive-quarantine.js";
 
@@ -42,6 +43,14 @@ export interface A2AHandlerOptions {
   readonly deposit: (input: QuarantineDepositInput) => Promise<void>;
   readonly now?: () => number;
   readonly genId?: () => string;
+  /** This Muse's own peer id, stamped on council responses. */
+  readonly selfPeerId?: string;
+  /**
+   * Council participation. When set (opt-in, MUSE_A2A_COUNCIL), a signed council
+   * request from an allowlisted peer triggers this bounded reasoning step;
+   * otherwise council requests get an empty reasoning (the initiator skips us).
+   */
+  readonly councilReason?: (question: string) => Promise<string>;
 }
 
 function json(status: number, value: unknown): A2AResponse {
@@ -67,6 +76,24 @@ export function createA2AHandler(options: A2AHandlerOptions): (request: A2AReque
     }
     if (request.method === "POST") {
       const signature = request.headers[A2A_SIGNATURE_HEADER] ?? request.headers[A2A_SIGNATURE_HEADER.toLowerCase()];
+
+      // Council request? (separate, bounded compute path — never quarantine.)
+      let parsedBody: unknown = null;
+      try { parsedBody = JSON.parse(request.body) as unknown; } catch { /* not JSON → fall through */ }
+      const council = parseCouncilRequest(parsedBody);
+      if (council) {
+        const empty: CouncilResponse = { fromPeerId: options.selfPeerId ?? "", kind: "council-reasoning", reasoning: "" };
+        if (!options.councilReason) {
+          return json(200, empty); // not participating → contribute nothing
+        }
+        const peer = options.registry.get(council.fromPeerId);
+        if (!peer || !verifyCouncilRequest(council.fromPeerId, council.question, signature, peer.secret)) {
+          return json(200, empty); // unknown peer / bad signature → no compute, no reasoning
+        }
+        const reasoning = await options.councilReason(council.question);
+        return json(200, { fromPeerId: options.selfPeerId ?? "", kind: "council-reasoning", reasoning } satisfies CouncilResponse);
+      }
+
       const decision = await receiveAndQuarantine({
         deposit: options.deposit,
         env: options.env,

@@ -39,3 +39,14 @@ export {
   type A2ARequest,
   type A2AResponse
 } from "./handler.js";
+export {
+  COUNCIL_METHOD,
+  buildCouncilRequest,
+  parseCouncilRequest,
+  requestCouncilReasoning,
+  signCouncilRequest,
+  verifyCouncilRequest,
+  type CouncilRequest,
+  type CouncilResponse,
+  type RequestCouncilReasoningOptions
+} from "./council-wire.js";
