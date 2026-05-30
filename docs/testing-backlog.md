@@ -877,6 +877,40 @@ the generic layers below because they test what makes Muse an *agent*.
   (never a false performed on a state-changing lock/scene call) and logs failed.
   Completes state-changing-actuator reliability at every level (shared web-action
   path + home_action tool + weather read tool + home_state read fns). mcp 1114→1115.
+- [x] Korean casual-lure strip filter (PRIMARY language, identity guard) — the
+  English counterpart was unit-tested but `createCasualLureStripResponseFilter`
+  (the Korean rule table that keeps Muse from padding a clean answer with an eager
+  "무엇을 도와드릴까요?" / "혹시 더 필요하시면…" closing) had only incidental
+  integration coverage. 8 known-answer cases pin: strips a trailing 도와드릴까요/
+  말씀해 주세요 lure off a short no-tools answer; leaves a clean answer untouched;
+  does NOT strip when a WORK tool ran (a real action's closing isn't a lure) but
+  DOES when only add_reaction ran; the >500-char substantive-answer guard; the
+  drop-at-most-3 cap (a runaway strip can't eat the real answer); whitespace-only
+  stays unchanged (not blanked). Pre-verified against dist. agent-core 1068→1076.
+- [x] Fabrication-refusal filter (the EDGE) two-combo AND logic — the filter
+  refuses on `(invent ∧ missing) ∨ (secret ∧ discovery)`, but the default KO test
+  used one prompt ("없는 비밀 문서를 찾아서 임의로 요약") that satisfies BOTH combos
+  at once, so neither branch was isolated and an OR-for-AND mutation could hide.
+  Added: the secret+discovery combo IN ISOLATION ("비밀 문서를 검색해줘", no
+  invent/missing term) still refuses; and a PARTIAL combo does NOT refuse —
+  invent-only ("임의로 요약해줘") and secret-only ("비밀 문서 보여줘") both pass
+  through unchanged. Pre-verified against dist. agent-core 1076→1078.
+- [x] Zero-result-overclaim filter (the EDGE) AND-logic partial guard — strips an
+  overclaim line only when BOTH a zero-result AND an overclaim pattern match, but
+  every prior case had both present. Added the partial-no-strip guard: a
+  zero-result with NO overclaim line ("전체 이슈: 0건\n목록을 확인하세요.") passes
+  through, AND — crucially — an overclaim line when results WERE found ("이슈 3건을
+  처리했습니다.\n모든 작업이 완료되었습니다.") is NOT stripped (a true "all done" on
+  real results is legitimate, not an overclaim). Guards an OR-for-AND mutation that
+  would erase a real result. Pre-verified against dist. agent-core 1078→1079.
+- [x] scheduler agent-tool failure contract — the scheduler tools test proved the
+  happy create/list/trigger/dry-run path but not the agent-facing failure modes.
+  Added: scheduler_create_job with a MISSING required cronExpression rejects with
+  SchedulerValidationError (never persists a scheduleless job the local model's
+  omission would otherwise create); and scheduler_trigger_job / dry_run on an
+  UNKNOWN jobId return a clean { result: "Job not found: <id>" } instead of
+  throwing (a throw would break the tool loop and lose the turn). Pre-verified
+  against dist. scheduler 81→83 pass.
 - [x] Prompt-injection detection — multilingual + privacy categories (the
   existing injection-patterns test covered English normalization + goal-033
   patterns; the Korean/CJK/Spanish and privacy patterns were undetected-in-test).
