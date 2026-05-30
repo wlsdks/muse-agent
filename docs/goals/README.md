@@ -733,6 +733,17 @@ Append one line when a discovery path is evaluated and deferred:
   episode in to reach the floor (a financial insight cited a networking
   episode) — within the already-documented "real-source, best-effort
   relevance" scope, not a fabrication. No bullet reopened.
+- P31 audit — a88ca47c — PASS: the propose→confirm→act epic re-run green
+  (proposed-action 6 + commands-propose 3 — contract-faithful fakes prove
+  approve-executes-ONCE + replay-guard + send-failure-stays-pending) AND
+  the draft-first GATE exercised END-TO-END with the BUILT CLI on real
+  seeded proposals (via the producer `proposeMessageAction`): `propose
+  list` shows the draft and sends nothing; `propose decline` → "Declined
+  … — not sent" (status declined, no external effect); `propose approve`
+  on an EXPIRED proposal → "Not executed: expired" (P31-3 — no send, stays
+  inert). Per `outbound-safety.md` the deny/expire → no-external-effect
+  paths are the ones that MUST be proven, and they are. No drift, nothing
+  reopened.
 - regression sweep (30th feat-iter) — iter 830458a9 — PASS: `pnpm
   check` green across every workspace (agent-core 722, mcp 837,
   cli 1328, api 327, autoconfigure 283, tools 158, scheduler 62,
