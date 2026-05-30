@@ -50,6 +50,16 @@ describe("StepBudgetTracker", () => {
       expect(t.isExhausted()).toBe(true);
     });
 
+    it("isExhausted() is FALSE while under budget — a fresh tracker and a soft-limit one are not exhausted", () => {
+      // The suite only ever asserted isExhausted() === true; without the false
+      // case a `return true` regression (always-exhausted) would stop every agent
+      // loop on the first step. Pin both not-yet-exhausted states.
+      const fresh = new StepBudgetTracker({ maxTokens: 50 });
+      expect(fresh.isExhausted()).toBe(false);
+      expect(fresh.trackStep("a", 49, 0)).toBe("soft_limit"); // 49 < 50, soft crossed
+      expect(fresh.isExhausted()).toBe(false);                // soft_limit is NOT exhausted
+    });
+
     it("honours a custom softLimitPercent (Math.floor against maxTokens)", () => {
       const t = new StepBudgetTracker({ maxTokens: 200, softLimitPercent: 50 });
       // softLimit = floor(200 * 50 / 100) = 100

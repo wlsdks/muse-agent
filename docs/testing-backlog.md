@@ -79,6 +79,43 @@ the generic layers below because they test what makes Muse an *agent*.
     (regex-meta private terms match literally, never as a pattern), the
     empty/whitespace private-term skip branch, case-insensitive term matching, and
     the ghp_/xox token shapes beyond sk-. +6 cases (policy 93→99).
+  - SECOND MEASUREMENT (throwaway Stryker 9.6.1, NOT committed — lockfile reverted):
+    `policy/structured-output.ts` = **75.20% total / 81.03% covered** (91 killed, 22
+    survived, 9 no-cov). Most survivors are Regex mutants on the markdown-fence /
+    balanced-block patterns (equivalent or low-value). The ONE actionable logic
+    survivor: the `firstBalancedJsonBlock` escape branch (`if (escape)` / `\\`+
+    inString) had no test exercising an ESCAPED quote — the brace-in-string test
+    used a bare `}` but never a `\"`, so a mutation killing the escape handling
+    survived. Killed it with a JSON value carrying `\"hi}\"` (an escaped quote
+    wrapping a brace): the `\"` must not end the string early, so the inner `}`
+    still doesn't close the object. policy 100→101. Lesson holds: the headline
+    score is dragged by equivalent regex mutants; the real logic-assertion gap was
+    a single escape-path case mutation testing surfaced precisely.
+  - THIRD MEASUREMENT (throwaway Stryker 9.6.1 — reused the still-installed
+    node_modules from the prior fire, NO new install, NOT committed): `model/
+    provider-shared.ts` = **82.63% total / 86.27% covered** (176 killed, 28
+    survived, 9 no-cov). Actionable survivors clustered on `isJsonValue` /
+    `isJsonObject` — the recursive JSON-shape guards the provider adapters use to
+    validate structured output — which had ZERO direct tests (only incidental
+    exercise via parseJson callers). Added a direct suite (+9 cases) pinning every
+    branch: the JSON primitives, the NON-FINITE-number rejection (NaN/±Infinity
+    aren't valid JSON), undefined/function/symbol rejection, recursive array +
+    object descent (a deep-nested invalid element fails), isJsonObject's
+    non-record rejection, and isRecord. model 305→309. The 2-3-package mutation
+    survey (P1) now spans tools/policy/model; remaining survivors are dominated by
+    equivalent regex/string-literal mutants. A committed Stryker config + CI gate
+    still needs the human lockfile OK.
+  - FOURTH MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    step-budget.ts` = **98.70%** (76 killed, 1 survived) — already near-ideal. The
+    single survivor: `isExhausted()` (`return this.status() === "exhausted"`)
+    mutated to `return true` survived because the suite only ever asserted
+    isExhausted() === true (when exhausted), never false. A `return true`
+    regression would make the budget read as always-exhausted and stop every agent
+    loop on its first step. Killed it by asserting isExhausted() === false on a
+    fresh tracker AND on a soft-limit (under-budget) one. agent-core 1079→1080. The
+    agent-core/model/policy mutation survey (P1) is now complete; the actionable
+    survivors it surfaced (DoS guards, escaped-quote parse path, JSON-shape guards,
+    always-exhausted budget) are all killed.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,

@@ -53,6 +53,20 @@ describe("normalizeStructuredOutput", () => {
     });
   });
 
+  it("does not let an ESCAPED quote end a string early — a \\\" (even before a brace) keeps the value balanced", () => {
+    // The brace-in-string guard only works if the string-boundary scan honours
+    // backslash escapes: a `\"` must NOT toggle out of the string, so a `}` that
+    // follows it inside the value still doesn't close the object. Mutation-
+    // surfaced: the escape branch had no test exercising an escaped quote.
+    const result = normalizeStructuredOutput(
+      "Here you go:\n{\"msg\":\"she said \\\"hi}\\\" then left\",\"ok\":true}\nThanks!",
+      "json"
+    );
+    expect(result.normalized).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(JSON.parse(result.content)).toEqual({ msg: "she said \"hi}\" then left", ok: true });
+  });
+
   it("recovers the valid object after a non-JSON bracketed preamble (skips the bad first block)", () => {
     const result = normalizeStructuredOutput("see [details below]: {\"ok\":true}", "json");
     expect(result).toEqual({
