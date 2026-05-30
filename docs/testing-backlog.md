@@ -911,6 +911,14 @@ the generic layers below because they test what makes Muse an *agent*.
   UNKNOWN jobId return a clean { result: "Job not found: <id>" } instead of
   throwing (a throw would break the tool loop and lose the turn). Pre-verified
   against dist. scheduler 81→83 pass.
+- [x] email_send post-approval transport failure (highest-risk actuator) — the
+  outbound-safety contract test covered CONFIRM / DENY / gate-error / ambiguous /
+  unknown / handle-only recipient, but NOT a transport that fails AFTER the user
+  approved. Added: an approved send whose Gmail API returns 5xx yields
+  { sent:false, reason:"send-failed" } (never a false sent the user would trust),
+  is attempted EXACTLY ONCE (no retry → no double-delivery of a message to a
+  human), and records `failed` in the action log (outbound-safety rule 4).
+  Pre-verified against dist. mcp 1115→1116 pass.
 - [x] Prompt-injection detection — multilingual + privacy categories (the
   existing injection-patterns test covered English normalization + goal-033
   patterns; the Korean/CJK/Spanish and privacy patterns were undetected-in-test).
