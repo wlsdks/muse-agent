@@ -928,6 +928,12 @@ the generic layers below because they test what makes Muse an *agent*.
   valid for "phone" must not authenticate a request claiming to be "laptop" — the
   signature binds the sender identity, so a peer can't impersonate another). All
   return false, none throw. Pre-verified against dist. a2a 78→79 pass.
+- [x] a2a receiveFromPeer unparseable-body reject — the inbound gate's reject
+  branches were covered (tampered / no-know-how / unknown-peer / non-know-how /
+  disabled) except the FIRST one a hostile peer hits: a malformed JSON body. The
+  receiver parses untrusted bytes off the wire before any allowlist/signature
+  check, so a garbage POST must be a clean { disposition:"reject", reason:
+  "unparseable A2A body" }, never a thrown crash. Pre-verified against dist. a2a 79→81.
 - [x] Prompt-injection detection — multilingual + privacy categories (the
   existing injection-patterns test covered English normalization + goal-033
   patterns; the Korean/CJK/Spanish and privacy patterns were undetected-in-test).
