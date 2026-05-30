@@ -481,6 +481,12 @@ the generic layers below because they test what makes Muse an *agent*.
   capped at 5, count-desc); dailyUsage (per-UTC-day cost+runs, date-asc);
   latencyDistribution (0-1s/1-5s/5-30s/30s+ buckets + missing-timestamp→unknown).
   api 503 pass.
+- [x] ① background-review factual-fix negative — added a one-off FACTUAL
+  correction ("when's my meeting?" → "no, it's at 4pm") that must author NOTHING
+  (data, not a durable procedure). The skill-authoring NEGATIVE had only a
+  no-correction case; this is the harder fact-vs-procedure discrimination.
+  Pre-verified STABLE 3/3 nothing-authored; verify-background-review ALL PASS
+  (3 asserted) on qwen3:8b. LOCAL OLLAMA ONLY.
 - [x] ★ swarm council-synthesis single-member no-pad — added a scenario to
   verify-council: a SINGLE-member council must credit exactly that one real
   member; the synthesiser must NOT pad the contributor list with invented
