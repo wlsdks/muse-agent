@@ -418,6 +418,13 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Debug-replay capture helpers + opsMetricSnapshots (untested) —
+  compat-debug-replay.test.ts: debugReplayResponse (completed run → envelope with
+  a 30-day expiry + captured prompt; failed run → RUN_FAILED + message; no user →
+  "anonymous"); opsMetricSnapshots (event name → snapshot, else "unknown", empty
+  without observability); save/list/getDebugReplayCapture delegate to a configured
+  store and fall back cleanly (save→passthrough, list→[], get→undefined). api 657
+  pass; build typecheck green.
 - [x] Compat-routes generic helpers (untested) — compat-routes-helpers.test.ts:
   readIfMatchVersion (optimistic-concurrency header parse — quoted/plain version,
   first of an array, non-numeric/missing → undefined so a typo never becomes a
