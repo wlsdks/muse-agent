@@ -708,6 +708,31 @@ Append one line when a discovery path is evaluated and deferred:
   printed the readiness lines plus a "sources:" block with the resolved
   config/tasks/reminders/objectives paths (rooted at the run's HOME).
   Debuggability composes; no drift, no bullet reopened.
+- A2A swarm live audit — main 8b9f503a — PASS: all 3 swarm modes
+  exercised END-TO-END on localhost with the BUILT CLI + real Ollama.
+  (1) Personal swarm: A `swarm share --yes` → real signed HTTP 200 → B
+  verified HMAC + quarantined (inert) → `pending` → `promote` →
+  execute-gated authored skill (no `requires:`); the `sk-proj-…` secret
+  crossed the wire as `[redacted-openai-key]`; a WRONG-secret share
+  deposited NOTHING (bad signature → no compute, non-informative 200).
+  (2) Federation primitives (HMAC sign/verify, peer allowlist, opaque
+  Agent Card advertising acceptsExecution:false / piiRedacted:true)
+  exercised by (1)+(3). (3) Council: A `swarm council` → 2 members
+  (phone-A + remote laptop-B, real qwen3:8b on both ends) → synthesised
+  answer cites only the real participants ("drawn from: phone-A,
+  laptop-B"). NOW LEDGERED in CAPABILITIES (was built + 68+11 tests green
+  but never counted/audited). No drift, nothing reopened.
+- P32 audit — 8b9f503a — PASS: the P32 dreaming epic re-run green
+  (reflection-synthesis + reflections-store + commands-reflections + the
+  new daemon dreaming test) AND exercised END-TO-END with the BUILT CLI
+  + real qwen3:8b — 4 seeded episodes → `muse reflections refresh` → 2
+  grounded reflections → `muse reflections` lists each citing real
+  episode ids. Fabrication-zero invariant holds (every cited id is a real
+  episode). HONEST observation (no reopen): when only one episode truly
+  supports an insight, minSupport=2 can pull a tangentially-relevant REAL
+  episode in to reach the floor (a financial insight cited a networking
+  episode) — within the already-documented "real-source, best-effort
+  relevance" scope, not a fabrication. No bullet reopened.
 - regression sweep (30th feat-iter) — iter 830458a9 — PASS: `pnpm
   check` green across every workspace (agent-core 722, mcp 837,
   cli 1328, api 327, autoconfigure 283, tools 158, scheduler 62,
