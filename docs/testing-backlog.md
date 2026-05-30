@@ -475,3 +475,11 @@ the generic layers below because they test what makes Muse an *agent*.
     nested flatten + empty []/{} markers + null→""; markdown_table column-union
     derivation, explicit-column order, nested cell as compact JSON (not
     "[object Object]"), pipe/newline escaping, empty→"". tools 215 pass.
+  - muse-tools-helpers — the shared argument parsers underpinning every tool
+    (the foundation of ArgumentCorrectness), completing muse-tools-* exhaustion.
+    readOptionalString (non-empty else undefined), readRequiredDate (valid ISO
+    else undefined), readOptionalNumber (finite else 0, no string coercion), and
+    the load-bearing readOptionalDate THREE-state — absent (undefined/null/"")
+    vs invalid (non-string/unparseable) vs date — so a tool defaulting a missing
+    reference to now() never silently anchors to the wrong instant on a malformed
+    value. tools 222 pass.
