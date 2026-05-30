@@ -129,6 +129,19 @@ the generic layers below because they test what makes Muse an *agent*.
     structural-rule leaks, and the cache-boundary marker echo. policy 101→104.
     (A security detector's pattern coverage is exactly where mutation testing earns
     its keep — a low score there is real risk, not metadata-string drag.)
+  - SIXTH MEASUREMENT (throwaway, reused install, NOT committed): `policy/
+    injection-patterns.ts` = **39.44%** — the PRIMARY injection gate; like
+    prompt-leakage, dominated by un-asserted detection patterns (127 Regex + 97
+    StringLiteral survivors across 70+ patterns), but the logic survivors are the
+    actionable ones. Killed the highest-value crash-safety guard: `decodeCodePoint`
+    returns the ORIGINAL entity for an out-of-range code point (cp > 0x10FFFF /
+    negative / non-integer) — String.fromCodePoint THROWS otherwise, so a malicious
+    `&#9999999999;` in untrusted input would crash the normaliser and make
+    injection detection fail. Asserted out-of-range entities stay intact (no throw)
+    while a valid `&#65;` still decodes. policy 104→105. The bulk pattern-coverage
+    survivors here are a known follow-up (each pattern needs a positive detection
+    case, like the prompt-leakage round) — deferred as a larger effort, not a
+    single slice.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
