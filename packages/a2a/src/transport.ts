@@ -12,6 +12,8 @@
  * quarantine/reject decision. A peer can never trigger compute here.
  */
 
+import { randomUUID } from "node:crypto";
+
 import {
   A2ASafetyError,
   classifyInbound,
@@ -22,6 +24,7 @@ import {
   type InboundDecision
 } from "@muse/agent-core";
 
+import { envelopeToSendRequest, extractEnvelopeFromA2ABody } from "./a2a-message.js";
 import type { A2APeer, PeerRegistry } from "./peer-registry.js";
 import { signEnvelope, verifySignature } from "./signing.js";
 
@@ -57,10 +60,13 @@ export async function sendToPeer(options: SendToPeerOptions): Promise<SendResult
   }
   // prepareOutbound is the gate: a non-know-how kind throws here, before any send.
   const envelope = prepareOutbound(options.outbound, options.fromPeerId, options.redact);
+  // HMAC over the FLAT envelope (the canonical signed form), then frame it as a
+  // standard A2A JSON-RPC message/send request for the wire.
   const signature = signEnvelope(envelope, options.peer.secret);
+  const request = envelopeToSendRequest(envelope, randomUUID(), randomUUID());
   const fetchImpl = options.fetchImpl ?? fetch;
   const response = await fetchImpl(options.peer.url, {
-    body: JSON.stringify(envelope),
+    body: JSON.stringify(request),
     headers: {
       "content-type": "application/json",
       [A2A_SIGNATURE_HEADER]: signature
@@ -86,11 +92,17 @@ export function receiveFromPeer(options: ReceiveFromPeerOptions): InboundDecisio
   if (!isA2AEnabled(options.env)) {
     return { disposition: "reject", reason: "A2A is disabled on this Muse" };
   }
-  let envelope: unknown;
+  let body: unknown;
   try {
-    envelope = JSON.parse(options.rawBody) as unknown;
+    body = JSON.parse(options.rawBody) as unknown;
   } catch {
     return { disposition: "reject", reason: "unparseable A2A body" };
+  }
+  // Pull the flat envelope out of the A2A Message (JSON-RPC message/send or a
+  // bare Message); the safety core only ever sees the canonical envelope.
+  const envelope = extractEnvelopeFromA2ABody(body);
+  if (!envelope) {
+    return { disposition: "reject", reason: "no know-how DataPart in the A2A message" };
   }
   const fromPeerId = (envelope as { fromPeerId?: unknown }).fromPeerId;
   const peer = typeof fromPeerId === "string" ? options.registry.get(fromPeerId) : undefined;

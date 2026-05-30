@@ -1,9 +1,13 @@
 import { A2ASafetyError, type A2AEnvelope } from "@muse/agent-core";
 import { describe, expect, it } from "vitest";
 
+import { envelopeToSendRequest } from "./a2a-message.js";
 import { createPeerRegistry } from "./peer-registry.js";
 import { signEnvelope } from "./signing.js";
 import { A2A_SIGNATURE_HEADER, receiveFromPeer, sendToPeer } from "./transport.js";
+
+/** Frame an envelope as the A2A JSON-RPC body a receiver now expects. */
+const wire = (envelope: A2AEnvelope): string => JSON.stringify(envelopeToSendRequest(envelope, "msg-1", "rpc-1"));
 
 const SHARED = "shared-swarm-key";
 const ON = { MUSE_A2A_ENABLED: "true" } as const;
@@ -37,10 +41,15 @@ describe("sendToPeer — only know-how leaves, signed, over the wire", () => {
     expect(calls[0]!.url).toBe("https://phone.test/a2a");
     const headers = calls[0]!.init.headers as Record<string, string>;
     expect(headers[A2A_SIGNATURE_HEADER]).toMatch(/^[0-9a-f]{64}$/); // hex HMAC
-    const body = JSON.parse(String(calls[0]!.init.body)) as A2AEnvelope;
-    expect(body.kind).toBe("skill");
-    expect(body.content).not.toContain("sk-abc123"); // PII scrubbed before the wire
-    expect(body.fromPeerId).toBe("laptop");
+    // Wire body is a standard A2A JSON-RPC message/send carrying the envelope as a DataPart.
+    const reqBody = JSON.parse(String(calls[0]!.init.body)) as { jsonrpc: string; method: string; params: { message: { parts: { kind: string; data: A2AEnvelope }[] } } };
+    expect(reqBody.jsonrpc).toBe("2.0");
+    expect(reqBody.method).toBe("message/send");
+    const part = reqBody.params.message.parts[0]!;
+    expect(part.kind).toBe("data");
+    expect(part.data.kind).toBe("skill");
+    expect(part.data.content).not.toContain("sk-abc123"); // PII scrubbed before the wire
+    expect(part.data.fromPeerId).toBe("laptop");
   });
 
   it("sends NOTHING when A2A is disabled (opt-in)", async () => {
@@ -66,21 +75,26 @@ describe("receiveFromPeer — verify signature, then quarantine | reject (never 
   const validSig = signEnvelope(validEnvelope, SHARED);
 
   it("quarantines a valid, signed know-how payload from an allowlisted peer", () => {
-    const d = receiveFromPeer({ env: ON, rawBody: JSON.stringify(validEnvelope), registry: receiverRegistry, signature: validSig });
+    const d = receiveFromPeer({ env: ON, rawBody: wire(validEnvelope), registry: receiverRegistry, signature: validSig });
     expect(d.disposition).toBe("quarantine");
     expect(d.envelope?.kind).toBe("skill");
   });
 
   it("rejects a tampered envelope (content changed after signing)", () => {
     const tampered = { ...validEnvelope, content: "rm -rf / disguised as a skill" };
-    const d = receiveFromPeer({ env: ON, rawBody: JSON.stringify(tampered), registry: receiverRegistry, signature: validSig });
+    const d = receiveFromPeer({ env: ON, rawBody: wire(tampered), registry: receiverRegistry, signature: validSig });
     expect(d).toMatchObject({ disposition: "reject" });
     expect(d.reason).toMatch(/signature/i);
   });
 
+  it("rejects an A2A body with no know-how DataPart", () => {
+    const d = receiveFromPeer({ env: ON, rawBody: JSON.stringify({ jsonrpc: "2.0", method: "message/send", params: { message: { parts: [{ kind: "text", text: "hi" }] } } }), registry: receiverRegistry, signature: validSig });
+    expect(d).toMatchObject({ disposition: "reject" });
+  });
+
   it("rejects an unknown / non-allowlisted peer", () => {
     const stranger: A2AEnvelope = { ...validEnvelope, fromPeerId: "stranger" };
-    const d = receiveFromPeer({ env: ON, rawBody: JSON.stringify(stranger), registry: receiverRegistry, signature: signEnvelope(stranger, SHARED) });
+    const d = receiveFromPeer({ env: ON, rawBody: wire(stranger), registry: receiverRegistry, signature: signEnvelope(stranger, SHARED) });
     expect(d).toMatchObject({ disposition: "reject" });
   });
 
@@ -88,13 +102,13 @@ describe("receiveFromPeer — verify signature, then quarantine | reject (never 
     // A malicious allowlisted peer bypasses its own prepareOutbound and signs a
     // compute/tool payload. The receiver must still refuse it.
     const evil = { content: "{...}", fromPeerId: "laptop", kind: "tool-call", redacted: false } as unknown as A2AEnvelope;
-    const d = receiveFromPeer({ env: ON, rawBody: JSON.stringify(evil), registry: receiverRegistry, signature: signEnvelope(evil, SHARED) });
+    const d = receiveFromPeer({ env: ON, rawBody: wire(evil), registry: receiverRegistry, signature: signEnvelope(evil, SHARED) });
     expect(d).toMatchObject({ disposition: "reject" });
     expect(d.reason).toMatch(/know-how|never to execute/i);
   });
 
   it("rejects everything when A2A is disabled on the receiver", () => {
-    expect(receiveFromPeer({ env: {}, rawBody: JSON.stringify(validEnvelope), registry: receiverRegistry, signature: validSig }))
+    expect(receiveFromPeer({ env: {}, rawBody: wire(validEnvelope), registry: receiverRegistry, signature: validSig }))
       .toMatchObject({ disposition: "reject" });
   });
 });
