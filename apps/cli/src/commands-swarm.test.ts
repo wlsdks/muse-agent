@@ -196,3 +196,22 @@ describe("personal swarm — send → quarantine → promote (end to end)", () =
     expect(authored[0]!.frontmatter.requires).toBeUndefined();
   });
 });
+
+describe("renderSwarmStatus", () => {
+  it("shows on/off hints, peers, and the pending count", async () => {
+    const { renderSwarmStatus } = await import("./commands-swarm.js");
+    const out = renderSwarmStatus({ councilEnabled: false, enabled: true, pendingCount: 2, peers: [{ id: "phone", url: "https://phone/a2a" }], selfId: "laptop" });
+    expect(out).toContain("A2A:     ON");
+    expect(out).toContain("Council: OFF (set MUSE_A2A_COUNCIL=true)");
+    expect(out).toContain("You are: laptop");
+    expect(out).toContain("phone (https://phone/a2a)");
+    expect(out).toContain("Quarantined know-how awaiting review: 2");
+  });
+  it("guides setup when nothing is configured", async () => {
+    const { renderSwarmStatus } = await import("./commands-swarm.js");
+    const out = renderSwarmStatus({ councilEnabled: false, enabled: false, pendingCount: 0, peers: [], selfId: "" });
+    expect(out).toContain("A2A:     OFF (set MUSE_A2A_ENABLED=true)");
+    expect(out).toContain("selfId unset");
+    expect(out).toContain("(none — add them");
+  });
+});

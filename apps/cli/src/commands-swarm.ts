@@ -52,6 +52,32 @@ function whenMs(ms: number): string {
   return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
 }
 
+export interface SwarmStatus {
+  readonly enabled: boolean;
+  readonly councilEnabled: boolean;
+  readonly selfId: string;
+  readonly peers: readonly { readonly id: string; readonly url: string }[];
+  readonly pendingCount: number;
+}
+
+export function renderSwarmStatus(s: SwarmStatus): string {
+  const onOff = (v: boolean, hint: string): string => (v ? "ON" : `OFF (${hint})`);
+  const lines = [
+    "Muse swarm — status",
+    `  A2A:     ${onOff(s.enabled, "set MUSE_A2A_ENABLED=true")}`,
+    `  Council: ${onOff(s.councilEnabled, "set MUSE_A2A_COUNCIL=true")}`,
+    `  You are: ${s.selfId.length > 0 ? s.selfId : "(selfId unset in ~/.muse/a2a-peers.json)"}`,
+    s.peers.length > 0
+      ? `  Peers (${s.peers.length.toString()}): ${s.peers.map((p) => `${p.id} (${p.url})`).join(", ")}`
+      : "  Peers:   (none — add them to ~/.muse/a2a-peers.json)",
+    `  Quarantined know-how awaiting review: ${s.pendingCount.toString()}${s.pendingCount > 0 ? "  → muse swarm pending" : ""}`,
+    "",
+    "  Serve inbound:  muse swarm serve        Share a skill:  muse swarm share <skill> --to <peer>",
+    "  Convene:        muse swarm council \"<question>\""
+  ];
+  return lines.join("\n");
+}
+
 export function renderPending(entries: readonly SwarmQuarantineEntry[]): string {
   const pending = listPending(entries);
   if (pending.length === 0) {
@@ -123,6 +149,22 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
   const swarm = program
     .command("swarm")
     .description("Review know-how other Muses shared with you (A2A swarm — inbound is inert until you promote it)");
+
+  swarm
+    .command("status")
+    .description("Show your swarm setup — A2A on/off, council, peers, and pending know-how")
+    .action(async () => {
+      const env = process.env;
+      const config = await loadPeerConfig(peersFile());
+      const pendingCount = listPending(await readQuarantine(quarantineFile())).length;
+      io.stdout(`${renderSwarmStatus({
+        councilEnabled: ["true", "1", "yes", "on"].includes((env.MUSE_A2A_COUNCIL ?? "").trim().toLowerCase()),
+        enabled: isA2AEnabled(env),
+        pendingCount,
+        peers: config.peers.map((p) => ({ id: p.id, url: p.url })),
+        selfId: config.selfId
+      })}\n`);
+    });
 
   swarm
     .command("pending")
