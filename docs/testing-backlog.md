@@ -418,6 +418,17 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Compat run-aggregation helpers (untested) — the pure tool-usage / failure
+  / latency analytics behind the admin observability routes (the ToolCorrectness +
+  StepEfficiency observability surface). compat-run-aggregations.test.ts:
+  toolCallRanking (per-tool total+failures, total-desc); toolOutcomeStats
+  (outcome classification completed→ok / blocked→invalid_arg / failed+timeout →
+  timeout / failed+404 → not_found, server-prefix derivation incl. no-colon→local,
+  accuracy=ok/total, divide-by-zero-safe, server filter); aggregateFailurePatterns
+  (classifyRunError buckets timeout/guard/plan_*/null→unknown/other, sampleRunIds
+  capped at 5, count-desc); dailyUsage (per-UTC-day cost+runs, date-asc);
+  latencyDistribution (0-1s/1-5s/5-30s/30s+ buckets + missing-timestamp→unknown).
+  api 503 pass.
 - [x] eval:tools actuator-set KO positive — added "거실 불 꺼줘." → home_action
   (requireArgs service) to the actuator confusable scenario. The state-changing
   actuator positives were all English; the KO cases there were only NEGATIVE
