@@ -163,6 +163,15 @@ export {
   type SynthesizeReflectionsOptions
 } from "./reflection-synthesis.js";
 export {
+  buildCouncilPrompt,
+  parseCouncilAnswer,
+  produceCouncilReasoning,
+  synthesizeCouncilAnswer,
+  type CouncilAnswer,
+  type CouncilModelOptions,
+  type CouncilUtterance
+} from "./council.js";
+export {
   A2ASafetyError,
   classifyInbound,
   isA2AEnabled,
