@@ -418,6 +418,17 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Conversation-trim DEFAULT (temporal) budget contract (the existing
+  token-trim test covered only compactionStrategy="importance"; the default-path
+  budget math + triggeredBy three-state + summary + tool-pair integrity were
+  untested). token-trim-budget.test.ts: estimateConversationTokens 0-for-empty /
+  positive; under-budget → no-op + triggeredBy "none"; hard limit (budget ≤ 0)
+  keeps ONLY the last user message; over-budget drops old history + lands within
+  budget ("hard_limit"); a PROACTIVE working-budget trim fires under the hard cap
+  ("working_budget"); a [Conversation summary] system message inserts once the
+  dropped count meets the threshold; an orphaned tool message (no preceding tool
+  call) is removed (pair integrity). This is the context-window manager — a wrong
+  trim drops the needed message or blows the model budget. memory 256 pass.
 - [x] Messaging-provider reliability primitives (the daily-reliability seams —
   the human-directed "harden actuators against rate-limit / 5xx / retry /
   timeout" focus — were untested). provider-helpers.test.ts: clampOutboundText
