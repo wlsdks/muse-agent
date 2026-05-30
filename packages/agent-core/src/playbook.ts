@@ -160,6 +160,21 @@ export function clampReward(value: number | undefined): number {
   return Math.max(PLAYBOOK_REWARD_MIN, Math.min(PLAYBOOK_REWARD_MAX, value));
 }
 
+/**
+ * Learned avoidance: a strategy whose reward has sunk to or below this is
+ * EXCLUDED from injection entirely (not merely deranked) — even in a small bank
+ * where ranking would otherwise return everything. The soft, reversible
+ * counterpart to the veto store: a strategy corrected this many times stops
+ * being applied, but stays in the bank (visible, and an approval can lift it
+ * back above the line).
+ */
+export const PLAYBOOK_AVOID_BELOW = -4;
+
+/** True when a strategy has been corrected enough that it is avoided (never injected). */
+export function isAvoidedStrategy(strategy: PlaybookStrategy): boolean {
+  return clampReward(strategy.reward) <= PLAYBOOK_AVOID_BELOW;
+}
+
 function scoreStrategy(strategy: PlaybookStrategy, query: ReadonlySet<string>): number {
   const relevance = query.size === 0
     ? 0
@@ -186,15 +201,18 @@ export function rankPlaybookStrategies(
   const topK = Math.max(1, Math.trunc(finiteOr(options?.topK, DEFAULT_RANK_TOPK)));
   const minScore = finiteOr(options?.minScore, 0);
   const query = rankTokens(queryText);
+  // Learned avoidance: a strategy corrected into the floor is never injected,
+  // even when the bank is at/below topK (where ranking returns everything).
+  const eligible = strategies.filter((s) => !isAvoidedStrategy(s));
   // Input is oldest→newest insertion order, so `index` doubles as a recency
   // proxy (higher = more recent) for the floor below.
-  const scored = strategies.map((strategy, index) => ({
+  const scored = eligible.map((strategy, index) => ({
     index,
     score: scoreStrategy(strategy, query),
     strategy
   }));
 
-  if (strategies.length <= topK) {
+  if (eligible.length <= topK) {
     return [...scored].sort(byScoreDescThenIndexAsc).map((s) => s.strategy);
   }
 

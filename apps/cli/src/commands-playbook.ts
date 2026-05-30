@@ -8,7 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import { clusterByTextSimilarity, mergePlaybookStrategies, strategyTextSimilarity } from "@muse/agent-core";
+import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity } from "@muse/agent-core";
 import { createMuseRuntimeAssembly, resolvePlaybookFile } from "@muse/autoconfigure";
 import { queryPlaybook, recordPlaybookStrategy, removePlaybookStrategy, type PlaybookEntry } from "@muse/mcp";
 import type { Command } from "commander";
@@ -64,7 +64,8 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
       }
       for (const e of entries) {
         const reward = typeof e.reward === "number" && Number.isFinite(e.reward) ? e.reward : 0;
-        const rewardTag = reward === 0 ? "" : ` ⟨reward ${reward > 0 ? "+" : ""}${reward.toString()}⟩`;
+        const avoided = reward <= PLAYBOOK_AVOID_BELOW ? " · avoided (not injected)" : "";
+        const rewardTag = reward === 0 ? "" : ` ⟨reward ${reward > 0 ? "+" : ""}${reward.toString()}${avoided}⟩`;
         io.stdout(`  [${e.id.slice(0, 12)}]${e.tag ? ` (${e.tag})` : ""}${rewardTag} ${e.text}\n`);
       }
     });
