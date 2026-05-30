@@ -94,6 +94,20 @@ describe("computeNextRunAt fails closed on a blank / corrupt cron", () => {
     expect(computeNextRunAt({ cronExpression: "0 9 * * 1-5", timezone: "UTC" }, from).toISOString())
       .toBe("2026-05-20T09:00:00.000Z");
   });
+
+  it("applies the job timezone — '0 9 * * *' resolves to the right UTC instant per zone, not silently UTC", () => {
+    // The same '9am daily' cron fires at DIFFERENT UTC instants by zone; a
+    // regression that dropped the `tz` option would make all three equal to the
+    // UTC answer and silently fire reminders at the wrong local hour.
+    const at = new Date("2026-05-19T08:00:00Z");
+    const utc = computeNextRunAt({ cronExpression: "0 9 * * *", timezone: "UTC" }, at).toISOString();
+    const seoul = computeNextRunAt({ cronExpression: "0 9 * * *", timezone: "Asia/Seoul" }, at).toISOString();
+    const newYork = computeNextRunAt({ cronExpression: "0 9 * * *", timezone: "America/New_York" }, at).toISOString();
+    expect(utc).toBe("2026-05-19T09:00:00.000Z");      // 09:00Z today
+    expect(seoul).toBe("2026-05-20T00:00:00.000Z");    // 9am KST (UTC+9) = 00:00Z, next is tomorrow
+    expect(newYork).toBe("2026-05-19T13:00:00.000Z");  // 9am EDT (UTC-4 in May) = 13:00Z today
+    expect(new Set([utc, seoul, newYork]).size).toBe(3); // tz genuinely changes the instant
+  });
 });
 
 describe("validateJobName", () => {

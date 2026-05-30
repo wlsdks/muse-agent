@@ -949,6 +949,13 @@ the generic layers below because they test what makes Muse an *agent*.
   `fromEnv.length > 0` guard must drop that peer exactly like the unset case —
   a distinct branch left unguarded. Added a peer whose secretEnv → "" is dropped
   while an inline-secret peer survives. Pre-verified against dist. a2a 81→83 pass.
+- [x] computeNextRunAt timezone application — every prior case ran with
+  `timezone: "UTC"`, so the `tz` option's EFFECT was unverified: a regression
+  dropping it would silently fire reminders at the wrong local hour (a daily-
+  reliability defect). Added a single '0 9 * * *' (9am daily) resolved per zone
+  from the same instant: UTC → 09:00Z, Asia/Seoul (UTC+9) → next 00:00Z,
+  America/New_York (EDT UTC-4) → 13:00Z — three DISTINCT UTC instants, proving tz
+  genuinely shifts the next-fire. Pre-verified against dist. scheduler 83→84 pass.
 - [x] Prompt-injection detection — multilingual + privacy categories (the
   existing injection-patterns test covered English normalization + goal-033
   patterns; the Korean/CJK/Spanish and privacy patterns were undetected-in-test).
