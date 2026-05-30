@@ -15,6 +15,19 @@ function provider(opts: { geocode?: unknown; forecast?: unknown; geocodeStatus?:
   return new OpenMeteoWeatherProvider(fetchImpl, { baseDelayMs: 0, sleep: async () => {} });
 }
 
+// A provider whose HTTP layer keeps failing the way a real outage does — a
+// persistent transient status (retries exhaust → throw), a network reject, or a
+// 200 with a non-JSON body (malformed third-party response). Drives the REAL
+// OpenMeteoWeatherProvider + fetchWithRetry, not a stubbed provider.
+function failingProvider(mode: "status" | "reject" | "malformed", status = 503) {
+  const fetchImpl = (async () => {
+    if (mode === "reject") throw new Error("ECONNRESET");
+    if (mode === "malformed") return new Response("<html>503 from a proxy</html>", { status: 200 });
+    return new Response("", { status });
+  }) as unknown as typeof globalThis.fetch;
+  return new OpenMeteoWeatherProvider(fetchImpl, { baseDelayMs: 0, sleep: async () => {} });
+}
+
 describe("createWeatherTool — on-demand weather perception", () => {
   it("is risk:read and returns a weather line for a found location", async () => {
     const tool = createWeatherTool({ provider: provider() });
@@ -63,5 +76,32 @@ describe("createWeatherTool — on-demand weather perception", () => {
     const tool = createWeatherTool({ provider: provider() });
     expect((tool.definition.inputSchema as { required?: string[] }).required).toEqual(["location"]);
     expect(await tool.execute({})).toMatchObject({ found: false });
+  });
+
+  // Reliability under a real-world outage: a tool that THROWS on a transient
+  // upstream failure breaks the agent's tool loop. The current-weather path must
+  // degrade to found:false, never reject.
+  it("current weather: a persistent 503 (retries exhausted) → found:false, the tool never throws", async () => {
+    const tool = createWeatherTool({ provider: failingProvider("status", 503) });
+    const out = await tool.execute({ location: "Seoul" }) as { found: boolean; reason?: string };
+    expect(out.found).toBe(false);
+    expect(out.reason).toBeDefined();
+  });
+
+  it("current weather: a network reject → found:false, the tool never throws", async () => {
+    const tool = createWeatherTool({ provider: failingProvider("reject") });
+    await expect(tool.execute({ location: "Seoul" })).resolves.toMatchObject({ found: false });
+  });
+
+  it("current weather: a 200 with a malformed (non-JSON) body → found:false, no parse-throw escapes", async () => {
+    const tool = createWeatherTool({ provider: failingProvider("malformed") });
+    await expect(tool.execute({ location: "Seoul" })).resolves.toMatchObject({ found: false });
+  });
+
+  it("forecast path (`when` set): a persistent 5xx → found:false with the date echoed, no throw", async () => {
+    const tool = createWeatherTool({ now: () => new Date("2026-05-30T00:00:00Z"), provider: failingProvider("status", 502) });
+    const out = await tool.execute({ location: "Seoul", when: "2026-05-31" }) as { found: boolean; date?: string };
+    expect(out.found).toBe(false);
+    expect(out.date).toBe("2026-05-31");
   });
 });
