@@ -43,6 +43,25 @@ describe("createKnowledgeSearchTool — definition meets the one-shot tool-calli
     const props = (tool.definition.inputSchema as { properties: Record<string, { description?: string }> }).properties;
     expect(props.query.description ?? "").toContain("e.g.");
   });
+
+  it("execute returns CITED matches for an in-corpus query (the WEDGE tool surface)", async () => {
+    // The execute path was exercised only by the live cited-recall battery, never
+    // a unit test. Pin it: an in-corpus query returns the rendered, source-labelled
+    // passages with the cite header — the agent is told to quote the source.
+    const tool = createKnowledgeSearchTool({ corpus: CORPUS, embed });
+    const out = await tool.execute({ query: "home insurance policy" });
+    expect(out).toContain("cite the [source]");
+    expect(out).toContain("docs/insurance.pdf");
+    expect(out).toContain("HOME-99812");
+  });
+
+  it("execute degrades to the no-match banner for an empty / non-string query (never throws or fabricates)", async () => {
+    const tool = createKnowledgeSearchTool({ corpus: CORPUS, embed });
+    expect(await tool.execute({ query: "" })).toBe("No matching passages found in the personal corpus.");
+    // A non-string query coerces to "" (not a crash, not a guessed search).
+    expect(await tool.execute({ query: 42 } as unknown as { query: string }))
+      .toBe("No matching passages found in the personal corpus.");
+  });
 });
 
 describe("rankKnowledgeChunks", () => {
@@ -89,6 +108,16 @@ describe("rankKnowledgeChunks", () => {
     const diverse = await rankKnowledgeChunks("x y z", corpus, { diversify: true, embed: termEmbed, topK: 2 });
     expect(diverse.map((m) => m.source)).toContain("distinct.md");
     expect(diverse.map((m) => m.source)).not.toContain("dupeB.md");
+
+    // The HYBRID (cosine+lexical fused) ranker has its OWN MMR branch — exercised
+    // only by the live cited-recall battery, never a unit test. Pin it: with
+    // hybrid+diversify the near-duplicate is still dropped for the distinct
+    // passage, whereas hybrid WITHOUT diversify keeps both dupes.
+    const hybridDiverse = await rankKnowledgeChunks("x y z", corpus, { diversify: true, embed: termEmbed, hybrid: true, topK: 2 });
+    expect(hybridDiverse.map((m) => m.source)).toContain("distinct.md");
+    expect(hybridDiverse.map((m) => m.source)).not.toContain("dupeB.md");
+    const hybridPlain = await rankKnowledgeChunks("x y z", corpus, { embed: termEmbed, hybrid: true, topK: 2 });
+    expect(hybridPlain.map((m) => m.source)).toEqual(["dupeA.md", "dupeB.md"]);
   });
 
   it("ranks multi-source chunks by similarity, keeps the source, drops sub-threshold passages", async () => {

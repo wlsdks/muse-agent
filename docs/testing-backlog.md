@@ -175,6 +175,36 @@ the generic layers below because they test what makes Muse an *agent*.
     untested. (2) `trimTrailingBlankLines` — a removable block followed by trailing
     blank lines must still classify + strip; asserted an empty-fallback block with
     3 trailing blanks is still removed. policy 108→110.
+  - TENTH MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    knowledge-recall.ts` = **65.09%** with 14 NoCoverage — the WEDGE recall ranker.
+    The biggest NoCoverage cluster (193-200) is the MMR diversify branch INSIDE the
+    HYBRID (cosine+lexical fused) ranker: the existing MMR test covers only the
+    non-hybrid path, and the hybrid+diversify combination is exercised solely by
+    the LIVE cited-recall battery (invisible to the vitest Stryker run). Pinned it
+    in a unit test: with hybrid+diversify the near-duplicate (dupeB) is still
+    dropped for the distinct passage, while hybrid WITHOUT diversify keeps both
+    dupes. (Remaining NoCoverage — overlapTail chunk-stitching, the
+    createKnowledgeSearchTool execute — are smaller follow-ups.) agent-core stable
+    at 1080 (assertions added to the existing MMR test).
+    - Chipped the follow-up: `createKnowledgeSearchTool.execute` (the knowledge_search
+      TOOL = WEDGE-as-a-tool) was NoCoverage — the agent-loop integration didn't
+      actually invoke it. Added a direct unit test: an in-corpus query returns the
+      cited, source-labelled passages ("cite the [source]" + docs/insurance.pdf +
+      the policy number), and an empty / non-string query degrades to the no-match
+      banner (never throws / fabricates). agent-core 1080→1082.
+  - ELEVENTH MEASUREMENT (throwaway, reused install, NOT committed): `policy/
+    pii-patterns.ts` = **52.76%** — another security detector dominated by
+    un-asserted patterns. Only us-ssn / credit-card / jp-my-number / ipv4 / ipv6
+    were positively asserted; the KOREAN classes (kr-national-id 주민번호 /
+    kr-phone / kr-driver-license / kr-passport — the user's MOST sensitive PII)
+    plus email and iban had no detection assertion, so a regex regression would
+    silently stop redacting them. Added per-class detection assertions for all
+    four KR classes + email + iban + a benign-Korean control, and a maskPii test
+    proving a KR national-id + email are actually REDACTED (not just detected).
+    policy 110→112.
+    - Verified-not-a-gap (artifact): the knowledge-recall `applyOverlap` 394-397
+      NoCoverage was a Stryker per-test attribution artifact — apply-overlap.test.ts
+      already covers the stitch loop thoroughly; no redundant test added.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,

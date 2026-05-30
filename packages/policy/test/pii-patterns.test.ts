@@ -91,4 +91,25 @@ describe("PII patterns", () => {
     const plain = maskPii("Q3 budget due: review by Friday");
     expect(plain.text).toBe("Q3 budget due: review by Friday");
   });
+
+  it("detects each high-value PII class — incl. all the KOREAN ones (the user's most sensitive PII)", () => {
+    const named = (text: string) => findPii(text).map((f) => f.name);
+    // Korean PII: only us-ssn / credit-card / jp-my-number were positively asserted before.
+    expect(named("주민번호 900101-1234567")).toContain("kr-national-id");
+    expect(named("연락처 010-1234-5678")).toContain("kr-phone");
+    expect(named("면허 11-22-334455-66")).toContain("kr-driver-license");
+    expect(named("여권 M12345678")).toContain("kr-passport");
+    // Email + IBAN classes were also unasserted.
+    expect(named("메일 a.b@example.co.kr")).toContain("email");
+    expect(named("IBAN DE89 3704 0044 0532 0130 00")).toContain("iban");
+    // A plain Korean sentence trips none (no over-redaction).
+    expect(named("그냥 평범한 문장입니다")).toEqual([]);
+  });
+
+  it("maskPii actually REDACTS a Korean national-id + email (not just detects)", () => {
+    const result = maskPii("주민 900101-1234567 메일 a@b.com");
+    expect(result.text).not.toContain("900101-1234567");
+    expect(result.text).not.toContain("a@b.com");
+    expect(result.findings.map((f) => f.name)).toEqual(expect.arrayContaining(["kr-national-id", "email"]));
+  });
 });
