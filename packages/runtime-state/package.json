@@ -19,6 +19,6 @@
   "dependencies": {
     "@muse/db": "workspace:*",
     "@muse/shared": "workspace:*",
-    "kysely": "^0.29.0"
+    "kysely": "^0.29.2"
   }
 }
