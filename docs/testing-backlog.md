@@ -903,6 +903,14 @@ the generic layers below because they test what makes Muse an *agent*.
   처리했습니다.\n모든 작업이 완료되었습니다.") is NOT stripped (a true "all done" on
   real results is legitimate, not an overclaim). Guards an OR-for-AND mutation that
   would erase a real result. Pre-verified against dist. agent-core 1078→1079.
+- [x] scheduler agent-tool failure contract — the scheduler tools test proved the
+  happy create/list/trigger/dry-run path but not the agent-facing failure modes.
+  Added: scheduler_create_job with a MISSING required cronExpression rejects with
+  SchedulerValidationError (never persists a scheduleless job the local model's
+  omission would otherwise create); and scheduler_trigger_job / dry_run on an
+  UNKNOWN jobId return a clean { result: "Job not found: <id>" } instead of
+  throwing (a throw would break the tool loop and lose the turn). Pre-verified
+  against dist. scheduler 81→83 pass.
 - [x] Prompt-injection detection — multilingual + privacy categories (the
   existing injection-patterns test covered English normalization + goal-033
   patterns; the Korean/CJK/Spanish and privacy patterns were undetected-in-test).

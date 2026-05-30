@@ -477,6 +477,37 @@ describe("scheduler tools", () => {
     expect(store.findById("job-1")?.lastStatus).toBe("success");
     expect(executions.findByJobId("job-1")).toHaveLength(2);
   });
+
+  function toolsetByName() {
+    const service = new DynamicScheduler({
+      dispatcher: new ScheduledJobDispatcher({
+        agentExecutor: { execute: async (job) => `ran:${job.name}` },
+        mcpInvoker: createUnusedMcpInvoker()
+      }),
+      executionStore: new InMemoryScheduledJobExecutionStore({ idFactory: () => "exec-1" }),
+      store: new InMemoryScheduledJobStore({ idFactory: () => "job-1" })
+    });
+    return new Map(createSchedulerTools(service).map((tool) => [tool.definition.name, tool]));
+  }
+
+  it("scheduler_create_job rejects a missing required cronExpression — never persists a cron-less job", async () => {
+    // The local model may omit the required arg; the create tool must reject it
+    // (a job with no schedule would never fire / is meaningless), surfaced as the
+    // validation error, not a silent half-created job.
+    const byName = toolsetByName();
+    await expect(byName.get("scheduler_create_job")?.execute({ agentPrompt: "p", jobType: "agent", name: "No schedule" }, { runId: "run-1" }))
+      .rejects.toBeInstanceOf(SchedulerValidationError);
+  });
+
+  it("scheduler_trigger_job / dry_run on an UNKNOWN jobId return a clean 'not found' result, never throw", async () => {
+    // An agent-invoked trigger for a stale/wrong id must degrade gracefully — a
+    // thrown error here would break the tool loop and lose the turn.
+    const byName = toolsetByName();
+    await expect(byName.get("scheduler_trigger_job")?.execute({ jobId: "ghost" }, { runId: "run-1" }))
+      .resolves.toEqual({ jobId: "ghost", result: "Job not found: ghost" });
+    await expect(byName.get("scheduler_dry_run_job")?.execute({ jobId: "ghost" }, { runId: "run-1" }))
+      .resolves.toEqual({ dryRun: true, jobId: "ghost", result: "Job not found: ghost" });
+  });
 });
 
 describe("Kysely mapping helpers", () => {
