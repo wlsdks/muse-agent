@@ -274,10 +274,22 @@ the generic layers below because they test what makes Muse an *agent*.
     mutation queue + randomUUID tmp: 25 overlapping ticks marking distinct
     messages all preserved (no double-reply), 30 racing same-key writes converge
     to 1, 0 crash. inbox-reply-cursor.test.ts +2 (messaging 294).
+  - [x] Single-flight lock PRIMITIVE covered — the distributed scheduler lock
+    that enforces "only one pod runs a job per TTL window" (a broken lock = the
+    same job firing twice = a double email/charge). scheduler-locks.test.ts
+    drives the InMemory lock's process-global contention map: mutual exclusion
+    (2nd owner blocked while TTL valid), owner-scoped release (a foreign release
+    does NOT free it), TTL-expiry steal (stealable at exactly lockedUntil, strict
+    >), per-job independence, non-positive-TTL floor; + NoOp always-acquire + the
+    createScheduledJobLockInsert row builder (locked_until = now+ttl, floored).
+    scheduler 81 pass. (The KyselyDistributedSchedulerLock's ON CONFLICT … WHERE
+    SQL semantics are NOT faked — they belong to the testcontainers Postgres item
+    above; a hand fake would assert the mock, not the lock.)
   - [ ] Remaining: migrate the other ~10 read-modify-write stores
     (reminders / tasks / episodes / proactive-history / patterns-fired /
     plan-cache / …) onto the shared helper — a cheap one-each adoption.
-    single-flight daemon race test still open.
+    Full daemon-level single-flight integration (the lock wired through the live
+    scheduler tick) still open above the primitive.
 
 ## P5 — surface & contract
 
@@ -401,3 +413,17 @@ the generic layers below because they test what makes Muse an *agent*.
 - [x] `smoke:live` streaming fix (`6fd24d36`) — was buffered, not hung; verified
   17 checks green live.
 - [x] `eval:tools` live baseline green (32→39 cases, `79fcee09`).
+- [x] Low-density package exhaustion (core saturated → widen the edges): voice
+  (piper/whisper/openai adapters, registry, wake-word), observability
+  (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
+  scheduler-locks (single-flight contention), skills skill-loader (fail-open
+  directory walk + later-root-wins precedence).
+- [x] Built-in tool HANDLER output-correctness (complements gap A's tool
+  SELECTION): muse-tools-time — the 6 time/date/scheduling tools (time_now,
+  time_diff, time_add, time_relative, next_weekday_date, cron_for_datetime)
+  asserted known-answer with an injected clock. eval:tools proves the model
+  PICKS these; this proves the handler returns the RIGHT answer (a wrong
+  duration / weekday / cron is a confident wrong answer). Covers signed-duration
+  + humanizer, multi-field add, future/past/now direction, next-upcoming
+  (strictly future + same-day→next-week), cron per mode + the monthly>28 warning,
+  and every error path. tools 187 pass.
