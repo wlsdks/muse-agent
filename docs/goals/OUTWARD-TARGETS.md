@@ -90,7 +90,17 @@ true for self-knowledge, which no cloud "dreaming" can match.
   grounded ones; `muse reflections` lists each insight WITH the real episode ids
   it came from. Verified live: 5 seeded episodes → 2 grounded reflections (the 3
   networking episodes grouped + cited as ep-101/102/103; the 2 admin ones as
-  ep-104/105). 4 store + 3 cli tests. (Next P32-3: auto-run during daemon idle.)
+  ep-104/105). 4 store + 3 cli tests.
+- [x] **P32-3 Auto-dream during daemon idle.** `muse daemon` runs a throttled
+  background `reflectionTick` (off by default, `MUSE_REFLECTION_ENABLED`; slow
+  cadence, `MUSE_REFLECTION_INTERVAL_MS` default 6h) that synthesises grounded
+  reflections from recent episodes with NO user action and persists only the
+  ones cited to real episodes — so insights accrue while Muse sits resident.
+  Also fixed: the tick now writes via `resolveReflectionsFile(e)` (the daemon's
+  injected env), not a global `process.env` path. Verified by a contract-faithful
+  daemon test — enabled + 3 episodes → exactly one grounded reflection persisted
+  citing only e1/e2/e3 and a `reflections: +1` line; flag unset → nothing written
+  (the gate is real). Closes the P32 dreaming epic (synth → surface → idle auto-run).
 
 ## Delivered — P31 (Muse acts on the world, gated draft-first)
 

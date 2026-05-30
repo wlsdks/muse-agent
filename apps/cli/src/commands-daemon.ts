@@ -826,7 +826,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           const added = await runReflectionPass(inputs, {
             model: followupModel.model,
             modelProvider: followupModel.modelProvider as Parameters<typeof runReflectionPass>[1]["modelProvider"],
-            reflectionsFile: resolveReflectionsFile()
+            reflectionsFile: resolveReflectionsFile(e)
           });
           if (added > 0) io.stdout(`[${new Date(nowMs).toISOString()}] reflections: +${added.toString()} (see \`muse reflections\`)\n`);
         } catch { /* fail-soft — dreaming is a background nicety */ }
