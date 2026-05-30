@@ -467,6 +467,13 @@ the generic layers below because they test what makes Muse an *agent*.
   capped at 5, count-desc); dailyUsage (per-UTC-day cost+runs, date-asc);
   latencyDistribution (0-1s/1-5s/5-30s/30s+ buckets + missing-timestamp→unknown).
   api 503 pass.
+- [x] ① playbook-merge cross-domain positive — added a redundant SCHEDULING
+  cluster ("leave buffer time / avoid back-to-back" ×2 → one merged strategy) so
+  the merge positive isn't overfit to the summarise domain. (Finding: same-domain
+  ORTHOGONAL email advice merges by COMBINING — "cc manager AND keep under 4
+  sentences" — preserving both pieces, so it's a legit merge not a collapse;
+  hence a cross-domain positive, not a same-domain negative.) Pre-verified STABLE
+  3/3 merged; verify-playbook-merge 3/3 ALL PASS on qwen3:8b. LOCAL OLLAMA ONLY.
 - [x] ① skill-merge keyword-overlap negative — added a shared-keyword,
   different-domain cluster (lock-front-door [smart home] + lock-spreadsheet-cell
   [document]) that must return NONE, proving the curator doesn't force-merge on
