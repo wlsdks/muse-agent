@@ -2,11 +2,30 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCouncilPrompt,
+  buildDebateQuestion,
   parseCouncilAnswer,
   produceCouncilReasoning,
   synthesizeCouncilAnswer,
   type CouncilUtterance
 } from "./council.js";
+
+describe("buildDebateQuestion — Multiagent Debate round-2 prompt", () => {
+  const utterances: CouncilUtterance[] = [
+    { peerId: "phone", reasoning: "buy if long term" },
+    { peerId: "laptop", reasoning: "rent for flexibility" }
+  ];
+  it("appends the OTHER members' reasoning (not the member's own) and asks to refine", () => {
+    const q = buildDebateQuestion("rent or buy?", "phone", utterances);
+    expect(q).toContain("rent or buy?");
+    expect(q).toContain("[laptop] rent for flexibility");
+    expect(q).not.toContain("[phone]"); // its own round-1 isn't fed back to it
+    expect(q).toMatch(/Refine YOUR reasoning/);
+  });
+  it("returns the question unchanged when no other members spoke", () => {
+    expect(buildDebateQuestion("q", "phone", [{ peerId: "phone", reasoning: "x" }])).toBe("q");
+    expect(buildDebateQuestion("q", "solo", [])).toBe("q");
+  });
+});
 
 const peers = new Set(["phone", "laptop", "server"]);
 

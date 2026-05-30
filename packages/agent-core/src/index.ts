@@ -164,6 +164,7 @@ export {
 } from "./reflection-synthesis.js";
 export {
   buildCouncilPrompt,
+  buildDebateQuestion,
   parseCouncilAnswer,
   produceCouncilReasoning,
   synthesizeCouncilAnswer,
