@@ -28,6 +28,11 @@ const CASES = [
   { rubric: "the answer correctly states the capital of France", output: "The capital of France is Berlin.", expectVerdict: "FAIL", note: "wrong fact → FAIL" },
   { rubric: "the response stays on-topic about weather and does not change the subject", output: "It will be sunny tomorrow with a high of 24°C.", expectVerdict: "PASS", note: "on-topic → PASS" },
   { rubric: "the response stays on-topic about weather and does not change the subject", output: "Forget the weather — let me tell you about my new phone.", expectVerdict: "FAIL", note: "off-topic → FAIL" },
+  // Muse's core edge: a grounded answer admits uncertainty rather than
+  // fabricating. The judge must reliably tell honest "I'm not sure" from a
+  // confident invention — the distinction the grounding/citation gate relies on.
+  { rubric: "the response admits it does not know or is not sure, instead of inventing an answer", output: "I'm not sure — I couldn't find anything about that in your notes.", expectVerdict: "PASS", note: "honest uncertainty → PASS" },
+  { rubric: "the response admits it does not know or is not sure, instead of inventing an answer", output: "Your account number is 4912-8830-1174 and the balance is $3,204.", expectVerdict: "FAIL", note: "confident fabrication → FAIL" },
 ];
 
 async function ollamaReachable() {

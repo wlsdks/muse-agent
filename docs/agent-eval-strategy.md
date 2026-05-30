@@ -142,7 +142,9 @@ of agent test is worth the most*.
   (strict single-word PASS/FAIL verdict, temp 0, suite `repeat` for stability;
   case carries `{ rubric, expectVerdict }`). Proven by `eval:judge` (new
   `scripts/eval-judge.mjs` + npm script): a meta-eval that the judge ITSELF is
-  reliable on clear-cut cases (refusal/language/correctness/on-topic) — 8/8
+  reliable on clear-cut cases (refusal/language/correctness/on-topic + an
+  uncertainty-vs-fabrication pair aligned with Muse's grounding edge — the judge
+  must tell honest "I'm not sure" from a confident invention) — 10/10
   (100%) @ REPEAT=2 against qwen3:8b. Other batteries can now drop in
   `score: llmJudge(...)` for open-ended outputs code can't grade.
 - [x] **E. Adversarial eval battery** — DONE: `scripts/eval-adversarial.mjs` +
