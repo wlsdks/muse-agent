@@ -418,6 +418,14 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Compat-routes generic helpers (untested) — compat-routes-helpers.test.ts:
+  readIfMatchVersion (optimistic-concurrency header parse — quoted/plain version,
+  first of an array, non-numeric/missing → undefined so a typo never becomes a
+  version); findCompatRecord (id → name → channelId fallback lookup); createRecord
+  (generates/honors the id, stores the record, PRESERVES createdAt across a
+  re-create); toCompatRuntimeSetting (null fallbacks, ISO timestamp, type
+  upper-cased). api 649 pass; build typecheck green (caught a RuntimeSetting
+  non-export + CompatRecord cast before commit).
 - [x] Agent-spec compat serializers (untested) — compat-agent-spec.test.ts:
   parseAgentSpecInput (non-object/missing-name rejected, name from id fallback,
   invalid mode rejected, valid spec drops undefined fields); toAgentSpecResponse
