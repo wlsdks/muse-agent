@@ -17,6 +17,15 @@ import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 /** Newest entries kept — bounds the file + the injected context. */
 export const MAX_PLAYBOOK_ENTRIES = 100;
 
+/**
+ * Learned-reward bounds (RL over the bank): the net outcome signal per
+ * strategy is clamped here so one streak can't dominate. Kept in sync with
+ * agent-core's `PLAYBOOK_REWARD_MIN/MAX` (mcp stays free of an agent-core
+ * dependency, so the range is declared on both sides — they MUST agree).
+ */
+export const PLAYBOOK_REWARD_MIN = -5;
+export const PLAYBOOK_REWARD_MAX = 5;
+
 export interface PlaybookEntry {
   readonly id: string;
   readonly userId: string;
@@ -25,6 +34,13 @@ export interface PlaybookEntry {
   /** Optional task-class tag (e.g. "email", "scheduling"). */
   readonly tag?: string;
   readonly createdAt: string;
+  /**
+   * Net learned reward (reinforcements − decays), clamped to
+   * [PLAYBOOK_REWARD_MIN, PLAYBOOK_REWARD_MAX]. Absent on entries written
+   * before rewards existed → read as 0 (neutral). Mutated via
+   * `adjustPlaybookReward`; consumed by agent-core's reward-weighted ranking.
+   */
+  readonly reward?: number;
 }
 
 async function quarantineCorruptStore(file: string): Promise<void> {
@@ -93,6 +109,37 @@ export async function removePlaybookStrategy(file: string, id: string): Promise<
   });
 }
 
+/**
+ * Reinforce (delta > 0) or decay (delta < 0) a strategy's learned reward,
+ * clamped to [PLAYBOOK_REWARD_MIN, PLAYBOOK_REWARD_MAX] — the RL update over
+ * the bank: a correction-implicated strategy is decayed so it sinks out of
+ * injection; a cleanly-used one is reinforced. Serialised read-modify-write
+ * (no lost update), order-preserving (order is the recency proxy ranking
+ * uses). Returns the new reward, or undefined when no entry matched / delta
+ * was not finite.
+ */
+export async function adjustPlaybookReward(file: string, id: string, delta: number): Promise<number | undefined> {
+  if (!Number.isFinite(delta)) {
+    return undefined;
+  }
+  return withFileMutationQueue(file, async () => {
+    const existing = await readPlaybook(file);
+    if (!existing.some((e) => e.id === id)) {
+      return undefined;
+    }
+    let updated = 0;
+    const next = existing.map((e) => {
+      if (e.id !== id) {
+        return e;
+      }
+      updated = Math.max(PLAYBOOK_REWARD_MIN, Math.min(PLAYBOOK_REWARD_MAX, (e.reward ?? 0) + delta));
+      return { ...e, reward: updated };
+    });
+    await writePlaybook(file, next);
+    return updated;
+  });
+}
+
 function isPlaybookEntry(value: unknown): value is PlaybookEntry {
   if (!value || typeof value !== "object") return false;
   const e = value as Partial<PlaybookEntry>;
@@ -101,5 +148,6 @@ function isPlaybookEntry(value: unknown): value is PlaybookEntry {
   if (typeof e.text !== "string" || e.text.trim().length === 0) return false;
   if (typeof e.createdAt !== "string") return false;
   if (e.tag !== undefined && typeof e.tag !== "string") return false;
+  if (e.reward !== undefined && (typeof e.reward !== "number" || !Number.isFinite(e.reward))) return false;
   return true;
 }

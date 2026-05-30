@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MAX_PLAYBOOK_ENTRIES, type PlaybookEntry, readPlaybook, recordPlaybookStrategy, removePlaybookStrategy, writePlaybook } from "../src/personal-playbook-store.js";
+import { adjustPlaybookReward, MAX_PLAYBOOK_ENTRIES, PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, type PlaybookEntry, readPlaybook, recordPlaybookStrategy, removePlaybookStrategy, writePlaybook } from "../src/personal-playbook-store.js";
 
 const entry = (id: string, tag?: string): PlaybookEntry => ({
   id,
@@ -98,5 +98,43 @@ describe("concurrent playbook mutation", () => {
     await Promise.all(Array.from({ length: 20 }, (_unused, i) => recordPlaybookStrategy(file, entry(`p${i.toString()}`))));
     await Promise.all(Array.from({ length: 10 }, (_unused, i) => removePlaybookStrategy(file, `p${i.toString()}`)));
     expect(await readPlaybook(file)).toHaveLength(10);
+  });
+});
+
+describe("adjustPlaybookReward — the RL reinforce/decay update", () => {
+  it("accumulates from an absent (0) reward and persists; other entries untouched", async () => {
+    const file = freshFile();
+    await writePlaybook(file, [entry("a"), entry("b")]);
+    expect(await adjustPlaybookReward(file, "a", 1)).toBe(1); // absent → 0 → +1
+    expect(await adjustPlaybookReward(file, "a", 1)).toBe(2);
+    expect(await adjustPlaybookReward(file, "a", -1)).toBe(1);
+    const saved = await readPlaybook(file);
+    expect(saved.find((e) => e.id === "a")!.reward).toBe(1);
+    expect(saved.find((e) => e.id === "b")!.reward).toBeUndefined(); // never adjusted
+    expect(saved.map((e) => e.id)).toEqual(["a", "b"]); // order preserved (recency proxy)
+  });
+
+  it("clamps to [MIN, MAX] so one streak can't run away", async () => {
+    const file = freshFile();
+    await writePlaybook(file, [entry("a")]);
+    expect(await adjustPlaybookReward(file, "a", 999)).toBe(PLAYBOOK_REWARD_MAX);
+    expect(await adjustPlaybookReward(file, "a", -999)).toBe(PLAYBOOK_REWARD_MIN);
+  });
+
+  it("returns undefined for an unknown id and for a non-finite delta (no write)", async () => {
+    const file = freshFile();
+    await writePlaybook(file, [{ ...entry("a"), reward: 2 }]);
+    expect(await adjustPlaybookReward(file, "missing", -1)).toBeUndefined();
+    expect(await adjustPlaybookReward(file, "a", Number.NaN)).toBeUndefined();
+    expect((await readPlaybook(file)).find((e) => e.id === "a")!.reward).toBe(2); // unchanged
+  });
+
+  it("tolerates a numeric reward on read but quarantines a non-numeric one", async () => {
+    const file = freshFile();
+    await writeFile(file, JSON.stringify({ entries: [{ ...entry("ok"), reward: -3 }, { ...entry("bad"), reward: "high" }] }), "utf8");
+    const read = await readPlaybook(file);
+    expect(read).toHaveLength(1); // the bad-reward row is dropped, the good one survives
+    expect(read[0]!.id).toBe("ok");
+    expect(read[0]!.reward).toBe(-3);
   });
 });

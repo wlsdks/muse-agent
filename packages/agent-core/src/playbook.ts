@@ -16,6 +16,15 @@ export interface PlaybookStrategy {
   readonly text: string;
   /** Optional task-class tag so strategies can be scoped/filtered later. */
   readonly tag?: string;
+  /**
+   * Learned reward — the net outcome signal (reinforcements − decays),
+   * clamped to [PLAYBOOK_REWARD_MIN, PLAYBOOK_REWARD_MAX]. 0 = neutral / new.
+   * Reward shapes selection (RL over the bank): a proven strategy surfaces
+   * first, and one that keeps getting corrected sinks out of the injected
+   * top-K. Absent = 0, so a strategy with no recorded outcomes ranks purely
+   * on relevance (today's behaviour).
+   */
+  readonly reward?: number;
 }
 
 export interface PlaybookProvider {
@@ -131,13 +140,31 @@ export function strategyTextSimilarity(a: string, b: string): number {
   return intersection / (ta.size + tb.size - intersection);
 }
 
-function scoreStrategy(strategy: PlaybookStrategy, query: ReadonlySet<string>): number {
-  if (query.size === 0) {
+/** Reward bounds — net outcome signal per strategy, clamped so one streak can't dominate ranking. */
+export const PLAYBOOK_REWARD_MIN = -5;
+export const PLAYBOOK_REWARD_MAX = 5;
+/**
+ * How much one unit of reward shifts the ranking score, as a fraction of a
+ * single token-overlap point. Tuned so reward breaks ties and retires a
+ * repeatedly-corrected strategy (reward → negative drops it below relevant
+ * peers and out of the top-K), without ever overpowering a strong topical
+ * match (a 4-token relevance hit still beats a fully-decayed −5 reward).
+ */
+const REWARD_RANK_WEIGHT = 0.5;
+
+/** Coerce a possibly-absent/garbage reward to the clamped numeric range; absent → 0. */
+export function clampReward(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
     return 0;
   }
-  const textScore = rankOverlap(query, rankTokens(strategy.text));
-  const tagScore = strategy.tag ? rankOverlap(query, rankTokens(strategy.tag)) : 0;
-  return textScore + 2 * tagScore;
+  return Math.max(PLAYBOOK_REWARD_MIN, Math.min(PLAYBOOK_REWARD_MAX, value));
+}
+
+function scoreStrategy(strategy: PlaybookStrategy, query: ReadonlySet<string>): number {
+  const relevance = query.size === 0
+    ? 0
+    : rankOverlap(query, rankTokens(strategy.text)) + 2 * (strategy.tag ? rankOverlap(query, rankTokens(strategy.tag)) : 0);
+  return relevance + REWARD_RANK_WEIGHT * clampReward(strategy.reward);
 }
 
 function byScoreDescThenIndexAsc(

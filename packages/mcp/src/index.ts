@@ -489,7 +489,10 @@ export {
   type ActionVeto
 } from "./personal-veto-store.js";
 export {
+  adjustPlaybookReward,
   MAX_PLAYBOOK_ENTRIES,
+  PLAYBOOK_REWARD_MAX,
+  PLAYBOOK_REWARD_MIN,
   queryPlaybook,
   readPlaybook,
   recordPlaybookStrategy,

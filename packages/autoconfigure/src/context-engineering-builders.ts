@@ -501,7 +501,7 @@ export function buildPlaybookProvider(env: MuseEnvironment): PlaybookProvider | 
   const file = resolvePlaybookFile(env);
   return {
     listStrategies: async (userId: string) =>
-      (await queryPlaybook(file, userId)).map((entry) => ({ tag: entry.tag, text: entry.text }))
+      (await queryPlaybook(file, userId)).map((entry) => ({ reward: entry.reward, tag: entry.tag, text: entry.text }))
   };
 }
 

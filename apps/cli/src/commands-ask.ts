@@ -347,12 +347,16 @@ export function composeChatSystemContent(systemPrompt: string, playbookSection: 
  * empty bank ⇒ undefined (no block).
  */
 export function selectPlaybookSection(
-  entries: readonly { readonly text: string; readonly tag?: string }[],
+  entries: readonly { readonly text: string; readonly tag?: string; readonly reward?: number }[],
   queryText: string,
   topK?: number
 ): string | undefined {
   const ranked = rankPlaybookStrategies(
-    entries.map((entry) => (entry.tag ? { tag: entry.tag, text: entry.text } : { text: entry.text })),
+    entries.map((entry) => ({
+      text: entry.text,
+      ...(entry.tag ? { tag: entry.tag } : {}),
+      ...(typeof entry.reward === "number" ? { reward: entry.reward } : {})
+    })),
     queryText,
     topK === undefined ? undefined : { topK }
   );

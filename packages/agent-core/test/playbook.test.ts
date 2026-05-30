@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyPlaybook,
+  clampReward,
   createAgentRuntime,
+  PLAYBOOK_REWARD_MAX,
+  PLAYBOOK_REWARD_MIN,
   rankPlaybookStrategies,
   renderPlaybookSection,
   strategyTextSimilarity,
@@ -160,6 +163,54 @@ describe("rankPlaybookStrategies — relevance-ranked top-K (ReasoningBank arXiv
     const out = rankPlaybookStrategies(bank, "샘에게 이메일 답장 작성해줘", { topK: 1 });
     expect(out).toHaveLength(1);
     expect(out[0].tag).toBe("email");
+  });
+});
+
+describe("rankPlaybookStrategies — reward-weighted (RL over the bank)", () => {
+  it("reward breaks a relevance tie: the higher-reward strategy ranks first", () => {
+    const bank: PlaybookStrategy[] = [
+      { reward: 0, tag: "email", text: "email reply tip alpha" },
+      { reward: 4, tag: "email", text: "email reply tip bravo" }
+    ];
+    const out = rankPlaybookStrategies(bank, "draft an email reply", { topK: 6 });
+    expect(out[0].text).toContain("bravo"); // proven strategy surfaces first
+  });
+
+  it("a deeply-decayed strategy sinks out of the injected top-K below a fresh relevant peer", () => {
+    const bank: PlaybookStrategy[] = [
+      { reward: -5, tag: "email", text: "email reply guidance punished" },
+      { reward: 0, tag: "email", text: "email reply guidance fresh" },
+      { reward: 0, text: "unrelated gardening note" }
+    ];
+    const out = rankPlaybookStrategies(bank, "draft an email reply", { topK: 1 });
+    expect(out).toHaveLength(1);
+    expect(out[0].text).toContain("fresh"); // the un-decayed peer wins the single slot
+    expect(out[0].reward).toBe(0);
+  });
+
+  it("an absent reward ranks identically to reward 0 (the neutral default)", () => {
+    const q = "write a short email reply and reschedule the call";
+    const withZero: PlaybookStrategy[] = [
+      { reward: 0, tag: "email", text: "keep emails short" },
+      { reward: 0, tag: "scheduling", text: "reschedule to the next business day" }
+    ];
+    const without: PlaybookStrategy[] = [
+      { tag: "email", text: "keep emails short" },
+      { tag: "scheduling", text: "reschedule to the next business day" }
+    ];
+    expect(rankPlaybookStrategies(withZero, q, { topK: 6 }).map((s) => s.text))
+      .toEqual(rankPlaybookStrategies(without, q, { topK: 6 }).map((s) => s.text));
+  });
+});
+
+describe("clampReward", () => {
+  it("coerces absent/garbage to 0 and clamps into [MIN, MAX]", () => {
+    expect(clampReward(undefined)).toBe(0);
+    expect(clampReward(Number.NaN)).toBe(0);
+    expect(clampReward(Number.POSITIVE_INFINITY)).toBe(0);
+    expect(clampReward(2)).toBe(2);
+    expect(clampReward(999)).toBe(PLAYBOOK_REWARD_MAX);
+    expect(clampReward(-999)).toBe(PLAYBOOK_REWARD_MIN);
   });
 });
 

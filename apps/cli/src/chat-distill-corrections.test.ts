@@ -91,4 +91,21 @@ describe("distillSessionCorrections — end-of-session auto-distillation (Reason
     });
     expect(res.status).toBe("skipped");
   });
+
+  it("RL decay: docks the reward of the strategy a correction implicates, leaving unrelated ones untouched", async () => {
+    const file = await tmpPlaybook();
+    await recordPlaybookStrategy(file, { createdAt: "2026-05-01T00:00:00.000Z", id: "pb_culprit", text: "회의록은 문단으로 정리한다", userId: "stark" });
+    await recordPlaybookStrategy(file, { createdAt: "2026-05-01T00:00:00.000Z", id: "pb_email", text: "이메일은 네 문장 이내로 작성한다", userId: "stark" });
+    const res = await distillSessionCorrections({
+      model: "m",
+      modelProvider: stub("strategy: when summarising notes, use bullet points not prose\ntag: notes"),
+      playbookFile: file,
+      readBoundaries: async () => boundaries,
+      readLines: async () => correctedSession // request "회의록 정리해줘" → corrected to bullets
+    });
+    expect(res.decayed.map((d) => d.text)).toContain("회의록은 문단으로 정리한다");
+    const saved = await queryPlaybook(file, "stark");
+    expect(saved.find((e) => e.id === "pb_culprit")!.reward).toBe(-1); // implicated → decayed below neutral
+    expect(saved.find((e) => e.id === "pb_email")!.reward).toBeUndefined(); // unrelated → never touched
+  });
 });

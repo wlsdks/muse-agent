@@ -63,7 +63,9 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
         return;
       }
       for (const e of entries) {
-        io.stdout(`  [${e.id.slice(0, 12)}]${e.tag ? ` (${e.tag})` : ""} ${e.text}\n`);
+        const reward = typeof e.reward === "number" && Number.isFinite(e.reward) ? e.reward : 0;
+        const rewardTag = reward === 0 ? "" : ` ⟨reward ${reward > 0 ? "+" : ""}${reward.toString()}⟩`;
+        io.stdout(`  [${e.id.slice(0, 12)}]${e.tag ? ` (${e.tag})` : ""}${rewardTag} ${e.text}\n`);
       }
     });
 
@@ -152,6 +154,12 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
         modelProvider: assembly.modelProvider as Parameters<typeof distillSessionCorrections>[0]["modelProvider"],
         userId
       });
+      if (result.decayed.length > 0) {
+        io.stdout(`Decayed ${result.decayed.length.toString()} strateg${result.decayed.length === 1 ? "y" : "ies"} a correction implicated (reinforcement: they sink in ranking):\n`);
+        for (const d of result.decayed) {
+          io.stdout(`  ↓ (reward ${d.reward > 0 ? "+" : ""}${d.reward.toString()}) ${d.text}\n`);
+        }
+      }
       if (result.status === "recorded") {
         io.stdout(`Learned ${result.strategies.length.toString()} strateg${result.strategies.length === 1 ? "y" : "ies"} from your last session:\n`);
         for (const strategy of result.strategies) {

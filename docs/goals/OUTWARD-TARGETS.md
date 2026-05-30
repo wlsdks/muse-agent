@@ -64,6 +64,31 @@ turn; never half-shipped.
 
 ## Active target
 
+**P33 — Reinforcement learning over Muse's memory (the model is fixed,
+so RL lives in the MEMORY, not the weights).** Close the self-improvement
+loop: today Muse only LEARNS new strategies (ReasoningBank distillation,
+skill authoring); it doesn't yet learn which learned things actually WORK.
+Give each learned strategy a real outcome reward — reinforce the ones used
+cleanly, decay the ones that keep getting corrected/undone/vetoed — and let
+reward shape what gets injected, so the playbook self-reinforces toward what
+helps this user (ACE arXiv:2510.04618 + the sibling veto store; reward-shaped).
+Direction set 2026-05-31 by 진안 ("강화학습이 중요해").
+
+- [x] **P33-1 Reward-weighted playbook (reinforce/decay + selection).** A
+  clamped `reward` on each strategy that reward-weighted `rankPlaybookStrategies`
+  blends into selection (proven first; a repeatedly-corrected one decays out of
+  the injected top-K); `adjustPlaybookReward` persists the update; the signal is
+  AUTOMATIC — at session end the strategy a correction implicates is docked,
+  alongside ReasoningBank distillation. Flows through BOTH injection paths
+  (`buildPlaybookProvider` runtime + `selectPlaybookSection` chat-only `muse ask`).
+  `muse playbook` shows each strategy's reward; `muse playbook distill` reports
+  what it decayed. Verified: agent-core reward-rank + clamp tests, mcp
+  adjust/clamp/back-compat tests, the distill decay test, `pnpm check` green, and
+  LIVE through the built CLI (`playbook list` renders ⟨reward⟩; a −4 strategy is
+  deranked below an equally-relevant peer). (Next P33-2: reinforce-on-clean-use +
+  injection-tracking for precise credit assignment; P33-3: extend reward to
+  authored skills.)
+
 **P32 — Grounded "dreaming" (idle memory consolidation that can't make
 things up).** Adopt the offline reflection competitors lean on (OpenClaw's
 "dreaming"; Generative Agents reflection, arXiv:2304.03442) in Muse's honest,

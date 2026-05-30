@@ -24,7 +24,7 @@ import {
   type SessionTurnLine
 } from "@muse/agent-core";
 import { resolvePlaybookFile } from "@muse/autoconfigure";
-import { queryPlaybook, recordPlaybookStrategy } from "@muse/mcp";
+import { adjustPlaybookReward, queryPlaybook, recordPlaybookStrategy, type PlaybookEntry } from "@muse/mcp";
 
 import { readLastChatHistory, readSessionBoundaries } from "./chat-history.js";
 
@@ -32,6 +32,15 @@ type ModelProviderLike = DistillStrategyOptions["modelProvider"];
 
 const DEFAULT_DEDUP_THRESHOLD = 0.6;
 const DEFAULT_MAX_EXCHANGES = 2;
+/** Reward change applied to the strategy a correction implicates (the RL decay step). */
+const DECAY_DELTA = -1;
+/**
+ * A strategy must share at least this much (Jaccard, CJK-aware) with the
+ * corrected request+correction to be the "implicated" one that gets decayed.
+ * Conservative on purpose: an unrelated strategy is never penalised, and a
+ * cross-script (KO strategy vs EN request) pair scores ~0 and is left alone.
+ */
+const DEFAULT_DECAY_THRESHOLD = 0.1;
 
 export interface DistillCorrectionsOptions {
   readonly modelProvider: ModelProviderLike;
@@ -44,6 +53,8 @@ export interface DistillCorrectionsOptions {
   readonly maxExchanges?: number;
   /** A distilled strategy is dropped when this similar to an existing one. Default 0.6. */
   readonly dedupThreshold?: number;
+  /** Min similarity for an existing strategy to be decayed as the correction's culprit. Default 0.1. */
+  readonly decayThreshold?: number;
   readonly now?: () => Date;
   readonly idFactory?: () => string;
   readonly readEnv?: () => NodeJS.ProcessEnv;
@@ -51,9 +62,15 @@ export interface DistillCorrectionsOptions {
   readonly readBoundaries?: () => Promise<readonly SessionBoundaryRef[]>;
 }
 
+/** A strategy whose reward was decayed because a correction implicated it. */
+export interface DecayedStrategy {
+  readonly text: string;
+  readonly reward: number;
+}
+
 export type DistillResult =
-  | { readonly status: "recorded"; readonly strategies: readonly { readonly text: string; readonly tag?: string }[] }
-  | { readonly status: "skipped"; readonly reason: string };
+  | { readonly status: "recorded"; readonly strategies: readonly { readonly text: string; readonly tag?: string }[]; readonly decayed: readonly DecayedStrategy[] }
+  | { readonly status: "skipped"; readonly reason: string; readonly decayed: readonly DecayedStrategy[] };
 
 export async function distillSessionCorrections(options: DistillCorrectionsOptions): Promise<DistillResult> {
   const readLines = options.readLines ?? readLastChatHistory;
@@ -68,25 +85,61 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
   try {
     [lines, boundaries] = await Promise.all([readLines(), readBoundaries()]);
   } catch (cause) {
-    return { reason: `history read failed: ${errorMessage(cause)}`, status: "skipped" };
+    return { decayed: [], reason: `history read failed: ${errorMessage(cause)}`, status: "skipped" };
   }
 
   const range = extractCurrentSessionTurns(lines, boundaries);
   if (!range) {
-    return { reason: "no current-session range (no boundary or no turns yet)", status: "skipped" };
+    return { decayed: [], reason: "no current-session range (no boundary or no turns yet)", status: "skipped" };
   }
   const ownerId = range.userId ?? options.userId;
   if (!ownerId) {
-    return { reason: "no userId available (boundary missing it, no fallback supplied)", status: "skipped" };
+    return { decayed: [], reason: "no userId available (boundary missing it, no fallback supplied)", status: "skipped" };
   }
 
   const exchanges = detectCorrections(range.turns, { maxExchanges: options.maxExchanges ?? DEFAULT_MAX_EXCHANGES });
   if (exchanges.length === 0) {
-    return { reason: "no user corrections in this session", status: "skipped" };
+    return { decayed: [], reason: "no user corrections in this session", status: "skipped" };
   }
 
   const playbookFile = options.playbookFile ?? resolvePlaybookFile(env as Record<string, string | undefined>);
-  const existingTexts = (await queryPlaybook(playbookFile, ownerId)).map((entry) => entry.text);
+  const existing = await queryPlaybook(playbookFile, ownerId);
+  const existingTexts = existing.map((entry) => entry.text);
+
+  // RL decay step: a correction means the strategy that applied here didn't
+  // earn its place — find the existing strategy most similar to the corrected
+  // request+correction and dock its reward (once per strategy per session) so a
+  // repeatedly-corrected one sinks out of injection. Runs before distillation
+  // so a freshly-distilled strategy is never flagged as its own culprit.
+  const decayThreshold = options.decayThreshold ?? DEFAULT_DECAY_THRESHOLD;
+  const decayed: DecayedStrategy[] = [];
+  const decayedIds = new Set<string>();
+  for (const exchange of exchanges) {
+    const cue = [exchange.request, exchange.correction].filter((s): s is string => !!s && s.trim().length > 0).join(" ");
+    let culprit: { readonly entry: PlaybookEntry; readonly sim: number } | undefined;
+    for (const entry of existing) {
+      if (decayedIds.has(entry.id)) {
+        continue;
+      }
+      const sim = strategyTextSimilarity(entry.text, cue);
+      if (sim >= decayThreshold && (!culprit || sim > culprit.sim)) {
+        culprit = { entry, sim };
+      }
+    }
+    if (!culprit) {
+      continue;
+    }
+    decayedIds.add(culprit.entry.id);
+    try {
+      const reward = await adjustPlaybookReward(playbookFile, culprit.entry.id, DECAY_DELTA);
+      if (reward !== undefined) {
+        decayed.push({ reward, text: culprit.entry.text });
+      }
+    } catch {
+      // Fail-soft — a failed reward write must not lose the distillation below.
+    }
+  }
+
   const recorded: { readonly text: string; readonly tag?: string }[] = [];
 
   for (const exchange of exchanges) {
@@ -118,9 +171,9 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
   }
 
   if (recorded.length === 0) {
-    return { reason: "nothing new to record (all distilled strategies were empty or duplicates)", status: "skipped" };
+    return { decayed, reason: "nothing new to record (all distilled strategies were empty or duplicates)", status: "skipped" };
   }
-  return { status: "recorded", strategies: recorded };
+  return { decayed, status: "recorded", strategies: recorded };
 }
 
 function errorMessage(cause: unknown): string {
