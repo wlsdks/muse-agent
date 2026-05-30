@@ -418,3 +418,12 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Built-in tool HANDLER output-correctness (complements gap A's tool
+  SELECTION): muse-tools-time — the 6 time/date/scheduling tools (time_now,
+  time_diff, time_add, time_relative, next_weekday_date, cron_for_datetime)
+  asserted known-answer with an injected clock. eval:tools proves the model
+  PICKS these; this proves the handler returns the RIGHT answer (a wrong
+  duration / weekday / cron is a confident wrong answer). Covers signed-duration
+  + humanizer, multi-field add, future/past/now direction, next-upcoming
+  (strictly future + same-day→next-week), cron per mode + the monthly>28 warning,
+  and every error path. tools 187 pass.
