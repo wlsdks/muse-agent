@@ -418,6 +418,16 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Typed user-model slots (untested) — the persistent structured model of
+  who the user is (preferences/schedule/vetoes/goals), core to "it's actually
+  yours". user-model-slots.test.ts: effectiveConfidence decay (asserted=no
+  confidence→1 forever; inferred 0.8→0.4 over one half-life; clamp [0,1];
+  future-ts→age 0; non-positive half-life→default); upsert replace-by-id +
+  purity; remove-by-id across kinds; selectReconfirmableSlots (only faded
+  inferred slots, most-faded first, never asserted/veto); composeUserModelSnapshot
+  (empty→undefined, vetoes-first format with decorators, and the decay-gate that
+  drops a faded inferred preference but KEEPS the veto + asserted slots).
+  memory 266 pass.
 - [x] Conversation-trim DEFAULT (temporal) budget contract (the existing
   token-trim test covered only compactionStrategy="importance"; the default-path
   budget math + triggeredBy three-state + summary + tool-pair integrity were
