@@ -18,6 +18,7 @@ import {
   buildMessagingRegistry,
   parseBoolean,
   resolveContactsFile,
+  resolveEpisodesFile,
   resolveFollowupsFile,
   resolveObjectivesFile,
   resolvePatternsFiredFile,
@@ -51,6 +52,7 @@ import {
   runDueObjectives,
   runDuePatternNotices,
   runDueProactiveNotices,
+  readEpisodes,
   runDueReminders,
   runDueSituationalBriefing,
   webWatchesFromConfig,
@@ -69,6 +71,7 @@ import { dirname, join } from "node:path";
 import { checkinsFile } from "./commands-checkins.js";
 import { closestCommandName } from "./closest-command.js";
 import { parseBoundedFlag } from "./commands-proactive.js";
+import { DEFAULT_REFLECTION_INTERVAL_MS, resolveReflectionsFile, runReflectionPass, shouldRunReflection } from "./commands-reflections.js";
 import { createIndexedProactiveInvestigator } from "./proactive-notes-recall.js";
 import type { ProgramIO } from "./program.js";
 
@@ -806,6 +809,29 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout(`[${now.toISOString()}] briefing: ${summary.delivered > 0 ? "delivered" : "quiet (deduped or nothing to say)"}\n`);
       };
 
+      // Grounded "dreaming" — the daemon synthesises reflections from recent
+      // episodes while idle. Off by default; throttled to a slow cadence
+      // (default 6h) so it isn't a model call every tick. Silent unless it adds.
+      const reflectionIntervalRaw = e.MUSE_REFLECTION_INTERVAL_MS ? Number(e.MUSE_REFLECTION_INTERVAL_MS) : DEFAULT_REFLECTION_INTERVAL_MS;
+      const reflectionIntervalMs = Number.isFinite(reflectionIntervalRaw) && reflectionIntervalRaw > 0 ? reflectionIntervalRaw : DEFAULT_REFLECTION_INTERVAL_MS;
+      let lastReflectionMs: number | undefined;
+      const reflectionTick = async (): Promise<void> => {
+        if (!parseBoolean(e.MUSE_REFLECTION_ENABLED, false) || !followupModel) return;
+        const nowMs = Date.now();
+        if (!shouldRunReflection(lastReflectionMs, nowMs, reflectionIntervalMs)) return;
+        lastReflectionMs = nowMs;
+        try {
+          const episodes = (await readEpisodes(resolveEpisodesFile(e))).slice(-30);
+          const inputs = episodes.map((ep) => ({ id: ep.id, text: ep.summary }));
+          const added = await runReflectionPass(inputs, {
+            model: followupModel.model,
+            modelProvider: followupModel.modelProvider as Parameters<typeof runReflectionPass>[1]["modelProvider"],
+            reflectionsFile: resolveReflectionsFile()
+          });
+          if (added > 0) io.stdout(`[${new Date(nowMs).toISOString()}] reflections: +${added.toString()} (see \`muse reflections\`)\n`);
+        } catch { /* fail-soft — dreaming is a background nicety */ }
+      };
+
       const runTick = async (): Promise<void> => {
         await proactiveTick();
         await remindersTick();
@@ -817,6 +843,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         await objectivesTick();
         await homeWatchTick();
         await briefingTick();
+        await reflectionTick();
       };
 
       io.stdout(`muse daemon — provider=${provider}, destination=${destination}, lead ${leadMinutes.toString()} min\n`);
