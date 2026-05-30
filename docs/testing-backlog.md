@@ -445,3 +445,11 @@ the generic layers below because they test what makes Muse an *agent*.
     guards; hash_text known sha256/md5 digests + bad-algo; csv_parse header-objects
     / no-header arrays / quoted+escaped fields / CRLF / empty; base64 standard +
     URL-safe round-trip + invalid-input rejection. tools 201 pass.
+  - muse-tools-text — the 4 text-formatting tools (text_stats, slugify,
+    kv_summarize, markdown_table), completing the muse-tools-* output-correctness
+    trilogy. text_stats counts a ZWJ emoji as ONE grapheme (not UTF-16 units) +
+    whitespace-only→zeros; slugify lowercases/collapses/edge-trims, NFKD diacritic
+    strip, empty→"untitled", maxLength truncate+re-trim; kv_summarize dotted
+    nested flatten + empty []/{} markers + null→""; markdown_table column-union
+    derivation, explicit-column order, nested cell as compact JSON (not
+    "[object Object]"), pipe/newline escaping, empty→"". tools 215 pass.
