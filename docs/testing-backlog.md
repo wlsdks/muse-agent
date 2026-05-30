@@ -221,6 +221,17 @@ the generic layers below because they test what makes Muse an *agent*.
     a false alert on a tiny window), the below-threshold case (enough samples, low
     rate → no alert), and clear() resetting the window to zero / not-alerting.
     policy 113→116.
+  - FOURTEENTH MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    proactive-recall-gate.ts` = **61.64%** — the NORTH STAR gate. Most survivors
+    were artifacts: createConfidenceGatedInvestigator IS thoroughly unit-tested
+    (happy / empty-title / empty-corpus / embed-throws / lazy-provider-throws), so
+    those NoCoverage/survivor reports are Stryker per-test attribution noise on a
+    src-co-located test. The ONE genuine survivor: decideProactiveRecall's `reason`
+    ternary (none → "no matching passages" vs ambiguous → "recall too weak") was
+    unasserted — the existing none/ambiguous tests checked confidence+surface but
+    not the reason the loop logs. Pinned both reason strings as distinct. agent-core
+    stable at 1082. The mutation survey now spans tools / model / messaging /
+    agent-core(step-budget, knowledge-recall, proactive-recall-gate) / policy(9).
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,

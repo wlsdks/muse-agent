@@ -28,12 +28,16 @@ describe("decideProactiveRecall — the CRAG gate for proactive surfacing", () =
     expect(d.surface).toBe(false);
     expect(d.confidence).toBe("ambiguous");
     expect(d.finding).toBeUndefined();
+    // The reason distinguishes a WEAK recall from no recall at all — a diagnostic
+    // the proactive loop logs; the two must not collapse to the same string.
+    expect(d.reason).toBe("recall too weak to surface unasked — stay silent");
   });
 
   it("stays silent on an empty recall", () => {
     const d = decideProactiveRecall([]);
     expect(d).toMatchObject({ confidence: "none", surface: false });
     expect(d.finding).toBeUndefined();
+    expect(d.reason).toBe("no matching passages — stay silent"); // distinct from the ambiguous reason
   });
 
   it("quotes the STRONGEST match and truncates long passages", () => {
