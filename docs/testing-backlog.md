@@ -79,6 +79,18 @@ the generic layers below because they test what makes Muse an *agent*.
     (regex-meta private terms match literally, never as a pattern), the
     empty/whitespace private-term skip branch, case-insensitive term matching, and
     the ghp_/xox token shapes beyond sk-. +6 cases (policy 93→99).
+  - SECOND MEASUREMENT (throwaway Stryker 9.6.1, NOT committed — lockfile reverted):
+    `policy/structured-output.ts` = **75.20% total / 81.03% covered** (91 killed, 22
+    survived, 9 no-cov). Most survivors are Regex mutants on the markdown-fence /
+    balanced-block patterns (equivalent or low-value). The ONE actionable logic
+    survivor: the `firstBalancedJsonBlock` escape branch (`if (escape)` / `\\`+
+    inString) had no test exercising an ESCAPED quote — the brace-in-string test
+    used a bare `}` but never a `\"`, so a mutation killing the escape handling
+    survived. Killed it with a JSON value carrying `\"hi}\"` (an escaped quote
+    wrapping a brace): the `\"` must not end the string early, so the inner `}`
+    still doesn't close the object. policy 100→101. Lesson holds: the headline
+    score is dragged by equivalent regex mutants; the real logic-assertion gap was
+    a single escape-path case mutation testing surfaced precisely.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
