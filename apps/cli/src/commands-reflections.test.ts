@@ -18,6 +18,17 @@ describe("renderReflections", () => {
     expect(out.indexOf("concise")).toBeLessThan(out.indexOf("home networking"));
     expect(out).toContain("from ep-1, ep-2");
   });
+
+  it("shows FOLLOWABLE sources (date + summary) when episodes are provided", () => {
+    const entries: StoredReflection[] = [
+      { createdAtMs: 1_000, id: "a", insight: "You wrestle with home networking", sourceIds: ["ep-1", "missing"], supportCount: 2 }
+    ];
+    const sources = new Map([["ep-1", { startedAt: "2026-05-10T09:00:00Z", summary: "Fixed the office VPN handshake by setting MTU 1380." }]]);
+    const out = renderReflections(entries, sources);
+    expect(out).toContain("[2026-05-10] Fixed the office VPN handshake");
+    expect(out).toContain("· missing"); // unknown id falls back to the bare id
+    expect(out).not.toContain("from ep-1"); // the bare-id format is replaced
+  });
 });
 
 describe("reflectionsToStore", () => {

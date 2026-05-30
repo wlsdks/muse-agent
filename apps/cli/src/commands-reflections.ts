@@ -61,7 +61,18 @@ export function shouldRunReflection(lastRunMs: number | undefined, nowMs: number
 /** Default idle reflection cadence — 6h (the daemon "dreams" a few times a day, not every tick). */
 export const DEFAULT_REFLECTION_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 
-export function renderReflections(entries: readonly StoredReflection[]): string {
+export interface ReflectionSource {
+  readonly startedAt: string;
+  readonly summary: string;
+}
+
+/**
+ * Render reflections. When `sources` is given (id → episode), each cited source
+ * is shown as a FOLLOWABLE line — its date + a summary snippet — so the user can
+ * verify the insight against the real moment, fulfilling the edge's "shows its
+ * work, verifiable" promise. Without it, falls back to the bare source ids.
+ */
+export function renderReflections(entries: readonly StoredReflection[], sources?: ReadonlyMap<string, ReflectionSource>): string {
   const sorted = listReflections(entries);
   if (sorted.length === 0) {
     return "No reflections yet. Run `muse reflections refresh` to synthesise insights from your recent sessions.";
@@ -69,7 +80,17 @@ export function renderReflections(entries: readonly StoredReflection[]): string 
   const lines = [`What Muse has noticed about you (${sorted.length.toString()}):\n`];
   for (const r of sorted) {
     lines.push(`  • ${r.insight}`);
-    lines.push(`    — from ${r.sourceIds.join(", ")}`);
+    if (sources) {
+      lines.push("    grounded in:");
+      for (const id of r.sourceIds) {
+        const ep = sources.get(id);
+        lines.push(ep
+          ? `      · [${ep.startedAt.slice(0, 10)}] ${ep.summary.replace(/\s+/gu, " ").trim().slice(0, 70)}`
+          : `      · ${id}`);
+      }
+    } else {
+      lines.push(`    — from ${r.sourceIds.join(", ")}`);
+    }
   }
   return lines.join("\n");
 }
@@ -96,7 +117,14 @@ export function registerReflectionsCommand(program: Command, io: ProgramIO): voi
         io.stdout(`${JSON.stringify(listReflections(entries), null, 2)}\n`);
         return;
       }
-      io.stdout(`${renderReflections(entries)}\n`);
+      // Join the cited episode ids to their date + summary so the grounding is
+      // followable (verifiable), not an opaque id. Fail-soft: no episodes → ids.
+      let sources: Map<string, ReflectionSource> | undefined;
+      try {
+        const episodes = await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>));
+        sources = new Map(episodes.map((ep) => [ep.id, { startedAt: ep.startedAt, summary: ep.summary }]));
+      } catch { /* no episodes — fall back to bare ids */ }
+      io.stdout(`${renderReflections(entries, sources)}\n`);
     });
 
   reflections
