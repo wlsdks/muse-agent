@@ -418,6 +418,48 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] MCP admin-proxy pure helpers (untested) — security-relevant. compat-mcp-proxy.test.ts:
+  swaggerSourcePath URL-encodes the source name (a "../../admin?x=1" payload is
+  neutralized — no path-traversal/query injection); readAdminUrl accepts only
+  http(s) (rejects javascript:/file: schemes), prefers adminUrl, strips a trailing
+  /sse; parseMcpAccessPolicy coerces CSV allowlists to deduped sets + keeps only
+  real booleans, and rejects an allowlist over 300 entries (DoS guard). api 556 pass.
+- [x] MCP route shapers (untested) — two SECURITY behaviors are load-bearing.
+  mcp-routes-shapers.test.ts: isSensitiveConfigKey matches authorization/password/
+  secret/token/api-key/credential case-insensitively; sanitizeConfig RECURSIVELY
+  redacts those (nested object + object-in-array) before any MCP config leaves
+  the server, preserving benign values; sendMcpError returns the curated 409 for
+  an McpRegistryError but a GENERIC 500 ("MCP operation failed") for any other
+  error — never leaking the internal message. Plus toServerSummary/Detail (status/
+  transport upper-cased, config redacted, tools listed), toMcpSecurityPolicyResponse,
+  toCompatEnum, stringifyToolOutput, sendMcpServerNotFound. api 542 pass.
+- [x] Compat-parsers (untested) — the untrusted-input normalization boundary for
+  the compat API. compat-parsers.test.ts: readQueryInteger STRICT parse (a
+  unit-slipped "7d"/"20x" reaches the fallback, never a silent partial parse);
+  coerceStringSet (CSV split + trim + dedup); sanitizeFilename (path/injection
+  chars → "_", 100-char cap — path safety); coerceNumber/coerceBoolean;
+  epochMillisOrNull (number/Date/ISO → ms, else null); toJsonObject (drops
+  function/undefined values); stringMapField (string→string only); readQueryBoolean;
+  compatEnumString (trim+upper); chunkText (2000-char chunks, empty→[""]). api 522 pass.
+- [x] Compat run-aggregation helpers (untested) — the pure tool-usage / failure
+  / latency analytics behind the admin observability routes (the ToolCorrectness +
+  StepEfficiency observability surface). compat-run-aggregations.test.ts:
+  toolCallRanking (per-tool total+failures, total-desc); toolOutcomeStats
+  (outcome classification completed→ok / blocked→invalid_arg / failed+timeout →
+  timeout / failed+404 → not_found, server-prefix derivation incl. no-colon→local,
+  accuracy=ok/total, divide-by-zero-safe, server filter); aggregateFailurePatterns
+  (classifyRunError buckets timeout/guard/plan_*/null→unknown/other, sampleRunIds
+  capped at 5, count-desc); dailyUsage (per-UTC-day cost+runs, date-asc);
+  latencyDistribution (0-1s/1-5s/5-30s/30s+ buckets + missing-timestamp→unknown).
+  api 503 pass.
+- [x] eval:tools actuator-set KO positive — added "거실 불 꺼줘." → home_action
+  (requireArgs service) to the actuator confusable scenario. The state-changing
+  actuator positives were all English; the KO cases there were only NEGATIVE
+  (no-tool musings). This is the positive counterpart on the SAME surface — the
+  user-language discrimination between an actual smart-home COMMAND (act) and the
+  KO "스마트홈 기기 좋아졌더라" musing (no-tool), which outbound-safety relies on.
+  Pre-verified STABLE 3/3 (home_action with the service arg), full battery
+  eval:tools 50/50 (100%) @ REPEAT=2. LOCAL OLLAMA QWEN ONLY.
 - [x] eval:tools confusable-set strengthening — added a KO next_weekday_date
   case ("다음 주 금요일이 며칠이야?") to the confusable real-time-tools scenario.
   The positive cases there were all English; this is the user's-language

@@ -162,6 +162,7 @@ async function buildActuatorScenario() {
       { prompt: "Reserve a table for two at 7pm tomorrow on the restaurant's booking page.", expectTool: "web_action", requireArgs: ["summary", "url"], note: "reserve → web_action (231)" },
       { prompt: "Activate the bedtime scene.", expectTool: "home_action", requireArgs: ["service"], note: "scene → home_action (223)" },
       { prompt: "Run my good night routine.", expectTool: "home_action", requireArgs: ["service"], note: "routine/script → home_action (223)" },
+      { prompt: "거실 불 꺼줘.", expectTool: "home_action", requireArgs: ["service"], note: "KO smart-home COMMAND → home_action (user's language; the positive counterpart to the KO 'good gear' musing trap); STABLE 3/3" },
       { prompt: "Find the email from the bank about my statement.", expectTool: "search_email", requireArgs: ["query"], note: "inbox search → search_email, NOT knowledge_search (199)" },
       { prompt: "Any news about the Mars mission from the feeds I follow?", expectTool: "knowledge_search", requireArgs: ["query"], note: "feeds news → knowledge_search, NOT web/search_email (229/230)" },
       { prompt: "Will it rain on Saturday?", expectTool: "weather", argIncludes: /sat/i, requireArgs: ["location"], note: "upcoming-day forecast → weather with when=Saturday (202)" },
