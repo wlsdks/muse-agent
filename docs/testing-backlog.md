@@ -166,6 +166,15 @@ the generic layers below because they test what makes Muse an *agent*.
     NOT produce a negative/NaN sleep but fall back to linear backoff. Added a probe
     asserting negative / non-numeric / missing Retry-After all fall back to
     baseDelayMs*attempt while a valid header is still honoured. messaging 316→317.
+  - NINTH MEASUREMENT (throwaway, reused install, NOT committed): `policy/
+    source-block-sanitizer.ts` = **54.68%** with 5 NoCoverage — the WEDGE's
+    source-block stripper (removes a model's copied/empty Sources section). Killed
+    two NoCoverage paths: (1) the `!sourceBlock` early return — a response with NO
+    source heading (the COMMON case) must pass through unchanged; every prior
+    removed:false test had a heading-ish line, so this fundamental path was
+    untested. (2) `trimTrailingBlankLines` — a removable block followed by trailing
+    blank lines must still classify + strip; asserted an empty-fallback block with
+    3 trailing blanks is still removed. policy 108→110.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
