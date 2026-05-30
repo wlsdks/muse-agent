@@ -11,8 +11,8 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { isA2AEnabled, prepareOutbound, produceCouncilReasoning } from "@muse/agent-core";
-import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, sendToPeer } from "@muse/a2a";
+import { isA2AEnabled, prepareOutbound, produceCouncilReasoning, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance } from "@muse/agent-core";
+import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, requestCouncilReasoning, sendToPeer, type A2APeer } from "@muse/a2a";
 import { createMuseRuntimeAssembly, resolveAuthoredSkillsDir } from "@muse/autoconfigure";
 import {
   addToQuarantine,
@@ -79,6 +79,44 @@ export function buildSwarmSkillDraft(entry: SwarmQuarantineEntry): { readonly na
 
 function findPending(entries: readonly SwarmQuarantineEntry[], id: string): SwarmQuarantineEntry | undefined {
   return entries.find((e) => e.status === "pending" && (e.id === id || e.id.startsWith(id)));
+}
+
+export interface GatherCouncilDeps {
+  readonly peers: readonly A2APeer[];
+  readonly selfId: string;
+  readonly requestReasoning: (peer: A2APeer, question: string) => Promise<string | null>;
+  /** This Muse's own reasoning (so even a 1-peer council has ≥2 voices). */
+  readonly ownReasoning?: () => Promise<string>;
+}
+
+/** Collect council utterances: this Muse's own reasoning + each peer's, dropping non-responders. */
+export async function gatherCouncil(question: string, deps: GatherCouncilDeps): Promise<CouncilUtterance[]> {
+  const utterances: CouncilUtterance[] = [];
+  if (deps.ownReasoning) {
+    const own = await deps.ownReasoning();
+    if (own.trim().length > 0) utterances.push({ peerId: deps.selfId.length > 0 ? deps.selfId : "me", reasoning: own });
+  }
+  const peerResults = await Promise.all(
+    deps.peers.map((peer) => deps.requestReasoning(peer, question).then((r) => (r && r.trim().length > 0 ? { peerId: peer.id, reasoning: r } : null)))
+  );
+  for (const r of peerResults) {
+    if (r) utterances.push(r);
+  }
+  return utterances;
+}
+
+export function renderCouncilResult(question: string, utterances: readonly CouncilUtterance[], answer: CouncilAnswer | null): string {
+  const members = utterances.map((u) => u.peerId).join(", ");
+  const lines = [`🏛  Council on: ${question}`, `   ${utterances.length.toString()} member(s) weighed in: ${members}\n`];
+  if (!answer) {
+    lines.push("   (couldn't synthesise an answer from the council's reasoning.)");
+    return lines.join("\n");
+  }
+  lines.push(`   ${answer.answer}`);
+  if (answer.contributors.length > 0) {
+    lines.push(`   — drawn from: ${answer.contributors.join(", ")}`);
+  }
+  return lines.join("\n");
 }
 
 export function registerSwarmCommands(program: Command, io: ProgramIO): void {
@@ -250,6 +288,45 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         });
         process.once("SIGINT", () => { server.close(); resolve(); });
       });
+    });
+
+  swarm
+    .command("council <question>")
+    .description("Ask your swarm peers to reason about a question and synthesise an answer (data-light — only reasoning crosses)")
+    .action(async (question: string) => {
+      const env = process.env;
+      if (!isA2AEnabled(env)) {
+        io.stderr("muse swarm council: the swarm is off — set MUSE_A2A_ENABLED=true to opt in.\n");
+        process.exitCode = 1;
+        return;
+      }
+      const config = await loadPeerConfig(peersFile());
+      if (config.peers.length === 0) {
+        io.stderr("muse swarm council: no peers configured — add them to ~/.muse/a2a-peers.json.\n");
+        process.exitCode = 1;
+        return;
+      }
+      const assembly = createMuseRuntimeAssembly();
+      const model = assembly.defaultModel;
+      if (!assembly.modelProvider || !model) {
+        io.stderr("muse swarm council: needs a configured local model (set MUSE_MODEL).\n");
+        process.exitCode = 1;
+        return;
+      }
+      const modelProvider = assembly.modelProvider;
+      io.stdout(`🏛  Convening the council (${config.peers.length.toString()} peer(s))…\n`);
+      const utterances = await gatherCouncil(question, {
+        ownReasoning: () => produceCouncilReasoning(question, { model, modelProvider }),
+        peers: config.peers,
+        requestReasoning: (peer, q) => requestCouncilReasoning({ env, fetchImpl: io.fetch ?? globalThis.fetch, fromPeerId: config.selfId, peer, question: q }),
+        selfId: config.selfId
+      });
+      if (utterances.length === 0) {
+        io.stdout("No council members responded (peers offline or council disabled on them).\n");
+        return;
+      }
+      const answer = await synthesizeCouncilAnswer(question, utterances, { model, modelProvider });
+      io.stdout(`${renderCouncilResult(question, utterances, answer)}\n`);
     });
 
   swarm
