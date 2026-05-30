@@ -56,6 +56,15 @@ describe("measureSystemPromptText", () => {
     expect(report.sections[0]?.id).toBe("active-context");
     expect(report.sections[0]?.chars).toBe("<!-- muse:active-context -->".length);
   });
+
+  it("conserves chars: preludeChars + Σ section.chars === totalChars (no double-count, no gap)", () => {
+    const text = "PRELUDE base prompt.\n<!-- muse:memory -->\nmem section text\n<!-- muse:tools -->\ntool section text";
+    const report = measureSystemPromptText(text);
+    expect(report.preludeChars).toBe(text.indexOf("<!-- muse:memory")); // prelude is everything before the first marker
+    const sum = report.preludeChars + report.sections.reduce((acc, s) => acc + s.chars, 0);
+    expect(sum).toBe(report.totalChars);
+    expect(report.sections.map((s) => s.id)).toEqual(["memory", "tools"]);
+  });
 });
 
 describe("measureSystemPromptBudget", () => {
@@ -98,5 +107,14 @@ describe("promptBudgetSpanAttributes", () => {
       "ctx.budget.total_chars": 348,
       "ctx.budget.total_tokens": 84
     });
+  });
+
+  it("a duplicate section id keeps both in the report but the flat span attr is last-wins (documents the collision)", () => {
+    const report = measureSystemPromptText("<!-- muse:tools -->\nAAA\n<!-- muse:tools -->\nBBBB");
+    expect(report.sections).toHaveLength(2); // both sections are measured
+    expect(report.sections.map((s) => s.id)).toEqual(["tools", "tools"]);
+    // the flat attribute map keys by id, so the SECOND section's chars win
+    const attrs = promptBudgetSpanAttributes(report);
+    expect(attrs["ctx.budget.section.tools.chars"]).toBe(report.sections[1]!.chars);
   });
 });
