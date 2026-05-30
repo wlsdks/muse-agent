@@ -418,6 +418,65 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Admin trace/span accessors (untested) — admin-routes-trace.test.ts:
+  recordedTraceEvents is a duck-typed accessor over an UNKNOWN sink — []
+  for a non-object; uses listByRunId(runId) when a runId is given and the method
+  exists, else falls back to list() (no runId, or runId but no listByRunId), []
+  when neither method is present; recordedSpans calls recordedSpans() when
+  present else []. Defensive: a malformed/absent sink yields [] not a throw.
+  api 667 pass; build typecheck green.
+- [x] Debug-replay capture helpers + opsMetricSnapshots (untested) —
+  compat-debug-replay.test.ts: debugReplayResponse (completed run → envelope with
+  a 30-day expiry + captured prompt; failed run → RUN_FAILED + message; no user →
+  "anonymous"); opsMetricSnapshots (event name → snapshot, else "unknown", empty
+  without observability); save/list/getDebugReplayCapture delegate to a configured
+  store and fall back cleanly (save→passthrough, list→[], get→undefined). api 657
+  pass; build typecheck green.
+- [x] Compat-routes generic helpers (untested) — compat-routes-helpers.test.ts:
+  readIfMatchVersion (optimistic-concurrency header parse — quoted/plain version,
+  first of an array, non-numeric/missing → undefined so a typo never becomes a
+  version); findCompatRecord (id → name → channelId fallback lookup); createRecord
+  (generates/honors the id, stores the record, PRESERVES createdAt across a
+  re-create); toCompatRuntimeSetting (null fallbacks, ISO timestamp, type
+  upper-cased). api 649 pass; build typecheck green (caught a RuntimeSetting
+  non-export + CompatRecord cast before commit).
+- [x] Agent-spec compat serializers (untested) — compat-agent-spec.test.ts:
+  parseAgentSpecInput (non-object/missing-name rejected, name from id fallback,
+  invalid mode rejected, valid spec drops undefined fields); toAgentSpecResponse
+  (long systemPrompt → 120-char preview + ellipsis with the FULL prompt never in
+  the response, short → full, absent → null + hasSystemPrompt false, mode via
+  agentModeResponse); toAgentSpecUpdateInput (partial body merges over existing,
+  systemPrompt null clears). api 639 pass; build typecheck green.
+- [x] Compat auth helpers (untested) — security-relevant. compat-auth.test.ts:
+  parseAuthCredentials accepts a valid login (name defaults to email), rejects
+  missing/blank fields, and enforces the stricter REGISTER rules (email format,
+  password ≥ 8, non-empty name); toCompatUserResponse/toCompatAuthResponse expose
+  ONLY id/email/name — asserted that a passwordHash/salt on the user object never
+  reaches the response (no credential leak); requireAuthService 404s
+  AUTH_UNAVAILABLE when absent; errorMessage(Error→message else fallback).
+  api 627 pass; build typecheck green.
+- [x] User-memory access gate + store helpers (untested) — the PRIVACY boundary
+  behind "it can't tell anyone". compat-user-memory-store.test.ts: canAccessUserMemory
+  denies empty/anonymous outright; allows any real user when auth is DISABLED
+  (personal default); with auth ENABLED allows only the caller's OWN memory and
+  DENIES another user's (and denies when no identity resolves); updateUserMemory
+  routes facts→upsertFact / preferences→upsertPreference (trimmed) and 400s an
+  empty key/value; toUserMemoryResponse normalizes a Date updatedAt to ISO.
+  api 617 pass; build typecheck green.
+- [x] Admin dashboard summary (untested) — compat-dashboard.test.ts drives
+  dashboardSummary through fully-faked stores: scheduler attention counts
+  (disabled jobs excluded from failed/agent; attentionBacklog = running+failed),
+  MCP status rollup, and — core to Muse's edge — the RESPONSE-TRUST rollup
+  (boundaryFailures from guard_rejection, output-guard modified/rejected, and
+  UNVERIFIED responses from agent_run metadata.verified/grounded === false) plus
+  recentTrustEvents (newest-first, guard_rejection → warning); all-zero rollups
+  when no stores configured. api 603 pass; build typecheck green.
+- [x] Compat model-registry helpers (untested) — compat-models.test.ts:
+  parseAgentMode (standard/plan_execute/react case+whitespace-insensitive, else
+  undefined incl. non-string), agentModeResponse (plan_execute→PLAN_EXECUTE, else
+  upper, undefined→REACT), listSessionModels (provider models as
+  providerId/modelId with the default flagged; defaultModel fallback chain
+  configured → first model → ""). api 595 pass; build typecheck green.
 - [x] Compat response-shape helpers (untested) — compat-responses.test.ts:
   clampLimit ([1,200] pagination clamp), prefixValidationDetails (dot-prefix
   every field key), invalid() ParseResult constructor, errorResponse /
@@ -456,6 +515,49 @@ the generic layers below because they test what makes Muse an *agent*.
   epochMillisOrNull (number/Date/ISO → ms, else null); toJsonObject (drops
   function/undefined values); stringMapField (string→string only); readQueryBoolean;
   compatEnumString (trim+upper); chunkText (2000-char chunks, empty→[""]). api 522 pass.
+- [x] Worker synthesizer (untested) — the swarm fan-in. multi-agent-synthesizer.test.ts:
+  createWorkerSynthesizer returns undefined with no model provider; with one it
+  labels each part by workerId ("### <id>\n<output>"), calls the synthesis prompt
+  at temp 0.3, trims the result, and returns "" when the model yields no output.
+  api 737 pass; build typecheck green.
+- [x] Multipart parser + SSE line-framer (untested) — server-multipart-sse.test.ts:
+  parseMultipartBody separates text fields from files (base64-encodes file bytes,
+  defaults content-type), accepts a quoted boundary + a header-array content type,
+  and throws when no boundary is present (the chat-upload input boundary); sseData
+  splits CRLF/CR/LF each into a new data: segment and emits a single space for an
+  empty line (so a bare CR in model output can't truncate the SSE stream). api 731
+  pass; build typecheck green.
+- [x] Generic server input-utils (untested) — the shape/coercion foundation every
+  API parser builds on. server-input-utils.test.ts: isJsonValue recursive validation
+  (rejects functions + non-finite numbers, accepts nested), isJsonObject; optional*
+  coercers (null only via the nullable variant, non-strings filtered); the read*
+  FALSE-sentinel semantics (readStringArray/readJsonObject → false for an invalid
+  present value, value when valid, fallback when absent); readNumber finite-guard;
+  parseHistoryLimit STRICT integer parse + clamp (rejects 9.5/0x10/1e3/0);
+  parseResponseLocales (ko/en filter+dedup+fallback); parseRuntimeSettingType
+  allow-list. api 721 pass; build typecheck green.
+- [x] MCP route input parsers (untested) — the registration input gate (validates
+  before a server is ever connected). mcp-routes-parsers.test.ts: parseTransportType
+  allow-lists stdio/sse/streamable/http (case+whitespace insensitive) else undefined;
+  parseMcpServerInput rejects non-object / missing name / invalid transport /
+  non-object config, accepts a valid spec with defaults (autoConnect true, config
+  {}), and falls back to an existing server's fields; parseToolCallBody accepts
+  args or the arguments alias as a JSON object, rejects non-object body/args.
+  api 703 pass; build typecheck green.
+- [x] Compat session-detail serializers (untested) — compat-session-store.test.ts:
+  sessionDetail 404s (RUN_HISTORY_UNAVAILABLE / SESSION_NOT_FOUND) and returns
+  messages+run+session+toolCalls when found; compatSessionDetail 401s without an
+  authed user and SYNTHESIZES the user turn + assistant reply from the run when
+  no messages are stored (only the user turn when there's no output), else maps
+  STORED messages through; toSessionResponse reports the synthesized count + a
+  120-char preview + lastActivity. api 691 pass; build typecheck green.
+- [x] Compat run-aggregation LATENCY functions (the earlier slice covered the
+  tool/failure rollups; the latency percentiles + query mappers were not).
+  compat-run-aggregations-latency.test.ts: latencySummary computes p50/p95/p99
+  by the floor((n-1)*p) index over in-window latencies, excludes out-of-window
+  runs, and filters runs missing a start/complete timestamp; latencyTimeseries
+  buckets by day with avg+count; latencySummaryFromQuery / latencyTimeseriesFromQuery
+  map precomputed query results. api 677 pass; build typecheck green.
 - [x] Compat run-aggregation helpers (untested) — the pure tool-usage / failure
   / latency analytics behind the admin observability routes (the ToolCorrectness +
   StepEfficiency observability surface). compat-run-aggregations.test.ts:
@@ -467,6 +569,19 @@ the generic layers below because they test what makes Muse an *agent*.
   capped at 5, count-desc); dailyUsage (per-UTC-day cost+runs, date-asc);
   latencyDistribution (0-1s/1-5s/5-30s/30s+ buckets + missing-timestamp→unknown).
   api 503 pass.
+- [x] ① background-review factual-fix negative — added a one-off FACTUAL
+  correction ("when's my meeting?" → "no, it's at 4pm") that must author NOTHING
+  (data, not a durable procedure). The skill-authoring NEGATIVE had only a
+  no-correction case; this is the harder fact-vs-procedure discrimination.
+  Pre-verified STABLE 3/3 nothing-authored; verify-background-review ALL PASS
+  (3 asserted) on qwen3:8b. LOCAL OLLAMA ONLY.
+- [x] ★ swarm council-synthesis single-member no-pad — added a scenario to
+  verify-council: a SINGLE-member council must credit exactly that one real
+  member; the synthesiser must NOT pad the contributor list with invented
+  co-contributors to look like a fuller council (the swarm grounding analog of
+  "can't invent a council member"). The original tested grounding only on the
+  3-member case. Pre-verified STABLE 3/3 (contributors == ["phone"]); battery
+  ALL PASS on qwen3:8b. LOCAL OLLAMA ONLY.
 - [x] ★ dreaming reflection-synthesis thin-input honesty — added a second
   scenario to verify-reflection-synthesis: across UNRELATED one-off episodes (no
   strong recurring theme), EVERY returned reflection must STILL satisfy the

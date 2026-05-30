@@ -76,5 +76,18 @@ if (!answer) {
     : fail("synthesised answer is empty");
 }
 
+// 3) SINGLE-member council → the contributor list must be exactly that one real
+//    member; the synthesiser must NOT pad it with invented co-contributors to
+//    look like a fuller council. STABLE 3/3.
+const soloUtterances = [{ peerId: "phone", reasoning: "Renting keeps you flexible to move and avoids maintenance risk; invest the difference." }];
+const soloAnswer = await synthesizeCouncilAnswer(question, soloUtterances, { model, modelProvider });
+if (!soloAnswer) {
+  fail("single-member synthesis returned null");
+} else {
+  soloAnswer.contributors.length >= 1 && soloAnswer.contributors.every((c) => c === "phone")
+    ? pass(`single-member council credits only the real member: ${JSON.stringify(soloAnswer.contributors)}`)
+    : fail(`single-member synthesis padded/invented a contributor: ${JSON.stringify(soloAnswer.contributors)}`);
+}
+
 console.log(failures === 0 ? `\nALL PASS on ${model}` : `\n${failures} FAILED on ${model}`);
 process.exit(failures === 0 ? 0 : 1);

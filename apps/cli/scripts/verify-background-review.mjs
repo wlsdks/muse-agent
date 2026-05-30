@@ -51,6 +51,13 @@ const cases = [
     turns: [turn("user", "thanks, that's perfect"), turn("assistant", "Glad it helped!")]
   },
   {
+    // The harder negative: a one-off FACTUAL correction is data, not a durable
+    // PROCEDURE — it must NOT be authored as a skill. STABLE 3/3 nothing-authored.
+    name: "NEGATIVE: one-off factual fix → nothing authored (fact, not procedure)",
+    kind: "none",
+    turns: [turn("user", "when's my meeting?"), turn("assistant", "Your meeting is at 3pm."), turn("user", "no, it's at 4pm")]
+  },
+  {
     name: "INFORMATIONAL: style-only preference (model decides procedure-vs-preference)",
     kind: "info",
     turns: [
