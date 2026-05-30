@@ -669,6 +669,26 @@ the generic layers below because they test what makes Muse an *agent*.
   PASS on nomic-embed-text. (Finding logged in the Rejected ledger: a "car
   insurance" near-miss returns confident on the HOME policy — NOT a defect, since
   cited recall quotes the source so the user sees the mismatch.) LOCAL OLLAMA ONLY.
+- [x] WEDGE cited-recall — TOP-RANK attribution assertion. The 4 confident cases
+  asserted only that the right source was PRESENT in the rendered list (`includes`)
+  — but topK=3 surfaces adjacent vocabulary-sharing docs too, so a ranking
+  regression that demoted the correct source below a neighbour would still pass.
+  Added `matches[0].source === topSource` to each confident case so "the source
+  quoted" means the CORRECT source LEADS, not merely appears. Each top-rank
+  pre-verified STABLE 3/3 (policy-2025.pdf / meeting-q3.md / ingested vpn /
+  ingested kitchen-quote); battery 6/6 ALL PASS on nomic-embed-text. This is the
+  load-bearing WEDGE invariant the `includes` check left unguarded. LOCAL OLLAMA ONLY.
+- [x] NORTH STAR proactive-recall-gate — NEGATIVE-attribution assertion. The
+  surface cases asserted the right source is cited but not that a WRONG one is
+  absent. Proactivity is UNSOLICITED, so citing an adjacent note the user didn't
+  ask about is exactly the cost that makes a nudge unwelcome. The investigator
+  emits a SINGLE-source finding (verified: only the relevant source appears, 3/3),
+  so added `notSources` to each surface case (Q3 → not dentist/trip; dentist →
+  not meeting-q3/trip) guarding that single-source contract against a regression
+  that started leaking multiple/wrong sources into an unsolicited heads-up.
+  Battery 4/4 ALL PASS on nomic-embed-text. The dual of the WEDGE top-rank fix:
+  the wedge proves the right source LEADS; this proves an unsolicited nudge cites
+  the right source ONLY. LOCAL OLLAMA ONLY.
 - [x] eval:tools actuator-set KO positive — added "거실 불 꺼줘." → home_action
   (requireArgs service) to the actuator confusable scenario. The state-changing
   actuator positives were all English; the KO cases there were only NEGATIVE

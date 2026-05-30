@@ -56,8 +56,8 @@ const corpus = [
 const investigate = createConfidenceGatedInvestigator({ chunks: corpus, embed, topK: 3 });
 
 const cases = [
-  { name: "trigger IN corpus → cited finding surfaces", kind: "surface", item: { title: "Q3 budget review", kind: "calendar", factSheet: "" }, needles: ["📎 Related", "meeting-q3.md"] },
-  { name: "trigger IN corpus (2) → cited finding surfaces", kind: "surface", item: { title: "Dentist appointment", kind: "calendar", factSheet: "" }, needles: ["📎 Related", "dentist.md"] },
+  { name: "trigger IN corpus → cited finding surfaces", kind: "surface", item: { title: "Q3 budget review", kind: "calendar", factSheet: "" }, needles: ["📎 Related", "meeting-q3.md"], notSources: ["dentist.md", "trip-jeju.md"] },
+  { name: "trigger IN corpus (2) → cited finding surfaces", kind: "surface", item: { title: "Dentist appointment", kind: "calendar", factSheet: "" }, needles: ["📎 Related", "dentist.md"], notSources: ["meeting-q3.md", "trip-jeju.md"] },
   { name: "trigger OFF-topic → SILENCE (no stray guess)", kind: "silent", item: { title: "Quarterly tax filing deadline", kind: "task", factSheet: "" } },
   // A second plausible-but-absent personal trigger: proactivity is UNSOLICITED,
   // so a genuinely-unrelated task must stay silent, never surface an adjacent
@@ -70,7 +70,11 @@ for (const c of cases) {
   const finding = await investigate(c.item);
   let ok;
   if (c.kind === "surface") {
-    ok = typeof finding === "string" && c.needles.every((n) => finding.includes(n));
+    // An UNSOLICITED proactive nudge must cite the RIGHT source AND no other:
+    // surfacing an adjacent note the user didn't ask about is the cost that
+    // makes proactivity unwelcome. notSources guards the single-source contract.
+    ok = typeof finding === "string" && c.needles.every((n) => finding.includes(n))
+      && (c.notSources ?? []).every((s) => !finding.includes(s));
   } else {
     ok = finding === undefined;
   }
