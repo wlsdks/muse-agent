@@ -418,6 +418,17 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Prompt-injection detection — multilingual + privacy categories (the
+  existing injection-patterns test covered English normalization + goal-033
+  patterns; the Korean/CJK/Spanish and privacy patterns were undetected-in-test).
+  injection-patterns-multilingual.test.ts asserts DETECTION of: Korean
+  role-override / prompt-extraction / env-extraction / skeleton-key; credential
+  extraction (KO + EN, secret-then-verb order); cross_user_access and
+  command_injection (core to "it can't tell anyone"); Chinese/Japanese/Spanish
+  multilingual_injection; the Unicode TAG-range (U+E0000–E007F) strip evasion +
+  Cyrillic-homoglyph fold re-forming a split keyword; per-occurrence counting;
+  empty-input edge; a custom pattern set; and the zeroWidthCodePoints set
+  contents (NUL / ZWSP / BOM / RLO bidi-override). policy 94 pass.
 - [x] Outbound-safety DRAFT-FIRST content + refusal trail (summarizeToolDraft
   was untested; the existing gate test drove only no-argument tools so the draft
   was always empty). channel-approval-draft.test.ts asserts: email_send shows
