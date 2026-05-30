@@ -413,3 +413,8 @@ the generic layers below because they test what makes Muse an *agent*.
 - [x] `smoke:live` streaming fix (`6fd24d36`) — was buffered, not hung; verified
   17 checks green live.
 - [x] `eval:tools` live baseline green (32→39 cases, `79fcee09`).
+- [x] Low-density package exhaustion (core saturated → widen the edges): voice
+  (piper/whisper/openai adapters, registry, wake-word), observability
+  (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
+  scheduler-locks (single-flight contention), skills skill-loader (fail-open
+  directory walk + later-root-wins precedence).
