@@ -418,6 +418,14 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Compat-parsers (untested) — the untrusted-input normalization boundary for
+  the compat API. compat-parsers.test.ts: readQueryInteger STRICT parse (a
+  unit-slipped "7d"/"20x" reaches the fallback, never a silent partial parse);
+  coerceStringSet (CSV split + trim + dedup); sanitizeFilename (path/injection
+  chars → "_", 100-char cap — path safety); coerceNumber/coerceBoolean;
+  epochMillisOrNull (number/Date/ISO → ms, else null); toJsonObject (drops
+  function/undefined values); stringMapField (string→string only); readQueryBoolean;
+  compatEnumString (trim+upper); chunkText (2000-char chunks, empty→[""]). api 522 pass.
 - [x] Compat run-aggregation helpers (untested) — the pure tool-usage / failure
   / latency analytics behind the admin observability routes (the ToolCorrectness +
   StepEfficiency observability surface). compat-run-aggregations.test.ts:
