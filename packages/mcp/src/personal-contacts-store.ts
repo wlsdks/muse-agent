@@ -15,9 +15,10 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
+
+import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
 export interface Contact {
   readonly id: string;
@@ -141,35 +142,34 @@ export async function readContacts(file: string): Promise<readonly Contact[]> {
 }
 
 export async function writeContacts(file: string, contacts: readonly Contact[]): Promise<void> {
-  const payload = `${JSON.stringify({ contacts }, null, 2)}\n`;
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  const handle = await fs.open(tmp, "w", 0o600);
-  try {
-    await handle.writeFile(payload, "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  // Atomic, fsync'd, owner-only write via the shared primitive (randomUUID tmp →
+  // no same-ms rename-collision crash).
+  await atomicWriteFile(file, `${JSON.stringify({ contacts }, null, 2)}\n`);
 }
 
 /** Add a contact. Idempotent on `id`: re-adding the same id REPLACES. */
 export async function addContact(file: string, contact: Contact): Promise<void> {
-  const existing = await readContacts(file);
-  const filtered = existing.filter((entry) => entry.id !== contact.id);
-  await writeContacts(file, [...filtered, contact]);
+  // Serialise the read-modify-write: a lost contact is a recipient that later
+  // won't resolve, which under outbound-safety rule 3 (recipient resolved, never
+  // guessed) means a send is refused / a clarify fires instead of reaching the
+  // intended person. Concurrent adds must not clobber.
+  await withFileMutationQueue(file, async () => {
+    const existing = await readContacts(file);
+    const filtered = existing.filter((entry) => entry.id !== contact.id);
+    await writeContacts(file, [...filtered, contact]);
+  });
 }
 
 export async function removeContact(file: string, id: string): Promise<boolean> {
-  const existing = await readContacts(file);
-  const next = existing.filter((entry) => entry.id !== id);
-  if (next.length === existing.length) {
-    return false;
-  }
-  await writeContacts(file, next);
-  return true;
+  return withFileMutationQueue(file, async () => {
+    const existing = await readContacts(file);
+    const next = existing.filter((entry) => entry.id !== id);
+    if (next.length === existing.length) {
+      return false;
+    }
+    await writeContacts(file, next);
+    return true;
+  });
 }
 
 export async function queryContacts(file: string): Promise<readonly Contact[]> {

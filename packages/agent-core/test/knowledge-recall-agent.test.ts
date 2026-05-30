@@ -127,6 +127,25 @@ describe("classifyRetrievalConfidence — CRAG verdict (arXiv 2401.15884)", () =
   it("falls back to the score when cosine is absent (cosine-path back-compat)", () => {
     expect(classifyRetrievalConfidence([{ score: 0.6, source: "s", text: "t" }])).toBe("confident");
   });
+
+  it("the 0.55 default bar is inclusive (>=): exactly-at-bar is confident, a hair below is ambiguous", () => {
+    expect(classifyRetrievalConfidence([m(0.55)])).toBe("confident");
+    expect(classifyRetrievalConfidence([m(0.5499)])).toBe("ambiguous");
+  });
+
+  it("a non-finite confidentAt (NaN / Infinity from a misconfigured threshold) falls back to the 0.55 default — never breaks the gate", () => {
+    // The wedge's trust depends on a real bar; a Number(\"\")=NaN env must not
+    // make everything confident or everything ambiguous.
+    expect(classifyRetrievalConfidence([m(0.6)], { confidentAt: Number.NaN })).toBe("confident");
+    expect(classifyRetrievalConfidence([m(0.3)], { confidentAt: Number.NaN })).toBe("ambiguous");
+    expect(classifyRetrievalConfidence([m(0.6)], { confidentAt: Number.POSITIVE_INFINITY })).toBe("confident");
+  });
+
+  it("a cosine of exactly 0 is used as the real score (not treated as 'missing' and replaced by score)", () => {
+    // `cosine ?? score` only falls back on null/undefined — a genuine 0 cosine
+    // stays 0, so a high `score` can't smuggle a zero-similarity match past the bar.
+    expect(classifyRetrievalConfidence([{ cosine: 0, score: 0.9, source: "s", text: "t" }])).toBe("ambiguous");
+  });
 });
 
 describe("rankKnowledgeChunks surfaces the absolute cosine separately from the (RRF) score", () => {

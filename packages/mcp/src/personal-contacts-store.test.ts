@@ -109,3 +109,26 @@ describe("resolveUpcomingBirthdays", () => {
     expect(up.map((u) => u.contact.name)).toEqual(["Tom", "Ann"]); // Xander (Dec) excluded; NoBday/Garbled skipped
   });
 });
+
+// Concurrency (shared atomic-file helper migration): addContact / removeContact
+// are read-modify-write. A lost contact is a recipient that later won't resolve —
+// under outbound-safety rule 3 (recipient resolved, never guessed) that means a
+// send is refused / a clarify fires instead of reaching the intended person.
+describe("concurrent contact mutation", () => {
+  it("preserves EVERY distinct contact added concurrently (no last-writer-wins loss)", async () => {
+    const file = tempFile();
+    await Promise.all(Array.from({ length: 20 }, (_unused, i) => addContact(file, { email: `c${i.toString()}@x.com`, id: `c${i.toString()}`, name: `C${i.toString()}` })));
+    const all = await queryContacts(file);
+    expect(all).toHaveLength(20);
+    expect(new Set(all.map((c) => c.id)).size).toBe(20);
+    // each remains resolvable by name (the recipient-resolution backbone sees them all)
+    expect(resolveContact(all, "C7").status).toBe("resolved");
+  });
+
+  it("concurrent removes drop exactly the targeted contacts, leaving the rest", async () => {
+    const file = tempFile();
+    await Promise.all(Array.from({ length: 20 }, (_unused, i) => addContact(file, { email: `c${i.toString()}@x.com`, id: `c${i.toString()}`, name: `C${i.toString()}` })));
+    await Promise.all(Array.from({ length: 10 }, (_unused, i) => removeContact(file, `c${i.toString()}`)));
+    expect(await queryContacts(file)).toHaveLength(10);
+  });
+});

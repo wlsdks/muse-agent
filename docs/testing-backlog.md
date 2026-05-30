@@ -255,10 +255,21 @@ the generic layers below because they test what makes Muse an *agent*.
     records all preserved, the FIFO cap (100) applies to the REAL merged set under
     130 concurrent over-cap records (not a stale snapshot), 10 concurrent removes
     drop exactly the targeted ones. +3 tests.
-  - [ ] Remaining: migrate the other ~12 read-modify-write stores
-    (reminders / tasks / episodes / proactive-history / contacts /
-    patterns-fired / plan-cache / …) onto the shared helper — a cheap one-each
-    adoption. inbound dedup + single-flight daemon race tests also open.
+  - [x] Migration 6 — personal-contacts-store (outbound-safety rule 3: recipient
+    resolved, never guessed — a lost contact means a send is refused / a clarify
+    fires instead of reaching the person). add/remove serialised + atomicWriteFile:
+    20 concurrent distinct adds all preserved (each still name-resolvable by
+    resolveContact), 10 concurrent removes drop exactly the targeted ones. +2 tests.
+  - [x] Migration 7 — proactive-trust-ledger (north star: the trust score that
+    GATES proactivity is computed from this ledger; a clobbered append corrupts
+    the precision the gate reads). Was pid+Date.now tmp + a NON-fsync write +
+    unserialised appendSurfaced/recordOutcome; now atomicWriteFile (durable) +
+    withFileMutationQueue. 20 concurrent surfaces all preserved, 20 concurrent
+    outcomes each match their own surface (precision stays 1, not corrupted). +2.
+  - [ ] Remaining: migrate the other ~10 read-modify-write stores
+    (reminders / tasks / episodes / proactive-history / patterns-fired /
+    plan-cache / …) onto the shared helper — a cheap one-each adoption. inbound
+    dedup + single-flight daemon race tests also open.
 
 ## P5 — surface & contract
 

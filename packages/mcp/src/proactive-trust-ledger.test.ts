@@ -140,4 +140,27 @@ describe("proactive-trust-ledger — persistence", () => {
     expect(raw.surfaced).toHaveLength(2);
     expect(computeTrustScore(await readTrustLedger(file)).precision).toBe(1);
   });
+
+  // Concurrency (shared atomic-file helper migration): appendSurfaced /
+  // recordOutcome are read-modify-write, and the trust score that GATES
+  // proactivity is computed from this ledger — a clobbered append corrupts the
+  // precision the gate reads (and could wrongly keep Muse proactive or silence it).
+  describe("concurrent ledger mutation", () => {
+    it("preserves EVERY surfaced record written concurrently (no last-writer-wins loss)", async () => {
+      await Promise.all(Array.from({ length: 20 }, (_unused, i) =>
+        appendSurfaced(file, { id: `t${i.toString()}`, kind: "task", surfacedAtMs: 1_000 + i, title: `T${i.toString()}` })));
+      expect(await readTrustLedger(file)).toHaveLength(20);
+    });
+
+    it("applies every concurrent outcome to its own surface (the gate's precision stays consistent)", async () => {
+      await Promise.all(Array.from({ length: 20 }, (_unused, i) =>
+        appendSurfaced(file, { id: `t${i.toString()}`, kind: "task", surfacedAtMs: 1_000 + i, title: `T${i.toString()}` })));
+      const outcomes = await Promise.all((await readTrustLedger(file)).map((e) => recordOutcome(file, e.sourceKey, "kept", 5_000)));
+      expect(outcomes.every((o) => o.matched)).toBe(true);
+      const score = computeTrustScore(await readTrustLedger(file));
+      expect(score.surfaced).toBe(20);
+      expect(score.kept).toBe(20);
+      expect(score.precision).toBe(1); // all 20 kept → perfect, not corrupted by a lost write
+    });
+  });
 });

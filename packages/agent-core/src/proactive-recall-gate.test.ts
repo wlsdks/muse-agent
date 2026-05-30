@@ -51,6 +51,33 @@ describe("decideProactiveRecall — the CRAG gate for proactive surfacing", () =
     expect(decideProactiveRecall([match({ cosine: 0.5 })], { confidentAt: 0.45 }).surface).toBe(true);
     expect(decideProactiveRecall([match({ cosine: 0.5 })], { confidentAt: 0.6 }).surface).toBe(false);
   });
+
+  it("collapses interior whitespace (newlines/tabs/runs) in the surfaced snippet", () => {
+    const d = decideProactiveRecall([match({ text: "a\n\n  b\t\tc" })]);
+    expect(d.finding).toBe("📎 Related in your notes — [notes/q3.md] a b c");
+  });
+
+  it("honours a custom maxChars; a non-positive maxChars falls back to the default 160", () => {
+    const long = "word ".repeat(50); // 250 chars pre-collapse
+    const small = decideProactiveRecall([match({ text: long })], { maxChars: 10 });
+    expect(small.finding!.endsWith("…")).toBe(true);
+    expect(small.finding).toContain("word word"); // truncated near the 10-char bound
+    // prefix "📎 Related in your notes — [notes/q3.md] " (~41) + 10-char snippet + "…"
+    expect(small.finding!.length).toBeLessThan(60);
+    // maxChars 0 / negative is ignored → default 160 (so the finding is much longer)
+    expect(decideProactiveRecall([match({ text: long })], { maxChars: 0 }).finding!.length).toBeGreaterThan(150);
+    expect(decideProactiveRecall([match({ text: long })], { maxChars: -5 }).finding!.length).toBeGreaterThan(150);
+  });
+
+  it("ranks by score when cosine is absent (the strongest score wins the snippet)", () => {
+    const d = decideProactiveRecall([
+      { score: 0.85, source: "lo.md", text: "LOW" },
+      { score: 0.92, source: "hi.md", text: "HIGH" },
+    ]);
+    expect(d.surface).toBe(true);
+    expect(d.finding).toContain("[hi.md]");
+    expect(d.finding).toContain("HIGH");
+  });
 });
 
 describe("createConfidenceGatedInvestigator — investigate seam", () => {
@@ -85,5 +112,15 @@ describe("createConfidenceGatedInvestigator — investigate seam", () => {
     expect(await createConfidenceGatedInvestigator({ chunks: [], embed })({ factSheet: "", kind: "task", title: "x" })).toBeUndefined();
     const boom = createConfidenceGatedInvestigator({ chunks, embed: async () => { throw new Error("down"); } });
     expect(await boom({ factSheet: "", kind: "task", title: "Q3 budget review" })).toBeUndefined();
+  });
+
+  it("accepts a LAZY chunks provider (re-read per tick) and surfaces from it", async () => {
+    const investigate = createConfidenceGatedInvestigator({ chunks: async () => chunks, embed });
+    expect(await investigate({ factSheet: "", kind: "task", title: "Q3 budget review" })).toContain("[q3.md]");
+  });
+
+  it("fail-open when the lazy chunks provider THROWS (corpus unreadable → silent, base notice still fires)", async () => {
+    const investigate = createConfidenceGatedInvestigator({ chunks: async () => { throw new Error("index locked"); }, embed });
+    expect(await investigate({ factSheet: "", kind: "task", title: "Q3 budget review" })).toBeUndefined();
   });
 });
