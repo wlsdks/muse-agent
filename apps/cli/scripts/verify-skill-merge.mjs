@@ -41,6 +41,16 @@ const cases = [
       { name: "summarise-email", description: "Use when summarising an email", body: "read; bullets" },
       { name: "book-flight", description: "Use when booking a flight", body: "search; pick; confirm payment" }
     ]
+  },
+  {
+    // The harder negative: skills that SHARE A KEYWORD ("lock") but operate in
+    // entirely different domains must NOT force-merge on surface overlap. STABLE 3/3 NONE.
+    name: "NEGATIVE: shared-keyword, different-domain skills → NONE (no surface force-merge)",
+    kind: "none",
+    cluster: [
+      { name: "lock-front-door", description: "Use when locking the smart-home front door", body: "call lock.front_door" },
+      { name: "lock-spreadsheet-cell", description: "Use when locking a spreadsheet cell", body: "protect the cell range" }
+    ]
   }
 ];
 

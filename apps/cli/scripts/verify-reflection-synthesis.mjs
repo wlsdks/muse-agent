@@ -77,5 +77,23 @@ themed
   ? pass(`found the recurring networking theme, grounded in real episodes → ${JSON.stringify(themed.sourceIds)}`)
   : fail(`expected a networking-themed reflection grounded in ≥2 of ep-101/102/103; got ${JSON.stringify(reflections)}`);
 
+// 3) Honesty on THIN input: even across UNRELATED one-off episodes (no strong
+//    recurring theme), every returned reflection must STILL satisfy the
+//    grounding invariant — it may generalise loosely ("regular maintenance"),
+//    but it must never invent a source id or inflate support. STABLE 3/3.
+const unrelated = [
+  { id: "ux-1", text: "Booked a dentist cleaning for the first week of June." },
+  { id: "ux-2", text: "Drafted the Q3 budget memo and shared it with finance." },
+  { id: "ux-3", text: "Watered the balcony plants and repotted the basil." },
+  { id: "ux-4", text: "Renewed the car registration online." }
+];
+const unrelatedIds = new Set(unrelated.map((i) => i.id));
+const thinReflections = await synthesizeReflections(unrelated, { minSupport: 2, model, modelProvider });
+const thinGrounded = thinReflections.every((r) =>
+  r.sourceIds.length >= 2 && r.sourceIds.every((s) => unrelatedIds.has(s)) && r.supportCount === r.sourceIds.length);
+thinGrounded
+  ? pass(`thin-input honesty: all ${thinReflections.length.toString()} reflection(s) on unrelated episodes stay grounded (no invented source / inflated support)`)
+  : fail(`a thin-input reflection broke the grounding invariant: ${JSON.stringify(thinReflections)}`);
+
 console.log(failures === 0 ? `\nALL PASS on ${model}` : `\n${failures} FAILED on ${model}`);
 process.exit(failures === 0 ? 0 : 1);

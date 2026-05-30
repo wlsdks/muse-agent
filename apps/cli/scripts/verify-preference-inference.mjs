@@ -42,6 +42,13 @@ const cases = [
     name: "NEGATIVE: one-off factual fix → NONE (no fabricated trait)",
     kind: "none",
     exchange: { request: "when is my meeting?", priorAnswer: "Your meeting is at 3pm.", correction: "no, it's at 4pm" }
+  },
+  {
+    // The negative risk in the user's language: a Korean one-off time fix must
+    // NOT fabricate a durable preference either. STABLE 3/3 NONE.
+    name: "NEGATIVE (KO): one-off factual fix → NONE (no fabricated trait)",
+    kind: "none",
+    exchange: { request: "내 약속 언제야?", priorAnswer: "3시입니다.", correction: "아니 4시야." }
   }
 ];
 

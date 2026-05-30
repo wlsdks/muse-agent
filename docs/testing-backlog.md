@@ -467,6 +467,40 @@ the generic layers below because they test what makes Muse an *agent*.
   capped at 5, count-desc); dailyUsage (per-UTC-day cost+runs, date-asc);
   latencyDistribution (0-1s/1-5s/5-30s/30s+ buckets + missing-timestamp→unknown).
   api 503 pass.
+- [x] ★ dreaming reflection-synthesis thin-input honesty — added a second
+  scenario to verify-reflection-synthesis: across UNRELATED one-off episodes (no
+  strong recurring theme), EVERY returned reflection must STILL satisfy the
+  grounding invariant (≥2 real source ids, supportCount == sourceIds). The model
+  may generalise loosely ("regular maintenance"), but it must never invent a
+  source id or inflate support — the dreaming honesty guarantee on the thin-input
+  path the original only tested on a clear theme. Pre-verified STABLE 3/3
+  allGrounded; battery ALL PASS on qwen3:8b. LOCAL OLLAMA ONLY.
+- [x] ③ pattern-suggestion negative — added "two unrelated one-offs, no
+  recurring day" → NONE, proving the proactive synthesizer doesn't manufacture a
+  recurring habit from sparse/unrelated events. (Finding, ledgered: a 0.4-confidence
+  "2× 6 weeks apart, different areas" DOES produce a suggestion — a threshold/gate
+  tuning question, the synthesizer reflects the confidence it's handed, not a
+  clear bug; the clean no-recurring-day case is used instead.) Pre-verified STABLE
+  3/3 NONE; verify-pattern-suggestion 4/4 ALL PASS on qwen3:8b. LOCAL OLLAMA ONLY.
+- [x] ① playbook-merge cross-domain positive — added a redundant SCHEDULING
+  cluster ("leave buffer time / avoid back-to-back" ×2 → one merged strategy) so
+  the merge positive isn't overfit to the summarise domain. (Finding: same-domain
+  ORTHOGONAL email advice merges by COMBINING — "cc manager AND keep under 4
+  sentences" — preserving both pieces, so it's a legit merge not a collapse;
+  hence a cross-domain positive, not a same-domain negative.) Pre-verified STABLE
+  3/3 merged; verify-playbook-merge 3/3 ALL PASS on qwen3:8b. LOCAL OLLAMA ONLY.
+- [x] ① skill-merge keyword-overlap negative — added a shared-keyword,
+  different-domain cluster (lock-front-door [smart home] + lock-spreadsheet-cell
+  [document]) that must return NONE, proving the curator doesn't force-merge on
+  surface keyword overlap. The no-force-merge path (the battery's stated risk)
+  had only one clearly-unrelated case; this is the harder near-miss. Pre-verified
+  STABLE 3/3 NONE; verify-skill-merge 3/3 ALL PASS on qwen3:8b. LOCAL OLLAMA ONLY.
+- [x] ② preference-inference KO negative — added a Korean one-off factual fix
+  ("내 약속 언제야?" → "아니 4시야") that must return NONE, not fabricate a durable
+  trait. The negative path (the whole risk per the battery's docstring) had only
+  one EN case; this proves the no-fabrication guard holds in the user's language.
+  Pre-verified STABLE 3/3 NONE; verify-preference-inference 4/4 ALL PASS on
+  qwen3:8b. LOCAL OLLAMA QWEN ONLY.
 - [x] WEDGE cited-recall — added a PERSONAL near-miss REFUSAL case ("what is my
   monthly rent?") to verify-cited-recall. The refuse path (Muse's "I'm not sure"
   trust half) had only one out-of-corpus case; rent is a topic the corpus could

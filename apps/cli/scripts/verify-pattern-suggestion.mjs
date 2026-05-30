@@ -58,6 +58,18 @@ const cases = [
       fallbackSuggestion: "",
       groundedFacts: "no clear recurring pattern; 1 occurrence; area 'misc'"
     }
+  },
+  {
+    // A harder negative: two UNRELATED one-offs with no recurring day are not a
+    // pattern — must NOT be dressed up as a recurring habit. STABLE 3/3 NONE.
+    name: "NEGATIVE: two unrelated one-offs → NONE (no manufactured pattern)",
+    kind: "none",
+    input: {
+      category: "weekly-task",
+      confidence: 0.3,
+      fallbackSuggestion: "",
+      groundedFacts: "only 2 events, unrelated topics, no recurring day"
+    }
   }
 ];
 

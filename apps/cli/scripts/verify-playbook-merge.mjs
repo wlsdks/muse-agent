@@ -31,6 +31,14 @@ const cases = [
     texts: ["when asked to summarise, use bullet points not prose", "summaries should be given as bullet points, not paragraphs"]
   },
   {
+    // A second redundant cluster in a DIFFERENT domain (scheduling, not
+    // summarising) — proves the merger isn't overfit to one topic. STABLE 3/3.
+    name: "redundant scheduling strategies → one merged",
+    kind: "merged",
+    needles: ["back-to-back", "buffer", "gap", "meeting", "schedul"],
+    texts: ["when scheduling meetings, always leave buffer time and avoid back-to-back slots", "never book meetings back-to-back; keep a gap between them"]
+  },
+  {
     name: "NEGATIVE: distinct strategies → NONE (never collapse)",
     kind: "none",
     texts: ["when rescheduling, default to the next business day", "keep work emails under four sentences"]
