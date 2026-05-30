@@ -418,6 +418,14 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Compat auth helpers (untested) — security-relevant. compat-auth.test.ts:
+  parseAuthCredentials accepts a valid login (name defaults to email), rejects
+  missing/blank fields, and enforces the stricter REGISTER rules (email format,
+  password ≥ 8, non-empty name); toCompatUserResponse/toCompatAuthResponse expose
+  ONLY id/email/name — asserted that a passwordHash/salt on the user object never
+  reaches the response (no credential leak); requireAuthService 404s
+  AUTH_UNAVAILABLE when absent; errorMessage(Error→message else fallback).
+  api 627 pass; build typecheck green.
 - [x] User-memory access gate + store helpers (untested) — the PRIVACY boundary
   behind "it can't tell anyone". compat-user-memory-store.test.ts: canAccessUserMemory
   denies empty/anonymous outright; allows any real user when auth is DISABLED
