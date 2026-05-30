@@ -418,6 +418,12 @@ the generic layers below because they test what makes Muse an *agent*.
   (latency/budget/slo/drift/agent-metrics/snapshot), calendar local-provider,
   scheduler-locks (single-flight contention), skills skill-loader (fail-open
   directory walk + later-root-wins precedence).
+- [x] Compat response-shape helpers (untested) — compat-responses.test.ts:
+  clampLimit ([1,200] pagination clamp), prefixValidationDetails (dot-prefix
+  every field key), invalid() ParseResult constructor, errorResponse /
+  validationErrorResponse (message + details + ISO timestamp), notFound (404 +
+  standard message) / badRequest (400 + given message) reply helpers. api 585
+  pass; build typecheck green.
 - [x] Compat session-tag store (untested) — store-delegation + file-state
   fallback + pure mappers. compat-session-tag-store.test.ts: safeIsoFromMs
   (finite ms → ISO; NaN/Infinity/non-number → epoch — the corrupt-timestamp
