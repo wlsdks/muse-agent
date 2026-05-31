@@ -24,7 +24,7 @@ related: [failure-modes-and-observability.md, harness-acceptance.md, verificatio
 ## 1. 재현의 토대 (이미 있는 것)
 
 Muse 런타임은 실행 단계별 기록(트레이스)과 실패 재현(debug replay)을 이미 갖추고 있습니다
-([SYSTEM-MAP #12](../SYSTEM-MAP.md)). 하네스 디버깅은 그 위에 얹습니다:
+(SYSTEM-MAP #12). 하네스 디버깅은 그 위에 얹습니다:
 - 각 단계(span)에 입력·출력·소요시간·비용·오류 상태를 남깁니다.
 - 도구 호출엔 이름·인자·원본 출력·재시도 횟수를 남깁니다([failure-modes-and-observability §2]
   (failure-modes-and-observability.md)).
@@ -64,7 +64,7 @@ Muse 런타임은 실행 단계별 기록(트레이스)과 실패 재현(debug r
 
 ## 출처 (검증 기반)
 
-- Muse 제품 — [SYSTEM-MAP #12](../SYSTEM-MAP.md) (실행 단계별 트레이스 + 실패 재현, 코드 검증됨)
+- Muse 제품 — SYSTEM-MAP #12 (실행 단계별 트레이스 + 실패 재현, 코드 검증됨)
 - Braintrust — [Agent Observability 2026](https://www.braintrust.dev/articles/agent-observability-complete-guide-2026) (중첩 span·부모자식·실패↔span 매핑)
 - Maxim — [Debugging AI Agents in 2026](https://www.getmaxim.ai/articles/debugging-ai-agents-in-2026-tools-techniques-and-best-practices/) (재현·격리 워크플로)
 - [The Debugging Crisis in Multi-Agent AI Systems](https://www.kdnuggets.com/the-debugging-crisis-in-multi-agent-ai-systems-and-how-to-fix-it) (상관 ID로 end-to-end 추적)

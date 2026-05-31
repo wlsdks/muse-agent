@@ -439,6 +439,94 @@ one actually used.)
 
 ---
 
+## A3. Perception expansion — how far Muse can safely READ to know you (research-grounded)
+
+Perception is HOW the local confidant gets to know you. The frame is
+**perceive broadly, act narrowly** — Muse may *read* your macOS world; it
+never acts on it (that stays draft-first per `outbound-safety.md`). One rule
+that is ethics AND answer-quality at once: **perceive what the user AUTHORED
+about themselves** (notes, calendar, tasks, scoped work files, git) — those
+are simultaneously the lowest-creep AND the sources the local Qwen extracts
+best — and **never mirror raw exhaust** (browser/app/message/keystroke
+streams), which is both the creepiest input and the one that measurably
+*degrades* personalization (a low-signal firehose saturates context).
+
+**The four safe-perception invariants** (the read analogue of
+`outbound-safety.md`; deterministic code + a test per source): (a) **local-only
+/ no egress**, (b) **visible + reversible** via `/memory`·`muse learned`·
+`/forget`, (c) **per-source consent, default-OFF**, (d) **purpose = knowing
+you** (a read that can't be cited back is dropped — the grounding gate IS the
+anti-surveillance mechanism).
+
+**Two code-verified corrections the loop MUST respect** (the naive design was
+false against live source — this is why each slice carries the guard, not just
+a claim):
+
+1. **The local-only gate covers INFERENCE, not the DATA SOURCE.**
+   `classifyProviderLocality` (`packages/model/src/local-only-policy.ts:60`)
+   never sees a registry read. `CalendarProviderRegistry.listEventsWithDiagnostics`
+   (`packages/calendar/src/registry.ts:104`) fans a no-`providerId` read to
+   EVERY provider, and the tasks registry can hold `NotionTasksProvider`
+   (`packages/mcp/src/tasks-providers.ts:163`, talks to api.notion.com). So a
+   *read* can egress under `MUSE_LOCAL_ONLY=true`. **Fix:** filter the registry
+   to `provider.describe().local === true` before reading; the test asserts NO
+   non-loopback fetch during the read battery.
+2. **`risk:"write"` is SORT-ONLY — nothing rejects a write tool.** `risk`
+   (`packages/tools/src/index.ts:5`) is read only by `riskPriority`/
+   `compareToolExposurePriority` (sort, read-first). And `TasksProvider`/
+   `CalendarProvider` are single interfaces carrying mutators
+   (`add`/`createEvent`/…). So "read-only" is a projection discipline, not a
+   guarantee. **Fix:** a `PerceptionToolBundle` whose registration THROWS on any
+   `risk!=="read"` tool, + a `ReadOnlyTasksSource = Pick<TasksProvider,"list"|"search">`
+   narrowed view the connector closes over. Until that guard exists, do not
+   claim read-only is mechanical. (The `sha256` byte-identical-after check on
+   source fixtures is the one solid live proof; keep it.)
+
+**GATE FIRST — the ambient reader already live + ungoverned.**
+`AmbientSnapshotProvider` (`packages/agent-core/src/ambient-context.ts:14`)
+already injects `clipboard` / `selected` text / frontmost `app`·`window` /
+`notifications` into the prompt when enabled, is `risk`-free, and has no
+secret-skip (clipboard routinely holds `.env`/keys). It is the creepiest LIVE
+surface — bring it under the consent registry (default-OFF `ambient_clipboard`/
+`ambient_selection`) before any new connector ships.
+
+**macOS reality (changes what ships first):** the repo has NO EventKit/Contacts
+FFI — every macOS integration shells `osascript`. So the buildable Calendar/
+Reminders reader is the LOCAL-FILE provider (no TCC — ship first) or `osascript`
+(`kTCCServiceAppleEvents` Automation, flaky under launchd — honestly NOT a clean
+EventKit grant; EventKit needs a native helper, out of ≤1-commit scope). The
+launchd daemon inherits NO grants; grant prompts fire only from a FOREGROUND
+`muse` command. Never request Full Disk Access — narrow to a folder grant or
+drop the feature.
+
+**Ranked roadmap (value-to-creep):** ① notes/journal (deepen existing) → ②
+calendar read (local ICS first) → ③ tasks read (local-file, read-only view) →
+④ scoped work files (declared roots, `~/Downloads` excluded, secret-skip,
+metadata-default). Defer: git-log, location (coarse only). **Never build:**
+Messages/Mail/DM stores (third-party data — mirrors the send-side rule),
+browser cookies/passwords/Keychain, always-on screen/keylog/mic, banking/
+health. App-usage/Screen-Time dropped (knowledgeC.db is Biome-degraded behind
+FDA on macOS 13+; FDA is barred).
+
+**Prompt-injection (protects fabrication=0):** perceived calendar/task/file
+content is attacker-influenceable; route every chunk through
+`stripUntrustedTerminalChars` + `SKILL_RISK_PATTERNS`
+(`packages/skills/src/authored-skill-store.ts:42`) and mark it
+`provenance=untrusted-external` BEFORE it becomes a cited chunk — quoted as
+data, never obeyed as instruction.
+
+**The mock-harness insight (why mock == real):** every connector separates
+*where the bytes live* (an injectable resolved path/registry in
+`LoopbackToolsDeps` — `notesDir`, `tasksFile`, `calendarRegistry`) from *how
+they're read* (the real loopback MCP server). A mock = point that resolved path
+at a contract-faithful fake; the production code path runs UNCHANGED, nothing
+test-doubled. New harness `scripts/eval-perception.mjs` + `pnpm eval:perception`
+(LOCAL-OLLAMA-ONLY, skips exit-0 when Ollama down) drives the SAME
+`buildLoopbackTools(deps)` with `deps.*` pointed at `fixtures/mock-corpus/<domain>`.
+The buildable slice menu + per-slice assertions live in directive **B3**.
+
+---
+
 # PART B — THE OPERATING CONTRACT (read EVERY fire)
 
 ## B0. The autonomous loop meta-prompt
@@ -504,6 +592,41 @@ rivals' strong copyable axis, and the local Qwen chains poorly. Do NOT pick an
 A2A slice; if it ever returns it is far-future privacy-preserving delegation
 under the local boundary, never the headline.
 
+## PERCEIVE BROADLY · ACT WITH CONFIRMATION · GROW BOTH (2026-05-31, 진안's call)
+The more Muse can READ and (safely) DO, the better it knows the user and the
+more it can do FOR them — so the capability surface is a CONTINUOUS, SELF-JUDGED
+GROWTH axis, not a fixed list. Two halves, two rules:
+  - PERCEIVE = READ-ONLY, GROW FREELY. Keep adding local read-only perception
+    connectors (see directive B3). Read may be broad BUT: local-only (never
+    egress what was read), per-source consent (macOS TCC), visible+reversible
+    (/memory shows what was read/inferred; the user can delete it). Never read
+    silently what a user would feel violated by.
+  - ACT = ALLOWED, BUT ALWAYS ASK-FIRST. Sending a message, drafting+sending
+    email, creating a calendar event, setting a reminder, booking/reserving,
+    filling a web form — these are NOT banned; GROW them. But EVERY outward /
+    state-changing act is DRAFT-FIRST: Muse produces the exact content, the
+    user EXPLICITLY confirms THAT content, then it acts — through the existing
+    fail-close seam (`toolApprovalGate` / `createChannelApprovalGate` /
+    `pending-approval-store` / `channel-approval-gate` over `email_send` /
+    `web_action` / `home_action`). Deny / timeout / ambiguous-recipient ⇒ NO
+    effect. The gate is WHAT MAKES growing actuation safe — it never relaxes
+    (outbound-safety.md).
+EACH FIRE MAY judge + add ONE capability (a read connector OR a gated actuator),
+value-ranked (value-to-creep for reads; value-to-blast-radius for acts),
+user-felt, and verified against MOCK data — never the user's real data; for an
+actuator, a contract-faithful HTTP fake proving deny/timeout/ambiguous ⇒ no
+effect ALONGSIDE the confirmed-path send.
+THE TENSION WITH ≤5–7 TOOLS, RESOLVED: the TOTAL capability surface may grow
+large, but the PER-TURN EXPOSED set stays ≤5–7 via the relevance filter /
+planForContext — growth is DEPTH + SELECTION, never dumping the whole registry
+at the local Qwen (tool-calling.md). Do NOT out-breadth the rivals; each new
+capability must be deep, felt, and SELECTED in one shot (prove with eval:tools).
+"행동 제약이 줄어든다" means: the more Muse can (gated-)do, the fewer things the
+user must do themselves — the SAFETY constraint (ask-first on any outward act)
+never relaxes; it is what lets actuation grow at all.
+HARD LINE (capability growth NEVER crosses it): banking / brokerage / payments /
+money movement / trading remain permanently out of scope (outbound-safety.md).
+
 ## WHAT IS BUILT vs WHAT IS THE WORK NOW (the #1 failure this loop has)
 Fabrication=0 holds and is swept green across every surface. The grounding
 GATE is built. Therefore these remain BANNED as a deliverable (each always
@@ -564,15 +687,28 @@ DO make Muse perceptibly grow and perceptibly feel like the SF confidant.
    intent router) is unbuilt, it is outward IF it passes the B2 guardrails —
    a slice that buys cinematic feel by weakening honesty/locality/
    reversibility/latency-honesty is REJECTED, not shipped.
-6. EARN REACH & ACTUATION, ONE AT A TIME, FOR REAL.
+6. GROW THE CAPABILITY SURFACE — READ + GATED ACT, SELF-JUDGED, ONE AT A TIME
+   (the continuous expansion axis — see "PERCEIVE BROADLY · ACT WITH
+   CONFIRMATION · GROW BOTH" above + directive B3). Each fire MAY judge + add
+   ONE capability; value-ranked, user-felt, mock-verified:
+     - ADD ONE READ-ONLY PERCEPTION CONNECTOR (directive B3) — a new local
+       source Muse can read to know the user better (calendar/messages/browser-
+       history/contacts/shell/files…). Read-only, local-only, per-source
+       consent, visible/reversible. Proof: against a generated MOCK of that
+       source, never the user's real data.
+     - ADD or HARDEN ONE GATED ACTUATOR — send message / draft+send email /
+       create calendar event / set reminder / book / fill web form. Draft-first,
+       ask-first, fail-close through the approval-gate seam; recipient
+       resolved-not-guessed. Proof: a contract-faithful HTTP fake asserting
+       deny / timeout / ambiguous-recipient ⇒ NO effect, ALONGSIDE the
+       confirmed-path send (outbound-safety.md). Hardening a proven actuator
+       against a 429 / transient 5xx+retry / malformed third-party response is
+       a USER-FACING reliability win, not churn. Banking / payments / money
+       movement permanently out of scope.
      - Prove ONE proactive notice ARRIVES in ONE real channel (Telegram has
        the most plumbing): daemon tick → real bot → message visible.
-     - HARDEN ONE actuator to daily-reliable: make
-       sendEmailWithApproval / performWebAction survive a 429, a transient
-       5xx+retry, a malformed third-party response — against a contract-
-       faithful HTTP fake PLUS one real round-trip. Draft-first, fail-close,
-       recipient resolved-not-guessed (outbound-safety.md). Banking / payments
-       permanently out of scope.
+   Total surface may grow large; PER-TURN exposed tools stay ≤5–7 via the
+   relevance filter (tool-calling.md) — depth + selection, never breadth-dump.
 
 ## THE FALSIFIABLE TEST EVERY SLICE MUST PASS (apply LITERALLY at commit)
 Fill this in with the literal truth:
@@ -861,10 +997,153 @@ tell anyone, because nothing leaves your machine. Every honesty constraint is
 not a tax on the SF dream; it is the completion of it.
 ```
 
+## B3. Perception expansion — the read-only confidant (drop-in)
+
+```
+## Standing directive — Perception expansion: the read-only confidant
+(PERCEIVE BROADLY, ACT NARROWLY)
+
+NORTH-STAR ADDITION. Perception is HOW the local confidant gets to know
+the user ("Tell it everything. It can't tell anyone."). Muse may READ the
+user's macOS world to know them; it must NEVER act on or control it. This
+directive governs the READ side only — acting toward a third party stays
+fail-close + draft-first per outbound-safety.md; banking/payments stay out
+of scope. Prefer what the user AUTHORED about themselves (notes, calendar,
+tasks, scoped work files, git): those are simultaneously the lowest-creep
+AND the sources the local Qwen extracts best. NEVER mirror raw exhaust
+(browser/app/message/keystroke streams) — it is both the creepiest input
+AND the one that measurably DEGRADES personalization.
+
+THE FIVE SAFE-PERCEPTION GUARDRAILS (deterministic code + a test per
+source, never a prompt; all MUST hold):
+  - READ-ONLY. A perception connector exposes ONLY risk:"read" tools and
+    closes over a read-only view of its source (no mutating method
+    reachable). NOTE: today the `risk` field is SORT-ONLY — there is NO
+    registration-time rejection of a write tool, and TasksProvider/
+    CalendarProvider are single interfaces carrying mutators. So the FIRST
+    perception slice MUST land the real guard: a PerceptionToolBundle whose
+    registration THROWS on any risk!=="read" tool + a ReadOnly* narrowed
+    view (Pick<…,"list"|"search">) the connector closes over. Until that
+    guard exists, do not claim "read-only is mechanically guaranteed."
+  - LOCAL-ONLY / NO EGRESS. The egress gate (local-only-policy.ts) gates
+    INFERENCE, not the DATA SOURCE. A read through the tasks/calendar
+    registry can fan out to a CLOUD provider (Notion / cloud calendar) and
+    egress under MUSE_LOCAL_ONLY=true. EVERY perception read MUST filter
+    the registry to provider.describe().local===true before reading, and
+    the slice's test MUST assert NO non-loopback fetch occurred during the
+    read battery (not merely "no cloud inference adapter built").
+  - PER-SOURCE CONSENT, default-OFF. A per-source opt-in registry, every
+    source OFF until `muse perception grant <source>`. Two fail-closed
+    layers (OS grant AND Muse opt-in); missing either ⇒ read refused,
+    ZERO bytes, NO fabricated answer. Consent is NOT a tool the model can
+    call. NEVER request/nudge Full Disk Access — narrow to a folder grant
+    or drop the feature. A runtime TCC denial emits a VISIBLE re-grant
+    notice, logs it, returns zero bytes.
+  - VISIBLE + REVERSIBLE. Every perceived fact appears in /memory ·
+    `muse learned` WITH its citation and is removable via /forget (fed to
+    learned-avoidance). One inference store, the same one the user reads —
+    no hidden profile.
+  - NEVER-READ-SILENTLY. Every file/source read is logged to the
+    perception ledger; perceived content (event titles/notes, task notes,
+    file bodies) is attacker-influenceable — sanitize it
+    (stripUntrustedTerminalChars + SKILL_RISK_PATTERNS) and mark it
+    provenance=untrusted-external BEFORE it becomes a CITED corpus chunk,
+    so the grounding gate quotes it as data, never obeys it as instruction.
+
+NEVER BUILD (the read-side "banking is out of scope"): other apps' private
+message stores (Messages chat.db, Mail, Signal/WhatsApp), browser
+cookies/passwords/Keychain, always-on screen/keylog/mic capture, banking/
+financial/health streams. GATE FIRST under the consent registry: the
+EXISTING ambient clipboard/selection/notification reader
+(agent-core/ambient-context.ts) — it is the creepiest LIVE surface, is
+currently risk-free and secret-skip-less, and must become default-OFF
+sources ambient_clipboard/ambient_selection before any new connector ships.
+SKIP-by-default inside a granted folder: secret patterns (.env *.pem id_rsa
+*.key .ssh/ *credentials*). file_activity DEFAULT-EXCLUDES ~/Downloads
+(received-from-others) and reads metadata-only unless content is explicitly
+requested.
+
+macOS REALITY: this repo has NO EventKit/Contacts FFI — every macOS
+integration shells osascript. So the buildable Calendar/Reminders reader is
+either the LOCAL-FILE provider (no TCC — ship this FIRST) or osascript
+(kTCCServiceAppleEvents Automation, flaky under launchd — be honest it is
+NOT a clean EventKit grant; the EventKit path needs a new native helper,
+out of scope for a ≤1-commit slice). The daemon under launchd inherits NO
+grants; grant prompts fire only from a FOREGROUND `muse` command the user
+runs.
+
+RANKED CONNECTOR SLICE MENU — each ≤1-commit, read-only risk:"read", a
+verb_noun tool with a rich required-bearing schema + "use when / not when"
+line + an eval:tools golden case (incl. a negative no-tool case), proven
+against a GENERATED MOCK via the existing buildLoopbackTools(deps) seam
+(point deps.<path> at fixtures/mock-corpus/<domain>; zero connector code
+test-doubled). Ship in order; each flips ONE OUTWARD-TARGETS perception
+bullet:
+  S1 calendar_read  — local ICS file. Folds in the opt-in registry/gate +
+       scripts/eval-perception.mjs (so the FIRST commit is OUTWARD, not
+       infra — a standalone harness slice flips no bullet and is banned as
+       a deliverable). Check: `pnpm eval:perception --domain calendar`.
+  S2 tasks_read     — local-file TasksProvider via ReadOnlyTasksSource
+       (list/search only). Check: `pnpm eval:perception --domain tasks`.
+  S3 file_activity  — declared roots only, ~/Downloads excluded, secret-
+       skip + injection-sanitize, metadata-default. The fixture MUST carry
+       a .env decoy the test asserts is NOT read.
+       Check: `pnpm eval:perception --domain files`.
+  S4 git_activity   — git-log only, a fixture repo.
+       Check: `pnpm eval:perception --domain git`.
+  S5 cross-domain   — daemon synthesis, only after ≥2 domains green; the
+       fixture MUST seed a confusable pair (a task and an event both about
+       "the trip") so the test FAILS if the model blends sources.
+       Check: `pnpm eval:perception --cross-domain`.
+DROPPED on purpose: a Messages/iMessage connector (third-party data, lowest
+yield, highest creep) and an app-usage/Screen-Time tool (knowledgeC.db is
+Biome-degraded on macOS 13+ behind FDA, which is barred).
+
+THE MOCK RULE (non-negotiable for EVERY perception slice): a perception
+slice PROVES read-only + no-egress + consented against GENERATED MOCK data
+through the REAL code path — NEVER against the user's real private data and
+NEVER a stubbed registry. Per slice, eval:perception asserts, as code:
+(1) every connector tool is risk:"read" (registration guard throws
+otherwise); (2) sha256 of every SOURCE fixture is byte-identical before/
+after the muse ask battery (scoped to source files — Muse's own append-only
+corpus/memory/ledger legitimately change); (3) the run completed on
+ollama/qwen3:8b under MUSE_LOCAL_ONLY=true with NO non-loopback fetch;
+(4) opt-in OFF ⇒ zero bytes + no fabricated answer; (5) an injection string
+in a perceived chunk does NOT alter behavior; (6) a perceived fact is
+visible in /memory and removable via /forget. eval:perception is
+LOCAL-OLLAMA-ONLY and skips exit-0 when Ollama is unreachable (a skip is
+not a pass). Buildable on macOS CLI + the launchd daemon today.
+```
+
 ---
 
 ## Changelog (living doc)
 
+- **2026-05-31 (d)** — Added the **Perception expansion** (PART A3 rationale +
+  directive B3), research-grounded and code-verified. Frame: perceive broadly,
+  act narrowly; prefer user-AUTHORED sources, never raw exhaust. Five
+  safe-perception guardrails (read-only · local-only · per-source consent
+  default-OFF · visible/reversible · never-read-silently). **Two code-verified
+  corrections:** (1) the local-only gate covers inference, NOT registry reads —
+  a read can egress via Notion/cloud-calendar, so connectors must `local`-filter
+  the registry; (2) `risk:"write"` is sort-only — read-only needs a real
+  registration guard + a `ReadOnly*` narrowed view. GATE FIRST the already-live,
+  ungoverned ambient clipboard/selection reader. Ranked slice menu S1
+  calendar_read → S2 tasks_read → S3 file_activity → S4 git → S5 cross-domain,
+  each proven via `pnpm eval:perception` against generated mocks (the
+  `buildLoopbackTools(deps)` path, nothing test-doubled). Messages/app-usage
+  dropped on purpose. Resolves the "directive B3" forward-reference in B0.
+- **2026-05-31 (c)** — 진안 directive: the capability surface is a CONTINUOUS,
+  SELF-JUDGED GROWTH axis. **Perceive broadly (read-only, local-only, consented,
+  visible/reversible) · act with confirmation (draft-first, ask-first, gated) ·
+  GROW BOTH.** Actuation (send/book/reserve/email/calendar) is NOT banned — it
+  is grown behind the existing approval-gate seam; the more Muse can gated-do,
+  the fewer things the user does themselves, while the ask-first safety never
+  relaxes. Banking/payments stay permanently out. Added the "PERCEIVE BROADLY ·
+  ACT WITH CONFIRMATION · GROW BOTH" block to B0 + reworked slice-pick #6 into
+  the capability-expansion axis (read connector OR gated actuator, ≤5–7
+  per-turn via the relevance filter, mock-verified). Perception directive B3
+  lands when the perception-surface research workflow returns.
 - **2026-05-31 (b)** — 진안 LOCKED the headline: the **grows-with-you local
   confidant** ("learns you continuously, all local, shows + reverses every
   learned thing, can't leak") is THE groundbreaking bet. Front door first (the

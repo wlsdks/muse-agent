@@ -13,7 +13,7 @@ related: [team-roles.md, failure-modes-and-observability.md, verification-and-gu
 > **왜 이 칸인가?** [architecture](architecture.md) 자가평가의 🟡(부분) 중 하나. 에이전트 루프는
 > "모델 호출 → 출력 파싱 → 도구 실행"을 반복하는데, **반드시 끝나게** 만들지 않으면 무한 반복·비용
 > 폭주가 납니다(2026엔 한 루프가 수만 달러를 태운 사례도). Muse는 이미 도구 루프에 한도·타임아웃을
-> 두지만([SYSTEM-MAP #1](../SYSTEM-MAP.md)·CLAUDE.md), 그 종료 규약을 하네스 차원에서 명문화합니다.
+> 두지만(SYSTEM-MAP #1·CLAUDE.md), 그 종료 규약을 하네스 차원에서 명문화합니다.
 > 말로만(코드 없음).
 
 ## 0. 한 줄 원칙

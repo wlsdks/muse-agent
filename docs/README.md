@@ -37,7 +37,7 @@ Muse 문서는 "필요한 것만, 짧게, 잘 분리해서" 유지합니다. 처
 
 ## 에이전트 하네스 (운영 구조)
 
-[`agent-harness/`](agent-harness/README.md) — 어떤 AI 에이전트가 들어와도 동일하게 협업하도록 하는 팀 구성·역할·핸드오프 정의(2026-05 검증된 멀티에이전트 패턴 기반). **지금 구성을 한눈에 보려면 → [구성도 & 자가평가(architecture)](agent-harness/architecture.md)** (한 장 다이어그램 + 12칸 자가평가 + 문서 지도). 역할 정의는 [팀 구성(team-roles)](agent-harness/team-roles.md).
+[`../harness/`](../harness/README.md) — 어떤 AI 에이전트가 들어와도 동일하게 협업하도록 하는 팀 구성·역할·핸드오프 정의(2026-05 검증된 멀티에이전트 패턴 기반). **지금 구성을 한눈에 보려면 → [구성도 & 자가평가(architecture)](../harness/architecture.md)** (한 장 다이어그램 + 12칸 자가평가 + 문서 지도). 역할 정의는 [팀 구성(team-roles)](../harness/team-roles.md).
 
 ## 자율 확장 루프 (운영)
 

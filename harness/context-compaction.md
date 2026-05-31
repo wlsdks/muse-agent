@@ -76,7 +76,7 @@ related: [loop-budget.md, failure-modes-and-observability.md, team-roles.md, arc
 ## 출처 (검증 기반)
 
 - Muse 설계 — `docs/design/context-engineering-roadmap.md` Phase 5 (중요도 가중 압축: 낮은 중요도부터 드롭, 도구쌍 보존, 기본 시간순/옵션 중요도순 — Shipped)
-- Muse 제품 — [SYSTEM-MAP #5/#6](../SYSTEM-MAP.md) (세션 압축 요약 → 에피소드 회상, 중복 기억 정리)
+- Muse 제품 — SYSTEM-MAP #5/#6 (세션 압축 요약 → 에피소드 회상, 중복 기억 정리)
 - Anthropic — [Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) (서브에이전트 1~2K 토큰 압축 요약·외부 파일로 빼기)
 - Atlan — [Context Compression: Techniques, Risks, Governance 2026](https://atlan.com/know/context-compression/) (요약·가지치기 6기법 + 거버넌스 위험)
 - [Context compaction in agent frameworks 2026](https://dev.to/crabtalk/context-compaction-in-agent-frameworks-4ckk) (선제·주기적 압축, 예산 인지)
