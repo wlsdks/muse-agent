@@ -695,6 +695,46 @@ the generic layers below because they test what makes Muse an *agent*.
     safety); a transport error → failed; a hung approved action TIMES OUT via AbortController
     once the wall-clock cap passes; and the (redacted) request body is recorded in the
     action-log entry. mcp 1130->1137.
+  - FIFTY-FIRST (cross-package sweep → mcp; OUTBOUND-SAFETY third send capability): `packages/
+    mcp` `message-send.ts` `sendMessageWithApproval` (96L, **ZERO test refs**) — the
+    messaging-tool analogue of email/web send, completing the outbound-sender trio. First suite
+    (5 tests, recording registry fake + temp action-log): DEFAULT-APPROVE (no self-gate — the
+    shipping surfaces gate via the runtime toolApprovalGate) still sends AND logs "performed"
+    (the gap muse.messaging.send had vs email/web/home); the injected gate sees the EXACT draft
+    {providerId,destination,text} (draft-first); DENIED → no send + refusal logged; GATE THROWS
+    → fail-closed no send ("approval gate error"); provider SEND FAILS → send-failed, logged
+    "failed". Completes the email/web/message outbound-send trio under outbound-safety.md.
+    mcp 1137->1142.
+  - FIFTY-SECOND (cross-package sweep → mcp; OUTBOUND-SAFETY rule 5 — standing-objective
+    scoped consent): `packages/mcp` `consented-action.ts` `performConsentedAction` (106L,
+    **ZERO test refs**) — the act-as-the-user gate: a standing objective may act with the
+    user's scoped service credential ONLY when consent for that exact {objective,scope} is
+    recorded. First suite (6 tests, temp consent/veto files via recordConsent/recordVeto +
+    recording fetch): NO recorded consent → refused with NO HTTP (the credential is never
+    resolved into a request); consent for the exact {objective,scope} → performs with a Bearer
+    credential; consent is NOT broadened (a consent for one scope doesn't authorise a different
+    scope → no HTTP); a recorded VETO overrides prior consent and refuses BEFORE the consent
+    check (no HTTP — "don't do this again" wins); a consented-but-HUNG endpoint times out via
+    AbortController instead of stalling the standing-objective loop; a fetch transport error is
+    a non-performed outcome (never a false success). mcp 1142->1148.
+  - FIFTY-THIRD (cross-package sweep → agent-core; WEDGE/link-safety): `packages/agent-core`
+    `citation-sanitiser.ts` `sanitiseCitations` (34L, **ZERO test refs**) — drops any web-search
+    citation whose URL isn't safe http(s) before it reaches the user (a javascript:/data:/
+    file: citation link is an injection/exfil hazard on the cited-recall surface). First suite
+    (5 tests): http + https kept in order; DROPS dangerous/non-web protocols (javascript: /
+    data: / file: / ftp: / mailto:); DROPS empty / whitespace-only / malformed / non-string
+    URLs without throwing; partitions a mixed list with the EXACT dropped count + preserved
+    kept order; empty input -> {kept:[],dropped:0}. agent-core 1193->1198.
+  - FIFTY-FOURTH (cross-package sweep → mcp; reversibility — outbound-safety rule 4):
+    `packages/mcp` `undo-action.ts` `undoLoggedAction` (76L, **ZERO test refs**) — the undo+teach
+    half of the correction loop: reverse a logged autonomous action where reversible, ALWAYS
+    record a durable veto so the same trigger can't recur, and log the undo. First suite (3
+    tests, temp veto/action-log/consent files): a reversible action calls the inverse
+    (reversed:true, detail propagated) + records the veto + logs the undo "performed"; an
+    IRREVERSIBLE action (no inverse) STILL records the veto (reversed:false, detail
+    "irreversible"); and the END-TO-END property — after undo, the recorded veto OVERRIDES prior
+    consent so a subsequent performConsentedAction for the same {objective,scope} is refused
+    with NO HTTP ("vetoed"). mcp 1148->1151.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
