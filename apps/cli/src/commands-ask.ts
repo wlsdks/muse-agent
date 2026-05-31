@@ -140,6 +140,33 @@ export function formatSourcesFooter(answer: string, notesDir: string): string | 
   return `\n📎 Sources (open to verify):\n${lines.join("\n")}\n`;
 }
 
+// Precision-first refusal markers (EN + KO). A refusal grounds NO claim, so
+// ANY citation the small model tacks onto it ("…I don't have that. cite as:
+// [from preferences.md]") is spurious — and the followable Sources footer
+// must never present a source "to verify" for an answer that asserts nothing.
+// Kept high-precision (clear no-information phrases only) so a real cited
+// answer never matches; the rare partial answer ("I don't have X, but [from
+// Y]…") is the accepted precision-first cost (it loses Y's footer link).
+const REFUSAL_MARKERS: readonly string[] = [
+  "i'm not sure", "i am not sure", "i don't have", "i do not have",
+  "don't have access", "do not have access", "no information",
+  "none of the provided context", "couldn't find", "could not find",
+  "i don't know", "i do not know", "not in your notes", "nothing in your notes",
+  "don't have that information", "do not have that information",
+  "모르", "없습니다", "없어요", "없어", "정보가 없", "찾을 수 없", "알 수 없",
+  "저장하고 있지 않", "가지고 있지 않", "접근할 수 없"
+];
+
+/**
+ * True when the answer is essentially a refusal / "I'm not sure" with no
+ * grounded claim — used to deterministically drop any citation the model
+ * spuriously attached to it. Pure + exported for direct coverage.
+ */
+export function answerIsRefusal(answer: string): boolean {
+  const lower = answer.toLowerCase();
+  return REFUSAL_MARKERS.some((m) => lower.includes(m));
+}
+
 interface AskOptions {
   readonly user?: string;
   readonly persona?: string;
@@ -1161,6 +1188,15 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       collectedAnswer = citationGate.text;
       if (!options.json && citationGate.stripped.length > 0) {
         io.stderr(`\n⚠️  Removed ${citationGate.stripped.length.toString()} citation(s) to source(s) you don't have (${citationGate.stripped.join(", ")}) — treat those claims as unverified.\n`);
+      }
+      // Refusal guard: a refusal asserts no grounded fact, so any citation the
+      // model tacked on is spurious — strip ALL of them (and thus the Sources
+      // footer) so a refusal never points the user at a source "to verify".
+      const refusalAnswer = answerIsRefusal(collectedAnswer);
+      if (refusalAnswer) {
+        collectedAnswer = enforceAnswerCitations(collectedAnswer, {
+          events: [], feeds: [], notes: [], reminders: [], sessions: [], tasks: []
+        }).text;
       }
       // The --with-tools answer was buffered (not streamed), so it prints HERE
       // — after the gate — so a fabricated citation is stripped before display.

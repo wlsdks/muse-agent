@@ -197,7 +197,21 @@ FIRST, then felt self-learning).
   proven). The only undone front-door rung is (b) a real one-command installer,
   whose proof is a clean-room container/CI test, not live recall. Next fire
   should either scope (b) to a container proof or advance to rung 4 (felt
-  self-learning, 2-session proof). (this commit)
+  self-learning, 2-session proof). (e5404f5e)
+
+- [x] **P34-11 A refusal cites nothing (cross-lingual fabrication=0 fix).** A
+  Korean must-refuse (which the English oracle sweep missed) honestly refused
+  but the local model appended a spurious `cite as: [from preferences.md]`,
+  which the gate kept (real source) and the Sources footer surfaced as "open
+  to verify" — a citation on an answer that asserts nothing. A precision-first
+  `answerIsRefusal` (EN+KO) now drops all citations from a refusal: the Sources
+  footer is suppressed on every path and the inline `[from …]` is stripped on
+  the buffered `--with-tools`/`--json` paths (chat-only streams live, so the
+  inline marker can still flash — the known streaming limitation; the
+  followable footer is gone everywhere). Proven LIVE on qwen3:8b: the Korean
+  sister's-birthday refusal → no Sources footer; the Korean WireGuard
+  answerable → still cited + footer (no regression); `commands-ask-refusal.test.ts`
+  + `pnpm lint` 0/0. (this commit)
 
 **P33 — Reinforcement learning over Muse's memory (the model is fixed,
 so RL lives in the MEMORY, not the weights).** Close the self-improvement

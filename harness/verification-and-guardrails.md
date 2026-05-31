@@ -77,4 +77,5 @@ related: [team-roles.md, handoff-template.md, muse-mapping.md, README.md]
 - [LLM-as-a-Judge: A Practical Guide](https://towardsdatascience.com/llm-as-a-judge-a-practical-guide/) (명확한 루브릭·낮은 단계 척도·few-shot 보정·편향 차단)
 - [OpenAI Agents SDK — Guardrails](https://openai.github.io/openai-agents-python/guardrails/) (입력/출력 가드레일·트립와이어·병렬 조기종료)
 - Anthropic — [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) (단순성·투명성·게이트)
+- Anthropic — [Outcomes: agents that verify their own work](https://platform.claude.com/cookbook/managed-agents-cma-verify-with-outcome-grader) (2026-05; 출력만 보는 별도 grading agent → 모델 불변 +8.4%/+10.1%)
 - Cognition — [Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) (전체 맥락 공유·충돌하는 암묵적 결정·단일 스레드 우선)
