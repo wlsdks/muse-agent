@@ -2197,3 +2197,12 @@ the generic layers below because they test what makes Muse an *agent*.
     cancellation (AbortError) mid-fallback is RE-THROWN, not swallowed — a user abort must
     propagate; (4) recordFallbackAttempt logs each model's outcome (a:false, b:true).
     Pre-verified against dist. resilience 25 tests green.
+
+- [x] **autoconfigure/external-mcp-config — structural validation branches.**
+    parseExternalMcpConfig parses UNTRUSTED external MCP server config (architecture.md
+    allowlist surface), so malformed input must fail LOUD. Existing tests covered the
+    happy paths + a few rejects, but these guard branches were unexercised: valid-JSON-
+    but-not-an-object root (array/primitive); mcpServers present-but-not-object; null
+    mcpServers → [] (back-compat); whitespace-only server name; non-object entry;
+    non-array args; empty stdio command; and the autoConnect default (true) vs explicit
+    false. New tests pin all of them. Pre-verified against dist. autoconfigure 470 green.
