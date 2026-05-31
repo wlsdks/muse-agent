@@ -375,6 +375,24 @@ the generic layers below because they test what makes Muse an *agent*.
     on a throwing provider). agent-core 1096→1117. (Remaining 17 survivors: REFLECTION_
     SYSTEM_PROMPT string literals + defensive guards on the extractJsonArray→JSON.parse
     path that yield [] either way — equivalent/pattern-coverage.)
+  - TWENTY-SIXTH MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    proactive-recall-gate.ts` had **ZERO vitest coverage** despite being the NORTH STAR
+    surface — confidence-gated proactive recall (docs/strategy/identity.md Phase 3): the
+    same deterministic CRAG cosine gate as the wedge decides whether an UNASKED finding
+    surfaces, so Muse "earns proactivity by proving it can stay quiet" (weak/empty recall →
+    silent, never a low-confidence guess on an unasked notice). Added the first suite (21
+    tests) → **83.56%** (61 killed, 11 survived). decideProactiveRecall: confident →
+    surfaces a cited `📎 Related — [source] snippet` from the HIGHEST-cosine match;
+    ambiguous/none → silent with the right reason; custom confidentAt bar; cosine??score
+    fallback; whitespace-collapse + maxChars truncation incl. the `>` boundary (exact-length
+    = no ellipsis), zero AND negative maxChars → 160 default (negative would otherwise
+    slice(0,-n) and lop the tail). createConfidenceGatedInvestigator (contract-faithful
+    fake embed in an orthogonal 2-axis space → cosine 1.0 vs 0.0): confident→finding,
+    weak→undefined, blank-title guard PROVED to suppress a chunk that would otherwise match
+    the empty-query embedding, empty corpus, lazy chunk provider, fail-open on throwing
+    chunks/embed, confidentAt + maxChars forwarded. agent-core 1117→1138. (11 survivors:
+    REFLECTION-style prompt/object literals + the hybrid-flag and topK-spread mutants that
+    leave the cosine-based decision unchanged — equivalent for this gate.)
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
