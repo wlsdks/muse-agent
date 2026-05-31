@@ -2302,3 +2302,11 @@ the generic layers below because they test what makes Muse an *agent*.
     by reference); extraction from a JSON-RPC message/send body AND a bare Message; and
     null for a non-object body / missing parts / no data part / non-object data (reads only
     `data`, never peer metadata). Pre-verified against dist. a2a 134 tests green.
+
+- [x] **agent-core recall math — cosineSimilarity + lexicalTokens/lexicalOverlap (zero coverage).**
+    Census found all three with ZERO refs — the hybrid-recall primitives behind episodic
+    (embedding cosine) + knowledge (lexical) matching (WEDGE). New tests pin: cosine 1 for
+    identical/same-direction-scaled, -1 opposite, 0 orthogonal, and 0 for empty/length-
+    mismatched/zero-magnitude inputs (the 0/0→NaN guard); lexicalTokens lowercases, splits
+    on non-alphanumerics, dedupes, drops <2-char + stopwords; lexicalOverlap counts shared
+    content tokens, 0 for an empty query. Pre-verified against dist. agent-core 1247 green.
