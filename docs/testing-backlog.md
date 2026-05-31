@@ -645,6 +645,56 @@ the generic layers below because they test what makes Muse an *agent*.
     exactly the three know-how skills each tagged no-exec + "Never executed"; the museHmac
     security scheme + know-how media type as default I/O; and a recon-surface check that the
     serialized card leaks no home path / email / internal tool name. a2a 109->115.
+  - FORTY-SEVENTH (cross-package sweep → a2a; allowlist+secret source): a proper SYMBOL-level
+    coverage scan across scheduler/multi-agent/auth/calendar/voice/db/resilience/observability/
+    cache/runtime-*/prompts/agent-specs found those packages WELL-COVERED (class-based stores
+    are barrel-imported by symbol — the earlier filename-grep NOTEST flags were false). The one
+    true remaining gap was `packages/a2a` `peer-config.ts` (60L, `loadPeerConfig`) — the swarm
+    allowlist + per-peer HMAC secret source. First suite (7 tests, temp files + injected env):
+    missing file / malformed JSON / non-object root → empty config (nothing sends or is
+    accepted); selfId + inline-secret peer load into the registry allowlist; a secret resolved
+    from `secretEnv` (kept OUT of the plaintext file); a peer whose secret doesn't resolve
+    (no inline + absent/empty env var) is DROPPED — never a secret-less peer; a malformed entry
+    (missing id/url) is dropped without failing the whole load; inline secret precedence over
+    secretEnv + optional label carried. Completes the a2a security surface. a2a 115->122.
+  - FORTY-EIGHTH (cross-package sweep → agent-core; THE deterministic A2A safety core): a
+    symbol-level census on the LARGE packages (autoconfigure/mcp/model/policy/agent-core)
+    surfaced the real remaining gaps (mcp outbound senders email/message/web-action +
+    consented-action, agent-core a2a-safety + citation-sanitiser + council). Took the
+    foundation first: `agent-core/a2a-safety.ts` (142L, **ZERO direct test refs**) — the
+    fail-closed core the a2a transport/handler (just hardened) defers to. First suite (11
+    tests) over all 5 documented guarantees: isA2AEnabled true ONLY for an explicit affirmative
+    (true/1/yes/on, case/ws-tolerant), false for undefined/""/false/anything-else (off by
+    default); prepareOutbound builds an envelope for each shareable know-how kind but REFUSES
+    any non-shareable kind (note/fact/credential/tool-call can't even be expressed as outbound)
+    + refuses empty content / empty sender, REDACTS PII before send setting redacted:true when
+    changed, and redacts the optional label; classifyInbound quarantines well-formed know-how
+    from an allowlisted peer (execute-gated) and REJECTS a malformed envelope / unknown peer /
+    non-shareable kind — the return type has NO execute path (a peer can never run anything).
+    agent-core 1182->1193.
+  - FORTY-NINTH (cross-package sweep → mcp; OUTBOUND-SAFETY send capability): `packages/mcp`
+    `email-send.ts` `sendEmailWithApproval` (119L, **ZERO test refs**) — the first capability
+    that transmits content to a third party. outbound-safety.md REQUIRES a send capability's
+    test to prove deny/timeout/ambiguous/absent produce NO external effect, alongside the
+    confirmed send. First suite (7 tests, contract-faithful: recording EmailSender + real
+    temp action-log via readActionLog): CONFIRMED sends EXACTLY ONCE with the confirmed content
+    + the gate saw the exact draft (draft-first) + logs "performed"; DENIED → no send, logged
+    "refused"; GATE THROWS (timeout/undeliverable) → FAIL-CLOSED no send ("approval gate
+    error"); AMBIGUOUS recipient → no send + candidates returned for clarification; UNKNOWN
+    recipient → no send; a handle-only contact with NO email → no send (never falls back to the
+    handle); transport SEND FAILS → reason send-failed, logged "failed". Every outcome appends
+    a rationale-bearing action-log entry (rule 4). mcp 1123->1130.
+  - FIFTIETH (cross-package sweep → mcp; OUTBOUND-SAFETY state-changing web action): `packages/
+    mcp` `web-action.ts` `performWebActionWithApproval` (129L, **ZERO test refs**) — the
+    draft-first, fail-closed primitive for a state-changing HTTP action (form submit / booking)
+    under the user's identity. First suite (7 tests, contract-faithful injected fetch + temp
+    action-log): CONFIRMED fires the request EXACTLY ONCE with the confirmed method/body + the
+    gate saw the exact action (draft-first) → performed; DENIED makes NO HTTP request + logs
+    refusal; GATE THROWS → fail-closed, no HTTP; a NON-2xx response is classified FAILED (a
+    server rejection is never a false "performed" the user acts on; no retry per outbound-
+    safety); a transport error → failed; a hung approved action TIMES OUT via AbortController
+    once the wall-clock cap passes; and the (redacted) request body is recorded in the
+    action-log entry. mcp 1130->1137.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
