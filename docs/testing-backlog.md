@@ -2352,3 +2352,11 @@ the generic layers below because they test what makes Muse an *agent*.
     ../src/index.js, not ../src/provider-base.js directly — the latter trips a module
     circular-init (adapter-openai extends undefined). Verified via the real source under
     vitest. model 313 tests green.
+
+- [x] **mcp/personal-contacts-store — resolveContact + contactIdentifier + removeContact (zero coverage).**
+    Census found these with ZERO refs. resolveContact is the recipient-resolution gate
+    (outbound-safety rule 3: resolved-never-guessed). New tests pin: exact match on
+    name/email/handle → resolved; a multi-match partial → AMBIGUOUS (never a best-guess,
+    surfaces a clarify instead); exact preferred over partial; empty/no-match → unknown.
+    contactIdentifier: email → handle → undefined. removeContact: true when removed (entry
+    gone), false when the id is absent. Pre-verified against dist. mcp 1254 tests green.
