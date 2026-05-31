@@ -89,7 +89,16 @@ honest-refusal mock-corpus check where applicable.
   so the receipt quotes a sentence the user actually wrote. Proven LIVE on
   qwen3:8b: the WireGuard answer's receipt quotes a content sentence (not "#
   WireGuard VPN setup"); the refusal shows none; `commands-ask-receipts.test.ts`
-  + `pnpm lint` 0/0. (this commit)
+  + `pnpm lint` 0/0. (8d23b182)
+
+- [x] **P35-3 Narrate the wait (B2 S3).** On a 10–40s local model the
+  pre-answer gap reads as a hang. `muse ask` now emits two REAL stage deltas —
+  "🔎 searching your notes…" and "💭 generating your answer on the local
+  model…" — bracketing the existing grounded banner, suppressed under --json,
+  inventing no step (latency-honest). Answer/gate/receipt/refusal untouched.
+  Proven LIVE on qwen3:8b: both deltas appear before the cited "MTU 1380"
+  answer and before the honest sister's-birthday refusal; cli suite green (no
+  regression) + `pnpm lint` 0/0. (this commit)
 
 **P34 — The front door (loop-v2 headline: the moat is invisible without
 the door).** Per loop-v2 B0 §3, a privacy-bound first-time user must be able

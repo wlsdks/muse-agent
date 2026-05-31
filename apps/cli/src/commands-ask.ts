@@ -779,6 +779,12 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       let notesUnavailable = false;
       let queryVec: number[] | undefined;
       try {
+        // S3 narrate-the-wait (B2): a REAL stage delta before the embed —
+        // on a 10–40s local model the pre-answer gap reads as a hang; this
+        // makes it read as thinking. Narrates only stages that happen.
+        if (!options.json) {
+          io.stderr("🔎 searching your notes…\n");
+        }
         queryVec = await embed(query, embedModel);
         // Skip index entries whose note file was deleted since the last
         // reindex — otherwise `ask` grounds on (and cites) a note that no
@@ -1158,6 +1164,13 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
 
       let collectedAnswer = "";
       let toolsUsed: readonly string[] = [];
+      // S3 narrate-the-wait (B2): the real generation stage — the silent gap
+      // before the first token on a 10–40s local model. A static, honest
+      // line so the wait reads as working, not frozen (latency-honest: it
+      // names the actual local-model step, invents nothing).
+      if (!options.json) {
+        io.stderr("💭 generating your answer on the local model…\n");
+      }
       if (options.withTools) {
         // Agent-runtime path — tools (muse.search, muse.notes.*,
         // muse.tasks.*, etc.) are exposed to the model and tool calls
