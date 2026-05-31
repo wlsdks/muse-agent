@@ -1312,7 +1312,13 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     // End-of-session auto-distillation: turn any correction the user made this
     // session into a generalised [Learned Strategies] entry (ReasoningBank,
     // arXiv 2509.25140). Opt-in + fail-soft so a flaky model never blocks exit.
-    if (parseBoolean(process.env.MUSE_PLAYBOOK_DISTILL_ENABLED, false)) {
+    if (parseBoolean(process.env.MUSE_IDLE_LEARNING_ENABLED, false)) {
+      // Idle self-learning (B1): ENQUEUE this session's corrections for the
+      // Sleep daemon to distill later behind the brakes — no exit-time LLM
+      // call, no manual step. Mutually exclusive with MUSE_PLAYBOOK_DISTILL.
+      const { enqueueSessionCorrections } = await import("./chat-enqueue-corrections.js");
+      await enqueueSessionCorrections({ userId }).catch(() => undefined);
+    } else if (parseBoolean(process.env.MUSE_PLAYBOOK_DISTILL_ENABLED, false)) {
       const { distillSessionCorrections } = await import("./chat-distill-corrections.js");
       await distillSessionCorrections({
         model,

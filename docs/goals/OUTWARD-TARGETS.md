@@ -136,7 +136,19 @@ proof shape (unit / 2-session / eval:self-improving), NOT cited-answer+refusal.
   bullet points rather than prose", queue drained. mcp 1216 / api 809 tests +
   `pnpm lint` 0/0. Felt MECHANISM done; remaining Slice-1: chat producer
   (auto-enqueue), probation (record-but-don't-inject), `muse learned`
-  visibility, then the 2-session proof. (this commit)
+  visibility, then the 2-session proof. (3fe8876b)
+
+- [x] **P36-7 Chat producer — the idle self-learning loop closes end-to-end.**
+  At REPL exit, `enqueueSessionCorrections` enqueues this session's detected
+  corrections onto the learn-queue (gated by `MUSE_IDLE_LEARNING_ENABLED`,
+  mutually exclusive with the exit-distill → no double-distill; fail-soft). The
+  idle daemon distills them behind the brakes. Proven by unit tests (detect→
+  enqueue; no-correction→0; read-error→0) + a LIVE FULL-CHAIN on qwen3:8b: a
+  session correction → producer enqueued → idle consumer distilled → next
+  session the playbook holds the learned strategy, no manual step — effectively
+  the B1 2-session proof, live. cli 1608 / api 809 tests + `pnpm lint` 0/0. The
+  felt LOOP works; remaining polish = probation (record-but-don't-inject) +
+  `muse learned` visibility of idle-distilled strategies. (this commit)
 
 **P35 — Felt experience: make Muse FEEL like the SF confidant (loop-v2 PART
 B2).** The front door (P34) is delivered + proven; the headline's other half
