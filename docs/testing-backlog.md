@@ -657,6 +657,21 @@ the generic layers below because they test what makes Muse an *agent*.
     (no inline + absent/empty env var) is DROPPED — never a secret-less peer; a malformed entry
     (missing id/url) is dropped without failing the whole load; inline secret precedence over
     secretEnv + optional label carried. Completes the a2a security surface. a2a 115->122.
+  - FORTY-EIGHTH (cross-package sweep → agent-core; THE deterministic A2A safety core): a
+    symbol-level census on the LARGE packages (autoconfigure/mcp/model/policy/agent-core)
+    surfaced the real remaining gaps (mcp outbound senders email/message/web-action +
+    consented-action, agent-core a2a-safety + citation-sanitiser + council). Took the
+    foundation first: `agent-core/a2a-safety.ts` (142L, **ZERO direct test refs**) — the
+    fail-closed core the a2a transport/handler (just hardened) defers to. First suite (11
+    tests) over all 5 documented guarantees: isA2AEnabled true ONLY for an explicit affirmative
+    (true/1/yes/on, case/ws-tolerant), false for undefined/""/false/anything-else (off by
+    default); prepareOutbound builds an envelope for each shareable know-how kind but REFUSES
+    any non-shareable kind (note/fact/credential/tool-call can't even be expressed as outbound)
+    + refuses empty content / empty sender, REDACTS PII before send setting redacted:true when
+    changed, and redacts the optional label; classifyInbound quarantines well-formed know-how
+    from an allowlisted peer (execute-gated) and REJECTS a malformed envelope / unknown peer /
+    non-shareable kind — the return type has NO execute path (a peer can never run anything).
+    agent-core 1182->1193.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
