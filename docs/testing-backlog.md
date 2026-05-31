@@ -258,6 +258,16 @@ the generic layers below because they test what makes Muse an *agent*.
     ;/,/newline but not a literal backslash, and the backslash must escape FIRST
     (RFC 5545 ordering) or the ;,\n escapes get double-escaped. Added a
     Windows-path title asserting each `\` becomes exactly `\\`. calendar 110→111.
+  - EIGHTEENTH MEASUREMENT (throwaway, reused install, NOT committed): `mcp/
+    personal-action-log-store.ts` = **65.52%** — the outbound-action audit trail.
+    queryActionLog (newest-first / scope / parsed-instant / tiebreaker) and a
+    whole-file-corrupt → empty ARE tested, but the PER-ENTRY validator
+    (isActionLogEntry — field-type checks + the performed/refused/failed result
+    enum) was unasserted: readActionLog drops malformed entries one-by-one, so a
+    parseable log mixing valid + malformed records must surface ONLY the well-formed
+    ones (a tampered/partial entry can't masquerade as a recorded action). Added a
+    mixed-entries file (valid + missing-why + bogus-result + null + non-object)
+    asserting only the valid id returns. mcp 1118→1119.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
