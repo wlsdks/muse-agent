@@ -2079,3 +2079,15 @@ the generic layers below because they test what makes Muse an *agent*.
     24" also 5/5, no regression on lights/dim/scene (5/5). eval:tools 58→59 (added the
     thermostat as a golden positive so the fix is regression-monitored). Verified
     STABLE 5/5 before landing; eval:tools 59/59.
+
+- [x] **eval:explore — intent invariant deepened to ArgumentCorrectness (gap A).**
+    The exploratory tester previously checked only tool SELECTION on generated intent
+    prompts (first tool == expected). Deepened it to also assert the tool's REQUIRED
+    args are present + non-empty (home_action.service, search_email.query,
+    weather.location, knowledge_search.query) — DeepEval's ArgumentCorrectness, the
+    #1 strategy gap. A right tool with a blank/missing required arg is now a failed
+    turn, not a pass. Verified live on qwen3:8b across seeds 1/22/31/42 at N=10 — the
+    model reliably fills the single required arg on generated EN+KO variety (50/50
+    each, 0 breaches), so no bug surfaced; the value is that arg-extraction regressions
+    on UNSEEN phrasings are now caught, extending eval:tools' fixed-prompt argsPresent
+    checks to continuous generated coverage.

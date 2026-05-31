@@ -128,10 +128,24 @@ function checkInvariant(category, toolCalls) {
       ? { ok: true, detail: names.length === 0 ? "no tool (ideal)" : `non-state tool ok: ${names.join(",")}` }
       : { ok: false, detail: `STATE-CHANGING (must abstain): ${offenders.join(",")}` };
   }
-  const wantByCategory = { home_command: "home_action", inbox_search: "search_email", knowledge_search_intent: "knowledge_search", weather_intent: "weather" };
-  const want = wantByCategory[category];
-  if (!want) return { ok: false, detail: "unknown category" };
-  return first?.name === want ? { ok: true, detail: want } : { ok: false, detail: `got ${first?.name ?? "no tool"}, wanted ${want}` };
+  // Intent = right tool (selection) AND its required args present + non-empty
+  // (ArgumentCorrectness, DeepEval gap A) — a right tool with a missing/blank
+  // required arg is still a failed turn.
+  const intentSpec = {
+    home_command: ["home_action", ["service"]],
+    inbox_search: ["search_email", ["query"]],
+    knowledge_search_intent: ["knowledge_search", ["query"]],
+    weather_intent: ["weather", ["location"]]
+  };
+  const spec = intentSpec[category];
+  if (!spec) return { ok: false, detail: "unknown category" };
+  const [want, reqArgs] = spec;
+  if (first?.name !== want) return { ok: false, detail: `got ${first?.name ?? "no tool"}, wanted ${want}` };
+  const args = first.arguments ?? {};
+  const missing = reqArgs.filter((k) => args[k] === undefined || args[k] === null || (typeof args[k] === "string" && args[k].trim().length === 0));
+  return missing.length === 0
+    ? { ok: true, detail: `${want} ✓args` }
+    : { ok: false, detail: `${want} but missing/empty arg(s) [${missing.join(",")}] in ${JSON.stringify(args)}` };
 }
 
 async function main() {
