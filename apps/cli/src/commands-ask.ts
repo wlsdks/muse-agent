@@ -295,6 +295,27 @@ export function diversifyAskChunks(candidates: readonly ScoredChunk[], topK: num
 }
 
 /**
+ * First-run on-ramp: a brand-new user with an EMPTY notes corpus gets an
+ * honest refusal from `muse ask`, but a refusal with no guidance leaves them
+ * stuck ("it knows nothing and won't tell me how to teach it"). When the
+ * corpus has ZERO notes, point them at the concrete ways to add one. Returns
+ * undefined once any note exists, so a normal no-match answer is never
+ * cluttered. Pure + exported for direct coverage.
+ */
+export function corpusOnboardingHint(liveNoteCount: number): string | undefined {
+  if (liveNoteCount > 0) {
+    return undefined;
+  }
+  return [
+    "(your notes corpus is empty — Muse only answers from notes you've added.",
+    "   • try a sample first:   muse demo",
+    "   • add one file:         muse read <file> --save-to-notes <id>",
+    "   • add a whole folder:   muse read <dir> --save-to-notes <prefix>",
+    "   • keep it live:         muse watch-folder --ingest --path <dir>)"
+  ].join("\n");
+}
+
+/**
  * CRAG confidence gate for `muse ask`'s notes grounding — the headline-surface
  * embodiment of Muse's identity ("says I'm not sure instead of making things
  * up"). The chunk score IS the absolute cosine, so we grade the top match: a
@@ -601,6 +622,13 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         io.stderr(`Index was built with embed model '${index.model}', not '${embedModel}'. Re-index or pass --embed-model ${index.model}.\n`);
         process.exitCode = 1;
         return;
+      }
+
+      // First-run on-ramp: an empty corpus still answers honestly (refusal),
+      // but a new user needs to be told HOW to add notes — emit it once here.
+      const onboardingHint = corpusOnboardingHint(filterLiveNoteIndexFiles(index.files, existsSync).length);
+      if (onboardingHint) {
+        io.stderr(`${onboardingHint}\n`);
       }
 
       // Embed query + rank chunks. A personal assistant shouldn't

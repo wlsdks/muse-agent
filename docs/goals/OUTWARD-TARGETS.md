@@ -161,7 +161,17 @@ FIRST, then felt self-learning).
   corrupt `.pdf` into a watched inbox → ingested `pool.txt → inbox/pool.md`,
   skipped the corrupt one, then `muse ask` cited "4417 [from inbox/pool.md]"
   and honestly refused an uncovered question; `commands-watch-folder.test.ts`
-  + `pnpm lint` 0/0. (this commit)
+  + `pnpm lint` 0/0. (500e4112)
+
+- [x] **P34-8 Empty-corpus first-run on-ramp.** A brand-new user who runs
+  `muse ask` with no notes yet got an honest refusal but no guidance — a
+  dead-end. `muse ask` now prints a one-time on-ramp hint (naming `muse demo`,
+  `muse read --save-to-notes`, `muse watch-folder --ingest`) ONLY when the
+  corpus is empty, and still answers honestly (the refusal is unchanged; the
+  hint never fires once any note exists). Proven LIVE on qwen3:8b (isolated
+  HOME): empty corpus → hint + honest refusal; populated corpus → no hint, a
+  cited "MTU 1380" answer + Sources, and an honest refusal on a must-refuse;
+  `commands-ask-onboarding.test.ts` + `pnpm lint` 0/0. (this commit)
 
 **P33 — Reinforcement learning over Muse's memory (the model is fixed,
 so RL lives in the MEMORY, not the weights).** Close the self-improvement
