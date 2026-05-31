@@ -105,7 +105,17 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   `FREQ=DAILY` .ics ("next standup … 2026-06-01 … [event: Engineering daily
   standup]"; honest refusal on an uncovered query). calendar 127 tests +
   `pnpm lint` 0/0. Scope: DAILY/WEEKLY only (MONTHLY/BYDAY-list unsupported →
-  base event). (this commit)
+  base event). (8abab988)
+
+- [x] **P37-4 Zero-config `.ics` calendar (drop-the-file discovery).**
+  `buildCalendarRegistry` auto-enables the `ics` provider when
+  `~/.muse/calendar.ics` exists, so a user just drops their exported calendar
+  and `muse ask` grounds + cites it — no `MUSE_CALENDAR_PROVIDERS` needed
+  (read-only + local ⇒ safe to auto-enable). Proven by unit tests
+  (auto-register when present / not when absent / no duplicate) + a LIVE muse
+  ask with NO calendar env set ("board review … June 3rd … [event: …]"; honest
+  refusal on an uncovered query). autoconfigure 467 tests + `pnpm lint` 0/0.
+  (this commit)
 
 **P36 — Background self-learning, brake-and-proof-first (loop-v2 PART A2 /
 B1).** The headline's "grows-with-you" core: Muse learns from corrections

@@ -7,6 +7,8 @@
  * natural home for these env → registry constructors.
  */
 
+import { existsSync } from "node:fs";
+
 import {
   CalDAVCalendarProvider,
   CalendarProviderRegistry,
@@ -27,6 +29,13 @@ export function buildCalendarRegistry(env: MuseEnvironment): CalendarProviderReg
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
     .filter((entry) => entry.length > 0);
+  // Zero-config discovery: if the user just drops an exported calendar at
+  // `~/.muse/calendar.ics` (or MUSE_CALENDAR_ICS_FILE), read it WITHOUT having
+  // to set MUSE_CALENDAR_PROVIDERS — same "it just works" as the notes corpus.
+  // Read-only + local, so auto-enabling is safe.
+  if (!requested.includes("ics") && existsSync(resolveCalendarIcsFile(env))) {
+    requested.push("ics");
+  }
   const credentials = readCredentialsSync(resolveCredentialsFile(env));
 
   for (const id of requested) {

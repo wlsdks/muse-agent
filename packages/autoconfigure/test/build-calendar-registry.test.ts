@@ -103,3 +103,22 @@ describe("buildCalendarRegistry — caldav credential gate (all three required)"
     expect(ids({ MUSE_CALENDAR_PROVIDERS: "caldav" })).toEqual(["caldav"]);
   });
 });
+
+describe("zero-config .ics auto-enable", () => {
+  it("auto-registers `ics` when calendar.ics exists, without MUSE_CALENDAR_PROVIDERS", async () => {
+    const icsFile = join(dir, "calendar.ics");
+    await fs.writeFile(icsFile, "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n");
+    expect(ids({ MUSE_CALENDAR_ICS_FILE: icsFile })).toContain("ics");
+  });
+
+  it("does NOT register `ics` when the file is absent", () => {
+    expect(ids({ MUSE_CALENDAR_ICS_FILE: join(dir, "nope.ics") })).not.toContain("ics");
+  });
+
+  it("does not duplicate `ics` when explicitly requested AND the file exists", async () => {
+    const icsFile = join(dir, "calendar.ics");
+    await fs.writeFile(icsFile, "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n");
+    const got = ids({ MUSE_CALENDAR_ICS_FILE: icsFile, MUSE_CALENDAR_PROVIDERS: "ics" });
+    expect(got.filter((id) => id === "ics")).toHaveLength(1);
+  });
+});
