@@ -43,10 +43,16 @@ PICK ONE SLICE (first match wins — loop-v2 PART B0 "HOW TO PICK EACH SLICE"):
      6) GROW THE CAPABILITY SURFACE (self-judged — see loop-v2 "PERCEIVE
         BROADLY · ACT WITH CONFIRMATION · GROW BOTH" + directive B3). Add ONE,
         value-ranked, mock-verified:
-          - ONE read-only PERCEPTION connector (calendar / messages / browser
-            history / contacts / shell history / files / app-usage) — read-only,
-            local-only, per-source consent, visible/reversible. Verify against a
-            GENERATED MOCK of that source, never real data.
+          - ONE read-only PERCEPTION connector, in directive B3's order:
+            S1 calendar_read (local ICS) → S2 tasks_read → S3 file_activity
+            (~/Downloads excluded, secret-skip) → S4 git → S5 cross-domain.
+            S1 also lands the opt-in registry + scripts/eval-perception.mjs +
+            the read-only registration guard + the registry local-filter.
+            read-only · local-only (no registry egress) · per-source consent
+            default-OFF · visible/reversible. NEVER build Messages/Mail/DM
+            stores, browser secrets, app-usage. Verify with
+            `pnpm eval:perception --domain <d>` against a GENERATED MOCK, never
+            real data. GATE the live ambient clipboard/selection reader FIRST.
           - OR ONE gated ACTUATOR (send message / draft+send email / create
             calendar event / set reminder / book / fill web form) — draft-first,
             ask-first, fail-close. Verify a contract-faithful HTTP fake proving
