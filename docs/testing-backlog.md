@@ -470,6 +470,20 @@ the generic layers below because they test what makes Muse an *agent*.
     limit pack into one chunk (a `>=` would wrongly split a perfect fit). agent-core
     1168->1171. (Remaining survivors: prompt/format StringLiterals + equivalent
     exact-boundary reconstructions — the deep RRF/MMR internals are behaviorally covered.)
+  - THIRTY-SECOND MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    correction-distiller.ts` (229L, the RL distillation core: correction→decay + approval→
+    reinforce signals feeding the playbook) baselined at **67.94%**. detectCorrections + the
+    parseDistilledStrategy edges were already exhaustive; the gap was `detectApprovals` —
+    the newer POSITIVE-reward mirror had only 4 tests vs detectCorrections' full battery.
+    Deepened to **71.37%** (+9 killed) by mirroring that rigor on the approvals path: default
+    maxExchanges=2 (the `?? 2`), Math.max(1,trunc()) clamping (0/-3→1, 2.9→2), the role guard
+    (an assistant turn carrying 'perfect' is never an approval), and the full request-backfill
+    branch — populated only when the turn two-back is a user request, undefined at index 1 and
+    when two-back is an assistant turn (killed the `index >= 2 && role==="user"` survivors);
+    plus 6 untested APPROVAL_PATTERN reward triggers (that's it / just what I needed / works
+    great / 완벽합니다 / 훌륭해 / 최고야). agent-core 1171->1178. (74 survivors: the
+    APPROVAL/CORRECTION_PATTERNS regex alternations + distiller-prompt StringLiterals —
+    pattern-coverage, the same class as the security detectors.)
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,

@@ -333,4 +333,64 @@ describe("detectApprovals — the POSITIVE reward signal (RL reinforce; precisio
     ];
     expect(detectApprovals(turns, { maxExchanges: 2 })).toHaveLength(2);
   });
+
+  it("detects the remaining approval patterns missed above (precision-first reward triggers)", () => {
+    // Each APPROVAL_PATTERN is a distinct reward trigger; a silently-broken one
+    // is lost reinforcement. Cover the ones the EN+KO set above didn't hit.
+    for (const phrase of [
+      "that's it",
+      "just what I needed",
+      "works great",
+      "완벽합니다",
+      "훌륭해",
+      "최고야"
+    ]) {
+      expect(detectOne(phrase), phrase).toHaveLength(1);
+    }
+  });
+
+  it("defaults maxExchanges to 2 when unspecified (mirror of detectCorrections)", () => {
+    const turns = [
+      t("user", "q1"), t("assistant", "a1"), t("user", "perfect"),
+      t("assistant", "a2"), t("user", "nailed it"),
+      t("assistant", "a3"), t("user", "spot on")
+    ];
+    expect(detectApprovals(turns)).toHaveLength(2);
+  });
+
+  it("clamps maxExchanges with Math.max(1, trunc(n)): 0 and negatives floor to 1, fractions truncate", () => {
+    const turns = [
+      t("user", "q1"), t("assistant", "a1"), t("user", "perfect"),
+      t("assistant", "a2"), t("user", "nailed it"),
+      t("assistant", "a3"), t("user", "spot on")
+    ];
+    expect(detectApprovals(turns, { maxExchanges: 0 })).toHaveLength(1);
+    expect(detectApprovals(turns, { maxExchanges: -3 })).toHaveLength(1);
+    expect(detectApprovals(turns, { maxExchanges: 2.9 })).toHaveLength(2);
+  });
+
+  it("an assistant turn carrying an approval phrase is never itself an approval (role guard)", () => {
+    // The detector pairs a USER endorsement onto a prior ASSISTANT answer; an
+    // assistant turn that happens to say 'perfect' must not be mistaken for one.
+    expect(detectApprovals([t("user", "q"), t("assistant", "perfect, here it is")])).toHaveLength(0);
+  });
+
+  describe("request backfill (positive reward needs the originating request, when present)", () => {
+    it("populates request only when the turn two back is a user request", () => {
+      const out = detectApprovals([t("user", "REQ"), t("assistant", "A"), t("user", "spot on")]);
+      expect(out[0]!.request).toBe("REQ");
+    });
+
+    it("leaves request undefined when the approval is at index 1 (no room for a prior request)", () => {
+      const out = detectApprovals([t("assistant", "A"), t("user", "perfect")]);
+      expect(out).toHaveLength(1);
+      expect(out[0]!.request).toBeUndefined();
+    });
+
+    it("leaves request undefined when the turn two back is itself an assistant turn", () => {
+      const out = detectApprovals([t("assistant", "A0"), t("assistant", "A"), t("user", "nailed it")]);
+      expect(out).toHaveLength(1);
+      expect(out[0]!.request).toBeUndefined();
+    });
+  });
 });
