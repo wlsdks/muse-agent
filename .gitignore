@@ -83,3 +83,7 @@ docs/test-report.json
 
 # harness runner run artifact (regenerated each run)
 harness/runner/last-trace.json
+
+# stray runner-agent artifacts
+__pycache__/
+*.pyc
