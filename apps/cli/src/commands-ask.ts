@@ -323,6 +323,34 @@ export function selectFilePassages(
   return picked.sort((a, b) => a.chunkIndex - b.chunkIndex);
 }
 
+const BIRTHDAY_MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
+/**
+ * Render a contact's stored birthday (`MM-DD` or `YYYY-MM-DD`) as a readable
+ * "March 14" (+ ", 1990" when a year is present) so `muse ask` can ground
+ * "when is X's birthday?" on it. Returns undefined for an absent / malformed
+ * value (no fabricated date).
+ */
+export function formatContactBirthday(raw: string | undefined): string | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  const match = /^(?:(\d{4})-)?(\d{2})-(\d{2})$/u.exec(raw.trim());
+  if (!match) {
+    return undefined;
+  }
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return undefined;
+  }
+  const label = `${BIRTHDAY_MONTHS[month - 1] ?? ""} ${day.toString()}`;
+  return match[1] ? `${label}, ${match[1]}` : label;
+}
+
 /**
  * Relevance of a contact to the question, for `muse ask` grounding (B3
  * perception): how many query tokens match a token of the contact's name,
@@ -1258,10 +1286,12 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         ? "(no matching contacts)"
         : matchedContacts
           .map((c, i) => {
+            const birthday = formatContactBirthday(c.birthday);
             const fields = [
               c.email ? `email ${c.email}` : undefined,
               c.phone ? `phone ${c.phone}` : undefined,
-              c.handle ? `handle ${c.handle}` : undefined
+              c.handle ? `handle ${c.handle}` : undefined,
+              birthday ? `birthday ${birthday}` : undefined
             ].filter((f): f is string => f !== undefined).join(", ");
             return `<<contact ${(i + 1).toString()} — ${c.id}>>\n${c.name}${fields ? ` — ${fields}` : ""}\n<<end>>`;
           })

@@ -35,3 +35,23 @@ describe("contactMatchScore — query→contact relevance for muse ask grounding
     expect(contactMatchScore(sarah, tokens("email sarah chen"))).toBeGreaterThan(contactMatchScore(sarah, tokens("email sarah")));
   });
 });
+
+import { formatContactBirthday } from "./commands-ask.js";
+
+describe("formatContactBirthday — readable birthday for contacts grounding", () => {
+  it("formats MM-DD as 'Month Day'", () => {
+    expect(formatContactBirthday("03-14")).toBe("March 14");
+    expect(formatContactBirthday("12-01")).toBe("December 1");
+  });
+
+  it("appends the year when present (YYYY-MM-DD)", () => {
+    expect(formatContactBirthday("1990-03-14")).toBe("March 14, 1990");
+  });
+
+  it("returns undefined for absent / malformed / out-of-range values (no fabricated date)", () => {
+    expect(formatContactBirthday(undefined)).toBeUndefined();
+    expect(formatContactBirthday("")).toBeUndefined();
+    expect(formatContactBirthday("not-a-date")).toBeUndefined();
+    expect(formatContactBirthday("13-40")).toBeUndefined();
+  });
+});

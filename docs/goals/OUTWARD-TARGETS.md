@@ -174,6 +174,22 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   ask Muse about ANY file on the fly, cited, without growing their corpus.
   (95dbfd72)
 
+- [x] **P37-8 Contact birthdays are groundable (B3 — coverage gap fix).** A
+  contact's stored `birthday` (already used to drive birthday reminders) was NOT
+  in the `muse ask` contacts grounding block — so "when is X's birthday?" failed
+  even though the data was there. The block now injects a readable birthday
+  (`formatContactBirthday`: `MM-DD`/`YYYY-MM-DD` → "March 14"[, year];
+  malformed/absent → omitted, never a fabricated date), cited as `[contact:
+  name]` under the same gate. Proven by unit tests (`formatContactBirthday`:
+  MM-DD, year-present, absent/malformed/out-of-range → undefined) + a LIVE
+  `muse ask` on qwen3:8b (mock contacts.json with a birthday, HOME-isolated,
+  empty notes, never real ~/.muse): "When is Sarah's birthday?" → "Sarah's
+  birthday is March 14 [contact: Sarah Chen]" (cited, + the P35-7 receipt); "When
+  is Daniel's birthday?" → honest refusal (and the gate stripped a spurious
+  `[feed: …]` the model tried to add). cli 1658 tests + `pnpm lint` 0/0. A user
+  can now ask Muse when someone's birthday is and get it cited from their own
+  contacts. (this commit)
+
 **P36 — Background self-learning, brake-and-proof-first (loop-v2 PART A2 /
 B1).** The headline's "grows-with-you" core: Muse learns from corrections
 while idle, on its own, without straining the laptop. Built brake-FIRST — the
@@ -505,7 +521,7 @@ honest-refusal mock-corpus check where applicable.
   "Sarah's email?" → cited "[contact: Sarah Chen]" AND "📎 Also grounded on: 👤
   from your contacts: Sarah Chen"; an unknown-person must-refuse → 0 receipt
   lines. cli 1655 tests + `pnpm lint` 0/0. "Shows its work" is now FELT uniformly
-  across every grounding source, not just notes. (this commit)
+  across every grounding source, not just notes. (30346851)
 
 **P34 — The front door (loop-v2 headline: the moat is invisible without
 the door).** Per loop-v2 B0 §3, a privacy-bound first-time user must be able
