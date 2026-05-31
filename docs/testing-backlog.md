@@ -2015,3 +2015,13 @@ the generic layers below because they test what makes Muse an *agent*.
     `runner returned invalid JSON` failure, never a throw. A version-skewed or
     crashing runner must not crash the parent or smuggle wrong-typed fields through.
     All pre-verified against dist. tools 232 pass (+3).
+
+- [x] **skills/skill-parser — splitFrontmatter branches + inline metadata.** The
+    exported splitFrontmatter had NO direct test (only indirect via parseSkillFile),
+    so its branch logic was a surviving mutation target. New describe pins all four:
+    well-formed `---` split; no-delimiter → whole input is body; UNCLOSED frontmatter
+    (no second `---`) → the raw input (incl. the leading `---`) is body, never a
+    frontmatter that swallowed line 1; leading UTF-8 BOM stripped before matching.
+    Also added the one-line inline `metadata: {…}` case to parseSkillFrontmatter (the
+    value-ends-with-} path that never enters multi-line mode yet still surfaces
+    metadata.muse.requires). All pre-verified against dist. skills 55 pass (+5).

@@ -10,6 +10,7 @@ import {
   parseSkillFrontmatter,
   SkillParseError
 } from "../src/index.js";
+import { splitFrontmatter } from "../src/skill-parser.js";
 
 let workdir: string;
 
@@ -66,7 +67,37 @@ metadata:
 Run with: \`codex exec 'task description'\`.
 `;
 
+describe("splitFrontmatter", () => {
+  it("splits a well-formed --- delimited block from the body", () => {
+    expect(splitFrontmatter("---\nname: x\n---\nthe body\nline2")).toEqual({ body: "the body\nline2", frontmatter: "name: x" });
+  });
+
+  it("returns the whole input as body when the first line is not a delimiter", () => {
+    expect(splitFrontmatter("name: x\nbody")).toEqual({ body: "name: x\nbody", frontmatter: "" });
+  });
+
+  it("treats an UNCLOSED frontmatter (no second ---) as no frontmatter — the whole raw input is body", () => {
+    // The leading `---` must NOT be silently consumed when its close is missing;
+    // a half-written SKILL.md should parse as pure body, never as a frontmatter
+    // that swallowed the first line.
+    expect(splitFrontmatter("---\nname: x\nbody never closed")).toEqual({ body: "---\nname: x\nbody never closed", frontmatter: "" });
+  });
+
+  it("strips a leading UTF-8 BOM before matching the delimiter", () => {
+    expect(splitFrontmatter("﻿---\nname: y\n---\nbod")).toEqual({ body: "bod", frontmatter: "name: y" });
+  });
+});
+
 describe("parseSkillFrontmatter", () => {
+  it("parses a one-line inline `metadata: {…}` object without entering multi-line mode", () => {
+    // value ends with `}` on the same line → inMetadata never set; the JSON is
+    // parsed inline and metadata.muse.requires is still surfaced.
+    const fm = parseSkillFrontmatter("name: s\ndescription: d\nmetadata: {\"muse\":{\"requires\":{\"env\":[\"API_KEY\"]}}}");
+    expect(fm.name).toBe("s");
+    expect(fm.description).toBe("d");
+    expect(fm.requires).toEqual({ env: ["API_KEY"] });
+  });
+
   it("parses OpenClaw-style metadata.openclaw block into requires/install", () => {
     const parsed = parseSkillFrontmatter(`name: github
 description: "gh for GitHub"
