@@ -2293,3 +2293,12 @@ the generic layers below because they test what makes Muse an *agent*.
     (an objective is never wrongly resolved/cancelled by a garbled reply); extraction
     from a ```json fence after a <think> block; last-balanced-candidate-wins. Pre-verified
     against dist. mcp 1240 tests green.
+
+- [x] **a2a/a2a-message — envelopeToA2AMessage + extractEnvelopeFromA2ABody (zero coverage).**
+    Census found both with ZERO refs (envelopeToSendRequest IS tested). envelopeToA2AMessage
+    frames a know-how envelope as the A2A data part; extractEnvelopeFromA2ABody parses the
+    UNTRUSTED inbound body (the candidate the HMAC + classifyInbound validate downstream).
+    New tests pin: the message wrap (single data part, know-how metadata, agent role, data
+    by reference); extraction from a JSON-RPC message/send body AND a bare Message; and
+    null for a non-object body / missing parts / no data part / non-object data (reads only
+    `data`, never peer metadata). Pre-verified against dist. a2a 134 tests green.
