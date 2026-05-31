@@ -2371,3 +2371,15 @@ the generic layers below because they test what makes Muse an *agent*.
     for today, and yesterday's exhausted record → not exhausted today (day rollover);
     incrementFollowupLlmBudget starts at 1, accumulates same-day, resets on rollover.
     Pre-verified against dist. mcp 1259 tests green.
+
+- [x] **fix(test): de-flake playbook-store concurrent tests (unique file + timeout).**
+    Surfaced last fire — the concurrent-mutation tests flaked in the full parallel
+    pnpm check. systematic-debugging found TWO root causes: (1) the over-cap test (130
+    serialized real-fs RMW) hit vitest's 5000ms default timeout under CPU contention
+    ("Test timed out in 5000ms", 5006ms); (2) freshFile() named files by files.length
+    (reset to 0 each afterEach) + constant pid, so the timed-out test's still-running
+    background writes re-created the SAME path the NEXT test used → "expected length 10,
+    got 90" pollution. Fix: freshFile() now uses randomUUID (can't collide across
+    tests regardless of teardown timing), and the 3 concurrent real-fs tests get a
+    30s timeout. withFileMutationQueue itself is correct (test 1 distinctness passes) —
+    these were test-harness bugs, not a serialization race. mcp 1259 green x2.

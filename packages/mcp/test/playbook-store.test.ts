@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,8 +16,13 @@ const entry = (id: string, tag?: string): PlaybookEntry => ({
 });
 
 let files: string[] = [];
+// Globally-unique per call. The previous `files.length`-based name reset to
+// index 0 every afterEach, so a test that left async writes running past its
+// timeout (the concurrent over-cap case) re-created the SAME path the NEXT
+// test then used — leaking ~90 stale entries into it. A UUID can't collide
+// across tests regardless of timeout/teardown ordering.
 const freshFile = () => {
-  const file = join(tmpdir(), `muse-playbook-${files.length}-${process.pid}.json`);
+  const file = join(tmpdir(), `muse-playbook-${randomUUID()}.json`);
   files.push(file);
   return file;
 };
@@ -77,6 +83,14 @@ describe("removePlaybookStrategy", () => {
 // FIFO cap. A lost strategy is a self-improvement the agent forgets; before the
 // per-file mutation queue, concurrent records clobbered one another and could
 // mis-apply the cap to a stale snapshot.
+// These drive MANY serialized real-fs read-modify-write cycles through
+// withFileMutationQueue (the over-cap case is 130 full-file rewrites). The
+// assertions are deterministic — the queue serializes the RMW — but the
+// wall-clock balloons under a saturated CPU (the full parallel `pnpm check`),
+// where the default 5s test timeout was being hit and surfaced as a failure.
+// Give them explicit headroom so contention can't kill a correct test.
+const CONCURRENT_FS_TIMEOUT_MS = 30_000;
+
 describe("concurrent playbook mutation", () => {
   it("preserves EVERY distinct strategy recorded concurrently (no last-writer-wins loss)", async () => {
     const file = freshFile();
@@ -84,21 +98,21 @@ describe("concurrent playbook mutation", () => {
     const all = await readPlaybook(file);
     expect(all).toHaveLength(20);
     expect(new Set(all.map((e) => e.id)).size).toBe(20);
-  });
+  }, CONCURRENT_FS_TIMEOUT_MS);
 
   it("applies the FIFO cap to the real merged set under concurrent over-cap records", async () => {
     const file = freshFile();
     const over = MAX_PLAYBOOK_ENTRIES + 30;
     await Promise.all(Array.from({ length: over }, (_unused, i) => recordPlaybookStrategy(file, entry(`q${i.toString()}`))));
     expect(await readPlaybook(file)).toHaveLength(MAX_PLAYBOOK_ENTRIES); // not over-cap, not lost-to-stale
-  });
+  }, CONCURRENT_FS_TIMEOUT_MS);
 
   it("concurrent removes drop exactly the targeted strategies, leaving the rest", async () => {
     const file = freshFile();
     await Promise.all(Array.from({ length: 20 }, (_unused, i) => recordPlaybookStrategy(file, entry(`p${i.toString()}`))));
     await Promise.all(Array.from({ length: 10 }, (_unused, i) => removePlaybookStrategy(file, `p${i.toString()}`)));
     expect(await readPlaybook(file)).toHaveLength(10);
-  });
+  }, CONCURRENT_FS_TIMEOUT_MS);
 });
 
 describe("adjustPlaybookReward — the RL reinforce/decay update", () => {
