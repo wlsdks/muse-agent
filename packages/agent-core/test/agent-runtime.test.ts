@@ -267,6 +267,24 @@ describe("PlanExecute helpers", () => {
       expect(parsePlan('[{"tool":"a","args":[],"description":"x"}]')).toBeNull();
     });
 
+    it("rejects a step ENTRY that is null, a scalar, or an array (each guard clause isolated)", () => {
+      // each of the three `!entry || typeof !== object || Array.isArray` clauses
+      // must independently reject a malformed step.
+      expect(parsePlan("[null]")).toBeNull(); // !entry
+      expect(parsePlan("[42]")).toBeNull(); // non-object scalar
+      expect(parsePlan('[["nested"]]')).toBeNull(); // array entry
+    });
+
+    it("rejects a present-but-invalid args value: null, a scalar, or an array (each isolated)", () => {
+      expect(parsePlan('[{"tool":"a","args":null}]')).toBeNull(); // args === null
+      expect(parsePlan('[{"tool":"a","args":5}]')).toBeNull(); // non-object args
+      expect(parsePlan('[{"tool":"a","args":["x"]}]')).toBeNull(); // array args
+    });
+
+    it("treats an omitted args as {} (undefined is allowed; only a present-but-bad args is rejected)", () => {
+      expect(parsePlan('[{"tool":"a","description":"x"}]')).toEqual([{ args: {}, description: "x", tool: "a" }]);
+    });
+
     it("defaults description to empty string when omitted", () => {
       expect(parsePlan('[{"tool":"a","args":{}}]')).toEqual([{ args: {}, description: "", tool: "a" }]);
     });
