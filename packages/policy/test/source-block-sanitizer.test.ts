@@ -127,4 +127,18 @@ describe("sanitizeSourceBlocks", () => {
     const input = "본문입니다.\n\n참고: 이 내용은 추정이며 확정이 아닙니다.";
     expect(sanitizeSourceBlocks(input)).toEqual({ content: input, removed: false });
   });
+
+  it("KEEPS a Sources: bullet list that has NO URL/DOI evidence (linked needs all-list AND some-evidence)", () => {
+    // a `||` instead of `&&` in the linked classifier would strip a legitimate
+    // bullet list that merely LOOKS like a source list but cites nothing.
+    const input = "Answer.\n\nSources:\n- the alpha plan\n- the beta plan";
+    expect(sanitizeSourceBlocks(input)).toEqual({ content: input, removed: false });
+  });
+
+  it("strips a source block even when the heading is the FIRST line (the whole content is the block)", () => {
+    // the trailing-block scan runs down to index 0 (`index >= 0`); a `> 0`
+    // off-by-one would miss a response that is nothing but `Sources: None`.
+    expect(sanitizeSourceBlocks("Sources: None")).toMatchObject({ reason: "empty_source_block", removed: true });
+  });
+
 });

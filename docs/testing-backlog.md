@@ -901,6 +901,18 @@ the generic layers below because they test what makes Muse an *agent*.
     `matches.length === 0` sub-clause (String.match(/g) never returns an empty array — only null
     or ≥1, so unreachable) + warning-text / pattern-name StringLiterals. Module effectively maxed.
     policy 116->117.
+  - SEVENTY-FIRST (mutation-depth): `policy/source-block-sanitizer.ts` (118L, the WEDGE-adjacent
+    sanitiser that strips a model's fabricated/empty trailing `Sources:` block) Stryker 58.99% —
+    a richer target. +2 logic killers: a `Sources:` BULLET LIST with NO URL/DOI evidence is KEPT
+    (linked-removal needs all-list AND some-evidence — a `||` would wrongly strip a legit bullet
+    list that cites nothing), and a heading on the FIRST line (the whole content is the block) is
+    still stripped (the trailing scan runs down to `index >= 0`; a `> 0` off-by-one would miss a
+    bare `Sources: None` response). → **61.15%** (76→79 killed). HONESTY NOTE: I also tried a
+    13-phrase empty-fallback pattern-coverage test (EN+KO) but it killed ZERO new mutants (the
+    phrases were already effectively covered) — removed it as already-covered churn rather than
+    claim it. The remaining 54 survivors are Regex mutants on the fallback patterns (optional-
+    period / anchor variants exact-phrase tests can't distinguish — equivalent-ish) + heading/
+    list pattern literals. policy 117->119.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
