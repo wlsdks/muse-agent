@@ -600,6 +600,17 @@ the generic layers below because they test what makes Muse an *agent*.
     write would break polling); the 0600 sidecar mode (it reveals the bot's polling cadence +
     chat ids); and graceful "no offset" on a corrupt file / missing offset / string or null
     value. messaging 354->361.
+  - FORTY-THIRD (cross-package sweep → a2a; SECURITY/crypto): `packages/a2a` `signing.ts`
+    (42L, 3 exports) had **ZERO test refs** — HMAC-SHA256 envelope authentication for
+    agent-to-agent messages (a tampered envelope or a forged `from` without the shared secret
+    is rejected before the safety core sees it). First suite (7 tests, dist-verified):
+    round-trip verifies with the SAME secret (64-hex SHA-256); a DIFFERENT secret → false (a
+    forged from has no secret); ANY tampered safety-field (content/fromPeerId/kind/label/the
+    redacted scrub-flag) → false; a wrong-length / non-string / right-length-but-non-hex
+    signature → false WITHOUT throwing (fail-closed, the timingSafeEqual length guard + try);
+    canonicalizeEnvelope is deterministic + lays fields out kind→from→redacted→label→content,
+    and coerces an absent optional label to the SAME canonical/signature as an explicit ""
+    (both sides agree). First a2a slice. a2a 84->91.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
