@@ -12,12 +12,13 @@ import {
   CalendarProviderRegistry,
   GoogleCalendarProvider,
   LocalCalendarProvider,
+  LocalIcsCalendarProvider,
   MacOsCalendarProvider,
   type CalendarProvider
 } from "@muse/calendar";
 
 import type { MuseEnvironment } from "../index.js";
-import { resolveCredentialsFile, resolveLocalCalendarFile } from "../provider-paths.js";
+import { resolveCalendarIcsFile, resolveCredentialsFile, resolveLocalCalendarFile } from "../provider-paths.js";
 import { readCredentialsSync, stringField } from "../provider-utils.js";
 
 export function buildCalendarRegistry(env: MuseEnvironment): CalendarProviderRegistry {
@@ -45,6 +46,11 @@ function tryBuildCalendarProvider(
 ): CalendarProvider | undefined {
   if (id === "local") {
     return new LocalCalendarProvider({ file: resolveLocalCalendarFile(env) });
+  }
+
+  if (id === "ics") {
+    // Read-only LOCAL .ics file — a user's exported calendar, no cloud.
+    return new LocalIcsCalendarProvider({ file: resolveCalendarIcsFile(env) });
   }
 
   if (id === "gcal") {

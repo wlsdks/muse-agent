@@ -286,7 +286,7 @@ function unfoldIcs(ics: string): string {
   return ics.replace(/\r\n[ \t]/gu, "").replace(/\n[ \t]/gu, "");
 }
 
-function parseVEvent(rawIcs: string, providerId: string, fallbackId: string): CalendarEvent | undefined {
+export function parseVEvent(rawIcs: string, providerId: string, fallbackId: string): CalendarEvent | undefined {
   const unfolded = unfoldIcs(rawIcs);
   // Match properties within the VEVENT body only. A VCALENDAR for a
   // TZID-qualified event carries a VTIMEZONE whose STANDARD/DAYLIGHT

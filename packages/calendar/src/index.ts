@@ -32,6 +32,8 @@ export { CalendarProviderError, CalendarValidationError, isRetryableCalendarStat
 export { eventsToIcs, type IcsEvent } from "./ics-export.js";
 export { CalendarProviderRegistry } from "./registry.js";
 export { LocalCalendarProvider, type LocalCalendarProviderOptions } from "./local-provider.js";
+export { LocalIcsCalendarProvider, type LocalIcsCalendarProviderOptions } from "./local-ics-provider.js";
+export { parseIcsCalendar } from "./ics-parse.js";
 export {
   GoogleCalendarProvider,
   type GoogleCalendarProviderOptions

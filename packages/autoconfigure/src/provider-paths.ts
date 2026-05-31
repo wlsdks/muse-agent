@@ -50,6 +50,10 @@ export function resolveLocalCalendarFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_CALENDAR_FILE", "calendar.json");
 }
 
+export function resolveCalendarIcsFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_CALENDAR_ICS_FILE", "calendar.ics");
+}
+
 export function resolveTasksFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_TASKS_FILE", "tasks.json");
 }

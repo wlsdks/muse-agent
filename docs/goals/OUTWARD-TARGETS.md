@@ -64,6 +64,23 @@ turn; never half-shipped.
 
 ## Active target
 
+**P37 — Perception growth: read-only local connectors (loop-v2 B3).** The
+self-learning core (P36) is delivered end-to-end + felt; this axis grows what
+Muse can READ to know you — new local, read-only, per-source sources the agent
+can ground on and cite (calendar, then tasks/files), verified against MOCK
+data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
+(mutators reject) + `local === true` (egressing sources stay out).
+
+- [x] **P37-1 Local `.ics` calendar reader (B3 ②).** A read-only
+  `LocalIcsCalendarProvider` reads a user's EXPORTED `.ics` file (no cloud);
+  `parseIcsCalendar` reuses the CalDAV VEVENT parser. Wired as the `ics`
+  provider in `buildCalendarRegistry`, so `muse ask` grounds on + cites its
+  events via the existing event path. Proven by unit tests (parse timed/all-day,
+  skip malformed; provider local:true, range-filter, missing→[], mutators
+  reject) + a LIVE `muse ask` on a mock `.ics` (cited "[event: Investor sync
+  with Foundry @ Zoom]"; honest refusal on a flight not in the file). calendar
+  122 / autoconfigure 464 tests + `pnpm lint` 0/0. (this commit)
+
 **P36 — Background self-learning, brake-and-proof-first (loop-v2 PART A2 /
 B1).** The headline's "grows-with-you" core: Muse learns from corrections
 while idle, on its own, without straining the laptop. Built brake-FIRST — the
