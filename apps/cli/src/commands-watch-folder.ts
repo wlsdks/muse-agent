@@ -32,6 +32,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   buildMessagingRegistry,
+  resolveNotesDir,
   resolveProactiveHistoryFile,
   resolveTasksFile
 } from "@muse/autoconfigure";
@@ -39,10 +40,17 @@ import { appendProactiveHistory, parseTaskDueAt, readTasks, writeTasks, type Per
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
-import { isLikelyBinary } from "./commands-read.js";
+import { ensureNoteMarkdownExtension, extractDocumentText, isLikelyBinary, saveDocumentToNotes } from "./commands-read.js";
 import type { ProgramIO } from "./program.js";
 
 const MAX_PREVIEW_BYTES = 10 * 1024;
+
+/** Note id for a watched file ingested into the corpus: `<prefix>/<basename-no-ext>.md`. */
+export function watchIngestNoteId(filename: string, prefix: string): string {
+  const clean = prefix.trim().replace(/^\/+|\/+$/gu, "");
+  const stem = basename(filename, extname(filename));
+  return ensureNoteMarkdownExtension(`${clean.length > 0 ? `${clean}/` : ""}${stem}`);
+}
 
 interface WatchOptions {
   readonly path?: string;
@@ -50,6 +58,8 @@ interface WatchOptions {
   readonly destination?: string;
   readonly asTask?: boolean;
   readonly defaultLeadMinutes?: string;
+  readonly ingest?: boolean;
+  readonly notesPrefix?: string;
 }
 
 /**
@@ -159,12 +169,24 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
       "When --as-task is set and no due:/마감: line is found, use this many minutes from now as the default dueAt (default 60)",
       "60"
     )
+    .option(
+      "--ingest",
+      "Ingest each new file INTO the notes corpus (a citable `.md` note, searchable via `muse ask`) instead of firing a proactive notice — keeps the corpus live as you drop documents."
+    )
+    .option(
+      "--notes-prefix <p>",
+      "With --ingest, the folder prefix under MUSE_NOTES_DIR for ingested notes (default 'inbox')",
+      "inbox"
+    )
     .action(async (options: WatchOptions) => {
       const dir = options.path ?? join(homedir(), ".muse", "inbox");
       const processedDir = join(dir, ".processed");
       const provider = options.provider ?? "log";
       const destination = options.destination ?? "@me";
       const asTask = options.asTask === true;
+      const ingestMode = options.ingest === true;
+      const notesPrefix = (options.notesPrefix ?? "inbox").trim().replace(/^\/+|\/+$/gu, "");
+      const notesDir = ingestMode ? resolveNotesDir(process.env as Record<string, string | undefined>) : undefined;
       // strict Number() so a "90m" unit-slip rejects instead of
       // becoming 90 (parseInt eats the suffix).
       let defaultLead = 60;
@@ -200,11 +222,16 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
       const historyFile = resolveProactiveHistoryFile(process.env as Record<string, string | undefined>);
 
       io.stdout(`muse watch-folder — watching ${dir}\n`);
-      io.stdout(`  provider=${provider}, destination=${destination}\n`);
-      if (asTask) {
-        io.stdout(`  as-task: ON (each file also becomes an open task in ${tasksFile!})\n`);
+      if (ingestMode) {
+        io.stdout(`  ingest: ON (each file → a citable note under '${notesPrefix}/' in ${notesDir!})\n`);
+        io.stdout(`  (Drop any document here to add it to your corpus. Ctrl-C to stop.)\n\n`);
+      } else {
+        io.stdout(`  provider=${provider}, destination=${destination}\n`);
+        if (asTask) {
+          io.stdout(`  as-task: ON (each file also becomes an open task in ${tasksFile!})\n`);
+        }
+        io.stdout(`  (Drop any text file here to fire a notice. Ctrl-C to stop.)\n\n`);
       }
-      io.stdout(`  (Drop any text file here to fire a notice. Ctrl-C to stop.)\n\n`);
 
       // De-dupe: fs.watch can fire "rename" twice for one file on some
       // platforms. Process each filename at most once until the file
@@ -224,6 +251,40 @@ export function registerWatchFolderCommand(program: Command, io: ProgramIO): voi
             return; // file may have been renamed away by another consumer
           }
           if (!stats.isFile()) return;
+
+          // --ingest path: fold the dropped file INTO the notes corpus as a
+          // citable note instead of firing a notice, so the corpus stays live
+          // as documents land. Reuses the same extract/save contract as
+          // `muse read` (partial-failure tolerant: a corrupt/binary file is
+          // skipped, never crashes the watcher), then archives the original.
+          if (ingestMode && notesDir) {
+            let extracted: { text: string; pageCount: number };
+            try {
+              const buffer = await readFile(full);
+              const parsed = await extractDocumentText(full, buffer);
+              extracted = { pageCount: parsed.pageCount, text: (parsed.text ?? "").trim() };
+            } catch (cause) {
+              io.stderr(`  ✗ ${filename} (could not read — skipped: ${cause instanceof Error ? cause.message : String(cause)})\n`);
+              return;
+            }
+            if (extracted.text.length === 0) {
+              io.stderr(`  ✗ ${filename} (no text extracted — skipped)\n`);
+              return;
+            }
+            const noteId = watchIngestNoteId(filename, notesPrefix);
+            try {
+              await saveDocumentToNotes(notesDir, noteId, full, extracted.text, extracted.pageCount);
+            } catch (cause) {
+              io.stderr(`  ✗ ${filename} (save failed — skipped: ${cause instanceof Error ? cause.message : String(cause)})\n`);
+              return;
+            }
+            const archived = join(processedDir, `${Date.now().toString()}-${filename}`);
+            try {
+              await rename(full, archived);
+            } catch { /* best-effort archive; the note is already saved */ }
+            io.stdout(`[${new Date().toISOString()}] ingested ${filename} → ${noteId} (searchable via \`muse ask\`)\n`);
+            return;
+          }
 
           let notice: InboxNotice;
           try {

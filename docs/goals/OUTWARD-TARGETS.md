@@ -149,7 +149,19 @@ FIRST, then felt self-learning).
   qwen3:8b (isolated HOME): `muse read garage.txt --save-to-notes garage` →
   `garage.md`, and `muse ask` cited "7731 [from garage.md]" (was "I don't have
   access"), while an uncovered question still honestly refused;
-  `commands-read.test.ts` + `pnpm lint` 0/0. (this commit)
+  `commands-read.test.ts` + `pnpm lint` 0/0. (c8441e84)
+
+- [x] **P34-7 Continuous folder-watch corpus ingest — the corpus stays live.**
+  `muse watch-folder --ingest` now folds each newly-dropped document INTO the
+  notes corpus as a citable `.md` note (searchable via `muse ask`) instead of
+  firing a proactive notice — the day-2 "stays live without re-running ingest"
+  habit, with no manual step. Reuses the `muse read` extract/save contract, so
+  a corrupt drop is skipped (✗) without crashing the watcher; the original is
+  archived. Proven LIVE on qwen3:8b (isolated HOME): dropped `pool.txt` + a
+  corrupt `.pdf` into a watched inbox → ingested `pool.txt → inbox/pool.md`,
+  skipped the corrupt one, then `muse ask` cited "4417 [from inbox/pool.md]"
+  and honestly refused an uncovered question; `commands-watch-folder.test.ts`
+  + `pnpm lint` 0/0. (this commit)
 
 **P33 — Reinforcement learning over Muse's memory (the model is fixed,
 so RL lives in the MEMORY, not the weights).** Close the self-improvement

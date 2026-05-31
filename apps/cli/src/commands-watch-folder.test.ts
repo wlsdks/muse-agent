@@ -1,8 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import { buildInboxNotice, extractDueHint, resolveInboxDueAt } from "./commands-watch-folder.js";
+import { buildInboxNotice, extractDueHint, resolveInboxDueAt, watchIngestNoteId } from "./commands-watch-folder.js";
 
 const FIXED_NOW = (): Date => new Date("2026-05-18T09:00:00Z");
+
+describe("watchIngestNoteId — corpus note id for an ingested watched file", () => {
+  it("is <prefix>/<basename-no-ext>.md so the note is indexable by `muse ask`", () => {
+    expect(watchIngestNoteId("garage.txt", "inbox")).toBe("inbox/garage.md");
+    expect(watchIngestNoteId("report.pdf", "drops")).toBe("drops/report.md");
+  });
+
+  it("keeps an already-indexable extension and tolerates a slashed/empty prefix", () => {
+    expect(watchIngestNoteId("note.md", "inbox")).toBe("inbox/note.md");
+    expect(watchIngestNoteId("a.txt", "/inbox/")).toBe("inbox/a.md");
+    expect(watchIngestNoteId("a.txt", "")).toBe("a.md");
+  });
+});
 
 describe("extractDueHint (watch-folder --as-task due parsing)", () => {
   it("extracts a hint from a `due:` / `deadline:` / `due -` line (case-insensitive)", () => {
