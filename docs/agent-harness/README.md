@@ -10,7 +10,12 @@ related: [team-roles.md, ../README.md]
 # 에이전트 하네스 (Agent Harness)
 
 Muse 작업에 **어떤 AI 에이전트가 투입되든 똑같은 방식으로 협업**하게 만드는 운영 구조를 모읍니다.
-2026년 5월 기준 검증된 멀티에이전트 패턴(Anthropic · Addy Osmani)에 근거합니다.
+2026년 5월 기준 검증된 멀티에이전트 패턴(Anthropic · Addy Osmani · Cognition · OpenAI)에 근거합니다.
+
+**상태:** 권위 12-카테고리 체크리스트 **전부 문서화(✅)**되었고, 실제 Claude Code로 **4종 실측 통과**
+— 평가자·플래너 단일, 그리고 플래너→평가자·플래너→워커→평가자 연쇄가 양식만으로 한 사이클 맞물려
+돕니다([harness-acceptance §7.5](harness-acceptance.md)). 남은 일: 골든 과제 묶음·반복(pass^k)으로
+키우기. (개별 문서는 계속 다듬는 중이라 frontmatter는 draft.)
 
 | 문서 | 무엇 | 상태 |
 |---|---|---|
