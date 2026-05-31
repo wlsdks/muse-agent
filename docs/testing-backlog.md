@@ -931,6 +931,15 @@ the generic layers below because they test what makes Muse an *agent*.
     yield the inner object and lose the outer keys). → **81.60%**. The 2 remaining L73/L108
     survivors are equivalent on valid input (OOB-cursor `<=`, `if(true)` yields the same first
     valid candidate). policy 119->120.
+  - SEVENTY-FOURTH (mutation-depth; FIRST calendar measurement): surveyed policy (migration-
+    redaction 89%/maxed, injection-detection-counter 96.77% with its lone survivor EQUIVALENT —
+    `if(false)` on empty findings falls through to a no-op loop) → pivoted to a never-measured
+    package. `calendar/ics-export.ts` (67L, RFC 5545 VCALENDAR export) Stryker 80.00%. +3 tests:
+    an event with NEITHER location nor notes OMITS both lines (the `event.location && length>0`
+    conditional both ways — an `if(true)` would push `LOCATION:undefined` and crash); a notes-
+    bearing event emits an escaped DESCRIPTION; and the default PRODID is used with an explicit
+    override honoured. → **85.45%** (44→47 killed). Remaining 8 are VCALENDAR format-constant
+    StringLiterals (pattern-coverage). calendar 111->114.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,

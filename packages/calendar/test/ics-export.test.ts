@@ -62,4 +62,22 @@ describe("eventsToIcs", () => {
     expect(ics).toContain("END:VCALENDAR");
     expect(ics).not.toContain("BEGIN:VEVENT");
   });
+
+  it("OMITS LOCATION and DESCRIPTION lines for an event that has neither (the conditional both ways)", () => {
+    const bare: IcsEvent = { endsAt: new Date("2026-06-01T10:00:00Z"), id: "bare", startsAt: new Date("2026-06-01T09:00:00Z"), title: "Focus" };
+    const ics = eventsToIcs([bare], { now: NOW });
+    expect(ics).not.toContain("LOCATION:");
+    expect(ics).not.toContain("DESCRIPTION:");
+    expect(ics).toContain("SUMMARY:Focus"); // the event is still emitted
+  });
+
+  it("emits a DESCRIPTION line (escaped) when notes are present", () => {
+    const withNotes: IcsEvent = { endsAt: new Date("2026-06-01T10:00:00Z"), id: "n", notes: "bring slides\nand coffee", startsAt: new Date("2026-06-01T09:00:00Z"), title: "Review" };
+    expect(eventsToIcs([withNotes], { now: NOW })).toContain("DESCRIPTION:bring slides\\nand coffee");
+  });
+
+  it("uses the default PRODID and honours an explicit override", () => {
+    expect(eventsToIcs([], { now: NOW })).toContain("PRODID:-//Muse//calendar export//EN");
+    expect(eventsToIcs([], { now: NOW, prodId: "-//Acme//App//EN" })).toContain("PRODID:-//Acme//App//EN");
+  });
 });
