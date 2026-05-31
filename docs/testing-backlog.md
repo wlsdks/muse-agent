@@ -827,6 +827,17 @@ the generic layers below because they test what makes Muse an *agent*.
     into the prompt AND the model output before it crosses the swarm, fail-soft on throw → '';
     synthesizeCouncilAnswer null on empty-question / no-usable-utterances, grounds against only the
     usable member ids (drops an invented contributor), fail-soft → null. agent-core 1208->1221.
+  - SIXTY-FOURTH (cross-package sweep → autoconfigure; auth-secret wiring): `packages/
+    autoconfigure` `auth-wiring.ts` `createAuthService` (105L, **ZERO test refs**) — builds the
+    MuseAuth service from env + the fail-open JWT secret-rotation file reader. First suite (6
+    tests, temp secrets files): NO secret anywhere → undefined (auth disabled, not crashed); an
+    env secret + no db → an in-memory Auth; a db → an AsyncAuth (Kysely-backed); the secret read
+    from the rotation file (MUSE_AUTH_SECRETS_FILE) even with no env secret; FAIL-OPEN — a corrupt
+    secrets file falls through to the env secret (a bad file can't lock the operator out of their
+    own daemon: corrupt+no-env→undefined, corrupt+env→defined); a too-short current secret (<32
+    chars) in the file is rejected. autoconfigure 452->458. This + the SIXTY-FIRST..SIXTY-THIRD
+    slices essentially close the original zero-coverage census across the large packages — only
+    `autoconfigure/openai-compat-presets` (a 29L const map) remains, a trivial follow-up.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
