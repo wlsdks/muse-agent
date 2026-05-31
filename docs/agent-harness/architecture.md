@@ -67,7 +67,7 @@ related: [README.md, team-roles.md, handoff-template.md, role-prompts.md, verifi
 |---|---|---|---|
 | 1 | 에이전트 루프 | team-roles 패턴 + [loop-budget](loop-budget.md)(횟수·시간·예산 하드캡·회로차단) | ✅ |
 | 2 | 계획·분해 | 플래너 역할 + 핸드오프 계획 칸 | ✅ |
-| 3 | 컨텍스트·압축 | 실패모드의 맥락부패·압축 반환 | 🟡 부분 |
+| 3 | 컨텍스트·압축 | [context-compaction](context-compaction.md) — 선제·주기·예산인지, 중요도 가중 보존 | ✅ |
 | 4 | 도구 설계 | [tool-design](tool-design.md) — 한-shot 선택·예시스키마·위험등급 | ✅ |
 | 5 | 스킬·MCP | [skills-and-mcp](skills-and-mcp.md) — 2단계 허용목록·격리·최소권한·불신출력 | ✅ |
 | 6 | 권한·승인 | 게이트·승인(fail-closed) | 🟡 부분 |
@@ -78,8 +78,8 @@ related: [README.md, team-roles.md, handoff-template.md, role-prompts.md, verifi
 | 11 | 디버깅·DX | [debugging-and-dx](debugging-and-dx.md) — 트레이스→격리→결정론 재현→회귀 | ✅ |
 | 12 | 사람 개입(HITL) | 게이트·승인·체크인 | ✅ |
 
-**한 줄 결론:** ⬜ 갭은 모두 닫혔고, 부분(🟡)도 줄고 있습니다. 12개 중 ✅ 10 / 🟡 2(컨텍스트 압축·
-메모리 계층·권한 매트릭스 中 컨텍스트/권한/메모리). 루프 종료·예산이 방금 ✅로.
+**한 줄 결론:** ⬜ 갭 0, 부분도 거의 닫혔습니다. 12개 중 ✅ 11 / 🟡 1(권한 매트릭스·메모리 계층 中
+부분). 컨텍스트 압축이 방금 ✅로 — 남은 부분 칸은 권한/메모리뿐.
 
 ## 4. 다음에 채울 것 (우선순위)
 
@@ -87,7 +87,8 @@ related: [README.md, team-roles.md, handoff-template.md, role-prompts.md, verifi
 2. ~~스킬/MCP 통합~~ → [skills-and-mcp](skills-and-mcp.md) ✅.
 3. ~~디버깅/DX~~ → [debugging-and-dx](debugging-and-dx.md) ✅.
 4. ~~루프 종료·예산~~ → [loop-budget](loop-budget.md) ✅.
-5. 남은 부분(🟡) 심화 — 컨텍스트 압축 트리거 / 권한 매트릭스 / 메모리 계층. (한 칸씩 🟡→✅)
+5. ~~컨텍스트 압축~~ → [context-compaction](context-compaction.md) ✅.
+6. 남은 부분(🟡) 심화 — 권한 매트릭스 / 메모리 계층. (한 칸씩 🟡→✅)
 
 > 이 자가평가는 외부 권위 체크리스트로 측정한 것이며, 칸이 채워질 때마다 위 표의 상태를 갱신합니다.
 > 측정 가능한 진전(빈 칸 → 채움)이 곧 "최고의 하네스"로 가는 길입니다.
