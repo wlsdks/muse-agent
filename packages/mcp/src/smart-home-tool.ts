@@ -28,8 +28,9 @@ export function createHomeActionTool(deps: HomeActionToolDeps): MuseTool {
   return {
     definition: {
       description:
-        "Call a Home Assistant service to control a smart-home device, OR activate a scene / run a script (a 'routine'). "
+        "Call a Home Assistant service to control a smart-home device (lights, locks, climate/thermostat, fans), OR activate a scene / run a script (a 'routine'). "
         + "Examples: turn a light off — service 'light.turn_off', entity 'light.living_room'; "
+        + "set the thermostat to a temperature — service 'climate.set_temperature', entity 'climate.living_room'; "
         + "activate a scene ('movie mode') — service 'scene.turn_on', entity 'scene.movie_mode'; "
         + "run a routine ('good night') — service 'script.turn_on', entity 'script.good_night'. "
         + "The user must confirm the exact action before it fires; absent confirmation nothing happens. Not for payments.",
