@@ -67,6 +67,22 @@ related: [context-compaction.md, handoff-template.md, team-roles.md, architectur
 
 ---
 
+## 런타임 컴포넌트 (코드)
+
+위 계층·동작을 결정론 코드로 구현: [runner/memory.mjs](runner/memory.mjs) (의존성 0). **모델이 무엇을
+기억할지 판단**하고, **코드가 저장/검색/정리/감쇠/승격을 결정론적으로** 수행합니다.
+
+- `write({text, kind, durable, confidence, source})` — 쓰기. **`durable:false`(일회성)는 장기 저장 안 함**,
+  빈 텍스트는 거부(부풀림·쓰레기 방지).
+- `read(query, {limit})` — 토큰 겹침 기반 관련성 검색(최근성·신뢰도 타이브레이크), 회상 카운트 증가.
+- `consolidate()` — 동일 정규화 텍스트 중복 병합(최고 신뢰도 유지·회상 합산).
+- `decay({at})` — **추론(inference)** 항목만 신뢰도 반감기로 감쇠, 바닥 미만 드롭. 명시 사실/선호는 불변.
+- `promote({minRecalls})` — 자주 회상된 항목을 **항상-켜진 코어**로 승격. `core()`로 조회.
+
+검증: [runner/memory.test.mjs](runner/memory.test.mjs) — `node --test harness/runner/`:
+쓰기(일회성 드롭·빈 거부)·관련성 읽기+회상·중복 병합·추론 감쇠(반감기·바닥 드롭, 사실 불변)·승격.
+**5/5**(러너 스위트 누적 **50/50**).
+
 ## 출처 (검증 기반)
 
 - Muse 제품 — SYSTEM-MAP #5 (자동 사실 학습·구조화 사용자 모델·과거 세션 회상·중복 정리·드리밍 승격·신뢰도 감쇠)
