@@ -940,6 +940,18 @@ the generic layers below because they test what makes Muse an *agent*.
     bearing event emits an escaped DESCRIPTION; and the default PRODID is used with an explicit
     override honoured. → **85.45%** (44→47 killed). Remaining 8 are VCALENDAR format-constant
     StringLiterals (pattern-coverage). calendar 111->114.
+  - SEVENTY-FIFTH (mutation-depth; surveyed multi-agent/tiering 97.37% maxed → a2a): `a2a/
+    council-wire.ts` (101L) Stryker 65.63% — the council INITIATOR (requestCouncilReasoning) was
+    only indirectly exercised via the handler. First direct suite (8 tests): verifyCouncilRequest
+    (correct sig vs wrong-secret / non-string / wrong-length, + question/peer tamper);
+    parseCouncilRequest clause-isolation (non-object / wrong method / missing params / non-string
+    peer|question / blank question each → null); and requestCouncilReasoning (disabled OR blank
+    question → null with NO fetch; valid signs + POSTs the council request + returns the peer's
+    reasoning; non-OK / wrong-kind / blank-or-missing-reasoning / thrown-fetch → null). →
+    **88.54%** (63→85 killed, +22). a2a 122->130. NOTE: repo-wide `pnpm lint` is currently RED
+    from inbound `harness/runner/*.mjs` (another loop's files: no-undef process/console +
+    no-useless-assignment) — NOT this slice (npx eslint packages/a2a is clean). The harness loop
+    must fix its own runner files / eslint node-env config; integration FF push is gated on it.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
