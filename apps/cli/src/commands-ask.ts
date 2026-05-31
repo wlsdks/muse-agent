@@ -976,12 +976,12 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           process.exitCode = 1;
           return;
         }
-        if (!options.json) {
-          if (toolsUsed.length > 0) {
-            io.stderr(`(tools used: ${toolsUsed.join(", ")})\n`);
-          }
-          io.stdout(collectedAnswer);
+        if (!options.json && toolsUsed.length > 0) {
+          io.stderr(`(tools used: ${toolsUsed.join(", ")})\n`);
         }
+        // The answer is printed AFTER the citation gate below, so a fabricated
+        // citation is stripped before the user sees it (this path buffers; the
+        // chat-only path streams live and is warned post-hoc instead).
       } else {
         // Chat-only fast path — direct modelProvider.stream, no tool
         // registry. Suitable for "explain this", "summarise that"
@@ -1042,6 +1042,11 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       collectedAnswer = citationGate.text;
       if (!options.json && citationGate.stripped.length > 0) {
         io.stderr(`\n⚠️  Removed ${citationGate.stripped.length.toString()} citation(s) to source(s) you don't have (${citationGate.stripped.join(", ")}) — treat those claims as unverified.\n`);
+      }
+      // The --with-tools answer was buffered (not streamed), so it prints HERE
+      // — after the gate — so a fabricated citation is stripped before display.
+      if (options.withTools && !options.json) {
+        io.stdout(collectedAnswer);
       }
 
       if (options.json) {
