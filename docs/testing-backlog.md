@@ -1937,3 +1937,14 @@ the generic layers below because they test what makes Muse an *agent*.
     renders `SUMMARY:Sync\, plan\; review` / `DESCRIPTION:a\nb` (escaping prevents
     ICS property injection, the calendar analogue of CRLF/header injection). Both
     pre-verified against dist. calendar 116 pass (+2).
+
+- [x] **multi-agent/orchestration-history — p95 percentile at scale.** summary()'s
+    p95 formula `sortedDurations[min(len-1, ceil(0.95*len)-1)]` was only ever
+    exercised with ≤4 entries, where p95 collapses to the max — so the ceil / -1 /
+    0.95 / min-clamp arithmetic was indistinguishable from "return the maximum" and
+    those mutants survived. New test records 21 entries (durations 10..210) and
+    asserts p95 == 200 (the 20th smallest, STRICTLY below max 210), pinning the
+    nearest-rank computation. Same test alternates sequential/parallel so race gets
+    zero entries, asserting byMode.race == {runs:0, avg:0} — the empty-mode branch
+    inside a NON-empty store (prior aggregate test only asserted the two modes that
+    had entries). Both pre-verified against dist. multi-agent 64 pass (+1).
