@@ -1,6 +1,39 @@
 import { describe, expect, it } from "vitest";
 
-import { renderLearnedDigest } from "./commands-learned.js";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { recordPlaybookStrategy } from "@muse/mcp";
+
+import { formatIdleLearnedNotice, idleLearnedNoticeForUser, renderLearnedDigest } from "./commands-learned.js";
+
+describe("formatIdleLearnedNotice — session-start beat", () => {
+  it("is undefined when nothing was learned while idle", () => {
+    expect(formatIdleLearnedNotice(0)).toBeUndefined();
+  });
+  it("names the count (singular/plural) and points at `muse learned`", () => {
+    expect(formatIdleLearnedNotice(1)).toMatch(/I learned 1 thing while you were away.*muse learned/);
+    expect(formatIdleLearnedNotice(3)).toMatch(/I learned 3 things while you were away/);
+  });
+});
+
+describe("idleLearnedNoticeForUser — counts probation strategies from the playbook", () => {
+  it("returns the beat when probation strategies exist, undefined otherwise", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "muse-idle-notice-"));
+    const file = join(dir, "playbook.json");
+    try {
+      const env = { MUSE_PLAYBOOK_FILE: file } as Record<string, string | undefined>;
+      expect(await idleLearnedNoticeForUser("u1", env)).toBeUndefined(); // empty
+      await recordPlaybookStrategy(file, { createdAt: "2026-01-01T00:00:00Z", id: "p1", probation: true, text: "x", userId: "u1" });
+      await recordPlaybookStrategy(file, { createdAt: "2026-01-01T00:00:00Z", id: "g1", reward: 2, text: "graduated", userId: "u1" });
+      const notice = await idleLearnedNoticeForUser("u1", env);
+      expect(notice).toMatch(/I learned 1 thing while you were away/); // only the probation one counts
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("renderLearnedDigest", () => {
   it("shows an enable hint when nothing has been learned", () => {

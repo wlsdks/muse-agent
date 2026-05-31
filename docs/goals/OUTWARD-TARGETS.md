@@ -173,7 +173,17 @@ proof shape (unit / 2-session / eval:self-improving), NOT cited-answer+refusal.
   `muse learned` prints the ⟨probation⟩ strategy), cited-answer+refusal
   unaffected. cli 1610 tests + `pnpm lint` 0/0. The idle self-learning loop is
   now FELT + VISIBLE end-to-end (correction → idle distill → probation → seen
-  in `muse learned` → reinforce to graduate). (this commit)
+  in `muse learned` → reinforce to graduate). (c569bcc2)
+
+- [x] **P36-10 Session-start "you FEEL it next session" notice.** On opening a
+  continuing chat, Muse leads with "💡 I learned N things while you were away
+  (on probation) — review with `muse learned`." when the idle daemon distilled
+  corrections since last time. Deterministic (counts real probation entries,
+  no model call), fail-soft, silent when nothing. Proven by unit tests
+  (singular/plural/0; counts only probation) + a LIVE full chain on qwen3:8b
+  (correction → idle distill → the exact opener notice string),
+  cited-answer+refusal unaffected. cli 1613 tests + `pnpm lint` 0/0. The
+  grows-with-you loop is now FELT at the moment of return. (this commit)
 
 **P35 — Felt experience: make Muse FEEL like the SF confidant (loop-v2 PART
 B2).** The front door (P34) is delivered + proven; the headline's other half

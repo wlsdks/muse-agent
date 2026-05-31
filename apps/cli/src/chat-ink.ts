@@ -74,6 +74,7 @@ import { calendarEventItems, checkinItems, dueTaskItems, groupProactiveNotice, i
 import { checkinsFile } from "./commands-checkins.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
 import { resolvePersona } from "./program-helpers.js";
+import { idleLearnedNoticeForUser } from "./commands-learned.js";
 import { resolveDefaultUserKey } from "./user-id.js";
 
 const h = React.createElement;
@@ -1144,6 +1145,16 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
           await writeFile(briefMarkerFile, todayStr, "utf8");
         } catch { /* best-effort; a failed marker just re-briefs next open */ }
       }
+    }
+  }
+
+  // "You FEEL it next session" (B2): if Muse distilled anything UNATTENDED
+  // while you were away (probation strategies), open with a one-line beat so
+  // the growth is perceived — deterministic, fail-soft, silent when nothing.
+  if (continueHistory) {
+    const idleNotice = await idleLearnedNoticeForUser(userId).catch(() => undefined);
+    if (idleNotice) {
+      recap = recap ? `${idleNotice}\n${recap}` : idleNotice;
     }
   }
 

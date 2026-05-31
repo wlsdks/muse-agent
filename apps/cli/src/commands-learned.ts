@@ -95,6 +95,34 @@ export function renderLearnedDigest(input: LearnedDigestInput): string {
   return lines.join("\n");
 }
 
+/**
+ * The one-line "you FEEL it next session" beat: how many strategies Muse
+ * distilled UNATTENDED (on probation) since you were last here. Deterministic
+ * (no model call) — counts real probation entries, never fabricates. Undefined
+ * when there's nothing new to surface, so a session opener stays silent.
+ */
+export function formatIdleLearnedNotice(probationCount: number): string | undefined {
+  if (probationCount <= 0) {
+    return undefined;
+  }
+  const n = probationCount.toString();
+  const thing = probationCount === 1 ? "thing" : "things";
+  return `💡 I learned ${n} ${thing} while you were away (on probation) — review with \`muse learned\`.`;
+}
+
+/**
+ * The idle-learned session-start notice for `userId`, or undefined when none.
+ * Reads the playbook (fail-soft) and counts probation strategies. Pure of the
+ * REPL so it's directly testable.
+ */
+export async function idleLearnedNoticeForUser(
+  userId: string,
+  env: Record<string, string | undefined> = process.env
+): Promise<string | undefined> {
+  const strategies = await queryPlaybook(resolvePlaybookFile(env), userId).catch(() => []);
+  return formatIdleLearnedNotice(strategies.filter((s) => s.probation === true).length);
+}
+
 export function registerLearnedCommand(program: Command, io: ProgramIO): void {
   program
     .command("learned")
