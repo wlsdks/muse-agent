@@ -499,6 +499,7 @@ export {
   readPlaybook,
   recordPlaybookStrategy,
   removePlaybookStrategy,
+  retainPlaybookEntries,
   writePlaybook,
   type PlaybookEntry
 } from "./personal-playbook-store.js";

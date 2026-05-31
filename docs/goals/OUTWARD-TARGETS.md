@@ -256,7 +256,24 @@ proof shape (unit / 2-session / eval:self-improving), NOT cited-answer+refusal.
   untouched; a 2nd tick at 0 decayed nothing) and LEFT the `muse learned`
   Trusted list, while the fresh one stayed. mcp 1222 / api 816 / cli 1615 tests
   + `pnpm lint` 0/0. The grows-with-you loop now self-corrects in BOTH
-  directions — it learns AND it forgets stale trust. (this commit)
+  directions — it learns AND it forgets stale trust. (45db000f)
+
+- [x] **P36-12 Reward-/recency-weighted eviction — a reinforced strategy isn't
+  forgotten just for being old (B1 Slice 3).** When the playbook overflows its
+  100-entry cap, eviction was blind FIFO: it dropped the OLDEST regardless of
+  value, so a strategy you reinforced ten times could be evicted while a
+  never-used newer one survived — exactly backwards. New `retainPlaybookEntries`
+  keeps the highest-value entries (value = reward, then recency): a high-reward
+  OLD strategy beats a low-reward NEW one, ties break toward the newer, and
+  negative/avoided entries are evicted first; survivors keep their insertion
+  order (the recency proxy ranking relies on). Proven by unit tests (at/under cap
+  unchanged; high-reward-old kept over low-reward-new; reward-tie→recency;
+  avoided evicted first; record-path overflow keeps a champion) + a LIVE
+  end-to-end run (HOME-isolated, never real ~/.muse): a `+5` champion recorded
+  FIRST then buried under 120 newer neutral records survived the cap, and
+  `muse playbook list` shows `[champion] ⟨reward +5⟩` still present (count capped
+  at 100). mcp 1227 tests + `pnpm lint` 0/0. The bank now keeps what you've
+  proven matters. (this commit)
 
 **P35 — Felt experience: make Muse FEEL like the SF confidant (loop-v2 PART
 B2).** The front door (P34) is delivered + proven; the headline's other half

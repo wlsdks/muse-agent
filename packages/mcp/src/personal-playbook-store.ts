@@ -96,14 +96,36 @@ export async function writePlaybook(file: string, entries: readonly PlaybookEntr
   await atomicWriteFile(file, `${JSON.stringify({ entries }, null, 2)}\n`);
 }
 
+/**
+ * Choose which entries survive when the bank overflows `cap` (B1 §3 —
+ * reward-/recency-weighted eviction, replacing blind FIFO). Blind FIFO would
+ * forget a strategy you reinforced ten times just because it is old, while
+ * keeping a never-used newer one — exactly backwards. So eviction keeps the
+ * `cap` HIGHEST-value entries, value = (reward, then recency): a high-reward
+ * OLD strategy beats a low-reward NEW one; among equal reward the newer
+ * survives. Survivors are returned in their ORIGINAL insertion order, because
+ * that order is the recency proxy `rankPlaybookStrategies` relies on. A bank
+ * at/under `cap` is returned unchanged.
+ */
+export function retainPlaybookEntries(entries: readonly PlaybookEntry[], cap: number): readonly PlaybookEntry[] {
+  if (entries.length <= cap) {
+    return entries;
+  }
+  const ranked = entries
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => (b.entry.reward ?? 0) - (a.entry.reward ?? 0) || b.index - a.index);
+  const keep = new Set(ranked.slice(0, cap).map((r) => r.index));
+  return entries.filter((_entry, index) => keep.has(index));
+}
+
 export async function recordPlaybookStrategy(file: string, entry: PlaybookEntry): Promise<void> {
   // Serialise the read-modify-write: concurrent strategy records must not each
   // read the same snapshot and clobber one another (a lost learned strategy is a
-  // self-improvement the agent forgets), and the FIFO cap below must apply to the
+  // self-improvement the agent forgets), and the cap below must apply to the
   // real merged set, not a stale one.
   await withFileMutationQueue(file, async () => {
     const existing = await readPlaybook(file);
-    const next = [...existing.filter((e) => e.id !== entry.id), entry].slice(-MAX_PLAYBOOK_ENTRIES);
+    const next = retainPlaybookEntries([...existing.filter((e) => e.id !== entry.id), entry], MAX_PLAYBOOK_ENTRIES);
     await writePlaybook(file, next);
   });
 }
