@@ -453,6 +453,59 @@ the generic layers below because they test what makes Muse an *agent*.
     one bullet per veto. agent-core 1163->1168. (4 survivors: the appendSystemSection
     section-key + a prompt StringLiteral, and the equivalent `if(false)` no-provider guard
     whose skip just crashes into the same fail-open catch — equivalent.)
+  - THIRTY-FIRST MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    knowledge-recall.ts` (490L, the WEDGE retrieval core: cosine + RRF + MMR + confidence)
+    baselined at **68.92%**. Most survivors are prompt StringLiterals or equivalent
+    boundaries (the exact-limit chunkText boundaries L350/357/368-single reconstruct the
+    identical chunk via the split path; selectByMmr already has 3 behavioral tests; the
+    hybrid eligible OR-guard L187 is already killed by the E2099 lexical-recall test). The
+    genuinely-divergent chunkText boundary bugs (the function that feeds the embedding index —
+    bad chunking silently degrades recall) were unpinned; +3 known-answer tests in
+    knowledge-chunking.test.ts, each dist-verified to diverge under its mutant: (a) the
+    hard-split slice loop `i < length` — a paragraph that is an EXACT multiple of the limit
+    must not emit a trailing empty chunk (the `<=` off-by-one slices "" and embeds noise);
+    (b) the `current.length > 0` flush guard before a hard-split — a short paragraph then an
+    over-limit one must keep "short" FIRST (dropping the guard reorders it to the end); (c)
+    the `candidate.length > limit` pack boundary — two paragraphs joining to EXACTLY the
+    limit pack into one chunk (a `>=` would wrongly split a perfect fit). agent-core
+    1168->1171. (Remaining survivors: prompt/format StringLiterals + equivalent
+    exact-boundary reconstructions — the deep RRF/MMR internals are behaviorally covered.)
+  - THIRTY-SECOND MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    correction-distiller.ts` (229L, the RL distillation core: correction→decay + approval→
+    reinforce signals feeding the playbook) baselined at **67.94%**. detectCorrections + the
+    parseDistilledStrategy edges were already exhaustive; the gap was `detectApprovals` —
+    the newer POSITIVE-reward mirror had only 4 tests vs detectCorrections' full battery.
+    Deepened to **71.37%** (+9 killed) by mirroring that rigor on the approvals path: default
+    maxExchanges=2 (the `?? 2`), Math.max(1,trunc()) clamping (0/-3→1, 2.9→2), the role guard
+    (an assistant turn carrying 'perfect' is never an approval), and the full request-backfill
+    branch — populated only when the turn two-back is a user request, undefined at index 1 and
+    when two-back is an assistant turn (killed the `index >= 2 && role==="user"` survivors);
+    plus 6 untested APPROVAL_PATTERN reward triggers (that's it / just what I needed / works
+    great / 완벽합니다 / 훌륭해 / 최고야). agent-core 1171->1178. (74 survivors: the
+    APPROVAL/CORRECTION_PATTERNS regex alternations + distiller-prompt StringLiterals —
+    pattern-coverage, the same class as the security detectors.)
+  - THIRTY-THIRD MEASUREMENT (dist-verified, no whole-file Stryker — `index.ts` is 892L):
+    `packages/tools` `coerceToolArguments`/`coerceScalar` — the deterministic tool-arg REPAIR
+    (Structured Reflection arXiv:2509.18847: a right value in the wrong JSON type invalidates
+    an otherwise-correct local-model call; tool-calling.md's "validate + repair
+    deterministically"). The existing test covered the basics; added the realistic local-model
+    arg forms each dist-verified to diverge under its mutant: SIGNED numerics ("-7"→-7,
+    "-3.14"→-3.14, killing the `-?` in the int/number patterns), WHITESPACE-padded ("  42  "
+    →42, killing the `.trim()`), boolean→string (false→"false", the typeof==="boolean" string
+    arm), and the deliberate left-untouched boundaries ("+5" stays string — only `-` accepted;
+    "" stays — `\d+` needs a digit). First slice outside agent-core. tools 225->226.
+  - THIRTY-FOURTH MEASUREMENT (dist-verified): `packages/tools` tool-EXPOSURE policy — the
+    ≤5-7 selection gate that decides which tools the local Qwen sees (tool-calling.md's
+    first-class concern; fewer distractors = better one-shot selection). Keyword matching had
+    good coverage (word-boundary research≠search, suffix, Korean, multi-word) but two
+    documented contracts were untested, each dist-verified: (a) the <4-char EXACT-match rule
+    (`word.length >= 4` gates the suffix tolerance) — a short keyword 'log' must NOT
+    prefix-match 'login' (only exact 'log' exposes it), the on/off∉online/office distractor
+    guard; (b) the maxTools CUT-BY-PRIORITY — the existing cap test used an empty prompt (no
+    signal) so it never proved WHICH tools survive: now a cap of 1 keeps the LOWEST-RISK tool
+    (read < write < execute, regardless of input order) and, among same-risk, the MORE
+    keyword-relevant one (3 hits beats 1, relevance outranking the name tiebreak). tools
+    226->229.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,

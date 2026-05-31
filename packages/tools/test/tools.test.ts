@@ -344,6 +344,23 @@ describe("tool utilities", () => {
     expect(coerceToolArguments(undefined, { x: "1" })).toEqual({ x: "1" });
   });
 
+  it("coerceToolArguments handles the realistic local-model arg forms: signed, whitespace-padded, bool→string", () => {
+    const schema = {
+      type: "object",
+      properties: { count: { type: "integer" }, ratio: { type: "number" }, on: { type: "boolean" }, label: { type: "string" } }
+    };
+    // The `-?` in the numeric patterns accepts a negative the model emits.
+    expect(coerceToolArguments(schema, { count: "-7", ratio: "-3.14" })).toEqual({ count: -7, ratio: -3.14 });
+    // `.trim()` strips surrounding whitespace before the pattern test.
+    expect(coerceToolArguments(schema, { count: "  42  " })).toEqual({ count: 42 });
+    // boolean → its string form (the typeof === "boolean" arm of the string coercion).
+    expect(coerceToolArguments(schema, { label: false })).toEqual({ label: "false" });
+    // Deliberate boundaries left untouched: a `+` sign isn't accepted (only `-`),
+    // and an empty string has no digit to match — both stay as-is rather than a guess.
+    expect(coerceToolArguments(schema, { count: "+5" })).toEqual({ count: "+5" });
+    expect(coerceToolArguments(schema, { count: "" })).toEqual({ count: "" });
+  });
+
   it("validateRequiredToolArguments flags missing required args, passes complete/extra/no-schema", () => {
     const schema = { type: "object", properties: { entity: { type: "string" }, service: { type: "string" } }, required: ["entity", "service"] };
     expect(validateRequiredToolArguments(schema, { entity: "light.x", service: "turn_off" })).toEqual({ ok: true, missing: [] });
@@ -404,6 +421,49 @@ describe("tool utilities", () => {
     };
     expect(createWorkspaceToolRoutingPlan([rentTool], { prompt: "remind me to pay the rent friday" }).exposedToolNames).toEqual(["track_bill"]);
     expect(createWorkspaceToolRoutingPlan([rentTool], { prompt: "what should I pay attention to?" }).exposedToolNames).toEqual([]);
+  });
+
+  it("requires an EXACT hit for a keyword under 4 chars (no prefix-match distractor: 'log' ∉ 'login')", () => {
+    // The suffix tolerance is gated on word.length >= 4; a short keyword must
+    // match exactly so 'on'/'off'/'log' don't prefix-match 'online'/'office'/'login'.
+    const logTool: MuseTool = {
+      definition: { description: "Show logs.", inputSchema: { type: "object" }, keywords: ["log"], name: "log_tool", risk: "read" },
+      execute: () => "ok"
+    };
+    expect(createWorkspaceToolRoutingPlan([logTool], { prompt: "open the login page" }).exposedToolNames).toEqual([]);
+    expect(createWorkspaceToolRoutingPlan([logTool], { prompt: "show me the log" }).exposedToolNames).toEqual(["log_tool"]);
+  });
+
+  it("when capped, keeps the LOWEST-RISK tool first (read < write < execute)", () => {
+    const readTool: MuseTool = {
+      definition: { description: "read alpha", inputSchema: { type: "object" }, keywords: ["alpha"], name: "read_x", risk: "read" },
+      execute: () => "ok"
+    };
+    const execTool: MuseTool = {
+      definition: { description: "exec alpha", inputSchema: { type: "object" }, keywords: ["alpha"], name: "exec_x", risk: "execute" },
+      execute: () => "ok"
+    };
+    // Both relevant + eligible (localMode on for the execute tool); the cap of 1
+    // must surface the read tool — risk ordering decides the cut, not input order.
+    const plan = createWorkspaceToolRoutingPlan([execTool, readTool], { prompt: "alpha please", maxTools: 1, localMode: true });
+    expect(plan.exposedToolNames).toEqual(["read_x"]);
+    expect(plan.blocked).toContainEqual(expect.objectContaining({ code: "max_tool_count_exceeded", toolName: "exec_x" }));
+  });
+
+  it("when capped among same-risk tools, keeps the MORE keyword-relevant one", () => {
+    const weak: MuseTool = {
+      definition: { description: "weak", inputSchema: { type: "object" }, keywords: ["weather"], name: "a_tool", risk: "read" },
+      execute: () => "ok"
+    };
+    const strong: MuseTool = {
+      definition: { description: "strong", inputSchema: { type: "object" }, keywords: ["weather", "forecast", "rain"], name: "b_tool", risk: "read" },
+      execute: () => "ok"
+    };
+    // b_tool hits 3 prompt keywords vs a_tool's 1 → it wins the single slot
+    // despite sorting AFTER a_tool by name (relevance outranks the name tiebreak).
+    expect(
+      createWorkspaceToolRoutingPlan([weak, strong], { prompt: "weather forecast rain today", maxTools: 1 }).exposedToolNames
+    ).toEqual(["b_tool"]);
   });
 
   it("filters risky and irrelevant tools before model exposure", () => {
