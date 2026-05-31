@@ -27,7 +27,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 
-import { classifyRetrievalConfidence, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, selectByMmr, type RetrievalConfidence } from "@muse/agent-core";
+import { classifyRetrievalConfidence, enforceAnswerCitations, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, selectByMmr, type RetrievalConfidence } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveEpisodesFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
@@ -1020,6 +1020,22 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         }
       }
 
+      // Output-side grounding gate — the recall WEDGE's code-not-model half:
+      // strip any `[from <source>]` the chat-only answer cites that is NOT a
+      // note we actually showed it, so a fabricated citation can never reach
+      // the user (mirrors parseReflections / parseCouncilAnswer for recall).
+      // Scoped to the chat-only path; the --with-tools agent cites tool results
+      // from a different source set and is gated separately.
+      let citationGate: { readonly text: string; readonly stripped: readonly string[] } = { stripped: [], text: collectedAnswer };
+      if (!options.withTools) {
+        const allowedCitations = scored.map((r) => (isAbsolute(r.file) ? relative(notesDir, r.file) : r.file));
+        citationGate = enforceAnswerCitations(collectedAnswer, allowedCitations);
+        collectedAnswer = citationGate.text;
+        if (!options.json && citationGate.stripped.length > 0) {
+          io.stderr(`\n⚠️  Removed ${citationGate.stripped.length.toString()} citation(s) to source(s) you don't have (${citationGate.stripped.join(", ")}) — treat those claims as unverified.\n`);
+        }
+      }
+
       if (options.json) {
         // Emit a single JSON object on stdout — consumers can pipe
         // through `jq` to extract the answer, grounded sources, or
@@ -1030,6 +1046,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           query,
           model,
           answer: collectedAnswer,
+          ...(citationGate.stripped.length > 0 ? { strippedCitations: citationGate.stripped } : {}),
           ...(options.withTools ? { toolsUsed } : {}),
           grounded: {
             noteChunks: scored.map((r) => ({ file: r.file, score: r.score, text: r.chunk.text })),

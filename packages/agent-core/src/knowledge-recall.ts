@@ -300,6 +300,52 @@ export function renderKnowledgeMatches(matches: readonly KnowledgeMatch[], optio
   return lines.join("\n");
 }
 
+const CITATION_RE = /\[from\s+([^\]]+?)\s*\]/giu;
+
+/** Every source the text cites via a `[from <source>]` token, trimmed, in order. */
+export function citedSourcesIn(text: string): string[] {
+  const out: string[] = [];
+  for (const match of text.matchAll(CITATION_RE)) {
+    const src = match[1]?.trim();
+    if (src) out.push(src);
+  }
+  return out;
+}
+
+export interface CitationEnforcement {
+  /** The answer with every invented `[from <source>]` citation removed. */
+  readonly text: string;
+  /** The invented sources that were stripped — cited but not among the real ones shown. */
+  readonly stripped: readonly string[];
+}
+
+/**
+ * Output-side grounding gate for the recall WEDGE — the code-not-model half of
+ * "shows its work". Strips any `[from <source>]` the answer cites that is NOT
+ * among the real sources Muse actually showed the model, so a citation to
+ * something the user doesn't have can never reach them BY CODE (mirrors
+ * `parseReflections` / `parseCouncilAnswer` for the recall surface). Match is
+ * case/space-insensitive so a real source isn't dropped over re-casing; a
+ * source absent from the allowed set is an invention and removed.
+ */
+export function enforceAnswerCitations(answer: string, allowedSources: readonly string[]): CitationEnforcement {
+  const allowed = new Set(allowedSources.map((source) => source.trim().toLowerCase()));
+  const stripped: string[] = [];
+  const text = answer
+    .replace(CITATION_RE, (match: string, raw: string) => {
+      const src = raw.trim();
+      if (allowed.has(src.toLowerCase())) {
+        return match; // a real source → keep the citation verbatim
+      }
+      stripped.push(src); // invented → the false citation never reaches the user
+      return "";
+    })
+    .replace(/[ \t]{2,}/gu, " ")
+    .replace(/[ \t]+([.,;!?])/gu, "$1")
+    .replace(/[ \t]+\n/gu, "\n");
+  return { stripped, text };
+}
+
 /**
  * Reorder passages so the most relevant sit at the START and END and the
  * weakest land in the MIDDLE — "Lost in the Middle" (Liu et al. 2023,
