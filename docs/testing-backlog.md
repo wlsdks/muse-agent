@@ -872,6 +872,16 @@ the generic layers below because they test what makes Muse an *agent*.
     remaining survivors are timing-dependent fetchWithTimeout default-fallback + retry-after
     HTTP-path branches (covered behaviorally; residual mutants are timing/equivalent).
     messaging 361->365.
+  - SIXTY-EIGHTH (mutation-depth): `memory/message-importance.ts` (135L, the importance scoring
+    that drives trim compaction) was covered by RELATIVE comparisons (higher-than / boost) so the
+    exact per-role increments were unpinned — Stryker (throwaway): **73.77%**. +3 exact-value
+    tests (toBeCloseTo): each role's exact bonus over the 0.1 base (user/system/plain-assistant
+    +0.2 → 0.3; tool / assistant-with-toolCalls +0.4 → 0.5), an UNKNOWN role gets ONLY the base
+    (0.1 — no branch matches), and the activeTaskTitle +0.5 bonus applies only for a matchable
+    (>=3-char) hint (a 2-char hint ignored — the saturation guard). → **87.70%** (90→107 killed,
+    28→13 survived). Remaining: the DECISION_HINTS vocabulary list (pattern-coverage) + clampUnit's
+    <0/non-finite branches (unreachable via the all-additive public scorer — defensive).
+    memory 304->307.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,

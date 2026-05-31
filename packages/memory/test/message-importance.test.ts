@@ -196,3 +196,26 @@ describe("scoreMessageContent + recencyBonus split", () => {
     expect(recencyBonus(0, 1)).toBeCloseTo(0.1);
   });
 });
+
+describe("scoreMessageContent — exact per-role + hint increments (mutation-pinned)", () => {
+  const m = (role: ConversationMessage["role"], content = "neutral chatter", extra: Partial<ConversationMessage> = {}): ConversationMessage =>
+    ({ content, role, ...extra });
+
+  it("pins each role's exact bonus over the 0.1 base (no relative-only coverage)", () => {
+    // base 0.1 + role bonus; neutral content so no hint/decision bonus applies.
+    expect(scoreMessageContent(m("user"), {})).toBeCloseTo(0.3); // +0.2
+    expect(scoreMessageContent(m("system"), {})).toBeCloseTo(0.3); // +0.2
+    expect(scoreMessageContent(m("assistant"), {})).toBeCloseTo(0.3); // plain assistant +0.2
+    expect(scoreMessageContent(m("tool"), {})).toBeCloseTo(0.5); // +0.4
+    expect(scoreMessageContent(m("assistant", "x", { toolCalls: [{ arguments: {}, id: "1", name: "t" }] }), {})).toBeCloseTo(0.5); // +0.4
+  });
+
+  it("gives an UNKNOWN role only the base score (no role bonus branch matches)", () => {
+    expect(scoreMessageContent({ content: "x", role: "function" as ConversationMessage["role"] }, {})).toBeCloseTo(0.1);
+  });
+
+  it("adds the activeTaskTitle bonus only for a matchable (>=3-char) hint — a 2-char hint is ignored", () => {
+    expect(scoreMessageContent(m("user", "work on rag today"), { activeTaskTitle: "rag" })).toBeCloseTo(0.8); // 0.1 + 0.2 + 0.5
+    expect(scoreMessageContent(m("user", "say hi now"), { activeTaskTitle: "hi" })).toBeCloseTo(0.3); // 2-char hint ignored
+  });
+});
