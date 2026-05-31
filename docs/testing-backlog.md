@@ -2413,3 +2413,13 @@ the generic layers below because they test what makes Muse an *agent*.
     (the per-file serializer the playbook/consent/objective stores already use). After:
     25 concurrent appends → all 25 kept, no crash; capacity cap still honoured under
     concurrent over-cap. New regression test proactive-history-concurrent.test.ts. mcp 1262 green.
+
+- [x] **fix(mcp): serialize recordPatternFired (same concurrency bug as proactive-history).**
+    Continuing the RMW-store migration: re-triaged the 8 flagged stores — recall-hits /
+    action-log / proposed-action already have a LOCAL serializer queue (false positives);
+    the genuinely-unserialized ones are patterns-fired / plan-cache / reminder-history /
+    episodes / followup-llm-budget. recordPatternFired confirmed crashing under 25
+    concurrent fires (ENOENT rename, same tmp-${pid}-${Date.now()} collision). Fixed via
+    withFileMutationQueue; after, 25 concurrent fires keep all 25. Regression test
+    patterns-fired-concurrent.test.ts. Remaining unserialized: plan-cache, reminder-history,
+    episodes, followup-llm-budget (next fires). mcp 1263 green.

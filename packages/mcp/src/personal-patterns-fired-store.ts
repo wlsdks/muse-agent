@@ -19,6 +19,8 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+import { withFileMutationQueue } from "./atomic-file-store.js";
+
 export interface PatternFiredRecord {
   readonly patternId: string;
   readonly firedAtMs: number;
@@ -73,8 +75,15 @@ export async function writePatternsFired(file: string, records: readonly Pattern
  * only writer in practice so we accept that trade for simplicity.
  */
 export async function recordPatternFired(file: string, patternId: string, firedAtMs: number): Promise<void> {
-  const existing = await readPatternsFired(file);
-  await writePatternsFired(file, [...existing, { firedAtMs, patternId }]);
+  // Serialise the read→append→write: concurrent fires (overlapping daemon ticks)
+  // otherwise read the same snapshot and the last write clobbers the rest (a lost
+  // fire record skews the pattern's cooldown/cadence), and two writes in the same
+  // millisecond collided on the tmp-${pid}-${Date.now()} path and threw ENOENT on
+  // rename. Same per-file queue the other personal stores use.
+  await withFileMutationQueue(file, async () => {
+    const existing = await readPatternsFired(file);
+    await writePatternsFired(file, [...existing, { firedAtMs, patternId }]);
+  });
 }
 
 /**
