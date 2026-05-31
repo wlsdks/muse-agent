@@ -223,6 +223,51 @@ export function formatSourceReceipts(
   return `\n📎 From your notes (open to verify):\n${blocks.join("\n")}\n`;
 }
 
+/**
+ * The "shows its work, FELT" receipt for the NON-note sources the answer cited
+ * (S1 completion) — calendar / tasks / reminders / contacts / shell. Parses the
+ * post-gate answer's `[event|task|reminder|contact|command: …]` markers (so only
+ * real, surviving citations appear) and renders one grounded line each, grouped
+ * by source. A source type with nothing configured this turn is skipped; a
+ * refusal (citations already stripped) renders nothing. Pure (testable).
+ */
+export function formatNonNoteReceipts(
+  answer: string,
+  sources: {
+    readonly events?: readonly string[];
+    readonly tasks?: readonly string[];
+    readonly reminders?: readonly string[];
+    readonly contacts?: readonly string[];
+    readonly commands?: readonly string[];
+  }
+): string | undefined {
+  const lines: string[] = [];
+  const grab = (label: string, re: RegExp, allowed: readonly string[] | undefined): void => {
+    if (!allowed || allowed.length === 0) {
+      return;
+    }
+    const cited = new Set<string>();
+    for (const match of answer.matchAll(re)) {
+      const value = match[1]?.trim();
+      if (value) {
+        cited.add(value);
+      }
+    }
+    for (const value of cited) {
+      lines.push(`   ${label} ${value}`);
+    }
+  };
+  grab("📅 from your calendar:", /\[event:\s*([^\]]+?)\s*\]/giu, sources.events);
+  grab("✅ from your tasks:", /\[task:\s*([^\]]+?)\s*\]/giu, sources.tasks);
+  grab("⏰ from your reminders:", /\[reminder:\s*([^\]]+?)\s*\]/giu, sources.reminders);
+  grab("👤 from your contacts:", /\[contact:\s*([^\]]+?)\s*\]/giu, sources.contacts);
+  grab("⌨️ from your shell history:", /\[command:\s*([^\]]+?)\s*\]/giu, sources.commands);
+  if (lines.length === 0) {
+    return undefined;
+  }
+  return `\n📎 Also grounded on:\n${lines.join("\n")}\n`;
+}
+
 // Precision-first refusal markers (EN + KO). A refusal grounds NO claim, so
 // ANY citation the small model tacks onto it ("…I don't have that. cite as:
 // [from preferences.md]") is spurious — and the followable Sources footer
@@ -1542,6 +1587,17 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           query
         );
         if (receipts) io.stderr(receipts);
+        // S1 completion: the SAME "shows its work, felt" receipt for the
+        // NON-note grounding the answer cited — calendar / tasks / reminders /
+        // contacts / shell — so every cited source is followable, not just notes.
+        const moreReceipts = formatNonNoteReceipts(collectedAnswer, {
+          commands: matchedCommands,
+          contacts: matchedContacts.map((c) => c.name),
+          events: upcomingEvents.map((e) => e.title),
+          reminders: pendingReminders.map((r) => r.text),
+          tasks: openTasks.map((t) => t.title)
+        });
+        if (moreReceipts) io.stderr(moreReceipts);
       }
 
       // S2 warm honesty (B2): when Muse honestly refuses AND the user has

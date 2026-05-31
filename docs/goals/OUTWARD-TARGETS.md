@@ -172,7 +172,7 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   tests + `pnpm lint` 0/0. (Refusal's trailing `cite as:` parrot is the known
   chat-only streaming limitation — stripped on buffered paths.) A user can now
   ask Muse about ANY file on the fly, cited, without growing their corpus.
-  (this commit)
+  (95dbfd72)
 
 **P36 — Background self-learning, brake-and-proof-first (loop-v2 PART A2 /
 B1).** The headline's "grows-with-you" core: Muse learns from corrections
@@ -488,6 +488,24 @@ honest-refusal mock-corpus check where applicable.
   notes edited in the last week"; a lone note → silent. cli 1641 tests +
   `pnpm lint` 0/0. A user opening `muse today` now sees what they've been
   working on, grounded in real edits. (88e61d20)
+
+- [x] **P35-7 "Shows its work" receipts for the NON-note sources (B2 S1
+  completion).** The felt source receipt (P35-1: "📎 From your notes … from your
+  note of <date> — '<quote>'") covered only NOTE citations; a cited calendar
+  event / task / reminder / contact / shell command got the inline `[event: …]`
+  marker but no followable receipt. New `formatNonNoteReceipts` parses the
+  POST-gate answer's `[event|task|reminder|contact|command: …]` markers and
+  renders a grouped "📎 Also grounded on:" block (📅 calendar / ✅ tasks / ⏰
+  reminders / 👤 contacts / ⌨️ shell), so EVERY cited source is followable, not
+  just notes. Deterministic (no model call), skips a source type that wasn't
+  grounded this turn, and renders nothing on a refusal (citations already
+  stripped). Proven by unit tests (one line per cited non-note source grouped;
+  shell receipt; skip-when-unconfigured; none on a refusal; dedup) + a LIVE
+  `muse ask` on qwen3:8b (mock contacts, HOME-isolated, never real ~/.muse):
+  "Sarah's email?" → cited "[contact: Sarah Chen]" AND "📎 Also grounded on: 👤
+  from your contacts: Sarah Chen"; an unknown-person must-refuse → 0 receipt
+  lines. cli 1655 tests + `pnpm lint` 0/0. "Shows its work" is now FELT uniformly
+  across every grounding source, not just notes. (this commit)
 
 **P34 — The front door (loop-v2 headline: the moat is invisible without
 the door).** Per loop-v2 B0 §3, a privacy-bound first-time user must be able
