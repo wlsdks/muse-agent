@@ -78,5 +78,5 @@ related: [tool-design.md, verification-and-guardrails.md, skills-and-mcp.md, arc
 ## 출처 (검증 기반)
 
 - Muse 런타임 — 도구 승인 게이트 / 위험 등급(읽기·쓰기·실행)으로 분류, 실행은 신뢰목록·차단목록은 거부 (SYSTEM-MAP #3/#12)
-- Muse 규약 — `.claude/rules/outbound-safety.md` (외부 전송 draft-first·fail-closed, 은행/결제 영구 금지)
+- 호스트 규약(예: Muse) — `.claude/rules/outbound-safety.md` (외부 전송 draft-first·fail-closed, 은행/결제 영구 금지)
 - 2026 — least-privilege agent: 도구를 위험 tier로 매핑하고 매트릭스로 게이트, 런타임 강제 + 감사 추적

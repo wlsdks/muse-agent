@@ -4,7 +4,7 @@ audience: [개발자, AI 에이전트]
 purpose: 에이전트 루프가 무한 반복·비용 폭주 없이 반드시 끝나게 하는 종료 조건과 예산 한도
 status: draft
 updated: 2026-05-31
-sources_basis: [Muse CLAUDE.md (tool loops have explicit limits/timeouts), Muse architecture rule (deterministic budgets/stop conditions), Claude Code agent-loop (max_turns/max_budget_usd), 2026 runaway-cost prevention guides]
+sources_basis: [호스트 CLAUDE.md(예: Muse) (tool loops have explicit limits/timeouts), 호스트 architecture 규약 (deterministic budgets/stop conditions), Claude Code agent-loop (max_turns/max_budget_usd), 2026 runaway-cost prevention guides]
 related: [team-roles.md, failure-modes-and-observability.md, verification-and-guardrails.md, architecture.md, README.md]
 ---
 
@@ -63,8 +63,8 @@ related: [team-roles.md, failure-modes-and-observability.md, verification-and-gu
 
 ## 출처 (검증 기반)
 
-- Muse 레포 — `CLAUDE.md` ("Tool output is untrusted. Tool loops have explicit limits and timeouts.")
-- Muse 레포 — `.claude/rules/architecture.md` ("Deterministic code for policy, permissions, budgets, and stop conditions.")
+- 호스트 프로젝트(예: Muse) — `CLAUDE.md` ("Tool output is untrusted. Tool loops have explicit limits and timeouts.")
+- 호스트 프로젝트(예: Muse) — `.claude/rules/architecture.md` ("Deterministic code for policy, permissions, budgets, and stop conditions.")
 - Claude Code — [How the agent loop works](https://code.claude.com/docs/en/agent-sdk/agent-loop) (max_turns / max_budget_usd 하드 캡 + 종료 사유)
 - [How to Prevent Infinite Loops and Spiraling Costs](https://codieshub.com/for-ai/prevent-agent-loops-costs) (하드 캡·타임아웃·회로 차단)
 - [AI Agent Loop Token Costs: Constrain Context](https://www.augmentcode.com/guides/ai-agent-loop-token-cost-context-constraints) (컨텍스트=비용, 10~15콜마다 압축)

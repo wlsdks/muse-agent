@@ -4,7 +4,7 @@ audience: [개발자, AI 에이전트]
 purpose: 외부 도구(MCP 서버)·자작 스킬을 하네스에 안전하게 끌어오는 규약 — 허용목록·격리·신뢰 경계
 status: draft
 updated: 2026-05-31
-sources_basis: [Muse .claude/rules/architecture.md (MCP allowlist), Muse tool-calling rule, MCP Security Best Practices 2026, OWASP secure MCP, NVIDIA sandboxing agentic workflows]
+sources_basis: [호스트 .claude(예: Muse)/rules/architecture.md (MCP allowlist), 호스트 tool-calling 규약, MCP Security Best Practices 2026, OWASP secure MCP, NVIDIA sandboxing agentic workflows]
 related: [tool-design.md, verification-and-guardrails.md, team-roles.md, architecture.md, README.md]
 ---
 
@@ -12,7 +12,7 @@ related: [tool-design.md, verification-and-guardrails.md, team-roles.md, archite
 
 > **왜 이게 빠진 칸이었나?** [architecture](architecture.md) 자가평가에서 "스킬/MCP"가 ⬜ 갭이었습니다.
 > 하네스가 외부 도구를 끌어올 때 **신뢰 경계**가 없으면, 좋은 역할·게이트가 다 무력화됩니다(2026엔
-> MCP 명령 주입이 CVE의 큰 비중). Muse 레포의 실제 MCP 허용목록 정책을 근거로, 검증된 2026 보안
+> MCP 명령 주입이 CVE의 큰 비중). 호스트(예: Muse)의 실제 MCP 허용목록 정책을 근거로, 검증된 2026 보안
 > 원칙과 함께 정리합니다. 말로만(코드 없음).
 
 ## 0. 한 줄 원칙
@@ -77,8 +77,8 @@ related: [tool-design.md, verification-and-guardrails.md, team-roles.md, archite
 
 ## 출처 (검증 기반)
 
-- Muse 레포 규약 — `.claude/rules/architecture.md` (MCP 허용목록 2단계 enforcement: 등록 시 + 연결 시 재확인, fail-soft, 빈목록=opt-in)
-- Muse 레포 규약 — `.claude/rules/iteration-loop.md` (외부 MCP는 오픈소스·로컬·허용목록·read 기본, 상태변경은 draft-first)
+- 호스트 규약(예: Muse) — `.claude/rules/architecture.md` (MCP 허용목록 2단계 enforcement: 등록 시 + 연결 시 재확인, fail-soft, 빈목록=opt-in)
+- 호스트 규약(예: Muse) — `.claude/rules/iteration-loop.md` (외부 MCP는 오픈소스·로컬·허용목록·read 기본, 상태변경은 draft-first)
 - [MCP Security Best Practices 2026](https://www.digitalapplied.com/blog/mcp-server-security-best-practices-2026-engineering-guide) (allowlist deny-precedence·정확호스트·auth/secrets/egress)
 - OWASP — [Secure MCP Server Development](https://genai.owasp.org/resource/a-practical-guide-for-secure-mcp-server-development/) (신뢰/불신 분리·쓰기 HITL)
 - NVIDIA — [Sandboxing Agentic Workflows](https://developer.nvidia.com/blog/practical-security-guidance-for-sandboxing-agentic-workflows-and-managing-execution-risk/) (격리 실행·블라스트 반경)

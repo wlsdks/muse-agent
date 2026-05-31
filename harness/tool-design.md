@@ -4,7 +4,7 @@ audience: [개발자, AI 에이전트]
 purpose: 에이전트가 한 번에 올바른 도구를 고르고 인자를 채우도록, 도구를 어떻게 설계·노출하나
 status: draft
 updated: 2026-05-31
-sources_basis: [Muse .claude/rules/tool-calling.md, Anthropic building-effective-agents (ACI), Anthropic multi-agent research system (tool descriptions), awesome-harness-engineering (tool design category)]
+sources_basis: [호스트 .claude(예: Muse)/rules/tool-calling.md, Anthropic building-effective-agents (ACI), Anthropic multi-agent research system (tool descriptions), awesome-harness-engineering (tool design category)]
 related: [team-roles.md, verification-and-guardrails.md, architecture.md, README.md]
 ---
 
@@ -12,7 +12,7 @@ related: [team-roles.md, verification-and-guardrails.md, architecture.md, README
 
 > **왜 이게 빠진 칸이었나?** [architecture](architecture.md) 자가평가에서 "도구 설계"가 ⬜ 갭이었습니다.
 > 하네스가 아무리 역할·핸드오프가 좋아도, **에이전트가 도구를 한 번에 못 고르면** 무너집니다.
-> Muse는 로컬 소형 모델을 쓰므로 이건 특히 사활적입니다 — Muse 레포의 도구 규약(`tool-calling.md`)을
+> 로컬 소형 모델을 쓰는 호스트(예: Muse)라면 이건 특히 사활적입니다 — 호스트(예: Muse)의 도구 규약(`tool-calling.md`)을
 > 근거로, 검증된 2026 원칙과 함께 정리합니다. 말로만(도구 설명 예시만 인용 형태).
 
 ## 0. 한 줄 원칙
@@ -83,7 +83,7 @@ related: [team-roles.md, verification-and-guardrails.md, architecture.md, README
 
 ## 출처 (검증 기반)
 
-- Muse 레포 규약 — `.claude/rules/tool-calling.md` (소형 모델 한-shot 선택: ≤5~7 노출·동사_명사·예시-스키마·쓸때/안쓸때·코드 검증)
+- 호스트 규약(예: Muse) — `.claude/rules/tool-calling.md` (소형 모델 한-shot 선택: ≤5~7 노출·동사_명사·예시-스키마·쓸때/안쓸때·코드 검증)
 - Anthropic — [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) (ACI: 도구 인터페이스를 HCI 수준으로 설계)
 - Anthropic — [Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) (도구 설명이 행동을 좌우 — 나쁜 설명은 엉뚱한 길)
 - [awesome-harness-engineering](https://github.com/ai-boost/awesome-harness-engineering) (tool design 카테고리)
