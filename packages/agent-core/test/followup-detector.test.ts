@@ -54,6 +54,16 @@ describe("extractFollowupPromises — English relative", () => {
     expect(extractFollowupPromises("in 0 minutes", { now })).toHaveLength(0);
     expect(extractFollowupPromises("in many minutes", { now })).toHaveLength(0);
   });
+
+  it("ignores a ZERO Korean relative duration on every unit (분/시간/일) — no now+0 followup", () => {
+    // The `value <= 0` guard is per-unit; only the English path tested zero. A
+    // "0분 뒤" must not schedule a meaningless immediate followup, while a real
+    // duration still does.
+    expect(extractFollowupPromises("0분 뒤에 알려줘", { now })).toHaveLength(0);
+    expect(extractFollowupPromises("0시간 후에 확인", { now })).toHaveLength(0);
+    expect(extractFollowupPromises("0일 이내에 처리", { now })).toHaveLength(0);
+    expect(extractFollowupPromises("5분 뒤에 알려줘", { now })).toHaveLength(1); // control: a real one still fires
+  });
 });
 
 describe("extractFollowupPromises — English `tomorrow` slot", () => {

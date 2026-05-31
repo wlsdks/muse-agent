@@ -314,6 +314,15 @@ the generic layers below because they test what makes Muse an *agent*.
     agent-core 1086→1087. (The agent-core core — model-loop, plan-execute-loop,
     knowledge-recall, proactive-recall-gate, step-budget, provider-shared,
     guards, guard-pipeline — is now mutation-surveyed.)
+  - TWENTY-SECOND MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    followup-detector.ts` = **57.87%** — the proactive promise/follow-up extractor.
+    The scheduledFor VALUES are precisely asserted (분/시간/일 → now+N×unit) and the
+    English zero-duration is ignored, but the per-unit Korean `value <= 0` guards
+    were untested — only the English path tested zero. Added: a ZERO Korean
+    duration on every unit (0분/0시간/0일) yields no follow-up (no now+0 schedule)
+    while a real "5분 뒤" still fires. agent-core 1087→1088. (The bulk of the
+    remaining survivors are promise-pattern regex variants — pattern-coverage like
+    the security detectors, a larger follow-up.)
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
