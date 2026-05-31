@@ -453,6 +453,23 @@ the generic layers below because they test what makes Muse an *agent*.
     one bullet per veto. agent-core 1163->1168. (4 survivors: the appendSystemSection
     section-key + a prompt StringLiteral, and the equivalent `if(false)` no-provider guard
     whose skip just crashes into the same fail-open catch — equivalent.)
+  - THIRTY-FIRST MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    knowledge-recall.ts` (490L, the WEDGE retrieval core: cosine + RRF + MMR + confidence)
+    baselined at **68.92%**. Most survivors are prompt StringLiterals or equivalent
+    boundaries (the exact-limit chunkText boundaries L350/357/368-single reconstruct the
+    identical chunk via the split path; selectByMmr already has 3 behavioral tests; the
+    hybrid eligible OR-guard L187 is already killed by the E2099 lexical-recall test). The
+    genuinely-divergent chunkText boundary bugs (the function that feeds the embedding index —
+    bad chunking silently degrades recall) were unpinned; +3 known-answer tests in
+    knowledge-chunking.test.ts, each dist-verified to diverge under its mutant: (a) the
+    hard-split slice loop `i < length` — a paragraph that is an EXACT multiple of the limit
+    must not emit a trailing empty chunk (the `<=` off-by-one slices "" and embeds noise);
+    (b) the `current.length > 0` flush guard before a hard-split — a short paragraph then an
+    over-limit one must keep "short" FIRST (dropping the guard reorders it to the end); (c)
+    the `candidate.length > limit` pack boundary — two paragraphs joining to EXACTLY the
+    limit pack into one chunk (a `>=` would wrongly split a perfect fit). agent-core
+    1168->1171. (Remaining survivors: prompt/format StringLiterals + equivalent
+    exact-boundary reconstructions — the deep RRF/MMR internals are behaviorally covered.)
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,

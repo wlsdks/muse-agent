@@ -29,6 +29,31 @@ describe("chunkText", () => {
     // All three fit under 100 → one packed chunk.
     expect(chunks).toEqual(["aaa\n\nbbb\n\nccc"]);
   });
+
+  it("hard-splits a paragraph that is an EXACT multiple of the limit without a trailing empty chunk", () => {
+    // The slice loop bound is `i < length`; an `i <= length` off-by-one would
+    // run one extra iteration at i===length, slicing "" and emitting a junk
+    // empty chunk that then embeds to noise.
+    const chunks = chunkText("y".repeat(200), 100);
+    expect(chunks).toEqual(["y".repeat(100), "y".repeat(100)]);
+    expect(chunks).not.toContain("");
+  });
+
+  it("flushes the accumulated chunk BEFORE hard-splitting a following long paragraph (order preserved)", () => {
+    // A short paragraph then an over-limit one: the `current.length > 0` guard
+    // must flush "short" first so it leads — dropping that guard would emit the
+    // hard-split pieces first and append the stale "short" out of order at the end.
+    const chunks = chunkText(`short\n\n${"z".repeat(20)}`, 8);
+    expect(chunks[0]).toBe("short");
+    expect(chunks).toEqual(["short", "zzzzzzzz", "zzzzzzzz", "zzzz"]);
+  });
+
+  it("packs two paragraphs whose joined length is EXACTLY the limit into one chunk (boundary is `>`)", () => {
+    // "aaa\n\nbbb" is exactly 8 chars; a `candidate.length >= limit` off-by-one
+    // would wrongly split the perfectly-fitting pair.
+    const chunks = chunkText(`aaa\n\nbbb\n\n${"z".repeat(20)}`, 8);
+    expect(chunks[0]).toBe("aaa\n\nbbb");
+  });
 });
 
 describe("chunkText — overlapping window (DPR-style; Karpukhin et al. 2020)", () => {
