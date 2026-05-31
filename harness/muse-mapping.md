@@ -4,7 +4,7 @@ audience: [개발자, AI 에이전트]
 purpose: 추상 하네스 역할을, Muse가 이미 가진 실제 멀티에이전트 런타임 부품에 연결
 status: draft
 updated: 2026-05-30
-related: [team-roles.md, role-prompts.md, handoff-template.md, README.md, ../SYSTEM-MAP.md]
+related: [team-roles.md, role-prompts.md, handoff-template.md, README.md]
 ---
 
 # 하네스 ↔ Muse 런타임 매핑 (Harness ↔ Muse)
@@ -47,4 +47,4 @@ related: [team-roles.md, role-prompts.md, handoff-template.md, README.md, ../SYS
 3. **검증 게이트**(완료 시 자동 테스트·재개 체크포인트)의 실행 형태.
 
 > 이 매핑은 코드 사실에 근거합니다(직접 확인). 런타임이 바뀌면 위 표의 상태(✅/⚙️)를 갱신하세요.
-> 기능 관점 설명은 [SYSTEM-MAP #11](../SYSTEM-MAP.md), 역할 정의는 [team-roles](team-roles.md).
+> 기능 관점 설명은 SYSTEM-MAP #11, 역할 정의는 [team-roles](team-roles.md).

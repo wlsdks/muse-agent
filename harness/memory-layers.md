@@ -69,6 +69,6 @@ related: [context-compaction.md, handoff-template.md, team-roles.md, architectur
 
 ## 출처 (검증 기반)
 
-- Muse 제품 — [SYSTEM-MAP #5](../SYSTEM-MAP.md) (자동 사실 학습·구조화 사용자 모델·과거 세션 회상·중복 정리·드리밍 승격·신뢰도 감쇠)
+- Muse 제품 — SYSTEM-MAP #5 (자동 사실 학습·구조화 사용자 모델·과거 세션 회상·중복 정리·드리밍 승격·신뢰도 감쇠)
 - Muse 런타임 — 사실 저장소 / 세션요약 저장소 / 에피소드 회상 / 사용성 기반 승격 / 타입 슬롯 사용자 모델 (코드 확인됨)
 - 2026 — layered memory(working/short/long/episodic) + hierarchical core/archival/recall, write-time 추출·read-time 검색·consolidation
