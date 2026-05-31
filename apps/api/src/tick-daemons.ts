@@ -19,7 +19,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, resolveContactsFile } from "@muse/autoconfigure";
+import { createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, resolveContactsFile, resolvePlaybookFile } from "@muse/autoconfigure";
 import { createCachingEmbedder } from "@muse/agent-core";
 import type { FastifyInstance } from "fastify";
 
@@ -32,6 +32,7 @@ import {
   type InMemoryActivityTracker
 } from "./proactive-tick.js";
 import { startConsolidateTick } from "./consolidate-tick.js";
+import { distillQueuedCorrections } from "./distill-queue.js";
 import { isModelResidentLive } from "./model-resident.js";
 import { osIdleMs } from "./os-idle.js";
 import { isOnAcPower } from "./power-state.js";
@@ -61,6 +62,7 @@ import {
   webWatchesFromConfig,
   isOllamaLeaseHeldByOther,
   resolveOllamaLeaseFile,
+  resolveLearnQueueFile,
   type BriefingImminent
 } from "@muse/mcp";
 import { startAmbientTick } from "./ambient-tick.js";
@@ -528,6 +530,7 @@ export function startConsolidateDaemonIfConfigured(
   const consolidateQuietHours = parseQuietHours(env.MUSE_SKILL_CONSOLIDATE_QUIET_HOURS)
     ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
   const consolidateModel = options.defaultModel;
+  const consolidateProvider = options.modelProvider;
   const consolidateHandle = startConsolidateTick({
     authoredSkillsDir,
     errorLogger: (message) => server.log.warn(message),
@@ -541,6 +544,9 @@ export function startConsolidateDaemonIfConfigured(
     // Model-resident brake: never cold-load the multi-GB model unattended —
     // merge only when it's already loaded in Ollama (fail-closed).
     ...(consolidateModel ? { isModelResident: () => isModelResidentLive(consolidateModel) } : {}),
+    // Idle REM phase (B1 Slice 1): distill queued corrections into learned
+    // strategies while idle, behind the brakes (the felt grows-with-you path).
+    ...(consolidateModel && consolidateProvider ? { distillQueued: () => distillQueuedCorrections({ model: consolidateModel, modelProvider: consolidateProvider, playbookFile: resolvePlaybookFile(env), queueFile: resolveLearnQueueFile(env) }) } : {}),
     // AC-power brake: a heavy LLM merge runs on wall power only, never on
     // battery — so background learning can't drain the laptop (fail-closed).
     isOnAcPower: () => isOnAcPower(),

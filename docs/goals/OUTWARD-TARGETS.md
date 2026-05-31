@@ -123,7 +123,20 @@ proof shape (unit / 2-session / eval:self-improving), NOT cited-answer+refusal.
   round-trip (enqueue → read → markDone → empty). mcp 1216 tests + `pnpm lint`
   0/0. SUBSTRATE only — remaining Slice-1 parts: the idle distill-consumer tick
   (distill behind the brakes → probation strategy), the chat producer (enqueue
-  on correction), and `muse learned` visibility. (this commit)
+  on correction), and `muse learned` visibility. (85e87e0e)
+
+- [x] **P36-6 Idle distill-consumer (B1 Slice 1, part 2 — felt mechanism).**
+  `distillQueuedCorrections` reads the learn-queue, distills ONE correction per
+  tick via the existing distiller, records a strategy to the playbook, and
+  marks events done — wired as an idle REM phase behind ALL the brakes. Grounding
+  fence: empty correction / distiller-returns-nothing → zero strategies (still
+  drained). Proven by unit tests (distill+record+drain; ≤1/tick; fence; gate
+  wiring) + a LIVE round-trip on qwen3:8b: enqueued "give me bullet points, not
+  prose" → playbook gained "when asked for a summary, present information in
+  bullet points rather than prose", queue drained. mcp 1216 / api 809 tests +
+  `pnpm lint` 0/0. Felt MECHANISM done; remaining Slice-1: chat producer
+  (auto-enqueue), probation (record-but-don't-inject), `muse learned`
+  visibility, then the 2-session proof. (this commit)
 
 **P35 — Felt experience: make Muse FEEL like the SF confidant (loop-v2 PART
 B2).** The front door (P34) is delivered + proven; the headline's other half

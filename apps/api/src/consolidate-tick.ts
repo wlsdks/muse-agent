@@ -62,6 +62,12 @@ export interface ConsolidateTickOptions {
    * the local model. Omitted ⇒ skipped (back-compat). (PART A2 / B1 brake.)
    */
   readonly isForegroundBusy?: () => boolean | Promise<boolean>;
+  /**
+   * Idle REM phase (B1 Slice 1): drain the learn-queue, distilling queued
+   * corrections into learned strategies. Runs behind ALL the brakes above.
+   * Returns the count distilled (for logging). Omitted ⇒ phase skipped.
+   */
+  readonly distillQueued?: () => Promise<number>;
   readonly intervalMs?: number;
   readonly threshold?: number;
   readonly minClusterSize?: number;
@@ -136,6 +142,15 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
     if (options.isModelResident && !(await options.isModelResident())) return;
     firing = true;
     try {
+      // Idle REM phase (B1 Slice 1): distill ONE queued correction into a
+      // learned strategy while idle — the felt "grows-with-you" payoff. Runs
+      // behind the same brakes as the skill merge.
+      if (options.distillQueued) {
+        const learned = await options.distillQueued();
+        if (learned > 0) {
+          options.logger?.(`consolidate-tick: distilled ${learned.toString()} strategy(ies) from queued corrections`);
+        }
+      }
       const merged = await runConsolidate();
       for (const m of merged) {
         options.logger?.(`consolidate-tick: folded ${m.merged.length.toString()} skills → ${m.umbrella}`);

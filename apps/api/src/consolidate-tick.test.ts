@@ -221,3 +221,22 @@ describe("startConsolidateTick.tickOnce — Ollama lease brake (defer to foregro
     expect(calls).toBe(1);
   });
 });
+
+describe("startConsolidateTick.tickOnce — idle distill phase runs behind the brakes", () => {
+  it("calls distillQueued when idle, NOT when a brake blocks", async () => {
+    let distillCalls = 0;
+    const idleOpts = (over = {}) => baseOptions({
+      lastActivityMs: () => NOW.getTime() - IDLE_MS - 1,
+      distillQueued: async () => { distillCalls += 1; return 1; },
+      ...over
+    });
+    // blocked by a brake (battery) → distill NOT called
+    let h = startConsolidateTick(idleOpts({ isOnAcPower: () => false }));
+    await h.tickOnce(); h.stop();
+    expect(distillCalls).toBe(0);
+    // gates pass → distill runs
+    h = startConsolidateTick(idleOpts({ isOnAcPower: () => true }));
+    await h.tickOnce(); h.stop();
+    expect(distillCalls).toBe(1);
+  });
+});

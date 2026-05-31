@@ -10,9 +10,9 @@
  * No real signal ⇒ empty queue ⇒ no wasted compute. FAIL-SAFE: a corrupt line
  * is skipped, never crashing the producer or consumer. (PART A2 / B1.)
  */
-import { appendFile, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
 
@@ -45,8 +45,9 @@ function isEvent(value: unknown): value is LearnCorrectionEvent {
     && typeof e.enqueuedAtMs === "number";
 }
 
-/** Append ONE correction event (one real signal = one job). Best-effort, atomic append. */
+/** Append ONE correction event (one real signal = one job). Creates the dir if needed. */
 export async function enqueueLearnEvent(file: string, event: LearnCorrectionEvent): Promise<void> {
+  await mkdir(dirname(file), { recursive: true });
   await appendFile(file, `${JSON.stringify(event)}\n`, "utf8");
 }
 
