@@ -44,6 +44,34 @@ describe("detectUserCommitments — rule-only, conservative (EN + KO)", () => {
     expect(detectUserCommitments(["I need to call the dentist"])).toHaveLength(1);
   });
 
+  it("skips a non-string or blank turn without crashing, still capturing the real one", () => {
+    // Persisted turns can arrive malformed (a corrupt history blob, a null
+    // hole). `matchAll` on a non-string throws — the typeof/empty guard must
+    // skip those defensively rather than blow up the whole detector pass.
+    const turns = [null, 123, "", "   ", "I need to email Bob"] as unknown as string[];
+    const found = detectUserCommitments(turns);
+    expect(found.map((c) => c.text)).toEqual(["email Bob"]);
+  });
+
+  it("keeps a minimal two-character commitment clause (the length floor is `< 2`, not `<= 2`)", () => {
+    // The capture group requires ≥2 chars; a clause that resolves to exactly
+    // two ("go") is a real commitment and must NOT be dropped by an
+    // off-by-one floor.
+    const [c] = detectUserCommitments(["I need to go."]);
+    expect(c).toMatchObject({ text: "go", kind: "need-to" });
+  });
+
+  it("skips an inverted question even with NO trailing '?' (interrogative prefix in the 12 chars before)", () => {
+    // The match[2] === "?" guard only catches clauses that END in "?". An
+    // inverted question whose terminator is a period ("Do I need to ship it.")
+    // is still a question, caught only by the INTERROGATIVE_PREFIX scan of the
+    // window *before* the match — which depends on `index - 12`, not `+ 12`.
+    expect(detectUserCommitments(["Do I need to ship it."])).toEqual([]);
+    expect(detectUserCommitments(["Should I have to wait."])).toEqual([]);
+    // control: the same clause with no interrogative lead-in still fires
+    expect(detectUserCommitments(["I need to ship it."])).toHaveLength(1);
+  });
+
   it("dedupes the same commitment and caps the count", () => {
     const dup = detectUserCommitments(["I need to water the plants", "I need to water the plants"]);
     expect(dup).toHaveLength(1);

@@ -323,6 +323,22 @@ the generic layers below because they test what makes Muse an *agent*.
     while a real "5분 뒤" still fires. agent-core 1087→1088. (The bulk of the
     remaining survivors are promise-pattern regex variants — pattern-coverage like
     the security detectors, a larger follow-up.)
+  - TWENTY-THIRD MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    commitment-detector.ts` = **68.22% → 76.74%** (88→99 killed, 40→29 survived) —
+    the mirror of the follow-up detector: captures the USER's open-loop commitments
+    ("I need to email Bob", "~해야 해") for proactive reminding. Three actionable
+    logic survivors, none equivalent: (a) the `typeof turn !== "string" ||
+    trim().length===0` guard mutated to `if(false)` survived — no test passed a
+    malformed (null/number/blank) turn, yet `matchAll` on a non-string throws, so a
+    corrupt history blob would crash the whole pass; (b) the `text.length < 2` floor
+    mutated to `<= 2` survived — a minimal two-char clause ("go") is a real
+    commitment and must not be dropped off-by-one; (c) the `index - 12` window
+    feeding INTERROGATIVE_PREFIX mutated to `+ 12` survived — the existing
+    inverted-question tests all END in "?" (caught by the match[2] guard), so the
+    `before`-window scan that catches an inverted question with a PERIOD terminator
+    ("Do I need to ship it.") was never exercised. +3 tests kill all three.
+    agent-core 1088→1091. (Remaining survivors are the commitment-pattern regex
+    variants — pattern-coverage, the same larger follow-up as the security detectors.)
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
