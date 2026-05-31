@@ -425,6 +425,20 @@ the generic layers below because they test what makes Muse an *agent*.
     overrides; custom-redact; plus NONE-as-prefix decline, whitespace-only→trim→empty
     decline, and a valid offer is trimmed. agent-core 1150→1157. (5 survivors: prompt
     StringLiterals + the NONE regex char-class — pattern-coverage.)
+  - TWENTY-NINTH MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    skill-merge.ts` — the curator umbrella-consolidation wrapper (after Hermes' curator,
+    MIT-attributed; folds overlapping authored skills into one umbrella, NONE when they are
+    not genuinely one skill so unrelated skills are never force-merged). Had 2 happy/NONE
+    tests. Deepened to 8 → 73.08% (19 killed, 7 survived). The constraint gate itself
+    (parseConstrainedSkillDraft, the <=15KB / <=500-char gap-F gate) is already covered by
+    skill-constraint-gate.test.ts; this pins the merge WRAPPER: the prompt input numbers
+    each skill from 1 (--- skill N: <name> ---, killing the i+1 arithmetic) with its
+    description + body; secrets in BOTH description AND body of every clustered skill are
+    redacted before the merge call (exactly two [redacted-anthropic-key]); temperature 0.3 /
+    maxOutputTokens 400 defaults + overrides; custom-redact; the empty-cluster lower bound
+    of the < 2 guard; NONE-as-prefix decline; fail-soft on an undefined model output.
+    agent-core 1157->1163. (7 survivors: MERGE_SYSTEM_PROMPT StringLiterals + the equivalent
+    output?.trim() optional-chaining / object-literal variants — pattern-coverage.)
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
