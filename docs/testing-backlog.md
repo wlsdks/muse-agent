@@ -796,6 +796,15 @@ the generic layers below because they test what makes Muse an *agent*.
     throwing lister → []. deriveBriefingImminent (temp tasks store): includes an open task due
     in-window; skips done / no-dueAt / proactive:false / due-out-of-window; missing file → [].
     mcp 1183->1191.
+  - SIXTY-FIRST (cross-package sweep → mcp; shared tool-arg parsers): `packages/mcp`
+    `loopback-helpers.ts` (69L, **ZERO test refs**) — the 6 shared shape-readers + schema
+    builder underpinning every loopback MuseTool (the arg-parsing foundation, like
+    atomic-file-store is the persistence foundation). First suite (8 tests): readString
+    (string/non-string/missing), readStringArray (filters non-string entries, undefined on a
+    non-array), readBoolean (real boolean only — not "true"), readJsonObject (plain object;
+    rejects array/null/primitive), errorMessage (Error.message else String()), and
+    buildJsonToolSchema (closed additionalProperties:false object; includes a non-empty
+    required list, DROPS an empty one — no noisy required:[]). mcp 1191->1199.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
