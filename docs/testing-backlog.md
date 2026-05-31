@@ -494,6 +494,18 @@ the generic layers below because they test what makes Muse an *agent*.
     →42, killing the `.trim()`), boolean→string (false→"false", the typeof==="boolean" string
     arm), and the deliberate left-untouched boundaries ("+5" stays string — only `-` accepted;
     "" stays — `\d+` needs a digit). First slice outside agent-core. tools 225->226.
+  - THIRTY-FOURTH MEASUREMENT (dist-verified): `packages/tools` tool-EXPOSURE policy — the
+    ≤5-7 selection gate that decides which tools the local Qwen sees (tool-calling.md's
+    first-class concern; fewer distractors = better one-shot selection). Keyword matching had
+    good coverage (word-boundary research≠search, suffix, Korean, multi-word) but two
+    documented contracts were untested, each dist-verified: (a) the <4-char EXACT-match rule
+    (`word.length >= 4` gates the suffix tolerance) — a short keyword 'log' must NOT
+    prefix-match 'login' (only exact 'log' exposes it), the on/off∉online/office distractor
+    guard; (b) the maxTools CUT-BY-PRIORITY — the existing cap test used an empty prompt (no
+    signal) so it never proved WHICH tools survive: now a cap of 1 keeps the LOWEST-RISK tool
+    (read < write < execute, regardless of input order) and, among same-risk, the MORE
+    keyword-relevant one (3 hits beats 1, relevance outranking the name tiebreak). tools
+    226->229.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
