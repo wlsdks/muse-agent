@@ -268,6 +268,18 @@ the generic layers below because they test what makes Muse an *agent*.
     ones (a tampered/partial entry can't masquerade as a recorded action). Added a
     mixed-entries file (valid + missing-why + bogus-result + null + non-object)
     asserting only the valid id returns. mcp 1118→1119.
+  - NINETEENTH MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    model-loop.ts` = **64.29%** — the CORE agent tool loop. Its deterministic safety
+    IS tested (maxToolCalls limit + message, between-turn wall-clock cut, abort,
+    dedup); the surviving mutants are mostly the MID-BATCH deadline path (Date.now()
+    -based — needs clock injection to test deterministically, not worth a flaky
+    timing test) and the streaming mirror. The one CLEAN deterministic gap killed:
+    the `maxRunWallclockMs > 0` deadline guard — a 0 means "unbounded", so it must
+    NOT create a Date.now()+0 deadline that disables tools on turn 1 (a `> 0`→`>= 0`
+    regression would silently kill every tool call). Asserted maxRunWallclockMs:0
+    leaves tools active and the tool runs. agent-core 1082→1083. (Noted: the
+    mid-batch wall-clock cut would need a clock seam to test without timing flake —
+    a deferred source-side improvement, not a test slice.)
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,

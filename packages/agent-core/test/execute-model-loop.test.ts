@@ -121,6 +121,26 @@ describe("executeModelLoop", () => {
     expect(result.toolResults).toHaveLength(1);
   });
 
+  it("treats maxRunWallclockMs of 0 as NO wall-clock limit (not an immediately-exceeded deadline)", async () => {
+    // The deadline guard is `maxRunWallclockMs > 0`; a 0 means "unbounded", so it
+    // must NOT create a Date.now()+0 deadline that disables tools on turn 1. A
+    // `> 0`→`>= 0` regression would silently kill every tool call.
+    let turn = 0;
+    const loop = {
+      executeToolCall: async (_ctx: AgentRunContext, toolCall: ModelToolCall): Promise<ExecutedToolResult> =>
+        ({ result: { id: toolCall.id, name: toolCall.name, output: "ran", status: "ok" }, toolCall }),
+      generateWithTracing: async () => {
+        turn += 1;
+        return turn === 1 ? resp("calling", [call("t1", "echo")]) : resp("final answer");
+      },
+      maxRunWallclockMs: 0,
+      maxToolCalls: 5,
+    } as unknown as ModelLoopRunner;
+    const result = await executeModelLoop(loop, context(), provider, request());
+    expect(result.toolsUsed).toEqual(["echo"]); // the tool ran — 0 did not disable tools
+    expect(result.finalResponse.output).toBe("final answer");
+  });
+
   // Trajectory / step-efficiency (agent-eval gap C, DeepEval PlanAdherence +
   // StepEfficiency): assert the ORDERED spans of a multi-step run and that the
   // loop runs exactly the requested tools, once each, with no redundant calls.
