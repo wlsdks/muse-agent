@@ -303,10 +303,23 @@ export function diversifyAskChunks(candidates: readonly ScoredChunk[], topK: num
  * `none` keeps the plain header (the "no relevant notes" block already shows).
  * Pure + exported for direct unit coverage.
  */
-export function notesGroundingFraming(scored: readonly ScoredChunk[]): { readonly verdict: RetrievalConfidence; readonly header: string; readonly guidance?: string } {
-  const verdict = scored.length === 0
+export function notesGroundingFraming(scored: readonly ScoredChunk[], query?: string): { readonly verdict: RetrievalConfidence; readonly header: string; readonly guidance?: string } {
+  const cosineVerdict = scored.length === 0
     ? "none"
-    : classifyRetrievalConfidence(scored.map((s) => ({ cosine: s.score, score: s.score, source: s.file, text: s.chunk.text })));
+    : classifyRetrievalConfidence(scored.map((s) => ({ cosine: s.score, source: s.file, score: s.score, text: s.chunk.text })));
+  // nomic's cosine space is compressed, so a genuinely-relevant note can sit
+  // just below the confident cosine threshold and get falsely flagged LOW —
+  // a soft false-refusal ("verify, may not be in your notes") on a correctly
+  // cited answer, which erodes the trust edge. A STRONG lexical match (≥2
+  // distinct query content tokens present in a grounded chunk) is a
+  // high-precision signal that the corpus really does cover the question, so
+  // it upgrades an ambiguous cosine verdict to confident. A must-refuse
+  // question shares no content tokens, so it stays LOW/none — fabrication=0
+  // is preserved (and the citation gate is the hard backstop regardless).
+  const queryTokens = query ? lexicalTokens(query) : new Set<string>();
+  const strongLexical = queryTokens.size >= 2
+    && scored.some((s) => lexicalOverlap(queryTokens, s.chunk.text) >= 2);
+  const verdict: RetrievalConfidence = cosineVerdict === "ambiguous" && strongLexical ? "confident" : cosineVerdict;
   if (verdict === "ambiguous") {
     return {
       guidance: "The USER NOTES below are only WEAK matches (low retrieval confidence). Do NOT present them as established fact; if they do not clearly answer the question, say you are not sure rather than cite a weak match.",
@@ -738,7 +751,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       const contextChunks = reorderForLongContext(scored);
       // CRAG: grade the notes' retrieval confidence so a weak near-miss isn't
       // presented to the small model as something to cite as fact.
-      const notesFraming = notesGroundingFraming(scored);
+      const notesFraming = notesGroundingFraming(scored, query);
       const contextBlock = notesUnavailable
         ? "(notes search unavailable this turn — answer from the other grounding sources)"
         : contextChunks.length === 0

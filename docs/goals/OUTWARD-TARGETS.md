@@ -108,7 +108,21 @@ FIRST, then felt self-learning).
   for the confidence framing. Proven LIVE on qwen3:8b at DEFAULT top-3 against
   a `.muse-dev` mock corpus: the WireGuard + rent questions now return cited
   answers (vpn note ranked FIRST) while the sister's-birthday question still
-  honestly refuses; `commands-ask-mmr.test.ts` + `pnpm lint` 0/0. (this commit)
+  honestly refuses; `commands-ask-mmr.test.ts` + `pnpm lint` 0/0. (faa905b4)
+
+- [x] **P34-4 No false LOW-confidence caution on a correct cited answer.**
+  The CRAG framing flagged a correctly-grounded answer "⚠ LOW confidence —
+  verify, may not be in your notes" whenever the top match's absolute cosine
+  sat below threshold (nomic compresses cosine), undercutting trust in an
+  answer that IS grounded — a soft false-refusal. The framing now considers
+  lexical strength: a strong keyword match (≥2 distinct query content tokens
+  in a grounded chunk) upgrades an ambiguous-cosine verdict to confident,
+  while a must-refuse question (no shared tokens) stays LOW and the citation
+  gate remains the hard backstop (fabrication=0 preserved). Proven LIVE on
+  qwen3:8b at default top-3: the WireGuard answer now shows a clean grounding
+  line + cited "MTU 1380", while the sister's-birthday question still shows
+  LOW confidence and refuses; `commands-ask-crag.test.ts` + `pnpm lint` 0/0.
+  (this commit)
 
 **P33 — Reinforcement learning over Muse's memory (the model is fixed,
 so RL lives in the MEMORY, not the weights).** Close the self-improvement
