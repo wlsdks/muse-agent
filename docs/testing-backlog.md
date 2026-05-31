@@ -2284,3 +2284,12 @@ the generic layers below because they test what makes Muse an *agent*.
     no-entity scene form; e2e — approved POSTs the built request once (performed:true,
     status 200), DENIED calls fetch zero times (performed:false, no state change reaches
     the home). Contract-faithful fetch + gate fakes. Pre-verified against dist. mcp 1235 green.
+
+- [x] **mcp/objective-evaluator — parseObjectiveVerdict (zero coverage).**
+    Census found parseObjectiveVerdict with ZERO refs — it parses the LLM re-evaluation
+    verdict (met / unmet / unmeetable) for a standing objective. New tests pin: clean
+    met/unmet; unmeetable with the model's reason or a default when none; the SAFE
+    default — non-JSON or a recognised-shape JSON with an UNKNOWN outcome stays `unmet`
+    (an objective is never wrongly resolved/cancelled by a garbled reply); extraction
+    from a ```json fence after a <think> block; last-balanced-candidate-wins. Pre-verified
+    against dist. mcp 1240 tests green.
