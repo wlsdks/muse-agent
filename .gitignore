@@ -90,3 +90,5 @@ __pycache__/
 
 # harness runner session snapshots (run artifact)
 harness/runner/sessions/
+
+harness/runner/last-project-trace.json

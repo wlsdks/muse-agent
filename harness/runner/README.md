@@ -56,6 +56,9 @@ updated: 2026-05-31
 - **`tools.mjs`** — 도구 레지스트리. 등록(verb_noun)·스키마 검증·allow/deny(denylist 우선)·소수 노출
   (maxExposed)·위험등급→권한게이트. → [tool-design.md](../tool-design.md)
 - **`tools.test.mjs`** — 도구 6종(등록 거부·denylist 우선·validateArgs·expose 캡·권한 합성).
+- **`project.mjs`** — **다단계 오케스트레이션**. 큰 작업을 서브태스크로 분해→각각 runCycle로 구동→합성.
+  프로젝트 게이트 fail-closed(분해 없음/서브태스크 차단 시 중단). `run-project.mjs`는 실제 `claude -p`로 구동.
+- **`project.test.mjs`** — 다단계 5종(분해→전부 DONE·빈 분해 차단·중간 차단 시 이후 미실행·재개 스킵·상관ID).
 
 ## 돌리는 법 (의존성 설치 불필요)
 
@@ -63,7 +66,7 @@ updated: 2026-05-31
 node --test harness/runner/
 ```
 
-마지막 측정: **56/56 통과** (적합성 13 + 오케스트레이터 5 + 적대 9 + 훅 6 + 관측 6 + 세션 6 + 메모리 5 + 도구 6). 행복경로만이 아니라
+마지막 측정: **61/61 통과** (적합성 13 + 오케스트레이터 5 + 적대 9 + 훅 6 + 관측 6 + 세션 6 + 메모리 5 + 도구 6 + 다단계 5). 행복경로만이 아니라
 **거부 경로가 전부 초록**일 때만 러너가 "delivered"입니다. CI는
 [`.github/workflows/harness.yml`](../../.github/workflows/harness.yml)가 `harness/**` 변경마다 강제.
 
