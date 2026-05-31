@@ -371,6 +371,20 @@ PreToolUse 훅은 도구 호출을 우회 불가로 막는 유일 메커니즘(B
   부풀림 방지(일회성 드롭·중복 병합)와 추측 감쇠(추론 반감기)가 결정론 코드로 보장됨.
 - **한계:** 관련성 검색은 토큰 겹침(임베딩 아님 — 의도적으로 결정론). 의미검색은 호스트가 끼울 수 있음.
 
+### 서른한 번째 실측 — 정통 요소: 도구 레지스트리 → 5계층 전부 코드 (2026-05-31)
+
+마지막 spec-only 칸(**도구**)을 코드로([tool-design §런타임](tool-design.md) · [runner/tools.mjs](runner/tools.mjs)).
+근거: Anthropic "writing tools for agents"(네임스페이싱·actionable errors·소수 도구), OpenAI Agents
+SDK(자동 스키마+검증), MCP 레지스트리(denylist 우선).
+
+- **6/6 통과**: 등록 거부(verb_noun 아님·중복·빈 설명·스키마 없음·잘못된 위험)·**denylist가 allowlist를
+  이김**·빈 allowlist=전체 허용·validateArgs(required/타입/enum/범위 actionable errors)·expose 캡+**dropped
+  보고**(무음 절단 금지)·위험등급→권한게이트 합성(은행 거부). 러너 스위트 누적 **56/56**.
+- **확인된 것:** **정통 5계층(권한·훅·관측·메모리·도구) 전부 코드로 강제/기록** + 제어플레인 세션 영속.
+  Boris Cherny 5계층이 문서가 아니라 결정론 코드로 채워짐.
+- **한계:** 도구 검증은 JSON-Schema 부분집합(임의 $ref 등은 미지원, 의도적 단순). 한-shot 선택률은
+  로컬 모델로 `eval:tools`에서 별도 측정(이 컴포넌트는 등록·검증·게이트 담당).
+
 ## 한 줄 요약 (하네스 검증 체크리스트)
 
 1. **데이터 출처**를 먼저 인증했나(0층)?
