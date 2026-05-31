@@ -815,6 +815,18 @@ the generic layers below because they test what makes Muse an *agent*.
     action, zero fetch); a confirmed action defaults method to POST + uppercases a lowercase
     input → performed:true; a denied approval maps to performed:false reason "denied" (inherits
     the outbound-safety guarantee). mcp 1199->1204.
+  - SIXTY-THIRD (cross-package sweep → agent-core; council deliberation + grounding): `packages/
+    agent-core` `council.ts` (156L, **ZERO test refs**) — several Muses reason about one question
+    and synthesise a grounded answer (Multiagent Debate, Du et al. 2023). First suite (13 tests):
+    parseCouncilAnswer is the GROUNDING gate (same honesty rule as cited recall / reflection) —
+    keeps only real contributor ids (drops an invented "GHOST"/"INVENTED"), dedupes, non-array
+    contributors → [], null on no-JSON / empty-answer / invalid JSON, extracts a prose-wrapped
+    object; buildDebateQuestion (returns the question unchanged when no OTHER member spoke,
+    excludes self + empties, whitespace-collapsed digest + refine instruction) + buildCouncilPrompt
+    render format; produceCouncilReasoning empty-question→'' (no model call), REDACTS the question
+    into the prompt AND the model output before it crosses the swarm, fail-soft on throw → '';
+    synthesizeCouncilAnswer null on empty-question / no-usable-utterances, grounds against only the
+    usable member ids (drops an invented contributor), fail-soft → null. agent-core 1208->1221.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
