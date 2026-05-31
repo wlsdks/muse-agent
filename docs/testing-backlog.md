@@ -547,6 +547,16 @@ the generic layers below because they test what makes Muse an *agent*.
     channel id (INVALID_DESTINATION, no guessed channel), parses+filters empty-content
     entries, prefers global_name over username for the sender, and maps a non-OK fetch to
     UPSTREAM_FAILED+status. messaging 317->326.
+  - THIRTY-EIGHTH (cross-package sweep → messaging; contract-faithful HTTP fake + temp-file
+    round-trip): `packages/messaging` `line-provider.ts` (132L) had **ZERO test refs** —
+    another OUTBOUND third-party sender. First suite (6 tests): SEND POSTs /v2/bot/message/push
+    with a `{messages:[{text,type:"text"}], to}` body + Bearer auth, and since LINE's push API
+    returns no id, the provider synthesises a `line:{iso}` receipt via an injectable now() (pinned
+    deterministically); empty text rejected at validation BEFORE any network call; a non-OK push
+    → UPSTREAM_FAILED carrying status + the LINE error message. INBOUND throws INVALID_DESTINATION
+    with no inboxFile (clean "not supported", never a silent []), and WITH a real temp inbox file
+    (appendInbound round-trip) returns exactly what the webhook persisted — newest-first — honouring
+    the limit. messaging 326->332.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
