@@ -991,3 +991,12 @@ export {
   releaseOllamaLease,
   resolveOllamaLeaseFile
 } from "./ollama-lease.js";
+
+export {
+  MAX_LEARN_QUEUE_EVENTS,
+  enqueueLearnEvent,
+  markLearnEventsDone,
+  readPendingLearnEvents,
+  resolveLearnQueueFile,
+  type LearnCorrectionEvent
+} from "./learn-queue.js";

@@ -113,7 +113,17 @@ proof shape (unit / 2-session / eval:self-improving), NOT cited-answer+refusal.
   round-trip AND a live `muse ask` (cited "MTU 1380" + receipt, honest
   refusal — recall intact under the lease). mcp 1211 / api 801 / cli 1605
   tests + `pnpm lint` 0/0. Slice 0 (brakes) DONE → the idle-distillation
-  writer (Slice 1, felt payoff) is unblocked. (this commit)
+  writer (Slice 1, felt payoff) is unblocked. (7e9ac3e6)
+
+- [x] **P36-5 Learn-queue signal substrate (B1 Slice 1, part 1).** Episodes
+  keep only summaries, so the raw correction exchange must be captured when it
+  happens and consumed on idle. New shared `learn-queue.ts` (append-only
+  `~/.muse/learn-queue.jsonl`: enqueue / readPending oldest-first / markDone
+  atomic-remove + cap; corrupt-line-safe). Proven by unit tests + a LIVE
+  round-trip (enqueue → read → markDone → empty). mcp 1216 tests + `pnpm lint`
+  0/0. SUBSTRATE only — remaining Slice-1 parts: the idle distill-consumer tick
+  (distill behind the brakes → probation strategy), the chat producer (enqueue
+  on correction), and `muse learned` visibility. (this commit)
 
 **P35 — Felt experience: make Muse FEEL like the SF confidant (loop-v2 PART
 B2).** The front door (P34) is delivered + proven; the headline's other half
