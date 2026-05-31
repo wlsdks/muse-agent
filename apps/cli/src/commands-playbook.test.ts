@@ -23,11 +23,40 @@ describe("muse playbook command registration", () => {
     expect(distill?.description()).toContain("last chat session");
   });
 
-  it("keeps add/list/remove/reward/undo alongside distill", () => {
+  it("keeps add/list/remove/reward/undo/pause/resume alongside distill", () => {
     const program = new Command();
     registerPlaybookCommands(program, noopIo);
-    for (const name of ["add", "list", "remove", "reward", "undo", "distill"]) {
+    for (const name of ["add", "list", "remove", "reward", "undo", "pause", "resume", "distill"]) {
       expect(findSub(program, ["playbook", name])).toBeDefined();
+    }
+  });
+});
+
+describe("muse playbook pause / resume — the learning kill switch (B1 §5)", () => {
+  it("pause persists paused:true (with since); resume clears it", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { isLearningPaused } = await import("@muse/mcp");
+    const dir = await mkdtemp(join(tmpdir(), "muse-pause-"));
+    const pauseFile = join(dir, "learning-paused.json");
+    const prev = process.env.MUSE_LEARNING_PAUSE_FILE;
+    process.env.MUSE_LEARNING_PAUSE_FILE = pauseFile;
+    try {
+      const run = async (args: string[]): Promise<string> => {
+        const out: string[] = [];
+        const io = { stderr: () => undefined, stdout: (m: string) => out.push(m) } as unknown as IO;
+        const program = new Command();
+        registerPlaybookCommands(program, io);
+        await program.parseAsync(["node", "x", "playbook", ...args], { from: "node" });
+        return out.join("");
+      };
+      expect(await run(["pause"])).toContain("paused");
+      expect(await isLearningPaused(pauseFile)).toBe(true);
+      expect(await run(["resume"])).toContain("resumed");
+      expect(await isLearningPaused(pauseFile)).toBe(false);
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_LEARNING_PAUSE_FILE; else process.env.MUSE_LEARNING_PAUSE_FILE = prev;
     }
   });
 });

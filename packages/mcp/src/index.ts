@@ -504,6 +504,12 @@ export {
   type PlaybookEntry
 } from "./personal-playbook-store.js";
 export {
+  isLearningPaused,
+  readLearningPauseState,
+  setLearningPaused,
+  type LearningPauseState
+} from "./learning-pause-store.js";
+export {
   incrementSuppressionBlocked,
   MAX_SUPPRESSED_LESSONS,
   querySuppressedLessons,

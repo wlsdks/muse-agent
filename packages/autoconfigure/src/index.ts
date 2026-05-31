@@ -230,6 +230,7 @@ export {
   resolveVetoesFile,
   resolvePlaybookFile,
   resolveSuppressedLessonsFile,
+  resolveLearningPauseFile,
   resolvePlanCacheFile,
   resolveAuthoredSkillsDir
 } from "./personal-providers.js";

@@ -312,7 +312,26 @@ proof shape (unit / 2-session / eval:self-improving), NOT cited-answer+refusal.
   (HOME-isolated, never real ~/.muse): correction → distilled → `undo` → SAME
   correction re-enqueued distilled **0** (blockedCount 1) while a DIFFERENT
   correction still learned. mcp 1234 / api 823 / cli 1619 tests + `pnpm lint`
-  0/0. The user is now in control of what Muse keeps learning. (this commit)
+  0/0. The user is now in control of what Muse keeps learning. (0a623383)
+
+- [x] **P36-15 Pause switch — `muse playbook pause` stops ALL background
+  learning (B1 Slice 5 complete, the kill-switch half).** A persisted pause flag
+  (not an env var, so a running daemon honors it without restart): when paused,
+  the idle distiller writes ZERO strategies AND the session producer enqueues
+  ZERO corrections — a TRUE pause that doesn't even accumulate to learn later;
+  the queue already present is left intact so a later `resume` catches up.
+  `muse learned` shows a "⏸ Background learning is PAUSED" banner so the state is
+  legible. New `learning-pause-store.ts` (mcp, fail-OPEN on corrupt so it can't
+  silently wedge learning off) + `resolveLearningPauseFile` (autoconfigure);
+  consumer (`distill-queue.ts`) + producer (`chat-enqueue-corrections.ts`) both
+  honor it. Proven by unit tests (round-trip paused+since / resume / fail-open on
+  corrupt / non-true value in mcp; distiller PAUSED ⇒ 0 writes + queue intact +
+  resume catches up in api; pause persists / resume clears in cli; `muse learned`
+  PAUSED banner incl. empty corpus) + a LIVE chain on qwen3:8b (HOME-isolated,
+  never real ~/.muse): `pause` → enqueue + idle distill = **0 distilled, queue
+  pending 1**, `muse learned` shows the ⏸ banner → `resume` → distill = 1, queue
+  drained. mcp 1238 / api 824 / cli 1621 tests + `pnpm lint` 0/0. Slice 5 is now
+  complete (undo + pause); the user can fully stop and steer learning. (this commit)
 
 **P35 — Felt experience: make Muse FEEL like the SF confidant (loop-v2 PART
 B2).** The front door (P34) is delivered + proven; the headline's other half

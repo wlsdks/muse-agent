@@ -18,7 +18,8 @@ import {
   type SessionBoundaryRef,
   type SessionTurnLine
 } from "@muse/agent-core";
-import { enqueueLearnEvent, resolveLearnQueueFile } from "@muse/mcp";
+import { enqueueLearnEvent, isLearningPaused, resolveLearnQueueFile } from "@muse/mcp";
+import { resolveLearningPauseFile } from "@muse/autoconfigure";
 
 import { readLastChatHistory, readSessionBoundaries } from "./chat-history.js";
 
@@ -51,6 +52,12 @@ export async function enqueueSessionCorrections(options: EnqueueCorrectionsOptio
   const now = options.now ?? (() => new Date());
   const idFactory = options.idFactory ?? (() => `lq_${randomUUID()}`);
   const queueFile = options.queueFile ?? resolveLearnQueueFile(env as Record<string, string | undefined>);
+
+  // Kill switch (B1 §5): when learning is paused, enqueue nothing — a true pause
+  // accumulates no corrections to learn on resume.
+  if (await isLearningPaused(resolveLearningPauseFile(env as Record<string, string | undefined>))) {
+    return { enqueued: 0, reason: "learning is paused" };
+  }
 
   let lines: readonly SessionTurnLine[];
   let boundaries: readonly SessionBoundaryRef[];

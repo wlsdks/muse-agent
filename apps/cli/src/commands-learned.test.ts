@@ -160,6 +160,15 @@ describe("renderLearnedDigest", () => {
     expect(out).not.toContain("↳");
   });
 
+  it("shows a PAUSED banner when learning is paused (B1 §5) — even with nothing learned", () => {
+    const withContent = renderLearnedDigest({ paused: true, reflections: [], skills: [], strategies: [{ reward: 2, text: "a trusted one" }] });
+    expect(withContent).toContain("Background learning is PAUSED");
+    const empty = renderLearnedDigest({ paused: true, reflections: [], skills: [], strategies: [] });
+    expect(empty).toContain("Background learning is PAUSED");
+    // not shown when not paused
+    expect(renderLearnedDigest({ reflections: [], skills: [], strategies: [{ reward: 2, text: "x" }] })).not.toContain("PAUSED");
+  });
+
   it("shows the most recent reflections, newest first, capped at 5", () => {
     const reflections = Array.from({ length: 7 }, (_unused, i) => ({ createdAtMs: i * 1000, insight: `insight ${i.toString()}` }));
     const out = renderLearnedDigest({ reflections, skills: [], strategies: [] });

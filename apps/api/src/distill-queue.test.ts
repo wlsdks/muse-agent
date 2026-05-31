@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { enqueueLearnEvent, queryPlaybook, readPendingLearnEvents, readSuppressedLessons, recordSuppressedLesson, type LearnCorrectionEvent } from "@muse/mcp";
+import { enqueueLearnEvent, queryPlaybook, readPendingLearnEvents, readSuppressedLessons, recordSuppressedLesson, setLearningPaused, type LearnCorrectionEvent } from "@muse/mcp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { distillQueuedCorrections } from "./distill-queue.js";
@@ -99,6 +99,19 @@ describe("distillQueuedCorrections — idle distill-consumer", () => {
       const recorded2 = await distillQueuedCorrections(deps({ suppressedLessonsFile }));
       expect(recorded2).toBe(1);
       expect((await queryPlaybook(playbookFile, "u1")).map((s) => s.text)).toEqual(["learned: always include a budget summary in expense reports"]);
+    });
+
+    it("PAUSED ⇒ zero writes and the queue is left intact (resume catches up)", async () => {
+      const pauseFile = join(dir, "paused.json");
+      await setLearningPaused(pauseFile, true, "2026-06-01T00:00:00Z");
+      await enqueueLearnEvent(queueFile, ev("a", "always answer in bullets"));
+      expect(await distillQueuedCorrections(deps({ pauseFile }))).toBe(0); // no distill
+      expect(await queryPlaybook(playbookFile, "u1")).toEqual([]); // zero playbook writes
+      expect(await readPendingLearnEvents(queueFile)).toHaveLength(1); // queue intact, NOT drained
+
+      // resume → the queued correction now distills
+      await setLearningPaused(pauseFile, false);
+      expect(await distillQueuedCorrections(deps({ pauseFile }))).toBe(1);
     });
 
     it("a suppression with no source can't block (best-effort) — the correction still distills", async () => {

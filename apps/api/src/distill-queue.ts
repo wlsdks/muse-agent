@@ -16,6 +16,7 @@ import {
 } from "@muse/agent-core";
 import {
   incrementSuppressionBlocked,
+  isLearningPaused,
   markLearnEventsDone,
   querySuppressedLessons,
   readPendingLearnEvents,
@@ -37,6 +38,12 @@ export interface DistillQueuedDeps {
   readonly suppressedLessonsFile?: string;
   /** Similarity ≥ this ⇒ a new lesson counts as the suppressed one. Default 0.6. */
   readonly suppressionThreshold?: number;
+  /**
+   * Learning pause switch (B1 §5 kill switch). When set AND paused, this tick
+   * does NOTHING — zero distills, zero playbook writes, queue left intact so a
+   * later resume catches up. Omitted ⇒ no pause check (back-compat).
+   */
+  readonly pauseFile?: string;
   /** ≤ this many events distilled per tick (the LLM call is the cost). Default 1. */
   readonly maxPerTick?: number;
   /** Injectable clock + id for tests. */
@@ -48,6 +55,10 @@ export interface DistillQueuedDeps {
 
 /** Returns the number of strategies actually recorded this tick. */
 export async function distillQueuedCorrections(deps: DistillQueuedDeps): Promise<number> {
+  // Kill switch (B1 §5): paused ⇒ zero writes, queue untouched (resume catches up).
+  if (deps.pauseFile && (await isLearningPaused(deps.pauseFile))) {
+    return 0;
+  }
   const pending = await readPendingLearnEvents(deps.queueFile);
   if (pending.length === 0) {
     return 0;

@@ -9,8 +9,8 @@
 import { randomUUID } from "node:crypto";
 
 import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity } from "@muse/agent-core";
-import { createMuseRuntimeAssembly, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
-import { adjustPlaybookReward, queryPlaybook, recordPlaybookStrategy, recordSuppressedLesson, removePlaybookStrategy, type PlaybookEntry } from "@muse/mcp";
+import { createMuseRuntimeAssembly, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
+import { adjustPlaybookReward, queryPlaybook, recordPlaybookStrategy, recordSuppressedLesson, removePlaybookStrategy, setLearningPaused, type PlaybookEntry } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { distillSessionCorrections } from "./chat-distill-corrections.js";
@@ -23,6 +23,10 @@ function playbookFile(): string {
 
 function suppressedLessonsFile(): string {
   return resolveSuppressedLessonsFile(process.env as Record<string, string | undefined>);
+}
+
+function learningPauseFile(): string {
+  return resolveLearningPauseFile(process.env as Record<string, string | undefined>);
 }
 
 export function registerPlaybookCommands(program: Command, io: ProgramIO): void {
@@ -113,6 +117,22 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
       io.stdout(match.source
         ? `Undid strategy [${match.id.slice(0, 12)}] — Muse won't re-learn this from a similar correction.\n`
         : `Undid strategy [${match.id.slice(0, 12)}].\n`);
+    });
+
+  playbook
+    .command("pause")
+    .description("Pause ALL background self-learning — Muse stops distilling AND enqueueing corrections until you `playbook resume`")
+    .action(async () => {
+      await setLearningPaused(learningPauseFile(), true, new Date().toISOString());
+      io.stdout("⏸ Background learning paused — Muse won't learn anything new until you run `muse playbook resume`.\n");
+    });
+
+  playbook
+    .command("resume")
+    .description("Resume background self-learning after `playbook pause`")
+    .action(async () => {
+      await setLearningPaused(learningPauseFile(), false);
+      io.stdout("▶ Background learning resumed.\n");
     });
 
   playbook

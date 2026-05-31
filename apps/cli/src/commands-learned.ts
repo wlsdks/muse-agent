@@ -9,8 +9,8 @@
  */
 
 import { PLAYBOOK_AVOID_BELOW } from "@muse/agent-core";
-import { resolvePlaybookFile } from "@muse/autoconfigure";
-import { queryPlaybook, readReflections, readSkillRewards, SKILL_AVOID_BELOW } from "@muse/mcp";
+import { resolveLearningPauseFile, resolvePlaybookFile } from "@muse/autoconfigure";
+import { isLearningPaused, queryPlaybook, readReflections, readSkillRewards, SKILL_AVOID_BELOW } from "@muse/mcp";
 import { AuthoredSkillStore } from "@muse/skills";
 import type { Command } from "commander";
 
@@ -43,6 +43,8 @@ export interface LearnedDigestInput {
   readonly reflections: readonly { readonly insight: string; readonly createdAtMs: number }[];
   /** Injectable clock for the "fading / last reinforced" trajectory. */
   readonly nowMs?: number;
+  /** When true, a banner notes background learning is paused (B1 §5 kill switch). */
+  readonly paused?: boolean;
 }
 
 const rewardOf = (value: number | undefined): number =>
@@ -112,8 +114,10 @@ export function renderLearnedDigest(input: LearnedDigestInput): string {
     avoidedSkills.length === 0 &&
     probationStrategies.length === 0 &&
     recent.length === 0;
+  const pausedBanner = input.paused ? ["⏸ Background learning is PAUSED (`muse playbook resume` to continue).", ""] : [];
   if (nothing) {
     return [
+      ...pausedBanner,
       "Muse hasn't learned anything about working with you yet.",
       "",
       "Learning is OFF by default. Turn it on for a session with:",
@@ -122,7 +126,7 @@ export function renderLearnedDigest(input: LearnedDigestInput): string {
     ].join("\n");
   }
 
-  const lines: string[] = ["What Muse has learned about working with you", ""];
+  const lines: string[] = [...pausedBanner, "What Muse has learned about working with you", ""];
   const reward = (n: number): string => `${n > 0 ? "+" : ""}${n.toString()}`;
 
   const nowMs = input.nowMs ?? Date.now();
@@ -200,13 +204,14 @@ export function registerLearnedCommand(program: Command, io: ProgramIO): void {
     .action(async (options: { readonly user?: string }) => {
       const userId = resolveDefaultUserKey({ override: options.user });
       const env = process.env as Record<string, string | undefined>;
-      const [strategies, authored, skillRewards, reflections] = await Promise.all([
+      const [strategies, authored, skillRewards, reflections, paused] = await Promise.all([
         queryPlaybook(resolvePlaybookFile(env), userId).catch(() => []),
         new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() }).listAuthored().catch(() => []),
         readSkillRewards(resolveSkillRewardsFile()).catch(() => ({} as Record<string, number>)),
-        readReflections(resolveReflectionsFile()).catch(() => [])
+        readReflections(resolveReflectionsFile()).catch(() => []),
+        isLearningPaused(resolveLearningPauseFile(env)).catch(() => false)
       ]);
       const skills = authored.map((s) => ({ name: s.name, reward: rewardOf(skillRewards[s.name]) }));
-      io.stdout(`${renderLearnedDigest({ reflections, skills, strategies })}\n`);
+      io.stdout(`${renderLearnedDigest({ paused, reflections, skills, strategies })}\n`);
     });
 }

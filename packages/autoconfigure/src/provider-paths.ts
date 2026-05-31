@@ -115,6 +115,10 @@ export function resolveSuppressedLessonsFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_SUPPRESSED_LESSONS_FILE", "suppressed-lessons.json");
 }
 
+export function resolveLearningPauseFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_LEARNING_PAUSE_FILE", "learning-paused.json");
+}
+
 export function resolvePlanCacheFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_PLAN_CACHE_FILE", "plan-cache.json");
 }
