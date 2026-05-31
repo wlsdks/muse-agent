@@ -1,11 +1,11 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { LocalDirNotesProvider } from "@muse/mcp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { buildDocumentNoteBody, extractDocumentText, isLikelyBinary, isPdfDocument, saveDocumentToNotes } from "./commands-read.js";
+import { buildDocumentNoteBody, extractDocumentText, ingestDirectoryToNotes, isLikelyBinary, isPdfDocument, noteIdForDocument, saveDocumentToNotes } from "./commands-read.js";
 
 // A telegram-bot-token shaped secret (redactSecretsInText scrubs it).
 const SECRET = `123456:${"A".repeat(35)}`;
@@ -69,5 +69,44 @@ describe("extractDocumentText — PDF or text, reject binary", () => {
   it("isLikelyBinary flags a NUL byte, passes clean text", () => {
     expect(isLikelyBinary(Buffer.from([0x68, 0x69, 0x00]))).toBe(true);
     expect(isLikelyBinary(Buffer.from("hello world", "utf8"))).toBe(false);
+  });
+});
+
+describe("ingestDirectoryToNotes — bulk folder ingest into the corpus (partial-failure tolerant)", () => {
+  it("ingests every supported doc, skips a corrupt one VISIBLY, and writes citable notes under the prefix", async () => {
+    const src = await mkdtemp(join(tmpdir(), "muse-bulk-src-"));
+    const notesDir = await mkdtemp(join(tmpdir(), "muse-bulk-notes-"));
+    try {
+      await writeFile(join(src, "vpn.txt"), "WireGuard VPN MTU is 1380", "utf8");
+      await mkdir(join(src, "sub"), { recursive: true });
+      await writeFile(join(src, "sub", "rent.md"), "rent is due on the 25th, $1450", "utf8");
+      await writeFile(join(src, "corrupt.pdf"), Buffer.from("%PDF-1.7\nnot a real pdf\n"));
+      await writeFile(join(src, "photo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01])); // binary, unsupported ext → not walked
+      const progress: string[] = [];
+
+      const summary = await ingestDirectoryToNotes(src, notesDir, "downloads", (l) => progress.push(l));
+
+      // png is not a supported doc ext, so total counts only the 3 doc files.
+      expect(summary.total).toBe(3);
+      expect(summary.ingested).toBe(2);
+      expect(summary.skipped).toBe(1);
+      // The good docs are saved as citable .md notes under the prefix (subdir
+      // preserved); the .md extension is required for the notes-index walker.
+      const provider = new LocalDirNotesProvider({ notesDir });
+      expect((await provider.read("downloads/vpn.md"))?.body).toContain("1380");
+      expect((await provider.read("downloads/sub/rent.md"))?.body).toContain("$1450");
+      // Partial failure is VISIBLE, not swallowed; the run did not abort.
+      expect(progress.some((l) => l.startsWith("✗") && l.includes("corrupt.pdf"))).toBe(true);
+      expect(progress.some((l) => l.startsWith("+") && l.includes("vpn.txt"))).toBe(true);
+    } finally {
+      await rm(src, { recursive: true, force: true });
+      await rm(notesDir, { recursive: true, force: true });
+    }
+  });
+
+  it("noteIdForDocument strips the extension, preserves subdirs, applies the prefix", () => {
+    expect(noteIdForDocument("/c", "/c/a.txt", "downloads")).toBe("downloads/a");
+    expect(noteIdForDocument("/c", "/c/sub/b.pdf", "downloads")).toBe("downloads/sub/b");
+    expect(noteIdForDocument("/c", "/c/a.txt", "")).toBe("a");
   });
 });

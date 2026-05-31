@@ -122,6 +122,21 @@ FIRST, then felt self-learning).
   qwen3:8b at default top-3: the WireGuard answer now shows a clean grounding
   line + cited "MTU 1380", while the sister's-birthday question still shows
   LOW confidence and refuses; `commands-ask-crag.test.ts` + `pnpm lint` 0/0.
+  (a2dedb48)
+
+- [x] **P34-5 Bulk folder ingest — get a real corpus in, in one command.**
+  `muse read <dir> --save-to-notes <prefix>` now ingests every supported
+  document (pdf/txt/md/markdown/log/csv) under a directory (recursively) into
+  the notes corpus as `.md` notes under the prefix, so a beachhead user with a
+  pile of downloads/exports gets them all searchable in ONE command instead of
+  one `muse read` per file. Per-file progress + partial-failure tolerance (a
+  corrupt file is skipped VISIBLY, not fatal). Bug found+fixed live: notes were
+  first saved without a `.md` extension so the index walker skipped them and
+  `muse ask` couldn't cite them — the save now appends `.md`. Proven LIVE on
+  qwen3:8b against a `.muse-dev` docs folder (a .txt, a nested .md, a corrupt
+  .pdf, isolated HOME): "ingested 2, skipped 1", then `muse ask` cited both
+  ingested facts (warranty.md, manuals/trip.md) + 📎 Sources and honestly
+  refused an uncovered question; `commands-read.test.ts` + `pnpm lint` 0/0.
   (this commit)
 
 **P33 — Reinforcement learning over Muse's memory (the model is fixed,

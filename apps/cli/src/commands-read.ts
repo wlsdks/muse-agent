@@ -12,8 +12,8 @@
  * already configured.
  */
 
-import { readFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { basename, extname, join, relative, sep } from "node:path";
 
 import { createMuseRuntimeAssembly, resolveNotesDir } from "@muse/autoconfigure";
 import { LocalDirNotesProvider } from "@muse/mcp";
@@ -113,6 +113,99 @@ export async function extractDocumentText(filePath: string, buffer: Buffer): Pro
   return { pageCount: 1, text: buffer.toString("utf8") };
 }
 
+/** Extensions `extractDocumentText` can turn into note text. */
+const SUPPORTED_DOC_EXT = new Set([".pdf", ".txt", ".md", ".markdown", ".log", ".csv"]);
+
+/** Recursively collect supported document files under `dir` (skips hidden + `.processed`). */
+async function walkDocuments(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  const stack = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    let entries;
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+      } else if (entry.isFile() && SUPPORTED_DOC_EXT.has(extname(entry.name).toLowerCase())) {
+        out.push(full);
+      }
+    }
+  }
+  return out.sort();
+}
+
+/** Derive a sandbox-safe note id from a file's path relative to the scanned dir. */
+export function noteIdForDocument(dir: string, filePath: string, prefix: string): string {
+  const rel = relative(dir, filePath).split(sep).join("/");
+  const noExt = rel.slice(0, rel.length - extname(rel).length) || rel;
+  const cleanPrefix = prefix.replace(/^\/+|\/+$/gu, "");
+  return cleanPrefix.length > 0 ? `${cleanPrefix}/${noExt}` : noExt;
+}
+
+export interface DirIngestSummary {
+  readonly ingested: number;
+  readonly skipped: number;
+  readonly total: number;
+}
+
+/**
+ * Bulk-ingest every supported document under `dir` into the notes corpus
+ * (one note per file, id derived from its relative path under `prefix`),
+ * so a beachhead user gets a whole folder of real files searchable in ONE
+ * command. Per-file progress + partial-failure tolerance (a corrupt /
+ * binary / empty file is SKIPPED with a `✗` line, never aborts the run),
+ * mirroring the reindex ingest contract. Reuses `extractDocumentText` +
+ * `saveDocumentToNotes`, so the production read/save path runs unchanged.
+ */
+export async function ingestDirectoryToNotes(
+  dir: string,
+  notesDir: string,
+  prefix: string,
+  onProgress?: (line: string) => void
+): Promise<DirIngestSummary> {
+  const files = await walkDocuments(dir);
+  let ingested = 0, skipped = 0;
+  for (const file of files) {
+    let text: string;
+    let pageCount: number;
+    try {
+      const parsed = await extractDocumentText(file, await readFile(file));
+      text = (parsed.text ?? "").trim();
+      pageCount = parsed.pageCount;
+    } catch (cause) {
+      skipped += 1;
+      onProgress?.(`✗ ${file} (could not read — skipped: ${cause instanceof Error ? cause.message : String(cause)})`);
+      continue;
+    }
+    if (text.length === 0) {
+      skipped += 1;
+      onProgress?.(`✗ ${file} (no text extracted — skipped)`);
+      continue;
+    }
+    // Save with an explicit `.md` extension so the notes-index walker
+    // (which only indexes .md/.markdown/.txt/.pdf) actually picks the
+    // ingested note up — a bare extensionless id is written verbatim and
+    // would never be searchable via `muse ask`.
+    const id = `${noteIdForDocument(dir, file, prefix)}.md`;
+    try {
+      await saveDocumentToNotes(notesDir, id, file, text, pageCount);
+      ingested += 1;
+      onProgress?.(`+ ${file} → ${id}`);
+    } catch (cause) {
+      skipped += 1;
+      onProgress?.(`✗ ${file} (save failed — skipped: ${cause instanceof Error ? cause.message : String(cause)})`);
+    }
+  }
+  return { ingested, skipped, total: files.length };
+}
+
 /**
  * System prompt the `--ask` path uses. Pure so a test can assert
  * it stays grounded ("answer FROM the document, say so if it's not
@@ -133,13 +226,36 @@ export function buildReadAskSystemPrompt(documentText: string): string {
 export function registerReadCommand(program: Command, io: ProgramIO): void {
   program
     .command("read")
-    .description("Read a local PDF or text file (.txt/.md/.log/.csv); optionally answer a question grounded in its text")
-    .argument("<path>", "Path to a .pdf or text file")
+    .description("Read a local PDF or text file (.txt/.md/.log/.csv); optionally answer a question grounded in its text. Point at a DIRECTORY with --save-to-notes to bulk-ingest a whole folder of documents into your corpus.")
+    .argument("<path>", "Path to a .pdf or text file, OR a directory (with --save-to-notes) to bulk-ingest")
     .option("--ask <question>", "Stream an LLM answer grounded in the PDF text")
     .option("--model <id>", "Model override for --ask (defaults to MUSE_MODEL)")
     .option("--json", "Emit a structured payload instead of plain text")
-    .option("--save-to-notes <id>", "Save the extracted text as a note (relative to MUSE_NOTES_DIR) so knowledge_search can find it")
+    .option("--save-to-notes <id>", "Save the extracted text as a note (relative to MUSE_NOTES_DIR) so knowledge_search can find it. With a DIRECTORY path, this is the folder PREFIX under which every ingested doc is saved (e.g. 'downloads').")
     .action(async (filePath: string, options: ReadOptions) => {
+      // Directory path + --save-to-notes → bulk-ingest the whole folder into
+      // the corpus (one command for a beachhead user's pile of real docs).
+      let isDir = false;
+      try {
+        isDir = (await stat(filePath)).isDirectory();
+      } catch { /* fall through to the single-file reader, which reports the error */ }
+      if (isDir) {
+        const prefix = options.saveToNotes?.trim() ?? "";
+        if (!options.saveToNotes || prefix.length === 0) {
+          io.stderr("muse read <dir>: bulk folder ingest needs --save-to-notes <prefix> (e.g. --save-to-notes downloads)\n");
+          process.exitCode = 1;
+          return;
+        }
+        const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
+        io.stdout(`muse read — ingesting documents from ${filePath} into ${notesDir} (prefix '${prefix}')\n`);
+        const summary = await ingestDirectoryToNotes(filePath, notesDir, prefix, (line) => io.stderr(`  ${line}\n`));
+        io.stdout(`(ingested ${summary.ingested.toString()} document(s), skipped ${summary.skipped.toString()} of ${summary.total.toString()} — now searchable via \`muse ask\`)\n`);
+        if (summary.ingested === 0) {
+          process.exitCode = 1;
+        }
+        return;
+      }
+
       let buffer: Buffer;
       try {
         buffer = await readFile(filePath);
