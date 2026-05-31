@@ -103,4 +103,13 @@ describe("executePlanExecuteLoop", () => {
     expect(error).toBeInstanceOf(PlanExecutionError);
     expect((error as PlanExecutionError & { code: string }).code).toBe("RESPONSE_SYNTHESIS_FAILED");
   });
+
+  it("throws RESPONSE_SYNTHESIS_FAILED when the empty-plan direct answer is WHITESPACE-only", async () => {
+    // The blank case above covers the empty-string branch; a whitespace-only
+    // answer ("   ") must also fail (the trim().length === 0 branch) — a model
+    // returning only spaces hasn't actually answered.
+    await expect(
+      executePlanExecuteLoop(runner([resp("[]"), resp("   ")]), context(), provider, request()),
+    ).rejects.toMatchObject({ code: "RESPONSE_SYNTHESIS_FAILED" });
+  });
 });

@@ -292,6 +292,37 @@ the generic layers below because they test what makes Muse an *agent*.
     injected clock, added the deterministic streaming mid-batch test: two calls,
     the first advances past the deadline, the second is blocked with the wall-clock
     reason. Both loop variants now assert the runaway guard. agent-core 1084→1085.
+  - TWENTIETH MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    plan-execute-loop.ts` = **74.38%** — thoroughly covered (8 dedicated path tests:
+    valid plan / empty-plan direct answer / parse-fail / validation-fail /
+    all-steps-fail / maxToolCalls block / synthesis-empty / direct-blank). The
+    actionable survivor: the empty-plan direct-answer RESPONSE_SYNTHESIS_FAILED
+    guard is `!output || trim().length === 0`, and the direct-answer test covered
+    only the empty-STRING branch — a WHITESPACE-only answer ("   ") was untested
+    (the synthesis path tested whitespace, the direct path tested empty; each
+    function only one form). Added the whitespace direct-answer → still throws.
+    (172's `?? "TOOL_ERROR"` and 181's length>0 are equivalent/defensive — a failed
+    step always carries an error, empty-plan returns early — no churn.) agent-core 1085→1086.
+  - TWENTY-FIRST MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    guards.ts` = **88.07%** — the fail-close security guard factories (injection /
+    PII / topic-drift / LLM-classification input + PII-mask / leakage output). Its
+    allow/block security behavior is well-tested; the one actionable gap was the
+    LLM-classification block REASON fallback (`reason ?? category ?? default`) —
+    only the `reason` branch was tested. A blocked request must always carry a
+    human-readable reason (it feeds the action log + user feedback). Added: block
+    with only a `category` → uses it; block with neither → the default sentence.
+    agent-core 1086→1087. (The agent-core core — model-loop, plan-execute-loop,
+    knowledge-recall, proactive-recall-gate, step-budget, provider-shared,
+    guards, guard-pipeline — is now mutation-surveyed.)
+  - TWENTY-SECOND MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    followup-detector.ts` = **57.87%** — the proactive promise/follow-up extractor.
+    The scheduledFor VALUES are precisely asserted (분/시간/일 → now+N×unit) and the
+    English zero-duration is ignored, but the per-unit Korean `value <= 0` guards
+    were untested — only the English path tested zero. Added: a ZERO Korean
+    duration on every unit (0분/0시간/0일) yields no follow-up (no now+0 schedule)
+    while a real "5분 뒤" still fires. agent-core 1087→1088. (The bulk of the
+    remaining survivors are promise-pattern regex variants — pattern-coverage like
+    the security detectors, a larger follow-up.)
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
