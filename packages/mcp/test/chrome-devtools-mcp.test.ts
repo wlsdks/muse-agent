@@ -35,6 +35,22 @@ describe("createChromeDevToolsMcpServer", () => {
     ]);
   });
 
+  it("falls back to the default debugging port when browserUrl is blank / whitespace", () => {
+    // A blank option must not become a literal empty --browser-url; it falls back
+    // to the default 9222 port (the > 0 length guard).
+    const server = createChromeDevToolsMcpServer({ browserUrl: "   " });
+    expect((server.config as { args: readonly string[] }).args).toEqual([
+      "chrome-devtools-mcp@latest",
+      "--browser-url",
+      "http://127.0.0.1:9222"
+    ]);
+  });
+
+  it("includes fingerprintSha256 in the config only when provided", () => {
+    expect((createChromeDevToolsMcpServer({ fingerprintSha256: "abc123" }).config as { fingerprintSha256?: string }).fingerprintSha256).toBe("abc123");
+    expect("fingerprintSha256" in createChromeDevToolsMcpServer({}).config).toBe(false);
+  });
+
   it("passes the MCP security validator under the default policy (npx is an allowed stdio command)", () => {
     const input = createChromeDevToolsMcpServer();
     const now = new Date();
@@ -56,8 +72,14 @@ describe("createChromeDevToolsMcpServer", () => {
 });
 
 describe("chromeDevToolsToolRisk — fail-close risk classification", () => {
-  it("classifies pure-observation tools as read", () => {
-    for (const name of ["take_snapshot", "take_screenshot", "list_pages", "get_network_request", "wait_for"]) {
+  it("classifies pure-observation tools as read (every member of the read-only set — they must stay ungated)", () => {
+    // The full set: an observation tool wrongly dropped from it would suddenly
+    // require approval for a screenshot / console read. Assert each one.
+    for (const name of [
+      "take_snapshot", "take_screenshot", "list_pages", "list_console_messages",
+      "get_console_message", "list_network_requests", "get_network_request",
+      "wait_for", "performance_analyze_insight"
+    ]) {
       expect(chromeDevToolsToolRisk(name), name).toBe("read");
     }
   });

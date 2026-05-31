@@ -242,6 +242,13 @@ the generic layers below because they test what makes Muse an *agent*.
     Added both: openrouter routes through OpenRouterProvider under MUSE_LOCAL_ONLY=
     false, and an unrecognized provider id with no base URL returns undefined (not
     a crash). autoconfigure 450→452.
+  - SIXTEENTH MEASUREMENT (throwaway, reused install, NOT committed): `mcp/
+    chrome-devtools-mcp.ts` = **80.82%** — the real-Chrome web actuator's fail-close
+    risk classifier. The read-only set was only PARTIALLY asserted (5 of 9
+    observation tools), so a tool dropped from it would silently start requiring
+    approval for a screenshot/console read; asserted all 9. Plus the
+    blank/whitespace browserUrl → default-9222 fallback and the fingerprintSha256
+    config option (NoCoverage). mcp 1116→1118.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
