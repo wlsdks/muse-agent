@@ -428,6 +428,22 @@ map-reduce-and-manage(Cognition·Anthropic 3-agent harness).
   존재. 러너 스위트 무회귀(64/64).
 - **한계:** 세션 내 실제 Task-도구 위임/병렬 실행의 라이브 검증은 Claude Code 세션 안에서 확인(구조 검증까지 코드로).
 
+### 서른다섯 번째 실측 — Agent Teams 가이드 (Anthropic 공식 근거) (2026-05-31)
+
+[claude-code-integration §6](claude-code-integration.md)에 **Agent Teams**(협업·상호의존 병렬) 가이드 보강.
+Claude Code Agent Teams **공식 문서** 풀텍스트 + Anthropic 멀티에이전트 리서치 시스템 근거.
+
+- **정확 사실(공식):** 켜기 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`(settings.json/env)·**v2.1.32+**·
+  리드/팀메이트(독립 세션·격리 컨텍스트)·**공유 태스크리스트(파일락 클레임·의존 추적)**·**메일박스 P2P**·
+  보통 3~5명. 서브에이전트(중앙 경유·단일 최종 메시지)와의 차이표 포함.
+- **하네스 결속(핵심 발견):** Claude Code가 **서브에이전트 정의를 팀메이트로 재사용**을 공식 지원 →
+  우리 `harness-{planner,worker,evaluator,curator}`가 **서브에이전트로도 팀메이트로도** 그대로 쓰임.
+  팀 훅 `TeammateIdle`/`TaskCreated`/`TaskCompleted`(exit 2 차단)로 우리 fail-closed 게이트를 팀 레벨 강제.
+- **비용 규율(Anthropic):** 멀티에이전트 ~15배 토큰 → 고가치·고병렬에만, 복잡도에 맞춰 규모. 위임 품질
+  (목표·출력·도구·경계)이 최대 레버리지. 강한 의존·같은 파일=팀 대신 순차(`shareContext`).
+- **확인된 것:** "Claude Code 팀 활용"이 공식 사실·하네스 결속과 함께 문서화. 링크 0·러너 64/64 무회귀.
+- **한계:** Agent Teams는 실험 런타임 기능(파일 정의 아님)·인-프로세스 `/resume` 미복원·한 번에 한 팀.
+
 ## 한 줄 요약 (하네스 검증 체크리스트)
 
 1. **데이터 출처**를 먼저 인증했나(0층)?
