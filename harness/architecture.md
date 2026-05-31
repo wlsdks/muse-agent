@@ -84,10 +84,11 @@ related: [README.md, team-roles.md, handoff-template.md, role-prompts.md, verifi
 | 11 | 디버깅·DX | [debugging-and-dx](debugging-and-dx.md) — 트레이스→격리→결정론 재현→회귀 | ✅ |
 | 12 | 사람 개입(HITL) | 게이트·승인·체크인 | ✅ |
 
-**한 줄 결론:** **12개 카테고리 전부 ✅ 문서화** (⬜ 0 / 🟡 0) **+ 실제 Claude Code로 4종 실측 통과**
-(평가자·플래너 단일, 플래너→평가자·플래너→워커→평가자 연쇄 — [harness-acceptance §7.5](harness-acceptance.md)).
-이제는 빈 칸 채우기가 아니라 **심화·실측(실제 테스트)·
-팀 점검**으로 완성도를 올리는 단계입니다(실측 진행 중 — 4종 통과).
+**한 줄 결론:** **12개 카테고리 전부 ✅ 문서화** (⬜ 0 / 🟡 0) **+ 실제 Claude Code로 다수 실측 통과**
+(평가자 양방향·빈기준 막힘·워커 수렴·3역할 연쇄 + 권한·메모리·압축 게이트 — 반복 pass^k 포함,
+[harness-acceptance §7.5](harness-acceptance.md)). **그리고 이제 참고 문서가 아니라 활성·포터블**:
+진입점 [AGENTS.md](AGENTS.md)로 에이전트가 읽고 따르며(이 저장소는 루트 `AGENTS.md`·`CLAUDE.md`에서
+연결), [INSTALL](INSTALL.md)로 어떤 프로젝트에든 `harness/` 폴더째 복사해 재사용합니다.
 
 ## 4. 다음에 채울 것 (우선순위)
 
@@ -98,8 +99,9 @@ related: [README.md, team-roles.md, handoff-template.md, role-prompts.md, verifi
 5. ~~컨텍스트 압축~~ → [context-compaction](context-compaction.md) ✅.
 6. ~~권한 매트릭스~~ → [permission-matrix](permission-matrix.md) ✅ · ~~메모리 계층~~ → [memory-layers](memory-layers.md) ✅.
 
-**모든 칸 ✅ — 다음 단계(완성도):** ① 팀 선언 점검(team-roles·role-prompts ↔ muse-mapping) ②
-실제 Claude Code 한 조각 테스트 → harness-acceptance 기록 ③ 각 문서 심화·실측 보강.
+**모든 칸 ✅ + 활성·포터블 완료 — 남은 단계:** ① 게이트를 코드로 강제하는 최소 러너 구현
+([runner-spec](runner-spec.md)의 §7 적합성 매트릭스 통과) ② 더 다양·모호한 골든 과제로 pass^k 표본 확대
+③ LLM 평가자를 사람 라벨에 보정(TPR/TNR)해 판정 신뢰도 정량화.
 
 > 이 자가평가는 외부 권위 체크리스트로 측정한 것이며, 칸이 채워질 때마다 위 표의 상태를 갱신합니다.
 > 측정 가능한 진전(빈 칸 → 채움)이 곧 "최고의 하네스"로 가는 길입니다.
@@ -110,3 +112,8 @@ related: [README.md, team-roles.md, handoff-template.md, role-prompts.md, verifi
 - Adnan Masood — [Agent Harness Engineering: The Rise of the AI Control Plane](https://medium.com/@adnanmasood/agent-harness-engineering-the-rise-of-the-ai-control-plane-938ead884b1d) (15-모듈 컴포넌트 모델·위험 taxonomy)
 - Atlan — [Best AI Agent Harness Tools 2026](https://atlan.com/know/best-ai-agent-harness-tools-2026/)
 - Braintrust — [Agent Observability 2026](https://www.braintrust.dev/articles/agent-observability-complete-guide-2026)
+- Anthropic — [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) · [Effective context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) (컨텍스트 리셋·구조화 핸드오프·압축)
+- [AGENTS.md](https://agents.md/) — OpenAI 발원·Linux Foundation 표준, 6만+ 레포가 채택한 교차도구 에이전트 지시 포맷(이 하네스의 진입점 형식)
+- Addy Osmani — [Agent Harness Engineering](https://addyosmani.com/blog/agent-harness-engineering/) ("모델이 아니라 설정 문제" — 에이전트 실패의 ~60%가 하네스에서 비롯)
+- Cognition — [Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) → [Multi-Agents: What's Actually Working](https://cognition.ai/blog/multi-agents-working) (2026: 쓰기는 단일 스레드, 보조 에이전트는 행위가 아닌 지능을 더하는 map-reduce-and-manage)
+- Hamel Husain — [Using LLM-as-a-Judge](https://hamel.dev/blog/posts/llm-judge/) (판정자를 사람 라벨에 보정)
