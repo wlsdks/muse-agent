@@ -645,6 +645,18 @@ the generic layers below because they test what makes Muse an *agent*.
     exactly the three know-how skills each tagged no-exec + "Never executed"; the museHmac
     security scheme + know-how media type as default I/O; and a recon-surface check that the
     serialized card leaks no home path / email / internal tool name. a2a 109->115.
+  - FORTY-SEVENTH (cross-package sweep → a2a; allowlist+secret source): a proper SYMBOL-level
+    coverage scan across scheduler/multi-agent/auth/calendar/voice/db/resilience/observability/
+    cache/runtime-*/prompts/agent-specs found those packages WELL-COVERED (class-based stores
+    are barrel-imported by symbol — the earlier filename-grep NOTEST flags were false). The one
+    true remaining gap was `packages/a2a` `peer-config.ts` (60L, `loadPeerConfig`) — the swarm
+    allowlist + per-peer HMAC secret source. First suite (7 tests, temp files + injected env):
+    missing file / malformed JSON / non-object root → empty config (nothing sends or is
+    accepted); selfId + inline-secret peer load into the registry allowlist; a secret resolved
+    from `secretEnv` (kept OUT of the plaintext file); a peer whose secret doesn't resolve
+    (no inline + absent/empty env var) is DROPPED — never a secret-less peer; a malformed entry
+    (missing id/url) is dropped without failing the whole load; inline secret precedence over
+    secretEnv + optional label carried. Completes the a2a security surface. a2a 115->122.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
