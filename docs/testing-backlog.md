@@ -2246,3 +2246,13 @@ the generic layers below because they test what makes Muse an *agent*.
     with waitForHits(n) that polls readRecallHits until the entries land (≤2s ceiling) —
     deterministic, returns the instant the write completes. Negative test keeps the fixed
     wait (no write is ever issued there). autoconfigure 470 green across repeated runs.
+
+- [x] **scheduler/scheduler-helpers — 4 zero-coverage input validators.**
+    A per-function census found validateCronExpression, validateJobName,
+    validateExecutionTimeout, requireText with ZERO test refs (siblings validateTimezone/
+    validateRetryConfig ARE tested) — these guard untrusted scheduled-job input. New
+    tests pin: cron 5/6-field + @daily accepted, wrong-count/unparseable/unsupported-macro
+    rejected; blank job name rejected; execution timeout undefined/0 allowed, [1000,
+    3_600_000] bounds, and the NaN/Infinity guard (which raw < / > comparisons miss);
+    requireText trims + throws the caller's message on blank/null/undefined. Pre-verified
+    against dist. scheduler 91 tests green.
