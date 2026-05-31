@@ -24,7 +24,7 @@ Every commit must clear, before you claim it:
    `node apps/cli/scripts/verify-tool-selection.mjs "<prompt>" <tool>` (one
    `qwen3:8b` round, ~1 min, exit 0/1). Reserve the full `pnpm smoke:live`
    sweep for broad regression. **LOCAL OLLAMA QWEN ONLY** — never a cloud API;
-   never the slow 35b for a single check (it stalls — see EXPANSION-LOG.md). If
+   never the slow 35b for a single check (it stalls). If
    Ollama is down, fixing that is the turn's work.
 4. **Interactive chat change → an `ink-testing-library` render test** (see
    `apps/cli/src/chat-ink-render.test.ts`) that drives the keystroke→frame path.

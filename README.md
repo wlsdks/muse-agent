@@ -96,16 +96,14 @@ These are deliberate product boundaries, enforced in code — not TODOs:
   The approval gate is fail-closed: deny / timeout / ambiguous
   recipient ⇒ nothing is sent. Messaging sends (`muse.messaging.send`)
   are gated by the runtime approval gate in the shipping CLI / API
-  paths and now also self-record every send to the action log (see
-  [`docs/audit/2026-05-25-feature-usecase-audit.md`](docs/audit/2026-05-25-feature-usecase-audit.md)
-  F-1).
+  paths and now also self-record every send to the action log.
 - **Single user, single environment.** No multi-tenant accounts, no
   shared workspace, no RBAC. Identity is your local `$USER`.
 - **Vision input is provider-limited.** Image attachments are
   serialized only on the OpenAI Chat-Completions path,
   OpenAI-compatible / OpenRouter, and Gemini. They are **not** sent on
   Anthropic (capability declared but unwired) or local Ollama, and not
-  on the OpenAI Responses path. See the vision matrix in the audit doc.
+  on the OpenAI Responses path.
 
 ## Architecture at a glance
 

@@ -1,8 +1,20 @@
+---
+title: 로컬 LLM 설치 가이드 (Local LLM setup)
+audience: [사용자, 개발자]
+purpose: 클라우드 비용 없이 로컬 오픈소스 모델(Ollama)로 Muse를 띄우는 방법
+updated: 2026-05-30
+related: [README.md, SYSTEM-MAP.md]
+---
+
 # Local LLM setup
 
 Muse is provider-neutral — it talks to any LLM through a Muse-owned
 adapter. The easiest way to run Muse without paying for cloud API
 calls is to point it at a local open-source model via **Ollama**.
+
+> 처음이라면 모델을 띄운 뒤 `muse onboard`를 실행하세요 — 노트 폴더
+> 지정 → 자료 인입 → 첫 질문까지 한 단계씩 이끌어 **비공개·출처 인용
+> 첫 답변**까지 데려다줍니다. 기능 전체 지도는 [SYSTEM-MAP](SYSTEM-MAP.md).
 
 This document covers four tiers, smallest to largest:
 

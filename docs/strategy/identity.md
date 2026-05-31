@@ -1,8 +1,19 @@
+---
+title: Muse 정체성 — 단 하나의 강점과 그 이유
+audience: [기획자, 개발자, AI 에이전트]
+purpose: Muse의 포지셔닝(왜 Muse인가) — 모든 표면이 반영하는 기준
+updated: 2026-05-30
+related: [../SYSTEM-MAP.md, ../FEATURES.md, ../README.md]
+---
+
 # Muse identity — the one strength, and why
 
 > Decided 2026-05-30 (with 진안), after three adversarial multi-agent passes
 > grounding in the real Hermes/OpenClaw repos + Muse's own code. This is the
 > standing positioning every surface (README, GitHub, CLAUDE.md) reflects.
+>
+> 이 문서는 "왜 Muse인가"(전략·포지셔닝)입니다. "무엇을 할 수 있나"는
+> [기능 구조 지도](../SYSTEM-MAP.md)와 [기능 정의서](../FEATURES.md)를 보세요.
 
 ## The one line
 

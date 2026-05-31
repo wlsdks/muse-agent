@@ -1,3 +1,11 @@
+---
+title: Muse의 기능적 차별점 — "작업을 보여준다(Shows its work)"
+audience: [기획자, 개발자, AI 에이전트]
+purpose: 로컬·프라이버시를 넘어선, Muse를 쓸 기능적 이유 — 모든 표면의 그라운딩+인용 게이트
+updated: 2026-05-30
+related: [identity.md, ../SYSTEM-MAP.md, ../FEATURES.md]
+---
+
 # Muse's functional edge — "Shows its work"
 
 > Decided 2026-05-30 (with 진안). Local-by-construction and privacy are
