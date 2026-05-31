@@ -117,6 +117,7 @@ async function buildTimeToolsScenario() {
     const cases = [
       { prompt: "What time is it now?", expectTool: "time_now", note: "now" },
       { prompt: "What day of the week is it right now in Seoul?", expectTool: "time_now", note: "current weekday → time_now, NOT next_weekday_date" },
+      { prompt: "오늘 며칠이야?", expectTool: "time_now", note: "KO today's-date query → time_now; was 0/5 before KO examples landed in the desc, now STABLE 5/5 — locks the fix against regression" },
       { prompt: "How many hours between 9am and 5:30pm today?", expectTool: "time_diff", requireArgs: ["from", "to"], note: "two-timestamp diff" },
       { prompt: "What is 3 days after 2026-05-26?", expectTool: "time_add", argIncludes: /2026-05-26/, requireArgs: ["base"], note: "add — base value must be the prompt's date (ArgumentCorrectness); STABLE 3/3" },
       { prompt: "How long ago was 2026-05-01 from now?", expectTool: "time_relative", requireArgs: ["at"], note: "relative-to-now (NOT time_diff)" },

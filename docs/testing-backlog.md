@@ -2091,3 +2091,16 @@ the generic layers below because they test what makes Muse an *agent*.
     each, 0 breaches), so no bug surfaced; the value is that arg-extraction regressions
     on UNSEEN phrasings are now caught, extending eval:tools' fixed-prompt argsPresent
     checks to continuous generated coverage.
+
+- [x] **fix(tools): time_now KO date/day phrasing selection (eval:explore time probe).**
+    Probing generated time-tool queries surfaced a KO selection gap: "오늘 며칠이야?"
+    (what's today's date) → 0/3 time_now (model abstained), while "지금 몇 시야?" (what
+    time) and the EN "what's today's date" worked. The time_now description had EN
+    examples for date/day-of-week but no Korean cue, so "며칠이야"/"무슨 요일이야" didn't
+    map. Fix: added KO examples ('지금 몇 시야', '오늘 며칠이야', '오늘 무슨 요일이야') to the
+    Use-when clause. Result: "오늘 며칠이야?" 0/3→5/5, plus '무슨 요일/날짜 알려줘' 5/5; no
+    regression on next_weekday_date / time_diff / EN (5/5). eval:tools 59→60 (added the
+    KO date case as a golden positive). Verified STABLE 5/5 before landing.
+    (A 2nd gap found and NOT yet fixed: KO "2026-05-01이 얼마나 지난 거야?" picks time_diff
+    instead of time_relative — the documented relative-vs-diff overlap; logged for a
+    future targeted slice.)

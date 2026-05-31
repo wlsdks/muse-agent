@@ -21,7 +21,7 @@ export function createTimeNowTool(now: () => Date): MuseTool {
     definition: {
       description:
         "Returns the CURRENT wall-clock instant right now: ISO-8601 UTC, epoch milliseconds, the current day-of-week (e.g. 'Tuesday'), and the resolved IANA timezone. " +
-        "Use when the user asks what the time, date, or day-of-week IS RIGHT NOW or today (e.g. 'what time is it', 'what day is it today in Seoul', \"what's today's date\"). " +
+        "Use when the user asks what the time, date, or day-of-week IS RIGHT NOW or today (e.g. 'what time is it', 'what day is it today in Seoul', \"what's today's date\", Korean '지금 몇 시야', '오늘 며칠이야', '오늘 무슨 요일이야'). " +
         "Do NOT use to find the date of a FUTURE named weekday ('when is next Monday') — that is next_weekday_date.",
       inputSchema: {
         additionalProperties: false,
