@@ -557,6 +557,16 @@ the generic layers below because they test what makes Muse an *agent*.
     with no inboxFile (clean "not supported", never a silent []), and WITH a real temp inbox file
     (appendInbound round-trip) returns exactly what the webhook persisted — newest-first — honouring
     the limit. messaging 326->332.
+  - THIRTY-NINTH (cross-package sweep → messaging; credential-at-rest security): `packages/
+    messaging` `credential-store.ts` (94L) had **ZERO test refs** — the single-file JSON store
+    holding bot tokens (Telegram/Discord/Slack/LINE) with a chmod-600 atomic write. First suite
+    (8 tests, temp files): ENOENT → undefined/empty (never throws on a not-yet-created store);
+    save round-trip + providers listed SORTED; merge without clobbering existing providers; the
+    **0600 file mode** security contract (a bot token must not be world-readable); no `.tmp`
+    file left behind after the atomic tmp+rename; remove an existing provider + silent no-op
+    for an unknown one (no throw, no write); load returns a DEFENSIVE COPY (mutating the result
+    doesn't corrupt the store); a corrupt/non-object file is treated as empty rather than
+    crashing AND the store recovers (can save over it). messaging 332->340.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
