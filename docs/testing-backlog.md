@@ -506,6 +506,57 @@ the generic layers below because they test what makes Muse an *agent*.
     (read < write < execute, regardless of input order) and, among same-risk, the MORE
     keyword-relevant one (3 hits beats 1, relevance outranking the name tiebreak). tools
     226->229.
+  - THIRTY-FIFTH (cross-package sweep begins — human directive 2026-05-31: cover EVERY
+    package, not just core; dist-verified): `packages/memory` `memory-token-trim.ts` (665L)
+    had **ZERO test file** despite being the conversation trimmer that keeps the local
+    model within its context budget WITHOUT breaking tool-call/response pairing (a corrupt
+    trim = a broken request to the model). First suite (14 tests) over the full public
+    contract with a deterministic 1-char=1-token estimator: estimateConversationTokens
+    (sum + per-message structure overhead, empty→0); the budget arithmetic (hard budget =
+    window - system - outputReserve - toolReserve); no-op under budget (triggeredBy "none");
+    hard-limit keeps only the last user turn at non-positive budget (but a lone message is
+    returned intact), and trims oldest-first to fit while preserving system + latest user;
+    the WORKING-budget proactive trigger (fires under the hard cap → "working_budget",
+    clamped down when set above the hard cap, silent when under it); structural integrity
+    (an orphaned tool response whose tool-call was trimmed is removed); and compaction-
+    summary insertion (fires past compactionThreshold, suppressed by insertSummary:false,
+    gated by a custom threshold). memory 282->296.
+  - THIRTY-SIXTH (cross-package sweep; dist-verified): `packages/memory`
+    `memory-tool-output-trim.ts` (119L) had **ZERO test file** — the deterministic head+tail
+    truncation the runtime applies to EVERY tool result (Anthropic names tool output as the
+    #1 context-bloat source; a single large result can blow the local model's window in one
+    call). First suite (8 tests): no-op when maxChars<=0 or already-fits (incl. the `<=`
+    boundary at exactly the cap); the head+tail elision NEVER exceeds maxChars (the safety
+    invariant) while preserving the head ('H'…) and tail (…'T') with a `[truncated: N of M
+    total]` marker; the optional hint surfaced in the marker; headRatio=0 drops the head but
+    keeps the tail; a non-finite/out-of-range headRatio (NaN/Inf/-1/5) falls back to 0.7
+    (never NaN-poisons the slice); a pathologically tiny budget returns marker-only still
+    within the cap; and idempotency (a trimmed output that fits the same cap is not re-cut).
+    memory 296->304.
+  - THIRTY-SEVENTH (cross-package sweep → messaging; contract-faithful HTTP fake): `packages/
+    messaging` `discord-provider.ts` (260L) had **ZERO test refs** despite being an OUTBOUND
+    third-party sender (outbound-safety.md: a send capability is delivered only when its test
+    drives the REAL code path against a contract-faithful fake — never a stubbed registry).
+    First suite (9 tests) over a recording `fetch` fake returning real Discord REST shapes:
+    SEND POSTs to /v10/channels/{dest}/messages with `Bot` auth → OutboundReceipt; mention
+    suppression (`allowed_mentions:{parse:[]}` so a literal @everyone in agent output can't
+    ping the server, text still verbatim); 2000-char hard-limit truncation (a 2001..4096 msg
+    would 400); empty text rejected at validation BEFORE any network call (zero fetch calls);
+    a non-OK response → UPSTREAM_FAILED carrying status + the Discord error message; an OK
+    response with no id → UPSTREAM_FAILED (no silent fake receipt). INBOUND requires the
+    channel id (INVALID_DESTINATION, no guessed channel), parses+filters empty-content
+    entries, prefers global_name over username for the sender, and maps a non-OK fetch to
+    UPSTREAM_FAILED+status. messaging 317->326.
+  - THIRTY-EIGHTH (cross-package sweep → messaging; contract-faithful HTTP fake + temp-file
+    round-trip): `packages/messaging` `line-provider.ts` (132L) had **ZERO test refs** —
+    another OUTBOUND third-party sender. First suite (6 tests): SEND POSTs /v2/bot/message/push
+    with a `{messages:[{text,type:"text"}], to}` body + Bearer auth, and since LINE's push API
+    returns no id, the provider synthesises a `line:{iso}` receipt via an injectable now() (pinned
+    deterministically); empty text rejected at validation BEFORE any network call; a non-OK push
+    → UPSTREAM_FAILED carrying status + the LINE error message. INBOUND throws INVALID_DESTINATION
+    with no inboxFile (clean "not supported", never a silent []), and WITH a real temp inbox file
+    (appendInbound round-trip) returns exactly what the webhook persisted — newest-first — honouring
+    the limit. messaging 326->332.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
