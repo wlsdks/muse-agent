@@ -2188,3 +2188,12 @@ the generic layers below because they test what makes Muse an *agent*.
     insights-win guard — a count summary is only a FALLBACK, so with real insights
     present no count line is appended (`normalized.length === 0`). New tests pin all
     three. Pre-verified against dist. agent-core 1241 tests green.
+
+- [x] **resilience/ModelFallbackStrategy — failure branches (exhaustion / throw-skip / cancel / metrics).**
+    The fallback chain had only a happy-path test (tries models in order until one
+    returns non-blank). Four real branches were uncovered: (1) EVERY model yields blank
+    → undefined (exhaustion, distinct from a throw); (2) a fallback provider that THROWS
+    is caught and the NEXT model is tried (catch-and-continue, attempts=[a,b]); (3) a
+    cancellation (AbortError) mid-fallback is RE-THROWN, not swallowed — a user abort must
+    propagate; (4) recordFallbackAttempt logs each model's outcome (a:false, b:true).
+    Pre-verified against dist. resilience 25 tests green.

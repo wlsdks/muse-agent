@@ -332,6 +332,51 @@ describe("fallback strategies", () => {
     expect(response?.output).toBe("fallback answer");
     expect(attempts).toEqual(["empty", "backup"]);
   });
+
+  it("returns undefined when EVERY fallback model yields blank output (exhausted, not a throw)", async () => {
+    const strategy = new ModelFallbackStrategy({
+      fallbackModels: ["openai/a", "openai/b"],
+      providers: [createProvider("openai", async (request) => ({ id: "x", model: request.model, output: "" }))]
+    });
+    await expect(strategy.execute({ messages: [] }, new Error("down"))).resolves.toBeUndefined();
+  });
+
+  it("skips a fallback provider that THROWS and continues to the next (catch-and-continue)", async () => {
+    const attempts: string[] = [];
+    const strategy = new ModelFallbackStrategy({
+      fallbackModels: ["openai/a", "openai/b"],
+      providers: [createProvider("openai", async (request) => {
+        attempts.push(request.model);
+        if (request.model === "a") throw new Error("provider down");
+        return { id: "x", model: request.model, output: "recovered" };
+      })]
+    });
+    const response = await strategy.execute({ messages: [] }, new Error("down"));
+    expect(response?.output).toBe("recovered");
+    expect(attempts).toEqual(["a", "b"]); // proves it tried "a", caught, moved on
+  });
+
+  it("re-throws a cancellation mid-fallback instead of swallowing it (user abort must propagate)", async () => {
+    const strategy = new ModelFallbackStrategy({
+      fallbackModels: ["openai/a", "openai/b"],
+      providers: [createProvider("openai", async () => {
+        throw Object.assign(new Error("aborted"), { name: "AbortError" });
+      })]
+    });
+    await expect(strategy.execute({ messages: [] }, new Error("down")))
+      .rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("records each fallback attempt's outcome through the metrics recorder", async () => {
+    const seen: string[] = [];
+    const strategy = new ModelFallbackStrategy({
+      fallbackModels: ["openai/a", "openai/b"],
+      metricsRecorder: { recordFallbackAttempt: (model, ok) => seen.push(`${model}:${ok.toString()}`) },
+      providers: [createProvider("openai", async (request) => ({ id: "x", model: request.model, output: request.model === "b" ? "ok" : "" }))]
+    });
+    await strategy.execute({ messages: [] }, new Error("down"));
+    expect(seen).toEqual(["openai/a:false", "openai/b:true"]);
+  });
 });
 
 function createProvider(
