@@ -695,6 +695,16 @@ the generic layers below because they test what makes Muse an *agent*.
     safety); a transport error → failed; a hung approved action TIMES OUT via AbortController
     once the wall-clock cap passes; and the (redacted) request body is recorded in the
     action-log entry. mcp 1130->1137.
+  - FIFTY-FIRST (cross-package sweep → mcp; OUTBOUND-SAFETY third send capability): `packages/
+    mcp` `message-send.ts` `sendMessageWithApproval` (96L, **ZERO test refs**) — the
+    messaging-tool analogue of email/web send, completing the outbound-sender trio. First suite
+    (5 tests, recording registry fake + temp action-log): DEFAULT-APPROVE (no self-gate — the
+    shipping surfaces gate via the runtime toolApprovalGate) still sends AND logs "performed"
+    (the gap muse.messaging.send had vs email/web/home); the injected gate sees the EXACT draft
+    {providerId,destination,text} (draft-first); DENIED → no send + refusal logged; GATE THROWS
+    → fail-closed no send ("approval gate error"); provider SEND FAILS → send-failed, logged
+    "failed". Completes the email/web/message outbound-send trio under outbound-safety.md.
+    mcp 1137->1142.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
