@@ -1163,8 +1163,9 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   for (const s of userSkills) skillMap.set(s.name, s);
   const skills = [...skillMap.values()].sort((a, b) => a.name.localeCompare(b.name));
   const authoredStore = new AuthoredSkillStore({ dir: authoredSkillsDir });
-  // RL over skills: a skill corrected into the avoid floor (from prior sessions)
-  // is dropped from this session's prompt entirely. Loaded once at start.
+  // RL over skills (from prior sessions): a skill corrected into the avoid
+  // floor is dropped from this session's prompt entirely; a reinforced one
+  // wins the limited body slots. Loaded once at start.
   const skillRewards = await readSkillRewards(resolveSkillRewardsFile(process.env)).catch(
     () => ({}) as Record<string, number>
   );
@@ -1175,7 +1176,8 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
       (skill) => {
         if (skill.sourceInfo.source === "authored") void authoredStore.recordUsage(skill.name);
       },
-      (name) => isSkillAvoided(skillRewards[name])
+      (name) => isSkillAvoided(skillRewards[name]),
+      (name) => skillRewards[name] ?? 0
     );
   const skillInfos = skills.map((s) => ({ description: s.description, name: s.name }));
 

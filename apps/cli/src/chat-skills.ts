@@ -12,6 +12,8 @@ import type { Skill } from "@muse/skills";
 
 const SKILL_BODY_CHARS = 600;
 const DEFAULT_MAX_BODIES = 2;
+/** How much one reward point shifts a relevant skill's rank (fraction of a token hit) — proven skills surface first without overriding relevance. Mirrors the playbook's reward weight. */
+const SKILL_REWARD_RANK_WEIGHT = 0.5;
 
 // Generic words that would otherwise make every skill "match" every prompt
 // (skill descriptions are written "Use when the user wants to …").
@@ -42,7 +44,8 @@ export function selectRelevantSkills(
   skills: readonly Skill[],
   prompt: string,
   max: number = DEFAULT_MAX_BODIES,
-  isAvoided?: (name: string) => boolean
+  isAvoided?: (name: string) => boolean,
+  rewardOf?: (name: string) => number
 ): Skill[] {
   const promptTokens = contentTokens(prompt);
   if (promptTokens.size === 0) return [];
@@ -50,16 +53,19 @@ export function selectRelevantSkills(
     .filter((skill) => !isAvoided?.(skill.name)) // RL avoidance: a corrected-into-the-floor skill is not applied
     .map((skill) => {
       const skillTokens = contentTokens(`${skill.name} ${skill.description}`);
-      let score = 0;
+      let overlap = 0;
       for (const skillToken of skillTokens) {
         for (const promptToken of promptTokens) {
-          if (tokenHits(promptToken, skillToken)) { score += 1; break; }
+          if (tokenHits(promptToken, skillToken)) { overlap += 1; break; }
         }
       }
-      return { score, skill };
+      // Reward shapes the rank AMONG relevant skills (a proven one surfaces
+      // first), but never makes an irrelevant skill relevant — the overlap>0
+      // gate below stays on raw token overlap. Mirrors the playbook ranking.
+      return { overlap, rank: overlap + SKILL_REWARD_RANK_WEIGHT * (rewardOf?.(skill.name) ?? 0), skill };
     })
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score || a.skill.name.localeCompare(b.skill.name));
+    .filter((entry) => entry.overlap > 0)
+    .sort((a, b) => b.rank - a.rank || a.skill.name.localeCompare(b.skill.name));
   return scored.slice(0, Math.max(0, max)).map((entry) => entry.skill);
 }
 
@@ -67,19 +73,21 @@ export function selectRelevantSkills(
  * The skills system-prompt block for one turn: the relevant skills carry their
  * full body, the rest are name+description index lines only. `prompt` omitted
  * (or no match) → all index-only. `onSelected` fires for each skill whose
- * body is injected this turn — callers use it to record usage. `isAvoided`
- * (the RL signal) drops a repeatedly-corrected skill from the prompt entirely —
- * no body, not even an index line — so the model stops applying it.
+ * body is injected this turn — callers use it to record usage. The RL signals:
+ * `isAvoided` drops a repeatedly-corrected skill from the prompt entirely (no
+ * body, not even an index line); `rewardOf` lets a proven (reinforced) skill
+ * win the limited body slots over an equally-relevant unproven one.
  */
 export function buildSkillsPrompt(
   skills: readonly Skill[],
   prompt = "",
   onSelected?: (skill: Skill) => void,
-  isAvoided?: (name: string) => boolean
+  isAvoided?: (name: string) => boolean,
+  rewardOf?: (name: string) => number
 ): string {
   const eligible = isAvoided ? skills.filter((skill) => !isAvoided(skill.name)) : skills;
   if (eligible.length === 0) return "";
-  const selectedSkills = selectRelevantSkills(eligible, prompt);
+  const selectedSkills = selectRelevantSkills(eligible, prompt, DEFAULT_MAX_BODIES, undefined, rewardOf);
   const relevant = new Set(selectedSkills.map((skill) => skill.name));
   if (onSelected) {
     for (const skill of selectedSkills) onSelected(skill);
