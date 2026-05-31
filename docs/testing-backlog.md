@@ -2401,3 +2401,15 @@ the generic layers below because they test what makes Muse an *agent*.
     the one real guard left, queryPlaybook's per-user filter, is now covered: no userId → all,
     a userId → ONLY that user's strategies (u1 never sees u2's "b"), unknown user → []. The
     per-user playbook isolation is a privacy guard, not a passthrough. Pre-verified vs dist. mcp 1260 green.
+
+- [x] **fix(mcp): serialize appendProactiveHistory (concurrency bug — found & fixed).**
+    Pursuing the backlog "migrate ~10 RMW stores onto withFileMutationQueue" item, found
+    a REAL bug: appendProactiveHistory did a non-serialized read→append→write. Under
+    concurrent appends it (a) lost updates (both read the same snapshot, last write
+    clobbers — a lost proactive-history entry corrupts trust-ledger precision) AND (b)
+    CRASHED with ENOENT — two appends in the same ms generated the same
+    `tmp-${pid}-${Date.now()}` path, one renamed it away before the other. Reproduced
+    against dist (25 concurrent → crash). Fix: wrap the RMW in withFileMutationQueue
+    (the per-file serializer the playbook/consent/objective stores already use). After:
+    25 concurrent appends → all 25 kept, no crash; capacity cap still honoured under
+    concurrent over-cap. New regression test proactive-history-concurrent.test.ts. mcp 1262 green.
