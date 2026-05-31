@@ -744,6 +744,18 @@ the generic layers below because they test what makes Muse an *agent*.
     safety core already refused it); listPending returns only pending, most-recent-first;
     setQuarantineStatus promotes/rejects a pending entry exactly once (stamps resolvedAtMs) and
     returns null on an already-resolved or unknown id (no double-promote). mcp 1151->1156.
+  - FIFTY-SIXTH (cross-package sweep → mcp; proactive re-evaluation engine): `packages/mcp`
+    `objective-evaluation-loop.ts` `runDueObjectives` (150L, **ZERO test refs**) — the
+    standing-objective re-evaluation engine (the long-horizon counterpart to runDueFollowups,
+    NORTH-STAR-adjacent proactive firing). First suite (7 tests, temp objectives file +
+    injected evaluate/act/escalate/now): MET fires the action exactly once + flips to done
+    (durable); UNMEETABLE escalates with the reason + flips to escalated (never silently
+    dropped); UNMET backs off with an exponential nextEvalAt (base*2^(attempts-1)) and stays
+    active (never spins); UNMET past maxAttempts escalates instead of retrying forever; only
+    DUE objectives are picked (skips done/cancelled + a future nextEvalAt, includes a past
+    one); maxPerTick caps the per-tick batch so a backlog can't burst; and FAIL-OPEN — an
+    evaluator error is recorded, leaves the objective active for the next tick, and doesn't
+    crash sibling objectives. mcp 1156->1163.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
