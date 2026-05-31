@@ -299,6 +299,7 @@ export function parseVEvent(rawIcs: string, providerId: string, fallbackId: stri
   const uid = matchIcs(ics, "UID");
   const location = matchIcs(ics, "LOCATION");
   const description = matchIcs(ics, "DESCRIPTION");
+  const rrule = matchIcsLine(ics, "RRULE")?.value;
 
   if (!summary || !dtstart) {
     return undefined;
@@ -322,7 +323,8 @@ export function parseVEvent(rawIcs: string, providerId: string, fallbackId: stri
     startsAt,
     title: summary,
     ...(location ? { location } : {}),
-    ...(description ? { notes: description } : {})
+    ...(description ? { notes: description } : {}),
+    ...(rrule ? { recurrence: rrule } : {})
   };
 }
 

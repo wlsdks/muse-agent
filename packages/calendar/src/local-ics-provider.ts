@@ -11,7 +11,7 @@
 import { readFile } from "node:fs/promises";
 
 import { CalendarProviderError } from "./errors.js";
-import { parseIcsCalendar } from "./ics-parse.js";
+import { expandRecurringEvent, parseIcsCalendar } from "./ics-parse.js";
 import type {
   CalendarEvent,
   CalendarEventInput,
@@ -54,9 +54,12 @@ export class LocalIcsCalendarProvider implements CalendarProvider {
     } catch {
       return []; // missing/unreadable .ics ⇒ no events, never throw
     }
-    return parseIcsCalendar(text, this.id).filter(
-      (event) => event.endsAt.getTime() >= range.from.getTime() && event.startsAt.getTime() <= range.to.getTime()
-    );
+    return parseIcsCalendar(text, this.id)
+      // Expand recurring events so a weekly/daily series surfaces its NEXT
+      // instance in the window even though the base DTSTART is in the past.
+      .flatMap((event) => expandRecurringEvent(event, range.from, range.to))
+      .filter((event) => event.endsAt.getTime() >= range.from.getTime() && event.startsAt.getTime() <= range.to.getTime())
+      .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
   }
 
   createEvent(_input: CalendarEventInput): Promise<CalendarEvent> {

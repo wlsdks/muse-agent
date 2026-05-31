@@ -10,6 +10,8 @@ export interface CalendarEvent {
   readonly tags?: readonly string[];
   readonly url?: string;
   readonly raw?: unknown;
+  /** Raw iCalendar RRULE (e.g. "FREQ=WEEKLY;BYDAY=MO") when the event recurs. */
+  readonly recurrence?: string;
 }
 
 export interface CalendarEventInput {

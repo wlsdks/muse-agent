@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LocalIcsCalendarProvider, parseIcsCalendar } from "../src/index.js";
+import { LocalIcsCalendarProvider, expandRecurringEvent, parseIcsCalendar } from "../src/index.js";
 
 const ICS = [
   "BEGIN:VCALENDAR",
@@ -59,5 +59,51 @@ describe("LocalIcsCalendarProvider — read-only local .ics connector", () => {
     await expect(provider.createEvent({ title: "x", startsAt: new Date(), endsAt: new Date() })).rejects.toThrow(/read-only/);
     await expect(provider.updateEvent("evt-1", { title: "y" })).rejects.toThrow(/read-only/);
     await expect(provider.deleteEvent("evt-1")).rejects.toThrow(/read-only/);
+  });
+});
+
+describe("expandRecurringEvent + recurring .ics", () => {
+  const base = {
+    id: "standup", providerId: "ics", title: "Daily standup", allDay: false,
+    startsAt: new Date("2026-05-04T09:00:00Z"), endsAt: new Date("2026-05-04T09:15:00Z")
+  };
+  const from = new Date("2026-06-01T00:00:00Z");
+  const to = new Date("2026-06-08T00:00:00Z");
+
+  it("non-recurring event passes through unchanged", () => {
+    const out = parseIcsCalendar("BEGIN:VEVENT\r\nUID:x\r\nSUMMARY:One-off\r\nDTSTART:20260602T090000Z\r\nEND:VEVENT", "ics");
+    const expanded = out.flatMap((e) => expandRecurringEvent(e, from, to));
+    expect(expanded).toHaveLength(1);
+  });
+
+  it("a WEEKLY series anchored in the past surfaces its in-window instance(s)", () => {
+    const weekly = { ...base, recurrence: "FREQ=WEEKLY" }; // Mondays from 2026-05-04
+    const insts = expandRecurringEvent(weekly, from, to);
+    expect(insts.length).toBeGreaterThanOrEqual(1);
+    // every instance is inside the window and on the right weekday cadence
+    for (const e of insts) {
+      expect(e.startsAt.getTime()).toBeGreaterThanOrEqual(from.getTime() - 7 * 864e5);
+      expect(e.startsAt.getTime()).toBeLessThanOrEqual(to.getTime());
+    }
+    expect(insts.some((e) => e.startsAt.toISOString().startsWith("2026-06-01"))).toBe(true); // the in-window Monday (06-08T09:00 is past the `to` bound)
+  });
+
+  it("a DAILY series fills the window; INTERVAL + COUNT + UNTIL bound it", () => {
+    expect(expandRecurringEvent({ ...base, recurrence: "FREQ=DAILY" }, from, to).length).toBeGreaterThanOrEqual(6);
+    expect(expandRecurringEvent({ ...base, recurrence: "FREQ=DAILY;COUNT=2" }, from, to)).toHaveLength(0); // only 2 instances, both in the past
+    const untilPast = expandRecurringEvent({ ...base, recurrence: "FREQ=DAILY;UNTIL=20260510T000000Z" }, from, to);
+    expect(untilPast).toHaveLength(0); // series ended before the window
+  });
+
+  it("an unsupported RRULE (e.g. MONTHLY) surfaces the base event, never fabricated instances", () => {
+    expect(expandRecurringEvent({ ...base, recurrence: "FREQ=MONTHLY" }, from, to)).toEqual([{ ...base, recurrence: "FREQ=MONTHLY" }]);
+  });
+
+  it("provider.listEvents expands a recurring .ics into in-window instances", async () => {
+    const ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:su\r\nSUMMARY:Weekly standup\r\nDTSTART:20260504T090000Z\r\nDTEND:20260504T091500Z\r\nRRULE:FREQ=WEEKLY\r\nEND:VEVENT\r\nEND:VCALENDAR";
+    const provider = new LocalIcsCalendarProvider({ file: "/x.ics", readFileImpl: async () => ics });
+    const events = await provider.listEvents({ from, to });
+    expect(events.length).toBeGreaterThanOrEqual(1);
+    expect(events.every((e) => e.title === "Weekly standup")).toBe(true);
   });
 });

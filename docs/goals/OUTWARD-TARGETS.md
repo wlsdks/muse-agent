@@ -89,7 +89,23 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   URI redacted; titles + ordinary text intact) + a LIVE render
   (`OPENAI_API_KEY=[redacted-openai-key]`), cited-answer+refusal unaffected.
   agent-core 1236 tests + `pnpm lint` 0/0. Remaining gate-first half: per-source
-  consent (default-OFF clipboard/selection flags). (this commit)
+  consent (default-OFF clipboard/selection flags) — DEFERRED: the ambient
+  run-context injection is currently dormant (no production code wires
+  `ambientSnapshotProvider`), so consent there would govern a path no user
+  hits; revisit when/if the ambient reader is wired live. (2415874a)
+
+- [x] **P37-3 Recurring (RRULE) events in the local .ics reader.** Real
+  calendars are mostly recurring meetings, whose base VEVENT (past DTSTART) is
+  filtered out of muse ask's now→+7d window — so without expansion a recurring
+  event never surfaced. `parseVEvent` captures the RRULE; `expandRecurringEvent`
+  expands FREQ=DAILY/WEEKLY (+INTERVAL/COUNT/UNTIL) into in-window instances
+  (capped; unsupported RRULE → base event, never fabricated); the provider
+  flat-maps it in listEvents. Proven by unit tests (weekly/daily/interval/
+  count/until/unsupported/passthrough/provider) + a LIVE muse ask on a
+  `FREQ=DAILY` .ics ("next standup … 2026-06-01 … [event: Engineering daily
+  standup]"; honest refusal on an uncovered query). calendar 127 tests +
+  `pnpm lint` 0/0. Scope: DAILY/WEEKLY only (MONTHLY/BYDAY-list unsupported →
+  base event). (this commit)
 
 **P36 — Background self-learning, brake-and-proof-first (loop-v2 PART A2 /
 B1).** The headline's "grows-with-you" core: Muse learns from corrections
