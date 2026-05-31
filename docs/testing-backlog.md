@@ -2168,3 +2168,14 @@ the generic layers below because they test what makes Muse an *agent*.
     test records 21 latencies (100..2100) and asserts p95 == 2000 (the 20th smallest,
     STRICTLY below max 2100), exercising the nearest-rank computation. Pre-verified
     against dist. agent-core 1236 tests green.
+
+- [x] **agent-core/model-invocation — applyCitationSanitisation + buildModelRequestWithWebSearch.**
+    model-invocation.test.ts covered invokeModel/recordTokenUsageEvent thoroughly but
+    NOT these two exports. applyCitationSanitisation is a SECURITY function — it drops
+    citations whose URL is a dangerous scheme (javascript:/data:) from what Muse shows
+    as sources; it was only exercised indirectly inside invokeModel (which never fed a
+    bad-scheme citation). New tests: keeps http(s) + strips javascript:/data: while
+    preserving other response fields; referential no-op when citations absent/empty.
+    buildModelRequestWithWebSearch: injects webSearchPolicy into metadata while keeping
+    existing metadata + request and not mutating the input. Pre-verified against dist.
+    agent-core 1239 tests green.
