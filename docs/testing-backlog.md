@@ -413,6 +413,18 @@ the generic layers below because they test what makes Muse an *agent*.
     match — so the lower clamp is unreachable and NOT asserted.) agent-core 1138→1150.
     (20 survivors: confidence/preference/category regex char-class variants + equivalent
     true?/if(false) defensive branches + prompt StringLiterals — pattern-coverage.)
+  - TWENTY-EIGHTH MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    pattern-suggestion.ts` — the behavior→anticipatory-offer synthesiser (Muse-original,
+    neither Hermes nor OpenClaw predicts from behavior; the whole risk is FABRICATION so the
+    negative path is first-class) — had 3 happy/NONE/empty tests. Deepened to 10 →
+    **81.48%** (22 killed, 5 survived). Added the prompt-body + request wiring against a
+    capturing fake provider: the grounded body renders category + 2-decimal confidence
+    (toFixed(2)) + facts + the detector draft; secrets in BOTH groundedFacts AND
+    fallbackSuggestion are redacted before the model (asserted exactly two
+    [redacted-anthropic-key] hits); temperature 0.3 / maxOutputTokens 80 defaults +
+    overrides; custom-redact; plus NONE-as-prefix decline, whitespace-only→trim→empty
+    decline, and a valid offer is trimmed. agent-core 1150→1157. (5 survivors: prompt
+    StringLiterals + the NONE regex char-class — pattern-coverage.)
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
