@@ -533,6 +533,20 @@ the generic layers below because they test what makes Muse an *agent*.
     (never NaN-poisons the slice); a pathologically tiny budget returns marker-only still
     within the cap; and idempotency (a trimmed output that fits the same cap is not re-cut).
     memory 296->304.
+  - THIRTY-SEVENTH (cross-package sweep → messaging; contract-faithful HTTP fake): `packages/
+    messaging` `discord-provider.ts` (260L) had **ZERO test refs** despite being an OUTBOUND
+    third-party sender (outbound-safety.md: a send capability is delivered only when its test
+    drives the REAL code path against a contract-faithful fake — never a stubbed registry).
+    First suite (9 tests) over a recording `fetch` fake returning real Discord REST shapes:
+    SEND POSTs to /v10/channels/{dest}/messages with `Bot` auth → OutboundReceipt; mention
+    suppression (`allowed_mentions:{parse:[]}` so a literal @everyone in agent output can't
+    ping the server, text still verbatim); 2000-char hard-limit truncation (a 2001..4096 msg
+    would 400); empty text rejected at validation BEFORE any network call (zero fetch calls);
+    a non-OK response → UPSTREAM_FAILED carrying status + the Discord error message; an OK
+    response with no id → UPSTREAM_FAILED (no silent fake receipt). INBOUND requires the
+    channel id (INVALID_DESTINATION, no guessed channel), parses+filters empty-content
+    entries, prefers global_name over username for the sender, and maps a non-OK fetch to
+    UPSTREAM_FAILED+status. messaging 317->326.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
