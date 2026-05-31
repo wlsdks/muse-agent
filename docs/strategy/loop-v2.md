@@ -504,6 +504,41 @@ rivals' strong copyable axis, and the local Qwen chains poorly. Do NOT pick an
 A2A slice; if it ever returns it is far-future privacy-preserving delegation
 under the local boundary, never the headline.
 
+## PERCEIVE BROADLY · ACT WITH CONFIRMATION · GROW BOTH (2026-05-31, 진안's call)
+The more Muse can READ and (safely) DO, the better it knows the user and the
+more it can do FOR them — so the capability surface is a CONTINUOUS, SELF-JUDGED
+GROWTH axis, not a fixed list. Two halves, two rules:
+  - PERCEIVE = READ-ONLY, GROW FREELY. Keep adding local read-only perception
+    connectors (see directive B3). Read may be broad BUT: local-only (never
+    egress what was read), per-source consent (macOS TCC), visible+reversible
+    (/memory shows what was read/inferred; the user can delete it). Never read
+    silently what a user would feel violated by.
+  - ACT = ALLOWED, BUT ALWAYS ASK-FIRST. Sending a message, drafting+sending
+    email, creating a calendar event, setting a reminder, booking/reserving,
+    filling a web form — these are NOT banned; GROW them. But EVERY outward /
+    state-changing act is DRAFT-FIRST: Muse produces the exact content, the
+    user EXPLICITLY confirms THAT content, then it acts — through the existing
+    fail-close seam (`toolApprovalGate` / `createChannelApprovalGate` /
+    `pending-approval-store` / `channel-approval-gate` over `email_send` /
+    `web_action` / `home_action`). Deny / timeout / ambiguous-recipient ⇒ NO
+    effect. The gate is WHAT MAKES growing actuation safe — it never relaxes
+    (outbound-safety.md).
+EACH FIRE MAY judge + add ONE capability (a read connector OR a gated actuator),
+value-ranked (value-to-creep for reads; value-to-blast-radius for acts),
+user-felt, and verified against MOCK data — never the user's real data; for an
+actuator, a contract-faithful HTTP fake proving deny/timeout/ambiguous ⇒ no
+effect ALONGSIDE the confirmed-path send.
+THE TENSION WITH ≤5–7 TOOLS, RESOLVED: the TOTAL capability surface may grow
+large, but the PER-TURN EXPOSED set stays ≤5–7 via the relevance filter /
+planForContext — growth is DEPTH + SELECTION, never dumping the whole registry
+at the local Qwen (tool-calling.md). Do NOT out-breadth the rivals; each new
+capability must be deep, felt, and SELECTED in one shot (prove with eval:tools).
+"행동 제약이 줄어든다" means: the more Muse can (gated-)do, the fewer things the
+user must do themselves — the SAFETY constraint (ask-first on any outward act)
+never relaxes; it is what lets actuation grow at all.
+HARD LINE (capability growth NEVER crosses it): banking / brokerage / payments /
+money movement / trading remain permanently out of scope (outbound-safety.md).
+
 ## WHAT IS BUILT vs WHAT IS THE WORK NOW (the #1 failure this loop has)
 Fabrication=0 holds and is swept green across every surface. The grounding
 GATE is built. Therefore these remain BANNED as a deliverable (each always
@@ -564,15 +599,28 @@ DO make Muse perceptibly grow and perceptibly feel like the SF confidant.
    intent router) is unbuilt, it is outward IF it passes the B2 guardrails —
    a slice that buys cinematic feel by weakening honesty/locality/
    reversibility/latency-honesty is REJECTED, not shipped.
-6. EARN REACH & ACTUATION, ONE AT A TIME, FOR REAL.
+6. GROW THE CAPABILITY SURFACE — READ + GATED ACT, SELF-JUDGED, ONE AT A TIME
+   (the continuous expansion axis — see "PERCEIVE BROADLY · ACT WITH
+   CONFIRMATION · GROW BOTH" above + directive B3). Each fire MAY judge + add
+   ONE capability; value-ranked, user-felt, mock-verified:
+     - ADD ONE READ-ONLY PERCEPTION CONNECTOR (directive B3) — a new local
+       source Muse can read to know the user better (calendar/messages/browser-
+       history/contacts/shell/files…). Read-only, local-only, per-source
+       consent, visible/reversible. Proof: against a generated MOCK of that
+       source, never the user's real data.
+     - ADD or HARDEN ONE GATED ACTUATOR — send message / draft+send email /
+       create calendar event / set reminder / book / fill web form. Draft-first,
+       ask-first, fail-close through the approval-gate seam; recipient
+       resolved-not-guessed. Proof: a contract-faithful HTTP fake asserting
+       deny / timeout / ambiguous-recipient ⇒ NO effect, ALONGSIDE the
+       confirmed-path send (outbound-safety.md). Hardening a proven actuator
+       against a 429 / transient 5xx+retry / malformed third-party response is
+       a USER-FACING reliability win, not churn. Banking / payments / money
+       movement permanently out of scope.
      - Prove ONE proactive notice ARRIVES in ONE real channel (Telegram has
        the most plumbing): daemon tick → real bot → message visible.
-     - HARDEN ONE actuator to daily-reliable: make
-       sendEmailWithApproval / performWebAction survive a 429, a transient
-       5xx+retry, a malformed third-party response — against a contract-
-       faithful HTTP fake PLUS one real round-trip. Draft-first, fail-close,
-       recipient resolved-not-guessed (outbound-safety.md). Banking / payments
-       permanently out of scope.
+   Total surface may grow large; PER-TURN exposed tools stay ≤5–7 via the
+   relevance filter (tool-calling.md) — depth + selection, never breadth-dump.
 
 ## THE FALSIFIABLE TEST EVERY SLICE MUST PASS (apply LITERALLY at commit)
 Fill this in with the literal truth:
@@ -865,6 +913,17 @@ not a tax on the SF dream; it is the completion of it.
 
 ## Changelog (living doc)
 
+- **2026-05-31 (c)** — 진안 directive: the capability surface is a CONTINUOUS,
+  SELF-JUDGED GROWTH axis. **Perceive broadly (read-only, local-only, consented,
+  visible/reversible) · act with confirmation (draft-first, ask-first, gated) ·
+  GROW BOTH.** Actuation (send/book/reserve/email/calendar) is NOT banned — it
+  is grown behind the existing approval-gate seam; the more Muse can gated-do,
+  the fewer things the user does themselves, while the ask-first safety never
+  relaxes. Banking/payments stay permanently out. Added the "PERCEIVE BROADLY ·
+  ACT WITH CONFIRMATION · GROW BOTH" block to B0 + reworked slice-pick #6 into
+  the capability-expansion axis (read connector OR gated actuator, ≤5–7
+  per-turn via the relevance filter, mock-verified). Perception directive B3
+  lands when the perception-surface research workflow returns.
 - **2026-05-31 (b)** — 진안 LOCKED the headline: the **grows-with-you local
   confidant** ("learns you continuously, all local, shows + reverses every
   learned thing, can't leak") is THE groundbreaking bet. Front door first (the

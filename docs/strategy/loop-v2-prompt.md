@@ -40,6 +40,20 @@ PICK ONE SLICE (first match wins — loop-v2 PART B0 "HOW TO PICK EACH SLICE"):
      4) self-learning Slice 1 — grounded idle distillation + the 2-session
         live proof (loop-v2 directive B1).
      5) `muse learned` provenance/visibility + `--undo` + `--pause`.
+     6) GROW THE CAPABILITY SURFACE (self-judged — see loop-v2 "PERCEIVE
+        BROADLY · ACT WITH CONFIRMATION · GROW BOTH" + directive B3). Add ONE,
+        value-ranked, mock-verified:
+          - ONE read-only PERCEPTION connector (calendar / messages / browser
+            history / contacts / shell history / files / app-usage) — read-only,
+            local-only, per-source consent, visible/reversible. Verify against a
+            GENERATED MOCK of that source, never real data.
+          - OR ONE gated ACTUATOR (send message / draft+send email / create
+            calendar event / set reminder / book / fill web form) — draft-first,
+            ask-first, fail-close. Verify a contract-faithful HTTP fake proving
+            deny/timeout/ambiguous-recipient ⇒ NO effect, ALONGSIDE the
+            confirmed-path send. Banking/payments out of scope.
+        Total surface may grow; keep PER-TURN exposed tools ≤5–7 (relevance
+        filter) and prove one-shot selection with `pnpm eval:tools`.
   Decompose anything >1 commit into its tracer bullet. Never ship a
   stub / guard-only / test-only change as the deliverable.
 
@@ -51,8 +65,11 @@ VERIFY AGAINST THE MOCK CORPUS — never the user's real ~/.muse:
     Confirm Muse actually reads it (e.g. `muse notes list`); if a separate
     index/ingest step feeds `muse ask`'s retrieval, run the REAL one and
     confirm retrieval hits the mock notes. Freely generate / extend mock data
-    under .muse-dev/ (gitignored) to exercise the slice. NEVER read or write
-    the real ~/.muse.
+    under .muse-dev/ (gitignored) to exercise the slice. Generate MULTI-DOMAIN
+    mock data as the slice needs — a mock .ics calendar, a mock History.db, a
+    mock chat.db, a mock .zsh_history, mock contacts/files — each with its own
+    answerable + must-refuse oracle (like EXPECTED.md). NEVER read or write the
+    real ~/.muse or the user's real PC data.
   - fixtures/mock-corpus/EXPECTED.md is the oracle: answerable questions
     (must return the fact AND cite the listed note) and must-refuse questions
     (must say "I'm not sure", NO fabricated answer/citation).
