@@ -812,6 +812,17 @@ Append one line when a discovery path is evaluated and deferred:
   (pattern-suggestion / preference-inference / skill+playbook merge /
   background-review ×2 / cited-recall / proactive-recall-gate) — 13 live
   LLM batteries, no regression. The agent-eval surface is intact.
+- EDGE regression sweep — main cd23316d — PASS: after 6 "shows its work"
+  edge-hardening slices (recall output-side citation gate over all 6 citation
+  forms × both ask paths × strip-before-show + the followable Sources footer),
+  re-ran ALL 5 grounded-surface batteries on the LIVE local model and every one
+  is green — `verify-cited-recall` (6) + `verify-recall-citation-gate` (notes
+  exact + injected `[from secrets/…]` stripped) + `verify-proactive-recall-gate`
+  (4) on nomic-embed, `verify-reflection-synthesis` + `verify-council` on
+  qwen3:8b. The fabrication=0 invariant HOLDS across recall · proactivity ·
+  reflection · council; the recall-gate work didn't regress the other surfaces.
+  The grounding edge is comprehensively gated AND user-verifiable, proven on the
+  real model.
 - qwen3:8b over-refuses benign defensive-security / fiction asks — iter
   abdff05f (eval:adversarial growth) — finding: while adding over-refusal
   controls, two BENIGN looks-risky prompts failed STABLE-3/3 helpful: a

@@ -75,3 +75,21 @@ describe("RL avoidance — a corrected-into-the-floor skill is dropped", () => {
     expect(out).toContain("### refactor-helper"); // the rest stays discoverable
   });
 });
+
+describe("RL reward-weighted ordering — a proven skill wins the limited slots", () => {
+  const alpha = skill("blog-alpha", "Use when writing a blog post.", "BODY alpha");
+  const bravo = skill("blog-bravo", "Use when writing a blog post.", "BODY bravo");
+
+  it("among equally-relevant skills, the higher-reward one is selected first (overrides the name tie-break)", () => {
+    const reward = (n: string): number => (n === "blog-bravo" ? 4 : 0);
+    expect(selectRelevantSkills([alpha, bravo], "write a blog post", 1, undefined, reward).map((s) => s.name)).toEqual(["blog-bravo"]);
+    // …and without reward the name tie-break would have picked alpha
+    expect(selectRelevantSkills([alpha, bravo], "write a blog post", 1).map((s) => s.name)).toEqual(["blog-alpha"]);
+  });
+
+  it("reward does NOT make an irrelevant skill relevant — the overlap gate stays", () => {
+    const vpn = skill("vpn-fix", "Fix a flaky WireGuard tunnel.", "B");
+    const reward = (n: string): number => (n === "vpn-fix" ? 5 : 0);
+    expect(selectRelevantSkills([blog, vpn], "write a blog post", 2, undefined, reward).map((s) => s.name)).toEqual(["blog-writer"]);
+  });
+});

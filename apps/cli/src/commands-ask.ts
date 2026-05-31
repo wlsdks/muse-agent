@@ -27,7 +27,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 
-import { classifyRetrievalConfidence, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, selectByMmr, type RetrievalConfidence } from "@muse/agent-core";
+import { citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, selectByMmr, type RetrievalConfidence } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveEpisodesFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
@@ -123,6 +123,22 @@ export function recentFeedHeadlines(
     .flatMap((feed) => feed.entries.map((e) => ({ feedName: feed.name, publishedAt: e.publishedAt, summary: e.summary, title: e.title })))
     .sort((a, b) => (Date.parse(b.publishedAt) || 0) - (Date.parse(a.publishedAt) || 0))
     .slice(0, limit);
+}
+
+/**
+ * "Shows its work" made FOLLOWABLE: the openable-path footer for the notes a
+ * `muse ask` answer actually CITED. Takes the post-gate answer (so only real
+ * surviving `[from …]` citations count), dedups, and resolves each to a full
+ * path the user can open to verify the receipt. Returns undefined when nothing
+ * was cited (no footer). Pure → directly testable.
+ */
+export function formatSourcesFooter(answer: string, notesDir: string): string | undefined {
+  const citedNotes = [...new Set(citedSourcesIn(answer))];
+  if (citedNotes.length === 0) {
+    return undefined;
+  }
+  const lines = citedNotes.map((src) => `   ${isAbsolute(src) ? src : join(notesDir, src)}`);
+  return `\n📎 Sources (open to verify):\n${lines.join("\n")}\n`;
 }
 
 interface AskOptions {
@@ -976,12 +992,12 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           process.exitCode = 1;
           return;
         }
-        if (!options.json) {
-          if (toolsUsed.length > 0) {
-            io.stderr(`(tools used: ${toolsUsed.join(", ")})\n`);
-          }
-          io.stdout(collectedAnswer);
+        if (!options.json && toolsUsed.length > 0) {
+          io.stderr(`(tools used: ${toolsUsed.join(", ")})\n`);
         }
+        // The answer is printed AFTER the citation gate below, so a fabricated
+        // citation is stripped before the user sees it (this path buffers; the
+        // chat-only path streams live and is warned post-hoc instead).
       } else {
         // Chat-only fast path — direct modelProvider.stream, no tool
         // registry. Suitable for "explain this", "summarise that"
@@ -1020,6 +1036,44 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         }
       }
 
+      // Output-side grounding gate — the recall WEDGE's code-not-model half:
+      // strip any citation the answer makes — a note, feed, task, event,
+      // reminder, or session — that is NOT among the real sources, so a
+      // fabricated citation can never reach the user (mirrors parseReflections
+      // / parseCouncilAnswer for recall). Applies to BOTH paths: chat-only
+      // notes are exactly what we showed (`scored`); the --with-tools agent can
+      // pull MORE via knowledge_search, so its allowed notes are the whole live
+      // corpus — any real note file is fair, only a non-existent one is invented.
+      const allowedNotes = options.withTools
+        ? (index ? filterLiveNoteIndexFiles(index.files, existsSync).map((f) => (isAbsolute(f.path) ? relative(notesDir, f.path) : f.path)) : [])
+        : scored.map((r) => (isAbsolute(r.file) ? relative(notesDir, r.file) : r.file));
+      const citationGate = enforceAnswerCitations(collectedAnswer, {
+        events: upcomingEvents.map((e) => e.title),
+        feeds: feedHeadlines.map((h) => h.feedName),
+        notes: allowedNotes,
+        reminders: pendingReminders.map((r) => r.text),
+        sessions: episodeHits.map((e) => e.summary),
+        tasks: openTasks.map((t) => t.title)
+      });
+      collectedAnswer = citationGate.text;
+      if (!options.json && citationGate.stripped.length > 0) {
+        io.stderr(`\n⚠️  Removed ${citationGate.stripped.length.toString()} citation(s) to source(s) you don't have (${citationGate.stripped.join(", ")}) — treat those claims as unverified.\n`);
+      }
+      // The --with-tools answer was buffered (not streamed), so it prints HERE
+      // — after the gate — so a fabricated citation is stripped before display.
+      if (options.withTools && !options.json) {
+        io.stdout(collectedAnswer);
+      }
+
+      // "Shows its work" made FOLLOWABLE: list the notes the answer actually
+      // CITED (post-gate, so only real surviving citations) with their full
+      // openable paths — the user can open the exact receipt to verify, not
+      // just trust the inline `[from …]` name.
+      if (!options.json) {
+        const footer = formatSourcesFooter(collectedAnswer, notesDir);
+        if (footer) io.stderr(footer);
+      }
+
       if (options.json) {
         // Emit a single JSON object on stdout — consumers can pipe
         // through `jq` to extract the answer, grounded sources, or
@@ -1030,6 +1084,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           query,
           model,
           answer: collectedAnswer,
+          ...(citationGate.stripped.length > 0 ? { strippedCitations: citationGate.stripped } : {}),
           ...(options.withTools ? { toolsUsed } : {}),
           grounded: {
             noteChunks: scored.map((r) => ({ file: r.file, score: r.score, text: r.chunk.text })),
