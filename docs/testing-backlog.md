@@ -2343,3 +2343,12 @@ the generic layers below because they test what makes Muse an *agent*.
     (a cleared env var can't point a store at an empty cwd-relative path); readCredentialsSync
     returns the providers map for a well-formed store and degrades to {} for missing/malformed/
     missing-or-non-object providers. Pre-verified against dist. autoconfigure 481 tests green.
+
+- [x] **model/provider-base — isRetryableHttpStatus (zero coverage, the retry classifier).**
+    Census found the retry-classification source of truth (architecture.md: 4xx fail fast,
+    5xx/408/429 may retry) with ZERO refs. New tests pin: 408 + 429 retryable; the whole
+    500..599 range inclusive (499/600 not); ordinary 4xx (400/401/403/404/422) + 2xx/3xx
+    NOT retryable (fail fast); non-finite (NaN/Infinity) → false. NB: must import from
+    ../src/index.js, not ../src/provider-base.js directly — the latter trips a module
+    circular-init (adapter-openai extends undefined). Verified via the real source under
+    vitest. model 313 tests green.
