@@ -84,3 +84,44 @@ describe("startConsolidateTick.tickOnce — idle gate", () => {
     expect(errors).toEqual(["consolidate-tick: merge boom"]);
   });
 });
+
+describe("startConsolidateTick.tickOnce — REAL OS-idle brake (B1 brake-first)", () => {
+  // API-idle holds in all three; only the OS-idle probe varies.
+  const apiIdle = { lastActivityMs: () => NOW.getTime() - IDLE_MS - 1 };
+
+  it("does NOT consolidate when the OS is busy, even though Muse's /api is quiet", async () => {
+    let calls = 0;
+    const handle = startConsolidateTick(baseOptions({
+      ...apiIdle,
+      osIdleMs: () => 60_000, // OS idle only 1 min < 30 min threshold → busy in another app
+      runConsolidate: async () => { calls += 1; return []; }
+    }));
+    await handle.tickOnce();
+    handle.stop();
+    expect(calls).toBe(0);
+  });
+
+  it("does NOT consolidate when the OS-idle probe is unknown (fail-closed)", async () => {
+    let calls = 0;
+    const handle = startConsolidateTick(baseOptions({
+      ...apiIdle,
+      osIdleMs: () => undefined, // probe failed / non-macOS → never run unattended
+      runConsolidate: async () => { calls += 1; return []; }
+    }));
+    await handle.tickOnce();
+    handle.stop();
+    expect(calls).toBe(0);
+  });
+
+  it("consolidates when BOTH Muse /api AND the OS are idle past the threshold", async () => {
+    let calls = 0;
+    const handle = startConsolidateTick(baseOptions({
+      ...apiIdle,
+      osIdleMs: () => IDLE_MS + 1,
+      runConsolidate: async () => { calls += 1; return []; }
+    }));
+    await handle.tickOnce();
+    handle.stop();
+    expect(calls).toBe(1);
+  });
+});

@@ -32,6 +32,7 @@ import {
   type InMemoryActivityTracker
 } from "./proactive-tick.js";
 import { startConsolidateTick } from "./consolidate-tick.js";
+import { osIdleMs } from "./os-idle.js";
 import {
   createMessagingObjectiveActuator,
   createModelObjectiveEvaluator,
@@ -529,6 +530,9 @@ export function startConsolidateDaemonIfConfigured(
     logger: (message) => server.log.info(message),
     model: options.defaultModel,
     modelProvider: options.modelProvider,
+    // Real OS-idle brake: the LLM merge only fires when the MACHINE is quiet
+    // (system-wide HID idle), not merely when Muse's /api is — fail-closed.
+    osIdleMs: () => osIdleMs(),
     ...(idleMsRaw !== undefined ? { idleThresholdMs: idleMsRaw } : {}),
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     ...(consolidateQuietHours ? { quietHours: consolidateQuietHours } : {})

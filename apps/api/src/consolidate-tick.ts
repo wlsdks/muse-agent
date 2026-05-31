@@ -15,6 +15,7 @@ import { mergeSkillsIntoUmbrella } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
 import { AuthoredSkillStore } from "@muse/skills";
 
+import { isOsIdleEnough } from "./os-idle.js";
 import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
 
 export interface ConsolidateMergeOutcome {
@@ -30,6 +31,15 @@ export interface ConsolidateTickOptions {
   readonly lastActivityMs: () => number | undefined;
   /** Only consolidate after the user has been idle at least this long. Default 30 min. */
   readonly idleThresholdMs?: number;
+  /**
+   * REAL OS idle time in ms (system-wide HID idle), e.g. `osIdleMs` from
+   * `./os-idle.js`. When provided, the LLM consolidation ALSO requires the OS
+   * to be idle ≥ `idleThresholdMs` — not just Muse's /api quiet — so the merge
+   * never fires while the user is busy in another app. Fail-closed: an unknown
+   * OS idle (undefined) blocks the run. Omitted ⇒ OS-idle gate skipped
+   * (back-compat). (PART A2 / B1 brake-first.)
+   */
+  readonly osIdleMs?: () => number | undefined;
   readonly intervalMs?: number;
   readonly threshold?: number;
   readonly minClusterSize?: number;
@@ -91,6 +101,10 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
     const at = now();
     if (options.quietHours && isQuietHour(at.getHours(), options.quietHours)) return;
     if (!isIdleForConsolidate(at.getTime(), options.lastActivityMs(), idleThresholdMs)) return;
+    // Brake-first: when a real OS-idle probe is wired, the LLM merge ALSO
+    // requires the MACHINE to be idle (not just Muse's /api), fail-closed —
+    // so it never strains the laptop while the user works in another app.
+    if (options.osIdleMs && !isOsIdleEnough(options.osIdleMs(), idleThresholdMs)) return;
     firing = true;
     try {
       const merged = await runConsolidate();

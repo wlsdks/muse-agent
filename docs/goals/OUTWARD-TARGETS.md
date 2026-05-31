@@ -64,6 +64,24 @@ turn; never half-shipped.
 
 ## Active target
 
+**P36 — Background self-learning, brake-and-proof-first (loop-v2 PART A2 /
+B1).** The headline's "grows-with-you" core: Muse learns from corrections
+while idle, on its own, without straining the laptop. Built brake-FIRST — the
+resource gates land before any unattended LLM writer. Verified by the rung-4
+proof shape (unit / 2-session / eval:self-improving), NOT cited-answer+refusal.
+
+- [x] **P36-1 Real OS-idle brake (B1 Slice 0 prerequisite).** The consolidate
+  daemon gated only on Muse-/api activity (`lastActivityMs`), which reports
+  idle exactly when the laptop is busy in another app. New `os-idle.ts` reads
+  the real system-wide HID idle (`ioreg` `HIDIdleTime`), fail-closed; the LLM
+  merge now ALSO requires the MACHINE idle ≥ threshold (opt-in seam, wired in
+  the daemon) so it never strains the laptop while the user works elsewhere.
+  Proven by unit tests (parse / fail-closed / brake predicate / tick gate:
+  OS-busy or unknown → no merge; both idle → merge) + a LIVE probe on this
+  macOS box (osIdleMs ≈ 10632s from real ioreg); api 756 tests + `pnpm lint`
+  0/0. Brake-first INFRA — felt payoff lands with the writer slice (Slice 1).
+  (this commit)
+
 **P35 — Felt experience: make Muse FEEL like the SF confidant (loop-v2 PART
 B2).** The front door (P34) is delivered + proven; the headline's other half
 is the *felt* quality — recall that reads like a memory, honest refusals that
