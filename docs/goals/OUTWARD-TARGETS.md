@@ -98,7 +98,16 @@ honest-refusal mock-corpus check where applicable.
   inventing no step (latency-honest). Answer/gate/receipt/refusal untouched.
   Proven LIVE on qwen3:8b: both deltas appear before the cited "MTU 1380"
   answer and before the honest sister's-birthday refusal; cli suite green (no
-  regression) + `pnpm lint` 0/0. (this commit)
+  regression) + `pnpm lint` 0/0. (5d9eef98)
+
+- [x] **P35-4 Warm honesty (B2 S2).** An honest refusal now closes with one
+  on-brand deterministic line "(I'd rather tell you that than guess — add a
+  note on this and I'll have it next time.)" when the user HAS notes (empty
+  corpus → on-ramp hint instead; cited answer → nothing). No note pointer, so
+  no P34-11 regression; `shouldWarmClose` (refusal AND notes>0) is pure +
+  tested. Proven LIVE on qwen3:8b: the sister's-birthday + car must-refuses get
+  the warm close, the MTU answer does not; `commands-ask-refusal.test.ts` +
+  `pnpm lint` 0/0. (this commit)
 
 **P34 — The front door (loop-v2 headline: the moat is invisible without
 the door).** Per loop-v2 B0 §3, a privacy-bound first-time user must be able

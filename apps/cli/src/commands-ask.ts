@@ -452,6 +452,20 @@ export function corpusOnboardingHint(noteFileCount: number): string | undefined 
   ].join("\n");
 }
 
+/** S2 warm honesty (B2): the deterministic, on-brand close on an honest refusal. */
+export const WARM_REFUSAL_CLOSE =
+  "(I'd rather tell you that than guess — add a note on this and I'll have it next time.)";
+
+/**
+ * Whether to append the warm refusal close: ONLY when the answer is an honest
+ * refusal AND the user already has notes. An EMPTY corpus gets the on-ramp
+ * hint instead (so the two never double up), and a real cited answer never
+ * gets it. Pure + exported for direct coverage.
+ */
+export function shouldWarmClose(answer: string, noteFileCount: number): boolean {
+  return noteFileCount > 0 && answerIsRefusal(answer);
+}
+
 /**
  * CRAG confidence gate for `muse ask`'s notes grounding — the headline-surface
  * embodiment of Muse's identity ("says I'm not sure instead of making things
@@ -766,7 +780,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // Gate on note FILES on disk, not indexed chunks: when embedding is
       // down the index has 0 live chunks though the user has notes, and
       // "your corpus is empty" would be a false message.
-      const onboardingHint = corpusOnboardingHint(await notesCorpusFileCount(notesDir));
+      const noteFileCount = await notesCorpusFileCount(notesDir);
+      const onboardingHint = corpusOnboardingHint(noteFileCount);
       if (onboardingHint) {
         io.stderr(`${onboardingHint}\n`);
       }
@@ -1309,6 +1324,15 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           query
         );
         if (receipts) io.stderr(receipts);
+      }
+
+      // S2 warm honesty (B2): when Muse honestly refuses AND the user has
+      // notes, close with one on-brand line so the refusal feels cared-for,
+      // not blocked. Empty corpus gets the on-ramp hint instead; a real cited
+      // answer gets nothing. Deterministic line, no note pointer (so it can't
+      // reintroduce the spurious-citation-on-a-refusal confusion P34-11 fixed).
+      if (!options.json && shouldWarmClose(collectedAnswer, noteFileCount)) {
+        io.stderr(`\n${WARM_REFUSAL_CLOSE}\n`);
       }
 
       if (options.json) {

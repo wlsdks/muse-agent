@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { answerIsRefusal } from "./commands-ask.js";
+import { answerIsRefusal, shouldWarmClose } from "./commands-ask.js";
+
+describe("shouldWarmClose — warm refusal close only on a refusal with notes present", () => {
+  it("fires on a refusal when the user HAS notes", () => {
+    expect(shouldWarmClose("I don't have anything in your notes on that.", 5)).toBe(true);
+    expect(shouldWarmClose("저는 그 정보를 가지고 있지 않습니다.", 3)).toBe(true);
+  });
+
+  it("does NOT fire on an empty corpus (the on-ramp hint covers that) or on a real answer", () => {
+    expect(shouldWarmClose("I don't have that.", 0)).toBe(false); // empty corpus → on-ramp instead
+    expect(shouldWarmClose("The MTU is 1380 [from vpn.md].", 5)).toBe(false); // real cited answer
+  });
+});
 
 describe("answerIsRefusal — a refusal must not carry a citation (EN + KO)", () => {
   it("detects clear English refusals", () => {
