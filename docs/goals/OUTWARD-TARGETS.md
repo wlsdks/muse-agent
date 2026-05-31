@@ -182,7 +182,22 @@ FIRST, then felt self-learning).
   ollama pull" guidance instead. Proven LIVE on qwen3:8b: Ollama-down + a
   6-note corpus → no false "empty" line; Ollama-up + empty dir → hint fires;
   Ollama-up + populated → cited "MTU 1380" + Sources and an honest refusal;
-  `commands-ask-onboarding.test.ts` + `pnpm lint` 0/0. (this commit)
+  `commands-ask-onboarding.test.ts` + `pnpm lint` 0/0. (6df3d076)
+
+- [x] **P34-10 Richer demo payoff + full-oracle edge sweep.** `muse demo` now
+  shows TWO answerable questions citing DIFFERENT notes (MTU + rent) before the
+  must-refuse, so the zero-setup payoff proves cited recall is real across the
+  corpus, not one lucky hit. This fire also ran a full live regression sweep of
+  the EXPECTED.md oracle at default top-3: all 6 answerable cited correctly, all
+  4 must-refuse honestly refused — the recall edge is green end-to-end. Proven
+  LIVE on qwen3:8b; `commands-demo.test.ts` + `pnpm lint` 0/0.
+  NOTE: the front-door rungs verifiable under the cited-answer+refusal mandate
+  are now exhausted (demo, single/bulk/watch ingest, hybrid recall, confidence
+  calibration, empty-corpus on-ramp, model-readiness error UX — all done +
+  proven). The only undone front-door rung is (b) a real one-command installer,
+  whose proof is a clean-room container/CI test, not live recall. Next fire
+  should either scope (b) to a container proof or advance to rung 4 (felt
+  self-learning, 2-session proof). (this commit)
 
 **P33 — Reinforcement learning over Muse's memory (the model is fixed,
 so RL lives in the MEMORY, not the weights).** Close the self-improvement

@@ -52,15 +52,22 @@ export interface DemoQuestion {
 }
 
 /**
- * Drawn from the bundled corpus oracle (`EXPECTED.md`): A1 must return
- * the WireGuard MTU with a citation; R1 has no note to ground it, so an
- * honest refusal is the only correct answer.
+ * Drawn from the bundled corpus oracle (`EXPECTED.md`): two ANSWERABLE
+ * questions that cite DIFFERENT notes (so the demo shows the edge is real
+ * across the corpus, not a single lucky hit), then one MUST-REFUSE the
+ * corpus can't ground — so the first 30 seconds show both halves of the
+ * edge: cited recall AND honest refusal.
  */
 export const DEMO_QUESTIONS: readonly DemoQuestion[] = [
   {
     kind: "answerable",
     question: "What MTU did I set for the WireGuard VPN?",
-    expect: "cites the note and answers 1380"
+    expect: "cites 2026-03-03-vpn-wireguard.md and answers 1380"
+  },
+  {
+    kind: "answerable",
+    question: "When is rent due and how much?",
+    expect: "cites tasks/finances.md and answers the 25th, $1,450"
   },
   {
     kind: "refuse",

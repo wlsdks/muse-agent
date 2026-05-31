@@ -37,11 +37,15 @@ describe("resolveDemoCorpusDir", () => {
 });
 
 describe("DEMO_QUESTIONS", () => {
-  it("pairs one answerable and one must-refuse question (the edge in one run)", () => {
-    expect(DEMO_QUESTIONS).toHaveLength(2);
-    expect(DEMO_QUESTIONS.filter((q) => q.kind === "answerable")).toHaveLength(1);
-    expect(DEMO_QUESTIONS.filter((q) => q.kind === "refuse")).toHaveLength(1);
+  it("shows both halves of the edge: ≥2 answerable (citing different notes) then ≥1 must-refuse", () => {
+    const answerable = DEMO_QUESTIONS.filter((q) => q.kind === "answerable");
+    const refuse = DEMO_QUESTIONS.filter((q) => q.kind === "refuse");
+    expect(answerable.length).toBeGreaterThanOrEqual(2);
+    expect(refuse.length).toBeGreaterThanOrEqual(1);
+    // answerable-first so the user sees a cited win before the refusal
     expect(DEMO_QUESTIONS[0]?.kind).toBe("answerable");
+    // the answerable questions exercise DIFFERENT notes (not one lucky hit)
+    expect(new Set(answerable.map((q) => q.expect)).size).toBe(answerable.length);
   });
 });
 
@@ -95,7 +99,7 @@ describe("muse demo command", () => {
     registerDemoCommand(program, io, { askRunner, corpusDir: "/c" });
     await program.parseAsync(["node", "muse", "demo"]);
     order.push("done");
-    expect(order.filter((s) => s === "asked")).toHaveLength(2);
+    expect(order.filter((s) => s === "asked")).toHaveLength(DEMO_QUESTIONS.length);
     expect(out.join("")).toMatch(/muse ingest/);
   });
 });
