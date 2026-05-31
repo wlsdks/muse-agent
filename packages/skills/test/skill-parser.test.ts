@@ -84,7 +84,10 @@ describe("splitFrontmatter", () => {
   });
 
   it("strips a leading UTF-8 BOM before matching the delimiter", () => {
-    expect(splitFrontmatter("﻿---\nname: y\n---\nbod")).toEqual({ body: "bod", frontmatter: "name: y" });
+    // BOM built at runtime — a raw U+FEFF byte in source trips the repo
+    // byte-hygiene gate (packages/shared/test/repo-byte-hygiene).
+    const bom = String.fromCharCode(0xfeff);
+    expect(splitFrontmatter(`${bom}---\nname: y\n---\nbod`)).toEqual({ body: "bod", frontmatter: "name: y" });
   });
 });
 
