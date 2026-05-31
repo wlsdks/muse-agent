@@ -242,6 +242,32 @@ the generic layers below because they test what makes Muse an *agent*.
     Added both: openrouter routes through OpenRouterProvider under MUSE_LOCAL_ONLY=
     false, and an unrecognized provider id with no base URL returns undefined (not
     a crash). autoconfigure 450→452.
+  - SIXTEENTH MEASUREMENT (throwaway, reused install, NOT committed): `mcp/
+    chrome-devtools-mcp.ts` = **80.82%** — the real-Chrome web actuator's fail-close
+    risk classifier. The read-only set was only PARTIALLY asserted (5 of 9
+    observation tools), so a tool dropped from it would silently start requiring
+    approval for a screenshot/console read; asserted all 9. Plus the
+    blank/whitespace browserUrl → default-9222 fallback and the fingerprintSha256
+    config option (NoCoverage). mcp 1116→1118.
+  - SEVENTEENTH MEASUREMENT (throwaway, reused install, NOT committed): surveyed
+    calendar/credential-store (72.31% — but the security invariants ARE tested:
+    0o600 file mode, atomic no-tmp-sibling, prototype-safe __proto__/toString
+    providerId; the writeFile-mode survivor is EQUIVALENT, masked by the chmod
+    backstop — no churn added) and calendar/ics-export. The one genuine ics-export
+    gap: escapeText's backslash branch (`\`→`\\`) — the escaping test covered
+    ;/,/newline but not a literal backslash, and the backslash must escape FIRST
+    (RFC 5545 ordering) or the ;,\n escapes get double-escaped. Added a
+    Windows-path title asserting each `\` becomes exactly `\\`. calendar 110→111.
+  - EIGHTEENTH MEASUREMENT (throwaway, reused install, NOT committed): `mcp/
+    personal-action-log-store.ts` = **65.52%** — the outbound-action audit trail.
+    queryActionLog (newest-first / scope / parsed-instant / tiebreaker) and a
+    whole-file-corrupt → empty ARE tested, but the PER-ENTRY validator
+    (isActionLogEntry — field-type checks + the performed/refused/failed result
+    enum) was unasserted: readActionLog drops malformed entries one-by-one, so a
+    parseable log mixing valid + malformed records must surface ONLY the well-formed
+    ones (a tampered/partial entry can't masquerade as a recorded action). Added a
+    mixed-entries file (valid + missing-why + bogus-result + null + non-object)
+    asserting only the valid id returns. mcp 1118→1119.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,

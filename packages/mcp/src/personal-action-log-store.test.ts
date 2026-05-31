@@ -56,6 +56,23 @@ describe("personal-action-log-store — P6-b1 reviewable autonomous-action log",
     expect(readdirSync(dirname(file)).some((n) => n.includes("action-log.json.corrupt-"))).toBe(true);
   });
 
+  it("drops INDIVIDUAL malformed entries (missing required field / bogus result) while keeping the valid ones — audit integrity", () => {
+    // A whole-corrupt file is quarantined; a parseable file with a mix of valid
+    // and malformed entries must still surface ONLY the well-formed ones, so a
+    // tampered/partial entry can't masquerade as a recorded action.
+    const file = join(tmpDir(), "action-log.json");
+    writeFileSync(file, JSON.stringify({ version: 1, entries: [
+      { id: "ok", result: "performed", userId: "stark", what: "x", when: "2026-05-20T00:00:00Z", why: "r" },
+      { id: "no-why", result: "performed", userId: "stark", what: "x", when: "2026-05-20T00:00:00Z" }, // missing required `why`
+      { id: "bad-result", result: "exploded", userId: "stark", what: "x", when: "2026-05-20T00:00:00Z", why: "r" }, // not performed/refused/failed
+      null,
+      "not an object"
+    ] }));
+    return readActionLog(file).then((entries) => {
+      expect(entries.map((e) => e.id)).toEqual(["ok"]);
+    });
+  });
+
   it("queryActionLog returns newest-first and scopes to the user", async () => {
     const file = join(tmpDir(), "action-log.json");
     await appendActionLog(file, { id: "old", result: "performed", userId: "stark", what: "x", when: "2026-05-19T10:00:00.000Z", why: "r" });

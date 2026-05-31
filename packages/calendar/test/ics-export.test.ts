@@ -46,6 +46,16 @@ describe("eventsToIcs", () => {
     expect(ics).toContain("DESCRIPTION:line1\\nline2");
   });
 
+  it("doubles a literal backslash FIRST so it isn't re-escaped (RFC 5545 ordering)", () => {
+    // The backslash escape must run before ; , \n — otherwise the backslashes
+    // those add would themselves get doubled. A Windows-path title is the case.
+    const ics = eventsToIcs(
+      [{ id: "p", title: "path C:\\temp\\logs", startsAt: new Date("2026-06-01T12:00:00Z"), endsAt: new Date("2026-06-01T13:00:00Z") }],
+      { now: NOW }
+    );
+    expect(ics).toContain("SUMMARY:path C:\\\\temp\\\\logs"); // each \ → \\, not over-escaped
+  });
+
   it("emits a valid empty calendar for no events", () => {
     const ics = eventsToIcs([], { now: NOW });
     expect(ics).toContain("BEGIN:VCALENDAR");
