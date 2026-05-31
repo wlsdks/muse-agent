@@ -484,6 +484,16 @@ the generic layers below because they test what makes Muse an *agent*.
     great / 완벽합니다 / 훌륭해 / 최고야). agent-core 1171->1178. (74 survivors: the
     APPROVAL/CORRECTION_PATTERNS regex alternations + distiller-prompt StringLiterals —
     pattern-coverage, the same class as the security detectors.)
+  - THIRTY-THIRD MEASUREMENT (dist-verified, no whole-file Stryker — `index.ts` is 892L):
+    `packages/tools` `coerceToolArguments`/`coerceScalar` — the deterministic tool-arg REPAIR
+    (Structured Reflection arXiv:2509.18847: a right value in the wrong JSON type invalidates
+    an otherwise-correct local-model call; tool-calling.md's "validate + repair
+    deterministically"). The existing test covered the basics; added the realistic local-model
+    arg forms each dist-verified to diverge under its mutant: SIGNED numerics ("-7"→-7,
+    "-3.14"→-3.14, killing the `-?` in the int/number patterns), WHITESPACE-padded ("  42  "
+    →42, killing the `.trim()`), boolean→string (false→"false", the typeof==="boolean" string
+    arm), and the deliberate left-untouched boundaries ("+5" stays string — only `-` accepted;
+    "" stays — `\d+` needs a digit). First slice outside agent-core. tools 225->226.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,

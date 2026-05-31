@@ -344,6 +344,23 @@ describe("tool utilities", () => {
     expect(coerceToolArguments(undefined, { x: "1" })).toEqual({ x: "1" });
   });
 
+  it("coerceToolArguments handles the realistic local-model arg forms: signed, whitespace-padded, bool→string", () => {
+    const schema = {
+      type: "object",
+      properties: { count: { type: "integer" }, ratio: { type: "number" }, on: { type: "boolean" }, label: { type: "string" } }
+    };
+    // The `-?` in the numeric patterns accepts a negative the model emits.
+    expect(coerceToolArguments(schema, { count: "-7", ratio: "-3.14" })).toEqual({ count: -7, ratio: -3.14 });
+    // `.trim()` strips surrounding whitespace before the pattern test.
+    expect(coerceToolArguments(schema, { count: "  42  " })).toEqual({ count: 42 });
+    // boolean → its string form (the typeof === "boolean" arm of the string coercion).
+    expect(coerceToolArguments(schema, { label: false })).toEqual({ label: "false" });
+    // Deliberate boundaries left untouched: a `+` sign isn't accepted (only `-`),
+    // and an empty string has no digit to match — both stay as-is rather than a guess.
+    expect(coerceToolArguments(schema, { count: "+5" })).toEqual({ count: "+5" });
+    expect(coerceToolArguments(schema, { count: "" })).toEqual({ count: "" });
+  });
+
   it("validateRequiredToolArguments flags missing required args, passes complete/extra/no-schema", () => {
     const schema = { type: "object", properties: { entity: { type: "string" }, service: { type: "string" } }, required: ["entity", "service"] };
     expect(validateRequiredToolArguments(schema, { entity: "light.x", service: "turn_off" })).toEqual({ ok: true, missing: [] });
