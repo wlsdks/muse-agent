@@ -2179,3 +2179,12 @@ the generic layers below because they test what makes Muse an *agent*.
     buildModelRequestWithWebSearch: injects webSearchPolicy into metadata while keeping
     existing metadata + request and not mutating the input. Pre-verified against dist.
     agent-core 1239 tests green.
+
+- [x] **agent-core/tool-output-evidence — count fallback chain + insights-win guard.**
+    extractToolInsights tested individual count keys (count/totalCount/size) + locales,
+    but not (a) the fallback CHAIN precedence count→total→totalCount→totalSize→size
+    (count wins when several are present) NOR two of its keys (`total`, `totalSize`
+    were never exercised — dropping their `??` clause would survive); (b) the
+    insights-win guard — a count summary is only a FALLBACK, so with real insights
+    present no count line is appended (`normalized.length === 0`). New tests pin all
+    three. Pre-verified against dist. agent-core 1241 tests green.

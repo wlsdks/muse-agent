@@ -120,4 +120,20 @@ describe("extractToolInsights", () => {
       extractToolInsights(wrapToolEnvelope("any", JSON.stringify({ count: 5 })))
     ).toEqual(["총 5건 발견."]);
   });
+
+  it("resolves the count from the fallback chain count→total→totalCount→totalSize→size, count first", () => {
+    // count wins when several keys are present (the ?? chain order matters).
+    expect(extractToolInsights(wrapToolEnvelope("any", JSON.stringify({ count: 3, total: 99 })))).toEqual(["총 3건 발견."]);
+    // the two chain keys no prior test exercised — `total` and `totalSize`.
+    expect(extractToolInsights(wrapToolEnvelope("any", JSON.stringify({ total: 7 })))).toEqual(["총 7건 발견."]);
+    expect(extractToolInsights(wrapToolEnvelope("any", JSON.stringify({ totalSize: 9 })))).toEqual(["총 9건 발견."]);
+  });
+
+  it("does NOT append a count summary when real insights are present (insights win over the count)", () => {
+    // The count summary is a FALLBACK for when there are no insights; with both,
+    // the insights stand alone (the `normalized.length === 0` guard).
+    expect(
+      extractToolInsights(wrapToolEnvelope("any", JSON.stringify({ count: 5, insights: ["the real finding"] })))
+    ).toEqual(["the real finding"]);
+  });
 });
