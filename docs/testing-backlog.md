@@ -357,6 +357,24 @@ the generic layers below because they test what makes Muse an *agent*.
     resistant, and `if(false)` on the length floor needs a contrived 1-char-token overlap.
     The bulk of the remaining 87 are renderPlaybookSection prompt-text StringLiterals —
     pattern-coverage.)
+  - TWENTY-FIFTH MEASUREMENT (throwaway, reused install, NOT committed): `agent-core/
+    reflection-synthesis.ts` had **ZERO dedicated test file** despite being a WEDGE
+    surface — the grounded "dreaming" memory-consolidation gate (Generative Agents'
+    reflection step, arXiv 2304.03442) whose `parseReflections` enforces fabrication=0:
+    it strips any cited source id the user doesn't actually have and DROPS a reflection
+    that falls below minSupport, so the model can't ground an insight in an invented
+    source. Added the first suite (21 tests) → **81.74%** (94 killed, 17 survived). Covers
+    every grounding branch: invented-id stripping (real pair survives, fake stripped),
+    under-support drop, distinct-source dedup, minSupport=1, malformed-entry skips
+    (blank/non-string insight, non-array sources, non-object), non-string source filtering,
+    maxReflections cap + Math.max(1,trunc) coercion, prose-wrapped JSON extraction; plus
+    buildReflectionUserMessage (id-list render, default+custom redaction, whitespace
+    collapse) and the thin synthesizeReflections wrapper against a contract-faithful fake
+    provider (no-model-call below minSupport, blank id/text filtering, default+override
+    temperature/maxOutputTokens, custom-redact honored, maxReflections forwarded, fail-soft
+    on a throwing provider). agent-core 1096→1117. (Remaining 17 survivors: REFLECTION_
+    SYSTEM_PROMPT string literals + defensive guards on the extractJsonArray→JSON.parse
+    path that yield [] either way — equivalent/pattern-coverage.)
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
