@@ -1021,26 +1021,27 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       }
 
       // Output-side grounding gate — the recall WEDGE's code-not-model half:
-      // strip any citation the chat-only answer makes — a note, feed, task,
-      // event, or reminder — that is NOT among the real sources we showed it,
-      // so a fabricated citation can never reach the user (mirrors
-      // parseReflections / parseCouncilAnswer for recall). Scoped to the
-      // chat-only path; the --with-tools agent cites a different source set and
-      // is gated separately.
-      let citationGate: { readonly text: string; readonly stripped: readonly string[] } = { stripped: [], text: collectedAnswer };
-      if (!options.withTools) {
-        citationGate = enforceAnswerCitations(collectedAnswer, {
-          events: upcomingEvents.map((e) => e.title),
-          feeds: feedHeadlines.map((h) => h.feedName),
-          notes: scored.map((r) => (isAbsolute(r.file) ? relative(notesDir, r.file) : r.file)),
-          reminders: pendingReminders.map((r) => r.text),
-          sessions: episodeHits.map((e) => e.summary),
-          tasks: openTasks.map((t) => t.title)
-        });
-        collectedAnswer = citationGate.text;
-        if (!options.json && citationGate.stripped.length > 0) {
-          io.stderr(`\n⚠️  Removed ${citationGate.stripped.length.toString()} citation(s) to source(s) you don't have (${citationGate.stripped.join(", ")}) — treat those claims as unverified.\n`);
-        }
+      // strip any citation the answer makes — a note, feed, task, event,
+      // reminder, or session — that is NOT among the real sources, so a
+      // fabricated citation can never reach the user (mirrors parseReflections
+      // / parseCouncilAnswer for recall). Applies to BOTH paths: chat-only
+      // notes are exactly what we showed (`scored`); the --with-tools agent can
+      // pull MORE via knowledge_search, so its allowed notes are the whole live
+      // corpus — any real note file is fair, only a non-existent one is invented.
+      const allowedNotes = options.withTools
+        ? (index ? filterLiveNoteIndexFiles(index.files, existsSync).map((f) => (isAbsolute(f.path) ? relative(notesDir, f.path) : f.path)) : [])
+        : scored.map((r) => (isAbsolute(r.file) ? relative(notesDir, r.file) : r.file));
+      const citationGate = enforceAnswerCitations(collectedAnswer, {
+        events: upcomingEvents.map((e) => e.title),
+        feeds: feedHeadlines.map((h) => h.feedName),
+        notes: allowedNotes,
+        reminders: pendingReminders.map((r) => r.text),
+        sessions: episodeHits.map((e) => e.summary),
+        tasks: openTasks.map((t) => t.title)
+      });
+      collectedAnswer = citationGate.text;
+      if (!options.json && citationGate.stripped.length > 0) {
+        io.stderr(`\n⚠️  Removed ${citationGate.stripped.length.toString()} citation(s) to source(s) you don't have (${citationGate.stripped.join(", ")}) — treat those claims as unverified.\n`);
       }
 
       if (options.json) {
