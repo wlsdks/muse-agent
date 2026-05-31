@@ -893,6 +893,14 @@ the generic layers below because they test what makes Muse an *agent*.
     `split(marker)[0]` naive impl had). → 87.16% (+3 net; the small delta understates it — most
     of the file's residual survivors are telemetry span-attribute + marker-format StringLiterals,
     pattern-coverage, correctly not chased). agent-core 1224->1228.
+  - SEVENTIETH (mutation-depth): `policy/tool-output-sanitizer.ts` (93L) Stryker 87.72% —
+    already strong, ONE genuine logic survivor: the truncation boundary (`sanitized.length >
+    maxOutputLength`) had no test at EXACTLY the cap. +1 test: output exactly maxOutputLength
+    passes through UNtruncated (no spurious warning), one char over IS truncated (control). →
+    **89.47%** (L27 killed). The remaining 6 survivors are equivalent/pattern: the
+    `matches.length === 0` sub-clause (String.match(/g) never returns an empty array — only null
+    or ≥1, so unreachable) + warning-text / pattern-name StringLiterals. Module effectively maxed.
+    policy 116->117.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,

@@ -43,6 +43,17 @@ describe("ToolOutputSanitizer", () => {
     expect(result.warnings).toContain("Output truncated from 10 to 8 chars");
   });
 
+  it("does NOT truncate output that is exactly maxOutputLength (the boundary is `>`, not `>=`)", () => {
+    // 8 chars at max 8 must pass through untouched — a `>=` off-by-one would
+    // truncate a perfectly-fitting output and emit a spurious warning.
+    const result = new ToolOutputSanitizer({ maxOutputLength: 8 }).sanitize("exact", "01234567");
+    expect(result.content).toContain("01234567");
+    expect(result.warnings.some((w) => w.includes("truncated"))).toBe(false);
+    // one char over IS truncated (control)
+    const over = new ToolOutputSanitizer({ maxOutputLength: 8 }).sanitize("over", "012345678");
+    expect(over.warnings.some((w) => w.includes("truncated"))).toBe(true);
+  });
+
   it("does not truncate in the middle of a JSON escape sequence", () => {
     const result = new ToolOutputSanitizer({ maxOutputLength: 7 }).sanitize("json", "abc\\u1234tail");
 
