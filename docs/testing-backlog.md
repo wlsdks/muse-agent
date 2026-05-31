@@ -623,6 +623,18 @@ the generic layers below because they test what makes Muse an *agent*.
     has the final say — a signature can't make `ask` executable). receiveAndQuarantine deposits
     an accepted message with injected id+timestamp + the label, OMITS the label when absent,
     and deposits NOTHING on reject (a forged message is never quarantined). a2a 91->101.
+  - FORTY-FIFTH (cross-package sweep → a2a; HTTP entry-point security): `packages/a2a`
+    `handler.ts` `createA2AHandler` (114L, **ZERO test refs**) — the inbound HTTP request
+    handler, pure over a transport-agnostic request/response shape (the `muse swarm serve`
+    command is a thin node:http wrapper). First suite (8 tests, real builders): OFF-BY-DEFAULT
+    403 to everything (even agent-card discovery) when disabled; GET serves the agent card with
+    the query string stripped + 404s other GETs + 405s non-GET/POST; POST know-how quarantines
+    a valid signed message → deposits + acks a terminal Message (kind:"message", NOT a Task —
+    "a peer can never trigger compute") and acks "rejected" + deposits nothing on a bad
+    signature; and the bounded COUNCIL compute path — empty reasoning when not participating
+    (no councilReason), runs the reasoning step for a valid signed request when participating,
+    and REFUSES to compute (empty reasoning, councilReason never called) on a bad-signature
+    council request even when participating. a2a 101->109.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
