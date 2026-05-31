@@ -107,8 +107,9 @@ related: [README.md, team-roles.md, handoff-template.md, role-prompts.md, verifi
 **L4 실행통합·CI·적대까지(2026-05-31):** ④ **러너가 실제 구동** — [runner/orchestrator.mjs](runner/orchestrator.mjs)가
 plan→build→eval을 코드 게이트로 막으며 실제 `claude -p`로 구동, end-to-end **3/3 DONE** + 트레이스
 ⑤ **적대 9/9 차단**(게이트 우회 시도 전부 BLOCKED) ⑥ **CI 게이트** harness.yml(`node --test` 27/27).
-성숙도: 설계/근거/코드강제 + **실행통합·CI·적대**까지 도달. 남은 것(L5): 실전 Muse 작업을 골든에·
-보정셋 n↑·트레이스 관측 확장.
+성숙도: 설계/근거/코드강제 + **실행통합·CI·적대**까지 도달. **L5 진행:** 실전형 과제 G13·G14를 통합
+러너로 실제 구동(누적 5/5 DONE)·판정자 보정 n=6→**12**(TPR 4/4·TNR 8/8). 남은 것: 대형 다단계·실
+코드베이스 작업, 보정셋 더 키우기+반복, 트레이스 관측 확장.
 
 > 이 자가평가는 외부 권위 체크리스트로 측정한 것이며, 칸이 채워질 때마다 위 표의 상태를 갱신합니다.
 > 측정 가능한 진전(빈 칸 → 채움)이 곧 "최고의 하네스"로 가는 길입니다.

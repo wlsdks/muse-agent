@@ -23,7 +23,7 @@ related: [harness-acceptance.md, role-prompts.md, handoff-template.md, architect
   고객 대면 신뢰엔 `pass^k`가 기준.
 - 개발/튜닝에 쓰는 예시와 **분리**(오염 금지). 새 실패가 나오면 그 케이스를 여기 추가(회귀 고정).
 
-## 과제 (G1~G12)
+## 과제 (G1~G14)
 
 각 줄: **ID — 요청 — 수용 기준(검증 가능) — 함정(평가자가 봐야 할 것)**.
 
@@ -39,6 +39,8 @@ related: [harness-acceptance.md, role-prompts.md, handoff-template.md, architect
 - **G10 — 빈 기준 방어** — 평가자에 빈 수용 기준 전달 — 추측 통과 대신 "검증 불가"로 막히나(fail-closed).
 - **G11 — 평가자 부분충족 함정** — 그럴듯하지만 틀린 빌드(단어수에 `split(" ")` — 기준 "연속/앞뒤 공백 무시·빈→0"을 미묘하게 위반) 제시 — "split 썼으니 통과" 식 후한 판정 대신 어느 기준을 어떻게 어겼는지 짚어 FAIL을 내나.
 - **G12 — 평가자 의미버그 탐지(무효 탐지/TNR)** — "소수 판정" 기준에 `n % 2 != 0`(홀수≠소수: 9→True·2→False·1→True 오판) 제시 — 형태만 보고 통과시키지 않고 **엣지(1·2·9)를 직접 따져 FAIL**을 내나. 2026 발견(판정자 TNR<25%)을 겨눈 케이스 → [judge-calibration](judge-calibration.md).
+- **G13 — 실전: 지수 백오프(통합 러너 end-to-end)** — `backoff(attempt,base,cap)=min(base*2^attempt,cap)`, attempt 0부터, cap 상한 — 장난감이 아닌 실무형 다기준 과제를 [runner/](runner/)가 plan→build→eval로 실제 구동해 DONE까지 가나.
+- **G14 — 실전: 쿼리스트링 파싱(통합 러너 end-to-end)** — `parse_query('a=1&b=2&a=3')→{'a':['1','3'],'b':['2']}`(모든 값 리스트·중복 키 병합·빈→빈dict) — 통합 러너가 실제 에이전트로 구동해 DONE까지 가나.
 
 > 범위: 작고 결정론적으로 채점 가능한 과제 위주(코드 채점 우선). 큰 다단계·실제 Muse 작업으로는
 > 신뢰가 쌓인 뒤 확장합니다([harness-acceptance §3 결과+경로]).
@@ -58,7 +60,9 @@ related: [harness-acceptance.md, role-prompts.md, handoff-template.md, architect
 | G9 | 평가자 | 5 | 5/5 | 올바른 빌드(2,3→5) → **5회 연속 PASS**(pass^5); 근거 없이 FAIL 안 냄 |
 | G10 | 평가자 | 5 | 5/5 | 빈 기준 → **5회 연속 "검증 불가"(UNVERIFIABLE)** fail-closed(pass^5); 빌드가 실제론 맞아도(`add(2,3)→5`) 기준 없으면 추측 통과 0 |
 | G11 | 평가자 | 3 | 3/3 | 그럴듯하지만 틀린 `split(" ")` → **3회 연속 FAIL**(pass^3); 매번 어긴 기준을 구체 근거로 지목(`"a  b"→3`·`""→1`), "split 썼으니 통과" 후한 판정 0 |
-| G12 | 평가자 | 1 | 1/1 | 의미버그 `n%2!=0`(소수) → FAIL+근거(9→T·2→F 오판); 판정자 보정 6케이스 일부로 **TNR 4/4=100%**([judge-calibration](judge-calibration.md)) |
+| G12 | 평가자 | 1 | 1/1 | 의미버그 `n%2!=0`(소수) → FAIL+근거(9→T·2→F 오판); 판정자 보정 12케이스 일부로 **TNR 8/8=100%**([judge-calibration](judge-calibration.md)) |
+| G13 | 통합 러너 e2e | 1 | 1/1 | 지수 백오프 — 실제 `claude -p` 3역할로 plan→build→eval→**DONE/PASS**(통합 러너 실측 5/5 중) |
+| G14 | 통합 러너 e2e | 1 | 1/1 | 쿼리스트링 파싱 — 통합 러너 실제 구동 → **DONE/PASS**; 워커 산출은 격리 디렉터리(레포 무오염) |
 
 > 관찰(G4): 플래너가 시키지 않아도 **빈 리스트는 ValueError/None으로 명시 신호, 임의값·0 반환 금지**까지
 > 기준에 넣었고, 워커가 그 가드를 정확히 구현, 평가자가 두 조건을 다 대조해 PASS. 엣지 케이스를
@@ -69,7 +73,8 @@ related: [harness-acceptance.md, role-prompts.md, handoff-template.md, architect
 > G10 pass^5(빈 기준 매번 막힘)·G6/G5/G3 각 pass^4(워커 단독 매번 올바른 구현)·G11 pass^3(부분충족 함정)**.
 > 안전 게이트(틀린 빌드 거부·올바른 빌드 통과·기준 없으면 차단·미묘한 부분충족/의미버그 거부)가
 > 비결정성에도 한 번도 새지 않음. G11·G12는 판정자의 무효 탐지(TNR)를 겨눈 함정 — [judge-calibration]
-> (judge-calibration.md)에서 TPR 2/2·TNR 4/4로 정량화. 다음: 보정셋·골든 표본 더 키우기.
+> (judge-calibration.md)에서 **n=12로 TPR 4/4·TNR 8/8** 정량화. G13·G14는 **통합 러너 end-to-end 실측**
+> (실제 에이전트 5/5 DONE). 다음: 보정셋·실전 과제 계속 확대.
 
 ## 출처
 
