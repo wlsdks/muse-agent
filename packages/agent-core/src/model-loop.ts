@@ -60,6 +60,8 @@ export interface ModelLoopRunner {
    * "Tool loops have explicit limits and timeouts."
    */
   readonly maxRunWallclockMs?: number;
+  /** Wall-clock source for the deadline (injectable so the mid-batch cut is testable without timing flake). Defaults to `Date.now`. */
+  readonly now?: () => number;
   readonly tracer: MuseTracer;
   readonly metrics: AgentMetrics;
   readonly tokenUsageSink?: TokenUsageSink;
@@ -130,8 +132,9 @@ export async function executeModelLoop(
   let messages: readonly ModelMessage[] = [...request.messages];
   let toolCallCount = 0;
   const deduplicator = new ToolCallDeduplicator();
+  const now = runner.now ?? Date.now;
   const deadlineMs = runner.maxRunWallclockMs && runner.maxRunWallclockMs > 0
-    ? Date.now() + runner.maxRunWallclockMs
+    ? now() + runner.maxRunWallclockMs
     : undefined;
 
   while (true) {
@@ -145,7 +148,7 @@ export async function executeModelLoop(
     // model returns a clean response instead of asking for another
     // tool we'd refuse. Honours the iter's "explicit limits and
     // timeouts" non-negotiable from CLAUDE.md.
-    const wallclockExceeded = deadlineMs !== undefined && Date.now() > deadlineMs;
+    const wallclockExceeded = deadlineMs !== undefined && now() > deadlineMs;
     const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls) ? request.tools : [];
     const response = await runner.generateWithTracing(context, provider, {
       ...request,
@@ -180,11 +183,11 @@ export async function executeModelLoop(
     // sequentially — N calls each hitting a slow/hung MCP server —
     // the remaining calls are skipped so the wall-clock cap is a
     // real execution bound, not just a between-turn boundary.
-    const batchStartedPastDeadline = deadlineMs !== undefined && Date.now() > deadlineMs;
+    const batchStartedPastDeadline = deadlineMs !== undefined && now() > deadlineMs;
     for (const toolCall of calls) {
       const remaining = runner.maxToolCalls - toolCallCount;
       const crossedDeadlineMidBatch = !batchStartedPastDeadline
-        && deadlineMs !== undefined && Date.now() > deadlineMs;
+        && deadlineMs !== undefined && now() > deadlineMs;
       const canRun = remaining > 0 && !crossedDeadlineMidBatch;
       const duplicate = canRun ? deduplicator.check(toolCall) : undefined;
       const executed = duplicate?.duplicate
@@ -238,15 +241,16 @@ export async function* executeStreamingModelLoop(
   let messages: readonly ModelMessage[] = [...request.messages];
   let toolCallCount = 0;
   const deduplicator = new ToolCallDeduplicator();
+  const now = runner.now ?? Date.now;
   const deadlineMs = runner.maxRunWallclockMs && runner.maxRunWallclockMs > 0
-    ? Date.now() + runner.maxRunWallclockMs
+    ? now() + runner.maxRunWallclockMs
     : undefined;
 
   while (true) {
     if (context.input.signal?.aborted) {
       return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed);
     }
-    const wallclockExceeded = deadlineMs !== undefined && Date.now() > deadlineMs;
+    const wallclockExceeded = deadlineMs !== undefined && now() > deadlineMs;
     const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls) ? request.tools : [];
     const turnStream = streamModelTurn(runner, context, provider, {
       ...request,
@@ -282,11 +286,11 @@ export async function* executeStreamingModelLoop(
     intermediateMessages.push(assistantMessage);
     messages = [...messages, assistantMessage];
 
-    const batchStartedPastDeadline = deadlineMs !== undefined && Date.now() > deadlineMs;
+    const batchStartedPastDeadline = deadlineMs !== undefined && now() > deadlineMs;
     for (const toolCall of calls) {
       const remaining = runner.maxToolCalls - toolCallCount;
       const crossedDeadlineMidBatch = !batchStartedPastDeadline
-        && deadlineMs !== undefined && Date.now() > deadlineMs;
+        && deadlineMs !== undefined && now() > deadlineMs;
       const canRun = remaining > 0 && !crossedDeadlineMidBatch;
       const duplicate = canRun ? deduplicator.check(toolCall) : undefined;
       const executed = duplicate?.duplicate

@@ -277,9 +277,15 @@ the generic layers below because they test what makes Muse an *agent*.
     the `maxRunWallclockMs > 0` deadline guard — a 0 means "unbounded", so it must
     NOT create a Date.now()+0 deadline that disables tools on turn 1 (a `> 0`→`>= 0`
     regression would silently kill every tool call). Asserted maxRunWallclockMs:0
-    leaves tools active and the tool runs. agent-core 1082→1083. (Noted: the
-    mid-batch wall-clock cut would need a clock seam to test without timing flake —
-    a deferred source-side improvement, not a test slice.)
+    leaves tools active and the tool runs. agent-core 1082→1083.
+  - FOLLOW-UP (the deferred clock seam, now done): added an injectable `now?: () =>
+    number` to ModelLoopRunner (default `Date.now`, threaded through all 8 deadline
+    sites in BOTH the streaming + non-streaming loops, behavior-preserving). With it,
+    added the deterministic MID-BATCH wall-clock test the runaway-guard never had:
+    two calls in one turn, the first advances the injected clock past the deadline,
+    so the second is blocked — and with the "wall-clock deadline reached" reason,
+    NOT "max tool call limit". This is the "N sequential calls each hitting a hung
+    MCP server" safety path, now testable without a timing race. agent-core 1083→1084.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
