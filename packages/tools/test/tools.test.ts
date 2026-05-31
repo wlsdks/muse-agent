@@ -618,6 +618,45 @@ describe("Rust runner watchdog", () => {
   }, 15_000);
 });
 
+// The runner is a SEPARATE child process; its stdout is an untrusted boundary
+// (a crashed/version-skewed/garbage-emitting runner must never crash the parent
+// or smuggle wrong-typed fields through). invokeRustRunner reads the child's
+// stdout and coerces it via parseRunnerResponse — driven here against a
+// contract-faithful fake runner that emits a chosen payload (real spawn + stdin
+// write + stdout read + parse), not a stubbed bridge.
+describe("invokeRustRunner — runner output trust boundary", () => {
+  async function fakeRunner(payload: string): Promise<string> {
+    const { mkdtempSync, writeFileSync, chmodSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-fake-runner-"));
+    const script = join(dir, "fake-runner");
+    // Drain the request from stdin to EOF, then emit the payload and exit so the
+    // parent's `close` handler parses exactly this stdout.
+    writeFileSync(script, `#!${process.execPath}\nprocess.stdin.on("data", () => {});\nprocess.stdin.on("end", () => { process.stdout.write(${JSON.stringify(payload)}); });\nprocess.stdin.resume();\n`);
+    chmodSync(script, 0o755);
+    return script;
+  }
+
+  it("defaults every field a partial runner response omits (only `ok` present → safe full shape)", async () => {
+    const result = await invokeRustRunner(await fakeRunner(JSON.stringify({ ok: true })), { command: "x" });
+    expect(result).toEqual({ error: null, ok: true, status: null, stderr: "", stdout: "", timedOut: false, truncated: false });
+  });
+
+  it("coerces wrong-typed runner fields to safe defaults (ok only on ===true; status only when numeric; strings else \"\")", async () => {
+    const result = await invokeRustRunner(
+      await fakeRunner(JSON.stringify({ ok: 1, status: "x", stdout: 5, stderr: null, timedOut: "yes", truncated: 1 })),
+      { command: "x" }
+    );
+    expect(result).toMatchObject({ ok: false, status: null, stderr: "", stdout: "", timedOut: false, truncated: false });
+  });
+
+  it("falls back to a typed `runner returned invalid JSON` failure when stdout is not JSON (never throws)", async () => {
+    const result = await invokeRustRunner(await fakeRunner("not json at all"), { command: "x" });
+    expect(result).toMatchObject({ error: "runner returned invalid JSON", ok: false, status: null, stdout: "not json at all", timedOut: false });
+  });
+});
+
 describe("Rust runner tool", () => {
   it("normalizes runner requests and executes through the injected runner bridge", async () => {
     let captured;

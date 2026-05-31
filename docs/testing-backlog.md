@@ -2001,3 +2001,17 @@ the generic layers below because they test what makes Muse an *agent*.
     JSON test missed: valid JSON whose `entries` is non-array / absent → quarantine →
     []. Provenance is the citation trail; a wrongly-admitted entry corrupts it. Both
     pre-verified against dist. memory 309 pass (+2).
+
+- [x] **tools/runner — runner OUTPUT trust boundary (parseRunnerResponse).** The
+    runner INPUT parser (parseRunnerCommandRequest) is adversarially fuzzed, but its
+    symmetric OUTPUT side was untested: invokeRustRunner reads a SEPARATE child
+    process's stdout and coerces it via parseRunnerResponse, and that code path was
+    only hit by the skipIf real-binary test or bypassed entirely by the injected
+    bridge (which returns an already-shaped object). New tests drive the REAL spawn +
+    stdin-write + stdout-read + parse path against a contract-faithful fake-runner
+    script: (1) a partial response (only `ok`) is defaulted to the full safe shape;
+    (2) wrong-typed fields coerce safely (ok only on ===true, status only when
+    numeric, strings else ""); (3) non-JSON stdout falls back to the typed
+    `runner returned invalid JSON` failure, never a throw. A version-skewed or
+    crashing runner must not crash the parent or smuggle wrong-typed fields through.
+    All pre-verified against dist. tools 232 pass (+3).
