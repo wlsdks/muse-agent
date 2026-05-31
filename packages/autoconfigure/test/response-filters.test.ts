@@ -88,3 +88,26 @@ describe("createResponseFilters", () => {
     expect(createResponseFilters(env(allOff))).toEqual([]);
   });
 });
+
+describe("createResponseFilters — sanitized-text inlineReplacement locale default", () => {
+  const sanitizeWith = (overrides: Record<string, string>): string | undefined => {
+    const filter = createResponseFilters(env(overrides)).find((f) => f.id === "sanitized-text-response-filter") as
+      | { apply: (r: { id: string; model: string; output: string }) => { output: string } }
+      | undefined;
+    return filter?.apply({ id: "r", model: "m", output: "before [SANITIZED] after" }).output;
+  };
+
+  it("uses the English '(redacted)' default ONLY for an en-only locale (en AND not ko)", () => {
+    expect(sanitizeWith({ MUSE_RESPONSE_LOCALES: "en" })).toBe("before (redacted) after");
+  });
+
+  it("uses the Korean-first '(보안 처리됨)' default for ko-only OR both locales", () => {
+    expect(sanitizeWith({ MUSE_RESPONSE_LOCALES: "ko" })).toBe("before (보안 처리됨) after");
+    expect(sanitizeWith({})).toBe("before (보안 처리됨) after"); // both (default) → Korean-first
+  });
+
+  it("an explicit MUSE_RESPONSE_SANITIZED_TEXT_REPLACEMENT overrides the locale default (the ??)", () => {
+    expect(sanitizeWith({ MUSE_RESPONSE_LOCALES: "en", MUSE_RESPONSE_SANITIZED_TEXT_REPLACEMENT: "[hidden]" }))
+      .toBe("before [hidden] after");
+  });
+});

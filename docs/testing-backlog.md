@@ -913,6 +913,15 @@ the generic layers below because they test what makes Muse an *agent*.
     claim it. The remaining 54 survivors are Regex mutants on the fallback patterns (optional-
     period / anchor variants exact-phrase tests can't distinguish — equivalent-ish) + heading/
     list pattern literals. policy 117->119.
+  - SEVENTY-SECOND (mutation-depth): `autoconfigure/response-filters.ts` (119L, the casual-lure /
+    greeting-strip / sanitized-text response pipeline) Stryker 83.33% — the existing tests asserted
+    filter IDs but not the sanitized-text filter's locale-chosen redaction string. +3 tests
+    (running the assembled filter's apply on `[SANITIZED]`-bearing output): the English
+    "(redacted)" default is used ONLY for an en-ONLY locale (en AND not ko), the Korean-first
+    "(보안 처리됨)" default for ko-only OR both, and an explicit
+    MUSE_RESPONSE_SANITIZED_TEXT_REPLACEMENT overrides the locale default (the `??`). → **93.14%**
+    (85→95 killed; the locale-default `en && !ko` + `??` gated several mutants). autoconfigure
+    461->464.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
