@@ -400,6 +400,34 @@ map-reduce-and-manage(Cognition·Anthropic 3-agent harness).
   각 서브태스크는 게이트(만든자≠판정자·완료 게이트)로 보호되고, 프로젝트 게이트는 fail-closed.
 - **한계:** 서브태스크는 독립 가정(순차·격리). 서브태스크 간 의존/공유상태·실 코드베이스 규모는 다음.
 
+### 서른세 번째 실측 — 서브태스크 의존성(공유 컨텍스트) + 스코프 정정 (2026-05-31)
+
+다단계의 "앞 결과를 뒤가 사용"을 코드로([runner/project.mjs](runner/project.mjs)): 완료된 서브태스크
+산출을 (분량 제한해) 다음 서브태스크에 넘김. `shareContext` 토글, 재개 시 prior 복원.
+
+- **결정론 테스트 +3 (총 64/64)**: 뒤 서브태스크 worker가 앞 산출(`OUTPUT-0`)을 받음·`shareContext:false`면
+  독립·재개 시 스냅샷의 prior 복원. 
+- **실제 의존 e2e**(real claude): "c_to_f → batch_c_to_f(앞 함수 재사용)"이 2서브태스크로 분해, **서브태스크
+  1이 dependsOnPrior=true로 앞 산출을 받아** 둘 다 DONE. 격리 실행(레포 무오염).
+- **스코프 정정(중요):** 이 하네스는 **Claude Code 전용**이라 샌드박스 격리·실비용 추적·MCP 클라이언트·
+  병렬 서브에이전트 런타임은 **Claude Code에 위임**(갭이 아니라 설계). [architecture §스코프](architecture.md).
+  그 기준으로 보면 남았던 실제 코드 작업은 서브태스크 의존성(이번 완료)이었음.
+- **한계:** 공유 컨텍스트는 순차·누적 요약(전체 DAG 의존 그래프는 아님). 더 큰 실 코드베이스 규모는 다음.
+
+### 서른네 번째 실측 — Claude Code 네이티브 서브에이전트 통합 (2026-05-31)
+
+하네스 역할을 **실제 Claude Code 서브에이전트 파일**로 구성([claude-code-integration.md](claude-code-integration.md)).
+근거: Claude Code Subagents/Hooks 공식 문서 + 2026-05 플레이북.
+
+- **4개 서브에이전트 생성·검증**: `.claude/agents/harness-{planner,worker,evaluator,curator}.md` —
+  frontmatter 4/4 유효(name 소문자-하이픈·description·tools·model). 최소권한(평가자=쓰기 없음→
+  만든자≠판정자를 **도구 권한으로 강제**), 자동위임용 description, model 티어(opus/sonnet/haiku).
+- **레퍼런스 규약 반영**: 병렬(독립)/순차(의존)=우리 `shareContext`와 정합·위임 1단계(메인만 오케스트레이터)·
+  교차통신=디스크(핸드오프 파일)·집계=SubagentStop 훅.
+- **확인된 것:** "Claude Code 서브에이전트·팀 활용"이 매핑·문서를 넘어 **실제 동작하는 서브에이전트 파일**로
+  존재. 러너 스위트 무회귀(64/64).
+- **한계:** 세션 내 실제 Task-도구 위임/병렬 실행의 라이브 검증은 Claude Code 세션 안에서 확인(구조 검증까지 코드로).
+
 ## 한 줄 요약 (하네스 검증 체크리스트)
 
 1. **데이터 출처**를 먼저 인증했나(0층)?

@@ -72,3 +72,39 @@ test('project trace carries one correlation id and a summary', async () => {
   assert.ok(res.trace.every((e) => e.runId === 'proj-7'));
   assert.equal(res.summary.byEvent['project-done'], 1);
 });
+
+// Captures each worker prompt so we can assert what context a subtask received.
+function captureAgents(workerBodies) {
+  let idx = -1;
+  return async (role, body) => {
+    if (role === 'orchestrator') return '{"subtasks":["first","second"]}';
+    if (role === 'planner') { idx += 1; return '{"criteria":["c"]}'; }
+    if (role === 'worker') { workerBodies.push(body); return `OUTPUT-${idx}`; }
+    return '{"verdict":"PASS"}';
+  };
+}
+
+test('shared context: a later subtask sees the earlier subtask output', async () => {
+  const bodies = [];
+  const res = await runProject('t', { callAgent: captureAgents(bodies) });
+  assert.equal(res.ok, true);
+  assert.doesNotMatch(bodies[0], /이전 서브태스크 산출/); // first subtask has no prior context
+  assert.match(bodies[1], /이전 서브태스크 산출/); // second subtask gets the prior block
+  assert.match(bodies[1], /OUTPUT-0/); // and specifically subtask 0's output
+});
+
+test('shareContext:false keeps subtasks independent (no forwarding)', async () => {
+  const bodies = [];
+  await runProject('t', { callAgent: captureAgents(bodies), shareContext: false });
+  assert.doesNotMatch(bodies[1], /이전 서브태스크 산출/);
+});
+
+test('resume restores prior outputs so a resumed subtask still sees earlier context', async () => {
+  const bodies = [];
+  const res = await runProject('t', {
+    callAgent: captureAgents(bodies),
+    resume: { v: 1, runId: 'project', phase: 'SUBTASK', criteria: ['s0', 's1'], attempt: 1, build: [{ index: 0, sub: 's0', build: 'PRIOR-0' }], verdict: null },
+  });
+  assert.equal(res.ok, true);
+  assert.match(bodies[0], /PRIOR-0/); // the one resumed subtask saw the persisted prior output
+});
