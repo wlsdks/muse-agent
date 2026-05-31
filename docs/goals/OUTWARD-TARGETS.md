@@ -139,9 +139,18 @@ Direction set 2026-05-31 by 진안 ("강화학습이 중요해").
   enough to trust and turn on (the empty state explains how to enable it).
   This is the "shows its work" edge turned on Muse's OWN self-improvement.
   Verified by `renderLearnedDigest` tests + LIVE through the built CLI (trusted
-  +3/+2, avoided −5, dated reflection). cli 1560 green, lint 0/0. (Remaining P33
-  ideas: injection-tracking for precise credit; reward-weighted ORDERING for
-  skills, not just avoidance.)
+  +3/+2, avoided −5, dated reflection). cli 1560 green, lint 0/0.
+- [x] **P33-7 Reward-weighted skill ordering — skill-RL reaches playbook
+  parity.** Among equally-relevant authored skills competing for the limited
+  per-turn body slots, the reinforced (higher-reward) one is now selected
+  first, not just the avoided ones excluded — `selectRelevantSkills` blends
+  `SKILL_REWARD_RANK_WEIGHT × reward` into the rank AFTER the relevance gate
+  (reward orders relevant skills, never makes an irrelevant one relevant).
+  So skill-RL mirrors the playbook end-to-end: decay · reinforce · avoid ·
+  RANK. Verified by chat-skills tests (higher-reward wins the slot over the
+  name tie-break; a +5 zero-overlap skill still excluded). cli 1562 green,
+  lint 0/0. (Remaining P33 idea: injection-tracking for precise credit
+  instead of the selection heuristic.)
 
 **P32 — Grounded "dreaming" (idle memory consolidation that can't make
 things up).** Adopt the offline reflection competitors lean on (OpenClaw's
