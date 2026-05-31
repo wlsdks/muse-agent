@@ -521,6 +521,18 @@ the generic layers below because they test what makes Muse an *agent*.
     (an orphaned tool response whose tool-call was trimmed is removed); and compaction-
     summary insertion (fires past compactionThreshold, suppressed by insertSummary:false,
     gated by a custom threshold). memory 282->296.
+  - THIRTY-SIXTH (cross-package sweep; dist-verified): `packages/memory`
+    `memory-tool-output-trim.ts` (119L) had **ZERO test file** — the deterministic head+tail
+    truncation the runtime applies to EVERY tool result (Anthropic names tool output as the
+    #1 context-bloat source; a single large result can blow the local model's window in one
+    call). First suite (8 tests): no-op when maxChars<=0 or already-fits (incl. the `<=`
+    boundary at exactly the cap); the head+tail elision NEVER exceeds maxChars (the safety
+    invariant) while preserving the head ('H'…) and tail (…'T') with a `[truncated: N of M
+    total]` marker; the optional hint surfaced in the marker; headRatio=0 drops the head but
+    keeps the tail; a non-finite/out-of-range headRatio (NaN/Inf/-1/5) falls back to 0.7
+    (never NaN-poisons the slice); a pathologically tiny budget returns marker-only still
+    within the cap; and idempotency (a trimmed output that fits the same cap is not re-cut).
+    memory 296->304.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
