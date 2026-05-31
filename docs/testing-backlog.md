@@ -249,6 +249,15 @@ the generic layers below because they test what makes Muse an *agent*.
     approval for a screenshot/console read; asserted all 9. Plus the
     blank/whitespace browserUrl → default-9222 fallback and the fingerprintSha256
     config option (NoCoverage). mcp 1116→1118.
+  - SEVENTEENTH MEASUREMENT (throwaway, reused install, NOT committed): surveyed
+    calendar/credential-store (72.31% — but the security invariants ARE tested:
+    0o600 file mode, atomic no-tmp-sibling, prototype-safe __proto__/toString
+    providerId; the writeFile-mode survivor is EQUIVALENT, masked by the chmod
+    backstop — no churn added) and calendar/ics-export. The one genuine ics-export
+    gap: escapeText's backslash branch (`\`→`\\`) — the escaping test covered
+    ;/,/newline but not a literal backslash, and the backslash must escape FIRST
+    (RFC 5545 ordering) or the ;,\n escapes get double-escaped. Added a
+    Windows-path title asserting each `\` becomes exactly `\\`. calendar 110→111.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
