@@ -125,3 +125,31 @@ describe("startConsolidateTick.tickOnce — REAL OS-idle brake (B1 brake-first)"
     expect(calls).toBe(1);
   });
 });
+
+describe("startConsolidateTick.tickOnce — model-resident brake (never cold-load unattended)", () => {
+  const idle = { lastActivityMs: () => NOW.getTime() - IDLE_MS - 1 };
+
+  it("does NOT consolidate when the model is not resident (would cold-load)", async () => {
+    let calls = 0;
+    const handle = startConsolidateTick(baseOptions({
+      ...idle,
+      isModelResident: async () => false,
+      runConsolidate: async () => { calls += 1; return []; }
+    }));
+    await handle.tickOnce();
+    handle.stop();
+    expect(calls).toBe(0);
+  });
+
+  it("consolidates when idle AND the model is already resident", async () => {
+    let calls = 0;
+    const handle = startConsolidateTick(baseOptions({
+      ...idle,
+      isModelResident: async () => true,
+      runConsolidate: async () => { calls += 1; return []; }
+    }));
+    await handle.tickOnce();
+    handle.stop();
+    expect(calls).toBe(1);
+  });
+});

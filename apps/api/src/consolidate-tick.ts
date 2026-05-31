@@ -40,6 +40,13 @@ export interface ConsolidateTickOptions {
    * (back-compat). (PART A2 / B1 brake-first.)
    */
   readonly osIdleMs?: () => number | undefined;
+  /**
+   * Model-already-resident guard: when provided, the LLM merge runs ONLY if
+   * the model is already loaded in Ollama — never cold-loading the multi-GB
+   * model unattended. Fail-closed: resolve false on any error ⇒ defer.
+   * Omitted ⇒ guard skipped (back-compat). (PART A2 / B1 brake-first.)
+   */
+  readonly isModelResident?: () => boolean | Promise<boolean>;
   readonly intervalMs?: number;
   readonly threshold?: number;
   readonly minClusterSize?: number;
@@ -105,6 +112,9 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
     // requires the MACHINE to be idle (not just Muse's /api), fail-closed —
     // so it never strains the laptop while the user works in another app.
     if (options.osIdleMs && !isOsIdleEnough(options.osIdleMs(), idleThresholdMs)) return;
+    // Brake-first: never COLD-load the multi-GB model in the background — only
+    // merge when it's already resident (a foreground call warmed it).
+    if (options.isModelResident && !(await options.isModelResident())) return;
     firing = true;
     try {
       const merged = await runConsolidate();

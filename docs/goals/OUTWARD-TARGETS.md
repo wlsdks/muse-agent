@@ -80,7 +80,18 @@ proof shape (unit / 2-session / eval:self-improving), NOT cited-answer+refusal.
   OS-busy or unknown → no merge; both idle → merge) + a LIVE probe on this
   macOS box (osIdleMs ≈ 10632s from real ioreg); api 756 tests + `pnpm lint`
   0/0. Brake-first INFRA — felt payoff lands with the writer slice (Slice 1).
-  (this commit)
+  (770beaf1)
+
+- [x] **P36-2 Model-resident brake (B1 Slice 0, 2nd prerequisite).** The
+  daemon must never COLD-load the multi-GB model in the background. New
+  `model-resident.ts` reads Ollama `/api/ps`; the LLM merge now runs only when
+  the model is already loaded (fail-closed: Ollama-down/absent → defer), wired
+  via an opt-in seam + the daemon. So learning fires only when OS-idle AND
+  model-warm. Proven by unit tests (parse / prefix+tag match / fail-closed
+  live probe) + consolidate-tick gate (not resident → no merge; resident +
+  idle → merge) + a LIVE `/api/ps` probe on this box (correctly returns false
+  → defers when nothing loaded); api 774 tests + `pnpm lint` 0/0. Brake-first
+  INFRA. Remaining Slice-0 brake: the cross-process Ollama lease. (this commit)
 
 **P35 — Felt experience: make Muse FEEL like the SF confidant (loop-v2 PART
 B2).** The front door (P34) is delivered + proven; the headline's other half

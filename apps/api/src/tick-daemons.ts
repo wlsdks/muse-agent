@@ -32,6 +32,7 @@ import {
   type InMemoryActivityTracker
 } from "./proactive-tick.js";
 import { startConsolidateTick } from "./consolidate-tick.js";
+import { isModelResidentLive } from "./model-resident.js";
 import { osIdleMs } from "./os-idle.js";
 import {
   createMessagingObjectiveActuator,
@@ -523,6 +524,7 @@ export function startConsolidateDaemonIfConfigured(
   const tickMsRaw = env.MUSE_SKILL_CONSOLIDATE_TICK_MS ? Number(env.MUSE_SKILL_CONSOLIDATE_TICK_MS) : undefined;
   const consolidateQuietHours = parseQuietHours(env.MUSE_SKILL_CONSOLIDATE_QUIET_HOURS)
     ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const consolidateModel = options.defaultModel;
   const consolidateHandle = startConsolidateTick({
     authoredSkillsDir,
     errorLogger: (message) => server.log.warn(message),
@@ -533,6 +535,9 @@ export function startConsolidateDaemonIfConfigured(
     // Real OS-idle brake: the LLM merge only fires when the MACHINE is quiet
     // (system-wide HID idle), not merely when Muse's /api is — fail-closed.
     osIdleMs: () => osIdleMs(),
+    // Model-resident brake: never cold-load the multi-GB model unattended —
+    // merge only when it's already loaded in Ollama (fail-closed).
+    ...(consolidateModel ? { isModelResident: () => isModelResidentLive(consolidateModel) } : {}),
     ...(idleMsRaw !== undefined ? { idleThresholdMs: idleMsRaw } : {}),
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     ...(consolidateQuietHours ? { quietHours: consolidateQuietHours } : {})
