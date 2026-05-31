@@ -579,6 +579,16 @@ the generic layers below because they test what makes Muse an *agent*.
     was missed; send dispatches + returns the receipt, send to an unknown provider →
     PROVIDER_NOT_FOUND; fetchInbound dispatches when supported and → UPSTREAM_FAILED when the
     provider lacks it. messaging 340->348.
+  - FORTY-FIRST (cross-package sweep → messaging): `packages/messaging`
+    `discord-after-store.ts` (78L) had **ZERO test refs** — the per-channel "after" cursor
+    persistence (atomic tmp+rename + 0o600) that lets a Discord polling daemon walk a channel
+    instead of re-reading the same window. First suite (6 tests, temp files): undefined on a
+    not-yet-created file (first poll falls back to snapshot); round-trips a 19-digit snowflake
+    VERBATIM as a string (a JSON number would lose precision past 2^53); per-channel ISOLATION
+    + merge (writing chan-2 doesn't clobber chan-1); rejects an empty/non-string cursor with a
+    TypeError (a bad write would poison every future poll); the 0600 sidecar mode (it names
+    every channel the bot polls); and graceful "no cursor" on a corrupt file / missing `after`
+    key / non-string or empty value. messaging 348->354.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
