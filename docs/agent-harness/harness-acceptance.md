@@ -148,8 +148,9 @@ related: [verification-and-guardrails.md, failure-modes-and-observability.md, te
 
 ### 일곱 번째 실측 — G6 단어 수 3역할 연쇄 (같은 날)
 
-- **G6(연속·앞뒤 공백 무시 단어 수) — PASS:** 플래너 기준(`countWords("  hello   world  ")→2`) →
-  워커 `trim().split(/\s+/).filter(Boolean).length` → 평가자가 분할·필터 동작을 짚어 PASS+근거.
+- **G6(연속·앞뒤 공백 무시 단어 수) — PASS:** 플래너 기준(`"  hello   world  foo "→3`, 빈·공백만→0)
+  → 워커 `len(s.split())`(인자 없는 split이 공백 런으로 나누고 앞뒤 무시) → 평가자가 그 동작을 짚어
+  PASS+근거.
 
 > 골든 묶음 7/10 측정(G1~G6 3역할 통과 + G8·G10 평가자), 전부 pass^1=1/1. 남은 미실측: G7·G9.
 

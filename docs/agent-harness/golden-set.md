@@ -50,7 +50,7 @@ related: [harness-acceptance.md, role-prompts.md, handoff-template.md, architect
 | G3 | 플래너→워커→평가자 | 1 | 1/1 | 워커 `s[::-1]`, 평가자 PASS+근거 |
 | G4 | 플래너→워커→평가자 | 1 | 1/1 | 플래너가 빈 리스트 방어까지 기준에 포함 → 워커 ValueError 가드 → 평가자 PASS+근거 |
 | G5 | 플래너→워커→평가자 | 1 | 1/1 | 회문 정규화(소문자+공백제거) 구현 → "A man a plan…" true·"hello" false 평가자 PASS |
-| G6 | 플래너→워커→평가자 | 1 | 1/1 | `trim().split(/\s+/).filter(Boolean)` → 연속·앞뒤 공백 무시 단어 수, 평가자 PASS |
+| G6 | 플래너→워커→평가자 | 1 | 1/1 | 워커 `len(s.split())`(인자 없는 split=연속·앞뒤 공백 무시, 빈/공백만→0) → 평가자 PASS+근거 |
 | G8 | 평가자 | 1 | 1/1 | null 반환 → FAIL 정확 |
 | G10 | 평가자 | 1 | 1/1 | 빈 기준 → "검증 불가" fail-closed |
 | G7·G9 | — | 0 | — | 예정 |
