@@ -717,6 +717,14 @@ the generic layers below because they test what makes Muse an *agent*.
     check (no HTTP — "don't do this again" wins); a consented-but-HUNG endpoint times out via
     AbortController instead of stalling the standing-objective loop; a fetch transport error is
     a non-performed outcome (never a false success). mcp 1142->1148.
+  - FIFTY-THIRD (cross-package sweep → agent-core; WEDGE/link-safety): `packages/agent-core`
+    `citation-sanitiser.ts` `sanitiseCitations` (34L, **ZERO test refs**) — drops any web-search
+    citation whose URL isn't safe http(s) before it reaches the user (a javascript:/data:/
+    file: citation link is an injection/exfil hazard on the cited-recall surface). First suite
+    (5 tests): http + https kept in order; DROPS dangerous/non-web protocols (javascript: /
+    data: / file: / ftp: / mailto:); DROPS empty / whitespace-only / malformed / non-string
+    URLs without throwing; partitions a mixed list with the EXACT dropped count + preserved
+    kept order; empty input -> {kept:[],dropped:0}. agent-core 1193->1198.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
