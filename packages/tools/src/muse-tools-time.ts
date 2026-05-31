@@ -149,7 +149,7 @@ export function createTimeRelativeTool(now: () => Date): MuseTool {
       description:
         "Given an ISO-8601 timestamp `at`, returns a humanized relative phrase ('in 2h', '3d ago', 'just now'), the signed millisecond delta, and a direction ('past' | 'future' | 'now'). " +
         "An optional `reference` ISO timestamp pins the comparison point; otherwise the current clock is used. Useful for surfacing 'when' answers without a follow-up calculation. " +
-        "Use when comparing ONE timestamp to now (or a reference) — 'how long ago was X', 'how long until Y'; do NOT use when comparing two explicit timestamps — use time_diff.",
+        "Use when comparing ONE timestamp to now (or a reference) — 'how long ago was X', 'how long until Y', Korean 'X가 얼마나 지났어 / 지났 거야', 'X까지 며칠 남았어', 'X에서 지금까지 얼마나 됐어' (a single date measured against now, even when that date is an explicit ISO value); do NOT use when comparing two explicit timestamps to each other — use time_diff.",
       inputSchema: {
         additionalProperties: false,
         properties: {

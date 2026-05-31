@@ -121,6 +121,7 @@ async function buildTimeToolsScenario() {
       { prompt: "How many hours between 9am and 5:30pm today?", expectTool: "time_diff", requireArgs: ["from", "to"], note: "two-timestamp diff" },
       { prompt: "What is 3 days after 2026-05-26?", expectTool: "time_add", argIncludes: /2026-05-26/, requireArgs: ["base"], note: "add — base value must be the prompt's date (ArgumentCorrectness); STABLE 3/3" },
       { prompt: "How long ago was 2026-05-01 from now?", expectTool: "time_relative", requireArgs: ["at"], note: "relative-to-now (NOT time_diff)" },
+      { prompt: "2026-05-01이 얼마나 지난 거야?", expectTool: "time_relative", requireArgs: ["at"], note: "KO relative-to-now with an explicit date → time_relative NOT time_diff; was 0/5 before KO examples in the desc, now STABLE 5/5 — locks the relative-vs-diff disambiguation" },
       { prompt: "When is the next Friday?", expectTool: "next_weekday_date", argIncludes: /friday/i, requireArgs: ["weekday"], note: "future named weekday → next_weekday_date; weekday arg must be friday (ArgumentCorrectness); STABLE 3/3" },
       { prompt: "다음 주 금요일이 며칠이야?", expectTool: "next_weekday_date", argIncludes: /friday|금요일/i, requireArgs: ["weekday"], note: "KO future named weekday → next_weekday_date; weekday arg = friday (cross-language ArgumentCorrectness); STABLE 3/3" },
       { prompt: "Give me a cron expression for 2026-12-25 08:00.", expectTool: "cron_for_datetime", argIncludes: /2026-12-25/, requireArgs: ["iso"], note: "cron — iso arg must carry the prompt's date (ArgumentCorrectness); STABLE 3/3" },

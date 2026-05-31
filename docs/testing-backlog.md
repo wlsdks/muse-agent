@@ -2104,3 +2104,17 @@ the generic layers below because they test what makes Muse an *agent*.
     (A 2nd gap found and NOT yet fixed: KO "2026-05-01이 얼마나 지난 거야?" picks time_diff
     instead of time_relative — the documented relative-vs-diff overlap; logged for a
     future targeted slice.)
+
+- [x] **fix(tools): time_relative KO relative-to-now phrasing (relative-vs-diff overlap).**
+    The logged gap #2 from the prior fire. KO prompts measuring ONE explicit date
+    against now — "2026-05-01이 얼마나 지난 거야?", "…에서 지금까지 얼마나 됐어?",
+    "…까지 며칠 남았어?" — picked time_diff 0/5 (the model saw one ISO date and grabbed
+    the two-timestamp duration tool). EN equivalents worked; time_relative's
+    disambiguation clause had EN examples only. Fix: added KO examples to its Use-when
+    clause ("X가 얼마나 지났어", "X까지 며칠 남았어", "X에서 지금까지 얼마나 됐어 — a single date
+    vs now, even when explicit ISO"). Result: the 3 broken KO cases 0/5→5/5; EN
+    time_relative + BOTH two-timestamp time_diff cases (KO + EN) stay 5/5 (no
+    regression — the relative-vs-diff boundary holds). eval:tools 60→61 (KO relative
+    golden positive added). Verified STABLE 5/5 before landing. (Remaining time gap,
+    logged: "9시랑 17시 30분 사이 몇 시간?" → no tool — informal HH:MM with no date; a
+    distinct arg-shape issue, future slice.)
