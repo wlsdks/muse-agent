@@ -2226,3 +2226,13 @@ the generic layers below because they test what makes Muse an *agent*.
     lexicographic sort; (2) sinceMs instant floor drops older entries; (3) limit caps
     to the newest N after sorting; (4) kind filter restricts to one source. Pre-verified
     against dist with real temp files. mcp 1212 tests green.
+
+- [x] **mcp/personal-followups-store — 5 zero-coverage exports (lifecycle/parser/serializer).**
+    A per-FUNCTION census (the module shows hits=1 only because snooze/read/write/compare
+    are referenced) found markFollowupFired, cancelFollowup, upsertFollowup,
+    readFollowupStatusFilter, serializeFollowup with ZERO refs. These are proactivity-
+    critical. New suite pins: markFollowupFired scheduled→fired + the GUARD (missing id OR
+    already-fired → undefined, never re-fires); cancelFollowup scheduled→cancelled but not
+    a fired entry (no resurrection); upsertFollowup idempotent replace-by-id; the status-
+    filter parser (3 valid + default 'scheduled'); serializeFollowup required + conditional
+    optionals. Pre-verified against dist. mcp 1219 tests green.
