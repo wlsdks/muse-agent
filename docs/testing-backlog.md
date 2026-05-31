@@ -2441,3 +2441,15 @@ the generic layers below because they test what makes Muse an *agent*.
     withFileMutationQueue; after, 25 concurrent fires keep all 25, capacity cap holds.
     Regression test reminder-history-concurrent.test.ts. Remaining unserialized RMW:
     plan-cache, followup-llm-budget. mcp 1267 green.
+
+- [x] **fix(mcp): serialize the last two RMW stores (plan-cache + followup-llm-budget) — vein CLOSED.**
+    recordPlanTemplate (read→upsert→cap→write) and incrementFollowupLlmBudget
+    (read→increment→write) were the final unserialized RMW personal stores. Both crashed
+    under 25 concurrent ops (ENOENT, tmp-${pid}-${Date.now()} same-ms collision); the
+    budget ALSO under-counted (concurrent increments all read the same count → daily LLM
+    cap never trips → over-spend). Fixed both via withFileMutationQueue; after, plan-cache
+    keeps all 25, budget accumulates to 25. rmw-stores-concurrent.test.ts. This CLOSES the
+    "migrate ~10 RMW stores" backlog item — all mcp personal-store RMW paths are now
+    serialized (5 fixed this session: proactive-history, patterns-fired, episodes,
+    reminder-history, plan-cache+budget; recall-hits/action-log/proposed-action already
+    had local queues). mcp 1269 green.

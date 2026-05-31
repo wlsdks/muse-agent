@@ -11,6 +11,8 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+import { withFileMutationQueue } from "./atomic-file-store.js";
+
 /** Newest templates kept — bounds the file + retrieval cost. */
 export const MAX_PLAN_CACHE_ENTRIES = 100;
 
@@ -76,9 +78,15 @@ export async function writePlanCache(file: string, entries: readonly PlanCacheEn
 }
 
 export async function recordPlanTemplate(file: string, entry: PlanCacheEntry): Promise<void> {
-  const existing = await readPlanCache(file);
-  const next = [...existing.filter((e) => e.id !== entry.id), entry].slice(-MAX_PLAN_CACHE_ENTRIES);
-  await writePlanCache(file, next);
+  // Serialise the read→upsert→cap→write: concurrent cache writes otherwise read
+  // the same snapshot and the last write clobbers the rest (a lost plan template
+  // is a cache miss the agent re-plans from scratch), and two writes in the same
+  // millisecond collided on the tmp-${pid}-${Date.now()} path and threw ENOENT.
+  await withFileMutationQueue(file, async () => {
+    const existing = await readPlanCache(file);
+    const next = [...existing.filter((e) => e.id !== entry.id), entry].slice(-MAX_PLAN_CACHE_ENTRIES);
+    await writePlanCache(file, next);
+  });
 }
 
 export async function queryPlanCache(file: string, userId?: string): Promise<readonly PlanCacheEntry[]> {

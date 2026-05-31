@@ -20,6 +20,8 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+import { withFileMutationQueue } from "./atomic-file-store.js";
+
 export interface FollowupLlmBudgetRecord {
   /** Local-day key — `YYYY-MM-DD`. Used so the count resets each day automatically. */
   readonly date: string;
@@ -73,12 +75,18 @@ export async function writeFollowupLlmBudget(file: string, record: FollowupLlmBu
  * count without re-reading.
  */
 export async function incrementFollowupLlmBudget(file: string, today: string): Promise<FollowupLlmBudgetRecord> {
-  const existing = await readFollowupLlmBudget(file);
-  const next: FollowupLlmBudgetRecord = existing && existing.date === today
-    ? { calls: existing.calls + 1, date: today }
-    : { calls: 1, date: today };
-  await writeFollowupLlmBudget(file, next);
-  return next;
+  // Serialise the read→increment→write: concurrent increments otherwise BOTH read
+  // the same count and write count+1, so the daily total under-counts — the budget
+  // gate never trips and the followup detector over-spends its LLM-call cap. (They
+  // also collided on the tmp-${pid}-${Date.now()} path and threw ENOENT on rename.)
+  return withFileMutationQueue(file, async () => {
+    const existing = await readFollowupLlmBudget(file);
+    const next: FollowupLlmBudgetRecord = existing && existing.date === today
+      ? { calls: existing.calls + 1, date: today }
+      : { calls: 1, date: today };
+    await writeFollowupLlmBudget(file, next);
+    return next;
+  });
 }
 
 /**
