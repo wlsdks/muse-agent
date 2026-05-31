@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,7 +18,7 @@ const objective = (id: string): StandingObjective => ({
 
 let files: string[] = [];
 const freshFile = () => {
-  const file = join(tmpdir(), `muse-objectives-${files.length}-${process.pid}.json`);
+  const file = join(tmpdir(), `muse-objectives-${randomUUID()}.json`);
   files.push(file);
   return file;
 };

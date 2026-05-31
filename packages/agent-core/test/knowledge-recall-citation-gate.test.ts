@@ -98,6 +98,32 @@ describe("enforceAnswerCitations — output-side recall grounding gate", () => {
     expect(out.stripped).toEqual(["phoned the bank"]);
   });
 
+  it("gates reminders by content-token overlap — paraphrased-real kept, fabricated stripped", () => {
+    // The reminder source type has its own strip branch that no test exercised.
+    const out = enforceAnswerCitations(
+      "Take your meds [reminder: take medication] and book it [reminder: renew passport].",
+      { reminders: ["take your medication at 8pm"] }
+    );
+    expect(out.text).toContain("[reminder: take medication]"); // take/medication overlap → kept
+    expect(out.text).not.toContain("renew passport"); // no overlap with any real reminder → stripped
+    expect(out.stripped).toEqual(["renew passport"]);
+  });
+
+  it("strips a citation against an ABSENT source list (undefined → treated as empty, so all are fabricated)", () => {
+    const out = enforceAnswerCitations("X [reminder: anything].", {});
+    expect(out.stripped).toEqual(["anything"]);
+    expect(out.text).toBe("X.");
+  });
+
+  it("cleans up the whitespace a stripped citation leaves (no ' .' or double space in the user-facing answer)", () => {
+    // A removed citation must not leave a space-before-punctuation or a double
+    // space — the answer is shown to the user, so the gate tidies the prose.
+    const trailing = enforceAnswerCitations("Your flight is at 9am [from trips/itinerary.md].", { notes: ["notes/vpn.md"] });
+    expect(trailing.text).toBe("Your flight is at 9am."); // not "9am ." and no double space
+    const midline = enforceAnswerCitations("First [from invented.md]  then second.", { notes: [] });
+    expect(midline.text).toBe("First then second."); // collapsed, not "First   then second."
+  });
+
   it("an answer with no citations is returned unchanged", () => {
     const out = enforceAnswerCitations("I'm not sure — nothing in your notes covers that.", { notes: ["notes/vpn.md"] });
     expect(out.text).toBe("I'm not sure — nothing in your notes covers that.");

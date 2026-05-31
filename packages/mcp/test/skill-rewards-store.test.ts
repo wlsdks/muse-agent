@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import { adjustSkillReward, isSkillAvoided, readSkillRewards, SKILL_AVOID_BELOW,
 
 let files: string[] = [];
 const freshFile = () => {
-  const file = join(tmpdir(), `muse-skill-rewards-${files.length}-${process.pid}.json`);
+  const file = join(tmpdir(), `muse-skill-rewards-${randomUUID()}.json`);
   files.push(file);
   return file;
 };

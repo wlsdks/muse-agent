@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DefaultCircuitBreaker, type FallbackStrategy, type RetryOptions } from "@muse/resilience";
 import { ModelProviderError, type ModelProvider, type ModelRequest, type ModelResponse } from "@muse/model";
 import { InMemoryAgentMetrics, InMemoryMuseTracer, InMemoryTokenUsageSink } from "@muse/observability";
-import { invokeModel, recordTokenUsageEvent } from "../src/model-invocation.js";
+import { applyCitationSanitisation, buildModelRequestWithWebSearch, invokeModel, recordTokenUsageEvent } from "../src/model-invocation.js";
 
 function provider(generate: (req: ModelRequest) => Promise<ModelResponse>): ModelProvider {
   return {
@@ -282,4 +282,42 @@ describe("recordTokenUsageEvent", () => {
     expect(event?.estimatedCostUsd).toBeUndefined();
   });
 
+});
+
+describe("applyCitationSanitisation — drops dangerous-scheme citation URLs (security)", () => {
+  it("keeps http(s) citations and strips javascript:/data: ones, preserving other response fields", () => {
+    const response = {
+      citations: [
+        { title: "good", url: "https://ok.example/a" },
+        { title: "xss", url: "javascript:alert(1)" },
+        { title: "data", url: "data:text/html,evil" },
+        { title: "plainhttp", url: "http://plain.example" }
+      ],
+      id: "r1",
+      model: "m",
+      output: "answer"
+    } as Parameters<typeof applyCitationSanitisation>[0];
+    const out = applyCitationSanitisation(response);
+    expect(out.citations?.map((c) => c.url)).toEqual(["https://ok.example/a", "http://plain.example"]);
+    expect(out.output).toBe("answer"); // other fields untouched
+    expect(out.id).toBe("r1");
+  });
+
+  it("is a referential no-op when citations are absent or empty (callers don't branch)", () => {
+    const absent = { id: "x", model: "m", output: "a" } as Parameters<typeof applyCitationSanitisation>[0];
+    expect(applyCitationSanitisation(absent)).toBe(absent);
+    const empty = { citations: [], id: "y", model: "m", output: "a" } as Parameters<typeof applyCitationSanitisation>[0];
+    expect(applyCitationSanitisation(empty)).toBe(empty);
+  });
+});
+
+describe("buildModelRequestWithWebSearch — injects the resolved web-search policy", () => {
+  it("adds webSearchPolicy to metadata while preserving existing metadata + the request", () => {
+    const request = { messages: [], metadata: { existing: "keep" }, model: "ollama/qwen3:8b" } as Parameters<typeof buildModelRequestWithWebSearch>[0];
+    const built = buildModelRequestWithWebSearch(request, { env: {}, settings: {} });
+    expect(built.metadata?.webSearchPolicy).toBeDefined();
+    expect((built.metadata as Record<string, unknown>).existing).toBe("keep"); // existing metadata kept
+    expect(built.messages).toBe(request.messages); // request fields carried through
+    expect(request.metadata).toEqual({ existing: "keep" }); // input not mutated
+  });
 });

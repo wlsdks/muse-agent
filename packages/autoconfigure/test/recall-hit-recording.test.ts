@@ -26,6 +26,20 @@ async function flush(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 30));
 }
 
+// The hit recording is fire-and-forget inside resolve() (it must not block the
+// recall path on disk I/O), so a FIXED sleep races the write under load — the
+// source of this test's flakiness in the full parallel `pnpm check`. Poll until
+// the expected entries land instead: deterministic (returns the moment the write
+// completes), with a generous ceiling so a genuine non-write still fails fast.
+async function waitForHits(expected: number): Promise<Awaited<ReturnType<typeof readRecallHits>>> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const hits = await readRecallHits(file);
+    if (hits.length >= expected) return hits;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return readRecallHits(file);
+}
+
 describe("withRecallHitRecording", () => {
   it("records a hit (with narrative) per surfaced session and passes the snapshot through unchanged", async () => {
     const snapshot: EpisodicRecallSnapshot = {
@@ -37,8 +51,7 @@ describe("withRecallHitRecording", () => {
     const wrapped = withRecallHitRecording(fakeProvider(snapshot), file);
     const out = await wrapped.resolve("budget?", "stark");
     expect(out).toBe(snapshot); // passthrough
-    await flush();
-    const hits = await readRecallHits(file);
+    const hits = await waitForHits(2);
     expect(hits.map((h) => h.key).sort()).toEqual(["sess-a", "sess-b"]);
     expect(hits.find((h) => h.key === "sess-a")?.summary).toBe("we planned the Q3 budget");
   });

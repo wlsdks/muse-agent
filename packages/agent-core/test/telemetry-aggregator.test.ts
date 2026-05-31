@@ -131,6 +131,23 @@ describe("InMemoryTelemetryAggregator (phase A)", () => {
     expect(summary.latency?.p95Ms).toBe(1_000);
   });
 
+  it("latency p95 uses the nearest-rank percentile at scale (NOT just the max once n is large enough)", () => {
+    // At n=10 (the test above) p95 collapses to the max, so the ceil(0.95n)-1 /
+    // min-clamp arithmetic is indistinguishable from "return the maximum". With 21
+    // samples (100..2100) the p95 index = min(20, ceil(0.95*21)-1 = 19) = 19 → the
+    // 20th smallest = 2000, STRICTLY below the max 2100 — exercises the formula.
+    const now = 10_000;
+    const agg = new InMemoryTelemetryAggregator({ capacity: 100, now: () => now });
+    for (let i = 0; i < 21; i++) {
+      agg.record(evt({ latencyMs: 100 * (i + 1), recordedAtMs: now - 100 + i, runId: `r-${i.toString()}` }));
+    }
+    const summary = agg.summary();
+    expect(summary.latency?.count).toBe(21);
+    expect(summary.latency?.maxMs).toBe(2_100);
+    expect(summary.latency?.p95Ms).toBe(2_000);
+    expect(summary.latency!.p95Ms).toBeLessThan(summary.latency!.maxMs);
+  });
+
   it("omits the latency block when no event in window carries latencyMs", () => {
     const now = 10_000;
     const agg = new InMemoryTelemetryAggregator({ now: () => now });

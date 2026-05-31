@@ -1,10 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { adjustPlaybookReward, decayStalePlaybookRewards, MAX_PLAYBOOK_ENTRIES, PLAYBOOK_DECAY_STALE_DAYS, PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, type PlaybookEntry, readPlaybook, recordPlaybookStrategy, removePlaybookStrategy, retainPlaybookEntries, writePlaybook } from "../src/personal-playbook-store.js";
+import { adjustPlaybookReward, decayStalePlaybookRewards, MAX_PLAYBOOK_ENTRIES, PLAYBOOK_DECAY_STALE_DAYS, PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, type PlaybookEntry, queryPlaybook, readPlaybook, recordPlaybookStrategy, removePlaybookStrategy, retainPlaybookEntries, writePlaybook } from "../src/personal-playbook-store.js";
 
 const entry = (id: string, tag?: string): PlaybookEntry => ({
   id,
@@ -15,8 +16,13 @@ const entry = (id: string, tag?: string): PlaybookEntry => ({
 });
 
 let files: string[] = [];
+// Globally-unique per call. The previous `files.length`-based name reset to
+// index 0 every afterEach, so a test that left async writes running past its
+// timeout (the concurrent over-cap case) re-created the SAME path the NEXT
+// test then used — leaking ~90 stale entries into it. A UUID can't collide
+// across tests regardless of timeout/teardown ordering.
 const freshFile = () => {
-  const file = join(tmpdir(), `muse-playbook-${files.length}-${process.pid}.json`);
+  const file = join(tmpdir(), `muse-playbook-${randomUUID()}.json`);
   files.push(file);
   return file;
 };
@@ -77,6 +83,14 @@ describe("removePlaybookStrategy", () => {
 // capacity cap. A lost strategy is a self-improvement the agent forgets; before
 // the per-file mutation queue, concurrent records clobbered one another and
 // could mis-apply the cap to a stale snapshot.
+// These drive MANY serialized real-fs read-modify-write cycles through
+// withFileMutationQueue (the over-cap case is 130 full-file rewrites). The
+// assertions are deterministic — the queue serializes the RMW — but the
+// wall-clock balloons under a saturated CPU (the full parallel `pnpm check`),
+// where the default 5s test timeout was being hit and surfaced as a failure.
+// Give them explicit headroom so contention can't kill a correct test.
+const CONCURRENT_FS_TIMEOUT_MS = 30_000;
+
 describe("concurrent playbook mutation", () => {
   it("preserves EVERY distinct strategy recorded concurrently (no last-writer-wins loss)", async () => {
     const file = freshFile();
@@ -84,21 +98,21 @@ describe("concurrent playbook mutation", () => {
     const all = await readPlaybook(file);
     expect(all).toHaveLength(20);
     expect(new Set(all.map((e) => e.id)).size).toBe(20);
-  });
+  }, CONCURRENT_FS_TIMEOUT_MS);
 
   it("applies the capacity cap to the real merged set under concurrent over-cap records", async () => {
     const file = freshFile();
     const over = MAX_PLAYBOOK_ENTRIES + 30;
     await Promise.all(Array.from({ length: over }, (_unused, i) => recordPlaybookStrategy(file, entry(`q${i.toString()}`))));
     expect(await readPlaybook(file)).toHaveLength(MAX_PLAYBOOK_ENTRIES); // not over-cap, not lost-to-stale
-  });
+  }, CONCURRENT_FS_TIMEOUT_MS);
 
   it("concurrent removes drop exactly the targeted strategies, leaving the rest", async () => {
     const file = freshFile();
     await Promise.all(Array.from({ length: 20 }, (_unused, i) => recordPlaybookStrategy(file, entry(`p${i.toString()}`))));
     await Promise.all(Array.from({ length: 10 }, (_unused, i) => removePlaybookStrategy(file, `p${i.toString()}`)));
     expect(await readPlaybook(file)).toHaveLength(10);
-  });
+  }, CONCURRENT_FS_TIMEOUT_MS);
 });
 
 describe("adjustPlaybookReward — the RL reinforce/decay update", () => {
@@ -278,5 +292,21 @@ describe("retainPlaybookEntries — reward-/recency-weighted eviction (B1 §3)",
     const after = await readPlaybook(file);
     expect(after).toHaveLength(MAX_PLAYBOOK_ENTRIES);
     expect(after.some((x) => x.id === "champion")).toBe(true); // not evicted by sheer age
+  });
+});
+
+describe("queryPlaybook — per-user isolation", () => {
+  it("returns every entry when no userId is given, but ONLY the user's own strategies when one is", async () => {
+    const file = freshFile();
+    await writePlaybook(file, [
+      { ...entry("a"), userId: "u1" },
+      { ...entry("b"), userId: "u2" },
+      { ...entry("c"), userId: "u1" }
+    ]);
+    expect((await queryPlaybook(file)).map((e) => e.id).sort()).toEqual(["a", "b", "c"]);
+    // u1 must never see u2's strategy "b" (per-user playbook isolation).
+    expect((await queryPlaybook(file, "u1")).map((e) => e.id).sort()).toEqual(["a", "c"]);
+    expect((await queryPlaybook(file, "u2")).map((e) => e.id)).toEqual(["b"]);
+    expect(await queryPlaybook(file, "nobody")).toEqual([]);
   });
 });

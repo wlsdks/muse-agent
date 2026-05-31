@@ -2149,3 +2149,277 @@ the generic layers below because they test what makes Muse an *agent*.
     centre), that it sorts internally (unsorted input → same order), and that it is a
     non-mutating permutation handling empty/single/pair. Deterministic; pre-verified
     against dist. agent-core 1232 tests green.
+
+- [x] **agent-core/knowledge-recall — citation-gate reminder type + whitespace cleanup.**
+    enforceAnswerCitations is the WEDGE/fabrication=0 output gate. Its notes/feeds/
+    tasks/events/sessions paths were tested, but two were not: (1) the `[reminder: …]`
+    source type — its own strip branch (overlap-gated) was unexercised; a mutant
+    dropping it would let a fabricated reminder citation through. (2) the post-strip
+    whitespace cleanup — a removed citation must not leave " ." or a double space in
+    the USER-FACING answer (the gate collapses them). New tests: reminder paraphrased-
+    real kept / fabricated stripped; absent source list (undefined→empty) strips all;
+    trailing "9am [from invented]." → "9am." and mid-line double-space collapsed. All
+    deterministic, pre-verified against dist. agent-core 1235 tests green.
+
+- [x] **agent-core/telemetry-aggregator — latency p95 at scale.** Same gap class as
+    multi-agent/orchestration-history: the latency-stats test used n=10, where p95
+    collapses to the max, so computeLatencyStats' `min(count-1, ceil(0.95n)-1)` formula
+    was indistinguishable from "return the maximum" and those mutants survived. New
+    test records 21 latencies (100..2100) and asserts p95 == 2000 (the 20th smallest,
+    STRICTLY below max 2100), exercising the nearest-rank computation. Pre-verified
+    against dist. agent-core 1236 tests green.
+
+- [x] **agent-core/model-invocation — applyCitationSanitisation + buildModelRequestWithWebSearch.**
+    model-invocation.test.ts covered invokeModel/recordTokenUsageEvent thoroughly but
+    NOT these two exports. applyCitationSanitisation is a SECURITY function — it drops
+    citations whose URL is a dangerous scheme (javascript:/data:) from what Muse shows
+    as sources; it was only exercised indirectly inside invokeModel (which never fed a
+    bad-scheme citation). New tests: keeps http(s) + strips javascript:/data: while
+    preserving other response fields; referential no-op when citations absent/empty.
+    buildModelRequestWithWebSearch: injects webSearchPolicy into metadata while keeping
+    existing metadata + request and not mutating the input. Pre-verified against dist.
+    agent-core 1239 tests green.
+
+- [x] **agent-core/tool-output-evidence — count fallback chain + insights-win guard.**
+    extractToolInsights tested individual count keys (count/totalCount/size) + locales,
+    but not (a) the fallback CHAIN precedence count→total→totalCount→totalSize→size
+    (count wins when several are present) NOR two of its keys (`total`, `totalSize`
+    were never exercised — dropping their `??` clause would survive); (b) the
+    insights-win guard — a count summary is only a FALLBACK, so with real insights
+    present no count line is appended (`normalized.length === 0`). New tests pin all
+    three. Pre-verified against dist. agent-core 1241 tests green.
+
+- [x] **resilience/ModelFallbackStrategy — failure branches (exhaustion / throw-skip / cancel / metrics).**
+    The fallback chain had only a happy-path test (tries models in order until one
+    returns non-blank). Four real branches were uncovered: (1) EVERY model yields blank
+    → undefined (exhaustion, distinct from a throw); (2) a fallback provider that THROWS
+    is caught and the NEXT model is tried (catch-and-continue, attempts=[a,b]); (3) a
+    cancellation (AbortError) mid-fallback is RE-THROWN, not swallowed — a user abort must
+    propagate; (4) recordFallbackAttempt logs each model's outcome (a:false, b:true).
+    Pre-verified against dist. resilience 25 tests green.
+
+- [x] **autoconfigure/external-mcp-config — structural validation branches.**
+    parseExternalMcpConfig parses UNTRUSTED external MCP server config (architecture.md
+    allowlist surface), so malformed input must fail LOUD. Existing tests covered the
+    happy paths + a few rejects, but these guard branches were unexercised: valid-JSON-
+    but-not-an-object root (array/primitive); mcpServers present-but-not-object; null
+    mcpServers → [] (back-compat); whitespace-only server name; non-object entry;
+    non-array args; empty stdio command; and the autoConnect default (true) vs explicit
+    false. New tests pin all of them. Pre-verified against dist. autoconfigure 470 green.
+
+- [x] **mcp/personal-objectives-store — serializeObjective (0 coverage → covered).**
+    A symbol-level census of the 109-file mcp package found serializeObjective with
+    ZERO test references (the read/write/add/patch store fns are exercised by many
+    briefing/objective tests, but the display/transport serializer was not). New tests
+    pin: exactly the 6 required fields when no optionals set; all optionals included
+    when present; the subtle attempts:0 case (uses `!== undefined`, so a zero-attempt
+    count survives — a truthy-gate mutant would drop it and corrupt the re-eval loop's
+    backoff state); and empty-string optionals dropped (truthy-gated). Pre-verified
+    against dist. mcp 1208 tests green.
+
+- [x] **mcp/personal-activity-feed — readActivityFeed merge/sort/window/limit/kind.**
+    The census's other 0-symbol-hit mcp module. mcp.test.ts only exercised single-
+    source corrupt-byte robustness; the cross-source COMPOSITION was untested. New
+    suite drives the pattern+episode readers and pins: (1) merge across sources ordered
+    newest-first by PARSED instant — an episode at 18:00+09:00 (=09:00Z) sorts AFTER a
+    pattern at 10:00Z despite its raw string sorting later, proving instant-not-
+    lexicographic sort; (2) sinceMs instant floor drops older entries; (3) limit caps
+    to the newest N after sorting; (4) kind filter restricts to one source. Pre-verified
+    against dist with real temp files. mcp 1212 tests green.
+
+- [x] **mcp/personal-followups-store — 5 zero-coverage exports (lifecycle/parser/serializer).**
+    A per-FUNCTION census (the module shows hits=1 only because snooze/read/write/compare
+    are referenced) found markFollowupFired, cancelFollowup, upsertFollowup,
+    readFollowupStatusFilter, serializeFollowup with ZERO refs. These are proactivity-
+    critical. New suite pins: markFollowupFired scheduled→fired + the GUARD (missing id OR
+    already-fired → undefined, never re-fires); cancelFollowup scheduled→cancelled but not
+    a fired entry (no resurrection); upsertFollowup idempotent replace-by-id; the status-
+    filter parser (3 valid + default 'scheduled'); serializeFollowup required + conditional
+    optionals. Pre-verified against dist. mcp 1219 tests green.
+
+- [x] **fix(test): de-flake recall-hit-recording (poll instead of fixed sleep).**
+    Surfaced last fire — recall-hit-recording.test.ts intermittently failed in the full
+    parallel `pnpm check` (expected [] vs the recorded hits), threatening the shared FF
+    gate. Root cause: the hit recording is fire-and-forget inside resolve() (must not
+    block the recall path on disk I/O — correct), but the test waited a FIXED 30ms that
+    races the write under load. Fix (test-only, no source change): replaced the sleep
+    with waitForHits(n) that polls readRecallHits until the entries land (≤2s ceiling) —
+    deterministic, returns the instant the write completes. Negative test keeps the fixed
+    wait (no write is ever issued there). autoconfigure 470 green across repeated runs.
+
+- [x] **scheduler/scheduler-helpers — 4 zero-coverage input validators.**
+    A per-function census found validateCronExpression, validateJobName,
+    validateExecutionTimeout, requireText with ZERO test refs (siblings validateTimezone/
+    validateRetryConfig ARE tested) — these guard untrusted scheduled-job input. New
+    tests pin: cron 5/6-field + @daily accepted, wrong-count/unparseable/unsupported-macro
+    rejected; blank job name rejected; execution timeout undefined/0 allowed, [1000,
+    3_600_000] bounds, and the NaN/Infinity guard (which raw < / > comparisons miss);
+    requireText trims + throws the caller's message on blank/null/undefined. Pre-verified
+    against dist. scheduler 91 tests green.
+
+- [x] **mcp/personal-consent-store — fail-closed scoped-consent gate (zero coverage).**
+    The per-function census found readConsents/writeConsents/hasConsent with ZERO test
+    refs — and hasConsent is the outbound-safety rule-5 gate behind performConsentedAction
+    (standing objectives need RECORDED scoped consent, never implicitly broadened). New
+    suite pins fail-closed behavior: missing store → false; true ONLY on exact
+    user+objective+scope match; a consent for one scope does NOT authorize a different
+    scope (no broadening); no cross-user/cross-objective leakage; recordConsent idempotent
+    replace-by-id (no duplicate/lost grant); serializeConsent required + optional note.
+    Pre-verified against dist. mcp 1225 tests green.
+
+- [x] **mcp/proactive-trust-ledger — daily-cap + learned-avoidance gates (zero coverage).**
+    Census found withinDailyCap, avoidedSourceKeys, isSourceAvoided, appendSurfaced with
+    ZERO refs — the gates the proactive daemon consults before surfacing (NORTH STAR:
+    gated proactivity). New tests pin: withinDailyCap true under / false at-or-over the
+    cap, fail-closed on a non-positive/non-finite cap, and the (now-window, now] bounds
+    (entry exactly at window-start excluded, at now included); avoidedSourceKeys collects
+    ONLY vetoed sources; isSourceAvoided true for a vetoed source, false otherwise;
+    appendSurfaced derives the sourceKey. Pre-verified against dist. mcp 1231 tests green.
+
+- [x] **mcp/smart-home — buildHomeAssistantServiceCall + performHomeActionWithApproval.**
+    Census found both with ZERO refs. buildHomeAssistantServiceCall builds the HA REST
+    service-call request that drives a state-changing home action; performHomeActionWithApproval
+    is the outbound-safety draft-first/fail-close path. New tests pin: builder URL
+    (trailing-slash stripped) + Bearer auth + entity_id+data body + summary, and the
+    no-entity scene form; e2e — approved POSTs the built request once (performed:true,
+    status 200), DENIED calls fetch zero times (performed:false, no state change reaches
+    the home). Contract-faithful fetch + gate fakes. Pre-verified against dist. mcp 1235 green.
+
+- [x] **mcp/objective-evaluator — parseObjectiveVerdict (zero coverage).**
+    Census found parseObjectiveVerdict with ZERO refs — it parses the LLM re-evaluation
+    verdict (met / unmet / unmeetable) for a standing objective. New tests pin: clean
+    met/unmet; unmeetable with the model's reason or a default when none; the SAFE
+    default — non-JSON or a recognised-shape JSON with an UNKNOWN outcome stays `unmet`
+    (an objective is never wrongly resolved/cancelled by a garbled reply); extraction
+    from a ```json fence after a <think> block; last-balanced-candidate-wins. Pre-verified
+    against dist. mcp 1240 tests green.
+
+- [x] **a2a/a2a-message — envelopeToA2AMessage + extractEnvelopeFromA2ABody (zero coverage).**
+    Census found both with ZERO refs (envelopeToSendRequest IS tested). envelopeToA2AMessage
+    frames a know-how envelope as the A2A data part; extractEnvelopeFromA2ABody parses the
+    UNTRUSTED inbound body (the candidate the HMAC + classifyInbound validate downstream).
+    New tests pin: the message wrap (single data part, know-how metadata, agent role, data
+    by reference); extraction from a JSON-RPC message/send body AND a bare Message; and
+    null for a non-object body / missing parts / no data part / non-object data (reads only
+    `data`, never peer metadata). Pre-verified against dist. a2a 134 tests green.
+
+- [x] **agent-core recall math — cosineSimilarity + lexicalTokens/lexicalOverlap (zero coverage).**
+    Census found all three with ZERO refs — the hybrid-recall primitives behind episodic
+    (embedding cosine) + knowledge (lexical) matching (WEDGE). New tests pin: cosine 1 for
+    identical/same-direction-scaled, -1 opposite, 0 orthogonal, and 0 for empty/length-
+    mismatched/zero-magnitude inputs (the 0/0→NaN guard); lexicalTokens lowercases, splits
+    on non-alphanumerics, dedupes, drops <2-char + stopwords; lexicalOverlap counts shared
+    content tokens, 0 for an empty query. Pre-verified against dist. agent-core 1247 green.
+
+- [x] **mcp/weather — describeWeatherCode + formatWeather (zero coverage).**
+    Census found both with ZERO refs — the user-facing rendering of the weather tool's
+    result. (Model adapter mappers toAnthropicRequest/etc. were also flagged but are
+    already exercised end-to-end via cloud-provider-adapters/anthropic-attachments tests,
+    so left alone.) New tests pin: describeWeatherCode known WMO code → text, unknown →
+    'weather code N' fallback; formatWeather place(+country) + condition + ROUNDED temp,
+    each optional metric (feels/humidity/wind) appended only when a number, country
+    omitted when absent. Pre-verified against dist. mcp 1244 tests green.
+
+- [x] **mcp/email-provider — summarizeInbox (zero coverage).**
+    Census found summarizeInbox with ZERO refs — the user-facing inbox digest (perception
+    output). New tests pin: "Inbox empty." for none; singular/plural count ("1 message" vs
+    "3 messages") and the head-only form when nothing is unread; an unread list with
+    "(no subject)"/"(unknown)" fallbacks for blank subject/sender; and the cap at the
+    first 5 unread. Pre-verified against dist. mcp 1248 tests green.
+
+- [x] **autoconfigure/setup-status — doctor counters (countNotes/statBytes/readTaskCount/readMcpEntryCount).**
+    Census found these four with ZERO refs — the counters behind `muse doctor`/setup-status.
+    New tests pin: countNotes counts .md/.markdown/.txt + each subdir as one, skipping
+    dotfiles + other extensions, undefined on a missing dir; statBytes size / undefined;
+    readTaskCount tasks-length / 0-on-wrong-shape / undefined-on-missing (three-state); and
+    the contract distinction — readMcpEntryCount degrades to 0 (NOT undefined) on
+    missing/malformed, since the report renders "0" vs "unknown" differently. Pre-verified
+    against dist. autoconfigure 475 tests green.
+
+- [x] **autoconfigure provider-paths (resolveDotMusePath) + provider-utils.readCredentialsSync.**
+    Census: the resolve*File family (via shared resolveDotMusePath) and readCredentialsSync
+    had ZERO refs. New tests pin: default ~/.muse/<name>, an absolute env override verbatim,
+    leading-~ expansion to home, and a BLANK/whitespace override falling back to default
+    (a cleared env var can't point a store at an empty cwd-relative path); readCredentialsSync
+    returns the providers map for a well-formed store and degrades to {} for missing/malformed/
+    missing-or-non-object providers. Pre-verified against dist. autoconfigure 481 tests green.
+
+- [x] **model/provider-base — isRetryableHttpStatus (zero coverage, the retry classifier).**
+    Census found the retry-classification source of truth (architecture.md: 4xx fail fast,
+    5xx/408/429 may retry) with ZERO refs. New tests pin: 408 + 429 retryable; the whole
+    500..599 range inclusive (499/600 not); ordinary 4xx (400/401/403/404/422) + 2xx/3xx
+    NOT retryable (fail fast); non-finite (NaN/Infinity) → false. NB: must import from
+    ../src/index.js, not ../src/provider-base.js directly — the latter trips a module
+    circular-init (adapter-openai extends undefined). Verified via the real source under
+    vitest. model 313 tests green.
+
+- [x] **mcp/personal-contacts-store — resolveContact + contactIdentifier + removeContact (zero coverage).**
+    Census found these with ZERO refs. resolveContact is the recipient-resolution gate
+    (outbound-safety rule 3: resolved-never-guessed). New tests pin: exact match on
+    name/email/handle → resolved; a multi-match partial → AMBIGUOUS (never a best-guess,
+    surfaces a clarify instead); exact preferred over partial; empty/no-match → unknown.
+    contactIdentifier: email → handle → undefined. removeContact: true when removed (entry
+    gone), false when the id is absent. Pre-verified against dist. mcp 1254 tests green.
+
+- [x] **mcp/personal-followup-llm-budget-store — daily budget gate (zero coverage).**
+    eval:explore mined N=12 across seeds 51-53 (120/120 each, only the known KO injection
+    report-only finding) — no NEW selection gap, so no live fix; took a census cluster
+    instead. formatLocalDay/incrementFollowupLlmBudget/isFollowupLlmBudgetExhausted (the
+    followup detector's daily LLM-call budget) had ZERO refs. New tests pin: formatLocalDay
+    zero-padded LOCAL YYYY-MM-DD; isFollowupLlmBudgetExhausted fail-closed on cap<=0/non-finite
+    (a misconfigured cap blocks, never infinite), not-exhausted with no record, at/over cap
+    for today, and yesterday's exhausted record → not exhausted today (day rollover);
+    incrementFollowupLlmBudget starts at 1, accumulates same-day, resets on rollover.
+    Pre-verified against dist. mcp 1259 tests green.
+
+- [x] **fix(test): de-flake playbook-store concurrent tests (unique file + timeout).**
+    Surfaced last fire — the concurrent-mutation tests flaked in the full parallel
+    pnpm check. systematic-debugging found TWO root causes: (1) the over-cap test (130
+    serialized real-fs RMW) hit vitest's 5000ms default timeout under CPU contention
+    ("Test timed out in 5000ms", 5006ms); (2) freshFile() named files by files.length
+    (reset to 0 each afterEach) + constant pid, so the timed-out test's still-running
+    background writes re-created the SAME path the NEXT test used → "expected length 10,
+    got 90" pollution. Fix: freshFile() now uses randomUUID (can't collide across
+    tests regardless of teardown timing), and the 3 concurrent real-fs tests get a
+    30s timeout. withFileMutationQueue itself is correct (test 1 distinctness passes) —
+    these were test-harness bugs, not a serialization race. mcp 1259 green x2.
+
+- [x] **fix(test): purge the freshFile cross-test-reuse antipattern from 3 more stores.**
+    After de-flaking playbook-store, swept for the same antipattern — temp files named
+    `${files.length}-${pid}` where files.length resets to 0 each afterEach, so the path
+    is REUSED across tests and a test whose async work outlives its timeout pollutes the
+    next test's file. Found and fixed three latent cases: skill-rewards-store,
+    patch-objective, proposed-action-store-writes — each now names its temp file with
+    randomUUID() (collision-proof regardless of teardown/timeout ordering). Preventive:
+    none were failing yet, but all carried the exact fragility that bit playbook-store.
+    mcp 1259 tests green.
+
+- [x] **eval:tools regression sweep (61/61 PASSED) + queryPlaybook per-user isolation.**
+    Ran the live eval:tools golden gate against current merged source — 61/61 PASSED,
+    confirming the tool-selection fixes (thermostat, KO date→time_now, KO relative→time_relative)
+    + injection golden negatives all still hold. Census remainder is now thin write-* passthroughs;
+    the one real guard left, queryPlaybook's per-user filter, is now covered: no userId → all,
+    a userId → ONLY that user's strategies (u1 never sees u2's "b"), unknown user → []. The
+    per-user playbook isolation is a privacy guard, not a passthrough. Pre-verified vs dist. mcp 1260 green.
+
+- [x] **fix(mcp): serialize appendProactiveHistory (concurrency bug — found & fixed).**
+    Pursuing the backlog "migrate ~10 RMW stores onto withFileMutationQueue" item, found
+    a REAL bug: appendProactiveHistory did a non-serialized read→append→write. Under
+    concurrent appends it (a) lost updates (both read the same snapshot, last write
+    clobbers — a lost proactive-history entry corrupts trust-ledger precision) AND (b)
+    CRASHED with ENOENT — two appends in the same ms generated the same
+    `tmp-${pid}-${Date.now()}` path, one renamed it away before the other. Reproduced
+    against dist (25 concurrent → crash). Fix: wrap the RMW in withFileMutationQueue
+    (the per-file serializer the playbook/consent/objective stores already use). After:
+    25 concurrent appends → all 25 kept, no crash; capacity cap still honoured under
+    concurrent over-cap. New regression test proactive-history-concurrent.test.ts. mcp 1262 green.
+
+- [x] **fix(mcp): serialize recordPatternFired (same concurrency bug as proactive-history).**
+    Continuing the RMW-store migration: re-triaged the 8 flagged stores — recall-hits /
+    action-log / proposed-action already have a LOCAL serializer queue (false positives);
+    the genuinely-unserialized ones are patterns-fired / plan-cache / reminder-history /
+    episodes / followup-llm-budget. recordPatternFired confirmed crashing under 25
+    concurrent fires (ENOENT rename, same tmp-${pid}-${Date.now()} collision). Fixed via
+    withFileMutationQueue; after, 25 concurrent fires keep all 25. Regression test
+    patterns-fired-concurrent.test.ts. Remaining unserialized: plan-cache, reminder-history,
+    episodes, followup-llm-budget (next fires). mcp 1263 green.

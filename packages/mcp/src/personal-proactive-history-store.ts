@@ -21,6 +21,8 @@ import { dirname } from "node:path";
 
 import { redactSecretsInText } from "@muse/shared";
 
+import { withFileMutationQueue } from "./atomic-file-store.js";
+
 import type { ProactiveFiredKind } from "./proactive-notice-loop.js";
 
 export interface ProactiveHistoryEntry {
@@ -82,32 +84,39 @@ export async function appendProactiveHistory(
 ): Promise<void> {
   const capacity = clampCapacity(options.capacity);
   const archiveMaxFiles = Math.max(0, Math.trunc(options.archiveMaxFiles ?? 0));
-  let existing = await readRaw(file);
+  // Serialise the read → (rotate) → append → write so concurrent appends can't
+  // each read the same snapshot and clobber one another (a lost proactive-history
+  // entry corrupts the trust-ledger precision) — nor collide on the same
+  // `tmp-${pid}-${Date.now()}` path within one millisecond (which threw ENOENT on
+  // rename). Same per-file queue the playbook / consent / objective stores use.
+  await withFileMutationQueue(file, async () => {
+    let existing = await readRaw(file);
 
-  // `>= capacity` (not `>`): one more append would exceed, so
-  // rotate now to keep the archive boundary at exactly capacity.
-  if (archiveMaxFiles > 0 && existing.length >= capacity) {
-    await rotateProactiveHistoryFiles(file, archiveMaxFiles);
-    existing = [];
-  }
+    // `>= capacity` (not `>`): one more append would exceed, so
+    // rotate now to keep the archive boundary at exactly capacity.
+    if (archiveMaxFiles > 0 && existing.length >= capacity) {
+      await rotateProactiveHistoryFiles(file, archiveMaxFiles);
+      existing = [];
+    }
 
-  // Scrub at the persist chokepoint so every caller inherits it.
-  // title flows raw from the task/event source and error may
-  // quote request bodies — neither is scrubbed upstream.
-  const scrubbed: ProactiveHistoryEntry = {
-    ...entry,
-    title: redactSecretsInText(entry.title),
-    text: redactSecretsInText(entry.text),
-    ...(entry.error ? { error: redactSecretsInText(entry.error) } : {})
-  };
-  const next = [...existing, scrubbed];
-  const trimmed = next.length > capacity ? next.slice(next.length - capacity) : next;
-  const payload: PersistedShape = { entries: trimmed, version: 1 };
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+    // Scrub at the persist chokepoint so every caller inherits it.
+    // title flows raw from the task/event source and error may
+    // quote request bodies — neither is scrubbed upstream.
+    const scrubbed: ProactiveHistoryEntry = {
+      ...entry,
+      title: redactSecretsInText(entry.title),
+      text: redactSecretsInText(entry.text),
+      ...(entry.error ? { error: redactSecretsInText(entry.error) } : {})
+    };
+    const next = [...existing, scrubbed];
+    const trimmed = next.length > capacity ? next.slice(next.length - capacity) : next;
+    const payload: PersistedShape = { entries: trimmed, version: 1 };
+    const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
+    await fs.mkdir(dirname(file), { recursive: true });
+    await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    await fs.rename(tmp, file);
+    await fs.chmod(file, 0o600).catch(() => undefined);
+  });
 }
 
 /**

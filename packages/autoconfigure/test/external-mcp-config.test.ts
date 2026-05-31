@@ -109,6 +109,38 @@ describe("parseExternalMcpConfig", () => {
       mcpServers: { fs: { command: "node", env: { TOKEN: 123 } } }
     }))).toThrow(/env\.TOKEN/);
   });
+
+  it("rejects a root that is valid JSON but not an object (array / primitive)", () => {
+    // untrusted config must fail LOUD, never silently parse to nothing.
+    expect(() => parseExternalMcpConfig("[1,2,3]")).toThrow(/must be a JSON object/);
+    expect(() => parseExternalMcpConfig("42")).toThrow(/must be a JSON object/);
+  });
+
+  it("rejects an mcpServers that is present but not an object", () => {
+    expect(() => parseExternalMcpConfig(JSON.stringify({ mcpServers: "x" }))).toThrow(/mcpServers must be a JSON object/);
+    expect(() => parseExternalMcpConfig(JSON.stringify({ mcpServers: [1] }))).toThrow(/mcpServers must be a JSON object/);
+  });
+
+  it("treats a null mcpServers as empty (back-compat with missing)", () => {
+    expect(parseExternalMcpConfig(JSON.stringify({ mcpServers: null }))).toEqual([]);
+  });
+
+  it("rejects an empty (whitespace) server name and a non-object entry", () => {
+    expect(() => parseExternalMcpConfig(JSON.stringify({ mcpServers: { "   ": { command: "x" } } }))).toThrow(/empty server name/);
+    expect(() => parseExternalMcpConfig(JSON.stringify({ mcpServers: { good: "not-an-object" } }))).toThrow(/mcpServers\.good must be an object/);
+  });
+
+  it("rejects a non-array args and an empty command on a stdio entry", () => {
+    expect(() => parseExternalMcpConfig(JSON.stringify({ mcpServers: { s: { args: "notarray", command: "run" } } }))).toThrow(/args must be a string array/);
+    expect(() => parseExternalMcpConfig(JSON.stringify({ mcpServers: { s: { command: "   " } } }))).toThrow(/command must be a non-empty string/);
+  });
+
+  it("honours an explicit autoConnect:false (defaults to true otherwise)", () => {
+    const [entry] = parseExternalMcpConfig(JSON.stringify({ mcpServers: { s: { autoConnect: false, command: "run" } } }));
+    expect(entry?.autoConnect).toBe(false);
+    const [dflt] = parseExternalMcpConfig(JSON.stringify({ mcpServers: { s: { command: "run" } } }));
+    expect(dflt?.autoConnect).toBe(true);
+  });
 });
 
 describe("resolveExternalMcpConfigFile", () => {
