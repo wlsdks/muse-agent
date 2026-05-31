@@ -5,6 +5,8 @@ import {
   applyPlaybook,
   clampReward,
   createAgentRuntime,
+  isAvoidedStrategy,
+  PLAYBOOK_AVOID_BELOW,
   PLAYBOOK_REWARD_MAX,
   PLAYBOOK_REWARD_MIN,
   rankPlaybookStrategies,
@@ -260,6 +262,39 @@ describe("clampReward", () => {
     expect(clampReward(2)).toBe(2);
     expect(clampReward(999)).toBe(PLAYBOOK_REWARD_MAX);
     expect(clampReward(-999)).toBe(PLAYBOOK_REWARD_MIN);
+  });
+});
+
+describe("learned avoidance — a corrected-into-the-floor strategy is never injected", () => {
+  it("excludes an avoided strategy even when the bank is at/below topK", () => {
+    const bank: PlaybookStrategy[] = [
+      { reward: -4, tag: "notes", text: "write long prose for notes" },
+      { reward: 0, tag: "notes", text: "summarise notes as bullets" }
+    ];
+    const out = rankPlaybookStrategies(bank, "summarise the notes", { topK: 6 });
+    expect(out.map((s) => s.text)).toEqual(["summarise notes as bullets"]); // the −4 one is DROPPED, not merely last
+  });
+
+  it("keeps a strategy just above the avoid line (reward −3 still injects, ranked last)", () => {
+    const bank: PlaybookStrategy[] = [
+      { reward: -3, tag: "notes", text: "write long prose for notes" },
+      { reward: 0, tag: "notes", text: "summarise notes as bullets" }
+    ];
+    const out = rankPlaybookStrategies(bank, "summarise the notes", { topK: 6 });
+    expect(out).toHaveLength(2); // −3 is not avoided
+    expect(out[0].text).toContain("bullets"); // the un-decayed one ranks first
+  });
+
+  it("returns nothing when every strategy is avoided", () => {
+    const bank: PlaybookStrategy[] = [{ reward: -5, text: "bad one" }, { reward: -4, text: "bad two" }];
+    expect(rankPlaybookStrategies(bank, "anything", { topK: 6 })).toHaveLength(0);
+  });
+
+  it("isAvoidedStrategy: true at/below the line, false above; absent reward is not avoided", () => {
+    expect(isAvoidedStrategy({ reward: PLAYBOOK_AVOID_BELOW, text: "x" })).toBe(true);
+    expect(isAvoidedStrategy({ reward: PLAYBOOK_AVOID_BELOW - 1, text: "x" })).toBe(true);
+    expect(isAvoidedStrategy({ reward: PLAYBOOK_AVOID_BELOW + 1, text: "x" })).toBe(false);
+    expect(isAvoidedStrategy({ text: "x" })).toBe(false); // absent = 0
   });
 });
 

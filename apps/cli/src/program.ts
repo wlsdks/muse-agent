@@ -60,6 +60,7 @@ import { registerIngestCommand } from "./chat-export-ingest.js";
 import { registerOnboardCommand } from "./commands-onboard.js";
 import { registerProactiveCommands } from "./commands-proactive.js";
 import { registerReflectionsCommand } from "./commands-reflections.js";
+import { registerLearnedCommand } from "./commands-learned.js";
 import { registerSwarmCommands } from "./commands-swarm.js";
 import { registerProposeCommands } from "./commands-propose.js";
 import { registerSkillsCommands } from "./commands-skills.js";
@@ -422,6 +423,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerProactiveCommands(program, io);
   registerSwarmCommands(program, io);
   registerReflectionsCommand(program, io);
+  registerLearnedCommand(program, io);
   registerProposeCommands(program, io);
   registerDaemonCommands(program, io);
   registerSkillsCommands(program, io);

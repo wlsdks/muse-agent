@@ -13,6 +13,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
+import { adjustSkillReward, isSkillAvoided, readSkillRewards } from "@muse/mcp";
 import { AuthoredSkillStore, loadSkillsFromDirectory } from "@muse/skills";
 import type { Command } from "commander";
 
@@ -25,6 +26,11 @@ export function resolveSkillsDir(env: NodeJS.ProcessEnv = process.env): string {
 
 export function resolveAuthoredSkillsDir(env: NodeJS.ProcessEnv = process.env): string {
   return env.MUSE_AUTHORED_SKILLS_DIR?.trim() || join(homedir(), ".muse", "skills", "authored");
+}
+
+/** The skill-reward sidecar (RL over skills) — name→reward, separate from each SKILL.md. */
+export function resolveSkillRewardsFile(env: NodeJS.ProcessEnv = process.env): string {
+  return env.MUSE_SKILL_REWARDS_FILE?.trim() || join(homedir(), ".muse", "skill-rewards.json");
 }
 
 /** The starter SKILL.md a fresh `muse skills add <name>` writes. */
@@ -111,14 +117,41 @@ export function registerSkillsCommands(program: Command, io: ProgramIO): void {
         io.stdout(`No authored skills yet. Run \`muse skills author\` after a chat session (dir: ${dir}).\n`);
         return;
       }
+      const rewards = await readSkillRewards(resolveSkillRewardsFile()).catch(() => ({} as Record<string, number>));
       io.stdout(`Authored skills (${authored.length.toString()}) in ${dir}:\n`);
       for (const skill of authored) {
         const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
         const authoredAt = typeof muse.authoredAt === "string" ? muse.authoredAt.slice(0, 10) : "unknown";
         const lastUsedAt = typeof muse.lastUsedAt === "string" ? muse.lastUsedAt.slice(0, 10) : "never";
+        const reward = rewards[skill.name];
+        const rewardLine = typeof reward === "number" && reward !== 0
+          ? `  reward: ${reward > 0 ? "+" : ""}${reward.toString()}${isSkillAvoided(reward) ? " · avoided (not applied)" : ""}`
+          : "";
         io.stdout(`  - ${skill.name} — ${skill.description}\n`);
-        io.stdout(`    authored: ${authoredAt}  last used: ${lastUsedAt}\n`);
+        io.stdout(`    authored: ${authoredAt}  last used: ${lastUsedAt}${rewardLine}\n`);
       }
+    });
+
+  skills
+    .command("reward")
+    .description("Reinforce an authored skill's reward — `--down` to penalise instead — e.g. `muse skills reward vpn-fix 2`")
+    .argument("<name>", "Authored skill name (from `muse skills authored`)")
+    .argument("[amount]", "Positive integer to add (default 1)", "1")
+    .option("--down", "Penalise (subtract the amount) instead of reinforce")
+    .action(async (name: string, amountStr: string, options: { readonly down?: boolean }) => {
+      const amount = Number(amountStr);
+      if (!Number.isInteger(amount) || amount <= 0) {
+        throw new Error("skills reward <amount> must be a positive integer");
+      }
+      const authored = await new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() }).listAuthored().catch(() => []);
+      if (!authored.some((s) => s.name === name)) {
+        io.stdout(`(no authored skill named "${name}" — see \`muse skills authored\`)\n`);
+        return;
+      }
+      const reward = await adjustSkillReward(resolveSkillRewardsFile(), name, options.down ? -amount : amount);
+      io.stdout(reward === undefined
+        ? `(could not adjust "${name}")\n`
+        : `${name} reward → ${reward > 0 ? "+" : ""}${reward.toString()}${isSkillAvoided(reward) ? " · avoided (not applied)" : ""}\n`);
     });
 
   skills

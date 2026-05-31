@@ -62,3 +62,16 @@ describe("buildSkillsPrompt — per-turn ITR exposure", () => {
     expect(fired).toEqual([]);
   });
 });
+
+describe("RL avoidance — a corrected-into-the-floor skill is dropped", () => {
+  it("selectRelevantSkills excludes an avoided skill but keeps the rest", () => {
+    const picked = selectRelevantSkills([blog, refactor], "draft a blog post and refactor the code", 2, (n) => n === "blog-writer");
+    expect(picked.map((s) => s.name)).toEqual(["refactor-helper"]); // blog-writer would match but is avoided
+  });
+
+  it("buildSkillsPrompt drops an avoided skill entirely — not even an index line", () => {
+    const out = buildSkillsPrompt([blog, refactor], "draft a blog post", undefined, (name) => name === "blog-writer");
+    expect(out).not.toContain("blog-writer"); // gone from the prompt, body and index alike
+    expect(out).toContain("### refactor-helper"); // the rest stays discoverable
+  });
+});

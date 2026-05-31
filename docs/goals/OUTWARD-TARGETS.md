@@ -97,8 +97,51 @@ Direction set 2026-05-31 by 진안 ("강화학습이 중요해").
   ↓ decayed. Verified: detectApprovals detector tests (13 endorsements fire, 9
   bare-acknowledgements don't) + the cli reinforce test (an approval lifts the
   applied strategy to +1, unrelated untouched); agent-core 1068 / cli 1548 green,
-  lint 0/0. (Next P33-3: injection-tracking for precise credit assignment instead
-  of the text-similarity heuristic; P33-4: extend the reward loop to authored skills.)
+  lint 0/0.
+- [x] **P33-3 Learned avoidance — retire a repeatedly-corrected strategy from
+  injection.** The extinction endpoint: a strategy decayed to the floor
+  (reward ≤ `PLAYBOOK_AVOID_BELOW` = −4) is EXCLUDED from injection entirely by
+  `rankPlaybookStrategies`, even in a small bank (≤ topK) where ranking would
+  otherwise return everything — so a consistently-corrected strategy stops being
+  applied, not just sinks. Soft + reversible (the veto-store parallel): it stays
+  in the bank, marked "· avoided (not injected)" in `muse playbook`, and an
+  approval can lift it back. Verified: rank-exclusion tests (dropped even at bank
+  ≤ topK; −3 still injects; all-avoided → empty) + `isAvoidedStrategy` boundary,
+  and LIVE through the built CLI (the avoided marker + the −4 strategy excluded
+  from a 2-strategy bank). agent-core 1072 / cli 1548 green, lint 0/0.
+- [x] **P33-4 Extend the reward loop to authored skills.** RL now spans a
+  SECOND memory type: a skill the user keeps correcting stops being applied,
+  one they approve earns standing. A sidecar `skill-rewards.json` (name→reward,
+  kept out of each SKILL.md so a decay never rewrites the body) + `adjustSkillReward`
+  (clamped, mutation-queued); at session end `applySkillRewardsFromSession`
+  credit-assigns each correction/approval to the authored skill the live prompt
+  WOULD apply — via the SAME `selectRelevantSkills` — and decays/reinforces it;
+  `buildSkillsPrompt` drops an avoided skill (reward ≤ −4) from the per-turn
+  prompt entirely; `muse skills authored` shows reward + "· avoided". Verified:
+  store + selection-avoidance + decay/reinforce tests, and LIVE through the
+  built CLI (the avoided marker + a −4 skill excluded from a matching prompt).
+  mcp 1112 / cli 1553 green, lint 0/0.
+- [x] **P33-5 Manual reward control — the user steers the RL.**
+  `muse playbook reward <id> [amount] [--down]` and `muse skills reward
+  <name> [amount] [--down]` let the user reinforce or penalise a learned
+  strategy/skill by hand (clamped via the SAME adjust functions the auto-signal
+  uses). So a wrongly-penalised one can be RESCUED back above the avoid line and
+  a known-good one PRE-TRUSTED — the reversibility + control that makes the
+  (default-off) auto-RL safe to enable. Verified by command tests (reinforce /
+  --down penalise / clamp / prefix-id / unknown refused-and-not-written) and
+  LIVE through the built CLI (reward +3, then --down 8 clamps to −5 and the
+  strategy shows "· avoided"). cli 1556 green, lint 0/0.
+- [x] **P33-6 Make the learning visible & trustworthy — `muse learned`.**
+  One honest view composing the playbook + authored-skill + skill-reward +
+  reflection stores (no model call): the strategies/skills Muse now TRUSTS
+  (reward ≥ +1), the ones it learned to AVOID (reward ≤ −4, no longer applied),
+  and its grounded reflections — so the default-off RL learning is legible
+  enough to trust and turn on (the empty state explains how to enable it).
+  This is the "shows its work" edge turned on Muse's OWN self-improvement.
+  Verified by `renderLearnedDigest` tests + LIVE through the built CLI (trusted
+  +3/+2, avoided −5, dated reflection). cli 1560 green, lint 0/0. (Remaining P33
+  ideas: injection-tracking for precise credit; reward-weighted ORDERING for
+  skills, not just avoidance.)
 
 **P32 — Grounded "dreaming" (idle memory consolidation that can't make
 things up).** Adopt the offline reflection competitors lean on (OpenClaw's

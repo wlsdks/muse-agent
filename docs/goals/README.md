@@ -744,6 +744,20 @@ Append one line when a discovery path is evaluated and deferred:
   inert). Per `outbound-safety.md` the deny/expire → no-external-effect
   paths are the ones that MUST be proven, and they are. No drift, nothing
   reopened.
+- P33 audit — 10f6bfdf — PASS: the RL reward epic (P33-1..6) re-run green
+  together (agent-core 100 playbook+correction-distiller / mcp 17
+  skill-rewards+playbook-store / cli 36 distill+skills+author+commands) AND
+  exercised END-TO-END as one user flow through the BUILT CLI — the full
+  reward LIFECYCLE composes and is reversible: a fresh strategy is injected;
+  4 decays → reward −4 → `muse playbook list` shows "· avoided" and
+  `rankPlaybookStrategies` returns NOTHING (excluded even in a 1-strategy
+  bank, the P33-3 small-bank fix); `muse learned` lists it under "Learned to
+  avoid"; then +1 → −3 → no longer avoided → injected AGAIN and the `muse
+  learned` avoided section is gone. So ranking-avoidance (P33-3) + manual
+  control (P33-5) + transparency (P33-6) + the reward store all work
+  together and the recover-via-approval reversibility holds. Skill side
+  (P33-4) was live-verified in its own slice (avoided marker + buildSkillsPrompt
+  exclusion). No drift, nothing reopened.
 - regression sweep (30th feat-iter) — iter 830458a9 — PASS: `pnpm
   check` green across every workspace (agent-core 722, mcp 837,
   cli 1328, api 327, autoconfigure 283, tools 158, scheduler 62,

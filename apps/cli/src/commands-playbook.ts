@@ -8,9 +8,9 @@
 
 import { randomUUID } from "node:crypto";
 
-import { clusterByTextSimilarity, mergePlaybookStrategies, strategyTextSimilarity } from "@muse/agent-core";
+import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity } from "@muse/agent-core";
 import { createMuseRuntimeAssembly, resolvePlaybookFile } from "@muse/autoconfigure";
-import { queryPlaybook, recordPlaybookStrategy, removePlaybookStrategy, type PlaybookEntry } from "@muse/mcp";
+import { adjustPlaybookReward, queryPlaybook, recordPlaybookStrategy, removePlaybookStrategy, type PlaybookEntry } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { distillSessionCorrections } from "./chat-distill-corrections.js";
@@ -64,7 +64,8 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
       }
       for (const e of entries) {
         const reward = typeof e.reward === "number" && Number.isFinite(e.reward) ? e.reward : 0;
-        const rewardTag = reward === 0 ? "" : ` ⟨reward ${reward > 0 ? "+" : ""}${reward.toString()}⟩`;
+        const avoided = reward <= PLAYBOOK_AVOID_BELOW ? " · avoided (not injected)" : "";
+        const rewardTag = reward === 0 ? "" : ` ⟨reward ${reward > 0 ? "+" : ""}${reward.toString()}${avoided}⟩`;
         io.stdout(`  [${e.id.slice(0, 12)}]${e.tag ? ` (${e.tag})` : ""}${rewardTag} ${e.text}\n`);
       }
     });
@@ -82,6 +83,29 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
       }
       await removePlaybookStrategy(playbookFile(), match.id);
       io.stdout(`Removed strategy [${match.id.slice(0, 12)}]\n`);
+    });
+
+  playbook
+    .command("reward")
+    .description("Reinforce a strategy's learned reward — `--down` to penalise instead — e.g. `muse playbook reward ab12 2`")
+    .argument("<id>", "Strategy id (prefix from `playbook list`)")
+    .argument("[amount]", "Positive integer to add (default 1)", "1")
+    .option("--down", "Penalise (subtract the amount) instead of reinforce")
+    .action(async (id: string, amountStr: string, options: { readonly down?: boolean }) => {
+      const amount = Number(amountStr);
+      if (!Number.isInteger(amount) || amount <= 0) {
+        throw new Error("playbook reward <amount> must be a positive integer");
+      }
+      const all = await queryPlaybook(playbookFile());
+      const match = all.find((e) => e.id === id) ?? all.find((e) => e.id.startsWith(id));
+      if (!match) {
+        io.stdout(`(no strategy matches "${id}")\n`);
+        return;
+      }
+      const reward = await adjustPlaybookReward(playbookFile(), match.id, options.down ? -amount : amount);
+      io.stdout(reward === undefined
+        ? `(could not adjust [${match.id.slice(0, 12)}])\n`
+        : `[${match.id.slice(0, 12)}] reward → ${reward > 0 ? "+" : ""}${reward.toString()}\n`);
     });
 
   playbook
