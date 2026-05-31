@@ -55,6 +55,10 @@ related: [README.md, team-roles.md, handoff-template.md, role-prompts.md, verifi
 | 역할·패턴·경계(큐레이터/학습자 포함 7역할) | [team-roles](team-roles.md) |
 | 역할별 붙여넣기 프롬프트 | [role-prompts](role-prompts.md) |
 | 자기학습 환류(스킬·플레이북·회고) | [team-roles](team-roles.md) 큐레이터/학습자 + [muse-mapping](muse-mapping.md) |
+| 도구 설계 / 외부 도구(스킬·MCP) | [tool-design](tool-design.md) · [skills-and-mcp](skills-and-mcp.md) |
+| 루프 종료·예산 / 컨텍스트 압축 | [loop-budget](loop-budget.md) · [context-compaction](context-compaction.md) |
+| 권한 매트릭스 / 메모리 계층 | [permission-matrix](permission-matrix.md) · [memory-layers](memory-layers.md) |
+| 디버깅·DX | [debugging-and-dx](debugging-and-dx.md) |
 | 작업 상태(핸드오프) | [handoff-template](handoff-template.md) |
 | 가드레일·게이트 | [verification-and-guardrails](verification-and-guardrails.md) |
 | 실패 모드·관측·복구 | [failure-modes-and-observability](failure-modes-and-observability.md) |
