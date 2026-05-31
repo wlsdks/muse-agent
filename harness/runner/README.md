@@ -23,6 +23,15 @@ updated: 2026-05-31
   - `permissionGate(action)` — 은행=영구 거부, 외부전송=수신자 확정+사람 확인 필수, write/execute=신뢰 필요, 미상=거부.
   - `createRun()` — 같은 전이 id를 다시 적용하면 1회만 반영(재개 멱등성).
 - **`conformance.test.mjs`** — [runner-spec §7 매트릭스](../runner-spec.md)의 **거부 경로**를 증명하는 테스트.
+- **`orchestrator.mjs`** — 실행 통합. `runCycle(task, {callAgent})`가 plan→build→evaluate→complete를
+  **실제로 구동**하되 매 전이를 위 게이트로 막고 **트레이스**를 남김. `callAgent`는 주입식(테스트는
+  가짜 에이전트, 운영은 실제 LLM)이라 포터블·테스트 가능.
+- **`orchestrator.test.mjs`** — 가짜 에이전트로 구동 흐름 + 게이트 발화를 증명(LLM 불필요).
+- **`run.mjs`** — CLI 진입점: `node harness/runner/run.mjs "<작업>"` — 각 역할을 실제 `claude -p`로
+  부르고(역할마다 새 컨텍스트=만든자≠판정자), `last-trace.json`을 남김. 에이전트 바이너리는
+  `CLAUDE_BIN`으로 교체 가능(다른 에이전트 CLI로 포팅).
+- **`redteam.test.mjs`** — 게이트 **우회 시도**(단계 점프·완료 위조·자기채점·권한 상승·은행 위장·
+  재시도 캡 우회)가 전부 차단되는지 적대 검증.
 
 ## 돌리는 법 (의존성 설치 불필요)
 
@@ -30,9 +39,13 @@ updated: 2026-05-31
 node --test harness/runner/
 ```
 
-마지막 측정: **13/13 통과** (단계 건너뛰기·빈 기준·미평가 완료·자기 채점·손상된 양식·재시도 캡·
-은행/외부전송 권한·멱등 재개 + 해피패스). 행복경로만이 아니라 **거부 경로가 전부 초록**일 때만
-러너가 "delivered"입니다.
+마지막 측정: **27/27 통과** (적합성 13 + 오케스트레이터 5 + 적대 9). 행복경로만이 아니라
+**거부 경로가 전부 초록**일 때만 러너가 "delivered"입니다. CI는
+[`.github/workflows/harness.yml`](../../.github/workflows/harness.yml)가 `harness/**` 변경마다 강제.
+
+**실제 end-to-end(통합 러너, `run.mjs`):** 실제 `claude -p` 3역할로 `count_vowels`·`fizzbuzz`·
+`is_valid_email` 세 작업을 구동 → **3/3 모두 plan→build→evaluate→DONE(PASS)**, 게이트가 코드로
+강제되고 트레이스가 남음. 즉 게이트가 "테스트된 로직"을 넘어 **실제 실행을 강제**합니다.
 
 ## 상태기계
 

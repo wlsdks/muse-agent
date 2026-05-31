@@ -279,6 +279,31 @@ W4 마지막 칸(압축)에 실측 보강. 잡담과 결정이 섞인 대화 로
 - **확인된 것:** "그럴듯하면 통과" 편향을 **기준 대조+엣지 직접 검증** 루브릭이 누름 — 무효 탐지가 강함.
 - **한계:** n=6 시작 보정셋(표본 확대·반복 필요).
 
+### 스물두 번째 실측 — 실행 통합: 러너가 실제로 구동(L3→L4) (2026-05-31)
+
+게이트 코어를 넘어 **오케스트레이터가 사이클을 실제로 구동**. [runner/orchestrator.mjs](runner/orchestrator.mjs)가
+plan→build→evaluate→complete를 돌리되 매 전이를 코드 게이트로 막고 트레이스를 남김.
+
+- **가짜 에이전트 구동 테스트 5종**(LLM 불필요): 해피패스 DONE+트레이스, 빈 기준→빌드 실행 안 됨,
+  FAIL→유한 재빌드 후 PASS, 영구 FAIL→재시도 캡 BLOCKED, 깨진 평가응답→통과 아닌 BLOCK. 전부 통과.
+- **실제 end-to-end 3건**([run.mjs](runner/run.mjs), 실제 `claude -p` 3역할): `count_vowels`·`fizzbuzz`·
+  `is_valid_email` → **3/3 모두 plan→build→evaluate→DONE(PASS)**, 올바른 빌드 + 트레이스.
+- **확인된 것:** 게이트가 "테스트된 로직"을 넘어 **실제 실행을 강제**. 손으로 잇던 연쇄가 코드로 자동화됨.
+- **한계:** 단일 사이클 작업 위주(대형 다단계·실전 Muse 작업은 다음).
+
+### 스물세 번째 실측 — 적대(red-team) 9/9 차단 (2026-05-31)
+
+게이트 **우회 시도**가 전부 막히는지. [runner/redteam.test.mjs](runner/redteam.test.mjs).
+
+- 단계 점프(평가 건너뛰고 완료)·DONE 후 재실행·위조 verdict("pass"/"PASS "/truthy)·공백뿐 기준·
+  같은 에이전트 자기채점·외부전송 미확정 수신자·미상 권한 상승·은행 위장·재시도 캡 우회 → **9/9 BLOCKED**.
+- **확인된 것:** 정직한 실수뿐 아니라 **의도적 우회**도 코드가 거부(fail-closed).
+
+### 스물네 번째 실측 — CI 게이트 (2026-05-31)
+
+[`.github/workflows/harness.yml`](../.github/workflows/harness.yml)가 `harness/**` 변경마다
+`node --test harness/runner/`(현재 **27/27**)를 강제 — 회귀가 머지 전에 막힘.
+
 ## 한 줄 요약 (하네스 검증 체크리스트)
 
 1. **데이터 출처**를 먼저 인증했나(0층)?
