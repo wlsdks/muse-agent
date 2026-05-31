@@ -622,6 +622,32 @@ export function selectPlaybookSection(
 }
 
 /**
+ * The single learned strategy that most shaped this answer — the top-ranked
+ * injectable entry (S6 "I learned this about you"). Same ranking + exclusions as
+ * `selectPlaybookSection` (avoided/probation never injected), so this is exactly
+ * the strategy at the head of the `[Learned Strategies]` block. Undefined when
+ * nothing injectable. The caller still gates the surfaced beat on real relevance
+ * to the question, so a recency-floor pick never overclaims "applied".
+ */
+export function topAppliedStrategy(
+  entries: readonly { readonly text: string; readonly tag?: string; readonly reward?: number; readonly probation?: boolean }[],
+  queryText: string,
+  topK?: number
+): string | undefined {
+  const ranked = rankPlaybookStrategies(
+    entries.map((entry) => ({
+      text: entry.text,
+      ...(entry.tag ? { tag: entry.tag } : {}),
+      ...(typeof entry.reward === "number" ? { reward: entry.reward } : {}),
+      ...(entry.probation ? { probation: true } : {})
+    })),
+    queryText,
+    topK === undefined ? undefined : { topK }
+  );
+  return ranked[0]?.text;
+}
+
+/**
  * Drain the chat-only fast-path model stream. A provider `error`
  * event (Ollama not running, model not pulled with an actionable
  * hint, a 5xx) must surface, not be silently dropped while the
@@ -1136,17 +1162,18 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // them in for the chat-only stream below so past feedback shapes the
       // default `muse ask` answer too. Fail-soft; zero strategies ⇒ no block.
       let playbookSection: string | undefined;
+      let appliedStrategy: string | undefined;
       try {
         const { queryPlaybook } = await import("@muse/mcp");
         const { resolvePlaybookFile } = await import("@muse/autoconfigure");
         const envTopK = Number(process.env.MUSE_PLAYBOOK_INJECT_TOPK);
-        playbookSection = selectPlaybookSection(
-          await queryPlaybook(resolvePlaybookFile(process.env as Record<string, string | undefined>), userKey),
-          query,
-          Number.isFinite(envTopK) && envTopK >= 1 ? envTopK : undefined
-        );
+        const topK = Number.isFinite(envTopK) && envTopK >= 1 ? envTopK : undefined;
+        const entries = await queryPlaybook(resolvePlaybookFile(process.env as Record<string, string | undefined>), userKey);
+        playbookSection = selectPlaybookSection(entries, query, topK);
+        appliedStrategy = playbookSection ? topAppliedStrategy(entries, query, topK) : undefined;
       } catch {
         playbookSection = undefined;
+        appliedStrategy = undefined;
       }
 
       const systemPrompt = [
@@ -1427,6 +1454,17 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // reintroduce the spurious-citation-on-a-refusal confusion P34-11 fixed).
       if (!options.json && shouldWarmClose(collectedAnswer, noteFileCount)) {
         io.stderr(`\n${WARM_REFUSAL_CLOSE}\n`);
+      }
+
+      // S6 "I learned this about you" (B2): when a learned preference was both
+      // INJECTED and genuinely RELEVANT to this question (token overlap — a
+      // recency-floor pick never triggers the claim), surface a one-line beat so
+      // the user FEELS Muse growing with them. Deterministic (no second model
+      // call), grounded in the user's OWN taught strategy, suppressed on a
+      // refusal (which applied nothing), and wired to the `undo` reversal.
+      if (!options.json && appliedStrategy && !answerIsRefusal(collectedAnswer)
+        && lexicalOverlap(lexicalTokens(query), appliedStrategy) > 0) {
+        io.stderr(`\n💡 Applied a preference you taught me: "${appliedStrategy}". (Not right? \`muse playbook undo\`.)\n`);
       }
 
       if (options.json) {

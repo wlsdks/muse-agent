@@ -133,7 +133,7 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   (cited); "Dr. Patel's phone number?" → honest refusal, no fabricated number/
   citation. agent-core 1239 / cli 1630 tests + `pnpm lint` 0/0. A user can now
   ask Muse about their PEOPLE and get a cited answer or an honest "I don't have
-  that". (this commit)
+  that". (3131ce35)
 
 **P36 — Background self-learning, brake-and-proof-first (loop-v2 PART A2 /
 B1).** The headline's "grows-with-you" core: Muse learns from corrections
@@ -411,6 +411,24 @@ honest-refusal mock-corpus check where applicable.
   no P34-11 regression; `shouldWarmClose` (refusal AND notes>0) is pure +
   tested. Proven LIVE on qwen3:8b: the sister's-birthday + car must-refuses get
   the warm close, the MTU answer does not; `commands-ask-refusal.test.ts` +
+  `pnpm lint` 0/0. (a58a1712)
+
+- [x] **P35-5 "I learned this about you" beat (B2 S6).** When `muse ask` injects
+  a learned playbook strategy that is genuinely RELEVANT to the question (token
+  overlap — a recency-floor pick never triggers it) and the answer is NOT a
+  refusal, it now closes with a deterministic grounded beat: `💡 Applied a
+  preference you taught me: "<strategy>". (Not right? \`muse playbook undo\`.)` —
+  so the user FEELS Muse growing with them, and the beat is wired to the P36-14
+  reversal. Honesty-safe per B2: no second model call (fixed template over the
+  strategy already injected), grounded in the user's OWN taught preference,
+  suppressed on a refusal (which applied nothing) and when the top strategy
+  doesn't overlap the question. Converges with `muse learned`. Proven by unit
+  tests (`topAppliedStrategy`: top injectable for a relevant Q, matches the head
+  of the injected block, undefined for empty/probation/avoided) + a LIVE
+  `muse ask` on qwen3:8b (mock corpus + a seeded wireguard preference,
+  HOME-isolated, never real ~/.muse): the WireGuard MTU answer is cited "[from
+  2026-03-03-vpn-wireguard.md]" AND shows the beat naming the preference; the
+  sister's-birthday must-refuse honestly refuses with NO beat. cli 1633 tests +
   `pnpm lint` 0/0. (this commit)
 
 **P34 — The front door (loop-v2 headline: the moat is invisible without
