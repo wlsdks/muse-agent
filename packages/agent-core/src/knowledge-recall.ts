@@ -330,6 +330,8 @@ export interface AllowedCitations {
   readonly events?: readonly string[];
   /** `[reminder: <text>]` — pending reminders; content-token overlap. */
   readonly reminders?: readonly string[];
+  /** `[session: <summary>]` — retrieved past-session summaries; content-token overlap (the model rewrites the recap). */
+  readonly sessions?: readonly string[];
 }
 
 function resolvesExact(value: string, allowed: readonly string[]): boolean {
@@ -365,8 +367,8 @@ function resolvesByOverlap(value: string, allowed: readonly string[]): boolean {
  * citation to something the user doesn't have can never reach them BY CODE
  * (mirrors `parseReflections` / `parseCouncilAnswer`). Notes + feeds match
  * exactly (they are identifiers); the free-text title forms match on
- * content-token overlap so a paraphrased-but-real citation survives.
- * `[session: …]` is model-summarised and intentionally left untouched.
+ * content-token overlap so a paraphrased-but-real citation survives — including
+ * `[session: …]`, matched against the retrieved past-session summaries.
  */
 export function enforceAnswerCitations(answer: string, allowed: AllowedCitations): CitationEnforcement {
   let text = answer;
@@ -386,6 +388,7 @@ export function enforceAnswerCitations(answer: string, allowed: AllowedCitations
   strip(/\[task:\s*([^\]]+?)\s*\]/giu, (value) => resolvesByOverlap(value, allowed.tasks ?? []));
   strip(/\[event:\s*([^\]]+?)\s*\]/giu, (value) => resolvesByOverlap(value, allowed.events ?? []));
   strip(/\[reminder:\s*([^\]]+?)\s*\]/giu, (value) => resolvesByOverlap(value, allowed.reminders ?? []));
+  strip(/\[session:\s*([^\]]+?)\s*\]/giu, (value) => resolvesByOverlap(value, allowed.sessions ?? []));
   text = text
     .replace(/[ \t]{2,}/gu, " ")
     .replace(/[ \t]+([.,;!?])/gu, "$1")

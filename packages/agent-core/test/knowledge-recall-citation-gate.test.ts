@@ -58,6 +58,16 @@ describe("enforceAnswerCitations — output-side recall grounding gate", () => {
     expect(out.stripped).toEqual(["lunch with Bob"]);
   });
 
+  it("gates sessions by content-token overlap against retrieved past-session summaries", () => {
+    const out = enforceAnswerCitations(
+      "We sorted the VPN [session: fixed the office VPN] and did your taxes [session: filed quarterly taxes].",
+      { sessions: ["Fixed the office VPN handshake by setting MTU 1380 on wg0."] }
+    );
+    expect(out.text).toContain("[session: fixed the office VPN]"); // overlaps fixed/office/vpn → kept
+    expect(out.text).not.toContain("filed quarterly taxes"); // no overlap with the retrieved session → stripped
+    expect(out.stripped).toEqual(["filed quarterly taxes"]);
+  });
+
   it("an answer with no citations is returned unchanged", () => {
     const out = enforceAnswerCitations("I'm not sure — nothing in your notes covers that.", { notes: ["notes/vpn.md"] });
     expect(out.text).toBe("I'm not sure — nothing in your notes covers that.");

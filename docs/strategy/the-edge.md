@@ -45,7 +45,7 @@ Across every grounded surface:
 
 | Surface | Gate | Live proof (in `eval:self-improving`) |
 |---|---|---|
-| **Recall** — `muse ask` / `knowledge_search` | INPUT: `classifyRetrievalConfidence` + copy-ready `cite as:` tokens. OUTPUT: `enforceAnswerCitations` strips any citation the answer makes — note / feed / task / event / reminder — that the user doesn't actually have | `verify-cited-recall` + `verify-recall-citation-gate` |
+| **Recall** — `muse ask` / `knowledge_search` | INPUT: `classifyRetrievalConfidence` + copy-ready `cite as:` tokens. OUTPUT: `enforceAnswerCitations` strips any citation the answer makes — note / feed / task / event / reminder / session — that the user doesn't actually have | `verify-cited-recall` + `verify-recall-citation-gate` |
 | **Proactivity** — daemon nudges | `decideProactiveRecall` (surface only when confident; cite the note) | `verify-proactive-recall-gate` |
 | **Reflection ("dreaming")** — idle insights about you (`muse reflections`, daemon-auto) | `parseReflections` strips invented source ids, drops under-supported | `verify-reflection-synthesis` |
 | **Swarm council** — peers reason about a question (`muse swarm council`) | `parseCouncilAnswer` cites only real council members, never invents one | `verify-council` |

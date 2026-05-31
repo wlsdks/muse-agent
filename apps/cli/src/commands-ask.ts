@@ -1034,6 +1034,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           feeds: feedHeadlines.map((h) => h.feedName),
           notes: scored.map((r) => (isAbsolute(r.file) ? relative(notesDir, r.file) : r.file)),
           reminders: pendingReminders.map((r) => r.text),
+          sessions: episodeHits.map((e) => e.summary),
           tasks: openTasks.map((t) => t.title)
         });
         collectedAnswer = citationGate.text;
