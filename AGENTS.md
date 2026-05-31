@@ -16,6 +16,19 @@ provider-specific code is kept at the edges.
 - Trace every meaningful step.
 - Model adapters may differ; `agent-core` stays provider-neutral.
 
+## Agent operating harness (read before multi-step work)
+
+This repo ships a portable, vendor-neutral agent harness in
+[`harness/`](harness/). For any non-trivial, multi-step task, operate
+under it: read [`harness/AGENTS.md`](harness/AGENTS.md) first and follow
+its roles (planner / worker / evaluator — maker ≠ judge), the handoff
+template, the fail-closed gates (plan / completion / permission), and the
+verification discipline (golden-set + pass^k). The `harness/` folder is
+self-contained — copy it into any project and point that project's
+`AGENTS.md`/`CLAUDE.md` at `harness/AGENTS.md` to reuse it
+([`harness/INSTALL.md`](harness/INSTALL.md)). Muse-runtime mapping:
+[`harness/muse-mapping.md`](harness/muse-mapping.md).
+
 ## Stack
 
 | Area | Choice |

@@ -75,6 +75,7 @@ For depth, read the matching file under `.claude/rules/`:
 - [`outbound-safety.md`](.claude/rules/outbound-safety.md) — fail-close gate for any send/act toward a third party; banking out of scope.
 - [`tool-calling.md`](.claude/rules/tool-calling.md) — the local Qwen must pick the right tool in ONE shot: small tool sets, unambiguous names, rich schemas, verify selection with `smoke:live`.
 - [`codegraph.md`](.claude/rules/codegraph.md) — prefer the CodeGraph (`.codegraph/`) index for structural code questions; answer directly in a few calls, never a grep/read loop.
+- [`harness.md`](.claude/rules/harness.md) — for non-trivial multi-step work, operate under the portable agent harness in `harness/` (roles, fail-closed gates, handoff, pass^k verification); entrypoint `harness/AGENTS.md`.
 
 ## Cross-session memory
 
