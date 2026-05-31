@@ -74,7 +74,7 @@ const LEXICAL_STOPWORDS = new Set([
   "me", "we", "i", "if", "so", "no", "not", "from", "about", "into", "than"
 ]);
 
-function lexicalTokens(text: string): Set<string> {
+export function lexicalTokens(text: string): Set<string> {
   return new Set(
     text.toLowerCase()
       .split(/[^a-z0-9]+/iu)
@@ -82,7 +82,7 @@ function lexicalTokens(text: string): Set<string> {
   );
 }
 
-function lexicalOverlap(queryTokens: Set<string>, text: string): number {
+export function lexicalOverlap(queryTokens: Set<string>, text: string): number {
   if (queryTokens.size === 0) return 0;
   const textTokens = lexicalTokens(text);
   let shared = 0;

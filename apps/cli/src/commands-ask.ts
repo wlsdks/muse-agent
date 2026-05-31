@@ -26,7 +26,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 
-import { citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, selectByMmr, type RetrievalConfidence } from "@muse/agent-core";
+import { citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, selectByMmr, type RetrievalConfidence } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
@@ -250,18 +250,41 @@ interface ScoredChunk {
 const ASK_MMR_LAMBDA = 0.7;
 
 /**
- * Pick the top-K note chunks to ground on with Maximal Marginal Relevance
- * (Carbonell & Goldstein, SIGIR 1998) instead of pure cosine. On a small
- * local context window, three near-duplicate chunks (the same fact echoed
- * across daily-inbox notes) crowd out diverse grounding; MMR penalises a
- * candidate that merely repeats an already-picked one. Reuses the shared
- * `selectByMmr`. When there's nothing to trim (candidates ≤ K) it's just
- * the cosine sort, so behaviour only changes when diversification matters.
+ * Pick the top-K note chunks to ground on. When a `query` is supplied,
+ * selection is HYBRID — the embedding-cosine rank is fused with a lexical
+ * keyword-overlap rank via Reciprocal Rank Fusion (Cormack et al., SIGIR
+ * 2009), the same hybrid the `knowledge_search` path already uses (P23).
+ * The headline `muse ask` path was embedding-ONLY, so a query with strong
+ * distinctive terms ("WireGuard", "MTU") could rank the one answer-bearing
+ * note below near-misses on nomic's compressed cosine and fall out of the
+ * default top-K — a FALSE REFUSAL on a question the corpus answers. The
+ * fused relevance is normalised to [0,1] before MMR so the diversity term
+ * (cosine-similarity scale) stays comparable; each returned chunk keeps its
+ * ABSOLUTE cosine `score`, so the CRAG confidence framing is unchanged.
+ * Without a query (or with no content tokens) it is the prior cosine MMR.
  */
-export function diversifyAskChunks(candidates: readonly ScoredChunk[], topK: number, lambda = ASK_MMR_LAMBDA): ScoredChunk[] {
+export function diversifyAskChunks(candidates: readonly ScoredChunk[], topK: number, lambda = ASK_MMR_LAMBDA, query?: string): ScoredChunk[] {
   const sorted = [...candidates].sort((a, b) => b.score - a.score);
   if (topK <= 0 || sorted.length <= topK) {
     return sorted.slice(0, Math.max(0, topK));
+  }
+  const queryTokens = query ? lexicalTokens(query) : new Set<string>();
+  if (queryTokens.size > 0) {
+    const keyOf = (i: number): string => String(i);
+    const cosRanked = sorted
+      .map((c, i) => ({ i, s: c.score }))
+      .filter((x) => x.s > 0).sort((a, b) => b.s - a.s).map((x) => keyOf(x.i));
+    const lexRanked = sorted
+      .map((c, i) => ({ i, s: lexicalOverlap(queryTokens, c.chunk.text) }))
+      .filter((x) => x.s > 0).sort((a, b) => b.s - a.s).map((x) => keyOf(x.i));
+    const fused = fuseByReciprocalRank([cosRanked, lexRanked]);
+    const maxFused = Math.max(1e-9, ...fused.values());
+    const order = selectByMmr(
+      sorted.map((c, i) => ({ key: keyOf(i), relevance: (fused.get(keyOf(i)) ?? 0) / maxFused, embedding: c.chunk.embedding })),
+      lambda,
+      topK
+    );
+    return order.map((k) => sorted[Number(k)]!);
   }
   const order = selectByMmr(
     sorted.map((c, i) => ({ key: String(i), relevance: c.score, embedding: c.chunk.embedding })),
@@ -584,10 +607,11 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           file: f.path,
           score: cosine(queryVec!, chunk.embedding)
         })));
-        // MMR over the candidates (not a plain top-K cosine slice) so the
-        // grounding fed to the small local model is diverse, not three
-        // near-duplicate chunks of the same note.
-        scored = diversifyAskChunks(allScored, topK);
+        // Hybrid (cosine + lexical RRF) MMR selection so a query's
+        // distinctive keywords surface the answer-bearing note even when
+        // nomic's compressed cosine ranks it below near-misses — and the
+        // grounding stays diverse, not three near-duplicate chunks.
+        scored = diversifyAskChunks(allScored, topK, ASK_MMR_LAMBDA, query);
       } catch (cause) {
         notesUnavailable = true;
         const detail = cause instanceof Error ? cause.message : String(cause);

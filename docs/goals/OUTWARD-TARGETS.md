@@ -95,7 +95,20 @@ FIRST, then felt self-learning).
   qwen3:8b against a `.muse-dev` mock corpus (seed notes + a corrupt `.pdf`):
   streamed progress + the ✗ skip line, then a cited "MTU 1380" answer + 📎
   Sources AND an honest refusal; `commands-notes-rag.test.ts` + `pnpm lint`
-  0/0. (this commit)
+  0/0. (6652986c)
+
+- [x] **P34-3 Kill the false refusal — hybrid recall on the headline path.**
+  At default top-3 `muse ask` false-refused an answerable question because the
+  chat-only path ranked notes by PURE embedding cosine, so a query with strong
+  keywords ("WireGuard", "MTU") ranked the answer note ~5th and it fell out of
+  the top-K (the GUARD-THE-EDGE failure: a false refusal makes "honest" into
+  "useless"). The headline path now fuses cosine + lexical keyword ranks via
+  RRF (the same hybrid the `knowledge_search` path already used, P23), reusing
+  agent-core's lexical primitives, no re-embedding, absolute cosine preserved
+  for the confidence framing. Proven LIVE on qwen3:8b at DEFAULT top-3 against
+  a `.muse-dev` mock corpus: the WireGuard + rent questions now return cited
+  answers (vpn note ranked FIRST) while the sister's-birthday question still
+  honestly refuses; `commands-ask-mmr.test.ts` + `pnpm lint` 0/0. (this commit)
 
 **P33 — Reinforcement learning over Muse's memory (the model is fixed,
 so RL lives in the MEMORY, not the weights).** Close the self-improvement
