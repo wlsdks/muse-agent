@@ -40,6 +40,9 @@ updated: 2026-05-31
   `CLAUDE_BIN`으로 교체 가능(다른 에이전트 CLI로 포팅).
 - **`redteam.test.mjs`** — 게이트 **우회 시도**(단계 점프·완료 위조·자기채점·권한 상승·은행 위장·
   재시도 캡 우회)가 전부 차단되는지 적대 검증.
+- **`hooks.mjs`** — PreToolUse/PostToolUse **훅** 레이어. `dispatchTool`로 감싼 도구는 pre-훅이 막으면
+  실행 안 됨(우회 불가·fail-closed). 권한 게이트가 기본 훅(`permissionHook`). → [hooks.md](../hooks.md)
+- **`hooks.test.mjs`** — 훅 6종(거부=실행차단·예외=차단·다중훅 첫거부우선·권한훅·관측) 검증.
 
 ## 돌리는 법 (의존성 설치 불필요)
 
@@ -47,7 +50,7 @@ updated: 2026-05-31
 node --test harness/runner/
 ```
 
-마지막 측정: **27/27 통과** (적합성 13 + 오케스트레이터 5 + 적대 9). 행복경로만이 아니라
+마지막 측정: **33/33 통과** (적합성 13 + 오케스트레이터 5 + 적대 9 + 훅 6). 행복경로만이 아니라
 **거부 경로가 전부 초록**일 때만 러너가 "delivered"입니다. CI는
 [`.github/workflows/harness.yml`](../../.github/workflows/harness.yml)가 `harness/**` 변경마다 강제.
 
