@@ -112,7 +112,7 @@ export const sharedInjectionPatterns: readonly InjectionPattern[] = [
   { name: "meta_question", regex: /(너의|당신의|네).{0,10}(역할|목적|제약|제한|능력|한계)/ },
   { name: "indirect_prompt_extraction", regex: /(이전|과거|처음|첫).{0,15}(받은|전달받은|주어진|있는).{0,15}(instructions?|지시|지침|내용|메시지).{0,15}(반복|알려|보여|출력|말해)/is },
   { name: "secrecy_probe", regex: /what.{0,10}(were you|are you).{0,10}(told|instructed|programmed|trained).{0,10}(not to|never)/is },
-  { name: "credential_extraction", regex: /(비밀번호|패스워드|password|비번|암호|api\s*key|secret|토큰|token|인증\s*키).{0,15}(알려|보여|출력|공개|말해|tell|show|reveal|give)/is },
+  { name: "credential_extraction", regex: /(비밀번호|패스워드|password|비번|암호|api\s*key|api\s*키|secret|토큰|token|인증\s*키).{0,15}(알려|보여|출력|공개|말해|tell|show|reveal|give)/is },
   { name: "environment_extraction", regex: /(환경\s*변수|env|environment).{0,15}(값|value|확인|알려|보여|출력|조회|read|print|echo|get)/is },
   { name: "command_injection", regex: /(curl|wget|fetch|http).{0,10}(internal|localhost|127\.0\.0|10\.|172\.|192\.168)/is },
   { name: "cross_user_access", regex: /(다른|타|other).{0,10}(사용자|유저|사람|user|계정|account).{0,15}(대화|채팅|메시지|이력|기록|데이터|정보|내역|chat|message|history|data)/is },

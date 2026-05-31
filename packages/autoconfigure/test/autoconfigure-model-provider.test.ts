@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { OpenAICompatibleProvider } from "@muse/model";
+import { OpenAICompatibleProvider, OpenRouterProvider } from "@muse/model";
 
 import { createModelProvider } from "../src/autoconfigure-model-provider.js";
 
@@ -114,6 +114,27 @@ describe("createModelProvider — OpenAI-compatible presets", () => {
   it("autoconfigures Ollama when only OLLAMA_BASE_URL is set", () => {
     const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false", OLLAMA_BASE_URL: "http://localhost:11434" });
     expect(provider?.id).toBe("ollama");
+  });
+
+  it("routes openrouter through its OWN OpenRouterProvider (not the openai-compatible fallback)", () => {
+    // OpenRouter is a first-class provider family with its own adapter; every
+    // other preset test lands on OpenAICompatibleProvider, so this dedicated
+    // case was unexercised.
+    const provider = createModelProvider({
+      MUSE_LOCAL_ONLY: "false",
+      MUSE_MODEL: "openrouter/anthropic/claude-3.5-sonnet",
+      MUSE_MODEL_PROVIDER_ID: "openrouter",
+      OPENROUTER_API_KEY: "or-test"
+    });
+    expect(provider).toBeInstanceOf(OpenRouterProvider);
+  });
+
+  it("returns undefined for an unknown provider id with no base URL (can't build a compat client)", () => {
+    // An unrecognized provider that isn't a preset needs a base URL to become an
+    // openai-compatible client; without one there's nothing to construct → undefined,
+    // not a crash.
+    expect(createModelProvider({ MUSE_LOCAL_ONLY: "false", MUSE_MODEL: "weird/x", MUSE_MODEL_PROVIDER_ID: "weirdvendor" }))
+      .toBeUndefined();
   });
 });
 

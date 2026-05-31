@@ -232,6 +232,16 @@ the generic layers below because they test what makes Muse an *agent*.
     not the reason the loop logs. Pinned both reason strings as distinct. agent-core
     stable at 1082. The mutation survey now spans tools / model / messaging /
     agent-core(step-budget, knowledge-recall, proactive-recall-gate) / policy(9).
+  - FIFTEENTH MEASUREMENT (throwaway, reused install, NOT committed): `autoconfigure/
+    autoconfigure-model-provider.ts` = **75.21%** — the local-first default-model +
+    local-only gate (CLAUDE.md-critical). The local-only fail-close throw + the
+    local-first default ARE thoroughly tested (autoconfigure-local-only.test.ts).
+    The NoCoverage was in provider ROUTING: the `openrouter` case (its own
+    OpenRouterProvider, distinct from the openai-compatible presets every other
+    test lands on) and the unknown-provider-with-no-base-URL → undefined edge.
+    Added both: openrouter routes through OpenRouterProvider under MUSE_LOCAL_ONLY=
+    false, and an unrecognized provider id with no base URL returns undefined (not
+    a crash). autoconfigure 450→452.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
