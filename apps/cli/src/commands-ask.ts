@@ -24,6 +24,7 @@
 
 import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 
 import { citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, selectByMmr, type RetrievalConfidence } from "@muse/agent-core";
@@ -31,6 +32,9 @@ import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveContactsFile, 
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
 import { acquireOllamaLease, listReflections, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type Contact, type PersistedReminder, type PersistedTask } from "@muse/mcp";
+import { redactSecretsInText } from "@muse/shared";
+
+import { parseShellHistory, selectShellCommands } from "./shell-history.js";
 
 import { resolveReflectionsFile } from "./commands-reflections.js";
 import { classifyTier, type ModelTier } from "@muse/multi-agent";
@@ -292,6 +296,7 @@ interface AskOptions {
   readonly calendarDays?: string;
   readonly reminders?: boolean;
   readonly contacts?: boolean;
+  readonly shell?: boolean;
   readonly json?: boolean;
   readonly withTools?: boolean;
   readonly actuators?: boolean;
@@ -734,6 +739,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       "Skip injecting matching contacts as grounding context (default: include contacts whose name/alias/email matches the question)"
     )
     .option(
+      "--shell",
+      "OPT-IN: also ground on matching commands from your shell history (secret-redacted, local-only; default OFF because history is sensitive). Set $MUSE_SHELL_HISTORY_FILE / $HISTFILE to override the source."
+    )
+    .option(
       "--json",
       "Emit a single JSON object on stdout with {query, model, answer, grounded:{...}} (suppresses streaming)"
     )
@@ -1156,6 +1165,29 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           })
           .join("\n\n");
 
+      // OPT-IN shell-history grounding (B3): "what was that command?" — read the
+      // user's history ONLY when --shell is passed, match by token overlap, and
+      // SECRET-REDACT every command before it reaches the model (history holds
+      // `export TOKEN=…` lines). Local + read-only; never on by default.
+      let matchedCommands: readonly string[] = [];
+      if (options.shell === true) {
+        try {
+          const histFile = process.env.MUSE_SHELL_HISTORY_FILE?.trim()
+            || process.env.HISTFILE?.trim()
+            || join(homedir(), ".zsh_history");
+          const raw = await readFile(histFile, "utf8");
+          matchedCommands = selectShellCommands(parseShellHistory(raw), lexicalTokens(query))
+            .map((cmd) => redactSecretsInText(cmd));
+        } catch {
+          // no history file / unreadable — silently skip
+        }
+      }
+      const shellBlock = matchedCommands.length === 0
+        ? "(no matching shell commands)"
+        : matchedCommands
+          .map((cmd, i) => `<<command ${(i + 1).toString()}>>\n${cmd}\n<<end>>`)
+          .join("\n\n");
+
       // Phase 2 (runtime self-tuning): the ACE playbook's [Learned
       // Strategies] reach the agent-runtime (--with-tools) path via the
       // runtime's playbookProvider, but NOT this chat-only fast path. Pull
@@ -1206,7 +1238,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // placeholder word"), and hard-forbid citing any source not
         // shown in a marker below.
         "When a fact comes from a note, END that sentence with that note's `cite as:` token, copied VERBATIM — the whole bracket exactly as printed under the passage, the name unchanged.",
-        "For other context, cite by the name shown in its marker: a task as [task: its title], an event as [event: its title], a reminder as [reminder: its text], a past session as [session: short summary], a feed headline as [feed: the feed name], a contact as [contact: their name].",
+        "For other context, cite by the name shown in its marker: a task as [task: its title], an event as [event: its title], a reminder as [reminder: its text], a past session as [session: short summary], a feed headline as [feed: the feed name], a contact as [contact: their name], a shell command as [command: the command].",
         "CRITICAL: cite ONLY a source shown in the context below — copy an existing `cite as:` token, or a name shown in a marker. NEVER invent or guess a filename, feed, task, or event. If the answer is not in any passage below, cite nothing and say you are not sure.",
         "",
         notesFraming.header,
@@ -1228,6 +1260,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         "=== MATCHING CONTACTS (from your address book) ===",
         contactBlock,
         "=== END CONTACTS ===",
+        "",
+        "=== MATCHING SHELL COMMANDS (from your shell history) ===",
+        shellBlock,
+        "=== END SHELL COMMANDS ===",
         "",
         "=== PAST SESSION SUMMARIES (your prior conversations) ===",
         episodeBlock,
@@ -1260,6 +1296,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       }
       if (matchedContacts.length > 0) {
         groundedParts.push(`${matchedContacts.length.toString()} contact(s)`);
+      }
+      if (matchedCommands.length > 0) {
+        groundedParts.push(`${matchedCommands.length.toString()} shell command(s)`);
       }
       if (episodeHits.length > 0) {
         groundedParts.push(`${episodeHits.length.toString()} past session(s)`);
@@ -1400,6 +1439,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         ? (index ? filterLiveNoteIndexFiles(index.files, existsSync).map((f) => (isAbsolute(f.path) ? relative(notesDir, f.path) : f.path)) : [])
         : scored.map((r) => (isAbsolute(r.file) ? relative(notesDir, r.file) : r.file));
       const citationGate = enforceAnswerCitations(collectedAnswer, {
+        commands: matchedCommands,
         contacts: matchedContacts.map((c) => c.name),
         events: upcomingEvents.map((e) => e.title),
         feeds: feedHeadlines.map((h) => h.feedName),

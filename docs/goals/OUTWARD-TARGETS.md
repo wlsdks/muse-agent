@@ -135,6 +135,26 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   ask Muse about their PEOPLE and get a cited answer or an honest "I don't have
   that". (3131ce35)
 
+- [x] **P37-6 Shell-history grounding (B3 — "what was that command?", OPT-IN +
+  secret-redacted).** `muse ask --shell` now grounds on the user's shell history
+  — a question only their own history can answer. OPT-IN (default OFF, because
+  history is sensitive), LOCAL + read-only, and every injected command is
+  `redactSecretsInText`-scrubbed before it reaches the model (history holds
+  `export TOKEN=…` lines). Matched by query-token overlap (newest-first,
+  deduped); cited as `[command: …]` under a new `commands` class in the citation
+  gate. `parseShellHistory` handles zsh-extended + plain formats; source is
+  `$MUSE_SHELL_HISTORY_FILE` / `$HISTFILE` / `~/.zsh_history`. Proven by unit
+  tests (`shell-history.ts`: parse extended/plain/continuation; match overlap,
+  empty→[], dedup, cap; citation gate keeps a real command, strips an invented
+  one in agent-core) + a LIVE `muse ask --shell` on qwen3:8b (mock history,
+  HOME-isolated, empty notes, never real ~/.muse): "docker command to run
+  nginx?" → cited "[command: docker run -p 8080:80 --name web nginx:latest]";
+  "kubectl scale command?" → honest refusal; the API-key line → grounding
+  REDACTED to `[redacted-openai-key]` (real `sk-proj-…` never appeared); NO
+  `--shell` → 0 shell lines (opt-in respected). agent-core 1240 / cli 1647 tests
+  + `pnpm lint` 0/0. A user can now opt in to ask Muse "what was that command?"
+  and get a cited answer (secrets stripped) or an honest refusal. (this commit)
+
 **P36 — Background self-learning, brake-and-proof-first (loop-v2 PART A2 /
 B1).** The headline's "grows-with-you" core: Muse learns from corrections
 while idle, on its own, without straining the laptop. Built brake-FIRST — the
@@ -448,7 +468,7 @@ honest-refusal mock-corpus check where applicable.
   recent edits in projects/ → "🔭 You've been focused on projects lately — 4
   notes edited in the last week"; a lone note → silent. cli 1641 tests +
   `pnpm lint` 0/0. A user opening `muse today` now sees what they've been
-  working on, grounded in real edits. (this commit)
+  working on, grounded in real edits. (88e61d20)
 
 **P34 — The front door (loop-v2 headline: the moat is invisible without
 the door).** Per loop-v2 B0 §3, a privacy-bound first-time user must be able

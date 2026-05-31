@@ -78,6 +78,16 @@ describe("enforceAnswerCitations — output-side recall grounding gate", () => {
     expect(out.stripped).toEqual(["Mike's Plumbing"]);
   });
 
+  it("gates shell commands by content-token overlap — a real one survives, an invented one is stripped", () => {
+    const out = enforceAnswerCitations(
+      "Run docker run -p 8080:80 nginx [command: docker run nginx] then helm install [command: helm install foo].",
+      { commands: ["docker run -p 8080:80 nginx", "git status"] }
+    );
+    expect(out.text).toContain("[command: docker run nginx]"); // overlaps the real docker command → kept
+    expect(out.text).not.toContain("[command: helm install foo]"); // no overlap with any real command → stripped
+    expect(out.stripped).toEqual(["helm install foo"]);
+  });
+
   it("an answer with no citations is returned unchanged", () => {
     const out = enforceAnswerCitations("I'm not sure — nothing in your notes covers that.", { notes: ["notes/vpn.md"] });
     expect(out.text).toBe("I'm not sure — nothing in your notes covers that.");
