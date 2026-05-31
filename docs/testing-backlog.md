@@ -506,6 +506,21 @@ the generic layers below because they test what makes Muse an *agent*.
     (read < write < execute, regardless of input order) and, among same-risk, the MORE
     keyword-relevant one (3 hits beats 1, relevance outranking the name tiebreak). tools
     226->229.
+  - THIRTY-FIFTH (cross-package sweep begins — human directive 2026-05-31: cover EVERY
+    package, not just core; dist-verified): `packages/memory` `memory-token-trim.ts` (665L)
+    had **ZERO test file** despite being the conversation trimmer that keeps the local
+    model within its context budget WITHOUT breaking tool-call/response pairing (a corrupt
+    trim = a broken request to the model). First suite (14 tests) over the full public
+    contract with a deterministic 1-char=1-token estimator: estimateConversationTokens
+    (sum + per-message structure overhead, empty→0); the budget arithmetic (hard budget =
+    window - system - outputReserve - toolReserve); no-op under budget (triggeredBy "none");
+    hard-limit keeps only the last user turn at non-positive budget (but a lone message is
+    returned intact), and trims oldest-first to fit while preserving system + latest user;
+    the WORKING-budget proactive trigger (fires under the hard cap → "working_budget",
+    clamped down when set above the hard cap, silent when under it); structural integrity
+    (an orphaned tool response whose tool-call was trimmed is removed); and compaction-
+    summary insertion (fires past compactionThreshold, suppressed by insertSummary:false,
+    gated by a custom threshold). memory 282->296.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
