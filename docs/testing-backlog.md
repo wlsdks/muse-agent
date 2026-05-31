@@ -557,6 +557,49 @@ the generic layers below because they test what makes Muse an *agent*.
     with no inboxFile (clean "not supported", never a silent []), and WITH a real temp inbox file
     (appendInbound round-trip) returns exactly what the webhook persisted — newest-first — honouring
     the limit. messaging 326->332.
+  - THIRTY-NINTH (cross-package sweep → messaging; credential-at-rest security): `packages/
+    messaging` `credential-store.ts` (94L) had **ZERO test refs** — the single-file JSON store
+    holding bot tokens (Telegram/Discord/Slack/LINE) with a chmod-600 atomic write. First suite
+    (8 tests, temp files): ENOENT → undefined/empty (never throws on a not-yet-created store);
+    save round-trip + providers listed SORTED; merge without clobbering existing providers; the
+    **0600 file mode** security contract (a bot token must not be world-readable); no `.tmp`
+    file left behind after the atomic tmp+rename; remove an existing provider + silent no-op
+    for an unknown one (no throw, no write); load returns a DEFENSIVE COPY (mutating the result
+    doesn't corrupt the store); a corrupt/non-object file is treated as empty rather than
+    crashing AND the store recovers (can save over it). messaging 332->340.
+  - FORTIETH (cross-package sweep → messaging; dispatch-chokepoint security): `packages/
+    messaging` `registry.ts` (83L) had **ZERO test refs** — the MessagingProviderRegistry
+    that every outbound surface dispatches through. First suite (8 tests, fake providers
+    recording what they receive): register-from-constructor + has/list/describe; require()
+    returns a provider or throws PROVIDER_NOT_FOUND with a hint listing the registered ids
+    ("(none registered)" when empty); register() OVERWRITES same-id (last wins, unlike
+    ToolRegistry's dup-error); and the SECURITY contract — `send()` scrubs credentials
+    (redactSecretsInText) at the single dispatch chokepoint so a leaked secret in
+    agent-generated text is redacted BEFORE the provider sees it, even if an upstream scrub
+    was missed; send dispatches + returns the receipt, send to an unknown provider →
+    PROVIDER_NOT_FOUND; fetchInbound dispatches when supported and → UPSTREAM_FAILED when the
+    provider lacks it. messaging 340->348.
+  - FORTY-FIRST (cross-package sweep → messaging): `packages/messaging`
+    `discord-after-store.ts` (78L) had **ZERO test refs** — the per-channel "after" cursor
+    persistence (atomic tmp+rename + 0o600) that lets a Discord polling daemon walk a channel
+    instead of re-reading the same window. First suite (6 tests, temp files): undefined on a
+    not-yet-created file (first poll falls back to snapshot); round-trips a 19-digit snowflake
+    VERBATIM as a string (a JSON number would lose precision past 2^53); per-channel ISOLATION
+    + merge (writing chan-2 doesn't clobber chan-1); rejects an empty/non-string cursor with a
+    TypeError (a bad write would poison every future poll); the 0600 sidecar mode (it names
+    every channel the bot polls); and graceful "no cursor" on a corrupt file / missing `after`
+    key / non-string or empty value. messaging 348->354.
+  - FORTY-SECOND (cross-package sweep → messaging): `packages/messaging`
+    `telegram-offset-store.ts` (61L) had **ZERO test refs** — the single-integer `update_id`
+    offset sidecar that stops a Telegram poller from reprocessing the same updates every tick
+    (Telegram redelivers unacked updates for ~24h). Distinct shape from the per-channel
+    after-stores. First suite (7 tests, temp files): undefined on a not-yet-created file;
+    round-trip + OVERWRITE on the next write (single value, not merge); Math.trunc on WRITE
+    (a fractional offset is stored as an int — update_ids are integers) AND on READ (a
+    hand-edited float is normalised); a non-finite offset (NaN/Infinity) → TypeError (a bad
+    write would break polling); the 0600 sidecar mode (it reveals the bot's polling cadence +
+    chat ids); and graceful "no offset" on a corrupt file / missing offset / string or null
+    value. messaging 354->361.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,
