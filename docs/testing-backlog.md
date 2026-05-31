@@ -922,6 +922,15 @@ the generic layers below because they test what makes Muse an *agent*.
     MUSE_RESPONSE_SANITIZED_TEXT_REPLACEMENT overrides the locale default (the `??`). → **93.14%**
     (85→95 killed; the locale-default `en && !ko` + `??` gated several mutants). autoconfigure
     461->464.
+  - SEVENTY-THIRD (mutation-depth): `policy/structured-output.ts` (114L, the JSON/YAML
+    structured-output parse-extract fallback) Stryker 80.80% — the thorough existing suite
+    (brace-in-string, escaped-quote, preamble-recovery, fail-open) used only FLAT values, so the
+    depth-balancing close detection wasn't isolated (a flat object's first `}` IS the depth-0
+    close). +1 test: a NESTED value (`{"a":{"b":1},"c":2}`, and a nested array) is extracted WHOLE
+    — stops at the depth-0 close, not the first inner brace (a naive 'return on first }' would
+    yield the inner object and lose the outer keys). → **81.60%**. The 2 remaining L73/L108
+    survivors are equivalent on valid input (OOB-cursor `<=`, `if(true)` yields the same first
+    valid candidate). policy 119->120.
 - [x] **Failure-injection / chaos on the model loop.** Drive `AgentRuntime.run`
   /`executeModelLoop` against a provider fake that returns 429 / 503 / a mid-
   stream `{error}` / a timeout / malformed JSON — assert retry classification,

@@ -53,6 +53,16 @@ describe("normalizeStructuredOutput", () => {
     });
   });
 
+  it("extracts a NESTED value whole — stops at the depth-0 close, not the first inner brace/bracket", () => {
+    // depth balancing: a naive 'return on the first }' would yield the INNER
+    // object and silently lose the outer keys after it.
+    const obj = normalizeStructuredOutput("prefix {\"a\":{\"b\":1},\"c\":2} suffix", "json");
+    expect(obj.normalized).toBe(true);
+    expect(JSON.parse(obj.content)).toEqual({ a: { b: 1 }, c: 2 });
+    const arr = normalizeStructuredOutput("{\"items\":[1,[2,3],4]}", "json");
+    expect(JSON.parse(arr.content)).toEqual({ items: [1, [2, 3], 4] });
+  });
+
   it("does not let an ESCAPED quote end a string early — a \\\" (even before a brace) keeps the value balanced", () => {
     // The brace-in-string guard only works if the string-boundary scan honours
     // backslash escapes: a `\"` must NOT toggle out of the string, so a `}` that
