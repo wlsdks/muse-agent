@@ -107,6 +107,34 @@ describe("CalDAVCalendarProvider — ICS parse robustness", () => {
   });
 });
 
+describe("CalDAVCalendarProvider — RFC5545 text escaping round-trip", () => {
+  const wide: CalendarRange = { from: new Date(0), to: new Date("2027-01-01T00:00:00Z") };
+
+  it("unescapes \\, \\; \\n \\\\ in SUMMARY/LOCATION and maps DESCRIPTION to notes", async () => {
+    const ics = [
+      "BEGIN:VEVENT", "UID:esc1",
+      "SUMMARY:A\\, B\\; C\\nD\\\\E", // A, B; C<newline>D\E
+      "LOCATION:Rm\\, 5",
+      "DESCRIPTION:line1\\nline2",
+      "DTSTART:20260601T090000Z", "DTEND:20260601T093000Z", "END:VEVENT"
+    ].join("\r\n");
+    const fetch = recordingFetch(() => ok(multistatus(ics)));
+    const [event] = await new CalDAVCalendarProvider({ fetchImpl: fetch.impl, password: "p", url: "https://d/c/", username: "u" }).listEvents(wide);
+    expect(event?.title).toBe("A, B; C\nD\\E");
+    expect(event?.location).toBe("Rm, 5");
+    expect(event?.notes).toBe("line1\nline2");
+  });
+
+  it("escapes , ; and newline when rendering SUMMARY/DESCRIPTION on write (no ICS property injection)", async () => {
+    const fetch = recordingFetch(() => new Response("", { status: 201 }));
+    const provider = new CalDAVCalendarProvider({ fetchImpl: fetch.impl, password: "p", url: "https://dav.test/cal/", username: "u" });
+    await provider.createEvent({ endsAt: new Date("2026-06-01T11:00:00Z"), notes: "a\nb", startsAt: new Date("2026-06-01T10:00:00Z"), title: "Sync, plan; review" });
+    const lines = (fetch.calls[0]!.body as string).split("\r\n");
+    expect(lines).toContain("SUMMARY:Sync\\, plan\\; review");
+    expect(lines).toContain("DESCRIPTION:a\\nb");
+  });
+});
+
 describe("CalDAVCalendarProvider — writes (PUT / DELETE)", () => {
   it("createEvent PUTs a VEVENT to <url>/<uid>.ics and returns the event with the generated id", async () => {
     const fetch = recordingFetch(() => new Response("", { status: 201 }));

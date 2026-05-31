@@ -1925,3 +1925,15 @@ the generic layers below because they test what makes Muse an *agent*.
     returning undefined was never exercised; a mutant dropping the guard (always
     return the NaN-time Date) survived. New test asserts the token parses valid but
     extractExpiration returns undefined. Both pre-verified against dist. auth 61 pass (+4).
+
+- [x] **calendar/caldav-provider — RFC5545 text escape/unescape round-trip.** The
+    CalDAV ICS parse tests used only plain-text SUMMARY/LOCATION (Standup/Holiday),
+    so escapeIcsText + unescapeIcsText (each FOUR sequential .replace mutation
+    targets) AND the DESCRIPTION→notes mapping were entirely unexercised. A mutant
+    dropping any unescape replace — or the notes-mapping branch — survived. New
+    tests: (1) parse side — a VEVENT whose SUMMARY contains `\,` `\;` `\n` `\\` +
+    LOCATION `\,` + a DESCRIPTION decodes to the literal chars and populates notes;
+    (2) write side — createEvent with a comma/semicolon title + newline notes
+    renders `SUMMARY:Sync\, plan\; review` / `DESCRIPTION:a\nb` (escaping prevents
+    ICS property injection, the calendar analogue of CRLF/header injection). Both
+    pre-verified against dist. calendar 116 pass (+2).
