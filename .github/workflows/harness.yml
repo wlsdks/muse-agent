@@ -1,0 +1,26 @@
+name: harness-runner
+
+# Gate: the harness runner's deterministic gates + orchestrator + red-team
+# suite must stay green. Zero deps (Node built-in test runner), so this job is
+# fast and needs no install.
+
+on:
+  push:
+    paths:
+      - 'harness/**'
+      - '.github/workflows/harness.yml'
+  pull_request:
+    paths:
+      - 'harness/**'
+      - '.github/workflows/harness.yml'
+
+jobs:
+  runner-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run harness runner conformance + orchestrator + red-team
+        run: node --test harness/runner/

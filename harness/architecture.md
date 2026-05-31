@@ -102,8 +102,13 @@ related: [README.md, team-roles.md, handoff-template.md, role-prompts.md, verifi
 **모든 칸 ✅ + 활성·포터블 + 코드 강제까지 완료:** ① **최소 코드 러너 구현·검증** — [runner/](runner/)가
 게이트를 결정론 코드로 강제, §7 거부 매트릭스 `node --test` **13/13** ② **평가자 사람-라벨 보정** —
 [judge-calibration](judge-calibration.md) TPR 2/2·**TNR 4/4=100%**(일반 판정자 TNR<25% 기준선 상회)
-③ **모호 골든 확장** — G11(부분충족)·G12(의미버그/TNR). 남은 것: 보정셋·골든 표본 더 키우기, 러너를
-실제 오케스트레이션 런타임에 배선.
+③ **모호 골든 확장** — G11(부분충족)·G12(의미버그/TNR).
+
+**L4 실행통합·CI·적대까지(2026-05-31):** ④ **러너가 실제 구동** — [runner/orchestrator.mjs](runner/orchestrator.mjs)가
+plan→build→eval을 코드 게이트로 막으며 실제 `claude -p`로 구동, end-to-end **3/3 DONE** + 트레이스
+⑤ **적대 9/9 차단**(게이트 우회 시도 전부 BLOCKED) ⑥ **CI 게이트** harness.yml(`node --test` 27/27).
+성숙도: 설계/근거/코드강제 + **실행통합·CI·적대**까지 도달. 남은 것(L5): 실전 Muse 작업을 골든에·
+보정셋 n↑·트레이스 관측 확장.
 
 > 이 자가평가는 외부 권위 체크리스트로 측정한 것이며, 칸이 채워질 때마다 위 표의 상태를 갱신합니다.
 > 측정 가능한 진전(빈 칸 → 채움)이 곧 "최고의 하네스"로 가는 길입니다.

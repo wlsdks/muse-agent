@@ -80,3 +80,6 @@ docs/test-report.json
 # here and points MUSE_NOTES_DIR at it (never the real ~/.muse). The committed
 # seed lives in fixtures/mock-corpus/.
 .muse-dev/
+
+# harness runner run artifact (regenerated each run)
+harness/runner/last-trace.json
