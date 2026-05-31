@@ -70,16 +70,17 @@ related: [README.md, team-roles.md, handoff-template.md, role-prompts.md, verifi
 | 3 | 컨텍스트·압축 | [context-compaction](context-compaction.md) — 선제·주기·예산인지, 중요도 가중 보존 | ✅ |
 | 4 | 도구 설계 | [tool-design](tool-design.md) — 한-shot 선택·예시스키마·위험등급 | ✅ |
 | 5 | 스킬·MCP | [skills-and-mcp](skills-and-mcp.md) — 2단계 허용목록·격리·최소권한·불신출력 | ✅ |
-| 6 | 권한·승인 | 게이트·승인(fail-closed) | 🟡 부분 |
-| 7 | 메모리·상태 | 핸드오프 상태로그 | 🟡 부분 |
+| 6 | 권한·승인 | [permission-matrix](permission-matrix.md) — 위험등급×처리, 최소권한, 감사 | ✅ |
+| 7 | 메모리·상태 | [memory-layers](memory-layers.md) + 핸드오프 상태로그 — 5계층·쓰기/읽기/정리 | ✅ |
 | 8 | 오케스트레이션 | team-roles + muse-mapping | ✅ |
 | 9 | 검증·CI | verification + acceptance(6층) | ✅ |
 | 10 | 관측·트레이스 | failure-modes 관측 | ✅ |
 | 11 | 디버깅·DX | [debugging-and-dx](debugging-and-dx.md) — 트레이스→격리→결정론 재현→회귀 | ✅ |
 | 12 | 사람 개입(HITL) | 게이트·승인·체크인 | ✅ |
 
-**한 줄 결론:** ⬜ 갭 0, 부분도 거의 닫혔습니다. 12개 중 ✅ 11 / 🟡 1(권한 매트릭스·메모리 계층 中
-부분). 컨텍스트 압축이 방금 ✅로 — 남은 부분 칸은 권한/메모리뿐.
+**한 줄 결론:** **12개 카테고리 전부 ✅ 달성** (⬜ 0 / 🟡 0). 권한 매트릭스·메모리 계층이 방금 채워져
+권위 체크리스트의 모든 칸이 문서화됐습니다. 이제는 빈 칸 채우기가 아니라 **심화·실측(실제 테스트)·
+팀 점검**으로 완성도를 올리는 단계입니다.
 
 ## 4. 다음에 채울 것 (우선순위)
 
@@ -88,7 +89,10 @@ related: [README.md, team-roles.md, handoff-template.md, role-prompts.md, verifi
 3. ~~디버깅/DX~~ → [debugging-and-dx](debugging-and-dx.md) ✅.
 4. ~~루프 종료·예산~~ → [loop-budget](loop-budget.md) ✅.
 5. ~~컨텍스트 압축~~ → [context-compaction](context-compaction.md) ✅.
-6. 남은 부분(🟡) 심화 — 권한 매트릭스 / 메모리 계층. (한 칸씩 🟡→✅)
+6. ~~권한 매트릭스~~ → [permission-matrix](permission-matrix.md) ✅ · ~~메모리 계층~~ → [memory-layers](memory-layers.md) ✅.
+
+**모든 칸 ✅ — 다음 단계(완성도):** ① 팀 선언 점검(team-roles·role-prompts ↔ muse-mapping) ②
+실제 Claude Code 한 조각 테스트 → harness-acceptance 기록 ③ 각 문서 심화·실측 보강.
 
 > 이 자가평가는 외부 권위 체크리스트로 측정한 것이며, 칸이 채워질 때마다 위 표의 상태를 갱신합니다.
 > 측정 가능한 진전(빈 칸 → 채움)이 곧 "최고의 하네스"로 가는 길입니다.
