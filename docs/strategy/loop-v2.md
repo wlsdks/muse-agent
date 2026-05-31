@@ -28,10 +28,19 @@ The one-line identity, unchanged and load-bearing:
 
 Identity FLOOR (locked, never edit): see "THE LOCKED HEADLINE" (PART B0).
 Build order: FRONT DOOR → felt self-learning (brake-first) → perceive/act growth.
-CURRENT PHASE (the ONLY line the loop may move in this file): front door still
-open; default pick = first undone rung of B0 "HOW TO PICK EACH SLICE".
-First action: run the newest CAPABILITIES.md check. RED ⇒ fix it. GREEN ⇒ B0,
-first undone rung.
+CURRENT PHASE (the ONLY line the loop may move in this file): FRONT DOOR
+DELIVERED + live-proven (P34-1..11: demo, single/bulk/watch-folder ingest,
+hybrid recall that killed the false refusal, confidence calibration,
+empty-corpus on-ramp, cross-lingual refusal-citation fix; full EXPECTED.md
+oracle green — literal, multi-fact, Korean, AND paraphrase). The front-door
+rungs verifiable by cited-answer+refusal are EXHAUSTED. NEXT PHASE = felt
+SELF-LEARNING (rung 4, brake-and-proof-first per PART A2 + B1) — verify by the
+2-session / eval:self-improving proof, NOT cited-answer+refusal. The one
+remaining front-door rung (b: one-command installer) needs a clean-room
+container/CI proof, not live recall — pick it ONLY with that proof shape.
+First action: run the newest CAPABILITIES.md check. RED ⇒ fix it. GREEN ⇒
+PART B0 "HOW TO PICK" — front door (rung 3) is done, so take rung 4's first
+undone B1 slice.
 PARKED forever: A2A. Out of scope: banking/payments.
 
 ---
