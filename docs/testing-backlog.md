@@ -2319,3 +2319,10 @@ the generic layers below because they test what makes Muse an *agent*.
     'weather code N' fallback; formatWeather place(+country) + condition + ROUNDED temp,
     each optional metric (feels/humidity/wind) appended only when a number, country
     omitted when absent. Pre-verified against dist. mcp 1244 tests green.
+
+- [x] **mcp/email-provider — summarizeInbox (zero coverage).**
+    Census found summarizeInbox with ZERO refs — the user-facing inbox digest (perception
+    output). New tests pin: "Inbox empty." for none; singular/plural count ("1 message" vs
+    "3 messages") and the head-only form when nothing is unread; an unread list with
+    "(no subject)"/"(unknown)" fallbacks for blank subject/sender; and the cap at the
+    first 5 unread. Pre-verified against dist. mcp 1248 tests green.
