@@ -1913,3 +1913,15 @@ the generic layers below because they test what makes Muse an *agent*.
     vs invalid (non-string/unparseable) vs date — so a tool defaulting a missing
     reference to now() never silently anchors to the wrong instant on a malformed
     value. tools 222 pass.
+
+- [x] **auth/jwt — two untested security-critical verify branches.** jwt.test.ts
+    was thorough but missed two edges that mutation testing would surface: (1) the
+    expiry comparison `claims.exp <= floor(now/1000)` is INCLUSIVE — tests only hit
+    `+1` after expiry, never `exp == now`, so a `<=`→`<` mutant survived. New tests
+    pin both sides of the boundary (exp == now-second → reject; exp == now+1 →
+    accept). (2) `extractExpiration`'s `Number.isFinite(date.getTime())` guard:
+    an absurd-but-finite exp (1e20) passes isJwtClaims + parseToken (far-future, not
+    expired) yet `new Date(1e20*1000)` is an Invalid Date — the false branch
+    returning undefined was never exercised; a mutant dropping the guard (always
+    return the NaN-time Date) survived. New test asserts the token parses valid but
+    extractExpiration returns undefined. Both pre-verified against dist. auth 61 pass (+4).

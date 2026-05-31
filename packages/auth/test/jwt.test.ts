@@ -135,6 +135,35 @@ describe("verifyJwt rejection branches", () => {
   });
 });
 
+describe("expiry boundary (the exp <= now comparison is inclusive)", () => {
+  const provider = new JwtTokenProvider({ jwtSecret: SECRET });
+  const now = new Date("2026-01-01T00:00:00Z");
+  const nowSec = Math.floor(now.getTime() / 1000);
+
+  it("rejects a token whose exp equals the current second (boundary is <=, not <)", () => {
+    const atBoundary = sign({ alg: "HS256", typ: "JWT" }, b64({ ...validClaims, exp: nowSec }), SECRET);
+    expect(provider.parseToken(atBoundary, now)).toBeUndefined();
+  });
+
+  it("accepts a token whose exp is one second past now (just inside the window)", () => {
+    const oneSecLater = sign({ alg: "HS256", typ: "JWT" }, b64({ ...validClaims, exp: nowSec + 1 }), SECRET);
+    expect(provider.parseToken(oneSecLater, now)?.sub).toBe("u1");
+  });
+});
+
+describe("extractExpiration overflow guard", () => {
+  const provider = new JwtTokenProvider({ jwtSecret: SECRET });
+
+  it("returns undefined when a valid token's exp overflows the Date range (exp*1000 is non-finite)", () => {
+    // exp = 1e20 passes isJwtClaims (finite) and parseToken (far in the future,
+    // so not expired), but new Date(1e20 * 1000) is an Invalid Date — the
+    // Number.isFinite guard must drop it rather than hand back a NaN-time Date.
+    const absurd = sign({ alg: "HS256", typ: "JWT" }, b64({ ...validClaims, exp: 1e20 }), SECRET);
+    expect(provider.parseToken(absurd)?.sub).toBe("u1");
+    expect(provider.extractExpiration(absurd)).toBeUndefined();
+  });
+});
+
 describe("secret rotation grace window", () => {
   const now = new Date("2026-01-01T00:00:00Z");
   const oldProvider = new JwtTokenProvider({ jwtSecret: SECRET });
