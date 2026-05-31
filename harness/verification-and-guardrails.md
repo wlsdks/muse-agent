@@ -28,6 +28,12 @@ related: [team-roles.md, handoff-template.md, muse-mapping.md, README.md]
 - **결과만이 아니라 과정도 본다.** 에이전트 평가는 ① 작업 완료(목표 달성?) ② 경로 품질(단계가
   효율·논리적이었나) ③ 도구 선택의 적절성 — 이 세 축을 함께 봅니다.
 
+> **1차 출처 검증(Anthropic Outcomes, 2026-05 Code with Claude):** 별도 grading agent가 **태스크
+> 에이전트의 추론 체인을 못 보고 출력만** 루브릭으로 채점하니 **모델 변경 없이** 품질 +8.4%(Word)/
+> +10.1%(PPT) 향상. 우리 "만든 자 ≠ 판정하는 자 + 루브릭 채점"이 정확히 그 구조 — Anthropic이 같은
+> 설계로 정량 이득을 입증했다(우리 `.claude/agents/harness-evaluator`는 쓰기 권한 없음으로 분리를
+> 도구 권한으로도 강제).
+
 ## 2. 들어오고 나가는 것을 막는다 (가드레일)
 
 평가가 "끝나고 채점"이라면, 가드레일은 "도중에 즉시 차단"입니다. 두 종류:
@@ -77,4 +83,5 @@ related: [team-roles.md, handoff-template.md, muse-mapping.md, README.md]
 - [LLM-as-a-Judge: A Practical Guide](https://towardsdatascience.com/llm-as-a-judge-a-practical-guide/) (명확한 루브릭·낮은 단계 척도·few-shot 보정·편향 차단)
 - [OpenAI Agents SDK — Guardrails](https://openai.github.io/openai-agents-python/guardrails/) (입력/출력 가드레일·트립와이어·병렬 조기종료)
 - Anthropic — [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) (단순성·투명성·게이트)
+- Anthropic — [Outcomes: agents that verify their own work](https://platform.claude.com/cookbook/managed-agents-cma-verify-with-outcome-grader) (2026-05; 출력만 보는 별도 grading agent → 모델 불변 +8.4%/+10.1%)
 - Cognition — [Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) (전체 맥락 공유·충돌하는 암묵적 결정·단일 스레드 우선)
