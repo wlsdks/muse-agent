@@ -160,3 +160,51 @@ describe("inferPreferenceFromCorrection", () => {
     expect(transcript).toContain("user corrected: <<no, give me bullet points>>");
   });
 });
+
+describe("inferPreferenceFromCorrection — held-out support gate (SkillOpt propose-and-test)", () => {
+  // Fake embedder: "bullet"-bearing text → [1,0], everything else → [0,1], so
+  // cosine is 1 when both mention bullets and 0 otherwise.
+  const fakeEmbed = (t: string): Promise<readonly number[]> => Promise.resolve(/bullet/u.test(t) ? [1, 0] : [0, 1]);
+  const inferred = "preference: prefers bullet-point answers\ncategory: format\nconfidence: 0.8";
+
+  it("keeps a preference the correction semantically SUPPORTS", async () => {
+    const pref = await inferPreferenceFromCorrection(exchange, {
+      embed: fakeEmbed, model: "m", modelProvider: fakeProvider(inferred)
+    });
+    expect(pref).toMatchObject({ value: "prefers bullet-point answers", category: "format" });
+  });
+
+  it("DROPS a fabricated trait the correction does not support — even though it passes the regex/category guards", async () => {
+    const factualFix = { request: "when is the meeting?", priorAnswer: "3pm", correction: "no, it's at 4pm" };
+    const pref = await inferPreferenceFromCorrection(factualFix, {
+      embed: fakeEmbed, model: "m", modelProvider: fakeProvider(inferred)
+    });
+    expect(pref).toBeUndefined();
+  });
+
+  it("is fail-closed: an embedder error drops the inference", async () => {
+    const pref = await inferPreferenceFromCorrection(exchange, {
+      embed: () => Promise.reject(new Error("ollama down")), model: "m", modelProvider: fakeProvider(inferred)
+    });
+    expect(pref).toBeUndefined();
+  });
+
+  it("no embedder ⇒ no gate (back-compat): the preference is kept", async () => {
+    const factualFix = { request: "when?", priorAnswer: "3pm", correction: "no, it's at 4pm" };
+    const pref = await inferPreferenceFromCorrection(factualFix, { model: "m", modelProvider: fakeProvider(inferred) });
+    expect(pref).toMatchObject({ category: "format" });
+  });
+
+  it("SKIPS the semantic gate across scripts (bilingual): a Korean correction keeps its English trait", async () => {
+    // nomic bridges Hangul↔Latin weakly (~0.39), so a cross-script cosine gate
+    // would false-reject. An embedder that WOULD reject (orthogonal vector) is
+    // bypassed because the correction (Korean) and trait (English) differ in script.
+    const koCorrection = { request: "이거 정리해줘", priorAnswer: "장황한 문단...", correction: "그게 아니라 짧게 핵심만 정리해줘" };
+    const pref = await inferPreferenceFromCorrection(koCorrection, {
+      embed: () => Promise.resolve([0, 1]), // vs the trait's notional [1,0] → cos 0 → would reject IF applied
+      model: "m",
+      modelProvider: fakeProvider(inferred)
+    });
+    expect(pref).toMatchObject({ value: "prefers bullet-point answers", category: "format" });
+  });
+});

@@ -759,7 +759,16 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
           (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
         .map((m) => ({ content: m.content, role: m.role }));
       if (turns.length === 0) return;
-      await inferPreferencesFromTurns(turns, { model: defaultModel, modelProvider, store: userMemoryStore, userId: input.userId });
+      await inferPreferencesFromTurns(turns, {
+        model: defaultModel,
+        modelProvider,
+        store: userMemoryStore,
+        userId: input.userId,
+        // Held-out support gate: drop an inferred trait the correction doesn't
+        // semantically support (local nomic embedder), so the server never
+        // learns a fabricated preference.
+        embed: createCachingEmbedder(createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text"))
+      });
     }
     : undefined;
   const runtimeHooks = [

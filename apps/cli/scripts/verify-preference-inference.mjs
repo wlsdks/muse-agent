@@ -12,7 +12,7 @@ import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
+import { createMuseRuntimeAssembly, createOllamaEmbedder } from "@muse/autoconfigure";
 import { inferPreferenceFromCorrection } from "@muse/agent-core";
 
 const model = process.argv[2] ?? "ollama/qwen3:8b";
@@ -22,6 +22,9 @@ process.env.MUSE_DEFAULT_MODEL = model;
 
 const asm = createMuseRuntimeAssembly();
 const modelProvider = asm.modelProvider;
+// Run inference THROUGH the held-out support gate, so a positive case that the
+// gate wrongly drops surfaces here as a false-reject regression.
+const embed = createOllamaEmbedder("nomic-embed-text");
 
 // kind "pref" → must infer a preference whose value hits a needle;
 // kind "none" → must return undefined (one-off fact, no fabricated trait).
@@ -54,7 +57,7 @@ const cases = [
 
 let failures = 0;
 for (const c of cases) {
-  const pref = await inferPreferenceFromCorrection(c.exchange, { model, modelProvider });
+  const pref = await inferPreferenceFromCorrection(c.exchange, { model, modelProvider, embed });
   let ok;
   if (c.kind === "pref") {
     const v = (pref?.value ?? "").toLowerCase();

@@ -352,6 +352,8 @@ export async function inferPreferencesFromTurns(
     readonly store: { upsertUserModelSlot?: (userId: string, slot: UserModelSlot) => unknown };
     readonly userId: string;
     readonly now?: () => Date;
+    /** Embedder for the held-out support gate; omitted ⇒ no gate (back-compat). */
+    readonly embed?: (text: string) => Promise<readonly number[]>;
   }
 ): Promise<readonly string[]> {
   const upsert = options.store.upsertUserModelSlot;
@@ -359,7 +361,11 @@ export async function inferPreferencesFromTurns(
   const exchanges = detectCorrections(turns);
   const added: string[] = [];
   for (const exchange of exchanges) {
-    const pref = await inferPreferenceFromCorrection(exchange, { model: options.model, modelProvider: options.modelProvider });
+    const pref = await inferPreferenceFromCorrection(exchange, {
+      model: options.model,
+      modelProvider: options.modelProvider,
+      ...(options.embed ? { embed: options.embed } : {})
+    });
     if (!pref || !pref.category) continue; // parseInferredPreference guarantees a category when it returns one
     await upsert(options.userId, {
       category: pref.category,
