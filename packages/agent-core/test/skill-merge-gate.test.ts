@@ -115,17 +115,30 @@ describe("validateMergeCoverage (generic label/text — shared by playbook merge
     expect(verdict.score).toBeCloseTo(1 / 2);
   });
 
-  it("SKIPS the cosine test for a cross-script pair (treats it as covered) — bilingual merges aren't false-rejected", async () => {
-    // Script-keyed embedder: Korean → [0,1], else → [1,0] (cosine 0 = would
-    // reject). A Korean original vs an English merged text must still be covered.
+  it("a cross-script pair is UNVERIFIABLE → fail-closed reject (not auto-covered) — gate can't be defeated by a non-Latin cluster", async () => {
     const scriptKeyed = (t: string): Promise<readonly number[]> => Promise.resolve(/[가-힣]/u.test(t) ? [0, 1] : [1, 0]);
     const verdict = await validateMergeCoverage(
       [{ label: "ko-skill", text: "이메일 스레드를 요약" }],
-      { label: "summarise-content", text: "Use when summarising any content into bullets" },
+      { label: "delete-everything", text: "Use when you want to wipe the disk" }, // unrelated EN umbrella
       { embed: scriptKeyed }
+    );
+    expect(verdict.accept).toBe(false); // would have been auto-accepted before the fix
+    expect(verdict.unverified).toEqual(["ko-skill"]);
+    expect(verdict.covered).toEqual([]);
+    expect(verdict.reason).toContain("unverifiable");
+  });
+
+  it("a same-script (Korean↔Korean) related pair is verified and accepted", async () => {
+    // Korean original + Korean umbrella, both map to the same vector → cos 1.
+    const koEmbed = (t: string): Promise<readonly number[]> => Promise.resolve(/[가-힣]/u.test(t) ? [1, 0] : [0, 1]);
+    const verdict = await validateMergeCoverage(
+      [{ label: "ko-skill", text: "이메일 스레드를 요약" }],
+      { label: "ko-umbrella", text: "콘텐츠를 요약" },
+      { embed: koEmbed }
     );
     expect(verdict.accept).toBe(true);
     expect(verdict.covered).toEqual(["ko-skill"]);
+    expect(verdict.unverified).toEqual([]);
   });
 
   it("still REJECTS a same-script (Korean↔Korean) drop — the cross-script skip doesn't disable the gate", async () => {

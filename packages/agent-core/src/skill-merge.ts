@@ -37,7 +37,9 @@ wrote about itself. If they are genuinely the SAME KIND of task, merge them into
 ONE umbrella skill covering all their cases — a clear name, a one-line
 description starting "Use when ...", and a body with the combined steps
 (subsections per case if useful). If they are NOT meaningfully a single skill,
-output exactly: NONE — never force unrelated skills together. Output exactly:
+output exactly: NONE — never force unrelated skills together. Write the
+description and body in the SAME LANGUAGE as the input skills (e.g. Korean input
+→ Korean description/body). Output exactly:
 name: <short-kebab-case>
 description: <one line starting "Use when ...">
 body:

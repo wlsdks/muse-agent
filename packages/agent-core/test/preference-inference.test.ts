@@ -37,6 +37,11 @@ describe("parseInferredPreference", () => {
     expect(parseInferredPreference("preference: x\ncategory: style")).toBeUndefined();
   });
 
+  it("REJECTS the vacuous accuracy cluster in KOREAN too (정확/정밀 — the language-mirrored output)", () => {
+    expect(parseInferredPreference("preference: 정확하게 말하기를 선호\ncategory: format\nconfidence: 0.8")).toBeUndefined();
+    expect(parseInferredPreference("preference: 항상 정확한 정보를 제공\ncategory: style\nconfidence: 0.9")).toBeUndefined();
+  });
+
   it("REJECTS the vacuous accuracy/correctness cluster even WITH a valid category (anti-fabrication honesty guard)", () => {
     // A one-off factual fix makes the small model emit "prefers accurate
     // information" + a real category to satisfy the schema. The vacuous-trait
@@ -182,6 +187,16 @@ describe("inferPreferenceFromCorrection — held-out support gate (SkillOpt prop
     expect(pref).toBeUndefined();
   });
 
+  it("fact-restatement guard: a trait echoing a number from the correction is dropped (even with a supportive embedder)", async () => {
+    const factualFix = { request: "when is the meeting?", priorAnswer: "3pm", correction: "no, it's at 4pm" };
+    const pref = await inferPreferenceFromCorrection(factualFix, {
+      embed: () => Promise.resolve([1, 0]), // would pass the support gate
+      model: "m",
+      modelProvider: fakeProvider("preference: prefers being told it's 4pm\ncategory: format\nconfidence: 0.8")
+    });
+    expect(pref).toBeUndefined(); // "4" is shared with the correction → fact-restatement
+  });
+
   it("is fail-closed: an embedder error drops the inference", async () => {
     const pref = await inferPreferenceFromCorrection(exchange, {
       embed: () => Promise.reject(new Error("ollama down")), model: "m", modelProvider: fakeProvider(inferred)
@@ -195,26 +210,23 @@ describe("inferPreferenceFromCorrection — held-out support gate (SkillOpt prop
     expect(pref).toMatchObject({ category: "format" });
   });
 
-  it("SKIPS the semantic gate across scripts (bilingual): a Korean correction keeps its English trait", async () => {
-    // Script-keyed embedder: Korean text → [0,1], Latin text → [1,0] (cosine 0,
-    // which WOULD reject if compared). The gate must bypass the cosine test
-    // because the correction (Korean) and trait (English) differ in script.
+  it("cross-script (Korean correction + English trait) is fail-closed: the unverifiable trait is DROPPED", async () => {
+    // A model that ignored the same-language instruction and emitted an English
+    // trait for a Korean correction can't be verified → drop it (lean false-negative).
     const koCorrection = { request: "이거 정리해줘", priorAnswer: "장황한 문단...", correction: "그게 아니라 짧게 핵심만 정리해줘" };
     const scriptKeyed = (t: string): Promise<readonly number[]> => Promise.resolve(/[가-힣]/u.test(t) ? [0, 1] : [1, 0]);
     const pref = await inferPreferenceFromCorrection(koCorrection, {
       embed: scriptKeyed, model: "m", modelProvider: fakeProvider(inferred)
     });
-    expect(pref).toMatchObject({ value: "prefers bullet-point answers", category: "format" });
+    expect(pref).toBeUndefined();
   });
 
-  it("a Latin loanword in a Korean correction does NOT pull it into the cross-script gate (dominant script)", async () => {
-    // "JSON 형식으로 답해줘" is Hangul-dominant despite the ASCII token; the EN
-    // trait stays cross-script, so the orthogonal embedder must not reject it.
-    const koWithLatin = { request: "정리", priorAnswer: "...", correction: "JSON 형식으로 답해줘" };
-    const scriptKeyed = (t: string): Promise<readonly number[]> => Promise.resolve(/[가-힣]/u.test(t) ? [0, 1] : [1, 0]);
-    const pref = await inferPreferenceFromCorrection(koWithLatin, {
-      embed: scriptKeyed, model: "m", modelProvider: fakeProvider("preference: prefers JSON formatted output\ncategory: format\nconfidence: 0.8")
+  it("same-language (Korean correction + Korean trait) is verified and kept", async () => {
+    const koCorrection = { request: "이거 정리해줘", priorAnswer: "장황한 문단...", correction: "그게 아니라 짧게 핵심만 정리해줘" };
+    const koEmbed = (t: string): Promise<readonly number[]> => Promise.resolve(/[가-힣]/u.test(t) ? [1, 0] : [0, 1]); // both KO → cos 1
+    const pref = await inferPreferenceFromCorrection(koCorrection, {
+      embed: koEmbed, model: "m", modelProvider: fakeProvider("preference: 간결하게 핵심만 답하기를 선호\ncategory: format\nconfidence: 0.8")
     });
-    expect(pref).toMatchObject({ category: "format" });
+    expect(pref).toMatchObject({ value: "간결하게 핵심만 답하기를 선호", category: "format" });
   });
 });

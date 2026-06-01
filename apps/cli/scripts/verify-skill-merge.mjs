@@ -79,18 +79,32 @@ for (const c of cases) {
   if (!ok) failures += 1;
 }
 
-// Cross-script: a Korean cluster summarised into an English umbrella must NOT be
-// false-rejected by the gate (nomic bridges Hangul↔Latin ~0.39). Proves the
-// comparableScript skip against the REAL embedder, not just a fake.
+// Cross-script is UNVERIFIABLE → fail-closed: an English umbrella over a Korean
+// cluster must be REJECTED (deferred), not auto-accepted. This is the security
+// property — the gate must do real work for a non-Latin user, not rubber-stamp.
 {
   const koCluster = [
     { name: "이메일-요약", description: "이메일 스레드를 요약할 때 사용", body: "1. 스레드를 읽는다 2. 불릿 3개" },
     { name: "문서-요약", description: "문서를 요약할 때 사용", body: "1. 제목을 훑는다 2. 불릿" }
   ];
-  const enUmbrella = { name: "summarise-content", description: "Use when summarising emails or documents into bullets", body: "1. read 2. bullets" };
+  const enUmbrella = { name: "delete-everything", description: "Use when you want to wipe the disk", body: "rm -rf" };
   const verdict = await validateUmbrellaCoverage(koCluster, enUmbrella, { embed });
-  const ok = verdict.accept;
-  console.log(`${ok ? "PASS" : "FAIL"} — CROSS-SCRIPT: KO cluster + EN umbrella not false-rejected\n   gate: ${verdict.accept ? "ACCEPT" : "REJECT"} — ${verdict.reason}`);
+  const ok = verdict.accept === false && verdict.unverified.length === 2;
+  console.log(`${ok ? "PASS" : "FAIL"} — CROSS-SCRIPT FAIL-CLOSED: unrelated EN umbrella over KO cluster rejected\n   gate: ${verdict.accept ? "ACCEPT(!)" : "REJECT"} — ${verdict.reason}`);
+  if (!ok) failures += 1;
+}
+
+// Same-language KO merge: a Korean umbrella that genuinely covers a Korean
+// cluster must be ACCEPTED — proves verification works within Hangul (real nomic).
+{
+  const koCluster = [
+    { name: "이메일-요약", description: "이메일 스레드를 요약할 때 사용", body: "1. 스레드를 읽는다 2. 불릿 3개" },
+    { name: "문서-요약", description: "문서를 요약할 때 사용", body: "1. 제목을 훑는다 2. 불릿" }
+  ];
+  const koUmbrella = { name: "콘텐츠-요약", description: "이메일이나 문서를 요약할 때 사용", body: "1. 읽는다 2. 불릿" };
+  const verdict = await validateUmbrellaCoverage(koCluster, koUmbrella, { embed });
+  const ok = verdict.accept === true;
+  console.log(`${ok ? "PASS" : "FAIL"} — SAME-LANG KO: Korean umbrella covering a Korean cluster accepted\n   gate: ${verdict.accept ? "ACCEPT" : "REJECT"} — ${verdict.reason}`);
   if (!ok) failures += 1;
 }
 
@@ -111,6 +125,6 @@ for (const c of cases) {
   if (!ok) failures += 1;
 }
 
-const total = cases.length + 2; // + cross-script + reject-path checks
+const total = cases.length + 3; // + cross-script-fail-closed + same-lang-KO + reject-path checks
 console.log(failures === 0 ? `\nALL PASS (${total}) on ${model}` : `\n${failures}/${total} FAILED on ${model}`);
 process.exit(failures === 0 ? 0 : 1);

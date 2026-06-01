@@ -67,13 +67,22 @@ preference: <one short trait, e.g. "prefers concise, bullet-point answers">
 category: <EXACTLY one of: style | format | language | tooling | workflow>
 confidence: <0.0-1.0, how durable this preference seems>
 
-A real preference MUST fit one of those five categories. If the correction is
-just a one-off FACTUAL fix (wrong date/time/name/number) or yields only a
-vacuous trait ("prefers accurate information", "likes correct answers"), there
-is NO durable preference — output exactly: NONE
+A real preference is about HOW the user likes things (style/format), NEVER about
+the specific FACT being corrected. If the correction just fixes a wrong
+date/time/name/number/place — restating or insisting on the right value — there
+is NO durable preference: output exactly NONE. Do NOT turn "it's 4pm not 3pm"
+into "prefers being told the correct time" or "should say 4 o'clock"; that is
+the fact, not a preference. A vacuous trait ("prefers accurate information",
+"정확하게 말하기를 선호") is likewise NONE.
+IMPORTANT: write the preference value in the SAME LANGUAGE the user wrote their
+correction in — if their correction is in English, answer in English; if in
+Korean, answer in Korean — so it can be verified against what they actually
+said. (The category stays one of the five English words above.)
 Examples:
   "no, give me bullet points" → preference: prefers bullet-point answers / category: format
   "no, it's at 4pm" → NONE
+  "그게 아니라 짧게 핵심만" → preference: 간결하게 핵심만 답하기를 선호 / category: format
+  "아니 4시야" → NONE
 No preamble, no markdown, no quotes.`;
 
 export function parseInferredPreference(raw: string): InferredPreference | undefined {
@@ -85,8 +94,11 @@ export function parseInferredPreference(raw: string): InferredPreference | undef
   // "prefers accurate information" / "correct answers" — things EVERY user
   // wants, not a preference. Reject the accuracy/correctness cluster outright
   // (proven necessary by the live negative case; the model games the
-  // category requirement otherwise).
-  if (/\b(accurat|accuracy|correct|precise|precision|truthful|honest|reliab|up-to-date)/iu.test(value)) {
+  // category requirement otherwise). Korean terms are included because the
+  // language-mirrored output emits the same vacuous trait in Korean (정확/정밀/
+  // 올바르 = accurate/precise/correct) which the English alternation misses.
+  if (/\b(accurat|accuracy|correct|precise|precision|truthful|honest|reliab|up-to-date)/iu.test(value)
+    || /(정확|정밀|올바르|올바른|사실대로|틀리지|맞게\s*말|정직)/u.test(value)) {
     return undefined;
   }
   // Require a VALID category. The small model fabricates a vacuous trait
@@ -131,7 +143,19 @@ export async function inferPreferenceFromCorrection(
     return undefined;
   }
   const parsed = parseInferredPreference(output);
-  if (!parsed || !options.embed) return parsed;
+  if (!parsed) return undefined;
+  // Fact-restatement guard (deterministic, language-neutral): a date/time/
+  // number/quantity correction makes the small model echo the corrected VALUE
+  // as a fake preference ("prefers saying 4 o'clock" / "4시라고 말하기를 선호").
+  // If the trait repeats a number that appears in the correction, it is
+  // restating the fact, not abstracting a HOW-preference — drop it. Catches the
+  // factual-fix class the English NONE rule handles but the model's Korean
+  // reasoning does not; leans false-negative, per this module's stance.
+  const correctionNums = new Set(redact(exchange.correction).match(/\d+/gu) ?? []);
+  if (correctionNums.size > 0 && (parsed.value.match(/\d+/gu) ?? []).some((n) => correctionNums.has(n))) {
+    return undefined;
+  }
+  if (!options.embed) return parsed;
   // Held-out support gate: the inferred trait must be semantically grounded in
   // the correction that produced it — drop a trait the model conjured that the
   // user's own words don't support. Reuses the merge-coverage gate (symmetric

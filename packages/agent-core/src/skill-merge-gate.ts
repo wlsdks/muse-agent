@@ -23,11 +23,13 @@
  * self-verifier (arXiv 2404.17140), so the gate is embeddings, not a model
  * self-judgement; the verdict shape leaves room for a rollout-based scorer.
  *
- * Cross-script pairs are skipped (treated as covered): nomic bridges
- * Hangul/CJK/kana↔Latin weakly, so comparing a Korean original to an English
- * merged text would false-reject legitimate bilingual consolidation. See
- * `comparableScript` — the gate only runs the cosine test within a shared
- * dominant script family.
+ * Cross-script pairs are UNVERIFIABLE, not covered: nomic bridges
+ * Hangul/CJK/kana↔Latin weakly, so a Korean-original vs English-merged cosine is
+ * meaningless. Such a pair is reported in `unverified` and BLOCKS acceptance
+ * (fail-closed / defer) — auto-covering it would let the gate do zero work for a
+ * non-Latin cluster. The mergers are told to write their output in the input's
+ * language, so a legitimate edit is same-script and verifiable; only a
+ * language-disobeying proposal defers (safely retried next time).
  */
 
 import { cosineSimilarity } from "./episodic-recall.js";
@@ -43,6 +45,13 @@ export interface MergeCoverageVerdict {
   readonly covered: readonly string[];
   /** Labels of the originals the merged artifact dropped — the merge regression. */
   readonly lost: readonly string[];
+  /**
+   * Labels the gate could NOT verify because the original and the merged text
+   * are in different scripts (out of the embedder's validity domain). These are
+   * NOT covered — a merge with any unverified original is fail-closed (deferred),
+   * never committed blind. Steered-retry feedback uses `lost`, not these.
+   */
+  readonly unverified: readonly string[];
   /** Human-readable summary for the action log / rejected-edit feedback. */
   readonly reason: string;
 }
@@ -97,7 +106,7 @@ export async function validateMergeCoverage(
   options: ValidateUmbrellaOptions
 ): Promise<MergeCoverageVerdict> {
   if (originals.length === 0) {
-    return { accept: false, covered: [], lost: [], reason: "empty cluster", score: 0 };
+    return { accept: false, covered: [], lost: [], reason: "empty cluster", score: 0, unverified: [] };
   }
   const floor = clamp01(options.floor ?? DEFAULT_FLOOR);
   const requireAll = options.requireAllCovered ?? true;
@@ -117,17 +126,22 @@ export async function validateMergeCoverage(
       covered: [],
       lost: originals.map((o) => o.label),
       reason: `coverage gate could not run (embedder unavailable: ${message})`,
-      score: 0
+      score: 0,
+      unverified: []
     };
   }
 
   const covered: string[] = [];
   const lost: string[] = [];
+  const unverified: string[] = [];
   originals.forEach((item, i) => {
-    // Cross-script vs the merged text → out of the embedder's validity domain;
-    // skip the cosine test (treat as covered) rather than false-reject.
-    const comparable = comparableScript(item.text, merged.text);
-    if (!comparable || cosineSimilarity(originalVecs[i]!, mergedVec) >= floor) {
+    // Cross-script vs the merged text → out of the embedder's validity domain.
+    // It is UNVERIFIABLE, not covered: auto-covering it would let the gate do
+    // zero work for a non-Latin cluster (accept an unrelated umbrella / a
+    // fabricated trait). Fail-closed — an unverified pair blocks acceptance.
+    if (!comparableScript(item.text, merged.text)) {
+      unverified.push(item.label);
+    } else if (cosineSimilarity(originalVecs[i]!, mergedVec) >= floor) {
       covered.push(item.label);
     } else {
       lost.push(item.label);
@@ -135,12 +149,15 @@ export async function validateMergeCoverage(
   });
 
   const score = covered.length / originals.length;
-  const accept = requireAll ? lost.length === 0 : score >= minScore;
+  const verifiedAccept = requireAll ? lost.length === 0 : score >= minScore;
+  const accept = verifiedAccept && unverified.length === 0;
   const reason = accept
     ? `"${merged.label}" covers all ${covered.length.toString()} (≥${floor.toFixed(2)})`
-    : `"${merged.label}" drops [${lost.join(", ")}] (covered ${covered.length.toString()}/${originals.length.toString()}, floor ${floor.toFixed(2)})`;
+    : unverified.length > 0
+      ? `"${merged.label}" unverifiable — cross-script vs [${unverified.join(", ")}]; deferred (write it in the same language to verify)`
+      : `"${merged.label}" drops [${lost.join(", ")}] (covered ${covered.length.toString()}/${originals.length.toString()}, floor ${floor.toFixed(2)})`;
 
-  return { accept, covered, lost, reason, score };
+  return { accept, covered, lost, reason, score, unverified };
 }
 
 /**
