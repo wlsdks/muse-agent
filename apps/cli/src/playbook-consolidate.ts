@@ -17,12 +17,15 @@ export interface PlaybookConsolidateItem {
 
 export interface ConsolidatePlaybookDeps {
   /** Merge a cluster's texts into one strategy, or undefined when genuinely distinct. */
-  readonly merge: (texts: readonly string[]) => Promise<string | undefined>;
-  /** Held-out gate: does `merged` still cover every `original`? */
+  readonly merge: (
+    texts: readonly string[],
+    feedback?: { readonly avoidDropping: readonly string[] }
+  ) => Promise<string | undefined>;
+  /** Held-out gate: does `merged` still cover every `original`? `lost` steers a retry. */
   readonly validate: (
     originals: readonly string[],
     merged: string
-  ) => Promise<{ readonly accept: boolean; readonly reason: string }>;
+  ) => Promise<{ readonly accept: boolean; readonly reason: string; readonly lost?: readonly string[] }>;
   /** When false, preview only — never record/remove. */
   readonly apply: boolean;
   readonly record: (mergedText: string, tag: string | undefined) => Promise<void>;
@@ -45,9 +48,21 @@ export async function consolidatePlaybook(
   let rejected = 0;
   for (const cluster of clusters) {
     if (cluster.length < 2) continue;
-    const mergedText = await deps.merge(cluster.map((e) => e.text));
+    const texts = cluster.map((e) => e.text);
+    let mergedText = await deps.merge(texts);
     if (!mergedText) continue; // genuinely distinct — leave them
-    const verdict = await deps.validate(cluster.map((e) => e.text), mergedText);
+    let verdict = await deps.validate(texts, mergedText);
+    if (!verdict.accept && verdict.lost && verdict.lost.length > 0) {
+      // SkillOpt rejected-edit loop: re-propose once, steered away from what it dropped.
+      const retry = await deps.merge(texts, { avoidDropping: verdict.lost });
+      if (retry) {
+        const v2 = await deps.validate(texts, retry);
+        if (v2.accept) {
+          mergedText = retry;
+          verdict = v2;
+        }
+      }
+    }
     if (!verdict.accept) {
       rejected += 1;
       deps.log(`  rejected (held-out gate) — ${verdict.reason}`);

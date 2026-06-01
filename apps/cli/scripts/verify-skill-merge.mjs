@@ -94,6 +94,23 @@ for (const c of cases) {
   if (!ok) failures += 1;
 }
 
-const total = cases.length + 1; // + the cross-script check
+// REJECT path against REAL nomic: a coverage-losing umbrella (covers only one of
+// two different-domain originals) MUST be rejected. Proves the gate's reject
+// direction + the floor calibration against the real embedding distribution, not
+// just synthetic fakes — so an embedder-version drift that lifts off-topic pairs
+// above the floor trips this check instead of silently disarming the gate.
+{
+  const rejCluster = [
+    { name: "summarise-email", description: "Use when summarising an email thread", body: "read; bullets" },
+    { name: "book-flight", description: "Use when booking a flight ticket", body: "search; confirm" }
+  ];
+  const losing = { name: "summarise-email-only", description: "Use when summarising an email thread", body: "read; bullets" };
+  const verdict = await validateUmbrellaCoverage(rejCluster, losing, { embed });
+  const ok = verdict.accept === false && verdict.lost.includes("book-flight");
+  console.log(`${ok ? "PASS" : "FAIL"} — REJECT-PATH: coverage-losing umbrella rejected by real nomic\n   gate: ${verdict.accept ? "ACCEPT(!)" : "REJECT"} — ${verdict.reason}`);
+  if (!ok) failures += 1;
+}
+
+const total = cases.length + 2; // + cross-script + reject-path checks
 console.log(failures === 0 ? `\nALL PASS (${total}) on ${model}` : `\n${failures}/${total} FAILED on ${model}`);
 process.exit(failures === 0 ? 0 : 1);

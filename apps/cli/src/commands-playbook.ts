@@ -209,7 +209,7 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
             { label: mergedText.slice(0, 40), text: mergedText },
             { embed }
           );
-          return { accept: verdict.accept, reason: verdict.reason };
+          return { accept: verdict.accept, lost: verdict.lost, reason: verdict.reason };
         }
       });
       if (merged === 0) {

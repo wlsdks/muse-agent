@@ -48,6 +48,12 @@ export interface MergePlaybookOptions {
   readonly redact?: (text: string) => string;
   readonly maxOutputTokens?: number;
   readonly temperature?: number;
+  /**
+   * Steering feedback from a prior REJECTED attempt (SkillOpt's rejected-edit
+   * loop): the strategy texts the previous merge dropped. Appended to the prompt
+   * so the re-proposal must keep covering them.
+   */
+  readonly feedback?: { readonly avoidDropping: readonly string[] };
 }
 
 const MERGE_SYSTEM_PROMPT =
@@ -66,9 +72,13 @@ export async function mergePlaybookStrategies(
   if (texts.length < 2) return undefined;
   const redact = options.redact ?? redactSecretsInText;
   const input = texts.map((t, i) => `${(i + 1).toString()}. ${redact(t)}`).join("\n");
+  const avoid = options.feedback?.avoidDropping ?? [];
+  const steer = avoid.length > 0
+    ? `\n\nYour previous merge DROPPED the meaning of: ${avoid.map((t) => redact(t)).join(" | ")}. The merged strategy MUST still cover them, or output NONE.`
+    : "";
   const messages: readonly ModelMessage[] = [
     { content: MERGE_SYSTEM_PROMPT, role: "system" },
-    { content: input, role: "user" }
+    { content: `${input}${steer}`, role: "user" }
   ];
   const request: ModelRequest = {
     maxOutputTokens: options.maxOutputTokens ?? 100,

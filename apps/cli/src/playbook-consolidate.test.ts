@@ -44,6 +44,36 @@ describe("consolidatePlaybook — SkillOpt held-out gate", () => {
     expect(logs.some((l) => l.includes("rejected (held-out gate)"))).toBe(true);
   });
 
+  it("feedbackRetry: a rejected first merge is re-proposed with the dropped texts and the steered merge commits", async () => {
+    const seenFeedback: (readonly string[] | undefined)[] = [];
+    const merge = async (_texts: readonly string[], feedback?: { readonly avoidDropping: readonly string[] }) => {
+      seenFeedback.push(feedback?.avoidDropping);
+      return feedback ? "covering merged strategy" : "narrow merged strategy";
+    };
+    const { deps, recorded } = recorder({
+      merge,
+      validate: async (_o, mergedText) =>
+        mergedText === "covering merged strategy"
+          ? { accept: true, reason: "covers all" }
+          : { accept: false, lost: ["summarise with bullet points"], reason: "drops one" }
+    });
+    const res = await consolidatePlaybook([cluster], deps);
+    expect(res).toEqual({ merged: 1, rejected: 0 });
+    expect(seenFeedback).toEqual([undefined, ["summarise with bullet points"]]);
+    expect(recorded[0]?.text).toBe("covering merged strategy");
+  });
+
+  it("feedbackRetry: when the steered retry also fails, it rolls back (rejected)", async () => {
+    const { deps, recorded, removed } = recorder({
+      merge: async () => "still narrow",
+      validate: async () => ({ accept: false, lost: ["x"], reason: "drops x" })
+    });
+    const res = await consolidatePlaybook([cluster], deps);
+    expect(res).toEqual({ merged: 0, rejected: 1 });
+    expect(recorded).toEqual([]);
+    expect(removed).toEqual([]);
+  });
+
   it("leaves a genuinely-distinct cluster alone when the merger returns undefined", async () => {
     const { deps, recorded } = recorder({ merge: async () => undefined });
     const res = await consolidatePlaybook([cluster], deps);
