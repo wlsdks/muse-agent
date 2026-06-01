@@ -62,7 +62,15 @@ describe("runReflectionPass", () => {
     const file = join(dir, "reflections.json");
     try {
       let calls = 0;
-      const mp = { generate: async () => { calls += 1; return { output: '[{"insight":"You debug networking a lot","sources":["e1","e2","e3"]}]' }; } } as never;
+      // Two-phase: the synthesis call returns the reflection JSON; the RGV
+      // re-verification judge (system = strict grounding judge) upholds it.
+      const mp = {
+        generate: async (req: { messages: readonly { content: string }[] }) => {
+          calls += 1;
+          const isJudge = req.messages.some((m) => m.content.includes("grounding judge"));
+          return { output: isJudge ? "YES" : '[{"insight":"You debug networking a lot","sources":["e1","e2","e3"]}]' };
+        }
+      } as never;
       expect(await runReflectionPass([{ id: "e1", text: "x" }], { model: "m", modelProvider: mp, reflectionsFile: file })).toBe(0); // <2 → skip
       expect(calls).toBe(0);
       const added = await runReflectionPass(

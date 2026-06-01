@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { synthesizeReflections, type Reflection, type ReflectionInput } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, parseGroundingReverifyVerdict, REVERIFY_SYSTEM_PROMPT, synthesizeReflections, type GroundingReverify, type Reflection, type ReflectionInput } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
 import { createMuseRuntimeAssembly, resolveEpisodesFile } from "@muse/autoconfigure";
 import {
@@ -45,7 +45,22 @@ export interface ReflectionPassOptions {
 export async function runReflectionPass(inputs: readonly ReflectionInput[], options: ReflectionPassOptions): Promise<number> {
   const usable = inputs.filter((i) => i.id.length > 0 && i.text.trim().length > 0);
   if (usable.length < 2) return 0;
-  const fresh = await synthesizeReflections(usable, { model: options.model, modelProvider: options.modelProvider });
+  // RGV re-verification (offline path): each synthesised insight is re-checked
+  // against the TEXT of its cited episodes by a one-shot local judge, so a
+  // confabulated "dream" that cites real-but-unrelated sources is dropped.
+  const reverify: GroundingReverify = async ({ answer, evidence, query }) => {
+    const judged = await options.modelProvider.generate({
+      maxOutputTokens: 8,
+      messages: [
+        { content: REVERIFY_SYSTEM_PROMPT, role: "system" },
+        { content: buildGroundingReverifyPrompt({ answer, evidence, query }), role: "user" }
+      ],
+      model: options.model,
+      temperature: 0
+    });
+    return parseGroundingReverifyVerdict(judged.output ?? "");
+  };
+  const fresh = await synthesizeReflections(usable, { model: options.model, modelProvider: options.modelProvider, reverify });
   return addReflections(
     options.reflectionsFile,
     reflectionsToStore(fresh, options.now?.() ?? Date.now(), options.genId ?? (() => randomUUID()))

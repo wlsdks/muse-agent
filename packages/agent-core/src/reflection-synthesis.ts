@@ -19,6 +19,7 @@
 import type { ModelMessage, ModelProvider, ModelRequest } from "@muse/model";
 import { redactSecretsInText } from "@muse/shared";
 
+import type { GroundingReverify } from "./knowledge-recall.js";
 import { extractJsonArray } from "./plan-execute.js";
 
 export interface ReflectionInput {
@@ -47,6 +48,13 @@ export interface SynthesizeReflectionsOptions {
   readonly redact?: (text: string) => string;
   readonly maxOutputTokens?: number;
   readonly temperature?: number;
+  /**
+   * Optional RGV re-verification (slice 4): after a reflection passes the
+   * id-citation gate, an injected judge re-checks that its insight is genuinely
+   * supported by the TEXT of its cited sources — dropping a confabulated insight
+   * that cites real-but-unrelated episodes. Omitted ⇒ id-gate only (back-compat).
+   */
+  readonly reverify?: GroundingReverify;
 }
 
 const DEFAULT_MAX_REFLECTIONS = 5;
@@ -147,8 +155,43 @@ export async function synthesizeReflections(
   } catch {
     return [];
   }
-  return parseReflections(output, new Set(usable.map((i) => i.id)), {
+  const reflections = parseReflections(output, new Set(usable.map((i) => i.id)), {
     ...(options.maxReflections !== undefined ? { maxReflections: options.maxReflections } : {}),
     minSupport
   });
+  if (!options.reverify) return reflections;
+  const sources = new Map(usable.map((i) => [i.id, i.text]));
+  return verifyReflectionsGrounding(reflections, sources, options.reverify);
+}
+
+export const REFLECTION_GROUNDING_QUERY = "What genuinely recurs about this user across these items?";
+
+/**
+ * RGV re-verification for the reflection surface: keep a reflection ONLY when
+ * the injected judge confirms its insight is supported by the TEXT of its cited
+ * sources. Reflections are abstractions (lexical coverage misfits them), so the
+ * one-shot judge — not the rubric — is the right tool. Fail-close: a judge that
+ * returns false OR throws drops the reflection (a "dream" never survives an
+ * unverifiable check). Pure over the injected judge + exported for direct coverage.
+ */
+export async function verifyReflectionsGrounding(
+  reflections: readonly Reflection[],
+  sources: ReadonlyMap<string, string>,
+  reverify: GroundingReverify
+): Promise<Reflection[]> {
+  const kept: Reflection[] = [];
+  for (const reflection of reflections) {
+    const evidence = reflection.sourceIds
+      .map((id) => sources.get(id))
+      .filter((text): text is string => typeof text === "string" && text.length > 0)
+      .join("\n");
+    let supported: boolean;
+    try {
+      supported = await reverify({ answer: reflection.insight, evidence, query: REFLECTION_GROUNDING_QUERY });
+    } catch {
+      supported = false;
+    }
+    if (supported) kept.push(reflection);
+  }
+  return kept;
 }

@@ -178,7 +178,9 @@ export {
 export {
   buildReflectionUserMessage,
   parseReflections,
+  REFLECTION_GROUNDING_QUERY,
   synthesizeReflections,
+  verifyReflectionsGrounding,
   type Reflection,
   type ReflectionInput,
   type SynthesizeReflectionsOptions
