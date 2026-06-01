@@ -27,7 +27,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 
-import { chunkText, citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, selectByMmr, verifyGrounding, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, parseGroundingReverifyVerdict, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectByMmr, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
@@ -322,13 +322,16 @@ export function answerIsRefusal(answer: string): boolean {
  * input framing, a refusal asserts no claim). Only valid where `matches` IS the
  * full evidence — the chat-only path, never `--with-tools`.
  */
-export function groundingVerdictNotice(
+export async function groundingVerdictNotice(
   answer: string,
   matches: readonly KnowledgeMatch[],
-  query: string
-): string | undefined {
+  query: string,
+  reverify?: GroundingReverify
+): Promise<string | undefined> {
   if (answerIsRefusal(answer)) return undefined;
-  const verification = verifyGrounding(answer, matches, query);
+  const verification = reverify
+    ? await verifyGroundingWithReverify(answer, matches, query, reverify)
+    : verifyGrounding(answer, matches, query);
   if (verification.verdict !== "ungrounded") return undefined;
   return `\n⚠️  Grounding check: this answer's claims aren't fully backed by your notes (${verification.reason}) — treat as unverified.\n`;
 }
@@ -1706,12 +1709,30 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // Output-side rubric VERDICT (chat-only path, where `scored` IS the
       // evidence): even after invented citations are stripped, warn when the
       // answer's claims drift beyond the grounded passages — the fabrication
-      // signal the citation gate alone can't see.
+      // signal the citation gate alone can't see. The ambiguous `weak` band
+      // spends ONE extra local-Qwen inference (MaTTS) to re-check the answer
+      // against the evidence — fail-close, so a judge error still warns.
       if (!options.json && !options.withTools) {
-        const verdictNotice = groundingVerdictNotice(
+        const provider = assembly.modelProvider;
+        const reverify: GroundingReverify | undefined = provider
+          ? async ({ answer, evidence, query: q }) => {
+              const judged = await provider.generate({
+                maxOutputTokens: 8,
+                messages: [
+                  { content: REVERIFY_SYSTEM_PROMPT, role: "system" },
+                  { content: buildGroundingReverifyPrompt({ answer, evidence, query: q }), role: "user" }
+                ],
+                model,
+                temperature: 0
+              });
+              return parseGroundingReverifyVerdict(judged.output ?? "");
+            }
+          : undefined;
+        const verdictNotice = await groundingVerdictNotice(
           collectedAnswer,
           scored.map((r) => ({ cosine: r.score, score: r.score, source: r.file, text: r.chunk.text })),
-          query
+          query,
+          reverify
         );
         if (verdictNotice) io.stderr(verdictNotice);
       }
