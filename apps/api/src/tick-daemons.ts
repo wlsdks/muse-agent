@@ -19,7 +19,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, resolveContactsFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
+import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, resolveContactsFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
 import { createCachingEmbedder } from "@muse/agent-core";
 import type { FastifyInstance } from "fastify";
 
@@ -540,8 +540,8 @@ export function startConsolidateDaemonIfConfigured(
     model: options.defaultModel,
     modelProvider: options.modelProvider,
     // SkillOpt held-out coverage gate: verify a proposed umbrella semantically
-    // covers every clustered skill before committing (local nomic embedder).
-    embed: createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text"),
+    // covers every clustered skill before committing (shared gate embedder).
+    embed: createGateEmbedder(env),
     // Real OS-idle brake: the LLM merge only fires when the MACHINE is quiet
     // (system-wide HID idle), not merely when Muse's /api is — fail-closed.
     osIdleMs: () => osIdleMs(),

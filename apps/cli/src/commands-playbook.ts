@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 
 import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity, validateMergeCoverage } from "@muse/agent-core";
-import { createMuseRuntimeAssembly, createOllamaEmbedder, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
+import { createGateEmbedder, createMuseRuntimeAssembly, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
 import { adjustPlaybookReward, queryPlaybook, recordPlaybookStrategy, recordSuppressedLesson, removePlaybookStrategy, setLearningPaused, type PlaybookEntry } from "@muse/mcp";
 import type { Command } from "commander";
 
@@ -185,7 +185,7 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
         return;
       }
       const modelProvider = assembly.modelProvider as Parameters<typeof mergePlaybookStrategies>[1]["modelProvider"];
-      const embed = createOllamaEmbedder("nomic-embed-text");
+      const embed = createGateEmbedder(process.env);
       const { merged, rejected } = await consolidatePlaybook(clusters, {
         apply: options.apply === true,
         log: (line) => io.stdout(`${line}\n`),

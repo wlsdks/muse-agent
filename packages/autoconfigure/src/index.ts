@@ -147,7 +147,7 @@ import { createResponseFilters } from "./response-filters.js";
 import { createMessagingPollDispatchers } from "./messaging-poll-dispatchers.js";
 import { createSkillRuntime } from "./skills-runtime.js";
 import { buildLoopbackTools } from "./loopback-tools.js";
-import { buildBackgroundReviewHooks, createOllamaEmbedder, inferPreferencesFromTurns, scanCommitmentsFromTurns } from "./context-engineering-builders.js";
+import { buildBackgroundReviewHooks, createGateEmbedder, createOllamaEmbedder, inferPreferencesFromTurns, scanCommitmentsFromTurns } from "./context-engineering-builders.js";
 import { readEpisodeKnowledgeEntries } from "./episodes-knowledge-source.js";
 import { readFeedKnowledgeEntries } from "./feeds-knowledge-source.js";
 import { createUserMemoryKnowledgeSource } from "./user-memory-knowledge-source.js";
@@ -767,7 +767,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
         // Held-out support gate: drop an inferred trait the correction doesn't
         // semantically support (local nomic embedder), so the server never
         // learns a fabricated preference.
-        embed: createCachingEmbedder(createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text"))
+        embed: createGateEmbedder(env)
       });
     }
     : undefined;
@@ -968,7 +968,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
 
 export { createApiServerOptions } from "./api-server-options.js";
 
-export { createOllamaEmbedder } from "./context-engineering-builders.js";
+export { createGateEmbedder, createOllamaEmbedder } from "./context-engineering-builders.js";
 
 export {
   assembleKnowledgeCorpus,

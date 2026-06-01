@@ -16,6 +16,12 @@ function fakeProvider(output: string): ModelProvider {
   return { generate: async () => ({ output }) } as unknown as ModelProvider;
 }
 
+// Deterministic embedders so the held-out support gate never hits real Ollama
+// in these unit tests. `supportive` makes every pair cosine 1 (supported);
+// `bulletKeyed` returns orthogonal vectors unless the text mentions "bullet".
+const supportive = async (): Promise<readonly number[]> => [1, 0];
+const bulletKeyed = async (t: string): Promise<readonly number[]> => (/bullet/u.test(t) ? [1, 0] : [0, 1]);
+
 describe("slugifySlotId", () => {
   it("slugs a value so re-adding the same value updates in place", () => {
     expect(slugifySlotId("Concise, no fluff!")).toBe("concise-no-fluff");
@@ -48,6 +54,7 @@ describe("inferSessionPreferences — detect → infer → upsert (glue; model b
       model: "qwen3:8b",
       store: { upsertUserModelSlot: async (_userId, slot) => { saved.push(slot); } },
       userId: "stark",
+      embed: supportive,
       now: () => NOW
     });
     expect(result.status).toBe("ok");
@@ -62,9 +69,27 @@ describe("inferSessionPreferences — detect → infer → upsert (glue; model b
       readHistory: async () => CORRECTION_HISTORY,
       modelProvider: fakeProvider("NONE"),
       model: "qwen3:8b",
-      store: { upsertUserModelSlot: async (_userId, slot) => { saved.push(slot); } }
+      store: { upsertUserModelSlot: async (_userId, slot) => { saved.push(slot); } },
+      embed: supportive
     });
     expect(result.status).toBe("ok");
+    expect(result.added).toEqual([]);
+    expect(saved).toHaveLength(0);
+  });
+
+  it("held-out gate drops a fabricated trait the correction does not support (CLI path now gated)", async () => {
+    const saved: UserModelSlot[] = [];
+    const result = await inferSessionPreferences({
+      readHistory: async () => [
+        { role: "user", content: "when is the meeting?" },
+        { role: "assistant", content: "3pm" },
+        { role: "user", content: "no, it's at 4pm" }
+      ],
+      modelProvider: fakeProvider("preference: prefers bullet points\ncategory: format\nconfidence: 0.8"),
+      model: "qwen3:8b",
+      store: { upsertUserModelSlot: async (_userId, slot) => { saved.push(slot); } },
+      embed: bulletKeyed // correction has no "bullet" → orthogonal to the trait → cosine 0 → rejected
+    });
     expect(result.added).toEqual([]);
     expect(saved).toHaveLength(0);
   });
@@ -75,7 +100,8 @@ describe("inferSessionPreferences — detect → infer → upsert (glue; model b
       readHistory: async () => [{ role: "user", content: "thanks, that's perfect" }],
       modelProvider: fakeProvider("preference: x\ncategory: style\nconfidence: 0.9"),
       model: "qwen3:8b",
-      store: { upsertUserModelSlot: async () => { called = true; } }
+      store: { upsertUserModelSlot: async () => { called = true; } },
+      embed: supportive
     });
     expect(result).toEqual({ added: [], status: "no-corrections" });
     expect(called).toBe(false);

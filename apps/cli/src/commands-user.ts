@@ -8,7 +8,7 @@
  */
 
 import { detectCorrections, inferPreferenceFromCorrection } from "@muse/agent-core";
-import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
+import { createGateEmbedder, createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import { FileUserMemoryStore, selectReconfirmableSlots, type UserModel, type UserModelSlot } from "@muse/memory";
 import type { Command } from "commander";
 
@@ -42,6 +42,8 @@ export async function inferSessionPreferences(
     readonly store?: UserModelSlotWriter;
     readonly userId?: string;
     readonly now?: () => Date;
+    /** Embedder for the held-out support gate; defaults to the shared gate embedder. */
+    readonly embed?: (text: string) => Promise<readonly number[]>;
   } = {}
 ): Promise<InferSessionPreferencesResult> {
   const readHistory = options.readHistory ?? readLastChatHistory;
@@ -60,9 +62,13 @@ export async function inferSessionPreferences(
 
   const store = options.store ?? new FileUserMemoryStore();
   const userId = options.userId ?? resolveUserId();
+  // SkillOpt held-out support gate: drop an inferred trait the correction doesn't
+  // semantically support, matching the server background-review arm. Injectable
+  // so tests can supply a fake; the gate itself skips cross-script pairs.
+  const embed = options.embed ?? createGateEmbedder(process.env);
   const added: string[] = [];
   for (const exchange of exchanges) {
-    const pref = await inferPreferenceFromCorrection(exchange, { model, modelProvider });
+    const pref = await inferPreferenceFromCorrection(exchange, { model, modelProvider, embed });
     if (!pref) continue;
     // Supersede by category: a new style/format preference replaces the prior
     // one of the same category (id `pref-<category>`), so a changed mind

@@ -6,6 +6,7 @@ import {
   InMemoryTelemetryAggregator,
   StoreBackedEpisodicRecallProvider,
   createBackgroundReviewHook,
+  createCachingEmbedder,
   detectCorrections,
   detectUserCommitments,
   inferPreferenceFromCorrection,
@@ -237,6 +238,17 @@ export function createOllamaEmbedder(model: string): (text: string) => Promise<r
     }
     return body.embedding as number[];
   };
+}
+
+/**
+ * The single embedder every held-out gate (skill-merge, playbook, preference)
+ * must use: honors MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL (default nomic-embed-text)
+ * and caches, so all gates share one model — the gate floors are calibrated for
+ * one embedder, so a surface that silently used a different model would apply a
+ * miscalibrated threshold. Use this instead of hand-rolling createOllamaEmbedder.
+ */
+export function createGateEmbedder(env: NodeJS.ProcessEnv): (text: string) => Promise<readonly number[]> {
+  return createCachingEmbedder(createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text"));
 }
 
 export function buildEpisodicRecallProvider(

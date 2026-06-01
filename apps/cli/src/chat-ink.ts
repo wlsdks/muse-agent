@@ -1367,15 +1367,21 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     if (parseBoolean(process.env.MUSE_SKILL_CONSOLIDATE_ENABLED, false)) {
       const { AuthoredSkillStore } = await import("@muse/skills");
       const { resolveAuthoredSkillsDir } = await import("./commands-skills.js");
-      const { mergeSkillsIntoUmbrella } = await import("@muse/agent-core");
+      const { mergeSkillsIntoUmbrella, validateUmbrellaCoverage } = await import("@muse/agent-core");
+      const { createGateEmbedder } = await import("@muse/autoconfigure");
       const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() });
+      // SkillOpt held-out gate, same as the daemon: a coverage-losing umbrella is
+      // rejected (originals kept), never committed unverified on session end.
+      const gateEmbed = createGateEmbedder(process.env);
       const merged = await store
         .consolidate(
           (cluster) => mergeSkillsIntoUmbrella(cluster, {
             model,
             modelProvider: assembly.modelProvider as Parameters<typeof mergeSkillsIntoUmbrella>[1]["modelProvider"]
           }),
-          {}
+          {
+            validate: (cluster, umbrella) => validateUmbrellaCoverage(cluster, umbrella, { embed: gateEmbed }).then((v) => v.accept)
+          }
         )
         .catch(() => [] as readonly { umbrella: string; merged: readonly string[] }[]);
       for (const m of merged) {

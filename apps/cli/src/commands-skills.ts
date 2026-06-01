@@ -12,7 +12,7 @@ import { mkdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
+import { createGateEmbedder, createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import { adjustSkillReward, isSkillAvoided, readSkillRewards } from "@muse/mcp";
 import { AuthoredSkillStore, loadSkillsFromDirectory } from "@muse/skills";
 import type { Command } from "commander";
@@ -195,14 +195,21 @@ export function registerSkillsCommands(program: Command, io: ProgramIO): void {
         io.stdout("consolidate needs a model provider — run `muse setup` or set MUSE_MODEL.\n");
         return;
       }
-      const { mergeSkillsIntoUmbrella } = await import("@muse/agent-core");
+      const { mergeSkillsIntoUmbrella, validateUmbrellaCoverage } = await import("@muse/agent-core");
       const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() });
       const merge = (cluster: Parameters<typeof mergeSkillsIntoUmbrella>[0]) =>
         mergeSkillsIntoUmbrella(cluster, {
           model,
           modelProvider: assembly.modelProvider as Parameters<typeof mergeSkillsIntoUmbrella>[1]["modelProvider"]
         });
-      const plan = await store.consolidate(merge, { threshold, dryRun: options.apply !== true });
+      // SkillOpt held-out gate: commit a merge only if the umbrella semantically
+      // covers every clustered skill (shared embedder). Fail-closed on no embedder.
+      const embed = createGateEmbedder(process.env);
+      const plan = await store.consolidate(merge, {
+        threshold,
+        dryRun: options.apply !== true,
+        validate: (cluster, umbrella) => validateUmbrellaCoverage(cluster, umbrella, { embed }).then((v) => v.accept)
+      });
       if (plan.length === 0) {
         io.stdout("No authored skills cohere into an umbrella — nothing to consolidate.\n");
         return;
