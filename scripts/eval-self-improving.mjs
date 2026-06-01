@@ -38,7 +38,8 @@ const BATTERIES = [
   { axis: "★ NORTH STAR: gated proactive recall", file: "apps/cli/scripts/verify-proactive-recall-gate.mjs", name: "proactive-recall-gate" },
   { axis: "★ DREAMING: grounded reflection", file: "apps/cli/scripts/verify-reflection-synthesis.mjs", name: "reflection-synthesis" },
   { axis: "★ DREAMING: reflection RGV re-verify", file: "apps/cli/scripts/verify-reflection-grounding.mjs", name: "reflection-grounding" },
-  { axis: "★ SWARM: grounded council synthesis", file: "apps/cli/scripts/verify-council.mjs", name: "council" }
+  { axis: "★ SWARM: grounded council synthesis", file: "apps/cli/scripts/verify-council.mjs", name: "council" },
+  { axis: "★ SWARM: council RGV re-verify", file: "apps/cli/scripts/verify-council-grounding.mjs", name: "council-grounding" }
 ];
 
 async function ollamaReachable() {

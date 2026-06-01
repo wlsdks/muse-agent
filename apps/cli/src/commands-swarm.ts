@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { buildDebateQuestion, isA2AEnabled, prepareOutbound, produceCouncilReasoning, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance } from "@muse/agent-core";
+import { buildDebateQuestion, buildGroundingReverifyPrompt, isA2AEnabled, parseGroundingReverifyVerdict, prepareOutbound, produceCouncilReasoning, REVERIFY_SYSTEM_PROMPT, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
 import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, requestCouncilReasoning, sendToPeer, type A2APeer } from "@muse/a2a";
 import { createMuseRuntimeAssembly, resolveAuthoredSkillsDir } from "@muse/autoconfigure";
 import {
@@ -379,7 +379,21 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         io.stdout("No council members responded (peers offline or council disabled on them).\n");
         return;
       }
-      const answer = await synthesizeCouncilAnswer(question, utterances, { model, modelProvider });
+      // RGV re-verification: a one-shot local judge re-checks the synthesis
+      // against the members' actual reasoning, dropping a "consensus" none reached.
+      const reverify: GroundingReverify = async ({ answer: a, evidence, query }) => {
+        const judged = await modelProvider.generate({
+          maxOutputTokens: 8,
+          messages: [
+            { content: REVERIFY_SYSTEM_PROMPT, role: "system" },
+            { content: buildGroundingReverifyPrompt({ answer: a, evidence, query }), role: "user" }
+          ],
+          model,
+          temperature: 0
+        });
+        return parseGroundingReverifyVerdict(judged.output ?? "");
+      };
+      const answer = await synthesizeCouncilAnswer(question, utterances, { model, modelProvider, reverify });
       io.stdout(`${renderCouncilResult(question, utterances, answer)}\n`);
     });
 

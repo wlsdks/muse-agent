@@ -191,6 +191,7 @@ export {
   parseCouncilAnswer,
   produceCouncilReasoning,
   synthesizeCouncilAnswer,
+  verifyCouncilGrounding,
   type CouncilAnswer,
   type CouncilModelOptions,
   type CouncilUtterance

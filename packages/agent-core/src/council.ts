@@ -20,6 +20,8 @@
 import type { ModelMessage, ModelProvider, ModelRequest } from "@muse/model";
 import { redactSecretsInText } from "@muse/shared";
 
+import type { GroundingReverify } from "./knowledge-recall.js";
+
 export interface CouncilUtterance {
   /** The participating peer's id (e.g. "phone", "alice"). */
   readonly peerId: string;
@@ -39,6 +41,13 @@ export interface CouncilModelOptions {
   readonly redact?: (text: string) => string;
   readonly maxOutputTokens?: number;
   readonly temperature?: number;
+  /**
+   * Optional RGV re-verification (slice 5): after the id-citation gate, an
+   * injected judge re-checks that the synthesis is supported by the TEXT of its
+   * contributors' reasoning — dropping a "consensus" no member actually reached.
+   * Omitted ⇒ id-gate only (back-compat).
+   */
+  readonly reverify?: GroundingReverify;
 }
 
 const REASONING_SYSTEM_PROMPT =
@@ -152,5 +161,32 @@ export async function synthesizeCouncilAnswer(
   } catch {
     return null;
   }
-  return parseCouncilAnswer(output, new Set(usable.map((u) => u.peerId)));
+  const council = parseCouncilAnswer(output, new Set(usable.map((u) => u.peerId)));
+  if (!council || !options.reverify) return council;
+  return verifyCouncilGrounding(council, question, usable, options.reverify);
+}
+
+/**
+ * RGV re-verification for the council surface: keep the synthesis ONLY when the
+ * injected judge confirms it is supported by the TEXT of the contributors'
+ * reasoning (falling back to all utterances when the synthesis named no
+ * contributor). Like reflections, a synthesis abstracts across members, so the
+ * one-shot judge — not the lexical rubric — is the right tool. Fail-close: a NO
+ * verdict OR a judge error drops the synthesis (returns null), consistent with
+ * the fail-soft council contract. Pure over the injected judge + exported.
+ */
+export async function verifyCouncilGrounding(
+  council: CouncilAnswer,
+  question: string,
+  utterances: readonly CouncilUtterance[],
+  reverify: GroundingReverify
+): Promise<CouncilAnswer | null> {
+  const cited = new Set(council.contributors);
+  const drawnFrom = utterances.filter((u) => cited.size === 0 || cited.has(u.peerId));
+  const evidence = drawnFrom.map((u) => u.reasoning.replace(/\s+/gu, " ").trim()).join("\n");
+  try {
+    return (await reverify({ answer: council.answer, evidence, query: question })) ? council : null;
+  } catch {
+    return null;
+  }
 }
