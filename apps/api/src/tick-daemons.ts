@@ -550,7 +550,7 @@ export function startConsolidateDaemonIfConfigured(
     ...(consolidateModel ? { isModelResident: () => isModelResidentLive(consolidateModel) } : {}),
     // Idle REM phase (B1 Slice 1): distill queued corrections into learned
     // strategies while idle, behind the brakes (the felt grows-with-you path).
-    ...(consolidateModel && consolidateProvider ? { distillQueued: () => distillQueuedCorrections({ model: consolidateModel, modelProvider: consolidateProvider, playbookFile: resolvePlaybookFile(env), queueFile: resolveLearnQueueFile(env), suppressedLessonsFile: resolveSuppressedLessonsFile(env), pauseFile: resolveLearningPauseFile(env) }) } : {}),
+    ...(consolidateModel && consolidateProvider ? { distillQueued: () => distillQueuedCorrections({ model: consolidateModel, modelProvider: consolidateProvider, embed: createGateEmbedder(env), playbookFile: resolvePlaybookFile(env), queueFile: resolveLearnQueueFile(env), suppressedLessonsFile: resolveSuppressedLessonsFile(env), pauseFile: resolveLearningPauseFile(env) }) } : {}),
     // Idle RL phase (B1 Slice 2): fade positive-reward strategies the user has
     // stopped reinforcing back toward neutral, so a stale thumbs-up doesn't
     // steer the agent forever. Cheap + local (no model needed), behind the brakes.

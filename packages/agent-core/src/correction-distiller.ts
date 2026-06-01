@@ -14,6 +14,9 @@ import type { ModelMessage, ModelProvider, ModelRequest } from "@muse/model";
 import { redactSecretsInText } from "@muse/shared";
 
 import type { SessionTurnLine } from "./episodic-summariser.js";
+import { validateMergeCoverage } from "./skill-merge-gate.js";
+
+const DEFAULT_STRATEGY_SUPPORT_FLOOR = 0.5;
 
 export interface CorrectionExchange {
   /** The assistant turn the user pushed back on. */
@@ -157,6 +160,16 @@ export interface DistillStrategyOptions {
   readonly redact?: (text: string) => string;
   readonly maxOutputTokens?: number;
   readonly temperature?: number;
+  /**
+   * Embedder for the held-out SUPPORT gate (SkillOpt) — parity with the twin
+   * `inferPreferenceFromCorrection`: a distilled strategy commits only if it is
+   * semantically supported by the correction (cosine ≥ `supportFloor`), so a
+   * hallucinated or fact-restating strategy is dropped. Fail-closed; the gate
+   * skips cross-script pairs. Omitted ⇒ no gate (back-compat).
+   */
+  readonly embed?: (text: string) => Promise<readonly number[]>;
+  /** Cosine floor for the support gate. Default 0.50. */
+  readonly supportFloor?: number;
 }
 
 const DISTILLER_SYSTEM_PROMPT =
@@ -198,7 +211,24 @@ export async function distillStrategyFromCorrection(
   } catch {
     return undefined;
   }
-  return parseDistilledStrategy(output);
+  const distilled = parseDistilledStrategy(output);
+  if (!distilled) return undefined;
+  // Fact-restatement guard (language-neutral): drop a strategy that just echoes a
+  // number from the correction (a date/time/quantity fix, not a reusable lesson).
+  const correctionNums = new Set(redact(exchange.correction).match(/\d+/gu) ?? []);
+  if (correctionNums.size > 0 && (distilled.text.match(/\d+/gu) ?? []).some((n) => correctionNums.has(n))) {
+    return undefined;
+  }
+  if (!options.embed) return distilled;
+  // Held-out support gate (parity with the preference twin): the strategy must be
+  // semantically grounded in the correction, else drop it. Cross-script pairs are
+  // fail-closed inside the gate.
+  const verdict = await validateMergeCoverage(
+    [{ label: "correction", text: redact(exchange.correction) }],
+    { label: "strategy", text: distilled.text },
+    { embed: options.embed, floor: options.supportFloor ?? DEFAULT_STRATEGY_SUPPORT_FLOOR }
+  );
+  return verdict.accept ? distilled : undefined;
 }
 
 function parseDistilledStrategy(raw: string): DistilledStrategy | undefined {

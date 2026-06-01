@@ -29,6 +29,8 @@ export interface DistillQueuedDeps {
   readonly playbookFile: string;
   readonly model: string;
   readonly modelProvider: Pick<ModelProvider, "generate">;
+  /** Embedder for the distiller's held-out support gate (parity with preference). */
+  readonly embed?: (text: string) => Promise<readonly number[]>;
   /**
    * "Undo that teaches" (B1 §5): the suppressed-lessons store. When set, a
    * freshly-distilled strategy that closely matches a lesson the user UNDID is
@@ -50,7 +52,7 @@ export interface DistillQueuedDeps {
   readonly now?: () => Date;
   readonly newId?: () => string;
   /** Test seam — defaults to the real local-Qwen distiller. */
-  readonly distill?: (exchange: CorrectionExchange, options: { model: string; modelProvider: Pick<ModelProvider, "generate"> }) => Promise<DistilledStrategy | undefined>;
+  readonly distill?: (exchange: CorrectionExchange, options: { model: string; modelProvider: Pick<ModelProvider, "generate">; embed?: (text: string) => Promise<readonly number[]> }) => Promise<DistilledStrategy | undefined>;
 }
 
 /** Returns the number of strategies actually recorded this tick. */
@@ -92,7 +94,7 @@ export async function distillQueuedCorrections(deps: DistillQueuedDeps): Promise
       }
     }
     const exchange = exchangeFromEvent(event);
-    const strategy = await distill(exchange, { model: deps.model, modelProvider: deps.modelProvider });
+    const strategy = await distill(exchange, { model: deps.model, modelProvider: deps.modelProvider, ...(deps.embed ? { embed: deps.embed } : {}) });
     if (!strategy || strategy.text.trim().length === 0) {
       continue; // distiller fail-soft / NONE ⇒ no write
     }

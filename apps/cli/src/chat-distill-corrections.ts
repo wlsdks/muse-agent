@@ -26,7 +26,7 @@ import {
   type SessionBoundaryRef,
   type SessionTurnLine
 } from "@muse/agent-core";
-import { resolvePlaybookFile } from "@muse/autoconfigure";
+import { createGateEmbedder, resolvePlaybookFile } from "@muse/autoconfigure";
 import { adjustPlaybookReward, queryPlaybook, recordPlaybookStrategy, type PlaybookEntry } from "@muse/mcp";
 
 import { readLastChatHistory, readSessionBoundaries } from "./chat-history.js";
@@ -64,6 +64,8 @@ export interface DistillCorrectionsOptions {
   readonly readEnv?: () => NodeJS.ProcessEnv;
   readonly readLines?: () => Promise<readonly SessionTurnLine[]>;
   readonly readBoundaries?: () => Promise<readonly SessionBoundaryRef[]>;
+  /** Embedder for the distiller's held-out support gate; defaults to the shared gate embedder. */
+  readonly embed?: (text: string) => Promise<readonly number[]>;
 }
 
 /** A strategy whose reward moved this session, with the new (clamped) reward. */
@@ -167,10 +169,12 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
   }
 
   const recorded: { readonly text: string; readonly tag?: string }[] = [];
+  const embed = options.embed ?? createGateEmbedder(process.env);
   for (const exchange of corrections) {
     const distilled = await distillStrategyFromCorrection(exchange, {
       model: options.model,
-      modelProvider: options.modelProvider
+      modelProvider: options.modelProvider,
+      embed
     });
     if (!distilled) {
       continue;

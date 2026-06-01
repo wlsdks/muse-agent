@@ -60,11 +60,9 @@ const MERGE_SYSTEM_PROMPT =
   `These are learned working strategies for an assistant. If they say
 essentially the SAME thing, merge them into ONE clear, general strategy — a
 single imperative sentence covering all of them. If they are genuinely
-DIFFERENT strategies, output exactly: NONE. NEVER join different strategies
-with "and" / a list — concatenating two distinct strategies into one sentence
-is collapsing them, which is forbidden; output NONE instead. Output the merged
-strategy as one line (in the SAME LANGUAGE as the inputs), no prefix, no quotes,
-no markdown.`;
+DIFFERENT strategies, output exactly: NONE (never collapse distinct
+strategies). Output the merged strategy as one line, no prefix, no quotes, no
+markdown.`;
 
 /** Merge a cluster (>= 2) of strategy texts into one, or undefined (NONE / <2 / error). */
 export async function mergePlaybookStrategies(

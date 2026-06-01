@@ -32,7 +32,10 @@ describe("distillSessionCorrections — end-of-session auto-distillation (Reason
     const file = await tmpPlaybook();
     const res = await distillSessionCorrections({
       model: "m",
-      modelProvider: stub("strategy: when summarising notes, use bullet points not prose\ntag: notes"),
+      // Korean strategy (same script as the Korean correction) so the held-out
+      // support gate can verify it; supportive embed keeps the gate off the network.
+      modelProvider: stub("strategy: 회의록은 불릿으로 정리하기\ntag: notes"),
+      embed: async () => [1, 0],
       playbookFile: file,
       readBoundaries: async () => boundaries,
       readLines: async () => correctedSession
@@ -40,7 +43,7 @@ describe("distillSessionCorrections — end-of-session auto-distillation (Reason
     expect(res.status).toBe("recorded");
     const saved = await queryPlaybook(file, "stark");
     expect(saved).toHaveLength(1);
-    expect(saved[0]!.text).toContain("bullet points");
+    expect(saved[0]!.text).toContain("불릿");
     expect(saved[0]!.tag).toBe("notes");
   });
 
@@ -72,6 +75,7 @@ describe("distillSessionCorrections — end-of-session auto-distillation (Reason
     const res = await distillSessionCorrections({
       model: "m",
       modelProvider: stub("strategy: when summarising notes, use bullet points not prose\ntag: notes"),
+      embed: async () => [1, 0], // supportive (hermetic) — keep the gate out of these unit tests
       playbookFile: file,
       readBoundaries: async () => boundaries,
       readLines: async () => correctedSession
@@ -99,6 +103,7 @@ describe("distillSessionCorrections — end-of-session auto-distillation (Reason
     const res = await distillSessionCorrections({
       model: "m",
       modelProvider: stub("strategy: when summarising notes, use bullet points not prose\ntag: notes"),
+      embed: async () => [1, 0], // supportive (hermetic) — keep the gate out of these unit tests
       playbookFile: file,
       readBoundaries: async () => boundaries,
       readLines: async () => correctedSession // request "회의록 정리해줘" → corrected to bullets

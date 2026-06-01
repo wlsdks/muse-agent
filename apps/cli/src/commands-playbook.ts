@@ -204,8 +204,10 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
         // semantically covers every original (local nomic embedder); a
         // coverage-losing merge is rejected and the originals are kept.
         validate: async (originals, mergedText) => {
+          // label = full strategy text (not a 40-char slice) so verdict.lost feeds
+          // the steered retry the COMPLETE dropped strategy, not a mid-word fragment.
           const verdict = await validateMergeCoverage(
-            originals.map((t) => ({ label: t.slice(0, 40), text: t })),
+            originals.map((t) => ({ label: t, text: t })),
             { label: mergedText.slice(0, 40), text: mergedText },
             { embed }
           );

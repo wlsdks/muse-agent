@@ -394,3 +394,46 @@ describe("detectApprovals — the POSITIVE reward signal (RL reinforce; precisio
     });
   });
 });
+
+describe("distillStrategyFromCorrection — held-out support gate (parity with preference)", () => {
+  const enExchange: CorrectionExchange = {
+    correction: "no — give me concise bullet points, not prose",
+    priorAnswer: "a long flowing paragraph",
+    request: "summarise the doc"
+  };
+  const bulletKeyed = (t: string): Promise<readonly number[]> => Promise.resolve(/bullet/u.test(t) ? [1, 0] : [0, 1]);
+
+  it("keeps a strategy the correction supports", async () => {
+    const out = await distillStrategyFromCorrection(enExchange, {
+      model: "m", embed: bulletKeyed,
+      modelProvider: stubProvider("strategy: use bullet points when summarising\ntag: notes")
+    });
+    expect(out?.text).toContain("bullet");
+  });
+
+  it("DROPS an unsupported strategy (cosine below floor)", async () => {
+    const out = await distillStrategyFromCorrection(enExchange, {
+      model: "m", embed: bulletKeyed, // correction has no "bullet" → [0,1]; strategy below → [0,1]? no — strategy lacks bullet → [0,1] vs corr [0,1] cos1
+      modelProvider: stubProvider("strategy: always confirm the meeting time\ntag: scheduling")
+    });
+    // correction "...bullet points..." → [1,0]; strategy "confirm the meeting time" (no bullet) → [0,1] → cos 0 → drop
+    expect(out).toBeUndefined();
+  });
+
+  it("fact-restatement guard drops a strategy echoing a number from the correction", async () => {
+    const factExchange: CorrectionExchange = { correction: "no, it's at 4pm", priorAnswer: "3pm", request: "when?" };
+    const out = await distillStrategyFromCorrection(factExchange, {
+      model: "m", embed: () => Promise.resolve([1, 0]),
+      modelProvider: stubProvider("strategy: always say the meeting is at 4pm\ntag: scheduling")
+    });
+    expect(out).toBeUndefined();
+  });
+
+  it("no embedder ⇒ no support gate (back-compat): strategy kept", async () => {
+    const out = await distillStrategyFromCorrection(enExchange, {
+      model: "m",
+      modelProvider: stubProvider("strategy: anything goes here\ntag: -")
+    });
+    expect(out?.text).toBe("anything goes here");
+  });
+});
