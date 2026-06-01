@@ -516,6 +516,74 @@ export function verifyGrounding(
   return { invalidCitations, reason: "evidence only weakly supports the answer", rubric, verdict: "weak" };
 }
 
+export interface GroundingReverifyInput {
+  readonly answer: string;
+  /** The grounded passages, joined — the evidence the judge checks against. */
+  readonly evidence: string;
+  readonly query: string;
+}
+
+/**
+ * Injected one-shot judge: returns `true` iff the answer is supported by the
+ * evidence. Kept as a plain function so this package stays model-agnostic — the
+ * caller wires a local-Qwen `generate` + `parseGroundingReverifyVerdict`.
+ */
+export type GroundingReverify = (input: GroundingReverifyInput) => Promise<boolean>;
+
+export const REVERIFY_SYSTEM_PROMPT =
+  "You are a strict grounding judge. Given a user QUESTION, an ANSWER, and the EVIDENCE the answer was drawn from, decide whether the EVIDENCE actually supports the ANSWER's factual claims. Reply with a single word: YES if the evidence supports it, NO if it does not or you are unsure. Do not explain.";
+
+export function buildGroundingReverifyPrompt(input: GroundingReverifyInput): string {
+  return [
+    `QUESTION: ${input.query}`,
+    `ANSWER: ${input.answer}`,
+    "EVIDENCE:",
+    input.evidence,
+    "",
+    "Does the EVIDENCE support the ANSWER's claims? Reply YES or NO."
+  ].join("\n");
+}
+
+/**
+ * Deterministic, fail-close parse of the judge's reply: supported ONLY on a
+ * clear leading YES. Anything else — NO, hedging, empty — is unsupported, so a
+ * confused small model can never UPGRADE a weak answer by accident.
+ */
+export function parseGroundingReverifyVerdict(output: string): boolean {
+  return /^\s*(yes|y|true|supported)\b/iu.test(output.trim());
+}
+
+/**
+ * Test-time verification scaling for the WEAK verdict (Memory-aware Test-Time
+ * Scaling — ReasoningBank MaTTS, arXiv:2509.25140; rubric-guided verification,
+ * arXiv:2601.15808). The deterministic `verifyGrounding` core decides
+ * `grounded` / `ungrounded` outright — only the ambiguous `weak` band spends a
+ * second inference: one injected judge re-checks the answer against the
+ * evidence. Fail-close — the weak answer is UPGRADED to `grounded` ONLY on an
+ * explicit supported verdict; an unsupported verdict OR any re-verifier error
+ * DEMOTES it to `ungrounded` (a weak answer never silently survives on a failed
+ * check). `grounded` / `ungrounded` never call the judge.
+ */
+export async function verifyGroundingWithReverify(
+  answer: string,
+  matches: readonly KnowledgeMatch[],
+  query: string,
+  reverify: GroundingReverify,
+  options?: VerifyGroundingOptions
+): Promise<GroundingVerification> {
+  const base = verifyGrounding(answer, matches, query, options);
+  if (base.verdict !== "weak") return base;
+  let supported: boolean;
+  try {
+    supported = await reverify({ answer, evidence: matches.map((m) => m.text).join("\n"), query });
+  } catch {
+    return { ...base, reason: "weak retrieval + re-verification failed — fail-closed to ungrounded", verdict: "ungrounded" };
+  }
+  return supported
+    ? { ...base, reason: "weak retrieval upheld by re-verification", verdict: "grounded" }
+    : { ...base, reason: "weak retrieval rejected by re-verification", verdict: "ungrounded" };
+}
+
 /**
  * Reorder passages so the most relevant sit at the START and END and the
  * weakest land in the MIDDLE — "Lost in the Middle" (Liu et al. 2023,

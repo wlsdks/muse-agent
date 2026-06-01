@@ -34,6 +34,7 @@ const BATTERIES = [
   { axis: "★ WEDGE: cited recall", file: "apps/cli/scripts/verify-cited-recall.mjs", name: "cited-recall" },
   { axis: "★ WEDGE: recall citation gate", file: "apps/cli/scripts/verify-recall-citation-gate.mjs", name: "recall-citation-gate" },
   { axis: "★ WEDGE: rubric grounding gate", file: "apps/cli/scripts/verify-rubric-gate.mjs", name: "rubric-gate" },
+  { axis: "★ WEDGE: rubric re-verification (MaTTS)", file: "apps/cli/scripts/verify-rubric-reverify.mjs", name: "rubric-reverify" },
   { axis: "★ NORTH STAR: gated proactive recall", file: "apps/cli/scripts/verify-proactive-recall-gate.mjs", name: "proactive-recall-gate" },
   { axis: "★ DREAMING: grounded reflection", file: "apps/cli/scripts/verify-reflection-synthesis.mjs", name: "reflection-synthesis" },
   { axis: "★ SWARM: grounded council synthesis", file: "apps/cli/scripts/verify-council.mjs", name: "council" }
