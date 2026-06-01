@@ -150,13 +150,18 @@ export {
   renderKnowledgeMatches,
   reorderForLongContext,
   selectByMmr,
+  verifyGrounding,
   type AllowedCitations,
   type CitationEnforcement,
+  type GroundingRubric,
+  type GroundingVerdict,
+  type GroundingVerification,
   type KnowledgeChunk,
   type KnowledgeMatch,
   type KnowledgeSearchToolOptions,
   type RankKnowledgeOptions,
-  type RetrievalConfidence
+  type RetrievalConfidence,
+  type VerifyGroundingOptions
 } from "./knowledge-recall.js";
 export {
   createConfidenceGatedInvestigator,
