@@ -114,4 +114,30 @@ describe("validateMergeCoverage (generic label/text — shared by playbook merge
     expect(verdict.lost).toEqual(["dropped-strategy"]);
     expect(verdict.score).toBeCloseTo(1 / 2);
   });
+
+  it("SKIPS the cosine test for a cross-script pair (treats it as covered) — bilingual merges aren't false-rejected", async () => {
+    // Script-keyed embedder: Korean → [0,1], else → [1,0] (cosine 0 = would
+    // reject). A Korean original vs an English merged text must still be covered.
+    const scriptKeyed = (t: string): Promise<readonly number[]> => Promise.resolve(/[가-힣]/u.test(t) ? [0, 1] : [1, 0]);
+    const verdict = await validateMergeCoverage(
+      [{ label: "ko-skill", text: "이메일 스레드를 요약" }],
+      { label: "summarise-content", text: "Use when summarising any content into bullets" },
+      { embed: scriptKeyed }
+    );
+    expect(verdict.accept).toBe(true);
+    expect(verdict.covered).toEqual(["ko-skill"]);
+  });
+
+  it("still REJECTS a same-script (Korean↔Korean) drop — the cross-script skip doesn't disable the gate", async () => {
+    // Content-keyed within Korean: "요약"(summarise) → [1,0], "예약"(booking) → [0,1].
+    // Both Hangul → comparable → the cosine test runs and the off-topic umbrella fails.
+    const contentKeyed = (t: string): Promise<readonly number[]> => Promise.resolve(/요약/u.test(t) ? [1, 0] : [0, 1]);
+    const verdict = await validateMergeCoverage(
+      [{ label: "ko-summarise", text: "이메일 요약" }],
+      { label: "ko-booking", text: "항공편 예약" },
+      { embed: contentKeyed }
+    );
+    expect(verdict.accept).toBe(false);
+    expect(verdict.lost).toEqual(["ko-summarise"]);
+  });
 });

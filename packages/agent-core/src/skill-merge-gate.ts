@@ -22,9 +22,16 @@
  * SkillOpt's "accept only a verified edit". A small model is an unreliable
  * self-verifier (arXiv 2404.17140), so the gate is embeddings, not a model
  * self-judgement; the verdict shape leaves room for a rollout-based scorer.
+ *
+ * Cross-script pairs are skipped (treated as covered): nomic bridges
+ * Hangul/CJK/kana↔Latin weakly, so comparing a Korean original to an English
+ * merged text would false-reject legitimate bilingual consolidation. See
+ * `comparableScript` — the gate only runs the cosine test within a shared
+ * dominant script family.
  */
 
 import { cosineSimilarity } from "./episodic-recall.js";
+import { comparableScript } from "./script-family.js";
 import type { SkillDraft } from "./skill-review.js";
 
 export interface MergeCoverageVerdict {
@@ -117,7 +124,10 @@ export async function validateMergeCoverage(
   const covered: string[] = [];
   const lost: string[] = [];
   originals.forEach((item, i) => {
-    if (cosineSimilarity(originalVecs[i]!, mergedVec) >= floor) {
+    // Cross-script vs the merged text → out of the embedder's validity domain;
+    // skip the cosine test (treat as covered) rather than false-reject.
+    const comparable = comparableScript(item.text, merged.text);
+    if (!comparable || cosineSimilarity(originalVecs[i]!, mergedVec) >= floor) {
       covered.push(item.label);
     } else {
       lost.push(item.label);

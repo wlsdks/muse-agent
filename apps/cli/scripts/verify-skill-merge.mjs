@@ -79,5 +79,21 @@ for (const c of cases) {
   if (!ok) failures += 1;
 }
 
-console.log(failures === 0 ? `\nALL PASS (${cases.length}) on ${model}` : `\n${failures}/${cases.length} FAILED on ${model}`);
+// Cross-script: a Korean cluster summarised into an English umbrella must NOT be
+// false-rejected by the gate (nomic bridges Hangul↔Latin ~0.39). Proves the
+// comparableScript skip against the REAL embedder, not just a fake.
+{
+  const koCluster = [
+    { name: "이메일-요약", description: "이메일 스레드를 요약할 때 사용", body: "1. 스레드를 읽는다 2. 불릿 3개" },
+    { name: "문서-요약", description: "문서를 요약할 때 사용", body: "1. 제목을 훑는다 2. 불릿" }
+  ];
+  const enUmbrella = { name: "summarise-content", description: "Use when summarising emails or documents into bullets", body: "1. read 2. bullets" };
+  const verdict = await validateUmbrellaCoverage(koCluster, enUmbrella, { embed });
+  const ok = verdict.accept;
+  console.log(`${ok ? "PASS" : "FAIL"} — CROSS-SCRIPT: KO cluster + EN umbrella not false-rejected\n   gate: ${verdict.accept ? "ACCEPT" : "REJECT"} — ${verdict.reason}`);
+  if (!ok) failures += 1;
+}
+
+const total = cases.length + 1; // + the cross-script check
+console.log(failures === 0 ? `\nALL PASS (${total}) on ${model}` : `\n${failures}/${total} FAILED on ${model}`);
 process.exit(failures === 0 ? 0 : 1);

@@ -115,6 +115,7 @@ export type {
 export { detectSkillCandidates, draftSkillFromSignal, parseConstrainedSkillDraft, reviewSkillsFromTurns, skillDraftConstraintViolations } from "./skill-review.js";
 export { mergeSkillsIntoUmbrella, type MergeSkillsOptions } from "./skill-merge.js";
 export { validateMergeCoverage, validateUmbrellaCoverage, type CoverageItem, type MergeCoverageVerdict, type UmbrellaCoverageVerdict, type ValidateUmbrellaOptions } from "./skill-merge-gate.js";
+export { comparableScript, dominantScriptFamily, type ScriptFamily } from "./script-family.js";
 export { clusterByTextSimilarity, mergePlaybookStrategies, type MergePlaybookOptions } from "./playbook-merge.js";
 export type { SkillReviewSignal, SkillDraft, DetectSkillCandidatesOptions, DraftSkillOptions, ReviewSkillsOptions, ReviewSkillsResult } from "./skill-review.js";
 

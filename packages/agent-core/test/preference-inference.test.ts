@@ -196,15 +196,25 @@ describe("inferPreferenceFromCorrection — held-out support gate (SkillOpt prop
   });
 
   it("SKIPS the semantic gate across scripts (bilingual): a Korean correction keeps its English trait", async () => {
-    // nomic bridges Hangul↔Latin weakly (~0.39), so a cross-script cosine gate
-    // would false-reject. An embedder that WOULD reject (orthogonal vector) is
-    // bypassed because the correction (Korean) and trait (English) differ in script.
+    // Script-keyed embedder: Korean text → [0,1], Latin text → [1,0] (cosine 0,
+    // which WOULD reject if compared). The gate must bypass the cosine test
+    // because the correction (Korean) and trait (English) differ in script.
     const koCorrection = { request: "이거 정리해줘", priorAnswer: "장황한 문단...", correction: "그게 아니라 짧게 핵심만 정리해줘" };
+    const scriptKeyed = (t: string): Promise<readonly number[]> => Promise.resolve(/[가-힣]/u.test(t) ? [0, 1] : [1, 0]);
     const pref = await inferPreferenceFromCorrection(koCorrection, {
-      embed: () => Promise.resolve([0, 1]), // vs the trait's notional [1,0] → cos 0 → would reject IF applied
-      model: "m",
-      modelProvider: fakeProvider(inferred)
+      embed: scriptKeyed, model: "m", modelProvider: fakeProvider(inferred)
     });
     expect(pref).toMatchObject({ value: "prefers bullet-point answers", category: "format" });
+  });
+
+  it("a Latin loanword in a Korean correction does NOT pull it into the cross-script gate (dominant script)", async () => {
+    // "JSON 형식으로 답해줘" is Hangul-dominant despite the ASCII token; the EN
+    // trait stays cross-script, so the orthogonal embedder must not reject it.
+    const koWithLatin = { request: "정리", priorAnswer: "...", correction: "JSON 형식으로 답해줘" };
+    const scriptKeyed = (t: string): Promise<readonly number[]> => Promise.resolve(/[가-힣]/u.test(t) ? [0, 1] : [1, 0]);
+    const pref = await inferPreferenceFromCorrection(koWithLatin, {
+      embed: scriptKeyed, model: "m", modelProvider: fakeProvider("preference: prefers JSON formatted output\ncategory: format\nconfidence: 0.8")
+    });
+    expect(pref).toMatchObject({ category: "format" });
   });
 });

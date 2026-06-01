@@ -132,31 +132,17 @@ export async function inferPreferenceFromCorrection(
   }
   const parsed = parseInferredPreference(output);
   if (!parsed || !options.embed) return parsed;
-  const evidence = redact(exchange.correction);
-  // The model emits the trait in English even when the user corrected in
-  // Korean; nomic-embed-text bridges Hangul/CJK↔Latin weakly (a real Korean
-  // correction vs its English trait scores ~0.39, BELOW the supported floor),
-  // so a cross-script cosine gate would FALSE-REJECT legitimate bilingual
-  // learning. Only apply the semantic gate within a shared script family;
-  // across scripts the embedder is out of its validity domain, so fall back to
-  // the deterministic regex/category guards already enforced in the parse.
-  if (!sharesScriptFamily(evidence, parsed.value)) return parsed;
   // Held-out support gate: the inferred trait must be semantically grounded in
   // the correction that produced it — drop a trait the model conjured that the
   // user's own words don't support. Reuses the merge-coverage gate (symmetric
-  // cosine): "is the preference covered by the correction evidence?".
+  // cosine): "is the preference covered by the correction evidence?". The gate
+  // itself skips cross-script pairs (the model emits the trait in English even
+  // for a Korean correction, which nomic bridges weakly), so legitimate
+  // bilingual learning is not false-rejected — see comparableScript.
   const verdict = await validateMergeCoverage(
-    [{ label: "correction", text: evidence }],
+    [{ label: "correction", text: redact(exchange.correction) }],
     { label: parsed.value, text: parsed.value },
     { embed: options.embed, floor: options.supportFloor ?? DEFAULT_SUPPORT_FLOOR }
   );
   return verdict.accept ? parsed : undefined;
-}
-
-/** True when both strings carry at least one shared script family (Hangul / CJK Han / Latin). */
-function sharesScriptFamily(a: string, b: string): boolean {
-  const hangul = (s: string): boolean => /[가-힣]/u.test(s);
-  const han = (s: string): boolean => /[一-鿿]/u.test(s);
-  const latin = (s: string): boolean => /[A-Za-z]{2,}/u.test(s);
-  return (hangul(a) && hangul(b)) || (han(a) && han(b)) || (latin(a) && latin(b));
 }
