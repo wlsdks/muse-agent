@@ -161,20 +161,52 @@ export async function validateMergeCoverage(
 }
 
 /**
- * Curator skill-merge gate: grade an umbrella against the cluster it replaces.
- * Thin wrapper over {@link validateMergeCoverage} keyed on each skill's trigger
- * surface (name + "Use when …" description); covered/lost are reported by name.
+ * Curator skill-merge gate: grade an umbrella against the cluster it replaces on
+ * TWO surfaces, requiring both — because a skill is a trigger AND a procedure:
+ *  - TRIGGER (name + "Use when …" description): is the umbrella still SELECTED for
+ *    each original's purpose? Catches an off-topic / wrong-purpose umbrella.
+ *  - BODY (the steps): does the umbrella's procedure still COVER each original's?
+ *    Catches a "gutted body" umbrella whose trigger covers the cluster but whose
+ *    body is hollow/"TODO" — the trigger surface alone can't see this (trigger
+ *    cosine is identical whether the body is real or gutted), so a body-only
+ *    check is required. Calibrated on nomic-embed-text: a real generalising body
+ *    scores 0.84–0.87 against its originals' bodies, a gutted/vague/off-topic body
+ *    0.33–0.54 — so the default 0.65 floor sits in a wide gap on BOTH surfaces.
+ *
+ * An original is covered iff covered on BOTH surfaces; lost/unverified are the
+ * union (a skill dropped on either surface fails). The generic
+ * {@link validateMergeCoverage} stays body-agnostic so the playbook path (no
+ * body) keeps using it directly.
  */
-export function validateUmbrellaCoverage(
+export async function validateUmbrellaCoverage(
   cluster: readonly SkillDraft[],
   umbrella: SkillDraft,
   options: ValidateUmbrellaOptions
 ): Promise<MergeCoverageVerdict> {
-  return validateMergeCoverage(
+  const trigger = await validateMergeCoverage(
     cluster.map((s) => ({ label: s.name, text: triggerText(s) })),
     { label: umbrella.name, text: triggerText(umbrella) },
     options
   );
+  const body = await validateMergeCoverage(
+    cluster.map((s) => ({ label: s.name, text: s.body })),
+    { label: umbrella.name, text: umbrella.body },
+    options
+  );
+  const lost = [...new Set([...trigger.lost, ...body.lost])];
+  const unverified = [...new Set([...trigger.unverified, ...body.unverified])];
+  const covered = cluster.map((s) => s.name).filter((n) => !lost.includes(n) && !unverified.includes(n));
+  const accept = trigger.accept && body.accept;
+  const score = cluster.length === 0 ? 0 : covered.length / cluster.length;
+  const embedderError = [trigger.reason, body.reason].find((r) => r.includes("embedder unavailable"));
+  const reason = accept
+    ? `umbrella "${umbrella.name}" covers all ${covered.length.toString()} on trigger+body`
+    : embedderError
+      ? embedderError
+      : unverified.length > 0
+        ? `umbrella "${umbrella.name}" unverifiable — cross-script vs [${unverified.join(", ")}]; deferred`
+        : `umbrella "${umbrella.name}" drops [${lost.join(", ")}] (trigger or body coverage below floor)`;
+  return { accept, covered, lost, reason, score, unverified };
 }
 
 function clamp01(value: number): number {

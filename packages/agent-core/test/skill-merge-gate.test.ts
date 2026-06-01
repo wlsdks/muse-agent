@@ -89,6 +89,32 @@ describe("validateUmbrellaCoverage (semantic)", () => {
     expect(verdict.accept).toBe(false);
     expect(verdict.score).toBe(0);
   });
+
+  describe("body coverage (the gutted-body hole)", () => {
+    // Body-discriminating embedder: "TODO" → gutted axis, "bullet" → body axis,
+    // anything else (the triggers) → trigger axis. So triggers always cover, and
+    // the BODY surface is what decides a gutted vs real body.
+    const bodyEmbed = (t: string): Promise<readonly number[]> =>
+      Promise.resolve(/todo/iu.test(t) ? [0, 0, 1] : /bullet/u.test(t) ? [0, 1, 0] : [1, 0, 0]);
+    const cluster = [
+      { name: "summarise-email", description: "Use when summarising an email", body: "read the thread and emit bullets" },
+      { name: "summarise-doc", description: "Use when summarising a document", body: "skim headings and emit bullets" }
+    ];
+
+    it("REJECTS an umbrella whose trigger covers the cluster but whose body is gutted (TODO)", async () => {
+      const gutted = { name: "summarise-content", description: "Use when summarising emails or documents", body: "TODO" };
+      const verdict = await validateUmbrellaCoverage(cluster, gutted, { embed: bodyEmbed });
+      expect(verdict.accept).toBe(false); // trigger covers, but body coverage fails
+      expect(verdict.lost.length).toBeGreaterThan(0);
+    });
+
+    it("ACCEPTS an umbrella that covers the cluster on BOTH trigger and body", async () => {
+      const good = { name: "summarise-content", description: "Use when summarising emails or documents", body: "read or skim and emit bullets" };
+      const verdict = await validateUmbrellaCoverage(cluster, good, { embed: bodyEmbed });
+      expect(verdict.accept).toBe(true);
+      expect(verdict.lost).toEqual([]);
+    });
+  });
 });
 
 describe("validateMergeCoverage (generic label/text — shared by playbook merge)", () => {

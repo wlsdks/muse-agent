@@ -125,6 +125,21 @@ for (const c of cases) {
   if (!ok) failures += 1;
 }
 
-const total = cases.length + 3; // + cross-script-fail-closed + same-lang-KO + reject-path checks
+// Body-gutting: an umbrella whose trigger covers the cluster but whose BODY is
+// hollow ("TODO") must be REJECTED — the trigger surface alone can't see this, so
+// the body-coverage check is the defense. Proves the new property against real nomic.
+{
+  const cluster = [
+    { name: "summarise-email", description: "Use when summarising an email thread", body: "1. read the whole thread\n2. extract decisions and owners\n3. emit 3 bullets" },
+    { name: "summarise-doc", description: "Use when summarising a document", body: "1. skim the headings\n2. pull key claims\n3. emit concise bullets" }
+  ];
+  const gutted = { name: "summarise-content", description: "Use when summarising an email thread or a document", body: "TODO" };
+  const verdict = await validateUmbrellaCoverage(cluster, gutted, { embed });
+  const ok = verdict.accept === false;
+  console.log(`${ok ? "PASS" : "FAIL"} — BODY-GUTTING: covering-trigger but TODO-body umbrella rejected\n   gate: ${verdict.accept ? "ACCEPT(!)" : "REJECT"} — ${verdict.reason}`);
+  if (!ok) failures += 1;
+}
+
+const total = cases.length + 4; // + cross-script + same-lang-KO + reject-path + body-gutting checks
 console.log(failures === 0 ? `\nALL PASS (${total}) on ${model}` : `\n${failures}/${total} FAILED on ${model}`);
 process.exit(failures === 0 ? 0 : 1);
