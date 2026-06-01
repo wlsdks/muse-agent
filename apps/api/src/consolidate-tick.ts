@@ -17,6 +17,7 @@ import { AuthoredSkillStore } from "@muse/skills";
 
 import { isOsIdleEnough } from "./os-idle.js";
 import { isPowerOkForLlm } from "./power-state.js";
+import { clearCluster, DEFAULT_COOLDOWN_THRESHOLD, recordClusterReject, shouldSkipCluster } from "./reject-ledger.js";
 import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
 
 export interface ConsolidateMergeOutcome {
@@ -85,6 +86,15 @@ export interface ConsolidateTickOptions {
   readonly embed?: (text: string) => Promise<readonly number[]>;
   /** Cosine floor for the coverage gate. Default 0.65 (calibrated for nomic-embed-text). */
   readonly coverageFloor?: number;
+  /**
+   * Cross-tick reject cooldown ledger file. When set, a cluster the gate keeps
+   * rejecting is skipped after `cooldownThreshold` rejects (until a member edits),
+   * so a truly-unmergeable cluster stops burning a merge call every tick. Omitted
+   * ⇒ no cooldown.
+   */
+  readonly rejectLedgerFile?: string;
+  /** Consecutive rejects before cooldown. Default 2. */
+  readonly cooldownThreshold?: number;
   readonly intervalMs?: number;
   readonly threshold?: number;
   readonly minClusterSize?: number;
@@ -149,6 +159,15 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
           // umbrella converges instead of being recomputed identically next
           // tick). Needs an embedder — gate skipped without one.
           feedbackRetry: true,
+          // Cross-tick cooldown: skip a cluster the gate keeps rejecting (until a
+          // member edits) so it stops burning a merge call every idle tick.
+          ...(options.rejectLedgerFile
+            ? {
+                shouldSkipCluster: (c) => shouldSkipCluster(options.rejectLedgerFile!, c, options.cooldownThreshold ?? DEFAULT_COOLDOWN_THRESHOLD),
+                recordReject: (c) => recordClusterReject(options.rejectLedgerFile!, c, now().toISOString()),
+                recordMerged: (c) => clearCluster(options.rejectLedgerFile!, c)
+              }
+            : {}),
           ...(embed
             ? {
                 validate: async (cluster, umbrella) => {

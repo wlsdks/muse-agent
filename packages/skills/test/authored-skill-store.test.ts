@@ -372,6 +372,71 @@ describe("AuthoredSkillStore — consolidate (umbrella merge, archive-never-dele
     expect(await readdir(join(dir, ".archive")).catch(() => [] as string[])).toEqual([]);
   });
 
+  it("cooldown: shouldSkipCluster=true skips the cluster BEFORE merge (no merge call, absent from plan)", async () => {
+    const store = await seedCluster(tmpDir());
+    let mergeCalls = 0;
+    const merge = async () => { mergeCalls += 1; return { body: "b", description: "Use when x", name: "u" }; };
+    const plan = await store.consolidate(merge, { threshold: 0.4, shouldSkipCluster: async () => true });
+    expect(mergeCalls).toBe(0); // skipped before the costly merge
+    expect(plan).toEqual([]);
+  });
+
+  it("cooldown: recordReject fires on a held-out reject, recordMerged on accept, and NEITHER when the merge doesn't cohere (NONE)", async () => {
+    // reject path
+    const rejected: string[][] = [];
+    const merged1: string[][] = [];
+    await (await seedCluster(tmpDir())).consolidate(
+      async () => ({ body: "b", description: "Use when summarising", name: "summary" }),
+      { threshold: 0.4, validate: () => false, recordReject: (c) => { rejected.push(c.map((s) => s.name)); }, recordMerged: (c) => { merged1.push(c.map((s) => s.name)); } }
+    );
+    expect(rejected).toHaveLength(1);
+    expect(merged1).toHaveLength(0);
+
+    // accept path
+    const rejected2: string[][] = [];
+    const merged2: string[][] = [];
+    await (await seedCluster(tmpDir())).consolidate(
+      async () => ({ body: "b", description: "Use when summarising", name: "summary" }),
+      { threshold: 0.4, validate: () => true, recordReject: (c) => { rejected2.push(c.map((s) => s.name)); }, recordMerged: (c) => { merged2.push(c.map((s) => s.name)); } }
+    );
+    expect(rejected2).toHaveLength(0);
+    expect(merged2).toHaveLength(1);
+
+    // NONE path (merge returns undefined) — neither fires
+    const rejected3: string[][] = [];
+    const merged3: string[][] = [];
+    await (await seedCluster(tmpDir())).consolidate(
+      async () => undefined,
+      { threshold: 0.4, validate: () => false, recordReject: (c) => { rejected3.push(c.map((s) => s.name)); }, recordMerged: (c) => { merged3.push(c.map((s) => s.name)); } }
+    );
+    expect(rejected3).toHaveLength(0);
+    expect(merged3).toHaveLength(0);
+  });
+
+  it("cooldown: isolation — a skipped cluster never suppresses a different cluster", async () => {
+    const dir = tmpDir();
+    const store = new AuthoredSkillStore({ dir });
+    // Two clusters — descriptions similar enough to cluster (≥0.4) but distinct
+    // enough not to trip the patch-dedup (<0.6), and disjoint across clusters.
+    await store.writeOrPatch({ name: "summarise-email", description: "Use when summarising an email thread", body: "a" });
+    await store.writeOrPatch({ name: "summarise-doc", description: "Use when summarising a document", body: "b" });
+    await store.writeOrPatch({ name: "book-flight", description: "Use when booking a flight ticket", body: "c" });
+    await store.writeOrPatch({ name: "book-hotel", description: "Use when booking a hotel room", body: "d" });
+    const mergedNames: string[] = [];
+    const merge = async (cluster: readonly { name: string }[]) => {
+      mergedNames.push(cluster.map((s) => s.name).join("+"));
+      return { body: "b", description: "Use when summarising or booking", name: "umbrella" };
+    };
+    // Skip only the summarise cluster; the booking cluster must still be merged.
+    await store.consolidate(merge, {
+      threshold: 0.4,
+      validate: () => true,
+      shouldSkipCluster: async (c) => c.some((s) => s.name.startsWith("summarise"))
+    });
+    expect(mergedNames.some((m) => m.includes("book-"))).toBe(true); // booking cluster merged
+    expect(mergedNames.some((m) => m.includes("summarise"))).toBe(false); // summarise cluster skipped
+  });
+
   it("dry-run reports the plan and mutates nothing", async () => {
     const dir = tmpDir();
     const store = await seedCluster(dir);

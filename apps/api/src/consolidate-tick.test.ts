@@ -287,6 +287,35 @@ describe("startConsolidateTick.tickOnce — held-out gate on the REAL default pa
     return dir;
   }
 
+  it("cooldown: a cluster the gate keeps rejecting stops being merged after the threshold (across ticks)", async () => {
+    const dir = await seedTwoSummariseSkills();
+    const ledger = join(dir, ".reject-cooldown.json");
+    let generateCalls = 0;
+    const counting = {
+      generate: async () => { generateCalls += 1; return { output: "name: summarise-email-only\ndescription: Use when summarising an email thread\nbody: 1. read the email" }; }
+    } as unknown as Parameters<typeof startConsolidateTick>[0]["modelProvider"];
+    const opts = baseOptions({
+      authoredSkillsDir: dir,
+      lastActivityMs: () => NOW.getTime() - IDLE_MS - 1,
+      threshold: 0.3,
+      runConsolidate: undefined,
+      embed: fakeEmbed,
+      rejectLedgerFile: ledger,
+      cooldownThreshold: 2,
+      modelProvider: counting
+    });
+    const handle = startConsolidateTick(opts);
+    await handle.tickOnce(); // reject #1 (merge+retry called)
+    const afterTick1 = generateCalls;
+    await handle.tickOnce(); // reject #2 → count reaches threshold
+    const afterTick2 = generateCalls;
+    await handle.tickOnce(); // now cooled down → merge must NOT be called
+    handle.stop();
+    expect(afterTick1).toBeGreaterThan(0); // merged on tick 1
+    expect(afterTick2).toBeGreaterThan(afterTick1); // merged again on tick 2
+    expect(generateCalls).toBe(afterTick2); // tick 3 skipped the cluster (no new merge call)
+  });
+
   it("rejects a coverage-losing umbrella: originals stay live, nothing archived, rejection logged", async () => {
     const dir = await seedTwoSummariseSkills();
     const logs: string[] = [];

@@ -270,6 +270,19 @@ export class AuthoredSkillStore {
        * being recomputed identically next tick. Default false (one attempt).
        */
       readonly feedbackRetry?: boolean;
+      /**
+       * Cross-tick reject COOLDOWN (injected so this package stays IO-free): a
+       * cluster the gate keeps rejecting shouldn't be recomputed (a local-LLM
+       * merge + embeds) every idle tick forever. `shouldSkipCluster` is consulted
+       * BEFORE proposing — skip when it returns true; `recordReject` bumps the
+       * cluster's count on a real held-out reject (NOT on a no-cohere/NONE);
+       * `recordMerged` clears it on commit. The caller wires a fingerprint→count
+       * ledger (fingerprint over name+content, so editing a member re-opens it).
+       * Omitted ⇒ no cooldown (back-compat).
+       */
+      readonly shouldSkipCluster?: (cluster: readonly SkillDraft[]) => boolean | Promise<boolean>;
+      readonly recordReject?: (cluster: readonly SkillDraft[]) => void | Promise<void>;
+      readonly recordMerged?: (cluster: readonly SkillDraft[]) => void | Promise<void>;
     } = {}
   ): Promise<readonly { readonly umbrella: string; readonly merged: readonly string[] }[]> {
     const threshold = typeof options.threshold === "number" && options.threshold > 0 ? options.threshold : 0.5;
@@ -279,8 +292,11 @@ export class AuthoredSkillStore {
     const out: { umbrella: string; merged: readonly string[] }[] = [];
     for (const cluster of clusters) {
       const drafts = cluster.map((s) => ({ body: s.body, description: s.description, name: s.name }));
+      // Cooldown: a cluster that has been rejected too many times is skipped
+      // BEFORE the costly merge call, until a member's content changes.
+      if (options.shouldSkipCluster && (await options.shouldSkipCluster(drafts))) continue;
       let umbrella = await merge(drafts);
-      if (!umbrella) continue; // cluster didn't cohere — leave the skills alone
+      if (!umbrella) continue; // cluster didn't cohere — leave the skills alone (no reject recorded)
       if (options.validate) {
         const verdict = await options.validate(drafts, umbrella);
         let accept = typeof verdict === "boolean" ? verdict : verdict.accept;
@@ -288,12 +304,16 @@ export class AuthoredSkillStore {
         if (!accept && options.feedbackRetry && lost.length > 0) {
           // Steered re-proposal: tell the merger which skills it dropped.
           const retry = await merge(drafts, { avoidDropping: lost });
-          if (!retry) continue;
-          const v2 = await options.validate(drafts, retry);
-          accept = typeof v2 === "boolean" ? v2 : v2.accept;
-          if (accept) umbrella = retry;
+          if (retry) {
+            const v2 = await options.validate(drafts, retry);
+            accept = typeof v2 === "boolean" ? v2 : v2.accept;
+            if (accept) umbrella = retry;
+          }
         }
-        if (!accept) continue; // held-out gate rejected (after any retry) — roll back: originals intact
+        if (!accept) {
+          await options.recordReject?.(drafts); // held-out reject → count toward cooldown
+          continue; // roll back: originals intact
+        }
       }
       if (options.dryRun) {
         out.push({ merged: cluster.map((s) => s.name), umbrella: umbrella.name });
@@ -303,6 +323,7 @@ export class AuthoredSkillStore {
       // similarity-match (and accidentally patch) one of them.
       for (const s of cluster) await this.archiveSkill(s);
       const { skill } = await this.writeOrPatch(umbrella);
+      await options.recordMerged?.(drafts); // merged → clear any cooldown entry
       out.push({ merged: cluster.map((s) => s.name), umbrella: skill.name });
     }
     return out;

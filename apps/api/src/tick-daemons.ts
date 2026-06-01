@@ -542,6 +542,9 @@ export function startConsolidateDaemonIfConfigured(
     // SkillOpt held-out coverage gate: verify a proposed umbrella semantically
     // covers every clustered skill before committing (shared gate embedder).
     embed: createGateEmbedder(env),
+    // Cross-tick reject cooldown ledger — stop re-proposing a cluster the gate
+    // keeps rejecting (beside the authored skills, env-overridable).
+    rejectLedgerFile: env.MUSE_SKILL_COOLDOWN_FILE?.trim() || join(authoredSkillsDir, ".reject-cooldown.json"),
     // Real OS-idle brake: the LLM merge only fires when the MACHINE is quiet
     // (system-wide HID idle), not merely when Muse's /api is — fail-closed.
     osIdleMs: () => osIdleMs(),
