@@ -364,6 +364,33 @@ export function shouldSuggestRepair(args: {
   return args.verdictFired && !args.repairRequested && !args.json && args.evidenceCount > 0;
 }
 
+// Unmistakable intent words for the OPT-IN perception sources. Precision-first:
+// a git-specific token (commit/git/branch/…), never the ambiguous "work on", so
+// a non-git refusal ("what's my rent?") never gets a spurious --git tip.
+const GIT_INTENT_RE = /\b(commit|commits|committed|committing|git|branch|branches|rebase|rebased|repo|repository|codebase|pull request)\b/iu;
+const SHELL_INTENT_RE = /\b(command|commands|terminal|shell|bash|zsh|cli command|docker|kubectl)\b/iu;
+
+/**
+ * On a REFUSAL, surface the opt-in perception source that would likely answer
+ * the question — so an undiscoverable `--git` / `--shell` flag becomes findable
+ * (a user asking "what did I commit?" otherwise just gets "not in your notes" and
+ * never learns Muse can read their git history). Precision-first: only an
+ * unmistakable intent fires, and only when the matching flag is NOT already on.
+ * Pure + exported.
+ */
+export function suggestOptInSource(
+  query: string,
+  enabled: { readonly git: boolean; readonly shell: boolean }
+): string | undefined {
+  if (!enabled.git && GIT_INTENT_RE.test(query)) {
+    return "(tip: add --git to also ground on your recent git commits in this repo)";
+  }
+  if (!enabled.shell && SHELL_INTENT_RE.test(query)) {
+    return "(tip: add --shell to also ground on your recent shell-history commands)";
+  }
+  return undefined;
+}
+
 // The citation instructions injected into the --with-tools agent system prompt.
 // NOTE: the injection-input-guard scans the WHOLE composed prompt (system role
 // included), so these lines must carry NO credential word (token / secret /
@@ -1967,6 +1994,14 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           tasks: openTasks.map((t) => t.title)
         });
         if (moreReceipts) io.stderr(moreReceipts);
+      }
+
+      // Discoverability: when Muse REFUSED and the question is plainly about git
+      // or shell history, point the user at the opt-in flag that would answer it
+      // — otherwise these sources are invisible (the user never learns they exist).
+      if (!options.json && refusalAnswer) {
+        const tip = suggestOptInSource(query, { git: options.git === true, shell: options.shell === true });
+        if (tip) io.stderr(`${tip}\n`);
       }
 
       // Output-side rubric VERDICT (chat-only path, where `scored` IS the

@@ -249,7 +249,25 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   "unverified"; specific "what was the payments commit?" → cites exactly the Stripe
   commit; WITHOUT `--git` no git is injected (opt-in); negative "bank account
   number?" --git → refuses, no fabrication from commits; `verify-claim-grounding`
-  4/4 (gate intact). cli 164 files / 1717 tests + `pnpm lint` 0/0. (this commit)
+  4/4 (gate intact). cli 164 files / 1717 tests + `pnpm lint` 0/0. (7abd6f43)
+
+- [x] **P37-12 Opt-in perception sources are DISCOVERABLE — a refusal points to
+  `--git` / `--shell`.** `--git` (P37-11) and `--shell` are opt-in and therefore
+  INVISIBLE: a user who asks "what did I commit?" / "what was that docker command?"
+  just gets "not in your notes" and never learns Muse could answer it. Now, when
+  Muse REFUSES and the question is unmistakably about git or shell history, it
+  appends a one-line tip ("add --git to also ground on your recent git commits") —
+  mirroring the sanctioned `--repair` discoverability nudge (P38-8). New
+  precision-first `suggestOptInSource` classifier (git-specific tokens
+  commit/git/branch/rebase/repo/codebase/pull-request; shell tokens
+  command/terminal/shell/bash/zsh/docker/kubectl), fired ONLY on a refusal and ONLY
+  when the matching flag isn't already on — so a normal refusal ("what's my rent?")
+  is never cluttered. Proof: 9 unit tests (suggests --git for 5 git phrasings,
+  --shell for 3 command phrasings, SILENT on 4 non-matching refusals, no re-suggest
+  when the flag is on) + LIVE: "what did I commit last week?" (no --git) → refusal +
+  "(tip: add --git …)"; "what was that docker command?" → "(tip: add --shell …)";
+  "what is my car insurance number?" → NO tip; "what did I commit?" --git → NO
+  re-tip. cli 164 files / 1721 tests + `pnpm lint` 0/0. (this commit)
 
 **P40 — Actuation usability: Muse understands natural-language dates.** The
 "do" side is only as good as the words a user actually types.
