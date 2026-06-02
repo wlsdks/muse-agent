@@ -170,6 +170,15 @@ export {
   type VerifyGroundingOptions
 } from "./knowledge-recall.js";
 export {
+  scoreGroundingEval,
+  type GroundingCaseOutcome,
+  type GroundingEvalCase,
+  type GroundingEvalCorpus,
+  type GroundingEvalDeps,
+  type GroundingEvalKind,
+  type GroundingEvalResult
+} from "./grounding-eval.js";
+export {
   createConfidenceGatedInvestigator,
   decideProactiveRecall,
   type ConfidenceGatedInvestigatorDeps,

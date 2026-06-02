@@ -56,6 +56,7 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
     .option("--full", "Emit the full JSON report instead of the one-line summary")
     .option("--json", "Emit JSON even for the summary form")
     .option("--local", "Probe local-only signals (skip the API daemon)")
+    .option("--grounding", "Score the bundled faithfulness + false-refusal corpus on the local model and print the two rates")
     .option("--watch", "Re-run on a fixed cadence until Ctrl-C (default 5s)")
     .option(
       "--interval <seconds>",
@@ -66,11 +67,22 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
         readonly full?: boolean;
         readonly json?: boolean;
         readonly local?: boolean;
+        readonly grounding?: boolean;
         readonly watch?: boolean;
         readonly interval?: string;
       },
       command: Command
     ) => {
+      // --grounding is a standalone live mode: score the bundled edge corpus on
+      // the local model and print the two rates. Skips (exit 0) when Ollama is
+      // down; exit 1 only on a rate regression below the shipped floor.
+      if (options.grounding) {
+        const status = await runGroundingDoctor(io);
+        if (status === "fail") {
+          process.exitCode = 1;
+        }
+        return;
+      }
       const renderLocal = async (): Promise<"ok" | "warn" | "fail"> => {
         const report = await runLocalDoctor();
         if (options.json || options.full) {
@@ -285,6 +297,64 @@ export interface LocalCheck {
   readonly name: string;
   readonly status: "ok" | "warn" | "fail";
   readonly detail: string;
+}
+
+/**
+ * `muse doctor --grounding` — score the bundled held-out corpus on the REAL
+ * local recall + RGV stack and print faithfulness + false-refusal. Makes the
+ * `fabrication=0` claim a number the user reads on their own box; the same
+ * scorer is the verify-faithfulness-rate regression gate. Skips (returns "ok")
+ * when Ollama / the embed model is unreachable — a skip is not a pass, but
+ * doctor must not dead-end on a box with no model up (same policy as the live
+ * batteries). Lazy imports keep the runtime assembly out of the default path.
+ */
+async function runGroundingDoctor(io: ProgramIO): Promise<"ok" | "fail"> {
+  const baseUrl = resolveOllamaUrl().replace(/\/$/, "");
+  const reachable = await (async (): Promise<boolean> => {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3_000);
+      const response = await fetch(`${baseUrl}/api/tags`, { signal: controller.signal });
+      clearTimeout(timer);
+      return response.ok;
+    } catch {
+      return false;
+    }
+  })();
+  if (!reachable) {
+    io.stdout(`grounding edge — skipped: local Ollama not reachable at ${baseUrl} (a skip is not a pass; start Ollama to measure).\n`);
+    return "ok";
+  }
+
+  const { createMuseRuntimeAssembly, createOllamaEmbedder } = await import("@muse/autoconfigure");
+  const { GROUNDING_EVAL_CORPUS } = await import("./grounding-eval-corpus.js");
+  const { GROUNDING_THRESHOLDS, createQwenReverify, renderGroundingEvalReport, runGroundingEval } = await import(
+    "./grounding-eval-runner.js"
+  );
+
+  const embed = createOllamaEmbedder(DEFAULT_EMBED_MODEL);
+  try {
+    await embed("probe");
+  } catch (cause) {
+    io.stdout(
+      `grounding edge — skipped: embed model '${DEFAULT_EMBED_MODEL}' unavailable (${cause instanceof Error ? cause.message : String(cause)}). Try: ollama pull ${DEFAULT_EMBED_MODEL}\n`
+    );
+    return "ok";
+  }
+
+  const model = process.env.MUSE_DEFAULT_MODEL ?? process.env.MUSE_MODEL ?? "ollama/qwen3:8b";
+  process.env.MUSE_DEFAULT_MODEL ??= model;
+  const modelProvider = createMuseRuntimeAssembly().modelProvider;
+  if (!modelProvider) {
+    io.stdout("grounding edge — skipped: no local model provider configured (set MUSE_DEFAULT_MODEL).\n");
+    return "ok";
+  }
+  const reverify = createQwenReverify(modelProvider, model);
+
+  const result = await runGroundingEval(GROUNDING_EVAL_CORPUS, { embed, reverify });
+  const report = renderGroundingEvalReport(result, GROUNDING_THRESHOLDS);
+  io.stdout(`${report.text}\n`);
+  return report.status;
 }
 
 /**
