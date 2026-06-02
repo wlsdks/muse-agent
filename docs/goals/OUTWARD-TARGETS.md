@@ -344,7 +344,22 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   locally) + the existing 15 tasks + 16 remind tests still green + a LIVE server-less
   run of tasks add → list → edit → complete → delete, all succeeding, and remind
   add still works after the refactor. cli 164 files / 1727 tests + `pnpm lint` 0/0.
-  (this commit)
+  (1a397be7)
+
+- [x] **P40-5 `muse calendar` reads work server-less — you can LIST what you added.**
+  Probing the calendar surface found the inverse asymmetry of P40-3/4: `calendar add`
+  is LOCAL-by-design (writes the local calendar, works server-less, has no --local
+  flag), but every READ — `events`, `tomorrow`/day-shortcuts, `free`, `conflicts`,
+  `providers`, `export` — DEFAULTED to the API and HARD-ERRORED "API not reachable"
+  server-less. So a user could `muse calendar add "Dentist" --at "tomorrow 3pm"` and
+  then NOT see it with `muse calendar events` unless they knew to pass --local. Wrapped
+  all six read subcommands in the shared `withApiLocalFallback` (from P40-4) so they
+  fall back to the local calendar file when the API is down — same safety (`--local`
+  skips the API, a real 4xx/5xx still throws). Proof: 2 new tests (unreachable `events`
+  → lists the locally-added event; a 500 still throws) + the existing 33 calendar tests
+  green + a LIVE server-less `calendar add` → `events`/`tomorrow`/`free`/`conflicts`/
+  `providers` all now succeed against the local store. cli 164 files / 1733 tests +
+  `pnpm lint` 0/0. (this commit)
 
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,

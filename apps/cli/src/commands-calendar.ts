@@ -20,6 +20,7 @@ import type { Command } from "commander";
 
 import { formatCalendarEvents, formatProvidersList } from "./human-formatters.js";
 import { parseIcsEvents } from "./ics-parser.js";
+import { withApiLocalFallback } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
 export interface CalendarCommandHelpers {
@@ -157,13 +158,13 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
     .option("--local", "Describe the local-file calendar provider instead of querying the API")
     .option("--json", "Print the raw response instead of the formatted list")
     .action(async (options: SharedOptions, command) => {
-      let payload: Record<string, unknown>;
-      if (options.local) {
-        const info = localCalendarProvider().describe();
-        payload = { providers: [info] };
-      } else {
-        payload = (await helpers.apiRequest(io, command, "/api/calendar/providers")) as Record<string, unknown>;
-      }
+      const payload = await withApiLocalFallback(
+        io,
+        Boolean(options.local),
+        async () => ({ providers: [localCalendarProvider().describe()] }) as Record<string, unknown>,
+        async () => (await helpers.apiRequest(io, command, "/api/calendar/providers")) as Record<string, unknown>,
+        "calendar"
+      );
       if (options.json) {
         helpers.writeOutput(io, payload);
         return;
@@ -184,7 +185,6 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       options: { readonly from?: string; readonly to?: string; readonly provider?: string } & SharedOptions,
       command
     ) => {
-      let payload: Record<string, unknown>;
       // Validate up front so the API path rejects a bad timestamp
       // with the same actionable error as --local, instead of
       // forwarding garbage to the server as a silently-wrong window.
@@ -194,7 +194,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       ) {
         throw new Error("--from / --to must be ISO 8601 timestamps");
       }
-      if (options.local) {
+      const readLocal = async (): Promise<Record<string, unknown>> => {
         const from = options.from ? new Date(options.from) : new Date();
         const to = options.to
           ? new Date(options.to)
@@ -215,8 +215,9 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
           ...(event.notes ? { notes: event.notes } : {}),
           ...(event.tags && event.tags.length > 0 ? { tags: event.tags } : {})
         }));
-        payload = { events, total: events.length };
-      } else {
+        return { events, total: events.length };
+      };
+      const readApi = async (): Promise<Record<string, unknown>> => {
         const params = new URLSearchParams();
         if (options.from) {
           params.set("fromIso", options.from);
@@ -229,8 +230,9 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         }
         const query = params.toString();
         const path = query.length > 0 ? `/api/calendar/events?${query}` : "/api/calendar/events";
-        payload = (await helpers.apiRequest(io, command, path)) as Record<string, unknown>;
-      }
+        return (await helpers.apiRequest(io, command, path)) as Record<string, unknown>;
+      };
+      const payload = await withApiLocalFallback(io, Boolean(options.local), readLocal, readApi, "calendar");
       if (options.json) {
         helpers.writeOutput(io, payload);
         return;
@@ -256,29 +258,34 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       ) {
         throw new Error("--from / --to must be ISO 8601 timestamps");
       }
-      let events: readonly IcsEvent[];
-      if (options.local) {
-        const from = options.from ? new Date(options.from) : new Date();
-        const to = options.to ? new Date(options.to) : new Date(from.getTime() + 365 * 24 * 3_600_000);
-        events = await localCalendarProvider().listEvents({ from, to });
-      } else {
-        const params = new URLSearchParams();
-        if (options.from) params.set("fromIso", options.from);
-        if (options.to) params.set("toIso", options.to);
-        if (options.provider) params.set("providerId", options.provider);
-        const query = params.toString();
-        const path = query.length > 0 ? `/api/calendar/events?${query}` : "/api/calendar/events";
-        const payload = (await helpers.apiRequest(io, command, path)) as { readonly events?: readonly Record<string, unknown>[] };
-        events = (payload.events ?? []).map((raw) => ({
-          id: typeof raw.id === "string" ? raw.id : "",
-          title: typeof raw.title === "string" ? raw.title : "(untitled)",
-          startsAt: new Date(String(raw.startsAtIso ?? raw.startsAt)),
-          endsAt: new Date(String(raw.endsAtIso ?? raw.endsAt)),
-          ...(raw.allDay === true ? { allDay: true } : {}),
-          ...(typeof raw.location === "string" ? { location: raw.location } : {}),
-          ...(typeof raw.notes === "string" ? { notes: raw.notes } : {})
-        }));
-      }
+      const events = await withApiLocalFallback<readonly IcsEvent[]>(
+        io,
+        Boolean(options.local),
+        async () => {
+          const from = options.from ? new Date(options.from) : new Date();
+          const to = options.to ? new Date(options.to) : new Date(from.getTime() + 365 * 24 * 3_600_000);
+          return localCalendarProvider().listEvents({ from, to });
+        },
+        async () => {
+          const params = new URLSearchParams();
+          if (options.from) params.set("fromIso", options.from);
+          if (options.to) params.set("toIso", options.to);
+          if (options.provider) params.set("providerId", options.provider);
+          const query = params.toString();
+          const path = query.length > 0 ? `/api/calendar/events?${query}` : "/api/calendar/events";
+          const payload = (await helpers.apiRequest(io, command, path)) as { readonly events?: readonly Record<string, unknown>[] };
+          return (payload.events ?? []).map((raw) => ({
+            id: typeof raw.id === "string" ? raw.id : "",
+            title: typeof raw.title === "string" ? raw.title : "(untitled)",
+            startsAt: new Date(String(raw.startsAtIso ?? raw.startsAt)),
+            endsAt: new Date(String(raw.endsAtIso ?? raw.endsAt)),
+            ...(raw.allDay === true ? { allDay: true } : {}),
+            ...(typeof raw.location === "string" ? { location: raw.location } : {}),
+            ...(typeof raw.notes === "string" ? { notes: raw.notes } : {})
+          }));
+        },
+        "calendar"
+      );
       const ics = eventsToIcs(events);
       if (options.out) {
         await writeFile(options.out, ics, "utf8");
@@ -313,21 +320,23 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       }
       const from = options.from ? new Date(options.from) : new Date();
       const to = options.to ? new Date(options.to) : new Date(from.getTime() + 8 * 3_600_000);
-      let rows: Array<Record<string, unknown>>;
-      if (options.local) {
-        const raw = await localCalendarProvider().listEvents({ from, to });
-        rows = raw.map((event) => ({
+      const rows = await withApiLocalFallback<Array<Record<string, unknown>>>(
+        io,
+        Boolean(options.local),
+        async () => (await localCalendarProvider().listEvents({ from, to })).map((event) => ({
           allDay: event.allDay,
           endsAtIso: event.endsAt.toISOString(),
           startsAtIso: event.startsAt.toISOString(),
           title: event.title
-        }));
-      } else {
-        const params = new URLSearchParams({ fromIso: from.toISOString(), toIso: to.toISOString() });
-        if (options.provider) params.set("providerId", options.provider);
-        const payload = (await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`)) as { events?: Array<Record<string, unknown>> };
-        rows = Array.isArray(payload.events) ? payload.events : [];
-      }
+        })),
+        async () => {
+          const params = new URLSearchParams({ fromIso: from.toISOString(), toIso: to.toISOString() });
+          if (options.provider) params.set("providerId", options.provider);
+          const payload = (await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`)) as { events?: Array<Record<string, unknown>> };
+          return Array.isArray(payload.events) ? payload.events : [];
+        },
+        "calendar"
+      );
       const result = computeAvailability(eventsToAvailability(rows), { from, to }, minMinutes !== undefined ? { minFreeMinutes: minMinutes } : {});
       if (options.json) {
         helpers.writeOutput(io, {
@@ -360,21 +369,23 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       }
       const from = options.from ? new Date(options.from) : new Date();
       const to = options.to ? new Date(options.to) : new Date(from.getTime() + 30 * 86_400_000);
-      let rows: Array<Record<string, unknown>>;
-      if (options.local) {
-        const raw = await localCalendarProvider().listEvents({ from, to });
-        rows = raw.map((event) => ({
+      const rows = await withApiLocalFallback<Array<Record<string, unknown>>>(
+        io,
+        Boolean(options.local),
+        async () => (await localCalendarProvider().listEvents({ from, to })).map((event) => ({
           allDay: event.allDay,
           endsAtIso: event.endsAt.toISOString(),
           startsAtIso: event.startsAt.toISOString(),
           title: event.title
-        }));
-      } else {
-        const params = new URLSearchParams({ fromIso: from.toISOString(), toIso: to.toISOString() });
-        if (options.provider) params.set("providerId", options.provider);
-        const payload = (await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`)) as { events?: Array<Record<string, unknown>> };
-        rows = Array.isArray(payload.events) ? payload.events : [];
-      }
+        })),
+        async () => {
+          const params = new URLSearchParams({ fromIso: from.toISOString(), toIso: to.toISOString() });
+          if (options.provider) params.set("providerId", options.provider);
+          const payload = (await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`)) as { events?: Array<Record<string, unknown>> };
+          return Array.isArray(payload.events) ? payload.events : [];
+        },
+        "calendar"
+      );
       const conflicts = detectCalendarConflicts(eventsToAvailability(rows));
       if (options.json) {
         helpers.writeOutput(io, conflicts.map((c) => ({
@@ -535,24 +546,26 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         params.set("fromIso", from.toISOString());
         params.set("toIso", to.toISOString());
         if (options.provider) params.set("providerId", options.provider);
-        let payload: Record<string, unknown>;
-        if (options.local) {
-          const raw = await localCalendarProvider().listEvents({ from, to });
-          const events = raw.map((event) => ({
-            endsAtIso: event.endsAt.toISOString(),
-            id: event.id,
-            providerId: event.providerId,
-            startsAtIso: event.startsAt.toISOString(),
-            title: event.title,
-            ...(event.allDay ? { allDay: true } : {}),
-            ...(event.location ? { location: event.location } : {}),
-            ...(event.notes ? { notes: event.notes } : {}),
-            ...(event.tags && event.tags.length > 0 ? { tags: event.tags } : {})
-          }));
-          payload = { events, total: events.length };
-        } else {
-          payload = (await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`)) as Record<string, unknown>;
-        }
+        const payload = await withApiLocalFallback<Record<string, unknown>>(
+          io,
+          Boolean(options.local),
+          async () => {
+            const events = (await localCalendarProvider().listEvents({ from, to })).map((event) => ({
+              endsAtIso: event.endsAt.toISOString(),
+              id: event.id,
+              providerId: event.providerId,
+              startsAtIso: event.startsAt.toISOString(),
+              title: event.title,
+              ...(event.allDay ? { allDay: true } : {}),
+              ...(event.location ? { location: event.location } : {}),
+              ...(event.notes ? { notes: event.notes } : {}),
+              ...(event.tags && event.tags.length > 0 ? { tags: event.tags } : {})
+            }));
+            return { events, total: events.length };
+          },
+          async () => (await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`)) as Record<string, unknown>,
+          "calendar"
+        );
         if (options.json) {
           helpers.writeOutput(io, payload);
           return;

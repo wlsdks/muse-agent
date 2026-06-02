@@ -286,6 +286,35 @@ describe("muse calendar add — create a local event from the terminal", () => {
     expect(standup.endsAt.getTime() - standup.startsAt.getTime()).toBe(15 * 60_000);
   });
 
+  async function runEvents(args: string[], apiRequest: CalendarCommandHelpers["apiRequest"]): Promise<{ error?: string; stdout: string }> {
+    const stdout: string[] = [];
+    const io = { stderr: () => {}, stdout: (line: string) => stdout.push(line) };
+    const helpers: CalendarCommandHelpers = { apiRequest, writeOutput: (_io, v) => stdout.push(JSON.stringify(v)) };
+    try {
+      const program = new Command();
+      program.exitOverride();
+      registerCalendarCommands(program, io, helpers);
+      await program.parseAsync(["node", "muse", "calendar", "events", ...args]);
+      return { stdout: stdout.join("") };
+    } catch (cause) {
+      return { error: cause instanceof Error ? cause.message : String(cause), stdout: stdout.join("") };
+    }
+  }
+
+  it("events: an unreachable API falls back to the LOCAL calendar (you can list what you added)", async () => {
+    await runAdd(["Dentist", "--at", "2026-05-30T15:00:00"]); // add is local-by-design
+    const unreachable: CalendarCommandHelpers["apiRequest"] = async () => { throw new Error("muse: Muse API not reachable at http://127.0.0.1:3030"); };
+    const r = await runEvents(["--from", "2026-05-30T00:00:00", "--to", "2026-05-31T00:00:00"], unreachable);
+    expect(r.error).toBeUndefined();
+    expect(r.stdout).toContain("Dentist");
+  });
+
+  it("events: a REAL api error (NOT unreachable) still throws — fallback never masks a 500", async () => {
+    const serverError: CalendarCommandHelpers["apiRequest"] = async () => { throw new Error("HTTP 500 internal server error"); };
+    const r = await runEvents([], serverError);
+    expect(r.error).toContain("500");
+  });
+
   it("rejects an unparseable --at with an actionable error (no event written)", async () => {
     const r = await runAdd(["Thing", "--at", "whenever"]);
     expect(r.error).toContain("ISO-8601");
