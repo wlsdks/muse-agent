@@ -728,6 +728,19 @@ interface AskOptions {
  */
 export const NOTES_ONLY_TOOL_ALLOWLIST = ["muse.notes", "muse.notes-multi", "muse.context"] as const;
 
+/**
+ * Memory-WRITE tools the recall agent (`muse ask --with-tools`) must never
+ * reach, passed via `metadata.forbiddenToolNames`. `muse ask` is a READ/recall
+ * surface; authoring durable user-memory is the job of the explicit `muse
+ * remember` command (user-directed) and chat auto-extraction (which gates on
+ * what the USER actually stated). Left exposed, the local model autonomously
+ * saved its OWN general-knowledge assertions (e.g. "WireGuard default MTU is
+ * 1420") as facts ABOUT the user — which the next recall then cited as "🧠 from
+ * what you told me", a provenance fabrication the user never made. Forbidding it
+ * deterministically keeps recall read-only for memory.
+ */
+export const RECALL_FORBIDDEN_TOOL_NAMES = ["remember_fact"] as const;
+
 export interface AskTierModels {
   readonly fast: string;
   readonly heavy: string;
@@ -1975,6 +1988,13 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             ],
             metadata: {
               userId: userKey,
+              // Recall is read-only for durable memory: never let the agent save
+              // its own assertions as "facts you told me" (provenance fabrication).
+              // Two vectors, both closed: the remember_fact TOOL (forbidden) and
+              // the after-complete auto-extract HOOK (skipped) — see
+              // RECALL_FORBIDDEN_TOOL_NAMES and readSkipAutoExtract.
+              forbiddenToolNames: [...RECALL_FORBIDDEN_TOOL_NAMES],
+              skipUserMemoryAutoExtract: true,
               ...(useActuators ? { localMode: true } : {}),
               ...(options.notesOnly ? { allowedToolNames: [...NOTES_ONLY_TOOL_ALLOWLIST] } : {}),
               ...(webSearchPolicy ? { webSearchPolicy } : {})

@@ -199,6 +199,16 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
       if (!userId) {
         return;
       }
+      // Per-run opt-out for READ/recall surfaces (e.g. `muse ask`). Auto-extract
+      // mines the assistant output too, so a one-shot Q&A would distil the
+      // MODEL's own general-knowledge assertions ("WireGuard default MTU is
+      // 1420") as facts ABOUT the user — a provenance fabrication the next recall
+      // cites as "from what you told me". A recall command sets this so only the
+      // conversational surface (chat) and the explicit `muse remember` author
+      // durable memory.
+      if (readSkipAutoExtract(context)) {
+        return;
+      }
       const userPrompt = latestUserMessage(context);
       const assistantOutput = response.output?.trim() ?? "";
       if (!userPrompt || !assistantOutput) {
@@ -288,6 +298,15 @@ async function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promis
 function readUserId(context: AgentRunContextView): string | undefined {
   const candidate = context.input.metadata?.userId;
   return typeof candidate === "string" && candidate.trim().length > 0 ? candidate : undefined;
+}
+
+/**
+ * Whether this run explicitly opted out of user-memory auto-extraction via
+ * `metadata.skipUserMemoryAutoExtract`. Read/recall surfaces set it so a
+ * question-answering turn never authors durable memory from the model's output.
+ */
+export function readSkipAutoExtract(context: AgentRunContextView): boolean {
+  return context.input.metadata?.skipUserMemoryAutoExtract === true;
 }
 
 function readSessionId(context: AgentRunContextView): string | undefined {

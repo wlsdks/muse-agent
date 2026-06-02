@@ -859,14 +859,14 @@ Append one line when a discovery path is evaluated and deferred:
   landed cases (weapons/doxxing/fraud refuse + dual-use-ops help) are
   STABLE.
 - auto-memory may distil a MODEL-asserted value as "what you told me" — iter
-  (P38-19) — DISCOVERED while live-testing the --with-tools drift gate: a
-  `muse ask --with-tools` answer that drifted ("WireGuard default MTU is 1420")
-  was, on the NEXT ask in the same HOME, recalled and cited `[memory:
-  wireguard_default_mtu]` ("🧠 from what you told me") — i.e. the model's own
-  general-knowledge assertion appears to have been auto-saved as a user-stated
-  fact. If real, this is a provenance-fabrication on the MEMORY surface (the
-  next recall presents it as the user's own fact). NOT fixed here (orthogonal to
-  the verdict slice; the P38-19 drift gate already flags the original assertion
-  as unverified). Future slice: confirm whether `muse ask` auto-distils facts,
-  and if so gate distillation so a low-confidence / unverified answer is NOT
-  promoted to a cited memory. Worth investigating as a real edge gap.
+  (P38-19) — **RESOLVED in P38-20 (e735ca68→this commit).** CONFIRMED real: the
+  shared user-memory auto-extract hook mines the ASSISTANT output and ran on every
+  agent run incl. one-shot `muse ask`, so a `--with-tools` Q&A persisted the model's
+  general-knowledge answer ("WireGuard default MTU is 1420") to user-memory.json and
+  the next recall cited it "🧠 from what you told me". Fixed by making recall
+  read-only for memory: `muse ask` sets `metadata.skipUserMemoryAutoExtract` (hook
+  honors it via `readSkipAutoExtract`) + forbids the `remember_fact` tool; chat
+  auto-extract unchanged. Don't re-mine. (Residual, lower priority: the hook mining
+  the assistant output is a latent provenance risk on CHAT too — a future slice
+  could ground extracted facts in the USER's statements only; not pursued here to
+  keep chat behavior stable.)

@@ -722,7 +722,31 @@ qwen3:8b and added to `eval:self-improving`.
   … treat as unverified (low coverage rejected by re-verification)" + the --repair
   offer (it was SILENT before); grounded `--with-tools` answers (garage code, wifi
   password) do NOT false-flag; chat-only is byte-for-byte unchanged. cli 166 files /
-  1761 tests + `pnpm lint` 0/0. (this commit)
+  1761 tests + `pnpm lint` 0/0. (e735ca68)
+
+- [x] **P38-20 `muse ask` no longer auto-authors durable memory from the model's
+  own answer — closing a provenance fabrication ("from what you told me" for a
+  fact you never stated).** DISCOVERED live last iteration and CONFIRMED this one:
+  a `muse ask --with-tools` general-knowledge answer ("WireGuard default MTU is
+  1420") was persisted to `user-memory.json` as `wireguard_default_mtu: "1420"`,
+  and the NEXT recall cited it `[memory: wireguard_default_mtu]` with the receipt
+  "🧠 from what you told me" — Muse asserting the USER stated a fact the MODEL made
+  up. Root: the shared user-memory auto-extract HOOK (`afterComplete`) mines the
+  ASSISTANT output too, and it ran on every agent run incl. one-shot recall — so a
+  Q&A turn distilled the model's assertion as a user fact (a second latent vector:
+  the `remember_fact` write tool, also exposed on the recall agent). Fixed by making
+  recall read-only for memory: `muse ask` sets `metadata.skipUserMemoryAutoExtract`
+  (a new per-run opt-out the hook honors via the exported `readSkipAutoExtract`, in
+  packages/memory) AND `metadata.forbiddenToolNames: ["remember_fact"]` (defense in
+  depth). Durable memory authoring stays with the explicit `muse remember` command
+  and the conversational chat surface (whose auto-extract is unchanged). Proof: 3
+  new memory unit tests (skip flag true only when set; the hook writes NOTHING on an
+  opted-out recall turn even with a fact-bearing extractor stub; a normal/chat turn
+  STILL extracts — the skip is the only behavior change) + LIVE on qwen3:8b: the same
+  `--with-tools` WireGuard probe that wrote `wireguard_default_mtu` before now leaves
+  NO memory file across two runs, while the P38-19 drift verdict still fires. memory
+  30 files / 312 tests + autoconfigure 484 + cli 166 files / 1761 tests + `pnpm lint`
+  0/0. (this commit)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.
