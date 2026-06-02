@@ -262,13 +262,27 @@ export type RetrievalConfidence = "confident" | "ambiguous" | "none";
 // this flags weak personal grounding, it is NOT a hard relevant/irrelevant cut.
 const DEFAULT_CONFIDENT_AT = 0.55;
 
+// Margin calibration (adaptive confidence). Near the compressed-cosine floor a
+// single absolute threshold is fragile: an out-of-corpus query can clip a
+// near-miss note just over the bar. So a `confident` top that is BOTH
+// borderline (within `SOFT_BAND` of the floor) AND has no clear lead over the
+// runner-up (`MIN_MARGIN`) is treated as a FLAT distribution — the query
+// matches several notes weakly rather than one strongly (the off-corpus
+// near-miss signature) — and demoted to `ambiguous`. A clearly-high top, or a
+// clear top-to-runner-up gap, stays confident, so genuine single-note matches
+// are untouched. Tuned so only the flat near-miss flips (CRAG arXiv:2401.15884).
+const CONFIDENCE_SOFT_BAND = 0.05;
+const CONFIDENCE_MIN_MARGIN = 0.08;
+
 /**
  * CRAG (arXiv 2401.15884): a lightweight retrieval evaluator grades whether
  * the retrieved evidence is trustworthy. Deterministic local version — the
  * verdict comes from the TOP match's ABSOLUTE cosine (not the RRF score):
  * `confident` ≥ `confidentAt`, `ambiguous` when some match is present but
- * weak, `none` when nothing was retrieved. The caller frames/gates by it so a
- * weak match isn't presented to the small model as something to cite.
+ * weak, `none` when nothing was retrieved. A borderline-confident top with a
+ * flat distribution (no lead over the runner-up) is demoted to `ambiguous` —
+ * the margin guard above. The caller frames/gates by it so a weak match isn't
+ * presented to the small model as something to cite.
  */
 export function classifyRetrievalConfidence(
   matches: readonly KnowledgeMatch[],
@@ -278,8 +292,15 @@ export function classifyRetrievalConfidence(
     return "none";
   }
   const confidentAt = finiteOr(options?.confidentAt, DEFAULT_CONFIDENT_AT);
-  const top = Math.max(...matches.map((match) => match.cosine ?? match.score));
-  return top >= confidentAt ? "confident" : "ambiguous";
+  const scores = matches.map((match) => match.cosine ?? match.score).sort((a, b) => b - a);
+  const top = scores[0]!;
+  if (top < confidentAt) {
+    return "ambiguous";
+  }
+  const runnerUp = scores[1] ?? 0;
+  const borderlineTop = top < confidentAt + CONFIDENCE_SOFT_BAND;
+  const flatDistribution = top - runnerUp < CONFIDENCE_MIN_MARGIN;
+  return borderlineTop && flatDistribution ? "ambiguous" : "confident";
 }
 
 export function renderKnowledgeMatches(matches: readonly KnowledgeMatch[], options?: { readonly confidentAt?: number }): string {

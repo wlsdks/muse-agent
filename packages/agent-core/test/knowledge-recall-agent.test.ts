@@ -175,6 +175,25 @@ describe("classifyRetrievalConfidence — CRAG verdict (arXiv 2401.15884)", () =
     // stays 0, so a high `score` can't smuggle a zero-similarity match past the bar.
     expect(classifyRetrievalConfidence([{ cosine: 0, score: 0.9, source: "s", text: "t" }])).toBe("ambiguous");
   });
+
+  it("margin guard: a BORDERLINE-confident top with a FLAT distribution is demoted to ambiguous (off-corpus near-miss)", () => {
+    // top 0.57 is in [0.55, 0.60) and only 0.05 above the runner-up — the query
+    // matches several notes weakly, not one strongly. The exact shape of the
+    // "groceries" off-corpus false-confident the faithfulness corpus flagged.
+    expect(classifyRetrievalConfidence([m(0.57), m(0.52)])).toBe("ambiguous");
+  });
+
+  it("margin guard: a borderline top with a CLEAR lead over the runner-up stays confident", () => {
+    expect(classifyRetrievalConfidence([m(0.57), m(0.40)])).toBe("confident");
+  });
+
+  it("margin guard: a CLEARLY-high top stays confident even when the distribution is flat", () => {
+    expect(classifyRetrievalConfidence([m(0.7), m(0.66)])).toBe("confident");
+  });
+
+  it("margin guard: a single borderline match has no runner-up, so it is not 'flat' — stays confident", () => {
+    expect(classifyRetrievalConfidence([m(0.57)])).toBe("confident");
+  });
 });
 
 describe("rankKnowledgeChunks surfaces the absolute cosine separately from the (RRF) score", () => {

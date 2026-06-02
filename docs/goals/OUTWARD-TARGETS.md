@@ -263,6 +263,22 @@ qwen3:8b and added to `eval:self-improving`.
   `verify-attributed-repair` battery (live: "MTU 9000" → "MTU 1380",
   off-corpus → refused). RARR arXiv:2210.08726. (e83e506f)
 
+- [x] **P38-4 Adaptive confidence calibration — margin-aware retrieval gate.** A
+  single absolute cosine bar is fragile near nomic's compressed floor: an
+  out-of-corpus query ("how much did I spend on groceries last month?") clipped a
+  near-miss note at 0.563 > 0.55 and the gate said `confident` — inviting a
+  false-confident answer. `classifyRetrievalConfidence` now demotes a `confident`
+  top that is BOTH borderline (within 0.05 of the floor) AND flat (top−runner-up
+  < 0.08) to `ambiguous` — the off-corpus near-miss signature — while a clearly-
+  high top or a clear lead stays confident, so genuine single-note matches are
+  untouched. Calibrated from the live margins (only the flat near-miss flips; the
+  lowest confident answerable sits at 0.627 with a 0.18 gap, far from the band).
+  Proof: 4 margin unit tests in `knowledge-recall-agent.test.ts` + the LIVE
+  `verify-faithfulness-rate` battery, where the groceries case is now caught and
+  faithfulness rose 0.93 → 1.00 (15/15) with false-refusal UNCHANGED at 0.08, and
+  cited-recall / rubric-gate / proactive-recall-gate all still green (no genuine
+  match demoted). CRAG arXiv:2401.15884. (this commit)
+
 **P36 — Background self-learning, brake-and-proof-first (loop-v2 PART A2 /
 B1).** The headline's "grows-with-you" core: Muse learns from corrections
 while idle, on its own, without straining the laptop. Built brake-FIRST — the
