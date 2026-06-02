@@ -335,6 +335,19 @@ export function relativizeNoteSource(file: string, notesDir: string): string {
   return isAbsolute(file) ? relative(notesDir, file) : file;
 }
 
+// The citation instructions injected into the --with-tools agent system prompt.
+// NOTE: the injection-input-guard scans the WHOLE composed prompt (system role
+// included), so these lines must carry NO credential word (token / secret /
+// password / api key) near an extraction verb — "copy an existing `cite as:`
+// token, or a name shown…" once matched the `credential_extraction` pattern
+// ("token … shown") and false-blocked EVERY grounded --with-tools query. Use
+// "tag", never "token", and keep this dependency-free guard in the test.
+export const CITATION_INSTRUCTION_LINES: readonly string[] = [
+  "When a fact comes from a note, END that sentence with that note's `cite as:` tag, copied VERBATIM — the whole bracket exactly as printed under the passage, the name unchanged.",
+  "For other context, cite by the name shown in its marker: a task as [task: its title], an event as [event: its title], a reminder as [reminder: its text], a past session as [session: short summary], a feed headline as [feed: the feed name], a contact as [contact: their name], a shell command as [command: the command], an action you took as [action: what you did].",
+  "CRITICAL: cite ONLY a source shown in the context below — copy an existing `cite as:` tag, or a name from a marker. NEVER invent or guess a filename, feed, task, or event. If the answer is not in any passage below, cite nothing and say you are not sure."
+];
+
 /**
  * True when the answer is essentially a refusal / "I'm not sure" with no
  * grounded claim — used to deterministically drop any citation the model
@@ -1526,9 +1539,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // used, use ALL-CAPS placeholders (explicitly "never output the
         // placeholder word"), and hard-forbid citing any source not
         // shown in a marker below.
-        "When a fact comes from a note, END that sentence with that note's `cite as:` token, copied VERBATIM — the whole bracket exactly as printed under the passage, the name unchanged.",
-        "For other context, cite by the name shown in its marker: a task as [task: its title], an event as [event: its title], a reminder as [reminder: its text], a past session as [session: short summary], a feed headline as [feed: the feed name], a contact as [contact: their name], a shell command as [command: the command], an action you took as [action: what you did].",
-        "CRITICAL: cite ONLY a source shown in the context below — copy an existing `cite as:` token, or a name shown in a marker. NEVER invent or guess a filename, feed, task, or event. If the answer is not in any passage below, cite nothing and say you are not sure.",
+        ...CITATION_INSTRUCTION_LINES,
         "",
         notesFraming.header,
         contextBlock,

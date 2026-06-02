@@ -308,7 +308,25 @@ qwen3:8b and added to `eval:self-improving`.
   relative subpath; already-relative untouched; never returns absolute) + a LIVE
   before/after `muse ask` over a real on-disk corpus (the multi-fact Q3 answer
   loses the spurious warning, keeps its 📎 receipt) + `verify-cited-recall` still
-  green. cli 1689 + `pnpm lint` 0/0. (this commit)
+  green. cli 1689 + `pnpm lint` 0/0. (4fda415d)
+
+- [x] **P38-7 Unbreak `muse ask --with-tools` — Muse's own prompt no longer
+  self-trips the injection guard.** The agent path ran the injection-input-guard
+  over the WHOLE composed prompt (system role included), and Muse's own citation
+  instruction — "copy an existing `cite as:` token, or a name shown in a marker"
+  — matched the `credential_extraction` pattern ("token … shown"), so EVERY
+  grounded `--with-tools` query died with "(error: Input guard detected injection
+  patterns: credential_extraction)". A benign "what MTU for the office VPN?" was
+  blocked by Muse guarding against Muse. Fixed by extracting the citation lines
+  to `CITATION_INSTRUCTION_LINES` and saying "tag", never "token" — no credential
+  word in the prompt, no security pattern touched. Proof: 2 unit tests (the lines
+  carry no credential word; still instruct verbatim citation) + a LIVE
+  before/after `muse ask --with-tools "what MTU for the office VPN?"` (was the
+  injection error, now a cited answer + 📎 receipt). cli 1691 + `pnpm lint` 0/0.
+  FOLLOW-UP (deferred, security-reviewed): the guard scanning the user's OWN
+  trusted notes/system-prompt for injection still false-positives on a note that
+  legitimately mentions credentials — needs a trusted/untrusted-content split.
+  (this commit)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.
@@ -344,7 +362,7 @@ tool-calling.md).** Edge hygiene meets felt responsiveness.
   states the real value prop and never says "manage your schedule" + a LIVE
   `muse ask "what can you do?"` / `"넌 뭐야?"` (accurate line, no warning) while
   `"what can you do about my taxes?"` still flows to the grounded path.
-  agent-core 1351 / cli 1686 + `pnpm lint` 0/0. (this commit)
+  agent-core 1351 / cli 1686 + `pnpm lint` 0/0. (fe6a4f4c)
 
 **P36 — Background self-learning, brake-and-proof-first (loop-v2 PART A2 /
 B1).** The headline's "grows-with-you" core: Muse learns from corrections
