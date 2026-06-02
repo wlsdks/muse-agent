@@ -267,7 +267,25 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   when the flag is on) + LIVE: "what did I commit last week?" (no --git) → refusal +
   "(tip: add --git …)"; "what was that docker command?" → "(tip: add --shell …)";
   "what is my car insurance number?" → NO tip; "what did I commit?" --git → NO
-  re-tip. cli 164 files / 1721 tests + `pnpm lint` 0/0. (this commit)
+  re-tip. cli 164 files / 1721 tests + `pnpm lint` 0/0. (b4b33c3c)
+
+- [x] **P37-13 `muse ask --file` cites a clean basename, not an ugly `../../` path.**
+  Probing the ad-hoc `--file` perception source: `muse ask --file ~/work/RUNBOOK.md`
+  grounded + cited correctly but the citation read `[from ../../../work/RUNBOOK.md]`
+  (the file sits outside the notes dir, so `relativizeNoteSource` produced an escape
+  path). Now an absolute source that ESCAPES the notes dir cites by basename
+  (`[from RUNBOOK.md]`), while an in-corpus nested note KEEPS its disambiguating
+  relative path (`projects/vpn.md` — P38-9's intent preserved). Openability is NOT
+  lost: the 📎 receipt now derives its "open to verify" path from the matched
+  chunk's REAL absolute file, so `[from RUNBOOK.md]` still opens the real
+  `~/work/RUNBOOK.md` (not a wrong `notesDir/RUNBOOK.md` join). Proof: 2 new unit
+  tests (escaping abs path → basename, in-corpus nested path unchanged; receipt opens
+  the real abs path, not the notesDir join) + the existing 13 receipt/verdict-source
+  tests green + a LIVE `muse ask --file <abs>/RUNBOOK.md` → cites `[from RUNBOOK.md]`
+  with the receipt pointing at the real `/var/folders/.../RUNBOOK.md`. Also ran the
+  ~10th-feat-iter regression sweep (claim-grounding 4/4, cited-recall 6/6, proactive
+  4/4 — no grounding regression across the session's accumulation). cli 164 files /
+  1729 tests + `pnpm lint` 0/0. (this commit)
 
 **P40 — Actuation usability: Muse understands natural-language dates.** The
 "do" side is only as good as the words a user actually types.

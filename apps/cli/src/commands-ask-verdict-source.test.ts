@@ -24,4 +24,12 @@ describe("relativizeNoteSource — gate, verdict, and receipt cite the SAME sour
     const out = relativizeNoteSource(join(notesDir, "lease.md"), notesDir);
     expect(isAbsolute(out)).toBe(false);
   });
+
+  it("uses the BASENAME for an ad-hoc --file path that ESCAPES the notes dir (not an ugly ../../ cite)", () => {
+    // `muse ask --file ~/work/RUNBOOK.md` must not cite `[from ../../../work/RUNBOOK.md]`.
+    expect(relativizeNoteSource("/home/u/work/RUNBOOK.md", notesDir)).toBe("RUNBOOK.md");
+    expect(relativizeNoteSource("/tmp/docs/spec.md", notesDir)).toBe("spec.md");
+    // …but an in-corpus nested note still keeps its disambiguating relative path.
+    expect(relativizeNoteSource(join(notesDir, "a", "notes.md"), notesDir)).toBe(join("a", "notes.md"));
+  });
 });

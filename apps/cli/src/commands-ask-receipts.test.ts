@@ -66,6 +66,17 @@ describe("formatSourceReceipts — S1 citation-as-voice (date + verbatim snippet
     expect(out).not.toContain('"# WireGuard VPN setup');
   });
 
+  it("opens an ad-hoc --file at its REAL absolute path, even when cited by basename", () => {
+    // The --file passage is cited `[from RUNBOOK.md]` (basename) but its chunk
+    // carries the real absolute path — the receipt must point there, not at
+    // notesDir/RUNBOOK.md (which doesn't exist).
+    const fileChunks = [{ file: "/home/u/work/RUNBOOK.md", text: "Production DB is PostgreSQL 16." }];
+    const out = formatSourceReceipts("DB is PostgreSQL 16 [from RUNBOOK.md].", "/home/u/.muse/notes", fileChunks);
+    expect(out).toContain("from RUNBOOK.md");
+    expect(out).toContain("/home/u/work/RUNBOOK.md"); // the REAL file, openable
+    expect(out).not.toContain("/home/u/.muse/notes/RUNBOOK.md"); // NOT the wrong notesDir join
+  });
+
   it("returns undefined when the answer cites nothing (a refusal renders no receipt)", () => {
     expect(formatSourceReceipts("I don't have anything on that.", "/n", chunks)).toBeUndefined();
   });

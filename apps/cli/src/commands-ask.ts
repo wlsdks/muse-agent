@@ -211,10 +211,9 @@ export function formatSourceReceipts(
   if (cited.length === 0) {
     return undefined;
   }
-  const snippetFor = (note: string): string | undefined => {
+  const hitFor = (note: string): { readonly file: string; readonly text: string } | undefined => {
     const base = note.split("/").pop();
-    const hit = chunks.find((c) => c.file === note || c.file.split("/").pop() === base);
-    return hit ? relevantSnippet(hit.text, query) : undefined;
+    return chunks.find((c) => c.file === note || c.file.split("/").pop() === base);
   };
   const blocks = cited.map((note) => {
     const date = provenanceDate(note);
@@ -222,8 +221,12 @@ export function formatSourceReceipts(
     // not just the basename — otherwise a user with `a/notes.md` and
     // `b/notes.md` can't tell which "from notes.md" receipt is which.
     const lead = date ? `from your note of ${date}` : `from ${note}`;
-    const snippet = snippetFor(note);
-    const path = isAbsolute(note) ? note : join(notesDir, note);
+    const hit = hitFor(note);
+    const snippet = hit ? relevantSnippet(hit.text, query) : undefined;
+    // Prefer the matched chunk's REAL path so an ad-hoc `--file` (cited by
+    // basename) still opens — only a basename cite needs this; a relative note
+    // cite already resolves under notesDir.
+    const path = hit && isAbsolute(hit.file) ? hit.file : isAbsolute(note) ? note : join(notesDir, note);
     return `   • ${lead}${snippet ? ` — "${snippet}"` : ""}\n     ${path}`;
   });
   return `\n📎 From your notes (open to verify):\n${blocks.join("\n")}\n`;
@@ -345,7 +348,16 @@ export const ACTION_GUIDE =
  * + receipt consistent.
  */
 export function relativizeNoteSource(file: string, notesDir: string): string {
-  return isAbsolute(file) ? relative(notesDir, file) : file;
+  if (!isAbsolute(file)) {
+    return file;
+  }
+  const rel = relative(notesDir, file);
+  // A path INSIDE the notes dir keeps its relative form (`projects/vpn.md`) so a
+  // user with `a/notes.md` AND `b/notes.md` can tell the receipts apart. A path
+  // that ESCAPES it (an ad-hoc `--file ~/work/RUNBOOK.md`) would otherwise cite
+  // as `[from ../../../work/RUNBOOK.md]` — show the basename instead; the receipt
+  // resolves the real openable path from the matched chunk's absolute file.
+  return rel.startsWith("..") ? (file.split("/").pop() ?? rel) : rel;
 }
 
 /**

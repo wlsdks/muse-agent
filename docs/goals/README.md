@@ -34,6 +34,7 @@ Append new rows below; the table starts fresh from this reset.
 | --- | ---- | -------- | ------ |
 
 ## Rejected ledger (so fresh agents don't re-mine)
+- LIVE-LLM regression sweep — iter (P37-13) — PASS: after the session's 9-feat-iter accumulation (grounding-verdict P38-10..13, git perception P37-11, discoverability P37-12, actuation server-less P40-3/4) the core grounding batteries all hold — `verify-claim-grounding` 4/4 (wrong number/name still rejected), `verify-cited-recall` 6/6 (recall + out-of-corpus refusal), `verify-proactive-recall-gate` 4/4 (in-corpus surfaces, off-topic silent). No regression; nothing to restore.
 
 Append one line when a discovery path is evaluated and deferred:
 `- <area> — iter <hash> — deferred: <reason>`
