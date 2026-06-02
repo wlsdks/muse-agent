@@ -14,7 +14,10 @@ interface ApiCall {
   readonly method?: string;
 }
 
-async function runRemind(args: string[]): Promise<{
+async function runRemind(
+  args: string[],
+  apiRequestOverride?: RemindCommandHelpers["apiRequest"]
+): Promise<{
   readonly error?: string;
   readonly apiCalls: readonly ApiCall[];
   readonly stdout: string;
@@ -23,10 +26,10 @@ async function runRemind(args: string[]): Promise<{
   const apiCalls: ApiCall[] = [];
   const io = { stderr: () => {}, stdout: (m: string) => stdout.push(m) };
   const helpers: RemindCommandHelpers = {
-    apiRequest: async (_io, _command, path, body, method) => {
+    apiRequest: apiRequestOverride ?? (async (_io, _command, path, body, method) => {
       apiCalls.push({ body, method, path });
       return { dueAt: String(body?.dueAt ?? ""), id: "rem_remote", text: String(body?.text ?? "") };
-    },
+    }),
     writeOutput: (wio, value) => wio.stdout(`${JSON.stringify(value)}\n`)
   };
   let error: string | undefined;
@@ -65,6 +68,51 @@ describe("muse remind add — pre-dispatch <when> validation", () => {
     expect(r.error).toBeDefined();
     expect(r.error).toContain("relative phrase");
     expect(r.apiCalls).toHaveLength(0);
+  });
+});
+
+describe("muse remind — API-unreachable falls back to the local store (local-first reliability)", () => {
+  const prevEnv = process.env.MUSE_REMINDERS_FILE;
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.MUSE_REMINDERS_FILE;
+    else process.env.MUSE_REMINDERS_FILE = prevEnv;
+  });
+
+  const unreachable: RemindCommandHelpers["apiRequest"] = async () => {
+    throw new Error("muse: Muse API not reachable at http://127.0.0.1:3030");
+  };
+
+  it("add: an unreachable API writes the reminder LOCALLY instead of hard-erroring", async () => {
+    const f = join(mkdtempSync(join(tmpdir(), "muse-rem-fb-")), "reminders.json");
+    process.env.MUSE_REMINDERS_FILE = f;
+    const r = await runRemind(["tomorrow at 9am", "call the dentist"], unreachable);
+    expect(r.error).toBeUndefined();
+    expect(r.stdout).toContain("Added");
+    const stored = await readReminders(f);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ status: "pending", text: "call the dentist" });
+  });
+
+  it("add: a REAL api error (NOT unreachable) still throws — the fallback never masks a 500", async () => {
+    const f = join(mkdtempSync(join(tmpdir(), "muse-rem-fb-err-")), "reminders.json");
+    process.env.MUSE_REMINDERS_FILE = f;
+    const serverError: RemindCommandHelpers["apiRequest"] = async () => {
+      throw new Error("HTTP 500 internal server error");
+    };
+    const r = await runRemind(["tomorrow at 9am", "call the dentist"], serverError);
+    expect(r.error).toBeDefined();
+    expect(r.error).toContain("500");
+    expect(await readReminders(f)).toHaveLength(0); // not silently written locally on a real error
+  });
+
+  it("clear: an unreachable API removes the reminder from the LOCAL store", async () => {
+    const f = join(mkdtempSync(join(tmpdir(), "muse-rem-fb-clr-")), "reminders.json");
+    process.env.MUSE_REMINDERS_FILE = f;
+    await runRemind(["--local", "2026-12-25T09:00:00Z", "one-off"]);
+    const id = (await readReminders(f))[0]!.id;
+    const r = await runRemind(["clear", id], unreachable);
+    expect(r.error).toBeUndefined();
+    expect(await readReminders(f)).toHaveLength(0);
   });
 });
 

@@ -297,7 +297,22 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   few days" are left OUT, respecting the existing design note. Proof: 4 new tz-robust
   unit tests (weekend → Saturday a week apart; month-end → June 30; "8am"; KO == EN)
   + a LIVE `muse ask "remind me this weekend to call home" --with-tools` → "I've set
-  a reminder for this Saturday (June 6, 2026)". mcp 1314 + `pnpm lint` 0/0. (this commit)
+  a reminder for this Saturday (June 6, 2026)". mcp 1314 + `pnpm lint` 0/0. (a1fdb36a)
+
+- [x] **P40-3 `muse remind` works server-less — every subcommand falls back to the
+  local store (daily-reliability).** Probing the actuator exposed a real local-first
+  defect: `muse remind add "tomorrow 9am" "call dentist"` HARD-ERRORED with "API not
+  reachable" on the default (no-server) setup, while `muse remind list` quietly fell
+  back to the local store — only `list` had the grace. So the most common write
+  ("add a reminder") failed on exactly the machine Muse is built for. Extracted a DRY
+  `withLocalFallback(io, useLocal, local, api)` and applied it to add / snooze / fire
+  / clear / history (mirroring `list`): when the API is unreachable, transparently use
+  `~/.muse/reminders.json` with a one-line note — `--local` still skips the API, and a
+  REAL 4xx/5xx still throws (the fallback only catches connection-refused, never masks
+  a server error). Proof: 3 new tests (unreachable add → persisted locally; a 500 STILL
+  throws + nothing written; unreachable clear → removed locally) + a LIVE server-less
+  run of add → list → snooze → fire → history → clear, all succeeding with the
+  fallback note. cli 164 files / 1724 tests + `pnpm lint` 0/0. (this commit)
 
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,

@@ -79,6 +79,34 @@ function localRemindersFile(): string {
   return resolveRemindersFile(process.env as Record<string, string | undefined>);
 }
 
+/**
+ * Run the API call, but on a local-first box where the Muse API server isn't
+ * running, transparently fall back to the local store — exactly as `list`
+ * already does for reads, now for EVERY reminder subcommand. `--local` skips the
+ * API entirely; only a genuine "unreachable" (connection refused) degrades — a
+ * real 4xx/5xx still throws. Without this, `muse remind add` hard-errored on the
+ * default (server-less) local-first setup while `muse remind list` worked.
+ */
+async function withLocalFallback<T>(
+  io: ProgramIO,
+  useLocal: boolean,
+  local: () => Promise<T>,
+  api: () => Promise<T>
+): Promise<T> {
+  if (useLocal) {
+    return local();
+  }
+  try {
+    return await api();
+  } catch (cause) {
+    if (!isApiUnreachable(cause)) {
+      throw cause;
+    }
+    io.stderr("muse: API not reachable — using the local reminders store.\n");
+    return local();
+  }
+}
+
 export function registerRemindCommands(program: Command, io: ProgramIO, helpers: RemindCommandHelpers): void {
   const remind = program.command("remind").description("Personal reminders (passive — surfaced in `muse today`)");
 
@@ -132,8 +160,7 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         throw resolvedDueAt;
       }
 
-      let payload: Record<string, unknown>;
-      if (options.local) {
+      const addLocal = async (): Promise<Record<string, unknown>> => {
         const created: PersistedReminder = {
           createdAt: new Date().toISOString(),
           dueAt: resolvedDueAt,
@@ -146,8 +173,9 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         const file = localRemindersFile();
         const existing = await readReminders(file);
         await writeReminders(file, [...existing, created]);
-        payload = serializeReminder(created);
-      } else {
+        return serializeReminder(created);
+      };
+      const addApi = async (): Promise<Record<string, unknown>> => {
         const body: Record<string, unknown> = { dueAt: when, text };
         if (recurrence) {
           body.recurrence = recurrence;
@@ -155,8 +183,9 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         if (via) {
           body.via = via;
         }
-        payload = (await helpers.apiRequest(io, command, "/api/reminders", body, "POST")) as Record<string, unknown>;
-      }
+        return (await helpers.apiRequest(io, command, "/api/reminders", body, "POST")) as Record<string, unknown>;
+      };
+      const payload = await withLocalFallback(io, Boolean(options.local), addLocal, addApi);
       if (options.json) {
         helpers.writeOutput(io, payload);
         return;
@@ -232,8 +261,7 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       options: { readonly in?: string } & SharedOptions,
       command
     ) => {
-      let payload: Record<string, unknown>;
-      if (options.local) {
+      const snoozeLocal = async (): Promise<Record<string, unknown>> => {
         const file = localRemindersFile();
         const reminders = await readReminders(file);
         const resolved = resolveLocalReminderId(id, reminders);
@@ -252,20 +280,22 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         const next = [...reminders];
         next[index] = snoozed;
         await writeReminders(file, next);
-        payload = serializeReminder(snoozed);
-      } else {
+        return serializeReminder(snoozed);
+      };
+      const snoozeApi = async (): Promise<Record<string, unknown>> => {
         const body: Record<string, unknown> = {};
         if (options.in && options.in.trim().length > 0) {
           body.dueAt = options.in.trim();
         }
-        payload = (await helpers.apiRequest(
+        return (await helpers.apiRequest(
           io,
           command,
           `/api/reminders/${encodeURIComponent(id)}/snooze`,
           body,
           "POST"
         )) as Record<string, unknown>;
-      }
+      };
+      const payload = await withLocalFallback(io, Boolean(options.local), snoozeLocal, snoozeApi);
       if (options.json) {
         helpers.writeOutput(io, payload);
         return;
@@ -289,7 +319,6 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       options: { readonly at?: string } & SharedOptions,
       command
     ) => {
-      let payload: Record<string, unknown>;
       let firedAt: string;
       if (options.at && options.at.trim().length > 0) {
         const parsed = new Date(options.at);
@@ -300,7 +329,7 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       } else {
         firedAt = new Date().toISOString();
       }
-      if (options.local) {
+      const fireLocal = async (): Promise<Record<string, unknown>> => {
         const file = localRemindersFile();
         const reminders = await readReminders(file);
         const resolved = resolveLocalReminderId(id, reminders);
@@ -310,20 +339,22 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         }
         await writeReminders(file, next);
         const fired = next.find((reminder) => reminder.id === resolved) as PersistedReminder;
-        payload = serializeReminder(fired);
-      } else {
+        return serializeReminder(fired);
+      };
+      const fireApi = async (): Promise<Record<string, unknown>> => {
         const body: Record<string, unknown> = {};
         if (options.at && options.at.trim().length > 0) {
           body.firedAt = options.at.trim();
         }
-        payload = (await helpers.apiRequest(
+        return (await helpers.apiRequest(
           io,
           command,
           `/api/reminders/${encodeURIComponent(id)}/fire`,
           body,
           "POST"
         )) as Record<string, unknown>;
-      }
+      };
+      const payload = await withLocalFallback(io, Boolean(options.local), fireLocal, fireApi);
       if (options.json) {
         helpers.writeOutput(io, payload);
         return;
@@ -483,14 +514,15 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
     .option("--json", "Print the raw response instead of the formatted list")
     .action(async (options: { readonly limit: string; readonly local?: boolean; readonly json?: boolean }, command) => {
       const limit = parseLimitOrDefault(options.limit);
-      let payload: { entries: readonly ReminderHistoryEntry[]; total: number };
-      if (options.local) {
+      type HistoryPayload = { entries: readonly ReminderHistoryEntry[]; total: number };
+      const historyLocal = async (): Promise<HistoryPayload> => {
         const file = resolveReminderHistoryFile(process.env as Record<string, string | undefined>);
         const entries = await readReminderHistory(file, limit);
-        payload = { entries, total: entries.length };
-      } else {
-        payload = (await helpers.apiRequest(io, command, `/api/reminders/history?limit=${limit.toString()}`)) as typeof payload;
-      }
+        return { entries, total: entries.length };
+      };
+      const historyApi = async (): Promise<HistoryPayload> =>
+        (await helpers.apiRequest(io, command, `/api/reminders/history?limit=${limit.toString()}`)) as HistoryPayload;
+      const payload = await withLocalFallback(io, Boolean(options.local), historyLocal, historyApi);
       if (options.json) {
         helpers.writeOutput(io, payload);
         return;
@@ -504,17 +536,20 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
     .argument("<id>", "Reminder id")
     .option("--local", "Delete from the local reminders file instead of the API")
     .action(async (id: string, options: { readonly local?: boolean }, command) => {
-      if (options.local) {
+      const clearLocal = async (): Promise<string> => {
         const file = localRemindersFile();
         const reminders = await readReminders(file);
         const resolved = resolveLocalReminderId(id, reminders);
         const next = reminders.filter((reminder) => reminder.id !== resolved);
         await writeReminders(file, next);
-        io.stdout(`Cleared reminder ${resolved}\n`);
-        return;
-      }
-      await helpers.apiRequest(io, command, `/api/reminders/${encodeURIComponent(id)}`, undefined, "DELETE");
-      io.stdout(`Cleared reminder ${id}\n`);
+        return resolved;
+      };
+      const clearApi = async (): Promise<string> => {
+        await helpers.apiRequest(io, command, `/api/reminders/${encodeURIComponent(id)}`, undefined, "DELETE");
+        return id;
+      };
+      const cleared = await withLocalFallback(io, Boolean(options.local), clearLocal, clearApi);
+      io.stdout(`Cleared reminder ${cleared}\n`);
     });
 }
 
