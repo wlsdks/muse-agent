@@ -326,7 +326,20 @@ qwen3:8b and added to `eval:self-improving`.
   FOLLOW-UP (deferred, security-reviewed): the guard scanning the user's OWN
   trusted notes/system-prompt for injection still false-positives on a note that
   legitimately mentions credentials — needs a trusted/untrusted-content split.
-  (this commit)
+  (90543ed1)
+
+- [x] **P38-8 Make the constructive `--repair` discoverable at the moment it
+  helps.** P38-3 shipped `muse ask --repair` (rewrite an ungrounded answer from
+  the evidence), but it is opt-in and a user never learns it exists. Now, when an
+  answer trips the grounding check AND there IS retrieved evidence to rewrite
+  from (so the repair could actually succeed, not just refuse), `muse ask` prints
+  one tip — "(Re-run with --repair and I'll rewrite this using only your notes —
+  shown only if it then checks out.)". Suppressed when `--repair` was already
+  used, under `--json`, or with no evidence. Proof: 5 unit tests
+  (`shouldSuggestRepair`: fires on ungrounded-with-evidence; silent on a clean
+  answer / repair-already-set / --json / no-evidence) + a LIVE `muse ask "what
+  cipher does the office VPN use?"` over a note that doesn't say (the answer trips
+  the verdict and the --repair tip appears). cli 1704 + `pnpm lint` 0/0. (this commit)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.
@@ -388,7 +401,7 @@ tool-calling.md).** Edge hygiene meets felt responsiveness.
   silently gets the on-disk briefing. Proof: 4 unit tests (`apiWasExplicitlyConfigured`:
   false for unset/blank/whitespace, true for flag or env) + a LIVE `muse today`
   (0 warnings by default; 1 warning when `MUSE_API_URL` is set and unreachable).
-  cli 1699 + `pnpm lint` 0/0. (this commit)
+  cli 1699 + `pnpm lint` 0/0. (6614a642)
 
 **P36 — Background self-learning, brake-and-proof-first (loop-v2 PART A2 /
 B1).** The headline's "grows-with-you" core: Muse learns from corrections

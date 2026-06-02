@@ -335,6 +335,22 @@ export function relativizeNoteSource(file: string, notesDir: string): string {
   return isAbsolute(file) ? relative(notesDir, file) : file;
 }
 
+/**
+ * Whether to nudge the user toward `--repair` after an ungrounded verdict. Only
+ * when: the verdict actually fired, `--repair` wasn't already requested, we're
+ * not in `--json`, and there IS retrieved evidence to rewrite from (with no
+ * evidence the repair would just refuse, so the tip would mislead). Surfaces the
+ * constructive-repair capability exactly when it can help. Pure + exported.
+ */
+export function shouldSuggestRepair(args: {
+  readonly verdictFired: boolean;
+  readonly repairRequested: boolean;
+  readonly json: boolean;
+  readonly evidenceCount: number;
+}): boolean {
+  return args.verdictFired && !args.repairRequested && !args.json && args.evidenceCount > 0;
+}
+
 // The citation instructions injected into the --with-tools agent system prompt.
 // NOTE: the injection-input-guard scans the WHOLE composed prompt (system role
 // included), so these lines must carry NO credential word (token / secret /
@@ -1854,6 +1870,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
               verify: (candidate, candidateMatches, q) => verifyGroundingWithReverify(candidate, candidateMatches, q, reverify)
             });
             if (repair.repaired) io.stderr(`\n🔧 Corrected from your notes:\n${repair.repaired}\n`);
+          } else if (shouldSuggestRepair({ evidenceCount: scoredMatches.length, json: Boolean(options.json), repairRequested: Boolean(options.repair), verdictFired: true })) {
+            io.stderr("(Re-run with --repair and I'll rewrite this using only your notes — shown only if it then checks out.)\n");
           }
         }
       }
