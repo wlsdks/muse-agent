@@ -19,6 +19,8 @@
  *   "next monday at 6pm" / "next monday 6pm"     → next Monday at 18:00
  *   "next week"                                  → reference + 7 days at 09:00
  *   "next month" / "next year"                   → calendar +1mo / +12mo
+ *   "this weekend" / "next weekend"              → this/next ISO-week Saturday 09:00
+ *   "end of the month" / "end of month"          → last calendar day at 09:00
  *
  * The `at` keyword is optional: "<day> <time>" works the same as
  * "<day> at <time>" — a personal assistant should understand
@@ -333,6 +335,38 @@ export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date
     return finiteDate(periodTarget);
   }
 
+  // "this weekend" / "next weekend" → the (this/next ISO week) Saturday at 09:00.
+  // "remind me this weekend to call home" is everyday phrasing the weekday
+  // pattern can't reach ("weekend" isn't a weekday).
+  const weekendMatch = /^(this|next)\s+weekend(?:\s+(?:at\s+)?(.+))?$/u.exec(trimmed);
+  if (weekendMatch) {
+    const weekendTime = parseTimeOfDay(weekendMatch[2]);
+    if (weekendTime === "invalid") {
+      return undefined;
+    }
+    const base = startOfDay(reference);
+    let delta = (6 - base.getDay() + 7) % 7; // upcoming Saturday (today if Sat)
+    if (weekendMatch[1] === "next") {
+      delta += 7;
+    }
+    const weekendTarget = new Date(base.getTime() + delta * 86_400_000);
+    weekendTarget.setHours(weekendTime.hour, weekendTime.minute, 0, 0);
+    return finiteDate(weekendTarget);
+  }
+
+  // "end of the month" / "end of month" / "end of this month" → last calendar
+  // day at 09:00 (Date(y, m+1, 0) = last day of month m).
+  const monthEndMatch = /^(?:the\s+)?end\s+of\s+(?:the\s+|this\s+)?month(?:\s+(?:at\s+)?(.+))?$/u.exec(trimmed);
+  if (monthEndMatch) {
+    const monthEndTime = parseTimeOfDay(monthEndMatch[1]);
+    if (monthEndTime === "invalid") {
+      return undefined;
+    }
+    const lastDay = new Date(reference.getFullYear(), reference.getMonth() + 1, 0);
+    lastDay.setHours(monthEndTime.hour, monthEndTime.minute, 0, 0);
+    return finiteDate(lastDay);
+  }
+
   // "this friday" is as common as "next friday"; treat both as the next
   // occurrence of that weekday (you can't schedule a past one). Without "this"
   // here it was mis-parsed as a bare weekday "this" → unresolved, so the model's
@@ -480,6 +514,33 @@ function resolveKoreanRelativePhrase(phrase: string, reference: Date): Date | un
         : startOfDay(addCalendarMonths(reference, 1));
     kpTarget.setHours(kpTime.hour, kpTime.minute, 0, 0);
     return kpTarget;
+  }
+  // "이번 주말" / "다음 주말" → Saturday (this/next ISO week) 09:00.
+  const koWeekend = /^(이번\s*주말|다음\s*주말)(?:\s+(.+))?$/u.exec(phrase.trim());
+  if (koWeekend) {
+    const koWeekendTime = parseKoreanTimeOfDay(koWeekend[2]);
+    if (koWeekendTime === "invalid") {
+      return undefined;
+    }
+    const base = startOfDay(reference);
+    let delta = (6 - base.getDay() + 7) % 7;
+    if ((koWeekend[1] ?? "").replace(/\s+/gu, "") === "다음주말") {
+      delta += 7;
+    }
+    const target = new Date(base.getTime() + delta * 86_400_000);
+    target.setHours(koWeekendTime.hour, koWeekendTime.minute, 0, 0);
+    return target;
+  }
+  // "월말" / "이달 말" / "이번 달 말" → last calendar day 09:00.
+  const koMonthEnd = /^(월말|이달\s*말|이번\s*달\s*말)(?:\s+(.+))?$/u.exec(phrase.trim());
+  if (koMonthEnd) {
+    const koMonthEndTime = parseKoreanTimeOfDay(koMonthEnd[2]);
+    if (koMonthEndTime === "invalid") {
+      return undefined;
+    }
+    const lastDay = new Date(reference.getFullYear(), reference.getMonth() + 1, 0);
+    lastDay.setHours(koMonthEndTime.hour, koMonthEndTime.minute, 0, 0);
+    return lastDay;
   }
   const match = /^(오늘|내일|모레|글피)(?:\s+(.+))?$/u.exec(phrase);
   if (!match) {

@@ -247,6 +247,17 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   a reminder … for July 3, 2026" (was an error). mcp 1310 + `pnpm lint` 0/0.
   (5def3510)
 
+- [x] **P40-2 "remind me THIS WEEKEND / end of the month" now works.** Probing the
+  resolver after P40-1 found more everyday phrases UNRESOLVED: "this weekend",
+  "next weekend", "end of the month" / "end of month" / "end of this month".
+  Added them (weekend → this/next ISO-week Saturday at 09:00; month-end → the last
+  calendar day) with time-of-day ("this weekend at 8am") and KO parity (이번 주말 /
+  다음 주말 / 월말 / 이달 말). The deliberately-vague "in a couple of days" / "in a
+  few days" are left OUT, respecting the existing design note. Proof: 4 new tz-robust
+  unit tests (weekend → Saturday a week apart; month-end → June 30; "8am"; KO == EN)
+  + a LIVE `muse ask "remind me this weekend to call home" --with-tools` → "I've set
+  a reminder for this Saturday (June 6, 2026)". mcp 1314 + `pnpm lint` 0/0. (this commit)
+
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,
 closed its deepest hole, and became constructive. Each verified live on

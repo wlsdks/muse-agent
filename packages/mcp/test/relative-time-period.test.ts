@@ -45,4 +45,34 @@ describe("resolveRelativeTimePhrase — period phrases (next week/month/year + K
     expect(resolveRelativeTimePhrase("next mango", now)).toBeUndefined();
     expect(resolveRelativeTimePhrase("next thing", now)).toBeUndefined();
   });
+
+  it("'this weekend' / 'next weekend' land on a Saturday, a week apart", () => {
+    const thisW = resolveRelativeTimePhrase("this weekend", now)!;
+    const nextW = resolveRelativeTimePhrase("next weekend", now)!;
+    expect(thisW.getDay()).toBe(6);
+    expect(nextW.getDay()).toBe(6);
+    expect(Math.round((nextW.getTime() - thisW.getTime()) / 86_400_000)).toBe(7);
+    // reference is Wednesday → this Saturday is the 6th
+    expect(thisW.getDate()).toBe(6);
+  });
+
+  it("'end of the month' / 'end of month' land on the last day of June (30th)", () => {
+    for (const phrase of ["end of the month", "end of month", "end of this month"]) {
+      const r = resolveRelativeTimePhrase(phrase, now)!;
+      expect(r, phrase).toBeDefined();
+      expect(r.getDate(), phrase).toBe(30);
+      expect(r.getMonth(), phrase).toBe(5); // June (0-indexed)
+    }
+  });
+
+  it("'this weekend at 8am' parses the time of day", () => {
+    expect(resolveRelativeTimePhrase("this weekend at 8am", now)!.getHours()).toBe(8);
+  });
+
+  it("KO 이번 주말 / 다음 주말 / 월말 / 이달 말 match their English counterparts", () => {
+    expect(resolveRelativeTimePhrase("이번 주말", now)?.toISOString()).toBe(resolveRelativeTimePhrase("this weekend", now)?.toISOString());
+    expect(resolveRelativeTimePhrase("다음 주말", now)?.toISOString()).toBe(resolveRelativeTimePhrase("next weekend", now)?.toISOString());
+    expect(resolveRelativeTimePhrase("월말", now)?.toISOString()).toBe(resolveRelativeTimePhrase("end of month", now)?.toISOString());
+    expect(resolveRelativeTimePhrase("이달 말", now)?.toISOString()).toBe(resolveRelativeTimePhrase("end of month", now)?.toISOString());
+  });
 });
