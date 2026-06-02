@@ -34,6 +34,7 @@ Append new rows below; the table starts fresh from this reset.
 | --- | ---- | -------- | ------ |
 
 ## Rejected ledger (so fresh agents don't re-mine)
+- memory-grounded verdict fires on an adjective/noun stemming gap ("allergic" query vs `allergy_penicillin` fact) — iter (P38-15) — deferred: P38-15 made remembered facts a CITED source (the answer is now correctly attributed to [memory:], not misattributed to a note), and it verifies cleanly for the common case where the query terms match the fact key (favorite color, apartment number). The residual: a query ADJECTIVE that doesn't token-match its NOUN-keyed fact (allergic vs allergy) leaves answerability=0 → weak → the small judge can't connect the degraded `allergy_penicillin: yes` text, so the verdict warns. NOT a fabrication (the fact is real + cited); the proper fix is storing the natural-language statement in `muse remember` (a storage change) or a stemmer in the grounding tokenizer (a core change with wide blast radius). Don't re-mine as a citation bug.
 - LIVE-LLM regression sweep — iter (P37-13) — PASS: after the session's 9-feat-iter accumulation (grounding-verdict P38-10..13, git perception P37-11, discoverability P37-12, actuation server-less P40-3/4) the core grounding batteries all hold — `verify-claim-grounding` 4/4 (wrong number/name still rejected), `verify-cited-recall` 6/6 (recall + out-of-corpus refusal), `verify-proactive-recall-gate` 4/4 (in-corpus surfaces, off-topic silent). No regression; nothing to restore.
 
 Append one line when a discovery path is evaluated and deferred:

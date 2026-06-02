@@ -263,6 +263,7 @@ export function formatNonNoteReceipts(
     readonly contacts?: readonly string[];
     readonly commands?: readonly string[];
     readonly commits?: readonly string[];
+    readonly memories?: readonly string[];
     readonly actions?: readonly string[];
   }
 ): string | undefined {
@@ -288,11 +289,70 @@ export function formatNonNoteReceipts(
   grab("👤 from your contacts:", /\[contact:\s*([^\]]+?)\s*\]/giu, sources.contacts);
   grab("⌨️ from your shell history:", /\[command:\s*([^\]]+?)\s*\]/giu, sources.commands);
   grab("🔧 from your git commits:", /\[commit:\s*([^\]]+?)\s*\]/giu, sources.commits);
+  grab("🧠 from what you told me:", /\[memory:\s*([^\]]+?)\s*\]/giu, sources.memories);
   grab("🤖 from your action log:", /\[action:\s*([^\]]+?)\s*\]/giu, sources.actions);
   if (lines.length === 0) {
     return undefined;
   }
   return `\n📎 Also grounded on:\n${lines.join("\n")}\n`;
+}
+
+export interface MemoryFact {
+  readonly key: string;
+  readonly value: string;
+}
+
+/**
+ * EVERY askable remembered fact (facts + plain preferences; the internal `veto:`
+ * / `goal:` slots are persona machinery). buildMusePersona lists ALL of these to
+ * the model, so it can cite ANY — they are therefore ALL the citation gate's
+ * allowed memory sources AND the verdict's evidence, regardless of which the
+ * current query lexically matched (a query "allergic" needn't token-match a fact
+ * keyed `allergy_penicillin` for the model — which has it from the persona — to
+ * cite it honestly).
+ */
+export function allUserMemoryFacts(
+  memory: { readonly facts: Readonly<Record<string, string>>; readonly preferences: Readonly<Record<string, string>> }
+): readonly MemoryFact[] {
+  return [
+    ...Object.entries(memory.facts ?? {}),
+    ...Object.entries(memory.preferences ?? {}).filter(([key]) => !key.startsWith("veto:") && !key.startsWith("goal:"))
+  ].map(([key, value]) => ({ key, value }));
+}
+
+/**
+ * Render a remembered fact as a NATURAL phrase for the model + judge: facts are
+ * auto-extracted under machine keys with boolean-ish values (`allergy_penicillin:
+ * "yes"`), which the small re-verify judge can't connect to "allergic to
+ * penicillin". Underscore-join the key into words and drop a bare yes/true value
+ * so the evidence reads as the topic itself ("allergy penicillin"); a real value
+ * is kept ("favorite color: blue").
+ */
+export function renderMemoryFact(fact: MemoryFact): string {
+  const topic = fact.key.replace(/[_-]+/gu, " ").trim();
+  const value = fact.value.trim();
+  return value === "" || /^(?:yes|true)$/iu.test(value) ? topic : `${topic}: ${value}`;
+}
+
+/**
+ * The remembered facts most relevant to the question — token overlap on
+ * `key value`. Used to EMPHASISE the on-topic facts in their own grounding block
+ * (with the `[memory: <topic>]` hint); the gate/verdict still allow the full set.
+ */
+export function selectMemoryFacts(
+  memory: { readonly facts: Readonly<Record<string, string>>; readonly preferences: Readonly<Record<string, string>> },
+  queryTokens: ReadonlySet<string>,
+  max = 5
+): readonly MemoryFact[] {
+  if (queryTokens.size === 0) {
+    return [];
+  }
+  return allUserMemoryFacts(memory)
+    .map((fact) => ({ fact, score: lexicalOverlap(queryTokens as Set<string>, `${fact.key} ${fact.value}`) }))
+    .filter((scored) => scored.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, max)
+    .map((scored) => scored.fact);
 }
 
 // Precision-first refusal markers (EN + KO). A refusal grounds NO claim, so
@@ -417,7 +477,7 @@ export function suggestOptInSource(
 // bracket; deterministic, only touches the echoed label, never the citation
 // itself. (The chat path streams live, so the label can still flash there — the
 // known streaming limitation; buffered / --with-tools / demo paths are clean.)
-const ECHOED_CITE_AS_RE = /\bcite\s+as:?\s*(?=\[(?:from|task|event|reminder|session|feed|contact|command|commit|action)\b)/giu;
+const ECHOED_CITE_AS_RE = /\bcite\s+as:?\s*(?=\[(?:from|task|event|reminder|session|feed|contact|command|commit|memory|action)\b)/giu;
 
 export function stripEchoedCiteAs(answer: string): string {
   return answer.replace(ECHOED_CITE_AS_RE, "");
@@ -425,7 +485,7 @@ export function stripEchoedCiteAs(answer: string): string {
 
 export const CITATION_INSTRUCTION_LINES: readonly string[] = [
   "When a fact comes from a note, END that sentence with that note's `[from …]` tag, copied VERBATIM — the bracket exactly as printed under the passage, the name unchanged.",
-  "For other context, cite by the name shown in its marker: a task as [task: its title], an event as [event: its title], a reminder as [reminder: its text], a past session as [session: short summary], a feed headline as [feed: the feed name], a contact as [contact: their name], a shell command as [command: the command], a git commit as [commit: its subject line], an action you took as [action: what you did].",
+  "For other context, cite by the name shown in its marker: a task as [task: its title], an event as [event: its title], a reminder as [reminder: its text], a past session as [session: short summary], a feed headline as [feed: the feed name], a contact as [contact: their name], a shell command as [command: the command], a git commit as [commit: its subject line], a fact you remember about the user as [memory: its topic], an action you took as [action: what you did].",
   "CRITICAL: cite ONLY a source shown in the context below — copy the `[from …]` tag printed under a passage, or a name from a marker. NEVER invent or guess a filename, feed, task, or event. If the answer is not in any passage below, cite nothing and say you are not sure."
 ];
 
@@ -1620,6 +1680,21 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           })
           .join("\n\n");
 
+      // User-memory grounding (B3): facts the user told Muse to remember
+      // ("I'm allergic to penicillin") are injected into the PERSONA so the model
+      // knows them — but without a citable source it misattributes the fact to a
+      // random note (`[from n.md]`) and the verdict false-flags a TRUE answer.
+      // Surface the query-relevant remembered facts as a first-class cited source
+      // with the `[memory: <topic>]` hint, so a fact the user explicitly told Muse
+      // is cited to MUSE'S MEMORY, not a note that never mentioned it.
+      const allMemoryFacts = userMemory ? allUserMemoryFacts(userMemory) : [];
+      const matchedMemories = userMemory ? selectMemoryFacts(userMemory, lexicalTokens(query)) : [];
+      const memoryBlock = matchedMemories.length === 0
+        ? "(no matching remembered facts)"
+        : matchedMemories
+          .map((f, i) => `<<memory ${(i + 1).toString()} — ${f.key}>>\n${renderMemoryFact(f)}\n[memory: ${f.key}]\n<<end>>`)
+          .join("\n\n");
+
       // OPT-IN shell-history grounding (B3): "what was that command?" — read the
       // user's history ONLY when --shell is passed, match by token overlap, and
       // SECRET-REDACT every command before it reaches the model (history holds
@@ -1746,6 +1821,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           { body: calendarBlock, footer: "=== END CALENDAR ===", header: "=== UPCOMING CALENDAR EVENTS (sorted chronologically) ===", present: upcomingEvents.length > 0 },
           { body: reminderBlock, footer: "=== END REMINDERS ===", header: "=== PENDING REMINDERS (sorted by due date) ===", present: pendingReminders.length > 0 },
           { body: contactBlock, footer: "=== END CONTACTS ===", header: "=== MATCHING CONTACTS (from your address book) ===", present: matchedContacts.length > 0 },
+          { body: memoryBlock, footer: "=== END REMEMBERED FACTS ===", header: "=== FACTS YOU TOLD MUSE TO REMEMBER (cite as [memory: <topic>]) ===", present: matchedMemories.length > 0 },
           { body: shellBlock, footer: "=== END SHELL COMMANDS ===", header: "=== MATCHING SHELL COMMANDS (from your shell history) ===", present: matchedCommands.length > 0 },
           { body: gitBlock, footer: "=== END GIT COMMITS ===", header: "=== YOUR RECENT GIT COMMITS (from this repo, newest first) ===", present: matchedCommits.length > 0 },
           { body: actionBlock, footer: "=== END ACTIONS ===", header: "=== ACTIONS MUSE HAS TAKEN ON YOUR BEHALF (your audit log) ===", present: matchedActions.length > 0 },
@@ -1773,6 +1849,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       }
       if (matchedContacts.length > 0) {
         groundedParts.push(`${matchedContacts.length.toString()} contact(s)`);
+      }
+      if (matchedMemories.length > 0) {
+        groundedParts.push(`${matchedMemories.length.toString()} remembered fact(s)`);
       }
       if (matchedCommands.length > 0) {
         groundedParts.push(`${matchedCommands.length.toString()} shell command(s)`);
@@ -1946,6 +2025,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         contacts: matchedContacts.map((c) => c.name),
         events: upcomingEvents.map((e) => e.title),
         feeds: feedHeadlines.map((h) => h.feedName),
+        memories: allMemoryFacts.map(renderMemoryFact),
         notes: allowedNotes,
         reminders: pendingReminders.map((r) => r.text),
         sessions: episodeHits.map((e) => e.summary),
@@ -2002,6 +2082,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           commits: matchedCommits.map((c) => c.subject),
           contacts: matchedContacts.map((c) => c.name),
           events: upcomingEvents.map((e) => e.title),
+          memories: allMemoryFacts.map(renderMemoryFact),
           reminders: pendingReminders.map((r) => r.text),
           tasks: openTasks.map((t) => t.title)
         });
@@ -2079,6 +2160,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           ...matchedActions.map((a) => exactMatch(`action: ${a.what}`, `${a.what} ${a.result}${a.detail ? ` ${a.detail}` : ""}`)),
           ...matchedCommands.map((cmd) => exactMatch(`command: ${cmd}`, cmd)),
           ...matchedCommits.map((c) => exactMatch(`commit: ${c.subject}`, c.subject)),
+          ...allMemoryFacts.map((f) => exactMatch(`memory: ${f.key}`, renderMemoryFact(f))),
           ...feedHeadlines.map((h) => exactMatch(`feed: ${h.feedName}`, `${h.title}${h.summary ? ` ${h.summary}` : ""}`))
         ];
         // The coverage check strips citation markers before scoring, so a LIST
@@ -2090,7 +2172,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // construction and is present in `scoredMatches`. `[from …]` note
         // provenance is left alone (it carries no claim).
         const verdictAnswer = collectedAnswer.replace(
-          /\[(?:task|event|reminder|contact|session|feed|command|commit|action):\s*([^\]]*)\]/giu,
+          /\[(?:task|event|reminder|contact|session|feed|command|commit|memory|action):\s*([^\]]*)\]/giu,
           " $1 "
         );
         const verdictNotice = await groundingVerdictNotice(verdictAnswer, scoredMatches, query, reverify);

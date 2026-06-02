@@ -88,6 +88,16 @@ describe("enforceAnswerCitations — output-side recall grounding gate", () => {
     expect(out.stripped).toEqual(["chore: delete production database"]);
   });
 
+  it("gates remembered facts by content-token overlap — a real one survives, an invented one is stripped", () => {
+    const out = enforceAnswerCitations(
+      "You are allergic to penicillin [memory: allergy_penicillin] and your bank PIN is 0000 [memory: bank_pin].",
+      { memories: ["allergy penicillin", "favorite color: blue"] }
+    );
+    expect(out.text).toContain("[memory: allergy_penicillin]"); // overlaps a real remembered fact → kept
+    expect(out.text).not.toContain("bank_pin"); // never told Muse a PIN → stripped
+    expect(out.stripped).toEqual(["bank_pin"]);
+  });
+
   it("gates shell commands by content-token overlap — a real one survives, an invented one is stripped", () => {
     const out = enforceAnswerCitations(
       "Run docker run -p 8080:80 nginx [command: docker run nginx] then helm install [command: helm install foo].",

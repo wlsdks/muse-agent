@@ -585,6 +585,30 @@ qwen3:8b and added to `eval:self-improving`.
   — The Q3 board deck must cover revenue up 22% and the new pricing tiers" (the match,
   not "# Meeting log General standup…") and `muse recall "Q3 board deck pricing"` →
   previews the same relevant line. cli 164 files / 1731 tests + `pnpm lint` 0/0.
+  (7d44da27)
+
+- [x] **P38-15 Remembered facts are a CITED grounding source — no more
+  misattribution to a random note.** Probing the user-memory surface found a real
+  fabrication bug: `muse remember "I am allergic to penicillin"` then `muse ask
+  "what am I allergic to?"` answered correctly but cited `[from n.md]` (a note that
+  never mentioned penicillin) — because the remembered fact was injected into the
+  PERSONA (so the model knew it) but was NOT a citable grounding source, so the
+  model misattributed it to the only note + the verdict false-flagged a TRUE answer.
+  Made `muse remember` facts a first-class cited source (the P38-10 contacts
+  pattern): new `[memory: <topic>]` citation class in `enforceAnswerCitations`, a
+  "🧠 from what you told me" receipt, the matched facts in the rubric-verdict
+  evidence, and a `renderMemoryFact` that turns a machine-keyed fact
+  (`allergy_penicillin: yes`) into a natural phrase for the model + judge. The gate
+  validates against ALL the user's facts (the persona exposes all), so a cited fact
+  is never wrongly stripped. Proof: 6 new helper tests + a `memories`-gate test
+  (real fact kept, invented "bank_pin" stripped) + LIVE: `muse ask "what is my
+  favorite color / apartment number?"` → cited `[memory: favorite_color]` /
+  `[memory: apartment_number]` with the 🧠 receipt and ZERO warnings; an unremembered
+  fact still refuses; `verify-claim-grounding` 4/4. cli 165 files / 1744 tests +
+  `pnpm lint` 0/0. (Known edge — recorded in the Rejected ledger: a query adjective
+  that doesn't token-match its noun-keyed fact, "allergic" vs `allergy_penicillin`,
+  still trips the answerability→judge path; the fact is now correctly cited to
+  memory regardless. Proper fix is natural-language fact storage in `muse remember`.)
   (this commit)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
