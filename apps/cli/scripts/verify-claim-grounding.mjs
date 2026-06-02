@@ -65,11 +65,21 @@ const query = "what MTU for the office VPN";
 
 const lease = [{ cosine: 0.72, score: 0.72, source: "notes/lease.md", text: "Apartment lease: landlord is Mr. Park, monthly rent due on the 1st." }];
 
+// Cross-lingual: a Korean QUESTION + ANSWER drawn from an ENGLISH note. The
+// lexical rubric scores answerability=0 (KR query, EN evidence) → weak band →
+// the judge decides. The judge must compare the underlying VALUE across the
+// language gap: the correct value (literal "hunter2-blue") is in the evidence so
+// it upholds; a wrong value the evidence never states is rejected in any language.
+const wifi = [{ cosine: 0.72, score: 0.72, source: "notes/net.md", text: "The office WiFi password is hunter2-blue." }];
+const wifiQuery = "내 와이파이 비밀번호가 뭐야";
+
 const cases = [
   { name: "GROUNDED base + WRONG number (9000 not in evidence) → escalated → judge rejects → UNGROUNDED", answer: "The office VPN uses MTU 9000 on wg0 [from notes/vpn.md].", matches, query, expect: "ungrounded" },
   { name: "GROUNDED base + CORRECT number (1380 in evidence) → no escalation → GROUNDED", answer: "The office VPN uses MTU 1380 on wg0 [from notes/vpn.md].", matches, query, expect: "grounded" },
   { name: "GROUNDED base + WRONG named entity (Lee not in evidence) → escalated → judge rejects → UNGROUNDED", answer: "Your landlord is Mr. Lee [from notes/lease.md].", matches: lease, query: "who is my landlord", expect: "ungrounded" },
-  { name: "GROUNDED base + CORRECT named entity (Park in evidence) → no escalation → GROUNDED", answer: "Your landlord is Mr. Park [from notes/lease.md].", matches: lease, query: "who is my landlord", expect: "grounded" }
+  { name: "GROUNDED base + CORRECT named entity (Park in evidence) → no escalation → GROUNDED", answer: "Your landlord is Mr. Park [from notes/lease.md].", matches: lease, query: "who is my landlord", expect: "grounded" },
+  { name: "CROSS-LINGUAL correct (KR answer / EN evidence, value 'hunter2-blue' matches) → judge upholds → GROUNDED", answer: "당신의 와이파이 비밀번호는 hunter2-blue입니다 [from notes/net.md].", matches: wifi, query: wifiQuery, expect: "grounded" },
+  { name: "CROSS-LINGUAL wrong value (KR answer asserts 'dragon99-red', not in evidence) → rejected → UNGROUNDED", answer: "당신의 와이파이 비밀번호는 dragon99-red입니다 [from notes/net.md].", matches: wifi, query: wifiQuery, expect: "ungrounded" }
 ];
 
 let failures = 0;

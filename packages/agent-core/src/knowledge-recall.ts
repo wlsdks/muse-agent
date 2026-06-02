@@ -617,7 +617,7 @@ export interface GroundingReverifyInput {
 export type GroundingReverify = (input: GroundingReverifyInput) => Promise<boolean>;
 
 export const REVERIFY_SYSTEM_PROMPT =
-  "You are a strict grounding judge. Given a user QUESTION, an ANSWER, and the EVIDENCE the answer was drawn from, decide whether the EVIDENCE actually supports the ANSWER's factual claims. Reply with a single word: YES if the evidence supports it, NO if it does not or you are unsure. Do not explain.";
+  "You are a strict grounding judge. Given a user QUESTION, an ANSWER, and the EVIDENCE the answer was drawn from, decide whether the EVIDENCE actually supports the ANSWER's factual claims. The QUESTION, ANSWER, and EVIDENCE may be in DIFFERENT languages — judge whether the underlying FACTS match (a value, number, name, or term that appears in the EVIDENCE supports the same fact in the ANSWER even when the surrounding words are translated), NOT whether the wording matches. A value the EVIDENCE does NOT contain is still unsupported, in any language. Reply with a single word: YES if the evidence supports it, NO if it does not or you are unsure. Do not explain.";
 
 export function buildGroundingReverifyPrompt(input: GroundingReverifyInput): string {
   return [

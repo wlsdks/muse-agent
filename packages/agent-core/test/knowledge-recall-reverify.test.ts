@@ -3,9 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   buildGroundingReverifyPrompt,
   parseGroundingReverifyVerdict,
+  REVERIFY_SYSTEM_PROMPT,
   verifyGroundingWithReverify,
   type KnowledgeMatch
 } from "../src/index.js";
+
+describe("REVERIFY_SYSTEM_PROMPT — judges FACTS across a language gap, not wording", () => {
+  it("instructs the judge that answer/evidence may be in different languages and to compare values", () => {
+    expect(REVERIFY_SYSTEM_PROMPT.toLowerCase()).toContain("different languages");
+    // still strict: a value the evidence lacks is unsupported in any language
+    expect(REVERIFY_SYSTEM_PROMPT.toLowerCase()).toContain("any language");
+  });
+});
 
 const match = (source: string, text: string, cosine: number): KnowledgeMatch => ({
   cosine,

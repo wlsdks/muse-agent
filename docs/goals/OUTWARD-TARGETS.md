@@ -633,7 +633,25 @@ qwen3:8b and added to `eval:self-improving`.
   that doesn't token-match its noun-keyed fact, "allergic" vs `allergy_penicillin`,
   still trips the answerability→judge path; the fact is now correctly cited to
   memory regardless. Proper fix is natural-language fact storage in `muse remember`.)
-  (this commit)
+  (6aa1a69b)
+
+- [x] **P38-16 Cross-lingual recall no longer false-flags a CORRECT answer (Korean
+  query / English notes).** Probing for 진안's real usage: `muse ask "내 와이파이
+  비밀번호가 뭐야?"` against an English note grounded + answered correctly ("…hunter2-blue
+  [from net.md]") but the verdict fired "treat as unverified" — the LEXICAL rubric
+  scores answerability≈0 (Korean query tokens never match English evidence) → the
+  weak band → and the small judge, told to answer NO when "unsure", defaults to NO on
+  the language gap. Fixed by hardening the SHARED `REVERIFY_SYSTEM_PROMPT`: the judge
+  is now told the QUESTION/ANSWER/EVIDENCE may be in DIFFERENT languages and to judge
+  whether the underlying FACTS/VALUES match (a literal value in the evidence supports
+  the same fact in a translated answer), while a value the evidence does NOT contain
+  stays unsupported in ANY language. This does NOT relax or bypass the gate (unlike
+  the reverted P38-15-edge attempt) — the judge still rejects a wrong value. Proof: 2
+  new permanent cases in `verify-claim-grounding` (CROSS-LINGUAL correct KR→EN
+  upholds GROUNDED; CROSS-LINGUAL wrong value 'dragon99-red' → UNGROUNDED) passing
+  6/6 twice, the 4 same-language cases still 4/4 (no regression), + LIVE `muse ask`
+  in Korean 5/5 clean and a Korean must-refuse still refuses. agent-core 1373 +
+  `pnpm lint` 0/0. (this commit)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.
