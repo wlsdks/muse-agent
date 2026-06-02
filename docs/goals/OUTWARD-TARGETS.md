@@ -228,6 +228,29 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   prompt is now tighter for the small model and the spurious-citation surface is
   cut at the source. (this commit)
 
+- [x] **P37-11 Git perception — `muse ask --git "what did I work on?"` (B3, a NEW
+  read-only source).** The one perception source loop-v2 A3 names but Muse lacked.
+  A user can now ground an answer on their RECENT GIT COMMITS in the current repo —
+  "what have I been working on?", "what was that payments commit?" — cited like any
+  other source. Read FILE-side from `.git/logs/HEAD` (the HEAD reflog), NOT a `git`
+  spawn, so it stays the low-risk perception class (same as the shell-history
+  source), never the runner's execution path. New `parseGitReflog` (keeps
+  commit/commit(initial)/commit(amend), drops checkout/merge/rebase/reset noise) +
+  `selectGitCommits` (query-overlap ranked, recency-fills so the generic "what did I
+  work on?" — zero token overlap — still surfaces the most recent commits). OPT-IN
+  via `--git` (mirrors `--shell`; default off, `$MUSE_GIT_REFLOG_FILE` overrides),
+  cited `[commit: <subject>]` through the SAME deterministic gate (new `commits`
+  citation class in `enforceAnswerCitations`), with a "🔧 from your git commits"
+  receipt and inclusion in the rubric-verdict evidence. Proof: 7 unit tests
+  (parse keeps/drops the right reflog kinds, never throws; select ranks overlap
+  first, recency-fills, dedups) + a new `commits`-gate test (real subject kept,
+  invented "delete production database" stripped) + LIVE `muse ask --git`: "what
+  have I been working on?" → cites 3 real commits with the 🔧 receipt and ZERO false
+  "unverified"; specific "what was the payments commit?" → cites exactly the Stripe
+  commit; WITHOUT `--git` no git is injected (opt-in); negative "bank account
+  number?" --git → refuses, no fabrication from commits; `verify-claim-grounding`
+  4/4 (gate intact). cli 164 files / 1717 tests + `pnpm lint` 0/0. (this commit)
+
 **P40 — Actuation usability: Muse understands natural-language dates.** The
 "do" side is only as good as the words a user actually types.
 

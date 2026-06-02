@@ -357,6 +357,8 @@ export interface AllowedCitations {
   readonly contacts?: readonly string[];
   /** `[command: <cmd>]` — shell-history commands shown this turn; content-token overlap. */
   readonly commands?: readonly string[];
+  /** `[commit: <subject>]` — git commit subjects shown this turn; content-token overlap. */
+  readonly commits?: readonly string[];
   /** `[action: <what>]` — actions Muse logged taking on the user's behalf; content-token overlap. */
   readonly actions?: readonly string[];
 }
@@ -477,6 +479,7 @@ export function enforceAnswerCitations(answer: string, allowed: AllowedCitations
   strip(/\[session:\s*([^\]]+?)\s*\]/giu, (value) => resolvesByOverlap(value, allowed.sessions ?? []));
   strip(/\[contact:\s*([^\]]+?)\s*\]/giu, (value) => resolvesByOverlap(value, allowed.contacts ?? []));
   strip(/\[command:\s*([^\]]+?)\s*\]/giu, (value) => resolvesByOverlap(value, allowed.commands ?? []));
+  strip(/\[commit:\s*([^\]]+?)\s*\]/giu, (value) => resolvesByOverlap(value, allowed.commits ?? []));
   strip(/\[action:\s*([^\]]+?)\s*\]/giu, (value) => resolvesByOverlap(value, allowed.actions ?? []));
   text = text
     .replace(/[ \t]{2,}/gu, " ")

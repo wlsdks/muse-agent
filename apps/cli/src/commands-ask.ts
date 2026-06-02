@@ -36,6 +36,7 @@ import type { CalendarEvent } from "@muse/calendar";
 import { acquireOllamaLease, listReflections, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { redactSecretsInText } from "@muse/shared";
 
+import { parseGitReflog, selectGitCommits, type GitCommit } from "./git-reflog.js";
 import { parseShellHistory, selectShellCommands } from "./shell-history.js";
 
 import { resolveReflectionsFile } from "./commands-reflections.js";
@@ -258,6 +259,7 @@ export function formatNonNoteReceipts(
     readonly reminders?: readonly string[];
     readonly contacts?: readonly string[];
     readonly commands?: readonly string[];
+    readonly commits?: readonly string[];
     readonly actions?: readonly string[];
   }
 ): string | undefined {
@@ -282,6 +284,7 @@ export function formatNonNoteReceipts(
   grab("⏰ from your reminders:", /\[reminder:\s*([^\]]+?)\s*\]/giu, sources.reminders);
   grab("👤 from your contacts:", /\[contact:\s*([^\]]+?)\s*\]/giu, sources.contacts);
   grab("⌨️ from your shell history:", /\[command:\s*([^\]]+?)\s*\]/giu, sources.commands);
+  grab("🔧 from your git commits:", /\[commit:\s*([^\]]+?)\s*\]/giu, sources.commits);
   grab("🤖 from your action log:", /\[action:\s*([^\]]+?)\s*\]/giu, sources.actions);
   if (lines.length === 0) {
     return undefined;
@@ -375,7 +378,7 @@ export function shouldSuggestRepair(args: {
 // bracket; deterministic, only touches the echoed label, never the citation
 // itself. (The chat path streams live, so the label can still flash there — the
 // known streaming limitation; buffered / --with-tools / demo paths are clean.)
-const ECHOED_CITE_AS_RE = /\bcite\s+as:?\s*(?=\[(?:from|task|event|reminder|session|feed|contact|command|action)\b)/giu;
+const ECHOED_CITE_AS_RE = /\bcite\s+as:?\s*(?=\[(?:from|task|event|reminder|session|feed|contact|command|commit|action)\b)/giu;
 
 export function stripEchoedCiteAs(answer: string): string {
   return answer.replace(ECHOED_CITE_AS_RE, "");
@@ -383,7 +386,7 @@ export function stripEchoedCiteAs(answer: string): string {
 
 export const CITATION_INSTRUCTION_LINES: readonly string[] = [
   "When a fact comes from a note, END that sentence with that note's `[from …]` tag, copied VERBATIM — the bracket exactly as printed under the passage, the name unchanged.",
-  "For other context, cite by the name shown in its marker: a task as [task: its title], an event as [event: its title], a reminder as [reminder: its text], a past session as [session: short summary], a feed headline as [feed: the feed name], a contact as [contact: their name], a shell command as [command: the command], an action you took as [action: what you did].",
+  "For other context, cite by the name shown in its marker: a task as [task: its title], an event as [event: its title], a reminder as [reminder: its text], a past session as [session: short summary], a feed headline as [feed: the feed name], a contact as [contact: their name], a shell command as [command: the command], a git commit as [commit: its subject line], an action you took as [action: what you did].",
   "CRITICAL: cite ONLY a source shown in the context below — copy the `[from …]` tag printed under a passage, or a name from a marker. NEVER invent or guess a filename, feed, task, or event. If the answer is not in any passage below, cite nothing and say you are not sure."
 ];
 
@@ -550,6 +553,7 @@ interface AskOptions {
   readonly contacts?: boolean;
   readonly actions?: boolean;
   readonly shell?: boolean;
+  readonly git?: boolean;
   readonly file?: string;
   readonly json?: boolean;
   readonly withTools?: boolean;
@@ -1042,6 +1046,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
     .option(
       "--shell",
       "OPT-IN: also ground on matching commands from your shell history (secret-redacted, local-only; default OFF because history is sensitive). Set $MUSE_SHELL_HISTORY_FILE / $HISTFILE to override the source."
+    )
+    .option(
+      "--git",
+      "OPT-IN: also ground on your recent git commits in the current repo (read from .git/logs/HEAD, local-only). Answers 'what did I work on?' / 'what was that commit?'. Set $MUSE_GIT_REFLOG_FILE to override the source."
     )
     .option(
       "--file <path>",
@@ -1596,6 +1604,28 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           .map((cmd, i) => `<<command ${(i + 1).toString()}>>\n${cmd}\n<<end>>`)
           .join("\n\n");
 
+      // OPT-IN git grounding (B3 perception): "what did I work on?" / "what was
+      // that commit?" — read the current repo's HEAD reflog as a FILE (no spawn,
+      // so not the runner's execution path) ONLY when --git is passed. Embeds the
+      // canonical `[commit: <subject>]` hint so the model cites the subject the
+      // gate accepts (the wrapper-hint pattern proven for tasks/events).
+      let matchedCommits: readonly GitCommit[] = [];
+      if (options.git === true) {
+        try {
+          const reflogFile = process.env.MUSE_GIT_REFLOG_FILE?.trim()
+            || join(process.cwd(), ".git", "logs", "HEAD");
+          const raw = await readFile(reflogFile, "utf8");
+          matchedCommits = selectGitCommits(parseGitReflog(raw), lexicalTokens(query));
+        } catch {
+          // not a git repo / unreadable — silently skip
+        }
+      }
+      const gitBlock = matchedCommits.length === 0
+        ? "(no matching git commits)"
+        : matchedCommits
+          .map((c, i) => `<<commit ${(i + 1).toString()} — ${c.hash}>>\n${c.subject}\n[commit: ${c.subject}]\n<<end>>`)
+          .join("\n\n");
+
       // Action-log grounding (B3 transparency): "did you send that? / what have
       // you done on my behalf?" — answer from Muse's OWN record of acts taken,
       // matched by query overlap. The user's local audit trail, default-on.
@@ -1678,6 +1708,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           { body: reminderBlock, footer: "=== END REMINDERS ===", header: "=== PENDING REMINDERS (sorted by due date) ===", present: pendingReminders.length > 0 },
           { body: contactBlock, footer: "=== END CONTACTS ===", header: "=== MATCHING CONTACTS (from your address book) ===", present: matchedContacts.length > 0 },
           { body: shellBlock, footer: "=== END SHELL COMMANDS ===", header: "=== MATCHING SHELL COMMANDS (from your shell history) ===", present: matchedCommands.length > 0 },
+          { body: gitBlock, footer: "=== END GIT COMMITS ===", header: "=== YOUR RECENT GIT COMMITS (from this repo, newest first) ===", present: matchedCommits.length > 0 },
           { body: actionBlock, footer: "=== END ACTIONS ===", header: "=== ACTIONS MUSE HAS TAKEN ON YOUR BEHALF (your audit log) ===", present: matchedActions.length > 0 },
           { body: episodeBlock, footer: "=== END PAST SESSIONS ===", header: "=== PAST SESSION SUMMARIES (your prior conversations) ===", present: episodeHits.length > 0 },
           { body: feedBlock, footer: "=== END FEED HEADLINES ===", header: "=== RECENT FEED HEADLINES (your watched RSS/Atom feeds, newest first) ===", present: feedHeadlines.length > 0 },
@@ -1706,6 +1737,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       }
       if (matchedCommands.length > 0) {
         groundedParts.push(`${matchedCommands.length.toString()} shell command(s)`);
+      }
+      if (matchedCommits.length > 0) {
+        groundedParts.push(`${matchedCommits.length.toString()} git commit(s)`);
       }
       if (matchedActions.length > 0) {
         groundedParts.push(`${matchedActions.length.toString()} logged action(s)`);
@@ -1869,6 +1903,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       const citationGate = enforceAnswerCitations(collectedAnswer, {
         actions: matchedActions.map((a) => a.what),
         commands: matchedCommands,
+        commits: matchedCommits.map((c) => c.subject),
         contacts: matchedContacts.map((c) => c.name),
         events: upcomingEvents.map((e) => e.title),
         feeds: feedHeadlines.map((h) => h.feedName),
@@ -1925,6 +1960,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         const moreReceipts = formatNonNoteReceipts(collectedAnswer, {
           actions: matchedActions.map((a) => a.what),
           commands: matchedCommands,
+          commits: matchedCommits.map((c) => c.subject),
           contacts: matchedContacts.map((c) => c.name),
           events: upcomingEvents.map((e) => e.title),
           reminders: pendingReminders.map((r) => r.text),
@@ -1995,6 +2031,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           ...episodeHits.map((e) => ({ cosine: e.score, score: e.score, source: `session: ${e.id}`, text: e.summary })),
           ...matchedActions.map((a) => exactMatch(`action: ${a.what}`, `${a.what} ${a.result}${a.detail ? ` ${a.detail}` : ""}`)),
           ...matchedCommands.map((cmd) => exactMatch(`command: ${cmd}`, cmd)),
+          ...matchedCommits.map((c) => exactMatch(`commit: ${c.subject}`, c.subject)),
           ...feedHeadlines.map((h) => exactMatch(`feed: ${h.feedName}`, `${h.title}${h.summary ? ` ${h.summary}` : ""}`))
         ];
         // The coverage check strips citation markers before scoring, so a LIST
@@ -2006,7 +2043,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // construction and is present in `scoredMatches`. `[from …]` note
         // provenance is left alone (it carries no claim).
         const verdictAnswer = collectedAnswer.replace(
-          /\[(?:task|event|reminder|contact|session|feed|command|action):\s*([^\]]*)\]/giu,
+          /\[(?:task|event|reminder|contact|session|feed|command|commit|action):\s*([^\]]*)\]/giu,
           " $1 "
         );
         const verdictNotice = await groundingVerdictNotice(verdictAnswer, scoredMatches, query, reverify);

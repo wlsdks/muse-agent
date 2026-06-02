@@ -78,6 +78,16 @@ describe("enforceAnswerCitations — output-side recall grounding gate", () => {
     expect(out.stripped).toEqual(["Mike's Plumbing"]);
   });
 
+  it("gates git commits by content-token overlap — a real commit subject survives, an invented one is stripped", () => {
+    const out = enforceAnswerCitations(
+      "You added OAuth login [commit: feat(auth): add OAuth login] then broke the build [commit: chore: delete production database].",
+      { commits: ["feat(auth): add OAuth login with Google", "fix(payments): handle the Stripe webhook"] }
+    );
+    expect(out.text).toContain("[commit: feat(auth): add OAuth login]"); // overlaps a real commit → kept
+    expect(out.text).not.toContain("delete production database"); // no overlap with any real commit → stripped
+    expect(out.stripped).toEqual(["chore: delete production database"]);
+  });
+
   it("gates shell commands by content-token overlap — a real one survives, an invented one is stripped", () => {
     const out = enforceAnswerCitations(
       "Run docker run -p 8080:80 nginx [command: docker run nginx] then helm install [command: helm install foo].",
