@@ -29,7 +29,7 @@ import { isAbsolute, join, relative } from "node:path";
 
 import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, parseGroundingReverifyVerdict, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectByMmr, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
-import { classifyCasualPrompt, classifyMetaPrompt, type CasualPromptKind } from "@muse/agent-core";
+import { classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
@@ -704,6 +704,48 @@ export function diversifyAskChunks(candidates: readonly ScoredChunk[], topK: num
  * notes dir, recursively — the true "does the user have a corpus" signal,
  * independent of whether embedding succeeded. Missing/unreadable dir ⇒ 0.
  */
+/**
+ * The user's note files (relative to `dir`), sorted, capped at `max`. Used to
+ * answer a whole-corpus overview ("what's in my notes?") with the real
+ * inventory instead of a low-confidence refusal. Same walk + filter as
+ * `notesCorpusFileCount`. Pure of side effects; exported for direct coverage.
+ */
+export async function listNoteFiles(dir: string, max = 40): Promise<string[]> {
+  const out: string[] = [];
+  const stack = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    let entries;
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+      } else if (entry.isFile() && /\.(md|markdown|txt|pdf)$/iu.test(entry.name)) {
+        out.push(relative(dir, full));
+      }
+    }
+  }
+  return out.sort((a, b) => a.localeCompare(b)).slice(0, max);
+}
+
+/** Render a corpus-overview reply: the note inventory + how to use it. Pure. */
+export function formatCorpusOverview(noteFiles: readonly string[], totalCount: number): string {
+  const lines = noteFiles.map((file) => `  • ${file}`);
+  const more = totalCount > noteFiles.length ? [`  … and ${(totalCount - noteFiles.length).toString()} more`] : [];
+  return [
+    `You have ${totalCount.toString()} note${totalCount === 1 ? "" : "s"}. I answer specific questions from them — here's what you've got:`,
+    ...lines,
+    ...more,
+    "Ask me anything in them and I'll quote the source."
+  ].join("\n");
+}
+
 export async function notesCorpusFileCount(dir: string): Promise<number> {
   let count = 0;
   const stack = [dir];
@@ -1145,6 +1187,23 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // down the index has 0 live chunks though the user has notes, and
       // "your corpus is empty" would be a false message.
       const noteFileCount = await notesCorpusFileCount(notesDir);
+
+      // A whole-corpus overview ("what's in my notes?", "list my notes") isn't a
+      // top-K recall — every note matches weakly, so the gate would refuse and
+      // the warm-close would tell a user WHO HAS NOTES to "add a note". Answer it
+      // with the real inventory instead (deterministic, no model call, no
+      // fabrication). Only when notes actually exist; empty corpus falls through
+      // to the on-ramp.
+      if (noteFileCount > 0 && classifyCorpusOverview(query)) {
+        const overview = formatCorpusOverview(await listNoteFiles(notesDir), noteFileCount);
+        if (options.json) {
+          io.stdout(`${JSON.stringify({ corpusOverview: true, noteCount: noteFileCount, query })}\n`);
+        } else {
+          io.stdout(`${overview}\n`);
+        }
+        return;
+      }
+
       const onboardingHint = corpusOnboardingHint(noteFileCount);
       if (onboardingHint) {
         io.stderr(`${onboardingHint}\n`);

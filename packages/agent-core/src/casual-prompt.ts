@@ -65,3 +65,32 @@ export function classifyMetaPrompt(query: string): boolean {
   }
   return META_PROMPT_RE.test(normalized);
 }
+
+// A request to OVERVIEW the whole note corpus ("what's in my notes?", "summarize
+// my notes", "list my notes", "what notes do I have") rather than a specific
+// question. Top-K recall ranks every note weakly for such an aggregate query, so
+// the confidence gate refuses and the warm-close tells a user WHO HAS NOTES to
+// "add a note" — which is nonsensical. Detect it so the caller can list the
+// corpus instead. Each pattern anchors the overview verb DIRECTLY on "(my)
+// notes" (no topic between), so "summarize my VPN notes" (a subset) doesn't match.
+const OVERVIEW_PATTERNS: readonly RegExp[] = [
+  /\b(summar(y|ise|ize)|overview|list|show|catalog|inventory|recap)\s+(me\s+|of\s+)?(all\s+)?(my\s+|the\s+)?notes\b/u,
+  /\bwhat'?s\s+in\s+(all\s+)?(my\s+)?notes\b/u,
+  /\bwhat\s+(notes\s+(do\s+i\s+have|are\s+there|exist)|do\s+i\s+have\s+(in\s+)?(my\s+)?notes)\b/u,
+  /\b(how\s+many|which)\s+notes\b/u,
+  /(내|제)\s*노트(들)?\s*(요약|목록|뭐|어떤|몇|있|정리)/u,
+  /노트\s*(목록|요약|정리)/u
+];
+
+/** True when the prompt asks for a whole-corpus overview/listing, not a specific recall. */
+export function classifyCorpusOverview(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (q.length === 0 || q.length > 80) {
+    return false;
+  }
+  // A topic after "notes" makes it a SPECIFIC question, not a corpus overview.
+  if (/\bnotes\s+(about|on|regarding|for|concerning|covering|re)\b/u.test(q)) {
+    return false;
+  }
+  return OVERVIEW_PATTERNS.some((re) => re.test(q));
+}

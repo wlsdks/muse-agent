@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyCasualPrompt, classifyMetaPrompt } from "../src/index.js";
+import { classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt } from "../src/index.js";
 
 describe("classifyCasualPrompt — pure social prompts only (precision-first)", () => {
   it("classifies greetings (EN + KO), tolerating trailing punctuation and repeats", () => {
@@ -65,6 +65,34 @@ describe("classifyMetaPrompt — questions ABOUT Muse itself (precision-first)",
       "what is my rent"
     ]) {
       expect(classifyMetaPrompt(q)).toBe(false);
+    }
+  });
+});
+
+describe("classifyCorpusOverview — whole-corpus overview, not a specific recall", () => {
+  it("matches an overview/listing request about the whole note corpus (EN + KO)", () => {
+    for (const q of [
+      "what's in my notes?",
+      "summarize my notes",
+      "list my notes",
+      "give me a one-line summary of what's in my notes",
+      "what do I have notes",
+      "내 노트 요약",
+      "노트 목록"
+    ]) {
+      expect(classifyCorpusOverview(q)).toBe(true);
+    }
+  });
+
+  it("does NOT match a SPECIFIC question that ends in its own topic, not 'notes'", () => {
+    for (const q of [
+      "what's in my notes about the VPN?",
+      "summarize my VPN notes",
+      "what is my rent",
+      "list the attendees of the Q3 meeting",
+      "what did I write about the migration plan"
+    ]) {
+      expect(classifyCorpusOverview(q)).toBe(false);
     }
   });
 });

@@ -352,7 +352,7 @@ qwen3:8b and added to `eval:self-improving`.
   `[from projects/vpn.md]` AND the receipt reads "from projects/vpn.md". cli 1704 +
   `pnpm lint` 0/0. (Investigated this iter + recorded in the Rejected ledger: `muse
   chat` lacks the citation gate, but that is BY DESIGN — chat is conversational,
-  not one of the edge's grounded surfaces; do not "fix" it.) (this commit)
+  not one of the edge's grounded surfaces; do not "fix" it.) (43079e8c)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.
@@ -415,6 +415,21 @@ tool-calling.md).** Edge hygiene meets felt responsiveness.
   false for unset/blank/whitespace, true for flag or env) + a LIVE `muse today`
   (0 warnings by default; 1 warning when `MUSE_API_URL` is set and unreachable).
   cli 1699 + `pnpm lint` 0/0. (6614a642)
+
+- [x] **P39-5 `muse ask "what's in my notes?"` lists the corpus instead of
+  refusing.** A whole-corpus OVERVIEW request ("what's in my notes?", "summarize
+  my notes", "list my notes", "what notes do I have") isn't a top-K recall —
+  every note matches weakly, so the gate refused and the warm-close told a user
+  WHO HAS NOTES to "add a note on this and I'll have it next time" (nonsensical).
+  A new precision-first `classifyCorpusOverview` (agent-core, EN+KO, anchored so
+  "what's in my notes about the VPN?" / "summarize my VPN notes" do NOT match)
+  short-circuits it to a deterministic inventory — "You have N notes: …" with the
+  relative paths — no model call, no fabrication. Proof: classifier unit tests
+  (overview EN+KO match; a specific question ending in its topic does not) +
+  `listNoteFiles` / `formatCorpusOverview` unit tests + a LIVE `muse ask "what's
+  in my notes?"` (lists `lease.md` + `projects/vpn.md`, the user can now SEE
+  their corpus) while `muse ask "what is my rent?"` still recalls + cites.
+  agent-core 1353 / cli 1709 + `pnpm lint` 0/0. (this commit)
 
 **P36 — Background self-learning, brake-and-proof-first (loop-v2 PART A2 /
 B1).** The headline's "grows-with-you" core: Muse learns from corrections
