@@ -554,6 +554,23 @@ export function parseGroundingReverifyVerdict(output: string): boolean {
 }
 
 /**
+ * The pure-digit VALUE tokens the answer asserts that the evidence does NOT
+ * contain. The rubric's `coverage` is whole-answer token overlap, so a single
+ * WRONG number ("MTU 9000" where the note says "1380") barely dents coverage and
+ * the answer still reads `grounded` — the documented wrong-value hole. This
+ * flags exactly that case so the re-verification can escalate it to the judge
+ * (claim-level grounding — Self-RAG ISSUP, arXiv:2310.11511; Chain-of-Note,
+ * arXiv:2311.09210). Citations are stripped first so a `[from 2026-...]` source
+ * token is never mistaken for an asserted value.
+ */
+function answerAssertsUnsupportedNumber(answer: string, matches: readonly KnowledgeMatch[]): boolean {
+  const answerNumbers = [...lexicalTokens(answer.replace(/\[[^\]]*\]/gu, " "))].filter((token) => /^\d+$/u.test(token));
+  if (answerNumbers.length === 0) return false;
+  const evidence = unionContentTokens(matches);
+  return answerNumbers.some((number) => !evidence.has(number));
+}
+
+/**
  * Test-time verification scaling for the WEAK verdict (Memory-aware Test-Time
  * Scaling — ReasoningBank MaTTS, arXiv:2509.25140; rubric-guided verification,
  * arXiv:2601.15808). The deterministic `verifyGrounding` core decides
@@ -562,7 +579,14 @@ export function parseGroundingReverifyVerdict(output: string): boolean {
  * evidence. Fail-close — the weak answer is UPGRADED to `grounded` ONLY on an
  * explicit supported verdict; an unsupported verdict OR any re-verifier error
  * DEMOTES it to `ungrounded` (a weak answer never silently survives on a failed
- * check). `grounded` / `ungrounded` never call the judge.
+ * check).
+ *
+ * Claim-level value escalation: a `grounded` answer that still asserts a NUMBER
+ * absent from the evidence (the wrong-value hole the lexical rubric is blind to)
+ * also spends ONE judge pass — but FAIL-OPEN, since `base` already cleared every
+ * deterministic criterion: a judge ERROR must not demote a passing answer, only
+ * an explicit unsupported verdict does. A `grounded` answer whose numbers all
+ * check out, and any `ungrounded` verdict, never call the judge.
  */
 export async function verifyGroundingWithReverify(
   answer: string,
@@ -572,16 +596,30 @@ export async function verifyGroundingWithReverify(
   options?: VerifyGroundingOptions
 ): Promise<GroundingVerification> {
   const base = verifyGrounding(answer, matches, query, options);
-  if (base.verdict !== "weak") return base;
-  let supported: boolean;
-  try {
-    supported = await reverify({ answer, evidence: matches.map((m) => m.text).join("\n"), query });
-  } catch {
-    return { ...base, reason: "weak retrieval + re-verification failed — fail-closed to ungrounded", verdict: "ungrounded" };
+  const evidence = matches.map((m) => m.text).join("\n");
+  if (base.verdict === "weak") {
+    let supported: boolean;
+    try {
+      supported = await reverify({ answer, evidence, query });
+    } catch {
+      return { ...base, reason: "weak retrieval + re-verification failed — fail-closed to ungrounded", verdict: "ungrounded" };
+    }
+    return supported
+      ? { ...base, reason: "weak retrieval upheld by re-verification", verdict: "grounded" }
+      : { ...base, reason: "weak retrieval rejected by re-verification", verdict: "ungrounded" };
   }
-  return supported
-    ? { ...base, reason: "weak retrieval upheld by re-verification", verdict: "grounded" }
-    : { ...base, reason: "weak retrieval rejected by re-verification", verdict: "ungrounded" };
+  if (base.verdict === "grounded" && answerAssertsUnsupportedNumber(answer, matches)) {
+    let supported: boolean;
+    try {
+      supported = await reverify({ answer, evidence, query });
+    } catch {
+      return base;
+    }
+    return supported
+      ? base
+      : { ...base, reason: "answer asserts a value the evidence does not support", verdict: "ungrounded" };
+  }
+  return base;
 }
 
 /**

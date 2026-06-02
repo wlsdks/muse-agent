@@ -58,6 +58,13 @@ export const GROUNDING_EVAL_CORPUS: GroundingEvalCorpus = {
     { kind: "drift", query: "who owns pricing?", answer: "Mina owns pricing and the budget was approved at 2,000,000 KRW [from finance-2025.md].", note: "fabricated citation + unsupported budget" },
     { kind: "drift", query: "when is the dentist cleaning?", answer: "Your dentist cleaning is confirmed for June 3rd at 2:30 PM with Dr. Kim in room 4B; bring your insurance card and arrive 15 minutes early [from doctor.md].", note: "unsupported specifics drown the evidence (coverage floor)" },
     { kind: "drift", query: "what is my rent?", answer: "Your rent is 1,250,000 KRW, auto-transferred from Shinhan account 110-234-556789 with a 50,000 KRW late fee after the 5th, managed by Sunrise Property Co [from lease.md].", note: "right number, fabricated account/fee details (coverage floor)" },
-    { kind: "drift", query: "what is my blood type?", answer: "Your blood type is O positive [from medical-records.md].", note: "off-corpus answer with a fabricated citation" }
+    { kind: "drift", query: "what is my blood type?", answer: "Your blood type is O positive [from medical-records.md].", note: "off-corpus answer with a fabricated citation" },
+
+    // wrong-VALUE drift — confident retrieval, every token but the number is in
+    // the evidence, so the lexical rubric reads `grounded`; only claim-level value
+    // escalation catches the fabricated number. WITHOUT it these slip and
+    // faithfulness drops below the floor — so this corpus now GUARDS that fix.
+    { kind: "drift", query: "what MTU did I set for the office VPN?", answer: "You set the MTU to 9000 on the wg0 interface for the office VPN [from vpn-wireguard.md].", note: "wrong VALUE 9000 vs evidence 1380 — only the number is fabricated" },
+    { kind: "drift", query: "what is my monthly rent?", answer: "Your monthly rent is 1,500,000 KRW, due on the 1st [from lease.md].", note: "wrong VALUE 1,500,000 vs evidence 1,250,000" }
   ]
 };

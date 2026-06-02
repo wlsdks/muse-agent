@@ -54,6 +54,43 @@ describe("verifyGroundingWithReverify — test-time re-verification of the weak 
   });
 });
 
+describe("verifyGroundingWithReverify — claim-level value escalation (the wrong-value hole, fail-OPEN)", () => {
+  // Confident + high-coverage, every citation valid: the deterministic rubric
+  // returns `grounded` and never sees that "9000" contradicts the evidence's
+  // "1380" — the documented hole that whole-answer coverage can't catch.
+  const confidentMatches = [match("notes/vpn.md", "The office VPN needs MTU 1380 on wg0 to stop handshake drops.", 0.72)];
+  const wrongValueAnswer = "The office VPN uses MTU 9000 on wg0 [from notes/vpn.md].";
+
+  it("escalates a GROUNDED answer asserting an unsupported NUMBER and demotes it on an unsupported judge verdict", async () => {
+    const out = await verifyGroundingWithReverify(wrongValueAnswer, confidentMatches, query, async () => false);
+    expect(out.verdict).toBe("ungrounded");
+    expect(out.reason).toContain("value the evidence does not support");
+  });
+
+  it("keeps a GROUNDED answer with an unsupported number when the judge upholds it (a legitimate value)", async () => {
+    const out = await verifyGroundingWithReverify(wrongValueAnswer, confidentMatches, query, async () => true);
+    expect(out.verdict).toBe("grounded");
+  });
+
+  it("FAIL-OPENS the value escalation: a judge error never demotes an otherwise-grounded answer", async () => {
+    const out = await verifyGroundingWithReverify(wrongValueAnswer, confidentMatches, query, async () => {
+      throw new Error("model unreachable");
+    });
+    expect(out.verdict).toBe("grounded");
+  });
+
+  it("does NOT escalate a GROUNDED answer whose numbers all appear in the evidence", async () => {
+    const out = await verifyGroundingWithReverify("The office VPN uses MTU 1380 on wg0 [from notes/vpn.md].", confidentMatches, query, never);
+    expect(out.verdict).toBe("grounded");
+  });
+
+  it("does NOT escalate a GROUNDED answer that asserts no numbers at all", async () => {
+    const matches = [match("notes/owner.md", "Mina owns pricing for the Q3 launch.", 0.72)];
+    const out = await verifyGroundingWithReverify("Mina owns pricing [from notes/owner.md].", matches, "who owns pricing", never);
+    expect(out.verdict).toBe("grounded");
+  });
+});
+
 describe("parseGroundingReverifyVerdict — deterministic YES/NO parse, fail-close", () => {
   it("treats a clear YES as supported", () => {
     expect(parseGroundingReverifyVerdict("YES — the passage states MTU 1380.")).toBe(true);

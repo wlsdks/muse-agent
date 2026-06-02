@@ -1,0 +1,80 @@
+/**
+ * LIVE battery for CLAIM-LEVEL value grounding on LOCAL Qwen — the wrong-value
+ * hole the lexical rubric cannot see. A confident, high-coverage, fully-cited
+ * answer that asserts a WRONG NUMBER ("MTU 9000" where the note says "1380")
+ * passes `verifyGrounding` as `grounded` at the DEFAULT threshold (its single
+ * wrong token barely dents whole-answer coverage). The claim-level value
+ * escalation routes exactly that case to the one-shot judge, which rejects it
+ * (Self-RAG ISSUP, arXiv:2310.11511; Chain-of-Note, arXiv:2311.09210).
+ *
+ * Unlike verify-rubric-reverify (which forces the WEAK band via confidentAt:0.99),
+ * this uses the DEFAULT threshold and a confident (cosine 0.72) match, so the
+ * base verdict really is `grounded` — proving the NEW grounded-escalation path,
+ * not the weak band.
+ *
+ *   node apps/cli/scripts/verify-claim-grounding.mjs        (ollama/qwen3:8b)
+ *
+ * Exit 0 if every case passes; skip (exit 0) if Ollama is unreachable. LOCAL ONLY.
+ */
+import {
+  buildGroundingReverifyPrompt,
+  parseGroundingReverifyVerdict,
+  REVERIFY_SYSTEM_PROMPT,
+  verifyGroundingWithReverify
+} from "@muse/agent-core";
+import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
+
+const model = process.argv[2] ?? "ollama/qwen3:8b";
+if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA QWEN ONLY"); process.exit(2); }
+const baseUrl = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
+
+async function reachable() {
+  try {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 3_000);
+    const r = await fetch(`${baseUrl}/api/tags`, { signal: c.signal });
+    clearTimeout(t);
+    return r.ok;
+  } catch { return false; }
+}
+if (!(await reachable())) {
+  console.log(`verify-claim-grounding skipped — local Ollama not reachable at ${baseUrl}. A skip is not a pass.`);
+  process.exit(0);
+}
+
+process.env.MUSE_DEFAULT_MODEL = model;
+const modelProvider = createMuseRuntimeAssembly().modelProvider;
+
+const reverify = async ({ answer, evidence, query }) => {
+  const response = await modelProvider.generate({
+    maxOutputTokens: 8,
+    messages: [
+      { content: REVERIFY_SYSTEM_PROMPT, role: "system" },
+      { content: buildGroundingReverifyPrompt({ answer, evidence, query }), role: "user" }
+    ],
+    model,
+    temperature: 0
+  });
+  return parseGroundingReverifyVerdict(response.output ?? "");
+};
+
+// cosine 0.72 ⇒ CONFIDENT ⇒ the base rubric verdict is `grounded` at the DEFAULT
+// threshold (not the forced-weak band). The wrong number is what must be caught.
+const matches = [{ cosine: 0.72, score: 0.72, source: "notes/vpn.md", text: "The office VPN needs MTU 1380 on wg0 to stop handshake drops." }];
+const query = "what MTU for the office VPN";
+
+const cases = [
+  { name: "GROUNDED base + WRONG value (9000 not in evidence) → escalated → judge rejects → UNGROUNDED", answer: "The office VPN uses MTU 9000 on wg0 [from notes/vpn.md].", expect: "ungrounded" },
+  { name: "GROUNDED base + CORRECT value (1380 in evidence) → no escalation → GROUNDED", answer: "The office VPN uses MTU 1380 on wg0 [from notes/vpn.md].", expect: "grounded" }
+];
+
+let failures = 0;
+for (const c of cases) {
+  const v = await verifyGroundingWithReverify(c.answer, matches, query, reverify);
+  const ok = v.verdict === c.expect;
+  console.log(`${ok ? "PASS" : "FAIL"} — ${c.name}\n   verdict=${v.verdict} (${v.reason})`);
+  if (!ok) failures += 1;
+}
+
+console.log(failures === 0 ? `\nALL PASS (${cases.length}) on ${model}` : `\n${failures}/${cases.length} FAILED on ${model}`);
+process.exit(failures === 0 ? 0 : 1);
