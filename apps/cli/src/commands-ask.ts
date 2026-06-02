@@ -342,10 +342,23 @@ export function relativizeNoteSource(file: string, notesDir: string): string {
 // token, or a name shown…" once matched the `credential_extraction` pattern
 // ("token … shown") and false-blocked EVERY grounded --with-tools query. Use
 // "tag", never "token", and keep this dependency-free guard in the test.
+// The note marker hands the small model a copy-ready `cite as: [from FILE]`
+// token; qwen3:8b often copies the WHOLE line, leaking the "cite as:" label into
+// the answer ("…MTU 1380. cite as: [from vpn.md]") — visible on the demo (the
+// front door). Strip a "cite as:" that immediately precedes a real citation
+// bracket; deterministic, only touches the echoed label, never the citation
+// itself. (The chat path streams live, so the label can still flash there — the
+// known streaming limitation; buffered / --with-tools / demo paths are clean.)
+const ECHOED_CITE_AS_RE = /\bcite\s+as:?\s*(?=\[(?:from|task|event|reminder|session|feed|contact|command|action)\b)/giu;
+
+export function stripEchoedCiteAs(answer: string): string {
+  return answer.replace(ECHOED_CITE_AS_RE, "");
+}
+
 export const CITATION_INSTRUCTION_LINES: readonly string[] = [
-  "When a fact comes from a note, END that sentence with that note's `cite as:` tag, copied VERBATIM — the whole bracket exactly as printed under the passage, the name unchanged.",
+  "When a fact comes from a note, END that sentence with that note's `[from …]` tag, copied VERBATIM — the bracket exactly as printed under the passage, the name unchanged.",
   "For other context, cite by the name shown in its marker: a task as [task: its title], an event as [event: its title], a reminder as [reminder: its text], a past session as [session: short summary], a feed headline as [feed: the feed name], a contact as [contact: their name], a shell command as [command: the command], an action you took as [action: what you did].",
-  "CRITICAL: cite ONLY a source shown in the context below — copy an existing `cite as:` tag, or a name from a marker. NEVER invent or guess a filename, feed, task, or event. If the answer is not in any passage below, cite nothing and say you are not sure."
+  "CRITICAL: cite ONLY a source shown in the context below — copy the `[from …]` tag printed under a passage, or a name from a marker. NEVER invent or guess a filename, feed, task, or event. If the answer is not in any passage below, cite nothing and say you are not sure."
 ];
 
 /**
@@ -1301,15 +1314,16 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         ? "(notes search unavailable this turn — answer from the other grounding sources)"
         : contextChunks.length === 0
           ? "(no relevant notes found)"
-          // The trailing `cite as: [from FILE]` is a COPY-READY token: a
-          // small local model (qwen3:8b) parrots placeholders ("FILENAME")
-          // and even fake example paths verbatim, so don't ask it to
-          // substitute — hand it the exact real bracket to copy. The source
-          // is shown relative to the notes dir (clean + locatable), not the
-          // absolute path.
+          // The trailing `[from FILE]` is a COPY-READY token: a small local
+          // model (qwen3:8b) parrots placeholders ("FILENAME") and even fake
+          // example paths verbatim, so don't ask it to substitute — hand it the
+          // exact real bracket to copy. NO "cite as:" label before it: qwen
+          // copies the whole line, leaking the label into the answer ("…1380.
+          // cite as: [from vpn.md]") — visible on the demo. The source is shown
+          // relative to the notes dir (clean + locatable), not the absolute path.
           : contextChunks.map((r, i) => {
             const src = relativizeNoteSource(r.file, notesDir);
-            return `<<note ${(i + 1).toString()} — ${src}>>\n${r.chunk.text}\ncite as: [from ${src}]\n<<end>>`;
+            return `<<note ${(i + 1).toString()} — ${src}>>\n${r.chunk.text}\n[from ${src}]\n<<end>>`;
           }).join("\n\n");
 
       // Pull open tasks as a second grounding source. Real JARVIS
@@ -1712,6 +1726,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           return;
         }
       }
+
+      // Strip a "cite as:" label the small model echoed from the note marker
+      // before it reaches the gate, the receipts, and the buffered display.
+      collectedAnswer = stripEchoedCiteAs(collectedAnswer);
 
       // Output-side grounding gate — the recall WEDGE's code-not-model half:
       // strip any citation the answer makes — a note, feed, task, event,

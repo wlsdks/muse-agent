@@ -364,6 +364,20 @@ tool-calling.md).** Edge hygiene meets felt responsiveness.
   `"what can you do about my taxes?"` still flows to the grounded path.
   agent-core 1351 / cli 1686 + `pnpm lint` 0/0. (fe6a4f4c)
 
+- [x] **P39-3 No more "cite as:" leaking into the answer (front-door polish).**
+  The note marker handed qwen3:8b a copy-ready `cite as: [from FILE]` token; the
+  small model often copied the WHOLE line, leaking the label — "You set the MTU
+  to 1380. **cite as:** [from …vpn.md]" — right on `muse demo`, the first thing a
+  new user sees. Root fix: the marker now prints just `[from FILE]` (no "cite as:"
+  to copy) + the citation instructions reference the `[from …]` tag; plus a
+  deterministic `stripEchoedCiteAs` safety net for the buffered paths. Proof: 4
+  unit tests (`commands-ask-cite-as.test.ts`: strips an echoed label before a
+  real citation across classes; leaves a clean citation and ordinary "cite as"
+  prose untouched) + a LIVE `muse demo` (the MTU answer now reads "…WireGuard VPN
+  [from 2026-03-03-vpn-wireguard.md]" — label gone, the RIGHT source still cited,
+  citation reliability preserved) + `--with-tools` still cites cleanly. cli 1695 +
+  `pnpm lint` 0/0. (this commit)
+
 **P36 — Background self-learning, brake-and-proof-first (loop-v2 PART A2 /
 B1).** The headline's "grows-with-you" core: Muse learns from corrections
 while idle, on its own, without straining the laptop. Built brake-FIRST — the

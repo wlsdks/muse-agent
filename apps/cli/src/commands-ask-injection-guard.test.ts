@@ -17,7 +17,7 @@ describe("CITATION_INSTRUCTION_LINES — must never self-trigger the injection g
 
   it("still instructs verbatim citation from a marker (the fix preserved the grounding contract)", () => {
     const joined = CITATION_INSTRUCTION_LINES.join(" ");
-    expect(joined).toMatch(/cite as:/u);
+    expect(joined).toMatch(/\[from …\]/u); // references the copy-ready bracket, not a "cite as:" label
     expect(joined).toMatch(/VERBATIM/u);
     expect(joined).toMatch(/NEVER invent/u);
   });
