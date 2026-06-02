@@ -927,10 +927,22 @@ describe("muse daemon — N2 audit: check-ins + pattern suggestion compose in ON
 // A model that returns reflection JSON citing the seeded episode ids — only the
 // model's TEXT is faked; the real synthesizeReflections → addReflections → store
 // path runs, so this proves the daemon actually dreams, not a stubbed registry.
+// The synthesis call gets the JSON; the RGV re-verification judge call (added in
+// the reflection-grounding slice) gets a "YES" — the seeded insight IS grounded
+// in its networking episodes, so a faithful judge upholds it.
 function fakeReflectionModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonHelpers["resolveFollowupModel"]>>>> {
   return {
     model: "test-model",
-    modelProvider: { generate: async () => ({ output: '[{"insight":"You troubleshoot home networking often","sources":["e1","e2","e3"]}]' }) } as never
+    modelProvider: {
+      generate: async (request: { readonly messages?: ReadonlyArray<{ readonly content?: string }> }) => {
+        const isGroundingJudge = (request.messages ?? []).some((m) => /grounding judge|Reply YES or NO/iu.test(m.content ?? ""));
+        return {
+          output: isGroundingJudge
+            ? "YES"
+            : '[{"insight":"You troubleshoot home networking often","sources":["e1","e2","e3"]}]'
+        };
+      }
+    } as never
   };
 }
 
