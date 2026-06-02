@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyCasualPrompt } from "../src/index.js";
+import { classifyCasualPrompt, classifyMetaPrompt } from "../src/index.js";
 
 describe("classifyCasualPrompt — pure social prompts only (precision-first)", () => {
   it("classifies greetings (EN + KO), tolerating trailing punctuation and repeats", () => {
@@ -42,5 +42,29 @@ describe("classifyCasualPrompt — pure social prompts only (precision-first)", 
 
   it("never misclassifies a long prompt as casual (the 30-char content guard)", () => {
     expect(classifyCasualPrompt("hello, could you summarise my meeting notes from yesterday")).toBeNull();
+  });
+});
+
+describe("classifyMetaPrompt — questions ABOUT Muse itself (precision-first)", () => {
+  it("matches self-referential capability / identity / usage questions (EN + KO)", () => {
+    for (const q of [
+      "what can you do?", "what can you do", "what do you do", "what are you",
+      "who are you?", "what is muse", "how do you work?", "how does this work",
+      "what can I ask", "help", "넌 뭐야?", "뭐 할 수 있어", "어떻게 작동해", "사용법"
+    ]) {
+      expect(classifyMetaPrompt(q)).toBe(true);
+    }
+  });
+
+  it("does NOT match a question about the user's notes that merely contains a meta word", () => {
+    for (const q of [
+      "what can you do about my taxes?",
+      "how do you make sourdough",
+      "what are you working on in the migration plan",
+      "who are the attendees in the Q3 meeting",
+      "what is my rent"
+    ]) {
+      expect(classifyMetaPrompt(q)).toBe(false);
+    }
   });
 });

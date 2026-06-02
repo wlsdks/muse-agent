@@ -310,7 +310,24 @@ tool-calling.md).** Edge hygiene meets felt responsiveness.
   cli response-map guards (no citation token can re-enter) + a LIVE `muse ask
   "hi"` (one clean line; "hi, what is my MTU?" still flows through the grounded
   path). agent-core 1349 / cli 1685 + `pnpm lint` 0/0. tool-calling.md ("don't
-  invoke the retrieval machinery on a greeting"). (this commit)
+  invoke the retrieval machinery on a greeting"). (19aefb91)
+
+- [x] **P39-2 `muse ask "what can you do?"` answers honestly about MUSE, not a
+  hallucinated over-claim.** A meta/capability question ran retrieval and made
+  the local model free-compose an aspirational answer ("I can manage your
+  schedule, set reminders, handle tasks…" — things Muse does NOT autonomously
+  do) that then got a "treat as unverified" grounding warning — Muse lying about
+  its OWN capabilities, the same honesty failure the edge forbids about recall.
+  A new anchored `classifyMetaPrompt` (agent-core, EN+KO; "what can you do about
+  my taxes?" / "who are the attendees" never match) short-circuits a
+  self-referential question to a fixed ACCURATE description — cited recall,
+  honest "I'm not sure", local-only, how to add notes — no model freelancing.
+  Proof: 2 classifier unit tests (capability/identity/usage EN+KO match; a notes
+  question containing a meta word does NOT) + a cli guard that META_RESPONSE
+  states the real value prop and never says "manage your schedule" + a LIVE
+  `muse ask "what can you do?"` / `"넌 뭐야?"` (accurate line, no warning) while
+  `"what can you do about my taxes?"` still flows to the grounded path.
+  agent-core 1351 / cli 1686 + `pnpm lint` 0/0. (this commit)
 
 **P36 — Background self-learning, brake-and-proof-first (loop-v2 PART A2 /
 B1).** The headline's "grows-with-you" core: Muse learns from corrections

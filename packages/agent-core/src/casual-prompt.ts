@@ -22,6 +22,14 @@ const CASUAL_PATTERNS: ReadonlyArray<{ readonly kind: CasualPromptKind; readonly
   { kind: "farewell", re: /^(bye+|bye bye|goodbye|good bye|see you|see ya|see you later|cya|later|good ?night|take care|잘있어|잘 있어|안녕히|안녕히 계세요|잘가|잘 가|바이|다음에 봐)$/u }
 ];
 
+function normalizeSocialPrompt(query: string): string {
+  return query
+    .trim()
+    .toLowerCase()
+    .replace(/[!?.…~,\s]+$/u, "")
+    .replace(/\s+/gu, " ");
+}
+
 /**
  * The social kind of a prompt, or `null` for anything that carries an actual
  * request. Normalises case, collapses whitespace, and strips trailing social
@@ -29,11 +37,7 @@ const CASUAL_PATTERNS: ReadonlyArray<{ readonly kind: CasualPromptKind; readonly
  * longer than 30 chars is never casual (it carries content).
  */
 export function classifyCasualPrompt(query: string): CasualPromptKind | null {
-  const normalized = query
-    .trim()
-    .toLowerCase()
-    .replace(/[!?.…~,\s]+$/u, "")
-    .replace(/\s+/gu, " ");
+  const normalized = normalizeSocialPrompt(query);
   if (normalized.length === 0 || normalized.length > 30) {
     return null;
   }
@@ -43,4 +47,21 @@ export function classifyCasualPrompt(query: string): CasualPromptKind | null {
     }
   }
   return null;
+}
+
+// A self-referential question ABOUT Muse ("what can you do", "넌 뭐야") — not a
+// question about the user's notes. The local model otherwise free-composes an
+// aspirational, often OVER-CLAIMED answer ("I can manage your schedule…") and
+// gets a grounding warning. Anchored so "what can you do about my taxes" or
+// "how do you cook rice" never match — only a whole-query meta phrase does.
+const META_PROMPT_RE =
+  /^(what can you (do|help( me)? with)|what do you do|what are you|who are you|what'?s? (is )?muse|how (do|does) (you|this|it) work|what can (i|you) ask|help|뭐\s?할\s?수\s?있어|무엇을?\s?할\s?수\s?있어|넌?\s?뭐야|너\s?뭐야|어떻게\s?(작동|동작)해|도움말|사용법)$/u;
+
+/** True when the prompt asks about MUSE ITSELF (capabilities / identity / usage). */
+export function classifyMetaPrompt(query: string): boolean {
+  const normalized = normalizeSocialPrompt(query);
+  if (normalized.length === 0 || normalized.length > 40) {
+    return false;
+  }
+  return META_PROMPT_RE.test(normalized);
 }

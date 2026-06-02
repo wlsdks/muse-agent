@@ -29,7 +29,7 @@ import { isAbsolute, join, relative } from "node:path";
 
 import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, parseGroundingReverifyVerdict, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectByMmr, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
-import { classifyCasualPrompt, type CasualPromptKind } from "@muse/agent-core";
+import { classifyCasualPrompt, classifyMetaPrompt, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
@@ -312,6 +312,15 @@ export const CASUAL_RESPONSES: Record<CasualPromptKind, string> = {
   greeting: "Hi! I answer from your own notes — ask me anything you've saved and I'll quote the source, or tell you honestly when it isn't there.",
   thanks: "You're welcome."
 };
+
+// An ACCURATE, honest description of what Muse actually does — so a "what can
+// you do?" question doesn't make the local model free-compose an OVER-CLAIMED
+// answer ("I can manage your schedule…") that then gets a grounding warning.
+// Honesty about its OWN capabilities is the same edge as honesty about recall.
+export const META_RESPONSE =
+  "I answer questions from your own notes and quote the exact source — and I tell you \"I'm not sure\" instead of guessing. " +
+  "Everything runs locally on your machine; nothing leaves. " +
+  "Add notes with `muse read <file> --save-to-notes <id>`, then ask me anything you've saved — or run `muse demo` to see a cited answer and an honest refusal in about 30 seconds.";
 
 /**
  * True when the answer is essentially a refusal / "I'm not sure" with no
@@ -996,6 +1005,18 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           io.stdout(`${JSON.stringify({ answer: reply, casual: casualKind, query })}\n`);
         } else {
           io.stdout(`${reply}\n`);
+        }
+        return;
+      }
+
+      // A question ABOUT Muse itself ("what can you do?") is answered from the
+      // accurate capability description, not the local model's over-claimed
+      // free-composition — same grounding short-circuit as a social prompt.
+      if (classifyMetaPrompt(query)) {
+        if (options.json) {
+          io.stdout(`${JSON.stringify({ answer: META_RESPONSE, meta: true, query })}\n`);
+        } else {
+          io.stdout(`${META_RESPONSE}\n`);
         }
         return;
       }
