@@ -146,6 +146,7 @@ export {
   fuseByReciprocalRank,
   lexicalOverlap,
   lexicalTokens,
+  normalizeContactCitations,
   rankKnowledgeChunks,
   renderKnowledgeMatches,
   reorderForLongContext,

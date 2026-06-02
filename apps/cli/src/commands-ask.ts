@@ -27,7 +27,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 
-import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, parseGroundingReverifyVerdict, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectByMmr, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, parseGroundingReverifyVerdict, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectByMmr, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
@@ -1846,6 +1846,15 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       const allowedNotes = options.withTools
         ? (index ? filterLiveNoteIndexFiles(index.files, existsSync).map((f) => relativizeNoteSource(f.path, notesDir)) : [])
         : scored.map((r) => relativizeNoteSource(r.file, notesDir));
+      // The local model cites a contact with the note verb / by slot or id
+      // (`[from contact 1]`, `[contact: mina]`) because `<<contact N — id>>`
+      // mirrors the note wrapper; rewrite those to the canonical
+      // `[contact: <name>]` BY CODE so a grounded answer about the user's own
+      // address book isn't false-stripped by the exact-match note gate below.
+      collectedAnswer = normalizeContactCitations(
+        collectedAnswer,
+        matchedContacts.map((c) => ({ id: c.id, name: c.name }))
+      );
       const citationGate = enforceAnswerCitations(collectedAnswer, {
         actions: matchedActions.map((a) => a.what),
         commands: matchedCommands,
@@ -1935,7 +1944,23 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
               return parseGroundingReverifyVerdict(judged.output ?? "");
             }
           : undefined;
-        const scoredMatches = scored.map((r) => ({ cosine: r.score, score: r.score, source: relativizeNoteSource(r.file, notesDir), text: r.chunk.text }));
+        // The verdict scores the answer's coverage against retrieved evidence.
+        // A contact-grounded fact ("Mina's email is …") has NO support in the
+        // note chunks, so a notes-only evidence set falsely flags it "not backed
+        // by your notes". Include the matched contacts (a high-precision,
+        // structured exact match — cosine 1) as evidence so an answer drawn from
+        // the user's own address book verifies as grounded, not unverified.
+        const contactMatches = matchedContacts.map((c) => {
+          const birthday = formatContactBirthday(c.birthday);
+          const fields = [c.email, c.phone, c.handle, birthday, ...(c.aliases ?? [])]
+            .filter((f): f is string => typeof f === "string" && f.length > 0)
+            .join(" ");
+          return { cosine: 1, score: 1, source: `contact: ${c.name}`, text: `${c.name} ${fields}`.trim() };
+        });
+        const scoredMatches = [
+          ...scored.map((r) => ({ cosine: r.score, score: r.score, source: relativizeNoteSource(r.file, notesDir), text: r.chunk.text })),
+          ...contactMatches
+        ];
         const verdictNotice = await groundingVerdictNotice(collectedAnswer, scoredMatches, query, reverify);
         if (verdictNotice) {
           io.stderr(verdictNotice);

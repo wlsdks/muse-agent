@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { citedSourcesIn, enforceAnswerCitations } from "../src/index.js";
+import { citedSourcesIn, enforceAnswerCitations, normalizeContactCitations } from "../src/index.js";
 
 describe("citedSourcesIn", () => {
   it("extracts every [from <source>] token, trimmed, in order", () => {
@@ -128,5 +128,55 @@ describe("enforceAnswerCitations — output-side recall grounding gate", () => {
     const out = enforceAnswerCitations("I'm not sure — nothing in your notes covers that.", { notes: ["notes/vpn.md"] });
     expect(out.text).toBe("I'm not sure — nothing in your notes covers that.");
     expect(out.stripped).toEqual([]);
+  });
+});
+
+describe("normalizeContactCitations — repair the model's contact-citation mis-forms before the gate", () => {
+  const book = [{ id: "mina", name: "Mina Park" }, { id: "jin", name: "Jin Lee" }];
+
+  it("rewrites the note-verb form `[from contact 1]` to `[contact: <name>]` (slot number)", () => {
+    expect(normalizeContactCitations("Email is mina@x.io [from contact 1].", book))
+      .toBe("Email is mina@x.io [contact: Mina Park].");
+  });
+
+  it("rewrites `[from contact: <id>]` (note verb + id) to the canonical name form", () => {
+    expect(normalizeContactCitations("Phone is +1 415 [from contact: mina].", book))
+      .toBe("Phone is +1 415 [contact: Mina Park].");
+  });
+
+  it("rewrites the bare-slot form `[contact 2]` and the id form `[contact: jin]`", () => {
+    expect(normalizeContactCitations("Reach them [contact 2].", book)).toBe("Reach them [contact: Jin Lee].");
+    expect(normalizeContactCitations("Reach them [contact: jin].", book)).toBe("Reach them [contact: Jin Lee].");
+  });
+
+  it("the result flows through the gate cleanly (no false strip on a real contact)", () => {
+    const repaired = normalizeContactCitations("mina@x.io [from contact 1].", book);
+    const gated = enforceAnswerCitations(repaired, { contacts: book.map((c) => c.name) });
+    expect(gated.stripped).toEqual([]);
+    expect(gated.text).toContain("[contact: Mina Park]");
+  });
+
+  it("a first-name partial resolves by token overlap to the full name", () => {
+    expect(normalizeContactCitations("ask [from contact: Mina].", book)).toBe("ask [contact: Mina Park].");
+  });
+
+  it("leaves an UNRESOLVABLE reference untouched for the gate to strip (out-of-range slot / unknown id)", () => {
+    expect(normalizeContactCitations("see [from contact 9].", book)).toBe("see [from contact 9].");
+    expect(normalizeContactCitations("see [from contact: nobody].", book)).toBe("see [from contact: nobody].");
+  });
+
+  it("never rewrites a real note citation whose filename merely starts with 'contact'", () => {
+    // `[from contacts.md]` — the 's' blocks the `contact<sep>` anchor; `[from contact-list.md]`
+    // matches the anchor but resolves to no contact → left for the note gate to judge.
+    expect(normalizeContactCitations("X [from contacts.md].", book)).toBe("X [from contacts.md].");
+    expect(normalizeContactCitations("X [from contact-list.md].", book)).toBe("X [from contact-list.md].");
+  });
+
+  it("is a no-op when there are no matched contacts (empty book)", () => {
+    expect(normalizeContactCitations("X [from contact 1].", [])).toBe("X [from contact 1].");
+  });
+
+  it("an already-canonical `[contact: Mina Park]` is preserved (idempotent)", () => {
+    expect(normalizeContactCitations("X [contact: Mina Park].", book)).toBe("X [contact: Mina Park].");
   });
 });

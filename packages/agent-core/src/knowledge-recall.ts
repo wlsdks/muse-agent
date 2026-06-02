@@ -387,6 +387,65 @@ function resolvesByOverlap(value: string, allowed: readonly string[]): boolean {
 }
 
 /**
+ * Rewrite the local model's natural-but-wrong contact citations to the
+ * canonical `[contact: <name>]` form the gate accepts — BEFORE
+ * `enforceAnswerCitations` runs. A `<<contact N — id>>` wrapper is a structural
+ * sibling of the `<<note N — file>>` wrapper the model cites as `[from file]`,
+ * so qwen3:8b tends to cite a contact with the note verb or by slot/id —
+ * `[from contact 1]`, `[from contact: mina]`, `[contact 1]` — which the
+ * exact-match note gate then false-strips, firing a spurious "treat as
+ * unverified" warning on a correctly-grounded answer about the user's OWN
+ * address book. This maps every "contact"-anchored mis-form to
+ * `[contact: <name>]` by code: an in-range slot number, or an id / name that
+ * token-overlaps a real matched contact, resolves to that contact's name; an
+ * unresolvable reference (`[from contact 9]`) is left untouched for the gate to
+ * strip. Pure + deterministic; only touches a citation whose first token is
+ * literally `contact`, so a real `[from contacts.md]` note citation is never
+ * rewritten.
+ */
+export function normalizeContactCitations(
+  answer: string,
+  contacts: ReadonlyArray<{ readonly id: string; readonly name: string }>
+): string {
+  if (contacts.length === 0) {
+    return answer;
+  }
+  const resolveName = (ref: string): string | undefined => {
+    const trimmed = ref.trim();
+    if (/^\d+$/u.test(trimmed)) {
+      const slot = Number(trimmed);
+      return slot >= 1 && slot <= contacts.length ? contacts[slot - 1]?.name : undefined;
+    }
+    const low = trimmed.toLowerCase();
+    const exact = contacts.find((c) => c.id.toLowerCase() === low || c.name.toLowerCase() === low);
+    if (exact) {
+      return exact.name;
+    }
+    const refTokens = lexicalTokens(trimmed);
+    if (refTokens.size === 0) {
+      return undefined;
+    }
+    const overlap = contacts.find((c) => {
+      const nameTokens = lexicalTokens(c.name);
+      for (const token of refTokens) {
+        if (nameTokens.has(token)) {
+          return true;
+        }
+      }
+      return false;
+    });
+    return overlap?.name;
+  };
+  return answer.replace(
+    /\[\s*(?:from\s+)?contact\s*(?:[:#-]\s*|\s+)([^\]]+?)\s*\]/giu,
+    (match: string, ref: string) => {
+      const name = resolveName(ref);
+      return name ? `[contact: ${name}]` : match;
+    }
+  );
+}
+
+/**
  * Output-side grounding gate for the recall WEDGE — the code-not-model half of
  * "shows its work". Strips ANY citation the answer makes — `[from <note>]`,
  * `[feed: <name>]`, `[task|event|reminder: <title>]` — whose target is NOT

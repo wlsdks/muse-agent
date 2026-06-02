@@ -384,6 +384,29 @@ qwen3:8b and added to `eval:self-improving`.
   chat` lacks the citation gate, but that is BY DESIGN — chat is conversational,
   not one of the edge's grounded surfaces; do not "fix" it.) (43079e8c)
 
+- [x] **P38-10 Kill the false "treat as unverified" warning on a CORRECT
+  contact answer.** Probing the contacts perception surface: `muse ask "what is
+  Mina's email/phone?"` retrieved the contact and answered correctly
+  (`mina@foundry.io`, `+1 415 555 0148`) — but BOTH grounding warnings fired
+  spuriously. (a) The local model cites a contact with the NOTE verb / by slot or
+  id (`[from contact 1]`, `[from contact: mina]`) because the `<<contact N — id>>`
+  wrapper mirrors the `<<note N — file>>` → `[from file]` pattern, so the
+  exact-match note gate false-stripped it → "Removed 1 citation… treat as
+  unverified". (b) The rubric verdict scored coverage against note chunks ONLY, so
+  a contact-sourced fact looked "not backed by your notes" → a second "treat as
+  unverified". Fixed BOTH by code: a new deterministic `normalizeContactCitations`
+  rewrites the model's `[from contact N]`/`[contact: id]` mis-forms to the
+  canonical `[contact: <name>]` (resolve-or-leave — never touches a real
+  `[from contacts.md]`), and the verdict's evidence now includes the matched
+  contacts (high-precision structured exact match) so an address-book answer
+  verifies grounded. The unknown-person case still refuses ("I don't have access
+  to Bob Quagmire's…"), no fabrication. Proof: 9 new `normalizeContactCitations`
+  unit tests (slot/id/partial/unresolvable/note-safe/idempotent) + a LIVE
+  `muse ask "what is Mina Park's email address?"` → cites the contact, receipt
+  "👤 from your contacts: Mina Park", and ZERO "unverified"/"Removed citation"
+  warnings; negative `muse ask "what is Bob Quagmire's email?"` still refuses.
+  agent-core 1366 + cli 1710 + `pnpm lint` 0/0. (this commit)
+
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.
 
