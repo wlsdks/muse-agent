@@ -253,24 +253,44 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
       },
       {
         description:
-          "Send a plain-text message through a configured provider. " +
-          "`providerId` is one of the ids returned by `providers` (telegram | discord | slack | line). " +
+          "Send a plain-text message through the user's configured messenger. " +
+          "OMIT `providerId` to use your single configured channel (it's resolved automatically); only set it " +
+          "(to one of telegram | discord | slack | line) if you have MULTIPLE messengers configured. " +
           "`destination` is platform-native: chat_id for Telegram (e.g. \"@username\" or \"123456789\"), " +
           "channel id for Discord (numeric snowflake), channel/user id for Slack (Cxxx / Uxxx), " +
           "userId/groupId/roomId for LINE. " +
           "`text` is the message body (≤4096 chars). Returns the platform message id when available.",
         execute: async (args): Promise<JsonObject> => {
-          const providerId = readString(args, "providerId")?.trim();
+          const requested = readString(args, "providerId")?.trim();
           const destination = readString(args, "destination")?.trim();
           const text = readString(args, "text");
-          if (!providerId) {
-            return { error: "providerId is required" };
-          }
           if (!destination) {
             return { error: "destination is required" };
           }
           if (text === undefined || text.length === 0) {
             return { error: "text is required" };
+          }
+          // Resolve the channel from config instead of failing on the model's
+          // guess: a single-user box usually has ONE messenger and the model
+          // needn't know its id (it was observed guessing "telegram", which a
+          // Slack/Discord/LINE user doesn't have). An explicit REGISTERED id is
+          // honoured; a single configured provider is used; multiple + a
+          // missing/unknown id → ASK (never guess among several). This RESOLVES
+          // the provider from config rather than guessing (outbound-safety); the
+          // draft-first gate below still shows the user the exact {provider,
+          // destination, text}, so any provider/destination mismatch is caught
+          // at confirm.
+          const registered = registry.list();
+          let providerId: string;
+          if (requested && registry.has(requested)) {
+            providerId = requested;
+          } else if (registered.length === 1) {
+            providerId = registered[0]!.describe().id;
+          } else if (registered.length === 0) {
+            return { error: "no messaging provider is configured — set one up first" };
+          } else {
+            const ids = registered.map((provider) => provider.describe().id).join(", ");
+            return { error: `providerId must be one of your configured messengers: ${ids}${requested ? ` (got "${requested}")` : ""}` };
           }
           // Outbound-safety: when wired with an action log, record every
           // send (and honour an optional draft-first gate) instead of
@@ -320,12 +340,12 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
               type: "string"
             },
             providerId: {
-              description: "Provider id from `providers` (telegram | discord | slack | line).",
+              description: "Optional — OMIT to use your single configured messenger (resolved automatically). Set it (telegram | discord | slack | line) only with multiple messengers configured.",
               type: "string"
             },
             text: { description: "Plain-text message body (≤4096 chars).", type: "string" }
           },
-          required: ["providerId", "destination", "text"],
+          required: ["destination", "text"],
           type: "object"
         },
         domain: "messaging",

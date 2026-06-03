@@ -1548,6 +1548,33 @@ in the loop.
   "move the deck task to next Friday" resolves "deck" → the task and sets its dueAt
   (both edit-by-name actuators now land). (8e2d1fbf)
 
+- [x] **P41-10 "Send Sarah a message" works on whatever messenger you configured —
+  the send resolves your channel from config instead of failing on the model's
+  guess.** Probing the outbound path exposed a real send-breakage: `muse ask
+  --with-tools "send Sarah a message that I'm running late"` made the local model call
+  `muse.messaging.send` with `providerId: "telegram"` (it guesses, since the tool listed
+  "telegram | discord | slack | line" and REQUIRED providerId) — so a user who configured
+  only Slack/Discord/LINE got "Telegram provider is not registered" and COULD NOT SEND at
+  all. Fixed by resolving the channel from config (loopback-messaging `send`): an explicit
+  REGISTERED id is honoured; a single configured provider is used (the model needn't know
+  its id); ZERO → "no messenger configured"; MULTIPLE + missing/unknown → ASK, listing the
+  configured ids (never guess among several); `providerId` is now optional in the schema.
+  This RESOLVES the provider from config rather than guessing — aligned with
+  `outbound-safety.md`, and the draft-first approval gate (`sendMessageWithApproval`) is
+  UNCHANGED and runs AFTER resolution, so the user still confirms the exact {provider,
+  destination, text}. Independently adversarial-reviewed by a sub-agent (VERDICT: ship —
+  no outbound-safety violation; blessed `requireOrPrimary` precedent; stricter than the
+  sibling calendar/notes/tasks registries; gate is the backstop for any
+  provider/destination mismatch). Verified per outbound-safety's "prove the gate, not just
+  the happy path": 5 new acceptance tests over a contract-faithful fake provider (single
+  provider used when providerId omitted; single provider used even when the model guesses a
+  WRONG id; MULTIPLE + unspecified → error lists them + sends NOTHING; ZERO → error;
+  **the draft-first gate STILL fail-closes after resolution — a DENY sends nothing + logs a
+  refusal**) + the 2 now-stale send tests updated — @muse/mcp 174 files / 1498 tests +
+  `pnpm lint` 0/0 + a LIVE before/after on qwen3:8b: the SAME prompt that errored "Telegram
+  provider is not registered" now resolves to the single configured channel and sends
+  ("sent the message to Sarah through the logging provider"). (9a2a9605)
+
 **P42 — Knowledge: your notes stay coherent (the [[wiki-link]] graph is a
 first-class structure, not just decoration).** Muse already builds a note link
 graph (`buildNoteLinkGraph`), surfaces backlinks, and AUDITS for broken links

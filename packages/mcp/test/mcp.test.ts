@@ -4221,7 +4221,7 @@ describe("muse.messaging loopback server", () => {
     expect(JSON.parse(seenBody)).toMatchObject({ chat_id: "@me", text: "hi" });
   });
 
-  it("returns a structured error when the provider isn't registered", async () => {
+  it("errors (no send) when NO messaging provider is configured", async () => {
     const { MessagingProviderRegistry } = await import("@muse/messaging");
     const server = createMessagingMcpServer({ registry: new MessagingProviderRegistry() });
     const connection = createLoopbackMcpConnection(server);
@@ -4231,10 +4231,7 @@ describe("muse.messaging loopback server", () => {
       providerId: "telegram",
       text: "hi"
     });
-    expect(result).toMatchObject({
-      error: expect.stringContaining("not registered"),
-      providerErrorCode: "PROVIDER_NOT_FOUND"
-    });
+    expect(result).toMatchObject({ error: expect.stringContaining("no messaging provider is configured") });
   });
 
   it("rejects empty input fields without calling the provider", async () => {
@@ -4254,8 +4251,7 @@ describe("muse.messaging loopback server", () => {
       .resolves.toMatchObject({ error: expect.stringContaining("text is required") });
     await expect(connection.callTool!("send", { destination: "", providerId: "telegram", text: "hi" }))
       .resolves.toMatchObject({ error: expect.stringContaining("destination is required") });
-    await expect(connection.callTool!("send", { destination: "x", providerId: "", text: "hi" }))
-      .resolves.toMatchObject({ error: expect.stringContaining("providerId is required") });
+    // The empty-field checks short-circuit BEFORE provider resolution → the provider is never called.
     expect(calls).toBe(0);
   });
 
