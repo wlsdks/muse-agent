@@ -274,6 +274,10 @@ export interface PerformHomeActionWithApprovalOptions extends HomeAssistantServi
   readonly now?: () => Date;
   readonly idFactory?: () => string;
   readonly timeoutMs?: number;
+  /** 429 retry budget (extra attempts). Default 2. */
+  readonly retries?: number;
+  /** Injectable delay so tests don't wait on real timers. */
+  readonly sleep?: (ms: number) => Promise<void>;
 }
 
 export async function performHomeActionWithApproval(
@@ -287,6 +291,12 @@ export async function performHomeActionWithApproval(
     request,
     summary,
     userId: options.userId,
+    // A Home Assistant `call_service` (set a state) is idempotent and a 429 is
+    // rejected before it applies, so the home actuator opts into the 429-only
+    // safe retry — unlike a generic non-idempotent web submit.
+    retryOn429: true,
+    ...(options.retries !== undefined ? { retries: options.retries } : {}),
+    ...(options.sleep ? { sleep: options.sleep } : {}),
     ...(options.now ? { now: options.now } : {}),
     ...(options.idFactory ? { idFactory: options.idFactory } : {}),
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {})

@@ -18,6 +18,7 @@
 import { redactSecretsInText } from "@muse/shared";
 
 import { appendActionLog } from "./personal-action-log-store.js";
+import { parseRetryAfterMs } from "./http-retry.js";
 
 export interface WebActionRequest {
   readonly url: string;
@@ -48,6 +49,23 @@ export interface PerformWebActionWithApprovalOptions {
   readonly idFactory?: () => string;
   /** Hard wall-clock cap once approved. Default 30_000ms. */
   readonly timeoutMs?: number;
+  /**
+   * Retry ONLY a 429 rate-limit (honouring Retry-After), for an IDEMPOTENT
+   * actuator (e.g. Home Assistant `call_service` — setting a state). A 429 is
+   * rejected BEFORE the action applies, so a retry can't double-act. Default
+   * off — a generic web submit (form/booking) is non-idempotent and stays
+   * single-shot. A 5xx / network reject is AMBIGUOUS and is NEVER retried
+   * either way (it may have applied).
+   */
+  readonly retryOn429?: boolean;
+  /** 429 retry budget (extra attempts). Default 2. */
+  readonly retries?: number;
+  /** First backoff in ms when no Retry-After; doubles per attempt. Default 250. */
+  readonly baseDelayMs?: number;
+  /** Cap on a server-supplied Retry-After. Default 30_000. */
+  readonly maxRetryAfterMs?: number;
+  /** Injectable delay so tests don't wait on real timers. */
+  readonly sleep?: (ms: number) => Promise<void>;
 }
 
 const DEFAULT_WEB_ACTION_TIMEOUT_MS = 30_000;
@@ -93,37 +111,51 @@ export async function performWebActionWithApproval(
   }
 
   const timeoutMs = options.timeoutMs ?? DEFAULT_WEB_ACTION_TIMEOUT_MS;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  let response: Response;
-  try {
-    response = await options.fetchImpl(options.request.url, {
-      method: options.request.method ?? "POST",
-      signal: controller.signal,
-      ...(options.request.body !== undefined ? { body: options.request.body } : {}),
-      headers: {
-        ...(options.request.body !== undefined ? { "content-type": "application/json" } : {}),
-        ...options.request.headers
-      }
-    });
-  } catch (cause) {
-    const aborted = controller.signal.aborted;
-    const detail = aborted ? `timed out after ${timeoutMs.toString()}ms` : (cause instanceof Error ? cause.message : String(cause));
-    await log("failed", detail);
-    return { detail, performed: false, reason: aborted ? "timed-out" : "failed" };
-  } finally {
-    clearTimeout(timer);
-  }
-  // A non-2xx means the third party REJECTED the action — the booking
-  // didn't go through, the form wasn't accepted. Reporting that as
-  // `performed` would be a false success the user acts on; classify it
-  // as failed (with the status) instead. No retry — a retried POST can
-  // double-act (outbound-safety).
-  if (!response.ok) {
+  // Approval ran ONCE above; the loop only re-transmits (never re-approves).
+  const retries = options.retryOn429 === true ? Math.max(0, Math.trunc(options.retries ?? 2)) : 0;
+  const baseDelayMs = Math.max(0, options.baseDelayMs ?? 250);
+  const maxRetryAfterMs = Math.max(0, options.maxRetryAfterMs ?? 30_000);
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  for (let attempt = 0; ; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let response: Response;
+    try {
+      response = await options.fetchImpl(options.request.url, {
+        method: options.request.method ?? "POST",
+        signal: controller.signal,
+        ...(options.request.body !== undefined ? { body: options.request.body } : {}),
+        headers: {
+          ...(options.request.body !== undefined ? { "content-type": "application/json" } : {}),
+          ...options.request.headers
+        }
+      });
+    } catch (cause) {
+      // A timeout / network reject is AMBIGUOUS (the action may have applied) —
+      // never retried, even for an idempotent actuator.
+      const aborted = controller.signal.aborted;
+      const detail = aborted ? `timed out after ${timeoutMs.toString()}ms` : (cause instanceof Error ? cause.message : String(cause));
+      await log("failed", detail);
+      return { detail, performed: false, reason: aborted ? "timed-out" : "failed" };
+    } finally {
+      clearTimeout(timer);
+    }
+    if (response.ok) {
+      await log("performed", `HTTP ${response.status.toString()}`);
+      return { performed: true, status: response.status };
+    }
+    // 429-only safe retry (idempotent actuators): the server rate-limited the
+    // request BEFORE applying it, so honouring Retry-After can't double-act.
+    if (response.status === 429 && attempt < retries) {
+      const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"), Date.now());
+      await sleep(retryAfterMs !== undefined ? Math.min(retryAfterMs, maxRetryAfterMs) : baseDelayMs * 2 ** attempt);
+      continue;
+    }
+    // A non-2xx means the third party REJECTED the action — the booking didn't
+    // go through. Reporting that as `performed` would be a false success; a 5xx
+    // is AMBIGUOUS and (like a generic web submit) is never retried.
     const detail = `server rejected (HTTP ${response.status.toString()})`;
     await log("failed", detail);
     return { detail, performed: false, reason: "failed" };
   }
-  await log("performed", `HTTP ${response.status.toString()}`);
-  return { performed: true, status: response.status };
 }

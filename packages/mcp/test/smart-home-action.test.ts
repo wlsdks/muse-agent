@@ -61,4 +61,32 @@ describe("performHomeActionWithApproval — draft-first / fail-closed (outbound-
     expect(fetched).toBe(false);
     expect(outcome).toMatchObject({ performed: false });
   });
+
+  it("SURVIVES a 429 rate-limit: the idempotent HA call_service retries (honouring Retry-After) and performs, approving ONCE", async () => {
+    let i = 0;
+    let approvals = 0;
+    const slept: number[] = [];
+    const fetchImpl = (async () => {
+      const status = i === 0 ? 429 : 200;
+      i += 1;
+      return new Response("", { status, ...(status === 429 ? { headers: { "retry-after": "1" } } : {}) });
+    }) as unknown as typeof fetch;
+    const outcome = await performHomeActionWithApproval(base({
+      approvalGate: () => { approvals += 1; return { approved: true }; },
+      fetchImpl,
+      sleep: async (ms: number) => { slept.push(ms); }
+    }) as never);
+    expect(outcome).toMatchObject({ performed: true, status: 200 });
+    expect(i).toBe(2); // one 429 + one success — the home actuator opted into the safe retry
+    expect(approvals).toBe(1); // re-transmit only, never re-approve
+    expect(slept).toEqual([1000]);
+  });
+
+  it("does NOT retry a 5xx on the home action (ambiguous — a toggle/script may have run): single attempt", async () => {
+    let i = 0;
+    const fetchImpl = (async () => { i += 1; return new Response("", { status: 503 }); }) as unknown as typeof fetch;
+    const outcome = await performHomeActionWithApproval(base({ approvalGate: () => ({ approved: true }), fetchImpl, sleep: async () => {} }) as never);
+    expect(outcome).toMatchObject({ performed: false, reason: "failed" });
+    expect(i).toBe(1);
+  });
 });

@@ -139,7 +139,7 @@ P43 bullet is unbuilt.
   429 rate-limit (retry honouring Retry-After; a 5xx/network reject stays
   non-retried — safe for the non-idempotent insert). Closes the calendar
   actuator's transient-failure gap (messaging already retried). Remaining:
-  EMAIL send 429-retry now done (this commit); home/web retry parity + the plan-execute verify/replan loop remain.
+  messaging/calendar/email/HOME 429-retry all done (web stays single-shot by design — the all-actuator-retry sub-goal is COMPLETE); the plan-execute verify/replan loop remains.
   Decomposition → `docs/goals/P43-close-the-loop.md`. Bullet stays `[ ]`
   until a 2+-step task carries to a verified done through an injected
   failure._
