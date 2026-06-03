@@ -29,6 +29,7 @@ import { randomUUID } from "node:crypto";
 import {
   extractCurrentSessionTurns,
   summariseSession,
+  summaryGroundedInTranscript,
   type SessionBoundaryRef,
   type SessionTurnLine,
   type SummariseSessionOptions
@@ -126,6 +127,18 @@ export async function captureEndOfSessionEpisode(options: CaptureEndOfSessionOpt
   });
   if (!summary) {
     return { reason: "summariser returned undefined (model error or empty output)", status: "skipped" };
+  }
+
+  // Grounding gate for the one INGEST surface of the edge: the summary is
+  // model-written free text ("what the user decided", follow-ups) that becomes a
+  // citable [session: …] source the recall gate trusts. DROP it — never persist —
+  // when it isn't grounded in the transcript it claims to summarise, so a
+  // hallucinated decision can't later be served back as a cited fact.
+  if (!summaryGroundedInTranscript(summary.summary, range.turns)) {
+    return {
+      reason: "summary not grounded in the session transcript — dropped to avoid persisting a fabricated memory",
+      status: "skipped"
+    };
   }
 
   const episodesFile = options.episodesFile ?? resolveEpisodesFile(env as Record<string, string | undefined>);

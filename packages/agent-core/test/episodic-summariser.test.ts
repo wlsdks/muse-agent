@@ -4,10 +4,44 @@ import {
   extractCurrentSessionTurns,
   redactSecrets,
   summariseSession,
+  summaryGroundedInTranscript,
   type SessionBoundaryRef,
   type SessionTurnLine
 } from "../src/episodic-summariser.js";
 import type { ModelProvider } from "@muse/model";
+
+describe("summaryGroundedInTranscript — drop a fabricated session summary before it becomes a citable source", () => {
+  const turns: readonly SessionTurnLine[] = [
+    { content: "I need to finish the Q3 budget memo and draft it in Notion before Friday.", role: "user" },
+    { content: "I can outline the Q3 budget memo in Notion — want the sections?", role: "assistant" },
+    { content: "Yes, and remind me to send it to the finance team.", role: "user" }
+  ];
+
+  it("accepts a faithful summary whose content is drawn from the transcript", () => {
+    expect(summaryGroundedInTranscript(
+      "The user worked on the Q3 budget memo and decided to draft it in Notion, then asked to follow up by sending it to the finance team.",
+      turns
+    )).toBe(true);
+  });
+
+  it("REJECTS a wholesale fabrication about something the session never raised", () => {
+    expect(summaryGroundedInTranscript(
+      "The user decided to book a flight to Tokyo on Friday and reserve a hotel near Shibuya.",
+      turns
+    )).toBe(false);
+  });
+
+  it("treats an empty transcript as un-groundable and an empty summary as asserting nothing", () => {
+    expect(summaryGroundedInTranscript("any claim at all", [])).toBe(false);
+    expect(summaryGroundedInTranscript("", turns)).toBe(true);
+  });
+
+  it("respects an explicit floor (a stricter floor rejects a thin overlap)", () => {
+    const thin = "The user mentioned a budget once.";
+    expect(summaryGroundedInTranscript(thin, turns, 0.1)).toBe(true);
+    expect(summaryGroundedInTranscript("Entirely about kayaking trips and tide charts.", turns, 0.5)).toBe(false);
+  });
+});
 
 function stubProvider(generated: { readonly output: string } | Error): ModelProvider {
   return {

@@ -36,6 +36,8 @@ import type {
 } from "@muse/model";
 import { redactSecretsInText } from "@muse/shared";
 
+import { lexicalTokens } from "./knowledge-recall.js";
+
 export interface SessionTurnLine {
   readonly role: "user" | "assistant";
   readonly content: string;
@@ -96,6 +98,56 @@ export function extractCurrentSessionTurns(
  */
 export function redactSecrets(text: string): string {
   return redactSecretsInText(text);
+}
+
+/** Default share of the summary's content tokens that must appear in the
+ *  transcript for it to count as grounded. Deliberately LENIENT: a faithful
+ *  paraphrase adds framing words ("decided"/"discussed") absent from the
+ *  transcript, so its coverage sits well below 1 — the floor only needs to be
+ *  high enough to reject a WHOLESALE fabrication (a summary about a topic the
+ *  session never raised, which scores ~0), and low enough never to drop a real
+ *  but terse summary. Dropping a faithful memory is worse than keeping a borderline
+ *  one (the recall gate still applies downstream), so it errs lenient. */
+export const DEFAULT_EPISODE_GROUNDING_FLOOR = 0.25;
+
+/**
+ * Is the model-written session `summary` actually grounded in the `turns` it
+ * claims to summarise? The summariser asks the local model for "what the user
+ * decided" + follow-ups — free text that is then PERSISTED as a citable
+ * `[session: …]` source the recall gate trusts as ground truth. So this is the
+ * fabrication check for the one INGEST surface of the edge: it measures the
+ * fraction of the summary's content tokens (`lexicalTokens`, the same tokeniser
+ * the recall gate uses) that occur anywhere in the transcript turns, and returns
+ * false when that falls below `floor` — i.e. the summary talks about things the
+ * session never did. Pure; an empty summary asserts nothing (true); an empty
+ * transcript can ground nothing (false). The caller DROPS an ungrounded summary
+ * rather than persist a hallucinated memory.
+ */
+export function summaryGroundedInTranscript(
+  summary: string,
+  turns: readonly SessionTurnLine[],
+  floor: number = DEFAULT_EPISODE_GROUNDING_FLOOR
+): boolean {
+  const summaryTokens = lexicalTokens(summary);
+  if (summaryTokens.size === 0) {
+    return true;
+  }
+  const transcript = new Set<string>();
+  for (const turn of turns) {
+    for (const token of lexicalTokens(turn.content)) {
+      transcript.add(token);
+    }
+  }
+  if (transcript.size === 0) {
+    return false;
+  }
+  let covered = 0;
+  for (const token of summaryTokens) {
+    if (transcript.has(token)) {
+      covered += 1;
+    }
+  }
+  return covered / summaryTokens.size >= floor;
 }
 
 export interface SessionSummary {

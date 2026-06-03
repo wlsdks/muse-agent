@@ -1390,7 +1390,40 @@ qwen3:8b and added to `eval:self-improving`.
   with NO warning (the faithful time matched — zero false positive end-to-end). cli
   169 files / 1821 tests + `pnpm lint` 0/0 — the brief surface now plugs into the
   fabrication=0 edge like recall/reflection/council do, so Muse can't quietly tell you
-  about a meeting you don't have. (this commit)
+  about a meeting you don't have. (aec63ec8)
+
+- [x] **P38-34 The end-of-session episode summary is now gated against its
+  transcript — a fabricated "decision" is DROPPED, not persisted as a citable
+  memory (the edge's first INGEST gate).** Every OUTPUT surface (recall, reflection,
+  council, brief) was RGV-gated, but the one INGEST surface wasn't:
+  `captureEndOfSessionEpisode` (apps/cli/src/chat-end-session.ts) ran `summariseSession`
+  — whose prompt asks the local model for "WHAT the user decided" + follow-ups — and
+  persisted that free text via `upsertEpisode` after ONLY secret-scrubbing, no
+  faithfulness check. The summary then becomes a citable `[session: …]` source the
+  recall gate trusts as ground truth, so a hallucinated decision (the session "decided
+  to book a flight to Tokyo" when it never came up) would later be served back as a
+  CITED fact. Fixed with a pure exported `summaryGroundedInTranscript(summary, turns,
+  floor)` in packages/agent-core/src/episodic-summariser.ts: it measures the share of
+  the summary's content tokens (`lexicalTokens`, the SAME tokeniser the recall gate
+  uses) that occur anywhere in the transcript turns and returns false below the floor;
+  `captureEndOfSessionEpisode` now DROPS the summary ("not grounded … dropped to avoid
+  persisting a fabricated memory", status skipped) instead of writing it. The floor is
+  deliberately LENIENT (`DEFAULT_EPISODE_GROUNDING_FLOOR = 0.25`) — a faithful paraphrase
+  adds framing words absent from the transcript so its coverage sits well under 1, and
+  dropping a real memory is worse than keeping a borderline one (recall still gates it
+  downstream) — so it only rejects a WHOLESALE fabrication (which scores ~0). Proof
+  (fully DETERMINISTIC, no live model): 4 new unit tests in
+  packages/agent-core/test/episodic-summariser.test.ts (a faithful Q3-memo/Notion
+  summary → grounded; the Tokyo-flight fabrication over that transcript → rejected;
+  empty transcript → un-groundable, empty summary → asserts nothing; an explicit floor
+  is honoured) + a new surface assertion on the existing captureEndOfSessionEpisode
+  harness in apps/cli/test/program.test.ts (a fabricating stub provider's summary is
+  DROPPED with status skipped/"not grounded" and the episodes file stays at one entry —
+  the fabricated one never lands), with the happy-path capture + the secret-scrub test
+  still green (the latter's transcript enriched to support its summary) + the full
+  @muse/agent-core (112 files / 1405) and @muse/cli (169 files / 1821) suites green.
+  agent-core 112 / 1405 + cli 169 / 1821 + `pnpm lint` 0/0 — Muse can no longer quietly
+  remember, and later cite, a decision you never made. (this commit)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.

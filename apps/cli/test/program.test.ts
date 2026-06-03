@@ -4053,6 +4053,25 @@ describe("cli program", () => {
       };
       expect(onDisk.episodes).toHaveLength(1);
       expect(onDisk.episodes[0]).toMatchObject({ id: captured.episode.id, userId: "stark" });
+
+      // Grounding gate: a summary the transcript never supports is DROPPED, not
+      // persisted — so a hallucinated decision can't become a citable [session:]
+      // fact. (The transcript was about the Q3 memo / Notion.)
+      const fabricatingProvider = {
+        id: "stub", listModels: async () => [],
+        generate: async () => ({
+          id: "stub-resp", model: "stub",
+          output: "User decided to book a flight to Tokyo on Friday and reserve a hotel in Shibuya.\ntopics: travel, Tokyo"
+        }),
+        stream: async function* () { /* not used */ }
+      } as unknown as Parameters<typeof captureEndOfSessionEpisode>[0]["modelProvider"];
+      const dropped = await captureEndOfSessionEpisode({
+        model: "stub", modelProvider: fabricatingProvider, now: () => new Date("2026-05-13T08:20:00.000Z"), userId: "stark"
+      });
+      expect(dropped).toMatchObject({ status: "skipped", reason: expect.stringContaining("not grounded") });
+      // Still exactly one episode on disk — the fabricated one did NOT land.
+      const after = JSON.parse(await fsp.readFile(path.join(root, ".muse", "episodes.json"), "utf8")) as { episodes: unknown[] };
+      expect(after.episodes).toHaveLength(1);
     } finally {
       if (prevHome !== undefined) process.env.HOME = prevHome;
       else delete process.env.HOME;
@@ -4138,7 +4157,9 @@ describe("cli program", () => {
     try {
       const { appendLastChatTurn, appendSessionBoundary } = await import("../src/chat-history.js");
       await appendSessionBoundary({ tsIso: "2026-05-13T08:00:00.000Z", userId: "stark" });
-      await appendLastChatTurn({ message: "Plan rotation", response: "ok" });
+      // Transcript supports the summary's content (key rotation) so the grounding
+      // gate keeps it — this test is about SECRET SCRUBBING, not grounding.
+      await appendLastChatTurn({ message: "Help me with the key rotation; the old key needs to be discussed and replaced", response: "ok, let's rotate the key" });
 
       const { captureEndOfSessionEpisode } = await import("../src/chat-end-session.js");
 
