@@ -19,9 +19,11 @@ import {
   type DistilledStrategy
 } from "@muse/agent-core";
 import {
+  bumpPlaybookObservation,
   incrementSuppressionBlocked,
   isLearningPaused,
   markLearnEventsDone,
+  queryPlaybook,
   querySuppressedLessons,
   readPendingLearnEvents,
   recordPlaybookStrategy,
@@ -44,6 +46,14 @@ export interface DistillQueuedDeps {
   readonly suppressedLessonsFile?: string;
   /** Similarity ≥ this ⇒ a new lesson counts as the suppressed one. Default 0.6. */
   readonly suppressionThreshold?: number;
+  /**
+   * Bank dedup (ReasoningBank): a freshly-distilled lesson whose
+   * `strategyTextSimilarity` to an EXISTING bank entry is ≥ this is treated as
+   * the user raising the SAME point again — its observation count is bumped
+   * instead of writing a paraphrase duplicate (sign-safe: never graduates the
+   * matched entry). Default 0.7. Omitted ⇒ the default applies.
+   */
+  readonly dedupThreshold?: number;
   /**
    * Learning pause switch (B1 §5 kill switch). When set AND paused, this tick
    * does NOTHING — zero distills, zero playbook writes, queue left intact so a
@@ -101,6 +111,25 @@ export async function distillQueuedCorrections(deps: DistillQueuedDeps): Promise
     const strategy = await distill(exchange, { model: deps.model, modelProvider: deps.modelProvider, ...(deps.embed ? { embed: deps.embed } : {}) });
     if (!strategy || strategy.text.trim().length === 0) {
       continue; // distiller fail-soft / NONE ⇒ no write
+    }
+    // Bank dedup (ReasoningBank): if this lesson paraphrases one the bank already
+    // holds, consolidate instead of writing a duplicate — bump the existing
+    // entry's observation count. SIGN-SAFE: a repeated correction is a NEGATIVE
+    // signal, so this NEVER touches reward/probation (a probation guess is not
+    // graduated off the back of a repeat — graduation stays bound to a positive
+    // user act); it only records that the user raised the same point again.
+    const dedupThreshold = deps.dedupThreshold ?? 0.7;
+    const bankEntries = await queryPlaybook(deps.playbookFile, event.userId);
+    let bestMatch: { readonly id: string; readonly similarity: number } | undefined;
+    for (const entry of bankEntries) {
+      const similarity = strategyTextSimilarity(strategy.text, entry.text);
+      if (similarity >= dedupThreshold && (!bestMatch || similarity > bestMatch.similarity)) {
+        bestMatch = { id: entry.id, similarity };
+      }
+    }
+    if (bestMatch) {
+      await bumpPlaybookObservation(deps.playbookFile, bestMatch.id);
+      continue; // consolidated into the existing lesson — no duplicate, no graduation
     }
     await recordPlaybookStrategy(deps.playbookFile, {
       createdAt: now().toISOString(),

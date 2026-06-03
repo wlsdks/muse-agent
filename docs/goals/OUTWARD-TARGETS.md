@@ -122,10 +122,19 @@ P43 bullet is unbuilt.
   continuous RL over the learned bank unattended: it DISTILLS queued
   corrections into probation strategies (slice 1) AND DECAYS stale unused ones
   toward neutral (slice 2), both brake-first under one `MUSE_SELFLEARN_ENABLED`
-  switch. Remaining (slice 3, honesty-sensitive — held for review): consolidate
-  + autonomous graduation on a real user signal. Decomposition →
-  `docs/goals/P43-close-the-loop.md`. Bullet stays `[ ]` until the 2-session
-  live battery proves an unattended correction changes a later session._
+  switch. Slice 3a (DELIVERED, `04576c2d`) — the unattended distiller now
+  CONSOLIDATES a repeated correction: a re-derived near-duplicate
+  (`strategyTextSimilarity`) bumps the existing entry's `timesObserved` ("raised
+  N×" in `muse learned`) instead of writing a paraphrase duplicate, and this is
+  SIGN-SAFE — a repeated correction is a NEGATIVE signal, so it NEVER touches
+  reward/probation (no autonomous graduation off a repeat; a 10-voter panel
+  ratified that graduating on a repeat would invert the sign). A negative-
+  assertion test pins "no probation strategy graduates without a positive user
+  act." Remaining (honesty-sensitive): autonomous graduation stays bound to a
+  positive user act (NOT built as auto-graduation), and the 2-session live
+  battery. Decomposition → `docs/goals/P43-close-the-loop.md`. Bullet stays `[ ]`
+  until the 2-session live battery proves an unattended signal changes a later
+  session._
 - [ ] **P43-2 Reliable carry-to-done.** A multi-step goal reaches a
   VERIFIED done: the plan-execute loop verifies each step's effect,
   replans on a failed/ambiguous step, and EVERY actuator (email /

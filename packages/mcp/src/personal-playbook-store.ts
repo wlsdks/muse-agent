@@ -71,6 +71,16 @@ export interface PlaybookEntry {
    * `createdAt` is the fallback recency anchor.
    */
   readonly lastReinforcedAt?: string;
+  /**
+   * How many times this lesson has been OBSERVED — 1 (or absent) when first
+   * recorded, bumped each time the unattended distiller re-derives a
+   * near-duplicate (the user raised the same point again) instead of writing a
+   * paraphrase duplicate. PURE observability: a repeated correction is a
+   * NEGATIVE signal, so this counter MUST NOT touch `reward` or clear
+   * `probation` (graduation stays bound to a positive user act) — it only lets
+   * `muse learned` honestly show "you've raised this N×". Absent ⇒ observed once.
+   */
+  readonly timesObserved?: number;
 }
 
 async function quarantineCorruptStore(file: string): Promise<void> {
@@ -206,6 +216,36 @@ export async function adjustPlaybookReward(
   });
 }
 
+/**
+ * Record that an existing lesson was OBSERVED again (the unattended distiller
+ * re-derived a near-duplicate — the user raised the same point). Bumps
+ * `timesObserved` ONLY (absent ⇒ becomes 2: it had been observed once at
+ * record-time). Deliberately does NOT touch `reward`, `probation`, or
+ * `lastReinforcedAt`: a repeated correction is a NEGATIVE signal, so promoting
+ * a probation guess off the back of a repeat would invert the sign and let a
+ * possibly-contradicted strategy graduate autonomously — graduation stays bound
+ * to a positive user act. Serialised read-modify-write; returns the new count,
+ * or undefined when no entry matched.
+ */
+export async function bumpPlaybookObservation(file: string, id: string): Promise<number | undefined> {
+  return withFileMutationQueue(file, async () => {
+    const existing = await readPlaybook(file);
+    if (!existing.some((e) => e.id === id)) {
+      return undefined;
+    }
+    let updated = 0;
+    const next = existing.map((e) => {
+      if (e.id !== id) {
+        return e;
+      }
+      updated = (e.timesObserved ?? 1) + 1;
+      return { ...e, timesObserved: updated };
+    });
+    await writePlaybook(file, next);
+    return updated;
+  });
+}
+
 /** Disuse is judged stale past this many days without a positive reinforce. */
 export const PLAYBOOK_DECAY_STALE_DAYS = 30;
 const DAY_MS = 86_400_000;
@@ -261,5 +301,6 @@ function isPlaybookEntry(value: unknown): value is PlaybookEntry {
   if (e.lastReinforcedAt !== undefined && typeof e.lastReinforcedAt !== "string") return false;
   if (e.origin !== undefined && typeof e.origin !== "string") return false;
   if (e.source !== undefined && typeof e.source !== "string") return false;
+  if (e.timesObserved !== undefined && (typeof e.timesObserved !== "number" || !Number.isFinite(e.timesObserved))) return false;
   return true;
 }

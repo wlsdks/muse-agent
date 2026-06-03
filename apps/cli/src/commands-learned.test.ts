@@ -89,6 +89,20 @@ describe("renderLearnedDigest", () => {
     expect(out).toContain("keep emails under four sentences");
   });
 
+  it("annotates a repeatedly-raised probation strategy with 'raised N×' (and omits it for a once-observed one)", () => {
+    const out = renderLearnedDigest({
+      reflections: [],
+      skills: [],
+      strategies: [
+        { probation: true, text: "use a warmer sign-off in personal emails", timesObserved: 3 },
+        { probation: true, text: "default ambiguous dates to the next business day", timesObserved: 1 }
+      ]
+    });
+    expect(out).toContain("use a warmer sign-off in personal emails  ⟨probation⟩  · raised 3×");
+    expect(out).toContain("default ambiguous dates to the next business day  ⟨probation⟩");
+    expect(out).not.toContain("default ambiguous dates to the next business day  ⟨probation⟩  · raised");
+  });
+
   it("the probation section alone is enough to render (not the empty hint)", () => {
     const out = renderLearnedDigest({ reflections: [], skills: [], strategies: [{ probation: true, text: "x" }] });
     expect(out).toContain("on probation");

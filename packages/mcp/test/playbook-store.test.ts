@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { adjustPlaybookReward, decayStalePlaybookRewards, MAX_PLAYBOOK_ENTRIES, PLAYBOOK_DECAY_STALE_DAYS, PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, type PlaybookEntry, queryPlaybook, readPlaybook, recordPlaybookStrategy, removePlaybookStrategy, retainPlaybookEntries, writePlaybook } from "../src/personal-playbook-store.js";
+import { adjustPlaybookReward, bumpPlaybookObservation, decayStalePlaybookRewards, MAX_PLAYBOOK_ENTRIES, PLAYBOOK_DECAY_STALE_DAYS, PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, type PlaybookEntry, queryPlaybook, readPlaybook, recordPlaybookStrategy, removePlaybookStrategy, retainPlaybookEntries, writePlaybook } from "../src/personal-playbook-store.js";
 
 const entry = (id: string, tag?: string): PlaybookEntry => ({
   id,
@@ -168,6 +168,29 @@ describe("probation — unattended idle-distilled strategies graduate on a real 
     await recordPlaybookStrategy(file, { ...entry("p1"), probation: true });
     await adjustPlaybookReward(file, "p1", -1); // a decay, not a reinforce
     expect((await readPlaybook(file))[0]?.probation).toBe(true);
+  });
+});
+
+describe("bumpPlaybookObservation — consolidate a repeated correction WITHOUT graduating it", () => {
+  it("increments timesObserved (absent → 2) and returns the new count; missing id → undefined", async () => {
+    const file = freshFile();
+    await recordPlaybookStrategy(file, { ...entry("p1"), probation: true });
+    expect(await bumpPlaybookObservation(file, "p1")).toBe(2); // observed once at record-time → 2
+    expect(await bumpPlaybookObservation(file, "p1")).toBe(3);
+    expect((await readPlaybook(file))[0]?.timesObserved).toBe(3);
+    expect(await bumpPlaybookObservation(file, "missing")).toBeUndefined();
+  });
+
+  it("NEGATIVE ASSERTION: bumping observation NEVER touches reward or clears probation (a repeat is a negative signal, not graduation)", async () => {
+    const file = freshFile();
+    await recordPlaybookStrategy(file, { ...entry("p1"), probation: true, reward: -1 });
+    await bumpPlaybookObservation(file, "p1");
+    await bumpPlaybookObservation(file, "p1");
+    const after = (await readPlaybook(file))[0];
+    expect(after?.timesObserved).toBe(3);
+    expect(after?.probation).toBe(true); // still on probation — NOT graduated
+    expect(after?.reward).toBe(-1); // reward unchanged — no positive signal manufactured
+    expect(after?.lastReinforcedAt).toBeUndefined(); // recency anchor untouched
   });
 });
 

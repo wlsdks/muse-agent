@@ -496,6 +496,7 @@ export {
 } from "./personal-veto-store.js";
 export {
   adjustPlaybookReward,
+  bumpPlaybookObservation,
   decayStalePlaybookRewards,
   MAX_PLAYBOOK_ENTRIES,
   PLAYBOOK_DECAY_STALE_DAYS,

@@ -38,6 +38,7 @@ export interface LearnedDigestInput {
     readonly lastReinforcedAt?: string;
     readonly origin?: string;
     readonly source?: string;
+    readonly timesObserved?: number;
   }[];
   readonly skills: readonly { readonly name: string; readonly reward: number }[];
   readonly reflections: readonly { readonly insight: string; readonly createdAtMs: number }[];
@@ -147,7 +148,11 @@ export function renderLearnedDigest(input: LearnedDigestInput): string {
   if (probationStrategies.length > 0) {
     lines.push("Learning while idle (on probation — recorded, NOT yet applied until you reinforce it):");
     for (const s of probationStrategies) {
-      lines.push(`  • ${s.text}${s.tag ? ` (${s.tag})` : ""}  ⟨probation⟩`);
+      // "raised N×" — the user gave a near-duplicate correction N times; the
+      // distiller consolidated rather than duplicating. Shown so a repeatedly-
+      // raised point reads as worth reinforcing, WITHOUT auto-graduating it.
+      const raised = typeof s.timesObserved === "number" && s.timesObserved >= 2 ? `  · raised ${s.timesObserved.toString()}×` : "";
+      lines.push(`  • ${s.text}${s.tag ? ` (${s.tag})` : ""}  ⟨probation⟩${raised}`);
       const why = whyLine(s);
       if (why) lines.push(why);
     }
