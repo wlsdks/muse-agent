@@ -52,6 +52,22 @@ function normaliseKey(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/gu, " ");
 }
 
+/**
+ * How many days out to fire the "how did it go?" check-in, read from a timeframe
+ * the user voiced inside the commitment ("submit the forms THIS WEEK", "내일 …").
+ * The follow-up must land AFTER they'd have done it, so a `this week` commitment
+ * isn't nagged tomorrow. Default 1 (next day) when no timeframe is stated. Pure +
+ * exported.
+ */
+export function followupDayOffset(commitment: string): number {
+  const c = commitment.toLowerCase();
+  if (/\bnext\s+week\b/u.test(c) || /다음\s*주/u.test(c)) return 8;
+  if (/\bthis\s+week\b/u.test(c) || /이번\s*주/u.test(c) || /\bby\s+(mon|tue|wed|thu|fri|sat|sun)/u.test(c)) return 5;
+  if (/\btomorrow\b/u.test(c) || /내일/u.test(c) || /\bnext\s+(mon|tue|wed|thu|fri|sat|sun)/u.test(c)) return 2;
+  // today / tonight / later today / this afternoon / 오늘 / 이따 / no timeframe → next day.
+  return 1;
+}
+
 export interface ScheduleCheckinsOptions {
   readonly now: Date;
   readonly userId: string;
@@ -80,9 +96,7 @@ export function scheduleCheckins(
   const existing = options.existing ?? [];
   const now = options.now;
   const createdAt = now.toISOString();
-  const due = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, slotHour, 0, 0, 0);
-  const dueAtIso = due.toISOString();
-  const idFactory = options.idFactory ?? ((): string => `chk_${now.getTime().toString(36)}_${Math.trunc((due.getTime() % 1_000_000)).toString(36)}`);
+  const idFactory = options.idFactory ?? ((): string => `chk_${now.getTime().toString(36)}_${out.length.toString(36)}`);
 
   const taken = new Set(existing.filter((c) => c.status !== "cancelled").map((c) => c.sourceKey));
   const scheduledToday = existing.filter((c) => c.status === "scheduled" && c.createdAt.slice(0, 10) === createdAt.slice(0, 10)).length;
@@ -96,10 +110,12 @@ export function scheduleCheckins(
     const sourceKey = normaliseKey(commitment);
     if (taken.has(sourceKey)) continue;
     taken.add(sourceKey);
+    // Fire AFTER the commitment's stated timeframe (next day by default).
+    const due = new Date(now.getFullYear(), now.getMonth(), now.getDate() + followupDayOffset(commitment), slotHour, 0, 0, 0);
     out.push({
       commitment,
       createdAt,
-      dueAtIso,
+      dueAtIso: due.toISOString(),
       id: idFactory(),
       question: buildCheckinQuestion(commitment),
       sourceKey,

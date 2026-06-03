@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCheckinQuestion,
+  followupDayOffset,
   readCheckins,
   runDueCheckins,
   scheduleCheckins,
@@ -26,12 +27,39 @@ describe("buildCheckinQuestion", () => {
   });
 });
 
+describe("followupDayOffset", () => {
+  it("reads the timeframe the user voiced (EN + KO), defaulting to next-day", () => {
+    expect(followupDayOffset("renew my passport next week")).toBe(8);
+    expect(followupDayOffset("여권 갱신 다음 주에 해야 해")).toBe(8);
+    expect(followupDayOffset("submit the tax forms this week")).toBe(5);
+    expect(followupDayOffset("이번 주에 보고서 내야 해")).toBe(5);
+    expect(followupDayOffset("finish the deck by friday")).toBe(5);
+    expect(followupDayOffset("call the dentist tomorrow")).toBe(2);
+    expect(followupDayOffset("내일 면접 준비")).toBe(2);
+    expect(followupDayOffset("meet the team next thursday")).toBe(2);
+    // no timeframe, or a same-day one → next day.
+    expect(followupDayOffset("email the team later today")).toBe(1);
+    expect(followupDayOffset("review the PR")).toBe(1);
+  });
+});
+
 describe("scheduleCheckins", () => {
   it("schedules next-day-at-slot, deduped, capped", () => {
     const out = scheduleCheckins(["email Bob", "email Bob", "renew passport"], { now: NOW, userId: "stark", slotHour: 10 });
     expect(out).toHaveLength(2); // dedup "email Bob"
     expect(out[0]!.dueAtIso).toBe(new Date(2026, 4, 2, 10, 0, 0).toISOString());
     expect(out.every((c) => c.status === "scheduled")).toBe(true);
+  });
+
+  it("fires the check-in AFTER the commitment's stated timeframe, not always next-day", () => {
+    const out = scheduleCheckins(
+      ["email the team later today", "submit the tax forms this week", "renew my passport next week"],
+      { now: NOW, userId: "stark", slotHour: 10, maxPerDay: 5 }
+    );
+    // "later today" → next day (+1); "this week" → +5; "next week" → +8.
+    expect(out[0]!.dueAtIso).toBe(new Date(2026, 4, 2, 10, 0, 0).toISOString());
+    expect(out[1]!.dueAtIso).toBe(new Date(2026, 4, 6, 10, 0, 0).toISOString());
+    expect(out[2]!.dueAtIso).toBe(new Date(2026, 4, 9, 10, 0, 0).toISOString());
   });
 
   it("skips commitments already tracked and respects maxPerDay", () => {

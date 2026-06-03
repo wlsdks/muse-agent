@@ -1477,6 +1477,28 @@ honest-refusal mock-corpus check where applicable.
   tomorrow about the appointment" (before: "No open commitments detected"). agent-core
   112 files / 1399 tests + `pnpm lint` 0/0. (this commit)
 
+- [x] **P35-12 A commitment's follow-up check-in now fires AFTER the timeframe
+  you stated, not always tomorrow.** P35-11 made Muse NOTICE a spoken commitment;
+  this makes the follow-up land at a sensible time. `muse checkins scan` schedules a
+  warm "how did it go?" nudge for each detected commitment — but every check-in was
+  hardcoded to fire TOMORROW at 10:00 regardless of what you said: "submit the tax
+  forms THIS WEEK" got nagged the very next morning, days before you'd plausibly have
+  done it. Fixed in packages/mcp/src/commitment-checkin.ts with a new pure exported
+  `followupDayOffset(commitment)` that reads the timeframe the user voiced (EN + KO)
+  and pushes the check-in past it: "next week" / "다음 주" → +8 days, "this week" /
+  "이번 주" / "by friday" → +5, "tomorrow" / "내일" / "next thursday" → +2, and a
+  same-day or timeframe-less commitment → next day (the old default, unchanged); the
+  per-commitment due is now computed inside the schedule loop instead of once up front.
+  Proof: 2 new unit tests in packages/mcp/test/commitment-checkin.test.ts
+  (`followupDayOffset` reads each EN+KO timeframe and defaults to 1; `scheduleCheckins`
+  gives a "later today" / "this week" / "next week" batch three DISTINCT due dates) +
+  the full @muse/mcp suite green (167 files / 1332 tests) + LIVE on the loop PC
+  (today 2026-06-03): seeding `~/.muse/last-chat.jsonl` with those three commitments
+  and running `muse checkins scan` schedules them for 2026-06-04 / 06-08 / 06-11
+  respectively (before this fix all three were 2026-06-04 10:00). mcp 167 files / 1332
+  tests + `pnpm lint` 0/0 — a user who says "I'll do X this week" is followed up at the
+  end of the week, not nagged tomorrow. (this commit)
+
 - [x] **P35-1 Citation-as-voice (B2 S1, build-first).** `muse ask` renders
   each cited note as a memory — "📎 From your notes … • from your note of
   <date> — '<verbatim snippet>'" + the openable path — instead of a bare
