@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { citedSourcesIn, enforceAnswerCitations, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations } from "../src/index.js";
+import { citedSourcesIn, enforceAnswerCitations, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations } from "../src/index.js";
 
 describe("normalizeMemoryCitations — repair `[from <memory-key>]` (the model's note-verb mis-form, common in Korean)", () => {
   const keys = ["car_license_plate", "allergy_penicillin"];
@@ -281,5 +281,38 @@ describe("normalizeFromPrefixedCitations — drop the redundant 'from ' before a
     const gated = enforceAnswerCitations(normalized, { commits: ["feat(cli): html reader"] });
     expect(gated.stripped).toEqual([]);
     expect(gated.text).toContain("[commit: feat(cli): html reader]");
+  });
+});
+
+describe("normalizeSlotCitations — rewrite a SLOT-numbered structured citation (the session false-strip)", () => {
+  const slots = {
+    session: ["We set up the office VPN: WireGuard MTU 1380.", "Discussed the Q3 budget: $42,000."],
+    event: ["Dentist appointment", "Team standup"]
+  };
+
+  it("rewrites `[from session 1]` to `[session: <slot-1 summary>]`", () => {
+    expect(normalizeSlotCitations("We chose MTU 1380 [from session 1].", slots))
+      .toBe("We chose MTU 1380 [session: We set up the office VPN: WireGuard MTU 1380.].");
+  });
+
+  it("ignores a trailing `— <id>` the model echoes from the `<<session N — id>>` marker", () => {
+    expect(normalizeSlotCitations("MTU 1380 [from session 1 — ep_001].", slots))
+      .toBe("MTU 1380 [session: We set up the office VPN: WireGuard MTU 1380.].");
+  });
+
+  it("maps the right slot (event 2 → the second event title)", () => {
+    expect(normalizeSlotCitations("It's the [from event 2].", slots)).toBe("It's the [event: Team standup].");
+  });
+
+  it("leaves an out-of-range slot or an unknown class untouched", () => {
+    expect(normalizeSlotCitations("[from session 9]", slots)).toBe("[from session 9]");
+    expect(normalizeSlotCitations("[from notes 1]", slots)).toBe("[from notes 1]"); // 'notes' isn't a structured class
+  });
+
+  it("the rewritten session citation then survives the gate (the false-strip is gone)", () => {
+    const normalized = normalizeSlotCitations("We chose MTU 1380 [from session 1].", slots);
+    const gated = enforceAnswerCitations(normalized, { sessions: slots.session });
+    expect(gated.stripped).toEqual([]);
+    expect(gated.text).toContain("[session: We set up the office VPN");
   });
 });

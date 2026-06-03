@@ -27,7 +27,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 
-import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, parseGroundingReverifyVerdict, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectByMmr, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyVerdict, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectByMmr, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
@@ -2236,6 +2236,22 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // validates by class. Runs first so the contact/memory passes below see the
       // already-de-prefixed form.
       collectedAnswer = normalizeFromPrefixedCitations(collectedAnswer);
+      // The grounding markers are slot-numbered (`<<session N — id>>`), so the
+      // model often cites a structured source by slot (`[from session 1]`) — the
+      // note regex then false-strips a TRUE recall. Rewrite `[from <class> N]` to
+      // the canonical `[<class>: <slot N's content>]` using the SAME ordered lists
+      // the markers were built from + the gate validates against.
+      collectedAnswer = normalizeSlotCitations(collectedAnswer, {
+        action: matchedActions.map((a) => a.what),
+        command: matchedCommands,
+        commit: matchedCommits.map((c) => c.subject),
+        contact: matchedContacts.map((c) => c.name),
+        event: upcomingEvents.map((e) => e.title),
+        feed: feedHeadlines.map((h) => h.feedName),
+        reminder: pendingReminders.map((r) => r.text),
+        session: episodeHits.map((e) => e.summary),
+        task: openTasks.map((t) => t.title)
+      });
       // The local model cites a contact with the note verb / by slot or id
       // (`[from contact 1]`, `[contact: mina]`) because `<<contact N — id>>`
       // mirrors the note wrapper; rewrite those to the canonical

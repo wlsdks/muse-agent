@@ -519,6 +519,31 @@ export function normalizeFromPrefixedCitations(answer: string): string {
 }
 
 /**
+ * Rewrite a STRUCTURED citation the model wrote by SLOT NUMBER — `[from session 1]`,
+ * `[from event 2]` — into the canonical `[<class>: <that slot's content>]` the gate
+ * validates by class. The grounding markers are slot-numbered (`<<session N — id>>`),
+ * so a reasoning-off model often cites the slot rather than the title; without this
+ * the note regex mis-catches `[from session 1]` and false-strips a TRUE recall.
+ * `slotsByClass` maps each class to the ORDERED list shown to the model (slot N →
+ * index N-1); an out-of-range slot is left untouched for the gate to judge.
+ */
+export function normalizeSlotCitations(
+  answer: string,
+  slotsByClass: Readonly<Record<string, readonly string[]>>
+): string {
+  return answer.replace(
+    // `[from session 1]` or, when the model echoes the `<<session N — id>>` marker
+    // whole, `[from session 1 — ep_001]` — the optional trailing "— <id>" is ignored.
+    /\[from\s+(task|event|reminder|session|feed|contact|command|commit|memory|action)\s+(\d+)(?:\s*[—–-]\s*[^\]]*)?\s*\]/giu,
+    (match: string, cls: string, num: string) => {
+      const list = slotsByClass[cls.toLowerCase()];
+      const content = list?.[Number.parseInt(num, 10) - 1];
+      return content ? `[${cls.toLowerCase()}: ${content}]` : match;
+    }
+  );
+}
+
+/**
  * Output-side grounding gate for the recall WEDGE — the code-not-model half of
  * "shows its work". Strips ANY citation the answer makes — `[from <note>]`,
  * `[feed: <name>]`, `[task|event|reminder: <title>]` — whose target is NOT

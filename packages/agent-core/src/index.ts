@@ -149,6 +149,7 @@ export {
   normalizeContactCitations,
   normalizeFromPrefixedCitations,
   normalizeMemoryCitations,
+  normalizeSlotCitations,
   rankKnowledgeChunks,
   renderKnowledgeMatches,
   reorderForLongContext,

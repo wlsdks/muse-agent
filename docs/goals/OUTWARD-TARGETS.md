@@ -948,7 +948,30 @@ qwen3:8b and added to `eval:self-improving`.
   strips) + the existing contact/gate suite green + LIVE on qwen3:8b: `muse ask --git
   "what have I been working on?"` now cites two `[commit: …]` with NO "Removed
   citation / unverified" warning (before: stripped + warned). agent-core 112 files /
-  1391 tests + cli 167 files / 1782 tests + `pnpm lint` 0/0. (this commit)
+  1391 tests + cli 167 files / 1782 tests + `pnpm lint` 0/0. (7440e57f)
+
+- [x] **P38-24 A past-SESSION recall cited by SLOT number is no longer
+  false-stripped — `[from session 1]` survives the gate.** Probing the
+  continuous-companion core (episode/session grounding) by seeding two past
+  sessions: `muse ask "what did we decide about the VPN MTU?"` correctly grounded on
+  the episode and answered "…MTU 1380 [from session 1]", but the gate STRIPPED it
+  with "⚠️ Removed 1 citation … treat those claims as unverified" on a TRUE recall.
+  Root: the grounding markers are slot-numbered (`<<session N — id>>`), so the model
+  cites a structured source by SLOT (`[from session 1]`, even `[from session 1 —
+  ep_001]` echoing the id) rather than the title — and only CONTACTS had slot-number
+  normalization (P38-10); sessions/events/etc. fell through to the note regex and
+  were stripped. The sibling of P38-23 (the `[from <class>: …]` colon form), now for
+  the `[from <class> N]` slot form. Fixed with a new exported `normalizeSlotCitations`
+  (agent-core) that rewrites `[from <class> N]` → `[<class>: <slot N's content>]`
+  using the SAME ordered lists the markers were built from (ignoring a trailing
+  "— <id>"); an out-of-range slot or unknown class is left untouched. Wired into the
+  ask flow for session/event/task/reminder/contact/feed/command/commit/action. Proof:
+  5 new agent-core unit tests (`[from session 1]` → canonical; the `— ep_001` suffix
+  ignored; right slot mapped; out-of-range / non-class left alone; rewritten session
+  survives the gate) + LIVE on qwen3:8b with seeded episodes: two past-session recalls
+  (VPN MTU 1380, Q3 budget $42,000) now answer with NO "Removed citation / unverified"
+  warning (before: stripped + warned). agent-core 112 files / 1396 tests + cli 167
+  files / 1782 tests + `pnpm lint` 0/0. (this commit)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.
