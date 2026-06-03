@@ -33,7 +33,7 @@ import { answerPromisesAction, classifyActionRequest, classifyCasualPrompt, clas
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
-import { acquireOllamaLease, listReflections, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type PersistedReminder, type PersistedTask } from "@muse/mcp";
+import { acquireOllamaLease, fetchReadableUrl, listReflections, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { redactSecretsInText } from "@muse/shared";
 
 import { parseGitReflog, selectGitCommits, type GitCommit } from "./git-reflog.js";
@@ -605,6 +605,19 @@ export function looksLikeBinaryContent(bytes: Uint8Array): boolean {
 }
 
 /**
+ * The cite label for a `--url`-grounded answer: the page's host (`www.` stripped),
+ * so the model cites `[from example.com]` and the gate validates it like a note
+ * source. Falls back to the raw URL if it can't be parsed.
+ */
+export function urlGroundingSource(finalUrl: string): string {
+  try {
+    return new URL(finalUrl).hostname.replace(/^www\./u, "");
+  } catch {
+    return finalUrl;
+  }
+}
+
+/**
  * Select the passages of an ad-hoc `--file` to ground on: split into passages,
  * rank by lexical overlap with the question (file order breaks ties), and keep
  * the strongest up to `charBudget` so a large file never blows the small
@@ -734,6 +747,7 @@ interface AskOptions {
   readonly shell?: boolean;
   readonly git?: boolean;
   readonly file?: string;
+  readonly url?: string;
   readonly json?: boolean;
   readonly withTools?: boolean;
   readonly actuators?: boolean;
@@ -1289,6 +1303,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       "Ground this answer on a specific file WITHOUT ingesting it into your notes corpus (read-only). The answer cites it as [from <path>]; an off-topic question still honestly refuses."
     )
     .option(
+      "--url <url>",
+      "Ground this answer on a public web page's readable text WITHOUT ingesting it (read-only fetch). The answer cites it as [from <host>]; an off-topic question still honestly refuses."
+    )
+    .option(
       "--json",
       "Emit a single JSON object on stdout with {query, model, answer, grounded:{...}} (suppresses streaming)"
     )
@@ -1609,6 +1627,37 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         } catch (cause) {
           io.stderr(`muse: could not read --file ${fileLabel} (${cause instanceof Error ? cause.message : String(cause)})\n`);
         }
+        }
+      }
+
+      // --url: ad-hoc grounding on a public web page WITHOUT ingesting it (the web
+      // counterpart of --file). fetchReadableUrl is SSRF-guarded (public hosts
+      // only, re-checked after redirects) and extracts the readable text; we ground
+      // on it cited `[from <host>]`. An off-topic question finds no overlap ⇒ honest
+      // refusal; a fetch failure is reported, never silently grounded-on-nothing.
+      if (options.url && options.url.trim().length > 0) {
+        const urlLabel = options.url.trim();
+        if (!options.json) {
+          io.stderr(`🌐 fetching ${urlLabel}…\n`);
+        }
+        try {
+          const fetched = await fetchReadableUrl(urlLabel, { maxChars: 60_000 });
+          if (!fetched.ok) {
+            io.stderr(`muse: could not fetch --url ${urlLabel} (${fetched.error}) — I won't ground on it.\n`);
+          } else if (fetched.text.trim().length > 0) {
+            const source = urlGroundingSource(fetched.finalUrl);
+            const picked = selectFilePassages(fetched.text, query);
+            for (const passage of picked) {
+              scored.push({ chunk: { chunkIndex: passage.chunkIndex, embedding: [], file: source, text: passage.text }, file: source, score: 1 });
+            }
+            if (picked.length > 0) {
+              notesUnavailable = false;
+            }
+          } else {
+            io.stderr(`muse: --url ${urlLabel} returned no readable text — I can't ground on it.\n`);
+          }
+        } catch (cause) {
+          io.stderr(`muse: could not fetch --url ${urlLabel} (${cause instanceof Error ? cause.message : String(cause)})\n`);
         }
       }
 

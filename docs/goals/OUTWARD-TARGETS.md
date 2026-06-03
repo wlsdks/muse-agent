@@ -376,6 +376,27 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   an HTML file grounds on it. cli 167 files / 1782 tests + `pnpm lint` 0/0.
   (52f20d2a)
 
+- [x] **P37-18 `muse ask --url <url>` — ask about a public web page (Reach growth).**
+  A NEW capability (not another fix), the web counterpart of `--file`: `muse ask
+  --url https://example.com "what is this domain for?"` fetches the page, extracts
+  its READABLE text, grounds on it cited `[from <host>]`, and an off-topic question
+  honestly refuses. Reuses the SSRF-guarded `fetchReadableUrl` (`@muse/mcp`) that
+  `notes ingest --url` already uses — public hosts only, re-checked after redirects,
+  15s timeout, readable-text extraction — so no new fetch/egress machinery and the
+  posture is unchanged (reading a user-requested public page is allowed per
+  `outbound-safety.md`; the local-only gate is about LLM egress, not web reads).
+  Implemented in apps/cli/src/commands-ask.ts: a `--url` option + a branch that
+  fetches, narrates "🌐 fetching <url>…", grounds the page's passages via the same
+  `selectFilePassages` ranking as `--file`, and cites the host (new pure
+  `urlGroundingSource` strips `www.`); a fetch failure prints a clear error and is
+  never silently grounded-on. Proof: 2 new unit tests (`urlGroundingSource` →
+  host, `www.` stripped, raw-string fallback) + LIVE on qwen3:8b against a REAL URL:
+  `muse ask --url https://example.com "what is this domain used for?"` → "used for
+  documentation examples without needing permission [from example.com]" with the
+  receipt, an off-topic "CEO's phone number?" refuses, and an unresolvable host
+  prints "could not fetch --url … (host did not resolve …) — I won't ground on it".
+  cli 167 files / 1784 tests + `pnpm lint` 0/0. (this commit)
+
 **P40 — Actuation usability: Muse understands natural-language dates.** The
 "do" side is only as good as the words a user actually types.
 
@@ -971,7 +992,7 @@ qwen3:8b and added to `eval:self-improving`.
   survives the gate) + LIVE on qwen3:8b with seeded episodes: two past-session recalls
   (VPN MTU 1380, Q3 budget $42,000) now answer with NO "Removed citation / unverified"
   warning (before: stripped + warned). agent-core 112 files / 1396 tests + cli 167
-  files / 1782 tests + `pnpm lint` 0/0. (this commit)
+  files / 1782 tests + `pnpm lint` 0/0. (3f9d9935)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.

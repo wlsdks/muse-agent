@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { looksLikeBinaryContent, selectFilePassages } from "./commands-ask.js";
+import { looksLikeBinaryContent, selectFilePassages, urlGroundingSource } from "./commands-ask.js";
 
 const bytes = (s: string): Uint8Array => new TextEncoder().encode(s);
+
+describe("urlGroundingSource — the cite label for a --url-grounded answer", () => {
+  it("uses the host (www. stripped) so the answer cites [from <host>]", () => {
+    expect(urlGroundingSource("https://example.com/page")).toBe("example.com");
+    expect(urlGroundingSource("https://www.nytimes.com/2026/article")).toBe("nytimes.com");
+    expect(urlGroundingSource("http://blog.example.org/")).toBe("blog.example.org");
+  });
+
+  it("falls back to the raw string for an unparseable URL", () => {
+    expect(urlGroundingSource("not a url")).toBe("not a url");
+  });
+});
 
 describe("looksLikeBinaryContent — refuse to ground on a binary --file (no hallucinated content)", () => {
   it("flags a buffer with a NUL byte as binary (the canonical text-vs-binary signal)", () => {
