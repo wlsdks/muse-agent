@@ -10,6 +10,8 @@ function gmailFetch(opts: {
   messages?: Record<string, { from: string; subject: string; date?: string; snippet: string; unread: boolean }>;
   listStatus?: number;
   authError?: number;
+  /** When set, the messages.list endpoint returns a 200 with THIS raw (non-JSON) body. */
+  malformedListBody?: string;
 }): { fetchImpl: typeof globalThis.fetch; calls: string[]; sawBearer: boolean } {
   const calls: string[] = [];
   let sawBearer = false;
@@ -21,6 +23,7 @@ function gmailFetch(opts: {
       return new Response("{}", { status: opts.authError });
     }
     if (u.includes("/messages?")) {
+      if (opts.malformedListBody !== undefined) return new Response(opts.malformedListBody, { status: 200 });
       if (opts.listStatus && opts.listStatus !== 200) return new Response("{}", { status: opts.listStatus });
       return new Response(JSON.stringify({ messages: (opts.ids ?? []).map((id) => ({ id })) }), { status: 200 });
     }
@@ -75,6 +78,16 @@ describe("GmailEmailProvider.listRecent", () => {
   it("returns empty for an empty inbox", async () => {
     const { fetchImpl } = gmailFetch({ ids: [] });
     expect(await new GmailEmailProvider("tok", fetchImpl).listRecent(5)).toEqual([]);
+  });
+
+  it("turns a 2xx with a NON-JSON body (a proxy / maintenance HTML page) into a clear error, not an opaque SyntaxError", async () => {
+    const { fetchImpl } = gmailFetch({ malformedListBody: "<html><body>503 Service Unavailable</body></html>" });
+    await expect(new GmailEmailProvider("tok", fetchImpl).listRecent(5)).rejects.toThrow(/non-JSON body/u);
+  });
+
+  it("turns an EMPTY 2xx body into a clear error too (not a SyntaxError)", async () => {
+    const { fetchImpl } = gmailFetch({ malformedListBody: "" });
+    await expect(new GmailEmailProvider("tok", fetchImpl).listRecent(5)).rejects.toThrow(/non-JSON body/u);
   });
 });
 

@@ -168,7 +168,17 @@ export class GmailEmailProvider implements EmailProvider, EmailSender, EmailRead
     if (!response.ok) {
       throw new Error(`Gmail API ${response.status.toString()}`);
     }
-    return await response.json() as Record<string, unknown>;
+    // Parse the 2xx body defensively: a third party CAN return a 2xx with a
+    // NON-JSON body (a proxy / captive-portal / maintenance HTML page, a
+    // truncated or empty body). `response.json()` would throw a raw, unwrapped
+    // SyntaxError that surfaces as an opaque `muse inbox` crash — so read the
+    // text and turn a malformed body into a clear, classifiable error instead.
+    const body = await response.text();
+    try {
+      return JSON.parse(body) as Record<string, unknown>;
+    } catch {
+      throw new Error(`Gmail API returned a ${response.status.toString()} with a non-JSON body: ${body.slice(0, 200)}`);
+    }
   }
 
   async listRecent(limit: number): Promise<readonly EmailSummary[]> {
