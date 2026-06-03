@@ -5,7 +5,42 @@ import { join } from "node:path";
 import { writeFollowups, writeReminders, type PersistedFollowup, type PersistedReminder } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
-import { formatConnectionsSection, formatEpisodeRevisitLine, formatEvents, formatHeadlines, formatRevisitSection, formatStaleTasksSection, formatTasks, formatTodayBrief, formatTodayConflicts, formatWeatherLine, parseLookaheadHours, pickConnectionQuery, readDueFollowups, readDueReminders, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine, selectEpisodeToRevisit, selectStaleTasks } from "./commands-today.js";
+import { formatConnectionsSection, formatEpisodeRevisitLine, formatEvents, formatHeadlines, formatRevisitSection, formatStaleTasksSection, formatTasks, formatTodayBrief, formatTodayConflicts, formatWeatherLine, parseLookaheadHours, pickConnectionQuery, readDueFollowups, readDueReminders, readUpcomingBirthdays, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine, selectEpisodeToRevisit, selectStaleTasks } from "./commands-today.js";
+
+describe("muse today — Birthdays section (the brief's birthdays, surfaced in the on-demand digest)", () => {
+  const base = { generatedAt: "2026-06-04T09:00:00Z", lookaheadHours: 24 };
+
+  it("renders a Birthdays section with today / tomorrow / in-N-days wording", () => {
+    const out = formatTodayBrief({ ...base, birthdays: [{ name: "Zelda", daysUntil: 0 }, { name: "Bob", daysUntil: 1 }, { name: "Wu", daysUntil: 3 }] }, true);
+    expect(out).toMatch(/Birthdays \(3\):/u);
+    expect(out).toContain("🎂 Zelda — today");
+    expect(out).toContain("🎂 Bob — tomorrow");
+    expect(out).toContain("🎂 Wu — in 3 days");
+  });
+
+  it("omits the section entirely when there are no upcoming birthdays", () => {
+    expect(formatTodayBrief({ ...base }, true)).not.toMatch(/Birthdays/u);
+    expect(formatTodayBrief({ ...base, birthdays: [] }, true)).not.toMatch(/Birthdays/u);
+  });
+
+  it("readUpcomingBirthdays returns within-a-week birthdays (name + daysUntil), skipping contacts with no birthday or out of window", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-today-bday-"));
+    const file = join(dir, "contacts.json");
+    const now = new Date("2026-06-04T09:00:00Z");
+    const mmdd = (d: Date): string => `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const inDays = (n: number): Date => new Date(now.getTime() + n * 86_400_000);
+    writeFileSync(file, JSON.stringify({ contacts: [
+      { id: "c1", name: "Zelda", birthday: mmdd(now) },        // today
+      { id: "c2", name: "Bob", birthday: mmdd(inDays(3)) },    // in 3 days
+      { id: "c3", name: "NoBday", email: "x@y.com" },          // no birthday → skipped
+      { id: "c4", name: "FarOff", birthday: mmdd(inDays(40)) } // outside the 7-day window → skipped
+    ] }), "utf8");
+    const out = await readUpcomingBirthdays(file, now);
+    expect(out.map((b) => b.name)).toEqual(["Zelda", "Bob"]);
+    expect(out.find((b) => b.name === "Zelda")?.daysUntil).toBe(0);
+    expect(out.find((b) => b.name === "Bob")?.daysUntil).toBe(3);
+  });
+});
 
 const ESC = String.fromCharCode(27);
 

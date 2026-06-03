@@ -17,6 +17,7 @@ import { join, resolve as resolvePath } from "node:path";
 
 import {
   createMuseRuntimeAssembly,
+  resolveContactsFile,
   resolveFollowupsFile,
   resolveLocalCalendarFile,
   resolveNotesDir,
@@ -30,9 +31,11 @@ import {
   compareRemindersByDueAt,
   compareTasksByDueDate,
   OpenMeteoWeatherProvider,
+  queryContacts,
   readFollowups,
   readReminders,
   readTasks,
+  resolveUpcomingBirthdays,
   resolveWeatherLine,
   serializeFollowup,
   serializeReminder,
@@ -86,6 +89,7 @@ interface TodayBriefing {
   readonly reminders?: readonly { readonly id: string; readonly text: string; readonly dueAt: string }[];
   readonly followups?: readonly { readonly id: string; readonly summary: string; readonly scheduledFor: string }[];
   readonly headlines?: readonly { readonly feedId: string; readonly title: string; readonly link: string; readonly publishedAt: string }[];
+  readonly birthdays?: readonly { readonly name: string; readonly daysUntil: number }[];
 }
 
 export interface TodayCommandHelpers {
@@ -327,6 +331,7 @@ export function formatTodayBrief(briefing: TodayBriefing, local: boolean): strin
     + formatTasks(briefing.tasks, briefingNow(briefing), briefing.lookaheadHours)
     + formatEvents(briefing.events)
     + formatTodayConflicts(briefing.events)
+    + formatBirthdays(briefing.birthdays)
     + formatNotes(briefing.notes)
     + formatHeadlines(briefing.headlines)
     + formatEmptyStateHints(briefing)
@@ -714,18 +719,21 @@ async function composeLocalBriefing(lookaheadHours: number): Promise<TodayBriefi
   const calendarFile = resolveLocalCalendarFile(env);
   const remindersFile = resolveRemindersFile(env);
   const followupsFile = resolveFollowupsFile(env);
+  const contactsFile = resolveContactsFile(env);
   const now = new Date();
   const horizon = new Date(now.getTime() + lookaheadHours * 3_600_000);
 
-  const [tasks, events, notes, reminders, followups] = await Promise.all([
+  const [tasks, events, notes, reminders, followups, birthdays] = await Promise.all([
     readOpenTasks(tasksFile).catch(() => undefined),
     readLocalEvents(calendarFile, now, horizon).catch(() => undefined),
     readRecentNotes(notesDir).catch(() => undefined),
     readDueReminders(remindersFile, horizon).catch(() => undefined),
-    readDueFollowups(followupsFile, horizon).catch(() => undefined)
+    readDueFollowups(followupsFile, horizon).catch(() => undefined),
+    readUpcomingBirthdays(contactsFile, now).catch(() => undefined)
   ]);
 
   return {
+    birthdays,
     events,
     followups,
     generatedAt: now.toISOString(),
@@ -734,6 +742,21 @@ async function composeLocalBriefing(lookaheadHours: number): Promise<TodayBriefi
     reminders,
     tasks
   };
+}
+
+/**
+ * Upcoming birthdays within a week — the same machinery the morning brief uses,
+ * surfaced in the on-demand `muse today` digest so a user checking their day
+ * doesn't miss "Zelda's birthday is today" just because they didn't wait for the
+ * morning brief. Empty when no contact has a birthday in the window.
+ */
+export async function readUpcomingBirthdays(
+  file: string,
+  now: Date
+): Promise<readonly { name: string; daysUntil: number }[]> {
+  const contacts = await queryContacts(file);
+  return resolveUpcomingBirthdays(contacts, { now, withinDays: 7 })
+    .map((upcoming) => ({ daysUntil: upcoming.daysUntil, name: upcoming.contact.name }));
 }
 
 export async function readDueReminders(
@@ -927,6 +950,15 @@ function formatReminders(
     return `  - [${reminder.id.slice(0, 12)}] ${shortDateTimeBrief(reminder.dueAt)}  ${reminder.text}${overdue}`;
   });
   return `\n${colorize(`Reminders (${reminders.length.toString()}):`, "bold")}\n${lines.join("\n")}\n`;
+}
+
+function formatBirthdays(birthdays: TodayBriefing["birthdays"]): string {
+  if (!birthdays || birthdays.length === 0) {
+    return "";
+  }
+  const when = (days: number): string => days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days.toString()} days`;
+  const lines = birthdays.map((birthday) => `  🎂 ${birthday.name} — ${when(birthday.daysUntil)}`);
+  return `\n${colorize(`Birthdays (${birthdays.length.toString()}):`, "bold")}\n${lines.join("\n")}\n`;
 }
 
 

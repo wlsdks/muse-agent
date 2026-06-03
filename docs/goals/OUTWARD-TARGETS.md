@@ -785,6 +785,25 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   `muse ask "when does Project Zephyr ship?"` → "Project Zephyr ships on August 14, 2026
   [from zephyr.org]" (3 embedded incl zephyr.org + a .rst note, 0 skipped). (90411ca7)
 
+- [x] **P37-26 `muse today` now shows upcoming BIRTHDAYS — you don't miss "Zelda's
+  birthday is today" just because you didn't wait for the morning brief.** Probing the
+  felt daily digest exposed a gap: the morning BRIEF surfaces birthdays
+  (`resolveUpcomingBirthdays` / `formatBirthdayBriefLine`), but the on-demand `muse today`
+  digest — what a user actually runs to check their day — had NO birthday section at all
+  (it composed reminders / followups / tasks / events / notes only). So a user who checks
+  `muse today` instead of waiting for the daemon-fired brief would walk past a birthday.
+  Closed by reusing the brief's machinery in `composeLocalBriefing`: read the contacts,
+  `resolveUpcomingBirthdays(contacts, { withinDays: 7 })`, and render a `🎂` Birthdays
+  section (today / tomorrow / in N days) in `formatTodayBrief` — so the on-demand digest
+  and the in-chat `/today` (both go through `formatTodayBrief`) now show them. A contact
+  with no birthday or one outside the week is skipped. Verified: 3 new tests (the section
+  renders today/tomorrow/in-N-days wording; omitted entirely when empty; `readUpcomingBirthdays`
+  returns within-a-week birthdays with name + daysUntil, skipping no-birthday + out-of-window
+  contacts) passing in BOTH TZ=Asia/Seoul and TZ=UTC + @muse/cli 174 files / 1926 tests +
+  `pnpm lint` 0/0 + a LIVE `muse today --local` over a seeded corpus → a `Birthdays (2):`
+  section with `🎂 Zelda — today` and `🎂 Bob — in 3 days` (and a no-birthday contact
+  correctly absent), where before the section did not exist. (964cad20)
+
 - [x] **P37-9 Action-log grounding — "did you send that? / what have you done?"
   (B3 transparency, gate a new surface).** `muse ask` now grounds on Muse's OWN
   audit log of acts taken on the user's behalf (sends, refusals) — the
