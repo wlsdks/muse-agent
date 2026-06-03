@@ -399,16 +399,39 @@ export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date
   }
 
   // "end of the month" / "end of month" / "end of this month" → last calendar
-  // day at 09:00 (Date(y, m+1, 0) = last day of month m).
-  const monthEndMatch = /^(?:the\s+)?end\s+of\s+(?:the\s+|this\s+)?month(?:\s+(?:at\s+)?(.+))?$/u.exec(trimmed);
+  // day at 09:00 (Date(y, m+1, 0) = last day of month m). "end of NEXT month" is
+  // just as natural and pins the following month's last day (offset +1).
+  const monthEndMatch = /^(?:the\s+)?end\s+of\s+(the\s+|this\s+|next\s+)?month(?:\s+(?:at\s+)?(.+))?$/u.exec(trimmed);
   if (monthEndMatch) {
-    const monthEndTime = parseTimeOfDay(monthEndMatch[1]);
+    const monthEndTime = parseTimeOfDay(monthEndMatch[2]);
     if (monthEndTime === "invalid") {
       return undefined;
     }
-    const lastDay = new Date(reference.getFullYear(), reference.getMonth() + 1, 0);
+    const monthEndOffset = monthEndMatch[1]?.trim() === "next" ? 1 : 0;
+    const lastDay = new Date(reference.getFullYear(), reference.getMonth() + 1 + monthEndOffset, 0);
     lastDay.setHours(monthEndTime.hour, monthEndTime.minute, 0, 0);
     return finiteDate(lastDay);
+  }
+
+  // "the 25th of next month" / "the 1st of this month" — a day-of-month pinned to
+  // an explicit relative month. MUST precede the bare "the Nth" handler below,
+  // whose `(.+)` time slot would otherwise swallow "of next month" and fail it.
+  // "of next month" is the one phrasing with no offset alternative (you can't say
+  // "in N days" without counting), so it's high-value. An explicit month is
+  // honoured literally (even a past day this month); a day absent from the target
+  // month (the 31st of a 30-day month) is rejected, not silently rolled.
+  const domOfMonthMatch = /^(?:on\s+)?the\s+(\d{1,2})(?:st|nd|rd|th)\s+of\s+(this|next)\s+month(?:\s+(?:at\s+)?(.+))?$/u.exec(trimmed);
+  if (domOfMonthMatch) {
+    const dom = Number.parseInt(domOfMonthMatch[1] ?? "", 10);
+    if (Number.isInteger(dom) && dom >= 1 && dom <= 31) {
+      const domTime = parseTimeOfDay(domOfMonthMatch[3]);
+      if (domTime === "invalid") {
+        return undefined;
+      }
+      const monthOffset = domOfMonthMatch[2] === "next" ? 1 : 0;
+      const target = new Date(reference.getFullYear(), reference.getMonth() + monthOffset, dom, domTime.hour, domTime.minute, 0, 0);
+      return finiteDate(target.getDate() === dom ? target : undefined);
+    }
   }
 
   // "the 25th" / "on the 25th" / "the 1st at 9am" — a bare day-of-month with NO

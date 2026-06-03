@@ -604,7 +604,29 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   tests, incl. mcp.test.ts's 357) + LIVE on the loop PC: `muse remind add "on the
   25th" "pay rent"` → due 2026-06-25 09:00 and `muse tasks add "submit report" --due
   "the 15th"` → due 2026-06-15 09:00 (both REJECTED before this slice). mcp 167 files
-  / 1338 tests + `pnpm lint` 0/0. (this commit)
+  / 1338 tests + `pnpm lint` 0/0. (b2761bd3)
+
+- [x] **P40-12 A MONTH-QUALIFIED date ("the 15th of next month", "end of next
+  month") now parses.** P40-11 handled the bare "the 25th" (next occurrence); the
+  natural way to pin a SPECIFIC month — "the 15th of next month", "the 1st of this
+  month", "end of next month" — still returned undefined, and unlike a bare day this
+  form has NO offset alternative (you can't say "in N days" for "the 15th of next
+  month" without counting), so it's the higher-value half. Added in
+  packages/mcp/src/loopback-relative-time.ts: a `^(?:on\s+)?the\s+(\d{1,2})(?:st|nd|rd|th)\s+of\s+(this|next)\s+month…`
+  handler (placed BEFORE the bare "the Nth" handler, whose time slot would otherwise
+  swallow "of next month" and fail it) resolving the day in the named relative month
+  — honoured literally (an explicit "this month" returns this month's Nth even if the
+  day has passed), with a getDate guard that rejects a day absent from the target
+  month (the 31st of a 30-day month) instead of silently rolling; and the existing
+  "end of month" handler extended to accept "next" (→ next month's last day). Time
+  defaults to 9am, "at 3pm" honoured. Proof: 6 new parser unit tests in
+  packages/mcp/test/relative-time-period.test.ts (next-month pin; this-month literal;
+  explicit time; end-of-next-month → July 31; impossible-day reject; bare-day /
+  end-of-the-month non-regression) + the full @muse/mcp suite green (167 files / 1344
+  tests, incl. mcp.test.ts's 357) + LIVE on the loop PC: `muse remind add "the 15th
+  of next month" "quarterly review"` → due 2026-07-15 09:00 and `muse tasks add "file
+  taxes" --due "end of next month"` → due 2026-07-31 09:00 (both REJECTED before).
+  mcp 167 files / 1344 tests + `pnpm lint` 0/0. (this commit)
 
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,

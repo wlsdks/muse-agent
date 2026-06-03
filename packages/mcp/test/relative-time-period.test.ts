@@ -117,6 +117,45 @@ describe("resolveRelativeTimePhrase — bare day-of-month ('the 25th', 'on the 1
   });
 });
 
+describe("resolveRelativeTimePhrase — month-qualified dates ('the Nth of next month', 'end of next month')", () => {
+  // Reference is Wednesday 2026-06-03 (June; next month = July).
+  it("pins a day to NEXT month ('the 25th of next month' → July 25)", () => {
+    const r = resolveRelativeTimePhrase("the 25th of next month", now)!;
+    expect(r.getDate()).toBe(25);
+    expect(r.getMonth()).toBe(6); // July
+  });
+
+  it("pins a day to THIS month literally, even a day already passed ('the 1st of this month' → June 1)", () => {
+    const r = resolveRelativeTimePhrase("the 1st of this month", now)!;
+    expect(r.getDate()).toBe(1);
+    expect(r.getMonth()).toBe(5); // June, honoured literally
+  });
+
+  it("parses an explicit time on a month-qualified day ('on the 15th of next month at 3pm')", () => {
+    const r = resolveRelativeTimePhrase("on the 15th of next month at 3pm", now)!;
+    expect(r.getDate()).toBe(15);
+    expect(r.getMonth()).toBe(6);
+    expect(r.getHours()).toBe(15);
+  });
+
+  it("'end of next month' lands on the last day of July (31st)", () => {
+    const r = resolveRelativeTimePhrase("end of next month", now)!;
+    expect(r.getDate()).toBe(31);
+    expect(r.getMonth()).toBe(6); // July
+  });
+
+  it("rejects a day absent from the target month, never a silent roll ('the 31st of next month' is valid in July; nonsense days reject)", () => {
+    // July HAS a 31st, so this resolves; but an impossible ordinal still rejects.
+    expect(resolveRelativeTimePhrase("the 31st of next month", now)!.getDate()).toBe(31);
+    expect(resolveRelativeTimePhrase("the 99th of next month", now)).toBeUndefined();
+  });
+
+  it("does NOT regress the bare day-of-month or the plain 'end of the month'", () => {
+    expect(resolveRelativeTimePhrase("the 25th", now)!.getDate()).toBe(25);
+    expect(resolveRelativeTimePhrase("end of the month", now)!.getMonth()).toBe(5); // still June
+  });
+});
+
 describe("resolveRelativeTimePhrase — colloquial Korean time-of-day words (아침/저녁/밤/새벽)", () => {
   it("아침 (morning) reads as AM: '내일 아침 8시' → next day 08:00", () => {
     const resolved = resolveRelativeTimePhrase("내일 아침 8시", now)!;
