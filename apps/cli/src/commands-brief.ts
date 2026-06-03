@@ -33,10 +33,11 @@ import {
   resolveTasksFile
 } from "@muse/autoconfigure";
 import type { CalendarEvent } from "@muse/calendar";
-import { readProactiveHistory, readReminders, type PersistedReminder } from "@muse/mcp";
+import { readCheckins, readProactiveHistory, readReminders, selectDueCheckins, type PersistedCheckin, type PersistedReminder } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { consumeAskStream, type AskStreamEvent } from "./commands-ask.js";
+import { checkinsFile } from "./commands-checkins.js";
 import { formatLocalDate, formatLocalDateTime, formatLocalTime } from "./human-formatters.js";
 import { resolvePersona } from "./program-helpers.js";
 import { buildMusePersona } from "./program.js";
@@ -289,6 +290,20 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
         // reminders file missing or unreadable — brief still works
       }
 
+      // Follow-ups the user is DUE on — check-ins for things they said they'd do
+      // ("call the dentist") whose due moment has arrived. The daemon delivers
+      // these as a push, but a user who reads the brief instead of running the
+      // daemon would otherwise never see them — so surface them here too, the
+      // same SET the daemon would fire (selectDueCheckins). The user can act on
+      // one with `muse checkins cancel/snooze <id>`.
+      let dueCheckins: readonly PersistedCheckin[] = [];
+      try {
+        const allCheckins = await readCheckins(checkinsFile());
+        dueCheckins = selectDueCheckins(allCheckins, now.getTime(), 5);
+      } catch {
+        // checkins file missing or unreadable — brief still works
+      }
+
       const nowIso = now.toISOString();
       const factSheet = [
         `Today: ${formatLocalDate(nowIso)} ${now.toLocaleDateString("en-US", { weekday: "long" })} ${formatLocalTime(nowIso)} local`,
@@ -306,6 +321,8 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
         }),
         `Pending reminders due in next 24h: ${dueReminders.length.toString()}`,
         ...dueReminders.map((r) => `  · ${formatLocalTime(r.dueAt)} ${r.text}`),
+        `Follow-ups you're due on (things the user said they'd do): ${dueCheckins.length.toString()}`,
+        ...dueCheckins.map((c) => `  · ${c.commitment} (mentioned ${formatLocalDate(c.createdAt)})`),
         `Recent proactive notices (last 5): ${recentHistory.length.toString()}`,
         ...recentHistory.slice(-3).map((entry) => {
           const fired = entry.firedAtIso ? formatLocalDateTime(entry.firedAtIso) : "?";
@@ -321,6 +338,7 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
         "Compose a brief summary in 2–3 sentences, in the user's preferred language.",
         "Open with a short greeting that matches the time of day (and the routine-window hint above).",
         "Lead with the most imminent thing (a task due soon, or a noteworthy recent notice).",
+        "If there are follow-ups the user is due on (things they said they'd do), gently surface one — a time-sensitive personal commitment matters more than a routine task.",
         "If nothing is imminent, say so briefly and suggest one useful action.",
         knownUserName && knownUserName.length > 0
           ? `Address the user as "${knownUserName}".`

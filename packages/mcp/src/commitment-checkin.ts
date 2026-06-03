@@ -284,6 +284,21 @@ export interface RunDueCheckinsSummary {
 }
 
 /**
+ * The SCHEDULED check-ins whose due moment has arrived (`dueAtIso <= now`) — the
+ * follow-ups the user is due to be asked about. Pure; soonest-due first; capped.
+ * The daemon's `runDueCheckins` fires these, AND the morning brief surfaces them,
+ * so a user who reads the brief (not just the daemon) still sees the follow-ups
+ * they're due on. Both agree on the same SET via this one selector.
+ */
+export function selectDueCheckins(checkins: readonly PersistedCheckin[], nowMs: number, max = 10): readonly PersistedCheckin[] {
+  const cap = Number.isFinite(max) ? Math.max(0, Math.trunc(max)) : 10;
+  return checkins
+    .filter((c) => c.status === "scheduled" && Date.parse(c.dueAtIso) <= nowMs)
+    .sort((a, b) => Date.parse(a.dueAtIso) - Date.parse(b.dueAtIso))
+    .slice(0, cap);
+}
+
+/**
  * Deliver due check-ins to the user's channel. Quiet-hours holds the whole
  * tick (they fire once the window passes — the edge isn't consumed). Fires at
  * most `maxPerTick` (default 5). Marks each fired; a send failure leaves it
@@ -298,8 +313,7 @@ export async function runDueCheckins(options: RunDueCheckinsOptions): Promise<Ru
   }
   const max = Number.isFinite(options.maxPerTick) ? Math.max(1, Math.trunc(options.maxPerTick as number)) : 5;
   const all = await readCheckins(options.file);
-  const cutoff = at.getTime();
-  const due = all.filter((c) => c.status === "scheduled" && Date.parse(c.dueAtIso) <= cutoff).slice(0, max);
+  const due = selectDueCheckins(all, at.getTime(), max);
   if (due.length === 0) {
     return { delivered: 0, due: 0, errors: [], fired: [] };
   }

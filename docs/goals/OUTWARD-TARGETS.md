@@ -1686,7 +1686,33 @@ honest-refusal mock-corpus check where applicable.
   suites green + LIVE on the loop PC (today 2026-06-03): a check-in due 2026-06-04
   10:00, `muse checkins snooze <id> "next week"` → now due 2026-06-10 09:00, and
   `… "the 20th"` → 2026-06-20 09:00. mcp 167 / 1351 + cli 168 / 1808 + `pnpm lint` 0/0
-  — a user can now push a check-in to a better time instead of losing it. (this commit)
+  — a user can now push a check-in to a better time instead of losing it. (df67bf34)
+
+- [x] **P35-15 Your morning brief now surfaces the follow-ups you're DUE on — the
+  proactivity payoff reaches the pull surface, not just the daemon.** P35-11..14 built
+  the commitment → check-in flow (notice what you said you'd do, schedule a "how did
+  it go?", cancel/snooze it), but the only thing that DELIVERED a due check-in was the
+  background daemon (`runDueCheckins`). A user who reads `muse brief` each morning but
+  doesn't run the daemon would NEVER see "you said you'd call the dentist — how did it
+  go?" — the whole flow's payoff was invisible in the surface they actually use. Added
+  a pure `selectDueCheckins(checkins, nowMs, max)` in
+  packages/mcp/src/commitment-checkin.ts (the SCHEDULED check-ins whose due moment has
+  arrived, soonest-first, capped) and refactored `runDueCheckins` to use it, so the
+  daemon and the brief agree on the exact same due SET. `muse brief` now reads the
+  check-ins store and adds a "Follow-ups you're due on" section to its fact sheet,
+  with a system-prompt line telling the JARVIS summary to gently surface a
+  time-sensitive personal commitment over a routine task; the user can act on a
+  surfaced one with the `muse checkins cancel/snooze` from P35-13/14. Proof: 2 new
+  unit tests in packages/mcp/test/commitment-checkin.test.ts (`selectDueCheckins`
+  returns only scheduled-and-past-due, soonest-first, excluding future / fired /
+  cancelled; caps + empty) + the existing `runDueCheckins` tests still green (the
+  shared-selector refactor is behaviour-preserving) + the full @muse/mcp (167 / 1353)
+  and @muse/cli (168 / 1808) suites green + LIVE on the loop PC: seeding a check-in
+  whose dueAt is yesterday, `muse brief` opens "Good afternoon. You're due to call the
+  dentist, which you mentioned on May 31st. It's time to follow through with that
+  commitment." mcp 167 / 1353 + cli 168 / 1808 + `pnpm lint` 0/0 — a user who reads
+  their morning brief now sees the things they said they'd do and are overdue on,
+  instead of that follow-up living only inside a daemon they may not run. (this commit)
 
 - [x] **P35-1 Citation-as-voice (B2 S1, build-first).** `muse ask` renders
   each cited note as a memory — "📎 From your notes … • from your note of

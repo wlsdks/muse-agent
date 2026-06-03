@@ -10,6 +10,7 @@ import {
   readCheckins,
   runDueCheckins,
   scheduleCheckins,
+  selectDueCheckins,
   snoozeCheckin,
   writeCheckins,
   type CheckinSendRegistry,
@@ -78,6 +79,31 @@ describe("cancelCheckin", () => {
     expect(cancelCheckin(list, "chk_f").reason).toBe("already-fired");
     expect(cancelCheckin(list, "chk_c").reason).toBe("already-cancelled");
     expect(cancelCheckin([], "").reason).toBe("not-found");
+  });
+});
+
+describe("selectDueCheckins", () => {
+  const at = (iso: string, id: string, status: PersistedCheckin["status"]): PersistedCheckin => ({
+    id, userId: "stark", commitment: id, question: `q ${id}`, dueAtIso: iso,
+    createdAt: NOW.toISOString(), status, sourceKey: id
+  });
+  const nowMs = Date.parse("2026-05-05T12:00:00.000Z");
+
+  it("returns only SCHEDULED check-ins whose due moment has passed, soonest-first", () => {
+    const list = [
+      at("2026-05-05T08:00:00.000Z", "due_b", "scheduled"),
+      at("2026-05-04T08:00:00.000Z", "due_a", "scheduled"), // earlier → first
+      at("2026-05-06T08:00:00.000Z", "future", "scheduled"), // not yet due
+      at("2026-05-01T08:00:00.000Z", "fired", "fired"), // due but already fired
+      at("2026-05-01T08:00:00.000Z", "cancelled", "cancelled") // due but cancelled
+    ];
+    expect(selectDueCheckins(list, nowMs).map((c) => c.id)).toEqual(["due_a", "due_b"]);
+  });
+
+  it("caps the result and treats a non-finite max as the default", () => {
+    const many = Array.from({ length: 8 }, (_, i) => at(`2026-05-0${(i % 5) + 1}T08:00:00.000Z`, `c${i.toString()}`, "scheduled"));
+    expect(selectDueCheckins(many, nowMs, 3)).toHaveLength(3);
+    expect(selectDueCheckins([], nowMs)).toEqual([]);
   });
 });
 

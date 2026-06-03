@@ -307,6 +307,7 @@ export {
   readCheckins,
   runDueCheckins,
   scheduleCheckins,
+  selectDueCheckins,
   snoozeCheckin,
   writeCheckins,
   type CancelCheckinResult,
