@@ -208,6 +208,26 @@ export function linkedFromResults(resultRefs: readonly string[], graph: NoteLink
   return out;
 }
 
+/**
+ * Graph-augmented recall for `muse ask`: build the link graph from the SAME index
+ * note bodies the ask ranks (so note ids == the ask's relativized sources, exact
+ * match), then return the note ids 1-hop LINKED from the confident `seedRefs`,
+ * deduped, excluding the seeds, capped — the answer-bearing note the question
+ * links to but whose own text didn't match the query (GraphRAG / HippoRAG). Pure:
+ * the caller promotes each ref's best ranked chunk into the grounding evidence.
+ */
+export function linkExpandRefs(args: {
+  readonly seedRefs: readonly string[];
+  readonly noteBodies: readonly { readonly id: string; readonly body: string }[];
+  readonly cap?: number;
+}): string[] {
+  const cap = args.cap ?? 2;
+  if (cap <= 0 || args.seedRefs.length === 0) {
+    return [];
+  }
+  return linkedFromResults(args.seedRefs, buildNoteLinkGraph(args.noteBodies), cap);
+}
+
 export interface NoteGraphAudit {
   /** Note ids with no inbound AND no outbound links — disconnected islands. */
   readonly orphans: readonly string[];

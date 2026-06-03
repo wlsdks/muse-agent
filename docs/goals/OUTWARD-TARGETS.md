@@ -1007,6 +1007,29 @@ graph intact as the corpus evolves, so a power-user's Zettelkasten doesn't rot.
   cli 169 files / 1831 tests + `pnpm lint` 0/0 — a user can now repair a corpus of
   broken links in one command, with the wrong-snap risk fenced off by the
   unique-match guard. (this commit)
+- [x] **P42-3 `muse ask` now follows your `[[wiki-links]]` — graph-augmented recall
+  on the FRONT DOOR.** The link graph already helped `muse recall --expand` but
+  never helped `muse ask`; now an ask answer can ground on a note 1-hop LINKED from
+  the matching note but whose own text didn't match the query — the answer-bearing
+  note your Zettelkasten points to that the embedding ranking alone misses (HippoRAG
+  / GraphRAG, Edge et al. 2024). Fabrication-SAFE: it fires ONLY from a CONFIDENT
+  seed (a weak/off-corpus query pulls in nothing), adds only the user's OWN real
+  notes, keeps each linked chunk's real (low) cosine so the confidence verdict —
+  keyed on the TOP match — is unchanged, and is best-effort (never fails the ask).
+  Built a pure `linkExpandRefs` (notes-links.ts) reusing `buildNoteLinkGraph` +
+  `linkedFromResults`, with the graph built from the SAME index bodies so note ids
+  match the ask's relativized sources exactly; wired one conservative, capped (+2)
+  step into the ask retrieval after the cosine top-K. Proof: 3 new pure unit tests
+  (`linkExpandRefs` returns the linked answer-note from a confident seed; [] on a
+  link-less seed; [] on no-seed/zero-cap) + the full @muse/cli suite green (172
+  files / 1885 tests), cli build clean, `pnpm lint` 0/0, the LIVE faithfulness
+  battery UNREGRESSED (1.00 / 0.00 on qwen3:8b — the expansion is inert on its
+  link-free corpus, the moat holds), and a LIVE multi-hop ask on the loop PC: `muse
+  ask --top 1 "what MTU should the office VPN use?"` over a `vpn.md` (matched the
+  query, NO MTU value) linking `[[uplink-config]]` (had "1380", didn't mention VPN)
+  → "grounded on 2 note chunk(s) — vpn.md, uplink-config.md" and the answer found
+  "an MTU of 1380 … [from uplink-config.md]" — the linked note could ONLY enter the
+  evidence via the graph hop. `a648c6bf`.
 
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,

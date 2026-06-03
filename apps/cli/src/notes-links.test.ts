@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { auditNoteGraph, buildNoteLinkGraph, extractWikiLinks, linkedFromResults, noteLinkKey, noteLinkView, planLinkFixes, resolveNoteId, rewriteWikiLinkReferences } from "./notes-links.js";
+import { auditNoteGraph, buildNoteLinkGraph, extractWikiLinks, linkedFromResults, linkExpandRefs, noteLinkKey, noteLinkView, planLinkFixes, resolveNoteId, rewriteWikiLinkReferences } from "./notes-links.js";
 
 describe("planLinkFixes — snap a broken [[link]] to its UNIQUE closest note, never guess an ambiguous one", () => {
   const existing = ["concepts", "journal", "food", "fool"];
@@ -153,5 +153,28 @@ describe("linkedFromResults — 1-hop graph expansion (GraphRAG)", () => {
 
   it("matches results by basename stem (recall refs may be absolute paths)", () => {
     expect(linkedFromResults(["/abs/path/to/a.md"], graph, 10)).toEqual(["b.md", "c.md"]);
+  });
+});
+
+describe("linkExpandRefs — graph-augmented recall for muse ask", () => {
+  const bodies = [
+    { id: "apollo.md", body: "Project Apollo status. See [[deadlines]] for the schedule." },
+    { id: "deadlines.md", body: "Apollo ships March 15." },
+    { id: "recipes.md", body: "carbonara needs guanciale" }
+  ];
+
+  it("returns the answer-bearing note 1-hop LINKED from a confident seed", () => {
+    // The query matched apollo.md (the seed); the deadline lives in the LINKED
+    // deadlines.md, whose own text doesn't mention the query — graph recall finds it.
+    expect(linkExpandRefs({ noteBodies: bodies, seedRefs: ["apollo.md"], cap: 2 })).toEqual(["deadlines.md"]);
+  });
+
+  it("returns [] when the seed has no outbound links (nothing to expand)", () => {
+    expect(linkExpandRefs({ noteBodies: bodies, seedRefs: ["recipes.md"] })).toEqual([]);
+  });
+
+  it("returns [] with no seeds or a non-positive cap (conservative)", () => {
+    expect(linkExpandRefs({ noteBodies: bodies, seedRefs: [] })).toEqual([]);
+    expect(linkExpandRefs({ noteBodies: bodies, seedRefs: ["apollo.md"], cap: 0 })).toEqual([]);
   });
 });

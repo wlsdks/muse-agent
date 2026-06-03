@@ -45,6 +45,7 @@ import type { Command } from "commander";
 
 import { cosine, isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js";
 import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles, type RecallHit } from "./commands-recall.js";
+import { linkExpandRefs } from "./notes-links.js";
 import { formatConnectionsSection } from "./commands-today.js";
 import { embed } from "./embed.js";
 import { buildEpisodeIndex, defaultEpisodeIndexFile, episodeIndexStale, loadEpisodeIndex, saveEpisodeIndex } from "./episode-index.js";
@@ -1579,6 +1580,36 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // nomic's compressed cosine ranks it below near-misses — and the
         // grounding stays diverse, not three near-duplicate chunks.
         scored = diversifyAskChunks(allScored, topK, ASK_MMR_LAMBDA, query);
+        // Graph-augmented recall (HippoRAG / GraphRAG, Edge et al. 2024): pull in
+        // chunks from notes 1-hop LINKED from the CONFIDENT matches — the
+        // answer-bearing note the question's note links to (a [[wiki-link]]) but
+        // whose own text didn't match the query, which the embedding ranking
+        // alone misses. Fabrication-SAFE: only the user's OWN real notes are
+        // added; it fires ONLY from a confident seed (a weak/off-corpus query
+        // pulls in nothing); the linked chunk keeps its real (low) cosine, so the
+        // confidence verdict — keyed on the TOP match — is unchanged; best-effort
+        // (never fails the ask). The link graph is built from the SAME index
+        // bodies, so note ids match the relativized sources exactly.
+        try {
+          const seedMatches = scored.map((s) => ({ cosine: s.score, score: s.score, source: relativizeNoteSource(s.file, notesDir), text: s.chunk.text }));
+          if (classifyRetrievalConfidence(seedMatches) === "confident") {
+            const noteBodies = filterLiveNoteIndexFiles(index.files, existsSync)
+              .map((f) => ({ body: f.chunks.map((c) => c.text).join("\n"), id: relativizeNoteSource(f.path, notesDir) }));
+            const seen = new Set(seedMatches.map((m) => m.source));
+            for (const ref of linkExpandRefs({ noteBodies, seedRefs: seedMatches.map((m) => m.source), cap: 2 })) {
+              if (seen.has(ref)) continue;
+              const best = allScored
+                .filter((s) => relativizeNoteSource(s.file, notesDir) === ref)
+                .sort((a, b) => b.score - a.score)[0];
+              if (best && !scored.includes(best)) {
+                scored = [...scored, best];
+                seen.add(ref);
+              }
+            }
+          }
+        } catch {
+          // graph expansion is best-effort — a malformed graph never fails the ask
+        }
       } catch (cause) {
         notesUnavailable = true;
         const detail = cause instanceof Error ? cause.message : String(cause);
