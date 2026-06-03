@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { KnowledgeMatch } from "@muse/agent-core";
 
-import { groundingVerdictNotice } from "./commands-ask.js";
+import { formatSourceReceipts, groundingVerdictNotice } from "./commands-ask.js";
 
 const match = (source: string, text: string, cosine: number): KnowledgeMatch => ({
   cosine,
@@ -30,6 +30,30 @@ describe("groundingVerdictNotice — output-side rubric verdict on the ask wedge
 
   it("stays silent on an honest refusal (the refusal already asserts no grounded claim — no double warning)", async () => {
     expect(await groundingVerdictNotice("I'm not sure — nothing in your notes covers that.", [], "when is my flight")).toBeUndefined();
+  });
+
+  // The handler gates the "📎 From your notes" receipt on the verdict — a receipt
+  // is shown ONLY when groundingVerdictNotice returns undefined (the answer passed
+  // grounding). This pins the contract that makes that gate meaningful: an
+  // ungrounded answer (a fabrication carrying a structurally-valid citation, e.g.
+  // an off-topic question answered from the model's own knowledge then cited to
+  // the grounded source) BOTH fires the verdict AND would otherwise render a
+  // receipt — so suppressing it stops the edge from vouching for a fabrication.
+  it("an ungrounded answer fires the verdict, and that same answer WOULD render a receipt without the gate (so suppression does real work)", async () => {
+    const matches = [match("clipboard", "The office printer IP is 10.0.0.42.", 0.72)];
+    const fabrication = "The 2018 World Cup was won by France [from clipboard].";
+    const notice = await groundingVerdictNotice(fabrication, matches, "who won the 2018 world cup", async () => false);
+    expect(notice).toBeDefined(); // → the handler suppresses the receipt
+    const wouldShowWithoutGate = formatSourceReceipts(fabrication, "/notes", [{ file: "clipboard", text: "The office printer IP is 10.0.0.42." }], "who won the 2018 world cup");
+    expect(wouldShowWithoutGate).toContain("📎 From your notes");
+  });
+
+  it("a grounded answer stays silent AND renders a receipt (the gate lets a verified answer show its work)", async () => {
+    const matches = [match("clipboard", "The office printer IP is 10.0.0.42.", 0.72)];
+    const grounded = "The office printer IP is 10.0.0.42 [from clipboard].";
+    expect(await groundingVerdictNotice(grounded, matches, "what is the printer IP")).toBeUndefined();
+    const receipt = formatSourceReceipts(grounded, "/notes", [{ file: "clipboard", text: "The office printer IP is 10.0.0.42." }], "what is the printer IP");
+    expect(receipt).toContain("📎 From your notes");
   });
 });
 

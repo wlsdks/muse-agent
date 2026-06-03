@@ -2424,36 +2424,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         io.stdout(collectedAnswer);
       }
 
-      // "Shows its work" made FOLLOWABLE *and FELT* (S1 citation-as-voice):
-      // each cited note rendered as a memory — "from your note of <date> —
-      // '<verbatim snippet>'" + the openable path — post-gate (only real
-      // surviving citations; a refusal renders nothing). Pure deterministic
-      // render from the grounded chunks, no second model call.
-      if (!options.json) {
-        const receipts = formatSourceReceipts(
-          collectedAnswer,
-          notesDir,
-          scored.map((r) => ({ file: r.file, text: r.chunk.text })),
-          query
-        );
-        if (receipts) io.stderr(receipts);
-        // S1 completion: the SAME "shows its work, felt" receipt for the
-        // NON-note grounding the answer cited — calendar / tasks / reminders /
-        // contacts / shell — so every cited source is followable, not just notes.
-        const moreReceipts = formatNonNoteReceipts(collectedAnswer, {
-          actions: matchedActions.map((a) => a.what),
-          commands: matchedCommands,
-          commits: matchedCommits.map((c) => c.subject),
-          contacts: matchedContacts.map((c) => c.name),
-          events: upcomingEvents.map((e) => e.title),
-          feeds: feedHeadlines.map((h) => h.feedName),
-          memories: allMemoryFacts.map(renderMemoryFact),
-          reminders: pendingReminders.map((r) => r.text),
-          sessions: episodeHits.map((e) => e.summary),
-          tasks: openTasks.map((t) => t.title)
-        });
-        if (moreReceipts) io.stderr(moreReceipts);
-      }
+      // The "shows its work" source receipts are rendered AFTER the grounding
+      // verdict below, and ONLY when the answer passed it — a receipt on an
+      // ungrounded answer lends false authority to a fabrication (the edge
+      // showing work for work that failed its own check).
 
       // Discoverability: when Muse REFUSED and the question is plainly about git
       // or shell history, point the user at the opt-in flag that would answer it
@@ -2590,6 +2564,36 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           } else if (shouldSuggestRepair({ evidenceCount: scoredMatches.length, json: Boolean(options.json), repairRequested: Boolean(options.repair), verdictFired: true })) {
             io.stderr("(Re-run with --repair and I'll rewrite this using only your notes — shown only if it then checks out.)\n");
           }
+        }
+
+        // "Shows its work" made FOLLOWABLE *and FELT* (S1 citation-as-voice):
+        // each cited note rendered as a memory — "from your note of <date> —
+        // '<verbatim snippet>'" + the openable path. Rendered ONLY when the
+        // answer PASSED the grounding verdict — a receipt on an ungrounded answer
+        // would vouch for a fabrication (the edge must not "show its work" for
+        // work that failed its own check); the warning above stands alone there.
+        // A refusal asserts no claim so it never reaches here with citations.
+        if (!verdictNotice) {
+          const receipts = formatSourceReceipts(
+            collectedAnswer,
+            notesDir,
+            scored.map((r) => ({ file: r.file, text: r.chunk.text })),
+            query
+          );
+          if (receipts) io.stderr(receipts);
+          const moreReceipts = formatNonNoteReceipts(collectedAnswer, {
+            actions: matchedActions.map((a) => a.what),
+            commands: matchedCommands,
+            commits: matchedCommits.map((c) => c.subject),
+            contacts: matchedContacts.map((c) => c.name),
+            events: upcomingEvents.map((e) => e.title),
+            feeds: feedHeadlines.map((h) => h.feedName),
+            memories: allMemoryFacts.map(renderMemoryFact),
+            reminders: pendingReminders.map((r) => r.text),
+            sessions: episodeHits.map((e) => e.summary),
+            tasks: openTasks.map((t) => t.title)
+          });
+          if (moreReceipts) io.stderr(moreReceipts);
         }
       }
 

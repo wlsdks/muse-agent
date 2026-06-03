@@ -1139,7 +1139,31 @@ qwen3:8b and added to `eval:self-improving`.
   qwen3:8b: `muse ask "what is Jane Park's email?"` over a note holding
   `jane@globex.com` answers `jane@globex.com [from contacts.md]` cited, grounded, no
   spurious warning (the correct path is unbroken). agent-core 112 files / 1401 tests +
-  `pnpm lint` 0/0. (this commit)
+  `pnpm lint` 0/0. (ad74ce75)
+
+- [x] **P38-30 The "shows its work" receipt is suppressed when the answer FAILS
+  the grounding verdict — the edge no longer vouches for a fabrication.** Falsifying
+  P37-19 surfaced a general edge-integrity hole: on the chat-only path the
+  source receipt ("📎 From your notes (open to verify): • from clipboard — …") was
+  printed UNCONDITIONALLY, BEFORE the grounding verdict ran — so an off-topic
+  question answered from the model's own knowledge and cited to the grounded source
+  ("The 2018 World Cup was won by France [from clipboard]") got BOTH a receipt
+  vouching for it AND a contradictory "treat as unverified" warning below. A receipt
+  is the edge's flagship "shows its work" artifact; showing it on an answer that
+  failed its OWN grounding check lends false authority to exactly the fabrication the
+  edge promises to drop. Fixed in apps/cli/src/commands-ask.ts by moving the receipt
+  render to AFTER the verdict and gating it on `!verdictNotice`: a receipt now prints
+  ONLY when `groundingVerdictNotice` stays silent (the answer passed). An ungrounded
+  answer shows the warning alone; a refusal (no citation) renders nothing as before;
+  a genuinely grounded answer keeps its full receipt. Affects EVERY grounding source
+  (notes / --file / --url / --clipboard / contacts / tasks / …), not just the one
+  that surfaced it. Proof: 2 new tests in commands-ask-grounding-verdict.test.ts (an
+  ungrounded answer fires the verdict AND would render a receipt without the gate —
+  so suppression does real work; a grounded answer stays silent AND renders its
+  receipt) + the full cli suite green (168 files / 1806 tests) + LIVE on qwen3:8b: an
+  off-topic clipboard question now shows the "treat as unverified" warning with NO
+  "📎 From your notes" receipt, while an on-topic question keeps its cited receipt.
+  cli 168 files / 1806 tests + `pnpm lint` 0/0. (this commit)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.
