@@ -1163,7 +1163,31 @@ qwen3:8b and added to `eval:self-improving`.
   receipt) + the full cli suite green (168 files / 1806 tests) + LIVE on qwen3:8b: an
   off-topic clipboard question now shows the "treat as unverified" warning with NO
   "📎 From your notes" receipt, while an on-topic question keeps its cited receipt.
-  cli 168 files / 1806 tests + `pnpm lint` 0/0. (this commit)
+  cli 168 files / 1806 tests + `pnpm lint` 0/0. (02fea95f)
+
+- [x] **P38-31 A receipt's "open to verify" target is now REAL for an ad-hoc source
+  — the page URL for a `--url` answer, no fabricated path for `--clipboard`.**
+  Falsifying P38-30 surfaced the next integrity gap in the same "shows its work"
+  receipt: for an ad-hoc source the verify line was a FABRICATED local path. A
+  `--url` answer's receipt pointed at `.muse/notes/example.com` and a `--clipboard`
+  answer's at `.muse/notes/clipboard` — neither file exists, so "open to verify" was
+  a broken promise (`formatSourceReceipts` did `join(notesDir, <source-label>)` for
+  any non-absolute source, blind to the fact that a host / "clipboard" isn't a note).
+  Fixed in apps/cli/src/commands-ask.ts: the handler now records an
+  `adHocVerifyTargets` map — the REAL final URL for a `--url` source (openable in a
+  browser to actually verify the page) and `null` for the ephemeral `--clipboard`
+  (nothing to open) — and `formatSourceReceipts` takes an optional `verifyTargets`
+  map: a present URL is shown as the verify line, a present `null` shows the labelled
+  snippet with NO path, and an ABSENT entry (every note / `--file`) keeps the exact
+  prior local-path behaviour (so no regression). Proof: 2 new unit tests in
+  apps/cli/src/commands-ask-receipts.test.ts (a `--url` source renders the real
+  `https://…` target and NOT a `.muse/notes/<host>` path; a `--clipboard` source
+  renders the snippet with no fabricated path) + all existing receipt tests green
+  (notes/`--file` unchanged) + the full cli suite green (168 files / 1808 tests) +
+  LIVE on qwen3:8b: `muse ask --url https://example.com` now shows
+  "https://example.com/" as the verify target, and `muse ask --clipboard` shows the
+  "from clipboard" snippet with no path. cli 168 files / 1808 tests + `pnpm lint`
+  0/0. (this commit)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.

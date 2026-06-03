@@ -207,7 +207,8 @@ export function formatSourceReceipts(
   answer: string,
   notesDir: string,
   chunks: ReadonlyArray<{ readonly file: string; readonly text: string }>,
-  query?: string
+  query?: string,
+  verifyTargets?: ReadonlyMap<string, string | null>
 ): string | undefined {
   const cited = [...new Set(citedSourcesIn(answer))];
   if (cited.length === 0) {
@@ -225,11 +226,17 @@ export function formatSourceReceipts(
     const lead = date ? `from your note of ${date}` : `from ${note}`;
     const hit = hitFor(note);
     const snippet = hit ? relevantSnippet(hit.text, query) : undefined;
-    // Prefer the matched chunk's REAL path so an ad-hoc `--file` (cited by
-    // basename) still opens — only a basename cite needs this; a relative note
-    // cite already resolves under notesDir.
-    const path = hit && isAbsolute(hit.file) ? hit.file : isAbsolute(note) ? note : join(notesDir, note);
-    return `   • ${lead}${snippet ? ` — "${snippet}"` : ""}\n     ${path}`;
+    // The "open to verify" target. An AD-HOC source supplies its own: the real
+    // URL for a `--url` answer (openable in a browser), or `null` for an
+    // ephemeral `--clipboard` answer (nothing to open — show no path rather than
+    // a fabricated `.muse/notes/clipboard` the user can't open). A note / `--file`
+    // is absent from the map and keeps its local path — preferring the matched
+    // chunk's REAL path so an ad-hoc `--file` cited by basename still opens.
+    const override = verifyTargets?.get(note);
+    const target = override !== undefined
+      ? override ?? undefined
+      : hit && isAbsolute(hit.file) ? hit.file : isAbsolute(note) ? note : join(notesDir, note);
+    return `   • ${lead}${snippet ? ` — "${snippet}"` : ""}${target ? `\n     ${target}` : ""}`;
   });
   return `\n📎 From your notes (open to verify):\n${blocks.join("\n")}\n`;
 }
@@ -1540,6 +1547,12 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       let scored: Array<{ chunk: IndexChunk; file: string; score: number }> = [];
       let notesUnavailable = false;
       let queryVec: number[] | undefined;
+      // The "open to verify" target for an AD-HOC grounding source whose receipt
+      // would otherwise point at a fabricated `.muse/notes/<source>` path: the
+      // real URL for a `--url` answer (openable), or `null` for an ephemeral
+      // `--clipboard` answer (nothing to open). Notes / files are absent here and
+      // keep their normal local path.
+      const adHocVerifyTargets = new Map<string, string | null>();
       try {
         // S3 narrate-the-wait (B2): a REAL stage delta before the embed —
         // on a 10–40s local model the pre-answer gap reads as a hang; this
@@ -1685,6 +1698,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             io.stderr(`muse: could not fetch --url ${urlLabel} (${fetched.error}) — I won't ground on it.\n`);
           } else if (fetched.text.trim().length > 0) {
             const source = urlGroundingSource(fetched.finalUrl);
+            adHocVerifyTargets.set(source, fetched.finalUrl);
             const picked = selectFilePassages(fetched.text, query);
             for (const passage of picked) {
               scored.push({ chunk: { chunkIndex: passage.chunkIndex, embedding: [], file: source, text: passage.text }, file: source, score: 1 });
@@ -1711,6 +1725,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         try {
           const clipText = await readClipboardText();
           if (clipText.trim().length > 0) {
+            adHocVerifyTargets.set("clipboard", null);
             const picked = selectFilePassages(clipText, query);
             for (const passage of picked) {
               scored.push({ chunk: { chunkIndex: passage.chunkIndex, embedding: [], file: "clipboard", text: passage.text }, file: "clipboard", score: 1 });
@@ -2578,7 +2593,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             collectedAnswer,
             notesDir,
             scored.map((r) => ({ file: r.file, text: r.chunk.text })),
-            query
+            query,
+            adHocVerifyTargets
           );
           if (receipts) io.stderr(receipts);
           const moreReceipts = formatNonNoteReceipts(collectedAnswer, {

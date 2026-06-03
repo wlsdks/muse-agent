@@ -77,6 +77,26 @@ describe("formatSourceReceipts — S1 citation-as-voice (date + verbatim snippet
     expect(out).not.toContain("/home/u/.muse/notes/RUNBOOK.md"); // NOT the wrong notesDir join
   });
 
+  it("uses the REAL URL as the verify target for a --url answer, never a fabricated notesDir path", () => {
+    // A --url answer cites `[from example.com]` (the host); its receipt's
+    // "open to verify" target must be the actual page, not `.muse/notes/example.com`.
+    const urlChunks = [{ file: "example.com", text: "This domain is for documentation examples." }];
+    const verify = new Map<string, string | null>([["example.com", "https://example.com/about"]]);
+    const out = formatSourceReceipts("Used for documentation examples [from example.com].", "/home/u/.muse/notes", urlChunks, undefined, verify);
+    expect(out).toContain("from example.com");
+    expect(out).toContain("https://example.com/about"); // the real, openable page
+    expect(out).not.toContain("/home/u/.muse/notes/example.com"); // NOT a fabricated local path
+  });
+
+  it("shows NO path for an ephemeral --clipboard answer (nothing to open — never a fake path)", () => {
+    const clipChunks = [{ file: "clipboard", text: "Wifi password is hunter2-blue." }];
+    const verify = new Map<string, string | null>([["clipboard", null]]);
+    const out = formatSourceReceipts("Your wifi password is hunter2-blue [from clipboard].", "/home/u/.muse/notes", clipChunks, undefined, verify);
+    expect(out).toContain("from clipboard");
+    expect(out).toContain('"Wifi password is hunter2-blue'); // the snippet still shows
+    expect(out).not.toContain("/home/u/.muse/notes/clipboard"); // no fabricated openable path
+  });
+
   it("returns undefined when the answer cites nothing (a refusal renders no receipt)", () => {
     expect(formatSourceReceipts("I don't have anything on that.", "/n", chunks)).toBeUndefined();
   });
