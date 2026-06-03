@@ -493,6 +493,25 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   emails → recall)"); the recall itself was proven live in P37-22. The ingestion is
   fetch→write-notes (not the LLM path), so the daemon test + the P37-22 live recall are
   the surface checks. (811301fe)
+  _Security hardening (288fc4eb) — INDIRECT PROMPT-INJECTION defence (backlog #5) on
+  the email surface: an email is UNTRUSTED third-party content, but P37-22/23 wrote its
+  from/subject/snippet RAW into a recallable note, so a sender could carry a
+  `\n[System Override]\n` (or a forged `# Email:` heading / `From:` line, CRLF, or
+  ANSI/control bytes) that splices a fake section into the prompt once the note is
+  recalled. Fixed by applying the SAME deterministic defence every other untrusted-content
+  path uses (ambient / attachment / episodic / skills / active context) —
+  `stripUntrustedTerminalChars(field).replace(/\s+/gu, " ").trim()` — to the email's
+  from/subject/date/snippet in `renderEmailNote`, so no untrusted field can carry a
+  newline that breaks out of its line (only the note's OWN structural newlines, which the
+  code controls, remain). It is CODE, not a prompt please-be-careful (per CLAUDE.md
+  "security is deterministic code, never prompt instruction"), and FABRICATION-SAFE
+  (collapse only removes the splice; the email's words stay as inert evidence). Proof: 7
+  unit tests (apps/cli/src/email-sync.test.ts — a `\n[System Override]\n` snippet yields
+  NO forged section; a subject/from can't forge a 2nd `# Email:`/`From:` line; ANSI/C0
+  control bytes stripped; CRLF can't splice; a legit single-line email renders unchanged;
+  syncEmailsToNotes writes sanitised + idempotent notes; a hostile message-id → a path-safe
+  filename) + the existing email + daemon tests unbroken + @muse/cli 1911 + `pnpm lint`
+  0/0. Deterministic sanitisation (no LLM path), so the battery is the surface check._
 - [x] **P37-1 Local `.ics` calendar reader (B3 ②).** A read-only
   `LocalIcsCalendarProvider` reads a user's EXPORTED `.ics` file (no cloud);
   `parseIcsCalendar` reuses the CalDAV VEVENT parser. Wired as the `ics`

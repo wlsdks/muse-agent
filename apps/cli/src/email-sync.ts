@@ -15,6 +15,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { EmailProvider, EmailSummary } from "@muse/mcp";
+import { stripUntrustedTerminalChars } from "@muse/shared";
 
 /** Pull the most recent `limit` inbox emails into recallable notes. Returns the count written. */
 export async function syncEmailsToNotes(
@@ -40,13 +41,25 @@ export function safeEmailId(id: string): string {
 }
 
 export function renderEmailNote(e: EmailSummary): string {
+  // An email is UNTRUSTED third-party content — a sender controls its from /
+  // subject / snippet, so without sanitisation a `\n[System Override]\n` (or a
+  // fake `# Email:` heading, CRLF, or ANSI/control bytes) could splice a forged
+  // section into the prompt once this note is recalled. Apply the SAME defence
+  // every other untrusted-content path uses (ambient / attachment / episodic):
+  // strip terminal-control chars + collapse whitespace, so no field can carry a
+  // newline that breaks out of its line. Only the note's OWN structure newlines
+  // (which this code controls) remain. (Indirect prompt-injection — backlog #5.)
+  const clean = (text: string): string => stripUntrustedTerminalChars(text).replace(/\s+/gu, " ").trim();
+  const subject = clean(e.subject) || "(no subject)";
+  const date = e.date ? clean(e.date) : undefined;
+  const snippet = clean(e.snippet) || "(no preview text)";
   const lines = [
-    `# Email: ${e.subject || "(no subject)"}`,
+    `# Email: ${subject}`,
     "",
-    `From: ${e.from}`,
-    ...(e.date ? [`Date: ${e.date}`] : []),
+    `From: ${clean(e.from)}`,
+    ...(date ? [`Date: ${date}`] : []),
     "",
-    e.snippet || "(no preview text)"
+    snippet
   ];
   return `${lines.join("\n")}\n`;
 }
