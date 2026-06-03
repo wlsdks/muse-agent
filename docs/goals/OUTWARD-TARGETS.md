@@ -266,6 +266,30 @@ the confided life sat in plaintext JSON behind OS file-perms only.
   tests. Proven live: `muse episode encrypt` left an AES envelope (0 plaintext
   leak, no orphan `.lock`), `list` decrypted transparently, a wrong key failed
   closed with data intact, `decrypt` restored it. `55559c5b`.
+- [x] **P44-3 `muse actions --verify` makes the autonomous-action audit log
+  tamper-EVIDENT.** The accountability leg of trust: every action Muse takes on
+  your behalf is logged (`what`/`why`/`when`/`result`), but the log was
+  "append-only BY CONTRACT" with zero integrity — a buggy concurrent writer, a
+  partial-write crash, or any process could silently delete, reorder, or backdate
+  what Muse did and nothing detected it. Now each entry carries `prevHash` (SHA-256
+  of the prior entry bound to its own content — a Merkle hash-chain, Haber-Stornetta
+  1991 / RFC 6962), so a single altered/deleted/reordered historical entry
+  deterministically breaks the chain at a precise index. `muse actions --verify`
+  walks the chain and prints "chain intact — N linked" or "TAMPERING DETECTED at
+  entry N: …" (exit 1, so scripts/cron can gate on it). Chosen on merit by the
+  cross-domain ideation panel (which KILLED its own calibration topPick as
+  premise-dead) over the bio panel's negative-selection grounding detector — the
+  latter was BUILT then FALSIFIED by a live nomic-embed calibration (recombination
+  hallucinations embed as close as faithful claims: 0.79–0.85 vs 0.80; the
+  embedding is topical not propositional, so it can't beat the lexical gate — an
+  honest negative result, reverted not shipped). Honest framing: tamper-EVIDENT
+  (catches accidental / partial-write / external-process / non-recomputing
+  mutation), NOT tamper-proof (a motivated attacker who recomputes the whole chain
+  needs an off-box anchor — out of scope); legacy pre-chain entries verify as a
+  valid prefix; the newest entry seals on the next append. Deterministic SHA-256
+  proof — no model, no Ollama. Proven live: a 3-action chain verified intact, then
+  a silently-deleted middle action AND a backdated `when` were each caught at the
+  exact index with exit 1. `9ce96f8b`.
 
 **P37 — Perception growth: read-only local connectors (loop-v2 B3).** The
 self-learning core (P36) is delivered end-to-end + felt; this axis grows what

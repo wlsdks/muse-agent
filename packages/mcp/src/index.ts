@@ -477,10 +477,15 @@ export {
   type PerformConsentedActionOptions
 } from "./consented-action.js";
 export {
+  ACTION_LOG_GENESIS_HASH,
   appendActionLog,
+  computeEntryHash,
   queryActionLog,
   readActionLog,
   serializeActionLogEntry,
+  verifyActionLogChain,
+  verifyActionLogChainFile,
+  type ActionLogChainVerification,
   type ActionLogEntry,
   type ActionResult
 } from "./personal-action-log-store.js";

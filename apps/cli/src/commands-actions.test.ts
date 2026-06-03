@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -159,5 +159,41 @@ describe("muse actions — the P6 accountability read surface", () => {
     expect(r.exitCode).toBeUndefined();
     expect(r.stdout, "whitespace --user must resolve to 'local' (matching the default), not leak other buckets").toContain("local entry");
     expect(r.stdout).not.toContain("stark entry");
+  });
+});
+
+describe("muse actions --verify — the tamper-evidence integrity check", () => {
+  it("a freshly-appended log verifies as chain intact", async () => {
+    const file = logFile();
+    await appendActionLog(file, entry({ id: "a0", when: "2026-05-19T10:00:00.000Z" }));
+    await appendActionLog(file, entry({ id: "a1", when: "2026-05-19T11:00:00.000Z" }));
+    const r = await run(file, ["--verify"]);
+    expect(r.exitCode).toBeUndefined();
+    expect(r.stdout).toContain("chain intact");
+    expect(r.stdout).toContain("2 linked");
+  });
+
+  it("a byte-flipped historical entry on disk fails the check, exits 1, and names the broken index", async () => {
+    const file = logFile();
+    for (let i = 0; i < 3; i += 1) {
+      await appendActionLog(file, entry({ id: `a${i.toString()}`, when: `2026-05-19T1${i.toString()}:00:00.000Z` }));
+    }
+    // Tamper directly on disk: rewrite entry 0's `what`, leaving its prevHash —
+    // the chain must catch it at entry 1.
+    const raw = JSON.parse(readFileSync(file, "utf8")) as { entries: ActionLogEntry[] };
+    raw.entries[0] = { ...raw.entries[0]!, what: "COVERED UP" };
+    writeFileSync(file, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+    const r = await run(file, ["--verify"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("TAMPERING DETECTED at entry 1");
+  });
+
+  it("--verify --json emits the structured verdict", async () => {
+    const file = logFile();
+    await appendActionLog(file, entry({ id: "a0" }));
+    const r = await run(file, ["--verify", "--json"]);
+    const parsed = JSON.parse(r.stdout) as { ok: boolean; linkedEntries: number };
+    expect(parsed.ok).toBe(true);
+    expect(parsed.linkedEntries).toBe(1);
   });
 });

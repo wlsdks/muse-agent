@@ -8,7 +8,7 @@
  */
 
 import { resolveActionLogFile } from "@muse/autoconfigure";
-import { queryActionLog, serializeActionLogEntry, type ActionLogEntry } from "@muse/mcp";
+import { queryActionLog, serializeActionLogEntry, verifyActionLogChainFile, type ActionLogEntry } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -42,9 +42,27 @@ export function registerActionsCommands(program: Command, io: ProgramIO): void {
     .option("--user <id>", "owner bucket (or 'all')", "local")
     .option("--result <result>", `filter: ${RESULT_FILTERS.join(" | ")}`, "all")
     .option("--limit <n>", "max entries, newest first", "20")
+    .option("--verify", "Check the audit log's hash-chain for silent deletion / reorder / edit (tamper-evident)")
     .option("--json", "Print the raw payload instead of the formatted list")
-    .action(async (options: { readonly user: string; readonly result: string; readonly limit: string; readonly json?: boolean }, command: Command) => {
+    .action(async (options: { readonly user: string; readonly result: string; readonly limit: string; readonly verify?: boolean; readonly json?: boolean }, command: Command) => {
       try {
+        if (options.verify) {
+          const chain = await verifyActionLogChainFile(actionLogFile());
+          if (options.json) {
+            io.stdout(`${JSON.stringify(chain, null, 2)}\n`);
+          } else if (chain.ok) {
+            io.stdout(`✓ ${chain.reason}\n`);
+          } else {
+            io.stderr(
+              `✗ TAMPERING DETECTED at entry ${(chain.brokenAtIndex ?? -1).toString()}: ${chain.reason}\n` +
+              `  The audit trail of what Muse did on your behalf was altered after the fact.\n`
+            );
+          }
+          if (!chain.ok) {
+            command.error("action log integrity check failed", { exitCode: 1 });
+          }
+          return;
+        }
         assertResult(options.result);
         const trimmedLimit = options.limit.trim();
         const limit = /^\d+$/u.test(trimmedLimit) ? Number(trimmedLimit) : Number.NaN;

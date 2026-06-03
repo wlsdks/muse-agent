@@ -12,9 +12,19 @@
  * Same durability posture as the other personal stores: atomic
  * fsync+rename write, tolerant read, corrupt store quarantined
  * aside (never destroyed).
+ *
+ * TAMPER-EVIDENT (not tamper-proof): each entry stores `prevHash`, the
+ * SHA-256 of the entry before it bound to that entry's own content, so a
+ * deletion, reorder, or in-place edit of any historical entry deterministically
+ * breaks the chain at a precise index — surfaced by `verifyActionLogChain` /
+ * `muse actions --verify` (Merkle hash-chain: Haber-Stornetta 1991; RFC 6962).
+ * This detects partial-write / accidental / external-process mutation, NOT a
+ * motivated attacker who recomputes the whole chain after editing (that needs an
+ * off-box anchor, out of scope). The chain is append-local: the most recent entry
+ * is sealed by the NEXT append.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
@@ -38,6 +48,109 @@ export interface ActionLogEntry {
   readonly objectiveId?: string;
   /** Free-form result detail ("HTTP 201", "no recorded consent"). */
   readonly detail?: string;
+  /**
+   * Tamper-evidence link: SHA-256 of the previous entry (its content + ITS
+   * prevHash). Set by `appendActionLog`; absent on legacy pre-chain entries,
+   * which verify as a valid prefix. Excluded from this entry's own hashed body.
+   */
+  readonly prevHash?: string;
+}
+
+/** The fixed root the first chained entry's `prevHash` points at. */
+export const ACTION_LOG_GENESIS_HASH = `genesis:${createHash("sha256").update("muse-action-log/v1").digest("hex")}`;
+
+/** The hashed BODY of an entry — content fields only, `prevHash` excluded (a chain link can't hash itself). Stable key order ⇒ stable hash. */
+function canonicalActionContent(entry: ActionLogEntry): JsonObject {
+  return {
+    id: entry.id,
+    result: entry.result,
+    userId: entry.userId,
+    what: entry.what,
+    when: entry.when,
+    why: entry.why,
+    ...(entry.objectiveId ? { objectiveId: entry.objectiveId } : {}),
+    ...(entry.detail ? { detail: entry.detail } : {})
+  };
+}
+
+/**
+ * SHA-256 of an entry: its canonical content bound to `prevHash`. A single
+ * flipped byte in the content OR a different predecessor diverges this hash —
+ * which is the NEXT entry's `prevHash`, so the divergence cascades to the tip.
+ */
+export function computeEntryHash(entry: ActionLogEntry, prevHash: string): string {
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalActionContent(entry)))
+    .update("\n")
+    .update(prevHash)
+    .digest("hex");
+}
+
+/** Hash of the chain's current tip — what the NEXT appended entry's `prevHash` becomes. */
+function chainTipHash(entries: readonly ActionLogEntry[]): string {
+  if (entries.length === 0) {
+    return ACTION_LOG_GENESIS_HASH;
+  }
+  const last = entries[entries.length - 1]!;
+  return computeEntryHash(last, last.prevHash ?? ACTION_LOG_GENESIS_HASH);
+}
+
+export interface ActionLogChainVerification {
+  readonly ok: boolean;
+  /** Index (in stored/append order) where the chain first breaks, or null when intact. */
+  readonly brokenAtIndex: number | null;
+  readonly reason: string;
+  /** Number of hash-linked entries verified (legacy prefix excluded). */
+  readonly linkedEntries: number;
+}
+
+/**
+ * Walk the log in STORED (append) order and recompute every hash link. Legacy
+ * entries lacking `prevHash` are a valid pre-chain PREFIX (older logs predate the
+ * chain) — verification starts at the first hash-bearing entry; once the chain
+ * has begun, a missing link is itself a break (an entry was deleted/inserted).
+ * Pure (takes the array) so it is unit-testable without fs.
+ */
+export function verifyActionLogChain(entries: readonly ActionLogEntry[]): ActionLogChainVerification {
+  const firstChained = entries.findIndex((e) => e.prevHash !== undefined);
+  if (firstChained === -1) {
+    return {
+      brokenAtIndex: null,
+      linkedEntries: 0,
+      ok: true,
+      reason: `no hash-chain present — ${entries.length.toString()} legacy entr${entries.length === 1 ? "y" : "ies"} (chain seals on the next append)`
+    };
+  }
+  let linked = 0;
+  for (let i = firstChained; i < entries.length; i += 1) {
+    const entry = entries[i]!;
+    if (entry.prevHash === undefined) {
+      return {
+        brokenAtIndex: i,
+        linkedEntries: linked,
+        ok: false,
+        reason: `entry ${i.toString()} has no chain link after the chain began — an entry was deleted or inserted`
+      };
+    }
+    const expected = i === 0
+      ? ACTION_LOG_GENESIS_HASH
+      : computeEntryHash(entries[i - 1]!, entries[i - 1]!.prevHash ?? ACTION_LOG_GENESIS_HASH);
+    if (entry.prevHash !== expected) {
+      return {
+        brokenAtIndex: i,
+        linkedEntries: linked,
+        ok: false,
+        reason: `entry ${i.toString()} (${entry.id}) does not chain to entry ${(i - 1).toString()} — content was altered, reordered, or an entry was deleted/inserted`
+      };
+    }
+    linked += 1;
+  }
+  return {
+    brokenAtIndex: null,
+    linkedEntries: linked,
+    ok: true,
+    reason: `chain intact — ${linked.toString()} linked entr${linked === 1 ? "y" : "ies"} verified`
+  };
 }
 
 async function quarantineCorruptStore(file: string): Promise<void> {
@@ -105,11 +218,25 @@ export async function appendActionLog(file: string, entry: ActionLogEntry): Prom
   const prior = appendQueues.get(file) ?? Promise.resolve();
   const op = async (): Promise<void> => {
     const existing = await readActionLog(file);
-    await writeActionLog(file, [...existing, entry]);
+    // Seal the new entry to the chain tip — its prevHash binds it to all prior
+    // history, so a later deletion/edit/reorder breaks verification at a precise
+    // index. The append queue already serialises the read-modify-write, so two
+    // concurrent appends can't fork the chain.
+    const chained: ActionLogEntry = { ...entry, prevHash: chainTipHash(existing) };
+    await writeActionLog(file, [...existing, chained]);
   };
   const next = prior.then(op, op);
   appendQueues.set(file, next.then(() => undefined, () => undefined));
   return next;
+}
+
+/**
+ * Verify the on-disk action log's hash-chain. Reads in STORED (append) order —
+ * NOT `queryActionLog`, which re-sorts newest-first and would falsely report a
+ * break. A missing file is a vacuously-intact empty chain.
+ */
+export async function verifyActionLogChainFile(file: string): Promise<ActionLogChainVerification> {
+  return verifyActionLogChain(await readActionLog(file));
 }
 
 /**
@@ -144,14 +271,8 @@ export async function queryActionLog(
 
 export function serializeActionLogEntry(entry: ActionLogEntry): JsonObject {
   return {
-    id: entry.id,
-    result: entry.result,
-    userId: entry.userId,
-    what: entry.what,
-    when: entry.when,
-    why: entry.why,
-    ...(entry.objectiveId ? { objectiveId: entry.objectiveId } : {}),
-    ...(entry.detail ? { detail: entry.detail } : {})
+    ...canonicalActionContent(entry),
+    ...(entry.prevHash ? { prevHash: entry.prevHash } : {})
   };
 }
 
@@ -167,6 +288,9 @@ function isActionLogEntry(value: unknown): value is ActionLogEntry {
     typeof e.what !== "string" ||
     typeof e.why !== "string"
   ) {
+    return false;
+  }
+  if (e.prevHash !== undefined && typeof e.prevHash !== "string") {
     return false;
   }
   return e.result === "performed" || e.result === "refused" || e.result === "failed";
