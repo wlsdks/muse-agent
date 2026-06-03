@@ -261,8 +261,10 @@ export {
 } from "./calendar-availability.js";
 export {
   detectCalendarConflicts,
+  selectUpcomingConflicts,
   type CalendarConflict,
-  type ConflictEventLike
+  type ConflictEventLike,
+  type UpcomingConflictNotice
 } from "./calendar-conflicts.js";
 export {
   createCryptoMcpServer,

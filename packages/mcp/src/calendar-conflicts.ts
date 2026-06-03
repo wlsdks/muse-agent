@@ -60,3 +60,54 @@ export function detectCalendarConflicts(events: readonly ConflictEventLike[]): C
   }
   return conflicts;
 }
+
+export interface UpcomingConflictNotice {
+  /** Stable per-pair key for cross-tick dedup (same clash never re-notified). */
+  readonly key: string;
+  /** Human-readable warning line, times in the SERVER's local timezone. */
+  readonly line: string;
+  /** When the overlap begins — used to order notices soonest-first. */
+  readonly startsAt: Date;
+}
+
+function fmtConflictTime(d: Date): string {
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+}
+
+function fmtConflictDay(d: Date): string {
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
+function conflictKey(c: CalendarConflict): string {
+  return `${c.a.title}@${c.a.startsAt.toISOString()}|${c.b.title}@${c.b.startsAt.toISOString()}`;
+}
+
+function formatConflictLine(c: CalendarConflict): string {
+  const day = fmtConflictDay(c.a.startsAt);
+  return `${day}: "${c.a.title}" (${fmtConflictTime(c.a.startsAt)}–${fmtConflictTime(c.a.endsAt)}) overlaps "${c.b.title}" (${fmtConflictTime(c.b.startsAt)}–${fmtConflictTime(c.b.endsAt)})`;
+}
+
+/**
+ * The proactive-notice layer over {@link detectCalendarConflicts}: the
+ * double-bookings whose overlap begins in the FUTURE window `[now, now +
+ * withinDays]`. A clash already underway/past is excluded (you can't un-book
+ * the past — nagging about it is noise); only upcoming clashes are surfaced so
+ * the daemon can warn you about a Friday double-booking on Wednesday. Each
+ * notice carries a stable dedup `key` (so a standing clash notifies ONCE across
+ * ticks) and a local-time `line`. Pure: no I/O, no model. Soonest-first.
+ */
+export function selectUpcomingConflicts(
+  events: readonly ConflictEventLike[],
+  options: { readonly now: Date; readonly withinDays?: number }
+): readonly UpcomingConflictNotice[] {
+  const nowMs = options.now.getTime();
+  const within = Math.max(1, Math.trunc(options.withinDays ?? 7));
+  const horizonMs = nowMs + within * 86_400_000;
+  const out: UpcomingConflictNotice[] = [];
+  for (const c of detectCalendarConflicts(events)) {
+    const overlapStartMs = c.overlapStartsAt.getTime();
+    if (overlapStartMs < nowMs || overlapStartMs > horizonMs) continue;
+    out.push({ key: conflictKey(c), line: formatConflictLine(c), startsAt: c.overlapStartsAt });
+  }
+  return out.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+}

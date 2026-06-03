@@ -43,7 +43,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -67,6 +67,7 @@ async function runDaemon(
       ...(opts.messagingPoll ? { messagingPoll: opts.messagingPoll } : {}),
       ...(opts.consolidateMerge ? { consolidateMerge: opts.consolidateMerge } : {}),
       ...(opts.consolidateValidate ? { consolidateValidate: opts.consolidateValidate } : {}),
+      ...(opts.conflictWatchCalendarLister ? { conflictWatchCalendarLister: opts.conflictWatchCalendarLister } : {}),
       // Default: followup tick disabled (no model) so proactive cases stay hermetic.
       resolveFollowupModel: opts.resolveFollowupModel ?? (async () => undefined)
     });
@@ -1340,5 +1341,80 @@ describe("muse daemon — continuous email-sync tick (P37-23, always-on email→
     expect(on.stdout).toContain("email-sync: enabled");
     const off = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], { env: tmpEnv(), registry });
     expect(off.stdout).toContain("email-sync: disabled");
+  });
+});
+
+describe("muse daemon — conflict-watch tick proactively warns of upcoming double-bookings", () => {
+  const overlappingEvents = () => {
+    const base = Date.now() + 2 * 86_400_000; // 2 days out, inside the 7-day window
+    return async () => [
+      { title: "Design review", startsAt: new Date(base), endsAt: new Date(base + 60 * 60_000) },
+      { title: "Dentist", startsAt: new Date(base + 30 * 60_000), endsAt: new Date(base + 90 * 60_000) }
+    ];
+  };
+
+  it("enabled + an upcoming clash → ONE proactive warning naming both events", async () => {
+    const env = { ...tmpEnv(), MUSE_CONFLICT_WATCH_ENABLED: "true", MUSE_CONFLICT_WATCH_SIDECAR_FILE: join(mkdtempSync(join(tmpdir(), "muse-cw-")), "fired.json") };
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { conflictWatchCalendarLister: overlappingEvents(), env, registry });
+
+    expect(res.stdout).toContain("conflict-watch: warned of 1 upcoming double-booking");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.destination).toBe("555");
+    expect(sent[0]!.text).toContain("conflict");
+    expect(sent[0]!.text).toContain("Design review");
+    expect(sent[0]!.text).toContain("Dentist");
+  });
+
+  it("dedup: the SAME clash is not re-warned on a later tick (key sidecar)", async () => {
+    const env = { ...tmpEnv(), MUSE_CONFLICT_WATCH_ENABLED: "true", MUSE_CONFLICT_WATCH_SIDECAR_FILE: join(mkdtempSync(join(tmpdir(), "muse-cw-")), "fired.json") };
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+    const lister = overlappingEvents();
+
+    await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { conflictWatchCalendarLister: lister, env, registry });
+    const second = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { conflictWatchCalendarLister: lister, env, registry });
+
+    expect(sent).toHaveLength(1); // still just the first warning
+    expect(second.stdout).not.toContain("conflict-watch: warned");
+  });
+
+  it("no clash → quiet (no send)", async () => {
+    const env = { ...tmpEnv(), MUSE_CONFLICT_WATCH_ENABLED: "true", MUSE_CONFLICT_WATCH_SIDECAR_FILE: join(mkdtempSync(join(tmpdir(), "muse-cw-")), "fired.json") };
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+    const base = Date.now() + 2 * 86_400_000;
+    const apart = async () => [
+      { title: "A", startsAt: new Date(base), endsAt: new Date(base + 30 * 60_000) },
+      { title: "B", startsAt: new Date(base + 60 * 60_000), endsAt: new Date(base + 90 * 60_000) }
+    ];
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { conflictWatchCalendarLister: apart, env, registry });
+
+    expect(res.stdout).not.toContain("conflict-watch: warned");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("disabled by default → no warning even with a clash present", async () => {
+    const env = { ...tmpEnv(), MUSE_CONFLICT_WATCH_SIDECAR_FILE: join(mkdtempSync(join(tmpdir(), "muse-cw-")), "fired.json") };
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { conflictWatchCalendarLister: overlappingEvents(), env, registry });
+
+    expect(res.stdout).not.toContain("conflict-watch:");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("--status reports conflict-watch enabled/disabled for discoverability", async () => {
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const on = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], {
+      env: { ...tmpEnv(), MUSE_CONFLICT_WATCH_ENABLED: "true" }, registry
+    });
+    expect(on.stdout).toContain("conflicts:  enabled");
+    const off = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], { env: tmpEnv(), registry });
+    expect(off.stdout).toContain("conflicts:  disabled (set MUSE_CONFLICT_WATCH_ENABLED)");
   });
 });

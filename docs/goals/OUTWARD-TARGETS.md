@@ -289,6 +289,34 @@ P43 bullet is unbuilt.
   not flagged. (Honest scope: the learned baseline is episode-TOPIC cadence;
   per-contact messaging cadence is a future entity type.)
 
+- [x] **P43-5 Muse proactively WARNS of an upcoming calendar double-booking —
+  it tells you about Friday's clash on Wednesday.** A new anticipation signal on
+  the same surface as P43-4. The capability map flagged this 🟡: double-booking
+  DETECTION existed (`detectCalendarConflicts`) but only on the `muse today` /
+  `muse calendar conflicts` PULL — never PROACTIVELY pushed (the briefing, recap,
+  and every daemon tick were silent on conflicts), so a clash only surfaced if you
+  thought to look. Added the PUSH: a pure `selectUpcomingConflicts(events, {now,
+  withinDays})` (packages/mcp — the future clashes whose overlap begins in
+  `[now, now+withinDays]`, each with a stable dedup key + a local-time line; a
+  clash already underway/past is excluded so it never nags about the un-bookable)
+  + a `conflictWatchTick` daemon tick (apps/cli) that scans the upcoming window
+  and warns ONCE per clash via the user's messaging channel — off by default
+  (`MUSE_CONFLICT_WATCH_ENABLED`), throttled (`…INTERVAL_MS`, default 30 min),
+  key-deduped via a sidecar so a standing clash never re-spams, fail-soft (a
+  calendar hiccup never breaks the daemon), and surfaced in `muse daemon --status`
+  for discoverability. Verified deterministically AND end-to-end: 5 new tz-robust
+  unit tests for the pure helper (future clash surfaced with key+local-time line;
+  underway/past excluded; beyond-horizon excluded; soonest-first; no-conflict → [])
+  passing in BOTH TZ=Asia/Seoul and TZ=UTC + 5 daemon-integration tests through the
+  REAL `muse daemon --once` command with a contract-faithful capturing messaging
+  provider (enabled+clash → one warning naming both events; SAME clash on a later
+  tick → not re-warned [dedup]; no clash → quiet; disabled → silent; `--status`
+  reports it) + a REAL end-to-end run: two overlapping events planted in the local
+  calendar via `muse calendar add`, then `muse daemon --once --provider log` →
+  "conflict-watch: warned of 1 upcoming double-booking", and a second run silent
+  (deduped). @muse/mcp 173 files / 1468 tests + @muse/cli 174 files / 1917 tests +
+  `pnpm lint` 0/0. (70918eb8)
+
 **P44 — Trust: encryption at rest (the discretion refusal, made real against
 storage access — not just network egress).** "It can't tell anyone" was true
 against the network (cloud egress refused in code) but FALSE against the disk:

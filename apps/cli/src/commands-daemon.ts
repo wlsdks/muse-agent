@@ -73,6 +73,7 @@ import {
   removePlaybookStrategy,
   runDueReminders,
   runDueSituationalBriefing,
+  selectUpcomingConflicts,
   webWatchesFromConfig,
   CHROME_DEVTOOLS_MCP_SERVER_NAME,
   type AmbientNoticeRunner,
@@ -174,6 +175,13 @@ export interface DaemonHelpers {
     readonly ingestedByProvider: Readonly<Record<string, number>>;
     readonly errors: readonly { readonly providerId: string; readonly message: string }[];
   }>;
+  /**
+   * Test seam — inject the calendar lister the conflict-watch tick scans, so a
+   * smoke can drive a proactive double-booking notice (and the dedup contract:
+   * the same clash notifies ONCE across ticks) without a real calendar provider.
+   * Absent → the registered calendar provider's `listEvents`.
+   */
+  readonly conflictWatchCalendarLister?: (range: { readonly from: Date; readonly to: Date }) => Promise<readonly { readonly title: string; readonly startsAt: Date; readonly endsAt: Date }[]>;
 }
 
 // Followups REQUIRE a model to synthesize their message. The real
@@ -650,6 +658,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout(`  recap:      ${parseBoolean(e.MUSE_RECAP_ENABLED, false) ? `enabled (evening, after ${(e.MUSE_RECAP_HOUR ?? "21").toString()}:00)` : "disabled (set MUSE_RECAP_ENABLED)"}\n`);
         io.stdout(`  email-sync: ${parseBoolean(e.MUSE_EMAIL_SYNC_ENABLED, false) && e.MUSE_GMAIL_TOKEN?.trim() ? "enabled (recent emails → recall)" : "disabled (set MUSE_EMAIL_SYNC_ENABLED + MUSE_GMAIL_TOKEN)"}\n`);
         io.stdout(`  msg-poll:   ${parseBoolean(e.MUSE_MESSAGING_POLL_ENABLED, false) ? "enabled (new inbound → recallable)" : "disabled (set MUSE_MESSAGING_POLL_ENABLED)"}\n`);
+        io.stdout(`  conflicts:  ${parseBoolean(e.MUSE_CONFLICT_WATCH_ENABLED, false) ? `enabled (warns of upcoming double-bookings, next ${(e.MUSE_CONFLICT_WATCH_WITHIN_DAYS ?? "7").toString()}d)` : "disabled (set MUSE_CONFLICT_WATCH_ENABLED)"}\n`);
         // The resolved source paths — the first thing to check when a
         // tick "isn't firing": is it reading the file you think it is?
         io.stdout(`sources:\n`);
@@ -1173,6 +1182,55 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         } catch { /* fail-soft — a transient poll failure must never break the daemon */ }
       };
 
+      // Proactive double-booking watch — scan the upcoming calendar window for
+      // overlapping events and warn ONCE per clash (a Friday conflict caught on
+      // Wednesday). Detection already exists for the `muse today` pull; this is
+      // the missing PUSH. Off by default; throttled; a key-dedup sidecar means a
+      // standing clash never re-spams. Fail-soft.
+      const conflictWatchLister = helpers.conflictWatchCalendarLister
+        ?? (calendarRegistry.list().length > 0
+          ? (range: { from: Date; to: Date }) => calendarRegistry.listEvents(range)
+          : undefined);
+      const conflictWatchSidecar = e.MUSE_CONFLICT_WATCH_SIDECAR_FILE?.trim()?.length
+        ? e.MUSE_CONFLICT_WATCH_SIDECAR_FILE.trim()
+        : join(homedir(), ".muse", "conflict-watch-fired.json");
+      const conflictWithinRaw = e.MUSE_CONFLICT_WATCH_WITHIN_DAYS ? Number(e.MUSE_CONFLICT_WATCH_WITHIN_DAYS) : 7;
+      const conflictWithinDays = Number.isFinite(conflictWithinRaw) && conflictWithinRaw > 0 ? Math.trunc(conflictWithinRaw) : 7;
+      const DEFAULT_CONFLICT_WATCH_INTERVAL_MS = 30 * 60 * 1000;
+      const conflictIntervalRaw = e.MUSE_CONFLICT_WATCH_INTERVAL_MS ? Number(e.MUSE_CONFLICT_WATCH_INTERVAL_MS) : DEFAULT_CONFLICT_WATCH_INTERVAL_MS;
+      const conflictIntervalMs = Number.isFinite(conflictIntervalRaw) && conflictIntervalRaw > 0 ? conflictIntervalRaw : DEFAULT_CONFLICT_WATCH_INTERVAL_MS;
+      let lastConflictWatchMs: number | undefined;
+      const conflictWatchTick = async (): Promise<void> => {
+        if (!parseBoolean(e.MUSE_CONFLICT_WATCH_ENABLED, false)) return;
+        if (!conflictWatchLister) return;
+        const nowMs = Date.now();
+        if (lastConflictWatchMs !== undefined && nowMs - lastConflictWatchMs < conflictIntervalMs) return;
+        lastConflictWatchMs = nowMs;
+        const now = new Date(nowMs);
+        try {
+          const events = await conflictWatchLister({ from: now, to: new Date(nowMs + conflictWithinDays * 86_400_000) });
+          const notices = selectUpcomingConflicts(
+            events.map((ev) => ({ title: ev.title, startsAt: ev.startsAt, endsAt: ev.endsAt })),
+            { now, withinDays: conflictWithinDays }
+          );
+          if (notices.length === 0) return;
+          let firedKeys: string[] = [];
+          try {
+            const parsed = JSON.parse(readFileSync(conflictWatchSidecar, "utf8")) as { keys?: unknown };
+            if (Array.isArray(parsed.keys)) firedKeys = parsed.keys.filter((k): k is string => typeof k === "string");
+          } catch { /* no sidecar yet ⇒ nothing fired */ }
+          const fresh = notices.filter((n) => !firedKeys.includes(n.key));
+          if (fresh.length === 0) return;
+          const text = `Heads up — upcoming calendar conflict${fresh.length === 1 ? "" : "s"}:\n${fresh.map((n) => `• ${n.line}`).join("\n")}`;
+          await messagingRegistry.send(provider, { destination, text });
+          try {
+            mkdirSync(dirname(conflictWatchSidecar), { recursive: true });
+            writeFileSync(conflictWatchSidecar, JSON.stringify({ keys: [...firedKeys, ...fresh.map((n) => n.key)].slice(-200) }), "utf8");
+          } catch { /* fail-soft — dedup persistence is best-effort */ }
+          io.stdout(`[${now.toISOString()}] conflict-watch: warned of ${fresh.length.toString()} upcoming double-booking${fresh.length === 1 ? "" : "s"}\n`);
+        } catch { /* fail-soft — a calendar hiccup must never break the daemon */ }
+      };
+
       const runTick = async (): Promise<void> => {
         await proactiveTick();
         await remindersTick();
@@ -1191,6 +1249,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         await playbookConsolidateTick();
         await recapTick();
         await messagingPollTick();
+        await conflictWatchTick();
       };
 
       io.stdout(`muse daemon — provider=${provider}, destination=${destination}, lead ${leadMinutes.toString()} min\n`);
