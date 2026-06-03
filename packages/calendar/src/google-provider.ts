@@ -16,6 +16,14 @@ export interface GoogleCalendarRetryOptions {
   readonly baseDelayMs?: number;
   /** Injectable delay so tests don't wait on real timers. */
   readonly sleep?: (ms: number) => Promise<void>;
+  /**
+   * Per-attempt request timeout in ms (AbortController). A hung Google endpoint
+   * otherwise blocks the call until the OS socket timeout (minutes), stalling
+   * `muse calendar` / the agent (whose wallclock only checks BETWEEN tool
+   * iterations, not mid-fetch). Default 15000; 0 disables. A GET timeout retries
+   * (idempotent); a WRITE timeout throws (networkRetries=0 — never double-act).
+   */
+  readonly timeoutMs?: number;
 }
 
 export interface GoogleCalendarProviderOptions {
@@ -65,6 +73,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
   private readonly retries: number;
   private readonly baseDelayMs: number;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly timeoutMs: number;
   private accessToken?: { readonly value: string; readonly expiresAt: number };
 
   constructor(options: GoogleCalendarProviderOptions) {
@@ -78,6 +87,27 @@ export class GoogleCalendarProvider implements CalendarProvider {
     this.retries = Number.isFinite(options.retry?.retries) ? Math.max(0, Math.trunc(options.retry!.retries!)) : 2;
     this.baseDelayMs = Number.isFinite(options.retry?.baseDelayMs) ? Math.max(0, options.retry!.baseDelayMs!) : 250;
     this.sleep = options.retry?.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+    this.timeoutMs = Number.isFinite(options.retry?.timeoutMs) ? Math.max(0, Math.trunc(options.retry!.timeoutMs!)) : 15_000;
+  }
+
+  /**
+   * Wrap a fetch with an AbortController timeout so a hung Google endpoint can't
+   * block the call indefinitely. On timeout the fetch rejects → the caller's
+   * existing network-failure handling decides (a GET retries; a WRITE throws,
+   * networkRetries=0). `timeoutMs <= 0` disables the guard. An external signal
+   * (if any) still aborts too.
+   */
+  private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+    if (this.timeoutMs <= 0) {
+      return this.fetchImpl(url, init);
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error(`Google Calendar request timed out after ${this.timeoutMs.toString()}ms`)), this.timeoutMs);
+    try {
+      return await this.fetchImpl(url, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   describe(): CalendarProviderInfo {
@@ -183,7 +213,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
       const accessToken = await this.acquireAccessToken();
       let response: Response;
       try {
-        response = await this.fetchImpl(`${apiBase}${path}`, {
+        response = await this.fetchWithTimeout(`${apiBase}${path}`, {
           body: init.body,
           headers: {
             accept: "application/json",
@@ -257,7 +287,7 @@ export class GoogleCalendarProvider implements CalendarProvider {
       refresh_token: this.options.refreshToken
     });
 
-    const response = await this.fetchImpl(tokenEndpoint, {
+    const response = await this.fetchWithTimeout(tokenEndpoint, {
       body: params.toString(),
       headers: { "content-type": "application/x-www-form-urlencoded" },
       method: "POST"

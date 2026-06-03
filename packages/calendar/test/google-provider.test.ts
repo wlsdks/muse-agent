@@ -87,6 +87,33 @@ describe("GoogleCalendarProvider — OAuth + listEvents", () => {
     const fetch = makeFetch(() => new Response("", { status: 200 }));
     await expect(provider(fetch.impl).listEvents(RANGE)).rejects.toMatchObject({ code: "MALFORMED_RESPONSE", status: 200 });
   });
+
+  // A fetch that HANGS on the API endpoint (only the AbortController resolves it,
+  // by rejecting) — the token endpoint responds normally. Counts how many API
+  // attempts the per-request timeout aborted.
+  const hangingApiFetch = (counter: { aborts: number }): typeof fetch =>
+    (async (url: string, init?: RequestInit) => {
+      if (String(url) === TOKEN_ENDPOINT) return new Response(JSON.stringify({ access_token: "tok-1", expires_in: 3600 }), { status: 200 });
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => { counter.aborts += 1; reject((init.signal as AbortSignal).reason ?? new Error("aborted")); });
+      });
+    }) as unknown as typeof fetch;
+
+  it("aborts a HUNG GET on the per-attempt timeout (retries, then throws) instead of blocking forever", async () => {
+    const counter = { aborts: 0 };
+    await expect(provider(hangingApiFetch(counter), { baseDelayMs: 0, retries: 1, sleep: async () => {}, timeoutMs: 20 }).listEvents(RANGE))
+      .rejects.toThrow(/timed out/u);
+    expect(counter.aborts).toBe(2); // initial + 1 retry, each aborted on its timeout (idempotent GET)
+  });
+
+  it("does NOT retry a HUNG WRITE — aborts exactly once and throws (no double-act on an ambiguous timeout)", async () => {
+    const counter = { aborts: 0 };
+    await expect(
+      provider(hangingApiFetch(counter), { baseDelayMs: 0, retries: 2, sleep: async () => {}, timeoutMs: 20 })
+        .createEvent({ endsAt: new Date("2026-06-01T11:00:00Z"), startsAt: new Date("2026-06-01T10:00:00Z"), title: "x" })
+    ).rejects.toThrow(/timed out/u);
+    expect(counter.aborts).toBe(1); // a write network-failure (timeout) is NEVER retried — exactly one attempt
+  });
 });
 
 describe("GoogleCalendarProvider — writes retry only a 429 rate-limit (never an ambiguous 5xx)", () => {
