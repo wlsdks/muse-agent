@@ -1,6 +1,35 @@
 import { describe, expect, it } from "vitest";
 
-import { selectFilePassages } from "./commands-ask.js";
+import { looksLikeBinaryContent, selectFilePassages } from "./commands-ask.js";
+
+const bytes = (s: string): Uint8Array => new TextEncoder().encode(s);
+
+describe("looksLikeBinaryContent — refuse to ground on a binary --file (no hallucinated content)", () => {
+  it("flags a buffer with a NUL byte as binary (the canonical text-vs-binary signal)", () => {
+    expect(looksLikeBinaryContent(new Uint8Array([0x48, 0x69, 0x00, 0x21]))).toBe(true);
+  });
+
+  it("flags a real-shaped PDF (magic header + binary stream bytes) as binary", () => {
+    const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37, 0x0a, 0x00, 0x01, 0x02, 0xff, 0xfe]);
+    expect(looksLikeBinaryContent(pdf)).toBe(true);
+  });
+
+  it("flags a run of invalid UTF-8 (high replacement-char ratio) as binary", () => {
+    expect(looksLikeBinaryContent(new Uint8Array([0xff, 0xfe, 0xfd, 0xfc, 0xc0, 0xc1, 0xf5, 0xf6, 0xf7, 0xf8]))).toBe(true);
+  });
+
+  it("treats plain ASCII text as NOT binary", () => {
+    expect(looksLikeBinaryContent(bytes("Job title: Staff Data Scientist at Acme.\n"))).toBe(false);
+  });
+
+  it("treats valid UTF-8 (Korean + emoji) as NOT binary", () => {
+    expect(looksLikeBinaryContent(bytes("내 차 번호판은 12가 3456 🚗 입니다.\n"))).toBe(false);
+  });
+
+  it("treats an empty file as NOT binary (nothing to misread)", () => {
+    expect(looksLikeBinaryContent(new Uint8Array([]))).toBe(false);
+  });
+});
 
 describe("selectFilePassages — ad-hoc --file grounding", () => {
   it("returns every passage of a small file, in original order", () => {

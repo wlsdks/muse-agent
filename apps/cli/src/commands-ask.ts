@@ -574,6 +574,36 @@ export async function groundingVerdictNotice(
 }
 
 /**
+ * Whether a `--file` payload is BINARY (a PDF, image, archive, office doc…)
+ * rather than readable text. Reading such a file as UTF-8 yields garbled bytes,
+ * and grounding on that garbage makes the small model HALLUCINATE plausible
+ * content and cite it `[from <file>]` — a fabrication. So we refuse to ground on
+ * it. Heuristic (deterministic, no deps): a NUL byte is the canonical binary
+ * signal (text never contains one); failing that, a high ratio of U+FFFD
+ * replacement chars from a lossy UTF-8 decode means the bytes were not text.
+ * Only the first ~8 KB is inspected — enough to classify, cheap on a big file.
+ */
+export function looksLikeBinaryContent(bytes: Uint8Array): boolean {
+  const sample = bytes.subarray(0, 8192);
+  if (sample.length === 0) {
+    return false;
+  }
+  for (const byte of sample) {
+    if (byte === 0) {
+      return true;
+    }
+  }
+  const decoded = new TextDecoder("utf-8", { fatal: false }).decode(sample);
+  let replacements = 0;
+  for (const char of decoded) {
+    if (char === "�") {
+      replacements += 1;
+    }
+  }
+  return replacements / decoded.length > 0.1;
+}
+
+/**
  * Select the passages of an ad-hoc `--file` to ground on: split into passages,
  * rank by lexical overlap with the question (file order breaks ties), and keep
  * the strongest up to `charBudget` so a large file never blows the small
@@ -1448,13 +1478,24 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       if (options.file && options.file.trim().length > 0) {
         const fileLabel = options.file.trim();
         try {
-          const raw = await readFile(fileLabel, "utf8");
-          const picked = selectFilePassages(raw, query);
-          for (const passage of picked) {
-            scored.push({ chunk: { chunkIndex: passage.chunkIndex, embedding: [], file: fileLabel, text: passage.text }, file: fileLabel, score: 1 });
-          }
-          if (picked.length > 0) {
-            notesUnavailable = false; // we DO have note-class grounding now
+          const bytes = await readFile(fileLabel);
+          if (looksLikeBinaryContent(bytes)) {
+            // Refuse to ground on binary bytes — feeding garbled UTF-8 to the
+            // model makes it hallucinate plausible content and cite it to the
+            // file. Tell the user how to make it groundable instead.
+            io.stderr(
+              `muse: --file ${fileLabel} looks like a binary file (PDF, image, office doc, …), not text — ` +
+              `I won't ground on it, because reading it as text would feed garbled bytes that I might ` +
+              `answer from incorrectly. Extract the text first (e.g. export the PDF to .txt/.md) and pass that.\n`
+            );
+          } else {
+            const picked = selectFilePassages(bytes.toString("utf8"), query);
+            for (const passage of picked) {
+              scored.push({ chunk: { chunkIndex: passage.chunkIndex, embedding: [], file: fileLabel, text: passage.text }, file: fileLabel, score: 1 });
+            }
+            if (picked.length > 0) {
+              notesUnavailable = false; // we DO have note-class grounding now
+            }
           }
         } catch (cause) {
           io.stderr(`muse: could not read --file ${fileLabel} (${cause instanceof Error ? cause.message : String(cause)})\n`);

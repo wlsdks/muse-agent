@@ -287,6 +287,27 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   4/4 — no grounding regression across the session's accumulation). cli 164 files /
   1729 tests + `pnpm lint` 0/0. (this commit)
 
+- [x] **P37-14 `muse ask --file` refuses a BINARY file instead of hallucinating
+  content from its garbled bytes (the edge meets perception).** Probing the ad-hoc
+  `--file` source with a real-shaped binary: `muse ask --file resume.pdf "what is
+  this person's job title?"` read the PDF's raw bytes as UTF-8 (the handler did
+  `readFile(path, "utf8")`), fed the garbage to the model as note-class grounding,
+  and the model HALLUCINATED a plausible answer — "The resume file mentions 'Senior
+  Software Engineer' [from resume.pdf]" — citing a value that appears NOWHERE in the
+  file (it was pure binary). A confident, sourced fabrication on the perception
+  surface — exactly what the edge forbids. Fixed in apps/cli/src/commands-ask.ts: a
+  new pure, exported `looksLikeBinaryContent(bytes)` (deterministic, no deps — a NUL
+  byte is the canonical binary signal; failing that, a >10% U+FFFD ratio from a lossy
+  UTF-8 decode of the first 8 KB) classifies the `--file` payload BEFORE grounding;
+  a binary file is NOT injected and the user gets a clear "looks like a binary file …
+  extract the text first" message, so the answer honestly refuses instead of
+  fabricating. A real text file still grounds normally. Proof: 6 new unit tests
+  (NUL byte / PDF magic+stream / invalid-UTF-8 run → binary; ASCII, valid UTF-8
+  Korean+emoji, empty → text) + LIVE on qwen3:8b: the same binary-PDF probe now
+  prints the refusal message and answers "I don't have enough information …" (the
+  fabricated job title is GONE), while `--file resume.txt` still cites
+  `[from resume.txt]`. cli 166 files / 1767 tests + `pnpm lint` 0/0. (this commit)
+
 **P40 — Actuation usability: Muse understands natural-language dates.** The
 "do" side is only as good as the words a user actually types.
 
@@ -772,7 +793,7 @@ qwen3:8b and added to `eval:self-improving`.
   cases and run on qwen3:8b → 11/11 (the WireGuard + capital-of-France answers store
   NOTHING, while Busan/Jinan/서울 user facts and the prefs still extract — no
   over-drop, negatives still clean). memory 31 files / 320 tests + autoconfigure 484 +
-  cli 166 files / 1761 tests + `pnpm lint` 0/0. (this commit)
+  cli 166 files / 1761 tests + `pnpm lint` 0/0. (17090f9e)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.
