@@ -9,10 +9,65 @@
  * no model.
  */
 
+import { levenshteinDistance } from "./closest-command.js";
+
 /** A note's link key for resolution: basename without extension, lowercased. */
 export function noteLinkKey(id: string): string {
   const base = id.split("/").pop() ?? id;
   return base.replace(/\.(md|markdown|txt)$/iu, "").trim().toLowerCase();
+}
+
+export interface LinkFix {
+  /** The broken `[[target]]` text, as written. */
+  readonly from: string;
+  /** The existing note id it should snap to. */
+  readonly to: string;
+  readonly distance: number;
+}
+
+/**
+ * Plan repairs for broken `[[wiki-links]]`: snap each broken target to its
+ * closest existing note id, but ONLY when there is exactly ONE candidate within
+ * `maxDistance` edits — an ambiguous typo (two equally-close notes) or a target
+ * with no near match is left UNRESOLVED rather than silently mis-linked to the
+ * wrong note. Case-insensitive; targets deduped. Pure — the deterministic core
+ * of `muse notes fix-links`.
+ */
+export function planLinkFixes(
+  brokenTargets: readonly string[],
+  existingIds: readonly string[],
+  maxDistance = 2
+): { readonly fixes: readonly LinkFix[]; readonly unresolved: readonly string[] } {
+  const fixes: LinkFix[] = [];
+  const unresolved: string[] = [];
+  const seen = new Set<string>();
+  for (const target of brokenTargets) {
+    const key = noteLinkKey(target);
+    if (key.length === 0 || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    let best: string[] = [];
+    let bestDistance = maxDistance + 1;
+    for (const id of existingIds) {
+      const distance = levenshteinDistance(key, noteLinkKey(id));
+      if (distance > maxDistance) {
+        continue;
+      }
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = [id];
+      } else if (distance === bestDistance) {
+        best.push(id);
+      }
+    }
+    if (best.length === 1) {
+      fixes.push({ distance: bestDistance, from: target, to: best[0]! });
+    } else {
+      unresolved.push(target);
+    }
+  }
+  return { fixes, unresolved };
 }
 
 /**

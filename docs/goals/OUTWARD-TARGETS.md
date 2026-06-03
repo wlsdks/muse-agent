@@ -750,7 +750,36 @@ graph intact as the corpus evolves, so a power-user's Zettelkasten doesn't rot.
   `[[concepts|the idea note]]` (alias kept) and the file actually moved; `--dry-run`
   and the existing-destination refusal both behave. cli 169 files / 1816 tests +
   `pnpm lint` 0/0 — a user can now rename a note and keep their whole link graph
-  intact, instead of silently orphaning every backlink. (this commit)
+  intact, instead of silently orphaning every backlink. (d820de16)
+
+- [x] **P42-2 `muse notes fix-links` repairs broken `[[wiki-links]]` by snapping
+  each to its UNIQUE closest note — the remediation `auditNoteGraph` never had.**
+  Muse's note graph already FINDS broken links (`auditNoteGraph` returns
+  `brokenLinks`) but only printed them; a typo'd `[[concpets]]` or a link left
+  dangling after an import stayed broken with no one-command repair. Added a pure
+  `planLinkFixes(brokenTargets, existingIds, maxDistance)` in apps/cli/src/notes-links.ts
+  that snaps each broken target to its closest existing note id (reusing
+  `levenshteinDistance`) but ONLY when there is EXACTLY ONE candidate within
+  `maxDistance` (default 2) — an ambiguous typo (two equally-close notes) or a target
+  with no near match is left UNRESOLVED, never silently mis-linked to the wrong note —
+  plus a `fixBrokenLinks(notesDir, dryRun, maxDistance)` orchestration (build graph →
+  audit → plan → rewrite via the P42-1 `rewriteWikiLinkReferences`) and a `muse notes
+  fix-links [--dry-run] [--max-distance N]` command that lists each fix `[[from]] →
+  [[to]]` and reports what it left unresolved. Proof: 4 new `planLinkFixes` tests in
+  apps/cli/src/notes-links.test.ts (a unique typo at distance 2 → fixed; an ambiguous
+  "foop" with food+fool both distance 1 → unresolved; no-match unresolved + a
+  case-insensitive dedupe; a tighter `maxDistance` 1 refuses the distance-2 snap) + 3
+  `fixBrokenLinks` tests in apps/cli/src/commands-notes.test.ts (over a temp corpus:
+  `[[concpets]]` → `[[concepts]]` rewritten while `[[totallymissing]]` is left alone;
+  `--dry-run` plans without editing; an all-resolving corpus reports nothing) + the
+  full @muse/cli suite green (169 files / 1831 tests) + LIVE on the loop PC: with a
+  `concepts.md` note and a journal linking `[[concpets]]` + `[[totallymissing]]`,
+  `muse notes fix-links` prints "Fixed 1 broken link … [[concpets]] → [[concepts]]"
+  and "1 link(s) left unresolved … [[totallymissing]]", and the journal now reads
+  `[[concepts]]` with the missing link untouched (`--dry-run` previews identically).
+  cli 169 files / 1831 tests + `pnpm lint` 0/0 — a user can now repair a corpus of
+  broken links in one command, with the wrong-snap risk fenced off by the
+  unique-match guard. (this commit)
 
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,

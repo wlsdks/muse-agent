@@ -23,7 +23,7 @@ import {
   formatNotesList,
   formatProvidersList
 } from "./human-formatters.js";
-import { rewriteWikiLinkReferences } from "./notes-links.js";
+import { auditNoteGraph, buildNoteLinkGraph, planLinkFixes, rewriteWikiLinkReferences, type LinkFix } from "./notes-links.js";
 import { isApiUnreachable } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
@@ -182,6 +182,55 @@ export async function renameNoteWithLinkRewrite(notesDir: string, fromPath: stri
     await rename(oldAbs, newAbs);
   }
   return { dryRun, from: fromPath, linksRewritten, notesTouched, ok: true, to: toPath };
+}
+
+export interface FixLinksResult {
+  readonly fixes: readonly LinkFix[];
+  readonly unresolved: readonly string[];
+  readonly linksRewritten: number;
+  readonly notesTouched: number;
+  readonly dryRun: boolean;
+}
+
+/**
+ * Repair broken `[[wiki-links]]` across the corpus: build the link graph, find
+ * the broken targets (`auditNoteGraph`), snap each to its unique closest note
+ * (`planLinkFixes` — ambiguous / no-match left alone), and rewrite them. The
+ * complement to `auditNoteGraph`, which only REPORTED broken links. `--dry-run`
+ * plans without writing. Exported + notesDir-injected so it's testable on a temp
+ * corpus.
+ */
+export async function fixBrokenLinks(notesDir: string, dryRun = false, maxDistance = 2): Promise<FixLinksResult> {
+  const files = await listMarkdownFiles(notesDir);
+  const notes = await Promise.all(files.map(async (path) => ({
+    body: await readFile(path, "utf8"),
+    id: basename(path).replace(/\.md$/iu, ""),
+    path
+  })));
+  const audit = auditNoteGraph(buildNoteLinkGraph(notes.map((n) => ({ body: n.body, id: n.id }))));
+  const { fixes, unresolved } = planLinkFixes(audit.brokenLinks.map((b) => b.target), notes.map((n) => n.id), maxDistance);
+
+  let linksRewritten = 0;
+  let notesTouched = 0;
+  if (fixes.length > 0) {
+    for (const note of notes) {
+      let body = note.body;
+      let changed = 0;
+      for (const fix of fixes) {
+        const result = rewriteWikiLinkReferences(body, fix.from, fix.to);
+        body = result.body;
+        changed += result.count;
+      }
+      if (changed > 0) {
+        linksRewritten += changed;
+        notesTouched += 1;
+        if (!dryRun) {
+          await writeFile(note.path, body, "utf8");
+        }
+      }
+    }
+  }
+  return { dryRun, fixes, linksRewritten, notesTouched, unresolved };
 }
 
 export function registerNotesCommands(program: Command, io: ProgramIO, helpers: NotesCommandHelpers): void {
@@ -457,5 +506,38 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
       io.stdout(result.dryRun
         ? `Would rename ${from} → ${to} (${links === "no [[links]] pointed at it" ? links : `${links} would be rewritten`}).\n`
         : `Renamed ${from} → ${to}${result.linksRewritten > 0 ? `, rewrote ${links}` : ` (${links})`}.\n`);
+    });
+
+  notes
+    .command("fix-links")
+    .description("Repair broken [[wiki-links]] by snapping each to its closest existing note (local)")
+    .option("--dry-run", "Show the proposed fixes without changing anything")
+    .option("--max-distance <n>", "Max edit distance to treat a typo as the same note (default 2)")
+    .option("--json", "Print the raw result")
+    .action(async (options: { readonly dryRun?: boolean; readonly maxDistance?: string; readonly json?: boolean }) => {
+      const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
+      const maxDistance = options.maxDistance !== undefined && Number.isFinite(Number(options.maxDistance))
+        ? Math.max(1, Math.trunc(Number(options.maxDistance)))
+        : 2;
+      const result = await fixBrokenLinks(notesDir, options.dryRun === true, maxDistance);
+      if (options.json) {
+        helpers.writeOutput(io, result);
+        return;
+      }
+      if (result.fixes.length === 0 && result.unresolved.length === 0) {
+        io.stdout("No broken [[wiki-links]] found.\n");
+        return;
+      }
+      if (result.fixes.length > 0) {
+        io.stdout(result.dryRun
+          ? `Would fix ${result.linksRewritten.toString()} broken link(s) across ${result.notesTouched.toString()} note(s):\n`
+          : `Fixed ${result.linksRewritten.toString()} broken link(s) across ${result.notesTouched.toString()} note(s):\n`);
+        for (const fix of result.fixes) {
+          io.stdout(`  • [[${fix.from}]] → [[${fix.to}]]\n`);
+        }
+      }
+      if (result.unresolved.length > 0) {
+        io.stdout(`${result.unresolved.length.toString()} link(s) left unresolved (no unique close match): ${result.unresolved.map((u) => `[[${u}]]`).join(", ")}\n`);
+      }
     });
 }

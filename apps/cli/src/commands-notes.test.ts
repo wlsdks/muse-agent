@@ -7,8 +7,42 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { readFileSync } from "node:fs";
 
-import { parseNotesSearchLimit, renameNoteWithLinkRewrite, resolveIngestNotePath, resolveUrlNotePath, registerNotesCommands, type NotesCommandHelpers } from "./commands-notes.js";
+import { fixBrokenLinks, parseNotesSearchLimit, renameNoteWithLinkRewrite, resolveIngestNotePath, resolveUrlNotePath, registerNotesCommands, type NotesCommandHelpers } from "./commands-notes.js";
 import type { ProgramIO } from "./program.js";
+
+describe("fixBrokenLinks", () => {
+  const seedCorpus = (): string => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-fixlinks-"));
+    writeFileSync(join(dir, "concepts.md"), "# Concepts");
+    writeFileSync(join(dir, "journal.md"), "See [[concpets]] for the idea, and [[totallymissing]] too.");
+    return dir;
+  };
+
+  it("snaps a broken typo'd link to its unique closest note, leaving a genuinely-missing one alone", async () => {
+    const dir = seedCorpus();
+    const res = await fixBrokenLinks(dir);
+    expect(res.linksRewritten).toBe(1);
+    expect(res.fixes).toEqual([{ distance: 2, from: "concpets", to: "concepts" }]);
+    expect(res.unresolved).toEqual(["totallymissing"]);
+    expect(readFileSync(join(dir, "journal.md"), "utf8")).toBe("See [[concepts]] for the idea, and [[totallymissing]] too.");
+  });
+
+  it("--dry-run plans the fix without editing any note", async () => {
+    const dir = seedCorpus();
+    const res = await fixBrokenLinks(dir, true);
+    expect(res).toMatchObject({ dryRun: true, linksRewritten: 1 });
+    expect(readFileSync(join(dir, "journal.md"), "utf8")).toContain("[[concpets]]"); // unchanged
+  });
+
+  it("reports nothing to fix when all links resolve", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-fixlinks-ok-"));
+    writeFileSync(join(dir, "a.md"), "# A");
+    writeFileSync(join(dir, "b.md"), "Links to [[a]].");
+    const res = await fixBrokenLinks(dir);
+    expect(res.fixes).toEqual([]);
+    expect(res.unresolved).toEqual([]);
+  });
+});
 
 describe("renameNoteWithLinkRewrite", () => {
   const seedCorpus = (): string => {

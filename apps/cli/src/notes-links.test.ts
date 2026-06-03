@@ -1,6 +1,31 @@
 import { describe, expect, it } from "vitest";
 
-import { auditNoteGraph, buildNoteLinkGraph, extractWikiLinks, linkedFromResults, noteLinkKey, noteLinkView, resolveNoteId, rewriteWikiLinkReferences } from "./notes-links.js";
+import { auditNoteGraph, buildNoteLinkGraph, extractWikiLinks, linkedFromResults, noteLinkKey, noteLinkView, planLinkFixes, resolveNoteId, rewriteWikiLinkReferences } from "./notes-links.js";
+
+describe("planLinkFixes — snap a broken [[link]] to its UNIQUE closest note, never guess an ambiguous one", () => {
+  const existing = ["concepts", "journal", "food", "fool"];
+
+  it("fixes a unique typo within the edit-distance budget", () => {
+    const { fixes, unresolved } = planLinkFixes(["concpets"], existing);
+    expect(fixes).toEqual([{ distance: 2, from: "concpets", to: "concepts" }]);
+    expect(unresolved).toEqual([]);
+  });
+
+  it("leaves an AMBIGUOUS target unresolved (two notes equally close → never mis-link)", () => {
+    const { fixes, unresolved } = planLinkFixes(["foop"], existing); // food & fool both distance 1
+    expect(fixes).toEqual([]);
+    expect(unresolved).toEqual(["foop"]);
+  });
+
+  it("leaves a target with NO close match unresolved, and dedupes repeated targets", () => {
+    expect(planLinkFixes(["zzzzzz"], existing).unresolved).toEqual(["zzzzzz"]);
+    expect(planLinkFixes(["concpets", "CONCPETS"], existing).fixes).toHaveLength(1); // case-insensitive dedupe
+  });
+
+  it("respects maxDistance — a far typo isn't snapped at distance 1", () => {
+    expect(planLinkFixes(["concpets"], existing, 1).unresolved).toEqual(["concpets"]); // distance 2 > 1
+  });
+});
 
 describe("rewriteWikiLinkReferences", () => {
   it("rewrites the target, preserving |alias and #section, matching case-insensitively", () => {
