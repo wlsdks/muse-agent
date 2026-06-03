@@ -17,16 +17,36 @@
 import { MessagingProviderError, type MessagingProviderRegistry } from "@muse/messaging";
 
 const BACKOFFS_MS: readonly number[] = [0, 200, 800];
+/**
+ * Cap on a server-mandated `Retry-After`, so a hostile / absurd hint
+ * ("retry in 1 hour") can't hang a firing loop. A real chat-provider 429 is
+ * seconds, well under this.
+ */
+const RETRY_AFTER_CAP_MS = 30_000;
+
+export interface SendWithRetryOptions {
+  /** Injected so tests assert the delay without real wall-clock waits. */
+  readonly sleep?: (ms: number) => Promise<void>;
+}
 
 export async function sendWithRetry(
   registry: MessagingProviderRegistry,
   providerId: string,
-  message: { readonly destination: string; readonly text: string }
+  message: { readonly destination: string; readonly text: string },
+  options: SendWithRetryOptions = {}
 ): Promise<void> {
+  const sleep = options.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   let lastError: unknown;
-  for (const backoff of BACKOFFS_MS) {
-    if (backoff > 0) {
-      await new Promise<void>((resolve) => setTimeout(resolve, backoff));
+  for (let attempt = 0; attempt < BACKOFFS_MS.length; attempt += 1) {
+    if (attempt > 0) {
+      // A 429's server-mandated Retry-After (from the PREVIOUS failure, capped)
+      // overrides the fixed ladder: the server said "wait THIS long", and
+      // retrying sooner just gets throttled again and DROPS the message. Absent
+      // a hint, the ladder's transient-5xx backoff stands (no regression).
+      const serverHint = lastError instanceof MessagingProviderError && lastError.retryAfterMs !== undefined
+        ? Math.min(lastError.retryAfterMs, RETRY_AFTER_CAP_MS)
+        : undefined;
+      await sleep(serverHint ?? BACKOFFS_MS[attempt] ?? 0);
     }
     try {
       await registry.send(providerId, message);

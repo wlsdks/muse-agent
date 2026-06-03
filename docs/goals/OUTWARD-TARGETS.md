@@ -626,7 +626,47 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   tests, incl. mcp.test.ts's 357) + LIVE on the loop PC: `muse remind add "the 15th
   of next month" "quarterly review"` → due 2026-07-15 09:00 and `muse tasks add "file
   taxes" --due "end of next month"` → due 2026-07-31 09:00 (both REJECTED before).
-  mcp 167 files / 1344 tests + `pnpm lint` 0/0. (this commit)
+  mcp 167 files / 1344 tests + `pnpm lint` 0/0. (a78f969b)
+
+**P41 — Actuation reliability: actuators survive real-world failure modes
+(human-directed 2026-05-23: "harden the one-of-each actuators into daily-reliable
+integrations — a proven-once actuator that breaks on a real-world failure mode
+(rate-limit, transient 5xx, retry, malformed third-party response) is a USER-FACING
+reliability defect").** Each slice closes one such defect, proven with a
+contract-faithful HTTP fake (never a stubbed registry), deterministically — no model
+in the loop.
+
+- [x] **P41-1 A rate-limited (HTTP 429) reminder / notice is now DELIVERED — the
+  outbound retry waits the server-mandated Retry-After instead of burning 3 attempts
+  in ~1s and dropping the message.** `sendWithRetry` (packages/mcp/src/messaging-retry.ts)
+  — the single retry path behind EVERY outbound firing loop (reminders, follow-ups,
+  pattern, proactive, situational-briefing, objective, ambient, web-watch) — used a
+  fixed `[0,200,800]ms` ladder and its catch only read `cause.retryable`, NEVER the
+  server's `Retry-After`. So when a chat provider answered a send with `429 +
+  Retry-After: 30`, the retry fired again at 200ms then 800ms, got throttled all
+  three times, and DROPPED the reminder — the user simply never got their 9am ping.
+  `MessagingProviderError` (packages/messaging/src/errors.ts) carried `status` but no
+  retry-after, and its own comment admitted "429 + Retry-After … retry-with-backoff is
+  the right response" while the send path ignored it. Fixed end-to-end: a new
+  `retryAfterMs?` field on `MessagingProviderError`, populated at all four HTTP
+  providers' send-failure throws (telegram/slack/discord/line) via a new exported
+  `retryAfterMsFromResponse` (Telegram's body `parameters.retry_after` wins, else the
+  `Retry-After` header → `parseRetryAfterMs`); and `sendWithRetry` now, on a caught
+  retryable error carrying `retryAfterMs`, sleeps that server-mandated delay (capped at
+  30s so a hostile hint can't hang a loop) instead of the ladder value — falling back to
+  the unchanged `[0,200,800]` ladder when no hint is present (a plain 5xx is unregressed),
+  with `sleep` injected for the test. Proof: 4 new deterministic tests in
+  packages/mcp/test/messaging-retry.test.ts (waits the 3000ms hint not 200ms then
+  delivers; caps a 1-hour hint to 30s; falls back to the ladder on a hint-less 5xx;
+  still short-circuits a non-retryable 400 without sleeping) + 1 Discord provider test
+  (a 429 with `Retry-After: 7` → thrown error `retryAfterMs===7000`) + 1 Telegram test
+  (body `retry_after: 12` → `12000`) + 2 `parseRetryAfterMs`/`retryAfterMsFromResponse`
+  helper tests — ALL over the real send path with only the network faked
+  (contract-faithful per outbound-safety.md, zero model dependence) + the full
+  @muse/messaging (368) and @muse/mcp (168 files / 1363) suites green + cli build green.
+  mcp 168 files / 1363 + messaging 368 + `pnpm lint` 0/0 — a user whose reminder hits a
+  provider rate limit now still gets it, a tick or two later, instead of silently losing
+  it. (this commit)
 
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,

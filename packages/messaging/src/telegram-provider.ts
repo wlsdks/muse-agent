@@ -2,7 +2,7 @@ import { truncateErrorBody } from "@muse/shared";
 
 import { MessagingProviderError, MessagingValidationError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
-import { clampInboundLimit, clampOutboundText, fetchReadWithRetry, fetchWithTimeout, tryParseJson } from "./provider-helpers.js";
+import { clampInboundLimit, clampOutboundText, fetchReadWithRetry, fetchWithTimeout, retryAfterMsFromResponse, tryParseJson } from "./provider-helpers.js";
 import { readTelegramOffset, writeTelegramOffset } from "./telegram-offset-store.js";
 import type {
   InboundFetchOptions,
@@ -52,6 +52,8 @@ interface TelegramSendResponse {
   readonly ok: boolean;
   readonly description?: string;
   readonly result?: { readonly message_id: number };
+  /** On a 429, Telegram returns the wait (seconds) in the body, not a header. */
+  readonly parameters?: { readonly retry_after?: number };
 }
 
 interface TelegramUpdate {
@@ -200,7 +202,8 @@ export class TelegramProvider implements MessagingProvider {
         this.id,
         "UPSTREAM_FAILED",
         `Telegram sendMessage failed: ${parsed?.description ?? (truncateErrorBody(text) || response.statusText)}`,
-        response.status
+        response.status,
+        retryAfterMsFromResponse(response, parsed?.parameters?.retry_after)
       );
     }
     const messageId = parsed.result?.message_id;

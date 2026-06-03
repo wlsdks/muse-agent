@@ -369,7 +369,7 @@ export {
   parseActiveWindowSignal,
   type MacOsActiveWindowSourceOptions
 } from "./macos-ambient-source.js";
-export { sendWithRetry } from "./messaging-retry.js";
+export { sendWithRetry, type SendWithRetryOptions } from "./messaging-retry.js";
 
 // Notes provider abstraction. LocalDir, Apple Notes (osascript), and
 // Notion (api.notion.com) are all real adapters. The `muse.notes-multi`

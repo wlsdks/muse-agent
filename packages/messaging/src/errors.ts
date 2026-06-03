@@ -37,14 +37,24 @@ export class MessagingProviderError extends Error {
    * INVALID_TEXT) — those are caller errors, not transient.
    */
   readonly retryable: boolean;
+  /**
+   * The server-mandated wait before retrying, in ms, parsed from a 429's
+   * `Retry-After` header (or a provider's body `retry_after`). When present the
+   * retry layer waits THIS long instead of its fixed backoff ladder — retrying
+   * a rate-limited send sooner just gets throttled again and drops the message.
+   */
+  readonly retryAfterMs?: number;
 
-  constructor(providerId: string, code: MessagingErrorCode, message: string, status?: number) {
+  constructor(providerId: string, code: MessagingErrorCode, message: string, status?: number, retryAfterMs?: number) {
     super(message);
     this.name = "MessagingProviderError";
     this.providerId = providerId;
     this.code = code;
     if (status !== undefined) {
       this.status = status;
+    }
+    if (retryAfterMs !== undefined && Number.isFinite(retryAfterMs) && retryAfterMs >= 0) {
+      this.retryAfterMs = retryAfterMs;
     }
     this.retryable = isRetryableMessagingStatus(status);
   }

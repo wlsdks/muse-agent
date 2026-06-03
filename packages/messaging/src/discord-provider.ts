@@ -3,7 +3,7 @@ import { truncateErrorBody } from "@muse/shared";
 import { readDiscordAfter, writeDiscordAfter } from "./discord-after-store.js";
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
-import { clampInboundLimit, clampOutboundText, fetchReadWithRetry, fetchWithTimeout, tryParseJson } from "./provider-helpers.js";
+import { clampInboundLimit, clampOutboundText, fetchReadWithRetry, fetchWithTimeout, retryAfterMsFromResponse, tryParseJson } from "./provider-helpers.js";
 import type {
   InboundFetchOptions,
   InboundMessage,
@@ -216,7 +216,8 @@ export class DiscordProvider implements MessagingProvider {
         this.id,
         "UPSTREAM_FAILED",
         `Discord sendMessage failed: ${parsed?.message ?? (truncateErrorBody(text) || response.statusText)}`,
-        response.status
+        response.status,
+        retryAfterMsFromResponse(response)
       );
     }
     if (!parsed?.id) {

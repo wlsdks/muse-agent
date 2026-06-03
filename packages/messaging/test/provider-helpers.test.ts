@@ -5,6 +5,8 @@ import {
   clampOutboundText,
   fetchReadWithRetry,
   fetchWithTimeout,
+  parseRetryAfterMs,
+  retryAfterMsFromResponse,
   tryParseJson
 } from "../src/provider-helpers.js";
 
@@ -171,5 +173,23 @@ describe("fetchReadWithRetry", () => {
     const res = await fetchReadWithRetry(flaky, "http://x", {}, { baseDelayMs: 100, maxAttempts: 3, sleep: async (ms) => { delays.push(ms); } });
     expect(res.status).toBe(200);
     expect(delays).toEqual([100]); // base * attempt(1), not base + attempt
+  });
+});
+
+describe("parseRetryAfterMs / retryAfterMsFromResponse — server-mandated 429 wait", () => {
+  const resp = (retryAfter?: string) => ({ headers: { get: (n: string) => (n.toLowerCase() === "retry-after" && retryAfter !== undefined ? retryAfter : null) } });
+
+  it("parses a numeric Retry-After header (seconds) into ms; ignores garbage / missing", () => {
+    expect(parseRetryAfterMs("5")).toBe(5000);
+    expect(parseRetryAfterMs("0")).toBe(0);
+    expect(parseRetryAfterMs(null)).toBeUndefined();
+    expect(parseRetryAfterMs("")).toBeUndefined();
+    expect(parseRetryAfterMs("soon")).toBeUndefined();
+  });
+
+  it("prefers a body retry_after (seconds) over the header, falls back to the header otherwise", () => {
+    expect(retryAfterMsFromResponse(resp("3"), 12)).toBe(12000); // body wins
+    expect(retryAfterMsFromResponse(resp("3"))).toBe(3000); // no body → header
+    expect(retryAfterMsFromResponse(resp(undefined))).toBeUndefined(); // neither
   });
 });

@@ -232,6 +232,15 @@ describe("TelegramProvider", () => {
     await expect(provider404.send({ destination: "1", text: "hi" }))
       .rejects.toMatchObject({ status: 404, retryable: false });
   });
+
+  it("carries Telegram's body retry_after (seconds) as retryAfterMs on a 429", async () => {
+    const provider = new TelegramProvider({
+      fetch: async () => fakeJsonResponse({ description: "Too Many Requests", ok: false, parameters: { retry_after: 12 } }, { status: 429 }),
+      token: "x"
+    });
+    await expect(provider.send({ destination: "1", text: "hi" }))
+      .rejects.toMatchObject({ status: 429, retryAfterMs: 12000 });
+  });
 });
 
 describe("DiscordProvider", () => {

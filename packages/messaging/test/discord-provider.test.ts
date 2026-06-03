@@ -63,6 +63,15 @@ describe("DiscordProvider.send — outbound (contract-faithful fake)", () => {
     expect((err as Error).message).toContain("Missing Access");
   });
 
+  it("carries the 429 Retry-After header as retryAfterMs so the retry layer waits the server-mandated time", async () => {
+    const { fetchImpl } = recordingFetch(() => new Response(JSON.stringify({ message: "rate limited" }), { status: 429, headers: { "retry-after": "7" } }));
+    const provider = new DiscordProvider({ fetch: fetchImpl, token: "t" });
+    const err = await provider.send({ destination: "c", text: "hi" }).catch((e: unknown) => e);
+    expect((err as MessagingProviderError).status).toBe(429);
+    expect((err as MessagingProviderError).retryable).toBe(true);
+    expect((err as MessagingProviderError).retryAfterMs).toBe(7000);
+  });
+
   it("treats an OK response with no message id as an upstream failure (no silent fake receipt)", async () => {
     const { fetchImpl } = recordingFetch(() => json({}));
     const provider = new DiscordProvider({ fetch: fetchImpl, token: "t" });

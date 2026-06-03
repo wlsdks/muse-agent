@@ -2,7 +2,7 @@ import { truncateErrorBody } from "@muse/shared";
 
 import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
-import { clampInboundLimit, clampOutboundText, fetchReadWithRetry, fetchWithTimeout, tryParseJson } from "./provider-helpers.js";
+import { clampInboundLimit, clampOutboundText, fetchReadWithRetry, fetchWithTimeout, retryAfterMsFromResponse, tryParseJson } from "./provider-helpers.js";
 import { readSlackAfter, writeSlackAfter } from "./slack-after-store.js";
 import type {
   InboundFetchOptions,
@@ -215,7 +215,8 @@ export class SlackProvider implements MessagingProvider {
         this.id,
         "UPSTREAM_FAILED",
         `Slack chat.postMessage failed: ${parsed?.error ?? (truncateErrorBody(text) || response.statusText)}`,
-        response.status
+        response.status,
+        retryAfterMsFromResponse(response)
       );
     }
     if (!parsed.ts) {

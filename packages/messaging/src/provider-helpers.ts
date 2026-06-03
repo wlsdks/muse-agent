@@ -118,12 +118,33 @@ export interface ReadRetryOptions {
   readonly sleep?: (ms: number) => Promise<void>;
 }
 
-function parseRetryAfterSeconds(header: string | null): number | undefined {
+/**
+ * Parse a `Retry-After` HEADER (numeric seconds, the form every chat provider
+ * uses for a 429) into ms. An HTTP-date Retry-After is uncommon for these APIs
+ * and ignored (returns undefined → caller falls back to its backoff).
+ */
+export function parseRetryAfterMs(header: string | null | undefined): number | undefined {
   if (!header) {
     return undefined;
   }
   const secs = Number(header.trim());
   return Number.isFinite(secs) && secs >= 0 ? secs * 1000 : undefined;
+}
+
+/**
+ * The server-mandated retry wait (ms) for a failed SEND: a provider's body
+ * `retry_after` (Telegram puts it there, in seconds) wins when present,
+ * otherwise the `Retry-After` response header. Used at each send-failure throw
+ * site so a 429 carries its wait into `sendWithRetry`.
+ */
+export function retryAfterMsFromResponse(
+  response: { readonly headers: { get(name: string): string | null } },
+  bodyRetryAfterSeconds?: number
+): number | undefined {
+  if (bodyRetryAfterSeconds !== undefined && Number.isFinite(bodyRetryAfterSeconds) && bodyRetryAfterSeconds >= 0) {
+    return bodyRetryAfterSeconds * 1000;
+  }
+  return parseRetryAfterMs(response.headers.get("retry-after"));
 }
 
 /**
@@ -149,7 +170,7 @@ export async function fetchReadWithRetry(
       if (response.ok || !isRetryableMessagingStatus(response.status) || attempt === maxAttempts) {
         return response;
       }
-      await sleep(parseRetryAfterSeconds(response.headers.get("retry-after")) ?? baseDelayMs * attempt);
+      await sleep(parseRetryAfterMs(response.headers.get("retry-after")) ?? baseDelayMs * attempt);
     } catch (cause) {
       lastError = cause;
       if (attempt === maxAttempts) {
