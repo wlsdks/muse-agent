@@ -10,12 +10,12 @@ import {
   filterReminders,
   fireReminder,
   parseReminderDueAt,
+  normalizeReminderRecurrence,
   readReminders,
   readReminderStatusFilter,
   serializeReminderForModel,
   writeReminders,
-  type PersistedReminder,
-  type ReminderRecurrence
+  type PersistedReminder
 } from "./personal-reminders-store.js";
 
 /**
@@ -131,11 +131,11 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           if (parsed instanceof Error) {
             return { error: parsed.message };
           }
-          const recurrenceRaw = readString(args, "recurrence")?.trim();
-          if (recurrenceRaw !== undefined && recurrenceRaw !== "daily" && recurrenceRaw !== "weekly") {
-            return { error: "recurrence must be 'daily' or 'weekly'" };
-          }
-          const recurrence = recurrenceRaw as ReminderRecurrence | undefined;
+          // Coerce, never reject: a one-time reminder whose `recurrence` the
+          // model filled with "none"/"once" (instead of omitting) must still be
+          // CREATED, not dropped — otherwise a multi-step "add the event AND
+          // remind me" request silently loses the reminder.
+          const { recurrence, note: recurrenceNote } = normalizeReminderRecurrence(readString(args, "recurrence"));
           // `via` is deliberately NOT model-settable: the chat model can't ground
           // a delivery destination and was observed FABRICATING one (a made-up
           // telegram chat id), which would mis-route the reminder. Reminders fire
@@ -155,7 +155,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           } catch (error) {
             return { error: errorMessage(error) };
           }
-          return { reminder: serializeReminderForModel(created, now) as JsonValue };
+          return { reminder: serializeReminderForModel(created, now) as JsonValue, ...(recurrenceNote ? { note: recurrenceNote } : {}) };
         },
         inputSchema: {
           additionalProperties: false,

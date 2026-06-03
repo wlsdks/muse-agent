@@ -1467,6 +1467,28 @@ in the loop.
   ("…reached at sarah.chen@example.com…") passes UNMASKED under local-only but is rewritten to
   `***@***.***` under `MUSE_LOCAL_ONLY=false` (and under an explicit force-on). (1e65eb60)
 
+- [x] **P41-7 A multi-step "add the event AND remind me" request no longer silently
+  LOSES the reminder — the reminder actuator coerces a bad recurrence instead of
+  hard-erroring.** Probing a realistic two-actuator request — `muse ask --with-tools
+  "add a meeting with Sarah tomorrow at 2pm to my calendar, and remind me an hour
+  before it"` — exposed a real carry-to-done defect: the calendar event was created,
+  but the REMINDER was DROPPED with "recurrence must be 'daily' or 'weekly'". The model,
+  making a ONE-TIME reminder, filled `recurrence` with a sentinel ("none"/"once") instead
+  of OMITTING it as the schema asks, and `muse.reminders.add` HARD-ERRORED on any
+  non-daily/weekly value — so a benign arg the model guessed cost the user their
+  reminder, and the multi-step task half-failed silently. Fixed per tool-calling.md rule
+  7 (repair, don't reject): a pure `normalizeReminderRecurrence(raw)` — only
+  "daily"/"weekly" are cadences; a one-time SENTINEL (none/once/one-time/single/no/never/…)
+  resolves silently to a one-shot; a genuinely unsupported cadence ("monthly") STILL
+  creates the one-shot and returns a `note` so nothing is hidden — wired into the add
+  tool, replacing the hard error. The reminder is ALWAYS created. Verified: 4 new unit
+  tests (daily/weekly pass through case-insensitively; every one-time sentinel + omitted →
+  {} silently; "monthly" → one-shot + a note, NEVER an error) + the reminder suites
+  unregressed — @muse/mcp 174 files / 1483 tests + `pnpm lint` 0/0 + a LIVE before/after on
+  qwen3:8b: the SAME multi-step prompt that created the event but DROPPED the reminder now
+  creates BOTH — the calendar "Meeting with Sarah" at 2pm AND the reminder at 1pm (correctly
+  an hour before). (4c3acf55)
+
 **P42 — Knowledge: your notes stay coherent (the [[wiki-link]] graph is a
 first-class structure, not just decoration).** Muse already builds a note link
 graph (`buildNoteLinkGraph`), surfaces backlinks, and AUDITS for broken links

@@ -1,6 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { fireReminder, nextReminderOccurrence, type PersistedReminder } from "../src/index.js";
+import { fireReminder, nextReminderOccurrence, normalizeReminderRecurrence, type PersistedReminder } from "../src/index.js";
+
+describe("normalizeReminderRecurrence — coerce, never drop (a one-time reminder must still be created)", () => {
+  it("passes through the real cadences daily/weekly (case-insensitive)", () => {
+    expect(normalizeReminderRecurrence("daily")).toEqual({ recurrence: "daily" });
+    expect(normalizeReminderRecurrence("Weekly")).toEqual({ recurrence: "weekly" });
+  });
+
+  it("treats omitted / empty / one-time SENTINELS as one-shot, silently (no error, no note)", () => {
+    for (const sentinel of [undefined, "", "  ", "none", "once", "one-time", "one time", "single", "no", "never", "n/a", "false"]) {
+      expect(normalizeReminderRecurrence(sentinel)).toEqual({});
+    }
+  });
+
+  it("an UNSUPPORTED cadence (e.g. monthly) still yields a one-shot + a note, NEVER a hard error", () => {
+    const out = normalizeReminderRecurrence("monthly");
+    expect(out.recurrence).toBeUndefined(); // created one-shot, not dropped
+    expect(out.note).toMatch(/monthly.*supported.*one-time reminder/u);
+  });
+});
 
 describe("nextReminderOccurrence — advance past the fire time, skip missed slots", () => {
   it("daily: advances one day when fired on time", () => {

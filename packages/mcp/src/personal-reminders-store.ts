@@ -158,6 +158,37 @@ export function parseReminderDueAt(raw: string, now: () => Date): string | Error
   return parseTaskDueAt(raw, now);
 }
 
+// Sentinels the chat model emits to mean "this is a one-time reminder" instead
+// of just OMITTING `recurrence` as the schema asks. Treated as no recurrence.
+const ONE_TIME_RECURRENCE_SENTINELS = new Set([
+  "none", "once", "one-time", "one time", "one_time", "onetime", "single", "no", "never", "n/a", "false"
+]);
+
+/**
+ * Deterministically normalize the model-supplied `recurrence` arg. Only
+ * "daily"/"weekly" are real cadences; everything else maps to a ONE-SHOT
+ * reminder — NEVER a hard error that drops the reminder entirely (a multi-step
+ * "add the event AND remind me" request used to lose the reminder when the model
+ * passed "none"/"once"). A one-time SENTINEL resolves silently; a genuinely
+ * unsupported cadence ("monthly") still creates the one-shot but returns a `note`
+ * so the caller can surface that the cadence wasn't applied. Repair, don't reject
+ * (tool-calling.md rule 7).
+ */
+export function normalizeReminderRecurrence(raw: string | undefined): { recurrence?: ReminderRecurrence; note?: string } {
+  const value = raw?.trim();
+  if (value === undefined || value.length === 0) {
+    return {};
+  }
+  const lower = value.toLowerCase();
+  if (lower === "daily" || lower === "weekly") {
+    return { recurrence: lower };
+  }
+  if (ONE_TIME_RECURRENCE_SENTINELS.has(lower)) {
+    return {};
+  }
+  return { note: `recurrence '${value}' isn't supported (only 'daily' or 'weekly'); created a one-time reminder` };
+}
+
 /**
  * Validate a `via` payload supplied by the REST route, the MCP
  * `add` tool, or any future `update` surface. Returns the cleaned

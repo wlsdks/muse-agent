@@ -867,6 +867,7 @@ export {
   filterReminders,
   fireReminder,
   nextReminderOccurrence,
+  normalizeReminderRecurrence,
   parseReminderDueAt,
   parseReminderVia,
   readReminders,
