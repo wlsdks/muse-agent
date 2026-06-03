@@ -482,6 +482,7 @@ export function createKnowledgeEnricher(options: KnowledgeEnricherOptions): (que
     const matches = await rankKnowledgeChunks(query, corpus, {
       embed: options.embed,
       hybrid: true,
+      ...(process.env.MUSE_RECALL_BM25 === "true" ? { bm25: true } : {}),
       topK: 5,
       ...(options.minScore !== undefined ? { minScore: options.minScore } : { minScore: 0.2 })
     });
@@ -569,6 +570,7 @@ export function createNotesKnowledgeSearchTool(options: NotesKnowledgeSearchTool
         diversify: true,
         embed: options.embed,
         hybrid: true,
+        ...(process.env.MUSE_RECALL_BM25 === "true" ? { bm25: true } : {}),
         ...(options.topK !== undefined ? { topK: options.topK } : {})
       });
       return renderKnowledgeMatches(edgeLoadByRelevance(matches));

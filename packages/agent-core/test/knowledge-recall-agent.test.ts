@@ -3,10 +3,12 @@ import type { ModelProvider } from "@muse/model";
 import { describe, expect, it } from "vitest";
 
 import {
+  bm25Scores,
   classifyRetrievalConfidence,
   createAgentRuntime,
   createKnowledgeSearchTool,
   edgeLoadByRelevance,
+  lexicalTokens,
   rankKnowledgeChunks,
   renderKnowledgeMatches,
   type KnowledgeChunk
@@ -84,6 +86,40 @@ describe("rankKnowledgeChunks", () => {
 
     const hybrid = await rankKnowledgeChunks("alpha E2099", corpus, { embed: termEmbed, hybrid: true, topK: 5 });
     expect(hybrid.map((m) => m.source)).toContain("answer.md");
+  });
+
+  it("BM25 weights a RARE query term above a corpus-common one (IDF), where raw token-overlap ties (Robertson/Spärck Jones)", () => {
+    // "report" appears in 3 of 4 chunks (common → low IDF); "zephyr" in 1 (rare
+    // → high IDF). Raw overlap gives every chunk the same score (1 shared term);
+    // BM25's IDF ranks the discriminative "zephyr" chunk strictly higher.
+    const q = lexicalTokens("zephyr report");
+    const chunks = [
+      { text: "the zephyr migration" },
+      { text: "the quarterly report" },
+      { text: "the weekly report" },
+      { text: "the annual report" }
+    ];
+    const scores = bm25Scores(q, chunks, (c) => c.text);
+    expect(scores.get("the zephyr migration")!).toBeGreaterThan(scores.get("the quarterly report")!);
+  });
+
+  it("hybrid + bm25 surfaces the rare-term chunk that raw-overlap ranking leaves behind", async () => {
+    // Zero-vector embed neutralises cosine, so the LEXICAL ranking decides the
+    // fusion — isolating the BM25-vs-overlap difference. With raw overlap all
+    // four chunks tie (1 shared term) and a "report" chunk leads by insertion
+    // order; BM25's IDF lifts the rare "zephyr" chunk to the top.
+    const zeroEmbed = async (): Promise<readonly number[]> => [0, 0, 0];
+    const corpus: readonly KnowledgeChunk[] = [
+      { source: "rep1", text: "the quarterly report" },
+      { source: "rep2", text: "the weekly report" },
+      { source: "rep3", text: "the annual report" },
+      { source: "zep", text: "the zephyr migration" }
+    ];
+    const overlap = await rankKnowledgeChunks("zephyr report", corpus, { embed: zeroEmbed, hybrid: true, topK: 1 });
+    expect(overlap[0]?.source).not.toBe("zep");
+
+    const withBm25 = await rankKnowledgeChunks("zephyr report", corpus, { embed: zeroEmbed, hybrid: true, bm25: true, topK: 1 });
+    expect(withBm25[0]?.source).toBe("zep");
   });
 
   it("MMR diversifies top-K so a near-duplicate doesn't crowd out a distinct relevant passage (Carbonell & Goldstein 1998)", async () => {

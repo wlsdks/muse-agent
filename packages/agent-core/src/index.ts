@@ -140,6 +140,7 @@ export {
   classifyRetrievalConfidence,
   createCachingEmbedder,
   citedSourcesIn,
+  bm25Scores,
   createKnowledgeSearchTool,
   edgeLoadByRelevance,
   enforceAnswerCitations,

@@ -42,6 +42,13 @@ export interface RankKnowledgeOptions {
    * off — the cosine-only behaviour is unchanged.
    */
   readonly hybrid?: boolean;
+  /**
+   * Use Okapi BM25 (IDF-weighted, length-normalised) for the lexical ranking in
+   * the RRF fusion instead of raw token-overlap, so a query's rare
+   * discriminative term outranks a corpus-common one. Only applies with
+   * `hybrid: true`; the overlap-based citation fence is unchanged. Default off.
+   */
+  readonly bm25?: boolean;
   /** RRF constant; larger = flatter rank weighting. Default 60. */
   readonly rrfK?: number;
   /**
@@ -74,24 +81,90 @@ const LEXICAL_STOPWORDS = new Set([
   "me", "we", "i", "if", "so", "no", "not", "from", "about", "into", "than"
 ]);
 
+// Filtered CONTENT tokens WITH duplicates — `lexicalTokens` is the de-duped
+// view; BM25 needs the multiset (term frequency + document length). Split on any
+// non-(Unicode letter / number) so NON-ASCII scripts tokenise too — the old
+// `[^a-z0-9]` dropped EVERY Korean/CJK/Cyrillic word to nothing, which made
+// `resolvesByOverlap` false-strip a `[task: 분기 보고서]` citation (its tokens were
+// empty) and zeroed cross-lingual coverage. ASCII English is unchanged
+// (`\p{L}`/`\p{N}` cover a–z and 0–9). A single CJK syllable IS a meaningful word
+// (unlike a lone Latin letter), so CJK tokens are kept at length ≥ 1; Latin/digit
+// tokens still need length ≥ 2 to drop stray letters.
+function lexicalTokenList(text: string): string[] {
+  return text.toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((token) => {
+      if (token.length === 0 || LEXICAL_STOPWORDS.has(token)) {
+        return false;
+      }
+      return token.length >= 2 || /\p{Script=Han}|\p{Script=Hangul}|\p{Script=Hiragana}|\p{Script=Katakana}/u.test(token);
+    });
+}
+
 export function lexicalTokens(text: string): Set<string> {
-  // Split on any non-(Unicode letter / number) so NON-ASCII scripts tokenise too
-  // — the old `[^a-z0-9]` dropped EVERY Korean/CJK/Cyrillic word to nothing, which
-  // made `resolvesByOverlap` false-strip a `[task: 분기 보고서]` citation (its tokens
-  // were empty) and zeroed cross-lingual coverage. ASCII English is unchanged
-  // (`\p{L}`/`\p{N}` cover a–z and 0–9). A single CJK syllable IS a meaningful word
-  // (unlike a lone Latin letter), so CJK tokens are kept at length ≥ 1; Latin/digit
-  // tokens still need length ≥ 2 to drop stray letters.
-  return new Set(
-    text.toLowerCase()
-      .split(/[^\p{L}\p{N}]+/u)
-      .filter((token) => {
-        if (token.length === 0 || LEXICAL_STOPWORDS.has(token)) {
-          return false;
-        }
-        return token.length >= 2 || /\p{Script=Han}|\p{Script=Hangul}|\p{Script=Hiragana}|\p{Script=Katakana}/u.test(token);
-      })
-  );
+  return new Set(lexicalTokenList(text));
+}
+
+// Okapi BM25 (Robertson / Spärck Jones): IDF-weighted term frequency with
+// length normalisation + TF saturation — a sharper lexical signal than raw
+// token-overlap (which weights every shared token equally and ignores chunk
+// length), so a query's RARE discriminative term (a name, an ID, an error code)
+// outranks a chunk that merely shares a corpus-common term. k1 = TF-saturation,
+// b = length-norm strength (the standard defaults).
+const BM25_K1 = 1.5;
+const BM25_B = 0.75;
+
+/**
+ * BM25 score per chunk for `queryTokens`, with IDF + document length computed
+ * over `chunks` as the corpus (`key` identifies a chunk). A chunk scores > 0 iff
+ * it shares at least one query token, so it preserves the same "any-overlap"
+ * eligibility the raw-overlap scorer had — only the RANKING among matches changes.
+ */
+export function bm25Scores<T extends { readonly text: string }>(
+  queryTokens: ReadonlySet<string>,
+  chunks: readonly T[],
+  key: (chunk: T) => string
+): Map<string, number> {
+  const tokensByKey = new Map<string, string[]>();
+  const df = new Map<string, number>();
+  let totalLen = 0;
+  for (const chunk of chunks) {
+    const k = key(chunk);
+    if (tokensByKey.has(k)) {
+      continue;
+    }
+    const tokens = lexicalTokenList(chunk.text);
+    tokensByKey.set(k, tokens);
+    totalLen += tokens.length;
+    for (const term of new Set(tokens)) {
+      if (queryTokens.has(term)) {
+        df.set(term, (df.get(term) ?? 0) + 1);
+      }
+    }
+  }
+  const n = tokensByKey.size;
+  const avgdl = n === 0 ? 0 : totalLen / n;
+  const idf = new Map<string, number>();
+  for (const [term, count] of df) {
+    // BM25 IDF; the `1 +` keeps it non-negative even for a term in every doc.
+    idf.set(term, Math.log(1 + (n - count + 0.5) / (count + 0.5)));
+  }
+  const scores = new Map<string, number>();
+  for (const [k, tokens] of tokensByKey) {
+    const tf = new Map<string, number>();
+    for (const token of tokens) {
+      if (queryTokens.has(token)) {
+        tf.set(token, (tf.get(token) ?? 0) + 1);
+      }
+    }
+    let score = 0;
+    for (const [term, freq] of tf) {
+      const denom = freq + BM25_K1 * (1 - BM25_B + (avgdl === 0 ? 0 : BM25_B * tokens.length / avgdl));
+      score += (idf.get(term) ?? 0) * (freq * (BM25_K1 + 1)) / (denom === 0 ? 1 : denom);
+    }
+    scores.set(k, score);
+  }
+  return scores;
 }
 
 export function lexicalOverlap(queryTokens: Set<string>, text: string): number {
@@ -192,7 +265,13 @@ export async function rankKnowledgeChunks(
     }
     const cosRanked = [...cosByKey.entries()].filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]).map(([k]) => k);
     const lexRanked = [...lexByKey.entries()].filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]).map(([k]) => k);
-    const fused = fuseByReciprocalRank([cosRanked, lexRanked], rrfK);
+    // BM25 (IDF-weighted) is a sharper lexical signal than raw overlap; use it
+    // as the fusion's lexical ranking when opted in, keeping the overlap-based
+    // citation fence below unchanged (BM25 > 0 iff overlap > 0).
+    const lexicalRanking = options.bm25 === true
+      ? [...bm25Scores(queryTokens, chunks, key).entries()].filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]).map(([k]) => k)
+      : lexRanked;
+    const fused = fuseByReciprocalRank([cosRanked, lexicalRanking], rrfK);
     // A passage earns a citation only with a real signal: cosine above
     // threshold OR any lexical overlap — so an irrelevant corpus still
     // fabricates nothing.
