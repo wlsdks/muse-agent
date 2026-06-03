@@ -146,3 +146,32 @@ describe("resolveRelativeTimePhrase — English day-part word + a specific hour 
     expect(resolveRelativeTimePhrase("this evening", now)!.getHours()).toBe(18);
   });
 });
+
+describe("resolveRelativeTimePhrase — a BARE duration ('2 hours', '30 minutes', '2h') is an offset from now", () => {
+  // now = Wed 2026-06-03 09:30:00 UTC
+  const ms = (phrase: string): number => resolveRelativeTimePhrase(phrase, now)!.getTime() - now().getTime();
+
+  it("parses bare full-word durations the way 'in N <unit>' does", () => {
+    expect(ms("2 hours")).toBe(2 * 3_600_000);
+    expect(ms("30 minutes")).toBe(30 * 60_000);
+    expect(ms("3 days")).toBe(3 * 86_400_000);
+    expect(ms("a week")).toBe(7 * 86_400_000);
+  });
+
+  it("parses bare compact durations (2h, 90m, 2d, 2w)", () => {
+    expect(ms("2h")).toBe(2 * 3_600_000);
+    expect(ms("90m")).toBe(90 * 60_000);
+    expect(ms("2d")).toBe(2 * 86_400_000);
+    expect(ms("2w")).toBe(2 * 7 * 86_400_000);
+  });
+
+  it("a bare duration equals its explicit 'in …' form", () => {
+    expect(resolveRelativeTimePhrase("2 hours", now)!.toISOString()).toBe(resolveRelativeTimePhrase("in 2 hours", now)!.toISOString());
+    expect(resolveRelativeTimePhrase("2h", now)!.toISOString()).toBe(resolveRelativeTimePhrase("in 2h", now)!.toISOString());
+  });
+
+  it("still rejects an unknown unit and keeps a bare hour as a clock time (no false positive)", () => {
+    expect(resolveRelativeTimePhrase("3 horses", now)).toBeUndefined();
+    expect(resolveRelativeTimePhrase("5", now)!.getHours()).toBe(5); // bare number = 24h clock hour, NOT 5 of a unit
+  });
+});

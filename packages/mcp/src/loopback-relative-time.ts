@@ -274,7 +274,10 @@ export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date
     return korean;
   }
 
-  const inMatch = /^in\s+(\d+|an?)\s+(second|minute|hour|day|week|month)s?$/u.exec(trimmed);
+  // "in" is optional: a bare duration ("2 hours", "30 minutes", "a week") reads
+  // as that offset from now — the natural form, especially via `remind snooze
+  // --in "2 hours"` where the word "in" is already in the flag.
+  const inMatch = /^(?:in\s+)?(\d+|an?)\s+(second|minute|hour|day|week|month)s?$/u.exec(trimmed);
   if (inMatch) {
     const rawAmount = inMatch[1] ?? "0";
     const amount = rawAmount === "a" || rawAmount === "an"
@@ -300,7 +303,7 @@ export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date
   // + a spelled-out unit). `m` = minute, matching the project's own
   // `/loop` interval grammar (Nm/Nh/Nd/Ns); no month abbrev — `mo`
   // collides with `m` and the codebase rejects ambiguous phrases.
-  const compactMatch = /^in\s+(\d+)\s*(secs?|s|mins?|m|hrs?|h|d|w)$/u.exec(trimmed);
+  const compactMatch = /^(?:in\s+)?(\d+)\s*(secs?|s|mins?|m|hrs?|h|d|w)$/u.exec(trimmed);
   if (compactMatch) {
     const amount = Number.parseInt(compactMatch[1] ?? "0", 10);
     const token = compactMatch[2] ?? "";

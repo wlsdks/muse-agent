@@ -2554,9 +2554,9 @@ describe("muse.tasks loopback server", () => {
       expect(resolveRelativeTimePhrase("in 5mo", now)).toBeUndefined();
       expect(resolveRelativeTimePhrase("in 2 months", now)?.toISOString())
         .toBe("2026-07-10T12:00:00.000Z");
-      // Requires the "in " prefix; a bare token / unknown unit stays
-      // unrecognised (no false positive).
-      expect(resolveRelativeTimePhrase("1h", now)).toBeUndefined();
+      // "in" is OPTIONAL — a bare compact duration parses as that offset from
+      // now; an unknown unit stays unrecognised (no false positive).
+      expect(resolveRelativeTimePhrase("1h", now)?.toISOString()).toBe("2026-05-10T13:00:00.000Z");
       expect(resolveRelativeTimePhrase("in 3 horses", now)).toBeUndefined();
     });
 

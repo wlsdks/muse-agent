@@ -537,6 +537,28 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   8pm" → 20:00, "tonight at 12" → 00:00) with "at 5pm" / "tomorrow morning"
   unregressed. mcp 167 files / 1326 tests + `pnpm lint` 0/0. (00b2ce04)
 
+- [x] **P40-10 A BARE duration ("2 hours", "30 minutes", "2h", "a week") parses as
+  an offset from now — "in" is now optional.** Probing the actuators: `muse remind
+  snooze <id> --in "2 hours"`, `muse remind add "30 minutes" "…"`, `muse tasks add
+  "review" --due "3 days"` ALL failed with "dueAt must be … a supported relative
+  phrase" — every bare duration was rejected; ONLY "in 2 hours" (with the literal
+  "in") parsed. Especially awkward for `--in "2 hours"`, where the word "in" is
+  already in the flag name. Root: the two duration handlers in
+  packages/mcp/src/loopback-relative-time.ts (full-word "in N <unit>" and compact
+  "in Nh/Nm") both required a leading `in\s+`. Fixed by making that prefix optional
+  (`(?:in\s+)?`) in both regexes, so a bare "2 hours" / "30 minutes" / "3 days" /
+  "a week" / "2h" / "90m" / "2w" reads as that offset from now — additive, since a
+  bare duration was previously unrecognised. A bare number with NO unit ("5") still
+  means a 24h clock hour (today 05:00), and an unknown unit ("3 horses") still
+  rejects — no false positives. Proof: 4 new parser unit tests (bare full-word +
+  compact durations equal their explicit "in …" form; "5" stays a clock hour;
+  "3 horses" rejected) + the one mcp assertion that codified the OLD "bare 1h is
+  rejected" behavior updated to the new (intended) parse + the full @muse/mcp suite
+  green (1330) + cli remind/tasks (38) + LIVE: `remind snooze --in "2 hours"` →
+  +2h, `remind add "30 minutes"` → +30m, `tasks add --due "3 days"` → +3d, while
+  "in 2 hours" still works. mcp 167 files / 1330 tests + `pnpm lint` 0/0.
+  (this commit)
+
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,
 closed its deepest hole, and became constructive. Each verified live on
@@ -1506,7 +1528,7 @@ honest-refusal mock-corpus check where applicable.
   example.com` and `--file doc.txt` (no notes) answer with NO on-ramp; an
   episodes-only user's "what did we discuss?" has NO on-ramp; a plain off-corpus
   query on an empty HOME still shows it. cli 167 files / 1787 tests + `pnpm lint`
-  0/0. (this commit)
+  0/0. (cfa25822)
 
 **P34 — The front door (loop-v2 headline: the moat is invisible without
 the door).** Per loop-v2 B0 §3, a privacy-bound first-time user must be able
