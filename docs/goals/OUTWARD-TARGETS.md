@@ -1575,6 +1575,29 @@ in the loop.
   provider is not registered" now resolves to the single configured channel and sends
   ("sent the message to Sarah through the logging provider"). (9a2a9605)
 
+- [x] **P41-11 SECURITY: the agent can no longer AUTO-SEND a message to a third party
+  without draft-first confirmation — the messaging send fails CLOSED.** Probing P41-10's
+  live behaviour exposed a real outbound-safety hole: `muse ask --with-tools "send Sarah a
+  message"` actually SENT ("I have successfully sent the message to Sarah") with NO
+  draft-first confirmation. Root cause (loopback-tools.ts): the production `muse.messaging.send`
+  is wired with `actionLogFile` + `userId` but NO `approvalGate`, and `sendMessageWithApproval`
+  AUTO-APPROVES when no gate is present — so the agent's send fired on its own, while the
+  sibling email/web/home actuators are all draft-first gated. That violates `outbound-safety.md`
+  Rule 1 ("never auto-send; the user explicitly confirms the content") on EXACTLY the path P41-2
+  fixed for the human CLI but missed for the agent. Closed at the source (loopback-messaging
+  `send`): the action-logged path now defaults to a FAIL-CLOSED gate (`DENY_WITHOUT_CONFIRMATION`)
+  when none is wired — per outbound-safety "a send never proceeds because the confirmation step
+  cannot be delivered" — so the agent REFUSES (recorded as `refused`) and points the user to the
+  gated `muse messaging send` instead of auto-sending. A RESTRICTIVE change (closes, never opens).
+  The CLI path (its own gate) + the no-action-log lightweight/test path are unchanged. Verified:
+  the F-1 recording test split into gated-`performed` + a NEW no-gate → fail-closed (`refused`
+  log, NO send) test; the P41-10 resolution send-tests now pass an approving gate; @muse/mcp 174
+  files / 1499 tests + `pnpm lint` 0/0 + a LIVE before/after on qwen3:8b: the SAME prompt that
+  before "successfully sent the message to Sarah" now REFUSES — "no draft-first confirmation
+  channel … review and send via `muse messaging send`" — and nothing is sent. (Follow-on: thread a
+  real draft-first confirm gate from `muse ask` so the agent can draft-then-confirm-then-send
+  interactively, restoring the gated capability — recorded.) (7dae3728)
+
 **P42 — Knowledge: your notes stay coherent (the [[wiki-link]] graph is a
 first-class structure, not just decoration).** Muse already builds a note link
 graph (`buildNoteLinkGraph`), surfaces backlinks, and AUDITS for broken links

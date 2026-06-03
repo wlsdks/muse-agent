@@ -10,6 +10,19 @@ import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "./loopback.js
 import { sendMessageWithApproval, type MessageApprovalGate } from "./message-send.js";
 
 /**
+ * Outbound-safety fail-close: a third-party send wired with the action log (the
+ * production agent path) but NO draft-first approval gate must NOT auto-send —
+ * the agent could draft the wrong recipient/content. With no confirmation
+ * channel to deliver the draft, the send does not happen (outbound-safety.md
+ * Rule 1/2). The gated `muse messaging send` CLI is the confirmed path; the
+ * agent tool sends only when a real approval gate is explicitly wired.
+ */
+const DENY_WITHOUT_CONFIRMATION: MessageApprovalGate = () => ({
+  approved: false,
+  reason: "no draft-first confirmation channel is wired for the agent — review and send via `muse messaging send`"
+});
+
+/**
  * `muse.messaging` loopback MCP server.
  *
  * Phase 3 of the messenger plan (see `docs/design/messaging.md`).
@@ -298,12 +311,12 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
           if (actionLogFile && userId) {
             const outcome = await sendMessageWithApproval({
               actionLogFile,
+              approvalGate: approvalGate ?? DENY_WITHOUT_CONFIRMATION,
               destination,
               providerId,
               registry,
               text,
-              userId,
-              ...(approvalGate ? { approvalGate } : {})
+              userId
             });
             if (outcome.sent) {
               return { destination: outcome.destination, messageId: outcome.messageId, providerId };

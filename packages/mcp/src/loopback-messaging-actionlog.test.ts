@@ -26,10 +26,11 @@ function logFile(): string {
 }
 
 describe("muse.messaging.send — outbound-safety recording (F-1)", () => {
-  it("appends a `performed` action-log entry when wired with actionLogFile + userId", async () => {
+  it("appends a `performed` action-log entry when wired with an APPROVING gate", async () => {
     const file = logFile();
     const server = createMessagingMcpServer({
       actionLogFile: file,
+      approvalGate: () => ({ approved: true }),
       registry: new MessagingProviderRegistry([fakeTelegram()]),
       userId: "stark"
     });
@@ -42,6 +43,18 @@ describe("muse.messaging.send — outbound-safety recording (F-1)", () => {
     expect(log).toHaveLength(1);
     expect(log[0]).toMatchObject({ result: "performed", userId: "stark" });
     expect(log[0]!.what).toContain("telegram");
+  });
+
+  it("FAIL-CLOSES (no auto-send) when wired in production WITHOUT a draft-first gate — the outbound-safety hole", async () => {
+    const file = logFile();
+    // Production wiring is actionLogFile + userId but NO approvalGate (the agent's
+    // loopback path). It must NOT auto-send to a third party.
+    const server = createMessagingMcpServer({ actionLogFile: file, registry: new MessagingProviderRegistry([fakeTelegram()]), userId: "stark" });
+    const out = await createLoopbackMcpConnection(server).callTool!("send", { destination: "@me", providerId: "telegram", text: "hi" }) as { error?: string; refused?: boolean };
+    expect(out.refused).toBe(true); // not sent
+    const log = await readActionLog(file);
+    expect(log.some((entry) => entry.result === "refused")).toBe(true);
+    expect(log.some((entry) => entry.result === "performed")).toBe(false);
   });
 });
 
@@ -57,9 +70,9 @@ function fakeProvider(id: string, sent?: OutboundMessage[]): MessagingProvider {
 }
 
 describe("muse.messaging.send — resolve the channel from config, never fail on the model's guess (gate proven, not just the happy path)", () => {
-  it("uses the SINGLE configured provider even when providerId is omitted", async () => {
+  it("uses the SINGLE configured provider even when providerId is omitted (with an approving gate)", async () => {
     const sent: OutboundMessage[] = [];
-    const server = createMessagingMcpServer({ actionLogFile: logFile(), registry: new MessagingProviderRegistry([fakeProvider("slack", sent)]), userId: "stark" });
+    const server = createMessagingMcpServer({ actionLogFile: logFile(), approvalGate: () => ({ approved: true }), registry: new MessagingProviderRegistry([fakeProvider("slack", sent)]), userId: "stark" });
     const out = await createLoopbackMcpConnection(server).callTool!("send", { destination: "C123", text: "hi" });
     expect(out).toMatchObject({ providerId: "slack" });
     expect(sent).toHaveLength(1);
@@ -67,7 +80,7 @@ describe("muse.messaging.send — resolve the channel from config, never fail on
 
   it("uses the single provider even when the model GUESSES a wrong/unregistered providerId (the defect)", async () => {
     const sent: OutboundMessage[] = [];
-    const server = createMessagingMcpServer({ actionLogFile: logFile(), registry: new MessagingProviderRegistry([fakeProvider("slack", sent)]), userId: "stark" });
+    const server = createMessagingMcpServer({ actionLogFile: logFile(), approvalGate: () => ({ approved: true }), registry: new MessagingProviderRegistry([fakeProvider("slack", sent)]), userId: "stark" });
     const out = await createLoopbackMcpConnection(server).callTool!("send", { destination: "C123", providerId: "telegram", text: "hi" });
     expect(out).toMatchObject({ providerId: "slack" }); // resolved to the configured one, not the guess
     expect(sent).toHaveLength(1);
