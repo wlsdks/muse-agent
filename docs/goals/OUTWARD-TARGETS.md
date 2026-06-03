@@ -248,7 +248,24 @@ the confided life sat in plaintext JSON behind OS file-perms only.
   daemon write can't race the migrate and lose data. Proven live: `muse memory
   encrypt` removed the confided secret from cleartext on disk, fail-closed on a
   wrong key, and `decrypt` restored it. `5a8b3506`. Remaining: extend to the
-  episodes / action-log stores (same primitive + locked migration).
+  action-log store (same primitive + locked migration).
+- [x] **P44-2 `muse episode encrypt` encrypts your session-history at rest.** The
+  episodes store (auto-captured prior-session summaries — what you talked about,
+  decided, asked for) can now be AES-256-GCM encrypted under the SAME
+  `MUSE_MEMORY_KEY` as user-memory (one key for the whole confided life), with
+  `decrypt` + `encryption-status`. Built on a REUSABLE `encrypted-file` helper
+  (`@muse/mcp`) carrying P44-1's red-teamed guards — decrypt-on-read fail-closed
+  (a wrong key THROWS, ciphertext byte-unchanged, NEVER quarantined-to-empty),
+  cross-process O_EXCL lock around the format-preserving write + the migration,
+  plaintext backup before first encrypt. Then a 3-attacker red-team OF THE DIFF
+  drove four pre-commit fixes: the write now delegates to the hardened
+  `atomicWriteFile` (randomUUID tmp + fsync, no torn-file lockout); the lock
+  stamps a nonce + verify-before-unlink (a stolen slow-holder can't delete the
+  new holder's lock → no orphan-cascade); the `encrypt` CLI now DISCLOSES the
+  plaintext backup is cleartext to delete; and the 3 subcommands got automated
+  tests. Proven live: `muse episode encrypt` left an AES envelope (0 plaintext
+  leak, no orphan `.lock`), `list` decrypted transparently, a wrong key failed
+  closed with data intact, `decrypt` restored it. `55559c5b`.
 
 **P37 — Perception growth: read-only local connectors (loop-v2 B3).** The
 self-learning core (P36) is delivered end-to-end + felt; this axis grows what

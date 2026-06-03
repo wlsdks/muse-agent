@@ -17,6 +17,9 @@
 
 import {
   clearEpisodes,
+  decryptEpisodesAtRest,
+  encryptEpisodesAtRest,
+  isEpisodesEncrypted,
   planEpisodeConsolidation,
   readEpisodes,
   recurringThemes,
@@ -302,6 +305,66 @@ export function registerEpisodeCommands(program: Command, io: ProgramIO): void {
         `Indexed ${payload.total.toString()} episode(s) into ${indexFile} ` +
         `(embedded ${summary.embedded.toString()}, reused ${summary.skipped.toString()})\n`
       );
+    });
+
+  episode
+    .command("encrypt")
+    .description("Encrypt the episodes store at rest (AES-256-GCM; key = MUSE_MEMORY_KEY or per-host)")
+    .option("--json", "Emit a structured result")
+    .action(async (options: SharedOptions) => {
+      const file = localEpisodesFile();
+      const result = await encryptEpisodesAtRest(file);
+      const payload = { file, encrypted: true, ...result };
+      if (options.json) {
+        io.stdout(`${JSON.stringify(payload, null, 2)}\n`);
+        return;
+      }
+      if (result.alreadyEncrypted) {
+        io.stdout(`Episodes store is already encrypted at rest (${file}).\n`);
+        return;
+      }
+      io.stdout(
+        `Encrypted episodes store at rest: ${file}\n` +
+        (result.backupPath
+          ? `Plaintext backup saved: ${result.backupPath}\n` +
+            `  ⚠ This backup is CLEARTEXT — it holds your full episode history unencrypted.\n` +
+            `  Delete it once you've confirmed 'muse episode list' still works with your key.\n`
+          : "") +
+        `Set MUSE_MEMORY_KEY to a stable secret so the key survives a host/user change.\n`
+      );
+    });
+
+  episode
+    .command("decrypt")
+    .description("Revert the episodes store to plaintext at rest")
+    .option("--json", "Emit a structured result")
+    .action(async (options: SharedOptions) => {
+      const file = localEpisodesFile();
+      const result = await decryptEpisodesAtRest(file);
+      const payload = { file, encrypted: false, ...result };
+      if (options.json) {
+        io.stdout(`${JSON.stringify(payload, null, 2)}\n`);
+        return;
+      }
+      io.stdout(
+        result.alreadyPlaintext
+          ? `Episodes store is already plaintext at rest (${file}).\n`
+          : `Reverted episodes store to plaintext at rest: ${file}\n`
+      );
+    });
+
+  episode
+    .command("encryption-status")
+    .description("Report whether the episodes store is encrypted at rest (no key needed)")
+    .option("--json", "Emit a structured result")
+    .action(async (options: SharedOptions) => {
+      const file = localEpisodesFile();
+      const encrypted = await isEpisodesEncrypted(file);
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ file, encrypted }, null, 2)}\n`);
+        return;
+      }
+      io.stdout(`Episodes store at rest: ${encrypted ? "ENCRYPTED" : "plaintext"} (${file})\n`);
     });
 }
 

@@ -20,11 +20,20 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
 
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { withFileMutationQueue } from "./atomic-file-store.js";
+import {
+  decryptFileAtRest,
+  encryptFileAtRest,
+  isFileEncryptedAtRest,
+  readMaybeEncrypted,
+  withFileLock,
+  writeMaybeEncrypted
+} from "./encrypted-file.js";
+
+const EMPTY_EPISODES_BODY = `${JSON.stringify({ episodes: [] }, null, 2)}\n`;
 
 const DEFAULT_VACUUM_MAX_ENTRIES = 500;
 
@@ -65,16 +74,20 @@ async function quarantineCorruptStore(file: string): Promise<void> {
   }
 }
 
-export async function readEpisodes(file: string): Promise<readonly PersistedEpisode[]> {
-  let raw: string;
-  try {
-    raw = await fs.readFile(file, "utf8");
-  } catch {
+export async function readEpisodes(
+  file: string,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<readonly PersistedEpisode[]> {
+  // A WRONG key THROWS here (fail-closed) — propagate it; an undecryptable store
+  // is NOT corrupt and must NEVER be quarantined-to-empty (that would erase the
+  // user's confided history on a key mismatch).
+  const { text } = await readMaybeEncrypted(file, env);
+  if (text === undefined) {
     return [];
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = JSON.parse(text) as unknown;
   } catch {
     await quarantineCorruptStore(file);
     return [];
@@ -88,13 +101,21 @@ export async function readEpisodes(file: string): Promise<readonly PersistedEpis
   );
 }
 
-export async function writeEpisodes(file: string, episodes: readonly PersistedEpisode[]): Promise<void> {
-  const payload = `${JSON.stringify({ episodes }, null, 2)}\n`;
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(tmp, payload, { encoding: "utf8", mode: 0o600 });
-  await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+export async function writeEpisodes(
+  file: string,
+  episodes: readonly PersistedEpisode[],
+  env: NodeJS.ProcessEnv = process.env
+): Promise<void> {
+  const text = `${JSON.stringify({ episodes }, null, 2)}\n`;
+  // Peek + write under the SAME cross-process lock the migration uses, so an
+  // ordinary write can't race `encryptEpisodesAtRest` and clobber it with a
+  // stale-format payload (the per-process `withFileMutationQueue` the mutators
+  // use does NOT span processes). Format is preserved: once encrypted, stays
+  // encrypted; once plaintext, stays plaintext.
+  await withFileLock(file, async () => {
+    const encrypted = await isFileEncryptedAtRest(file);
+    await writeMaybeEncrypted(file, text, encrypted, env);
+  });
 }
 
 export function serializeEpisode(episode: PersistedEpisode): JsonObject {
@@ -118,35 +139,70 @@ export function serializeEpisode(episode: PersistedEpisode): JsonObject {
  * (e.g. retry after a transient LLM failure) overwrites the prior
  * entry instead of duplicating.
  */
-export async function upsertEpisode(file: string, episode: PersistedEpisode): Promise<void> {
+export async function upsertEpisode(
+  file: string,
+  episode: PersistedEpisode,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<void> {
   // Serialise the read-modify-write: concurrent upserts (overlapping
   // session-end summaries) otherwise read the same snapshot and the last write
   // clobbers the rest — a lost episode is a session the recall WEDGE can never
   // surface — and two writes in the same millisecond collided on the
   // tmp-${pid}-${Date.now()} path and threw ENOENT on rename.
   await withFileMutationQueue(file, async () => {
-    const existing = await readEpisodes(file);
+    const existing = await readEpisodes(file, env);
     const filtered = existing.filter((entry) => entry.id !== episode.id);
-    await writeEpisodes(file, [...filtered, episode]);
+    await writeEpisodes(file, [...filtered, episode], env);
   });
 }
 
 /** Drop a single episode by id. Returns true when the id was found, false otherwise. */
-export async function removeEpisode(file: string, id: string): Promise<boolean> {
+export async function removeEpisode(
+  file: string,
+  id: string,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<boolean> {
   return withFileMutationQueue(file, async () => {
-    const existing = await readEpisodes(file);
+    const existing = await readEpisodes(file, env);
     const next = existing.filter((entry) => entry.id !== id);
     if (next.length === existing.length) {
       return false;
     }
-    await writeEpisodes(file, next);
+    await writeEpisodes(file, next, env);
     return true;
   });
 }
 
 /** Drop every episode in the file. The shape is preserved with an empty array. */
-export async function clearEpisodes(file: string): Promise<void> {
-  await writeEpisodes(file, []);
+export async function clearEpisodes(file: string, env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  await writeEpisodes(file, [], env);
+}
+
+/**
+ * Encrypt the episodes store at rest (AES-256-GCM, key = `MUSE_MEMORY_KEY` or the
+ * per-host fallback — the SAME key as user-memory, so one key covers the whole
+ * confided life). Writes a plaintext backup first, runs under the cross-process
+ * lock, and is idempotent. Encrypting an empty/absent store seeds an empty
+ * encrypted file so future episodes stay encrypted.
+ */
+export async function encryptEpisodesAtRest(
+  file: string,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<{ readonly alreadyEncrypted: boolean; readonly backupPath?: string }> {
+  return encryptFileAtRest(file, env, { emptyContent: EMPTY_EPISODES_BODY });
+}
+
+/** Reverse the migration — rewrite the episodes store as plaintext. Throws fail-closed on a wrong key. */
+export async function decryptEpisodesAtRest(
+  file: string,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<{ readonly alreadyPlaintext: boolean }> {
+  return decryptFileAtRest(file, env);
+}
+
+/** Format-only check (no key needed) — is the episodes store encrypted at rest? */
+export async function isEpisodesEncrypted(file: string): Promise<boolean> {
+  return isFileEncryptedAtRest(file);
 }
 
 /**
@@ -434,7 +490,12 @@ export function planEpisodeConsolidation(
   return plan;
 }
 
-export async function vacuumEpisodes(file: string, maxEntries = DEFAULT_VACUUM_MAX_ENTRIES, nowMs: number = Date.now()): Promise<number> {
+export async function vacuumEpisodes(
+  file: string,
+  maxEntries = DEFAULT_VACUUM_MAX_ENTRIES,
+  nowMs: number = Date.now(),
+  env: NodeJS.ProcessEnv = process.env
+): Promise<number> {
   // NaN slips past `Math.max(1, Math.trunc(NaN)) === NaN`, then
   // `existing.length <= NaN` is false, then `slice(0, NaN)` returns
   // `[]`, then `writeEpisodes(file, [])` WIPES THE ENTIRE FILE.
@@ -446,12 +507,12 @@ export async function vacuumEpisodes(file: string, maxEntries = DEFAULT_VACUUM_M
   // Serialised with the upsert/remove path so a vacuum can't race a concurrent
   // upsert (read stale → write trimmed set that drops the just-added episode).
   return withFileMutationQueue(file, async () => {
-    const existing = await readEpisodes(file);
+    const existing = await readEpisodes(file, env);
     if (existing.length <= cap) {
       return 0;
     }
     const kept = selectRetainedEpisodes(existing, cap, nowMs);
-    await writeEpisodes(file, kept);
+    await writeEpisodes(file, kept, env);
     return existing.length - kept.length;
   });
 }

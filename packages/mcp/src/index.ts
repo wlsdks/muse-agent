@@ -793,7 +793,10 @@ export {
 export {
   clearEpisodes,
   computeEpisodeRetention,
+  decryptEpisodesAtRest,
   detectTopicAbsence,
+  encryptEpisodesAtRest,
+  isEpisodesEncrypted,
   planEpisodeConsolidation,
   readEpisodes,
   recurringThemes,
@@ -809,6 +812,18 @@ export {
   type PersistedEpisode,
   type TopicAbsence
 } from "./personal-episodes-store.js";
+
+// Reusable encryption-at-rest for the function-based JSON stores — AES-256-GCM
+// envelope + the user-memory key, cross-process locked, fail-closed migration.
+export {
+  decryptFileAtRest,
+  encryptFileAtRest,
+  isFileEncryptedAtRest,
+  readMaybeEncrypted,
+  withFileLock,
+  writeMaybeEncrypted,
+  type EncryptAtRestOptions
+} from "./encrypted-file.js";
 
 // Self-followup firing engine — step 4 of agent-self-followup.md.
 // Re-enters the model to compose the delivery message, sends via
