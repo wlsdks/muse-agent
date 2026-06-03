@@ -16,6 +16,7 @@ import type { Command } from "commander";
 import {
   buildCalendarRegistry,
   buildMessagingRegistry,
+  createMessagingPollDispatchers,
   createGateEmbedder,
   distillQueuedCorrections,
   parseBoolean,
@@ -130,6 +131,16 @@ export interface DaemonHelpers {
    * distiller (an `undefined` return ⇒ no strategy written, the grounding fence).
    */
   readonly selfLearnDistill?: DistillQueuedDeps["distill"];
+  /**
+   * Test seam — inject the messaging poll so a smoke can assert the daemon
+   * pulls new inbound (which the inbox-injection cursor then makes recallable)
+   * without a live Telegram/Discord/Slack round-trip. Absent → the real
+   * `createMessagingPollDispatchers(env, registry).pollAll`.
+   */
+  readonly messagingPoll?: () => Promise<{
+    readonly ingestedByProvider: Readonly<Record<string, number>>;
+    readonly errors: readonly { readonly providerId: string; readonly message: string }[];
+  }>;
 }
 
 // Followups REQUIRE a model to synthesize their message. The real
@@ -604,6 +615,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout(`  briefing:   ${parseBoolean(e.MUSE_BRIEFING_ENABLED, false) ? "enabled" : "disabled (set MUSE_BRIEFING_ENABLED)"}\n`);
         io.stdout(`  self-learn: ${parseBoolean(e.MUSE_SELFLEARN_ENABLED, false) && followupModel ? "enabled" : "disabled (set MUSE_SELFLEARN_ENABLED + a model)"}\n`);
         io.stdout(`  recap:      ${parseBoolean(e.MUSE_RECAP_ENABLED, false) ? `enabled (evening, after ${(e.MUSE_RECAP_HOUR ?? "21").toString()}:00)` : "disabled (set MUSE_RECAP_ENABLED)"}\n`);
+        io.stdout(`  msg-poll:   ${parseBoolean(e.MUSE_MESSAGING_POLL_ENABLED, false) ? "enabled (new inbound → recallable)" : "disabled (set MUSE_MESSAGING_POLL_ENABLED)"}\n`);
         // The resolved source paths — the first thing to check when a
         // tick "isn't firing": is it reading the file you think it is?
         io.stdout(`sources:\n`);
@@ -941,6 +953,28 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         } catch { /* fail-soft — the recap is a daily nicety, never break the daemon */ }
       };
 
+      // Continuous messaging ingestion — pull new inbound (Telegram / Discord /
+      // Slack) into the inbox on a throttle; the inbox-injection cursor then
+      // makes it recallable via `muse ask` WITHOUT a manual `muse messaging
+      // poll`. Off by default; the providers' own update offsets dedup so a
+      // re-poll only fetches what's new.
+      const pollMessaging = helpers.messagingPoll ?? createMessagingPollDispatchers(e, messagingRegistry).pollAll;
+      const DEFAULT_MSG_POLL_INTERVAL_MS = 5 * 60 * 1000;
+      const msgPollIntervalRaw = e.MUSE_MESSAGING_POLL_INTERVAL_MS ? Number(e.MUSE_MESSAGING_POLL_INTERVAL_MS) : DEFAULT_MSG_POLL_INTERVAL_MS;
+      const msgPollIntervalMs = Number.isFinite(msgPollIntervalRaw) && msgPollIntervalRaw > 0 ? msgPollIntervalRaw : DEFAULT_MSG_POLL_INTERVAL_MS;
+      let lastMsgPollMs: number | undefined;
+      const messagingPollTick = async (): Promise<void> => {
+        if (!parseBoolean(e.MUSE_MESSAGING_POLL_ENABLED, false)) return;
+        const nowMs = Date.now();
+        if (lastMsgPollMs !== undefined && nowMs - lastMsgPollMs < msgPollIntervalMs) return;
+        lastMsgPollMs = nowMs;
+        try {
+          const result = await pollMessaging();
+          const total = Object.values(result.ingestedByProvider).reduce((sum, n) => sum + n, 0);
+          if (total > 0) io.stdout(`[${new Date(nowMs).toISOString()}] messaging-poll: +${total.toString()} new message${total === 1 ? "" : "s"} ingested (recallable via \`muse ask\`)\n`);
+        } catch { /* fail-soft — a transient poll failure must never break the daemon */ }
+      };
+
       const runTick = async (): Promise<void> => {
         await proactiveTick();
         await remindersTick();
@@ -956,6 +990,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         await selfLearnTick();
         await selfLearnDecayTick();
         await recapTick();
+        await messagingPollTick();
       };
 
       io.stdout(`muse daemon — provider=${provider}, destination=${destination}, lead ${leadMinutes.toString()} min\n`);

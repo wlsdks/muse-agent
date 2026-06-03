@@ -972,6 +972,8 @@ export { createGateEmbedder, createOllamaEmbedder } from "./context-engineering-
 
 export { distillQueuedCorrections, type DistillQueuedDeps } from "./distill-queue.js";
 
+export { createMessagingPollDispatchers, type MessagingPollDispatchers } from "./messaging-poll-dispatchers.js";
+
 export {
   assembleKnowledgeCorpus,
   createKnowledgeEnricher,

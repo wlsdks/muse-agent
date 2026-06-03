@@ -2817,3 +2817,4 @@ Changing the immutable core is a human-only action.
 
 The loop's enforced freedom: extend/reorder targets and bullets,
 never the lines between the IMMUTABLE-CORE markers.
+ _First slice (this commit): the `muse daemon` now CONTINUOUSLY polls messaging (Telegram/Discord/Slack) into the inbox, which the existing inbox-injection cursor (persisted offset) makes recallable via `muse ask` — no manual pull. Remaining: prove a freshly-arrived item recalled-with-citation end-to-end; extend to email/calendar streams. Bullet stays `[ ]`._

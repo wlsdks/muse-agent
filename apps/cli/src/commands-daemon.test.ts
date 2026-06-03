@@ -43,7 +43,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; messagingPoll?: DaemonHelpers["messagingPoll"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -62,6 +62,7 @@ async function runDaemon(
       ...(opts.knowledgeEnrich ? { knowledgeEnrich: opts.knowledgeEnrich } : {}),
       ...(opts.briefingCalendarLister ? { briefingCalendarLister: opts.briefingCalendarLister } : {}),
       ...(opts.selfLearnDistill ? { selfLearnDistill: opts.selfLearnDistill } : {}),
+      ...(opts.messagingPoll ? { messagingPoll: opts.messagingPoll } : {}),
       // Default: followup tick disabled (no model) so proactive cases stay hermetic.
       resolveFollowupModel: opts.resolveFollowupModel ?? (async () => undefined)
     });
@@ -1116,5 +1117,34 @@ describe("muse daemon — unattended disuse-decay tick (P43-1 slice 2)", () => {
 
     expect(res.stdout).not.toContain("decay:");
     expect((await readPlaybook(env.MUSE_PLAYBOOK_FILE!))[0]!.reward).toBe(2);
+  });
+});
+
+describe("muse daemon — continuous messaging poll tick (P43-3 ingestion)", () => {
+  it("with MUSE_MESSAGING_POLL_ENABLED the --once tick pulls new inbound (which the inbox cursor makes recallable) — no manual poll", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_MESSAGING_POLL_ENABLED: "true" };
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    let polled = 0;
+    const messagingPoll = async () => { polled += 1; return { errors: [], ingestedByProvider: { telegram: 2 } }; };
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, messagingPoll, registry });
+    expect(polled).toBe(1);
+    expect(res.stdout).toMatch(/messaging-poll: \+2 new messages ingested/);
+  });
+
+  it("does NOTHING when MUSE_MESSAGING_POLL_ENABLED is unset (gate is real — off by default)", async () => {
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    let polled = 0;
+    const messagingPoll = async () => { polled += 1; return { errors: [], ingestedByProvider: { telegram: 5 } }; };
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env: tmpEnv(), messagingPoll, registry });
+    expect(polled).toBe(0);
+    expect(res.stdout).not.toContain("messaging-poll:");
+  });
+
+  it("--status reports the messaging poll enabled only with the flag", async () => {
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const on = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], { env: { ...tmpEnv(), MUSE_MESSAGING_POLL_ENABLED: "true" }, registry });
+    expect(on.stdout).toContain("msg-poll:   enabled");
+    const off = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], { env: tmpEnv(), registry });
+    expect(off.stdout).toContain("msg-poll:   disabled");
   });
 });
