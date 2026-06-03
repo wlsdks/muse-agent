@@ -21,6 +21,7 @@ import { redactSecretsInText } from "@muse/shared";
 import type { Command } from "commander";
 
 import { consumeAskStream, type AskStreamEvent } from "./commands-ask.js";
+import { extractDocumentText, type PdfParsed } from "./document-reader.js";
 import type { ProgramIO } from "./program.js";
 import { withSigintAbort } from "./sigint-abort.js";
 
@@ -74,55 +75,11 @@ export async function saveDocumentToNotes(
   await provider.save({ body, id: noteId, overwrite: true, title: title.slice(0, 120) });
 }
 
-interface PdfParsed {
-  readonly text: string;
-  readonly pageCount: number;
-}
-
-/**
- * pdf-parse v2 exposes a `PDFParse` class. Build, extract text,
- * normalise to a tiny `{ text, pageCount }` subset the CLI cares
- * about. Exported only for testing.
- */
-export async function parsePdfBuffer(buffer: Buffer): Promise<PdfParsed> {
-  const mod = await import("pdf-parse") as unknown as {
-    PDFParse: new (opts: { data: Buffer }) => {
-      getText(): Promise<{ text?: string; total?: number; pages?: unknown[] }>;
-    };
-  };
-  const parser = new mod.PDFParse({ data: buffer });
-  const result = await parser.getText();
-  const pageCount = typeof result.total === "number"
-    ? result.total
-    : Array.isArray(result.pages) ? result.pages.length : 0;
-  return { text: result.text ?? "", pageCount };
-}
-
-/** A file is treated as PDF by its `.pdf` extension OR a `%PDF-` magic header. */
-export function isPdfDocument(filePath: string, buffer: Buffer): boolean {
-  return filePath.toLowerCase().endsWith(".pdf") || buffer.subarray(0, 5).toString("latin1") === "%PDF-";
-}
-
-/** A NUL byte in the first 8KB marks a binary file (jpg/png/zip/…) — not readable text. */
-export function isLikelyBinary(buffer: Buffer): boolean {
-  return buffer.subarray(0, 8192).includes(0);
-}
-
-/**
- * Extract text from a local document: a PDF via pdf-parse, otherwise a
- * UTF-8 text file (`.txt` / `.md` / `.log` / `.csv` / transcript — one
- * "page"). Throws on a binary non-PDF so `muse read photo.jpg` reports
- * clearly instead of dumping garbage. Exported for testing.
- */
-export async function extractDocumentText(filePath: string, buffer: Buffer): Promise<PdfParsed> {
-  if (isPdfDocument(filePath, buffer)) {
-    return parsePdfBuffer(buffer);
-  }
-  if (isLikelyBinary(buffer)) {
-    throw new Error(`'${basename(filePath)}' looks binary — muse read handles PDFs and text files (.txt/.md/.log/.csv).`);
-  }
-  return { pageCount: 1, text: buffer.toString("utf8") };
-}
+// Document text extraction lives in the leaf `document-reader` module so both
+// `muse read` and `muse ask --file` can use it without an import cycle. Re-export
+// the surface so existing importers of these from `commands-read` keep working.
+export { isLikelyBinary, isPdfDocument, parsePdfBuffer } from "./document-reader.js";
+export { extractDocumentText, type PdfParsed };
 
 /** Extensions `extractDocumentText` can turn into note text. */
 const SUPPORTED_DOC_EXT = new Set([".pdf", ".txt", ".md", ".markdown", ".log", ".csv"]);

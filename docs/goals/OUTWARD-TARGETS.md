@@ -306,7 +306,29 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   Korean+emoji, empty → text) + LIVE on qwen3:8b: the same binary-PDF probe now
   prints the refusal message and answers "I don't have enough information …" (the
   fabricated job title is GONE), while `--file resume.txt` still cites
-  `[from resume.txt]`. cli 166 files / 1767 tests + `pnpm lint` 0/0. (this commit)
+  `[from resume.txt]`. cli 166 files / 1767 tests + `pnpm lint` 0/0. (d9332d2a)
+
+- [x] **P37-15 `muse ask --file <pdf>` now READS the PDF and answers from its real
+  text — a user can ask about a PDF directly.** P37-14 made a binary `--file`
+  refuse; this turns the refusal into a capability for the common case: a PDF. The
+  `--file` handler now detects a PDF (`isPdfDocument` — `.pdf` ext or `%PDF-` magic)
+  and extracts its text via `pdf-parse` (the SAME MIT reader `muse read` already
+  uses — no new dependency, lazily imported), then grounds + cites it `[from
+  <file>.pdf]`. A non-PDF binary (image/archive) still hits the P37-14 refusal; a
+  scanned/empty-text PDF and a malformed PDF refuse honestly (no fabrication from
+  garbage); a text file is unchanged. To avoid an import cycle (`commands-read`
+  already imports from `commands-ask`), the shared extractor moved to a new leaf
+  module `apps/cli/src/document-reader.ts` (`parsePdfBuffer` / `isPdfDocument` /
+  `isLikelyBinary` / `extractDocumentText`), re-exported from `commands-read` so its
+  consumers (notes-rag, watch-folder, tests) are unchanged. Proof: a new
+  `document-reader.test.ts` with 6 tests including a REAL pdf-parse extraction of a
+  generated valid PDF (coverage the old tests lacked), the existing read/notes-rag/
+  watch-folder suites green (the move is behaviour-preserving) + LIVE on qwen3:8b:
+  `muse ask --file resume.pdf "what is this person's job title?"` → "Staff Data
+  Scientist at Acme Corp [from resume.pdf]" (extracted from the PDF), an off-topic
+  "phone number?" honestly refuses, a malformed PDF / a PNG / a scanned PDF all
+  refuse, and a `.txt` file still grounds. cli 167 files / 1773 tests + `pnpm lint`
+  0/0. (this commit)
 
 **P40 — Actuation usability: Muse understands natural-language dates.** The
 "do" side is only as good as the words a user actually types.

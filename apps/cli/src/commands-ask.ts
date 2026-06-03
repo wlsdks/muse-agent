@@ -48,6 +48,7 @@ import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles, type RecallHit } fr
 import { formatConnectionsSection } from "./commands-today.js";
 import { embed } from "./embed.js";
 import { buildEpisodeIndex, defaultEpisodeIndexFile, episodeIndexStale, loadEpisodeIndex, saveEpisodeIndex } from "./episode-index.js";
+import { isPdfDocument, parsePdfBuffer } from "./document-reader.js";
 import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
 import { resolvePersona } from "./program-helpers.js";
 import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
@@ -1479,17 +1480,35 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         const fileLabel = options.file.trim();
         try {
           const bytes = await readFile(fileLabel);
-          if (looksLikeBinaryContent(bytes)) {
-            // Refuse to ground on binary bytes — feeding garbled UTF-8 to the
-            // model makes it hallucinate plausible content and cite it to the
-            // file. Tell the user how to make it groundable instead.
+          let fileText: string | undefined;
+          if (isPdfDocument(fileLabel, bytes)) {
+            // A real PDF: extract its TEXT via pdf-parse (the same reader `muse
+            // read` uses) and ground on that — so a user can ask about a PDF
+            // directly. A scanned/empty PDF yields no text ⇒ honest refusal.
+            try {
+              const extracted = (await parsePdfBuffer(bytes)).text;
+              if (extracted.trim().length > 0) {
+                fileText = extracted;
+              } else {
+                io.stderr(`muse: --file ${fileLabel} is a PDF with no extractable text (it may be scanned images) — I can't ground on it.\n`);
+              }
+            } catch (pdfErr) {
+              io.stderr(`muse: --file ${fileLabel} could not be read as a PDF (${pdfErr instanceof Error ? pdfErr.message : String(pdfErr)}) — I won't ground on it.\n`);
+            }
+          } else if (looksLikeBinaryContent(bytes)) {
+            // A non-PDF binary (image, archive, office doc): refuse — feeding
+            // garbled UTF-8 to the model makes it hallucinate content and cite
+            // it to the file. Tell the user how to make it groundable instead.
             io.stderr(
-              `muse: --file ${fileLabel} looks like a binary file (PDF, image, office doc, …), not text — ` +
+              `muse: --file ${fileLabel} looks like a binary file (image, office doc, …), not text — ` +
               `I won't ground on it, because reading it as text would feed garbled bytes that I might ` +
-              `answer from incorrectly. Extract the text first (e.g. export the PDF to .txt/.md) and pass that.\n`
+              `answer from incorrectly. Export it to .txt/.md and pass that.\n`
             );
           } else {
-            const picked = selectFilePassages(bytes.toString("utf8"), query);
+            fileText = bytes.toString("utf8");
+          }
+          if (fileText !== undefined) {
+            const picked = selectFilePassages(fileText, query);
             for (const passage of picked) {
               scored.push({ chunk: { chunkIndex: passage.chunkIndex, embedding: [], file: fileLabel, text: passage.text }, file: fileLabel, score: 1 });
             }
