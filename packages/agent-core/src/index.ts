@@ -90,6 +90,7 @@ export {
   type InboxContextProvider,
   type InboxSnapshot
 } from "./inbox-context.js";
+export { inboxGroundingSources } from "./context-transforms.js";
 export { applyClarifyDirective, detectUnderspecifiedRequest } from "./clarify-directive.js";
 export {
   applyAmbientContext,

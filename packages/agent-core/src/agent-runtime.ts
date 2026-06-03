@@ -55,7 +55,7 @@ import {
   applyActiveContext as applyActiveContextFn,
   applyAgentSpec as applyAgentSpecFn,
   applyEpisodicRecall as applyEpisodicRecallFn,
-  applyInboxContext as applyInboxContextFn,
+  applyInboxContextWithGrounding as applyInboxContextWithGroundingFn,
   applyPromptExemplars as applyPromptExemplarsFn,
   applyPromptLayers as applyPromptLayersFn,
   applyStoredConversationSummary as applyStoredConversationSummaryFn,
@@ -297,7 +297,7 @@ export class AgentRuntime {
     });
 
     try {
-      const { cached, cacheKey, layeredContext, preparedRequest, promptBudget, selected, summaryAppliedMessageCount, tools } =
+      const { cached, cacheKey, inboxGroundingSources, layeredContext, preparedRequest, promptBudget, selected, summaryAppliedMessageCount, tools } =
         await this.prepareInvocation(context, runSpan);
 
       if (cached) {
@@ -307,7 +307,7 @@ export class AgentRuntime {
           guardedCachedResponse,
           preparedRequest.contextWindow,
           layeredContext.agentSpec,
-          { fromCache: true, toolsUsed: cached.toolsUsed }
+          { fromCache: true, inboxSources: inboxGroundingSources, toolsUsed: cached.toolsUsed }
         );
       }
 
@@ -336,7 +336,7 @@ export class AgentRuntime {
         guardedResponse,
         preparedRequest.contextWindow,
         layeredContext.agentSpec,
-        { toolResults: execution.toolResults, toolsUsed: execution.toolsUsed }
+        { inboxSources: inboxGroundingSources, toolResults: execution.toolResults, toolsUsed: execution.toolsUsed }
       );
     } catch (error) {
       await this.handleRunError(context, runSpan, error, startedAtMs);
@@ -432,6 +432,7 @@ export class AgentRuntime {
   ): Promise<{
     readonly cached: CachedResponse | undefined;
     readonly cacheKey: string;
+    readonly inboxGroundingSources: readonly { readonly source: string; readonly text: string }[];
     readonly layeredContext: AgentRunContext;
     readonly preparedRequest: ReturnType<AgentRuntime["prepareModelRequest"]>;
     readonly promptBudget: ReturnType<typeof measureSystemPromptBudget>;
@@ -475,7 +476,7 @@ export class AgentRuntime {
     const attachmentAppliedInput = applyAttachmentContextFn({ ...memoryAppliedContext, input: playbookInput });
     const skillsAppliedInput = await applySkillsContextFn({ ...memoryAppliedContext, input: attachmentAppliedInput }, this.skillCatalogProvider);
     const activeContextContext: AgentRunContext = { ...memoryAppliedContext, input: skillsAppliedInput };
-    const inboxAppliedInput = await applyInboxContextFn(activeContextContext, this.inboxContextProvider);
+    const { input: inboxAppliedInput, groundingSources: inboxGroundingSources } = await applyInboxContextWithGroundingFn(activeContextContext, this.inboxContextProvider);
     const inboxAppliedContext: AgentRunContext = { ...activeContextContext, input: inboxAppliedInput };
     const episodicAppliedInput = await applyEpisodicRecallFn(inboxAppliedContext, this.episodicRecallProvider);
     const episodicAppliedContext: AgentRunContext = { ...inboxAppliedContext, input: episodicAppliedInput };
@@ -503,6 +504,7 @@ export class AgentRuntime {
     return {
       cached,
       cacheKey,
+      inboxGroundingSources,
       layeredContext,
       preparedRequest,
       promptBudget,

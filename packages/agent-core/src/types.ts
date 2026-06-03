@@ -164,12 +164,14 @@ export interface AgentRunResult {
   readonly fromCache?: boolean;
   readonly toolsUsed?: readonly string[];
   /**
-   * The text outputs of the read-tools the agent actually ran (knowledge_search,
-   * web fetches, etc.), each `{ source: toolName, text: output }`. Surfaced so a
-   * caller's output-side grounding verdict can score the answer against the
-   * evidence the AGENT was shown — otherwise a correctly web-grounded
-   * `--with-tools` answer false-flags against a notes-only evidence set. Omitted
-   * when no tool returned text (e.g. a chat-only or actuator-only run).
+   * The evidence the AGENT was actually shown, each `{ source, text }`: the
+   * text outputs of the read-tools it ran (knowledge_search, web fetches —
+   * `source: toolName`) AND any freshly-injected inbox messages it could recall
+   * (`source: "inbox/<provider>"`). Surfaced so a caller's output-side grounding
+   * verdict scores the answer against this set — otherwise a correctly
+   * web-grounded OR a just-arrived-message-grounded `--with-tools` answer
+   * false-flags against a notes-only evidence set. Omitted when there was none
+   * (e.g. a chat-only or actuator-only run with no recent inbox).
    */
   readonly groundingSources?: readonly { readonly source: string; readonly text: string }[];
 }

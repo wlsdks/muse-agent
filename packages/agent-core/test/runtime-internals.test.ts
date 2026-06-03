@@ -138,6 +138,25 @@ describe("createRunResult", () => {
     expect(createRunResult("run-i", sampleResponse, undefined, undefined, {}).groundingSources).toBeUndefined();
   });
 
+  it("merges injected inbox messages into groundingSources alongside tool outputs (a recalled inbound is citeable)", () => {
+    const toolResults: ExecutedToolResult[] = [
+      { result: { id: "c1", name: "web_search", output: "Paris is the capital.", status: "completed" }, toolCall: { args: {}, id: "c1", name: "web_search" } }
+    ];
+    const inboxSources = [{ source: "inbox/telegram", text: "Sarah: call me back" }];
+    const result = createRunResult("run-j", sampleResponse, undefined, undefined, { inboxSources, toolResults });
+    expect(result.groundingSources).toEqual([
+      { source: "web_search", text: "Paris is the capital." },
+      { source: "inbox/telegram", text: "Sarah: call me back" }
+    ]);
+  });
+
+  it("surfaces inbox grounding sources even on an inbox-only run (no tools)", () => {
+    const result = createRunResult("run-k", sampleResponse, undefined, undefined, {
+      inboxSources: [{ source: "inbox/slack", text: "deploy is green" }]
+    });
+    expect(result.groundingSources).toEqual([{ source: "inbox/slack", text: "deploy is green" }]);
+  });
+
   it("attaches contextWindow when supplied", () => {
     const window = { budgetTokens: 8000, estimatedTokens: 100, removedCount: 0, summaryInserted: false };
     expect(createRunResult("run-2", sampleResponse, window, undefined)).toEqual({

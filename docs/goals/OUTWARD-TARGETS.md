@@ -143,13 +143,22 @@ P43 bullet is unbuilt.
   Decomposition → `docs/goals/P43-close-the-loop.md`. Bullet stays `[ ]`
   until a 2+-step task carries to a verified done through an injected
   failure._
-- [ ] **P43-3 Continuous auto-syncing ingestion.** At least one live
+- [x] **P43-3 Continuous auto-syncing ingestion.** At least one live
   personal stream (email / messages / calendar) syncs into the citable
   corpus on its own with PERSISTED offset state — new inbound becomes
   recallable and/or can fire a proactive notice WITHOUT a manual pull,
   replacing today's one-shot snapshot commands. Flips when a
   freshly-arrived item is recalled with a citation and/or triggers a
-  gated notice end-to-end, against a contract-faithful fake.
+  gated notice end-to-end, against a contract-faithful fake. DONE: the
+  daemon's continuous messaging poll (prior slice) syncs Telegram /
+  Discord / Slack into the inbox with a persisted per-source cursor, and a
+  freshly-arrived message the `muse ask --with-tools` agent recalls is now
+  a citeable grounding source (runtime surfaces the injected inbox snapshot
+  into `AgentRunResult.groundingSources` → the output verdict scores it as
+  evidence), so the recall is cited not false-flagged — proven end-to-end
+  against the real `appendInbound` store + `FileBackedInboxContextProvider`
+  (cursor advances once, no double-injection) + `eval:self-improving` 18/18
+  live. (9175184c)
 - [ ] **P43-4 Absence/anomaly anticipation + evening recap.** Muse
   notices the ABSENCE of an expected thing ("a project went cold, a
   contact went quiet, this is unusual for you") and bookends the day with

@@ -163,10 +163,14 @@ export function createRunResult(
     readonly fromCache?: boolean;
     readonly toolsUsed?: readonly string[];
     readonly toolResults?: readonly ExecutedToolResult[];
+    readonly inboxSources?: readonly { readonly source: string; readonly text: string }[];
   } = {}
 ): AgentRunResult {
   const agentSpecReport = agentSpec ? toAgentSpecRunReport(agentSpec) : undefined;
-  const groundingSources = execution.toolResults ? groundingSourcesFromToolResults(execution.toolResults) : [];
+  const groundingSources = [
+    ...(execution.toolResults ? groundingSourcesFromToolResults(execution.toolResults) : []),
+    ...(execution.inboxSources ?? [])
+  ];
   const base = {
     ...(execution.fromCache ? { fromCache: true } : {}),
     ...(execution.toolsUsed && execution.toolsUsed.length > 0 ? { toolsUsed: execution.toolsUsed } : {}),

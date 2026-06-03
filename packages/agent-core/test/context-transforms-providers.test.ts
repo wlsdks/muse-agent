@@ -5,7 +5,9 @@ import type { ActiveContextProvider, ActiveContextSnapshot } from "../src/active
 import {
   applyEpisodicRecall,
   applyInboxContext,
+  applyInboxContextWithGrounding,
   applyPromptExemplars,
+  inboxGroundingSources,
   resolveActiveContextSnapshot,
 } from "../src/context-transforms.js";
 import type { EpisodicRecallProvider, EpisodicRecallSnapshot } from "../src/episodic-recall.js";
@@ -64,6 +66,50 @@ describe("applyInboxContext", () => {
     const result = await applyInboxContext(context(), { resolve: throwing } as InboxContextProvider);
     expect(result.metadata).toMatchObject({ inboxContextFailed: true });
     expect(result.messages).toHaveLength(1);
+  });
+});
+
+describe("inboxGroundingSources — injected messages as citeable evidence", () => {
+  it("maps each message to { source: inbox/<provider>, text: <sender>: <body> }", () => {
+    const sources = inboxGroundingSources({
+      messages: [
+        { providerId: "telegram", source: "dm", sender: "Sarah", receivedAtIso: "2026-01-01T08:00:00Z", text: "can you call me back?" },
+        { providerId: "slack", source: "C1", receivedAtIso: "2026-01-01T08:05:00Z", text: "deploy is green" },
+      ],
+    });
+    expect(sources).toEqual([
+      { source: "inbox/telegram", text: "Sarah: can you call me back?" },
+      { source: "inbox/slack", text: "deploy is green" },
+    ]);
+  });
+
+  it("returns [] for an undefined or empty snapshot, and skips an empty body", () => {
+    expect(inboxGroundingSources(undefined)).toEqual([]);
+    expect(inboxGroundingSources({ messages: [] })).toEqual([]);
+    expect(inboxGroundingSources({
+      messages: [{ providerId: "slack", source: "C1", receivedAtIso: "2026-01-01T08:00:00Z", text: "   " }],
+    })).toEqual([]);
+  });
+});
+
+describe("applyInboxContextWithGrounding — one resolve, input + grounding evidence together", () => {
+  const snapshot: InboxSnapshot = {
+    messages: [{ providerId: "slack", source: "C1", sender: "bob", receivedAtIso: "2026-01-01T08:00:00Z", text: "hi there" }],
+  };
+
+  it("returns the [Recent Messages] input AND the grounding sources from a SINGLE resolve", async () => {
+    let resolveCount = 0;
+    const provider: InboxContextProvider = { resolve: async () => { resolveCount += 1; return snapshot; } };
+    const result = await applyInboxContextWithGrounding(context(), provider);
+    expect(resolveCount).toBe(1);
+    expect(result.input.messages[0]!.content).toContain("Recent Messages");
+    expect(result.groundingSources).toEqual([{ source: "inbox/slack", text: "bob: hi there" }]);
+  });
+
+  it("yields no grounding sources when no provider / empty snapshot / a throw", async () => {
+    expect((await applyInboxContextWithGrounding(context(), undefined)).groundingSources).toEqual([]);
+    expect((await applyInboxContextWithGrounding(context(), { resolve: async () => ({ messages: [] }) })).groundingSources).toEqual([]);
+    expect((await applyInboxContextWithGrounding(context(), { resolve: throwing } as InboxContextProvider)).groundingSources).toEqual([]);
   });
 });
 

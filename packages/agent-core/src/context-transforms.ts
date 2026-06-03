@@ -170,17 +170,56 @@ export function applyActiveContext(
   };
 }
 
+const INBOX_GROUNDING_TEXT_CAP = 1000;
+const INBOX_GROUNDING_MAX = 24;
+
+/**
+ * Map an injected inbox snapshot to grounding-evidence sources
+ * `{ source: "inbox/<provider>", text: "<sender>: <body>" }`. A caller's
+ * output-side grounding verdict scores a `--with-tools` answer against
+ * THESE (the messages the agent was actually shown), the same way it
+ * scores against tool outputs — so a correct "Sarah asked you to call her
+ * back" answer recalled from a freshly-arrived message is treated as
+ * GROUNDED, not false-flagged against the notes-only evidence set. Capped
+ * (count + per-message length) so a chatty inbox can't bloat the reverify
+ * prompt; empty bodies are skipped.
+ */
+export function inboxGroundingSources(
+  snapshot: InboxSnapshot | undefined
+): readonly { readonly source: string; readonly text: string }[] {
+  if (!snapshot || snapshot.messages.length === 0) {
+    return [];
+  }
+  const out: { source: string; text: string }[] = [];
+  for (const message of snapshot.messages.slice(0, INBOX_GROUNDING_MAX)) {
+    const sender = message.sender ? `${message.sender}: ` : "";
+    const text = `${sender}${message.text}`.trim();
+    if (text.length === 0) {
+      continue;
+    }
+    out.push({
+      source: `inbox/${message.providerId}`,
+      text: text.length > INBOX_GROUNDING_TEXT_CAP ? text.slice(0, INBOX_GROUNDING_TEXT_CAP) : text
+    });
+  }
+  return out;
+}
+
 /**
  * Inject `[Recent Messages]` (Slack / Discord / Telegram / LINE unread
  * highlights) so the agent does not need to invoke the inbox tool to
- * notice new traffic. Fail-open.
+ * notice new traffic, AND surface the injected messages as grounding
+ * evidence so a recalled inbound message is citeable (see
+ * `inboxGroundingSources`). One resolve only — the provider advances its
+ * injection cursor on resolve, so the snapshot must be captured here, not
+ * re-fetched. Fail-open.
  */
-export async function applyInboxContext(
+export async function applyInboxContextWithGrounding(
   context: AgentRunContext,
   provider: InboxContextProvider | undefined
-): Promise<AgentRunInput> {
+): Promise<{ readonly input: AgentRunInput; readonly groundingSources: readonly { readonly source: string; readonly text: string }[] }> {
   if (!provider) {
-    return context.input;
+    return { groundingSources: [], input: context.input };
   }
   let snapshot: InboxSnapshot | undefined;
   try {
@@ -189,7 +228,7 @@ export async function applyInboxContext(
     // Fail-open: leave the prompt unchanged but stamp a failure
     // flag onto metadata so observability can distinguish
     // "transform failed" from "transform not configured".
-    return failedMetadata(context.input, "inboxContextFailed");
+    return { groundingSources: [], input: failedMetadata(context.input, "inboxContextFailed") };
   }
   // thread the run's start time as `nowIso` so the
   // inbox renderer can humanise `receivedAtIso` into "[5 min ago]"
@@ -197,17 +236,27 @@ export async function applyInboxContext(
   // context surfaces already use.
   const rendered = renderInboxSection(snapshot, context.startedAt.toISOString());
   if (!rendered) {
-    return context.input;
+    return { groundingSources: [], input: context.input };
   }
   return {
-    ...context.input,
-    messages: appendSystemSection(context.input.messages, rendered, "inbox-context"),
-    metadata: {
-      ...context.input.metadata,
-      inboxContextApplied: true,
-      inboxContextMessageCount: snapshot?.messages.length ?? 0
+    groundingSources: inboxGroundingSources(snapshot),
+    input: {
+      ...context.input,
+      messages: appendSystemSection(context.input.messages, rendered, "inbox-context"),
+      metadata: {
+        ...context.input.metadata,
+        inboxContextApplied: true,
+        inboxContextMessageCount: snapshot?.messages.length ?? 0
+      }
     }
   };
+}
+
+export async function applyInboxContext(
+  context: AgentRunContext,
+  provider: InboxContextProvider | undefined
+): Promise<AgentRunInput> {
+  return (await applyInboxContextWithGrounding(context, provider)).input;
 }
 
 /**

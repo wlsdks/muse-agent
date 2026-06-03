@@ -1,6 +1,11 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-import type { KnowledgeMatch } from "@muse/agent-core";
+import { inboxGroundingSources, type KnowledgeMatch } from "@muse/agent-core";
+import { appendInbound, FileBackedInboxContextProvider } from "@muse/messaging";
 
 import { formatSourceReceipts, groundingVerdictNotice } from "./commands-ask.js";
 
@@ -45,6 +50,19 @@ describe("groundingVerdictNotice — output-side rubric verdict on the ask wedge
     expect(await groundingVerdictNotice(answer, withToolEvidence, query)).toBeUndefined();
   });
 
+  it("an answer recalling a freshly-arrived inbox message is NOT false-flagged once the inbox message is in the evidence", async () => {
+    const query = "did Sarah message me about anything";
+    const answer = "Yes — Sarah asked you to call her back about the venue deposit.";
+    // Notes-only evidence: a just-arrived inbound message lives in no note, so the
+    // correct recall false-flags "not backed by your notes" without the wiring.
+    const notesOnly = [match("notes/trip.md", "Booked a hotel in Lyon for the spring trip.", 0.4)];
+    expect(await groundingVerdictNotice(answer, notesOnly, query)).toBeDefined();
+    // WITH the injected inbox message in the evidence set (what --with-tools now
+    // surfaces via groundingSources → scoredMatches), the recall grounds.
+    const withInbox = [...notesOnly, match("tool: inbox/telegram", "Sarah: Can you call me back about the venue deposit?", 1)];
+    expect(await groundingVerdictNotice(answer, withInbox, query)).toBeUndefined();
+  });
+
   // The handler gates the "📎 From your notes" receipt on the verdict — a receipt
   // is shown ONLY when groundingVerdictNotice returns undefined (the answer passed
   // grounding). This pins the contract that makes that gate meaningful: an
@@ -67,6 +85,37 @@ describe("groundingVerdictNotice — output-side rubric verdict on the ask wedge
     expect(await groundingVerdictNotice(grounded, matches, "what is the printer IP")).toBeUndefined();
     const receipt = formatSourceReceipts(grounded, "/notes", [{ file: "clipboard", text: "The office printer IP is 10.0.0.42." }], "what is the printer IP");
     expect(receipt).toContain("📎 From your notes");
+  });
+});
+
+describe("inbox recall-with-citation — ingest → resolve → citeable evidence (end-to-end, real store + provider)", () => {
+  it("a message ingested via the real inbox store becomes a citeable grounding source, and a recall of it grounds", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-inbox-ground-"));
+    const inboxFile = join(dir, "telegram-inbox.json");
+    const cursorFile = join(dir, "telegram-cursor.json");
+    // Ingest a real inbound message through the SAME store the poll daemon writes to.
+    await appendInbound(inboxFile, {
+      providerId: "telegram", messageId: "m1", source: "dm:sarah", sender: "Sarah",
+      receivedAtIso: "2026-06-03T09:00:00Z", text: "Can you call me back about the venue deposit?"
+    });
+    // Resolve via the REAL provider — exactly the runtime path (advances the
+    // injection cursor on resolve, so re-resolving must NOT re-surface it).
+    const provider = new FileBackedInboxContextProvider({ sources: [{ cursorFile, inboxFile, providerId: "telegram" }] });
+    const sources = inboxGroundingSources(await provider.resolve("u1"));
+    expect(sources).toEqual([{ source: "inbox/telegram", text: "Sarah: Can you call me back about the venue deposit?" }]);
+
+    // Mapped into the verdict's evidence exactly as commands-ask maps groundingSources
+    // (`tool: <source>`, cosine 1), a recall of that message is grounded, not flagged.
+    const query = "did Sarah message me about anything";
+    const answer = "Yes — Sarah asked you to call her back about the venue deposit.";
+    const notesOnly = [match("notes/trip.md", "Booked a hotel in Lyon for the spring trip.", 0.4)];
+    expect(await groundingVerdictNotice(answer, notesOnly, query)).toBeDefined();
+    const withInbox = [...notesOnly, ...sources.map((s) => match(`tool: ${s.source}`, s.text, 1))];
+    expect(await groundingVerdictNotice(answer, withInbox, query)).toBeUndefined();
+
+    // The single resolve advanced the cursor — a second resolve surfaces nothing
+    // (no double-injection / no cursor double-advance hazard).
+    expect(await provider.resolve("u1")).toBeUndefined();
   });
 });
 
