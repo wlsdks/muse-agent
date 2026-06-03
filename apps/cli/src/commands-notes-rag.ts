@@ -32,6 +32,16 @@ export const DEFAULT_EMBED_MODEL = "nomic-embed-text";
 const DEFAULT_CHUNK_CHARS = 600;
 
 /**
+ * Note-corpus file formats the index includes. PDFs are special-cased in
+ * `extractDocumentText`; every other match is read as UTF-8, so ANY prose
+ * format works once it passes this gate. Deliberately wide — beyond `.md`/`.txt`
+ * to org-mode (`.org`), reStructuredText (`.rst`), AsciiDoc, MDX, and markdown
+ * variants — so a power-user's non-markdown notes aren't silently invisible.
+ * The single source of truth shared by the indexer + the corpus inventory/count.
+ */
+export const NOTE_FILE_RE = /\.(md|markdown|mkd|mdown|mdx|txt|text|org|rst|adoc|asciidoc|pdf)$/iu;
+
+/**
  * Read a note source to plain text. PDFs go through `pdf-parse` (the
  * same path as `muse read`) so a PDF dropped in the notes dir is
  * indexed + retrievable like a markdown note; everything else is read
@@ -212,7 +222,7 @@ async function walkMarkdown(dir: string): Promise<readonly { path: string; mtime
       if (entry.name.startsWith(".")) continue;
       if (entry.isDirectory()) {
         stack.push(full);
-      } else if (entry.isFile() && /\.(md|markdown|txt|pdf)$/i.test(entry.name)) {
+      } else if (entry.isFile() && NOTE_FILE_RE.test(entry.name)) {
         const s = await stat(full);
         out.push({ mtimeMs: s.mtimeMs, path: full });
       }

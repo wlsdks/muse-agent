@@ -766,6 +766,25 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   "who is my manager?"` → "your manager is Sarah Chen … [contact: Sarah Chen]" (cited).
   (3828df14)
 
+- [x] **P37-25 Muse now perceives notes in MORE formats — your `.org` / `.rst` /
+  `.mdx` notes are indexed, not silently invisible.** Probing the corpus perception
+  exposed a real gap: a `.txt` note was indexed and answered, but a `.org` (Emacs
+  org-mode) note dropped in the same dir was SILENTLY SKIPPED ("2 embedded, 0 skipped"
+  — it never appeared). The notes-index walker's allow-list was `/(md|markdown|txt|pdf)/`,
+  so a power-user keeping notes in org-mode / reStructuredText / AsciiDoc / MDX / markdown
+  variants had those notes INVISIBLE to recall — even though the extractor already reads
+  every non-PDF file as UTF-8, so only the walk filter was gating them. Widened to ONE
+  shared `NOTE_FILE_RE` (md / markdown / mkd / mdown / mdx / txt / text / org / rst / adoc /
+  asciidoc / pdf) used by all three parallel filters (the indexer `walkMarkdown` +
+  `listNoteFiles` + `notesCorpusFileCount`), so they can't drift; binary/data formats
+  (.png/.json/.csv/.docx) stay excluded. Verified: 2 new `NOTE_FILE_RE` unit tests (matches
+  every prose format incl. UPPERCASE + nested paths; rejects .png/.json/.csv/.docx/.js and
+  a `.md.bak`) + a `listNoteFiles` test (a .org/.rst/.text corpus is listed, a .png ignored)
+  + @muse/cli 174 files / 1923 tests + `pnpm lint` 0/0 + a LIVE before/after on the loop PC:
+  the SAME `.org` note that was skipped before now embeds and answers —
+  `muse ask "when does Project Zephyr ship?"` → "Project Zephyr ships on August 14, 2026
+  [from zephyr.org]" (3 embedded incl zephyr.org + a .rst note, 0 skipped). (90411ca7)
+
 - [x] **P37-9 Action-log grounding — "did you send that? / what have you done?"
   (B3 transparency, gate a new surface).** `muse ask` now grounds on Muse's OWN
   audit log of acts taken on the user's behalf (sends, refusals) — the

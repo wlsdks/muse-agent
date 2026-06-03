@@ -25,6 +25,16 @@ describe("listNoteFiles", () => {
     expect((await listNoteFiles(dir, 3)).length).toBe(3);
     await rm(dir, { force: true, recursive: true });
   });
+
+  it("includes non-markdown prose formats (.org / .rst / .text) — a power-user's notes aren't invisible", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "muse-listnotes-org-"));
+    await writeFile(join(dir, "zephyr.org"), "x");
+    await writeFile(join(dir, "plants.rst"), "x");
+    await writeFile(join(dir, "diary.text"), "x");
+    await writeFile(join(dir, "photo.png"), "x"); // still ignored
+    expect(await listNoteFiles(dir)).toEqual(["diary.text", "plants.rst", "zephyr.org"]);
+    await rm(dir, { force: true, recursive: true });
+  });
 });
 
 describe("formatCorpusOverview", () => {

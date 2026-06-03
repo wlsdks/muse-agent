@@ -43,7 +43,7 @@ import { resolveReflectionsFile } from "./commands-reflections.js";
 import { classifyTier, type ModelTier } from "@muse/multi-agent";
 import type { Command } from "commander";
 
-import { cosine, isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js";
+import { cosine, isNotesIndexStale, NOTE_FILE_RE, reindexNotes } from "./commands-notes-rag.js";
 import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles, type RecallHit } from "./commands-recall.js";
 import { linkExpandRefs } from "./notes-links.js";
 import { formatConnectionsSection } from "./commands-today.js";
@@ -1003,7 +1003,7 @@ export async function listNoteFiles(dir: string, max = 40): Promise<string[]> {
       const full = join(current, entry.name);
       if (entry.isDirectory()) {
         stack.push(full);
-      } else if (entry.isFile() && /\.(md|markdown|txt|pdf)$/iu.test(entry.name)) {
+      } else if (entry.isFile() && NOTE_FILE_RE.test(entry.name)) {
         out.push(relative(dir, full));
       }
     }
@@ -1038,7 +1038,7 @@ export async function notesCorpusFileCount(dir: string): Promise<number> {
       if (entry.name.startsWith(".")) continue;
       if (entry.isDirectory()) {
         stack.push(join(current, entry.name));
-      } else if (entry.isFile() && /\.(md|markdown|txt|pdf)$/iu.test(entry.name)) {
+      } else if (entry.isFile() && NOTE_FILE_RE.test(entry.name)) {
         count += 1;
       }
     }

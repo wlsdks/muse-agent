@@ -3,7 +3,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { chunkText, cosine, defaultIndexPath, extractDocumentText, isNotesIndexStale, parseRagBoundedInt, reindexNotes } from "./commands-notes-rag.js";
+import { chunkText, cosine, defaultIndexPath, extractDocumentText, isNotesIndexStale, NOTE_FILE_RE, parseRagBoundedInt, reindexNotes } from "./commands-notes-rag.js";
+
+describe("NOTE_FILE_RE — the corpus indexes prose formats beyond .md/.txt", () => {
+  it("matches markdown + plain-text + markup note formats (so org/rst/mdx notes aren't invisible)", () => {
+    for (const name of ["a.md", "a.markdown", "a.mkd", "a.mdown", "a.mdx", "a.txt", "a.text", "a.org", "a.rst", "a.adoc", "a.asciidoc", "a.pdf", "A.ORG", "deep/path/note.org"]) {
+      expect(NOTE_FILE_RE.test(name)).toBe(true);
+    }
+  });
+
+  it("does NOT match binary / data / non-note formats", () => {
+    for (const name of ["a.png", "a.json", "a.csv", "a.docx", "a.xlsx", "a.zip", "a.js", "a", "a.orgx", "note.md.bak"]) {
+      expect(NOTE_FILE_RE.test(name)).toBe(false);
+    }
+  });
+});
 
 // Minimal hand-built PDF with one extractable text line — enough for
 // pdf-parse to recover the body without a binary fixture file.
