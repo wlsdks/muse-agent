@@ -5,7 +5,38 @@ import { dirname } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { BRIEF_AUDIO_PLAYER_TIMEOUT_MS, isOutsideActiveHours, playAudioFile, playSynthesizedAudio, resolveUserName, unscheduledTimesInBrief } from "./commands-brief.js";
+import { BRIEF_AUDIO_PLAYER_TIMEOUT_MS, isOutsideActiveHours, playAudioFile, playSynthesizedAudio, resolveUserName, selectBriefOverdue, unscheduledTimesInBrief } from "./commands-brief.js";
+
+describe("selectBriefOverdue — the morning brief's OVERDUE heads-up (still actionable today)", () => {
+  const now = new Date("2026-06-04T09:00:00Z");
+  const past = new Date(now.getTime() - 3 * 86_400_000).toISOString();
+  const future = new Date(now.getTime() + 3 * 86_400_000).toISOString();
+  const task = (id: string, status: string, dueAt?: string) => ({ dueAt, id, status, title: `task ${id}` });
+  const reminder = (text: string, status: "pending" | "fired", dueAt: string) => ({ createdAt: past, dueAt, id: text, status, text });
+
+  it("flags an OPEN task past its due date; ignores a future-due open task, a done task, and a no-date task", () => {
+    const { tasks } = selectBriefOverdue(
+      [task("t1", "open", past), task("t2", "open", future), task("t3", "done", past), task("t4", "open")],
+      [], now
+    );
+    expect(tasks.map((t) => t.id)).toEqual(["t1"]);
+  });
+
+  it("flags a PENDING reminder past its due; ignores a future-due one and a fired one", () => {
+    const { reminders } = selectBriefOverdue(
+      [], [reminder("r-past", "pending", past), reminder("r-future", "pending", future), reminder("r-fired", "fired", past)], now
+    );
+    expect(reminders.map((r) => r.text)).toEqual(["r-past"]);
+  });
+
+  it("sorts most-overdue-first and returns empty lists when nothing is overdue", () => {
+    const older = new Date(now.getTime() - 9 * 86_400_000).toISOString();
+    const { tasks } = selectBriefOverdue([task("recent", "open", past), task("older", "open", older)], [], now);
+    expect(tasks.map((t) => t.id)).toEqual(["older", "recent"]); // oldest due first
+    expect(selectBriefOverdue([task("future", "open", future)], [reminder("soon", "pending", future)], now))
+      .toEqual({ reminders: [], tasks: [] });
+  });
+});
 
 describe("unscheduledTimesInBrief — the brief surface's fabricated-time gate (fail-open)", () => {
   // Fact sheet times: 09:30 (now line), 15:00 + 16:00 (event), 18:00 (reminder).

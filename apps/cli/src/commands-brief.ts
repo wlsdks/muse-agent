@@ -234,6 +234,35 @@ export function unscheduledTimesInBrief(briefProse: string, factSheet: string, n
   return out;
 }
 
+/**
+ * The OVERDUE slice of the morning brief: open tasks + pending reminders whose
+ * due moment is ALREADY PAST. Surfaced because the morning is when these are
+ * still ACTIONABLE — the user can act today — whereas the prospective "due in
+ * next 24h" list excludes anything past `now` and the evening recap flags them
+ * too late to act. Pure (no IO, no model) so the deterministic fact sheet stays
+ * testable. Each list is sorted most-overdue-first.
+ */
+export function selectBriefOverdue(
+  tasks: readonly PersistedTask[],
+  reminders: readonly PersistedReminder[],
+  now: Date
+): { readonly tasks: readonly PersistedTask[]; readonly reminders: readonly PersistedReminder[] } {
+  const nowMs = now.getTime();
+  const pastDue = (iso: string | undefined): boolean => {
+    if (!iso) return false;
+    const ms = new Date(iso).getTime();
+    return Number.isFinite(ms) && ms < nowMs;
+  };
+  return {
+    reminders: reminders
+      .filter((r) => r.status === "pending" && pastDue(r.dueAt))
+      .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()),
+    tasks: tasks
+      .filter((t) => t.status === "open" && pastDue(t.dueAt))
+      .sort((a, b) => new Date(a.dueAt!).getTime() - new Date(b.dueAt!).getTime())
+  };
+}
+
 export function registerBriefCommand(program: Command, io: ProgramIO): void {
   program
     .command("brief")
@@ -322,10 +351,11 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
       // ("ping me at 3 PM about the dentist"); the brief should
       // surface them alongside tasks + events so nothing slips.
       let dueReminders: readonly PersistedReminder[] = [];
+      let allReminders: readonly PersistedReminder[] = [];
       try {
         const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
-        const all = await readReminders(remindersFile);
-        dueReminders = all
+        allReminders = await readReminders(remindersFile);
+        dueReminders = allReminders
           .filter((r) => r.status === "pending")
           .filter((r) => {
             const due = new Date(r.dueAt).getTime();
@@ -336,6 +366,10 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
       } catch {
         // reminders file missing or unreadable — brief still works
       }
+
+      // OVERDUE — past their due moment but still open/pending. The morning is
+      // when these are still ACTIONABLE; lead with them.
+      const overdue = selectBriefOverdue(tasks, allReminders, now);
 
       // Follow-ups the user is DUE on — check-ins for things they said they'd do
       // ("call the dentist") whose due moment has arrived. The daemon delivers
@@ -354,6 +388,9 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
       const nowIso = now.toISOString();
       const factSheet = [
         `Today: ${formatLocalDate(nowIso)} ${now.toLocaleDateString("en-US", { weekday: "long" })} ${formatLocalTime(nowIso)} local`,
+        `OVERDUE — past due, still open, act today (${(overdue.tasks.length + overdue.reminders.length).toString()}):`,
+        ...overdue.tasks.slice(0, 5).map((t) => `  ⚠ ${t.title} (was due ${t.dueAt ? formatLocalDateTime(t.dueAt) : "?"})`),
+        ...overdue.reminders.slice(0, 5).map((r) => `  ⚠ ${r.text} (was due ${formatLocalDateTime(r.dueAt)})`),
         `Open tasks: ${openTasks.length.toString()}`,
         `Tasks due in next 24h: ${dueSoon.length.toString()}`,
         ...dueSoon.slice(0, 5).map((t) => `  · ${t.title} (due ${t.dueAt ? formatLocalDateTime(t.dueAt) : "no date"})`),
@@ -384,7 +421,8 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
         ...(routineNote ? [routineNote] : []),
         "Compose a brief summary in 2–3 sentences, in the user's preferred language.",
         "Open with a short greeting that matches the time of day (and the routine-window hint above).",
-        "Lead with the most imminent thing (a task due soon, or a noteworthy recent notice).",
+        "If there are OVERDUE items (past their due date), LEAD with them — they are the most time-sensitive AND the user can still act on them today; do not bury them under upcoming items.",
+        "Otherwise lead with the most imminent thing (a task due soon, or a noteworthy recent notice).",
         "If there are follow-ups the user is due on (things they said they'd do), gently surface one — a time-sensitive personal commitment matters more than a routine task.",
         "If nothing is imminent, say so briefly and suggest one useful action.",
         knownUserName && knownUserName.length > 0
