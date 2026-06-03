@@ -10,6 +10,8 @@
 import { readFile, readdir } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 
+import { decodeHeaderValue, extractBody, parseHeaders } from "./mbox-ingest.js";
+
 export interface PdfParsed {
   readonly text: string;
   readonly pageCount: number;
@@ -53,6 +55,12 @@ export async function extractDocumentText(filePath: string, buffer: Buffer): Pro
   if (isPdfDocument(filePath, buffer)) {
     return parsePdfBuffer(buffer);
   }
+  if (isEmlDocument(filePath)) {
+    // A saved email (.eml) is raw RFC822/MIME — headers, quoted-printable/base64
+    // bodies, multipart boundaries. Grounding on that noise buries the message;
+    // extract the subject/sender + decoded readable body instead.
+    return { pageCount: 1, text: emlToText(buffer.toString("utf8")) };
+  }
   if (isLikelyBinary(buffer)) {
     throw new Error(`'${basename(filePath)}' looks binary — muse read handles PDFs and text files (.txt/.md/.log/.csv).`);
   }
@@ -69,6 +77,30 @@ export async function extractDocumentText(filePath: string, buffer: Buffer): Pro
 export function isHtmlDocument(filePath: string): boolean {
   const lower = filePath.toLowerCase();
   return lower.endsWith(".html") || lower.endsWith(".htm");
+}
+
+/** A saved email message, by extension (.eml). */
+export function isEmlDocument(filePath: string): boolean {
+  return filePath.toLowerCase().endsWith(".eml");
+}
+
+/**
+ * Reduce a raw .eml (RFC822/MIME) to readable text to ground on: the decoded
+ * Subject / From / Date plus the decoded body (the first text/plain part of a
+ * multipart, quoted-printable / base64 unwound, HTML stripped) — reusing the
+ * same MIME parser `muse read --mbox` ingest uses, so an email reads as the
+ * message, not as raw headers and `=3D`-encoded markup. Exported for testing.
+ */
+export function emlToText(rawEml: string): string {
+  const parsed = parseHeaders(rawEml);
+  const header = (name: string): string => decodeHeaderValue(parsed.headers.get(name) ?? "").trim();
+  const lines = [
+    header("subject") ? `Subject: ${header("subject")}` : "",
+    header("from") ? `From: ${header("from")}` : "",
+    (parsed.headers.get("date") ?? "").trim() ? `Date: ${(parsed.headers.get("date") ?? "").trim()}` : ""
+  ].filter((line) => line.length > 0);
+  const body = extractBody(parsed).trim();
+  return [lines.join("\n"), body].filter((part) => part.length > 0).join("\n\n").trim();
 }
 
 const NAMED_HTML_ENTITIES: Record<string, string> = {
@@ -103,7 +135,7 @@ export function htmlToText(html: string): string {
 }
 
 /** Extensions `extractDocumentText` can turn into note text. */
-export const SUPPORTED_DOC_EXT = new Set([".pdf", ".txt", ".md", ".markdown", ".log", ".csv", ".html", ".htm"]);
+export const SUPPORTED_DOC_EXT = new Set([".pdf", ".txt", ".md", ".markdown", ".log", ".csv", ".html", ".htm", ".eml"]);
 
 /** Recursively collect supported document files under `dir` (skips hidden + `.processed`), sorted. */
 export async function walkDocuments(dir: string): Promise<string[]> {

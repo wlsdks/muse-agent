@@ -419,7 +419,32 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   the wg0 interface [from clipboard]" with its receipt, and a copied grocery list
   asked "what is the capital of France?" honestly refuses ("I don't have that
   information… [from no relevant source]" — no invented Paris). cli 168 files /
-  1804 tests + `pnpm lint` 0/0. (this commit)
+  1804 tests + `pnpm lint` 0/0. (18894e4a)
+
+- [x] **P37-20 `muse ask --file <message>.eml` grounds on a saved email's decoded
+  body + subject, not raw MIME.** `muse read` / `muse ask --file` handled PDF / HTML /
+  text but treated a saved email (`.eml`) as raw bytes — so the model saw RFC822
+  headers, multipart boundaries, and `quoted-printable` / `base64` noise
+  (`Content-Transfer-Encoding: quoted-printable … 5=25`) instead of the message,
+  burying the content it should ground on. The RFC822/MIME parser already existed
+  (`parseHeaders` / `extractBody` / `decodeHeaderValue` in apps/cli/src/mbox-ingest.ts)
+  but was wired only to `--mbox` ingest. Added `isEmlDocument` + `emlToText` to
+  apps/cli/src/document-reader.ts that REUSE that parser to emit the decoded
+  Subject / From / Date plus the readable body (the first text/plain part of a
+  multipart, quoted-printable / base64 unwound, HTML stripped); `extractDocumentText`
+  and the `muse ask --file` branch route a `.eml` through it (before the binary check,
+  since its text headers never trip it), and `.eml` joins `SUPPORTED_DOC_EXT` so a
+  folder of emails ingests too. Proof: 3 new unit tests in
+  apps/cli/src/document-reader.test.ts (an `=?UTF-8?B?…?=` subject is decoded, the
+  text/plain part wins over text/html, `5=25`→`5%` and a soft-break / `=3F`→`?` are
+  unwound, and `extractDocumentText` returns one page of clean text with no
+  `Content-Transfer-Encoding` left) + the full @muse/cli suite green (169 files / 1824
+  tests) + LIVE on the loop PC: `muse ask --file msg.eml "by how much must the Q3
+  budget drop?"` over an email whose QP body says `5=25` answers "must drop by 5%
+  [from msg.eml]" with the decoded receipt (raw bytes would have shown `5=25` and the
+  headers). cli 169 files / 1824 tests + `pnpm lint` 0/0 — a user can now ask Muse
+  about a saved email the same way they ask about a PDF or web page, grounded on the
+  message itself. (this commit)
 
 **P40 — Actuation usability: Muse understands natural-language dates.** The
 "do" side is only as good as the words a user actually types.

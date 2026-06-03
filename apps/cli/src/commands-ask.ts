@@ -49,7 +49,7 @@ import { formatConnectionsSection } from "./commands-today.js";
 import { embed } from "./embed.js";
 import { buildEpisodeIndex, defaultEpisodeIndexFile, episodeIndexStale, loadEpisodeIndex, saveEpisodeIndex } from "./episode-index.js";
 import { readClipboardText } from "./clipboard-reader.js";
-import { extractDirectoryDocuments, htmlToText, isHtmlDocument, isPdfDocument, parsePdfBuffer } from "./document-reader.js";
+import { emlToText, extractDirectoryDocuments, htmlToText, isEmlDocument, isHtmlDocument, isPdfDocument, parsePdfBuffer } from "./document-reader.js";
 import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
 import { resolvePersona } from "./program-helpers.js";
 import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
@@ -1650,6 +1650,13 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             } catch (pdfErr) {
               io.stderr(`muse: --file ${fileLabel} could not be read as a PDF (${pdfErr instanceof Error ? pdfErr.message : String(pdfErr)}) — I won't ground on it.\n`);
             }
+          } else if (isEmlDocument(fileLabel)) {
+            // A saved email — extract the decoded subject/sender + readable body
+            // (reusing the mbox MIME parser) so it grounds as the message, not raw
+            // RFC822 headers and quoted-printable/base64 noise. Before the binary
+            // check: an .eml's text headers never trip it, and a base64 part inside
+            // is exactly what the parser decodes.
+            fileText = emlToText(bytes.toString("utf8"));
           } else if (looksLikeBinaryContent(bytes)) {
             // A non-PDF binary (image, archive, office doc): refuse — feeding
             // garbled UTF-8 to the model makes it hallucinate content and cite

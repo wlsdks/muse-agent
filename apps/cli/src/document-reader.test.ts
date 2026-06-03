@@ -4,7 +4,52 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { extractDirectoryDocuments, extractDocumentText, htmlToText, isHtmlDocument, isLikelyBinary, isPdfDocument, parsePdfBuffer, walkDocuments } from "./document-reader.js";
+import { emlToText, extractDirectoryDocuments, extractDocumentText, htmlToText, isEmlDocument, isHtmlDocument, isLikelyBinary, isPdfDocument, parsePdfBuffer, walkDocuments } from "./document-reader.js";
+
+const SAMPLE_EML = [
+  "From: Jane Park <jane@globex.com>",
+  "To: me@example.com",
+  "Subject: =?UTF-8?B?UTMgYnVkZ2V0IOKAlCByZXZpZXc=?=",
+  "Date: Tue, 03 Jun 2026 09:00:00 +0000",
+  "Content-Type: multipart/alternative; boundary=\"BNDRY\"",
+  "",
+  "--BNDRY",
+  "Content-Type: text/plain; charset=UTF-8",
+  "Content-Transfer-Encoding: quoted-printable",
+  "",
+  "Hi, the Q3 budget needs to drop by 5=25 before Friday. Can=",
+  " you confirm the headcount=3F",
+  "--BNDRY",
+  "Content-Type: text/html; charset=UTF-8",
+  "",
+  "<p>ignored html part</p>",
+  "--BNDRY--"
+].join("\r\n");
+
+describe("isEmlDocument / emlToText — ground a saved email on its message, not raw MIME", () => {
+  it("recognises only .eml by extension", () => {
+    expect(isEmlDocument("/x/message.eml")).toBe(true);
+    expect(isEmlDocument("/x/MESSAGE.EML")).toBe(true);
+    expect(isEmlDocument("/x/notes.txt")).toBe(false);
+  });
+
+  it("decodes the encoded-word subject, picks the text/plain part, and unwinds quoted-printable", () => {
+    const text = emlToText(SAMPLE_EML);
+    expect(text).toContain("Subject: Q3 budget — review"); // =?UTF-8?B?…?= decoded
+    expect(text).toContain("From: Jane Park <jane@globex.com>");
+    expect(text).toContain("the Q3 budget needs to drop by 5% before Friday"); // 5=25 → 5%, soft break joined
+    expect(text).toContain("confirm the headcount?"); // =3F → ?
+    expect(text).not.toContain("ignored html part"); // the text/plain part wins over text/html
+    expect(text).not.toContain("=3F"); // raw QP gone
+  });
+
+  it("extractDocumentText routes a .eml through the MIME parser (one page of clean text)", async () => {
+    const parsed = await extractDocumentText("/x/message.eml", Buffer.from(SAMPLE_EML, "utf8"));
+    expect(parsed.pageCount).toBe(1);
+    expect(parsed.text).toContain("Q3 budget");
+    expect(parsed.text).not.toContain("Content-Transfer-Encoding");
+  });
+});
 
 /** Build a tiny but VALID single-page PDF whose text layer contains `text`. */
 function makePdf(text: string): Buffer {
