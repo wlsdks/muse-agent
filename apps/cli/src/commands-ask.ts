@@ -732,6 +732,7 @@ export function contactMatchScore(contact: Contact, queryTokens: ReadonlySet<str
   add(contact.name);
   add(contact.handle);
   add(contact.email);
+  add(contact.relationship);
   for (const alias of contact.aliases ?? []) {
     add(alias);
   }
@@ -2056,6 +2057,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           .map((c, i) => {
             const birthday = formatContactBirthday(c.birthday);
             const fields = [
+              c.relationship ? `your ${c.relationship}` : undefined,
               c.email ? `email ${c.email}` : undefined,
               c.phone ? `phone ${c.phone}` : undefined,
               c.handle ? `handle ${c.handle}` : undefined,

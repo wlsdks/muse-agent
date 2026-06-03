@@ -34,6 +34,13 @@ describe("contactMatchScore — query→contact relevance for muse ask grounding
   it("a more-specific question (full name) scores higher than a partial", () => {
     expect(contactMatchScore(sarah, tokens("email sarah chen"))).toBeGreaterThan(contactMatchScore(sarah, tokens("email sarah")));
   });
+
+  it("matches on the RELATIONSHIP so 'who is my manager?' surfaces the right contact", () => {
+    const boss: Contact = { id: "c3", name: "Dana Wu", email: "dana@example.com", relationship: "manager" };
+    expect(contactMatchScore(boss, tokens("who is my manager"))).toBeGreaterThan(0);
+    // a contact with no relationship doesn't get falsely surfaced by the role query
+    expect(contactMatchScore(sarah, tokens("who is my manager"))).toBe(0);
+  });
 });
 
 import { formatContactBirthday } from "./commands-ask.js";

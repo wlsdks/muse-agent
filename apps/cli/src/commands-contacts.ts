@@ -22,10 +22,12 @@ function contactsFile(): string {
 
 function describeContact(contact: Contact): string {
   const aliases = contact.aliases && contact.aliases.length > 0 ? ` (aka ${contact.aliases.join(", ")})` : "";
+  const role = contact.relationship ? ` [your ${contact.relationship}]` : "";
   const reach = [contactIdentifier(contact), contact.phone]
     .filter((v): v is string => typeof v === "string" && v.length > 0)
     .join(" · ");
-  return `${contact.name}${aliases}${reach ? ` — ${reach}` : " — (no email/handle/phone)"}`;
+  const reachLabel = reach ? ` — ${reach}` : contact.relationship ? "" : " — (no email/handle/phone)";
+  return `${contact.name}${aliases}${role}${reachLabel}`;
 }
 
 interface AddOptions {
@@ -34,6 +36,7 @@ interface AddOptions {
   readonly phone?: string;
   readonly alias?: readonly string[];
   readonly birthday?: string;
+  readonly relationship?: string;
 }
 
 const BIRTHDAY_RE = /^(?:\d{4}-)?(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/u;
@@ -50,15 +53,16 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
     .option("--phone <phone>", "Phone number (e.g. +1 415 555 0101)")
     .option("--alias <alias...>", "Alternate names this contact resolves from")
     .option("--birthday <date>", "Birthday as MM-DD or YYYY-MM-DD (for `muse contacts birthdays`)")
+    .option("--relationship <role>", "How they relate to you, e.g. 'manager', 'wife', 'doctor' — powers \"who is my manager?\" recall")
     .action(async (nameParts: readonly string[], options: AddOptions) => {
       const name = nameParts.join(" ").trim();
       if (name.length === 0) {
-        io.stderr("usage: muse contacts add <name> [--email <e>] [--handle <h>] [--phone <p>] [--alias <a...>] [--birthday <MM-DD>]\n");
+        io.stderr("usage: muse contacts add <name> [--email <e>] [--handle <h>] [--phone <p>] [--alias <a...>] [--birthday <MM-DD>] [--relationship <role>]\n");
         process.exitCode = 1;
         return;
       }
-      if (!options.email && !options.handle && !options.phone) {
-        io.stderr("muse contacts add: provide at least one of --email / --handle / --phone so the contact can be reached.\n");
+      if (!options.email && !options.handle && !options.phone && !options.relationship) {
+        io.stderr("muse contacts add: provide at least one of --email / --handle / --phone (to reach them) or --relationship (to recall them).\n");
         process.exitCode = 1;
         return;
       }
@@ -76,7 +80,8 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
         ...(options.handle ? { handle: options.handle.trim() } : {}),
         ...(options.phone ? { phone: options.phone.trim() } : {}),
         ...(aliases.length > 0 ? { aliases } : {}),
-        ...(birthday && birthday.length > 0 ? { birthday } : {})
+        ...(birthday && birthday.length > 0 ? { birthday } : {}),
+        ...(options.relationship && options.relationship.trim().length > 0 ? { relationship: options.relationship.trim() } : {})
       };
       await addContact(contactsFile(), contact);
       io.stdout(`Added ${describeContact(contact)}\n`);

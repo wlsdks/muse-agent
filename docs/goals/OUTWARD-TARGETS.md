@@ -417,6 +417,26 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   can now ask Muse when someone's birthday is and get it cited from their own
   contacts. (5f6d39fd)
 
+- [x] **P37-20 A contact's RELATIONSHIP to you is recordable + groundable — the
+  relationship-graph foundation.** Contacts were flat cards (name / email / phone /
+  handle / birthday) with NO role, so "who is my manager / doctor / landlord?" was
+  unanswerable — a ❌ MISSING capability-map gap. Added a free-text `relationship`
+  field to `Contact` (`@muse/mcp`: serialize + read-boundary coerce, a non-string
+  dropped like every other field), `muse contacts add --relationship <role>` (a
+  relationship-ONLY contact is now valid — recall doesn't need reachability), shown
+  in `muse contacts list` ("Dana Wu [your manager]"), and wired into `muse ask`
+  grounding: `contactMatchScore` now matches the relationship token (so "who is my
+  manager?" surfaces the manager) and the contacts block renders "your manager" so
+  the model can answer + cite. NOT an identifier — it never resolves a recipient
+  (that stays name / phone / email / handle), so it can't mis-route an outbound.
+  Proof: a `contactMatchScore` test (a role query surfaces the role-bearing contact,
+  scores 0 on a no-relationship contact) + a store round-trip test (relationship
+  serialized + read back; a numeric one dropped) — `@muse/mcp` 170 / 1408 + `@muse/cli`
+  172 / 1886, `pnpm check` exit 0, `pnpm lint` 0/0, and a LIVE round-trip on qwen3:8b:
+  `muse contacts add Dana Wu --relationship manager` then `muse ask "who is my
+  manager?"` → "your manager is Dana Wu [contact: Dana Wu]" (grounded + cited on the
+  contact). `67ccef38`.
+
 - [x] **P37-9 Action-log grounding — "did you send that? / what have you done?"
   (B3 transparency, gate a new surface).** `muse ask` now grounds on Muse's OWN
   audit log of acts taken on the user's behalf (sends, refusals) — the

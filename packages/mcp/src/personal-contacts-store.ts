@@ -30,6 +30,13 @@ export interface Contact {
   readonly aliases?: readonly string[];
   /** Birthday as `MM-DD` or `YYYY-MM-DD`. Year (if given) is ignored for the recurring reminder. */
   readonly birthday?: string;
+  /**
+   * How this person relates to the user — a free-text role, e.g. "manager",
+   * "wife", "doctor", "landlord". Powers "who is my manager?" recall (the
+   * relationship-graph foundation); NOT an identifier, so it never resolves a
+   * recipient (that stays name / phone / email / handle).
+   */
+  readonly relationship?: string;
 }
 
 export interface UpcomingBirthday {
@@ -216,7 +223,8 @@ export function serializeContact(contact: Contact): JsonObject {
     ...(contact.handle ? { handle: contact.handle } : {}),
     ...(contact.phone ? { phone: contact.phone } : {}),
     ...(contact.aliases && contact.aliases.length > 0 ? { aliases: [...contact.aliases] } : {}),
-    ...(contact.birthday ? { birthday: contact.birthday } : {})
+    ...(contact.birthday ? { birthday: contact.birthday } : {}),
+    ...(contact.relationship ? { relationship: contact.relationship } : {})
   };
 }
 
@@ -288,6 +296,7 @@ function coerceContact(value: unknown): Contact | undefined {
   const handle = str(c.handle);
   const phone = str(c.phone);
   const birthday = str(c.birthday);
+  const relationship = str(c.relationship);
   return {
     id: c.id,
     name: c.name,
@@ -295,6 +304,7 @@ function coerceContact(value: unknown): Contact | undefined {
     ...(handle !== undefined ? { handle } : {}),
     ...(phone !== undefined ? { phone } : {}),
     ...(aliases && aliases.length > 0 ? { aliases } : {}),
-    ...(birthday !== undefined ? { birthday } : {})
+    ...(birthday !== undefined ? { birthday } : {}),
+    ...(relationship !== undefined ? { relationship } : {})
   };
 }

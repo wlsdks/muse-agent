@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { readContacts, resolveContact } from "../src/index.js";
+import { readContacts, resolveContact, serializeContact, type Contact } from "../src/index.js";
 
 let dir: string;
 let file: string;
@@ -70,6 +70,21 @@ describe("readContacts — tolerant read coerces wrong-typed fields from a hand-
 
     // c1 still resolves by name (it wasn't dropped, just its bad field).
     expect(resolveContact(contacts, "Mom").status).toBe("resolved");
+  });
+
+  it("round-trips the `relationship` field and drops a non-string one", async () => {
+    const dana: Contact = { id: "c1", name: "Dana Wu", email: "dana@x.com", relationship: "manager" };
+    // serialize emits relationship...
+    expect(serializeContact(dana).relationship).toBe("manager");
+    // ...and a written store reads it back, while a numeric relationship is dropped.
+    await writeFile(
+      file,
+      JSON.stringify({ contacts: [serializeContact(dana), { id: "c2", name: "Bad", email: "b@x.com", relationship: 7 }] }),
+      "utf8"
+    );
+    const contacts = await readContacts(file);
+    expect(contacts.find((c) => c.id === "c1")!.relationship).toBe("manager");
+    expect(contacts.find((c) => c.id === "c2")!.relationship).toBeUndefined(); // numeric relationship dropped
   });
 
   it("an entry missing id or name is still dropped entirely", async () => {
