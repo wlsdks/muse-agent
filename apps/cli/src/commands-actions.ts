@@ -8,7 +8,7 @@
  */
 
 import { resolveActionLogFile } from "@muse/autoconfigure";
-import { queryActionLog, serializeActionLogEntry, verifyActionLogChainFile, type ActionLogEntry } from "@muse/mcp";
+import { decryptActionLogAtRest, encryptActionLogAtRest, isActionLogEncrypted, queryActionLog, serializeActionLogEntry, verifyActionLogChainFile, type ActionLogEntry } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -36,7 +36,7 @@ function formatEntry(e: ActionLogEntry): string {
 }
 
 export function registerActionsCommands(program: Command, io: ProgramIO): void {
-  program
+  const actions = program
     .command("actions")
     .description("Review what Muse did autonomously on your behalf (the accountability log)")
     .option("--user <id>", "owner bucket (or 'all')", "local")
@@ -110,5 +110,63 @@ export function registerActionsCommands(program: Command, io: ProgramIO): void {
         io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
         command.error("actions failed", { exitCode: 1 });
       }
+    });
+
+  actions
+    .command("encrypt")
+    .description("Encrypt the action log at rest (AES-256-GCM; key = MUSE_MEMORY_KEY or per-host)")
+    .option("--json", "Emit a structured result")
+    .action(async (options: { readonly json?: boolean }) => {
+      const file = actionLogFile();
+      const result = await encryptActionLogAtRest(file);
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ encrypted: true, file, ...result }, null, 2)}\n`);
+        return;
+      }
+      if (result.alreadyEncrypted) {
+        io.stdout(`Action log is already encrypted at rest (${file}).\n`);
+        return;
+      }
+      io.stdout(
+        `Encrypted action log at rest: ${file}\n` +
+        (result.backupPath
+          ? `Plaintext backup saved: ${result.backupPath}\n` +
+            `  ⚠ This backup is CLEARTEXT — it holds your full action history unencrypted.\n` +
+            `  Delete it once you've confirmed 'muse actions' still works with your key.\n`
+          : "") +
+        `Set MUSE_MEMORY_KEY to a stable secret so the key survives a host/user change.\n`
+      );
+    });
+
+  actions
+    .command("decrypt")
+    .description("Revert the action log to plaintext at rest")
+    .option("--json", "Emit a structured result")
+    .action(async (options: { readonly json?: boolean }) => {
+      const file = actionLogFile();
+      const result = await decryptActionLogAtRest(file);
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ encrypted: false, file, ...result }, null, 2)}\n`);
+        return;
+      }
+      io.stdout(
+        result.alreadyPlaintext
+          ? `Action log is already plaintext at rest (${file}).\n`
+          : `Reverted action log to plaintext at rest: ${file}\n`
+      );
+    });
+
+  actions
+    .command("encryption-status")
+    .description("Report whether the action log is encrypted at rest (no key needed)")
+    .option("--json", "Emit a structured result")
+    .action(async (options: { readonly json?: boolean }) => {
+      const file = actionLogFile();
+      const encrypted = await isActionLogEncrypted(file);
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ encrypted, file }, null, 2)}\n`);
+        return;
+      }
+      io.stdout(`Action log at rest: ${encrypted ? "ENCRYPTED" : "plaintext"} (${file})\n`);
     });
 }

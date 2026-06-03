@@ -328,6 +328,40 @@ the confided life sat in plaintext JSON behind OS file-perms only.
   a silently-deleted middle action AND a backdated `when` were each caught at the
   exact index with exit 1. `9ce96f8b`.
 
+- [x] **P44-4 `muse actions encrypt` encrypts your autonomous-action log at rest —
+  the record of everything Muse DID on your behalf is no longer plaintext on a
+  stolen laptop.** P44-1/P44-2 encrypted memory + episodes, but the action log
+  (`~/.muse/action-log.json` — what/why/when/result of every autonomous action:
+  who you messaged, what you booked, which door you locked) stayed CLEARTEXT JSON,
+  a detailed behavioural diary readable by anyone with disk access. Closed by
+  wrapping the store's read/write with the SAME red-teamed `encrypted-file` helper
+  episodes use (AES-256-GCM under `MUSE_MEMORY_KEY`/per-host): `readActionLog`
+  decrypts transparently and on a WRONG key THROWS fail-closed — an undecryptable
+  log is NOT corrupt and is NEVER quarantined-to-empty (that would erase the
+  history on a key mismatch); `writeActionLog`/`appendActionLog` peek-and-preserve
+  the on-disk format under the cross-process migration lock (0o600 kept). New
+  `muse actions encrypt` (one-shot, plaintext-backup-before-encrypt, idempotent),
+  `decrypt`, and `encryption-status` (format-only, no key). The P44-3 tamper-evident
+  hash chain is ORTHOGONAL — it lives in the plaintext entries, decrypted before
+  verification, so `muse actions --verify` still works through encryption (proven).
+  Verified deterministically (no model): 14 new contract-faithful tests
+  (`action-log-encryption.test.ts` — round-trip + on-disk-is-an-envelope + cleartext
+  action-text absent; wrong-key read/append/decrypt all fail-closed with the
+  ciphertext byte-unchanged + the right key still reads; plaintext backup;
+  idempotent; read-never-writes; status needs no key; corrupt PLAINTEXT still
+  quarantines; the hash chain VERIFIES through an encryption round-trip + a later
+  append; 15 concurrent appends on an encrypted store all survive with an intact
+  chain) + the 21 existing action-log tests unregressed + `pnpm check` exit 0 across
+  all 20 workspaces (the optional-`env` signature change is backward-compatible for
+  all 13 callers) + `pnpm lint` 0/0 + a LIVE `muse actions encrypt` round-trip:
+  plaintext→encrypt (cleartext backup saved + warning)→on-disk AES-256-GCM envelope
+  with the action text gone→`muse actions` decrypts and lists the entries→`--verify`
+  "chain intact — 2 linked entries verified"→a WRONG key fails closed without
+  emptying the log. mcp 1424 + pnpm check exit 0 + pnpm lint 0/0 + live encrypt
+  round-trip — a stolen laptop no longer reveals the diary of what Muse did for you,
+  extending "It can't tell anyone" to the action log while the accountability +
+  tamper-evidence guarantees stay intact. (6a8c4f8a)
+
 **P37 — Perception growth: read-only local connectors (loop-v2 B3).** The
 self-learning core (P36) is delivered end-to-end + felt; this axis grows what
 Muse can READ to know you — new local, read-only, per-source sources the agent

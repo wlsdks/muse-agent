@@ -24,11 +24,12 @@
  * is sealed by the NEXT append.
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
+
+import { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest, readMaybeEncrypted, withFileLock, writeMaybeEncrypted } from "./encrypted-file.js";
 
 export type ActionResult = "performed" | "refused" | "failed";
 
@@ -161,16 +162,17 @@ async function quarantineCorruptStore(file: string): Promise<void> {
   }
 }
 
-export async function readActionLog(file: string): Promise<readonly ActionLogEntry[]> {
-  let raw: string;
-  try {
-    raw = await fs.readFile(file, "utf8");
-  } catch {
+export async function readActionLog(file: string, env: NodeJS.ProcessEnv = process.env): Promise<readonly ActionLogEntry[]> {
+  // A WRONG key THROWS here (fail-closed) — propagate it; an undecryptable log is
+  // NOT corrupt and must NEVER be quarantined-to-empty (that would erase the
+  // user's confided action history on a key mismatch).
+  const { text } = await readMaybeEncrypted(file, env);
+  if (text === undefined) {
     return [];
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = JSON.parse(text) as unknown;
   } catch {
     await quarantineCorruptStore(file);
     return [];
@@ -184,23 +186,16 @@ export async function readActionLog(file: string): Promise<readonly ActionLogEnt
   );
 }
 
-async function writeActionLog(file: string, entries: readonly ActionLogEntry[]): Promise<void> {
-  const payload = `${JSON.stringify({ entries }, null, 2)}\n`;
-  // Unique per in-flight write: a `${pid}-${Date.now()}` tmp collides between
-  // two same-ms concurrent writers and one rename consumes the other's tmp →
-  // ENOENT. randomUUID guarantees uniqueness; serializeAppend below also
-  // serialises the read-modify-write so no entry is lost.
-  const tmp = `${file}.tmp-${process.pid.toString()}-${randomUUID()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  const handle = await fs.open(tmp, "w", 0o600);
-  try {
-    await handle.writeFile(payload, "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+async function writeActionLog(file: string, entries: readonly ActionLogEntry[], env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  const text = `${JSON.stringify({ entries }, null, 2)}\n`;
+  // Peek + write under the SAME cross-process lock the migration uses so an
+  // ordinary append can't race `encryptActionLogAtRest` and clobber it with a
+  // stale-format payload; format is preserved (encrypted stays encrypted,
+  // plaintext stays plaintext). atomicWriteFile keeps the 0o600 owner-only mode.
+  await withFileLock(file, async () => {
+    const encrypted = await isFileEncryptedAtRest(file);
+    await writeMaybeEncrypted(file, text, encrypted, env);
+  });
 }
 
 /**
@@ -214,16 +209,16 @@ async function writeActionLog(file: string, entries: readonly ActionLogEntry[]):
 // last-writer-wins read-modify-write. Serialise the whole append per file.
 const appendQueues = new Map<string, Promise<unknown>>();
 
-export async function appendActionLog(file: string, entry: ActionLogEntry): Promise<void> {
+export async function appendActionLog(file: string, entry: ActionLogEntry, env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const prior = appendQueues.get(file) ?? Promise.resolve();
   const op = async (): Promise<void> => {
-    const existing = await readActionLog(file);
+    const existing = await readActionLog(file, env);
     // Seal the new entry to the chain tip — its prevHash binds it to all prior
     // history, so a later deletion/edit/reorder breaks verification at a precise
     // index. The append queue already serialises the read-modify-write, so two
     // concurrent appends can't fork the chain.
     const chained: ActionLogEntry = { ...entry, prevHash: chainTipHash(existing) };
-    await writeActionLog(file, [...existing, chained]);
+    await writeActionLog(file, [...existing, chained], env);
   };
   const next = prior.then(op, op);
   appendQueues.set(file, next.then(() => undefined, () => undefined));
@@ -235,8 +230,8 @@ export async function appendActionLog(file: string, entry: ActionLogEntry): Prom
  * NOT `queryActionLog`, which re-sorts newest-first and would falsely report a
  * break. A missing file is a vacuously-intact empty chain.
  */
-export async function verifyActionLogChainFile(file: string): Promise<ActionLogChainVerification> {
-  return verifyActionLogChain(await readActionLog(file));
+export async function verifyActionLogChainFile(file: string, env: NodeJS.ProcessEnv = process.env): Promise<ActionLogChainVerification> {
+  return verifyActionLogChain(await readActionLog(file, env));
 }
 
 /**
@@ -246,9 +241,10 @@ export async function verifyActionLogChainFile(file: string): Promise<ActionLogC
  */
 export async function queryActionLog(
   file: string,
-  query: { readonly userId?: string } = {}
+  query: { readonly userId?: string } = {},
+  env: NodeJS.ProcessEnv = process.env
 ): Promise<readonly ActionLogEntry[]> {
-  const all = await readActionLog(file);
+  const all = await readActionLog(file, env);
   const scoped = query.userId ? all.filter((e) => e.userId === query.userId) : all;
   return [...scoped].sort((a, b) => {
     // Compare parsed instants, not raw ISO strings: lexicographic
@@ -294,4 +290,39 @@ function isActionLogEntry(value: unknown): value is ActionLogEntry {
     return false;
   }
   return e.result === "performed" || e.result === "refused" || e.result === "failed";
+}
+
+/**
+ * Canonical empty action-log body — seeded when encrypting an absent/empty store
+ * so the encrypted format is ESTABLISHED on disk (otherwise the first later
+ * append would peek "no file", land in plaintext, and silently drop the encrypt
+ * intent).
+ */
+const EMPTY_ACTION_LOG_BODY = `${JSON.stringify({ entries: [] }, null, 2)}\n`;
+
+/**
+ * One-shot migrate the action log to encryption-at-rest (AES-256-GCM under the
+ * shared MUSE_MEMORY_KEY / per-host fallback, the same envelope episodes + memory
+ * use). Snapshots a plaintext backup BEFORE encrypting, runs under the
+ * cross-process lock, and is idempotent. The tamper-evident hash chain is
+ * unaffected — it lives in the plaintext entries, decrypted before verification.
+ */
+export async function encryptActionLogAtRest(
+  file: string,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<{ readonly alreadyEncrypted: boolean; readonly backupPath?: string }> {
+  return encryptFileAtRest(file, env, { emptyContent: EMPTY_ACTION_LOG_BODY });
+}
+
+/** Reverse the migration — rewrite the action log as plaintext. Throws fail-closed on a wrong key. */
+export async function decryptActionLogAtRest(
+  file: string,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<{ readonly alreadyPlaintext: boolean }> {
+  return decryptFileAtRest(file, env);
+}
+
+/** Format-only check (no key needed) — is the action log encrypted at rest? */
+export async function isActionLogEncrypted(file: string): Promise<boolean> {
+  return isFileEncryptedAtRest(file);
 }
