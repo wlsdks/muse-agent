@@ -222,7 +222,24 @@ export class GoogleCalendarProvider implements CalendarProvider {
         );
       }
 
-      return await response.json() as T;
+      // Parse the 2xx body defensively: a third party CAN return a 2xx with a
+      // NON-JSON body (an HTML maintenance / proxy / captive-portal page, a
+      // truncated or empty body). `response.json()` would throw a raw,
+      // unwrapped SyntaxError that surfaces as an opaque crash — so read the
+      // text and turn a malformed body into the SAME typed CalendarProviderError
+      // the non-2xx path raises, with the status + a body snippet for triage.
+      const body = await response.text();
+      try {
+        return JSON.parse(body) as T;
+      } catch {
+        throw new CalendarProviderError(
+          this.id,
+          "MALFORMED_RESPONSE",
+          `Google Calendar returned a ${response.status.toString()} with a non-JSON body: ${body.slice(0, 200)}`.slice(0, 500),
+          undefined,
+          response.status
+        );
+      }
     }
   }
 

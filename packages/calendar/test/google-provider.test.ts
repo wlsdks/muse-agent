@@ -77,6 +77,16 @@ describe("GoogleCalendarProvider — OAuth + listEvents", () => {
     expect(events).toHaveLength(2);
     expect(fetch.apiCalls()).toHaveLength(2); // one retry (token mint shared)
   });
+
+  it("turns a 2xx with a NON-JSON body (HTML maintenance / proxy page) into a typed MALFORMED_RESPONSE, not an opaque SyntaxError", async () => {
+    const fetch = makeFetch(() => new Response("<html><body>503 Service Unavailable</body></html>", { status: 200 }));
+    await expect(provider(fetch.impl).listEvents(RANGE)).rejects.toMatchObject({ code: "MALFORMED_RESPONSE", status: 200 });
+  });
+
+  it("turns an EMPTY 2xx body into MALFORMED_RESPONSE (a 204 no-content is handled separately and does NOT error)", async () => {
+    const fetch = makeFetch(() => new Response("", { status: 200 }));
+    await expect(provider(fetch.impl).listEvents(RANGE)).rejects.toMatchObject({ code: "MALFORMED_RESPONSE", status: 200 });
+  });
 });
 
 describe("GoogleCalendarProvider — writes retry only a 429 rate-limit (never an ambiguous 5xx)", () => {
