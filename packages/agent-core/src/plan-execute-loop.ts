@@ -19,6 +19,7 @@ import type {
 } from "@muse/model";
 
 import {
+  classifyStepEffect,
   PlanExecutionError,
   PlanValidationFailedError,
   parsePlan,
@@ -163,13 +164,19 @@ export async function* streamPlanExecute(
     const toolResult = await runner.executeToolCall(context, synthesizedCall, tools);
     toolCallCount += 1;
 
-    const success = toolResult.result.status === "completed";
+    // A step is a real success only if the tool COMPLETED (didn't throw) AND its
+    // post-condition holds — otherwise a non-throwing failure (an MCP `isError`
+    // rendered as "Error: …" with status "completed", a `{ ok:false }` envelope)
+    // is silently counted as done and the synthesis fabricates success off it.
+    const completed = toolResult.result.status === "completed";
+    const effect = completed ? classifyStepEffect(toolResult.result.output) : { effectFailed: false };
+    const success = completed && !effect.effectFailed;
     executed.push({
       executed: toolResult,
       step,
       stepResult: {
         description: step.description,
-        error: success ? undefined : toolResult.result.error ?? "TOOL_ERROR",
+        error: success ? undefined : (completed ? effect.reason ?? "STEP_EFFECT_FAILED" : toolResult.result.error ?? "TOOL_ERROR"),
         output: success ? toolResult.result.output : null,
         success,
         tool: step.tool

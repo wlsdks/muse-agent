@@ -38,6 +38,23 @@ const pickyTool = (): MuseTool => ({
   },
 });
 
+// RETURNS an "Error: …" string (does NOT throw) on the sentinel — exactly how an
+// MCP tool's `isError` result surfaces (transport.ts prefixes "Error: ", the
+// executor keeps status "completed"). The post-condition must catch this.
+const softFailTool = (): MuseTool => ({
+  definition: {
+    description: "Echo a value; returns an Error string (no throw) on the sentinel.",
+    inputSchema: { properties: { value: { type: "string" } }, required: ["value"], type: "object" },
+    name: "echo_value",
+    risk: "read",
+  },
+  execute: async (args) => {
+    const value = String((args as { value: unknown }).value);
+    if (value === "soft") return "Error: upstream service returned 503";
+    return `echo: ${value}`;
+  },
+});
+
 const steer = (steps: readonly { tool: string; args: Record<string, unknown>; description: string }[]): string =>
   `do the steps\n\nDIAGNOSTIC_PLAN=${JSON.stringify(steps)}`;
 
@@ -144,6 +161,31 @@ describe("plan-execute trajectory (gap C — real assembly span sequence + step-
     const results = events.filter((e) => e.type === "plan-step-result") as Extract<PlanExecuteStreamEvent, { type: "plan-step-result" }>[];
     expect(results.map((e) => e.success)).toEqual([true, false]);
     expect(events.at(-1)?.type).toBe("synthesis-started"); // one success ⇒ still synthesises
+  });
+
+  it("marks a NON-THROWING failure (status 'completed' but an 'Error: …' output) as unsuccessful — the post-condition the old status check missed", async () => {
+    const tool = softFailTool();
+    const executor = new ToolExecutor({ registry: new ToolRegistry([tool]) });
+    // step 2's tool returns "Error: …" WITHOUT throwing → status stays "completed".
+    const planned = [
+      { tool: "echo_value", args: { value: "ok" }, description: "good" },
+      { tool: "echo_value", args: { value: "soft" }, description: "soft-fails (returns Error string)" },
+    ];
+    const prompt = steer(planned);
+    const { events } = await drain(streamPlanExecute(realRunner(provider, executor), context(prompt), provider, request(prompt, tool)));
+
+    const results = events.filter((e) => e.type === "plan-step-result") as Extract<PlanExecuteStreamEvent, { type: "plan-step-result" }>[];
+    expect(results.map((e) => e.success)).toEqual([true, false]); // the soft failure is now caught
+    expect(events.at(-1)?.type).toBe("synthesis-started"); // one real success ⇒ still synthesises
+  });
+
+  it("a SOLE non-throwing failed-effect step refuses synthesis (PLAN_ALL_STEPS_FAILED) instead of fabricating a done", async () => {
+    const tool = softFailTool();
+    const executor = new ToolExecutor({ registry: new ToolRegistry([tool]) });
+    const planned = [{ tool: "echo_value", args: { value: "soft" }, description: "the only step soft-fails" }];
+    const prompt = steer(planned);
+    await expect(drain(streamPlanExecute(realRunner(provider, executor), context(prompt), provider, request(prompt, tool))))
+      .rejects.toThrow(/Every plan step failed/);
   });
 
   it("StepEfficiency: a plan that re-calls the same (tool,args) is flagged as redundant", async () => {

@@ -147,8 +147,18 @@ P43 bullet is unbuilt.
   _Slice 1 (DELIVERED, this commit) — Google Calendar writes now survive a
   429 rate-limit (retry honouring Retry-After; a 5xx/network reject stays
   non-retried — safe for the non-idempotent insert). Closes the calendar
-  actuator's transient-failure gap (messaging already retried). Remaining:
-  messaging/calendar/email/HOME 429-retry all done (web stays single-shot by design — the all-actuator-retry sub-goal is COMPLETE); the plan-execute verify/replan loop remains.
+  actuator's transient-failure gap (messaging already retried). Verify-slice 1
+  (DELIVERED, `bd480ac0`) — the plan-execute loop now applies a per-step
+  POST-CONDITION (`classifyStepEffect`): a step whose tool COMPLETED without
+  throwing but returned a failure (an MCP `isError` rendered as "Error: …" with
+  status "completed", or a `{ ok:false }`/`{ error }` envelope) is now marked
+  FAILED instead of silently counted as done — so the synthesis won't fabricate
+  success off a failed tool call, and a sole failed-effect step refuses synthesis
+  (PLAN_ALL_STEPS_FAILED) rather than confidently lying. Empty output stays VALID
+  (empty-but-valid distinction). Remaining: messaging/calendar/email/HOME
+  429-retry all done (web stays single-shot by design — the all-actuator-retry
+  sub-goal is COMPLETE); the REPLAN-on-failure + re-run-verifyGrounding half of
+  verify/replan still remains (this slice is detection, not recovery).
   Decomposition → `docs/goals/P43-close-the-loop.md`. Bullet stays `[ ]`
   until a 2+-step task carries to a verified done through an injected
   failure._

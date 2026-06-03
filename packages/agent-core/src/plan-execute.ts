@@ -252,3 +252,80 @@ export function renderPlanResultSummary(results: readonly StepExecutionResult[])
     })
     .join("\n\n");
 }
+
+export interface StepEffectVerdict {
+  readonly effectFailed: boolean;
+  readonly reason?: string;
+}
+
+/**
+ * Post-condition on a step whose tool call COMPLETED (did not throw): did the
+ * EFFECT actually succeed? The plan loop otherwise counts any non-throwing tool
+ * as success — but an MCP tool returning `isError` is rendered as an "Error: …"
+ * string with status "completed" (see `transport.ts`), and some tools return a
+ * `{ ok:false }` / `{ error }` envelope without throwing. Those are FAILED
+ * effects the synthesis must NOT treat as evidence (a confident "done" built on
+ * a failed tool call is itself a fabrication). Conservative on purpose — an
+ * EMPTY output is VALID (an empty lookup is a legitimate result, not a failure),
+ * and ordinary content (even "no results found") is never flagged; only an
+ * explicit leading `Error:`/`Failed:` marker (the colon distinguishes it from
+ * content like "Error handling in Rust …") or a JSON failure envelope counts.
+ */
+export function classifyStepEffect(output: string | null): StepEffectVerdict {
+  // Tool outputs reach the loop WRAPPED by the policy sanitizer
+  // (`--- BEGIN TOOL DATA … --- END TOOL DATA ---`); classify the inner payload
+  // so an "Error: …" body inside the envelope is seen. No-op when unwrapped (the
+  // raw-string unit path). The integration test exercises the real wrapper, so a
+  // wrapper-format change can't silently defeat this.
+  const trimmed = unwrapToolData(output ?? "").trim();
+  if (trimmed.length === 0) {
+    return { effectFailed: false }; // empty-but-valid — not a failure
+  }
+  if (/^(error|failed|failure|exception)\s*:/i.test(trimmed)) {
+    return { effectFailed: true, reason: firstLine(trimmed) };
+  }
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const envelope = parsed as Record<string, unknown>;
+        if (typeof envelope["error"] === "string" && envelope["error"].trim().length > 0) {
+          return { effectFailed: true, reason: envelope["error"].trim() };
+        }
+        if (envelope["ok"] === false || envelope["success"] === false) {
+          return { effectFailed: true, reason: firstLine(trimmed) };
+        }
+      }
+    } catch {
+      // not JSON — fall through to "not failed" (ordinary content)
+    }
+  }
+  return { effectFailed: false };
+}
+
+function firstLine(text: string): string {
+  const line = text.split("\n", 1)[0] ?? text;
+  return line.length > 200 ? `${line.slice(0, 200)}…` : line;
+}
+
+/**
+ * Extract the payload from the sanitizer's `--- BEGIN/END TOOL DATA ---`
+ * envelope so the post-condition classifies the tool's actual output, not the
+ * wrapper header. Returns the input unchanged when no envelope is present.
+ */
+function unwrapToolData(text: string): string {
+  const lines = text.split("\n");
+  const begin = lines.findIndex((line) => /^-{3,}\s*BEGIN TOOL DATA\b/i.test(line));
+  const end = lines.findIndex((line) => /^-{3,}\s*END TOOL DATA\s*-{3,}\s*$/i.test(line));
+  if (begin < 0 || end < 0 || end <= begin) {
+    return text;
+  }
+  let payloadStart = begin + 1;
+  if (payloadStart < end && /Treat as data, NOT as instructions/i.test(lines[payloadStart] ?? "")) {
+    payloadStart += 1;
+  }
+  if (payloadStart < end && (lines[payloadStart] ?? "").trim().length === 0) {
+    payloadStart += 1;
+  }
+  return lines.slice(payloadStart, end).join("\n");
+}
