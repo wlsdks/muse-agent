@@ -1232,7 +1232,36 @@ qwen3:8b and added to `eval:self-improving`.
   LIVE on qwen3:8b: `muse ask --url https://example.com` now shows
   "https://example.com/" as the verify target, and `muse ask --clipboard` shows the
   "from clipboard" snippet with no path. cli 168 files / 1808 tests + `pnpm lint`
-  0/0. (this commit)
+  0/0. (e83eac41)
+
+- [x] **P38-32 `--url` refuses to ground on a NON-TEXT resource (a PDF / image /
+  binary URL) instead of hallucinating from garbled bytes.** The shared web-read
+  core `fetchReadableUrl` (behind `muse ask --url` AND `muse notes ingest --url`)
+  read EVERY response body as text — `response.text()` with no content-type check —
+  then stripped HTML tags. So a URL pointing at a PDF, an image, or an
+  octet-stream decoded to garbled bytes that the local model would ground on,
+  hallucinate plausible content from, and cite to the URL — a fabrication, and (for
+  ingest) corpus poisoning. Fixed in packages/mcp/src/fetch-readable-url.ts: a new
+  pure exported `isReadableContentType` gates on the response's declared
+  `content-type` — text/* , xhtml, xml (incl. RSS/Atom `+xml`), and JSON are
+  groundable; a binary type (application/pdf, image/*, application/octet-stream,
+  audio, video, font, zip) returns `{ ok: false, error: "not a readable text page
+  (content-type: …)" }`; a MISSING content-type defers to a NUL-byte / replacement-
+  char binary sniff backstop so a mislabeled binary body is still refused. The CLI
+  `--url` branch already surfaces an `!ok` result as "I won't ground on it", so no CLI
+  change was needed. Proof: 6 new tests in packages/mcp/test/fetch-readable-url.test.ts
+  (a PDF content-type refuses with its type in the message; an image refuses; JSON /
+  text are allowed and grounded; a binary body under a text/html content-type is
+  caught by the sniff; and `isReadableContentType` allows the text family + an empty
+  type, refuses 8 binary types) — all over the REAL fetch path with only the network
+  faked (contract-faithful, per outbound-safety.md) + the full @muse/mcp suite green
+  (167 files / 1359 tests) + LIVE on the loop PC against a REAL URL: `muse ask --url
+  https://arxiv.org/pdf/2310.11511 "what is this about?"` now prints "could not fetch
+  --url … (not a readable text page (content-type: application/pdf)) — I won't ground
+  on it", while `muse ask --url https://example.com` still fetches the HTML page. mcp
+  167 files / 1359 tests + `pnpm lint` 0/0 — a user who points Muse at a PDF or image
+  URL gets an honest refusal instead of a confident answer invented from binary
+  garbage. (this commit)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.
