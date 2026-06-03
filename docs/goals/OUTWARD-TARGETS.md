@@ -330,6 +330,29 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   refuse, and a `.txt` file still grounds. cli 167 files / 1773 tests + `pnpm lint`
   0/0. (02c3f412)
 
+- [x] **P37-16 `muse ask --file <dir>` grounds on a FOLDER of documents (cited
+  per-file) instead of erroring + fabricating.** Probing `--file` with a directory:
+  `muse ask --file ~/docs "…"` leaked a raw Node error ("could not read --file … —
+  EISDIR: illegal operation on a directory, read") AND then fell through to a
+  general-knowledge GUESS ("The Q3 budget has not been finalized yet …") with a
+  stripped citation — a confident fabrication on a path the user explicitly pointed
+  at their own docs. Now `--file <dir>` extracts every supported doc under the folder
+  (.txt/.md/.markdown/.pdf/.log/.csv, recursive, dotfiles skipped, binaries skipped),
+  ranks passages across ALL files by query overlap, keeps the strongest within a
+  budget, and cites each `[from <file>]` — so a user can ask about a whole folder
+  without ingesting it; an off-topic question finds no overlapping passage and
+  refuses honestly. Reuses P37-15's `extractDocumentText` (PDF + text) — the walk +
+  per-file extract moved into the leaf `document-reader.ts` as exported
+  `walkDocuments` / `extractDirectoryDocuments` (so `commands-read` and `commands-ask`
+  share one implementation, no cycle). Proof: 3 new `document-reader` unit tests
+  (walks only supported exts recursively, skips dotfiles/unsupported; extracts each
+  readable doc and SKIPS a binary; honours the maxFiles cap) + the existing
+  read/notes-rag suites green (the move is behaviour-preserving) + LIVE on qwen3:8b:
+  `--file <dir>` answered "Q3 budget?" → "$42,000 [from budget.txt]" AND "product
+  launch?" → "August 14, 2026 [from launch.md]" (two different files in the folder,
+  each cited correctly), while an off-topic "bank account number?" refused with no
+  fabrication. cli 167 files / 1776 tests + `pnpm lint` 0/0. (this commit)
+
 **P40 — Actuation usability: Muse understands natural-language dates.** The
 "do" side is only as good as the words a user actually types.
 
@@ -857,7 +880,7 @@ qwen3:8b and added to `eval:self-improving`.
   existing contact/gate tests green + LIVE on qwen3:8b: `muse ask "what is Mina's
   email?"` now shows the "👤 from your contacts: Mina Park" receipt with NO "Removed
   citation / treat as unverified" warning (before: stripped + warned). agent-core 112
-  files / 1387 tests + cli 167 files / 1773 tests + `pnpm lint` 0/0. (this commit)
+  files / 1387 tests + cli 167 files / 1773 tests + `pnpm lint` 0/0. (207c211a)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.

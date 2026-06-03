@@ -12,8 +12,8 @@
  * already configured.
  */
 
-import { readdir, readFile, stat } from "node:fs/promises";
-import { basename, extname, join, relative, sep } from "node:path";
+import { readFile, stat } from "node:fs/promises";
+import { basename, extname, relative, sep } from "node:path";
 
 import { createMuseRuntimeAssembly, resolveNotesDir } from "@muse/autoconfigure";
 import { LocalDirNotesProvider } from "@muse/mcp";
@@ -21,7 +21,7 @@ import { redactSecretsInText } from "@muse/shared";
 import type { Command } from "commander";
 
 import { consumeAskStream, type AskStreamEvent } from "./commands-ask.js";
-import { extractDocumentText, type PdfParsed } from "./document-reader.js";
+import { extractDocumentText, walkDocuments, type PdfParsed } from "./document-reader.js";
 import type { ProgramIO } from "./program.js";
 import { withSigintAbort } from "./sigint-abort.js";
 
@@ -80,34 +80,6 @@ export async function saveDocumentToNotes(
 // the surface so existing importers of these from `commands-read` keep working.
 export { isLikelyBinary, isPdfDocument, parsePdfBuffer } from "./document-reader.js";
 export { extractDocumentText, type PdfParsed };
-
-/** Extensions `extractDocumentText` can turn into note text. */
-const SUPPORTED_DOC_EXT = new Set([".pdf", ".txt", ".md", ".markdown", ".log", ".csv"]);
-
-/** Recursively collect supported document files under `dir` (skips hidden + `.processed`). */
-async function walkDocuments(dir: string): Promise<string[]> {
-  const out: string[] = [];
-  const stack = [dir];
-  while (stack.length > 0) {
-    const current = stack.pop()!;
-    let entries;
-    try {
-      entries = await readdir(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (entry.name.startsWith(".")) continue;
-      const full = join(current, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(full);
-      } else if (entry.isFile() && SUPPORTED_DOC_EXT.has(extname(entry.name).toLowerCase())) {
-        out.push(full);
-      }
-    }
-  }
-  return out.sort();
-}
 
 /** Derive a sandbox-safe note id from a file's path relative to the scanned dir. */
 export function noteIdForDocument(dir: string, filePath: string, prefix: string): string {

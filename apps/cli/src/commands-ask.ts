@@ -22,7 +22,7 @@
  * Zero recurring cost — all local.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
@@ -48,7 +48,7 @@ import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles, type RecallHit } fr
 import { formatConnectionsSection } from "./commands-today.js";
 import { embed } from "./embed.js";
 import { buildEpisodeIndex, defaultEpisodeIndexFile, episodeIndexStale, loadEpisodeIndex, saveEpisodeIndex } from "./episode-index.js";
-import { isPdfDocument, parsePdfBuffer } from "./document-reader.js";
+import { extractDirectoryDocuments, isPdfDocument, parsePdfBuffer } from "./document-reader.js";
 import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
 import { resolvePersona } from "./program-helpers.js";
 import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
@@ -1478,6 +1478,45 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // question sees real content that lacks the answer ⇒ honest refusal.
       if (options.file && options.file.trim().length > 0) {
         const fileLabel = options.file.trim();
+        const fileIsDirectory = (() => {
+          try {
+            return statSync(fileLabel).isDirectory();
+          } catch {
+            return false;
+          }
+        })();
+        if (fileIsDirectory) {
+          // --file <dir>: ground on the FOLDER's documents without ingesting them.
+          // Each supported doc (.txt/.md/.pdf/.log/.csv) is extracted, its passages
+          // ranked by query overlap across all files, and the strongest kept within
+          // a budget — cited per-file `[from <name>]`. An off-topic question finds no
+          // overlapping passage ⇒ honest refusal (never a general-knowledge guess).
+          try {
+            const docs = await extractDirectoryDocuments(fileLabel);
+            if (docs.length === 0) {
+              io.stderr(`muse: --file ${fileLabel} — no readable text/PDF documents found in that folder (looked for .txt/.md/.markdown/.pdf/.log/.csv).\n`);
+            } else {
+              const queryTokens = lexicalTokens(query);
+              const pool = docs
+                .flatMap((doc) => chunkText(doc.text, 1200).map((text) => ({ file: doc.path, overlap: lexicalOverlap(queryTokens, text), text })))
+                .filter((passage) => passage.overlap > 0)
+                .sort((a, b) => b.overlap - a.overlap);
+              let budget = 6000;
+              let pickedCount = 0;
+              for (const passage of pool) {
+                if (budget <= 0) break;
+                scored.push({ chunk: { chunkIndex: pickedCount, embedding: [], file: passage.file, text: passage.text }, file: passage.file, score: 1 });
+                budget -= passage.text.length;
+                pickedCount += 1;
+              }
+              if (pickedCount > 0) {
+                notesUnavailable = false;
+              }
+            }
+          } catch (cause) {
+            io.stderr(`muse: could not read --file ${fileLabel} (${cause instanceof Error ? cause.message : String(cause)})\n`);
+          }
+        } else {
         try {
           const bytes = await readFile(fileLabel);
           let fileText: string | undefined;
@@ -1518,6 +1557,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           }
         } catch (cause) {
           io.stderr(`muse: could not read --file ${fileLabel} (${cause instanceof Error ? cause.message : String(cause)})\n`);
+        }
         }
       }
 

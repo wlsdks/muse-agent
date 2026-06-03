@@ -7,7 +7,8 @@
  * garbled bytes never reach the model.
  */
 
-import { basename } from "node:path";
+import { readFile, readdir } from "node:fs/promises";
+import { basename, extname, join } from "node:path";
 
 export interface PdfParsed {
   readonly text: string;
@@ -56,4 +57,59 @@ export async function extractDocumentText(filePath: string, buffer: Buffer): Pro
     throw new Error(`'${basename(filePath)}' looks binary — muse read handles PDFs and text files (.txt/.md/.log/.csv).`);
   }
   return { pageCount: 1, text: buffer.toString("utf8") };
+}
+
+/** Extensions `extractDocumentText` can turn into note text. */
+export const SUPPORTED_DOC_EXT = new Set([".pdf", ".txt", ".md", ".markdown", ".log", ".csv"]);
+
+/** Recursively collect supported document files under `dir` (skips hidden + `.processed`), sorted. */
+export async function walkDocuments(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  const stack = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    let entries;
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+      } else if (entry.isFile() && SUPPORTED_DOC_EXT.has(extname(entry.name).toLowerCase())) {
+        out.push(full);
+      }
+    }
+  }
+  return out.sort();
+}
+
+/**
+ * Read + extract text from up to `maxFiles` supported documents under `dir` — so
+ * `muse ask --file <dir>` can ground on a folder without ingesting it. Each file
+ * goes through `extractDocumentText` (PDF or text); a file that fails to read or
+ * parse, or that has no text, is skipped (best-effort) rather than aborting the
+ * whole directory. Returns `{ path, text }` for every readable doc.
+ */
+export async function extractDirectoryDocuments(
+  dir: string,
+  maxFiles = 25
+): Promise<{ readonly path: string; readonly text: string }[]> {
+  const files = (await walkDocuments(dir)).slice(0, Math.max(1, maxFiles));
+  const out: { path: string; text: string }[] = [];
+  for (const path of files) {
+    try {
+      const buffer = await readFile(path);
+      const { text } = await extractDocumentText(path, buffer);
+      if (text.trim().length > 0) {
+        out.push({ path, text });
+      }
+    } catch {
+      // unreadable / binary / malformed — skip this file, keep the rest
+    }
+  }
+  return out;
 }
