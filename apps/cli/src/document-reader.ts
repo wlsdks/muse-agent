@@ -56,11 +56,54 @@ export async function extractDocumentText(filePath: string, buffer: Buffer): Pro
   if (isLikelyBinary(buffer)) {
     throw new Error(`'${basename(filePath)}' looks binary — muse read handles PDFs and text files (.txt/.md/.log/.csv).`);
   }
+  if (isHtmlDocument(filePath)) {
+    // Grounding on raw HTML feeds the model markup + <script>/<style> noise and
+    // leaves entities undecoded (an email "jane&#64;globex.com" stays mangled).
+    // Extract the readable text instead.
+    return { pageCount: 1, text: htmlToText(buffer.toString("utf8")) };
+  }
   return { pageCount: 1, text: buffer.toString("utf8") };
 }
 
+/** A file is treated as HTML by its extension — its bytes are still UTF-8 text. */
+export function isHtmlDocument(filePath: string): boolean {
+  const lower = filePath.toLowerCase();
+  return lower.endsWith(".html") || lower.endsWith(".htm");
+}
+
+const NAMED_HTML_ENTITIES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", mdash: "—", ndash: "–", hellip: "…"
+};
+
+/** Decode the HTML entities that actually mangle grounded values (numeric + the common named ones). */
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&#x([0-9a-f]+);/giu, (_m, hex: string) => safeCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/gu, (_m, dec: string) => safeCodePoint(Number.parseInt(dec, 10)))
+    .replace(/&([a-z]+);/giu, (match, name: string) => NAMED_HTML_ENTITIES[name.toLowerCase()] ?? match);
+}
+
+function safeCodePoint(code: number): string {
+  return Number.isFinite(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "";
+}
+
+/**
+ * Reduce an HTML document to its readable text: drop `<script>`/`<style>`
+ * blocks and comments, strip the remaining tags, decode entities, and collapse
+ * whitespace. Regex-based (no DOM dependency) — "good enough" to ground on, not a
+ * faithful render. Exported for testing.
+ */
+export function htmlToText(html: string): string {
+  const stripped = html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/giu, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/giu, " ")
+    .replace(/<!--[\s\S]*?-->/gu, " ")
+    .replace(/<[^>]+>/gu, " ");
+  return decodeHtmlEntities(stripped).replace(/\s+/gu, " ").trim();
+}
+
 /** Extensions `extractDocumentText` can turn into note text. */
-export const SUPPORTED_DOC_EXT = new Set([".pdf", ".txt", ".md", ".markdown", ".log", ".csv"]);
+export const SUPPORTED_DOC_EXT = new Set([".pdf", ".txt", ".md", ".markdown", ".log", ".csv", ".html", ".htm"]);
 
 /** Recursively collect supported document files under `dir` (skips hidden + `.processed`), sorted. */
 export async function walkDocuments(dir: string): Promise<string[]> {

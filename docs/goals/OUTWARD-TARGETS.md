@@ -353,6 +353,29 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   each cited correctly), while an off-topic "bank account number?" refused with no
   fabrication. cli 167 files / 1776 tests + `pnpm lint` 0/0. (498fbf90)
 
+- [x] **P37-17 An HTML file is grounded on its readable TEXT, not raw tag-soup —
+  and its entities are decoded (no more mangled `jane&#64;globex.com`).** Probing
+  `--file` with an `.html` file: `muse ask --file resume.html "what is the email?"`
+  returned "jane&#64;globex.com" — the HTML entity `&#64;` (= `@`) was never
+  decoded, so the user got a MANGLED email, and the 📎 receipt showed raw
+  `<html><head><style>…<script>…` tag-soup. Root: every non-PDF `--file`/ingest path
+  read the bytes as UTF-8 verbatim, markup and all. Fixed in
+  apps/cli/src/document-reader.ts: a new `htmlToText(html)` (regex, no DOM
+  dependency) drops `<script>`/`<style>` blocks + comments, strips tags, decodes the
+  entities that mangle values (numeric `&#64;`, hex `&#x26;`, and the common named
+  ones), and collapses whitespace; `extractDocumentText` routes `.html`/`.htm`
+  through it, `.html`/`.htm` join `SUPPORTED_DOC_EXT` (so `muse read <dir>` /
+  `--file <dir>` / `watch-folder` pick them up), and the single-`--file` path in
+  commands-ask got the same branch (after the robust binary-refusal). Proof: 4 new
+  `document-reader` unit tests (isHtmlDocument; tags + script/style stripped &
+  whitespace collapsed; numeric/hex/named entities decoded; extractDocumentText
+  reads an .html buffer decoded) + LIVE on qwen3:8b: `--file resume.html "email?"`
+  now → "jane@globex.com" with a CLEAN text receipt ("Jane Doe Email:
+  jane@globex.com Job title: Principal Engineer at Globex & Co."), `muse read
+  article.html --save-to-notes` saves clean text (no tags), and `--file <dir>` with
+  an HTML file grounds on it. cli 167 files / 1782 tests + `pnpm lint` 0/0.
+  (this commit)
+
 **P40 — Actuation usability: Muse understands natural-language dates.** The
 "do" side is only as good as the words a user actually types.
 
@@ -491,7 +514,7 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   remind/tasks/calendar 73 + LIVE: 11 phrasings resolve to the right local time
   ("tonight at 8" → 20:00, "tomorrow morning at 9" → next-day 09:00, "tonight at
   8pm" → 20:00, "tonight at 12" → 00:00) with "at 5pm" / "tomorrow morning"
-  unregressed. mcp 167 files / 1326 tests + `pnpm lint` 0/0. (this commit)
+  unregressed. mcp 167 files / 1326 tests + `pnpm lint` 0/0. (00b2ce04)
 
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,

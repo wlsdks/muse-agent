@@ -48,7 +48,7 @@ import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles, type RecallHit } fr
 import { formatConnectionsSection } from "./commands-today.js";
 import { embed } from "./embed.js";
 import { buildEpisodeIndex, defaultEpisodeIndexFile, episodeIndexStale, loadEpisodeIndex, saveEpisodeIndex } from "./episode-index.js";
-import { extractDirectoryDocuments, isPdfDocument, parsePdfBuffer } from "./document-reader.js";
+import { extractDirectoryDocuments, htmlToText, isHtmlDocument, isPdfDocument, parsePdfBuffer } from "./document-reader.js";
 import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
 import { resolvePersona } from "./program-helpers.js";
 import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
@@ -1589,6 +1589,11 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
               `I won't ground on it, because reading it as text would feed garbled bytes that I might ` +
               `answer from incorrectly. Export it to .txt/.md and pass that.\n`
             );
+          } else if (isHtmlDocument(fileLabel)) {
+            // Extract the readable text from HTML — grounding on raw markup feeds
+            // <script>/<style> noise and leaves entities undecoded (a mangled
+            // "jane&#64;globex.com" instead of "jane@globex.com").
+            fileText = htmlToText(bytes.toString("utf8"));
           } else {
             fileText = bytes.toString("utf8");
           }

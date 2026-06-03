@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { extractDirectoryDocuments, extractDocumentText, isLikelyBinary, isPdfDocument, parsePdfBuffer, walkDocuments } from "./document-reader.js";
+import { extractDirectoryDocuments, extractDocumentText, htmlToText, isHtmlDocument, isLikelyBinary, isPdfDocument, parsePdfBuffer, walkDocuments } from "./document-reader.js";
 
 /** Build a tiny but VALID single-page PDF whose text layer contains `text`. */
 function makePdf(text: string): Buffer {
@@ -105,5 +105,31 @@ describe("walkDocuments + extractDirectoryDocuments — `--file <dir>` grounding
   it("respects the maxFiles cap", async () => {
     const docs = await extractDirectoryDocuments(dir, 1);
     expect(docs.length).toBe(1);
+  });
+});
+
+describe("htmlToText + isHtmlDocument — read an HTML file's readable text, not tag-soup", () => {
+  it("isHtmlDocument matches .html/.htm, not other text", () => {
+    expect(isHtmlDocument("/resume.html")).toBe(true);
+    expect(isHtmlDocument("/page.HTM")).toBe(true);
+    expect(isHtmlDocument("/notes.txt")).toBe(false);
+  });
+
+  it("strips tags, drops <script>/<style> bodies, and collapses whitespace", () => {
+    const text = htmlToText("<html><head><style>body{color:red}</style><script>track(1)</script></head><body><h1>Jane</h1>\n<p>Hi  there</p></body></html>");
+    expect(text).toBe("Jane Hi there");
+    expect(text).not.toMatch(/track|color:red|</);
+  });
+
+  it("decodes the entities that mangle grounded values (numeric, hex, named)", () => {
+    expect(htmlToText("<p>jane&#64;globex.com</p>")).toBe("jane@globex.com");      // &#64; → @
+    expect(htmlToText("<p>a&#x26;b</p>")).toBe("a&b");                              // hex &#x26; → &
+    expect(htmlToText("<p>Globex &amp; Co &mdash; 2026</p>")).toBe("Globex & Co — 2026");
+  });
+
+  it("extractDocumentText reads an .html buffer as decoded text", async () => {
+    const out = await extractDocumentText("/r.html", Buffer.from("<body><p>Email: a&#64;b.com</p></body>"));
+    expect(out.text).toContain("a@b.com");
+    expect(out.text).not.toContain("<");
   });
 });
