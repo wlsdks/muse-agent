@@ -1755,7 +1755,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       const feedBlock = feedHeadlines.length === 0
         ? "(no recent feed headlines)"
         : feedHeadlines
-          .map((h, i) => `<<feed ${(i + 1).toString()} — ${h.feedName} (${h.publishedAt})>>\n${h.title}${h.summary ? `\n${h.summary}` : ""}\n<<end>>`)
+          .map((h, i) => `<<feed ${(i + 1).toString()} — ${h.feedName} (${h.publishedAt})>>\n${h.title}${h.summary ? `\n${h.summary}` : ""}\n[feed: ${h.feedName}]\n<<end>>`)
           .join("\n\n");
 
       // Dreaming closes the loop: the user's own grounded reflections (the
@@ -1969,7 +1969,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
               c.handle ? `handle ${c.handle}` : undefined,
               birthday ? `birthday ${birthday}` : undefined
             ].filter((f): f is string => f !== undefined).join(", ");
-            return `<<contact ${(i + 1).toString()} — ${c.id}>>\n${c.name}${fields ? ` — ${fields}` : ""}\n<<end>>`;
+            return `<<contact ${(i + 1).toString()} — ${c.id}>>\n${c.name}${fields ? ` — ${fields}` : ""}\n[contact: ${c.name}]\n<<end>>`;
           })
           .join("\n\n");
 

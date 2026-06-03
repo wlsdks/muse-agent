@@ -1070,7 +1070,27 @@ qwen3:8b and added to `eval:self-improving`.
   the 10-class parity guard) + LIVE on qwen3:8b with a seeded episode: `muse ask
   "what did we decide about the VPN MTU?"` now prints "💬 from a past session: We set
   up the office VPN … MTU 1380 …". cli 167 files / 1799 tests + `pnpm lint` 0/0.
-  (this commit)
+  (87e61400)
+
+- [x] **P38-28 The feed/contact grounding markers now embed the canonical
+  `[feed: …]` / `[contact: …]` citation — fixing the ROOT CAUSE the P38-22 / P38-25
+  normalizers patched post-hoc (and cleaning the STREAMED inline citation).** Tracing
+  why the model kept citing feeds/contacts by slot or raw id (`[feed 1]`, `[from
+  contact_<uuid>]`): the task / event / reminder / memory / commit grounding markers
+  all embed the exact canonical citation inline (`…\n[event: <title>]\n<<end>>`) so
+  the local model copies it, but the FEED and CONTACT markers did NOT — they showed
+  only `<<feed N — name>>` / `<<contact N — id>>`, so the model improvised the slot /
+  id form, which the chat-only path then STREAMS verbatim (the post-hoc normalizers
+  only fix the buffered copy used for the gate + receipt, never the inline text the
+  user already saw). Fixed in apps/cli/src/commands-ask.ts by adding
+  `[feed: ${h.feedName}]` to the feed marker and `[contact: ${c.name}]` to the
+  contact marker — matching the five markers that already do this. The post-hoc
+  normalizers stay as a safety net. Proof: the full cli suite green (1799, no
+  regression) + a real-LLM round-trip on qwen3:8b: `muse ask "latest HN headlines?"`
+  now cites `[feed: HN]` INLINE (was `[feed 1]`) and `muse ask "what is Mina's
+  email?"` cites `[contact: Mina Park]` INLINE (was `[from contact_<uuid>]`), each
+  with its receipt — so the STREAMED answer is clean, not just the gated copy. cli
+  167 files / 1799 tests + `pnpm lint` 0/0. (this commit)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.
