@@ -41,6 +41,32 @@ export function extractWikiLinks(body: string): string[] {
   return out;
 }
 
+/**
+ * Rewrite every `[[oldTarget]]` reference in a note body to `[[newTarget]]`,
+ * preserving any `|alias` and `#section` suffix and matching the target
+ * case-insensitively (same key rule as `extractWikiLinks`). Returns the rewritten
+ * body and how many links changed. Pure — the deterministic core of
+ * `muse notes rename`, so a renamed note never silently orphans its backlinks.
+ */
+export function rewriteWikiLinkReferences(body: string, oldTarget: string, newTarget: string): { readonly body: string; readonly count: number } {
+  const oldKey = oldTarget.trim().toLowerCase();
+  if (oldKey.length === 0) {
+    return { body, count: 0 };
+  }
+  let count = 0;
+  const rewritten = body.replace(/\[\[([^\]]+)\]\]/gu, (full: string, inner: string) => {
+    const suffixIdx = inner.search(/[|#]/u);
+    const target = (suffixIdx === -1 ? inner : inner.slice(0, suffixIdx)).trim();
+    if (target.toLowerCase() !== oldKey) {
+      return full;
+    }
+    count += 1;
+    const suffix = suffixIdx === -1 ? "" : inner.slice(suffixIdx);
+    return `[[${newTarget}${suffix}]]`;
+  });
+  return { body: rewritten, count };
+}
+
 export interface NoteLinkGraph {
   /** note id → outbound link targets, as written. */
   readonly outbound: ReadonlyMap<string, readonly string[]>;

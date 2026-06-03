@@ -1,6 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { auditNoteGraph, buildNoteLinkGraph, extractWikiLinks, linkedFromResults, noteLinkKey, noteLinkView, resolveNoteId } from "./notes-links.js";
+import { auditNoteGraph, buildNoteLinkGraph, extractWikiLinks, linkedFromResults, noteLinkKey, noteLinkView, resolveNoteId, rewriteWikiLinkReferences } from "./notes-links.js";
+
+describe("rewriteWikiLinkReferences", () => {
+  it("rewrites the target, preserving |alias and #section, matching case-insensitively", () => {
+    const body = "See [[ideas]] and [[Ideas|my alias]] and [[ideas#part2]] but not [[other]] or [[ideabank]].";
+    const { body: out, count } = rewriteWikiLinkReferences(body, "ideas", "concepts");
+    expect(count).toBe(3);
+    expect(out).toContain("[[concepts]]");
+    expect(out).toContain("[[concepts|my alias]]"); // alias kept
+    expect(out).toContain("[[concepts#part2]]"); // section kept
+    expect(out).toContain("[[other]]"); // unrelated link untouched
+    expect(out).toContain("[[ideabank]]"); // a longer target is NOT a partial match
+  });
+
+  it("returns the body unchanged with count 0 when no link matches (or the old target is blank)", () => {
+    expect(rewriteWikiLinkReferences("[[a]] [[b]]", "z", "y")).toEqual({ body: "[[a]] [[b]]", count: 0 });
+    expect(rewriteWikiLinkReferences("[[a]]", "  ", "y").count).toBe(0);
+  });
+});
 
 describe("extractWikiLinks", () => {
   it("pulls [[targets]], stripping |alias and #section, deduped order-preserving", () => {

@@ -7,7 +7,9 @@
  * envelope for scripting.
  */
 
-import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { basename, dirname, extname, join, relative } from "node:path";
 
 import { resolveNotesDir } from "@muse/autoconfigure";
 import { createNotesMcpServer, fetchReadableUrl } from "@muse/mcp";
@@ -21,6 +23,7 @@ import {
   formatNotesList,
   formatProvidersList
 } from "./human-formatters.js";
+import { rewriteWikiLinkReferences } from "./notes-links.js";
 import { isApiUnreachable } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
@@ -103,6 +106,82 @@ export function resolveUrlNotePath(rawUrl: string, override?: string): string {
     .replace(/^-+|-+$/gu, "")
     .slice(0, 80);
   return `${slug.length > 0 ? slug : "page"}.md`;
+}
+
+export interface RenameNoteResult {
+  readonly ok: boolean;
+  readonly error?: string;
+  readonly from?: string;
+  readonly to?: string;
+  readonly linksRewritten: number;
+  readonly notesTouched: number;
+  readonly dryRun: boolean;
+}
+
+async function listMarkdownFiles(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  const walk = async (d: string): Promise<void> => {
+    let entries;
+    try {
+      entries = await readdir(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = join(d, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else if (entry.isFile() && extname(entry.name).toLowerCase() === ".md") {
+        out.push(full);
+      }
+    }
+  };
+  await walk(dir);
+  return out;
+}
+
+/**
+ * Rename a note file AND rewrite every `[[wiki-link]]` to it across the corpus,
+ * so a rename never silently orphans backlinks (the gap `auditNoteGraph`
+ * surfaces with no remedy). The link target is the basename without `.md`
+ * (the bare `[[note]]` convention). Refuses a missing source or an existing
+ * destination. `--dry-run` counts without writing. Exported + notesDir-injected
+ * so the whole flow is testable on a temp corpus.
+ */
+export async function renameNoteWithLinkRewrite(notesDir: string, fromPath: string, toPath: string, dryRun = false): Promise<RenameNoteResult> {
+  const oldAbs = join(notesDir, fromPath);
+  const newAbs = join(notesDir, toPath);
+  if (!relative(notesDir, oldAbs).length || relative(notesDir, oldAbs).startsWith("..") || relative(notesDir, newAbs).startsWith("..")) {
+    return { dryRun, error: "paths must stay inside the notes directory", linksRewritten: 0, notesTouched: 0, ok: false };
+  }
+  if (!existsSync(oldAbs)) {
+    return { dryRun, error: `no note at ${fromPath}`, linksRewritten: 0, notesTouched: 0, ok: false };
+  }
+  if (existsSync(newAbs)) {
+    return { dryRun, error: `${toPath} already exists — refusing to overwrite`, linksRewritten: 0, notesTouched: 0, ok: false };
+  }
+  const oldTarget = basename(fromPath).replace(/\.md$/iu, "");
+  const newTarget = basename(toPath).replace(/\.md$/iu, "");
+  let linksRewritten = 0;
+  let notesTouched = 0;
+  if (oldTarget.toLowerCase() !== newTarget.toLowerCase()) {
+    for (const file of await listMarkdownFiles(notesDir)) {
+      const body = await readFile(file, "utf8");
+      const { body: nextBody, count } = rewriteWikiLinkReferences(body, oldTarget, newTarget);
+      if (count > 0) {
+        linksRewritten += count;
+        notesTouched += 1;
+        if (!dryRun) {
+          await writeFile(file, nextBody, "utf8");
+        }
+      }
+    }
+  }
+  if (!dryRun) {
+    await mkdir(dirname(newAbs), { recursive: true });
+    await rename(oldAbs, newAbs);
+  }
+  return { dryRun, from: fromPath, linksRewritten, notesTouched, ok: true, to: toPath };
 }
 
 export function registerNotesCommands(program: Command, io: ProgramIO, helpers: NotesCommandHelpers): void {
@@ -350,5 +429,33 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
       io.stdout(payload.deleted === true
         ? `Deleted ${String(payload.path ?? notePath)}\n`
         : `No note found at ${String(payload.path ?? notePath)}\n`);
+    });
+
+  notes
+    .command("rename")
+    .description("Rename a note AND rewrite every [[wiki-link]] to it across your notes, so links don't break (local)")
+    .argument("<from>", "Existing note path relative to the notes root, e.g. 'ideas.md'")
+    .argument("<to>", "New note path, e.g. 'concepts.md'")
+    .option("--dry-run", "Show how many links would be rewritten without changing anything")
+    .option("--json", "Print the raw result")
+    .action(async (from: string, to: string, options: { readonly dryRun?: boolean; readonly json?: boolean }) => {
+      const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
+      const result = await renameNoteWithLinkRewrite(notesDir, from, to, options.dryRun === true);
+      if (options.json) {
+        helpers.writeOutput(io, result);
+        if (!result.ok) process.exitCode = 1;
+        return;
+      }
+      if (!result.ok) {
+        io.stderr(`muse notes rename: ${result.error ?? "failed"}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const links = result.linksRewritten > 0
+        ? `${result.linksRewritten.toString()} link(s) across ${result.notesTouched.toString()} note(s)`
+        : "no [[links]] pointed at it";
+      io.stdout(result.dryRun
+        ? `Would rename ${from} → ${to} (${links === "no [[links]] pointed at it" ? links : `${links} would be rewritten`}).\n`
+        : `Renamed ${from} → ${to}${result.linksRewritten > 0 ? `, rewrote ${links}` : ` (${links})`}.\n`);
     });
 }

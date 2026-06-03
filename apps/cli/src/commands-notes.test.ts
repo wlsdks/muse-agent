@@ -7,8 +7,46 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { readFileSync } from "node:fs";
 
-import { parseNotesSearchLimit, resolveIngestNotePath, resolveUrlNotePath, registerNotesCommands, type NotesCommandHelpers } from "./commands-notes.js";
+import { parseNotesSearchLimit, renameNoteWithLinkRewrite, resolveIngestNotePath, resolveUrlNotePath, registerNotesCommands, type NotesCommandHelpers } from "./commands-notes.js";
 import type { ProgramIO } from "./program.js";
+
+describe("renameNoteWithLinkRewrite", () => {
+  const seedCorpus = (): string => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-notes-rename-"));
+    writeFileSync(join(dir, "ideas.md"), "# Ideas\nseed thoughts");
+    writeFileSync(join(dir, "journal.md"), "Today I expanded [[ideas]] and [[ideas|my ideas]].");
+    writeFileSync(join(dir, "todo.md"), "Unrelated: [[tasks]].");
+    return dir;
+  };
+
+  it("renames the file and rewrites every [[link]] to it across the corpus", async () => {
+    const dir = seedCorpus();
+    const res = await renameNoteWithLinkRewrite(dir, "ideas.md", "concepts.md");
+    expect(res.ok).toBe(true);
+    expect(res.linksRewritten).toBe(2);
+    expect(res.notesTouched).toBe(1);
+    expect(existsSync(join(dir, "concepts.md"))).toBe(true);
+    expect(existsSync(join(dir, "ideas.md"))).toBe(false); // moved, not copied
+    expect(readFileSync(join(dir, "journal.md"), "utf8")).toBe("Today I expanded [[concepts]] and [[concepts|my ideas]].");
+    expect(readFileSync(join(dir, "todo.md"), "utf8")).toContain("[[tasks]]"); // untouched
+  });
+
+  it("--dry-run counts the links without moving the file or editing any note", async () => {
+    const dir = seedCorpus();
+    const res = await renameNoteWithLinkRewrite(dir, "ideas.md", "concepts.md", true);
+    expect(res).toMatchObject({ dryRun: true, linksRewritten: 2, ok: true });
+    expect(existsSync(join(dir, "ideas.md"))).toBe(true); // NOT moved
+    expect(readFileSync(join(dir, "journal.md"), "utf8")).toContain("[[ideas]]"); // NOT rewritten
+  });
+
+  it("refuses a missing source or an existing destination (no clobber)", async () => {
+    const dir = seedCorpus();
+    expect((await renameNoteWithLinkRewrite(dir, "nope.md", "x.md")).error).toMatch(/no note at/u);
+    writeFileSync(join(dir, "concepts.md"), "exists");
+    expect((await renameNoteWithLinkRewrite(dir, "ideas.md", "concepts.md")).error).toMatch(/already exists/u);
+    expect(existsSync(join(dir, "ideas.md"))).toBe(true); // refusal left everything intact
+  });
+});
 
 describe("resolveIngestNotePath", () => {
   it("derives a .md note name from the file basename", () => {

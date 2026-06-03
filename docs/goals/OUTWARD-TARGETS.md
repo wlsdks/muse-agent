@@ -692,7 +692,40 @@ in the loop.
   assert the non-TTY send now fail-closes ("Not sent", zero provider calls). cli 169
   files / 1811 tests + mcp 168 / 1363 + `pnpm lint` 0/0 — a user (or a stray script)
   can no longer fire a message to a third party from the CLI without seeing and
-  confirming the exact content, and every send/refusal is on the record. (this commit)
+  confirming the exact content, and every send/refusal is on the record. (94b0fc77)
+
+**P42 — Knowledge: your notes stay coherent (the [[wiki-link]] graph is a
+first-class structure, not just decoration).** Muse already builds a note link
+graph (`buildNoteLinkGraph`), surfaces backlinks, and AUDITS for broken links
+(`auditNoteGraph`) — this axis adds the maintenance operations that keep that
+graph intact as the corpus evolves, so a power-user's Zettelkasten doesn't rot.
+
+- [x] **P42-1 `muse notes rename` rewrites every `[[wiki-link]]` to the renamed
+  note across the corpus — a rename no longer silently breaks its backlinks.**
+  `muse notes` had list / read / search / save / append / delete but NO rename or
+  move, and `auditNoteGraph` surfaced broken `[[links]]` with no remedy — so moving
+  or renaming a note orphaned every link pointing at it. Added a pure
+  `rewriteWikiLinkReferences(body, oldTarget, newTarget)` in apps/cli/src/notes-links.ts
+  (rewrites the link TARGET, preserving any `|alias` and `#section`, matching
+  case-insensitively with the same key rule as `extractWikiLinks`, and never on a
+  partial match — `[[ideabank]]` is untouched when renaming `ideas`), and a
+  `renameNoteWithLinkRewrite(notesDir, from, to, dryRun)` orchestration + a
+  `muse notes rename <from> <to> [--dry-run] [--json]` command: it renames the file,
+  walks the whole notes tree rewriting `[[<basename>]]` references, refuses a missing
+  source or an existing destination (no clobber) and any path escaping the notes
+  directory, and `--dry-run` reports the would-be changes without writing. Proof: 5
+  new deterministic tests (`rewriteWikiLinkReferences` preserves alias/section, is
+  case-insensitive, skips partial + unrelated targets, no-ops a blank target;
+  `renameNoteWithLinkRewrite` moves the file + rewrites both links across the corpus,
+  `--dry-run` counts without moving/editing, and refuses missing-source /
+  existing-destination leaving everything intact) + the full @muse/cli suite green
+  (169 files / 1816 tests) + LIVE on the loop PC: `muse notes rename ideas.md
+  concepts.md` → "Renamed …, rewrote 2 link(s) across 1 note(s)", with `[[ideas]]` and
+  `[[ideas|the idea note]]` in another note becoming `[[concepts]]` /
+  `[[concepts|the idea note]]` (alias kept) and the file actually moved; `--dry-run`
+  and the existing-destination refusal both behave. cli 169 files / 1816 tests +
+  `pnpm lint` 0/0 — a user can now rename a note and keep their whole link graph
+  intact, instead of silently orphaning every backlink. (this commit)
 
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,
