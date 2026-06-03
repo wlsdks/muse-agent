@@ -1179,6 +1179,27 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   3:00 PM (tomorrow)" (was "6:00 AM" before the fix). @muse/mcp 173 files / 1461
   tests + `pnpm lint` 0/0. (c4628401)
 
+- [x] **P40-14 The TASK confirmation states the local time too — the same fix
+  mirrored to the sibling write actuator.** Probing right after P40-13 found the
+  IDENTICAL defect on tasks: `muse ask --with-tools "add a task to review the deck
+  due tomorrow at 3pm"` STORED 3 PM correctly but confirmed "Due Date: June 5, 2026
+  at 6:00 AM" — the same raw-UTC-ISO misread. Extracted the P40-13 formatter into a
+  shared leaf module `packages/mcp/src/local-due-format.ts` (`formatDueLocal`, no
+  store imports → no cycle; reminders-store now delegates to it, keeping its
+  `formatReminderDueLocal` name) and added `serializeTaskForModel` (serializeTask +
+  a `dueAtLocal` field, ONLY when the task has a dueAt — undated tasks untouched),
+  wired into all model-facing `muse.tasks.*` results (add/list/complete/update/
+  search) + a `muse.tasks.add` description anchor (confirm with dueAtLocal, never
+  the raw UTC ISO). REST/web path keeps lean `serializeTask`. Proof: 2 new tz-robust
+  unit tests (dated task → dueAtLocal renders the LOCAL hour, not the bare UTC ISO;
+  undated task → no dueAtLocal field) passing in BOTH TZ=Asia/Seoul and TZ=UTC + the
+  reminder tests still green after the refactor + a NEW PERMANENT live battery
+  (`apps/cli/scripts/verify-task-local-time.mjs`, wired into `eval:self-improving`)
+  driving the REAL tasks add tool then asking qwen3:8b to confirm — states the LOCAL
+  3 PM, not the UTC 6 AM (2/2) + a full LIVE `muse ask --with-tools` e2e now reading
+  "Fri, Jun 5, 2026, 3:00 PM local time" (was "6:00 AM"). @muse/mcp 173 files / 1463
+  tests + `pnpm lint` 0/0. (efcd5cb2)
+
 **P41 — Actuation reliability: actuators survive real-world failure modes
 (human-directed 2026-05-23: "harden the one-of-each actuators into daily-reliable
 integrations — a proven-once actuator that breaks on a real-world failure mode

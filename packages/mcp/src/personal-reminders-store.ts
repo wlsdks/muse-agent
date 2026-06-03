@@ -20,6 +20,7 @@ import { dirname } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
 
+import { formatDueLocal } from "./local-due-format.js";
 import { parseTaskDueAt } from "./personal-tasks-store.js";
 
 export interface ReminderVia {
@@ -124,55 +125,11 @@ export function serializeReminder(reminder: PersistedReminder): JsonObject {
   };
 }
 
-const REMINDER_DUE_FORMAT: Intl.DateTimeFormatOptions = {
-  weekday: "short",
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-  hour12: true
-};
-
-function relativeDueHint(due: Date, now: Date): string | undefined {
-  const diffMs = due.getTime() - now.getTime();
-  if (diffMs < 0) {
-    return "overdue";
-  }
-  if (diffMs < 60 * 60_000) {
-    const mins = Math.max(1, Math.round(diffMs / 60_000));
-    return `in ${mins} minute${mins === 1 ? "" : "s"}`;
-  }
-  const localDayIndex = (d: Date): number =>
-    Math.floor((d.getTime() - d.getTimezoneOffset() * 60_000) / 86_400_000);
-  const days = localDayIndex(due) - localDayIndex(now);
-  if (days <= 0) {
-    return "today";
-  }
-  if (days === 1) {
-    return "tomorrow";
-  }
-  return `in ${days} days`;
-}
-
 /**
- * Render a reminder's `dueAt` (a UTC ISO instant) as a human-friendly
- * string in the SERVER'S LOCAL timezone — the same wall clock the
- * `parseTaskDueAt` parser resolved the user's phrase against. The chat
- * model was observed echoing the raw ISO hour ("06:00" → "6:00 AM") when
- * the user had said "3pm" (KST), because the ISO is in UTC; handing it a
- * pre-formatted local string removes the misread. Unparseable input is
- * echoed verbatim so the model never silently loses the value.
+ * Reminder-named alias of the shared {@link formatDueLocal} — kept so the
+ * existing reminder tests / batteries import a domain name.
  */
-export function formatReminderDueLocal(dueAt: string, now: () => Date = () => new Date()): string {
-  const due = new Date(dueAt);
-  if (Number.isNaN(due.getTime())) {
-    return dueAt;
-  }
-  const absolute = due.toLocaleString("en-US", REMINDER_DUE_FORMAT);
-  const relative = relativeDueHint(due, now());
-  return relative ? `${absolute} (${relative})` : absolute;
-}
+export const formatReminderDueLocal = formatDueLocal;
 
 /**
  * The model-facing serialization. Identical to `serializeReminder`
@@ -183,7 +140,7 @@ export function formatReminderDueLocal(dueAt: string, now: () => Date = () => ne
  * `serializeReminder`; this enrichment is only for the LLM tool results.
  */
 export function serializeReminderForModel(reminder: PersistedReminder, now: () => Date = () => new Date()): JsonObject {
-  return { ...serializeReminder(reminder), dueAtLocal: formatReminderDueLocal(reminder.dueAt, now) };
+  return { ...serializeReminder(reminder), dueAtLocal: formatDueLocal(reminder.dueAt, now) };
 }
 
 export function readReminderStatusFilter(value: string | undefined): ReminderStatusFilter {

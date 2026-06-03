@@ -10,7 +10,7 @@ import {
   readTasks,
   readTaskStatusFilter,
   selectTasksDueWithin,
-  serializeTask,
+  serializeTaskForModel,
   writeTasks,
   type PersistedTask
 } from "./personal-tasks-store.js";
@@ -71,7 +71,8 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           "English: 'tomorrow', 'tomorrow 6pm', 'today at 14:30', 'in 3 hours', 'in 2 days', 'next Monday', 'next Monday at 9am'. " +
           "Korean: '내일', '내일 오후 3시', '오늘 오전 9시 30분', '30분 후', '3일 뒤', '다음 주 월요일', '다음 주 월요일 오후 3시 반'. " +
           "Pass the user's natural-language phrase directly (in their own language) — the server resolves it against the current local time. " +
-          "Returns the created task with its generated id.",
+          "Returns the created task with its generated id. " +
+          "When you confirm the task back to the user, state any due time using the result's `dueAtLocal` field (the due time in the user's local timezone, e.g. 'Thu, Jun 5, 2026, 3:00 PM (tomorrow)') — NEVER the raw ISO `dueAt`, which is in UTC and will read back the wrong hour.",
         execute: async (args): Promise<JsonObject> => {
           const title = readString(args, "title")?.trim();
           if (!title) {
@@ -105,7 +106,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           } catch (error) {
             return { error: errorMessage(error) };
           }
-          return { task: serializeTask(created) as JsonValue };
+          return { task: serializeTaskForModel(created, now) as JsonValue };
         },
         inputSchema: {
           additionalProperties: false,
@@ -137,7 +138,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
               .slice(0, maxListEntries);
             return {
               dueWithinDays: Math.max(0, Math.trunc(dueRaw)),
-              tasks: due.map(serializeTask) as JsonValue,
+              tasks: due.map((task) => serializeTaskForModel(task, now)) as JsonValue,
               total: due.length
             };
           }
@@ -148,7 +149,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
             .slice(0, maxListEntries);
           return {
             status,
-            tasks: filtered.map(serializeTask) as JsonValue,
+            tasks: filtered.map((task) => serializeTaskForModel(task, now)) as JsonValue,
             total: filtered.length
           };
         },
@@ -193,7 +194,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           } catch (error) {
             return { error: errorMessage(error) };
           }
-          return { task: serializeTask(completed) as JsonValue };
+          return { task: serializeTaskForModel(completed, now) as JsonValue };
         },
         inputSchema: {
           additionalProperties: false,
@@ -262,7 +263,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           } catch (error) {
             return { error: errorMessage(error) };
           }
-          return { task: serializeTask(updated) as JsonValue };
+          return { task: serializeTaskForModel(updated, now) as JsonValue };
         },
         inputSchema: {
           additionalProperties: false,
@@ -306,7 +307,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           return {
             query,
             status,
-            tasks: matches.map(serializeTask) as JsonValue,
+            tasks: matches.map((task) => serializeTaskForModel(task, now)) as JsonValue,
             total: matches.length
           };
         },

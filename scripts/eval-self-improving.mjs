@@ -46,7 +46,8 @@ const BATTERIES = [
   { axis: "★ SWARM: grounded council synthesis", file: "apps/cli/scripts/verify-council.mjs", name: "council" },
   { axis: "★ SWARM: council RGV re-verify", file: "apps/cli/scripts/verify-council-grounding.mjs", name: "council-grounding" },
   { axis: "★ SWARM: council self-abstention (5th surface)", file: "apps/cli/scripts/verify-council-self-abstention.mjs", name: "council-self-abstention" },
-  { axis: "⏰ ACTUATION: reminder local-time confirmation (no UTC misread)", file: "apps/cli/scripts/verify-reminder-local-time.mjs", name: "reminder-local-time" }
+  { axis: "⏰ ACTUATION: reminder local-time confirmation (no UTC misread)", file: "apps/cli/scripts/verify-reminder-local-time.mjs", name: "reminder-local-time" },
+  { axis: "⏰ ACTUATION: task local-time confirmation (no UTC misread)", file: "apps/cli/scripts/verify-task-local-time.mjs", name: "task-local-time" }
 ];
 
 async function ollamaReachable() {

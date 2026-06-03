@@ -17,6 +17,7 @@ import { dirname } from "node:path";
 
 import type { JsonObject, JsonValue } from "@muse/shared";
 
+import { formatDueLocal } from "./local-due-format.js";
 import { resolveRelativeTimePhrase } from "./loopback-relative-time.js";
 
 export interface PersistedTask {
@@ -116,6 +117,19 @@ export function serializeTask(task: PersistedTask): JsonObject {
     ...(task.proactive === false ? { proactive: false } : {}),
     ...(task.urgent === true ? { urgent: true } : {})
   };
+}
+
+/**
+ * The model-facing serialization. Identical to `serializeTask` (which the
+ * REST API / web UI use, formatting their own times) plus a `dueAtLocal`
+ * field — the due time in the SERVER's local timezone — WHEN the task has a
+ * `dueAt`, so a chat confirmation echoes the time the user actually asked for
+ * instead of the raw UTC ISO hour. Undated tasks are unchanged. Only the LLM
+ * tool results carry the extra field; the REST path keeps lean `serializeTask`.
+ */
+export function serializeTaskForModel(task: PersistedTask, now: () => Date = () => new Date()): JsonObject {
+  const base = serializeTask(task);
+  return task.dueAt ? { ...base, dueAtLocal: formatDueLocal(task.dueAt, now) } : base;
 }
 
 export function readTaskStatusFilter(value: string | undefined): TaskStatusFilter {
