@@ -27,7 +27,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 
-import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeMemoryCitations, parseGroundingReverifyVerdict, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectByMmr, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, parseGroundingReverifyVerdict, rankPlaybookStrategies, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectByMmr, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
@@ -2229,6 +2229,13 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       const allowedNotes = options.withTools
         ? (index ? filterLiveNoteIndexFiles(index.files, existsSync).map((f) => relativizeNoteSource(f.path, notesDir)) : [])
         : scored.map((r) => relativizeNoteSource(r.file, notesDir));
+      // The model often prepends the note verb "from " to a STRUCTURED citation
+      // (`[from commit: …]`, `[from task: …]`) — the note regex then mis-catches it
+      // and false-strips a TRUE structured citation. Drop the redundant "from "
+      // before a known class so it reads as the canonical `[commit: …]` the gate
+      // validates by class. Runs first so the contact/memory passes below see the
+      // already-de-prefixed form.
+      collectedAnswer = normalizeFromPrefixedCitations(collectedAnswer);
       // The local model cites a contact with the note verb / by slot or id
       // (`[from contact 1]`, `[contact: mina]`) because `<<contact N — id>>`
       // mirrors the note wrapper; rewrite those to the canonical

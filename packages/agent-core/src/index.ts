@@ -147,6 +147,7 @@ export {
   lexicalOverlap,
   lexicalTokens,
   normalizeContactCitations,
+  normalizeFromPrefixedCitations,
   normalizeMemoryCitations,
   rankKnowledgeChunks,
   renderKnowledgeMatches,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { citedSourcesIn, enforceAnswerCitations, normalizeContactCitations, normalizeMemoryCitations } from "../src/index.js";
+import { citedSourcesIn, enforceAnswerCitations, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations } from "../src/index.js";
 
 describe("normalizeMemoryCitations — repair `[from <memory-key>]` (the model's note-verb mis-form, common in Korean)", () => {
   const keys = ["car_license_plate", "allergy_penicillin"];
@@ -253,5 +253,33 @@ describe("normalizeContactCitations — repair the model's contact-citation mis-
   it("never rewrites a real `[from <note>]` that merely resembles a contact (exact-match only, no fuzzy)", () => {
     expect(normalizeContactCitations("X [from contact-notes.md].", uuidBook)).toBe("X [from contact-notes.md].");
     expect(normalizeContactCitations("X [from mina-park-resume.md].", uuidBook)).toBe("X [from mina-park-resume.md].");
+  });
+});
+
+describe("normalizeFromPrefixedCitations — drop the redundant 'from ' before a STRUCTURED citation", () => {
+  it("rewrites `[from commit: …]` to `[commit: …]` (the git-recall false-strip)", () => {
+    expect(normalizeFromPrefixedCitations("You shipped X [from commit: feat(cli): do a thing]."))
+      .toBe("You shipped X [commit: feat(cli): do a thing].");
+  });
+
+  it("rewrites every structured class (task/event/reminder/session/feed/contact/command/memory/action)", () => {
+    expect(normalizeFromPrefixedCitations("a [from task: ship it] b [from event: standup] c [from reminder: call mom]"))
+      .toBe("a [task: ship it] b [event: standup] c [reminder: call mom]");
+    expect(normalizeFromPrefixedCitations("[from action: sent the email] [from memory: home_city]"))
+      .toBe("[action: sent the email] [memory: home_city]");
+  });
+
+  it("leaves a REAL note citation untouched (no class keyword)", () => {
+    expect(normalizeFromPrefixedCitations("see [from vpn.md] and [from projects/notes.md]."))
+      .toBe("see [from vpn.md] and [from projects/notes.md].");
+    // a note whose name merely STARTS with a class word but has no ':' is safe
+    expect(normalizeFromPrefixedCitations("[from commit-log.md]")).toBe("[from commit-log.md]");
+  });
+
+  it("the rewritten commit citation then survives the gate (the false-strip is gone)", () => {
+    const normalized = normalizeFromPrefixedCitations("You shipped the HTML reader [from commit: feat(cli): html reader].");
+    const gated = enforceAnswerCitations(normalized, { commits: ["feat(cli): html reader"] });
+    expect(gated.stripped).toEqual([]);
+    expect(gated.text).toContain("[commit: feat(cli): html reader]");
   });
 });

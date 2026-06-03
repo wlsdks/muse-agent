@@ -374,7 +374,7 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   jane@globex.com Job title: Principal Engineer at Globex & Co."), `muse read
   article.html --save-to-notes` saves clean text (no tags), and `--file <dir>` with
   an HTML file grounds on it. cli 167 files / 1782 tests + `pnpm lint` 0/0.
-  (this commit)
+  (52f20d2a)
 
 **P40 — Actuation usability: Muse understands natural-language dates.** The
 "do" side is only as good as the words a user actually types.
@@ -927,6 +927,28 @@ qwen3:8b and added to `eval:self-improving`.
   email?"` now shows the "👤 from your contacts: Mina Park" receipt with NO "Removed
   citation / treat as unverified" warning (before: stripped + warned). agent-core 112
   files / 1387 tests + cli 167 files / 1773 tests + `pnpm lint` 0/0. (207c211a)
+
+- [x] **P38-23 A `[from <class>: …]` structured citation is no longer false-stripped
+  — the model's "from "-prefixed commit/task/event/… citation now survives the
+  gate.** Probing the git-perception source (P37-11): `muse ask --git "what have I
+  been working on?"` grounded on real commits and answered correctly, citing `[from
+  commit: feat(perception): muse ask grounds on the action log …]` — but the gate
+  STRIPPED it with "⚠️ Removed 1 citation … treat those claims as unverified" on a
+  TRUE recall. Root: the model prepends the note verb "from " to a STRUCTURED
+  citation, but the gate's class regexes anchor on `[commit:` / `[task:` (no "from "),
+  and the note regex `[from <X>]` runs FIRST and mis-catches `[from commit: …]` as a
+  non-existent note → strips it. Same class as P38-22 (contacts) / P38-17 (memory),
+  now GENERAL. Fixed with a new exported `normalizeFromPrefixedCitations` (agent-core)
+  that drops the redundant "from " before any known class keyword (task / event /
+  reminder / session / feed / contact / command / commit / memory / action), applied
+  in the ask flow before the contact/memory passes; a real `[from note.md]` (no class
+  keyword + ":") is untouched. Proof: 4 new agent-core unit tests (`[from commit: …]`
+  → `[commit: …]`; every class rewritten; a real note / a `commit-log.md` note left
+  alone; the rewritten commit citation survives `enforceAnswerCitations` with zero
+  strips) + the existing contact/gate suite green + LIVE on qwen3:8b: `muse ask --git
+  "what have I been working on?"` now cites two `[commit: …]` with NO "Removed
+  citation / unverified" warning (before: stripped + warned). agent-core 112 files /
+  1391 tests + cli 167 files / 1782 tests + `pnpm lint` 0/0. (this commit)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.

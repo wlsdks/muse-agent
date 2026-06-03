@@ -504,6 +504,21 @@ export function normalizeMemoryCitations(answer: string, memoryKeys: readonly st
 }
 
 /**
+ * Strip the redundant note-verb "from " the model sometimes prepends to a
+ * STRUCTURED citation — `[from commit: …]`, `[from task: …]`, `[from event: …]` —
+ * so it reads as the canonical `[commit: …]` / `[task: …]` the gate validates by
+ * class. Without this, the note regex (`[from <X>]`) mis-catches it first and
+ * false-strips a TRUE structured citation as a non-existent note. Only a KNOWN
+ * class keyword + ":" is rewritten, so a real `[from note.md]` is never touched.
+ */
+export function normalizeFromPrefixedCitations(answer: string): string {
+  return answer.replace(
+    /\[from\s+(task|event|reminder|session|feed|contact|command|commit|memory|action)\s*:/giu,
+    "[$1:"
+  );
+}
+
+/**
  * Output-side grounding gate for the recall WEDGE — the code-not-model half of
  * "shows its work". Strips ANY citation the answer makes — `[from <note>]`,
  * `[feed: <name>]`, `[task|event|reminder: <title>]` — whose target is NOT
