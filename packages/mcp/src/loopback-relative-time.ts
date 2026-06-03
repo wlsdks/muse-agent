@@ -411,6 +411,29 @@ export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date
     return finiteDate(lastDay);
   }
 
+  // "the 25th" / "on the 25th" / "the 1st at 9am" — a bare day-of-month with NO
+  // month named resolves to the NEXT occurrence of that day: this month if it
+  // hasn't passed, else next month. "Remind me on the 25th to pay rent" / "rent
+  // is due the 1st" is everyday phrasing the month-NAME parser above can't reach
+  // (it needs "June 25"). The time-aware roll keeps a same-day-but-earlier time
+  // out of the past, and the getDate guard rolls a day absent from the current
+  // month (e.g. the 31st of a 30-day month) onto the next month that has it.
+  const dayOfMonthMatch = /^(?:on\s+)?the\s+(\d{1,2})(?:st|nd|rd|th)(?:\s+(?:at\s+)?(.+))?$/u.exec(trimmed);
+  if (dayOfMonthMatch) {
+    const dom = Number.parseInt(dayOfMonthMatch[1] ?? "", 10);
+    if (Number.isInteger(dom) && dom >= 1 && dom <= 31) {
+      const domTime = parseTimeOfDay(dayOfMonthMatch[2]);
+      if (domTime === "invalid") {
+        return undefined;
+      }
+      let domTarget = new Date(reference.getFullYear(), reference.getMonth(), dom, domTime.hour, domTime.minute, 0, 0);
+      if (domTarget.getDate() !== dom || domTarget.getTime() <= reference.getTime()) {
+        domTarget = new Date(reference.getFullYear(), reference.getMonth() + 1, dom, domTime.hour, domTime.minute, 0, 0);
+      }
+      return finiteDate(domTarget);
+    }
+  }
+
   // "this friday" is as common as "next friday"; treat both as the next
   // occurrence of that weekday (you can't schedule a past one). Without "this"
   // here it was mis-parsed as a bare weekday "this" → unresolved, so the model's

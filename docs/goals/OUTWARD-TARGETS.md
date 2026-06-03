@@ -583,6 +583,29 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   "in 2 hours" still works. mcp 167 files / 1330 tests + `pnpm lint` 0/0.
   (b4939e6b)
 
+- [x] **P40-11 A bare DAY-OF-MONTH ("on the 25th", "the 1st", "the 15th at 3pm")
+  now parses to the next occurrence of that day.** Probing the date parser: "the
+  25th" / "on the 25th" / "the 1st" / "on the 15th at 3pm" ALL returned undefined
+  (rejected at the actuator with "dueAt must be … a supported relative phrase"),
+  while "next monday" / "end of the month" / "in 2 weeks" worked — yet "remind me on
+  the 25th to pay rent" / "rent is due the 1st" / "the meeting is on the 15th" is one
+  of the MOST common ways people state a recurring-ish date. The month-NAME parser
+  (`resolveAbsoluteMonthDate`) needed "June 25"; a bare ordinal had no handler. Added
+  one in packages/mcp/src/loopback-relative-time.ts: `^(?:on\s+)?the\s+(\d{1,2})(?:st|nd|rd|th)(?:\s+(?:at\s+)?(.+))?$`
+  resolves to the NEXT occurrence of that day-of-month — this month if it hasn't
+  passed (time-aware, so "the 25th at 9am" already past today rolls forward), else
+  next month; a day absent from the current month (the 31st of a 30-day month) rolls
+  onto the next month that has it; an impossible day (the 99th / the 0th) is rejected,
+  never a silently rolled-over date; the time defaults to the same 9am bare-day hour
+  as every other date phrase, and an explicit "at 3pm" is honoured. Proof: 6 new
+  parser unit tests in packages/mcp/test/relative-time-period.test.ts (still-ahead →
+  this month; past → next month; explicit time; 9am default; impossible-day reject;
+  weekday/duration non-regression) + the full @muse/mcp suite green (167 files / 1338
+  tests, incl. mcp.test.ts's 357) + LIVE on the loop PC: `muse remind add "on the
+  25th" "pay rent"` → due 2026-06-25 09:00 and `muse tasks add "submit report" --due
+  "the 15th"` → due 2026-06-15 09:00 (both REJECTED before this slice). mcp 167 files
+  / 1338 tests + `pnpm lint` 0/0. (this commit)
+
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,
 closed its deepest hole, and became constructive. Each verified live on

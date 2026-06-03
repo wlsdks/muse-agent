@@ -77,6 +77,46 @@ describe("resolveRelativeTimePhrase — period phrases (next week/month/year + K
   });
 });
 
+describe("resolveRelativeTimePhrase — bare day-of-month ('the 25th', 'on the 1st')", () => {
+  // Reference is the 3rd of June.
+  it("resolves a day still ahead this month to THIS month ('the 25th' → the 25th)", () => {
+    for (const phrase of ["the 25th", "on the 25th"]) {
+      const r = resolveRelativeTimePhrase(phrase, now)!;
+      expect(r, phrase).toBeDefined();
+      expect(r.getDate(), phrase).toBe(25);
+      expect(r.getMonth(), phrase).toBe(5); // still June
+      expect(r.getTime(), phrase).toBeGreaterThan(now().getTime());
+    }
+  });
+
+  it("rolls a day already PAST this month to next month ('the 1st' on the 3rd → next month's 1st)", () => {
+    const r = resolveRelativeTimePhrase("the 1st", now)!;
+    expect(r.getDate()).toBe(1);
+    expect(r.getMonth()).toBe(6); // July
+  });
+
+  it("parses an explicit time ('on the 15th at 3pm' → the 15th at 15:00)", () => {
+    const r = resolveRelativeTimePhrase("on the 15th at 3pm", now)!;
+    expect(r.getDate()).toBe(15);
+    expect(r.getMonth()).toBe(5);
+    expect(r.getHours()).toBe(15);
+  });
+
+  it("defaults to the 9am bare-day hour when no time is given", () => {
+    expect(resolveRelativeTimePhrase("the 10th", now)!.getHours()).toBe(9);
+  });
+
+  it("rejects an impossible day-of-month ('the 99th' → undefined), never a rolled-over date", () => {
+    expect(resolveRelativeTimePhrase("the 99th", now)).toBeUndefined();
+    expect(resolveRelativeTimePhrase("the 0th", now)).toBeUndefined();
+  });
+
+  it("does NOT regress weekday / duration phrases sharing nearby grammar", () => {
+    expect(resolveRelativeTimePhrase("next monday", now)!.getDay()).toBe(1);
+    expect(Math.round((resolveRelativeTimePhrase("in 2 weeks", now)!.getTime() - now().getTime()) / 86_400_000)).toBe(14);
+  });
+});
+
 describe("resolveRelativeTimePhrase — colloquial Korean time-of-day words (아침/저녁/밤/새벽)", () => {
   it("아침 (morning) reads as AM: '내일 아침 8시' → next day 08:00", () => {
     const resolved = resolveRelativeTimePhrase("내일 아침 8시", now)!;
