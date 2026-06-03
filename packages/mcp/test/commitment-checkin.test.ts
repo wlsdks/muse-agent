@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCheckinQuestion,
+  cancelCheckin,
   followupDayOffset,
   readCheckins,
   runDueCheckins,
@@ -40,6 +41,42 @@ describe("followupDayOffset", () => {
     // no timeframe, or a same-day one → next day.
     expect(followupDayOffset("email the team later today")).toBe(1);
     expect(followupDayOffset("review the PR")).toBe(1);
+  });
+});
+
+describe("cancelCheckin", () => {
+  const mk = (id: string, status: PersistedCheckin["status"]): PersistedCheckin => ({
+    id, userId: "stark", commitment: id, question: `q ${id}`, dueAtIso: "2026-05-02T10:00:00.000Z",
+    createdAt: NOW.toISOString(), status, sourceKey: id
+  });
+
+  it("cancels a scheduled check-in by exact id and marks it cancelled", () => {
+    const list = [mk("chk_a1", "scheduled"), mk("chk_b2", "scheduled")];
+    const res = cancelCheckin(list, "chk_a1");
+    expect(res.cancelled?.id).toBe("chk_a1");
+    expect(res.checkins.find((c) => c.id === "chk_a1")?.status).toBe("cancelled");
+    expect(res.checkins.find((c) => c.id === "chk_b2")?.status).toBe("scheduled"); // untouched
+  });
+
+  it("cancels by a UNIQUE id prefix (the list shows the full id; a prefix is the convenience)", () => {
+    const res = cancelCheckin([mk("chk_abc", "scheduled"), mk("chk_xyz", "scheduled")], "chk_ab");
+    expect(res.cancelled?.id).toBe("chk_abc");
+  });
+
+  it("refuses an AMBIGUOUS prefix rather than cancelling the wrong one", () => {
+    const res = cancelCheckin([mk("chk_a1", "scheduled"), mk("chk_a2", "scheduled")], "chk_a");
+    expect(res.cancelled).toBeUndefined();
+    expect(res.reason).toBe("ambiguous");
+    expect(res.matches).toBe(2);
+    expect(res.checkins.every((c) => c.status === "scheduled")).toBe(true); // nothing changed
+  });
+
+  it("reports not-found / already-fired / already-cancelled without mutating", () => {
+    const list = [mk("chk_f", "fired"), mk("chk_c", "cancelled")];
+    expect(cancelCheckin(list, "chk_missing").reason).toBe("not-found");
+    expect(cancelCheckin(list, "chk_f").reason).toBe("already-fired");
+    expect(cancelCheckin(list, "chk_c").reason).toBe("already-cancelled");
+    expect(cancelCheckin([], "").reason).toBe("not-found");
   });
 });
 

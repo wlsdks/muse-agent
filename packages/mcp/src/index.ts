@@ -303,10 +303,12 @@ export { gateProactiveNoticeSink, isQuietHour, parseQuietHours, type QuietHourRa
 export {
   appendCheckins,
   buildCheckinQuestion,
+  cancelCheckin,
   readCheckins,
   runDueCheckins,
   scheduleCheckins,
   writeCheckins,
+  type CancelCheckinResult,
   type CheckinSendRegistry,
   type CheckinStatus,
   type PersistedCheckin,

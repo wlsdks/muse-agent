@@ -1639,7 +1639,32 @@ honest-refusal mock-corpus check where applicable.
   and running `muse checkins scan` schedules them for 2026-06-04 / 06-08 / 06-11
   respectively (before this fix all three were 2026-06-04 10:00). mcp 167 files / 1332
   tests + `pnpm lint` 0/0 — a user who says "I'll do X this week" is followed up at the
-  end of the week, not nagged tomorrow. (this commit)
+  end of the week, not nagged tomorrow. (faa74d82)
+
+- [x] **P35-13 You can now CANCEL a proactive check-in — the opt-out that makes
+  proactivity calm.** P35-11/12 taught Muse to notice a commitment and schedule a
+  warm "how did it go?" nudge; but there was NO way to silence one — if you'd already
+  called the dentist (or never wanted the nudge), the daemon would still fire it. The
+  `"cancelled"` check-in status existed in the type and was respected by
+  `runDueCheckins` (only `scheduled` fires) and `scheduleCheckins`, but no command
+  could SET it, and `muse checkins list` didn't even show the id you'd cancel by. A
+  proactive system you can't opt out of is a nag, not a confidant — dismissibility is
+  what EARNS proactivity. Added a pure `cancelCheckin(checkins, idOrPrefix)` in
+  packages/mcp/src/commitment-checkin.ts (match by exact id or a UNIQUE id prefix;
+  refuse an ambiguous prefix; report not-found / already-fired / already-cancelled
+  rather than silently "succeeding"; returns the updated list to persist), wired as
+  `muse checkins cancel <id>`, and `muse checkins list` now prints `[id]` so the id is
+  visible to cancel. Proof: 4 new unit tests in
+  packages/mcp/test/commitment-checkin.test.ts (cancel by exact id leaving siblings
+  untouched; cancel by unique prefix; AMBIGUOUS prefix refuses + mutates nothing;
+  not-found/already-fired/already-cancelled report without mutating) + the full
+  @muse/mcp (167 files / 1348) and @muse/cli (168 files / 1808) suites green + LIVE
+  end-to-end on the loop PC: seed two commitments → `checkins scan` → `checkins list`
+  shows both with ids → `checkins cancel <dentist-id>` → "Cancelled … won't fire" →
+  the scheduled list now shows only the passport check-in, and a bogus id prints "No
+  scheduled check-in matches …". mcp 167 / 1348 + cli 168 / 1808 + `pnpm lint` 0/0 —
+  a user can now dismiss a check-in for something they already did instead of being
+  nagged about it. (this commit)
 
 - [x] **P35-1 Citation-as-voice (B2 S1, build-first).** `muse ask` renders
   each cited note as a memory — "📎 From your notes … • from your note of

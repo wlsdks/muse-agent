@@ -127,6 +127,49 @@ export function scheduleCheckins(
   return out;
 }
 
+export interface CancelCheckinResult {
+  /** The (possibly unchanged) list to persist. */
+  readonly checkins: readonly PersistedCheckin[];
+  /** The check-in that was cancelled, when the cancel succeeded. */
+  readonly cancelled?: PersistedCheckin;
+  /** Why nothing was cancelled, when `cancelled` is undefined. */
+  readonly reason?: "not-found" | "ambiguous" | "already-fired" | "already-cancelled";
+  /** How many check-ins the id matched (for the ambiguous case). */
+  readonly matches?: number;
+}
+
+/**
+ * Cancel a SCHEDULED check-in so the daemon won't ask "how did it go?" — the
+ * opt-out that makes proactivity calm: a nudge for something you already did, or
+ * never wanted, must be silenceable. Matches by exact id or a UNIQUE id prefix
+ * (the list shows the full id; a prefix is the convenience). A fired check-in
+ * already happened and an already-cancelled one is a no-op; both report why
+ * rather than silently "succeeding". Pure: returns the updated list to persist.
+ */
+export function cancelCheckin(checkins: readonly PersistedCheckin[], idOrPrefix: string): CancelCheckinResult {
+  const needle = idOrPrefix.trim();
+  if (needle.length === 0) {
+    return { checkins, reason: "not-found" };
+  }
+  const exact = checkins.filter((c) => c.id === needle);
+  const matched = exact.length > 0 ? exact : checkins.filter((c) => c.id.startsWith(needle));
+  if (matched.length === 0) {
+    return { checkins, reason: "not-found" };
+  }
+  if (matched.length > 1) {
+    return { checkins, matches: matched.length, reason: "ambiguous" };
+  }
+  const target = matched[0]!;
+  if (target.status === "fired") {
+    return { checkins, reason: "already-fired" };
+  }
+  if (target.status === "cancelled") {
+    return { checkins, reason: "already-cancelled" };
+  }
+  const cancelled: PersistedCheckin = { ...target, status: "cancelled" };
+  return { cancelled, checkins: checkins.map((c) => (c.id === target.id ? cancelled : c)) };
+}
+
 async function writeFileAtomic(file: string, text: string): Promise<void> {
   await fs.mkdir(dirname(file), { recursive: true });
   const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;

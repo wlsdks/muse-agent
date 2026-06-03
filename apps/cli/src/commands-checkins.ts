@@ -7,7 +7,7 @@
  */
 
 import { detectUserCommitments } from "@muse/agent-core";
-import { appendCheckins, readCheckins, scheduleCheckins, type PersistedCheckin } from "@muse/mcp";
+import { appendCheckins, cancelCheckin, readCheckins, scheduleCheckins, writeCheckins, type PersistedCheckin } from "@muse/mcp";
 import type { Command } from "commander";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -106,7 +106,34 @@ export function registerCheckinsCommands(program: Command, io: ProgramIO): void 
       io.stdout(`Check-ins (${scoped.length.toString()}, ${status}):\n`);
       for (const c of scoped) {
         const when = c.status === "fired" && c.firedAt ? `fired ${shortDateTime(c.firedAt)}` : `due ${shortDateTime(c.dueAtIso)}`;
-        io.stdout(`  • ${c.question}  (${when})\n`);
+        io.stdout(`  • [${c.id}] ${c.question}  (${when})\n`);
       }
+    });
+
+  checkins
+    .command("cancel <id>")
+    .description("Cancel a scheduled check-in by id (you already did it, or don't want the nudge)")
+    .option("--json", "Print the raw payload")
+    .action(async (id: string, options: { readonly json?: boolean }) => {
+      const file = checkinsFile();
+      const all = await readCheckins(file).catch(() => []);
+      const result = cancelCheckin(all, id);
+      if (result.cancelled) {
+        await writeCheckins(file, result.checkins);
+      }
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ cancelled: result.cancelled ?? null, reason: result.reason ?? null }, null, 2)}\n`);
+        return;
+      }
+      if (result.cancelled) {
+        io.stdout(`Cancelled check-in [${result.cancelled.id}] — "${result.cancelled.question}" won't fire.\n`);
+        return;
+      }
+      const message =
+        result.reason === "ambiguous" ? `'${id}' matches ${String(result.matches)} check-ins — use a longer id.`
+        : result.reason === "already-fired" ? `Check-in '${id}' already fired — nothing to cancel.`
+        : result.reason === "already-cancelled" ? `Check-in '${id}' is already cancelled.`
+        : `No scheduled check-in matches '${id}'. Run \`muse checkins list\` to see ids.`;
+      io.stderr(`${message}\n`);
     });
 }
