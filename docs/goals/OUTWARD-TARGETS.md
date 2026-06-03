@@ -17,7 +17,38 @@ task. Two qualities define every outward goal:
 - **Instantly responsive & complete** — when addressed, answers now
   and carries the task to done end-to-end.
 
-## Current session focus — 2026-05-27 (human-directed)
+## Current session focus — 2026-06-03 (human-directed): CLOSE THE LOOP
+
+Direction reset by Jinan after a 9-agent capability audit + map
+(`docs/strategy/capability-map.md`). Verdict: Muse's FOUNDATION is
+unusually complete (129 capabilities, ~90 have) and the
+grounding/citation edge is genuinely best-in-class — but the loop had
+PLATEAUED, mining grounding micro-fixes (about half of recent grounding
+commits were un-breaking the gate's own false-positives) while the
+JARVIS-defining axes stayed frozen. Almost everything Muse can do is a
+manually-invoked, ONE-SHOT atom.
+
+**The frontier is no longer grounding-hardening; it is to CLOSE THE
+LOOP — continuous + autonomous + reliable (target P43 below):** (1)
+autonomous self-development that learns from your corrections
+unattended, (2) continuous ingestion that keeps syncing your world into
+the citable corpus, (3) reliable carry-to-done that takes a multi-step
+goal to a VERIFIED done, (4) sharper anticipation (absence/anomaly +
+evening recap).
+
+**Grounding is now the FLOOR, not the frontier.** Every close-the-loop
+slice MUST still cite its sources, prove fabrication=0, and pass a live
+battery — a new autonomous behaviour that fabricates or acts without
+verifying its effect betrays the identity. But the loop may NOT open
+another grounding-ONLY micro-slice while a P43 frontier bullet is
+unbuilt (the grounding gate has hit diminishing returns). The P43
+bullets are deliberately UN-SLICEABLE: each flips ONLY when the whole
+continuous/autonomous/reliable behaviour is proven end-to-end live, so
+the loop must REACH, not drain a thin bullet. Decompose across
+iterations per `iteration-loop.md`, but the bullet stays `[ ]` until
+the end-to-end capability is real.
+
+## Current session focus — 2026-05-27 (human-directed, SUPERSEDED by the 2026-06-03 reset above)
 
 P0–P21 are delivered (archived in `archive/TARGETS-P0-P21.md`;
 their capability ledger in `archive/CAPABILITIES-through-2026-05-27.md`).
@@ -63,6 +94,53 @@ each, per `iteration-loop.md`. Never crammed into one oversized
 turn; never half-shipped.
 
 ## Active target
+
+**P43 — Close the loop: continuous + autonomous + reliable (the JARVIS
+leap; human-directed 2026-06-03, see `docs/strategy/capability-map.md`).**
+Muse is a deep box of manually-invoked one-shot atoms; this target is the
+leap from "a tool I operate" to "an assistant that runs beside me." Each
+bullet is UN-SLICEABLE — it flips ONLY when the whole behaviour carries
+end-to-end and is proven by a live battery, with the grounding edge
+maintained (cite sources, verify effects, fabrication=0). These are the
+loop's FRONTIER; a grounding-only micro-slice may not be opened while a
+P43 bullet is unbuilt.
+
+- [ ] **P43-1 Autonomous self-development daemon (THE #1 lever).** The
+  daemon learns from your corrections WITHOUT you running a command: on
+  its idle tick it distills corrections into playbook/skill updates,
+  consolidates skills, and reinforces/decays strategies — the
+  RL-over-memory mechanisms already exist as manual CLI
+  (`adjustPlaybookReward`, distill, consolidate, reflections) and the
+  design is loop-v2 Phases 2–4; ONLY the daemon wiring is missing.
+  Brake-first: rate-capped, vetoable, and it must NEVER silently degrade
+  the honesty machinery. Flips when a real correction made in one session
+  measurably changes Muse's behaviour in a LATER session with NO manual
+  command, proven by a live `eval:self-improving`-style battery. (This is
+  the literal answer to "is it continuously self-developing like JARVIS?"
+  — today the design exists but only runs by hand.)
+- [ ] **P43-2 Reliable carry-to-done.** A multi-step goal reaches a
+  VERIFIED done: the plan-execute loop verifies each step's effect,
+  replans on a failed/ambiguous step, and EVERY actuator (email /
+  calendar / web / home — not just messaging) retries a transient failure
+  with backoff / Retry-After. Flips when a 2+-step task ("do X then tell
+  Y") carries to a verified done THROUGH an injected
+  deny/timeout/5xx/ambiguous-recipient failure, proven by a
+  contract-faithful fake per `outbound-safety.md` ("I did it" without
+  verification is itself a fabrication risk).
+- [ ] **P43-3 Continuous auto-syncing ingestion.** At least one live
+  personal stream (email / messages / calendar) syncs into the citable
+  corpus on its own with PERSISTED offset state — new inbound becomes
+  recallable and/or can fire a proactive notice WITHOUT a manual pull,
+  replacing today's one-shot snapshot commands. Flips when a
+  freshly-arrived item is recalled with a citation and/or triggers a
+  gated notice end-to-end, against a contract-faithful fake.
+- [ ] **P43-4 Absence/anomaly anticipation + evening recap.** Muse
+  notices the ABSENCE of an expected thing ("a project went cold, a
+  contact went quiet, this is unusual for you") and bookends the day with
+  an end-of-day digest of slipping commitments — through the same
+  grounded, rate-capped, vetoable notice surface as the morning brief.
+  Flips when a seeded "gone cold" pattern fires a cited anomaly notice AND
+  the evening recap re-surfaces an open loop, proven live.
 
 **P37 — Perception growth: read-only local connectors (loop-v2 B3).** The
 self-learning core (P36) is delivered end-to-end + felt; this axis grows what

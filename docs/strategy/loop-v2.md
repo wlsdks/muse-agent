@@ -28,19 +28,28 @@ The one-line identity, unchanged and load-bearing:
 
 Identity FLOOR (locked, never edit): see "THE LOCKED HEADLINE" (PART B0).
 Build order: FRONT DOOR → felt self-learning (brake-first) → perceive/act growth.
-CURRENT PHASE (the ONLY line the loop may move in this file): FRONT DOOR
-DELIVERED + live-proven (P34-1..11: demo, single/bulk/watch-folder ingest,
-hybrid recall that killed the false refusal, confidence calibration,
-empty-corpus on-ramp, cross-lingual refusal-citation fix; full EXPECTED.md
-oracle green — literal, multi-fact, Korean, AND paraphrase). The front-door
-rungs verifiable by cited-answer+refusal are EXHAUSTED. NEXT PHASE = felt
-SELF-LEARNING (rung 4, brake-and-proof-first per PART A2 + B1) — verify by the
-2-session / eval:self-improving proof, NOT cited-answer+refusal. The one
-remaining front-door rung (b: one-command installer) needs a clean-room
-container/CI proof, not live recall — pick it ONLY with that proof shape.
+CURRENT PHASE (the ONLY line the loop may move in this file): CLOSE THE LOOP
+(human-directed 2026-06-03 — Jinan, after the 9-agent capability audit + map
+in `docs/strategy/capability-map.md`). The front door (P34) AND the grounding
+edge (P38, every surface incl. the episode-summary ingest gate) are DELIVERED
+and live-proven — the grounding gate has hit diminishing returns (about half of
+recent grounding commits were un-breaking its own false-positives). The loop
+PLATEAUED on grounding micro-polish while the JARVIS-defining axes stayed
+frozen. The FRONTIER is now target P43 — close the loop: continuous +
+autonomous + reliable — (1) the AUTONOMOUS SELF-DEVELOPMENT daemon (rung 4:
+distill/consolidate/RL-reinforce from corrections on its own idle tick — the
+mechanisms exist as manual CLI, only the daemon wiring is missing), (2)
+continuous auto-syncing ingestion, (3) reliable carry-to-done (verify + replan
++ all-actuator retry), (4) absence/anomaly anticipation + evening recap.
+GROUNDING IS NOW THE FLOOR, NOT THE FRONTIER: every P43 slice still cites its
+sources, verifies its effect, proves fabrication=0, and passes a live battery —
+but a grounding-ONLY micro-slice may NOT be opened while a P43 bullet is
+unbuilt. (This supersedes the earlier "NOT more RL" steering — autonomous
+self-learning IS the point now; see the updated focus memory.)
 First action: run the newest CAPABILITIES.md check. RED ⇒ fix it. GREEN ⇒
-PART B0 "HOW TO PICK" — front door (rung 3) is done, so take rung 4's first
-undone B1 slice.
+advance the lowest-numbered undone P43 bullet (decompose across iterations; the
+bullet stays `[ ]` until the whole continuous/autonomous/reliable behaviour is
+proven end-to-end live).
 PARKED forever: A2A. Out of scope: banking/payments.
 
 ---
