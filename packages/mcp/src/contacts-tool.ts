@@ -22,7 +22,7 @@ export function createContactsFindTool(deps: ContactsFindToolDeps): MuseTool {
   return {
     definition: {
       description:
-        "Look up one of the user's contacts by name or alias and return their email / handle / phone / birthday. Use when you need a person's contact details, their phone number, their birthday, or to confirm who someone is. An ambiguous name returns the candidate names (never a guess); an unknown name returns found:false. Read-only.",
+        "Look up one of the user's contacts by name or alias and return their email / handle / phone / birthday / relationship (their role, e.g. 'doctor'). Use when you need a person's contact details, their phone number, their birthday, their role, or to confirm who someone is. An ambiguous name returns the candidate names (never a guess); an unknown name returns found:false. Read-only.",
       domain: "messaging",
       inputSchema: {
         additionalProperties: false,
@@ -50,7 +50,8 @@ export function createContactsFindTool(deps: ContactsFindToolDeps): MuseTool {
           ...(c.email ? { email: c.email } : {}),
           ...(c.handle ? { handle: c.handle } : {}),
           ...(c.phone ? { phone: c.phone } : {}),
-          ...(c.birthday ? { birthday: c.birthday } : {})
+          ...(c.birthday ? { birthday: c.birthday } : {}),
+          ...(c.relationship ? { relationship: c.relationship } : {})
         };
       }
       if (resolution.status === "ambiguous") {
@@ -71,7 +72,7 @@ export function createContactsAddTool(deps: ContactsAddToolDeps): MuseTool {
   return {
     definition: {
       description:
-        "Add (or update) a person in the user's contacts so they can be found, emailed, or called later. Use when the user gives you someone's details to remember ('save Bob, bob@x.com' / 'mom's number is 415-555-0101'). Requires a name and at least one of email / handle / phone. A local store write — not a message to anyone.",
+        "Add (or update) a person in the user's contacts so they can be found, emailed, or called later. Use when the user gives you someone's details to remember ('save Bob, bob@x.com' / 'mom's number is 415-555-0101' / 'add Dr. Park, she's my dentist'). Requires a name and at least one of email / handle / phone. When the user states how the person relates to them ('my manager', 'my doctor', 'my wife'), record it in `relationship` — it is what later answers 'who is my manager?'. A local store write — not a message to anyone.",
       domain: "messaging",
       inputSchema: {
         additionalProperties: false,
@@ -80,7 +81,8 @@ export function createContactsAddTool(deps: ContactsAddToolDeps): MuseTool {
           email: { description: "Email address, e.g. 'bob@acme.com'.", type: "string" },
           handle: { description: "Chat handle, e.g. '@bob'.", type: "string" },
           name: { description: "The person's name, e.g. 'Bob Acme'.", type: "string" },
-          phone: { description: "Phone number, e.g. '+1 415 555 0101' or '415-555-0101'.", type: "string" }
+          phone: { description: "Phone number, e.g. '+1 415 555 0101' or '415-555-0101'.", type: "string" },
+          relationship: { description: "How this person relates to the user — their role, e.g. 'doctor', 'manager', 'wife', 'landlord', 'dentist'. Set this whenever the user says 'my <role>'; it powers later 'who is my <role>?' lookups.", type: "string" }
         },
         required: ["name"],
         type: "object"
@@ -95,6 +97,7 @@ export function createContactsAddTool(deps: ContactsAddToolDeps): MuseTool {
       const handle = typeof args["handle"] === "string" ? args["handle"].trim() : "";
       const phone = typeof args["phone"] === "string" ? args["phone"].trim() : "";
       const birthday = typeof args["birthday"] === "string" ? args["birthday"].trim() : "";
+      const relationship = typeof args["relationship"] === "string" ? args["relationship"].trim() : "";
       if (name.length === 0) {
         return { added: false, reason: "name is required" };
       }
@@ -110,10 +113,11 @@ export function createContactsAddTool(deps: ContactsAddToolDeps): MuseTool {
         ...(email.length > 0 ? { email } : {}),
         ...(handle.length > 0 ? { handle } : {}),
         ...(phone.length > 0 ? { phone } : {}),
-        ...(birthday.length > 0 ? { birthday } : {})
+        ...(birthday.length > 0 ? { birthday } : {}),
+        ...(relationship.length > 0 ? { relationship } : {})
       };
       await deps.save(contact);
-      return { added: true, id: contact.id, name: contact.name };
+      return { added: true, id: contact.id, name: contact.name, ...(relationship.length > 0 ? { relationship } : {}) };
     }
   };
 }

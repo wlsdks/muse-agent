@@ -746,6 +746,26 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   the coverage fraction below the floor; that is pre-existing + model-dependent + not
   contact-specific, untouched here. cli 1898 + pnpm lint 0/0 + live clean recall._
 
+- [x] **P37-24 You can now TELL the agent a person's role conversationally — "add
+  Sarah, she's my manager" is remembered + queryable.** P37-20 added the `relationship`
+  field + the CLI path (`muse contacts add --relationship`) + recall grounding, but the
+  AGENT tools never captured it: probing `muse ask --with-tools "add Sarah Chen,
+  sarah@example.com, she is my manager"` stored only name + email and SILENTLY DROPPED
+  "she is my manager" — `add_contact`'s schema had no `relationship`, so the round-trip
+  was half-built (you could ask "who's my manager?" but couldn't TELL Muse one without
+  dropping to the CLI). Closed both sides of the agent surface (`contacts-tool.ts`):
+  `add_contact` now takes a `relationship` arg (example-bearing description: "'doctor',
+  'manager', 'wife', 'landlord', 'dentist' … set whenever the user says 'my <role>'")
+  and stores it on the `Contact`; `find_contact` now RETURNS `relationship` so "who is
+  Sarah?" surfaces her role. NOT an identifier — same safety boundary as P37-20 (a role
+  never resolves a recipient). Verified: 4 new unit tests (`add_contact` captures the
+  role + omits when absent; `find_contact` surfaces it + omits when absent) — @muse/mcp
+  174 files / 1480 tests + `pnpm lint` 0/0 + a full LIVE conversational round-trip on
+  qwen3:8b: `muse ask --with-tools "add Sarah Chen … she is my manager"` → the stored
+  contact now carries `"relationship": "manager"` (was dropped before), then `muse ask
+  "who is my manager?"` → "your manager is Sarah Chen … [contact: Sarah Chen]" (cited).
+  (3828df14)
+
 - [x] **P37-9 Action-log grounding — "did you send that? / what have you done?"
   (B3 transparency, gate a new surface).** `muse ask` now grounds on Muse's OWN
   audit log of acts taken on the user's behalf (sends, refusals) — the

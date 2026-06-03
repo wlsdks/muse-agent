@@ -7,7 +7,8 @@ const PEOPLE: Contact[] = [
   { handle: "@jane", id: "c2", name: "Jane Doe" },
   { email: "bobby1@x.com", id: "c3", name: "Bobby One" },
   { email: "bobby2@x.com", id: "c4", name: "Bobby Two" },
-  { id: "c5", name: "Mom", phone: "+1 415 555 0101" }
+  { id: "c5", name: "Mom", phone: "+1 415 555 0101" },
+  { email: "sarah@x.com", id: "c6", name: "Sarah Chen", relationship: "manager" }
 ];
 
 function tool(people: Contact[] = PEOPLE) {
@@ -25,6 +26,12 @@ describe("createContactsFindTool — look up a person", () => {
 
   it("returns a contact's phone number when looked up by name ('what's mom's number?')", async () => {
     expect(await tool().execute({ name: "Mom" })).toMatchObject({ found: true, name: "Mom", phone: "+1 415 555 0101" });
+  });
+
+  it("surfaces the contact's RELATIONSHIP/role so the agent can answer 'who is Sarah?' / 'who's my manager?'", async () => {
+    expect(await tool().execute({ name: "Sarah Chen" })).toMatchObject({ found: true, name: "Sarah Chen", relationship: "manager" });
+    // A contact without a relationship simply omits it.
+    expect(await tool().execute({ name: "Mom" })).not.toHaveProperty("relationship");
   });
 
   it("returns the candidates (never a guess) for an ambiguous name", async () => {
@@ -72,6 +79,19 @@ describe("createContactsAddTool — capture a person", () => {
     const { saved, tool } = addTool();
     expect(await tool.execute({ birthday: "Dec 25", email: "x@y.com", name: "X" })).toMatchObject({ added: false });
     expect(saved).toHaveLength(0);
+  });
+
+  it("captures the RELATIONSHIP/role when stated ('add Sarah, she's my manager') so 'who's my manager?' resolves later", async () => {
+    const { saved, tool } = addTool();
+    const out = await tool.execute({ email: "sarah@x.com", name: "Sarah Chen", relationship: "manager" });
+    expect(out).toMatchObject({ added: true, name: "Sarah Chen", relationship: "manager" });
+    expect(saved[0]).toMatchObject({ email: "sarah@x.com", id: "c-fixed", name: "Sarah Chen", relationship: "manager" });
+  });
+
+  it("omits relationship when not given (a plain contact stays plain)", async () => {
+    const { saved, tool } = addTool();
+    await tool.execute({ email: "x@y.com", name: "Plain" });
+    expect(saved[0]).not.toHaveProperty("relationship");
   });
 });
 
