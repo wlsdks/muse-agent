@@ -3035,6 +3035,9 @@ describe("AgentRuntime PlanExecute mode", () => {
           { args: {}, description: "fetch a", tool: "tool_a" },
           { args: {}, description: "fetch b", tool: "tool_b" }
         ]),
+        // The failed read step (tool_b) now attempts an adaptive re-plan; give it
+        // an EMPTY alternative so it stays failed (the point of this test).
+        planResponse([]),
         answerResponse("mixed answer")
       ],
       tools: [
@@ -3061,7 +3064,10 @@ describe("AgentRuntime PlanExecute mode", () => {
       model: "provider/model"
     });
 
-    const synthesisRequest = requests[1];
+    // Find the SYNTHESIS request by its unique `[실패]` fact-sheet marker, not by
+    // index — the adaptive re-plan adds a model call between plan and synthesis.
+    const synthesisRequest = requests.find((r) =>
+      r.messages.some((m) => m.role === "user" && typeof m.content === "string" && m.content.includes("[실패]")));
     const userMessage = synthesisRequest?.messages.find((message) => message.role === "user");
     expect(userMessage?.content).toContain("[tool_b] fetch b");
     expect(userMessage?.content).toContain("[실패]");

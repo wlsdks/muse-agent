@@ -180,10 +180,19 @@ P43 bullet is unbuilt.
   could double-act — outbound-safety; its transient case is already 429-only-safe
   at the HTTP layer). Composed with the per-step verify + the actuator retry + the
   ask-level grounding verdict, a 2-step task carries to a verified done THROUGH an
-  injected transient failure → BULLET FLIPS. Remaining refinement (not required by
-  the flip condition): richer REPLAN by re-decomposition (generate a new
-  sub-plan from the failure point) + explicit deny/ambiguous-recipient recovery
-  batteries. Decomposition → `docs/goals/P43-close-the-loop.md`._
+  injected transient failure → BULLET FLIPS. Refinement DELIVERED (`0d8a2882`,
+  a 13-agent panel + red-team chose this as the highest-value SAFE big lever): the
+  "replans on a failed step" prose is now real — adaptive RE-DECOMPOSITION
+  (`replanFailedReadStep`): a READ step that still fails after the bounded retry
+  gets ONE alternative READ-ONLY sub-plan (the model proposes a different approach
+  to the same intent) and recovers if it succeeds. SIGN-SAFE / no double-act: only
+  a read-step failure triggers it (a write is never replanned — it may have
+  committed), and the alternative plan is FILTERED to read-risk tools (any write
+  the model proposes is DROPPED), so recovery can never act on the world —
+  contract-faithful proven (a failed read recovers via an alt read; a failed write
+  is never replanned; a re-plan's write step is dropped/never called). Remaining
+  (lower value): explicit deny/ambiguous-recipient recovery batteries.
+  Decomposition → `docs/goals/P43-close-the-loop.md`._
 - [x] **P43-3 Continuous auto-syncing ingestion.** At least one live
   personal stream (email / messages / calendar) syncs into the citable
   corpus on its own with PERSISTED offset state — new inbound becomes

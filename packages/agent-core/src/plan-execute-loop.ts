@@ -29,7 +29,8 @@ import {
   systemMessageContent,
   validatePlan,
   type PlanStep,
-  type StepEffectVerdict
+  type StepEffectVerdict,
+  type StepExecutionResult
 } from "./plan-execute.js";
 
 /**
@@ -193,6 +194,22 @@ export async function* streamPlanExecute(
       effect = completed ? classifyStepEffect(toolResult.result.output) : { effectFailed: false };
       success = completed && !effect.effectFailed;
     } while (!success && attempts < maxAttempts && toolCallCount < runner.maxToolCalls);
+    // ADAPTIVE RE-DECOMPOSITION (carry-to-done): a READ step that still failed
+    // after the bounded retry gets ONE alternative read-only sub-plan to reach
+    // the same intent a different way. Only a read-step failure triggers this
+    // (`retryable`) — a write failure is never replanned (it may have committed →
+    // double-act); the re-plan is filtered to read-risk tools, so recovery can't
+    // act on the world. Skipped on the happy path (a succeeding step never
+    // replans → no latency added to the common case).
+    if (!success && retryable && toolCallCount < runner.maxToolCalls) {
+      const recovered = await replanFailedReadStep(runner, context, provider, request, userPrompt, step, effect.reason ?? "STEP_EFFECT_FAILED", tools, toolCallCount);
+      if (recovered) {
+        toolCallCount = recovered.toolCallCount;
+        executed.push({ executed: recovered.executed, step, stepResult: recovered.stepResult });
+        yield { runId: context.runId, stepIndex: index, success: true, type: "plan-step-result" };
+        continue;
+      }
+    }
     executed.push({
       executed: toolResult,
       step,
@@ -242,6 +259,80 @@ export async function* streamPlanExecute(
     toolResults: executed.map((entry) => entry.executed),
     toolsUsed: [...new Set(executed.map((entry) => entry.executed.toolCall.name))]
   };
+}
+
+/** A re-plan explores at most this many alternative steps for a failed read. */
+const PLAN_REPLAN_MAX_STEPS = 2;
+
+/**
+ * Adaptive re-decomposition (carry-to-done): when a READ step's effect fails even
+ * after the bounded retry, generate an ALTERNATIVE plan to obtain the same
+ * information a different way, and run it. SAFETY (the whole reason this is
+ * read-only): the caller triggers this ONLY for a read-risk step (a write may
+ * have committed → it is NEVER replanned, no double-act), AND the alternative
+ * plan is FILTERED to read-risk tools here — any write/execute step the model
+ * proposes in the re-plan is DROPPED, so recovery can never act on the world.
+ * Bounded to `PLAN_REPLAN_MAX_STEPS` alternative steps and the run's
+ * `maxToolCalls`. Returns the recovered result (the step's intent achieved via
+ * the alternative) or undefined when no read alternative succeeded.
+ */
+async function replanFailedReadStep(
+  runner: PlanExecuteRunner,
+  context: AgentRunContext,
+  provider: ModelProvider,
+  request: ModelRequest,
+  userPrompt: string,
+  failedStep: PlanStep,
+  reason: string,
+  tools: readonly ModelTool[],
+  toolCallCount: number
+): Promise<{ readonly executed: ExecutedToolResult; readonly stepResult: StepExecutionResult; readonly toolCallCount: number } | undefined> {
+  const readTools = tools.filter((tool) => tool.risk === "read");
+  if (readTools.length === 0 || toolCallCount >= runner.maxToolCalls) {
+    return undefined;
+  }
+  const replanPrompt = [
+    `The original request was: ${userPrompt}`,
+    `A planned step failed and could not be retried: "${failedStep.description}" (tool ${failedStep.tool}) — ${reason}.`,
+    "Produce a SHORT alternative plan (1-2 steps) that obtains the SAME information a DIFFERENT way, using ONLY the available tools. Do not repeat the failed call verbatim."
+  ].join("\n");
+  let altPlan: readonly PlanStep[] | null;
+  try {
+    altPlan = await generatePlan(runner, context, provider, request, replanPrompt, renderToolDescriptionsForPlanning(readTools), undefined);
+  } catch {
+    return undefined;
+  }
+  if (!altPlan || altPlan.length === 0) {
+    return undefined;
+  }
+  const readToolNames = new Set(readTools.map((tool) => tool.name));
+  let count = toolCallCount;
+  for (const altStep of altPlan.slice(0, PLAN_REPLAN_MAX_STEPS)) {
+    if (count >= runner.maxToolCalls) {
+      break;
+    }
+    if (!readToolNames.has(altStep.tool)) {
+      continue; // SAFETY: drop any non-read step the re-plan proposed — recovery is read-only.
+    }
+    const call: ModelToolCall = { arguments: altStep.args, id: `plan-replan-${count.toString()}`, name: altStep.tool };
+    const toolResult = await runner.executeToolCall(context, call, tools);
+    count += 1;
+    const completed = toolResult.result.status === "completed";
+    const effect = completed ? classifyStepEffect(toolResult.result.output) : { effectFailed: false };
+    if (completed && !effect.effectFailed) {
+      return {
+        executed: toolResult,
+        stepResult: {
+          description: `${failedStep.description} (recovered via ${altStep.tool})`,
+          output: toolResult.result.output,
+          success: true,
+          tool: altStep.tool
+        },
+        toolCallCount: count
+      };
+    }
+  }
+  return undefined;
 }
 
 async function generatePlan(
