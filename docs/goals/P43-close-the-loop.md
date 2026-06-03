@@ -38,12 +38,23 @@ model.
   (drains the queue), the BRAKE leaves the queue intact when paused, the gate is
   off by default, `--status` reports it; api `distill-queue` suite still green
   against the re-export.
-- **Slice 2 — consolidate + reinforce/decay on the daemon tick.** Wire skill /
-  playbook consolidation and `adjustPlaybookReward` reinforce-on-reuse +
-  decay-on-correction into the same idle tick, brake-first, on a slower cadence.
-- **Slice 3 — graduate probation autonomously.** A strategy distilled
-  unattended (probation) is GRADUATED (becomes injectable) only after a real
-  later reuse/reinforce — so the daemon's own writes can't self-confirm.
+- **Slice 2 — disuse-decay on the daemon tick. ✅ DELIVERED.** The FORGETTING
+  half of continuous RL over the bank: `decayStalePlaybookRewards` (already run
+  by the api tick, NOT the CLI daemon) now runs in `muse daemon` under the same
+  `MUSE_SELFLEARN_ENABLED` switch + the learning-pause brake (a paused user's
+  bank is frozen), model-free, slow daily cadence. A positive-reward strategy
+  not reinforced within the stale window fades toward neutral so a one-off
+  thumbs-up can't steer the agent forever. Distill ADDS (slice 1), decay FADES
+  (slice 2) = the user's actual runtime now does continuous RL over the bank
+  unattended. Proof: `commands-daemon.test.ts` — a 60-day-stale reward-2
+  strategy fades to 1 on the tick (no model), the BRAKE freezes it when paused,
+  the gate is the same as distill.
+- **Slice 3 — consolidate + autonomous graduation (HONESTY-SENSITIVE — review
+  first).** Wire skill/playbook consolidation, and graduate a probation
+  strategy to injectable ONLY on a REAL user-originated signal (a repeated
+  correction / explicit reinforce — never time or self-confirmation), so the
+  daemon's own writes can't self-promote. This touches the injection path, so
+  it is held for Jinan's review of the P43-1 approach before shipping.
 - **FLIP slice — the 2-session live battery.** An `eval:self-improving`-style
   battery: session A makes a correction; the daemon distills + graduates it
   unattended; session B measurably reflects the learned strategy with NO manual

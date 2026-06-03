@@ -118,10 +118,12 @@ P43 bullet is unbuilt.
   command, proven by a live `eval:self-improving`-style battery. (This is
   the literal answer to "is it continuously self-developing like JARVIS?"
   — today the design exists but only runs by hand.)
-  _Slice 1 (DELIVERED) — `muse daemon` now distills queued corrections on
-  its idle tick with NO manual command (brake-first, probation writes); the
-  drain (`distillQueuedCorrections`) moved to `@muse/autoconfigure` so the
-  CLI daemon + api tick share it. Decomposition + remaining slices →
+  _Slices 1–2 (DELIVERED, `44cd2951` + this commit) — `muse daemon` now does
+  continuous RL over the learned bank unattended: it DISTILLS queued
+  corrections into probation strategies (slice 1) AND DECAYS stale unused ones
+  toward neutral (slice 2), both brake-first under one `MUSE_SELFLEARN_ENABLED`
+  switch. Remaining (slice 3, honesty-sensitive — held for review): consolidate
+  + autonomous graduation on a real user signal. Decomposition →
   `docs/goals/P43-close-the-loop.md`. Bullet stays `[ ]` until the 2-session
   live battery proves an unattended correction changes a later session._
 - [ ] **P43-2 Reliable carry-to-done.** A multi-step goal reaches a

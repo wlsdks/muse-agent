@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { buildCheckinQuestion, enqueueLearnEvent, readPendingLearnEvents, readProposedActions, readReflections, setLearningPaused, writeCheckins, writeEpisodes, writeFollowups, writeObjectives, type PersistedCheckin, type PersistedEpisode } from "@muse/mcp";
+import { buildCheckinQuestion, enqueueLearnEvent, readPendingLearnEvents, readPlaybook, readProposedActions, readReflections, setLearningPaused, writeCheckins, writeEpisodes, writeFollowups, writeObjectives, writePlaybook, type PersistedCheckin, type PersistedEpisode } from "@muse/mcp";
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -1069,5 +1069,52 @@ describe("muse daemon — unattended self-learning tick (P43-1 slice 1)", () => 
       env: tmpEnv(), registry, resolveFollowupModel: async () => fakeFollowupModel()
     });
     expect(off.stdout).toContain("self-learn: disabled");
+  });
+});
+
+describe("muse daemon — unattended disuse-decay tick (P43-1 slice 2)", () => {
+  // A positive-reward strategy not reinforced in 60 days — stale, eligible to fade.
+  async function seedStaleStrategy(env: NodeJS.ProcessEnv, reward = 2): Promise<void> {
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 86_400_000).toISOString();
+    await writePlaybook(env.MUSE_PLAYBOOK_FILE!, [{
+      id: "p1", userId: "u1", text: "Prefer concise answers.",
+      createdAt: sixtyDaysAgo, lastReinforcedAt: sixtyDaysAgo, reward, probation: false
+    }]);
+  }
+
+  it("fades a stale, unused positive-reward strategy toward neutral on the tick (RL forgets) — no model needed", async () => {
+    const env = tmpEnv();
+    env.MUSE_SELFLEARN_ENABLED = "true";
+    await seedStaleStrategy(env);
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.stdout).toMatch(/decay: 1 stale strategy faded toward neutral/);
+    expect((await readPlaybook(env.MUSE_PLAYBOOK_FILE!))[0]!.reward).toBe(1); // 2 → 1, one step toward neutral
+  });
+
+  it("BRAKE: a paused learner's bank is frozen — nothing decays", async () => {
+    const env = tmpEnv();
+    env.MUSE_SELFLEARN_ENABLED = "true";
+    await seedStaleStrategy(env);
+    await setLearningPaused(env.MUSE_LEARNING_PAUSE_FILE!, true);
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.stdout).not.toContain("decay:");
+    expect((await readPlaybook(env.MUSE_PLAYBOOK_FILE!))[0]!.reward).toBe(2); // untouched, resume catches up
+  });
+
+  it("does NOTHING when MUSE_SELFLEARN_ENABLED is unset (same gate as distill)", async () => {
+    const env = tmpEnv();
+    await seedStaleStrategy(env);
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.stdout).not.toContain("decay:");
+    expect((await readPlaybook(env.MUSE_PLAYBOOK_FILE!))[0]!.reward).toBe(2);
   });
 });

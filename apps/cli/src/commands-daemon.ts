@@ -60,6 +60,8 @@ import {
   runDueProactiveNotices,
   readEpisodes,
   resolveLearnQueueFile,
+  decayStalePlaybookRewards,
+  isLearningPaused,
   runDueReminders,
   runDueSituationalBriefing,
   webWatchesFromConfig,
@@ -882,6 +884,28 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         } catch { /* fail-soft — background learning must never break the daemon */ }
       };
 
+      // Disuse-decay — the FORGETTING half of continuous RL over the learned
+      // bank (slice 1 distills new strategies; this fades old ones). A
+      // positive-reward strategy you stopped using sinks back toward neutral so
+      // a one-off thumbs-up can't steer the agent forever. Same MUSE_SELFLEARN
+      // switch + the learning-pause brake (a paused user's bank is frozen);
+      // model-free, so it runs without a model, on a slow daily cadence.
+      const DEFAULT_SELFLEARN_DECAY_INTERVAL_MS = 24 * 60 * 60 * 1000;
+      const decayIntervalRaw = e.MUSE_SELFLEARN_DECAY_INTERVAL_MS ? Number(e.MUSE_SELFLEARN_DECAY_INTERVAL_MS) : DEFAULT_SELFLEARN_DECAY_INTERVAL_MS;
+      const decayIntervalMs = Number.isFinite(decayIntervalRaw) && decayIntervalRaw > 0 ? decayIntervalRaw : DEFAULT_SELFLEARN_DECAY_INTERVAL_MS;
+      let lastDecayMs: number | undefined;
+      const selfLearnDecayTick = async (): Promise<void> => {
+        if (!parseBoolean(e.MUSE_SELFLEARN_ENABLED, false)) return;
+        const nowMs = Date.now();
+        if (lastDecayMs !== undefined && nowMs - lastDecayMs < decayIntervalMs) return;
+        lastDecayMs = nowMs;
+        try {
+          if (await isLearningPaused(resolveLearningPauseFile(e))) return; // brake: paused ⇒ bank frozen
+          const decayed = await decayStalePlaybookRewards(resolvePlaybookFile(e), { nowMs });
+          if (decayed > 0) io.stdout(`[${new Date(nowMs).toISOString()}] decay: ${decayed.toString()} stale strateg${decayed === 1 ? "y" : "ies"} faded toward neutral\n`);
+        } catch { /* fail-soft — background maintenance must never break the daemon */ }
+      };
+
       const runTick = async (): Promise<void> => {
         await proactiveTick();
         await remindersTick();
@@ -895,6 +919,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         await briefingTick();
         await reflectionTick();
         await selfLearnTick();
+        await selfLearnDecayTick();
       };
 
       io.stdout(`muse daemon — provider=${provider}, destination=${destination}, lead ${leadMinutes.toString()} min\n`);
