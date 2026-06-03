@@ -1153,6 +1153,32 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   taxes" --due "end of next month"` → due 2026-07-31 09:00 (both REJECTED before).
   mcp 167 files / 1344 tests + `pnpm lint` 0/0. (a78f969b)
 
+- [x] **P40-13 The reminder CONFIRMATION states the time you actually asked for —
+  no more "I set it for 6 AM" when you said 3 PM.** Probing the agent actuator
+  exposed a real, trust-eroding defect: `muse ask --with-tools "remind me to call
+  the dentist tomorrow at 3pm"` STORED the reminder correctly (3 PM local) but the
+  model CONFIRMED "…due on June 5th, 2026, at 6:00 AM" — it read the raw UTC ISO
+  hour (`…T06:00:00Z`, which IS 3 PM KST) and echoed "6:00 AM", telling the user a
+  time they never asked for. The reminder fires at the right instant, so this was
+  invisible to the firing path — but a confidant that parrots back the wrong time
+  reads as broken and erodes trust in every "did you set it?" Fixed by enriching
+  the model-facing reminder tool results (`add`/`due`/`search`/`snooze`/`fire`)
+  with a `dueAtLocal` field — the due time rendered in the SERVER's local timezone,
+  the same wall clock the phrase was parsed against ("Fri, Jun 5, 2026, 3:00 PM
+  (tomorrow)") — plus a `muse.reminders.add` description anchor telling the model
+  to confirm with `dueAtLocal`, never the raw UTC ISO. The REST/web path keeps the
+  lean `serializeReminder` (it formats its own times); only the LLM tool results
+  are enriched (a new `serializeReminderForModel`). Proof: 6 new tz-robust unit
+  tests (local-hour + AM/PM + relative hint rendered; overdue / in-N-minutes;
+  unparseable echoed verbatim; `serializeReminderForModel` = serialize + dueAtLocal)
+  passing in BOTH `TZ=Asia/Seoul` and `TZ=UTC` + a NEW PERMANENT live battery
+  (`apps/cli/scripts/verify-reminder-local-time.mjs`, wired into
+  `eval:self-improving`) that drives the REAL add tool then asks qwen3:8b to confirm
+  — asserting it states the LOCAL 3 PM, not the UTC 6 AM (2/2) + a full LIVE
+  `muse ask --with-tools` e2e showing the confirmation now reads "Fri, Jun 5, 2026,
+  3:00 PM (tomorrow)" (was "6:00 AM" before the fix). @muse/mcp 173 files / 1461
+  tests + `pnpm lint` 0/0. (c4628401)
+
 **P41 — Actuation reliability: actuators survive real-world failure modes
 (human-directed 2026-05-23: "harden the one-of-each actuators into daily-reliable
 integrations — a proven-once actuator that breaks on a real-world failure mode

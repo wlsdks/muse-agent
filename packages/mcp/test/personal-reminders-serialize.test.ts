@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { type PersistedReminder, readReminderStatusFilter, serializeReminder } from "../src/personal-reminders-store.js";
+import {
+  formatReminderDueLocal,
+  type PersistedReminder,
+  readReminderStatusFilter,
+  serializeReminder,
+  serializeReminderForModel,
+} from "../src/personal-reminders-store.js";
 
 const base: PersistedReminder = {
   id: "r1",
@@ -41,6 +47,47 @@ describe("serializeReminder", () => {
     expect(out).not.toHaveProperty("via");
     expect(out).not.toHaveProperty("recurrence");
     expect(out).not.toHaveProperty("firedAt");
+  });
+});
+
+describe("formatReminderDueLocal — renders the due time in the SERVER's local timezone (the bug: the model echoed the UTC ISO hour)", () => {
+  it("renders the LOCAL clock hour + AM/PM + a relative hint, not the raw UTC ISO", () => {
+    const dueIso = "2026-06-05T06:00:00.000Z";
+    const now = (): Date => new Date("2026-06-04T01:00:00.000Z");
+    const out = formatReminderDueLocal(dueIso, now);
+    // The local hour as the runner's timezone renders it — proves it is NOT
+    // blindly echoing the ISO "06". (In KST this is 3 PM; in UTC, 6 AM.)
+    const localHour = new Date(dueIso).getHours();
+    const hour12 = (localHour % 12) || 12;
+    const ampm = localHour < 12 ? "AM" : "PM";
+    expect(out).toContain(`${String(hour12)}:00`);
+    expect(out).toContain(ampm);
+    expect(out).toMatch(/\((?:tomorrow|today|in \d+ days)\)/u);
+    // It must NOT look like a bare ISO instant (the failure mode).
+    expect(out).not.toContain("T06:00");
+    expect(out).not.toMatch(/Z$/u);
+  });
+
+  it("labels a past dueAt 'overdue' and a soon dueAt 'in N minutes'", () => {
+    const now = (): Date => new Date("2026-06-04T12:00:00.000Z");
+    expect(formatReminderDueLocal("2026-06-04T11:00:00.000Z", now)).toMatch(/\(overdue\)/u);
+    expect(formatReminderDueLocal("2026-06-04T12:30:00.000Z", now)).toMatch(/\(in 30 minutes\)/u);
+    expect(formatReminderDueLocal("2026-06-04T12:01:00.000Z", now)).toMatch(/\(in 1 minute\)/u);
+  });
+
+  it("echoes an unparseable value verbatim so the model never loses it", () => {
+    expect(formatReminderDueLocal("not-a-real-date", () => new Date("2026-06-04T12:00:00.000Z"))).toBe("not-a-real-date");
+  });
+});
+
+describe("serializeReminderForModel — the model-facing serialization carries dueAtLocal", () => {
+  it("is serializeReminder plus a local-time dueAtLocal field", () => {
+    const now = (): Date => new Date("2026-06-04T01:00:00.000Z");
+    const out = serializeReminderForModel({ ...base, dueAt: "2026-06-05T06:00:00.000Z" }, now);
+    expect(out).toMatchObject(serializeReminder({ ...base, dueAt: "2026-06-05T06:00:00.000Z" }));
+    expect(typeof out["dueAtLocal"]).toBe("string");
+    expect(out["dueAtLocal"]).toBe(formatReminderDueLocal("2026-06-05T06:00:00.000Z", now));
+    expect(out["dueAtLocal"]).toMatch(/AM|PM/u);
   });
 });
 

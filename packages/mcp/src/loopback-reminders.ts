@@ -12,7 +12,7 @@ import {
   parseReminderDueAt,
   readReminders,
   readReminderStatusFilter,
-  serializeReminder,
+  serializeReminderForModel,
   writeReminders,
   type PersistedReminder,
   type ReminderRecurrence
@@ -116,7 +116,8 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           "so pass the user's natural-language input directly (in their own language). Reminders surface in `muse today` once dueAt " +
           "has passed. " +
           "Optional `recurrence`: 'daily' or 'weekly' makes it repeat (re-arms to the next occurrence each time it fires) — use for 'every day' / 'every Monday'; omit for a one-time reminder. " +
-          "Reminders fire on the user's configured channel.",
+          "Reminders fire on the user's configured channel. " +
+          "When you confirm the reminder back to the user, state the time using the result's `dueAtLocal` field (the due time in the user's local timezone, e.g. 'Thu, Jun 5, 2026, 3:00 PM (tomorrow)') — NEVER the raw ISO `dueAt`, which is in UTC and will read back the wrong hour.",
         execute: async (args): Promise<JsonObject> => {
           const text = readString(args, "text")?.trim();
           if (!text) {
@@ -154,7 +155,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           } catch (error) {
             return { error: errorMessage(error) };
           }
-          return { reminder: serializeReminder(created) as JsonValue };
+          return { reminder: serializeReminderForModel(created, now) as JsonValue };
         },
         inputSchema: {
           additionalProperties: false,
@@ -191,7 +192,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             .sort(compareRemindersByDueAt)
             .slice(0, maxListEntries);
           return {
-            reminders: sorted.map(serializeReminder) as JsonValue,
+            reminders: sorted.map((reminder) => serializeReminderForModel(reminder, now)) as JsonValue,
             status,
             total: sorted.length
           };
@@ -233,7 +234,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             .slice(0, maxListEntries);
           return {
             query,
-            reminders: matches.map(serializeReminder) as JsonValue,
+            reminders: matches.map((reminder) => serializeReminderForModel(reminder, now)) as JsonValue,
             status,
             total: matches.length
           };
@@ -293,7 +294,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           } catch (error) {
             return { error: errorMessage(error) };
           }
-          return { reminder: serializeReminder(snoozed) as JsonValue };
+          return { reminder: serializeReminderForModel(snoozed, now) as JsonValue };
         },
         inputSchema: {
           additionalProperties: false,
@@ -344,7 +345,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             return { error: errorMessage(error) };
           }
           const fired = next.find((reminder) => reminder.id === id) as PersistedReminder;
-          return { reminder: serializeReminder(fired) as JsonValue };
+          return { reminder: serializeReminderForModel(fired, now) as JsonValue };
         },
         inputSchema: {
           additionalProperties: false,
