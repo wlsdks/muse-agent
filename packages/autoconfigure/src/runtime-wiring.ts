@@ -141,7 +141,17 @@ export function createInputGuards(env: MuseEnvironment): readonly GuardStage[] {
     guards.push(createInjectionInputGuard());
   }
 
-  if (parseBoolean(env.MUSE_INPUT_GUARD_PII_ENABLED, true)) {
+  // The PII INPUT guard BLOCKS a whole run whose input carries a private
+  // identifier (email / phone / …). Its threat model is PII *egressing to a
+  // third-party cloud model* — but under local-only (the DEFAULT posture) the
+  // model is on-box and there is no third party, so the only effect is breaking
+  // the agent on the user's OWN contacts/notes (which contain emails by nature):
+  // "draft an email to Sarah" fail-closes the run. So it fires by default ONLY
+  // when cloud egress is actually possible (MUSE_LOCAL_ONLY off); an explicit
+  // MUSE_INPUT_GUARD_PII_ENABLED still forces it on under any posture. (The PII
+  // OUTPUT mask stays on regardless — that's transcript/log hygiene, not a block.)
+  const cloudEgressPossible = !parseBoolean(env.MUSE_LOCAL_ONLY, true);
+  if (parseBoolean(env.MUSE_INPUT_GUARD_PII_ENABLED, cloudEgressPossible)) {
     guards.push(createPiiInputGuard());
   }
 

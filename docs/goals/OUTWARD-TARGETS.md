@@ -1375,6 +1375,33 @@ in the loop.
   144 + lint 0/0 — whichever calendar a user actually runs, a momentary provider rate
   limit no longer silently loses an event they asked Muse to create. (462fca9d)
 
+- [x] **P41-5 The agent no longer HARD-FAILS on your own contacts — "draft an email
+  to Sarah" works instead of erroring "private identifiers: email".** Probing the
+  outbound path exposed a severe, identity-breaking defect: `muse ask --with-tools
+  "draft an email to Sarah …"` (a contact whose email is in context) ERRORED with
+  `Input guard detected private identifiers: email` and produced NOTHING. The PII
+  INPUT guard (`createPiiInputGuard`) was enabled BY DEFAULT and fail-closes the whole
+  run when the assembled input carries any email/phone — but for a local "tell it
+  everything" assistant whose OWN contacts/notes contain emails by nature, that breaks
+  the core agent (and the outbound-email drafting P41-2/3 hardened) on the user's own
+  data, every time. Root cause: the guard's threat model is PII *egressing to a
+  third-party cloud model*, but under local-only (the DEFAULT posture) the model is
+  on-box (`createModelProvider` refuses cloud egress via a SEPARATE deterministic gate),
+  so there is no third party to leak to — the block is pure breakage with zero benefit.
+  Fix (in `createInputGuards`, autoconfigure): the PII INPUT guard fires by default ONLY
+  when cloud egress is actually possible (`MUSE_LOCAL_ONLY` off); an explicit
+  `MUSE_INPUT_GUARD_PII_ENABLED=true` still forces it on under any posture. The INJECTION
+  input guard (the real untrusted-content defense) and the PII OUTPUT mask (transcript/log
+  hygiene) are UNCHANGED. Adversarially reviewed by an independent sub-agent (VERDICT: ship
+  — no real hole under local-only; the egress refusal is a separate gate; this removes a
+  control firing outside its threat model, not a fail-open regression). Verified: 4 new
+  posture tests (local-only default → injection only, PII block OFF; `MUSE_LOCAL_ONLY=false`
+  → PII guard present; explicit force → on under local-only; per-flag drops) — @muse/autoconfigure
+  75 files / 497 tests + @muse/cli 174 files / 1920 tests + `pnpm lint` 0/0 + a LIVE
+  before/after on qwen3:8b: the SAME prompt that errored "private identifiers: email" now
+  returns a full email draft to Sarah, while under `MUSE_LOCAL_ONLY=false` it STILL blocks
+  (egress protection for cloud users preserved). (21585a88)
+
 **P42 — Knowledge: your notes stay coherent (the [[wiki-link]] graph is a
 first-class structure, not just decoration).** Muse already builds a note link
 graph (`buildNoteLinkGraph`), surfaces backlinks, and AUDITS for broken links

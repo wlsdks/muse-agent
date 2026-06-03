@@ -19,8 +19,17 @@ describe("createDefaultRuntimeHooks", () => {
 });
 
 describe("createInputGuards", () => {
-  it("enables the injection + PII guards by default", () => {
-    expect(ids(createInputGuards(env()))).toEqual(["injection-input-guard", "pii-input-guard"]);
+  it("under local-only (the default posture) enables ONLY the injection guard — the PII INPUT block is off so the agent isn't broken on the user's own contacts", () => {
+    // No third party to leak PII to on-box ⇒ blocking the user's own emails is pure breakage.
+    expect(ids(createInputGuards(env()))).toEqual(["injection-input-guard"]);
+  });
+
+  it("enables the PII INPUT guard when cloud egress is possible (local-only OFF)", () => {
+    expect(ids(createInputGuards(env({ MUSE_LOCAL_ONLY: "false" })))).toEqual(["injection-input-guard", "pii-input-guard"]);
+  });
+
+  it("an explicit MUSE_INPUT_GUARD_PII_ENABLED forces the PII guard on even under local-only", () => {
+    expect(ids(createInputGuards(env({ MUSE_INPUT_GUARD_PII_ENABLED: "true" })))).toEqual(["injection-input-guard", "pii-input-guard"]);
   });
 
   it("returns nothing when the master flag is off", () => {
@@ -28,8 +37,9 @@ describe("createInputGuards", () => {
   });
 
   it("drops each guard independently when its flag is off", () => {
-    expect(ids(createInputGuards(env({ MUSE_INPUT_GUARD_INJECTION_ENABLED: "false" })))).toEqual(["pii-input-guard"]);
-    expect(ids(createInputGuards(env({ MUSE_INPUT_GUARD_PII_ENABLED: "false" })))).toEqual(["injection-input-guard"]);
+    // Force PII on (local-only would otherwise leave it off) to isolate the injection toggle.
+    expect(ids(createInputGuards(env({ MUSE_INPUT_GUARD_INJECTION_ENABLED: "false", MUSE_INPUT_GUARD_PII_ENABLED: "true" })))).toEqual(["pii-input-guard"]);
+    expect(ids(createInputGuards(env({ MUSE_LOCAL_ONLY: "false", MUSE_INPUT_GUARD_PII_ENABLED: "false" })))).toEqual(["injection-input-guard"]);
   });
 });
 
