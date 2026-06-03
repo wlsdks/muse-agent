@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -69,5 +69,77 @@ describe("muse email send — surface", () => {
     expect(r.output).toContain("is ambiguous — did you mean");
     expect(r.output).toContain("bob1@x.com");
     expect(r.exitCode).toBe(1);
+  });
+});
+
+describe("muse email sync — pull recent emails into recallable notes (contract-faithful Gmail)", () => {
+  // A contract-faithful Gmail fake: the REAL GmailEmailProvider drives the real
+  // Gmail API shape (messages.list → messages.get?format=metadata) against this
+  // fake transport — never a stubbed provider.
+  const gmailFetch = (responses: { list: unknown; messages: Record<string, unknown> }): typeof globalThis.fetch =>
+    (async (url: string) => {
+      const u = String(url);
+      const msgMatch = u.match(/\/messages\/([^?]+)\?/u);
+      if (msgMatch) {
+        const id = decodeURIComponent(msgMatch[1]!);
+        return new Response(JSON.stringify(responses.messages[id] ?? {}), { status: 200 });
+      }
+      return new Response(JSON.stringify(responses.list), { status: 200 }); // messages.list
+    }) as unknown as typeof globalThis.fetch;
+
+  const message = (from: string, subject: string, snippet: string, date?: string): Record<string, unknown> => ({
+    labelIds: ["INBOX", "UNREAD"],
+    snippet,
+    payload: { headers: [{ name: "From", value: from }, { name: "Subject", value: subject }, ...(date ? [{ name: "Date", value: date }] : [])] }
+  });
+
+  it("writes one recallable note per email (from/subject/snippet), idempotent by message id", async () => {
+    const { GmailEmailProvider } = await import("@muse/mcp");
+    const notesDir = mkdtempSync(join(tmpdir(), "muse-email-sync-"));
+    const fetchImpl = gmailFetch({
+      list: { messages: [{ id: "m1" }, { id: "m2" }] },
+      messages: {
+        m1: message("Dana Wu <dana@example.com>", "Q3 budget review", "Can we move the Q3 review to Thursday?", "Tue, 2 Jun 2026 10:00:00 +0000"),
+        m2: message("Bob <bob@example.com>", "Lunch?", "Free for lunch Friday?")
+      }
+    });
+    const emailSource = new GmailEmailProvider("tok", fetchImpl);
+
+    const res = await run(["sync", "--limit", "20"], { emailSource, notesDir });
+    expect(res.exitCode).toBeUndefined();
+    expect(res.output).toContain("Synced 2 emails");
+
+    const dana = readFileSync(join(notesDir, "email", "m1.md"), "utf8");
+    expect(dana).toContain("Q3 budget review"); // subject
+    expect(dana).toContain("Dana Wu");          // from → "what did Dana email about?" recalls this
+    expect(dana).toContain("move the Q3 review"); // snippet
+    const bob = readFileSync(join(notesDir, "email", "m2.md"), "utf8");
+    expect(bob).toContain("Lunch?");
+
+    // Idempotent: a re-sync overwrites the same files, never duplicates.
+    await run(["sync"], { emailSource, notesDir });
+    const { readdirSync } = await import("node:fs");
+    expect(readdirSync(join(notesDir, "email")).filter((f) => f.endsWith(".md")).length).toBe(2);
+  });
+
+  it("without MUSE_GMAIL_TOKEN (and no injected source) it explains how to enable, no write", async () => {
+    const prev = process.env.MUSE_GMAIL_TOKEN;
+    delete process.env.MUSE_GMAIL_TOKEN;
+    try {
+      const res = await run(["sync"], {});
+      expect(res.exitCode).toBe(1);
+      expect(res.output).toContain("MUSE_GMAIL_TOKEN");
+    } finally {
+      if (prev !== undefined) process.env.MUSE_GMAIL_TOKEN = prev;
+    }
+  });
+
+  it("a Gmail read error is surfaced (fail-soft, no crash)", async () => {
+    const notesDir = mkdtempSync(join(tmpdir(), "muse-email-sync-err-"));
+    const { GmailEmailProvider } = await import("@muse/mcp");
+    const boom = (async () => { throw new Error("network down"); }) as unknown as typeof globalThis.fetch;
+    const res = await run(["sync"], { emailSource: new GmailEmailProvider("tok", boom), notesDir });
+    expect(res.exitCode).toBe(1);
+    expect(res.output).toContain("could not read Gmail");
   });
 });

@@ -450,6 +450,29 @@ can ground on and cite (calendar, then tasks/files), verified against MOCK
 data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
 (mutators reject) + `local === true` (egressing sources stay out).
  _First slice (this commit): `muse recap` ships the EVENING-recap half (deterministic retrospective digest: what got done today + coming up + open follow-ups). The PROACTIVE daemon-fired firing now lands too (this commit: a once/day evening recapTick). The absence/anomaly FOUNDATION now lands too (this commit: the recap's `Slipping` section flags overdue tasks + missed reminders, delivered proactively). Remaining: the deeper anomaly half (deviation from a LEARNED habit, not just a hard due-date). Bullet stays `[ ]`._
+- [x] **P37-22 `muse email sync` — your recent emails become CITED-RECALL — "what
+  did Dana email me about?"** The capability map's biggest PERCEPTION gap: the agent
+  had on-demand email tools (`email_recent`/`read`/`search`), but email was NOT in the
+  deterministic cited-recall corpus the flagship plain `muse ask` grounds on. Now
+  `muse email sync [--limit N]` pulls your recent inbox emails (Gmail, opt-in via
+  `MUSE_GMAIL_TOKEN`, gmail.readonly) via the existing `GmailEmailProvider.listRecent`
+  and writes ONE local note per message (`<MUSE_NOTES_DIR>/email/<msg-id>.md`, from /
+  subject / date / snippet) — idempotent (a re-sync overwrites by id, no duplicates) —
+  so the EXISTING notes-recall (and its grounding + citation gate) recalls + cites
+  them. LOCAL-SAFE: read-only (gmail.readonly), and reading your OWN Gmail is a DATA
+  api (your data), OUTSIDE the MUSE_LOCAL_ONLY *model* gate — the same posture as the
+  Google calendar provider / `muse search` / the existing email agent tools — and the
+  emails are written LOCALLY (never egressed). Honest scope: this is the ONE-SHOT first
+  slice (a daemon-continuous email poll is a follow-on); the note carries the Gmail
+  SNIPPET (preview), not the full body (full-body via `read(id)` is a follow-on). Proof:
+  3 CONTRACT-FAITHFUL tests over the REAL `GmailEmailProvider` with only `fetch` faked
+  (real Gmail messages.list → messages.get?format=metadata shape, never a stubbed
+  provider): a 2-email inbox writes 2 recallable notes with from/subject/snippet and a
+  re-sync stays at 2 files (idempotent); no token → explains how to enable, no write; a
+  Gmail read error is surfaced fail-soft. @muse/cli 1901 + `pnpm lint` 0/0 + a LIVE
+  `muse ask "what did Dana email me about?"` over a synced email note on qwen3:8b →
+  "Dana emailed you about moving the Q3 budget review to Thursday afternoon [from
+  email/m1.md]" (grounded + cited to the email note, clean — no caveat). (40330662)
 - [x] **P37-1 Local `.ics` calendar reader (B3 ②).** A read-only
   `LocalIcsCalendarProvider` reads a user's EXPORTED `.ics` file (no cloud);
   `parseIcsCalendar` reuses the CalDAV VEVENT parser. Wired as the `ics`
