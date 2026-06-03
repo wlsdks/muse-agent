@@ -2,6 +2,7 @@ import { type ModelProvider, type ModelRequest } from "@muse/model";
 import { describe, expect, it } from "vitest";
 
 import {
+  classifyCorrectionContradiction,
   type CorrectionExchange,
   detectApprovals,
   detectCorrections,
@@ -10,6 +11,25 @@ import {
 } from "../src/index.js";
 
 const t = (role: "user" | "assistant", content: string): SessionTurnLine => ({ content, role });
+
+describe("classifyCorrectionContradiction — polarity gate parse + fail-closed (the autonomous-decay safety seam)", () => {
+  const provider = (output: string | Error): Pick<ModelProvider, "generate"> => ({
+    generate: async () => { if (output instanceof Error) throw output; return { output } as Awaited<ReturnType<ModelProvider["generate"]>>; }
+  });
+  const run = (out: string | Error) => classifyCorrectionContradiction("stop X", "do X", { model: "m", modelProvider: provider(out) });
+
+  it("parses each verdict word (case-insensitive, tolerant of surrounding text)", async () => {
+    expect(await run("CONTRADICT")).toBe("contradict");
+    expect(await run("agree")).toBe("agree");
+    expect(await run("The answer is UNRELATED.")).toBe("unrelated");
+  });
+
+  it("FAILS CLOSED to 'uncertain' on a model error or an unparseable answer (so it never decays on a guess)", async () => {
+    expect(await run(new Error("ollama down"))).toBe("uncertain");
+    expect(await run("maybe?")).toBe("uncertain");
+    expect(await run("")).toBe("uncertain");
+  });
+});
 
 describe("detectCorrections — reliable failure signal (ReasoningBank 2509.25140; no LLM self-judge per 2404.17140)", () => {
   it("detects a Korean correction turn that follows an assistant answer", () => {

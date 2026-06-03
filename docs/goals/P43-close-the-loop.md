@@ -49,16 +49,23 @@ model.
   unattended. Proof: `commands-daemon.test.ts` — a 60-day-stale reward-2
   strategy fades to 1 on the tick (no model), the BRAKE freezes it when paused,
   the gate is the same as distill.
-- **Slice 3 — consolidate + autonomous graduation (HONESTY-SENSITIVE — review
-  first).** Wire skill/playbook consolidation, and graduate a probation
-  strategy to injectable ONLY on a REAL user-originated signal (a repeated
-  correction / explicit reinforce — never time or self-confirmation), so the
-  daemon's own writes can't self-promote. This touches the injection path, so
-  it is held for Jinan's review of the P43-1 approach before shipping.
-- **FLIP slice — the 2-session live battery.** An `eval:self-improving`-style
-  battery: session A makes a correction; the daemon distills + graduates it
-  unattended; session B measurably reflects the learned strategy with NO manual
-  command. When that is green end-to-end on local Qwen, **P43-1 flips**.
+- **Slice 3a/3b — consolidate (probation-preserving). ✅ DELIVERED.** Skill +
+  playbook consolidation on the daemon tick; the merged entry STAYS probation
+  (never auto-graduates). Autonomous GRADUATION was deliberately NOT built — it
+  is sign-unsafe (a correction is a NEGATIVE signal; graduating on it inverts the
+  sign), so graduation stays bound to a manual positive act (an explicit
+  reinforce). A 10-voter panel ratified this.
+- **FLIP slice — the 2-session live battery. ✅ DELIVERED (P43-1 FLIPPED).** The
+  flip is the SUBTRACTIVE direction, not the (sign-unsafe) additive one: a
+  correction in session A autonomously DECAYS a strategy it CONTRADICTS so a
+  later session stops applying it. The unblock the held design needed — an LLM
+  POLARITY gate (`classifyCorrectionContradiction`) that tells "do X" from
+  "STOP X" (a lexical Jaccard can't) — is live-validated 11/11 / 0
+  false-CONTRADICT on qwen3:8b and is a permanent `eval:self-improving` battery.
+  DECAY-ONLY + fail-closed + injected-only + brake-first; proven end-to-end by a
+  live `muse daemon --once`: a seeded injected strategy + a contradicting
+  correction → the real classifier decayed it below the inject line (reward -4,
+  not injectable, probation untouched) with NO manual command. **P43-1 = `[x]`.**
 
 ## P43-2 — Reliable carry-to-done (all-actuator retry + plan-execute verify)
 

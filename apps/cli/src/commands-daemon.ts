@@ -18,6 +18,7 @@ import {
   buildMessagingRegistry,
   createMessagingPollDispatchers,
   createGateEmbedder,
+  decayContradictedStrategies,
   distillQueuedCorrections,
   parseBoolean,
   resolveContactsFile,
@@ -31,6 +32,7 @@ import {
   resolveRemindersFile,
   resolveSuppressedLessonsFile,
   resolveTasksFile,
+  type DecayContradictedDeps,
   type DistillQueuedDeps
 } from "@muse/autoconfigure";
 import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity, synthesizePatternSuggestion, validateMergeCoverage } from "@muse/agent-core";
@@ -136,6 +138,13 @@ export interface DaemonHelpers {
    * distiller (an `undefined` return ⇒ no strategy written, the grounding fence).
    */
   readonly selfLearnDistill?: DistillQueuedDeps["distill"];
+  /**
+   * Test seam — inject the correction-vs-strategy polarity classifier the
+   * autonomous SUBTRACTIVE correction-decay uses, so a smoke can drive the decay
+   * (a NEW correction that CONTRADICTS an injected strategy drops it below the
+   * inject line) without a live LLM. Absent → the real model-backed classifier.
+   */
+  readonly contradictionClassify?: DecayContradictedDeps["classify"];
   /**
    * Test seams — inject the LLM merge + the held-out coverage validator the
    * autonomous playbook-consolidate tick uses, so a smoke can drive a real
@@ -897,12 +906,19 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         if (lastSelfLearnMs !== undefined && nowMs - lastSelfLearnMs < selfLearnIntervalMs) return;
         lastSelfLearnMs = nowMs;
         try {
+          const playbookFile = resolvePlaybookFile(e);
+          // Snapshot probation BEFORE distill so we can act ONLY on this tick's
+          // new corrections (the subtractive decay below is driven by what you
+          // JUST corrected, not the whole bank re-scanned every tick).
+          const probationBefore = new Set(
+            (await queryPlaybook(playbookFile)).filter((p) => p.probation === true).map((p) => p.id)
+          );
           const recorded = await distillQueuedCorrections({
             model: followupModel.model,
             modelProvider: followupModel.modelProvider as DistillQueuedDeps["modelProvider"],
             embed: createGateEmbedder(e),
             queueFile: resolveLearnQueueFile(e),
-            playbookFile: resolvePlaybookFile(e),
+            playbookFile,
             suppressedLessonsFile: resolveSuppressedLessonsFile(e),
             pauseFile: resolveLearningPauseFile(e),
             ...(helpers.selfLearnDistill ? { distill: helpers.selfLearnDistill } : {})
@@ -921,6 +937,39 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
               text: `I noted ${recorded.toString()} strateg${recorded === 1 ? "y" : "ies"} from how you've corrected me lately — review with \`muse learned\` (nothing changes how I answer until you reinforce it).`,
               title: "Learned from your corrections"
             });
+          }
+          // Subtractive correction-decay (P43-1): a NEW correction that
+          // CONTRADICTS a strategy Muse currently APPLIES drops that strategy
+          // below the inject line, unattended, so a LATER session stops applying
+          // it. SIGN-SAFE: decay-only (never graduates), polarity-gated +
+          // fail-closed (only a confident `contradict` acts), injected-only,
+          // brake-first; reversible by a `muse playbook reward`.
+          const newProbation = (await queryPlaybook(playbookFile))
+            .filter((p) => p.probation === true && !probationBefore.has(p.id));
+          if (newProbation.length > 0) {
+            // Single-user daemon: this tick's new corrections are one user's. Decay
+            // that user's injected strategies the corrections contradict.
+            const userId = newProbation[0]!.userId;
+            const decayed = await decayContradictedStrategies({
+              corrections: newProbation.filter((p) => p.userId === userId).map((p) => ({ id: p.id, text: p.source ?? p.text })),
+              model: followupModel.model,
+              modelProvider: followupModel.modelProvider as DecayContradictedDeps["modelProvider"],
+              pauseFile: resolveLearningPauseFile(e),
+              playbookFile,
+              userId,
+              ...(helpers.contradictionClassify ? { classify: helpers.contradictionClassify } : {})
+            });
+            if (decayed.length > 0) {
+              const first = decayed[0]!;
+              io.stdout(`[${new Date(nowMs).toISOString()}] unlearned: stopped applying ${decayed.length.toString()} strateg${decayed.length === 1 ? "y" : "ies"} you contradicted (see \`muse learned\`)\n`);
+              await noticeSink.deliver({
+                kind: "self-learn",
+                text: decayed.length === 1
+                  ? `You corrected me, so I've stopped applying "${first.text}" going forward. If that was wrong, reinforce it with \`muse playbook reward ${first.id}\`.`
+                  : `You corrected me, so I've stopped applying ${decayed.length.toString()} preferences I was using (see \`muse learned\`). Reinforce any I got wrong with \`muse playbook reward <id>\`.`,
+                title: "Stopped applying a contradicted preference"
+              });
+            }
           }
         } catch { /* fail-soft — background learning must never break the daemon */ }
       };

@@ -43,7 +43,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -62,6 +62,7 @@ async function runDaemon(
       ...(opts.knowledgeEnrich ? { knowledgeEnrich: opts.knowledgeEnrich } : {}),
       ...(opts.briefingCalendarLister ? { briefingCalendarLister: opts.briefingCalendarLister } : {}),
       ...(opts.selfLearnDistill ? { selfLearnDistill: opts.selfLearnDistill } : {}),
+      ...(opts.contradictionClassify ? { contradictionClassify: opts.contradictionClassify } : {}),
       ...(opts.messagingPoll ? { messagingPoll: opts.messagingPoll } : {}),
       ...(opts.consolidateMerge ? { consolidateMerge: opts.consolidateMerge } : {}),
       ...(opts.consolidateValidate ? { consolidateValidate: opts.consolidateValidate } : {}),
@@ -1037,6 +1038,52 @@ describe("muse daemon — unattended self-learning tick (P43-1 slice 1)", () => 
     expect(learnNotice, "the daemon must surface its autonomous learning to the user").toBeDefined();
     expect(learnNotice!.text).toContain("muse learned");
     expect(learnNotice!.text).toContain("until you reinforce it");
+  });
+
+  // P43-1 SUBTRACTIVE correction-decay: a NEW correction that CONTRADICTS an
+  // injected strategy autonomously drops it below the inject line, unattended.
+  const seedInjected = async (env: NodeJS.ProcessEnv): Promise<void> => {
+    await writePlaybook(env.MUSE_PLAYBOOK_FILE!, [
+      { createdAt: "2026-06-01T00:00:00Z", id: "inj1", origin: "grounded", probation: false, reward: 3, text: "Always give a long, detailed multi-paragraph answer.", userId: "u1" }
+    ]);
+  };
+
+  it("autonomously DECAYS an injected strategy a new correction CONTRADICTS (subtractive + felt), never graduating it", async () => {
+    const env = tmpEnv();
+    env.MUSE_SELFLEARN_ENABLED = "true";
+    await seedInjected(env);
+    await seedCorrection(env);
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], {
+      env, registry, resolveFollowupModel: async () => fakeFollowupModel(),
+      selfLearnDistill: fakeDistill, contradictionClassify: async () => "contradict"
+    });
+
+    expect(res.stdout).toMatch(/unlearned: stopped applying 1 strategy you contradicted/);
+    const inj = (await readPlaybook(env.MUSE_PLAYBOOK_FILE!)).find((e) => e.id === "inj1")!;
+    expect(inj.reward).toBe(-4); // dropped to the avoid floor → no longer injected
+    expect(inj.probation).toBe(false); // decay-only — it did NOT graduate or re-probation
+    const notice = sent.find((m) => m.text.includes("stopped applying"));
+    expect(notice, "the user is told a contradicted preference was dropped").toBeDefined();
+    expect(notice!.text).toContain("muse playbook reward"); // and how to reverse it
+  });
+
+  it("does NOT decay when the new correction does NOT contradict the injected strategy (fail-closed)", async () => {
+    const env = tmpEnv();
+    env.MUSE_SELFLEARN_ENABLED = "true";
+    await seedInjected(env);
+    await seedCorrection(env);
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], {
+      env, registry, resolveFollowupModel: async () => fakeFollowupModel(),
+      selfLearnDistill: fakeDistill, contradictionClassify: async () => "unrelated"
+    });
+
+    expect(res.stdout).not.toContain("unlearned:");
+    expect((await readPlaybook(env.MUSE_PLAYBOOK_FILE!)).find((e) => e.id === "inj1")!.reward).toBe(3); // untouched, still applied
   });
 
   it("BRAKE: learns nothing and leaves the queue intact when learning is paused", async () => {

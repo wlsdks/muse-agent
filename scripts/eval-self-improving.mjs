@@ -29,6 +29,7 @@ const BATTERIES = [
   { axis: "② personalization", file: "apps/cli/scripts/verify-preference-inference.mjs", name: "preference-inference" },
   { axis: "① self-improve", file: "apps/cli/scripts/verify-skill-merge.mjs", name: "skill-merge" },
   { axis: "① self-improve", file: "apps/cli/scripts/verify-playbook-merge.mjs", name: "playbook-merge" },
+  { axis: "① self-improve: correction-decay polarity (sign-safe)", file: "apps/cli/scripts/verify-correction-polarity.mjs", name: "correction-polarity" },
   { axis: "① self-improve", file: "apps/cli/scripts/verify-background-review.mjs", name: "background-review" },
   { axis: "①②③ engine e2e", file: "apps/cli/scripts/verify-background-review-e2e.mjs", name: "background-review-e2e" },
   { axis: "★ WEDGE: cited recall", file: "apps/cli/scripts/verify-cited-recall.mjs", name: "cited-recall" },

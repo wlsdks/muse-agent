@@ -971,6 +971,7 @@ export { createApiServerOptions } from "./api-server-options.js";
 export { createGateEmbedder, createOllamaEmbedder } from "./context-engineering-builders.js";
 
 export { distillQueuedCorrections, type DistillQueuedDeps } from "./distill-queue.js";
+export { decayContradictedStrategies, type CorrectionSignal, type DecayContradictedDeps, type DecayedStrategy } from "./decay-contradicted.js";
 
 export { createMessagingPollDispatchers, type MessagingPollDispatchers } from "./messaging-poll-dispatchers.js";
 

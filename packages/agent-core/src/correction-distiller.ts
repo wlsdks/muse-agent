@@ -231,6 +231,53 @@ export async function distillStrategyFromCorrection(
   return verdict.accept ? distilled : undefined;
 }
 
+export type CorrectionPolarity = "contradict" | "agree" | "unrelated" | "uncertain";
+
+export interface ClassifyContradictionOptions {
+  readonly modelProvider: Pick<ModelProvider, "generate">;
+  readonly model: string;
+  readonly redact?: (text: string) => string;
+}
+
+const POLARITY_SYSTEM_PROMPT =
+  `You decide how a user's NEW correction relates to a behavior rule the assistant currently follows. Answer with EXACTLY one word:
+- CONTRADICT — the correction asks for the OPPOSITE of the rule, so the rule should be dropped ("stop doing X" CONTRADICTS a rule "do X").
+- AGREE — the correction reinforces or confirms the rule.
+- UNRELATED — the correction is about a DIFFERENT topic than the rule.
+Consider negation carefully. Output ONLY the one word, nothing else.`;
+
+/**
+ * Polarity gate for the autonomous SUBTRACTIVE correction-decay (P43-1): does a
+ * user's recent correction CONTRADICT a strategy Muse currently applies? Drives
+ * the decay of ONLY a genuinely-contradicted injected strategy — NEVER graduates
+ * anything (graduation stays bound to a positive user act). FAIL-CLOSED: a model
+ * error or an unparseable answer returns "uncertain", which the caller treats as
+ * "do nothing" — a contradiction it cannot confirm never decays a strategy. An
+ * LLM judgment (not a lexical Jaccard) is required because topic-overlap can't
+ * tell "do X" from "STOP X"; validated 13/13 with 0 false-CONTRADICT on qwen3:8b.
+ */
+export async function classifyCorrectionContradiction(
+  correction: string,
+  strategy: string,
+  options: ClassifyContradictionOptions
+): Promise<CorrectionPolarity> {
+  const redact = options.redact ?? redactSecretsInText;
+  const messages: readonly ModelMessage[] = [
+    { content: POLARITY_SYSTEM_PROMPT, role: "system" },
+    { content: `Rule the assistant currently follows: "${redact(strategy)}"\nUser's new correction: "${redact(correction)}"\nOne word:`, role: "user" }
+  ];
+  let output: string;
+  try {
+    const response = await options.modelProvider.generate({ maxOutputTokens: 12, messages, model: options.model, temperature: 0 });
+    output = (response.output ?? "").toUpperCase();
+  } catch {
+    return "uncertain";
+  }
+  const match = output.match(/CONTRADICT|AGREE|UNRELATED/u);
+  if (!match) return "uncertain";
+  return match[0] === "CONTRADICT" ? "contradict" : match[0] === "AGREE" ? "agree" : "unrelated";
+}
+
 function parseDistilledStrategy(raw: string): DistilledStrategy | undefined {
   if (raw.trim().length === 0) {
     return undefined;
