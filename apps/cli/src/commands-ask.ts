@@ -717,6 +717,25 @@ export function formatContactBirthday(raw: string | undefined): string | undefin
  * the question is actually about, never dump the whole address book at the
  * small local model.
  */
+/**
+ * The most query-relevant PROBATION strategy (one the daemon distilled UNATTENDED
+ * from a past correction — recorded but NEVER injected) to surface as a recall-time
+ * suggestion, so a correction resurfaces the moment its topic recurs. Ranks the
+ * probation entries by lexical overlap with the query; returns the top one, or
+ * undefined when none is relevant. Pure (no injection — surface-only). Exported for
+ * direct coverage.
+ */
+export function selectProbationSuggestion(
+  entries: readonly { readonly id: string; readonly text: string; readonly probation?: boolean }[],
+  query: string
+): { readonly text: string; readonly id: string } | undefined {
+  const queryToks = lexicalTokens(query);
+  return entries
+    .filter((e) => e.probation === true && typeof e.text === "string" && lexicalOverlap(queryToks, e.text) > 0)
+    .sort((a, b) => lexicalOverlap(queryToks, b.text) - lexicalOverlap(queryToks, a.text))
+    .map((e) => ({ id: e.id, text: e.text }))[0];
+}
+
 export function contactMatchScore(contact: Contact, queryTokens: ReadonlySet<string>): number {
   if (queryTokens.size === 0) {
     return 0;
@@ -2152,12 +2171,19 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // default `muse ask` answer too. Fail-soft; zero strategies ⇒ no block.
       let playbookSection: string | undefined;
       let appliedStrategy: string | undefined;
+      // A relevant PROBATION strategy (one the daemon distilled UNATTENDED from a
+      // past correction — recorded but NEVER injected) to SURFACE as a suggestion
+      // at recall time, so a correction the user made resurfaces the moment its
+      // topic recurs and they can choose to apply it. Surface-only — never injected
+      // into the model's reasoning (the held graduation stays user-gated).
+      let probationSuggestion: { readonly text: string; readonly id: string } | undefined;
       try {
         const { queryPlaybook } = await import("@muse/mcp");
         const { resolvePlaybookFile } = await import("@muse/autoconfigure");
         const envTopK = Number(process.env.MUSE_PLAYBOOK_INJECT_TOPK);
         const topK = Number.isFinite(envTopK) && envTopK >= 1 ? envTopK : undefined;
         const entries = await queryPlaybook(resolvePlaybookFile(process.env as Record<string, string | undefined>), userKey);
+        probationSuggestion = selectProbationSuggestion(entries, query);
         // Embedding-ranked strategy retrieval (opt-in): rank by semantic
         // similarity so a strategy phrased differently from the query still
         // surfaces, instead of pure lexical token-overlap. Off by default (it
@@ -2182,6 +2208,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       } catch {
         playbookSection = undefined;
         appliedStrategy = undefined;
+        probationSuggestion = undefined;
       }
 
       const systemPrompt = [
@@ -2735,6 +2762,17 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       if (!options.json && appliedStrategy && !answerIsRefusal(collectedAnswer)
         && lexicalOverlap(lexicalTokens(query), appliedStrategy) > 0) {
         io.stderr(`\n💡 Applied a preference you taught me: "${appliedStrategy}". (Not right? \`muse playbook undo\`.)\n`);
+      }
+
+      // Felt self-learning (P43-1): when a topic the user CORRECTED resurfaces,
+      // surface the strategy the daemon distilled from that correction — recorded
+      // unattended but still on PROBATION (not applied) — so the user is reminded
+      // at the relevant moment and can choose to apply it. Surface-only: it never
+      // entered the model's reasoning (the held graduation stays user-gated); one
+      // command applies it. Suppressed on a refusal (no claim to refine) and when a
+      // graduated preference already applied (don't double up on one answer).
+      if (!options.json && probationSuggestion && !appliedStrategy && !answerIsRefusal(collectedAnswer)) {
+        io.stderr(`\n💡 You've corrected me on this before — I noted: "${probationSuggestion.text}". Apply it going forward with \`muse playbook reward ${probationSuggestion.id.slice(0, 8)}\`.\n`);
       }
 
       if (options.json) {

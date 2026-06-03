@@ -150,9 +150,22 @@ P43 bullet is unbuilt.
   never auto-applies it (the injection path is untouched); quiet-hours-gated +
   fail-soft. Proven by a daemon test (the learning is delivered to the user's
   channel, honest that nothing auto-applies) + a LIVE `muse daemon --once` on
-  qwen3:8b distilling a behaviour correction and delivering the notice. Remaining
-  (honesty-sensitive, HELD FOR HUMAN REVIEW per the decomposition): the injection-
-  path change that the FLIP needs — and note the sign-safe design makes the
+  qwen3:8b distilling a behaviour correction and delivering the notice. Slice 5
+  (DELIVERED, `a60f5cd9`) — the autonomous learning is now ACTIONABLE at the right
+  moment: `muse ask` SURFACES a relevant PROBATION strategy as a suggestion when
+  the topic the user corrected recurs ("💡 You've corrected me on this before — I
+  noted: '…'. Apply it going forward with `muse playbook reward <id>`"), the
+  user-gated bridge from autonomous-distill to graduation. SAFE: surface-ONLY — the
+  probation strategy never enters the model's reasoning (the answer is generated
+  without it; the held graduation stays user-gated); shown only on a non-refusal
+  answer where a relevant probation strategy exists, suppressed when a graduated
+  preference already applied (no double-up), no-nag when nothing's relevant. Pure
+  `selectProbationSuggestion` (5 unit tests: surfaces a relevant probation strategy,
+  NEVER a graduated one, no-nag on irrelevant, picks the most-relevant, empty bank)
+  + LIVE on qwen3:8b: a seeded probation strategy resurfaced as the actionable
+  suggestion on a relevant `muse ask`; faithfulness battery UNREGRESSED (1.00/0.00).
+  Remaining (honesty-sensitive, HELD FOR HUMAN REVIEW per the decomposition): the
+  injection-path change that the FLIP needs — and note the sign-safe design makes the
   ADDITIVE flip ("apply a graduated strategy, no manual command") unreachable (a
   correction is a NEGATIVE signal so it never graduates; an explicit reinforce IS a
   manual command), so the only flip path is the SUBTRACTIVE one (a correction decays
