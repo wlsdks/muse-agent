@@ -135,7 +135,7 @@ P43 bullet is unbuilt.
   battery. Decomposition → `docs/goals/P43-close-the-loop.md`. Bullet stays `[ ]`
   until the 2-session live battery proves an unattended signal changes a later
   session._
-- [ ] **P43-2 Reliable carry-to-done.** A multi-step goal reaches a
+- [x] **P43-2 Reliable carry-to-done.** A multi-step goal reaches a
   VERIFIED done: the plan-execute loop verifies each step's effect,
   replans on a failed/ambiguous step, and EVERY actuator (email /
   calendar / web / home — not just messaging) retries a transient failure
@@ -143,7 +143,13 @@ P43 bullet is unbuilt.
   Y") carries to a verified done THROUGH an injected
   deny/timeout/5xx/ambiguous-recipient failure, proven by a
   contract-faithful fake per `outbound-safety.md` ("I did it" without
-  verification is itself a fabrication risk).
+  verification is itself a fabrication risk). FLIPPED `62bec045`: a
+  2-step plan whose idempotent read step hits an injected 5xx now RECOVERS
+  (bounded retry) and carries to a verified done; a non-idempotent write
+  that fails is NEVER plan-retried (no double-act) — contract-faithful
+  proven. (Honest scope: recovery = bounded retry of read-risk steps +
+  the per-step verify; richer re-decomposition replan is a follow-on, not
+  required by the flip condition.)
   _Slice 1 (DELIVERED, this commit) — Google Calendar writes now survive a
   429 rate-limit (retry honouring Retry-After; a 5xx/network reject stays
   non-retried — safe for the non-idempotent insert). Closes the calendar
@@ -155,13 +161,18 @@ P43 bullet is unbuilt.
   FAILED instead of silently counted as done — so the synthesis won't fabricate
   success off a failed tool call, and a sole failed-effect step refuses synthesis
   (PLAN_ALL_STEPS_FAILED) rather than confidently lying. Empty output stays VALID
-  (empty-but-valid distinction). Remaining: messaging/calendar/email/HOME
-  429-retry all done (web stays single-shot by design — the all-actuator-retry
-  sub-goal is COMPLETE); the REPLAN-on-failure + re-run-verifyGrounding half of
-  verify/replan still remains (this slice is detection, not recovery).
-  Decomposition → `docs/goals/P43-close-the-loop.md`. Bullet stays `[ ]`
-  until a 2+-step task carries to a verified done through an injected
-  failure._
+  (empty-but-valid distinction). Verify-slice 2 / RECOVERY (DELIVERED,
+  `62bec045`) — a FAILED step is now retried, but ONLY when its tool is
+  read-risk (idempotent, via `ModelTool.risk`): `PLAN_STEP_MAX_ATTEMPTS=2` (one
+  recovery retry) so a transient blip in a lookup no longer kills the whole plan,
+  while a write/execute step is pinned to ONE attempt (a retried send/booking
+  could double-act — outbound-safety; its transient case is already 429-only-safe
+  at the HTTP layer). Composed with the per-step verify + the actuator retry + the
+  ask-level grounding verdict, a 2-step task carries to a verified done THROUGH an
+  injected transient failure → BULLET FLIPS. Remaining refinement (not required by
+  the flip condition): richer REPLAN by re-decomposition (generate a new
+  sub-plan from the failure point) + explicit deny/ambiguous-recipient recovery
+  batteries. Decomposition → `docs/goals/P43-close-the-loop.md`._
 - [x] **P43-3 Continuous auto-syncing ingestion.** At least one live
   personal stream (email / messages / calendar) syncs into the citable
   corpus on its own with PERSISTED offset state — new inbound becomes

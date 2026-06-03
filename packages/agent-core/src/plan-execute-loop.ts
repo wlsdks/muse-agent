@@ -28,8 +28,17 @@ import {
   renderToolDescriptionsForPlanning,
   systemMessageContent,
   validatePlan,
-  type PlanStep
+  type PlanStep,
+  type StepEffectVerdict
 } from "./plan-execute.js";
+
+/**
+ * Bounded per-step attempts for a failed READ (idempotent) step — 2 = one
+ * recovery retry. Keeps a flaky lookup from killing a whole multi-step plan
+ * while staying well under the run's `maxToolCalls` budget; write/execute steps
+ * are pinned to a single attempt (no double-act).
+ */
+const PLAN_STEP_MAX_ATTEMPTS = 2;
 import { renderPlanExemplar, type PlanCacheProvider } from "./plan-cache.js";
 import { latestUserPrompt, metadataString } from "./runtime-helpers.js";
 import {
@@ -161,16 +170,29 @@ export async function* streamPlanExecute(
       id: `plan-step-${index}`,
       name: step.tool
     };
-    const toolResult = await runner.executeToolCall(context, synthesizedCall, tools);
-    toolCallCount += 1;
-
-    // A step is a real success only if the tool COMPLETED (didn't throw) AND its
-    // post-condition holds — otherwise a non-throwing failure (an MCP `isError`
-    // rendered as "Error: …" with status "completed", a `{ ok:false }` envelope)
-    // is silently counted as done and the synthesis fabricates success off it.
-    const completed = toolResult.result.status === "completed";
-    const effect = completed ? classifyStepEffect(toolResult.result.output) : { effectFailed: false };
-    const success = completed && !effect.effectFailed;
+    // Recovery (carry-to-done): a FAILED step is retried — but ONLY when its tool
+    // is read-risk (idempotent). A non-idempotent write/execute step is NEVER
+    // plan-retried: a retried send / booking / actuator call could double-act
+    // (outbound-safety), and its transient case is already handled 429-only-safe
+    // at the HTTP layer. A step is a real success only if the tool COMPLETED
+    // (didn't throw) AND its post-condition holds (`classifyStepEffect`) —
+    // otherwise a non-throwing failure (an MCP `isError` rendered "Error: …" with
+    // status "completed", a `{ ok:false }` envelope) is silently counted as done.
+    const retryable = tools.find((tool) => tool.name === step.tool)?.risk === "read";
+    const maxAttempts = retryable ? PLAN_STEP_MAX_ATTEMPTS : 1;
+    let toolResult: ExecutedToolResult;
+    let completed: boolean;
+    let effect: StepEffectVerdict;
+    let success: boolean;
+    let attempts = 0;
+    do {
+      toolResult = await runner.executeToolCall(context, synthesizedCall, tools);
+      toolCallCount += 1;
+      attempts += 1;
+      completed = toolResult.result.status === "completed";
+      effect = completed ? classifyStepEffect(toolResult.result.output) : { effectFailed: false };
+      success = completed && !effect.effectFailed;
+    } while (!success && attempts < maxAttempts && toolCallCount < runner.maxToolCalls);
     executed.push({
       executed: toolResult,
       step,

@@ -69,7 +69,38 @@ const request = (prompt: string, tool: MuseTool) => ({
     { content: prompt, role: "user" as const },
   ],
   model: "diagnostic/smoke",
-  tools: [{ description: tool.definition.description, inputSchema: tool.definition.inputSchema, name: tool.definition.name }],
+  tools: [{ description: tool.definition.description, inputSchema: tool.definition.inputSchema, name: tool.definition.name, risk: tool.definition.risk }],
+});
+
+// A READ (idempotent) tool that transiently fails on its FIRST call (returns an
+// "Error: …" string, status "completed") and succeeds afterwards — the injected
+// transient failure a bounded retry should recover.
+const flakyReadTool = (calls: { n: number }): MuseTool => ({
+  definition: {
+    description: "Look something up; transiently fails once.",
+    inputSchema: { properties: { q: { type: "string" } }, required: ["q"], type: "object" },
+    name: "lookup",
+    risk: "read",
+  },
+  execute: async (args) => {
+    calls.n += 1;
+    return calls.n === 1 ? "Error: upstream returned 503" : `result for ${String((args as { q: unknown }).q)}`;
+  },
+});
+
+// A WRITE (non-idempotent) tool that fails — a retried send could double-act, so
+// the plan must NEVER retry it (outbound-safety); it counts its calls to prove it.
+const flakyWriteTool = (calls: { n: number }): MuseTool => ({
+  definition: {
+    description: "Send a message; fails.",
+    inputSchema: { properties: { text: { type: "string" }, to: { type: "string" } }, required: ["to", "text"], type: "object" },
+    name: "send_message",
+    risk: "write",
+  },
+  execute: async () => {
+    calls.n += 1;
+    return "Error: send rejected (503)";
+  },
 });
 
 const realRunner = (provider: ModelProvider, executor: ToolExecutor): PlanExecuteRunner => ({
@@ -186,6 +217,35 @@ describe("plan-execute trajectory (gap C — real assembly span sequence + step-
     const prompt = steer(planned);
     await expect(drain(streamPlanExecute(realRunner(provider, executor), context(prompt), provider, request(prompt, tool))))
       .rejects.toThrow(/Every plan step failed/);
+  });
+
+  it("RECOVERS a transient failure on a READ (idempotent) step via a bounded retry — a 2-step task carries to a verified done THROUGH the injected failure", async () => {
+    const calls = { n: 0 };
+    const tool = flakyReadTool(calls);
+    const executor = new ToolExecutor({ registry: new ToolRegistry([tool]) });
+    const planned = [
+      { tool: "lookup", args: { q: "a" }, description: "lookup A (transiently fails once)" },
+      { tool: "lookup", args: { q: "b" }, description: "lookup B" },
+    ];
+    const prompt = steer(planned);
+    const { events } = await drain(streamPlanExecute(realRunner(provider, executor), context(prompt), provider, request(prompt, tool)));
+
+    const results = events.filter((e) => e.type === "plan-step-result") as Extract<PlanExecuteStreamEvent, { type: "plan-step-result" }>[];
+    expect(results.map((e) => e.success)).toEqual([true, true]); // step 1 RECOVERED on retry
+    expect(calls.n).toBe(3); // step 1 took 2 attempts (fail → succeed); step 2 took 1
+    expect(events.at(-1)?.type).toBe("synthesis-started"); // carried to a verified done
+  });
+
+  it("NEVER retries a non-idempotent WRITE step that fails (no double-act) — surfaces it honestly instead", async () => {
+    const calls = { n: 0 };
+    const tool = flakyWriteTool(calls);
+    const executor = new ToolExecutor({ registry: new ToolRegistry([tool]) });
+    const planned = [{ tool: "send_message", args: { text: "hi", to: "y" }, description: "tell Y (fails)" }];
+    const prompt = steer(planned);
+    // the sole step fails and is NOT retried ⇒ all-failed ⇒ refuses synthesis
+    await expect(drain(streamPlanExecute(realRunner(provider, executor), context(prompt), provider, request(prompt, tool))))
+      .rejects.toThrow(/Every plan step failed/);
+    expect(calls.n).toBe(1); // executed EXACTLY once — a failed send is never plan-retried
   });
 
   it("StepEfficiency: a plan that re-calls the same (tool,args) is flagged as redundant", async () => {
