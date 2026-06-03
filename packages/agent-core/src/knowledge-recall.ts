@@ -532,9 +532,11 @@ export function normalizeSlotCitations(
   slotsByClass: Readonly<Record<string, readonly string[]>>
 ): string {
   return answer.replace(
-    // `[from session 1]` or, when the model echoes the `<<session N — id>>` marker
-    // whole, `[from session 1 — ep_001]` — the optional trailing "— <id>" is ignored.
-    /\[from\s+(task|event|reminder|session|feed|contact|command|commit|memory|action)\s+(\d+)(?:\s*[—–-]\s*[^\]]*)?\s*\]/giu,
+    // `[from session 1]`, the bare `[feed 1]` (the model often drops "from" for the
+    // slot-numbered markers `<<feed N — name>>`), or `[from session 1 — ep_001]`
+    // when it echoes the marker whole — the optional "from " and trailing "— <id>"
+    // are both ignored.
+    /\[(?:from\s+)?(task|event|reminder|session|feed|contact|command|commit|memory|action)\s+(\d+)(?:\s*[—–-]\s*[^\]]*)?\s*\]/giu,
     (match: string, cls: string, num: string) => {
       const list = slotsByClass[cls.toLowerCase()];
       const content = list?.[Number.parseInt(num, 10) - 1];

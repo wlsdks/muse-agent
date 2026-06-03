@@ -557,7 +557,7 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   green (1330) + cli remind/tasks (38) + LIVE: `remind snooze --in "2 hours"` →
   +2h, `remind add "30 minutes"` → +30m, `tasks add --due "3 days"` → +3d, while
   "in 2 hours" still works. mcp 167 files / 1330 tests + `pnpm lint` 0/0.
-  (this commit)
+  (b4939e6b)
 
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,
@@ -1015,6 +1015,25 @@ qwen3:8b and added to `eval:self-improving`.
   (VPN MTU 1380, Q3 budget $42,000) now answer with NO "Removed citation / unverified"
   warning (before: stripped + warned). agent-core 112 files / 1396 tests + cli 167
   files / 1782 tests + `pnpm lint` 0/0. (3f9d9935)
+
+- [x] **P38-25 A feed/structured citation by BARE slot ("[feed 1]", no "from")
+  resolves to its canonical form — completing the slot-citation handling.** Probing
+  the FEED grounding (a fresh surface): `muse ask "what are the latest headlines from
+  HN?"` grounded on the real RSS headlines and answered correctly, but cited them
+  `[feed 1]` / `[feed 2]` — the model cites the slot-numbered marker (`<<feed N —
+  name>>`) WITHOUT the "from" prefix. P38-24's `normalizeSlotCitations` only matched
+  `[from <class> N]`, so the bare `[feed 1]` fell through: it was left verbatim (an
+  ugly slot reference, not the feed name) and the "📰 from your feeds" receipt —
+  which parses `[feed: <name>]` — never showed. Fixed by making the "from " prefix
+  OPTIONAL in normalizeSlotCitations' regex, so the bare `[feed 1]` / `[session 1]` /
+  `[event 2]` rewrite to `[feed: HN]` / `[session: <summary>]` etc. just like the
+  "from" form (an out-of-range or unknown-class slot is still left untouched).
+  Proof: 1 new agent-core unit test (bare `[feed 1]`→`[feed: HN]`, `[feed 2]`→
+  `[feed: Lobsters]`, bare `[session 2]`→canonical) + the existing slot/gate suite
+  green (the "from" form unregressed) + LIVE on qwen3:8b with a real RSS feed:
+  `muse ask "latest HN headlines?"` now cites `[feed: HN]` (was `[feed 1]`).
+  agent-core 112 files / 1397 tests + cli 167 files / 1787 tests + `pnpm lint` 0/0.
+  (this commit)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.

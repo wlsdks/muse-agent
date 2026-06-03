@@ -295,6 +295,14 @@ describe("normalizeSlotCitations — rewrite a SLOT-numbered structured citation
       .toBe("We chose MTU 1380 [session: We set up the office VPN: WireGuard MTU 1380.].");
   });
 
+  it("rewrites the BARE slot form `[feed 1]` / `[session 1]` (no 'from') — the feed-citation case", () => {
+    const feedSlots = { feed: ["HN", "Lobsters"] };
+    expect(normalizeSlotCitations("Top story [feed 1], then [feed 2].", feedSlots))
+      .toBe("Top story [feed: HN], then [feed: Lobsters].");
+    expect(normalizeSlotCitations("We discussed [session 2].", slots))
+      .toBe("We discussed [session: Discussed the Q3 budget: $42,000.].");
+  });
+
   it("ignores a trailing `— <id>` the model echoes from the `<<session N — id>>` marker", () => {
     expect(normalizeSlotCitations("MTU 1380 [from session 1 — ep_001].", slots))
       .toBe("MTU 1380 [session: We set up the office VPN: WireGuard MTU 1380.].");
