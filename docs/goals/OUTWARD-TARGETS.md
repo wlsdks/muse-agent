@@ -351,7 +351,7 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   `--file <dir>` answered "Q3 budget?" → "$42,000 [from budget.txt]" AND "product
   launch?" → "August 14, 2026 [from launch.md]" (two different files in the folder,
   each cited correctly), while an off-topic "bank account number?" refused with no
-  fabrication. cli 167 files / 1776 tests + `pnpm lint` 0/0. (this commit)
+  fabrication. cli 167 files / 1776 tests + `pnpm lint` 0/0. (498fbf90)
 
 **P40 — Actuation usability: Muse understands natural-language dates.** The
 "do" side is only as good as the words a user actually types.
@@ -1355,6 +1355,26 @@ honest-refusal mock-corpus check where applicable.
   generic; blank ignored) + LIVE: no name → "Good morning" ×3 (no "Alex"); after
   `muse remember "my name is Jinan"` → "Good morning, Jinan". cli 165 files / 1747
   tests + `pnpm lint` 0/0. (this commit)
+
+- [x] **P35-9 The "empty notes" on-ramp no longer contradicts itself for a user who
+  has OTHER personal data.** Probing the felt experience: a user with a contact (or
+  a task, or a remembered fact) but no NOTES asked `muse ask "what is Mina's email?"`
+  — Muse answered correctly from the contact, yet ALSO printed the first-run on-ramp
+  "(your notes corpus is empty — Muse only answers from notes you've added · try
+  `muse demo` …)" on the SAME turn. Both wrong: it nags to add notes, and the claim
+  "Muse only answers from notes" is false (it just answered from the address book) —
+  and it fires on EVERY ask for such a user. Fixed in apps/cli/src/commands-ask.ts:
+  `corpusOnboardingHint(noteFileCount, hasOtherPersonalData)` now suppresses the
+  hint when the user has any non-note personal data, and a new
+  `userHasOtherPersonalData(userId, env)` checks the remembered-facts file +
+  contacts + tasks + reminders (best-effort, short-circuiting) — probed ONLY when
+  notes are empty, so a notes-having user pays no extra reads. A genuinely empty
+  Muse still gets the on-ramp. Proof: 2 new unit tests (suppressed when
+  hasOtherPersonalData; still shown for a truly-empty Muse) + LIVE on qwen3:8b: with
+  a contact and no notes the on-ramp is GONE and the answer + "👤 from your contacts"
+  receipt show; with only a remembered fact (`muse remember "my name is Jinan"`) the
+  on-ramp is GONE and "what is my name?" answers from memory; a brand-new empty HOME
+  still shows the on-ramp. cli 167 files / 1778 tests + `pnpm lint` 0/0. (this commit)
 
 **P34 — The front door (loop-v2 headline: the moat is invisible without
 the door).** Per loop-v2 B0 §3, a privacy-bound first-time user must be able

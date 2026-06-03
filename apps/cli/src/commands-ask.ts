@@ -972,8 +972,13 @@ export async function notesCorpusFileCount(dir: string): Promise<number> {
   return count;
 }
 
-export function corpusOnboardingHint(noteFileCount: number): string | undefined {
-  if (noteFileCount > 0) {
+export function corpusOnboardingHint(noteFileCount: number, hasOtherPersonalData = false): string | undefined {
+  // The first-run notes on-ramp. Suppressed once the user has notes OR any other
+  // personal data (contacts / tasks / reminders / remembered facts) — otherwise
+  // it both NAGS to "add notes" and falsely claims "Muse only answers from notes"
+  // on the very same turn it answered from your address book. A genuinely empty
+  // Muse still gets the hint.
+  if (noteFileCount > 0 || hasOtherPersonalData) {
     return undefined;
   }
   return [
@@ -983,6 +988,42 @@ export function corpusOnboardingHint(noteFileCount: number): string | undefined 
     "   • add a whole folder:   muse read <dir> --save-to-notes <prefix>",
     "   • keep it live:         muse watch-folder --ingest --path <dir>)"
   ].join("\n");
+}
+
+/**
+ * Whether the user has ANY personal data Muse can ground on besides notes —
+ * remembered facts/preferences, contacts, open tasks, or reminders. Used to
+ * suppress the empty-notes on-ramp for a user who has clearly set Muse up with
+ * other data. Each store read is best-effort (a missing/unreadable store counts
+ * as empty), short-circuiting on the first hit.
+ */
+/** Whether the persistent user-memory file holds any fact/preference for `userId`. */
+async function userMemoryHasFacts(userId: string, env: Record<string, string | undefined>): Promise<boolean> {
+  try {
+    const file = env.MUSE_USER_MEMORY_FILE?.trim() || join(homedir(), ".muse", "user-memory.json");
+    const raw = JSON.parse(await readFile(file, "utf8")) as { users?: Record<string, { facts?: Record<string, string>; preferences?: Record<string, string> }> };
+    const persona = raw.users?.[userId];
+    return Boolean(persona && (Object.keys(persona.facts ?? {}).length > 0 || Object.keys(persona.preferences ?? {}).length > 0));
+  } catch {
+    return false;
+  }
+}
+
+export async function userHasOtherPersonalData(
+  userId: string,
+  env: Record<string, string | undefined>
+): Promise<boolean> {
+  if (await userMemoryHasFacts(userId, env)) return true;
+  try {
+    if ((await readContacts(resolveContactsFile(env as MuseEnvironment))).length > 0) return true;
+  } catch { /* skip */ }
+  try {
+    if ((await readTasks(resolveTasksFile(env as MuseEnvironment))).length > 0) return true;
+  } catch { /* skip */ }
+  try {
+    if ((await readReminders(resolveRemindersFile(env as MuseEnvironment))).length > 0) return true;
+  } catch { /* skip */ }
+  return false;
 }
 
 /** S2 warm honesty (B2): the deterministic, on-brand close on an honest refusal. */
@@ -1425,7 +1466,12 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         return;
       }
 
-      const onboardingHint = corpusOnboardingHint(noteFileCount);
+      // Only probe the other personal stores when notes ARE empty (the only case
+      // the hint could fire) — so a notes-having user pays no extra reads.
+      const hasOtherPersonalData = noteFileCount === 0
+        ? await userHasOtherPersonalData(userKey, process.env as Record<string, string | undefined>)
+        : false;
+      const onboardingHint = corpusOnboardingHint(noteFileCount, hasOtherPersonalData);
       if (onboardingHint) {
         io.stderr(`${onboardingHint}\n`);
       }

@@ -21,6 +21,18 @@ describe("corpusOnboardingHint — first-run on-ramp for an empty corpus", () =>
     expect(corpusOnboardingHint(1)).toBeUndefined();
     expect(corpusOnboardingHint(42)).toBeUndefined();
   });
+
+  it("is SUPPRESSED when the user has other personal data (contacts/tasks/memory) even with zero notes", () => {
+    // A user who set Muse up with contacts/tasks/memory shouldn't be told "Muse
+    // only answers from notes" and nagged to add notes on the same turn it answers
+    // from their address book.
+    expect(corpusOnboardingHint(0, true)).toBeUndefined();
+  });
+
+  it("STILL shows for a genuinely empty Muse (no notes AND no other data)", () => {
+    expect(corpusOnboardingHint(0, false)).toBeDefined();
+    expect(corpusOnboardingHint(0)).toBeDefined(); // default arg = no other data
+  });
 });
 
 describe("notesCorpusFileCount — the true 'has a corpus' signal (disk, not index)", () => {
