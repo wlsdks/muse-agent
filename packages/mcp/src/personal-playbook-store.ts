@@ -12,7 +12,8 @@
 
 import { promises as fs } from "node:fs";
 
-import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { withFileMutationQueue } from "./atomic-file-store.js";
+import { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest, readMaybeEncrypted, withFileLock, writeMaybeEncrypted } from "./encrypted-file.js";
 
 /** Newest entries kept — bounds the file + the injected context. */
 export const MAX_PLAYBOOK_ENTRIES = 100;
@@ -91,16 +92,19 @@ async function quarantineCorruptStore(file: string): Promise<void> {
   }
 }
 
-export async function readPlaybook(file: string): Promise<readonly PlaybookEntry[]> {
-  let raw: string;
-  try {
-    raw = await fs.readFile(file, "utf8");
-  } catch {
+export async function readPlaybook(file: string, env: NodeJS.ProcessEnv = process.env): Promise<readonly PlaybookEntry[]> {
+  // A WRONG key THROWS here (fail-closed) — propagate it; an undecryptable bank is
+  // NOT corrupt and must NEVER be quarantined-to-empty (that would erase the
+  // learned dossier on a key mismatch). The ask path + daemon read this fail-soft
+  // (a key mismatch degrades to no-strategies, never a crash); the `muse playbook`
+  // / `muse learned` REVIEW surfaces let the throw surface LOUDLY so the user knows.
+  const { text } = await readMaybeEncrypted(file, env);
+  if (text === undefined) {
     return [];
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = JSON.parse(text) as unknown;
   } catch {
     await quarantineCorruptStore(file);
     return [];
@@ -114,10 +118,15 @@ export async function readPlaybook(file: string): Promise<readonly PlaybookEntry
   );
 }
 
-export async function writePlaybook(file: string, entries: readonly PlaybookEntry[]): Promise<void> {
-  // Atomic, fsync'd, owner-only write via the shared primitive (randomUUID tmp →
-  // no same-ms rename-collision crash).
-  await atomicWriteFile(file, `${JSON.stringify({ entries }, null, 2)}\n`);
+export async function writePlaybook(file: string, entries: readonly PlaybookEntry[], env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  const text = `${JSON.stringify({ entries }, null, 2)}\n`;
+  // Peek + write under the cross-process migration lock so an ordinary RL update
+  // (adjustPlaybookReward / a daemon decay) can't race `encryptPlaybookAtRest` and
+  // clobber it with a stale-format payload; format is preserved. 0o600 kept.
+  await withFileLock(file, async () => {
+    const encrypted = await isFileEncryptedAtRest(file);
+    await writeMaybeEncrypted(file, text, encrypted, env);
+  });
 }
 
 /**
@@ -142,20 +151,20 @@ export function retainPlaybookEntries(entries: readonly PlaybookEntry[], cap: nu
   return entries.filter((_entry, index) => keep.has(index));
 }
 
-export async function recordPlaybookStrategy(file: string, entry: PlaybookEntry): Promise<void> {
+export async function recordPlaybookStrategy(file: string, entry: PlaybookEntry, env: NodeJS.ProcessEnv = process.env): Promise<void> {
   // Serialise the read-modify-write: concurrent strategy records must not each
   // read the same snapshot and clobber one another (a lost learned strategy is a
   // self-improvement the agent forgets), and the cap below must apply to the
   // real merged set, not a stale one.
   await withFileMutationQueue(file, async () => {
-    const existing = await readPlaybook(file);
+    const existing = await readPlaybook(file, env);
     const next = retainPlaybookEntries([...existing.filter((e) => e.id !== entry.id), entry], MAX_PLAYBOOK_ENTRIES);
-    await writePlaybook(file, next);
+    await writePlaybook(file, next, env);
   });
 }
 
-export async function queryPlaybook(file: string, userId?: string): Promise<readonly PlaybookEntry[]> {
-  const all = await readPlaybook(file);
+export async function queryPlaybook(file: string, userId?: string, env: NodeJS.ProcessEnv = process.env): Promise<readonly PlaybookEntry[]> {
+  const all = await readPlaybook(file, env);
   return userId ? all.filter((e) => e.userId === userId) : all;
 }
 
@@ -303,4 +312,38 @@ function isPlaybookEntry(value: unknown): value is PlaybookEntry {
   if (e.source !== undefined && typeof e.source !== "string") return false;
   if (e.timesObserved !== undefined && (typeof e.timesObserved !== "number" || !Number.isFinite(e.timesObserved))) return false;
   return true;
+}
+
+/**
+ * Canonical empty body — seeded when encrypting an absent/empty store so the
+ * encrypted format is ESTABLISHED on disk (else the first later write would peek
+ * "no file", land in plaintext, and drop the encrypt intent).
+ */
+const EMPTY_PLAYBOOK_BODY = `${JSON.stringify({ entries: [] }, null, 2)}\n`;
+
+/**
+ * One-shot migrate the learned-strategy bank (the self-learning DOSSIER) to
+ * encryption-at-rest (AES-256-GCM under the shared MUSE_MEMORY_KEY / per-host
+ * fallback). The capstone of the P43-1 self-learning safety: "Muse learns you in
+ * the background AND the learned model of you can't leak". Snapshots a plaintext
+ * backup BEFORE encrypting, runs under the cross-process lock, idempotent.
+ */
+export async function encryptPlaybookAtRest(
+  file: string,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<{ readonly alreadyEncrypted: boolean; readonly backupPath?: string }> {
+  return encryptFileAtRest(file, env, { emptyContent: EMPTY_PLAYBOOK_BODY });
+}
+
+/** Reverse the migration — rewrite the bank as plaintext. Throws fail-closed on a wrong key. */
+export async function decryptPlaybookAtRest(
+  file: string,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<{ readonly alreadyPlaintext: boolean }> {
+  return decryptFileAtRest(file, env);
+}
+
+/** Format-only check (no key needed) — is the learned bank encrypted at rest? */
+export async function isPlaybookEncrypted(file: string): Promise<boolean> {
+  return isFileEncryptedAtRest(file);
 }

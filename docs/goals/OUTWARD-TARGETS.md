@@ -411,6 +411,38 @@ the confided life sat in plaintext JSON behind OS file-perms only.
   check exit 0 + pnpm lint 0/0 + live encrypt round-trip — a stolen laptop no longer
   reveals your relationship graph, and a bad key can never mis-route a message. (ba3ab947)
 
+- [x] **P44-6 `muse playbook encrypt` encrypts the LEARNED DOSSIER at rest — the
+  safety CAPSTONE of P43-1 self-learning: "Muse learns you in the background AND the
+  learned model of you can't leak".** The playbook (`~/.muse/playbook.json`) is
+  everything Muse has inferred about you from your corrections — your preferences,
+  the strategies it applies, what it's stopped doing — the most headline-critical
+  store ("aggressive background self-learning, safe BECAUSE it can't leak" requires
+  the learned bank itself to not leak), and it was plaintext. Wraps the store's
+  read/write with the SAME red-teamed `encrypted-file` helper (AES-256-GCM under
+  `MUSE_MEMORY_KEY` / per-host): `readPlaybook` decrypts transparently and on a WRONG
+  key THROWS fail-closed — never quarantined-to-empty; `writePlaybook` (and so the
+  daemon's RL mutations `adjustPlaybookReward` / `decayStalePlaybookRewards` / the
+  P43-1 correction-decay) peek-and-preserve the on-disk format under the
+  cross-process migration lock (0o600 kept). New `muse playbook encrypt`
+  (plaintext-backup-before-encrypt, idempotent), `decrypt`, `encryption-status`.
+  HOT-PATH care: the `muse ask` + daemon reads are FAIL-SOFT (a wrong key degrades to
+  no-strategies, never crashes the core flow), while the `muse playbook` / `muse
+  learned` REVIEW surfaces surface the wrong-key error LOUDLY so the user notices.
+  Proven: 14 contract-faithful tests (`playbook-encryption.test.ts` — round-trip +
+  on-disk-envelope + cleartext-strategy-absent; THE RL UPDATE works through
+  encryption (adjustPlaybookReward decays to the avoid floor on an encrypted bank,
+  format preserved); wrong-key read/record/decrypt fail-closed byte-unchanged; backup;
+  idempotent; read-never-writes; corrupt-plaintext still quarantines; 12 concurrent
+  records survive) + the existing playbook tests unregressed + `pnpm check` exit 0
+  across all 20 workspaces (optional-`env` param backward-compatible) + `pnpm lint`
+  0/0 + a LIVE `muse playbook encrypt` round-trip: plaintext→encrypt (cleartext backup
+  + warning)→AES-256-GCM envelope with the learned strategy gone→`muse playbook list`
+  (with key) decrypts the dossier→a WRONG key fails LOUDLY on the review surface. mcp
+  1452 + pnpm check exit 0 + pnpm lint 0/0 + live encrypt round-trip — the dossier of
+  everything Muse learned about you can no longer leak from a stolen laptop, completing
+  the self-learning safety bet (the main personal stores — memory, episodes,
+  action-log, contacts, playbook — are now all encryptable at rest). (2b7d1b4c)
+
 **P37 — Perception growth: read-only local connectors (loop-v2 B3).** The
 self-learning core (P36) is delivered end-to-end + felt; this axis grows what
 Muse can READ to know you — new local, read-only, per-source sources the agent

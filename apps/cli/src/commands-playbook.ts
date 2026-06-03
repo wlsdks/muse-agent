@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 
 import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity, validateMergeCoverage } from "@muse/agent-core";
 import { createGateEmbedder, createMuseRuntimeAssembly, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
-import { adjustPlaybookReward, queryPlaybook, recordPlaybookStrategy, recordSuppressedLesson, removePlaybookStrategy, setLearningPaused, type PlaybookEntry } from "@muse/mcp";
+import { adjustPlaybookReward, decryptPlaybookAtRest, encryptPlaybookAtRest, isPlaybookEncrypted, queryPlaybook, recordPlaybookStrategy, recordSuppressedLesson, removePlaybookStrategy, setLearningPaused, type PlaybookEntry } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { distillSessionCorrections } from "./chat-distill-corrections.js";
@@ -261,5 +261,63 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
         return;
       }
       io.stdout(`(nothing learned: ${result.reason})\n`);
+    });
+
+  playbook
+    .command("encrypt")
+    .description("Encrypt the learned-strategy bank at rest (AES-256-GCM; key = MUSE_MEMORY_KEY or per-host)")
+    .option("--json", "Emit a structured result")
+    .action(async (options: { readonly json?: boolean }) => {
+      const file = playbookFile();
+      const result = await encryptPlaybookAtRest(file);
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ encrypted: true, file, ...result }, null, 2)}\n`);
+        return;
+      }
+      if (result.alreadyEncrypted) {
+        io.stdout(`Learned bank is already encrypted at rest (${file}).\n`);
+        return;
+      }
+      io.stdout(
+        `Encrypted learned bank at rest: ${file}\n` +
+        (result.backupPath
+          ? `Plaintext backup saved: ${result.backupPath}\n` +
+            `  ⚠ This backup is CLEARTEXT — it holds everything Muse has learned about you, unencrypted.\n` +
+            `  Delete it once you've confirmed 'muse learned' still works with your key.\n`
+          : "") +
+        `Set MUSE_MEMORY_KEY to a stable secret so the key survives a host/user change.\n`
+      );
+    });
+
+  playbook
+    .command("decrypt")
+    .description("Revert the learned-strategy bank to plaintext at rest")
+    .option("--json", "Emit a structured result")
+    .action(async (options: { readonly json?: boolean }) => {
+      const file = playbookFile();
+      const result = await decryptPlaybookAtRest(file);
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ encrypted: false, file, ...result }, null, 2)}\n`);
+        return;
+      }
+      io.stdout(
+        result.alreadyPlaintext
+          ? `Learned bank is already plaintext at rest (${file}).\n`
+          : `Reverted learned bank to plaintext at rest: ${file}\n`
+      );
+    });
+
+  playbook
+    .command("encryption-status")
+    .description("Report whether the learned bank is encrypted at rest (no key needed)")
+    .option("--json", "Emit a structured result")
+    .action(async (options: { readonly json?: boolean }) => {
+      const file = playbookFile();
+      const encrypted = await isPlaybookEncrypted(file);
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ encrypted, file }, null, 2)}\n`);
+        return;
+      }
+      io.stdout(`Learned bank at rest: ${encrypted ? "ENCRYPTED" : "plaintext"} (${file})\n`);
     });
 }

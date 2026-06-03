@@ -56,10 +56,18 @@ next FRONTIER is Jinan's call (his 9-agent-audit cadence set this one); until he
 sets it, the loop maintains the FLOORS and grows per the LOCKED-HEADLINE build
 order (front-door + felt-learning done ⇒ next is perceive/act growth), picking the
 highest-value OUTWARD slice each fire (procedure step-3 fallback). Floor-completion
-in flight: encryption-at-rest coverage (memory/episodes/action-log/contacts DONE;
-playbook/tasks/notes remain) + the two still-ungated grounding surfaces
-(`--with-tools` agent RGV, proactivity rubric — now un-banned since no P43 bullet
-is unbuilt, though B0's grounding-diminishing-returns caution applies).
+in flight: encryption-at-rest coverage — the MAIN personal stores (memory, episodes,
+action-log, contacts, playbook) are now all encryptable; only minor stores
+(tasks/followups/etc., low-value tail) + the harder NOTES CORPUS (a directory, not
+the single-file pattern) remain, so encryption is NO LONGER a default pick (grinding
+the tail = stagnation). The two still-ungated grounding surfaces (`--with-tools` agent
+RGV, proactivity rubric) are un-banned but INVESTIGATED-AND-DEPRIORITISED: #1 is
+complex (heterogeneous tool evidence, over-refusal risk), #2 is marginal (lexical
+answerability is noisy on a retrieval surface; cosine-confident matches rarely have
+zero overlap) — B0's grounding-diminishing-returns caution holds. NEXT fires should
+favour a genuinely NEW axis (perceive/act growth per the headline build-order, or a
+NEW knowing-you capability like relationship EDGES) over another encryption/grounding
+slice.
 PARKED forever: A2A. Out of scope: banking/payments.
 
 ---
