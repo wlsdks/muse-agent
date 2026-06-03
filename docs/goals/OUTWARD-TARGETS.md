@@ -164,7 +164,7 @@ Muse can READ to know you — new local, read-only, per-source sources the agent
 can ground on and cite (calendar, then tasks/files), verified against MOCK
 data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
 (mutators reject) + `local === true` (egressing sources stay out).
-
+ _First slice (this commit): `muse recap` ships the EVENING-recap half (deterministic retrospective digest: what got done today + coming up + open follow-ups). Remaining: the PROACTIVE daemon-fired firing + the absence/anomaly anticipation half. Bullet stays `[ ]`._
 - [x] **P37-1 Local `.ics` calendar reader (B3 ②).** A read-only
   `LocalIcsCalendarProvider` reads a user's EXPORTED `.ics` file (no cloud);
   `parseIcsCalendar` reuses the CalDAV VEVENT parser. Wired as the `ics`

@@ -93,6 +93,7 @@ import { registerSchedulerCommands, registerSetupCommands } from "./commands-sch
 import { registerSetupLocalCommand } from "./commands-setup-local.js";
 import { registerSetupVoiceCommand } from "./commands-setup-voice.js";
 import { registerBriefCommand } from "./commands-brief.js";
+import { registerRecapCommand } from "./commands-recap.js";
 import { registerApprovalCommands } from "./commands-approval.js";
 import { registerAskCommand } from "./commands-ask.js";
 import { registerDemoCommand } from "./commands-demo.js";
@@ -497,6 +498,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerSetupVoiceCommand(program, io);
   registerStatusCommand(program, io);
   registerBriefCommand(program, io);
+  registerRecapCommand(program, io);
   registerRememberCommands(program, io);
   registerNotesRagCommands(program, io);
   registerJobCommands(program, io);
