@@ -267,6 +267,7 @@ export function formatNonNoteReceipts(
     readonly memories?: readonly string[];
     readonly actions?: readonly string[];
     readonly feeds?: readonly string[];
+    readonly sessions?: readonly string[];
   }
 ): string | undefined {
   const lines: string[] = [];
@@ -294,6 +295,7 @@ export function formatNonNoteReceipts(
   grab("🧠 from what you told me:", /\[memory:\s*([^\]]+?)\s*\]/giu, sources.memories);
   grab("🤖 from your action log:", /\[action:\s*([^\]]+?)\s*\]/giu, sources.actions);
   grab("📰 from your feeds:", /\[feed:\s*([^\]]+?)\s*\]/giu, sources.feeds);
+  grab("💬 from a past session:", /\[session:\s*([^\]]+?)\s*\]/giu, sources.sessions);
   if (lines.length === 0) {
     return undefined;
   }
@@ -2413,6 +2415,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           feeds: feedHeadlines.map((h) => h.feedName),
           memories: allMemoryFacts.map(renderMemoryFact),
           reminders: pendingReminders.map((r) => r.text),
+          sessions: episodeHits.map((e) => e.summary),
           tasks: openTasks.map((t) => t.title)
         });
         if (moreReceipts) io.stderr(moreReceipts);

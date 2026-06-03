@@ -1051,7 +1051,26 @@ qwen3:8b and added to `eval:self-improving`.
   on qwen3:8b with a real RSS feed: `muse ask "what are the latest headlines from
   HN?"` now prints "📰 from your feeds: HN" (before: no receipt, no warning — the
   citation was kept but invisible as a source). cli 167 files / 1788 tests +
-  `pnpm lint` 0/0. (this commit)
+  `pnpm lint` 0/0. (6d9ea4b7)
+
+- [x] **P38-27 A past-SESSION recall now shows its "💬 from a past session" receipt
+  — completing receipt coverage for EVERY citation class, locked by a parity test.**
+  P38-26 revealed that the receipt renderer (`formatNonNoteReceipts`) and the
+  citation gate had drifted apart; falsifying it for the SESSION surface confirmed
+  the same gap: `muse ask "what did we decide about the VPN MTU?"` answers from the
+  episode and cites `[session: …]`, but no receipt showed — the continuous-companion
+  core ("what did we discuss?") had no source attribution. Fixed in
+  apps/cli/src/commands-ask.ts: a `sessions?` field + a `grab("💬 from a past
+  session:", /\[session: …\]/, sources.sessions)` and the call site passes
+  `sessions: episodeHits.map(e => e.summary)`. With feeds (P38-26) + sessions, ALL
+  TEN non-note citation classes (task/event/reminder/session/feed/contact/command/
+  commit/memory/action) now render a receipt. To stop this drift recurring, added a
+  PARITY test that loops over all ten classes and asserts each renders a receipt —
+  it would have caught the feed gap. Proof: 11 new unit tests (the session receipt +
+  the 10-class parity guard) + LIVE on qwen3:8b with a seeded episode: `muse ask
+  "what did we decide about the VPN MTU?"` now prints "💬 from a past session: We set
+  up the office VPN … MTU 1380 …". cli 167 files / 1799 tests + `pnpm lint` 0/0.
+  (this commit)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.

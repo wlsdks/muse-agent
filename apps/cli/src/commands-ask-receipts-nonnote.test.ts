@@ -26,6 +26,26 @@ describe("formatNonNoteReceipts — felt 'shows its work' for non-note sources (
     expect(out).toContain("📰 from your feeds: HN");
   });
 
+  it("renders a past-session receipt so a 'what did we discuss?' answer is followable", () => {
+    const out = formatNonNoteReceipts("We chose MTU 1380 [session: We set up the VPN with MTU 1380].", { sessions: ["We set up the VPN with MTU 1380"] });
+    expect(out).toContain("💬 from a past session: We set up the VPN with MTU 1380");
+  });
+
+  // Guard against the drift that left feeds (P38-26) and sessions without a receipt:
+  // EVERY non-note citation class the gate validates must also render a receipt.
+  const STRUCTURED_CLASSES: ReadonlyArray<readonly [string, string]> = [
+    ["task", "tasks"], ["event", "events"], ["reminder", "reminders"], ["session", "sessions"],
+    ["feed", "feeds"], ["contact", "contacts"], ["command", "commands"], ["commit", "commits"],
+    ["memory", "memories"], ["action", "actions"]
+  ];
+  for (const [cls, field] of STRUCTURED_CLASSES) {
+    it(`renders a receipt for the [${cls}: …] citation class (no class can be cited without a followable receipt)`, () => {
+      const out = formatNonNoteReceipts(`The answer [${cls}: Sample Value].`, { [field]: ["Sample Value"] });
+      expect(out, cls).toBeDefined();
+      expect(out, cls).toContain("Sample Value");
+    });
+  }
+
   it("skips a source type that has nothing configured this turn", () => {
     // the answer cites an event, but no events were grounded → no receipt for it
     expect(formatNonNoteReceipts("see [event: ghost meeting].", { events: [] })).toBeUndefined();
