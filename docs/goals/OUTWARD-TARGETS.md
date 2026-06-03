@@ -1033,7 +1033,25 @@ qwen3:8b and added to `eval:self-improving`.
   green (the "from" form unregressed) + LIVE on qwen3:8b with a real RSS feed:
   `muse ask "latest HN headlines?"` now cites `[feed: HN]` (was `[feed 1]`).
   agent-core 112 files / 1397 tests + cli 167 files / 1787 tests + `pnpm lint` 0/0.
-  (this commit)
+  (cfcd0987)
+
+- [x] **P38-26 The feed answer now carries its "📰 from your feeds" receipt — the
+  user-observable half P38-25 claimed but didn't deliver.** Falsifying P38-25
+  surfaced that its claim ("the feed answer carries its source receipt") was RED:
+  `formatNonNoteReceipts` (the "📎 Also grounded on:" renderer) grabbed events /
+  tasks / reminders / contacts / commands / commits / memories / actions — but NOT
+  feeds — so a `[feed: HN]` citation produced no receipt and P38-25's normalization
+  had no visible effect (the streamed inline still shows the raw `[feed 1]`). Per the
+  procedure, repairing the falsified claim is the iteration. Fixed in
+  apps/cli/src/commands-ask.ts: a `feeds?` field + a
+  `grab("📰 from your feeds:", /\[feed: …\]/, sources.feeds)` line in
+  `formatNonNoteReceipts`, and the call site now passes
+  `feeds: feedHeadlines.map(h => h.feedName)`. Proof: 1 new unit test (a `[feed: HN]`
+  answer renders "📰 from your feeds: HN") + the existing receipt suite green + LIVE
+  on qwen3:8b with a real RSS feed: `muse ask "what are the latest headlines from
+  HN?"` now prints "📰 from your feeds: HN" (before: no receipt, no warning — the
+  citation was kept but invisible as a source). cli 167 files / 1788 tests +
+  `pnpm lint` 0/0. (this commit)
 
 **P39 — Felt: a social prompt gets an instant clean reply (loop-v2 PART A1 +
 tool-calling.md).** Edge hygiene meets felt responsiveness.

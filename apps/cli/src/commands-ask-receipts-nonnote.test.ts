@@ -21,6 +21,11 @@ describe("formatNonNoteReceipts — felt 'shows its work' for non-note sources (
     expect(out).toContain("⌨️ from your shell history: docker run nginx");
   });
 
+  it("renders a feed receipt so a 'what's new in <feed>?' answer is followable", () => {
+    const out = formatNonNoteReceipts("Top story [feed: HN].", { feeds: ["HN", "Lobsters"] });
+    expect(out).toContain("📰 from your feeds: HN");
+  });
+
   it("skips a source type that has nothing configured this turn", () => {
     // the answer cites an event, but no events were grounded → no receipt for it
     expect(formatNonNoteReceipts("see [event: ghost meeting].", { events: [] })).toBeUndefined();

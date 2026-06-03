@@ -266,6 +266,7 @@ export function formatNonNoteReceipts(
     readonly commits?: readonly string[];
     readonly memories?: readonly string[];
     readonly actions?: readonly string[];
+    readonly feeds?: readonly string[];
   }
 ): string | undefined {
   const lines: string[] = [];
@@ -292,6 +293,7 @@ export function formatNonNoteReceipts(
   grab("🔧 from your git commits:", /\[commit:\s*([^\]]+?)\s*\]/giu, sources.commits);
   grab("🧠 from what you told me:", /\[memory:\s*([^\]]+?)\s*\]/giu, sources.memories);
   grab("🤖 from your action log:", /\[action:\s*([^\]]+?)\s*\]/giu, sources.actions);
+  grab("📰 from your feeds:", /\[feed:\s*([^\]]+?)\s*\]/giu, sources.feeds);
   if (lines.length === 0) {
     return undefined;
   }
@@ -2408,6 +2410,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           commits: matchedCommits.map((c) => c.subject),
           contacts: matchedContacts.map((c) => c.name),
           events: upcomingEvents.map((e) => e.title),
+          feeds: feedHeadlines.map((h) => h.feedName),
           memories: allMemoryFacts.map(renderMemoryFact),
           reminders: pendingReminders.map((r) => r.text),
           tasks: openTasks.map((t) => t.title)
