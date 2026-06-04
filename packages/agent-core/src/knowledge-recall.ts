@@ -986,6 +986,122 @@ export async function verifyGroundingWithReverify(
   return base;
 }
 
+/** A right-hand fragment is a CLAUSE (worth judging on its own) only if it
+ *  carries a value (a digit) or is long enough to be a predicate — NOT a short
+ *  noun continuation ("Sarah and Bob"), which would shred a list into garbage
+ *  claims and risk false drops. Conservative on purpose. */
+function isClauseFragment(text: string): boolean {
+  const trimmed = text.trim();
+  if (/\d/u.test(trimmed)) {
+    return true;
+  }
+  return trimmed.split(/\s+/u).filter(Boolean).length >= 5;
+}
+
+function splitClausalConjunctions(text: string): string[] {
+  const raw = text.split(/\s*,?\s+(?:and|but)\s+/iu);
+  if (raw.length <= 1) {
+    return [text];
+  }
+  const merged: string[] = [raw[0]!];
+  for (let i = 1; i < raw.length; i += 1) {
+    if (isClauseFragment(raw[i]!)) {
+      merged.push(raw[i]!);
+    } else {
+      // A noun continuation, not a new clause — re-join so a list never splits.
+      merged[merged.length - 1] = `${merged[merged.length - 1]} and ${raw[i]!}`;
+    }
+  }
+  return merged;
+}
+
+/**
+ * Segment a grounded answer into atomic CLAIMS for per-claim verification
+ * (Self-RAG ISSUP, arXiv:2310.11511): split on sentence terminators and
+ * semicolons, then on `and`/`but` ONLY when the right side is a real clause
+ * (carries a value or ≥5 words), so "Mina owns pricing and the budget was
+ * 2,000,000 KRW" yields TWO claims while "Sarah and Bob report to Mina" stays
+ * ONE. Citation markers ride along with their clause. Empty fragments dropped.
+ * Conservative by design — under-segmenting only degrades to whole-answer
+ * checking; over-segmenting risks dropping a true clause. Pure.
+ */
+export function segmentClaims(answer: string): readonly string[] {
+  const trimmed = answer.trim();
+  if (trimmed.length === 0) {
+    return [];
+  }
+  const out: string[] = [];
+  for (const sentence of trimmed.split(/(?<=[.!?])\s+/u)) {
+    for (const bySemicolon of sentence.split(/\s*;\s*/u)) {
+      out.push(...splitClausalConjunctions(bySemicolon));
+    }
+  }
+  return out.map((claim) => claim.trim()).filter((claim) => claim.length > 0);
+}
+
+export interface PerClaimVerdict {
+  readonly claim: string;
+  readonly supported: boolean;
+}
+
+export interface PerClaimRefinement {
+  /** The answer with unsupported claims removed + an honest "I'm not sure" note. Equals the input when nothing was dropped. */
+  readonly answer: string;
+  readonly verdicts: readonly PerClaimVerdict[];
+  readonly dropped: number;
+}
+
+/**
+ * Per-claim grounding refinement (Self-RAG ISSUP). Runs the SAME one-shot judge
+ * on EACH atomic claim of an answer the whole-answer gate already passed as
+ * `grounded`, and SURGICALLY drops only the unsupported claims — keeping the
+ * cited true clauses and appending an honest "I'm not sure about …" note —
+ * instead of the all-or-nothing whole-answer verdict (which either lets one
+ * fabricated clause ride through or refuses the entire answer).
+ *
+ * Safety (the reason this strictly tightens, never over-refuses a passing
+ * answer): it is meant to run ONLY on an already-`grounded` answer, it FAILS
+ * OPEN per claim (a judge error KEEPS the claim, matching the value-escalation
+ * fail-open), a 0/1-claim answer is returned untouched, and claims beyond
+ * `maxClaims` are kept verbatim (never dropped unchecked). So the worst case is
+ * an occasional false-drop on an opt-in surface, never a new refusal.
+ */
+export async function verifyGroundingPerClaim(
+  answer: string,
+  matches: readonly KnowledgeMatch[],
+  query: string,
+  reverify: GroundingReverify,
+  options?: { readonly maxClaims?: number }
+): Promise<PerClaimRefinement> {
+  const claims = segmentClaims(answer);
+  if (claims.length <= 1) {
+    return { answer, dropped: 0, verdicts: claims.map((claim) => ({ claim, supported: true })) };
+  }
+  const evidence = matches.map((m) => m.text).join("\n");
+  const cap = Math.max(1, options?.maxClaims ?? 6);
+  const checked = claims.slice(0, cap);
+  const overflow = claims.slice(cap);
+  const verdicts: PerClaimVerdict[] = [];
+  for (const claim of checked) {
+    let supported: boolean;
+    try {
+      supported = await reverify({ answer: claim, evidence, query });
+    } catch {
+      supported = true; // judge error → keep the claim (fail-open)
+    }
+    verdicts.push({ claim, supported });
+  }
+  const droppedVerdicts = verdicts.filter((v) => !v.supported);
+  if (droppedVerdicts.length === 0) {
+    return { answer, dropped: 0, verdicts };
+  }
+  const kept = verdicts.filter((v) => v.supported).map((v) => v.claim);
+  const subjects = droppedVerdicts.map((v) => v.claim.replace(/\[[^\]]*\]/gu, "").trim()).filter((s) => s.length > 0);
+  const body = [...kept, ...overflow].join(" ").trim();
+  const note = subjects.length > 0 ? `${body ? "\n\n" : ""}I'm not sure about: ${subjects.join("; ")}.` : "";
+  return { answer: `${body}${note}`.trim(), dropped: droppedVerdicts.length, verdicts };
+}
+
 /**
  * Reorder passages so the most relevant sit at the START and END and the
  * weakest land in the MIDDLE — "Lost in the Middle" (Liu et al. 2023,

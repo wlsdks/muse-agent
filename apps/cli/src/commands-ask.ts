@@ -27,7 +27,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
 
-import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, explainGroundingVerdict, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyVerdict, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectByMmr, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, explainGroundingVerdict, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyVerdict, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectByMmr, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
@@ -816,6 +816,7 @@ interface AskOptions {
   readonly connect?: boolean;
   readonly repair?: boolean;
   readonly why?: boolean;
+  readonly verifyClaims?: boolean;
   /**
    * Clamps the answer to notes + local-memory grounding only.
    * Disables native web_search on every provider path and, when
@@ -1477,6 +1478,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
     .option(
       "--why",
       "When Muse refuses or flags an answer, show WHY — which grounding criterion fell short (confidence / coverage / answerability / citation) and the measured value vs its threshold (e.g. 'best match 0.42, I need 0.55'), so you can rephrase, reindex, or add a note. Silent on a confident, grounded answer."
+    )
+    .option(
+      "--verify-claims",
+      "Per-claim grounding (Self-RAG ISSUP): after a GROUNDED answer, re-check EACH atomic claim against your notes and surface only the trustworthy subset — so a single fabricated clause in an otherwise-grounded answer ('Mina owns pricing AND the budget was 2M') is flagged 'I'm not sure about …' instead of riding through. Opt-in, fail-open (a check error keeps the claim), never turns a good answer into a refusal; spends one extra local inference per claim."
     )
     .action(async (queryParts: readonly string[], options: AskOptions) => {
       const argQuery = queryParts.join(" ").trim();
@@ -2812,6 +2817,17 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             if (repair.repaired) io.stderr(`\n🔧 Corrected from your notes:\n${repair.repaired}\n`);
           } else if (shouldSuggestRepair({ evidenceCount: scoredMatches.length, json: Boolean(options.json), repairRequested: Boolean(options.repair), verdictFired: true })) {
             io.stderr("(Re-run with --repair and I'll rewrite this using only your notes — shown only if it then checks out.)\n");
+          }
+        } else if (options.verifyClaims && reverify && !answerIsRefusal(collectedAnswer)) {
+          // --verify-claims: per-claim ISSUP refinement of an answer the whole-
+          // answer gate just PASSED (no verdictNotice). One fabricated clause can
+          // ride through because it barely dents whole-answer coverage — re-judge
+          // each atomic claim and surface only the trustworthy subset. Gated on a
+          // PASSING answer so it can only tighten, never manufacture a refusal;
+          // fail-open per claim inside verifyGroundingPerClaim.
+          const refinement = await verifyGroundingPerClaim(verdictAnswer, scoredMatches, query, reverify);
+          if (refinement.dropped > 0 && !options.json) {
+            io.stderr(`\n🔬 Per-claim check — I can only ground part of that:\n${refinement.answer}\n`);
           }
         }
 

@@ -20,6 +20,7 @@ import {
   buildGroundingReverifyPrompt,
   parseGroundingReverifyVerdict,
   REVERIFY_SYSTEM_PROMPT,
+  verifyGroundingPerClaim,
   verifyGroundingWithReverify
 } from "@muse/agent-core";
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
@@ -90,5 +91,32 @@ for (const c of cases) {
   if (!ok) failures += 1;
 }
 
-console.log(failures === 0 ? `\nALL PASS (${cases.length}) on ${model}` : `\n${failures}/${cases.length} FAILED on ${model}`);
+// --- Per-claim ISSUP refinement (muse ask --verify-claims): the judge runs on
+// EACH atomic claim and the unsupported one is surgically dropped while the
+// supported one is kept (Self-RAG ISSUP). The fully-supported case is the
+// over-refusal tripwire — a grounded multi-claim answer must come back untouched.
+const pricing = [{ cosine: 0.72, score: 0.72, source: "notes/team.md", text: "Mina owns the pricing strategy. The team is three people." }];
+const perClaimCases = [
+  {
+    name: "MIXED: 'Mina owns pricing AND budget was 2,000,000 KRW' → DROP the budget clause, KEEP pricing",
+    answer: "Mina owns pricing and the budget was 2,000,000 KRW",
+    matches: pricing, query: "who owns what on the team",
+    check: (r) => r.dropped >= 1 && r.answer.includes("Mina owns pricing") && !r.answer.split("I'm not sure about:")[0].includes("2,000,000")
+  },
+  {
+    name: "FULLY-SUPPORTED (over-refusal tripwire): both clauses in evidence → untouched, dropped=0",
+    answer: "Mina owns pricing and the team is three people",
+    matches: pricing, query: "who owns what on the team",
+    check: (r) => r.dropped === 0 && r.answer === "Mina owns pricing and the team is three people"
+  }
+];
+for (const c of perClaimCases) {
+  const r = await verifyGroundingPerClaim(c.answer, c.matches, c.query, reverify);
+  const ok = c.check(r);
+  console.log(`${ok ? "PASS" : "FAIL"} — ${c.name}\n   dropped=${r.dropped} answer=${JSON.stringify(r.answer)}`);
+  if (!ok) failures += 1;
+}
+
+const total = cases.length + perClaimCases.length;
+console.log(failures === 0 ? `\nALL PASS (${total}) on ${model}` : `\n${failures}/${total} FAILED on ${model}`);
 process.exit(failures === 0 ? 0 : 1);

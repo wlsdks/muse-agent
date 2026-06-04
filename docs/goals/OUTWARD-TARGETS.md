@@ -3096,6 +3096,36 @@ tool-calling.md).** Edge hygiene meets felt responsiveness.
   path). agent-core 1349 / cli 1685 + `pnpm lint` 0/0. tool-calling.md ("don't
   invoke the retrieval machinery on a greeting"). (19aefb91)
 
+- [x] **P38-38 `muse ask --verify-claims` — PER-CLAIM grounding (Self-RAG ISSUP): a single
+  fabricated clause in an otherwise-grounded answer is now flagged "I'm not sure about …"
+  instead of riding through, where before the gate was all-or-nothing per WHOLE answer.** The
+  one place the edge was still whole-answer: `verifyGroundingWithReverify` ran ONE judge on the
+  whole answer (a multi-claim answer with one fabricated value either passed — the wrong clause
+  barely dented coverage — or got the ENTIRE answer refused = over-refusal); the only claim-level
+  catch (`answerAssertsUnsupportedValue`) was VALUE-only (digit/email/capitalised-entity), blind
+  to a fabricated relational/qualitative clause of ordinary words. Added a pure `segmentClaims`
+  (sentence/`;`/clausal-`and`-`but` split — conservative: only splits a conjunction when the right
+  side is a real clause, carrying a value or ≥5 words, so "Sarah and Bob report to Mina" stays ONE
+  claim) + `verifyGroundingPerClaim` (runs the SAME one-shot judge on each atomic claim, KEEPS the
+  cited true clauses, DROPS only the unsupported ones with an honest "I'm not sure about …" note —
+  packages/agent-core/src/knowledge-recall.ts), wired as an OPT-IN `muse ask --verify-claims` flag
+  applied ONLY to an already-`grounded` answer. Safety by construction: refines a passing answer
+  so it can only TIGHTEN (never manufactures a refusal), FAILS OPEN per claim (a judge error keeps
+  the claim), and a 0/1-claim answer is untouched. Direction chosen via a 6-agent code-grounded
+  direction-review workflow (highest-value strengthening of the CLAUDE.md-mandated core edge);
+  verified-not-built by grep + codegraph. Verified deterministically AND live: 9 agent-core unit
+  tests (`segmentClaims` clausal-vs-noun split / citation-retention / sentence split / empty;
+  `verifyGroundingPerClaim` drops-only-unsupported / fully-supported-untouched / single-claim-no-judge-call
+  / fail-open-on-judge-error — packages/agent-core/test/knowledge-recall-reverify.test.ts) +
+  @muse/agent-core 114 files / 1455 tests + @muse/cli 176 files / 1994 tests + `pnpm lint` 0/0 +
+  a LIVE local-qwen3:8b battery (apps/cli/scripts/verify-claim-grounding.mjs, now 8/8): the MIXED
+  case "Mina owns pricing AND the budget was 2,000,000 KRW" → dropped=1, answer kept "Mina owns
+  pricing" and moved the budget to "I'm not sure about: the budget was 2,000,000 KRW", AND the
+  FULLY-SUPPORTED over-refusal tripwire ("Mina owns pricing and the team is three people") came
+  back UNTOUCHED (dropped=0) — proving it strengthens fabrication-catching WITHOUT raising
+  false-refusal; plus a live `muse ask --verify-claims` round-trip on a grounded answer ran clean.
+  (3150b579)
+
 - [x] **P39-2 `muse ask "what can you do?"` answers honestly about MUSE, not a
   hallucinated over-claim.** A meta/capability question ran retrieval and made
   the local model free-compose an aspirational answer ("I can manage your

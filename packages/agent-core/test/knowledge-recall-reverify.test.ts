@@ -4,6 +4,8 @@ import {
   buildGroundingReverifyPrompt,
   parseGroundingReverifyVerdict,
   REVERIFY_SYSTEM_PROMPT,
+  segmentClaims,
+  verifyGroundingPerClaim,
   verifyGroundingWithReverify,
   type KnowledgeMatch
 } from "../src/index.js";
@@ -195,5 +197,71 @@ describe("buildGroundingReverifyPrompt", () => {
     expect(prompt).toContain(weakAnswer);
     expect(prompt).toContain(query);
     expect(prompt).toContain("MTU 1380");
+  });
+});
+
+describe("segmentClaims — atomic claims for per-claim grounding (Self-RAG ISSUP)", () => {
+  it("splits a clausal 'and' (right side carries a value) into TWO claims", () => {
+    expect(segmentClaims("Mina owns pricing and the budget was 2,000,000 KRW")).toEqual([
+      "Mina owns pricing",
+      "the budget was 2,000,000 KRW"
+    ]);
+  });
+
+  it("does NOT split a short noun list ('Sarah and Bob report to Mina') — one claim", () => {
+    expect(segmentClaims("Sarah and Bob report to Mina")).toEqual(["Sarah and Bob report to Mina"]);
+  });
+
+  it("splits sentences on terminal punctuation, keeping each whole", () => {
+    expect(segmentClaims("Alice owns the roadmap. The launch is on August 14.")).toEqual([
+      "Alice owns the roadmap.",
+      "The launch is on August 14."
+    ]);
+  });
+
+  it("keeps a [citation] marker attached to its clause", () => {
+    expect(segmentClaims("The rent is 900,000 KRW [from notes] and the lease ends in December [from lease]")).toEqual([
+      "The rent is 900,000 KRW [from notes]",
+      "the lease ends in December [from lease]"
+    ]);
+  });
+
+  it("returns [] for empty / whitespace and one claim for a single statement", () => {
+    expect(segmentClaims("   ")).toEqual([]);
+    expect(segmentClaims("The meeting is at 3pm")).toEqual(["The meeting is at 3pm"]);
+  });
+});
+
+describe("verifyGroundingPerClaim — surgically drop only the unsupported claim", () => {
+  const ev = [match("notes", "Mina owns pricing. The budget is unspecified.", 0.9)];
+
+  it("KEEPS the supported claim and DROPS the unsupported one with an honest note", async () => {
+    const judge = async ({ answer }: { answer: string }) => !answer.toLowerCase().includes("budget");
+    const out = await verifyGroundingPerClaim("Mina owns pricing and the budget was 2,000,000 KRW", ev, "who owns what?", judge);
+    expect(out.dropped).toBe(1);
+    expect(out.answer).toContain("Mina owns pricing");
+    expect(out.answer).toContain("I'm not sure about: the budget was 2,000,000 KRW");
+    // the dropped clause is NOT asserted as fact — the value appears ONLY inside the disclaimer
+    expect(out.answer.split("I'm not sure about:")[0]).not.toContain("2,000,000");
+  });
+
+  it("returns a FULLY-supported answer untouched", async () => {
+    const out = await verifyGroundingPerClaim("Mina owns pricing and the team is three people", ev, "q", async () => true);
+    expect(out.dropped).toBe(0);
+    expect(out.answer).toBe("Mina owns pricing and the team is three people");
+  });
+
+  it("a single-claim answer is returned untouched without calling the judge", async () => {
+    let calls = 0;
+    const out = await verifyGroundingPerClaim("Mina owns pricing", ev, "q", async () => { calls += 1; return false; });
+    expect(out.answer).toBe("Mina owns pricing");
+    expect(out.dropped).toBe(0);
+    expect(calls).toBe(0);
+  });
+
+  it("FAILS OPEN on a judge error — keeps the claim rather than dropping a possibly-true clause", async () => {
+    const out = await verifyGroundingPerClaim("Mina owns pricing and the budget was 2,000,000 KRW", ev, "q", async () => { throw new Error("judge down"); });
+    expect(out.dropped).toBe(0);
+    expect(out.answer).toContain("2,000,000");
   });
 });
