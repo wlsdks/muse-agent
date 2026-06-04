@@ -52,6 +52,7 @@ import { buildEpisodeIndex, defaultEpisodeIndexFile, episodeIndexStale, loadEpis
 import { readClipboardText } from "./clipboard-reader.js";
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
 import { detectDateQuery, formatDateAnswer, phraseHasTime } from "./date-query.js";
+import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdown-query.js";
 import { convertUnit, detectUnitConversion, formatConversion } from "./unit-conversion.js";
 import { detectPercentageQuery, formatPercentage } from "./percentage-query.js";
 import { detectTimezoneQuery, formatTimezone } from "./timezone-query.js";
@@ -1631,6 +1632,28 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             io.stdout(`${answer}\n`);
           }
           return;
+        }
+      }
+
+      // A pure date-COUNTDOWN question ("how many days until Christmas?", "weeks
+      // until June 20"). The 8B counts days across months/years CONFIDENTLY WRONG;
+      // resolve the target via the date grammar and count EXACTLY. Precision-first:
+      // a target the grammar can't parse falls through to recall.
+      const countdown = detectCountdownQuery(query);
+      if (countdown) {
+        const now = new Date();
+        const resolved = parseReminderDueAt(countdown.targetPhrase, () => now);
+        if (!(resolved instanceof Error)) {
+          const days = countdownDays(now, resolved);
+          if (days >= 0) {
+            const answer = formatCountdown(countdown.unit, days, resolved);
+            if (options.json) {
+              io.stdout(`${JSON.stringify({ answer, countdown: { days, target: resolved, unit: countdown.unit }, query })}\n`);
+            } else {
+              io.stdout(`${answer}\n`);
+            }
+            return;
+          }
         }
       }
 

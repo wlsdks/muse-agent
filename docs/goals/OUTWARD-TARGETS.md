@@ -2211,7 +2211,29 @@ in the loop.
   JSON, and the negative `"when is my dentist appointment?"` → NOT hijacked (fell through to recall).
   (3927a323)
 
-- [x] **P41-26 `muse ask "how many km in 5 miles?"` / "what's 100F in C?" now answers the EXACT
+- [x] **P41-29 `muse ask "how many days until Christmas?"` now answers the EXACT countdown — FIXING
+  confidently-WRONG 8B answers (it said Christmas 198 when it's 203, March 1 245 when it's 269), the
+  worst failure mode for a trust-first assistant.** P41-25 resolves "what's the DATE next Friday?" but
+  not a DURATION ("how many days UNTIL X?"). I verified live first that the 8B is reliably, confidently
+  wrong here: with today grounded it still answered Christmas 198 (−5), New Year 189 (−21), March 1 245
+  (−24) — fabrication-class errors on a simple computation. Added a pure date-countdown fast-path
+  (apps/cli/src/countdown-query.ts): `detectCountdownQuery` recognises "how many days/weeks until X",
+  "how long until X", "days until X", "countdown to X" (until/till/til/to/before), extracts the unit
+  (default days) + the target phrase, and resolves fixed-date HOLIDAYS (Christmas, New Year, Halloween,
+  Valentine's) to a parseable date; `muse ask` resolves the phrase through the SAME `parseReminderDueAt`
+  grammar P41-25 uses — which ROLLS a past month-day to its next occurrence ("March 1" → next March,
+  2027) and is the precision gate (an unparseable target falls through to recall); `countdownDays`
+  computes the exact whole-day diff (UTC date parts, so no DST/tz drift) and `formatCountdown` frames it
+  ("There are 203 days until Friday, December 25, 2026.", pluralised, weeks supported, "today!" at 0).
+  NO model call, NO retrieval. Verified deterministically AND live: 5 tests (detectCountdownQuery parses
+  the phrasings + holidays + returns null on four non-countdown / "in not until" cases; countdownDays is
+  exact across month/year boundaries — the very cases the 8B missed; formatCountdown days/weeks/today —
+  apps/cli/src/countdown-query.test.ts) + @muse/cli 182 files / 2075 tests + tsc build + `pnpm lint` 0/0
+  + LIVE on the loop PC (today Jun 5): `"how many days until Christmas?"` → "There are 203 days until
+  Friday, December 25, 2026." (8B had said 198), `"how many days until March 1?"` → "269 days …
+  Monday, March 1, 2027" (8B 245), `"how many weeks until Christmas?"` → "about 29 weeks …",
+  `--json "days until June 20"` → exact JSON, and the negative `"how many days are in February?"` → NOT
+  hijacked (recall). (655c510c)
   conversion deterministically — the third deterministic "compute it, don't let the 8B guess" lever
   (after arithmetic P41-20 and dates P41-25), per the small-model-maximization focus.** The local
   8B miscalculates unit conversions — temperature especially, which needs a FORMULA not a factor.
