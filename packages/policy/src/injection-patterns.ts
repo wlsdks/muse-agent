@@ -79,7 +79,13 @@ const homoglyphMap = new Map<string, string>([
 ]);
 
 export const sharedInjectionPatterns: readonly InjectionPattern[] = [
-  { name: "role_override", regex: /(ignore|forget|disregard).*(previous|above|prior|all).*(instructions?|and)/is },
+  // The override-target must be a real instruction-noun, NOT a bare `and`:
+  // an `|and` tail flagged benign user prose ("forget all the groceries AND
+  // the milk", "ignore the previous draft AND use the new one") as injection,
+  // blocking the recall turn on first-party notes. The explicit noun set keeps
+  // (and widens) genuine "ignore all previous rules/prompts/instructions"
+  // coverage that bare `instructions?` alone would have narrowed.
+  { name: "role_override", regex: /(ignore|forget|disregard).*(previous|above|prior|all|earlier|preceding).*(instructions?|prompts?|rules?|directions?|guidelines?|commands?|messages?|context)/is },
   { name: "role_override", regex: /you\s+are\s+now/i },
   { name: "role_override", regex: /\bact as (a |an )?(unrestricted|unfiltered|different|new|evil|hacker|jailbroken)/i },
   { name: "role_override", regex: /disregard.*(your|the|my).*(programming|rules|guidelines|constraints)/is },
