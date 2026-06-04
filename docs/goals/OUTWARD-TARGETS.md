@@ -368,6 +368,26 @@ P43 bullet is unbuilt.
   "⏰ Dentist appointment — 7:32 AM" and "⏰ Zelda's birthday — tomorrow", where before the
   evening recap surfaced neither. (7ececd59)
 
+- [x] **P43-8 The evening recap's "Today you got done" now counts TASKS YOU COMPLETED
+  today — checking off your todo list is a real accomplishment, so the recap no longer
+  says "Quiet day — nothing logged" after a productive day.** `gatherEveningRecap`'s
+  `performedToday` was built ONLY from the action log (sends / refusals / actuations) —
+  but completing a task (`muse tasks complete`) is a local store mutation that is NOT
+  action-logged, so a user who checked off five tasks today saw NONE of them in the recap,
+  and if they did only tasks the recap literally reported "Quiet day — nothing logged yet"
+  — a demoralizing near-falsehood about their own day. Closed in apps/cli/src/commands-recap.ts:
+  the existing task-read loop (already scanning for overdue/"slipping" open tasks) now also
+  collects tasks with `status === "done"` whose `completedAt` is TODAY (`sameLocalDay`) into
+  `performedToday`, so they render under "Today you got done (N): ✓ <title>" alongside any
+  action-log accomplishments. One readTasks call, fail-soft, deterministic (no model). Verified
+  deterministically AND live: a new `gatherEveningRecap` test (a task completed earlier today
+  IS in performedToday; one completed yesterday is excluded; an open task is excluded —
+  commands-recap.test.ts) + the full @muse/cli suite (174 files / 1943 tests) + tsc build +
+  `pnpm lint` 0/0 + a LIVE `muse recap` on the loop PC: after `muse tasks add` + `muse tasks
+  complete`, the digest opens with "Today you got done (1): ✓ Ship the Q3 deck", where before
+  the same completed task was invisible and the recap would have read "Quiet day — nothing
+  logged yet". (dd54f37b)
+
 **P44 — Trust: encryption at rest (the discretion refusal, made real against
 storage access — not just network egress).** "It can't tell anyone" was true
 against the network (cloud egress refused in code) but FALSE against the disk:

@@ -214,12 +214,19 @@ export async function gatherEveningRecap(
   } catch { /* fail-soft */ }
   try {
     for (const task of await readTasks(resolveTasksFile(env))) {
-      if (task.status !== "open" || task.dueAt === undefined) {
-        continue;
-      }
-      const due = new Date(task.dueAt);
-      if (!Number.isNaN(due.getTime()) && due < now) {
-        slipping.push(`${task.title} — was due ${shortDate(due)}`);
+      if (task.status === "open" && task.dueAt !== undefined) {
+        const due = new Date(task.dueAt);
+        if (!Number.isNaN(due.getTime()) && due < now) {
+          slipping.push(`${task.title} — was due ${shortDate(due)}`);
+        }
+      } else if (task.status === "done" && task.completedAt) {
+        // A task you checked off TODAY is a real accomplishment the recap must
+        // celebrate — without this it reads "Quiet day — nothing logged" even
+        // after a productive day, because completing a task isn't action-logged.
+        const done = new Date(task.completedAt);
+        if (!Number.isNaN(done.getTime()) && sameLocalDay(done, now)) {
+          performedToday.push(task.title);
+        }
       }
     }
   } catch { /* fail-soft */ }

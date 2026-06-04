@@ -88,6 +88,27 @@ describe("gatherEveningRecap — overdue detection (the absence signal)", () => 
     expect(input.slipping.some((s) => s.includes("Done thing"))).toBe(false);
   });
 
+  it("counts a task COMPLETED today as a 'got done' accomplishment (not only action-log entries)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-recap-done-"));
+    const tasksFile = join(dir, "tasks.json");
+    const now = new Date("2026-06-04T21:00:00");
+    const earlierToday = new Date(now.getTime() - 5 * 3_600_000).toISOString();
+    const yesterday = new Date(now.getTime() - 30 * 3_600_000).toISOString();
+    await writeTasks(tasksFile, [
+      { completedAt: earlierToday, createdAt: yesterday, id: "t1", status: "done", title: "Ship the Q3 deck" }, // done today → got done
+      { completedAt: yesterday, createdAt: yesterday, id: "t2", status: "done", title: "Old finished thing" }, // done yesterday → excluded
+      { createdAt: yesterday, id: "t3", status: "open", title: "Still open" } // open → not done
+    ]);
+    const env: Record<string, string | undefined> = {
+      MUSE_ACTION_LOG_FILE: join(dir, "a.json"), MUSE_EPISODES_FILE: join(dir, "e.json"),
+      MUSE_FOLLOWUPS_FILE: join(dir, "f.json"), MUSE_REMINDERS_FILE: join(dir, "r.json"), MUSE_TASKS_FILE: tasksFile
+    };
+    const input = await gatherEveningRecap(env, now);
+    expect(input.performedToday).toContain("Ship the Q3 deck");
+    expect(input.performedToday).not.toContain("Old finished thing");
+    expect(input.performedToday).not.toContain("Still open");
+  });
+
   it("surfaces tomorrow's calendar EVENTS and upcoming BIRTHDAYS in 'coming up' (parity with brief + today)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-recap-comingup-"));
     const now = new Date("2026-06-04T21:00:00"); // evening of Jun 4
