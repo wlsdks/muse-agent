@@ -67,8 +67,12 @@ export async function extractDocumentText(filePath: string, buffer: Buffer): Pro
     // before the binary refusal below. Extract the document body text.
     return { pageCount: 1, text: docxToText(buffer, filePath) };
   }
+  if (isPptxDocument(filePath)) {
+    // A PowerPoint .pptx is likewise a ZIP of XML — extract every slide's text.
+    return { pageCount: 1, text: pptxToText(buffer, filePath) };
+  }
   if (isLikelyBinary(buffer)) {
-    throw new Error(`'${basename(filePath)}' looks binary — muse read handles PDFs, Word .docx, and text files (.txt/.md/.log/.csv).`);
+    throw new Error(`'${basename(filePath)}' looks binary — muse read handles PDFs, Word .docx, PowerPoint .pptx, and text files (.txt/.md/.log/.csv).`);
   }
   if (isHtmlDocument(filePath)) {
     // Grounding on raw HTML feeds the model markup + <script>/<style> noise and
@@ -95,16 +99,26 @@ export function isDocxDocument(filePath: string): boolean {
   return filePath.toLowerCase().endsWith(".docx");
 }
 
+/** A PowerPoint presentation, by extension (.pptx). */
+export function isPptxDocument(filePath: string): boolean {
+  return filePath.toLowerCase().endsWith(".pptx");
+}
+
+interface ZipEntry {
+  readonly name: string;
+  readonly method: number;
+  readonly compSize: number;
+  readonly localOffset: number;
+}
+
 /**
- * Locate ONE entry in a ZIP archive and return its decompressed bytes, or null
- * if absent / unsupported. A `.docx` is a ZIP; the body text lives in
- * `word/document.xml`. Parses the central directory (the authoritative index at
- * the end of the file) rather than the local headers, so it's robust to data
- * descriptors (streamed-write ZIPs leave the local-header sizes zero). Only the
- * two compression methods a `.docx` ever uses are handled: store (0) and the
- * ubiquitous raw-DEFLATE (8) via Node's built-in zlib — no third-party dep.
+ * Parse a ZIP's central directory (the authoritative index at the end of the
+ * file, robust to streamed-write data descriptors that leave local-header sizes
+ * zero) and return every entry's metadata. The shared backbone for the Office
+ * Open XML readers (`.docx` / `.pptx`) — both are ZIPs whose text lives in XML
+ * parts. No third-party dep. Returns [] for a non-ZIP / unreadable buffer.
  */
-function readZipEntry(buffer: Buffer, entryName: string): Buffer | null {
+function zipCentralEntries(buffer: Buffer): ZipEntry[] {
   const EOCD_SIG = 0x06054b50;
   const CDH_SIG = 0x02014b50;
   // Scan backward for the End-Of-Central-Directory record (its variable-length
@@ -117,13 +131,14 @@ function readZipEntry(buffer: Buffer, entryName: string): Buffer | null {
     }
   }
   if (eocd < 0) {
-    return null;
+    return [];
   }
   const cdCount = buffer.readUInt16LE(eocd + 10);
   let p = buffer.readUInt32LE(eocd + 16); // central-directory offset
+  const entries: ZipEntry[] = [];
   for (let n = 0; n < cdCount; n++) {
     if (p + 46 > buffer.length || buffer.readUInt32LE(p) !== CDH_SIG) {
-      return null;
+      break;
     }
     const method = buffer.readUInt16LE(p + 10);
     const compSize = buffer.readUInt32LE(p + 20);
@@ -132,32 +147,59 @@ function readZipEntry(buffer: Buffer, entryName: string): Buffer | null {
     const commentLen = buffer.readUInt16LE(p + 32);
     const localOffset = buffer.readUInt32LE(p + 42);
     const name = buffer.toString("utf8", p + 46, p + 46 + fnLen);
-    if (name === entryName) {
-      // The local header repeats the filename/extra lengths (they may differ
-      // from the central record), so read THEM to find the data start.
-      const localFnLen = buffer.readUInt16LE(localOffset + 26);
-      const localExtraLen = buffer.readUInt16LE(localOffset + 28);
-      const dataStart = localOffset + 30 + localFnLen + localExtraLen;
-      const compressed = buffer.subarray(dataStart, dataStart + compSize);
-      if (method === 0) {
-        return compressed;
-      }
-      if (method === 8) {
-        return inflateRawSync(compressed);
-      }
-      return null;
-    }
+    entries.push({ name, method, compSize, localOffset });
     p += 46 + fnLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+/** Decompress one central-directory entry. Only the two methods a .docx/.pptx
+ *  ever uses are handled: store (0) and raw-DEFLATE (8, via Node's zlib). */
+function inflateZipEntry(buffer: Buffer, entry: ZipEntry): Buffer | null {
+  // The local header repeats the filename/extra lengths (they may differ from
+  // the central record), so read THEM to find the data start.
+  const localFnLen = buffer.readUInt16LE(entry.localOffset + 26);
+  const localExtraLen = buffer.readUInt16LE(entry.localOffset + 28);
+  const dataStart = entry.localOffset + 30 + localFnLen + localExtraLen;
+  const compressed = buffer.subarray(dataStart, dataStart + entry.compSize);
+  if (entry.method === 0) {
+    return compressed;
+  }
+  if (entry.method === 8) {
+    return inflateRawSync(compressed);
   }
   return null;
 }
 
+/** Locate ONE entry by exact name and return its decompressed bytes, or null. */
+function readZipEntry(buffer: Buffer, entryName: string): Buffer | null {
+  const entry = zipCentralEntries(buffer).find((e) => e.name === entryName);
+  return entry ? inflateZipEntry(buffer, entry) : null;
+}
+
 /**
- * Extract the readable body text of a Word `.docx`. The visible text lives in
- * `<w:t>` runs inside `word/document.xml`; paragraphs (`</w:p>`), line breaks
- * (`<w:br/>`) and tabs (`<w:tab/>`) become whitespace, every other tag is
- * dropped, and XML entities are decoded — "good enough" to ground on, not a
- * faithful render. Throws when the file isn't a readable .docx so the caller
+ * Reduce an Office Open XML body (Word `<w:…>` or PowerPoint `<a:…>`) to readable
+ * text: paragraphs (`</w:p>` / `</a:p>`), line breaks (`<w:br/>` / `<a:br>`) and
+ * tabs (`<w:tab/>`) become whitespace, every other tag is dropped, and XML
+ * entities are decoded. The only text between tags in these parts is the run
+ * content, so tag-stripping yields exactly the visible text — "good enough" to
+ * ground on, not a faithful render.
+ */
+function ooxmlRunsToText(xml: string): string {
+  const withBreaks = xml
+    .replace(/<\/(?:w|a):p>/giu, "\n")
+    .replace(/<(?:w|a):br\s*\/?>/giu, "\n")
+    .replace(/<(?:w|a):tab\s*\/?>/giu, "\t");
+  const stripped = withBreaks.replace(/<[^>]+>/gu, "");
+  return decodeHtmlEntities(stripped)
+    .replace(/[ \t]+\n/gu, "\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+}
+
+/**
+ * Extract the readable body text of a Word `.docx` — the `<w:t>` runs inside
+ * `word/document.xml`. Throws when the file isn't a readable .docx so the caller
  * reports clearly. Exported for testing.
  */
 export function docxToText(buffer: Buffer, filePath = "document.docx"): string {
@@ -165,15 +207,36 @@ export function docxToText(buffer: Buffer, filePath = "document.docx"): string {
   if (!xml) {
     throw new Error(`'${basename(filePath)}' isn't a readable .docx (no word/document.xml inside).`);
   }
-  const withBreaks = xml.toString("utf8")
-    .replace(/<\/w:p>/giu, "\n")
-    .replace(/<w:br\s*\/?>/giu, "\n")
-    .replace(/<w:tab\s*\/?>/giu, "\t");
-  const stripped = withBreaks.replace(/<[^>]+>/gu, "");
-  return decodeHtmlEntities(stripped)
-    .replace(/[ \t]+\n/gu, "\n")
-    .replace(/\n{3,}/gu, "\n\n")
-    .trim();
+  return ooxmlRunsToText(xml.toString("utf8"));
+}
+
+/** The slide number in `ppt/slides/slideN.xml`, for ordering (so slide10 sorts after slide2). */
+function slideNumber(entryName: string): number {
+  const m = /slide(\d+)\.xml$/u.exec(entryName);
+  return m ? Number.parseInt(m[1]!, 10) : 0;
+}
+
+/**
+ * Extract the readable text of a PowerPoint `.pptx` — every slide's `<a:t>` runs,
+ * slides concatenated in slide-number order (blank line between slides). Throws
+ * when the file has no slides (not a readable .pptx) so the caller reports
+ * clearly. Exported for testing.
+ */
+export function pptxToText(buffer: Buffer, filePath = "presentation.pptx"): string {
+  const slideNames = zipCentralEntries(buffer)
+    .map((e) => e.name)
+    .filter((n) => /^ppt\/slides\/slide\d+\.xml$/u.test(n))
+    .sort((a, b) => slideNumber(a) - slideNumber(b));
+  if (slideNames.length === 0) {
+    throw new Error(`'${basename(filePath)}' isn't a readable .pptx (no slides inside).`);
+  }
+  const slides = slideNames
+    .map((name) => {
+      const xml = readZipEntry(buffer, name);
+      return xml ? ooxmlRunsToText(xml.toString("utf8")) : "";
+    })
+    .filter((text) => text.length > 0);
+  return slides.join("\n\n");
 }
 
 /**
@@ -232,7 +295,7 @@ export function htmlToText(html: string): string {
  * `NOTE_FILE_RE`: org-mode, reStructuredText, AsciiDoc, MDX, markdown variants) —
  * so a power-user's `.org`/`.rst`/`.adoc` notes aren't silently skipped by ad-hoc
  * folder grounding/ingest while the index includes them — PLUS this reader's own
- * document extras (`.log`/`.csv`/`.html`/`.htm`/`.eml`/`.docx`, special-cased above). A
+ * document extras (`.log`/`.csv`/`.html`/`.htm`/`.eml`/`.docx`/`.pptx`, special-cased above). A
  * single non-supported text file still reads (UTF-8 pass-through); only the
  * directory walk is gated, so it must stay aligned with `NOTE_FILE_RE` (guarded by
  * a drift test).
@@ -245,7 +308,7 @@ export const SUPPORTED_DOC_EXT = new Set([
   ".log", ".csv",
   ".html", ".htm",
   ".eml",
-  ".docx"
+  ".docx", ".pptx"
 ]);
 
 /** Recursively collect supported document files under `dir` (skips hidden + `.processed`), sorted. */

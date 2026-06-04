@@ -6,7 +6,7 @@ import { deflateRawSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { NOTE_FILE_RE } from "./commands-notes-rag.js";
-import { SUPPORTED_DOC_EXT, docxToText, emlToText, extractDirectoryDocuments, extractDocumentText, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isDocxDocument, isEmlDocument, isHtmlDocument, isLikelyBinary, isPdfDocument, parsePdfBuffer, walkDocuments } from "./document-reader.js";
+import { SUPPORTED_DOC_EXT, docxToText, emlToText, extractDirectoryDocuments, extractDocumentText, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isDocxDocument, isEmlDocument, isHtmlDocument, isLikelyBinary, isPdfDocument, isPptxDocument, parsePdfBuffer, pptxToText, walkDocuments } from "./document-reader.js";
 
 /** Build a minimal but spec-valid ZIP (local headers + central directory + EOCD),
  *  so the .docx tests exercise the REAL inflate path, not a stub. CRC is left 0 —
@@ -60,6 +60,21 @@ function makeDocx(paragraphs: readonly string[], opts?: { readonly store?: boole
   return makeZip([
     { name: "[Content_Types].xml", data: Buffer.from("<Types/>", "utf8") },
     { name: "word/document.xml", data: Buffer.from(xml, "utf8"), store: opts?.store }
+  ]);
+}
+
+/** A real .pptx: one `ppt/slides/slideN.xml` per slide, each slide's lines as
+ *  `<a:t>` runs. Entries are intentionally added out of slide order to prove the
+ *  reader sorts by slide number, not archive position. */
+function makePptx(slides: readonly (readonly string[])[]): Buffer {
+  const slideEntries = slides.map((lines, i) => {
+    const body = lines.map((l) => `<a:p><a:r><a:t>${l}</a:t></a:r></a:p>`).join("");
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree>${body}</p:spTree></p:cSld></p:sld>`;
+    return { name: `ppt/slides/slide${(i + 1).toString()}.xml`, data: Buffer.from(xml, "utf8") };
+  });
+  return makeZip([
+    { name: "[Content_Types].xml", data: Buffer.from("<Types/>", "utf8") },
+    ...[...slideEntries].reverse() // out of order on purpose
   ]);
 }
 
@@ -328,6 +343,57 @@ describe("isDocxDocument / docxToText — ground a Word .docx on its body text",
       expect(found.map((f) => f.endsWith("brief.docx"))).toContain(true);
       const { documents } = await extractDirectoryDocuments(dir);
       expect(documents.find((d) => d.path.endsWith("brief.docx"))?.text).toContain("40 units");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+})
+
+describe("isPptxDocument / pptxToText — ground a PowerPoint .pptx on its slide text", () => {
+  it("recognises only .pptx by extension", () => {
+    expect(isPptxDocument("/x/deck.pptx")).toBe(true);
+    expect(isPptxDocument("/x/DECK.PPTX")).toBe(true);
+    expect(isPptxDocument("/x/notes.docx")).toBe(false);
+  });
+
+  it("extracts every slide's text in slide-number order (not archive order)", () => {
+    const text = pptxToText(makePptx([
+      ["Roadmap 2027", "Theme: reliability"],
+      ["Q1: ship the daemon"],
+      ["Q2: harden actuators"]
+    ]), "/x/roadmap.pptx");
+    // slides were stored reversed; the reader must re-order slide1→slide2→slide3
+    expect(text.indexOf("Roadmap 2027")).toBeLessThan(text.indexOf("Q1: ship the daemon"));
+    expect(text.indexOf("Q1: ship the daemon")).toBeLessThan(text.indexOf("Q2: harden actuators"));
+    expect(text).toContain("Theme: reliability");
+  });
+
+  it("orders slide10 AFTER slide2 (numeric, not lexical)", () => {
+    const many = Array.from({ length: 10 }, (_, i) => [`point ${(i + 1).toString()}`]);
+    const text = pptxToText(makePptx(many));
+    expect(text.indexOf("point 2")).toBeLessThan(text.indexOf("point 10"));
+  });
+
+  it("routes a .pptx through extractDocumentText as one page — despite being a binary ZIP", async () => {
+    const buf = makePptx([["The keynote is on September 3."]]);
+    expect(isLikelyBinary(buf)).toBe(true);
+    const parsed = await extractDocumentText("/x/keynote.pptx", buf);
+    expect(parsed.pageCount).toBe(1);
+    expect(parsed.text).toContain("September 3");
+  });
+
+  it("throws on a ZIP with no slides (not a real .pptx)", () => {
+    const notPptx = makeZip([{ name: "ppt/presentation.xml", data: Buffer.from("<x/>", "utf8") }]);
+    expect(() => pptxToText(notPptx, "/x/fake.pptx")).toThrow(/readable \.pptx/u);
+  });
+
+  it("the folder walk collects .pptx", async () => {
+    expect(SUPPORTED_DOC_EXT.has(".pptx")).toBe(true);
+    const dir = await mkdtemp(join(tmpdir(), "muse-pptx-"));
+    try {
+      await writeFile(join(dir, "deck.pptx"), makePptx([["Budget owner is Dana Wu."]]));
+      const { documents } = await extractDirectoryDocuments(dir);
+      expect(documents.find((d) => d.path.endsWith("deck.pptx"))?.text).toContain("Dana Wu");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

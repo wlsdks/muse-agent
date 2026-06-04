@@ -1000,6 +1000,32 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   NEGATIVE "what is the marketing strategy?" → "not detailed in the provided notes" (un-stated
   fact refused, not fabricated). (f14d9270)
 
+- [x] **P37-38 `muse ask --file deck.pptx "…"` now reads a POWERPOINT presentation — Muse
+  perceives the other ubiquitous office format, slide by slide, where before a `.pptx` was
+  refused as binary.** A `.pptx` is the same Office-Open-XML ZIP shape as the `.docx` P37-37
+  added, so this REUSES that machinery: the ZIP reader was refactored into one shared
+  central-directory parser (`zipCentralEntries` + `inflateZipEntry`) with two consumers, and a
+  shared `ooxmlRunsToText` extracts the run text for BOTH Word `<w:t>` and PowerPoint `<a:t>`
+  (so `docxToText` is now a thin wrapper and unchanged in behaviour — its tests still pass).
+  New `pptxToText` enumerates every `ppt/slides/slideN.xml`, orders them by slide NUMBER (so
+  slide10 follows slide2, not lexically), and concatenates each slide's text. Wired into BOTH
+  document entry points exactly like `.docx` — the shared `extractDocumentText` (so `muse read`
+  + `muse ask --file <dir>` get it, and `.pptx` joins `SUPPORTED_DOC_EXT`) AND the inline
+  single-file `--file` dispatch in `commands-ask.ts`, before the binary refusal. Dep-free
+  (`node:zlib` only, no library, no lockfile change). Honesty floor intact: a fact NOT on any
+  slide is refused. Perception-axis growth (B0 STATUS: "favour a genuinely NEW axis — perceive/
+  act growth"). Verified deterministically AND live: 6 `document-reader` pptx tests
+  (`isPptxDocument`; multi-slide text extracted in slide-number order even when archive order
+  is reversed; slide10-after-slide2 numeric ordering; routes through `extractDocumentText` as
+  one page DESPITE being a binary ZIP; throws on a ZIP with no slides; folder walk collects
+  `.pptx`) — the `.docx` tests unchanged + still green, proving the shared-parser refactor is
+  behaviour-preserving — + full @muse/cli 180 files / 2050 tests + tsc build + `pnpm lint` 0/0
+  + 0 raw control bytes + a LIVE `muse ask --file deck.pptx` on the loop PC (qwen3:8b) over a
+  2-slide deck: "who owns Project Aurora?" → "Priya Raman [from deck.pptx]" (slide 1), "when
+  does it go live?" → "October 12, 2027 [from deck.pptx]" (slide 2 — multi-slide extraction),
+  and the NEGATIVE "what is the project budget?" → "not mentioned in the provided context"
+  (un-stated fact refused, not fabricated). (fccdfe5b)
+
 - [x] **P37-26 `muse today` now shows upcoming BIRTHDAYS — you don't miss "Zelda's
   birthday is today" just because you didn't wait for the morning brief.** Probing the
   felt daily digest exposed a gap: the morning BRIEF surfaces birthdays
