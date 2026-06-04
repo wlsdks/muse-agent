@@ -1849,6 +1849,30 @@ in the loop.
   free at 3pm tomorrow?" → `muse.calendar.availability` — each selected correctly, the new tool
   poaching neither sibling. (58e6f455)
 
+- [x] **P41-16 The agent's exact arithmetic evaluator is now REACHABLE — `muse.math.evaluate`
+  was built but never wired into the agent tool set; the agent now reaches for it on an
+  explicit "calculate <expression>" request, giving an EXACT result instead of a small-model
+  guess.** A deterministic recursive-descent arithmetic evaluator (`createMathMcpServer`,
+  packages/mcp/src/loopback-math-server.ts — no `eval`, input-validated) existed, but
+  `buildLoopbackTools` (packages/autoconfigure) assembled calendar/tasks/reminders/notes/…
+  and SKIPPED it, so it was unreachable by `muse ask --with-tools` / `muse chat` — the exact
+  gap the research backlog flagged ("math_eval lever ALREADY built — verify gaps vs real
+  wiring"). Wired it default-on (`MUSE_MATH_ENABLED`, opt-out) into the bundle + the
+  DynamicToolRegistry, and enriched its tool description with concrete examples + a "do the
+  maths HERE, never in your head" steer + relevance keywords per tool-calling.md. Verified:
+  3 wiring tests (the bundle exposes a read-risk `muse.math.evaluate`; `MUSE_MATH_ENABLED=false`
+  omits it; populated-keys includes `math` — packages/autoconfigure/test/loopback-tools.test.ts)
+  + @muse/autoconfigure 75 files / 502 tests + @muse/mcp 174 files / 1507 tests + mcp/autoconfigure/cli
+  tsc builds + `pnpm lint` 0/0 + a LIVE tool-selection round-trip on local qwen3:8b:
+  "calculate 840000 * 0.18 for me" → the model selects `muse.math.evaluate` (→ exact 151200),
+  where before the tool was unreachable. **HONEST SCOPE / follow-on recorded:** for NATURAL-
+  phrasing arithmetic ("what is 1847 multiplied by 2963") the recall-first `muse ask` 8B still
+  answers INLINE (and a system-prompt "always use the math tool" steer was tried and REVERTED —
+  it produced blank answers, not tool calls); reliable selection on natural phrasings needs a
+  tool-first agent path, not the recall wedge — a separate, harder slice. This delivers the
+  wiring (the tool is reachable + used on explicit requests), not full natural-language math.
+  (d2ca04e6)
+
 **P42 — Knowledge: your notes stay coherent (the [[wiki-link]] graph is a
 first-class structure, not just decoration).** Muse already builds a note link
 graph (`buildNoteLinkGraph`), surfaces backlinks, and AUDITS for broken links

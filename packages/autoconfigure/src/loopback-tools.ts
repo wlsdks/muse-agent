@@ -19,6 +19,7 @@ import {
   createFollowupsMcpServer,
   createHistoryMcpServer,
   createLoopbackMcpMuseTools,
+  createMathMcpServer,
   createMessagingMcpServer,
   createNotesMcpServer,
   createNotesRegistryMcpServer,
@@ -91,6 +92,7 @@ export interface LoopbackToolsBundle {
   readonly history: readonly MuseTool[];
   readonly status: readonly MuseTool[];
   readonly webRead: readonly MuseTool[];
+  readonly math: readonly MuseTool[];
 }
 
 export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle {
@@ -225,11 +227,20 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
     ? createLoopbackMcpMuseTools(createWebReadMcpServer())
     : [];
 
+  // Deterministic arithmetic — `muse.math.evaluate`. Default-on: a local 8B is
+  // unreliable at digits, so any answer that depends on a calculation should go
+  // through the exact evaluator. Dependency-free + input-validated (never an
+  // always-erroring tool), so it's always safe to expose.
+  const math = parseBoolean(env.MUSE_MATH_ENABLED, true)
+    ? createLoopbackMcpMuseTools(createMathMcpServer())
+    : [];
+
   return {
     calendar,
     episodes,
     followups,
     history,
+    math,
     messaging,
     notes,
     notesRegistry,

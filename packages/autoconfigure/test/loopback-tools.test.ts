@@ -56,12 +56,23 @@ const duckRegistry = (count: number) => ({ list: () => Array.from({ length: coun
 describe("buildLoopbackTools — gating", () => {
   it("with minimal deps exposes the always-on groups and notes/tasks (default-on), but omits the dependency-gated ones", () => {
     const bundle = buildLoopbackTools(baseDeps());
-    expect(populated(bundle)).toEqual(["episodes", "followups", "history", "notes", "patterns", "proactive", "reminders", "status", "tasks", "webRead"]);
+    expect(populated(bundle)).toEqual(["episodes", "followups", "history", "math", "notes", "patterns", "proactive", "reminders", "status", "tasks", "webRead"]);
     // gated groups absent without their dependency:
     expect(bundle.calendar).toEqual([]);
     expect(bundle.messaging).toEqual([]);
     expect(bundle.notesRegistry).toEqual([]);
     expect(bundle.tasksRegistry).toEqual([]);
+  });
+
+  it("wires the deterministic math evaluator (muse.math.evaluate) into the default tool set — the 8B can't be trusted with digits", () => {
+    const bundle = buildLoopbackTools(baseDeps());
+    expect(bundle.math.some((t) => t.definition.name.endsWith("evaluate"))).toBe(true);
+    expect(bundle.math.every((t) => t.definition.risk === "read")).toBe(true);
+  });
+
+  it("respects MUSE_MATH_ENABLED=false (math is opt-out)", () => {
+    const bundle = buildLoopbackTools(baseDeps({ env: { MUSE_MATH_ENABLED: "false" } as LoopbackToolsDeps["env"] }));
+    expect(bundle.math).toEqual([]);
   });
 
   it("respects the MUSE_NOTES_ENABLED / MUSE_TASKS_ENABLED env flags", () => {
