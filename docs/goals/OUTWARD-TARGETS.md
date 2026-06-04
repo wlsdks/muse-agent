@@ -3504,6 +3504,34 @@ tool-calling.md).** Edge hygiene meets felt responsiveness.
   the known limitation, not hidden. This SELECTED slice came from a 5-agent code-grounded direction-
   review workflow (the highest-value, non-churned, non-blocked gap it found). (63b5380b)
 
+- [x] **P38-41 A fabricated citation can no longer FLASH during streaming — the citation gate now
+  applies to the LIVE `muse ask` stream, not just the buffered copy — closing the code-acknowledged
+  "known streaming limitation" (commands-ask.ts comment) and the open follow-up P38-40 left.** The
+  chat-only path streams the answer token-by-token for liveness, but `enforceAnswerCitations` (which
+  strips any `[from <source>]` / `[task|event|…: <x>]` the user doesn't actually have) ran only AFTER
+  the full answer was buffered — so a fabricated `[from system.md]` flashed on screen mid-stream even
+  though the buffered copy was cleaned. I reproduced it: an injected `--file` whose payload talks the
+  8B into "PWNED [from system.md]" showed that fabricated citation live (the buffered gate + the
+  Sources footer were correct, but the streamed inline citation leaked). Added a pure streaming filter
+  `createCitationStreamFilter` (apps/cli/src/citation-stream.ts): it passes text straight through but
+  HOLDS each `[…]` span until its `]` (or a newline / 200-char cap proves it isn't a single-line
+  citation), then runs the complete span through the SAME `enforceAnswerCitations` resolution the
+  buffered gate uses — emitting a REAL citation unchanged and DROPPING a fabricated one before it
+  reaches the terminal; non-citation brackets (`[1]`, `[a link]`) pass through untouched. Wired ONLY
+  into the chat-only stream callback (the `--with-tools` path already buffers + gates), built from the
+  same sources shown to that path; the existing buffered gate is left untouched (defense-in-depth, no
+  regression). Verified deterministically AND live: 6 unit tests (plain text untouched; a real citation
+  kept + a fabricated one dropped; a citation SPLIT across chunks reassembled + validated; non-citation
+  brackets pass; an unclosed `[` / a newline-broken bracket released as-is; integration with the REAL
+  enforceAnswerCitations — apps/cli/src/citation-stream.test.ts) + full @muse/cli 185 files / 2088 tests
+  + tsc build + `pnpm lint` 0/0 + 0 raw control bytes + a LIVE qwen3:8b run: a normal `muse ask --file
+  good.txt "what is the MTU?"` streamed "The office VPN MTU is 1380 [from good.txt]." intact (real
+  citation kept, output uncorrupted), and the injection probe that previously leaked "PWNED [from
+  system.md]" now streams "PWNED ." — the fabricated `[from system.md]` is GONE from the live output
+  (the model-level "PWNED" residual is the separate, honestly-noted small-model limitation, but it can
+  no longer attach a forged trusted source). Pairs with P38-40 (input-side forgery escape) — together
+  the streamed answer never shows a citation to a source the user doesn't have. (c319d192)
+
 - [x] **P39-2 `muse ask "what can you do?"` answers honestly about MUSE, not a
   hallucinated over-claim.** A meta/capability question ran retrieval and made
   the local model free-compose an aspirational answer ("I can manage your

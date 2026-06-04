@@ -54,6 +54,7 @@ import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-quer
 import { detectDateQuery, formatDateAnswer, phraseHasTime } from "./date-query.js";
 import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdown-query.js";
 import { escapeSystemPromptMarkers } from "./prompt-escape.js";
+import { createCitationStreamFilter } from "./citation-stream.js";
 import { convertUnit, detectUnitConversion, formatConversion } from "./unit-conversion.js";
 import { detectPercentageQuery, formatPercentage } from "./percentage-query.js";
 import { detectTimezoneQuery, formatTimezone } from "./timezone-query.js";
@@ -2730,6 +2731,24 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // withSigintAbort so Ctrl-C exits 130 instead of leaving
         // the stream pump dangling on the adapter side.
         let streamError: string | undefined;
+        // Stream-time citation gate: hold each `[…]` span and drop a fabricated
+        // citation BEFORE it flashes on screen — the buffered gate at line ~2816
+        // runs too late for the live stream. Uses the SAME resolution as that
+        // gate, over the sources shown to this (chat-only) path.
+        const streamAllowed = {
+          actions: matchedActions.map((a) => a.what),
+          commands: matchedCommands,
+          commits: matchedCommits.map((c) => c.subject),
+          contacts: matchedContacts.map((c) => c.name),
+          events: upcomingEvents.map((e) => e.title),
+          feeds: feedHeadlines.map((h) => h.feedName),
+          memories: allMemoryFacts.map(renderMemoryFact),
+          notes: scored.map((r) => relativizeNoteSource(r.file, notesDir)),
+          reminders: pendingReminders.map((r) => r.text),
+          sessions: episodeHits.map((e) => e.summary),
+          tasks: openTasks.map((t) => t.title)
+        };
+        const streamCiteFilter = createCitationStreamFilter((span) => enforceAnswerCitations(span, streamAllowed).text);
         await withSigintAbort(async (signal) => {
           const res = await consumeAskStream(
             assembly.modelProvider!.stream({
@@ -2740,9 +2759,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
               ...(webSearchPolicy ? { metadata: { webSearchPolicy } } : {}),
               model
             }) as AsyncIterable<AskStreamEvent>,
-            (text) => { if (!options.json) io.stdout(text); },
+            (text) => { if (!options.json) io.stdout(streamCiteFilter.push(text)); },
             () => signal.aborted
           );
+          if (!options.json) io.stdout(streamCiteFilter.flush());
           collectedAnswer = res.answer;
           streamError = res.error;
         }, { onSigint: () => { if (!options.json) io.stderr("\n(Ctrl-C — aborting…)\n"); } });
