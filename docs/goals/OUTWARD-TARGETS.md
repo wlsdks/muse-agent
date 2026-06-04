@@ -1337,6 +1337,28 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   3:00 PM (local time)" (was "2026-06-05T06:00:00.000Z"). @muse/mcp 174 files / 1477 tests
   + `pnpm lint` 0/0. (f0722a20)
 
+- [x] **P40-16 "What's due tomorrow?" now answers correctly — your tasks' and
+  reminders' due dates are READABLE in recall, not opaque raw UTC ISO.** Probing the
+  recall read exposed a real reasoning gap: a task due tomorrow was injected into the
+  grounding context as `(due 2026-06-05T05:00:00.000Z)` — the RAW UTC ISO — while
+  EVENTS already got a human-readable local form (`fmtWhen`). The local Qwen can't tell
+  a raw UTC ISO is "tomorrow", so time-relative TASKS/REMINDERS were silently DROPPED
+  from the answer (an event would surface, the task next to it wouldn't). Fixed by
+  rendering the task + reminder due dates in the recall context with the proven
+  `formatDueLocal` (now exported from @muse/mcp) — "Fri, Jun 5, 2026, 2:00 PM
+  (tomorrow)" — so the model can reason about "what's due tomorrow / today / this week?".
+  No new model call, no gate change; the same date-display family as P40-13/14/15 (tool
+  confirmations), now on the EVIDENCE the model reads. Verified: a NEW PERMANENT live
+  battery (`apps/cli/scripts/verify-due-date-reasoning.mjs`, wired into
+  `eval:self-improving`) — on qwen3:8b "what tasks are due tomorrow?" names the task due
+  tomorrow and EXCLUDES one due ~10 days out, and the inverse ("not due for ~a week?")
+  surfaces the far-off one (2/2) — with NO regression to `verify-cited-recall` (6/6) +
+  @muse/cli 174 files / 1927 tests + @muse/mcp 1499 + `pnpm lint` 0/0 + a LIVE
+  before/after on the loop PC: `muse ask "what tasks are due tomorrow?"` over a corpus of
+  a task due tomorrow + one due in 10 days → "Finish the Q3 deck is due tomorrow at 2:00
+  PM [task: …]" with the far task correctly omitted (the raw-ISO context could not be
+  reasoned about). (95d5e1e2)
+
 **P41 — Actuation reliability: actuators survive real-world failure modes
 (human-directed 2026-05-23: "harden the one-of-each actuators into daily-reliable
 integrations — a proven-once actuator that breaks on a real-world failure mode

@@ -266,6 +266,7 @@ export {
   type ConflictEventLike,
   type UpcomingConflictNotice
 } from "./calendar-conflicts.js";
+export { formatDueLocal } from "./local-due-format.js";
 export {
   createCryptoMcpServer,
   createDefaultLoopbackMcpServers,

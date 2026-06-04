@@ -33,7 +33,7 @@ import { answerPromisesAction, classifyActionRequest, classifyCasualPrompt, clas
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
-import { acquireOllamaLease, fetchReadableUrl, listReflections, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type PersistedReminder, type PersistedTask } from "@muse/mcp";
+import { acquireOllamaLease, fetchReadableUrl, formatDueLocal, listReflections, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { redactSecretsInText } from "@muse/shared";
 
 import { parseGitReflog, selectGitCommits, type GitCommit } from "./git-reflog.js";
@@ -1990,7 +1990,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         ? "(no open tasks)"
         : openTasks
           .map((t, i) => {
-            const due = t.dueAt ? ` (due ${t.dueAt})` : "";
+            // Human-readable LOCAL due + a relative hint (e.g. "(tomorrow)") so the
+            // model can reason about "what's due tomorrow/today/this week?" — a raw UTC
+            // ISO is opaque and got time-relative tasks SILENTLY DROPPED from the answer.
+            const due = t.dueAt ? ` (due ${formatDueLocal(t.dueAt)})` : "";
             const urgent = t.urgent ? " [URGENT]" : "";
             // Embed the canonical citation form (`[task: <title>]`) in the
             // wrapper, exactly like the note wrapper embeds `[from <src>]` — else
@@ -2072,7 +2075,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       const reminderBlock = pendingReminders.length === 0
         ? "(no pending reminders)"
         : pendingReminders
-          .map((r, i) => `<<reminder ${(i + 1).toString()} — ${r.id} (due ${r.dueAt})>>\n${r.text}\n[reminder: ${r.text}]\n<<end>>`)
+          .map((r, i) => `<<reminder ${(i + 1).toString()} — ${r.id} (due ${formatDueLocal(r.dueAt)})>>\n${r.text}\n[reminder: ${r.text}]\n<<end>>`)
           .join("\n\n");
 
       // Pull MATCHING contacts as a fifth grounding source (B3 perception).
