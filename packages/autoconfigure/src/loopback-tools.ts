@@ -28,7 +28,8 @@ import {
   createStatusMcpServer,
   createTasksMcpServer,
   createTasksRegistryMcpServer,
-  createWebReadMcpServer
+  createWebReadMcpServer,
+  type MessageApprovalGate
 } from "@muse/mcp";
 import type { NotesProviderRegistry, TasksProviderRegistry } from "@muse/mcp";
 import type { CalendarProviderRegistry } from "@muse/calendar";
@@ -66,6 +67,13 @@ export interface LoopbackToolsDeps {
   // Outbound-safety: lets `muse.messaging.send` action-log every send.
   readonly actionLogFile: string;
   readonly userId: string;
+  /**
+   * Draft-first approval gate for the agent's `muse.messaging.send`. When the
+   * CLI runs interactively it passes a clack-confirm gate (show the exact draft,
+   * fire only on confirm). Absent (server/daemon, non-interactive) → the send
+   * tool fail-closes (it never auto-sends — outbound-safety, P41-11).
+   */
+  readonly messagingApprovalGate?: MessageApprovalGate;
 }
 
 export interface LoopbackToolsBundle {
@@ -127,6 +135,7 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
   const messaging = deps.messagingRegistry.list().length > 0 && deps.pollAll && deps.pollNow
     ? createLoopbackMcpMuseTools(createMessagingMcpServer({
         actionLogFile: deps.actionLogFile,
+        ...(deps.messagingApprovalGate ? { approvalGate: deps.messagingApprovalGate } : {}),
         pollAll: deps.pollAll,
         pollNow: deps.pollNow,
         registry: deps.messagingRegistry,

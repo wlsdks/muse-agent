@@ -50,6 +50,7 @@ import {
   createRememberFactTool,
   createWeatherTool,
   createWorldTimeTool,
+  type MessageApprovalGate,
   GmailEmailProvider,
   queryContacts,
   readFollowups,
@@ -396,6 +397,13 @@ export interface ApiServerAssemblyOptions {
   readonly extraTools?: readonly MuseTool[];
   /** Override the MCP transport connector (test-only — inject a contract-faithful fake). */
   readonly mcpConnector?: McpTransportConnector;
+  /**
+   * Draft-first approval gate for the agent's `muse.messaging.send`. The CLI
+   * passes a clack-confirm gate under `--actuators` so the agent's outbound
+   * message is shown and confirmed before it leaves; absent (headless server /
+   * daemon) the send fail-closes (never auto-sends — outbound-safety, P41-11).
+   */
+  readonly messagingApprovalGate?: MessageApprovalGate;
 }
 
 export class ConfigurationError extends Error {
@@ -554,6 +562,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   // inline as 95 LOC of repeated scaffolding.
   const loopback = buildLoopbackTools({
     actionLogFile: resolveActionLogFile(env),
+    ...(options.messagingApprovalGate ? { messagingApprovalGate: options.messagingApprovalGate } : {}),
     calendarRegistry,
     defaultModel,
     env,

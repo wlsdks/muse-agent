@@ -19,6 +19,7 @@ import {
   createWebActionTool,
   queryContacts,
   type EmailApprovalGate,
+  type MessageApprovalGate,
   type WebActionApprovalGate
 } from "@muse/mcp";
 import type { MuseTool } from "@muse/tools";
@@ -77,6 +78,30 @@ export interface ActuatorToolsDeps {
    */
   readonly confirmAction?: (message: string) => Promise<boolean>;
   readonly fetchImpl?: typeof fetch;
+}
+
+/**
+ * Draft-first approval gate for the agent's `muse.messaging.send` (a default
+ * loopback tool, threaded into the assembly under `--actuators`). Mirrors the
+ * email/web/home gates: shows the EXACT {provider → destination + text} and
+ * fires ONLY on explicit confirm. Fail-closed in a NON-interactive context (no
+ * TTY → the confirm can't be delivered → deny, never send) per outbound-safety.
+ */
+export function buildMessagingApprovalGate(deps: {
+  readonly io: ProgramIO;
+  readonly confirmAction: (message: string) => Promise<boolean>;
+  readonly isInteractive?: () => boolean;
+}): MessageApprovalGate {
+  const interactive = deps.isInteractive ?? (() => Boolean(process.stdout.isTTY && process.stdin.isTTY));
+  return async (draft) => {
+    if (!interactive()) {
+      return { approved: false, reason: "non-interactive — review and send via `muse messaging send`" };
+    }
+    deps.io.stdout(`\nSend to ${draft.providerId} → ${draft.destination}:\n${draft.text}\n\n`);
+    return (await deps.confirmAction("Send this message?"))
+      ? { approved: true }
+      : { approved: false, reason: "user did not confirm" };
+  };
 }
 
 export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {

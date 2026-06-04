@@ -1639,6 +1639,31 @@ in the loop.
   real draft-first confirm gate from `muse ask` so the agent can draft-then-confirm-then-send
   interactively, restoring the gated capability — recorded.) (7dae3728)
 
+- [x] **P41-12 The agent can SEND a message again — now DRAFT-FIRST: it shows the
+  exact draft and fires only on your confirm (completes the P41-11 arc).** P41-11
+  closed the auto-send hole by making `muse.messaging.send` FAIL-CLOSED without a
+  confirm channel — which (correctly but bluntly) left the agent unable to send at all.
+  This wires the missing draft-first gate: a `buildMessagingApprovalGate` (apps/cli,
+  mirroring the email/web/home actuator gates) shows the EXACT `{provider → destination
+  + text}` and returns approved only on explicit confirm; threaded from `muse ask
+  --with-tools` through a new optional `messagingApprovalGate` on `createMuseRuntimeAssembly`
+  → `buildLoopbackTools` → `createMessagingMcpServer`. So the agent send is now: in an
+  interactive terminal, draft-first (you see it, you confirm, it sends); in a non-TTY
+  (headless / daemon / CI) or with no gate, FAIL-CLOSED (the confirm can't be delivered →
+  the send does not happen) — exactly outbound-safety's rule. Built under --with-tools
+  (not behind --actuators) so a benign "send X" isn't blocked. Verified per
+  outbound-safety's "prove the gate": 3 gate-factory tests (non-TTY → DENY fail-closed;
+  interactive + confirm → APPROVE; interactive + decline → DENY) + a threading test
+  (buildLoopbackTools with a denying gate → the provider's send is NEVER called; with an
+  approving gate → it IS) — @muse/autoconfigure 500 + @muse/cli 174 files / 1930 tests +
+  @muse/mcp 1499 + `pnpm lint` 0/0 + a LIVE headless run (HOME-isolated): the agent calls
+  `muse.messaging.send`, the gate fail-closes (non-TTY) and it answers "review and send
+  using `muse messaging send`" — never auto-sending. The interactive draft-then-confirm
+  → send path is proven by composing the factory (confirm → approve) + threading (approve
+  → send) tests; a TTY can't run inside the loop. (Follow-on recorded: the INJECTION input
+  guard false-flags benign user notes/tasks as `role_override`, which can block the agent
+  path — the injection-guard sibling of the P41-5 PII over-block.) (19476460)
+
 **P42 — Knowledge: your notes stay coherent (the [[wiki-link]] graph is a
 first-class structure, not just decoration).** Muse already builds a note link
 graph (`buildNoteLinkGraph`), surfaces backlinks, and AUDITS for broken links

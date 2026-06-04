@@ -87,6 +87,26 @@ describe("buildLoopbackTools — gating", () => {
     expect(wired.messaging.length).toBeGreaterThan(0);
   });
 
+  it("threads messagingApprovalGate into the agent's send — a DENY blocks the provider, an APPROVE lets it through", async () => {
+    const sendProvider = (sent: unknown[]) => ({
+      describe: () => ({ configured: true, displayName: "t", id: "tg" }),
+      id: "tg",
+      send: async (message: unknown) => { sent.push(message); return { destination: "@me", messageId: "x", providerId: "tg" }; }
+    }) as never;
+    const poll = { pollAll: async () => ({ errors: [], ingestedByProvider: {} }), pollNow: async () => ({ ingested: 0 }) };
+    const findSend = (bundle: LoopbackToolsBundle) => bundle.messaging.find((t) => t.definition.name.endsWith("send"))!;
+
+    const denied: unknown[] = [];
+    const deniedBundle = buildLoopbackTools(baseDeps({ messagingApprovalGate: () => ({ approved: false, reason: "no" }), messagingRegistry: new MessagingProviderRegistry([sendProvider(denied)]), ...poll }));
+    await findSend(deniedBundle).execute({ destination: "@me", text: "hi" }, {} as never);
+    expect(denied).toHaveLength(0); // gate denied → provider.send never called
+
+    const approved: unknown[] = [];
+    const approvedBundle = buildLoopbackTools(baseDeps({ messagingApprovalGate: () => ({ approved: true }), messagingRegistry: new MessagingProviderRegistry([sendProvider(approved)]), ...poll }));
+    await findSend(approvedBundle).execute({ destination: "@me", text: "hi" }, {} as never);
+    expect(approved).toHaveLength(1); // gate approved → provider.send called
+  });
+
   it("exposes the multi-provider registry surfaces only when ≥2 providers are registered", () => {
     expect(buildLoopbackTools(baseDeps({ notesRegistry: duckRegistry(1), tasksRegistry: duckRegistry(1) })).notesRegistry).toEqual([]);
     const multi = buildLoopbackTools(baseDeps({ notesRegistry: duckRegistry(2), tasksRegistry: duckRegistry(2) }));

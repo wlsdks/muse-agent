@@ -33,7 +33,7 @@ import { answerPromisesAction, classifyActionRequest, classifyCasualPrompt, clas
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
-import { acquireOllamaLease, fetchReadableUrl, formatDueLocal, listReflections, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type PersistedReminder, type PersistedTask } from "@muse/mcp";
+import { acquireOllamaLease, fetchReadableUrl, formatDueLocal, listReflections, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type MessageApprovalGate, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { redactSecretsInText } from "@muse/shared";
 
 import { parseGitReflog, selectGitCommits, type GitCommit } from "./git-reflog.js";
@@ -1920,7 +1920,25 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         io.stderr(actuatorMod.formatActuatorBanner(actuatorMod.summarizeActuators(actuatorEnv)));
         extraTools = actuatorMod.buildActuatorTools({ env: actuatorEnv, io, userId: userKey });
       }
-      const assembly = createMuseRuntimeAssembly(extraTools ? { extraTools } : {});
+      // The agent's `muse.messaging.send` (a default loopback tool whenever a
+      // messenger is configured) gets a draft-first confirm gate under --with-tools:
+      // show the exact {provider, destination, text} and fire ONLY on confirm,
+      // fail-closed in a non-TTY. Without this gate the send fail-closes entirely
+      // (P41-11). Built independently of --actuators so a benign "send X" isn't
+      // blocked by the actuator tool descriptions' injection-guard false-positive.
+      let messagingApprovalGate: MessageApprovalGate | undefined;
+      if (options.withTools === true) {
+        const actuatorMod = await import("./actuator-tools.js");
+        const { confirm, isCancel } = await import("@clack/prompts");
+        messagingApprovalGate = actuatorMod.buildMessagingApprovalGate({
+          confirmAction: (message: string) => confirm({ message }).then((answer) => !isCancel(answer) && answer === true),
+          io
+        });
+      }
+      const assembly = createMuseRuntimeAssembly({
+        ...(extraTools ? { extraTools } : {}),
+        ...(messagingApprovalGate ? { messagingApprovalGate } : {})
+      });
       if (!assembly.modelProvider || !(options.model ?? assembly.defaultModel)) {
         io.stderr("muse ask requires a configured model. Set MUSE_MODEL or pass --model.\n");
         process.exitCode = 2;

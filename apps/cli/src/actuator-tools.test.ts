@@ -7,8 +7,27 @@ import type { ModelProvider, ModelResponse } from "@muse/model";
 import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";
 
-import { buildActuatorTools, formatActuatorBanner, summarizeActuators } from "./actuator-tools.js";
+import { buildActuatorTools, buildMessagingApprovalGate, formatActuatorBanner, summarizeActuators } from "./actuator-tools.js";
 import type { ProgramIO } from "./program.js";
+
+describe("buildMessagingApprovalGate — draft-first, fail-closed in non-TTY", () => {
+  const draft = { destination: "@me", providerId: "tg", text: "running late" };
+
+  it("DENIES (fail-closed) in a NON-interactive context — the confirm can't be delivered, so the send must not happen", async () => {
+    const gate = buildMessagingApprovalGate({ confirmAction: async () => true, io: { stderr: () => {}, stdout: () => {} }, isInteractive: () => false });
+    expect(await gate(draft)).toMatchObject({ approved: false });
+  });
+
+  it("APPROVES when interactive AND the user confirms", async () => {
+    const gate = buildMessagingApprovalGate({ confirmAction: async () => true, io: { stderr: () => {}, stdout: () => {} }, isInteractive: () => true });
+    expect(await gate(draft)).toMatchObject({ approved: true });
+  });
+
+  it("DENIES when interactive but the user declines", async () => {
+    const gate = buildMessagingApprovalGate({ confirmAction: async () => false, io: { stderr: () => {}, stdout: () => {} }, isInteractive: () => true });
+    expect(await gate(draft)).toMatchObject({ approved: false });
+  });
+});
 
 function fakeIo(): ProgramIO {
   return { stderr: () => {}, stdout: () => {} };
