@@ -116,7 +116,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           "'다음 주 월요일', '다음 주 월요일 오후 3시 반'. The server resolves the phrase against the current local time, " +
           "so pass the user's natural-language input directly (in their own language). Reminders surface in `muse today` once dueAt " +
           "has passed. " +
-          "Optional `recurrence`: 'daily' or 'weekly' makes it repeat (re-arms to the next occurrence each time it fires) — use for 'every day' / 'every Monday'; omit for a one-time reminder. " +
+          "Optional `recurrence`: 'daily', 'weekly', or 'monthly' makes it repeat (re-arms to the next occurrence each time it fires) — use for 'every day' / 'every Monday' / 'on the 1st of every month' (rent, bills, subscriptions); omit for a one-time reminder. A monthly reminder due on the 31st lands on the last day of shorter months. " +
           "Reminders fire on the user's configured channel. " +
           "When you confirm the reminder back to the user, state the time using the result's `dueAtLocal` field (the due time in the user's local timezone, e.g. 'Thu, Jun 5, 2026, 3:00 PM (tomorrow)') — NEVER the raw ISO `dueAt`, which is in UTC and will read back the wrong hour.",
         execute: async (args): Promise<JsonObject> => {
@@ -166,8 +166,8 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
               type: "string"
             },
             recurrence: {
-              description: "Optional repeat cadence: 'daily' or 'weekly'. Omit for a one-time reminder. e.g. 'every Monday' → 'weekly'.",
-              enum: ["daily", "weekly"],
+              description: "Optional repeat cadence: 'daily', 'weekly', or 'monthly'. Omit for a one-time reminder. e.g. 'every Monday' → 'weekly', 'on the 1st of every month' / 'pay rent monthly' → 'monthly'.",
+              enum: ["daily", "weekly", "monthly"],
               type: "string"
             },
             text: { description: "Reminder body shown back to the user when due.", type: "string" }

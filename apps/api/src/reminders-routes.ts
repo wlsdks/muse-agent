@@ -81,8 +81,8 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
     if (parsed instanceof Error) {
       return reply.status(400).send({ code: "INVALID_REMINDER_DUE_AT", message: parsed.message });
     }
-    if (body?.recurrence !== undefined && body.recurrence !== "daily" && body.recurrence !== "weekly") {
-      return reply.status(400).send({ code: "INVALID_REMINDER_RECURRENCE", message: "recurrence must be 'daily' or 'weekly'" });
+    if (body?.recurrence !== undefined && body.recurrence !== "daily" && body.recurrence !== "weekly" && body.recurrence !== "monthly") {
+      return reply.status(400).send({ code: "INVALID_REMINDER_RECURRENCE", message: "recurrence must be 'daily', 'weekly', or 'monthly'" });
     }
     const recurrence = body?.recurrence as ReminderRecurrence | undefined;
     const viaResult = parseReminderVia(body?.via);

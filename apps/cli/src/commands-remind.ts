@@ -99,7 +99,7 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
     .argument("<text...>", "Reminder text (joined by spaces)")
     .option("--local", "Write directly to the local reminders file instead of the API")
     .option("--json", "Print the raw response instead of a short confirmation")
-    .option("--repeat <cadence>", "Repeat the reminder: 'daily' or 'weekly' (re-arms each time it fires). Omit for one-time.")
+    .option("--repeat <cadence>", "Repeat the reminder: 'daily', 'weekly', or 'monthly' (re-arms each time it fires; a monthly 31st lands on the last day of shorter months). Omit for one-time.")
     .option(
       "--via-provider <id>",
       "Per-reminder routing override — provider id (telegram | discord | slack | line). Both --via flags must be set together."
@@ -116,8 +116,8 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         throw new Error("text is required");
       }
       const repeat = options.repeat?.trim();
-      if (repeat !== undefined && repeat !== "daily" && repeat !== "weekly") {
-        throw new Error("--repeat must be 'daily' or 'weekly'");
+      if (repeat !== undefined && repeat !== "daily" && repeat !== "weekly" && repeat !== "monthly") {
+        throw new Error("--repeat must be 'daily', 'weekly', or 'monthly'");
       }
       const recurrence = repeat as ReminderRecurrence | undefined;
       const viaProvider = options.viaProvider?.trim();

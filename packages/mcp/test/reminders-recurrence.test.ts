@@ -54,10 +54,15 @@ describe("normalizeReminderRecurrence — coerce, never drop (a one-time reminde
     }
   });
 
-  it("an UNSUPPORTED cadence (e.g. monthly) still yields a one-shot + a note, NEVER a hard error", () => {
-    const out = normalizeReminderRecurrence("monthly");
+  it("now passes through MONTHLY as a real cadence (rent / bills / subscriptions)", () => {
+    expect(normalizeReminderRecurrence("monthly")).toEqual({ recurrence: "monthly" });
+    expect(normalizeReminderRecurrence("Monthly")).toEqual({ recurrence: "monthly" });
+  });
+
+  it("a genuinely unsupported cadence still yields a one-shot + a note, NEVER a hard error", () => {
+    const out = normalizeReminderRecurrence("fortnightly");
     expect(out.recurrence).toBeUndefined(); // created one-shot, not dropped
-    expect(out.note).toMatch(/monthly.*supported.*one-time reminder/u);
+    expect(out.note).toMatch(/fortnightly.*supported.*one-time reminder/u);
   });
 });
 
@@ -81,6 +86,31 @@ describe("nextReminderOccurrence — advance past the fire time, skip missed slo
 
   it("returns dueAt unchanged on an unparseable timestamp (defensive)", () => {
     expect(nextReminderOccurrence("not-a-date", "daily", "2026-05-24T09:00:00.000Z")).toBe("not-a-date");
+  });
+});
+
+describe("nextReminderOccurrence — MONTHLY (calendar-aware, day clamped, anchor never drifts)", () => {
+  // Built from LOCAL components so the calendar advance is asserted independent of
+  // the runner's timezone (a monthly reminder fires on the user's local date).
+  const localIso = (y: number, m: number, d: number, h = 9): string => new Date(y, m, d, h, 0).toISOString();
+  const parts = (iso: string): { m: number; d: number } => { const x = new Date(iso); return { d: x.getDate(), m: x.getMonth() }; };
+
+  it("advances one month when fired on time (the 1st → next 1st)", () => {
+    expect(parts(nextReminderOccurrence(localIso(2026, 5, 1), "monthly", localIso(2026, 5, 1)))).toMatchObject({ d: 1, m: 6 }); // Jun 1 → Jul 1
+  });
+
+  it("clamps a 31st reminder to the last day of a SHORT month, then RETURNS to the 31st (no downward drift)", () => {
+    // due Jan 31, fired Jan 31 → Feb 28 (clamped; 2026 is not a leap year)
+    expect(parts(nextReminderOccurrence(localIso(2026, 0, 31), "monthly", localIso(2026, 0, 31)))).toMatchObject({ m: 1, d: 28 });
+    // fired again at Feb 28 → Mar 31 (anchor day restored from the original due, NOT Mar 28)
+    expect(parts(nextReminderOccurrence(localIso(2026, 0, 31), "monthly", localIso(2026, 1, 28)))).toMatchObject({ m: 2, d: 31 });
+  });
+
+  it("skips missed months to the next FUTURE occurrence (daemon was off)", () => {
+    // due Jan 15, now Apr 10 → next is Apr 15, not a Feb/Mar backlog
+    const next = nextReminderOccurrence(localIso(2026, 0, 15), "monthly", localIso(2026, 3, 10));
+    expect(parts(next)).toMatchObject({ m: 3, d: 15 });
+    expect(Date.parse(next)).toBeGreaterThan(Date.parse(localIso(2026, 3, 10)));
   });
 });
 

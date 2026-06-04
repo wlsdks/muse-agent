@@ -1893,6 +1893,30 @@ in the loop.
   wiring (the tool is reachable + used on explicit requests), not full natural-language math.
   (d2ca04e6)
 
+- [x] **P41-17 Reminders can now repeat MONTHLY — "remind me to pay rent on the 1st of
+  every month" finally sticks, where before only daily/weekly were allowed and a monthly
+  request silently became a ONE-TIME reminder.** Reminder recurrence was `"daily" | "weekly"`
+  ONLY — `normalizeReminderRecurrence` explicitly rejected "monthly" ("isn't supported …
+  created a one-time reminder"), so the single most common recurring cadence (rent, bills,
+  subscriptions, salary) couldn't be scheduled. Added `"monthly"` end-to-end across EVERY
+  surface that gated it: the `ReminderRecurrence` type, `normalizeReminderRecurrence`, the
+  shape-validation guard, the agent `muse.reminders.add` inputSchema enum + description, the
+  CLI `--repeat` option + validation, and the REST `reminders-routes` validation. The hard
+  part is the re-arm math: `nextReminderOccurrence` for monthly is CALENDAR-aware (months are
+  28–31 days) — it advances whole months from the ORIGINAL due day, CLAMPING the day to the
+  target month's length so a reminder due on the 31st lands on the LAST day of a short month
+  (Feb 28) and RETURNS to the 31st in long months (no downward drift), skipping missed months
+  after daemon downtime. Verified deterministically AND live: updated/added tests in
+  packages/mcp/test/reminders-recurrence.test.ts (normalize passes "monthly" through; a
+  genuinely-unsupported cadence still one-shots + notes; monthly advances 1 month on-time; the
+  31st clamps to Feb 28 then returns to Mar 31 with NO drift; missed months skip to the next
+  future occurrence) + the full @muse/mcp suite (174 files / 1511 tests) + @muse/mcp, @muse/cli
+  and @muse/api tsc builds + `pnpm lint` 0/0 + a LIVE `muse remind "2026-07-01T09:00:00Z"
+  "pay rent" --repeat monthly --local --json` on the loop PC → a reminder with
+  `recurrence: "monthly"` (was rejected "must be 'daily' or 'weekly'") + a LIVE tool-selection
+  round-trip on qwen3:8b: "remind me to pay rent on the 1st of every month" → the model selects
+  `muse.reminders.add` (which now accepts the monthly cadence). (23596174)
+
 **P42 — Knowledge: your notes stay coherent (the [[wiki-link]] graph is a
 first-class structure, not just decoration).** Muse already builds a note link
 graph (`buildNoteLinkGraph`), surfaces backlinks, and AUDITS for broken links

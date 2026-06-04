@@ -28,7 +28,7 @@ export interface ReminderVia {
   readonly destination: string;
 }
 
-export type ReminderRecurrence = "daily" | "weekly";
+export type ReminderRecurrence = "daily" | "weekly" | "monthly";
 
 export interface PersistedReminder {
   readonly id: string;
@@ -180,13 +180,13 @@ export function normalizeReminderRecurrence(raw: string | undefined): { recurren
     return {};
   }
   const lower = value.toLowerCase();
-  if (lower === "daily" || lower === "weekly") {
+  if (lower === "daily" || lower === "weekly" || lower === "monthly") {
     return { recurrence: lower };
   }
   if (ONE_TIME_RECURRENCE_SENTINELS.has(lower)) {
     return {};
   }
-  return { note: `recurrence '${value}' isn't supported (only 'daily' or 'weekly'); created a one-time reminder` };
+  return { note: `recurrence '${value}' isn't supported (only 'daily', 'weekly', or 'monthly'); created a one-time reminder` };
 }
 
 export type ReminderRefResolution =
@@ -274,14 +274,45 @@ export function parseReminderVia(raw: unknown): ReminderVia | Error | undefined 
  * aware). Returns `dueAt` unchanged if either timestamp is unparseable.
  */
 export function nextReminderOccurrence(dueAt: string, recurrence: ReminderRecurrence, from: string): string {
-  const periodMs = recurrence === "weekly" ? 7 * 86_400_000 : 86_400_000;
   const due = Date.parse(dueAt);
   const fromMs = Date.parse(from);
   if (!Number.isFinite(due) || !Number.isFinite(fromMs)) {
     return dueAt;
   }
+  if (recurrence === "monthly") {
+    // Calendar-aware (months vary 28–31 days): the Nth occurrence is the original
+    // due day in `due`+N months, the day CLAMPED to that month's length so a "31st"
+    // reminder lands on the LAST day of a short month (Feb 28) and RETURNS to the
+    // 31st in long months — computed from the ORIGINAL due each time so the anchor
+    // day never drifts down. Advance N until strictly after `from` (skips missed
+    // months after daemon downtime).
+    const dueDate = new Date(due);
+    let n = 1;
+    let next = addMonthsClamped(dueDate, n);
+    while (next.getTime() <= fromMs) {
+      n += 1;
+      next = addMonthsClamped(dueDate, n);
+    }
+    return next.toISOString();
+  }
+  const periodMs = recurrence === "weekly" ? 7 * 86_400_000 : 86_400_000;
   const periods = Math.max(1, Math.ceil((fromMs - due + 1) / periodMs));
   return new Date(due + periods * periodMs).toISOString();
+}
+
+/**
+ * Advance a date by `months`, clamping the day to the target month's length:
+ * Jan 31 + 1 month → Feb 28 (or 29 on a leap year), NEVER rolled into March (the
+ * default `Date.setMonth` overflow). Preserves the local clock time.
+ */
+function addMonthsClamped(date: Date, months: number): Date {
+  const day = date.getDate();
+  const result = new Date(date);
+  result.setDate(1); // park on the 1st so setMonth can't overflow off a long day
+  result.setMonth(result.getMonth() + months);
+  const lastDayOfTargetMonth = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+  result.setDate(Math.min(day, lastDayOfTargetMonth));
+  return result;
 }
 
 export function fireReminder(
@@ -378,7 +409,8 @@ function isPersistedReminder(value: unknown): value is PersistedReminder {
   }
   if (candidate.recurrence !== undefined
     && candidate.recurrence !== "daily"
-    && candidate.recurrence !== "weekly") {
+    && candidate.recurrence !== "weekly"
+    && candidate.recurrence !== "monthly") {
     return false;
   }
   if (candidate.via !== undefined) {
