@@ -283,6 +283,7 @@ export {
   createLoopbackMcpConnection,
   createLoopbackMcpMuseTools,
   createMathMcpServer,
+  evaluateArithmeticExpression,
   createNotesMcpServer,
   createRegexMcpServer,
   createSearchMcpServer,

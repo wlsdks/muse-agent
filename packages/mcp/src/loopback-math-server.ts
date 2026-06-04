@@ -12,6 +12,35 @@ import type { LoopbackMcpServer } from "./loopback.js";
 
 const SAFE_MATH_PATTERN = /^[\s\d+\-*/().,%]+$/u;
 
+/**
+ * Validate + evaluate an arithmetic expression deterministically (no `eval`),
+ * returning either `{ result }` or `{ error }`. The shared core behind both the
+ * `muse.math` tool AND `muse ask`'s pure-arithmetic fast-path — the local 8B
+ * can't multiply reliably, so any surface that needs an EXACT calculation routes
+ * through here instead of trusting the model's digits.
+ */
+export function evaluateArithmeticExpression(expression: string): { result: number } | { error: string } {
+  const expr = expression.trim();
+  if (expr.length === 0) {
+    return { error: "expression is required" };
+  }
+  if (expr.length > 256) {
+    return { error: "expression exceeds 256 character limit" };
+  }
+  if (!SAFE_MATH_PATTERN.test(expr)) {
+    return { error: "expression may only contain digits, parentheses, '.', ',' and + - * / %" };
+  }
+  try {
+    const result = evaluateArithmetic(expr);
+    if (!Number.isFinite(result)) {
+      return { error: "expression evaluated to a non-finite number" };
+    }
+    return { result };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "expression evaluation failed" };
+  }
+}
+
 export function createMathMcpServer(): LoopbackMcpServer {
   return {
     description: "Safe arithmetic evaluation (loopback MCP).",
@@ -28,24 +57,11 @@ export function createMathMcpServer(): LoopbackMcpServer {
         keywords: ["math", "calculate", "calculation", "arithmetic", "compute", "percent", "percentage", "sum", "total", "average", "multiply", "divide", "how much", "계산", "퍼센트", "얼마", "합계"],
         execute: (args): JsonObject => {
           const expression = (readString(args, "expression") ?? "").trim();
-          if (expression.length === 0) {
-            return { error: "expression is required" };
+          const evaluated = evaluateArithmeticExpression(expression);
+          if ("error" in evaluated) {
+            return { error: evaluated.error };
           }
-          if (expression.length > 256) {
-            return { error: "expression exceeds 256 character limit" };
-          }
-          if (!SAFE_MATH_PATTERN.test(expression)) {
-            return { error: "expression may only contain digits, parentheses, '.', ',' and + - * / %" };
-          }
-          try {
-            const result = evaluateArithmetic(expression);
-            if (!Number.isFinite(result)) {
-              return { error: "expression evaluated to a non-finite number" };
-            }
-            return { expression, result } satisfies JsonObject;
-          } catch (error) {
-            return { error: error instanceof Error ? error.message : "expression evaluation failed" };
-          }
+          return { expression, result: evaluated.result } satisfies JsonObject;
         },
         inputSchema: {
           additionalProperties: false,

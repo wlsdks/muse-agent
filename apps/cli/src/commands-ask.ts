@@ -33,7 +33,7 @@ import { answerPromisesAction, classifyActionRequest, classifyCasualPrompt, clas
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
-import { acquireOllamaLease, fetchReadableUrl, formatDueLocal, listReflections, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type MessageApprovalGate, type PersistedReminder, type PersistedTask } from "@muse/mcp";
+import { acquireOllamaLease, evaluateArithmeticExpression, fetchReadableUrl, formatDueLocal, listReflections, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type MessageApprovalGate, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { redactSecretsInText } from "@muse/shared";
 
 import { parseGitReflog, selectGitCommits, type GitCommit } from "./git-reflog.js";
@@ -50,6 +50,7 @@ import { formatConnectionsSection } from "./commands-today.js";
 import { embed } from "./embed.js";
 import { buildEpisodeIndex, defaultEpisodeIndexFile, episodeIndexStale, loadEpisodeIndex, saveEpisodeIndex } from "./episode-index.js";
 import { readClipboardText } from "./clipboard-reader.js";
+import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
 import { emlToText, extractDirectoryDocuments, formatDirectoryCapNotice, htmlToText, isEmlDocument, isHtmlDocument, isPdfDocument, parsePdfBuffer } from "./document-reader.js";
 import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
 import { resolvePersona } from "./program-helpers.js";
@@ -1516,6 +1517,27 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           io.stdout(`${reply}\n`);
         }
         return;
+      }
+
+      // A PURE arithmetic question ("what is 1847 * 2963?") isn't a notes
+      // question, and the local 8B gets the digits wrong — it can't multiply
+      // reliably. Compute it EXACTLY and deterministically here, skipping
+      // retrieval and the model entirely. Precision-first: only a query that is
+      // nothing but a calculation short-circuits ("what is my Q3 budget?" has
+      // letters, so it never does), and a malformed expression falls through to
+      // the normal path rather than emitting a wrong/garbage answer.
+      const arithmeticExpression = detectArithmeticQuery(query);
+      if (arithmeticExpression) {
+        const evaluated = evaluateArithmeticExpression(arithmeticExpression);
+        if ("result" in evaluated) {
+          const answer = formatArithmeticResult(arithmeticExpression, evaluated.result);
+          if (options.json) {
+            io.stdout(`${JSON.stringify({ answer, arithmetic: { expression: arithmeticExpression, result: evaluated.result }, query })}\n`);
+          } else {
+            io.stdout(`${answer}\n`);
+          }
+          return;
+        }
       }
 
       // A question ABOUT Muse itself ("what can you do?") is answered from the

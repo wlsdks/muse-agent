@@ -1913,6 +1913,31 @@ in the loop.
   wiring (the tool is reachable + used on explicit requests), not full natural-language math.
   (d2ca04e6)
 
+- [x] **P41-20 `muse ask "what is 1847 * 2963?"` now returns the EXACT answer deterministically
+  instead of a WRONG 8B guess — closing the symbolic half of P41-16's recorded follow-on without
+  the unreliable tool-selection.** P41-16 wired the exact arithmetic evaluator BUT honestly noted
+  the recall-first `muse ask` path still answers arithmetic INLINE with the local 8B (which can't
+  multiply: it returned 5,467,461 for 1847×2963, off by 5,200). The fix is NOT to make the small
+  model tool-call (it won't reliably) — it's a deterministic pure-arithmetic fast-path: a new
+  precision-first detector (`detectArithmeticQuery`, apps/cli/src/arithmetic-query.ts) recognises a
+  query that is NOTHING BUT a calculation (after stripping "what is …?" framing, the remainder must
+  be only digits/parens/`.`/`,`/`+ - * / %` AND contain a real binary operator), and `muse ask`
+  short-circuits it through the SHARED `evaluateArithmeticExpression` (newly extracted + exported
+  from @muse/mcp's math server, so the tool and the fast-path use ONE evaluator) — printing
+  "1847 * 2963 = 5,472,661" exactly, with NO model call and NO retrieval. Precision-first so a real
+  notes question never gets hijacked ("what is my Q3 budget?" has letters → falls through to recall;
+  "what is 42?" has no operator → falls through). HONEST SCOPE: covers SYMBOLIC expressions in the
+  recall wedge; natural-language phrasings ("1847 multiplied by 2963", "18% of 840,000") still have
+  words so they fall through to the model — the `--with-tools` math tool (P41-16) is their path.
+  Verified deterministically AND live: tests (`detectArithmeticQuery` extracts the expression from
+  framed questions, returns null for notes-questions / bare numbers / lone signs / over-long input;
+  `formatArithmeticResult` groups the result — apps/cli/src/arithmetic-query.test.ts) + @muse/cli
+  175 files / 1958 tests + @muse/mcp 1520 tests (the math tool still works via the extracted
+  evaluator) + mcp/cli/autoconfigure/agent-core/api tsc builds + `pnpm lint` 0/0 + LIVE on the loop
+  PC: `muse ask "what is 1847 * 2963?"` → "1847 * 2963 = 5,472,661" (exact), `calculate (1200 + 850)
+  / 2` → "(1200 + 850) / 2 = 1,025", `--json compute 840000 * 0.18` → exact JSON, and the negative
+  "what is my Q3 budget?" → NOT hijacked (went to recall, "[from: no relevant notes found]"). (76b07cf2)
+
 - [x] **P41-17 Reminders can now repeat MONTHLY — "remind me to pay rent on the 1st of
   every month" finally sticks, where before only daily/weekly were allowed and a monthly
   request silently became a ONE-TIME reminder.** Reminder recurrence was `"daily" | "weekly"`

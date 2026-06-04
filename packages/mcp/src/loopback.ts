@@ -92,7 +92,7 @@ export interface BuiltinLoopbackOptions {
 }
 
 import { createJsonMcpServer } from "./loopback-json-server.js";
-import { createMathMcpServer } from "./loopback-math-server.js";
+import { createMathMcpServer, evaluateArithmeticExpression } from "./loopback-math-server.js";
 import { createTextUtilsMcpServer } from "./loopback-text-utils-server.js";
 import { createTimeMcpServer } from "./loopback-time-server.js";
 import { createUrlMcpServer } from "./loopback-url-server.js";
@@ -100,6 +100,7 @@ import { createUrlMcpServer } from "./loopback-url-server.js";
 export {
   createJsonMcpServer,
   createMathMcpServer,
+  evaluateArithmeticExpression,
   createTextUtilsMcpServer,
   createTimeMcpServer,
   createUrlMcpServer
