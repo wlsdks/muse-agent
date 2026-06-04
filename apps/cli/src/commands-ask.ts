@@ -824,7 +824,8 @@ export function contactGroundingEvidence(contact: Contact): string {
     contact.handle,
     formatContactBirthday(contact.birthday),
     ...(contact.aliases ?? []),
-    ...connections
+    ...connections,
+    contact.about
   ].filter((f): f is string => typeof f === "string" && f.length > 0).join(" ");
   return `${contact.name} ${fields}`.trim();
 }
@@ -845,6 +846,7 @@ export function contactMatchScore(contact: Contact, queryTokens: ReadonlySet<str
   add(contact.handle);
   add(contact.email);
   add(contact.relationship);
+  add(contact.about);
   for (const alias of contact.aliases ?? []) {
     add(alias);
   }
@@ -2324,7 +2326,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
               c.phone ? `phone ${c.phone}` : undefined,
               c.handle ? `handle ${c.handle}` : undefined,
               birthday ? `birthday ${birthday}` : undefined,
-              connections ? `connections: ${connections}` : undefined
+              connections ? `connections: ${connections}` : undefined,
+              c.about ? `notes: ${c.about}` : undefined
             ].filter((f): f is string => f !== undefined).join(", ");
             return `<<contact ${(i + 1).toString()} — ${c.id}>>\n${c.name}${fields ? ` — ${fields}` : ""}\n[contact: ${c.name}]\n<<end>>`;
           })

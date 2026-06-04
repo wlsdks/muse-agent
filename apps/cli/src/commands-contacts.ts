@@ -31,7 +31,8 @@ function describeContact(contact: Contact): string {
   const edges = contact.connections && contact.connections.length > 0
     ? `\n    ↔ ${contact.connections.map((c) => `${c.as ? `${c.as} ` : "connected to "}${c.to}`).join(", ")}`
     : "";
-  return `${contact.name}${aliases}${role}${reachLabel}${edges}`;
+  const note = contact.about ? `\n    ℹ ${contact.about}` : "";
+  return `${contact.name}${aliases}${role}${reachLabel}${edges}${note}`;
 }
 
 /**
@@ -47,7 +48,7 @@ export function filterContactsBySearch(contacts: readonly Contact[], term: strin
     return contacts;
   }
   return contacts.filter((contact) => {
-    const fields = [contact.name, contact.relationship, contact.email, contact.handle, contact.phone, ...(contact.aliases ?? [])];
+    const fields = [contact.name, contact.relationship, contact.email, contact.handle, contact.phone, contact.about, ...(contact.aliases ?? [])];
     return fields.some((field) => typeof field === "string" && field.toLowerCase().includes(needle));
   });
 }
@@ -59,6 +60,7 @@ interface AddOptions {
   readonly alias?: readonly string[];
   readonly birthday?: string;
   readonly relationship?: string;
+  readonly about?: string;
 }
 
 const BIRTHDAY_RE = /^(?:\d{4}-)?(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/u;
@@ -76,15 +78,16 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
     .option("--alias <alias...>", "Alternate names this contact resolves from")
     .option("--birthday <date>", "Birthday as MM-DD or YYYY-MM-DD (for `muse contacts birthdays`)")
     .option("--relationship <role>", "How they relate to you, e.g. 'manager', 'wife', 'doctor' — powers \"who is my manager?\" recall")
+    .option("--about <text>", "Free-text facts to remember about them, e.g. 'allergic to nuts, met at PyCon 2024' — powers \"what do I know about Bob?\" recall")
     .action(async (nameParts: readonly string[], options: AddOptions) => {
       const name = nameParts.join(" ").trim();
       if (name.length === 0) {
-        io.stderr("usage: muse contacts add <name> [--email <e>] [--handle <h>] [--phone <p>] [--alias <a...>] [--birthday <MM-DD>] [--relationship <role>]\n");
+        io.stderr("usage: muse contacts add <name> [--email <e>] [--handle <h>] [--phone <p>] [--alias <a...>] [--birthday <MM-DD>] [--relationship <role>] [--about <text>]\n");
         process.exitCode = 1;
         return;
       }
-      if (!options.email && !options.handle && !options.phone && !options.relationship) {
-        io.stderr("muse contacts add: provide at least one of --email / --handle / --phone (to reach them) or --relationship (to recall them).\n");
+      if (!options.email && !options.handle && !options.phone && !options.relationship && !options.about) {
+        io.stderr("muse contacts add: provide at least one of --email / --handle / --phone (to reach them) or --relationship / --about (to recall them).\n");
         process.exitCode = 1;
         return;
       }
@@ -103,7 +106,8 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
         ...(options.phone ? { phone: options.phone.trim() } : {}),
         ...(aliases.length > 0 ? { aliases } : {}),
         ...(birthday && birthday.length > 0 ? { birthday } : {}),
-        ...(options.relationship && options.relationship.trim().length > 0 ? { relationship: options.relationship.trim() } : {})
+        ...(options.relationship && options.relationship.trim().length > 0 ? { relationship: options.relationship.trim() } : {}),
+        ...(options.about && options.about.trim().length > 0 ? { about: options.about.trim() } : {})
       };
       await addContact(contactsFile(), contact);
       io.stdout(`Added ${describeContact(contact)}\n`);

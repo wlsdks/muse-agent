@@ -41,6 +41,14 @@ describe("contactMatchScore — query→contact relevance for muse ask grounding
     // a contact with no relationship doesn't get falsely surfaced by the role query
     expect(contactMatchScore(sarah, tokens("who is my manager"))).toBe(0);
   });
+
+  it("matches on the free-text ABOUT so a question about a remembered fact surfaces the contact", () => {
+    const bob: Contact = { id: "c4", name: "Bob", email: "bob@x.com", about: "allergic to nuts, loves hiking" };
+    expect(contactMatchScore(bob, tokens("is bob allergic to anything"))).toBeGreaterThan(0);
+    expect(contactMatchScore(bob, tokens("who likes hiking"))).toBeGreaterThan(0);
+    // an unrelated query still scores 0 — the about field doesn't over-match
+    expect(contactMatchScore(sarah, tokens("who likes hiking"))).toBe(0);
+  });
 });
 
 import { formatContactBirthday } from "./commands-ask.js";
@@ -86,5 +94,12 @@ describe("contactGroundingEvidence — the grounding evidence mirrors the prompt
   it("a bare edge (no `as` relation) is rendered as 'connected to <name>'", () => {
     const c: Contact = { id: "c_x", name: "Pat", connections: [{ to: "Jo" }] };
     expect(contactGroundingEvidence(c)).toContain("connected to Jo");
+  });
+
+  it("INCLUDES the free-text `about` so a remembered fact is covered, not false-flagged as unverified", () => {
+    const bob: Contact = { id: "c_b2", name: "Bob", email: "bob@x.com", about: "allergic to nuts" };
+    const evidence = contactGroundingEvidence(bob);
+    expect(evidence).toContain("Bob");
+    expect(evidence).toContain("allergic to nuts"); // the claim "Bob is allergic to nuts" is now covered by the evidence
   });
 });

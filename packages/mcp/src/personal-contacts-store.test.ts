@@ -194,4 +194,16 @@ describe("linkContacts — the relationship-graph EDGES (who works with whom)", 
     const b = (await readContacts(file)).find((c) => c.id === "c_bob")!;
     expect(b.connections).toEqual([{ as: "ok", to: "Alice" }]); // the {as:"x"} (no `to`) edge dropped
   });
+
+  it("round-trips the free-text `about` field through write → read, serialize emits it, and a non-string `about` is dropped", async () => {
+    const file = tempFile();
+    await addContact(file, { ...bob, about: "allergic to nuts; met at PyCon 2024" });
+    const b = (await readContacts(file)).find((c) => c.id === "c_bob")!;
+    expect(b.about).toBe("allergic to nuts; met at PyCon 2024");
+    expect(serializeContact(b).about).toBe("allergic to nuts; met at PyCon 2024");
+    // a hand-edited store with a non-string `about` drops just that field (read never crashes)
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(file, JSON.stringify({ contacts: [{ about: 42, id: "c_bob", name: "Bob" }] }));
+    expect((await readContacts(file)).find((c) => c.id === "c_bob")!.about).toBeUndefined();
+  });
 });

@@ -793,6 +793,35 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   manager?"` → "your manager is Dana Wu [contact: Dana Wu]" (grounded + cited on the
   contact). `67ccef38`.
 
+- [x] **P37-36 You can now remember FREE-TEXT FACTS about a person and have `muse ask`
+  answer from them — "tell it everything about your people, it cites it back."** Contacts
+  could hold a relationship (P37-20) and edges to other people (P37-21), but nowhere to
+  record the actual things you know about someone — "allergic to peanuts", "loves hiking",
+  "met at PyCon 2024" — so "what is Bob allergic to?" / "what do I know about Bob?" was
+  unanswerable. Added a free-text `about` field to `Contact` (`@muse/mcp`: serialize +
+  read-boundary coerce — a non-string `about` is dropped like every other field, so a
+  hand-edited store can't crash the read), `muse contacts add --about "<facts>"` (an
+  about-only contact is valid — it's recall material, like relationship), shown in
+  `muse contacts list` ("ℹ allergic to peanuts; …"), made searchable in `muse contacts
+  list --search hiking`, and — the value — wired into `muse ask` grounding at ALL THREE
+  seams: `contactMatchScore` matches the about tokens (so "is Bob allergic to anything?"
+  surfaces Bob), the contacts PROMPT block renders "notes: <about>" so the model actually
+  READS the fact, and `contactGroundingEvidence` includes it so the grounded claim is
+  covered (not false-flagged). NOT an identifier — it never resolves a recipient. The
+  initial diff wired selection+evidence but NOT the prompt block, and the live falsify
+  caught it (the model cited the contact yet said "I don't have information" + partly
+  fabricated a hobby) — fixed before commit. Proof: a `contactMatchScore` test (an about
+  query surfaces the contact, 0 on an unrelated contact) + a `contactGroundingEvidence`
+  test (the fact is in the evidence) + a `filterContactsBySearch` test + a store round-trip
+  test (`about` serialized + read back; a numeric one dropped) — `@muse/mcp` 1538 + `@muse/cli`
+  2037, `pnpm check` exit 0, `pnpm lint` 0/0, 0 raw control bytes, and a LIVE round-trip on
+  qwen3:8b: `muse contacts add Bob --about "allergic to peanuts; loves hiking; met at PyCon
+  2024"` then `muse ask "what is Bob allergic to?"` → "Bob is allergic to peanuts [from
+  contact: Bob]", `"where did I meet Bob?"` → "You met Bob at PyCon 2024 [from …]", and the
+  NEGATIVE `"what is Bob's favorite color?"` → "I don't have information about Bob's favorite
+  color" (un-recorded fact refused, not fabricated — the grounding gate holds for the new
+  source). (ee4a5324)
+
 - [x] **P37-21 The people graph now has EDGES — "who works with Bob?" recall.** P37-20
   added a person's ROLE TO YOU (relationship); this adds edges BETWEEN people — the
   capability map's STANDOUT knowing-you gap ("models no roles or edges … can't answer

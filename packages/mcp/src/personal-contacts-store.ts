@@ -47,6 +47,14 @@ export interface Contact {
    * resolves a recipient).
    */
   readonly connections?: readonly { readonly to: string; readonly as?: string }[];
+  /**
+   * Free-text facts the user wants Muse to remember about this person —
+   * "allergic to nuts", "likes hiking", "met at PyCon 2024". NOT an
+   * identifier and NOT a relationship role; it is recall material, surfaced
+   * as grounding evidence so "what do I know about Bob?" / "what is Bob
+   * allergic to?" answers from it with the contact as the cited source.
+   */
+  readonly about?: string;
 }
 
 export interface UpcomingBirthday {
@@ -324,7 +332,8 @@ export function serializeContact(contact: Contact): JsonObject {
     ...(contact.relationship ? { relationship: contact.relationship } : {}),
     ...(contact.connections && contact.connections.length > 0
       ? { connections: contact.connections.map((c) => ({ to: c.to, ...(c.as ? { as: c.as } : {}) })) }
-      : {})
+      : {}),
+    ...(contact.about ? { about: contact.about } : {})
   };
 }
 
@@ -397,6 +406,7 @@ function coerceContact(value: unknown): Contact | undefined {
   const phone = str(c.phone);
   const birthday = str(c.birthday);
   const relationship = str(c.relationship);
+  const about = str(c.about);
   // Drop any malformed edge (missing/non-string `to`) rather than crash the read.
   const connections = Array.isArray(c.connections)
     ? c.connections.flatMap((e): readonly { to: string; as?: string }[] => {
@@ -416,6 +426,7 @@ function coerceContact(value: unknown): Contact | undefined {
     ...(aliases && aliases.length > 0 ? { aliases } : {}),
     ...(birthday !== undefined ? { birthday } : {}),
     ...(relationship !== undefined ? { relationship } : {}),
-    ...(connections && connections.length > 0 ? { connections } : {})
+    ...(connections && connections.length > 0 ? { connections } : {}),
+    ...(about !== undefined ? { about } : {})
   };
 }

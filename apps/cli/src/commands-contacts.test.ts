@@ -198,6 +198,11 @@ describe("filterContactsBySearch — find people in the graph by role / name / e
     expect(filterContactsBySearch(all, "   ")).toHaveLength(4);
     expect(filterContactsBySearch(all, "nobody")).toEqual([]);
   });
+
+  it("matches the free-text `about` so a remembered fact finds the person (who likes hiking?)", () => {
+    const withNote = [...all, ct({ name: "Dave Ng", relationship: "friend", about: "loves hiking and climbing" })];
+    expect(filterContactsBySearch(withNote, "hiking").map((c) => c.name)).toEqual(["Dave Ng"]);
+  });
 });
 
 describe("muse contacts list --search — filter the people graph end-to-end", () => {
