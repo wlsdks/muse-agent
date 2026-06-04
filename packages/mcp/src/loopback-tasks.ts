@@ -49,7 +49,11 @@ export interface TasksMcpServerOptions {
  *   - `muse.tasks.list({ status?: "open"|"done"|"all" })` —
  *     due-soonest first (undated last), default status="open".
  *   - `muse.tasks.complete({ id })` — mark a task done with
- *     completedAt timestamp.
+ *     completedAt timestamp (KEEPS it as a done record).
+ *   - `muse.tasks.update({ id, ... })` — reschedule / rename /
+ *     toggle urgent / change notes (by id or title word).
+ *   - `muse.tasks.delete({ id })` — REMOVE a task entirely (by id
+ *     or title word) — for one added by mistake; not a "done".
  *   - `muse.tasks.search({ query, status? })` — substring match on
  *     title and notes (case-insensitive).
  */
@@ -172,7 +176,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
         risk: "read"
       },
       {
-        description: "Mark a task done. `id` is its id OR a distinct word from its title ('milk'). Sets status=\"done\" and completedAt to now.",
+        description: "Mark a task DONE (finished). `id` is its id OR a distinct word from its title ('milk'). Sets status=\"done\" and completedAt to now — the task is KEPT as a done record. Use when the user FINISHED a task ('mark milk done', 'I paid the rent'); do NOT use to REMOVE a task added by mistake — use `delete` for that.",
         execute: async (args): Promise<JsonObject> => {
           const ref = readString(args, "id");
           if (!ref) {
@@ -289,6 +293,47 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
         },
         domain: "tasks",
         name: "update",
+        risk: "write"
+      },
+      {
+        description:
+          "REMOVE a task entirely — it is deleted, not kept. `id` is the task's id OR a distinct word from its " +
+          "title ('milk'); an ambiguous word returns the matching candidates instead of guessing. " +
+          "Use when the user added a task by MISTAKE or no longer wants it tracked at all ('delete the milk task', " +
+          "'remove that task, I added it by accident', 'scrap the dentist task', '그 항목 삭제해줘'). " +
+          "Do NOT use to mark a task FINISHED — `complete` does that and KEEPS it as a done record; " +
+          "do NOT use to change a task (use `update`). Returns `{ removed: true, id }`.",
+        execute: async (args): Promise<JsonObject> => {
+          const ref = readString(args, "id");
+          if (!ref) {
+            return { error: "id is required" };
+          }
+          const tasks = await readTasks(file);
+          const resolution = resolveTaskRef(tasks, ref);
+          if (resolution.status === "ambiguous") {
+            return { error: `"${ref}" matches multiple tasks — say which one`, candidates: resolution.candidates.map((t) => ({ id: t.id, title: t.title })) as JsonValue };
+          }
+          if (resolution.status !== "resolved") {
+            return { error: `task not found: ${ref}` };
+          }
+          const next = tasks.filter((task) => task.id !== resolution.task.id);
+          try {
+            await writeTasks(file, next);
+          } catch (error) {
+            return { error: errorMessage(error) };
+          }
+          return { id: resolution.task.id, removed: true };
+        },
+        inputSchema: {
+          additionalProperties: false,
+          properties: {
+            id: { description: "The task's id (from `list` / `search`) OR a distinct word from its title, e.g. 'milk'. An ambiguous word returns candidates.", type: "string" }
+          },
+          required: ["id"],
+          type: "object"
+        },
+        domain: "tasks",
+        name: "delete",
         risk: "write"
       },
       {

@@ -1754,6 +1754,30 @@ in the loop.
   without Muse refusing to answer, with real prompt-injection detection preserved and
   broadened. (aadb615e)
 
+- [x] **P41-14 The agent can now DELETE a task you added by mistake — "delete the milk
+  task, I added it by accident" REMOVES it, instead of the agent only being able to mark it
+  done.** The `muse.tasks` loopback actuator had add / list / complete / update / search but
+  NO delete — so the agent could mark a task DONE (`complete`, which KEEPS it as a done
+  record) but could not REMOVE a task added by mistake, while every sibling actuator could
+  (`muse.calendar.delete`, `muse.reminders.clear`, `muse.followup.cancel`) and the CLI had
+  `muse tasks delete`. Closed by adding a `muse.tasks.delete` tool (packages/mcp/src/loopback-tasks.ts)
+  mirroring `muse.reminders.clear`: it resolves the task by id OR a distinct title word via the
+  proven `resolveTaskRef` (P41-9) — an ambiguous word returns the candidate list instead of a
+  blind delete, an unknown ref errors — then filters it out and writes, returning `{ removed:
+  true, id }`. `complete` vs `delete` is a non-confusable pair (the same proven coexistence as
+  `muse.calendar`'s `update` + `delete`); both tool descriptions carry a crisp use-when /
+  not-when line. write-risk, the user's OWN task (no outbound-safety gate, like complete/snooze).
+  Verified deterministically AND live per tool-calling.md (a handler the model never picks is
+  not delivered): a new handler test (delete BY TITLE WORD removes the task from every status
+  view — not merely marks it done; an ambiguous word returns 2 candidates and removes nothing;
+  an unknown ref errors and removes nothing — packages/mcp/test/mcp.test.ts) + the full @muse/mcp
+  suite (174 files / 1500 tests) + tsc build + `pnpm lint` 0/0 + cli build (cross-package) + TWO
+  LIVE tool-selection round-trips on local qwen3:8b (`verify-tool-selection.mjs`): "delete the
+  milk task, I added it by mistake" → selects `muse.tasks.delete` (and only that), AND the
+  regression control "mark the milk task as done, I finished it" → still selects
+  `muse.tasks.complete` — proving the model cleanly distinguishes remove-by-mistake from
+  finished in ONE shot, with no confusion introduced by the new sibling. (a5e748d6)
+
 **P42 — Knowledge: your notes stay coherent (the [[wiki-link]] graph is a
 first-class structure, not just decoration).** Muse already builds a note link
 graph (`buildNoteLinkGraph`), surfaces backlinks, and AUDITS for broken links

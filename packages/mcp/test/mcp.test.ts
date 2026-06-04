@@ -2251,6 +2251,37 @@ describe("muse.tasks loopback server", () => {
     expect(noMatches).toMatchObject({ total: 0 });
   });
 
+  it("delete REMOVES a task (by id or title word) — parity with `muse tasks delete`, distinct from complete", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-tasks-delete-`);
+    let counter = 0;
+    const idFactory = () => `task_${++counter}`;
+    const connection = createLoopbackMcpConnection(createTasksMcpServer({ file: `${dir}/tasks.json`, idFactory }));
+
+    await connection.callTool!("add", { title: "Buy milk" });
+    await connection.callTool!("add", { title: "Renew passport" });
+
+    // Delete BY A TITLE WORD (the dominant agent path — the model rarely knows the id).
+    const removed = await connection.callTool!("delete", { id: "milk" });
+    expect(removed).toMatchObject({ id: "task_1", removed: true });
+
+    // It is GONE from every status view (not merely marked done — that's `complete`).
+    const all = await connection.callTool!("list", { status: "all" }) as { tasks: { id: string }[]; total: number };
+    expect(all.total).toBe(1);
+    expect(all.tasks.map((t) => t.id)).toEqual(["task_2"]);
+
+    // Guards: an ambiguous word returns candidates (never a blind delete); an unknown ref errors.
+    await connection.callTool!("add", { title: "Call the dentist" });
+    await connection.callTool!("add", { title: "Email the dentist about insurance" });
+    const ambiguous = await connection.callTool!("delete", { id: "dentist" }) as { error?: string; candidates?: unknown[] };
+    expect(ambiguous.error).toContain("multiple");
+    expect((ambiguous.candidates ?? []).length).toBe(2);
+    expect(await connection.callTool!("delete", { id: "task_404" })).toMatchObject({ error: expect.stringContaining("not found") });
+    // The ambiguous + not-found attempts removed nothing.
+    expect((await connection.callTool!("list", { status: "all" }) as { total: number }).total).toBe(3);
+  });
+
   it("update reschedules / renames / toggles urgent on an existing task (parity with `muse tasks edit`)", async () => {
     const { mkdtempSync } = await import("node:fs");
     const tmpdir = await import("node:os").then((m) => m.tmpdir());
