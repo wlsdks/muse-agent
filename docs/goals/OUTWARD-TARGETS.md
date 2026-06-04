@@ -1728,6 +1728,32 @@ qwen3:8b and added to `eval:self-improving`.
   → RESOLVES to the new value (Thursday 4pm) without leaving it open. cli 1912 + `pnpm lint`
   0/0 + the live battery 2/2 + a full LIVE `muse ask` round-trip showing both the surfaced
   conflict and the correctly-resolved update on qwen3:8b. (c563c56e)
+- [x] **P38-37 Muse no longer LIES about remembering — "remember I'm allergic to
+  penicillin" gets an honest "I can't save that from a one-shot question; run
+  `muse remember`" instead of a fabricated "I've noted it".** Probing the core
+  "tell it everything, it remembers" promise exposed a real trust failure: `muse ask
+  "remember that I am allergic to penicillin"` answered "I've noted your allergy to
+  penicillin" — and even fabricated a citation to a non-existent "allergy note" (the
+  grounding gate caught + stripped that) — while persisting NOTHING. The recall path is
+  read-only (the `remember_fact` tool is in `RECALL_FORBIDDEN_TOOL_NAMES`; there's no
+  auto-extract there), so a one-shot ask cannot save — but the model claimed it did,
+  the worst kind of confidant lie (you trust it kept something it silently dropped).
+  Extended the honesty edge (the same answer-behaviour contract `CITATION_INSTRUCTION_LINES`
+  that carries the I'm-not-sure + conflict rules): a SAVING rule tells the model this
+  answer can't persist, so on a remember/note/save instruction it must NOT claim it saved
+  and must instead direct the user to the real save path — `muse remember "<fact>"` or a
+  kept `muse chat` session — with a carve-out so a reminder/task request (handled by
+  tools) is unaffected. No new model call → zero latency; the grounding GATE is unchanged.
+  Verified: a deterministic test (the contract carries the SAVING rule: can't-persist +
+  don't-claim-saved + names `muse remember` and `muse chat`) + a NEW PERMANENT live
+  battery (`apps/cli/scripts/verify-remember-honesty.mjs`, wired into `eval:self-improving`)
+  — on qwen3:8b a "remember X" → directs to `muse remember`/`muse chat` AND does NOT claim
+  it saved (2/2), while a normal question ("capital of France?") is unaffected — with NO
+  regression to the neighbour batteries that share the contract (conflict-surfacing 2/2,
+  cited-recall 6/6) + @muse/cli 174 files / 1927 tests + `pnpm lint` 0/0 + a LIVE
+  before/after: the SAME prompt that answered "I've noted your allergy" now answers "I
+  can't save that fact from a one-shot question. To remember this, run `muse remember
+  \"I am allergic to penicillin\"`, or tell me inside a `muse chat` session." (2275dded)
 - [x] **P38-1 `muse doctor --grounding` — scored faithfulness + false-refusal.**
   Turns the `fabrication=0` claim into two numbers a user reads on their own box:
   a bundled held-out corpus (12 answerable / 8 must-refuse / 7 drift) scored

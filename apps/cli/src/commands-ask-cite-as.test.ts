@@ -9,6 +9,14 @@ describe("CITATION_INSTRUCTION_LINES — the recall answer-behaviour contract ca
     expect(joined).toMatch(/which is current/u); // the explicit conflict phrasing
     expect(joined).toMatch(/UPDATES the other|updates\/corrects/u); // the don't-over-flag-an-update carve-out
   });
+
+  it("instructs the model NOT to claim it saved a fact (a one-shot ask can't persist) and to direct to `muse remember` / `muse chat`", () => {
+    const joined = CITATION_INSTRUCTION_LINES.join("\n");
+    expect(joined).toMatch(/SAVING|CANNOT persist|can't save/u);
+    expect(joined).toMatch(/do NOT claim you saved|that would be a lie/u);
+    expect(joined).toMatch(/muse remember/u);
+    expect(joined).toMatch(/muse chat/u);
+  });
 });
 
 describe("stripEchoedCiteAs — drop the echoed marker label, keep the citation", () => {
