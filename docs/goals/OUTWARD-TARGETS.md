@@ -804,6 +804,33 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   section with `🎂 Zelda — today` and `🎂 Bob — in 3 days` (and a no-birthday contact
   correctly absent), where before the section did not exist. (964cad20)
 
+- [x] **P37-27 `muse today` now LEADS with what's OVERDUE — past-due tasks/reminders
+  surface in a consolidated "act today" heads-up instead of being buried + tagged inside
+  the per-category lists.** The on-demand twin of the morning brief's overdue lead
+  (`478ac8c9` gave `muse brief` a "OVERDUE — past due, still open, act today" section
+  because "do not bury them under upcoming items"). The on-demand `muse today` digest —
+  the surface a user actually runs — never got it: overdue items appeared only as scattered
+  red `(overdue)` tags inside the separate Reminders / Followups / Tasks sections, with no
+  single "these N things are past due" glance. Closed in `formatTodayBrief`
+  (apps/cli/src/commands-today.ts): a pure `selectTodayOverdue(tasks, reminders, now)` (the
+  on-demand twin of the brief's `selectBriefOverdue`, operating on the digest's already-
+  serialized open-task / pending-reminder shapes) + a `formatOverdue` renderer surface a led
+  `⚠ Overdue — past due, still open, act today (N)` heads-up ABOVE the prospective sections;
+  the same overdue items are then DROPPED from the per-category lists so each is shown ONCE
+  (no buried duplicate), with a guard so an all-overdue task list isn't misreported as
+  "(none open)". Deterministic — no model call, no latency (matches loop-v2's "felt framing
+  is never a second model call"). Followups keep their inline tag (the brief's overdue
+  primitive covers tasks+reminders only, mirrored here). Verified: 5 new tests
+  (`selectTodayOverdue` picks only past-due, most-overdue-first, excludes future/undated +
+  empty when none; `formatOverdue` renders the count-bearing banner + "" when none;
+  `formatTodayBrief` LEADS with overdue, shows each overdue item exactly once with no
+  duplicate in the prospective sections, keeps future items in their sections, and omits the
+  heads-up entirely when nothing is past due) + the 1 now-stale integration assertion updated
+  to the led-heads-up behavior + full @muse/cli 174 files / 1935 tests + `pnpm lint` 0/0 + a
+  LIVE `muse today --local` over a seeded overdue reminder → the digest now opens with
+  `⚠ Overdue — past due, still open, act today (1): ⚠ pay the overdue invoice (was due
+  1970-01-01 09:00)`, where before it was buried in a tagged `Reminders` line. (2d199bef)
+
 - [x] **P37-9 Action-log grounding — "did you send that? / what have you done?"
   (B3 transparency, gate a new surface).** `muse ask` now grounds on Muse's OWN
   audit log of acts taken on the user's behalf (sends, refusals) — the

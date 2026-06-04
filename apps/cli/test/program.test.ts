@@ -3242,7 +3242,8 @@ describe("cli program", () => {
     process.env.MUSE_NOTES_DIR = notesDir;
     try {
       // Add an overdue reminder via --local; ISO timestamp in 1970 is
-      // guaranteed in the past so it must show as (overdue) in today.
+      // guaranteed in the past so it must lead the digest in today's
+      // consolidated "Overdue" heads-up.
       const { io: io1, output: output1 } = captureOutput();
       const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("fetch in --local"); } });
       await program1.parseAsync(
@@ -3264,9 +3265,10 @@ describe("cli program", () => {
       const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("fetch in --local"); } });
       await program3.parseAsync(["node", "muse", "today", "--local"], { from: "node" });
       const text = output3.join("");
-      expect(text).toContain("Reminders (1):");
+      // Overdue items now LEAD the digest in a consolidated heads-up rather
+      // than being buried + tagged inside the Reminders section.
+      expect(text).toContain("Overdue — past due, still open, act today (1):");
       expect(text).toContain("ping old thing");
-      expect(text).toContain("(overdue)");
 
       const { io: io4 } = captureOutput();
       const program4 = createProgram({ ...io4, fetch: async () => { throw new Error("fetch in --local"); } });

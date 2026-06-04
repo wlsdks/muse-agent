@@ -323,12 +323,28 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
  * its own trailing newline.
  */
 export function formatTodayBrief(briefing: TodayBriefing, local: boolean): string {
+  const now = briefingNow(briefing);
+  // Lead with what's already past due, then DROP those same items from the
+  // prospective sections so each overdue item is surfaced ONCE (in the led
+  // heads-up), not buried-and-duplicated below.
+  const overdue = selectTodayOverdue(briefing.tasks, briefing.reminders, now);
+  const overdueTaskIds = new Set(overdue.tasks.map((t) => t.id));
+  const overdueReminderIds = new Set(overdue.reminders.map((r) => r.id));
+  const futureTasks = briefing.tasks?.filter((t) => !overdueTaskIds.has(t.id));
+  const futureReminders = briefing.reminders?.filter((r) => !overdueReminderIds.has(r.id));
+  // When every open task was overdue, the led section already shows them —
+  // suppress the prospective Tasks section rather than misreport "(none open)".
+  const taskSection =
+    futureTasks && futureTasks.length === 0 && overdue.tasks.length > 0
+      ? ""
+      : formatTasks(futureTasks, now, briefing.lookaheadHours);
   return (
     `Today (${shortDateLabel(briefing.generatedAt)}, next ${briefing.lookaheadHours}h${local ? ", local" : ""})\n`
+    + formatOverdue(overdue)
     + formatWeatherLine(briefing.weather)
-    + formatReminders(briefing.reminders, briefing.generatedAt)
+    + formatReminders(futureReminders, briefing.generatedAt)
     + formatFollowups(briefing.followups, briefing.generatedAt)
-    + formatTasks(briefing.tasks, briefingNow(briefing), briefing.lookaheadHours)
+    + taskSection
     + formatEvents(briefing.events)
     + formatTodayConflicts(briefing.events)
     + formatBirthdays(briefing.birthdays)
@@ -336,6 +352,59 @@ export function formatTodayBrief(briefing: TodayBriefing, local: boolean): strin
     + formatHeadlines(briefing.headlines)
     + formatEmptyStateHints(briefing)
   );
+}
+
+/**
+ * The OVERDUE slice of the on-demand `muse today` digest — open tasks +
+ * pending reminders whose due moment is ALREADY PAST. The on-demand twin of
+ * the morning brief's `selectBriefOverdue`: the brief LEADS with these (most
+ * time-sensitive, still actionable today) while `muse today` only tagged them
+ * "(overdue)" buried inside the per-category lists. Operates on the briefing's
+ * already-serialized shapes (the readers pre-filter to open tasks / pending
+ * reminders), so it only filters past-due. Pure; most-overdue-first.
+ */
+export function selectTodayOverdue(
+  tasks: TodayBriefing["tasks"],
+  reminders: TodayBriefing["reminders"],
+  now: Date
+): {
+  readonly tasks: readonly { readonly id: string; readonly title: string; readonly dueAt: string }[];
+  readonly reminders: readonly { readonly id: string; readonly text: string; readonly dueAt: string }[];
+} {
+  const nowMs = now.getTime();
+  const pastDue = (iso: string | undefined): boolean => {
+    if (!iso) return false;
+    const ms = Date.parse(iso);
+    return Number.isFinite(ms) && ms < nowMs;
+  };
+  return {
+    reminders: (reminders ?? [])
+      .filter((r) => pastDue(r.dueAt))
+      .map((r) => ({ dueAt: r.dueAt, id: r.id, text: r.text }))
+      .sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt)),
+    tasks: (tasks ?? [])
+      .filter((t) => pastDue(t.dueAt))
+      .map((t) => ({ dueAt: t.dueAt as string, id: t.id, title: t.title }))
+      .sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt))
+  };
+}
+
+/**
+ * The LED "act today" heads-up for `muse today` — open tasks + pending
+ * reminders already past their due moment, surfaced ABOVE the prospective
+ * sections so they aren't buried (the on-demand twin of the morning brief's
+ * OVERDUE lead). Empty when nothing is overdue.
+ */
+export function formatOverdue(overdue: ReturnType<typeof selectTodayOverdue>): string {
+  const count = overdue.tasks.length + overdue.reminders.length;
+  if (count === 0) {
+    return "";
+  }
+  const lines = [
+    ...overdue.tasks.map((t) => `  ${colorize("⚠", "red")} ${t.title} (was due ${shortDateTimeBrief(t.dueAt)})`),
+    ...overdue.reminders.map((r) => `  ${colorize("⚠", "red")} ${r.text} (was due ${shortDateTimeBrief(r.dueAt)})`)
+  ];
+  return `\n${colorize(`⚠ Overdue — past due, still open, act today (${count.toString()}):`, "bold")}\n${lines.join("\n")}\n`;
 }
 
 /**

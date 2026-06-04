@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { writeFollowups, writeReminders, type PersistedFollowup, type PersistedReminder } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
-import { formatConnectionsSection, formatEpisodeRevisitLine, formatEvents, formatHeadlines, formatRevisitSection, formatStaleTasksSection, formatTasks, formatTodayBrief, formatTodayConflicts, formatWeatherLine, parseLookaheadHours, pickConnectionQuery, readDueFollowups, readDueReminders, readUpcomingBirthdays, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine, selectEpisodeToRevisit, selectStaleTasks } from "./commands-today.js";
+import { formatConnectionsSection, formatEpisodeRevisitLine, formatEvents, formatHeadlines, formatOverdue, formatRevisitSection, formatStaleTasksSection, formatTasks, formatTodayBrief, formatTodayConflicts, formatWeatherLine, parseLookaheadHours, pickConnectionQuery, readDueFollowups, readDueReminders, readUpcomingBirthdays, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine, selectEpisodeToRevisit, selectStaleTasks, selectTodayOverdue } from "./commands-today.js";
 
 describe("muse today — Birthdays section (the brief's birthdays, surfaced in the on-demand digest)", () => {
   const base = { generatedAt: "2026-06-04T09:00:00Z", lookaheadHours: 24 };
@@ -433,6 +433,79 @@ describe("formatTodayConflicts — proactive double-booking warning in the brief
       ]
     }, true);
     expect(out).toContain("Double-booked");
+  });
+});
+
+describe("muse today — overdue heads-up (leads the digest, mirrors the morning brief)", () => {
+  const now = new Date(2026, 4, 20, 9, 0); // 2026-05-20 09:00 local
+  const past = (d: number, h = 9) => new Date(2026, 4, d, h, 0).toISOString();
+  const future = (d: number, h = 18) => new Date(2026, 4, d, h, 0).toISOString();
+
+  it("selectTodayOverdue picks only past-due items, most-overdue-first, excludes future/undated", () => {
+    const overdue = selectTodayOverdue(
+      [
+        { dueAt: past(18), id: "t1", title: "Pay rent" }, // overdue
+        { dueAt: past(15), id: "t2", title: "File taxes" }, // more overdue (earlier due)
+        { dueAt: future(20), id: "t3", title: "Call plumber" }, // later today — not overdue
+        { id: "t4", title: "Someday idea" } // undated
+      ],
+      [
+        { dueAt: past(19), id: "r1", text: "Take meds" }, // overdue
+        { dueAt: future(21), id: "r2", text: "Standup" } // future
+      ],
+      now
+    );
+    expect(overdue.tasks.map((t) => t.title)).toEqual(["File taxes", "Pay rent"]); // earliest-due first
+    expect(overdue.reminders.map((r) => r.text)).toEqual(["Take meds"]);
+  });
+
+  it("selectTodayOverdue is empty when nothing is past due", () => {
+    const overdue = selectTodayOverdue([{ dueAt: future(25), id: "t", title: "x" }], [], now);
+    expect(overdue.tasks).toEqual([]);
+    expect(overdue.reminders).toEqual([]);
+  });
+
+  it("formatOverdue renders a led, count-bearing banner — empty when none", () => {
+    expect(formatOverdue({ reminders: [], tasks: [] })).toBe("");
+    const out = formatOverdue({
+      reminders: [{ dueAt: past(19), id: "r1", text: "Take meds" }],
+      tasks: [{ dueAt: past(18), id: "t1", title: "Pay rent" }]
+    });
+    expect(out).toContain("Overdue — past due, still open, act today (2):");
+    expect(out).toContain("Pay rent (was due");
+    expect(out).toContain("Take meds (was due");
+  });
+
+  it("formatTodayBrief LEADS with overdue and does NOT duplicate it in the prospective sections", () => {
+    const out = formatTodayBrief(
+      {
+        generatedAt: new Date(2026, 4, 20, 9, 0).toISOString(),
+        lookaheadHours: 24,
+        reminders: [{ dueAt: past(19), id: "r1", text: "Take meds" }], // overdue → banner only
+        tasks: [
+          { dueAt: past(18), id: "t1", title: "Pay rent" }, // overdue → banner only
+          { dueAt: future(20), id: "t2", title: "Call plumber" } // future → Tasks section
+        ]
+      },
+      true
+    );
+    const overduePos = out.indexOf("Overdue — past due");
+    const tasksPos = out.indexOf("Tasks due");
+    expect(overduePos).toBeGreaterThanOrEqual(0);
+    expect(tasksPos).toBeGreaterThan(overduePos); // overdue heads-up leads, before the Tasks section
+    expect(out.match(/Pay rent/gu)?.length).toBe(1); // overdue task appears ONCE (banner, not also Tasks)
+    expect(out).toContain("Call plumber"); // future task still in the Tasks section
+    expect(out.match(/Take meds/gu)?.length).toBe(1); // overdue reminder once (banner)
+    expect(out).not.toContain("Reminders ("); // its only reminder was overdue → section omitted, no dup
+  });
+
+  it("formatTodayBrief shows no overdue section when nothing is past due", () => {
+    const out = formatTodayBrief(
+      { generatedAt: new Date(2026, 4, 20, 9, 0).toISOString(), lookaheadHours: 24, tasks: [{ dueAt: future(20), id: "t2", title: "Call plumber" }] },
+      true
+    );
+    expect(out).not.toContain("Overdue — past due");
+    expect(out).toContain("Call plumber");
   });
 });
 
