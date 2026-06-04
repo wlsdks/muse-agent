@@ -14,6 +14,7 @@ import { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAt
 import { createRunId } from "@muse/shared";
 import type { Command } from "commander";
 
+import { buildContactNetwork, formatContactNetwork } from "./contact-network.js";
 import type { ProgramIO } from "./program.js";
 
 function contactsFile(): string {
@@ -252,6 +253,35 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
       }
       io.stderr(`No contact matches '${query}'. Add one with \`muse contacts add\`.\n`);
       process.exitCode = 1;
+    });
+
+  contacts
+    .command("network")
+    .description("Show a person's circle — their direct connections AND who they reach through them, e.g. `muse contacts network Bob`")
+    .argument("<name...>", "Name or alias of the person whose network to show, e.g. 'Bob' or 'Sarah Kim'")
+    .action(async (nameParts: readonly string[]) => {
+      const query = nameParts.join(" ").trim();
+      if (query.length === 0) {
+        io.stderr("usage: muse contacts network <name>\n");
+        process.exitCode = 1;
+        return;
+      }
+      const all = await queryContacts(contactsFile());
+      const resolution = resolveContact(all, query);
+      if (resolution.status === "ambiguous") {
+        io.stderr(`'${query}' is ambiguous — did you mean one of:\n`);
+        for (const match of resolution.matches) {
+          io.stderr(`  - ${describeContact(match)}\n`);
+        }
+        process.exitCode = 1;
+        return;
+      }
+      if (resolution.status !== "resolved") {
+        io.stderr(`No contact matches '${query}'. Add one with \`muse contacts add\`.\n`);
+        process.exitCode = 1;
+        return;
+      }
+      io.stdout(formatContactNetwork(resolution.contact.name, buildContactNetwork(all, resolution.contact)));
     });
 
   contacts

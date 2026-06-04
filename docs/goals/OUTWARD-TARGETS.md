@@ -789,6 +789,32 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   the coverage fraction below the floor; that is pre-existing + model-dependent + not
   contact-specific, untouched here. cli 1898 + pnpm lint 0/0 + live clean recall._
 
+- [x] **P37-31 `muse contacts network <name>` — you can now TRAVERSE the people graph,
+  not just build it: see a person's immediate circle (their direct connections) AND who
+  they reach THROUGH those connections (2nd-degree, friends-of-friends, each labelled with
+  the via-person).** P37-20/21 let you record a person's role + bidirectional EDGES
+  (`link`), and `muse contacts list` renders a person's direct edges flat — but there was
+  no way to TRAVERSE the graph: no focused per-person network view, no 2nd-degree reach.
+  This adds the traversal the edges were built for (B0's explicitly-named next knowing-you
+  axis, "relationship EDGES"). A pure `buildContactNetwork(contacts, root)` (apps/cli/src/
+  contact-network.ts) walks to depth 2 — direct = the root's `connections`; 2nd-degree =
+  the connections of each directly-linked person who is ALSO a contact (a connection's `to`
+  is a name, so a leaf name with no contact has no 2nd hop), excluding the root + the direct
+  set + duplicates so each person appears once at its nearest distance — and a pure
+  `formatContactNetwork` renders it ("Bob's network: Direct: ↔ works with Alice …; Through
+  them: → Dave (friends with Alice)"). The `network` subcommand resolves the name through
+  the SAME `resolveContact` seam as `resolve` (exact/unique → resolved; 2+ → AMBIGUOUS
+  candidates, never a guess; 0 → not-found), so it inherits the people-graph safety
+  boundary. Deterministic (no model). Verified: 10 unit tests (direct order; 2nd-degree
+  through the via-person + label; root/direct/dupes excluded; empty network; NO 2nd-hop
+  through a non-contact leaf name; case-insensitive 2nd-hop name match; formatter Direct/
+  Through-them + the no-label "connected to" fallback + the link-guidance empty case —
+  apps/cli/src/contact-network.test.ts) + the full @muse/cli suite (176 files / 1968 tests)
+  + tsc build + `pnpm lint` 0/0 + a LIVE run on the loop PC: a seeded graph (Bob↔Alice
+  "works with", Bob↔Carol "manager", Alice↔Dave "friends with") → `muse contacts network
+  Bob` printed Direct Alice/Carol AND "→ Dave (friends with Alice)" at 2nd degree, plus the
+  no-connections guidance (Zoe) and the not-found path (Nobody). (5c5e47b7)
+
 - [x] **P37-24 You can now TELL the agent a person's role conversationally — "add
   Sarah, she's my manager" is remembered + queryable.** P37-20 added the `relationship`
   field + the CLI path (`muse contacts add --relationship`) + recall grounding, but the
