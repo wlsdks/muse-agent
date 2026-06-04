@@ -33,7 +33,7 @@ import { answerPromisesAction, classifyActionRequest, classifyCasualPrompt, clas
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
-import { acquireOllamaLease, evaluateArithmeticExpression, fetchReadableUrl, formatDueLocal, listReflections, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type MessageApprovalGate, type PersistedReminder, type PersistedTask } from "@muse/mcp";
+import { acquireOllamaLease, evaluateArithmeticExpression, fetchReadableUrl, formatDueLocal, listReflections, parseReminderDueAt, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type MessageApprovalGate, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { redactSecretsInText } from "@muse/shared";
 
 import { parseGitReflog, selectGitCommits, type GitCommit } from "./git-reflog.js";
@@ -51,6 +51,7 @@ import { embed } from "./embed.js";
 import { buildEpisodeIndex, defaultEpisodeIndexFile, episodeIndexStale, loadEpisodeIndex, saveEpisodeIndex } from "./episode-index.js";
 import { readClipboardText } from "./clipboard-reader.js";
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
+import { detectDateQuery, formatDateAnswer, phraseHasTime } from "./date-query.js";
 import { emlToText, extractDirectoryDocuments, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isEmlDocument, isHtmlDocument, isPdfDocument, parsePdfBuffer } from "./document-reader.js";
 import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
 import { resolvePersona } from "./program-helpers.js";
@@ -1602,6 +1603,25 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           const answer = formatArithmeticResult(arithmeticExpression, evaluated.result);
           if (options.json) {
             io.stdout(`${JSON.stringify({ answer, arithmetic: { expression: arithmeticExpression, result: evaluated.result }, query })}\n`);
+          } else {
+            io.stdout(`${answer}\n`);
+          }
+          return;
+        }
+      }
+
+      // A pure relative-DATE question ("what's the date next Friday?") — the 8B
+      // miscounts dates (and doesn't reliably know today). Resolve it through the
+      // SAME date grammar reminders/tasks use and answer the exact calendar date.
+      // Precision-first: `parseReminderDueAt` is the gate — an event name ("my
+      // dentist appointment") fails to parse and falls through to normal recall.
+      const datePhrase = detectDateQuery(query);
+      if (datePhrase !== null) {
+        const resolved = parseReminderDueAt(datePhrase, () => new Date());
+        if (!(resolved instanceof Error)) {
+          const answer = formatDateAnswer(datePhrase, resolved, { includeTime: phraseHasTime(datePhrase) });
+          if (options.json) {
+            io.stdout(`${JSON.stringify({ answer, date: { iso: resolved, phrase: datePhrase }, query })}\n`);
           } else {
             io.stdout(`${answer}\n`);
           }

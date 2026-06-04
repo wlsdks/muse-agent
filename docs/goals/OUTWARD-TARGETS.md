@@ -2083,6 +2083,27 @@ in the loop.
   / 2` → "(1200 + 850) / 2 = 1,025", `--json compute 840000 * 0.18` → exact JSON, and the negative
   "what is my Q3 budget?" → NOT hijacked (went to recall, "[from: no relevant notes found]"). (76b07cf2)
 
+- [x] **P41-25 `muse ask "what's the date next Friday?"` now answers the EXACT date deterministically
+  — the date-arithmetic twin of P41-20, since the local 8B miscounts dates and doesn't reliably know
+  today.** A pure relative-date question got a model guess (the 8B doesn't dependably know the current
+  date and miscounts forward/back). Added a deterministic date fast-path mirroring the arithmetic one:
+  a pure `detectDateQuery` (apps/cli/src/date-query.ts) strips the date-question framing ("what's the
+  date …", "what day is …", "when is …", defaulting to "today" for a bare "what's the date?") to a
+  bare phrase, and `muse ask` resolves it through the SAME `parseReminderDueAt` grammar reminders/tasks
+  use — which is also the PRECISION GATE: an event name ("my dentist appointment") fails to parse and
+  the query falls through to normal recall, so calendar/event questions are never hijacked. The answer
+  ("Next Friday is Friday, June 12, 2026.") comes from `formatDateAnswer` (weekday + full date, time
+  only when the phrase set one via `phraseHasTime`), with NO model call and NO retrieval. Covers
+  RELATIVE/ISO phrases (the grammar's reach), not named holidays. Verified deterministically AND live:
+  7 unit tests (`detectDateQuery` extracts a relative/ISO phrase, defaults bare to "today", returns
+  null for a non-date question, and extracts an event-name remainder the gate rejects; `formatDateAnswer`
+  weekday + capitalisation + optional time; `phraseHasTime` — apps/cli/src/date-query.test.ts) +
+  @muse/cli 179 files / 2027 tests + tsc build + `pnpm lint` 0/0 + LIVE on the loop PC:
+  `muse ask "what's the date next Friday?"` → "Next Friday is Friday, June 12, 2026.", `"what day is
+  in 3 weeks?"` → "In 3 weeks is Friday, June 26, 2026.", `--json "what's the date tomorrow?"` → exact
+  JSON, and the negative `"when is my dentist appointment?"` → NOT hijacked (fell through to recall).
+  (3927a323)
+
 - [x] **P41-17 Reminders can now repeat MONTHLY — "remind me to pay rent on the 1st of
   every month" finally sticks, where before only daily/weekly were allowed and a monthly
   request silently became a ONE-TIME reminder.** Reminder recurrence was `"daily" | "weekly"`
