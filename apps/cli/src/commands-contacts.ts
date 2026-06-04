@@ -34,6 +34,24 @@ function describeContact(contact: Contact): string {
   return `${contact.name}${aliases}${role}${reachLabel}${edges}`;
 }
 
+/**
+ * Filter the people graph by a free-text term — a case-insensitive substring
+ * over a contact's name, relationship-to-you, email, handle, phone, and aliases
+ * — so `muse contacts list --search coworker` answers "who are my coworkers?"
+ * without scrolling the whole list. An empty term returns everything (no-op).
+ * Pure.
+ */
+export function filterContactsBySearch(contacts: readonly Contact[], term: string): readonly Contact[] {
+  const needle = term.trim().toLowerCase();
+  if (needle.length === 0) {
+    return contacts;
+  }
+  return contacts.filter((contact) => {
+    const fields = [contact.name, contact.relationship, contact.email, contact.handle, contact.phone, ...(contact.aliases ?? [])];
+    return fields.some((field) => typeof field === "string" && field.toLowerCase().includes(needle));
+  });
+}
+
 interface AddOptions {
   readonly email?: string;
   readonly handle?: string;
@@ -198,14 +216,21 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
 
   contacts
     .command("list")
-    .description("List all contacts (name-sorted)")
-    .action(async () => {
+    .description("List your contacts (name-sorted); --search filters by name / role / email / alias")
+    .option("--search <term...>", "Only show contacts matching this term (name, relationship, alias, email, handle, phone), e.g. 'coworker' or 'kim'")
+    .action(async (options: { readonly search?: readonly string[] }) => {
       const all = await queryContacts(contactsFile());
       if (all.length === 0) {
         io.stdout("No contacts yet. Add one with `muse contacts add <name> --email <e>`.\n");
         return;
       }
-      for (const contact of all) {
+      const term = (options.search ?? []).join(" ").trim();
+      const shown = term.length > 0 ? filterContactsBySearch(all, term) : all;
+      if (shown.length === 0) {
+        io.stdout(`No contacts match '${term}'. (${all.length.toString()} total — run \`muse contacts list\` to see all.)\n`);
+        return;
+      }
+      for (const contact of shown) {
         io.stdout(`${describeContact(contact)}\n`);
       }
     });

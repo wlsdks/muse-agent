@@ -815,6 +815,26 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   Bob` printed Direct Alice/Carol AND "→ Dave (friends with Alice)" at 2nd degree, plus the
   no-connections guidance (Zoe) and the not-found path (Nobody). (5c5e47b7)
 
+- [x] **P37-32 `muse contacts list --search coworker` — you can now FILTER the people graph
+  ("who are my coworkers?", "who do I know at globex?"), not just dump every contact.** `muse
+  contacts list` printed ALL contacts name-sorted with no filter, so finding your coworkers /
+  family / the people at a company meant scrolling the whole list — the query half of the
+  knowing-you axis that the recorded `relationship` + edges were built to answer. Added a pure
+  `filterContactsBySearch(contacts, term)` (apps/cli/src/commands-contacts.ts: case-insensitive
+  substring over a contact's name, relationship-to-you, email, handle, phone, and aliases; empty
+  term = no-op) wired to a `--search <term...>` option on `list`; a miss prints a count-bearing
+  message ("No contacts match 'x'. (N total — run `muse contacts list` to see all.)") rather than
+  silent emptiness. Complements P37-31 (traverse) with QUERY — the two together make the people
+  graph navigable. Deterministic (no model). Verified: 9 new tests (helper: match by
+  relationship / name substring case-insensitive / email-domain / alias / empty-term-returns-all
+  / non-match-empty; integration via the real command harness: `list --search coworker` shows
+  both coworkers and NOT the manager, and the miss path prints the count — apps/cli/src/commands-
+  contacts.test.ts) + the full @muse/cli suite (176 files / 1977 tests) + tsc build + `pnpm lint`
+  0/0 + a LIVE run on the loop PC: a seeded book (Sarah=manager@globex, Bob/Carol=coworkers,
+  Mom=phone) → `muse contacts list --search coworker` printed Bob Lee + Carol Park only,
+  `--search globex` printed Sarah Kim (email match), `--search nobody` → "No contacts match
+  'nobody'. (4 total …)". (49d5d8be)
+
 - [x] **P37-24 You can now TELL the agent a person's role conversationally — "add
   Sarah, she's my manager" is remembered + queryable.** P37-20 added the `relationship`
   field + the CLI path (`muse contacts add --relationship`) + recall grounding, but the

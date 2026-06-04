@@ -2,11 +2,11 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { queryContacts } from "@muse/mcp";
+import { queryContacts, type Contact } from "@muse/mcp";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { registerContactsCommands } from "./commands-contacts.js";
+import { filterContactsBySearch, registerContactsCommands } from "./commands-contacts.js";
 
 async function run(file: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
@@ -168,5 +168,52 @@ describe("muse contacts — people graph + recipient resolution", () => {
     await run(file, ["add", "Bob", "--email", "b@x.com"]);
     const r = await run(file, ["birthdays"]);
     expect(r.stdout).toContain("No birthdays in the next 30 days");
+  });
+});
+
+describe("filterContactsBySearch — find people in the graph by role / name / email", () => {
+  const ct = (over: Partial<Contact> & { name: string }): Contact => ({ id: over.name.toLowerCase(), ...over });
+  const all: Contact[] = [
+    ct({ name: "Sarah Kim", relationship: "manager", email: "sarah@globex.com" }),
+    ct({ name: "Bob Lee", relationship: "coworker", email: "bob@acme.com" }),
+    ct({ name: "Carol Park", relationship: "coworker", handle: "@carol" }),
+    ct({ name: "Mom", relationship: "mother", phone: "+1 555 0100", aliases: ["Jane"] })
+  ];
+
+  it("matches the relationship-to-you (who are my coworkers?)", () => {
+    expect(filterContactsBySearch(all, "coworker").map((c) => c.name)).toEqual(["Bob Lee", "Carol Park"]);
+  });
+
+  it("matches a name substring, case-insensitively", () => {
+    expect(filterContactsBySearch(all, "kim").map((c) => c.name)).toEqual(["Sarah Kim"]);
+    expect(filterContactsBySearch(all, "PARK").map((c) => c.name)).toEqual(["Carol Park"]);
+  });
+
+  it("matches email domain and an alias", () => {
+    expect(filterContactsBySearch(all, "globex").map((c) => c.name)).toEqual(["Sarah Kim"]);
+    expect(filterContactsBySearch(all, "jane").map((c) => c.name)).toEqual(["Mom"]);
+  });
+
+  it("returns everything for an empty term, and nothing for a non-match", () => {
+    expect(filterContactsBySearch(all, "   ")).toHaveLength(4);
+    expect(filterContactsBySearch(all, "nobody")).toEqual([]);
+  });
+});
+
+describe("muse contacts list --search — filter the people graph end-to-end", () => {
+  it("shows only the matching contacts, or a count-bearing miss message", async () => {
+    const file = contactsFile();
+    await run(file, ["add", "Sarah Kim", "--relationship", "manager", "--email", "sarah@globex.com"]);
+    await run(file, ["add", "Bob Lee", "--relationship", "coworker", "--email", "bob@acme.com"]);
+    await run(file, ["add", "Carol Park", "--relationship", "coworker", "--handle", "@carol"]);
+
+    const hit = await run(file, ["list", "--search", "coworker"]);
+    expect(hit.stdout).toContain("Bob Lee");
+    expect(hit.stdout).toContain("Carol Park");
+    expect(hit.stdout).not.toContain("Sarah Kim");
+
+    const miss = await run(file, ["list", "--search", "nobody"]);
+    expect(miss.stdout).toContain("No contacts match 'nobody'");
+    expect(miss.stdout).toContain("3 total");
   });
 });
