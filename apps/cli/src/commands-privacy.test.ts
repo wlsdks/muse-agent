@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { encryptFileAtRest, isFileEncryptedAtRest } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
-import { collectPrivacyPosture, formatPrivacyPosture, type PrivacyPosture } from "./commands-privacy.js";
+import { atRestDoctorCheck, collectPrivacyPosture, formatPrivacyPosture, type PrivacyPosture } from "./commands-privacy.js";
 
 function tmpHome(): string {
   return mkdtempSync(join(tmpdir(), "muse-privacy-"));
@@ -81,5 +81,37 @@ describe("formatPrivacyPosture", () => {
     expect(formatPrivacyPosture(base({ anyEncrypted: true, explicitKey: true, stores: [{ encryptable: true, encrypted: true, exists: true, name: "contacts", path: "/c" }] })))
       .toContain("explicit MUSE_MEMORY_KEY");
     expect(formatPrivacyPosture(base({ anyEncrypted: false }))).toContain("Nothing is encrypted yet");
+  });
+});
+
+describe("atRestDoctorCheck — surface the at-rest posture in `muse doctor`", () => {
+  const posture = (over: Partial<PrivacyPosture>): PrivacyPosture => ({ anyEncrypted: false, explicitKey: false, stores: [], ...over });
+  const store = (over: Partial<import("./commands-privacy.js").PrivacyStore> & { name: string }) =>
+    ({ encryptable: true, encrypted: false, exists: true, path: `/${over.name}`, ...over });
+
+  it("WARNs when an existing encryptable store is plaintext", () => {
+    const c = atRestDoctorCheck(posture({ stores: [store({ encrypted: false, name: "contacts" }), store({ encrypted: true, name: "memory" })] }));
+    expect(c.status).toBe("warn");
+    expect(c.detail).toContain("1/2 sensitive store(s) PLAINTEXT (contacts)");
+    expect(c.detail).toContain("muse privacy");
+  });
+
+  it("WARNs when all are encrypted but under the derivable fallback key", () => {
+    const c = atRestDoctorCheck(posture({ anyEncrypted: true, explicitKey: false, stores: [store({ encrypted: true, name: "memory" })] }));
+    expect(c.status).toBe("warn");
+    expect(c.detail).toContain("DERIVABLE per-host key");
+    expect(c.detail).toContain("MUSE_MEMORY_KEY");
+  });
+
+  it("is OK when all existing stores are encrypted with an explicit key", () => {
+    const c = atRestDoctorCheck(posture({ anyEncrypted: true, explicitKey: true, stores: [store({ encrypted: true, name: "memory" })] }));
+    expect(c.status).toBe("ok");
+    expect(c.detail).toContain("strong MUSE_MEMORY_KEY");
+  });
+
+  it("is OK (nothing to encrypt) when no sensitive store exists yet", () => {
+    const c = atRestDoctorCheck(posture({ stores: [store({ exists: false, name: "memory" })] }));
+    expect(c.status).toBe("ok");
+    expect(c.detail).toContain("nothing to encrypt");
   });
 });

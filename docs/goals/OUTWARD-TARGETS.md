@@ -566,6 +566,25 @@ the confided life sat in plaintext JSON behind OS file-perms only.
   MUSE_MEMORY_KEY". Direction = the validated RUNNER-UP from P38-38's 6-agent direction-review
   workflow. (9c37df29)
 
+- [x] **P44-8 `muse doctor` now reports the AT-REST encryption posture — the discretion ("can't
+  tell anyone") half of the identity surfaces in the STANDARD health command, not only the niche
+  `muse privacy`.** P44-7 added the dedicated inventory, but `muse doctor` (where users actually
+  check "is my setup OK") reported only the CLOUD-egress (local-only) posture — so a user whose
+  confided stores are plaintext, or encrypted under the weak derivable per-host key, would never
+  see it unless they ran the separate `muse privacy`. Added a pure `atRestDoctorCheck(posture)`
+  (apps/cli/src/commands-privacy.ts) that turns P44-7's `collectPrivacyPosture` into a doctor
+  check: WARN when any existing sensitive store is plaintext ("N/M sensitive store(s) PLAINTEXT
+  (…) — run `muse privacy`") OR when encrypted stores rely on the derivable fallback key ("set
+  MUSE_MEMORY_KEY"); OK when all are encrypted with an explicit key, or nothing sensitive exists
+  yet — wired into `runLocalDoctor` right after the local-only (cloud-egress) check so the two
+  identity halves sit together. Read-only, deterministic. Verified: 4 unit tests (plaintext→warn
+  with the store names + `muse privacy` pointer; all-encrypted-but-derivable-key→warn with
+  MUSE_MEMORY_KEY; all-encrypted-explicit-key→ok; nothing-created→ok — apps/cli/src/commands-
+  privacy.test.ts) + the full @muse/cli suite (178 files / 2013 tests) + tsc build + `pnpm lint`
+  0/0 + a LIVE run on the loop PC: with MUSE_MEMORY_KEY unset and a plaintext contacts store,
+  `muse doctor --local` printed "at-rest encryption: 1/1 sensitive store(s) PLAINTEXT (contacts) —
+  run `muse privacy`" as a warn line directly under the "local-only: 🔒 on" check. (df11daa1)
+
 **P37 — Perception growth: read-only local connectors (loop-v2 B3).** The
 self-learning core (P36) is delivered end-to-end + felt; this axis grows what
 Muse can READ to know you — new local, read-only, per-source sources the agent

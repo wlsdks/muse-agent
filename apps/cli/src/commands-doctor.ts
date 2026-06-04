@@ -24,6 +24,7 @@ import { DEFAULT_EMBED_MODEL, isNotesIndexStale } from "./commands-notes-rag.js"
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
 import { isApiUnreachable } from "./program-helpers.js";
+import { atRestDoctorCheck, collectPrivacyPosture } from "./commands-privacy.js";
 import type { ProgramIO } from "./program.js";
 
 export interface DoctorCommandHelpers {
@@ -446,6 +447,10 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   const muse_model = resolveDefaultModel(env);
 
   checks.push(localOnlyCheck(env));
+
+  // At-rest encryption — the discretion ("can't tell anyone") half of the
+  // identity, alongside the cloud-egress ("can't reach a cloud") posture above.
+  checks.push(atRestDoctorCheck(await collectPrivacyPosture(env)));
 
   // ~/.muse layout
   const muse_home = resolveMuseEnvPath(process.env.MUSE_HOME, join(homedir(), ".muse"));

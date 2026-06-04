@@ -109,6 +109,28 @@ export function formatPrivacyPosture(posture: PrivacyPosture): string {
   return `${lines.join("\n")}\n`;
 }
 
+/**
+ * The at-rest encryption posture as a `muse doctor` health check — so the
+ * "it can't tell anyone" discretion gap surfaces in the STANDARD health command,
+ * not only the dedicated `muse privacy`. Warns when any existing sensitive store
+ * is plaintext OR when encrypted stores rely on the derivable per-host key. Pure.
+ */
+export function atRestDoctorCheck(posture: PrivacyPosture): { readonly name: string; readonly status: "ok" | "warn" | "fail"; readonly detail: string } {
+  const name = "at-rest encryption";
+  const encryptable = posture.stores.filter((store) => store.encryptable && store.exists);
+  const plaintext = encryptable.filter((store) => !store.encrypted);
+  if (encryptable.length === 0) {
+    return { detail: "no sensitive stores created yet (nothing to encrypt)", name, status: "ok" };
+  }
+  if (plaintext.length > 0) {
+    return { detail: `${plaintext.length.toString()}/${encryptable.length.toString()} sensitive store(s) PLAINTEXT (${plaintext.map((store) => store.name).join(", ")}) — run \`muse privacy\``, name, status: "warn" };
+  }
+  if (!posture.explicitKey) {
+    return { detail: `all ${encryptable.length.toString()} encrypted but under the DERIVABLE per-host key — set MUSE_MEMORY_KEY (see \`muse privacy\`)`, name, status: "warn" };
+  }
+  return { detail: `all ${encryptable.length.toString()} sensitive store(s) encrypted with a strong MUSE_MEMORY_KEY`, name, status: "ok" };
+}
+
 export function registerPrivacyCommand(program: Command, io: ProgramIO): void {
   program
     .command("privacy")
