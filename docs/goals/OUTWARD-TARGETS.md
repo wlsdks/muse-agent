@@ -542,6 +542,30 @@ the confided life sat in plaintext JSON behind OS file-perms only.
   the self-learning safety bet (the main personal stores — memory, episodes,
   action-log, contacts, playbook — are now all encryptable at rest). (2b7d1b4c)
 
+- [x] **P44-7 `muse privacy` — SEE the "it can't tell anyone" half of the contract: a read-only
+  inventory of every confided store's at-rest state + whether the encryption key is strong.** P44
+  made memory/episodes/action-log/contacts/playbook each ENCRYPTABLE, but the user had no single
+  place to SEE the posture — which stores are actually encrypted vs still plaintext, and (the sharp
+  edge) whether they were encrypted under the explicit `MUSE_MEMORY_KEY` or the DERIVABLE per-host
+  fallback (`muse-memory` + username/home/hostname — recomputable by anyone who knows them, so only
+  weakly protective). `muse doctor` reports the CLOUD-egress (local-only) posture; this is the
+  missing AT-REST half. Added a read-only `muse privacy` command (apps/cli/src/commands-privacy.ts):
+  a pure `collectPrivacyPosture(env)` inventories all 8 personal stores (the 5 encryptable + tasks/
+  reminders/notes), checking each encryptable one with the SAME `isFileEncryptedAtRest` envelope
+  sniff the per-store encrypt commands use (a missing file → "not created", never a false
+  "plaintext"), plus the key posture from `MUSE_MEMORY_KEY`; a pure `formatPrivacyPosture` renders
+  it with a per-store ✅/⚠️ + the exact `… encrypt` command for any plaintext store + a loud weak-key
+  warning. Deterministic, read-only, no decryption / no key needed (`--json` too). Verified: 5 unit
+  tests (collectPrivacyPosture: plaintext store / missing store / derivable-key / detects a REAL
+  encrypted file via encryptFileAtRest + explicit key / tasks-reminders-notes never falsely encrypted;
+  formatPrivacyPosture: plaintext-with-command + weak-key warning, strong-key, nothing-encrypted —
+  apps/cli/src/commands-privacy.test.ts) + the full @muse/cli suite (177 files / 1999 tests) + tsc
+  build + `pnpm lint` 0/0 + a LIVE run on the loop PC: encrypt contacts (no MUSE_MEMORY_KEY) + add a
+  task, then `muse privacy` → "✅ contacts — encrypted at rest", "▫️ tasks/reminders/notes — plaintext
+  (not yet encryptable)", absent stores "not created yet", and "⚠️ DERIVABLE per-host fallback … Set
+  MUSE_MEMORY_KEY". Direction = the validated RUNNER-UP from P38-38's 6-agent direction-review
+  workflow. (9c37df29)
+
 **P37 — Perception growth: read-only local connectors (loop-v2 B3).** The
 self-learning core (P36) is delivered end-to-end + felt; this axis grows what
 Muse can READ to know you — new local, read-only, per-source sources the agent
