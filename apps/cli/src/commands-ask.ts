@@ -51,7 +51,7 @@ import { embed } from "./embed.js";
 import { buildEpisodeIndex, defaultEpisodeIndexFile, episodeIndexStale, loadEpisodeIndex, saveEpisodeIndex } from "./episode-index.js";
 import { readClipboardText } from "./clipboard-reader.js";
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
-import { emlToText, extractDirectoryDocuments, formatDirectoryCapNotice, htmlToText, isEmlDocument, isHtmlDocument, isPdfDocument, parsePdfBuffer } from "./document-reader.js";
+import { emlToText, extractDirectoryDocuments, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isEmlDocument, isHtmlDocument, isPdfDocument, parsePdfBuffer } from "./document-reader.js";
 import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
 import { resolvePersona } from "./program-helpers.js";
 import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
@@ -1869,6 +1869,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           } else if (fetched.text.trim().length > 0) {
             const source = urlGroundingSource(fetched.finalUrl);
             adHocVerifyTargets.set(source, fetched.finalUrl);
+            // Honest about a truncated long page — never silently ground on a prefix.
+            if (fetched.truncated) {
+              io.stderr(formatUrlTruncationNotice(source, 60_000));
+            }
             const picked = selectFilePassages(fetched.text, query);
             for (const passage of picked) {
               scored.push({ chunk: { chunkIndex: passage.chunkIndex, embedding: [], file: source, text: passage.text }, file: source, score: 1 });

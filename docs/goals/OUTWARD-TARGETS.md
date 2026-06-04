@@ -1198,6 +1198,25 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   30-`.md` folder → "muse: …/docs has 30 documents — grounding on the first 25 only; the other
   5 were NOT read…", where before the 5 dropped docs were silent. (a363c44a)
 
+- [x] **P37-33 `muse ask --url <long page>` no longer SILENTLY truncates — it now tells you
+  when it grounded on only the first 60,000 characters (the `--url` twin of P37-30's folder
+  cap).** `fetchReadableUrl` caps a fetched page at 60k chars and returns `truncated: boolean`,
+  but the `--url` block in commands-ask.ts consumed `fetched.text` and IGNORED `fetched.truncated`
+  — so asking about a long article / docs page grounded the answer on the first 60k with NO
+  indication the rest was unread: an answer that lives past the cap reads as "the page doesn't say
+  that" when really Muse never read that far, a hole in the honesty edge. Closed with a pure
+  `formatUrlTruncationNotice(source, maxChars)` (apps/cli/src/document-reader.ts, next to
+  `formatDirectoryCapNotice`) that the `--url` path prints to stderr whenever `fetched.truncated`,
+  citing the same host label the answer cites ("muse: <host> is long — grounded on only the first
+  60,000 characters; anything past that was NOT read. If your answer might be deeper in the page,
+  ask about a specific section."). Deterministic (the flag is set by the fetch cap; the notice
+  fires before the model call). Verified deterministically AND live: a formatter unit test (names
+  the source, the grouped char cap, the NOT-read warning, the section hint — apps/cli/src/
+  document-reader.test.ts) + the full @muse/cli suite (176 files / 1978 tests) + tsc build + `pnpm
+  lint` 0/0 + a LIVE `muse ask --url https://www.gutenberg.org/files/1342/1342-0.txt` on the loop
+  PC → "muse: gutenberg.org is long — grounded on only the first 60,000 characters; anything past
+  that was NOT read…", where before the truncation was silent. (65d4a20e)
+
 - [x] **P37-19 `muse ask --clipboard` — ask about whatever you just copied
   (Perception growth, the ephemeral sibling of `--file`/`--url`).** A NEW
   read-only local source: you copy an article / error message / snippet / email,

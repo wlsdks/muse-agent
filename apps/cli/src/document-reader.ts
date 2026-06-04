@@ -232,3 +232,13 @@ export function formatDirectoryCapNotice(folder: string, totalFound: number, cap
   }
   return `muse: ${folder} has ${totalFound.toString()} documents — grounding on the first ${cap.toString()} only; the other ${(totalFound - cap).toString()} were NOT read. Ask about a narrower subset, or split the folder.\n`;
 }
+
+/**
+ * The `--url` twin of the folder-cap notice: a long web page is fetched only up
+ * to a character cap, so when it was truncated SAY SO — otherwise an answer that
+ * lives past the cap reads as "the page doesn't say" when really Muse never read
+ * that far (Muse shows its work). Pure.
+ */
+export function formatUrlTruncationNotice(source: string, maxChars: number): string {
+  return `muse: ${source} is long — grounded on only the first ${maxChars.toLocaleString("en-US")} characters; anything past that was NOT read. If your answer might be deeper in the page, ask about a specific section.\n`;
+}

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { NOTE_FILE_RE } from "./commands-notes-rag.js";
-import { SUPPORTED_DOC_EXT, emlToText, extractDirectoryDocuments, extractDocumentText, formatDirectoryCapNotice, htmlToText, isEmlDocument, isHtmlDocument, isLikelyBinary, isPdfDocument, parsePdfBuffer, walkDocuments } from "./document-reader.js";
+import { SUPPORTED_DOC_EXT, emlToText, extractDirectoryDocuments, extractDocumentText, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isEmlDocument, isHtmlDocument, isLikelyBinary, isPdfDocument, parsePdfBuffer, walkDocuments } from "./document-reader.js";
 
 const SAMPLE_EML = [
   "From: Jane Park <jane@globex.com>",
@@ -220,5 +220,15 @@ describe("formatDirectoryCapNotice — be honest when a big --file <dir> was tru
     expect(notice).toContain("/big-folder has 50 documents");
     expect(notice).toContain("first 25 only");
     expect(notice).toContain("other 25 were NOT read");
+  });
+})
+
+describe("formatUrlTruncationNotice — be honest when a long --url page was capped", () => {
+  it("names the source, the char cap (grouped), and that the rest was NOT read", () => {
+    const notice = formatUrlTruncationNotice("en.wikipedia.org", 60_000);
+    expect(notice).toContain("en.wikipedia.org is long");
+    expect(notice).toContain("first 60,000 characters");
+    expect(notice).toContain("NOT read");
+    expect(notice).toContain("specific section");
   });
 })
