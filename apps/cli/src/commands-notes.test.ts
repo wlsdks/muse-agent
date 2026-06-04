@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { readFileSync } from "node:fs";
 
-import { fixBrokenLinks, parseNotesSearchLimit, renameNoteWithLinkRewrite, resolveIngestNotePath, resolveUrlNotePath, registerNotesCommands, type NotesCommandHelpers } from "./commands-notes.js";
+import { fixBrokenLinks, formatBrokenBacklinkWarning, notesLinkingTo, parseNotesSearchLimit, renameNoteWithLinkRewrite, resolveIngestNotePath, resolveUrlNotePath, registerNotesCommands, type NotesCommandHelpers } from "./commands-notes.js";
 import type { ProgramIO } from "./program.js";
 
 describe("fixBrokenLinks", () => {
@@ -195,3 +195,30 @@ describe("parseNotesSearchLimit (goal 188)", () => {
     expect(() => parseNotesSearchLimit("-3")).toThrow(/positive number/u);
   });
 });
+
+describe("notesLinkingTo + formatBrokenBacklinkWarning — warn before a delete breaks backlinks", () => {
+  it("returns the notes whose [[wiki-links]] point at the target (the ones a delete would break)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-delete-backlinks-"));
+    writeFileSync(join(dir, "health.md"), "# Health\nsee [[nutrition]] for details");
+    writeFileSync(join(dir, "running.md"), "Cardio supports [[nutrition]] and recovery");
+    writeFileSync(join(dir, "nutrition.md"), "# Nutrition\nprotein targets");
+    writeFileSync(join(dir, "unrelated.md"), "# Unrelated\nno links here");
+    expect([...(await notesLinkingTo(dir, "nutrition.md"))].sort()).toEqual(["health", "running"]);
+  });
+
+  it("returns [] for a note nothing links to (no spurious warning)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-delete-nobacklinks-"));
+    writeFileSync(join(dir, "lonely.md"), "# Lonely\nno one links here");
+    writeFileSync(join(dir, "other.md"), "# Other note");
+    expect(await notesLinkingTo(dir, "lonely.md")).toEqual([]);
+  });
+
+  it("formatBrokenBacklinkWarning: count + names + the fix command, empty when none", () => {
+    expect(formatBrokenBacklinkWarning([])).toBe("");
+    const w = formatBrokenBacklinkWarning(["health", "running"]);
+    expect(w).toContain("2 note(s)");
+    expect(w).toContain("health");
+    expect(w).toContain("running");
+    expect(w).toContain("muse notes fix-links");
+  });
+})

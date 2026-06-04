@@ -2052,6 +2052,29 @@ graph intact as the corpus evolves, so a power-user's Zettelkasten doesn't rot.
   did NOT retrieve and `--connect`'s similarity footer never showed — letting the user jump
   to a connected note similarity alone would have hidden. (a997f3f3)
 
+- [x] **P42-5 `muse notes delete` now WARNS which backlinks it will break — deleting a
+  note no longer silently leaves every `[[note]]` pointing at it dangling.** `muse notes
+  rename` carefully rewrites every `[[wiki-link]]` so a rename can't orphan backlinks, and
+  `muse notes fix-links` repairs broken links — but `muse notes delete` just removed the file
+  and said "Deleted X", silently leaving every note that linked `[[X]]` with a broken link
+  the user never learns about until the graph audit. Closed in apps/cli/src/commands-notes.ts:
+  a `--local` delete now, BEFORE removing the file (so the target still resolves), builds the
+  link graph and reads the target's BACKLINKS (`notesLinkingTo`, reusing `buildNoteLinkGraph`
+  + `noteLinkView` / `resolveNoteId` — the same machinery `fix-links` uses); after a
+  successful delete it prints a warning naming the notes whose links are now broken and points
+  at the fix (`formatBrokenBacklinkWarning` → "⚠ N note(s) link to this … now broken: … Repair
+  with `muse notes fix-links`"), and `--json` gains a `brokenBacklinks` field. Best-effort
+  (an unreadable corpus warns nothing, never blocks the delete) and deterministic (no model).
+  The delete counterpart of rename's link-preservation. Verified deterministically AND live:
+  3 new tests (`notesLinkingTo` returns the notes whose `[[wiki-links]]` point at the target,
+  `[]` for a note nothing links to; `formatBrokenBacklinkWarning` shows the count + names + the
+  fix command, empty when none — apps/cli/src/commands-notes.test.ts) + the full @muse/cli suite
+  (174 files / 1950 tests) + tsc build + `pnpm lint` 0/0 + a LIVE `muse notes delete
+  nutrition.md --local` over a corpus where health.md and running.md both link `[[nutrition]]`
+  → "Deleted nutrition.md" then "⚠ 2 note(s) link to this — their [[wiki-links]] are now
+  broken: health, running   Repair with `muse notes fix-links`", where before the breakage was
+  silent. (f6b3b49a)
+
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,
 closed its deepest hole, and became constructive. Each verified live on

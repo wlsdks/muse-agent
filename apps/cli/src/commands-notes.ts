@@ -23,7 +23,7 @@ import {
   formatNotesList,
   formatProvidersList
 } from "./human-formatters.js";
-import { auditNoteGraph, buildNoteLinkGraph, planLinkFixes, rewriteWikiLinkReferences, type LinkFix } from "./notes-links.js";
+import { auditNoteGraph, buildNoteLinkGraph, noteLinkView, planLinkFixes, resolveNoteId, rewriteWikiLinkReferences, type LinkFix } from "./notes-links.js";
 import { isApiUnreachable } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
@@ -231,6 +231,37 @@ export async function fixBrokenLinks(notesDir: string, dryRun = false, maxDistan
     }
   }
   return { dryRun, fixes, linksRewritten, notesTouched, unresolved };
+}
+
+/**
+ * The note ids that link TO `notePath` via `[[wiki-links]]` — i.e. the backlinks
+ * that DELETING the note would leave broken. Builds the link graph over the
+ * corpus (same reader as fix-links) and reads the target's backlinks. Computed
+ * BEFORE the delete so the target still resolves. notesDir-injected + exported
+ * for direct testing. Best-effort: an unreadable corpus yields [].
+ */
+export async function notesLinkingTo(notesDir: string, notePath: string): Promise<readonly string[]> {
+  const files = await listMarkdownFiles(notesDir);
+  const notes = await Promise.all(files.map(async (path) => ({
+    body: await readFile(path, "utf8"),
+    id: basename(path).replace(/\.md$/iu, "")
+  })));
+  const graph = buildNoteLinkGraph(notes);
+  const targetId = resolveNoteId(graph, notePath) ?? basename(notePath).replace(/\.md$/iu, "");
+  return noteLinkView(graph, targetId).backlinks;
+}
+
+/**
+ * Warn that deleting a note leaves its backlinks broken — the delete counterpart
+ * of `rename`'s link-preservation. Empty when nothing links to it. Pure.
+ */
+export function formatBrokenBacklinkWarning(backlinks: readonly string[]): string {
+  if (backlinks.length === 0) {
+    return "";
+  }
+  const shown = backlinks.slice(0, 8);
+  const more = backlinks.length > shown.length ? ` (+${(backlinks.length - shown.length).toString()} more)` : "";
+  return `⚠ ${backlinks.length.toString()} note(s) link to this — their [[wiki-links]] are now broken: ${shown.join(", ")}${more}\n   Repair with \`muse notes fix-links\`.\n`;
 }
 
 export function registerNotesCommands(program: Command, io: ProgramIO, helpers: NotesCommandHelpers): void {
@@ -461,7 +492,12 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
     .option("--json", "Print the raw response instead of a short confirmation")
     .action(async (notePath: string, options: SharedOptions, command) => {
       let payload: Record<string, unknown>;
+      // For a LOCAL delete, find which notes link to this one BEFORE removing it,
+      // so we can warn that their [[wiki-links]] will be left broken (the delete
+      // counterpart of `rename`'s link-preservation). Best-effort, never blocks.
+      let backlinks: readonly string[] = [];
       if (options.local) {
+        backlinks = await notesLinkingTo(resolveNotesDir(process.env as Record<string, string | undefined>), notePath).catch(() => []);
         payload = await callLocalTool("delete", { path: notePath });
       } else {
         payload = (await helpers.apiRequest(io, command, `/api/notes?path=${encodeURIComponent(notePath)}`, undefined, "DELETE")) as Record<string, unknown>;
@@ -471,13 +507,18 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
         process.exitCode = 1;
         return;
       }
+      const broke = payload.deleted === true ? backlinks : [];
       if (options.json) {
-        helpers.writeOutput(io, payload);
+        helpers.writeOutput(io, broke.length > 0 ? { ...payload, brokenBacklinks: broke } : payload);
         return;
       }
       io.stdout(payload.deleted === true
         ? `Deleted ${String(payload.path ?? notePath)}\n`
         : `No note found at ${String(payload.path ?? notePath)}\n`);
+      const warning = formatBrokenBacklinkWarning(broke);
+      if (warning) {
+        io.stderr(warning);
+      }
     });
 
   notes
