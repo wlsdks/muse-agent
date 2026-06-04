@@ -77,7 +77,7 @@ describe("buildActuatorTools — env-driven actuator selection", () => {
       io: fakeIo(),
       userId: "stark"
     });
-    expect(tools.map((t) => t.definition.name).sort()).toEqual(["email_send", "web_action"]);
+    expect(tools.map((t) => t.definition.name).sort()).toEqual(["email_reply", "email_send", "web_action"]);
   });
 
   it("adds home_action only when both Home Assistant env vars are set", () => {
@@ -115,7 +115,7 @@ describe("summarizeActuators — armed-state visibility + config hints", () => {
   it("arms only web_action with no provider env, with hints for the rest", () => {
     const summary = summarizeActuators(env());
     expect(summary.armed).toEqual(["web_action"]);
-    expect(summary.unavailable.map((u) => u.name).sort()).toEqual(["email_send", "home_action"]);
+    expect(summary.unavailable.map((u) => u.name).sort()).toEqual(["email_reply", "email_send", "home_action"]);
     expect(summary.unavailable.find((u) => u.name === "email_send")?.hint).toContain("MUSE_GMAIL_TOKEN");
     expect(summary.unavailable.find((u) => u.name === "home_action")?.hint).toContain("MUSE_HOMEASSISTANT_URL");
   });
@@ -124,7 +124,7 @@ describe("summarizeActuators — armed-state visibility + config hints", () => {
     const summary = summarizeActuators(
       env({ MUSE_GMAIL_TOKEN: "tok", MUSE_HOMEASSISTANT_TOKEN: "ha", MUSE_HOMEASSISTANT_URL: "http://ha.local:8123" })
     );
-    expect([...summary.armed].sort()).toEqual(["email_send", "home_action", "web_action"]);
+    expect([...summary.armed].sort()).toEqual(["email_reply", "email_send", "home_action", "web_action"]);
     expect(summary.unavailable).toEqual([]);
   });
 

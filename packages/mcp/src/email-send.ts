@@ -60,19 +60,50 @@ export type SendEmailOutcome =
       readonly candidates?: readonly Contact[];
     };
 
+type EmailActionLogger = (result: "performed" | "refused" | "failed", what: string, why: string, detail: string) => Promise<void>;
+
+function makeEmailLogger(actionLogFile: string, userId: string, now: () => Date, idFactory: () => string): EmailActionLogger {
+  return (result, what, why, detail) =>
+    appendActionLog(actionLogFile, { detail, id: idFactory(), result, userId, what, when: now().toISOString(), why });
+}
+
+/**
+ * The shared draft-first core (outbound-safety rules 1+2+4): present the EXACT
+ * draft to the user, send ONLY on approval, and action-log every outcome. The
+ * recipient is ALREADY resolved by the caller (a contact for `sendEmailWithApproval`,
+ * the original sender for `replyEmailWithApproval`), so this never guesses one — it
+ * is the single deterministic gate both send paths funnel through.
+ */
+async function dispatchEmailDraft(
+  draft: EmailDraft,
+  deps: { readonly approvalGate: EmailApprovalGate; readonly sender: EmailSender; readonly log: EmailActionLogger }
+): Promise<SendEmailOutcome> {
+  let decision: ApprovalDecision;
+  try {
+    decision = await deps.approvalGate(draft);
+  } catch (cause) {
+    // A gate that throws (undeliverable prompt, timeout) is fail-closed.
+    decision = { approved: false, reason: `approval gate error: ${cause instanceof Error ? cause.message : String(cause)}` };
+  }
+  if (!decision.approved) {
+    await deps.log("refused", `email to ${draft.to}: ${draft.subject}`, "outbound email refused", decision.reason ?? "not approved");
+    return { detail: decision.reason ?? "not approved", reason: "denied", sent: false };
+  }
+  try {
+    await deps.sender.sendEmail(draft.to, draft.subject, draft.body);
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    await deps.log("failed", `email to ${draft.to}: ${draft.subject}`, "user-approved outbound email", detail);
+    return { detail, reason: "send-failed", sent: false };
+  }
+  await deps.log("performed", `email to ${draft.to}: ${draft.subject}`, "user-approved outbound email", `sent: ${draft.body.slice(0, 200)}`);
+  return { sent: true, to: draft.to };
+}
+
 export async function sendEmailWithApproval(options: SendEmailWithApprovalOptions): Promise<SendEmailOutcome> {
   const now = options.now ?? (() => new Date());
   const idFactory = options.idFactory ?? (() => `act_${Date.now().toString()}_${Math.random().toString(36).slice(2, 8)}`);
-  const log = (result: "performed" | "refused" | "failed", what: string, why: string, detail: string): Promise<void> =>
-    appendActionLog(options.actionLogFile, {
-      detail,
-      id: idFactory(),
-      result,
-      userId: options.userId,
-      what,
-      when: now().toISOString(),
-      why
-    });
+  const log = makeEmailLogger(options.actionLogFile, options.userId, now, idFactory);
 
   // Rule 3: recipient resolved, never guessed.
   const resolution = resolveContact(options.contacts, options.recipientQuery);
@@ -92,28 +123,53 @@ export async function sendEmailWithApproval(options: SendEmailWithApprovalOption
     return { detail: `${resolution.contact.name} has no email address`, reason: "no-identifier", sent: false };
   }
 
-  // Rules 1 + 2: draft-first, fail-closed approval gate.
+  // Rules 1 + 2 + 4: draft-first, fail-closed gate, recorded — the shared core.
   const draft: EmailDraft = { body: options.body, recipientName: resolution.contact.name, subject: options.subject, to };
-  let decision: ApprovalDecision;
-  try {
-    decision = await options.approvalGate(draft);
-  } catch (cause) {
-    // A gate that throws (undeliverable prompt, timeout) is fail-closed.
-    decision = { approved: false, reason: `approval gate error: ${cause instanceof Error ? cause.message : String(cause)}` };
-  }
-  if (!decision.approved) {
-    await log("refused", `email to ${to}: ${options.subject}`, "outbound email refused", decision.reason ?? "not approved");
-    return { detail: decision.reason ?? "not approved", reason: "denied", sent: false };
-  }
+  return dispatchEmailDraft(draft, { approvalGate: options.approvalGate, log, sender: options.sender });
+}
 
-  // Confirmed: the send fires exactly once, with the confirmed content.
-  try {
-    await options.sender.sendEmail(to, options.subject, options.body);
-  } catch (cause) {
-    const detail = cause instanceof Error ? cause.message : String(cause);
-    await log("failed", `email to ${to}: ${options.subject}`, "user-approved outbound email", detail);
-    return { detail, reason: "send-failed", sent: false };
+export interface ReplyEmailWithApprovalOptions {
+  /** The original sender's email address — resolved BY the message being replied to, never guessed. */
+  readonly to: string;
+  /** Display name for the draft (the original sender's name). */
+  readonly recipientName: string;
+  /** Already-normalised reply subject (the caller adds the `Re:` prefix). */
+  readonly subject: string;
+  readonly body: string;
+  readonly approvalGate: EmailApprovalGate;
+  readonly sender: EmailSender;
+  readonly actionLogFile: string;
+  readonly userId: string;
+  readonly now?: () => Date;
+  readonly idFactory?: () => string;
+}
+
+/**
+ * Draft-first REPLY to a received email. Same outbound-safety contract as
+ * `sendEmailWithApproval`, but the recipient is the ORIGINAL SENDER's address
+ * (already resolved by the message), so there is no contact lookup to guess — a
+ * missing/garbage reply address fails closed before the gate. Everything else
+ * (draft-first confirm, deny/timeout ⇒ no send, action-log) is the shared core.
+ */
+export async function replyEmailWithApproval(options: ReplyEmailWithApprovalOptions): Promise<SendEmailOutcome> {
+  const now = options.now ?? (() => new Date());
+  const idFactory = options.idFactory ?? (() => `act_${Date.now().toString()}_${Math.random().toString(36).slice(2, 8)}`);
+  const log = makeEmailLogger(options.actionLogFile, options.userId, now, idFactory);
+
+  const to = options.to.trim();
+  if (!to.includes("@")) {
+    await log("refused", `reply to ${options.recipientName}`, "outbound email refused", "the original message has no valid reply address");
+    return { detail: "the original message has no valid reply address", reason: "no-identifier", sent: false };
   }
-  await log("performed", `email to ${to}: ${options.subject}`, "user-approved outbound email", `sent: ${options.body.slice(0, 200)}`);
-  return { sent: true, to };
+  const draft: EmailDraft = { body: options.body, recipientName: options.recipientName, subject: options.subject, to };
+  return dispatchEmailDraft(draft, { approvalGate: options.approvalGate, log, sender: options.sender });
+}
+
+/** "Re: …" reply subject, idempotent (never stacks "Re: Re:"). Empty subject → "Re:". */
+export function replySubject(original: string): string {
+  const trimmed = original.trim();
+  if (/^re:/iu.test(trimmed)) {
+    return trimmed;
+  }
+  return trimmed.length > 0 ? `Re: ${trimmed}` : "Re:";
 }

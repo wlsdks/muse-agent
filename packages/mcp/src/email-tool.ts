@@ -14,8 +14,8 @@
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
-import type { EmailProvider, EmailReader, EmailSearcher, EmailSender } from "./email-provider.js";
-import { sendEmailWithApproval, type EmailApprovalGate } from "./email-send.js";
+import { extractEmailAddress, type EmailProvider, type EmailReader, type EmailSearcher, type EmailSender } from "./email-provider.js";
+import { replyEmailWithApproval, replySubject, sendEmailWithApproval, type EmailApprovalGate } from "./email-send.js";
 import type { Contact } from "./personal-contacts-store.js";
 
 export interface EmailSendToolDeps {
@@ -74,6 +74,66 @@ export function createEmailSendTool(deps: EmailSendToolDeps): MuseTool {
           ? { candidates: outcome.candidates.map((c) => c.name) }
           : {})
       };
+    }
+  };
+}
+
+export interface EmailReplyToolDeps {
+  readonly reader: EmailReader;
+  readonly sender: EmailSender;
+  readonly approvalGate: EmailApprovalGate;
+  readonly actionLogFile: string;
+  readonly userId: string;
+}
+
+export function createEmailReplyTool(deps: EmailReplyToolDeps): MuseTool {
+  return {
+    definition: {
+      description:
+        "SEND a reply to an email the user RECEIVED. The reply goes back to that message's sender with a 'Re:' subject; the user confirms the exact text before it sends. USE WHENEVER the user wants to answer / reply to / respond to / write back to a received email and has given the reply text (e.g. 'reply to email <id> saying Friday works', 'tell them yes'). NOT for just READING the email (that's read_email — this one sends), NOT for a brand-new email to a named contact (that's email_send), NOT for a chat/messenger DM (that's muse.messaging.send).",
+      domain: "messaging",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          body: { description: "The reply text to send back to the original sender, e.g. 'Thanks — Friday at 3pm works for me.'", type: "string" },
+          id: { description: "Id of the message to reply to, from a prior email_recent / search_email / read_email result, e.g. '18f2a1c3d4e5'.", type: "string" }
+        },
+        required: ["id", "body"],
+        type: "object"
+      },
+      keywords: ["reply", "respond", "answer", "reply to", "email", "write back"],
+      name: "email_reply",
+      risk: "execute"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const id = typeof args["id"] === "string" ? args["id"].trim() : "";
+      const body = typeof args["body"] === "string" ? args["body"] : "";
+      if (id.length === 0) {
+        return { error: "email_reply requires the 'id' of the message to reply to (look it up with email_recent or search_email)", sent: false };
+      }
+      const message = await deps.reader.getMessage(id);
+      if (!message) {
+        return { detail: `no message with id '${id}' — look it up with email_recent or search_email first`, reason: "unknown-message", sent: false };
+      }
+      const to = extractEmailAddress(message.from);
+      if (!to) {
+        return { detail: `couldn't determine a reply address from the sender '${message.from}'`, reason: "no-identifier", sent: false };
+      }
+      const subject = replySubject(message.subject);
+      const outcome = await replyEmailWithApproval({
+        actionLogFile: deps.actionLogFile,
+        approvalGate: deps.approvalGate,
+        body,
+        recipientName: message.from,
+        sender: deps.sender,
+        subject,
+        to,
+        userId: deps.userId
+      });
+      if (outcome.sent) {
+        return { repliedTo: to, sent: true, subject };
+      }
+      return { detail: outcome.detail, reason: outcome.reason, sent: false };
     }
   };
 }
@@ -188,7 +248,7 @@ export function createEmailReadMessageTool(deps: EmailReadMessageToolDeps): Muse
   return {
     definition: {
       description:
-        "Read the FULL text of one inbox message by its id. Use after `email_recent` (which returns each message's id) when the user wants the whole email, not just the snippet. Read-only.",
+        "Read / SHOW the FULL text of one inbox message by its id (after `email_recent` gives the id). Use ONLY to VIEW a message's content. Read-only — it does NOT answer or send anything; to reply to the message use email_reply.",
       domain: "messaging",
       inputSchema: {
         additionalProperties: false,

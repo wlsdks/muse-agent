@@ -11,10 +11,14 @@ import { join } from "node:path";
 import { resolveActionLogFile, resolveContactsFile, resolveNotesDir } from "@muse/autoconfigure";
 import {
   GmailEmailProvider,
+  extractEmailAddress,
   queryContacts,
+  replyEmailWithApproval,
+  replySubject,
   sendEmailWithApproval,
   type EmailApprovalGate,
   type EmailProvider,
+  type EmailReader,
   type EmailSender
 } from "@muse/mcp";
 import { confirm, isCancel } from "@clack/prompts";
@@ -33,6 +37,8 @@ interface SendOptions {
 export interface EmailCommandDeps {
   readonly approvalGate?: EmailApprovalGate;
   readonly sender?: EmailSender;
+  /** Test seam for `email reply` — reads the message being replied to. */
+  readonly reader?: EmailReader;
   readonly contactsFile?: string;
   readonly actionLogFile?: string;
   /** Test seam for `email sync` — a contract-faithful real GmailEmailProvider with a fake fetch. */
@@ -41,7 +47,7 @@ export interface EmailCommandDeps {
 }
 
 export function registerEmailCommands(program: Command, io: ProgramIO, deps: EmailCommandDeps = {}): void {
-  const email = program.command("email").description("Email — sync your inbox into recall (`sync`) + draft-first send (`send`)");
+  const email = program.command("email").description("Email — sync your inbox into recall (`sync`) + draft-first send (`send`) / reply (`reply`)");
 
   email
     .command("send")
@@ -93,6 +99,59 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
     });
 
   email
+    .command("reply")
+    .description("Reply to a received email by its id — drafts the reply to the original sender (Re:) and sends only after you confirm")
+    .requiredOption("--id <id>", "Id of the message to reply to (from your mail client / `muse email sync`)")
+    .requiredOption("--body <text>", "The reply text to send back to the sender")
+    .option("--user <id>", "User identity for the action log", "stark")
+    .action(async (options: { readonly id?: string; readonly body?: string; readonly user?: string }) => {
+      const provider = buildGmailProvider(io);
+      const reader = deps.reader ?? provider;
+      const sender = deps.sender ?? provider;
+      if (!reader || !sender) {
+        io.stderr("muse email reply: set MUSE_GMAIL_TOKEN to a Gmail OAuth2 access token (gmail.send scope).\n");
+        process.exitCode = 1;
+        return;
+      }
+      const message = await reader.getMessage(options.id ?? "");
+      if (!message) {
+        io.stderr(`muse email reply: no message with id '${options.id ?? ""}' — check the id.\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const to = extractEmailAddress(message.from);
+      if (!to) {
+        io.stderr(`muse email reply: couldn't determine a reply address from the sender '${message.from}'.\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const subject = replySubject(message.subject);
+      const gate: EmailApprovalGate = deps.approvalGate ?? ((draft) => {
+        io.stdout(`\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
+        return confirm({ message: "Send this reply?" }).then((answer) =>
+          isCancel(answer) || answer !== true
+            ? { approved: false, reason: "user did not confirm" }
+            : { approved: true });
+      });
+      const outcome = await replyEmailWithApproval({
+        actionLogFile: deps.actionLogFile ?? resolveActionLogFile(process.env as Record<string, string | undefined>),
+        approvalGate: gate,
+        body: options.body ?? "",
+        recipientName: message.from,
+        sender,
+        subject,
+        to,
+        userId: options.user ?? "stark"
+      });
+      if (outcome.sent) {
+        io.stdout(`Replied to ${outcome.to}.\n`);
+        return;
+      }
+      io.stderr(`Not sent (${outcome.reason}): ${outcome.detail}\n`);
+      process.exitCode = 1;
+    });
+
+  email
     .command("sync")
     .description("Pull your recent emails into local notes so `muse ask` can recall them (Gmail; needs MUSE_GMAIL_TOKEN, read-only)")
     .option("--limit <n>", "How many recent inbox emails to sync (default 20, max 100)", "20")
@@ -128,10 +187,14 @@ function buildGmailReader(io: ProgramIO): EmailProvider | undefined {
   return token ? new GmailEmailProvider(token, io.fetch ?? globalThis.fetch) : undefined;
 }
 
-function buildGmailSender(io: ProgramIO): EmailSender | undefined {
+function buildGmailProvider(io: ProgramIO): GmailEmailProvider | undefined {
   const token = process.env.MUSE_GMAIL_TOKEN?.trim();
   if (!token) {
     return undefined;
   }
   return new GmailEmailProvider(token, io.fetch ?? globalThis.fetch);
+}
+
+function buildGmailSender(io: ProgramIO): EmailSender | undefined {
+  return buildGmailProvider(io);
 }

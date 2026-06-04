@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { EmailApprovalGate, EmailSender } from "@muse/mcp";
+import type { EmailApprovalGate, EmailMessage, EmailReader, EmailSender } from "@muse/mcp";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
@@ -141,5 +141,46 @@ describe("muse email sync — pull recent emails into recallable notes (contract
     const res = await run(["sync"], { emailSource: new GmailEmailProvider("tok", boom), notesDir });
     expect(res.exitCode).toBe(1);
     expect(res.output).toContain("could not read Gmail");
+  });
+});
+
+describe("muse email reply — surface (draft-first reply to a received email)", () => {
+  const MSG: EmailMessage = { body: "Can you confirm Friday?", from: "Jane Park <jane@globex.com>", id: "m1", subject: "Q3 budget" };
+  const reader = (msg: EmailMessage | undefined): EmailReader => ({ getMessage: async (id) => (id === "m1" ? msg : undefined) });
+
+  it("CONFIRM: reads the message, replies to the SENDER's address with a Re: subject + body", async () => {
+    const fix = fixtures([]);
+    const { sender, sends } = recordingSender();
+    const r = await run(["reply", "--id", "m1", "--body", "Friday works."], { ...fix, approvalGate: approve, reader: reader(MSG), sender });
+    expect(r.output).toContain("Replied to jane@globex.com");
+    expect(sends).toEqual([{ body: "Friday works.", subject: "Re: Q3 budget", to: "jane@globex.com" }]);
+    expect(r.exitCode).toBeUndefined();
+  });
+
+  it("DENY: nothing is sent", async () => {
+    const fix = fixtures([]);
+    const { sender, sends } = recordingSender();
+    const r = await run(["reply", "--id", "m1", "--body", "no thanks"], { ...fix, approvalGate: deny, reader: reader(MSG), sender });
+    expect(r.output).toContain("Not sent (denied)");
+    expect(sends).toHaveLength(0);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("UNKNOWN id: no send, clear error", async () => {
+    const fix = fixtures([]);
+    const { sender, sends } = recordingSender();
+    const r = await run(["reply", "--id", "nope", "--body", "x"], { ...fix, approvalGate: approve, reader: reader(MSG), sender });
+    expect(r.output).toContain("no message with id 'nope'");
+    expect(sends).toHaveLength(0);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("sender with no parseable address: no send (fails closed)", async () => {
+    const fix = fixtures([]);
+    const { sender, sends } = recordingSender();
+    const r = await run(["reply", "--id", "m1", "--body", "x"], { ...fix, approvalGate: approve, reader: reader({ ...MSG, from: "Anonymous Sender" }), sender });
+    expect(r.output).toContain("couldn't determine a reply address");
+    expect(sends).toHaveLength(0);
+    expect(r.exitCode).toBe(1);
   });
 });

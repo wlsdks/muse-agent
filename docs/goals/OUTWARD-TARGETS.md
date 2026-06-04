@@ -2092,6 +2092,32 @@ in the loop.
   --local` → "Deleted task …" (both by title, no uuid), `complete review` → the ambiguous candidate
   list, `complete nonexistent` → not-found. (8bf86746)
 
+- [x] **P41-22 `muse email reply <id>` — Muse can now REPLY to an email you RECEIVED (draft-first,
+  to the original sender, 'Re:' subject), not just compose a brand-new one.** Reach was send-only:
+  `email_send` / `muse email send` compose a NEW email to a named contact, but there was no way to
+  ANSWER a received message — the reply recipient is the message's SENDER (an address), which the
+  contact-name send path can't target. Added the draft-first reply across the whole stack, reusing
+  the proven outbound-safety gate: a shared `dispatchEmailDraft` core was extracted from
+  `sendEmailWithApproval` (behavior-preserving) and a new `replyEmailWithApproval` funnels through
+  it with the recipient PRE-RESOLVED by the message (never guessed; a missing/garbage reply address
+  fails closed before the gate) + a pure idempotent `replySubject` ('Re:' once, never stacked). The
+  reply target reads from the message via `EmailReader.getMessage` + `extractEmailAddress`. Shipped
+  on TWO surfaces: a new `muse email reply --id <id> --body <text>` CLI command (the reliable,
+  explicit surface — reads the message, drafts to the sender, confirms, sends) AND an `email_reply`
+  agent tool (armed with MUSE_GMAIL_TOKEN alongside email_send). **HONEST SCOPE (tool-calling.md):
+  the local qwen3:8b does NOT reliably one-shot-SELECT `email_reply` — given "reply to email <id>…"
+  it picks `read_email` first (it reaches for the id to READ it), even after the descriptions were
+  sharpened; replying is genuinely multi-step (read → reply), so the CLI command is the delivered
+  reliable surface and the agent tool is best-effort in a multi-step flow, NOT claimed as one-shot.**
+  Verified deterministically (outbound-safety contract — the delivery gate): `replyEmailWithApproval`
+  CONFIRM sends once to the sender with the Re: subject+body / DENY / TIMEOUT(gate throws) / NO-ADDRESS
+  → no send, all via a CONTRACT-FAITHFUL real GmailEmailProvider with a faked fetch (packages/mcp/src/
+  email-send.test.ts); the `email_reply` tool CONFIRM/UNKNOWN-message/DENY/no-address (email-tool.test.ts);
+  the `muse email reply` CLI CONFIRM/DENY/UNKNOWN/no-address (commands-email.test.ts) — plus @muse/mcp
+  1530 + @muse/cli 1982 + mcp/cli/autoconfigure/agent-core/api builds + `pnpm lint` 0/0 + a LIVE
+  `muse email reply` (no token) failing closed with the set-MUSE_GMAIL_TOKEN guidance and `muse email
+  --help` listing `reply`. (3ca05c82)
+
 **P42 — Knowledge: your notes stay coherent (the [[wiki-link]] graph is a
 first-class structure, not just decoration).** Muse already builds a note link
 graph (`buildNoteLinkGraph`), surfaces backlinks, and AUDITS for broken links

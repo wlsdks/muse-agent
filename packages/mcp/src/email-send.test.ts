@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { GmailEmailProvider } from "./email-provider.js";
-import { sendEmailWithApproval, type EmailApprovalGate } from "./email-send.js";
+import { replyEmailWithApproval, replySubject, sendEmailWithApproval, type EmailApprovalGate } from "./email-send.js";
 import { readActionLog } from "./personal-action-log-store.js";
 import type { Contact } from "./personal-contacts-store.js";
 
@@ -128,5 +128,71 @@ describe("sendEmailWithApproval — outbound-safety contract", () => {
     expect(outcome).toMatchObject({ reason: "send-failed", sent: false });
     expect(attempts).toBe(1);
     expect((await readActionLog(opts.actionLogFile))[0]).toMatchObject({ result: "failed" });
+  });
+});
+
+describe("replySubject — idempotent Re: prefix", () => {
+  it("adds Re: once, never stacks it, handles empty", () => {
+    expect(replySubject("Q3 budget")).toBe("Re: Q3 budget");
+    expect(replySubject("Re: Q3 budget")).toBe("Re: Q3 budget");
+    expect(replySubject("re: already")).toBe("re: already");
+    expect(replySubject("  ")).toBe("Re:");
+  });
+});
+
+describe("replyEmailWithApproval — outbound-safety contract (reply to a received email)", () => {
+  function replyOpts(over: Partial<Parameters<typeof replyEmailWithApproval>[0]> = {}) {
+    const { sender } = gmailSender();
+    return {
+      actionLogFile: logFile(),
+      approvalGate: approve,
+      body: "Friday at 3pm works.",
+      recipientName: "Jane Park",
+      sender,
+      subject: replySubject("Q3 budget"),
+      to: "jane@globex.com",
+      userId: "stark",
+      ...over
+    };
+  }
+
+  it("CONFIRM: the reply fires once to the sender address with the Re: subject + body, logs performed", async () => {
+    const { sender, sends } = gmailSender();
+    const opts = replyOpts({ sender });
+    const outcome = await replyEmailWithApproval(opts);
+    expect(outcome).toEqual({ sent: true, to: "jane@globex.com" });
+    expect(sends).toHaveLength(1);
+    const mime = Buffer.from(sends[0]!.raw, "base64url").toString("utf8");
+    expect(mime).toContain("jane@globex.com");
+    expect(mime).toContain("Re: Q3 budget");
+    expect(mime).toContain("Friday at 3pm works.");
+    const log = await readActionLog(opts.actionLogFile);
+    expect(log[0]).toMatchObject({ result: "performed" });
+  });
+
+  it("DENY: nothing is sent, the refusal is logged", async () => {
+    const { sender, sends } = gmailSender();
+    const opts = replyOpts({ approvalGate: deny, sender });
+    const outcome = await replyEmailWithApproval(opts);
+    expect(outcome).toMatchObject({ reason: "denied", sent: false });
+    expect(sends).toHaveLength(0);
+    expect((await readActionLog(opts.actionLogFile))[0]).toMatchObject({ result: "refused" });
+  });
+
+  it("TIMEOUT (approval gate throws): fail-closed, no send", async () => {
+    const { sender, sends } = gmailSender();
+    const outcome = await replyEmailWithApproval(replyOpts({ approvalGate: throwingGate, sender }));
+    expect(outcome.sent).toBe(false);
+    expect(sends).toHaveLength(0);
+  });
+
+  it("NO REPLY ADDRESS: fails closed BEFORE prompting, no send", async () => {
+    const { sender, sends } = gmailSender();
+    let gateCalls = 0;
+    const gate: EmailApprovalGate = () => { gateCalls += 1; return { approved: true }; };
+    const outcome = await replyEmailWithApproval(replyOpts({ approvalGate: gate, sender, to: "not-an-address" }));
+    expect(outcome).toMatchObject({ reason: "no-identifier", sent: false });
+    expect(gateCalls).toBe(0); // never even drafted/prompted
+    expect(sends).toHaveLength(0);
   });
 });

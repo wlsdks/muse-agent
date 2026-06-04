@@ -653,10 +653,13 @@ export {
   type EmailSummary
 } from "./email-provider.js";
 export {
+  replyEmailWithApproval,
+  replySubject,
   sendEmailWithApproval,
   type ApprovalDecision,
   type EmailApprovalGate,
   type EmailDraft,
+  type ReplyEmailWithApprovalOptions,
   type SendEmailOutcome,
   type SendEmailWithApprovalOptions
 } from "./email-send.js";
@@ -670,10 +673,12 @@ export {
 export {
   createEmailReadMessageTool,
   createEmailReadTool,
+  createEmailReplyTool,
   createEmailSearchTool,
   createEmailSendTool,
   type EmailReadMessageToolDeps,
   type EmailReadToolDeps,
+  type EmailReplyToolDeps,
   type EmailSearchToolDeps,
   type EmailSendToolDeps
 } from "./email-tool.js";

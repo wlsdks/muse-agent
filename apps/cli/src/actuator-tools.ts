@@ -14,6 +14,7 @@ import type { MuseEnvironment } from "@muse/autoconfigure";
 import { resolveActionLogFile, resolveContactsFile } from "@muse/autoconfigure";
 import {
   GmailEmailProvider,
+  createEmailReplyTool,
   createEmailSendTool,
   createHomeActionTool,
   createWebActionTool,
@@ -43,9 +44,10 @@ export function summarizeActuators(env: MuseEnvironment): ActuatorSummary {
   const unavailable: { name: string; hint: string }[] = [];
 
   if (env.MUSE_GMAIL_TOKEN?.trim()) {
-    armed.push("email_send");
+    armed.push("email_send", "email_reply");
   } else {
     unavailable.push({ hint: "set MUSE_GMAIL_TOKEN", name: "email_send" });
+    unavailable.push({ hint: "set MUSE_GMAIL_TOKEN", name: "email_reply" });
   }
 
   if (env.MUSE_HOMEASSISTANT_URL?.trim() && env.MUSE_HOMEASSISTANT_TOKEN?.trim()) {
@@ -132,12 +134,20 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
         ? { approved: true }
         : { approved: false, reason: "user did not confirm" };
     };
+    const gmail = new GmailEmailProvider(gmailToken, fetchImpl);
     tools.push(
       createEmailSendTool({
         actionLogFile,
         approvalGate: emailGate,
         contacts: () => queryContacts(contactsFile),
-        sender: new GmailEmailProvider(gmailToken, fetchImpl),
+        sender: gmail,
+        userId
+      }),
+      createEmailReplyTool({
+        actionLogFile,
+        approvalGate: emailGate,
+        reader: gmail,
+        sender: gmail,
         userId
       })
     );
