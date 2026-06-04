@@ -115,3 +115,56 @@ describe("muse.calendar.availability tool — over the registry", () => {
     expect(out.error).toContain("fromIso");
   });
 });
+
+describe("muse.calendar.conflicts tool — double-booking detection over the registry", () => {
+  function calendarServer(events: AvailabilityEventLike[]) {
+    return createCalendarMcpServer({
+      registry: {
+        listEvents: async () => events.map((e, i) => ({ ...e, id: `e${i.toString()}`, providerId: "p" })),
+        createEvent: async () => ({}),
+        updateEvent: async () => ({}),
+        deleteEvent: async () => undefined,
+        describe: () => []
+      } as never
+    });
+  }
+  const tool = (events: AvailabilityEventLike[]) =>
+    calendarServer(events).tools.find((t) => t.name === "conflicts")!;
+
+  it("is exposed as a read tool in the calendar domain", () => {
+    const def = tool([]);
+    expect(def).toBeDefined();
+    expect(def.risk).toBe("read");
+    expect(def.domain).toBe("calendar");
+  });
+
+  it("reports each overlapping PAIR with the overlap span; back-to-back events are NOT a conflict", async () => {
+    const overlapping = await tool([
+      ev("Design review", "2026-05-25T10:00:00Z", "2026-05-25T11:00:00Z"),
+      ev("1:1 with Sam", "2026-05-25T10:30:00Z", "2026-05-25T11:30:00Z"), // overlaps 10:30–11:00
+      ev("Lunch", "2026-05-25T12:00:00Z", "2026-05-25T13:00:00Z") // disjoint
+    ]).execute({ fromIso: "2026-05-25T00:00:00Z", toIso: "2026-05-26T00:00:00Z" }) as {
+      total: number;
+      conflicts: { a: { title: string }; b: { title: string }; overlapStartsAtIso: string; overlapEndsAtIso: string }[];
+    };
+    expect(overlapping.total).toBe(1);
+    expect([overlapping.conflicts[0]!.a.title, overlapping.conflicts[0]!.b.title].sort())
+      .toEqual(["1:1 with Sam", "Design review"]);
+    expect(overlapping.conflicts[0]!.overlapStartsAtIso).toBe("2026-05-25T10:30:00.000Z");
+    expect(overlapping.conflicts[0]!.overlapEndsAtIso).toBe("2026-05-25T11:00:00.000Z");
+
+    const clear = await tool([
+      ev("A", "2026-05-25T10:00:00Z", "2026-05-25T11:00:00Z"),
+      ev("B", "2026-05-25T11:00:00Z", "2026-05-25T12:00:00Z") // back-to-back, not overlapping
+    ]).execute({ fromIso: "2026-05-25T00:00:00Z", toIso: "2026-05-26T00:00:00Z" }) as { total: number; conflicts: unknown[] };
+    expect(clear.total).toBe(0);
+    expect(clear.conflicts).toEqual([]);
+  });
+
+  it("defaults the window to now..+7d when fromIso/toIso are omitted (no error, unlike availability)", async () => {
+    const out = await tool([]).execute({}) as { total: number; windowFromIso: string; windowToIso: string };
+    expect(out.total).toBe(0);
+    expect(typeof out.windowFromIso).toBe("string");
+    expect(typeof out.windowToIso).toBe("string");
+  });
+});

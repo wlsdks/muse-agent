@@ -7,6 +7,7 @@ import type {
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { computeAvailability } from "./calendar-availability.js";
+import { detectCalendarConflicts } from "./calendar-conflicts.js";
 import { formatDueLocal } from "./local-due-format.js";
 import { readBoolean, readString, readStringArray, errorMessage } from "./loopback-helpers.js";
 import type { LoopbackMcpServer } from "./loopback.js";
@@ -146,6 +147,53 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
         domain: "calendar",
         keywords: ["free", "busy", "available", "availability", "gap", "slot", "한가"],
         name: "availability",
+        risk: "read"
+      },
+      {
+        description:
+          "List DOUBLE-BOOKINGS — pairs of events whose times OVERLAP — in a window. " +
+          "Use for 'do I have any conflicts?', 'am I double-booked next week?', 'any overlapping meetings?', '겹치는 일정 있어?'. " +
+          "`fromIso` / `toIso` accept an ISO-8601 timestamp OR a relative phrase ('next week', 'tomorrow'); " +
+          "defaults: from = now, to = +7 days. If `providerId` is omitted, fans out across all providers. " +
+          "Returns each overlapping PAIR (`a`, `b`, with local times) plus the `overlap` span, and `total`. " +
+          "Do NOT use to check whether you're free at ONE specific time (use `availability`) or to LIST everything scheduled (use `list`).",
+        execute: async (args): Promise<JsonObject> => {
+          const from = parseIsoDate(readString(args, "fromIso")) ?? new Date();
+          const to = parseIsoDate(readString(args, "toIso")) ?? new Date(from.getTime() + 7 * 86_400_000);
+          const providerId = readString(args, "providerId");
+          try {
+            const events = await registry.listEvents({ from, to }, providerId);
+            const conflicts = detectCalendarConflicts(
+              events.map((e) => ({ endsAt: e.endsAt, startsAt: e.startsAt, title: e.title }))
+            );
+            return {
+              conflicts: conflicts.map((c) => ({
+                a: { endsAtLocal: eventLocal(c.a.endsAt, false), startsAtLocal: eventLocal(c.a.startsAt, false), title: c.a.title },
+                b: { endsAtLocal: eventLocal(c.b.endsAt, false), startsAtLocal: eventLocal(c.b.startsAt, false), title: c.b.title },
+                overlapEndsAtIso: c.overlapEndsAt.toISOString(),
+                overlapStartsAtIso: c.overlapStartsAt.toISOString(),
+                overlapStartsAtLocal: eventLocal(c.overlapStartsAt, false)
+              })) as JsonValue,
+              total: conflicts.length,
+              windowFromIso: from.toISOString(),
+              windowToIso: to.toISOString()
+            };
+          } catch (error) {
+            return { error: errorMessage(error) };
+          }
+        },
+        inputSchema: {
+          additionalProperties: false,
+          properties: {
+            fromIso: { description: "Window start — ISO-8601 OR a relative phrase like 'next week' / 'tomorrow' (default: now).", type: "string" },
+            providerId: { description: "Specific calendar provider id (default: all).", type: "string" },
+            toIso: { description: "Window end — ISO-8601 or a relative phrase (default: from + 7 days).", type: "string" }
+          },
+          type: "object"
+        },
+        domain: "calendar",
+        keywords: ["conflict", "conflicts", "double", "double-booked", "double-booking", "overlap", "overlapping", "clash", "겹치", "중복"],
+        name: "conflicts",
         risk: "read"
       },
       {

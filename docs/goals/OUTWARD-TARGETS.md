@@ -1778,6 +1778,29 @@ in the loop.
   `muse.tasks.complete` — proving the model cleanly distinguishes remove-by-mistake from
   finished in ONE shot, with no confusion introduced by the new sibling. (a5e748d6)
 
+- [x] **P41-15 The agent can now tell you your DOUBLE-BOOKINGS — "do I have any conflicts
+  next week?" / "am I double-booked?" lists the overlapping events, where before the agent
+  could list events and check availability but not surface clashes.** The `muse.calendar`
+  actuator had providers / list / availability / add / update / delete but NO conflict
+  detection — so a user asking the agent about double-bookings got no answer, even though the
+  CLI `muse calendar conflicts` and the morning brief (`selectUpcomingConflicts`) both surface
+  them. Closed by adding a `muse.calendar.conflicts` read tool (packages/mcp/src/loopback-calendar.ts)
+  that fetches events in a window (ISO or a relative phrase like 'next week'; default now..+7d,
+  fans out across providers) and runs the EXISTING, already-tested `detectCalendarConflicts`
+  (packages/mcp/src/calendar-conflicts.ts) — returning each overlapping PAIR (a, b, with local
+  times) plus the overlap span and a total. It completes the calendar agent READ surface
+  (list = enumerate, availability = free/busy at a time, conflicts = overlaps), a trio of
+  distinct read intents. Verified deterministically AND LIVE per tool-calling.md (a handler the
+  model never picks is not delivered): 3 new handler tests (an overlapping pair is reported with
+  the exact overlap span; back-to-back events are NOT a conflict; the window defaults to now..+7d
+  with no fromIso, unlike availability — packages/mcp/test/calendar-availability.test.ts) + the
+  full @muse/mcp suite (174 files / 1503 tests) + tsc build + @muse/cli build (cross-package) +
+  `pnpm lint` 0/0 + THREE LIVE tool-selection round-trips on local qwen3:8b proving the 3-way
+  calendar-read disambiguation: "do I have any double-bookings next week?" → `muse.calendar.conflicts`,
+  AND the regression controls "what's on my calendar tomorrow?" → `muse.calendar.list` and "am I
+  free at 3pm tomorrow?" → `muse.calendar.availability` — each selected correctly, the new tool
+  poaching neither sibling. (58e6f455)
+
 **P42 — Knowledge: your notes stay coherent (the [[wiki-link]] graph is a
 first-class structure, not just decoration).** Muse already builds a note link
 graph (`buildNoteLinkGraph`), surfaces backlinks, and AUDITS for broken links
