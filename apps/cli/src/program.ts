@@ -110,6 +110,7 @@ import { registerShowCommand } from "./commands-show.js";
 import { registerVisionCommand } from "./commands-vision.js";
 import { registerTimeCommand } from "./timezone.js";
 import { registerPrivacyCommand } from "./commands-privacy.js";
+import { registerWeekCommand } from "./commands-week.js";
 import { registerWeatherCommand } from "./weather.js";
 import { registerMaintenanceCommand } from "./commands-maintenance.js";
 import { registerMetricsCommands } from "./commands-metrics.js";
@@ -516,6 +517,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerShowCommand(program, io);
   registerWeatherCommand(program, io);
   registerPrivacyCommand(program, io);
+  registerWeekCommand(program, io);
   registerTimeCommand(program, io);
   registerReadCommand(program, io);
   registerGlanceCommand(program, io);

@@ -987,6 +987,26 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   `muse calendar add "Standup" --at <+25min>` then `muse today --local` → "⏰ Next: Standup in 25 min"
   as the lead, above the "Upcoming (1): - 20:18 — Standup" list. (3e8ddf04)
 
+- [x] **P37-35 `muse week` — your next 7 days at a glance, GROUPED BY DAY (events + due tasks +
+  birthdays under each day), so you can plan the week instead of reading a flat next-24h brief.**
+  `muse today` is the today-framed brief (overdue, today's tasks, next-24h calendar); its
+  `--lookahead-hours` widens only the calendar window and still renders a FLAT "Upcoming" list — no
+  command grouped the week BY DAY or pulled due tasks / birthdays under their day, so planning the
+  week meant scanning a flat dump. Added a `muse week` command (apps/cli/src/commands-week.ts):
+  a pure `groupWeekAgenda(data, now, days=7)` buckets events / open-tasks-due / upcoming-birthdays
+  into the next 7 LOCAL calendar days (timed events first by time, then untimed items; only days
+  with something appear; out-of-window + unparseable dropped; untrusted invite/contact titles
+  terminal-stripped) and a pure `formatWeekAgenda` renders day headers ("Today — …", "Tomorrow — …",
+  weekday) with indented items, reusing the existing `readLocalEvents` / `readTasks` /
+  `readUpcomingBirthdays` gatherers. Read-only, local, deterministic (no model); `--json` too.
+  Verified: 6 unit tests (events/tasks/birthdays bucketed to the right day with timed-first order;
+  Today/Tomorrow labels + empty-day skip; out-of-window + bad-date dropped; terminal-escape strip;
+  formatter day headers + clear-week message — apps/cli/src/commands-week.test.ts) + the full
+  @muse/cli suite (178 files / 2005 tests) + tsc build + `pnpm lint` 0/0 + a LIVE run on the loop
+  PC: seeded two events + a task due in 3 days + a birthday in 2 days → `muse week` printed
+  "📅 This week:" with "Today — Fri, Jun 5" (the events with HH:MM), "Sun, Jun 7  🎂 Mina's
+  birthday", and "Mon, Jun 8  ☑ Pay rent (due)" — grouped by day, empty days skipped. (e3b9678c)
+
 - [x] **P37-9 Action-log grounding — "did you send that? / what have you done?"
   (B3 transparency, gate a new surface).** `muse ask` now grounds on Muse's OWN
   audit log of acts taken on the user's behalf (sends, refusals) — the
