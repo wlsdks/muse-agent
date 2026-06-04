@@ -972,6 +972,34 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   "The staging deploy key rotates every 14 days [from aurora.org]", where before the `.org`
   file was silently skipped and the folder had zero groundable docs. (a5ce7adc)
 
+- [x] **P37-37 `muse ask --file resume.docx "…"` now reads a WORD DOCUMENT — Muse perceives
+  the one office format everyone actually has, where before a `.docx` was refused as "a
+  binary file".** The document reader handled PDF / text / HTML / `.eml`, but a `.docx` is a
+  ZIP of XML, so it tripped the binary refusal and the model — given no content — fabricated a
+  confident wrong answer (live: a doc whose codename was "Bluefin" got "Operation Midnight
+  Express"). Added a dep-FREE `.docx` text extractor (`document-reader.ts`): `readZipEntry`
+  parses the ZIP central directory and inflates `word/document.xml` via Node's built-in
+  `node:zlib` `inflateRawSync` (store + deflate, the only methods a .docx uses — NO new
+  dependency), and `docxToText` turns the `<w:t>` runs into body text (paragraphs/line-breaks
+  → newlines, tags stripped, XML entities decoded). Wired into BOTH document entry points —
+  the shared `extractDocumentText` (so `muse read` ingest + `muse ask --file <dir>` folder
+  grounding get it, and `.docx` joins `SUPPORTED_DOC_EXT` for the walk) AND, critically, the
+  SEPARATE inline single-file `--file` dispatch in `commands-ask.ts`, placed BEFORE its binary
+  refusal (mirroring `.eml`). The live falsify caught that the inline path is a second code
+  path I'd initially missed (the model still fabricated until it was fixed) — proof it's not
+  happy-path-only. Honesty floor intact: a fact NOT in the doc is refused, not invented.
+  Perception-axis growth (B0 STATUS: "favour a genuinely NEW axis — perceive/act growth").
+  Verified deterministically AND live: 6 `document-reader` tests (a real deflate-built .docx
+  extracts its paragraphs one-per-line; a STORED entry + XML-entity decode; routes through
+  `extractDocumentText` as one page DESPITE being a binary ZIP; throws on a ZIP with no
+  `word/document.xml`; the folder walk collects `.docx`) + 1 `commands-ask-file` ordering
+  guard (a .docx IS binary-flagged yet recoverable — pinning the dispatch order) + full
+  @muse/cli 180 files / 2044 tests + tsc build + `pnpm lint` 0/0 + 0 raw control bytes + a LIVE
+  `muse ask --file plan.docx` on the loop PC (qwen3:8b): "what is the project codename?" →
+  "Bluefin [from plan.docx]", "who owns the budget?" → "Dana Wu [from plan.docx]", and the
+  NEGATIVE "what is the marketing strategy?" → "not detailed in the provided notes" (un-stated
+  fact refused, not fabricated). (f14d9270)
+
 - [x] **P37-26 `muse today` now shows upcoming BIRTHDAYS — you don't miss "Zelda's
   birthday is today" just because you didn't wait for the morning brief.** Probing the
   felt daily digest exposed a gap: the morning BRIEF surfaces birthdays

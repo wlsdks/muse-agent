@@ -53,7 +53,7 @@ import { readClipboardText } from "./clipboard-reader.js";
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
 import { detectDateQuery, formatDateAnswer, phraseHasTime } from "./date-query.js";
 import { convertUnit, detectUnitConversion, formatConversion } from "./unit-conversion.js";
-import { emlToText, extractDirectoryDocuments, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isEmlDocument, isHtmlDocument, isPdfDocument, parsePdfBuffer } from "./document-reader.js";
+import { docxToText, emlToText, extractDirectoryDocuments, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isDocxDocument, isEmlDocument, isHtmlDocument, isPdfDocument, parsePdfBuffer } from "./document-reader.js";
 import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
 import { resolvePersona } from "./program-helpers.js";
 import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
@@ -1925,6 +1925,14 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             // check: an .eml's text headers never trip it, and a base64 part inside
             // is exactly what the parser decodes.
             fileText = emlToText(bytes.toString("utf8"));
+          } else if (isDocxDocument(fileLabel)) {
+            // A Word .docx is a ZIP of XML, so it trips the binary check below —
+            // extract its body text BEFORE that refusal (the same way .eml is).
+            try {
+              fileText = docxToText(bytes, fileLabel);
+            } catch (docxErr) {
+              io.stderr(`muse: --file ${fileLabel} could not be read as a .docx (${docxErr instanceof Error ? docxErr.message : String(docxErr)}) — I won't ground on it.\n`);
+            }
           } else if (looksLikeBinaryContent(bytes)) {
             // A non-PDF binary (image, archive, office doc): refuse — feeding
             // garbled UTF-8 to the model makes it hallucinate content and cite

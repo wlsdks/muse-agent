@@ -1,8 +1,47 @@
 import { describe, expect, it } from "vitest";
 
 import { looksLikeBinaryContent, selectFilePassages, urlGroundingSource } from "./commands-ask.js";
+import { docxToText } from "./document-reader.js";
 
 const bytes = (s: string): Uint8Array => new TextEncoder().encode(s);
+
+/** A minimal STORED (uncompressed) ZIP — enough for a .docx the reader can parse,
+ *  without pulling in deflate. Mirrors the structure readZipEntry walks. */
+function makeStoredZip(entries: readonly { readonly name: string; readonly data: Buffer }[]): Buffer {
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  let offset = 0;
+  for (const e of entries) {
+    const nb = Buffer.from(e.name, "utf8");
+    const h = Buffer.alloc(30);
+    h.writeUInt32LE(0x04034b50, 0);
+    h.writeUInt16LE(20, 4);
+    h.writeUInt32LE(e.data.length, 18);
+    h.writeUInt32LE(e.data.length, 22);
+    h.writeUInt16LE(nb.length, 26);
+    const lr = Buffer.concat([h, nb, e.data]);
+    locals.push(lr);
+    const c = Buffer.alloc(46);
+    c.writeUInt32LE(0x02014b50, 0);
+    c.writeUInt16LE(20, 4);
+    c.writeUInt16LE(20, 6);
+    c.writeUInt32LE(e.data.length, 20);
+    c.writeUInt32LE(e.data.length, 24);
+    c.writeUInt16LE(nb.length, 28);
+    c.writeUInt32LE(offset, 42);
+    centrals.push(Buffer.concat([c, nb]));
+    offset += lr.length;
+  }
+  const lb = Buffer.concat(locals);
+  const cb = Buffer.concat(centrals);
+  const eo = Buffer.alloc(22);
+  eo.writeUInt32LE(0x06054b50, 0);
+  eo.writeUInt16LE(entries.length, 8);
+  eo.writeUInt16LE(entries.length, 10);
+  eo.writeUInt32LE(cb.length, 12);
+  eo.writeUInt32LE(lb.length, 16);
+  return Buffer.concat([lb, cb, eo]);
+}
 
 describe("urlGroundingSource — the cite label for a --url-grounded answer", () => {
   it("uses the host (www. stripped) so the answer cites [from <host>]", () => {
@@ -40,6 +79,20 @@ describe("looksLikeBinaryContent — refuse to ground on a binary --file (no hal
 
   it("treats an empty file as NOT binary (nothing to misread)", () => {
     expect(looksLikeBinaryContent(new Uint8Array([]))).toBe(false);
+  });
+
+  // The --file inline dispatch handles .docx BEFORE this binary check; if a future
+  // edit reorders those branches, a Word doc would be refused instead of read. This
+  // pins the two facts that ordering depends on: a real .docx IS binary-flagged
+  // (so order matters) AND docxToText recovers its text.
+  it("a .docx is binary-flagged yet its text is recoverable (the order the --file dispatch relies on)", () => {
+    const xml = `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Codename Bluefin.</w:t></w:r></w:p></w:body></w:document>`;
+    const docx = makeStoredZip([
+      { name: "[Content_Types].xml", data: Buffer.from("<Types/>", "utf8") },
+      { name: "word/document.xml", data: Buffer.from(xml, "utf8") }
+    ]);
+    expect(looksLikeBinaryContent(docx)).toBe(true);          // WOULD be refused…
+    expect(docxToText(docx, "/x/plan.docx")).toBe("Codename Bluefin."); // …but the docx branch recovers it first
   });
 });
 

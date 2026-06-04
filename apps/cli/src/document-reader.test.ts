@@ -1,11 +1,67 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { deflateRawSync } from "node:zlib";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { NOTE_FILE_RE } from "./commands-notes-rag.js";
-import { SUPPORTED_DOC_EXT, emlToText, extractDirectoryDocuments, extractDocumentText, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isEmlDocument, isHtmlDocument, isLikelyBinary, isPdfDocument, parsePdfBuffer, walkDocuments } from "./document-reader.js";
+import { SUPPORTED_DOC_EXT, docxToText, emlToText, extractDirectoryDocuments, extractDocumentText, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isDocxDocument, isEmlDocument, isHtmlDocument, isLikelyBinary, isPdfDocument, parsePdfBuffer, walkDocuments } from "./document-reader.js";
+
+/** Build a minimal but spec-valid ZIP (local headers + central directory + EOCD),
+ *  so the .docx tests exercise the REAL inflate path, not a stub. CRC is left 0 —
+ *  the reader (and zlib inflate) don't verify it. */
+function makeZip(entries: readonly { readonly name: string; readonly data: Buffer; readonly store?: boolean }[]): Buffer {
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  let offset = 0;
+  for (const e of entries) {
+    const method = e.store ? 0 : 8;
+    const comp = e.store ? e.data : deflateRawSync(e.data);
+    const nameBuf = Buffer.from(e.name, "utf8");
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(method, 8);
+    local.writeUInt32LE(comp.length, 18);
+    local.writeUInt32LE(e.data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    const localRec = Buffer.concat([local, nameBuf, comp]);
+    locals.push(localRec);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(method, 10);
+    central.writeUInt32LE(comp.length, 20);
+    central.writeUInt32LE(e.data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt32LE(offset, 42);
+    centrals.push(Buffer.concat([central, nameBuf]));
+    offset += localRec.length;
+  }
+  const localBlob = Buffer.concat(locals);
+  const centralBlob = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(centralBlob.length, 12);
+  eocd.writeUInt32LE(localBlob.length, 16);
+  return Buffer.concat([localBlob, centralBlob, eocd]);
+}
+
+/** A real .docx: the body paragraphs as `<w:t>` runs inside word/document.xml,
+ *  preceded by a [Content_Types].xml entry (so document.xml isn't the first entry —
+ *  proving the reader finds it by name, not position). */
+function makeDocx(paragraphs: readonly string[], opts?: { readonly store?: boolean }): Buffer {
+  const body = paragraphs.map((p) => `<w:p><w:r><w:t xml:space="preserve">${p}</w:t></w:r></w:p>`).join("");
+  const xml = `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}</w:body></w:document>`;
+  return makeZip([
+    { name: "[Content_Types].xml", data: Buffer.from("<Types/>", "utf8") },
+    { name: "word/document.xml", data: Buffer.from(xml, "utf8"), store: opts?.store }
+  ]);
+}
 
 const SAMPLE_EML = [
   "From: Jane Park <jane@globex.com>",
@@ -230,5 +286,50 @@ describe("formatUrlTruncationNotice — be honest when a long --url page was cap
     expect(notice).toContain("first 60,000 characters");
     expect(notice).toContain("NOT read");
     expect(notice).toContain("specific section");
+  });
+})
+
+describe("isDocxDocument / docxToText — ground a Word .docx on its body text", () => {
+  it("recognises only .docx by extension", () => {
+    expect(isDocxDocument("/x/resume.docx")).toBe(true);
+    expect(isDocxDocument("/x/RESUME.DOCX")).toBe(true);
+    expect(isDocxDocument("/x/notes.txt")).toBe(false);
+    expect(isDocxDocument("/x/sheet.xlsx")).toBe(false);
+  });
+
+  it("extracts the paragraph text from a real (deflate-compressed) .docx, one paragraph per line", () => {
+    const text = docxToText(makeDocx(["Senior Engineer since 2021.", "Skills: TypeScript, Rust."]), "/x/resume.docx");
+    expect(text).toBe("Senior Engineer since 2021.\nSkills: TypeScript, Rust.");
+  });
+
+  it("handles a STORED (uncompressed) entry and decodes XML entities", () => {
+    expect(docxToText(makeDocx(["Tom &amp; Jerry &lt;tagged&gt;"], { store: true }))).toBe("Tom & Jerry <tagged>");
+  });
+
+  it("routes a .docx through extractDocumentText as one page — even though its bytes ARE a binary ZIP", async () => {
+    const buf = makeDocx(["The launch is on August 14."]);
+    expect(isLikelyBinary(buf)).toBe(true); // a ZIP has NUL bytes — must not be refused
+    const parsed = await extractDocumentText("/x/plan.docx", buf);
+    expect(parsed.pageCount).toBe(1);
+    expect(parsed.text).toContain("August 14");
+  });
+
+  it("throws on a ZIP with no word/document.xml (not a real .docx)", () => {
+    const notDocx = makeZip([{ name: "other.xml", data: Buffer.from("<x/>", "utf8") }]);
+    expect(() => docxToText(notDocx, "/x/fake.docx")).toThrow(/readable \.docx/u);
+  });
+
+  it("the folder walk collects .docx alongside the other reader formats", async () => {
+    expect(SUPPORTED_DOC_EXT.has(".docx")).toBe(true);
+    const dir = await mkdtemp(join(tmpdir(), "muse-docx-"));
+    try {
+      await writeFile(join(dir, "brief.docx"), makeDocx(["Quarterly target is 40 units."]));
+      const found = await walkDocuments(dir);
+      expect(found.map((f) => f.endsWith("brief.docx"))).toContain(true);
+      const { documents } = await extractDirectoryDocuments(dir);
+      expect(documents.find((d) => d.path.endsWith("brief.docx"))?.text).toContain("40 units");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 })

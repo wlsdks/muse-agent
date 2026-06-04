@@ -9,6 +9,7 @@
 
 import { readFile, readdir } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
+import { inflateRawSync } from "node:zlib";
 
 import { decodeHeaderValue, extractBody, parseHeaders } from "./mbox-ingest.js";
 
@@ -61,8 +62,13 @@ export async function extractDocumentText(filePath: string, buffer: Buffer): Pro
     // extract the subject/sender + decoded readable body instead.
     return { pageCount: 1, text: emlToText(buffer.toString("utf8")) };
   }
+  if (isDocxDocument(filePath)) {
+    // A Word .docx is a ZIP of XML and so reads as binary — it MUST be handled
+    // before the binary refusal below. Extract the document body text.
+    return { pageCount: 1, text: docxToText(buffer, filePath) };
+  }
   if (isLikelyBinary(buffer)) {
-    throw new Error(`'${basename(filePath)}' looks binary — muse read handles PDFs and text files (.txt/.md/.log/.csv).`);
+    throw new Error(`'${basename(filePath)}' looks binary — muse read handles PDFs, Word .docx, and text files (.txt/.md/.log/.csv).`);
   }
   if (isHtmlDocument(filePath)) {
     // Grounding on raw HTML feeds the model markup + <script>/<style> noise and
@@ -82,6 +88,92 @@ export function isHtmlDocument(filePath: string): boolean {
 /** A saved email message, by extension (.eml). */
 export function isEmlDocument(filePath: string): boolean {
   return filePath.toLowerCase().endsWith(".eml");
+}
+
+/** A Word document, by extension (.docx). */
+export function isDocxDocument(filePath: string): boolean {
+  return filePath.toLowerCase().endsWith(".docx");
+}
+
+/**
+ * Locate ONE entry in a ZIP archive and return its decompressed bytes, or null
+ * if absent / unsupported. A `.docx` is a ZIP; the body text lives in
+ * `word/document.xml`. Parses the central directory (the authoritative index at
+ * the end of the file) rather than the local headers, so it's robust to data
+ * descriptors (streamed-write ZIPs leave the local-header sizes zero). Only the
+ * two compression methods a `.docx` ever uses are handled: store (0) and the
+ * ubiquitous raw-DEFLATE (8) via Node's built-in zlib — no third-party dep.
+ */
+function readZipEntry(buffer: Buffer, entryName: string): Buffer | null {
+  const EOCD_SIG = 0x06054b50;
+  const CDH_SIG = 0x02014b50;
+  // Scan backward for the End-Of-Central-Directory record (its variable-length
+  // comment means it isn't at a fixed offset). 22 bytes fixed + ≤65535 comment.
+  let eocd = -1;
+  for (let i = buffer.length - 22; i >= 0 && i >= buffer.length - 22 - 0xffff; i--) {
+    if (buffer.readUInt32LE(i) === EOCD_SIG) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) {
+    return null;
+  }
+  const cdCount = buffer.readUInt16LE(eocd + 10);
+  let p = buffer.readUInt32LE(eocd + 16); // central-directory offset
+  for (let n = 0; n < cdCount; n++) {
+    if (p + 46 > buffer.length || buffer.readUInt32LE(p) !== CDH_SIG) {
+      return null;
+    }
+    const method = buffer.readUInt16LE(p + 10);
+    const compSize = buffer.readUInt32LE(p + 20);
+    const fnLen = buffer.readUInt16LE(p + 28);
+    const extraLen = buffer.readUInt16LE(p + 30);
+    const commentLen = buffer.readUInt16LE(p + 32);
+    const localOffset = buffer.readUInt32LE(p + 42);
+    const name = buffer.toString("utf8", p + 46, p + 46 + fnLen);
+    if (name === entryName) {
+      // The local header repeats the filename/extra lengths (they may differ
+      // from the central record), so read THEM to find the data start.
+      const localFnLen = buffer.readUInt16LE(localOffset + 26);
+      const localExtraLen = buffer.readUInt16LE(localOffset + 28);
+      const dataStart = localOffset + 30 + localFnLen + localExtraLen;
+      const compressed = buffer.subarray(dataStart, dataStart + compSize);
+      if (method === 0) {
+        return compressed;
+      }
+      if (method === 8) {
+        return inflateRawSync(compressed);
+      }
+      return null;
+    }
+    p += 46 + fnLen + extraLen + commentLen;
+  }
+  return null;
+}
+
+/**
+ * Extract the readable body text of a Word `.docx`. The visible text lives in
+ * `<w:t>` runs inside `word/document.xml`; paragraphs (`</w:p>`), line breaks
+ * (`<w:br/>`) and tabs (`<w:tab/>`) become whitespace, every other tag is
+ * dropped, and XML entities are decoded — "good enough" to ground on, not a
+ * faithful render. Throws when the file isn't a readable .docx so the caller
+ * reports clearly. Exported for testing.
+ */
+export function docxToText(buffer: Buffer, filePath = "document.docx"): string {
+  const xml = readZipEntry(buffer, "word/document.xml");
+  if (!xml) {
+    throw new Error(`'${basename(filePath)}' isn't a readable .docx (no word/document.xml inside).`);
+  }
+  const withBreaks = xml.toString("utf8")
+    .replace(/<\/w:p>/giu, "\n")
+    .replace(/<w:br\s*\/?>/giu, "\n")
+    .replace(/<w:tab\s*\/?>/giu, "\t");
+  const stripped = withBreaks.replace(/<[^>]+>/gu, "");
+  return decodeHtmlEntities(stripped)
+    .replace(/[ \t]+\n/gu, "\n")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
 }
 
 /**
@@ -140,7 +232,7 @@ export function htmlToText(html: string): string {
  * `NOTE_FILE_RE`: org-mode, reStructuredText, AsciiDoc, MDX, markdown variants) —
  * so a power-user's `.org`/`.rst`/`.adoc` notes aren't silently skipped by ad-hoc
  * folder grounding/ingest while the index includes them — PLUS this reader's own
- * document extras (`.log`/`.csv`/`.html`/`.htm`/`.eml`, special-cased above). A
+ * document extras (`.log`/`.csv`/`.html`/`.htm`/`.eml`/`.docx`, special-cased above). A
  * single non-supported text file still reads (UTF-8 pass-through); only the
  * directory walk is gated, so it must stay aligned with `NOTE_FILE_RE` (guarded by
  * a drift test).
@@ -152,7 +244,8 @@ export const SUPPORTED_DOC_EXT = new Set([
   ".org", ".rst", ".adoc", ".asciidoc",
   ".log", ".csv",
   ".html", ".htm",
-  ".eml"
+  ".eml",
+  ".docx"
 ]);
 
 /** Recursively collect supported document files under `dir` (skips hidden + `.processed`), sorted. */
