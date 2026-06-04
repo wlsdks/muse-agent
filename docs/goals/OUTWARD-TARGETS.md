@@ -1886,6 +1886,35 @@ graph intact as the corpus evolves, so a power-user's Zettelkasten doesn't rot.
   "an MTU of 1380 … [from uplink-config.md]" — the linked note could ONLY enter the
   evidence via the graph hop. `a648c6bf`.
 
+- [x] **P42-4 `muse ask --connect` now shows the grounded note's EXPLICIT
+  `[[wiki-link]]` neighbours — the notes it links to AND the notes that link to it —
+  so you can navigate your Zettelkasten straight from the answer.** `--connect` already
+  appended a "💡 Related in your brain" footer of EMBEDDING-similar notes, but that can't
+  see the user-AUTHORED connection structure: a note can be a deliberate `[[wiki-link]]`
+  neighbour without being embedding-similar (and a BACKLINK — a note that links TO the
+  answer-note — is invisible to similarity entirely). P42-3 pulls a 1-hop OUTBOUND link
+  INTO the evidence (answering); this is the complementary NAVIGATION half — it surfaces
+  the connected notes for the user to EXPLORE, including ones the answer didn't use.
+  Added two pure helpers in commands-ask.ts: `selectGraphConnections(graph, groundedFiles)`
+  (resolved outbound links + backlinks of the grounded notes, the grounded notes themselves
+  excluded, deduped, capped — reusing `noteLinkView` / `resolveNoteId` / `loadNoteLinkGraph`)
+  and `formatGraphLinksSection`, wired under `--connect` after the embedding footer
+  (best-effort: a missing notes dir or ad-hoc-only grounding — clipboard / url / one-off
+  `--file` — yields no footer). Deterministic, no model call, and the graph load happens
+  ONLY under the opt-in `--connect` flag (no default cost). Knowledge-axis (the note graph),
+  rotated off the recent agent-tool / perception / felt / trust fires. Verified
+  deterministically AND live: 6 new unit tests (`selectGraphConnections` returns resolved
+  outbound + backlinks excluding the note itself; resolves a grounded file by basename and
+  dedups across multiple grounded notes; yields nothing for a link-less note / unknown file
+  / ad-hoc sources; respects the cap; `formatGraphLinksSection` renders / is empty —
+  commands-ask-connect.test.ts) + the full @muse/cli suite (174 files / 1941 tests) + tsc
+  build + `pnpm lint` 0/0 + a LIVE `muse ask --connect "what is my resting heart rate?"` on
+  the loop PC's local qwen3:8b over a seeded corpus (health.md → `[[nutrition]]`/`[[sleep]]`,
+  running.md → `[[health]]`): the answer grounded on health.md, and the new "🔗 Linked notes
+  (your [[wiki-links]])" footer surfaced `running.md` — a BACKLINK that the embedding recall
+  did NOT retrieve and `--connect`'s similarity footer never showed — letting the user jump
+  to a connected note similarity alone would have hidden. (a997f3f3)
+
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,
 closed its deepest hole, and became constructive. Each verified live on

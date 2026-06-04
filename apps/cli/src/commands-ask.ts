@@ -25,7 +25,7 @@
 import { existsSync, statSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, join, relative } from "node:path";
+import { basename, isAbsolute, join, relative } from "node:path";
 
 import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, enforceAnswerCitations, explainGroundingVerdict, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyVerdict, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectByMmr, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
@@ -43,9 +43,9 @@ import { resolveReflectionsFile } from "./commands-reflections.js";
 import { classifyTier, type ModelTier } from "@muse/multi-agent";
 import type { Command } from "commander";
 
-import { cosine, isNotesIndexStale, NOTE_FILE_RE, reindexNotes } from "./commands-notes-rag.js";
+import { cosine, isNotesIndexStale, loadNoteLinkGraph, NOTE_FILE_RE, reindexNotes } from "./commands-notes-rag.js";
 import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles, type RecallHit } from "./commands-recall.js";
-import { linkExpandRefs } from "./notes-links.js";
+import { linkExpandRefs, noteLinkView, resolveNoteId, type NoteLinkGraph } from "./notes-links.js";
 import { formatConnectionsSection } from "./commands-today.js";
 import { embed } from "./embed.js";
 import { buildEpisodeIndex, defaultEpisodeIndexFile, episodeIndexStale, loadEpisodeIndex, saveEpisodeIndex } from "./episode-index.js";
@@ -899,6 +899,55 @@ export function buildAskConnections(params: {
     .filter((h) => Number.isFinite(h.score) && h.score >= floor)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
+}
+
+/**
+ * The EXPLICIT `[[wiki-link]]` neighbours of the notes that just answered — the
+ * notes they link to (resolved) plus the notes that link to them (backlinks) —
+ * for the `--connect` footer. This is the user-AUTHORED connection structure the
+ * embedding "Related in your brain" footer can't see: a note can be a deliberate
+ * Zettelkasten neighbour without being embedding-similar. Pure over an already-
+ * loaded graph; the grounded notes themselves are excluded, dups collapse, and
+ * the list is capped. Ad-hoc sources (clipboard / url / a one-off `--file`) that
+ * aren't in the note graph simply resolve to nothing and contribute no links.
+ */
+export function selectGraphConnections(
+  graph: NoteLinkGraph,
+  groundedNoteFiles: readonly string[],
+  limit = 6
+): string[] {
+  const groundedIds = new Set<string>();
+  for (const file of groundedNoteFiles) {
+    const id = resolveNoteId(graph, file) ?? resolveNoteId(graph, basename(file));
+    if (id) groundedIds.add(id);
+  }
+  const seen = new Set<string>([...groundedIds].map((id) => id.toLowerCase()));
+  const out: string[] = [];
+  for (const id of groundedIds) {
+    const view = noteLinkView(graph, id);
+    for (const o of view.outbound) {
+      if (o.resolvedId && !seen.has(o.resolvedId.toLowerCase())) {
+        seen.add(o.resolvedId.toLowerCase());
+        out.push(o.resolvedId);
+      }
+    }
+    for (const source of view.backlinks) {
+      if (!seen.has(source.toLowerCase())) {
+        seen.add(source.toLowerCase());
+        out.push(source);
+      }
+    }
+  }
+  return out.slice(0, Math.max(1, limit));
+}
+
+/** Render the explicit-link neighbours as a scannable footer (empty when none). */
+export function formatGraphLinksSection(links: readonly string[]): string {
+  if (links.length === 0) {
+    return "";
+  }
+  const lines = links.map((id) => `  ↔ ${id}`);
+  return `\n🔗 Linked notes (your [[wiki-links]]):\n${lines.join("\n")}\n`;
 }
 
 interface IndexChunk {
@@ -2869,6 +2918,19 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           }));
           if (section.length > 0) {
             io.stdout(section);
+          }
+          // Explicit [[wiki-link]] neighbours of the grounded notes — the user-
+          // authored connections embeddings miss. Best-effort: a missing/unreadable
+          // notes dir or ad-hoc-only grounding just yields no footer.
+          try {
+            const groundedNoteFiles = [...new Set(scored.map((r) => r.file))];
+            const graph = await loadNoteLinkGraph(resolveNotesDir(process.env as Record<string, string | undefined>));
+            const graphSection = formatGraphLinksSection(selectGraphConnections(graph, groundedNoteFiles));
+            if (graphSection.length > 0) {
+              io.stdout(graphSection);
+            }
+          } catch {
+            // no notes dir / unreadable graph — skip the link footer silently
           }
         }
       }
