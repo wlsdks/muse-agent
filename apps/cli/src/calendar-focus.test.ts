@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { analyzeFocusWindows, briefFocusBeat, buildDayWindows, formatFocus } from "./calendar-focus.js";
+import { analyzeFocusWindows, briefFocusBeat, buildDayWindows, findFirstFreeBlock, formatFocus } from "./calendar-focus.js";
 
 const ev = (startISO: string, endISO: string, title = "mtg"): { title: string; startsAt: Date; endsAt: Date; allDay: boolean } =>
   ({ allDay: false, endsAt: new Date(endISO), startsAt: new Date(startISO), title });
@@ -39,6 +39,40 @@ describe("analyzeFocusWindows — longest uninterrupted free block", () => {
     const [day] = analyzeFocusWindows([ev("2026-06-08T08:00:00Z", "2026-06-08T19:00:00Z")], [window], 60);
     expect(day!.longestFreeMinutes).toBe(0);
     expect(day!.fragmented).toBe(true);
+  });
+});
+
+describe("findFirstFreeBlock — earliest slot long enough to book", () => {
+  const w = { from: new Date("2026-06-08T09:00:00Z"), to: new Date("2026-06-08T18:00:00Z") };
+
+  it("returns the earliest free block of the requested length on a free day", () => {
+    const block = findFirstFreeBlock([], [w], 90);
+    expect(block!.from.toISOString()).toBe("2026-06-08T09:00:00.000Z");
+    expect(block!.to.toISOString()).toBe("2026-06-08T10:30:00.000Z"); // 90 min
+  });
+
+  it("skips a too-short gap and books the first sufficiently-long one", () => {
+    // 9–9:20 free (20m, too short for 60), then a meeting 9:20–10, then 10–18 free.
+    const block = findFirstFreeBlock([ev("2026-06-08T09:20:00Z", "2026-06-08T10:00:00Z")], [w], 60);
+    expect(block!.from.toISOString()).toBe("2026-06-08T10:00:00.000Z");
+  });
+
+  it("never books in the past — clamps the start to notBefore", () => {
+    const block = findFirstFreeBlock([], [w], 60, new Date("2026-06-08T14:00:00Z"));
+    expect(block!.from.toISOString()).toBe("2026-06-08T14:00:00.000Z");
+    expect(block!.to.toISOString()).toBe("2026-06-08T15:00:00.000Z");
+  });
+
+  it("returns undefined when no window has a long-enough gap", () => {
+    const events = [];
+    for (let h = 9; h < 18; h += 1) events.push(ev(`2026-06-08T${h.toString().padStart(2, "0")}:30:00Z`, `2026-06-08T${(h + 1).toString().padStart(2, "0")}:00:00Z`));
+    expect(findFirstFreeBlock(events, [w], 60)).toBeUndefined(); // every gap is 30m
+  });
+
+  it("rolls to the next day's window when today is full", () => {
+    const w2 = { from: new Date("2026-06-09T09:00:00Z"), to: new Date("2026-06-09T18:00:00Z") };
+    const block = findFirstFreeBlock([ev("2026-06-08T09:00:00Z", "2026-06-08T18:00:00Z")], [w, w2], 60);
+    expect(block!.from.toISOString()).toBe("2026-06-09T09:00:00.000Z"); // today fully busy → tomorrow
   });
 });
 

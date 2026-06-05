@@ -19,7 +19,7 @@ import { eventsToIcs, LocalCalendarProvider, type CalendarEvent, type IcsEvent }
 import { computeAvailability, detectCalendarConflicts, readReminders, resolveRelativeTimePhrase, writeReminders, type AvailabilityEventLike, type AvailabilityResult, type CalendarConflict, type ConflictEventLike, type PersistedReminder } from "@muse/mcp";
 import type { Command } from "commander";
 
-import { analyzeFocusWindows, buildDayWindows, formatFocus } from "./calendar-focus.js";
+import { analyzeFocusWindows, buildDayWindows, findFirstFreeBlock, formatFocus } from "./calendar-focus.js";
 import { formatCalendarEvents, formatProvidersList } from "./human-formatters.js";
 import { parseIcsEvents } from "./ics-parser.js";
 import { withApiLocalFallback } from "./program-helpers.js";
@@ -523,6 +523,54 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         return;
       }
       io.stdout(formatFocus(result, minMinutes));
+    });
+
+  calendar
+    .command("block")
+    .description("Protect focus time — Muse finds your earliest free block long enough and CREATES a calendar event to hold it (time-blocking / implementation intentions, Gollwitzer 1999). Writes to your LOCAL calendar; undo with `calendar delete`. e.g. `muse calendar block \"write the report\" --duration 90`")
+    .argument("<title...>", "What the block is for, e.g. 'write the report'")
+    .option("--duration <min>", "Block length in minutes (default 60)")
+    .option("--days <n>", "How many days ahead to search for a slot (default 5)")
+    .option("--start <hour>", "Working-hours start hour 0-23 (default 9)")
+    .option("--end <hour>", "Working-hours end hour 1-24 (default 18)")
+    .option("--json", "Print the created event as JSON")
+    .action(async (
+      titleParts: readonly string[],
+      options: { readonly duration?: string; readonly days?: string; readonly start?: string; readonly end?: string; readonly json?: boolean }
+    ) => {
+      const title = titleParts.join(" ").trim();
+      if (title.length === 0) {
+        throw new Error("muse calendar block: a non-empty title is required");
+      }
+      const parseIntOpt = (raw: string | undefined, label: string, lo: number, hi: number, dflt: number): number => {
+        if (raw === undefined) return dflt;
+        const n = Number(raw.trim());
+        if (!Number.isInteger(n) || n < lo || n > hi) throw new Error(`${label} must be an integer in [${lo.toString()}, ${hi.toString()}]`);
+        return n;
+      };
+      const duration = parseIntOpt(options.duration, "--duration", 1, 1440, 60);
+      const days = parseIntOpt(options.days, "--days", 1, 60, 5);
+      const startHour = parseIntOpt(options.start, "--start", 0, 23, 9);
+      const endHour = parseIntOpt(options.end, "--end", 1, 24, 18);
+      const windows = buildDayWindows(new Date(), days, startHour, endHour);
+      if (windows.length === 0) {
+        throw new Error("--end must be after --start");
+      }
+      const provider = localCalendarProvider();
+      const events = await provider.listEvents({ from: windows[0]!.from, to: windows[windows.length - 1]!.to });
+      const block = findFirstFreeBlock(events, windows, duration, new Date());
+      if (!block) {
+        io.stderr(`muse calendar block: no free ${duration.toString()}-minute block in the next ${days.toString()} day(s) within ${startHour.toString()}:00-${endHour.toString()}:00 — your calendar is full. Try a shorter --duration or a wider --days.\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const event = await provider.createEvent({ endsAt: block.to, startsAt: block.from, title });
+      const when = block.from.toLocaleString("en-US", { day: "numeric", hour: "numeric", minute: "2-digit", month: "short", weekday: "short" });
+      if (options.json) {
+        helpers.writeOutput(io, { endsAtIso: event.endsAt.toISOString(), id: event.id, startsAtIso: event.startsAt.toISOString(), title: event.title });
+        return;
+      }
+      io.stdout(`📅 Blocked ${duration.toString()}m for '${title}': ${when} (id ${event.id}). Undo: muse calendar delete ${event.id}\n`);
     });
 
   calendar

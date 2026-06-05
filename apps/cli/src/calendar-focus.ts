@@ -85,6 +85,33 @@ export function analyzeFocusWindows(
   });
 }
 
+/**
+ * The FIRST free block of at least `durationMinutes` across the working-hour
+ * windows, in order, that starts at or after `notBefore` (so today's already-past
+ * hours are never booked). undefined when no window has a long-enough gap. Pure —
+ * the engine behind `muse calendar block` (time-blocking / implementation
+ * intentions, Gollwitzer 1999): commit a task to a CONCRETE slot, don't leave it
+ * a vague intention.
+ */
+export function findFirstFreeBlock(
+  events: readonly AvailabilityEventLike[],
+  windows: readonly { readonly from: Date; readonly to: Date }[],
+  durationMinutes: number,
+  notBefore?: Date
+): { from: Date; to: Date } | undefined {
+  const durMs = Math.max(1, Math.trunc(Number.isFinite(durationMinutes) ? durationMinutes : 60)) * MS_PER_MIN;
+  const floor = notBefore ? notBefore.getTime() : Number.NEGATIVE_INFINITY;
+  for (const window of windows) {
+    for (const slot of computeAvailability(events, window).free) {
+      const start = Math.max(slot.startsAt.getTime(), floor);
+      if (slot.endsAt.getTime() - start >= durMs) {
+        return { from: new Date(start), to: new Date(start + durMs) };
+      }
+    }
+  }
+  return undefined;
+}
+
 const fmtMinutes = (m: number): string => {
   const h = Math.floor(m / 60);
   const min = m % 60;

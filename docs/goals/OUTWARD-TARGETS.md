@@ -773,6 +773,31 @@ P43 bullet is unbuilt.
   16:48 correctly SELF-SUPPRESSED the beat (only ~72 min left < the 120-min gate), proving the noise gate
   in the live command. Honest scope: the literal brief emission is clock-gated to the morning/midday (by
   design); a configurable working window + a "tomorrow" variant are follow-ons. (3840d292)
+
+- [x] **P43-19 `muse calendar block "deep work" --duration 90` — Muse now ACTS: it finds your
+  earliest free block long enough and CREATES the calendar event to protect it.** The first genuine ACT of
+  the cross-field run (the steering note's open (b)) and the capstone of a coherent arc — PERCEIVE the
+  fragmentation (P43-17 `calendar focus`) → WARN in the brief (P43-18 "Block focus time…") → ACT (this
+  command literally does what the beat tells you). The mechanism: TIME-BLOCKING / implementation intentions
+  (Gollwitzer, "Implementation intentions: Strong effects of simple plans", American Psychologist
+  54(7):493-503, 1999) — committing a task to a CONCRETE when-and-where massively raises follow-through vs
+  leaving it a vague intention; so Muse books a specific slot, not a suggestion. Pure
+  `findFirstFreeBlock(events, windows, durationMinutes, notBefore)` in apps/cli/src/calendar-focus.ts —
+  the earliest free gap of at least the duration across the working-hour windows, never before `notBefore`
+  (so it never books in the past) — wired into `muse calendar block` (apps/cli/src/commands-calendar.ts,
+  `--duration`/`--days`/`--start`/`--end`/`--json`) which reuses the existing `computeAvailability` engine
+  + `localCalendarProvider().createEvent`. SAFE: a LOCAL calendar write (the user's own calendar, not a
+  third-party send, so outbound-safety doesn't apply), explicitly user-invoked, REVERSIBLE (the output
+  prints the exact `muse calendar delete <id>` undo), and FAIL-CLOSED — a full calendar creates NOTHING and
+  says so. Verified deterministically AND live: 5 new unit tests (earliest sufficient block on a free day;
+  skips a too-short gap; the notBefore clamp never books the past; undefined when no gap is long enough;
+  rolls to the next day when today is full — apps/cli/src/calendar-focus.test.ts) + `pnpm lint` 0/0 +
+  `@muse/shared` byte-hygiene 30 + cli 2245 + 0 raw control bytes + a LIVE run on the loop PC: on an empty
+  calendar `muse calendar block "deep work" --duration 90 --days 3` created an event that PERSISTED to disk
+  (verified by re-reading the calendar file, not just the print) — placed at tomorrow 09:00 local because
+  today's remaining time was < 90 min (the notBefore clamp working) — while a fully-booked 3-day calendar
+  produced "no free 90-minute block … your calendar is full" and wrote NOTHING. Honest scope: local
+  calendar; scheduling a named TASK (resolving from the task store) into the block is the next step. (ab9585cf)
 - [x] **P43-7 The evening recap's "Coming up" now includes tomorrow's CALENDAR EVENTS
   and BIRTHDAYS — your `muse recap` forward view finally matches the brief + `muse today`.**
   The evening recap (P43-4) is the retrospective sibling of the morning brief, and its
