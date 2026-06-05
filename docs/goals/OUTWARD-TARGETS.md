@@ -676,6 +676,29 @@ P43 bullet is unbuilt.
   the known-contact set (best-effort inference, advisory); a whole-graph `contacts related --all` view is
   a follow-on. (565b2e40)
 
+- [x] **P43-15 `muse tasks flow` — are you finishing tasks as fast as you add them? Muse reports
+  your created-vs-completed rate, whether the backlog is GROWING/shrinking/steady, and your real average
+  lead time — an overcommitment early-warning.** Tenth slice of the cross-field research direction, on the
+  perceive/ACT-growth axis (B0's build order after P43 close-the-loop completed) — fresh tasks-surface
+  code, a queueing mechanism distinct from the recent ones. The mechanism: LITTLE'S LAW (Little, "A Proof
+  for the Queuing Formula L = λW", Operations Research 9(3):383-387, 1961) — a todo list is a QUEUE; tasks
+  arrive (created) and depart (completed), and L = λW relates the average backlog L, arrival rate λ, and
+  the average time-in-system W, with the stability corollary that an arrival rate sustained above the
+  completion rate grows the backlog without bound. Faithfully distilled into a pure
+  `apps/cli/src/task-flow.ts` (`analyzeTaskFlow` — created/completed within the trailing window, net,
+  openNow as L, avgLeadDays as W; `formatTaskFlow` — the report + the Little's-Law interpretation line)
+  reading the `createdAt`/`completedAt` timestamps the task store already keeps. Wired as `muse tasks flow`
+  (`--days`, `--json`). Deterministic, no model, read-only — distinct from the actuating add/complete/edit.
+  Verified deterministically AND live: 8 unit tests (window-bounded arrival/departure counts; growing vs
+  shrinking vs steady trend; avgLeadDays = mean open-time of in-window completions; excludes out-of-window
+  events; openNow is current not window-bound; clamps a non-finite/zero window; skips an unparseable
+  timestamp; format renders the ratio + Little's-Law line and omits lead time when none completed —
+  apps/cli/src/task-flow.test.ts) + `pnpm lint` 0/0 + `@muse/shared` byte-hygiene 30 + cli 2219 + 0 raw
+  control bytes + a LIVE run on the loop PC: a seeded store with 6 tasks created and 2 completed in the
+  last 7 days (lead times 4 and 6 days) → `muse tasks flow` printed "Created: 6 … Completed: 2 … Net: +4 →
+  backlog GROWING … Avg time to done: 5 days … ~3× faster than you finish them" and the matching `--json`.
+  Honest scope: local store read (the common personal case); a proactive brief beat is a follow-on. (b1b3d67c)
+
 - [x] **P43-7 The evening recap's "Coming up" now includes tomorrow's CALENDAR EVENTS
   and BIRTHDAYS — your `muse recap` forward view finally matches the brief + `muse today`.**
   The evening recap (P43-4) is the retrospective sibling of the morning brief, and its

@@ -27,6 +27,7 @@ import {
 import type { Command } from "commander";
 
 import { isApiUnreachable, withApiLocalFallback } from "./program-helpers.js";
+import { analyzeTaskFlow, formatTaskFlow } from "./task-flow.js";
 
 import { closestCommandName } from "./closest-command.js";
 import {
@@ -101,6 +102,35 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
       }
       const providers = (result as { providers?: Parameters<typeof formatProvidersList>[1] })?.providers ?? [];
       io.stdout(formatProvidersList("Tasks providers", providers));
+    });
+
+  tasks
+    .command("flow")
+    .description("Are you finishing tasks as fast as you add them? Little's Law (1961) flow over your todo list — created vs completed rate, backlog trend, average lead time. Read-only, deterministic, no model. e.g. `muse tasks flow --days 14`")
+    .option("--days <n>", "Window in days to analyze (default 7)")
+    .option("--json", "Emit a structured payload")
+    .action(async (options: { readonly days?: string; readonly json?: boolean }) => {
+      let windowDays = 7;
+      if (options.days !== undefined) {
+        const parsed = Number(options.days.trim());
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          io.stderr(`muse tasks flow: --days must be a positive number (got '${options.days}')\n`);
+          process.exitCode = 1;
+          return;
+        }
+        windowDays = Math.trunc(parsed);
+      }
+      const all = await readTasks(localTasksFile());
+      const stats = analyzeTaskFlow(
+        all.map((t) => ({ completedAt: t.completedAt, createdAt: t.createdAt, status: t.status })),
+        new Date(),
+        windowDays
+      );
+      if (options.json) {
+        io.stdout(`${JSON.stringify(stats, null, 2)}\n`);
+        return;
+      }
+      io.stdout(formatTaskFlow(stats));
     });
 
   tasks
