@@ -1041,6 +1041,26 @@ user-verified — a window can't be auto-asserted headlessly).
   audio + drag are user-verified via `swift run MuseDesktop`. Honest scope: voice INPUT (speak your
   question) is slice 3; an artist sprite sheet + global hotkey + menu bar follow; the code-drawn Muse is a
   strong placeholder a real sprite can swap in without touching the app._
+- [x] **P45-3 The companion is now a GENUINELY PRETTY, SELECTABLE character (Jinan: "더 예쁘게 + 약간
+  사람같이 + hermes처럼 음악 듣는 여자") — a girl with headphones enjoying the music (default `aria`) or an
+  ethereal starlit Muse (`celestial`), chosen via a multi-agent design panel + made data-driven so any
+  look (incl. an artist sprite) swaps in with no code change.** (681320c5) Ran a 5-agent design+architecture
+  WORKFLOW (3 character candidates + voice/shell plans); rendered the candidates with a new headless
+  `--render-json` mode, compared them VISUALLY, and picked the headphone "listening to music" girl (the
+  exact reference Jinan gave) as default, with the celestial muse as an alternative. Both 24×32 with 3-tone
+  shading (hair/skin/cloth highlight+shadow). Made the sprite system DATA-DRIVEN: `Sprite` (Codable —
+  width/height/rows/palette-as-hex + optional eye/mouth animation rows) + `isRectangular` validation in the
+  headless core; `SpriteLibrary` (`aria` + `celestial`, `named()` selector); `HexColor` parser;
+  `SpriteRenderer`/`CharacterView` render any `Sprite`. `MUSE_DESKTOP_CHARACTER=celestial` switches;
+  `MuseDesktop --render-json <sprite.json> <png>` previews ANY candidate headlessly. COPYRIGHT (Jinan flagged
+  it as critical): all art is ORIGINAL — designed by our own panel + drawn programmatically pixel-by-pixel,
+  no third-party asset traced/copied; concepts are generic non-copyrightable tropes; the key was renamed off
+  "lofi" to avoid any brand association. Verified: `swift build` + `swift test` 18 tests (was 12) — Sprite
+  rectangular/paletteMap/JSON round-trip + ragged-row rejection, SpriteLibrary all-rectangular +
+  animation-rows-aligned + `named()` case-insensitive/fallback + round-trip; `MuseDesktop --render` produced
+  the aria + celestial PNGs which I INSPECTED (a cute headphone girl + an elegant starlit muse, not blobs);
+  app launches without crashing; `pnpm lint` 0/0 (Swift ignored). Live animation + character switch are
+  user-verified via `swift run MuseDesktop`._
 
 **P44 — Trust: encryption at rest (the discretion refusal, made real against
 storage access — not just network egress).** "It can't tell anyone" was true

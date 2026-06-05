@@ -46,6 +46,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         content.addSubview(bubble)
 
         character.frame = NSRect(x: 18, y: 18, width: 132, height: 150)
+        character.sprite = SpriteLibrary.named(ProcessInfo.processInfo.environment["MUSE_DESKTOP_CHARACTER"])
         character.onClick = { [weak self] in self?.revealInput() }
         content.addSubview(character)
 

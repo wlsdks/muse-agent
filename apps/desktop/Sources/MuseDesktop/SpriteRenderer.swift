@@ -1,15 +1,19 @@
 import AppKit
 import MuseDesktopCore
 
-/// Renders the Muse sprite straight to a PNG (no window) for a headless visual
-/// check of the art — `MuseDesktop --render <path> [scale]`. Same grid + palette
-/// the live window uses, so the preview is faithful.
+/// Renders a `Sprite` straight to a PNG (no window) for a headless visual check
+/// of the art — `MuseDesktop --render <png>` (the active Muse) or
+/// `MuseDesktop --render-json <sprite.json> <png>` (any candidate design). Same
+/// grid + palette the live window uses, so the preview is faithful.
 enum SpriteRenderer {
-    enum RenderError: Error { case allocFailed, encodeFailed }
+    enum RenderError: Error { case allocFailed, encodeFailed, badSprite }
 
-    static func renderPNG(to url: URL, scale: Int = 18) throws {
-        let width = MuseSprite.width * scale
-        let height = MuseSprite.height * scale
+    static func renderPNG(_ sprite: Sprite, to url: URL, scale: Int = 18) throws {
+        let cols = sprite.width
+        let rowsN = sprite.height
+        guard cols > 0, rowsN > 0 else { throw RenderError.badSprite }
+        let width = cols * scale
+        let height = rowsN * scale
         guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
@@ -22,16 +26,13 @@ enum SpriteRenderer {
         NSGraphicsContext.current = ctx
         ctx.cgContext.setShouldAntialias(false)
 
-        for (r, row) in MuseSprite.rows.enumerated() {
+        let palette = sprite.paletteMap()
+        for (r, row) in sprite.rows.enumerated() {
             for (c, ch) in row.enumerated() {
-                guard let color = MusePalette.color(for: ch) else { continue }
+                guard let hex = palette[ch], let color = HexColor.parse(hex) else { continue }
                 color.setFill()
                 // Bitmap origin is bottom-left; sprite row 0 is the TOP, so flip y.
-                NSBezierPath.fill(NSRect(
-                    x: c * scale,
-                    y: (MuseSprite.height - 1 - r) * scale,
-                    width: scale, height: scale
-                ))
+                NSBezierPath.fill(NSRect(x: c * scale, y: (rowsN - 1 - r) * scale, width: scale, height: scale))
             }
         }
 

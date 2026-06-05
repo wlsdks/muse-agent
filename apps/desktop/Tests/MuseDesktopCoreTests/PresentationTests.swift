@@ -25,15 +25,16 @@ final class AnswerPresentationTests: XCTestCase {
     }
 }
 
-final class MuseSpriteTests: XCTestCase {
-    func testSpriteIsACleanRectangle() {
-        XCTAssertTrue(MuseSprite.isRectangular())
-        XCTAssertEqual(MuseSprite.width, 14)
-        XCTAssertEqual(MuseSprite.height, 16)
+final class SpriteTests: XCTestCase {
+    func testDefaultMuseIsACleanRectangle() {
+        let muse = MuseSprite.default
+        XCTAssertTrue(muse.isRectangular())
+        XCTAssertEqual(muse.width, 14)
+        XCTAssertEqual(muse.height, 16)
     }
 
-    func testSpriteHasAFaceAndDress() {
-        let all = MuseSprite.rows.joined()
+    func testDefaultMuseHasFaceLaurelAndDress() {
+        let all = MuseSprite.default.rows.joined()
         XCTAssertTrue(all.contains("e")) // eyes
         XCTAssertTrue(all.contains("m")) // lips
         XCTAssertTrue(all.contains("G")) // gold laurel
@@ -41,9 +42,57 @@ final class MuseSpriteTests: XCTestCase {
     }
 
     func testAnimationOverrideRowsLineUp() {
-        XCTAssertEqual(MuseSprite.closedEyesRow.count, MuseSprite.width)
-        XCTAssertEqual(MuseSprite.openMouthRow.count, MuseSprite.width)
-        XCTAssertLessThan(MuseSprite.eyeRowIndex, MuseSprite.height)
-        XCTAssertLessThan(MuseSprite.mouthRowIndex, MuseSprite.height)
+        let muse = MuseSprite.default
+        XCTAssertEqual(muse.closedEyesRow?.count, muse.width)
+        XCTAssertEqual(muse.openMouthRow?.count, muse.width)
+        XCTAssertEqual(muse.eyeRowIndex, 5)
+        XCTAssertEqual(muse.mouthRowIndex, 8)
+    }
+
+    func testPaletteMapResolvesKeys() {
+        let map = MuseSprite.default.paletteMap()
+        XCTAssertEqual(map["H"], "#6b3d29")
+        XCTAssertEqual(map["."], "#00000000")
+    }
+
+    func testSpriteRoundTripsThroughJSON() throws {
+        let data = try JSONEncoder().encode(MuseSprite.default)
+        let back = try Sprite.decode(data)
+        XCTAssertEqual(back, MuseSprite.default)
+        XCTAssertTrue(back.isRectangular())
+    }
+
+    func testDecodeRejectsRaggedRowsViaIsRectangular() throws {
+        let json = ##"{"width":3,"height":2,"rows":["abc","ab"],"palette":[{"key":"a","hex":"#fff"}]}"##
+        let sprite = try Sprite.decode(Data(json.utf8))
+        XCTAssertFalse(sprite.isRectangular()) // ragged → caught before render
+    }
+}
+
+final class SpriteLibraryTests: XCTestCase {
+    func testEveryBuiltInCharacterIsACleanRectangleWithAnimationRowsAligned() {
+        for sprite in SpriteLibrary.all {
+            XCTAssertTrue(sprite.isRectangular(), "\(sprite.name ?? "?") is not rectangular")
+            if let closed = sprite.closedEyesRow { XCTAssertEqual(closed.count, sprite.width, "\(sprite.name ?? "?") closedEyesRow width") }
+            if let open = sprite.openMouthRow { XCTAssertEqual(open.count, sprite.width, "\(sprite.name ?? "?") openMouthRow width") }
+            if let eye = sprite.eyeRowIndex { XCTAssertLessThan(eye, sprite.height) }
+            if let mouth = sprite.mouthRowIndex { XCTAssertLessThan(mouth, sprite.height) }
+        }
+    }
+
+    func testDefaultIsAriaAndNamedResolves() {
+        XCTAssertEqual(SpriteLibrary.default.name, "aria")
+        XCTAssertEqual(SpriteLibrary.named("celestial").name, "celestial")
+        XCTAssertEqual(SpriteLibrary.named("CELESTIAL").name, "celestial") // case-insensitive
+        XCTAssertEqual(SpriteLibrary.named("nope").name, "aria")           // unknown ⇒ default
+        XCTAssertEqual(SpriteLibrary.named(nil).name, "aria")
+        XCTAssertEqual(SpriteLibrary.named("").name, "aria")
+    }
+
+    func testEveryBuiltInCharacterRoundTripsThroughJSON() throws {
+        for sprite in SpriteLibrary.all {
+            let data = try JSONEncoder().encode(sprite)
+            XCTAssertEqual(try Sprite.decode(data), sprite)
+        }
     }
 }

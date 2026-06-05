@@ -1,52 +1,48 @@
 import Foundation
 
-/// The pixel-art Muse, authored as a palette-keyed grid (the data only — colour
-/// + rendering live in the AppKit `CharacterView`, kept out of here so the
-/// sprite stays headless-testable). She is a classical Muse bust: a laurel-
-/// crowned woman with long flowing hair and a draped dress — feminine and
-/// human, fitting the name, rather than a generic blob.
-///
-/// Legend: `.` transparent · `H` hair · `h` hair highlight · `F` skin ·
-/// `e` eye · `k` blush · `m` lips · `G` gold (laurel / brooch) ·
-/// `D` dress · `d` dress shadow.
+/// The default Muse sprite — a classical Muse bust (laurel-crowned woman, auburn
+/// hair, draped dress). Data-driven (a `Sprite` with its own hex palette) so the
+/// renderer + live view treat it like any candidate, and an artist sprite can
+/// replace it by swapping this value. Animation metadata (eye/mouth rows) lets
+/// the live view blink and mouth the words.
 public enum MuseSprite {
-    public static let rows: [String] = [
-        "....HHHHHH....",
-        "..HHHHHHHHHH..",
-        ".HHGGGGGGGGHH.",
-        ".HHhFFFFFFhHH.",
-        "HHhFFFFFFFFhHH",
-        "HHFFeFFFFeFFHH",
-        "HHFFFFFFFFFFHH",
-        "HHFkFFFFFFkFHH",
-        "HHFFFFmmFFFFHH",
-        ".HHFFFFFFFFHH.",
-        "..HHFFFFFFHH..",
-        "...HH.FF.HH...",
-        ".HHDDDGGDDDHH.",
-        "HHDDDdddDDDDHH",
-        "HHDDDDDDDDDDHH",
-        ".HHDDDDDDDDHH."
-    ]
-
-    /// Row 5 carries the eyes; blink swaps it for all-skin (closed lids).
-    public static let eyeRowIndex = 5
-    public static let closedEyesRow = "HHFFFFFFFFFFHH"
-
-    /// Row 8 carries the mouth; speaking alternates closed ↔ open so she looks
-    /// like she's talking while the answer is read aloud.
-    public static let mouthRowIndex = 8
-    public static let openMouthRow = "HHFFFmmmmFFFHH"
-
-    public static var width: Int { rows.first?.count ?? 0 }
-    public static var height: Int { rows.count }
-
-    /// The sprite must be a clean rectangle or the rendered art skews. Validated
-    /// in tests so an edit that mis-sizes a row is caught before it ships.
-    public static func isRectangular() -> Bool {
-        guard width > 0, height > 0 else { return false }
-        return rows.allSatisfy { $0.count == width }
-            && closedEyesRow.count == width
-            && openMouthRow.count == width
-    }
+    public static let `default` = Sprite(
+        name: "muse-classical-v1",
+        width: 14,
+        height: 16,
+        rows: [
+            "....HHHHHH....",
+            "..HHHHHHHHHH..",
+            ".HHGGGGGGGGHH.",
+            ".HHhFFFFFFhHH.",
+            "HHhFFFFFFFFhHH",
+            "HHFFeFFFFeFFHH",
+            "HHFFFFFFFFFFHH",
+            "HHFkFFFFFFkFHH",
+            "HHFFFFmmFFFFHH",
+            ".HHFFFFFFFFHH.",
+            "..HHFFFFFFHH..",
+            "...HH.FF.HH...",
+            ".HHDDDGGDDDHH.",
+            "HHDDDdddDDDDHH",
+            "HHDDDDDDDDDDHH",
+            ".HHDDDDDDDDHH."
+        ],
+        palette: [
+            PaletteEntry(key: ".", hex: "#00000000"), // transparent
+            PaletteEntry(key: "H", hex: "#6b3d29"),   // auburn hair
+            PaletteEntry(key: "h", hex: "#995c38"),   // hair highlight
+            PaletteEntry(key: "F", hex: "#f5cca8"),   // skin
+            PaletteEntry(key: "e", hex: "#332938"),   // eyes
+            PaletteEntry(key: "k", hex: "#ed9e99"),   // blush
+            PaletteEntry(key: "m", hex: "#c75761"),   // lips
+            PaletteEntry(key: "G", hex: "#e6bd5c"),   // gold laurel
+            PaletteEntry(key: "D", hex: "#f5eddb"),   // dress
+            PaletteEntry(key: "d", hex: "#d1c7b3")    // dress shadow
+        ],
+        eyeRowIndex: 5,
+        closedEyesRow: "HHFFFFFFFFFFHH",
+        mouthRowIndex: 8,
+        openMouthRow: "HHFFFmmmmFFFHH"
+    )
 }
