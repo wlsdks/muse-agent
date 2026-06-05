@@ -162,6 +162,7 @@ export {
   parseGroundingReverifyVerdict,
   REVERIFY_SYSTEM_PROMPT,
   segmentClaims,
+  selectByMarginalValue,
   selectByMmr,
   verifyGrounding,
   verifyGroundingPerClaim,

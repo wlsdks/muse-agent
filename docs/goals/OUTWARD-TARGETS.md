@@ -3168,6 +3168,35 @@ conversational session — NOT a loop fire).** The edge gained an instrument,
 closed its deepest hole, and became constructive. Each verified live on
 qwen3:8b and added to `eval:self-improving`.
 
+- [x] **P38-42 `muse recall <q> --adaptive` lets the EVIDENCE pick how many sources to cite —
+  one when a single note clearly dominates, more when the field is genuinely rich — instead of always
+  the fixed top-N, via an ecological optimal-foraging rule.** ★FIRST slice of the cross-field
+  research-application direction (Jinan 2026-06-05: mine OPEN papers from OTHER fields — biology/life-
+  sciences — for a mechanism to distill into the agent; chosen by a 7-agent research+adversarial
+  workflow that web-verified the paper, the seam, and rejected a runner-up with phantom seams). The
+  paper: Charnov, "Optimal foraging, the marginal value theorem," Theoretical Population Biology
+  9(2):129-136 (1976) — an optimal forager abandons a depleting patch the moment its marginal intake
+  rate falls to the habitat's long-run average rate R*. Faithfully distilled: `muse recall` ranked
+  sources then cut at a FIXED `--limit` regardless of the score distribution (apps/cli/src/commands-
+  recall.ts rankRecallCandidates). Added a pure `selectByMarginalValue(scoresDescending, {min,max})`
+  (packages/agent-core/src/knowledge-recall.ts, beside selectByMmr) that computes R* = the mean
+  candidate score (the habitat average) and keeps the LEADING sources at/above R*, stopping at the
+  first below it — the canonical MVT give-up rule, scale-robust (the threshold is the distribution's
+  OWN mean, so it works on nomic's compressed cosine band) and tuning-constant-free. Wired an opt-in
+  `--adaptive` flag through `searchRecall` → `rankRecallCandidates` (bounded by `--limit`); default
+  behaviour is byte-for-byte unchanged. This tightens the grounding edge — fewer cited sources on a
+  sharp query means less noise/fabrication surface under the citation gate. Honest caveat (the
+  adversary's): it sharpens an already-rich ranking stack rather than adding a missing capability — but
+  it is a faithful, deterministic, opt-in mechanism with clear live value. Verified deterministically
+  AND live: 5 unit tests (selectByMarginalValue stops at 1 on a sharp cliff, keeps 3 in a rich field,
+  keeps all when flat, is scale-robust on a 0.78-over-0.43 compressed band, and clamps to [min,max] +
+  handles empty — packages/agent-core/test/knowledge-recall-ranking.test.ts) + the FULL cross-package
+  `pnpm check` (every workspace green: agent-core 1460, cli 2174, mcp 1542, api 849 …) + tsc + `pnpm
+  lint` 0/0 + 0 raw control bytes + a FULL LIVE run on the loop PC against qwen3:8b + nomic-embed: a
+  5-note corpus with one note matching "office wifi password" and four off-topic → `muse recall "office
+  wifi password" --source notes --limit 5` returned 5 sources (4 of them noise) while `--adaptive`
+  returned ONLY wifi.md (R* cut the four below-average notes). (0493d211)
+
 - [x] **P38-36 Conflicting notes are SURFACED, not silently resolved — "I have
   conflicting notes — which is current?"** A real honesty hole found by live probe: with
   TWO conflicting notes (a.md "dentist June 12th", b.md "dentist June 15th", no update

@@ -229,6 +229,39 @@ export function selectByMmr(
 }
 
 /**
+ * Charnov's Marginal Value Theorem (Optimal foraging, the marginal value theorem,
+ * Theoretical Population Biology 9(2):129-136, 1976): an optimal forager abandons
+ * a depleting patch the moment its marginal intake rate falls to the habitat's
+ * long-run average rate R*. Applied to a RANKED set of grounding sources, each
+ * source's relevance score is its marginal value and R* is the average score of
+ * the whole candidate habitat (the mean). We keep the LEADING sources whose value
+ * is at or above R* and stop at the first that drops below it — so the cited
+ * count adapts to the score distribution: a sharp relevance cliff (one source far
+ * above the mean) yields FEW, a rich field (many comparably-relevant) yields
+ * MORE, a flat field yields all — instead of a fixed top-N, shrinking the
+ * cited-source noise/fabrication surface. Scale-robust (the threshold is the
+ * distribution's own mean, so it works on the compressed cosine space nomic
+ * produces). `scoresDescending` MUST be sorted high→low. Clamped to [min, max];
+ * an empty input returns 0. Deterministic, no tuning constant.
+ */
+export function selectByMarginalValue(
+  scoresDescending: readonly number[],
+  options: { readonly min?: number; readonly max?: number } = {}
+): number {
+  const n = scoresDescending.length;
+  if (n === 0) return 0;
+  const min = Math.max(1, Math.trunc(finiteOr(options.min, 1)));
+  const max = Math.max(min, Math.trunc(finiteOr(options.max, n)));
+  const giveUpRate = scoresDescending.reduce((sum, score) => sum + score, 0) / n;
+  let k = 0;
+  for (const score of scoresDescending) {
+    if (score < giveUpRate) break; // descending — once below R*, the rest are too
+    k += 1;
+  }
+  return Math.min(max, Math.max(min, k));
+}
+
+/**
  * Rank `chunks` from multiple sources by cosine similarity to `query`.
  * Returns the top-K matches (each carrying its `source`), highest
  * score first. Empty query / corpus → no matches; sub-threshold

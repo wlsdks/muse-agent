@@ -19,7 +19,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { selectByMmr } from "@muse/agent-core";
+import { selectByMarginalValue, selectByMmr } from "@muse/agent-core";
 import { resolveEpisodesFile } from "@muse/autoconfigure";
 import { readEpisodes } from "@muse/mcp";
 import type { Command } from "commander";
@@ -35,6 +35,7 @@ interface RecallOptions {
   readonly embedModel?: string;
   readonly json?: boolean;
   readonly expand?: boolean;
+  readonly adaptive?: boolean;
 }
 
 export interface RecallHit {
@@ -145,6 +146,7 @@ export function rankRecallCandidates(args: {
   readonly episodeEntries: ReadonlyArray<{ id: string; summary: string; embedding: readonly number[] }>;
   readonly limit: number;
   readonly source: "notes" | "episodes" | "all";
+  readonly adaptive?: boolean;
 }): readonly RecallHit[] {
   const queryTokens = recallContentTokens(args.queryText ?? "");
   const combined = (vec: readonly number[], text: string): number =>
@@ -162,19 +164,25 @@ export function rankRecallCandidates(args: {
   }
   const limit = Math.max(1, args.limit);
   const positive = scored.filter((s) => s.hit.score > 0).sort((a, b) => b.hit.score - a.hit.score);
+  // MVT (Charnov 1976): when --adaptive, let the score distribution choose the
+  // cutoff — stop adding sources once the marginal relevance falls below the
+  // running return rate — instead of always the fixed top-N. Bounded by `limit`.
+  const effectiveLimit = args.adaptive
+    ? Math.min(limit, selectByMarginalValue(positive.map((s) => s.hit.score), { max: limit, min: 1 }))
+    : limit;
   // Diversify the returned set with MMR (Carbonell & Goldstein, SIGIR 1998) so
   // recall / `today --connect` don't surface several near-duplicate passages.
   // Each hit KEEPS its cosine+lexical score (downstream gates like today's
   // `>= 0.5` stay valid — MMR changes WHICH passages return, not their score),
   // and the top pick is still the most relevant, so a single-best query is
   // unaffected. Only engages when there's more than `limit` to choose from.
-  if (positive.length <= limit) {
+  if (positive.length <= effectiveLimit) {
     return positive.map((s) => s.hit);
   }
   const order = selectByMmr(
     positive.map((s, i) => ({ embedding: s.embedding, key: String(i), relevance: s.hit.score })),
     RECALL_MMR_LAMBDA,
-    limit
+    effectiveLimit
   );
   return order.map((k) => positive[Number(k)]!.hit);
 }
@@ -279,6 +287,7 @@ export async function searchRecall(opts: {
   readonly embedModel: string;
   readonly env?: Record<string, string | undefined>;
   readonly onWarn?: (message: string) => void;
+  readonly adaptive?: boolean;
 }): Promise<readonly RecallHit[]> {
   const { query, source, limit, embedModel } = opts;
   const env = opts.env ?? (process.env as Record<string, string | undefined>);
@@ -328,7 +337,7 @@ export async function searchRecall(opts: {
     episodeEntries = filterLiveEpisodeEntries(episodeEntries, liveIds);
   }
 
-  return rankRecallCandidates({ queryVec, queryText: query, noteChunks, episodeEntries, limit, source });
+  return rankRecallCandidates({ adaptive: opts.adaptive, episodeEntries, limit, noteChunks, queryText: query, queryVec, source });
 }
 
 export function registerRecallCommand(program: Command, io: ProgramIO): void {
@@ -341,6 +350,7 @@ export function registerRecallCommand(program: Command, io: ProgramIO): void {
     .option("--embed-model <tag>", "Embedding model (default 'nomic-embed-text')")
     .option("--json", "Emit a structured payload")
     .option("--expand", "Also surface notes the top results link to (1-hop [[wiki-links]]) — graph-augmented recall (GraphRAG)")
+    .option("--adaptive", "Let the evidence pick how many sources to return (optimal-foraging / marginal-value stopping rule) — fewer when one source dominates, more when the field is rich — instead of a fixed --limit")
     .action(async (queryRaw: string, options: RecallOptions) => {
       const query = queryRaw.trim();
       if (query.length === 0) {
@@ -367,7 +377,7 @@ export function registerRecallCommand(program: Command, io: ProgramIO): void {
 
       let hits: readonly RecallHit[];
       try {
-        hits = await searchRecall({ query, source, limit, embedModel, env: process.env as Record<string, string | undefined>, onWarn: io.stderr });
+        hits = await searchRecall({ adaptive: options.adaptive, embedModel, env: process.env as Record<string, string | undefined>, limit, onWarn: io.stderr, query, source });
       } catch (cause) {
         io.stderr(
           `muse recall: embedding failed — is Ollama running with '${embedModel}' pulled? ` +

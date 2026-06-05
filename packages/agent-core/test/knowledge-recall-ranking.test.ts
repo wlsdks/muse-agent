@@ -1,6 +1,33 @@
 import { describe, expect, it } from "vitest";
 
-import { edgeLoadByRelevance, fuseByReciprocalRank, reorderForLongContext, selectByMmr } from "../src/knowledge-recall.js";
+import { edgeLoadByRelevance, fuseByReciprocalRank, reorderForLongContext, selectByMarginalValue, selectByMmr } from "../src/knowledge-recall.js";
+
+describe("selectByMarginalValue — Charnov MVT give-up-at-R* stopping rule for the cited-source count", () => {
+  it("stops early on a sharp relevance cliff (one source far above the mean)", () => {
+    // R* (mean) = 0.2625; only 0.9 clears it → leave the habitat at 1 source.
+    expect(selectByMarginalValue([0.9, 0.05, 0.05, 0.05])).toBe(1);
+  });
+
+  it("keeps more sources when the field is rich (many comparably-relevant)", () => {
+    // R* = 0.6125; 0.8, 0.75, 0.7 clear it, 0.2 does not → 3.
+    expect(selectByMarginalValue([0.8, 0.75, 0.7, 0.2])).toBe(3);
+  });
+
+  it("returns all when every source is equally relevant — no cliff to stop at", () => {
+    expect(selectByMarginalValue([0.5, 0.5, 0.5])).toBe(3); // all == R*, none below
+  });
+
+  it("is scale-robust on the compressed cosine band (a real winner still cuts the noise)", () => {
+    // Nomic-style: one lexical+semantic winner ~0.78 over a ~0.43 noise floor.
+    expect(selectByMarginalValue([0.78, 0.45, 0.43, 0.41])).toBe(1); // R*≈0.5175, only 0.78 clears
+  });
+
+  it("clamps to [min, max] and handles the empty list", () => {
+    expect(selectByMarginalValue([0.9, 0.05, 0.05], { max: 5, min: 2 })).toBe(2); // R* wants 1, min lifts to 2
+    expect(selectByMarginalValue([0.5, 0.5, 0.5, 0.5], { max: 2 })).toBe(2); // all clear R*, capped at max
+    expect(selectByMarginalValue([])).toBe(0);
+  });
+});
 
 describe("fuseByReciprocalRank", () => {
   it("sums 1/(k + rank) across rankings, rewarding agreement between lists", () => {
