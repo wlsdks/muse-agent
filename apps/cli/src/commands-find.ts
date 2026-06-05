@@ -34,6 +34,8 @@ export interface FindSources {
     readonly handle?: string;
     readonly phone?: string;
     readonly aliases?: readonly string[];
+    readonly relationship?: string;
+    readonly about?: string;
   }[];
   readonly events?: readonly { readonly id: string; readonly title?: string; readonly notes?: string }[];
 }
@@ -63,8 +65,16 @@ export function findAcrossDomains(sources: FindSources, query: string): readonly
   }
   for (const contact of sources.contacts ?? []) {
     const aliasHit = (contact.aliases ?? []).some((alias) => has(alias));
-    if (has(contact.name) || has(contact.email) || has(contact.handle) || has(contact.phone) || aliasHit) {
-      hits.push({ domain: "contact", id: contact.id, label: contact.name ?? "" });
+    const idHit = has(contact.name) || has(contact.email) || has(contact.handle) || has(contact.phone) || aliasHit;
+    // Also match the relationship ("manager") and the free-text about ("loves
+    // hiking") — searchable in `muse contacts list --search` + recall, so the
+    // unified find should find a person by their role or what you know about them.
+    const relHit = has(contact.relationship);
+    const aboutHit = has(contact.about);
+    if (idHit || relHit || aboutHit) {
+      // When the NAME didn't match, show WHY it surfaced (the about / role).
+      const context = idHit ? undefined : aboutHit ? contact.about : relHit ? `your ${contact.relationship!}` : undefined;
+      hits.push({ domain: "contact", id: contact.id, label: contact.name ?? "", ...(context ? { context } : {}) });
     }
   }
   for (const event of sources.events ?? []) {

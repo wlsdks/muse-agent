@@ -35,6 +35,21 @@ describe("findAcrossDomains — substring across tasks/reminders/contacts", () =
     expect(findAcrossDomains(sources, "dentist guy").map((h) => h.id)).toEqual(["c2"]);
   });
 
+  it("matches a contact by RELATIONSHIP and free-text ABOUT, with WHY as context", () => {
+    const people = {
+      contacts: [
+        { id: "m", name: "Dana Wu", relationship: "manager" },
+        { id: "f", name: "Sam", about: "loves hiking and climbing" }
+      ]
+    };
+    // find by role
+    expect(findAcrossDomains(people, "manager")).toEqual([{ domain: "contact", id: "m", label: "Dana Wu", context: "your manager" }]);
+    // find by something you know about them
+    expect(findAcrossDomains(people, "hiking")).toEqual([{ domain: "contact", id: "f", label: "Sam", context: "loves hiking and climbing" }]);
+    // a NAME match still wins with no redundant context
+    expect(findAcrossDomains(people, "dana")).toEqual([{ domain: "contact", id: "m", label: "Dana Wu" }]);
+  });
+
   it("returns nothing for a blank query or a no-match", () => {
     expect(findAcrossDomains(sources, "   ")).toEqual([]);
     expect(findAcrossDomains(sources, "zzzznope")).toEqual([]);

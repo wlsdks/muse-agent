@@ -914,6 +914,26 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   color" (un-recorded fact refused, not fabricated — the grounding gate holds for the new
   source). (ee4a5324)
 
+- [x] **P37-42 `muse find manager` / `muse find hiking` now finds a person by their RELATIONSHIP or
+  by something in their free-text ABOUT — closing the gap where the unified search ignored exactly
+  the two knowing-you fields it surfaces everywhere else.** `muse find <term>` searches across tasks /
+  reminders / contacts / calendar, but its contact match only checked name / email / handle / phone /
+  aliases — NOT the `relationship` (P37-20: "manager", "doctor") nor the free-text `about` (P37-36:
+  "loves hiking, allergic to nuts"), even though BOTH are searchable in `muse contacts list --search`
+  and ground `muse ask` recall. So `muse find "manager"` missed your manager and `muse find "allergic"`
+  missed the person you'd recorded a nut allergy for — a real inconsistency. Widened `findAcrossDomains`
+  (apps/cli/src/commands-find.ts) to also match `contact.relationship` and `contact.about` (the action
+  already passed the full Contact, which carries them), and — when the NAME didn't match — surface WHY
+  it matched as the hit's context ("your manager" for a role hit, the about text for an about hit), so
+  the result reads "Dana Wu — your manager" / "Sam — loves hiking, allergic to nuts". Deterministic
+  (substring; no model). Verified: a unit test (find by relationship → context "your manager"; find by
+  about → context = the about; a name match still wins with no redundant context — apps/cli/src/
+  commands-find.test.ts) + the full @muse/cli suite (186 files / 2119 tests) + tsc build + `pnpm lint`
+  0/0 + 0 raw control bytes + a LIVE run on the loop PC: `muse contacts add Dana Wu --relationship
+  manager` + `muse contacts add Sam --about "loves hiking, allergic to nuts"`, then `muse find manager`
+  → "Dana Wu — your manager", `muse find hiking` → "Sam — loves hiking, allergic to nuts", and `muse
+  find allergic` → the same Sam. (a1791298)
+
 - [x] **P37-21 The people graph now has EDGES — "who works with Bob?" recall.** P37-20
   added a person's ROLE TO YOU (relationship); this adds edges BETWEEN people — the
   capability map's STANDOUT knowing-you gap ("models no roles or edges … can't answer
