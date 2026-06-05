@@ -28,7 +28,24 @@ final class CompanionModel: ObservableObject {
         lookName = ProcessInfo.processInfo.environment["MUSE_DESKTOP_CHARACTER"] ?? prefs.look
         language = lang
         bubble = "" // idle = just the orb; the bubble appears only on an answer / listening
+        whisper.onLoadProgress = { [weak self] phase in MainActor.assumeIsolated { self?.handleLoadProgress(phase) } }
         whisper.preload() // warm the CoreML speech model at launch so the first tap is instant
+    }
+
+    /// Live model-download/load feedback — only while the user is waiting to talk
+    /// (idle stays just-the-orb). Lets the user SEE the download progressing
+    /// instead of guessing whether it hung.
+    private func handleLoadProgress(_ phase: WhisperCapture.LoadPhase) {
+        guard listening else { return }
+        switch phase {
+        // Before any bytes arrive (the metadata check) show "준비 중"; only show a
+        // percentage once a real download is actually moving.
+        case .downloading(let fraction):
+            bubble = fraction > 0 ? language.downloadingVoice(Int(fraction * 100)) : language.preparingVoice
+        case .loading: bubble = language.loadingVoice
+        case .ready: if orbState == .listening { bubble = language.listeningHint }
+        case .failed: break // startVoice's catch sets the failure message
+        }
     }
 
     /// Tap the orb → toggle the input (always works); cancel voice if listening.

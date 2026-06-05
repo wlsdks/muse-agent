@@ -36,6 +36,14 @@ public enum ResolvedLanguage: String, Sendable {
             ? "🧠 음성 모델 준비 중… (최초 1회만 다운로드)"
             : "🧠 Preparing the speech model… (one-time download)"
     }
+    public func downloadingVoice(_ pct: Int) -> String {
+        self == .korean
+            ? "⬇️ 음성 모델 다운로드 중… \(pct)% (최초 1회만)"
+            : "⬇️ Downloading the speech model… \(pct)% (one-time)"
+    }
+    public var loadingVoice: String {
+        self == .korean ? "🧠 음성 모델 불러오는 중…" : "🧠 Loading the speech model…"
+    }
     public var voiceUnavailable: String {
         self == .korean
             ? "음성 모델을 불러오지 못했어요. 잠시 후 마이크를 다시 탭해 주세요 (최초 1회는 다운로드)."

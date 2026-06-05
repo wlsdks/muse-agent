@@ -7,17 +7,28 @@ import WhisperKit
 /// old whisper.cpp shell-out (temp WAV → afconvert → `whisper-cli` per chunk): no
 /// external binary, no temp files, no re-transcribing the whole clip — WhisperKit
 /// owns the mic and emits live partials as you speak. All local; audio never
-/// leaves the Mac. The model (Korean-improved `large-v3-v20240930` turbo) is
-/// downloaded once from HuggingFace, then cached.
+/// leaves the Mac. The multilingual `base` model is downloaded once from
+/// HuggingFace, then cached; its download/load progress is reported to the UI.
 final class WhisperCapture {
     enum CaptureError: Error, Equatable { case modelUnavailable }
+
+    /// Progress of the one-time model fetch, surfaced live to the UI so the user
+    /// can see it's actually working (download %) rather than guessing if it hung.
+    enum LoadPhase: Equatable { case downloading(Double), loading, ready, failed }
 
     /// "ko" / "en" / "auto" (auto → WhisperKit detects).
     var languageCode = "auto"
 
-    /// The September-2024 large-v3 checkpoint (notably better Korean) in its
-    /// `turbo` variant — ~8× faster decoder so streaming stays real-time.
-    private let modelName = "large-v3-v20240930_turbo"
+    /// Called (on the main thread) as the model downloads/loads so the companion
+    /// can show a live "downloading… 42%" / "loading…" bubble.
+    var onLoadProgress: ((LoadPhase) -> Void)?
+
+    /// Multilingual `small` by default: it cold-loads in ~27s (vs ~150s for
+    /// large-v3-turbo, whose CoreML compile made the first tap feel broken) and
+    /// transcribes Korean accurately where `base` slips (e.g. 비밀번호, 여덟 시 반).
+    /// Quality wins here since the user is Korean; set `MUSE_DESKTOP_STT_MODEL=base`
+    /// for a faster (~12s) load if you prefer snappiness over top Korean accuracy.
+    private let modelName = ProcessInfo.processInfo.environment["MUSE_DESKTOP_STT_MODEL"] ?? "small"
     private static let placeholder = "Waiting for speech..."
 
     private var loadTask: Task<WhisperKit, Error>?
@@ -32,6 +43,11 @@ final class WhisperCapture {
 
     /// True once the CoreML model is loaded (so the first tap won't cold-start).
     var isReady: Bool { whisperKit != nil }
+
+    private func report(_ phase: LoadPhase) {
+        let cb = onLoadProgress
+        DispatchQueue.main.async { cb?(phase) }
+    }
 
     static func requestMic() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
@@ -65,14 +81,29 @@ final class WhisperCapture {
         let task = Task<WhisperKit, Error> { [weak self] in
             do {
                 let started = Date()
-                let kit = try await WhisperKit(WhisperKitConfig(model: name, verbose: false, logLevel: .error, download: true))
+                WhisperCapture.log("model load start: \(name)")
+                self?.report(.downloading(0))
+                // Download with a progress callback (the slow, opaque part), THEN
+                // load from the folder — so the UI can show real download %.
+                let folder = try await WhisperKit.download(variant: name, progressCallback: { [weak self] progress in
+                    self?.report(.downloading(progress.fractionCompleted))
+                })
+                self?.report(.loading)
+                WhisperCapture.log("model downloaded -> \(folder.lastPathComponent); loading…")
+                let kit = try await WhisperKit(WhisperKitConfig(modelFolder: folder.path, verbose: false, logLevel: .error))
+                guard kit.tokenizer != nil else {
+                    WhisperCapture.log("model load FAILED: tokenizer nil after load")
+                    throw CaptureError.modelUnavailable
+                }
                 await MainActor.run { self?.whisperKit = kit }
                 WhisperCapture.log("model loaded: \(name) in \(String(format: "%.1f", Date().timeIntervalSince(started)))s")
+                self?.report(.ready)
                 return kit
             } catch {
                 // A failed load must NOT stay cached — that leaves voice dead until
                 // the app restarts. Clear it so the next tap retries from scratch.
                 WhisperCapture.log("model load FAILED: \(error.localizedDescription)")
+                self?.report(.failed)
                 await MainActor.run { self?.loadTask = nil }
                 throw error
             }

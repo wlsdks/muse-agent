@@ -52,6 +52,34 @@ if let flag = arguments.firstIndex(of: "--selftest-tts"), flag + 2 < arguments.c
     exit(code)
 }
 
+// Headless model-load self-test: `MuseDesktop --selftest-load`. Runs the EXACT
+// WhisperKit.download(progress)+load path the live mic uses, printing download %
+// to stderr — so the load path (and its progress) is verifiable without the GUI.
+if let loadFlag = arguments.firstIndex(of: "--selftest-load") {
+    let variant = loadFlag + 1 < arguments.count && !arguments[loadFlag + 1].hasPrefix("-")
+        ? arguments[loadFlag + 1] : "small"
+    let done = DispatchSemaphore(value: 0)
+    var code: Int32 = 1
+    Task {
+        do {
+            let started = Date()
+            let folder = try await WhisperKit.download(variant: variant, progressCallback: { progress in
+                FileHandle.standardError.write(Data("download \(Int(progress.fractionCompleted * 100))%\n".utf8))
+            })
+            let dl = Date()
+            print("downloaded -> \(folder.lastPathComponent) (\(String(format: "%.1f", dl.timeIntervalSince(started)))s)")
+            let kit = try await WhisperKit(WhisperKitConfig(modelFolder: folder.path, verbose: false, logLevel: .error))
+            print("LOAD \(variant): \(String(format: "%.1f", Date().timeIntervalSince(dl)))s, tokenizer=\(kit.tokenizer != nil)")
+            code = kit.tokenizer != nil ? 0 : 1
+        } catch {
+            FileHandle.standardError.write(Data("selftest-load failed: \(error)\n".utf8))
+        }
+        done.signal()
+    }
+    done.wait()
+    exit(code)
+}
+
 // Headless STT self-test: `MuseDesktop --selftest-stt <wav> [ko|en]`. Loads the
 // SAME WhisperKit model the live mic uses and transcribes a file, proving the
 // on-device pipeline (download → CoreML load → transcribe) works at the layer
@@ -59,17 +87,18 @@ if let flag = arguments.firstIndex(of: "--selftest-tts"), flag + 2 < arguments.c
 if let flag = arguments.firstIndex(of: "--selftest-stt"), flag + 1 < arguments.count {
     let wav = arguments[flag + 1]
     let lang = flag + 2 < arguments.count ? arguments[flag + 2] : "en"
+    let model = flag + 3 < arguments.count ? arguments[flag + 3] : "small"
     let done = DispatchSemaphore(value: 0)
     var code: Int32 = 1
     Task {
         do {
             let started = Date()
-            let kit = try await WhisperKit(WhisperKitConfig(model: "large-v3-v20240930_turbo", verbose: false, logLevel: .error, download: true))
+            let kit = try await WhisperKit(WhisperKitConfig(model: model, verbose: false, logLevel: .error, download: true))
             let loaded = Date().timeIntervalSince(started)
             let options = DecodingOptions(task: .transcribe, language: lang, skipSpecialTokens: true, withoutTimestamps: true)
             let results: [TranscriptionResult] = try await kit.transcribe(audioPath: wav, decodeOptions: options)
             let text = results.map { $0.text }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-            print("model-load=\(String(format: "%.1f", loaded))s  STT[\(lang)]: \(text)")
+            print("[\(model)] load=\(String(format: "%.1f", loaded))s  STT[\(lang)]: \(text)")
             code = 0
         } catch {
             FileHandle.standardError.write(Data("selftest-stt failed: \(error)\n".utf8))

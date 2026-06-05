@@ -33,9 +33,13 @@ swift run MuseDesktop          # the companion appears bottom-right; drag it any
 
 Voice input uses **WhisperKit** (Argmax, MIT) — OpenAI Whisper running on
 CoreML + the Apple Neural Engine with native real-time streaming. Your audio
-never leaves the Mac. **No setup needed**: the model (the Korean-improved
-`large-v3-v20240930` turbo checkpoint) downloads once from HuggingFace on the
-first voice tap, then is cached — the companion warms it at launch.
+never leaves the Mac. **No setup needed**: the multilingual `small` model
+downloads once from HuggingFace, then is cached — the companion warms it at
+launch and shows live download/load progress in the bubble. (`small` is chosen
+for accurate Korean at a ~27s cold load — vs ~150s for large-v3-turbo, whose
+slow CoreML compile made the first tap feel broken. Set
+`MUSE_DESKTOP_STT_MODEL=base` for a faster ~12s load if you prefer snappiness
+over top Korean accuracy.)
 
 Tap the mic in the input bar and speak: the text appears **live as you speak**
 (word-by-word, firming up), and lands in the input field for review/edit before
