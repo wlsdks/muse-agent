@@ -43,6 +43,24 @@ you send. Tap the mic again to finish. (Apple's `SFSpeechRecognizer` and the old
 whisper.cpp shell-out are gone — WhisperKit is faster, streams natively, and has
 no external-binary dependency.)
 
+Spoken replies use **TTSKit** (Argmax, MIT) running **Qwen3-TTS** (Alibaba, the
+weights are Apache-2.0) — a natural neural voice, on-device via CoreML + the
+Neural Engine, no cloud. The voice model (~1 GB) downloads once from HuggingFace
+then is cached, and is warmed at launch; while it loads, the first reply uses the
+system voice so nothing is ever silent. Set `MUSE_DESKTOP_TTS=system` to force the
+old `AVSpeechSynthesizer` voice, or `MUSE_DESKTOP_SPEAK=0` to mute speech.
+
+All voice components are open-source and run locally; see
+[`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md) for licenses (WhisperKit
+/ TTSKit: MIT; Qwen3-TTS weights: Apache-2.0).
+
+You can hear the voice without the GUI:
+
+```bash
+MuseDesktop.app/Contents/MacOS/MuseDesktop --selftest-tts "안녕하세요, 저는 뮤즈예요." /tmp/muse.wav ko
+afplay /tmp/muse.wav
+```
+
 ## Verify
 
 ```bash

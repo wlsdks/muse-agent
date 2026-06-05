@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import MuseDesktopCore
+import TTSKit
 import WhisperKit
 
 let arguments = CommandLine.arguments
@@ -8,6 +9,48 @@ let arguments = CommandLine.arguments
 /// Keep a user-supplied pixel scale in a sane range so a typo can't request a
 /// multi-gigabyte bitmap (or a zero/negative one).
 func clampScale(_ value: Int) -> Int { min(max(value, 1), 256) }
+
+/// Write mono float samples to a 16-bit PCM WAV (used by the headless self-tests).
+func writePCMWAV(_ samples: [Float], sampleRate: Int, to url: URL) {
+    let pcm: [Int16] = samples.map { Int16(max(-1, min(1, $0)) * 32767) }
+    let dataSize = pcm.count * 2
+    var data = Data()
+    func ascii(_ s: String) { data.append(s.data(using: .ascii)!) }
+    func u32(_ v: UInt32) { var x = v.littleEndian; withUnsafeBytes(of: &x) { data.append(contentsOf: $0) } }
+    func u16(_ v: UInt16) { var x = v.littleEndian; withUnsafeBytes(of: &x) { data.append(contentsOf: $0) } }
+    ascii("RIFF"); u32(UInt32(36 + dataSize)); ascii("WAVE")
+    ascii("fmt "); u32(16); u16(1); u16(1); u32(UInt32(sampleRate)); u32(UInt32(sampleRate * 2)); u16(2); u16(16)
+    ascii("data"); u32(UInt32(dataSize))
+    pcm.withUnsafeBytes { data.append(contentsOf: $0) }
+    try? data.write(to: url)
+}
+
+// Headless TTS self-test: `MuseDesktop --selftest-tts <text> <out.wav> [ko|en]`.
+// Loads TTSKit (Qwen3-TTS) and synthesizes text to a WAV — proves the on-device
+// voice works (and lets you LISTEN with `afplay`) without the GUI.
+if let flag = arguments.firstIndex(of: "--selftest-tts"), flag + 2 < arguments.count {
+    let text = arguments[flag + 1]
+    let outPath = arguments[flag + 2]
+    let lang = flag + 3 < arguments.count ? arguments[flag + 3] : "en"
+    let done = DispatchSemaphore(value: 0)
+    var code: Int32 = 1
+    Task {
+        do {
+            let started = Date()
+            let tts = try await TTSKit(model: .qwen3TTS_0_6b)
+            let loaded = Date().timeIntervalSince(started)
+            let result = try await tts.generate(text: text, voice: nil, language: lang == "ko" ? "korean" : "english")
+            writePCMWAV(result.audio, sampleRate: result.sampleRate, to: URL(fileURLWithPath: outPath))
+            print("model-load=\(String(format: "%.1f", loaded))s  TTS[\(lang)]: \(String(format: "%.1f", result.audioDuration))s audio, \(result.audio.count) samples @\(result.sampleRate)Hz -> \(outPath)")
+            code = result.audio.isEmpty ? 1 : 0
+        } catch {
+            FileHandle.standardError.write(Data("selftest-tts failed: \(error)\n".utf8))
+        }
+        done.signal()
+    }
+    done.wait()
+    exit(code)
+}
 
 // Headless STT self-test: `MuseDesktop --selftest-stt <wav> [ko|en]`. Loads the
 // SAME WhisperKit model the live mic uses and transcribes a file, proving the

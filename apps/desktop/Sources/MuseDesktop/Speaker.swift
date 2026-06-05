@@ -1,14 +1,58 @@
 import AVFoundation
+import MuseDesktopCore
+import TTSKit
 
 /// Speaks an answer aloud. Abstracted so the panel's logic stays testable and
 /// so speech can be turned off (`MUSE_DESKTOP_SPEAK=0`) without branching.
 protocol Speaker {
-    func speak(_ text: String, onFinish: @escaping () -> Void)
+    func speak(_ text: String, language: ResolvedLanguage, onFinish: @escaping () -> Void)
 }
 
-/// On-device macOS speech (AVSpeechSynthesizer) — local by construction, no
-/// cloud, no Muse server needed. (Wiring Muse's own Piper voice through the CLI
-/// is a later refinement; this keeps slice 2 reliable and offline.)
+/// Natural on-device speech via TTSKit (Argmax, MIT) running Qwen3-TTS
+/// (Apache-2.0 weights) on CoreML + the Neural Engine. Local by construction —
+/// the spoken reply never leaves the Mac, no cloud, no key. The model
+/// (~1GB, 0.6b) downloads once from HuggingFace then is cached; it is warmed at
+/// launch. While it is still loading, the first reply falls back to the system
+/// voice so nothing is ever silent.
+final class QwenSpeaker: Speaker {
+    private let fallback = SystemSpeaker()
+    private var tts: TTSKit?
+    private var loadTask: Task<Void, Never>?
+    private var current: Task<Void, Never>?
+
+    init() { preload() }
+
+    private func preload() {
+        guard loadTask == nil else { return }
+        loadTask = Task { [weak self] in
+            do {
+                let kit = try await TTSKit(model: .qwen3TTS_0_6b)
+                await MainActor.run { self?.tts = kit }
+                WhisperCapture.log("TTS model loaded (qwen3-tts 0.6b)")
+            } catch {
+                WhisperCapture.log("TTS load failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func speak(_ text: String, language: ResolvedLanguage, onFinish: @escaping () -> Void) {
+        current?.cancel()
+        guard let tts else {
+            // Model still downloading/loading — don't be silent; use the system voice this once.
+            fallback.speak(text, language: language, onFinish: onFinish)
+            return
+        }
+        let langValue = (language == .korean ? Qwen3Language.korean : Qwen3Language.english).rawValue
+        current = Task {
+            do { _ = try await tts.play(text: text, voice: nil, language: langValue) }
+            catch { WhisperCapture.log("TTS play failed: \(error.localizedDescription)") }
+            await MainActor.run { onFinish() }
+        }
+    }
+}
+
+/// On-device macOS speech (AVSpeechSynthesizer) — the offline fallback while the
+/// neural voice loads, and the explicit `MUSE_DESKTOP_TTS=system` option.
 final class SystemSpeaker: NSObject, Speaker, AVSpeechSynthesizerDelegate {
     private let synthesizer = AVSpeechSynthesizer()
     private var onFinish: (() -> Void)?
@@ -19,7 +63,7 @@ final class SystemSpeaker: NSObject, Speaker, AVSpeechSynthesizerDelegate {
         synthesizer.delegate = self
     }
 
-    func speak(_ text: String, onFinish: @escaping () -> Void) {
+    func speak(_ text: String, language: ResolvedLanguage, onFinish: @escaping () -> Void) {
         // Disarm first: stopSpeaking fires didCancel for the PRIOR utterance, and
         // we must NOT route the new callback to that old cancel. Nil-ing
         // currentUtterance makes the delegate ignore the stale event.
@@ -28,6 +72,7 @@ final class SystemSpeaker: NSObject, Speaker, AVSpeechSynthesizerDelegate {
         self.onFinish = onFinish
         let utterance = AVSpeechUtterance(string: text)
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        utterance.voice = AVSpeechSynthesisVoice(language: language == .korean ? "ko-KR" : "en-US")
         currentUtterance = utterance
         synthesizer.speak(utterance)
     }
@@ -52,11 +97,13 @@ final class SystemSpeaker: NSObject, Speaker, AVSpeechSynthesizerDelegate {
 
 /// Speech disabled — answers still show in the bubble.
 final class SilentSpeaker: Speaker {
-    func speak(_ text: String, onFinish: @escaping () -> Void) { onFinish() }
+    func speak(_ text: String, language: ResolvedLanguage, onFinish: @escaping () -> Void) { onFinish() }
 }
 
 enum SpeakerFactory {
     static func make(environment: [String: String] = ProcessInfo.processInfo.environment) -> Speaker {
-        environment["MUSE_DESKTOP_SPEAK"] == "0" ? SilentSpeaker() : SystemSpeaker()
+        if environment["MUSE_DESKTOP_SPEAK"] == "0" { return SilentSpeaker() }
+        if environment["MUSE_DESKTOP_TTS"] == "system" { return SystemSpeaker() }
+        return QwenSpeaker()
     }
 }

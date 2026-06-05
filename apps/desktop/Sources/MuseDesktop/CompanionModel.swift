@@ -60,7 +60,7 @@ final class CompanionModel: ObservableObject {
             self.busy = false
             if let speech = presentation.speechText, !self.voiceMuted {
                 self.orbState = .speaking
-                self.speaker.speak(speech) { [weak self] in Task { @MainActor in self?.orbState = .idle } }
+                self.speaker.speak(speech, language: self.language) { [weak self] in Task { @MainActor in self?.orbState = .idle } }
             } else {
                 self.orbState = .idle
             }

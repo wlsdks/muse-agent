@@ -1,10 +1,77 @@
 # Third-Party Notices
 
-Muse is an independent project. The components below were **studied for their
-design patterns** and reimplemented from scratch in Muse's own TypeScript
-codebase — no third-party source code is copied or vendored. We record the
-attributions here anyway, in the spirit of the MIT License under which these
-projects are published, and to be transparent about where ideas came from.
+This file has two parts:
+
+1. **Bundled / linked dependencies** — real third-party code and model weights
+   that ship with or are downloaded by Muse (currently: the macOS desktop
+   companion's on-device voice). Their licenses travel with the distribution
+   and are reproduced/attributed below.
+2. **Studied patterns** — design ideas reimplemented from scratch in Muse's own
+   TypeScript codebase, with **no** third-party source copied or vendored.
+   Attributed in the spirit of their (MIT) licenses, for transparency.
+
+---
+
+# Part 1 — Bundled / linked dependencies
+
+## Argmax Open-Source SDK — WhisperKit / TTSKit / SpeakerKit (MIT)
+
+- Project: https://github.com/argmaxinc/argmax-oss-swift
+- License: MIT, Copyright (c) 2024–2026 Argmax, Inc.
+- **How Muse uses it:** the macOS desktop companion (`apps/desktop`) links these
+  Swift packages via SwiftPM. **WhisperKit** powers on-device speech-to-text
+  (Whisper on CoreML + the Apple Neural Engine, native streaming); **TTSKit**
+  powers on-device text-to-speech (Qwen3-TTS). Everything runs locally — audio
+  never leaves the Mac. The package vendors HuggingFace `swift-transformers`
+  (Hub + Tokenizers) under its original Apache-2.0 license.
+
+```
+MIT License
+
+Copyright (c) 2024 Argmax, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Qwen3-TTS model weights — Alibaba Cloud / Qwen team (Apache-2.0)
+
+- Project: https://github.com/QwenLM/Qwen3-TTS
+- License: Apache License 2.0, Copyright (c) Alibaba Cloud (Qwen team)
+- **How Muse uses it:** the desktop companion's spoken replies are synthesized
+  by the Qwen3-TTS model, run on-device through TTSKit. The CoreML weights
+  (`qwen3-tts` 0.6b) are downloaded once from HuggingFace and cached locally;
+  they are not redistributed in the Muse repo. Apache-2.0 permits commercial
+  use, modification, and redistribution; the license and any NOTICE file from
+  the upstream model must be retained with redistributed weights. Full text:
+  https://www.apache.org/licenses/LICENSE-2.0
+
+## Whisper `large-v3-v20240930` CoreML weights — via Argmax (MIT) / OpenAI Whisper (MIT)
+
+- Source: https://huggingface.co/argmaxinc/whisperkit-coreml
+- **How Muse uses it:** WhisperKit downloads the CoreML-converted Whisper model
+  for speech-to-text once from HuggingFace and caches it locally (not vendored
+  in the repo). The underlying OpenAI Whisper model is MIT-licensed; the CoreML
+  conversions are distributed by Argmax (MIT).
+
+---
+
+# Part 2 — Studied patterns (reimplemented, no source copied)
 
 If a future change ever copies or adapts substantial source from any of these
 projects, the corresponding MIT copyright notice below must travel with that

@@ -10,10 +10,13 @@ let package = Package(
     name: "MuseDesktop",
     platforms: [.macOS(.v14)],
     dependencies: [
-        // On-device speech-to-text: WhisperKit (Argmax, MIT) runs Whisper on
-        // CoreML + the Apple Neural Engine with native real-time streaming — no
-        // shell-out, no temp WAV, no cloud. Audio never leaves the Mac.
-        .package(url: "https://github.com/argmaxinc/WhisperKit.git", .upToNextMinor(from: "0.9.4"))
+        // Argmax Open-Source SDK (MIT) — on-device speech AI for Apple Silicon:
+        //   • WhisperKit: speech-to-text (Whisper on CoreML + Neural Engine,
+        //     native real-time streaming).
+        //   • TTSKit: text-to-speech (Qwen3-TTS, Apache-2.0 weights) — natural
+        //     spoken replies on-device.
+        // Both run entirely local; audio never leaves the Mac, no cloud, no key.
+        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", exact: "1.0.0")
     ],
     targets: [
         // Pure, headless-testable bridge to the Muse CLI (no AppKit).
@@ -23,7 +26,8 @@ let package = Package(
             name: "MuseDesktop",
             dependencies: [
                 "MuseDesktopCore",
-                .product(name: "WhisperKit", package: "WhisperKit")
+                .product(name: "WhisperKit", package: "argmax-oss-swift"),
+                .product(name: "TTSKit", package: "argmax-oss-swift")
             ]
         ),
         .testTarget(

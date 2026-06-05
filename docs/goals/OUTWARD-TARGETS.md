@@ -1203,6 +1203,21 @@ user-verified — a window can't be auto-asserted headlessly).
   좋네요" → exact; first-run model-load 230s (incl. ~600MB download), cached load 0.8s. `swift build` + `swift
   test` 35 + `pnpm lint` 0/0 + the rebuilt `.app` relaunched without crashing. The live mic→streaming path uses
   the same proven model + components; live-mic is user-verified._
+- [x] **P45-19 Natural spoken replies: on-device TTSKit (Qwen3-TTS) replaces the robotic system voice.**
+  (0a1143fd) Jinan: "로봇 같은 답변 음성(AVSpeech)도 자연스럽게 — 문제없는 오픈소스면 쓰고, 문서·라이선스도." Verified
+  the licenses are clean (TTSKit code MIT, Qwen3-TTS weights Apache-2.0, vendored swift-transformers Apache-2.0)
+  and wired the companion's spoken answers through **TTSKit (Argmax)** running **Qwen3-TTS** on CoreML + the
+  Neural Engine — a natural neural voice, fully on-device (no cloud, no key; the reply audio never leaves the
+  Mac). New `QwenSpeaker` (TTSKit-backed) replaces `SystemSpeaker` as the default, picks Korean/English from the
+  app language, warms the ~1GB 0.6b model at launch, and falls back to the system voice while the model still
+  downloads so the first reply is never silent (`MUSE_DESKTOP_TTS=system` forces the old voice, `…SPEAK=0`
+  mutes). Bumped the dependency to argmax-oss-swift v1.0.0 (the umbrella that adds TTSKit) and re-verified
+  WhisperKit STT still works under it. Verified REAL end-to-end via a headless `--selftest-tts <text> <wav>
+  [lang]` flag that synthesizes to a playable WAV: EN → 9.9s audio (238k samples @24kHz), KO → 7.9s audio (190k
+  samples), both valid 16-bit PCM WAVs; STT recheck under v1.0.0 → exact. Attribution added to
+  `THIRD_PARTY_NOTICES.md` (new bundled/linked-dependencies section) + README. `swift build` + `swift test`
+  35 + `pnpm lint` 0/0 + the rebuilt `.app` relaunched without crashing. The spoken voice quality is
+  user-judged by listening (WAVs at /tmp/muse-tts-*.wav)._
 - [x] **P44-1 `muse memory encrypt` encrypts your user-memory at rest.** The
   most sensitive store (facts / preferences / the typed user model) can now be
   AES-256-GCM encrypted, so a stolen/seized laptop or a leaked backup can't read
