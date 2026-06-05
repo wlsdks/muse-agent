@@ -385,6 +385,30 @@ P43 bullet is unbuilt.
   delete <id>` printed "Cancelled: Standup …" + "Also cleared 1 linked reminder.", and `muse remind
   list` then showed the reminder GONE. (2a1dc078)
 
+- [x] **P41-35 RESCHEDULING an event now SHIFTS its `--remind` reminder to match — a reminder no
+  longer fires at the OLD time after you move a meeting — the edit-counterpart of the delete fix
+  P41-33, completing the calendar+reminder link's add/delete/EDIT reliability.** `muse calendar add
+  --remind 30` (P41-32) links a reminder to its event and `muse calendar delete` clears it (P41-33),
+  but `muse calendar edit <id> --at <new time>` updated the event and STAYED SILENT on the reminder —
+  so a rescheduled meeting left its reminder pointing at the OLD start, firing at the wrong time (a
+  confirmed reliability defect, found by a code-grounded direction-review workflow's bug-hunter, conf
+  0.95). Fixed with a pure `rescheduleRemindersForEvent(reminders, eventId, oldStart, newStart)`
+  (apps/cli/src/commands-calendar.ts) that shifts every reminder linked by exact event id by the start
+  delta — newDueAt = oldDueAt + (newStart − oldStart), which reproduces the original "N minutes
+  before" offset EXACTLY without needing to store it — leaving other events' / unlinked reminders and
+  an unparseable-dueAt reminder untouched, and a no-op when the start didn't move. The edit action
+  applies it (best-effort, only when `--at` moved the start, same try/catch as delete so a
+  reminders-store error never breaks the edit) and reports "Also shifted N linked reminder(s)." (+
+  `shiftedReminders` in `--json`). Reach / actuator-reliability hardening (the human-directed
+  failure-mode-fix = outward). Verified: 2 unit tests (shifts ONLY the matching event's dueAt by the
+  delta keeping other/unlinked reminders byte-identical; no-op on a zero delta or an unparseable dueAt
+  — apps/cli/src/commands-calendar.test.ts) + the full @muse/cli suite (186 files / 2115 tests) + tsc
+  build + `pnpm lint` 0/0 + 0 raw control bytes + a LIVE run on the loop PC: `muse calendar add
+  "Standup" --at 2026-09-01T14:00 --remind 30` (reminder at 13:30), then `muse calendar edit <id> --at
+  2026-09-01T16:00` printed "Updated: …" + "Also shifted 1 linked reminder.", and `muse remind list`
+  then showed the reminder moved to 15:30 (30 min before the NEW 16:00 start) — while a title-only edit
+  shifted nothing. (da132c7d)
+
 - [x] **P43-6 Muse notices a NOTE FAMILY gone quiet — "you usually update your
   project-apollo notes every few days; nothing in three weeks."** The filesystem
   sibling of P43-4's topic-absence (which baselines episode-CONVERSATION cadence):

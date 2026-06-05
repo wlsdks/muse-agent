@@ -135,6 +135,38 @@ export function removeRemindersForEvent(
   return { kept, removed: reminders.length - kept.length };
 }
 
+/**
+ * Shift the reminders linked (by exact event id) to a RESCHEDULED event by the
+ * same start-time delta, so a "remind me 30 min before" reminder stays 30 min
+ * before the NEW start (its offset is reproduced exactly: newDueAt = oldDueAt +
+ * (newStart − oldStart)). Other events' and unlinked reminders are untouched; a
+ * start that didn't move, or a reminder with an unparseable dueAt, is left as-is. Pure.
+ */
+export function rescheduleRemindersForEvent(
+  reminders: readonly PersistedReminder[],
+  eventId: string,
+  oldStart: Date,
+  newStart: Date
+): { readonly next: readonly PersistedReminder[]; readonly shifted: number } {
+  const deltaMs = newStart.getTime() - oldStart.getTime();
+  if (deltaMs === 0 || !Number.isFinite(deltaMs)) {
+    return { next: reminders, shifted: 0 };
+  }
+  let shifted = 0;
+  const next = reminders.map((reminder) => {
+    if (reminder.eventId !== eventId) {
+      return reminder;
+    }
+    const due = Date.parse(reminder.dueAt);
+    if (Number.isNaN(due)) {
+      return reminder;
+    }
+    shifted += 1;
+    return { ...reminder, dueAt: new Date(due + deltaMs).toISOString() };
+  });
+  return { next, shifted };
+}
+
 /** Events across a wide (±10y) window — enough to resolve any realistic personal event by id. */
 function listLocalEventsWide(provider: LocalCalendarProvider): Promise<readonly CalendarEvent[]> {
   const now = Date.now();
@@ -641,11 +673,34 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         update.location = options.location;
       }
       const updated = await provider.updateEvent(match.id, update);
+      // When the START moved, shift any linked --remind reminder by the same delta
+      // so it stays the same minutes before the NEW start (P41-32/33's link kept
+      // daily-reliable across reschedules). Best-effort: a reminders-store error
+      // must never break the edit (the event update already succeeded).
+      let shiftedReminders = 0;
+      if (options.at !== undefined) {
+        try {
+          const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
+          const { next, shifted } = rescheduleRemindersForEvent(await readReminders(remindersFile), match.id, match.startsAt, updated.startsAt);
+          if (shifted > 0) {
+            await writeReminders(remindersFile, next);
+            shiftedReminders = shifted;
+          }
+        } catch {
+          // reminders reschedule is best-effort
+        }
+      }
       if (options.json) {
-        helpers.writeOutput(io, { event: { endsAtIso: updated.endsAt.toISOString(), id: updated.id, startsAtIso: updated.startsAt.toISOString(), title: updated.title } });
+        helpers.writeOutput(io, {
+          event: { endsAtIso: updated.endsAt.toISOString(), id: updated.id, startsAtIso: updated.startsAt.toISOString(), title: updated.title },
+          ...(shiftedReminders > 0 ? { shiftedReminders } : {})
+        });
         return;
       }
       io.stdout(`Updated: ${updated.title} — ${updated.startsAt.toISOString()} → ${updated.endsAt.toISOString()}\n`);
+      if (shiftedReminders > 0) {
+        io.stdout(`Also shifted ${shiftedReminders.toString()} linked reminder${shiftedReminders === 1 ? "" : "s"}.\n`);
+      }
     });
 
   const registerQuickRange = (name: string, description: string, computeRange: () => { from: Date; to: Date }): void => {

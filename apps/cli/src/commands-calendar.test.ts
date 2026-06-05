@@ -14,6 +14,7 @@ import {
   conflictWarningForNewEvent,
   formatConflicts,
   removeRemindersForEvent,
+  rescheduleRemindersForEvent,
   maxOfNumbers,
   minOfNumbers,
   parseEventStart,
@@ -91,6 +92,33 @@ describe("removeRemindersForEvent — drop the reminders linked to a deleted eve
   it("removes nothing when no reminder is linked to the event", () => {
     const reminders = [rem("a", "evt_2"), rem("b")];
     expect(removeRemindersForEvent(reminders, "evt_1")).toEqual({ kept: reminders, removed: 0 });
+  });
+});
+
+describe("rescheduleRemindersForEvent — shift a linked reminder when its event moves (no stale fire time)", () => {
+  const rem = (id: string, dueAt: string, eventId?: string): PersistedReminder =>
+    ({ createdAt: "2026-01-01T00:00:00Z", dueAt, id, status: "pending", text: id, ...(eventId ? { eventId } : {}) });
+  const oldStart = new Date("2026-07-01T14:00:00Z");
+  const newStart = new Date("2026-07-01T16:00:00Z"); // +2h
+
+  it("shifts ONLY the matching event's reminder by the start delta, leaving others byte-identical", () => {
+    const reminders = [
+      rem("a", "2026-07-01T13:30:00.000Z", "evt_1"), // 30 min before old start → should move to 15:30 (30 min before new)
+      rem("b", "2026-07-01T13:30:00.000Z", "evt_2"), // other event — untouched
+      rem("c", "2026-07-01T09:00:00.000Z")           // unlinked — untouched
+    ];
+    const { next, shifted } = rescheduleRemindersForEvent(reminders, "evt_1", oldStart, newStart);
+    expect(shifted).toBe(1);
+    expect(next[0]!.dueAt).toBe("2026-07-01T15:30:00.000Z"); // +2h, still 30 min before the new 16:00 start
+    expect(next[1]).toBe(reminders[1]);                       // other event untouched (same ref)
+    expect(next[2]).toBe(reminders[2]);                       // unlinked untouched
+  });
+
+  it("does nothing when the start didn't move (delta 0) or the dueAt is unparseable", () => {
+    const r = [rem("a", "2026-07-01T13:30:00.000Z", "evt_1")];
+    expect(rescheduleRemindersForEvent(r, "evt_1", oldStart, oldStart)).toEqual({ next: r, shifted: 0 });
+    const bad = [rem("a", "not-a-date", "evt_1")];
+    expect(rescheduleRemindersForEvent(bad, "evt_1", oldStart, newStart)).toEqual({ next: bad, shifted: 0 });
   });
 });
 
