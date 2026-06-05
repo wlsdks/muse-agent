@@ -28,6 +28,7 @@ import type { Command } from "commander";
 
 import { isApiUnreachable, withApiLocalFallback } from "./program-helpers.js";
 import { analyzeTaskFlow, formatTaskFlow } from "./task-flow.js";
+import { formatTaskQueue, rankTasksByUrgency } from "./task-priority.js";
 
 import { closestCommandName } from "./closest-command.js";
 import {
@@ -131,6 +132,30 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
         return;
       }
       io.stdout(formatTaskFlow(stats));
+    });
+
+  tasks
+    .command("next")
+    .description("What should I do NOW? Your open tasks ranked by urgency — earliest deadline first, overdue + urgent floated to the top, and untouched tasks aged up so nothing languishes (real-time scheduling: EDF + anti-starvation aging). Read-only, deterministic, no model, reads the local tasks file. Use to decide what to work on; not to see everything (that is `tasks list`). e.g. `muse tasks next --limit 5`")
+    .option("--limit <n>", "How many to show (default 10)")
+    .option("--json", "Emit a structured payload")
+    .action(async (options: { readonly limit?: string; readonly json?: boolean }) => {
+      let limit = 10;
+      if (options.limit !== undefined) {
+        const parsed = Number(options.limit.trim());
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          io.stderr(`muse tasks next: --limit must be a positive number (got '${options.limit}')\n`);
+          process.exitCode = 1;
+          return;
+        }
+        limit = Math.trunc(parsed);
+      }
+      const ranked = rankTasksByUrgency(await readTasks(localTasksFile()), Date.now());
+      if (options.json) {
+        io.stdout(`${JSON.stringify(ranked.slice(0, limit).map((r) => ({ id: r.task.id, title: r.task.title, reason: r.reason, effectiveDueMs: r.effectiveDueMs })), null, 2)}\n`);
+        return;
+      }
+      io.stdout(`${formatTaskQueue(ranked, limit)}\n`);
     });
 
   tasks

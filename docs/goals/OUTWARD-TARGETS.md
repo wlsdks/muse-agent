@@ -924,6 +924,29 @@ P43 bullet is unbuilt.
   #1 (brokers all 4 cross-cluster pairs), and a fully-linked clique → "No bridge notes". RECORDED per the
   mandate: module header cites the papers, a row added to docs/strategy/cross-field-research.md AND the
   README's cross-field table._
+- [x] **P43-26 `muse tasks next` — "what should I do NOW?": your open tasks ranked by urgency, the top one
+  marked, each with a why-now reason ("→ Reply to landlord — overdue 2d").** (3abfbdc7) A DECISION-support /
+  ACT-axis slice (the recent feats were perception read-commands → the build-order says perceive/ACT, and the
+  stagnation guard says switch axis). NOT a re-sort of `tasks list`: it is a principled scheduling policy.
+  Mechanism: EARLIEST DEADLINE FIRST (Liu & Layland, "Scheduling Algorithms for Multiprogramming in a
+  Hard-Real-Time Environment", JACM 20(1):46-61, 1973 — proved optimal for meeting deadlines on a single
+  processor; a human is a single processor for focused work) + AGING, the classic anti-starvation technique
+  in OS schedulers: an undated task gets an implicit deadline `createdAt + TASK_AGING_DAYS` so a "someday"
+  task creeps up as it ages instead of being buried forever behind dated ones (a naive `dueAt` sort starves
+  every undated task). Urgent floats to `now` (or its own earlier overdue deadline). Distinct from `tasks
+  list` (newest-first flat dump) and `tasks flow` (Little's Law throughput) — this answers WHICH ONE NOW.
+  Pure `apps/cli/src/task-priority.ts` (`taskEffectiveDueMs` — EDF deadline / urgent→now / aging horizon;
+  `rankTasksByUrgency` — open-only, EDF asc, createdAt+id tiebreak, with a humanised why-now `reason`;
+  `formatTaskQueue` — marks the top, caps with "+N more") wired into `muse tasks next` (`--limit`/`--json`),
+  reading the local tasks file like `tasks flow`. Deterministic, no model — efficacy-clear by construction.
+  Verified deterministically AND live: 9 unit tests (effective-due for dated/urgent/urgent-overdue/aged;
+  ordering overdue>urgent>due-soon>aging + done dropped; an aged undated task beats a far-future dated one;
+  why-now reasons; format top-marker + limit + empty — apps/cli/src/task-priority.test.ts) + `pnpm lint` 0/0
+  + `@muse/shared` byte-hygiene 30 + cli 2310 + 0 raw control bytes + a LIVE `muse tasks next` on the loop PC:
+  a seeded 6-task file (overdue / urgent-undated / due-in-5h / due-in-40d / aged-undated / done) ranked
+  exactly overdue→urgent→soon→aged→far with done excluded, each with its reason. RECORDED per the mandate:
+  module header cites the papers, a row added to docs/strategy/cross-field-research.md AND the README's
+  cross-field table._
 - [x] **P43-7 The evening recap's "Coming up" now includes tomorrow's CALENDAR EVENTS
   and BIRTHDAYS — your `muse recap` forward view finally matches the brief + `muse today`.**
   The evening recap (P43-4) is the retrospective sibling of the morning brief, and its
