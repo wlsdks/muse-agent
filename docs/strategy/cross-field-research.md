@@ -75,6 +75,34 @@ is yoked to a fabrication-zero floor is far harder.
 - **A "proactivity rubric" reusing the lexical answerability gate** — unsound on a
   semantic/cosine surface (suppressed legitimate paraphrase matches).
 
+## Efficacy verification — does it actually WORK, not just run?
+
+> 진안 (2026-06-05): verifying a mechanism RUNS is not the same as verifying it
+> has an EFFECT. For anything that claims to *improve* something, measure the
+> improvement against a baseline — don't assume it.
+
+**The split that matters:**
+
+- **Deterministic mechanisms** (recall ranking, dedup, the stats commands, the
+  clarify gate) are **efficacy-clear by construction** — their correctness test
+  IS the proof. Mann-Kendall genuinely detects a monotonic trend; Broder
+  resemblance genuinely collapses near-duplicates; PMI genuinely demotes the
+  ubiquitous contact. There is no "does it work?" gap.
+- **Model-dependent / prompt mechanisms** must be A/B'd, because a small local
+  model may simply ignore a prompt nudge.
+
+**First efficacy A/B (`apps/cli/scripts/verify-reasoning-efficacy.mjs`):** the
+reasoning-principles block (Musk/Thiel, wired into `muse ask`) — same reasoning
+questions answered with the principles ON vs OFF (`MUSE_ASK_REASONING_PRINCIPLES=0`),
+a blind qwen judge picking the better-reasoned answer (order randomized).
+**Result over 12 judgments: ON 1 / OFF 1 / TIE 10 — NEUTRAL.** The 3-line nudge
+has **no measurable effect on qwen3:8b**; it doesn't hurt, but it doesn't help.
+Honest takeaway: a prompt nudge is weak on a small model — the deterministic
+mechanisms carry the value, and the reasoning *principle* is best honoured by the
+grounding floor (which is first-principles-by-construction: "claim only what the
+sources establish"), not by extra prompt lines. (The framing doc stands; the
+prompt wiring's fate is 진안's call since he approved it.)
+
 ## Next direction
 
 Per 진안 (2026-06-05): lean harder into **biology / life-sciences / biotech** —

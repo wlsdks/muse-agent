@@ -2621,7 +2621,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // placeholder word"), and hard-forbid citing any source not
         // shown in a marker below.
         ...CITATION_INSTRUCTION_LINES,
-        ...REASONING_PRINCIPLE_LINES,
+        // The reasoning-principles block is on by default; MUSE_ASK_REASONING_PRINCIPLES=0
+        // disables it — used by the A/B efficacy eval (verify-reasoning-efficacy.mjs)
+        // to MEASURE whether the principles actually improve answers, not just run.
+        ...(process.env.MUSE_ASK_REASONING_PRINCIPLES === "0" ? [] : REASONING_PRINCIPLE_LINES),
         "",
         notesFraming.header,
         contextBlock,
