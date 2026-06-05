@@ -1907,6 +1907,32 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   PM [task: …]" with the far task correctly omitted (the raw-ISO context could not be
   reasoned about). (95d5e1e2)
 
+- [x] **P40-17 `muse tasks list --due week` / `--due overdue` — finally filter your to-do
+  list to just what's coming due, composably.** `muse tasks list` could filter by status, tag,
+  and search text and SORTED by due date, but it could not FILTER by a due window — so "what's
+  overdue?" / "what's due this week?" (the most common to-do questions) had no answer on the task
+  list itself: `muse today` is a fixed one-day snapshot that doesn't compose with --status/--tag, and
+  sorting still shows the whole list. Added two pure helpers to apps/cli/src/commands-tasks.ts —
+  `parseDueWindow(value)` (accepts `overdue`, `today`, `week` = 7 days, or a positive integer N =
+  the next N days; returns undefined for anything else so a bad value is rejected LOUDLY, matching the
+  existing --status validation) and `filterTasksByDue(tasks, window, nowMs)` (`overdue` = due strictly
+  before now; `today` = due on the current LOCAL calendar day; `within N` = due on or before now+N
+  days, deliberately INCLUDING overdue so it answers "what must I handle in the next N days"; a task
+  with no/unparseable dueAt has no window and is excluded) — and wired a `--due <window>` option into
+  `muse tasks list` that composes AFTER the status/tag/search filters. A bogus window prints an
+  actionable error and exits 1 (never a silently-wrong list). Deterministic (date math, no model),
+  read-only. This is an Actuation-usability slice (the tasks-view axis, sibling of P40-16's "what's
+  due tomorrow" recall) — distinct from the recently-churned felt/notes/contacts work. Verified
+  deterministically AND live: 6 unit tests (parseDueWindow parses the keywords + a numeric count and
+  rejects unknown/zero/empty; filterTasksByDue: overdue = strictly past-due excluding future+undated,
+  within-N includes overdue AND future-within while excluding beyond-window+undated, today = the
+  current local day only, an unparseable dueAt is excluded — apps/cli/src/commands-tasks.test.ts) +
+  the full @muse/cli suite (188 files / 2138 tests) + tsc build + `pnpm lint` 0/0 + 0 raw control
+  bytes + a FULL LIVE run on the loop PC: four seeded local tasks (one due 2 days ago, one in 3 days,
+  one in 10 days, one undated), then `muse tasks list --local --due overdue` → ONLY the 2-days-ago
+  invoice, `--due week` → the invoice + the 3-days task (the 10-day + undated correctly omitted), and
+  `--due nonsense` → the actionable error with exit code 1. (1011f9ac)
+
 **P41 — Actuation reliability: actuators survive real-world failure modes
 (human-directed 2026-05-23: "harden the one-of-each actuators into daily-reliable
 integrations — a proven-once actuator that breaks on a real-world failure mode

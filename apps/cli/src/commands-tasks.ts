@@ -109,9 +109,10 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
     .option("--status <status>", "Status filter: open (default), done, or all", "open")
     .option("--search <text>", "Only tasks whose title or notes contains this text (case-insensitive)")
     .option("--tag <label>", "Only tasks carrying this tag (case-insensitive)")
+    .option("--due <window>", "Only tasks due within a window: overdue, today, week, or a number of days")
     .option("--local", "Read directly from the local tasks file instead of the API")
     .option("--json", "Print the raw API response instead of the formatted list")
-    .action(async (options: { readonly status: string; readonly search?: string; readonly tag?: string } & SharedOptions, command) => {
+    .action(async (options: { readonly status: string; readonly search?: string; readonly tag?: string; readonly due?: string } & SharedOptions, command) => {
       // Throws before dispatch so a typo'd --status doesn't return
       // a silently-wrong "open" list.
       assertTaskStatusInput(options.status);
@@ -148,6 +149,17 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
       const tag = options.tag?.trim();
       if (tag) {
         const matched = filterTasksByTag(payload.tasks, tag);
+        payload = { ...payload, tasks: matched, total: matched.length };
+      }
+      const due = options.due?.trim();
+      if (due) {
+        const window = parseDueWindow(due);
+        if (!window) {
+          io.stderr(`muse: --due must be 'overdue', 'today', 'week', or a number of days (got '${due}')\n`);
+          process.exitCode = 1;
+          return;
+        }
+        const matched = filterTasksByDue(payload.tasks, window, Date.now());
         payload = { ...payload, tasks: matched, total: matched.length };
       }
       if (options.json) {
@@ -455,6 +467,56 @@ export function filterTasksBySearch<T extends { readonly title?: unknown; readon
     const title = typeof task.title === "string" ? task.title.toLowerCase() : "";
     const notes = typeof task.notes === "string" ? task.notes.toLowerCase() : "";
     return title.includes(q) || notes.includes(q);
+  });
+}
+
+export type DueWindow =
+  | { readonly kind: "overdue" }
+  | { readonly kind: "today" }
+  | { readonly kind: "within"; readonly days: number };
+
+/**
+ * Parse a `--due` value: `overdue`, `today`, `week` (= 7 days), or a positive
+ * integer N (= the next N days). Returns undefined for anything else so the
+ * caller rejects it loudly rather than silently filtering on the wrong window.
+ */
+export function parseDueWindow(value: string): DueWindow | undefined {
+  const v = value.trim().toLowerCase();
+  if (v === "overdue") return { kind: "overdue" };
+  if (v === "today") return { kind: "today" };
+  if (v === "week") return { days: 7, kind: "within" };
+  if (/^\d+$/u.test(v)) {
+    const days = Number.parseInt(v, 10);
+    if (days >= 1) return { days, kind: "within" };
+  }
+  return undefined;
+}
+
+/**
+ * Keep only tasks whose `dueAt` falls in the window (a task with no / unparseable
+ * dueAt has no due window, so it is excluded). `overdue` = due strictly before
+ * now; `today` = due on the current LOCAL calendar day; `within N` = due on or
+ * before now + N days, which deliberately INCLUDES anything overdue — the "what
+ * must I handle in the next N days" view. Status is filtered separately.
+ */
+export function filterTasksByDue<T extends { readonly dueAt?: unknown }>(
+  tasks: readonly T[],
+  window: DueWindow,
+  nowMs: number
+): T[] {
+  return tasks.filter((task) => {
+    if (typeof task.dueAt !== "string") return false;
+    const due = Date.parse(task.dueAt);
+    if (Number.isNaN(due)) return false;
+    if (window.kind === "overdue") return due < nowMs;
+    if (window.kind === "today") {
+      const start = new Date(nowMs);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(nowMs);
+      end.setHours(23, 59, 59, 999);
+      return due >= start.getTime() && due <= end.getTime();
+    }
+    return due <= nowMs + window.days * 86_400_000;
   });
 }
 

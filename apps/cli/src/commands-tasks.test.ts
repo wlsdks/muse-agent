@@ -6,7 +6,7 @@ import { readTasks, writeTasks, type PersistedTask } from "@muse/mcp";
 import { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { filterTasksBySearch, filterTasksByTag, registerTasksCommands, resolveLocalTaskId, type TasksCommandHelpers } from "./commands-tasks.js";
+import { filterTasksByDue, filterTasksBySearch, filterTasksByTag, parseDueWindow, registerTasksCommands, resolveLocalTaskId, type TasksCommandHelpers } from "./commands-tasks.js";
 
 describe("filterTasksByTag — keep only tasks carrying a tag (case-insensitive)", () => {
   const tasks = [
@@ -41,6 +41,52 @@ describe("filterTasksBySearch — find a task by title or notes (case-insensitiv
   it("returns all on an empty query, none on a no-match", () => {
     expect(filterTasksBySearch(tasks, "  ")).toHaveLength(3);
     expect(filterTasksBySearch(tasks, "zzz")).toHaveLength(0);
+  });
+});
+
+describe("parseDueWindow", () => {
+  it("parses the keywords and a numeric day count", () => {
+    expect(parseDueWindow("overdue")).toEqual({ kind: "overdue" });
+    expect(parseDueWindow("TODAY")).toEqual({ kind: "today" });
+    expect(parseDueWindow("week")).toEqual({ days: 7, kind: "within" });
+    expect(parseDueWindow("3")).toEqual({ days: 3, kind: "within" });
+  });
+  it("rejects unknown values and a zero/negative count", () => {
+    expect(parseDueWindow("soon")).toBeUndefined();
+    expect(parseDueWindow("0")).toBeUndefined();
+    expect(parseDueWindow("")).toBeUndefined();
+  });
+});
+
+describe("filterTasksByDue — keep only tasks due within a window", () => {
+  const NOW = Date.parse("2026-06-10T12:00:00Z");
+  const day = 86_400_000;
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const tasks = [
+    { dueAt: iso(NOW - 2 * day), title: "overdue" },
+    { dueAt: iso(NOW + 3 * day), title: "in 3 days" },
+    { dueAt: iso(NOW + 10 * day), title: "in 10 days" },
+    { title: "no due date" }
+  ];
+
+  it("overdue = strictly past due; excludes future + undated", () => {
+    expect(filterTasksByDue(tasks, { kind: "overdue" }, NOW).map((t) => t.title)).toEqual(["overdue"]);
+  });
+
+  it("within N includes overdue AND future-within, excludes beyond-window + undated", () => {
+    expect(filterTasksByDue(tasks, { days: 7, kind: "within" }, NOW).map((t) => t.title)).toEqual(["overdue", "in 3 days"]);
+    expect(filterTasksByDue(tasks, { days: 14, kind: "within" }, NOW).map((t) => t.title)).toEqual(["overdue", "in 3 days", "in 10 days"]);
+  });
+
+  it("today = due on the current local calendar day only", () => {
+    const localNow = Date.now();
+    const todayTask = { dueAt: new Date(localNow).toISOString(), title: "today" };
+    const tomorrowTask = { dueAt: new Date(localNow + day).toISOString(), title: "tomorrow" };
+    expect(filterTasksByDue([todayTask, tomorrowTask], { kind: "today" }, localNow).map((t) => t.title)).toEqual(["today"]);
+  });
+
+  it("excludes tasks with an unparseable dueAt", () => {
+    expect(filterTasksByDue([{ dueAt: "not-a-date", title: "junk" }], { kind: "overdue" }, NOW)).toHaveLength(0);
   });
 });
 
