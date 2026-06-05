@@ -29,6 +29,7 @@ import {
   buildVoiceRegistry,
   createMuseRuntimeAssembly,
   resolveContactsFile,
+  resolveNotesDir,
   resolveProactiveHistoryFile,
   resolveRemindersFile,
   resolveTasksFile
@@ -37,6 +38,7 @@ import type { CalendarEvent } from "@muse/calendar";
 import { detectCalendarConflicts, formatBirthdayBriefLine, readCheckins, readContacts, readProactiveHistory, readReflections, readReminders, resolveUpcomingBirthdays, selectDueCheckins, type PersistedCheckin, type PersistedReminder } from "@muse/mcp";
 
 import { briefFocusBeat } from "./calendar-focus.js";
+import { collectDatedNotes, formatOnThisDayBrief, selectOnThisDay } from "./on-this-day.js";
 import { formatBriefConflicts } from "./brief-conflicts.js";
 import { formatBriefFeedLines, selectBriefFeedHeadlines } from "./brief-feeds.js";
 import { formatBriefReflectionLine, selectBriefReflection } from "./brief-reflection.js";
@@ -505,6 +507,17 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
       // `muse calendar focus`. Silent on a day that already has room for focus.
       const focusBeat = briefFocusBeat(upcomingEvents, now);
       if (focusBeat) io.stdout(`${focusBeat}\n`);
+
+      // "On this day": a date-cued autobiographical beat — surface notes written on
+      // today's date in earlier years. Rare (only real anniversaries), so it is
+      // never noise; silent on a day with no past-year note. Best-effort.
+      try {
+        const onThisDay = selectOnThisDay(await collectDatedNotes(resolveNotesDir(process.env as Record<string, string | undefined>)), now);
+        const beat = formatOnThisDayBrief(onThisDay);
+        if (beat) io.stdout(beat);
+      } catch {
+        // notes dir missing/unreadable — the brief stands on its own
+      }
 
       try {
         const surfaced = selectBriefReflection(await readReflections(resolveReflectionsFile()), now.getTime());

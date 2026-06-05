@@ -839,6 +839,24 @@ P43 bullet is unbuilt.
   on-this-day` surfaced ONLY the two prior-year ones ("1 year ago", "2 years ago"). Honest scope:
   path-dated notes only (mtime would lie); empty until a year of dated journaling accrues; episodes
   (createdAt) and a brief beat are follow-ons. (5bd92dea)
+
+- [x] **P43-22 Your morning `muse brief` now surfaces "On this day" anniversaries — a note you
+  wrote on today's date in an earlier year ("📅 On this day, you wrote: journal/2025-06-05.md (1 year
+  ago)"), unprompted.** A FELT/proactive slice — the pull→push completion of P43-21: the date-cued
+  autobiographical-memory insight (Rubin, Wetzler & Nebes 1986) now finds you in your daily brief instead
+  of waiting for `muse on-this-day`. It is the IDEAL conditional beat: it fires ONLY on a real anniversary
+  (a prior-year note on exactly today's date), which is rare, so it is never noise — a delightful surprise
+  when it appears, silent otherwise. Refactored the note collection + a compact brief formatter into
+  apps/cli/src/on-this-day.ts (`collectDatedNotes` — recursive `.md` walk + path-date extraction;
+  `formatOnThisDayBrief` — one capped line) so both the command and the brief share one tested module;
+  wired a best-effort beat into `muse brief` (apps/cli/src/commands-brief.ts) beside the focus/conflicts
+  beats. Deterministic, no model. Verified deterministically AND live: 2 new unit tests (silent on no
+  hits; one capped compact line — apps/cli/src/on-this-day.test.ts, 13 total in the module) + `pnpm lint`
+  0/0 + `@muse/shared` byte-hygiene 30 + cli 2265 + 0 raw control bytes + a LIVE check on the loop PC: a
+  journal note at `journal/<lastyear>-<today>.md` plus a this-year note → the brief beat path produced
+  "📅 On this day, you wrote: journal/2025-06-05.md (1 year ago)" (excluding the this-year note), and the
+  `muse on-this-day` command still works after the refactor. Honest scope: path-dated notes only; the
+  literal brief emission requires an actual anniversary in the corpus (by design). (cfc1c355)
 - [x] **P43-7 The evening recap's "Coming up" now includes tomorrow's CALENDAR EVENTS
   and BIRTHDAYS — your `muse recap` forward view finally matches the brief + `muse today`.**
   The evening recap (P43-4) is the retrospective sibling of the morning brief, and its

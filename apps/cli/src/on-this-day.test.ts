@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractNoteDate, formatOnThisDay, selectOnThisDay } from "./on-this-day.js";
+import { extractNoteDate, formatOnThisDay, formatOnThisDayBrief, selectOnThisDay } from "./on-this-day.js";
 
 describe("extractNoteDate — explicit YYYY-MM-DD from the path only", () => {
   it("parses a dated journal path", () => {
@@ -53,5 +53,21 @@ describe("formatOnThisDay", () => {
     expect(out).toContain("On this day");
     expect(out).toContain("2 years ago");
     expect(formatOnThisDay([], now)).toBe("");
+  });
+});
+
+describe("formatOnThisDayBrief — compact one-line beat for the morning brief", () => {
+  const hit = (id: string, yearsAgo: number) => ({ date: new Date(2026 - yearsAgo, 5, 6), id, yearsAgo });
+
+  it("is empty when there are no hits (silent on a non-anniversary day)", () => {
+    expect(formatOnThisDayBrief([])).toBe("");
+  });
+
+  it("renders one compact line and caps the number of items", () => {
+    const out = formatOnThisDayBrief([hit("a.md", 1), hit("b.md", 2), hit("c.md", 3), hit("d.md", 4)], 2);
+    expect(out).toContain("On this day, you wrote");
+    expect(out).toContain("a.md (1 year ago)");
+    expect(out).toContain("b.md (2 years ago)");
+    expect(out).not.toContain("c.md");
   });
 });

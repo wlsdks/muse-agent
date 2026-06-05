@@ -5,34 +5,11 @@
  * convention), never the file mtime.
  */
 
-import { readdir } from "node:fs/promises";
-import { join, relative } from "node:path";
-
 import { resolveNotesDir } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
-import { extractNoteDate, formatOnThisDay, selectOnThisDay, type DatedNote } from "./on-this-day.js";
+import { collectDatedNotes, formatOnThisDay, selectOnThisDay } from "./on-this-day.js";
 import type { ProgramIO } from "./program.js";
-
-/** Recursively collect every `.md` file under `dir`, as paths relative to `base` (so a journal/YYYY-MM-DD.md keeps its dated path). */
-async function walkMarkdown(dir: string, base: string): Promise<string[]> {
-  let entries;
-  try {
-    entries = await readdir(dir, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  const out: string[] = [];
-  for (const entry of entries) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      out.push(...(await walkMarkdown(full, base)));
-    } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      out.push(relative(base, full));
-    }
-  }
-  return out;
-}
 
 export function registerOnThisDayCommand(program: Command, io: ProgramIO): void {
   program
@@ -53,11 +30,7 @@ export function registerOnThisDayCommand(program: Command, io: ProgramIO): void 
       }
 
       const dir = resolveNotesDir(process.env as Record<string, string | undefined>);
-      const dated: DatedNote[] = [];
-      for (const relPath of await walkMarkdown(dir, dir)) {
-        const date = extractNoteDate(relPath);
-        if (date) dated.push({ date, id: relPath });
-      }
+      const dated = await collectDatedNotes(dir);
 
       const now = new Date();
       const hits = selectOnThisDay(dated, now, { windowDays });

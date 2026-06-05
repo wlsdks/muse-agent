@@ -11,9 +11,39 @@
  * dated path is simply skipped.
  */
 
+import { readdir } from "node:fs/promises";
+import { join, relative } from "node:path";
+
 export interface DatedNote {
   readonly id: string;
   readonly date: Date;
+}
+
+/** Recursively collect every `.md` file under `dir`, as paths relative to `base` (so a journal/YYYY-MM-DD.md keeps its dated path). */
+async function walkMarkdown(dir: string, base: string): Promise<string[]> {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...(await walkMarkdown(full, base)));
+    else if (entry.isFile() && entry.name.endsWith(".md")) out.push(relative(base, full));
+  }
+  return out;
+}
+
+/** Every note under `notesDir` carrying an explicit YYYY-MM-DD in its path, as DatedNotes. Shared by the command and the morning-brief beat. */
+export async function collectDatedNotes(notesDir: string): Promise<DatedNote[]> {
+  const dated: DatedNote[] = [];
+  for (const relPath of await walkMarkdown(notesDir, notesDir)) {
+    const date = extractNoteDate(relPath);
+    if (date) dated.push({ date, id: relPath });
+  }
+  return dated;
 }
 
 const DATE_IN_PATH = /(\d{4})-(\d{2})-(\d{2})/u;
@@ -61,6 +91,15 @@ export function selectOnThisDay(notes: readonly DatedNote[], now: Date, options:
 }
 
 const fmtDate = (d: Date): string => d.toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" });
+
+/** A compact one-line "on this day" beat for the morning brief (top `maxItems`); "" when there are no hits. */
+export function formatOnThisDayBrief(hits: readonly OnThisDayHit[], maxItems = 3): string {
+  if (hits.length === 0) return "";
+  const items = hits.slice(0, Math.max(1, maxItems))
+    .map((h) => `${h.id} (${h.yearsAgo.toString()} year${h.yearsAgo === 1 ? "" : "s"} ago)`)
+    .join("; ");
+  return `\n📅 On this day, you wrote: ${items}\n`;
+}
 
 /** Render the "On this day" block; "" when there are no hits. */
 export function formatOnThisDay(hits: readonly OnThisDayHit[], now: Date): string {
