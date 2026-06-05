@@ -19,6 +19,7 @@ import { eventsToIcs, LocalCalendarProvider, type CalendarEvent, type IcsEvent }
 import { computeAvailability, detectCalendarConflicts, readReminders, resolveRelativeTimePhrase, writeReminders, type AvailabilityEventLike, type AvailabilityResult, type CalendarConflict, type ConflictEventLike, type PersistedReminder } from "@muse/mcp";
 import type { Command } from "commander";
 
+import { analyzeFocusWindows, buildDayWindows, formatFocus } from "./calendar-focus.js";
 import { formatCalendarEvents, formatProvidersList } from "./human-formatters.js";
 import { parseIcsEvents } from "./ics-parser.js";
 import { withApiLocalFallback } from "./program-helpers.js";
@@ -461,6 +462,67 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         return;
       }
       io.stdout(formatAvailability(result, { from, to }));
+    });
+
+  calendar
+    .command("focus")
+    .description("Your longest uninterrupted free block each day — protect deep work, since fragmented time can't (attention residue, Leroy 2009). Read-only, deterministic, no model. e.g. `muse calendar focus --days 5`")
+    .option("--days <n>", "How many days from today to analyze (default 5)")
+    .option("--start <hour>", "Working-hours start hour 0-23 (default 9)")
+    .option("--end <hour>", "Working-hours end hour 0-23 (default 18)")
+    .option("--min-minutes <n>", "Deep-work block threshold in minutes (default 60)")
+    .option("--local", "Read directly from the local calendar file instead of the API")
+    .option("--json", "Print the structured result")
+    .action(async (
+      options: { readonly days?: string; readonly start?: string; readonly end?: string; readonly minMinutes?: string } & SharedOptions,
+      command
+    ) => {
+      const parseInt0 = (raw: string | undefined, label: string, lo: number, hi: number, dflt: number): number => {
+        if (raw === undefined) return dflt;
+        const n = Number(raw.trim());
+        if (!Number.isInteger(n) || n < lo || n > hi) throw new Error(`${label} must be an integer in [${lo.toString()}, ${hi.toString()}]`);
+        return n;
+      };
+      const days = parseInt0(options.days, "--days", 1, 60, 5);
+      const startHour = parseInt0(options.start, "--start", 0, 23, 9);
+      const endHour = parseInt0(options.end, "--end", 1, 24, 18);
+      const minMinutes = parseInt0(options.minMinutes, "--min-minutes", 1, 1440, 60);
+      const windows = buildDayWindows(new Date(), days, startHour, endHour);
+      if (windows.length === 0) {
+        throw new Error("--end must be after --start");
+      }
+      const rangeFrom = windows[0]!.from;
+      const rangeTo = windows[windows.length - 1]!.to;
+      const rows = await withApiLocalFallback<Array<Record<string, unknown>>>(
+        io,
+        Boolean(options.local),
+        async () => (await localCalendarProvider().listEvents({ from: rangeFrom, to: rangeTo })).map((event) => ({
+          allDay: event.allDay,
+          endsAtIso: event.endsAt.toISOString(),
+          startsAtIso: event.startsAt.toISOString(),
+          title: event.title
+        })),
+        async () => {
+          const params = new URLSearchParams({ fromIso: rangeFrom.toISOString(), toIso: rangeTo.toISOString() });
+          const payload = (await helpers.apiRequest(io, command, `/api/calendar/events?${params.toString()}`)) as { events?: Array<Record<string, unknown>> };
+          return Array.isArray(payload.events) ? payload.events : [];
+        },
+        "calendar"
+      );
+      const result = analyzeFocusWindows(eventsToAvailability(rows), windows, minMinutes);
+      if (options.json) {
+        helpers.writeOutput(io, {
+          days: result.map((d) => ({
+            dayStart: d.dayStart.toISOString(),
+            fragmented: d.fragmented,
+            longestFreeMinutes: d.longestFreeMinutes,
+            meetingCount: d.meetingCount,
+            totalFreeMinutes: d.totalFreeMinutes
+          }))
+        });
+        return;
+      }
+      io.stdout(formatFocus(result, minMinutes));
     });
 
   calendar

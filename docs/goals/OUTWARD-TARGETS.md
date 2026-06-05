@@ -726,6 +726,31 @@ P43 bullet is unbuilt.
   an expected 5.8%". Honest scope: CSV input; a `muse csv --benford` flag and other distributions (second-
   digit) are follow-ons. (e2944793)
 
+- [x] **P43-17 `muse calendar focus` — your LONGEST uninterrupted free block each day, and which
+  upcoming days are too fragmented to hold deep work — not just how much free time you have.** Twelfth
+  slice of the cross-field research direction, deliberately diversified onto the CALENDAR (a fresh core
+  daily surface) off the recent run of stats-on-a-data-file slices. The mechanism: the deep-work /
+  ATTENTION-RESIDUE finding (Leroy, "Why is it so hard to do my work? The challenge of attention residue
+  when switching between work tasks", Organizational Behavior and Human Decision Processes 109(2):168-181,
+  2009; Newport, "Deep Work", 2016) — switching leaves attention residue that degrades the next task, so an
+  hour split into six ten-minute gaps is worth far less than one unbroken hour. The science drives WHAT to
+  measure: a day's real focus capacity is its LARGEST contiguous free block, not its total free time. Pure
+  `apps/cli/src/calendar-focus.ts` (`buildDayWindows` — local working-hour windows; `analyzeFocusWindows` —
+  reuses the existing `computeAvailability` free/busy engine per day to find the longest + total free + the
+  meeting count, flagging a day "fragmented" when no block reaches the deep-work threshold; `formatFocus`)
+  wired as `muse calendar focus` (`--days`, `--start`, `--end`, `--min-minutes`, `--local`, `--json`).
+  Deterministic, no model, read-only. Verified deterministically AND live: 8 unit tests (the analyzer is
+  pure over explicit UTC windows so it is timezone-robust: a fully-free day is one big block; the LARGEST
+  gap is found not the total, so a day fragmented into 30-min slivers fails even with ample total free; one
+  big block clears the threshold; a window-covering meeting leaves 0; buildDayWindows builds N local
+  windows + clamps/skips degenerate ones; format flags fragmentation and cites attention residue —
+  apps/cli/src/calendar-focus.test.ts) + `pnpm lint` 0/0 + `@muse/shared` byte-hygiene 30 + cli 2236 + 0
+  raw control bytes + a LIVE run on the loop PC: a local calendar where tomorrow has a meeting every 30
+  minutes 9:30–18:00 → `muse calendar focus --local --days 3` printed today + the day after as "longest 9h
+  … no meetings" and TOMORROW as "longest 30m (4h30m free total, 9 meetings) ⚠ fragmented — no deep-work
+  block … 1 of 3 days can't hold a deep-work block (attention residue, Leroy 2009)" — surfacing that 4.5h
+  of free time in slivers is worthless for focus. Honest scope: working-hour windows (default 9–18); a
+  proactive brief beat ("tomorrow has no focus block") is a follow-on. (5b7787fe)
 - [x] **P43-7 The evening recap's "Coming up" now includes tomorrow's CALENDAR EVENTS
   and BIRTHDAYS — your `muse recap` forward view finally matches the brief + `muse today`.**
   The evening recap (P43-4) is the retrospective sibling of the morning brief, and its
