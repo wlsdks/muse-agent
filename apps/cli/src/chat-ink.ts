@@ -63,6 +63,7 @@ import {
 } from "./chat-ink-core.js";
 import { renderMuseBanner } from "./muse-banner.js";
 import { loadAgents, resolveAgentsDir, type AgentDef } from "./commands-agents.js";
+import { groundChatTurn } from "./chat-grounding.js";
 import { searchRecall } from "./commands-recall.js";
 import { readTrust } from "./commands-trust.js";
 import { appendInputHistory, loadInputHistory } from "./chat-input-history.js";
@@ -174,6 +175,7 @@ export function MuseChatApp(props: {
   readonly skills: readonly SkillInfo[];
   readonly skillsDir: string;
   readonly skillsPromptFor: (prompt: string) => string;
+  readonly groundingFor?: (prompt: string) => Promise<string>;
   readonly historyWindow?: number;
   readonly personaPrompt: () => string | undefined;
   readonly stream: (messages: readonly ChatTurnMessage[], model: string) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
@@ -506,7 +508,8 @@ export function MuseChatApp(props: {
 
     const base = props.personaPrompt() ?? formatCurrentContextLine();
     const agentPrefix = activeAgent ? `${activeAgent.prompt}\n\n` : "";
-    const system = agentPrefix + base + props.skillsPromptFor(message);
+    const groundingBlock = props.groundingFor ? await props.groundingFor(message).catch(() => "") : "";
+    const system = agentPrefix + base + groundingBlock + props.skillsPromptFor(message);
     const messages = buildTurnMessages(system, historyRef.current, message + attachmentBlock, props.historyWindow);
     let accumulated = "";
     let turnTokens = 0;
@@ -1279,6 +1282,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     skills: skillInfos,
     skillsDir,
     skillsPromptFor,
+    groundingFor: (prompt: string) => groundChatTurn(prompt),
     historyWindow: resolveChatHistoryWindow(process.env),
     stream,
     streamWithTools,

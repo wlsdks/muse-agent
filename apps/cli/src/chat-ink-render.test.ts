@@ -293,6 +293,53 @@ describe("MuseChatApp render — plain chat + editing", () => {
     expect(committed).toEqual({ assistant: "Hello there.", user: "hi muse" });
   });
 
+  it("injects the per-turn grounding block into the system message the model receives", async () => {
+    // The verification the pipe-driven efficacy test could NOT do: the Ink
+    // INTERACTIVE path is a separate code path from headless `runLocalChat`,
+    // and a grounding fix that never reaches THIS path's `stream` call is a
+    // no-op. Capture the system message and assert the block is present.
+    let capturedSystem = "";
+    async function* reply(): AsyncGenerator<{ type: string; text?: string }> {
+      yield { type: "text-delta", text: "1380." };
+      yield { type: "done" };
+    }
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
+      groundingFor: async (msg: string) =>
+        msg.includes("VPN") ? "\n\n[NOTES] Office VPN MTU is 1380. [from vpn.md]" : "",
+      stream: (messages: readonly { role: string; content: string }[]) => {
+        capturedSystem = messages.find((m) => m.role === "system")?.content ?? "";
+        return reply();
+      }
+    })));
+    await tick();
+    stdin.write("what is my office VPN MTU?"); await tick(); stdin.write("\r");
+    await waitForFrame(lastFrame, ["1380."]);
+    unmount();
+    expect(capturedSystem).toContain("Office VPN MTU is 1380.");
+    expect(capturedSystem).toContain("[from vpn.md]");
+  });
+
+  it("injects nothing when groundingFor finds nothing relevant (casual chat unaffected)", async () => {
+    let capturedSystem = "__unset__";
+    async function* reply(): AsyncGenerator<{ type: string; text?: string }> {
+      yield { type: "text-delta", text: "Hey!" };
+      yield { type: "done" };
+    }
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
+      groundingFor: async () => "",
+      stream: (messages: readonly { role: string; content: string }[]) => {
+        capturedSystem = messages.find((m) => m.role === "system")?.content ?? "";
+        return reply();
+      }
+    })));
+    await tick();
+    stdin.write("hey how are you"); await tick(); stdin.write("\r");
+    await waitForFrame(lastFrame, ["Hey!"]);
+    unmount();
+    expect(capturedSystem).not.toContain("[NOTES]");
+    expect(capturedSystem).not.toContain("[from ");
+  });
+
   it("/new acknowledges a fresh conversation (clears in-memory context)", async () => {
     // Note: <Static> scrollback can't be un-printed in a real terminal, so /new
     // clears historyRef + turns state (future context) — the observable signal

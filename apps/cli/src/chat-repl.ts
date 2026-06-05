@@ -23,6 +23,7 @@ import type { Readable } from "node:stream";
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
+import { groundChatTurn } from "./chat-grounding.js";
 import { isRecord } from "./credential-store.js";
 import { formatCurrentContextLine } from "./muse-persona.js";
 import { loadActivePersonaPreamble } from "./persona-store.js";
@@ -209,9 +210,10 @@ export async function runLocalChat(
   // only on the persona id, not userId, so it is safe on this
   // one-shot path unlike the user-memory-folding buildMusePersona.
   const personaPreamble = (await loadActivePersonaPreamble().catch(() => "")).trim();
-  const systemContent = personaPreamble.length > 0
+  const groundingBlock = await groundChatTurn(message);
+  const systemContent = (personaPreamble.length > 0
     ? `${personaPreamble}\n\n${formatCurrentContextLine()}`
-    : formatCurrentContextLine();
+    : formatCurrentContextLine()) + groundingBlock;
   const messages = [
     { content: systemContent, role: "system" as const },
     ...(options.priorHistory ?? []),

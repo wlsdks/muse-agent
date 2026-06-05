@@ -25,7 +25,11 @@ Hermes self-improves but can confabulate; OpenClaw "dreams" but its dreams
 aren't grounded. Muse is the only one that is **proactive *and* self-learning
 *and* incapable of making things up** — and it measures that continuously
 (fabrication rate = 0 is a release gate). The same grounding gate governs
-recall, proactivity, and reflection; every surface Muse gains plugs into it.
+recall, proactivity, reflection, **and now plain `muse chat`** — the front door
+retrieves your relevant notes per turn and answers from them with the source
+cited (ask "what's my office VPN MTU?" and it quotes your note's 1380, not the
+textbook 1500), instead of confabulating; nothing relevant in your notes ⇒ it
+stays on the refusal floor. Every surface Muse gains plugs into the gate.
 Full rationale: [`docs/strategy/the-edge.md`](docs/strategy/the-edge.md).
 
 [한국어 README →](README.ko.md)

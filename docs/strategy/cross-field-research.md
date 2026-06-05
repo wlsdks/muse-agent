@@ -133,6 +133,22 @@ harness). So a reliable fix must inject grounding into BOTH paths and verify eac
 confident factual turn through the ask path's structured generation. A careful,
 multi-path, crown-jewel effort — not an autonomous one-shot.
 
+**RESOLVED (2026-06-05, P38-43).** The fix landed exactly where the diagnosis
+pointed: per-turn retrieval-augmented grounding wired into BOTH input paths —
+the headless/piped `runLocalChat` (chat-repl.ts) AND the Ink interactive turn
+handler (chat-ink.ts) — sharing one deterministic module
+(`apps/cli/src/chat-grounding.ts`: `groundChatTurn` embeds the turn, reuses
+`searchRecall`, injects only hits above a cosine gate as a fact-framed
+authoritative block citing `[from <source>]`). Each path verified the way it
+CAN be: the headless path by a LIVE A/B (isolated HOME corpus, qwen3:8b) —
+grounding ON 6/6 with the noted fact + citation, OFF 0/6 (abstained), casual +
+off-corpus leaking zero notes; the interactive path by 2 Ink wiring tests
+(ink-testing-library) asserting the block reaches the system the model receives.
+The lesson that generalizes: when a surface confabulates despite a fix that
+works in isolation, suspect a SECOND code path the test never exercised — the
+efficacy discipline ("verify it has an EFFECT") is what forced finding it
+instead of shipping a no-op. The grounding floor now covers the front door.
+
 ## Next direction
 
 Per 진안 (2026-06-05): lean harder into **biology / life-sciences / biotech** —

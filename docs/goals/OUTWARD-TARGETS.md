@@ -3634,6 +3634,28 @@ conversational session — NOT a loop fire).** The edge gained an instrument,
 closed its deepest hole, and became constructive. Each verified live on
 qwen3:8b and added to `eval:self-improving`.
 
+- [x] **P38-43 `muse chat` finally honours the grounding floor on the FRONT DOOR — a factual
+  question about your OWN data is answered FROM your notes, with the source cited, instead of
+  confabulated or abstained.** (bae505a3) The-edge.md's gate ("under EVERY surface") had a hole: plain
+  chat sent the model only the persona + the date, so "what's my desk plant's name?" (note: Mortimer)
+  got "I don't have access…" and "office VPN MTU?" (note: 1380) drew the general-knowledge 1500 — a
+  fabrication=0 violation on the PRIMARY conversational surface, while `muse ask` (which pre-retrieves)
+  was already correct. The standing two-path defect (cross-field-research.md): two prior fixes passed
+  isolation (16/16) yet failed live because the surface has TWO input paths and each fix wired only one.
+  This closes it by injecting per-turn grounding into BOTH — the headless/piped path (`runLocalChat`,
+  chat-repl.ts) AND the Ink interactive turn handler (chat-ink.ts). Deterministic where it counts: pure
+  `groundChatTurn` / `formatChatGroundingBlock` (apps/cli/src/chat-grounding.ts) embeds the turn, reuses
+  `searchRecall` over the notes+episode indices, and injects ONLY hits clearing a cosine gate
+  (`CHAT_GROUNDING_MIN_SCORE` 0.5, ≤4 passages) as a fact-framed authoritative block citing
+  `[from <source>]`; nothing relevant ⇒ inject nothing ⇒ the persona refusal floor governs (so casual /
+  off-corpus turns are untouched). Fail-soft (no index / Ollama down → no injection, never an error) +
+  `MUSE_CHAT_GROUNDING=0` kill switch. Verified the way the prior fires COULDN'T: a LIVE A/B on the loop
+  PC (isolated HOME corpus, qwen3:8b) — grounding ON answered 6/6 with the noted fact + citation,
+  grounding OFF 0/6 (abstained); casual greeting + off-corpus "boiling point of water" leaked ZERO notes
+  — plus 2 Ink wiring tests proving the block reaches the system the interactive model receives, 9 unit
+  tests, lint 0/0, @muse/shared byte-hygiene 30, cli 2292. This EXTENDS the grounding gate to a new
+  surface (the canonical the-edge.md move), not a micro-fix; recorded in cross-field-research.md + README
+  + module-header comment._
 - [x] **P38-42 `muse recall <q> --adaptive` lets the EVIDENCE pick how many sources to cite —
   one when a single note clearly dominates, more when the field is genuinely rich — instead of always
   the fixed top-N, via an ecological optimal-foraging rule.** ★FIRST slice of the cross-field
