@@ -3163,6 +3163,38 @@ graph intact as the corpus evolves, so a power-user's Zettelkasten doesn't rot.
   (runtime-internals.ts), which feeds the grounding verdict, so the edge is gated on the agent surface
   too. (9c1ecff4)
 
+- [x] **P42-13 `muse notes trails <note>` — notes you RECALL TOGETHER build an emergent relatedness
+  graph (ant-trail stigmergy), surfacing connections you never typed as `[[wiki-links]]` and that
+  embedding similarity may miss.** SECOND slice of the cross-field research direction (after the MVT
+  recall slice P38-42), from the prior 7-agent sweep's collective-behaviour candidate. The mechanism:
+  STIGMERGY — ant colonies coordinate indirectly through pheromone traces deposited in the environment
+  that build up on used paths and evaporate over time (Vittori et al., "A stochastic model of ant
+  trail following with two pheromones", 2015; the Dorigo ACO lineage). Faithfully distilled: Muse's
+  note graph had only USER-TYPED `[[wiki-links]]` (P42-1..5) and embedding-centroid similarity (P42-7
+  `notes related`) — NO usage-based signal. Added a pure module apps/cli/src/recall-trail.ts:
+  `depositCoRecall(trails, noteIds, now)` lays one unit of "pheromone" on every unordered pair among
+  the notes a recall surfaced TOGETHER (the co-traversal), capped + bounded by an LRU-by-strength
+  eviction; `topCoRecalled(trails, noteId, now, {halfLifeMs})` returns the partners by their CURRENT
+  evaporation-weighted strength (a 30-day half-life — a trail not refreshed fades), strongest first;
+  plus fail-soft read/write of `~/.muse/recall-trails.json`. Wired a best-effort deposit into the
+  `muse recall` action (notes co-surfaced in a result deposit a trail — a write error never breaks
+  recall) and a read-only `muse notes trails <note>` command (apps/cli/src/commands-notes-rag.ts,
+  beside `notes related`). Additive — existing behaviour byte-for-byte unchanged. The trails are a
+  THIRD relatedness signal (typed links + embedding + usage) that strengthens with how you actually use
+  your corpus. Verified deterministically AND live: 5 unit tests (depositCoRecall lays an edge per pair
+  and accumulates on repeat, is a no-op for <2 distinct notes, caps a hot edge; topCoRecalled decays by
+  the half-life so a fresher trail outranks a decayed one and drops sub-minStrength + honours the limit
+  — apps/cli/src/recall-trail.test.ts) + the full @muse/cli suite (193 files / 2179 tests) + @muse/
+  shared byte-hygiene gate (30) + tsc build + `pnpm lint` 0/0 + 0 raw control bytes + a FULL LIVE run on
+  the loop PC against qwen3:8b + nomic-embed: a corpus (vpn.md, wireguard.md, recipe.md), two `muse
+  recall` runs ("wireguard vpn tunnel mtu", "wireguard tunnel config") that surfaced the notes together
+  → `muse notes trails vpn` printed "Notes recalled together with vpn.md: wireguard.md (trail 2.00) /
+  recipe.md (trail 2.00)" — an emergent co-recall graph with zero `[[wiki-links]]`. Honest scope: the
+  signal compounds with USE (a tiny corpus where every recall surfaces all notes gives undifferentiated
+  trails — the differential power, proven by the decay/accumulation unit tests, emerges on a real corpus
+  where queries surface different subsets); depositing on the `muse ask` grounding path too is a
+  follow-on. (ce5bd8bb)
+
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,
 closed its deepest hole, and became constructive. Each verified live on

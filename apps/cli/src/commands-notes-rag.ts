@@ -27,6 +27,7 @@ import type { Command } from "commander";
 import { parsePdfBuffer } from "./commands-read.js";
 import { embed } from "./embed.js";
 import { classifyNoteContradiction, formatNoteConflicts, selectConflictCandidatePairs, selectSemanticConflictCandidatePairs, type ConflictNote, type NoteConflict } from "./note-conflicts.js";
+import { readTrails, resolveTrailsFile, topCoRecalled } from "./recall-trail.js";
 import type { ProgramIO } from "./program.js";
 
 export const DEFAULT_EMBED_MODEL = "nomic-embed-text";
@@ -1006,5 +1007,44 @@ export function registerNotesRagCommands(program: Command, io: ProgramIO): void 
         return;
       }
       io.stdout(formatRelatedNotes(targetPath, related, dir));
+    });
+
+  notes
+    .command("trails")
+    .description("Show notes most often RECALLED TOGETHER with this one — emergent usage-based relatedness that builds up as you recall (ant-trail stigmergy), complementing typed [[wiki-links]] and the embedding-based `notes related`. Read-only.")
+    .argument("<note>", "Note id or basename, e.g. 'project-plan' or 'project-plan.md'")
+    .option("--limit <n>", "How many co-recalled notes to show (default 10)")
+    .option("--json", "Print JSON instead of formatted text")
+    .action(async (note: string, options: { readonly limit?: string; readonly json?: boolean }) => {
+      const dir = resolveNotesDir(process.env as Record<string, string | undefined>);
+      const limit = options.limit !== undefined && Number.isFinite(Number(options.limit))
+        ? Math.max(1, Math.trunc(Number(options.limit)))
+        : 10;
+      const index = await loadIndex(defaultIndexPath());
+      if (!index) {
+        io.stderr("muse notes trails: no notes index yet — run `muse notes reindex` (or any `muse ask`) first.\n");
+        process.exitCode = 1;
+        return;
+      }
+      const targetPath = resolveIndexNotePath(index, note);
+      if (targetPath === undefined) {
+        io.stderr(`No indexed note matches '${note}'. Run \`muse notes list\` to see indexed notes.\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const partners = topCoRecalled(await readTrails(resolveTrailsFile(process.env as Record<string, string | undefined>)), targetPath, Date.now(), { limit });
+      const rel = (path: string): string => pathRelative(dir, path) || pathBasename(path);
+      if (options.json) {
+        io.stdout(`${JSON.stringify(partners.map((partner) => ({ path: rel(partner.noteId), strength: partner.strength })), null, 2)}\n`);
+        return;
+      }
+      if (partners.length === 0) {
+        io.stdout(`No co-recall trails for '${rel(targetPath)}' yet — trails build as you \`muse recall\` notes together.\n`);
+        return;
+      }
+      io.stdout(`Notes recalled together with ${rel(targetPath)}:\n`);
+      for (const partner of partners) {
+        io.stdout(`  ${rel(partner.noteId)}  (trail ${partner.strength.toFixed(2)})\n`);
+      }
     });
 }

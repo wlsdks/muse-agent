@@ -20,6 +20,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { selectByMarginalValue, selectByMmr } from "@muse/agent-core";
+
+import { depositCoRecall, readTrails, resolveTrailsFile, writeTrails } from "./recall-trail.js";
 import { resolveEpisodesFile } from "@muse/autoconfigure";
 import { readEpisodes } from "@muse/mcp";
 import type { Command } from "commander";
@@ -385,6 +387,19 @@ export function registerRecallCommand(program: Command, io: ProgramIO): void {
         );
         process.exitCode = 1;
         return;
+      }
+
+      // Stigmergy: notes recalled TOGETHER deposit a co-recall "pheromone" trail
+      // (evaporating, usage-based relatedness surfaced by `muse notes trails`).
+      // Best-effort — a trail write must never break recall.
+      try {
+        const noteRefs = hits.filter((hit) => hit.source === "notes").map((hit) => hit.ref);
+        if (noteRefs.length >= 2) {
+          const trailsFile = resolveTrailsFile(process.env as Record<string, string | undefined>);
+          await writeTrails(trailsFile, depositCoRecall(await readTrails(trailsFile), noteRefs, Date.now()));
+        }
+      } catch {
+        // trail deposit is best-effort
       }
 
       if (options.json) {
