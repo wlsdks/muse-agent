@@ -5,7 +5,40 @@ import { join } from "node:path";
 import { writeFollowups, writeReminders, type Contact, type PersistedFollowup, type PersistedReminder } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
-import { annotateEventTitle, formatConnectionsSection, formatEpisodeRevisitLine, formatEvents, formatHeadlines, formatNextEvent, formatOverdue, formatRevisitSection, formatStaleTasksSection, formatTasks, formatTodayBrief, formatTodayConflicts, formatWeatherLine, parseLookaheadHours, pickConnectionQuery, readDueFollowups, readDueReminders, readUpcomingBirthdays, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine, selectEpisodeToRevisit, selectStaleTasks, selectTodayOverdue } from "./commands-today.js";
+import { annotateEventTitle, formatConnectionsSection, formatEpisodeRevisitLine, formatEvents, formatHeadlines, formatLargestBreak, formatNextEvent, formatOverdue, formatRevisitSection, formatStaleTasksSection, formatTasks, formatTodayBrief, formatTodayConflicts, formatWeatherLine, largestBreakBetweenEvents, parseLookaheadHours, pickConnectionQuery, readDueFollowups, readDueReminders, readUpcomingBirthdays, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine, selectEpisodeToRevisit, selectStaleTasks, selectTodayOverdue } from "./commands-today.js";
+
+describe("largestBreakBetweenEvents — your longest focus window between today's meetings", () => {
+  const now = new Date("2026-06-05T08:00:00"); // local morning
+  const ev = (startIso: string, endIso: string) => ({ startsAtIso: startIso, endsAtIso: endIso });
+
+  it("returns the LARGEST gap between meetings (back-to-back/overlap merged away)", () => {
+    const slot = largestBreakBetweenEvents([
+      ev("2026-06-05T09:00:00", "2026-06-05T09:30:00"),
+      ev("2026-06-05T12:00:00", "2026-06-05T13:00:00"), // 9:30–12:00 = 2h30 (largest)
+      ev("2026-06-05T15:00:00", "2026-06-05T16:00:00")  // 13:00–15:00 = 2h
+    ], now)!;
+    expect(slot.startsAt.getHours()).toBe(9);
+    expect(slot.startsAt.getMinutes()).toBe(30);
+    expect(slot.endsAt.getHours()).toBe(12);
+  });
+
+  it("is null with no MEANINGFUL between gap: back-to-back, a <45min gap, a single event, or none", () => {
+    expect(largestBreakBetweenEvents([ev("2026-06-05T09:00:00", "2026-06-05T10:00:00"), ev("2026-06-05T10:00:00", "2026-06-05T11:00:00")], now)).toBeNull(); // back-to-back merges
+    expect(largestBreakBetweenEvents([ev("2026-06-05T09:00:00", "2026-06-05T09:30:00"), ev("2026-06-05T10:00:00", "2026-06-05T11:00:00")], now)).toBeNull(); // 30-min gap < 45
+    expect(largestBreakBetweenEvents([ev("2026-06-05T14:00:00", "2026-06-05T15:00:00")], now)).toBeNull(); // single event — no trailing block reported
+    expect(largestBreakBetweenEvents([], now)).toBeNull();
+  });
+});
+
+describe("formatLargestBreak", () => {
+  it("renders the free-block line, empty when null", () => {
+    const out = formatLargestBreak({ startsAt: new Date("2026-06-05T09:30:00"), endsAt: new Date("2026-06-05T12:00:00") });
+    expect(out).toContain("🟢 Biggest free block:");
+    expect(out).toContain("(2h 30m)");
+    expect(out).toContain("between today's events");
+    expect(formatLargestBreak(null)).toBe("");
+  });
+});
 
 const contact = (over: Partial<Contact> & { name: string }): Contact => ({ id: over.name.toLowerCase().replace(/\s+/gu, "_"), ...over });
 

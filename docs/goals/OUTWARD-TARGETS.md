@@ -1154,6 +1154,26 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   manager)", "  - 04:00 — Checkup with Priya (your doctor)", and "Team standup" UN-annotated (no
   contact named). (879f95f7)
 
+- [x] **P37-41 `muse today` now shows your BIGGEST FREE BLOCK between meetings — "🟢 Biggest free
+  block: 11:30 AM–1:30 PM (2h 30m)" — so a glance at the day answers "when can I focus / grab lunch /
+  fit something in?", not just "what's scheduled".** The brief surfaced events, overdue, weather,
+  birthdays, and conflicts but NEVER your OPEN time, even though the free/busy engine already existed
+  (`computeAvailability`) — so finding your longest break meant eyeballing the gaps between start
+  times. Added a pure `largestBreakBetweenEvents(events, now)` (apps/cli/src/commands-today.ts) that
+  feeds the day's events through `computeAvailability` (merging overlapping/back-to-back events into
+  busy blocks) and returns the LARGEST gap BETWEEN two consecutive busy blocks within the rest of
+  today (local) — crucially only gaps bounded by a meeting on BOTH sides, so the open-ended trailing /
+  overnight stretch after your last event is never mis-reported as a "free block"; null when there's
+  no ≥45-minute between-meeting gap (a sparse/empty day stays quiet). A pure `formatLargestBreak`
+  renders the line, wired into `formatTodayBrief` after the events/conflicts. Read-only + deterministic
+  (no model). Perceive/felt growth (B0: perceive/ACT growth), varied off the two prior calendar-add
+  slices. Verified: 3 unit tests (returns the largest of multiple gaps with back-to-back merged away;
+  null for back-to-back / a sub-45-min gap / a single event / none; formatLargestBreak renders the
+  duration + empty on null — apps/cli/src/commands-today.test.ts) + the full @muse/cli suite (185 files
+  / 2104 tests) + tsc build + `pnpm lint` 0/0 + 0 raw control bytes + a LIVE run on the loop PC: two
+  events ~3h apart → `muse today --local` printed "🟢 Biggest free block: 11:19 AM–1:49 PM (2h 30m) —
+  your longest open stretch between today's events." (6879d42d)
+
 - [x] **P37-35 `muse week` — your next 7 days at a glance, GROUPED BY DAY (events + due tasks +
   birthdays under each day), so you can plan the week instead of reading a flat next-24h brief.**
   `muse today` is the today-framed brief (overdue, today's tasks, next-24h calendar); its

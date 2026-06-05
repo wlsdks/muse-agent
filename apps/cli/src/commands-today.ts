@@ -43,6 +43,8 @@ import {
   type PersistedTask,
   readEpisodes,
   detectCalendarConflicts,
+  computeAvailability,
+  type AvailabilityEventLike,
   type Contact,
   type WeatherProvider
 } from "@muse/mcp";
@@ -367,6 +369,7 @@ export function formatTodayBrief(briefing: TodayBriefing, local: boolean): strin
     + taskSection
     + formatEvents(briefing.events)
     + formatTodayConflicts(briefing.events)
+    + formatLargestBreak(largestBreakBetweenEvents(briefing.events, now))
     + formatBirthdays(briefing.birthdays)
     + formatNotes(briefing.notes)
     + formatHeadlines(briefing.headlines)
@@ -1298,6 +1301,61 @@ function formatTimeUntil(deltaMs: number): string {
   if (hours < 24) return remMins > 0 ? `in ${hours.toString()}h ${remMins.toString()}m` : `in ${hours.toString()}h`;
   const days = Math.round(hours / 24);
   return `in ${days.toString()} day${days === 1 ? "" : "s"}`;
+}
+
+const MIN_BREAK_MS = 45 * 60_000; // a gap shorter than this isn't worth flagging as a "free block"
+
+function formatBreakDuration(ms: number): string {
+  const mins = Math.round(ms / 60_000);
+  const hours = Math.floor(mins / 60);
+  const rem = mins % 60;
+  if (hours === 0) return `${rem.toString()}m`;
+  if (rem === 0) return `${hours.toString()}h`;
+  return `${hours.toString()}h ${rem.toString()}m`;
+}
+
+/**
+ * The largest open gap BETWEEN today's meetings (events merged into busy blocks
+ * first, so back-to-back events don't count as a gap) — your longest focus
+ * window. ONLY gaps bounded by a meeting on both sides count, so the open-ended
+ * trailing/overnight stretch after your last event is never reported. Bounded to
+ * the rest of TODAY (local). Null when there's no ≥45-min between-meeting gap. Pure.
+ */
+export function largestBreakBetweenEvents(
+  events: readonly { readonly startsAtIso: string; readonly endsAtIso?: string }[] | undefined,
+  now: Date
+): { readonly startsAt: Date; readonly endsAt: Date } | null {
+  if (!events || events.length === 0) {
+    return null;
+  }
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  const eventLikes: AvailabilityEventLike[] = events
+    .map((event) => {
+      const startsAt = new Date(event.startsAtIso);
+      const endsAt = event.endsAtIso ? new Date(event.endsAtIso) : new Date(startsAt.getTime() + 3_600_000);
+      return { allDay: false, endsAt, startsAt, title: "" };
+    })
+    .filter((event) => Number.isFinite(event.startsAt.getTime()) && Number.isFinite(event.endsAt.getTime()) && event.endsAt.getTime() > event.startsAt.getTime());
+  const { busy } = computeAvailability(eventLikes, { from: now, to: endOfToday });
+  let best: { startsAt: Date; endsAt: Date } | null = null;
+  for (let i = 0; i < busy.length - 1; i += 1) {
+    const startsAt = busy[i]!.endsAt;
+    const endsAt = busy[i + 1]!.startsAt;
+    const length = endsAt.getTime() - startsAt.getTime();
+    if (length >= MIN_BREAK_MS && (best === null || length > best.endsAt.getTime() - best.startsAt.getTime())) {
+      best = { endsAt, startsAt };
+    }
+  }
+  return best;
+}
+
+/** The "🟢 Biggest free block …" line for `muse today`, or empty when there's no meaningful gap. Pure. */
+export function formatLargestBreak(slot: { readonly startsAt: Date; readonly endsAt: Date } | null): string {
+  if (!slot) {
+    return "";
+  }
+  const clock = (date: Date): string => date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `\n🟢 Biggest free block: ${clock(slot.startsAt)}–${clock(slot.endsAt)} (${formatBreakDuration(slot.endsAt.getTime() - slot.startsAt.getTime())}) — your longest open stretch between today's events.\n`;
 }
 
 /**
