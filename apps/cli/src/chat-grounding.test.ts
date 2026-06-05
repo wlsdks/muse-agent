@@ -49,14 +49,22 @@ describe("gateChatAnswer (deterministic anti-fabrication gate)", () => {
     const general = "물은 신체 기능 유지에 필수입니다.";
     expect(gateChatAnswer("물 마시는 게 왜 중요해?", general, [])).toBe(general);
   });
-  it("passes a recall whose topic Muse HAS on file — cross-language (name stored, asked in Korean)", () => {
-    // The stored fact key is "user_name"; the Korean answer voices it as 진안 (no
-    // token overlap), so only the topic→key match can rescue it from a false refusal.
-    const out = gateChatAnswer("내 이름이 뭐야?", "당신의 이름은 진안입니다.", [], ["jinan"], ["user_name"]);
+  it("passes the USER's own name cross-language (user_name stored, asked in Korean)", () => {
+    // "진안" shares no token with the English-keyed user_name, so only the
+    // topic→key match rescues it from a false refusal.
+    const out = gateChatAnswer("내 이름이 뭐야?", "당신의 이름은 진안입니다.", [], ["user_name"]);
     expect(out).toBe("당신의 이름은 진안입니다.");
   });
+  it("passes an entity fact Muse HAS (dog_name stored → 강아지 question)", () => {
+    const out = gateChatAnswer("내 강아지 이름이 뭐야?", "강아지 이름은 보리입니다.", [], ["user_name", "dog_name"]);
+    expect(out).toBe("강아지 이름은 보리입니다.");
+  });
+  it("REFUSES a cross-entity conflation — cat NOT stored, must not answer the dog's name", () => {
+    const out = gateChatAnswer("내 고양이 이름이 뭐야?", "고양이 이름은 보리입니다.", [], ["user_name", "dog_name"]);
+    expect(out).toBe(chatAbstention("내 고양이 이름이 뭐야?"));
+  });
   it("still refuses a recall whose topic is NOT on file (birthday never stored)", () => {
-    const out = gateChatAnswer("내 생일 언제야?", "당신의 생일은 5월 3일입니다.", [], ["jinan"], ["user_name"]);
+    const out = gateChatAnswer("내 생일 언제야?", "당신의 생일은 5월 3일입니다.", [], ["user_name"]);
     expect(out).toBe(chatAbstention("내 생일 언제야?"));
   });
 });

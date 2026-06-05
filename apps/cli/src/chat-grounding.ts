@@ -159,18 +159,24 @@ export function chatAbstention(question: string): string {
  * call): `verifyGrounding` is a rubric over the answer + evidence. Non-recall /
  * general turns pass through untouched, so general knowledge is never refused.
  */
-// Personal-fact topics → fragments of the stored fact-key they ask about. When a
-// question asks about a topic Muse HAS on file, the answer is grounded in real
-// data even if the model renders the value imperfectly across languages (e.g.
-// romanized "jinan" voiced back as "지난"), so it must not be refused. Topics with
-// NO stored fact (a pet name never recorded) still fall through to the gate.
+// Personal-fact topics → fact-key fragments. ENTITY-AWARE so "고양이 이름" (cat)
+// can't be satisfied by a stored dog_name. When a question's specific topic has a
+// matching stored key, the answer is real-data-backed even if its surface form
+// differs across languages (romanized "jinan" voiced as "진안"), so don't refuse.
+// A topic with NO matching key (a never-recorded cat) falls through to the gate.
+// The name topic is the USER's OWN name only (possessive directly before
+// 이름/name) so an entity's name never satisfies `user_name`. NB: no `\b` next to
+// Hangul — JS `\b` is ASCII-only and `이름\b` fails on "이름이".
 const FACT_TOPICS: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
-  [/이름|name/iu, ["name"]],
+  [/(내|제|나의|내가|my|what'?s my|what is my)\s*(이름|name)/iu, ["user_name"]],
+  [/강아지|반려견|puppy|dog/iu, ["dog"]],
+  [/고양이|냥이|cat|kitty/iu, ["cat"]],
+  [/자동차|car|vehicle/iu, ["car", "vehicle"]],
   [/비밀번호|비번|암호|password|passcode/iu, ["password", "passcode", "pw"]],
   [/생일|birth/iu, ["birth"]],
-  [/나이|age\b/iu, ["age"]],
+  [/나이|age/iu, ["age"]],
   [/이메일|메일|email|e-mail/iu, ["email", "mail"]],
-  [/전화|연락처|phone|number/iu, ["phone", "tel", "number"]],
+  [/전화|연락처|phone/iu, ["phone", "tel"]],
   [/주소|address/iu, ["address", "addr"]]
 ];
 
@@ -183,17 +189,13 @@ export function gateChatAnswer(
   question: string,
   answer: string,
   matches: readonly KnowledgeMatch[],
-  knownFactValues: readonly string[] = [],
   knownFactKeys: readonly string[] = []
 ): string {
   if (!isPersonalFactRecall(question)) return answer;
-  // Muse genuinely HAS this fact on file → the answer is real-data-backed, not
-  // invented; pass even if the surface form differs across languages.
+  // Muse genuinely HAS a fact for this SPECIFIC topic → real-data-backed
+  // (cross-language tolerant); pass. Otherwise the lexical gate decides, so a
+  // cross-entity conflation ("the cat is 보리", the dog's name) is refused.
   if (asksAboutStoredFact(question, knownFactKeys)) return answer;
-  // Same-script fallback: the answer states a stored VALUE verbatim.
-  if (knownFactValues.some((value) => value.trim().length >= 2 && answer.includes(value.trim()))) {
-    return answer;
-  }
   const { verdict } = verifyGrounding(answer, matches, question);
   return verdict === "grounded" ? answer : chatAbstention(question);
 }

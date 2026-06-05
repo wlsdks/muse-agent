@@ -23,8 +23,6 @@ import type { Readable } from "node:stream";
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
-import type { KnowledgeMatch } from "@muse/agent-core";
-
 import { conversationMatches, gateChatAnswer, retrieveChatGrounding } from "./chat-grounding.js";
 import { isRecord } from "./credential-store.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
@@ -236,16 +234,13 @@ export async function runLocalChat(
 
   // Deterministic anti-fabrication gate: for a recall of the user's OWN data,
   // refuse honestly when the answer isn't grounded in the evidence (retrieved
-  // notes/episodes, this conversation, OR the durable user memory) — instead of
-  // letting the model invent a fact as "memory". The user-memory is evidence too,
-  // so a fact Muse genuinely knows (the name) is answered, not refused.
-  const memoryEvidence: KnowledgeMatch[] = userMemoryBlock.length > 0
-    ? [{ cosine: 1, score: 1, source: "memory", text: userMemoryBlock }]
-    : [];
-  const evidence = [...matches, ...conversationMatches(options.priorHistory ?? []), ...memoryEvidence];
-  const knownFactValues = userMemory ? Object.values(userMemory.facts ?? {}).map((value) => String(value)) : [];
+  // notes/episodes + this conversation). The durable user-memory is handled by
+  // the topic→stored-key check (knownFactKeys), and deliberately NOT folded into
+  // the lexical evidence — doing so let a stored value satisfy ANY question and
+  // whitewashed a cross-entity conflation ("the cat is 보리", the dog's name).
+  const evidence = [...matches, ...conversationMatches(options.priorHistory ?? [])];
   const knownFactKeys = userMemory ? Object.keys(userMemory.facts ?? {}) : [];
-  const gated = gateChatAnswer(message, result.response.output, evidence, knownFactValues, knownFactKeys);
+  const gated = gateChatAnswer(message, result.response.output, evidence, knownFactKeys);
 
   return {
     response: gated,
