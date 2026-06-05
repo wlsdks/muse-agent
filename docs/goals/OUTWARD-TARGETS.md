@@ -819,6 +819,26 @@ P43 bullet is unbuilt.
   on a quarterly-update doc surfaced "billing migration …" phrases at the top (the doc's real topic) and
   dropped the lunch/weather filler. Honest scope: file input; English stopwords; very stopword-sparse text
   yields longer phrases (the cap bounds them). (cce28b0e)
+
+- [x] **P43-21 `muse on-this-day` — resurface the notes you wrote on TODAY's date in earlier years
+  ("📅 journal/2025-06-05.md — 1 year ago").** A warm, fresh perception/felt slice on a NEW surface
+  (rotated off the recently-touched ask/calendar/documents). The mechanism: date-cued autobiographical
+  recall (Rubin, Wetzler & Nebes, "Autobiographical memory across the lifespan", in Autobiographical
+  Memory, 1986) — a calendar date is one of the strongest cues for autobiographical memory; the
+  anniversary pulls back context you would never think to search for. Pure `apps/cli/src/on-this-day.ts`
+  — `extractNoteDate` (an explicit YYYY-MM-DD from the note's PATH only — never the file mtime, which a
+  later edit would move into a FALSE anniversary; rejects an impossible date like 2025-02-30),
+  `selectOnThisDay` (same calendar day ±`--window`, PRIOR years only, most-recent first, with years-ago),
+  `formatOnThisDay` — wired into `muse on-this-day` (`--window`, `--json`) over a recursive `.md` walk so a
+  `journal/YYYY-MM-DD.md` in a subfolder is found. Deterministic, read-only, no model. Verified
+  deterministically AND live: 11 unit tests (date parse incl. rejecting an impossible/overflow date;
+  same-day prior-years match most-recent-first; excludes a different day and THIS year; ±window; empty —
+  apps/cli/src/on-this-day.test.ts) + `pnpm lint` 0/0 + `@muse/shared` byte-hygiene 30 + cli 2263 + 0 raw
+  control bytes + a LIVE run on the loop PC: journal notes at `journal/<lastyear>-06-05.md` and
+  `journal/<2yrago>-06-05.md` (today is June 5) plus a different-day and a this-year note → `muse
+  on-this-day` surfaced ONLY the two prior-year ones ("1 year ago", "2 years ago"). Honest scope:
+  path-dated notes only (mtime would lie); empty until a year of dated journaling accrues; episodes
+  (createdAt) and a brief beat are follow-ons. (5bd92dea)
 - [x] **P43-7 The evening recap's "Coming up" now includes tomorrow's CALENDAR EVENTS
   and BIRTHDAYS — your `muse recap` forward view finally matches the brief + `muse today`.**
   The evening recap (P43-4) is the retrospective sibling of the morning brief, and its
