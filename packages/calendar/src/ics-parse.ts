@@ -22,21 +22,21 @@ export function parseIcsCalendar(icsText: string, providerId: string): readonly 
 const MAX_RECURRENCE_INSTANCES = 200;
 
 interface ParsedRrule {
-  readonly freq: "DAILY" | "WEEKLY";
+  readonly freq: "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
   readonly interval: number;
   readonly count?: number;
   readonly until?: number; // ms-epoch
 }
 
-/** Parse the common FREQ=DAILY|WEEKLY RRULE forms (INTERVAL/COUNT/UNTIL); others ⇒ undefined. */
+/** Parse FREQ=DAILY|WEEKLY|MONTHLY|YEARLY RRULE forms (INTERVAL/COUNT/UNTIL); others ⇒ undefined. */
 function parseRrule(rrule: string): ParsedRrule | undefined {
   const parts = new Map(rrule.split(";").map((p) => {
     const [k, v] = p.split("=");
     return [(k ?? "").toUpperCase().trim(), (v ?? "").trim()] as const;
   }));
   const freq = parts.get("FREQ");
-  if (freq !== "DAILY" && freq !== "WEEKLY") {
-    return undefined; // only the dominant daily/weekly cases — never guess the rest
+  if (freq !== "DAILY" && freq !== "WEEKLY" && freq !== "MONTHLY" && freq !== "YEARLY") {
+    return undefined; // the calendar cadences we expand — never guess BYDAY/BYSETPOS etc.
   }
   const interval = Math.max(1, Number(parts.get("INTERVAL") ?? "1") || 1);
   const countRaw = parts.get("COUNT");
@@ -55,11 +55,37 @@ function parseUntil(value: string): number | undefined {
 }
 
 /**
+ * Advance a date by `months`, clamping the day to the target month's length so
+ * Jan 31 + 1 month → Feb 28 (or 29 on a leap year), never rolled into March.
+ * Steps in UTC — consistent with the DAILY/WEEKLY ms-offset stepping and
+ * timezone-deterministic — preserving the UTC clock time.
+ */
+function addMonthsClamped(date: Date, months: number): Date {
+  const day = date.getUTCDate();
+  const result = new Date(date);
+  result.setUTCDate(1); // park on the 1st so setUTCMonth can't overflow off a long day
+  result.setUTCMonth(result.getUTCMonth() + months);
+  const lastDayOfTargetMonth = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();
+  result.setUTCDate(Math.min(day, lastDayOfTargetMonth));
+  return result;
+}
+
+/** The i-th occurrence's start, computed from the BASE (not cumulatively) so a
+ *  monthly Jan-31 series stays 31st-or-clamped each month rather than drifting. */
+function occurrenceStart(base: Date, rule: ParsedRrule, i: number): Date {
+  if (rule.freq === "DAILY") return new Date(base.getTime() + i * rule.interval * 86_400_000);
+  if (rule.freq === "WEEKLY") return new Date(base.getTime() + i * rule.interval * 7 * 86_400_000);
+  if (rule.freq === "MONTHLY") return addMonthsClamped(base, i * rule.interval);
+  return addMonthsClamped(base, i * rule.interval * 12); // YEARLY
+}
+
+/**
  * Expand a recurring event into the instances that fall within `[from, to]`.
- * Non-recurring (or an unsupported RRULE) ⇒ the event unchanged. Handles the
- * dominant FREQ=DAILY/WEEKLY (+INTERVAL/COUNT/UNTIL) so "when's my weekly
- * standup?" surfaces the NEXT instance even though the base VEVENT's DTSTART is
- * in the past. Capped so a never-ending rule can't blow up. Deterministic.
+ * Non-recurring (or an unsupported RRULE) ⇒ the event unchanged. Handles
+ * FREQ=DAILY/WEEKLY/MONTHLY/YEARLY (+INTERVAL/COUNT/UNTIL) — monthly/yearly step
+ * by calendar months with day-clamping, the rest by fixed offset — so "when's my
+ * weekly standup / monthly rent?" surfaces the NEXT instance even when the base
+ * DTSTART is in the past. Capped so a never-ending rule can't blow up. Deterministic.
  */
 export function expandRecurringEvent(event: CalendarEvent, from: Date, to: Date): readonly CalendarEvent[] {
   if (!event.recurrence) {
@@ -69,21 +95,20 @@ export function expandRecurringEvent(event: CalendarEvent, from: Date, to: Date)
   if (!rule) {
     return [event]; // unsupported RRULE — surface the base event, never fabricate instances
   }
-  const stepMs = (rule.freq === "DAILY" ? 1 : 7) * rule.interval * 24 * 60 * 60 * 1000;
-  const durationMs = event.endsAt.getTime() - event.startsAt.getTime();
+  const base = event.startsAt;
+  const durationMs = event.endsAt.getTime() - base.getTime();
   const fromMs = from.getTime();
   const toMs = to.getTime();
   const out: CalendarEvent[] = [];
-  let startMs = event.startsAt.getTime();
   for (let i = 0; i < MAX_RECURRENCE_INSTANCES; i += 1) {
     if (rule.count !== undefined && i >= rule.count) break;
+    const startMs = occurrenceStart(base, rule, i).getTime();
     if (rule.until !== undefined && startMs > rule.until) break;
     if (startMs > toMs) break;
     const endMs = startMs + durationMs;
     if (endMs >= fromMs) {
       out.push({ ...event, endsAt: new Date(endMs), id: `${event.id}-${i.toString()}`, startsAt: new Date(startMs) });
     }
-    startMs += stepMs;
   }
   return out;
 }

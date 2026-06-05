@@ -95,8 +95,20 @@ describe("expandRecurringEvent + recurring .ics", () => {
     expect(untilPast).toHaveLength(0); // series ended before the window
   });
 
-  it("an unsupported RRULE (e.g. MONTHLY) surfaces the base event, never fabricated instances", () => {
-    expect(expandRecurringEvent({ ...base, recurrence: "FREQ=MONTHLY" }, from, to)).toEqual([{ ...base, recurrence: "FREQ=MONTHLY" }]);
+  it("a MONTHLY series clamps the day to short months (Jan 31 → Feb 28 → Mar 31)", () => {
+    const monthly = { ...base, id: "rent", startsAt: new Date("2026-01-31T09:00:00Z"), endsAt: new Date("2026-01-31T10:00:00Z"), recurrence: "FREQ=MONTHLY" };
+    const insts = expandRecurringEvent(monthly, new Date("2026-01-01T00:00:00Z"), new Date("2026-04-01T00:00:00Z"));
+    expect(insts.map((e) => e.startsAt.toISOString().slice(0, 10))).toEqual(["2026-01-31", "2026-02-28", "2026-03-31"]);
+  });
+
+  it("a YEARLY series clamps Feb 29 to Feb 28 on a non-leap year", () => {
+    const yearly = { ...base, id: "anniv", startsAt: new Date("2028-02-29T09:00:00Z"), endsAt: new Date("2028-02-29T10:00:00Z"), recurrence: "FREQ=YEARLY" };
+    const insts = expandRecurringEvent(yearly, new Date("2028-01-01T00:00:00Z"), new Date("2030-03-01T00:00:00Z"));
+    expect(insts.map((e) => e.startsAt.toISOString().slice(0, 10))).toEqual(["2028-02-29", "2029-02-28", "2030-02-28"]);
+  });
+
+  it("a genuinely unsupported RRULE (e.g. HOURLY) surfaces the base event, never fabricated instances", () => {
+    expect(expandRecurringEvent({ ...base, recurrence: "FREQ=HOURLY" }, from, to)).toEqual([{ ...base, recurrence: "FREQ=HOURLY" }]);
   });
 
   it("provider.listEvents expands a recurring .ics into in-window instances", async () => {

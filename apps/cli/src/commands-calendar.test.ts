@@ -29,10 +29,12 @@ describe("recurrenceRuleFor — map a --repeat cadence to an RRULE", () => {
     expect(recurrenceRuleFor("daily")).toBe("FREQ=DAILY");
     expect(recurrenceRuleFor("WEEKLY")).toBe("FREQ=WEEKLY");
     expect(recurrenceRuleFor("  weekly ")).toBe("FREQ=WEEKLY");
+    expect(recurrenceRuleFor("monthly")).toBe("FREQ=MONTHLY");
+    expect(recurrenceRuleFor("YEARLY")).toBe("FREQ=YEARLY");
   });
   it("returns undefined for an unsupported cadence (so the command rejects it)", () => {
-    expect(recurrenceRuleFor("monthly")).toBeUndefined();
-    expect(recurrenceRuleFor("yearly")).toBeUndefined();
+    expect(recurrenceRuleFor("hourly")).toBeUndefined();
+    expect(recurrenceRuleFor("biweekly")).toBeUndefined();
     expect(recurrenceRuleFor("")).toBeUndefined();
   });
 });

@@ -126,14 +126,17 @@ export function buildEventReminder(
 
 /**
  * Map a `--repeat` cadence word to the RRULE the local provider stores and
- * `expandRecurringEvent` understands. Only daily/weekly are supported (the
- * expansion engine's two FREQ cases); anything else returns undefined so the
- * caller rejects it loudly rather than creating an event that never recurs.
+ * `expandRecurringEvent` understands (daily / weekly / monthly / yearly — the
+ * engine's four FREQ cases, monthly/yearly day-clamped). Anything else returns
+ * undefined so the caller rejects it loudly rather than creating an event that
+ * never recurs.
  */
 export function recurrenceRuleFor(cadence: string): string | undefined {
   const c = cadence.trim().toLowerCase();
   if (c === "daily") return "FREQ=DAILY";
   if (c === "weekly") return "FREQ=WEEKLY";
+  if (c === "monthly") return "FREQ=MONTHLY";
+  if (c === "yearly") return "FREQ=YEARLY";
   return undefined;
 }
 
@@ -518,7 +521,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
     .option("--for <minutes>", "Duration in minutes (default 60)")
     .option("--location <where>", "Where the event is, e.g. 'Room 4'")
     .option("--remind <minutes>", "Also set a reminder this many minutes BEFORE the event, e.g. --remind 30")
-    .option("--repeat <cadence>", "Make it recurring: 'daily' or 'weekly' (e.g. a weekly standup). Omit for one-time.")
+    .option("--repeat <cadence>", "Make it recurring: 'daily', 'weekly', 'monthly', or 'yearly' (e.g. a weekly standup, monthly rent). Omit for one-time.")
     .option("--json", "Print the created event as JSON")
     .action(async (
       titleParts: readonly string[],
@@ -541,7 +544,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       if (options.repeat !== undefined) {
         recurrence = recurrenceRuleFor(options.repeat);
         if (!recurrence) {
-          throw new Error(`--repeat must be 'daily' or 'weekly' (monthly/yearly recurring events aren't supported yet), got '${options.repeat}'`);
+          throw new Error(`--repeat must be 'daily', 'weekly', 'monthly', or 'yearly', got '${options.repeat}'`);
         }
       }
       const provider = localCalendarProvider();

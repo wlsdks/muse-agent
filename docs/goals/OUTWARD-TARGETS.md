@@ -440,6 +440,34 @@ P43 bullet is unbuilt.
   15), and `muse calendar add … --repeat monthly` → "must be 'daily' or 'weekly' …" with exit 1.
   (0ced2ff0)
 
+- [x] **P41-39 `muse calendar add "Rent" --at "2026-01-31 9am" --repeat monthly` — recurring events
+  now also do MONTHLY and YEARLY (rent, subscriptions, anniversaries), the cadences most people
+  actually repeat, with correct short-month day-clamping.** P41-37 shipped recurring events but only
+  daily/weekly; the most common real recurring events — monthly rent/bills, yearly renewals — were
+  rejected. Extended the expansion engine (packages/calendar/src/ics-parse.ts): `parseRrule` now
+  accepts FREQ=MONTHLY/YEARLY, and `expandRecurringEvent` computes each occurrence FROM THE BASE by
+  index (not by cumulative stepping) so a monthly Jan-31 series stays "the 31st, or the last day of a
+  shorter month" every month instead of drifting earlier — a new `addMonthsClamped` (mirroring the
+  reminders store's proven clamp, but stepping in UTC for timezone-determinism and consistency with the
+  existing DAILY/WEEKLY ms-offset) maps Jan 31 → Feb 28 (or 29 on a leap year) → Mar 31, and Feb 29 →
+  Feb 28 on a non-leap year for yearly. `recurrenceRuleFor` (apps/cli/src/commands-calendar.ts) now
+  maps monthly→FREQ=MONTHLY / yearly→FREQ=YEARLY, and `muse calendar add --repeat` accepts all four
+  cadences (an unknown cadence like 'hourly' still errors + exits 1). DAILY/WEEKLY behaviour is
+  unchanged (from-base = the old cumulative offset, linear in ms), non-recurring events still pass
+  through untouched, and a genuinely unsupported RRULE (BYDAY/HOURLY) still surfaces the base event
+  rather than fabricating instances. This completes the recurrence capability (the explicit P41-37
+  follow-on) — Actuation/act-growth on the calendar axis. Verified deterministically AND live: unit
+  tests (@muse/calendar — a MONTHLY series clamps Jan 31 → Feb 28 → Mar 31; a YEARLY series clamps Feb
+  29 → Feb 28 on a non-leap year; an unsupported FREQ=HOURLY surfaces the base event —
+  packages/calendar/test/local-ics-provider.test.ts; @muse/cli — recurrenceRuleFor maps monthly/yearly
+  and rejects hourly/biweekly — apps/cli/src/commands-calendar.test.ts) + the FULL cross-package `pnpm
+  check` (every workspace green: calendar 149, agent-core 1455, mcp 1542, cli 2167, api 849 …) + tsc +
+  `pnpm lint` 0/0 + 0 raw control bytes + a FULL LIVE round-trip on the loop PC: `muse calendar add
+  "Rent" --at 2026-01-31T09:00:00 --repeat monthly` → "Created … (repeats monthly)", `muse calendar
+  events --local --from 2026-01-01 --to 2026-04-01` listed exactly 2026-01-31 / 2026-02-28 / 2026-03-31
+  (the Feb clamp proven), `--repeat yearly` on 2028-02-29 created the leap-day anniversary, and `--repeat
+  hourly` errored with exit 1. (fddbd470)
+
 - [x] **P43-6 Muse notices a NOTE FAMILY gone quiet — "you usually update your
   project-apollo notes every few days; nothing in three weeks."** The filesystem
   sibling of P43-4's topic-absence (which baselines episode-CONVERSATION cadence):
