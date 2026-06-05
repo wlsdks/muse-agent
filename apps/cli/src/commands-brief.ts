@@ -36,8 +36,10 @@ import {
 import type { CalendarEvent } from "@muse/calendar";
 import { formatBirthdayBriefLine, readCheckins, readContacts, readProactiveHistory, readReflections, readReminders, resolveUpcomingBirthdays, selectDueCheckins, type PersistedCheckin, type PersistedReminder } from "@muse/mcp";
 
+import { formatBriefFeedLines, selectBriefFeedHeadlines } from "./brief-feeds.js";
 import { formatBriefReflectionLine, selectBriefReflection } from "./brief-reflection.js";
 import { resolveReflectionsFile } from "./commands-reflections.js";
+import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
 
 import { resolveTodayWeatherLine } from "./commands-today.js";
 import type { Command } from "commander";
@@ -496,6 +498,13 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
         if (surfaced) io.stdout(formatBriefReflectionLine(surfaced));
       } catch {
         // reflections store missing/corrupt — the brief stands on its own
+      }
+
+      try {
+        const headlines = selectBriefFeedHeadlines(await readFeedsStore(defaultFeedsFile()), now.getTime());
+        if (headlines.length > 0) io.stdout(formatBriefFeedLines(headlines));
+      } catch {
+        // feeds store missing/corrupt — the brief stands on its own
       }
 
       if (options.speak) {

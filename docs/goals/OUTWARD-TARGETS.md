@@ -4538,6 +4538,32 @@ honest-refusal mock-corpus check where applicable.
   and no crash (it never invents an insight). Honest bound: repetition is bounded only by the 14-day
   freshness window; a per-insight "already surfaced" ledger is a follow-on. (e3abde27)
 
+- [x] **P35-20 Your morning `muse brief` now surfaces RECENT FEED HEADLINES — "📰 In your feeds:
+  · New open-source model released (Tech Daily)" — the ambient world-state you subscribed to, pushed
+  unprompted instead of only on `muse feeds today`.** Muse fetches the user's RSS/Atom subscriptions
+  (`muse feeds add/refresh`, stored in the feeds archive), but they were PULL-only — the morning brief
+  (already the canonical proactive-push surface for tasks/events/weather/birthdays/reflections) was
+  silent on them, so the day's news from sources the user chose never reached the one place they look
+  each morning. Added a pure module apps/cli/src/brief-feeds.ts: `selectBriefFeedHeadlines(store,
+  nowMs, {withinHours=24, limit=3})` aggregates entries across ALL feeds, keeps those published within
+  the window, sorts newest-first, drops empty titles, and caps the count; `formatBriefFeedLines`
+  renders the "📰 In your feeds" block. Wired into `muse brief` (apps/cli/src/commands-brief.ts) after
+  the reflection line, reading the feeds store fail-soft (a missing/corrupt store leaves the brief
+  untouched). Feed titles are sanitised at INGEST (`sanitizeFeedText` strips terminal-control chars)
+  and rendered VERBATIM — never fed back through the model — so untrusted feed text can't steer the
+  brief or inject a fake citation (the same untrusted-content discipline the inbox/search surfaces
+  use). Read-only, deterministic. This is a Felt/proactivity slice — completing the feeds capability
+  (fetched → proactively surfaced), a fresh content source distinct from the recently-churned
+  calendar/csv/episode work. Verified deterministically AND live: 3 unit tests (selectBriefFeedHeadlines
+  returns the most-recent headlines across feeds newest-first capped at limit, excludes out-of-window
+  entries + empty titles + returns [] when nothing recent; formatBriefFeedLines renders the 📰 block
+  with the feed name or empty string — apps/cli/src/brief-feeds.test.ts) + the full @muse/cli suite
+  (190 files / 2165 tests) + tsc build + `pnpm lint` 0/0 + 0 raw control bytes + a FULL LIVE run on the
+  loop PC: with a seeded feed entry published 1h ago ("New open-source model released" from "Tech
+  Daily") `muse brief` printed the greeting then "📰 In your feeds: · New open-source model released
+  (Tech Daily)", and the NEGATIVE control — no feeds store → the brief printed with ZERO "In your
+  feeds" blocks and no crash. (a5a01bab)
+
 - [x] **P35-2 Citation-as-voice quotes content, never a heading.** P35-1's
   receipt excerpted the chunk's opening, which on a `# Heading`-led note read
   robotically. `relevantSnippet` now drops markdown headings and picks the
