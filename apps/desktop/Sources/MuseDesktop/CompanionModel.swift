@@ -30,6 +30,21 @@ final class CompanionModel: ObservableObject {
         bubble = "" // idle = just the orb; the bubble appears only on an answer / listening
         whisper.onLoadProgress = { [weak self] phase in MainActor.assumeIsolated { self?.handleLoadProgress(phase) } }
         whisper.preload() // warm the CoreML speech model at launch so the first tap is instant
+        checkOllamaAtLaunch()
+    }
+
+    /// The companion bundles its own runtime, but the LLM weights can't be — so
+    /// if the local AI brain (Ollama + model) isn't ready, surface actionable
+    /// setup guidance at launch instead of letting the first question just fail.
+    /// Only while genuinely idle, so it never stomps on a real interaction.
+    private func checkOllamaAtLaunch() {
+        Task { [weak self] in
+            let status = await OllamaHealth.check()
+            guard let self, status != .ok else { return }
+            if !self.busy, !self.listening, self.bubble.isEmpty, !self.inputVisible {
+                self.bubble = self.language.ollamaGuidance(status)
+            }
+        }
     }
 
     /// Live model-download/load feedback — only while the user is waiting to talk
@@ -72,6 +87,17 @@ final class CompanionModel: ObservableObject {
             do { result = .success(try await MuseBridge.ask(query: query)) }
             catch let error as MuseBridgeError { result = .failure(error) }
             catch { result = .failure(.cliFailed(status: -1, stderr: "\(error)")) }
+            // If the turn failed, see whether the local AI brain is the cause and
+            // give actionable setup guidance rather than a generic error.
+            if case .failure = result {
+                let status = await OllamaHealth.check()
+                if status != .ok {
+                    self.bubble = self.language.ollamaGuidance(status)
+                    self.busy = false
+                    self.orbState = .idle
+                    return
+                }
+            }
             let presentation = MusePresenter.present(result, language: self.language)
             self.bubble = presentation.bubbleText
             self.busy = false

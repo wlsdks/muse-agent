@@ -13,6 +13,15 @@ if arguments.contains("--print-bin") {
     exit(0)
 }
 
+// Print the live Ollama health status: `MuseDesktop --check-ollama [baseURL]`.
+if let f = arguments.firstIndex(of: "--check-ollama") {
+    let url = f + 1 < arguments.count ? arguments[f + 1] : OllamaHealth.baseURL
+    let done = DispatchSemaphore(value: 0)
+    Task { print("ollama(\(url)): \(await OllamaHealth.check(baseURL: url))"); done.signal() }
+    done.wait()
+    exit(0)
+}
+
 /// Keep a user-supplied pixel scale in a sane range so a typo can't request a
 /// multi-gigabyte bitmap (or a zero/negative one).
 func clampScale(_ value: Int) -> Int { min(max(value, 1), 256) }

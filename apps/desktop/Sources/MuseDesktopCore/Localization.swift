@@ -44,6 +44,21 @@ public enum ResolvedLanguage: String, Sendable {
     public var loadingVoice: String {
         self == .korean ? "🧠 음성 모델 불러오는 중…" : "🧠 Loading the speech model…"
     }
+    /// Actionable guidance when the local AI brain (Ollama + the model) isn't ready.
+    public func ollamaGuidance(_ status: OllamaStatus) -> String {
+        switch status {
+        case .ok:
+            return ""
+        case .notRunning:
+            return self == .korean
+                ? "Muse의 로컬 AI(Ollama)가 안 켜져 있어요. ollama.com에서 설치한 뒤, 터미널에서 `ollama pull qwen3:8b` 후 Ollama를 실행해 주세요."
+                : "Muse's local AI (Ollama) isn't running. Install it from ollama.com, then run `ollama pull qwen3:8b` and start Ollama."
+        case .modelMissing(let model):
+            return self == .korean
+                ? "AI 모델이 아직 없어요. 터미널에서 `ollama pull \(model)` 을 실행해 주세요 (최초 1회)."
+                : "The AI model isn't installed yet. Run `ollama pull \(model)` in a terminal (one-time)."
+        }
+    }
     public var voiceUnavailable: String {
         self == .korean
             ? "음성 모델을 불러오지 못했어요. 잠시 후 마이크를 다시 탭해 주세요 (최초 1회는 다운로드)."
