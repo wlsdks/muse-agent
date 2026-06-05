@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  detectLapsedPatterns,
   detectTimeOfDayPatterns,
   detectWeeklyTaskPatterns,
   nextOccurrenceMs,
@@ -66,6 +67,28 @@ describe("predictUpcomingNeeds — allostatic prediction within a lead window", 
     const wed = new Date(2026, 4, 6, 12, 0);
     expect(predictUpcomingNeeds(wed, signalsWithStrongJournalTuesday(), { leadWindowMs: 7 * 86_400_000, minConfidence: 0.99999 })[0]).toBeDefined(); // conf 1.0 survives
     expect(predictUpcomingNeeds(wed, { activityEvents: [], capturedAtMs: 0, noteEdits: [], tasks: [] })).toEqual([]);
+  });
+});
+
+describe("detectLapsedPatterns — CUSUM-style sustained-miss change-point", () => {
+  it("flags an established weekly habit whose last occurrence is >= minCyclesMissed cycles ago", () => {
+    // last journal-Tuesday was 2026-05-05; now is ~4.5 weeks later
+    const lateJune = new Date(2026, 5, 5, 12, 0);
+    const lapsed = detectLapsedPatterns(lateJune, signalsWithStrongJournalTuesday(), { minConfidence: 0.5, minCyclesMissed: 2 });
+    expect(lapsed).toHaveLength(1);
+    expect(lapsed[0]!.cyclesMissed).toBeGreaterThanOrEqual(4);
+    expect(lapsed[0]!.lastSeenMs).toBe(new Date(2026, 4, 5, 21, 30).getTime()); // the most recent Tuesday edit
+  });
+
+  it("does NOT flag a habit whose last occurrence is within minCyclesMissed cycles (still on track)", () => {
+    const oneWeekLater = new Date(2026, 4, 12, 12, 0); // 1 week after the last Tuesday
+    expect(detectLapsedPatterns(oneWeekLater, signalsWithStrongJournalTuesday(), { minConfidence: 0.5, minCyclesMissed: 2 })).toEqual([]);
+  });
+
+  it("returns [] on empty signals and respects a higher missed-cycles threshold", () => {
+    const lateJune = new Date(2026, 5, 5, 12, 0);
+    expect(detectLapsedPatterns(lateJune, { activityEvents: [], capturedAtMs: 0, noteEdits: [], tasks: [] })).toEqual([]);
+    expect(detectLapsedPatterns(lateJune, signalsWithStrongJournalTuesday(), { minCyclesMissed: 99 })).toEqual([]);
   });
 });
 

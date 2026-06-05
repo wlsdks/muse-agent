@@ -176,3 +176,64 @@ export function predictUpcomingNeeds(
   }
   return out.sort((left, right) => left.predictedAtMs - right.predictedAtMs);
 }
+
+export interface LapsedPattern {
+  readonly id: string;
+  readonly label: string;
+  readonly lastSeenMs: number;
+  readonly cyclesMissed: number;
+  readonly confidence: number;
+}
+
+export interface DetectLapsedPatternsOptions {
+  readonly minCyclesMissed?: number;
+  readonly minConfidence?: number;
+}
+
+const LAPSE_WEEKDAYS: readonly Weekday[] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const lapseHourBand = (hour: number): string => {
+  const start = Math.floor(hour / 3) * 3;
+  return `${start}-${start + 3}`;
+};
+
+/**
+ * CUSUM / change-point detection (Page, "Continuous Inspection Schemes",
+ * Biometrika 41:100-115, 1954): a control chart accumulates the deviation of a
+ * process from its expected level and signals when that cumulative sum sustains
+ * past a control limit — robust to a single off observation, alarming only on a
+ * SUSTAINED shift. Applied to the user's established weekly habits (the mirror of
+ * `selectFireablePatterns`/`predictUpcomingNeeds`, which find ACTIVE habits):
+ * a recurring weekday pattern whose latest occurrence is `minCyclesMissed` or
+ * more weekly cycles in the past has LAPSED — a sustained break, not a one-off
+ * miss. Returns the lapsed patterns, most-missed first. Pure.
+ */
+export function detectLapsedPatterns(
+  now: Date,
+  signals: PatternSignals,
+  options: DetectLapsedPatternsOptions = {}
+): readonly LapsedPattern[] {
+  const minCyclesMissed = Math.max(1, Math.trunc(Number.isFinite(options.minCyclesMissed) ? options.minCyclesMissed! : 2));
+  const minConfidence = Number.isFinite(options.minConfidence) ? options.minConfidence! : 0.5;
+  const nowMs = now.getTime();
+  const cadenceMs = 7 * 86_400_000; // a weekday-specific pattern recurs weekly
+  const out: LapsedPattern[] = [];
+  for (const match of detectTimeOfDayPatterns(now, signals)) {
+    if (match.category !== "time-of-day-action") continue;
+    if (match.confidence < minConfidence) continue;
+    let lastSeenMs = -Infinity;
+    for (const edit of signals.noteEdits) {
+      const when = new Date(edit.mtimeMs);
+      const family = edit.pathFamily.length > 0 ? edit.pathFamily : "(root)";
+      if (LAPSE_WEEKDAYS[when.getDay()] !== match.bucket.weekday) continue;
+      if (lapseHourBand(when.getHours()) !== match.bucket.hourBand) continue;
+      if (family !== match.bucket.pathFamily) continue;
+      if (edit.mtimeMs > lastSeenMs) lastSeenMs = edit.mtimeMs;
+    }
+    if (!Number.isFinite(lastSeenMs)) continue;
+    const cyclesMissed = Math.floor((nowMs - lastSeenMs) / cadenceMs);
+    if (cyclesMissed >= minCyclesMissed) {
+      out.push({ confidence: match.confidence, cyclesMissed, id: match.id, label: match.suggestion, lastSeenMs });
+    }
+  }
+  return out.sort((left, right) => right.cyclesMissed - left.cyclesMissed);
+}

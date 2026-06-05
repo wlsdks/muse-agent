@@ -20,6 +20,7 @@
 
 import {
   aggregateActivitySignals,
+  detectLapsedPatterns,
   detectTimeOfDayPatterns,
   detectWeeklyTaskPatterns,
   predictUpcomingNeeds,
@@ -102,6 +103,32 @@ export function registerPatternCommands(program: Command, io: ProgramIO): void {
       for (const need of predicted) {
         const when = new Date(need.predictedAtMs).toLocaleString("en-US", { day: "numeric", hour: "numeric", minute: "2-digit", month: "short", weekday: "short" });
         io.stdout(`  🔮 ${need.label}  — ${when} (confidence ${(need.confidence * 100).toFixed(0)}%)\n`);
+      }
+    });
+
+  pattern
+    .command("lapsed")
+    .description("Notice a recurring habit you've STOPPED — an established weekly pattern with a sustained run of missed occurrences (CUSUM change-point detection), the mirror of `pattern upcoming`. Read-only.")
+    .option("--missed <n>", "Minimum consecutive missed weekly cycles to flag a lapse (default 2)")
+    .option("--min-confidence <n>", "Drop patterns below this confidence (default 0.5)")
+    .option("--json", "Print the raw payload instead of the formatted list")
+    .action(async (options: { readonly missed?: string; readonly minConfidence?: string } & SharedOptions) => {
+      const minCyclesMissed = options.missed !== undefined && Number.isFinite(Number(options.missed)) && Number(options.missed) >= 1 ? Math.trunc(Number(options.missed)) : 2;
+      const minConfidence = parseConfidence(options.minConfidence, 0.5);
+      const signals = await aggregateActivitySignals();
+      const lapsed = detectLapsedPatterns(new Date(), signals, { minConfidence, minCyclesMissed });
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ lapsed: lapsed.map((entry) => ({ ...entry, lastSeenIso: new Date(entry.lastSeenMs).toISOString() })), total: lapsed.length }, null, 2)}\n`);
+        return;
+      }
+      if (lapsed.length === 0) {
+        io.stdout("No lapsed habits — your recurring patterns are on track. (See active ones with `muse pattern list` / `muse pattern upcoming`.)\n");
+        return;
+      }
+      io.stdout("Habits you may have lapsed:\n");
+      for (const entry of lapsed) {
+        const last = new Date(entry.lastSeenMs).toLocaleDateString("en-US", { day: "numeric", month: "short", weekday: "short" });
+        io.stdout(`  💤 ${entry.label}  — last seen ${last}, ${entry.cyclesMissed.toString()} cycle(s) ago\n`);
       }
     });
 

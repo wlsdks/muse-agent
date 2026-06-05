@@ -526,6 +526,35 @@ P43 bullet is unbuilt.
   1h" (the lead-window gate). Honest scope: standalone command; auto-delivering the anticipation
   ahead-of-slot through the proactive daemon (with cooldown) is the follow-on. (b667ec64)
 
+- [x] **P43-10 `muse pattern lapsed` — Muse notices a recurring habit you've STOPPED ("💤 you
+  usually edit journal notes on Mons — last seen May 11, 3 cycles ago"), the caring mirror of `pattern
+  upcoming`.** FIFTH slice of the cross-field research direction (after MVT P38-42, stigmergy P42-13,
+  allostasis P43-9, k-shell P42-14), from the 2nd sweep's control-theory candidate. The mechanism:
+  CUSUM / cumulative-sum change-point detection (Page, "Continuous Inspection Schemes", Biometrika
+  41:100-115, 1954) — a control chart accumulates a process's deviation from its expected level and
+  alarms only when that sum SUSTAINS past a control limit, so it ignores a single off observation and
+  fires on a sustained shift. Faithfully distilled: Muse mines ACTIVE habits (the detectors,
+  `selectFireablePatterns`, and now `predictUpcomingNeeds`) but had NO notion of an established habit
+  that has STOPPED. Added a pure `detectLapsedPatterns(now, signals, {minCyclesMissed, minConfidence})`
+  to packages/memory/src/pattern-orchestration.ts (beside predictUpcomingNeeds): for each detected
+  weekly pattern it finds the most-recent matching occurrence and counts the missed weekly cycles
+  since; a count at/above `minCyclesMissed` (the CUSUM control limit, default 2) is a LAPSE — a
+  sustained run of misses, not a one-off. Distinct from P43-6 (a note-FAMILY gone quiet): this is a
+  specific recurring CADENCE breaking, with a sustained-run criterion. Wired a `muse pattern lapsed`
+  command (apps/cli/src/commands-pattern.ts) reusing `aggregateActivitySignals`, with `--missed` (the
+  control limit) and `--min-confidence`. Additive — the active-pattern paths are unchanged. Verified
+  deterministically AND live: 3 unit tests (flags a habit whose last occurrence is >= minCyclesMissed
+  cycles ago with the right lastSeen; does NOT flag one within one cycle — still on track; returns []
+  on empty signals and respects a higher missed-cycles threshold — packages/memory/test/pattern-
+  orchestration.test.ts) + the FULL cross-package `pnpm check` (every workspace green: memory 336,
+  agent-core 1460, mcp 1542, cli 2182, api 849 …) + tsc + `pnpm lint` 0/0 + 0 raw control bytes + a FULL
+  LIVE run on the loop PC: three journal notes whose mtimes were set to OLD Mondays (weeks -6/-5/-4) and
+  NONE recently → `muse pattern lapsed --min-confidence 0.3` printed "💤 You usually edit journal notes
+  around 9-12 on Mons … — last seen Mon, May 11, 3 cycle(s) ago", while `--missed 99` printed "No
+  lapsed habits — your recurring patterns are on track" (the control-limit gate proven both ways).
+  Honest scope: time-of-day (note-edit) patterns; weekly-TASK lapse + auto-delivery through the daemon
+  are follow-ons. (22cfb15a)
+
 - [x] **P43-7 The evening recap's "Coming up" now includes tomorrow's CALENDAR EVENTS
   and BIRTHDAYS — your `muse recap` forward view finally matches the brief + `muse today`.**
   The evening recap (P43-4) is the retrospective sibling of the morning brief, and its

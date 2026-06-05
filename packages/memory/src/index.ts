@@ -490,10 +490,13 @@ export {
   type WeeklyTaskMatch
 } from "./pattern-detector.js";
 export {
+  detectLapsedPatterns,
   nextOccurrenceMs,
   predictUpcomingNeeds,
   selectFireablePatterns,
   type CooldownRecordLike,
+  type DetectLapsedPatternsOptions,
+  type LapsedPattern,
   type PredictedNeed,
   type PredictUpcomingNeedsOptions,
   type SelectFireablePatternsOptions
