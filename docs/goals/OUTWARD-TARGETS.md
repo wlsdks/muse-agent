@@ -934,6 +934,31 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   → "Dana Wu — your manager", `muse find hiking` → "Sam — loves hiking, allergic to nuts", and `muse
   find allergic` → the same Sam. (a1791298)
 
+- [x] **P37-43 `muse episode list --days 7` / `--since 2026-06-01` — recall just your RECENT
+  sessions ("what was I working on last week?"), not the whole history.** Muse auto-captures a summary
+  of every session (`muse episode list/show/search`), but `list` could only scope by user + a count
+  cap and `search` only by keyword — there was NO way to scope by TIME, so the very natural "what did
+  I work on last week / since the start of the month?" had no answer; you got the newest-N regardless
+  of when they happened. Added two pure helpers to apps/cli/src/commands-episode.ts:
+  `resolveEpisodeSinceCutoff({since?, days?}, nowMs)` (→ a cutoff in epoch-ms: `--days N` = now − N
+  days, `--since <iso>` = that instant; mutually exclusive; `{}` for no filter; `{error}` for a bad
+  value) and `filterEpisodesSince(episodes, cutoffMs)` (keeps sessions whose `endedAt` is on/after the
+  cutoff, excluding older ones AND any with an unparseable timestamp). Wired `--days <n>` + `--since
+  <date>` into `muse episode list`, applied before the existing user/limit scoping so they compose. A
+  bad value (both flags at once, a non-ISO --since, a zero/non-numeric --days) prints an actionable
+  error and exits 1 — never a silently-wrong range; with no time flag the behaviour is byte-for-byte
+  unchanged. Deterministic (date math, no model), read-only. This is a knowing-you / episodic-recall
+  slice (a local read-only source — your own session history), a fresh axis off the recently-churned
+  reasoning/tasks/felt/notes work. Verified deterministically AND live: 4 unit checks
+  (resolveEpisodeSinceCutoff: --days→now−N, --since→the instant, none→no filter, and rejects
+  both-at-once / non-ISO --since / zero / non-numeric --days; filterEpisodesSince keeps on/after the
+  cutoff and excludes older + unparseable — apps/cli/src/commands-episode.test.ts) + the full @muse/cli
+  suite (189 files / 2154 tests) + tsc build + `pnpm lint` 0/0 + 0 raw control bytes + a FULL LIVE run
+  on the loop PC: a store with one session ended 2 days ago ("Worked on the Q3 launch deck") and one
+  ended 20 days ago ("Set up the vacation itinerary") → `muse episode list --days 7` returned ONLY the
+  Q3 session, plain `muse episode list` returned BOTH (unchanged), and `muse episode list --days 0` →
+  "--days must be a positive whole number" with exit 1. (eed71273)
+
 - [x] **P37-21 The people graph now has EDGES — "who works with Bob?" recall.** P37-20
   added a person's ROLE TO YOU (relationship); this adds edges BETWEEN people — the
   capability map's STANDOUT knowing-you gap ("models no roles or edges … can't answer

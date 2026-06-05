@@ -50,6 +50,45 @@ function localEpisodesFile(): string {
   return resolveEpisodesFile(process.env as Record<string, string | undefined>);
 }
 
+export interface EpisodeSinceOptions {
+  readonly since?: string;
+  readonly days?: string;
+}
+
+/**
+ * Resolve the `--since` / `--days` window to a cutoff in epoch-ms. `{}` means no
+ * time filter; `{error}` for a bad value (so the caller rejects it loudly rather
+ * than listing the wrong range). `--since` is an ISO date; `--days N` is the last
+ * N days; the two are mutually exclusive.
+ */
+export function resolveEpisodeSinceCutoff(options: EpisodeSinceOptions, nowMs: number): { cutoffMs?: number; error?: string } {
+  if (options.since !== undefined && options.days !== undefined) {
+    return { error: "use only one of --since / --days" };
+  }
+  if (options.since !== undefined) {
+    const ms = Date.parse(options.since);
+    if (Number.isNaN(ms)) return { error: `--since must be an ISO date (got '${options.since}')` };
+    return { cutoffMs: ms };
+  }
+  if (options.days !== undefined) {
+    const raw = options.days.trim();
+    if (!/^\d+$/u.test(raw) || Number.parseInt(raw, 10) < 1) {
+      return { error: `--days must be a positive whole number (got '${options.days}')` };
+    }
+    return { cutoffMs: nowMs - Number.parseInt(raw, 10) * 86_400_000 };
+  }
+  return {};
+}
+
+/** Keep episodes that ended on/after the cutoff (an unparseable endedAt is excluded). */
+export function filterEpisodesSince<T extends { readonly endedAt: unknown }>(episodes: readonly T[], cutoffMs: number): T[] {
+  return episodes.filter((episode) => {
+    if (typeof episode.endedAt !== "string") return false;
+    const ms = Date.parse(episode.endedAt);
+    return !Number.isNaN(ms) && ms >= cutoffMs;
+  });
+}
+
 export function registerEpisodeCommands(program: Command, io: ProgramIO): void {
   const episode = program
     .command("episode")
@@ -60,12 +99,21 @@ export function registerEpisodeCommands(program: Command, io: ProgramIO): void {
     .description("List episodes (newest first by endedAt)")
     .option("--user <userId>", "Filter to a single user. Default: every entry in the file.")
     .option("--limit <n>", "Max entries (default 10, cap 200)")
+    .option("--days <n>", "Only sessions from the last N days (e.g. --days 7 for the past week)")
+    .option("--since <date>", "Only sessions that ended on/after this ISO date (e.g. 2026-06-01)")
     .option("--json", "Print the raw payload instead of the formatted list")
-    .action(async (options: { readonly user?: string; readonly limit?: string } & SharedOptions) => {
+    .action(async (options: { readonly user?: string; readonly limit?: string; readonly days?: string; readonly since?: string } & SharedOptions) => {
+      const window = resolveEpisodeSinceCutoff(options, Date.now());
+      if (window.error !== undefined) {
+        io.stderr(`muse episode list: ${window.error}\n`);
+        process.exitCode = 1;
+        return;
+      }
       const limit = parseLimit(options.limit, 10, 200);
       const userFilter = options.user?.trim();
       const all = await readEpisodes(localEpisodesFile());
-      const scoped = userFilter ? all.filter((e) => e.userId === userFilter) : all;
+      const timeScoped = window.cutoffMs !== undefined ? filterEpisodesSince(all, window.cutoffMs) : all;
+      const scoped = userFilter ? timeScoped.filter((e) => e.userId === userFilter) : timeScoped;
       const sorted = [...scoped]
         .sort((left, right) => right.endedAt.localeCompare(left.endedAt))
         .slice(0, limit);
