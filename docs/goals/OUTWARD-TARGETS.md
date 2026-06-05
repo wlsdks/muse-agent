@@ -339,6 +339,26 @@ P43 bullet is unbuilt.
   'Standup' (2:00 PM–3:00 PM). (Added anyway.)", and `add "Evening walk" --at …T18:00` → no warning.
   (135b5389)
 
+- [x] **P41-32 `muse calendar add "Dentist" --at "2pm" --remind 30` now schedules the event AND a
+  reminder 30 min before — in ONE command, instead of running `muse calendar add` then a separate
+  `muse remind add`.** You almost always want a heads-up before an event, but creating one meant a
+  second command with the time re-derived by hand; `muse calendar add` had no link to reminders at
+  all (verified: no `--remind`, no event→reminder wiring anywhere). Added a `--remind <minutes>`
+  option + a pure `buildEventReminder(title, eventStart, minutesBefore, now, id)` (apps/cli/src/
+  commands-calendar.ts) that produces a normal pending reminder due `minutesBefore` before the event
+  start (clamped at 0 = "starting now"; truncated), with text "<title> — in N min"; the add action
+  writes it to the SAME reminders store `muse remind` uses (readReminders + writeReminders), so the
+  existing firing loop / daemon delivers it like any other reminder — no new delivery path. The event
+  is still created exactly as before; `--remind` is opt-in and surfaced in the confirmation ("Reminder
+  set for 1:30 PM (30 min before).") and `--json` (a `reminder` field). Directed act growth (B0:
+  perceive/ACT). Verified: 2 unit tests (`buildEventReminder` due exactly N min before, pending, right
+  text; 0/negative clamp + fractional truncation — apps/cli/src/commands-calendar.test.ts) + the full
+  @muse/cli suite (185 files / 2101 tests) + tsc build + `pnpm lint` 0/0 + 0 raw control bytes + a LIVE
+  run on the loop PC: `muse calendar add "Dentist" --at 2026-07-01T14:00 --for 60 --remind 30` printed
+  "Created: Dentist …" + "Reminder set for 1:30 PM (30 min before).", and `muse remind list` then
+  showed "[rem_…] 2026-07-01 13:30  Dentist — in 30 min" (the reminder really landed in the store, 30
+  min before, pending) — plus `--remind 10 --json` carried the linked reminder. (e9ee8a81)
+
 - [x] **P43-6 Muse notices a NOTE FAMILY gone quiet — "you usually update your
   project-apollo notes every few days; nothing in three weeks."** The filesystem
   sibling of P43-4's topic-absence (which baselines episode-CONVERSATION cadence):

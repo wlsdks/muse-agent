@@ -11,11 +11,12 @@
  * assembly.
  */
 
+import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
-import { resolveLocalCalendarFile } from "@muse/autoconfigure";
+import { resolveLocalCalendarFile, resolveRemindersFile } from "@muse/autoconfigure";
 import { eventsToIcs, LocalCalendarProvider, type CalendarEvent, type IcsEvent } from "@muse/calendar";
-import { computeAvailability, detectCalendarConflicts, resolveRelativeTimePhrase, type AvailabilityEventLike, type AvailabilityResult, type CalendarConflict, type ConflictEventLike } from "@muse/mcp";
+import { computeAvailability, detectCalendarConflicts, readReminders, resolveRelativeTimePhrase, writeReminders, type AvailabilityEventLike, type AvailabilityResult, type CalendarConflict, type ConflictEventLike, type PersistedReminder } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { formatCalendarEvents, formatProvidersList } from "./human-formatters.js";
@@ -96,6 +97,29 @@ export function conflictWarningForNewEvent(
   }
   const list = unique.map((event) => `"${event.title}" (${clockOf(event.startsAt)}–${clockOf(event.endsAt)})`).join(", ");
   return `⚠ Heads up — this overlaps ${list}. (Added anyway.)`;
+}
+
+/**
+ * Build the "remind me N minutes before this event" reminder for `muse calendar
+ * add --remind`. Due `minutesBefore` before the event start (clamped at 0 = at
+ * start); the firing loop delivers it like any other reminder. Pure (id + now
+ * injected for testability).
+ */
+export function buildEventReminder(
+  title: string,
+  eventStart: Date,
+  minutesBefore: number,
+  now: Date,
+  id: string
+): PersistedReminder {
+  const mins = Math.max(0, Math.trunc(minutesBefore));
+  return {
+    createdAt: now.toISOString(),
+    dueAt: new Date(eventStart.getTime() - mins * 60_000).toISOString(),
+    id,
+    status: "pending",
+    text: mins === 0 ? `${title} — starting now` : `${title} — in ${mins.toString()} min`
+  };
 }
 
 /** Events across a wide (±10y) window — enough to resolve any realistic personal event by id. */
@@ -435,10 +459,11 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
     .requiredOption("--at <when>", "Start time — ISO-8601 or a relative phrase")
     .option("--for <minutes>", "Duration in minutes (default 60)")
     .option("--location <where>", "Where the event is, e.g. 'Room 4'")
+    .option("--remind <minutes>", "Also set a reminder this many minutes BEFORE the event, e.g. --remind 30")
     .option("--json", "Print the created event as JSON")
     .action(async (
       titleParts: readonly string[],
-      options: { readonly at: string; readonly for?: string; readonly location?: string; readonly json?: boolean }
+      options: { readonly at: string; readonly for?: string; readonly location?: string; readonly remind?: string; readonly json?: boolean }
     ) => {
       const title = titleParts.join(" ").trim();
       if (title.length === 0) {
@@ -470,14 +495,30 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       } catch {
         // calendar read failed — still confirm the create, just without the heads-up
       }
+      // --remind: ALSO create a reminder N minutes before the event, so a single
+      // command schedules the event AND its heads-up (the firing loop delivers it).
+      let reminder: PersistedReminder | undefined;
+      if (options.remind !== undefined) {
+        const mins = Number(options.remind);
+        if (!Number.isFinite(mins) || mins < 0) {
+          throw new Error("--remind must be a non-negative number of minutes");
+        }
+        reminder = buildEventReminder(title, startsAt, mins, new Date(), `rem_${randomUUID()}`);
+        const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
+        await writeReminders(remindersFile, [...await readReminders(remindersFile), reminder]);
+      }
       if (options.json) {
         helpers.writeOutput(io, {
           event: { endsAtIso: event.endsAt.toISOString(), id: event.id, startsAtIso: event.startsAt.toISOString(), title: event.title },
-          ...(conflictWarning ? { conflict: conflictWarning } : {})
+          ...(conflictWarning ? { conflict: conflictWarning } : {}),
+          ...(reminder ? { reminder: { dueAtIso: reminder.dueAt, id: reminder.id, text: reminder.text } } : {})
         });
         return;
       }
       io.stdout(`Created: ${event.title} — ${event.startsAt.toISOString()} → ${event.endsAt.toISOString()}\n`);
+      if (reminder) {
+        io.stdout(`Reminder set for ${clockOf(new Date(reminder.dueAt))} (${Math.max(0, Math.trunc(Number(options.remind)))} min before).\n`);
+      }
       if (conflictWarning) {
         io.stderr(`${conflictWarning}\n`);
       }

@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   eventsToAvailability,
   formatAvailability,
+  buildEventReminder,
   conflictWarningForNewEvent,
   formatConflicts,
   maxOfNumbers,
@@ -43,6 +44,29 @@ describe("conflictWarningForNewEvent — heads-up when a new event double-books"
     ]);
     expect(out).toContain("\"Call\"");
     expect(out).toContain("\"Review\"");
+  });
+});
+
+describe("buildEventReminder — the 'remind me N min before' reminder for muse calendar add", () => {
+  const now = new Date("2026-06-01T00:00:00.000Z");
+  const start = new Date("2026-07-01T14:00:00.000Z");
+
+  it("is due exactly N minutes before the event, pending, with a readable text", () => {
+    const r = buildEventReminder("Dentist", start, 30, now, "rem_x");
+    expect(r).toEqual({
+      createdAt: "2026-06-01T00:00:00.000Z",
+      dueAt: "2026-07-01T13:30:00.000Z",
+      id: "rem_x",
+      status: "pending",
+      text: "Dentist — in 30 min"
+    });
+  });
+
+  it("clamps 0 (at start) and a negative/fractional value", () => {
+    expect(buildEventReminder("Standup", start, 0, now, "rem_y").dueAt).toBe("2026-07-01T14:00:00.000Z");
+    expect(buildEventReminder("Standup", start, 0, now, "rem_y").text).toBe("Standup — starting now");
+    expect(buildEventReminder("Standup", start, -5, now, "rem_z").dueAt).toBe("2026-07-01T14:00:00.000Z"); // clamped to 0
+    expect(buildEventReminder("Standup", start, 15.9, now, "rem_w").dueAt).toBe("2026-07-01T13:45:00.000Z"); // truncated to 15
   });
 });
 
