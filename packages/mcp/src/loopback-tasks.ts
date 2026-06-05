@@ -77,7 +77,10 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           "Korean: '내일', '내일 오후 3시', '오늘 오전 9시 30분', '30분 후', '3일 뒤', '다음 주 월요일', '다음 주 월요일 오후 3시 반'. " +
           "Pass the user's natural-language phrase directly (in their own language) — the server resolves it against the current local time. " +
           "Returns the created task with its generated id. " +
-          "When you confirm the task back to the user, state any due time using the result's `dueAtLocal` field (the due time in the user's local timezone, e.g. 'Thu, Jun 5, 2026, 3:00 PM (tomorrow)') — NEVER the raw ISO `dueAt`, which is in UTC and will read back the wrong hour.",
+          "When you confirm the task back to the user, state any due time using the result's `dueAtLocal` field (the due time in the user's local timezone, e.g. 'Thu, Jun 5, 2026, 3:00 PM (tomorrow)') — NEVER the raw ISO `dueAt`, which is in UTC and will read back the wrong hour. " +
+          "USE WHEN the user wants to record a new to-do ('우유 사기 할 일에 추가해줘', 'remind me to call mom', 'add buy milk to my tasks'); " +
+          "you MUST call this tool to actually create it — never just reply that it was added. NOT for VIEWING tasks (use `list`).",
+        keywords: ["add", "create", "new", "task", "todo", "할일", "할 일", "추가", "등록", "기억해", "remind me to", "remember to"],
         execute: async (args): Promise<JsonObject> => {
           const title = readString(args, "title")?.trim();
           if (!title) {

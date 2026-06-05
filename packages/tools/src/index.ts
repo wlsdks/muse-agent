@@ -623,16 +623,25 @@ function isToolRelevantToPrompt(tool: MuseTool, promptTokens: ReadonlySet<string
 
 function compareToolExposurePriority(promptTokens: ReadonlySet<string>): (left: MuseTool, right: MuseTool) => number {
   return (left, right) => {
-    const risk = riskPriority(left.definition.risk) - riskPriority(right.definition.risk);
-
-    if (risk !== 0) {
-      return risk;
-    }
-
+    // RELEVANCE first, risk only as a tiebreaker. Risk-first starved write
+    // tools out of the maxTools window: every marginally-relevant read
+    // (reminders.history, *.search) outranked a highly-relevant write
+    // (tasks.add for "할 일에 추가해줘"), so the local model never saw the
+    // action tool and FABRICATED "added it". Safety for writes is the
+    // execution-time approval gate (outbound-safety), not hiding the tool —
+    // hiding it just makes the model lie. An irrelevant write still scores 0
+    // and sorts below a relevant read; only a write at least as relevant as
+    // the competing reads now wins its slot.
     const relevance = relevanceScore(right, promptTokens) - relevanceScore(left, promptTokens);
 
     if (relevance !== 0) {
       return relevance;
+    }
+
+    const risk = riskPriority(left.definition.risk) - riskPriority(right.definition.risk);
+
+    if (risk !== 0) {
+      return risk;
     }
 
     return left.definition.name.localeCompare(right.definition.name);

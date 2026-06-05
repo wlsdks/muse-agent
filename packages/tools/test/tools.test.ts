@@ -315,9 +315,14 @@ describe("tool utilities", () => {
     });
 
     expect(plan.mutationIntent).toBe(true);
-    expect(plan.exposedToolNames).toEqual(["authenticate", "update_issue"]);
+    // Exposure priority is relevance-first: update_issue matches "issue" in the
+    // prompt (score 1), authenticate matches nothing (score 0), so the requested
+    // action tool is exposed first. The dependency (authenticate before
+    // update_issue) is enforced in plannedToolNames' topological order, NOT by
+    // the exposure ranking.
+    expect(plan.exposedToolNames).toEqual(["update_issue", "authenticate"]);
     expect(plan.plannedToolNames).toEqual(["authenticate", "update_issue"]);
-    expect(plan.tools.map((tool) => tool.definition.name)).toEqual(["authenticate", "update_issue"]);
+    expect(plan.tools.map((tool) => tool.definition.name)).toEqual(["update_issue", "authenticate"]);
     expect(plan.blocked).toContainEqual(expect.objectContaining({
       code: "irrelevant_to_prompt",
       toolName: "post_slack_message"

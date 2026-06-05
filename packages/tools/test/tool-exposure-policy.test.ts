@@ -96,4 +96,23 @@ describe("DefaultToolExposurePolicy.select", () => {
     });
     expect(select([tool("a")], { prompt: "", maxTools: 0 }).blocked).toEqual(["a:max_tool_count_exceeded"]);
   });
+
+  it("relevance-first: a RELEVANT write tool wins its slot over marginally-relevant reads", () => {
+    // Risk-first ranking let every read outrank every write, so the action tool
+    // (add_task) fell off the maxTools cliff and the local model never saw it —
+    // it then FABRICATED "added it" without calling any tool. Relevance must
+    // decide the slot; risk is only a tiebreaker. `add a task` scores add_task
+    // 2 (add+task) vs the reads' 1 (task), so the write is exposed first.
+    const add = tool("add_task", { risk: "write", keywords: ["add", "task", "todo"] });
+    const reads = ["alpha", "bravo", "charlie", "delta"].map((n) => tool(n, { keywords: ["task"] }));
+    const res = select([...reads, add], { prompt: "add a task", maxTools: 1 }, { allowWriteWithoutMutationIntent: true });
+    expect(res.tools).toEqual(["add_task"]);
+  });
+
+  it("relevance tie → risk is the tiebreaker (read before write)", () => {
+    const read = tool("read_x", { risk: "read", keywords: ["thing"] });
+    const write = tool("write_x", { risk: "write", keywords: ["thing"] });
+    const res = select([write, read], { prompt: "thing", maxTools: 1 }, { allowWriteWithoutMutationIntent: true });
+    expect(res.tools).toEqual(["read_x"]); // equal relevance → safer read wins
+  });
 });
