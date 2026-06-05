@@ -2,16 +2,21 @@ import XCTest
 @testable import MuseDesktopCore
 
 final class MuseBridgeTests: XCTestCase {
-    func testInvocationCallsLocalAskAsJSON() {
+    func testInvocationIsAConversationalLocalChat() {
         let invocation = MuseBridge.invocation(query: "what's my office VPN MTU?", bin: "muse")
         XCTAssertEqual(invocation.executable, "muse")
-        // `muse ask` is RAG-grounded on the local Qwen by default; `--json` gives
-        // a clean structured answer (no progress lines / CLI hints in the bubble).
-        XCTAssertEqual(invocation.arguments, ["ask", "--json", "what's my office VPN MTU?"])
+        // `chat --local -c` keeps prior turns (memory) on the local Qwen; `--json`
+        // gives a clean structured reply (no progress lines / CLI hints).
+        XCTAssertEqual(invocation.arguments, ["chat", "--local", "-c", "--json", "what's my office VPN MTU?"])
     }
 
-    func testParseAnswerExtractsTheAnswerFieldFromJSON() {
-        let json = ##"{"query":"q","model":"ollama/qwen3:8b","answer":"  1380 bytes [from vpn.md]  ","grounded":{"noteChunks":[]}}"##
+    func testParseAnswerExtractsTheResponseFieldFromJSON() {
+        let json = ##"{"response":"  안녕하세요, 진안.  ","runId":"r1","toolsUsed":[]}"##
+        XCTAssertEqual(MuseBridge.parseAnswer(json), "안녕하세요, 진안.")
+    }
+
+    func testParseAnswerStillAcceptsTheAskAnswerField() {
+        let json = ##"{"answer":"  1380 bytes [from vpn.md]  "}"##
         XCTAssertEqual(MuseBridge.parseAnswer(json), "1380 bytes [from vpn.md]")
     }
 

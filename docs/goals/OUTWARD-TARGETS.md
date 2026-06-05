@@ -1177,6 +1177,18 @@ user-verified — a window can't be auto-asserted headlessly).
   up-front; falls back to typing + a setup hint if whisper is absent. Input bar moved up from the bottom
   edge. Verified: `swift build` + `swift test` 34 + the EN+KO whisper transcription check + the `.app`
   relaunched + `pnpm lint` 0/0; live mic→whisper user-verified. README documents the one-time setup._
+- [x] **P45-17 Companion usability: conversation memory + animated thinking + near-real-time voice text.**
+  (0aff6afc) Jinan on the running companion: answers felt "허접 / 대화가 될 것 같지 않다", the wait was a bare
+  "...", and the recognised speech only appeared after he finished. Three fixes: (1) CONVERSATION MEMORY —
+  the bridge now calls `muse chat --local -c --json` (keeps prior turns on the local Qwen) instead of a
+  disconnected `ask`, so follow-ups work and it feels like a real conversation, parsing the `{response}`
+  field. (2) ANIMATED THINKING — the "..." is replaced by a three-dot wave `TypingIndicator` in a frosted
+  card while Muse thinks. (3) NEAR-REAL-TIME VOICE — whisper.cpp isn't streaming, so `WhisperCapture` now
+  accumulates the mic samples and re-transcribes the audio-so-far every ~1.5s, pushing each interim transcript
+  LIVE into the input field (`onPartial → inputText`) — the text appears as you speak, with a final clean pass
+  on stop. Verified: `swift build` + `swift test` 35 + the writeWAV→afconvert→whisper-cli interim pipeline
+  proven end-to-end on a generated WAV (valid RIFF header, all exit 0) + the rebuilt `.app` relaunched without
+  crashing + `pnpm lint` 0/0; the live conversation + live partial text are user-verified._
 - [x] **P44-1 `muse memory encrypt` encrypts your user-memory at rest.** The
   most sensitive store (facts / preferences / the typed user model) can now be
   AES-256-GCM encrypted, so a stolen/seized laptop or a leaked backup can't read

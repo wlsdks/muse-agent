@@ -47,7 +47,7 @@ final class CompanionModel: ObservableObject {
         inputVisible = false
         inputText = ""
         orbState = .thinking
-        bubble = "…"
+        bubble = "" // empty + .thinking → the animated TypingIndicator shows
         Task { [weak self] in
             guard let self else { return }
             let result: Result<String, MuseBridgeError>
@@ -93,7 +93,10 @@ final class CompanionModel: ObservableObject {
             }
             guard let self, self.listening else { return }
             do {
-                try self.whisper.start(onDone: { [weak self] text in Task { @MainActor in self?.whisperDone(text) } })
+                try self.whisper.start(
+                    onPartial: { [weak self] text in Task { @MainActor in self?.voicePartial(text) } },
+                    onDone: { [weak self] text in Task { @MainActor in self?.whisperDone(text) } }
+                )
             } catch {
                 self.listening = false
                 self.orbState = .idle
@@ -108,6 +111,15 @@ final class CompanionModel: ObservableObject {
         orbState = .thinking
         bubble = language.transcribing
         whisper.stopAndTranscribe()
+    }
+
+    /// A periodic interim transcript (whisper isn't streaming, so this is the
+    /// audio-so-far transcribed ~every 1.5s) — show it LIVE in the input field so
+    /// the text appears as you speak (Jinan: "입력된 글자가 실시간으로 보이면").
+    private func voicePartial(_ text: String) {
+        guard listening else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { inputText = trimmed }
     }
 
     /// Transcript lands in the INPUT FIELD (Jinan: "말하면 입력창에 나왔으면") for

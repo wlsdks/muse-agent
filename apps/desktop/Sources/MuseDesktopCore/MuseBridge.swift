@@ -30,25 +30,25 @@ public enum MuseBridge {
         return "muse"
     }
 
-    /// Build the invocation for a grounded answer. `muse ask` is a RAG-grounded
-    /// one-shot that runs on the LOCAL Qwen by default (and the system-wide
-    /// MUSE_LOCAL_ONLY posture is default-on), so the companion's answers stay
-    /// on-device — no flag needed (and `ask` rejects `--local`, that's `chat`).
-    /// `--json` makes stdout a single clean `{query, model, answer, grounded}`
-    /// object, so the bubble shows just the answer — not the CLI's progress
-    /// lines ("🔎 searching…", "💭 generating…") or its "(Re-run with --repair)" hint.
+    /// Build the invocation for a CONVERSATIONAL turn. `muse chat --local -c`
+    /// keeps the prior turns (memory across questions — follow-ups work, so it
+    /// feels like a real conversation, not disconnected one-shots) on the LOCAL
+    /// Qwen, with the same per-turn note grounding. `--json` makes stdout a clean
+    /// `{response, …}` object so the bubble shows just the reply — not the CLI's
+    /// progress lines.
     public static func invocation(query: String, bin: String) -> MuseInvocation {
-        MuseInvocation(executable: bin, arguments: ["ask", "--json", query])
+        MuseInvocation(executable: bin, arguments: ["chat", "--local", "-c", "--json", query])
     }
 
-    private struct AskJSON: Decodable { let answer: String }
+    private struct ChatJSON: Decodable { let response: String?; let answer: String? }
 
-    /// Extract the clean answer from `muse ask --json` stdout. Falls back to
-    /// `cleanAnswer` (ANSI/whitespace strip) if the output isn't the expected
-    /// JSON, so a CLI change degrades gracefully instead of showing nothing.
+    /// Extract the reply from `muse chat --json` (`response`) — or `ask --json`
+    /// (`answer`) — stdout. Falls back to `cleanAnswer` (ANSI/whitespace strip)
+    /// if the output isn't the expected JSON, so a CLI change degrades gracefully.
     public static func parseAnswer(_ raw: String) -> String {
-        if let data = raw.data(using: .utf8), let decoded = try? JSONDecoder().decode(AskJSON.self, from: data) {
-            return decoded.answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let data = raw.data(using: .utf8), let decoded = try? JSONDecoder().decode(ChatJSON.self, from: data) {
+            let text = (decoded.response ?? decoded.answer ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { return text }
         }
         return cleanAnswer(raw)
     }
