@@ -142,3 +142,77 @@ export function formatCsvAggregate(result: AggregateResult, where?: WhereClause)
   const skippedNote = result.skipped && result.skipped > 0 ? `, ${result.skipped.toString()} non-numeric skipped` : "";
   return `${result.op} of ${result.column ?? ""}${whereNote} = ${roundIfNeeded(result.value ?? 0)} (over ${(result.counted ?? 0).toString()} value(s)${skippedNote})\n`;
 }
+
+export interface GroupAggregateRow {
+  readonly key: string;
+  readonly result: AggregateResult;
+}
+
+export interface GroupAggregateResult {
+  readonly op: AggregateOp;
+  readonly groupBy: string;
+  readonly column?: string;
+  readonly groups: readonly GroupAggregateRow[];
+  readonly error?: string;
+}
+
+/**
+ * Aggregate PER GROUP: bucket the rows by `groupByColumn`'s value (after the
+ * optional --where filter), then run the aggregate within each bucket — "sum of
+ * amount by category". Groups are sorted by value descending (biggest first),
+ * ties by key. Structural errors (unknown group-by / where / aggregate column)
+ * short-circuit; a per-group "no numeric values" is left on that group's result
+ * (rendered "—"), never fatal. A blank group-by cell buckets under "(blank)".
+ */
+export function groupAggregate(
+  parsed: ParsedCsv,
+  op: AggregateOp,
+  columnName: string | undefined,
+  groupByColumn: string,
+  where?: WhereClause
+): GroupAggregateResult {
+  const gi = resolveColumn(parsed.headers, groupByColumn);
+  if (gi === undefined) return { error: `unknown column '${groupByColumn}'`, groupBy: groupByColumn, groups: [], op };
+  const groupBy = parsed.headers[gi]!;
+  if (where && resolveColumn(parsed.headers, where.column) === undefined) {
+    return { error: `unknown column '${where.column}'`, groupBy, groups: [], op };
+  }
+  if (op !== "count") {
+    if (!columnName) return { error: `${op} needs a column (e.g. --${op} amount)`, groupBy, groups: [], op };
+    if (resolveColumn(parsed.headers, columnName) === undefined) {
+      return { column: columnName, error: `unknown column '${columnName}'`, groupBy, groups: [], op };
+    }
+  }
+  let rows = parsed.rows;
+  if (where) {
+    const wi = resolveColumn(parsed.headers, where.column)!;
+    const want = where.value.toLowerCase();
+    rows = rows.filter((r) => (r[wi] ?? "").trim().toLowerCase() === want);
+  }
+  const buckets = new Map<string, string[][]>();
+  for (const r of rows) {
+    const key = (r[gi] ?? "").trim() || "(blank)";
+    const arr = buckets.get(key);
+    if (arr) arr.push([...r]);
+    else buckets.set(key, [[...r]]);
+  }
+  const groups: GroupAggregateRow[] = [];
+  for (const [key, groupRows] of buckets) {
+    groups.push({ key, result: aggregate({ headers: parsed.headers, rows: groupRows }, op, columnName) });
+  }
+  groups.sort((a, b) => (b.result.value ?? -Infinity) - (a.result.value ?? -Infinity) || a.key.localeCompare(b.key));
+  return { ...(columnName ? { column: columnName } : {}), groupBy, groups, op };
+}
+
+/** Render grouped aggregates: a header + one aligned "key  value" line per group. */
+export function formatGroupAggregate(result: GroupAggregateResult, where?: WhereClause): string {
+  const whereNote = where ? ` where ${where.column}=${where.value}` : "";
+  const label = result.op === "count" ? "count" : `${result.op} of ${result.column ?? ""}`;
+  if (result.groups.length === 0) return `${label} by ${result.groupBy}${whereNote}: (no rows)\n`;
+  const keyWidth = Math.max(...result.groups.map((g) => g.key.length));
+  const lines = result.groups.map((g) => {
+    const value = g.result.value !== undefined ? roundIfNeeded(g.result.value) : "—";
+    return `  ${g.key.padEnd(keyWidth)}  ${value}`;
+  });
+  return `${label} by ${result.groupBy}${whereNote}:\n${lines.join("\n")}\n`;
+}

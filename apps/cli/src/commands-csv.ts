@@ -10,7 +10,7 @@ import { resolve as pathResolve } from "node:path";
 
 import type { Command } from "commander";
 
-import { aggregate, formatCsvAggregate, parseCsv, parseWhere, type AggregateOp, type WhereClause } from "./csv-aggregate.js";
+import { aggregate, formatCsvAggregate, formatGroupAggregate, groupAggregate, parseCsv, parseWhere, type AggregateOp, type WhereClause } from "./csv-aggregate.js";
 import type { ProgramIO } from "./program.js";
 
 interface CsvOptions {
@@ -20,6 +20,7 @@ interface CsvOptions {
   readonly max?: string;
   readonly count?: boolean;
   readonly where?: string;
+  readonly groupBy?: string;
   readonly json?: boolean;
 }
 
@@ -34,6 +35,7 @@ export function registerCsvCommand(program: Command, io: ProgramIO): void {
     .option("--max <column>", "Maximum of a numeric column")
     .option("--count", "Count rows (after any --where filter)")
     .option("--where <col=value>", "Only rows where a column exactly equals a value (case-insensitive), e.g. --where category=food")
+    .option("--group-by <column>", "Aggregate PER GROUP, e.g. --sum amount --group-by category for spend per category")
     .option("--json", "Print the structured result")
     .action(async (file: string, options: CsvOptions) => {
       const ops: { readonly op: AggregateOp; readonly column?: string }[] = [];
@@ -80,6 +82,18 @@ export function registerCsvCommand(program: Command, io: ProgramIO): void {
       }
 
       const { op, column } = ops[0]!;
+
+      if (options.groupBy !== undefined) {
+        const grouped = groupAggregate(parsed, op, column, options.groupBy, where);
+        if (grouped.error !== undefined) {
+          io.stderr(`muse csv: ${grouped.error}\n`);
+          process.exitCode = 1;
+          return;
+        }
+        io.stdout(options.json ? `${JSON.stringify(grouped, null, 2)}\n` : formatGroupAggregate(grouped, where));
+        return;
+      }
+
       const result = aggregate(parsed, op, column, where);
       if (result.error !== undefined) {
         io.stderr(`muse csv: ${result.error}\n`);

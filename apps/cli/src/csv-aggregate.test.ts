@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { aggregate, formatCsvAggregate, parseCsv, parseWhere, resolveColumn, toNumber } from "./csv-aggregate.js";
+import { aggregate, formatCsvAggregate, formatGroupAggregate, groupAggregate, parseCsv, parseWhere, resolveColumn, toNumber } from "./csv-aggregate.js";
 
 describe("parseCsv", () => {
   it("parses headers + rows, honouring quoted commas, escaped quotes, and CRLF", () => {
@@ -70,6 +70,50 @@ describe("aggregate", () => {
     expect(aggregate(parsed, "sum", "nope").error).toContain("unknown column");
     expect(aggregate(parsed, "count", undefined, { column: "nope", value: "x" }).error).toContain("unknown column");
     expect(aggregate(parseCsv("category,amount\nfood,n/a\n"), "sum", "amount").error).toContain("no numeric values");
+  });
+});
+
+describe("groupAggregate — aggregate per group", () => {
+  const parsed = parseCsv("category,amount\nfood,12.50\ntransport,30\nfood,7.25\nfun,n/a\n");
+
+  it("sums per group, sorted by value descending", () => {
+    const g = groupAggregate(parsed, "sum", "amount", "category");
+    expect(g.groups.map((x) => [x.key, x.result.value])).toEqual([
+      ["transport", 30],
+      ["food", 19.75],
+      ["fun", undefined] // a group with only non-numeric values → no value
+    ]);
+  });
+
+  it("counts rows per group", () => {
+    const g = groupAggregate(parsed, "count", undefined, "category");
+    expect(g.groups.map((x) => [x.key, x.result.value]).sort()).toEqual([["food", 2], ["fun", 1], ["transport", 1]]);
+  });
+
+  it("applies --where before grouping", () => {
+    const g = groupAggregate(parsed, "count", undefined, "category", { column: "category", value: "food" });
+    expect(g.groups).toEqual([{ key: "food", result: { matched: 2, op: "count", value: 2 } }]);
+  });
+
+  it("errors on an unknown group-by / where / aggregate column (no wrong numbers)", () => {
+    expect(groupAggregate(parsed, "sum", "amount", "nope").error).toContain("unknown column 'nope'");
+    expect(groupAggregate(parsed, "sum", "missing", "category").error).toContain("unknown column 'missing'");
+    expect(groupAggregate(parsed, "count", undefined, "category", { column: "nope", value: "x" }).error).toContain("unknown column 'nope'");
+  });
+
+  it("buckets a blank group-by cell under (blank)", () => {
+    const g = groupAggregate(parseCsv("k,v\n,5\nx,3\n"), "sum", "v", "k");
+    expect(g.groups.map((x) => x.key)).toEqual(["(blank)", "x"]); // 5 > 3
+  });
+});
+
+describe("formatGroupAggregate", () => {
+  it("renders an aligned per-group block with a header", () => {
+    const out = formatGroupAggregate(groupAggregate(parseCsv("category,amount\nfood,20\ntransport,30\n"), "sum", "amount", "category"));
+    expect(out).toContain("sum of amount by category:");
+    expect(out).toContain("transport");
+    expect(out).toContain("food");
+    expect(out.indexOf("transport")).toBeLessThan(out.indexOf("food")); // 30 before 20
   });
 });
 

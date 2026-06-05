@@ -2526,6 +2526,32 @@ in the loop.
   `--sum amount --where category=food` = 19.75, `--count --where category=food` = 3, `--avg amount` =
   16.583333, `--max amount` = 30, and `--sum nope` → "unknown column 'nope'" with exit 1. (3eff25ea)
 
+- [x] **P41-38 `muse csv expenses.csv --sum amount --group-by category` — spend (or count/avg/…)
+  PER GROUP, the #1 tabular question, exact and sorted biggest-first.** P41-36 gave exact whole-CSV
+  aggregates, but the most common real question — "how much per category / how many per status" —
+  needs GROUPING, which it couldn't do. Extended the pure engine (apps/cli/src/csv-aggregate.ts) with
+  `groupAggregate(parsed, op, column, groupByColumn, where)`: it validates the group-by / where /
+  aggregate columns ONCE up front (unknown → an actionable error, never a wrong number), applies the
+  optional `--where` filter, buckets rows by the group-by column's value (a blank cell → "(blank)"),
+  runs the existing per-bucket `aggregate` (so sum/avg/min/max/count all compose with grouping for
+  free), and sorts groups by value DESCENDING (biggest first, ties by key); a group with only
+  non-numeric cells renders "—" rather than erroring the whole run. `formatGroupAggregate` prints an
+  aligned "key  value" block. Wired a `--group-by <column>` option into `muse csv` (apps/cli/src/
+  commands-csv.ts) that branches to the grouped path when present, otherwise the unchanged single-
+  aggregate path; `--json` emits the structured per-group breakdown. Deterministic (no model), read-
+  only, zero regression (a brand-new option on the standalone command). This is a Reasoning/precision
+  slice — completing the tabular member of the deterministic fast-path family — distinct from the
+  recently-churned calendar/episode/tasks/felt work. Verified deterministically AND live: 6 unit tests
+  (sum-per-group sorted value-desc with a non-numeric group → no value; count-per-group; --where
+  applied before grouping; unknown group-by / aggregate / where column each error; a blank group-by
+  cell buckets under "(blank)"; formatGroupAggregate orders biggest-first — apps/cli/src/csv-
+  aggregate.test.ts) + the full @muse/cli suite (189 files / 2162 tests) + tsc build + `pnpm lint` 0/0
+  + 0 raw control bytes + a FULL LIVE run on the loop PC: an expenses.csv (food 12.50, transport 30,
+  food 7.25, fun n/a) → `--sum amount --group-by category` printed "transport 30 / food 19.75 / fun —"
+  (sorted, the all-non-numeric group as —), `--count --group-by category` → food 2 / fun 1 /
+  transport 1, `--sum amount --group-by nope` → "unknown column 'nope'" with exit 1, and `--json`
+  emitted the structured groups. (697ebd09)
+
 - [x] **P41-26 `muse ask "how many km in 5 miles?"` / "what's 100F in C?" now answers the EXACT
   conversion deterministically — the third deterministic "compute it, don't let the 8B guess" lever
   (after arithmetic P41-20 and dates P41-25), per the small-model-maximization focus.** The local
