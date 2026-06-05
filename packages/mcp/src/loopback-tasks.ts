@@ -219,6 +219,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           type: "object"
         },
         domain: "tasks",
+        keywords: ["task", "todo", "할일", "할 일", "complete", "done", "finish", "finished", "완료", "끝냈", "끝냄", "했어", "마쳤", "마침", "체크", "처리"],
         name: "complete",
         risk: "write"
       },
@@ -297,6 +298,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           type: "object"
         },
         domain: "tasks",
+        keywords: ["task", "todo", "할일", "할 일", "update", "change", "edit", "reschedule", "수정", "변경", "바꿔", "고쳐", "연기", "미뤄", "옮겨"],
         name: "update",
         risk: "write"
       },
@@ -338,6 +340,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           type: "object"
         },
         domain: "tasks",
+        keywords: ["task", "todo", "할일", "할 일", "delete", "remove", "삭제", "지워", "지우", "제거", "취소", "빼줘", "없애"],
         name: "delete",
         risk: "write"
       },

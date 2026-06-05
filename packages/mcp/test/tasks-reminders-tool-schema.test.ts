@@ -26,6 +26,16 @@ describe("tasks + reminders loopback tools meet the one-shot tool-calling bar", 
     expect((add.inputSchema as { properties: Record<string, { description?: string }> }).properties.title.description ?? "").toContain("e.g.");
   });
 
+  it("every lifecycle tool (complete/update/delete) carries action keywords so it isn't starved by add/list", () => {
+    // "삭제해줘" was hitting tasks.add and "완료로 표시해줘" hit nothing, because only
+    // add/list had keywords. Each lifecycle write needs its own verb + the task NOUN.
+    const server = createTasksMcpServer({ file: "/tmp/muse-test-tasks.json" });
+    const kwOf = (name: string) => ((server.tools.find((t) => t.name === name) as { keywords?: string[] })?.keywords ?? []);
+    expect(kwOf("complete")).toEqual(expect.arrayContaining(["완료", "complete", "할 일"]));
+    expect(kwOf("delete")).toEqual(expect.arrayContaining(["삭제", "delete", "할 일"]));
+    expect(kwOf("update")).toEqual(expect.arrayContaining(["변경", "update", "할 일"]));
+  });
+
   it("tasks-registry tools describe ALL their parameters", () => {
     const server = createTasksRegistryMcpServer({ registry: stubRegistry });
     expect(validateToolDefinitions(asMuseTools(server.tools)).filter((i) => i.code === "undescribed_parameter")).toEqual([]);
