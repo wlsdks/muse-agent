@@ -93,6 +93,39 @@ const fmtMinutes = (m: number): string => {
 
 const fmtDay = (d: Date): string => d.toLocaleDateString("en-US", { day: "numeric", month: "short", weekday: "short" });
 
+/**
+ * A morning-brief beat for TODAY, or undefined. Fires only when the REMAINING
+ * working day (now → workEnd) is genuinely fragmented — no free block reaches the
+ * deep-work threshold, there is at least one meeting, AND enough of the day is
+ * left for the warning to be actionable (so it doesn't nag at 5pm). Pure: the
+ * caller passes today's events + `now`. This is the proactive, FELT sibling of
+ * the on-demand `muse calendar focus`.
+ */
+export function briefFocusBeat(
+  events: readonly AvailabilityEventLike[],
+  now: Date,
+  options: {
+    readonly workStartHour?: number;
+    readonly workEndHour?: number;
+    readonly minFocusMinutes?: number;
+    readonly minRemainingMinutes?: number;
+  } = {}
+): string | undefined {
+  const workStartHour = options.workStartHour ?? 9;
+  const workEndHour = options.workEndHour ?? 18;
+  const minFocus = options.minFocusMinutes ?? 60;
+  const minRemaining = options.minRemainingMinutes ?? 120;
+  const workStart = new Date(now);
+  workStart.setHours(workStartHour, 0, 0, 0);
+  const workEnd = new Date(now);
+  workEnd.setHours(workEndHour, 0, 0, 0);
+  const from = new Date(Math.max(now.getTime(), workStart.getTime()));
+  if (workEnd.getTime() - from.getTime() < minRemaining * MS_PER_MIN) return undefined;
+  const [day] = analyzeFocusWindows(events, [{ from, to: workEnd }], minFocus);
+  if (!day || !day.fragmented || day.meetingCount === 0) return undefined;
+  return `🧠 Today's looking fragmented — your longest free stretch is only ${fmtMinutes(day.longestFreeMinutes)} across ${day.meetingCount.toString()} meeting${day.meetingCount === 1 ? "" : "s"}. Block focus time or move one before the day fills up (attention residue, Leroy 2009).`;
+}
+
 /** Render the human-readable focus report. */
 export function formatFocus(days: readonly DayFocus[], minFocusMinutes: number): string {
   if (days.length === 0) return "No working days in range to analyze.\n";

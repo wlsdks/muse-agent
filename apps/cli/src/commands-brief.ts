@@ -36,6 +36,7 @@ import {
 import type { CalendarEvent } from "@muse/calendar";
 import { detectCalendarConflicts, formatBirthdayBriefLine, readCheckins, readContacts, readProactiveHistory, readReflections, readReminders, resolveUpcomingBirthdays, selectDueCheckins, type PersistedCheckin, type PersistedReminder } from "@muse/mcp";
 
+import { briefFocusBeat } from "./calendar-focus.js";
 import { formatBriefConflicts } from "./brief-conflicts.js";
 import { formatBriefFeedLines, selectBriefFeedHeadlines } from "./brief-feeds.js";
 import { formatBriefReflectionLine, selectBriefReflection } from "./brief-reflection.js";
@@ -498,6 +499,12 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
       // and the model prose can't be trusted to spot the overlap — surface it
       // deterministically over the same next-24h events the brief already gathered.
       io.stdout(formatBriefConflicts(detectCalendarConflicts(upcomingEvents)));
+
+      // Proactive deep-work heads-up: when the rest of today is fragmented into
+      // slivers (no block long enough for focus), say so — the FELT sibling of
+      // `muse calendar focus`. Silent on a day that already has room for focus.
+      const focusBeat = briefFocusBeat(upcomingEvents, now);
+      if (focusBeat) io.stdout(`${focusBeat}\n`);
 
       try {
         const surfaced = selectBriefReflection(await readReflections(resolveReflectionsFile()), now.getTime());

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { analyzeFocusWindows, buildDayWindows, formatFocus } from "./calendar-focus.js";
+import { analyzeFocusWindows, briefFocusBeat, buildDayWindows, formatFocus } from "./calendar-focus.js";
 
 const ev = (startISO: string, endISO: string, title = "mtg"): { title: string; startsAt: Date; endsAt: Date; allDay: boolean } =>
   ({ allDay: false, endsAt: new Date(endISO), startsAt: new Date(startISO), title });
@@ -57,6 +57,34 @@ describe("buildDayWindows — local working-hour windows", () => {
   it("clamps a non-positive day count to 1 and skips a degenerate window", () => {
     expect(buildDayWindows(new Date("2026-06-08T00:00:00"), 0, 9, 18)).toHaveLength(1);
     expect(buildDayWindows(new Date("2026-06-08T00:00:00"), 2, 18, 9)).toHaveLength(0); // end <= start
+  });
+});
+
+describe("briefFocusBeat — proactive morning heads-up for today", () => {
+  // Build local-time Dates so the beat's setHours window-building is TZ-robust.
+  const dayAt = (h: number, m = 0): Date => { const d = new Date("2026-06-08T00:00:00"); d.setHours(h, m, 0, 0); return d; };
+  const mtg = (h1: number, m1: number, h2: number, m2: number) => ({ allDay: false, endsAt: dayAt(h2, m2), startsAt: dayAt(h1, m1), title: "m" });
+
+  it("fires when the rest of today is fragmented (a meeting every 30 min)", () => {
+    const events = [];
+    for (let h = 9; h < 18; h += 1) events.push(mtg(h, 30, h + 1, 0));
+    const beat = briefFocusBeat(events, dayAt(9));
+    expect(beat).toBeDefined();
+    expect(beat).toContain("fragmented");
+    expect(beat).toContain("attention residue");
+  });
+
+  it("is silent on a wide-open day (no meetings)", () => {
+    expect(briefFocusBeat([], dayAt(9))).toBeUndefined();
+  });
+
+  it("is silent when one big block survives (a single early meeting)", () => {
+    expect(briefFocusBeat([mtg(9, 0, 9, 30)], dayAt(9))).toBeUndefined();
+  });
+
+  it("is silent late in the day when too little working time remains to be actionable", () => {
+    // 17:30 now, only 30 min to 18:00 < the 120-min minimum remaining → no nag.
+    expect(briefFocusBeat([mtg(17, 45, 18, 0)], dayAt(17, 30))).toBeUndefined();
   });
 });
 

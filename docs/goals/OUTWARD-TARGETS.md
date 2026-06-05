@@ -751,6 +751,28 @@ P43 bullet is unbuilt.
   block … 1 of 3 days can't hold a deep-work block (attention residue, Leroy 2009)" — surfacing that 4.5h
   of free time in slivers is worthless for focus. Honest scope: working-hour windows (default 9–18); a
   proactive brief beat ("tomorrow has no focus block") is a follow-on. (5b7787fe)
+
+- [x] **P43-18 Your morning `muse brief` now PROACTIVELY warns when today is too fragmented for
+  deep work ("🧠 Today's looking fragmented — your longest free stretch is only 30m across 9 meetings…"),
+  so you learn it WITHOUT running `muse calendar focus`.** A FELT/proactive slice — the deliberate
+  follow-on to P43-17, turning the just-built attention-residue insight from pull-only into a daily-touch
+  push (acting on the 12-slice steering note that the recent run was all on-demand analysis commands). The
+  mechanism is the same deep-work / attention-residue finding (Leroy 2009); the NEW capability is the
+  proactive surface + a noise gate. Pure `briefFocusBeat(events, now, opts)` added to
+  apps/cli/src/calendar-focus.ts: it analyzes the REMAINING working day (now → 18:00) and returns a beat
+  ONLY when it is genuinely fragmented (no free block reaches the deep-work threshold), there is at least
+  one meeting, AND enough of the day is left to be actionable (≥120 min remaining) — so it never nags late
+  in the day or on an open day. Wired into `muse brief` (apps/cli/src/commands-brief.ts) beside the
+  existing conflicts / feeds beats, over the events the brief already gathered; silent unless today is
+  fragmented. Verified deterministically AND live: 4 new unit tests (fires on a meeting-every-30-min day;
+  silent on a wide-open day; silent when one big block survives; silent late in the day when <120 min
+  remain — apps/cli/src/calendar-focus.test.ts) + `pnpm lint` 0/0 + `@muse/shared` byte-hygiene 30 + cli
+  2240 + 0 raw control bytes + a LIVE check on the loop PC: a today-fragmented calendar (meeting every 30
+  min) → the beat fires through the built dist with a controlled morning `now` ("🧠 Today's looking
+  fragmented — your longest free stretch is only 30m across 9 meetings…"); the real `muse brief` run at
+  16:48 correctly SELF-SUPPRESSED the beat (only ~72 min left < the 120-min gate), proving the noise gate
+  in the live command. Honest scope: the literal brief emission is clock-gated to the morning/midday (by
+  design); a configurable working window + a "tomorrow" variant are follow-ons. (3840d292)
 - [x] **P43-7 The evening recap's "Coming up" now includes tomorrow's CALENDAR EVENTS
   and BIRTHDAYS — your `muse recap` forward view finally matches the brief + `muse today`.**
   The evening recap (P43-4) is the retrospective sibling of the morning brief, and its
