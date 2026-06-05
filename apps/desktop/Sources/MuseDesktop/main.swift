@@ -1,12 +1,41 @@
 import AppKit
 import Foundation
 import MuseDesktopCore
+import WhisperKit
 
 let arguments = CommandLine.arguments
 
 /// Keep a user-supplied pixel scale in a sane range so a typo can't request a
 /// multi-gigabyte bitmap (or a zero/negative one).
 func clampScale(_ value: Int) -> Int { min(max(value, 1), 256) }
+
+// Headless STT self-test: `MuseDesktop --selftest-stt <wav> [ko|en]`. Loads the
+// SAME WhisperKit model the live mic uses and transcribes a file, proving the
+// on-device pipeline (download → CoreML load → transcribe) works at the layer
+// that can be verified without a microphone.
+if let flag = arguments.firstIndex(of: "--selftest-stt"), flag + 1 < arguments.count {
+    let wav = arguments[flag + 1]
+    let lang = flag + 2 < arguments.count ? arguments[flag + 2] : "en"
+    let done = DispatchSemaphore(value: 0)
+    var code: Int32 = 1
+    Task {
+        do {
+            let started = Date()
+            let kit = try await WhisperKit(WhisperKitConfig(model: "large-v3-v20240930_turbo", verbose: false, logLevel: .error, download: true))
+            let loaded = Date().timeIntervalSince(started)
+            let options = DecodingOptions(task: .transcribe, language: lang, skipSpecialTokens: true, withoutTimestamps: true)
+            let results: [TranscriptionResult] = try await kit.transcribe(audioPath: wav, decodeOptions: options)
+            let text = results.map { $0.text }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            print("model-load=\(String(format: "%.1f", loaded))s  STT[\(lang)]: \(text)")
+            code = 0
+        } catch {
+            FileHandle.standardError.write(Data("selftest-stt failed: \(error)\n".utf8))
+        }
+        done.signal()
+    }
+    done.wait()
+    exit(code)
+}
 
 // Headless preview of the ACTIVE Muse: `MuseDesktop --render <png> [scale]`.
 if let flag = arguments.firstIndex(of: "--render"), flag + 1 < arguments.count {

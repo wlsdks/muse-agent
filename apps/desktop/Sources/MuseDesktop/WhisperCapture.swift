@@ -1,49 +1,37 @@
 import AVFoundation
 import Foundation
+import WhisperKit
 
-/// Push-to-talk speech capture using the OPEN-SOURCE whisper.cpp. Records the mic
-/// (AVAudioEngine), and — because whisper.cpp isn't streaming — transcribes the
-/// audio-so-far every ~1.5s to give NEAR-REAL-TIME partial text in the input
-/// field, plus a final pass on stop. All local; your voice never leaves the Mac.
-///
-/// Setup (one-time): `brew install whisper-cpp` + a GGML model at
-/// `~/.muse/whisper-models/ggml-base.bin` (multilingual, handles Korean).
+/// On-device speech-to-text via WhisperKit (Argmax, MIT) — Whisper running on
+/// CoreML + the Apple Neural Engine with NATIVE real-time streaming. Replaces the
+/// old whisper.cpp shell-out (temp WAV → afconvert → `whisper-cli` per chunk): no
+/// external binary, no temp files, no re-transcribing the whole clip — WhisperKit
+/// owns the mic and emits live partials as you speak. All local; audio never
+/// leaves the Mac. The model (Korean-improved `large-v3-v20240930` turbo) is
+/// downloaded once from HuggingFace, then cached.
 final class WhisperCapture {
-    enum CaptureError: Error, Equatable { case unavailable, alreadyRunning }
+    enum CaptureError: Error, Equatable { case modelUnavailable }
 
-    var languageCode = "auto" // "ko" / "en" / "auto"
+    /// "ko" / "en" / "auto" (auto → WhisperKit detects).
+    var languageCode = "auto"
 
-    private let endSilence: TimeInterval = 1.6
-    private let noSpeechGrace: TimeInterval = 7
-    private let maxDuration: TimeInterval = 30
-    private let interimEvery: TimeInterval = 1.5
-    private let rmsThreshold: Float = 0.02
+    /// The September-2024 large-v3 checkpoint (notably better Korean) in its
+    /// `turbo` variant — ~8× faster decoder so streaming stays real-time.
+    private let modelName = "large-v3-v20240930_turbo"
+    private static let placeholder = "Waiting for speech..."
 
-    private let engine = AVAudioEngine()
-    private let lock = NSLock()
-    private var samples: [Float] = []
-    private var sampleRate: Double = 48000
-    private var running = false
-    private var spoke = false
-    private var maxRMS: Float = 0
-    private var startedAt = Date()
-    private var interimBusy = false
-    private var silenceTimer: Timer?
-    private var maxTimer: Timer?
-    private var noSpeechTimer: Timer?
-    private var interimTimer: Timer?
+    private var loadTask: Task<WhisperKit, Error>?
+    private var whisperKit: WhisperKit?
+    private var transcriber: AudioStreamTranscriber?
+    private var streamTask: Task<Void, Never>?
     private var onPartial: ((String) -> Void)?
     private var onDone: ((String) -> Void)?
+    private let textLock = NSLock()
+    private var latestText = ""
+    private(set) var running = false
 
-    static func binaryPath() -> String? {
-        for path in ["/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli"]
-        where FileManager.default.isExecutableFile(atPath: path) { return path }
-        return nil
-    }
-    static func modelPath() -> String {
-        (NSHomeDirectory() as NSString).appendingPathComponent(".muse/whisper-models/ggml-base.bin")
-    }
-    static var isAvailable: Bool { binaryPath() != nil && FileManager.default.fileExists(atPath: modelPath()) }
+    /// True once the CoreML model is loaded (so the first tap won't cold-start).
+    var isReady: Bool { whisperKit != nil }
 
     static func requestMic() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
@@ -67,140 +55,87 @@ final class WhisperCapture {
 
     var isRunning: Bool { running }
 
-    func start(onPartial: @escaping (String) -> Void, onDone: @escaping (String) -> Void) throws {
-        guard !running else { throw CaptureError.alreadyRunning }
-        guard Self.isAvailable else { throw CaptureError.unavailable }
+    /// Kick off the one-time model load in the background so the first voice tap
+    /// is instant. Safe to call repeatedly (the load happens once).
+    func preload() { _ = ensureModelTask() }
+
+    private func ensureModelTask() -> Task<WhisperKit, Error> {
+        if let loadTask { return loadTask }
+        let name = modelName
+        let task = Task<WhisperKit, Error> { [weak self] in
+            let started = Date()
+            let kit = try await WhisperKit(WhisperKitConfig(model: name, verbose: false, logLevel: .error, prewarm: true, download: true))
+            await MainActor.run { self?.whisperKit = kit }
+            WhisperCapture.log("model loaded: \(name) in \(String(format: "%.1f", Date().timeIntervalSince(started)))s")
+            return kit
+        }
+        loadTask = task
+        return task
+    }
+
+    func start(onPartial: @escaping (String) -> Void, onDone: @escaping (String) -> Void) async throws {
+        guard !running else { return }
+        let kit = try await ensureModelTask().value
+        guard let tokenizer = kit.tokenizer else { throw CaptureError.modelUnavailable }
         self.onPartial = onPartial
         self.onDone = onDone
-        spoke = false; maxRMS = 0; startedAt = Date(); interimBusy = false
-        lock.lock(); samples.removeAll(keepingCapacity: true); samples.reserveCapacity(48000 * 30); lock.unlock()
-
-        let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
-        sampleRate = format.sampleRate
-        Self.log("start: sr=\(format.sampleRate) ch=\(format.channelCount) lang=\(languageCode) micAuth=\(AVCaptureDevice.authorizationStatus(for: .audio).rawValue)")
-
-        input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
-            guard let self, let data = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return }
-            let n = Int(buffer.frameLength)
-            var sum: Float = 0
-            self.lock.lock()
-            for i in 0..<n { let s = data[i]; self.samples.append(s); sum += s * s }
-            self.lock.unlock()
-            let rms = (sum / Float(n)).squareRoot()
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.running else { return }
-                if rms > self.maxRMS { self.maxRMS = rms }
-                if rms > self.rmsThreshold {
-                    self.spoke = true
-                    self.noSpeechTimer?.invalidate(); self.noSpeechTimer = nil
-                    self.resetSilenceTimer()
-                }
-            }
-        }
-        engine.prepare()
-        do { try engine.start() } catch {
-            input.removeTap(onBus: 0); onDone(""); throw error
-        }
+        setLatest("")
         running = true
 
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.running else { return }
-            self.noSpeechTimer = Timer.scheduledTimer(withTimeInterval: self.noSpeechGrace, repeats: false) { [weak self] _ in self?.stop(transcribe: true) }
-            self.maxTimer = Timer.scheduledTimer(withTimeInterval: self.maxDuration, repeats: false) { [weak self] _ in self?.stop(transcribe: true) }
-            self.interimTimer = Timer.scheduledTimer(withTimeInterval: self.interimEvery, repeats: true) { [weak self] _ in self?.runInterim() }
+        let lang = (languageCode == "auto") ? nil : languageCode
+        let options = DecodingOptions(
+            verbose: false, task: .transcribe, language: lang,
+            detectLanguage: lang == nil, skipSpecialTokens: true, withoutTimestamps: true
+        )
+        let transcriber = AudioStreamTranscriber(
+            audioEncoder: kit.audioEncoder,
+            featureExtractor: kit.featureExtractor,
+            segmentSeeker: kit.segmentSeeker,
+            textDecoder: kit.textDecoder,
+            tokenizer: tokenizer,
+            audioProcessor: kit.audioProcessor,
+            decodingOptions: options
+        ) { [weak self] _, newState in
+            guard let self else { return }
+            let text = WhisperCapture.liveText(newState)
+            guard !text.isEmpty else { return }
+            self.setLatest(text)
+            let cb = self.onPartial
+            DispatchQueue.main.async { cb?(text) }
+        }
+        self.transcriber = transcriber
+        streamTask = Task {
+            do { try await transcriber.startStreamTranscription() }
+            catch { WhisperCapture.log("stream error: \(error.localizedDescription)") }
         }
     }
 
-    func cancel() { stop(transcribe: false) }
-    func stopAndTranscribe() { stop(transcribe: true) }
+    func cancel() { finish(deliver: false) }
+    func stopAndTranscribe() { finish(deliver: true) }
 
-    private func resetSilenceTimer() {
-        silenceTimer?.invalidate()
-        silenceTimer = Timer.scheduledTimer(withTimeInterval: endSilence, repeats: false) { [weak self] _ in self?.stop(transcribe: true) }
-    }
-
-    /// Transcribe the audio captured so far (off the main thread) → onPartial.
-    private func runInterim() {
-        guard running, spoke, !interimBusy else { return }
-        interimBusy = true
-        lock.lock(); let snapshot = samples; let rate = sampleRate; lock.unlock()
-        guard snapshot.count > Int(rate / 2) else { interimBusy = false; return } // need ≥0.5s
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let text = WhisperCapture.transcribe(snapshot, rate: rate, lang: self?.languageCode ?? "auto")
-            DispatchQueue.main.async {
-                guard let self, self.running else { return }
-                self.interimBusy = false
-                if !text.isEmpty { self.onPartial?(text) }
-            }
-        }
-    }
-
-    private func stop(transcribe: Bool) {
+    private func finish(deliver: Bool) {
         guard running else { return }
         running = false
-        silenceTimer?.invalidate(); maxTimer?.invalidate(); noSpeechTimer?.invalidate(); interimTimer?.invalidate()
-        silenceTimer = nil; maxTimer = nil; noSpeechTimer = nil; interimTimer = nil
-        engine.stop()
-        engine.inputNode.removeTap(onBus: 0)
-        lock.lock(); let snapshot = samples; let rate = sampleRate; lock.unlock()
-        let callback = onDone
+        let transcriber = self.transcriber
+        let final = getLatest()
+        let cb = onDone
         onDone = nil; onPartial = nil
-        let lang = languageCode
-        Self.log("stop: transcribe=\(transcribe) spoke=\(spoke) maxRMS=\(maxRMS) dur=\(String(format: "%.1f", Date().timeIntervalSince(startedAt)))s samples=\(snapshot.count)")
-
-        guard transcribe, snapshot.count > Int(rate / 4) else {
-            DispatchQueue.main.async { callback?("") }
-            return
-        }
-        DispatchQueue.global(qos: .userInitiated).async {
-            let text = WhisperCapture.transcribe(snapshot, rate: rate, lang: lang)
-            DispatchQueue.main.async { callback?(text) }
+        self.transcriber = nil
+        streamTask = nil
+        Task {
+            await transcriber?.stopStreamTranscription()
+            if deliver { DispatchQueue.main.async { cb?(final) } }
         }
     }
 
-    // MARK: - transcription
-
-    private static func transcribe(_ samples: [Float], rate: Double, lang: String) -> String {
-        guard let binary = binaryPath() else { return "" }
-        let base = FileManager.default.temporaryDirectory.appendingPathComponent("muse-voice-\(UUID().uuidString)")
-        let raw = base.appendingPathExtension("wav")
-        let wav16 = base.appendingPathExtension("16k.wav")
-        let outBase = base.path + ".out"
-        defer {
-            for p in [raw.path, wav16.path, outBase + ".txt"] { try? FileManager.default.removeItem(atPath: p) }
-        }
-        guard writeWAV(samples, sampleRate: Int(rate), to: raw) else { return "" }
-        runProcess("/usr/bin/afconvert", ["-f", "WAVE", "-d", "LEI16@16000", "-c", "1", raw.path, wav16.path])
-        let wStatus = runProcess(binary, ["-m", modelPath(), "-f", wav16.path, "-nt", "-l", lang, "-otxt", "-of", outBase])
-        let text = ((try? String(contentsOfFile: outBase + ".txt", encoding: .utf8)) ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if wStatus != 0 { log("transcribe: whisper exit \(wStatus)") }
-        return text
+    /// Confirmed segments + the live hypothesis, with WhisperKit's idle
+    /// placeholder filtered out — the smooth, growing transcript.
+    private static func liveText(_ state: AudioStreamTranscriber.State) -> String {
+        let confirmed = state.confirmedSegments.map { $0.text }.joined(separator: " ")
+        let current = state.currentText == placeholder ? "" : state.currentText
+        return (confirmed + " " + current).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Write float samples to a mono 16-bit PCM WAV at `sampleRate`.
-    private static func writeWAV(_ samples: [Float], sampleRate: Int, to url: URL) -> Bool {
-        let pcm: [Int16] = samples.map { Int16(max(-1, min(1, $0)) * 32767) }
-        let dataSize = pcm.count * 2
-        var data = Data()
-        func ascii(_ s: String) { data.append(s.data(using: .ascii)!) }
-        func u32(_ v: UInt32) { var x = v.littleEndian; withUnsafeBytes(of: &x) { data.append(contentsOf: $0) } }
-        func u16(_ v: UInt16) { var x = v.littleEndian; withUnsafeBytes(of: &x) { data.append(contentsOf: $0) } }
-        ascii("RIFF"); u32(UInt32(36 + dataSize)); ascii("WAVE")
-        ascii("fmt "); u32(16); u16(1); u16(1); u32(UInt32(sampleRate)); u32(UInt32(sampleRate * 2)); u16(2); u16(16)
-        ascii("data"); u32(UInt32(dataSize))
-        pcm.withUnsafeBytes { data.append(contentsOf: $0) }
-        return (try? data.write(to: url)) != nil
-    }
-
-    @discardableResult
-    private static func runProcess(_ launchPath: String, _ args: [String]) -> Int32 {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: launchPath)
-        process.arguments = args
-        process.standardOutput = Pipe(); process.standardError = Pipe()
-        do { try process.run(); process.waitUntilExit(); return process.terminationStatus }
-        catch { return -1 }
-    }
+    private func setLatest(_ text: String) { textLock.lock(); latestText = text; textLock.unlock() }
+    private func getLatest() -> String { textLock.lock(); defer { textLock.unlock() }; return latestText }
 }

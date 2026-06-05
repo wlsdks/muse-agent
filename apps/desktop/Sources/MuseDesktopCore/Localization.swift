@@ -31,6 +31,11 @@ public enum ResolvedLanguage: String, Sendable {
     public var transcribing: String {
         self == .korean ? "✍️ 변환 중…" : "✍️ Transcribing…"
     }
+    public var preparingVoice: String {
+        self == .korean
+            ? "🧠 음성 모델 준비 중… (최초 1회만 다운로드)"
+            : "🧠 Preparing the speech model… (one-time download)"
+    }
     public var voiceUnavailable: String {
         self == .korean
             ? "이 언어는 온디바이스 음성을 지원하지 않아요 — 입력해 주세요."

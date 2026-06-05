@@ -31,20 +31,17 @@ swift run MuseDesktop          # the companion appears bottom-right; drag it any
 
 ## Voice (open-source, local)
 
-Voice input uses **whisper.cpp** (open-source, on-device — your audio never
-leaves the Mac). One-time setup:
+Voice input uses **WhisperKit** (Argmax, MIT) — OpenAI Whisper running on
+CoreML + the Apple Neural Engine with native real-time streaming. Your audio
+never leaves the Mac. **No setup needed**: the model (the Korean-improved
+`large-v3-v20240930` turbo checkpoint) downloads once from HuggingFace on the
+first voice tap, then is cached — the companion warms it at launch.
 
-```bash
-brew install whisper-cpp
-mkdir -p ~/.muse/whisper-models
-curl -L -o ~/.muse/whisper-models/ggml-base.bin \
-  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin   # multilingual (Korean + English)
-```
-
-Then tap the mic in the input bar, speak, and the transcription lands in the
-input field (review/edit, then send). Without whisper.cpp installed the
-companion falls back to typing. (Apple's on-device recogniser isn't used — it
-isn't reliably available across Macs/languages.)
+Tap the mic in the input bar and speak: the text appears **live as you speak**
+(word-by-word, firming up), and lands in the input field for review/edit before
+you send. Tap the mic again to finish. (Apple's `SFSpeechRecognizer` and the old
+whisper.cpp shell-out are gone — WhisperKit is faster, streams natively, and has
+no external-binary dependency.)
 
 ## Verify
 

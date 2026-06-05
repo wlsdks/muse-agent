@@ -1189,6 +1189,20 @@ user-verified — a window can't be auto-asserted headlessly).
   on stop. Verified: `swift build` + `swift test` 35 + the writeWAV→afconvert→whisper-cli interim pipeline
   proven end-to-end on a generated WAV (valid RIFF header, all exit 0) + the rebuilt `.app` relaunched without
   crashing + `pnpm lint` 0/0; the live conversation + live partial text are user-verified._
+- [x] **P45-18 Best-in-class on-device voice: migrated STT to WhisperKit (CoreML + Neural Engine, native streaming).**
+  (576db25e) Jinan: "가장 유명하고 가장 좋은, 빠르면서 잘 동작, 통합이 잘 되어서, 굉장히 부드럽게." Researched the
+  field and confirmed we were NOT using the best — the old path was whisper.cpp's `base` model via a `whisper-cli`
+  shell-out (temp WAV → `afconvert` → subprocess) re-transcribing the WHOLE clip every 1.5s (O(n²), mediocre
+  Korean, external-binary dependency). Replaced it wholesale with **WhisperKit** (Argmax, MIT) — OpenAI Whisper
+  on **CoreML + the Apple Neural Engine** with NATIVE real-time streaming (`AudioStreamTranscriber` → live
+  `currentText` word-by-word as you speak). Model = the Korean-improved `large-v3-v20240930` **turbo** checkpoint
+  (~8× faster decoder, real-time). No brew/binary/temp-WAV/afconvert anymore; audio still never leaves the Mac;
+  the model auto-downloads once from HuggingFace then loads in <1s (warmed at launch via `preload()`). Verified
+  REAL end-to-end at the runnable layer (a headless `--selftest-stt` flag loading the SAME model my mic path
+  uses): EN "Muse keeps your notes completely private and on device." → exact; KO "안녕하세요 오늘 날씨가 정말
+  좋네요" → exact; first-run model-load 230s (incl. ~600MB download), cached load 0.8s. `swift build` + `swift
+  test` 35 + `pnpm lint` 0/0 + the rebuilt `.app` relaunched without crashing. The live mic→streaming path uses
+  the same proven model + components; live-mic is user-verified._
 - [x] **P44-1 `muse memory encrypt` encrypts your user-memory at rest.** The
   most sensitive store (facts / preferences / the typed user model) can now be
   AES-256-GCM encrypted, so a stolen/seized laptop or a leaked backup can't read

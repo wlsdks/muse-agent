@@ -28,6 +28,7 @@ final class CompanionModel: ObservableObject {
         lookName = ProcessInfo.processInfo.environment["MUSE_DESKTOP_CHARACTER"] ?? prefs.look
         language = lang
         bubble = "" // idle = just the orb; the bubble appears only on an answer / listening
+        whisper.preload() // warm the CoreML speech model at launch so the first tap is instant
     }
 
     /// Tap the orb → toggle the input (always works); cancel voice if listening.
@@ -71,18 +72,13 @@ final class CompanionModel: ObservableObject {
     func startVoice() {
         guard !busy else { return }
         if listening { stopVoiceAndTranscribe(); return }
-        guard WhisperCapture.isAvailable else {
-            bubble = language == .korean
-                ? "음성 인식을 쓰려면 whisper.cpp가 필요해요: `brew install whisper-cpp` + 모델을 ~/.muse/whisper-models/ggml-base.bin 에. 일단 입력해 주세요."
-                : "Voice needs whisper.cpp: `brew install whisper-cpp` + a model at ~/.muse/whisper-models/ggml-base.bin. Type for now."
-            inputVisible = true
-            return
-        }
         listening = true
         orbState = .listening
         inputVisible = true
         inputText = ""
-        bubble = language.listeningHint // clear feedback while recording (whisper isn't streaming)
+        // The first-ever tap may trigger the one-time model download; afterwards
+        // the cached CoreML model loads in well under a second.
+        bubble = whisper.isReady ? language.listeningHint : language.preparingVoice
         whisper.languageCode = language.whisperLang
         Task { [weak self] in
             guard await WhisperCapture.requestMic() else {
@@ -93,10 +89,11 @@ final class CompanionModel: ObservableObject {
             }
             guard let self, self.listening else { return }
             do {
-                try self.whisper.start(
-                    onPartial: { [weak self] text in Task { @MainActor in self?.voicePartial(text) } },
-                    onDone: { [weak self] text in Task { @MainActor in self?.whisperDone(text) } }
+                try await self.whisper.start(
+                    onPartial: { [weak self] text in MainActor.assumeIsolated { self?.voicePartial(text) } },
+                    onDone: { [weak self] text in MainActor.assumeIsolated { self?.whisperDone(text) } }
                 )
+                if self.listening { self.bubble = self.language.listeningHint }
             } catch {
                 self.listening = false
                 self.orbState = .idle
