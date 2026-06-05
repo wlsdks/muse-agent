@@ -18,10 +18,24 @@ import {
   maxOfNumbers,
   minOfNumbers,
   parseEventStart,
+  recurrenceRuleFor,
   registerCalendarCommands,
   resolveEventIdMatch,
   type CalendarCommandHelpers
 } from "./commands-calendar.js";
+
+describe("recurrenceRuleFor — map a --repeat cadence to an RRULE", () => {
+  it("maps the supported daily/weekly cadences (case-insensitive)", () => {
+    expect(recurrenceRuleFor("daily")).toBe("FREQ=DAILY");
+    expect(recurrenceRuleFor("WEEKLY")).toBe("FREQ=WEEKLY");
+    expect(recurrenceRuleFor("  weekly ")).toBe("FREQ=WEEKLY");
+  });
+  it("returns undefined for an unsupported cadence (so the command rejects it)", () => {
+    expect(recurrenceRuleFor("monthly")).toBeUndefined();
+    expect(recurrenceRuleFor("yearly")).toBeUndefined();
+    expect(recurrenceRuleFor("")).toBeUndefined();
+  });
+});
 
 describe("conflictWarningForNewEvent — heads-up when a new event double-books", () => {
   const ev = (title: string, startIso: string, endIso: string) => ({ title, startsAt: new Date(startIso), endsAt: new Date(endIso) });

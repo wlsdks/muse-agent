@@ -124,6 +124,19 @@ export function buildEventReminder(
   };
 }
 
+/**
+ * Map a `--repeat` cadence word to the RRULE the local provider stores and
+ * `expandRecurringEvent` understands. Only daily/weekly are supported (the
+ * expansion engine's two FREQ cases); anything else returns undefined so the
+ * caller rejects it loudly rather than creating an event that never recurs.
+ */
+export function recurrenceRuleFor(cadence: string): string | undefined {
+  const c = cadence.trim().toLowerCase();
+  if (c === "daily") return "FREQ=DAILY";
+  if (c === "weekly") return "FREQ=WEEKLY";
+  return undefined;
+}
+
 /** Drop the reminders linked (by exact event id) to a deleted event, so a cancelled
  *  meeting can't keep firing. Matches ONLY on `eventId` (never title), so unrelated
  *  reminders and reminders for other events are untouched. Pure. */
@@ -505,10 +518,11 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
     .option("--for <minutes>", "Duration in minutes (default 60)")
     .option("--location <where>", "Where the event is, e.g. 'Room 4'")
     .option("--remind <minutes>", "Also set a reminder this many minutes BEFORE the event, e.g. --remind 30")
+    .option("--repeat <cadence>", "Make it recurring: 'daily' or 'weekly' (e.g. a weekly standup). Omit for one-time.")
     .option("--json", "Print the created event as JSON")
     .action(async (
       titleParts: readonly string[],
-      options: { readonly at: string; readonly for?: string; readonly location?: string; readonly remind?: string; readonly json?: boolean }
+      options: { readonly at: string; readonly for?: string; readonly location?: string; readonly remind?: string; readonly repeat?: string; readonly json?: boolean }
     ) => {
       const title = titleParts.join(" ").trim();
       if (title.length === 0) {
@@ -523,12 +537,20 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         throw new Error("--for must be a positive number of minutes");
       }
       const endsAt = new Date(startsAt.getTime() + Math.trunc(minutes) * 60_000);
+      let recurrence: string | undefined;
+      if (options.repeat !== undefined) {
+        recurrence = recurrenceRuleFor(options.repeat);
+        if (!recurrence) {
+          throw new Error(`--repeat must be 'daily' or 'weekly' (monthly/yearly recurring events aren't supported yet), got '${options.repeat}'`);
+        }
+      }
       const provider = localCalendarProvider();
       const event = await provider.createEvent({
         endsAt,
         startsAt,
         title,
-        ...(options.location ? { location: options.location } : {})
+        ...(options.location ? { location: options.location } : {}),
+        ...(recurrence ? { recurrence } : {})
       });
       // Conflict heads-up: an event overlapping [startsAt, endsAt] is exactly an
       // overlap, so listing that window (then excluding the new event by id) gives
@@ -536,7 +558,9 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       let conflictWarning = "";
       try {
         const nearby = await provider.listEvents({ from: startsAt, to: endsAt });
-        conflictWarning = conflictWarningForNewEvent(event, nearby.filter((other) => other.id !== event.id));
+        // Exclude the new event AND its own recurring instances (expandRecurringEvent
+        // ids them `${baseId}-N`), else a recurring event flags a conflict with itself.
+        conflictWarning = conflictWarningForNewEvent(event, nearby.filter((other) => other.id !== event.id && !other.id.startsWith(`${event.id}-`)));
       } catch {
         // calendar read failed — still confirm the create, just without the heads-up
       }
@@ -554,13 +578,13 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       }
       if (options.json) {
         helpers.writeOutput(io, {
-          event: { endsAtIso: event.endsAt.toISOString(), id: event.id, startsAtIso: event.startsAt.toISOString(), title: event.title },
+          event: { endsAtIso: event.endsAt.toISOString(), id: event.id, startsAtIso: event.startsAt.toISOString(), title: event.title, ...(recurrence ? { recurrence } : {}) },
           ...(conflictWarning ? { conflict: conflictWarning } : {}),
           ...(reminder ? { reminder: { dueAtIso: reminder.dueAt, id: reminder.id, text: reminder.text } } : {})
         });
         return;
       }
-      io.stdout(`Created: ${event.title} — ${event.startsAt.toISOString()} → ${event.endsAt.toISOString()}\n`);
+      io.stdout(`Created: ${event.title} — ${event.startsAt.toISOString()} → ${event.endsAt.toISOString()}${options.repeat ? ` (repeats ${options.repeat.trim().toLowerCase()})` : ""}\n`);
       if (reminder) {
         io.stdout(`Reminder set for ${clockOf(new Date(reminder.dueAt))} (${Math.max(0, Math.trunc(Number(options.remind)))} min before).\n`);
       }

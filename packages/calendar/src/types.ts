@@ -22,6 +22,8 @@ export interface CalendarEventInput {
   readonly location?: string;
   readonly notes?: string;
   readonly tags?: readonly string[];
+  /** Raw iCalendar RRULE (e.g. "FREQ=WEEKLY") to create a recurring event. */
+  readonly recurrence?: string;
 }
 
 export interface CalendarEventUpdate {

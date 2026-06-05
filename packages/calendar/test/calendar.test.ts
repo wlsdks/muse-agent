@@ -316,6 +316,47 @@ describe("LocalCalendarProvider", () => {
     expect(events).toEqual([]);
   });
 
+  it("persists recurrence and expands a weekly event into in-window instances", async () => {
+    await provider.createEvent({
+      endsAt: new Date("2026-06-01T09:30:00Z"),
+      recurrence: "FREQ=WEEKLY",
+      startsAt: new Date("2026-06-01T09:00:00Z"),
+      title: "Weekly standup"
+    });
+    const events = await provider.listEvents({ from: new Date("2026-06-01T00:00:00Z"), to: new Date("2026-06-17T00:00:00Z") });
+    expect(events.map((e) => e.startsAt.toISOString())).toEqual([
+      "2026-06-01T09:00:00.000Z",
+      "2026-06-08T09:00:00.000Z",
+      "2026-06-15T09:00:00.000Z"
+    ]);
+    expect(events.every((e) => e.title === "Weekly standup")).toBe(true);
+    expect(new Set(events.map((e) => e.id)).size).toBe(3); // distinct instance ids
+  });
+
+  it("leaves a non-recurring event as a single instance", async () => {
+    await provider.createEvent({
+      endsAt: new Date("2026-06-01T09:30:00Z"),
+      startsAt: new Date("2026-06-01T09:00:00Z"),
+      title: "One-off"
+    });
+    const events = await provider.listEvents({ from: new Date("2026-06-01T00:00:00Z"), to: new Date("2026-06-30T00:00:00Z") });
+    expect(events).toHaveLength(1);
+    expect(events[0]!.title).toBe("One-off");
+  });
+
+  it("preserves recurrence across an edit — a renamed weekly event still recurs", async () => {
+    const base = await provider.createEvent({
+      endsAt: new Date("2026-06-01T09:30:00Z"),
+      recurrence: "FREQ=WEEKLY",
+      startsAt: new Date("2026-06-01T09:00:00Z"),
+      title: "Standup"
+    });
+    await provider.updateEvent(base.id, { title: "Team standup" });
+    const events = await provider.listEvents({ from: new Date("2026-06-01T00:00:00Z"), to: new Date("2026-06-17T00:00:00Z") });
+    expect(events).toHaveLength(3); // still recurs after the rename
+    expect(events.every((e) => e.title === "Team standup")).toBe(true);
+  });
+
   it("drops a persisted event with an unparseable date instead of silently NaN-filtering it", async () => {
     writeFileSync(join(dir, "calendar.json"), JSON.stringify({
       events: [

@@ -409,6 +409,37 @@ P43 bullet is unbuilt.
   then showed the reminder moved to 15:30 (30 min before the NEW 16:00 start) — while a title-only edit
   shifted nothing. (da132c7d)
 
+- [x] **P41-37 `muse calendar add "Standup" --at "2026-06-01 9am" --repeat weekly` now creates a
+  RECURRING event — a weekly standup / daily check-in is one command, and it shows up every week, not
+  just once.** The calendar DATA model already supported recurrence (`CalendarEvent.recurrence`, an
+  RRULE) and `.ics` IMPORT parsed it, but you could NOT create a recurring event locally — `muse
+  calendar add` had no `--repeat` — and worse, the local provider STORED recurrence yet `listEvents`
+  never EXPANDED it, so even an imported recurring event only ever showed its single base instance (a
+  latent bug). Closed the whole path: added `recurrence` to `CalendarEventInput` and made the local
+  provider round-trip it across the FULL lifecycle — `createEvent` persists it, `writeAll`/`readAll`
+  serialise it (it was being dropped on BOTH write and read-back), `updateEvent` PRESERVES it across an
+  edit (a rename must not silently turn a weekly event into a one-off — the audit-all-lifecycle-ops
+  lesson), and `listEvents` now `expandRecurringEvent`s every stored event into its in-window instances
+  (a non-recurring event passes through unchanged). Added a `--repeat <cadence>` option to `muse
+  calendar add` backed by a pure `recurrenceRuleFor` mapping `daily`→`FREQ=DAILY` / `weekly`→
+  `FREQ=WEEKLY` (the two FREQ cases the expansion engine handles) and rejecting monthly/yearly with an
+  actionable error + exit 1 (honest — never create an event that silently won't recur). Also fixed the
+  conflict-self-exclusion in `add`: expanded instances are id'd `${baseId}-N`, so the new event would
+  otherwise flag a double-booking with its OWN first instance — now excluded. This is an Actuation /
+  act-growth slice on the calendar axis (a genuine new capability, not a filter), deliberately off the
+  recently-churned reasoning/tasks/felt/notes work. Verified deterministically AND live: unit tests
+  (@muse/calendar: createEvent persists recurrence + listEvents expands a weekly event into 3 in-window
+  instances with distinct ids, a non-recurring event stays a single instance, and an EDIT preserves
+  recurrence so the renamed weekly event still recurs — packages/calendar/test/calendar.test.ts; @muse/
+  cli: recurrenceRuleFor maps daily/weekly case-insensitively and rejects monthly/yearly/empty —
+  apps/cli/src/commands-calendar.test.ts) + the FULL cross-package `pnpm check` (every workspace green:
+  calendar 147, agent-core 1455, mcp 1542, cli 2156, api 849 …) + tsc + `pnpm lint` 0/0 + 0 raw control
+  bytes + a FULL LIVE round-trip on the loop PC: `muse calendar add "Standup" --at 2026-06-01T09:00:00
+  --repeat weekly` printed "Created: Standup … (repeats weekly)" with NO false self-conflict, `muse
+  calendar events --local --from 2026-06-01 --to 2026-06-17` listed 3 Standup instances (Jun 1 / 8 /
+  15), and `muse calendar add … --repeat monthly` → "must be 'daily' or 'weekly' …" with exit 1.
+  (0ced2ff0)
+
 - [x] **P43-6 Muse notices a NOTE FAMILY gone quiet — "you usually update your
   project-apollo notes every few days; nothing in three weeks."** The filesystem
   sibling of P43-4's topic-absence (which baselines episode-CONVERSATION cadence):

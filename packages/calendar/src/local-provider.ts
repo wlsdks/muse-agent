@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { CalendarProviderError, CalendarValidationError } from "./errors.js";
+import { expandRecurringEvent } from "./ics-parse.js";
 import type {
   CalendarEvent,
   CalendarEventInput,
@@ -26,6 +27,7 @@ interface PersistedEvent {
   readonly location?: string;
   readonly notes?: string;
   readonly tags?: readonly string[];
+  readonly recurrence?: string;
 }
 
 /**
@@ -57,7 +59,10 @@ export class LocalCalendarProvider implements CalendarProvider {
 
   async listEvents(range: CalendarRange): Promise<readonly CalendarEvent[]> {
     const events = await this.readAll();
+    // Expand any recurring event (a stored RRULE — from import or `add --repeat`)
+    // into its in-window instances; a non-recurring event passes through unchanged.
     return events
+      .flatMap((event) => expandRecurringEvent(event, range.from, range.to))
       .filter((event) => event.endsAt.getTime() >= range.from.getTime() && event.startsAt.getTime() <= range.to.getTime())
       .sort((left, right) =>
         left.startsAt.getTime() - right.startsAt.getTime() || left.id.localeCompare(right.id)
@@ -77,7 +82,8 @@ export class LocalCalendarProvider implements CalendarProvider {
       title: input.title.trim(),
       ...(input.location ? { location: input.location } : {}),
       ...(input.notes ? { notes: input.notes } : {}),
-      ...(input.tags && input.tags.length > 0 ? { tags: [...input.tags] } : {})
+      ...(input.tags && input.tags.length > 0 ? { tags: [...input.tags] } : {}),
+      ...(input.recurrence ? { recurrence: input.recurrence } : {})
     };
 
     await this.writeAll([...events, created]);
@@ -108,7 +114,10 @@ export class LocalCalendarProvider implements CalendarProvider {
         : {}),
       ...(applyOptionalArray(existing.tags, input.tags) !== undefined
         ? { tags: applyOptionalArray(existing.tags, input.tags)! }
-        : {})
+        : {}),
+      // Preserve recurrence across an edit — a title/time change must not silently
+      // turn a recurring event into a one-off (CalendarEventUpdate can't alter it).
+      ...(existing.recurrence ? { recurrence: existing.recurrence } : {})
     };
 
     if (!(merged.startsAt instanceof Date) || Number.isNaN(merged.startsAt.getTime())) {
@@ -182,7 +191,8 @@ export class LocalCalendarProvider implements CalendarProvider {
       title: event.title,
       ...(event.location ? { location: event.location } : {}),
       ...(event.notes ? { notes: event.notes } : {}),
-      ...(event.tags && event.tags.length > 0 ? { tags: [...event.tags] } : {})
+      ...(event.tags && event.tags.length > 0 ? { tags: [...event.tags] } : {}),
+      ...(typeof event.recurrence === "string" ? { recurrence: event.recurrence } : {})
     }));
   }
 
@@ -195,7 +205,8 @@ export class LocalCalendarProvider implements CalendarProvider {
       title: event.title,
       ...(event.location ? { location: event.location } : {}),
       ...(event.notes ? { notes: event.notes } : {}),
-      ...(event.tags && event.tags.length > 0 ? { tags: [...event.tags] } : {})
+      ...(event.tags && event.tags.length > 0 ? { tags: [...event.tags] } : {}),
+      ...(event.recurrence ? { recurrence: event.recurrence } : {})
     }));
 
     const payload = `${JSON.stringify({ events: persisted }, null, 2)}\n`;
