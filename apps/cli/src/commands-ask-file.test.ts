@@ -1,7 +1,31 @@
 import { describe, expect, it } from "vitest";
 
-import { looksLikeBinaryContent, selectFilePassages, urlGroundingSource } from "./commands-ask.js";
+import { filterNotesByScope, looksLikeBinaryContent, selectFilePassages, urlGroundingSource } from "./commands-ask.js";
 import { docxToText } from "./document-reader.js";
+
+describe("filterNotesByScope — ground muse ask on one note folder (--scope)", () => {
+  const files = [
+    { path: "/notes/work/q3.md" },
+    { path: "/notes/work/sub/deep.md" }, // a sub-folder under work still counts as work
+    { path: "/notes/personal/diary.md" },
+    { path: "/notes/inbox.md" } // root-level — not under any folder
+  ];
+
+  it("keeps only the files under the scope folder (prefix, incl. deeper sub-folders)", () => {
+    expect(filterNotesByScope(files, "/notes", "work").map((f) => f.path)).toEqual(["/notes/work/q3.md", "/notes/work/sub/deep.md"]);
+    expect(filterNotesByScope(files, "/notes", "personal").map((f) => f.path)).toEqual(["/notes/personal/diary.md"]);
+  });
+
+  it("is case-insensitive and tolerates leading/trailing slashes", () => {
+    expect(filterNotesByScope(files, "/notes", "WORK/").map((f) => f.path)).toEqual(["/notes/work/q3.md", "/notes/work/sub/deep.md"]);
+    expect(filterNotesByScope(files, "/notes", "/work").length).toBe(2);
+  });
+
+  it("returns [] for an unknown folder and everything for an empty scope", () => {
+    expect(filterNotesByScope(files, "/notes", "nonexistent")).toEqual([]);
+    expect(filterNotesByScope(files, "/notes", "  ")).toEqual(files); // empty → no filtering
+  });
+});
 
 const bytes = (s: string): Uint8Array => new TextEncoder().encode(s);
 

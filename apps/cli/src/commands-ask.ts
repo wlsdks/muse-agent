@@ -508,6 +508,26 @@ export function relativizeNoteSource(file: string, notesDir: string): string {
 }
 
 /**
+ * Keep only the note index files under a TOP-of-tree `scope` folder (relative to
+ * the notes dir) — the engine behind `muse ask --scope work`, which grounds the
+ * answer in just that collection instead of the whole corpus (less cross-domain
+ * noise / false grounding). Matches a folder PREFIX (`work/…`), case-insensitive;
+ * an empty scope returns everything. Pure.
+ */
+export function filterNotesByScope<T extends { readonly path: string }>(
+  files: readonly T[],
+  notesDir: string,
+  scope: string
+): readonly T[] {
+  const norm = scope.trim().replace(/^[/\\]+|[/\\]+$/gu, "").replace(/\\/gu, "/").toLowerCase();
+  if (norm.length === 0) {
+    return files;
+  }
+  const prefix = `${norm}/`;
+  return files.filter((file) => relativizeNoteSource(file.path, notesDir).replace(/\\/gu, "/").toLowerCase().startsWith(prefix));
+}
+
+/**
  * Note evidence the grounding VERDICT scores against, augmented for the agent
  * (`--with-tools`) path. The chat-only path's `scored` top-K IS exactly what
  * grounded the answer; but the agent can pull a chunk via `knowledge_search`
@@ -884,6 +904,7 @@ interface AskOptions {
   readonly file?: string;
   readonly url?: string;
   readonly clipboard?: boolean;
+  readonly scope?: string;
   readonly json?: boolean;
   readonly withTools?: boolean;
   readonly actuators?: boolean;
@@ -1523,6 +1544,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       "Ground this answer on whatever text you just copied to your clipboard (read-only, local). The answer cites it as [from clipboard]; an off-topic question still honestly refuses. Great for 'I copied this — what does it mean?' without saving a file."
     )
     .option(
+      "--scope <folder>",
+      "Ground only on notes under this top-level folder, e.g. --scope work — grounds the answer in just that collection instead of the whole corpus (less cross-domain noise). An unknown/empty folder grounds on nothing (honest refusal)."
+    )
+    .option(
       "--json",
       "Emit a single JSON object on stdout with {query, model, answer, grounded:{...}} (suppresses streaming)"
     )
@@ -1871,7 +1896,14 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // Skip index entries whose note file was deleted since the last
         // reindex — otherwise `ask` grounds on (and cites) a note that no
         // longer exists. recall / today --connect already guard this.
-        const allScored = filterLiveNoteIndexFiles(index.files, existsSync).flatMap((f) => f.chunks.map((chunk) => ({
+        // --scope <folder>: ground only on notes under that top-level collection.
+        const scope = options.scope?.trim();
+        const liveNoteFiles = filterLiveNoteIndexFiles(index.files, existsSync);
+        const scopedNoteFiles = scope ? filterNotesByScope(liveNoteFiles, notesDir, scope) : liveNoteFiles;
+        if (scope && liveNoteFiles.length > 0 && scopedNoteFiles.length === 0 && !options.json) {
+          io.stderr(`muse: no notes under '${scope}/' — grounding on nothing for this question.\n`);
+        }
+        const allScored = scopedNoteFiles.flatMap((f) => f.chunks.map((chunk) => ({
           chunk,
           file: f.path,
           score: cosine(queryVec!, chunk.embedding)
@@ -1894,7 +1926,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         try {
           const seedMatches = scored.map((s) => ({ cosine: s.score, score: s.score, source: relativizeNoteSource(s.file, notesDir), text: s.chunk.text }));
           if (classifyRetrievalConfidence(seedMatches) === "confident") {
-            const noteBodies = filterLiveNoteIndexFiles(index.files, existsSync)
+            const noteBodies = scopedNoteFiles
               .map((f) => ({ body: f.chunks.map((c) => c.text).join("\n"), id: relativizeNoteSource(f.path, notesDir) }));
             const seen = new Set(seedMatches.map((m) => m.source));
             for (const ref of linkExpandRefs({ noteBodies, seedRefs: seedMatches.map((m) => m.source), cap: 2 })) {

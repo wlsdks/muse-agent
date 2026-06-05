@@ -2840,6 +2840,30 @@ graph intact as the corpus evolves, so a power-user's Zettelkasten doesn't rot.
   "⚠ 1 broken link(s): hub.md → [[ghost]]", "⚠ 1 orphan note(s): lonely.md", and "⚠ 1 terminal note(s)
   …: concepts.md" — all three categories correctly distinguished. (abcee050)
 
+- [x] **P42-10 `muse ask "what is the budget?" --scope work` now grounds on ONLY that note folder —
+  so the same question in a multi-collection corpus answers from the right domain instead of mixing
+  work + personal + project notes (less cross-domain noise / false grounding).** Retrieval scored
+  chunks across ALL note files with no way to narrow to a collection, even though the folder-prefix
+  pattern already existed (`muse notes list --subdir`). Added a `--scope <folder>` option + a pure
+  `filterNotesByScope(files, notesDir, scope)` (apps/cli/src/commands-ask.ts) that keeps only the index
+  files under that top-level folder (a PREFIX match, so a deeper sub-folder still counts; case-
+  insensitive; slashes tolerated; empty scope = no filtering), applied to BOTH the chat-only scoring
+  AND the 1-hop graph-link expansion so the whole grounding stays inside the collection; the citation
+  gate's allowed-set stays corpus-wide (a scoped answer only cites scoped notes anyway, a strict
+  subset, so it still validates). An unknown/empty folder grounds on nothing — an honest refusal, with
+  a `muse: no notes under '<scope>/'` heads-up so the user knows it was the scope, not a missing fact.
+  Read-only; opt-in (default behaviour unchanged). This was the runner-up of the third direction-review
+  workflow (the winner P41-35 being a confirmed bug). Verified: 3 unit tests (filterNotesByScope keeps
+  files under the folder incl. deeper sub-folders, is case-insensitive + slash-tolerant, returns [] for
+  an unknown folder and everything for an empty scope — apps/cli/src/commands-ask-file.test.ts) + the
+  full @muse/cli suite (186 files / 2118 tests) + tsc build + `pnpm lint` 0/0 + 0 raw control bytes + a
+  LIVE run on the loop PC (the CLI ask path, qwen3:8b): a corpus with work/budget.md ("Q3 work budget
+  is 50000") + personal/budget.md ("personal monthly budget is 2000"), then `muse ask "what is the
+  budget?" --scope work` → "…50000 dollars [from work/budget.md]", `--scope personal` → "…2000 dollars
+  [from personal/budget.md]" (the SAME question, the right answer per scope), and `--scope nonexistent`
+  → "muse: no notes under 'nonexistent/'…" + an honest "I don't have …" refusal (no fabrication).
+  (7828b115)
+
 - [x] **P42-7 `muse notes related <note>` — find notes SEMANTICALLY related to one (embedding
   similarity), discovering connections the explicit [[wiki-links]] missed.** The note graph handled
   EXPLICIT links (P42-1..5: links/graph/backlinks) and recall does QUERY→note search, but nothing
