@@ -1132,6 +1132,13 @@ user-verified — a window can't be auto-asserted headlessly).
   the `answer` field, falling back to ANSI-strip `cleanAnswer` for non-JSON so a CLI change degrades
   gracefully. Verified: `swift build` + `swift test` 26 (was 24; +2 parseAnswer) + the `.app` relaunched +
   a real `muse ask --json` round-trip via the baked wrapper returned a clean answer + `pnpm lint` 0/0._
+- [x] **P45-10 The companion REMEMBERS your look + where you put it across launches.** (6b459f97) For an
+  always-on-screen companion it shouldn't reset to the default spot + look every restart. `CompanionPrefs`
+  (Codable {look, originX, originY}, headless core) + `CompanionGeometry.isVisible` (a position saved on a
+  now-disconnected monitor is rejected → never lands off-screen) + `PrefsStore` (UserDefaults). FloatingPanel
+  loads on launch (env > saved look > orb default; saved origin only if visible), saves on a Character
+  switch + on window move. Verified: `swift build` + `swift test` 30 (was 26; +4 prefs/geometry) + the
+  `.app` relaunched + `pnpm lint` 0/0; restore-across-restart is user-verified._
 - [x] **P44-1 `muse memory encrypt` encrypts your user-memory at rest.** The
   most sensitive store (facts / preferences / the typed user model) can now be
   AES-256-GCM encrypted, so a stolen/seized laptop or a leaked backup can't read

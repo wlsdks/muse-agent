@@ -143,3 +143,32 @@ final class SpriteValidationTests: XCTestCase {
         XCTAssertTrue(sprite(eyeRow: 0, mouthRow: 1).isRectangular())
     }
 }
+
+final class CompanionPrefsTests: XCTestCase {
+    func testRoundTripsThroughJSON() {
+        let prefs = CompanionPrefs(look: "orb", originX: 1200.5, originY: 24)
+        let back = CompanionPrefs.decode(prefs.encoded())
+        XCTAssertEqual(back, prefs)
+        XCTAssertTrue(prefs.hasOrigin)
+        XCTAssertFalse(CompanionPrefs(look: "orb").hasOrigin)
+    }
+
+    func testDecodeReturnsNilForGarbage() {
+        XCTAssertNil(CompanionPrefs.decode("not json"))
+    }
+
+    func testGeometryAcceptsAnOnScreenWindowAndRejectsAnOffScreenOne() {
+        let screen = CompanionGeometry.Rect(x: 0, y: 0, width: 1512, height: 982)
+        let onScreen = CompanionGeometry.Rect(x: 1100, y: 24, width: 360, height: 300)
+        let offScreen = CompanionGeometry.Rect(x: 4000, y: 24, width: 360, height: 300) // a disconnected monitor
+        XCTAssertTrue(CompanionGeometry.isVisible(onScreen, on: [screen]))
+        XCTAssertFalse(CompanionGeometry.isVisible(offScreen, on: [screen]))
+        XCTAssertFalse(CompanionGeometry.isVisible(onScreen, on: [])) // no screens
+    }
+
+    func testGeometryRejectsABarelyVisibleSliver() {
+        let screen = CompanionGeometry.Rect(x: 0, y: 0, width: 1000, height: 1000)
+        let sliver = CompanionGeometry.Rect(x: 990, y: 500, width: 360, height: 300) // only 10px on screen
+        XCTAssertFalse(CompanionGeometry.isVisible(sliver, on: [screen]))
+    }
+}

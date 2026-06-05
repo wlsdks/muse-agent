@@ -17,8 +17,12 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     /// Toggled from the menu bar; when true the answer still shows but isn't spoken.
     var voiceMuted = false
 
-    /// Switch the on-screen character live (menu bar → Character submenu).
-    func setCharacter(_ name: String) { character.setCharacterNamed(name) }
+    /// Switch the on-screen character live (menu bar → Character submenu) and
+    /// remember the choice for next launch.
+    func setCharacter(_ name: String) {
+        character.setCharacterNamed(name)
+        PrefsStore.update { $0.look = name }
+    }
 
     init() {
         super.init(
@@ -68,8 +72,10 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         content.addSubview(bubbleScroll)
         setBubble("Hi, I'm Muse. Click me and ask about your notes.")
 
+        let prefs = PrefsStore.load()
         character.frame = NSRect(x: 18, y: 18, width: 132, height: 150)
-        character.setCharacterNamed(ProcessInfo.processInfo.environment["MUSE_DESKTOP_CHARACTER"])
+        // env override > saved look > default (orb).
+        character.setCharacterNamed(ProcessInfo.processInfo.environment["MUSE_DESKTOP_CHARACTER"] ?? prefs.look)
         character.onClick = { [weak self] in self?.handleClick() }
         content.addSubview(character)
 
@@ -81,6 +87,28 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         content.addSubview(input)
 
         positionAtBottomRight()
+        applySavedOrigin(prefs)
+        NotificationCenter.default.addObserver(self, selector: #selector(windowMoved), name: NSWindow.didMoveNotification, object: self)
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    /// Restore the saved position, but only if it lands on a currently-connected
+    /// screen (else keep the default — a stale position from a disconnected
+    /// monitor must not strand the companion off-screen).
+    private func applySavedOrigin(_ prefs: CompanionPrefs) {
+        guard let x = prefs.originX, let y = prefs.originY else { return }
+        let screens = NSScreen.screens.map {
+            CompanionGeometry.Rect(x: $0.frame.minX, y: $0.frame.minY, width: $0.frame.width, height: $0.frame.height)
+        }
+        let candidate = CompanionGeometry.Rect(x: x, y: y, width: frame.width, height: frame.height)
+        if CompanionGeometry.isVisible(candidate, on: screens) {
+            setFrameOrigin(NSPoint(x: x, y: y))
+        }
+    }
+
+    @objc private func windowMoved() {
+        PrefsStore.update { $0.originX = Double(frame.origin.x); $0.originY = Double(frame.origin.y) }
     }
 
     private func setBubble(_ text: String) {
