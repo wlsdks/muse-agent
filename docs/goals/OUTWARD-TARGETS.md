@@ -798,6 +798,27 @@ P43 bullet is unbuilt.
   today's remaining time was < 90 min (the notBefore clamp working) — while a fully-booked 3-day calendar
   produced "no free 90-minute block … your calendar is full" and wrote NOTHING. Honest scope: local
   calendar; scheduling a named TASK (resolving from the task store) into the block is the next step. (ab9585cf)
+
+- [x] **P43-20 `muse keywords <file>` — the key PHRASES (topics) of a document, the phrase-level
+  complement to `muse summarize`'s key sentences.** Thirteenth cross-field slice, rotated OFF the churned
+  calendar code (Step 8: focus/brief-beat/block were 3 straight calendar fires) onto fresh document-NLP
+  code. The mechanism: RAKE (Rose, Engel, Cramer, Cowley, "Automatic Keyword Extraction from Individual
+  Documents", in Text Mining: Applications and Theory, 2010) — stopwords + punctuation split the text into
+  candidate phrases (content-word runs), every word in a phrase co-occurs with the others, and a word
+  scores deg(w)/freq(w) (co-occurrence degree over frequency, rewarding words inside longer phrases); a
+  phrase scores the sum of its words'. Works on a SINGLE document with no corpus/training. Pure
+  apps/cli/src/keyphrase.ts (`candidatePhrases` — tokenizes word-runs vs punctuation-runs so a SPACE keeps
+  a phrase but punctuation/stopwords break it, capping phrase length; `rakeKeyphrases`) wired as
+  `muse keywords` (`--limit`, `--json`). Deterministic, no model. SHOWS-ITS-WORK on my own diff: the first
+  tokenizer split on all non-alphanumeric, which LOST punctuation boundaries ("alpha beta. gamma." became
+  one phrase) — caught by the unit tests, fixed to a word-run/punctuation-run tokenizer + a phrase-length
+  cap. Verified deterministically AND live: 11 unit tests (phrase splitting on stopwords/punctuation/
+  numbers, spaces don't break, the length cap, RAKE ranks a recurring multi-word topic above single words,
+  dedup + limit, single-word score 1 — apps/cli/src/keyphrase.test.ts) + `pnpm lint` 0/0 + `@muse/shared`
+  byte-hygiene 30 + cli 2255 + 0 raw control bytes + a LIVE run on the loop PC: `muse keywords report.md`
+  on a quarterly-update doc surfaced "billing migration …" phrases at the top (the doc's real topic) and
+  dropped the lunch/weather filler. Honest scope: file input; English stopwords; very stopword-sparse text
+  yields longer phrases (the cap bounds them). (cce28b0e)
 - [x] **P43-7 The evening recap's "Coming up" now includes tomorrow's CALENDAR EVENTS
   and BIRTHDAYS — your `muse recap` forward view finally matches the brief + `muse today`.**
   The evening recap (P43-4) is the retrospective sibling of the morning brief, and its

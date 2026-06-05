@@ -88,6 +88,7 @@ import { registerSearchCommand } from "./commands-search.js";
 import { registerCsvCommand } from "./commands-csv.js";
 import { registerSummarizeCommand } from "./commands-summarize.js";
 import { registerBenfordCommand } from "./commands-benford.js";
+import { registerKeywordsCommand } from "./commands-keywords.js";
 import { registerFindCommand } from "./commands-find.js";
 import { registerHistoryCommand } from "./commands-history.js";
 import { registerOpenCommand } from "./commands-open.js";
@@ -497,6 +498,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerCsvCommand(program, io);
   registerSummarizeCommand(program, io);
   registerBenfordCommand(program, io);
+  registerKeywordsCommand(program, io);
   registerHistoryCommand(program, io);
   registerOpenCommand(program, io);
   registerNotesCommands(program, io, { apiRequest, writeOutput });
