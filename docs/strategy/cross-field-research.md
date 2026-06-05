@@ -119,6 +119,20 @@ turn through the ask path's structured, low-temperature, notes-PRIMARY grounding
 (which works), not the conversational stream. Flagged for a dedicated effort
 (crown-jewel; needs Jinan's input). **This is the standing chat-grounding gap.**
 
+**Deeper diagnosis (2nd attempt, also reverted).** A refined fix — a fact-framed,
+anti-abstention block prepended to the system prompt — grounds RELIABLY in
+isolation (qwen3:8b answers from the note 16/16 across temperatures and persona
+sizes via a direct Ollama call), yet the REAL `muse chat` still confabulated 0/5.
+File-level debugging revealed why: `muse chat` has TWO input paths — the Ink
+INTERACTIVE turn handler (where the fix was wired) and a SEPARATE PIPED/HEADLESS
+path (`chat-repl.ts`, non-TTY stdin). The pipe-driven efficacy test exercised the
+HEADLESS path, which never reaches the interactive handler's grounding; and the
+interactive path can't be pipe-tested (needs a TTY / the ink-testing-library
+harness). So a reliable fix must inject grounding into BOTH paths and verify each
+(the interactive one via the Ink test harness, not a pipe), ideally routing a
+confident factual turn through the ask path's structured generation. A careful,
+multi-path, crown-jewel effort — not an autonomous one-shot.
+
 ## Next direction
 
 Per 진안 (2026-06-05): lean harder into **biology / life-sciences / biotech** —
