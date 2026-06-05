@@ -9,9 +9,10 @@
  * outbound-safety approval gate applies here.
  */
 
-import { resolveContactsFile } from "@muse/autoconfigure";
+import { resolveContactsFile, resolveNotesDir } from "@muse/autoconfigure";
 import { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAtRest, isContactsEncrypted, linkContacts, queryContacts, resolveContact, resolveUpcomingBirthdays, type Contact } from "@muse/mcp";
 
+import { relatedByCooccurrence } from "./contact-cooccurrence.js";
 import { findDuplicateContacts, formatDuplicateContacts } from "./contact-dupes.js";
 import { createRunId } from "@muse/shared";
 import type { Command } from "commander";
@@ -21,6 +22,18 @@ import type { ProgramIO } from "./program.js";
 
 function contactsFile(): string {
   return resolveContactsFile(process.env as Record<string, string | undefined>);
+}
+
+/** Read every note body from the local notes dir (best-effort; an unreadable note is skipped). */
+async function readNoteBodies(dir: string): Promise<string[]> {
+  const { LocalDirNotesProvider } = await import("@muse/mcp");
+  const provider = new LocalDirNotesProvider({ notesDir: dir });
+  const bodies: string[] = [];
+  for (const entry of await provider.list()) {
+    const read = await provider.read(entry.id);
+    if (read?.body) bodies.push(read.body);
+  }
+  return bodies;
 }
 
 function describeContact(contact: Contact): string {
@@ -327,6 +340,74 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
         return;
       }
       io.stdout(formatContactNetwork(resolution.contact.name, buildContactNetwork(all, resolution.contact)));
+    });
+
+  contacts
+    .command("related")
+    .description("Who you mention ALONGSIDE someone in your notes — inferred relationship edges by PMI co-occurrence (Church & Hanks 1990), the discovered sibling of the explicit `contacts link`. Read-only, deterministic, no model. e.g. `muse contacts related Sarah`")
+    .argument("<name...>", "Name or alias of the person, e.g. 'Sarah' or 'Sarah Kim'")
+    .option("--min-shared <n>", "Min notes in common to count as an edge (default 1)")
+    .option("--limit <n>", "Max related people to show (default 10)")
+    .option("--json", "Emit a structured payload")
+    .action(async (nameParts: readonly string[], options: { readonly minShared?: string; readonly limit?: string; readonly json?: boolean }) => {
+      const query = nameParts.join(" ").trim();
+      if (query.length === 0) {
+        io.stderr("usage: muse contacts related <name>\n");
+        process.exitCode = 1;
+        return;
+      }
+      const parsePositiveInt = (raw: string | undefined, label: string): number | undefined => {
+        if (raw === undefined) return undefined;
+        const parsed = Number(raw.trim());
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          throw new Error(`${label} must be a positive number (got '${raw}')`);
+        }
+        return Math.trunc(parsed);
+      };
+      const minShared = parsePositiveInt(options.minShared, "--min-shared");
+      const limit = parsePositiveInt(options.limit, "--limit");
+
+      const all = await queryContacts(contactsFile());
+      const resolution = resolveContact(all, query);
+      if (resolution.status === "ambiguous") {
+        io.stderr(`'${query}' is ambiguous — did you mean one of:\n`);
+        for (const match of resolution.matches) io.stderr(`  - ${describeContact(match)}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      if (resolution.status !== "resolved") {
+        io.stderr(`No contact matches '${query}'. Add one with \`muse contacts add\`.\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const target = resolution.contact;
+      const noteBodies = await readNoteBodies(resolveNotesDir(process.env as Record<string, string | undefined>));
+      const related = relatedByCooccurrence({
+        contacts: all.map((c) => ({ aliases: c.aliases, id: c.id, name: c.name })),
+        limit,
+        minShared,
+        noteBodies,
+        targetId: target.id
+      });
+      const byId = new Map(all.map((c) => [c.id, c]));
+
+      if (options.json) {
+        io.stdout(`${JSON.stringify({
+          person: target.name,
+          related: related.map((r) => ({ name: byId.get(r.id)?.name ?? r.id, pmi: Number(r.pmi.toFixed(3)), sharedNotes: r.sharedNotes }))
+        }, null, 2)}\n`);
+        return;
+      }
+      if (related.length === 0) {
+        io.stdout(`(no co-mentions for ${target.name} in your notes — relationships here are inferred from notes that name both people)\n`);
+        return;
+      }
+      io.stdout(`🔗 People you mention alongside ${target.name} in your notes:\n`);
+      for (const r of related) {
+        const c = byId.get(r.id);
+        const role = c?.relationship ? ` [your ${c.relationship}]` : "";
+        io.stdout(`  - ${c?.name ?? r.id}${role} — ${r.sharedNotes.toString()} note${r.sharedNotes === 1 ? "" : "s"} together\n`);
+      }
     });
 
   contacts

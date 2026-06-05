@@ -650,6 +650,32 @@ P43 bullet is unbuilt.
   glues onto the first sentence. Honest scope: file input (a `--url` / stdin source and a per-note
   `muse notes summarize` are natural follow-ons); English stopword list. (91c9b1ee)
 
+- [x] **P43-14 `muse contacts related <name>` — INFERRED relationship edges: who you mention
+  ALONGSIDE someone in your notes, ranked so a specific association beats a person you mention
+  everywhere.** A genuinely-new "knowing-you" capability (B0's named example, after P43 close-the-loop
+  completed and the build order reached perceive/act growth) — Muse DISCOVERS your social graph from how
+  you write, the inferred sibling of the EXPLICIT `muse contacts link` / `network`. The mechanism:
+  POINTWISE MUTUAL INFORMATION (Church & Hanks, "Word association norms, mutual information, and
+  lexicography", Computational Linguistics 16(1):22-29, 1990) — PMI(A,B) = log2( P(A,B) / (P(A)·P(B)) ),
+  how much MORE two people co-occur than chance. PMI (not raw co-mention count) is the right signal: it
+  surfaces a SPECIFIC bond and demotes a person mentioned in nearly every note (whose co-occurrence with
+  anyone is unremarkable). Pure `apps/cli/src/contact-cooccurrence.ts` — `buildSurfaceForms` (match a
+  contact by full name + aliases + distinctive first name, DROPPING an ambiguous first name shared by two
+  contacts so a mention is never mis-attributed), `mentionedContactIds` (whole-word, Unicode-safe),
+  `computeCooccurrence`, `relatedContactsByPmi`, `relatedByCooccurrence` — wired as `muse contacts
+  related` (`--min-shared`, `--limit`, `--json`) reading every note body via the local provider.
+  Deterministic, no model, read-only. Verified deterministically AND live: 8 unit tests (surface forms
+  incl. ambiguous-first-name drop; whole-word matching ignores substrings like "Minata"≠"Mina"; PMI ranks
+  the specific co-mention ABOVE the everywhere-person; reports the shared count; honours min-shared; []
+  for an unmentioned target / empty corpus — apps/cli/src/contact-cooccurrence.test.ts) + `pnpm lint` 0/0
+  + `@muse/shared` byte-hygiene 30 + cli 2211 + 0 raw control bytes (the pair-key NUL written as the
+  `\u0000` escape) + a LIVE run on the loop PC: 4 seeded contacts + 6 notes where Sarah+Tom share 3 notes,
+  Sarah+Pat share 4 but Pat is named in every note → `muse contacts related Sarah` ranked **Tom Lee (3
+  notes, PMI 0.585) ABOVE Pat Doe (4 notes, PMI 0.0)** — PMI correctly demoted the ubiquitous Pat despite
+  his HIGHER raw count, with Mina (one-off, negative PMI) last. Honest scope: lexical name-matching over
+  the known-contact set (best-effort inference, advisory); a whole-graph `contacts related --all` view is
+  a follow-on. (565b2e40)
+
 - [x] **P43-7 The evening recap's "Coming up" now includes tomorrow's CALENDAR EVENTS
   and BIRTHDAYS — your `muse recap` forward view finally matches the brief + `muse today`.**
   The evening recap (P43-4) is the retrospective sibling of the morning brief, and its
