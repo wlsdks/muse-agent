@@ -2,11 +2,13 @@ import AppKit
 import MuseDesktopCore
 
 /// The always-on-top, transparent, draggable companion window. Clicking the
-/// Muse reveals a text field; submitting it runs the local Muse, shows the
-/// cited answer in a speech bubble, and reads it aloud while she mouths along.
+/// Muse lets you speak (or type) a question; she runs the local Muse, shows the
+/// cited answer in a scrollable speech bubble, and reads it aloud while she
+/// mouths along.
 final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     private let character = CharacterView(frame: NSRect(x: 0, y: 0, width: 132, height: 150))
-    private let bubble = NSTextField(labelWithString: "")
+    private let bubbleScroll = NSScrollView()
+    private let bubbleText = NSTextView()
     private let input = NSTextField()
     private let speaker: Speaker = SpeakerFactory.make()
     private let speech = SpeechCapture()
@@ -26,31 +28,45 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
             defer: false
         )
         isFloatingPanel = true
-        level = .floating
+        // Always on top of normal app windows, on EVERY Space, and over a
+        // full-screen app — a companion that's always there (Jinan: "항상 떠있게").
+        level = .statusBar
+        hidesOnDeactivate = false
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         isMovableByWindowBackground = true // drag anywhere to reposition
 
         let content = NSView(frame: NSRect(x: 0, y: 0, width: 360, height: 300))
         contentView = content
 
-        // Speech bubble — a soft rounded card above the Muse.
-        bubble.frame = NSRect(x: 16, y: 176, width: 328, height: 108)
-        bubble.maximumNumberOfLines = 6
-        bubble.lineBreakMode = .byWordWrapping
-        bubble.font = NSFont.systemFont(ofSize: 13)
-        bubble.textColor = NSColor(calibratedRed: 0.16, green: 0.16, blue: 0.2, alpha: 1)
-        bubble.drawsBackground = true
-        bubble.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.94)
-        bubble.isBordered = false
-        bubble.wantsLayer = true
-        bubble.layer?.cornerRadius = 14
-        bubble.layer?.borderWidth = 1
-        bubble.layer?.borderColor = NSColor(calibratedRed: 0.90, green: 0.74, blue: 0.36, alpha: 0.6).cgColor
-        bubble.stringValue = "Hi, I'm Muse. Click me and ask about your notes."
-        content.addSubview(bubble)
+        // Speech bubble — a scrollable rounded card so a long cited answer isn't
+        // silently truncated (it scrolls instead).
+        bubbleScroll.frame = NSRect(x: 16, y: 176, width: 328, height: 108)
+        bubbleScroll.hasVerticalScroller = true
+        bubbleScroll.drawsBackground = true
+        bubbleScroll.backgroundColor = NSColor(calibratedWhite: 1, alpha: 0.94)
+        bubbleScroll.wantsLayer = true
+        bubbleScroll.layer?.cornerRadius = 14
+        bubbleScroll.layer?.borderWidth = 1
+        bubbleScroll.layer?.borderColor = NSColor(calibratedRed: 0.90, green: 0.74, blue: 0.36, alpha: 0.6).cgColor
+
+        bubbleText.isEditable = false
+        bubbleText.isSelectable = true
+        bubbleText.drawsBackground = false
+        bubbleText.font = NSFont.systemFont(ofSize: 13)
+        bubbleText.textColor = NSColor(calibratedRed: 0.16, green: 0.16, blue: 0.2, alpha: 1)
+        bubbleText.textContainerInset = NSSize(width: 6, height: 6)
+        bubbleText.minSize = NSSize(width: 0, height: 0)
+        bubbleText.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        bubbleText.isVerticallyResizable = true
+        bubbleText.isHorizontallyResizable = false
+        bubbleText.autoresizingMask = [.width]
+        bubbleText.textContainer?.widthTracksTextView = true
+        bubbleScroll.documentView = bubbleText
+        content.addSubview(bubbleScroll)
+        setBubble("Hi, I'm Muse. Click me and ask about your notes.")
 
         character.frame = NSRect(x: 18, y: 18, width: 132, height: 150)
         character.sprite = SpriteLibrary.named(ProcessInfo.processInfo.environment["MUSE_DESKTOP_CHARACTER"])
@@ -64,35 +80,45 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         input.bezelStyle = .roundedBezel
         content.addSubview(input)
 
-        positionAtScreenBottomRight()
+        positionAtBottomRight()
     }
 
-    private func positionAtScreenBottomRight() {
-        guard let screen = NSScreen.main else { return }
+    private func setBubble(_ text: String) {
+        bubbleText.string = text
+        bubbleText.scrollToBeginningOfDocument(nil)
+    }
+
+    /// Position at the bottom-right of the screen the CURSOR is on (not always
+    /// the main display) so she lands on the user's active monitor.
+    private func positionAtBottomRight() {
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
+        guard let visible = screen?.visibleFrame else { return }
         let margin: CGFloat = 24
-        let visible = screen.visibleFrame
         setFrameOrigin(NSPoint(x: visible.maxX - frame.width - margin, y: visible.minY + margin))
     }
 
     /// Click → talk: try on-device voice; if it's unavailable (e.g. `swift run`
     /// with no .app bundle, or permission denied) fall back to typing. A second
-    /// click while listening cancels.
+    /// click while listening cancels. Ignored while busy or while she's speaking.
     private func handleClick() {
-        guard !busy else { return }
+        guard !busy, character.state != .speaking else { return }
         if listening { speech.cancel(); listening = false; character.state = .idle; return }
+        // Set listening synchronously (before the async Task) so a rapid second
+        // click reliably hits the cancel branch instead of starting twice.
+        listening = true
+        character.state = .listening
+        setBubble("Listening… speak your question.")
         Task { [weak self] in
             guard let self else { return }
-            self.listening = true
-            self.character.state = .listening
-            self.bubble.stringValue = "Listening… speak your question."
             do {
                 try await self.speech.start(
-                    onPartial: { [weak self] text in self?.bubble.stringValue = text.isEmpty ? "Listening…" : text },
+                    onPartial: { [weak self] text in self?.setBubble(text.isEmpty ? "Listening…" : text) },
                     onFinal: { [weak self] text in self?.onHeard(text) }
                 )
             } catch SpeechCapture.CaptureError.offDeviceUnavailable {
                 self.listening = false
-                self.bubble.stringValue = "On-device speech isn't available for your language — type instead."
+                self.setBubble("On-device speech isn't available for your language — type instead.")
                 self.revealInput()
             } catch {
                 self.listening = false
@@ -104,7 +130,11 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     private func onHeard(_ text: String) {
         listening = false
         let q = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if q.isEmpty { character.state = .idle; bubble.stringValue = "I didn't catch that — click me to try again."; return }
+        if q.isEmpty {
+            character.state = .idle
+            setBubble("I didn't catch that — click me to try again.")
+            return
+        }
         submit(q)
     }
 
@@ -131,7 +161,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         input.isHidden = true
         input.stringValue = ""
         character.state = .thinking
-        bubble.stringValue = "…"
+        setBubble("…")
 
         Task { [weak self] in
             let result: Result<String, MuseBridgeError>
@@ -145,7 +175,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
             let presentation = MusePresenter.present(result)
             await MainActor.run {
                 guard let self else { return }
-                self.bubble.stringValue = presentation.bubbleText
+                self.setBubble(presentation.bubbleText)
                 self.busy = false
                 if let speech = presentation.speechText, !self.voiceMuted {
                     self.character.state = .speaking

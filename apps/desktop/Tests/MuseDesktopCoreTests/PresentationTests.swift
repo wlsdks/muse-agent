@@ -123,3 +123,23 @@ final class VoiceGateTests: XCTestCase {
         XCTAssertEqual(decide(onDevice: false), .refuseOffDevice)
     }
 }
+
+final class SpriteValidationTests: XCTestCase {
+    private func sprite(closedEyes: String? = nil, openMouth: String? = nil, eyeRow: Int? = nil, mouthRow: Int? = nil) -> Sprite {
+        Sprite(name: "t", width: 3, height: 2, rows: ["abc", "abc"],
+               palette: [PaletteEntry(key: "a", hex: "#fff"), PaletteEntry(key: "b", hex: "#000"), PaletteEntry(key: "c", hex: "#0f0")],
+               eyeRowIndex: eyeRow, closedEyesRow: closedEyes, mouthRowIndex: mouthRow, openMouthRow: openMouth)
+    }
+
+    func testRejectsMismatchedAnimationOverrideRowWidths() {
+        XCTAssertFalse(sprite(closedEyes: "ab").isRectangular())   // 2 != width 3
+        XCTAssertFalse(sprite(openMouth: "abcd").isRectangular())  // 4 != width 3
+        XCTAssertTrue(sprite(closedEyes: "aaa", openMouth: "bbb").isRectangular()) // both width 3 → ok
+    }
+
+    func testRejectsOutOfRangeAnimationRowIndices() {
+        XCTAssertFalse(sprite(eyeRow: 5).isRectangular())   // >= height 2
+        XCTAssertFalse(sprite(mouthRow: -1).isRectangular())
+        XCTAssertTrue(sprite(eyeRow: 0, mouthRow: 1).isRectangular())
+    }
+}

@@ -4,10 +4,14 @@ import MuseDesktopCore
 
 let arguments = CommandLine.arguments
 
+/// Keep a user-supplied pixel scale in a sane range so a typo can't request a
+/// multi-gigabyte bitmap (or a zero/negative one).
+func clampScale(_ value: Int) -> Int { min(max(value, 1), 256) }
+
 // Headless preview of the ACTIVE Muse: `MuseDesktop --render <png> [scale]`.
 if let flag = arguments.firstIndex(of: "--render"), flag + 1 < arguments.count {
     let path = arguments[flag + 1]
-    let scale = (flag + 2 < arguments.count ? Int(arguments[flag + 2]) : nil) ?? 18
+    let scale = clampScale((flag + 2 < arguments.count ? Int(arguments[flag + 2]) : nil) ?? 18)
     do {
         let sprite = SpriteLibrary.named(ProcessInfo.processInfo.environment["MUSE_DESKTOP_CHARACTER"])
         try SpriteRenderer.renderPNG(sprite, to: URL(fileURLWithPath: path), scale: scale)
@@ -22,7 +26,7 @@ if let flag = arguments.firstIndex(of: "--render"), flag + 1 < arguments.count {
 if let flag = arguments.firstIndex(of: "--render-json"), flag + 2 < arguments.count {
     let jsonPath = arguments[flag + 1]
     let pngPath = arguments[flag + 2]
-    let scale = (flag + 3 < arguments.count ? Int(arguments[flag + 3]) : nil) ?? 18
+    let scale = clampScale((flag + 3 < arguments.count ? Int(arguments[flag + 3]) : nil) ?? 18)
     do {
         let sprite = try Sprite.decode(Data(contentsOf: URL(fileURLWithPath: jsonPath)))
         guard sprite.isRectangular() else {

@@ -21,6 +21,9 @@ final class SpeechCapture {
 
     private let engine = AVAudioEngine()
     private let recognizer: SFSpeechRecognizer?
+    // `request` is touched by the audio-thread tap AND the main thread (finish),
+    // so every access is guarded by `lock` to avoid a data race / use-after-end.
+    private let lock = NSLock()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var silenceTimer: Timer?
@@ -47,14 +50,13 @@ final class SpeechCapture {
 
         let speechOK = await requestSpeechAuth()
         let micOK = await requestMicAuth()
-        let decision = VoiceGate.decide(
+        switch VoiceGate.decide(
             usageStringsPresent: true,
             speechAuthorized: speechOK,
             micAuthorized: micOK,
             recognizerAvailable: recognizer?.isAvailable ?? false,
             supportsOnDevice: recognizer?.supportsOnDeviceRecognition ?? false
-        )
-        switch decision {
+        ) {
         case .fallbackToText: throw CaptureError.unavailable
         case .refuseOffDevice: throw CaptureError.offDeviceUnavailable
         case .listen: break
@@ -68,14 +70,24 @@ final class SpeechCapture {
         let req = SFSpeechAudioBufferRecognitionRequest()
         req.requiresOnDeviceRecognition = true
         req.shouldReportPartialResults = true
-        request = req
+        lock.lock(); request = req; lock.unlock()
 
         let input = engine.inputNode
         input.installTap(onBus: 0, bufferSize: 1024, format: input.outputFormat(forBus: 0)) { [weak self] buffer, _ in
-            self?.request?.append(buffer)
+            guard let self else { return }
+            self.lock.lock(); let r = self.request; self.lock.unlock()
+            r?.append(buffer)
         }
         engine.prepare()
-        try engine.start()
+        do {
+            try engine.start()
+        } catch {
+            // Partial-setup cleanup: remove the tap + drop the request so a retry is clean.
+            input.removeTap(onBus: 0)
+            lock.lock(); request = nil; lock.unlock()
+            self.onPartial = nil; self.onFinal = nil
+            throw error
+        }
         running = true
 
         task = recognizer.recognitionTask(with: req) { [weak self] result, error in
@@ -91,8 +103,9 @@ final class SpeechCapture {
             }
         }
         DispatchQueue.main.async { [weak self] in
-            self?.resetSilenceTimer()
-            self?.maxTimer = Timer.scheduledTimer(withTimeInterval: self?.maxDuration ?? 55, repeats: false) { _ in
+            guard let self, self.running else { return }
+            self.resetSilenceTimer()
+            self.maxTimer = Timer.scheduledTimer(withTimeInterval: self.maxDuration, repeats: false) { [weak self] _ in
                 DispatchQueue.main.async { self?.finish() }
             }
         }
@@ -112,11 +125,13 @@ final class SpeechCapture {
         running = false
         silenceTimer?.invalidate(); silenceTimer = nil
         maxTimer?.invalidate(); maxTimer = nil
-        engine.inputNode.removeTap(onBus: 0)
+        // Drop the request FIRST (under lock) so a concurrent tap reads nil and
+        // stops appending; only then stop the engine + remove the tap + endAudio.
+        lock.lock(); let req = request; request = nil; lock.unlock()
         engine.stop()
-        request?.endAudio()
+        engine.inputNode.removeTap(onBus: 0)
+        req?.endAudio()
         task?.cancel()
-        request = nil
         task = nil
         let text = lastText
         let callback = onFinal
@@ -124,6 +139,8 @@ final class SpeechCapture {
         onPartial = nil
         if deliver { callback?(text) }
     }
+
+    deinit { if running { finish(deliver: false) } }
 
     private func requestSpeechAuth() async -> Bool {
         await withCheckedContinuation { cont in

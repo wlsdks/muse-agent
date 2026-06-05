@@ -44,8 +44,13 @@ PLIST
 
 # Ad-hoc sign so TCC has a code identity to attribute the grant to (a Developer
 # ID signature is better for a stable grant across rebuilds; ad-hoc is fine for
-# local personal use).
-codesign --force --sign - "$APP" >/dev/null 2>&1 || echo "(codesign ad-hoc skipped/failed — bundle still runs locally)"
+# local personal use). Validate the signature — an unsigned bundle still runs
+# but mic/speech (TCC) won't work, so surface that loudly rather than silently.
+if codesign --force --sign - "$APP" >/dev/null 2>&1 && codesign --verify --deep "$APP" >/dev/null 2>&1; then
+  echo "code-signed (ad-hoc) — mic/speech permission can be granted"
+else
+  echo "WARNING: codesign failed — the bundle runs, but mic/speech (voice input) won't work until it's signed" >&2
+fi
 
 # Validate the plist so a typo can't silently break TCC.
 plutil -lint "$APP/Contents/Info.plist"

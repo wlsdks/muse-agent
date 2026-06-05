@@ -12,7 +12,9 @@ final class CharacterView: NSView {
     var state: State = .idle { didSet { needsDisplay = true } }
     var onClick: (() -> Void)?
     var sprite: Sprite = SpriteLibrary.default {
-        didSet { rebuildColorCache(); needsDisplay = true }
+        // Reset animation state on a swap, or the new sprite's eye/mouth rows get
+        // toggled at the old `tick` phase (stale blink/mouth on a different grid).
+        didSet { rebuildColorCache(); tick = 0; blinking = false; mouthOpen = false; needsDisplay = true }
     }
 
     private var tick = 0

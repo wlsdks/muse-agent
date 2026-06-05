@@ -53,9 +53,16 @@ public struct Sprite: Codable, Sendable, Equatable {
     }
 
     /// The grid must be a clean rectangle of the declared size or the art skews.
+    /// Also validates the optional animation override rows + indices, so a
+    /// bad blink/mouth row can't slip through the `--render-json` path either.
     public func isRectangular() -> Bool {
         guard width > 0, height > 0, rows.count == height else { return false }
-        return rows.allSatisfy { $0.count == width }
+        guard rows.allSatisfy({ $0.count == width }) else { return false }
+        if let closed = closedEyesRow, closed.count != width { return false }
+        if let open = openMouthRow, open.count != width { return false }
+        if let eye = eyeRowIndex, eye < 0 || eye >= height { return false }
+        if let mouth = mouthRowIndex, mouth < 0 || mouth >= height { return false }
+        return true
     }
 
     public static func decode(_ data: Data) throws -> Sprite {

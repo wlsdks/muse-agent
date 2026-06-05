@@ -71,8 +71,15 @@ public enum MuseBridge {
         process.standardError = stderr
 
         try process.run()
+        // Drain stderr concurrently: reading stdout to EOF first while the child
+        // fills (and blocks on) a full stderr pipe would deadlock both sides.
+        let group = DispatchGroup()
+        var errData = Data()
+        DispatchQueue.global(qos: .userInitiated).async(group: group) {
+            errData = stderr.fileHandleForReading.readDataToEndOfFile()
+        }
         let outData = stdout.fileHandleForReading.readDataToEndOfFile()
-        let errData = stderr.fileHandleForReading.readDataToEndOfFile()
+        group.wait()
         process.waitUntilExit()
 
         if process.terminationStatus != 0 {

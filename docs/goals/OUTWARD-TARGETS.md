@@ -1091,6 +1091,19 @@ user-verified — a window can't be auto-asserted headlessly).
   the voice-capable `.app` launch without crashing; `pnpm lint` 0/0. The live mic→transcribe→ask→speak loop
   is user-verified via `MuseDesktop.app` (one-time mic+speech grant). This COMPLETES the companion's core:
   a pretty, draggable, always-on-top Muse you summon (⌃⌥Space) and TALK to, fully local._
+- [x] **P45-6 The companion is ALWAYS-ON-TOP and hardened — a 28-agent adversarial review found 15 real
+  bugs, all fixed.** (ffb3c1c4) Always-on-top (Jinan "항상 떠있게"): `level = .statusBar` +
+  `hidesOnDeactivate = false` + `[canJoinAllSpaces, fullScreenAuxiliary, stationary, ignoresCycle]` — above
+  app windows, on every Space, over fullscreen. Bug fixes from a 6-lens review workflow (each finding
+  adversarially verified): CRITICAL — the AVAudioEngine tap data-race on `request` (NSLock-guarded; finish
+  drops the request under lock first, then stop→removeTap→endAudio) and click-during-speech starting a 2nd
+  capture (guard `state != .speaking`); HIGH — SpeechCapture deinit, AVSpeechSynthesizer wrong-utterance
+  callback (currentUtterance-guarded), partial-init tap leak (cleanup+rethrow), handleClick double-click
+  race (listening set synchronously), multi-monitor off-screen (screen under cursor), long-answer
+  truncation (scrollable NSTextView bubble), unsafe render scale (clamped), codesign now verified; MEDIUM —
+  MuseBridge concurrent stdout/stderr drain (sequential read could deadlock on a full stderr pipe),
+  Sprite.isRectangular validates override rows. Verified: `swift build` + `swift test` 24 (was 22) + launch
+  + `pnpm lint` 0/0._
 
 **P44 — Trust: encryption at rest (the discretion refusal, made real against
 storage access — not just network egress).** "It can't tell anyone" was true
