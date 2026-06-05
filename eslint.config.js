@@ -26,7 +26,8 @@ export default tseslint.config(
       "**/test-results/**",
       "**/scripts/**",
       "harness/runner/**",
-      "apps/web/**"
+      "apps/web/**",
+      "apps/desktop/**"
     ]
   },
   js.configs.recommended,

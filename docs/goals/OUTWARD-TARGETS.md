@@ -990,6 +990,36 @@ P43 bullet is unbuilt.
   the same completed task was invisible and the recap would have read "Quiet day — nothing
   logged yet". (dd54f37b)
 
+**P45 — Desktop presence: a native macOS Muse companion (human-directed by
+Jinan 2026-06-05).** Muse has been CLI-only; Jinan asked for an always-on-top,
+draggable, click-to-talk pixel-art Muse living on the macOS screen — the FRONT
+DOOR made a felt, visible presence (a differentiator neither hermes nor openclaw
+has — both are headless). Stack chosen by Jinan: native Swift + AppKit NSPanel
+(over Tauri/Electron) for the best macOS integration. Each slice shares the SAME
+local runtime via the `muse` CLI (no second agent; local-only intact) and is
+verified by `swift build` + `swift test` (the GUI's visual/drag behaviour is
+user-verified — a window can't be auto-asserted headlessly).
+
+- [x] **P45-1 A native macOS floating companion exists: `cd apps/desktop && swift run MuseDesktop` opens
+  an always-on-top, transparent, DRAGGABLE pixel-art Muse bottom-right; click it → a text field → ask
+  about your notes → the cited answer in a speech bubble.** (937baa66) Slice 1 of the desktop-presence
+  subproject. It is a THIN window over the same local runtime — `MuseBridge` shells out to `muse ask
+  --local`, so cited recall + the refusal floor + the local-only guarantee hold end-to-end (no second
+  agent implementation). New surface `apps/desktop/` (Swift Package: `MuseDesktopCore` headless bridge +
+  `MuseDesktop` AppKit app + tests). `FloatingPanel` is a `.nonactivatingPanel` `.borderless` NSPanel at
+  `.floating` level, `isOpaque=false` + clear background + `isMovableByWindowBackground` (drag anywhere to
+  reposition), `.canJoinAllSpaces`; `main` runs an `.accessory` NSApplication (no Dock icon).
+  `CharacterView` draws a placeholder 12×12 pixel mascot (Core Graphics, anti-aliasing off) with
+  idle/listening/thinking/speaking states wired to the agent's real state (a real sprite sheet is a later
+  slice). Verified: `swift build` compiles the AppKit app + core, `swift test` 5 `MuseDesktopCore` tests
+  green (the invocation is `--local` BY CONSTRUCTION so the companion can NEVER reach cloud; `MUSE_BIN`
+  override; ANSI/whitespace cleaning; empty-query throws without spawning), the built binary launches
+  without crashing (event loop alive), and `pnpm lint` stays 0/0 (Swift ignored, the TS workspace
+  untouched — `apps/desktop` has no package.json so pnpm skips it, added to the eslint ignore). The
+  window's visual + drag + click-to-ask behaviour is user-verified via `swift run MuseDesktop`. Honest
+  scope: voice (click → push-to-talk through the existing local `@muse/voice` whisper.cpp + Piper) is
+  slice 2; a real pixel sprite + global hotkey + menu-bar is slice 3; signed `.app` packaging is later._
+
 **P44 — Trust: encryption at rest (the discretion refusal, made real against
 storage access — not just network egress).** "It can't tell anyone" was true
 against the network (cloud egress refused in code) but FALSE against the disk:
