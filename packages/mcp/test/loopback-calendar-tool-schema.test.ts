@@ -39,6 +39,17 @@ describe("calendar loopback tools meet the one-shot tool-calling bar", () => {
     expect(props.title.description ?? "").toContain("e.g.");
     expect(props.startsAtIso.description ?? "").toMatch(/tomorrow 3pm|ISO/u);
   });
+
+  it("calendar add/list own the event NOUN keywords so '일정 추가/보여줘' isn't hijacked by tasks/reminders", () => {
+    // "내일 3시 일정 추가해줘" was creating a TASK because calendar.add had no
+    // keywords (score 0) and tasks.add matched "추가" (score 1). The event NOUN
+    // (일정/캘린더/event) must live on the calendar tools so they outrank the
+    // other "add" domains for calendar intent.
+    const server = createCalendarMcpServer({ registry: stubRegistry });
+    const kwOf = (name: string) => ((server.tools.find((t) => t.name === name) as { keywords?: string[] })?.keywords ?? []);
+    for (const w of ["일정", "캘린더", "추가"]) expect(kwOf("add")).toContain(w);
+    for (const w of ["일정", "캘린더", "보여줘"]) expect(kwOf("list")).toContain(w);
+  });
 });
 
 describe("calendar add result carries LOCAL-time fields so the model echoes the time you asked for, not the UTC ISO", () => {

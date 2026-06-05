@@ -87,9 +87,12 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
       },
       {
         description:
-          "List events between `fromIso` and `toIso` (ISO 8601 timestamps). " +
+          "List the user's calendar EVENTS between `fromIso` and `toIso` (ISO 8601 timestamps). " +
           "If `providerId` is omitted, fans out across all providers. " +
-          "Defaults: from = now, to = +30 days.",
+          "Defaults: from = now, to = +30 days. " +
+          "USE WHEN the user asks what's on their schedule ('이번 주 일정 보여줘', '내 캘린더 알려줘', \"what's on my calendar\"); " +
+          "NOT for to-dos (tasks `list`) or reminders (reminders `list`).",
+        keywords: ["일정", "캘린더", "calendar", "event", "events", "schedule", "약속", "미팅", "meeting", "보여줘", "목록", "list", "알려줘"],
         execute: async (args): Promise<JsonObject> => {
           const fromIso = readString(args, "fromIso");
           const toIso = readString(args, "toIso");
@@ -232,7 +235,10 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           "Korean: '내일 오후 3시', '오늘 14시 30분', '2시간 후', '다음 주 금요일', '다음 주 월요일 오전 9시'. " +
           "Pass the user's natural-language phrase directly (in their own language) — the server resolves it against the current local time. " +
           "If `providerId` is omitted, the primary (first registered) provider is used. " +
-          "When you confirm the event back to the user, state the time using the result's `startsAtLocal` / `endsAtLocal` fields (the local-timezone time, e.g. 'Fri, Jun 5, 2026, 3:00 PM'), NEVER the raw ISO `startsAtIso` / `endsAtIso`, which are UTC and read back the wrong hour.",
+          "When you confirm the event back to the user, state the time using the result's `startsAtLocal` / `endsAtLocal` fields (the local-timezone time, e.g. 'Fri, Jun 5, 2026, 3:00 PM'), NEVER the raw ISO `startsAtIso` / `endsAtIso`, which are UTC and read back the wrong hour. " +
+          "USE WHEN the user schedules a calendar EVENT / appointment / meeting at a date+time ('내일 오후 3시 팀 미팅 일정 추가해줘', 'schedule a dentist appointment Friday 2pm'); " +
+          "you MUST call this to actually create it — never just reply that it was added. NOT for a plain to-do (tasks `add`) or a timed alert (reminders `add`).",
+        keywords: ["일정", "캘린더", "calendar", "event", "meeting", "미팅", "약속", "appointment", "schedule", "스케줄", "추가", "add", "등록", "잡아"],
         execute: async (args): Promise<JsonObject> => {
           const title = readString(args, "title")?.trim();
           const startsAtIso = readString(args, "startsAtIso");
