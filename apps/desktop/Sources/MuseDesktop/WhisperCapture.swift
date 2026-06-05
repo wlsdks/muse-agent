@@ -18,7 +18,20 @@ final class WhisperCapture {
     private let endSilence: TimeInterval = 1.4   // stop this long after speech stops
     private let noSpeechGrace: TimeInterval = 7   // wait this long for speech to start
     private let maxDuration: TimeInterval = 45
-    private let rmsThreshold: Float = 0.012
+    private let rmsThreshold: Float = 0.005 // lower = more sensitive (quiet mics)
+    private var maxRMS: Float = 0
+    private var startedAt = Date()
+
+    /// Appends a line to ~/.muse/voice-debug.log so a real mic→whisper run can be
+    /// diagnosed (did the mic capture audio? did whisper run? what came back?).
+    static func log(_ message: String) {
+        let line = "[\(ISO8601DateFormatter().string(from: Date()))] \(message)\n"
+        let url = URL(fileURLWithPath: (NSHomeDirectory() as NSString).appendingPathComponent(".muse/voice-debug.log"))
+        if let data = line.data(using: .utf8) {
+            if let handle = try? FileHandle(forWritingTo: url) { handle.seekToEndOfFile(); handle.write(data); try? handle.close() }
+            else { try? data.write(to: url) }
+        }
+    }
 
     private let engine = AVAudioEngine()
     private let lock = NSLock()
@@ -68,9 +81,12 @@ final class WhisperCapture {
         guard Self.isAvailable else { throw CaptureError.unavailable }
         self.onDone = onDone
         spoke = false
+        maxRMS = 0
+        startedAt = Date()
 
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
+        Self.log("start: inputFormat sampleRate=\(format.sampleRate) ch=\(format.channelCount) lang=\(languageCode) micAuth=\(AVCaptureDevice.authorizationStatus(for: .audio).rawValue)")
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("muse-voice-\(UUID().uuidString).wav")
         rawURL = url
         file = try AVAudioFile(forWriting: url, settings: format.settings)
@@ -90,7 +106,7 @@ final class WhisperCapture {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.running else { return }
             self.noSpeechTimer = Timer.scheduledTimer(withTimeInterval: self.noSpeechGrace, repeats: false) { [weak self] _ in
-                self?.stop(transcribe: false)
+                self?.stop(transcribe: true) // transcribe anyway — let whisper decide, don't drop on a missed RMS
             }
             self.maxTimer = Timer.scheduledTimer(withTimeInterval: self.maxDuration, repeats: false) { [weak self] _ in
                 self?.stop(transcribe: true)
@@ -106,9 +122,10 @@ final class WhisperCapture {
         var sum: Float = 0
         for i in 0..<n { sum += data[i] * data[i] }
         let rms = (sum / Float(n)).squareRoot()
-        if rms > rmsThreshold {
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.running else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.running else { return }
+            if rms > self.maxRMS { self.maxRMS = rms }
+            if rms > self.rmsThreshold {
                 self.spoke = true
                 self.noSpeechTimer?.invalidate(); self.noSpeechTimer = nil
                 self.resetSilenceTimer()
@@ -135,8 +152,12 @@ final class WhisperCapture {
         let callback = onDone
         onDone = nil
         let lang = languageCode
+        let wavSize = (url.flatMap { try? FileManager.default.attributesOfItem(atPath: $0.path)[.size] as? Int }) ?? 0
+        Self.log("stop: transcribe=\(transcribe) spoke=\(spoke) maxRMS=\(maxRMS) dur=\(String(format: "%.1f", Date().timeIntervalSince(startedAt)))s wavBytes=\(wavSize)")
 
-        guard transcribe, spoke, let url else {
+        // Transcribe whatever was recorded (whisper handles silence by returning
+        // empty) — don't drop it just because the RMS gate didn't trip.
+        guard transcribe, let url else {
             if let url { try? FileManager.default.removeItem(at: url) }
             DispatchQueue.main.async { callback?("") }
             return
@@ -158,10 +179,13 @@ final class WhisperCapture {
             try? FileManager.default.removeItem(at: wav16)
             try? FileManager.default.removeItem(atPath: outBase + ".txt")
         }
-        runProcess("/usr/bin/afconvert", ["-f", "WAVE", "-d", "LEI16@16000", "-c", "1", rawWav.path, wav16.path])
-        runProcess(binary, ["-m", modelPath(), "-f", wav16.path, "-nt", "-l", lang, "-otxt", "-of", outBase])
+        let afStatus = runProcess("/usr/bin/afconvert", ["-f", "WAVE", "-d", "LEI16@16000", "-c", "1", rawWav.path, wav16.path])
+        let wav16Size = (try? FileManager.default.attributesOfItem(atPath: wav16.path)[.size] as? Int) ?? 0
+        let wStatus = runProcess(binary, ["-m", modelPath(), "-f", wav16.path, "-nt", "-l", lang, "-otxt", "-of", outBase])
         let text = (try? String(contentsOfFile: outBase + ".txt", encoding: .utf8)) ?? ""
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        log("transcribe: afconvert=\(afStatus) wav16Bytes=\(wav16Size) whisper=\(wStatus) text='\(trimmed.prefix(80))'")
+        return trimmed
     }
 
     @discardableResult
