@@ -100,8 +100,21 @@ public enum MuseBridge {
 
         if process.terminationStatus != 0 {
             let err = String(data: errData, encoding: .utf8) ?? ""
+            logFailure(status: process.terminationStatus, stderr: err, stdout: String(data: outData, encoding: .utf8) ?? "")
             throw MuseBridgeError.cliFailed(status: process.terminationStatus, stderr: err)
         }
         return String(data: outData, encoding: .utf8) ?? ""
+    }
+
+    /// Record a failed CLI turn so the intermittent "couldn't reach Muse CLI"
+    /// error can be diagnosed (the real stderr is otherwise lost behind the
+    /// generic message). Appends to `~/.muse/desktop-bridge.log`.
+    private static func logFailure(status: Int32, stderr: String, stdout: String) {
+        let head = { (s: String) in String(s.prefix(500)).replacingOccurrences(of: "\n", with: " ") }
+        let line = "[\(ISO8601DateFormatter().string(from: Date()))] cliFailed status=\(status) stderr=\(head(stderr)) stdout=\(head(stdout))\n"
+        let url = URL(fileURLWithPath: (NSHomeDirectory() as NSString).appendingPathComponent(".muse/desktop-bridge.log"))
+        guard let data = line.data(using: .utf8) else { return }
+        if let handle = try? FileHandle(forWritingTo: url) { handle.seekToEndOfFile(); handle.write(data); try? handle.close() }
+        else { try? data.write(to: url) }
     }
 }

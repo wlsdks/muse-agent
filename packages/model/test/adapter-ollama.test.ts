@@ -76,6 +76,7 @@ describe("OllamaProvider — native /api/chat request wire shape", () => {
     );
     expect(lastBody()).toMatchInlineSnapshot(`
       {
+        "keep_alive": "30m",
         "messages": [
           {
             "content": "weather in Seoul?",

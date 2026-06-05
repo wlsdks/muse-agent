@@ -310,6 +310,10 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         ...(request.maxOutputTokens !== undefined ? { num_predict: request.maxOutputTokens } : {})
       },
       stream,
+      // Keep the model resident between turns so each request doesn't pay the
+      // multi-second reload, and so it's less likely to be evicted mid-session
+      // (an eviction surfaces to the user as a failed turn). Local-first speed.
+      keep_alive: "30m",
       // The point of this whole override: kill the chain-of-thought
       // emission for Qwen 3.5+ thinking models. Non-thinking models
       // ignore the field; cost is zero.
