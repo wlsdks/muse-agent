@@ -85,6 +85,7 @@ import { registerCheckinsCommands } from "./commands-checkins.js";
 import { registerUserCommands } from "./commands-user.js";
 import { registerPatternCommands } from "./commands-pattern.js";
 import { registerSearchCommand } from "./commands-search.js";
+import { registerCsvCommand } from "./commands-csv.js";
 import { registerFindCommand } from "./commands-find.js";
 import { registerHistoryCommand } from "./commands-history.js";
 import { registerOpenCommand } from "./commands-open.js";
@@ -491,6 +492,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerPatternCommands(program, io);
   registerSearchCommand(program, io);
   registerFindCommand(program, io);
+  registerCsvCommand(program, io);
   registerHistoryCommand(program, io);
   registerOpenCommand(program, io);
   registerNotesCommands(program, io, { apiRequest, writeOutput });

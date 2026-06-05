@@ -2441,6 +2441,35 @@ in the loop.
   the countdown ("203 days until …"), and the negative `"how long between meetings is healthy?"` → NOT
   hijacked (recall). (067e5ff7)
 
+- [x] **P41-36 `muse csv expenses.csv --sum amount --where category=food` — EXACT aggregates over
+  a CSV (sum / avg / min / max / count, with a row filter), deterministically, because the 8B can't
+  be trusted to add a column.** The deterministic-computation family (arithmetic P41-20, date P41-25,
+  date-diff P41-34, unit/percentage/etc.) handled scalar questions, but the most common real-data
+  arithmetic — totalling or counting rows of a CSV (expenses, an export, a list) — had no precise
+  path: `muse read`/`muse ask --file` only ingest a CSV as TEXT, so "what's the total amount?" went to
+  the 8B reading rows and adding them, exactly the multi-row arithmetic a small local model gets wrong.
+  Added a new `muse csv <file>` command (apps/cli/src/commands-csv.ts) backed by a pure engine
+  (apps/cli/src/csv-aggregate.ts): an RFC4180-ish `parseCsv` (quoted fields with embedded commas /
+  newlines, `""` escaped quotes, `\r\n`, blank-line drop), `resolveColumn` (case-insensitive),
+  `parseWhere` (`col=value`), tolerant `toNumber` (strips a leading currency symbol + thousands
+  commas, skips non-numeric), and `aggregate` computing sum/avg/min/max over a numeric column or count
+  over rows, after an optional `--where col=value` exact filter. Everything is fail-LOUD: an unknown
+  column (in the aggregate OR the filter), a `--where` without `=`, no aggregate flag, two aggregate
+  flags, an unreadable file, or a column with no numeric values each prints an actionable error and
+  exits 1 — never a silently-wrong number. Deterministic (no model, no network), read-only, `--json`
+  for the structured result. This is a Reasoning/precision slice — the tabular member of the
+  deterministic fast-path family, serving the human-directed small-model-maximization focus (a
+  deterministic harness for exactly what the small model gets wrong) — and a genuinely fresh axis
+  (structured-data) off the recently-churned tasks/felt/notes work. Verified deterministically AND
+  live: 12 unit tests (parseCsv quoted-comma/escaped-quote/CRLF/blank-line/empty; resolveColumn /
+  parseWhere / toNumber incl. currency+thousands; aggregate sum-skips-non-numeric, where-filter,
+  avg/min/max, count, unknown-column + no-numeric errors; formatter count + sum-with-skipped+where —
+  apps/cli/src/csv-aggregate.test.ts) + the full @muse/cli suite (189 files / 2150 tests) + tsc build +
+  `pnpm lint` 0/0 + 0 raw control bytes + a FULL LIVE run on the loop PC: an expenses.csv
+  (food 12.50, food 7.25, transport 30, food n/a) → `--sum amount` = 49.75 (1 non-numeric skipped),
+  `--sum amount --where category=food` = 19.75, `--count --where category=food` = 3, `--avg amount` =
+  16.583333, `--max amount` = 30, and `--sum nope` → "unknown column 'nope'" with exit 1. (3eff25ea)
+
 - [x] **P41-26 `muse ask "how many km in 5 miles?"` / "what's 100F in C?" now answers the EXACT
   conversion deterministically — the third deterministic "compute it, don't let the 8B guess" lever
   (after arithmetic P41-20 and dates P41-25), per the small-model-maximization focus.** The local
