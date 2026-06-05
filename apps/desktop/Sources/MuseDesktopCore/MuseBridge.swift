@@ -21,11 +21,19 @@ public enum MuseBridgeError: Error, Equatable {
 /// agent — NOT a second implementation — so cited recall, the refusal floor,
 /// and the local-only guarantee all come for free.
 public enum MuseBridge {
-    /// The CLI to invoke. `MUSE_BIN` overrides (an absolute path or a name on
-    /// PATH); defaults to `muse`.
+    /// The CLI to invoke. Resolution order:
+    ///  1. `MUSE_BIN` env override (an absolute path or a name on PATH) — for devs.
+    ///  2. The self-contained CLI binary bundled inside the .app, resolved
+    ///     RELATIVE to the bundle at runtime — so a moved/distributed .app still
+    ///     finds it (no baked absolute path, no external node / repo needed).
+    ///  3. `muse` on PATH.
     public static func defaultBin(environment: [String: String] = ProcessInfo.processInfo.environment) -> String {
         if let override = environment["MUSE_BIN"], !override.isEmpty {
             return override
+        }
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent("muse-cli-bin").path,
+           FileManager.default.isExecutableFile(atPath: bundled) {
+            return bundled
         }
         return "muse"
     }

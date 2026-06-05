@@ -21,19 +21,17 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$EXE"
 
-# A Finder/`open`-launched .app inherits a minimal PATH (no `muse`), so bake an
-# absolute CLI launcher + point MUSE_BIN at it via LSEnvironment, so clicking the
-# orb actually reaches the local Muse runtime.
+# SELF-CONTAINED: compile the Muse CLI into a single binary (bun runtime baked
+# in) and bundle it inside the .app, so the companion needs NO external node,
+# repo, or node_modules — it works wherever the .app is moved/distributed. The
+# Swift app resolves this binary relative to its bundle at runtime (MuseBridge),
+# so there is no baked absolute path to break on move.
 REPO="$(cd ../.. && pwd)"
-NODE="$(command -v node || echo /usr/bin/env\ node)"
-CLI="$REPO/apps/cli/dist/index.js"
-WRAPPER="$APP/Contents/Resources/muse-cli"
-cat > "$WRAPPER" <<WRAP
-#!/bin/bash
-exec "$NODE" "$CLI" "\$@"
-WRAP
-chmod +x "$WRAPPER"
-MUSE_BIN_ABS="$(cd "$APP/Contents/Resources" && pwd)/muse-cli"
+[ -f "$REPO/apps/cli/dist/index.js" ] || { echo "CLI dist missing — run 'pnpm --filter @muse/cli build' first" >&2; exit 1; }
+command -v bun >/dev/null || { echo "bun is required to build the self-contained CLI binary (https://bun.sh)" >&2; exit 1; }
+echo "building self-contained CLI binary…"
+bun "$PWD/scripts/build-cli-binary.mjs" "$(cd "$APP/Contents/Resources" && pwd)/muse-cli-bin"
+chmod +x "$APP/Contents/Resources/muse-cli-bin"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -49,7 +47,6 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
-  <key>LSEnvironment</key><dict><key>MUSE_BIN</key><string>${MUSE_BIN_ABS}</string></dict>
   <key>NSMicrophoneUsageDescription</key><string>Muse listens to your voice so you can ask about your notes hands-free. Audio is transcribed on-device and never leaves your Mac.</string>
   <key>NSSpeechRecognitionUsageDescription</key><string>Muse turns your spoken question into text on-device. Your speech never leaves your Mac.</string>
   <key>NSHumanReadableCopyright</key><string>(c) 2026</string>

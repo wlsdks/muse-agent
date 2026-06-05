@@ -17,17 +17,23 @@ cd apps/desktop
 swift run MuseDesktop          # the companion appears bottom-right; drag it anywhere
 ```
 
-- The CLI is found as `muse` on your `PATH`. Override with `MUSE_BIN`
-  (e.g. `MUSE_BIN="node /abs/path/to/apps/cli/dist/index.js" swift run MuseDesktop`).
-- Click the character → **speak your question** (on-device; from the `.app`
-  bundle) → she answers in the bubble and reads it aloud. In a bare `swift run`
-  (no mic permission) a click opens a **text field** instead.
-- **Pick the look** (menu-bar ♪ → Character, or `MUSE_DESKTOP_CHARACTER`):
-  `orb` (default — a glowing, state-reactive voice orb, the modern AI-assistant
-  visual), `muse` (a vector mascot), or the pixel sprites `aria` / `celestial`.
+- **Self-contained `.app`** (recommended): `./scripts/make-app.sh` then
+  `open MuseDesktop.app`. The script compiles the Muse CLI into a single binary
+  (the `bun` runtime baked in) and bundles it inside the app at
+  `Contents/Resources/muse-cli-bin`, so the companion needs **no external node,
+  repo, or `node_modules`** — the `.app` can be moved/copied anywhere and still
+  works (the Swift bridge resolves the bundled binary relative to its own bundle
+  at runtime). The only external requirement is a local **Ollama** running the
+  model (`qwen3:8b`) — the LLM weights are too large to bundle. Build needs
+  [`bun`](https://bun.sh) + a built CLI dist (`pnpm --filter @muse/cli build`).
+- For dev, `swift run MuseDesktop` finds the CLI as `muse` on your `PATH`, or
+  set `MUSE_BIN` to override (an abs path or a name on PATH).
+- Click the character → **speak your question** (on-device) → she answers in the
+  bubble and reads it aloud. In a bare `swift run` (no mic permission) a click
+  opens a **text field** instead.
+- **Pick the look** (menu-bar ♪ → Character): `orb` (default — a glowing,
+  state-reactive voice orb) or `harp` (a glowing lyre, the Muses' instrument).
 - **Summon from anywhere**: ⌃⌥Space (Control-Option-Space) shows/hides her.
-- **Real app bundle** (needed for the mic permission): `./scripts/make-app.sh`
-  then `open MuseDesktop.app`.
 
 ## Voice (open-source, local)
 
