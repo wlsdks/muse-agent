@@ -317,6 +317,28 @@ P43 bullet is unbuilt.
   (deduped). @muse/mcp 173 files / 1468 tests + @muse/cli 174 files / 1917 tests +
   `pnpm lint` 0/0. (70918eb8)
 
+- [x] **P41-31 `muse calendar add` now WARNS you the moment you double-book — "⚠ this overlaps
+  'Standup' (2:00 PM–3:00 PM). (Added anyway.)" — catching the clash AT CREATION, not later in the
+  brief.** Double-booking detection existed (`detectCalendarConflicts`) and was surfaced in `muse
+  today` / `muse calendar conflicts` / the proactive daemon (P43-5), but `muse calendar add` itself
+  just printed "Created: …" and stayed SILENT on a clash — so you'd add an overlapping event and only
+  discover it later, when re-arranging is harder. Added a pure `conflictWarningForNewEvent(newEvent,
+  existing)` (apps/cli/src/commands-calendar.ts) that runs `detectCalendarConflicts` over the new
+  event + the events it overlaps and returns a heads-up naming each real clash with its time (it
+  reuses the existing detector, so back-to-back / touching events are correctly NOT flagged); the
+  `add` action reads the events overlapping the new `[startsAt, endsAt]` window (which is exactly the
+  overlap condition), excludes the new event by id, and prints the warning to stderr after the
+  "Created:" confirmation (and into `--json` as a `conflict` field). The event is STILL created — this
+  only warns, fail-soft (a calendar read error still confirms the create). Directed act-quality growth
+  (B0: perceive/ACT growth). Verified: 3 unit tests (warns naming the clashing event + time + "(Added
+  anyway.)"; EMPTY for a non-overlapping and for a back-to-back/touching event; lists multiple
+  overlaps — apps/cli/src/commands-calendar.test.ts) + the full @muse/cli suite (185 files / 2099
+  tests) + tsc build + `pnpm lint` 0/0 + 0 raw control bytes + a LIVE run on the loop PC: `muse
+  calendar add "Standup" --at 2026-06-10T14:00 --for 60` (no warning), then `add "Lunch with Dana"
+  --at 2026-06-10T14:30 --for 60` → "Created: Lunch with Dana …" + "⚠ Heads up — this overlaps
+  'Standup' (2:00 PM–3:00 PM). (Added anyway.)", and `add "Evening walk" --at …T18:00` → no warning.
+  (135b5389)
+
 - [x] **P43-6 Muse notices a NOTE FAMILY gone quiet — "you usually update your
   project-apollo notes every few days; nothing in three weeks."** The filesystem
   sibling of P43-4's topic-absence (which baselines episode-CONVERSATION cadence):

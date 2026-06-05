@@ -15,7 +15,7 @@ import { readFile, writeFile } from "node:fs/promises";
 
 import { resolveLocalCalendarFile } from "@muse/autoconfigure";
 import { eventsToIcs, LocalCalendarProvider, type CalendarEvent, type IcsEvent } from "@muse/calendar";
-import { computeAvailability, detectCalendarConflicts, resolveRelativeTimePhrase, type AvailabilityEventLike, type AvailabilityResult, type CalendarConflict } from "@muse/mcp";
+import { computeAvailability, detectCalendarConflicts, resolveRelativeTimePhrase, type AvailabilityEventLike, type AvailabilityResult, type CalendarConflict, type ConflictEventLike } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { formatCalendarEvents, formatProvidersList } from "./human-formatters.js";
@@ -67,6 +67,35 @@ export function maxOfNumbers(values: readonly number[]): number {
 function localCalendarProvider(): LocalCalendarProvider {
   const file = resolveLocalCalendarFile(process.env as Record<string, string | undefined>);
   return new LocalCalendarProvider({ file });
+}
+
+const clockOf = (d: Date): string => d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+
+/**
+ * Heads-up when a JUST-CREATED event overlaps existing ones — so `muse calendar
+ * add` catches a double-booking the moment you make it, not later. The event is
+ * still added; this only warns, naming each clashing event with its time.
+ * Empty when there's no real overlap. Reuses `detectCalendarConflicts` (which
+ * excludes back-to-back / touching events). Pure. Exported for testing.
+ */
+export function conflictWarningForNewEvent(
+  newEvent: ConflictEventLike,
+  existing: readonly ConflictEventLike[]
+): string {
+  const clashes = detectCalendarConflicts([newEvent, ...existing])
+    .filter((conflict) => conflict.a === newEvent || conflict.b === newEvent)
+    .map((conflict) => (conflict.a === newEvent ? conflict.b : conflict.a));
+  const unique: ConflictEventLike[] = [];
+  for (const clash of clashes) {
+    if (!unique.includes(clash)) {
+      unique.push(clash);
+    }
+  }
+  if (unique.length === 0) {
+    return "";
+  }
+  const list = unique.map((event) => `"${event.title}" (${clockOf(event.startsAt)}–${clockOf(event.endsAt)})`).join(", ");
+  return `⚠ Heads up — this overlaps ${list}. (Added anyway.)`;
 }
 
 /** Events across a wide (±10y) window — enough to resolve any realistic personal event by id. */
@@ -424,19 +453,34 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         throw new Error("--for must be a positive number of minutes");
       }
       const endsAt = new Date(startsAt.getTime() + Math.trunc(minutes) * 60_000);
-      const event = await localCalendarProvider().createEvent({
+      const provider = localCalendarProvider();
+      const event = await provider.createEvent({
         endsAt,
         startsAt,
         title,
         ...(options.location ? { location: options.location } : {})
       });
+      // Conflict heads-up: an event overlapping [startsAt, endsAt] is exactly an
+      // overlap, so listing that window (then excluding the new event by id) gives
+      // the candidates; `conflictWarningForNewEvent` excludes touching/back-to-back.
+      let conflictWarning = "";
+      try {
+        const nearby = await provider.listEvents({ from: startsAt, to: endsAt });
+        conflictWarning = conflictWarningForNewEvent(event, nearby.filter((other) => other.id !== event.id));
+      } catch {
+        // calendar read failed — still confirm the create, just without the heads-up
+      }
       if (options.json) {
         helpers.writeOutput(io, {
-          event: { endsAtIso: event.endsAt.toISOString(), id: event.id, startsAtIso: event.startsAt.toISOString(), title: event.title }
+          event: { endsAtIso: event.endsAt.toISOString(), id: event.id, startsAtIso: event.startsAt.toISOString(), title: event.title },
+          ...(conflictWarning ? { conflict: conflictWarning } : {})
         });
         return;
       }
       io.stdout(`Created: ${event.title} — ${event.startsAt.toISOString()} → ${event.endsAt.toISOString()}\n`);
+      if (conflictWarning) {
+        io.stderr(`${conflictWarning}\n`);
+      }
     });
 
   calendar

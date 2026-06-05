@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   eventsToAvailability,
   formatAvailability,
+  conflictWarningForNewEvent,
   formatConflicts,
   maxOfNumbers,
   minOfNumbers,
@@ -17,6 +18,33 @@ import {
   resolveEventIdMatch,
   type CalendarCommandHelpers
 } from "./commands-calendar.js";
+
+describe("conflictWarningForNewEvent — heads-up when a new event double-books", () => {
+  const ev = (title: string, startIso: string, endIso: string) => ({ title, startsAt: new Date(startIso), endsAt: new Date(endIso) });
+  const lunch = ev("Lunch with Dana", "2026-06-10T12:00:00", "2026-06-10T13:00:00");
+
+  it("warns, naming the clashing event(s) with their times, when the new event overlaps", () => {
+    const out = conflictWarningForNewEvent(lunch, [ev("Standup", "2026-06-10T12:30:00", "2026-06-10T13:30:00")]);
+    expect(out).toContain("⚠ Heads up");
+    expect(out).toContain("\"Standup\"");
+    expect(out).toContain("(Added anyway.)");
+  });
+
+  it("is EMPTY when nothing overlaps, and for a BACK-TO-BACK (touching) event", () => {
+    expect(conflictWarningForNewEvent(lunch, [ev("Earlier", "2026-06-10T09:00:00", "2026-06-10T10:00:00")])).toBe("");
+    // back-to-back: ends exactly when lunch starts → NOT a conflict
+    expect(conflictWarningForNewEvent(lunch, [ev("Just before", "2026-06-10T11:00:00", "2026-06-10T12:00:00")])).toBe("");
+  });
+
+  it("lists multiple overlapping events", () => {
+    const out = conflictWarningForNewEvent(lunch, [
+      ev("Call", "2026-06-10T12:15:00", "2026-06-10T12:45:00"),
+      ev("Review", "2026-06-10T12:50:00", "2026-06-10T13:20:00")
+    ]);
+    expect(out).toContain("\"Call\"");
+    expect(out).toContain("\"Review\"");
+  });
+});
 
 describe("resolveEventIdMatch — exact wins, else unique prefix, else ambiguous/none", () => {
   const events = [{ id: "abc12345xyz" }, { id: "abc99999" }, { id: "def00000" }];
